@@ -1,0 +1,23 @@
+{
+  "workbench.panel.defaultLocation": "bottom",
+  "workbench.panel.opensMaximized": "never",
+  "terminal.integrated.defaultLocation": "view",
+  "workbench.startupEditor": "none",
+  "workbench.activityBar.visible": true,
+  "terminal.integrated.env.osx": {
+    "MIX_ENV": "dev"
+  },
+  "terminal.integrated.env.linux": {
+    "MIX_ENV": "dev"
+  },
+  "elixirLS.dialyzerEnabled": true,
+  "elixirLS.fetchDeps": false,
+  "elixirLS.mixEnv": "test",
+  "files.associations": {
+    "*.ex": "elixir",
+    "*.exs": "elixir",
+    "*.eex": "eex",
+    "*.leex": "eex",
+    "*.heex": "phoenix-heex"
+  }
+}

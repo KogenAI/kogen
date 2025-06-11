@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "tidewave": {
+      "command": "mcp-proxy",
+      "args": ["http://localhost:{{PORT}}/tidewave/mcp"]
+    },
+    "playwright": {
+      "url": "http://localhost:{{PLAYWRIGHT_MCP_PORT}}/mcp"
+    }
+  }
+}

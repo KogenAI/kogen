@@ -1,0 +1,39 @@
+#!/bin/bash
+
+# Optimum Codegen CLI (OCG)
+# This script allows you to run codegen commands from anywhere
+
+# Preserve the original working directory
+ORIGINAL_PWD="$(pwd)"
+
+# Get the directory where this script is actually located (resolve symlinks)
+SCRIPT_PATH="$(readlink -f "${BASH_SOURCE[0]}" 2>/dev/null || realpath "${BASH_SOURCE[0]}" 2>/dev/null || echo "${BASH_SOURCE[0]}")"
+SCRIPT_DIR="$(cd "$(dirname "$SCRIPT_PATH")" && pwd)"
+
+# Check if make is available
+if ! command -v make &>/dev/null; then
+    echo "❌ Error: 'make' command not found. Please install make."
+    exit 1
+fi
+
+# If no arguments provided, show help
+if [ $# -eq 0 ]; then
+    export OCG_CLI=true
+    cd "$SCRIPT_DIR" && make
+    exit 0
+fi
+
+# Handle help command specifically
+if [ "$1" = "help" ] || [ "$1" = "--help" ] || [ "$1" = "-h" ]; then
+    # Set environment variable to indicate we're using ocg
+    export OCG_CLI=true
+    cd "$SCRIPT_DIR" && make
+    exit 0
+fi
+
+# Set environment variable for all ocg commands
+export OCG_CLI=true
+export ORIGINAL_WORKING_DIR="$ORIGINAL_PWD"
+
+# Change to the original working directory and run make from the script directory
+cd "$ORIGINAL_PWD" && make -C "$SCRIPT_DIR" "$@"
