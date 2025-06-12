@@ -4,7 +4,7 @@ Implement the feature described in PLAN.md for this Phoenix/Elixir project.
 
 ### Environment
 
-- **Server**: http://localhost:{{PORT}} (will start automatically)
+- **Server**: http://localhost:{{PORT}} (already started and ready)
 - **Database (dev)**: bemeda_personal_dev{{PARTITION}}
 - **Database (test)**: bemeda_personal_test{{PARTITION}}
 - **Branch**: feature/{{FEATURE_NAME}}

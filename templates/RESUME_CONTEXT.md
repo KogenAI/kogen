@@ -31,7 +31,7 @@ Use these commands if you need to see specific changes, or ask me to run them fo
 
 ## Environment
 
-- **Server**: http://localhost:{{PORT}} (will start automatically)
+- **Server**: http://localhost:{{PORT}} (already started and ready)
 - **Database (dev)**: bemeda_personal_dev{{PARTITION}}
 - **Database (test)**: bemeda_personal_test{{PARTITION}}
 
