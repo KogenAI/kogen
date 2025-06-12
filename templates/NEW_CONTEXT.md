@@ -22,8 +22,18 @@ Implement the feature described in PLAN.md for this Phoenix/Elixir project.
 - **Testing**: The seeds file (`priv/repo/seeds.exs`) contains test users for login testing
 - **MCP Tools**: Use Tidewave for Elixir/Phoenix analysis and Playwright for browser automation
 
+### Development Workflow
+
+**If the plan contains stages:**
+1. **Implement one stage at a time** - Stop after completing each stage
+2. **Write comprehensive tests** - Ensure all new code has proper test coverage
+3. **Run CI checks** - Execute `make ci` and ensure all checks pass
+4. **Wait for user review** - Pause for user to review code and commit before proceeding to next stage
+
+This staged approach ensures code quality and allows for proper review at each milestone.
+
 ### Request
 
 Analyze the codebase and implement the plan step by step. Use MCP tools for Elixir analysis and database operations.
 
-Start by reviewing PLAN.md and then begin implementing the feature according to the plan.
+Start by reviewing PLAN.md and then begin implementing the feature according to the plan. If the plan has stages, follow the staged development workflow above.

@@ -48,6 +48,16 @@ Use these commands if you need to see specific changes, or ask me to run them fo
 - **Testing**: The seeds file (`priv/repo/seeds.exs`) contains test users for login testing
 - **MCP Tools**: Use Tidewave for Elixir/Phoenix analysis and Playwright for browser automation
 
+## Development Workflow
+
+**If the plan contains stages:**
+1. **Implement one stage at a time** - Stop after completing each stage
+2. **Write comprehensive tests** - Ensure all new code has proper test coverage
+3. **Run CI checks** - Execute `make ci` and ensure all checks pass
+4. **Wait for user review** - Pause for user to review code and commit before proceeding to next stage
+
+This staged approach ensures code quality and allows for proper review at each milestone.
+
 ## Request
 
 Please help me continue implementing this feature. Review PLAN.md and:
@@ -57,5 +67,7 @@ Please help me continue implementing this feature. Review PLAN.md and:
 3. **Follow PLAN.md**: Are we on track with the planned approach?
 4. **Next Steps**: What should be implemented next?
 5. **Code Quality**: Any improvements needed?
+
+**If the plan has stages, follow the staged development workflow above.**
 
 Ask me to run specific git commands or use MCP tools to analyze the current state.
