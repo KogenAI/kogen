@@ -3,6 +3,9 @@
 
 SCRIPT_DIR := $(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
 
+setup:
+	@cd "$(ORIGINAL_WORKING_DIR)" && "$(SCRIPT_DIR)/setup_project.sh"
+
 new:
 	@if [ -z "$(filter-out $@,$(MAKECMDGOALS))" ]; then \
 		echo "Usage: make new <feature-name>"; \
@@ -90,6 +93,14 @@ resume:
 	fi
 	@./resume_workspace.sh $(filter-out $@,$(MAKECMDGOALS))
 
+update-context:
+	@if [ -z "$(filter-out $@,$(MAKECMDGOALS))" ]; then \
+		echo "Usage: make update-context <feature-name>"; \
+		echo "Example: make update-context dashboard-redesign"; \
+		exit 1; \
+	fi
+	@./update_context.sh $(filter-out $@,$(MAKECMDGOALS))
+
 ls:
 	@./list_workspaces.sh
 
@@ -112,6 +123,8 @@ help:
 		TIP="💡 Install globally with 'make install' to use 'ocg' commands from anywhere!"; \
 	fi; \
 	echo "⚡ Commands:"; \
+	echo "  $$OCG_CMD setup                       🚀 Initialize project with PROJECT_CONTEXT.md"; \
+	echo "  $$OCG_CMD update-context <name>       🔄 Update project context for a specific feature"; \
 	echo "  $$OCG_CMD new <name>                  🎨 Create new feature workspace"; \
 	echo "  $$OCG_CMD rm <name>                   🗑️  Remove feature workspace"; \
 	echo "  $$OCG_CMD clean                       🧹 Remove ALL feature workspaces (with confirmation)"; \
@@ -122,17 +135,22 @@ help:
 	echo "$$EXTRA_CMD"; \
 	echo ""; \
 	echo "📋 Recommended Workflow:"; \
-	echo "  1. Ask Cursor to create a plan in codegen/plans/<name>.md in your target repo"; \
-	echo "  2. Run: $$OCG_CMD new <name> (automatically starts Playwright and includes the plan)"; \
-	echo "  3. Use: $$OCG_CMD clean to remove all workspaces when done"; \
-	echo "  4. Use: $$OCG_CMD clean-branches to remove orphaned feature branches"; \
+	echo "  1. Run: $$OCG_CMD setup (one-time project initialization)"; \
+	echo "  2. Ask Cursor to create a plan in codegen/plans/<name>.md in your target repo"; \
+	echo "  3. Run: $$OCG_CMD new <name> (create workspace and start development)"; \
+	echo "  4. Work on your feature in the workspace"; \
+	echo "  5. Run: $$OCG_CMD rm <name> (archives feature context to codegen/contexts/)"; \
+	echo "  6. Run: $$OCG_CMD update-context <name> (update main PROJECT_CONTEXT.md with learnings)"; \
+	echo "  7. Use: $$OCG_CMD clean-branches to remove orphaned feature branches when done"; \
 	echo ""; \
 	echo "📝 Examples:"; \
+	echo "  $$OCG_CMD setup"; \
 	echo "  $$OCG_CMD new dashboard-redesign"; \
+	echo "  $$OCG_CMD resume dashboard-redesign"; \
 	echo "  $$OCG_CMD rm dashboard-redesign"; \
+	echo "  $$OCG_CMD update-context dashboard-redesign"; \
 	echo "  $$OCG_CMD clean"; \
 	echo "  $$OCG_CMD clean-branches"; \
-	echo "  $$OCG_CMD resume dashboard-redesign"; \
 	echo "  $$OCG_CMD ls"; \
 	if [ "$$OCG_CLI" = "true" ]; then \
 		echo "  $$OCG_CMD uninstall"; \

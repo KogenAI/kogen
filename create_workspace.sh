@@ -161,6 +161,11 @@ if [ -f "$REPO_ROOT/codegen/plans/${FEATURE_NAME}.md" ]; then
     cp "$REPO_ROOT/codegen/plans/${FEATURE_NAME}.md" "$WORKSPACE_PATH/codegen/PLAN.md"
 fi
 
+if [ -f "$REPO_ROOT/codegen/PROJECT_CONTEXT.md" ]; then
+    mkdir -p "$WORKSPACE_PATH/codegen"
+    cp "$REPO_ROOT/codegen/PROJECT_CONTEXT.md" "$WORKSPACE_PATH/codegen/PROJECT_CONTEXT.md"
+fi
+
 if [ -f "$SCRIPT_DIR/templates/CONTEXT.md" ]; then
     mkdir -p "$WORKSPACE_PATH/codegen"
     cp "$SCRIPT_DIR/templates/CONTEXT.md" "$WORKSPACE_PATH/codegen/CONTEXT.md"

@@ -44,6 +44,11 @@ fi
 # Create resume flag file for startup.sh to detect
 touch "$WORKSPACE_PATH/.ocg_resume"
 
+if [ -f "$REPO_ROOT/codegen/PROJECT_CONTEXT.md" ]; then
+    mkdir -p "$WORKSPACE_PATH/codegen"
+    cp "$REPO_ROOT/codegen/PROJECT_CONTEXT.md" "$WORKSPACE_PATH/codegen/PROJECT_CONTEXT.md"
+fi
+
 if [ -f "$SCRIPT_DIR/templates/RESUME_CONTEXT.md" ]; then
     cp "$SCRIPT_DIR/templates/RESUME_CONTEXT.md" "$WORKSPACE_PATH/codegen/CHAT_CONTEXT.md"
 

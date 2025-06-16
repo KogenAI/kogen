@@ -31,6 +31,12 @@ if [ ! -d "$WORKSPACE_PATH" ]; then
     exit 1
 fi
 
+if [ -f "$WORKSPACE_PATH/codegen/CONTEXT.md" ]; then
+    mkdir -p "$REPO_ROOT/codegen/contexts"
+    cp "$WORKSPACE_PATH/codegen/CONTEXT.md" "$REPO_ROOT/codegen/contexts/${FEATURE_NAME}.md"
+    echo "📦 Archived feature context to: codegen/contexts/${FEATURE_NAME}.md"
+fi
+
 cd "$WORKSPACE_PATH"
 if ! git diff --quiet || ! git diff --cached --quiet; then
     echo "⚠️  Warning: Uncommitted changes will be lost!"

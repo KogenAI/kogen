@@ -20,7 +20,7 @@ _codegen_completion() {
 
     # Complete main commands
     if [[ ${COMP_CWORD} == 1 ]]; then
-        local opts="new rm clean clean-branches clean-servers resume ls help"
+        local opts="clean clean-branches clean-servers help ls new resume rm setup update-context"
         [[ "$cmd" == "make" ]] && opts="$opts install uninstall"
         [[ "$cmd" =~ ^(ocg|optimum_codegen)$ ]] && opts="$opts uninstall"
         COMPREPLY=($(compgen -W "$opts" -- "$cur"))
@@ -29,7 +29,7 @@ _codegen_completion() {
 
     # Complete arguments
     case "$prev" in
-    new)
+    new | update-context)
         source "$script_dir/config.sh"
         local repo_root="$TARGET_REPO_PATH"
         [[ -d "$repo_root/codegen/plans" ]] && COMPREPLY=($(compgen -W "$(find "$repo_root/codegen/plans" -name "*.md" -not -name "*.old" -exec basename {} .md \; 2>/dev/null)" -- "$cur"))
