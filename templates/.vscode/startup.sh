@@ -6,6 +6,37 @@ echo "🚀 Initializing feature workspace..."
 WORKSPACE_ROOT="$(pwd)"
 FEATURE_NAME="$(basename "$WORKSPACE_ROOT")"
 
+cleanup_existing_servers() {
+    echo "🧹 Cleaning up existing servers..."
+
+    local killed_something=false
+
+    if [ -f ".env" ]; then
+
+        local port=$(grep "^PORT=" ".env" 2>/dev/null | cut -d'=' -f2)
+        local playwright_port=$(grep "^PLAYWRIGHT_MCP_PORT=" ".env" 2>/dev/null | cut -d'=' -f2)
+
+        if [ -n "$port" ] && lsof -ti tcp:$port >/dev/null 2>&1; then
+            echo "🔄 Killing Phoenix server on port $port..."
+            lsof -ti tcp:$port | xargs kill -9 2>/dev/null || true
+            killed_something=true
+        fi
+
+        if [ -n "$playwright_port" ] && lsof -ti tcp:$playwright_port >/dev/null 2>&1; then
+            echo "🔄 Killing Playwright MCP server on port $playwright_port..."
+            lsof -ti tcp:$playwright_port | xargs kill -9 2>/dev/null || true
+            killed_something=true
+        fi
+    fi
+
+    if [ "$killed_something" = "true" ]; then
+        sleep 1
+        echo "✅ Server cleanup complete"
+    else
+        echo "ℹ️  No servers found to clean up"
+    fi
+}
+
 prepare_context() {
     local mode="$1"
 
@@ -120,10 +151,14 @@ if [ -f ".ocg_resume" ]; then
     echo "🔄 Resume mode detected"
     rm ".ocg_resume" # Clean up flag file
 
+    cleanup_existing_servers
+
     setup_automation "resume"
 else
     WORKSPACE_MODE="new"
     echo "🆕 New workspace mode"
+
+    cleanup_existing_servers
 
     setup_automation "new"
 fi

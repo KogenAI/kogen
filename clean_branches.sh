@@ -8,7 +8,7 @@ clean_branches() {
     ALL_FEATURE_BRANCHES=$(git for-each-ref --format='%(refname:short)' refs/heads/feature/ 2>/dev/null | sort | uniq)
 
     if [ -z "$ALL_FEATURE_BRANCHES" ]; then
-        echo "   ℹ️  No feature branches found"
+        echo "ℹ️  No feature branches found"
         return 0
     fi
 
@@ -20,37 +20,37 @@ clean_branches() {
     done
 
     if [ -z "$ORPHANED_BRANCHES" ]; then
-        echo "   ℹ️  No orphaned feature branches found"
+        echo "ℹ️  No orphaned feature branches found"
         return 0
     fi
 
-    echo "   📋 Found orphaned branches to remove:"
+    echo "📋 Found orphaned branches to remove:"
     for branch in $ORPHANED_BRANCHES; do
         if [ -n "$branch" ]; then
-            echo "      - $branch"
+            echo "   - $branch"
         fi
     done
 
-    echo "   ⚠️  This will permanently delete these branches. Continue? [y/N]"
+    echo "⚠️  This will permanently delete these branches. Continue? [y/N]"
     read -r confirm
 
     if [ "$confirm" != "y" ] && [ "$confirm" != "Y" ]; then
-        echo "   ❌ Operation cancelled"
+        echo "❌ Operation cancelled"
         return 0
     fi
 
     for branch in $ORPHANED_BRANCHES; do
         if [ -n "$branch" ]; then
-            echo "   🗑️  Deleting branch: $branch"
-            git branch -D "$branch" >/dev/null 2>&1 || echo "   ⚠️  Failed to delete branch: $branch"
+            echo "🗑️  Deleting branch: $branch"
+            git branch -D "$branch" >/dev/null 2>&1 || echo "⚠️ Failed to delete branch: $branch"
         fi
     done
 
-    echo "   ✅ Finished removing orphaned branches"
+    echo "✅ Finished removing orphaned branches"
     return 0
 }
 
 clean_branches || {
-    echo "   ❌ Script encountered an error"
+    echo "❌ Script encountered an error"
     exit 1
 }

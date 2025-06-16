@@ -20,7 +20,7 @@ _codegen_completion() {
 
     # Complete main commands
     if [[ ${COMP_CWORD} == 1 ]]; then
-        local opts="new rm clean clean-branches resume ls help"
+        local opts="new rm clean clean-branches clean-servers resume ls help"
         [[ "$cmd" == "make" ]] && opts="$opts install uninstall"
         [[ "$cmd" =~ ^(ocg|optimum_codegen)$ ]] && opts="$opts uninstall"
         COMPREPLY=($(compgen -W "$opts" -- "$cur"))

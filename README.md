@@ -39,6 +39,8 @@ The system automatically detects which git repository you're currently in and ma
 - `ocg resume <name>` - Resume existing workspace
 - `ocg rm <name>` - Remove feature workspace
 - `ocg clean` - Remove ALL workspaces (with confirmation)
+- `ocg clean-branches` - Remove all orphaned feature branches (with confirmation)
+- `ocg clean-servers` - Kill all Playwright MCP and Phoenix servers
 - `ocg ls` - List all workspaces
 - `make install` - Install CLI globally (`ocg` commands)
 
