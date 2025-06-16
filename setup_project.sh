@@ -18,11 +18,34 @@ if [ ! -f "$REPO_ROOT/codegen/PROJECT_CONTEXT.md" ]; then
     cp "$SCRIPT_DIR/templates/PROJECT_CONTEXT.md" "$REPO_ROOT/codegen/PROJECT_CONTEXT.md"
 
     PROJECT_NAME=$(basename "$REPO_ROOT")
+    CURRENT_DATE=$(date +"%B %d, %Y")
+
+    sed -i '' "s|{{CURRENT_DATE}}|$CURRENT_DATE|g" "$REPO_ROOT/codegen/PROJECT_CONTEXT.md"
     sed -i '' "s|{{PROJECT_NAME}}|$PROJECT_NAME|g" "$REPO_ROOT/codegen/PROJECT_CONTEXT.md"
 
     echo "✅ Created PROJECT_CONTEXT.md template"
 else
     echo "ℹ️  PROJECT_CONTEXT.md already exists, skipping..."
+fi
+
+PROJECT_INFO=""
+
+if [ -f "$REPO_ROOT/.tool-versions" ]; then
+    PROJECT_INFO+="🔍 Found .tool-versions file with version information"$'\n'
+fi
+
+if [ -f "$REPO_ROOT/Dockerfile" ]; then
+    PROJECT_INFO+="🔍 Found Dockerfile with deployment configuration"$'\n'
+fi
+
+if [ -f "$REPO_ROOT/mix.exs" ]; then
+    PROJECT_INFO+="🔍 Found mix.exs with dependency and version information"$'\n'
+fi
+
+if [ -d "$REPO_ROOT/test/support/fixtures" ]; then
+    PROJECT_INFO+="🔍 Found fixtures in test/support/ - project uses fixture-based testing"$'\n'
+elif [ -d "$REPO_ROOT/test/support/factory" ]; then
+    PROJECT_INFO+="🔍 Found factory in test/support/ - project uses factory-based testing"$'\n'
 fi
 
 SETUP_PROMPT="# Project Context Setup
@@ -46,7 +69,7 @@ Please analyze the codebase and:
 - **Be comprehensive** - this is a one-time setup, so be thorough
 - **Focus on architecture** - how is the code organized and why?
 - **Include examples** - reference actual files and patterns you find
-- **Update the timestamp** - change the \"Last Updated\" date
+- **Update the timestamp** - change the \"Last Updated\" date to today's date
 
 ## Files to Focus On
 
@@ -55,6 +78,12 @@ Please analyze the codebase and:
 - \`priv/repo/\` - Database migrations and seeds
 - \`config/\` - Application configuration
 - \`test/\` - Test patterns and structure
+- \`.tool-versions\` - Runtime versions
+- \`mix.exs\` - Dependencies and project configuration
+- \`Dockerfile\` - Deployment configuration
+
+## Important Notes
+$PROJECT_INFO
 
 This PROJECT_CONTEXT.md will be used by all future AI sessions to understand the project without re-analyzing the entire codebase.
 

@@ -29,10 +29,10 @@
 ## Tech Stack & Patterns
 
 ### Primary Technologies
-- **Backend**: Phoenix/Elixir
-- **Frontend**: LiveView + Tailwind CSS
-- **Database**: PostgreSQL with Ecto
-- **Testing**: ExUnit + Wallaby
+- **Backend**: [Check .tool-versions and mix.exs for exact versions]
+- **Frontend**: [Check package.json and mix.exs for versions]
+- **Database**: [Check mix.exs and config for database details]
+- **Testing**: [Check test/support/ structure - fixtures vs factories vs other patterns]
 
 ### Coding Conventions
 - **File Organization**: [How files are structured]
@@ -59,7 +59,7 @@
 
 ### Feature Development
 - **Context Boundaries**: [How to respect context boundaries]
-- **Testing Strategy**: [What types of tests to write]
+- **Testing Strategy**: [Check test/support/ - are fixtures used? ExMachina? Custom patterns?]
 - **Database Changes**: [Migration and schema guidelines]
 
 ### Integration Points
@@ -84,4 +84,4 @@
 - **Practice**: [Why it's important and how to implement]
 
 ---
-*Last Updated: [Date] - Update this when making significant architectural changes* 
+*Last Updated: {{CURRENT_DATE}} - Update this when making significant architectural changes* 
