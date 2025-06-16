@@ -45,20 +45,18 @@ fi
 touch "$WORKSPACE_PATH/.ocg_resume"
 
 if [ -f "$SCRIPT_DIR/templates/RESUME_CONTEXT.md" ]; then
-    cp "$SCRIPT_DIR/templates/RESUME_CONTEXT.md" "$WORKSPACE_PATH/RESUME_CONTEXT.md"
+    cp "$SCRIPT_DIR/templates/RESUME_CONTEXT.md" "$WORKSPACE_PATH/codegen/CHAT_CONTEXT.md"
 
     PLAN_TITLE="$FEATURE_NAME"
-    if [ -f "$WORKSPACE_PATH/PLAN.md" ]; then
-        PLAN_TITLE=$(head -n 1 "$WORKSPACE_PATH/PLAN.md" | sed 's/^# *//' | sed 's/ *$//')
+    if [ -f "$WORKSPACE_PATH/codegen/PLAN.md" ]; then
+        PLAN_TITLE=$(head -n 1 "$WORKSPACE_PATH/codegen/PLAN.md" | sed 's/^# *//' | sed 's/ *$//')
         PLAN_TITLE=$(echo "$PLAN_TITLE" | sed 's/[[\.*^$()+?{|&]/\\&/g')
     fi
 
-    sed -i '' "s|{{FEATURE_NAME}}|$FEATURE_NAME|g" "$WORKSPACE_PATH/RESUME_CONTEXT.md"
-    sed -i '' "s|{{CURRENT_BRANCH}}|$CURRENT_BRANCH|g" "$WORKSPACE_PATH/RESUME_CONTEXT.md"
-    sed -i '' "s|{{COMMIT_HASH}}|$COMMIT_HASH|g" "$WORKSPACE_PATH/RESUME_CONTEXT.md"
-    sed -i '' "s|{{PORT}}|${PORT:-4000}|g" "$WORKSPACE_PATH/RESUME_CONTEXT.md"
-    sed -i '' "s|{{PARTITION}}|${PARTITION:-0}|g" "$WORKSPACE_PATH/RESUME_CONTEXT.md"
-    sed -i '' "s|{{PLAN_TITLE}}|$PLAN_TITLE|g" "$WORKSPACE_PATH/RESUME_CONTEXT.md"
+    sed -i '' "s|{{COMMIT_HASH}}|$COMMIT_HASH|g" "$WORKSPACE_PATH/codegen/CHAT_CONTEXT.md"
+    sed -i '' "s|{{CURRENT_BRANCH}}|$CURRENT_BRANCH|g" "$WORKSPACE_PATH/codegen/CHAT_CONTEXT.md"
+    sed -i '' "s|{{FEATURE_NAME}}|$FEATURE_NAME|g" "$WORKSPACE_PATH/codegen/CHAT_CONTEXT.md"
+    sed -i '' "s|{{PLAN_TITLE}}|$PLAN_TITLE|g" "$WORKSPACE_PATH/codegen/CHAT_CONTEXT.md"
 fi
 
 open_cursor_workspace "$WORKSPACE_PATH" "$FEATURE_NAME" "✅ Workspace resumed successfully!"
@@ -74,8 +72,8 @@ if [ -n "$PORT" ] && [ "$PORT" != "not configured" ]; then
     echo "🌐 Server will be available at: http://localhost:$PORT"
 fi
 echo "📁 $WORKSPACE_PATH"
-if [ -f "$WORKSPACE_PATH/PLAN.md" ]; then
-    echo "📋 Plan: PLAN.md"
+if [ -f "$REPO_ROOT/codegen/plans/${FEATURE_NAME}.md" ]; then
+    echo "📋 Plan: codegen/plans/${FEATURE_NAME}.md"
 fi
 echo ""
 echo "To remove: $OCG_CMD rm $FEATURE_NAME"

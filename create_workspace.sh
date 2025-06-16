@@ -157,22 +157,38 @@ if [ -f "$SCRIPT_DIR/templates/.vscode/startup.sh" ]; then
 fi
 
 if [ -f "$REPO_ROOT/codegen/plans/${FEATURE_NAME}.md" ]; then
-    cp "$REPO_ROOT/codegen/plans/${FEATURE_NAME}.md" "$WORKSPACE_PATH/PLAN.md"
+    mkdir -p "$WORKSPACE_PATH/codegen"
+    cp "$REPO_ROOT/codegen/plans/${FEATURE_NAME}.md" "$WORKSPACE_PATH/codegen/PLAN.md"
 fi
 
-if [ -f "$SCRIPT_DIR/templates/NEW_CONTEXT.md" ]; then
-    cp "$SCRIPT_DIR/templates/NEW_CONTEXT.md" "$WORKSPACE_PATH/CONTEXT.md"
+if [ -f "$SCRIPT_DIR/templates/CONTEXT.md" ]; then
+    mkdir -p "$WORKSPACE_PATH/codegen"
+    cp "$SCRIPT_DIR/templates/CONTEXT.md" "$WORKSPACE_PATH/codegen/CONTEXT.md"
 
     PLAN_TITLE="$FEATURE_NAME"
-    if [ -f "$WORKSPACE_PATH/PLAN.md" ]; then
-        PLAN_TITLE=$(head -n 1 "$WORKSPACE_PATH/PLAN.md" | sed 's/^# *//' | sed 's/ *$//')
+    if [ -f "$WORKSPACE_PATH/codegen/PLAN.md" ]; then
+        PLAN_TITLE=$(head -n 1 "$WORKSPACE_PATH/codegen/PLAN.md" | sed 's/^# *//' | sed 's/ *$//')
         PLAN_TITLE=$(echo "$PLAN_TITLE" | sed 's/[[\.*^$()+?{|&]/\\&/g')
     fi
 
-    sed -i '' "s|{{PORT}}|$NEXT_PORT|g" "$WORKSPACE_PATH/CONTEXT.md"
-    sed -i '' "s|{{PARTITION}}|$PARTITION|g" "$WORKSPACE_PATH/CONTEXT.md"
-    sed -i '' "s|{{FEATURE_NAME}}|$FEATURE_NAME|g" "$WORKSPACE_PATH/CONTEXT.md"
-    sed -i '' "s|{{PLAN_TITLE}}|$PLAN_TITLE|g" "$WORKSPACE_PATH/CONTEXT.md"
+    sed -i '' "s|{{FEATURE_NAME}}|$FEATURE_NAME|g" "$WORKSPACE_PATH/codegen/CONTEXT.md"
+    sed -i '' "s|{{PARTITION}}|$PARTITION|g" "$WORKSPACE_PATH/codegen/CONTEXT.md"
+    sed -i '' "s|{{PLAN_TITLE}}|$PLAN_TITLE|g" "$WORKSPACE_PATH/codegen/CONTEXT.md"
+    sed -i '' "s|{{PORT}}|$NEXT_PORT|g" "$WORKSPACE_PATH/codegen/CONTEXT.md"
+fi
+
+if [ -f "$SCRIPT_DIR/templates/NEW_CONTEXT.md" ]; then
+    mkdir -p "$WORKSPACE_PATH/codegen"
+    cp "$SCRIPT_DIR/templates/NEW_CONTEXT.md" "$WORKSPACE_PATH/codegen/CHAT_CONTEXT.md"
+
+    PLAN_TITLE="$FEATURE_NAME"
+    if [ -f "$WORKSPACE_PATH/codegen/PLAN.md" ]; then
+        PLAN_TITLE=$(head -n 1 "$WORKSPACE_PATH/codegen/PLAN.md" | sed 's/^# *//' | sed 's/ *$//')
+        PLAN_TITLE=$(echo "$PLAN_TITLE" | sed 's/[[\.*^$()+?{|&]/\\&/g')
+    fi
+
+    sed -i '' "s|{{FEATURE_NAME}}|$FEATURE_NAME|g" "$WORKSPACE_PATH/codegen/CHAT_CONTEXT.md"
+    sed -i '' "s|{{PLAN_TITLE}}|$PLAN_TITLE|g" "$WORKSPACE_PATH/codegen/CHAT_CONTEXT.md"
 fi
 
 open_cursor_workspace "$WORKSPACE_PATH" "$FEATURE_NAME" "✅ Workspace created successfully!"
@@ -182,8 +198,8 @@ echo "🎉 Workspace ready: $FEATURE_NAME"
 echo "🔌 Port: $NEXT_PORT | 🎭 Playwright: $NEXT_PLAYWRIGHT_PORT | 🗄️ Partition: $PARTITION | 🌿 Branch: $BRANCH_NAME"
 echo "🌐 Server will be available at: http://localhost:$NEXT_PORT"
 echo "📁 $WORKSPACE_PATH"
-if [ -f "$WORKSPACE_PATH/PLAN.md" ]; then
-    echo "📋 Plan: PLAN.md"
+if [ -f "$REPO_ROOT/codegen/plans/${FEATURE_NAME}.md" ]; then
+    echo "📋 Plan: codegen/plans/${FEATURE_NAME}.md"
 fi
 echo ""
 echo "To remove: $OCG_CMD rm $FEATURE_NAME"

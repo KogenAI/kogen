@@ -40,11 +40,11 @@ cleanup_existing_servers() {
 prepare_context() {
     local mode="$1"
 
-    if [ "$mode" = "resume" ]; then
-        if [ ! -f "RESUME_CONTEXT.md" ]; then
-            return 1
-        fi
+    if [ ! -f "codegen/CHAT_CONTEXT.md" ]; then
+        return 1
+    fi
 
+    if [ "$mode" = "resume" ]; then
         local git_status commit_log
         git_status=$(git status --porcelain 2>/dev/null || echo "# Unable to get git status")
 
@@ -58,20 +58,16 @@ prepare_context() {
             commit_log="# Main branch not found"
         fi
 
-        local context=$(cat "RESUME_CONTEXT.md")
+        local context=$(cat "codegen/CHAT_CONTEXT.md")
         context="${context//\{\{GIT_STATUS\}\}/$git_status}"
         context="${context//\{\{COMMIT_LOG\}\}/$commit_log}"
 
         echo "$context" | pbcopy
-        rm "RESUME_CONTEXT.md"
     else
-        if [ -f "CONTEXT.md" ]; then
-            cat "CONTEXT.md" | pbcopy
-            rm "CONTEXT.md"
-        else
-            return 1
-        fi
+        cat "codegen/CHAT_CONTEXT.md" | pbcopy
     fi
+    
+    rm "codegen/CHAT_CONTEXT.md"
 }
 
 open_cursor_chat() {
@@ -133,17 +129,18 @@ EOF
 setup_automation() {
     local mode="$1"
 
-    if prepare_context "$mode"; then
-        open_cursor_chat &
-
-        if [ -f ".cursor/mcp.json" ]; then
-            open_mcp_settings &
-        fi
-
-        return 0
-    else
+    if ! prepare_context "$mode"; then
+        echo "❌ Failed to prepare chat context - CHAT_CONTEXT.md not found"
         return 1
     fi
+
+    open_cursor_chat &
+
+    if [ -f ".cursor/mcp.json" ]; then
+        open_mcp_settings &
+    fi
+
+    return 0
 }
 
 if [ -f ".ocg_resume" ]; then
