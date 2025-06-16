@@ -120,24 +120,13 @@ if [ -f ".ocg_resume" ]; then
     echo "🔄 Resume mode detected"
     rm ".ocg_resume" # Clean up flag file
 
-    export WINDOW_POSITION="1"
-    export TOTAL_WINDOWS="1"
-    export LAYOUT_STRATEGY="single_fullscreen"
-
     setup_automation "resume"
 else
     WORKSPACE_MODE="new"
     echo "🆕 New workspace mode"
 
-    export WINDOW_POSITION="{{WINDOW_POSITION}}"
-    export TOTAL_WINDOWS="{{TOTAL_WINDOWS}}"
-    export LAYOUT_STRATEGY="{{LAYOUT_STRATEGY}}"
-
     setup_automation "new"
 fi
-
-echo "🖥️  Positioning Cursor window ($WINDOW_POSITION of $TOTAL_WINDOWS)..."
-./.vscode/position-window.sh
 
 echo "🔧 Activating mise and loading environment..."
 if command -v mise >/dev/null 2>&1; then

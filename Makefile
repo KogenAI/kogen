@@ -30,17 +30,13 @@ batch:
 	echo "   📋 Found $$plan_count plan(s) to process in $$PLANS_PATH"; \
 	sleep_duration=$$((5 + plan_count)); \
 	echo "   ⏱️  Using $$sleep_duration second delay between workspaces"; \
-	window_pos=1; \
 	for plan in $$PLANS_PATH/*.md; do \
 		if [ -f "$$plan" ]; then \
 			name=$$(basename "$$plan" .md); \
-			echo "   🎨 Creating codegen feature: $$name (window $$window_pos of $$plan_count)"; \
-			./create_workspace.sh "$$name" "$$window_pos" "$$plan_count" || echo "   ⚠️  Failed to create workspace for $$name"; \
-			window_pos=$$((window_pos + 1)); \
-			if [ $$window_pos -le $$plan_count ]; then \
-				echo "   ⏳ Waiting $$sleep_duration seconds for workspace to initialize..."; \
-				sleep $$sleep_duration; \
-			fi; \
+			echo "   🎨 Creating codegen feature: $$name"; \
+			./create_workspace.sh "$$name" || echo "   ⚠️  Failed to create workspace for $$name"; \
+			echo "   ⏳ Waiting $$sleep_duration seconds for workspace to initialize..."; \
+			sleep $$sleep_duration; \
 		fi; \
 	done; \
 	echo "   ✅ Finished creating all workspaces"

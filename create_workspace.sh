@@ -2,15 +2,12 @@
 set -e
 
 if [ $# -eq 0 ]; then
-    echo "Usage: $0 <feature-name> [window-position] [total-windows] [layout-strategy]"
-    echo "Example: $0 dashboard-redesign 2 4 quad_quarters"
+    echo "Usage: $0 <feature-name>"
+    echo "Example: $0 dashboard-redesign"
     exit 1
 fi
 
 FEATURE_NAME="$1"
-WINDOW_POSITION="${2:-1}"
-TOTAL_WINDOWS="${3:-1}"
-LAYOUT_STRATEGY="${4:-}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 source "$SCRIPT_DIR/config.sh"
@@ -20,21 +17,6 @@ REPO_ROOT="$TARGET_REPO_PATH"
 WORKSPACE_NAME="${FEATURE_NAME}"
 WORKSPACE_PATH="${REPO_ROOT}/codegen/workspaces/${WORKSPACE_NAME}"
 BRANCH_NAME="feature/${FEATURE_NAME}"
-
-determine_layout_strategy() {
-    local total="$1"
-    case $total in
-    1) echo "single_fullscreen" ;;
-    2) echo "dual_split" ;;
-    3) echo "triple_mixed" ;;
-    4) echo "quad_quarters_second_monitor" ;;
-    *) echo "multi_quarters_both_monitors" ;;
-    esac
-}
-
-if [ -z "$LAYOUT_STRATEGY" ]; then
-    LAYOUT_STRATEGY=$(determine_layout_strategy "$TOTAL_WINDOWS")
-fi
 
 echo "🌳 Creating feature workspace for: $FEATURE_NAME"
 
@@ -171,9 +153,6 @@ fi
 if [ -f "$SCRIPT_DIR/templates/.vscode/startup.sh" ]; then
     cp "$SCRIPT_DIR/templates/.vscode/startup.sh" "$WORKSPACE_PATH/.vscode/"
     chmod +x "$WORKSPACE_PATH/.vscode/startup.sh"
-    sed -i '' "s|{{WINDOW_POSITION}}|$WINDOW_POSITION|g" "$WORKSPACE_PATH/.vscode/startup.sh"
-    sed -i '' "s|{{TOTAL_WINDOWS}}|$TOTAL_WINDOWS|g" "$WORKSPACE_PATH/.vscode/startup.sh"
-    sed -i '' "s|{{LAYOUT_STRATEGY}}|$LAYOUT_STRATEGY|g" "$WORKSPACE_PATH/.vscode/startup.sh"
     sed -i '' "s|{{DB_NAME_PREFIX}}|$DB_NAME_PREFIX|g" "$WORKSPACE_PATH/.vscode/startup.sh"
 fi
 
@@ -194,14 +173,6 @@ if [ -f "$SCRIPT_DIR/templates/NEW_CONTEXT.md" ]; then
     sed -i '' "s|{{PARTITION}}|$PARTITION|g" "$WORKSPACE_PATH/CONTEXT.md"
     sed -i '' "s|{{FEATURE_NAME}}|$FEATURE_NAME|g" "$WORKSPACE_PATH/CONTEXT.md"
     sed -i '' "s|{{PLAN_TITLE}}|$PLAN_TITLE|g" "$WORKSPACE_PATH/CONTEXT.md"
-fi
-
-if [ -f "$SCRIPT_DIR/templates/.vscode/position-window.sh" ]; then
-    cp "$SCRIPT_DIR/templates/.vscode/position-window.sh" "$WORKSPACE_PATH/.vscode/"
-    chmod +x "$WORKSPACE_PATH/.vscode/position-window.sh"
-    sed -i '' "s|{{WINDOW_POSITION}}|$WINDOW_POSITION|g" "$WORKSPACE_PATH/.vscode/position-window.sh"
-    sed -i '' "s|{{TOTAL_WINDOWS}}|$TOTAL_WINDOWS|g" "$WORKSPACE_PATH/.vscode/position-window.sh"
-    sed -i '' "s|{{LAYOUT_STRATEGY}}|$LAYOUT_STRATEGY|g" "$WORKSPACE_PATH/.vscode/position-window.sh"
 fi
 
 open_cursor_workspace "$WORKSPACE_PATH" "$FEATURE_NAME" "✅ Workspace created successfully!"
