@@ -36,7 +36,6 @@ The system automatically detects which git repository you're currently in and ma
 ## Commands
 
 - `ocg new <name>` - Create new feature workspace
-- `ocg batch` - Create workspaces from all available plans
 - `ocg resume <name>` - Resume existing workspace
 - `ocg rm <name>` - Remove feature workspace
 - `ocg clean` - Remove ALL workspaces (with confirmation)
