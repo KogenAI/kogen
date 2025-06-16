@@ -91,8 +91,8 @@ tell application "Cursor"
             delay 0.5
         end tell
         
-        -- Open Cursor chat with Cmd+L
-        keystroke "l" using {command down}
+        -- Open Chat in Implementing Mode with Ctrl+Shift+Cmd+I
+        keystroke "i" using {control down, shift down, command down}
         delay 1
         
         -- Clear any existing content in chat
