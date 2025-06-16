@@ -98,11 +98,11 @@ echo "$WORKSPACES" | while IFS= read -r line; do
         if [ "$WORKSPACE_PATH" != "$REPO_ROOT" ] && [ -d "$WORKSPACE_PATH" ]; then
             cd "$WORKSPACE_PATH"
 
-            if ! git diff --quiet || ! git diff --cached --quiet; then
+            if ! git diff --quiet -- ':!.cursor/mcp.json' || ! git diff --cached --quiet -- ':!.cursor/mcp.json'; then
                 echo "   ⚠️  Uncommitted changes"
             fi
 
-            UNPUSHED=$(git log --oneline @{u}.. 2>/dev/null | wc -l || echo "0")
+            UNPUSHED=$(git log --oneline @{u}.. 2>/dev/null | wc -l | tr -d ' ' || echo "0")
             if [ "$UNPUSHED" -gt 0 ]; then
                 echo "   📤 $UNPUSHED unpushed commit(s)"
             fi
