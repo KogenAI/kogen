@@ -55,6 +55,12 @@
 - **Third-party Integrations**: [External services and their interfaces]
 - **Webhooks**: [Incoming/outgoing webhook patterns]
 
+### Routing Architecture
+- **Public Routes**: [Routes accessible without authentication]
+- **Authentication Routes**: [Login, registration, password reset flows]
+- **Protected Routes**: [Routes requiring authentication, organized by user type]
+- **Pipelines**: [Authentication and authorization pipelines used]
+
 ## Development Guidelines
 
 ### Feature Development
