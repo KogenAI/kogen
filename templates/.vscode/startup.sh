@@ -40,7 +40,8 @@ cleanup_existing_servers() {
 prepare_context() {
     local mode="$1"
 
-    if [ ! -f "codegen/CHAT_CONTEXT.md" ]; then
+    prompt_file="codegen/PROMPT.md"
+    if [ ! -f "$prompt_file" ]; then
         return 1
     fi
 
@@ -58,86 +59,28 @@ prepare_context() {
             commit_log="# Main branch not found"
         fi
 
-        local context=$(cat "codegen/CHAT_CONTEXT.md")
+        local context=$(cat "$prompt_file")
         context="${context//\{\{GIT_STATUS\}\}/$git_status}"
         context="${context//\{\{COMMIT_LOG\}\}/$commit_log}"
 
-        echo "$context" | pbcopy
-    else
-        cat "codegen/CHAT_CONTEXT.md" | pbcopy
+        echo "$context" > "$prompt_file"
     fi
-    
-    rm "codegen/CHAT_CONTEXT.md"
 }
 
-open_cursor_chat() {
-    if ! pgrep -f "Cursor" >/dev/null 2>&1; then
-        return 1
-    fi
 
-    osascript <<EOF >/dev/null 2>&1
-tell application "Cursor"
-    activate
-    delay 1
-    
-    -- Ensure Cursor window is frontmost and focused
-    tell application "System Events"
-        tell process "Cursor"
-            set frontmost to true
-            delay 0.5
-        end tell
-        
-        -- Open Chat in Implementing Mode with Ctrl+Shift+Cmd+I
-        keystroke "i" using {control down, shift down, command down}
-        delay 1
-        
-        -- Clear any existing content in chat
-        keystroke "a" using {command down}
-        delay 0.5
-        
-        -- Paste the content using Cmd+V
-        keystroke "v" using {command down}
-        delay 0.5
-        
-        -- Don't auto-submit, let user review and press Enter manually
-    end tell
-end tell
-EOF
-}
-
-open_mcp_settings() {
-    osascript <<EOF >/dev/null 2>&1
-tell application "Cursor"
-    activate
-    delay 1
-    
-    -- Ensure Cursor window is frontmost and focused
-    tell application "System Events"
-        tell process "Cursor"
-            set frontmost to true
-            delay 0.5
-        end tell
-        
-        -- Open MCP settings with Ctrl+Cmd+Shift+Option+M
-        keystroke "m" using {control down, command down, shift down, option down}
-        delay 0.5
-    end tell
-end tell
-EOF
-}
 
 setup_automation() {
     local mode="$1"
 
     if ! prepare_context "$mode"; then
-        echo "❌ Failed to prepare chat context - CHAT_CONTEXT.md not found"
+        echo "❌ Failed to prepare context file"
         return 1
     fi
 
-    open_cursor_chat &
+    echo "✅ Context prepared for Claude Code"
 
-    if [ -f ".cursor/mcp.json" ]; then
-        open_mcp_settings &
+    if [ -f ".mcp.json" ]; then
+        echo "✅ MCP configuration ready (.mcp.json found)"
     fi
 
     return 0
@@ -249,11 +192,41 @@ show_workspace_summary() {
     echo "👉 Review the content and press Enter when ready to submit"
 }
 
-show_workspace_summary "$WORKSPACE_MODE" &
-
 echo ""
 echo "🚀 Starting Phoenix server..."
 echo "📝 Press Ctrl+C to stop the server"
 echo ""
 
-mix phx.server
+# Start Phoenix in background and log with colors preserved
+script -F codegen/mix_phx_server.log mix phx.server >/dev/null 2>&1 &
+PHOENIX_PID=$!
+
+# Wait for Phoenix to be ready
+echo "⏳ Waiting for Phoenix server to start..."
+max_attempts=30
+attempt=0
+while [ $attempt -lt $max_attempts ]; do
+    if lsof -i :${PORT:-4000} >/dev/null 2>&1; then
+        echo "✅ Phoenix server ready on port ${PORT:-4000}"
+        break
+    fi
+    sleep 1
+    attempt=$((attempt + 1))
+done
+
+if [ $attempt -eq $max_attempts ]; then
+    echo "❌ Phoenix server failed to start within 30 seconds"
+    exit 1
+fi
+
+# Show workspace summary BEFORE launching Claude
+show_workspace_summary "$WORKSPACE_MODE"
+
+# Launch Claude Code now that Phoenix is ready
+echo ""
+echo "🤖 Launching Claude Code with sonnet model..."
+echo "📋 Prompt has been prepared in: codegen/PROMPT.md"
+echo ""
+
+# Launch Claude Code directly without feeding prompt
+claude --model sonnet < codegen/PROMPT.md

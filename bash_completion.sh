@@ -20,7 +20,7 @@ _codegen_completion() {
 
     # Complete main commands
     if [[ ${COMP_CWORD} == 1 ]]; then
-        local opts="clean clean-branches clean-servers help ls new resume rm setup update-context"
+        local opts="bird-eye clean clean-branches clean-servers help ls new plan resume rm setup update-context"
         [[ "$cmd" == "make" ]] && opts="$opts install uninstall"
         [[ "$cmd" =~ ^(ocg|optimum_codegen)$ ]] && opts="$opts uninstall"
         COMPREPLY=($(compgen -W "$opts" -- "$cur"))
@@ -36,8 +36,15 @@ _codegen_completion() {
         ;;
     rm | resume)
         source "$script_dir/config.sh"
-    local repo_root="$TARGET_REPO_PATH"
+        local repo_root="$TARGET_REPO_PATH"
         [[ -d "$repo_root" ]] && cd "$repo_root" && COMPREPLY=($(compgen -W "$(git worktree list --porcelain 2>/dev/null | grep "^worktree" | cut -d' ' -f2 | xargs -I {} basename {} | grep -v "$(basename "$repo_root")")" -- "$cur"))
+        ;;
+    bird-eye | plan)
+        if [[ ${COMP_CWORD} == 2 ]]; then
+            COMPREPLY=($(compgen -W "" -- "$cur"))
+        elif [[ ${COMP_CWORD} == 3 ]]; then
+            COMPREPLY=($(compgen -W "sonnet opus" -- "$cur"))
+        fi
         ;;
     esac
 }

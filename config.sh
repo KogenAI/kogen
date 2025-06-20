@@ -16,4 +16,4 @@ export DB_NAME_PREFIX="$REPO_NAME"
 if [ ! -d "$TARGET_REPO_PATH/.git" ]; then
     echo "❌ Error: Not in a git repository"
     exit 1
-fi 
+fi

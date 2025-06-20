@@ -6,6 +6,9 @@
       "type": "shell",
       "command": "./.vscode/startup.sh",
       "group": "build",
+      "runOptions": {
+        "runOn": "folderOpen"
+      },
       "presentation": {
         "echo": true,
         "reveal": "always",
@@ -14,8 +17,29 @@
         "showReuseMessage": false,
         "clear": false
       },
+      "problemMatcher": [],
+      "options": {
+        "shell": {
+          "executable": "/bin/zsh",
+          "args": ["-l", "-c"]
+        }
+      }
+    },
+    {
+      "label": "View Phoenix Logs",
+      "type": "shell",
+      "command": "touch codegen/mix_phx_server.log && tail -f codegen/mix_phx_server.log",
+      "group": "build",
       "runOptions": {
         "runOn": "folderOpen"
+      },
+      "presentation": {
+        "echo": false,
+        "reveal": "silent",
+        "focus": false,
+        "panel": "new",
+        "showReuseMessage": false,
+        "clear": true
       },
       "problemMatcher": [],
       "options": {

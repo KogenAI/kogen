@@ -104,6 +104,12 @@ update-context:
 ls:
 	@./list_workspaces.sh
 
+bird-eye:
+	@./modes/bird_eye_session.sh $(filter-out $@,$(MAKECMDGOALS))
+
+plan:
+	@./modes/plan_session.sh $(filter-out $@,$(MAKECMDGOALS))
+
 install:
 	@./install.sh
 
@@ -122,9 +128,15 @@ help:
 		EXTRA_CMD="  $$OCG_CMD install                     📦 Install CLI globally (ocg/optimum_codegen commands)"; \
 		TIP="💡 Install globally with 'make install' to use 'ocg' commands from anywhere!"; \
 	fi; \
-	echo "⚡ Commands:"; \
+	echo "🚀 Project Management:"; \
 	echo "  $$OCG_CMD setup                       🚀 Initialize project with PROJECT_CONTEXT.md"; \
 	echo "  $$OCG_CMD update-context <name>       🔄 Update project context for a specific feature"; \
+	echo ""; \
+	echo "📋 Planning Sessions:"; \
+	echo "  $$OCG_CMD bird-eye [name] [model]     🦅 Start bird-eye planning session (default model: sonnet)"; \
+	echo "  $$OCG_CMD plan [name] [model]         📝 Start detailed planning session (default model: sonnet)"; \
+	echo ""; \
+	echo "🎨 Workspaces:"; \
 	echo "  $$OCG_CMD new <name>                  🎨 Create new feature workspace"; \
 	echo "  $$OCG_CMD rm <name>                   🗑️  Remove feature workspace"; \
 	echo "  $$OCG_CMD clean                       🧹 Remove ALL feature workspaces (with confirmation)"; \
@@ -136,15 +148,20 @@ help:
 	echo ""; \
 	echo "📋 Recommended Workflow:"; \
 	echo "  1. Run: $$OCG_CMD setup (one-time project initialization)"; \
-	echo "  2. Ask Cursor to create a plan in codegen/plans/<name>.md in your target repo"; \
-	echo "  3. Run: $$OCG_CMD new <name> (create workspace and start development)"; \
-	echo "  4. Work on your feature in the workspace"; \
-	echo "  5. Run: $$OCG_CMD rm <name> (archives feature context to codegen/contexts/)"; \
-	echo "  6. Run: $$OCG_CMD update-context <name> (update main PROJECT_CONTEXT.md with learnings)"; \
-	echo "  7. Use: $$OCG_CMD clean-branches to remove orphaned feature branches when done"; \
+	echo "  2. Plan: $$OCG_CMD bird-eye <name> (high-level planning)"; \
+	echo "  3. Plan: $$OCG_CMD plan <name> (detailed technical planning)"; \
+	echo "  4. Implement: $$OCG_CMD new <name> (create workspace and start development)"; \
+	echo "  5. Work on your feature in the workspace"; \
+	echo "  6. Finish: $$OCG_CMD rm <name> (archives feature context to codegen/contexts/)"; \
+	echo "  7. Learn: $$OCG_CMD update-context <name> (update main PROJECT_CONTEXT.md with learnings)"; \
+	echo "  8. Cleanup: $$OCG_CMD clean-branches to remove orphaned feature branches when done"; \
 	echo ""; \
 	echo "📝 Examples:"; \
 	echo "  $$OCG_CMD setup"; \
+	echo "  $$OCG_CMD bird-eye dashboard-redesign"; \
+	echo "  $$OCG_CMD bird-eye complex-feature opus"; \
+	echo "  $$OCG_CMD plan dashboard-redesign"; \
+	echo "  $$OCG_CMD plan complex-feature opus"; \
 	echo "  $$OCG_CMD new dashboard-redesign"; \
 	echo "  $$OCG_CMD resume dashboard-redesign"; \
 	echo "  $$OCG_CMD rm dashboard-redesign"; \

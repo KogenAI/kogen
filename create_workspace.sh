@@ -129,12 +129,6 @@ echo "MIX_TEST_PARTITION=$PARTITION" >>"$WORKSPACE_PATH/.env"
 
 echo "⚙️  Setting up workspace (port: $NEXT_PORT, playwright: $NEXT_PLAYWRIGHT_PORT, partition: $PARTITION)..."
 
-if [ -f "$SCRIPT_DIR/templates/mcp.json" ]; then
-    cp "$SCRIPT_DIR/templates/mcp.json" "$WORKSPACE_PATH/.cursor/"
-    sed -i '' "s|{{PLAYWRIGHT_MCP_PORT}}|$NEXT_PLAYWRIGHT_PORT|g" "$WORKSPACE_PATH/.cursor/mcp.json"
-    sed -i '' "s|{{PORT}}|$NEXT_PORT|g" "$WORKSPACE_PATH/.cursor/mcp.json"
-fi
-
 mkdir -p "$WORKSPACE_PATH/.vscode"
 
 if [ -f "$SCRIPT_DIR/templates/.vscode/settings.json" ]; then
@@ -156,9 +150,14 @@ if [ -f "$SCRIPT_DIR/templates/.vscode/startup.sh" ]; then
     sed -i '' "s|{{DB_NAME_PREFIX}}|$DB_NAME_PREFIX|g" "$WORKSPACE_PATH/.vscode/startup.sh"
 fi
 
+PLAN_TITLE="$FEATURE_NAME"
+
 if [ -f "$REPO_ROOT/codegen/plans/${FEATURE_NAME}.md" ]; then
     mkdir -p "$WORKSPACE_PATH/codegen"
     cp "$REPO_ROOT/codegen/plans/${FEATURE_NAME}.md" "$WORKSPACE_PATH/codegen/PLAN.md"
+
+    PLAN_TITLE=$(head -n 1 "$WORKSPACE_PATH/codegen/PLAN.md" | sed 's/^# *//' | sed 's/ *$//')
+    PLAN_TITLE=$(echo "$PLAN_TITLE" | sed 's/[[\.*^$()+?{|&]/\\&/g')
 fi
 
 if [ -f "$REPO_ROOT/codegen/PROJECT_CONTEXT.md" ]; then
@@ -170,30 +169,34 @@ if [ -f "$SCRIPT_DIR/templates/CONTEXT.md" ]; then
     mkdir -p "$WORKSPACE_PATH/codegen"
     cp "$SCRIPT_DIR/templates/CONTEXT.md" "$WORKSPACE_PATH/codegen/CONTEXT.md"
 
-    PLAN_TITLE="$FEATURE_NAME"
-    if [ -f "$WORKSPACE_PATH/codegen/PLAN.md" ]; then
-        PLAN_TITLE=$(head -n 1 "$WORKSPACE_PATH/codegen/PLAN.md" | sed 's/^# *//' | sed 's/ *$//')
-        PLAN_TITLE=$(echo "$PLAN_TITLE" | sed 's/[[\.*^$()+?{|&]/\\&/g')
-    fi
-
     sed -i '' "s|{{FEATURE_NAME}}|$FEATURE_NAME|g" "$WORKSPACE_PATH/codegen/CONTEXT.md"
     sed -i '' "s|{{PARTITION}}|$PARTITION|g" "$WORKSPACE_PATH/codegen/CONTEXT.md"
     sed -i '' "s|{{PLAN_TITLE}}|$PLAN_TITLE|g" "$WORKSPACE_PATH/codegen/CONTEXT.md"
     sed -i '' "s|{{PORT}}|$NEXT_PORT|g" "$WORKSPACE_PATH/codegen/CONTEXT.md"
 fi
 
-if [ -f "$SCRIPT_DIR/templates/NEW_CONTEXT.md" ]; then
+if [ -f "$SCRIPT_DIR/templates/NEW_PROMPT.md" ]; then
     mkdir -p "$WORKSPACE_PATH/codegen"
-    cp "$SCRIPT_DIR/templates/NEW_CONTEXT.md" "$WORKSPACE_PATH/codegen/CHAT_CONTEXT.md"
+    cp "$SCRIPT_DIR/templates/NEW_PROMPT.md" "$WORKSPACE_PATH/codegen/PROMPT.md"
 
-    PLAN_TITLE="$FEATURE_NAME"
-    if [ -f "$WORKSPACE_PATH/codegen/PLAN.md" ]; then
-        PLAN_TITLE=$(head -n 1 "$WORKSPACE_PATH/codegen/PLAN.md" | sed 's/^# *//' | sed 's/ *$//')
-        PLAN_TITLE=$(echo "$PLAN_TITLE" | sed 's/[[\.*^$()+?{|&]/\\&/g')
-    fi
+    sed -i '' "s|{{FEATURE_NAME}}|$FEATURE_NAME|g" "$WORKSPACE_PATH/codegen/PROMPT.md"
+    sed -i '' "s|{{PLAN_TITLE}}|$PLAN_TITLE|g" "$WORKSPACE_PATH/codegen/PROMPT.md"
+    sed -i '' "s|{{PORT}}|$NEXT_PORT|g" "$WORKSPACE_PATH/codegen/PROMPT.md"
+    sed -i '' "s|{{PLAYWRIGHT_MCP_PORT}}|$NEXT_PLAYWRIGHT_PORT|g" "$WORKSPACE_PATH/codegen/PROMPT.md"
+fi
 
-    sed -i '' "s|{{FEATURE_NAME}}|$FEATURE_NAME|g" "$WORKSPACE_PATH/codegen/CHAT_CONTEXT.md"
-    sed -i '' "s|{{PLAN_TITLE}}|$PLAN_TITLE|g" "$WORKSPACE_PATH/codegen/CHAT_CONTEXT.md"
+
+# Copy CLAUDE.md from main branch since it's gitignored
+if [ -f "$REPO_ROOT/CLAUDE.md" ]; then
+    cp "$REPO_ROOT/CLAUDE.md" "$WORKSPACE_PATH/CLAUDE.md"
+    echo "✅ Copied CLAUDE.md from main branch"
+fi
+
+# Create .mcp.json from template with port substitution
+if [ -f "$SCRIPT_DIR/templates/.mcp.json" ]; then
+    sed "s/{{PORT}}/${NEXT_PORT}/g; s/{{PLAYWRIGHT_MCP_PORT}}/${NEXT_PLAYWRIGHT_PORT}/g" \
+        "$SCRIPT_DIR/templates/.mcp.json" >"$WORKSPACE_PATH/.mcp.json"
+    echo "✅ Created .mcp.json with workspace-specific ports"
 fi
 
 open_cursor_workspace "$WORKSPACE_PATH" "$FEATURE_NAME" "✅ Workspace created successfully!"

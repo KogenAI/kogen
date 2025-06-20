@@ -39,14 +39,14 @@ fi
 if [ -f "$RC_FILE" ]; then
     # Get the current codegen directory to match the exact source line
     CODEGEN_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-    
+
     # Create a temporary file without the completion lines
     TEMP_FILE=$(mktemp)
-    
+
     # Remove the completion lines (comment line and exact source line)
-    grep -v "# Optimum Codegen autocompletion" "$RC_FILE" | \
-    grep -v "source \"$CODEGEN_DIR/bash_completion.sh\"" > "$TEMP_FILE"
-    
+    grep -v "# Optimum Codegen autocompletion" "$RC_FILE" |
+        grep -v "source \"$CODEGEN_DIR/bash_completion.sh\"" >"$TEMP_FILE"
+
     # Check if anything was actually removed
     if ! cmp -s "$RC_FILE" "$TEMP_FILE"; then
         mv "$TEMP_FILE" "$RC_FILE"
@@ -57,6 +57,24 @@ if [ -f "$RC_FILE" ]; then
     fi
 else
     echo "   ℹ️  Shell configuration file $RC_FILE not found"
+fi
+
+CLAUDE_SETTINGS_FILE="$HOME/.claude/settings.json"
+
+if [ -f "$CLAUDE_SETTINGS_FILE" ]; then
+    echo "   ⚙️  Found Claude Code settings"
+    echo "   ⚠️  Do you want to remove Claude Code settings? [y/N]"
+    read -r confirm
+
+    if [ "$confirm" = "y" ] || [ "$confirm" = "Y" ]; then
+        rm -f "$CLAUDE_SETTINGS_FILE"
+        echo "   ✅ Removed Claude Code settings"
+        rmdir "$HOME/.claude" 2>/dev/null || true
+    else
+        echo "   ℹ️  Keeping Claude Code settings"
+    fi
+else
+    echo "   ℹ️  No Claude Code settings found"
 fi
 
 echo ""

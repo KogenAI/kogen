@@ -63,6 +63,16 @@ else
     echo "   ✅ $INSTALL_DIR is already in your PATH"
 fi
 
+echo ""
+echo "🚀 Setting up Claude Code configuration..."
+
+CLAUDE_SETTINGS_DIR="$HOME/.claude"
+CLAUDE_SETTINGS_FILE="$CLAUDE_SETTINGS_DIR/settings.json"
+
+mkdir -p "$CLAUDE_SETTINGS_DIR"
+cp "$CODEGEN_DIR/templates/claude-code-settings.json" "$CLAUDE_SETTINGS_FILE"
+echo "   ✅ Claude Code settings installed at: $CLAUDE_SETTINGS_FILE"
+
 # Set up autocompletion
 echo ""
 echo "🚀 Setting up autocompletion..."

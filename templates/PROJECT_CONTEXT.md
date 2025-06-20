@@ -63,6 +63,11 @@
 
 ## Development Guidelines
 
+### Development Rules
+- **Centralized Rules**: This project uses shared development rules via `@codegen/rules/RULES.md`
+- **Rule Categories**: Phoenix, Elixir quality, readability, error handling, testing, planning, project structure
+- **Setup**: Create symbolic link with `ln -s <rules_dir> codegen/rules` to access all rules
+
 ### Feature Development
 - **Context Boundaries**: [How to respect context boundaries]
 - **Testing Strategy**: [Check test/support/ - are fixtures used? ExMachina? Custom patterns?]

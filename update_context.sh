@@ -91,58 +91,12 @@ fi
 
 CONTEXT_UPDATE_PROMPT="$CONTEXT_UPDATE_PROMPT, and also check the original feature plan. Then update the main PROJECT_CONTEXT.md with the learnings from this feature development.**"
 
-echo "$CONTEXT_UPDATE_PROMPT" | pbcopy
-
-open_cursor_agent_mode() {
-    if ! pgrep -f "Cursor" >/dev/null 2>&1; then
-        echo "⚠️  Cursor not running - please open Cursor and run update-context again"
-        return 1
-    fi
-
-    osascript <<EOF >/dev/null 2>&1
-tell application "Cursor"
-    activate
-    delay 1
-    
-    -- Ensure Cursor window is frontmost and focused
-    tell application "System Events"
-        tell process "Cursor"
-            set frontmost to true
-            delay 0.5
-        end tell
-        
-        -- Open Agent Mode with Cmd+I
-        keystroke "i" using {command down}
-        delay 1
-        
-        -- Clear any existing content
-        keystroke "a" using {command down}
-        delay 0.5
-        
-        -- Paste the content using Cmd+V
-        keystroke "v" using {command down}
-        delay 0.5
-        
-        -- Don't auto-submit, let user review and press Enter manually
-    end tell
-end tell
-EOF
-}
-
 echo ""
 echo "🎯 Context update ready!"
-echo "📋 Opening Cursor Agent mode..."
+echo "🤖 Starting Claude Code with Sonnet model for context update..."
 
-if open_cursor_agent_mode; then
-    echo "✅ Cursor Agent mode opened with context update prompt!"
-    echo "👉 Review the prompt and press Enter to start context update"
-else
-    echo "📋 Manual steps:"
-    echo "   1. Open Cursor in this project"
-    echo "   2. Press Cmd+I (Agent mode)"
-    echo "   3. The context update prompt is copied to your clipboard - paste it"
-    echo "   4. Press Enter to start context update"
-fi
+cd "$REPO_ROOT"
+echo "$CONTEXT_UPDATE_PROMPT" | claude --model sonnet
 
 echo ""
 echo "📝 Feature plan: $PLAN_FILE"

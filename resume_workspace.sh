@@ -49,19 +49,30 @@ if [ -f "$REPO_ROOT/codegen/PROJECT_CONTEXT.md" ]; then
     cp "$REPO_ROOT/codegen/PROJECT_CONTEXT.md" "$WORKSPACE_PATH/codegen/PROJECT_CONTEXT.md"
 fi
 
-if [ -f "$SCRIPT_DIR/templates/RESUME_CONTEXT.md" ]; then
-    cp "$SCRIPT_DIR/templates/RESUME_CONTEXT.md" "$WORKSPACE_PATH/codegen/CHAT_CONTEXT.md"
 
+# Copy CLAUDE.md from main branch since it's gitignored
+if [ -f "$REPO_ROOT/CLAUDE.md" ]; then
+    cp "$REPO_ROOT/CLAUDE.md" "$WORKSPACE_PATH/CLAUDE.md"
+    echo "✅ Copied CLAUDE.md from main branch"
+fi
+
+if [ -f "$SCRIPT_DIR/templates/RESUME_PROMPT.md" ]; then
+    mkdir -p "$WORKSPACE_PATH/codegen"
+    cp "$SCRIPT_DIR/templates/RESUME_PROMPT.md" "$WORKSPACE_PATH/codegen/PROMPT.md"
+
+    # Extract plan title
     PLAN_TITLE="$FEATURE_NAME"
     if [ -f "$WORKSPACE_PATH/codegen/PLAN.md" ]; then
         PLAN_TITLE=$(head -n 1 "$WORKSPACE_PATH/codegen/PLAN.md" | sed 's/^# *//' | sed 's/ *$//')
         PLAN_TITLE=$(echo "$PLAN_TITLE" | sed 's/[[\.*^$()+?{|&]/\\&/g')
     fi
 
-    sed -i '' "s|{{COMMIT_HASH}}|$COMMIT_HASH|g" "$WORKSPACE_PATH/codegen/CHAT_CONTEXT.md"
-    sed -i '' "s|{{CURRENT_BRANCH}}|$CURRENT_BRANCH|g" "$WORKSPACE_PATH/codegen/CHAT_CONTEXT.md"
-    sed -i '' "s|{{FEATURE_NAME}}|$FEATURE_NAME|g" "$WORKSPACE_PATH/codegen/CHAT_CONTEXT.md"
-    sed -i '' "s|{{PLAN_TITLE}}|$PLAN_TITLE|g" "$WORKSPACE_PATH/codegen/CHAT_CONTEXT.md"
+    sed -i '' "s|{{COMMIT_HASH}}|$COMMIT_HASH|g" "$WORKSPACE_PATH/codegen/PROMPT.md"
+    sed -i '' "s|{{CURRENT_BRANCH}}|$CURRENT_BRANCH|g" "$WORKSPACE_PATH/codegen/PROMPT.md"
+    sed -i '' "s|{{FEATURE_NAME}}|$FEATURE_NAME|g" "$WORKSPACE_PATH/codegen/PROMPT.md"
+    sed -i '' "s|{{PLAN_TITLE}}|$PLAN_TITLE|g" "$WORKSPACE_PATH/codegen/PROMPT.md"
+    sed -i '' "s|{{PORT}}|$PORT|g" "$WORKSPACE_PATH/codegen/PROMPT.md"
+    sed -i '' "s|{{PLAYWRIGHT_MCP_PORT}}|$PLAYWRIGHT_PORT|g" "$WORKSPACE_PATH/codegen/PROMPT.md"
 fi
 
 open_cursor_workspace "$WORKSPACE_PATH" "$FEATURE_NAME" "✅ Workspace resumed successfully!"

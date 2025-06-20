@@ -40,6 +40,19 @@
 - **MCP Tools**: Use Tidewave for Elixir/Phoenix analysis and Playwright for browser automation
 - **Cursor Rules**: Available in `.cursor/rules/` directory - enforce these in your implementations
 
+### Server Management
+
+- **Phoenix Server**: Started automatically during workspace initialization
+- **Server Logs**: Available in `codegen/mix_phx_server.log`
+- **Restart Server**: When you need to restart Phoenix during development, use:
+  ```bash
+  # Kill existing server
+  lsof -ti tcp:{{PORT}} | xargs kill -9 2>/dev/null || true
+  sleep 2
+  # Start in background with logging
+  script -F codegen/mix_phx_server.log mix phx.server >/dev/null 2>&1 &
+  ```
+
 ### Development Workflow
 
 **If the plan contains stages:**

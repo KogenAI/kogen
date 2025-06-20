@@ -28,6 +28,30 @@ else
     echo "ℹ️  PROJECT_CONTEXT.md already exists, skipping..."
 fi
 
+# Create CLAUDE.md if it doesn't exist
+if [ ! -f "$REPO_ROOT/CLAUDE.md" ]; then
+    cp "$SCRIPT_DIR/templates/CLAUDE.md" "$REPO_ROOT/CLAUDE.md"
+    echo "✅ Created CLAUDE.md with rule system references"
+else
+    echo "ℹ️  CLAUDE.md already exists, skipping..."
+fi
+
+# Create symbolic link to rules if it doesn't exist
+if [ ! -L "$REPO_ROOT/codegen/rules" ] && [ ! -d "$REPO_ROOT/codegen/rules" ]; then
+    if [ -n "$OCG_RULES_DIR" ] && [ -d "$OCG_RULES_DIR" ]; then
+        ln -s "$OCG_RULES_DIR" "$REPO_ROOT/codegen/rules"
+        echo "✅ Created symbolic link to development rules at: $OCG_RULES_DIR"
+    else
+        echo "⚠️  Development rules not found. Set OCG_RULES_DIR environment variable."
+        echo "   Example: export OCG_RULES_DIR=~/Areas/Optimum/context/rules"
+        echo ""
+        echo "   You can manually create the symbolic link later with:"
+        echo "   ln -s <path-to-rules> $REPO_ROOT/codegen/rules"
+    fi
+else
+    echo "ℹ️  Rules directory already exists, skipping..."
+fi
+
 PROJECT_INFO=""
 
 if [ -f "$REPO_ROOT/.tool-versions" ]; then
@@ -89,8 +113,6 @@ This PROJECT_CONTEXT.md will be used by all future AI sessions to understand the
 
 **Start by opening and reviewing \`codegen/PROJECT_CONTEXT.md\`, then begin your analysis.**"
 
-echo "$SETUP_PROMPT" | pbcopy
-
 open_cursor_setup_chat() {
     if ! pgrep -f "Cursor" >/dev/null 2>&1; then
         echo "⚠️  Cursor not running - please open Cursor and run setup again"
@@ -98,51 +120,22 @@ open_cursor_setup_chat() {
     fi
 
     osascript <<EOF >/dev/null 2>&1
-tell application "Cursor"
-    activate
-    delay 1
-    
-    -- Ensure Cursor window is frontmost and focused
-    tell application "System Events"
-        tell process "Cursor"
-            set frontmost to true
-            delay 0.5
-        end tell
-        
-        -- Open Chat in Setup Mode with Ctrl+Shift+Cmd+S
-        keystroke "s" using {control down, shift down, command down}
-        delay 1
-        
-        -- Clear any existing content in chat
-        keystroke "a" using {command down}
-        delay 0.5
-        
-        -- Paste the content using Cmd+V
-        keystroke "v" using {command down}
-        delay 0.5
-        
-        -- Don't auto-submit, let user review and press Enter manually
-    end tell
-end tell
 EOF
 }
 
 echo ""
-echo "🎯 Setup complete!"
-echo "📋 Opening Cursor chat in Setup mode..."
-
-if open_cursor_setup_chat; then
-    echo "✅ Cursor chat opened with setup prompt!"
-    echo "👉 Review the prompt and press Enter to start analysis"
-else
-    echo "📋 Manual steps:"
-    echo "   1. Open Cursor in this project"
-    echo "   2. Press Ctrl+Shift+Cmd+S (Setup mode)"
-    echo "   3. The setup prompt is copied to your clipboard - paste it"
-    echo "   4. Press Enter to start analysis"
-fi
-
-echo ""
-echo "🗂️  Template created at: codegen/PROJECT_CONTEXT.md"
+echo "🗂️  Files created:"
+echo "   - CLAUDE.md (main AI instructions)"
+echo "   - codegen/PROJECT_CONTEXT.md (project knowledge base)"
+echo "   - codegen/rules/ (symbolic link to development rules)"
 echo ""
 echo "After PROJECT_CONTEXT.md is filled, you can create workspaces with: $OCG_CMD new <feature-name>"
+
+echo "🤖 Starting Claude Code with Opus model for setup..."
+
+if command -v claude >/dev/null 2>&1; then
+    echo "$SETUP_PROMPT" | claude --model opus
+else
+    echo "⚠️  Claude CLI not found. Please install it first and run:"
+    echo "echo \"\$SETUP_PROMPT\" | claude --model opus"
+fi
