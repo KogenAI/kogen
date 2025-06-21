@@ -146,7 +146,7 @@ mix setup
 echo "✅ Setup complete - dependencies, database, and assets ready"
 
 echo "🎭 Starting Playwright MCP server..."
-npx @playwright/mcp@latest --port $PLAYWRIGHT_MCP_PORT --headless 2>&1 &
+npx @playwright/mcp@latest --port $PLAYWRIGHT_MCP_PORT --headless --isolated 2>&1 &
 echo "   🚀 Playwright MCP server started in background"
 echo "   ⏳ Waiting for server to be ready..."
 

@@ -106,12 +106,11 @@ fi
 
 open_cursor_workspace "$WORKSPACE_PATH" "$FEATURE_NAME" "✅ Workspace resumed successfully!"
 
-PLAYWRIGHT_PORT=$(grep "^PLAYWRIGHT_MCP_PORT=" "$WORKSPACE_PATH/.env" 2>/dev/null | cut -d'=' -f2)
 
 echo ""
 echo "🎯 Workspace resumed: $FEATURE_NAME"
-if [ -n "$PORT" ] && [ "$PORT" != "not configured" ] && [ -n "$PLAYWRIGHT_PORT" ] && [ -n "$PARTITION" ]; then
-    echo "🔌 Port: $PORT | 🎭 Playwright: $PLAYWRIGHT_PORT | 🗄️ Partition: $PARTITION | 🌿 Branch: $CURRENT_BRANCH"
+if [ -n "$PORT" ] && [ "$PORT" != "not configured" ] && [ -n "$PLAYWRIGHT_MCP_PORT" ] && [ -n "$PARTITION" ]; then
+    echo "🔌 Port: $PORT | 🎭 Playwright: $PLAYWRIGHT_MCP_PORT | 🗄️ Partition: $PARTITION | 🌿 Branch: $CURRENT_BRANCH"
 fi
 if [ -n "$PORT" ] && [ "$PORT" != "not configured" ]; then
     echo "🌐 Server will be available at: http://localhost:$PORT"
