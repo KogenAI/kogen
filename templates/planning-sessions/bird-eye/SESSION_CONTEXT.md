@@ -10,6 +10,18 @@
 
 You are in the first phase of feature development - **strategic planning**. This phase focuses on understanding the feature from a high-level, user-centric perspective.
 
+### ⚠️ CRITICAL: PLANNING ONLY - NO IMPLEMENTATION
+
+**DO NOT IMPLEMENT OR EDIT CODE** - This is a planning-only session. You should:
+- ✅ **Read** PROJECT_CONTEXT.md to understand the system
+- ✅ **Analyze** the feature from a strategic perspective  
+- ✅ **Plan** the high-level approach
+- ❌ **NEVER use Edit, MultiEdit, or Write tools**
+- ❌ **NEVER modify any files**
+- ❌ **NEVER look at code implementation details**
+
+**Your job is to create a strategic plan, not to implement it.**
+
 ### What You Should Focus On
 
 **User Experience**
@@ -35,9 +47,9 @@ You are in the first phase of feature development - **strategic planning**. This
 ### Available Resources
 
 **Project Context**
-- Review `PROJECT_CONTEXT.md` to understand the existing system
-- Understand current user workflows and pain points
-- Identify existing features that might be enhanced or leveraged
+- Review `codegen/PROJECT_CONTEXT.md` to understand the system, user workflows, and existing features
+- Current planning context is in `codegen/PLANNING_SESSION_CONTEXT.md` (this file)
+- Main project instructions remain in `CLAUDE.md`
 
 **Planning Guidelines**
 - Keep plans high-level and user-focused

@@ -185,7 +185,6 @@ if [ -f "$SCRIPT_DIR/templates/NEW_PROMPT.md" ]; then
     sed -i '' "s|{{PLAYWRIGHT_MCP_PORT}}|$NEXT_PLAYWRIGHT_PORT|g" "$WORKSPACE_PATH/codegen/PROMPT.md"
 fi
 
-
 # Copy CLAUDE.md from main branch since it's gitignored
 if [ -f "$REPO_ROOT/CLAUDE.md" ]; then
     cp "$REPO_ROOT/CLAUDE.md" "$WORKSPACE_PATH/CLAUDE.md"

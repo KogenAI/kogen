@@ -49,7 +49,6 @@ if [ -f "$REPO_ROOT/codegen/PROJECT_CONTEXT.md" ]; then
     cp "$REPO_ROOT/codegen/PROJECT_CONTEXT.md" "$WORKSPACE_PATH/codegen/PROJECT_CONTEXT.md"
 fi
 
-
 # Copy CLAUDE.md from main branch since it's gitignored
 if [ -f "$REPO_ROOT/CLAUDE.md" ]; then
     cp "$REPO_ROOT/CLAUDE.md" "$WORKSPACE_PATH/CLAUDE.md"

@@ -10,6 +10,18 @@
 
 You are in the technical planning phase - **detailed implementation planning**. This phase focuses on creating comprehensive technical plans ready for implementation.
 
+### ⚠️ CRITICAL: PLANNING ONLY - NO IMPLEMENTATION
+
+**DO NOT IMPLEMENT OR EDIT CODE** - This is a planning-only session. You should:
+- ✅ **Analyze** existing code to understand patterns
+- ✅ **Read** files to understand the current implementation
+- ✅ **Plan** the technical approach in detail
+- ❌ **NEVER use Edit, MultiEdit, or Write tools**
+- ❌ **NEVER modify any files**
+- ❌ **NEVER implement the actual solution**
+
+**Your job is to create a detailed plan, not to implement it.**
+
 ### What You Should Focus On
 
 **Technical Architecture**
@@ -43,9 +55,9 @@ You are in the technical planning phase - **detailed implementation planning**. 
 - Understand current patterns and architectural decisions
 
 **Project Context**
-- Review `PROJECT_CONTEXT.md` for system understanding
-- Understand existing data models and relationships
-- Know the current technology stack and dependencies
+- Review `codegen/PROJECT_CONTEXT.md` to understand the system architecture, patterns, and conventions
+- Current planning context is in `codegen/PLANNING_SESSION_CONTEXT.md` (this file)
+- Main project instructions remain in `CLAUDE.md`
 
 **Planning Guidelines**
 - Be thorough and specific in technical details

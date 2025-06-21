@@ -27,28 +27,46 @@ case "$MODE" in
         ;;
 esac
 
-# Create planning-specific CLAUDE.md in codegen directory
+# Create planning session context file in codegen directory
 TEMPLATE_DIR="$CODEGEN_DIR/templates/planning-sessions/$MODE"
+PLANNING_SESSION_CONTEXT_FILE="$TARGET_REPO_PATH/codegen/PLANNING_SESSION_CONTEXT.md"
 
-if [ -f "$TEMPLATE_DIR/CLAUDE.md" ]; then
-    sed "s/{{FEATURE_NAME}}/$FEATURE_NAME/g" "$TEMPLATE_DIR/CLAUDE.md" > "$CODEGEN_DIR/CLAUDE.md"
-    echo "✓ Created planning CLAUDE.md"
+# Add session timestamp
+SESSION_TIMESTAMP=$(date '+%Y-%m-%d %H:%M:%S')
+
+if [ -f "$TEMPLATE_DIR/SESSION_CONTEXT.md" ]; then
+    sed -e "s/{{FEATURE_NAME}}/$FEATURE_NAME/g" \
+        -e "s/{{SESSION_TIMESTAMP}}/$SESSION_TIMESTAMP/g" \
+        "$TEMPLATE_DIR/SESSION_CONTEXT.md" > "$PLANNING_SESSION_CONTEXT_FILE"
+    echo "✓ Created planning session context: codegen/PLANNING_SESSION_CONTEXT.md"
 else
-    echo "Error: Template not found: $TEMPLATE_DIR/CLAUDE.md"
+    echo "Error: Template not found: $TEMPLATE_DIR/SESSION_CONTEXT.md"
     exit 1
 fi
+
+# Prepare initial prompt for Claude
+PLANNING_PROMPT="This is a planning session. Please read codegen/PLANNING_SESSION_CONTEXT.md first to understand your role and constraints, then read codegen/PROJECT_CONTEXT.md to understand the project architecture and patterns. After reading both files, wait for me to describe the feature to plan."
+
+# Set up cleanup to remove planning context when session ends
+cleanup_planning_context() {
+    if [ -f "$PLANNING_SESSION_CONTEXT_FILE" ]; then
+        rm "$PLANNING_SESSION_CONTEXT_FILE"
+        echo "✓ Cleaned up planning session context"
+    fi
+}
+trap cleanup_planning_context EXIT
 
 # Create directories for outputs and set default model
 case "$MODE" in
     "bird-eye")
-        mkdir -p "$CODEGEN_DIR/bird_view_plans"
+        mkdir -p "$TARGET_REPO_PATH/codegen/bird_view_plans"
         DEFAULT_MODEL="sonnet"
-        echo "✓ Ensured bird_view_plans directory exists"
+        echo "✓ Ensured codegen/bird_view_plans directory exists"
         ;;
     "detailed-planning")
-        mkdir -p "$CODEGEN_DIR/plans"
+        mkdir -p "$TARGET_REPO_PATH/codegen/plans"
         DEFAULT_MODEL="sonnet"
-        echo "✓ Ensured plans directory exists"
+        echo "✓ Ensured codegen/plans directory exists"
         ;;
 esac
 
@@ -69,23 +87,25 @@ else
     MODEL="$DEFAULT_MODEL"
 fi
 
-# Change to codegen directory
-cd "$CODEGEN_DIR"
+# Change to target repository directory
+cd "$TARGET_REPO_PATH"
 
 echo ""
 echo "=== Planning Session Ready ==="
 echo "Mode: $MODE"
 echo "Feature: ${FEATURE_NAME:-"(not specified)"}"
-echo "Working Directory: $CODEGEN_DIR"
+echo "Working Directory: $TARGET_REPO_PATH"
 echo "Model: $MODEL"
 echo ""
 
 # Start Claude with appropriate model
 echo "Starting Claude with $MODEL model..."
+echo "Planning context created, Claude will read it automatically."
+echo ""
+
 if command -v claude >/dev/null 2>&1; then
-    exec claude --model "$MODEL"
+    exec claude --model "$MODEL" "$PLANNING_PROMPT"
 else
     echo "Warning: claude command not found. Please install Claude CLI."
-    echo "You can manually start Claude with: claude --model $MODEL"
     exit 1
 fi
