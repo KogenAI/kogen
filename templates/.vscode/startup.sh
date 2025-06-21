@@ -63,11 +63,9 @@ prepare_context() {
         context="${context//\{\{GIT_STATUS\}\}/$git_status}"
         context="${context//\{\{COMMIT_LOG\}\}/$commit_log}"
 
-        echo "$context" > "$prompt_file"
+        echo "$context" >"$prompt_file"
     fi
 }
-
-
 
 setup_automation() {
     local mode="$1"
@@ -227,4 +225,5 @@ echo ""
 # Launch Claude Code from the workspace root so file paths work correctly
 cd "$WORKSPACE_ROOT"
 export CLAUDE_BASH_MAINTAIN_PROJECT_WORKING_DIR=true
-claude --model sonnet --add-dir . < codegen/PROMPT.md
+
+claude --model sonnet <codegen/PROMPT.md
