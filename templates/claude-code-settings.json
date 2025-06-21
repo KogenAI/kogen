@@ -2,6 +2,8 @@
   "model": "sonnet",
   "permissions": {
     "allow": [
+      "Bash(./codegen/ci.sh)",
+      "Bash(bash codegen/ci.sh)",
       "Bash(cp:*)",
       "Bash(curl:*)",
       "Bash(echo:*)",
@@ -16,11 +18,12 @@
       "Bash(lsof * | xargs kill*)",
       "Bash(lsof:*)",
       "Bash(make:*)",
-      "Bash(MIX_ENV=test mix *)",
+      "Bash(MIX_ENV=test mix:*)",
       "Bash(mix:*)",
       "Bash(mkdir:*)",
       "Bash(mv:*)",
       "Bash(npm:*)",
+      "Bash(npx:*)",
       "Bash(ocg:*)",
       "Bash(osascript:*)",
       "Bash(pkill:*)",

@@ -72,8 +72,15 @@ if [ -f "$SCRIPT_DIR/templates/.vscode/workspace-info.sh" ]; then
     chmod +x "$WORKSPACE_PATH/.vscode/workspace-info.sh"
 fi
 
+mkdir -p "$WORKSPACE_PATH/codegen"
+
+if [ -f "$SCRIPT_DIR/templates/ci.sh" ]; then
+    cp "$SCRIPT_DIR/templates/ci.sh" "$WORKSPACE_PATH/codegen/ci.sh"
+    chmod +x "$WORKSPACE_PATH/codegen/ci.sh"
+    echo "✅ Copied ci.sh for workspace-specific CI checks"
+fi
+
 if [ -f "$REPO_ROOT/codegen/PROJECT_CONTEXT.md" ]; then
-    mkdir -p "$WORKSPACE_PATH/codegen"
     cp "$REPO_ROOT/codegen/PROJECT_CONTEXT.md" "$WORKSPACE_PATH/codegen/PROJECT_CONTEXT.md"
 fi
 

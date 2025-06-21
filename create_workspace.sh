@@ -205,6 +205,14 @@ if [ -f "$SCRIPT_DIR/templates/.mcp.json" ]; then
     echo "✅ Created .mcp.json with workspace-specific ports"
 fi
 
+# Copy ci.sh to workspace codegen directory for workspace-specific CI checks
+mkdir -p "$WORKSPACE_PATH/codegen"
+if [ -f "$SCRIPT_DIR/templates/ci.sh" ]; then
+    cp "$SCRIPT_DIR/templates/ci.sh" "$WORKSPACE_PATH/codegen/ci.sh"
+    chmod +x "$WORKSPACE_PATH/codegen/ci.sh"
+    echo "✅ Copied ci.sh for workspace-specific CI checks"
+fi
+
 open_cursor_workspace "$WORKSPACE_PATH" "$FEATURE_NAME" "✅ Workspace created successfully!"
 
 echo ""

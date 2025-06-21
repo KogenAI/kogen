@@ -10,6 +10,17 @@ PURPLE='\033[0;35m'
 BOLD='\033[1m'
 NC='\033[0m' # No Color
 
+# Helper function to format check status
+format_check_status() {
+    local status="$1"
+    case "$status" in
+        "PASSED") echo -e "${GREEN}✅ PASSED${NC}" ;;
+        "FAILED") echo -e "${RED}❌ FAILED${NC}" ;;
+        "SKIPPED"*) echo -e "${YELLOW}⚠️  SKIPPED${NC}" ;;
+        *) echo -e "${YELLOW}⚠️  UNKNOWN${NC}" ;;
+    esac
+}
+
 show_workspace_info() {
     local FEATURE_NAME="$(basename "$(pwd)")"
     local CURRENT_DIR="$(pwd)"
@@ -59,6 +70,31 @@ show_workspace_info() {
     echo -e "   Status: $PLAYWRIGHT_STATUS"
     echo ""
     
+    # CI Status Section
+    echo -e "${BOLD}${CYAN}CI STATUS${NC}"
+    # CI status file is in codegen directory (same path pattern as Phoenix log)
+    local ci_status_file="codegen/.ci_status"
+    if [ -f "$ci_status_file" ]; then
+        local ci_timestamp=$(head -1 "$ci_status_file")
+        local overall_status=$(grep "Overall Status:" "$ci_status_file" | cut -d':' -f2 | tr -d ' ')
+        
+        if [ "$overall_status" = "PASSED" ]; then
+            echo -e "${BOLD}${GREEN}🎉 Status: PASSED${NC}"
+        elif [ "$overall_status" = "FAILED" ]; then
+            echo -e "${BOLD}${RED}💥 Status: FAILED${NC}"
+        elif [ "$overall_status" = "IN_PROGRESS" ]; then
+            echo -e "${BOLD}${CYAN}🔄 Status: IN PROGRESS${NC}"
+        else
+            echo -e "${BOLD}${YELLOW}⚠️  Status: UNKNOWN${NC}"
+        fi
+        
+        echo -e "   Last run: ${YELLOW}$ci_timestamp${NC}"
+    else
+        echo -e "${BOLD}${YELLOW}⚠️  No CI status available${NC}"
+        echo -e "   Run ${CYAN}./codegen/ci.sh${NC} to check code quality"
+    fi
+    echo ""
+    
     echo -e "${BOLD}${CYAN}DATABASE INFORMATION${NC}"
     
     # Get project name from mix.exs or use directory name as fallback
@@ -82,23 +118,6 @@ show_workspace_info() {
         echo -e "${BOLD}${GREEN}🧪 Test:${NC} ${YELLOW}${PROJECT_NAME}_test${NC}"
     fi
     
-    # Extract users from seeds.exs if available
-    if [ -f "priv/repo/seeds.exs" ]; then
-        local users_found=$(grep -E "email:.*@" priv/repo/seeds.exs | head -5)
-        if [ -n "$users_found" ]; then
-            echo ""
-            echo -e "${BOLD}${CYAN}SEED USERS${NC}"
-            
-            # Extract email and password pairs from anywhere in seeds
-            grep -E "(email:|password:)" priv/repo/seeds.exs | \
-            sed 's/.*email: *"\([^"]*\)".*/📧 \1/' | \
-            sed 's/.*password: *"\([^"]*\)".*/🔑 \1/' | \
-            grep -E "(📧|🔑)" | \
-            paste - - | \
-            sed 's/\t/ | /g' | \
-            head -5
-        fi
-    fi
 }
 
 # Auto-refresh loop (like Phoenix logs)

@@ -145,6 +145,10 @@ echo "   This will install dependencies, setup database, and build assets..."
 mix setup
 echo "✅ Setup complete - dependencies, database, and assets ready"
 
+echo "🔍 Starting CI checks in background..."
+"./codegen/ci.sh" >/dev/null 2>&1 &
+echo "✅ CI checks started - status will be shown in workspace info"
+
 echo "🎭 Starting Playwright MCP server..."
 npx @playwright/mcp@latest --port $PLAYWRIGHT_MCP_PORT --headless --isolated 2>&1 &
 echo "   🚀 Playwright MCP server started in background"

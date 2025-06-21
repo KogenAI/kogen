@@ -17,4 +17,13 @@ Continue implementing the plan in codegen/PLAN.md using context from:
 - Phoenix Port: {{PORT}}
 - Playwright MCP Port: {{PLAYWRIGHT_MCP_PORT}}
 
+## Important: CI Requirements
+
+**CRITICAL**: Before completing any implementation, you MUST ensure CI checks pass.
+
+- Run `./codegen/ci.sh` after making changes to verify code quality
+- Fix any formatting, linting, or other issues reported  
+- Do not consider implementation complete until CI checks pass
+- This ensures consistent code quality across the project
+
 Review the current stage in CONTEXT.md and recent changes, then continue implementation.

@@ -19,4 +19,13 @@ Follow the staged development workflow and update CONTEXT.md as you progress thr
 - `/codegen/PROJECT_CONTEXT.md` - Project architecture and patterns
 - `/CLAUDE.md` - Repository-specific guidance
 
+## Important: CI Requirements
+
+**CRITICAL**: Before completing any implementation, you MUST ensure CI checks pass.
+
+- Run `./codegen/ci.sh` after making changes to verify code quality
+- Fix any formatting, linting, or other issues reported  
+- Do not consider implementation complete until CI checks pass
+- This ensures consistent code quality across the project
+
 Start by reviewing the plan and current context, then begin implementation.

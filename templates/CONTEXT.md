@@ -58,7 +58,7 @@
 **If the plan contains stages:**
 1. **Implement one stage at a time** - Stop after completing each stage
 2. **Write comprehensive tests** - Ensure all new code has proper test coverage
-3. **Run CI checks** - Execute `make ci` and ensure all checks pass
+3. **Run CI checks** - Execute `./codegen/ci.sh` and ensure all checks pass
 4. **Wait for user review** - Pause for user to review code and commit before proceeding to next stage
 5. **Update this context** - Keep the "Current Stage" and "Implementation Progress" sections current
 
