@@ -9,6 +9,7 @@ Follow the staged development workflow and update CONTEXT.md as you progress thr
 ## Current Workspace
 - Feature: {{FEATURE_NAME}}
 - Branch: feature/{{FEATURE_NAME}}
+- Working Directory: {{WORKSPACE_PATH}}
 - Phoenix Port: {{PORT}}
 - Playwright MCP Port: {{PLAYWRIGHT_MCP_PORT}}
 

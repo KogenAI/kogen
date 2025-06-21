@@ -13,6 +13,7 @@ Continue implementing the plan in codegen/PLAN.md using context from:
 ## Current Workspace
 - Feature: {{FEATURE_NAME}}
 - Branch: feature/{{FEATURE_NAME}}
+- Working Directory: {{WORKSPACE_PATH}}
 - Phoenix Port: {{PORT}}
 - Playwright MCP Port: {{PLAYWRIGHT_MCP_PORT}}
 
