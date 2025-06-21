@@ -228,5 +228,6 @@ echo "🤖 Launching Claude Code with sonnet model..."
 echo "📋 Prompt has been prepared in: codegen/PROMPT.md"
 echo ""
 
-# Launch Claude Code directly without feeding prompt
+# Launch Claude Code from the workspace root so file paths work correctly
+cd "$WORKSPACE_ROOT"
 claude --model sonnet < codegen/PROMPT.md

@@ -44,6 +44,34 @@ fi
 # Create resume flag file for startup.sh to detect
 touch "$WORKSPACE_PATH/.ocg_resume"
 
+mkdir -p "$WORKSPACE_PATH/.vscode"
+
+if [ -f "$SCRIPT_DIR/templates/.vscode/tasks.json" ]; then
+    cp "$SCRIPT_DIR/templates/.vscode/tasks.json" "$WORKSPACE_PATH/.vscode/"
+fi
+
+if [ -f "$SCRIPT_DIR/templates/.vscode/settings.json" ]; then
+    cp "$SCRIPT_DIR/templates/.vscode/settings.json" "$WORKSPACE_PATH/.vscode/"
+
+    if [ -f "$WORKSPACE_PATH/.env" ]; then
+        WORKSPACE_PORT=$(grep "^PORT=" "$WORKSPACE_PATH/.env" 2>/dev/null | cut -d'=' -f2)
+        if [ -n "$WORKSPACE_PORT" ]; then
+            sed -i '' "s/4000/$WORKSPACE_PORT/g" "$WORKSPACE_PATH/.vscode/settings.json"
+        fi
+    fi
+fi
+
+if [ -f "$SCRIPT_DIR/templates/.vscode/startup.sh" ]; then
+    cp "$SCRIPT_DIR/templates/.vscode/startup.sh" "$WORKSPACE_PATH/.vscode/"
+    chmod +x "$WORKSPACE_PATH/.vscode/startup.sh"
+    sed -i '' "s|{{DB_NAME_PREFIX}}|$DB_NAME_PREFIX|g" "$WORKSPACE_PATH/.vscode/startup.sh"
+fi
+
+if [ -f "$SCRIPT_DIR/templates/.vscode/workspace-info.sh" ]; then
+    cp "$SCRIPT_DIR/templates/.vscode/workspace-info.sh" "$WORKSPACE_PATH/.vscode/"
+    chmod +x "$WORKSPACE_PATH/.vscode/workspace-info.sh"
+fi
+
 if [ -f "$REPO_ROOT/codegen/PROJECT_CONTEXT.md" ]; then
     mkdir -p "$WORKSPACE_PATH/codegen"
     cp "$REPO_ROOT/codegen/PROJECT_CONTEXT.md" "$WORKSPACE_PATH/codegen/PROJECT_CONTEXT.md"
@@ -71,7 +99,8 @@ if [ -f "$SCRIPT_DIR/templates/RESUME_PROMPT.md" ]; then
     sed -i '' "s|{{FEATURE_NAME}}|$FEATURE_NAME|g" "$WORKSPACE_PATH/codegen/PROMPT.md"
     sed -i '' "s|{{PLAN_TITLE}}|$PLAN_TITLE|g" "$WORKSPACE_PATH/codegen/PROMPT.md"
     sed -i '' "s|{{PORT}}|$PORT|g" "$WORKSPACE_PATH/codegen/PROMPT.md"
-    sed -i '' "s|{{PLAYWRIGHT_MCP_PORT}}|$PLAYWRIGHT_PORT|g" "$WORKSPACE_PATH/codegen/PROMPT.md"
+    PLAYWRIGHT_MCP_PORT=$(grep "^PLAYWRIGHT_MCP_PORT=" "$WORKSPACE_PATH/.env" 2>/dev/null | cut -d'=' -f2)
+    sed -i '' "s|{{PLAYWRIGHT_MCP_PORT}}|$PLAYWRIGHT_MCP_PORT|g" "$WORKSPACE_PATH/codegen/PROMPT.md"
 fi
 
 open_cursor_workspace "$WORKSPACE_PATH" "$FEATURE_NAME" "✅ Workspace resumed successfully!"

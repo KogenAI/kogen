@@ -10,8 +10,8 @@
 ### Environment
 
 - **Server**: http://localhost:{{PORT}} (server is running)
-- **Database (dev)**: bemeda_personal_dev{{PARTITION}}
-- **Database (test)**: bemeda_personal_test{{PARTITION}}
+- **Database (dev)**: {{DB_NAME_PREFIX}}_dev{{PARTITION}}
+- **Database (test)**: {{DB_NAME_PREFIX}}_test{{PARTITION}}
 - **Branch**: feature/{{FEATURE_NAME}}
 
 ### Feature Impact Analysis
@@ -38,7 +38,7 @@
 - **Database**: Set up and seeded via `mix setup` during initialization
 - **Testing**: The seeds file (`priv/repo/seeds.exs`) contains test users for login testing
 - **MCP Tools**: Use Tidewave for Elixir/Phoenix analysis and Playwright for browser automation
-- **Cursor Rules**: Available in `.cursor/rules/` directory - enforce these in your implementations
+- **Development Rules**: Follow project coding standards and conventions
 
 ### Server Management
 
@@ -78,5 +78,5 @@ For detailed code analysis, you can use:
 - Make sure all changes are covered with tests
 - Follow the plan described in `codegen/PLAN.md`
 - Use project knowledge from `codegen/PROJECT_CONTEXT.md`
-- Enforce appropriate Cursor rules available in the `.cursor/rules` directory
+- Follow established coding standards and project conventions
 - **Keep this context file updated** as you progress through implementation stages

@@ -2,7 +2,7 @@
   "version": "2.0.0",
   "tasks": [
     {
-      "label": "Feature Workspace Startup",
+      "label": "Claude Code",
       "type": "shell",
       "command": "./.vscode/startup.sh",
       "group": "build",
@@ -26,9 +26,33 @@
       }
     },
     {
-      "label": "View Phoenix Logs",
+      "label": "Server Logs",
       "type": "shell",
       "command": "touch codegen/mix_phx_server.log && tail -f codegen/mix_phx_server.log",
+      "group": "build",
+      "runOptions": {
+        "runOn": "folderOpen"
+      },
+      "presentation": {
+        "echo": false,
+        "reveal": "silent",
+        "focus": false,
+        "panel": "new",
+        "showReuseMessage": false,
+        "clear": true
+      },
+      "problemMatcher": [],
+      "options": {
+        "shell": {
+          "executable": "/bin/zsh",
+          "args": ["-l", "-c"]
+        }
+      }
+    },
+    {
+      "label": "Workspace Info",
+      "type": "shell",
+      "command": "./.vscode/workspace-info.sh",
       "group": "build",
       "runOptions": {
         "runOn": "folderOpen"

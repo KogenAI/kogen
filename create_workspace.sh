@@ -150,6 +150,11 @@ if [ -f "$SCRIPT_DIR/templates/.vscode/startup.sh" ]; then
     sed -i '' "s|{{DB_NAME_PREFIX}}|$DB_NAME_PREFIX|g" "$WORKSPACE_PATH/.vscode/startup.sh"
 fi
 
+if [ -f "$SCRIPT_DIR/templates/.vscode/workspace-info.sh" ]; then
+    cp "$SCRIPT_DIR/templates/.vscode/workspace-info.sh" "$WORKSPACE_PATH/.vscode/"
+    chmod +x "$WORKSPACE_PATH/.vscode/workspace-info.sh"
+fi
+
 PLAN_TITLE="$FEATURE_NAME"
 
 if [ -f "$REPO_ROOT/codegen/plans/${FEATURE_NAME}.md" ]; then
@@ -173,6 +178,7 @@ if [ -f "$SCRIPT_DIR/templates/CONTEXT.md" ]; then
     sed -i '' "s|{{PARTITION}}|$PARTITION|g" "$WORKSPACE_PATH/codegen/CONTEXT.md"
     sed -i '' "s|{{PLAN_TITLE}}|$PLAN_TITLE|g" "$WORKSPACE_PATH/codegen/CONTEXT.md"
     sed -i '' "s|{{PORT}}|$NEXT_PORT|g" "$WORKSPACE_PATH/codegen/CONTEXT.md"
+    sed -i '' "s|{{DB_NAME_PREFIX}}|$DB_NAME_PREFIX|g" "$WORKSPACE_PATH/codegen/CONTEXT.md"
 fi
 
 if [ -f "$SCRIPT_DIR/templates/NEW_PROMPT.md" ]; then
