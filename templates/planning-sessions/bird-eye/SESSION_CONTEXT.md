@@ -59,7 +59,9 @@ You are in the first phase of feature development - **strategic planning**. This
 
 ### Output Expectations
 
-Create planning documents in `codegen/bird_view_plans/` with:
+Save your final plan to: [{{PLAN_OUTPUT_FILE}}]({{PLAN_OUTPUT_FILE}})
+
+Include in your plan:
 - Clear feature description and user value proposition
 - Integration analysis with existing features
 - Parallel work recommendations (if applicable)

@@ -106,7 +106,6 @@ fi
 
 open_cursor_workspace "$WORKSPACE_PATH" "$FEATURE_NAME" "✅ Workspace resumed successfully!"
 
-
 echo ""
 echo "🎯 Workspace resumed: $FEATURE_NAME"
 if [ -n "$PORT" ] && [ "$PORT" != "not configured" ] && [ -n "$PLAYWRIGHT_MCP_PORT" ] && [ -n "$PARTITION" ]; then

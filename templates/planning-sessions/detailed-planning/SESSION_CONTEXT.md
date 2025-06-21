@@ -67,7 +67,9 @@ You are in the technical planning phase - **detailed implementation planning**. 
 
 ### Output Expectations
 
-Create detailed planning documents in `codegen/plans/` with:
+Save your final plan to: [{{PLAN_OUTPUT_FILE}}]({{PLAN_OUTPUT_FILE}})
+
+Include in your plan:
 - Specific technical implementation approach
 - Database schema changes and migration plans
 - API endpoint specifications

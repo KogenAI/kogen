@@ -27,25 +27,45 @@ case "$MODE" in
         ;;
 esac
 
-# Create planning session context file in codegen directory
+# Create planning session context file (unique per session)
 TEMPLATE_DIR="$CODEGEN_DIR/templates/planning-sessions/$MODE"
-PLANNING_SESSION_CONTEXT_FILE="$TARGET_REPO_PATH/codegen/PLANNING_SESSION_CONTEXT.md"
+SESSION_ID="$$"  # Just use process ID for simplicity
+mkdir -p "$TARGET_REPO_PATH/codegen/planning_sessions"
+PLANNING_SESSION_CONTEXT_FILE="$TARGET_REPO_PATH/codegen/planning_sessions/PLANNING_SESSION_CONTEXT_${SESSION_ID}.md"
 
 # Add session timestamp
 SESSION_TIMESTAMP=$(date '+%Y-%m-%d %H:%M:%S')
 
+# Create directories for outputs and set default model
+case "$MODE" in
+    "bird-eye")
+        mkdir -p "$TARGET_REPO_PATH/codegen/bird_view_plans"
+        DEFAULT_MODEL="sonnet"
+        PLAN_OUTPUT_FILE="codegen/bird_view_plans/${FEATURE_NAME}.md"
+        echo "✓ Ensured codegen/bird_view_plans directory exists"
+        ;;
+    "detailed-planning")
+        mkdir -p "$TARGET_REPO_PATH/codegen/plans"
+        DEFAULT_MODEL="sonnet"
+        PLAN_OUTPUT_FILE="codegen/plans/${FEATURE_NAME}.md"
+        echo "✓ Ensured codegen/plans directory exists"
+        ;;
+esac
+
+# Prepare initial prompt for Claude
+PLANNING_PROMPT="This is a planning session. Please read codegen/planning_sessions/PLANNING_SESSION_CONTEXT_${SESSION_ID}.md first to understand your role and constraints, then read codegen/PROJECT_CONTEXT.md to understand the project architecture and patterns. After reading both files, wait for me to describe the feature to plan."
+
+# Create the context file for this session
 if [ -f "$TEMPLATE_DIR/SESSION_CONTEXT.md" ]; then
     sed -e "s/{{FEATURE_NAME}}/$FEATURE_NAME/g" \
         -e "s/{{SESSION_TIMESTAMP}}/$SESSION_TIMESTAMP/g" \
+        -e "s|{{PLAN_OUTPUT_FILE}}|$PLAN_OUTPUT_FILE|g" \
         "$TEMPLATE_DIR/SESSION_CONTEXT.md" > "$PLANNING_SESSION_CONTEXT_FILE"
-    echo "✓ Created planning session context: codegen/PLANNING_SESSION_CONTEXT.md"
+    echo "✓ Created planning session context: codegen/planning_sessions/PLANNING_SESSION_CONTEXT_${SESSION_ID}.md"
 else
     echo "Error: Template not found: $TEMPLATE_DIR/SESSION_CONTEXT.md"
     exit 1
 fi
-
-# Prepare initial prompt for Claude
-PLANNING_PROMPT="This is a planning session. Please read codegen/PLANNING_SESSION_CONTEXT.md first to understand your role and constraints, then read codegen/PROJECT_CONTEXT.md to understand the project architecture and patterns. After reading both files, wait for me to describe the feature to plan."
 
 # Set up cleanup to remove planning context when session ends
 cleanup_planning_context() {
@@ -55,20 +75,6 @@ cleanup_planning_context() {
     fi
 }
 trap cleanup_planning_context EXIT
-
-# Create directories for outputs and set default model
-case "$MODE" in
-    "bird-eye")
-        mkdir -p "$TARGET_REPO_PATH/codegen/bird_view_plans"
-        DEFAULT_MODEL="sonnet"
-        echo "✓ Ensured codegen/bird_view_plans directory exists"
-        ;;
-    "detailed-planning")
-        mkdir -p "$TARGET_REPO_PATH/codegen/plans"
-        DEFAULT_MODEL="sonnet"
-        echo "✓ Ensured codegen/plans directory exists"
-        ;;
-esac
 
 # Use model override if provided, otherwise use default
 if [ -n "$MODEL_OVERRIDE" ]; then
