@@ -186,14 +186,6 @@ show_workspace_summary() {
     echo "Next steps:"
     echo "✅ MCP settings opened for server configuration"
     echo "👉 Toggle server switches to restart MCP servers if needed"
-
-    if [ "$mode" = "resume" ]; then
-        echo "✅ Cursor chat opened with resume context!"
-    else
-        echo "✅ Cursor chat opened with feature context!"
-    fi
-
-    echo "👉 Review the content and press Enter when ready to submit"
 }
 
 echo ""
@@ -234,4 +226,5 @@ echo ""
 
 # Launch Claude Code from the workspace root so file paths work correctly
 cd "$WORKSPACE_ROOT"
-claude --model sonnet < codegen/PROMPT.md
+export CLAUDE_BASH_MAINTAIN_PROJECT_WORKING_DIR=true
+claude --model sonnet --add-dir . < codegen/PROMPT.md

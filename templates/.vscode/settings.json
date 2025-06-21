@@ -5,9 +5,11 @@
   "workbench.startupEditor": "none",
   "workbench.activityBar.visible": true,
   "terminal.integrated.env.osx": {
+    "CLAUDE_BASH_MAINTAIN_PROJECT_WORKING_DIR": "true",
     "MIX_ENV": "dev"
   },
   "terminal.integrated.env.linux": {
+    "CLAUDE_BASH_MAINTAIN_PROJECT_WORKING_DIR": "true",
     "MIX_ENV": "dev"
   },
   "elixirLS.dialyzerEnabled": true,
