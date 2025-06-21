@@ -3,7 +3,10 @@
   "workbench.panel.opensMaximized": "never",
   "terminal.integrated.defaultLocation": "view",
   "workbench.startupEditor": "none",
-  "workbench.activityBar.visible": true,
+  "workbench.activityBar.location": "hidden",
+  "workbench.sideBar.location": "left",
+  "workbench.sideBar.visible": false,
+  "workbench.panel.visible": false,
   "terminal.integrated.env.osx": {
     "CLAUDE_BASH_MAINTAIN_PROJECT_WORKING_DIR": "true",
     "MIX_ENV": "dev"
