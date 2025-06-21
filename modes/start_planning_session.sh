@@ -19,17 +19,16 @@ MODEL_OVERRIDE="$3"
 
 # Validate mode
 case "$MODE" in
-    "bird-eye"|"detailed-planning")
-        ;;
-    *)
-        echo "Error: Invalid mode '$MODE'. Valid modes: bird-eye, detailed-planning"
-        exit 1
-        ;;
+"bird-eye" | "detailed-planning") ;;
+*)
+    echo "Error: Invalid mode '$MODE'. Valid modes: bird-eye, detailed-planning"
+    exit 1
+    ;;
 esac
 
 # Create planning session context file (unique per session)
 TEMPLATE_DIR="$CODEGEN_DIR/templates/planning-sessions/$MODE"
-SESSION_ID="$$"  # Just use process ID for simplicity
+SESSION_ID="$$" # Just use process ID for simplicity
 mkdir -p "$TARGET_REPO_PATH/codegen/planning_sessions"
 PLANNING_SESSION_CONTEXT_FILE="$TARGET_REPO_PATH/codegen/planning_sessions/PLANNING_SESSION_CONTEXT_${SESSION_ID}.md"
 
@@ -38,18 +37,18 @@ SESSION_TIMESTAMP=$(date '+%Y-%m-%d %H:%M:%S')
 
 # Create directories for outputs and set default model
 case "$MODE" in
-    "bird-eye")
-        mkdir -p "$TARGET_REPO_PATH/codegen/bird_view_plans"
-        DEFAULT_MODEL="sonnet"
-        PLAN_OUTPUT_FILE="codegen/bird_view_plans/${FEATURE_NAME}.md"
-        echo "✓ Ensured codegen/bird_view_plans directory exists"
-        ;;
-    "detailed-planning")
-        mkdir -p "$TARGET_REPO_PATH/codegen/plans"
-        DEFAULT_MODEL="sonnet"
-        PLAN_OUTPUT_FILE="codegen/plans/${FEATURE_NAME}.md"
-        echo "✓ Ensured codegen/plans directory exists"
-        ;;
+"bird-eye")
+    mkdir -p "$TARGET_REPO_PATH/codegen/bird_view_plans"
+    DEFAULT_MODEL="sonnet"
+    PLAN_OUTPUT_FILE="codegen/bird_view_plans/${FEATURE_NAME}.md"
+    echo "✓ Ensured codegen/bird_view_plans directory exists"
+    ;;
+"detailed-planning")
+    mkdir -p "$TARGET_REPO_PATH/codegen/plans"
+    DEFAULT_MODEL="sonnet"
+    PLAN_OUTPUT_FILE="codegen/plans/${FEATURE_NAME}.md"
+    echo "✓ Ensured codegen/plans directory exists"
+    ;;
 esac
 
 # Prepare initial prompt for Claude
@@ -60,7 +59,7 @@ if [ -f "$TEMPLATE_DIR/SESSION_CONTEXT.md" ]; then
     sed -e "s/{{FEATURE_NAME}}/$FEATURE_NAME/g" \
         -e "s/{{SESSION_TIMESTAMP}}/$SESSION_TIMESTAMP/g" \
         -e "s|{{PLAN_OUTPUT_FILE}}|$PLAN_OUTPUT_FILE|g" \
-        "$TEMPLATE_DIR/SESSION_CONTEXT.md" > "$PLANNING_SESSION_CONTEXT_FILE"
+        "$TEMPLATE_DIR/SESSION_CONTEXT.md" >"$PLANNING_SESSION_CONTEXT_FILE"
     echo "✓ Created planning session context: codegen/planning_sessions/PLANNING_SESSION_CONTEXT_${SESSION_ID}.md"
 else
     echo "Error: Template not found: $TEMPLATE_DIR/SESSION_CONTEXT.md"
@@ -80,14 +79,14 @@ trap cleanup_planning_context EXIT
 if [ -n "$MODEL_OVERRIDE" ]; then
     # Validate model override
     case "$MODEL_OVERRIDE" in
-        "sonnet"|"opus")
-            MODEL="$MODEL_OVERRIDE"
-            echo "✓ Using model override: $MODEL"
-            ;;
-        *)
-            echo "Error: Invalid model '$MODEL_OVERRIDE'. Valid models: sonnet, opus"
-            exit 1
-            ;;
+    "sonnet" | "opus")
+        MODEL="$MODEL_OVERRIDE"
+        echo "✓ Using model override: $MODEL"
+        ;;
+    *)
+        echo "Error: Invalid model '$MODEL_OVERRIDE'. Valid models: sonnet, opus"
+        exit 1
+        ;;
     esac
 else
     MODEL="$DEFAULT_MODEL"
