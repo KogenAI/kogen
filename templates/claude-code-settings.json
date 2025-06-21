@@ -2,6 +2,7 @@
   "model": "sonnet",
   "permissions": {
     "allow": [
+      "Bash(cp:*)",
       "Bash(curl:*)",
       "Bash(echo:*)",
       "Bash(elixir:*)",
@@ -18,6 +19,7 @@
       "Bash(MIX_ENV=test mix *)",
       "Bash(mix:*)",
       "Bash(mkdir:*)",
+      "Bash(mv:*)",
       "Bash(npm:*)",
       "Bash(ocg:*)",
       "Bash(osascript:*)",
