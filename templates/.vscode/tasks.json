@@ -2,7 +2,7 @@
   "version": "2.0.0",
   "tasks": [
     {
-      "label": "Claude Code",
+      "label": "🚀 Startup",
       "type": "shell",
       "command": "./.vscode/startup.sh",
       "group": "build",
@@ -15,7 +15,8 @@
         "focus": true,
         "panel": "dedicated",
         "showReuseMessage": false,
-        "clear": false
+        "clear": false,
+        "close": true
       },
       "problemMatcher": [],
       "options": {
@@ -26,9 +27,33 @@
       }
     },
     {
-      "label": "Server Logs",
+      "label": "🤖 Claude Code",
       "type": "shell",
-      "command": "touch codegen/mix_phx_server.log && tail -f codegen/mix_phx_server.log",
+      "command": "echo '⏳ Waiting for Claude Code to be ready...' && while [ -f codegen/.claude_wait ]; do sleep 1; done && echo '🤖 Starting Claude Code...' && export CLAUDE_BASH_MAINTAIN_PROJECT_WORKING_DIR=true && claude --model sonnet <codegen/PROMPT.md",
+      "group": "build",
+      "runOptions": {
+        "runOn": "folderOpen"
+      },
+      "presentation": {
+        "echo": true,
+        "reveal": "silent",
+        "focus": false,
+        "panel": "new",
+        "showReuseMessage": false,
+        "clear": false
+      },
+      "problemMatcher": [],
+      "options": {
+        "shell": {
+          "executable": "/bin/bash",
+          "args": ["-l", "-c"]
+        }
+      }
+    },
+    {
+      "label": "📋 Workspace Info",
+      "type": "shell",
+      "command": "./.vscode/workspace-info.sh",
       "group": "build",
       "runOptions": {
         "runOn": "folderOpen"
@@ -50,9 +75,9 @@
       }
     },
     {
-      "label": "Workspace Info",
+      "label": "📊 Server Logs",
       "type": "shell",
-      "command": "./.vscode/workspace-info.sh",
+      "command": "touch codegen/mix_phx_server.log && tail -f codegen/mix_phx_server.log",
       "group": "build",
       "runOptions": {
         "runOn": "folderOpen"

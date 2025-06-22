@@ -6,6 +6,11 @@ echo "🚀 Initializing feature workspace..."
 WORKSPACE_ROOT="$(pwd)"
 FEATURE_NAME="$(basename "$WORKSPACE_ROOT")"
 
+# Create wait files to block tasks until ready
+mkdir -p codegen
+touch codegen/.claude_wait
+echo "🔒 Created wait files - tasks will wait for signals"
+
 cleanup_existing_servers() {
     echo "🧹 Cleaning up existing servers..."
 
@@ -124,6 +129,8 @@ if [ -d "$REPO_ROOT/deps" ] && [ ! -d "deps" ]; then
     cp -r "$REPO_ROOT/deps" .
 fi
 
+# We are copying compiled dependencies instead of building to save time.
+# There are downsides to this approach, like Tidewave returning source paths from the main branch.
 if [ -d "$REPO_ROOT/_build" ] && [ ! -d "_build" ]; then
     cp -r "$REPO_ROOT/_build" .
 fi
@@ -144,30 +151,14 @@ mix setup
 echo "✅ Setup complete - dependencies, database, and assets ready"
 
 echo "🔍 Starting CI checks in background..."
-"./codegen/ci.sh" >/dev/null 2>&1 &
-echo "✅ CI checks started - status will be shown in workspace info"
+nohup ./codegen/ci.sh >/dev/null 2>&1 &
+disown
+echo "✅ CI checks started"
 
 echo "🎭 Starting Playwright MCP server..."
-npx @playwright/mcp@latest --port $PLAYWRIGHT_MCP_PORT --headless --isolated 2>&1 &
-echo "   🚀 Playwright MCP server started in background"
-echo "   ⏳ Waiting for server to be ready..."
-
-max_attempts=10
-attempt=0
-while [ $attempt -lt $max_attempts ]; do
-    if lsof -i :$PLAYWRIGHT_MCP_PORT >/dev/null 2>&1; then
-        echo "   ✅ Playwright MCP server is ready on port $PLAYWRIGHT_MCP_PORT"
-        echo "   📊 Process ID: $(lsof -ti tcp:$PLAYWRIGHT_MCP_PORT | head -1)"
-        break
-    fi
-    sleep 1
-    attempt=$((attempt + 1))
-done
-
-if [ $attempt -eq $max_attempts ]; then
-    echo "   ❌ Failed to start Playwright MCP server within 10 seconds"
-    exit 1
-fi
+nohup script -F codegen/playwright_mcp.log npx @playwright/mcp@latest --port $PLAYWRIGHT_MCP_PORT --headless --isolated >/dev/null 2>&1 &
+PLAYWRIGHT_PID=$!
+disown $PLAYWRIGHT_PID
 
 show_workspace_summary() {
     local mode="$1"
@@ -181,9 +172,6 @@ show_workspace_summary() {
     echo "🗄️  Database: {{DB_NAME_PREFIX}}_dev${MIX_DEV_PARTITION:-0}"
     echo "🌐 Server: http://localhost:${PORT:-4000}"
     echo "=================================="
-    echo "Next steps:"
-    echo "✅ MCP settings opened for server configuration"
-    echo "👉 Toggle server switches to restart MCP servers if needed"
 }
 
 echo ""
@@ -192,8 +180,9 @@ echo "📝 Press Ctrl+C to stop the server"
 echo ""
 
 # Start Phoenix in background and log with colors preserved
-script -F codegen/mix_phx_server.log mix phx.server >/dev/null 2>&1 &
+nohup script -F codegen/mix_phx_server.log mix phx.server >/dev/null 2>&1 &
 PHOENIX_PID=$!
+disown $PHOENIX_PID
 
 # Wait for Phoenix to be ready
 echo "⏳ Waiting for Phoenix server to start..."
@@ -218,12 +207,22 @@ show_workspace_summary "$WORKSPACE_MODE"
 
 # Launch Claude Code now that Phoenix is ready
 echo ""
-echo "🤖 Launching Claude Code with sonnet model..."
+echo "🤖 Starting Claude Code task in Cursor..."
 echo "📋 Prompt has been prepared in: codegen/PROMPT.md"
 echo ""
 
-# Launch Claude Code from the workspace root so file paths work correctly
+# Launch Claude Code directly (as before)
 cd "$WORKSPACE_ROOT"
 export CLAUDE_BASH_MAINTAIN_PROJECT_WORKING_DIR=true
 
-claude --model sonnet <codegen/PROMPT.md
+echo "✅ All services started! Check Cursor tabs for:"
+echo "   🤖 Claude Code (waiting for release)"
+echo "   📊 Server logs and workspace info"
+echo ""
+echo "🔓 Releasing Claude Code to start..."
+rm -f codegen/.claude_wait
+
+echo "🎯 Startup complete! Claude Code should now be starting in its tab."
+echo "📝 You can manually control Claude Code by creating/removing:"
+echo "   codegen/.claude_wait - blocks Claude Code"
+echo "📝 To rerun CI checks: ./codegen/ci.sh"
