@@ -3,6 +3,7 @@
 ## Feature: {{FEATURE_NAME}}
 
 ### Current Stage
+
 - **Stage**: Not Started
 - **Status**: Planning
 - **Last Updated**: [Auto-updated by AI during implementation]
@@ -10,17 +11,19 @@
 ### Environment
 
 - **Server**: http://localhost:{{PORT}} (server is running)
-- **Database (dev)**: {{DB_NAME_PREFIX}}_dev{{PARTITION}}
-- **Database (test)**: {{DB_NAME_PREFIX}}_test{{PARTITION}}
+- **Database (dev)**: {{DB_NAME_PREFIX}}\_dev{{PARTITION}}
+- **Database (test)**: {{DB_NAME_PREFIX}}\_test{{PARTITION}}
 - **Branch**: feature/{{FEATURE_NAME}}
 
 ### Feature Impact Analysis
+
 - **Modules Affected**: [List of existing modules this feature touches]
 - **New Components**: [New files/modules being created]
 - **Architecture Changes**: [How this changes the overall structure]
 - **Integration Points**: [How this connects to existing systems]
 
 ### Implementation Progress
+
 - **Completed**: [What has been implemented so far]
 - **Current Focus**: [What is being worked on now]
 - **Next Steps**: [What comes next in the current stage]
@@ -56,6 +59,7 @@
 ### Development Workflow
 
 **If the plan contains stages:**
+
 1. **Implement one stage at a time** - Stop after completing each stage
 2. **Write comprehensive tests** - Ensure all new code has proper test coverage
 3. **Run CI checks** - Execute `./codegen/ci.sh` and ensure all checks pass
