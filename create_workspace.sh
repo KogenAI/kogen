@@ -192,6 +192,13 @@ if [ -f "$SCRIPT_DIR/templates/NEW_PROMPT.md" ]; then
     sed -i '' "s|{{WORKSPACE_PATH}}|$WORKSPACE_PATH|g" "$WORKSPACE_PATH/codegen/PROMPT.md"
 fi
 
+# Copy rules directory from main branch
+if [ -d "$REPO_ROOT/codegen/rules" ]; then
+    mkdir -p "$WORKSPACE_PATH/codegen"
+    cp -r "$REPO_ROOT/codegen/rules" "$WORKSPACE_PATH/codegen/"
+    echo "✅ Copied codegen/rules from main branch"
+fi
+
 # Copy CLAUDE.md from main branch since it's gitignored
 if [ -f "$REPO_ROOT/CLAUDE.md" ]; then
     cp "$REPO_ROOT/CLAUDE.md" "$WORKSPACE_PATH/CLAUDE.md"

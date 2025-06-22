@@ -84,6 +84,13 @@ if [ -f "$REPO_ROOT/codegen/PROJECT_CONTEXT.md" ]; then
     cp "$REPO_ROOT/codegen/PROJECT_CONTEXT.md" "$WORKSPACE_PATH/codegen/PROJECT_CONTEXT.md"
 fi
 
+# Copy rules directory from main branch
+if [ -d "$REPO_ROOT/codegen/rules" ]; then
+    mkdir -p "$WORKSPACE_PATH/codegen"
+    cp -r "$REPO_ROOT/codegen/rules" "$WORKSPACE_PATH/codegen/"
+    echo "✅ Copied codegen/rules from main branch"
+fi
+
 # Copy CLAUDE.md from main branch since it's gitignored
 if [ -f "$REPO_ROOT/CLAUDE.md" ]; then
     cp "$REPO_ROOT/CLAUDE.md" "$WORKSPACE_PATH/CLAUDE.md"
