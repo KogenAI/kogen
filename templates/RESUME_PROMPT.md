@@ -1,9 +1,10 @@
 # Resuming: {{PLAN_TITLE}}
 
-Continue implementing the plan in codegen/PLAN.md using context from:
+Continue implementing the plan using context from files in your workspace:
 
-- codegen/CONTEXT.md (your working document - check current stage)
-- codegen/PROJECT_CONTEXT.md (project knowledge base)
+- ./codegen/PLAN.md (implementation plan)
+- ./codegen/CONTEXT.md (your working document - check current stage)
+- ./codegen/PROJECT_CONTEXT.md (project knowledge base)
 
 ## Git Status
 
@@ -17,7 +18,7 @@ Continue implementing the plan in codegen/PLAN.md using context from:
 
 - Feature: {{FEATURE_NAME}}
 - Branch: feature/{{FEATURE_NAME}}
-- Working Directory: {{WORKSPACE_PATH}}
+- Working Directory: {{WORKSPACE_PATH}} (you are currently in this directory)
 - Phoenix Port: {{PORT}}
 - Playwright MCP Port: {{PLAYWRIGHT_MCP_PORT}}
 
