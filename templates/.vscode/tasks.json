@@ -29,7 +29,7 @@
     {
       "label": "🤖 Claude Code",
       "type": "shell",
-      "command": "echo '⏳ Waiting for Claude Code to be ready...' && while [ -f codegen/.claude_wait ]; do sleep 1; done && echo '🤖 Starting Claude Code...' && export CLAUDE_BASH_MAINTAIN_PROJECT_WORKING_DIR=true && claude --model sonnet <codegen/PROMPT.md",
+      "command": "echo '⏳ Waiting for Claude Code to be ready...' && while [ -f codegen/.claude_wait ]; do sleep 1; done && echo '🤖 Starting Claude Code...' && export CLAUDE_BASH_MAINTAIN_PROJECT_WORKING_DIR=true && export SHELL=/bin/bash && claude --model sonnet <codegen/PROMPT.md",
       "group": "build",
       "runOptions": {
         "runOn": "folderOpen"
