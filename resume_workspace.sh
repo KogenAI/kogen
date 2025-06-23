@@ -84,11 +84,13 @@ if [ -f "$REPO_ROOT/codegen/PROJECT_CONTEXT.md" ]; then
     cp "$REPO_ROOT/codegen/PROJECT_CONTEXT.md" "$WORKSPACE_PATH/codegen/PROJECT_CONTEXT.md"
 fi
 
-# Copy rules directory from main branch
+# Link to rules directory from main branch (so changes propagate)
 if [ -d "$REPO_ROOT/codegen/rules" ]; then
     mkdir -p "$WORKSPACE_PATH/codegen"
-    cp -r "$REPO_ROOT/codegen/rules" "$WORKSPACE_PATH/codegen/"
-    echo "✅ Copied codegen/rules from main branch"
+    # Remove existing rules directory if it exists
+    [ -d "$WORKSPACE_PATH/codegen/rules" ] && rm -rf "$WORKSPACE_PATH/codegen/rules"
+    ln -sf "$REPO_ROOT/codegen/rules" "$WORKSPACE_PATH/codegen/rules"
+    echo "✅ Linked codegen/rules from main branch (changes will propagate)"
 fi
 
 # Copy CLAUDE.md from main branch since it's gitignored
