@@ -46,7 +46,7 @@
 ### Server Management
 
 - **Phoenix Server**: Started automatically during workspace initialization
-- **Server Logs**: Available in `codegen/mix_phx_server.log`
+- **Server Logs**: Available in `./codegen/mix_phx_server.log`
 - **Restart Server**: When you need to restart Phoenix during development, use:
   ```bash
   # Kill existing server
@@ -80,7 +80,7 @@ For detailed code analysis, you can use:
 
 - Avoid introducing unnecessary complexity
 - Make sure all changes are covered with tests
-- Follow the plan described in `codegen/PLAN.md`
-- Use project knowledge from `codegen/PROJECT_CONTEXT.md`
+- Follow the plan described in `./codegen/PLAN.md`
+- Use project knowledge from `./codegen/PROJECT_CONTEXT.md`
 - Follow established coding standards and project conventions
 - **Keep this context file updated** as you progress through implementation stages

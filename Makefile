@@ -129,7 +129,7 @@ help:
 		TIP="💡 Install globally with 'make install' to use 'ocg' commands from anywhere!"; \
 	fi; \
 	echo "🚀 Project Management:"; \
-	echo "  $$OCG_CMD setup                       🚀 Initialize project with PROJECT_CONTEXT.md"; \
+	echo "  $$OCG_CMD setup                       🚀 Initialize codegen in the project (requires OCG_RULES_DIR environment variable)"; \
 	echo "  $$OCG_CMD update-context <name>       🔄 Update project context for a specific feature"; \
 	echo ""; \
 	echo "📋 Planning Sessions:"; \

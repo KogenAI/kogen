@@ -43,11 +43,11 @@ fi
 
 CONTEXT_UPDATE_PROMPT="# Project Context Update for Feature: $FEATURE_NAME
 
-I need you to integrate the archived feature context from \`codegen/contexts/$FEATURE_NAME.md\` into the main \`codegen/PROJECT_CONTEXT.md\` file to incorporate learnings from this completed feature implementation.
+I need you to integrate the archived feature context from \`./codegen/contexts/$FEATURE_NAME.md\` into the main \`./codegen/PROJECT_CONTEXT.md\` file to incorporate learnings from this completed feature implementation.
 
 ## Your Task
 
-Please review the archived feature context and integrate its learnings into \`codegen/PROJECT_CONTEXT.md\` with:
+Please review the archived feature context and integrate its learnings into \`./codegen/PROJECT_CONTEXT.md\` with:
 
 1. **New modules/contexts** that were created for this feature
 2. **Modified existing modules** that were affected during development
@@ -70,8 +70,8 @@ Please review the archived feature context and integrate its learnings into \`co
 
 ## Files to Review
 
-- \`codegen/plans/$FEATURE_NAME.md\` - The feature plan
-- \`codegen/PROJECT_CONTEXT.md\` - The project context to update"
+- \`./codegen/plans/$FEATURE_NAME.md\` - The feature plan
+- \`./codegen/PROJECT_CONTEXT.md\` - The project context to update"
 
 if [ "$CONTEXT_EXISTS" = true ]; then
     CONTEXT_UPDATE_PROMPT="$CONTEXT_UPDATE_PROMPT

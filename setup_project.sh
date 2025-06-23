@@ -80,7 +80,7 @@ I need you to analyze this Phoenix/Elixir codebase and fill out the PROJECT_CONT
 
 Please analyze the codebase and:
 
-1. **Replace ALL placeholder text** in \`codegen/PROJECT_CONTEXT.md\` with real project details
+1. **Replace ALL placeholder text** in \`./codegen/PROJECT_CONTEXT.md\` with real project details
 2. **Document the actual architecture** - what patterns are really used?
 3. **List real modules** - what contexts, schemas, and LiveViews exist?
 4. **Identify integration points** - how do different parts connect?
@@ -111,7 +111,7 @@ $PROJECT_INFO
 
 This PROJECT_CONTEXT.md will be used by all future AI sessions to understand the project without re-analyzing the entire codebase.
 
-**Start by opening and reviewing \`codegen/PROJECT_CONTEXT.md\`, then begin your analysis.**"
+**Start by opening and reviewing \`./codegen/PROJECT_CONTEXT.md\`, then begin your analysis.**"
 
 open_cursor_setup_chat() {
     if ! pgrep -f "Cursor" >/dev/null 2>&1; then
@@ -123,19 +123,59 @@ open_cursor_setup_chat() {
 EOF
 }
 
+# Update .gitignore with Optimum Codegen entries
+update_ignore_file() {
+    local file="$1"
+    local comment="# Optimum Codegen"
+    local block="# Optimum Codegen
+/.vscode/
+/codegen/
+/CLAUDE.md
+.mcp.json
+*.code-workspace"
+    
+    if [ -f "$file" ]; then
+        # Check if our entries already exist
+        if ! grep -q "$comment" "$file" 2>/dev/null; then
+            echo "" >> "$file"
+            echo "$block" >> "$file"
+            return 0
+        fi
+    else
+        # Create new file
+        echo "$block" > "$file"
+        return 0
+    fi
+    return 1
+}
+
+echo "🔧 Updating ignore files..."
+if update_ignore_file "$REPO_ROOT/.gitignore"; then
+    echo "✅ Updated .gitignore with Optimum Codegen entries"
+else
+    echo "ℹ️  .gitignore already contains Optimum Codegen entries"
+fi
+
+if update_ignore_file "$REPO_ROOT/.dockerignore"; then
+    echo "✅ Updated .dockerignore with Optimum Codegen entries"
+else
+    echo "ℹ️  .dockerignore already contains Optimum Codegen entries (or file doesn't exist)"
+fi
+
 echo ""
 echo "🗂️  Files created:"
 echo "   - CLAUDE.md (main AI instructions)"
 echo "   - codegen/PROJECT_CONTEXT.md (project knowledge base)"
 echo "   - codegen/rules/ (symbolic link to development rules)"
+echo "   - Updated .gitignore and .dockerignore"
 echo ""
 echo "After PROJECT_CONTEXT.md is filled, you can create workspaces with: $OCG_CMD new <feature-name>"
 
 echo "🤖 Starting Claude Code with Opus model for setup..."
 
+export SHELL=/bin/bash
 if command -v claude >/dev/null 2>&1; then
-    echo "$SETUP_PROMPT" | claude --model opus
+    exec claude --model opus "$SETUP_PROMPT"
 else
-    echo "⚠️  Claude CLI not found. Please install it first and run:"
-    echo "echo \"\$SETUP_PROMPT\" | claude --model opus"
+    echo "⚠️  Claude CLI not found. Please install it first and try again."
 fi

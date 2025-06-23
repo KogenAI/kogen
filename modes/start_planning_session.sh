@@ -108,6 +108,7 @@ echo "Starting Claude with $MODEL model..."
 echo "Planning context created, Claude will read it automatically."
 echo ""
 
+export SHELL=/bin/bash
 if command -v claude >/dev/null 2>&1; then
     exec claude --model "$MODEL" "$PLANNING_PROMPT"
 else
