@@ -93,6 +93,33 @@ else
 fi
 
 echo ""
+echo "🚀 Setting up Claude Code bash environment..."
+
+# Create clean bash profile for Claude Code
+cat >~/.bash_profile <<'EOF'
+# Minimal bash profile for Claude Code
+# Keep bash environment separate from zsh - override PATH completely
+export PATH="/usr/local/node/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
+EOF
+
+# Install Node.js standalone binary if not already installed
+if [ ! -d "/usr/local/node" ]; then
+    echo "📦 Installing Node.js..."
+    curl -o ~/Downloads/node-v22.16.0-darwin-arm64.tar.gz https://nodejs.org/dist/v22.16.0/node-v22.16.0-darwin-arm64.tar.gz
+    cd ~/Downloads
+    tar -xzf node-v22.16.0-darwin-arm64.tar.gz
+    sudo mv node-v22.16.0-darwin-arm64 /usr/local/node
+    echo "   ✅ Node.js installed"
+else
+    echo "   ✅ Node.js already installed"
+fi
+
+# Install Claude Code
+echo "🤖 Installing Claude Code..."
+/bin/bash -c 'npm install -g @anthropic-ai/claude-code'
+echo "   ✅ Claude Code installed"
+
+echo ""
 echo "✅ Installation complete!"
 echo ""
 echo "🎯 You can now use these commands from anywhere:"
@@ -109,3 +136,4 @@ echo "   etc..."
 echo ""
 echo "💡 Restart your terminal or run 'source $RC_FILE' for autocompletion"
 echo "💡 Test the installation by running: ocg help"
+echo "💡 Next: Run 'ocg setup' in your project directory to install project-specific tools"
