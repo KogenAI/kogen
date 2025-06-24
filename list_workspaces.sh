@@ -54,6 +54,7 @@ echo "$WORKSPACES" | while IFS= read -r line; do
 
         if [ -f "$WORKSPACE_PATH/.env" ]; then
             PORT=$(grep "^PORT=" "$WORKSPACE_PATH/.env" 2>/dev/null | cut -d'=' -f2)
+            PORT_TEST=$(grep "^PORT_TEST=" "$WORKSPACE_PATH/.env" 2>/dev/null | cut -d'=' -f2)
             DEV_PARTITION=$(grep "^MIX_DEV_PARTITION=" "$WORKSPACE_PATH/.env" 2>/dev/null | cut -d'=' -f2)
             TEST_PARTITION=$(grep "^MIX_TEST_PARTITION=" "$WORKSPACE_PATH/.env" 2>/dev/null | cut -d'=' -f2)
 
@@ -63,6 +64,14 @@ echo "$WORKSPACES" | while IFS= read -r line; do
                     echo "   🔌 Port: $PORT (🟢 in use)"
                 else
                     echo "   🔌 Port: $PORT (⚪ available)"
+                fi
+
+                if [ -n "$PORT_TEST" ]; then
+                    if lsof -i :$PORT_TEST >/dev/null 2>&1; then
+                        echo "   🔌 Port Test: $PORT_TEST (🟢 in use)"
+                    else
+                        echo "   🔌 Port Test: $PORT_TEST (⚪ available)"
+                    fi
                 fi
             else
 

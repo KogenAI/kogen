@@ -116,6 +116,7 @@ echo ""
 NEXT_PORT=$(get_next_port)
 NEXT_PLAYWRIGHT_PORT=$(get_next_playwright_port)
 PARTITION=$((NEXT_PORT - 4000))
+PORT_TEST=$((NEXT_PORT + 100))
 
 if [ -f "$REPO_ROOT/.env" ]; then
     cp "$REPO_ROOT/.env" "$WORKSPACE_PATH/.env"
@@ -123,11 +124,12 @@ if [ -f "$REPO_ROOT/.env" ]; then
 fi
 
 echo "PORT=$NEXT_PORT" >>"$WORKSPACE_PATH/.env"
+echo "PORT_TEST=$PORT_TEST" >>"$WORKSPACE_PATH/.env"
 echo "PLAYWRIGHT_MCP_PORT=$NEXT_PLAYWRIGHT_PORT" >>"$WORKSPACE_PATH/.env"
 echo "MIX_DEV_PARTITION=$PARTITION" >>"$WORKSPACE_PATH/.env"
 echo "MIX_TEST_PARTITION=$PARTITION" >>"$WORKSPACE_PATH/.env"
 
-echo "⚙️  Setting up workspace (port: $NEXT_PORT, playwright: $NEXT_PLAYWRIGHT_PORT, partition: $PARTITION)..."
+echo "⚙️  Setting up workspace (port: $NEXT_PORT, test_port: $PORT_TEST, playwright: $NEXT_PLAYWRIGHT_PORT, partition: $PARTITION)..."
 
 mkdir -p "$WORKSPACE_PATH/.vscode"
 
@@ -224,7 +226,7 @@ open_cursor_workspace "$WORKSPACE_PATH" "$FEATURE_NAME" "✅ Workspace created s
 
 echo ""
 echo "🎉 Workspace ready: $FEATURE_NAME"
-echo "🔌 Port: $NEXT_PORT | 🎭 Playwright: $NEXT_PLAYWRIGHT_PORT | 🗄️ Partition: $PARTITION | 🌿 Branch: $BRANCH_NAME"
+echo "🔌 Port: $NEXT_PORT | 🧪 Test Port: $PORT_TEST | 🎭 Playwright: $NEXT_PLAYWRIGHT_PORT | 🗄️ Partition: $PARTITION | 🌿 Branch: $BRANCH_NAME"
 echo "🌐 Server will be available at: http://localhost:$NEXT_PORT"
 echo "📁 $WORKSPACE_PATH"
 if [ -f "$REPO_ROOT/codegen/plans/${FEATURE_NAME}.md" ]; then
