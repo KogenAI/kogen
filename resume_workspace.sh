@@ -2,12 +2,14 @@
 set -e
 
 if [ $# -eq 0 ]; then
-    echo "Usage: $0 <feature-name>"
+    echo "Usage: $0 <feature-name> [model]"
     echo "Example: $0 dashboard-redesign"
+    echo "Example: $0 dashboard-redesign opus"
     exit 1
 fi
 
 FEATURE_NAME="$1"
+MODEL="${2:-sonnet}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 source "$SCRIPT_DIR/config.sh"
@@ -75,6 +77,7 @@ fi
 if [ -f "$SCRIPT_DIR/templates/.vscode/claude-code.sh" ]; then
     cp "$SCRIPT_DIR/templates/.vscode/claude-code.sh" "$WORKSPACE_PATH/.vscode/"
     chmod +x "$WORKSPACE_PATH/.vscode/claude-code.sh"
+    sed -i '' "s/{{MODEL}}/$MODEL/g" "$WORKSPACE_PATH/.vscode/claude-code.sh"
 fi
 
 mkdir -p "$WORKSPACE_PATH/codegen"

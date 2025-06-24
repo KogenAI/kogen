@@ -8,8 +8,9 @@ setup:
 
 new:
 	@if [ -z "$(filter-out $@,$(MAKECMDGOALS))" ]; then \
-		echo "Usage: make new <feature-name>"; \
+		echo "Usage: make new <feature-name> [model]"; \
 		echo "Example: make new dashboard-redesign"; \
+		echo "Example: make new dashboard-redesign opus"; \
 		exit 1; \
 	fi
 	@./create_workspace.sh $(filter-out $@,$(MAKECMDGOALS))
@@ -87,8 +88,9 @@ rm:
 
 resume:
 	@if [ -z "$(filter-out $@,$(MAKECMDGOALS))" ]; then \
-		echo "Usage: make resume <feature-name>"; \
+		echo "Usage: make resume <feature-name> [model]"; \
 		echo "Example: make resume dashboard-redesign"; \
+		echo "Example: make resume dashboard-redesign opus"; \
 		exit 1; \
 	fi
 	@./resume_workspace.sh $(filter-out $@,$(MAKECMDGOALS))
@@ -143,12 +145,12 @@ help:
 	echo "  $$OCG_CMD plan [name] [model]         📝 Start detailed planning session (default model: sonnet)"; \
 	echo ""; \
 	echo "🎨 Workspaces:"; \
-	echo "  $$OCG_CMD new <name>                  🎨 Create new feature workspace"; \
+	echo "  $$OCG_CMD new <name> [model]          🎨 Create new feature workspace"; \
 	echo "  $$OCG_CMD rm <name>                   🗑️  Remove feature workspace"; \
 	echo "  $$OCG_CMD clean                       🧹 Remove ALL feature workspaces (with confirmation)"; \
 	echo "  $$OCG_CMD clean-branches              🌿 Remove all orphaned feature branches (with confirmation)"; \
 	echo "  $$OCG_CMD clean-servers               🔧 Kill servers for all workspace ports"; \
-	echo "  $$OCG_CMD resume <name>               🔄 Resume feature workspace"; \
+	echo "  $$OCG_CMD resume <name> [model]       🔄 Resume feature workspace"; \
 	echo "  $$OCG_CMD ls                          📋 List all feature workspaces"; \
 	echo "$$EXTRA_CMD"; \
 	echo ""; \
@@ -169,7 +171,9 @@ help:
 	echo "  $$OCG_CMD plan dashboard-redesign"; \
 	echo "  $$OCG_CMD plan complex-feature opus"; \
 	echo "  $$OCG_CMD new dashboard-redesign"; \
+	echo "  $$OCG_CMD new complex-feature opus"; \
 	echo "  $$OCG_CMD resume dashboard-redesign"; \
+	echo "  $$OCG_CMD resume complex-feature opus"; \
 	echo "  $$OCG_CMD rm dashboard-redesign"; \
 	echo "  $$OCG_CMD update-context dashboard-redesign"; \
 	echo "  $$OCG_CMD clean"; \
