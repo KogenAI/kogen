@@ -3,11 +3,17 @@
   "permissions": {
     "allow": [
       "Bash(./codegen/ci.sh)",
+      "Bash(bash:*)",
       "Bash(bash ./codegen/ci.sh)",
       "Bash(bash codegen/ci.sh)",
+      "Bash(cat:*)",
+      "Bash(cd:*)",
+      "Bash(chmod:*)",
       "Bash(codegen/ci.sh:*)",
       "Bash(cp:*)",
       "Bash(curl:*)",
+      "Bash(date:*)",
+      "Bash(df:*)",
       "Bash(echo:*)",
       "Bash(elixir:*)",
       "Bash(find:*)",

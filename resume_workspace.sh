@@ -72,6 +72,11 @@ if [ -f "$SCRIPT_DIR/templates/.vscode/workspace-info.sh" ]; then
     chmod +x "$WORKSPACE_PATH/.vscode/workspace-info.sh"
 fi
 
+if [ -f "$SCRIPT_DIR/templates/.vscode/claude-code.sh" ]; then
+    cp "$SCRIPT_DIR/templates/.vscode/claude-code.sh" "$WORKSPACE_PATH/.vscode/"
+    chmod +x "$WORKSPACE_PATH/.vscode/claude-code.sh"
+fi
+
 mkdir -p "$WORKSPACE_PATH/codegen"
 
 if [ -f "$SCRIPT_DIR/templates/ci.sh" ]; then
