@@ -112,6 +112,6 @@ export SHELL=/bin/bash
 if command -v claude >/dev/null 2>&1; then
     exec claude --model "$MODEL" "$PLANNING_PROMPT"
 else
-    echo "Warning: claude command not found. Please install Claude CLI."
+    echo "⚠️  Claude CLI not found. Please install Claude CLI first and try again."
     exit 1
 fi

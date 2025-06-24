@@ -116,6 +116,12 @@ install:
 uninstall:
 	@./uninstall.sh
 
+format:
+	@echo "🎨 Formatting all files..."
+	@shfmt -w -i 4 .
+	@npx prettier -w --log-level error .
+	@echo "✅ All files formatted"
+
 help:
 	@echo "🚀 Optimum Codegen"
 	@echo "================="

@@ -108,11 +108,11 @@ fi
 
 echo "🔧 Activating mise and loading environment..."
 if command -v mise >/dev/null 2>&1; then
-    mise trust 2>/dev/null || true
-    eval "$(mise activate bash)"
-    eval "$(mise env)"
+    mise install
+    mise trust
 else
     echo "⚠️  mise not found, environment variables may not be loaded"
+    exit 1
 fi
 
 echo "✅ Environment variables loaded"

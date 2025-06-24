@@ -133,17 +133,17 @@ update_ignore_file() {
 /CLAUDE.md
 .mcp.json
 *.code-workspace"
-    
+
     if [ -f "$file" ]; then
         # Check if our entries already exist
         if ! grep -q "$comment" "$file" 2>/dev/null; then
-            echo "" >> "$file"
-            echo "$block" >> "$file"
+            echo "" >>"$file"
+            echo "$block" >>"$file"
             return 0
         fi
     else
         # Create new file
-        echo "$block" > "$file"
+        echo "$block" >"$file"
         return 0
     fi
     return 1
@@ -177,5 +177,6 @@ export SHELL=/bin/bash
 if command -v claude >/dev/null 2>&1; then
     exec claude --model opus "$SETUP_PROMPT"
 else
-    echo "⚠️  Claude CLI not found. Please install it first and try again."
+    echo "⚠️  Claude CLI not found. Please install Claude CLI first and try again."
+    exit 1
 fi

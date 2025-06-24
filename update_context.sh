@@ -96,7 +96,14 @@ echo "🎯 Context update ready!"
 echo "🤖 Starting Claude Code with Sonnet model for context update..."
 
 cd "$REPO_ROOT"
-echo "$CONTEXT_UPDATE_PROMPT" | claude --model sonnet
+
+export SHELL=/bin/bash
+if command -v claude >/dev/null 2>&1; then
+    exec claude --model sonnet "$CONTEXT_UPDATE_PROMPT"
+else
+    echo "⚠️  Claude CLI not found. Please install Claude CLI first and try again."
+    exit 1
+fi
 
 echo ""
 echo "📝 Feature plan: $PLAN_FILE"
