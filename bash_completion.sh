@@ -22,22 +22,40 @@ _codegen_completion() {
     if [[ ${COMP_CWORD} == 1 ]]; then
         local opts="bird-eye clean clean-branches clean-servers help ls new plan resume rm setup update-context"
         [[ "$cmd" == "make" ]] && opts="$opts install uninstall"
-        [[ "$cmd" =~ ^(ocg|optimum_codegen)$ ]] && opts="$opts uninstall"
+        [[ "$cmd" == "ocg" ]] && opts="$opts uninstall"
         COMPREPLY=($(compgen -W "$opts" -- "$cur"))
         return 0
     fi
 
     # Complete arguments
     case "$prev" in
-    new | update-context)
+    update-context)
         source "$script_dir/config.sh"
         local repo_root="$TARGET_REPO_PATH"
         [[ -d "$repo_root/codegen/plans" ]] && COMPREPLY=($(compgen -W "$(find "$repo_root/codegen/plans" -name "*.md" -not -name "*.old" -exec basename {} .md \; 2>/dev/null)" -- "$cur"))
         ;;
-    rm | resume)
+    rm)
         source "$script_dir/config.sh"
         local repo_root="$TARGET_REPO_PATH"
         [[ -d "$repo_root" ]] && cd "$repo_root" && COMPREPLY=($(compgen -W "$(git worktree list --porcelain 2>/dev/null | grep "^worktree" | cut -d' ' -f2 | xargs -I {} basename {} | grep -v "$(basename "$repo_root")")" -- "$cur"))
+        ;;
+    new)
+        if [[ ${COMP_CWORD} == 2 ]]; then
+            source "$script_dir/config.sh"
+            local repo_root="$TARGET_REPO_PATH"
+            [[ -d "$repo_root/codegen/plans" ]] && COMPREPLY=($(compgen -W "$(find "$repo_root/codegen/plans" -name "*.md" -not -name "*.old" -exec basename {} .md \; 2>/dev/null)" -- "$cur"))
+        elif [[ ${COMP_CWORD} == 3 ]]; then
+            COMPREPLY=($(compgen -W "sonnet opus" -- "$cur"))
+        fi
+        ;;
+    resume)
+        if [[ ${COMP_CWORD} == 2 ]]; then
+            source "$script_dir/config.sh"
+            local repo_root="$TARGET_REPO_PATH"
+            [[ -d "$repo_root" ]] && cd "$repo_root" && COMPREPLY=($(compgen -W "$(git worktree list --porcelain 2>/dev/null | grep "^worktree" | cut -d' ' -f2 | xargs -I {} basename {} | grep -v "$(basename "$repo_root")")" -- "$cur"))
+        elif [[ ${COMP_CWORD} == 3 ]]; then
+            COMPREPLY=($(compgen -W "sonnet opus" -- "$cur"))
+        fi
         ;;
     bird-eye | plan)
         if [[ ${COMP_CWORD} == 2 ]]; then
@@ -49,4 +67,4 @@ _codegen_completion() {
     esac
 }
 
-complete -F _codegen_completion make ocg optimum_codegen
+complete -F _codegen_completion make ocg

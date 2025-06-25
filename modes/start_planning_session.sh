@@ -38,10 +38,10 @@ SESSION_TIMESTAMP=$(date '+%Y-%m-%d %H:%M:%S')
 # Create directories for outputs and set default model
 case "$MODE" in
 "bird-eye")
-    mkdir -p "$TARGET_REPO_PATH/codegen/bird_view_plans"
+    mkdir -p "$TARGET_REPO_PATH/codegen/bird_eye_plans"
     DEFAULT_MODEL="sonnet"
-    PLAN_OUTPUT_FILE="codegen/bird_view_plans/${FEATURE_NAME}.md"
-    echo "✓ Ensured codegen/bird_view_plans directory exists"
+    PLAN_OUTPUT_FILE="codegen/bird_eye_plans/${FEATURE_NAME}.md"
+    echo "✓ Ensured codegen/bird_eye_plans directory exists"
     ;;
 "detailed-planning")
     mkdir -p "$TARGET_REPO_PATH/codegen/plans"

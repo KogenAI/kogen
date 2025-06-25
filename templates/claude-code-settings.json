@@ -33,6 +33,7 @@
       "Bash(lsof -ti tcp:* | xargs kill * || true)",
       "Bash(lsof:*)",
       "Bash(make:*)",
+      "Bash(OCG_CLI=true make:*)",
       "Bash(mix phx.server &)",
       "Bash(nohup script * mix phx.server * &)",
       "Bash(nohup script * mix phx.server * & echo *)",

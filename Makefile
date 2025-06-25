@@ -8,9 +8,10 @@ setup:
 
 new:
 	@if [ -z "$(filter-out $@,$(MAKECMDGOALS))" ]; then \
-		echo "Usage: make new <feature-name> [model]"; \
-		echo "Example: make new dashboard-redesign"; \
-		echo "Example: make new dashboard-redesign opus"; \
+		. ./utils.sh; \
+		echo "Usage: $$OCG_CMD new <feature-name> [model]"; \
+		echo "Example: $$OCG_CMD new dashboard-redesign"; \
+		echo "Example: $$OCG_CMD new dashboard-redesign opus"; \
 		exit 1; \
 	fi
 	@./create_workspace.sh $(filter-out $@,$(MAKECMDGOALS))
@@ -42,7 +43,8 @@ clean:
 	fi; \
 	echo ""; \
 	echo "💡 Tip: Feature branches are preserved by default"; \
-	echo "   To also remove orphaned feature branches, run: make clean-branches"
+	. "$(SCRIPT_DIR)/utils.sh"; \
+	echo "   To also remove orphaned feature branches, run: $$OCG_CMD clean-branches"
 
 clean-branches:
 	@cd "$(ORIGINAL_WORKING_DIR)" && "$(SCRIPT_DIR)/clean_branches.sh"
@@ -74,8 +76,9 @@ clean-servers:
 
 rm:
 	@if [ -z "$(filter-out $@,$(MAKECMDGOALS))" ]; then \
-		echo "Usage: make rm <feature-name>"; \
-		echo "Example: make rm dashboard-redesign"; \
+		. ./utils.sh; \
+		echo "Usage: $$OCG_CMD rm <feature-name>"; \
+		echo "Example: $$OCG_CMD rm dashboard-redesign"; \
 		exit 1; \
 	fi
 	@cd "$(ORIGINAL_WORKING_DIR)"; \
@@ -88,17 +91,19 @@ rm:
 
 resume:
 	@if [ -z "$(filter-out $@,$(MAKECMDGOALS))" ]; then \
-		echo "Usage: make resume <feature-name> [model]"; \
-		echo "Example: make resume dashboard-redesign"; \
-		echo "Example: make resume dashboard-redesign opus"; \
+		. ./utils.sh; \
+		echo "Usage: $$OCG_CMD resume <feature-name> [model]"; \
+		echo "Example: $$OCG_CMD resume dashboard-redesign"; \
+		echo "Example: $$OCG_CMD resume dashboard-redesign opus"; \
 		exit 1; \
 	fi
 	@./resume_workspace.sh $(filter-out $@,$(MAKECMDGOALS))
 
 update-context:
 	@if [ -z "$(filter-out $@,$(MAKECMDGOALS))" ]; then \
-		echo "Usage: make update-context <feature-name>"; \
-		echo "Example: make update-context dashboard-redesign"; \
+		. ./utils.sh; \
+		echo "Usage: $$OCG_CMD update-context <feature-name>"; \
+		echo "Example: $$OCG_CMD update-context dashboard-redesign"; \
 		exit 1; \
 	fi
 	@./update_context.sh $(filter-out $@,$(MAKECMDGOALS))
@@ -130,63 +135,39 @@ help:
 	@echo ""
 	@. ./utils.sh; \
 	if [ "$$OCG_CLI" = "true" ]; then \
-		EXTRA_CMD="  $$OCG_CMD uninstall                   🗑️  Remove global CLI installation"; \
-		TIP=""; \
-	else \
-		EXTRA_CMD="  $$OCG_CMD install                     📦 Install CLI globally (ocg/optimum_codegen commands)"; \
-		TIP="💡 Install globally with 'make install' to use 'ocg' commands from anywhere!"; \
-	fi; \
-	echo "🚀 Project Management:"; \
-	echo "  $$OCG_CMD setup                       🚀 Initialize codegen in the project (requires OCG_RULES_DIR environment variable)"; \
-	echo "  $$OCG_CMD update-context <name>       🔄 Update project context for a specific feature"; \
-	echo ""; \
-	echo "📋 Planning Sessions:"; \
-	echo "  $$OCG_CMD bird-eye [name] [model]     🦅 Start bird-eye planning session (default model: sonnet)"; \
-	echo "  $$OCG_CMD plan [name] [model]         📝 Start detailed planning session (default model: sonnet)"; \
-	echo ""; \
-	echo "🎨 Workspaces:"; \
-	echo "  $$OCG_CMD new <name> [model]          🎨 Create new feature workspace"; \
-	echo "  $$OCG_CMD rm <name>                   🗑️  Remove feature workspace"; \
-	echo "  $$OCG_CMD clean                       🧹 Remove ALL feature workspaces (with confirmation)"; \
-	echo "  $$OCG_CMD clean-branches              🌿 Remove all orphaned feature branches (with confirmation)"; \
-	echo "  $$OCG_CMD clean-servers               🔧 Kill servers for all workspace ports"; \
-	echo "  $$OCG_CMD resume <name> [model]       🔄 Resume feature workspace"; \
-	echo "  $$OCG_CMD ls                          📋 List all feature workspaces"; \
-	echo "$$EXTRA_CMD"; \
-	echo ""; \
-	echo "📋 Recommended Workflow:"; \
-	echo "  1. Run: $$OCG_CMD setup (one-time project initialization)"; \
-	echo "  2. Plan: $$OCG_CMD bird-eye <name> (high-level planning)"; \
-	echo "  3. Plan: $$OCG_CMD plan <name> (detailed technical planning)"; \
-	echo "  4. Implement: $$OCG_CMD new <name> (create workspace and start development)"; \
-	echo "  5. Work on your feature in the workspace"; \
-	echo "  6. Finish: $$OCG_CMD rm <name> (archives feature context to codegen/contexts/)"; \
-	echo "  7. Learn: $$OCG_CMD update-context <name> (update main PROJECT_CONTEXT.md with learnings)"; \
-	echo "  8. Cleanup: $$OCG_CMD clean-branches to remove orphaned feature branches when done"; \
-	echo ""; \
-	echo "📝 Examples:"; \
-	echo "  $$OCG_CMD setup"; \
-	echo "  $$OCG_CMD bird-eye dashboard-redesign"; \
-	echo "  $$OCG_CMD bird-eye complex-feature opus"; \
-	echo "  $$OCG_CMD plan dashboard-redesign"; \
-	echo "  $$OCG_CMD plan complex-feature opus"; \
-	echo "  $$OCG_CMD new dashboard-redesign"; \
-	echo "  $$OCG_CMD new complex-feature opus"; \
-	echo "  $$OCG_CMD resume dashboard-redesign"; \
-	echo "  $$OCG_CMD resume complex-feature opus"; \
-	echo "  $$OCG_CMD rm dashboard-redesign"; \
-	echo "  $$OCG_CMD update-context dashboard-redesign"; \
-	echo "  $$OCG_CMD clean"; \
-	echo "  $$OCG_CMD clean-branches"; \
-	echo "  $$OCG_CMD ls"; \
-	if [ "$$OCG_CLI" = "true" ]; then \
-		echo "  $$OCG_CMD uninstall"; \
-	else \
-		echo "  $$OCG_CMD install                     # Then use: ocg new dashboard-redesign"; \
-	fi; \
-	if [ -n "$$TIP" ]; then \
+		echo "🚀 Project Management:"; \
+		echo "  $$OCG_CMD setup                       🚀 Initialize codegen in the project (requires OCG_RULES_DIR environment variable)"; \
+		echo "  $$OCG_CMD update-context <name>       🔄 Update project context for a specific feature"; \
 		echo ""; \
-		echo "$$TIP"; \
+		echo "📋 Planning Sessions:"; \
+		echo "  $$OCG_CMD bird-eye [name] [model]     🦅 Start bird-eye planning session (default model: sonnet)"; \
+		echo "  $$OCG_CMD plan [name] [model]         📝 Start detailed planning session (default model: sonnet)"; \
+		echo ""; \
+		echo "🎨 Workspaces:"; \
+		echo "  $$OCG_CMD new <name> [model]          🎨 Create new feature workspace (default model: sonnet)"; \
+		echo "  $$OCG_CMD rm <name>                   🗑️  Remove feature workspace"; \
+		echo "  $$OCG_CMD clean                       🧹 Remove ALL feature workspaces (with confirmation)"; \
+		echo "  $$OCG_CMD clean-branches              🌿 Remove all orphaned feature branches (with confirmation)"; \
+		echo "  $$OCG_CMD clean-servers               🔧 Kill servers for all workspace ports"; \
+		echo "  $$OCG_CMD resume <name> [model]       🔄 Resume feature workspace (default model: sonnet)"; \
+		echo "  $$OCG_CMD ls                          📋 List all feature workspaces"; \
+		echo ""; \
+		echo "📋 Recommended Workflow:"; \
+		echo "  1. Run: $$OCG_CMD setup (one-time project initialization)"; \
+		echo "  2. Plan: $$OCG_CMD bird-eye <name> (high-level planning)"; \
+		echo "  3. Plan: $$OCG_CMD plan <name> (detailed technical planning)"; \
+		echo "  4. Implement: $$OCG_CMD new <name> (create workspace and start development)"; \
+		echo "  5. Work on your feature in the workspace"; \
+		echo "  6. Finish: $$OCG_CMD rm <name> (archives feature context to codegen/contexts/)"; \
+		echo "  7. Learn: $$OCG_CMD update-context <name> (update main PROJECT_CONTEXT.md with learnings)"; \
+		echo "  8. Cleanup: $$OCG_CMD clean-branches to remove orphaned feature branches when done"; \
+	else \
+		echo "📦 Available Commands:"; \
+		echo "  make install    📦 Install CLI globally (enables 'ocg' commands)"; \
+		echo "  make format     🎨 Format all shell scripts and files"; \
+		echo ""; \
+		echo "💡 Install globally with 'make install' to use 'ocg' commands from anywhere!"; \
+		echo "   After installation, run 'ocg' to see all workspace management features"; \
 	fi
 
 # Default target shows help

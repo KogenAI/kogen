@@ -5,7 +5,6 @@
 
 INSTALL_DIR="$HOME/.local/bin"
 SYMLINK_NAME="ocg"
-ALT_SYMLINK_NAME="optimum_codegen"
 
 echo "🗑️  Uninstalling Optimum Codegen CLI..."
 
@@ -16,15 +15,6 @@ if [ -L "$SYMLINK_PATH" ] || [ -f "$SYMLINK_PATH" ]; then
     rm -f "$SYMLINK_PATH"
 else
     echo "   ℹ️  $SYMLINK_NAME command not found"
-fi
-
-# Remove optimum_codegen symlink
-ALT_SYMLINK_PATH="$INSTALL_DIR/$ALT_SYMLINK_NAME"
-if [ -L "$ALT_SYMLINK_PATH" ] || [ -f "$ALT_SYMLINK_PATH" ]; then
-    echo "   🔗 Removing $ALT_SYMLINK_NAME command"
-    rm -f "$ALT_SYMLINK_PATH"
-else
-    echo "   ℹ️  $ALT_SYMLINK_NAME command not found"
 fi
 
 # Remove autocompletion from shell configuration

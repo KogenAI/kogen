@@ -8,7 +8,6 @@ set -e
 CODEGEN_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 INSTALL_DIR="$HOME/.local/bin"
 SYMLINK_NAME="ocg"
-ALT_SYMLINK_NAME="optimum_codegen"
 
 echo "🚀 Installing Optimum Codegen CLI..."
 echo "   📁 Codegen directory: $CODEGEN_DIR"
@@ -29,16 +28,6 @@ fi
 
 echo "   🔗 Creating symlink: $SYMLINK_PATH -> $CODEGEN_DIR/ocg"
 ln -s "$CODEGEN_DIR/ocg" "$SYMLINK_PATH"
-
-# Create alternative symlink for optimum_codegen
-ALT_SYMLINK_PATH="$INSTALL_DIR/$ALT_SYMLINK_NAME"
-if [ -L "$ALT_SYMLINK_PATH" ] || [ -f "$ALT_SYMLINK_PATH" ]; then
-    echo "   🔄 Removing existing $ALT_SYMLINK_NAME command"
-    rm -f "$ALT_SYMLINK_PATH"
-fi
-
-echo "   🔗 Creating symlink: $ALT_SYMLINK_PATH -> $CODEGEN_DIR/ocg"
-ln -s "$CODEGEN_DIR/ocg" "$ALT_SYMLINK_PATH"
 
 # Check if ~/.local/bin is in PATH
 if [[ ":$PATH:" != *":$INSTALL_DIR:"* ]]; then
@@ -129,10 +118,6 @@ echo "   ocg rm <feature-name>"
 echo "   ocg clean"
 echo "   ocg ls"
 echo "   ocg help"
-echo ""
-echo "   Or alternatively:"
-echo "   optimum_codegen new <feature-name>"
-echo "   etc..."
 echo ""
 echo "💡 Restart your terminal or run 'source $RC_FILE' for autocompletion"
 echo "💡 Test the installation by running: ocg help"
