@@ -10,15 +10,49 @@ PURPLE='\033[0;35m'
 BOLD='\033[1m'
 NC='\033[0m' # No Color
 
-# Helper function to format check status
-format_check_status() {
-    local status="$1"
-    case "$status" in
-    "PASSED") echo -e "${GREEN}✅ PASSED${NC}" ;;
-    "FAILED") echo -e "${RED}❌ FAILED${NC}" ;;
-    "SKIPPED"*) echo -e "${YELLOW}⚠️  SKIPPED${NC}" ;;
-    *) echo -e "${YELLOW}⚠️  UNKNOWN${NC}" ;;
-    esac
+# Helper function to get coverage information
+get_coverage_info() {
+    local coverage_percentage=""
+    local minimum_coverage=""
+    local coverage_status=""
+    local coverage_color=""
+
+    # Try to get coverage from last test run output
+    if [ -f "codegen/.ci_status" ]; then
+        # Look for coverage in CI output - matches pattern [TOTAL] XX.X%
+        coverage_percentage=$(grep "\[TOTAL\]" "codegen/.ci_status" 2>/dev/null | tail -1 | grep -o '[0-9]\+\.[0-9]\+%' | head -1)
+    fi
+
+    # Get minimum coverage requirement from coveralls.json
+    if [ -f "coveralls.json" ]; then
+        minimum_coverage=$(grep -o '"minimum_coverage":[[:space:]]*[0-9]\+\.[0-9]\+' coveralls.json | grep -o '[0-9]\+\.[0-9]\+')
+    fi
+
+    if [ -n "$coverage_percentage" ] && [ -n "$minimum_coverage" ]; then
+        # Extract numeric values for comparison
+        current_num=$(echo "$coverage_percentage" | sed 's/%//')
+        minimum_num="$minimum_coverage"
+
+        # Compare coverage (using awk for floating point comparison)
+        if awk "BEGIN {exit !($current_num >= $minimum_num)}"; then
+            if awk "BEGIN {exit !($current_num > $minimum_num)}"; then
+                coverage_status="🎯 ABOVE TARGET"
+                coverage_color="${GREEN}"
+            else
+                coverage_status="✅ MEETS TARGET"
+                coverage_color="${GREEN}"
+            fi
+        else
+            coverage_status="⚠️  BELOW TARGET"
+            coverage_color="${RED}"
+        fi
+
+        echo -e "${BOLD}${PURPLE}📊 Coverage:${NC} ${coverage_color}${coverage_percentage}${NC} / ${YELLOW}${minimum_coverage}%${NC} ${coverage_color}${coverage_status}${NC}"
+    elif [ -n "$coverage_percentage" ]; then
+        echo -e "${BOLD}${PURPLE}📊 Coverage:${NC} ${YELLOW}${coverage_percentage}${NC}"
+    else
+        echo -e "${BOLD}${PURPLE}📊 Coverage:${NC} ${YELLOW}Not available${NC}"
+    fi
 }
 
 show_workspace_info() {
@@ -60,14 +94,12 @@ show_workspace_info() {
     echo ""
 
     echo -e "${BOLD}${CYAN}SERVER INFORMATION${NC}"
-    echo -e "${BOLD}${GREEN}🌐 Phoenix Server${NC}"
+    echo -e "${BOLD}${GREEN}🌐 Phoenix Server${NC} $PHOENIX_STATUS"
     echo -e "   URL: ${CYAN}http://localhost:$PORT${NC}"
     echo -e "   Port: ${YELLOW}$PORT${NC}"
-    echo -e "   Status: $PHOENIX_STATUS"
     echo ""
-    echo -e "${BOLD}${GREEN}🎭 Playwright MCP${NC}"
+    echo -e "${BOLD}${GREEN}🎭 Playwright MCP${NC} $PLAYWRIGHT_STATUS"
     echo -e "   Port: ${YELLOW}$PLAYWRIGHT_MCP_PORT${NC}"
-    echo -e "   Status: $PLAYWRIGHT_STATUS"
     echo ""
 
     # CI Status Section
@@ -89,6 +121,9 @@ show_workspace_info() {
         fi
 
         echo -e "   Last run: ${YELLOW}$ci_timestamp${NC}"
+
+        # Add coverage information
+        get_coverage_info
     else
         echo -e "${BOLD}${YELLOW}⚠️  No CI status available${NC}"
         echo -e "   Run ${CYAN}./codegen/ci.sh${NC} to check code quality"
