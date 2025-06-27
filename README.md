@@ -51,6 +51,7 @@ The system automatically detects which git repository you're currently in and ma
 - `ocg clean-branches` - Remove all orphaned feature branches (with confirmation)
 - `ocg clean-servers` - Kill all Playwright MCP and Phoenix servers
 - `ocg ls` - List all workspaces
+- `ocg remove-comments` - Remove comments from git diff changes
 - `make install` - Install CLI globally (`ocg` commands)
 
 ## Global Installation

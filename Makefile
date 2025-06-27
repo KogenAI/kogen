@@ -129,6 +129,23 @@ format:
 	@npx prettier -w --log-level error .
 	@echo "✅ All files formatted"
 
+remove-comments:
+	@if [ -z "$(ORIGINAL_WORKING_DIR)" ]; then \
+		./remove_comments.sh $(filter-out $@,$(MAKECMDGOALS)); \
+	else \
+		cd "$(ORIGINAL_WORKING_DIR)" && "$(SCRIPT_DIR)/remove_comments.sh" $(filter-out $@,$(MAKECMDGOALS)); \
+	fi
+
+container:
+	@if [ -z "$(filter-out $@,$(MAKECMDGOALS))" ]; then \
+		. ./utils.sh; \
+		echo "Usage: $$OCG_CMD container <name> [options]"; \
+		echo "Example: $$OCG_CMD container my-feature"; \
+		echo "Example: $$OCG_CMD container my-feature --build"; \
+		exit 1; \
+	fi
+	@cd "$(ORIGINAL_WORKING_DIR)" && "$(SCRIPT_DIR)/scripts/container_workspace.sh" $(filter-out $@,$(MAKECMDGOALS))
+
 help:
 	@echo "🚀 Optimum Codegen"
 	@echo "================="
@@ -151,6 +168,9 @@ help:
 		echo "  $$OCG_CMD clean-servers               🔧 Kill servers for all workspace ports"; \
 		echo "  $$OCG_CMD resume <name> [model]       🔄 Resume feature workspace (default model: sonnet)"; \
 		echo "  $$OCG_CMD ls                          📋 List all feature workspaces"; \
+		echo ""; \
+		echo "🧹 Code Maintenance:"; \
+		echo "  $$OCG_CMD remove-comments             🗑️  Remove comments from git diff changes"; \
 		echo ""; \
 		echo "📋 Recommended Workflow:"; \
 		echo "  1. Run: $$OCG_CMD setup (one-time project initialization)"; \
