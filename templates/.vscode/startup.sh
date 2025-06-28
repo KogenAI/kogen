@@ -151,7 +151,7 @@ mix setup
 echo "✅ Setup complete - dependencies, database, and assets ready"
 
 echo "🔍 Starting CI checks in background..."
-nohup ./codegen/ci.sh >/dev/null 2>&1 &
+CI_BACKGROUND=1 nohup ./codegen/ci.sh >/dev/null 2>&1 &
 disown
 echo "✅ CI checks started"
 
