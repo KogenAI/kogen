@@ -69,6 +69,13 @@ You are in the first phase of feature development - **strategic planning**. This
 
 Save your final plan to: [{{PLAN_OUTPUT_FILE}}]({{PLAN_OUTPUT_FILE}})
 
+**Plan Size Guidelines:**
+
+- Target: 30-50 lines for bird-eye plans
+- Focus on strategic overview, not details
+- Use clear, concise language
+- This plan will be expanded in the detailed planning phase
+
 Include in your plan:
 
 - Clear feature description and user value proposition

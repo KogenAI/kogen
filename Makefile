@@ -108,6 +108,9 @@ update-context:
 	fi
 	@./update_context.sh $(filter-out $@,$(MAKECMDGOALS))
 
+consolidate-context:
+	@./consolidate_context.sh
+
 ls:
 	@./list_workspaces.sh
 
@@ -155,6 +158,7 @@ help:
 		echo "🚀 Project Management:"; \
 		echo "  $$OCG_CMD setup                       🚀 Initialize codegen in the project (requires OCG_RULES_DIR environment variable)"; \
 		echo "  $$OCG_CMD update-context <name>       🔄 Update project context for a specific feature"; \
+		echo "  $$OCG_CMD consolidate-context         📋 Consolidate PROJECT_CONTEXT.md by removing redundancies"; \
 		echo ""; \
 		echo "📋 Planning Sessions:"; \
 		echo "  $$OCG_CMD bird-eye [name] [model]     🦅 Start bird-eye planning session (default model: sonnet)"; \

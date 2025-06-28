@@ -2,6 +2,8 @@
 
 ## Feature: {{FEATURE_NAME}}
 
+<!-- Target ~200-300 lines. Use /refresh-context to archive completed work and consolidate learnings when it grows larger. -->
+
 ### Current Stage
 
 - **Stage**: Not Started

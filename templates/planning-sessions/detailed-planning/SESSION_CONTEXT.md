@@ -78,6 +78,13 @@ You are in the technical planning phase - **detailed implementation planning**. 
 
 Save your final plan to: [{{PLAN_OUTPUT_FILE}}]({{PLAN_OUTPUT_FILE}})
 
+**Plan Size Guidelines:**
+
+- Target: 50-100 lines for the plan
+- Focus on actionable steps, not verbose explanations
+- Use bullet points and concise language
+- Remember: This will be loaded alongside PROJECT_CONTEXT.md (300-400 lines) and CONTEXT.md
+
 Include in your plan:
 
 - Specific technical implementation approach

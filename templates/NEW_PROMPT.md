@@ -18,10 +18,12 @@ Follow the staged development workflow and update CONTEXT.md as you progress thr
 
 ## Available Context Files
 
-- `./codegen/PLAN.md` - The implementation plan
-- `./codegen/CONTEXT.md` - Track your progress and stages here
-- `./codegen/PROJECT_CONTEXT.md` - Project architecture and patterns
+- `./codegen/PLAN.md` - The implementation plan (~50-100 lines)
+- `./codegen/CONTEXT.md` - Track your progress and stages here (~200-300 lines, use /refresh-context to archive completed work)
+- `./codegen/PROJECT_CONTEXT.md` - Project architecture and patterns (~300-400 lines)
 - `./CLAUDE.md` - Repository-specific guidance
+
+**Note**: These files are optimized to fit efficiently in Claude's context window. Keep CONTEXT.md focused by using /refresh-context to archive completed work when it grows beyond 300 lines.
 
 ## Important: CI Requirements
 
