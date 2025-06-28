@@ -57,10 +57,26 @@ echo "🚀 Setting up Claude Code configuration..."
 
 CLAUDE_SETTINGS_DIR="$HOME/.claude"
 CLAUDE_SETTINGS_FILE="$CLAUDE_SETTINGS_DIR/settings.json"
+CLAUDE_COMMANDS_DIR="$CLAUDE_SETTINGS_DIR/commands"
 
 mkdir -p "$CLAUDE_SETTINGS_DIR"
+mkdir -p "$CLAUDE_COMMANDS_DIR"
 cp "$CODEGEN_DIR/templates/claude-code-settings.json" "$CLAUDE_SETTINGS_FILE"
 echo "   ✅ Claude Code settings installed at: $CLAUDE_SETTINGS_FILE"
+
+# Install custom Claude commands from templates
+echo "   📁 Installing custom Claude commands..."
+if [ -d "$CODEGEN_DIR/templates/claude-commands" ]; then
+    for cmd_file in "$CODEGEN_DIR/templates/claude-commands"/*.md; do
+        if [ -f "$cmd_file" ]; then
+            cmd_name=$(basename "$cmd_file")
+            cp "$cmd_file" "$CLAUDE_COMMANDS_DIR/"
+            echo "   ✅ Installed command: /${cmd_name%.md}"
+        fi
+    done
+else
+    echo "   ⚠️  No custom commands found in templates/claude-commands/"
+fi
 
 # Set up autocompletion
 echo ""
