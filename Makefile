@@ -161,7 +161,7 @@ help:
 		echo "🚀 Project Management:"; \
 		echo "  $$OCG_CMD setup                       🚀 Initialize codegen in the project (requires OCG_RULES_DIR environment variable)"; \
 		echo "  $$OCG_CMD prepare                     🔧 Install Elixir/Erlang versions from .tool-versions using official installer"; \
-		echo "  $$OCG_CMD update-context <name>       🔄 Update project context for a specific feature"; \
+		echo "  $$OCG_CMD update-context <name>       🔄 Update project context and extract reusable recipes"; \
 		echo "  $$OCG_CMD consolidate-context         📋 Consolidate PROJECT_CONTEXT.md by removing redundancies"; \
 		echo ""; \
 		echo "📋 Planning Sessions:"; \
@@ -188,7 +188,7 @@ help:
 		echo "  5. Implement: $$OCG_CMD new <name> (create workspace and start development)"; \
 		echo "  6. Work on your feature in the workspace"; \
 		echo "  7. Finish: $$OCG_CMD rm <name> (archives feature context to codegen/contexts/)"; \
-		echo "  8. Learn: $$OCG_CMD update-context <name> (update main PROJECT_CONTEXT.md with learnings)"; \
+		echo "  8. Learn: $$OCG_CMD update-context <name> (update PROJECT_CONTEXT.md + extract recipes)"; \
 		echo "  9. Cleanup: $$OCG_CMD clean-branches to remove orphaned feature branches when done"; \
 	else \
 		echo "📦 Available Commands:"; \

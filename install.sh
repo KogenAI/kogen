@@ -53,6 +53,23 @@ else
 fi
 
 echo ""
+echo "🚀 Setting up recipes directory..."
+
+RECIPES_DIR="$HOME/Areas/Optimum/context/recipes"
+if [ ! -d "$RECIPES_DIR" ]; then
+    echo "   📚 Creating recipes directory at: $RECIPES_DIR"
+    mkdir -p "$RECIPES_DIR"
+else
+    echo "   ✅ Recipes directory already exists: $RECIPES_DIR"
+fi
+
+# Copy README only if it doesn't exist
+if [ ! -f "$RECIPES_DIR/README.md" ] && [ -f "$CODEGEN_DIR/templates/recipes-README.md" ]; then
+    cp "$CODEGEN_DIR/templates/recipes-README.md" "$RECIPES_DIR/README.md"
+    echo "   ✅ Recipes README installed"
+fi
+
+echo ""
 echo "🚀 Setting up Claude Code configuration..."
 
 CLAUDE_SETTINGS_DIR="$HOME/.claude"

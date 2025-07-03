@@ -89,10 +89,65 @@ if [ "$CONTEXT_EXISTS" = true ]; then
     CONTEXT_UPDATE_PROMPT="$CONTEXT_UPDATE_PROMPT, then CAREFULLY REVIEW the archived feature context in \`codegen/contexts/$FEATURE_NAME.md\` (this contains the actual implementation details)"
 fi
 
-CONTEXT_UPDATE_PROMPT="$CONTEXT_UPDATE_PROMPT, and also check the original feature plan. Then update the main PROJECT_CONTEXT.md with the learnings from this feature development.**"
+CONTEXT_UPDATE_PROMPT="$CONTEXT_UPDATE_PROMPT, and also check the original feature plan. Then update the main PROJECT_CONTEXT.md with the learnings from this feature development.**
+
+## Recipe Extraction
+
+Additionally, please identify if any techniques or patterns from this feature would make good reusable recipes. A recipe should be:
+- A self-contained technique or pattern that could be reused in other projects
+- General enough to apply beyond this specific feature
+- Complex enough to warrant documentation (not trivial tasks)
+
+Examples of good recipes:
+- Data sanitization techniques for using production data locally
+- Authentication patterns (OAuth, JWT, etc.)
+- Complex database migration strategies
+- Performance optimization techniques
+- Testing patterns for specific scenarios
+- Error handling and recovery patterns
+- Integration patterns with third-party services
+
+If you identify potential recipes:
+1. Check if a similar recipe already exists in ~/Areas/Optimum/context/recipes/
+2. If not, create a new recipe file with a descriptive name (e.g., data-sanitization-for-local-dev.md)
+3. Use this template for the recipe:
+
+\`\`\`markdown
+# Recipe: [Descriptive Title]
+
+## Problem
+[What problem does this solve?]
+
+## Solution
+[High-level overview of the approach]
+
+## Implementation
+[Step-by-step implementation details with code examples]
+
+## Considerations
+- [Important things to consider]
+- [Potential pitfalls]
+- [When to use/not use this pattern]
+
+## Example Usage
+[Concrete example from the feature where this was applied]
+
+## Related Recipes
+- [Links to related recipes if any]
+\`\`\`
+
+Note: Only create recipes for truly reusable patterns, not feature-specific implementations."
 
 echo ""
 echo "🎯 Context update ready!"
+
+# Ensure recipes directory exists
+RECIPES_DIR="$HOME/Areas/Optimum/context/recipes"
+if [ ! -d "$RECIPES_DIR" ]; then
+    echo "📚 Creating recipes directory at: $RECIPES_DIR"
+    mkdir -p "$RECIPES_DIR"
+fi
+
 echo "🤖 Starting Claude Code with Sonnet model for context update..."
 
 cd "$REPO_ROOT"
@@ -113,3 +168,4 @@ fi
 echo "🗂️  Project context: $REPO_ROOT/codegen/PROJECT_CONTEXT.md"
 echo ""
 echo "💡 This will update the main PROJECT_CONTEXT.md with learnings from the $FEATURE_NAME feature development"
+echo "📚 Reusable patterns will be extracted to: ~/Areas/Optimum/context/recipes/"
