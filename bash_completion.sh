@@ -20,7 +20,7 @@ _codegen_completion() {
 
     # Complete main commands
     if [[ ${COMP_CWORD} == 1 ]]; then
-        local opts="bird-eye clean clean-branches clean-servers consolidate-context help ls new plan remove-comments resume rm setup update-context"
+        local opts="bird-eye clean clean-branches clean-servers consolidate-context help ls new plan prepare remove-comments resume rm setup update-context"
         [[ "$cmd" == "make" ]] && opts="$opts install uninstall"
         [[ "$cmd" == "ocg" ]] && opts="$opts uninstall"
         COMPREPLY=($(compgen -W "$opts" -- "$cur"))

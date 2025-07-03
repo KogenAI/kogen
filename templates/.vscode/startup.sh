@@ -106,16 +106,19 @@ else
     setup_automation "new"
 fi
 
-echo "🔧 Activating mise and loading environment..."
-if command -v mise >/dev/null 2>&1; then
-    mise install
-    mise trust
+echo "🔧 Checking environment..."
+# Check if Elixir/Erlang are available (installed via ocg prepare)
+if command -v elixir >/dev/null 2>&1 && command -v erl >/dev/null 2>&1; then
+    echo "✅ Elixir and Erlang available"
+    if [ -n "$PORT" ]; then
+        echo "✅ Environment variables loaded (PORT=$PORT)"
+    else
+        echo "⚠️  PORT not set - .env may not be sourced"
+    fi
 else
-    echo "⚠️  mise not found, environment variables may not be loaded"
+    echo "❌ Elixir/Erlang not found. Please run: ocg prepare"
     exit 1
 fi
-
-echo "✅ Environment variables loaded"
 
 echo "📦 Copying build artifacts from main branch..."
 

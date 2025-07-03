@@ -6,6 +6,9 @@ SCRIPT_DIR := $(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
 setup:
 	@cd "$(ORIGINAL_WORKING_DIR)" && "$(SCRIPT_DIR)/setup_project.sh"
 
+prepare:
+	@cd "$(ORIGINAL_WORKING_DIR)" && "$(SCRIPT_DIR)/prepare_environment.sh"
+
 new:
 	@if [ -z "$(filter-out $@,$(MAKECMDGOALS))" ]; then \
 		. ./utils.sh; \
@@ -157,6 +160,7 @@ help:
 	if [ "$$OCG_CLI" = "true" ]; then \
 		echo "🚀 Project Management:"; \
 		echo "  $$OCG_CMD setup                       🚀 Initialize codegen in the project (requires OCG_RULES_DIR environment variable)"; \
+		echo "  $$OCG_CMD prepare                     🔧 Install Elixir/Erlang versions from .tool-versions using official installer"; \
 		echo "  $$OCG_CMD update-context <name>       🔄 Update project context for a specific feature"; \
 		echo "  $$OCG_CMD consolidate-context         📋 Consolidate PROJECT_CONTEXT.md by removing redundancies"; \
 		echo ""; \
@@ -178,13 +182,14 @@ help:
 		echo ""; \
 		echo "📋 Recommended Workflow:"; \
 		echo "  1. Run: $$OCG_CMD setup (one-time project initialization)"; \
-		echo "  2. Plan: $$OCG_CMD bird-eye <name> (high-level planning)"; \
-		echo "  3. Plan: $$OCG_CMD plan <name> (detailed technical planning)"; \
-		echo "  4. Implement: $$OCG_CMD new <name> (create workspace and start development)"; \
-		echo "  5. Work on your feature in the workspace"; \
-		echo "  6. Finish: $$OCG_CMD rm <name> (archives feature context to codegen/contexts/)"; \
-		echo "  7. Learn: $$OCG_CMD update-context <name> (update main PROJECT_CONTEXT.md with learnings)"; \
-		echo "  8. Cleanup: $$OCG_CMD clean-branches to remove orphaned feature branches when done"; \
+		echo "  2. Run: $$OCG_CMD prepare (install Elixir/Erlang versions)"; \
+		echo "  3. Plan: $$OCG_CMD bird-eye <name> (high-level planning)"; \
+		echo "  4. Plan: $$OCG_CMD plan <name> (detailed technical planning)"; \
+		echo "  5. Implement: $$OCG_CMD new <name> (create workspace and start development)"; \
+		echo "  6. Work on your feature in the workspace"; \
+		echo "  7. Finish: $$OCG_CMD rm <name> (archives feature context to codegen/contexts/)"; \
+		echo "  8. Learn: $$OCG_CMD update-context <name> (update main PROJECT_CONTEXT.md with learnings)"; \
+		echo "  9. Cleanup: $$OCG_CMD clean-branches to remove orphaned feature branches when done"; \
 	else \
 		echo "📦 Available Commands:"; \
 		echo "  make install    📦 Install CLI globally (enables 'ocg' commands)"; \

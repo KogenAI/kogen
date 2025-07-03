@@ -21,7 +21,7 @@
       "problemMatcher": [],
       "options": {
         "shell": {
-          "executable": "/bin/zsh",
+          "executable": "/bin/bash",
           "args": ["-i", "-c"]
         }
       }
@@ -45,7 +45,7 @@
       "problemMatcher": [],
       "options": {
         "shell": {
-          "executable": "/bin/zsh",
+          "executable": "/bin/bash",
           "args": ["-i", "-c"]
         }
       }
@@ -69,7 +69,7 @@
       "problemMatcher": [],
       "options": {
         "shell": {
-          "executable": "/bin/zsh",
+          "executable": "/bin/bash",
           "args": ["-l", "-c"]
         }
       }
@@ -93,7 +93,7 @@
       "problemMatcher": [],
       "options": {
         "shell": {
-          "executable": "/bin/zsh",
+          "executable": "/bin/bash",
           "args": ["-l", "-c"]
         }
       }
