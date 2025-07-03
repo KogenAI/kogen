@@ -39,13 +39,13 @@ SESSION_TIMESTAMP=$(date '+%Y-%m-%d %H:%M:%S')
 case "$MODE" in
 "bird-eye")
     mkdir -p "$TARGET_REPO_PATH/codegen/bird_eye_plans"
-    DEFAULT_MODEL="sonnet"
+    DEFAULT_MODEL="opus"
     PLAN_OUTPUT_FILE="codegen/bird_eye_plans/${FEATURE_NAME}.md"
     echo "✓ Ensured codegen/bird_eye_plans directory exists"
     ;;
 "detailed-planning")
     mkdir -p "$TARGET_REPO_PATH/codegen/plans"
-    DEFAULT_MODEL="sonnet"
+    DEFAULT_MODEL="opus"
     PLAN_OUTPUT_FILE="codegen/plans/${FEATURE_NAME}.md"
     echo "✓ Ensured codegen/plans directory exists"
     ;;

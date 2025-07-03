@@ -165,8 +165,8 @@ help:
 		echo "  $$OCG_CMD consolidate-context         📋 Consolidate PROJECT_CONTEXT.md by removing redundancies"; \
 		echo ""; \
 		echo "📋 Planning Sessions:"; \
-		echo "  $$OCG_CMD bird-eye [name] [model]     🦅 Start bird-eye planning session (default model: sonnet)"; \
-		echo "  $$OCG_CMD plan [name] [model]         📝 Start detailed planning session (default model: sonnet)"; \
+		echo "  $$OCG_CMD bird-eye [name] [model]     🦅 Start bird-eye planning session (default model: opus)"; \
+		echo "  $$OCG_CMD plan [name] [model]         📝 Start detailed planning session (default model: opus)"; \
 		echo ""; \
 		echo "🎨 Workspaces:"; \
 		echo "  $$OCG_CMD new <name> [model]          🎨 Create new feature workspace (default model: sonnet)"; \
