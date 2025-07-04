@@ -79,21 +79,21 @@ cleanup_planning_session() {
         rm "$PLANNING_SESSION_CONTEXT_FILE"
         echo "✓ Cleaned up planning session context"
     fi
-    
+
     # Stop Phoenix server
     if [ -n "$PHOENIX_PID" ] && kill -0 "$PHOENIX_PID" 2>/dev/null; then
         echo "🛑 Stopping Phoenix server..."
         kill "$PHOENIX_PID" 2>/dev/null || true
         wait "$PHOENIX_PID" 2>/dev/null || true
     fi
-    
+
     # Stop Playwright server
     if [ -n "$PLAYWRIGHT_PID" ] && kill -0 "$PLAYWRIGHT_PID" 2>/dev/null; then
         echo "🛑 Stopping Playwright MCP server..."
         kill "$PLAYWRIGHT_PID" 2>/dev/null || true
         wait "$PLAYWRIGHT_PID" 2>/dev/null || true
     fi
-    
+
     # Kill any remaining processes on the ports
     if lsof -ti tcp:$PHOENIX_PORT >/dev/null 2>&1; then
         lsof -ti tcp:$PHOENIX_PORT | xargs kill -9 2>/dev/null || true

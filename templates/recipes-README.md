@@ -5,6 +5,7 @@ This directory contains reusable patterns and techniques extracted from various 
 ## What is a Recipe?
 
 A recipe is a documented solution to a common development challenge that can be reused across different projects. Each recipe:
+
 - Solves a specific, well-defined problem
 - Is general enough to apply beyond a single feature
 - Contains implementation details and code examples
@@ -13,6 +14,7 @@ A recipe is a documented solution to a common development challenge that can be 
 ## Recipe Categories
 
 Recipes may cover patterns such as:
+
 - **Data Management**: Sanitization, migration, caching strategies
 - **Authentication & Security**: OAuth, JWT, permission systems
 - **Performance**: Optimization techniques, query tuning, caching
@@ -31,6 +33,7 @@ Recipes may cover patterns such as:
 ## Contributing Recipes
 
 Recipes are automatically extracted when running `ocg update-context <feature>`. The system will:
+
 1. Analyze completed feature implementations
 2. Identify reusable patterns
 3. Check for existing similar recipes
@@ -39,6 +42,7 @@ Recipes are automatically extracted when running `ocg update-context <feature>`.
 ## Recipe Template
 
 All recipes follow this structure:
+
 - **Problem**: What challenge does this solve?
 - **Solution**: High-level approach
 - **Implementation**: Step-by-step details with code
