@@ -2,14 +2,26 @@
 set -e
 
 if [ $# -eq 0 ]; then
-    echo "Usage: $0 <feature-name> [model]"
+    echo "Usage: $0 <feature-name> [model] [--container]"
     echo "Example: $0 dashboard-redesign"
     echo "Example: $0 dashboard-redesign opus"
+    echo "Example: $0 dashboard-redesign --container"
     exit 1
 fi
 
-FEATURE_NAME="$1"
-MODEL="${2:-sonnet}"
+# Parse arguments
+CONTAINER_MODE=false
+ARGS=()
+for arg in "$@"; do
+    if [ "$arg" = "--container" ]; then
+        CONTAINER_MODE=true
+    else
+        ARGS+=("$arg")
+    fi
+done
+
+FEATURE_NAME="${ARGS[0]}"
+MODEL="${ARGS[1]:-sonnet}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 source "$SCRIPT_DIR/config.sh"
@@ -148,9 +160,17 @@ if [ -f "$SCRIPT_DIR/templates/feature-workspace.code-workspace" ]; then
     cp "$SCRIPT_DIR/templates/feature-workspace.code-workspace" "$WORKSPACE_PATH/${FEATURE_NAME}.code-workspace"
 fi
 
-if [ -f "$SCRIPT_DIR/templates/.vscode/startup.sh" ]; then
-    cp "$SCRIPT_DIR/templates/.vscode/startup.sh" "$WORKSPACE_PATH/.vscode/"
+# Copy appropriate startup script based on container mode
+if [ "$CONTAINER_MODE" = true ]; then
+    STARTUP_TEMPLATE="$SCRIPT_DIR/templates/.vscode/startup-container.sh"
+else
+    STARTUP_TEMPLATE="$SCRIPT_DIR/templates/.vscode/startup-native.sh"
+fi
+
+if [ -f "$STARTUP_TEMPLATE" ]; then
+    cp "$STARTUP_TEMPLATE" "$WORKSPACE_PATH/.vscode/startup.sh"
     chmod +x "$WORKSPACE_PATH/.vscode/startup.sh"
+    sed -i '' "s/{{MODEL}}/$MODEL/g" "$WORKSPACE_PATH/.vscode/startup.sh"
     sed -i '' "s|{{DB_NAME_PREFIX}}|$DB_NAME_PREFIX|g" "$WORKSPACE_PATH/.vscode/startup.sh"
 fi
 
@@ -159,10 +179,22 @@ if [ -f "$SCRIPT_DIR/templates/.vscode/workspace-info.sh" ]; then
     chmod +x "$WORKSPACE_PATH/.vscode/workspace-info.sh"
 fi
 
-if [ -f "$SCRIPT_DIR/templates/.vscode/claude-code.sh" ]; then
-    cp "$SCRIPT_DIR/templates/.vscode/claude-code.sh" "$WORKSPACE_PATH/.vscode/"
+# Copy appropriate claude-code script based on container mode
+if [ "$CONTAINER_MODE" = true ]; then
+    CLAUDE_CODE_TEMPLATE="$SCRIPT_DIR/templates/.vscode/claude-code-container.sh"
+else
+    CLAUDE_CODE_TEMPLATE="$SCRIPT_DIR/templates/.vscode/claude-code-native.sh"
+fi
+
+if [ -f "$CLAUDE_CODE_TEMPLATE" ]; then
+    cp "$CLAUDE_CODE_TEMPLATE" "$WORKSPACE_PATH/.vscode/claude-code.sh"
     chmod +x "$WORKSPACE_PATH/.vscode/claude-code.sh"
     sed -i '' "s/{{MODEL}}/$MODEL/g" "$WORKSPACE_PATH/.vscode/claude-code.sh"
+fi
+
+if [ -f "$SCRIPT_DIR/templates/.vscode/phoenix-server.sh" ]; then
+    cp "$SCRIPT_DIR/templates/.vscode/phoenix-server.sh" "$WORKSPACE_PATH/.vscode/"
+    chmod +x "$WORKSPACE_PATH/.vscode/phoenix-server.sh"
 fi
 
 PLAN_TITLE="$FEATURE_NAME"
@@ -199,7 +231,13 @@ if [ -f "$SCRIPT_DIR/templates/NEW_PROMPT.md" ]; then
     sed -i '' "s|{{PLAN_TITLE}}|$PLAN_TITLE|g" "$WORKSPACE_PATH/codegen/PROMPT.md"
     sed -i '' "s|{{PORT}}|$NEXT_PORT|g" "$WORKSPACE_PATH/codegen/PROMPT.md"
     sed -i '' "s|{{PLAYWRIGHT_MCP_PORT}}|$NEXT_PLAYWRIGHT_PORT|g" "$WORKSPACE_PATH/codegen/PROMPT.md"
-    sed -i '' "s|{{WORKSPACE_PATH}}|$WORKSPACE_PATH|g" "$WORKSPACE_PATH/codegen/PROMPT.md"
+
+    # Use container path if in container mode, otherwise use host path
+    if [ "$CONTAINER_MODE" = true ]; then
+        sed -i '' "s|{{WORKSPACE_PATH}}|/workspace|g" "$WORKSPACE_PATH/codegen/PROMPT.md"
+    else
+        sed -i '' "s|{{WORKSPACE_PATH}}|$WORKSPACE_PATH|g" "$WORKSPACE_PATH/codegen/PROMPT.md"
+    fi
 fi
 
 # Link to rules directory from main branch (so changes propagate)
@@ -230,7 +268,63 @@ if [ -f "$SCRIPT_DIR/templates/ci.sh" ]; then
     echo "✅ Copied ci.sh for workspace-specific CI checks"
 fi
 
-open_cursor_workspace "$WORKSPACE_PATH" "$FEATURE_NAME" "✅ Workspace created successfully!"
+# Copy Docker utilities and files to workspace
+if [ -f "$SCRIPT_DIR/docker_utils.sh" ]; then
+    cp "$SCRIPT_DIR/docker_utils.sh" "$WORKSPACE_PATH/codegen/docker_utils.sh"
+    chmod +x "$WORKSPACE_PATH/codegen/docker_utils.sh"
+    echo "✅ Copied docker_utils.sh to workspace"
+fi
+
+if [ -d "$SCRIPT_DIR/dockerfiles" ]; then
+    cp -r "$SCRIPT_DIR/dockerfiles" "$WORKSPACE_PATH/codegen/"
+    echo "✅ Copied dockerfiles directory to workspace"
+fi
+
+if [ -f "$SCRIPT_DIR/config.sh" ]; then
+    cp "$SCRIPT_DIR/config.sh" "$WORKSPACE_PATH/codegen/config.sh"
+    echo "✅ Copied config.sh to workspace"
+fi
+
+if [ -f "$SCRIPT_DIR/detect_versions.sh" ]; then
+    cp "$SCRIPT_DIR/detect_versions.sh" "$WORKSPACE_PATH/codegen/detect_versions.sh"
+    chmod +x "$WORKSPACE_PATH/codegen/detect_versions.sh"
+    echo "✅ Copied detect_versions.sh to workspace"
+fi
+
+# Open workspace - either in container or native
+if [ "$CONTAINER_MODE" = true ]; then
+    echo "🐳 Setting up container workspace..."
+
+    # Define REPO_NAME for container operations
+    REPO_NAME="$(basename "$REPO_ROOT")"
+
+    # Source docker utilities
+    source "$SCRIPT_DIR/docker_utils.sh"
+
+    # Check Docker is available
+    if ! check_docker; then
+        exit 1
+    fi
+
+    # Ensure shared Claude volume exists
+    ensure_shared_claude_volume
+
+    # Clone volumes for workspace
+    clone_deps_volumes "$FEATURE_NAME" "$REPO_NAME"
+
+    # Create and start container
+    create_docker_compose "$WORKSPACE_PATH" "$FEATURE_NAME" "$SCRIPT_DIR/dockerfiles/docker-compose.yml.template" "$REPO_NAME"
+    start_docker_workspace "$WORKSPACE_PATH" "$FEATURE_NAME"
+
+    echo "✅ Container workspace created successfully!"
+    echo "🐳 Container: ocg-$REPO_NAME-$FEATURE_NAME"
+    echo "💡 To access container: docker exec -it ocg-$REPO_NAME-$FEATURE_NAME /bin/bash"
+
+    # Open Cursor for container workspace
+    open_cursor_workspace "$WORKSPACE_PATH" "$FEATURE_NAME" "✅ Container workspace created!"
+else
+    open_cursor_workspace "$WORKSPACE_PATH" "$FEATURE_NAME" "✅ Workspace created successfully!"
+fi
 
 echo ""
 echo "🎉 Workspace ready: $FEATURE_NAME"

@@ -58,7 +58,22 @@ get_coverage_info() {
 show_workspace_info() {
     local FEATURE_NAME="$(basename "$(pwd)")"
     local CURRENT_DIR="$(pwd)"
-    local CURRENT_BRANCH="$(git branch --show-current 2>/dev/null || echo "unknown")"
+
+    # Check if we're in container mode
+    local CURRENT_BRANCH
+    if [ -f "docker-compose.yml" ]; then
+        # Get branch from inside container
+        local PROJECT_NAME="$(basename "$(cd ../../.. && pwd)")"
+        local CONTAINER_NAME="ocg-${PROJECT_NAME}-${FEATURE_NAME}"
+        if docker ps --format '{{.Names}}' | grep -q "^${CONTAINER_NAME}$"; then
+            CURRENT_BRANCH="$(docker exec "${CONTAINER_NAME}" git branch --show-current 2>/dev/null || echo "unknown")"
+        else
+            CURRENT_BRANCH="unknown (container not running)"
+        fi
+    else
+        # Native mode - get branch directly
+        CURRENT_BRANCH="$(git branch --show-current 2>/dev/null || echo "unknown")"
+    fi
 
     # Read ports from .env file
     local PORT="4000"
@@ -77,12 +92,24 @@ show_workspace_info() {
     local PHOENIX_STATUS="🔴 Stopped"
     local PLAYWRIGHT_STATUS="🔴 Stopped"
 
-    if lsof -i :$PORT >/dev/null 2>&1; then
-        PHOENIX_STATUS="🟢 Running"
-    fi
-
-    if lsof -i :$PLAYWRIGHT_MCP_PORT >/dev/null 2>&1; then
-        PLAYWRIGHT_STATUS="🟢 Running"
+    # For container mode, check if services are accessible
+    if [ -f "docker-compose.yml" ]; then
+        # Check Phoenix by trying to connect
+        if nc -z localhost $PORT 2>/dev/null; then
+            PHOENIX_STATUS="🟢 Running"
+        fi
+        # Check Playwright MCP
+        if nc -z localhost $PLAYWRIGHT_MCP_PORT 2>/dev/null; then
+            PLAYWRIGHT_STATUS="🟢 Running"
+        fi
+    else
+        # Native mode - use lsof
+        if lsof -i :$PORT >/dev/null 2>&1; then
+            PHOENIX_STATUS="🟢 Running"
+        fi
+        if lsof -i :$PLAYWRIGHT_MCP_PORT >/dev/null 2>&1; then
+            PLAYWRIGHT_STATUS="🟢 Running"
+        fi
     fi
 
     clear

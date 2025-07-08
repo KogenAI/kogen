@@ -29,7 +29,7 @@
     {
       "label": "🤖 Claude Code",
       "type": "shell",
-      "command": "./.vscode/claude-code.sh",
+      "command": "sleep 3 && ./.vscode/claude-code.sh",
       "group": "build",
       "runOptions": {
         "runOn": "folderOpen"

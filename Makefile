@@ -6,18 +6,22 @@ SCRIPT_DIR := $(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
 setup:
 	@cd "$(ORIGINAL_WORKING_DIR)" && "$(SCRIPT_DIR)/setup_project.sh"
 
-prepare:
-	@cd "$(ORIGINAL_WORKING_DIR)" && "$(SCRIPT_DIR)/prepare_environment.sh"
-
 new:
 	@if [ -z "$(filter-out $@,$(MAKECMDGOALS))" ]; then \
 		. ./utils.sh; \
-		echo "Usage: $$OCG_CMD new <feature-name> [model]"; \
+		echo "Usage: $$OCG_CMD new <feature-name> [model] [--container]"; \
 		echo "Example: $$OCG_CMD new dashboard-redesign"; \
 		echo "Example: $$OCG_CMD new dashboard-redesign opus"; \
+		echo "Example: $$OCG_CMD new dashboard-redesign --container"; \
 		exit 1; \
 	fi
-	@./create_workspace.sh $(filter-out $@,$(MAKECMDGOALS))
+	@args="$(filter-out $@,$(MAKECMDGOALS))"; \
+	if echo "$$args" | grep -q -- "--container"; then \
+		clean_args=$$(echo "$$args" | sed 's/--container//g' | xargs); \
+		./create_workspace.sh $$clean_args --container; \
+	else \
+		./create_workspace.sh $$args; \
+	fi
 
 clean:
 	@echo "🧹 Removing all feature workspaces..."
@@ -51,6 +55,9 @@ clean:
 
 clean-branches:
 	@cd "$(ORIGINAL_WORKING_DIR)" && "$(SCRIPT_DIR)/clean_branches.sh"
+
+prepare:
+	@cd "$(ORIGINAL_WORKING_DIR)" && "$(SCRIPT_DIR)/prepare_environment.sh" $(filter-out $@,$(MAKECMDGOALS))
 
 clean-servers:
 	@cd "$(ORIGINAL_WORKING_DIR)"; \
@@ -95,12 +102,19 @@ rm:
 resume:
 	@if [ -z "$(filter-out $@,$(MAKECMDGOALS))" ]; then \
 		. ./utils.sh; \
-		echo "Usage: $$OCG_CMD resume <feature-name> [model]"; \
+		echo "Usage: $$OCG_CMD resume <feature-name> [model] [--container]"; \
 		echo "Example: $$OCG_CMD resume dashboard-redesign"; \
 		echo "Example: $$OCG_CMD resume dashboard-redesign opus"; \
+		echo "Example: $$OCG_CMD resume dashboard-redesign --container"; \
 		exit 1; \
 	fi
-	@./resume_workspace.sh $(filter-out $@,$(MAKECMDGOALS))
+	@args="$(filter-out $@,$(MAKECMDGOALS))"; \
+	if echo "$$args" | grep -q -- "--container"; then \
+		clean_args=$$(echo "$$args" | sed 's/--container//g' | xargs); \
+		./resume_workspace.sh $$clean_args --container; \
+	else \
+		./resume_workspace.sh $$args; \
+	fi
 
 update-context:
 	@if [ -z "$(filter-out $@,$(MAKECMDGOALS))" ]; then \
@@ -142,15 +156,6 @@ remove-comments:
 		cd "$(ORIGINAL_WORKING_DIR)" && "$(SCRIPT_DIR)/remove_comments.sh" $(filter-out $@,$(MAKECMDGOALS)); \
 	fi
 
-container:
-	@if [ -z "$(filter-out $@,$(MAKECMDGOALS))" ]; then \
-		. ./utils.sh; \
-		echo "Usage: $$OCG_CMD container <name> [options]"; \
-		echo "Example: $$OCG_CMD container my-feature"; \
-		echo "Example: $$OCG_CMD container my-feature --build"; \
-		exit 1; \
-	fi
-	@cd "$(ORIGINAL_WORKING_DIR)" && "$(SCRIPT_DIR)/scripts/container_workspace.sh" $(filter-out $@,$(MAKECMDGOALS))
 
 help:
 	@echo "🚀 Optimum Codegen"
@@ -160,7 +165,7 @@ help:
 	if [ "$$OCG_CLI" = "true" ]; then \
 		echo "🚀 Project Management:"; \
 		echo "  $$OCG_CMD setup                       🚀 Initialize codegen in the project (requires OCG_RULES_DIR environment variable)"; \
-		echo "  $$OCG_CMD prepare                     🔧 Install Elixir/Erlang versions from .tool-versions using official installer"; \
+		echo "  $$OCG_CMD prepare                     🔧 Install Elixir/Erlang versions from .tool-versions (native mode)"; \
 		echo "  $$OCG_CMD update-context <name>       🔄 Update project context and extract reusable recipes"; \
 		echo "  $$OCG_CMD consolidate-context         📋 Consolidate PROJECT_CONTEXT.md by removing redundancies"; \
 		echo ""; \
@@ -169,12 +174,15 @@ help:
 		echo "  $$OCG_CMD plan [name] [model]         📝 Start detailed planning session (default model: opus)"; \
 		echo ""; \
 		echo "🎨 Workspaces:"; \
+		echo "  $$OCG_CMD prepare --container         📦 Build Docker image and prepare base volumes"; \
 		echo "  $$OCG_CMD new <name> [model]          🎨 Create new feature workspace (default model: sonnet)"; \
+		echo "  $$OCG_CMD new <name> --container      🐳 Create workspace in Docker container"; \
 		echo "  $$OCG_CMD rm <name>                   🗑️  Remove feature workspace"; \
 		echo "  $$OCG_CMD clean                       🧹 Remove ALL feature workspaces (with confirmation)"; \
 		echo "  $$OCG_CMD clean-branches              🌿 Remove all orphaned feature branches (with confirmation)"; \
 		echo "  $$OCG_CMD clean-servers               🔧 Kill servers for all workspace ports"; \
 		echo "  $$OCG_CMD resume <name> [model]       🔄 Resume feature workspace (default model: sonnet)"; \
+		echo "  $$OCG_CMD resume <name> --container   🐳 Resume workspace in Docker container"; \
 		echo "  $$OCG_CMD ls                          📋 List all feature workspaces"; \
 		echo ""; \
 		echo "🧹 Code Maintenance:"; \
@@ -182,7 +190,7 @@ help:
 		echo ""; \
 		echo "📋 Recommended Workflow:"; \
 		echo "  1. Run: $$OCG_CMD setup (one-time project initialization)"; \
-		echo "  2. Run: $$OCG_CMD prepare (install Elixir/Erlang versions)"; \
+		echo "  2. Run: $$OCG_CMD prepare [--container] (install Elixir/Erlang or build Docker image)"; \
 		echo "  3. Plan: $$OCG_CMD bird-eye <name> (high-level planning)"; \
 		echo "  4. Plan: $$OCG_CMD plan <name> (detailed technical planning)"; \
 		echo "  5. Implement: $$OCG_CMD new <name> (create workspace and start development)"; \

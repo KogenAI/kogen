@@ -35,5 +35,5 @@ fi
 export OCG_CLI=true
 export ORIGINAL_WORKING_DIR="$ORIGINAL_PWD"
 
-# Change to the original working directory and run make from the script directory
-cd "$ORIGINAL_PWD" && make -C "$SCRIPT_DIR" "$@"
+# Use -- to tell make to stop parsing options, then pass all arguments
+cd "$ORIGINAL_PWD" && make -C "$SCRIPT_DIR" -- "$@"

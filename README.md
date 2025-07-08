@@ -1,6 +1,13 @@
 # Optimum Codegen
 
-A powerful workspace management system for Phoenix/Elixir projects that creates isolated feature workspaces using git worktrees.
+A powerful workspace management system for Phoenix/Elixir projects that creates isolated feature workspaces using git worktrees and Docker containers.
+
+## Prerequisites
+
+- Docker Desktop installed and running
+- Git
+- Cursor IDE (recommended) or VS Code
+- Phoenix/Elixir project
 
 ## Configuration
 
@@ -13,46 +20,109 @@ The system automatically detects which git repository you're currently in and ma
    ```bash
    ocg setup
    ```
-3. **Create a new feature workspace:**
+3. **Prepare environment (choose one):**
+
+   Native mode (uses your local Elixir/Erlang):
+   ```bash
+   ocg prepare
+   ```
+
+   Container mode (builds Docker image and base volumes):
+   ```bash
+   ocg prepare --container
+   ```
+
+4. **Create a new feature workspace:**
+   
+   Native mode:
    ```bash
    ocg new my-feature
    ```
-4. **List all workspaces:**
+   
+   Container mode:
+   ```bash
+   ocg new my-feature --container
+   ```
+5. **List all workspaces:**
    ```bash
    ocg ls
    ```
-5. **Resume an existing workspace:**
+6. **Resume an existing workspace:**
+   
+   Native mode:
    ```bash
    ocg resume my-feature
    ```
+   
+   Container mode:
+   ```bash
+   ocg resume my-feature --container
+   ```
 
 ## How It Works
+
+### Docker Integration
+
+Each workspace can run in an isolated Docker container with:
+
+- Ubuntu 24.04 base with project-specific Elixir/Erlang versions (from .tool-versions)
+- Pre-installed dependencies from base volumes (if `ocg prepare --container` was run)
+- Isolated ports, database, and environment
+- Automatic container lifecycle management
+
+### File Structure
 
 - **Project Context** is stored in `{CURRENT_REPO}/codegen/PROJECT_CONTEXT.md`
 - **Workspaces** are created in `{CURRENT_REPO}/codegen/workspaces/`
 - **Plans** are stored in `{CURRENT_REPO}/codegen/plans/`
 - **Feature Contexts** are archived in `{CURRENT_REPO}/codegen/contexts/`
 - **Templates** are provided by the codegen tools
-- Each workspace gets its own:
-  - Git branch (`feature/{workspace-name}`)
-  - Port (auto-assigned starting from 4001)
-  - Database partition
-  - Playwright MCP server port
-  - Fresh copy of PROJECT_CONTEXT.md
+
+### Each Workspace Gets
+
+- Git worktree with branch (`feature/{workspace-name}`)
+- Docker container (`ocg-{workspace-name}`)
+- Auto-assigned ports (Phoenix: 4001+, Playwright: 8901+)
+- Database partition based on port offset
+- Volume-mounted dependencies for fast startup
+- Fresh copy of PROJECT_CONTEXT.md
+- Claude Code integration with prepared prompts
 
 ## Commands
 
+### Project Management
+
 - `ocg setup` - Initialize project with PROJECT_CONTEXT.md (one-time)
-- `ocg update-context <name>` - Update project context for a specific feature
-- `ocg new <name>` - Create new feature workspace
-- `ocg resume <name>` - Resume existing workspace
-- `ocg rm <name>` - Remove feature workspace
-- `ocg clean` - Remove ALL workspaces (with confirmation)
-- `ocg clean-branches` - Remove all orphaned feature branches (with confirmation)
-- `ocg clean-servers` - Kill all Playwright MCP and Phoenix servers
+- `ocg prepare` - Install Elixir/Erlang versions from .tool-versions (native mode)
+- `ocg prepare --container` - Build Docker image and prepare base volumes
+- `ocg update-context <name>` - Update project context with learnings from a feature
+- `ocg consolidate-context` - Streamline PROJECT_CONTEXT.md by removing redundancies
+
+### Planning Sessions
+
+- `ocg bird-eye [name] [model]` - High-level, user-focused planning
+- `ocg plan [name] [model]` - Detailed technical implementation planning
+
+### Workspace Management
+
+- `ocg new <name> [model]` - Create new feature workspace (native mode)
+- `ocg new <name> --container` - Create new feature workspace with Docker container
+- `ocg resume <name> [model]` - Resume existing workspace (native mode)
+- `ocg resume <name> --container` - Resume existing workspace with Docker container
+- `ocg rm <name>` - Remove workspace (stops container if applicable, archives context)
 - `ocg ls` - List all workspaces
+
+### Cleanup
+
+- `ocg clean` - Remove ALL workspaces (with confirmation)
+- `ocg clean-branches` - Remove orphaned feature branches
+- `ocg clean-servers` - Clean up any lingering processes
+
+### Tools
+
 - `ocg remove-comments` - Remove comments from git diff changes
-- `make install` - Install CLI globally (`ocg` commands)
+- `make install` - Install CLI globally for `ocg` commands
+- `make uninstall` - Remove global CLI installation
 
 ## Global Installation
 
@@ -63,15 +133,66 @@ cd /path/to/codegen && make install
 # Then use: ocg new my-feature, ocg ls, etc.
 ```
 
+## Working with Docker
+
+### Container Access
+
+When a workspace is running in container mode, you can access the container:
+
+```bash
+# Open a terminal inside the container
+docker exec -it ocg-{project-name}-{feature-name} /bin/bash
+
+# Example for project "myapp" and feature "my-feature"
+docker exec -it ocg-myapp-my-feature /bin/bash
+
+# Run Phoenix server
+docker exec -it ocg-myapp-my-feature mix phx.server
+
+# Run tests
+docker exec -it ocg-myapp-my-feature mix test
+```
+
+### Container Lifecycle
+
+- Containers start automatically when you open a workspace in Cursor
+- Containers stop when you close the startup terminal or press Ctrl+C
+- Each workspace has its own container and volumes
+
+### Volume Management
+
+OCG uses Docker volumes for dependencies:
+
+- Base volumes: `ocg-{project}-{deps|build|node}-base`
+- Workspace volumes: `ocg-{project}-{deps|build|node}-{feature}`
+
+Run `ocg prepare --container` from your main branch to build the Docker image and populate base volumes with compiled dependencies.
+
 ## Multiple Projects
 
 The same codegen tools work with any git repository:
 
 1. Navigate to any git repository
 2. Run `ocg setup` to initialize project context (one-time)
-3. Run `ocg` commands - they automatically manage workspaces for that repository
-4. Each repository keeps its own:
+3. Run `ocg prepare` or `ocg prepare --container` based on your preferred mode
+4. Run `ocg` commands - they automatically manage workspaces for that repository
+5. Each repository keeps its own:
    - Project context in `codegen/PROJECT_CONTEXT.md`
    - Workspaces in `codegen/workspaces/`
    - Plans in `codegen/plans/`
    - Archived contexts in `codegen/contexts/`
+   - Docker volumes for dependencies
+
+## Troubleshooting
+
+### Docker Issues
+
+- **"Docker daemon is not running"**: Start Docker Desktop
+- **"Container failed to start"**: Check Docker logs with `docker logs ocg-{feature}`
+- **Port conflicts**: OCG auto-assigns ports starting from 4001
+
+### Workspace Issues
+
+- **Dependencies missing**: Run `ocg prepare` (native) or `ocg prepare --container` from main branch
+- **Old workspace won't start**: Remove and recreate with `ocg rm` then `ocg new`
+- **Permission denied errors**: Ensure Docker Desktop is running before removing workspaces

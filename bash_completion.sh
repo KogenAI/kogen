@@ -45,7 +45,9 @@ _codegen_completion() {
             local repo_root="$TARGET_REPO_PATH"
             [[ -d "$repo_root/codegen/plans" ]] && COMPREPLY=($(compgen -W "$(find "$repo_root/codegen/plans" -name "*.md" -not -name "*.old" -exec basename {} .md \; 2>/dev/null)" -- "$cur"))
         elif [[ ${COMP_CWORD} == 3 ]]; then
-            COMPREPLY=($(compgen -W "sonnet opus" -- "$cur"))
+            COMPREPLY=($(compgen -W "sonnet opus --container" -- "$cur"))
+        elif [[ ${COMP_CWORD} == 4 ]] && [[ "$cur" == --* ]]; then
+            COMPREPLY=($(compgen -W "--container" -- "$cur"))
         fi
         ;;
     resume)
@@ -54,7 +56,9 @@ _codegen_completion() {
             local repo_root="$TARGET_REPO_PATH"
             [[ -d "$repo_root" ]] && cd "$repo_root" && COMPREPLY=($(compgen -W "$(git worktree list --porcelain 2>/dev/null | grep "^worktree" | cut -d' ' -f2 | xargs -I {} basename {} | grep -v "$(basename "$repo_root")")" -- "$cur"))
         elif [[ ${COMP_CWORD} == 3 ]]; then
-            COMPREPLY=($(compgen -W "sonnet opus" -- "$cur"))
+            COMPREPLY=($(compgen -W "sonnet opus --container" -- "$cur"))
+        elif [[ ${COMP_CWORD} == 4 ]] && [[ "$cur" == --* ]]; then
+            COMPREPLY=($(compgen -W "--container" -- "$cur"))
         fi
         ;;
     bird-eye | plan)
