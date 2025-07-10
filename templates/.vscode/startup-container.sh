@@ -42,7 +42,7 @@ fi
 
 # Create wait files to block tasks until ready
 mkdir -p codegen
-touch codegen/.claude_wait
+touch codegen/.ai_wait
 echo "🔒 Created wait files - tasks will wait for signals"
 
 # Check Docker is available
@@ -219,13 +219,13 @@ while true; do
     sleep 2
 done
 
-# Release Claude Code to start (if waiting)
-echo "🔓 Releasing Claude Code to start..."
-if [ -f codegen/.claude_wait ]; then
-    rm -f codegen/.claude_wait
-    echo "   ✅ Removed .claude_wait file"
+# Release AI assistant to start (if waiting)
+echo "🔓 Releasing AI assistant to start..."
+if [ -f codegen/.ai_wait ]; then
+    rm -f codegen/.ai_wait
+    echo "   ✅ Removed .ai_wait file"
 else
-    echo "   ℹ️  .claude_wait file was already removed"
+    echo "   ℹ️  .ai_wait file was already removed"
 fi
 
 echo ""

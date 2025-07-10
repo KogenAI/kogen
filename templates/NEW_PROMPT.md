@@ -2,11 +2,12 @@
 
 Implement the plan using context from files in your workspace:
 
-- ./codegen/PLAN.md (implementation plan)
-- ./codegen/CONTEXT.md (your working document - track progress here)
-- ./codegen/PROJECT_CONTEXT.md (project knowledge base)
+- ./codegen/PLAN.md (implementation plan) - READ ONLY
+- ./codegen/CONTEXT.md (your working document - track progress here) - **UPDATE THIS FILE**
+- ./codegen/PROJECT_CONTEXT.md (project knowledge base) - **READ ONLY - DO NOT MODIFY**
 
 Follow the staged development workflow and update CONTEXT.md as you progress through stages.
+**IMPORTANT**: Only modify CONTEXT.md during implementation. PROJECT_CONTEXT.md is a shared resource.
 
 ## Current Workspace
 
@@ -18,12 +19,16 @@ Follow the staged development workflow and update CONTEXT.md as you progress thr
 
 ## Available Context Files
 
-- `./codegen/PLAN.md` - The implementation plan (~50-100 lines)
-- `./codegen/CONTEXT.md` - Track your progress and stages here (~200-300 lines, use /refresh-context to archive completed work)
-- `./codegen/PROJECT_CONTEXT.md` - Project architecture and patterns (~300-400 lines)
-- `./CLAUDE.md` - Repository-specific guidance
+- `./codegen/PLAN.md` - The implementation plan (~50-100 lines) - **READ ONLY**
+- `./codegen/CONTEXT.md` - Track your progress and stages here (~200-300 lines) - **UPDATE THIS FILE**
+- `./codegen/PROJECT_CONTEXT.md` - Project architecture and patterns (~300-400 lines) - **READ ONLY - DO NOT MODIFY**
+- `./{{AGENT_CONTEXT_FILE}}` - Repository-specific guidance - **READ ONLY**
 
-**Note**: These files are optimized to fit efficiently in Claude's context window. Keep CONTEXT.md focused by using /refresh-context to archive completed work when it grows beyond 300 lines.
+**Note**:
+
+- These files are optimized to fit efficiently in Claude's context window
+- Keep CONTEXT.md focused by using /refresh-context to archive completed work when it grows beyond 300 lines
+- PROJECT_CONTEXT.md contains shared project knowledge - it should only be updated via `ocg update-context` after feature completion
 
 ## Important: CI Requirements
 

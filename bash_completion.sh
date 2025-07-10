@@ -20,7 +20,7 @@ _codegen_completion() {
 
     # Complete main commands
     if [[ ${COMP_CWORD} == 1 ]]; then
-        local opts="bird-eye clean clean-branches clean-servers consolidate-context help ls new plan prepare remove-comments resume rm setup update-context"
+        local opts="ai-config bird-eye clean clean-branches clean-servers consolidate-context help ls new plan prepare remove-comments resume rm setup update-context"
         [[ "$cmd" == "make" ]] && opts="$opts install uninstall"
         [[ "$cmd" == "ocg" ]] && opts="$opts uninstall"
         COMPREPLY=($(compgen -W "$opts" -- "$cur"))
@@ -44,10 +44,12 @@ _codegen_completion() {
             source "$script_dir/config.sh"
             local repo_root="$TARGET_REPO_PATH"
             [[ -d "$repo_root/codegen/plans" ]] && COMPREPLY=($(compgen -W "$(find "$repo_root/codegen/plans" -name "*.md" -not -name "*.old" -exec basename {} .md \; 2>/dev/null)" -- "$cur"))
-        elif [[ ${COMP_CWORD} == 3 ]]; then
-            COMPREPLY=($(compgen -W "sonnet opus --container" -- "$cur"))
-        elif [[ ${COMP_CWORD} == 4 ]] && [[ "$cur" == --* ]]; then
-            COMPREPLY=($(compgen -W "--container" -- "$cur"))
+        elif [[ "$cur" == --* ]]; then
+            COMPREPLY=($(compgen -W "--model --assistant --container" -- "$cur"))
+        elif [[ "$prev" == "--model" || "$prev" == "-m" ]]; then
+            COMPREPLY=($(compgen -W "sonnet opus" -- "$cur"))
+        elif [[ "$prev" == "--assistant" || "$prev" == "-a" || "$prev" == "--ai" ]]; then
+            COMPREPLY=($(compgen -W "claude opencode" -- "$cur"))
         fi
         ;;
     resume)
@@ -55,10 +57,12 @@ _codegen_completion() {
             source "$script_dir/config.sh"
             local repo_root="$TARGET_REPO_PATH"
             [[ -d "$repo_root" ]] && cd "$repo_root" && COMPREPLY=($(compgen -W "$(git worktree list --porcelain 2>/dev/null | grep "^worktree" | cut -d' ' -f2 | xargs -I {} basename {} | grep -v "$(basename "$repo_root")")" -- "$cur"))
-        elif [[ ${COMP_CWORD} == 3 ]]; then
-            COMPREPLY=($(compgen -W "sonnet opus --container" -- "$cur"))
-        elif [[ ${COMP_CWORD} == 4 ]] && [[ "$cur" == --* ]]; then
-            COMPREPLY=($(compgen -W "--container" -- "$cur"))
+        elif [[ "$cur" == --* ]]; then
+            COMPREPLY=($(compgen -W "--model --assistant --container" -- "$cur"))
+        elif [[ "$prev" == "--model" || "$prev" == "-m" ]]; then
+            COMPREPLY=($(compgen -W "sonnet opus" -- "$cur"))
+        elif [[ "$prev" == "--assistant" || "$prev" == "-a" || "$prev" == "--ai" ]]; then
+            COMPREPLY=($(compgen -W "claude opencode" -- "$cur"))
         fi
         ;;
     bird-eye | plan)
@@ -66,6 +70,17 @@ _codegen_completion() {
             COMPREPLY=($(compgen -W "" -- "$cur"))
         elif [[ ${COMP_CWORD} == 3 ]]; then
             COMPREPLY=($(compgen -W "sonnet opus" -- "$cur"))
+        fi
+        ;;
+    ai-config)
+        if [[ ${COMP_CWORD} == 2 ]]; then
+            COMPREPLY=($(compgen -W "set get status" -- "$cur"))
+        elif [[ ${COMP_CWORD} == 3 && "$prev" == "set" ]]; then
+            COMPREPLY=($(compgen -W "default" -- "$cur"))
+        elif [[ ${COMP_CWORD} == 4 && "${COMP_WORDS[2]}" == "set" && "${COMP_WORDS[3]}" == "default" ]]; then
+            COMPREPLY=($(compgen -W "claude opencode" -- "$cur"))
+        elif [[ ${COMP_CWORD} == 3 && "$prev" == "get" ]]; then
+            COMPREPLY=($(compgen -W "default" -- "$cur"))
         fi
         ;;
     esac

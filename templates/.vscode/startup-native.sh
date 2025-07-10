@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/zsh
 set -e
 
 echo "🚀 Initializing feature workspace..."
@@ -6,9 +6,14 @@ echo "🚀 Initializing feature workspace..."
 WORKSPACE_ROOT="$(pwd)"
 FEATURE_NAME="$(basename "$WORKSPACE_ROOT")"
 
+# Source the user's zshrc to get the full environment
+if [ -f "$HOME/.zshrc" ]; then
+    source "$HOME/.zshrc"
+fi
+
 # Create wait files to block tasks until ready
 mkdir -p codegen
-touch codegen/.claude_wait
+touch codegen/.ai_wait
 echo "🔒 Created wait files - tasks will wait for signals"
 
 cleanup_existing_servers() {
@@ -80,7 +85,7 @@ setup_automation() {
         return 1
     fi
 
-    echo "✅ Context prepared for Claude Code"
+    echo "✅ Context prepared for AI assistant"
 
     if [ -f ".mcp.json" ]; then
         echo "✅ MCP configuration ready (.mcp.json found)"
@@ -106,14 +111,56 @@ else
     setup_automation "new"
 fi
 
+echo "🔧 Setting up environment..."
+# Load environment variables from .env file
+if [ -f ".env" ]; then
+    echo "📄 Loading environment from .env..."
+    set -a
+    source ".env"
+    set +a
+    echo "✅ Environment variables loaded"
+else
+    echo "❌ No .env file found"
+    exit 1
+fi
+
+# Set up mise environment
+MISE_PATH="$HOME/.local/bin/mise"
+if [ ! -f "$MISE_PATH" ]; then
+    MISE_PATH="$(which mise 2>/dev/null)"
+fi
+
+if [ -n "$MISE_PATH" ] && [ -f "$MISE_PATH" ]; then
+    echo "🔧 Setting up mise environment..."
+
+    # Trust the .env and .tool-versions files
+    $MISE_PATH trust .env
+    $MISE_PATH trust .tool-versions
+
+    # Activate mise to set up shell functions
+    eval "$($MISE_PATH activate zsh)"
+
+    # Load the environment for this directory
+    eval "$($MISE_PATH env)"
+
+    echo "✅ Mise environment ready"
+else
+    echo "❌ Mise not found. Please run 'ocg prepare' to install dependencies"
+    exit 1
+fi
+
 echo "🔧 Checking environment..."
 # Check if Elixir/Erlang are available (installed via ocg prepare)
 if command -v elixir >/dev/null 2>&1 && command -v erl >/dev/null 2>&1; then
     echo "✅ Elixir and Erlang available"
-    if [ -n "$PORT" ]; then
-        echo "✅ Environment variables loaded (PORT=$PORT)"
+    if [ -n "$PORT" ] && [ -n "$PLAYWRIGHT_MCP_PORT" ]; then
+        echo "✅ Environment variables loaded (PORT=$PORT, PLAYWRIGHT_MCP_PORT=$PLAYWRIGHT_MCP_PORT)"
     else
-        echo "⚠️  PORT not set - .env may not be sourced"
+        echo "❌ Critical environment variables not set!"
+        echo "   PORT=$PORT"
+        echo "   PLAYWRIGHT_MCP_PORT=$PLAYWRIGHT_MCP_PORT"
+        echo "   .env file may not be properly sourced"
+        exit 1
     fi
 else
     echo "❌ Elixir/Erlang not found. Please run: ocg prepare"
@@ -155,13 +202,16 @@ echo "✅ Setup complete - dependencies, database, and assets ready"
 
 echo "🔍 Starting CI checks in background..."
 CI_BACKGROUND=1 nohup ./codegen/ci.sh >/dev/null 2>&1 &
-disown
 echo "✅ CI checks started"
 
-echo "🎭 Starting Playwright MCP server..."
+echo "🎭 Starting Playwright MCP server on port $PLAYWRIGHT_MCP_PORT..."
+if [ -z "$PLAYWRIGHT_MCP_PORT" ]; then
+    echo "❌ PLAYWRIGHT_MCP_PORT is not set! Environment not properly loaded."
+    echo "   Check that .env file exists and contains PLAYWRIGHT_MCP_PORT"
+    exit 1
+fi
+# Start Playwright MCP server in background with script for colors
 nohup script -F codegen/playwright_mcp.log npx @playwright/mcp@latest --port $PLAYWRIGHT_MCP_PORT --headless --isolated >/dev/null 2>&1 &
-PLAYWRIGHT_PID=$!
-disown $PLAYWRIGHT_PID
 
 show_workspace_summary() {
     local mode="$1"
@@ -184,8 +234,6 @@ echo ""
 
 # Start Phoenix in background and log with colors preserved
 nohup script -F codegen/mix_phx_server.log mix phx.server >/dev/null 2>&1 &
-PHOENIX_PID=$!
-disown $PHOENIX_PID
 
 # Wait for Phoenix to be ready
 echo "⏳ Waiting for Phoenix server to start..."
@@ -208,24 +256,23 @@ fi
 # Show workspace summary BEFORE launching Claude
 show_workspace_summary "$WORKSPACE_MODE"
 
-# Launch Claude Code now that Phoenix is ready
+# Launch AI assistant now that Phoenix is ready
 echo ""
-echo "🤖 Starting Claude Code task in Cursor..."
+echo "🤖 Starting AI assistant task..."
 echo "📋 Prompt has been prepared in: codegen/PROMPT.md"
 echo ""
 
-# Launch Claude Code directly (as before)
+# Launch AI assistant
 cd "$WORKSPACE_ROOT"
-export CLAUDE_BASH_MAINTAIN_PROJECT_WORKING_DIR=true
 
-echo "✅ All services started! Check Cursor tabs for:"
-echo "   🤖 Claude Code (waiting for release)"
+echo "✅ All services started! Check IDE tabs for:"
+echo "   🤖 AI Assistant (waiting for release)"
 echo "   📊 Server logs and workspace info"
 echo ""
-echo "🔓 Releasing Claude Code to start..."
-rm -f codegen/.claude_wait
+echo "🔓 Releasing AI assistant to start..."
+rm -f codegen/.ai_wait
 
-echo "🎯 Startup complete! Claude Code should now be starting in its tab."
-echo "📝 You can manually control Claude Code by creating/removing:"
-echo "   codegen/.claude_wait - blocks Claude Code"
+echo "🎯 Startup complete! AI assistant should now be starting in its tab."
+echo "📝 You can manually control AI assistant by creating/removing:"
+echo "   codegen/.ai_wait - blocks AI assistant"
 echo "📝 To rerun CI checks: ./codegen/ci.sh"

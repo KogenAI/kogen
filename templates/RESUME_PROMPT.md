@@ -2,11 +2,15 @@
 
 Continue implementing the plan using context from files in your workspace:
 
-- ./codegen/PLAN.md (implementation plan, ~50-100 lines)
-- ./codegen/CONTEXT.md (your working document - check current stage, ~200-300 lines)
-- ./codegen/PROJECT_CONTEXT.md (project knowledge base, ~300-400 lines)
+- ./codegen/PLAN.md (implementation plan, ~50-100 lines) - READ ONLY
+- ./codegen/CONTEXT.md (your working document - check current stage, ~200-300 lines) - **UPDATE THIS FILE**
+- ./codegen/PROJECT_CONTEXT.md (project knowledge base, ~300-400 lines) - **READ ONLY - DO NOT MODIFY**
 
-**Note**: Use /refresh-context to archive completed work when CONTEXT.md grows beyond 300 lines.
+**Important**:
+
+- Only update CONTEXT.md to track your progress and implementation details
+- PROJECT_CONTEXT.md is a shared knowledge base - DO NOT modify it during implementation
+- Use /refresh-context to archive completed work when CONTEXT.md grows beyond 300 lines
 
 ## Git Status
 

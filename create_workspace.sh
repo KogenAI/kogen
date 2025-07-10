@@ -2,30 +2,81 @@
 set -e
 
 if [ $# -eq 0 ]; then
-    echo "Usage: $0 <feature-name> [model] [--container]"
-    echo "Example: $0 dashboard-redesign"
-    echo "Example: $0 dashboard-redesign opus"
-    echo "Example: $0 dashboard-redesign --container"
+    echo "Usage: $0 <feature-name> [options]"
+    echo "Options:"
+    echo "  --model, -m <model>      AI model to use (default: sonnet)"
+    echo "  --assistant, -a <name>   AI assistant to use (default: from config)"
+    echo "  --container              Run in Docker container"
+    echo ""
+    echo "Examples:"
+    echo "  $0 dashboard-redesign"
+    echo "  $0 dashboard-redesign --model opus"
+    echo "  $0 dashboard-redesign --assistant opencode"
+    echo "  $0 dashboard-redesign -m opus -a opencode --container"
     exit 1
 fi
 
 # Parse arguments
 CONTAINER_MODE=false
-ARGS=()
-for arg in "$@"; do
-    if [ "$arg" = "--container" ]; then
+MODEL="sonnet" # Default model
+ASSISTANT=""   # Will use default from config if not specified
+FEATURE_NAME=""
+
+# Parse command line arguments
+while [[ $# -gt 0 ]]; do
+    case $1 in
+    --model | -m)
+        MODEL="$2"
+        shift 2
+        ;;
+    --assistant | -a | --ai)
+        ASSISTANT="$2"
+        shift 2
+        ;;
+    --container)
         CONTAINER_MODE=true
-    else
-        ARGS+=("$arg")
-    fi
+        shift
+        ;;
+    -*)
+        echo "Unknown option: $1"
+        exit 1
+        ;;
+    *)
+        if [ -z "$FEATURE_NAME" ]; then
+            FEATURE_NAME="$1"
+        fi
+        shift
+        ;;
+    esac
 done
 
-FEATURE_NAME="${ARGS[0]}"
-MODEL="${ARGS[1]:-sonnet}"
+if [ -z "$FEATURE_NAME" ]; then
+    echo "Error: Feature name is required"
+    exit 1
+fi
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 source "$SCRIPT_DIR/config.sh"
 source "$SCRIPT_DIR/utils.sh"
+
+# Load default assistant from config if not specified
+if [ -z "$ASSISTANT" ]; then
+    CONFIG_FILE="$HOME/.ocg/config.json"
+    if [ -f "$CONFIG_FILE" ]; then
+        ASSISTANT=$(jq -r '.default_assistant // "claude"' "$CONFIG_FILE")
+    else
+        echo "❌ No default AI assistant configured. Run 'make install' to configure."
+        exit 1
+    fi
+fi
+
+# Source authentication check
+source "$SCRIPT_DIR/ai-assistants/check-auth.sh"
+
+# Check authentication before creating workspace
+if ! check_assistant_auth "$ASSISTANT"; then
+    exit 1
+fi
 
 REPO_ROOT="$TARGET_REPO_PATH"
 WORKSPACE_NAME="${FEATURE_NAME}"
@@ -179,18 +230,18 @@ if [ -f "$SCRIPT_DIR/templates/.vscode/workspace-info.sh" ]; then
     chmod +x "$WORKSPACE_PATH/.vscode/workspace-info.sh"
 fi
 
-# Copy appropriate claude-code script based on container mode
-if [ "$CONTAINER_MODE" = true ]; then
-    CLAUDE_CODE_TEMPLATE="$SCRIPT_DIR/templates/.vscode/claude-code-container.sh"
-else
-    CLAUDE_CODE_TEMPLATE="$SCRIPT_DIR/templates/.vscode/claude-code-native.sh"
+# Copy the universal AI assistant script
+if [ -f "$SCRIPT_DIR/templates/.vscode/ai-assistant.sh" ]; then
+    cp "$SCRIPT_DIR/templates/.vscode/ai-assistant.sh" "$WORKSPACE_PATH/.vscode/ai-assistant.sh"
+    chmod +x "$WORKSPACE_PATH/.vscode/ai-assistant.sh"
 fi
 
-if [ -f "$CLAUDE_CODE_TEMPLATE" ]; then
-    cp "$CLAUDE_CODE_TEMPLATE" "$WORKSPACE_PATH/.vscode/claude-code.sh"
-    chmod +x "$WORKSPACE_PATH/.vscode/claude-code.sh"
-    sed -i '' "s/{{MODEL}}/$MODEL/g" "$WORKSPACE_PATH/.vscode/claude-code.sh"
-fi
+# Pass model and assistant through environment variables to startup script
+export AI_ASSISTANT="$ASSISTANT"
+export AI_MODEL="$MODEL"
+
+# For backward compatibility, create claude-code.sh as a symlink
+ln -sf "ai-assistant.sh" "$WORKSPACE_PATH/.vscode/claude-code.sh"
 
 if [ -f "$SCRIPT_DIR/templates/.vscode/phoenix-server.sh" ]; then
     cp "$SCRIPT_DIR/templates/.vscode/phoenix-server.sh" "$WORKSPACE_PATH/.vscode/"
@@ -232,6 +283,13 @@ if [ -f "$SCRIPT_DIR/templates/NEW_PROMPT.md" ]; then
     sed -i '' "s|{{PORT}}|$NEXT_PORT|g" "$WORKSPACE_PATH/codegen/PROMPT.md"
     sed -i '' "s|{{PLAYWRIGHT_MCP_PORT}}|$NEXT_PLAYWRIGHT_PORT|g" "$WORKSPACE_PATH/codegen/PROMPT.md"
 
+    # Set the correct agent context file based on AI assistant
+    if [ "$ASSISTANT" = "opencode" ]; then
+        sed -i '' "s|{{AGENT_CONTEXT_FILE}}|AGENTS.md|g" "$WORKSPACE_PATH/codegen/PROMPT.md"
+    else
+        sed -i '' "s|{{AGENT_CONTEXT_FILE}}|CLAUDE.md|g" "$WORKSPACE_PATH/codegen/PROMPT.md"
+    fi
+
     # Use container path if in container mode, otherwise use host path
     if [ "$CONTAINER_MODE" = true ]; then
         sed -i '' "s|{{WORKSPACE_PATH}}|/workspace|g" "$WORKSPACE_PATH/codegen/PROMPT.md"
@@ -247,17 +305,31 @@ if [ -d "$REPO_ROOT/codegen/rules" ]; then
     echo "✅ Linked codegen/rules from main branch (changes will propagate)"
 fi
 
-# Copy CLAUDE.md from main branch since it's gitignored
-if [ -f "$REPO_ROOT/CLAUDE.md" ]; then
-    cp "$REPO_ROOT/CLAUDE.md" "$WORKSPACE_PATH/CLAUDE.md"
-    echo "✅ Copied CLAUDE.md from main branch"
+# Copy AGENTS.md from main branch since it's gitignored
+if [ -f "$REPO_ROOT/AGENTS.md" ]; then
+    cp "$REPO_ROOT/AGENTS.md" "$WORKSPACE_PATH/AGENTS.md"
+    echo "✅ Copied AGENTS.md from main branch"
 fi
 
-# Create .mcp.json from template with port substitution
-if [ -f "$SCRIPT_DIR/templates/.mcp.json" ]; then
-    sed "s/{{PORT}}/${NEXT_PORT}/g; s/{{PLAYWRIGHT_MCP_PORT}}/${NEXT_PLAYWRIGHT_PORT}/g" \
-        "$SCRIPT_DIR/templates/.mcp.json" >"$WORKSPACE_PATH/.mcp.json"
-    echo "✅ Created .mcp.json with workspace-specific ports"
+# Create CLAUDE.md symlink for backward compatibility (in workspace root)
+ln -sf "AGENTS.md" "$WORKSPACE_PATH/CLAUDE.md"
+echo "✅ Created CLAUDE.md symlink for backward compatibility"
+
+# Create MCP configuration based on assistant
+if [ "$ASSISTANT" = "opencode" ]; then
+    # Create OpenCode MCP configuration in workspace root
+    if [ -f "$SCRIPT_DIR/templates/.opencode-mcp.json" ]; then
+        sed "s/{{PORT}}/${NEXT_PORT}/g; s/{{PLAYWRIGHT_MCP_PORT}}/${NEXT_PLAYWRIGHT_PORT}/g" \
+            "$SCRIPT_DIR/templates/.opencode-mcp.json" >"$WORKSPACE_PATH/opencode.json"
+        echo "✅ Created opencode.json with MCP configuration and workspace-specific ports"
+    fi
+else
+    # Create Claude MCP configuration
+    if [ -f "$SCRIPT_DIR/templates/.mcp.json" ]; then
+        sed "s/{{PORT}}/${NEXT_PORT}/g; s/{{PLAYWRIGHT_MCP_PORT}}/${NEXT_PLAYWRIGHT_PORT}/g" \
+            "$SCRIPT_DIR/templates/.mcp.json" >"$WORKSPACE_PATH/.mcp.json"
+        echo "✅ Created .mcp.json with workspace-specific ports"
+    fi
 fi
 
 # Copy ci.sh to workspace codegen directory for workspace-specific CI checks
@@ -306,11 +378,14 @@ if [ "$CONTAINER_MODE" = true ]; then
         exit 1
     fi
 
-    # Ensure shared Claude volume exists
-    ensure_shared_claude_volume
+    # Ensure shared AI assistant volumes exist
+    ensure_shared_ai_volumes
 
     # Clone volumes for workspace
     clone_deps_volumes "$FEATURE_NAME" "$REPO_NAME"
+
+    # Export AI assistant for docker-compose template
+    export AI_ASSISTANT="$ASSISTANT"
 
     # Create and start container
     create_docker_compose "$WORKSPACE_PATH" "$FEATURE_NAME" "$SCRIPT_DIR/dockerfiles/docker-compose.yml.template" "$REPO_NAME"

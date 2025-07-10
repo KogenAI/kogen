@@ -18,18 +18,12 @@
         "clear": false,
         "close": true
       },
-      "problemMatcher": [],
-      "options": {
-        "shell": {
-          "executable": "/bin/bash",
-          "args": ["-i", "-c"]
-        }
-      }
+      "problemMatcher": []
     },
     {
-      "label": "🤖 Claude Code",
+      "label": "🤖 AI Assistant",
       "type": "shell",
-      "command": "sleep 3 && ./.vscode/claude-code.sh",
+      "command": "sleep 3 && ./.vscode/ai-assistant.sh",
       "group": "build",
       "runOptions": {
         "runOn": "folderOpen"
@@ -42,13 +36,7 @@
         "showReuseMessage": false,
         "clear": false
       },
-      "problemMatcher": [],
-      "options": {
-        "shell": {
-          "executable": "/bin/bash",
-          "args": ["-i", "-c"]
-        }
-      }
+      "problemMatcher": []
     },
     {
       "label": "📋 Workspace Info",
@@ -66,13 +54,7 @@
         "showReuseMessage": false,
         "clear": true
       },
-      "problemMatcher": [],
-      "options": {
-        "shell": {
-          "executable": "/bin/bash",
-          "args": ["-l", "-c"]
-        }
-      }
+      "problemMatcher": []
     },
     {
       "label": "📊 Server Logs",
@@ -90,13 +72,7 @@
         "showReuseMessage": false,
         "clear": true
       },
-      "problemMatcher": [],
-      "options": {
-        "shell": {
-          "executable": "/bin/bash",
-          "args": ["-l", "-c"]
-        }
-      }
+      "problemMatcher": []
     }
   ]
 }

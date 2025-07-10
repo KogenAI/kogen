@@ -157,7 +157,7 @@ ENV PATH="/home/ubuntu/bin:/home/ubuntu/.npm-global/bin:${PATH}"
 # Set up workspace
 WORKDIR /workspace
 
-# Claude Code only requires Node.js - no Python dependencies needed
+# AI assistants only require Node.js - no Python dependencies needed
 
 # Set up bash environment with proper umask
 RUN echo 'export PS1="\[\033[1;34m\]🐳 \[\033[1;32m\]\u@ocg-\h\[\033[0m\]:\[\033[1;36m\]\w\[\033[0m\]$ "' >> ~/.bashrc && \
@@ -166,13 +166,17 @@ RUN echo 'export PS1="\[\033[1;34m\]🐳 \[\033[1;32m\]\u@ocg-\h\[\033[0m\]:\[\0
     echo 'umask 022' >> ~/.bashrc
 
 # Pre-create common directories and set npm prefix
-RUN mkdir -p ~/.mix ~/.hex ~/.cache ~/.npm ~/.npm-global ~/.claude && \
+RUN mkdir -p ~/.mix ~/.hex ~/.cache ~/.npm ~/.npm-global ~/.claude ~/.config/opencode ~/.ocg && \
     npm config set prefix ~/.npm-global && \
-    echo 'export PATH="$HOME/.npm-global/bin:$PATH"' >> ~/.bashrc
+    echo 'export PATH="$HOME/.npm-global/bin:$PATH"' >> ~/.bashrc && \
+    # Set up default OCG config
+    echo '{"default_assistant": "claude", "assistants": {"claude": {"enabled": true}, "opencode": {"enabled": true, "provider": "anthropic"}}}' > ~/.ocg/config.json
 
 # Install global npm packages as user
 RUN npm i -g @playwright/mcp@latest && \
-    npm i -g @anthropic-ai/claude-code
+    npm i -g @anthropic-ai/claude-code && \
+    # Install OpenCode
+    curl -fsSL https://opencode.ai/install | bash
 
 # Install Playwright browsers for MCP
 # This needs to be done after Playwright is installed

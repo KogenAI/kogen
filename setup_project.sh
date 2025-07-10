@@ -28,10 +28,18 @@ else
     echo "ℹ️  PROJECT_CONTEXT.md already exists, skipping..."
 fi
 
-# Create CLAUDE.md if it doesn't exist
-if [ ! -f "$REPO_ROOT/CLAUDE.md" ]; then
-    cp "$SCRIPT_DIR/templates/CLAUDE.md" "$REPO_ROOT/CLAUDE.md"
-    echo "✅ Created CLAUDE.md with rule system references"
+# Create AGENTS.md if it doesn't exist (generic AI assistant instructions)
+if [ ! -f "$REPO_ROOT/AGENTS.md" ]; then
+    cp "$SCRIPT_DIR/templates/AGENTS.md" "$REPO_ROOT/AGENTS.md"
+    echo "✅ Created AGENTS.md with rule system references"
+else
+    echo "ℹ️  AGENTS.md already exists, skipping..."
+fi
+
+# Create CLAUDE.md symlink for backward compatibility
+if [ ! -e "$REPO_ROOT/CLAUDE.md" ]; then
+    ln -sf "AGENTS.md" "$REPO_ROOT/CLAUDE.md"
+    echo "✅ Created CLAUDE.md symlink for backward compatibility"
 else
     echo "ℹ️  CLAUDE.md already exists, skipping..."
 fi
@@ -130,6 +138,7 @@ update_ignore_file() {
     local block="# Optimum Codegen
 /.vscode/
 /codegen/
+/AGENTS.md
 /CLAUDE.md
 .mcp.json
 *.code-workspace"
@@ -164,19 +173,59 @@ fi
 
 echo ""
 echo "🗂️  Files created:"
-echo "   - CLAUDE.md (main AI instructions)"
+echo "   - AGENTS.md (AI assistant instructions)"
+echo "   - CLAUDE.md (symlink for backward compatibility)"
 echo "   - codegen/PROJECT_CONTEXT.md (project knowledge base)"
 echo "   - codegen/rules/ (symbolic link to development rules)"
 echo "   - Updated .gitignore and .dockerignore"
 echo ""
 echo "After PROJECT_CONTEXT.md is filled, you can create workspaces with: $OCG_CMD new <feature-name>"
 
-echo "🤖 Starting Claude Code with Opus model for setup..."
-
-export SHELL=/bin/bash
-if command -v claude >/dev/null 2>&1; then
-    exec claude --model opus "$SETUP_PROMPT"
+# Load AI assistant configuration
+CONFIG_FILE="$HOME/.ocg/config.json"
+if [ -f "$CONFIG_FILE" ]; then
+    AI_ASSISTANT=$(jq -r '.default_assistant // "claude"' "$CONFIG_FILE")
 else
-    echo "⚠️  Claude CLI not found. Please install Claude CLI first and try again."
+    AI_ASSISTANT="claude"
+fi
+
+# Source authentication check
+source "$SCRIPT_DIR/ai-assistants/check-auth.sh"
+
+# Check authentication
+if ! check_assistant_auth "$AI_ASSISTANT"; then
     exit 1
 fi
+
+# Source model mapper
+source "$SCRIPT_DIR/ai-assistants/model-mapper.sh"
+
+echo "🤖 Starting $AI_ASSISTANT with Opus model for setup..."
+
+export SHELL=/bin/bash
+
+case "$AI_ASSISTANT" in
+claude)
+    if command -v claude >/dev/null 2>&1; then
+        exec claude --model opus "$SETUP_PROMPT"
+    else
+        echo "⚠️  Claude CLI not found. Please install Claude CLI first and try again."
+        exit 1
+    fi
+    ;;
+opencode)
+    if command -v opencode >/dev/null 2>&1; then
+        # Get provider and map model name
+        PROVIDER=$(get_provider "opencode")
+        OC_MODEL=$(map_model "opus" "opencode" "$PROVIDER")
+        exec opencode run --model "$PROVIDER/$OC_MODEL" "$SETUP_PROMPT"
+    else
+        echo "⚠️  OpenCode not found. Please install OpenCode first and try again."
+        exit 1
+    fi
+    ;;
+*)
+    echo "❌ Unknown AI assistant: $AI_ASSISTANT"
+    exit 1
+    ;;
+esac

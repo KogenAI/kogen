@@ -16,9 +16,14 @@ services:
       - ocg-{{PROJECT_NAME}}-node-{{FEATURE_NAME}}:/workspace/assets/node_modules
       - ocg-{{PROJECT_NAME}}-plts-{{FEATURE_NAME}}:/workspace/priv/plts
       - ocg-claude-shared:/home/ubuntu/.claude
+      - ocg-opencode-shared:/home/ubuntu/.config/opencode
+      - ocg-ai-config-shared:/home/ubuntu/.ocg
     environment:
-      - CLAUDE_BASH_MAINTAIN_PROJECT_WORKING_DIR=true
       - CLAUDE_CONFIG_DIR=/home/ubuntu/.claude
+      - AI_ASSISTANT={{AI_ASSISTANT}}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - GOOGLE_API_KEY=${GOOGLE_API_KEY:-}
     ports:
       - '{{PORT}}:{{PORT}}'
       - '{{PORT_TEST}}:{{PORT_TEST}}'
@@ -40,4 +45,8 @@ volumes:
   ocg-{{PROJECT_NAME}}-plts-{{FEATURE_NAME}}:
     external: true
   ocg-claude-shared:
+    external: true
+  ocg-opencode-shared:
+    external: true
+  ocg-ai-config-shared:
     external: true

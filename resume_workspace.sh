@@ -2,26 +2,58 @@
 set -e
 
 if [ $# -eq 0 ]; then
-    echo "Usage: $0 <feature-name> [model] [--container]"
-    echo "Example: $0 dashboard-redesign"
-    echo "Example: $0 dashboard-redesign opus"
-    echo "Example: $0 dashboard-redesign --container"
+    echo "Usage: $0 <feature-name> [options]"
+    echo "Options:"
+    echo "  --model, -m <model>      AI model to use (default: from workspace)"
+    echo "  --assistant, -a <name>   AI assistant to use (default: from workspace)"
+    echo "  --container              Run in Docker container"
+    echo ""
+    echo "Examples:"
+    echo "  $0 dashboard-redesign"
+    echo "  $0 dashboard-redesign --model opus"
+    echo "  $0 dashboard-redesign --assistant opencode"
+    echo "  $0 dashboard-redesign -m opus -a opencode --container"
     exit 1
 fi
 
 # Parse arguments
 CONTAINER_MODE=false
-ARGS=()
-for arg in "$@"; do
-    if [ "$arg" = "--container" ]; then
+MODEL=""     # Will use workspace default if not specified
+ASSISTANT="" # Will use workspace default if not specified
+FEATURE_NAME=""
+
+# Parse command line arguments
+while [[ $# -gt 0 ]]; do
+    case $1 in
+    --model | -m)
+        MODEL="$2"
+        shift 2
+        ;;
+    --assistant | -a | --ai)
+        ASSISTANT="$2"
+        shift 2
+        ;;
+    --container)
         CONTAINER_MODE=true
-    else
-        ARGS+=("$arg")
-    fi
+        shift
+        ;;
+    -*)
+        echo "Unknown option: $1"
+        exit 1
+        ;;
+    *)
+        if [ -z "$FEATURE_NAME" ]; then
+            FEATURE_NAME="$1"
+        fi
+        shift
+        ;;
+    esac
 done
 
-FEATURE_NAME="${ARGS[0]}"
-MODEL="${ARGS[1]:-sonnet}"
+if [ -z "$FEATURE_NAME" ]; then
+    echo "Error: Feature name is required"
+    exit 1
+fi
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 source "$SCRIPT_DIR/config.sh"
@@ -37,6 +69,39 @@ if [ ! -d "$WORKSPACE_PATH" ]; then
     echo "❌ Feature workspace '$FEATURE_NAME' does not exist!"
     echo "   Use '$OCG_CMD new $FEATURE_NAME' to create it"
     echo "   Or use '$OCG_CMD ls' to see available workspaces"
+    exit 1
+fi
+
+# Simple configuration loading:
+# 1. Use command line flags if provided
+# 2. Otherwise use global defaults
+
+# Set defaults
+if [ -z "$MODEL" ]; then
+    MODEL="sonnet"
+fi
+
+if [ -z "$ASSISTANT" ]; then
+    # Load from global config
+    CONFIG_FILE="$HOME/.ocg/config.json"
+    if [ -f "$CONFIG_FILE" ]; then
+        ASSISTANT=$(jq -r '.default_assistant // "claude"' "$CONFIG_FILE")
+    else
+        ASSISTANT="claude"
+    fi
+fi
+
+echo "🔍 Using AI assistant: $ASSISTANT with model: $MODEL"
+
+# Pass through environment variables
+export AI_ASSISTANT="$ASSISTANT"
+export AI_MODEL="$MODEL"
+
+# Source authentication check
+source "$SCRIPT_DIR/ai-assistants/check-auth.sh"
+
+# Check authentication before resuming workspace
+if ! check_assistant_auth "$ASSISTANT"; then
     exit 1
 fi
 
@@ -94,18 +159,14 @@ if [ -f "$SCRIPT_DIR/templates/.vscode/workspace-info.sh" ]; then
     chmod +x "$WORKSPACE_PATH/.vscode/workspace-info.sh"
 fi
 
-# Copy appropriate claude-code script based on container mode
-if [ "$CONTAINER_MODE" = true ]; then
-    CLAUDE_CODE_TEMPLATE="$SCRIPT_DIR/templates/.vscode/claude-code-container.sh"
-else
-    CLAUDE_CODE_TEMPLATE="$SCRIPT_DIR/templates/.vscode/claude-code-native.sh"
+# Copy the universal AI assistant script
+if [ -f "$SCRIPT_DIR/templates/.vscode/ai-assistant.sh" ]; then
+    cp "$SCRIPT_DIR/templates/.vscode/ai-assistant.sh" "$WORKSPACE_PATH/.vscode/ai-assistant.sh"
+    chmod +x "$WORKSPACE_PATH/.vscode/ai-assistant.sh"
 fi
 
-if [ -f "$CLAUDE_CODE_TEMPLATE" ]; then
-    cp "$CLAUDE_CODE_TEMPLATE" "$WORKSPACE_PATH/.vscode/claude-code.sh"
-    chmod +x "$WORKSPACE_PATH/.vscode/claude-code.sh"
-    sed -i '' "s/{{MODEL}}/$MODEL/g" "$WORKSPACE_PATH/.vscode/claude-code.sh"
-fi
+# For backward compatibility, create claude-code.sh as a symlink
+ln -sf "ai-assistant.sh" "$WORKSPACE_PATH/.vscode/claude-code.sh"
 
 if [ -f "$SCRIPT_DIR/templates/.vscode/phoenix-server.sh" ]; then
     cp "$SCRIPT_DIR/templates/.vscode/phoenix-server.sh" "$WORKSPACE_PATH/.vscode/"
@@ -156,11 +217,18 @@ if [ -d "$REPO_ROOT/codegen/rules" ]; then
     echo "✅ Linked codegen/rules from main branch (changes will propagate)"
 fi
 
-# Copy CLAUDE.md from main branch since it's gitignored
-if [ -f "$REPO_ROOT/CLAUDE.md" ]; then
-    cp "$REPO_ROOT/CLAUDE.md" "$WORKSPACE_PATH/CLAUDE.md"
-    echo "✅ Copied CLAUDE.md from main branch"
+# Copy AGENTS.md from main branch since it's gitignored
+if [ -f "$REPO_ROOT/AGENTS.md" ]; then
+    cp "$REPO_ROOT/AGENTS.md" "$WORKSPACE_PATH/AGENTS.md"
+    echo "✅ Copied AGENTS.md from main branch"
 fi
+
+# Create or update CLAUDE.md symlink for backward compatibility
+if [ -e "$WORKSPACE_PATH/CLAUDE.md" ]; then
+    rm -f "$WORKSPACE_PATH/CLAUDE.md"
+fi
+ln -sf "AGENTS.md" "$WORKSPACE_PATH/CLAUDE.md"
+echo "✅ Created CLAUDE.md symlink for backward compatibility"
 
 if [ -f "$SCRIPT_DIR/templates/RESUME_PROMPT.md" ]; then
     mkdir -p "$WORKSPACE_PATH/codegen"
@@ -181,11 +249,35 @@ if [ -f "$SCRIPT_DIR/templates/RESUME_PROMPT.md" ]; then
     PLAYWRIGHT_MCP_PORT=$(grep "^PLAYWRIGHT_MCP_PORT=" "$WORKSPACE_PATH/.env" 2>/dev/null | cut -d'=' -f2)
     sed -i '' "s|{{PLAYWRIGHT_MCP_PORT}}|$PLAYWRIGHT_MCP_PORT|g" "$WORKSPACE_PATH/codegen/PROMPT.md"
 
+    # Set the correct agent context file based on AI assistant
+    if [ "$ASSISTANT" = "opencode" ]; then
+        sed -i '' "s|{{AGENT_CONTEXT_FILE}}|AGENTS.md|g" "$WORKSPACE_PATH/codegen/PROMPT.md"
+    else
+        sed -i '' "s|{{AGENT_CONTEXT_FILE}}|CLAUDE.md|g" "$WORKSPACE_PATH/codegen/PROMPT.md"
+    fi
+
     # Use container path if in container mode, otherwise use host path
     if [ "$CONTAINER_MODE" = true ]; then
         sed -i '' "s|{{WORKSPACE_PATH}}|/workspace|g" "$WORKSPACE_PATH/codegen/PROMPT.md"
     else
         sed -i '' "s|{{WORKSPACE_PATH}}|$WORKSPACE_PATH|g" "$WORKSPACE_PATH/codegen/PROMPT.md"
+    fi
+fi
+
+# Update MCP configuration if needed
+if [ "$ASSISTANT" = "opencode" ]; then
+    # Update OpenCode MCP configuration with current ports
+    if [ -f "$SCRIPT_DIR/templates/.opencode-mcp.json" ] && [ -n "$PORT" ] && [ -n "$PLAYWRIGHT_MCP_PORT" ]; then
+        sed "s/{{PORT}}/${PORT}/g; s/{{PLAYWRIGHT_MCP_PORT}}/${PLAYWRIGHT_MCP_PORT}/g" \
+            "$SCRIPT_DIR/templates/.opencode-mcp.json" >"$WORKSPACE_PATH/opencode.json"
+        echo "✅ Updated opencode.json with current workspace ports"
+    fi
+else
+    # Update Claude MCP configuration with current ports
+    if [ -f "$SCRIPT_DIR/templates/.mcp.json" ] && [ -n "$PORT" ] && [ -n "$PLAYWRIGHT_MCP_PORT" ]; then
+        sed "s/{{PORT}}/${PORT}/g; s/{{PLAYWRIGHT_MCP_PORT}}/${PLAYWRIGHT_MCP_PORT}/g" \
+            "$SCRIPT_DIR/templates/.mcp.json" >"$WORKSPACE_PATH/.mcp.json"
+        echo "✅ Updated .mcp.json with current workspace ports"
     fi
 fi
 

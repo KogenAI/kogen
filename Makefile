@@ -9,10 +9,17 @@ setup:
 new:
 	@if [ -z "$(filter-out $@,$(MAKECMDGOALS))" ]; then \
 		. ./utils.sh; \
-		echo "Usage: $$OCG_CMD new <feature-name> [model] [--container]"; \
-		echo "Example: $$OCG_CMD new dashboard-redesign"; \
-		echo "Example: $$OCG_CMD new dashboard-redesign opus"; \
-		echo "Example: $$OCG_CMD new dashboard-redesign --container"; \
+		echo "Usage: $$OCG_CMD new <feature-name> [options]"; \
+		echo "Options:"; \
+		echo "  --model, -m <model>      AI model to use (default: sonnet)"; \
+		echo "  --assistant, -a <name>   AI assistant to use (default: from config)"; \
+		echo "  --container              Run in Docker container"; \
+		echo ""; \
+		echo "Examples:"; \
+		echo "  $$OCG_CMD new dashboard-redesign"; \
+		echo "  $$OCG_CMD new dashboard-redesign --model opus"; \
+		echo "  $$OCG_CMD new dashboard-redesign --assistant opencode"; \
+		echo "  $$OCG_CMD new dashboard-redesign -m opus -a opencode --container"; \
 		exit 1; \
 	fi
 	@args="$(filter-out $@,$(MAKECMDGOALS))"; \
@@ -102,10 +109,17 @@ rm:
 resume:
 	@if [ -z "$(filter-out $@,$(MAKECMDGOALS))" ]; then \
 		. ./utils.sh; \
-		echo "Usage: $$OCG_CMD resume <feature-name> [model] [--container]"; \
-		echo "Example: $$OCG_CMD resume dashboard-redesign"; \
-		echo "Example: $$OCG_CMD resume dashboard-redesign opus"; \
-		echo "Example: $$OCG_CMD resume dashboard-redesign --container"; \
+		echo "Usage: $$OCG_CMD resume <feature-name> [options]"; \
+		echo "Options:"; \
+		echo "  --model, -m <model>      AI model to use (default: from workspace)"; \
+		echo "  --assistant, -a <name>   AI assistant to use (default: from workspace)"; \
+		echo "  --container              Run in Docker container"; \
+		echo ""; \
+		echo "Examples:"; \
+		echo "  $$OCG_CMD resume dashboard-redesign"; \
+		echo "  $$OCG_CMD resume dashboard-redesign --model opus"; \
+		echo "  $$OCG_CMD resume dashboard-redesign --assistant opencode"; \
+		echo "  $$OCG_CMD resume dashboard-redesign -m opus -a opencode --container"; \
 		exit 1; \
 	fi
 	@args="$(filter-out $@,$(MAKECMDGOALS))"; \
@@ -156,6 +170,22 @@ remove-comments:
 		cd "$(ORIGINAL_WORKING_DIR)" && "$(SCRIPT_DIR)/remove_comments.sh" $(filter-out $@,$(MAKECMDGOALS)); \
 	fi
 
+ai-config:
+	@if [ -z "$(filter-out $@,$(MAKECMDGOALS))" ]; then \
+		echo "Usage: ocg ai-config <action> [options]"; \
+		echo "Actions:"; \
+		echo "  set default <assistant>  Set default AI assistant (claude|opencode)"; \
+		echo "  get default              Show current default assistant"; \
+		echo "  status                   Show full configuration"; \
+		echo ""; \
+		echo "Examples:"; \
+		echo "  ocg ai-config set default opencode"; \
+		echo "  ocg ai-config get default"; \
+		echo "  ocg ai-config status"; \
+		exit 1; \
+	fi
+	@./ai_config.sh $(filter-out $@,$(MAKECMDGOALS))
+
 
 help:
 	@echo "🚀 Optimum Codegen"
@@ -175,18 +205,22 @@ help:
 		echo ""; \
 		echo "🎨 Workspaces:"; \
 		echo "  $$OCG_CMD prepare --container         📦 Build Docker image and prepare base volumes"; \
-		echo "  $$OCG_CMD new <name> [model]          🎨 Create new feature workspace (default model: sonnet)"; \
+		echo "  $$OCG_CMD new <name> [options]        🎨 Create new feature workspace"; \
 		echo "  $$OCG_CMD new <name> --container      🐳 Create workspace in Docker container"; \
 		echo "  $$OCG_CMD rm <name>                   🗑️  Remove feature workspace"; \
 		echo "  $$OCG_CMD clean                       🧹 Remove ALL feature workspaces (with confirmation)"; \
 		echo "  $$OCG_CMD clean-branches              🌿 Remove all orphaned feature branches (with confirmation)"; \
 		echo "  $$OCG_CMD clean-servers               🔧 Kill servers for all workspace ports"; \
-		echo "  $$OCG_CMD resume <name> [model]       🔄 Resume feature workspace (default model: sonnet)"; \
+		echo "  $$OCG_CMD resume <name> [options]     🔄 Resume feature workspace"; \
 		echo "  $$OCG_CMD resume <name> --container   🐳 Resume workspace in Docker container"; \
 		echo "  $$OCG_CMD ls                          📋 List all feature workspaces"; \
 		echo ""; \
 		echo "🧹 Code Maintenance:"; \
 		echo "  $$OCG_CMD remove-comments             🗑️  Remove comments from git diff changes"; \
+		echo ""; \
+		echo "🤖 AI Assistant Configuration:"; \
+		echo "  $$OCG_CMD ai-config set default       🔧 Set default AI assistant (claude|opencode)"; \
+		echo "  $$OCG_CMD ai-config status            📊 Show AI assistant configuration"; \
 		echo ""; \
 		echo "📋 Recommended Workflow:"; \
 		echo "  1. Run: $$OCG_CMD setup (one-time project initialization)"; \

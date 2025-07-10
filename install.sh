@@ -142,6 +142,88 @@ echo "🤖 Installing Claude Code..."
 echo "   ✅ Claude Code installed"
 
 echo ""
+echo "🤖 Installing OpenCode..."
+# Install OpenCode alongside Claude Code
+if command -v opencode >/dev/null 2>&1; then
+    echo "   ✅ OpenCode already installed"
+else
+    curl -fsSL https://opencode.ai/install | bash
+    echo "   ✅ OpenCode installed"
+fi
+
+echo ""
+echo "🔧 Setting up OpenCode configuration..."
+# Create OpenCode config directory if it doesn't exist
+mkdir -p "$HOME/.config/opencode"
+
+# Basic OpenCode config for OCG integration
+if [ ! -f "$HOME/.config/opencode/config.json" ]; then
+    cat >"$HOME/.config/opencode/config.json" <<EOF
+{
+    "default_provider": "anthropic",
+    "mcp": {
+        "enabled": true
+    }
+}
+EOF
+    echo "   ✅ OpenCode configuration set up"
+else
+    echo "   ✅ OpenCode configuration already exists"
+fi
+
+# Create OCG config directory
+mkdir -p "$HOME/.ocg"
+
+# AI Assistant Configuration - both are now installed
+if [ ! -f "$HOME/.ocg/config.json" ]; then
+    echo ""
+    echo "🤖 AI Assistant Configuration"
+    echo "   Both Claude Code and OpenCode are now installed."
+    echo "   Which should be your default AI assistant?"
+    echo "   1) claude (Claude Code)"
+    echo "   2) opencode (OpenCode)"
+    echo ""
+    read -p "   Choose [1-2]: " choice
+
+    case $choice in
+    1)
+        default_assistant="claude"
+        ;;
+    2)
+        default_assistant="opencode"
+        ;;
+    *)
+        echo "❌ Invalid choice. Defaulting to claude."
+        default_assistant="claude"
+        ;;
+    esac
+
+    # Create initial config with both assistants enabled
+    cat >"$HOME/.ocg/config.json" <<EOF
+{
+    "default_assistant": "$default_assistant",
+    "assistants": {
+        "claude": {
+            "enabled": true
+        },
+        "opencode": {
+            "enabled": true,
+            "provider": "anthropic"
+        }
+    }
+}
+EOF
+
+    echo "✅ Default AI assistant set to: $default_assistant"
+    echo ""
+    echo "💡 You can switch between assistants anytime with: ocg ai-config set default [claude|opencode]"
+    echo "💡 Or override per-command with: ocg new feature --assistant [claude|opencode]"
+else
+    echo ""
+    echo "✅ AI assistant configuration already exists"
+fi
+
+echo ""
 echo "✅ Installation complete!"
 echo ""
 echo "🎯 You can now use these commands from anywhere:"

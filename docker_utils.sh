@@ -22,17 +22,38 @@ check_docker() {
     return 0
 }
 
-# Ensure shared Claude volume exists
-ensure_shared_claude_volume() {
-    echo "🔐 Setting up shared Claude authentication volume..."
+# Ensure shared AI assistant volumes exist
+ensure_shared_ai_volumes() {
+    echo "🔐 Setting up shared AI assistant volumes..."
 
-    # Create the shared volume if it doesn't exist
+    # Create Claude shared volume
     if ! docker volume ls | grep -q "ocg-claude-shared"; then
         docker volume create "ocg-claude-shared" >/dev/null 2>&1
         echo "   ✅ Created shared Claude volume: ocg-claude-shared"
     else
         echo "   ✓ Shared Claude volume exists: ocg-claude-shared"
     fi
+
+    # Create OpenCode shared volume
+    if ! docker volume ls | grep -q "ocg-opencode-shared"; then
+        docker volume create "ocg-opencode-shared" >/dev/null 2>&1
+        echo "   ✅ Created shared OpenCode volume: ocg-opencode-shared"
+    else
+        echo "   ✓ Shared OpenCode volume exists: ocg-opencode-shared"
+    fi
+
+    # Create AI config shared volume
+    if ! docker volume ls | grep -q "ocg-ai-config-shared"; then
+        docker volume create "ocg-ai-config-shared" >/dev/null 2>&1
+        echo "   ✅ Created shared AI config volume: ocg-ai-config-shared"
+    else
+        echo "   ✓ Shared AI config volume exists: ocg-ai-config-shared"
+    fi
+}
+
+# Ensure shared Claude volume exists (backward compatibility)
+ensure_shared_claude_volume() {
+    ensure_shared_ai_volumes
 }
 
 # Clone volumes for workspace-specific use

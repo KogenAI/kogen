@@ -8,6 +8,7 @@ A powerful workspace management system for Phoenix/Elixir projects that creates 
 - Git
 - Cursor IDE (recommended) or VS Code
 - Phoenix/Elixir project
+- AI Assistant: Claude Code or OpenCode (both installed by `make install`)
 
 ## Configuration
 
@@ -23,38 +24,45 @@ The system automatically detects which git repository you're currently in and ma
 3. **Prepare environment (choose one):**
 
    Native mode (uses your local Elixir/Erlang):
+
    ```bash
    ocg prepare
    ```
 
    Container mode (builds Docker image and base volumes):
+
    ```bash
    ocg prepare --container
    ```
 
 4. **Create a new feature workspace:**
-   
+
    Native mode:
+
    ```bash
    ocg new my-feature
    ```
-   
+
    Container mode:
+
    ```bash
    ocg new my-feature --container
    ```
+
 5. **List all workspaces:**
    ```bash
    ocg ls
    ```
 6. **Resume an existing workspace:**
-   
+
    Native mode:
+
    ```bash
    ocg resume my-feature
    ```
-   
+
    Container mode:
+
    ```bash
    ocg resume my-feature --container
    ```
@@ -105,12 +113,22 @@ Each workspace can run in an isolated Docker container with:
 
 ### Workspace Management
 
-- `ocg new <name> [model]` - Create new feature workspace (native mode)
-- `ocg new <name> --container` - Create new feature workspace with Docker container
-- `ocg resume <name> [model]` - Resume existing workspace (native mode)
-- `ocg resume <name> --container` - Resume existing workspace with Docker container
+- `ocg new <name> [options]` - Create new feature workspace
+  - `--model, -m <model>` - AI model to use (sonnet/opus, default: sonnet)
+  - `--assistant, -a <name>` - AI assistant to use (claude/opencode, default: from config)
+  - `--container` - Run in Docker container
+- `ocg resume <name> [options]` - Resume existing workspace
+  - `--model, -m <model>` - AI model to use (default: from workspace)
+  - `--assistant, -a <name>` - AI assistant to use (default: from workspace)
+  - `--container` - Run in Docker container
 - `ocg rm <name>` - Remove workspace (stops container if applicable, archives context)
 - `ocg ls` - List all workspaces
+
+### AI Assistant Configuration
+
+- `ocg ai-config set default <assistant>` - Set default AI assistant (claude/opencode)
+- `ocg ai-config get default` - Show current default assistant
+- `ocg ai-config status` - Show full AI assistant configuration
 
 ### Cleanup
 
@@ -130,7 +148,30 @@ Install globally to use `ocg` commands from anywhere:
 
 ```bash
 cd /path/to/codegen && make install
+# Installs both Claude Code and OpenCode
+# Prompts for default AI assistant preference
 # Then use: ocg new my-feature, ocg ls, etc.
+```
+
+### AI Assistant Support
+
+OCG supports both Claude Code and OpenCode as AI assistants:
+
+- **Claude Code**: Official Anthropic CLI with rich terminal UI
+- **OpenCode**: Open-source alternative with provider flexibility
+
+During installation, both assistants are installed and you'll be prompted to choose a default. You can switch between them anytime:
+
+```bash
+# Set default assistant
+ocg ai-config set default opencode
+
+# Use specific assistant for a workspace
+ocg new my-feature --assistant claude
+ocg new my-feature -a opencode --model opus
+
+# Check current configuration
+ocg ai-config status
 ```
 
 ## Working with Docker
