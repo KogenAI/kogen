@@ -185,38 +185,15 @@ else
     AI_ASSISTANT="claude"
 fi
 
-# Source model mapper
-source "$CODEGEN_DIR/ai-assistants/model-mapper.sh"
-
 # Start AI assistant with appropriate model
 echo "Starting $AI_ASSISTANT with $MODEL model..."
 echo "Planning context created, $AI_ASSISTANT will read it automatically."
 echo ""
 
-export SHELL=/bin/bash
+# Create temporary prompt file
+PROMPT_FILE=$(mktemp)
+trap "rm -f $PROMPT_FILE" EXIT
+echo "$PLANNING_PROMPT" >"$PROMPT_FILE"
 
-case "$AI_ASSISTANT" in
-claude)
-    if command -v claude >/dev/null 2>&1; then
-        exec claude --dangerously-skip-permissions --model "$MODEL" "$PLANNING_PROMPT"
-    else
-        echo "⚠️  Claude CLI not found. Please install Claude CLI first and try again."
-        exit 1
-    fi
-    ;;
-opencode)
-    if command -v opencode >/dev/null 2>&1; then
-        # Get provider and map model name
-        PROVIDER=$(get_provider "opencode")
-        OC_MODEL=$(map_model "$MODEL" "opencode" "$PROVIDER")
-        exec opencode run --model "$PROVIDER/$OC_MODEL" "$PLANNING_PROMPT"
-    else
-        echo "⚠️  OpenCode not found. Please install OpenCode first and try again."
-        exit 1
-    fi
-    ;;
-*)
-    echo "❌ Unknown AI assistant: $AI_ASSISTANT"
-    exit 1
-    ;;
-esac
+# Run AI assistant
+"$CODEGEN_DIR/ai-assistants/run-ai.sh" "$AI_ASSISTANT" "$MODEL" "$PROMPT_FILE"

@@ -95,5 +95,22 @@ else
     exit 1
 fi
 
-# Run the wrapper script
-"$AI_ASSISTANTS_DIR/wrapper.sh" "$AI_ASSISTANT" "$MODEL" "$WORKSPACE_DIR"
+# Set Claude-specific environment variable if needed
+if [ "$AI_ASSISTANT" = "claude" ]; then
+    export CLAUDE_BASH_MAINTAIN_PROJECT_WORKING_DIR=true
+fi
+
+# Create prompt file path
+PROMPT_FILE="$WORKSPACE_DIR/codegen/PROMPT.md"
+
+# Verify prompt file exists
+if [ ! -f "$PROMPT_FILE" ]; then
+    echo "❌ Prompt file not found: $PROMPT_FILE"
+    exit 1
+fi
+
+# Change to workspace directory
+cd "$WORKSPACE_DIR"
+
+# Use the same run-ai.sh script as everyone else
+"$AI_ASSISTANTS_DIR/run-ai.sh" "$AI_ASSISTANT" "$MODEL" "$PROMPT_FILE"

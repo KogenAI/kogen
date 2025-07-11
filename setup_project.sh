@@ -189,35 +189,14 @@ else
     AI_ASSISTANT="claude"
 fi
 
-# Source model mapper
-source "$SCRIPT_DIR/ai-assistants/model-mapper.sh"
-
 echo "🤖 Starting $AI_ASSISTANT with Opus model for setup..."
 
-export SHELL=/bin/bash
+cd "$REPO_ROOT"
 
-case "$AI_ASSISTANT" in
-claude)
-    if command -v claude >/dev/null 2>&1; then
-        exec claude --dangerously-skip-permissions --model opus "$SETUP_PROMPT"
-    else
-        echo "⚠️  Claude CLI not found. Please install Claude CLI first and try again."
-        exit 1
-    fi
-    ;;
-opencode)
-    if command -v opencode >/dev/null 2>&1; then
-        # Get provider and map model name
-        PROVIDER=$(get_provider "opencode")
-        OC_MODEL=$(map_model "opus" "opencode" "$PROVIDER")
-        exec opencode run --model "$PROVIDER/$OC_MODEL" "$SETUP_PROMPT"
-    else
-        echo "⚠️  OpenCode not found. Please install OpenCode first and try again."
-        exit 1
-    fi
-    ;;
-*)
-    echo "❌ Unknown AI assistant: $AI_ASSISTANT"
-    exit 1
-    ;;
-esac
+# Create temporary prompt file
+PROMPT_FILE=$(mktemp)
+trap "rm -f $PROMPT_FILE" EXIT
+echo "$SETUP_PROMPT" >"$PROMPT_FILE"
+
+# Run AI assistant
+"$SCRIPT_DIR/ai-assistants/run-ai.sh" "$AI_ASSISTANT" "opus" "$PROMPT_FILE"
