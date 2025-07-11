@@ -70,14 +70,6 @@ if [ -z "$ASSISTANT" ]; then
     fi
 fi
 
-# Source authentication check
-source "$SCRIPT_DIR/ai-assistants/check-auth.sh"
-
-# Check authentication before creating workspace
-if ! check_assistant_auth "$ASSISTANT"; then
-    exit 1
-fi
-
 REPO_ROOT="$TARGET_REPO_PATH"
 WORKSPACE_NAME="${FEATURE_NAME}"
 WORKSPACE_PATH="${REPO_ROOT}/codegen/workspaces/${WORKSPACE_NAME}"

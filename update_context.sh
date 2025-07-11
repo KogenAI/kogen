@@ -156,14 +156,6 @@ else
     AI_ASSISTANT="claude"
 fi
 
-# Source authentication check
-source "$SCRIPT_DIR/ai-assistants/check-auth.sh"
-
-# Check authentication
-if ! check_assistant_auth "$AI_ASSISTANT"; then
-    exit 1
-fi
-
 # Source model mapper
 source "$SCRIPT_DIR/ai-assistants/model-mapper.sh"
 

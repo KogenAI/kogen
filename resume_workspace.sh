@@ -97,14 +97,6 @@ echo "🔍 Using AI assistant: $ASSISTANT with model: $MODEL"
 export AI_ASSISTANT="$ASSISTANT"
 export AI_MODEL="$MODEL"
 
-# Source authentication check
-source "$SCRIPT_DIR/ai-assistants/check-auth.sh"
-
-# Check authentication before resuming workspace
-if ! check_assistant_auth "$ASSISTANT"; then
-    exit 1
-fi
-
 cd "$WORKSPACE_PATH"
 
 git submodule update --init --recursive >/dev/null 2>&1
