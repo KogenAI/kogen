@@ -52,7 +52,7 @@ run_assistant() {
         export CLAUDE_BASH_MAINTAIN_PROJECT_WORKING_DIR=true
 
         echo "🤖 Using Claude Code with model: $model"
-        claude --model "$model" <"$prompt_file"
+        claude --dangerously-skip-permissions --model "$model" <"$prompt_file"
         ;;
     opencode)
         # Get provider and map model name

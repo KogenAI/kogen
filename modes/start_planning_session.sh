@@ -198,7 +198,7 @@ export SHELL=/bin/bash
 case "$AI_ASSISTANT" in
 claude)
     if command -v claude >/dev/null 2>&1; then
-        exec claude --model "$MODEL" "$PLANNING_PROMPT"
+        exec claude --dangerously-skip-permissions --model "$MODEL" "$PLANNING_PROMPT"
     else
         echo "⚠️  Claude CLI not found. Please install Claude CLI first and try again."
         exit 1
