@@ -34,15 +34,19 @@ else
     echo "❌ Mise not found after loading shell environment"
 fi
 
-# Verify we have the tools
+# Verify we have the tools (suppress version checks that might fail)
 if command -v elixir >/dev/null 2>&1; then
-    echo "✅ Elixir: $(elixir --version | head -n1 | cut -d' ' -f2)"
+    # Try to get version, but don't fail if it errors
+    ELIXIR_VERSION=$(elixir --short-version 2>/dev/null || echo "detected")
+    echo "✅ Elixir: $ELIXIR_VERSION"
 else
     echo "❌ Elixir not found - environment may not be properly loaded"
 fi
 
 if command -v erl >/dev/null 2>&1; then
-    echo "✅ Erlang/OTP: $(erl -eval 'erlang:display(erlang:system_info(otp_release)), halt().' -noshell 2>/dev/null | tr -d '\"')"
+    # Try to get version, but don't fail if it errors
+    ERL_VERSION=$(erl -noshell -eval 'io:format("~s", [erlang:system_info(otp_release)]), halt().' 2>/dev/null || echo "detected")
+    echo "✅ Erlang/OTP: $ERL_VERSION"
 else
     echo "❌ Erlang not found"
 fi
