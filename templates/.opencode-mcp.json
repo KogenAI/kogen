@@ -1,6 +1,11 @@
 {
   "$schema": "https://opencode.ai/config.json",
   "mcp": {
+    "figma": {
+      "type": "remote",
+      "url": "http://localhost:3845/sse",
+      "enabled": true
+    },
     "tidewave": {
       "type": "local",
       "command": ["mcp-proxy", "http://localhost:{{PORT}}/tidewave/mcp"],

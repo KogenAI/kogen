@@ -1,14 +1,18 @@
 {
   "mcpServers": {
+    "figma": {
+      "type": "sse",
+      "url": "http://localhost:3845/sse"
+    },
+    "playwright": {
+      "type": "http",
+      "url": "http://localhost:{{PLAYWRIGHT_MCP_PORT}}/mcp"
+    },
     "tidewave": {
       "type": "stdio",
       "command": "mcp-proxy",
       "args": ["http://localhost:{{PORT}}/tidewave/mcp"],
       "env": {}
-    },
-    "playwright": {
-      "type": "http",
-      "url": "http://localhost:{{PLAYWRIGHT_MCP_PORT}}/mcp"
     }
   }
 }
