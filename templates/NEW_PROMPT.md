@@ -17,6 +17,8 @@ Follow the staged development workflow and update CONTEXT.md as you progress thr
 - Phoenix Port: {{PORT}}
 - Playwright MCP Port: {{PLAYWRIGHT_MCP_PORT}}
 
+**IMPORTANT**: Work ONLY in the workspace directory ({{WORKSPACE_PATH}}). Do NOT navigate to or modify files in the parent repository directory. The workspace is a git worktree that contains all necessary files for development.
+
 ## Available Context Files
 
 - `./codegen/PLAN.md` - The implementation plan (~50-100 lines) - **READ ONLY**

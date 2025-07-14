@@ -28,6 +28,8 @@ Continue implementing the plan using context from files in your workspace:
 - Phoenix Port: {{PORT}}
 - Playwright MCP Port: {{PLAYWRIGHT_MCP_PORT}}
 
+**IMPORTANT**: Work ONLY in the workspace directory ({{WORKSPACE_PATH}}). Do NOT navigate to or modify files in the parent repository directory. The workspace is a git worktree that contains all necessary files for development.
+
 ## Important: CI Requirements
 
 **CRITICAL**: Before completing any implementation, you MUST ensure CI checks pass.
