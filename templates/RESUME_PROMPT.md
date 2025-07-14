@@ -37,4 +37,6 @@ Continue implementing the plan using context from files in your workspace:
 - Do not consider implementation complete until CI checks pass
 - This ensures consistent code quality across the project
 
+**IMPORTANT**: You should not come back until the whole plan is implemented. Continue working through all remaining stages completely before considering the task finished.
+
 Review the current stage in CONTEXT.md and recent changes, then continue implementation.

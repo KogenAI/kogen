@@ -39,4 +39,6 @@ Follow the staged development workflow and update CONTEXT.md as you progress thr
 - Do not consider implementation complete until CI checks pass
 - This ensures consistent code quality across the project
 
+**IMPORTANT**: You should not come back until the whole plan is implemented. Work through all stages completely before considering the task finished.
+
 Start by reviewing the plan and current context, then begin implementation.
