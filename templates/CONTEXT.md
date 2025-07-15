@@ -16,6 +16,7 @@
 - **Database (dev)**: {{DB_NAME_PREFIX}}\_dev{{PARTITION}}
 - **Database (test)**: {{DB_NAME_PREFIX}}\_test{{PARTITION}}
 - **Branch**: feature/{{FEATURE_NAME}}
+- **Workspace**: {{WORKSPACE_PATH}} (work ONLY in this directory)
 
 ### Feature Impact Analysis
 
@@ -36,7 +37,7 @@
 - Phoenix LiveView with Elixir
 - PostgreSQL with Ecto
 - Tailwind CSS
-- MCP Servers: Tidewave (Elixir tools) + Playwright (browser automation)
+- MCP Servers: Tidewave (Elixir tools) + Playwright (browser automation) + Figma (design analysis)
 
 ### Important Notes
 
