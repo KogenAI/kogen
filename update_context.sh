@@ -65,7 +65,7 @@ Please review the archived feature context and integrate its learnings into \`./
 ## Guidelines
 
 - **Use the archived feature context as your primary source** - it contains the actual implementation details and learnings
-- **Integrate learnings, not changelog entries** - Add patterns/pitfalls to relevant sections, not "✅ Feature X completed"
+- **Integrate learnings, not changelog entries** - Add patterns/pitfalls to relevant sections, not \"✅ Feature X completed\"
 - **Keep it concise** - If PROJECT_CONTEXT.md would exceed 250 lines, consolidate further
 - **Focus on reusable knowledge** - Patterns, pitfalls, and approaches that help future development
 - **Update module descriptions** - Add new capabilities to existing module descriptions
@@ -94,7 +94,10 @@ if [ "$CONTEXT_EXISTS" = true ]; then
     CONTEXT_UPDATE_PROMPT="$CONTEXT_UPDATE_PROMPT, then CAREFULLY REVIEW the archived feature context in \`codegen/contexts/$FEATURE_NAME.md\` (this contains the actual implementation details)"
 fi
 
-CONTEXT_UPDATE_PROMPT="$CONTEXT_UPDATE_PROMPT, and also check the original feature plan. Then update the main PROJECT_CONTEXT.md with the learnings from this feature development.**
+CONTEXT_UPDATE_PROMPT="$CONTEXT_UPDATE_PROMPT, and also check the original feature plan. Then update the main PROJECT_CONTEXT.md with the learnings from this feature development.**"
+
+# Add the Integration Example and Recipe Extraction content
+CONTEXT_UPDATE_PROMPT="$CONTEXT_UPDATE_PROMPT
 
 ## Integration Example
 
@@ -107,8 +110,8 @@ Instead of adding:
 \`\`\`
 
 Integrate into existing sections:
-- Add "DigitalSignatures" to Infrastructure Modules with description
-- Add "Provider-agnostic interfaces using behaviours" to Architecture Principles
+- Add \"DigitalSignatures\" to Infrastructure Modules with description
+- Add \"Provider-agnostic interfaces using behaviours\" to Architecture Principles
 - Add any new pitfalls to Common Pitfalls section
 
 ## Recipe Extraction
