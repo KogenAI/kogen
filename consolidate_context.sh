@@ -18,10 +18,14 @@ fi
 ORIGINAL_SIZE=$(wc -l <"$CONTEXT_FILE" | tr -d ' ')
 
 # Determine target size based on current size
-TARGET_MIN=300
-TARGET_MAX=400
+# Updated based on BemedaPersonal consolidation learnings:
+# - 165-250 lines is optimal for clarity while leaving room for context
+# - Features section often better integrated than listed separately
+TARGET_MIN=150
+TARGET_MAX=250
 if [ "$ORIGINAL_SIZE" -gt 2000 ]; then
-    TARGET_MAX=500 # Allow up to 500 for very large codebases
+    TARGET_MIN=200
+    TARGET_MAX=300 # Even large codebases can be concise
 fi
 
 # Check if file is already in optimal range
@@ -78,9 +82,10 @@ Please consolidate PROJECT_CONTEXT.md to meet the target size by:
 
 1. **Remove true redundancies** - If the same information appears multiple times, keep it only once
 2. **Preserve ALL module names** - Keep full module names (e.g., TenantManagementLive.PropertyManagement.PropertyTree) for Tidewave/MCP
-3. **Consolidate feature learnings** - Integrate insights into relevant sections with brief attribution
-4. **Condense verbose sections** - Make descriptions concise but complete
+3. **Remove or integrate feature sections** - Changelog-style feature lists often add no value; integrate learnings into relevant sections instead
+4. **Expand cryptic one-liners** - Replace terse descriptions like "API → sub-modules" with clear explanations
 5. **Keep critical details** - Function names, patterns, database schemas, API endpoints
+6. **Aim for clarity over extreme brevity** - ~250 lines of clear content is better than 150 cryptic lines
 
 ## Consolidation Strategy
 
@@ -117,20 +122,28 @@ MUST preserve:
 - Critical patterns and pitfalls
 - Testing approaches that worked
 
-CAN condense:
+CAN condense or remove:
 - Verbose feature descriptions
 - Repeated explanations of the same concept
 - Implementation narratives (keep only learnings)
 - Overly detailed module descriptions
+- Changelog-style feature sections (integrate learnings instead)
+- Historical implementation details without future value
 
 ## Expected Structure
 
 Optimize for ~$TARGET_MIN-$TARGET_MAX lines with:
-- **Project Overview** (5-10 lines) - Mission and core architecture
-- **Module Directory** (100-150 lines) - Full names, concise descriptions
-- **Tech Stack & Patterns** (50-75 lines) - Key patterns with examples
-- **Development Guidelines** (50-75 lines) - Do's, don'ts, and pitfalls
-- **Feature Implementations** (50-100 lines) - Key learnings only
+- **Project Overview** (5-10 lines) - Mission, users, architecture, tech stack
+- **Module Directory** (40-80 lines) - Full names with clear, concise descriptions
+- **Tech Stack & Patterns** (60-80 lines) - Clear patterns with explanations (not cryptic one-liners)
+- **Development Guidelines** (40-60 lines) - Critical best practices, pitfalls, and workflow tips
+- **NO separate feature section** - Integrate learnings where they belong
+
+## Quality Guidelines
+
+- **Clarity over brevity**: "Public functions in main context module delegate to sub-modules" instead of "API → sub-modules"
+- **Actionable knowledge**: Focus on patterns and pitfalls that help future development
+- **Remove changelog content**: No "✅ Completed" feature lists - integrate the learnings instead
 
 Remember: This file needs to fit efficiently in Claude's context alongside:
 - Feature context (CONTEXT.md): 200-300 lines of active work and learnings

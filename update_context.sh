@@ -45,6 +45,10 @@ CONTEXT_UPDATE_PROMPT="# Project Context Update for Feature: $FEATURE_NAME
 
 I need you to integrate the archived feature context from \`./codegen/contexts/$FEATURE_NAME.md\` into the main \`./codegen/PROJECT_CONTEXT.md\` file to incorporate learnings from this completed feature implementation.
 
+## Size Awareness
+
+PROJECT_CONTEXT.md should remain concise (150-250 lines). Do NOT add a feature section - instead integrate learnings directly into relevant existing sections.
+
 ## Your Task
 
 Please review the archived feature context and integrate its learnings into \`./codegen/PROJECT_CONTEXT.md\` with:
@@ -61,12 +65,13 @@ Please review the archived feature context and integrate its learnings into \`./
 ## Guidelines
 
 - **Use the archived feature context as your primary source** - it contains the actual implementation details and learnings
-- **Integrate the real implementation details** - use actual module names and patterns from the development
-- **Focus on what was actually built** - not just what was planned
-- **Update the \"Last Updated\" timestamp** to reflect this context update
-- **Add a note** about this feature being completed and context updated
-- **Document any deviations** from the original plan and why they occurred
-- **Include any new patterns** or conventions established during development
+- **Integrate learnings, not changelog entries** - Add patterns/pitfalls to relevant sections, not "✅ Feature X completed"
+- **Keep it concise** - If PROJECT_CONTEXT.md would exceed 250 lines, consolidate further
+- **Focus on reusable knowledge** - Patterns, pitfalls, and approaches that help future development
+- **Update module descriptions** - Add new capabilities to existing module descriptions
+- **Enhance patterns section** - Add new patterns discovered during implementation
+- **Update the \"Last Updated\" timestamp** with a brief note about what knowledge was added
+- **NO feature lists** - Integrate the knowledge where it belongs in the structure
 
 ## Files to Review
 
@@ -90,6 +95,21 @@ if [ "$CONTEXT_EXISTS" = true ]; then
 fi
 
 CONTEXT_UPDATE_PROMPT="$CONTEXT_UPDATE_PROMPT, and also check the original feature plan. Then update the main PROJECT_CONTEXT.md with the learnings from this feature development.**
+
+## Integration Example
+
+Instead of adding:
+\`\`\`markdown
+### Digital Contract Signing
+- **Status**: ✅ Production Ready
+- **Provider-agnostic architecture with SignWell/Mock**
+- **In-memory session management**
+\`\`\`
+
+Integrate into existing sections:
+- Add "DigitalSignatures" to Infrastructure Modules with description
+- Add "Provider-agnostic interfaces using behaviours" to Architecture Principles
+- Add any new pitfalls to Common Pitfalls section
 
 ## Recipe Extraction
 

@@ -83,7 +83,7 @@ Save your final plan to: [{{PLAN_OUTPUT_FILE}}]({{PLAN_OUTPUT_FILE}})
 - Target: 50-100 lines for the plan
 - Focus on actionable steps, not verbose explanations
 - Use bullet points and concise language
-- Remember: This will be loaded alongside PROJECT_CONTEXT.md (300-400 lines) and CONTEXT.md
+- Remember: This will be loaded alongside PROJECT_CONTEXT.md (150-250 lines) and CONTEXT.md
 
 Include in your plan:
 

@@ -4,7 +4,7 @@ Continue implementing the plan using context from files in your workspace:
 
 - ./codegen/PLAN.md (implementation plan, ~50-100 lines) - READ ONLY
 - ./codegen/CONTEXT.md (your working document - check current stage, ~200-300 lines) - **UPDATE THIS FILE**
-- ./codegen/PROJECT_CONTEXT.md (project knowledge base, ~300-400 lines) - **READ ONLY - DO NOT MODIFY**
+- ./codegen/PROJECT_CONTEXT.md (project knowledge base, ~150-250 lines) - **READ ONLY - DO NOT MODIFY**
 
 **Important**:
 

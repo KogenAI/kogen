@@ -23,7 +23,7 @@ Follow the staged development workflow and update CONTEXT.md as you progress thr
 
 - `./codegen/PLAN.md` - The implementation plan (~50-100 lines) - **READ ONLY**
 - `./codegen/CONTEXT.md` - Track your progress and stages here (~200-300 lines) - **UPDATE THIS FILE**
-- `./codegen/PROJECT_CONTEXT.md` - Project architecture and patterns (~300-400 lines) - **READ ONLY - DO NOT MODIFY**
+- `./codegen/PROJECT_CONTEXT.md` - Project architecture and patterns (~150-250 lines) - **READ ONLY - DO NOT MODIFY**
 - `./{{AGENT_CONTEXT_FILE}}` - Repository-specific guidance - **READ ONLY**
 
 **Note**:

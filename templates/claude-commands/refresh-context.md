@@ -13,4 +13,4 @@ Important steps:
    - Preserving important technical decisions and their rationale
 6. After updating, clearly tell me: "Context file has been updated. Please reload this chat session and load the updated context file to continue with a fresh Claude Code context."
 
-This ensures we preserve valuable information while keeping the context size manageable (remember: CONTEXT.md + PROJECT_CONTEXT.md + PLAN.md should total ~700-800 lines).
+This ensures we preserve valuable information while keeping the context size manageable (remember: CONTEXT.md + PROJECT_CONTEXT.md + PLAN.md should total ~500-650 lines).
