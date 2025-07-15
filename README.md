@@ -2,9 +2,13 @@
 
 A powerful workspace management system for Phoenix/Elixir projects that creates isolated feature workspaces using git worktrees and Docker containers.
 
+## Overview
+
+Optimum Codegen (OCG) is a workspace management system that enables parallel development of multiple features with separate environments, ports, and databases. Each workspace is an isolated git worktree with its own branch, Phoenix port, database partition, and optional Docker container.
+
 ## Prerequisites
 
-- Docker Desktop installed and running
+- Docker Desktop installed and running (for container mode)
 - Git
 - Cursor IDE (recommended) or VS Code
 - Phoenix/Elixir project
@@ -80,23 +84,29 @@ Each workspace can run in an isolated Docker container with:
 
 ### File Structure
 
-- **Project Context** is stored in `{CURRENT_REPO}/codegen/PROJECT_CONTEXT.md`
-- **Workspaces** are created in `{CURRENT_REPO}/codegen/workspaces/`
-- **Plans** are stored in `{CURRENT_REPO}/codegen/plans/`
-- **Feature Contexts** are archived in `{CURRENT_REPO}/codegen/contexts/`
-- **Templates** are provided by the codegen tools
+```
+{TARGET_REPO}/
+├── codegen/
+│   ├── PROJECT_CONTEXT.md      # Main project knowledge base
+│   ├── workspaces/             # Isolated feature workspaces
+│   │   └── {feature}/          # Git worktree for feature
+│   ├── plans/                  # Feature development plans
+│   │   └── {feature}.md        # Specific feature plan
+│   └── contexts/               # Archived feature contexts
+│       └── {feature}/          # Context files after completion
+```
 
 ### Each Workspace Gets
 
 - Git worktree with branch (`feature/{workspace-name}`)
-- Docker container (`ocg-{workspace-name}`)
+- Docker container (`ocg-{workspace-name}`) if using container mode
 - Auto-assigned ports (Phoenix: 4001+, Playwright: 8901+)
 - Database partition based on port offset
 - Volume-mounted dependencies for fast startup
 - Fresh copy of PROJECT_CONTEXT.md
 - Claude Code integration with prepared prompts
 
-## Commands
+## Commands Reference
 
 ### Project Management
 
@@ -139,8 +149,51 @@ Each workspace can run in an isolated Docker container with:
 ### Tools
 
 - `ocg remove-comments` - Remove comments from git diff changes
+- `ocg format` - Format all shell scripts and files
 - `make install` - Install CLI globally for `ocg` commands
 - `make uninstall` - Remove global CLI installation
+
+### Phoenix/Elixir Commands (within workspaces)
+
+- `mix setup` - Install dependencies, setup database, build assets
+- `mix phx.server` - Start Phoenix server
+- `mix deps.get` - Install Elixir dependencies
+- `mix test` - Run tests
+- `mix test path/to/test.exs` - Run single test file
+
+## Development Workflow
+
+### Recommended Planning-First Workflow
+
+1. **Initialize Project**: Run `ocg setup` once per repository
+2. **Bird-Eye Planning**: Run `ocg bird-eye {feature}` for high-level planning
+3. **Detailed Planning**: Run `ocg plan {feature}` for technical planning
+4. **Create Workspace**: Run `ocg new {feature}` - automatically:
+   - Creates git worktree with your plan
+   - Assigns ports
+   - Copies dependencies from main
+   - Opens IDE with context
+   - Starts servers
+5. **Develop**: Work in isolated environment with AI assistance
+6. **Archive**: Run `ocg rm {feature}` to save context
+7. **Update Knowledge**: Run `ocg update-context {feature}` to incorporate learnings
+8. **Cleanup**: Use `ocg clean-branches` when features are merged
+
+### Container vs Native Modes
+
+**Native Mode** (default)
+
+- Workspaces run directly on your host system
+- Uses your existing Elixir/Phoenix installation
+- Fast startup, direct file access
+- Example: `ocg new my-feature`
+
+**Container Mode** (`--container` flag)
+
+- Workspaces run in isolated Docker containers
+- Consistent Elixir/Phoenix environment across machines
+- Isolated authentication and dependencies
+- Example: `ocg new my-feature --container`
 
 ## Global Installation
 
@@ -209,6 +262,89 @@ OCG uses Docker volumes for dependencies:
 
 Run `ocg prepare --container` from your main branch to build the Docker image and populate base volumes with compiled dependencies.
 
+## Context Window Management
+
+### File Size Guidelines
+
+To optimize context window usage, maintain these target sizes:
+
+- **PROJECT_CONTEXT.md**: 150-250 lines (use `ocg consolidate-context` when larger)
+- **PLAN.md**: 50-100 lines (created by `ocg plan`)
+- **CONTEXT.md**: 200-300 lines (archive completed work regularly)
+- **Total**: ~500-650 lines, leaving ample room for code reading
+
+### Consolidation Best Practices
+
+- **Clarity over brevity**: Expand cryptic one-liners into clear explanations
+- **Remove feature sections**: Integrate learnings into relevant sections, not changelog-style lists
+- **Focus on actionable knowledge**: Patterns, pitfalls, and approaches that help future development
+- **Quality threshold**: 250 clear lines is better than 150 cryptic lines
+
+### Context Commands
+
+- Use `/refresh-context` command (if available) to archive completed work
+- Focus on removing completed implementation details while preserving learnings
+- Run `ocg consolidate-context` when PROJECT_CONTEXT.md exceeds 250 lines
+
+## Model Selection Guidelines
+
+- **sonnet** - Faster responses, good for implementation and development tasks
+- **opus** - More thorough analysis, better for planning and complex reasoning
+- **Default usage**:
+  - `bird-eye`: opus (high-level planning)
+  - `plan`: opus (detailed technical planning)
+  - `new`/`resume`: sonnet (implementation work)
+  - `setup`: opus (comprehensive project analysis)
+  - `update-context`: sonnet (routine context updates)
+  - `consolidate-context`: opus (thorough consolidation for clarity)
+
+## Important Conventions
+
+### Git Workflow
+
+- Feature branches use pattern: `feature/{name}`
+- Workspaces are git worktrees, not clones
+- Main branch artifacts (deps, \_build) are copied to speed setup
+- Branches are preserved after workspace removal unless explicitly cleaned
+
+### Port Management
+
+- Phoenix ports start at 4001 and increment by 1
+- Playwright MCP ports start at 8901 and increment by 1
+- Ports are automatically assigned based on existing workspaces
+- Server cleanup is automatic before starting new servers
+
+### Context Management
+
+- PROJECT_CONTEXT.md is the source of truth for project knowledge (target: 150-250 lines)
+- Each workspace gets a fresh copy of PROJECT_CONTEXT.md
+- Feature contexts are archived in `codegen/contexts/{feature}/`
+- Use `ocg update-context` to merge learnings back to main context (integrates, not appends)
+- Use `ocg consolidate-context` to streamline PROJECT_CONTEXT.md when it exceeds 250 lines
+- Avoid changelog-style feature sections - integrate learnings into existing structure
+
+### Recipe Extraction
+
+- Reusable patterns are automatically extracted during `ocg update-context`
+- Recipes are stored in `~/Areas/Optimum/context/recipes/`
+- Each recipe documents a self-contained, reusable technique
+- Examples: data sanitization, auth patterns, testing strategies
+
+### AI Integration
+
+- IDE automatically opens with feature context
+- MCP servers provide additional tooling (Tidewave for Elixir, Playwright for browser)
+- Context files guide AI assistants through development stages
+- Model selection optimizes AI assistance for different task types
+
+## Context Quality Guidelines
+
+- **Module Names**: Always preserve full module names for Tidewave/MCP compatibility
+- **Pattern Descriptions**: Explain patterns clearly (e.g., "Context functions delegate to sub-modules" not "API → sub-modules")
+- **Feature Learnings**: Integrate into relevant sections, not separate changelog sections
+- **Pitfalls**: Document with specific solutions (e.g., "Use User.job_seeker?/1 helpers")
+- **Size vs Clarity**: Prioritize clarity - 250 clear lines > 150 cryptic lines
+
 ## Multiple Projects
 
 The same codegen tools work with any git repository:
@@ -223,6 +359,19 @@ The same codegen tools work with any git repository:
    - Plans in `codegen/plans/`
    - Archived contexts in `codegen/contexts/`
    - Docker volumes for dependencies
+
+## Security Notes
+
+- Never commit .env files (already in .gitignore)
+- Database credentials use development defaults
+- Each workspace has isolated database partition
+- No production credentials should be stored in workspaces
+
+## Bash Completion
+
+- Bash completion is available for all commands and arguments
+- Automatically completes feature names, workspace names, and model parameters
+- Source `bash_completion.sh` or install globally with `make install`
 
 ## Troubleshooting
 
