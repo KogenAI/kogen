@@ -163,5 +163,22 @@
       "Read(../../*)"
     ]
   },
-  "enabledMcpjsonServers": ["figma", "playwright", "tidewave"]
+  "enabledMcpjsonServers": ["figma", "playwright", "tidewave"],
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|MultiEdit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash -c 'file_path=$(jq -r \".tool_input.file_path\"); if echo \"$file_path\" | grep -q \"\\.exs\\?$\"; then mix format \"$file_path\" 2>/dev/null || true; fi'"
+          },
+          {
+            "type": "command",
+            "command": "bash -c 'file_path=$(jq -r \".tool_input.file_path\"); if echo \"$file_path\" | grep -qE \"\\.(js|md|json|css|html)$\"; then npx prettier --write \"$file_path\" 2>/dev/null || true; fi'"
+          }
+        ]
+      }
+    ]
+  }
 }
