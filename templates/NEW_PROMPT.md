@@ -34,31 +34,16 @@ Follow the staged development workflow and update CONTEXT.md as you progress thr
 
 ## Important: CI Requirements
 
-**CRITICAL**: Before completing any implementation, you MUST ensure CI checks pass.
+**CRITICAL**: Run `./codegen/ci.sh` before completing implementation. Fix all issues.
 
-- Run `./codegen/ci.sh` after making changes to verify code quality
-- Fix any formatting, linting, or other issues reported
-- Do not consider implementation complete until CI checks pass
-- This ensures consistent code quality across the project
+**AUTONOMOUS WORK**: Work continuously until feature is 100% complete and perfect.
 
-**CRITICAL AUTONOMOUS WORK**: You MUST work for 2-6 hours continuously until the feature is COMPLETELY finished and working perfectly in the browser. Never stop after compilation fixes, template changes, or backend completion - these are milestones, not endpoints.
+## Start Time
 
-**PROHIBITED STOPPING POINTS**:
+**First Action**: Log start time in CONTEXT.md:
 
-- ❌ After fixing compilation or template errors
-- ❌ After backend implementation complete
-- ❌ After CI passes (still need browser validation)
-- ❌ After "should work now" moments
-- ❌ After adding missing components or attributes
+```bash
+date -u +"%a %b %d %H:%M:%S UTC %Y"
+```
 
-**MANDATORY COMPLETION CRITERIA**:
-
-- ✅ Feature works perfectly in actual browser
-- ✅ Mobile, tablet, desktop all tested and functional
-- ✅ All user workflows validated end-to-end
-- ✅ CI passes AND browser validation complete
-- ✅ User can immediately use feature without additional work
-
-**TEMPLATE FIX PROTOCOL**: After any compilation fix, IMMEDIATELY test in browser and continue working until 100% complete.
-
-Start by reviewing the plan and current context, then begin implementation and work until completely finished.
+Review the plan and current context, then begin implementation.
