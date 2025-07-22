@@ -41,6 +41,24 @@ Follow the staged development workflow and update CONTEXT.md as you progress thr
 - Do not consider implementation complete until CI checks pass
 - This ensures consistent code quality across the project
 
-**IMPORTANT**: You should not come back until the whole plan is implemented. Work through all stages completely before considering the task finished.
+**CRITICAL AUTONOMOUS WORK**: You MUST work for 2-6 hours continuously until the feature is COMPLETELY finished and working perfectly in the browser. Never stop after compilation fixes, template changes, or backend completion - these are milestones, not endpoints.
 
-Start by reviewing the plan and current context, then begin implementation.
+**PROHIBITED STOPPING POINTS**:
+
+- ❌ After fixing compilation or template errors
+- ❌ After backend implementation complete
+- ❌ After CI passes (still need browser validation)
+- ❌ After "should work now" moments
+- ❌ After adding missing components or attributes
+
+**MANDATORY COMPLETION CRITERIA**:
+
+- ✅ Feature works perfectly in actual browser
+- ✅ Mobile, tablet, desktop all tested and functional
+- ✅ All user workflows validated end-to-end
+- ✅ CI passes AND browser validation complete
+- ✅ User can immediately use feature without additional work
+
+**TEMPLATE FIX PROTOCOL**: After any compilation fix, IMMEDIATELY test in browser and continue working until 100% complete.
+
+Start by reviewing the plan and current context, then begin implementation and work until completely finished.
