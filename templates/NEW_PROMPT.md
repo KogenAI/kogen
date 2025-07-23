@@ -47,3 +47,5 @@ date -u +"%a %b %d %H:%M:%S UTC %Y"
 ```
 
 Review the plan and current context, then begin implementation.
+
+**Rule Loading**: This is an implementation session - load workflow.md and project-specific rules based on your tech stack (as guided by {{AGENT_CONTEXT_FILE}}).

@@ -45,3 +45,5 @@ date -u +"%a %b %d %H:%M:%S UTC %Y"
 ```
 
 Review current stage and recent changes, then continue implementation.
+
+**Rule Loading**: This is an implementation session - load workflow.md and project-specific rules based on your tech stack (check AGENTS.md for guidance).
