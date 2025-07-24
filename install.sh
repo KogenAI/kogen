@@ -117,29 +117,14 @@ fi
 echo ""
 echo "🚀 Setting up Claude Code bash environment..."
 
-# Create clean bash profile for Claude Code
-cat >~/.bash_profile <<'EOF'
-# Minimal bash profile for Claude Code
-# Keep bash environment separate from zsh - override PATH completely
-export PATH="/usr/local/node/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
-EOF
-
-# Install Node.js standalone binary if not already installed
-if [ ! -d "/usr/local/node" ]; then
-    echo "📦 Installing Node.js..."
-    curl -o ~/Downloads/node-v22.16.0-darwin-arm64.tar.gz https://nodejs.org/dist/v22.16.0/node-v22.16.0-darwin-arm64.tar.gz
-    cd ~/Downloads
-    tar -xzf node-v22.16.0-darwin-arm64.tar.gz
-    sudo mv node-v22.16.0-darwin-arm64 /usr/local/node
-    echo "   ✅ Node.js installed"
-else
-    echo "   ✅ Node.js already installed"
-fi
-
-# Install Claude Code
+# Install Claude Code using the official curl installer (2025 method)
 echo "🤖 Installing Claude Code..."
-/bin/bash -c 'npm install -g @anthropic-ai/claude-code'
-echo "   ✅ Claude Code installed"
+if command -v claude >/dev/null 2>&1; then
+    echo "   ✅ Claude Code already installed"
+else
+    curl -fsSL https://claude.ai/install.sh | bash
+    echo "   ✅ Claude Code installed"
+fi
 
 echo ""
 echo "🤖 Installing OpenCode..."
