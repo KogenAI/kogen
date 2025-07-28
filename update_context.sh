@@ -62,6 +62,13 @@ Please review the archived feature context and integrate its learnings into \`./
 7. **Deployment considerations** that were discovered
 8. **Architectural learnings** from the feature development
 
+## Additional Updates
+
+If applicable, also update:
+
+- **FIGMA_MAP.md** - Update Figma node ID to Phoenix component mappings if UI components were created/modified
+- **Rules** - Extract important lessons and patterns that could be useful for future development into \`./codegen/rules/\`
+
 ## Guidelines
 
 - **Use the archived feature context as your primary source** - it contains the actual implementation details and learnings
@@ -76,7 +83,8 @@ Please review the archived feature context and integrate its learnings into \`./
 ## Files to Review
 
 - \`./codegen/plans/$FEATURE_NAME.md\` - The feature plan
-- \`./codegen/PROJECT_CONTEXT.md\` - The project context to update"
+- \`./codegen/PROJECT_CONTEXT.md\` - The project context to update
+- \`./codegen/FIGMA_MAP.md\` - Figma mappings (if it exists and is relevant)"
 
 if [ "$CONTEXT_EXISTS" = true ]; then
     CONTEXT_UPDATE_PROMPT="$CONTEXT_UPDATE_PROMPT
@@ -159,16 +167,69 @@ If you identify potential recipes:
 - [Links to related recipes if any]
 \`\`\`
 
-Note: Only create recipes for truly reusable patterns, not feature-specific implementations."
+Note: Only create recipes for truly reusable patterns, not feature-specific implementations.
+
+## Rules Extraction
+
+Additionally, identify key lessons and patterns from this feature that should be preserved as rules for future development. Rules should be:
+- Important architectural decisions or constraints
+- Common pitfalls and how to avoid them
+- Best practices discovered during implementation
+- Integration patterns that work well
+- Performance considerations
+- Security patterns
+
+If you identify important rules:
+1. Check if a similar rule already exists in ./codegen/rules/
+2. If not, create a new rule file with a descriptive name (e.g., component-state-management.md)
+3. Use this template for the rule:
+
+\`\`\`markdown
+# Rule: [Descriptive Title]
+
+## Context
+[When does this rule apply?]
+
+## Rule
+[The specific rule or principle to follow]
+
+## Rationale
+[Why is this rule important? What problems does it prevent?]
+
+## Examples
+[Good and bad examples demonstrating the rule]
+
+## Exceptions
+[When might this rule not apply?]
+
+## Related Rules
+- [Links to related rules if any]
+\`\`\`
+
+## FIGMA_MAP.md Updates
+
+If this feature involved UI components that map to Figma designs:
+1. Check if FIGMA_MAP.md exists in ./codegen/
+2. If it exists and UI components were created/modified, update the mappings
+3. Add new Figma node IDs to Phoenix component mappings
+4. Update existing mappings if component names or structures changed
+5. Follow the existing format in the file"
 
 echo ""
 echo "🎯 Context update ready!"
 
-# Ensure recipes directory exists
+# Ensure recipes and rules directories exist
 RECIPES_DIR="$HOME/Areas/Optimum/context/recipes"
+RULES_DIR="$REPO_ROOT/codegen/rules"
+
 if [ ! -d "$RECIPES_DIR" ]; then
     echo "📚 Creating recipes directory at: $RECIPES_DIR"
     mkdir -p "$RECIPES_DIR"
+fi
+
+if [ ! -d "$RULES_DIR" ]; then
+    echo "📋 Creating rules directory at: ./codegen/rules/"
+    mkdir -p "$RULES_DIR"
 fi
 
 # Load AI assistant configuration
@@ -200,3 +261,5 @@ echo "🗂️  Project context: $REPO_ROOT/codegen/PROJECT_CONTEXT.md"
 echo ""
 echo "💡 This will update the main PROJECT_CONTEXT.md with learnings from the $FEATURE_NAME feature development"
 echo "📚 Reusable patterns will be extracted to: ~/Areas/Optimum/context/recipes/"
+echo "📋 Important rules will be extracted to: ./codegen/rules/"
+echo "🎨 ./codegen/FIGMA_MAP.md will be updated if UI components were created/modified"

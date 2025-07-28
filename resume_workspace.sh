@@ -200,6 +200,10 @@ if [ -f "$REPO_ROOT/codegen/PROJECT_CONTEXT.md" ]; then
     cp "$REPO_ROOT/codegen/PROJECT_CONTEXT.md" "$WORKSPACE_PATH/codegen/PROJECT_CONTEXT.md"
 fi
 
+if [ -f "$REPO_ROOT/codegen/FIGMA_MAP.md" ]; then
+    cp "$REPO_ROOT/codegen/FIGMA_MAP.md" "$WORKSPACE_PATH/codegen/FIGMA_MAP.md"
+fi
+
 # Link to rules directory from main branch (so changes propagate)
 if [ -d "$REPO_ROOT/codegen/rules" ]; then
     mkdir -p "$WORKSPACE_PATH/codegen"

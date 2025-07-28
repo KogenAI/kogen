@@ -88,6 +88,7 @@ Each workspace can run in an isolated Docker container with:
 {TARGET_REPO}/
 ├── codegen/
 │   ├── PROJECT_CONTEXT.md      # Main project knowledge base
+│   ├── FIGMA_MAP.md            # Figma node ID to Phoenix component mapping
 │   ├── workspaces/             # Isolated feature workspaces
 │   │   └── {feature}/          # Git worktree for feature
 │   ├── plans/                  # Feature development plans
@@ -103,7 +104,7 @@ Each workspace can run in an isolated Docker container with:
 - Auto-assigned ports (Phoenix: 4001+, Playwright: 8901+)
 - Database partition based on port offset
 - Volume-mounted dependencies for fast startup
-- Fresh copy of PROJECT_CONTEXT.md
+- Fresh copy of PROJECT_CONTEXT.md and FIGMA_MAP.md
 - Claude Code integration with prepared prompts
 
 ## Commands Reference

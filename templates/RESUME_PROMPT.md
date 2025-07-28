@@ -5,6 +5,7 @@ Continue implementing the plan using context from files in your workspace:
 - ./codegen/PLAN.md (implementation plan, ~50-100 lines) - READ ONLY
 - ./codegen/CONTEXT.md (your working document - check current stage, ~200-300 lines) - **UPDATE THIS FILE**
 - ./codegen/PROJECT_CONTEXT.md (project knowledge base, ~150-250 lines) - **READ ONLY - DO NOT MODIFY**
+- ./codegen/FIGMA_MAP.md (Figma node ID to Phoenix component mapping - read if working on Figma features) - **READ ONLY - DO NOT MODIFY**
 
 **Important**:
 
@@ -30,6 +31,17 @@ Continue implementing the plan using context from files in your workspace:
 
 **IMPORTANT**: Work ONLY in the workspace directory ({{WORKSPACE_PATH}}). Do NOT navigate to or modify files in the parent repository directory. The workspace is a git worktree that contains all necessary files for development.
 
+## WORKSPACE ISOLATION REMINDER
+
+**STOP**: Before doing ANYTHING, remember:
+
+- You are in workspace: `{{WORKSPACE_PATH}}`
+- This is a FULL project copy at a path like: `/Users/.../project_name/codegen/workspaces/{{FEATURE_NAME}}/`
+- ONLY edit files within this workspace
+- NEVER copy to parent directories (../../)
+- NEVER assume you need to "deploy" changes
+- The workspace IS the production environment for your session
+
 ## Important: CI Requirements
 
 **CRITICAL**: Run `./codegen/ci.sh` before completing implementation. Fix all issues.
@@ -46,4 +58,4 @@ date -u +"%a %b %d %H:%M:%S UTC %Y"
 
 Review current stage and recent changes, then continue implementation.
 
-**Rule Loading**: This is an implementation session - load workflow.md and project-specific rules based on your tech stack (check AGENTS.md for guidance).
+**Rule Loading**: This is an implementation session - load workflow.md and project-specific rules based on your tech stack (check AGENTS.md for guidance). **IMPORTANT: Check CONTEXT.md FIRST to see if Figma work is pending. Only load ui-implementation.md and FIGMA_MAP.md if CONTEXT.md doesn't show "Figma Status: ✅ COMPLETE".**

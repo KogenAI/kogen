@@ -7,6 +7,8 @@ source "$SCRIPT_DIR/utils.sh"
 
 REPO_ROOT="$TARGET_REPO_PATH"
 CONTEXT_FILE="$REPO_ROOT/codegen/PROJECT_CONTEXT.md"
+RECIPES_DIR="$HOME/Areas/Optimum/context/recipes"
+RULES_DIR="$REPO_ROOT/codegen/rules"
 
 if [ ! -f "$CONTEXT_FILE" ]; then
     echo "❌ Error: PROJECT_CONTEXT.md not found"
@@ -57,12 +59,25 @@ echo "📁 Project: $REPO_ROOT"
 echo "📄 Context file: $CONTEXT_FILE"
 echo "📏 Current size: $ORIGINAL_SIZE lines"
 echo "🎯 Target range: $TARGET_MIN-$TARGET_MAX lines"
+
+if [ -d "$RECIPES_DIR" ] && [ "$(ls -A "$RECIPES_DIR" 2>/dev/null)" ]; then
+    RECIPES_COUNT=$(find "$RECIPES_DIR" -name "*.md" | wc -l | tr -d ' ')
+    echo "📚 Recipes found: $RECIPES_COUNT files in $RECIPES_DIR"
+fi
+
+if [ -e "$RULES_DIR" ] && [ "$(ls -A "$RULES_DIR" 2>/dev/null)" ]; then
+    RULES_COUNT=$(find -L "$RULES_DIR" -name "*.md" | wc -l | tr -d ' ')
+    echo "📋 Rules found: $RULES_COUNT files in ./codegen/rules/"
+fi
+
 echo ""
 
 # Define the prompt for context consolidation
-CONSOLIDATE_PROMPT="# Consolidate PROJECT_CONTEXT.md
+CONSOLIDATE_PROMPT="# Consolidate PROJECT_CONTEXT.md and Context Knowledge
 
 I need you to optimize the PROJECT_CONTEXT.md file to fit within $TARGET_MIN-$TARGET_MAX lines while preserving ALL critical knowledge.
+
+Also review ~/Areas/Optimum/context/recipes/ and ./codegen/rules/ directories for any overlapping content that could be consolidated.
 
 Current file size: $ORIGINAL_SIZE lines
 Target size: $TARGET_MIN-$TARGET_MAX lines
@@ -83,9 +98,31 @@ Please consolidate PROJECT_CONTEXT.md to meet the target size by:
 1. **Remove true redundancies** - If the same information appears multiple times, keep it only once
 2. **Preserve ALL module names** - Keep full module names (e.g., TenantManagementLive.PropertyManagement.PropertyTree) for Tidewave/MCP
 3. **Remove or integrate feature sections** - Changelog-style feature lists often add no value; integrate learnings into relevant sections instead
-4. **Expand cryptic one-liners** - Replace terse descriptions like "API → sub-modules" with clear explanations
+4. **Expand cryptic one-liners** - Replace terse descriptions like API to sub-modules with clear explanations
 5. **Keep critical details** - Function names, patterns, database schemas, API endpoints
 6. **Aim for clarity over extreme brevity** - ~250 lines of clear content is better than 150 cryptic lines
+
+## Rule Consolidation Guidelines
+
+When consolidating ./codegen/rules/ directory:
+
+1. **Merge overlapping rules**:
+   - Component testing rules → Add 2 lines to phoenix.md
+   - I18n commands → Move to PROJECT_CONTEXT.md if small
+   - Regression testing → Merge into elixir-ci.md
+   - UI/Frontend rules → Combine into single ui-implementation.md
+
+2. **Delete overly specific rules**:
+   - Animation-specific testing (too narrow)
+   - One-off implementation patterns
+   - Rules that duplicate PROJECT_CONTEXT.md content
+
+3. **Target structure** (~10-12 files max):
+   - Core language/framework rules (phoenix, elixir-*)
+   - UI implementation (combined figma + frontend)
+   - Testing & quality (elixir-ci with all testing)
+   - Workflow rules (planning, git, workflow)
+   - Specialized tools (wallaby, browser-state-documentation)
 
 ## Consolidation Strategy
 
@@ -141,9 +178,9 @@ Optimize for ~$TARGET_MIN-$TARGET_MAX lines with:
 
 ## Quality Guidelines
 
-- **Clarity over brevity**: "Public functions in main context module delegate to sub-modules" instead of "API → sub-modules"
+- **Clarity over brevity**: Public functions in main context module delegate to sub-modules instead of API to sub-modules
 - **Actionable knowledge**: Focus on patterns and pitfalls that help future development
-- **Remove changelog content**: No "✅ Completed" feature lists - integrate the learnings instead
+- **Remove changelog content**: No Completed feature lists - integrate the learnings instead
 
 Remember: This file needs to fit efficiently in Claude's context alongside:
 - Feature context (CONTEXT.md): 200-300 lines of active work and learnings
