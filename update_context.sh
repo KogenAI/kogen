@@ -169,20 +169,30 @@ If you identify potential recipes:
 
 Note: Only create recipes for truly reusable patterns, not feature-specific implementations.
 
-## Rules Extraction
+## Rules: Enhance First, Create Rarely
 
-Additionally, identify key lessons and patterns from this feature that should be preserved as rules for future development. Rules should be:
+**IMPORTANT**: Rules are compressed knowledge and space is precious. New rules should be created very rarely.
+
+Identify key lessons and prioritize this way:
 - Important architectural decisions or constraints
-- Common pitfalls and how to avoid them
+- Common pitfalls and how to avoid them  
 - Best practices discovered during implementation
 - Integration patterns that work well
 - Performance considerations
 - Security patterns
 
-If you identify important rules:
-1. Check if a similar rule already exists in ./codegen/rules/
-2. If not, create a new rule file with a descriptive name (e.g., component-state-management.md)
-3. Use this template for the rule:
+**Strongly preferred approach** (95% of cases):
+1. Check existing rules in ./codegen/rules/ that could be enhanced
+2. Add learnings to relevant existing rules (e.g., phoenix-testing.md, elixir-ci.md)
+3. Most learnings should stay in PROJECT_CONTEXT.md or become recipes
+
+**Create new rules very rarely** (5% of cases), only when:
+- The knowledge is truly foundational to the entire project
+- No existing rule can be enhanced to accommodate it
+- The pattern will be referenced constantly across many features
+- Loss of this knowledge would be architecturally significant
+
+If you must create a new rule, use this template:
 
 \`\`\`markdown
 # Rule: [Descriptive Title]
@@ -261,5 +271,5 @@ echo "🗂️  Project context: $REPO_ROOT/codegen/PROJECT_CONTEXT.md"
 echo ""
 echo "💡 This will update the main PROJECT_CONTEXT.md with learnings from the $FEATURE_NAME feature development"
 echo "📚 Reusable patterns will be extracted to: ~/Areas/Optimum/context/recipes/"
-echo "📋 Important rules will be extracted to: ./codegen/rules/"
+echo "📋 Existing rules in ./codegen/rules/ will be enhanced (new rules created very rarely)"
 echo "🎨 ./codegen/FIGMA_MAP.md will be updated if UI components were created/modified"
