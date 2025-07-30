@@ -9,24 +9,41 @@ Process:
 Generate 5-10 topic suggestions by:
 
 - **Check existing drops**: Use Tidewave MCP to query the database and avoid duplicating topics
+- **Read coding rules**: Review ALL files in `/Users/almirsarajcic/Areas/Optimum/context/rules/` for both coding standards AND potential drop topics from common patterns/anti-patterns
 - Reviewing `/Users/almirsarajcic/Areas/Optimum/context/recipes` for adaptable patterns
 - Drawing from the user's "Future drops" list and development notes
 - Identifying common Elixir/Phoenix pain points and solutions
 - Looking for unique angles on established practices
 - Focusing on problems with clear, testable code solutions
 
+**EXECUTION CHECKLIST:**
+□ 1. Request Plausible analytics screenshot (MANDATORY FIRST STEP)
+□ 2. Read ALL coding rules from `/Users/almirsarajcic/Areas/Optimum/context/rules/` directory
+□ 3. Query database for existing drops comprehensively  
+□ 4. Analyze recipes for adaptable patterns
+□ 5. Generate suggestions avoiding ALL redundancy
+□ 6. User selects topic → create content using proper Elixir style
+□ 7. Test code examples → save markdown file
+
 **Database Integration Steps:**
 
 1. **Check Tidewave MCP availability** - if not available, ask user to start Phoenix server
 2. Query existing drops with: `mcp__tidewave__execute_sql_query`
-3. Search for similar titles/topics: `SELECT title FROM drops WHERE LOWER(title) LIKE '%keyword%'`
-4. Find related topics for inspiration: Look for gaps or complementary angles
-5. Verify user hasn't already written about it: Check user_id in results
-6. Cross-reference short_ids with Plausible analytics data to understand what formats work best
+3. **Search for similar titles/topics with multiple queries:**
+   - `SELECT title FROM drops WHERE LOWER(title) LIKE '%keyword%'`
+   - `SELECT title FROM drops WHERE LOWER(title) LIKE '%related_concept%'`
+   - Check for semantic overlap, not just keyword matches
+4. **Cross-check all variations** - A drop about "Parameter validation" could overlap with "Safe URL params" or "Ecto changesets"
+5. Find related topics for inspiration: Look for gaps or complementary angles
+6. **Semantic overlap check**: Don't just match keywords - check if the core problem/solution overlaps with existing content
+7. Verify user hasn't already written about it: Check user_id in results
+8. **User feedback integration**: If user says "Did you check for redundant content?" - you missed something
+9. Cross-reference short_ids with Plausible analytics data to understand what formats work best
 
-**Analytics Integration:**
+**Analytics Integration (MANDATORY FIRST STEP):**
 
-- **Always request Plausible analytics screenshot** from the user at the start of each session
+- 🚨 **STOP: Request Plausible screenshot BEFORE generating ANY suggestions**
+- This is not optional - suggestions without analytics data are guesses
 - Analyze the provided statistics to understand high-performing content patterns
 - Look for topics with high engagement (low bounce rate, high time on page, deep scroll)
 - Identify content gaps in popular topic areas
@@ -43,7 +60,7 @@ Generate 5-10 topic suggestions by:
 
 **Comprehensive Guides (Deep Engagement):**
 
-- Multi-section tutorials with clear headings (## format)
+- Multi-section tutorials with clear headings (## format) - use sentence case, not title case
 - Step-by-step implementation with code examples
 - "How to" topics with complete workflows (sitemap generation, testing patterns)
 
@@ -73,6 +90,12 @@ Generate 5-10 topic suggestions by:
 - **Infrastructure**: FLAME scaling, microservices, database migrations
 - **Integrations**: GitHub Actions, webhook verification, file streaming
 
+**Gap Analysis Based on Current Drops:**
+
+- Security patterns (missing: webhook verification, parameter sanitization)
+- Error handling (missing: StaleEntryError, GenServer crashes)
+- Email/Communication (missing: MJML templates, notification patterns)
+
 Present each suggestion as:
 
 - **Title**: Proposed drop title
@@ -84,7 +107,7 @@ Present each suggestion as:
 Write the complete drop content following the proven format, then save it as a markdown file in the project directory for easy copy/paste:
 
 ````
-Title: Action-oriented, 40-60 characters (e.g., "Fixing Wallaby's Invalid Session ID Error")
+Title: Action-oriented, 40-60 characters, sentence case, code in backticks (e.g., "Fixing Wallaby's invalid session ID error with `:sys.get_state`")
 
 Body structure:
 
@@ -112,7 +135,6 @@ Optional: Links to docs, related patterns, or further reading
 ```
 
 4. **First Code Snippet Guidelines** - Make it screenshot-worthy:
-
    - Show the "before and after" or the key transformation
    - Use clear, readable variable names and formatting
    - Include just enough context to be self-explanatory
@@ -120,7 +142,6 @@ Optional: Links to docs, related patterns, or further reading
    - Focus on the "aha moment" that makes people want to learn more
 
 5. **Quality Assurance** - Test and refine:
-
    - Create a `.exs` script to test your code example (e.g., `test_drop.exs`)
    - Run the script with `elixir test_drop.exs` to verify it works
    - Test edge cases and ensure the solution is robust
@@ -129,13 +150,11 @@ Optional: Links to docs, related patterns, or further reading
    - Ensure the explanation adds context without being verbose
 
 6. **Final Output** - Save as markdown file:
-
    - Use Write tool to save the content as `[topic_name]_drop.md` in the project directory
    - Use proper markdown formatting (no code block wrapping)
    - This avoids terminal formatting issues and makes copy/paste clean
 
 7. **Content Categories** - Focus on high-value topics:
-
    - **Core Elixir**: Pattern matching tricks, data transformation, error handling
    - **Phoenix/LiveView**: Components, real-time features, form handling, testing
    - **Database/Ecto**: Query optimization, migrations, data relationships
@@ -144,7 +163,6 @@ Optional: Links to docs, related patterns, or further reading
    - **Integration**: APIs, external services, background jobs
 
 8. **Recipe Transformation Guidelines** - If adapting from recipes:
-
    - Extract the core problem and solution
    - Simplify the code example to the essential parts
    - Focus on one specific aspect rather than the complete implementation
@@ -188,6 +206,14 @@ Content Quality Standards:
 
 - **Problem-first approach** - Start with the pain point, not the solution
 - **Executable examples** - Code should work in a real Elixir environment
+- **Idiomatic code** - Follow the coding standards from the rules directory:
+  - Use `refute condition` instead of `assert condition == false`
+  - Never add catch-all fallback clauses - fail fast on unexpected input
+  - Use proper `@impl Module.Name` instead of `@impl true`
+  - Extract repeated types to module level as `@type`
+  - Always alias used modules and use aliased names
+  - Each pipe `|>` on its own line, starting with raw value/variable
+  - Put all code references (functions, modules, variables) in backticks
 - **Context matters** - Explain why the solution works, not just how
 - **Community focused** - Write for developers who will encounter this problem
 - **Searchable titles** - Include relevant keywords developers would search for
