@@ -135,6 +135,7 @@ Optional: Links to docs, related patterns, or further reading
 ```
 
 4. **First Code Snippet Guidelines** - Make it screenshot-worthy:
+
    - Show the "before and after" or the key transformation
    - Use clear, readable variable names and formatting
    - Include just enough context to be self-explanatory
@@ -142,6 +143,7 @@ Optional: Links to docs, related patterns, or further reading
    - Focus on the "aha moment" that makes people want to learn more
 
 5. **Quality Assurance** - Test and refine:
+
    - Create a `.exs` script to test your code example (e.g., `test_drop.exs`)
    - Run the script with `elixir test_drop.exs` to verify it works
    - Test edge cases and ensure the solution is robust
@@ -150,11 +152,13 @@ Optional: Links to docs, related patterns, or further reading
    - Ensure the explanation adds context without being verbose
 
 6. **Final Output** - Save as markdown file:
+
    - Use Write tool to save the content as `[topic_name]_drop.md` in the project directory
    - Use proper markdown formatting (no code block wrapping)
    - This avoids terminal formatting issues and makes copy/paste clean
 
 7. **Content Categories** - Focus on high-value topics:
+
    - **Core Elixir**: Pattern matching tricks, data transformation, error handling
    - **Phoenix/LiveView**: Components, real-time features, form handling, testing
    - **Database/Ecto**: Query optimization, migrations, data relationships
@@ -163,6 +167,7 @@ Optional: Links to docs, related patterns, or further reading
    - **Integration**: APIs, external services, background jobs
 
 8. **Recipe Transformation Guidelines** - If adapting from recipes:
+
    - Extract the core problem and solution
    - Simplify the code example to the essential parts
    - Focus on one specific aspect rather than the complete implementation
