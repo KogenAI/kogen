@@ -19,6 +19,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 source "$SCRIPT_DIR/config.sh"
 source "$SCRIPT_DIR/docker_utils.sh"
+source "$SCRIPT_DIR/resource_manager.sh"
 
 REPO_ROOT="$TARGET_REPO_PATH"
 PROJECT_NAME="$REPO_NAME"
@@ -39,6 +40,10 @@ if [ -f "$WORKSPACE_PATH/codegen/CONTEXT.md" ]; then
     cp "$WORKSPACE_PATH/codegen/CONTEXT.md" "$REPO_ROOT/codegen/contexts/${FEATURE_NAME}.md"
     echo "📦 Archived feature context to: codegen/contexts/${FEATURE_NAME}.md"
 fi
+
+# Deallocate global resources for this workspace
+echo "🌐 Deallocating global resources..."
+deallocate_resources "$PROJECT_NAME" "$WORKSPACE_NAME"
 
 # Check for Docker workspace BEFORE removing anything
 IS_DOCKER_WORKSPACE=false

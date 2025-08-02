@@ -145,6 +145,9 @@ consolidate-context:
 ls:
 	@./list_workspaces.sh
 
+resources:
+	@./show_global_resources.sh $(filter-out $@,$(MAKECMDGOALS))
+
 bird-eye:
 	@./modes/bird_eye_session.sh $(filter-out $@,$(MAKECMDGOALS))
 
@@ -214,6 +217,7 @@ help:
 		echo "  $$OCG_CMD resume <name> [options]     🔄 Resume feature workspace"; \
 		echo "  $$OCG_CMD resume <name> --container   🐳 Resume workspace in Docker container"; \
 		echo "  $$OCG_CMD ls                          📋 List all feature workspaces"; \
+		echo "  $$OCG_CMD resources [--cleanup-orphaned] 🌐 Show global resource allocation"; \
 		echo ""; \
 		echo "🧹 Code Maintenance:"; \
 		echo "  $$OCG_CMD remove-comments             🗑️  Remove comments from git diff changes"; \
@@ -239,6 +243,9 @@ help:
 		echo ""; \
 		echo "💡 Install globally with 'make install' to use 'ocg' commands from anywhere!"; \
 		echo "   After installation, run 'ocg' to see all workspace management features"; \
+		echo ""; \
+		echo "⚠️  Note: Commands like 'status' and 'resources' are only available via 'ocg'"; \
+		echo "   from your project repositories, not from this codegen repository."; \
 	fi
 
 # Default target shows help

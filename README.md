@@ -146,6 +146,7 @@ Each workspace can run in an isolated Docker container with:
 - `ocg clean` - Remove ALL workspaces (with confirmation)
 - `ocg clean-branches` - Remove orphaned feature branches
 - `ocg clean-servers` - Clean up any lingering processes
+- `ocg resources [--cleanup-orphaned]` - Show global resource allocation across all projects
 
 ### Tools
 

@@ -58,6 +58,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 source "$SCRIPT_DIR/config.sh"
 source "$SCRIPT_DIR/utils.sh"
+source "$SCRIPT_DIR/resource_manager.sh"
 
 # Load default assistant from config if not specified
 if [ -z "$ASSISTANT" ]; then
@@ -86,72 +87,25 @@ if [ -d "$WORKSPACE_PATH" ]; then
     exit 0
 fi
 
+# Legacy functions for backward compatibility - now use global resource manager
 get_next_port() {
-    local base_port=4001
-    local current_port=$base_port
-
-    while true; do
-        local port_in_use=false
-
-        for workspace_dir in "$REPO_ROOT"/codegen/workspaces/*; do
-            if [ -d "$workspace_dir" ] && [ -f "$workspace_dir/.env" ]; then
-                if grep -q "^PORT=$current_port" "$workspace_dir/.env" 2>/dev/null; then
-                    port_in_use=true
-                    break
-                fi
-            fi
-        done
-
-        if ! $port_in_use && lsof -i :$current_port >/dev/null 2>&1; then
-            port_in_use=true
-        fi
-
-        if ! $port_in_use; then
-            echo $current_port
-            return
-        fi
-
-        ((current_port++))
-
-        if [ $current_port -gt 4100 ]; then
-            echo "❌ Error: Could not find available port (checked up to 4100)"
-            exit 1
-        fi
-    done
+    local port=$(allocate_phoenix_port "$REPO_NAME" "$WORKSPACE_NAME")
+    if [ $? -eq 0 ] && [ -n "$port" ]; then
+        echo "$port"
+    else
+        # Fallback to local scanning if global allocation fails
+        fallback_get_next_phoenix_port
+    fi
 }
 
 get_next_playwright_port() {
-    local base_port=8901
-    local current_port=$base_port
-
-    while true; do
-        local port_in_use=false
-
-        for workspace_dir in "$REPO_ROOT"/codegen/workspaces/*; do
-            if [ -d "$workspace_dir" ] && [ -f "$workspace_dir/.env" ]; then
-                if grep -q "^PLAYWRIGHT_MCP_PORT=$current_port" "$workspace_dir/.env" 2>/dev/null; then
-                    port_in_use=true
-                    break
-                fi
-            fi
-        done
-
-        if ! $port_in_use && lsof -i :$current_port >/dev/null 2>&1; then
-            port_in_use=true
-        fi
-
-        if ! $port_in_use; then
-            echo $current_port
-            return
-        fi
-
-        ((current_port++))
-
-        if [ $current_port -gt 9000 ]; then
-            echo "❌ Error: Could not find available Playwright MCP port (checked up to 9000)"
-            exit 1
-        fi
-    done
+    local port=$(allocate_playwright_port "$REPO_NAME" "$WORKSPACE_NAME")
+    if [ $? -eq 0 ] && [ -n "$port" ]; then
+        echo "$port"
+    else
+        # Fallback to local scanning if global allocation fails
+        fallback_get_next_playwright_port
+    fi
 }
 
 echo "📁 Creating feature workspace at: $WORKSPACE_PATH"

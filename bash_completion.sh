@@ -20,7 +20,7 @@ _codegen_completion() {
 
     # Complete main commands
     if [[ ${COMP_CWORD} == 1 ]]; then
-        local opts="ai-config bird-eye clean clean-branches clean-servers consolidate-context help ls new plan prepare remove-comments resume rm setup update-context"
+        local opts="ai-config bird-eye clean clean-branches clean-servers consolidate-context help ls new plan prepare remove-comments resources resume rm setup update-context"
         [[ "$cmd" == "make" ]] && opts="$opts install uninstall"
         [[ "$cmd" == "ocg" ]] && opts="$opts uninstall"
         COMPREPLY=($(compgen -W "$opts" -- "$cur"))
@@ -81,6 +81,11 @@ _codegen_completion() {
             COMPREPLY=($(compgen -W "claude opencode" -- "$cur"))
         elif [[ ${COMP_CWORD} == 3 && "$prev" == "get" ]]; then
             COMPREPLY=($(compgen -W "default" -- "$cur"))
+        fi
+        ;;
+    resources)
+        if [[ ${COMP_CWORD} == 2 ]]; then
+            COMPREPLY=($(compgen -W "--cleanup-orphaned --orphaned" -- "$cur"))
         fi
         ;;
     esac
