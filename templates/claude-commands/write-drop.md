@@ -1,6 +1,8 @@
-Generate 5-10 ElixirDrops post topic suggestions based on available recipes and current Elixir/Phoenix development patterns.
+---
+description: Generate ElixirDrops post topic suggestions and write complete drop content
+---
 
-When the user selects a topic, then write the complete drop content following the established format and quality standards.
+Generate 5-10 ElixirDrops post topic suggestions based on available recipes and current Elixir/Phoenix development patterns. When user selects a topic, write the complete drop content following established format and quality standards.
 
 Process:
 

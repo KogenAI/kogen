@@ -1,6 +1,8 @@
-Conduct comprehensive business idea research and validation through systematic analysis of market, competition, technical feasibility, and user psychology.
+---
+description: Conduct comprehensive business idea research and validation
+---
 
-This command guides you through the complete research process from initial concept to architecture-ready state, following the proven methodology used for YouTube Academy.
+Conduct systematic business idea research and validation through analysis of market, competition, technical feasibility, and user psychology. Guide through complete research process from initial concept to architecture-ready state.
 
 **STEP 1: Initial Concept Capture**
 

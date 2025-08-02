@@ -1,3 +1,8 @@
+---
+description: Add a new rule or principle to the appropriate rule file in ./codegen/rules/
+argument-hint: [rule description]
+---
+
 Analyze the current conversation context to understand the full lesson learned from this session, then add a comprehensive rule to the appropriate rule file in ./codegen/rules/.
 
 Process:

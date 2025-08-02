@@ -1,6 +1,8 @@
-Conduct comprehensive technical research and analysis for implementation approaches in Phoenix/Elixir applications.
+---
+description: Conduct comprehensive technical research and analysis for Phoenix/Elixir solutions
+---
 
-This command guides you through systematic research of technical solutions, evaluating different approaches across key criteria like setup complexity, performance, maintenance, and production readiness.
+Conduct systematic research of technical solutions for Phoenix/Elixir applications, evaluating different approaches across key criteria like setup complexity, performance, maintenance, and production readiness.
 
 **STEP 1: Understanding the Research Topic**
 
