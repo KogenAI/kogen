@@ -32,7 +32,14 @@ _codegen_completion() {
     update-context)
         source "$script_dir/config.sh"
         local repo_root="$TARGET_REPO_PATH"
-        [[ -d "$repo_root/codegen/plans" ]] && COMPREPLY=($(compgen -W "$(find "$repo_root/codegen/plans" -name "*.md" -not -name "*.old" -exec basename {} .md \; 2>/dev/null)" -- "$cur"))
+        if [[ -d "$repo_root/codegen/plans" ]]; then
+            local plans=""
+            # Get directories (modular plans)
+            plans="$plans $(find "$repo_root/codegen/plans" -maxdepth 1 -type d -not -name "plans" -exec basename {} \; 2>/dev/null)"
+            # Get .md files (single file plans)
+            plans="$plans $(find "$repo_root/codegen/plans" -maxdepth 1 -name "*.md" -not -name "*.old" -exec basename {} .md \; 2>/dev/null)"
+            COMPREPLY=($(compgen -W "$plans" -- "$cur"))
+        fi
         ;;
     rm)
         source "$script_dir/config.sh"
@@ -43,7 +50,14 @@ _codegen_completion() {
         if [[ ${COMP_CWORD} == 2 ]]; then
             source "$script_dir/config.sh"
             local repo_root="$TARGET_REPO_PATH"
-            [[ -d "$repo_root/codegen/plans" ]] && COMPREPLY=($(compgen -W "$(find "$repo_root/codegen/plans" -name "*.md" -not -name "*.old" -exec basename {} .md \; 2>/dev/null)" -- "$cur"))
+            if [[ -d "$repo_root/codegen/plans" ]]; then
+                local plans=""
+                # Get directories (modular plans)
+                plans="$plans $(find "$repo_root/codegen/plans" -maxdepth 1 -type d -not -name "plans" -exec basename {} \; 2>/dev/null)"
+                # Get .md files (single file plans)
+                plans="$plans $(find "$repo_root/codegen/plans" -maxdepth 1 -name "*.md" -not -name "*.old" -exec basename {} .md \; 2>/dev/null)"
+                COMPREPLY=($(compgen -W "$plans" -- "$cur"))
+            fi
         elif [[ "$cur" == --* ]]; then
             COMPREPLY=($(compgen -W "--model --assistant --container" -- "$cur"))
         elif [[ "$prev" == "--model" || "$prev" == "-m" ]]; then

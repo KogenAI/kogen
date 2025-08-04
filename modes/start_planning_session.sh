@@ -46,7 +46,7 @@ case "$MODE" in
 "detailed-planning")
     mkdir -p "$TARGET_REPO_PATH/codegen/plans"
     DEFAULT_MODEL="opus"
-    PLAN_OUTPUT_FILE="codegen/plans/${FEATURE_NAME}.md"
+    PLAN_OUTPUT_FILE="codegen/plans/${FEATURE_NAME}/"
     echo "✓ Ensured codegen/plans directory exists"
     ;;
 esac

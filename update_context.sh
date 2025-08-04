@@ -21,10 +21,18 @@ if [ ! -f "$REPO_ROOT/codegen/PROJECT_CONTEXT.md" ]; then
     exit 1
 fi
 
-PLAN_FILE="$REPO_ROOT/codegen/plans/$FEATURE_NAME.md"
-if [ ! -f "$PLAN_FILE" ]; then
-    echo "❌ Error: Plan file not found: $PLAN_FILE"
-    echo "Please create a plan file first at: codegen/plans/$FEATURE_NAME.md"
+# Check for modular plan structure first, then single file
+if [ -d "$REPO_ROOT/codegen/plans/$FEATURE_NAME" ]; then
+    PLAN_FILE="$REPO_ROOT/codegen/plans/$FEATURE_NAME/"
+    PLAN_TYPE="modular"
+elif [ -f "$REPO_ROOT/codegen/plans/$FEATURE_NAME.md" ]; then
+    PLAN_FILE="$REPO_ROOT/codegen/plans/$FEATURE_NAME.md"
+    PLAN_TYPE="single"
+else
+    echo "❌ Error: Plan not found"
+    echo "Expected either:"
+    echo "  - Modular: codegen/plans/$FEATURE_NAME/"
+    echo "  - Single file: codegen/plans/$FEATURE_NAME.md"
     exit 1
 fi
 
@@ -80,9 +88,17 @@ If applicable, also update:
 - **Update the \"Last Updated\" timestamp** with a brief note about what knowledge was added
 - **NO feature lists** - Integrate the knowledge where it belongs in the structure
 
-## Files to Review
+## Files to Review"
 
-- \`./codegen/plans/$FEATURE_NAME.md\` - The feature plan
+if [ "$PLAN_TYPE" = "modular" ]; then
+    CONTEXT_UPDATE_PROMPT="$CONTEXT_UPDATE_PROMPT
+- \`./codegen/plans/$FEATURE_NAME/\` - The feature plan (modular structure with overview.md and steps/)"
+else
+    CONTEXT_UPDATE_PROMPT="$CONTEXT_UPDATE_PROMPT
+- \`./codegen/plans/$FEATURE_NAME.md\` - The feature plan (single file)"
+fi
+
+CONTEXT_UPDATE_PROMPT="$CONTEXT_UPDATE_PROMPT
 - \`./codegen/PROJECT_CONTEXT.md\` - The project context to update
 - \`./codegen/FIGMA_MAP.md\` - Figma mappings (if it exists and is relevant)"
 

@@ -2,7 +2,9 @@
 
 Implement the plan using context from files in your workspace:
 
-- ./codegen/PLAN.md (implementation plan) - READ ONLY
+- ./codegen/plan/overview.md (feature overview & step sequence) - READ ONLY
+- ./codegen/plan/steps/ (detailed step implementations - load as needed) - READ ONLY
+  - Step files use naming convention: step-01-setup.md, step-02-core.md, etc.
 - ./codegen/CONTEXT.md (your working document - track progress here) - **UPDATE THIS FILE**
 - ./codegen/PROJECT_CONTEXT.md (project knowledge base) - **READ ONLY - DO NOT MODIFY**
 - ./codegen/FIGMA_MAP.md (Figma node ID to Phoenix component mapping - read if working on Figma features) - **READ ONLY - DO NOT MODIFY**
@@ -45,7 +47,9 @@ This is something like: `/Users/.../project_name/codegen/workspaces/{{FEATURE_NA
 
 ## Available Context Files
 
-- `./codegen/PLAN.md` - The implementation plan (~50-100 lines) - **READ ONLY**
+- `./codegen/plan/overview.md` - Feature overview & step sequence (~50-100 lines) - **READ ONLY**
+- `./codegen/plan/steps/` - Detailed step implementations (~150-250 lines each, load as needed) - **READ ONLY**
+  - Step files use naming convention: step-01-setup.md, step-02-core.md, etc.
 - `./codegen/CONTEXT.md` - Track your progress and stages here (~200-300 lines) - **UPDATE THIS FILE**
 - `./codegen/PROJECT_CONTEXT.md` - Project architecture and patterns (~150-250 lines) - **READ ONLY - DO NOT MODIFY**
 - `./codegen/FIGMA_MAP.md` - Figma node ID to Phoenix component mapping (read if working on Figma features) - **READ ONLY - DO NOT MODIFY**
@@ -71,6 +75,12 @@ This is something like: `/Users/.../project_name/codegen/workspaces/{{FEATURE_NA
 date -u +"%a %b %d %H:%M:%S UTC %Y"
 ```
 
-Review the plan and current context, then begin implementation.
+Review the plan overview and current context, then begin implementation.
+
+**Plan Loading Strategy**:
+
+- **READ ./codegen/plan/overview.md IMMEDIATELY** - Contains feature goals, architecture, and step sequence
+- **Load step files selectively** - Only read ./codegen/plan/steps/ files when working on that specific step
+- **Check CONTEXT.md** to understand which step you should be working on
 
 **Rule Loading**: This is an implementation session - load workflow.md and project-specific rules based on your tech stack (as guided by {{AGENT_CONTEXT_FILE}}). The agent context file will guide you on whether to load figma.md and FIGMA_MAP.md based on the feature type.

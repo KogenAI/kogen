@@ -6,15 +6,30 @@ Update the ./codegen/CONTEXT.md file with all learnings and insights from the cu
 
 Steps:
 
-1. Update ./codegen/CONTEXT.md with new patterns, insights, and important information from this session
-2. Include new architectural patterns, code conventions, or technical decisions
-3. Document challenges encountered and their solutions
-4. Update outdated information in Implementation Progress and Important Notes sections
-5. **Keep focused** - Target ~200-300 lines by:
-   - Archiving completed implementation details (remove detailed steps, keep learnings)
-   - Consolidating similar discoveries into patterns
-   - Keeping active work items and current blockers prominent
-   - Preserving important technical decisions and their rationale
-6. After updating, tell user: "Context file has been updated. Please reload this chat session and load the updated context file to continue with a fresh Claude Code context."
+1. **PRESERVE CRITICAL VERIFICATION INFORMATION** - Never lose:
+   - Current step completion status (✅ COMPLETE / ⏳ IN PROGRESS)
+   - Verification evidence section with CI results and test outcomes
+   - Step context file references (step-XX-name.md)
+   - Last verification timestamp
 
-Ensure CONTEXT.md + PROJECT_CONTEXT.md + PLAN.md total ~500-650 lines for manageable context size.
+2. Update ./codegen/CONTEXT.md with new patterns, insights, and important information from this session
+3. Include new architectural patterns, code conventions, or technical decisions
+4. Document challenges encountered and their solutions
+5. Update Implementation Progress section with completed steps and verification status
+6. **Keep focused** - Target ~50-100 lines by:
+   - **PRESERVE step completion status and verification evidence**
+   - **MOVE detailed implementation to step context files** (not main CONTEXT.md)
+   - Keep only current focus, next steps, and session tracking in main file
+   - Archive completed step details to their respective step-XX-name.md files
+   - Consolidate patterns into brief learnings
+   - Maintain clear "what's verified vs what needs work" status
+
+7. **Ensure verification continuity**:
+   - Current Stage section shows accurate step status
+   - Verification Evidence section preserved
+   - Next step clearly identified
+   - Any incomplete verification clearly marked
+
+8. After updating, tell user: "Context file has been updated. Please reload this chat session and load the updated context file to continue with a fresh Claude Code context."
+
+Ensure CONTEXT.md stays ~50-100 lines. Detailed implementation goes in step context files. Total context load should be manageable.

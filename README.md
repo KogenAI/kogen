@@ -92,7 +92,10 @@ Each workspace can run in an isolated Docker container with:
 │   ├── workspaces/             # Isolated feature workspaces
 │   │   └── {feature}/          # Git worktree for feature
 │   ├── plans/                  # Feature development plans
-│   │   └── {feature}.md        # Specific feature plan
+│   │   ├── {feature}/          # Modular plan structure
+│   │   │   ├── overview.md     # Goals, architecture, step sequence
+│   │   │   └── steps/          # Detailed step implementations
+│   │   └── {feature}.md        # Legacy single-file plan
 │   └── contexts/               # Archived feature contexts
 │       └── {feature}/          # Context files after completion
 ```
@@ -271,9 +274,10 @@ Run `ocg prepare --container` from your main branch to build the Docker image an
 To optimize context window usage, maintain these target sizes:
 
 - **PROJECT_CONTEXT.md**: 150-250 lines (use `ocg consolidate-context` when larger)
-- **PLAN.md**: 50-100 lines (created by `ocg plan`)
-- **CONTEXT.md**: 200-300 lines (archive completed work regularly)
-- **Total**: ~500-650 lines, leaving ample room for code reading
+- **Plan overview**: 50-100 lines (overview.md created by `ocg plan`)
+- **Plan steps**: 150-250 lines each (step files for detailed implementation)
+- **CONTEXT.md**: 50-100 lines (detailed step progress in codegen/context/)
+- **Total during implementation**: ~250-400 lines (overview + current step + context), leaving ample room for code reading
 
 ### Consolidation Best Practices
 

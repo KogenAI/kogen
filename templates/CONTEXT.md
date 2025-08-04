@@ -2,23 +2,40 @@
 
 ## Feature: {{FEATURE_NAME}}
 
-<!-- Target ~200-300 lines. Use /refresh-context to archive completed work and consolidate learnings when it grows larger. -->
+<!-- Target ~50-100 lines. Detailed step progress stored in ./codegen/context/ step files. -->
+
+### Step Context Structure
+
+**Main Context (this file)**: Current focus, next steps, session tracking
+**Step Details**: `@./codegen/context/` - Detailed progress and lessons for each step
+
+- Only load step files when working on or reviewing that specific step
+- Step files preserve detailed implementation decisions and lessons learned
+- **Current Step**: [Update this with current step file, e.g., "step-01-setup.md"]
 
 ### Implementation Plan Reference
 
-**📋 CRITICAL**: Full implementation details and requirements are in `@./codegen/PLAN.md`
+**📋 CRITICAL**: Implementation plan is in modular structure at `@./codegen/plan/`
 
-- **READ PLAN.MD IMMEDIATELY** if context was lost during auto-compacting
-- **Figma Requirements**: All visual/design specifications are documented in PLAN.md
-- **Architecture**: Complete technical architecture and phases defined in PLAN.md
-- **Testing Strategy**: Comprehensive testing requirements outlined in PLAN.md
-- **Completion Criteria**: Exact definition of "done" specified in PLAN.md
+- **Overview**: `@./codegen/plan/overview.md` - Feature goals, architecture, step sequence
+- **Step Details**: `@./codegen/plan/steps/` - Detailed implementation for each step
+- **READ OVERVIEW IMMEDIATELY** if context was lost during auto-compacting
+- **Load step files as needed** - Only read specific steps relevant to current work
+- **Figma Requirements**: Visual/design specifications documented in relevant step files
+- **Architecture**: Complete technical architecture defined in overview and step files
+- **Testing Strategy**: Comprehensive testing requirements in step files
+- **Completion Criteria**: Success criteria specified in overview.md
 
 ### Current Stage
 
 - **Stage**: Not Started
 - **Status**: Planning
 - **Last Updated**: [Auto-updated by AI during implementation]
+- **Current Step**: [e.g., "step-01-setup.md"]
+- **Verification Evidence**: [Added when step is complete]
+  - ✅ `./codegen/ci.sh` - [CI results]
+  - ✅ Feature-specific tests - [Test results]
+  - ✅ Step context file created - [File name]
 
 ### Environment
 
@@ -101,15 +118,17 @@ For detailed code analysis, you can use:
 
 ### Implementation Guidelines
 
-**PRIMARY RULE**: If resuming work or context was compacted, **READ `@./codegen/PLAN.md` FIRST**
+**PRIMARY RULE**: If resuming work or context was compacted, **READ `@./codegen/plan/overview.md` FIRST**
 
-- **PLAN.md is the source of truth** for all requirements, architecture, and completion criteria
+- **Modular plan structure** contains all requirements, architecture, and completion criteria
+- **Overview** provides goals and step sequence, **step files** provide detailed implementation
+- Load step files as needed for current work to avoid context overload
 - Avoid introducing unnecessary complexity
 - Make sure all changes are covered with tests
-- **For Figma features**: PLAN.md contains all visual specifications and node IDs
+- **For Figma features**: Visual specifications and node IDs are in relevant step files
 - Use project knowledge from `./codegen/PROJECT_CONTEXT.md`
 - Follow established coding standards and project conventions
 - **Keep this context file updated** as you progress through implementation stages
 - **MANDATORY**: Log session start time immediately when beginning any work
 
-**CONTEXT LOSS RECOVERY**: If you're unsure about requirements or next steps, the complete plan with all details is always available in `@./codegen/PLAN.md`
+**CONTEXT LOSS RECOVERY**: If you're unsure about requirements or next steps, start with `@./codegen/plan/overview.md` then load specific step files as needed

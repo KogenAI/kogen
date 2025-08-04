@@ -2,7 +2,9 @@
 
 Continue implementing the plan using context from files in your workspace:
 
-- ./codegen/PLAN.md (implementation plan, ~50-100 lines) - READ ONLY
+- ./codegen/plan/overview.md (feature overview & step sequence, ~50-100 lines) - READ ONLY
+- ./codegen/plan/steps/ (detailed step implementations, ~150-250 lines each, load as needed) - READ ONLY
+  - Step files use naming convention: step-01-setup.md, step-02-core.md, etc.
 - ./codegen/CONTEXT.md (your working document - check current stage, ~200-300 lines) - **UPDATE THIS FILE**
 - ./codegen/PROJECT_CONTEXT.md (project knowledge base, ~150-250 lines) - **READ ONLY - DO NOT MODIFY**
 - ./codegen/FIGMA_MAP.md (Figma node ID to Phoenix component mapping - read if working on Figma features) - **READ ONLY - DO NOT MODIFY**
@@ -57,5 +59,12 @@ date -u +"%a %b %d %H:%M:%S UTC %Y"
 ```
 
 Review current stage and recent changes, then continue implementation.
+
+**Plan Loading Strategy**:
+
+- **READ ./codegen/plan/overview.md** if you need to refresh feature context
+- **Load step files based on CONTEXT.md** - Only read ./codegen/plan/steps/ files for the step you're currently working on
+  - Step files use naming convention: step-01-setup.md, step-02-core.md, etc.
+- **Check CONTEXT.md FIRST** to understand current stage and which step files are relevant
 
 **Rule Loading**: This is an implementation session - load workflow.md and project-specific rules based on your tech stack (check AGENTS.md for guidance). **IMPORTANT: Check CONTEXT.md FIRST to see if Figma work is pending. Only load ui-implementation.md and FIGMA_MAP.md if CONTEXT.md doesn't show "Figma Status: ✅ COMPLETE".**

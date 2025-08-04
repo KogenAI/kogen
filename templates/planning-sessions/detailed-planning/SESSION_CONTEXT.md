@@ -76,25 +76,53 @@ You are in the technical planning phase - **detailed implementation planning**. 
 
 ### Output Expectations
 
-Save your final plan to: [{{PLAN_OUTPUT_FILE}}]({{PLAN_OUTPUT_FILE}})
+**Create Modular Plan Structure:**
+
+For comprehensive features requiring detailed planning, create a modular structure to prevent context overload during implementation:
+
+```
+codegen/plans/{{FEATURE_NAME}}/
+├── overview.md          # Main plan (50-100 lines): goals, architecture, step sequence
+└── steps/
+    ├── step-01-setup.md    # Setup and infrastructure (150-250 lines)
+    ├── step-02-core.md     # Core implementation (150-250 lines)
+    ├── step-03-ui.md       # UI components (150-250 lines)
+    └── step-04-tests.md    # Testing implementation (150-250 lines)
+```
+
+**Step File Naming Convention:**
+
+- Use format: `step-##-descriptor.md` (e.g., `step-01-setup.md`, `step-02-core.md`)
+- Zero-padded numbers for proper sorting
+- Kebab-case descriptors (lowercase, hyphens, no spaces)
+- Keep descriptors short and clear
 
 **Plan Size Guidelines:**
 
-- Target: 50-100 lines for the plan
+- **Overview**: 50-100 lines covering goals, architecture, step sequence
+- **Step files**: 150-250 lines each with detailed implementation for that step
 - Focus on actionable steps, not verbose explanations
-- Use bullet points and concise language
-- Remember: This will be loaded alongside PROJECT_CONTEXT.md (150-250 lines) and CONTEXT.md
+- Remember: During implementation, only overview + current step will be loaded (~200-350 lines total)
 
-Include in your plan:
+**What to include:**
 
-- Specific technical implementation approach
-- Database schema changes and migration plans
-- API endpoint specifications
-- Component and module structure
-- Comprehensive test plan
-- Step-by-step implementation sequence
-- Dependencies and prerequisites
-- Performance and security considerations
+**In overview.md:**
+
+- Feature goals and business requirements
+- High-level architecture and approach
+- Step sequence with explicit file references (e.g., "Step 1: Setup (see step-01-setup.md)")
+- Dependencies between steps
+- Success criteria
+
+**In step files:**
+
+- Specific technical implementation approach for that step
+- Database schema changes and migration plans (if applicable)
+- API endpoint specifications (if applicable)
+- Component and module structure for that step
+- Detailed test plans for that step
+- Code examples and patterns to follow
+- Prerequisites and dependencies for that step
 
 ### Implementation Readiness
 
@@ -111,8 +139,8 @@ Your plan should be detailed enough that an engineer can:
 After completing detailed planning:
 
 1. Use `ocg new {{FEATURE_NAME}}` to create implementation workspace
-2. The workspace will include your plan as `PLAN.md`
-3. Implementation can follow your detailed plan step-by-step
+2. The workspace will include your modular plan structure
+3. Implementation can focus on one step at a time, loading only relevant context
 4. Update `PROJECT_CONTEXT.md` after implementation with learnings
 
 Remember: This is about technical precision and implementation readiness. The better your plan, the smoother the implementation will be.

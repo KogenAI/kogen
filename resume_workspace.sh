@@ -196,6 +196,19 @@ if [ -f "$SCRIPT_DIR/detect_versions.sh" ]; then
     echo "✅ Copied detect_versions.sh to workspace"
 fi
 
+# Update plan structure
+if [ -d "$REPO_ROOT/codegen/plans/${FEATURE_NAME}" ]; then
+    # Modular plan structure
+    rm -rf "$WORKSPACE_PATH/codegen/plan" 2>/dev/null || true
+    mkdir -p "$WORKSPACE_PATH/codegen"
+    cp -r "$REPO_ROOT/codegen/plans/${FEATURE_NAME}" "$WORKSPACE_PATH/codegen/plan"
+elif [ -f "$REPO_ROOT/codegen/plans/${FEATURE_NAME}.md" ]; then
+    # Single file plan - save as overview
+    rm -rf "$WORKSPACE_PATH/codegen/plan" 2>/dev/null || true
+    mkdir -p "$WORKSPACE_PATH/codegen/plan"
+    cp "$REPO_ROOT/codegen/plans/${FEATURE_NAME}.md" "$WORKSPACE_PATH/codegen/plan/overview.md"
+fi
+
 if [ -f "$REPO_ROOT/codegen/PROJECT_CONTEXT.md" ]; then
     cp "$REPO_ROOT/codegen/PROJECT_CONTEXT.md" "$WORKSPACE_PATH/codegen/PROJECT_CONTEXT.md"
 fi
@@ -325,7 +338,9 @@ if [ -n "$PORT" ] && [ "$PORT" != "not configured" ]; then
     echo "🌐 Server will be available at: http://localhost:$PORT"
 fi
 echo "📁 $WORKSPACE_PATH"
-if [ -f "$REPO_ROOT/codegen/plans/${FEATURE_NAME}.md" ]; then
+if [ -d "$REPO_ROOT/codegen/plans/${FEATURE_NAME}" ]; then
+    echo "📋 Plan: codegen/plan/ (modular structure)"
+elif [ -f "$REPO_ROOT/codegen/plans/${FEATURE_NAME}.md" ]; then
     echo "📋 Plan: codegen/plans/${FEATURE_NAME}.md"
 fi
 echo ""

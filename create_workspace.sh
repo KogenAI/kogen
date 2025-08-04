@@ -196,11 +196,20 @@ fi
 
 PLAN_TITLE="$FEATURE_NAME"
 
-if [ -f "$REPO_ROOT/codegen/plans/${FEATURE_NAME}.md" ]; then
+# Copy plan structure
+if [ -d "$REPO_ROOT/codegen/plans/${FEATURE_NAME}" ]; then
+    # Modular plan structure
     mkdir -p "$WORKSPACE_PATH/codegen"
-    cp "$REPO_ROOT/codegen/plans/${FEATURE_NAME}.md" "$WORKSPACE_PATH/codegen/PLAN.md"
+    cp -r "$REPO_ROOT/codegen/plans/${FEATURE_NAME}" "$WORKSPACE_PATH/codegen/plan"
+elif [ -f "$REPO_ROOT/codegen/plans/${FEATURE_NAME}.md" ]; then
+    # Single file plan - save as overview
+    mkdir -p "$WORKSPACE_PATH/codegen/plan"
+    cp "$REPO_ROOT/codegen/plans/${FEATURE_NAME}.md" "$WORKSPACE_PATH/codegen/plan/overview.md"
+fi
 
-    PLAN_TITLE=$(head -n 1 "$WORKSPACE_PATH/codegen/PLAN.md" | sed 's/^# *//' | sed 's/ *$//')
+# Extract plan title for templates
+if [ -f "$WORKSPACE_PATH/codegen/plan/overview.md" ]; then
+    PLAN_TITLE=$(head -n 1 "$WORKSPACE_PATH/codegen/plan/overview.md" | sed 's/^# *//' | sed 's/ *$//')
     PLAN_TITLE=$(echo "$PLAN_TITLE" | sed 's/[[\.*^$()+?{|&]/\\&/g')
 fi
 
@@ -224,6 +233,13 @@ if [ -f "$SCRIPT_DIR/templates/CONTEXT.md" ]; then
     sed -i '' "s|{{PORT}}|$NEXT_PORT|g" "$WORKSPACE_PATH/codegen/CONTEXT.md"
     sed -i '' "s|{{DB_NAME_PREFIX}}|$DB_NAME_PREFIX|g" "$WORKSPACE_PATH/codegen/CONTEXT.md"
     sed -i '' "s|{{WORKSPACE_PATH}}|$WORKSPACE_PATH|g" "$WORKSPACE_PATH/codegen/CONTEXT.md"
+    
+    # Initialize modular context structure
+    mkdir -p "$WORKSPACE_PATH/codegen/context"
+    echo "# Step Context Files" > "$WORKSPACE_PATH/codegen/context/README.md"
+    echo "" >> "$WORKSPACE_PATH/codegen/context/README.md"
+    echo "This directory contains detailed progress and lessons for each implementation step." >> "$WORKSPACE_PATH/codegen/context/README.md"
+    echo "Files are created as you work on each step to preserve implementation details." >> "$WORKSPACE_PATH/codegen/context/README.md"
 fi
 
 if [ -f "$SCRIPT_DIR/templates/NEW_PROMPT.md" ]; then
@@ -358,7 +374,9 @@ echo "🎉 Workspace ready: $FEATURE_NAME"
 echo "🔌 Port: $NEXT_PORT | 🧪 Test Port: $PORT_TEST | 🎭 Playwright: $NEXT_PLAYWRIGHT_PORT | 🗄️ Partition: $PARTITION | 🌿 Branch: $BRANCH_NAME"
 echo "🌐 Server will be available at: http://localhost:$NEXT_PORT"
 echo "📁 $WORKSPACE_PATH"
-if [ -f "$REPO_ROOT/codegen/plans/${FEATURE_NAME}.md" ]; then
+if [ -d "$REPO_ROOT/codegen/plans/${FEATURE_NAME}" ]; then
+    echo "📋 Plan: codegen/plan/ (modular structure)"
+elif [ -f "$REPO_ROOT/codegen/plans/${FEATURE_NAME}.md" ]; then
     echo "📋 Plan: codegen/plans/${FEATURE_NAME}.md"
 fi
 echo ""
