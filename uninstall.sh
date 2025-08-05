@@ -49,22 +49,42 @@ else
     echo "   ℹ️  Shell configuration file $RC_FILE not found"
 fi
 
-CLAUDE_SETTINGS_FILE="$HOME/.claude/settings.json"
+CLAUDE_SETTINGS_DIR="$HOME/.claude"
+CLAUDE_SETTINGS_FILE="$CLAUDE_SETTINGS_DIR/settings.json"
+CLAUDE_COMMANDS_DIR="$CLAUDE_SETTINGS_DIR/commands"
+CLAUDE_AGENTS_DIR="$CLAUDE_SETTINGS_DIR/agents"
 
-if [ -f "$CLAUDE_SETTINGS_FILE" ]; then
-    echo "   ⚙️  Found Claude Code settings"
-    echo "   ⚠️  Do you want to remove Claude Code settings? [y/N]"
+if [ -d "$CLAUDE_SETTINGS_DIR" ]; then
+    echo "   ⚙️  Found Claude Code configuration"
+    echo "   ⚠️  Do you want to remove Claude Code settings, commands, and sub agents? [y/N]"
     read -r confirm
 
     if [ "$confirm" = "y" ] || [ "$confirm" = "Y" ]; then
-        rm -f "$CLAUDE_SETTINGS_FILE"
-        echo "   ✅ Removed Claude Code settings"
-        rmdir "$HOME/.claude" 2>/dev/null || true
+        # Remove settings file
+        if [ -f "$CLAUDE_SETTINGS_FILE" ]; then
+            rm -f "$CLAUDE_SETTINGS_FILE"
+            echo "   ✅ Removed Claude Code settings"
+        fi
+        
+        # Remove custom commands
+        if [ -d "$CLAUDE_COMMANDS_DIR" ]; then
+            rm -rf "$CLAUDE_COMMANDS_DIR"
+            echo "   ✅ Removed Claude Code commands"
+        fi
+        
+        # Remove sub agents
+        if [ -d "$CLAUDE_AGENTS_DIR" ]; then
+            rm -rf "$CLAUDE_AGENTS_DIR"
+            echo "   ✅ Removed Claude Code sub agents"
+        fi
+        
+        # Try to remove the directory if empty
+        rmdir "$CLAUDE_SETTINGS_DIR" 2>/dev/null || true
     else
-        echo "   ℹ️  Keeping Claude Code settings"
+        echo "   ℹ️  Keeping Claude Code configuration"
     fi
 else
-    echo "   ℹ️  No Claude Code settings found"
+    echo "   ℹ️  No Claude Code configuration found"
 fi
 
 echo ""

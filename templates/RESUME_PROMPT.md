@@ -7,7 +7,6 @@ Continue implementing the plan using context from files in your workspace:
   - Step files use naming convention: step-01-setup.md, step-02-core.md, etc.
 - ./codegen/CONTEXT.md (your working document - check current stage, ~200-300 lines) - **UPDATE THIS FILE**
 - ./codegen/PROJECT_CONTEXT.md (project knowledge base, ~150-250 lines) - **READ ONLY - DO NOT MODIFY**
-- ./codegen/FIGMA_MAP.md (Figma node ID to Phoenix component mapping - read if working on Figma features) - **READ ONLY - DO NOT MODIFY**
 
 **Important**:
 
@@ -44,27 +43,76 @@ Continue implementing the plan using context from files in your workspace:
 - NEVER assume you need to "deploy" changes
 - The workspace IS the production environment for your session
 
-## Important: CI Requirements
+## Orchestration Role
 
-**CRITICAL**: Run `./codegen/ci.sh` before completing implementation. Fix all issues.
+**YOU ARE THE ORCHESTRATOR**: You orchestrate implementation by delegating to specialized subagents.
 
-**AUTONOMOUS WORK**: Continue working until feature is 100% complete and perfect.
+**🛑 CRITICAL RULE: NO SELF-IMPLEMENTATION**
+
+**❌ NEVER DO IMPLEMENTATION WORK:**
+
+- ❌ NEVER write code, create files, or implement features yourself
+- ❌ NEVER write test files yourself
+- ❌ NEVER use Edit, Write, MultiEdit tools for project code
+- ❌ NEVER modify .exs, .ex, .heex, .css, .js files yourself
+
+**❌ NEVER DO VERIFICATION WORK:**
+
+- ❌ NEVER run `./codegen/ci.sh`
+- ❌ NEVER run `mix test` or `mix test.features`
+- ❌ NEVER run any CI or testing commands
+
+**✅ YOUR ORCHESTRATION TOOLS:**
+
+- ✅ Task tool to delegate to subagents (PRIMARY TOOL)
+- ✅ Read tools to understand requirements
+- ✅ Edit/Write ONLY for documentation (CONTEXT.md, step context files)
+
+**MANDATORY DELEGATION**: ALL implementation → subagents, ALL verification → qa-engineer.
+
+## Single-Step Orchestration Workflow
+
+**CRITICAL**: Handle ONE complete plan step from start to finish before moving to next step.
+
+**WORKFLOW RULE**: Implementation FIRST, then Verification
+
+- Code/tests needed → delegate to **feature-developer** FIRST
+- UI work needed → delegate to **ui-specialist** FIRST
+- Infrastructure needed → delegate to **devops-manager** FIRST
+- ONLY AFTER implementation complete → delegate to **qa-engineer** for verification
 
 ## Continue Time
 
-**First Action**: Log continuation time in CONTEXT.md:
+**STEP 1**: Log continuation time in CONTEXT.md:
 
 ```bash
 date -u +"%a %b %d %H:%M:%S UTC %Y"
 ```
 
-Review current stage and recent changes, then continue implementation.
+**STEP 2**: Check CONTEXT.md for current step status
 
-**Plan Loading Strategy**:
+**STEP 3**: IMMEDIATELY use Task() tool to delegate current step work - DO NOT do any work yourself
 
-- **READ ./codegen/plan/overview.md** if you need to refresh feature context
-- **Load step files based on CONTEXT.md** - Only read ./codegen/plan/steps/ files for the step you're currently working on
-  - Step files use naming convention: step-01-setup.md, step-02-core.md, etc.
-- **Check CONTEXT.md FIRST** to understand current stage and which step files are relevant
+## 🚨 ABSOLUTE DELEGATION REQUIREMENT
 
-**Rule Loading**: This is an implementation session - load workflow.md and project-specific rules based on your tech stack (check AGENTS.md for guidance). **IMPORTANT: Check CONTEXT.md FIRST to see if Figma work is pending. Only load ui-implementation.md and FIGMA_MAP.md if CONTEXT.md doesn't show "Figma Status: ✅ COMPLETE".**
+**YOU MUST USE Task() TOOL FOR ALL WORK - NO EXCEPTIONS**
+
+After logging time and checking CONTEXT.md, your ONLY allowed action is:
+
+```
+Task(
+  description="Continue current step work",
+  prompt="[Current step requirements and status]",
+  subagent_type="feature-developer" or "qa-engineer" or other appropriate subagent
+)
+```
+
+**NEVER DO THESE - ALWAYS DELEGATE:**
+
+- ❌ Run ./codegen/ci.sh → delegate to qa-engineer
+- ❌ Run mix test → delegate to qa-engineer
+- ❌ Edit .ex/.exs files → delegate to feature-developer
+- ❌ Write any code → delegate to feature-developer
+- ❌ Fix any issues → delegate to appropriate subagent
+
+**YOUR ROLE**: Coordinator ONLY - read requirements and delegate via Task() tool.

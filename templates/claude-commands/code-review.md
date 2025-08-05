@@ -44,7 +44,7 @@ Perform a comprehensive code review of the current changes and codebase.
    - **WARN on coverage decreases**: Flag any coverage drops with clear before/after percentages (rare exceptions allowed but must be justified)
    - Identify untested code paths
 9. **CI/Quality checks**:
-   - Run `make ci` if available to check build status
+   - Run `./codegen/ci.sh` if available to check build status
    - Verify no Credo warnings (zero-tolerance per elixir-ci.md)
    - Check for compilation warnings
    - Validate test suite passes
@@ -84,6 +84,7 @@ Perform a comprehensive code review of the current changes and codebase.
     - Check that code is self-documenting through clear naming
     - **Pipeline flow**: SCAN pipeline functions for awkward parameter names that break natural reading flow
 14. **Generate review report**:
+
     - **🎯 Goal alignment**: Whether each change contributes to the PLAN.md objective
     - **📋 Step Implementation Verification**: MANDATORY section - Line-by-line verification of step plan completion:
       - List EVERY requirement from the step plan file

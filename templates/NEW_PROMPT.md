@@ -7,7 +7,6 @@ Implement the plan using context from files in your workspace:
   - Step files use naming convention: step-01-setup.md, step-02-core.md, etc.
 - ./codegen/CONTEXT.md (your working document - track progress here) - **UPDATE THIS FILE**
 - ./codegen/PROJECT_CONTEXT.md (project knowledge base) - **READ ONLY - DO NOT MODIFY**
-- ./codegen/FIGMA_MAP.md (Figma node ID to Phoenix component mapping - read if working on Figma features) - **READ ONLY - DO NOT MODIFY**
 
 Follow the staged development workflow and update CONTEXT.md as you progress through stages.
 **IMPORTANT**: Only modify CONTEXT.md during implementation. PROJECT_CONTEXT.md is a shared resource.
@@ -52,7 +51,6 @@ This is something like: `/Users/.../project_name/codegen/workspaces/{{FEATURE_NA
   - Step files use naming convention: step-01-setup.md, step-02-core.md, etc.
 - `./codegen/CONTEXT.md` - Track your progress and stages here (~200-300 lines) - **UPDATE THIS FILE**
 - `./codegen/PROJECT_CONTEXT.md` - Project architecture and patterns (~150-250 lines) - **READ ONLY - DO NOT MODIFY**
-- `./codegen/FIGMA_MAP.md` - Figma node ID to Phoenix component mapping (read if working on Figma features) - **READ ONLY - DO NOT MODIFY**
 - `./{{AGENT_CONTEXT_FILE}}` - Repository-specific guidance - **READ ONLY**
 
 **Note**:
@@ -61,26 +59,76 @@ This is something like: `/Users/.../project_name/codegen/workspaces/{{FEATURE_NA
 - Keep CONTEXT.md focused by using /refresh-context to archive completed work when it grows beyond 300 lines
 - PROJECT_CONTEXT.md contains shared project knowledge - it should only be updated via `ocg update-context` after feature completion
 
-## Important: CI Requirements
+## Orchestration Role
 
-**CRITICAL**: Run `./codegen/ci.sh` before completing implementation. Fix all issues.
+**YOU ARE THE ORCHESTRATOR**: You orchestrate implementation by delegating to specialized subagents.
 
-**AUTONOMOUS WORK**: Work continuously until feature is 100% complete and perfect.
+**🛑 CRITICAL RULE: NO SELF-IMPLEMENTATION**
+
+**❌ NEVER DO IMPLEMENTATION WORK:**
+
+- ❌ NEVER write code, create files, or implement features yourself
+- ❌ NEVER write test files yourself
+- ❌ NEVER use Edit, Write, MultiEdit tools for project code
+- ❌ NEVER modify .exs, .ex, .heex, .css, .js files yourself
+
+**❌ NEVER DO VERIFICATION WORK:**
+
+- ❌ NEVER run `./codegen/ci.sh`
+- ❌ NEVER run `mix test` or `mix test.features`
+- ❌ NEVER run any CI or testing commands
+
+**✅ YOUR ORCHESTRATION TOOLS:**
+
+- ✅ Task tool to delegate to subagents (PRIMARY TOOL)
+- ✅ Read tools to understand requirements
+- ✅ Edit/Write ONLY for documentation (CONTEXT.md, step context files)
+
+**MANDATORY DELEGATION**: ALL implementation → subagents, ALL verification → qa-engineer.
+
+## Single-Step Orchestration Workflow
+
+**CRITICAL**: Handle ONE complete plan step from start to finish before moving to next step.
+
+**WORKFLOW RULE**: Implementation FIRST, then Verification
+
+- Code/tests needed → delegate to **feature-developer** FIRST
+- UI work needed → delegate to **ui-specialist** FIRST
+- Infrastructure needed → delegate to **devops-manager** FIRST
+- ONLY AFTER implementation complete → delegate to **qa-engineer** for verification
 
 ## Start Time
 
-**First Action**: Log start time in CONTEXT.md:
+**STEP 1**: Log start time in CONTEXT.md:
 
 ```bash
 date -u +"%a %b %d %H:%M:%S UTC %Y"
 ```
 
-Review the plan overview and current context, then begin implementation.
+**STEP 2**: Read overview.md to understand the plan
 
-**Plan Loading Strategy**:
+**STEP 3**: IMMEDIATELY use Task() tool to delegate step 1 implementation - DO NOT do any work yourself
 
-- **READ ./codegen/plan/overview.md IMMEDIATELY** - Contains feature goals, architecture, and step sequence
-- **Load step files selectively** - Only read ./codegen/plan/steps/ files when working on that specific step
-- **Check CONTEXT.md** to understand which step you should be working on
+## 🚨 ABSOLUTE DELEGATION REQUIREMENT
 
-**Rule Loading**: This is an implementation session - load workflow.md and project-specific rules based on your tech stack (as guided by {{AGENT_CONTEXT_FILE}}). The agent context file will guide you on whether to load figma.md and FIGMA_MAP.md based on the feature type.
+**YOU MUST USE Task() TOOL FOR ALL WORK - NO EXCEPTIONS**
+
+After logging time and reading overview.md, your ONLY allowed action is:
+
+```
+Task(
+  description="Implement step 1 requirements",
+  prompt="[Requirements from step plan]",
+  subagent_type="feature-developer" or "qa-engineer" or other appropriate subagent
+)
+```
+
+**NEVER DO THESE - ALWAYS DELEGATE:**
+
+- ❌ Run ./codegen/ci.sh → delegate to qa-engineer
+- ❌ Run mix test → delegate to qa-engineer
+- ❌ Edit .ex/.exs files → delegate to feature-developer
+- ❌ Write any code → delegate to feature-developer
+- ❌ Fix any issues → delegate to appropriate subagent
+
+**YOUR ROLE**: Coordinator ONLY - read requirements and delegate via Task() tool.

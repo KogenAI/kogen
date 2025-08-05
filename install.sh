@@ -95,6 +95,23 @@ else
     echo "   ⚠️  No custom commands found in templates/claude-commands/"
 fi
 
+# Install Claude sub agents from templates
+echo "   🤖 Installing Claude sub agents..."
+CLAUDE_AGENTS_DIR="$CLAUDE_SETTINGS_DIR/agents"
+mkdir -p "$CLAUDE_AGENTS_DIR"
+
+if [ -d "$CODEGEN_DIR/templates/claude-subagents" ]; then
+    for agent_file in "$CODEGEN_DIR/templates/claude-subagents"/*.md; do
+        if [ -f "$agent_file" ]; then
+            agent_name=$(basename "$agent_file")
+            cp "$agent_file" "$CLAUDE_AGENTS_DIR/"
+            echo "   ✅ Installed sub agent: ${agent_name%.md}"
+        fi
+    done
+else
+    echo "   ⚠️  No sub agents found in templates/claude-subagents/"
+fi
+
 # Set up autocompletion
 echo ""
 echo "🚀 Setting up autocompletion..."

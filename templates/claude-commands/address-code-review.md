@@ -38,7 +38,7 @@ Address code review findings from `./codegen/code_review.md` and implement requi
 
 6. **Validate fixes**:
 
-   - Run `make ci` to ensure all fixes work
+   - Run `./codegen/ci.sh` to ensure all fixes work
    - Verify tests pass with new test coverage
    - Check that Credo warnings are resolved
    - Confirm coverage metrics are acceptable

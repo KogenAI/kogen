@@ -10,192 +10,253 @@ When you see `FILE: ./path/to/file.md` in any document, this indicates a loadabl
 - Load files only when their content is relevant to your current task
 - Use your Read tool to load the file when needed
 
-## Required Files
+## Workspace Understanding
 
-1. FILE: ./codegen/rules/RULES.md - **READ IMMEDIATELY**. Contains rule index.
-2. FILE: ./codegen/PROJECT_CONTEXT.md - Read for any feature work. Has all project details.
-3. FILE: ./codegen/plan/overview.md - **READ IMMEDIATELY**. Feature goals, architecture, step sequence.
-4. FILE: ./codegen/plan/steps/ - **READ BASED ON CONTEXT.md** - Only load specific step files when working on that step.
-   - Step files use naming convention: `step-01-setup.md`, `step-02-core.md`, etc.
-   - **DISCOVERY**: If step file not found, use Glob tool: `./codegen/plan/steps/step-01*.md` to find the actual filename
-5. FILE: ./codegen/FIGMA_MAP.md - **CHECK CONTEXT.md FIRST** - Only read if Figma work is pending.
-6. FILE: ./codegen/CONTEXT.md - **ALWAYS READ WHEN RESUMING** to determine current stage and which step files to load.
+### 🚨 CRITICAL: OCG Workspace Understanding
 
-## 🚨 CRITICAL: AUTOMATIC STEP VERIFICATION PROCESS
+**YOU ARE IN AN OCG WORKSPACE (GIT WORKTREE)**:
 
-**MANDATORY FOR EVERY STEP**: This process is **AUTOMATIC** and **NON-NEGOTIABLE**. Never proceed to the next step without completing ALL verification requirements.
+- **WORKSPACE = CURRENT DIRECTORY**: Contains the complete project files
+- **REPO ROOT = PARENT DIRECTORIES**: `../` or `../../` paths lead to main repository - NEVER GO THERE
+- **ALL FILES ARE HERE**: Everything you need is in the current workspace directory
 
-### BEFORE IMPLEMENTING ANY STEP:
+### Path Rules - NEVER VIOLATE THESE:
 
-1. **Find the step plan file**:
-   - Check CONTEXT.md for current step (e.g., "step-01-setup.md")
-   - If file not found with exact name, use Glob: `./codegen/plan/steps/step-01*.md`
-   - Read the found file to understand requirements
-2. **Identify ALL verification requirements** from the plan and CONTEXT.md
-3. **Create step context file** in `./codegen/context/` using same filename as the plan step
+- ✅ **CORRECT**: `./codegen/CONTEXT.md` (current directory)
+- ❌ **WRONG**: `../CONTEXT.md` or `../../codegen/CONTEXT.md`
+- ✅ **CORRECT**: `./priv/gettext/` (translation files)
+- ❌ **WRONG**: `../priv/gettext/`
 
-### DURING STEP IMPLEMENTATION:
+## Common File Locations (All in Current Directory):
 
-1. **Implement the step** according to the plan
-2. **Update step context file** with implementation details and any deviations
+- **Context**: `./codegen/CONTEXT.md`
+- **Project Context**: `./codegen/PROJECT_CONTEXT.md`
+- **Rules**: `./codegen/rules/RULES.md`
+- **Plan**: `./codegen/plan/overview.md`
+- **Translations**: `./priv/gettext/`
+- **Phoenix Config**: `./config/`
+- **Application Code**: `./lib/`
 
-### ⚠️ BEFORE PROCEEDING TO NEXT STEP - AUTOMATIC VERIFICATION:
+## Universal Context Files (Available to ALL agents)
 
-**STEP 1: Run ALL Required Verification Commands**
-Based on the feature type, run ALL applicable commands:
+**ALWAYS READ THESE**:
 
-```bash
-# ALWAYS REQUIRED:
-./codegen/ci.sh                    # Must show "✅ CI checks passed" (includes mix compile)
+1. **FILE: ./codegen/PROJECT_CONTEXT.md** - Project details, architecture, and patterns
+2. **FILE: ./codegen/rules/RULES.md** - Rule index (load domain-specific rules as needed)
 
-# FEATURE-SPECIFIC (check plan, CONTEXT.md, and mix.exs for requirements):
-mix test                          # Standard test suite
-mix test path/to/specific_test.exs # Specific tests mentioned in plan
-mix test.features                 # If mix.exs contains this alias (feature test projects)
-mix phx.server                    # Manual server verification if needed
+**Note**: The {{AGENT_CONTEXT_FILE}} (AGENTS.md/CLAUDE.md) is automatically loaded - it contains universal guidance for all agents. Different agent types may read additional context files specific to their role.
+
+## Subagent File Loading Architecture
+
+**Understanding which files each agent type loads:**
+
+### Main Agent (orchestrator role)
+
+- `templates/NEW_PROMPT.md` or `templates/RESUME_PROMPT.md` (includes orchestration guidance)
+- `templates/AGENTS.md` or `templates/CLAUDE.md` (auto-loaded via {{AGENT_CONTEXT_FILE}})
+- `./codegen/PROJECT_CONTEXT.md` (project-specific details)
+- `./codegen/CONTEXT.md` (implementation progress)
+- `./codegen/plan/overview.md` (feature overview)
+- `./codegen/plan/steps/step-XX-name.md` (current step plan)
+
+### Specialized Subagents (single-level delegation only)
+
+- `templates/claude-subagents/[subagent-name].md` (role definition)
+- `templates/AGENTS.md/CLAUDE.md` (auto-loaded universal guidance)
+- `./codegen/CONTEXT.md` (workspace info: ports, commands, current progress)
+- `./codegen/PROJECT_CONTEXT.md` (project-specific details)
+- Domain-specific rules (e.g., phoenix.md, testing.md, i18n.md)
+- Step context + step plan + workspace details (passed via main agent delegation)
+
+### Special Cases
+
+- **ui-specialist**: Also loads `./codegen/FIGMA_MAP.md` when doing Figma work
+- **qa-engineer**: Loads testing.md, ci-pipeline.md rules
+- **translator**: Loads i18n.md rules
+- **devops-manager**: Loads deployment.md rules
+
+## Available Tools
+
+### Standard Tools
+
+- **Read, Write, Edit, MultiEdit**: For file operations
+- **Bash**: For standard commands like `curl`, `mix`, `npm`, etc.
+- **Grep, Glob**: For searching files
+- **TodoWrite**: For task management
+- **WebFetch**: For accessing external URLs
+
+### MCP Tools (When Available)
+
+- **Tidewave MCP**: Elixir/Phoenix development assistance
+- **Playwright MCP**: Browser automation and testing
+- **Figma MCP**: Design extraction and analysis
+
+### Tool Usage Notes
+
+- **Never run MCP commands as bash** - they will fail
+- Use fallback strategies when MCP tools aren't available
+- Use WebFetch for external resources when MCP tools fail
+
+## Agent Type Awareness
+
+### Universal Guidance (Applies to ALL agents)
+
+- **Workspace Isolation**: NEVER navigate to parent directories (`../` or `../../`)
+- **Phoenix LiveView**: This is LiveView, not REST API - use event handlers, not endpoints
+- **Pattern Following**: Follow existing codebase patterns and conventions
+- **Context Loading**: Use your Read tool to understand context before making changes
+
+### Single-Level Delegation Architecture
+
+**MAIN AGENT = ORCHESTRATOR**: The main thread acts as orchestrator, delegating directly to specialized subagents.
+
+**DELEGATION PATTERN**: Main Agent → Subagent (single level only)
+
+- ✅ **Main agent delegates to**: feature-developer, qa-engineer, ui-specialist, devops-manager, translator, manual-tester
+- ❌ **No multi-level**: Subagents NEVER delegate to other subagents
+- ❌ **No orchestrator subagent**: Removed due to memory constraints
+
+### Subagent Coordination
+
+**STAR PATTERN**: All subagents report back to main agent only
+
+```
+feature-developer ←→ main-agent ←→ qa-engineer
+      ↑              (orchestrator)        ↓
+      ↑                    ↕               ↓
+ui-specialist    ←→ main-agent ←→ devops-manager
 ```
 
-**STEP 2: Document Verification Evidence**
-Update `./codegen/CONTEXT.md` with:
+**KEY RULES**:
 
-- ✅ Status for each verification command
-- Timestamp of successful completion
-- Evidence (test counts, coverage %, CI output)
-- Any issues resolved during verification
+- **Main agent coordinates**: All delegation routing handled by main agent
+- **No cross-delegation**: Subagents only communicate with main agent
+- **qa-engineer verification**: Final verification always delegated to qa-engineer
+- **Single step focus**: Complete one plan step fully before moving to next
 
-**STEP 3: Complete Step Context File**
-Update `./codegen/context/step-XX-name.md` with:
+## 🚨 MANDATORY: Step Context File Updates
 
-- **Implementation Summary**: What was built
-- **Verification Results**: All commands run and results
-- **Issues Resolved**: Problems encountered and solutions
-- **Lessons Learned**: Key insights for future steps
-- **Deviations from Plan**: Any changes made and why
+**SUBAGENT WORKSPACE CONTEXT REQUIREMENTS**:
 
-**STEP 4: Update Main Context**
-Update `./codegen/CONTEXT.md`:
+### MANDATORY for ALL Subagents:
 
-- Mark current step as ✅ COMPLETE
-- Update "Current Step" to next step
-- Add verification evidence section
-- Update "Implementation Progress"
+1. **ALWAYS read CONTEXT.md FIRST** - Contains critical workspace info:
 
-### 🛑 NEVER PROCEED WITHOUT:
+   - Phoenix server port (e.g., 4001)
+   - Test server port (e.g., 4101)
+   - Playwright MCP port (e.g., 8901)
+   - Database partition info
+   - Available mix aliases and commands
+   - Current implementation progress
 
-- ✅ ALL verification commands passing
-- ✅ Step context file completed
-- ✅ Main CONTEXT.md updated with evidence
-- ✅ CI showing "✅ CI checks passed"
-- ✅ All feature-specific tests passing
+2. **ALWAYS read phoenix.md rule** - Contains critical server management rules:
 
-### Verification Command Discovery
+   ```
+   ## Server
+   - Assume the server is running
+   - Don't assume the port is 4000. Get the correct port from Endpoint configuration
+   - Don't restart the server - it supports hot reloading
+   - Only after updating config files, adding/updating Oban workers, or any GenServer/Supervisor, you need to restart the server
+   ```
 
-**How to identify required verification commands:**
+3. **Read step context file** - `./codegen/context/step-XX-name.md` for coordination
+4. **Load domain rules** - Only additional rules relevant to your role (testing.md, ci-pipeline.md, etc.)
 
-1. **Check the step plan** - Look for "Verification" or "Testing" sections
-2. **Check CONTEXT.md** - Look for feature-specific requirements
-3. **Check mix.exs aliases** - Look for custom test commands
-4. **Standard commands** - Always run `./codegen/ci.sh`
+### 🚨 CRITICAL SERVER RULES:
 
-**Common verification patterns by feature type:**
+- **NEVER kill or restart Phoenix server** unless modifying config/workers/supervisors
+- **NEVER run `mix phx.server`** - server is already running with hot reload
+- **NEVER stop running processes** - they support live code updates
+- Get actual port from CONTEXT.md, don't assume 4000
 
-- **Feature Tests**: `mix test.features` (if project has this alias)
-- **LiveView Features**: `mix test`, server verification
-- **API Features**: `mix test`, endpoint testing
-- **Database Changes**: `mix test`, `mix ecto.migrate`
-- **Frontend Changes**: `mix test`, browser verification
+### Main Agent Delegation Requirements:
 
-**CRITICAL**: Never proceed to the next step until current step is verified working. Better to fix issues immediately than debug a broken system at the end.
+When delegating to subagents, ALWAYS include:
 
-**Why This Matters**: Step verification prevents cascading failures and ensures each piece works before building on top of it. Context files are consolidated during `ocg rm` and used by `ocg update-context` to extract learnings.
+```
+Task(
+  description="[Task description] for step X",
+  prompt="You are working on: Step X - [Step Name]
 
-## 🚨 CRITICAL: COMPLETE STEP PLAN IMPLEMENTATION
+  MANDATORY FIRST ACTIONS:
+  1. Read ./codegen/CONTEXT.md (workspace ports, commands, progress)
+  2. Read ./codegen/context/step-XX-name.md (coordination with other agents)
+  3. Read step plan: ./codegen/plan/steps/step-XX-name.md (requirements)
 
-**MANDATORY**: Every step plan requirement MUST be implemented exactly as specified.
+  WORKSPACE INFO:
+  - Phoenix Port: [port from CONTEXT.md]
+  - Test Port: [test-port from CONTEXT.md]
+  - Playwright MCP Port: [playwright-port from CONTEXT.md]
+  - Branch: feature/[feature-name]
 
-### Implementation Completeness Check
+  SPECIFIC TASK:
+  [Detailed task requirements - do NOT just reference the plan]
 
-**BEFORE claiming step completion:**
+  COMPLETION REQUIREMENTS:
+  - Update step context file with your work
+  - [Specific completion criteria]",
+  subagent_type="[subagent-type]"
+)
+```
 
-1. **Line-by-Line Plan Verification**:
+**EVERY AGENT AND SUBAGENT MUST UPDATE STEP CONTEXT FILES**:
 
-   - Read the entire step plan file (`./codegen/plan/steps/step-XX-name.md`)
-   - Create a checklist of EVERY requirement listed
-   - Verify each requirement is implemented exactly as specified
-   - Check ALL file modifications, configuration changes, dependency additions
+### Before Starting Work:
 
-2. **Missing Implementation = BLOCKING FAILURE**:
+1. **Read current step context file**: `./codegen/context/step-XX-name.md` (matches current step plan)
+2. **Check what other agents have done**: Review existing progress, issues, solutions
+3. **Understand integration points**: See dependencies and coordination needs
 
-   - ANY unimplemented requirement blocks step completion
-   - No partial completions allowed
-   - No "we'll do it later" exceptions
-   - Must fix immediately before proceeding
+### During Work:
 
-3. **Common Missed Requirements**:
-   - Configuration file updates (.dockerignore, .gitignore, config files)
-   - Dependency version specifications
-   - File creation in exact locations specified
-   - Environment variable configurations
-   - Mix alias definitions
+1. **Document progress regularly**: Update step context with status, findings, decisions
+2. **Note integration challenges**: Document any cross-subagent coordination issues
+3. **Record deviations**: Explain any changes from original plan requirements
 
-### Step Context Documentation
+### Before Completing/Delegating:
 
-**MANDATORY**: Document implementation completeness in step context files:
+1. **MANDATORY UPDATE**: Update step context file with:
+
+   - **Work completed**: Specific tasks finished and evidence
+   - **Issues encountered**: Problems found and how they were resolved
+   - **Integration notes**: How your work connects with other subagents
+   - **Next actions needed**: What still needs to be done for this step
+   - **Verification status**: What verification is needed/completed
+
+2. **Use collaboration templates** from `./codegen/rules/collaboration.md` for consistent updates
+
+### Step Context File Format:
 
 ```markdown
-## Implementation Checklist
+## [Agent Name] Work Status - [Timestamp]
 
-### Requirements from step-XX-name.md:
+### Completed:
 
-- [ ] Requirement 1: Description - STATUS: ✅ IMPLEMENTED / ❌ MISSING
-- [ ] Requirement 2: Description - STATUS: ✅ IMPLEMENTED / ❌ MISSING
-- [ ] etc.
+- Specific task 1 with evidence/location
+- Specific task 2 with evidence/location
 
-### Verification Evidence:
+### Issues Resolved:
 
-- Command 1: Result and timestamp
-- Command 2: Result and timestamp
+- Problem X: Solution Y (files affected: ...)
 
-### Deviations from Plan:
+### Integration Notes:
 
-- None OR list specific changes and justification
+- Dependencies on other agents: ...
+- Coordination points: ...
+
+### Still Needed:
+
+- Task A (assigned to: agent-type)
+- Task B (verification needed)
+
+### Files Modified:
+
+- path/to/file1.ex - reason
+- path/to/file2.exs - reason
 ```
 
-**CRITICAL**: Step completion requires 100% requirement implementation - zero tolerance for gaps.
+**NO EXCEPTIONS**: Every agent must update step context before finishing work or delegating to another agent.
 
-## Rule Loading by Session Type
+## Rule Loading
 
-**CRITICAL**: These are MANDATORY, not optional. Load ALL listed rules for your session type IMMEDIATELY.
-
-### Implementation Session (New or Resume):
-
-```
-IMPORTANT - CHECK CONTEXT.md FIRST to determine what to load:
-
-Base rules (ALWAYS load):
-1. workflow.md (ALWAYS first - time logging, CI requirements)
-2. phoenix.md (Phoenix patterns, LiveView)
-3. elixir-code-generation.md (Elixir style, @spec requirements)
-4. elixir-ci.md (CI requirements, zero-tolerance Credo rules)
-
-Additional rules (ONLY if CONTEXT.md shows Figma work pending):
-5. ui-implementation.md (Figma workflow, frontend patterns)
-6. FIGMA_MAP.md (Figma node ID to Phoenix component mapping)
-
-If CONTEXT.md shows "Figma Status: ✅ COMPLETE", skip ui-implementation.md and FIGMA_MAP.md
-```
-
-### Other Session Types:
-
-**Planning**: workflow.md, planning.md, phoenix.md, elixir-code-generation.md, elixir-ci.md
-**Bug Fix**: workflow.md, elixir-ci.md (includes test-first requirements), phoenix.md, elixir-code-generation.md
-**Feature-specific**: ui-implementation.md (if "figma" or UI work), git.md (if "git")
-**Figma Implementation**: ui-implementation.md, FIGMA_MAP.md (always load both for Figma features)
-
-## Key Reminders
-
-- Run `make ci` before claiming completion
-- This is LiveView, not REST API - use event handlers, not endpoints
-- Fix ALL Credo warnings - no exceptions
-
-PROJECT_CONTEXT.md has everything else. Focus on loading the right rules.
+Load `./codegen/rules/RULES.md` to see available domain-specific rules. Load only rules relevant to your current task and agent type.

@@ -59,6 +59,23 @@
 - **Next Steps**: [What comes next in the current stage]
 - **Blockers**: [Any issues or dependencies preventing progress]
 
+### Subagent Coordination Status
+
+**Active Subagents** (for current step):
+
+- **feature-developer**: [Not Started | In Progress | Complete | Blocked]
+- **ui-specialist**: [Not Started | In Progress | Complete | Blocked]
+- **qa-engineer**: [Not Started | In Progress | Complete | Blocked]
+- **manual-tester**: [Not Started | In Progress | Complete | Blocked]
+- **devops-manager**: [Not Started | In Progress | Complete | Blocked]
+- **translator**: [Not Started | In Progress | Complete | Blocked]
+
+**Integration Status**:
+
+- **Pending Handoffs**: [Which subagent is waiting for another to complete]
+- **Integration Issues**: [Any conflicts or coordination problems]
+- **Collaboration Notes**: [Important coordination information]
+
 ### Tech Stack
 
 - Phoenix LiveView with Elixir
@@ -75,28 +92,41 @@
 
 ### Server Management
 
-- **Phoenix Server**: Started automatically during workspace initialization
+- **Phoenix Server**: Running on port {{PORT}} with automatic hot reloading
 - **Server Logs**: Available in `./codegen/mix_phx_server.log`
-- **Restart Server**: When you need to restart Phoenix during development, use:
-  ```bash
-  # Kill existing server
-  lsof -ti tcp:{{PORT}} | xargs kill -9 2>/dev/null || true
-  sleep 2
-  # Start in background with logging
-  script -F codegen/mix_phx_server.log mix phx.server >/dev/null 2>&1 &
-  ```
+- **🚨 CRITICAL**: **DON'T restart unless absolutely necessary** - server supports hot reloading
+- **Hot Reloading**: Code changes are automatically picked up without server restart
+
+**ONLY restart when modifying**: config files, Oban workers, GenServer/Supervisor modules
+**When restart IS needed**, use:
+
+```bash
+# Kill existing server
+lsof -ti tcp:{{PORT}} | xargs kill -9 2>/dev/null || true
+sleep 2
+# Start in background with logging
+script -F codegen/mix_phx_server.log mix phx.server >/dev/null 2>&1 &
+```
 
 ### Development Workflow
 
-**If the plan contains stages:**
+**Single-Level Subagent Delegation Workflow:**
 
-1. **Implement one stage at a time** - Stop after completing each stage
-2. **Write comprehensive tests** - Ensure all new code has proper test coverage
-3. **Run CI checks** - Execute `./codegen/ci.sh` and ensure all checks pass
-4. **Wait for user review** - Pause for user to review code and commit before proceeding to next stage
-5. **Update this context** - Keep the "Current Stage" and "Implementation Progress" sections current
+1. **Orchestrate step implementation** - main agent delegates directly to specialized subagents:
 
-This staged approach ensures code quality and allows for proper review at each milestone.
+   - **feature-developer**: Phoenix/Elixir code implementation
+   - **ui-specialist**: Figma design implementation and styling
+   - **qa-engineer**: Test development and CI verification
+   - **manual-tester**: User workflow validation
+   - **devops-manager**: Infrastructure and deployment
+   - **translator**: Internationalization and localization
+
+2. **Delegate verification** - main agent delegates ALL testing and CI to qa-engineer
+3. **Integration coordination** - main agent ensures all subagent work integrates properly
+4. **Step completion** - Update context with verification evidence before proceeding
+5. **Wait for user review** - Pause for user to review code and commit before proceeding to next stage
+
+This single-level approach reduces memory usage while maintaining specialized expertise and clear responsibility boundaries.
 
 ### Available Git Commands
 
@@ -120,11 +150,20 @@ For detailed code analysis, you can use:
 
 **PRIMARY RULE**: If resuming work or context was compacted, **READ `@./codegen/plan/overview.md` FIRST**
 
+**SUBAGENT ORCHESTRATION**:
+
+- **main agent**: NEVER execute implementation or testing directly - ALWAYS delegate to specialized subagents
+- **Delegation pattern**: Use Task tool to launch appropriate subagents with clear step context
+- **Integration responsibility**: main agent coordinates between subagents and resolves conflicts
+- **Verification delegation**: ALWAYS delegate CI and testing to qa-engineer, never run directly
+
+**IMPLEMENTATION APPROACH**:
+
 - **Modular plan structure** contains all requirements, architecture, and completion criteria
 - **Overview** provides goals and step sequence, **step files** provide detailed implementation
 - Load step files as needed for current work to avoid context overload
 - Avoid introducing unnecessary complexity
-- Make sure all changes are covered with tests
+- Make sure all changes are covered with tests (via qa-engineer delegation)
 - **For Figma features**: Visual specifications and node IDs are in relevant step files
 - Use project knowledge from `./codegen/PROJECT_CONTEXT.md`
 - Follow established coding standards and project conventions
