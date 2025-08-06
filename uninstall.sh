@@ -65,19 +65,19 @@ if [ -d "$CLAUDE_SETTINGS_DIR" ]; then
             rm -f "$CLAUDE_SETTINGS_FILE"
             echo "   ✅ Removed Claude Code settings"
         fi
-        
+
         # Remove custom commands
         if [ -d "$CLAUDE_COMMANDS_DIR" ]; then
             rm -rf "$CLAUDE_COMMANDS_DIR"
             echo "   ✅ Removed Claude Code commands"
         fi
-        
+
         # Remove sub agents
         if [ -d "$CLAUDE_AGENTS_DIR" ]; then
             rm -rf "$CLAUDE_AGENTS_DIR"
             echo "   ✅ Removed Claude Code sub agents"
         fi
-        
+
         # Try to remove the directory if empty
         rmdir "$CLAUDE_SETTINGS_DIR" 2>/dev/null || true
     else

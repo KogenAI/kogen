@@ -37,11 +37,11 @@ fi
 # Archive context FIRST (before any cleanup) - consolidate modular context files
 if [ -f "$WORKSPACE_PATH/codegen/CONTEXT.md" ]; then
     mkdir -p "$REPO_ROOT/codegen/contexts"
-    
+
     # Start with main context
     cp "$WORKSPACE_PATH/codegen/CONTEXT.md" "$REPO_ROOT/codegen/contexts/${FEATURE_NAME}.md"
     echo "📄 Copied main context: CONTEXT.md"
-    
+
     # Append step context files if they exist
     if [ -d "$WORKSPACE_PATH/codegen/context" ]; then
         step_files_found=false
@@ -49,41 +49,41 @@ if [ -f "$WORKSPACE_PATH/codegen/CONTEXT.md" ]; then
             if [ -f "$step_file" ] && [ "$(basename "$step_file")" != "README.md" ]; then
                 if [ "$step_files_found" = false ]; then
                     echo "📋 Appending detailed step context files:"
-                    echo "" >> "$REPO_ROOT/codegen/contexts/${FEATURE_NAME}.md"
-                    echo "---" >> "$REPO_ROOT/codegen/contexts/${FEATURE_NAME}.md"
-                    echo "" >> "$REPO_ROOT/codegen/contexts/${FEATURE_NAME}.md"
-                    echo "# Step Context Files (Consolidated)" >> "$REPO_ROOT/codegen/contexts/${FEATURE_NAME}.md"
-                    echo "" >> "$REPO_ROOT/codegen/contexts/${FEATURE_NAME}.md"
-                    echo "The following step context files have been consolidated into this archive:" >> "$REPO_ROOT/codegen/contexts/${FEATURE_NAME}.md"
-                    echo "" >> "$REPO_ROOT/codegen/contexts/${FEATURE_NAME}.md"
+                    echo "" >>"$REPO_ROOT/codegen/contexts/${FEATURE_NAME}.md"
+                    echo "---" >>"$REPO_ROOT/codegen/contexts/${FEATURE_NAME}.md"
+                    echo "" >>"$REPO_ROOT/codegen/contexts/${FEATURE_NAME}.md"
+                    echo "# Step Context Files (Consolidated)" >>"$REPO_ROOT/codegen/contexts/${FEATURE_NAME}.md"
+                    echo "" >>"$REPO_ROOT/codegen/contexts/${FEATURE_NAME}.md"
+                    echo "The following step context files have been consolidated into this archive:" >>"$REPO_ROOT/codegen/contexts/${FEATURE_NAME}.md"
+                    echo "" >>"$REPO_ROOT/codegen/contexts/${FEATURE_NAME}.md"
                     step_files_found=true
                 fi
-                
+
                 step_name="$(basename "$step_file")"
                 echo "   + $step_name"
-                echo "- $step_name" >> "$REPO_ROOT/codegen/contexts/${FEATURE_NAME}.md"
+                echo "- $step_name" >>"$REPO_ROOT/codegen/contexts/${FEATURE_NAME}.md"
             fi
         done
-        
+
         if [ "$step_files_found" = true ]; then
-            echo "" >> "$REPO_ROOT/codegen/contexts/${FEATURE_NAME}.md"
-            echo "**Note**: These files are already included below - do not look for separate step files." >> "$REPO_ROOT/codegen/contexts/${FEATURE_NAME}.md"
-            echo "" >> "$REPO_ROOT/codegen/contexts/${FEATURE_NAME}.md"
+            echo "" >>"$REPO_ROOT/codegen/contexts/${FEATURE_NAME}.md"
+            echo "**Note**: These files are already included below - do not look for separate step files." >>"$REPO_ROOT/codegen/contexts/${FEATURE_NAME}.md"
+            echo "" >>"$REPO_ROOT/codegen/contexts/${FEATURE_NAME}.md"
         fi
-        
+
         # Now append the actual content
         for step_file in "$WORKSPACE_PATH/codegen/context"/*.md; do
             if [ -f "$step_file" ] && [ "$(basename "$step_file")" != "README.md" ]; then
                 step_name="$(basename "$step_file")"
-                echo "" >> "$REPO_ROOT/codegen/contexts/${FEATURE_NAME}.md"
-                echo "---" >> "$REPO_ROOT/codegen/contexts/${FEATURE_NAME}.md"
-                echo "# Archived: $step_name" >> "$REPO_ROOT/codegen/contexts/${FEATURE_NAME}.md"
-                echo "" >> "$REPO_ROOT/codegen/contexts/${FEATURE_NAME}.md"
-                cat "$step_file" >> "$REPO_ROOT/codegen/contexts/${FEATURE_NAME}.md"
+                echo "" >>"$REPO_ROOT/codegen/contexts/${FEATURE_NAME}.md"
+                echo "---" >>"$REPO_ROOT/codegen/contexts/${FEATURE_NAME}.md"
+                echo "# Archived: $step_name" >>"$REPO_ROOT/codegen/contexts/${FEATURE_NAME}.md"
+                echo "" >>"$REPO_ROOT/codegen/contexts/${FEATURE_NAME}.md"
+                cat "$step_file" >>"$REPO_ROOT/codegen/contexts/${FEATURE_NAME}.md"
             fi
         done
     fi
-    
+
     echo "📦 Consolidated context archived to: codegen/contexts/${FEATURE_NAME}.md"
 fi
 

@@ -233,13 +233,13 @@ if [ -f "$SCRIPT_DIR/templates/CONTEXT.md" ]; then
     sed -i '' "s|{{PORT}}|$NEXT_PORT|g" "$WORKSPACE_PATH/codegen/CONTEXT.md"
     sed -i '' "s|{{DB_NAME_PREFIX}}|$DB_NAME_PREFIX|g" "$WORKSPACE_PATH/codegen/CONTEXT.md"
     sed -i '' "s|{{WORKSPACE_PATH}}|$WORKSPACE_PATH|g" "$WORKSPACE_PATH/codegen/CONTEXT.md"
-    
+
     # Initialize modular context structure
     mkdir -p "$WORKSPACE_PATH/codegen/context"
-    echo "# Step Context Files" > "$WORKSPACE_PATH/codegen/context/README.md"
-    echo "" >> "$WORKSPACE_PATH/codegen/context/README.md"
-    echo "This directory contains detailed progress and lessons for each implementation step." >> "$WORKSPACE_PATH/codegen/context/README.md"
-    echo "Files are created as you work on each step to preserve implementation details." >> "$WORKSPACE_PATH/codegen/context/README.md"
+    echo "# Step Context Files" >"$WORKSPACE_PATH/codegen/context/README.md"
+    echo "" >>"$WORKSPACE_PATH/codegen/context/README.md"
+    echo "This directory contains detailed progress and lessons for each implementation step." >>"$WORKSPACE_PATH/codegen/context/README.md"
+    echo "Files are created as you work on each step to preserve implementation details." >>"$WORKSPACE_PATH/codegen/context/README.md"
 fi
 
 if [ -f "$SCRIPT_DIR/templates/NEW_PROMPT.md" ]; then
