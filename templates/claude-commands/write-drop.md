@@ -25,7 +25,8 @@ Generate 5-10 topic suggestions by:
 □ 4. Analyze recipes for adaptable patterns
 □ 5. Generate suggestions avoiding ALL redundancy
 □ 6. User selects topic → create content using proper Elixir style
-□ 7. Test code examples → save markdown file
+□ 7. **MANDATORY: Validate all code blocks using `mcp__tidewave__project_eval`**
+□ 8. Test code examples → save markdown file
 
 **Database Integration Steps:**
 
@@ -146,8 +147,10 @@ Optional: Links to docs, related patterns, or further reading
 
 5. **Quality Assurance** - Test and refine:
 
-   - Create a `.exs` script to test your code example (e.g., `test_drop.exs`)
-   - Run the script with `elixir test_drop.exs` to verify it works
+   - **MANDATORY: Validate all code blocks using `mcp__tidewave__project_eval`**
+   - If Tidewave MCP is not available, ask the user to enable the MCP server first
+   - Test each code block individually to ensure it compiles correctly
+   - Verify type definitions, function signatures, and syntax are valid
    - Test edge cases and ensure the solution is robust
    - Check that the title is descriptive and searchable
    - Verify the solution is the simplest that works
