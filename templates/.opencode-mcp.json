@@ -3,7 +3,7 @@
   "mcp": {
     "figma": {
       "type": "remote",
-      "url": "http://localhost:3845/sse",
+      "url": "http://localhost:3845/mcp",
       "enabled": true
     },
     "tidewave": {
