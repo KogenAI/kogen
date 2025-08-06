@@ -21,11 +21,18 @@ Perform a comprehensive code review of the current changes and codebase.
    - **🚨 MANDATORY TEST REQUIREMENT CHECK**: For EVERY functional change (schema validations, context functions, UI components, business logic, API endpoints), immediately verify corresponding tests exist or are updated. This is BLOCKING - no exceptions.
 6. **Load project rules** - Read all relevant rules from the rules directory (check current directory structure, don't assume parent paths)
 7. **Review code quality** - SYSTEMATICALLY CHECK:
-   - Check adherence to rules in RULES.md
+   - Check adherence to rules in INDEX.md
    - Verify Elixir code follows elixir-code-generation.md guidelines
    - Ensure Phoenix patterns follow phoenix.md rules
    - **Verified routes**: SCAN for string literal routes like `visit("/path")` - ALL must use `~p` syntax
    - Validate test coverage and testing patterns
+   - **🚨 CRITICAL - Skipped tests detection**: MANDATORY scan for test avoidance patterns:
+     - **SEARCH STRATEGY**: `grep -r "@tag :skip" test/` - find all skipped tests
+     - **ZERO TOLERANCE**: @tag :skip indicates test failures that were ignored instead of fixed
+     - **BLOCKING FAILURE**: ANY @tag :skip found is a critical issue requiring immediate resolution
+     - **Common locations**: test files, describe blocks, individual test cases
+     - **FIX REQUIRED**: Remove @tag :skip and fix the underlying test failure
+     - **Exception rule**: ONLY allowed if test is temporarily disabled for refactoring (must have issue/ticket reference)
    - **🚨 BLOCKING FAILURE - ANY functional changes without tests**: AGGRESSIVELY scan for ALL code changes that modify behavior and verify corresponding test coverage exists:
      - **Schema validations**: validate_length, validate_format, validate_required, unique_constraint, field changes
      - **Context functions**: New functions, modified business logic, query changes, data transformations
@@ -67,6 +74,24 @@ Perform a comprehensive code review of the current changes and codebase.
       - Within each group, maintain alphabetical order
       - Proper spacing between groups and sections
       - `@endpoint` and other module attributes in correct position
+      - **🚨 CRITICAL - Misplaced imports/requires**: SCAN for `import`, `require`, `alias` statements inside functions
+        - **SEARCH STRATEGY**: `grep -n "require\|import\|alias" lib/` and verify all are at module top
+        - **VIOLATION PATTERN**: `require Logger` inside function bodies instead of module top
+        - **FIX REQUIRED**: Move ALL import/require/alias statements to module top after @moduledoc
+    - **🚨 CRITICAL - Type and spec duplication detection**: AGGRESSIVELY scan for duplicated patterns:
+      - **Type duplication**: Use grep to find repeated type patterns like `String.t()`, `Phoenix.LiveView.Socket.t()`, `map()`, etc.
+      - **SEARCH STRATEGY**: `grep -r "@spec.*String\.t()" lib/` then count occurrences per file
+      - **EXTRACTION RULE**: ANY type appearing 2+ times in @spec declarations MUST be extracted to module-level @type alias
+      - **Common culprits**: `Phoenix.LiveView.Socket.t()`, `String.t()`, `map()`, `Ecto.Changeset.t()`, module types like `User.t()`
+      - **Pattern to fix**: Replace `@spec func(String.t()) :: String.t()` with `@type selector :: String.t()` + `@spec func(selector()) :: selector()`
+      - **🚨 DUPLICATE @spec SIGNATURES**: CRITICAL - Scan for identical @spec declarations for the same function:
+        - **SEARCH STRATEGY**: `grep -A1 -B1 "@spec function_name" file.ex` to find duplicate signatures
+        - **Common pattern**: Conditional compilation with `if Application.compile_env()` creating duplicate specs
+        - **VIOLATION EXAMPLE**: Two `@spec on_mount(atom(), map(), map(), socket()) :: {:cont, socket()}` for same function
+        - **FIX REQUIRED**: Extract shared @spec to single declaration, use pattern matching in function bodies instead
+        - **MODULE SCANNING**: Check each file for duplicate @spec declarations of same function with identical signatures
+      - **Module organization**: Place all `@type` definitions together at module top, alphabetically ordered
+      - **Cross-file consistency**: When same semantic types used across modules, consider shared type modules
 11. **Security and best practices**:
     - Check for hardcoded secrets or credentials
     - Verify proper error handling
@@ -84,7 +109,6 @@ Perform a comprehensive code review of the current changes and codebase.
     - Check that code is self-documenting through clear naming
     - **Pipeline flow**: SCAN pipeline functions for awkward parameter names that break natural reading flow
 14. **Generate review report**:
-
     - **🎯 Goal alignment**: Whether each change contributes to the PLAN.md objective
     - **📋 Step Implementation Verification**: MANDATORY section - Line-by-line verification of step plan completion:
       - List EVERY requirement from the step plan file
@@ -95,6 +119,12 @@ Perform a comprehensive code review of the current changes and codebase.
     - **✅ Passes**: List what meets standards
     - **⚠️ Warnings**: Issues that should be addressed
     - **❌ Failures**: Critical issues that must be fixed
+    - **🚨 SKIPPED TESTS ANALYSIS**: MANDATORY BLOCKING section - Zero tolerance for test avoidance:
+      - **Run command**: `grep -r "@tag :skip" test/` to find ALL skipped tests
+      - **Report ALL findings**: For each @tag :skip found, state: "❌ CRITICAL FAILURE: file_path:line - SKIPPED TEST DETECTED"
+      - **Require justification**: Each skip must have documented reason and timeline for fix
+      - **BLOCKING RULE**: ANY @tag :skip without valid justification blocks the entire review
+      - **Valid exceptions**: Temporary skip during refactoring with ticket reference (rare)
     - **🚨 FUNCTIONAL CHANGE TEST ANALYSIS**: MANDATORY section - List every functional change and whether tests exist:
       - **Schema changes**: validate\_\*, constraints, field modifications
       - **Context changes**: New/modified functions, business logic updates
@@ -106,6 +136,18 @@ Perform a comprehensive code review of the current changes and codebase.
       - Include specific examples of what should be tested for each change
     - **🧹 Cleanup**: Unused code, EXCESSIVE unnecessary comments, non-production debug code to remove
     - **📊 Coverage**: Current vs baseline coverage metrics
+    - **🔤 Type and Spec Duplication Analysis**: MANDATORY section - Check for duplicated patterns:
+      - **Type duplicates**: Count repeated types per file (`String.t()`, `Phoenix.LiveView.Socket.t()`, `map()`, etc.)
+      - **@spec signature duplicates**: CRITICAL - scan for identical @spec declarations for same function
+      - **SEARCH Commands to run**:
+        - `grep -r "@spec.*String\.t()" lib/` - find String.t() duplicates
+        - `grep -r "@spec.*Phoenix\.LiveView\.Socket\.t()" lib/` - find socket duplicates
+        - `grep -n "@spec" lib/file.ex | sort` - find duplicate specs within files
+      - **Report format for each issue found**:
+        - Type duplicates: "❌ REQUIRES TYPE EXTRACTION: file_path:line - extract [type] to @type alias"
+        - Spec duplicates: "❌ DUPLICATE @spec SIGNATURES: file_path:line1,line2 - same function [function_name] with identical signature"
+        - Misplaced imports: "❌ MISPLACED IMPORT/REQUIRE: file_path:line - move [statement] to module top"
+        - Good examples: "✅ PROPER CODE ORGANIZATION: file_path"
     - **🔧 Recommendations**: Specific improvement suggestions
 
 15. **Save review report**:

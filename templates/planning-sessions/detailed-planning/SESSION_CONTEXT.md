@@ -7,6 +7,10 @@
 - **Model**: Claude Sonnet
 - **Started**: {{SESSION_TIMESTAMP}}
 
+## Load These Rules
+
+- `planning.md` - Planning structure, modular architecture, file hygiene requirements
+
 ## Planning Phase: Technical Implementation
 
 You are in the technical planning phase - **detailed implementation planning**. This phase focuses on creating comprehensive technical plans ready for implementation.

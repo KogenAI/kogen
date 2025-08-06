@@ -1,262 +1,115 @@
 # AGENTS.md
 
-Guidance for AI assistants working with this Phoenix LiveView repository.
+Universal guidance for AI assistants in OCG workspaces.
 
-## File Reference Convention
+## ⚠️ MANDATORY: Load Your Rules FIRST
 
-When you see `FILE: ./path/to/file.md` in any document, this indicates a loadable resource.
+**CRITICAL - BEFORE taking ANY action:**
 
-- These are NOT auto-loaded - you must decide whether and when to load them
-- Load files only when their content is relevant to your current task
-- Use your Read tool to load the file when needed
+1. **STOP** - Do NOT proceed without loading rules
+2. **IDENTIFY** your agent type from your prompt/role
+3. **LOAD** appropriate rules from `/codegen/rules/INDEX.md`:
+   - **ALL agents**: Load shared rules for universal knowledge
+   - **Main/Orchestrator**: ALSO load ALL orchestration rules
+   - **Specialized Subagents**: ALSO load your domain-specific rules
+4. **APPLY** these rules to every action you take
 
-## Workspace Understanding
+**Examples by Agent Type:**
 
-### 🚨 CRITICAL: OCG Workspace Understanding
+**Main Agent (Orchestrator):**
 
-**YOU ARE IN AN OCG WORKSPACE (GIT WORKTREE)**:
+- MUST load: `orchestration/parallel-testing.md` for handling test failures efficiently
+- MUST load: `orchestration/task-based-delegation.md` for proper work decomposition
+- MUST load: `orchestration/bottleneck-patterns.md` for identifying blocking tasks
+- MUST load: ALL shared rules for server management, workspace isolation
 
-- **WORKSPACE = CURRENT DIRECTORY**: Contains the complete project files
-- **REPO ROOT = PARENT DIRECTORIES**: `../` or `../../` paths lead to main repository - NEVER GO THERE
-- **ALL FILES ARE HERE**: Everything you need is in the current workspace directory
+**Feature Developer:**
 
-### Path Rules - NEVER VIOLATE THESE:
+- MUST load: `phoenix.md`, `elixir-code-generation.md` for implementation standards
+- MUST load: Shared rules for workspace management
+- SKIP: Testing rules (delegate to qa-engineer)
 
-- ✅ **CORRECT**: `./codegen/CONTEXT.md` (current directory)
-- ❌ **WRONG**: `../CONTEXT.md` or `../../codegen/CONTEXT.md`
-- ✅ **CORRECT**: `./priv/gettext/` (translation files)
-- ❌ **WRONG**: `../priv/gettext/`
+**QA Engineer:**
 
-## Common File Locations (All in Current Directory):
+- MUST load: `testing.md`, `wallaby.md`, `ci-pipeline.md` for test strategies
+- MUST load: `feature-tests.md` for writing comprehensive test suites
+- MUST load: Shared rules for CI/CD awareness
 
-- **Context**: `./codegen/CONTEXT.md`
-- **Project Context**: `./codegen/PROJECT_CONTEXT.md`
-- **Rules**: `./codegen/rules/RULES.md`
-- **Plan**: `./codegen/plan/overview.md`
-- **Translations**: `./priv/gettext/`
-- **Phoenix Config**: `./config/`
-- **Application Code**: `./lib/`
+**UI Specialist:**
 
-## Universal Context Files (Available to ALL agents)
+- MUST load: `ui-implementation.md`, `tailwind.md` for styling patterns
+- MUST load: `figma.md` when working with designs
+- MUST load: Shared rules for workspace management
 
-**ALWAYS READ THESE**:
+**❌ NEVER:**
 
-1. **FILE: ./codegen/PROJECT_CONTEXT.md** - Project details, architecture, and patterns
-2. **FILE: ./codegen/rules/RULES.md** - Rule index (load domain-specific rules as needed)
+- Skip directly to implementation without loading rules
+- Assume you know patterns without checking rules
+- Ignore rule updates or improvements
 
-**Note**: The {{AGENT_CONTEXT_FILE}} (AGENTS.md/CLAUDE.md) is automatically loaded - it contains universal guidance for all agents. Different agent types may read additional context files specific to their role.
+**✅ ALWAYS:**
 
-## Subagent File Loading Architecture
+- Load rules as your FIRST action
+- Re-check rules when switching tasks
+- Apply rules consistently throughout your work
 
-**Understanding which files each agent type loads:**
+## Workspace Rules
 
-### Main Agent (orchestrator role)
+**OCG Workspace (Git Worktree)**:
 
-- `templates/NEW_PROMPT.md` or `templates/RESUME_PROMPT.md` (includes orchestration guidance)
-- `templates/AGENTS.md` or `templates/CLAUDE.md` (auto-loaded via {{AGENT_CONTEXT_FILE}})
-- `./codegen/PROJECT_CONTEXT.md` (project-specific details)
-- `./codegen/CONTEXT.md` (implementation progress)
-- `./codegen/plan/overview.md` (feature overview)
-- `./codegen/plan/steps/step-XX-name.md` (current step plan)
+- Work in current directory only (never `../` or `../../`)
+- All files are in current workspace
+- Check `./codegen/CONTEXT.md` for ports/settings
 
-### Specialized Subagents (single-level delegation only)
+## Universal Context Files
 
-- `templates/claude-subagents/[subagent-name].md` (role definition)
-- `templates/AGENTS.md/CLAUDE.md` (auto-loaded universal guidance)
-- `./codegen/CONTEXT.md` (workspace info: ports, commands, current progress)
-- `./codegen/PROJECT_CONTEXT.md` (project-specific details)
-- Domain-specific rules (e.g., phoenix.md, testing.md, i18n.md)
-- Step context + step plan + workspace details (passed via main agent delegation)
+**ALL agents must read**:
 
-### Special Cases
+- `./codegen/PROJECT_CONTEXT.md` - Project architecture and patterns
+- `./codegen/CONTEXT.md` - Workspace state, ports, progress
 
-- **ui-specialist**: Also loads `./codegen/FIGMA_MAP.md` when doing Figma work
-- **qa-engineer**: Loads testing.md, ci-pipeline.md rules
-- **translator**: Loads i18n.md rules
-- **devops-manager**: Loads deployment.md rules
+## Recipe System
 
-## Available Tools
+**IMPORTANT**: If the orchestrator provides recipe references in your task prompt, use them! Recipes contain proven patterns and solutions.
 
-### Standard Tools
-
-- **Read, Write, Edit, MultiEdit**: For file operations
-- **Bash**: For standard commands like `curl`, `mix`, `npm`, etc.
-- **Grep, Glob**: For searching files
-- **TodoWrite**: For task management
-- **WebFetch**: For accessing external URLs
-
-### MCP Tools (When Available)
-
-- **Tidewave MCP**: Elixir/Phoenix development assistance
-- **Playwright MCP**: Browser automation and testing
-- **Figma MCP**: Design extraction and analysis
-
-### Tool Usage Notes
-
-- **Never run MCP commands as bash** - they will fail
-- Use fallback strategies when MCP tools aren't available
-- Use WebFetch for external resources when MCP tools fail
-
-## Agent Type Awareness
-
-### Universal Guidance (Applies to ALL agents)
-
-- **Workspace Isolation**: NEVER navigate to parent directories (`../` or `../../`)
-- **Phoenix LiveView**: This is LiveView, not REST API - use event handlers, not endpoints
-- **Pattern Following**: Follow existing codebase patterns and conventions
-- **Context Loading**: Use your Read tool to understand context before making changes
-
-### Single-Level Delegation Architecture
-
-**MAIN AGENT = ORCHESTRATOR**: The main thread acts as orchestrator, delegating directly to specialized subagents.
-
-**DELEGATION PATTERN**: Main Agent → Subagent (single level only)
-
-- ✅ **Main agent delegates to**: feature-developer, qa-engineer, ui-specialist, devops-manager, translator, manual-tester
-- ❌ **No multi-level**: Subagents NEVER delegate to other subagents
-- ❌ **No orchestrator subagent**: Removed due to memory constraints
-
-### Subagent Coordination
-
-**STAR PATTERN**: All subagents report back to main agent only
+**Example delegation with recipe:**
 
 ```
-feature-developer ←→ main-agent ←→ qa-engineer
-      ↑              (orchestrator)        ↓
-      ↑                    ↕               ↓
-ui-specialist    ←→ main-agent ←→ devops-manager
+Task: "Fix async test failures"
+HELPFUL RESOURCES: See /Users/almirsarajcic/Areas/Optimum/context/recipes/phoenix-async-feature-testing.md
 ```
 
-**KEY RULES**:
+**Your job**: Follow the recipe pattern provided by the orchestrator. Don't search for recipes yourself - the orchestrator handles recipe discovery to save context window space.
 
-- **Main agent coordinates**: All delegation routing handled by main agent
-- **No cross-delegation**: Subagents only communicate with main agent
-- **qa-engineer verification**: Final verification always delegated to qa-engineer
-- **Single step focus**: Complete one plan step fully before moving to next
+## Rule Loading (Detailed)
 
-## 🚨 MANDATORY: Step Context File Updates
+**⚠️ TIMING: Load rules IMMEDIATELY upon session start - BEFORE any other action!**
 
-**SUBAGENT WORKSPACE CONTEXT REQUIREMENTS**:
+**See `./codegen/rules/INDEX.md`** for the complete index of rules and loading strategy.
 
-### MANDATORY for ALL Subagents:
+**WHEN to load rules:**
 
-1. **ALWAYS read CONTEXT.md FIRST** - Contains critical workspace info:
+1. **Session Start** - FIRST action, no exceptions
+2. **Task Switch** - When changing focus areas
+3. **Error Recovery** - When encountering unexpected patterns
+4. **Delegation** - Before passing work to subagents
 
-   - Phoenix server port (e.g., 4001)
-   - Test server port (e.g., 4101)
-   - Playwright MCP port (e.g., 8901)
-   - Database partition info
-   - Available mix aliases and commands
-   - Current implementation progress
+**WHAT to load:**
 
-2. **ALWAYS read phoenix.md rule** - Contains critical server management rules:
+- **Shared rules** - Universal knowledge (server management, workspace isolation, etc.) - ALL agents
+- **Your domain rules** - Specific to your agent type and expertise - MANDATORY for your role
+- **Task-specific rules** - Additional rules as needed for current work
+- **Orchestration rules** - ALL of them if you're the main agent
 
-   ```
-   ## Server
-   - Assume the server is running
-   - Don't assume the port is 4000. Get the correct port from Endpoint configuration
-   - Don't restart the server - it supports hot reloading
-   - Only after updating config files, adding/updating Oban workers, or any GenServer/Supervisor, you need to restart the server
-   ```
+**HOW to verify:**
 
-3. **Read step context file** - `./codegen/context/step-XX-name.md` for coordination
-4. **Load domain rules** - Only additional rules relevant to your role (testing.md, ci-pipeline.md, etc.)
+- Check you've loaded all required rules for your agent type
+- Confirm rules match your current task
+- Re-read rules if you encounter patterns not covered in your initial load
 
-### 🚨 CRITICAL SERVER RULES:
+## Universal Requirements
 
-- **NEVER kill or restart Phoenix server** unless modifying config/workers/supervisors
-- **NEVER run `mix phx.server`** - server is already running with hot reload
-- **NEVER stop running processes** - they support live code updates
-- Get actual port from CONTEXT.md, don't assume 4000
-
-### Main Agent Delegation Requirements:
-
-When delegating to subagents, ALWAYS include:
-
-```
-Task(
-  description="[Task description] for step X",
-  prompt="You are working on: Step X - [Step Name]
-
-  MANDATORY FIRST ACTIONS:
-  1. Read ./codegen/CONTEXT.md (workspace ports, commands, progress)
-  2. Read ./codegen/context/step-XX-name.md (coordination with other agents)
-  3. Read step plan: ./codegen/plan/steps/step-XX-name.md (requirements)
-
-  WORKSPACE INFO:
-  - Phoenix Port: [port from CONTEXT.md]
-  - Test Port: [test-port from CONTEXT.md]
-  - Playwright MCP Port: [playwright-port from CONTEXT.md]
-  - Branch: feature/[feature-name]
-
-  SPECIFIC TASK:
-  [Detailed task requirements - do NOT just reference the plan]
-
-  COMPLETION REQUIREMENTS:
-  - Update step context file with your work
-  - [Specific completion criteria]",
-  subagent_type="[subagent-type]"
-)
-```
-
-**EVERY AGENT AND SUBAGENT MUST UPDATE STEP CONTEXT FILES**:
-
-### Before Starting Work:
-
-1. **Read current step context file**: `./codegen/context/step-XX-name.md` (matches current step plan)
-2. **Check what other agents have done**: Review existing progress, issues, solutions
-3. **Understand integration points**: See dependencies and coordination needs
-
-### During Work:
-
-1. **Document progress regularly**: Update step context with status, findings, decisions
-2. **Note integration challenges**: Document any cross-subagent coordination issues
-3. **Record deviations**: Explain any changes from original plan requirements
-
-### Before Completing/Delegating:
-
-1. **MANDATORY UPDATE**: Update step context file with:
-
-   - **Work completed**: Specific tasks finished and evidence
-   - **Issues encountered**: Problems found and how they were resolved
-   - **Integration notes**: How your work connects with other subagents
-   - **Next actions needed**: What still needs to be done for this step
-   - **Verification status**: What verification is needed/completed
-
-2. **Use collaboration templates** from `./codegen/rules/collaboration.md` for consistent updates
-
-### Step Context File Format:
-
-```markdown
-## [Agent Name] Work Status - [Timestamp]
-
-### Completed:
-
-- Specific task 1 with evidence/location
-- Specific task 2 with evidence/location
-
-### Issues Resolved:
-
-- Problem X: Solution Y (files affected: ...)
-
-### Integration Notes:
-
-- Dependencies on other agents: ...
-- Coordination points: ...
-
-### Still Needed:
-
-- Task A (assigned to: agent-type)
-- Task B (verification needed)
-
-### Files Modified:
-
-- path/to/file1.ex - reason
-- path/to/file2.exs - reason
-```
-
-**NO EXCEPTIONS**: Every agent must update step context before finishing work or delegating to another agent.
-
-## Rule Loading
-
-Load `./codegen/rules/RULES.md` to see available domain-specific rules. Load only rules relevant to your current task and agent type.
+- **100% task completion** - Finish all assigned work completely
+- **Update step context** - Document progress in `./codegen/context/step-XX.md` files
+- **Workspace isolation** - Never navigate outside current directory
+- **Port awareness** - Use ports from CONTEXT.md, not hardcoded values

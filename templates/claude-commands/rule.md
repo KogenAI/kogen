@@ -1,34 +1,93 @@
 ---
-description: Add a new rule or principle to the appropriate rule file in ./codegen/rules/
+description: Add a new rule or principle with automatic orchestration/implementation separation
 argument-hint: [rule description]
 ---
 
-Analyze the current conversation context to understand the full lesson learned from this session, then add a comprehensive rule to the appropriate rule file in ./codegen/rules/.
+Analyze the conversation to extract lessons, then automatically separate orchestration vs implementation aspects.
 
-Process:
+## Process
 
-1. **Extract conversation context** - Review the current session for relevant errors, solutions, code examples, and lessons learned
-2. **Check existing rule files** - Read ./codegen/rules/ directory to understand current categories and existing rules
-3. **Determine best location** - Choose which existing rule file fits best, or create a new file if needed (rare)
-4. **Create comprehensive rule** - Combine the provided rule description with conversation context to create a detailed rule including:
+1. **Extract lessons** from conversation (errors, solutions, patterns discovered)
+2. **Classify each lesson**:
+   - **Orchestration** → `./codegen/rules/orchestration/`
+   - **Implementation** → `./codegen/rules/`
+   - **Both** → Split into appropriate parts
 
-   - Clear principle statement
-   - Specific implementation details
-   - Real code examples from the current session
-   - Context about how the rule was discovered
-   - Why this approach works better than alternatives
+## Classification Keywords
 
-5. **Add to appropriate file** - Insert the rule following existing formatting patterns in the chosen rule file
+**Orchestration signals**:
 
-The rule description argument can be brief (e.g., "PhoenixTest database conflicts", "research source code first") - the full context will be extracted from the current conversation including specific errors encountered, solutions found, and code examples used.
+- Parallel execution, delegation patterns, port allocation
+- Resource management, coordination, timing/sequencing
+- Subagent selection, workload distribution
+- Bottlenecks, blocking tasks, sequential requirements
+- Discovery → Distribution patterns
+- Examples: "run 3 subagents in parallel", "migration blocks everything", "can't parallelize"
 
-Rule files typically include:
+**Implementation signals**:
 
-- **workflow.md** - Process, CI/CD, testing workflow, time tracking
-- **elixir-code-generation.md** - Code style, patterns, best practices, anti-patterns
-- **phoenix.md** - LiveView patterns, routing, controllers, contexts
-- **browser-testing-mandatory.md** - Browser testing requirements, Playwright usage
-- **ui-implementation.md** - Frontend patterns, Figma integration, component design
-- **git.md** - Version control practices, branching, commits
+- Code patterns, API usage, framework specifics
+- Bug fixes, error handling, testing approaches
+- Migration syntax, debugging techniques
+- Examples: "export PORT_TEST before mix test", "use LiveView events"
 
-If no existing file fits the rule's category, create a new rule file with proper structure.
+**Bottleneck signals** (create BOTH types):
+
+- "Blocks all other work", "must complete first"
+- "System won't start", "everything failing"
+- "Migration required", "authentication broken"
+- Create orchestration rule for sequencing AND implementation rule for fix
+
+## File Placement
+
+### Orchestration Rules (`rules/orchestration/`)
+
+- **parallel-testing.md** - Test parallelization strategies
+- **bottleneck-patterns.md** - Sequential work, blocking tasks
+- **role-orchestration-patterns.md** - Discovery → Distribution flow
+- **task-based-delegation.md** - Context-efficient task sizing
+- **delegation-patterns.md** - Subagent coordination
+- **resource-management.md** - Port/database allocation
+
+### Implementation Rules (`rules/`)
+
+- **phoenix.md** - LiveView patterns, contexts
+- **testing.md** - Test writing, fixtures
+- **elixir-code-generation.md** - Code style, patterns
+
+## Examples
+
+### Example 1: Parallel Work
+
+**Input**: "parallel test fixing with port allocation"
+
+**Creates two rules**:
+
+1. `orchestration/parallel-testing.md`: Port derivation formula, delegation with unique ports
+2. `testing.md`: Using PORT_TEST environment variable in tests
+
+### Example 2: Bottleneck
+
+**Input**: "database migration blocks all work until complete"
+
+**Creates two rules**:
+
+1. `orchestration/bottleneck-patterns.md`: Migration must complete before parallelization
+2. `phoenix.md`: How to create and run migrations properly
+
+### Example 3: Discovery Pattern
+
+**Input**: "qa-engineer found translation failures, orchestrator distributes per file"
+
+**Creates**:
+
+1. `orchestration/role-orchestration-patterns.md`: Discovery → Distribution flow for translations
+2. `i18n.md`: How to fix missing translation keys
+
+## Auto-Update INDEX.md
+
+After adding rules, update the index with:
+
+- Rule location and category
+- Brief description
+- Which agents should load it

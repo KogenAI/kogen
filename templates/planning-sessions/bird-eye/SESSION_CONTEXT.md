@@ -7,6 +7,10 @@
 - **Model**: Claude Sonnet
 - **Started**: {{SESSION_TIMESTAMP}}
 
+## Load These Rules
+
+- `planning.md` - Planning structure, modular architecture, file hygiene requirements
+
 ## Planning Phase: Strategic Overview
 
 You are in the first phase of feature development - **strategic planning**. This phase focuses on understanding the feature from a high-level, user-centric perspective.

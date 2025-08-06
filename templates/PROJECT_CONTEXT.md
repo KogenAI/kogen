@@ -76,7 +76,7 @@
 
 ### Development Rules
 
-- **Centralized Rules**: This project uses shared development rules via `@codegen/rules/RULES.md`
+- **Centralized Rules**: This project uses shared development rules via `@codegen/rules/INDEX.md`
 - **Rule Categories**: Phoenix, Elixir quality, readability, error handling, testing, planning, project structure
 - **Setup**: Create symbolic link with `ln -s <rules_dir> codegen/rules` to access all rules
 

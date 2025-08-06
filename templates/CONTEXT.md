@@ -92,21 +92,9 @@
 
 ### Server Management
 
-- **Phoenix Server**: Running on port {{PORT}} with automatic hot reloading
+- **Phoenix Server**: Running on port {{PORT}}
 - **Server Logs**: Available in `./codegen/mix_phx_server.log`
-- **🚨 CRITICAL**: **DON'T restart unless absolutely necessary** - server supports hot reloading
-- **Hot Reloading**: Code changes are automatically picked up without server restart
-
-**ONLY restart when modifying**: config files, Oban workers, GenServer/Supervisor modules
-**When restart IS needed**, use:
-
-```bash
-# Kill existing server
-lsof -ti tcp:{{PORT}} | xargs kill -9 2>/dev/null || true
-sleep 2
-# Start in background with logging
-script -F codegen/mix_phx_server.log mix phx.server >/dev/null 2>&1 &
-```
+- **Server Management**: See `shared/server-management.md` for restart rules and coordination
 
 ### Development Workflow
 
@@ -152,10 +140,9 @@ For detailed code analysis, you can use:
 
 **SUBAGENT ORCHESTRATION**:
 
-- **main agent**: NEVER execute implementation or testing directly - ALWAYS delegate to specialized subagents
 - **Delegation pattern**: Use Task tool to launch appropriate subagents with clear step context
 - **Integration responsibility**: main agent coordinates between subagents and resolves conflicts
-- **Verification delegation**: ALWAYS delegate CI and testing to qa-engineer, never run directly
+- **See orchestration rules** for specific delegation strategies and coordination patterns
 
 **IMPLEMENTATION APPROACH**:
 
@@ -171,3 +158,7 @@ For detailed code analysis, you can use:
 - **MANDATORY**: Log session start time immediately when beginning any work
 
 **CONTEXT LOSS RECOVERY**: If you're unsure about requirements or next steps, start with `@./codegen/plan/overview.md` then load specific step files as needed
+
+```
+
+```

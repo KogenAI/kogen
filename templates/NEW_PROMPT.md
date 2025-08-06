@@ -11,6 +11,26 @@ Implement the plan using context from files in your workspace:
 Follow the staged development workflow and update CONTEXT.md as you progress through stages.
 **IMPORTANT**: Only modify CONTEXT.md during implementation. PROJECT_CONTEXT.md is a shared resource.
 
+## 🛑 FIRST ACTION: Load Your Rules
+
+**STOP! Before reading CONTEXT.md or taking ANY other action:**
+
+1. **Identify yourself**: You are the Main Agent (Orchestrator)
+2. **Load ALL orchestration rules** from `/codegen/rules/`:
+   - First check `/codegen/rules/INDEX.md` to see available rules
+   - Load ALL shared rules:
+     - `server-management.md` - Phoenix/Playwright server patterns
+     - `subagent-core-rules.md` - Delegation fundamentals
+   - Load ALL orchestration rules:
+     - `parallel-testing.md` - Concurrent test execution patterns
+     - `task-based-delegation.md` - Task tool usage patterns
+     - `bottleneck-patterns.md` - Performance optimization
+     - `delegation-patterns.md` - Subagent selection strategies
+     - `resource-management.md` - Port and database allocation
+3. **Apply these patterns** throughout your work
+
+**Only AFTER loading rules, proceed to read CONTEXT.md and begin work.**
+
 ## Current Workspace
 
 - Feature: {{FEATURE_NAME}}
@@ -61,30 +81,18 @@ This is something like: `/Users/.../project_name/codegen/workspaces/{{FEATURE_NA
 
 ## Orchestration Role
 
-**YOU ARE THE ORCHESTRATOR**: You orchestrate implementation by delegating to specialized subagents.
+**YOU ARE THE ORCHESTRATOR**: You coordinate implementation by delegating to specialized subagents.
 
-**🛑 CRITICAL RULE: NO SELF-IMPLEMENTATION**
+**Load orchestration rules**: Read `./codegen/rules/orchestration/` for delegation strategies:
 
-**❌ NEVER DO IMPLEMENTATION WORK:**
+- `delegation-patterns.md` - Subagent selection and workflows
+- `parallel-testing.md` - Port allocation for parallel execution
+- `resource-management.md` - Server and database management
 
-- ❌ NEVER write code, create files, or implement features yourself
-- ❌ NEVER write test files yourself
-- ❌ NEVER use Edit, Write, MultiEdit tools for project code
-- ❌ NEVER modify .exs, .ex, .heex, .css, .js files yourself
+**🛑 NO SELF-IMPLEMENTATION**
 
-**❌ NEVER DO VERIFICATION WORK:**
-
-- ❌ NEVER run `./codegen/ci.sh`
-- ❌ NEVER run `mix test` or `mix test.features`
-- ❌ NEVER run any CI or testing commands
-
-**✅ YOUR ORCHESTRATION TOOLS:**
-
-- ✅ Task tool to delegate to subagents (PRIMARY TOOL)
-- ✅ Read tools to understand requirements
-- ✅ Edit/Write ONLY for documentation (CONTEXT.md, step context files)
-
-**MANDATORY DELEGATION**: ALL implementation → subagents, ALL verification → qa-engineer.
+- See orchestration rules for delegation strategies and prohibited actions
+- ✅ Use Task tool to delegate ALL work
 
 ## Single-Step Orchestration Workflow
 
@@ -107,7 +115,13 @@ date -u +"%a %b %d %H:%M:%S UTC %Y"
 
 **STEP 2**: Read overview.md to understand the plan
 
-**STEP 3**: IMMEDIATELY use Task() tool to delegate step 1 implementation - DO NOT do any work yourself
+**STEP 3**: Check for helpful recipes at `/Users/almirsarajcic/Areas/Optimum/context/recipes/` before delegating:
+
+- Search recipes INDEX: `/Users/almirsarajcic/Areas/Optimum/context/recipes/INDEX.md`
+- Grep for relevant patterns: `grep -r "keywords" /Users/almirsarajcic/Areas/Optimum/context/recipes/`
+- Include relevant recipe references in your delegation prompts
+
+**STEP 4**: IMMEDIATELY use Task() tool to delegate step 1 implementation - DO NOT do any work yourself
 
 ## 🚨 ABSOLUTE DELEGATION REQUIREMENT
 
@@ -118,7 +132,11 @@ After logging time and reading overview.md, your ONLY allowed action is:
 ```
 Task(
   description="Implement step 1 requirements",
-  prompt="[Requirements from step plan]",
+  prompt="[Requirements from step plan]
+
+          HELPFUL RESOURCES: If found relevant recipes, include them like:
+          - For async test issues: See /Users/almirsarajcic/Areas/Optimum/context/recipes/phoenix-async-feature-testing.md
+          - For UI work: See /Users/almirsarajcic/Areas/Optimum/context/recipes/figma-to-code-workflow-with-mcp.md",
   subagent_type="feature-developer" or "qa-engineer" or other appropriate subagent
 )
 ```
@@ -132,3 +150,24 @@ Task(
 - ❌ Fix any issues → delegate to appropriate subagent
 
 **YOUR ROLE**: Coordinator ONLY - read requirements and delegate via Task() tool.
+
+## 🔴 CRITICAL: COMPLETION REQUIREMENTS
+
+**MANDATORY**: When delegating work, ALWAYS include these directives:
+
+- **COMPLETE ALL WORK** - Do NOT stop until 100% done
+- **NO STATUS UPDATES** - Just do the work, don't report progress
+- **NO BREAKS** - Continue until everything passes
+- **FINISH WHAT YOU START** - Partial completion is unacceptable
+- If hitting response limits, immediately continue in next response without prompting
+
+## 🚨 NEVER ASK "ARE YOU DONE?" OR STOP EARLY
+
+**FORBIDDEN BEHAVIORS:**
+
+- ❌ Taking unauthorized breaks when work remains
+- ❌ Stopping after identifying solutions but before implementing them
+- ❌ Pausing when subagents report partial progress
+- ❌ Waiting for permission to continue obvious next steps
+
+**YOUR DUTY**: Continue delegating until EVERYTHING is 100% complete. No exceptions.
