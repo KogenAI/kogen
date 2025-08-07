@@ -15,11 +15,11 @@ Steps:
 
 2. **DISCOVER RELEVANT RULES & RECIPES** for next session:
 
-   - Check `/context/rules/INDEX.md` for applicable rules based on:
+   - Check `./codegen/rules/INDEX.md` for applicable rules based on:
      - Next step requirements (grep keywords from step plan)
      - Known issues or patterns encountered
      - Agent type that will handle next step
-   - Check `/context/recipes/INDEX.md` for solutions to:
+   - Check `./codegen/recipes/INDEX.md` for solutions to:
      - Problems encountered this session
      - Patterns needed for next step
      - Common issues from error messages

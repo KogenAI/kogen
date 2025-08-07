@@ -16,7 +16,21 @@ Optimum Codegen (OCG) is a workspace management system that enables parallel dev
 
 ## Configuration
 
-The system automatically detects which git repository you're currently in and manages workspaces for that repository. No configuration needed!
+The system automatically detects which git repository you're currently in and manages workspaces for that repository.
+
+### Optional: Set OCG Context Directory
+
+For advanced users who want to share rules and recipes across projects:
+
+```bash
+# Set the context directory (optional)
+export OCG_CONTEXT_DIR=~/path/to/your/context
+
+# This enables automatic linking of shared rules and recipes during project setup
+# If not set, you can manually create symlinks as needed
+```
+
+Otherwise, no configuration needed!
 
 ## Quick Start
 

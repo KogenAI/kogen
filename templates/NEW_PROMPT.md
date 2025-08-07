@@ -115,10 +115,10 @@ date -u +"%a %b %d %H:%M:%S UTC %Y"
 
 **STEP 2**: Read overview.md to understand the plan
 
-**STEP 3**: Check for helpful recipes at `/Users/almirsarajcic/Areas/Optimum/context/recipes/` before delegating:
+**STEP 3**: Check for helpful recipes at `./codegen/recipes/` before delegating:
 
-- Search recipes INDEX: `/Users/almirsarajcic/Areas/Optimum/context/recipes/INDEX.md`
-- Grep for relevant patterns: `grep -r "keywords" /Users/almirsarajcic/Areas/Optimum/context/recipes/`
+- Search recipes INDEX: `./codegen/recipes/INDEX.md`
+- Grep for relevant patterns: `grep -r "keywords" ./codegen/recipes/`
 - Include relevant recipe references in your delegation prompts
 
 **STEP 4**: IMMEDIATELY delegate step 1 implementation - DO NOT do any work yourself
@@ -146,8 +146,8 @@ Task(
   prompt="[Requirements from step plan]
 
           HELPFUL RESOURCES: If found relevant recipes, include them like:
-          - For async test issues: See /Users/almirsarajcic/Areas/Optimum/context/recipes/phoenix-async-feature-testing.md
-          - For UI work: See /Users/almirsarajcic/Areas/Optimum/context/recipes/figma-to-code-workflow-with-mcp.md",
+          - For async test issues: See ./codegen/recipes/phoenix-async-feature-testing.md
+          - For UI work: See ./codegen/recipes/figma-to-code-workflow-with-mcp.md",
   subagent_type="feature-developer" or "qa-engineer" or other appropriate subagent
 )
 ```

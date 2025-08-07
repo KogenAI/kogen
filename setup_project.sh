@@ -46,18 +46,32 @@ fi
 
 # Create symbolic link to rules if it doesn't exist
 if [ ! -L "$REPO_ROOT/codegen/rules" ] && [ ! -d "$REPO_ROOT/codegen/rules" ]; then
-    if [ -n "$OCG_RULES_DIR" ] && [ -d "$OCG_RULES_DIR" ]; then
-        ln -s "$OCG_RULES_DIR" "$REPO_ROOT/codegen/rules"
-        echo "✅ Created symbolic link to development rules at: $OCG_RULES_DIR"
+    if [ -n "$OCG_CONTEXT_DIR" ] && [ -d "$OCG_CONTEXT_DIR/rules" ]; then
+        ln -s "$OCG_CONTEXT_DIR/rules" "$REPO_ROOT/codegen/rules"
+        echo "✅ Created symbolic link to development rules at: $OCG_CONTEXT_DIR/rules"
     else
-        echo "⚠️  Development rules not found. Set OCG_RULES_DIR environment variable."
-        echo "   Example: export OCG_RULES_DIR=~/Areas/Optimum/context/rules"
+        echo "⚠️  Development rules not found. Set OCG_CONTEXT_DIR environment variable."
+        echo "   Example: export OCG_CONTEXT_DIR=~/path/to/your/context"
         echo ""
         echo "   You can manually create the symbolic link later with:"
-        echo "   ln -s <path-to-rules> $REPO_ROOT/codegen/rules"
+        echo "   ln -s <path-to-context>/rules $REPO_ROOT/codegen/rules"
+    fi
+fi
+
+# Create symbolic link to recipes if it doesn't exist
+if [ ! -L "$REPO_ROOT/codegen/recipes" ] && [ ! -d "$REPO_ROOT/codegen/recipes" ]; then
+    if [ -n "$OCG_CONTEXT_DIR" ] && [ -d "$OCG_CONTEXT_DIR/recipes" ]; then
+        ln -s "$OCG_CONTEXT_DIR/recipes" "$REPO_ROOT/codegen/recipes"
+        echo "✅ Created symbolic link to development recipes at: $OCG_CONTEXT_DIR/recipes"
+    else
+        echo "⚠️  Development recipes not found. Set OCG_CONTEXT_DIR environment variable."
+        echo "   Example: export OCG_CONTEXT_DIR=~/path/to/your/context"
+        echo ""
+        echo "   You can manually create the symbolic link later with:"
+        echo "   ln -s <path-to-context>/recipes $REPO_ROOT/codegen/recipes"
     fi
 else
-    echo "ℹ️  Rules directory already exists, skipping..."
+    echo "ℹ️  Recipes directory already exists, skipping..."
 fi
 
 PROJECT_INFO=""

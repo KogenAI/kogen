@@ -7,7 +7,7 @@ source "$SCRIPT_DIR/utils.sh"
 
 REPO_ROOT="$TARGET_REPO_PATH"
 CONTEXT_FILE="$REPO_ROOT/codegen/PROJECT_CONTEXT.md"
-RECIPES_DIR="$HOME/Areas/Optimum/context/recipes"
+RECIPES_DIR="$REPO_ROOT/codegen/recipes"
 RULES_DIR="$REPO_ROOT/codegen/rules"
 
 if [ ! -f "$CONTEXT_FILE" ]; then
@@ -77,7 +77,7 @@ CONSOLIDATE_PROMPT="# Consolidate PROJECT_CONTEXT.md and Context Knowledge
 
 I need you to optimize the PROJECT_CONTEXT.md file to fit within $TARGET_MIN-$TARGET_MAX lines while preserving ALL critical knowledge.
 
-Also review ~/Areas/Optimum/context/recipes/ and ./codegen/rules/ directories for any overlapping content that could be consolidated.
+Also review ./codegen/recipes/ and ./codegen/rules/ directories for any overlapping content that could be consolidated.
 
 Current file size: $ORIGINAL_SIZE lines
 Target size: $TARGET_MIN-$TARGET_MAX lines

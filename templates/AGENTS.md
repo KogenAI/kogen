@@ -76,7 +76,7 @@ Universal guidance for AI assistants in OCG workspaces.
 
 ```
 Task: "Fix async test failures"
-HELPFUL RESOURCES: See /Users/almirsarajcic/Areas/Optimum/context/recipes/phoenix-async-feature-testing.md
+HELPFUL RESOURCES: See ./codegen/recipes/phoenix-async-feature-testing.md
 ```
 
 **Your job**: Follow the recipe pattern provided by the orchestrator. Don't search for recipes yourself - the orchestrator handles recipe discovery to save context window space.

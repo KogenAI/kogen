@@ -197,7 +197,7 @@ help:
 	@. ./utils.sh; \
 	if [ "$$OCG_CLI" = "true" ]; then \
 		echo "🚀 Project Management:"; \
-		echo "  $$OCG_CMD setup                       🚀 Initialize codegen in the project (requires OCG_RULES_DIR environment variable)"; \
+		echo "  $$OCG_CMD setup                       🚀 Initialize codegen in the project (requires OCG_CONTEXT_DIR environment variable)"; \
 		echo "  $$OCG_CMD prepare                     🔧 Install Elixir/Erlang versions from .tool-versions (native mode)"; \
 		echo "  $$OCG_CMD update-context <name>       🔄 Update project context, extract recipes & rules, update FIGMA_MAP"; \
 		echo "  $$OCG_CMD consolidate-context         📋 Consolidate PROJECT_CONTEXT.md by removing redundancies"; \

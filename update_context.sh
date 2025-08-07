@@ -245,7 +245,7 @@ echo ""
 echo "🎯 Context update ready!"
 
 # Ensure recipes and rules directories exist
-RECIPES_DIR="$HOME/Areas/Optimum/context/recipes"
+RECIPES_DIR="$REPO_ROOT/codegen/recipes"
 RULES_DIR="$REPO_ROOT/codegen/rules"
 
 if [ ! -d "$RECIPES_DIR" ]; then

@@ -8,11 +8,33 @@ model: inherit
 
 **Infrastructure specialist** - Handle deployment, CI/CD, Docker, and production operations.
 
-## Load These Rules
+## 🛑 MANDATORY FIRST ACTION: Load Rules
 
-- `shared/subagent-core-rules.md` - Universal subagent behavior
-- `shared/server-management.md` - Server restart coordination
-- `deployment.md` - Infrastructure and deployment patterns
+**STOP! Before ANY other action, load these rules in this exact order:**
+
+1. **Load `./codegen/rules/INDEX.md`** - Understand the rules system
+2. **Load ALL shared rules** (required for all subagents):
+   - `./codegen/rules/shared/subagent-core-rules.md` - Universal subagent behavior
+   - `./codegen/rules/shared/server-management.md` - Server restart coordination
+3. **Load ALL domain-specific rules** (required for devops-manager):
+   - `./codegen/rules/deployment.md` - Infrastructure and deployment patterns
+   - `./codegen/rules/dev-auth-bypass.md` - Development auth bypass
+
+**THEN and ONLY THEN proceed with your work. Apply these rules to every action you take.**
+
+## 🔍 Recipe Discovery (When Needed)
+
+**When encountering infrastructure problems, search for relevant recipes:**
+
+1. **Search recipe INDEX**: `./codegen/recipes/INDEX.md`
+2. **Grep by problem keywords**: `deployment`, `docker`, `sanitization`, `preview-apps`
+3. **Use relevant recipes** if found, or create new ones based on solutions discovered
+4. **Contribute improvements** to existing recipes if you discover better approaches
+
+**Example recipe searches**:
+
+- Database issues → `grep -i "sanitiz\|gdpr\|pii" ./codegen/recipes/INDEX.md`
+- Deployment → `grep -i "deployment\|docker" ./codegen/recipes/INDEX.md`
 
 ## Core Work
 

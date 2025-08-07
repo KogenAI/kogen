@@ -11,8 +11,8 @@ Process:
 Generate 5-10 topic suggestions by:
 
 - **Check existing drops**: Use Tidewave MCP to query the database and avoid duplicating topics
-- **Read coding rules**: Review ALL files in `/Users/almirsarajcic/Areas/Optimum/context/rules/` for both coding standards AND potential drop topics from common patterns/anti-patterns
-- Reviewing `/Users/almirsarajcic/Areas/Optimum/context/recipes` for adaptable patterns
+- **Read coding rules**: Review ALL files in `./codegen/rules/` for both coding standards AND potential drop topics from common patterns/anti-patterns
+- Reviewing `./codegen/recipes/` for adaptable patterns
 - Drawing from the user's "Future drops" list and development notes
 - Identifying common Elixir/Phoenix pain points and solutions
 - Looking for unique angles on established practices
@@ -20,7 +20,7 @@ Generate 5-10 topic suggestions by:
 
 **EXECUTION CHECKLIST:**
 □ 1. Request Plausible analytics screenshot (MANDATORY FIRST STEP)
-□ 2. Read ALL coding rules from `/Users/almirsarajcic/Areas/Optimum/context/rules/` directory
+□ 2. Read ALL coding rules from `./codegen/rules/` directory
 □ 3. Query database for existing drops comprehensively  
 □ 4. Analyze recipes for adaptable patterns
 □ 5. Generate suggestions avoiding ALL redundancy

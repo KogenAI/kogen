@@ -273,6 +273,13 @@ if [ -d "$REPO_ROOT/codegen/rules" ]; then
     echo "✅ Linked codegen/rules from main branch (changes will propagate)"
 fi
 
+# Create symlink to recipes for subagent recipe discovery
+if [ -d "$REPO_ROOT/codegen/recipes" ]; then
+    mkdir -p "$WORKSPACE_PATH/codegen"
+    ln -sf "$REPO_ROOT/codegen/recipes" "$WORKSPACE_PATH/codegen/recipes"
+    echo "✅ Linked codegen/recipes from main branch (recipe discovery enabled)"
+fi
+
 # Copy AGENTS.md from main branch since it's gitignored
 if [ -f "$REPO_ROOT/AGENTS.md" ]; then
     cp "$REPO_ROOT/AGENTS.md" "$WORKSPACE_PATH/AGENTS.md"

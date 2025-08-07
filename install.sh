@@ -55,7 +55,7 @@ fi
 echo ""
 echo "🚀 Setting up recipes directory..."
 
-RECIPES_DIR="$HOME/Areas/Optimum/context/recipes"
+RECIPES_DIR="${OCG_CONTEXT_DIR:-$HOME/Areas/Optimum/context}/recipes"
 if [ ! -d "$RECIPES_DIR" ]; then
     echo "   📚 Creating recipes directory at: $RECIPES_DIR"
     mkdir -p "$RECIPES_DIR"
