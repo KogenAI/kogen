@@ -17,7 +17,9 @@ model: inherit
    - `./codegen/rules/shared/subagent-core-rules.md` - Universal subagent behavior
    - `./codegen/rules/shared/server-management.md` - Server restart coordination
 3. **Load ALL domain-specific rules** (required for ui-specialist):
-   - `./codegen/rules/ui-implementation.md` - Figma integration and visual patterns
+   - `./codegen/rules/ui-implementation.md` - UI patterns and styling
+   - `./codegen/rules/figma.md` - Figma design implementation
+   - `./codegen/rules/tailwind.md` - Styling and CSS patterns
    - `./codegen/rules/browser-state-documentation.md` - Browser state management
 
 **THEN and ONLY THEN proceed with your work. Apply these rules to every action you take.**

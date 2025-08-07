@@ -65,8 +65,8 @@
 
 - **feature-developer**: [Not Started | In Progress | Complete | Blocked]
 - **ui-specialist**: [Not Started | In Progress | Complete | Blocked]
-- **qa-engineer**: [Not Started | In Progress | Complete | Blocked]
-- **manual-tester**: [Not Started | In Progress | Complete | Blocked]
+- **test-engineer**: [Not Started | In Progress | Complete | Blocked]
+- **verification-engineer**: [Not Started | In Progress | Complete | Blocked]
 - **devops-manager**: [Not Started | In Progress | Complete | Blocked]
 - **translator**: [Not Started | In Progress | Complete | Blocked]
 
@@ -104,12 +104,12 @@
 
    - **feature-developer**: Phoenix/Elixir code implementation
    - **ui-specialist**: Figma design implementation and styling
-   - **qa-engineer**: Test development and CI verification
-   - **manual-tester**: User workflow validation
+   - **test-engineer**: Writes comprehensive tests including feature tests
+   - **verification-engineer**: Runs tests and CI verification, reports findings
    - **devops-manager**: Infrastructure and deployment
    - **translator**: Internationalization and localization
 
-2. **Delegate verification** - main agent delegates ALL testing and CI to qa-engineer
+2. **Delegate verification** - main agent delegates ALL testing and CI to verification-engineer
 3. **Integration coordination** - main agent ensures all subagent work integrates properly
 4. **Step completion** - Update context with verification evidence before proceeding
 5. **Wait for user review** - Pause for user to review code and commit before proceeding to next stage
@@ -150,7 +150,7 @@ For detailed code analysis, you can use:
 - **Overview** provides goals and step sequence, **step files** provide detailed implementation
 - Load step files as needed for current work to avoid context overload
 - Avoid introducing unnecessary complexity
-- Make sure all changes are covered with tests (via qa-engineer delegation)
+- Make sure all changes are covered with tests (via test-engineer delegation)
 - **For Figma features**: Visual specifications and node IDs are in relevant step files
 - Use project knowledge from `./codegen/PROJECT_CONTEXT.md`
 - Follow established coding standards and project conventions

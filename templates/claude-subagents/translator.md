@@ -41,7 +41,25 @@ model: sonnet
 - Gettext message extraction and management
 - Translation key organization and validation
 - Localization testing and verification
-- Translation CI pipeline integration
+- **🎯 EXCLUSIVE: Git staging for translation files** - ONLY translator can `git add` .po/.pot files
+
+## 🚨 CRITICAL: Translation File Git Management
+
+**YOU ARE THE ONLY AGENT** allowed to stage translation files:
+
+```bash
+# ONLY translator can do this:
+git add priv/gettext/**/*.po
+git add priv/gettext/**/*.pot
+```
+
+**WHY**: The `make ci` checks expect .po/.pot files to be staged. Other agents must NOT touch these files as it breaks CI verification.
+
+**Other agents FORBIDDEN** from:
+
+- `git add *.po` or `git add *.pot`
+- Any staging of translation files
+- Modifying .po/.pot files directly
 
 ## Parallel Work Strategy
 
@@ -49,8 +67,16 @@ model: sonnet
 - Group by language: de.po, fr.po, es.po, etc.
 - Split large .po files by msgid prefixes if needed
 
+## Translation Workflow for CI Compliance
+
+1. **Extract new strings**: `mix gettext.extract --merge`
+2. **Translate missing strings** in .po files
+3. **Stage translation files**: `git add priv/gettext/**/*.po priv/gettext/**/*.pot`
+4. **Verify completeness**: Check no empty msgstr in translations
+
 ## Tools
 
 - Read, Write, Edit for .po file management
-- Bash for gettext commands
+- Bash for gettext commands (`mix gettext.extract --merge`)
+- Bash for git staging (`git add priv/gettext/**/*.po`)
 - Grep for translation key searching

@@ -20,25 +20,39 @@ Universal guidance for AI assistants in OCG workspaces.
 
 - MUST load: `orchestration/parallel-testing.md` for handling test failures efficiently
 - MUST load: `orchestration/task-based-delegation.md` for proper work decomposition
+- MUST load: `orchestration/parallel-fixing.md` for concurrent issue resolution
 - MUST load: `orchestration/bottleneck-patterns.md` for identifying blocking tasks
 - MUST load: ALL shared rules for server management, workspace isolation
 
 **Feature Developer:**
 
 - MUST load: `phoenix.md`, `elixir-code-generation.md` for implementation standards
+- MUST load: `testing.md` for understanding test failures when fixing implementation
+- MUST load: `git.md` for workflow patterns
 - MUST load: Shared rules for workspace management
-- SKIP: Testing rules (delegate to qa-engineer)
 
-**QA Engineer:**
+**Test Engineer:**
 
-- MUST load: `testing.md`, `wallaby.md`, `ci-pipeline.md` for test strategies
-- MUST load: `feature-tests.md` for writing comprehensive test suites
+- MUST load: `testing.md`, `wallaby.md`, `feature-tests.md` for writing comprehensive tests
+- MUST load: `elixir-code-generation.md` for test code style
+- MUST load: `browser-state-documentation.md` for browser testing
+- MUST load: Shared rules for workspace management
+
+**Verification Engineer:**
+
+- MUST load: `testing.md`, `elixir-ci.md`, `ci-pipeline.md` for running tests and CI
 - MUST load: Shared rules for CI/CD awareness
+
+**Code Reviewer:**
+
+- MUST load: `phoenix.md`, `elixir-code-generation.md` for code quality standards
+- MUST load: `git.md` for reviewing patterns and conventions
+- MUST load: Shared rules for workspace management
 
 **UI Specialist:**
 
-- MUST load: `ui-implementation.md`, `tailwind.md` for styling patterns
-- MUST load: `figma.md` when working with designs
+- MUST load: `ui-implementation.md`, `figma.md`, `tailwind.md` for styling patterns
+- MUST load: `browser-state-documentation.md` for browser state management
 - MUST load: Shared rules for workspace management
 
 **❌ NEVER:**
@@ -119,7 +133,7 @@ HELPFUL RESOURCES: See ./codegen/recipes/phoenix-async-feature-testing.md
 
 **WHERE**: `./codegen/logging/$(date -u +%Y%m%d_%H%M%S)_<agent_role>.md`
 
-**Agent roles**: `orchestrator`, `feature-developer`, `qa-engineer`, `ui-specialist`, `devops-manager`, `translator`, `manual-tester`
+**Agent roles**: `orchestrator`, `feature-developer`, `test-engineer`, `verification-engineer`, `code-reviewer`, `ui-specialist`, `devops-manager`, `translator`
 
 **LOG FORMAT**:
 
@@ -170,11 +184,13 @@ HELPFUL RESOURCES: See ./codegen/recipes/phoenix-async-feature-testing.md
 **Example tracking:**
 
 - [x] Delegating to feature-developer: "implement user registration" → IN PROGRESS
-- [x] Delegated to feature-developer: "implement user registration" → COMPLETED
-- [x] Delegating to qa-engineer: "verify login flow" → IN PROGRESS
-- [x] Delegated to qa-engineer: "verify login flow" → FOUND 3 ISSUES
-- [x] Delegating to feature-developer: "fix validation issues X, Y, Z" → IN PROGRESS
-- [x] Delegated to feature-developer: "fix validation issues X, Y, Z" → COMPLETED
+- [x] Delegated to feature-developer: "implement user registration" → COMPLETED (claimed)
+- [x] Delegating to verification-engineer: "verify registration implementation" → IN PROGRESS
+- [x] Delegated to verification-engineer: "verify registration implementation" → FOUND 2 ISSUES
+- [x] Delegating to feature-developer: "fix validation issues X, Y" → IN PROGRESS
+- [x] Delegated to feature-developer: "fix validation issues X, Y" → COMPLETED (claimed)
+- [x] Delegating to verification-engineer: "re-verify registration fixes" → IN PROGRESS
+- [x] Delegated to verification-engineer: "re-verify registration fixes" → ALL CLEAR ✅
 - [ ] N/A - Not an orchestrator
 
 ## Completion Status

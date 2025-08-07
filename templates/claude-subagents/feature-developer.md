@@ -20,7 +20,7 @@ model: inherit
    - `./codegen/rules/phoenix.md` - Phoenix patterns and LiveView
    - `./codegen/rules/elixir-code-generation.md` - Code style and conventions
    - `./codegen/rules/git.md` - Git workflow patterns
-   - `./codegen/rules/testing.md` - When fixing test failures
+   - `./codegen/rules/testing.md` - Understanding test failures to fix implementation
 
 **THEN and ONLY THEN proceed with your work. Apply these rules to every action you take.**
 
@@ -53,3 +53,11 @@ model: inherit
 - Bash for mix commands
 - Grep/Glob for searching codebase
 - Tidewave MCP for Elixir assistance (when available)
+
+## Success Criteria
+
+- Implementation completed according to requirements
+- Code follows project patterns and style
+- Unit tests written for new code (if applicable)
+
+**IMPORTANT**: Never claim "tests pass" or "implementation complete" - only verification-engineer can confirm system health

@@ -27,6 +27,7 @@ Continue implementing the plan using context from files in your workspace:
    - Load ALL orchestration rules:
      - `parallel-testing.md` - Concurrent test execution patterns
      - `task-based-delegation.md` - Task tool usage patterns
+     - `parallel-fixing.md` - Concurrent issue resolution strategies
      - `bottleneck-patterns.md` - Performance optimization
      - `delegation-patterns.md` - Subagent selection strategies
      - `resource-management.md` - Port and database allocation
@@ -82,12 +83,56 @@ Continue implementing the plan using context from files in your workspace:
 
 **CRITICAL**: Handle ONE complete plan step from start to finish before moving to next step.
 
-**WORKFLOW RULE**: Implementation FIRST, then Verification
+**WORKFLOW RULE**: Implementation FIRST, then MANDATORY Verification
 
 - Code/tests needed → delegate to **feature-developer** FIRST
 - UI work needed → delegate to **ui-specialist** FIRST
 - Infrastructure needed → delegate to **devops-manager** FIRST
-- ONLY AFTER implementation complete → delegate to **qa-engineer** for verification
+- **MANDATORY**: AFTER EVERY implementation → delegate to **verification-engineer** for verification
+- **MANDATORY**: AFTER verification-engineer reports "ALL CLEAR ✅" → delegate to **code-reviewer** for quality review
+
+**CRITICAL**: Never trust subagent claims of "tests pass" or "implementation complete" - only **verification-engineer** can confirm system health
+
+## 🚨 BOTTLENECK DETECTION: System vs Isolated Issues
+
+**BEFORE parallel delegation, check verification-engineer reports for bottlenecks:**
+
+**🔴 DEVELOPMENT BOTTLENECKS (Sequential Only - Block All Work):**
+
+- "All tests failing with same error" → ONE feature-developer fixes root cause
+- "Application won't start/compile" → ONE feature-developer debugs
+- "Missing migrations" → ONE feature-developer creates migration FIRST
+- "Authentication/config broken" → ONE feature-developer fixes system-wide issue
+
+**🟡 CI VERIFICATION REQUIREMENTS (Parallel Development - All Must Pass for CI):**
+
+- **Translation files not staged** → delegate to **translator** (can work parallel to other fixes)
+- **Credo violations** → delegate to **feature-developer** (can work parallel to tests/translation)
+- **Test failures** → delegate to **feature-developer** (can work parallel to translation/credo)
+- **Formatting issues** → delegate to **feature-developer** (can work parallel to other work)
+
+**🟢 ISOLATED ISSUES (Safe to Parallelize):**
+
+- "3 components have styling issues" → 3 feature-developers fix independently
+- "Form validation failing on ProfileForm" → Independent from other forms
+- "Button click handler broken" → Isolated to one component
+
+**Workflow Strategy:**
+
+- **🔴 Development bottlenecks**: Fix sequentially FIRST (blocks everything)
+- **🟡 CI requirements**: Fix in parallel (all required for verification-engineer "ALL CLEAR ✅")
+- **🟢 Isolated issues**: Fix in parallel (independent work)
+
+**Detection Pattern:**
+
+```
+Task("Identify issue types for delegation strategy",
+     prompt="verification-engineer found multiple issues. Categorize them:
+             - DEVELOPMENT BOTTLENECK: Blocks all other work (fix sequentially first)
+             - CI REQUIREMENT: Doesn't block development, but required for CI (parallelize)
+             - ISOLATED ISSUE: Independent problem (parallelize)",
+     subagent_type="feature-developer")
+```
 
 ## Continue Time
 
@@ -132,14 +177,14 @@ Task(
           HELPFUL RESOURCES: If found relevant recipes, include them like:
           - For async test issues: See ./codegen/recipes/phoenix-async-feature-testing.md
           - For UI work: See ./codegen/recipes/figma-to-code-workflow-with-mcp.md",
-  subagent_type="feature-developer" or "qa-engineer" or other appropriate subagent
+  subagent_type="feature-developer" or "verification-engineer" or "test-engineer" or other appropriate subagent
 )
 ```
 
 **NEVER DO THESE - ALWAYS DELEGATE:**
 
-- ❌ Run ./codegen/ci.sh → delegate to qa-engineer
-- ❌ Run mix test → delegate to qa-engineer
+- ❌ Run ./codegen/ci.sh → delegate to verification-engineer
+- ❌ Run mix test → delegate to verification-engineer
 - ❌ Edit .ex/.exs files → delegate to feature-developer
 - ❌ Write any code → delegate to feature-developer
 - ❌ Fix any issues → delegate to appropriate subagent
