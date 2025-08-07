@@ -121,13 +121,24 @@ date -u +"%a %b %d %H:%M:%S UTC %Y"
 - Grep for relevant patterns: `grep -r "keywords" /Users/almirsarajcic/Areas/Optimum/context/recipes/`
 - Include relevant recipe references in your delegation prompts
 
-**STEP 4**: IMMEDIATELY use Task() tool to delegate step 1 implementation - DO NOT do any work yourself
+**STEP 4**: IMMEDIATELY delegate step 1 implementation - DO NOT do any work yourself
+
+## 🚨 PRE-DELEGATION LOGGING REQUIREMENT
+
+**BEFORE every Task() call, log the delegation in your session log:**
+
+1. **Update your orchestrator log file**: `./codegen/logging/<timestamp>_orchestrator.md`
+2. **Add the delegation entry FIRST**:
+   ```markdown
+   - [ ] Delegating to <subagent>: "<task description>" → IN PROGRESS
+   ```
+3. **THEN call Task()** - this protects against losing delegation info if crashes occur
 
 ## 🚨 ABSOLUTE DELEGATION REQUIREMENT
 
 **YOU MUST USE Task() TOOL FOR ALL WORK - NO EXCEPTIONS**
 
-After logging time and reading overview.md, your ONLY allowed action is:
+After logging time and reading overview.md, your workflow is:
 
 ```
 Task(

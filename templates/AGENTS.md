@@ -107,6 +107,86 @@ HELPFUL RESOURCES: See /Users/almirsarajcic/Areas/Optimum/context/recipes/phoeni
 - Confirm rules match your current task
 - Re-read rules if you encounter patterns not covered in your initial load
 
+## 📊 MANDATORY: Session Logging
+
+**CRITICAL - Log your session for debugging the OCG system:**
+
+**WHEN**:
+
+1. Create log file as your SECOND action (after loading rules)
+2. **UPDATE CONTINUOUSLY** - Edit the log file throughout your session
+3. Update after each major action (delegation, tool use, file modification)
+
+**WHERE**: `./codegen/logging/$(date -u +%Y%m%d_%H%M%S)_<agent_role>.md`
+
+**Agent roles**: `orchestrator`, `feature-developer`, `qa-engineer`, `ui-specialist`, `devops-manager`, `translator`, `manual-tester`
+
+**LOG FORMAT**:
+
+```markdown
+# Session Log: <agent_role>
+
+**Started**: $(date -u)
+**Task**: [Brief description of main task]
+
+## Rules & Context Loaded
+
+- [ ] ./codegen/rules/INDEX.md
+- [ ] ./codegen/PROJECT_CONTEXT.md
+- [ ] ./codegen/CONTEXT.md
+- [ ] phoenix.md
+- [ ] testing.md
+- [ ] [list each rule file you actually loaded]
+
+## Recipes Used
+
+- [ ] /path/to/recipe.md (if any were provided by orchestrator)
+
+## MCP Tools Used
+
+**IMPORTANT: Track ACTUAL tool usage, not planned usage. Update this section each time you call an MCP tool.**
+
+- [ ] Figma MCP: get_image (2), get_code (1), get_variable_defs (1) = 4 total calls
+- [ ] Playwright MCP: browser_screenshot (3), browser_navigate (2) = 5 total calls
+- [ ] Tidewave MCP: project_eval (6), get_source_location (0) = 6 total calls
+- [ ] No MCP tools used (if none were actually called)
+
+## Files Modified
+
+- [ ] src/lib/component.ex (created/updated)
+- [ ] test/feature_test.exs (created)
+- [ ] [list all files you created/modified]
+
+## Delegation (orchestrator only)
+
+**CRITICAL: Log delegations BEFORE calling Task() to prevent information loss on crashes.**
+
+**WORKFLOW:**
+
+1. **FIRST**: Add delegation entry with "IN PROGRESS" status
+2. **THEN**: Call Task() tool
+3. **AFTER**: Update status based on subagent results
+
+**Example tracking:**
+
+- [x] Delegating to feature-developer: "implement user registration" → IN PROGRESS
+- [x] Delegated to feature-developer: "implement user registration" → COMPLETED
+- [x] Delegating to qa-engineer: "verify login flow" → IN PROGRESS
+- [x] Delegated to qa-engineer: "verify login flow" → FOUND 3 ISSUES
+- [x] Delegating to feature-developer: "fix validation issues X, Y, Z" → IN PROGRESS
+- [x] Delegated to feature-developer: "fix validation issues X, Y, Z" → COMPLETED
+- [ ] N/A - Not an orchestrator
+
+## Completion Status
+
+- [x] All tasks completed successfully
+- [ ] Blocked by: [reason if incomplete]
+```
+
+**BASH COMMAND for timestamp**: `date -u +%Y%m%d_%H%M%S`
+
+**WHY**: This helps debug whether OCG rules loading, MCP tool access, and multi-agent coordination are working properly.
+
 ## Universal Requirements
 
 - **100% task completion** - Finish all assigned work completely
