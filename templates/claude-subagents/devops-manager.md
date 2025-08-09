@@ -17,8 +17,17 @@ model: inherit
    - `./codegen/rules/shared/subagent-core-rules.md` - Universal subagent behavior
    - `./codegen/rules/shared/server-management.md` - Server restart coordination
 3. **Load ALL domain-specific rules** (required for devops-manager):
-   - `./codegen/rules/deployment.md` - Infrastructure and deployment patterns
-   - `./codegen/rules/dev-auth-bypass.md` - Development auth bypass
+   - **`./codegen/rules/subagents/deployment.md`** - 🚨 **CRITICAL OVERRIDE RULE** - Infrastructure and deployment patterns (overrides all other guidance)
+   - `./codegen/rules/subagents/ci-pipeline.md` - CI/CD pipeline configuration
+   - `./codegen/rules/subagents/elixir-ci.md` - Elixir-specific CI patterns
+   - `./codegen/rules/subagents/dev-auth-bypass.md` - Development auth bypass
+   - `./codegen/rules/subagents/git.md` - Git operation restrictions
+
+**🚨 CRITICAL RULE HIERARCHY:**
+
+- `deployment.md` requirements **OVERRIDE** all other rules, templates, and guidance
+- If ANY conflict exists between `deployment.md` and other sources, `deployment.md` WINS
+- Follow `deployment.md` patterns exactly - no exceptions, no shortcuts, no interpretations
 
 **THEN and ONLY THEN proceed with your work. Apply these rules to every action you take.**
 

@@ -43,17 +43,20 @@ Analyze the conversation to extract lessons, then automatically separate orchest
 ### Orchestration Rules (`rules/orchestration/`)
 
 - **parallel-testing.md** - Test parallelization strategies
+- **parallel-task-patterns.md** - Task decomposition and parallelization
 - **bottleneck-patterns.md** - Sequential work, blocking tasks
-- **role-orchestration-patterns.md** - Discovery → Distribution flow
-- **task-based-delegation.md** - Context-efficient task sizing
-- **delegation-patterns.md** - Subagent coordination
+- **delegation-patterns.md** - Subagent selection and coordination
+- **step-context-management.md** - Step context coordination, integration checkpoints
+- **recipe-management.md** - Recipe documentation patterns
 - **resource-management.md** - Port/database allocation
 
-### Implementation Rules (`rules/`)
+### Implementation Rules (`rules/subagents/`)
 
 - **phoenix.md** - LiveView patterns, contexts
 - **testing.md** - Test writing, fixtures
 - **elixir-code-generation.md** - Code style, patterns
+- **i18n.md** - Internationalization, Gettext
+- **workflow.md** - Development workflow, CI requirements
 
 ## Examples
 
@@ -81,7 +84,7 @@ Analyze the conversation to extract lessons, then automatically separate orchest
 
 **Creates**:
 
-1. `orchestration/role-orchestration-patterns.md`: Discovery → Distribution flow for translations
+1. `orchestration/delegation-patterns.md`: Discovery → Distribution flow for translations
 2. `i18n.md`: How to fix missing translation keys
 
 ## Auto-Update INDEX.md

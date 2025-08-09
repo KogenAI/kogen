@@ -17,10 +17,20 @@ model: inherit
    - `./codegen/rules/shared/subagent-core-rules.md` - Universal subagent behavior
    - `./codegen/rules/shared/server-management.md` - Server restart coordination
 3. **Load ALL domain-specific rules** (required for feature-developer):
-   - `./codegen/rules/phoenix.md` - Phoenix patterns and LiveView
-   - `./codegen/rules/elixir-code-generation.md` - Code style and conventions
-   - `./codegen/rules/git.md` - Git workflow patterns
-   - `./codegen/rules/testing.md` - Understanding test failures to fix implementation
+   - **`./codegen/rules/subagents/phoenix.md`** - 🚨 **ALWAYS CRITICAL** - Phoenix patterns and LiveView
+   - **`./codegen/rules/subagents/elixir-code-generation.md`** - 🚨 **ALWAYS CRITICAL** - Code style and conventions
+   - `./codegen/rules/subagents/workflow.md` - Development workflow (avoiding overengineering, CI requirements)
+   - `./codegen/rules/subagents/git.md` - Git workflow patterns
+   - `./codegen/rules/subagents/testing.md` - 🔥 **CRITICAL when fixing test failures** - Understanding test failures to fix implementation
+   - **`./codegen/rules/subagents/feature-tests.md`** - 🔥 **CRITICAL when working on feature tests** - Feature testing patterns and debugging
+
+**🚨 CRITICAL RULES (Context-Dependent):**
+
+- **Always Critical**: `phoenix.md` + `elixir-code-generation.md` (core Phoenix/Elixir development)
+- **Critical when fixing tests**: Add `testing.md` (test debugging and fixes)
+- **Critical when doing feature tests**: Add `feature-tests.md` (browser testing patterns)
+- **Orchestrator will specify** which context applies in delegation prompt
+- If ANY conflict exists between critical rules and other sources, **critical rules WIN**
 
 **THEN and ONLY THEN proceed with your work. Apply these rules to every action you take.**
 
@@ -60,4 +70,47 @@ model: inherit
 - Code follows project patterns and style
 - Unit tests written for new code (if applicable)
 
-**IMPORTANT**: Never claim "tests pass" or "implementation complete" - only verification-engineer can confirm system health
+## 🚨 MANDATORY: Self-Verification Before Completion
+
+**CRITICAL - Before claiming ANY task complete, you MUST verify your changes work:**
+
+### Step 1: Basic Compilation & Tests
+
+```bash
+# REQUIRED - Must pass before claiming completion
+mix compile --warnings-as-errors
+mix format --check-formatted
+mix test
+```
+
+### Step 2: Feature Tests (if working on feature tests)
+
+```bash
+# REQUIRED when working on feature test fixes
+mix help test.features 2>/dev/null && mix test.features || echo "No feature tests in project"
+```
+
+### Step 3: Check for Obvious Regressions
+
+```bash
+# REQUIRED - Run relevant subset based on your changes
+# For Phoenix changes: mix test test/my_app_web/
+# For Context changes: mix test test/my_app/contexts/
+# For specific feature: mix test test/path/to/affected/
+```
+
+**❌ NEVER claim completion if:**
+
+- ANY compilation errors exist
+- ANY test failures exist in areas you modified
+- You haven't run tests for the code you changed
+- You made assumptions about what "should work"
+
+**✅ ONLY claim completion when:**
+
+- All compilation is clean
+- All affected tests pass
+- You've verified your specific changes work
+- Code is properly formatted
+
+**IMPORTANT**: This is self-verification, not system-wide verification. verification-engineer still does comprehensive system health checks, but you must verify your specific changes work before claiming completion.

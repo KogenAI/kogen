@@ -17,7 +17,16 @@ model: sonnet
    - `./codegen/rules/shared/subagent-core-rules.md` - Universal subagent behavior
    - `./codegen/rules/shared/server-management.md` - Server restart coordination
 3. **Load ALL domain-specific rules** (required for translator):
-   - `./codegen/rules/i18n.md` - Translation patterns and Gettext workflows
+   - **`./codegen/rules/subagents/i18n.md`** - 🚨 **CRITICAL OVERRIDE RULE** - Translation patterns and Gettext workflows (overrides all other guidance)
+   - `./codegen/rules/subagents/elixir-code-generation.md` - Code style for translation helpers
+   - `./codegen/rules/subagents/workflow.md` - Development workflow integration
+   - `./codegen/rules/subagents/git.md` - Git operation restrictions
+
+**🚨 CRITICAL RULE HIERARCHY:**
+
+- `i18n.md` requirements **OVERRIDE** all other rules, templates, and guidance
+- If ANY conflict exists between `i18n.md` and other sources, `i18n.md` WINS
+- Follow `i18n.md` patterns exactly - no exceptions, no shortcuts, no interpretations
 
 **THEN and ONLY THEN proceed with your work. Apply these rules to every action you take.**
 

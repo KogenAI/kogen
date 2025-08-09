@@ -141,7 +141,9 @@
     "deny": [
       "Bash(fly:*)",
       "Bash(flyctl:*)",
-      "Bash(git add:*)",
+      "Bash(git add --all)",
+      "Bash(git add .)",
+      "Bash(git add -A)",
       "Bash(git branch:*)",
       "Bash(git checkout:*)",
       "Bash(git cherry-pick:*)",

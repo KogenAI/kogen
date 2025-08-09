@@ -4,13 +4,15 @@
 
 <!-- Target ~50-100 lines. Detailed step progress stored in ./codegen/context/ step files. -->
 
-### Step Context Structure
+### Work Context Structure
 
 **Main Context (this file)**: Current focus, next steps, session tracking
-**Step Details**: `@./codegen/context/` - Detailed progress and lessons for each step
+**Work Contexts**: `@./codegen/context/` - Persistent memory for delegations and issues
 
-- Only load step files when working on or reviewing that specific step
-- Step files preserve detailed implementation decisions and lessons learned
+- **Check for pending work**: `ls ./codegen/context/PENDING-*` before starting new work
+- **Issue contexts**: `PENDING-issues-*.md` - Code review/verification findings
+- **Step contexts**: `step-XX-*.md` - Detailed progress for implementation steps
+- **Status prefixes**: PENDING (awaiting), ACTIVE (in progress), RESOLVED (done)
 - **Current Step**: [Update this with current step file, e.g., "step-01-setup.md"]
 
 ### Implementation Plan Reference
@@ -67,14 +69,40 @@
 - **ui-specialist**: [Not Started | In Progress | Complete | Blocked]
 - **test-engineer**: [Not Started | In Progress | Complete | Blocked]
 - **verification-engineer**: [Not Started | In Progress | Complete | Blocked]
+- **code-reviewer**: [Not Started | In Progress | Complete | Blocked]
 - **devops-manager**: [Not Started | In Progress | Complete | Blocked]
 - **translator**: [Not Started | In Progress | Complete | Blocked]
 
-**Integration Status**:
+**🔴 COMPLETION GATE CHECKLIST**:
 
-- **Pending Handoffs**: [Which subagent is waiting for another to complete]
-- **Integration Issues**: [Any conflicts or coordination problems]
-- **Collaboration Notes**: [Important coordination information]
+⚠️ **MANDATORY SEQUENCE - NEVER SKIP STEPS**:
+
+- [ ] **Implementation**: feature-developer reported implementation complete
+- [ ] **Verification**: verification-engineer reported "ALL CLEAR ✅"
+- [ ] **Code Review**: code-reviewer reported "✅ QUALITY APPROVED"
+- [ ] **STEP COMPLETE**: Only mark complete when all 3 gates pass
+
+**🚨 CRITICAL WORKFLOW RULE**: After ANY implementation work, you MUST immediately delegate to verification-engineer. After verification-engineer reports "ALL CLEAR ✅", you MUST immediately delegate to code-reviewer. NO EXCEPTIONS.
+
+**🔄 CODE REVIEW FAILURE WORKFLOW**: If code-reviewer reports "❌ QUALITY ISSUES FOUND":
+
+1. **CREATE WORK CONTEXT**: Save issues to `./codegen/context/PENDING-issues-YYYYMMDD-HHMMSS-code-review.md`
+2. Delegate fixes to feature-developer with work context file path
+3. After fixes, restart from verification-engineer (not code-reviewer)
+4. Continue cycle until code-reviewer gives "✅ QUALITY APPROVED"
+
+**🚨 CURRENT DELEGATION**:
+
+**Latest Active Task** (update when delegating):
+
+- **Task**: [Brief description of current delegation]
+- **Subagent**: [Which subagent is working on it]
+- **Started**: [Timestamp]
+- **Work Context**: [Path to work context file if created, e.g., ./codegen/context/PENDING-issues-*.md]
+
+**Awaiting**: [What needs to happen next - e.g., "verification results", "code review approval"]
+
+**⚠️ WORK CONTEXT REMINDER**: Always create work context files for issue delegations to prevent information loss on crashes
 
 ### Tech Stack
 
@@ -124,19 +152,19 @@ For detailed code analysis, you can use:
 - `git diff --staged` - See staged changes
 - `git diff` - See working directory changes
 
-### Session Tracking
+### Current Work Session
 
-- **Start Time**: [REQUIRED - Log immediately when starting work: `date`]
-- **Current Session Focus**: [What specific task is being worked on this session]
-- **User Status**: [Active/AFK - current user engagement level]
-- **Estimated Duration**: [Expected time to complete current work]
-- **Status**: [Brief status of current progress]
-
-**CURRENT WORK**: [Detailed description of what is actively being implemented/debugged]
+- **Started**: [Timestamp when work began on current task]
+- **Focus**: [What's being worked on right now]
+- **Status**: [Brief progress update]
 
 ### Implementation Guidelines
 
-**PRIMARY RULE**: If resuming work or context was compacted, **READ `@./codegen/plan/overview.md` FIRST**
+**PRIMARY RULE**: If resuming work or context was compacted:
+
+1. **CHECK FOR PENDING WORK**: `ls ./codegen/context/PENDING-*`
+2. **READ OVERVIEW**: `@./codegen/plan/overview.md` for feature context
+3. **CONTINUE PENDING**: Work on any PENDING contexts before starting new work
 
 **SUBAGENT ORCHESTRATION**:
 

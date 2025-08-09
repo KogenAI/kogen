@@ -8,64 +8,55 @@ Universal guidance for AI assistants in OCG workspaces.
 
 1. **STOP** - Do NOT proceed without loading rules
 2. **IDENTIFY** your agent type from your prompt/role
-3. **LOAD** appropriate rules from `/codegen/rules/INDEX.md`:
+3. **LOAD** appropriate rules from `./codegen/rules/INDEX.md`:
    - **ALL agents**: Load shared rules for universal knowledge
    - **Main/Orchestrator**: ALSO load ALL orchestration rules
-   - **Specialized Subagents**: ALSO load your domain-specific rules
+   - **Specialized Subagents**: ALSO load your domain-specific rules from subagents/
 4. **APPLY** these rules to every action you take
 
-**Examples by Agent Type:**
+**Rule Loading Strategy:**
 
-**Main Agent (Orchestrator):**
+- **Orchestrators**: Load orchestration rules (delegation patterns, resource management, parallel strategies)
+- **Subagents**: Your role definition file specifies exactly which rules to load - follow that list precisely
+- **All Agents**: Always load shared rules (server-management, subagent-core-rules)
 
-- MUST load: `orchestration/parallel-testing.md` for handling test failures efficiently
-- MUST load: `orchestration/task-based-delegation.md` for proper work decomposition
-- MUST load: `orchestration/parallel-fixing.md` for concurrent issue resolution
-- MUST load: `orchestration/bottleneck-patterns.md` for identifying blocking tasks
-- MUST load: ALL shared rules for server management, workspace isolation
+**🚨 CRITICAL RULE HIERARCHY:**
 
-**Feature Developer:**
-
-- MUST load: `phoenix.md`, `elixir-code-generation.md` for implementation standards
-- MUST load: `testing.md` for understanding test failures when fixing implementation
-- MUST load: `git.md` for workflow patterns
-- MUST load: Shared rules for workspace management
-
-**Test Engineer:**
-
-- MUST load: `testing.md`, `wallaby.md`, `feature-tests.md` for writing comprehensive tests
-- MUST load: `elixir-code-generation.md` for test code style
-- MUST load: `browser-state-documentation.md` for browser testing
-- MUST load: Shared rules for workspace management
-
-**Verification Engineer:**
-
-- MUST load: `testing.md`, `elixir-ci.md`, `ci-pipeline.md` for running tests and CI
-- MUST load: Shared rules for CI/CD awareness
-
-**Code Reviewer:**
-
-- MUST load: `phoenix.md`, `elixir-code-generation.md` for code quality standards
-- MUST load: `git.md` for reviewing patterns and conventions
-- MUST load: Shared rules for workspace management
-
-**UI Specialist:**
-
-- MUST load: `ui-implementation.md`, `figma.md`, `tailwind.md` for styling patterns
-- MUST load: `browser-state-documentation.md` for browser state management
-- MUST load: Shared rules for workspace management
-
-**❌ NEVER:**
-
-- Skip directly to implementation without loading rules
-- Assume you know patterns without checking rules
-- Ignore rule updates or improvements
+- **Each role has context-dependent critical rules** that take precedence over all other guidance
+- **Orchestrators**: `delegation-patterns.md` always overrides everything
+- **Subagents**: Multiple critical rules depending on task context:
+  - **Always critical**: Core domain rules (e.g., `phoenix.md` for feature-developer)
+  - **Context critical**: Task-specific rules (e.g., `feature-tests.md` when doing browser tests)
+  - **Orchestrator specifies context** in delegation prompts
+- **If ANY conflict exists** between critical rules and other sources, the critical rules WIN
+- **Follow critical rules exactly** - no exceptions, no shortcuts, no interpretations
 
 **✅ ALWAYS:**
 
 - Load rules as your FIRST action
-- Re-check rules when switching tasks
+- Follow your role definition's rule loading instructions
 - Apply rules consistently throughout your work
+- **DOCUMENT RULE LOADING**: Prove you loaded rules by showing actual content
+- **PROVIDE EVIDENCE**: Document systematic search execution in session logs
+
+**❌ NEVER:**
+
+- Skip rule loading
+- Assume you know patterns without checking rules
+- Ignore your role definition's required rules
+- **Claim completion without proof of rule compliance**
+- **Skip systematic searches required by your role**
+
+## 🚨 MANDATORY: Rule Compliance Verification
+
+**CRITICAL - All agents must prove rule compliance before claiming completion:**
+
+1. **Document rule loading** - Show actual rule content in your session log
+2. **Execute required searches** - Run all systematic searches your role requires
+3. **Provide proof** - Session log must contain evidence of compliance
+4. **No exceptions** - Claims without proof will be rejected
+
+**Why**: Prevents agents from ignoring rules and ensures quality standards.
 
 ## Workspace Rules
 
@@ -94,32 +85,6 @@ HELPFUL RESOURCES: See ./codegen/recipes/phoenix-async-feature-testing.md
 ```
 
 **Your job**: Follow the recipe pattern provided by the orchestrator. Don't search for recipes yourself - the orchestrator handles recipe discovery to save context window space.
-
-## Rule Loading (Detailed)
-
-**⚠️ TIMING: Load rules IMMEDIATELY upon session start - BEFORE any other action!**
-
-**See `./codegen/rules/INDEX.md`** for the complete index of rules and loading strategy.
-
-**WHEN to load rules:**
-
-1. **Session Start** - FIRST action, no exceptions
-2. **Task Switch** - When changing focus areas
-3. **Error Recovery** - When encountering unexpected patterns
-4. **Delegation** - Before passing work to subagents
-
-**WHAT to load:**
-
-- **Shared rules** - Universal knowledge (server management, workspace isolation, etc.) - ALL agents
-- **Your domain rules** - Specific to your agent type and expertise - MANDATORY for your role
-- **Task-specific rules** - Additional rules as needed for current work
-- **Orchestration rules** - ALL of them if you're the main agent
-
-**HOW to verify:**
-
-- Check you've loaded all required rules for your agent type
-- Confirm rules match your current task
-- Re-read rules if you encounter patterns not covered in your initial load
 
 ## 📊 MANDATORY: Session Logging
 
@@ -184,13 +149,11 @@ HELPFUL RESOURCES: See ./codegen/recipes/phoenix-async-feature-testing.md
 **Example tracking:**
 
 - [x] Delegating to feature-developer: "implement user registration" → IN PROGRESS
-- [x] Delegated to feature-developer: "implement user registration" → COMPLETED (claimed)
-- [x] Delegating to verification-engineer: "verify registration implementation" → IN PROGRESS
-- [x] Delegated to verification-engineer: "verify registration implementation" → FOUND 2 ISSUES
-- [x] Delegating to feature-developer: "fix validation issues X, Y" → IN PROGRESS
-- [x] Delegated to feature-developer: "fix validation issues X, Y" → COMPLETED (claimed)
-- [x] Delegating to verification-engineer: "re-verify registration fixes" → IN PROGRESS
-- [x] Delegated to verification-engineer: "re-verify registration fixes" → ALL CLEAR ✅
+- [x] Delegated to feature-developer: → COMPLETED
+- [x] Delegating to verification-engineer: "verify implementation" → IN PROGRESS
+- [x] Delegated to verification-engineer: → FOUND 2 ISSUES
+- [x] Delegating to feature-developer: "fix issues" → IN PROGRESS
+- [x] Delegated to feature-developer: → COMPLETED
 - [ ] N/A - Not an orchestrator
 
 ## Completion Status
@@ -203,9 +166,51 @@ HELPFUL RESOURCES: See ./codegen/recipes/phoenix-async-feature-testing.md
 
 **WHY**: This helps debug whether OCG rules loading, MCP tool access, and multi-agent coordination are working properly.
 
+## Work Context Management (Agent-to-Agent Communication)
+
+**All agents use bash commands directly for work contexts:**
+
+### Checking for Work (All Agents at Session Start)
+
+```bash
+# Check for pending work
+ls ./codegen/context/PENDING-* 2>/dev/null || echo "No PENDING work"
+
+# Check for interrupted work
+ls ./codegen/context/ACTIVE-* 2>/dev/null || echo "No ACTIVE work"
+```
+
+### Creating Work Contexts (Orchestrator Before Delegating Issues)
+
+```bash
+# Create issue context with full details
+TIMESTAMP=$(date -u +"%Y%m%d-%H%M%S")
+cat > ./codegen/context/PENDING-issues-${TIMESTAMP}-code-review.md << 'EOF'
+# Code Review Issues
+**Source**: code-reviewer
+**Target**: feature-developer
+**Status**: PENDING
+
+## Issues Found
+[PASTE FULL REVIEW REPORT HERE]
+EOF
+```
+
+### Managing Work Contexts (Subagents)
+
+```bash
+# When starting work on an issue
+mv ./codegen/context/PENDING-issues-*.md ./codegen/context/ACTIVE-issues-*.md
+
+# When completing work
+mv ./codegen/context/ACTIVE-issues-*.md ./codegen/context/RESOLVED-issues-*.md
+```
+
 ## Universal Requirements
 
 - **100% task completion** - Finish all assigned work completely
-- **Update step context** - Document progress in `./codegen/context/step-XX.md` files
+- **Check work contexts** - Always check `./codegen/context/PENDING-*` at session start
+- **Update work contexts** - Move through PENDING→ACTIVE→RESOLVED as you work
 - **Workspace isolation** - Never navigate outside current directory
 - **Port awareness** - Use ports from CONTEXT.md, not hardcoded values
+- **Create session logs** - ALL agents must log (not just orchestrator)

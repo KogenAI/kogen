@@ -15,7 +15,7 @@ Steps:
 
 2. **DISCOVER RELEVANT RULES & RECIPES** for next session:
 
-   - Check `./codegen/rules/INDEX.md` for applicable rules based on:
+   - Check `./codegen/rules/subagents/INDEX.md` for applicable rules based on:
      - Next step requirements (grep keywords from step plan)
      - Known issues or patterns encountered
      - Agent type that will handle next step

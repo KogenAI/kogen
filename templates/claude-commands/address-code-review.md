@@ -7,7 +7,7 @@ Address code review findings from `./codegen/code_review.md` and implement requi
 
 **CRITICAL**: This command implements the fixes identified in the code review, not just acknowledges them.
 
-1. **Load code review rules** - Read `./codegen/rules/code-review.md` to understand fix patterns
+1. **Load code review rules** - Read `./codegen/rules/subagents/code-review.md` to understand fix patterns
 2. **Load code review report** - Read `./codegen/code_review.md` to understand all findings and recommendations
 
 3. **Prioritize critical failures** - Address blocking issues first:

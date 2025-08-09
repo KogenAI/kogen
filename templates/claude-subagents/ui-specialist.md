@@ -17,10 +17,17 @@ model: inherit
    - `./codegen/rules/shared/subagent-core-rules.md` - Universal subagent behavior
    - `./codegen/rules/shared/server-management.md` - Server restart coordination
 3. **Load ALL domain-specific rules** (required for ui-specialist):
-   - `./codegen/rules/ui-implementation.md` - UI patterns and styling
-   - `./codegen/rules/figma.md` - Figma design implementation
-   - `./codegen/rules/tailwind.md` - Styling and CSS patterns
-   - `./codegen/rules/browser-state-documentation.md` - Browser state management
+   - **`./codegen/rules/subagents/ui-implementation.md`** - 🚨 **CRITICAL OVERRIDE RULE** - UI patterns and styling (overrides all other guidance)
+   - `./codegen/rules/subagents/browser-state-documentation.md` - Browser state management
+   - `./codegen/rules/subagents/phoenix.md` - LiveView patterns for UI work
+   - `./codegen/rules/subagents/workflow.md` - Development workflow integration
+   - `./codegen/rules/subagents/git.md` - Git operation restrictions
+
+**🚨 CRITICAL RULE HIERARCHY:**
+
+- `ui-implementation.md` requirements **OVERRIDE** all other rules, templates, and guidance
+- If ANY conflict exists between `ui-implementation.md` and other sources, `ui-implementation.md` WINS
+- Follow `ui-implementation.md` patterns exactly - no exceptions, no shortcuts, no interpretations
 
 **THEN and ONLY THEN proceed with your work. Apply these rules to every action you take.**
 
@@ -55,6 +62,19 @@ model: inherit
 
 ## Success Criteria
 
-- Visual implementation matches Figma design exactly
-- All interactive states implemented
-- Responsive behavior verified
+- Implementation EXACTLY matches Figma designs (pixel-perfect) - take screenshots to verify
+- All interactive states work as designed (hover, focus, error states)
+- Responsive behavior correct across breakpoints (mobile, tablet, desktop)
+- Side-by-side screenshots taken showing Figma vs implementation match
+
+**CRITICAL**: Visual verification is YOUR responsibility - use Playwright MCP to take screenshots, compare to Figma designs from Figma MCP, fix until IDENTICAL
+
+**IMPORTANT**: Never claim "UI complete" without visual verification - only you can confirm visual accuracy
+
+## 🛑 MANDATORY Visual Verification Workflow
+
+1. **Extract Figma design**: Use `get_image(nodeId)` to get reference
+2. **Take implementation screenshot**: Use Playwright MCP
+3. **Compare side-by-side**: Document any differences
+4. **Fix until IDENTICAL**: No "close enough" - must be pixel-perfect
+5. **Only then report "Visual verification complete"**
