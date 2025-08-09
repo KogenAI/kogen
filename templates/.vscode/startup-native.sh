@@ -211,7 +211,7 @@ if [ -z "$PLAYWRIGHT_MCP_PORT" ]; then
     exit 1
 fi
 # Start Playwright MCP server in background with script for colors
-nohup script -F codegen/playwright_mcp.log npx @playwright/mcp@latest --port $PLAYWRIGHT_MCP_PORT --headless --isolated >/dev/null 2>&1 &
+nohup script -F codegen/playwright_mcp.log npx --yes @playwright/mcp@latest --port $PLAYWRIGHT_MCP_PORT --headless --isolated >/dev/null 2>&1 &
 
 show_workspace_summary() {
     local mode="$1"

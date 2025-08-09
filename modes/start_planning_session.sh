@@ -150,7 +150,7 @@ fi
 # Start Playwright MCP server
 if command -v npx >/dev/null 2>&1; then
     echo "🎭 Starting Playwright MCP server on port $PLAYWRIGHT_PORT..."
-    npx @playwright/mcp@latest --port $PLAYWRIGHT_PORT --headless --isolated >/dev/null 2>&1 &
+    npx --yes @playwright/mcp@latest --port $PLAYWRIGHT_PORT --headless --isolated >/dev/null 2>&1 &
     PLAYWRIGHT_PID=$!
     echo "✓ Playwright MCP server started (PID: $PLAYWRIGHT_PID)"
 else
