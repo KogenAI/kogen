@@ -218,10 +218,24 @@ if [ -f "$REPO_ROOT/codegen/PROJECT_CONTEXT.md" ]; then
     cp "$REPO_ROOT/codegen/PROJECT_CONTEXT.md" "$WORKSPACE_PATH/codegen/PROJECT_CONTEXT.md"
 fi
 
-if [ -f "$REPO_ROOT/codegen/FIGMA_MAP.md" ]; then
+# Copy Figma files: first from main repo, then fall back to bemeda_personal context
+CONTEXT_DIR="/Users/almirsarajcic/Areas/Optimum/context/bemeda_personal"
+
+for figma_file in "FIGMA_MAP.md" "FIGMA_DESIGN_SYSTEM_RULES.md" "FIGMA_TOKEN_MAPPING.md"; do
     mkdir -p "$WORKSPACE_PATH/codegen"
-    cp "$REPO_ROOT/codegen/FIGMA_MAP.md" "$WORKSPACE_PATH/codegen/FIGMA_MAP.md"
-fi
+
+    if [ -f "$REPO_ROOT/codegen/$figma_file" ]; then
+        # Copy from main repo (project-specific version)
+        cp "$REPO_ROOT/codegen/$figma_file" "$WORKSPACE_PATH/codegen/$figma_file"
+        echo "✅ Copied $figma_file from main repository"
+    elif [ -f "$CONTEXT_DIR/$figma_file" ]; then
+        # Fall back to bemeda_personal context (initial template)
+        cp "$CONTEXT_DIR/$figma_file" "$WORKSPACE_PATH/codegen/$figma_file"
+        echo "✅ Copied $figma_file from bemeda_personal context"
+    else
+        echo "ℹ️  $figma_file not found in main repo or bemeda_personal context"
+    fi
+done
 
 if [ -f "$SCRIPT_DIR/templates/CONTEXT.md" ]; then
     mkdir -p "$WORKSPACE_PATH/codegen"

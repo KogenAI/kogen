@@ -36,9 +36,14 @@ else
     exit 1
 fi
 
-CONTEXT_FILE="$REPO_ROOT/codegen/contexts/$FEATURE_NAME.md"
+CONTEXT_FOLDER="$REPO_ROOT/codegen/contexts/$FEATURE_NAME"
+CONTEXT_FILE="$CONTEXT_FOLDER/CONTEXT.md"
 CONTEXT_EXISTS=false
-if [ -f "$CONTEXT_FILE" ]; then
+if [ -d "$CONTEXT_FOLDER" ] && [ -f "$CONTEXT_FILE" ]; then
+    CONTEXT_EXISTS=true
+elif [ -f "$REPO_ROOT/codegen/contexts/$FEATURE_NAME.md" ]; then
+    # Legacy single file format
+    CONTEXT_FILE="$REPO_ROOT/codegen/contexts/$FEATURE_NAME.md"
     CONTEXT_EXISTS=true
 fi
 
@@ -74,7 +79,7 @@ Please review the archived feature context and integrate its learnings into \`./
 
 If applicable, also update:
 
-- **FIGMA_MAP.md** - Update Figma node ID to Phoenix component mappings if UI components were created/modified
+- **Figma Design Files** - Update Figma node ID to Phoenix component mappings, design system rules, and token mappings if UI components were created/modified
 - **Rules** - Extract important lessons and patterns that could be useful for future development into \`./codegen/rules/\`
 
 ## Guidelines
@@ -100,11 +105,20 @@ fi
 
 CONTEXT_UPDATE_PROMPT="$CONTEXT_UPDATE_PROMPT
 - \`./codegen/PROJECT_CONTEXT.md\` - The project context to update
-- \`./codegen/FIGMA_MAP.md\` - Figma mappings (if it exists and is relevant)"
+- \`./codegen/FIGMA_MAP.md\` - Figma node ID to component mappings (if it exists and is relevant)
+- \`./codegen/FIGMA_DESIGN_SYSTEM_RULES.md\` - Figma design system rules (if it exists and is relevant)
+- \`./codegen/FIGMA_TOKEN_MAPPING.md\` - Figma token mappings (if it exists and is relevant)"
 
 if [ "$CONTEXT_EXISTS" = true ]; then
-    CONTEXT_UPDATE_PROMPT="$CONTEXT_UPDATE_PROMPT
-- \`codegen/contexts/$FEATURE_NAME.md\` - Archived feature context with implementation details and learnings"
+    if [ -d "$CONTEXT_FOLDER" ]; then
+        CONTEXT_UPDATE_PROMPT="$CONTEXT_UPDATE_PROMPT
+- \`codegen/contexts/$FEATURE_NAME/CONTEXT.md\` - Archived main feature context
+- \`codegen/contexts/$FEATURE_NAME/context/\` - Archived step context files (if any)
+- \`codegen/contexts/$FEATURE_NAME/FIGMA_*.md\` - Archived modified Figma files (if any)"
+    else
+        CONTEXT_UPDATE_PROMPT="$CONTEXT_UPDATE_PROMPT
+- \`codegen/contexts/$FEATURE_NAME.md\` - Archived feature context (legacy format) with implementation details and learnings"
+    fi
 fi
 
 CONTEXT_UPDATE_PROMPT="$CONTEXT_UPDATE_PROMPT
@@ -232,14 +246,38 @@ If you must create a new rule, use this template:
 - [Links to related rules if any]
 \`\`\`
 
-## FIGMA_MAP.md Updates
+## Figma Design File Updates
 
 If this feature involved UI components that map to Figma designs:
-1. Check if FIGMA_MAP.md exists in ./codegen/
-2. If it exists and UI components were created/modified, update the mappings
-3. Add new Figma node IDs to Phoenix component mappings
-4. Update existing mappings if component names or structures changed
-5. Follow the existing format in the file"
+1. Check if Figma files exist in ./codegen/ (FIGMA_MAP.md, FIGMA_DESIGN_SYSTEM_RULES.md, FIGMA_TOKEN_MAPPING.md)
+2. If they exist and UI components were created/modified, update the relevant files:
+   - **FIGMA_MAP.md**: Add new Figma node IDs to Phoenix component mappings
+   - **FIGMA_DESIGN_SYSTEM_RULES.md**: Update design system rules if design patterns changed
+   - **FIGMA_TOKEN_MAPPING.md**: Update token mappings if design tokens were modified
+3. Update existing mappings if component names or structures changed
+4. Follow the existing format in each file"
+
+# Merge archived Figma files back to main repo if they exist
+if [ -d "$CONTEXT_FOLDER" ]; then
+    figma_files_merged=false
+    for figma_file in "FIGMA_MAP.md" "FIGMA_DESIGN_SYSTEM_RULES.md" "FIGMA_TOKEN_MAPPING.md"; do
+        archived_figma_file="$CONTEXT_FOLDER/$figma_file"
+        main_figma_file="$REPO_ROOT/codegen/$figma_file"
+
+        if [ -f "$archived_figma_file" ]; then
+            # Check if main repo file is different or doesn't exist
+            if [ ! -f "$main_figma_file" ] || ! cmp -s "$archived_figma_file" "$main_figma_file"; then
+                cp "$archived_figma_file" "$main_figma_file"
+                echo "🎨 Merged archived Figma file back to main repo: $figma_file"
+                figma_files_merged=true
+            fi
+        fi
+    done
+
+    if [ "$figma_files_merged" = true ]; then
+        echo "✅ Figma files merged from archived context to main repository"
+    fi
+fi
 
 echo ""
 echo "🎯 Context update ready!"
@@ -288,4 +326,4 @@ echo ""
 echo "💡 This will update the main PROJECT_CONTEXT.md with learnings from the $FEATURE_NAME feature development"
 echo "📚 Reusable patterns will be extracted to: ~/Areas/Optimum/context/recipes/"
 echo "📋 Existing rules in ./codegen/rules/ will be enhanced (new rules created very rarely)"
-echo "🎨 ./codegen/FIGMA_MAP.md will be updated if UI components were created/modified"
+echo "🎨 Figma files (FIGMA_MAP.md, FIGMA_DESIGN_SYSTEM_RULES.md, FIGMA_TOKEN_MAPPING.md) will be updated if UI components were created/modified"

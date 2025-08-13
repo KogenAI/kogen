@@ -12,6 +12,8 @@ model: inherit
 
 **STOP! Before ANY other action, load these rules in this exact order:**
 
+**CRITICAL**: Use Read tool WITHOUT limit/offset parameters to read COMPLETE files.
+
 1. **Load `./codegen/rules/INDEX.md`** - Understand the rules system
 2. **Load ALL shared rules** (required for all subagents):
    - `./codegen/rules/shared/subagent-core-rules.md` - Universal subagent behavior

@@ -9,7 +9,21 @@
 
 ## Load These Rules
 
-- `planning.md` - Planning structure, modular architecture, file hygiene requirements
+**MANDATORY FIRST ACTION**: After reading this context and PROJECT_CONTEXT.md, load planning rules:
+
+1. **Load planning rules**:
+   - `./codegen/rules/planning.md` - Planning structure, modular architecture, file hygiene requirements
+2. **Identify feature type and load domain rules**:
+   - Check `./codegen/rules/INDEX.md` for available domain rules
+   - Based on feature description, load relevant domain rules:
+     - **Phoenix/Elixir features**: Load `rules/subagents/phoenix.md` + `rules/subagents/elixir-code-generation.md`
+     - **UI/design features**: Load `rules/subagents/ui-implementation.md` + `rules/subagents/phoenix.md`
+     - **Testing features**: Load `rules/subagents/testing.md` + `rules/subagents/feature-tests.md`
+     - **Translation features**: Load `rules/subagents/i18n.md`
+     - **CI/deployment features**: Load `rules/subagents/ci-pipeline.md` + `rules/subagents/deployment.md`
+     - **Multiple domains**: Load all relevant domain rules
+
+**Why**: Plans with specific code must follow domain patterns. Loading appropriate rules prevents bad code patterns that won't get fixed during implementation.
 
 ## Planning Phase: Technical Implementation
 

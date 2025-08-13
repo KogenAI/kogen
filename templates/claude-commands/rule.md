@@ -3,14 +3,33 @@ description: Add a new rule or principle with automatic orchestration/implementa
 argument-hint: [rule description]
 ---
 
-Analyze the conversation to extract lessons, then automatically separate orchestration vs implementation aspects.
+Extract lessons from conversation and add concise rules. **CRITICAL: Keep rules short and action-oriented.**
+
+## Writing Guidelines
+
+**✅ CONCISE RULE PRINCIPLES**:
+
+- **Max 10 lines per rule section** - No verbose explanations
+- **Action-oriented** - Start with commands/searches, not theory
+- **One concept per rule** - Don't combine multiple patterns
+- **Bullet points over paragraphs** - Easy to scan and apply
+- **Examples over explanations** - Show, don't tell
+
+**❌ AVOID VERBOSITY**:
+
+- Long explanations of why rules exist
+- Multiple search strategies for same concept
+- Excessive command examples
+- Redundant violation categories
+- Detailed impact descriptions
 
 ## Process
 
 1. **Extract lessons** from conversation (errors, solutions, patterns discovered)
-2. **Classify each lesson**:
+2. **Write concisely** - Max 5-10 lines per rule
+3. **Classify each lesson**:
    - **Orchestration** → `./codegen/rules/orchestration/`
-   - **Implementation** → `./codegen/rules/`
+   - **Implementation** → `./codegen/rules/subagents/`
    - **Both** → Split into appropriate parts
 
 ## Classification Keywords

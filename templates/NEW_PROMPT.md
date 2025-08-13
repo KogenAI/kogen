@@ -30,6 +30,8 @@ Follow the staged development workflow and update CONTEXT.md as you progress thr
      - `recipe-management.md` - Recipe discovery and usage patterns
      - `resource-management.md` - Port and database allocation
      - `work-context-management.md` - Work context persistence and issue tracking
+   - Load CONDITIONAL orchestration rules (only if relevant):
+     - `ui-delegation-patterns.md` - ONLY if plan mentions UI/design work (check plan files for keywords like "UI", "design", "component", "Figma", "styling")
 
 **🚨 CRITICAL RULE HIERARCHY:**
 
@@ -115,9 +117,10 @@ This is something like: `/Users/.../project_name/codegen/workspaces/{{FEATURE_NA
 **WORKFLOW RULE**: Implementation FIRST, then MANDATORY Verification
 
 - Code/tests needed → delegate to **feature-developer** FIRST
-- UI work needed → delegate to **ui-specialist** FIRST
+- UI work needed → delegate to **ui-specialist** FIRST (implementation + visual verification)
 - Infrastructure needed → delegate to **devops-manager** FIRST
-- **MANDATORY**: AFTER EVERY implementation → delegate to **verification-engineer** for verification
+- **UI WORKFLOW**: ui-specialist does implementation + visual verification (Figma vs screenshots) in single delegation
+- **MANDATORY**: AFTER implementation → delegate to **verification-engineer** for functional verification (CI/tests)
 - **MANDATORY**: AFTER verification-engineer reports "ALL CLEAR ✅" → delegate to **code-reviewer** for quality review
 
 **CRITICAL**: Never trust subagent claims of "tests pass" or "implementation complete" - only **verification-engineer** can confirm system health. Once verification-engineer reports "ALL CLEAR ✅", you MUST delegate to **code-reviewer** before marking work complete.

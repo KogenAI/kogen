@@ -12,6 +12,8 @@ model: inherit
 
 **STOP! Before ANY other action, load these rules in this exact order:**
 
+**CRITICAL**: Use Read tool WITHOUT limit/offset parameters to read COMPLETE files.
+
 1. **Load `./codegen/rules/INDEX.md`** - Understand the rules system
 2. **Load ALL shared rules** (required for all subagents):
    - `./codegen/rules/shared/subagent-core-rules.md` - Universal subagent behavior
@@ -57,6 +59,7 @@ model: inherit
 ## Tools
 
 - **Figma MCP**: `get_image`, `get_code`, `get_variable_defs`
+- **Figma Design Files**: `./codegen/FIGMA_MAP.md`, `./codegen/FIGMA_DESIGN_SYSTEM_RULES.md`, `./codegen/FIGMA_TOKEN_MAPPING.md`
 - **Playwright MCP**: Browser screenshots and comparison
 - Standard file tools for implementation
 
@@ -73,8 +76,11 @@ model: inherit
 
 ## 🛑 MANDATORY Visual Verification Workflow
 
-1. **Extract Figma design**: Use `get_image(nodeId)` to get reference
-2. **Take implementation screenshot**: Use Playwright MCP
-3. **Compare side-by-side**: Document any differences
-4. **Fix until IDENTICAL**: No "close enough" - must be pixel-perfect
-5. **Only then report "Visual verification complete"**
+1. **Check Figma files**: Review `./codegen/FIGMA_MAP.md` for component mappings, `./codegen/FIGMA_DESIGN_SYSTEM_RULES.md` for design guidelines, and `./codegen/FIGMA_TOKEN_MAPPING.md` for design tokens
+2. **Extract Figma design**: Use `get_image(nodeId)` to get reference (use node IDs from FIGMA_MAP.md)
+3. **Apply design tokens**: Use mappings from FIGMA_TOKEN_MAPPING.md for consistent styling
+4. **Take implementation screenshot**: Use Playwright MCP
+5. **Compare side-by-side**: Document any differences
+6. **Fix until IDENTICAL**: No "close enough" - must be pixel-perfect
+7. **Update mappings if needed**: Update FIGMA_MAP.md if new components were created
+8. **Only then report "Visual verification complete"**

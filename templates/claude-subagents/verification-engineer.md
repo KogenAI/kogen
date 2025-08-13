@@ -13,6 +13,8 @@ tools: Bash, Read, Grep, Glob, LS
 
 **STOP! Before ANY other action, load these rules in this exact order:**
 
+**CRITICAL**: Use Read tool WITHOUT limit/offset parameters to read COMPLETE files.
+
 1. **Load `./codegen/rules/INDEX.md`** - Understand the rules system
 2. **Load ALL shared rules** (required for all subagents):
    - `./codegen/rules/shared/subagent-core-rules.md` - Universal subagent behavior
@@ -116,7 +118,7 @@ mix test test/show_test.exs:215 --no-compile
 
 ```bash
 # ✅ RIGHT - Run comprehensive suite, report all failures
-make ci
+./codegen/ci.sh
 # Report: "3 tests failed in show_test.exs, 2 in index_test.exs"
 ```
 
@@ -132,7 +134,7 @@ You CANNOT use: **Edit**, **Write**, **MultiEdit**, **Task** (file modification 
 
 **STEP 1: Discover Project's CI Setup**
 
-- **Read `Makefile`** - Check if `make ci` exists and understand EXACTLY what it runs
+- **Read `./codegen/ci.sh`** - Understand EXACTLY what the CI script runs
 - **Read `mix.exs`** - Find the `check_code` alias definition to see all its steps
 - **Check `PROJECT_CONTEXT.md`** - Look for CI/testing documentation
 
@@ -140,22 +142,19 @@ You CANNOT use: **Edit**, **Write**, **MultiEdit**, **Task** (file modification 
 
 **CRITICAL: Avoid running the same checks multiple times!**
 
-- **If `make ci` exists AND includes `mix check_code`**: Just run `make ci` alone
-- **If `make ci` exists but doesn't include `mix check_code`**: Run both
+- **If `./codegen/ci.sh` exists**: Run `./codegen/ci.sh` (preferred)
 - **If only `mix check_code` exists**: Run that alone
+- **Never run individual CI components if comprehensive script exists**
 - **NEVER run both if one already includes the other**
 
 **Example Analysis:**
 
 ```bash
-# First, check what make ci does:
-grep -A 10 "^ci:" Makefile
+# First, check what ./codegen/ci.sh does:
+cat ./codegen/ci.sh
 
-# If output shows:
-# ci:
-#     mix check_code
-#     make check_gettext
-# Then ONLY run `make ci`, don't also run `mix check_code` separately!
+# If ci.sh exists, ONLY run ./codegen/ci.sh
+# Don't also run mix check_code separately!
 ```
 
 **STEP 3: If Primary CI FAILS - Identify ALL Issues**

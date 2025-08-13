@@ -28,6 +28,36 @@ else
     echo "ℹ️  PROJECT_CONTEXT.md already exists, skipping..."
 fi
 
+# Copy Figma files from bemeda_personal context if they don't exist and source exists
+CONTEXT_DIR="/Users/almirsarajcic/Areas/Optimum/context/bemeda_personal"
+
+if [ -f "$CONTEXT_DIR/FIGMA_MAP.md" ] && [ ! -f "$REPO_ROOT/codegen/FIGMA_MAP.md" ]; then
+    cp "$CONTEXT_DIR/FIGMA_MAP.md" "$REPO_ROOT/codegen/FIGMA_MAP.md"
+    echo "✅ Created FIGMA_MAP.md from bemeda_personal context"
+elif [ ! -f "$CONTEXT_DIR/FIGMA_MAP.md" ]; then
+    echo "ℹ️  FIGMA_MAP.md not available in bemeda_personal context"
+else
+    echo "ℹ️  FIGMA_MAP.md already exists, skipping..."
+fi
+
+if [ -f "$CONTEXT_DIR/FIGMA_DESIGN_SYSTEM_RULES.md" ] && [ ! -f "$REPO_ROOT/codegen/FIGMA_DESIGN_SYSTEM_RULES.md" ]; then
+    cp "$CONTEXT_DIR/FIGMA_DESIGN_SYSTEM_RULES.md" "$REPO_ROOT/codegen/FIGMA_DESIGN_SYSTEM_RULES.md"
+    echo "✅ Created FIGMA_DESIGN_SYSTEM_RULES.md from bemeda_personal context"
+elif [ ! -f "$CONTEXT_DIR/FIGMA_DESIGN_SYSTEM_RULES.md" ]; then
+    echo "ℹ️  FIGMA_DESIGN_SYSTEM_RULES.md not available in bemeda_personal context"
+else
+    echo "ℹ️  FIGMA_DESIGN_SYSTEM_RULES.md already exists, skipping..."
+fi
+
+if [ -f "$CONTEXT_DIR/FIGMA_TOKEN_MAPPING.md" ] && [ ! -f "$REPO_ROOT/codegen/FIGMA_TOKEN_MAPPING.md" ]; then
+    cp "$CONTEXT_DIR/FIGMA_TOKEN_MAPPING.md" "$REPO_ROOT/codegen/FIGMA_TOKEN_MAPPING.md"
+    echo "✅ Created FIGMA_TOKEN_MAPPING.md from bemeda_personal context"
+elif [ ! -f "$CONTEXT_DIR/FIGMA_TOKEN_MAPPING.md" ]; then
+    echo "ℹ️  FIGMA_TOKEN_MAPPING.md not available in bemeda_personal context"
+else
+    echo "ℹ️  FIGMA_TOKEN_MAPPING.md already exists, skipping..."
+fi
+
 # Create AGENTS.md if it doesn't exist (generic AI assistant instructions)
 if [ ! -f "$REPO_ROOT/AGENTS.md" ]; then
     cp "$SCRIPT_DIR/templates/AGENTS.md" "$REPO_ROOT/AGENTS.md"
@@ -190,6 +220,7 @@ echo "🗂️  Files created:"
 echo "   - AGENTS.md (AI assistant instructions)"
 echo "   - CLAUDE.md (symlink for backward compatibility)"
 echo "   - codegen/PROJECT_CONTEXT.md (project knowledge base)"
+echo "   - codegen/FIGMA_*.md (Figma design files from bemeda_personal context, if available)"
 echo "   - codegen/rules/ (symbolic link to development rules)"
 echo "   - Updated .gitignore and .dockerignore"
 echo ""

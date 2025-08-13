@@ -12,6 +12,8 @@ model: sonnet
 
 **STOP! Before ANY other action, load these rules in this exact order:**
 
+**CRITICAL**: Use Read tool WITHOUT limit/offset parameters to read COMPLETE files.
+
 1. **Load `./codegen/rules/INDEX.md`** - Understand the rules system
 2. **Load ALL shared rules** (required for all subagents):
    - `./codegen/rules/shared/subagent-core-rules.md` - Universal subagent behavior
@@ -62,7 +64,7 @@ git add priv/gettext/**/*.po
 git add priv/gettext/**/*.pot
 ```
 
-**WHY**: The `make ci` checks expect .po/.pot files to be staged. Other agents must NOT touch these files as it breaks CI verification.
+**WHY**: The `./codegen/ci.sh` checks expect .po/.pot files to be staged. Other agents must NOT touch these files as it breaks CI verification.
 
 **Other agents FORBIDDEN** from:
 

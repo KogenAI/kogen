@@ -16,9 +16,30 @@ Universal guidance for AI assistants in OCG workspaces.
 
 **Rule Loading Strategy:**
 
-- **Orchestrators**: Load orchestration rules (delegation patterns, resource management, parallel strategies)
+- **Orchestrators**: Load orchestration rules (delegation patterns, resource management, parallel strategies) + conditionally load UI delegation patterns if plan mentions UI/design work
 - **Subagents**: Your role definition file specifies exactly which rules to load - follow that list precisely
 - **All Agents**: Always load shared rules (server-management, subagent-core-rules)
+
+**🚨 CRITICAL: Cross-Role Rule Contamination**
+
+**PROBLEM**: Implementation rules (like `testing.md`, `workflow.md`, `ci-pipeline.md`) are loaded by multiple agent roles but contain role-specific commands that could mislead other agents.
+
+**SOLUTION - Command Filtering by Role**:
+
+- **When you load a rule file, ONLY follow commands appropriate for your role**
+- **Rule files may contain examples for different roles - ignore commands outside your role**
+
+**Role-Specific Command Restrictions**:
+
+- **verification-engineer**: Can run `./codegen/ci.sh`, `mix test`, individual CI components
+- **feature-developer**: Can run `mix test test/path/file.exs`, `mix compile`, `mix format` - NEVER `./codegen/ci.sh`
+- **code-reviewer**: Can run `git diff`, `grep` searches - NEVER `mix test`, NEVER `./codegen/ci.sh`
+- **translator**: Can run `mix gettext.extract` - NEVER `./codegen/ci.sh`
+- **Other agents**: Individual tool commands only - NEVER comprehensive CI suites
+
+**Example**: If `testing.md` shows `./codegen/ci.sh`, only verification-engineer should execute it. Other agents should treat it as documentation only.
+
+**WHY**: Prevents agents from running inappropriate commands even when those commands appear in legitimately-loaded rule files.
 
 **🚨 CRITICAL RULE HIERARCHY:**
 
@@ -34,6 +55,7 @@ Universal guidance for AI assistants in OCG workspaces.
 **✅ ALWAYS:**
 
 - Load rules as your FIRST action
+- **READ COMPLETE FILES**: Use Read tool WITHOUT limit/offset parameters to get full file content
 - Follow your role definition's rule loading instructions
 - Apply rules consistently throughout your work
 - **DOCUMENT RULE LOADING**: Prove you loaded rules by showing actual content
@@ -42,6 +64,7 @@ Universal guidance for AI assistants in OCG workspaces.
 **❌ NEVER:**
 
 - Skip rule loading
+- **Use limit/offset parameters when reading rule files** - read complete files only
 - Assume you know patterns without checking rules
 - Ignore your role definition's required rules
 - **Claim completion without proof of rule compliance**
@@ -72,6 +95,12 @@ Universal guidance for AI assistants in OCG workspaces.
 
 - `./codegen/PROJECT_CONTEXT.md` - Project architecture and patterns
 - `./codegen/CONTEXT.md` - Workspace state, ports, progress
+
+**UI-related agents should also read** (if files exist):
+
+- `./codegen/FIGMA_MAP.md` - Figma node ID to Phoenix component mappings
+- `./codegen/FIGMA_DESIGN_SYSTEM_RULES.md` - Figma design system rules and guidelines
+- `./codegen/FIGMA_TOKEN_MAPPING.md` - Figma design token mappings
 
 ## Recipe System
 
@@ -213,4 +242,5 @@ mv ./codegen/context/ACTIVE-issues-*.md ./codegen/context/RESOLVED-issues-*.md
 - **Update work contexts** - Move through PENDING→ACTIVE→RESOLVED as you work
 - **Workspace isolation** - Never navigate outside current directory
 - **Port awareness** - Use ports from CONTEXT.md, not hardcoded values
+- **Server management** - Phoenix server is already running; only restart if explicitly needed
 - **Create session logs** - ALL agents must log (not just orchestrator)

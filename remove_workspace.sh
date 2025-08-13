@@ -34,57 +34,50 @@ if [ ! -d "$WORKSPACE_PATH" ]; then
     exit 1
 fi
 
-# Archive context FIRST (before any cleanup) - consolidate modular context files
+# Archive context FIRST (before any cleanup) - use folder structure to include Figma files
 if [ -f "$WORKSPACE_PATH/codegen/CONTEXT.md" ]; then
-    mkdir -p "$REPO_ROOT/codegen/contexts"
+    mkdir -p "$REPO_ROOT/codegen/contexts/${FEATURE_NAME}"
 
     # Start with main context
-    cp "$WORKSPACE_PATH/codegen/CONTEXT.md" "$REPO_ROOT/codegen/contexts/${FEATURE_NAME}.md"
+    cp "$WORKSPACE_PATH/codegen/CONTEXT.md" "$REPO_ROOT/codegen/contexts/${FEATURE_NAME}/CONTEXT.md"
     echo "📄 Copied main context: CONTEXT.md"
 
-    # Append step context files if they exist
+    # Archive step context files if they exist
     if [ -d "$WORKSPACE_PATH/codegen/context" ]; then
+        mkdir -p "$REPO_ROOT/codegen/contexts/${FEATURE_NAME}/context"
         step_files_found=false
         for step_file in "$WORKSPACE_PATH/codegen/context"/*.md; do
             if [ -f "$step_file" ] && [ "$(basename "$step_file")" != "README.md" ]; then
-                if [ "$step_files_found" = false ]; then
-                    echo "📋 Appending detailed step context files:"
-                    echo "" >>"$REPO_ROOT/codegen/contexts/${FEATURE_NAME}.md"
-                    echo "---" >>"$REPO_ROOT/codegen/contexts/${FEATURE_NAME}.md"
-                    echo "" >>"$REPO_ROOT/codegen/contexts/${FEATURE_NAME}.md"
-                    echo "# Step Context Files (Consolidated)" >>"$REPO_ROOT/codegen/contexts/${FEATURE_NAME}.md"
-                    echo "" >>"$REPO_ROOT/codegen/contexts/${FEATURE_NAME}.md"
-                    echo "The following step context files have been consolidated into this archive:" >>"$REPO_ROOT/codegen/contexts/${FEATURE_NAME}.md"
-                    echo "" >>"$REPO_ROOT/codegen/contexts/${FEATURE_NAME}.md"
-                    step_files_found=true
-                fi
-
                 step_name="$(basename "$step_file")"
-                echo "   + $step_name"
-                echo "- $step_name" >>"$REPO_ROOT/codegen/contexts/${FEATURE_NAME}.md"
+                cp "$step_file" "$REPO_ROOT/codegen/contexts/${FEATURE_NAME}/context/"
+                echo "   + Archived step context: $step_name"
+                step_files_found=true
             fi
         done
 
         if [ "$step_files_found" = true ]; then
-            echo "" >>"$REPO_ROOT/codegen/contexts/${FEATURE_NAME}.md"
-            echo "**Note**: These files are already included below - do not look for separate step files." >>"$REPO_ROOT/codegen/contexts/${FEATURE_NAME}.md"
-            echo "" >>"$REPO_ROOT/codegen/contexts/${FEATURE_NAME}.md"
+            echo "📋 Step context files archived to: codegen/contexts/${FEATURE_NAME}/context/"
         fi
-
-        # Now append the actual content
-        for step_file in "$WORKSPACE_PATH/codegen/context"/*.md; do
-            if [ -f "$step_file" ] && [ "$(basename "$step_file")" != "README.md" ]; then
-                step_name="$(basename "$step_file")"
-                echo "" >>"$REPO_ROOT/codegen/contexts/${FEATURE_NAME}.md"
-                echo "---" >>"$REPO_ROOT/codegen/contexts/${FEATURE_NAME}.md"
-                echo "# Archived: $step_name" >>"$REPO_ROOT/codegen/contexts/${FEATURE_NAME}.md"
-                echo "" >>"$REPO_ROOT/codegen/contexts/${FEATURE_NAME}.md"
-                cat "$step_file" >>"$REPO_ROOT/codegen/contexts/${FEATURE_NAME}.md"
-            fi
-        done
     fi
 
-    echo "📦 Consolidated context archived to: codegen/contexts/${FEATURE_NAME}.md"
+    # Archive Figma files if they exist and are different from main repo
+    figma_files_archived=false
+    for figma_file in "FIGMA_MAP.md" "FIGMA_DESIGN_SYSTEM_RULES.md" "FIGMA_TOKEN_MAPPING.md"; do
+        if [ -f "$WORKSPACE_PATH/codegen/$figma_file" ]; then
+            # Check if workspace version is different from main repo version
+            if [ ! -f "$REPO_ROOT/codegen/$figma_file" ] || ! cmp -s "$WORKSPACE_PATH/codegen/$figma_file" "$REPO_ROOT/codegen/$figma_file"; then
+                cp "$WORKSPACE_PATH/codegen/$figma_file" "$REPO_ROOT/codegen/contexts/${FEATURE_NAME}/"
+                echo "🎨 Archived modified Figma file: $figma_file"
+                figma_files_archived=true
+            fi
+        fi
+    done
+
+    if [ "$figma_files_archived" = true ]; then
+        echo "🎨 Modified Figma files archived to: codegen/contexts/${FEATURE_NAME}/"
+    fi
+
+    echo "📦 Context folder archived to: codegen/contexts/${FEATURE_NAME}/"
 fi
 
 # Deallocate global resources for this workspace
