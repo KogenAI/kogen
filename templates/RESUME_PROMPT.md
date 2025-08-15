@@ -35,6 +35,9 @@ Continue implementing the plan using context from files in your workspace:
      - `recipe-management.md` - Recipe discovery and usage patterns
      - `resource-management.md` - Port and database allocation
      - `work-context-management.md` - Work context persistence and issue tracking
+   - **NEVER** load planning rules during implementation:
+     - ❌ **DO NOT LOAD** `planning.md` - Planning rules are for planning sessions only
+     - ❌ **DO NOT LOAD** `planning-poc.md` - PoC planning rules are for planning sessions only
    - Load CONDITIONAL orchestration rules (only if relevant):
      - `ui-delegation-patterns.md` - ONLY if plan mentions UI/design work (check plan files for keywords like "UI", "design", "component", "Figma", "styling")
 
@@ -91,6 +94,8 @@ Continue implementing the plan using context from files in your workspace:
 - `delegation-patterns.md` - Subagent selection and workflows
 - `parallel-testing.md` - Port allocation for parallel execution
 - `resource-management.md` - Server and database management
+
+**CRITICAL**: Never load `planning.md` or `planning-poc.md` during implementation - these are for planning sessions only
 
 **🛑 NO SELF-IMPLEMENTATION**
 

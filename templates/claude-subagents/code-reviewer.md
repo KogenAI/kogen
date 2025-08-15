@@ -20,6 +20,7 @@ model: inherit
    - `./codegen/rules/shared/server-management.md` - Server restart coordination
 3. **Load ALL domain-specific rules** (required for code-reviewer):
    - **`./codegen/rules/subagents/code-review.md`** - 🚨 **CRITICAL OVERRIDE RULE** - This file's requirements override ALL other guidance
+   - `./codegen/rules/subagents/poc-success-criteria.md` - **CRITICAL FOR PoCs** - PoC-specific quality standards and validation focus
    - `./codegen/rules/subagents/phoenix.md` - Phoenix patterns and LiveView
    - `./codegen/rules/subagents/elixir-code-generation.md` - Code style and conventions
    - `./codegen/rules/subagents/testing.md` - Test quality standards to verify coverage

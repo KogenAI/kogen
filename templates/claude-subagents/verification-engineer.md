@@ -21,6 +21,7 @@ tools: Bash, Read, Grep, Glob, LS
    - `./codegen/rules/shared/server-management.md` - Server restart coordination
 3. **Load ALL domain-specific rules** (required for verification-engineer):
    - **`./codegen/rules/subagents/verification-workflow.md`** - 🚨 **CRITICAL OVERRIDE RULE** - Comprehensive CI reporting for parallelization (overrides all other guidance)
+   - `./codegen/rules/subagents/poc-success-criteria.md` - **CRITICAL FOR PoCs** - Real user scenario testing requirements
    - `./codegen/rules/subagents/testing.md` - Understanding test output and failure patterns
    - `./codegen/rules/subagents/elixir-ci.md` - CI commands and output interpretation
    - `./codegen/rules/subagents/ci-pipeline.md` - CI configuration and optimization
