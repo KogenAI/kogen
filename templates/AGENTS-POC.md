@@ -1,4 +1,6 @@
-# AGENTS.md
+# AGENTS.md - PoC WORKSPACE
+
+🎯 **YOU ARE IN A PoC WORKSPACE** - This is validation-focused development, not production development.
 
 PoC-focused guidance for AI assistants - optimized for rapid validation over production-ready features.
 
@@ -7,12 +9,18 @@ PoC-focused guidance for AI assistants - optimized for rapid validation over pro
 **CRITICAL - BEFORE taking ANY action:**
 
 1. **STOP** - Do NOT proceed without loading PoC-specific rules
-2. **IDENTIFY** your agent type: orchestrator or poc-developer
+2. **IDENTIFY** your agent type from the delegation prompt
 3. **LOAD** PoC rules from `./codegen/rules/INDEX.md`:
-   - **ALL agents**: Load `planning-poc.md` for PoC-specific patterns
-   - **Orchestrator**: ALSO load `orchestration/delegation-patterns.md` (simplified for PoCs)
-   - **poc-developer**: ALSO load `subagents/poc-development.md` and `subagents/phoenix.md`
+   - **ALL agents**: Load shared rules (server-management.md, subagent-core-rules.md)
+   - **Orchestrator (PoC mode)**: ALSO load orchestration rules (delegation-patterns-poc.md for PoC delegation)
+   - **poc-developer**: Load subagents/poc-development.md, subagents/phoenix.md, subagents/elixir-code-generation.md, subagents/git.md
+   - **verification-engineer (PoC context)**: Load subagents/verification-workflow-poc.md, subagents/testing-poc.md, subagents/git.md
+   - **code-reviewer (PoC context)**: Load subagents/code-review-poc.md, subagents/phoenix.md, subagents/elixir-code-generation.md, subagents/git.md
 4. **APPLY** validation-focused patterns to every action
+
+**🚨 CRITICAL**: When orchestrator delegates to verification-engineer or code-reviewer for PoC work, the delegation prompt MUST specify PoC context:
+
+- Example: `"CRITICAL RULES CONTEXT: PoC verification - apply verification-workflow-poc.md + testing-poc.md patterns"`
 
 **PoC Rule Priority:**
 
@@ -43,8 +51,8 @@ PoC-focused guidance for AI assistants - optimized for rapid validation over pro
 
 **Orchestrator (Main Agent)**:
 
-- **Simple delegation**: Orchestrator → poc-developer → Orchestrator
-- **No complex cycles**: Skip code-reviewer, verification-engineer complexity
+- **PoC-focused delegation**: Use PoC context in all delegations to verification-engineer and code-reviewer
+- **Validation cycles**: Implementation → PoC verification → PoC code review → iteration
 - **Basic validation**: "Does this prove/disprove our assumptions?"
 - **Fast iteration**: Move quickly through validation cycles
 
@@ -54,6 +62,18 @@ PoC-focused guidance for AI assistants - optimized for rapid validation over pro
 - **External integrations**: Python libraries, APIs, CLI tools via System.cmd()
 - **LiveView interfaces**: Real-time user feedback and processing updates
 - **Basic testing**: Smoke tests to ensure core workflow functions
+
+**verification-engineer (PoC context)**:
+
+- **Real user scenario testing**: Test actual workflows with real data, not just automated tests
+- **Basic system health**: Compilation, smoke tests, external integration verification
+- **Validation readiness**: Can users test core assumptions through the interface?
+
+**code-reviewer (PoC context)**:
+
+- **Validation readiness review**: Can implementation support assumption testing?
+- **Anti-pattern detection**: Prevent over-engineering (database schemas) and under-engineering (mocked integrations)
+- **PoC pattern compliance**: ETS storage, System.cmd() integration, LiveView feedback
 
 ## 🚨 SIMPLIFIED: Rule Compliance
 
@@ -86,7 +106,7 @@ PoC-focused guidance for AI assistants - optimized for rapid validation over pro
 
 **WHERE**: `./codegen/logging/$(date -u +%Y%m%d_%H%M%S)_<agent_role>.md`
 
-**Agent roles**: `orchestrator`, `poc-developer`
+**Agent roles**: `orchestrator`, `poc-developer`, `verification-engineer`, `code-reviewer`
 
 **LOG FORMAT**:
 
@@ -98,15 +118,44 @@ PoC-focused guidance for AI assistants - optimized for rapid validation over pro
 
 ## PoC Rules Loaded
 
-- [ ] ./codegen/rules/planning-poc.md
+- [ ] ./codegen/rules/shared/server-management.md
+- [ ] ./codegen/rules/shared/subagent-core-rules.md
+- [ ] ./codegen/rules/orchestration/delegation-patterns-poc.md (PoC orchestrator only)
 - [ ] ./codegen/rules/subagents/poc-development.md (poc-developer only)
-- [ ] ./codegen/rules/subagents/phoenix.md (poc-developer only)
+- [ ] ./codegen/rules/subagents/verification-workflow-poc.md (verification-engineer only)
+- [ ] ./codegen/rules/subagents/code-review-poc.md (code-reviewer only)
+- [ ] ./codegen/rules/subagents/testing-poc.md (verification-engineer only)
+- [ ] ./codegen/rules/subagents/phoenix.md (poc-developer, code-reviewer)
+- [ ] ./codegen/rules/subagents/elixir-code-generation.md (poc-developer, code-reviewer)
+- [ ] ./codegen/rules/subagents/git.md (all subagents)
 
 ## Validation Focus
 
 - [ ] Assumption being tested: [specific assumption]
 - [ ] Success criteria: [how we know if it works]
 - [ ] Timeline: [rapid iteration target]
+
+## Command Execution Log
+
+**CRITICAL: Log EVERY command with timestamp and duration to debug PoC performance issues**
+
+| Time     | Duration | Command                      | Status | Notes                                 |
+| -------- | -------- | ---------------------------- | ------ | ------------------------------------- |
+| 15:20:15 | 1.8s     | `mix compile`                | ✅     | Quick compilation                     |
+| 15:20:17 | 25.3s    | Test YouTube URL workflow    | ✅     | Real user scenario - slow but working |
+| 15:20:45 | 0.5s     | `mix test --only smoke_test` | ✅     | Basic smoke tests                     |
+
+**PoC Performance Tracking:**
+
+- ✅ **Fast commands** (<5s): Basic compilation, smoke tests
+- ⚠️ **Acceptable PoC delays** (5-30s): Real external API calls, transcript extraction
+- ❌ **PoC blockers** (>30s): Investigate why - should be rapid validation
+
+**Success Patterns for PoC:**
+
+- Use real data but cache when possible for iteration speed
+- Focus on end-to-end workflow validation over comprehensive testing
+- External integration delays are expected but should be <30s per call
 
 ## Files Modified
 
@@ -121,21 +170,61 @@ PoC-focused guidance for AI assistants - optimized for rapid validation over pro
 
 - [x] Assumption validated: [yes/no/partially]
 - [ ] Next iteration needed: [what to test next]
+
+## PoC Lessons Learned (for CONTEXT.md)
+
+**CRITICAL: Document PoC-specific lessons to accelerate future validation cycles**
+
+### ✅ PoC Success Patterns
+
+- [Fast validation approach]: [Why this worked for rapid testing]
+- [Effective external integration]: [How to use this tool/API efficiently]
+
+### ❌ PoC Time Wasters
+
+- [Slow validation approach]: [Why this took too long, avoid next time]
+- [Problematic external tool]: [What caused delays, alternatives to try]
+
+### 🔄 PoC Optimization for Next Time
+
+- [Efficient command sequence for this type of validation]
+- [External tools/approaches that work well for PoC speed]
+- [Performance shortcuts discovered for rapid iteration]
+
+**SAVE TO CONTEXT.md**: Update `./codegen/CONTEXT.md` with PoC-specific lessons to improve validation speed.
 ```
 
-## Simplified Orchestration
+## PoC Orchestration Pattern
 
-**PoC Orchestrator Pattern:**
+**PoC Orchestrator Workflow:**
 
-1. **Break down validation** into focused poc-developer tasks
-2. **Delegate single assumptions** - one validation goal per task
-3. **Quick validation** - basic smoke test, not comprehensive CI
-4. **Rapid iteration** - move to next assumption quickly
+1. **Implementation**: Delegate to poc-developer for focused validation implementation
+2. **PoC Verification**: Delegate to verification-engineer with PoC context for real user scenario testing
+3. **PoC Code Review**: Delegate to code-reviewer with PoC context for validation readiness review
+4. **Rapid iteration**: Move to next assumption validation quickly
 
-**No Complex Cycles:**
+**PoC Delegation Examples:**
 
-- ❌ Orchestrator → poc-developer → code-reviewer → verification-engineer
-- ✅ Orchestrator → poc-developer → Orchestrator (validate assumption)
+```
+# Implementation
+Task("Implement YouTube transcript PoC",
+     prompt="Build minimal YouTube transcript extraction with real-time feedback...",
+     subagent_type="poc-developer")
+
+# PoC Verification
+Task("Verify PoC validation readiness",
+     prompt="CRITICAL RULES CONTEXT: PoC verification - apply verification-workflow-poc.md + testing-poc.md patterns.
+
+             Test real user scenario with actual YouTube URL. Verify external integrations work...",
+     subagent_type="verification-engineer")
+
+# PoC Code Review
+Task("Review PoC validation readiness",
+     prompt="CRITICAL RULES CONTEXT: PoC code review - apply code-review-poc.md patterns.
+
+             Ensure implementation supports assumption testing without over-engineering...",
+     subagent_type="code-reviewer")
+```
 
 **Focus Questions:**
 

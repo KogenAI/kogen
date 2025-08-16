@@ -16,7 +16,7 @@ Universal guidance for AI assistants in OCG workspaces.
 
 **Rule Loading Strategy:**
 
-- **Orchestrators**: Load orchestration rules (delegation patterns, resource management, parallel strategies) + conditionally load UI delegation patterns if plan mentions UI/design work
+- **Orchestrators**: Load orchestration rules (delegation-patterns.md, resource management, parallel strategies) + conditionally load UI delegation patterns if plan mentions UI/design work
 - **Subagents**: Your role definition file specifies exactly which rules to load - follow that list precisely
 - **All Agents**: Always load shared rules (server-management, subagent-core-rules)
 
@@ -159,6 +159,24 @@ HELPFUL RESOURCES: See ./codegen/recipes/phoenix-async-feature-testing.md
 - [ ] Tidewave MCP: project_eval (6), get_source_location (0) = 6 total calls
 - [ ] No MCP tools used (if none were actually called)
 
+## Command Execution Log
+
+**CRITICAL: Log EVERY command with timestamp and duration to debug performance issues**
+
+| Time     | Duration | Command                      | Status | Notes                    |
+| -------- | -------- | ---------------------------- | ------ | ------------------------ |
+| 08:25:30 | 2.1s     | `mix compile`                | ✅     | Clean compilation        |
+| 08:25:33 | 0.8s     | `mix test --only smoke_test` | ✅     | All smoke tests pass     |
+| 08:25:45 | 12.3s    | `./codegen/ci.sh`            | ❌     | Failed on gettext checks |
+| 08:25:47 | 1.2s     | `mix gettext.extract`        | ✅     | Fixed gettext issue      |
+| 08:25:49 | 8.9s     | `./codegen/ci.sh`            | ✅     | All checks pass          |
+
+**Track patterns:**
+
+- ✅ **Success patterns**: Commands that work well (reuse these)
+- ❌ **Failed commands**: Commands that failed (avoid/fix these)
+- ⏱️ **Performance**: Commands taking >30s (investigate why)
+
 ## Files Modified
 
 - [ ] src/lib/component.ex (created/updated)
@@ -184,6 +202,28 @@ HELPFUL RESOURCES: See ./codegen/recipes/phoenix-async-feature-testing.md
 - [x] Delegating to feature-developer: "fix issues" → IN PROGRESS
 - [x] Delegated to feature-developer: → COMPLETED
 - [ ] N/A - Not an orchestrator
+
+## Lessons Learned (for CONTEXT.md)
+
+**CRITICAL: Document what worked/didn't work to avoid repeating mistakes and reuse successful patterns**
+
+### ✅ What Worked Well
+
+- [Command/approach that worked]: [Why it was effective]
+- [Successful pattern]: [When to use this again]
+
+### ❌ What Failed/Was Slow
+
+- [Failed command]: [Why it failed, how to avoid]
+- [Slow process]: [What caused the delay, alternatives to try]
+
+### 🔄 Recommendations for Next Time
+
+- [Specific command sequence that worked efficiently]
+- [Tools/approaches to avoid]
+- [Performance optimizations discovered]
+
+**SAVE TO CONTEXT.md**: Update `./codegen/CONTEXT.md` with key lessons from this section to improve future iterations.
 
 ## Completion Status
 

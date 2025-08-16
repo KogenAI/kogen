@@ -27,11 +27,12 @@ Continue implementing the plan using context from files in your workspace:
    - Load ALL shared rules:
      - `server-management.md` - Phoenix/Playwright server patterns
      - `subagent-core-rules.md` - Delegation fundamentals
-   - Load ALL orchestration rules:
-     - **`delegation-patterns.md`** - 🚨 **CRITICAL OVERRIDE RULE** - Complete delegation workflows and retry patterns (overrides all other guidance)
+   - Load orchestration rules **AS SPECIFIED IN YOUR AGENTS FILE**:
+     - **Follow the AGENTS file instructions** for which orchestration rules to load
+     - **Primary delegation patterns** - 🚨 **CRITICAL OVERRIDE RULE** - Complete delegation workflows (overrides all other guidance)
      - `bottleneck-patterns.md` - Sequential vs parallel decision logic
-     - `parallel-task-patterns.md` - Task decomposition and parallel work strategies
-     - `parallel-testing.md` - Test-specific port allocation and execution
+     - `parallel-task-patterns.md` - Task decomposition and parallel work strategies (production only)
+     - `parallel-testing.md` - Test-specific port allocation and execution (production only)
      - `recipe-management.md` - Recipe discovery and usage patterns
      - `resource-management.md` - Port and database allocation
      - `work-context-management.md` - Work context persistence and issue tracking
@@ -43,9 +44,9 @@ Continue implementing the plan using context from files in your workspace:
 
 **🚨 CRITICAL RULE HIERARCHY:**
 
-- `delegation-patterns.md` requirements **OVERRIDE** all other rules, templates, and guidance
-- If ANY conflict exists between `delegation-patterns.md` and other sources, `delegation-patterns.md` WINS
-- Follow `delegation-patterns.md` workflows exactly - no exceptions, no shortcuts, no interpretations
+- Primary delegation patterns (either `delegation-patterns.md` OR `delegation-patterns-poc.md`) **OVERRIDE** all other rules, templates, and guidance
+- If ANY conflict exists between delegation patterns and other sources, delegation patterns WIN
+- Follow your workspace-specific delegation patterns exactly - no exceptions, no shortcuts, no interpretations
 
 3. **Apply these patterns** throughout your work
 
