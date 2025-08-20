@@ -171,8 +171,8 @@ Each workspace can run in an isolated Docker container with:
 
 - `ocg remove-comments` - Remove comments from git diff changes
 - `ocg format` - Format all shell scripts and files
-- `make install` - Install CLI globally for `ocg` commands
-- `make uninstall` - Remove global CLI installation
+- `ocg uninstall` - Remove global CLI installation
+- `make install` - Install CLI globally for `ocg` commands (run from codegen directory)
 
 ### Phoenix/Elixir Commands (within workspaces)
 

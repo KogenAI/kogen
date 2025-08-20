@@ -136,6 +136,8 @@ echo "🚀 Setting up Claude Code bash environment..."
 
 # Install Claude Code using the official curl installer (2025 method)
 echo "🤖 Installing Claude Code..."
+# Refresh command cache to detect recent removals
+hash -r 2>/dev/null || true
 if command -v claude >/dev/null 2>&1; then
     echo "   ✅ Claude Code already installed"
 else
@@ -146,6 +148,8 @@ fi
 echo ""
 echo "🤖 Installing OpenCode..."
 # Install OpenCode alongside Claude Code
+# Refresh command cache to detect recent removals
+hash -r 2>/dev/null || true
 if command -v opencode >/dev/null 2>&1; then
     echo "   ✅ OpenCode already installed"
 else

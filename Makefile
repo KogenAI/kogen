@@ -222,6 +222,9 @@ help:
 		echo "🧹 Code Maintenance:"; \
 		echo "  $$OCG_CMD remove-comments             🗑️  Remove comments from git diff changes"; \
 		echo ""; \
+		echo "🗑️  Uninstallation:"; \
+		echo "  $$OCG_CMD uninstall                   🗑️  Remove global CLI installation"; \
+		echo ""; \
 		echo "🤖 AI Assistant Configuration:"; \
 		echo "  $$OCG_CMD ai-config set default       🔧 Set default AI assistant (claude|opencode)"; \
 		echo "  $$OCG_CMD ai-config status            📊 Show AI assistant configuration"; \
