@@ -124,31 +124,37 @@ For each identified misinformation-prone topic, create skeptical inquiry questio
    - Secret society influence (Masons, Skull & Bones, etc.)
    - Elite/billionaire world control conspiracies
 
-**STEP 3: Question Refinement**
+**STEP 3: Question Refinement Strategy**
 
-Each question should be:
+**TWO-TIER APPROACH:**
 
-- **SHORT AND PUNCHY**: 3-8 words maximum - direct and memorable
-- **Twitter-friendly**: Under 240 characters to leave room for hashtags
-- **Engaging**: Prompts curiosity and skeptical thinking
-- **Authentic**: Sounds like genuine skeptical inquiry, not academic debunking
-- **Timely**: References current events people are discussing
-- **Platform-optimized**: Works across TikTok, Twitter, Instagram, and podcasts
+**1. Skeptic.bot Question (Detailed & Analytical):**
 
-**CRITICAL: QUESTION LENGTH GUIDELINES**
+- **CAN BE LONGER**: 10-25 words for comprehensive analysis
+- **Descriptive**: Include specific details, names, and context
+- **Research-focused**: Reference sources, episodes, researchers by name
+- **Educational**: Promote investigation and critical thinking
 
-**GOOD Examples (Short & Direct):**
+**2. Twitter Hook (Short & Viral):**
 
-- "Is Sabrina Carpenter an industry plant?"
-- "Who's on both Diddy's and Epstein's lists?"
-- "Why couldn't Joe Rogan talk about Hunter Biden's laptop?"
-- "What did Hillary's inner circle witness?"
-- "Who's censoring Jewish comedians criticizing Israel?"
+- **MUST BE SHORT**: 3-6 words maximum for the question portion
+- **Timeline-based**: Connect past events to current developments
+- **Authority-referenced**: Quote researchers, podcasters, officials
+- **Shareable**: Optimized for social media engagement
 
-**BAD Examples (Too Long):**
+**QUESTION LENGTH EXAMPLES:**
 
-- "What's the real story behind Hunter Biden's laptop and why did Joe Rogan get banned from certain platforms for discussing it?"
-- "Is Sabrina Carpenter's rapid rise organic or is she an industry-manufactured MK-Ultra asset - what's behind the pattern of pop star creation?"
+**GOOD Skeptic.bot Questions (Detailed):**
+
+- "A hypnotherapist's client witnessed Hillary Clinton's private moments firsthand. What did they really see?"
+- "What's in the mystery fog spreading across states? 'Fogvid-24' has a chemical smell - bioweapon test or weather control?"
+- "Sam Tripoli drops truth bombs about Operation Gladio - what's really behind modern false flags?"
+
+**GOOD Twitter Questions (Short):**
+
+- "What really killed Anne Heche?"
+- "Why fake Tesla attack coordination?"
+- "Who's deepfaking our leaders?"
 
 **Platform Optimization**:
 
@@ -157,14 +163,47 @@ Each question should be:
 - **Instagram**: Visual conspiracy questions (photos/graphics needed) - punchy text overlay
 - **Podcast**: Can be slightly longer for detailed analysis, but still keep core question short
 
-**STEP 4: Output Format**
+**STEP 4: Twitter Hook Strategy**
+
+Create compelling Twitter hooks that follow this proven format:
+
+**🔥 HIGH-ENGAGEMENT HOOK FORMULA:**
+"[Person/Event 1] [action/connection]. [Person/Event 2] [related action/timing]. [Skeptical researcher quote or connection]. [SHORT QUESTION - 3-6 words max]? #Hashtag"
+
+**PROVEN HOOK EXAMPLES:**
+
+**Timeline + Authority Pattern:**
+
+- "Anne Heche dies in fiery crash 2022. Ellen flees to England after Trump wins 2024. Christopher Knowles says there's 'still more to unearth.' What really killed Anne Heche? #EllenFled"
+
+**Expert Quote + Connection Pattern:**
+
+- "Sam Tripoli's guest Christopher Knowles calls Anne Heche's death 'ritualistic murder.' Ellen's rise to power, shadowy lesbian mobsters, and Hollywood occult symbolism. What really killed Anne Heche? #TinFoilHat"
+
+**Official vs. Reality Pattern:**
+
+- "FBI says Tesla attacks are lone wolves, but officials scream 'coordination.' Why fake Tesla attack coordination? #TeslaPsyop"
+
+**Research Discovery Pattern:**
+
+- "Researchers found Ellen's connection to New Orleans 'lesbian mobster' who died in car crash. Anne Heche knew Ellen's secrets, then fiery death. What really killed Anne Heche? #Research"
+
+**HOOK STRUCTURE REQUIREMENTS:**
+
+1. **Timeline Connection** (2022 event → 2024/2025 development)
+2. **Authority Reference** (podcast guest, researcher, official)
+3. **Conspiracy Angle** (what doesn't add up)
+4. **SHORT QUESTION** (3-6 words maximum)
+5. **Strategic Hashtag** (platform-specific)
+
+**Output Format**
 
 Present 5-10 questions in this format:
 
 **Topic**: [Brief description of news event or podcast episode]
 **Conspiracy Angle**: [What theories might emerge around this]
-**Question**: "[Specific SHORT question for Skeptic.bot - 3-8 words max]"
-**Twitter Hook**: [Suggested tweet text with question]
+**Skeptic.bot Question**: "[Detailed, descriptive question for platform analysis - 10-25 words with context, names, sources]"
+**Twitter Hook**: [Use proven hook formula - timeline + authority + short question (3-6 words max)]
 
 **IMPORTANT**: Always prioritize podcast-connected questions first, then supplement with trending news questions. If user provides podcast episode descriptions, create questions that directly connect to those episodes.
 
