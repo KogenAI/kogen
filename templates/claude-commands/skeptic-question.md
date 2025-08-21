@@ -198,12 +198,35 @@ Create compelling Twitter hooks that follow this proven format:
 
 **Output Format**
 
-Present 5-10 questions in this format:
+When user asks to create content, provide:
 
-**Topic**: [Brief description of news event or podcast episode]
-**Conspiracy Angle**: [What theories might emerge around this]
-**Skeptic.bot Question**: "[Detailed, descriptive question for platform analysis - 10-25 words with context, names, sources]"
-**Twitter Hook**: [Use proven hook formula - timeline + authority + short question (3-6 words max)]
+1. **Skeptic.bot Question** (short, punchy, 3-8 words):
+
+   - Example: "Are tech billionaires using Augustus's deification playbook?"
+   - Must be searchable and shareable
+   - No unnecessary details in the question itself
+   - **CRITICAL**: Use exact terms from podcast episode titles/descriptions for embedding search
+   - Test multiple variations if initial question doesn't find podcast content
+
+2. **Twitter Thread** (exactly 3 tweets following hook-explanation-link format):
+
+**Tweet 1 (Hook):**
+[Compelling fact/connection]. [Second compelling fact]. [Short question from step 1]?
+
+**Tweet 2 (Explanation):**
+[Authority source] reveals [key insight]. [Modern parallel/connection]. [Supporting detail].
+
+**Tweet 3 (Link):**
+[Warning/consequence]. [Thought-provoking conclusion that maintains conspiratorial tone].
+
+**TWITTER THREAD REQUIREMENTS:**
+
+- NO hashtags in first tweet (hook must be clean)
+- NO mention of podcast names in first tweet
+- Keep each tweet under 280 characters
+- Follow proven engagement patterns from examples
+- Third tweet should end naturally without forced "call to action" - the link card handles that
+- Focus on authentic conspiratorial language over marketing speak
 
 **IMPORTANT**: Always prioritize podcast-connected questions first, then supplement with trending news questions. If user provides podcast episode descriptions, create questions that directly connect to those episodes.
 
