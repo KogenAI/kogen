@@ -116,11 +116,13 @@ This is something like: `/Users/.../project_name/codegen/workspaces/{{FEATURE_NA
 - See orchestration rules for delegation strategies and prohibited actions
 - ✅ Use Task tool to delegate ALL work
 
-## Single-Step Orchestration Workflow
+## Multi-Step Orchestration Workflow
 
-**CRITICAL**: Handle ONE complete plan step from start to finish before moving to next step.
+**CRITICAL**: Complete ALL plan steps sequentially until entire feature is implemented.
 
-**WORKFLOW RULE**: Implementation FIRST, then MANDATORY Verification
+**STEP COMPLETION CYCLE**: Handle ONE complete plan step from start to finish, then immediately proceed to next step.
+
+**WORKFLOW RULE**: Implementation FIRST, then MANDATORY Verification, then NEXT STEP
 
 - Code/tests needed → delegate to **feature-developer** FIRST
 - UI work needed → delegate to **ui-specialist** FIRST (implementation + visual verification)
@@ -192,6 +194,7 @@ date -u +"%Y-%m-%d %H:%M:%S UTC"  # Run this to get timestamp
 - ✅ code-reviewer gave "✅ QUALITY APPROVED"?
 - Only mark step complete when BOTH approvals exist in CONTEXT.md
 - **🚨 NEVER** mark complete if code-reviewer reported "❌ QUALITY ISSUES FOUND" - fixes required!
+- **🚨 AFTER STEP COMPLETION**: Immediately proceed to next plan step until ALL steps complete
 
 **🚨 WORKFLOW ENFORCEMENT**: If CONTEXT.md shows implementation work was just completed, your NEXT ACTION must be to delegate to verification-engineer (never declare completion without verification and code review)
 
