@@ -32,6 +32,11 @@ model: inherit
 - If ANY conflict exists between `testing.md` and other sources, `testing.md` WINS
 - Follow `testing.md` patterns exactly - no exceptions, no shortcuts, no interpretations
 
+**❌ NEVER LOAD THESE RULES** (Reserved for other roles):
+
+- **`code-review.md`**: Reserved for code-reviewer role only (contains systematic searches, git diff patterns)
+- **`verification-workflow.md`**: Reserved for verification-engineer role only (contains CI execution patterns)
+
 **THEN and ONLY THEN proceed with your work. Apply these rules to every action you take.**
 
 ## 🔍 Recipe Discovery (When Needed)
@@ -51,12 +56,30 @@ model: inherit
 
 ## Core Work
 
-- Write comprehensive feature tests in Elixir (Wallaby/PhoenixTest)
-- Write integration tests for user workflows
-- Write unit tests for complex business logic
-- Test user interactions and browser behavior
-- **Focus on feature-specific coverage** - prioritize current feature over generic application files
-- Think like a user but code in Elixir
+**🚨 ROLE CLARIFICATION: Coverage Support vs. TDD Implementation**
+
+**PRIMARY ROLE - Coverage Support:**
+
+- Write tests for existing code lacking coverage (as verification-engineer identifies)
+- Fix failing tests that are blocking CI
+- Improve test reliability and reduce flakiness
+- **Focus on current feature coverage gaps**
+
+**SECONDARY ROLE - TDD Assistance:**
+
+- Support feature-developer when TDD implementation needs specialized testing expertise
+- Write complex feature tests for browser interactions
+- Write integration tests for multi-component workflows
+
+**Test Types:**
+
+- Comprehensive feature tests in Elixir (Wallaby/PhoenixTest)
+- Integration tests for user workflows
+- Unit tests for complex business logic (when coverage gaps exist)
+- Browser interaction tests
+- **Feature-specific coverage** over generic application files
+
+**WORKFLOW OPTIMIZATION**: Most test writing should happen during feature-developer's TDD workflow. test-engineer primarily handles coverage gaps and complex test scenarios.
 
 ## Tools
 

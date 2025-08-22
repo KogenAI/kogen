@@ -132,15 +132,38 @@ codegen/plans/{{FEATURE_NAME}}/
 - Dependencies between steps
 - Success criteria
 
-**In step files:**
+**In step files (TDD APPROACH - CRITICAL):**
 
+- **IMPLEMENTATION + TESTS TOGETHER**: Each step must include both feature implementation AND comprehensive tests
+- **Complete CI readiness**: Step completion means ALL verification passes (compilation, tests, Credo, coverage, formatting)
 - Specific technical implementation approach for that step
+- **Test plans integrated with implementation** - not separated into Step 4
 - Database schema changes and migration plans (if applicable)
 - API endpoint specifications (if applicable)
 - Component and module structure for that step
-- Detailed test plans for that step
 - Code examples and patterns to follow
 - Prerequisites and dependencies for that step
+- **Coverage requirements**: Ensure new code meets project coverage thresholds
+- **MANDATORY FOR UI FEATURES**: Include translation requirements for all user-facing text, labels, messages
+- **MANDATORY FOR DEPLOYMENT**: Include deployment configuration requirements for devops-manager
+
+**🚨 CRITICAL CHANGE: TDD-First Planning**
+
+**OLD APPROACH (causes ping-pong)**:
+
+- Step 1: Auth implementation
+- Step 2: Dashboard features
+- Step 3: Charts
+- Step 4: Tests for everything
+
+**NEW APPROACH (TDD - prevents ping-pong)**:
+
+- Step 1: Auth implementation + auth tests
+- Step 2: Dashboard features + dashboard tests
+- Step 3: Charts + chart tests
+- Step 4: Integration tests only
+
+**WHY**: Writing tests separately in Step 4 causes CI failures during Steps 1-3, leading to back-and-forth between verification-engineer and feature-developer. TDD approach ensures each step is CI-ready before moving forward.
 
 ### Implementation Readiness
 
@@ -158,7 +181,15 @@ After completing detailed planning:
 
 1. Use `ocg new {{FEATURE_NAME}}` to create implementation workspace
 2. The workspace will include your modular plan structure
-3. Implementation can focus on one step at a time, loading only relevant context
-4. Update `PROJECT_CONTEXT.md` after implementation with learnings
+3. **Orchestrator implements using delegation patterns**: Main agent delegates ALL step requirements to appropriate subagents
+4. **Step completeness**: Every requirement in each step (code, tests, deployment config) must be delegated
+5. Update `PROJECT_CONTEXT.md` after implementation with learnings
 
-Remember: This is about technical precision and implementation readiness. The better your plan, the smoother the implementation will be.
+**CRITICAL: Plan → Implementation Alignment**
+
+- **Your plans will be executed by orchestrator agents** using delegation patterns
+- **Each step must be complete and self-contained** - orchestrator cannot skip parts
+- **Include ALL requirements per step**: If step includes deployment config, mark clearly for devops-manager delegation
+- **TDD approach aligns with orchestrator workflow**: feature-developer implements code+tests, then verification-engineer checks
+
+Remember: This is about technical precision and implementation readiness. The better your plan, the smoother the orchestrated implementation will be.

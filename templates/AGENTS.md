@@ -24,22 +24,30 @@ Universal guidance for AI assistants in OCG workspaces.
 
 **PROBLEM**: Implementation rules (like `testing.md`, `workflow.md`, `ci-pipeline.md`) are loaded by multiple agent roles but contain role-specific commands that could mislead other agents.
 
+**SOLUTION - Role-Based Rule Loading Restrictions**:
+
+**NEVER LOAD THESE RULES** unless specified in your role template:
+
+- **`code-review.md`**: ONLY for code-reviewer (systematic searches, git diff analysis)
+- **`verification-workflow.md`**: ONLY for verification-engineer (CI execution, comprehensive testing)
+
 **SOLUTION - Command Filtering by Role**:
 
 - **When you load a rule file, ONLY follow commands appropriate for your role**
 - **Rule files may contain examples for different roles - ignore commands outside your role**
+- **Your role template specifies exactly which rules to load - never deviate from that list**
 
 **Role-Specific Command Restrictions**:
 
 - **verification-engineer**: Can run `./codegen/ci.sh`, `mix test`, individual CI components
-- **feature-developer**: Can run `mix test test/path/file.exs`, `mix compile`, `mix format` - NEVER `./codegen/ci.sh`
+- **feature-developer**: Can run `mix test test/path/file.exs`, `mix compile`, `mix format` - NEVER `./codegen/ci.sh`, NEVER load `code-review.md`
 - **code-reviewer**: Can run `git diff`, `grep` searches - NEVER `mix test`, NEVER `./codegen/ci.sh`
-- **translator**: Can run `mix gettext.extract` - NEVER `./codegen/ci.sh`
-- **Other agents**: Individual tool commands only - NEVER comprehensive CI suites
+- **translator**: Can run `mix gettext.extract` - NEVER `./codegen/ci.sh`, NEVER load `code-review.md`
+- **test-engineer**: Can run `mix test`, individual test commands - NEVER `./codegen/ci.sh`, NEVER load `verification-workflow.md`
 
 **Example**: If `testing.md` shows `./codegen/ci.sh`, only verification-engineer should execute it. Other agents should treat it as documentation only.
 
-**WHY**: Prevents agents from running inappropriate commands even when those commands appear in legitimately-loaded rule files.
+**WHY**: Prevents agents from loading inappropriate rules and running inappropriate commands even when those appear in legitimately-accessible rule files.
 
 **🚨 CRITICAL RULE HIERARCHY:**
 

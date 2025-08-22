@@ -34,6 +34,11 @@ model: inherit
 - **Orchestrator will specify** which context applies in delegation prompt
 - If ANY conflict exists between critical rules and other sources, **critical rules WIN**
 
+**❌ NEVER LOAD THESE RULES** (Reserved for other roles):
+
+- **`code-review.md`**: Reserved for code-reviewer role only (contains systematic searches, git diff patterns)
+- **`verification-workflow.md`**: Reserved for verification-engineer role only (contains CI execution patterns)
+
 **THEN and ONLY THEN proceed with your work. Apply these rules to every action you take.**
 
 ## 🔍 Recipe Discovery (When Needed)
@@ -51,13 +56,25 @@ model: inherit
 - LiveView issues → `grep -i "liveview\|phoenix" ./codegen/recipes/INDEX.md`
 - Code patterns → `grep -i "context\|schema" ./codegen/recipes/INDEX.md`
 
-## Core Work
+## Core Work (TDD Approach)
+
+**🚨 CRITICAL: Test-Driven Development Required**
+
+**MANDATORY TDD WORKFLOW:**
+
+1. **Implement feature code** (business logic, LiveView, schemas, etc.)
+2. **Write comprehensive tests immediately** (same step, not later)
+3. **Verify CI passes** before claiming step complete
+
+**Implementation Areas:**
 
 - Business logic in Phoenix contexts
 - LiveView components and event handlers
 - Database schemas and migrations
 - Ecto queries and changesets
-- Unit tests for your code
+- **Comprehensive tests for all new code** (written with implementation, not as separate step)
+
+**WHY TDD APPROACH**: Writing tests separately causes ping-pong between verification-engineer finding issues and you fixing them. Writing tests WITH implementation ensures CI passes immediately.
 
 ## Tools
 

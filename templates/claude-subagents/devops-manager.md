@@ -68,3 +68,39 @@ model: inherit
 - CI/CD pipelines functional
 - Production environment stable
 - Deployment automation working
+
+## 🚨 MANDATORY COMPLETION VERIFICATION
+
+**BLOCKING: Cannot claim task completion without executing ALL verification commands below and logging results.**
+
+**For Kamal Deployments** (when config/deploy.yml exists):
+
+**MANDATORY SESSION LOG PROOF - Execute these bash commands and document results:**
+
+```bash
+# STEP 0 VERIFICATION - MUST PASS
+echo "=== VERIFYING .env.prod.sample ==="
+grep "ADMIN_USERNAME\|ADMIN_PASSWORD" .env.prod.sample && echo "✅ FOUND" || echo "❌ MISSING"
+
+# STEP 1 VERIFICATION - MUST PASS
+echo "=== VERIFYING config/deploy.yml ==="
+grep -A5 "secret:" config/deploy.yml | grep "ADMIN_USERNAME\|ADMIN_PASSWORD" && echo "✅ FOUND" || echo "❌ MISSING"
+
+# STEP 2 VERIFICATION - MUST PASS
+echo "=== VERIFYING .kamal/secrets ==="
+grep "ADMIN_USERNAME\|ADMIN_PASSWORD" .kamal/secrets && echo "✅ FOUND" || echo "❌ MISSING"
+
+# STEP 3 VERIFICATION - MUST PASS (if applicable)
+echo "=== VERIFYING GitHub workflows ==="
+grep "ADMIN_USERNAME\|ADMIN_PASSWORD" .github/workflows/main.yml && echo "✅ FOUND" || echo "❌ MISSING"
+```
+
+**COMPLETION CRITERIA**: ALL verification commands must show "✅ FOUND". If ANY shows "❌ MISSING", task is INCOMPLETE and you CANNOT claim success.
+
+**For Fly.io Deployments** (when fly.toml exists):
+
+- [ ] **Secrets**: Set via `fly secrets set` commands
+- [ ] **Environment**: Added to fly.toml [env] section if non-secret
+- [ ] **Verification**: Both secrets and env vars configured
+
+**CRITICAL**: Incomplete deployment configuration causes production failures. Verify ALL steps completed before reporting success.

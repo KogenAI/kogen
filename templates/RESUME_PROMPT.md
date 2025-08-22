@@ -52,10 +52,14 @@ Continue implementing the plan using context from files in your workspace:
 
 **Only AFTER loading rules, proceed to:**
 
-1. Check for pending work: `ls ./codegen/context/PENDING-* 2>/dev/null || echo "No PENDING work found"`
-2. Check for interrupted work: `ls ./codegen/context/ACTIVE-* 2>/dev/null || echo "No ACTIVE work found"`
-3. Read CONTEXT.md to understand overall status
-4. Resume from PENDING/ACTIVE contexts first (rename PENDING to ACTIVE when starting)
+1. **CREATE SESSION LOG IMMEDIATELY**: `./codegen/logging/$(date -u +%Y%m%d_%H%M%S)_orchestrator.md`
+2. Check for pending work: `ls ./codegen/context/PENDING-* 2>/dev/null || echo "No PENDING work found"`
+3. Check for interrupted work: `ls ./codegen/context/ACTIVE-* 2>/dev/null || echo "No ACTIVE work found"`
+4. Read CONTEXT.md to understand overall status
+5. Update session log with rules loaded and current status
+6. Resume from PENDING/ACTIVE contexts first (rename PENDING to ACTIVE when starting)
+
+**🚨 MANDATORY SESSION LOG**: You CANNOT proceed without creating and updating your session log. The log must show evidence of rule loading and task progress.
 
 ## Git Status
 

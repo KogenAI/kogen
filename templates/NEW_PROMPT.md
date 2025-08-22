@@ -47,9 +47,12 @@ Follow the staged development workflow and update CONTEXT.md as you progress thr
 
 **Only AFTER loading rules, proceed to:**
 
-1. Check for pending work (use bash directly): `ls ./codegen/context/PENDING-* 2>/dev/null || echo "No PENDING work"`
-2. Read CONTEXT.md to understand current status
-3. Start your session log before any implementation work
+1. **CREATE SESSION LOG IMMEDIATELY**: `./codegen/logging/$(date -u +%Y%m%d_%H%M%S)_orchestrator.md`
+2. Check for pending work (use bash directly): `ls ./codegen/context/PENDING-* 2>/dev/null || echo "No PENDING work"`
+3. Read CONTEXT.md to understand current status
+4. Update session log with rules loaded and task context
+
+**🚨 MANDATORY SESSION LOG**: You CANNOT proceed without creating and updating your session log. The log must show evidence of rule loading and task progress.
 
 ## Current Workspace
 

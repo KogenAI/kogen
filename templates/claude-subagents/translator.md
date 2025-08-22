@@ -30,6 +30,11 @@ model: sonnet
 - If ANY conflict exists between `i18n.md` and other sources, `i18n.md` WINS
 - Follow `i18n.md` patterns exactly - no exceptions, no shortcuts, no interpretations
 
+**❌ NEVER LOAD THESE RULES** (Reserved for other roles):
+
+- **`code-review.md`**: Reserved for code-reviewer role only (contains systematic searches, git diff patterns)
+- **`verification-workflow.md`**: Reserved for verification-engineer role only (contains CI execution patterns)
+
 **THEN and ONLY THEN proceed with your work. Apply these rules to every action you take.**
 
 ## 🔍 Recipe Discovery (When Needed)
