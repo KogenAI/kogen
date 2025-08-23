@@ -162,6 +162,21 @@ uninstall:
 
 format:
 	@echo "🎨 Formatting all files..."
+	@if ! command -v mise >/dev/null 2>&1; then \
+		echo "❌ mise not found. Please install mise first."; \
+		echo "   curl https://mise.run | sh"; \
+		exit 1; \
+	fi
+	@if ! command -v shfmt >/dev/null 2>&1; then \
+		echo "❌ shfmt not found. Installing with mise..."; \
+		mise install shfmt; \
+		hash -r 2>/dev/null || true; \
+	fi
+	@if ! command -v npx >/dev/null 2>&1; then \
+		echo "❌ npx not found. Installing Node.js with mise..."; \
+		mise install node; \
+		hash -r 2>/dev/null || true; \
+	fi
 	@shfmt -w -i 4 .
 	@npx prettier -w --log-level error .
 	@echo "✅ All files formatted"

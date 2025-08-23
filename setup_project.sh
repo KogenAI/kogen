@@ -14,38 +14,10 @@ mkdir -p "$REPO_ROOT/codegen"
 mkdir -p "$REPO_ROOT/codegen/plans"
 mkdir -p "$REPO_ROOT/codegen/contexts"
 
-if [ ! -f "$REPO_ROOT/codegen/PROJECT_CONTEXT.md" ]; then
-    cp "$SCRIPT_DIR/templates/PROJECT_CONTEXT.md" "$REPO_ROOT/codegen/PROJECT_CONTEXT.md"
+# Create PROJECT_CONTEXT.md - prefer project-specific context, fallback to template
+PROJECT_NAME=$(basename "$REPO_ROOT")
 
-    PROJECT_NAME=$(basename "$REPO_ROOT")
-    CURRENT_DATE=$(date +"%B %d, %Y")
-
-    sed -i '' "s|{{CURRENT_DATE}}|$CURRENT_DATE|g" "$REPO_ROOT/codegen/PROJECT_CONTEXT.md"
-    sed -i '' "s|{{PROJECT_NAME}}|$PROJECT_NAME|g" "$REPO_ROOT/codegen/PROJECT_CONTEXT.md"
-
-    echo "✅ Created PROJECT_CONTEXT.md template"
-else
-    echo "ℹ️  PROJECT_CONTEXT.md already exists, skipping..."
-fi
-
-
-# Create AGENTS.md if it doesn't exist (generic AI assistant instructions)
-if [ ! -f "$REPO_ROOT/AGENTS.md" ]; then
-    cp "$SCRIPT_DIR/templates/AGENTS.md" "$REPO_ROOT/AGENTS.md"
-    echo "✅ Created AGENTS.md with rule system references"
-else
-    echo "ℹ️  AGENTS.md already exists, skipping..."
-fi
-
-# Create CLAUDE.md symlink for backward compatibility
-if [ ! -e "$REPO_ROOT/CLAUDE.md" ]; then
-    ln -sf "AGENTS.md" "$REPO_ROOT/CLAUDE.md"
-    echo "✅ Created CLAUDE.md symlink for backward compatibility"
-else
-    echo "ℹ️  CLAUDE.md already exists, skipping..."
-fi
-
-# Validate OCG_CONTEXT_DIR is set
+# Validate OCG_CONTEXT_DIR is set early since we need it
 if [ -z "$OCG_CONTEXT_DIR" ]; then
     echo "❌ ERROR: OCG_CONTEXT_DIR environment variable is required but not set."
     echo "   This variable should point to your Optimum context directory."
@@ -64,30 +36,180 @@ if [ ! -d "$OCG_CONTEXT_DIR" ]; then
     exit 1
 fi
 
-# Create symbolic link to rules if it doesn't exist
-if [ ! -L "$REPO_ROOT/codegen/rules" ] && [ ! -d "$REPO_ROOT/codegen/rules" ]; then
-    if [ -d "$OCG_CONTEXT_DIR/rules" ]; then
-        ln -s "$OCG_CONTEXT_DIR/rules" "$REPO_ROOT/codegen/rules"
-        echo "✅ Created symbolic link to development rules at: $OCG_CONTEXT_DIR/rules"
+PROJECT_CONTEXT_DIR="$OCG_CONTEXT_DIR/$PROJECT_NAME"
+
+if [ -d "$PROJECT_CONTEXT_DIR" ] && [ -f "$PROJECT_CONTEXT_DIR/PROJECT_CONTEXT.md" ]; then
+    # Project-specific PROJECT_CONTEXT.md exists, create or update symlink
+    if [ -L "$REPO_ROOT/codegen/PROJECT_CONTEXT.md" ]; then
+        # Existing symlink - check if it points to the right place
+        if [ "$(readlink "$REPO_ROOT/codegen/PROJECT_CONTEXT.md")" != "$PROJECT_CONTEXT_DIR/PROJECT_CONTEXT.md" ]; then
+            ln -sf "$PROJECT_CONTEXT_DIR/PROJECT_CONTEXT.md" "$REPO_ROOT/codegen/PROJECT_CONTEXT.md"
+            echo "✅ Updated PROJECT_CONTEXT.md symlink to project context"
+        else
+            echo "ℹ️  PROJECT_CONTEXT.md symlink already points to project context"
+        fi
+    elif [ -f "$REPO_ROOT/codegen/PROJECT_CONTEXT.md" ]; then
+        # Regular file exists - replace with symlink (no backup)
+        rm "$REPO_ROOT/codegen/PROJECT_CONTEXT.md"
+        ln -sf "$PROJECT_CONTEXT_DIR/PROJECT_CONTEXT.md" "$REPO_ROOT/codegen/PROJECT_CONTEXT.md"
+        echo "✅ Replaced PROJECT_CONTEXT.md with symlink to project context"
     else
-        echo "❌ ERROR: Rules directory not found at: $OCG_CONTEXT_DIR/rules"
-        echo "   Please ensure the rules directory exists in your OCG_CONTEXT_DIR."
-        exit 1
+        # No file exists - create symlink
+        ln -sf "$PROJECT_CONTEXT_DIR/PROJECT_CONTEXT.md" "$REPO_ROOT/codegen/PROJECT_CONTEXT.md"
+        echo "✅ Created PROJECT_CONTEXT.md symlink to project context"
+    fi
+else
+    # No project-specific PROJECT_CONTEXT.md, create from template in context first
+    if [ ! -f "$REPO_ROOT/codegen/PROJECT_CONTEXT.md" ] && [ ! -L "$REPO_ROOT/codegen/PROJECT_CONTEXT.md" ]; then
+        # Create project context directory if it doesn't exist
+        mkdir -p "$PROJECT_CONTEXT_DIR"
+
+        # Copy template to context directory
+        cp "$SCRIPT_DIR/templates/PROJECT_CONTEXT.md" "$PROJECT_CONTEXT_DIR/PROJECT_CONTEXT.md"
+
+        CURRENT_DATE=$(date +"%B %d, %Y")
+        sed -i '' "s|{{CURRENT_DATE}}|$CURRENT_DATE|g" "$PROJECT_CONTEXT_DIR/PROJECT_CONTEXT.md"
+        sed -i '' "s|{{PROJECT_NAME}}|$PROJECT_NAME|g" "$PROJECT_CONTEXT_DIR/PROJECT_CONTEXT.md"
+
+        # Now create symlink to the context file
+        ln -sf "$PROJECT_CONTEXT_DIR/PROJECT_CONTEXT.md" "$REPO_ROOT/codegen/PROJECT_CONTEXT.md"
+        echo "✅ Created PROJECT_CONTEXT.md in context and symlinked to project"
+    else
+        echo "ℹ️  PROJECT_CONTEXT.md already exists, skipping..."
     fi
 fi
 
-# Create symbolic link to recipes if it doesn't exist
-if [ ! -L "$REPO_ROOT/codegen/recipes" ] && [ ! -d "$REPO_ROOT/codegen/recipes" ]; then
-    if [ -d "$OCG_CONTEXT_DIR/recipes" ]; then
-        ln -s "$OCG_CONTEXT_DIR/recipes" "$REPO_ROOT/codegen/recipes"
-        echo "✅ Created symbolic link to development recipes at: $OCG_CONTEXT_DIR/recipes"
+# Create symlinks to project-specific Figma files
+FIGMA_FILES=("FIGMA_MAP.md" "FIGMA_DESIGN_SYSTEM_RULES.md" "FIGMA_TOKEN_MAPPING.md")
+
+for figma_file in "${FIGMA_FILES[@]}"; do
+    if [ -f "$PROJECT_CONTEXT_DIR/$figma_file" ]; then
+        # Project-specific Figma file exists, create or update symlink
+        if [ -L "$REPO_ROOT/codegen/$figma_file" ]; then
+            # Existing symlink - check if it points to the right place
+            if [ "$(readlink "$REPO_ROOT/codegen/$figma_file")" != "$PROJECT_CONTEXT_DIR/$figma_file" ]; then
+                ln -sf "$PROJECT_CONTEXT_DIR/$figma_file" "$REPO_ROOT/codegen/$figma_file"
+                echo "✅ Updated $figma_file symlink to project context"
+            else
+                echo "ℹ️  $figma_file symlink already points to project context"
+            fi
+        elif [ -f "$REPO_ROOT/codegen/$figma_file" ]; then
+            # Regular file exists - replace with symlink (no backup)
+            rm "$REPO_ROOT/codegen/$figma_file"
+            ln -sf "$PROJECT_CONTEXT_DIR/$figma_file" "$REPO_ROOT/codegen/$figma_file"
+            echo "✅ Replaced $figma_file with symlink to project context"
+        else
+            # No file exists - create symlink
+            ln -sf "$PROJECT_CONTEXT_DIR/$figma_file" "$REPO_ROOT/codegen/$figma_file"
+            echo "✅ Created $figma_file symlink to project context"
+        fi
     else
-        echo "❌ ERROR: Recipes directory not found at: $OCG_CONTEXT_DIR/recipes"
-        echo "   Please ensure the recipes directory exists in your OCG_CONTEXT_DIR."
-        exit 1
+        echo "ℹ️  $figma_file not available in project context"
+    fi
+done
+
+# Create AGENTS.md - prefer project-specific context, fallback to template
+
+if [ -d "$PROJECT_CONTEXT_DIR" ] && [ -f "$PROJECT_CONTEXT_DIR/AGENTS.md" ]; then
+    # Project-specific AGENTS.md exists, create or update symlink
+    if [ -L "$REPO_ROOT/AGENTS.md" ]; then
+        # Existing symlink - check if it points to the right place
+        if [ "$(readlink "$REPO_ROOT/AGENTS.md")" != "$PROJECT_CONTEXT_DIR/AGENTS.md" ]; then
+            ln -sf "$PROJECT_CONTEXT_DIR/AGENTS.md" "$REPO_ROOT/AGENTS.md"
+            echo "✅ Updated AGENTS.md symlink to project context"
+        else
+            echo "ℹ️  AGENTS.md symlink already points to project context"
+        fi
+    elif [ -f "$REPO_ROOT/AGENTS.md" ]; then
+        # Regular file exists - replace with symlink (no backup)
+        rm "$REPO_ROOT/AGENTS.md"
+        ln -sf "$PROJECT_CONTEXT_DIR/AGENTS.md" "$REPO_ROOT/AGENTS.md"
+        echo "✅ Replaced AGENTS.md with symlink to project context"
+    else
+        # No file exists - create symlink
+        ln -sf "$PROJECT_CONTEXT_DIR/AGENTS.md" "$REPO_ROOT/AGENTS.md"
+        echo "✅ Created AGENTS.md symlink to project context"
     fi
 else
-    echo "ℹ️  Recipes directory already exists, skipping..."
+    # No project-specific AGENTS.md, use template if file doesn't exist
+    if [ ! -f "$REPO_ROOT/AGENTS.md" ] && [ ! -L "$REPO_ROOT/AGENTS.md" ]; then
+        cp "$SCRIPT_DIR/templates/AGENTS.md" "$REPO_ROOT/AGENTS.md"
+        echo "✅ Created AGENTS.md from template (no project-specific version found)"
+    else
+        echo "ℹ️  AGENTS.md already exists, skipping..."
+    fi
+fi
+
+# Create CLAUDE.md symlink for backward compatibility
+if [ -L "$REPO_ROOT/CLAUDE.md" ]; then
+    # Existing symlink - check if it points to AGENTS.md
+    if [ "$(readlink "$REPO_ROOT/CLAUDE.md")" != "AGENTS.md" ]; then
+        ln -sf "AGENTS.md" "$REPO_ROOT/CLAUDE.md"
+        echo "✅ Updated CLAUDE.md symlink for backward compatibility"
+    else
+        echo "ℹ️  CLAUDE.md symlink already points to AGENTS.md"
+    fi
+elif [ -f "$REPO_ROOT/CLAUDE.md" ]; then
+    # Regular file exists - replace with symlink (no backup)
+    rm "$REPO_ROOT/CLAUDE.md"
+    ln -sf "AGENTS.md" "$REPO_ROOT/CLAUDE.md"
+    echo "✅ Replaced CLAUDE.md with symlink for backward compatibility"
+else
+    # No file exists - create symlink
+    ln -sf "AGENTS.md" "$REPO_ROOT/CLAUDE.md"
+    echo "✅ Created CLAUDE.md symlink for backward compatibility"
+fi
+
+# Create symbolic link to rules
+if [ -d "$OCG_CONTEXT_DIR/rules" ]; then
+    if [ -L "$REPO_ROOT/codegen/rules" ]; then
+        # Existing symlink - check if it points to the right place
+        if [ "$(readlink "$REPO_ROOT/codegen/rules")" != "$OCG_CONTEXT_DIR/rules" ]; then
+            ln -sf "$OCG_CONTEXT_DIR/rules" "$REPO_ROOT/codegen/rules"
+            echo "✅ Updated rules symlink to: $OCG_CONTEXT_DIR/rules"
+        else
+            echo "ℹ️  Rules symlink already points to correct location"
+        fi
+    elif [ -d "$REPO_ROOT/codegen/rules" ]; then
+        # Regular directory exists - replace with symlink (no backup)
+        rm -rf "$REPO_ROOT/codegen/rules"
+        ln -sf "$OCG_CONTEXT_DIR/rules" "$REPO_ROOT/codegen/rules"
+        echo "✅ Replaced rules directory with symlink to: $OCG_CONTEXT_DIR/rules"
+    else
+        # No file/directory exists - create symlink
+        ln -sf "$OCG_CONTEXT_DIR/rules" "$REPO_ROOT/codegen/rules"
+        echo "✅ Created symbolic link to development rules at: $OCG_CONTEXT_DIR/rules"
+    fi
+else
+    echo "❌ ERROR: Rules directory not found at: $OCG_CONTEXT_DIR/rules"
+    echo "   Please ensure the rules directory exists in your OCG_CONTEXT_DIR."
+    exit 1
+fi
+
+# Create symbolic link to recipes
+if [ -d "$OCG_CONTEXT_DIR/recipes" ]; then
+    if [ -L "$REPO_ROOT/codegen/recipes" ]; then
+        # Existing symlink - check if it points to the right place
+        if [ "$(readlink "$REPO_ROOT/codegen/recipes")" != "$OCG_CONTEXT_DIR/recipes" ]; then
+            ln -sf "$OCG_CONTEXT_DIR/recipes" "$REPO_ROOT/codegen/recipes"
+            echo "✅ Updated recipes symlink to: $OCG_CONTEXT_DIR/recipes"
+        else
+            echo "ℹ️  Recipes symlink already points to correct location"
+        fi
+    elif [ -d "$REPO_ROOT/codegen/recipes" ]; then
+        # Regular directory exists - replace with symlink (no backup)
+        rm -rf "$REPO_ROOT/codegen/recipes"
+        ln -sf "$OCG_CONTEXT_DIR/recipes" "$REPO_ROOT/codegen/recipes"
+        echo "✅ Replaced recipes directory with symlink to: $OCG_CONTEXT_DIR/recipes"
+    else
+        # No file/directory exists - create symlink
+        ln -sf "$OCG_CONTEXT_DIR/recipes" "$REPO_ROOT/codegen/recipes"
+        echo "✅ Created symbolic link to development recipes at: $OCG_CONTEXT_DIR/recipes"
+    fi
+else
+    echo "❌ ERROR: Recipes directory not found at: $OCG_CONTEXT_DIR/recipes"
+    echo "   Please ensure the recipes directory exists in your OCG_CONTEXT_DIR."
+    exit 1
 fi
 
 PROJECT_INFO=""
@@ -320,22 +442,33 @@ fi
 
 echo "After PROJECT_CONTEXT.md is filled, you can create workspaces with: $OCG_CMD new <feature-name>"
 
-# Load AI assistant configuration
-CONFIG_FILE="$HOME/.ocg/config.json"
-if [ -f "$CONFIG_FILE" ]; then
-    AI_ASSISTANT=$(jq -r '.default_assistant // "claude"' "$CONFIG_FILE")
+# Check if project already has complete context setup
+if [ -f "$PROJECT_CONTEXT_DIR/PROJECT_CONTEXT.md" ] && [ -s "$PROJECT_CONTEXT_DIR/PROJECT_CONTEXT.md" ]; then
+    # PROJECT_CONTEXT.md exists and is not empty in context - assume project is already set up
+    echo ""
+    echo "ℹ️  Project appears to already have complete context setup"
+    echo "   PROJECT_CONTEXT.md found in context directory: $PROJECT_CONTEXT_DIR"
+    echo "   Skipping AI assistant setup"
+    echo ""
+    echo "🎯 Project setup complete! You can create workspaces with: $OCG_CMD new <feature-name>"
 else
-    AI_ASSISTANT="claude"
+    # Load AI assistant configuration
+    CONFIG_FILE="$HOME/.ocg/config.json"
+    if [ -f "$CONFIG_FILE" ]; then
+        AI_ASSISTANT=$(jq -r '.default_assistant // "claude"' "$CONFIG_FILE")
+    else
+        AI_ASSISTANT="claude"
+    fi
+
+    echo "🤖 Starting $AI_ASSISTANT with Opus model for setup..."
+
+    cd "$REPO_ROOT"
+
+    # Create temporary prompt file
+    PROMPT_FILE=$(mktemp)
+    trap "rm -f $PROMPT_FILE" EXIT
+    echo "$SETUP_PROMPT" >"$PROMPT_FILE"
+
+    # Run AI assistant
+    "$SCRIPT_DIR/ai-assistants/run-ai.sh" "$AI_ASSISTANT" "opus" "$PROMPT_FILE"
 fi
-
-echo "🤖 Starting $AI_ASSISTANT with Opus model for setup..."
-
-cd "$REPO_ROOT"
-
-# Create temporary prompt file
-PROMPT_FILE=$(mktemp)
-trap "rm -f $PROMPT_FILE" EXIT
-echo "$SETUP_PROMPT" >"$PROMPT_FILE"
-
-# Run AI assistant
-"$SCRIPT_DIR/ai-assistants/run-ai.sh" "$AI_ASSISTANT" "opus" "$PROMPT_FILE"

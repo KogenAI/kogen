@@ -53,6 +53,22 @@ else
 fi
 
 echo ""
+echo "🚀 Setting up context repository..."
+
+# Clone context repository if it doesn't exist
+CONTEXT_DIR="${OCG_CONTEXT_DIR:-$HOME/Areas/Optimum}"
+CONTEXT_REPO_DIR="$CONTEXT_DIR/context"
+
+if [ ! -d "$CONTEXT_REPO_DIR" ]; then
+    echo "   📥 Cloning context repository to: $CONTEXT_REPO_DIR"
+    mkdir -p "$CONTEXT_DIR"
+    git clone https://github.com/almirsarajcic/context.git "$CONTEXT_REPO_DIR"
+    echo "   ✅ Context repository cloned successfully"
+else
+    echo "   ✅ Context repository already exists: $CONTEXT_REPO_DIR"
+fi
+
+echo ""
 echo "🚀 Setting up recipes directory..."
 
 RECIPES_DIR="${OCG_CONTEXT_DIR:-$HOME/Areas/Optimum/context}/recipes"
@@ -110,6 +126,46 @@ if [ -d "$CODEGEN_DIR/templates/claude-subagents" ]; then
     done
 else
     echo "   ⚠️  No sub agents found in templates/claude-subagents/"
+fi
+
+# Install required dependencies
+echo ""
+echo "🚀 Installing required dependencies..."
+
+# Install jq for JSON processing
+if ! command -v jq >/dev/null 2>&1; then
+    echo "   📦 Installing jq with brew..."
+    if command -v brew >/dev/null 2>&1; then
+        brew install jq
+        echo "   ✅ jq installed"
+    else
+        echo "   ❌ Homebrew not found. Please install jq manually:"
+        echo "      brew install jq"
+        exit 1
+    fi
+else
+    echo "   ✅ jq already installed"
+fi
+
+# Set up OCG_CONTEXT_DIR environment variable
+echo ""
+echo "🚀 Setting up OCG_CONTEXT_DIR environment variable..."
+
+CONTEXT_DIR_VAR="export OCG_CONTEXT_DIR=\"$HOME/Areas/Optimum/context\""
+
+if [ "$SHELL" = "/bin/zsh" ] || [ "$SHELL" = "/usr/bin/zsh" ]; then
+    RC_FILE="$HOME/.zshrc"
+else
+    RC_FILE="$HOME/.bashrc"
+fi
+
+if grep -q "OCG_CONTEXT_DIR" "$RC_FILE" 2>/dev/null; then
+    echo "   ✅ OCG_CONTEXT_DIR already set in $RC_FILE"
+else
+    echo "" >>"$RC_FILE"
+    echo "# Optimum Codegen context directory" >>"$RC_FILE"
+    echo "$CONTEXT_DIR_VAR" >>"$RC_FILE"
+    echo "   ✅ Added OCG_CONTEXT_DIR to $RC_FILE"
 fi
 
 # Set up autocompletion
