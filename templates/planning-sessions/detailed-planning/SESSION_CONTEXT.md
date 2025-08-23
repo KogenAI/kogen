@@ -85,6 +85,33 @@ You are in the technical planning phase - **detailed implementation planning**. 
 - Current planning context is in `codegen/PLANNING_SESSION_CONTEXT.md` (this file)
 - Main project instructions remain in `CLAUDE.md`
 
+**Figma Design Integration**
+
+🚨 **CRITICAL**: If the user provides Figma node IDs or design references, you MUST handle them properly:
+
+1. **Extract Figma designs**: Use Figma MCP `get_image(nodeId)` to get design references
+2. **Document Figma references in your plan**: Include Figma URLs and node IDs directly in step files:
+
+```markdown
+## Design References
+
+**Figma File**: https://www.figma.com/file/abc123/Project-Name
+**Node IDs**:
+
+- Login Form: `123:456`
+- User Profile: `789:012`
+
+## Visual Requirements
+
+- Follow spacing tokens from Figma design system
+- Use consistent color palette and typography
+- Maintain responsive behavior as shown in designs
+```
+
+3. **Include design specifications in step plans**: Reference specific visual requirements, interactions, and responsive behavior from Figma designs
+
+**DO NOT create/update FIGMA_MAP.md during planning** - that's for finished implementations only. Just document the Figma info in the plan for implementation reference.
+
 **Planning Guidelines**
 
 - Be thorough and specific in technical details
@@ -141,6 +168,9 @@ codegen/plans/{{FEATURE_NAME}}/
 - Database schema changes and migration plans (if applicable)
 - API endpoint specifications (if applicable)
 - Component and module structure for that step
+
+- **UI/design specifications**: Reference specific Figma node IDs, visual requirements, interactions (if applicable)
+- Detailed test plans for that step
 - Code examples and patterns to follow
 - Prerequisites and dependencies for that step
 - **Coverage requirements**: Ensure new code meets project coverage thresholds
