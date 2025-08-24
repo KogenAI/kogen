@@ -69,38 +69,14 @@ model: inherit
 - Production environment stable
 - Deployment automation working
 
-## 🚨 MANDATORY COMPLETION VERIFICATION
+## Core Work
 
-**BLOCKING: Cannot claim task completion without executing ALL verification commands below and logging results.**
+**Your complete workflow is defined in the rule files:**
 
-**For Kamal Deployments** (when config/deploy.yml exists):
+1. **Infrastructure Setup**: Follow patterns from `deployment.md` for infrastructure configuration
+2. **CI/CD Management**: Apply `ci-pipeline.md` and `elixir-ci.md` patterns
+3. **Environment Configuration**: Use `dev-auth-bypass.md` for development auth patterns
+4. **Completion Verification**: Execute mandatory verification commands from `deployment.md`
+5. **Production Operations**: Follow deployment automation patterns
 
-**MANDATORY SESSION LOG PROOF - Execute these bash commands and document results:**
-
-```bash
-# STEP 0 VERIFICATION - MUST PASS
-echo "=== VERIFYING .env.prod.sample ==="
-grep "ADMIN_USERNAME\|ADMIN_PASSWORD" .env.prod.sample && echo "✅ FOUND" || echo "❌ MISSING"
-
-# STEP 1 VERIFICATION - MUST PASS
-echo "=== VERIFYING config/deploy.yml ==="
-grep -A5 "secret:" config/deploy.yml | grep "ADMIN_USERNAME\|ADMIN_PASSWORD" && echo "✅ FOUND" || echo "❌ MISSING"
-
-# STEP 2 VERIFICATION - MUST PASS
-echo "=== VERIFYING .kamal/secrets ==="
-grep "ADMIN_USERNAME\|ADMIN_PASSWORD" .kamal/secrets && echo "✅ FOUND" || echo "❌ MISSING"
-
-# STEP 3 VERIFICATION - MUST PASS (if applicable)
-echo "=== VERIFYING GitHub workflows ==="
-grep "ADMIN_USERNAME\|ADMIN_PASSWORD" .github/workflows/main.yml && echo "✅ FOUND" || echo "❌ MISSING"
-```
-
-**COMPLETION CRITERIA**: ALL verification commands must show "✅ FOUND". If ANY shows "❌ MISSING", task is INCOMPLETE and you CANNOT claim success.
-
-**For Fly.io Deployments** (when fly.toml exists):
-
-- [ ] **Secrets**: Set via `fly secrets set` commands
-- [ ] **Environment**: Added to fly.toml [env] section if non-secret
-- [ ] **Verification**: Both secrets and env vars configured
-
-**CRITICAL**: Incomplete deployment configuration causes production failures. Verify ALL steps completed before reporting success.
+**CRITICAL**: The detailed completion verification commands, deployment patterns, and configuration requirements are all in the rule files. The template provides structure - the rules provide behavior.

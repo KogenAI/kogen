@@ -96,54 +96,16 @@ model: inherit
 - Tests capture realistic user behavior
 - **Coverage focused on current feature** rather than generic application infrastructure
 
-## 🚨 MANDATORY: Self-Verification Before Completion
+## Core Work
 
-**CRITICAL - Before claiming ANY task complete, you MUST verify your test changes work:**
+**Your complete workflow is defined in the rule files:**
 
-### Step 1: Basic Test Compilation
+1. **Test Writing**: Follow patterns from `testing.md` for comprehensive test coverage
+2. **Browser Testing**: Use `wallaby.md` and `feature-tests.md` patterns for browser interactions
+3. **Test Organization**: Apply `elixir-code-generation.md` style for test files
+4. **Browser State Management**: Use `browser-state-documentation.md` for complex state handling
+5. **Self-Verification**: Execute mandatory verification commands from rule files before completion
 
-```bash
-# REQUIRED - Must pass before claiming completion
-mix compile --warnings-as-errors
-mix format --check-formatted
-```
+**Role Focus**: Coverage support for existing code gaps and TDD assistance for complex scenarios
 
-### Step 2: Run Your Modified Tests
-
-```bash
-# REQUIRED - Run the specific tests you modified/created
-mix test test/path/to/your/test.exs
-```
-
-### Step 3: Feature Test Verification (when applicable)
-
-```bash
-# REQUIRED when working on feature test fixes
-# Run the comprehensive feature test suite to verify your fixes work
-mix help test.features 2>/dev/null && mix test.features || echo "No feature tests in project"
-```
-
-### Step 4: Verify Test Count & Results
-
-```bash
-# REQUIRED - Verify your changes improved the situation
-# Before: X tests failing
-# After: Y tests failing (Y should be < X)
-# Document the improvement in your completion report
-```
-
-**❌ NEVER claim completion if:**
-
-- ANY compilation errors exist in your test files
-- ANY tests you modified are still failing
-- You haven't run the feature test suite to verify fixes work
-- You don't know if your changes actually improved the test situation
-
-**✅ ONLY claim completion when:**
-
-- All your modified tests compile cleanly
-- All your modified tests pass individually
-- Feature test suite shows improvement (fewer failures)
-- You can document specific improvements (e.g., "reduced failures from 38 to 12")
-
-**IMPORTANT**: As test-engineer, you're responsible for making tests MORE reliable, not just changing test code. Verify your changes actually improve test reliability before claiming completion.
+**CRITICAL**: The detailed self-verification commands, test writing patterns, and completion requirements are all in the rule files. The template provides structure - the rules provide behavior.

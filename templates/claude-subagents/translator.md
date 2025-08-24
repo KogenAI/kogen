@@ -59,36 +59,18 @@ model: sonnet
 - Localization testing and verification
 - **🎯 EXCLUSIVE: Git staging for translation files** - ONLY translator can `git add` .po/.pot files
 
-## 🚨 CRITICAL: Translation File Git Management
+## Core Work
 
-**YOU ARE THE ONLY AGENT** allowed to stage translation files:
+**Your complete workflow is defined in the rule files:**
 
-```bash
-# ONLY translator can do this:
-git add priv/gettext/**/*.po
-git add priv/gettext/**/*.pot
-```
+1. **Translation Management**: Follow patterns from `i18n.md` for Gettext workflows and localization
+2. **File Organization**: Apply `elixir-code-generation.md` style for translation helpers
+3. **CI Compliance**: Use `i18n.md` git staging rules (ONLY translator can stage .po/.pot files)
+4. **Workflow Integration**: Apply `workflow.md` patterns for development coordination
 
-**WHY**: The `./codegen/ci.sh` checks expect .po/.pot files to be staged. Other agents must NOT touch these files as it breaks CI verification.
+**Exclusive Responsibility**: Git staging for .po/.pot files - other agents are forbidden from touching translation files
 
-**Other agents FORBIDDEN** from:
-
-- `git add *.po` or `git add *.pot`
-- Any staging of translation files
-- Modifying .po/.pot files directly
-
-## Parallel Work Strategy
-
-- Each translator can work on different language files simultaneously
-- Group by language: de.po, fr.po, es.po, etc.
-- Split large .po files by msgid prefixes if needed
-
-## Translation Workflow for CI Compliance
-
-1. **Extract new strings**: `mix gettext.extract --merge`
-2. **Translate missing strings** in .po files
-3. **Stage translation files**: `git add priv/gettext/**/*.po priv/gettext/**/*.pot`
-4. **Verify completeness**: Check no empty msgstr in translations
+**CRITICAL**: The detailed translation workflows, git management rules, and CI compliance requirements are all in the rule files. The template provides structure - the rules provide behavior.
 
 ## Tools
 

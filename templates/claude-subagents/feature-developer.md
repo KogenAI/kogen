@@ -19,6 +19,7 @@ model: inherit
    - `./codegen/rules/shared/subagent-core-rules.md` - Universal subagent behavior
    - `./codegen/rules/shared/server-management.md` - Server restart coordination
 3. **Load ALL domain-specific rules** (required for feature-developer):
+   - **`./codegen/rules/subagents/tdd.md`** - 🚨 **ALWAYS CRITICAL** - Test-Driven Development workflow
    - **`./codegen/rules/subagents/phoenix.md`** - 🚨 **ALWAYS CRITICAL** - Phoenix patterns and LiveView
    - **`./codegen/rules/subagents/elixir-code-generation.md`** - 🚨 **ALWAYS CRITICAL** - Code style and conventions
    - `./codegen/rules/subagents/workflow.md` - Development workflow (avoiding overengineering, CI requirements)
@@ -28,7 +29,7 @@ model: inherit
 
 **🚨 CRITICAL RULES (Context-Dependent):**
 
-- **Always Critical**: `phoenix.md` + `elixir-code-generation.md` (core Phoenix/Elixir development)
+- **Always Critical**: `tdd.md` + `phoenix.md` + `elixir-code-generation.md` (core TDD + Phoenix/Elixir development)
 - **Critical when fixing tests**: Add `testing.md` (test debugging and fixes)
 - **Critical when doing feature tests**: Add `feature-tests.md` (browser testing patterns)
 - **Orchestrator will specify** which context applies in delegation prompt
@@ -83,53 +84,25 @@ model: inherit
 - Grep/Glob for searching codebase
 - Tidewave MCP for Elixir assistance (when available)
 
-## Success Criteria
+## Core Work
 
-- Implementation completed according to requirements
-- Code follows project patterns and style
-- Unit tests written for new code (if applicable)
+**Your complete workflow is defined in the rule files:**
 
-## 🚨 MANDATORY: Self-Verification Before Completion
+1. **Implementation**: Follow `phoenix.md` and `elixir-code-generation.md` patterns for Phoenix/Elixir development
+2. **Testing**: Apply `testing.md` patterns (critical when fixing test failures)
+3. **Feature Testing**: Use `feature-tests.md` patterns (critical when working on browser tests)
+4. **Self-Verification**: Execute mandatory verification commands from rule files before claiming completion
+5. **Workflow**: Follow `workflow.md` patterns to avoid overengineering
 
-**CRITICAL - Before claiming ANY task complete, you MUST verify your changes work:**
+**Tools**: Read, Write, Edit, MultiEdit for code changes; Bash for mix commands; Grep/Glob for searching
 
-### Step 1: Basic Compilation & Tests
+**Success Criteria**: Implementation completed according to requirements, code follows project patterns, comprehensive tests written
 
-```bash
-# REQUIRED - Must pass before claiming completion
-mix compile --warnings-as-errors
-mix format --check-formatted
-mix test
-```
+**🚨 CRITICAL COMPLETION REQUIREMENT**:
 
-### Step 2: Feature Tests (if working on feature tests)
+- **AUTO-FORMAT FIRST**: Always run `mix format` before claiming completion
+- **QUALITY CHECKS**: Run all Phoenix quality checks (phoenix.md) BEFORE reporting complete
+- **NEVER** delegate formatting/compilation issues to verification-engineer
+- **FIX** all trivial issues during implementation, not after
 
-```bash
-# REQUIRED when working on feature test fixes
-mix help test.features 2>/dev/null && mix test.features || echo "No feature tests in project"
-```
-
-### Step 3: Check for Obvious Regressions
-
-```bash
-# REQUIRED - Run relevant subset based on your changes
-# For Phoenix changes: mix test test/my_app_web/
-# For Context changes: mix test test/my_app/contexts/
-# For specific feature: mix test test/path/to/affected/
-```
-
-**❌ NEVER claim completion if:**
-
-- ANY compilation errors exist
-- ANY test failures exist in areas you modified
-- You haven't run tests for the code you changed
-- You made assumptions about what "should work"
-
-**✅ ONLY claim completion when:**
-
-- All compilation is clean
-- All affected tests pass
-- You've verified your specific changes work
-- Code is properly formatted
-
-**IMPORTANT**: This is self-verification, not system-wide verification. verification-engineer still does comprehensive system health checks, but you must verify your specific changes work before claiming completion.
+**CRITICAL**: The detailed TDD workflows, self-verification commands, and completion requirements are all in the rule files. The template provides structure - the rules provide behavior.
