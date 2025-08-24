@@ -91,54 +91,11 @@ Universal guidance for AI assistants in OCG workspaces.
 
 ## 🚨 MANDATORY: MCP Tool Failure Protocol
 
-**CRITICAL - If your role depends on MCP tools, you MUST verify tool access IMMEDIATELY:**
+**CRITICAL - All agents load the shared MCP tool failure protocol:**
 
-### Tool-Dependent Agents
-
-**ui-specialist**:
-
-- **Required Tools**: Figma MCP + Playwright MCP
-- **Failure Impact**: Cannot implement designs or test functionality
-
-**feature-developer**:
-
-- **Required Tools**: Tidewave MCP
-- **Failure Impact**: Cannot interact with Phoenix/database
-
-**verification-engineer**:
-
-- **Required Tools**: Tidewave MCP
-- **Failure Impact**: Cannot verify implementation
-
-### MANDATORY FIRST ACTION - MCP Tool Verification
-
-**BEFORE doing ANY implementation work:**
-
-1. **Test your essential MCP tools**:
-
-   - ui-specialist: Test `mcp__figma__get_image` AND `mcp__playwright__browser_snapshot`
-   - feature-developer: Test `mcp__tidewave__get_ecto_schemas`
-   - verification-engineer: Test `mcp__tidewave__get_ecto_schemas`
-
-2. **IF ANY TOOL FAILS**:
-
-   - **STOP ALL WORK IMMEDIATELY**
-   - **Report exact failure to orchestrator**: "🔴 CRITICAL MCP FAILURE: [tool name] - [exact error message]"
-   - **DO NOT attempt workarounds or continue without tools**
-   - **DO NOT claim completion with broken tools**
-   - **Wait for user to fix MCP configuration**
-
-3. **ONLY proceed if ALL required tools work correctly**
-
-### Example MCP Failure Reports
-
-```
-🔴 CRITICAL MCP FAILURE: Playwright MCP - Error POSTing to endpoint (HTTP 404): Session not found
-
-🔴 CRITICAL MCP FAILURE: Tidewave MCP - Connection refused to localhost:8902
-
-🔴 CRITICAL MCP FAILURE: Figma MCP - Authentication failed or token expired
-```
+- **Load**: `./codegen/rules/shared/mcp-tool-failure-protocol.md`
+- **Required for**: ui-specialist, feature-developer, verification-engineer
+- **Contains**: Immediate tool verification, failure reporting, workflow blocking rules
 
 **RATIONALE**: Working without MCP tools produces broken/incomplete results. Better to fail fast and get tools fixed than waste time on unusable work.
 

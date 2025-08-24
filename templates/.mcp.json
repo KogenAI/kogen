@@ -4,10 +4,6 @@
       "type": "http",
       "url": "http://localhost:3845/mcp"
     },
-    "playwright": {
-      "type": "http",
-      "url": "http://localhost:{{PLAYWRIGHT_MCP_PORT}}/mcp"
-    },
     "tidewave": {
       "type": "stdio",
       "command": "mcp-proxy",

@@ -10,11 +10,6 @@
       "type": "local",
       "command": ["mcp-proxy", "http://localhost:{{PORT}}/tidewave/mcp"],
       "enabled": true
-    },
-    "playwright": {
-      "type": "local",
-      "command": ["mcp-proxy", "http://localhost:{{PLAYWRIGHT_MCP_PORT}}/mcp"],
-      "enabled": true
     }
   }
 }
