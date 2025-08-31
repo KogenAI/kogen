@@ -3,10 +3,29 @@
 
 SCRIPT_DIR := $(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
 
+# Helper functions for command restrictions
+define check_ocg_only
+	@if [ "$$OCG_CLI" != "true" ]; then \
+		echo "❌ The $(1) command only works with 'ocg $(1)'"; \
+		echo "   Please use 'ocg $(1)' instead of 'make $(1)'"; \
+		exit 1; \
+	fi
+endef
+
+define check_make_only
+	@if [ "$$OCG_CLI" = "true" ]; then \
+		echo "❌ The $(1) command only works with 'make $(1)'"; \
+		echo "   Please use 'make $(1)' instead of 'ocg $(1)'"; \
+		exit 1; \
+	fi
+endef
+
 setup:
+	$(call check_ocg_only,setup)
 	@cd "$(ORIGINAL_WORKING_DIR)" && "$(SCRIPT_DIR)/setup_project.sh"
 
 new:
+	$(call check_ocg_only,new)
 	@if [ -z "$(filter-out $@,$(MAKECMDGOALS))" ]; then \
 		. ./utils.sh; \
 		echo "Usage: $$OCG_CMD new <feature-name> [options]"; \
@@ -31,6 +50,7 @@ new:
 	fi
 
 clean:
+	$(call check_ocg_only,clean)
 	@echo "🧹 Removing all feature workspaces..."
 	@cd "$(ORIGINAL_WORKING_DIR)"; \
 	WORKSPACES=$$("$(SCRIPT_DIR)/list_workspaces.sh" 2>/dev/null | grep "^📁" | grep -v "Main Repository" | sed 's/^📁 //'); \
@@ -61,12 +81,15 @@ clean:
 	echo "   To also remove orphaned feature branches, run: $$OCG_CMD clean-branches"
 
 clean-branches:
+	$(call check_ocg_only,clean-branches)
 	@cd "$(ORIGINAL_WORKING_DIR)" && "$(SCRIPT_DIR)/clean_branches.sh"
 
 prepare:
+	$(call check_ocg_only,prepare)
 	@cd "$(ORIGINAL_WORKING_DIR)" && "$(SCRIPT_DIR)/prepare_environment.sh" $(filter-out $@,$(MAKECMDGOALS))
 
 clean-servers:
+	$(call check_ocg_only,clean-servers)
 	@cd "$(ORIGINAL_WORKING_DIR)"; \
 	case "$$MAKEFLAGS" in \
 		*s*|*--silent*|*--quiet*) QUIET=true ;; \
@@ -92,6 +115,7 @@ clean-servers:
 	fi
 
 rm:
+	$(call check_ocg_only,rm)
 	@if [ -z "$(filter-out $@,$(MAKECMDGOALS))" ]; then \
 		. ./utils.sh; \
 		echo "Usage: $$OCG_CMD rm <feature-name>"; \
@@ -107,6 +131,7 @@ rm:
 	"$(SCRIPT_DIR)/remove_workspace.sh" $(filter-out $@,$(MAKECMDGOALS))
 
 resume:
+	$(call check_ocg_only,resume)
 	@if [ -z "$(filter-out $@,$(MAKECMDGOALS))" ]; then \
 		. ./utils.sh; \
 		echo "Usage: $$OCG_CMD resume <feature-name> [options]"; \
@@ -131,6 +156,7 @@ resume:
 	fi
 
 update-context:
+	$(call check_ocg_only,update-context)
 	@if [ -z "$(filter-out $@,$(MAKECMDGOALS))" ]; then \
 		. ./utils.sh; \
 		echo "Usage: $$OCG_CMD update-context <feature-name>"; \
@@ -140,27 +166,35 @@ update-context:
 	@./update_context.sh $(filter-out $@,$(MAKECMDGOALS))
 
 consolidate-context:
+	$(call check_ocg_only,consolidate-context)
 	@./consolidate_context.sh
 
 ls:
+	$(call check_ocg_only,ls)
 	@./list_workspaces.sh
 
 resources:
+	$(call check_ocg_only,resources)
 	@./show_global_resources.sh $(filter-out $@,$(MAKECMDGOALS))
 
 bird-eye:
+	$(call check_ocg_only,bird-eye)
 	@./modes/bird_eye_session.sh $(filter-out $@,$(MAKECMDGOALS))
 
 plan:
+	$(call check_ocg_only,plan)
 	@./modes/plan_session.sh $(filter-out $@,$(MAKECMDGOALS))
 
 install:
+	$(call check_make_only,install)
 	@./install.sh
 
 uninstall:
+	$(call check_ocg_only,uninstall)
 	@./uninstall.sh
 
 format:
+	$(call check_make_only,format)
 	@echo "🎨 Formatting all files..."
 	@if ! command -v mise >/dev/null 2>&1; then \
 		echo "❌ mise not found. Please install mise first."; \
@@ -182,6 +216,7 @@ format:
 	@echo "✅ All files formatted"
 
 remove-comments:
+	$(call check_ocg_only,remove-comments)
 	@if [ -z "$(ORIGINAL_WORKING_DIR)" ]; then \
 		./remove_comments.sh $(filter-out $@,$(MAKECMDGOALS)); \
 	else \
@@ -189,6 +224,7 @@ remove-comments:
 	fi
 
 ai-config:
+	$(call check_ocg_only,ai-config)
 	@if [ -z "$(filter-out $@,$(MAKECMDGOALS))" ]; then \
 		echo "Usage: ocg ai-config <action> [options]"; \
 		echo "Actions:"; \
