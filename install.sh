@@ -147,6 +147,21 @@ else
     echo "   ✅ jq already installed"
 fi
 
+# Install system ripgrep for Claude Code custom command discovery
+echo "   📦 Installing system ripgrep for Claude Code custom commands..."
+if ! command -v /usr/local/bin/rg >/dev/null 2>&1; then
+    if command -v brew >/dev/null 2>&1; then
+        brew install ripgrep
+        echo "   ✅ System ripgrep installed"
+    else
+        echo "   ❌ Homebrew not found. Please install ripgrep manually:"
+        echo "      brew install ripgrep"
+        echo "   ⚠️  Custom Claude Code commands may not work without system ripgrep"
+    fi
+else
+    echo "   ✅ System ripgrep already installed"
+fi
+
 # Set up OCG_CONTEXT_DIR environment variable
 echo ""
 echo "🚀 Setting up OCG_CONTEXT_DIR environment variable..."
@@ -166,6 +181,21 @@ else
     echo "# Optimum Codegen context directory" >>"$RC_FILE"
     echo "$CONTEXT_DIR_VAR" >>"$RC_FILE"
     echo "   ✅ Added OCG_CONTEXT_DIR to $RC_FILE"
+fi
+
+# Set up USE_BUILTIN_RIPGREP=0 for Claude Code custom command discovery
+echo ""
+echo "🚀 Setting up Claude Code custom command support..."
+
+RIPGREP_VAR="export USE_BUILTIN_RIPGREP=0"
+
+if grep -q "USE_BUILTIN_RIPGREP" "$RC_FILE" 2>/dev/null; then
+    echo "   ✅ USE_BUILTIN_RIPGREP already set in $RC_FILE"
+else
+    echo "" >>"$RC_FILE"
+    echo "# Claude Code custom command discovery (requires system ripgrep)" >>"$RC_FILE"
+    echo "$RIPGREP_VAR" >>"$RC_FILE"
+    echo "   ✅ Added USE_BUILTIN_RIPGREP=0 to $RC_FILE"
 fi
 
 # Set up autocompletion
@@ -296,6 +326,7 @@ echo "   ocg clean"
 echo "   ocg ls"
 echo "   ocg help"
 echo ""
-echo "💡 Restart your terminal or run 'source $RC_FILE' for autocompletion"
+echo "💡 Restart your terminal or run 'source $RC_FILE' for autocompletion and Claude Code custom commands"
 echo "💡 Test the installation by running: ocg help"
+echo "💡 Test Claude Code custom commands by running: claude (then try /write-drop)"
 echo "💡 Next: Run 'ocg setup' in your project directory to install project-specific tools"
