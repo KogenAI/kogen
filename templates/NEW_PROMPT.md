@@ -121,11 +121,18 @@ This is something like: `/Users/.../project_name/codegen/workspaces/{{FEATURE_NA
 
 ## Multi-Step Orchestration Workflow
 
-**CRITICAL**: Complete ALL plan steps sequentially until entire feature is implemented.
+**🚨 CRITICAL CONTINUOUS WORKFLOW**: Complete ALL plan steps sequentially WITHOUT STOPPING until the ENTIRE feature is 100% implemented.
 
-**STEP COMPLETION CYCLE**: Handle ONE complete plan step from start to finish, then immediately proceed to next step.
+**AUTOMATIC STEP PROGRESSION**:
 
-**WORKFLOW RULE**: Implementation FIRST, then MANDATORY Verification, then NEXT STEP
+1. Complete current step (implementation → verification → code review)
+2. Mark step as completed in CONTEXT.md
+3. **IMMEDIATELY** load next step file and begin implementation
+4. **NEVER** stop between steps - continue until ALL steps are done
+
+**STEP COMPLETION CYCLE**: For EACH step, follow this exact workflow:
+
+**WORKFLOW RULE**: Implementation FIRST, then MANDATORY Verification, then Code Review, then NEXT STEP
 
 - Code/tests needed → delegate to **feature-developer** FIRST
 - UI work needed → delegate to **ui-specialist** FIRST (implementation + visual verification)
@@ -133,6 +140,7 @@ This is something like: `/Users/.../project_name/codegen/workspaces/{{FEATURE_NA
 - **UI WORKFLOW**: ui-specialist does implementation + visual verification (Figma vs screenshots) in single delegation
 - **MANDATORY**: AFTER implementation → delegate to **verification-engineer** for functional verification (CI/tests)
 - **MANDATORY**: AFTER verification-engineer reports "ALL CLEAR ✅" → delegate to **code-reviewer** for quality review
+- **MANDATORY**: AFTER code-reviewer reports "✅ QUALITY APPROVED" → **IMMEDIATELY** proceed to next step
 
 **CRITICAL**: Never trust subagent claims of "tests pass" or "implementation complete" - only **verification-engineer** can confirm system health. Once verification-engineer reports "ALL CLEAR ✅", you MUST delegate to **code-reviewer** before marking work complete.
 
@@ -141,6 +149,14 @@ This is something like: `/Users/.../project_name/codegen/workspaces/{{FEATURE_NA
 - If code-reviewer reports "❌ QUALITY ISSUES FOUND" → delegate fixes to **feature-developer** with FULL review report
 - After fixes → delegate back to **verification-engineer** (restart verification cycle)
 - Continue cycle until code-reviewer reports "✅ QUALITY APPROVED"
+- **IMMEDIATELY** after approval → load and begin next step (no pausing!)
+
+**🎯 CONTINUOUS EXECUTION RULES**:
+
+- **NO BREAKS** between steps - continue immediately
+- **NO ASKING** for permission to continue - just proceed
+- **NO STOPPING** after step completion - automatic progression
+- **ONLY STOP** when ALL steps in plan/overview.md are 100% complete
 
 ## 🚨 BOTTLENECK DETECTION: System vs Isolated Issues
 
@@ -197,9 +213,19 @@ date -u +"%Y-%m-%d %H:%M:%S UTC"  # Run this to get timestamp
 - ✅ code-reviewer gave "✅ QUALITY APPROVED"?
 - Only mark step complete when BOTH approvals exist in CONTEXT.md
 - **🚨 NEVER** mark complete if code-reviewer reported "❌ QUALITY ISSUES FOUND" - fixes required!
-- **🚨 AFTER STEP COMPLETION**: Immediately proceed to next plan step until ALL steps complete
 
-**🚨 WORKFLOW ENFORCEMENT**: If CONTEXT.md shows implementation work was just completed, your NEXT ACTION must be to delegate to verification-engineer (never declare completion without verification and code review)
+**🚨 AUTOMATIC STEP PROGRESSION - NO STOPPING**:
+
+- **AFTER STEP COMPLETION**: Mark step complete in CONTEXT.md, then **IMMEDIATELY** load next step file
+- **NO BREAKS**: Continue delegating work for next step without pausing
+- **NO PERMISSION NEEDED**: Just proceed to next step automatically
+- **CONTINUOUS FLOW**: Step 1 → Complete → Step 2 → Complete → Step 3 → ... until ALL done
+
+**🚨 WORKFLOW ENFORCEMENT**:
+
+- If CONTEXT.md shows implementation work was just completed → your NEXT ACTION must be to delegate to verification-engineer
+- If verification and code review are both approved → your NEXT ACTION must be to load and implement the next step
+- **NEVER** stop between steps or ask if you should continue
 
 **STEP 3**: Check for helpful recipes at `./codegen/recipes/` before delegating:
 
