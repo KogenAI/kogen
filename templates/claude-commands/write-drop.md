@@ -28,20 +28,18 @@ Generate 5-10 topic suggestions by:
 □ 7. **MANDATORY: Validate all code blocks using `mcp__tidewave__project_eval`**
 □ 8. Test code examples → save markdown file
 
-**Database Integration Steps:**
+**Content Discovery Steps (Using index.md):**
 
-1. **Check Tidewave MCP availability** - if not available, ask user to start Phoenix server
-2. Query existing drops with: `mcp__tidewave__execute_sql_query`
-3. **Search for similar titles/topics with multiple queries:**
-   - `SELECT title FROM drops WHERE LOWER(title) LIKE '%keyword%'`
-   - `SELECT title FROM drops WHERE LOWER(title) LIKE '%related_concept%'`
-   - Check for semantic overlap, not just keyword matches
-4. **Cross-check all variations** - A drop about "Parameter validation" could overlap with "Safe URL params" or "Ecto changesets"
+1. **Fetch the drops index**: Use WebFetch on `https://elixirdrops.net/index.md` to get all existing drops
+2. **Parse existing titles and topics** from the index to avoid duplication
+3. **Search for similar topics with semantic understanding:**
+   - Don't just match keywords - understand the core problem/solution
+   - A drop about "Parameter validation" could overlap with "Safe URL params" or "Ecto changesets"
+4. **Cross-check all variations** - Think about different ways developers might describe the same problem
 5. Find related topics for inspiration: Look for gaps or complementary angles
-6. **Semantic overlap check**: Don't just match keywords - check if the core problem/solution overlaps with existing content
-7. Verify user hasn't already written about it: Check user_id in results
-8. **User feedback integration**: If user says "Did you check for redundant content?" - you missed something
-9. Cross-reference short_ids with Plausible analytics data to understand what formats work best
+6. **For full content verification**: Access individual drops via `https://elixirdrops.net/d/{short_id}.md`
+7. **User feedback integration**: If user says "Did you check for redundant content?" - you missed something
+8. Cross-reference short_ids with Plausible analytics data to understand what formats work best
 
 **Analytics Integration (MANDATORY FIRST STEP):**
 
