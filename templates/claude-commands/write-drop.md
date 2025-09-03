@@ -79,6 +79,15 @@ Generate 5-10 topic suggestions by:
 - Pro tips or gotchas sections perform well
 - External links for deeper reading add credibility
 
+**Twitter Hook Style Guide:**
+
+- **Clean and direct** - State the problem and solution clearly
+- **Technical focus** - Lead with the code/technical insight
+- **Minimal emojis** - Use sparingly, only when they add clarity
+- **No marketing fluff** - Avoid "🧵 Thread", "👇", "Here's how", etc.
+- **Factual tone** - Present information straightforwardly
+- **Link at end** - Include drop link for full examples
+
 **Rich Topic Sources Available:**
 
 - **MCP Tools Integration**: Tidewave tools in Claude Code, playground usage
@@ -154,11 +163,12 @@ Optional: Links to docs, related patterns, or further reading
    - Verify the solution is the simplest that works
    - Ensure the explanation adds context without being verbose
 
-6. **Final Output** - Save as markdown file:
+6. **Final Output** - Save as markdown file AND provide Twitter hook:
 
    - Use Write tool to save the content as `[topic_name]_drop.md` in the project directory
    - Use proper markdown formatting (no code block wrapping)
    - This avoids terminal formatting issues and makes copy/paste clean
+   - **MANDATORY: Provide a Twitter-ready hook** - Clean, direct thread with key insight and link (minimal emojis, no fluff)
 
 7. **Content Categories** - Focus on high-value topics:
 
