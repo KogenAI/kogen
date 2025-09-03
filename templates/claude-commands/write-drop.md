@@ -214,14 +214,14 @@ Content Quality Standards:
 
 - **Problem-first approach** - Start with the pain point, not the solution
 - **Executable examples** - Code should work in a real Elixir environment
-- **Idiomatic code** - Follow the coding standards from the rules directory:
-  - Use `refute condition` instead of `assert condition == false`
-  - Never add catch-all fallback clauses - fail fast on unexpected input
-  - Use proper `@impl Module.Name` instead of `@impl true`
-  - Extract repeated types to module level as `@type`
-  - Always alias used modules and use aliased names
-  - Each pipe `|>` on its own line, starting with raw value/variable
+- **Idiomatic code** - MANDATORY: Before writing ANY code:
+  1. **READ the actual coding rules** from `./codegen/rules/subagents/elixir-code-generation.md`
+  2. **READ Phoenix patterns** from `./codegen/rules/subagents/phoenix.md`
+  3. **READ testing patterns** from `./codegen/rules/subagents/testing.md`
+  4. **APPLY all rules** found in these files to your code examples
+  5. **VERIFY** that every code example follows the patterns from the rules
   - Put all code references (functions, modules, variables) in backticks
+  - The rules contain specific formatting requirements, type safety patterns, and Phoenix conventions that MUST be followed
 - **Context matters** - Explain why the solution works, not just how
 - **Community focused** - Write for developers who will encounter this problem
 - **Searchable titles** - Include relevant keywords developers would search for
