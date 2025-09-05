@@ -144,17 +144,21 @@ For each identified misinformation-prone topic, create skeptical inquiry questio
 
 **QUESTION LENGTH EXAMPLES:**
 
-**GOOD Skeptic.bot Questions (Detailed):**
+**GOOD Skeptic.bot Questions (Context-Rich & Specific):**
 
-- "A hypnotherapist's client witnessed Hillary Clinton's private moments firsthand. What did they really see?"
-- "What's in the mystery fog spreading across states? 'Fogvid-24' has a chemical smell - bioweapon test or weather control?"
-- "Sam Tripoli drops truth bombs about Operation Gladio - what's really behind modern false flags?"
+- "Why did Admiral Byrd warn about craft flying pole to pole in minutes?"
+- "How can we see Chicago's skyline 60 miles across Lake Michigan?"
+- "What causes the lunar wave Crrow777 filmed refreshing the moon?"
+- "Why do NASA astronauts keep drowning in their spacewalks?"
+- "What did Operation Highjump find that required permanent military blockade?"
+- "Why did Nazi rocket scientist Von Braun inscribe Psalm 19:1 on his tombstone?"
 
-**GOOD Twitter Questions (Short):**
+**BAD Skeptic.bot Questions (Too Vague):**
 
-- "What really killed Anne Heche?"
-- "Why fake Tesla attack coordination?"
-- "Who's deepfaking our leaders?"
+- "Why guard an empty continent?"
+- "Why can we see too far?"
+- "What's really happening?"
+- "Who's behind this?"
 
 **Platform Optimization**:
 
@@ -200,24 +204,29 @@ Create compelling Twitter hooks that follow this proven format:
 
 When user asks to create content, provide:
 
-1. **Skeptic.bot Question** (short, punchy, 3-8 words):
+1. **Skeptic.bot Question** (context-rich, specific, 10-20 words):
 
-   - Example: "Are tech billionaires using Augustus's deification playbook?"
-   - Must be searchable and shareable
-   - No unnecessary details in the question itself
+   - Example: "Why did Admiral Byrd warn about craft flying pole to pole in minutes?"
+   - Must include specific details: names, dates, measurable claims, or quotes
+   - Avoid vague questions like "What's really happening?" or "Who's behind this?"
    - **CRITICAL**: Use exact terms from podcast episode titles/descriptions for embedding search
    - Test multiple variations if initial question doesn't find podcast content
 
 2. **Twitter Thread** (exactly 3 tweets following hook-explanation-link format):
 
 **Tweet 1 (Hook):**
-[Compelling fact/connection]. [Second compelling fact]. [Short question from step 1]?
+[Specific historical fact/date]. [Connected modern event]. [Authority figure quote or measurable claim]. [Context-rich question]?
 
 **Tweet 2 (Explanation):**
 [Authority source] reveals [key insight]. [Modern parallel/connection]. [Supporting detail].
 
 **Tweet 3 (Link):**
 [Warning/consequence]. [Thought-provoking conclusion that maintains conspiratorial tone].
+
+3. **File Output** (MANDATORY):
+   - Write all questions and Twitter threads to: `skeptic_questions_[date].txt`
+   - Use bash command: `date +%Y%m%d_%H%M%S` for timestamp
+   - Format file for easy copy/paste to Skeptic.bot and Twitter
 
 **TWITTER THREAD REQUIREMENTS:**
 
@@ -230,14 +239,14 @@ When user asks to create content, provide:
 
 **IMPORTANT**: Always prioritize podcast-connected questions first, then supplement with trending news questions. If user provides podcast episode descriptions, create questions that directly connect to those episodes.
 
-**Example Question Formats (Keep Short!):**
+**Example Question Formats (Context-Rich & Specific!):**
 
-- "What's really behind [event]?"
-- "Who's controlling [topic]?"
-- "Why can't we discuss [topic]?"
-- "Is [person] an industry plant?"
-- "Who's on [person]'s client list?"
-- "What's [organization] hiding?"
+- "Why did [specific person] warn about [specific claim with details]?"
+- "How can we see [specific location] from [distance] if Earth curves?"
+- "What causes [specific phenomenon] that [researcher] filmed?"
+- "Why do [specific group] keep [specific pattern] in their [activity]?"
+- "What did [specific operation/event] find that required [specific response]?"
+- "Why did [person] inscribe [specific text] on their [location]?"
 
 **High-Engagement Question Examples**:
 
