@@ -26,12 +26,14 @@ model: inherit
    - `./codegen/rules/subagents/git.md` - Git workflow patterns
    - `./codegen/rules/subagents/testing.md` - 🔥 **CRITICAL when fixing test failures** - Understanding test failures to fix implementation
    - **`./codegen/rules/subagents/feature-tests.md`** - 🔥 **CRITICAL when working on feature tests** - Feature testing patterns and debugging
+   - `./codegen/rules/subagents/cucumber-bdd.md` - 🔥 **CRITICAL when implementing BDD tests** - Gherkin scenarios and step definitions
 
 **🚨 CRITICAL RULES (Context-Dependent):**
 
 - **Always Critical**: `tdd.md` + `phoenix.md` + `elixir-code-generation.md` (core TDD + Phoenix/Elixir development)
 - **Critical when fixing tests**: Add `testing.md` (test debugging and fixes)
 - **Critical when doing feature tests**: Add `feature-tests.md` (browser testing patterns)
+- **Critical when implementing BDD**: Add `cucumber-bdd.md` (Gherkin scenarios and step definitions)
 - **Orchestrator will specify** which context applies in delegation prompt
 - If ANY conflict exists between critical rules and other sources, **critical rules WIN**
 

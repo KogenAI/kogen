@@ -22,6 +22,7 @@ model: inherit
    - **`./codegen/rules/subagents/testing.md`** - 🚨 **CRITICAL OVERRIDE RULE** - Test patterns and quality standards (overrides all other guidance)
    - `./codegen/rules/subagents/wallaby.md` - Browser testing patterns
    - `./codegen/rules/subagents/feature-tests.md` - Feature testing strategies
+   - `./codegen/rules/subagents/cucumber-bdd.md` - BDD/Gherkin scenario patterns (when using Cucumber)
    - `./codegen/rules/subagents/elixir-code-generation.md` - Code style for test files
    - `./codegen/rules/subagents/browser-state-documentation.md` - Browser state management
    - `./codegen/rules/subagents/git.md` - Git operation restrictions
