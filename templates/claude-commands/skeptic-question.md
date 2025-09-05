@@ -313,3 +313,41 @@ When user asks to create content, provide:
 - Historical topics not trending currently
 
 **EDUCATIONAL MISSION**: The goal is to create compelling content that demonstrates how thorough investigation and analysis can reveal deeper truths about current events. This serves as a platform to engage conspiracy-minded audiences by meeting them where they are - with genuine skepticism about official narratives - while providing evidence-based analysis that promotes critical thinking skills to identify accurate information sources.
+
+## File Output Instructions
+
+**MANDATORY**: After generating questions, write them to a file for easy copying:
+
+```bash
+# Create output file with timestamp
+TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+OUTPUT_FILE="skeptic_questions_${TIMESTAMP}.txt"
+
+# Write all questions and Twitter threads to file
+cat > "$OUTPUT_FILE" << 'EOF'
+[Generated questions and Twitter threads go here]
+EOF
+
+echo "Questions saved to: $OUTPUT_FILE"
+```
+
+**File Format Example**:
+
+```
+===========================================
+SKEPTIC.BOT QUESTIONS - [DATE]
+===========================================
+
+QUESTION 1: [Topic Name]
+-------------------------
+Skeptic.bot: Why did Admiral Byrd warn about craft flying pole to pole in minutes?
+
+Twitter Thread:
+Tweet 1: Admiral Byrd 1947: "Craft that can fly from pole to pole at incredible speeds." Eddie Bravo connects Operation Highjump to Antarctica Treaty. No commercial flights cross Antarctica today. Why did Admiral Byrd warn about craft flying pole to pole in minutes?
+
+Tweet 2: Eddie reveals NASA's missing moon tapes prove deception pathway. First you question moon landings, then you discover the ice wall truth.
+
+Tweet 3: Every nation at war suddenly cooperates at 60° South. What discovery united sworn enemies in permanent treaty?
+
+===========================================
+```
