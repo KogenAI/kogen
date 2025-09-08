@@ -214,14 +214,28 @@ When user asks to create content, provide:
 
 2. **Twitter Thread** (exactly 3 tweets following hook-explanation-link format):
 
-**Tweet 1 (Hook):**
+**Tweet 1 (Hook - MUST BE UNDER 280 CHARS):**
 [Specific historical fact/date]. [Connected modern event]. [Authority figure quote or measurable claim]. [Context-rich question]?
 
-**Tweet 2 (Explanation):**
+**CRITICAL SHORTENING TECHNIQUES FOR TWEET 1:**
+
+- Use "docs:" instead of "documents"
+- Use "Intel" instead of "Intelligence Committee"
+- Remove "FBI" if context is clear
+- Use abbreviations: "govt" "admin" "classified info" "bombshell" not "bombshell documents"
+- Cut redundant phrases
+
+**Tweet 2 (Explanation - Under 280 chars):**
 [Authority source] reveals [key insight]. [Modern parallel/connection]. [Supporting detail].
 
-**Tweet 3 (Link):**
+**Tweet 3 (Link - MUST BE UNDER 280 CHARS INCLUDING LINK):**
 [Warning/consequence]. [Thought-provoking conclusion that maintains conspiratorial tone].
+
+**CRITICAL: Tweet 3 + Skeptic.bot link must total under 280 chars**
+
+- Skeptic.bot links are ~85 chars: https://skeptic.bot/questions/bd3c529e-97f4-416e-862b-e99feb053593
+- **Tweet 3 text MUST be under 195 characters** (280 - 85 = 195)
+- Keep conclusions short and punchy
 
 3. **File Output** (MANDATORY):
    - Write all questions and Twitter threads to: `skeptic_questions_[date].txt`
@@ -232,7 +246,8 @@ When user asks to create content, provide:
 
 - NO hashtags in first tweet (hook must be clean)
 - NO mention of podcast names in first tweet
-- Keep each tweet under 280 characters
+- **CRITICAL: Keep each tweet under 280 characters** - Test character count and shorten if needed
+- **Tweet 1 MUST be under 280 chars** - Remove redundant words, use abbreviations (e.g. "Intel" not "Intelligence Committee", "docs:" not "documents")
 - Follow proven engagement patterns from examples
 - Third tweet should end naturally without forced "call to action" - the link card handles that
 - Focus on authentic conspiratorial language over marketing speak
