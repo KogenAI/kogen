@@ -18,6 +18,7 @@ Before analysis, check:
 
 - **Sam Tripoli's Tin Foil Hat**: Use WebSearch with specific episode searches like `site:samtripoli.com "TFH #XXX"` and search for episode titles on podcast platforms
 - **Eddie Bravo's Look Into It**: WebSearch for `site:rumble.com Eddie Bravo recent episodes 2025` and check Apple Podcasts/Spotify listings
+- **Candace Owens' Becoming Brigitte**: Search for `site:youtube.com Candace Owens Becoming Brigitte` and check for MK Ultra, government corruption, and deep state topics
 - **User-Provided Podcast Episodes**: If user provides podcast episode descriptions, prioritize those for question creation
 
 **CRITICAL PODCAST RESEARCH METHOD**:
@@ -286,7 +287,7 @@ When user asks to create content, provide:
 
 **Quality Criteria**:
 
-- Questions must be answerable using podcast transcription data (especially from Sam Tripoli, Eddie Bravo, and user-provided episodes)
+- Questions must be answerable using podcast transcription data (especially from Sam Tripoli, Eddie Bravo, Candace Owens, and user-provided episodes)
 - Focus on topics conspiracy theory podcasts would likely discuss
 - **Sound authentic** - like genuine skeptical inquiry from someone questioning official narratives
 - Demonstrate the platform's analytical capabilities for **investigating claims**
@@ -308,6 +309,7 @@ When user asks to create content, provide:
 - **TFH #910**: Dom the Hypnotist's client witnessed Hillary Clinton's "shady behind-the-scenes actions"
 - **TFH #909**: Jewish anti-Zionist comedian Michael Schirter faced walkouts and censorship
 - **Eddie Bravo**: "Season of Psyops" episode connected Tesla explosions to coordinated operations
+- **Candace Owens**: "Becoming Brigitte" explores MK Ultra, Stanford Prison Experiment, prisoner 2093
 - **Breaking News**: Marco Rubio/Susie Wiles deepfake impersonations by foreign actors
 - **Viral Topics**: Project 2025 authors now holding federal positions, "Fogvid-24" chemical fog events
 
