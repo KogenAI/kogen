@@ -1,0 +1,35 @@
+# Template Generation Configuration
+# Defines tool-specific variables for template generation
+
+tools:
+  claude:
+    name: "claude"
+    display_name: "Claude Code"
+    yaml_frontmatter: true
+    permissions_enabled: true
+    hooks_enabled: true
+    config_file: "claude-code-settings.json"
+    mcp_config: ".mcp.json"
+    commands_dir: "commands"
+    agents_dir: "agents"
+    settings_dir: "$HOME/.claude"
+
+  opencode:
+    name: "opencode"
+    display_name: "OpenCode"
+    yaml_frontmatter: false
+    permissions_enabled: false
+    hooks_enabled: false # Uses formatter config instead
+    config_file: ".opencode.json"
+    mcp_config: ".opencode-mcp.json"
+    commands_dir: "commands"
+    agents_dir: "agents"
+    settings_dir: "$HOME/.config/opencode"
+
+# Common variables available to all templates
+common:
+  project_context_file: "PROJECT_CONTEXT.md"
+  agents_file: "AGENTS.md"
+  context_file: "CONTEXT.md"
+  figma_port: 3845
+  tidewave_port_template: "{{PORT}}"

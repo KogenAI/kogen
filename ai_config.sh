@@ -2,6 +2,7 @@
 
 # AI Assistant Configuration Management
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CONFIG_FILE="$HOME/.ocg/config.json"
 CONFIG_DIR="$(dirname "$CONFIG_FILE")"
 

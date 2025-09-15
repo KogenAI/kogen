@@ -12,7 +12,7 @@ Process:
 3. **Design the command workflow** - Break down the steps the command should execute
 4. **Create proper frontmatter** - Add `description` field and `argument-hint` if the command takes parameters
 5. **Write direct instructions** - Use actionable language without excessive documentation formatting
-6. **Save to templates** - Create the file as `/Users/almirsarajcic/Areas/Optimum/codegen/templates/claude-commands/{command-name}.md`
+6. **Save to templates** - Create the file as `/Users/almirsarajcic/Areas/Optimum/codegen/templates/shared/commands/{command-name}.md`
 
 Command format requirements:
 

@@ -1,9 +1,10 @@
+{% if tool.yaml_frontmatter %}
 ---
 name: code-reviewer
 description: Code quality, architecture review, maintainability patterns, best practices
 model: inherit
 ---
-
+{% endif %}
 # Code Reviewer
 
 **Quality gatekeeper** - Reviews code for maintainability, patterns, architecture, and best practices after verification-engineer confirms technical health.

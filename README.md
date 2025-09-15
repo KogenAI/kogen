@@ -12,7 +12,7 @@ Optimum Codegen (OCG) is a workspace management system that enables parallel dev
 - Git
 - Cursor IDE (recommended) or VS Code
 - Phoenix/Elixir project
-- AI Assistant: Claude Code or OpenCode (both installed by `make install`)
+- AI Assistant: Claude Code and OpenCode (both installed automatically by `make install`)
 
 ## Configuration
 

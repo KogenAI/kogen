@@ -86,6 +86,19 @@ if [ ! -f "$RECIPES_DIR/README.md" ] && [ -f "$CODEGEN_DIR/templates/recipes-REA
 fi
 
 echo ""
+echo "🚀 Generating AI assistant templates..."
+
+# Generate templates for both Claude Code and OpenCode
+"$CODEGEN_DIR/templates/generator/generate.sh" all
+
+# Clean up generated templates after installation
+cleanup_generated_templates() {
+    echo "   🧹 Cleaning up generated templates..."
+    rm -rf "$CODEGEN_DIR/templates/generated/"
+    echo "   ✅ Generated templates cleaned up"
+}
+
+echo ""
 echo "🚀 Setting up Claude Code configuration..."
 
 CLAUDE_SETTINGS_DIR="$HOME/.claude"
@@ -94,38 +107,38 @@ CLAUDE_COMMANDS_DIR="$CLAUDE_SETTINGS_DIR/commands"
 
 mkdir -p "$CLAUDE_SETTINGS_DIR"
 mkdir -p "$CLAUDE_COMMANDS_DIR"
-cp "$CODEGEN_DIR/templates/claude-code-settings.json" "$CLAUDE_SETTINGS_FILE"
-echo "   ✅ Claude Code settings installed at: $CLAUDE_SETTINGS_FILE"
 
-# Install custom Claude commands from templates
+# Install generated Claude Code files
+if [ -f "$CODEGEN_DIR/templates/generated/claude-code/claude-code-settings.json" ]; then
+    cp "$CODEGEN_DIR/templates/generated/claude-code/claude-code-settings.json" "$CLAUDE_SETTINGS_FILE"
+    echo "   ✅ Claude Code settings installed at: $CLAUDE_SETTINGS_FILE"
+fi
+
+# Install custom Claude commands from generated templates
 echo "   📁 Installing custom Claude commands..."
-if [ -d "$CODEGEN_DIR/templates/claude-commands" ]; then
-    for cmd_file in "$CODEGEN_DIR/templates/claude-commands"/*.md; do
+if [ -d "$CODEGEN_DIR/templates/generated/claude-code/commands" ]; then
+    for cmd_file in "$CODEGEN_DIR/templates/generated/claude-code/commands"/*.md; do
         if [ -f "$cmd_file" ]; then
             cmd_name=$(basename "$cmd_file")
             cp "$cmd_file" "$CLAUDE_COMMANDS_DIR/"
             echo "   ✅ Installed command: /${cmd_name%.md}"
         fi
     done
-else
-    echo "   ⚠️  No custom commands found in templates/claude-commands/"
 fi
 
-# Install Claude sub agents from templates
+# Install Claude sub agents from generated templates
 echo "   🤖 Installing Claude sub agents..."
 CLAUDE_AGENTS_DIR="$CLAUDE_SETTINGS_DIR/agents"
 mkdir -p "$CLAUDE_AGENTS_DIR"
 
-if [ -d "$CODEGEN_DIR/templates/claude-subagents" ]; then
-    for agent_file in "$CODEGEN_DIR/templates/claude-subagents"/*.md; do
+if [ -d "$CODEGEN_DIR/templates/generated/claude-code/agents" ]; then
+    for agent_file in "$CODEGEN_DIR/templates/generated/claude-code/agents"/*.md; do
         if [ -f "$agent_file" ]; then
             agent_name=$(basename "$agent_file")
             cp "$agent_file" "$CLAUDE_AGENTS_DIR/"
-            echo "   ✅ Installed sub agent: ${agent_name%.md}"
+            echo "   ✅ Installed Claude sub agent: ${agent_name%.md}"
         fi
     done
-else
-    echo "   ⚠️  No sub agents found in templates/claude-subagents/"
 fi
 
 # Install required dependencies
@@ -245,22 +258,34 @@ fi
 
 echo ""
 echo "🔧 Setting up OpenCode configuration..."
+
 # Create OpenCode config directory if it doesn't exist
 mkdir -p "$HOME/.config/opencode"
 
-# Basic OpenCode config for OCG integration
-if [ ! -f "$HOME/.config/opencode/config.json" ]; then
-    cat >"$HOME/.config/opencode/config.json" <<EOF
-{
-    "default_provider": "anthropic",
-    "mcp": {
-        "enabled": true
-    }
-}
-EOF
-    echo "   ✅ OpenCode configuration set up"
-else
-    echo "   ✅ OpenCode configuration already exists"
+# Install generated OpenCode configuration files
+if [ -f "$CODEGEN_DIR/templates/generated/opencode/.opencode.json" ]; then
+    cp "$CODEGEN_DIR/templates/generated/opencode/.opencode.json" "$HOME/.config/opencode/config.json"
+    echo "   ✅ OpenCode configuration installed"
+fi
+
+if [ -f "$CODEGEN_DIR/templates/generated/opencode/AGENTS.md" ]; then
+    cp "$CODEGEN_DIR/templates/generated/opencode/AGENTS.md" "$HOME/.config/opencode/"
+    echo "   ✅ OpenCode AGENTS.md installed"
+fi
+
+# Install OpenCode sub agents from generated templates
+echo "   🤖 Installing OpenCode sub agents..."
+OPENCODE_AGENTS_DIR="$HOME/.config/opencode/agent"
+mkdir -p "$OPENCODE_AGENTS_DIR"
+
+if [ -d "$CODEGEN_DIR/templates/generated/opencode/agent" ]; then
+    for agent_file in "$CODEGEN_DIR/templates/generated/opencode/agent"/*.md; do
+        if [ -f "$agent_file" ]; then
+            agent_name=$(basename "$agent_file")
+            cp "$agent_file" "$OPENCODE_AGENTS_DIR/"
+            echo "   ✅ Installed OpenCode sub agent: ${agent_name%.md}"
+        fi
+    done
 fi
 
 # Create OCG config directory
@@ -314,6 +339,9 @@ else
     echo ""
     echo "✅ AI assistant configuration already exists"
 fi
+
+# Clean up generated templates now that everything is installed
+cleanup_generated_templates
 
 echo ""
 echo "✅ Installation complete!"
