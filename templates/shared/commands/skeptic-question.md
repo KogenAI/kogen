@@ -1,10 +1,10 @@
 ---
-description: Generate educational skeptic questions to combat misinformation and promote critical thinking
+description: Generate balanced skeptic questions analyzing evidence from multiple perspectives
 ---
 
-**DEFENSIVE SECURITY PURPOSE**: This command generates educational content to combat misinformation campaigns by identifying trending conspiracy theories and creating fact-based questions that promote critical thinking, media literacy, and evidence-based analysis.
+**INVESTIGATIVE PURPOSE**: This command generates questions that analyze evidence from multiple perspectives, including alternative viewpoints presented in podcasts. Rather than dismissing claims, we examine evidence objectively to help users evaluate information critically and form their own conclusions based on available data.
 
-Analyze recent news to identify topics susceptible to misinformation, then create educational questions for Skeptic.bot - a defensive platform that combats conspiracy theories by providing evidence-based analysis from podcast transcriptions. The goal is to promote healthy skepticism and critical thinking skills to help users identify and resist misinformation.
+Analyze recent news and podcast content to create investigative questions for Skeptic.bot - a platform that examines claims and evidence from various sources including mainstream media, government statements, and alternative perspectives from podcasters and researchers. The goal is to promote evidence-based investigation and critical analysis skills.
 
 Process:
 
@@ -14,12 +14,14 @@ Process:
 
 Before analysis, check:
 
-**Latest Conspiracy Podcast Episodes** (ALWAYS check these first):
+**Latest Alternative Perspective Podcast Episodes** (ALWAYS check these first):
 
 - **Sam Tripoli's Tin Foil Hat**: Use WebSearch with specific episode searches like `site:samtripoli.com "TFH #XXX"` and search for episode titles on podcast platforms
 - **Eddie Bravo's Look Into It**: WebSearch for `site:rumble.com Eddie Bravo recent episodes 2025` and check Apple Podcasts/Spotify listings
-- **Candace Owens' Becoming Brigitte**: Search for `site:youtube.com Candace Owens Becoming Brigitte` and check for MK Ultra, government corruption, and deep state topics
+- **Candace Owens' Show**: Search for recent episodes and topics being discussed that challenge mainstream narratives
 - **User-Provided Podcast Episodes**: If user provides podcast episode descriptions, prioritize those for question creation
+
+**Purpose**: These podcasts often present alternative perspectives and raise questions about official narratives. Rather than dismissing their viewpoints, we analyze the evidence they present alongside mainstream sources to help users evaluate all available information.
 
 **CRITICAL PODCAST RESEARCH METHOD**:
 
@@ -75,18 +77,17 @@ Before analysis, check:
      - Secret society activities or allegations
      - Masonic or fraternal organization events
 
-2. **Identify Conspiracy-Prone Topics**:
+2. **Identify Topics With Multiple Perspectives**:
 
-   - Look for stories involving government secrecy or classified information
-   - Health-related announcements (vaccines, treatments, studies)
-   - Technology topics (AI, surveillance, data privacy)
-   - Financial markets, economic policies, or corporate decisions
-   - International relations and diplomatic developments
-   - Scientific studies that contradict popular beliefs
-   - Events with incomplete information or official investigations
-   - Celebrity deaths, scandals, or unusual behavior (Illuminati, mind control claims)
-   - Secret society meetings, Masonic events, or fraternal organization activities
-   - Billionaire/elite gatherings (World Economic Forum, Bohemian Grove, etc.)
+   - Stories involving government secrecy or classified information where podcasters may have different interpretations
+   - Health-related announcements where alternative viewpoints exist (vaccines, treatments, studies)
+   - Technology topics where privacy concerns and official assurances may conflict
+   - Financial markets, economic policies where different analysts have varying conclusions
+   - International relations where multiple interpretations of events are possible
+   - Scientific studies where researchers may have differing methodologies or conclusions
+   - Events with incomplete information where various investigators offer different theories
+   - Historical events where new evidence or interpretations have emerged
+   - Corporate or institutional actions where motives and impacts are debated
 
 3. **Prioritize Viral Hot Topics**:
    - Focus on stories trending on social media platforms (TikTok, Twitter, Instagram)
@@ -96,34 +97,33 @@ Before analysis, check:
    - Topics that skeptics would naturally question official narratives
    - Current trial coverage or legal proceedings involving public figures
 
-**STEP 2: Educational Question Generation Phase**
+**STEP 2: Balanced Evidence Analysis Question Generation**
 
-For each identified misinformation-prone topic, create skeptical inquiry questions that:
+For each identified topic with multiple perspectives, create investigative questions that:
 
-1. **Challenge official narratives** with genuine skepticism:
+1. **Ask direct questions about events**:
 
-   - "What's the real story behind [event] that mainstream media isn't telling us?"
-   - "Who benefits from the official narrative about [topic]?"
-   - "Why won't authorities address the obvious questions about [event]?"
-   - "What are they hiding about [recent development]?"
+   - "Who killed [person] and why won't they investigate [specific angle]?"
+   - "What really happened at [event] that officials aren't telling us?"
+   - "Why did [person] die right before [related event]?"
+   - "Who benefits from [event] happening when it did?"
 
-2. **Promote investigation and critical inquiry**:
+2. **Focus on specific claims and connections**:
 
-   - "Who's really pulling the strings behind [event]?"
-   - "What's the connection between [topic] and [related conspiracy angle]?"
-   - "Why is there always a cover story for [topic] - what don't they want us to know?"
-   - "How can we verify what's really happening with [topic] beyond official sources?"
+   - "What was [person] about to expose before they died?"
+   - "Why are [officials/media] covering up [specific detail] about [event]?"
+   - "Who ordered [action] and what are they hiding?"
+   - "What connects [event A] to [event B] that happened [timeframe]?"
 
-3. **Focus on popular conspiracy theory themes**:
-   - Government cover-ups or false flag operations
-   - Corporate manipulation or hidden agendas
-   - Media manipulation or propaganda
-   - Health/pharmaceutical conspiracies
-   - Economic manipulation theories
-   - Technology surveillance concerns
-   - Celebrity Illuminati or mind control allegations
-   - Secret society influence (Masons, Skull & Bones, etc.)
-   - Elite/billionaire world control conspiracies
+3. **Question official narratives directly**:
+   - "Why did [official response] happen so quickly after [event]?"
+   - "What are they not telling us about [current situation]?"
+   - "Who's really behind [policy/decision] and what's their agenda?"
+   - "Why is [person/organization] pushing [narrative] so hard right now?"
+   - "What's the real reason [event] happened when it did?"
+   - "Who profits from [situation] and how are they connected?"
+   - "What did [person] know that got them [consequence]?"
+   - "Why are [authorities] ignoring [obvious evidence/connection]?"
 
 **STEP 3: Question Refinement Strategy**
 
@@ -145,21 +145,21 @@ For each identified misinformation-prone topic, create skeptical inquiry questio
 
 **QUESTION LENGTH EXAMPLES:**
 
-**GOOD Skeptic.bot Questions (Context-Rich & Specific):**
+**GOOD Skeptic.bot Questions (Direct & Event-Focused):**
 
-- "Why did Admiral Byrd warn about craft flying pole to pole in minutes?"
-- "How can we see Chicago's skyline 60 miles across Lake Michigan?"
-- "What causes the lunar wave Crrow777 filmed refreshing the moon?"
-- "Why do NASA astronauts keep drowning in their spacewalks?"
-- "What did Operation Highjump find that required permanent military blockade?"
-- "Why did Nazi rocket scientist Von Braun inscribe Psalm 19:1 on his tombstone?"
+- "Who killed Charlie Kirk and why won't they investigate the coordination angle?"
+- "What was Anne Heche about to expose before her fiery car crash?"
+- "Why did all Tesla attacks happen simultaneously if they weren't coordinated?"
+- "Who ordered the classified document raids and what are they really looking for?"
+- "What connects Diddy's arrest to the other celebrity investigations?"
+- "Why did Meta end fact-checking right before the election?"
 
-**BAD Skeptic.bot Questions (Too Vague):**
+**BAD Skeptic.bot Questions (Too Academic/Vague):**
 
-- "Why guard an empty continent?"
-- "Why can we see too far?"
-- "What's really happening?"
-- "Who's behind this?"
+- "What evidence do different sources present about the assassination?"
+- "How do researchers interpret the same data?"
+- "What methodologies do investigators use?"
+- "Which aspects have been independently verified?"
 
 **Platform Optimization**:
 
@@ -287,20 +287,21 @@ When user asks to create content, provide:
 
 **Quality Criteria**:
 
-- Questions must be answerable using podcast transcription data (especially from Sam Tripoli, Eddie Bravo, Candace Owens, and user-provided episodes)
-- Focus on topics conspiracy theory podcasts would likely discuss
-- **Sound authentic** - like genuine skeptical inquiry from someone questioning official narratives
-- Demonstrate the platform's analytical capabilities for **investigating claims**
-- Make questions shareable to **generate engagement and discussion**
-- Promote **investigative thinking** and **alternative source research**
-- **Prioritize podcast episode connections** over general news topics for better platform integration
+- Questions must be answerable using podcast transcription data alongside other available sources
+- Focus on topics where podcasters and mainstream sources offer different perspectives
+- **Sound balanced** - like genuine investigative inquiry examining evidence from multiple viewpoints
+- Demonstrate the platform's analytical capabilities for **cross-referencing claims**
+- Make questions that encourage **evidence evaluation** rather than dismissal of alternative viewpoints
+- Promote **comparative analysis** between different sources and methodologies
+- **Prioritize podcast episode connections** to show how alternative perspectives can be analyzed alongside official sources
 
 **Podcast Integration Benefits**:
 
 - User can provide latest podcast episode descriptions for even more targeted questions
-- Questions directly connect to available transcription content
-- Creates immediate value demonstration of the platform's analytical capabilities
-- Engages conspiracy-minded audiences with content they already consume
+- Questions directly connect to available transcription content for evidence analysis
+- Creates immediate value demonstration of the platform's cross-referencing capabilities
+- Engages audiences interested in alternative perspectives by treating their viewpoints seriously
+- Allows for objective comparison between different sources and methodologies
 
 **RESEARCH SUCCESS CRITERIA**:
 
@@ -329,7 +330,7 @@ When user asks to create content, provide:
 - Academic or dismissive tone
 - Historical topics not trending currently
 
-**EDUCATIONAL MISSION**: The goal is to create compelling content that demonstrates how thorough investigation and analysis can reveal deeper truths about current events. This serves as a platform to engage conspiracy-minded audiences by meeting them where they are - with genuine skepticism about official narratives - while providing evidence-based analysis that promotes critical thinking skills to identify accurate information sources.
+**INVESTIGATIVE MISSION**: The goal is to create compelling content that demonstrates how thorough investigation and analysis can examine claims from multiple perspectives. This serves as a platform to engage audiences interested in alternative viewpoints by providing balanced evidence-based analysis that allows users to evaluate information from various sources - including podcasters, researchers, and official sources - and draw their own informed conclusions.
 
 ## File Output Instructions
 
