@@ -106,6 +106,25 @@ Generate 5-10 topic suggestions by:
 - Error handling (missing: StaleEntryError, GenServer crashes)
 - Email/Communication (missing: MJML templates, notification patterns)
 
+**"Hidden Feature" Angle (High Engagement)**
+
+Look for features that are:
+
+- ✅ **Built into frameworks** but poorly documented
+- ✅ **Solve common problems** but hard to discover
+- ✅ **Mentioned briefly** in docs without examples
+- ✅ **Save significant debugging time** when found
+
+**Examples of "hidden" features that work well:**
+
+- `Ecto.Changeset.optimistic_lock/3` - prevents race conditions, buried in changeset docs
+- `:sys.get_state/1` - debug GenServers/LiveViews, mentioned in Erlang docs only
+- `Phoenix.LiveView.assign_new/3` - conditional assigns, not in main guides
+- `Ecto.Query.exclude/2` - remove query parts, rarely mentioned
+
+**Template for hidden features:**
+"[Framework] has a hidden feature that [solves problem]. It's been [where it's documented] for years, but most developers [what they do instead]. Here's how it works..."
+
 Present each suggestion as:
 
 - **Title**: Proposed drop title
@@ -163,14 +182,45 @@ Optional: Links to docs, related patterns, or further reading
    - Verify the solution is the simplest that works
    - Ensure the explanation adds context without being verbose
 
-6. **Final Output** - Save as markdown file AND provide Twitter hook:
+6. **Code Formatting** - Ensure proper Elixir formatting:
+
+   **CRITICAL**: Markdown code blocks don't get auto-formatted by `mix format`. Use this workflow:
+
+   ```bash
+   # For each code block in your drop:
+   # 1. Create temporary .exs file with the code
+   echo 'def your_function...' > temp_format.exs
+
+   # 2. Format with mix
+   mix format temp_format.exs
+
+   # 3. Copy formatted code back to markdown
+   # 4. Delete temporary file
+   rm temp_format.exs
+   ```
+
+   **Formatting Best Practices**:
+
+   - **Comments**: Place on separate lines above code, not inline (better readability)
+   - **Pipe formatting**: Each `|>` on its own line with proper indentation
+   - **Consistent spacing**: Follow `mix format` output exactly
+   - **Multiple blocks**: Create separate temp files (temp_format1.exs, temp_format2.exs, etc.)
+
+   **Why this matters**:
+
+   - Code blocks in drops become screenshots for social media
+   - Proper formatting makes code more readable and professional
+   - Consistent with Elixir community standards
+   - Prevents formatting issues that distract from content
+
+7. **Final Output** - Save as markdown file AND provide Twitter hook:
 
    - Use Write tool to save the content as `[topic_name]_drop.md` in the project directory
    - Use proper markdown formatting (no code block wrapping)
    - This avoids terminal formatting issues and makes copy/paste clean
    - **MANDATORY: Provide a Twitter-ready hook** - Clean, direct thread with key insight and link (minimal emojis, no fluff)
 
-7. **Content Categories** - Focus on high-value topics:
+8. **Content Categories** - Focus on high-value topics:
 
    - **Core Elixir**: Pattern matching tricks, data transformation, error handling
    - **Phoenix/LiveView**: Components, real-time features, form handling, testing
@@ -179,37 +229,37 @@ Optional: Links to docs, related patterns, or further reading
    - **Performance**: Profiling, optimization techniques, memory management
    - **Integration**: APIs, external services, background jobs
 
-8. **Recipe Transformation Guidelines** - If adapting from recipes:
+9. **Recipe Transformation Guidelines** - If adapting from recipes:
 
    - Extract the core problem and solution
    - Simplify the code example to the essential parts
    - Focus on one specific aspect rather than the complete implementation
    - Turn detailed considerations into brief gotchas or tips
 
-9. **Testing Workflow Example**:
+10. **Testing Workflow Example**:
 
-   Create a simple test script to validate your drop:
+    Create a simple test script to validate your drop:
 
-   ```elixir
-   # test_drop.exs
-   # Test your drop code here
+    ```elixir
+    # test_drop.exs
+    # Test your drop code here
 
-   # Example: Testing a pattern matching solution
-   defmodule DropTest do
-     def test_pattern_matching do
-       # Your drop's code example
-       case {:ok, "result"} do
-         {:ok, value} -> IO.puts("Success: #{value}")
-         {:error, reason} -> IO.puts("Error: #{reason}")
-       end
-     end
-   end
+    # Example: Testing a pattern matching solution
+    defmodule DropTest do
+      def test_pattern_matching do
+        # Your drop's code example
+        case {:ok, "result"} do
+          {:ok, value} -> IO.puts("Success: #{value}")
+          {:error, reason} -> IO.puts("Error: #{reason}")
+        end
+      end
+    end
 
-   DropTest.test_pattern_matching()
-   IO.puts("✅ Drop code tested successfully!")
-   ```
+    DropTest.test_pattern_matching()
+    IO.puts("✅ Drop code tested successfully!")
+    ```
 
-   Run with: `elixir test_drop.exs`
+    Run with: `elixir test_drop.exs`
 
 Critical Requirements:
 
