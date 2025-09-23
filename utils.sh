@@ -17,9 +17,9 @@ open_cursor_workspace() {
 
     if command -v cursor >/dev/null 2>&1; then
         if [ -f "$workspace_path/${feature_name}.code-workspace" ]; then
-            cursor "$workspace_path/${feature_name}.code-workspace" &
+            cursor -n "$workspace_path/${feature_name}.code-workspace" &
         else
-            cursor "$workspace_path" &
+            cursor -n "$workspace_path" &
         fi
 
         echo "$success_message"
