@@ -51,33 +51,67 @@ Generate 5-10 topic suggestions by:
 - Consider user behavior patterns (what keeps people reading vs. what makes them leave)
 - Use popular drop patterns to inform new topic suggestions
 
-**Proven High-Performing Content Patterns (Based on Analytics + DB Analysis):**
+**🔥 HIGH-PERFORMING PATTERNS (Based on 2,700+ Impression Analytics)**
 
-**Short & Practical (High Engagement):**
+**CRITICAL SUCCESS FACTORS from top-performing drops:**
 
-- Problem → immediate solution → brief explanation format
-- "Fixing X Error" titles perform exceptionally well (Wallaby session ID drop is top performer)
-- Quick wins that save developers time (seed reproduction, config changes)
+**1. Direct Technical Warning + Solution Pattern (3,596 impressions):**
 
-**Comprehensive Guides (Deep Engagement):**
+- **Opening Style**: "Stop using `X`" or "`X` can crash your entire BEAM VM"
+- **Hook**: Immediate security/stability concern with code comparison
+- **Structure**: Problem statement → Bad code (❌) → Good code (✅) → Why it works
+- **Examples**: String.to_atom/1 exhaustion, @impl true deprecation
 
-- Multi-section tutorials with clear headings (## format) - use sentence case, not title case
-- Step-by-step implementation with code examples
-- "How to" topics with complete workflows (sitemap generation, testing patterns)
+**2. Performance Optimization with Concrete Benefits (2,768 impressions):**
 
-**Tool/Setup Content (High Traffic):**
+- **Opening Style**: "Database queries for X become performance bottlenecks fast"
+- **Hook**: Technical problem → specific solution with measurable improvement
+- **Structure**: Problem → ETS/caching solution → Implementation → Pro tips
+- **Key Words**: "microsecond lookups", "built into the BEAM", performance comparisons
 
-- Developer workflow improvements (Cursor rules, Tidewave setup)
-- CI/CD and automation topics consistently popular
-- Version announcements and tool updates get reliable traffic
+**3. Developer UX Improvements (3,791 impressions):**
 
-**Content Structure That Works:**
+- **Opening Style**: "Use this LiveView hook to make X automatically Y"
+- **Hook**: Immediate UX benefit with minimal code
+- **Structure**: Goal → Implementation → JavaScript hook → Integration steps
+- **Focus**: Small code changes with disproportionate UX impact
 
-- Opening paragraph that immediately describes the pain point
-- First code block shows the core solution or key example
-- Additional sections for edge cases or advanced usage
-- Pro tips or gotchas sections perform well
-- External links for deeper reading add credibility
+**4. Workflow Optimization (2,872 impressions):**
+
+- **Opening Style**: "Don't regenerate your entire X for every change"
+- **Hook**: Inefficient current approach → smarter incremental solution
+- **Structure**: Current problem → Incremental approach → Implementation → Benefits
+- **Appeal**: Saves developer time and system resources
+
+**5. Hidden Feature Discovery (6,664 impressions - TOP PERFORMER):**
+
+- **Opening Style**: "Stop using `@impl true`" - direct instruction with authority
+- **Hook**: Common anti-pattern → better built-in alternative most don't know
+- **Structure**: What not to do → What to do instead → Compiler benefits → Examples
+- **Key**: Reveals overlooked framework features that improve code quality
+
+**STRUCTURAL SUCCESS ELEMENTS:**
+
+**Opening Paragraph Formula:**
+
+- **Technical authority**: Direct instruction or warning
+- **Immediate value proposition**: What problem this solves
+- **Conversational expertise**: "Here's how we handle..." or "Use this..."
+- **NO fluff**: Jump straight into the technical challenge
+
+**First Code Block Requirements:**
+
+- **Visual contrast**: ❌/✅ comparison when showing bad vs good
+- **Immediate understanding**: Code should be self-explanatory
+- **Real-world context**: Not toy examples - actual implementation patterns
+- **Progressive complexity**: Start simple, add sophistication
+
+**Content Structure That Drives Engagement:**
+
+- **Problem-first**: Technical pain point developers actually face
+- **Solution-focused**: Concrete code that solves the problem
+- **Authority-driven**: "Stop doing X" or "Here's how we handle Y"
+- **Incremental reveal**: Basic solution → advanced considerations → pro tips
 
 **Twitter Hook Style Guide:**
 
