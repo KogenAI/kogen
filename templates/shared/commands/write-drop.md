@@ -117,12 +117,15 @@ Generate 5-10 topic suggestions by:
 
 **Twitter Hook Style Guide:**
 
+- **🚨 CRITICAL: 280 character limit** - URLs count toward the limit (~35 chars for elixirdrops.net links)
+- **Aim for 240-250 characters max** - Leave buffer for engagement and readability
 - **Clean and direct** - State the problem and solution clearly
 - **Technical focus** - Lead with the code/technical insight
 - **Minimal emojis** - Use sparingly, only when they add clarity
 - **No marketing fluff** - Avoid "🧵 Thread", "👇", "Here's how", etc.
 - **Factual tone** - Present information straightforwardly
 - **Link at end** - Include drop link for full examples
+- **Count characters precisely** - Don't guess, actually measure the hook length
 
 **Rich Topic Sources Available:**
 
