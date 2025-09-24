@@ -101,10 +101,12 @@ Generate 5-10 topic suggestions by:
 
 **First Code Block Requirements:**
 
-- **Visual contrast**: ❌/✅ comparison when showing bad vs good
+- **🚨 CRITICAL: Show the solution in first block** - The first code block gets screenshotted for social media, so it MUST demonstrate the key technique/function, not just the problem
+- **Visual contrast**: ❌/✅ comparison when showing bad vs good (both in same block)
 - **Immediate understanding**: Code should be self-explanatory
 - **Real-world context**: Not toy examples - actual implementation patterns
 - **Progressive complexity**: Start simple, add sophistication
+- **🚨 CRITICAL: Perfect comment alignment** - Within each function, align ALL comments at the exact same column position (count characters precisely, don't guess)
 
 **Content Structure That Drives Engagement:**
 
@@ -239,10 +241,13 @@ Optional: Links to docs, related patterns, or further reading
    - **Pipe formatting**: Each `|>` on its own line with proper indentation
    - **Consistent spacing**: Follow `mix format` output exactly
    - **Multiple blocks**: Create separate temp files (temp_format1.exs, temp_format2.exs, etc.)
+   - **🚨 CRITICAL: Comment alignment** - Within each function, count characters precisely and align ALL inline comments at the exact same column position (don't guess - actually count!)
 
    **Why this matters**:
 
-   - Code blocks in drops become screenshots for social media
+   - **First code block becomes the social media screenshot** - it must show the solution, not just the problem
+   - Visual contrast (❌ vs ✅) in the same block creates immediate engagement
+   - People scrolling social media need to see the value instantly
    - Proper formatting makes code more readable and professional
    - Consistent with Elixir community standards
    - Prevents formatting issues that distract from content
