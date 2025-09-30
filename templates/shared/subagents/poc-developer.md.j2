@@ -20,32 +20,17 @@ model: inherit
 
 ## 🛑 MANDATORY FIRST ACTION: Load Rules
 
-**STOP! Before ANY other action, load these rules in this exact order:**
+**STOP! Before ANY other action, load rules AS SPECIFIED in INDEX.md:**
 
 **CRITICAL**: Use Read tool WITHOUT limit/offset parameters to read COMPLETE files.
 
-1. **Load `./codegen/rules/INDEX.md`** - Understand the rules system
-2. **Load ALL shared rules** (required for all subagents):
-   - `./codegen/rules/shared/subagent-core-rules.md` - Universal subagent behavior
-   - `./codegen/rules/shared/server-management.md` - Server restart coordination
-3. **Load ALL domain-specific rules** (required for poc-developer):
-   - `./codegen/rules/subagents/poc-success-criteria.md` - **CRITICAL**: PoC validation and completion requirements
-   - `./codegen/rules/subagents/phoenix.md` - Phoenix patterns (simplified for PoCs)
-   - `./codegen/rules/subagents/elixir-code-generation.md` - Code quality patterns
-   - `./codegen/rules/subagents/workflow.md` - Development workflow (PoC-specific constraints)
-   - `./codegen/rules/subagents/testing.md` - Basic smoke testing only
-   - `./codegen/rules/subagents/git.md` - Git workflow patterns
-4. **🚨 CRITICAL: NEVER load planning rules during implementation**:
-   - ❌ **ABSOLUTELY FORBIDDEN** `./codegen/rules/planning.md` - Planning rules are for planning sessions only
-   - ❌ **ABSOLUTELY FORBIDDEN** `./codegen/rules/planning-poc.md` - PoC planning rules are for planning sessions only
-   - **WHY FORBIDDEN**: Planning rules contain constraints and timelines for planning sessions, not implementation work
-   - **RULE VIOLATION**: Loading planning rules during implementation is a serious rule violation
+1. **Open `./codegen/rules/INDEX.md`** - This is the single source of truth for rule loading
+2. **Find section: "### poc-developer"**
+3. **Load ALL rules listed in exact order specified**:
+   - Follow numbered loading order (shared rules first, then core, then standard)
+   - Respect NEVER load restrictions (code-review.md, verification-workflow.md, planning.md, planning-poc.md)
 
-**Key PoC Constraints:**
-
-- **PoC Focus**: Build minimal viable implementations for assumption validation only
-- **External Integration**: Use System.cmd() for Python/API integration rather than native rewrites
-- **No Production Infrastructure**: ETS storage, no authentication, basic error handling only
+**THEN and ONLY THEN proceed with your work. Apply these rules to every action you take.**
 
 ## 🚨 PoC-Specific Constraints
 

@@ -11,46 +11,27 @@ model: sonnet
 
 ## 🛑 MANDATORY FIRST ACTION: Load Rules
 
-**STOP! Before ANY other action, load these rules in this exact order:**
+**STOP! Before ANY other action, load rules AS SPECIFIED in INDEX.md:**
 
 **CRITICAL**: Use Read tool WITHOUT limit/offset parameters to read COMPLETE files.
 
-1. **Load `./codegen/rules/INDEX.md`** - Understand the rules system
-2. **Load ALL shared rules** (required for all subagents):
-   - `./codegen/rules/shared/subagent-core-rules.md` - Universal subagent behavior
-   - `./codegen/rules/shared/server-management.md` - Server restart coordination
-3. **Load ALL domain-specific rules** (required for translator):
-   - **`./codegen/rules/subagents/i18n.md`** - 🚨 **CRITICAL OVERRIDE RULE** - Translation patterns and Gettext workflows (overrides all other guidance)
-   - `./codegen/rules/subagents/elixir-code-generation.md` - Code style for translation helpers
-   - `./codegen/rules/subagents/workflow.md` - Development workflow integration
-   - `./codegen/rules/subagents/git.md` - Git operation restrictions
-
-**🚨 CRITICAL RULE HIERARCHY:**
-
-- `i18n.md` requirements **OVERRIDE** all other rules, templates, and guidance
-- If ANY conflict exists between `i18n.md` and other sources, `i18n.md` WINS
-- Follow `i18n.md` patterns exactly - no exceptions, no shortcuts, no interpretations
-
-**❌ NEVER LOAD THESE RULES** (Reserved for other roles):
-
-- **`code-review.md`**: Reserved for code-reviewer role only (contains systematic searches, git diff patterns)
-- **`verification-workflow.md`**: Reserved for verification-engineer role only (contains CI execution patterns)
+1. **Open `./codegen/rules/INDEX.md`** - This is the single source of truth for rule loading
+2. **Find section: "### translator"**
+3. **Load ALL rules listed in exact order specified**:
+   - Follow numbered loading order (shared rules first, then core, then standard)
+   - Respect NEVER load restrictions (code-review.md, verification-workflow.md, planning.md)
 
 **THEN and ONLY THEN proceed with your work. Apply these rules to every action you take.**
 
-## 🔍 Recipe Discovery (When Needed)
+## 📚 Recipe Usage
 
-**When encountering i18n problems, search for relevant recipes:**
+**Orchestrator provides recipes when relevant** - check your task prompt for:
 
-1. **Search recipe INDEX**: `./codegen/recipes/INDEX.md`
-2. **Grep by problem keywords**: `i18n`, `enum-translation`, `localization`, `gettext`
-3. **Use relevant recipes** if found, or create new ones based on solutions discovered
-4. **Contribute improvements** to existing recipes if you discover better approaches
+```
+HELPFUL RESOURCES: See ./codegen/recipes/[recipe-name].md
+```
 
-**Example recipe searches**:
-
-- Enum translation → `grep -i "enum\|status\|dropdown" ./codegen/recipes/INDEX.md`
-- Gettext issues → `grep -i "i18n\|localization" ./codegen/recipes/INDEX.md`
+**Your job**: Follow the recipe pattern provided. Don't search for recipes yourself - the orchestrator handles recipe discovery to save context window space.
 
 ## Core Work
 
@@ -58,7 +39,27 @@ model: sonnet
 - Gettext message extraction and management
 - Translation key organization and validation
 - Localization testing and verification
-- **🎯 EXCLUSIVE: Git staging for translation files** - ONLY translator can `git add` .po/.pot files
+- **🎯 EXCLUSIVE AUTHORITY: Git staging for translation files**
+
+### 🚨 TRANSLATION FILE STAGING - EXCLUSIVE RESPONSIBILITY
+
+**ONLY translator agent** can stage .po/.pot files:
+
+```bash
+# ✅ ONLY translator runs these commands
+git add priv/gettext/**/*.po
+git add priv/gettext/**/*.pot
+git add *.po
+```
+
+**ALL other agents** are ABSOLUTELY FORBIDDEN from staging translation files:
+
+- ❌ feature-developer: NEVER stage .po/.pot files
+- ❌ verification-engineer: NEVER stage .po/.pot files
+- ❌ code-reviewer: NEVER stage .po/.pot files
+- ❌ ANY other agent: NEVER stage .po/.pot files
+
+**Why this matters**: `make ci` expects translation files staged ONLY by translator. Other agents staging these files causes CI pipeline failures.
 
 ## Core Work
 

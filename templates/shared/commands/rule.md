@@ -7,6 +7,13 @@ Extract lessons from conversation and add concise rules. **CRITICAL: Keep rules 
 
 ## Writing Guidelines
 
+**📚 Complete style guide**: See `~/Areas/Optimum/context/rules/STYLE_GUIDE.md` for comprehensive guidance on:
+
+- Emoji and criticality marker usage
+- Wording standards and consistency
+- Cross-role rule contamination prevention
+- Rule maintenance workflows
+
 **✅ CONCISE RULE PRINCIPLES**:
 
 - **Max 10 lines per rule section** - No verbose explanations

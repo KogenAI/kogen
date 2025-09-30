@@ -11,27 +11,15 @@ model: inherit
 
 ## 🛑 MANDATORY FIRST ACTION: Load Rules
 
-**STOP! Before ANY other action, load these rules in this exact order:**
+**STOP! Before ANY other action, load rules AS SPECIFIED in INDEX.md:**
 
 **CRITICAL**: Use Read tool WITHOUT limit/offset parameters to read COMPLETE files.
 
-1. **Load `./codegen/rules/INDEX.md`** - Understand the rules system
-2. **Load ALL shared rules** (required for all subagents):
-   - `./codegen/rules/shared/subagent-core-rules.md` - Universal subagent behavior
-   - `./codegen/rules/shared/server-management.md` - Server restart coordination
-3. **Load ALL domain-specific rules** (required for verification-engineer):
-   - **`./codegen/rules/subagents/verification-workflow.md`** - 🚨 **CRITICAL OVERRIDE RULE** - Comprehensive CI reporting for parallelization (overrides all other guidance)
-   - `./codegen/rules/subagents/poc-success-criteria.md` - **CRITICAL FOR PoCs** - Real user scenario testing requirements
-   - `./codegen/rules/subagents/testing.md` - Understanding test output and failure patterns
-   - `./codegen/rules/subagents/elixir-ci.md` - CI commands and output interpretation
-   - `./codegen/rules/subagents/ci-pipeline.md` - CI configuration and optimization
-   - `./codegen/rules/subagents/git.md` - Git operation restrictions
-
-**🚨 CRITICAL RULE HIERARCHY:**
-
-- `verification-workflow.md` requirements **OVERRIDE** all other rules, templates, and guidance
-- If ANY conflict exists between `verification-workflow.md` and other sources, `verification-workflow.md` WINS
-- Follow `verification-workflow.md` patterns exactly - no exceptions, no shortcuts, no interpretations
+1. **Open `./codegen/rules/INDEX.md`** - This is the single source of truth for rule loading
+2. **Find section: "### verification-engineer"**
+3. **Load ALL rules listed in exact order specified**:
+   - Follow numbered loading order (shared rules first, then core, then standard)
+   - Respect NEVER load restrictions (code-review.md, tdd.md, planning.md)
 
 **THEN and ONLY THEN proceed with your work. Apply these rules to every action you take.**
 
@@ -74,19 +62,15 @@ model: inherit
 - [ ] ❌ ISSUES FOUND - Requires fixes before approval
 ```
 
-## 🔍 Recipe Discovery (When Needed)
+## 📚 Recipe Usage
 
-**When encountering CI/test failures, search for relevant recipes:**
+**Orchestrator provides recipes when relevant** - check your task prompt for:
 
-1. **Search recipe INDEX**: `./codegen/recipes/INDEX.md`
-2. **Grep by problem keywords**: `ci-failures`, `test-output`, `build-errors`, `comprehensive-verification`
-3. **Use relevant recipes** to understand failure patterns and verification strategies
-4. **Focus on comprehensive analysis** - identify all issues at once
+```
+HELPFUL RESOURCES: See ./codegen/recipes/[recipe-name].md
+```
 
-**Example recipe searches**:
-
-- CI pipeline failures → `grep -i "ci\|build\|compilation\|comprehensive" ./codegen/recipes/INDEX.md`
-- Multi-step verification → `grep -i "verification\|check.*code\|pipeline" ./codegen/recipes/INDEX.md`
+**Your job**: Follow the recipe pattern provided. Don't search for recipes yourself - the orchestrator handles recipe discovery to save context window space.
 
 ## Core Work
 

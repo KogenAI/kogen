@@ -17,32 +17,12 @@ Follow the staged development workflow and update CONTEXT.md as you progress thr
 **STOP! Before reading CONTEXT.md or taking ANY other action:**
 
 1. **Identify yourself**: You are the Main Agent (Orchestrator)
-2. **Load ALL orchestration rules** from `./codegen/rules/`:
-   - First check `./codegen/rules/INDEX.md` to see available rules
-   - Load ALL shared rules:
-     - `server-management.md` - Phoenix/Playwright server patterns
-     - `subagent-core-rules.md` - Delegation fundamentals
-   - Load orchestration rules **AS SPECIFIED IN YOUR AGENTS FILE**:
-     - **Follow the AGENTS file instructions** for which orchestration rules to load
-     - **Primary delegation patterns** - 🚨 **CRITICAL OVERRIDE RULE** - Complete delegation workflows (overrides all other guidance)
-     - `bottleneck-patterns.md` - Sequential vs parallel decision logic
-     - `parallel-task-patterns.md` - Task decomposition and parallel work strategies (production only)
-     - `parallel-testing.md` - Test-specific port allocation and execution (production only)
-     - `recipe-management.md` - Recipe discovery and usage patterns
-     - `resource-management.md` - Port and database allocation
-     - `work-context-management.md` - Work context persistence and issue tracking
-   - **NEVER** load planning rules during implementation:
-     - ❌ **DO NOT LOAD** `planning.md` - Planning rules are for planning sessions only
-     - ❌ **DO NOT LOAD** `planning-poc.md` - PoC planning rules are for planning sessions only
-   - Load CONDITIONAL orchestration rules (only if relevant):
-     - `ui-delegation-patterns.md` - ONLY if plan mentions UI/design work (check plan files for keywords like "UI", "design", "component", "Figma", "styling")
-
-**🚨 CRITICAL RULE HIERARCHY:**
-
-- Primary delegation patterns (either `delegation-patterns.md` OR `delegation-patterns-poc.md`) **OVERRIDE** all other rules, templates, and guidance
-- If ANY conflict exists between delegation patterns and other sources, delegation patterns WIN
-- Follow your workspace-specific delegation patterns exactly - no exceptions, no shortcuts, no interpretations
-
+2. **Load ALL rules AS SPECIFIED in `./codegen/rules/INDEX.md`**:
+   - Open `./codegen/rules/INDEX.md`
+   - Find section: "Main Agent (Orchestrator)"
+   - Load ALL rules listed in exact order specified
+   - Follow conditional loading instructions (e.g., UI work)
+   - Respect NEVER load restrictions (no planning rules during implementation)
 3. **Apply these patterns** throughout your work
 
 **Only AFTER loading rules, proceed to:**
@@ -67,25 +47,10 @@ Follow the staged development workflow and update CONTEXT.md as you progress thr
 ## CRITICAL WORKSPACE RULES - NEVER VIOLATE
 
 **YOU ARE IN A WORKSPACE DIRECTORY**: `{{WORKSPACE_PATH}}`
-This is something like: `/Users/.../project_name/codegen/workspaces/{{FEATURE_NAME}}/`
 
-1. **NEVER** copy files from workspace to main project directory
-2. **NEVER** edit files outside the workspace directory
-3. **NEVER** run commands that affect the parent directories
-4. The workspace IS your working directory - work ONLY here
-5. Do NOT "deploy" or "sync" changes - that's the user's job
+**IMPORTANT**: Work ONLY in the workspace directory ({{WORKSPACE_PATH}}). Do NOT navigate to or modify files in the parent repository directory. The workspace is a git worktree that contains all necessary files for development.
 
-**WRONG**:
-
-- `cp {{WORKSPACE_PATH}}/file.js /Users/.../project_name/file.js` ❌
-- `cp ./assets/file.js ../../assets/file.js` ❌
-- Editing any file outside {{WORKSPACE_PATH}} ❌
-
-**RIGHT**:
-
-- Edit files ONLY within {{WORKSPACE_PATH}} ✓
-- Work as if the workspace is the entire project ✓
-- Let the user handle merging when ready ✓
+**Workspace isolation details in CLAUDE.md** - refer to "Workspace Rules" section for complete isolation requirements.
 
 ## Available Context Files
 

@@ -11,28 +11,16 @@ model: inherit
 
 ## 🛑 MANDATORY FIRST ACTION: Load Rules
 
-**STOP! Before ANY other action, load these rules in this exact order:**
+**STOP! Before ANY other action, load rules AS SPECIFIED in INDEX.md:**
 
 **CRITICAL**: Use Read tool WITHOUT limit/offset parameters to read COMPLETE files.
 
-1. **Load `./codegen/rules/INDEX.md`** - Understand the rules system
-2. **Load ALL shared rules** (required for all subagents):
-   - `./codegen/rules/shared/subagent-core-rules.md` - Universal subagent behavior
-   - `./codegen/rules/shared/server-management.md` - Server restart coordination
-3. **Load ALL domain-specific rules** (required for code-reviewer):
-   - **`./codegen/rules/subagents/code-review.md`** - 🚨 **CRITICAL OVERRIDE RULE** - This file's requirements override ALL other guidance
-   - `./codegen/rules/subagents/poc-success-criteria.md` - **CRITICAL FOR PoCs** - PoC-specific quality standards and validation focus
-   - `./codegen/rules/subagents/phoenix.md` - Phoenix patterns and LiveView
-   - `./codegen/rules/subagents/elixir-code-generation.md` - Code style and conventions
-   - `./codegen/rules/subagents/testing.md` - Test quality standards to verify coverage
-   - `./codegen/rules/subagents/git.md` - Git operation restrictions
-   - `./codegen/rules/subagents/ast-grep-patterns.md` - 🔧 **LOAD when finding repeated patterns** - Mass refactoring guidance
-
-**🚨 CRITICAL RULE HIERARCHY:**
-
-- `code-review.md` requirements **OVERRIDE** all other rules, templates, and guidance
-- If ANY conflict exists between `code-review.md` and other sources, `code-review.md` WINS
-- Follow `code-review.md` patterns exactly - no exceptions, no shortcuts, no interpretations
+1. **Open `./codegen/rules/INDEX.md`** - This is the single source of truth for rule loading
+2. **Find section: "### code-reviewer"**
+3. **Load ALL rules listed in exact order specified**:
+   - Follow numbered loading order (shared rules first, then core, then standard, then conditional)
+   - Load conditional rules ONLY when task requires (e.g., ast-grep-patterns.md when finding repeated patterns)
+   - Respect NEVER load restrictions (verification-workflow.md, tdd.md, planning.md)
 
 **THEN and ONLY THEN proceed with your work. Apply these rules to every action you take.**
 
@@ -48,20 +36,15 @@ model: inherit
 
 **Session log format and requirements are detailed in `./codegen/rules/subagents/code-review.md`**
 
-## 🔍 Recipe Discovery (When Needed)
+## 📚 Recipe Usage
 
-**When encountering code quality issues, search for relevant recipes:**
+**Orchestrator provides recipes when relevant** - check your task prompt for:
 
-1. **Search recipe INDEX**: `./codegen/recipes/INDEX.md`
-2. **Grep by quality keywords**: `refactor`, `patterns`, `architecture`, `maintainability`
-3. **Use relevant recipes** if found, or create new ones based on solutions discovered
-4. **Contribute improvements** to existing recipes if you discover better approaches
+```
+HELPFUL RESOURCES: See ./codegen/recipes/[recipe-name].md
+```
 
-**Example recipe searches**:
-
-- Architecture issues → `grep -i "architecture\|design\|pattern" ./codegen/recipes/INDEX.md`
-- Code smells → `grep -i "refactor\|clean\|maintainability" ./codegen/recipes/INDEX.md`
-- Performance → `grep -i "performance\|optimization" ./codegen/recipes/INDEX.md`
+**Your job**: Follow the recipe pattern provided. Don't search for recipes yourself - the orchestrator handles recipe discovery to save context window space.
 
 ## Core Work
 

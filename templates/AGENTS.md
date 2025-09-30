@@ -20,6 +20,25 @@ Universal guidance for AI assistants in OCG workspaces.
 - **Subagents**: Your role definition file specifies exactly which rules to load - follow that list precisely
 - **All Agents**: Always load shared rules (server-management, subagent-core-rules)
 
+## 🚨 Planning vs Implementation Rule Separation
+
+**CRITICAL: NEVER load planning rules during implementation**
+
+ALL agents (orchestrator and subagents) must follow:
+
+❌ **FORBIDDEN during implementation**:
+
+- `planning.md` (planning sessions only)
+- `planning-poc.md` (PoC planning sessions only)
+
+✅ **Use these rules ONLY during**:
+
+- `ocg bird-eye` sessions
+- `ocg plan` sessions
+- Planning mode contexts
+
+**Why forbidden**: Planning rules contain constraints and timelines for planning sessions. Loading during implementation creates confusion between planning goals and implementation execution.
+
 **🚨 CRITICAL: Cross-Role Rule Contamination**
 
 **PROBLEM**: Implementation rules (like `testing.md`, `workflow.md`, `ci-pipeline.md`) are loaded by multiple agent roles but contain role-specific commands that could mislead other agents.
@@ -39,11 +58,44 @@ Universal guidance for AI assistants in OCG workspaces.
 
 **Role-Specific Command Restrictions**:
 
-- **verification-engineer**: Can run `./codegen/ci.sh`, `mix test`, individual CI components
-- **feature-developer**: Can run `mix test test/path/file.exs`, `mix compile`, `mix format` - NEVER `./codegen/ci.sh`, NEVER load `code-review.md`
-- **code-reviewer**: Can run `git diff`, `grep` searches - NEVER `mix test`, NEVER `./codegen/ci.sh`
-- **translator**: Can run `mix gettext.extract` - NEVER `./codegen/ci.sh`, NEVER load `code-review.md`
-- **test-engineer**: Can run `mix test`, individual test commands - NEVER `./codegen/ci.sh`, NEVER load `verification-workflow.md`
+**Why restrictions exist**: Prevents cross-role contamination where agents see commands in shared rules and think they can execute them.
+
+### Command Authority Matrix
+
+| Command                            | verification-engineer | feature-developer | code-reviewer | test-engineer |
+| ---------------------------------- | --------------------- | ----------------- | ------------- | ------------- |
+| `./codegen/ci.sh`                  | ✅ Full suite         | ❌ FORBIDDEN      | ❌ FORBIDDEN  | ❌ FORBIDDEN  |
+| `mix test` (no args)               | ✅ Full suite         | ❌ FORBIDDEN      | ❌ FORBIDDEN  | ❌ FORBIDDEN  |
+| `mix test test/file.exs`           | ✅ Allowed            | ✅ Targeted only  | ❌ FORBIDDEN  | ✅ During dev |
+| `mix credo --strict`               | ✅ Full scan          | ✅ Self-check     | ❌ Read only  | ✅ Self-check |
+| `mix compile --warnings-as-errors` | ✅ Verification       | ✅ Self-check     | ❌ FORBIDDEN  | ✅ Self-check |
+
+**Critical distinctions**:
+
+- `mix test` = full suite = verification-engineer ONLY
+- `mix test test/specific_file.exs` = targeted = feature-developer OK during development
+- code-reviewer NEVER executes, only analyzes
+
+### Translation File Staging (EXCLUSIVE)
+
+**ONLY translator agent** can stage .po/.pot files:
+
+| Command                         | translator   | ALL other agents        |
+| ------------------------------- | ------------ | ----------------------- |
+| `git add priv/gettext/**/*.po`  | ✅ EXCLUSIVE | ❌ ABSOLUTELY FORBIDDEN |
+| `git add priv/gettext/**/*.pot` | ✅ EXCLUSIVE | ❌ ABSOLUTELY FORBIDDEN |
+| `git add *.po`                  | ✅ EXCLUSIVE | ❌ ABSOLUTELY FORBIDDEN |
+
+**Why this matters**:
+
+- `make ci` expects translation files staged ONLY by translator
+- Other agents staging .po/.pot files causes CI pipeline failures
+- Translator has specialized workflow for gettext file management
+
+**If you need translation files staged**:
+
+- ❌ DO NOT stage them yourself
+- ✅ Report to orchestrator: "Translation files need staging - delegate to translator"
 
 **Example**: If `testing.md` shows `./codegen/ci.sh`, only verification-engineer should execute it. Other agents should treat it as documentation only.
 
@@ -135,17 +187,42 @@ HELPFUL RESOURCES: See ./codegen/recipes/phoenix-async-feature-testing.md
 
 ## 📊 MANDATORY: Session Logging
 
-**CRITICAL - Log your session for debugging the OCG system:**
+**ALL agents** must create session logs as SECOND action (after loading rules).
+
+**Standard Format**:
+
+```bash
+LOG_FILE="./codegen/logging/$(date -u +%Y%m%d_%H%M%S)_[role].md"
+```
+
+**Role values**:
+
+- orchestrator
+- feature-developer
+- verification-engineer
+- code-reviewer
+- test-engineer
+- ui-specialist
+- translator
+- devops-manager
+- infrastructure-architect
+- poc-developer
+
+**Example**:
+
+```bash
+# For orchestrator:
+./codegen/logging/20250930_143022_orchestrator.md
+
+# For feature-developer:
+./codegen/logging/20250930_143156_feature-developer.md
+```
 
 **WHEN**:
 
 1. Create log file as your SECOND action (after loading rules)
 2. **UPDATE CONTINUOUSLY** - Edit the log file throughout your session
 3. Update after each major action (delegation, tool use, file modification)
-
-**WHERE**: `./codegen/logging/$(date -u +%Y%m%d_%H%M%S)_<agent_role>.md`
-
-**Agent roles**: `orchestrator`, `feature-developer`, `test-engineer`, `verification-engineer`, `code-reviewer`, `ui-specialist`, `devops-manager`, `translator`
 
 **LOG FORMAT**:
 

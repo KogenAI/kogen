@@ -15,6 +15,12 @@ You are executing the compress-rules command. Systematically compress ALL rule f
 
 ## Compression Principles
 
+**📚 Style guide reference**: See `~/Areas/Optimum/context/rules/STYLE_GUIDE.md` for:
+
+- Visual marker usage standards
+- Wording consistency guidelines
+- Cross-role contamination prevention
+
 **CRITICAL: Preserve ALL Knowledge**
 
 - Every rule, pattern, gotcha, and discovery must be kept
