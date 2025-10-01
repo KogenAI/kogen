@@ -30,16 +30,39 @@ Generate 5-10 topic suggestions by:
 
 **Content Discovery Steps (Using index.md):**
 
-1. **Fetch the drops index**: Use WebFetch on `https://elixirdrops.net/index.md` to get all existing drops
-2. **Parse existing titles and topics** from the index to avoid duplication
-3. **Search for similar topics with semantic understanding:**
+🚨 **CRITICAL - MANDATORY DUPLICATION CHECK (NO EXCEPTIONS):**
+
+1. **Fetch the COMPLETE drops index**:
+
+   ```
+   Use WebFetch on `https://elixirdrops.net/index.md` with this EXACT prompt:
+   "Extract COMPLETE list of ALL drop titles, one per line, so I can check for duplicates.
+   Include every single drop listed in the index."
+   ```
+
+2. **VERIFY you received ALL drops**: The response should contain 40+ drop titles. If you get less, you FAILED the fetch.
+
+3. **Create a duplication avoidance list**: Before generating ANY suggestions, write out the complete list of topics to avoid:
+
+   - Existing published drops (from index.md)
+   - Draft drops in current directory (check `ls *.md`)
+   - Semantic variations (e.g., "Ecto.StaleEntryError" = "optimistic locking" = "race conditions in updates")
+
+4. **Search for similar topics with semantic understanding:**
+
    - Don't just match keywords - understand the core problem/solution
    - A drop about "Parameter validation" could overlap with "Safe URL params" or "Ecto changesets"
-4. **Cross-check all variations** - Think about different ways developers might describe the same problem
-5. Find related topics for inspiration: Look for gaps or complementary angles
+   - A drop about "String.to_atom" covers "atom exhaustion" AND "preventing atom attacks"
+
+5. **Cross-check EVERY suggestion against the avoidance list** - If ANY overlap exists, REMOVE that suggestion
+
 6. **For full content verification**: Access individual drops via `https://elixirdrops.net/d/{short_id}.md`
-7. **User feedback integration**: If user says "Did you check for redundant content?" - you missed something
+
+7. **User feedback integration**: If user says "Did you check for redundant content?" - you FAILED and must start over
+
 8. Cross-reference short_ids with Plausible analytics data to understand what formats work best
+
+**BLOCKING RULE**: Do NOT present suggestions to the user until you have verified ZERO duplication against the complete index.
 
 **Analytics Integration (MANDATORY FIRST STEP):**
 
