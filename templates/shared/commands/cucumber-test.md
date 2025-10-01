@@ -94,11 +94,51 @@ Use the Write tool to create the `.feature` file with:
 
 Create a corresponding step definition file template showing:
 
-- Module name and location
-- Required imports (fixtures, helpers)
-- Step definition stubs for the scenarios
-- Context management patterns
-- Integration with existing Phoenix/Playwright infrastructure
+- Module name and location (`defmodule ProjectWeb.Features.DomainSteps`)
+- **Required**: `use Cucumber.StepDefinition` at the top
+- Required imports (fixtures, helpers, assertions)
+- Step definition stubs using the `step` macro
+- Proper parameter matching (`{string}`, `{int}`, `{float}`)
+- Context management patterns (returning updated context map)
+- Integration with existing Phoenix test infrastructure
+
+**Correct Step Definition Pattern:**
+
+```elixir
+defmodule BemedaPersonalWeb.Features.AuthenticationSteps do
+  use Cucumber.StepDefinition
+
+  import Phoenix.ConnTest
+  import Phoenix.LiveViewTest
+  import ExUnit.Assertions
+  import BemedaPersonal.AccountsFixtures
+
+  # Step with string parameter
+  step "I am logged in as {string}", %{args: [user_type]} = context do
+    user = user_fixture(%{user_type: String.to_existing_atom(user_type)})
+    conn = log_in_user(build_conn(), user)
+
+    updated_context = context
+    |> Map.put(:conn, conn)
+    |> Map.put(:current_user, user)
+
+    {:ok, updated_context}
+  end
+
+  # Step without parameters
+  step "I visit the login page", context do
+    {:ok, view, _html} = live(context.conn, ~p"/users/log_in")
+    {:ok, Map.put(context, :view, view)}
+  end
+
+  # Step with assertion
+  step "I should see {string}", %{args: [text]} = context do
+    html = render(context.view)
+    assert html =~ text
+    {:ok, context}
+  end
+end
+```
 
 **Example Output Structure:**
 
@@ -113,6 +153,18 @@ Template: test/features/step_definitions/authentication_steps.exs
 - **Follow existing patterns** - Match the project's current feature structure if it exists
 - **Stakeholder readable** - Business language only, no technical implementation details
 - **Tag appropriately** - Include relevant tags for test execution and organization
-- **Provide next steps** - Show user how to implement the step definitions
+- **Use proper Cucumber syntax** - `use Cucumber.StepDefinition` and `step` macro
+- **Parameter types** - Use `{string}`, `{int}`, `{float}` for capturing values
+- **Context management** - Always return updated context map from steps
+- **Provide next steps** - Show user how to run the tests (`mix test --only @tag`)
 
-This command bridges the gap between informal test ideas and structured BDD implementation, making it easy to convert business requirements into executable specifications.
+**Key Cucumber Patterns to Follow:**
+
+1. **Step definitions are in `test/features/step_definitions/*.exs`** - Not in test files
+2. **Feature files are in `test/features/domain/*.feature`** - Organized by domain
+3. **Context is a map** - Pass data between steps via context map
+4. **Parameters in args** - Access via `%{args: [param1, param2]}` pattern
+5. **Return tuple** - Each step MUST return `{:ok, context}` tuple (not just context)
+6. **Test helper order** - `ExUnit.start()` THEN `Cucumber.compile_features!()`
+
+This command bridges the gap between informal test ideas and structured BDD implementation using actual Cucumber for Elixir, making it easy to convert business requirements into executable specifications.

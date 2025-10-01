@@ -87,9 +87,78 @@ Include in your plan:
 - Parallel work recommendations (if applicable)
 - Success criteria and risk assessment
 
+### 🚨 MANDATORY: Hallucination Check Before Finalizing
+
+**CRITICAL**: Even for strategic plans, verify claims against actual project state and domain knowledge.
+
+**REQUIRED CHECKS**:
+
+1. **Project State Verification**:
+
+   - Use Grep/Read to verify existing features you mention
+   - Confirm user types/roles actually exist in the system
+   - Check that workflows you reference are implemented
+   - Verify integration points you describe exist
+
+2. **Domain Knowledge**:
+
+   - If mentioning industry standards, verify they're real
+   - If referencing regulations/compliance, confirm requirements
+   - If citing user research, ensure it's documented somewhere
+   - If describing competitors, verify features actually exist
+
+3. **Common Bird-Eye Hallucinations**:
+
+   - ❌ Claiming features exist that don't ("integrate with existing X")
+   - ❌ Inventing user types not in the system ("admin users can...")
+   - ❌ Assuming workflows that aren't implemented ("after authentication flow...")
+   - ❌ Wrong assumptions about existing architecture
+   - ❌ Citing non-existent project patterns or conventions
+
+4. **Verification Process**:
+
+   ```bash
+   # Verify features exist
+   grep -r "FeatureName" lib/
+
+   # Check user types
+   grep -r "user_type" lib/*/accounts/
+
+   # Confirm workflows
+   grep -r "workflow_name" lib/
+   ```
+
+5. **Document What You Verified**:
+
+   ```markdown
+   ## Verification Notes
+
+   - ✅ Confirmed "job posting" feature exists (lib/bemeda_personal/job_postings/)
+   - ✅ Verified user types: job_seeker, employer (accounts/user.ex:45)
+   - ✅ Checked authentication flow is implemented (user_session_controller.ex)
+   - ⚠️ Note: "scheduling" mentioned but not yet implemented - flagged as future work
+   ```
+
+**WHEN TO CHECK**:
+
+- ANY claim about existing features/functionality
+- User types, roles, permissions
+- Workflows and user journeys
+- Integration points with other features
+- Industry standards or regulations
+
+**Example Catches**:
+
+- Claiming "job seeker can schedule interviews" when scheduling doesn't exist
+- Referencing "admin dashboard" that isn't built yet
+- Assuming authentication pattern that project doesn't use
+- Inventing user types not in the data model
+
+**If you find mismatches**: Correct assumptions or mark clearly as "Future Work" vs "Current State".
+
 ### Next Steps
 
-After completing bird-eye planning:
+After completing bird-eye planning AND verification:
 
 1. Use `ocg plan {{FEATURE_NAME}}` for detailed technical planning
 2. Use `ocg new {{FEATURE_NAME}}` to create implementation workspace

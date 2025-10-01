@@ -205,9 +205,54 @@ Your plan should be detailed enough that an engineer can:
 - Understand integration requirements
 - Identify potential risks and challenges
 
+### 🚨 MANDATORY: Hallucination Check Before Finalizing
+
+**CRITICAL**: After writing your plan, you MUST verify it against official documentation to catch hallucinations.
+
+**PROCESS**:
+
+1. **Identify External Dependencies**: List all libraries, frameworks, tools mentioned in your plan
+2. **Verify Each Dependency**:
+   - Use WebFetch or WebSearch to check official documentation
+   - Verify syntax, API patterns, configuration options
+   - Confirm features and capabilities actually exist
+3. **Check Common Hallucination Risks**:
+   - ❌ Library/function names (e.g., claiming "PhoenixTest.Playwright" exists)
+   - ❌ Configuration order (e.g., wrong setup sequence in test_helper.exs)
+   - ❌ API return values (e.g., returning `context` instead of `{:ok, context}`)
+   - ❌ Parameter syntax (e.g., wrong pattern matching format)
+   - ❌ Module names (e.g., incorrect namespace paths)
+4. **Document Verification**: Add "Verified Against Documentation" section to overview.md:
+
+```markdown
+## Verified Against Documentation
+
+- ✅ Cucumber 0.4.1: Verified setup, step syntax, return values
+- ✅ Phoenix LiveView: Confirmed testing patterns from hexdocs
+- ✅ Ecto: Verified migration syntax and schema patterns
+```
+
+5. **Fix Hallucinations**: Update ALL affected files (overview + step files) with corrections
+
+**WHEN TO VERIFY**:
+
+- **NEW dependencies**: Any library/framework not already in project dependencies
+- **SPECIFIC syntax**: Code examples, configuration, API calls
+- **TECHNICAL details**: Setup order, return types, pattern matching
+- **CRITICAL features**: Core functionality that plan depends on
+
+**Example Hallucinations This Would Catch**:
+
+- ❌ Using `Cucumber.compile_features!()` before `ExUnit.start()` (wrong order)
+- ❌ Step definitions returning `context` instead of `{:ok, context}`
+- ❌ Claiming a library exists when it doesn't
+- ❌ Wrong parameter extraction syntax
+
+**If you find hallucinations**: Correct them immediately in ALL plan files before claiming plan is complete.
+
 ### Next Steps
 
-After completing detailed planning:
+After completing detailed planning AND hallucination check:
 
 1. Use `ocg new {{FEATURE_NAME}}` to create implementation workspace
 2. The workspace will include your modular plan structure
