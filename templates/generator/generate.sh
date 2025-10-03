@@ -99,7 +99,7 @@ generate_for_tool() {
         fi
     fi
 
-    # Generate command templates
+    # Generate command templates from .j2 files only
     if [ -d "$TEMPLATES_DIR/shared/commands" ]; then
         for template_file in "$TEMPLATES_DIR/shared/commands"/*.j2; do
             if [ -f "$template_file" ]; then

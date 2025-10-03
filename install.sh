@@ -114,10 +114,12 @@ if [ -f "$CODEGEN_DIR/templates/generated/claude-code/claude-code-settings.json"
     echo "   ✅ Claude Code settings installed at: $CLAUDE_SETTINGS_FILE"
 fi
 
-# Install custom Claude commands from generated templates
+# Install custom Claude commands
 echo "   📁 Installing custom Claude commands..."
-if [ -d "$CODEGEN_DIR/templates/generated/claude-code/commands" ]; then
-    for cmd_file in "$CODEGEN_DIR/templates/generated/claude-code/commands"/*.md; do
+
+# Copy plain .md commands directly from shared templates
+if [ -d "$CODEGEN_DIR/templates/shared/commands" ]; then
+    for cmd_file in "$CODEGEN_DIR/templates/shared/commands"/*.md; do
         if [ -f "$cmd_file" ]; then
             cmd_name=$(basename "$cmd_file")
             cp "$cmd_file" "$CLAUDE_COMMANDS_DIR/"
@@ -284,6 +286,22 @@ if [ -d "$CODEGEN_DIR/templates/generated/opencode/agent" ]; then
             agent_name=$(basename "$agent_file")
             cp "$agent_file" "$OPENCODE_AGENTS_DIR/"
             echo "   ✅ Installed OpenCode sub agent: ${agent_name%.md}"
+        fi
+    done
+fi
+
+# Install OpenCode custom commands
+echo "   📁 Installing OpenCode custom commands..."
+OPENCODE_COMMANDS_DIR="$HOME/.config/opencode/command"
+mkdir -p "$OPENCODE_COMMANDS_DIR"
+
+# Copy plain .md commands directly from shared templates
+if [ -d "$CODEGEN_DIR/templates/shared/commands" ]; then
+    for cmd_file in "$CODEGEN_DIR/templates/shared/commands"/*.md; do
+        if [ -f "$cmd_file" ]; then
+            cmd_name=$(basename "$cmd_file")
+            cp "$cmd_file" "$OPENCODE_COMMANDS_DIR/"
+            echo "   ✅ Installed OpenCode command: /${cmd_name%.md}"
         fi
     done
 fi
