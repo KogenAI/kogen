@@ -16,7 +16,7 @@ map_model() {
     # For OpenCode with Anthropic provider, map to full model names
     if [ "$provider" = "anthropic" ]; then
         case "$model" in
-        sonnet) echo "claude-sonnet-4-20250514" ;;       # Claude 4 Sonnet
+        sonnet) echo "claude-sonnet-4-5-20250929" ;;     # Claude 4.5 Sonnet (latest)
         opus) echo "claude-opus-4-1-20250805" ;;         # Claude 4.1 Opus (latest)
         sonnet-3.7) echo "claude-3-7-sonnet-20250219" ;; # Claude 3.7 Sonnet (hybrid reasoning)
         haiku) echo "claude-3-5-haiku-20241022" ;;       # Claude 3.5 Haiku (fast/economical)
