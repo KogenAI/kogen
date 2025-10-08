@@ -198,7 +198,16 @@ Present each suggestion as:
 Write the complete drop content following the proven format, then save it as a markdown file in the project directory for easy copy/paste:
 
 ````
-Title: Action-oriented, 40-60 characters, sentence case, code in backticks (e.g., "Fixing Wallaby's invalid session ID error with `:sys.get_state`")
+Title: **🚨 CRITICAL: Keep titles concise (30-57 characters)** - Action-oriented, sentence case, code in backticks
+
+**Good examples:**
+- "Phoenix contexts should return tuples, not raise" (51 chars) ✅
+- "Stop using bang functions in Phoenix contexts" (46 chars) ✅
+- "Pattern matching on `DateTime` for business logic" (50 chars) ✅
+
+**Bad examples:**
+- "Stop using `create_user!` in Phoenix contexts - return `{:ok, result}` tuples instead" (87 chars - WAY too long)
+- "Use `GenServer.call/3` timeout instead of manual cleanup" (57 chars - borderline, could be shortened)
 
 Body structure:
 
@@ -235,12 +244,11 @@ Optional: Links to docs, related patterns, or further reading
 
 5. **Quality Assurance** - Test and refine:
 
-   - **MANDATORY: Validate all code blocks using `mcp__tidewave__project_eval`**
-   - If Tidewave MCP is not available, ask the user to enable the MCP server first
-   - Test each code block individually to ensure it compiles correctly
+   - **🚨 MANDATORY: Format ALL code blocks with `mix format`** (see step 6 for workflow)
+   - **🚨 MANDATORY: Validate code compiles** - Test each code block individually
+   - If Tidewave MCP is not available, skip MCP validation but MUST still format code
    - Verify type definitions, function signatures, and syntax are valid
-   - Test edge cases and ensure the solution is robust
-   - Check that the title is descriptive and searchable
+   - **🚨 CRITICAL: Check that the title is SHORT (30-50 characters max)**
    - Verify the solution is the simplest that works
    - Ensure the explanation adds context without being verbose
 
