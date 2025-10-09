@@ -63,7 +63,7 @@ _codegen_completion() {
         elif [[ "$prev" == "--model" || "$prev" == "-m" ]]; then
             COMPREPLY=($(compgen -W "sonnet opus" -- "$cur"))
         elif [[ "$prev" == "--assistant" || "$prev" == "-a" || "$prev" == "--ai" ]]; then
-            COMPREPLY=($(compgen -W "claude opencode" -- "$cur"))
+            COMPREPLY=($(compgen -W "claude opencode cursor" -- "$cur"))
         fi
         ;;
     resume)
@@ -76,7 +76,7 @@ _codegen_completion() {
         elif [[ "$prev" == "--model" || "$prev" == "-m" ]]; then
             COMPREPLY=($(compgen -W "sonnet opus" -- "$cur"))
         elif [[ "$prev" == "--assistant" || "$prev" == "-a" || "$prev" == "--ai" ]]; then
-            COMPREPLY=($(compgen -W "claude opencode" -- "$cur"))
+            COMPREPLY=($(compgen -W "claude opencode cursor" -- "$cur"))
         fi
         ;;
     bird-eye | plan)
@@ -92,7 +92,7 @@ _codegen_completion() {
         elif [[ ${COMP_CWORD} == 3 && "$prev" == "set" ]]; then
             COMPREPLY=($(compgen -W "default" -- "$cur"))
         elif [[ ${COMP_CWORD} == 4 && "${COMP_WORDS[2]}" == "set" && "${COMP_WORDS[3]}" == "default" ]]; then
-            COMPREPLY=($(compgen -W "claude opencode" -- "$cur"))
+            COMPREPLY=($(compgen -W "claude opencode cursor" -- "$cur"))
         elif [[ ${COMP_CWORD} == 3 && "$prev" == "get" ]]; then
             COMPREPLY=($(compgen -W "default" -- "$cur"))
         fi

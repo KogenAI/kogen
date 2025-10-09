@@ -259,6 +259,22 @@ else
 fi
 
 echo ""
+echo "🤖 Installing Cursor CLI..."
+# Install Cursor CLI alongside Claude Code and OpenCode
+# Refresh command cache to detect recent removals
+hash -r 2>/dev/null || true
+if command -v cursor-agent >/dev/null 2>&1; then
+    echo "   ✅ Cursor CLI already installed"
+else
+    curl https://cursor.com/install -fsSL | bash
+    if command -v cursor-agent >/dev/null 2>&1; then
+        echo "   ✅ Cursor CLI installed successfully"
+    else
+        echo "   ⚠️  Cursor CLI installation may require shell restart"
+    fi
+fi
+
+echo ""
 echo "🔧 Setting up OpenCode configuration..."
 
 # Create OpenCode config directory if it doesn't exist
@@ -306,19 +322,46 @@ if [ -d "$CODEGEN_DIR/templates/shared/commands" ]; then
     done
 fi
 
+echo ""
+echo "🔧 Setting up Cursor CLI configuration..."
+
+# Create Cursor config directory if it doesn't exist
+mkdir -p "$HOME/.cursor"
+
+# Install Cursor custom commands
+echo "   📁 Installing Cursor CLI custom commands..."
+CURSOR_COMMANDS_DIR="$HOME/.cursor/commands"
+mkdir -p "$CURSOR_COMMANDS_DIR"
+
+# Copy plain .md commands directly from shared templates
+if [ -d "$CODEGEN_DIR/templates/shared/commands" ]; then
+    for cmd_file in "$CODEGEN_DIR/templates/shared/commands"/*.md; do
+        if [ -f "$cmd_file" ]; then
+            cmd_name=$(basename "$cmd_file")
+            cp "$cmd_file" "$CURSOR_COMMANDS_DIR/"
+            echo "   ✅ Installed Cursor command: /${cmd_name%.md}"
+        fi
+    done
+fi
+
+# Note: Cursor CLI does NOT use a subagents directory like Claude Code
+# Subagents are spawned via bash commands: cursor-agent -p [task] --force --model [model]
+# Generated subagent templates are used as reference in OCG templates, not installed globally
+
 # Create OCG config directory
 mkdir -p "$HOME/.ocg"
 
-# AI Assistant Configuration - both are now installed
+# AI Assistant Configuration - all three are now installed
 if [ ! -f "$HOME/.ocg/config.json" ]; then
     echo ""
     echo "🤖 AI Assistant Configuration"
-    echo "   Both Claude Code and OpenCode are now installed."
+    echo "   Claude Code, OpenCode, and Cursor CLI are now installed."
     echo "   Which should be your default AI assistant?"
     echo "   1) claude (Claude Code)"
     echo "   2) opencode (OpenCode)"
+    echo "   3) cursor (Cursor CLI)"
     echo ""
-    read -p "   Choose [1-2]: " choice
+    read -p "   Choose [1-3]: " choice
 
     case $choice in
     1)
@@ -327,13 +370,16 @@ if [ ! -f "$HOME/.ocg/config.json" ]; then
     2)
         default_assistant="opencode"
         ;;
+    3)
+        default_assistant="cursor"
+        ;;
     *)
         echo "❌ Invalid choice. Defaulting to claude."
         default_assistant="claude"
         ;;
     esac
 
-    # Create initial config with both assistants enabled
+    # Create initial config with all assistants enabled
     cat >"$HOME/.ocg/config.json" <<EOF
 {
     "default_assistant": "$default_assistant",
@@ -344,6 +390,9 @@ if [ ! -f "$HOME/.ocg/config.json" ]; then
         "opencode": {
             "enabled": true,
             "provider": "anthropic"
+        },
+        "cursor": {
+            "enabled": true
         }
     }
 }
@@ -351,8 +400,8 @@ EOF
 
     echo "✅ Default AI assistant set to: $default_assistant"
     echo ""
-    echo "💡 You can switch between assistants anytime with: ocg ai-config set default [claude|opencode]"
-    echo "💡 Or override per-command with: ocg new feature --assistant [claude|opencode]"
+    echo "💡 You can switch between assistants anytime with: ocg ai-config set default [claude|opencode|cursor]"
+    echo "💡 Or override per-command with: ocg new feature --assistant [claude|opencode|cursor]"
 else
     echo ""
     echo "✅ AI assistant configuration already exists"

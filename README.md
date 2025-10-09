@@ -12,7 +12,7 @@ Optimum Codegen (OCG) is a workspace management system that enables parallel dev
 - Git
 - Cursor IDE (recommended) or VS Code
 - Phoenix/Elixir project
-- AI Assistant: Claude Code and OpenCode (both installed automatically by `make install`)
+- AI Assistant: Claude Code, OpenCode, and Cursor CLI (all installed automatically by `make install`)
 
 ## Configuration
 
@@ -145,7 +145,7 @@ Each workspace can run in an isolated Docker container with:
 
 - `ocg new <name> [options]` - Create new feature workspace
   - `--model, -m <model>` - AI model to use (sonnet/opus, default: sonnet)
-  - `--assistant, -a <name>` - AI assistant to use (claude/opencode, default: from config)
+  - `--assistant, -a <name>` - AI assistant to use (claude/opencode/cursor, default: from config)
   - `--container` - Run in Docker container
 - `ocg resume <name> [options]` - Resume existing workspace
   - `--model, -m <model>` - AI model to use (default: from workspace)
@@ -156,7 +156,7 @@ Each workspace can run in an isolated Docker container with:
 
 ### AI Assistant Configuration
 
-- `ocg ai-config set default <assistant>` - Set default AI assistant (claude/opencode)
+- `ocg ai-config set default <assistant>` - Set default AI assistant (claude/opencode/cursor)
 - `ocg ai-config get default` - Show current default assistant
 - `ocg ai-config status` - Show full AI assistant configuration
 
@@ -222,27 +222,29 @@ Install globally to use `ocg` commands from anywhere:
 
 ```bash
 cd /path/to/codegen && make install
-# Installs both Claude Code and OpenCode
+# Installs Claude Code, OpenCode, and Cursor CLI
 # Prompts for default AI assistant preference
 # Then use: ocg new my-feature, ocg ls, etc.
 ```
 
 ### AI Assistant Support
 
-OCG supports both Claude Code and OpenCode as AI assistants:
+OCG supports three AI assistants:
 
 - **Claude Code**: Official Anthropic CLI with rich terminal UI
 - **OpenCode**: Open-source alternative with provider flexibility
+- **Cursor CLI**: Developer-focused CLI with native AGENTS.md support
 
-During installation, both assistants are installed and you'll be prompted to choose a default. You can switch between them anytime:
+During installation, all three assistants are installed and you'll be prompted to choose a default. You can switch between them anytime:
 
 ```bash
 # Set default assistant
-ocg ai-config set default opencode
+ocg ai-config set default cursor
 
 # Use specific assistant for a workspace
 ocg new my-feature --assistant claude
 ocg new my-feature -a opencode --model opus
+ocg new my-feature -a cursor --model sonnet
 
 # Check current configuration
 ocg ai-config status

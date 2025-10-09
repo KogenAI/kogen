@@ -13,14 +13,22 @@ map_model() {
         return
     fi
 
+    # For Cursor CLI, map to cursor-agent model names
+    if [ "$assistant" = "cursor" ]; then
+        case "$model" in
+        sonnet) echo "sonnet-4.5" ;;
+        opus) echo "opus-4.1" ;;
+        *) echo "sonnet-4.5" ;; # Default to sonnet
+        esac
+        return
+    fi
+
     # For OpenCode with Anthropic provider, map to full model names
     if [ "$provider" = "anthropic" ]; then
         case "$model" in
-        sonnet) echo "claude-sonnet-4-5-20250929" ;;     # Claude 4.5 Sonnet (latest)
-        opus) echo "claude-opus-4-1-20250805" ;;         # Claude 4.1 Opus (latest)
-        sonnet-3.7) echo "claude-3-7-sonnet-20250219" ;; # Claude 3.7 Sonnet (hybrid reasoning)
-        haiku) echo "claude-3-5-haiku-20241022" ;;       # Claude 3.5 Haiku (fast/economical)
-        *) echo "$model" ;;                              # Pass through unknown models
+        sonnet) echo "claude-sonnet-4-5-20250929" ;;
+        opus) echo "claude-opus-4-1-20250805" ;;
+        *) echo "claude-sonnet-4-5-20250929" ;; # Default to sonnet
         esac
     else
         # For other providers, pass through as-is

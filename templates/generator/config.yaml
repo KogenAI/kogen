@@ -26,6 +26,18 @@ tools:
     agents_dir: "agents"
     settings_dir: "$HOME/.config/opencode"
 
+  cursor:
+    name: "cursor"
+    display_name: "Cursor CLI"
+    yaml_frontmatter: false
+    permissions_enabled: false
+    hooks_enabled: false
+    config_file: null
+    mcp_config: "mcp.json"
+    commands_dir: "commands"
+    agents_dir: "subagents"
+    settings_dir: "$HOME/.cursor"
+
 # Common variables available to all templates
 common:
   project_context_file: "PROJECT_CONTEXT.md"

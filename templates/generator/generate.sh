@@ -77,9 +77,11 @@ generate_for_tool() {
         output_dir="$TEMPLATES_DIR/generated/claude-code"
     fi
 
-    # Create different subdir for Claude Code vs OpenCode
+    # Create different subdir for Claude Code vs OpenCode vs Cursor
     if [ "$tool" = "claude" ]; then
         mkdir -p "$output_dir/commands" "$output_dir/agents"
+    elif [ "$tool" = "cursor" ]; then
+        mkdir -p "$output_dir/commands" "$output_dir/subagents"
     else
         mkdir -p "$output_dir/commands" "$output_dir/agent"
     fi
@@ -91,7 +93,7 @@ generate_for_tool() {
             copy_file "$TEMPLATES_DIR/claude-code-settings.json" "$output_dir/claude-code-settings.json"
             log_success "Generated claude-code-settings.json"
         fi
-    else
+    elif [ "$tool" = "opencode" ]; then
         # OpenCode uses a static config file
         if [ -f "$TEMPLATES_DIR/.opencode.json" ]; then
             copy_file "$TEMPLATES_DIR/.opencode.json" "$output_dir/.opencode.json"
@@ -115,9 +117,11 @@ generate_for_tool() {
         for template_file in "$TEMPLATES_DIR/shared/subagents"/*.j2; do
             if [ -f "$template_file" ]; then
                 local base_name=$(basename "$template_file" .j2)
-                # Output to different dirs for Claude Code vs OpenCode
+                # Output to different dirs for Claude Code vs OpenCode vs Cursor
                 if [ "$tool" = "claude" ]; then
                     process_template "$template_file" "$tool" "$tool_config" >"$output_dir/agents/$base_name"
+                elif [ "$tool" = "cursor" ]; then
+                    process_template "$template_file" "$tool" "$tool_config" >"$output_dir/subagents/$base_name"
                 else
                     process_template "$template_file" "$tool" "$tool_config" >"$output_dir/agent/$base_name"
                 fi
@@ -148,11 +152,13 @@ main() {
         generate_for_tool "claude"
         echo ""
         generate_for_tool "opencode"
-    elif [ "$tool" = "claude" ] || [ "$tool" = "opencode" ]; then
+        echo ""
+        generate_for_tool "cursor"
+    elif [ "$tool" = "claude" ] || [ "$tool" = "opencode" ] || [ "$tool" = "cursor" ]; then
         generate_for_tool "$tool"
     else
         echo "❌ Unknown tool: $tool"
-        echo "Usage: $0 [claude|opencode|all]"
+        echo "Usage: $0 [claude|opencode|cursor|all]"
         exit 1
     fi
 

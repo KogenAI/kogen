@@ -79,19 +79,28 @@ MODEL="${AI_MODEL:-${MODEL:-sonnet}}"
 # Check if assistant is configured
 if [ -z "$AI_ASSISTANT" ]; then
     echo "❌ No AI assistant configured."
-    echo "   Please run: ocg ai-config set default [claude|opencode]"
+    echo "   Please run: ocg ai-config --set-assistant [claude|opencode|cursor]"
     exit 1
 fi
 
 echo "🤖 Starting $AI_ASSISTANT with model: $MODEL"
 
-# Find the ai-assistants directory
-if [ -d "$WORKSPACE_DIR/../../ai-assistants" ]; then
-    AI_ASSISTANTS_DIR="$WORKSPACE_DIR/../../ai-assistants"
-elif [ -d "$HOME/Areas/Optimum/codegen/ai-assistants" ]; then
-    AI_ASSISTANTS_DIR="$HOME/Areas/Optimum/codegen/ai-assistants"
-else
-    echo "❌ Cannot find ai-assistants directory"
+# Get OCG directory by resolving the ocg command location
+if ! command -v ocg >/dev/null 2>&1; then
+    echo "❌ OCG command not found"
+    echo "   Please run: make install"
+    exit 1
+fi
+
+# Resolve OCG installation directory from the ocg command
+OCG_SCRIPT=$(which ocg)
+OCG_DIR=$(cd "$(dirname "$(readlink -f "$OCG_SCRIPT" 2>/dev/null || realpath "$OCG_SCRIPT" 2>/dev/null || echo "$OCG_SCRIPT")")" && pwd)
+
+# Use OCG ai-assistants directory
+AI_ASSISTANTS_DIR="$OCG_DIR/ai-assistants"
+
+if [ ! -d "$AI_ASSISTANTS_DIR" ]; then
+    echo "❌ AI assistants directory not found: $AI_ASSISTANTS_DIR"
     exit 1
 fi
 
@@ -112,5 +121,5 @@ fi
 # Change to workspace directory
 cd "$WORKSPACE_DIR"
 
-# Use the same run-ai.sh script as everyone else
+# Use the same run-ai.sh script for all assistants
 "$AI_ASSISTANTS_DIR/run-ai.sh" "$AI_ASSISTANT" "$MODEL" "$PROMPT_FILE"

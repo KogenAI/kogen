@@ -306,6 +306,14 @@ if [ "$ASSISTANT" = "opencode" ]; then
             "$SCRIPT_DIR/templates/.opencode-mcp.json" >"$WORKSPACE_PATH/opencode.json"
         echo "✅ Created opencode.json with MCP configuration and workspace-specific ports"
     fi
+elif [ "$ASSISTANT" = "cursor" ]; then
+    # Create Cursor MCP configuration (mcp.json, not .mcp.json)
+    if [ -f "$SCRIPT_DIR/templates/.mcp.json" ]; then
+        sed "s/{{PORT}}/${NEXT_PORT}/g; s/{{PLAYWRIGHT_MCP_PORT}}/${NEXT_PLAYWRIGHT_PORT}/g" \
+            "$SCRIPT_DIR/templates/.mcp.json" >"$WORKSPACE_PATH/mcp.json"
+        echo "✅ Created mcp.json with workspace-specific ports for Cursor"
+    fi
+    # Cursor reads AGENTS.md from workspace root (already copied from templates/AGENTS.md above)
 else
     # Create Claude MCP configuration
     if [ -f "$SCRIPT_DIR/templates/.mcp.json" ]; then

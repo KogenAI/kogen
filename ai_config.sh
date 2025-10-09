@@ -22,6 +22,9 @@ init_config() {
         "opencode": {
             "enabled": true,
             "provider": "anthropic"
+        },
+        "cursor": {
+            "enabled": true
         }
     }
 }
@@ -85,6 +88,16 @@ show_status() {
     fi
 
     echo ""
+    echo "Cursor CLI:"
+    echo "  Enabled: $(get_config "assistants.cursor.enabled")"
+    if command -v cursor-agent >/dev/null 2>&1; then
+        echo "  Installed: ✅"
+        cursor-agent --version 2>/dev/null || echo "  Version: unknown"
+    else
+        echo "  Installed: ❌"
+    fi
+
+    echo ""
     echo "Model Mappings:"
     # Model mappings are handled by model-mapper.sh, not stored in config
     source "$SCRIPT_DIR/ai-assistants/model-mapper.sh"
@@ -100,9 +113,9 @@ set)
             echo "Usage: ocg ai-config set default [claude|opencode]"
             exit 1
         fi
-        if [ "$3" != "claude" ] && [ "$3" != "opencode" ]; then
+        if [ "$3" != "claude" ] && [ "$3" != "opencode" ] && [ "$3" != "cursor" ]; then
             echo "❌ Invalid assistant: $3"
-            echo "   Valid options: claude, opencode"
+            echo "   Valid options: claude, opencode, cursor"
             exit 1
         fi
         set_config "default_assistant" "$3"
@@ -145,7 +158,7 @@ status)
 *)
     echo "Usage: ocg ai-config <action> [options]"
     echo "Actions:"
-    echo "  set default <assistant>  Set default AI assistant (claude|opencode)"
+    echo "  set default <assistant>  Set default AI assistant (claude|opencode|cursor)"
     echo "  get default              Show current default assistant"
     echo "  get <key>                Get a configuration value"
     echo "  set <key> <value>        Set a configuration value"
