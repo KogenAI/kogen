@@ -5,21 +5,21 @@ if [ $# -eq 0 ]; then
     echo "Usage: $0 <feature-name> [options]"
     echo "Options:"
     echo "  --model, -m <model>      AI model to use (default: from workspace)"
-    echo "  --assistant, -a <name>   AI assistant to use (default: from workspace)"
+    echo "  --agent, -a <name>   AI agent to use (default: from workspace)"
     echo "  --container              Run in Docker container"
     echo ""
     echo "Examples:"
     echo "  $0 dashboard-redesign"
     echo "  $0 dashboard-redesign --model opus"
-    echo "  $0 dashboard-redesign --assistant opencode"
+    echo "  $0 dashboard-redesign --agent opencode"
     echo "  $0 dashboard-redesign -m opus -a opencode --container"
     exit 1
 fi
 
 # Parse arguments
 CONTAINER_MODE=false
-MODEL=""     # Will use workspace default if not specified
-ASSISTANT="" # Will use workspace default if not specified
+MODEL="" # Will use workspace default if not specified
+AGENT="" # Will use workspace default if not specified
 FEATURE_NAME=""
 
 # Parse command line arguments
@@ -29,8 +29,8 @@ while [[ $# -gt 0 ]]; do
         MODEL="$2"
         shift 2
         ;;
-    --assistant | -a | --ai)
-        ASSISTANT="$2"
+    --agent | -a | --ai)
+        AGENT="$2"
         shift 2
         ;;
     --container)
@@ -81,20 +81,20 @@ if [ -z "$MODEL" ]; then
     MODEL="sonnet"
 fi
 
-if [ -z "$ASSISTANT" ]; then
+if [ -z "$AGENT" ]; then
     # Load from global config
     CONFIG_FILE="$HOME/.ocg/config.json"
     if [ -f "$CONFIG_FILE" ]; then
-        ASSISTANT=$(jq -r '.default_assistant // "claude"' "$CONFIG_FILE")
+        AGENT=$(jq -r '.default_agent // "claude"' "$CONFIG_FILE")
     else
-        ASSISTANT="claude"
+        AGENT="claude"
     fi
 fi
 
-echo "🔍 Using AI assistant: $ASSISTANT with model: $MODEL"
+echo "🔍 Using AI agent: $AGENT with model: $MODEL"
 
 # Pass through environment variables
-export AI_ASSISTANT="$ASSISTANT"
+export AI_AGENT="$AGENT"
 export AI_MODEL="$MODEL"
 
 cd "$WORKSPACE_PATH"
@@ -151,14 +151,14 @@ if [ -f "$SCRIPT_DIR/templates/.vscode/workspace-info.sh" ]; then
     chmod +x "$WORKSPACE_PATH/.vscode/workspace-info.sh"
 fi
 
-# Copy the universal AI assistant script
-if [ -f "$SCRIPT_DIR/templates/.vscode/ai-assistant.sh" ]; then
-    cp "$SCRIPT_DIR/templates/.vscode/ai-assistant.sh" "$WORKSPACE_PATH/.vscode/ai-assistant.sh"
-    chmod +x "$WORKSPACE_PATH/.vscode/ai-assistant.sh"
+# Copy the universal AI agent script
+if [ -f "$SCRIPT_DIR/templates/.vscode/ai-agent.sh" ]; then
+    cp "$SCRIPT_DIR/templates/.vscode/ai-agent.sh" "$WORKSPACE_PATH/.vscode/ai-agent.sh"
+    chmod +x "$WORKSPACE_PATH/.vscode/ai-agent.sh"
 fi
 
 # For backward compatibility, create claude-code.sh as a symlink
-ln -sf "ai-assistant.sh" "$WORKSPACE_PATH/.vscode/claude-code.sh"
+ln -sf "ai-agent.sh" "$WORKSPACE_PATH/.vscode/claude-code.sh"
 
 if [ -f "$SCRIPT_DIR/templates/.vscode/phoenix-server.sh" ]; then
     cp "$SCRIPT_DIR/templates/.vscode/phoenix-server.sh" "$WORKSPACE_PATH/.vscode/"
@@ -274,8 +274,8 @@ if [ -f "$SCRIPT_DIR/templates/RESUME_PROMPT.md" ]; then
     PLAYWRIGHT_MCP_PORT=$(grep "^PLAYWRIGHT_MCP_PORT=" "$WORKSPACE_PATH/.env" 2>/dev/null | cut -d'=' -f2)
     sed -i '' "s|{{PLAYWRIGHT_MCP_PORT}}|$PLAYWRIGHT_MCP_PORT|g" "$WORKSPACE_PATH/codegen/PROMPT.md"
 
-    # Set the correct agent context file based on AI assistant
-    if [ "$ASSISTANT" = "opencode" ]; then
+    # Set the correct agent context file based on AI agent
+    if [ "$AGENT" = "opencode" ]; then
         sed -i '' "s|{{AGENT_CONTEXT_FILE}}|AGENTS.md|g" "$WORKSPACE_PATH/codegen/PROMPT.md"
     else
         sed -i '' "s|{{AGENT_CONTEXT_FILE}}|CLAUDE.md|g" "$WORKSPACE_PATH/codegen/PROMPT.md"
@@ -290,7 +290,7 @@ if [ -f "$SCRIPT_DIR/templates/RESUME_PROMPT.md" ]; then
 fi
 
 # Update MCP configuration if needed
-if [ "$ASSISTANT" = "opencode" ]; then
+if [ "$AGENT" = "opencode" ]; then
     # Update OpenCode MCP configuration with current ports
     if [ -f "$SCRIPT_DIR/templates/.opencode-mcp.json" ] && [ -n "$PORT" ] && [ -n "$PLAYWRIGHT_MCP_PORT" ]; then
         sed "s/{{PORT}}/${PORT}/g; s/{{PLAYWRIGHT_MCP_PORT}}/${PLAYWRIGHT_MCP_PORT}/g" \

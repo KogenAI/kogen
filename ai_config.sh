@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# AI Assistant Configuration Management
+# AI Agent Configuration Management
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CONFIG_FILE="$HOME/.ocg/config.json"
@@ -14,8 +14,8 @@ init_config() {
     if [ ! -f "$CONFIG_FILE" ]; then
         cat >"$CONFIG_FILE" <<EOF
 {
-    "default_assistant": "claude",
-    "assistants": {
+    "default_agent": "claude",
+    "agents": {
         "claude": {
             "enabled": true
         },
@@ -64,13 +64,13 @@ set_config() {
 # Show full configuration
 show_status() {
     init_config
-    echo "🤖 AI Assistant Configuration"
-    echo "============================"
+    echo "🤖 AI Agent Configuration"
+    echo "========================="
     echo ""
-    echo "Default Assistant: $(get_config "default_assistant")"
+    echo "Default Agent: $(get_config "default_agent")"
     echo ""
     echo "Claude Code:"
-    echo "  Enabled: $(get_config "assistants.claude.enabled")"
+    echo "  Enabled: $(get_config "agents.claude.enabled")"
     if command -v claude >/dev/null 2>&1; then
         echo "  Installed: ✅"
     else
@@ -79,8 +79,8 @@ show_status() {
 
     echo ""
     echo "OpenCode:"
-    echo "  Enabled: $(get_config "assistants.opencode.enabled")"
-    echo "  Provider: $(get_config "assistants.opencode.provider")"
+    echo "  Enabled: $(get_config "agents.opencode.enabled")"
+    echo "  Provider: $(get_config "agents.opencode.provider")"
     if command -v opencode >/dev/null 2>&1; then
         echo "  Installed: ✅"
     else
@@ -89,7 +89,7 @@ show_status() {
 
     echo ""
     echo "Cursor CLI:"
-    echo "  Enabled: $(get_config "assistants.cursor.enabled")"
+    echo "  Enabled: $(get_config "agents.cursor.enabled")"
     if command -v cursor-agent >/dev/null 2>&1; then
         echo "  Installed: ✅"
         cursor-agent --version 2>/dev/null || echo "  Version: unknown"
@@ -100,7 +100,7 @@ show_status() {
     echo ""
     echo "Model Mappings:"
     # Model mappings are handled by model-mapper.sh, not stored in config
-    source "$SCRIPT_DIR/ai-assistants/model-mapper.sh"
+    source "$SCRIPT_DIR/ai-agents/model-mapper.sh"
     echo "  sonnet → $(map_model "sonnet" "opencode" "anthropic")"
     echo "  opus → $(map_model "opus" "opencode" "anthropic")"
 }
@@ -110,16 +110,16 @@ case "$1" in
 set)
     if [ "$2" = "default" ]; then
         if [ -z "$3" ]; then
-            echo "Usage: ocg ai-config set default [claude|opencode]"
+            echo "Usage: ocg ai-config set default [claude|opencode|cursor]"
             exit 1
         fi
         if [ "$3" != "claude" ] && [ "$3" != "opencode" ] && [ "$3" != "cursor" ]; then
-            echo "❌ Invalid assistant: $3"
+            echo "❌ Invalid agent: $3"
             echo "   Valid options: claude, opencode, cursor"
             exit 1
         fi
-        set_config "default_assistant" "$3"
-        echo "✅ Default AI assistant set to: $3"
+        set_config "default_agent" "$3"
+        echo "✅ Default AI agent set to: $3"
     else
         if [ -z "$2" ] || [ -z "$3" ]; then
             echo "Usage: ocg ai-config set <key> <value>"
@@ -131,11 +131,11 @@ set)
     ;;
 get)
     if [ "$2" = "default" ]; then
-        result=$(get_config "default_assistant")
+        result=$(get_config "default_agent")
         if [ -n "$result" ]; then
             echo "$result"
         else
-            echo "❌ No default assistant configured"
+            echo "❌ No default agent configured"
             exit 1
         fi
     else
@@ -158,8 +158,8 @@ status)
 *)
     echo "Usage: ocg ai-config <action> [options]"
     echo "Actions:"
-    echo "  set default <assistant>  Set default AI assistant (claude|opencode|cursor)"
-    echo "  get default              Show current default assistant"
+    echo "  set default <agent>      Set default AI agent (claude|opencode|cursor)"
+    echo "  get default              Show current default agent"
     echo "  get <key>                Get a configuration value"
     echo "  set <key> <value>        Set a configuration value"
     echo "  status                   Show full configuration"

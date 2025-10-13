@@ -1,5 +1,5 @@
 #!/bin/bash
-# Model mapping system for AI assistants
+# Model mapping system for AI agents
 
 # Map simple model names to provider-specific identifiers
 map_model() {
@@ -49,7 +49,7 @@ get_provider() {
         # Check config file
         local config_file="$HOME/.ocg/config.json"
         if [ -f "$config_file" ]; then
-            local provider=$(jq -r '.assistants.opencode.provider // empty' "$config_file" 2>/dev/null)
+            local provider=$(jq -r '.agents.opencode.provider // empty' "$config_file" 2>/dev/null)
             if [ -n "$provider" ]; then
                 echo "$provider"
                 return

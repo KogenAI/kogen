@@ -219,8 +219,8 @@ while true; do
     sleep 2
 done
 
-# Release AI assistant to start (if waiting)
-echo "🔓 Releasing AI assistant to start..."
+# Release AI agent to start (if waiting)
+echo "🔓 Releasing AI agent to start..."
 if [ -f codegen/.ai_wait ]; then
     rm -f codegen/.ai_wait
     echo "   ✅ Removed .ai_wait file"

@@ -22,9 +22,9 @@ check_docker() {
     return 0
 }
 
-# Ensure shared AI assistant volumes exist
+# Ensure shared AI agent volumes exist
 ensure_shared_ai_volumes() {
-    echo "🔐 Setting up shared AI assistant volumes..."
+    echo "🔐 Setting up shared AI agent volumes..."
 
     # Create Claude shared volume
     if ! docker volume ls | grep -q "ocg-claude-shared"; then

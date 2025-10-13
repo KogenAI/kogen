@@ -86,7 +86,7 @@ if [ ! -f "$RECIPES_DIR/README.md" ] && [ -f "$CODEGEN_DIR/templates/recipes-REA
 fi
 
 echo ""
-echo "🚀 Generating AI assistant templates..."
+echo "🚀 Generating AI agent templates..."
 
 # Generate templates for both Claude Code and OpenCode
 "$CODEGEN_DIR/templates/generator/generate.sh" all
@@ -354,9 +354,9 @@ mkdir -p "$HOME/.ocg"
 # AI Assistant Configuration - all three are now installed
 if [ ! -f "$HOME/.ocg/config.json" ]; then
     echo ""
-    echo "🤖 AI Assistant Configuration"
+    echo "🤖 AI Agent Configuration"
     echo "   Claude Code, OpenCode, and Cursor CLI are now installed."
-    echo "   Which should be your default AI assistant?"
+    echo "   Which should be your default AI agent?"
     echo "   1) claude (Claude Code)"
     echo "   2) opencode (OpenCode)"
     echo "   3) cursor (Cursor CLI)"
@@ -365,25 +365,25 @@ if [ ! -f "$HOME/.ocg/config.json" ]; then
 
     case $choice in
     1)
-        default_assistant="claude"
+        default_agent="claude"
         ;;
     2)
-        default_assistant="opencode"
+        default_agent="opencode"
         ;;
     3)
-        default_assistant="cursor"
+        default_agent="cursor"
         ;;
     *)
         echo "❌ Invalid choice. Defaulting to claude."
-        default_assistant="claude"
+        default_agent="claude"
         ;;
     esac
 
-    # Create initial config with all assistants enabled
+    # Create initial config with all agents enabled
     cat >"$HOME/.ocg/config.json" <<EOF
 {
-    "default_assistant": "$default_assistant",
-    "assistants": {
+    "default_agent": "$default_agent",
+    "agents": {
         "claude": {
             "enabled": true
         },
@@ -398,13 +398,13 @@ if [ ! -f "$HOME/.ocg/config.json" ]; then
 }
 EOF
 
-    echo "✅ Default AI assistant set to: $default_assistant"
+    echo "✅ Default AI agent set to: $default_agent"
     echo ""
-    echo "💡 You can switch between assistants anytime with: ocg ai-config set default [claude|opencode|cursor]"
-    echo "💡 Or override per-command with: ocg new feature --assistant [claude|opencode|cursor]"
+    echo "💡 You can switch between agents anytime with: ocg ai-config set default [claude|opencode|cursor]"
+    echo "💡 Or override per-command with: ocg new feature --agent [claude|opencode|cursor]"
 else
     echo ""
-    echo "✅ AI assistant configuration already exists"
+    echo "✅ AI agent configuration already exists"
 fi
 
 # Clean up generated templates now that everything is installed

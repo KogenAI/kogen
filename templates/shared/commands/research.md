@@ -13,7 +13,7 @@ Process:
 1. **Get current date**:
 
    - **CRITICAL**: First use Bash tool with `date` command to get the ACTUAL current date
-   - **IMPORTANT**: The AI assistant does NOT know the current date - it MUST use the terminal output from `date` command
+   - **IMPORTANT**: The AI agent does NOT know the current date - it MUST use the terminal output from `date` command
    - **Use the exact date from terminal output** in all searches to find recent information
 
 2. **Parse the research request**:

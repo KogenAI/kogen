@@ -1,12 +1,12 @@
 #!/bin/bash
 
-# Update all AI tools (Claude Code, OpenCode, Cursor CLI)
+# Update all AI agents (Claude Code, OpenCode, Cursor CLI)
 
 set -e
 
 CODEGEN_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-echo "🔄 Updating all AI tools..."
+echo "🔄 Updating all AI agents..."
 echo ""
 
 # Update Claude Code
@@ -42,6 +42,6 @@ else
 fi
 echo ""
 
-echo "✅ All AI tools have been updated!"
+echo "✅ All AI agents have been updated!"
 echo ""
 echo "💡 Run 'make install' to regenerate and reinstall OCG templates and commands"

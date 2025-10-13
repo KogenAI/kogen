@@ -177,17 +177,17 @@ if [ -n "$PLAYWRIGHT_PID" ]; then
 fi
 echo ""
 
-# Load AI assistant configuration
+# Load AI agent configuration
 CONFIG_FILE="$HOME/.ocg/config.json"
 if [ -f "$CONFIG_FILE" ]; then
-    AI_ASSISTANT=$(jq -r '.default_assistant // "claude"' "$CONFIG_FILE")
+    AI_AGENT=$(jq -r '.default_agent // "claude"' "$CONFIG_FILE")
 else
-    AI_ASSISTANT="claude"
+    AI_AGENT="claude"
 fi
 
-# Start AI assistant with appropriate model
-echo "Starting $AI_ASSISTANT with $MODEL model..."
-echo "Planning context created, $AI_ASSISTANT will read it automatically."
+# Start AI agent with appropriate model
+echo "Starting $AI_AGENT with $MODEL model..."
+echo "Planning context created, $AI_AGENT will read it automatically."
 echo ""
 
 # Create temporary prompt file
@@ -195,5 +195,5 @@ PROMPT_FILE=$(mktemp)
 trap "rm -f $PROMPT_FILE" EXIT
 echo "$PLANNING_PROMPT" >"$PROMPT_FILE"
 
-# Run AI assistant
-"$CODEGEN_DIR/ai-assistants/run-ai.sh" "$AI_ASSISTANT" "$MODEL" "$PROMPT_FILE"
+# Run AI agent
+"$CODEGEN_DIR/ai-agents/run-ai.sh" "$AI_AGENT" "$MODEL" "$PROMPT_FILE"

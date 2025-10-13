@@ -339,7 +339,7 @@ fi
 
 echo ""
 echo "🗂️  Files created:"
-echo "   - AGENTS.md (AI assistant instructions)"
+echo "   - AGENTS.md (AI agent instructions)"
 echo "   - CLAUDE.md (symlink for backward compatibility)"
 echo "   - codegen/PROJECT_CONTEXT.md (project knowledge base)"
 echo "   - codegen/rules/ (symbolic link to development rules)"
@@ -448,19 +448,19 @@ if [ -f "$PROJECT_CONTEXT_DIR/PROJECT_CONTEXT.md" ] && [ -s "$PROJECT_CONTEXT_DI
     echo ""
     echo "ℹ️  Project appears to already have complete context setup"
     echo "   PROJECT_CONTEXT.md found in context directory: $PROJECT_CONTEXT_DIR"
-    echo "   Skipping AI assistant setup"
+    echo "   Skipping AI agent setup"
     echo ""
     echo "🎯 Project setup complete! You can create workspaces with: $OCG_CMD new <feature-name>"
 else
-    # Load AI assistant configuration
+    # Load AI agent configuration
     CONFIG_FILE="$HOME/.ocg/config.json"
     if [ -f "$CONFIG_FILE" ]; then
-        AI_ASSISTANT=$(jq -r '.default_assistant // "claude"' "$CONFIG_FILE")
+        AI_AGENT=$(jq -r '.default_agent // "claude"' "$CONFIG_FILE")
     else
-        AI_ASSISTANT="claude"
+        AI_AGENT="claude"
     fi
 
-    echo "🤖 Starting $AI_ASSISTANT with Opus model for setup..."
+    echo "🤖 Starting $AI_AGENT with Opus model for setup..."
 
     cd "$REPO_ROOT"
 
@@ -469,6 +469,6 @@ else
     trap "rm -f $PROMPT_FILE" EXIT
     echo "$SETUP_PROMPT" >"$PROMPT_FILE"
 
-    # Run AI assistant
-    "$SCRIPT_DIR/ai-assistants/run-ai.sh" "$AI_ASSISTANT" "opus" "$PROMPT_FILE"
+    # Run AI agent
+    "$SCRIPT_DIR/ai-agents/run-ai.sh" "$AI_AGENT" "opus" "$PROMPT_FILE"
 fi

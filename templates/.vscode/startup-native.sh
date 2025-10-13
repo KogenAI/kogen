@@ -85,7 +85,7 @@ setup_automation() {
         return 1
     fi
 
-    echo "✅ Context prepared for AI assistant"
+    echo "✅ Context prepared for AI agent"
 
     if [ -f ".mcp.json" ]; then
         echo "✅ MCP configuration ready (.mcp.json found)"
@@ -256,23 +256,23 @@ fi
 # Show workspace summary BEFORE launching Claude
 show_workspace_summary "$WORKSPACE_MODE"
 
-# Launch AI assistant now that Phoenix is ready
+# Launch AI agent now that Phoenix is ready
 echo ""
-echo "🤖 Starting AI assistant task..."
+echo "🤖 Starting AI agent task..."
 echo "📋 Prompt has been prepared in: codegen/PROMPT.md"
 echo ""
 
-# Launch AI assistant
+# Launch AI agent
 cd "$WORKSPACE_ROOT"
 
 echo "✅ All services started! Check IDE tabs for:"
 echo "   🤖 AI Assistant (waiting for release)"
 echo "   📊 Server logs and workspace info"
 echo ""
-echo "🔓 Releasing AI assistant to start..."
+echo "🔓 Releasing AI agent to start..."
 rm -f codegen/.ai_wait
 
-echo "🎯 Startup complete! AI assistant should now be starting in its tab."
-echo "📝 You can manually control AI assistant by creating/removing:"
-echo "   codegen/.ai_wait - blocks AI assistant"
+echo "🎯 Startup complete! AI agent should now be starting in its tab."
+echo "📝 You can manually control AI agent by creating/removing:"
+echo "   codegen/.ai_wait - blocks AI agent"
 echo "📝 To rerun CI checks: ./codegen/ci.sh"

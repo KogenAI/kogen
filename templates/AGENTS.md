@@ -1,6 +1,6 @@
 # AGENTS.md
 
-Universal guidance for AI assistants in OCG workspaces.
+Universal guidance for AI agents in OCG workspaces.
 
 ## ⚠️ MANDATORY: Load Your Rules FIRST
 

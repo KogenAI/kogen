@@ -51,39 +51,39 @@ else
     echo "❌ Erlang not found"
 fi
 
-# Wait for startup signal (both assistants should wait)
+# Wait for startup signal (both agents should wait)
 WAIT_FILE="$WORKSPACE_DIR/codegen/.ai_wait"
 if [ -f "$WAIT_FILE" ]; then
     echo "⏳ Waiting for workspace initialization to complete..."
     while [ -f "$WAIT_FILE" ]; do
         sleep 1
     done
-    echo "✅ Workspace ready, starting AI assistant..."
+    echo "✅ Workspace ready, starting AI agent..."
 fi
 
 # Simple configuration:
-# 1. Get assistant from environment or global config
+# 1. Get agent from environment or global config
 # 2. Get model from environment or use default
 
 CONFIG_FILE="$HOME/.ocg/config.json"
 
-# Get AI assistant (environment variable takes precedence)
-AI_ASSISTANT="${AI_ASSISTANT:-}"
-if [ -z "$AI_ASSISTANT" ] && [ -f "$CONFIG_FILE" ]; then
-    AI_ASSISTANT=$(jq -r '.default_assistant // "claude"' "$CONFIG_FILE" 2>/dev/null)
+# Get AI agent (environment variable takes precedence)
+AI_AGENT="${AI_AGENT:-}"
+if [ -z "$AI_AGENT" ] && [ -f "$CONFIG_FILE" ]; then
+    AI_AGENT=$(jq -r '.default_agent // "claude"' "$CONFIG_FILE" 2>/dev/null)
 fi
 
 # Get model (environment variable takes precedence)
 MODEL="${AI_MODEL:-${MODEL:-sonnet}}"
 
-# Check if assistant is configured
-if [ -z "$AI_ASSISTANT" ]; then
-    echo "❌ No AI assistant configured."
-    echo "   Please run: ocg ai-config --set-assistant [claude|opencode|cursor]"
+# Check if agent is configured
+if [ -z "$AI_AGENT" ]; then
+    echo "❌ No AI agent configured."
+    echo "   Please run: ocg ai-config set default [claude|opencode|cursor]"
     exit 1
 fi
 
-echo "🤖 Starting $AI_ASSISTANT with model: $MODEL"
+echo "🤖 Starting $AI_AGENT with model: $MODEL"
 
 # Get OCG directory by resolving the ocg command location
 if ! command -v ocg >/dev/null 2>&1; then
@@ -96,16 +96,16 @@ fi
 OCG_SCRIPT=$(which ocg)
 OCG_DIR=$(cd "$(dirname "$(readlink -f "$OCG_SCRIPT" 2>/dev/null || realpath "$OCG_SCRIPT" 2>/dev/null || echo "$OCG_SCRIPT")")" && pwd)
 
-# Use OCG ai-assistants directory
-AI_ASSISTANTS_DIR="$OCG_DIR/ai-assistants"
+# Use OCG ai-agents directory
+AI_AGENTS_DIR="$OCG_DIR/ai-agents"
 
-if [ ! -d "$AI_ASSISTANTS_DIR" ]; then
-    echo "❌ AI assistants directory not found: $AI_ASSISTANTS_DIR"
+if [ ! -d "$AI_AGENTS_DIR" ]; then
+    echo "❌ AI agents directory not found: $AI_AGENTS_DIR"
     exit 1
 fi
 
 # Set Claude-specific environment variable if needed
-if [ "$AI_ASSISTANT" = "claude" ]; then
+if [ "$AI_AGENT" = "claude" ]; then
     export CLAUDE_BASH_MAINTAIN_PROJECT_WORKING_DIR=true
 fi
 
@@ -121,5 +121,5 @@ fi
 # Change to workspace directory
 cd "$WORKSPACE_DIR"
 
-# Use the same run-ai.sh script for all assistants
-"$AI_ASSISTANTS_DIR/run-ai.sh" "$AI_ASSISTANT" "$MODEL" "$PROMPT_FILE"
+# Use the same run-ai.sh script for all agents
+"$AI_AGENTS_DIR/run-ai.sh" "$AI_AGENT" "$MODEL" "$PROMPT_FILE"

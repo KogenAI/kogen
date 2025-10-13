@@ -5,13 +5,13 @@ if [ $# -eq 0 ]; then
     echo "Usage: $0 <feature-name> [options]"
     echo "Options:"
     echo "  --model, -m <model>      AI model to use (default: sonnet)"
-    echo "  --assistant, -a <name>   AI assistant to use (default: from config)"
+    echo "  --agent, -a <name>   AI agent to use (default: from config)"
     echo "  --container              Run in Docker container"
     echo ""
     echo "Examples:"
     echo "  $0 dashboard-redesign"
     echo "  $0 dashboard-redesign --model opus"
-    echo "  $0 dashboard-redesign --assistant opencode"
+    echo "  $0 dashboard-redesign --agent opencode"
     echo "  $0 dashboard-redesign -m opus -a opencode --container"
     exit 1
 fi
@@ -19,7 +19,7 @@ fi
 # Parse arguments
 CONTAINER_MODE=false
 MODEL="sonnet" # Default model
-ASSISTANT=""   # Will use default from config if not specified
+AGENT=""       # Will use default from config if not specified
 FEATURE_NAME=""
 
 # Parse command line arguments
@@ -29,8 +29,8 @@ while [[ $# -gt 0 ]]; do
         MODEL="$2"
         shift 2
         ;;
-    --assistant | -a | --ai)
-        ASSISTANT="$2"
+    --agent | -a | --ai)
+        AGENT="$2"
         shift 2
         ;;
     --container)
@@ -60,13 +60,13 @@ source "$SCRIPT_DIR/config.sh"
 source "$SCRIPT_DIR/utils.sh"
 source "$SCRIPT_DIR/resource_manager.sh"
 
-# Load default assistant from config if not specified
-if [ -z "$ASSISTANT" ]; then
+# Load default agent from config if not specified
+if [ -z "$AGENT" ]; then
     CONFIG_FILE="$HOME/.ocg/config.json"
     if [ -f "$CONFIG_FILE" ]; then
-        ASSISTANT=$(jq -r '.default_assistant // "claude"' "$CONFIG_FILE")
+        AGENT=$(jq -r '.default_agent // "claude"' "$CONFIG_FILE")
     else
-        echo "❌ No default AI assistant configured. Run 'make install' to configure."
+        echo "❌ No default AI agent configured. Run 'make install' to configure."
         exit 1
     fi
 fi
@@ -176,18 +176,18 @@ if [ -f "$SCRIPT_DIR/templates/.vscode/workspace-info.sh" ]; then
     chmod +x "$WORKSPACE_PATH/.vscode/workspace-info.sh"
 fi
 
-# Copy the universal AI assistant script
-if [ -f "$SCRIPT_DIR/templates/.vscode/ai-assistant.sh" ]; then
-    cp "$SCRIPT_DIR/templates/.vscode/ai-assistant.sh" "$WORKSPACE_PATH/.vscode/ai-assistant.sh"
-    chmod +x "$WORKSPACE_PATH/.vscode/ai-assistant.sh"
+# Copy the universal AI agent script
+if [ -f "$SCRIPT_DIR/templates/.vscode/ai-agent.sh" ]; then
+    cp "$SCRIPT_DIR/templates/.vscode/ai-agent.sh" "$WORKSPACE_PATH/.vscode/ai-agent.sh"
+    chmod +x "$WORKSPACE_PATH/.vscode/ai-agent.sh"
 fi
 
-# Pass model and assistant through environment variables to startup script
-export AI_ASSISTANT="$ASSISTANT"
+# Pass model and agent through environment variables to startup script
+export AI_AGENT="$AGENT"
 export AI_MODEL="$MODEL"
 
 # For backward compatibility, create claude-code.sh as a symlink
-ln -sf "ai-assistant.sh" "$WORKSPACE_PATH/.vscode/claude-code.sh"
+ln -sf "ai-agent.sh" "$WORKSPACE_PATH/.vscode/claude-code.sh"
 
 if [ -f "$SCRIPT_DIR/templates/.vscode/phoenix-server.sh" ]; then
     cp "$SCRIPT_DIR/templates/.vscode/phoenix-server.sh" "$WORKSPACE_PATH/.vscode/"
@@ -259,8 +259,8 @@ if [ -f "$SCRIPT_DIR/templates/NEW_PROMPT.md" ]; then
     sed -i '' "s|{{PORT}}|$NEXT_PORT|g" "$WORKSPACE_PATH/codegen/PROMPT.md"
     sed -i '' "s|{{PLAYWRIGHT_MCP_PORT}}|$NEXT_PLAYWRIGHT_PORT|g" "$WORKSPACE_PATH/codegen/PROMPT.md"
 
-    # Set the correct agent context file based on AI assistant
-    if [ "$ASSISTANT" = "opencode" ]; then
+    # Set the correct agent context file based on AI agent
+    if [ "$AGENT" = "opencode" ]; then
         sed -i '' "s|{{AGENT_CONTEXT_FILE}}|AGENTS.md|g" "$WORKSPACE_PATH/codegen/PROMPT.md"
     else
         sed -i '' "s|{{AGENT_CONTEXT_FILE}}|CLAUDE.md|g" "$WORKSPACE_PATH/codegen/PROMPT.md"
@@ -298,15 +298,15 @@ fi
 ln -sf "AGENTS.md" "$WORKSPACE_PATH/CLAUDE.md"
 echo "✅ Created CLAUDE.md symlink for backward compatibility"
 
-# Create MCP configuration based on assistant
-if [ "$ASSISTANT" = "opencode" ]; then
+# Create MCP configuration based on agent
+if [ "$AGENT" = "opencode" ]; then
     # Create OpenCode MCP configuration in workspace root
     if [ -f "$SCRIPT_DIR/templates/.opencode-mcp.json" ]; then
         sed "s/{{PORT}}/${NEXT_PORT}/g; s/{{PLAYWRIGHT_MCP_PORT}}/${NEXT_PLAYWRIGHT_PORT}/g" \
             "$SCRIPT_DIR/templates/.opencode-mcp.json" >"$WORKSPACE_PATH/opencode.json"
         echo "✅ Created opencode.json with MCP configuration and workspace-specific ports"
     fi
-elif [ "$ASSISTANT" = "cursor" ]; then
+elif [ "$AGENT" = "cursor" ]; then
     # Create Cursor MCP configuration (mcp.json, not .mcp.json)
     if [ -f "$SCRIPT_DIR/templates/.mcp.json" ]; then
         sed "s/{{PORT}}/${NEXT_PORT}/g; s/{{PLAYWRIGHT_MCP_PORT}}/${NEXT_PLAYWRIGHT_PORT}/g" \
@@ -369,14 +369,14 @@ if [ "$CONTAINER_MODE" = true ]; then
         exit 1
     fi
 
-    # Ensure shared AI assistant volumes exist
+    # Ensure shared AI agent volumes exist
     ensure_shared_ai_volumes
 
     # Clone volumes for workspace
     clone_deps_volumes "$FEATURE_NAME" "$REPO_NAME"
 
-    # Export AI assistant for docker-compose template
-    export AI_ASSISTANT="$ASSISTANT"
+    # Export AI agent for docker-compose template
+    export AI_AGENT="$AGENT"
 
     # Create and start container
     create_docker_compose "$WORKSPACE_PATH" "$FEATURE_NAME" "$SCRIPT_DIR/dockerfiles/docker-compose.yml.template" "$REPO_NAME"

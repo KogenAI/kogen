@@ -296,15 +296,15 @@ if [ ! -d "$RULES_DIR" ]; then
     mkdir -p "$RULES_DIR"
 fi
 
-# Load AI assistant configuration
+# Load AI agent configuration
 CONFIG_FILE="$HOME/.ocg/config.json"
 if [ -f "$CONFIG_FILE" ]; then
-    AI_ASSISTANT=$(jq -r '.default_assistant // "claude"' "$CONFIG_FILE")
+    AI_AGENT=$(jq -r '.default_agent // "claude"' "$CONFIG_FILE")
 else
-    AI_ASSISTANT="claude"
+    AI_AGENT="claude"
 fi
 
-echo "🤖 Starting $AI_ASSISTANT with Sonnet model for context update..."
+echo "🤖 Starting $AI_AGENT with Sonnet model for context update..."
 
 cd "$REPO_ROOT"
 
@@ -313,8 +313,8 @@ PROMPT_FILE=$(mktemp)
 trap "rm -f $PROMPT_FILE" EXIT
 echo "$CONTEXT_UPDATE_PROMPT" >"$PROMPT_FILE"
 
-# Run AI assistant
-"$SCRIPT_DIR/ai-assistants/run-ai.sh" "$AI_ASSISTANT" "sonnet" "$PROMPT_FILE"
+# Run AI agent
+"$SCRIPT_DIR/ai-agents/run-ai.sh" "$AI_AGENT" "sonnet" "$PROMPT_FILE"
 
 echo ""
 echo "📝 Feature plan: $PLAN_FILE"

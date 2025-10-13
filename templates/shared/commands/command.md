@@ -19,7 +19,7 @@ Command format requirements:
 - **Frontmatter** with `---` delimiters and `description` field
 - **Optional argument-hint** if command takes parameters (e.g. `[message]`, `[feature name]`)
 - **Concise description** in frontmatter (one line)
-- **Direct instructions** in body - what the assistant should do step by step
+- **Direct instructions** in body - what the agent should do step by step
 - **No excessive documentation** - focus on actionable steps, not explanations
 - **Follow existing patterns** - reference other commands for consistency
 

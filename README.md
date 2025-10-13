@@ -145,20 +145,20 @@ Each workspace can run in an isolated Docker container with:
 
 - `ocg new <name> [options]` - Create new feature workspace
   - `--model, -m <model>` - AI model to use (sonnet/opus, default: sonnet)
-  - `--assistant, -a <name>` - AI assistant to use (claude/opencode/cursor, default: from config)
+  - `--agent, -a <name>` - AI agent to use (claude/opencode/cursor, default: from config)
   - `--container` - Run in Docker container
 - `ocg resume <name> [options]` - Resume existing workspace
   - `--model, -m <model>` - AI model to use (default: from workspace)
-  - `--assistant, -a <name>` - AI assistant to use (default: from workspace)
+  - `--agent, -a <name>` - AI agent to use (default: from workspace)
   - `--container` - Run in Docker container
 - `ocg rm <name>` - Remove workspace (stops container if applicable, archives context)
 - `ocg ls` - List all workspaces
 
-### AI Assistant Configuration
+### AI Agent Configuration
 
-- `ocg ai-config set default <assistant>` - Set default AI assistant (claude/opencode/cursor)
-- `ocg ai-config get default` - Show current default assistant
-- `ocg ai-config status` - Show full AI assistant configuration
+- `ocg ai-config set default <agent>` - Set default AI agent (claude/opencode/cursor)
+- `ocg ai-config get default` - Show current default agent
+- `ocg ai-config status` - Show full AI agent configuration
 
 ### Cleanup
 
@@ -171,7 +171,7 @@ Each workspace can run in an isolated Docker container with:
 
 - `ocg remove-comments` - Remove comments from git diff changes
 - `ocg format` - Format all shell scripts and files
-- `ocg update` - Update all AI tools (Claude Code, OpenCode, Cursor CLI)
+- `ocg update` - Update all AI agents (Claude Code, OpenCode, Cursor CLI)
 - `ocg uninstall` - Remove global CLI installation
 - `make install` - Install CLI globally for `ocg` commands (run from codegen directory)
 
@@ -224,26 +224,26 @@ Install globally to use `ocg` commands from anywhere:
 ```bash
 cd /path/to/codegen && make install
 # Installs Claude Code, OpenCode, and Cursor CLI
-# Prompts for default AI assistant preference
+# Prompts for default AI agent preference
 # Then use: ocg new my-feature, ocg ls, etc.
 ```
 
-### AI Assistant Support
+### AI Agent Support
 
-OCG supports three AI assistants:
+OCG supports three AI agents:
 
 - **Claude Code**: Official Anthropic CLI with rich terminal UI
 - **OpenCode**: Open-source alternative with provider flexibility
 - **Cursor CLI**: Developer-focused CLI with native AGENTS.md support
 
-During installation, all three assistants are installed and you'll be prompted to choose a default. You can switch between them anytime:
+During installation, all three agents are installed and you'll be prompted to choose a default. You can switch between them anytime:
 
 ```bash
-# Set default assistant
+# Set default agent
 ocg ai-config set default cursor
 
-# Use specific assistant for a workspace
-ocg new my-feature --assistant claude
+# Use specific agent for a workspace
+ocg new my-feature --agent claude
 ocg new my-feature -a opencode --model opus
 ocg new my-feature -a cursor --model sonnet
 
@@ -359,7 +359,7 @@ To optimize context window usage, maintain these target sizes:
 
 - IDE automatically opens with feature context
 - MCP servers provide additional tooling (Tidewave for Elixir, Playwright for browser)
-- Context files guide AI assistants through development stages
+- Context files guide AI agents through development stages
 - Model selection optimizes AI assistance for different task types
 
 ## Context Quality Guidelines

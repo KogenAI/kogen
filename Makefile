@@ -31,13 +31,13 @@ new:
 		echo "Usage: $$OCG_CMD new <feature-name> [options]"; \
 		echo "Options:"; \
 		echo "  --model, -m <model>      AI model to use (default: sonnet)"; \
-		echo "  --assistant, -a <name>   AI assistant to use (default: from config)"; \
+		echo "  --agent, -a <name>   AI agent to use (default: from config)"; \
 		echo "  --container              Run in Docker container"; \
 		echo ""; \
 		echo "Examples:"; \
 		echo "  $$OCG_CMD new dashboard-redesign"; \
 		echo "  $$OCG_CMD new dashboard-redesign --model opus"; \
-		echo "  $$OCG_CMD new dashboard-redesign --assistant opencode"; \
+		echo "  $$OCG_CMD new dashboard-redesign --agent opencode"; \
 		echo "  $$OCG_CMD new dashboard-redesign -m opus -a opencode --container"; \
 		exit 1; \
 	fi
@@ -137,13 +137,13 @@ resume:
 		echo "Usage: $$OCG_CMD resume <feature-name> [options]"; \
 		echo "Options:"; \
 		echo "  --model, -m <model>      AI model to use (default: from workspace)"; \
-		echo "  --assistant, -a <name>   AI assistant to use (default: from workspace)"; \
+		echo "  --agent, -a <name>   AI agent to use (default: from workspace)"; \
 		echo "  --container              Run in Docker container"; \
 		echo ""; \
 		echo "Examples:"; \
 		echo "  $$OCG_CMD resume dashboard-redesign"; \
 		echo "  $$OCG_CMD resume dashboard-redesign --model opus"; \
-		echo "  $$OCG_CMD resume dashboard-redesign --assistant opencode"; \
+		echo "  $$OCG_CMD resume dashboard-redesign --agent opencode"; \
 		echo "  $$OCG_CMD resume dashboard-redesign -m opus -a opencode --container"; \
 		exit 1; \
 	fi
@@ -232,8 +232,8 @@ ai-config:
 	@if [ -z "$(filter-out $@,$(MAKECMDGOALS))" ]; then \
 		echo "Usage: ocg ai-config <action> [options]"; \
 		echo "Actions:"; \
-		echo "  set default <assistant>  Set default AI assistant (claude|opencode)"; \
-		echo "  get default              Show current default assistant"; \
+		echo "  set default <agent>      Set default AI agent (claude|opencode|cursor)"; \
+		echo "  get default              Show current default agent"; \
 		echo "  status                   Show full configuration"; \
 		echo ""; \
 		echo "Examples:"; \
@@ -281,11 +281,11 @@ help:
 		echo "  $$OCG_CMD uninstall                   🗑️  Remove global CLI installation"; \
 		echo ""; \
 		echo "🔄 Updates:"; \
-		echo "  $$OCG_CMD update                      🔄 Update all AI tools (Claude Code, OpenCode, Cursor CLI)"; \
+		echo "  $$OCG_CMD update                      🔄 Update all AI agents (Claude Code, OpenCode, Cursor CLI)"; \
 		echo ""; \
-		echo "🤖 AI Assistant Configuration:"; \
-		echo "  $$OCG_CMD ai-config set default       🔧 Set default AI assistant (claude|opencode)"; \
-		echo "  $$OCG_CMD ai-config status            📊 Show AI assistant configuration"; \
+		echo "🤖 AI Agent Configuration:"; \
+		echo "  $$OCG_CMD ai-config set default       🔧 Set default AI agent (claude|opencode|cursor)"; \
+		echo "  $$OCG_CMD ai-config status            📊 Show AI agent configuration"; \
 		echo ""; \
 		echo "📋 Recommended Workflow:"; \
 		echo "  1. Run: $$OCG_CMD setup (one-time project initialization)"; \

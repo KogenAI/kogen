@@ -2,7 +2,7 @@
 
 🎯 **YOU ARE IN A PoC WORKSPACE** - This is validation-focused development, not production development.
 
-PoC-focused guidance for AI assistants - optimized for rapid validation over production-ready features.
+PoC-focused guidance for AI agents - optimized for rapid validation over production-ready features.
 
 ## ⚠️ MANDATORY: Load PoC Rules FIRST
 

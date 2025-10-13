@@ -1,15 +1,15 @@
 #!/bin/bash
-# Centralized AI assistant runner
+# Centralized AI agent runner
 # Usage: run-ai.sh <assistant> <model> <prompt_file>
 
 set -e
 
-ASSISTANT="${1:-}"
+AGENT="${1:-}"
 MODEL="${2:-}"
 PROMPT_FILE="${3:-}"
 
 # Validate arguments
-if [ -z "$ASSISTANT" ] || [ -z "$MODEL" ] || [ -z "$PROMPT_FILE" ]; then
+if [ -z "$AGENT" ] || [ -z "$MODEL" ] || [ -z "$PROMPT_FILE" ]; then
     echo "❌ Usage: run-ai.sh <assistant> <model> <prompt_file>"
     exit 1
 fi
@@ -31,7 +31,7 @@ export SHELL=/bin/bash
 # Read prompt content once
 PROMPT_CONTENT=$(<"$PROMPT_FILE")
 
-case "$ASSISTANT" in
+case "$AGENT" in
 claude)
     if ! command -v claude >/dev/null 2>&1; then
         echo "⚠️  Claude CLI not found. Please install Claude CLI first and try again."
@@ -70,7 +70,7 @@ cursor)
     cursor-agent --model "$CURSOR_MODEL" --force "$PROMPT_CONTENT"
     ;;
 *)
-    echo "❌ Unknown AI assistant: $ASSISTANT"
+    echo "❌ Unknown AI agent: $AGENT"
     exit 1
     ;;
 esac

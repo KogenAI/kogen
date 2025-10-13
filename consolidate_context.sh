@@ -190,15 +190,15 @@ Start by reading the current PROJECT_CONTEXT.md and create an optimized version 
 
 echo "🎯 Context consolidation ready!"
 
-# Load AI assistant configuration
+# Load AI agent configuration
 CONFIG_FILE="$HOME/.ocg/config.json"
 if [ -f "$CONFIG_FILE" ]; then
-    AI_ASSISTANT=$(jq -r '.default_assistant // "claude"' "$CONFIG_FILE")
+    AI_AGENT=$(jq -r '.default_agent // "claude"' "$CONFIG_FILE")
 else
-    AI_ASSISTANT="claude"
+    AI_AGENT="claude"
 fi
 
-echo "🤖 Starting $AI_ASSISTANT with Opus model for thorough analysis..."
+echo "🤖 Starting $AI_AGENT with Opus model for thorough analysis..."
 
 cd "$REPO_ROOT"
 
@@ -207,5 +207,5 @@ PROMPT_FILE=$(mktemp)
 trap "rm -f $PROMPT_FILE" EXIT
 echo "$CONSOLIDATE_PROMPT" >"$PROMPT_FILE"
 
-# Run AI assistant
-"$SCRIPT_DIR/ai-assistants/run-ai.sh" "$AI_ASSISTANT" "opus" "$PROMPT_FILE"
+# Run AI agent
+"$SCRIPT_DIR/ai-agents/run-ai.sh" "$AI_AGENT" "opus" "$PROMPT_FILE"

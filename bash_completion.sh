@@ -59,10 +59,10 @@ _codegen_completion() {
                 COMPREPLY=($(compgen -W "$plans" -- "$cur"))
             fi
         elif [[ "$cur" == --* ]]; then
-            COMPREPLY=($(compgen -W "--model --assistant --container" -- "$cur"))
+            COMPREPLY=($(compgen -W "--model --agent --container" -- "$cur"))
         elif [[ "$prev" == "--model" || "$prev" == "-m" ]]; then
             COMPREPLY=($(compgen -W "sonnet opus" -- "$cur"))
-        elif [[ "$prev" == "--assistant" || "$prev" == "-a" || "$prev" == "--ai" ]]; then
+        elif [[ "$prev" == "--agent" || "$prev" == "-a" || "$prev" == "--ai" ]]; then
             COMPREPLY=($(compgen -W "claude opencode cursor" -- "$cur"))
         fi
         ;;
@@ -72,10 +72,10 @@ _codegen_completion() {
             local repo_root="$TARGET_REPO_PATH"
             [[ -d "$repo_root" ]] && cd "$repo_root" && COMPREPLY=($(compgen -W "$(git worktree list --porcelain 2>/dev/null | grep "^worktree" | cut -d' ' -f2 | xargs -I {} basename {} | grep -v "$(basename "$repo_root")")" -- "$cur"))
         elif [[ "$cur" == --* ]]; then
-            COMPREPLY=($(compgen -W "--model --assistant --container" -- "$cur"))
+            COMPREPLY=($(compgen -W "--model --agent --container" -- "$cur"))
         elif [[ "$prev" == "--model" || "$prev" == "-m" ]]; then
             COMPREPLY=($(compgen -W "sonnet opus" -- "$cur"))
-        elif [[ "$prev" == "--assistant" || "$prev" == "-a" || "$prev" == "--ai" ]]; then
+        elif [[ "$prev" == "--agent" || "$prev" == "-a" || "$prev" == "--ai" ]]; then
             COMPREPLY=($(compgen -W "claude opencode cursor" -- "$cur"))
         fi
         ;;
