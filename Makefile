@@ -193,6 +193,10 @@ uninstall:
 	$(call check_ocg_only,uninstall)
 	@./uninstall.sh
 
+update:
+	$(call check_ocg_only,update)
+	@./update_ai_tools.sh
+
 format:
 	$(call check_make_only,format)
 	@echo "🎨 Formatting all files..."
@@ -275,6 +279,9 @@ help:
 		echo ""; \
 		echo "🗑️  Uninstallation:"; \
 		echo "  $$OCG_CMD uninstall                   🗑️  Remove global CLI installation"; \
+		echo ""; \
+		echo "🔄 Updates:"; \
+		echo "  $$OCG_CMD update                      🔄 Update all AI tools (Claude Code, OpenCode, Cursor CLI)"; \
 		echo ""; \
 		echo "🤖 AI Assistant Configuration:"; \
 		echo "  $$OCG_CMD ai-config set default       🔧 Set default AI assistant (claude|opencode)"; \

@@ -171,6 +171,7 @@ Each workspace can run in an isolated Docker container with:
 
 - `ocg remove-comments` - Remove comments from git diff changes
 - `ocg format` - Format all shell scripts and files
+- `ocg update` - Update all AI tools (Claude Code, OpenCode, Cursor CLI)
 - `ocg uninstall` - Remove global CLI installation
 - `make install` - Install CLI globally for `ocg` commands (run from codegen directory)
 

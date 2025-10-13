@@ -1,0 +1,47 @@
+#!/bin/bash
+
+# Update all AI tools (Claude Code, OpenCode, Cursor CLI)
+
+set -e
+
+CODEGEN_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+echo "🔄 Updating all AI tools..."
+echo ""
+
+# Update Claude Code
+echo "🤖 Updating Claude Code..."
+hash -r 2>/dev/null || true
+if command -v claude >/dev/null 2>&1; then
+    claude update
+    echo "   ✅ Claude Code updated"
+else
+    echo "   ⚠️  Claude Code not installed, skipping"
+fi
+echo ""
+
+# Update OpenCode
+echo "🤖 Updating OpenCode..."
+hash -r 2>/dev/null || true
+if command -v opencode >/dev/null 2>&1; then
+    opencode upgrade
+    echo "   ✅ OpenCode updated"
+else
+    echo "   ⚠️  OpenCode not installed, skipping"
+fi
+echo ""
+
+# Update Cursor CLI
+echo "🤖 Updating Cursor CLI..."
+hash -r 2>/dev/null || true
+if command -v cursor-agent >/dev/null 2>&1; then
+    cursor-agent update
+    echo "   ✅ Cursor CLI updated"
+else
+    echo "   ⚠️  Cursor CLI not installed, skipping"
+fi
+echo ""
+
+echo "✅ All AI tools have been updated!"
+echo ""
+echo "💡 Run 'make install' to regenerate and reinstall OCG templates and commands"
