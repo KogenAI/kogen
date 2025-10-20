@@ -100,6 +100,50 @@ PoC-focused guidance for AI agents - optimized for rapid validation over product
 - `./codegen/CONTEXT.md` - Workspace state, ports, progress
 - `./codegen/plans/poc/overview.md` - PoC validation goals
 
+## 📚 Library Usage Rules
+
+**IMPORTANT**: When working with external Elixir libraries, load library-specific usage documentation to ensure correct implementation patterns.
+
+**Usage rules location**: `$OCG_CONTEXT_DIR/usage_rules/` (typically `~/Areas/Optimum/context/usage_rules/`)
+
+### Discovery Pattern for PoCs
+
+**Quick library doc lookup:**
+
+```bash
+# 1. Find library docs (version-agnostic)
+ls $OCG_CONTEXT_DIR/usage_rules/ | grep -i "^library_name"
+
+# Examples:
+ls $OCG_CONTEXT_DIR/usage_rules/ | grep -i "^jason"    # jason-1.4.4.md
+ls $OCG_CONTEXT_DIR/usage_rules/ | grep -i "^httpoison" # httpoison-*.md
+
+# 2. Load the found file
+Read file_path="$OCG_CONTEXT_DIR/usage_rules/jason-1.4.4.md"
+```
+
+### When to Load (PoC Context)
+
+**Load when integrating external libraries:**
+
+- **Jason** → JSON encoding/decoding for API responses
+- **HTTPoison/Finch** → External API calls (YouTube, OpenAI, etc.)
+- **Phoenix LiveView** → Real-time UI updates and feedback
+- **Any library** you're not familiar with
+
+**PoC-specific focus:**
+
+- Focus on **basic usage patterns** (not comprehensive testing)
+- **External integration** patterns (System.cmd() alternatives)
+- **Quick validation** approaches
+
+### Generate If Missing
+
+```bash
+# Generate docs for all dependencies
+ocg usage-rules
+```
+
 ## 📊 SIMPLIFIED: Session Logging
 
 **PoC agents log for debugging:**
@@ -134,6 +178,14 @@ PoC-focused guidance for AI agents - optimized for rapid validation over product
 - [ ] Assumption being tested: [specific assumption]
 - [ ] Success criteria: [how we know if it works]
 - [ ] Timeline: [rapid iteration target]
+
+## Library Usage Rules Loaded
+
+- [ ] jason-1.4.4.md (JSON for APIs)
+- [ ] phoenix_live_view-1.0.0.md (real-time feedback)
+- [ ] httpoison-\*.md (external API calls)
+- [ ] [list library docs loaded]
+- [ ] None (if only using built-in modules)
 
 ## Command Execution Log
 

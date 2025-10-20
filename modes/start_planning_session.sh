@@ -108,12 +108,12 @@ trap cleanup_planning_session EXIT
 if [ -n "$MODEL_OVERRIDE" ]; then
     # Validate model override
     case "$MODEL_OVERRIDE" in
-    "sonnet" | "opus")
+    "haiku" | "sonnet" | "opus")
         MODEL="$MODEL_OVERRIDE"
         echo "✓ Using model override: $MODEL"
         ;;
     *)
-        echo "Error: Invalid model '$MODEL_OVERRIDE'. Valid models: sonnet, opus"
+        echo "Error: Invalid model '$MODEL_OVERRIDE'. Valid models: haiku, sonnet, opus"
         exit 1
         ;;
     esac

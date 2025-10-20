@@ -244,6 +244,10 @@ ai-config:
 	fi
 	@./ai_config.sh $(filter-out $@,$(MAKECMDGOALS))
 
+usage-rules:
+	$(call check_ocg_only,usage-rules)
+	@./usage_rules.sh $(filter-out $@,$(MAKECMDGOALS))
+
 
 help:
 	@echo "🚀 Optimum Codegen"
@@ -276,6 +280,7 @@ help:
 		echo ""; \
 		echo "🧹 Code Maintenance:"; \
 		echo "  $$OCG_CMD remove-comments             🗑️  Remove comments from git diff changes"; \
+		echo "  $$OCG_CMD usage-rules                 📚 Generate usage rules for Elixir dependencies from mix.exs"; \
 		echo ""; \
 		echo "🗑️  Uninstallation:"; \
 		echo "  $$OCG_CMD uninstall                   🗑️  Remove global CLI installation"; \

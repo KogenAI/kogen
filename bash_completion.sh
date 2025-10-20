@@ -20,7 +20,7 @@ _codegen_completion() {
 
     # Complete main commands
     if [[ ${COMP_CWORD} == 1 ]]; then
-        local opts="ai-config bird-eye clean clean-branches clean-servers consolidate-context help ls new plan prepare prune remove-comments resources resume rm setup update update-context"
+        local opts="ai-config bird-eye clean clean-branches clean-servers consolidate-context help ls new plan prepare prune remove-comments resources resume rm setup update update-context usage-rules"
         [[ "$cmd" == "make" ]] && opts="$opts install uninstall"
         [[ "$cmd" == "ocg" ]] && opts="$opts uninstall"
         COMPREPLY=($(compgen -W "$opts" -- "$cur"))
@@ -61,7 +61,7 @@ _codegen_completion() {
         elif [[ "$cur" == --* ]]; then
             COMPREPLY=($(compgen -W "--model --agent --container" -- "$cur"))
         elif [[ "$prev" == "--model" || "$prev" == "-m" ]]; then
-            COMPREPLY=($(compgen -W "sonnet opus" -- "$cur"))
+            COMPREPLY=($(compgen -W "haiku sonnet opus" -- "$cur"))
         elif [[ "$prev" == "--agent" || "$prev" == "-a" || "$prev" == "--ai" ]]; then
             COMPREPLY=($(compgen -W "claude opencode cursor" -- "$cur"))
         fi
@@ -74,7 +74,7 @@ _codegen_completion() {
         elif [[ "$cur" == --* ]]; then
             COMPREPLY=($(compgen -W "--model --agent --container" -- "$cur"))
         elif [[ "$prev" == "--model" || "$prev" == "-m" ]]; then
-            COMPREPLY=($(compgen -W "sonnet opus" -- "$cur"))
+            COMPREPLY=($(compgen -W "haiku sonnet opus" -- "$cur"))
         elif [[ "$prev" == "--agent" || "$prev" == "-a" || "$prev" == "--ai" ]]; then
             COMPREPLY=($(compgen -W "claude opencode cursor" -- "$cur"))
         fi
@@ -100,6 +100,15 @@ _codegen_completion() {
     resources)
         if [[ ${COMP_CWORD} == 2 ]]; then
             COMPREPLY=($(compgen -W "--cleanup-orphaned --orphaned" -- "$cur"))
+        fi
+        ;;
+    usage-rules)
+        if [[ "$cur" == --* ]]; then
+            COMPREPLY=($(compgen -W "--model --agent --help" -- "$cur"))
+        elif [[ "$prev" == "--model" || "$prev" == "-m" ]]; then
+            COMPREPLY=($(compgen -W "haiku sonnet opus" -- "$cur"))
+        elif [[ "$prev" == "--agent" || "$prev" == "-a" || "$prev" == "--ai" ]]; then
+            COMPREPLY=($(compgen -W "claude opencode cursor" -- "$cur"))
         fi
         ;;
     esac

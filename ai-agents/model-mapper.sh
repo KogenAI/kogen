@@ -16,6 +16,7 @@ map_model() {
     # For Cursor CLI, map to cursor-agent model names
     if [ "$assistant" = "cursor" ]; then
         case "$model" in
+        haiku) echo "haiku-4.5" ;;
         sonnet) echo "sonnet-4.5" ;;
         opus) echo "opus-4.1" ;;
         *) echo "sonnet-4.5" ;; # Default to sonnet
@@ -26,6 +27,7 @@ map_model() {
     # For OpenCode with Anthropic provider, map to full model names
     if [ "$provider" = "anthropic" ]; then
         case "$model" in
+        haiku) echo "claude-haiku-4-5-20251001" ;;
         sonnet) echo "claude-sonnet-4-5-20250929" ;;
         opus) echo "claude-opus-4-1-20250805" ;;
         *) echo "claude-sonnet-4-5-20250929" ;; # Default to sonnet

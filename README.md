@@ -144,7 +144,7 @@ Each workspace can run in an isolated Docker container with:
 ### Workspace Management
 
 - `ocg new <name> [options]` - Create new feature workspace
-  - `--model, -m <model>` - AI model to use (sonnet/opus, default: sonnet)
+  - `--model, -m <model>` - AI model to use (haiku/sonnet/opus, default: sonnet)
   - `--agent, -a <name>` - AI agent to use (claude/opencode/cursor, default: from config)
   - `--container` - Run in Docker container
 - `ocg resume <name> [options]` - Resume existing workspace
@@ -169,6 +169,10 @@ Each workspace can run in an isolated Docker container with:
 
 ### Tools
 
+- `ocg usage-rules [options]` - Generate usage rules for Elixir dependencies from mix.exs
+  - `--model, -m <model>` - AI model to use (haiku/sonnet/opus, default: haiku)
+  - `--agent, -a <name>` - AI agent to use (claude/opencode/cursor, default: from config)
+  - `--help` - Show usage information
 - `ocg remove-comments` - Remove comments from git diff changes
 - `ocg format` - Format all shell scripts and files
 - `ocg update` - Update all AI agents (Claude Code, OpenCode, Cursor CLI)
@@ -188,18 +192,19 @@ Each workspace can run in an isolated Docker container with:
 ### Recommended Planning-First Workflow
 
 1. **Initialize Project**: Run `ocg setup` once per repository
-2. **Bird-Eye Planning**: Run `ocg bird-eye {feature}` for high-level planning
-3. **Detailed Planning**: Run `ocg plan {feature}` for technical planning
-4. **Create Workspace**: Run `ocg new {feature}` - automatically:
+2. **Generate Usage Rules**: Run `ocg usage-rules` to create AI-readable dependency documentation
+3. **Bird-Eye Planning**: Run `ocg bird-eye {feature}` for high-level planning
+4. **Detailed Planning**: Run `ocg plan {feature}` for technical planning
+5. **Create Workspace**: Run `ocg new {feature}` - automatically:
    - Creates git worktree with your plan
    - Assigns ports
    - Copies dependencies from main
    - Opens IDE with context
    - Starts servers
-5. **Develop**: Work in isolated environment with AI assistance
-6. **Archive**: Run `ocg rm {feature}` to save context
-7. **Update Knowledge**: Run `ocg update-context {feature}` to incorporate learnings
-8. **Cleanup**: Use `ocg clean-branches` when features are merged
+6. **Develop**: Work in isolated environment with AI assistance
+7. **Archive**: Run `ocg rm {feature}` to save context
+8. **Update Knowledge**: Run `ocg update-context {feature}` to incorporate learnings
+9. **Cleanup**: Use `ocg clean-branches` when features are merged
 
 ### Container vs Native Modes
 
@@ -320,6 +325,7 @@ To optimize context window usage, maintain these target sizes:
   - `plan`: opus (detailed technical planning)
   - `new`/`resume`: sonnet (implementation work)
   - `setup`: opus (comprehensive project analysis)
+  - `usage-rules`: haiku (fast and cost-effective documentation summarization)
   - `update-context`: sonnet (routine context updates)
   - `consolidate-context`: opus (thorough consolidation for clarity)
 
@@ -354,6 +360,14 @@ To optimize context window usage, maintain these target sizes:
 - Recipes are stored in `~/Areas/Optimum/context/recipes/`
 - Each recipe documents a self-contained, reusable technique
 - Examples: data sanitization, auth patterns, testing strategies
+
+### Usage Rules
+
+- AI-readable documentation for Elixir dependencies generated from hexdocs
+- Usage rules are stored in `~/Areas/Optimum/context/usage_rules/`
+- Generated automatically by parsing mix.exs and fetching documentation
+- Provides practical examples, configuration, and best practices for each library
+- Run `ocg usage-rules` from any Elixir project to generate missing rules
 
 ### AI Integration
 
