@@ -344,9 +344,20 @@ if [ -d "$CODEGEN_DIR/templates/shared/commands" ]; then
     done
 fi
 
-# Note: Cursor CLI does NOT use a subagents directory like Claude Code
-# Subagents are spawned via bash commands: cursor-agent -p [task] --force --model [model]
-# Generated subagent templates are used as reference in OCG templates, not installed globally
+# Install Cursor sub agents from generated templates
+echo "   🤖 Installing Cursor CLI sub agents..."
+CURSOR_SUBAGENTS_DIR="$HOME/.cursor/subagents"
+mkdir -p "$CURSOR_SUBAGENTS_DIR"
+
+if [ -d "$CODEGEN_DIR/templates/generated/cursor/subagents" ]; then
+    for agent_file in "$CODEGEN_DIR/templates/generated/cursor/subagents"/*.md; do
+        if [ -f "$agent_file" ]; then
+            agent_name=$(basename "$agent_file")
+            cp "$agent_file" "$CURSOR_SUBAGENTS_DIR/"
+            echo "   ✅ Installed Cursor sub agent: ${agent_name%.md}"
+        fi
+    done
+fi
 
 # Create OCG config directory
 mkdir -p "$HOME/.ocg"
