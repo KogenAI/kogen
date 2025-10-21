@@ -20,7 +20,7 @@ _codegen_completion() {
 
     # Complete main commands
     if [[ ${COMP_CWORD} == 1 ]]; then
-        local opts="ai-config bird-eye clean clean-branches clean-servers consolidate-context help ls new plan prepare prune remove-comments resources resume rm setup update update-context usage-rules"
+        local opts="ai-config bird-eye clean clean-branches clean-servers consolidate-context help init ls new plan prepare prune remove-comments resources resume rm setup update update-context usage-rules"
         [[ "$cmd" == "make" ]] && opts="$opts install uninstall"
         [[ "$cmd" == "ocg" ]] && opts="$opts uninstall"
         COMPREPLY=($(compgen -W "$opts" -- "$cur"))
@@ -29,6 +29,16 @@ _codegen_completion() {
 
     # Complete arguments
     case "$prev" in
+    init)
+        if [[ ${COMP_CWORD} == 2 ]]; then
+            # First argument is project name - no completion
+            COMPREPLY=()
+        elif [[ "$cur" == --* ]]; then
+            COMPREPLY=($(compgen -W "--poc --ash --github-url --fly-app-prefix --agent" -- "$cur"))
+        elif [[ "$prev" == "--agent" || "$prev" == "-a" ]]; then
+            COMPREPLY=($(compgen -W "claude opencode cursor" -- "$cur"))
+        fi
+        ;;
     update-context)
         source "$script_dir/config.sh"
         local repo_root="$TARGET_REPO_PATH"

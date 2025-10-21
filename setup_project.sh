@@ -38,6 +38,9 @@ fi
 
 PROJECT_CONTEXT_DIR="$OCG_CONTEXT_DIR/$PROJECT_NAME"
 
+# Flag to track if we need AI analysis
+NEEDS_AI_ANALYSIS=false
+
 if [ -d "$PROJECT_CONTEXT_DIR" ] && [ -f "$PROJECT_CONTEXT_DIR/PROJECT_CONTEXT.md" ]; then
     # Project-specific PROJECT_CONTEXT.md exists, create or update symlink
     if [ -L "$REPO_ROOT/codegen/PROJECT_CONTEXT.md" ]; then
@@ -74,6 +77,9 @@ else
         # Now create symlink to the context file
         ln -sf "$PROJECT_CONTEXT_DIR/PROJECT_CONTEXT.md" "$REPO_ROOT/codegen/PROJECT_CONTEXT.md"
         echo "✅ Created PROJECT_CONTEXT.md in context and symlinked to project"
+
+        # We just created it from template, so we need AI to fill it
+        NEEDS_AI_ANALYSIS=true
     else
         echo "ℹ️  PROJECT_CONTEXT.md already exists, skipping..."
     fi
@@ -442,16 +448,8 @@ fi
 
 echo "After PROJECT_CONTEXT.md is filled, you can create workspaces with: $OCG_CMD new <feature-name>"
 
-# Check if project already has complete context setup
-if [ -f "$PROJECT_CONTEXT_DIR/PROJECT_CONTEXT.md" ] && [ -s "$PROJECT_CONTEXT_DIR/PROJECT_CONTEXT.md" ]; then
-    # PROJECT_CONTEXT.md exists and is not empty in context - assume project is already set up
-    echo ""
-    echo "ℹ️  Project appears to already have complete context setup"
-    echo "   PROJECT_CONTEXT.md found in context directory: $PROJECT_CONTEXT_DIR"
-    echo "   Skipping AI agent setup"
-    echo ""
-    echo "🎯 Project setup complete! You can create workspaces with: $OCG_CMD new <feature-name>"
-else
+# Check if we need AI analysis
+if [ "$NEEDS_AI_ANALYSIS" = true ]; then
     # Load AI agent configuration
     CONFIG_FILE="$HOME/.ocg/config.json"
     if [ -f "$CONFIG_FILE" ]; then
@@ -471,4 +469,8 @@ else
 
     # Run AI agent
     "$SCRIPT_DIR/ai-agents/run-ai.sh" "$AI_AGENT" "opus" "$PROMPT_FILE"
+else
+    echo ""
+    echo "ℹ️  PROJECT_CONTEXT.md already exists, skipping AI analysis"
+    echo "🎯 Project setup complete! You can create workspaces with: $OCG_CMD new <feature-name>"
 fi

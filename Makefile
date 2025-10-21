@@ -20,6 +20,10 @@ define check_make_only
 	fi
 endef
 
+init:
+	$(call check_ocg_only,init)
+	@cd "$(ORIGINAL_WORKING_DIR)" && "$(SCRIPT_DIR)/init_project.sh" $(filter-out $@,$(MAKECMDGOALS))
+
 setup:
 	$(call check_ocg_only,setup)
 	@cd "$(ORIGINAL_WORKING_DIR)" && "$(SCRIPT_DIR)/setup_project.sh"
@@ -255,8 +259,11 @@ help:
 	@echo ""
 	@. ./utils.sh; \
 	if [ "$$OCG_CLI" = "true" ]; then \
+		echo "🚀 Project Initialization:"; \
+		echo "  $$OCG_CMD init <name> [options]       🎯 Create new Phoenix/Ash project with OCG"; \
+		echo ""; \
 		echo "🚀 Project Management:"; \
-		echo "  $$OCG_CMD setup                       🚀 Initialize codegen in the project (requires OCG_CONTEXT_DIR environment variable)"; \
+		echo "  $$OCG_CMD setup                       🚀 Initialize codegen in existing project (requires OCG_CONTEXT_DIR environment variable)"; \
 		echo "  $$OCG_CMD prepare                     🔧 Install Elixir/Erlang versions from .tool-versions (native mode)"; \
 		echo "  $$OCG_CMD update-context <name>       🔄 Update project context, extract recipes & rules, update Figma files"; \
 		echo "  $$OCG_CMD consolidate-context         📋 Consolidate PROJECT_CONTEXT.md by removing redundancies"; \
