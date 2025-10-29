@@ -172,27 +172,27 @@ echo "📦 Copying build artifacts from main branch..."
 REPO_ROOT="$(cd ../../../ && pwd)"
 
 if [ -d "$REPO_ROOT/.elixir_ls" ] && [ ! -d ".elixir_ls" ]; then
-    cp -r "$REPO_ROOT/.elixir_ls" .
+    cp -r "$REPO_ROOT/.elixir_ls" . 2>/dev/null || true
 fi
 
 if [ -d "$REPO_ROOT/deps" ] && [ ! -d "deps" ]; then
-    cp -r "$REPO_ROOT/deps" .
+    cp -r "$REPO_ROOT/deps" . 2>/dev/null || true
 fi
 
 # We are copying compiled dependencies instead of building to save time.
 # There are downsides to this approach, like Tidewave returning source paths from the main branch.
 if [ -d "$REPO_ROOT/_build" ] && [ ! -d "_build" ]; then
-    cp -r "$REPO_ROOT/_build" .
+    cp -r "$REPO_ROOT/_build" . 2>/dev/null || true
 fi
 
 if [ -d "$REPO_ROOT/assets/node_modules" ] && [ ! -d "assets/node_modules" ]; then
     mkdir -p assets
-    cp -r "$REPO_ROOT/assets/node_modules" assets/
+    cp -r "$REPO_ROOT/assets/node_modules" assets/ 2>/dev/null || true
 fi
 
 if [ -d "$REPO_ROOT/priv/plts" ] && [ ! -d "priv/plts" ]; then
     mkdir -p priv
-    cp -r "$REPO_ROOT/priv/plts" priv/
+    cp -r "$REPO_ROOT/priv/plts" priv/ 2>/dev/null || true
 fi
 
 echo "📦 Running mix setup..."

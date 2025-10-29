@@ -23,7 +23,7 @@
     {
       "label": "🤖 AI Assistant",
       "type": "shell",
-      "command": "sleep 3 && ./.vscode/ai-assistant.sh",
+      "command": "sleep 3 && ./.vscode/ai-agent.sh",
       "group": "build",
       "runOptions": {
         "runOn": "folderOpen"

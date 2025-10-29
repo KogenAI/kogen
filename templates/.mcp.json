@@ -1,9 +1,5 @@
 {
   "mcpServers": {
-    "figma": {
-      "type": "http",
-      "url": "http://localhost:3845/mcp"
-    },
     "tidewave": {
       "type": "stdio",
       "command": "mcp-proxy",
