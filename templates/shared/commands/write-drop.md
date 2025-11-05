@@ -140,13 +140,15 @@ Generate 5-10 topic suggestions by:
 
 **Twitter Hook Style Guide:**
 
-- **🚨 CRITICAL: 280 character limit** - URLs count toward the limit (~35 chars for elixirdrops.net links)
+- **280 character limit** - URLs count toward the limit (~35 chars for elixirdrops.net links)
 - **Aim for 240-250 characters max** - Leave buffer for engagement and readability
 - **Clean and direct** - State the problem and solution clearly
 - **Technical focus** - Lead with the code/technical insight
 - **Minimal emojis** - Use sparingly, only when they add clarity
 - **No marketing fluff** - Avoid "🧵 Thread", "👇", "Here's how", etc.
 - **Factual tone** - Present information straightforwardly
+- **Only use facts from the drop** - Don't invent performance numbers, percentages, or metrics not shown in the content
+- **Concrete over abstract** - Say "500 KB → 1 KB" not "99% reduction" unless you show the math
 - **Link at end** - Include drop link for full examples
 - **Count characters precisely** - Don't guess, actually measure the hook length
 
@@ -248,9 +250,20 @@ Optional: Links to docs, related patterns, or further reading
    - **🚨 MANDATORY: Validate code compiles** - Test each code block individually
    - If Tidewave MCP is not available, skip MCP validation but MUST still format code
    - Verify type definitions, function signatures, and syntax are valid
-   - **🚨 CRITICAL: Check that the title is SHORT (30-50 characters max)**
+   - Check that the title is SHORT (30-50 characters max)
    - Verify the solution is the simplest that works
    - Ensure the explanation adds context without being verbose
+   - **Verify all API/function calls against actual documentation**:
+     - Check Phoenix/LiveView docs for correct function signatures
+     - Verify Ecto query syntax and required imports
+     - Confirm GenServer/OTP patterns match official guides
+     - Look up any library functions you're unsure about - DON'T GUESS
+   - **No invented metrics or percentages**:
+     - Only use performance numbers that appear in the drop content
+     - Don't make up "90% faster" or "10x improvement" claims
+     - If giving concrete numbers, show the calculation in the drop
+     - Better to say "drops from 500 KB to 1 KB" than "99% reduction" without proof
+   - **Ask user to review for hallucinations** - Before claiming completion, explicitly ask: "Any hallucinations or incorrect patterns?"
 
 6. **Code Formatting** - Ensure proper Elixir formatting:
 
@@ -291,7 +304,7 @@ Optional: Links to docs, related patterns, or further reading
    - Use Write tool to save the content as `[topic_name]_drop.md` in the project directory
    - Use proper markdown formatting (no code block wrapping)
    - This avoids terminal formatting issues and makes copy/paste clean
-   - **MANDATORY: Provide a Twitter-ready hook** - Clean, direct thread with key insight and link (minimal emojis, no fluff)
+   - **MANDATORY: Provide a Twitter-ready hook** - See Twitter Hook Style Guide section above for requirements
 
 8. **Content Categories** - Focus on high-value topics:
 
@@ -355,6 +368,8 @@ Content Quality Standards:
   5. **VERIFY** that every code example follows the patterns from the rules
   - Put all code references (functions, modules, variables) in backticks
   - The rules contain specific formatting requirements, type safety patterns, and Phoenix conventions that MUST be followed
+  - **🚨 CRITICAL: Add `import Ecto.Query`** when using `from` query syntax
+  - **🚨 CRITICAL: Use `MyAppWeb.Endpoint.subscribe/1`** for PubSub in LiveView, NOT `Phoenix.PubSub.subscribe/2`
 - **Context matters** - Explain why the solution works, not just how
 - **Community focused** - Write for developers who will encounter this problem
 - **Searchable titles** - Include relevant keywords developers would search for
