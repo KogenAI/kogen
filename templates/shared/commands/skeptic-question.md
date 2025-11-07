@@ -10,11 +10,48 @@ Process:
 
 **STEP 1: News Analysis Phase**
 
-**STEP 0: Real-Time Monitoring & Podcast Integration**
+**STEP 0: Database & Real-Time Monitoring**
 
-Before analysis, check:
+**CRITICAL FIRST STEP - CHECK THE DATABASE:**
 
-**Latest Alternative Perspective Podcast Episodes** (ALWAYS check these first):
+Before any web searches, ALWAYS check what podcasts are available in the Skeptic.bot database:
+
+```sql
+SELECT p.name, MAX(pe.inserted_at)
+FROM podcasts p
+JOIN podcast_episodes pe ON p.id = pe.podcast_id
+GROUP BY p.name
+```
+
+This shows you:
+
+- Which podcasts have episodes in the system
+- When their most recent episode was added
+- What content you can actually reference and link to
+
+**Available Podcasts in Database** (as of Nov 2025):
+
+- Tin Foil Hat (Nov 7, 2025)
+- Nephilim Death Squad (Nov 7, 2025)
+- Candace (Nov 7, 2025)
+- Cash Daddies (Nov 4, 2025)
+- Deep Waters / Conspiracy Social Club (Nov 3, 2025)
+- Doom Scrollin (Oct 26, 2025)
+- Look Into It (Oct 8, 2025)
+- Broken Simulation (Oct 4, 2025)
+- Zero with Sam Tripoli (Mar 30, 2025)
+- Union of the Unwanted (Mar 30, 2025)
+
+**WHY THIS MATTERS:**
+
+- Questions MUST connect to episodes that exist in the database
+- Users will search these questions against actual transcripts
+- Generic questions about topics not in podcasts won't find relevant content
+- Your goal is to drive users to explore EXISTING podcast content
+
+**THEN Do Real-Time Monitoring:**
+
+After checking the database, search for specific episode details:
 
 - **Sam Tripoli's Tin Foil Hat**: Use WebSearch with specific episode searches like `site:samtripoli.com "TFH #XXX"` and search for episode titles on podcast platforms
 - **Eddie Bravo's Look Into It**: WebSearch for `site:rumble.com Eddie Bravo recent episodes 2025` and check Apple Podcasts/Spotify listings
@@ -160,6 +197,56 @@ For each identified topic with multiple perspectives, create investigative quest
 - "How do researchers interpret the same data?"
 - "What methodologies do investigators use?"
 - "Which aspects have been independently verified?"
+
+**CRITICAL: Question Phrasing for RAG Retrieval**
+
+Your question must be **semantically similar** to episode titles/summaries to work with embeddings.
+
+**How Episode Embeddings Work:**
+
+```
+Episode embedding = "passage: {title} {summary}"
+Example: "passage: BlackBalled With Arthur Kwon Lee Arthur Kwon Lee discusses his journey..."
+```
+
+**Bad Question Phrasing (High Semantic Distance):**
+
+- ❌ "Why did the art world blackball Arthur Kwon Lee?" (interrogative, doesn't match title style)
+- ❌ "What are they hiding about Arthur Kwon Lee?" (conspiracy angle not in title)
+- ❌ "Who ordered Arthur Kwon Lee's cancellation?" (too specific)
+
+**Good Question Phrasing (Low Semantic Distance):**
+
+- ✅ "Arthur Kwon Lee blackballed art world" (matches title keywords)
+- ✅ "Tucker Carlson canceled again" (matches title directly)
+- ✅ "Brigitte MK Ultra French Gold Rush" (uses exact title words)
+
+**Best Practice: Dual Question Format**
+
+Store TWO versions of each question:
+
+1. **Display Title** (user-facing, can be interrogative/conspiratorial):
+
+   - "Why Was Arthur Kwon Lee Blackballed From The Art World?"
+
+2. **Search Query** (for embedding, declarative, keyword-focused):
+   - "Arthur Kwon Lee blackballed art world establishment"
+
+**Pattern Templates:**
+
+- Person-focused: "{Person} {action/topic} {context}"
+  - Example: "Arthur Kwon Lee blackballed art world"
+- Event-focused: "{Event} {key detail} {context}"
+  - Example: "Tucker Carlson cancellation Fox News"
+- Investigative: "{Subject} {investigation} {revelation}"
+  - Example: "Brigitte MK Ultra French Gold Rush"
+
+**Question Testing Checklist:**
+
+1. ✅ Uses words from episode title?
+2. ✅ Declarative rather than interrogative?
+3. ✅ Avoids conspiracy framing not in episode?
+4. ✅ Matches semantic style of episode summaries?
 
 **Platform Optimization**:
 
