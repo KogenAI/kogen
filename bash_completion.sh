@@ -34,7 +34,7 @@ _codegen_completion() {
             # First argument is project name - no completion
             COMPREPLY=()
         elif [[ "$cur" == --* ]]; then
-            COMPREPLY=($(compgen -W "--poc --ash --github-url --fly-app-prefix --agent" -- "$cur"))
+            COMPREPLY=($(compgen -W "--poc --ash --flutter --sqlite --github-url --fly-app-prefix --agent" -- "$cur"))
         elif [[ "$prev" == "--agent" || "$prev" == "-a" ]]; then
             COMPREPLY=($(compgen -W "claude opencode cursor" -- "$cur"))
         fi

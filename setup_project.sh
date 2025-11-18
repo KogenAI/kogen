@@ -67,8 +67,15 @@ else
         # Create project context directory if it doesn't exist
         mkdir -p "$PROJECT_CONTEXT_DIR"
 
+        # Detect if monorepo and use appropriate template
+        TEMPLATE_FILE="$SCRIPT_DIR/templates/PROJECT_CONTEXT.md"
+        if [ -f "$REPO_ROOT/backend/mix.exs" ] && [ -d "$REPO_ROOT/mobile" ]; then
+            TEMPLATE_FILE="$SCRIPT_DIR/templates/PROJECT_CONTEXT-MONOREPO.md"
+            echo "🔍 Detected monorepo structure, using monorepo template"
+        fi
+
         # Copy template to context directory
-        cp "$SCRIPT_DIR/templates/PROJECT_CONTEXT.md" "$PROJECT_CONTEXT_DIR/PROJECT_CONTEXT.md"
+        cp "$TEMPLATE_FILE" "$PROJECT_CONTEXT_DIR/PROJECT_CONTEXT.md"
 
         CURRENT_DATE=$(date +"%B %d, %Y")
         sed -i '' "s|{{CURRENT_DATE}}|$CURRENT_DATE|g" "$PROJECT_CONTEXT_DIR/PROJECT_CONTEXT.md"
@@ -114,36 +121,43 @@ for figma_file in "${FIGMA_FILES[@]}"; do
     fi
 done
 
-# Create AGENTS.md - prefer project-specific context, fallback to template
+# Create AGENTS.md in project context directory, then symlink from project root
 
-if [ -d "$PROJECT_CONTEXT_DIR" ] && [ -f "$PROJECT_CONTEXT_DIR/AGENTS.md" ]; then
-    # Project-specific AGENTS.md exists, create or update symlink
-    if [ -L "$REPO_ROOT/AGENTS.md" ]; then
-        # Existing symlink - check if it points to the right place
-        if [ "$(readlink "$REPO_ROOT/AGENTS.md")" != "$PROJECT_CONTEXT_DIR/AGENTS.md" ]; then
-            ln -sf "$PROJECT_CONTEXT_DIR/AGENTS.md" "$REPO_ROOT/AGENTS.md"
-            echo "✅ Updated AGENTS.md symlink to project context"
-        else
-            echo "ℹ️  AGENTS.md symlink already points to project context"
-        fi
-    elif [ -f "$REPO_ROOT/AGENTS.md" ]; then
-        # Regular file exists - replace with symlink (no backup)
-        rm "$REPO_ROOT/AGENTS.md"
-        ln -sf "$PROJECT_CONTEXT_DIR/AGENTS.md" "$REPO_ROOT/AGENTS.md"
-        echo "✅ Replaced AGENTS.md with symlink to project context"
+# Check if this is a POC project by looking for POC markers
+IS_POC_PROJECT=false
+if [ -f "$REPO_ROOT/.poc" ] || grep -q "POC Project" "$REPO_ROOT/README.md" 2>/dev/null; then
+    IS_POC_PROJECT=true
+fi
+
+# Ensure project-specific AGENTS.md exists in context directory
+if [ ! -f "$PROJECT_CONTEXT_DIR/AGENTS.md" ]; then
+    if [ "$IS_POC_PROJECT" = true ]; then
+        cp "$SCRIPT_DIR/templates/AGENTS-POC.md" "$PROJECT_CONTEXT_DIR/AGENTS.md"
+        echo "✅ Created project-specific AGENTS.md from POC template in context"
     else
-        # No file exists - create symlink
-        ln -sf "$PROJECT_CONTEXT_DIR/AGENTS.md" "$REPO_ROOT/AGENTS.md"
-        echo "✅ Created AGENTS.md symlink to project context"
+        cp "$SCRIPT_DIR/templates/AGENTS.md" "$PROJECT_CONTEXT_DIR/AGENTS.md"
+        echo "✅ Created project-specific AGENTS.md from template in context"
     fi
+fi
+
+# Create or update symlink from project root to project-specific AGENTS.md
+if [ -L "$REPO_ROOT/AGENTS.md" ]; then
+    # Existing symlink - check if it points to project-specific AGENTS.md
+    if [ "$(readlink "$REPO_ROOT/AGENTS.md")" != "$PROJECT_CONTEXT_DIR/AGENTS.md" ]; then
+        ln -sf "$PROJECT_CONTEXT_DIR/AGENTS.md" "$REPO_ROOT/AGENTS.md"
+        echo "✅ Updated AGENTS.md symlink to project context"
+    else
+        echo "ℹ️  AGENTS.md symlink already points to project context"
+    fi
+elif [ -f "$REPO_ROOT/AGENTS.md" ]; then
+    # Regular file exists - replace with symlink
+    rm "$REPO_ROOT/AGENTS.md"
+    ln -sf "$PROJECT_CONTEXT_DIR/AGENTS.md" "$REPO_ROOT/AGENTS.md"
+    echo "✅ Replaced AGENTS.md with symlink to project context"
 else
-    # No project-specific AGENTS.md, use template if file doesn't exist
-    if [ ! -f "$REPO_ROOT/AGENTS.md" ] && [ ! -L "$REPO_ROOT/AGENTS.md" ]; then
-        cp "$SCRIPT_DIR/templates/AGENTS.md" "$REPO_ROOT/AGENTS.md"
-        echo "✅ Created AGENTS.md from template (no project-specific version found)"
-    else
-        echo "ℹ️  AGENTS.md already exists, skipping..."
-    fi
+    # No file exists - create symlink
+    ln -sf "$PROJECT_CONTEXT_DIR/AGENTS.md" "$REPO_ROOT/AGENTS.md"
+    echo "✅ Created AGENTS.md symlink to project context"
 fi
 
 # Create CLAUDE.md symlink for backward compatibility
@@ -238,7 +252,84 @@ elif [ -d "$REPO_ROOT/test/support/factory" ]; then
     PROJECT_INFO+="🔍 Found factory in test/support/ - project uses factory-based testing"$'\n'
 fi
 
-SETUP_PROMPT="# Project Context Setup
+# Detect if this is a monorepo
+IS_MONOREPO=false
+if [ -f "$REPO_ROOT/backend/mix.exs" ] && [ -d "$REPO_ROOT/mobile" ]; then
+    IS_MONOREPO=true
+fi
+
+if [ "$IS_MONOREPO" = true ]; then
+    SETUP_PROMPT="# Monorepo Project Context Setup
+
+I need you to analyze this **monorepo codebase** (backend + mobile) and fill out the PROJECT_CONTEXT.md template completely. This will serve as the foundational knowledge for all future AI development sessions.
+
+## Your Task
+
+Please analyze BOTH backend and mobile directories and:
+
+1. **Replace ALL placeholder text** in \`./codegen/PROJECT_CONTEXT.md\` with real project details
+2. **Document BOTH architectures**:
+   - **Backend** (Phoenix/Elixir in \`./backend/\`)
+   - **Mobile** (Flutter/Dart in \`./mobile/\`)
+   - **Integration points** between backend and mobile
+3. **List real modules from BOTH**:
+   - Backend contexts, schemas, LiveViews
+   - Mobile screens, services, models, widgets
+4. **Identify integration points**:
+   - How mobile connects to backend API
+   - API endpoints used by mobile
+   - WebSocket/Phoenix Channel integration (if any)
+5. **Document coding conventions for BOTH**:
+   - Elixir patterns in backend
+   - Dart/Flutter patterns in mobile
+6. **Note any pitfalls** in either backend or mobile development
+7. **Create Figma files if needed** - if this project uses Figma designs, create:
+   - \`./codegen/FIGMA_MAP.md\` - Maps Figma components to code implementation
+   - \`./codegen/FIGMA_DESIGN_SYSTEM_RULES.md\` - Design system implementation rules
+   - \`./codegen/FIGMA_TOKEN_MAPPING.md\` - Maps design tokens to CSS/Tailwind classes
+
+## Guidelines
+
+- **Be specific, not generic** - use actual module names, not placeholders
+- **Be comprehensive** - analyze BOTH backend and mobile thoroughly
+- **Focus on architecture** - how is each part organized and why?
+- **Document mobile-backend integration** - how do they communicate?
+- **Include examples** - reference actual files and patterns you find
+- **Update the timestamp** - change the \"Last Updated\" date to today's date
+- **Create Figma files only if needed** - only create them if you find evidence of Figma usage in the project
+
+## Files to Focus On
+
+**Backend** (\`./backend/\`):
+- \`lib/*/\` - Main application contexts
+- \`lib/*_web/\` - Web layer (controllers, views, LiveViews)
+- \`priv/repo/\` - Database migrations and seeds
+- \`config/\` - Application configuration
+- \`test/\` - Test patterns and structure
+- \`mix.exs\` - Dependencies and project configuration
+
+**Mobile** (\`./mobile/\`):
+- \`lib/\` - Flutter application code
+- \`lib/screens/\` - UI screens
+- \`lib/services/\` - API clients and services
+- \`lib/models/\` - Data models
+- \`lib/config/\` - Configuration (API URLs, etc.)
+- \`test/\` - Widget and unit tests
+- \`pubspec.yaml\` - Dependencies and project configuration
+
+**Common**:
+- \`.tool-versions\` - Runtime versions
+- \`Makefile\` - CI commands
+- Root and per-directory Makefiles
+
+## Important Notes
+$PROJECT_INFO
+
+This PROJECT_CONTEXT.md will be used by all future AI sessions to understand the ENTIRE monorepo project (backend + mobile) without re-analyzing the codebase.
+
+**Start by opening and reviewing \`./codegen/PROJECT_CONTEXT.md\`, then begin your analysis of BOTH backend/ and mobile/ directories.**"
+else
+    SETUP_PROMPT="# Project Context Setup
 
 I need you to analyze this Phoenix/Elixir codebase and fill out the PROJECT_CONTEXT.md template completely. This will serve as the foundational knowledge for all future AI development sessions.
 
@@ -283,6 +374,7 @@ $PROJECT_INFO
 This PROJECT_CONTEXT.md will be used by all future AI sessions to understand the project without re-analyzing the entire codebase.
 
 **Start by opening and reviewing \`./codegen/PROJECT_CONTEXT.md\`, then begin your analysis.**"
+fi
 
 open_cursor_setup_chat() {
     if ! pgrep -f "Cursor" >/dev/null 2>&1; then
@@ -354,10 +446,18 @@ echo ""
 # Update config/dev.exs to support dynamic ports and database partitions
 echo "🔧 Updating config/dev.exs for OCG compatibility..."
 
-DEV_CONFIG="$REPO_ROOT/config/dev.exs"
+# Detect if this is a monorepo (has backend/ directory with mix.exs)
+if [ -f "$REPO_ROOT/backend/mix.exs" ]; then
+    DEV_CONFIG="$REPO_ROOT/backend/config/dev.exs"
+    MIX_FILE="$REPO_ROOT/backend/mix.exs"
+else
+    DEV_CONFIG="$REPO_ROOT/config/dev.exs"
+    MIX_FILE="$REPO_ROOT/mix.exs"
+fi
+
 if [ -f "$DEV_CONFIG" ]; then
     # Get app name from mix.exs
-    APP_NAME=$(grep -E "app: :" "$REPO_ROOT/mix.exs" | head -1 | sed -E 's/.*app: :([^,]+).*/\1/')
+    APP_NAME=$(grep -E "app: :" "$MIX_FILE" | head -1 | sed -E 's/.*app: :([^,]+).*/\1/')
 
     # Update database configuration for partitions
     if ! grep -q "MIX_DEV_PARTITION" "$DEV_CONFIG"; then
@@ -446,8 +546,6 @@ if [ -f "$REPO_ROOT/mix.exs" ] && command -v mix >/dev/null 2>&1; then
     echo "✅ Dependencies installed"
 fi
 
-echo "After PROJECT_CONTEXT.md is filled, you can create workspaces with: $OCG_CMD new <feature-name>"
-
 # Check if we need AI analysis
 if [ "$NEEDS_AI_ANALYSIS" = true ]; then
     # Load AI agent configuration
@@ -458,19 +556,19 @@ if [ "$NEEDS_AI_ANALYSIS" = true ]; then
         AI_AGENT="claude"
     fi
 
-    echo "🤖 Starting $AI_AGENT with Opus model for setup..."
+    echo ""
+    echo "🤖 Analyzing codebase and filling PROJECT_CONTEXT.md..."
 
     cd "$REPO_ROOT"
 
-    # Create temporary prompt file
-    PROMPT_FILE=$(mktemp)
-    trap "rm -f $PROMPT_FILE" EXIT
-    echo "$SETUP_PROMPT" >"$PROMPT_FILE"
+    # Use stdin piping with -p flag for autonomous tool execution
+    echo "$SETUP_PROMPT" | claude --dangerously-skip-permissions --model opus -p >/dev/null 2>&1
 
-    # Run AI agent
-    "$SCRIPT_DIR/ai-agents/run-ai.sh" "$AI_AGENT" "opus" "$PROMPT_FILE"
+    echo "✅ PROJECT_CONTEXT.md filled by AI analysis"
 else
     echo ""
     echo "ℹ️  PROJECT_CONTEXT.md already exists, skipping AI analysis"
-    echo "🎯 Project setup complete! You can create workspaces with: $OCG_CMD new <feature-name>"
 fi
+
+echo ""
+echo "🎯 Project setup complete! You can create workspaces with: $OCG_CMD new <feature-name>"

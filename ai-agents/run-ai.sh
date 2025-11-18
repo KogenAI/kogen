@@ -38,8 +38,14 @@ claude)
         exit 1
     fi
 
-    # Pass prompt content as argument
-    exec claude --dangerously-skip-permissions --model "$MODEL" "$PROMPT_CONTENT"
+    # Check if we're running in non-interactive mode (for setup)
+    if [ -n "$OCG_NON_INTERACTIVE" ]; then
+        # Non-interactive mode - use --print to run without terminal
+        claude --dangerously-skip-permissions --model "$MODEL" --print "$PROMPT_CONTENT"
+    else
+        # Interactive mode - exec to replace shell
+        exec claude --dangerously-skip-permissions --model "$MODEL" "$PROMPT_CONTENT"
+    fi
     ;;
 opencode)
     if ! command -v opencode >/dev/null 2>&1; then

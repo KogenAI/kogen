@@ -389,6 +389,16 @@ if [ "$CONTAINER_MODE" = true ]; then
     # Open Cursor for container workspace
     open_cursor_workspace "$WORKSPACE_PATH" "$FEATURE_NAME" "✅ Container workspace created!"
 else
+    # Check if this is a monorepo with Flutter
+    if [ -d "$WORKSPACE_PATH/mobile" ] && command -v flutter &>/dev/null; then
+        echo ""
+        echo "📱 Installing Flutter dependencies..."
+        cd "$WORKSPACE_PATH/mobile"
+        flutter pub get
+        echo "✅ Flutter dependencies installed"
+        cd "$WORKSPACE_PATH"
+    fi
+
     open_cursor_workspace "$WORKSPACE_PATH" "$FEATURE_NAME" "✅ Workspace created successfully!"
 fi
 
