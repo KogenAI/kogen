@@ -34,7 +34,9 @@ _codegen_completion() {
             # First argument is project name - no completion
             COMPREPLY=()
         elif [[ "$cur" == --* ]]; then
-            COMPREPLY=($(compgen -W "--poc --ash --flutter --sqlite --github-url --fly-app-prefix --agent" -- "$cur"))
+            COMPREPLY=($(compgen -W "--poc --ash --flutter --sqlite --github-url --fly-app-prefix --model --agent" -- "$cur"))
+        elif [[ "$prev" == "--model" || "$prev" == "-m" ]]; then
+            COMPREPLY=($(compgen -W "haiku sonnet opus" -- "$cur"))
         elif [[ "$prev" == "--agent" || "$prev" == "-a" ]]; then
             COMPREPLY=($(compgen -W "claude opencode cursor" -- "$cur"))
         fi
@@ -93,7 +95,16 @@ _codegen_completion() {
         if [[ ${COMP_CWORD} == 2 ]]; then
             COMPREPLY=($(compgen -W "" -- "$cur"))
         elif [[ ${COMP_CWORD} == 3 ]]; then
-            COMPREPLY=($(compgen -W "sonnet opus" -- "$cur"))
+            COMPREPLY=($(compgen -W "haiku sonnet opus" -- "$cur"))
+        fi
+        ;;
+    setup)
+        if [[ "$cur" == --* ]]; then
+            COMPREPLY=($(compgen -W "--model --agent --help" -- "$cur"))
+        elif [[ "$prev" == "--model" || "$prev" == "-m" ]]; then
+            COMPREPLY=($(compgen -W "haiku sonnet opus" -- "$cur"))
+        elif [[ "$prev" == "--agent" || "$prev" == "-a" || "$prev" == "--ai" ]]; then
+            COMPREPLY=($(compgen -W "claude opencode cursor" -- "$cur"))
         fi
         ;;
     ai-config)

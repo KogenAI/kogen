@@ -5,6 +5,33 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/config.sh"
 source "$SCRIPT_DIR/utils.sh"
 
+# Parse command line arguments
+MODEL_OVERRIDE=""
+AGENT_OVERRIDE=""
+while [[ $# -gt 0 ]]; do
+    case $1 in
+    --model | -m)
+        MODEL_OVERRIDE="$2"
+        shift 2
+        ;;
+    --agent | -a | --ai)
+        AGENT_OVERRIDE="$2"
+        shift 2
+        ;;
+    --help | -h)
+        echo "Usage: ocg setup [options]"
+        echo "Options:"
+        echo "  --model, -m <model>    AI model to use (haiku/sonnet/opus, default: opus)"
+        echo "  --agent, -a <name>     AI agent to use (default: from config)"
+        exit 0
+        ;;
+    *)
+        echo "Unknown option: $1"
+        exit 1
+        ;;
+    esac
+done
+
 REPO_ROOT="$TARGET_REPO_PATH"
 
 echo "🚀 Setting up Optimum Codegen for project..."
@@ -550,19 +577,46 @@ fi
 if [ "$NEEDS_AI_ANALYSIS" = true ]; then
     # Load AI agent configuration
     CONFIG_FILE="$HOME/.ocg/config.json"
-    if [ -f "$CONFIG_FILE" ]; then
-        AI_AGENT=$(jq -r '.default_agent // "claude"' "$CONFIG_FILE")
+    if [ -n "$AGENT_OVERRIDE" ]; then
+        case "$AGENT_OVERRIDE" in
+        "claude" | "opencode" | "cursor")
+            AI_AGENT="$AGENT_OVERRIDE"
+            ;;
+        *)
+            echo "⚠️  Invalid agent '$AGENT_OVERRIDE'. Valid agents: claude, opencode, cursor"
+            AI_AGENT=$(jq -r '.default_agent // "claude"' "$CONFIG_FILE" 2>/dev/null || echo "claude")
+            ;;
+        esac
     else
-        AI_AGENT="claude"
+        if [ -f "$CONFIG_FILE" ]; then
+            AI_AGENT=$(jq -r '.default_agent // "claude"' "$CONFIG_FILE")
+        else
+            AI_AGENT="claude"
+        fi
+    fi
+
+    # Use model override if provided, otherwise default to opus
+    if [ -n "$MODEL_OVERRIDE" ]; then
+        case "$MODEL_OVERRIDE" in
+        "haiku" | "sonnet" | "opus")
+            MODEL="$MODEL_OVERRIDE"
+            ;;
+        *)
+            echo "⚠️  Invalid model '$MODEL_OVERRIDE'. Valid models: haiku, sonnet, opus. Using default 'opus'"
+            MODEL="opus"
+            ;;
+        esac
+    else
+        MODEL="opus"
     fi
 
     echo ""
-    echo "🤖 Analyzing codebase and filling PROJECT_CONTEXT.md..."
+    echo "🤖 Analyzing codebase and filling PROJECT_CONTEXT.md with $AI_AGENT ($MODEL)..."
 
     cd "$REPO_ROOT"
 
     # Use stdin piping with -p flag for autonomous tool execution
-    echo "$SETUP_PROMPT" | claude --dangerously-skip-permissions --model opus -p >/dev/null 2>&1
+    echo "$SETUP_PROMPT" | claude --dangerously-skip-permissions --model "$MODEL" -p >/dev/null 2>&1
 
     echo "✅ PROJECT_CONTEXT.md filled by AI analysis"
 else

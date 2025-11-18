@@ -21,6 +21,7 @@ WITH_SQLITE=false
 GITHUB_URL=""
 FLY_APP_PREFIX=""
 AGENT_OVERRIDE=""
+MODEL_OVERRIDE=""
 
 while [[ $# -gt 0 ]]; do
     case $1 in
@@ -53,6 +54,10 @@ while [[ $# -gt 0 ]]; do
         AGENT_OVERRIDE="$2"
         shift 2
         ;;
+    --model | -m)
+        MODEL_OVERRIDE="$2"
+        shift 2
+        ;;
     --help | -h)
         echo "Usage: ocg init <project-name> [options]"
         echo ""
@@ -63,12 +68,14 @@ while [[ $# -gt 0 ]]; do
         echo "  --sqlite                 Use SQLite instead of PostgreSQL"
         echo "  --github-url <url>       GitHub repo URL (required if NOT --poc)"
         echo "  --fly-app-prefix <pfx>   Fly.io app prefix (optional, defaults to project-name)"
+        echo "  --model, -m <model>      AI model to use (haiku/sonnet/opus, default: opus)"
         echo "  --agent, -a <name>       AI agent to use (default: from config)"
         echo ""
         echo "Examples:"
         echo "  ocg init my_app --github-url https://github.com/user/my_app"
         echo "  ocg init my_poc --poc --ash"
         echo "  ocg init my_app --flutter --sqlite --github-url https://github.com/user/my_app"
+        echo "  ocg init my_app --model sonnet --github-url https://github.com/user/my_app"
         exit 0
         ;;
     *)
@@ -331,7 +338,16 @@ echo "🔧 Running OCG setup..."
 export TARGET_REPO_PATH="$PROJECT_ROOT"
 export ORIGINAL_WORKING_DIR="$PROJECT_ROOT"
 
-"$SCRIPT_DIR/setup_project.sh"
+# Build setup command with optional flags
+SETUP_CMD=("$SCRIPT_DIR/setup_project.sh")
+if [ -n "$MODEL_OVERRIDE" ]; then
+    SETUP_CMD+=(--model "$MODEL_OVERRIDE")
+fi
+if [ -n "$AGENT_OVERRIDE" ]; then
+    SETUP_CMD+=(--agent "$AGENT_OVERRIDE")
+fi
+
+"${SETUP_CMD[@]}"
 
 echo ""
 echo "✅ Project created successfully!"

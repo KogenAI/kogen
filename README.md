@@ -130,7 +130,9 @@ Each workspace can run in an isolated Docker container with:
 
 ### Project Management
 
-- `ocg setup` - Initialize project with PROJECT_CONTEXT.md (one-time)
+- `ocg setup [options]` - Initialize project with PROJECT_CONTEXT.md (one-time)
+  - `--model, -m <model>` - AI model to use (haiku/sonnet/opus, default: opus)
+  - `--agent, -a <name>` - AI agent to use (default: from config)
 - `ocg prepare` - Install Elixir/Erlang versions from .tool-versions (native mode)
 - `ocg prepare --container` - Build Docker image and prepare base volumes
 - `ocg update-context <name>` - Update project context with learnings from a feature
@@ -138,8 +140,8 @@ Each workspace can run in an isolated Docker container with:
 
 ### Planning Sessions
 
-- `ocg bird-eye [name] [model]` - High-level, user-focused planning
-- `ocg plan [name] [model]` - Detailed technical implementation planning
+- `ocg bird-eye [name] [model]` - High-level, user-focused planning (default model: opus)
+- `ocg plan [name] [model]` - Detailed technical implementation planning (default model: opus)
 
 ### Workspace Management
 
@@ -318,16 +320,22 @@ To optimize context window usage, maintain these target sizes:
 
 ## Model Selection Guidelines
 
-- **sonnet** - Faster responses, good for implementation and development tasks
-- **opus** - More thorough analysis, better for planning and complex reasoning
-- **Default usage**:
-  - `bird-eye`: opus (high-level planning)
-  - `plan`: opus (detailed technical planning)
-  - `new`/`resume`: sonnet (implementation work)
-  - `setup`: opus (comprehensive project analysis)
-  - `usage-rules`: haiku (fast and cost-effective documentation summarization)
-  - `update-context`: sonnet (routine context updates)
-  - `consolidate-context`: opus (thorough consolidation for clarity)
+- **haiku** - Fastest, most cost-effective for straightforward tasks
+- **sonnet** - Balanced performance, good for implementation and development tasks
+- **opus** - Most thorough analysis, best for planning and complex reasoning
+
+### Default Models by Command
+
+- **`init`**: opus (comprehensive project setup and analysis)
+- **`setup`**: opus (comprehensive project analysis)
+- **`bird-eye`**: opus (high-level planning requiring deep thinking)
+- **`plan`**: opus (detailed technical planning)
+- **`new`/`resume`**: sonnet (balanced for implementation work)
+- **`usage-rules`**: haiku (fast and cost-effective documentation extraction)
+- **`update-context`**: sonnet (routine context updates)
+- **`consolidate-context`**: opus (thorough consolidation for clarity)
+
+**Note**: While Opus 4.1 is currently weaker than Sonnet 4.5, the defaults are set for when Opus 4.5 is released. Use `--model sonnet` to override for now if needed.
 
 ## Important Conventions
 
