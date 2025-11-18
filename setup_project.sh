@@ -424,7 +424,8 @@ update_ignore_file() {
 /CLAUDE.md
 .mcp.json
 opencode.json
-*.code-workspace"
+*.code-workspace
+.env"
 
     if [ -f "$file" ]; then
         # Check if our entries already exist and are properly formatted

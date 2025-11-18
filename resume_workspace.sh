@@ -345,6 +345,14 @@ else
     # Check if this is a monorepo with Flutter
     if [ -d "$WORKSPACE_PATH/mobile" ] && command -v flutter &>/dev/null; then
         echo ""
+        echo "📱 Configuring Flutter for workspace port $PORT..."
+
+        # Ensure API_URL is in .env (idempotent - won't duplicate)
+        if [ "$PORT" != "not configured" ] && ! grep -q "^API_URL=" "$WORKSPACE_PATH/.env" 2>/dev/null; then
+            echo "API_URL=http://localhost:$PORT" >>"$WORKSPACE_PATH/.env"
+            echo "✅ Added API_URL to .env (port $PORT)"
+        fi
+
         echo "📱 Updating Flutter dependencies..."
         cd "$WORKSPACE_PATH/mobile"
         flutter pub get
