@@ -214,6 +214,13 @@ if [ "$IS_MONOREPO" = true ]; then
         echo "✅ Flutter app created at: mobile/"
 
         echo ""
+        echo "🔧 Ensuring all platform files are present..."
+        cd mobile
+        flutter create . --platforms android,ios
+        cd ..
+        echo "✅ Platform files initialized"
+
+        echo ""
         echo "🔧 Configuring mobile to use local backend..."
 
         mkdir -p mobile/lib/config
