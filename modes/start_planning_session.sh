@@ -13,6 +13,12 @@ CODEGEN_DIR="$(dirname "$SCRIPT_DIR")"
 source "$CODEGEN_DIR/utils.sh"
 source "$CODEGEN_DIR/config.sh"
 
+# Override TARGET_REPO_PATH if we're already in a project directory
+if [ -d "codegen" ] && [ -f "mix.exs" -o -f "backend/mix.exs" ]; then
+    TARGET_REPO_PATH="$(pwd)"
+    echo "✓ Detected project directory: $TARGET_REPO_PATH"
+fi
+
 MODE="$1"
 FEATURE_NAME="$2"
 MODEL_OVERRIDE="$3"
@@ -137,11 +143,18 @@ if lsof -ti tcp:$PLAYWRIGHT_PORT >/dev/null 2>&1; then
     sleep 1
 fi
 
-# Start Phoenix server if mix.exs exists
+# Start Phoenix server if mix.exs exists (check both root and backend for monorepo)
 if [ -f "mix.exs" ]; then
     echo "🚀 Starting Phoenix server on port $PHOENIX_PORT..."
     PORT=$PHOENIX_PORT mix phx.server >/dev/null 2>&1 &
     PHOENIX_PID=$!
+    echo "✓ Phoenix server started (PID: $PHOENIX_PID)"
+elif [ -f "backend/mix.exs" ]; then
+    echo "🚀 Starting Phoenix server on port $PHOENIX_PORT (monorepo)..."
+    cd backend
+    PORT=$PHOENIX_PORT mix phx.server >/dev/null 2>&1 &
+    PHOENIX_PID=$!
+    cd ..
     echo "✓ Phoenix server started (PID: $PHOENIX_PID)"
 else
     echo "⚠️  No mix.exs found, skipping Phoenix server"
