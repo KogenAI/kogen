@@ -389,20 +389,12 @@ if [ "$CONTAINER_MODE" = true ]; then
     # Open Cursor for container workspace
     open_cursor_workspace "$WORKSPACE_PATH" "$FEATURE_NAME" "✅ Container workspace created!"
 else
-    # Check if this is a monorepo with Flutter
-    if [ -d "$WORKSPACE_PATH/mobile" ] && command -v flutter &>/dev/null; then
-        echo ""
-        echo "📱 Configuring Flutter for workspace port $NEXT_PORT..."
-
+    # Check if this is a monorepo with Flutter - ensure API_URL is configured
+    if [ -d "$WORKSPACE_PATH/mobile" ]; then
         # Add API_URL to .env for Flutter to use
         echo "API_URL=http://localhost:$NEXT_PORT" >>"$WORKSPACE_PATH/.env"
         echo "✅ Added API_URL to .env (port $NEXT_PORT)"
-
-        echo "📱 Installing Flutter dependencies..."
-        cd "$WORKSPACE_PATH/mobile"
-        flutter pub get
-        echo "✅ Flutter dependencies installed"
-        cd "$WORKSPACE_PATH"
+        # Flutter dependencies are installed in the startup script inside the workspace
     fi
 
     open_cursor_workspace "$WORKSPACE_PATH" "$FEATURE_NAME" "✅ Workspace created successfully!"

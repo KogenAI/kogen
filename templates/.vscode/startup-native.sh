@@ -180,34 +180,71 @@ echo "📦 Copying build artifacts from main branch..."
 
 REPO_ROOT="$(cd ../../../ && pwd)"
 
-if [ -d "$REPO_ROOT/.elixir_ls" ] && [ ! -d ".elixir_ls" ]; then
-    cp -r "$REPO_ROOT/.elixir_ls" . 2>/dev/null || true
+# Detect monorepo structure (backend/ directory exists)
+IS_MONOREPO=false
+BACKEND_DIR=""
+if [ -d "backend" ] && [ -f "backend/mix.exs" ]; then
+    IS_MONOREPO=true
+    BACKEND_DIR="backend"
+    echo "📦 Detected monorepo structure - Phoenix app in backend/"
 fi
 
-if [ -d "$REPO_ROOT/deps" ] && [ ! -d "deps" ]; then
-    cp -r "$REPO_ROOT/deps" . 2>/dev/null || true
+# Determine source and target directories for artifact copying
+if [ "$IS_MONOREPO" = true ]; then
+    ARTIFACT_SOURCE="$REPO_ROOT/backend"
+    ARTIFACT_TARGET="$BACKEND_DIR"
+else
+    ARTIFACT_SOURCE="$REPO_ROOT"
+    ARTIFACT_TARGET="."
+fi
+
+if [ -d "$ARTIFACT_SOURCE/.elixir_ls" ] && [ ! -d "$ARTIFACT_TARGET/.elixir_ls" ]; then
+    cp -r "$ARTIFACT_SOURCE/.elixir_ls" "$ARTIFACT_TARGET/" 2>/dev/null || true
+fi
+
+if [ -d "$ARTIFACT_SOURCE/deps" ] && [ ! -d "$ARTIFACT_TARGET/deps" ]; then
+    cp -r "$ARTIFACT_SOURCE/deps" "$ARTIFACT_TARGET/" 2>/dev/null || true
 fi
 
 # We are copying compiled dependencies instead of building to save time.
 # There are downsides to this approach, like Tidewave returning source paths from the main branch.
-if [ -d "$REPO_ROOT/_build" ] && [ ! -d "_build" ]; then
-    cp -r "$REPO_ROOT/_build" . 2>/dev/null || true
+if [ -d "$ARTIFACT_SOURCE/_build" ] && [ ! -d "$ARTIFACT_TARGET/_build" ]; then
+    cp -r "$ARTIFACT_SOURCE/_build" "$ARTIFACT_TARGET/" 2>/dev/null || true
 fi
 
-if [ -d "$REPO_ROOT/assets/node_modules" ] && [ ! -d "assets/node_modules" ]; then
-    mkdir -p assets
-    cp -r "$REPO_ROOT/assets/node_modules" assets/ 2>/dev/null || true
+if [ -d "$ARTIFACT_SOURCE/assets/node_modules" ] && [ ! -d "$ARTIFACT_TARGET/assets/node_modules" ]; then
+    mkdir -p "$ARTIFACT_TARGET/assets"
+    cp -r "$ARTIFACT_SOURCE/assets/node_modules" "$ARTIFACT_TARGET/assets/" 2>/dev/null || true
 fi
 
-if [ -d "$REPO_ROOT/priv/plts" ] && [ ! -d "priv/plts" ]; then
-    mkdir -p priv
-    cp -r "$REPO_ROOT/priv/plts" priv/ 2>/dev/null || true
+if [ -d "$ARTIFACT_SOURCE/priv/plts" ] && [ ! -d "$ARTIFACT_TARGET/priv/plts" ]; then
+    mkdir -p "$ARTIFACT_TARGET/priv"
+    cp -r "$ARTIFACT_SOURCE/priv/plts" "$ARTIFACT_TARGET/priv/" 2>/dev/null || true
 fi
 
 echo "📦 Running mix setup..."
 echo "   This will install dependencies, setup database, and build assets..."
-mix setup
+if [ "$IS_MONOREPO" = true ]; then
+    cd "$BACKEND_DIR"
+    mix setup
+    cd "$WORKSPACE_ROOT"
+else
+    mix setup
+fi
 echo "✅ Setup complete - dependencies, database, and assets ready"
+
+# Install Flutter dependencies if this is a monorepo with mobile/
+if [ "$IS_MONOREPO" = true ] && [ -d "$WORKSPACE_ROOT/mobile" ]; then
+    if command -v flutter &>/dev/null; then
+        echo "📱 Installing Flutter dependencies..."
+        cd "$WORKSPACE_ROOT/mobile"
+        flutter pub get
+        echo "✅ Flutter dependencies installed"
+        cd "$WORKSPACE_ROOT"
+    else
+        echo "⚠️  Flutter not found - skipping mobile dependencies"
+    fi
+fi
 
 echo "🔍 Starting CI checks in background..."
 CI_BACKGROUND=1 nohup ./codegen/ci.sh >/dev/null 2>&1 &
@@ -242,7 +279,13 @@ echo "📝 Press Ctrl+C to stop the server"
 echo ""
 
 # Start Phoenix in background and log with colors preserved
-nohup script -F codegen/mix_phx_server.log mix phx.server >/dev/null 2>&1 &
+if [ "$IS_MONOREPO" = true ]; then
+    cd "$BACKEND_DIR"
+    nohup script -F ../codegen/mix_phx_server.log mix phx.server >/dev/null 2>&1 &
+    cd "$WORKSPACE_ROOT"
+else
+    nohup script -F codegen/mix_phx_server.log mix phx.server >/dev/null 2>&1 &
+fi
 
 # Wait for Phoenix to be ready
 echo "⏳ Waiting for Phoenix server to start..."
