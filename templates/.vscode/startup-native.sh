@@ -133,9 +133,18 @@ fi
 if [ -n "$MISE_PATH" ] && [ -f "$MISE_PATH" ]; then
     echo "🔧 Setting up mise environment..."
 
-    # Trust the .env and .tool-versions files
-    $MISE_PATH trust .env
-    $MISE_PATH trust .tool-versions
+    # Trust the .env and .tool-versions files (in backend/ for monorepo)
+    if [ "$IS_MONOREPO" = true ]; then
+        cd "$BACKEND_DIR"
+        $MISE_PATH trust .env 2>/dev/null || true
+        $MISE_PATH trust .tool-versions 2>/dev/null || true
+        $MISE_PATH trust .mise.toml 2>/dev/null || true
+        cd "$WORKSPACE_ROOT"
+    fi
+
+    # Also trust at workspace root
+    $MISE_PATH trust .env 2>/dev/null || true
+    $MISE_PATH trust .tool-versions 2>/dev/null || true
 
     # Activate mise to set up shell functions
     eval "$($MISE_PATH activate zsh)"
