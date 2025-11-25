@@ -80,6 +80,53 @@ wc -l rules/**/*.md | sort -nr | head -10
 
 **Target the biggest files first**: feature-tests.md, deployment.md, phoenix.md, testing.md, code-review.md
 
+### Step 2b: INDEX.md Special Handling
+
+INDEX.md (600+ lines) has repetitive per-agent sections. Convert to compact table format:
+
+**Before** (verbose structure repeated 12x for each agent):
+
+```markdown
+### feature-developer
+
+**Load in this exact order:**
+
+1. **Shared rules** (ALWAYS):
+   - `shared/subagent-core-rules.md`
+   - `shared/server-management.md`
+2. **Core domain rules** (🚨 ALWAYS CRITICAL):
+   - `subagents/tdd.md`
+   - `subagents/phoenix.md`
+   - `subagents/elixir-code-generation.md`
+3. **Standard domain rules** (ALWAYS load):
+   - `subagents/workflow.md`
+   - `subagents/git.md`
+4. **Conditional domain rules** (load when task requires):
+   - `subagents/testing.md`
+5. **NEVER load** (reserved for other roles):
+   - ❌ `code-review.md`
+```
+
+**After** (compact table - state shared rules once, then table for all agents):
+
+```markdown
+## Agent Rule Loading
+
+**ALL agents load shared rules first:**
+
+- `shared/subagent-core-rules.md`
+- `shared/server-management.md`
+
+| Agent                 | Core (Critical)                             | Standard                                      | Conditional                          | Never Load                         |
+| --------------------- | ------------------------------------------- | --------------------------------------------- | ------------------------------------ | ---------------------------------- |
+| feature-developer     | tdd, phoenix, elixir-code-generation        | workflow, git                                 | testing, feature-tests, cucumber-bdd | code-review, verification-workflow |
+| verification-engineer | verification-workflow, poc-success-criteria | testing, elixir-ci, ci-pipeline, git          | javascript-testing                   | code-review, tdd                   |
+| code-reviewer         | code-review, poc-success-criteria           | phoenix, elixir-code-generation, testing, git | ast-grep-patterns                    | verification-workflow, tdd         |
+| ...                   | ...                                         | ...                                           | ...                                  | ...                                |
+```
+
+**Why**: Reduces INDEX.md from ~600 lines to ~150 lines while preserving 100% of the information.
+
 ### Step 3: Clean Up Temporary Files
 
 ```bash
