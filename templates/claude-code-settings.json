@@ -131,7 +131,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash -c 'file_path=$(jq -r \".tool_input.file_path\"); if echo \"$file_path\" | grep -q \"\\.exs\\?$\"; then mix format \"$file_path\" 2>/dev/null || true; fi'"
+            "command": "bash -c 'file_path=$(jq -r \".tool_input.file_path\"); if echo \"$file_path\" | grep -q \"\\.exs\\?$\"; then abs_path=$(cd \"$(dirname \"$file_path\")\" && pwd)/$(basename \"$file_path\"); dir=$(dirname \"$abs_path\"); while [ \"$dir\" != \"/\" ] && [ \"$dir\" != \"$HOME\" ]; do if [ -f \"$dir/mix.exs\" ]; then cd \"$dir\" && mix format \"$abs_path\" 2>/dev/null || true; break; fi; dir=$(dirname \"$dir\"); done; fi'"
           },
           {
             "type": "command",
