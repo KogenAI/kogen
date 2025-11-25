@@ -66,6 +66,10 @@ Extract lessons from conversation and add concise rules. **CRITICAL: Keep rules 
 
 ## File Placement
 
+**🔍 FIRST: Check INDEX.md for file distinctions**
+
+Before adding a rule, check `./codegen/rules/INDEX.md` section "🔍 File Distinction Guide" to understand file boundaries.
+
 ### Orchestration Rules (`rules/orchestration/`)
 
 - **parallel-testing.md** - Test parallelization strategies
@@ -78,11 +82,27 @@ Extract lessons from conversation and add concise rules. **CRITICAL: Keep rules 
 
 ### Implementation Rules (`rules/subagents/`)
 
-- **phoenix.md** - LiveView patterns, contexts
-- **testing.md** - Test writing, fixtures
+**Backend Development:**
+
+- **phoenix.md** - Phoenix/LiveView patterns, contexts, routing
+- **testing.md** - Phoenix/Elixir testing (ExUnit, mix test, LiveView tests)
 - **elixir-code-generation.md** - Code style, patterns
 - **i18n.md** - Internationalization, Gettext
 - **workflow.md** - Development workflow, CI requirements
+
+**Mobile Development:**
+
+- **flutter.md** - Flutter/Dart patterns, state management
+- **mobile-testing.md** - Flutter testing (flutter test, widget tests, integration tests)
+
+**Testing File Distinction** (🚨 CRITICAL - commonly confused):
+
+- **testing.md**: Backend testing (mix test, ExUnit, Phoenix LiveView)
+  - Keywords: mix test, ExUnit, LiveView testing, Ecto, ./codegen/ci.sh
+- **mobile-testing.md**: Mobile testing (flutter test, widget tests)
+  - Keywords: flutter test, dart, widget tests, tester.pump, integration_test
+
+**Rule of thumb**: If it uses `mix test`, add to `testing.md`. If it uses `flutter test`, add to `mobile-testing.md`.
 
 ## Examples
 
