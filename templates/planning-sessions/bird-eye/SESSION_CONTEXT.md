@@ -9,7 +9,18 @@
 
 ## Load These Rules
 
-- `planning.md` - Planning structure, modular architecture, file hygiene requirements
+**MANDATORY FIRST ACTION**: After reading this context, load required context:
+
+1. **Load planning rules**:
+
+   - `./codegen/rules/planning.md` - Planning structure, modular architecture, file hygiene requirements
+
+2. **Understand project architecture**:
+   - **Read PROJECT_CONTEXT.md** to understand project type:
+     - **Backend-only**: Phoenix/Elixir focus
+     - **Monorepo (backend + mobile)**: Phoenix backend + Flutter mobile - plan for BOTH
+     - **Mobile-only**: Flutter/Dart focus
+   - **This determines feature scope**: A "reactions" feature in a monorepo needs backend API + mobile UI
 
 ## Planning Phase: Strategic Overview
 

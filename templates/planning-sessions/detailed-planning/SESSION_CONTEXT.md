@@ -15,13 +15,16 @@
    - `./codegen/rules/planning.md` - Planning structure, modular architecture, file hygiene requirements
 2. **Identify feature type and load domain rules**:
    - Check `./codegen/rules/INDEX.md` for available domain rules
-   - Based on feature description, load relevant domain rules:
+   - **Read PROJECT_CONTEXT.md** to understand project type (monorepo? mobile? backend-only?)
+   - Based on feature description AND project type, load relevant domain rules:
      - **Phoenix/Elixir features**: Load `rules/subagents/phoenix.md` + `rules/subagents/elixir-code-generation.md`
+     - **Flutter/mobile features**: Load `rules/subagents/flutter.md` + `rules/subagents/mobile-testing.md`
+     - **Monorepo (backend + mobile)**: Load BOTH backend AND mobile rules for full-stack features
      - **UI/design features**: Load `rules/subagents/ui-implementation.md` + `rules/subagents/phoenix.md`
      - **Testing features**: Load `rules/subagents/testing.md` + `rules/subagents/feature-tests.md`
      - **Translation features**: Load `rules/subagents/i18n.md`
      - **CI/deployment features**: Load `rules/subagents/ci-pipeline.md` + `rules/subagents/deployment.md`
-     - **Multiple domains**: Load all relevant domain rules
+     - **Multiple domains**: Load ALL relevant domain rules for the feature scope
 
 **Why**: Plans with specific code must follow domain patterns. Loading appropriate rules prevents bad code patterns that won't get fixed during implementation.
 
