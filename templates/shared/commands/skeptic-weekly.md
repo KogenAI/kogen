@@ -291,28 +291,22 @@ Construct URLs based on the podcast name and external_id:
 
 ## Output Format
 
-1. **Full markdown article** saved to file
-2. **Terminal summary** (short, 3-5 sentences) including:
-   - "Generated weekly roundup for [date range]"
-   - "Covered X accessible episodes across Y podcasts"
-   - "Excluded Z Sam Tripoli episodes with broken URLs"
-   - "Top themes: [theme 1], [theme 2], [theme 3]"
-   - "Saved to: [filename]"
-   - "All links verified and working"
+**IMPORTANT:** Always save the full article to a timestamped `.md` file first, then output ONLY a brief summary to the user.
 
-## Publishing to Substack
+1. **Save full markdown article to file** (using STEP 7 above)
 
-Once the article is generated:
+2. **Terminal output to user** (keep it SHORT - under 10 lines total):
 
-1. **Copy the markdown content** from the generated file
-2. **Paste directly into Substack's editor** - Substack will automatically convert markdown to formatted text
-3. **Select "News" as the primary category** for best positioning
-4. **Add relevant tags** (select 3-5 based on week's content):
-   - **Always include:** conspiracy theories, alternative media
-   - **Common tags:** 9/11, AI, surveillance, politics, media criticism, government, technology
-   - **Topic-specific:** Use tags matching the week's major themes
-5. **The article is ready to publish:**
-   - All links have been tested and verified working
-   - Headers, bold text, bullet points will render correctly
-   - No manual URL verification needed
-   - No manual formatting needed
+```
+## Weekly Roundup: [Date Range]
+
+**File:** `skeptic_weekly_YYYYMMDD_HHMMSS.md`
+**Episodes:** X episodes across Y podcasts (Z Sam Tripoli URLs broken)
+**Themes:** [theme 1], [theme 2], [theme 3]
+
+### Substack Settings
+- **Category:** News
+- **Tags:** `conspiracy theories`, `alternative media`, `[topic tag 1]`, `[topic tag 2]`, `[topic tag 3]`
+```
+
+That's it. Do NOT output the full article content to the terminal - just the summary above. The user will open the .md file to copy the content.
