@@ -22,6 +22,60 @@
      - **Mobile-only**: Flutter/Dart focus
    - **This determines feature scope**: A "reactions" feature in a monorepo needs backend API + mobile UI
 
+## 🚨 MANDATORY: Clarifying Questions Before Planning
+
+**CRITICAL**: After loading context, you MUST ask clarifying questions BEFORE creating any plan. Do NOT assume you understand requirements fully.
+
+### Required Question Categories
+
+Use the `AskUserQuestion` tool to ask about:
+
+**1. Scope & Boundaries**
+
+- What's explicitly IN scope vs OUT of scope?
+- Are there related features that should wait for later?
+- What's the minimum viable version vs nice-to-have?
+
+**2. User & Business Context**
+
+- Who are the primary users of this feature?
+- What problem does this solve for them?
+- Are there existing workarounds users currently use?
+
+**3. Constraints & Preferences**
+
+- Are there technology/vendor preferences or restrictions?
+- Budget or timeline constraints?
+- Integration requirements with external systems?
+
+**4. Success Criteria**
+
+- How will we know this feature is successful?
+- What metrics matter?
+- What would make this feature a failure?
+
+### Example Questions to Ask
+
+```
+- "Should this feature work offline, or is network connectivity assumed?"
+- "Do you want staging environment only first, or both staging and production?"
+- "Are there manual steps you're willing to do, or should everything be automated?"
+- "What existing accounts/services do you already have set up?"
+- "What's the priority order if we can't do everything?"
+```
+
+### When to Skip Questions
+
+Only skip if:
+
+- User provided exhaustive requirements document
+- This is a bug fix with clear reproduction steps
+- User explicitly said "just do it, no questions"
+
+**DEFAULT: ASK QUESTIONS FIRST**
+
+---
+
 ## Planning Phase: Strategic Overview
 
 You are in the first phase of feature development - **strategic planning**. This phase focuses on understanding the feature from a high-level, user-centric perspective.

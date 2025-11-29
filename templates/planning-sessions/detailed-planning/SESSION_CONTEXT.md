@@ -28,6 +28,124 @@
 
 **Why**: Plans with specific code must follow domain patterns. Loading appropriate rules prevents bad code patterns that won't get fixed during implementation.
 
+## 🚨 MANDATORY: Clarifying Questions Before Planning
+
+**CRITICAL**: After loading context and rules, you MUST ask clarifying questions BEFORE creating any plan. Do NOT assume you understand requirements fully.
+
+### Required Question Categories
+
+Use the `AskUserQuestion` tool to ask about:
+
+**1. Implementation Preferences**
+
+- Should this be fully automated or include manual steps?
+- Are there specific libraries/tools you want to use (or avoid)?
+- What level of automation is expected for deployment?
+
+**2. Environment & Infrastructure**
+
+- What accounts/services already exist? (cloud providers, domains, etc.)
+- Are there existing credentials/secrets to reuse?
+- What environments are needed? (staging only? staging + prod?)
+
+**3. Scope Clarification**
+
+- What's the MVP vs full implementation?
+- Are there parts that can be deferred to later iterations?
+- Should the plan cover both setup AND ongoing maintenance?
+
+**4. Manual Steps Identification**
+
+- What manual steps are acceptable during implementation?
+- What needs to be done BEFORE implementation can start?
+- Are there approval/review gates required?
+
+**5. Testing & Verification**
+
+- How should we verify the implementation works?
+- What's the rollback strategy if something fails?
+- Who needs to sign off on completion?
+
+### Example Questions to Ask
+
+```
+- "Do you already have the Vultr account and domain registered?"
+- "Should this plan cover staging only, or both staging and production?"
+- "Do you want provisioning scripts or manual runbook steps?"
+- "What secrets/credentials do you have ready vs need to create?"
+- "Should the mobile app config be part of this plan or separate?"
+```
+
+### Identify Manual Prerequisites (Bookend Pattern)
+
+**CRITICAL**: Plans should follow the **bookend pattern** - manual steps at START and END, autonomous middle.
+
+```
+┌─────────────────┐     ┌─────────────────────────────┐     ┌─────────────────┐
+│  MANUAL START   │ ──► │    AUTONOMOUS MIDDLE        │ ──► │   MANUAL END    │
+│  (User does)    │     │    (Agent runs unattended)  │     │  (User verifies)│
+└─────────────────┘     └─────────────────────────────┘     └─────────────────┘
+```
+
+**1. BEFORE Implementation (User does manually):**
+
+- Account creation (cloud providers, services, domains)
+- Secret generation (`mix phx.gen.secret`, API keys)
+- SSH key setup and access verification
+- DNS record creation (can start propagating while agent works)
+- Provide all secrets/credentials to agent or config files
+
+**2. DURING Implementation (Agent runs autonomously):**
+
+- ❌ **AVOID manual steps here** - breaks autonomous flow
+- If unavoidable (e.g., DNS propagation wait), script should poll/retry automatically
+- All secrets should be passed via environment variables or config files, NOT interactive prompts
+- Scripts should be idempotent (safe to re-run if interrupted)
+
+**3. AFTER Implementation (User verifies):**
+
+- Final testing on real devices
+- Smoke test critical paths
+- Verify monitoring/alerting works
+- Optional: security review, documentation updates
+
+### Design for Autonomy
+
+When planning, ask yourself:
+
+- **Can this secret be passed as an environment variable?** → Do that instead of interactive prompt
+- **Can this wait be automated with polling/retry?** → Do that instead of manual checkpoint
+- **Can this be validated programmatically?** → Add health checks instead of manual verification
+- **Can prerequisites be verified at script start?** → Fail fast with clear error message
+
+**Example - BAD (requires mid-flow intervention):**
+
+```bash
+# Script pauses and waits for user
+echo "Edit /etc/app/secrets.env with your credentials, then press Enter"
+read
+```
+
+**Example - GOOD (secrets passed upfront):**
+
+```bash
+# Script reads from environment, fails fast if missing
+SECRET_KEY="${SECRET_KEY_BASE:?Error: SECRET_KEY_BASE required}"
+```
+
+### When to Skip Questions
+
+Only skip if:
+
+- User already answered these in the conversation
+- This is a continuation of a previous planning session
+- Bird-eye plan already captured all requirements
+- User explicitly said "just plan it, I'll handle prerequisites"
+
+**DEFAULT: ASK QUESTIONS FIRST**
+
+---
+
 ## Planning Phase: Technical Implementation
 
 You are in the technical planning phase - **detailed implementation planning**. This phase focuses on creating comprehensive technical plans ready for implementation.
