@@ -105,8 +105,9 @@ CURRENT_BRANCH=$(git branch --show-current 2>/dev/null || echo "unknown")
 COMMIT_HASH=$(git rev-parse HEAD 2>/dev/null | cut -c1-8 || echo "unknown")
 
 if [ -f "$WORKSPACE_PATH/.env" ]; then
-    PORT=$(grep "^PORT=" "$WORKSPACE_PATH/.env" 2>/dev/null | cut -d'=' -f2)
-    PARTITION=$(grep "^MIX_DEV_PARTITION=" "$WORKSPACE_PATH/.env" 2>/dev/null | cut -d'=' -f2)
+    # Use tail -1 to get last occurrence (workspace overrides template defaults)
+    PORT=$(grep "^PORT=" "$WORKSPACE_PATH/.env" 2>/dev/null | tail -1 | cut -d'=' -f2)
+    PARTITION=$(grep "^MIX_DEV_PARTITION=" "$WORKSPACE_PATH/.env" 2>/dev/null | tail -1 | cut -d'=' -f2)
 else
     PORT="not configured"
     PARTITION="not configured"
@@ -125,7 +126,8 @@ if [ -f "$SCRIPT_DIR/templates/.vscode/settings.json" ]; then
     cp "$SCRIPT_DIR/templates/.vscode/settings.json" "$WORKSPACE_PATH/.vscode/"
 
     if [ -f "$WORKSPACE_PATH/.env" ]; then
-        WORKSPACE_PORT=$(grep "^PORT=" "$WORKSPACE_PATH/.env" 2>/dev/null | cut -d'=' -f2)
+        # Use tail -1 to get last occurrence (workspace overrides template defaults)
+        WORKSPACE_PORT=$(grep "^PORT=" "$WORKSPACE_PATH/.env" 2>/dev/null | tail -1 | cut -d'=' -f2)
         if [ -n "$WORKSPACE_PORT" ]; then
             sed -i '' "s/4000/$WORKSPACE_PORT/g" "$WORKSPACE_PATH/.vscode/settings.json"
         fi
