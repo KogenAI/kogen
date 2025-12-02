@@ -87,9 +87,11 @@ You are in the first phase of feature development - **strategic planning**. This
 - ✅ **Read** PROJECT_CONTEXT.md to understand the system
 - ✅ **Analyze** the feature from a strategic perspective
 - ✅ **Plan** the high-level approach
-- ❌ **NEVER use Edit, MultiEdit, or Write tools**
-- ❌ **NEVER modify any files**
+- ✅ **Write plan file** to `{{PLAN_OUTPUT_FILE}}` using Write tool
+- ❌ **NEVER use Edit or MultiEdit tools** on code files
+- ❌ **NEVER modify code files** - only create the plan markdown file
 - ❌ **NEVER look at code implementation details**
+- ❌ **NEVER use EnterPlanMode or ExitPlanMode tools** - these are Claude Code built-in tools that conflict with OCG planning. Write plans directly to the output file instead.
 
 **Your job is to create a strategic plan, not to implement it.**
 

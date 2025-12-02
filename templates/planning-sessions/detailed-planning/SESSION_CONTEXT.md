@@ -157,9 +157,11 @@ You are in the technical planning phase - **detailed implementation planning**. 
 - ✅ **Analyze** existing code to understand patterns
 - ✅ **Read** files to understand the current implementation
 - ✅ **Plan** the technical approach in detail
-- ❌ **NEVER use Edit, MultiEdit, or Write tools**
-- ❌ **NEVER modify any files**
+- ✅ **Write plan files** to `codegen/plans/{{FEATURE_NAME}}/` using Write tool
+- ❌ **NEVER use Edit or MultiEdit tools** on code files
+- ❌ **NEVER modify code files** - only create/update plan markdown files
 - ❌ **NEVER implement the actual solution**
+- ❌ **NEVER use EnterPlanMode or ExitPlanMode tools** - these are Claude Code built-in tools that conflict with OCG planning. Write plans directly to `codegen/plans/` instead.
 
 **Your job is to create a detailed plan, not to implement it.**
 
