@@ -151,6 +151,38 @@ Generate 5-10 topic suggestions by:
 - **Concrete over abstract** - Say "500 KB → 1 KB" not "99% reduction" unless you show the math
 - **Link at end** - Include drop link for full examples
 - **Count characters precisely** - Don't guess, actually measure the hook length
+- **No backticks** - Twitter doesn't render them as code, they just add visual noise
+
+**🚨 CRITICAL: Preventing Twitter Auto-Link Detection**
+
+Twitter automatically converts `Module.function` patterns into clickable links (e.g., `File.read!/1` becomes a link to `file.read`). This breaks the visual presentation of Elixir code.
+
+**The Fix: Zero-Width Space (ZWSP) after the dot**
+
+Insert the invisible Unicode character U+200B after the dot to break Twitter's URL pattern detection:
+
+- **Character**: `​` (zero-width space - invisible but copy-pasteable)
+- **Unicode**: U+200B
+- **HTML entity**: `&#8203;`
+- **Windows**: Alt+08203 (numpad)
+
+**How to apply:**
+
+```
+❌ Wrong: File.read!/1 on a 2GB file = 2GB RAM
+✅ Right: File​.read!/1 on a 2GB file = 2GB RAM (ZWSP after "File")
+```
+
+**MANDATORY for Twitter hooks**: When providing Twitter-ready text, ALWAYS insert ZWSP after the module name dot in patterns like:
+
+- `File​.read!/1`, `File​.stream!/1`
+- `Enum​.map/2`, `Enum​.reduce/3`
+- `Ecto​.Query`, `Phoenix​.LiveView`
+- `String​.to_atom/1`, `GenServer​.call/3`
+
+**Copy this ZWSP character**: `​` (select between the backticks - it's invisible)
+
+The ZWSP is invisible to readers but prevents Twitter from interpreting the text as a URL.
 
 **Rich Topic Sources Available:**
 
