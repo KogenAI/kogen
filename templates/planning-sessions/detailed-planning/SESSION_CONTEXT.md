@@ -23,7 +23,7 @@
      - **UI/design features**: Load `rules/subagents/ui-implementation.md` + `rules/subagents/phoenix.md`
      - **Testing features**: Load `rules/subagents/testing.md` + `rules/subagents/feature-tests.md`
      - **Translation features**: Load `rules/subagents/i18n.md`
-     - **CI/deployment features**: Load `rules/subagents/ci-pipeline.md` + `rules/subagents/deployment.md`
+     - **CI/deployment features**: Load `rules/subagents/github-actions.md` + `rules/subagents/deployment.md`
      - **Multiple domains**: Load ALL relevant domain rules for the feature scope
 
 **Why**: Plans with specific code must follow domain patterns. Loading appropriate rules prevents bad code patterns that won't get fixed during implementation.

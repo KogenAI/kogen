@@ -39,11 +39,21 @@ model: inherit
 
 ## Rules & Context Loaded
 
+**Shared Rules:**
 - [ ] ./codegen/rules/INDEX.md
+- [ ] ./codegen/rules/shared/subagent-core-rules.md
+
+**Core Rules (Critical - Always Load):**
 - [ ] ./codegen/rules/subagents/verification-workflow.md (CRITICAL for comprehensive reporting)
+- [ ] ./codegen/rules/subagents/poc-success-criteria.md
+
+**Standard Rules (Always Load):**
 - [ ] ./codegen/rules/subagents/testing.md
 - [ ] ./codegen/rules/subagents/elixir-ci.md
-- [ ] ./codegen/rules/subagents/ci-pipeline.md
+- [ ] ./codegen/rules/subagents/github-actions.md
+- [ ] ./codegen/rules/subagents/git.md
+
+**Context Files:**
 - [ ] ./codegen/PROJECT_CONTEXT.md
 - [ ] ./codegen/CONTEXT.md
 

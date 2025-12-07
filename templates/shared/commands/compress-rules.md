@@ -117,12 +117,12 @@ INDEX.md (600+ lines) has repetitive per-agent sections. Convert to compact tabl
 - `shared/subagent-core-rules.md`
 - `shared/server-management.md`
 
-| Agent                 | Core (Critical)                             | Standard                                      | Conditional                          | Never Load                         |
-| --------------------- | ------------------------------------------- | --------------------------------------------- | ------------------------------------ | ---------------------------------- |
-| feature-developer     | tdd, phoenix, elixir-code-generation        | workflow, git                                 | testing, feature-tests, cucumber-bdd | code-review, verification-workflow |
-| verification-engineer | verification-workflow, poc-success-criteria | testing, elixir-ci, ci-pipeline, git          | javascript-testing                   | code-review, tdd                   |
-| code-reviewer         | code-review, poc-success-criteria           | phoenix, elixir-code-generation, testing, git | ast-grep-patterns                    | verification-workflow, tdd         |
-| ...                   | ...                                         | ...                                           | ...                                  | ...                                |
+| Agent                 | Core (Critical)                      | Standard                                      | Conditional                              | Never Load                         |
+| --------------------- | ------------------------------------ | --------------------------------------------- | ---------------------------------------- | ---------------------------------- |
+| feature-developer     | tdd, phoenix, elixir-code-generation | workflow, git                                 | testing, feature-tests, cucumber-bdd     | code-review, verification-workflow |
+| verification-engineer | verification-workflow                | testing, elixir-ci, github-actions, git       | javascript-testing, poc-success-criteria | code-review, tdd                   |
+| code-reviewer         | code-review, poc-success-criteria    | phoenix, elixir-code-generation, testing, git | ast-grep-patterns                        | verification-workflow, tdd         |
+| ...                   | ...                                  | ...                                           | ...                                      | ...                                |
 ```
 
 **Why**: Reduces INDEX.md from ~600 lines to ~150 lines while preserving 100% of the information.

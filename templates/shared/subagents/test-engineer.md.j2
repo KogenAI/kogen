@@ -26,7 +26,8 @@ Analyze your task prompt to determine which platform you're testing:
 ### Step 2: Load Shared Rules (Always)
 
 1. `./codegen/rules/shared/subagent-core-rules.md`
-2. `./codegen/rules/shared/server-management.md`
+2. `./codegen/rules/shared/implementation-workflow.md`
+3. `./codegen/rules/shared/server-management.md`
 
 ### Step 3: Load Platform-Specific Rules
 
@@ -100,7 +101,7 @@ HELPFUL RESOURCES: See ./codegen/recipes/[recipe-name].md
 ## Tools
 
 ### Backend Testing
-- **Playwright MCP**: Browser automation for feature tests
+- **Playwright CLI**: Browser automation for feature tests (see playwright-cli.md rules)
 - **Tidewave MCP**: Elixir assistance for test code
 - Bash: `mix test test/path/to/file.exs` (targeted tests only)
 
@@ -138,3 +139,22 @@ HELPFUL RESOURCES: See ./codegen/recipes/[recipe-name].md
 **Role Focus**: Coverage support for existing code gaps and TDD assistance for complex scenarios
 
 **CRITICAL**: The detailed self-verification commands, test writing patterns, and completion requirements are all in the rule files. The template provides structure - the rules provide behavior.
+
+## 📊 MANDATORY: Command Logging
+
+**Log EVERY command in your session log's Command Execution Log table:**
+
+```markdown
+| Time     | Duration | Command | Status | Notes |
+|----------|----------|---------|--------|-------|
+| 08:32:15 | 2.1s     | `mix test test/feature_test.exs` | ❌ | 3 failures |
+| 08:32:20 | 0.5s     | Edit feature_test.exs | ✅ | Fixed async issue |
+| 08:32:45 | 1.8s     | `mix test test/feature_test.exs` | ✅ | All pass |
+| 08:33:00 | 5.2s     | `flutter test test/widget_test.dart` | ✅ | All pass |
+```
+
+**BLOCKING**: Session logs without command timestamps are INCOMPLETE. You must log:
+- Every test command (mix test, flutter test)
+- Every file edit with filename
+- Every fix applied
+- Command duration and status

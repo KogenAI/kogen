@@ -41,7 +41,7 @@ ALL agents (orchestrator and subagents) must follow:
 
 **🚨 CRITICAL: Cross-Role Rule Contamination**
 
-**PROBLEM**: Implementation rules (like `testing.md`, `workflow.md`, `ci-pipeline.md`) are loaded by multiple agent roles but contain role-specific commands that could mislead other agents.
+**PROBLEM**: Implementation rules (like `testing.md`, `workflow.md`, `github-actions.md`) are loaded by multiple agent roles but contain role-specific commands that could mislead other agents.
 
 **SOLUTION - Role-Based Rule Loading Restrictions**:
 
@@ -76,28 +76,9 @@ ALL agents (orchestrator and subagents) must follow:
 - `mix test test/specific_file.exs` = targeted = feature-developer OK during development
 - code-reviewer NEVER executes, only analyzes
 
-### Translation File Staging (EXCLUSIVE)
+### Translation File Staging
 
-**ONLY translator agent** can stage .po/.pot files:
-
-| Command                         | translator   | ALL other agents        |
-| ------------------------------- | ------------ | ----------------------- |
-| `git add priv/gettext/**/*.po`  | ✅ EXCLUSIVE | ❌ ABSOLUTELY FORBIDDEN |
-| `git add priv/gettext/**/*.pot` | ✅ EXCLUSIVE | ❌ ABSOLUTELY FORBIDDEN |
-| `git add *.po`                  | ✅ EXCLUSIVE | ❌ ABSOLUTELY FORBIDDEN |
-
-**Why this matters**:
-
-- `make ci` expects translation files staged ONLY by translator
-- Other agents staging .po/.pot files causes CI pipeline failures
-- Translator has specialized workflow for gettext file management
-
-**If you need translation files staged**:
-
-- ❌ DO NOT stage them yourself
-- ✅ Report to orchestrator: "Translation files need staging - delegate to translator"
-
-**Example**: If `testing.md` shows `./codegen/ci.sh`, only verification-engineer should execute it. Other agents should treat it as documentation only.
+**See `git.md` for translation file staging rules.** Only translator agent can stage .po/.pot files.
 
 **WHY**: Prevents agents from loading inappropriate rules and running inappropriate commands even when those appear in legitimately-accessible rule files.
 
@@ -285,202 +266,36 @@ ocg usage-rules
 
 ## 📊 MANDATORY: Session Logging
 
-**ALL agents** must create session logs as SECOND action (after loading rules).
+**ALL agents** must create session logs. See `shared/session-management.md` for complete logging format.
 
-**Standard Format**:
+**Quick reference**:
 
-```bash
-LOG_FILE="./codegen/logging/$(date -u +%Y%m%d_%H%M%S)_[role].md"
-```
+- **File**: `./codegen/logging/$(date -u +%Y%m%d_%H%M%S)_[role].md`
+- **When**: Create as SECOND action (after loading rules)
+- **Update**: Continuously throughout session (not at end)
 
-**Role values**:
+**Critical rules**:
 
-- orchestrator
-- feature-developer
-- verification-engineer
-- code-reviewer
-- test-engineer
-- ui-specialist
-- translator
-- devops-manager
-- infrastructure-architect
-- poc-developer
+1. Mark `[x]` checkboxes ONLY after reading file with Read tool
+2. Log commands with timestamp/duration for debugging
+3. Save lessons learned to `./codegen/CONTEXT.md`
 
-**Example**:
-
-```bash
-# For orchestrator:
-./codegen/logging/20250930_143022_orchestrator.md
-
-# For feature-developer:
-./codegen/logging/20250930_143156_feature-developer.md
-```
-
-**WHEN**:
-
-1. Create log file as your SECOND action (after loading rules)
-2. **UPDATE CONTINUOUSLY** - Edit the log file throughout your session
-3. Update after each major action (delegation, tool use, file modification)
-
-**LOG FORMAT**:
-
-```markdown
-# Session Log: <agent_role>
-
-**Started**: $(date -u)
-**Task**: [Brief description of main task]
-
-## Rules & Context Loaded
-
-- [ ] ./codegen/rules/INDEX.md
-- [ ] ./codegen/PROJECT_CONTEXT.md
-- [ ] ./codegen/CONTEXT.md
-- [ ] phoenix.md
-- [ ] testing.md
-- [ ] [list each rule file you actually loaded]
-
-## Recipes Used
-
-- [ ] /path/to/recipe.md (if any were provided by orchestrator)
-
-## Library Usage Rules Loaded
-
-**IMPORTANT: Track which library-specific documentation you loaded to ensure correct API usage**
-
-- [ ] jason-1.4.4.md (JSON encoding/decoding)
-- [ ] phoenix_live_view-1.0.0-components.md (LiveView components)
-- [ ] gettext-0.25.0.md (i18n patterns)
-- [ ] [list each library usage rule you loaded]
-- [ ] No library-specific rules loaded (if not working with external libraries)
-
-## MCP Tools Used
-
-**IMPORTANT: Track ACTUAL tool usage, not planned usage. Update this section each time you call an MCP tool.**
-
-- [ ] Figma MCP: get_image (2), get_code (1), get_variable_defs (1) = 4 total calls
-- [ ] Playwright MCP: browser_screenshot (3), browser_navigate (2) = 5 total calls
-- [ ] Tidewave MCP: project_eval (6), get_source_location (0) = 6 total calls
-- [ ] No MCP tools used (if none were actually called)
-
-## Command Execution Log
-
-**CRITICAL: Log EVERY command with timestamp and duration to debug performance issues**
-
-| Time     | Duration | Command                      | Status | Notes                    |
-| -------- | -------- | ---------------------------- | ------ | ------------------------ |
-| 08:25:30 | 2.1s     | `mix compile`                | ✅     | Clean compilation        |
-| 08:25:33 | 0.8s     | `mix test --only smoke_test` | ✅     | All smoke tests pass     |
-| 08:25:45 | 12.3s    | `./codegen/ci.sh`            | ❌     | Failed on gettext checks |
-| 08:25:47 | 1.2s     | `mix gettext.extract`        | ✅     | Fixed gettext issue      |
-| 08:25:49 | 8.9s     | `./codegen/ci.sh`            | ✅     | All checks pass          |
-
-**Track patterns:**
-
-- ✅ **Success patterns**: Commands that work well (reuse these)
-- ❌ **Failed commands**: Commands that failed (avoid/fix these)
-- ⏱️ **Performance**: Commands taking >30s (investigate why)
-
-## Files Modified
-
-- [ ] src/lib/component.ex (created/updated)
-- [ ] test/feature_test.exs (created)
-- [ ] [list all files you created/modified]
-
-## Delegation (orchestrator only)
-
-**CRITICAL: Log delegations BEFORE calling Task() to prevent information loss on crashes.**
-
-**WORKFLOW:**
-
-1. **FIRST**: Add delegation entry with "IN PROGRESS" status
-2. **THEN**: Call Task() tool
-3. **AFTER**: Update status based on subagent results
-
-**Example tracking:**
-
-- [x] Delegating to feature-developer: "implement user registration" → IN PROGRESS
-- [x] Delegated to feature-developer: → COMPLETED
-- [x] Delegating to verification-engineer: "verify implementation" → IN PROGRESS
-- [x] Delegated to verification-engineer: → FOUND 2 ISSUES
-- [x] Delegating to feature-developer: "fix issues" → IN PROGRESS
-- [x] Delegated to feature-developer: → COMPLETED
-- [ ] N/A - Not an orchestrator
-
-## Lessons Learned (for CONTEXT.md)
-
-**CRITICAL: Document what worked/didn't work to avoid repeating mistakes and reuse successful patterns**
-
-### ✅ What Worked Well
-
-- [Command/approach that worked]: [Why it was effective]
-- [Successful pattern]: [When to use this again]
-
-### ❌ What Failed/Was Slow
-
-- [Failed command]: [Why it failed, how to avoid]
-- [Slow process]: [What caused the delay, alternatives to try]
-
-### 🔄 Recommendations for Next Time
-
-- [Specific command sequence that worked efficiently]
-- [Tools/approaches to avoid]
-- [Performance optimizations discovered]
-
-**SAVE TO CONTEXT.md**: Update `./codegen/CONTEXT.md` with key lessons from this section to improve future iterations.
-
-## Completion Status
-
-- [x] All tasks completed successfully
-- [ ] Blocked by: [reason if incomplete]
-```
-
-**BASH COMMAND for timestamp**: `date -u +%Y%m%d_%H%M%S`
-
-**WHY**: This helps debug whether OCG rules loading, MCP tool access, and multi-agent coordination are working properly.
+**WHY**: Helps debug rule loading, MCP tool access, and multi-agent coordination.
 
 ## Work Context Management (Agent-to-Agent Communication)
 
-**All agents use bash commands directly for work contexts:**
+**See `shared/session-management.md` for work context file management.**
 
-### Checking for Work (All Agents at Session Start)
+**Quick reference**:
 
-```bash
-# Check for pending work
-ls ./codegen/context/PENDING-* 2>/dev/null || echo "No PENDING work"
-
-# Check for interrupted work
-ls ./codegen/context/ACTIVE-* 2>/dev/null || echo "No ACTIVE work"
-```
-
-### Creating Work Contexts (Orchestrator Before Delegating Issues)
-
-```bash
-# Create issue context with full details
-TIMESTAMP=$(date -u +"%Y%m%d-%H%M%S")
-cat > ./codegen/context/PENDING-issues-${TIMESTAMP}-code-review.md << 'EOF'
-# Code Review Issues
-**Source**: code-reviewer
-**Target**: feature-developer
-**Status**: PENDING
-
-## Issues Found
-[PASTE FULL REVIEW REPORT HERE]
-EOF
-```
-
-### Managing Work Contexts (Subagents)
-
-```bash
-# When starting work on an issue
-mv ./codegen/context/PENDING-issues-*.md ./codegen/context/ACTIVE-issues-*.md
-
-# When completing work
-mv ./codegen/context/ACTIVE-issues-*.md ./codegen/context/RESOLVED-issues-*.md
-```
+- Location: `./codegen/context/`
+- Prefixes: `PENDING-*`, `ACTIVE-*`, `RESOLVED-*`
+- Check at session start: `ls ./codegen/context/PENDING-* 2>/dev/null`
 
 ## Universal Requirements
 
 - **100% task completion** - Finish all assigned work completely
+- **Issue Discovery → Immediate Fixing** - If you find issues, create PENDING files AND immediately fix them (NEVER stop after just documenting)
 - **Check work contexts** - Always check `./codegen/context/PENDING-*` at session start
 - **Update work contexts** - Move through PENDING→ACTIVE→RESOLVED as you work
 - **Workspace isolation** - Never navigate outside current directory

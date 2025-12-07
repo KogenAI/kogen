@@ -17,8 +17,9 @@ model: inherit
 **CRITICAL**: Use Read tool WITHOUT limit/offset parameters to read COMPLETE files.
 
 1. **Load `./codegen/rules/INDEX.md`** - Understand the rules system
-2. **Load ALL shared rules** (required for all subagents):
+2. **Load ALL shared rules** (required for implementation agents):
    - `./codegen/rules/shared/subagent-core-rules.md` - Universal subagent behavior
+   - `./codegen/rules/shared/implementation-workflow.md` - Completion requirements
    - `./codegen/rules/shared/server-management.md` - Server restart coordination
 3. **Load ALL domain-specific rules** (required for circuit-breaker):
    - `./codegen/rules/subagents/circuit-breaker.md` - Deep diagnostic patterns
