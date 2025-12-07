@@ -9,9 +9,9 @@ Update the `codegen/FIGMA_MAP.md` file with new Figma design mappings for the pr
 1. **Gather Figma Information**:
 
    - Ask user for Figma URLs or node IDs for new screens
-   - Use `mcp__figma__get_image` to capture visual references
-   - Use `mcp__figma__get_variable_defs` to extract any custom tokens
-   - Use `mcp__figma__get_code_connect_map` to check for existing connections
+   - Use `ocg extract-figma-screenshots` to capture visual references
+   - Use `ocg extract-figma-variables` to extract design tokens
+   - Screenshots are saved to `./codegen/design-system/features/[feature]/screenshots/`
 
 2. **Identify the Feature/Flow**:
 

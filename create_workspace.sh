@@ -218,7 +218,7 @@ if [ -f "$REPO_ROOT/codegen/PROJECT_CONTEXT.md" ]; then
     cp "$REPO_ROOT/codegen/PROJECT_CONTEXT.md" "$WORKSPACE_PATH/codegen/PROJECT_CONTEXT.md"
 fi
 
-# Copy Figma files only if they exist in the main repository (project-specific)
+# Copy Figma documentation files (can be modified by workspace agents)
 for figma_file in "FIGMA_MAP.md" "FIGMA_DESIGN_SYSTEM_RULES.md" "FIGMA_TOKEN_MAPPING.md"; do
     mkdir -p "$WORKSPACE_PATH/codegen"
 
@@ -230,6 +230,22 @@ for figma_file in "FIGMA_MAP.md" "FIGMA_DESIGN_SYSTEM_RULES.md" "FIGMA_TOKEN_MAP
         echo "ℹ️  $figma_file not found in main repo - skipping (project doesn't use Figma)"
     fi
 done
+
+# Symlink design-system cache directory (read-only for agents, shared across workspaces)
+if [ -d "$REPO_ROOT/codegen/design-system" ]; then
+    mkdir -p "$WORKSPACE_PATH/codegen"
+    ln -s "$REPO_ROOT/codegen/design-system" "$WORKSPACE_PATH/codegen/design-system"
+    echo "🔗 Symlinked design-system cache from main repository"
+elif [ -f "$REPO_ROOT/codegen/FIGMA_MAP.md" ]; then
+    # Figma is used but design-system cache doesn't exist yet - create it in parent
+    mkdir -p "$REPO_ROOT/codegen/design-system/screenshots"
+    mkdir -p "$REPO_ROOT/codegen/design-system/tokens"
+    echo "📁 Created design-system cache directory in main repository"
+
+    # Symlink to workspace
+    ln -s "$REPO_ROOT/codegen/design-system" "$WORKSPACE_PATH/codegen/design-system"
+    echo "🔗 Created and symlinked design-system cache"
+fi
 
 if [ -f "$SCRIPT_DIR/templates/CONTEXT.md" ]; then
     mkdir -p "$WORKSPACE_PATH/codegen"

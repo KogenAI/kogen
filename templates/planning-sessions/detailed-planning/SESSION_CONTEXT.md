@@ -28,9 +28,44 @@
 
 **Why**: Plans with specific code must follow domain patterns. Loading appropriate rules prevents bad code patterns that won't get fixed during implementation.
 
-## 🚨 MANDATORY: Clarifying Questions Before Planning
+## 🚨 MANDATORY: Figma Extraction FIRST (If Figma URLs Provided)
 
-**CRITICAL**: After loading context and rules, you MUST ask clarifying questions BEFORE creating any plan. Do NOT assume you understand requirements fully.
+**CRITICAL**: If user provides Figma URLs, you MUST extract designs FIRST before asking questions.
+
+**Workflow when user provides Figma URLs**:
+
+1. Extract Figma node IDs from URLs
+2. Run `ocg extract-figma-screenshots` with EXPAND directives
+3. Run `ocg extract-figma-implementation-specs` with EXPAND directives
+4. Analyze extracted screenshots thoroughly
+5. Ask questions ONLY about unclear aspects not shown in Figma
+
+**What to ignore vs include from Figma screenshots**:
+
+- ❌ **IGNORE**: Browser chrome (address bar, browser tabs, window controls)
+- ✅ **INCLUDE**: Application navigation (top nav, sidebars, breadcrumbs)
+- ✅ **INCLUDE**: All UI elements within the application viewport
+
+**🚨 FORBIDDEN: DO NOT ask questions about things visible in Figma designs!**
+
+**Examples of FORBIDDEN questions after Figma extraction**:
+
+- ❌ "How should the UI be organized?" (visible in screenshots)
+- ❌ "What should be shown in the list?" (visible in screenshots)
+- ❌ "Should both user types see this page?" (visible in screenshots - if shown for both, answer is yes)
+- ❌ "How should items be labeled?" (visible in screenshots)
+- ❌ "Should we include feature X?" (if shown in Figma, answer is YES)
+
+**Examples of ALLOWED questions after Figma extraction**:
+
+- ✅ "Should messages link to JobApplications or support standalone conversations?" (backend architecture)
+- ✅ "What happens when user clicks 'Delete'?" (behavior not shown in static design)
+- ✅ "Should we implement real-time updates or polling?" (technical implementation choice)
+- ✅ "What permissions should control message access?" (security/authorization)
+
+## 🚨 MANDATORY: Clarifying Questions (After Figma Extraction)
+
+**CRITICAL**: After loading context, rules, AND extracting Figma (if applicable), ask clarifying questions about unclear requirements.
 
 ### Required Question Categories
 
@@ -212,28 +247,284 @@ You are in the technical planning phase - **detailed implementation planning**. 
 
 🚨 **CRITICAL**: If the user provides Figma node IDs or design references, you MUST handle them properly:
 
-1. **Extract Figma designs**: Use Figma MCP `get_image(nodeId)` to get design references
-2. **Document Figma references in your plan**: Include Figma URLs and node IDs directly in step files:
+### Phase 0: Design System Bootstrap (MANDATORY for Figma Projects)
 
-```markdown
-## Design References
+**BLOCKING REQUIREMENT**: Complete bootstrap BEFORE planning implementation steps.
 
-**Figma File**: https://www.figma.com/file/abc123/Project-Name
-**Node IDs**:
+#### Step 1: Detect Figma Usage
 
-- Login Form: `123:456`
-- User Profile: `789:012`
-
-## Visual Requirements
-
-- Follow spacing tokens from Figma design system
-- Use consistent color palette and typography
-- Maintain responsive behavior as shown in designs
+```bash
+grep "Figma File:" ./codegen/PROJECT_CONTEXT.md
 ```
 
-3. **Include design specifications in step plans**: Reference specific visual requirements, interactions, and responsive behavior from Figma designs
+**If Figma detected, you MUST complete bootstrap before continuing.**
 
-**DO NOT create/update FIGMA_MAP.md during planning** - that's for finished implementations only. Just document the Figma info in the plan for implementation reference.
+#### Step 2: Get Figma File Key
+
+Extract from PROJECT_CONTEXT.md:
+
+- Line format: `Figma File: <file-key>`
+- Example: `Figma File: 3MHrzLfTHWONfilGE5QU5a`
+
+#### Step 3: Check Cache Status
+
+```bash
+ls $REPO_ROOT/codegen/design-system/screenshots/ 2>/dev/null
+```
+
+**If cache exists**: Skip bootstrap, use existing cache
+**If cache missing**: MUST complete bootstrap below
+
+#### Step 4: Bootstrap Process (Order is CRITICAL)
+
+**4a. Create Node IDs List (Manually identify from Figma)**
+
+**CRITICAL:** You manually identify which node IDs you need (NOT extracting whole file)
+
+Create the node IDs file for your feature by inspecting Figma:
+
+```bash
+# Create feature directory
+mkdir -p $REPO_ROOT/codegen/design-system/features/$FEATURE_NAME
+
+# Manually create node-ids.txt with format: node-id|screen-name|description
+cat > $REPO_ROOT/codegen/design-system/features/$FEATURE_NAME/node-ids.txt <<'EOF'
+8296:62670|Messages - Desktop|Desktop screens parent
+8322:46182|Messages - Empty state|Desktop empty state
+8322:46530|Messages - With messages|Desktop with conversation
+7782:42684|Messages - Mobile|Mobile screens parent
+8328:10511|Messages - With files|Desktop with file attachments
+8325:10075|Messages - Reply preview|Reply preview bar
+EOF
+```
+
+**How to find node IDs:**
+
+1. Open Figma file in browser
+2. Select the frame/screen you need
+3. Copy node ID from URL (e.g., `node-id=8296-62670`)
+4. Add to node-ids.txt with descriptive name
+
+**4b. Extract Design Tokens (ONCE for entire Figma file - FREE)**
+
+**CRITICAL:** Use Figma REST API directly - NO AI tokens required!
+
+**If tokens exist already:**
+
+```bash
+ls $REPO_ROOT/codegen/design-system/variables.json
+# If exists: Skip extraction, reuse existing tokens
+```
+
+**If tokens NOT cached, extract with REST API:**
+
+```bash
+# Extract published variables via REST API (requires FIGMA_API_TOKEN)
+ocg extract-figma-variables \
+    "<file-key-from-PROJECT_CONTEXT>" \
+    "$REPO_ROOT/codegen/design-system/variables.json"
+```
+
+**What you get:**
+
+- All published variables (colors, spacing, typography, border radius)
+- Two files created: `variables.json` + `variables-readable.json`
+- **FREE** - no AI tokens burned
+- **SHARED across ALL features** - extract once, use everywhere
+
+**Then update:** `./codegen/FIGMA_TOKEN_MAPPING.md` with extracted values
+
+**4c. Extract Screenshots (Only What You Need)**
+
+**CRITICAL:** Use Figma REST API directly - NO AI tokens required!
+
+**Why REST API:** 100% FREE + 10-100x faster (batch API call)
+
+Using node IDs from step 4a:
+
+```bash
+# Extract all screenshots via Figma REST API (requires FIGMA_API_TOKEN env var)
+ocg extract-figma-screenshots \
+    "$FIGMA_FILE_KEY" \
+    "$REPO_ROOT/codegen/design-system/features/$FEATURE_NAME/node-ids.txt" \
+    "$REPO_ROOT/codegen/design-system/features/$FEATURE_NAME/screenshots"
+```
+
+**Setup (one-time):**
+
+```bash
+# Get Figma API token from: https://www.figma.com/developers/api#authentication
+# Then add to your shell profile (~/.zshrc or ~/.bashrc):
+export FIGMA_API_TOKEN='figd_your_token_here'
+```
+
+**4d. Extract Implementation Specs (CRITICAL for pixel-perfect implementation)**
+
+**CRITICAL:** Extract detailed specs per screen for implementation phase
+
+**Why this matters:** Agents can't call Figma during implementation - this extraction must be complete
+
+```bash
+# Extract detailed implementation specs (depth=3, no geometry)
+ocg extract-figma-implementation-specs \
+    "$FIGMA_FILE_KEY" \
+    "$REPO_ROOT/codegen/design-system/features/$FEATURE_NAME/node-ids.txt" \
+    "$REPO_ROOT/codegen/design-system/features/$FEATURE_NAME/specs"
+```
+
+**What you get:**
+
+- One JSON file per screen (~50-200K, ~5-10K tokens)
+- Text content (actual strings to display)
+- Exact measurements (width, height, x, y in pixels)
+- Typography (font family, size, weight, line height)
+- Colors (RGBA values)
+- Layout properties (Auto Layout, padding, gaps, alignment)
+- Component hierarchy (depth=3)
+
+**4e. Create URL → Screenshot State Mapping**
+
+**CRITICAL:** Create mapping in plan so ui-specialist knows which screenshot to use for each URL.
+
+Add to `codegen/plans/$FEATURE_NAME/overview.md`:
+
+```markdown
+## Screenshot State Mapping
+
+Maps URL patterns to Figma screenshots for visual verification.
+
+| URL Pattern                      | State Description                 | Desktop Screenshot                                     | Mobile Screenshot                                     | Test User                    | Locale | Notes                              |
+| -------------------------------- | --------------------------------- | ------------------------------------------------------ | ----------------------------------------------------- | ---------------------------- | ------ | ---------------------------------- |
+| `/messages` (no conversations)   | Empty state - no job applications | `messages---empty-state-8322-46182.png`                | `organization-messages---empty-state-8547-8837.png`   | empty-screenshot@example.com | en     | User with no job applications      |
+| `/messages` (with conversations) | Conversation list populated       | `organization-messages---with-messages-8322-46530.png` | `organization-messages---with-messages-8547-8881.png` | maria.weber@spitex-zurich.ch | en     | Employer with active conversations |
+| `/messages/:id`                  | Active conversation thread        | `organization-messages---with-messages-8322-46530.png` | `organization-messages---view-message-8547-8948.png`  | maria.weber@spitex-zurich.ch | en     | Select first conversation          |
+| `/messages/:id` (with files)     | Conversation with attachments     | `organization-messages---with-messages-8328-10511.png` | -                                                     | maria.weber@spitex-zurich.ch | en     | Conversation with PDF/images       |
+
+**Test User Credentials:** All test users use password `password123456`
+
+**Critical:** Always use specified test user to ensure correct locale (English) and data state.
+```
+
+**4f. Update Seeds for Screenshot Users**
+
+Add to `priv/repo/seeds.exs`:
+
+```elixir
+# Screenshot test users - ALWAYS English locale for Figma comparison
+empty_screenshot_user = Repo.insert!(%User{
+  email: "empty-screenshot@example.com",
+  name: "Empty User",
+  hashed_password: Bcrypt.hash_pwd_salt("password123456"),
+  confirmed_at: ~N[2024-01-01 00:00:00],
+  user_type: :employer,
+  locale: "en", # CRITICAL: English for Figma matching
+  company: some_company
+})
+
+# Update existing test users to have English locale for screenshots
+Repo.update!(User.changeset(maria_user, %{locale: "en"}))
+```
+
+**4g. Document in Plan Overview**
+
+Add design system section to your plan overview.md:
+
+```markdown
+## Design System Extractions (Created During Planning)
+
+**Feature:** $FEATURE_NAME
+
+**Global resources** (shared across all features):
+
+- Design tokens: `./codegen/design-system/variables.json`
+- Design tokens (readable): `./codegen/design-system/variables-readable.json`
+
+**Feature-specific resources:**
+
+- Node IDs: `./codegen/design-system/features/$FEATURE_NAME/node-ids.txt` (6-8 screens)
+- Screenshots: `./codegen/design-system/features/$FEATURE_NAME/screenshots/*.png` (6-8 images)
+- Implementation specs: `./codegen/design-system/features/$FEATURE_NAME/specs/*-specs.json` (~5-10K tokens each)
+
+**Implementation Note:** ui-specialist MUST read from these cached files. All needed data extracted.
+
+**Screenshot State Mapping:** See "Screenshot State Mapping" section above for URL → screenshot mappings.
+```
+
+**Why This Organization:**
+
+- ✅ No file clashes between features
+- ✅ Token usage scales with feature scope (6-8 screens), NOT whole Figma file
+- ✅ Easy cleanup: remove entire feature directory when done
+- ✅ Parallel development: different features extract independently
+- ✅ 100% FREE - no AI tokens burned for extraction
+- ✅ Only design tokens are truly global - everything else is feature-specific
+
+#### Step 5: Verify Bootstrap Completion
+
+**Before continuing with planning, verify:**
+
+```bash
+# 1. Design tokens extracted?
+ls $REPO_ROOT/codegen/design-system/variables.json
+
+# 2. Node IDs created?
+ls $REPO_ROOT/codegen/design-system/features/$FEATURE_NAME/node-ids.txt
+
+# 3. Screenshots extracted?
+ls $REPO_ROOT/codegen/design-system/features/$FEATURE_NAME/screenshots/*.png
+
+# 4. Implementation specs extracted?
+ls $REPO_ROOT/codegen/design-system/features/$FEATURE_NAME/specs/*.json
+```
+
+**All four MUST exist before proceeding with implementation planning.**
+
+**If any missing:** Go back and complete bootstrap steps 4a-4g.
+
+**CRITICAL PATH AWARENESS**:
+
+- ✅ Save to PARENT repo: `$REPO_ROOT/codegen/design-system/` (shared across all workspaces)
+- ❌ DO NOT save to planning workspace: `./codegen/design-system/` (would be lost after planning)
+- Cache will be symlinked to implementation workspaces automatically
+
+**Why Bootstrap During Planning**:
+
+- Extract design data ONCE during planning (when you have full context)
+- Implementation agents reuse cached data (98.7% token savings)
+- No repeated Figma API calls during implementation
+- Prevents context bloat from re-extracting same designs
+
+### Planning Phase Documentation
+
+**After bootstrapping cache, document in your plan:**
+
+```markdown
+## Design System Extractions
+
+**Feature:** messages
+
+**Global resources:**
+
+- Design tokens: `./codegen/design-system/variables.json`
+
+**Feature-specific resources:**
+
+- Screenshots: `./codegen/design-system/features/messages/screenshots/` (31 screens)
+- Implementation specs: `./codegen/design-system/features/messages/specs/` (31 JSON files)
+
+**Key Screens (viewport mapping for ui-specialist):**
+
+- Desktop empty state: `messages---empty-state-8322-46182.png`
+- Desktop with messages: `organization-messages---with-messages-8322-46530.png`
+- Desktop with files: `organization-messages---with-messages-8328-10511.png`
+- Mobile empty state: `organization-messages---empty-state-8547-8837.png`
+- Mobile conversation list: `organization-messages---with-messages-8547-8881.png`
+- Mobile thread view: `organization-messages---view-message-8547-8948.png`
+
+**Implementation Note**: ui-specialist reads from cached screenshots. Filenames come from Figma frame names + node IDs. The Key Screens section maps filenames to viewports for Haiku comparisons.
+```
+
+**DO NOT create/update FIGMA_MAP.md during planning** - that's for finished implementations only. Just document the Figma cache info in the plan for implementation reference.
 
 **Planning Guidelines**
 
@@ -292,13 +583,31 @@ codegen/plans/{{FEATURE_NAME}}/
 - API endpoint specifications (if applicable)
 - Component and module structure for that step
 
-- **UI/design specifications**: Reference specific Figma node IDs, visual requirements, interactions (if applicable)
+- **UI/design specifications**: Reference specific Figma screenshots with viewport mapping (if applicable)
+
+**MANDATORY FOR UI STEPS - Include Design Reference section:**
+
+```markdown
+## Design Reference
+
+**Screenshots** (from `./codegen/design-system/features/[feature]/screenshots/`):
+
+- Desktop view: `organization-messages---with-messages-8322-46530.png`
+- Mobile view: `organization-messages---with-messages-8547-8881.png`
+- Empty state desktop: `messages---empty-state-8322-46182.png`
+- Empty state mobile: `organization-messages---empty-state-8547-8837.png`
+```
+
+**WHY**: Screenshot filenames are cryptic (from Figma frame names + node IDs).
+The ui-specialist needs to know which file is desktop vs mobile for Haiku comparisons.
+
 - Detailed test plans for that step
 - Code examples and patterns to follow
 - Prerequisites and dependencies for that step
 - **Coverage requirements**: Ensure new code meets project coverage thresholds
 - **MANDATORY FOR UI FEATURES**: Include translation requirements for all user-facing text, labels, messages
 - **MANDATORY FOR DEPLOYMENT**: Include deployment configuration requirements for devops-manager
+- **MANDATORY IF SEEDS EXIST**: Document available seed users for browser testing, note seed updates needed for new features
 
 **🚨 CRITICAL CHANGE: TDD-First Planning**
 

@@ -92,6 +92,22 @@ prepare:
 	$(call check_ocg_only,prepare)
 	@cd "$(ORIGINAL_WORKING_DIR)" && "$(SCRIPT_DIR)/prepare_environment.sh" $(filter-out $@,$(MAKECMDGOALS))
 
+extract-figma-screenshots:
+	$(call check_ocg_only,extract-figma-screenshots)
+	@cd "$(ORIGINAL_WORKING_DIR)" && "$(SCRIPT_DIR)/extract_figma_screenshots.sh" $(filter-out $@,$(MAKECMDGOALS))
+
+extract-figma-metadata:
+	$(call check_ocg_only,extract-figma-metadata)
+	@cd "$(ORIGINAL_WORKING_DIR)" && "$(SCRIPT_DIR)/extract_figma_metadata.sh" $(filter-out $@,$(MAKECMDGOALS))
+
+extract-figma-variables:
+	$(call check_ocg_only,extract-figma-variables)
+	@cd "$(ORIGINAL_WORKING_DIR)" && "$(SCRIPT_DIR)/extract_figma_variables.sh" $(filter-out $@,$(MAKECMDGOALS))
+
+extract-figma-implementation-specs:
+	$(call check_ocg_only,extract-figma-implementation-specs)
+	@cd "$(ORIGINAL_WORKING_DIR)" && "$(SCRIPT_DIR)/extract_figma_implementation_specs.sh" $(filter-out $@,$(MAKECMDGOALS))
+
 clean-servers:
 	$(call check_ocg_only,clean-servers)
 	@cd "$(ORIGINAL_WORKING_DIR)"; \

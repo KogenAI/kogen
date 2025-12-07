@@ -43,5 +43,4 @@ common:
   project_context_file: "PROJECT_CONTEXT.md"
   agents_file: "AGENTS.md"
   context_file: "CONTEXT.md"
-  figma_port: 3845
   tidewave_port_template: "{{PORT}}"

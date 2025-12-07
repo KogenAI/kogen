@@ -111,6 +111,16 @@ Save current work context so a future session can continue where you left off. H
 
 [Step-by-step reproduction]
 
+## Visual Description from User Testing
+
+[If user provided screenshots, describe what you SAW in detail - never just reference "Image #1"]
+
+**Example:**
+
+- "Small notification banner at top of screen with Accept/Decline buttons"
+- "Chat interface showing empty message list with no call logs"
+- "Active call screen with green answer button visible"
+
 ## Notes for Next Session
 
 [Additional context helpful for fixing this specific issue]
@@ -195,6 +205,7 @@ See individual issue files:
 - Update CONTEXT.md
 - Create context files for handoff
 - **Describe problems clearly** - What's broken, what user expected, what actually happens
-- **Document symptoms** - Error messages, screenshots, user quotes
+- **Document symptoms** - Error messages, user quotes, visual descriptions
+- **Describe screenshots in detail** - NEVER reference screenshots as "Image #1" or "see screenshot". Future sessions cannot access images. Instead, describe what you saw: "Small notification banner at top of screen showing caller name", "Chat interface with no call log entries visible", etc.
 - **Include user suggestions verbatim** - If the user suggests a solution or approach (e.g., "can't you use endpoint.subscribe?"), include that in the context file. The user has domain knowledge and their suggestions should guide the implementation.
 - **Leave solutions to specialists** - Unless the user provided guidance, let subagents determine the fix

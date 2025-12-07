@@ -79,10 +79,6 @@
       "Glob",
       "Grep",
       "List",
-      "mcp__figma__get_code",
-      "mcp__figma__get_code_connect_map",
-      "mcp__figma__get_image",
-      "mcp__figma__get_variable_defs",
       "mcp__tidewave__execute_sql_query",
       "mcp__tidewave__get_docs",
       "mcp__tidewave__get_ecto_schemas",
@@ -123,7 +119,7 @@
       "Read(../../*)"
     ]
   },
-  "enabledMcpjsonServers": ["figma", "tidewave"],
+  "enabledMcpjsonServers": ["tidewave"],
   "hooks": {
     "PostToolUse": [
       {
