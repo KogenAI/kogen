@@ -2,7 +2,6 @@
   "name": "optimum-codegen",
   "private": true,
   "devDependencies": {
-    "@playwright/mcp": "^0.0.26",
     "prettier": "^3.5.3"
   }
 }

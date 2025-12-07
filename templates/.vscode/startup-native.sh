@@ -22,19 +22,12 @@ cleanup_existing_servers() {
     local killed_something=false
 
     if [ -f ".env" ]; then
-
-        local port=$(grep "^PORT=" ".env" 2>/dev/null | cut -d'=' -f2)
-        local playwright_port=$(grep "^PLAYWRIGHT_MCP_PORT=" ".env" 2>/dev/null | cut -d'=' -f2)
+        # Use tail -1 to get last occurrence (workspace overrides template defaults)
+        local port=$(grep "^PORT=" ".env" 2>/dev/null | tail -1 | cut -d'=' -f2)
 
         if [ -n "$port" ] && lsof -ti tcp:$port >/dev/null 2>&1; then
             echo "🔄 Killing Phoenix server on port $port..."
             lsof -ti tcp:$port | xargs kill -9 2>/dev/null || true
-            killed_something=true
-        fi
-
-        if [ -n "$playwright_port" ] && lsof -ti tcp:$playwright_port >/dev/null 2>&1; then
-            echo "🔄 Killing Playwright MCP server on port $playwright_port..."
-            lsof -ti tcp:$playwright_port | xargs kill -9 2>/dev/null || true
             killed_something=true
         fi
     fi
@@ -162,12 +155,11 @@ echo "🔧 Checking environment..."
 # Check if Elixir/Erlang are available (installed via ocg prepare)
 if command -v elixir >/dev/null 2>&1 && command -v erl >/dev/null 2>&1; then
     echo "✅ Elixir and Erlang available"
-    if [ -n "$PORT" ] && [ -n "$PLAYWRIGHT_MCP_PORT" ]; then
-        echo "✅ Environment variables loaded (PORT=$PORT, PLAYWRIGHT_MCP_PORT=$PLAYWRIGHT_MCP_PORT)"
+    if [ -n "$PORT" ]; then
+        echo "✅ Environment variables loaded (PORT=$PORT)"
     else
         echo "❌ Critical environment variables not set!"
         echo "   PORT=$PORT"
-        echo "   PLAYWRIGHT_MCP_PORT=$PLAYWRIGHT_MCP_PORT"
         echo "   .env file may not be properly sourced"
         exit 1
     fi
@@ -250,15 +242,6 @@ echo "🔍 Starting CI checks in background..."
 CI_BACKGROUND=1 nohup ./codegen/ci.sh >/dev/null 2>&1 &
 echo "✅ CI checks started"
 
-echo "🎭 Starting Playwright MCP server on port $PLAYWRIGHT_MCP_PORT..."
-if [ -z "$PLAYWRIGHT_MCP_PORT" ]; then
-    echo "❌ PLAYWRIGHT_MCP_PORT is not set! Environment not properly loaded."
-    echo "   Check that .env file exists and contains PLAYWRIGHT_MCP_PORT"
-    exit 1
-fi
-# Start Playwright MCP server in background with script for colors
-nohup script -F codegen/playwright_mcp.log npx --yes @playwright/mcp@latest --port $PLAYWRIGHT_MCP_PORT --headless --isolated >/dev/null 2>&1 &
-
 show_workspace_summary() {
     local mode="$1"
     sleep 3 # Wait for server to start and settle
@@ -267,7 +250,6 @@ show_workspace_summary() {
     echo "🎯 Feature workspace '$FEATURE_NAME' is ready!"
     echo "=================================="
     echo "🔌 Port: ${PORT:-4000}"
-    echo "🎭 Playwright MCP Port: ${PLAYWRIGHT_MCP_PORT:-9222}"
     echo "🗄️  Database: {{DB_NAME_PREFIX}}_dev${MIX_DEV_PARTITION:-0}"
     echo "🌐 Server: http://localhost:${PORT:-4000}"
     echo "=================================="

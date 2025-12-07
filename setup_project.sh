@@ -510,7 +510,7 @@ else
     echo "ℹ️  .env file already exists, skipping..."
 fi
 
-# Set up MCP integration (Tidewave, Figma, Playwright)
+# Set up MCP integration (Tidewave)
 echo ""
 echo "🔧 Setting up MCP integration..."
 
@@ -553,7 +553,6 @@ fi
 # Create .mcp.json from template
 if [ ! -f "$REPO_ROOT/.mcp.json" ]; then
     sed -e "s/{{PORT}}/4000/g" \
-        -e "s/{{PLAYWRIGHT_MCP_PORT}}/8900/g" \
         "$SCRIPT_DIR/templates/.mcp.json" >"$REPO_ROOT/.mcp.json"
     echo "✅ Created .mcp.json configuration"
 fi
@@ -561,7 +560,6 @@ fi
 # Create opencode.json from template
 if [ ! -f "$REPO_ROOT/opencode.json" ]; then
     sed -e "s/{{PORT}}/4000/g" \
-        -e "s/{{PLAYWRIGHT_MCP_PORT}}/8900/g" \
         "$SCRIPT_DIR/templates/.opencode-mcp.json" >"$REPO_ROOT/opencode.json"
     echo "✅ Created opencode.json configuration"
 fi

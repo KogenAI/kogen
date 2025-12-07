@@ -98,16 +98,6 @@ get_next_port() {
     fi
 }
 
-get_next_playwright_port() {
-    local port=$(allocate_playwright_port "$REPO_NAME" "$WORKSPACE_NAME")
-    if [ $? -eq 0 ] && [ -n "$port" ]; then
-        echo "$port"
-    else
-        # Fallback to local scanning if global allocation fails
-        fallback_get_next_playwright_port
-    fi
-}
-
 echo "📁 Creating feature workspace at: $WORKSPACE_PATH"
 cd "$REPO_ROOT"
 
@@ -125,22 +115,21 @@ echo "📦 Workspace created - setup will happen in the new workspace"
 echo ""
 
 NEXT_PORT=$(get_next_port)
-NEXT_PLAYWRIGHT_PORT=$(get_next_playwright_port)
 PARTITION=$((NEXT_PORT - 4000))
 PORT_TEST=$((NEXT_PORT + 100))
 
 if [ -f "$REPO_ROOT/.env" ]; then
-    cp "$REPO_ROOT/.env" "$WORKSPACE_PATH/.env"
+    # Copy .env but remove workspace-specific keys that we'll set with new values
+    grep -v -E "^(PORT|PORT_TEST|MIX_DEV_PARTITION|MIX_TEST_PARTITION|API_URL)=" "$REPO_ROOT/.env" >"$WORKSPACE_PATH/.env"
     echo "" >>"$WORKSPACE_PATH/.env"
 fi
 
 echo "PORT=$NEXT_PORT" >>"$WORKSPACE_PATH/.env"
 echo "PORT_TEST=$PORT_TEST" >>"$WORKSPACE_PATH/.env"
-echo "PLAYWRIGHT_MCP_PORT=$NEXT_PLAYWRIGHT_PORT" >>"$WORKSPACE_PATH/.env"
 echo "MIX_DEV_PARTITION=$PARTITION" >>"$WORKSPACE_PATH/.env"
 echo "MIX_TEST_PARTITION=$PARTITION" >>"$WORKSPACE_PATH/.env"
 
-echo "⚙️  Setting up workspace (port: $NEXT_PORT, test_port: $PORT_TEST, playwright: $NEXT_PLAYWRIGHT_PORT, partition: $PARTITION)..."
+echo "⚙️  Setting up workspace (port: $NEXT_PORT, test_port: $PORT_TEST, partition: $PARTITION)..."
 
 mkdir -p "$WORKSPACE_PATH/.vscode"
 
@@ -273,7 +262,6 @@ if [ -f "$SCRIPT_DIR/templates/NEW_PROMPT.md" ]; then
     sed -i '' "s|{{FEATURE_NAME}}|$FEATURE_NAME|g" "$WORKSPACE_PATH/codegen/PROMPT.md"
     sed -i '' "s|{{PLAN_TITLE}}|$PLAN_TITLE|g" "$WORKSPACE_PATH/codegen/PROMPT.md"
     sed -i '' "s|{{PORT}}|$NEXT_PORT|g" "$WORKSPACE_PATH/codegen/PROMPT.md"
-    sed -i '' "s|{{PLAYWRIGHT_MCP_PORT}}|$NEXT_PLAYWRIGHT_PORT|g" "$WORKSPACE_PATH/codegen/PROMPT.md"
 
     # Set the correct agent context file based on AI agent
     if [ "$AGENT" = "opencode" ]; then
@@ -318,14 +306,14 @@ echo "✅ Created CLAUDE.md symlink for backward compatibility"
 if [ "$AGENT" = "opencode" ]; then
     # Create OpenCode MCP configuration in workspace root
     if [ -f "$SCRIPT_DIR/templates/.opencode-mcp.json" ]; then
-        sed "s/{{PORT}}/${NEXT_PORT}/g; s/{{PLAYWRIGHT_MCP_PORT}}/${NEXT_PLAYWRIGHT_PORT}/g" \
+        sed "s/{{PORT}}/${NEXT_PORT}/g" \
             "$SCRIPT_DIR/templates/.opencode-mcp.json" >"$WORKSPACE_PATH/opencode.json"
         echo "✅ Created opencode.json with MCP configuration and workspace-specific ports"
     fi
 elif [ "$AGENT" = "cursor" ]; then
     # Create Cursor MCP configuration (mcp.json, not .mcp.json)
     if [ -f "$SCRIPT_DIR/templates/.mcp.json" ]; then
-        sed "s/{{PORT}}/${NEXT_PORT}/g; s/{{PLAYWRIGHT_MCP_PORT}}/${NEXT_PLAYWRIGHT_PORT}/g" \
+        sed "s/{{PORT}}/${NEXT_PORT}/g" \
             "$SCRIPT_DIR/templates/.mcp.json" >"$WORKSPACE_PATH/mcp.json"
         echo "✅ Created mcp.json with workspace-specific ports for Cursor"
     fi
@@ -333,7 +321,7 @@ elif [ "$AGENT" = "cursor" ]; then
 else
     # Create Claude MCP configuration
     if [ -f "$SCRIPT_DIR/templates/.mcp.json" ]; then
-        sed "s/{{PORT}}/${NEXT_PORT}/g; s/{{PLAYWRIGHT_MCP_PORT}}/${NEXT_PLAYWRIGHT_PORT}/g" \
+        sed "s/{{PORT}}/${NEXT_PORT}/g" \
             "$SCRIPT_DIR/templates/.mcp.json" >"$WORKSPACE_PATH/.mcp.json"
         echo "✅ Created .mcp.json with workspace-specific ports"
     fi

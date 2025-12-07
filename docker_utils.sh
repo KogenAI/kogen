@@ -214,7 +214,6 @@ create_docker_compose() {
     sed -i '' "s|{{DB_NAME_PREFIX}}|$DB_NAME_PREFIX|g" "$compose_path"
     sed -i '' "s|{{FEATURE_NAME}}|$feature_name|g" "$compose_path"
     sed -i '' "s|{{HOME}}|$HOME|g" "$compose_path"
-    sed -i '' "s|{{PLAYWRIGHT_MCP_PORT}}|$PLAYWRIGHT_MCP_PORT|g" "$compose_path"
     sed -i '' "s|{{PORT_TEST}}|$PORT_TEST|g" "$compose_path"
     sed -i '' "s|{{PORT}}|$PORT|g" "$compose_path"
     sed -i '' "s|{{PROJECT_NAME}}|$project_name|g" "$compose_path"

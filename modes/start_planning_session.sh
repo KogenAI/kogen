@@ -74,9 +74,7 @@ fi
 
 # Variables for server management
 PHOENIX_PID=""
-PLAYWRIGHT_PID=""
 PHOENIX_PORT="4000"
-PLAYWRIGHT_PORT="8900"
 
 # Set up cleanup to remove planning context and stop servers when session ends
 cleanup_planning_session() {
@@ -93,19 +91,9 @@ cleanup_planning_session() {
         wait "$PHOENIX_PID" 2>/dev/null || true
     fi
 
-    # Stop Playwright server
-    if [ -n "$PLAYWRIGHT_PID" ] && kill -0 "$PLAYWRIGHT_PID" 2>/dev/null; then
-        echo "🛑 Stopping Playwright MCP server..."
-        kill "$PLAYWRIGHT_PID" 2>/dev/null || true
-        wait "$PLAYWRIGHT_PID" 2>/dev/null || true
-    fi
-
     # Kill any remaining processes on the ports
     if lsof -ti tcp:$PHOENIX_PORT >/dev/null 2>&1; then
         lsof -ti tcp:$PHOENIX_PORT | xargs kill -9 2>/dev/null || true
-    fi
-    if lsof -ti tcp:$PLAYWRIGHT_PORT >/dev/null 2>&1; then
-        lsof -ti tcp:$PLAYWRIGHT_PORT | xargs kill -9 2>/dev/null || true
     fi
 }
 trap cleanup_planning_session EXIT
@@ -137,12 +125,6 @@ if lsof -ti tcp:$PHOENIX_PORT >/dev/null 2>&1; then
     sleep 1
 fi
 
-if lsof -ti tcp:$PLAYWRIGHT_PORT >/dev/null 2>&1; then
-    echo "🔄 Killing existing process on port $PLAYWRIGHT_PORT..."
-    lsof -ti tcp:$PLAYWRIGHT_PORT | xargs kill -9 2>/dev/null || true
-    sleep 1
-fi
-
 # Start Phoenix server if mix.exs exists (check both root and backend for monorepo)
 if [ -f "mix.exs" ]; then
     echo "🚀 Starting Phoenix server on port $PHOENIX_PORT..."
@@ -160,19 +142,9 @@ else
     echo "⚠️  No mix.exs found, skipping Phoenix server"
 fi
 
-# Start Playwright MCP server
-if command -v npx >/dev/null 2>&1; then
-    echo "🎭 Starting Playwright MCP server on port $PLAYWRIGHT_PORT..."
-    npx --yes @playwright/mcp@latest --port $PLAYWRIGHT_PORT --headless --isolated >/dev/null 2>&1 &
-    PLAYWRIGHT_PID=$!
-    echo "✓ Playwright MCP server started (PID: $PLAYWRIGHT_PID)"
-else
-    echo "⚠️  npx not found, skipping Playwright MCP server"
-fi
-
-# Give servers a moment to start
-if [ -n "$PHOENIX_PID" ] || [ -n "$PLAYWRIGHT_PID" ]; then
-    echo "⏳ Waiting for servers to initialize..."
+# Give server a moment to start
+if [ -n "$PHOENIX_PID" ]; then
+    echo "⏳ Waiting for server to initialize..."
     sleep 3
 fi
 
@@ -184,9 +156,6 @@ echo "Working Directory: $TARGET_REPO_PATH"
 echo "Model: $MODEL"
 if [ -n "$PHOENIX_PID" ]; then
     echo "🌐 Phoenix server: http://localhost:$PHOENIX_PORT"
-fi
-if [ -n "$PLAYWRIGHT_PID" ]; then
-    echo "🎭 Playwright MCP: port $PLAYWRIGHT_PORT"
 fi
 echo ""
 

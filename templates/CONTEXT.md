@@ -109,13 +109,13 @@
 - Phoenix LiveView with Elixir
 - PostgreSQL with Ecto
 - Tailwind CSS
-- MCP Servers: Tidewave (Elixir tools) + Playwright (browser automation) + Figma (design analysis)
+- MCP Servers: Tidewave (Elixir tools)
 
 ### Important Notes
 
 - **Database**: Set up and seeded via `mix setup` during initialization
 - **Testing**: The seeds file (`priv/repo/seeds.exs`) contains test users for login testing
-- **MCP Tools**: Use Tidewave for Elixir/Phoenix analysis and Playwright for browser automation
+- **MCP Tools**: Use Tidewave for Elixir/Phoenix analysis
 - **Development Rules**: Follow project coding standards and conventions
 
 ### Server Management

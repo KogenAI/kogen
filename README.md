@@ -349,7 +349,6 @@ To optimize context window usage, maintain these target sizes:
 ### Port Management
 
 - Phoenix ports start at 4001 and increment by 1
-- Playwright MCP ports start at 8901 and increment by 1
 - Ports are automatically assigned based on existing workspaces
 - Server cleanup is automatic before starting new servers
 
@@ -380,7 +379,8 @@ To optimize context window usage, maintain these target sizes:
 ### AI Integration
 
 - IDE automatically opens with feature context
-- MCP servers provide additional tooling (Tidewave for Elixir, Playwright for browser)
+- MCP servers provide additional tooling (Tidewave for Elixir)
+- Playwright CLI available for visual testing via `npx playwright screenshot`
 - Context files guide AI agents through development stages
 - Model selection optimizes AI assistance for different task types
 

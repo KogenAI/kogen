@@ -16,22 +16,14 @@ cleanup_workspace_servers() {
 
     local killed_something=false
 
-    local port=$(grep "^PORT=" "$workspace_path/.env" 2>/dev/null | cut -d'=' -f2)
-    local playwright_port=$(grep "^PLAYWRIGHT_MCP_PORT=" "$workspace_path/.env" 2>/dev/null | cut -d'=' -f2)
+    # Use tail -1 to get last occurrence (workspace overrides template defaults)
+    local port=$(grep "^PORT=" "$workspace_path/.env" 2>/dev/null | tail -1 | cut -d'=' -f2)
 
     if [ -n "$port" ] && lsof -ti tcp:$port >/dev/null 2>&1; then
         if [ "$quiet_mode" != "true" ]; then
             echo "🔄 Killing Phoenix server on port $port..."
         fi
         lsof -ti tcp:$port | xargs kill -9 2>/dev/null || true
-        killed_something=true
-    fi
-
-    if [ -n "$playwright_port" ] && lsof -ti tcp:$playwright_port >/dev/null 2>&1; then
-        if [ "$quiet_mode" != "true" ]; then
-            echo "🔄 Killing Playwright MCP server on port $playwright_port..."
-        fi
-        lsof -ti tcp:$playwright_port | xargs kill -9 2>/dev/null || true
         killed_something=true
     fi
 

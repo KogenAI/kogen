@@ -77,20 +77,18 @@ show_workspace_info() {
 
     # Read ports from .env file
     local PORT="4000"
-    local PLAYWRIGHT_MCP_PORT="9222"
     local DEV_PARTITION=""
     local TEST_PARTITION=""
 
     if [ -f ".env" ]; then
-        PORT=$(grep "^PORT=" ".env" 2>/dev/null | cut -d'=' -f2 || echo "4000")
-        PLAYWRIGHT_MCP_PORT=$(grep "^PLAYWRIGHT_MCP_PORT=" ".env" 2>/dev/null | cut -d'=' -f2 || echo "9222")
-        DEV_PARTITION=$(grep "^MIX_DEV_PARTITION=" ".env" 2>/dev/null | cut -d'=' -f2 || echo "")
-        TEST_PARTITION=$(grep "^MIX_TEST_PARTITION=" ".env" 2>/dev/null | cut -d'=' -f2 || echo "")
+        # Use tail -1 to get last occurrence (workspace overrides template defaults)
+        PORT=$(grep "^PORT=" ".env" 2>/dev/null | tail -1 | cut -d'=' -f2 || echo "4000")
+        DEV_PARTITION=$(grep "^MIX_DEV_PARTITION=" ".env" 2>/dev/null | tail -1 | cut -d'=' -f2 || echo "")
+        TEST_PARTITION=$(grep "^MIX_TEST_PARTITION=" ".env" 2>/dev/null | tail -1 | cut -d'=' -f2 || echo "")
     fi
 
     # Check server status
     local PHOENIX_STATUS="🔴 Stopped"
-    local PLAYWRIGHT_STATUS="🔴 Stopped"
 
     # For container mode, check if services are accessible
     if [ -f "docker-compose.yml" ]; then
@@ -98,17 +96,10 @@ show_workspace_info() {
         if nc -z localhost $PORT 2>/dev/null; then
             PHOENIX_STATUS="🟢 Running"
         fi
-        # Check Playwright MCP
-        if nc -z localhost $PLAYWRIGHT_MCP_PORT 2>/dev/null; then
-            PLAYWRIGHT_STATUS="🟢 Running"
-        fi
     else
         # Native mode - use lsof
         if lsof -i :$PORT >/dev/null 2>&1; then
             PHOENIX_STATUS="🟢 Running"
-        fi
-        if lsof -i :$PLAYWRIGHT_MCP_PORT >/dev/null 2>&1; then
-            PLAYWRIGHT_STATUS="🟢 Running"
         fi
     fi
 
@@ -124,9 +115,6 @@ show_workspace_info() {
     echo -e "${BOLD}${GREEN}🌐 Phoenix Server${NC} $PHOENIX_STATUS"
     echo -e "   URL: ${CYAN}http://localhost:$PORT${NC}"
     echo -e "   Port: ${YELLOW}$PORT${NC}"
-    echo ""
-    echo -e "${BOLD}${GREEN}🎭 Playwright MCP${NC} $PLAYWRIGHT_STATUS"
-    echo -e "   Port: ${YELLOW}$PLAYWRIGHT_MCP_PORT${NC}"
     echo ""
 
     # CI Status Section

@@ -187,7 +187,6 @@ show_workspace_summary() {
     echo "=================================="
     echo "🐳 Container: ocg-${PROJECT_NAME}-${FEATURE_NAME}"
     echo "🔌 Port: ${PORT:-4000}"
-    echo "🎭 Playwright MCP Port: ${PLAYWRIGHT_MCP_PORT:-9222}"
     echo "🗄️  Database: ${DB_NAME_PREFIX}_dev${MIX_DEV_PARTITION:-0}"
     echo "🌐 Server: http://localhost:${PORT:-4000}"
     echo "=================================="

@@ -173,13 +173,11 @@ RUN mkdir -p ~/.mix ~/.hex ~/.cache ~/.npm ~/.npm-global ~/.claude ~/.config/ope
     echo '{"default_assistant": "claude", "assistants": {"claude": {"enabled": true}, "opencode": {"enabled": true, "provider": "anthropic"}}}' > ~/.ocg/config.json
 
 # Install global npm packages as user
-RUN npm i -g @playwright/mcp@latest && \
-    npm i -g @anthropic-ai/claude-code && \
+RUN npm i -g @anthropic-ai/claude-code && \
     # Install OpenCode
     curl -fsSL https://opencode.ai/install | bash
 
-# Install Playwright browsers for MCP
-# This needs to be done after Playwright is installed
+# Install Playwright browsers for visual testing (CLI usage via npx)
 RUN npx playwright install chromium && \
     npx playwright install-deps chromium
 

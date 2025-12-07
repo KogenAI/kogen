@@ -27,7 +27,6 @@ services:
     ports:
       - '{{PORT}}:{{PORT}}'
       - '{{PORT_TEST}}:{{PORT_TEST}}'
-      - '{{PLAYWRIGHT_MCP_PORT}}:{{PLAYWRIGHT_MCP_PORT}}'
     extra_hosts:
       - 'host.docker.internal:host-gateway'
     stdin_open: true

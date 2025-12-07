@@ -273,8 +273,6 @@ if [ -f "$SCRIPT_DIR/templates/RESUME_PROMPT.md" ]; then
     sed -i '' "s|{{FEATURE_NAME}}|$FEATURE_NAME|g" "$WORKSPACE_PATH/codegen/PROMPT.md"
     sed -i '' "s|{{PLAN_TITLE}}|$PLAN_TITLE|g" "$WORKSPACE_PATH/codegen/PROMPT.md"
     sed -i '' "s|{{PORT}}|$PORT|g" "$WORKSPACE_PATH/codegen/PROMPT.md"
-    PLAYWRIGHT_MCP_PORT=$(grep "^PLAYWRIGHT_MCP_PORT=" "$WORKSPACE_PATH/.env" 2>/dev/null | cut -d'=' -f2)
-    sed -i '' "s|{{PLAYWRIGHT_MCP_PORT}}|$PLAYWRIGHT_MCP_PORT|g" "$WORKSPACE_PATH/codegen/PROMPT.md"
 
     # Set the correct agent context file based on AI agent
     if [ "$AGENT" = "opencode" ]; then
@@ -294,15 +292,15 @@ fi
 # Update MCP configuration if needed
 if [ "$AGENT" = "opencode" ]; then
     # Update OpenCode MCP configuration with current ports
-    if [ -f "$SCRIPT_DIR/templates/.opencode-mcp.json" ] && [ -n "$PORT" ] && [ -n "$PLAYWRIGHT_MCP_PORT" ]; then
-        sed "s/{{PORT}}/${PORT}/g; s/{{PLAYWRIGHT_MCP_PORT}}/${PLAYWRIGHT_MCP_PORT}/g" \
+    if [ -f "$SCRIPT_DIR/templates/.opencode-mcp.json" ] && [ -n "$PORT" ]; then
+        sed "s/{{PORT}}/${PORT}/g" \
             "$SCRIPT_DIR/templates/.opencode-mcp.json" >"$WORKSPACE_PATH/opencode.json"
         echo "✅ Updated opencode.json with current workspace ports"
     fi
 else
     # Update Claude MCP configuration with current ports
-    if [ -f "$SCRIPT_DIR/templates/.mcp.json" ] && [ -n "$PORT" ] && [ -n "$PLAYWRIGHT_MCP_PORT" ]; then
-        sed "s/{{PORT}}/${PORT}/g; s/{{PLAYWRIGHT_MCP_PORT}}/${PLAYWRIGHT_MCP_PORT}/g" \
+    if [ -f "$SCRIPT_DIR/templates/.mcp.json" ] && [ -n "$PORT" ]; then
+        sed "s/{{PORT}}/${PORT}/g" \
             "$SCRIPT_DIR/templates/.mcp.json" >"$WORKSPACE_PATH/.mcp.json"
         echo "✅ Updated .mcp.json with current workspace ports"
     fi
@@ -359,8 +357,8 @@ fi
 
 echo ""
 echo "🎯 Workspace resumed: $FEATURE_NAME"
-if [ -n "$PORT" ] && [ "$PORT" != "not configured" ] && [ -n "$PLAYWRIGHT_MCP_PORT" ] && [ -n "$PARTITION" ]; then
-    echo "🔌 Port: $PORT | 🎭 Playwright: $PLAYWRIGHT_MCP_PORT | 🗄️ Partition: $PARTITION | 🌿 Branch: $CURRENT_BRANCH"
+if [ -n "$PORT" ] && [ "$PORT" != "not configured" ] && [ -n "$PARTITION" ]; then
+    echo "🔌 Port: $PORT | 🗄️ Partition: $PARTITION | 🌿 Branch: $CURRENT_BRANCH"
 fi
 if [ -n "$PORT" ] && [ "$PORT" != "not configured" ]; then
     echo "🌐 Server will be available at: http://localhost:$PORT"
