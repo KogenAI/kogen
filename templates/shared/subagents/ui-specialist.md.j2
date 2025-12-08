@@ -49,9 +49,11 @@ feature-developer → verification-engineer → YOU → verification-engineer �
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│ 1. SCREENSHOT current implementation                            │
-│    → Use Playwright CLI to capture current state                │
-│    → Save as: current-[screen-name].png                         │
+│ 1. SCREENSHOT + DOM TRACE current implementation                │
+│    → Use: PORT=$PORT node ./playwright/screenshots/             │
+│           take-with-dom-trace.js --url /page --output current.png│
+│    → Output: current.png + current-dom-trace.json               │
+│    → JSON contains sourceMap with exact file:line locations     │
 └─────────────────────────────────────────────────────────────────┘
                               │
                               ▼
@@ -67,7 +69,16 @@ feature-developer → verification-engineer → YOU → verification-engineer �
                               │
                               ▼
 ┌─────────────────────────────────────────────────────────────────┐
-│ 3. FIX styling (Tailwind classes ONLY)                          │
+│ 3. LOCATE SOURCE using DOM trace (NO grep needed!)              │
+│    → Read current-dom-trace.json                                │
+│    → sourceMap shows: file → [line numbers]                     │
+│    → Go directly to the file:line that needs fixing             │
+│    → Example: dashboard.html.heex:72                            │
+└─────────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌─────────────────────────────────────────────────────────────────┐
+│ 4. FIX styling (Tailwind classes ONLY)                          │
 │    → Change padding: p-4 → p-6                                  │
 │    → Change color: text-gray-500 → text-gray-700                │
 │    → Change font: text-sm → text-base                           │
@@ -76,7 +87,7 @@ feature-developer → verification-engineer → YOU → verification-engineer �
                               │
                               ▼
 ┌─────────────────────────────────────────────────────────────────┐
-│ 4. RE-SCREENSHOT and COMPARE again                              │
+│ 5. RE-SCREENSHOT and COMPARE again                              │
 │    → Did the fix work?                                          │
 │    → Any new issues visible?                                    │
 │    → Loop back to step 1 until ZERO differences                 │
@@ -84,12 +95,35 @@ feature-developer → verification-engineer → YOU → verification-engineer �
                               │
                               ▼
 ┌─────────────────────────────────────────────────────────────────┐
-│ 5. DONE when pixel-perfect across ALL breakpoints               │
+│ 6. DONE when pixel-perfect across ALL breakpoints               │
 │    → Mobile (375px) ✓                                           │
 │    → Tablet (768px) ✓                                           │
 │    → Desktop (1280px) ✓                                         │
 └─────────────────────────────────────────────────────────────────┘
 ```
+
+## 🎯 DOM Trace: Source Location Mapping
+
+**Eliminates grep searches - go directly to the source.**
+
+Phoenix LiveView debug annotations (`debug_heex_annotations: true`) embed `<!-- @caller file:line -->` comments. The `take-with-dom-trace.js` script extracts these into JSON.
+
+**Example dom-trace.json:**
+```json
+{
+  "sourceMap": [
+    {"file": "lib/app_web/live/page_live.html.heex", "lines": [1, 17, 23, 72], "count": 4},
+    {"file": "lib/app_web/components/navigation.ex", "lines": [48, 106], "count": 2}
+  ],
+  "interactiveElements": [
+    {"tagName": "button", "text": "Submit", "bounds": {"top": 100, "left": 200}}
+  ]
+}
+```
+
+**Workflow improvement:**
+- BEFORE: Compare → "button wrong" → `grep -r "button"` → 500 results → filter → fix
+- AFTER: Compare → "button wrong at (100,200)" → check JSON → page_live.html.heex:72 → fix
 
 ## What You CAN Fix (In Scope)
 

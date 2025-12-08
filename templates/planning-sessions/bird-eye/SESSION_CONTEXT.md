@@ -14,6 +14,7 @@
 1. **Load planning rules**:
 
    - `./codegen/rules/planning.md` - Planning structure, modular architecture, file hygiene requirements
+   - `./codegen/rules/INDEX.md` - Rule discovery guide (for finding domain-specific rules if needed)
 
 2. **Understand project architecture**:
    - **Read PROJECT_CONTEXT.md** to understand project type:

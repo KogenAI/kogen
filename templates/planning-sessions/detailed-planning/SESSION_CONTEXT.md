@@ -13,6 +13,7 @@
 
 1. **Load planning rules**:
    - `./codegen/rules/planning.md` - Planning structure, modular architecture, file hygiene requirements
+   - `./codegen/rules/INDEX.md` - Rule discovery guide (use to find domain-specific rules below)
 2. **Identify feature type and load domain rules**:
    - Check `./codegen/rules/INDEX.md` for available domain rules
    - **Read PROJECT_CONTEXT.md** to understand project type (monorepo? mobile? backend-only?)
@@ -32,17 +33,150 @@
 
 **CRITICAL**: If user provides Figma URLs, you MUST extract designs FIRST before asking questions.
 
-**Workflow when user provides Figma URLs**:
+### Understanding Figma URL Types
 
-1. Extract Figma node IDs from URLs
-2. Run `ocg extract-figma-screenshots` with EXPAND directives
-3. Run `ocg extract-figma-implementation-specs` with EXPAND directives
-4. Analyze extracted screenshots thoroughly
-5. Ask questions ONLY about unclear aspects not shown in Figma
+**IMPORTANT**: Users typically provide URLs to **section/group frames** (containers), NOT individual screens.
 
-**What to ignore vs include from Figma screenshots**:
+| URL Type              | What It Contains                    | How to Handle                                      |
+| --------------------- | ----------------------------------- | -------------------------------------------------- |
+| Section URL           | Multiple individual screens stacked | Extract child node IDs, screenshot each separately |
+| Page URL              | Multiple sections/groups            | Extract children at depth=2 or depth=3             |
+| Individual Screen URL | Single screen                       | Screenshot directly                                |
+
+**How to detect**: If the Figma frame is very tall (>2000px) or contains multiple distinct UI states, it's a container.
+
+### Two-Phase Extraction Process
+
+**Phase 1: Extract Specs from Parent Frames (Get Structure)**
+
+```bash
+# 1. Create feature directory
+mkdir -p ./codegen/design-system/features/$FEATURE_NAME
+
+# 2. Create initial node-ids.txt with parent frame IDs from user URLs
+# Convert URL format: node-id=7698-6557 → 7698:6557
+cat > ./codegen/design-system/features/$FEATURE_NAME/node-ids.txt <<'EOF'
+7698:6557|Organization Account Settings - Mobile|Parent section
+7732:14533|Job Seeker Account Settings - Mobile|Parent section
+8344:26852|Organization Account Settings - Desktop|Parent section
+8344:65300|Job Seeker Account Settings - Desktop|Parent section
+EOF
+
+# 3. Extract specs ONLY (not screenshots yet) - this gives us child structure
+ocg extract-figma-implementation-specs \
+    "$FIGMA_FILE_KEY" \
+    "./codegen/design-system/features/$FEATURE_NAME/node-ids.txt" \
+    "./codegen/design-system/features/$FEATURE_NAME/specs"
+```
+
+**Phase 2: Extract Individual Screen Node IDs from Specs**
+
+```bash
+# Parse specs to find individual screen frames
+for spec_file in ./codegen/design-system/features/$FEATURE_NAME/specs/*-specs.json; do
+    echo "=== $(basename $spec_file) ==="
+    jq -r '.document.children[] | select(.type == "FRAME" or .type == "INSTANCE") | "\(.id)|\(.name)"' "$spec_file"
+done
+```
+
+**Phase 3: Create Individual Screen Node IDs File**
+
+After parsing, create a new node-ids.txt with INDIVIDUAL screens (not parent frames):
+
+```bash
+# Format: node-id|feature--variant--state|description
+# Naming convention: {feature}--{variant}--{state}
+cat > ./codegen/design-system/features/$FEATURE_NAME/node-ids.txt <<'EOF'
+# Organization Mobile Screens
+7698:21514|account-settings--mobile--main|Main settings view
+7725:8547|account-settings--mobile--my-info|My info section
+7698:26923|account-settings--mobile--update-info|Update account info form
+7725:10315|account-settings--mobile--delete-confirm|Delete account confirmation
+7725:15111|account-settings--mobile--email-prefs|Email preferences
+7920:46496|account-settings--mobile--set-password|Set password form
+7920:36808|account-settings--mobile--change-password|Change password form
+# Job Seeker Mobile Screens
+7732:15011|account-settings--mobile-js--main|Job seeker main settings
+7734:2810|account-settings--mobile-js--update-info|Job seeker update info
+7734:4105|account-settings--mobile-js--email-prefs|Job seeker email prefs
+# Desktop Screens
+8344:62923|account-settings--desktop--my-info|Desktop my info view
+8344:63299|account-settings--desktop--update-info|Desktop update form
+8344:64955|account-settings--desktop--set-password|Desktop set password
+EOF
+```
+
+**Screenshot Naming Convention:**
+
+| Component | Format                                                    | Example                                    |
+| --------- | --------------------------------------------------------- | ------------------------------------------ |
+| Feature   | lowercase, kebab-case                                     | `account-settings`                         |
+| Variant   | `mobile`, `desktop`, `tablet` + optional user type suffix | `mobile`, `mobile-js` (job seeker)         |
+| State     | action or view state                                      | `main`, `edit`, `delete-confirm`, `empty`  |
+| Full name | `{feature}--{variant}--{state}`                           | `account-settings--mobile--delete-confirm` |
+
+**Phase 4: Extract Individual Screenshots**
+
+```bash
+# Now extract screenshots - each will be reasonably sized
+ocg extract-figma-screenshots \
+    "$FIGMA_FILE_KEY" \
+    "./codegen/design-system/features/$FEATURE_NAME/node-ids.txt" \
+    "./codegen/design-system/features/$FEATURE_NAME/screenshots"
+```
+
+**Phase 5: Generate Screen Index**
+
+Create `./codegen/design-system/features/$FEATURE_NAME/SCREENS.md`:
+
+```markdown
+# Account Settings Screens
+
+## Organization (Employer) Screens
+
+### Mobile
+
+| Screenshot                                  | Node ID    | State | Description                              |
+| ------------------------------------------- | ---------- | ----- | ---------------------------------------- |
+| `account-settings--mobile--main.png`        | 7698:21514 | Main  | Settings home with My Info/Password tabs |
+| `account-settings--mobile--my-info.png`     | 7725:8547  | View  | Account info display                     |
+| `account-settings--mobile--update-info.png` | 7698:26923 | Edit  | Account info edit form                   |
+| ...                                         | ...        | ...   | ...                                      |
+
+### Desktop
+
+| Screenshot                               | Node ID    | State | Description          |
+| ---------------------------------------- | ---------- | ----- | -------------------- |
+| `account-settings--desktop--my-info.png` | 8344:62923 | View  | Desktop account info |
+| ...                                      | ...        | ...   | ...                  |
+
+## Job Seeker Screens
+
+...
+```
+
+### Workflow Summary
+
+```
+User provides Figma URLs (section/group frames)
+           ↓
+Phase 1: Extract specs from parent frames
+           ↓
+Phase 2: Parse specs → get individual screen node IDs
+           ↓
+Phase 3: Create node-ids.txt with meaningful names
+           ↓
+Phase 4: Extract individual screenshots (small, viewable)
+           ↓
+Phase 5: Generate SCREENS.md index
+           ↓
+Analyze screenshots and plan implementation
+```
+
+### What to Ignore vs Include from Figma Screenshots
 
 - ❌ **IGNORE**: Browser chrome (address bar, browser tabs, window controls)
+- ❌ **IGNORE**: Figma section labels/headers (purple bars with section names)
 - ✅ **INCLUDE**: Application navigation (top nav, sidebars, breadcrumbs)
 - ✅ **INCLUDE**: All UI elements within the application viewport
 
@@ -305,6 +439,38 @@ EOF
 3. Copy node ID from URL (e.g., `node-id=8296-62670`)
 4. Add to node-ids.txt with descriptive name
 
+**EXPAND Directive (When User Provides Section/Page URLs)**
+
+When user provides Figma section or page URLs, use `EXPAND:` to auto-extract all child screens:
+
+```bash
+# Create node-ids.txt with EXPAND directives (convert URL dash to colon format)
+cat > $REPO_ROOT/codegen/design-system/features/$FEATURE_NAME/node-ids.txt <<'EOF'
+EXPAND:8296:62670:depth=1|Desktop Section|Desktop screens
+EXPAND:8547:8826:depth=1|Mobile Section|Mobile screens
+EOF
+```
+
+**EXPAND Syntax:**
+
+- `EXPAND:node-id` - Extract immediate children (depth=1)
+- `EXPAND:node-id:depth=2` - Extract grandchildren (for nested pages)
+- `EXPAND:node-id:depth=3` - Extract great-grandchildren (rarely needed)
+
+**Depth Guidelines:**
+
+- **Section URLs** (most common): Use `depth=1` - directly reaches screens
+- **Page URLs**: Use `depth=2` or `depth=3` - navigates through hierarchy
+- **Test if unsure**: Start with `depth=1`, increase if no screens found
+
+**When to use manual node IDs instead:**
+
+- User already provides exact screen node IDs → Just use those directly
+- Need precise control over specific screens → Use manual node IDs
+- Cherry-picking 2-3 specific screens → Use manual node IDs
+
+See `$OCG_DIR/templates/FIGMA_EXPAND_USAGE.md` for full documentation.
+
 **4b. Extract Design Tokens (ONCE for entire Figma file - FREE)**
 
 **CRITICAL:** Use Figma REST API directly - NO AI tokens required!
@@ -525,6 +691,50 @@ ls $REPO_ROOT/codegen/design-system/features/$FEATURE_NAME/specs/*.json
 ```
 
 **DO NOT create/update FIGMA_MAP.md during planning** - that's for finished implementations only. Just document the Figma cache info in the plan for implementation reference.
+
+### Figma Verification Requirements (CRITICAL)
+
+**1. MANDATORY Figma Verification** (during planning):
+
+- **ALWAYS use extracted screenshots** from `ocg extract-figma-screenshots`
+- **NEVER describe Figma screens without looking at extracted screenshots**
+- **LIST EVERY visible UI element** (buttons, text, icons)
+- **NO ASSUMPTIONS** - If you can't see it, don't claim it exists
+
+**2. "Figma Design References" section** in plans must include:
+
+- Complete list of all Figma URLs provided
+- Node IDs extracted from URLs (e.g., `node-id=3474-37626` → Node: `3474-37626`)
+- ACCURATE description of what each screen actually shows (verified via extracted screenshots)
+- COMPLETE listing of all interactive elements
+- Base Figma file URL for easy access
+- List of cached screenshots with file paths
+
+**3. Figma Analysis Accuracy**:
+
+- ✅ CORRECT: "The screen shows Call, Mail, Chat, Hire, and Schedule a meeting buttons"
+- ❌ WRONG: "The screen shows Call, Mail, Chat, Hire buttons" (missing Schedule)
+- VIOLATION: Claiming elements don't exist when visible in screenshot
+- VIOLATION: Describing screens without looking at extracted screenshots
+
+**4. Reference Figma nodes AND cache throughout plan**:
+
+- Every UI component must reference source Figma node
+- Example: "Create Schedule button - Node `3650-30623` (cached: messages-desktop-actions.png)"
+
+**5. Implementation Instructions in Plan**:
+
+- MUST include: "Read from cache: ./codegen/design-system/screenshots/"
+- MUST include: "NO Figma API calls during implementation - use cached files only"
+- Missing buttons/features is CRITICAL ERROR
+
+**Detection Commands**:
+
+```bash
+grep -i "schedule.*meeting" codegen/plans/*/overview.md  # Check for missing UI elements
+```
+
+**WHY THIS MATTERS**: Missing UI elements from Figma leads to incomplete implementations, user confusion, expensive rework cycles.
 
 **Planning Guidelines**
 
