@@ -7,25 +7,88 @@
 - **Model**: Claude Sonnet
 - **Started**: {{SESSION_TIMESTAMP}}
 
-## Load These Rules
+## 🛑 BLOCKING: Load Rules BEFORE Anything Else
 
-**MANDATORY FIRST ACTION**: After reading this context and PROJECT_CONTEXT.md, load planning rules:
+**STOP! You CANNOT proceed without completing these steps IN ORDER:**
 
-1. **Load planning rules**:
-   - `./codegen/rules/planning.md` - Planning structure, modular architecture, file hygiene requirements
-   - `./codegen/rules/INDEX.md` - Rule discovery guide (use to find domain-specific rules below)
-2. **Identify feature type and load domain rules**:
-   - Check `./codegen/rules/INDEX.md` for available domain rules
-   - **Read PROJECT_CONTEXT.md** to understand project type (monorepo? mobile? backend-only?)
-   - Based on feature description AND project type, load relevant domain rules:
-     - **Phoenix/Elixir features**: Load `rules/subagents/phoenix.md` + `rules/subagents/elixir-code-generation.md`
-     - **Flutter/mobile features**: Load `rules/subagents/flutter.md` + `rules/subagents/mobile-testing.md`
-     - **Monorepo (backend + mobile)**: Load BOTH backend AND mobile rules for full-stack features
-     - **UI/design features**: Load `rules/subagents/ui-implementation.md` + `rules/subagents/phoenix.md`
-     - **Testing features**: Load `rules/subagents/testing.md` + `rules/subagents/feature-tests.md`
-     - **Translation features**: Load `rules/subagents/i18n.md`
-     - **CI/deployment features**: Load `rules/subagents/github-actions.md` + `rules/subagents/deployment.md`
-     - **Multiple domains**: Load ALL relevant domain rules for the feature scope
+### Step 1: Load Core Planning Rules (REQUIRED)
+
+```
+Read file: ./codegen/rules/planning.md
+Read file: ./codegen/rules/INDEX.md
+```
+
+**Checkpoint**: You must have read BOTH files above before continuing.
+
+### Step 2: Detect Project Type from PROJECT_CONTEXT.md
+
+Look for these indicators in PROJECT_CONTEXT.md:
+
+- **Monorepo**: Has both `backend/` AND `mobile/` directories
+- **Backend-only**: Has `lib/` and `mix.exs` at root
+- **Flutter-only**: Has `lib/` and `pubspec.yaml` at root
+
+### Step 3: Load Domain Rules Based on Project Type
+
+**For Monorepo (backend + mobile)**:
+
+```
+Read file: ./codegen/rules/subagents/phoenix.md
+Read file: ./codegen/rules/subagents/phoenix-ui.md
+Read file: ./codegen/rules/subagents/elixir-code-generation.md
+Read file: ./codegen/rules/subagents/flutter.md
+Read file: ./codegen/rules/subagents/mobile-testing.md
+```
+
+**For Phoenix/Elixir (includes LiveView UI)**:
+
+```
+Read file: ./codegen/rules/subagents/phoenix.md
+Read file: ./codegen/rules/subagents/phoenix-ui.md
+Read file: ./codegen/rules/subagents/elixir-code-generation.md
+```
+
+**For Flutter Mobile-only**:
+
+```
+Read file: ./codegen/rules/subagents/flutter.md
+Read file: ./codegen/rules/subagents/mobile-testing.md
+```
+
+**Note**: Phoenix projects ALWAYS include `phoenix-ui.md` because Phoenix LiveView is inherently a UI framework.
+
+### Step 4: Load Additional Domain Rules Based on Feature
+
+Based on what the user describes as the feature, also load:
+
+- **Figma design implementation**: `rules/subagents/ui-implementation.md` (pixel-perfect from Figma)
+- **Testing features**: `rules/subagents/testing.md` + `rules/subagents/feature-tests.md`
+- **Translation features**: `rules/subagents/i18n.md`
+- **CI/deployment features**: `rules/subagents/github-actions.md` + `rules/subagents/deployment.md`
+
+**Note**: `phoenix-ui.md` (LiveView components, forms, JS hooks) is already loaded in Step 3 for Phoenix projects. `ui-implementation.md` is for Figma-to-code pixel-perfect workflows.
+
+### 🚨 VALIDATION: Prove You Loaded Rules
+
+**Before saying "ready for feature description", you MUST:**
+
+1. **List which rules you loaded** (file paths)
+2. **State the project type** you detected (monorepo/backend-only/etc.)
+3. **Only THEN** say you're ready for the feature description
+
+**Example correct response after loading rules:**
+
+> "I've loaded the following rules:
+>
+> - `./codegen/rules/planning.md` (planning structure)
+> - `./codegen/rules/INDEX.md` (rule discovery)
+> - `./codegen/rules/subagents/phoenix.md` (Phoenix patterns)
+> - `./codegen/rules/subagents/phoenix-ui.md` (LiveView UI patterns)
+> - `./codegen/rules/subagents/elixir-code-generation.md` (Elixir patterns)
+>
+> Project type detected: **Phoenix/Elixir** (has lib/ and mix.exs at root)
+>
+> I'm ready for you to describe the feature."
 
 **Why**: Plans with specific code must follow domain patterns. Loading appropriate rules prevents bad code patterns that won't get fixed during implementation.
 

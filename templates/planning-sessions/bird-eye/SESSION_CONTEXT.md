@@ -7,21 +7,49 @@
 - **Model**: Claude Sonnet
 - **Started**: {{SESSION_TIMESTAMP}}
 
-## Load These Rules
+## 🛑 BLOCKING: Load Rules BEFORE Anything Else
 
-**MANDATORY FIRST ACTION**: After reading this context, load required context:
+**STOP! You CANNOT proceed without completing these steps IN ORDER:**
 
-1. **Load planning rules**:
+### Step 1: Load Core Planning Rules (REQUIRED)
 
-   - `./codegen/rules/planning.md` - Planning structure, modular architecture, file hygiene requirements
-   - `./codegen/rules/INDEX.md` - Rule discovery guide (for finding domain-specific rules if needed)
+```
+Read file: ./codegen/rules/planning.md
+Read file: ./codegen/rules/INDEX.md
+```
 
-2. **Understand project architecture**:
-   - **Read PROJECT_CONTEXT.md** to understand project type:
-     - **Backend-only**: Phoenix/Elixir focus
-     - **Monorepo (backend + mobile)**: Phoenix backend + Flutter mobile - plan for BOTH
-     - **Mobile-only**: Flutter/Dart focus
-   - **This determines feature scope**: A "reactions" feature in a monorepo needs backend API + mobile UI
+**Checkpoint**: You must have read BOTH files above before continuing.
+
+### Step 2: Detect Project Type from PROJECT_CONTEXT.md
+
+Look for these indicators in PROJECT_CONTEXT.md:
+
+- **Monorepo**: Has both `backend/` AND `mobile/` directories
+- **Backend-only**: Has `lib/` and `mix.exs` at root
+- **Flutter-only**: Has `lib/` and `pubspec.yaml` at root
+
+**This determines feature scope**: A "reactions" feature in a monorepo needs backend API + mobile UI
+
+### 🚨 VALIDATION: Prove You Loaded Rules
+
+**Before asking clarifying questions or starting the plan, you MUST:**
+
+1. **List which rules you loaded** (file paths)
+2. **State the project type** you detected (monorepo/backend-only/etc.)
+3. **Only THEN** proceed to ask clarifying questions
+
+**Example correct response after loading rules:**
+
+> "I've loaded the following rules:
+>
+> - `./codegen/rules/planning.md` (planning structure)
+> - `./codegen/rules/INDEX.md` (rule discovery)
+>
+> Project type detected: **Monorepo** (backend/ + mobile/)
+>
+> Now let me ask some clarifying questions..."
+
+**Why**: Even bird-eye plans need to follow planning rules. Loading rules ensures consistent plan structure.
 
 ## 🚨 MANDATORY: Clarifying Questions Before Planning
 
