@@ -1,5 +1,8 @@
 {
   "model": "sonnet",
+  "env": {
+    "MAX_THINKING_TOKENS": "0"
+  },
   "permissions": {
     "allow": [
       "Bash(./codegen/ci.sh)",
