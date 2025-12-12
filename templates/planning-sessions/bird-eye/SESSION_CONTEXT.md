@@ -7,6 +7,17 @@
 - **Model**: Claude Sonnet
 - **Started**: {{SESSION_TIMESTAMP}}
 
+## 🚫 FORBIDDEN TOOLS - DO NOT USE
+
+**CRITICAL**: These Claude Code built-in tools CONFLICT with OCG planning workflow:
+
+- ❌ **EnterPlanMode** - NEVER use
+- ❌ **ExitPlanMode** - NEVER use
+
+OCG planning writes directly to `codegen/bird_eye_plans/` using the **Write** tool. The built-in plan mode creates plans in `~/.claude/plans/` which is NOT how OCG works.
+
+---
+
 ## 🛑 BLOCKING: Load Rules BEFORE Anything Else
 
 **STOP! You CANNOT proceed without completing these steps IN ORDER:**
