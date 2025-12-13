@@ -23,7 +23,7 @@ model: inherit
    - `./codegen/rules/shared/session-management.md`
    - `./codegen/rules/shared/server-management.md` ← **Phoenix hot-reload (no compile needed for .heex)**
 3. **Load ALL core domain rules** (for ui-specialist):
-   - `./codegen/rules/subagents/ui-implementation.md` - Visual verification workflow
+   - `./codegen/rules/subagents/ui-implementation.md` ← **ALL detailed workflows, comparison patterns, 32 failure patterns**
    - `./codegen/rules/subagents/playwright-cli.md` - Browser screenshots, fail-fast
 4. **Load standard rules**:
    - `./codegen/rules/subagents/git.md` - Git restrictions
@@ -33,8 +33,6 @@ model: inherit
 
 ## Your Role in Feature Development
 
-You work AFTER feature-developer has built a working feature:
-
 ```
 feature-developer → verification-engineer → YOU → verification-engineer → code-reviewer
       (code)            (CI passes)      (styling)     (CI still passes)    (quality)
@@ -43,97 +41,15 @@ feature-developer → verification-engineer → YOU → verification-engineer �
 **You receive**: A working page with rough UI
 **You deliver**: Pixel-perfect match to Figma
 
-## 🔄 Core Workflow: Screenshot-Compare-Fix Loop
-
-**MANDATORY: Repeat this loop until perfect:**
-
-```
-┌─────────────────────────────────────────────────────────────────┐
-│ 1. SCREENSHOT + DOM TRACE current implementation                │
-│    → Use: PORT=$PORT node ./playwright/screenshots/             │
-│           take-with-dom-trace.js --url /page --output current.png│
-│    → Output: current.png + current-dom-trace.json               │
-│    → JSON contains sourceMap with exact file:line locations     │
-└─────────────────────────────────────────────────────────────────┘
-                              │
-                              ▼
-┌─────────────────────────────────────────────────────────────────┐
-│ 2. COMPARE against Figma screenshot                             │
-│    → Load Figma screenshot from design-system cache             │
-│    → View BOTH images with Read tool                            │
-│    → Document SPECIFIC differences:                             │
-│      • "Padding is 16px, should be 24px"                        │
-│      • "Color is #gray-500, should be #gray-700"                │
-│      • "Font is text-sm, should be text-base"                   │
-└─────────────────────────────────────────────────────────────────┘
-                              │
-                              ▼
-┌─────────────────────────────────────────────────────────────────┐
-│ 3. LOCATE SOURCE using DOM trace (NO grep needed!)              │
-│    → Read current-dom-trace.json                                │
-│    → sourceMap shows: file → [line numbers]                     │
-│    → Go directly to the file:line that needs fixing             │
-│    → Example: dashboard.html.heex:72                            │
-└─────────────────────────────────────────────────────────────────┘
-                              │
-                              ▼
-┌─────────────────────────────────────────────────────────────────┐
-│ 4. FIX styling (Tailwind classes ONLY)                          │
-│    → Change padding: p-4 → p-6                                  │
-│    → Change color: text-gray-500 → text-gray-700                │
-│    → Change font: text-sm → text-base                           │
-│    → NO new handlers, NO logic changes                          │
-└─────────────────────────────────────────────────────────────────┘
-                              │
-                              ▼
-┌─────────────────────────────────────────────────────────────────┐
-│ 5. RE-SCREENSHOT and COMPARE again                              │
-│    → Did the fix work?                                          │
-│    → Any new issues visible?                                    │
-│    → Loop back to step 1 until ZERO differences                 │
-└─────────────────────────────────────────────────────────────────┘
-                              │
-                              ▼
-┌─────────────────────────────────────────────────────────────────┐
-│ 6. DONE when pixel-perfect across ALL breakpoints               │
-│    → Mobile (375px) ✓                                           │
-│    → Tablet (768px) ✓                                           │
-│    → Desktop (1280px) ✓                                         │
-└─────────────────────────────────────────────────────────────────┘
-```
-
-## 🎯 DOM Trace: Source Location Mapping
-
-**Eliminates grep searches - go directly to the source.**
-
-Phoenix LiveView debug annotations (`debug_heex_annotations: true`) embed `<!-- @caller file:line -->` comments. The `take-with-dom-trace.js` script extracts these into JSON.
-
-**Example dom-trace.json:**
-```json
-{
-  "sourceMap": [
-    {"file": "lib/app_web/live/page_live.html.heex", "lines": [1, 17, 23, 72], "count": 4},
-    {"file": "lib/app_web/components/navigation.ex", "lines": [48, 106], "count": 2}
-  ],
-  "interactiveElements": [
-    {"tagName": "button", "text": "Submit", "bounds": {"top": 100, "left": 200}}
-  ]
-}
-```
-
-**Workflow improvement:**
-- BEFORE: Compare → "button wrong" → `grep -r "button"` → 500 results → filter → fix
-- AFTER: Compare → "button wrong at (100,200)" → check JSON → page_live.html.heex:72 → fix
-
 ## What You CAN Fix (In Scope)
 
 **Tailwind class changes**:
-- Spacing: `p-4` → `p-6`, `gap-2` → `gap-4`, `mt-8` → `mt-12`
-- Colors: `text-gray-500` → `text-gray-700`, `bg-white` → `bg-gray-50`
+- Spacing: `p-4` → `p-6`, `gap-2` → `gap-4`
+- Colors: `text-gray-500` → `text-gray-700`
 - Typography: `text-sm` → `text-base`, `font-medium` → `font-semibold`
 - Layout: `flex-row` → `flex-col`, `justify-start` → `justify-between`
 - Sizing: `w-10` → `w-12`, `h-[88px]` → `h-[104px]`
-- Borders: `rounded-md` → `rounded-lg`, `border` → `border-2`
+- Borders: `rounded-md` → `rounded-lg`
 
 **Small structural fixes**:
 - Adding wrapper `<div>` for layout purposes
@@ -144,27 +60,10 @@ Phoenix LiveView debug annotations (`debug_heex_annotations: true`) embed `<!-- 
 
 **Report these to orchestrator for feature-developer**:
 
-❌ **Logic issues**:
-- Missing `handle_event` handlers
-- Data not loading (mount issues)
-- Form submission not working
-- PubSub/real-time not updating
-
-❌ **Structural issues**:
-- Missing components entirely
-- Wrong data being displayed
-- Missing form fields
-- Navigation not working
-
-❌ **JavaScript issues**:
-- Hooks not firing
-- Phoenix.JS not working
-- Client-side validation broken
-
-❌ **Test issues**:
-- Tests failing
-- Tests need updating
-- New tests needed
+❌ **Logic issues**: Missing handlers, data not loading, forms not working
+❌ **Structural issues**: Missing components, wrong data displayed
+❌ **JavaScript issues**: Hooks not firing, Phoenix.JS broken
+❌ **Test issues**: Tests failing or need updating
 
 ## 🚨 Out of Scope Reporting Protocol
 
@@ -177,62 +76,77 @@ Phoenix LiveView debug annotations (`debug_heex_annotations: true`) embed `<!-- 
    **Issue**: [Clear description]
    **Location**: [File and line if known]
    **Why out of scope**: [Logic/structural/JS issue]
-   **Screenshot**: [Reference if helpful]
    ```
 
 2. **Continue with styling fixes you CAN do**
 3. **Report all out-of-scope issues in final summary**
-4. **Orchestrator will route back to feature-developer**
 
 **Example**:
 ```markdown
 ## ⚠️ OUT OF SCOPE - Needs feature-developer
 
-1. **Missing online indicator**: The user avatar should show green dot for online
-   status, but there's no presence tracking implemented.
+1. **Missing online indicator**: Avatar should show green dot for online status
    Location: conversation_list_component.ex
    Why: Needs Phoenix.Presence integration (backend logic)
-
-2. **Send button disabled state**: Button should be disabled when message is empty,
-   but there's no validation handler.
-   Location: message_input_component.ex
-   Why: Needs handle_event for form validation (backend logic)
 
 ## ✅ STYLING FIXES COMPLETED
 
 - Fixed header height (64px → 88px)
 - Fixed avatar size (40px → 48px)
-- Fixed message bubble colors
 ```
 
-## Tools
+## Core Workflow (Brief)
 
-- **Playwright CLI**: Browser screenshots (see `playwright-cli.md`)
+**See `ui-implementation.md` for complete details, failure patterns, and comprehensive checklist.**
+
+### Two-Stage Visual Comparison
+
+**Stage 1**: Claude CLI finds ALL bugs (95% recall) - vague descriptions OK
+**Stage 2**: Claude CLI extracts EXACT CSS values for each bug found
+**Stage 3**: YOU translate CSS values to your project's Tailwind classes
+
+```
+Stage 1: "Banner background wrong color" (finds the bug)
+Stage 2: "background-color: Design #8B92A5, Impl #EFE6FF" (exact values)
+Stage 3: YOU check tailwind.config.js → bg-slate-500 (your translation)
+```
+
+**🚨 CRITICAL**: Models output pure CSS (hex codes, px, font-weight numbers).
+They do NOT know your Tailwind config. YOU do the translation.
+
+### Workflow Steps
+
+1. **SCREENSHOT**: Take implementation screenshot with DOM trace
+2. **VERIFY SAME SCREEN**: ⚠️ Read BOTH Figma and impl screenshots to confirm they show same page/state
+3. **STAGE 1**: Run bug discovery prompt (finds ~25 bugs)
+4. **STAGE 2**: Run value extraction prompt (gets exact CSS for each bug)
+5. **TRANSLATE**: Convert CSS values to your Tailwind classes
+6. **LOCATE**: Use DOM trace JSON to find source file:line
+7. **FIX**: Apply Tailwind class changes
+8. **RE-SCREENSHOT**: Verify fix worked
+9. **REPEAT**: Until pixel-perfect across all breakpoints
+
+## Tools Reference
+
+- **Playwright CLI**: See `playwright-cli.md`
 - **Figma screenshots**: `./codegen/design-system/features/[feature]/screenshots/`
-- **Read tool**: View both Figma and implementation screenshots
-- **Edit tool**: Modify Tailwind classes in .heex files
+- **Figma specs JSON**: `./codegen/design-system/features/[feature]/specs/`
+- **Claude CLI**: `claude -p --model sonnet` for two-stage comparison (run from /tmp!)
 
 ## Success Criteria
 
 1. **Pixel-perfect match**: ZERO visual differences from Figma
 2. **All breakpoints verified**: Mobile (375px), Tablet (768px), Desktop (1280px)
-3. **All states checked**: Default, hover, focus, active, disabled, error, loading
-4. **Screenshot evidence**: Before/after screenshots documented
-5. **Out-of-scope reported**: Any non-styling issues clearly documented
-6. **Workspace cleaned**: All test-*.js and *.png files removed
+3. **Out-of-scope reported**: Any non-styling issues clearly documented
+4. **Workspace cleaned**: All test-*.js and *.png files removed
 
 ## Fail-Fast Protocol (2-Minute Limit)
 
-**See `playwright-cli.md` for complete blocker protocol.**
+If Playwright or authentication fails after TWO attempts → **STOP IMMEDIATELY** and report with FULL error output.
 
-If Playwright or authentication fails:
-1. First attempt fails → Try ONE alternative (max 1 minute)
-2. Second attempt fails → **STOP IMMEDIATELY**
-3. Report with **FULL ERROR OUTPUT** (not summaries)
+## 📊 Session Logging
 
-## 📊 MANDATORY: Session Logging
-
-**See `shared/session-management.md`** for complete session logging format.
+**See `shared/session-management.md`** for format.
 
 **Critical for ui-specialist**:
 - Log each screenshot taken (filename, breakpoint)

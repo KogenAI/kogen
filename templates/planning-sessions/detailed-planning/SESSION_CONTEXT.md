@@ -631,18 +631,27 @@ Add to `codegen/plans/$FEATURE_NAME/overview.md`:
 ```markdown
 ## Screenshot State Mapping
 
-Maps URL patterns to Figma screenshots for visual verification.
+| URL Pattern     | State              | Viewport | Base Name                                          | Test User                    |
+| --------------- | ------------------ | -------- | -------------------------------------------------- | ---------------------------- |
+| `/messages`     | Empty state        | Desktop  | `messages---empty-state-8322-46182`                | empty-screenshot@example.com |
+| `/messages`     | Empty state        | Mobile   | `organization-messages---empty-state-8547-8837`    | empty-screenshot@example.com |
+| `/messages`     | With conversations | Desktop  | `organization-messages---with-messages-8322-46530` | maria.weber@spitex-zurich.ch |
+| `/messages`     | With conversations | Mobile   | `organization-messages---with-messages-8547-8881`  | maria.weber@spitex-zurich.ch |
+| `/messages/:id` | Thread view        | Desktop  | `organization-messages---with-messages-8322-46530` | maria.weber@spitex-zurich.ch |
+| `/messages/:id` | Thread view        | Mobile   | `organization-messages---view-message-8547-8948`   | maria.weber@spitex-zurich.ch |
+| `/messages/:id` | With files         | Desktop  | `organization-messages---with-messages-8328-10511` | maria.weber@spitex-zurich.ch |
 
-| URL Pattern                      | State Description                 | Desktop Screenshot                                     | Mobile Screenshot                                     | Test User                    | Locale | Notes                              |
-| -------------------------------- | --------------------------------- | ------------------------------------------------------ | ----------------------------------------------------- | ---------------------------- | ------ | ---------------------------------- |
-| `/messages` (no conversations)   | Empty state - no job applications | `messages---empty-state-8322-46182.png`                | `organization-messages---empty-state-8547-8837.png`   | empty-screenshot@example.com | en     | User with no job applications      |
-| `/messages` (with conversations) | Conversation list populated       | `organization-messages---with-messages-8322-46530.png` | `organization-messages---with-messages-8547-8881.png` | maria.weber@spitex-zurich.ch | en     | Employer with active conversations |
-| `/messages/:id`                  | Active conversation thread        | `organization-messages---with-messages-8322-46530.png` | `organization-messages---view-message-8547-8948.png`  | maria.weber@spitex-zurich.ch | en     | Select first conversation          |
-| `/messages/:id` (with files)     | Conversation with attachments     | `organization-messages---with-messages-8328-10511.png` | -                                                     | maria.weber@spitex-zurich.ch | en     | Conversation with PDF/images       |
+**File Paths (derive from Base Name):**
+
+- Screenshot: `./codegen/design-system/features/$FEATURE_NAME/screenshots/{base}.png`
+- Specs JSON: `./codegen/design-system/features/$FEATURE_NAME/specs/{base}-specs.json`
+
+**Viewport Detection (from node ID in filename):**
+
+- `7xxx-xxxxx` = Mobile
+- `8xxx-xxxxx` = Desktop
 
 **Test User Credentials:** All test users use password `password123456`
-
-**Critical:** Always use specified test user to ensure correct locale (English) and data state.
 ```
 
 **4f. Update Seeds for Screenshot Users**
