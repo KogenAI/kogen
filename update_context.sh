@@ -81,6 +81,8 @@ If applicable, also update:
 
 - **Figma Design Files** - Update Figma node ID to Phoenix component mappings, design system rules, and token mappings if UI components were created/modified
 - **Rules** - Extract important lessons and patterns that could be useful for future development into \`./codegen/rules/\`
+  - **Planning rules** are in \`./codegen/rules/planning/\` (bird-eye.md, detailed.md, plan-verification.md)
+  - **Shared planning rules** are in \`./codegen/rules/planning.md\`
 
 ## Guidelines
 
