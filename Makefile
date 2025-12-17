@@ -108,6 +108,14 @@ extract-figma-implementation-specs:
 	$(call check_ocg_only,extract-figma-implementation-specs)
 	@cd "$(ORIGINAL_WORKING_DIR)" && "$(SCRIPT_DIR)/extract_figma_implementation_specs.sh" $(filter-out $@,$(MAKECMDGOALS))
 
+build-variable-map:
+	$(call check_ocg_only,build-variable-map)
+	@cd "$(ORIGINAL_WORKING_DIR)" && "$(SCRIPT_DIR)/build_variable_map.sh" $(filter-out $@,$(MAKECMDGOALS))
+
+extract-figma-components:
+	$(call check_ocg_only,extract-figma-components)
+	@cd "$(ORIGINAL_WORKING_DIR)" && "$(SCRIPT_DIR)/extract_figma_components.sh" $(filter-out $@,$(MAKECMDGOALS))
+
 clean-servers:
 	$(call check_ocg_only,clean-servers)
 	@cd "$(ORIGINAL_WORKING_DIR)"; \

@@ -20,7 +20,7 @@ _codegen_completion() {
 
     # Complete main commands
     if [[ ${COMP_CWORD} == 1 ]]; then
-        local opts="ai-config bird-eye clean clean-branches clean-servers consolidate-context extract-figma-implementation-specs extract-figma-metadata extract-figma-screenshots extract-figma-variables help init ls new plan prepare prune remove-comments resources resume rm setup update update-context usage-rules"
+        local opts="ai-config bird-eye build-variable-map clean clean-branches clean-servers consolidate-context extract-figma-components extract-figma-implementation-specs extract-figma-metadata extract-figma-screenshots extract-figma-variables help init ls new plan prepare prune remove-comments resources resume rm setup update update-context usage-rules"
         [[ "$cmd" == "make" ]] && opts="$opts install uninstall"
         [[ "$cmd" == "ocg" ]] && opts="$opts uninstall"
         COMPREPLY=($(compgen -W "$opts" -- "$cur"))

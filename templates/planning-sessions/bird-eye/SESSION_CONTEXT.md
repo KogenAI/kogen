@@ -14,7 +14,10 @@
 - ❌ **EnterPlanMode** - NEVER use
 - ❌ **ExitPlanMode** - NEVER use
 
-OCG planning writes directly to `codegen/bird_eye_plans/` using the **Write** tool. The built-in plan mode creates plans in `~/.claude/plans/` which is NOT how OCG works.
+OCG planning writes directly to `codegen/bird_eye_plans/{{FEATURE_NAME}}.md` using the **Write** tool. The built-in plan mode creates plans in `~/.claude/plans/` which is NOT how OCG works.
+
+**🚨 CORRECT plan location:** `codegen/bird_eye_plans/{{FEATURE_NAME}}.md`
+**❌ WRONG locations:** `codegen/plans/`, `codegen/planning_sessions/`, `~/.claude/plans/`, anywhere else
 
 ---
 
@@ -177,6 +180,19 @@ You are in the first phase of feature development - **strategic planning**. This
 - Consider both immediate and future implications
 
 ### Output Expectations
+
+**🚨 MANDATORY Plan Location:**
+
+```
+codegen/bird_eye_plans/{{FEATURE_NAME}}.md
+```
+
+**❌ FORBIDDEN locations - NEVER write plans here:**
+
+- `codegen/plans/` - WRONG (this is for detailed plans)
+- `codegen/planning_sessions/` - WRONG
+- `~/.claude/plans/` - WRONG (Claude Code built-in, not OCG)
+- Any other location - WRONG
 
 Save your final plan to: [{{PLAN_OUTPUT_FILE}}]({{PLAN_OUTPUT_FILE}})
 

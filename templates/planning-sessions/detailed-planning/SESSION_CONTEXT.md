@@ -14,7 +14,10 @@
 - ❌ **EnterPlanMode** - NEVER use
 - ❌ **ExitPlanMode** - NEVER use
 
-OCG planning writes directly to `codegen/plans/` or `codegen/planning_sessions/` using the **Write** tool. The built-in plan mode creates plans in `~/.claude/plans/` which is NOT how OCG works.
+OCG planning writes directly to `codegen/plans/{{FEATURE_NAME}}/` using the **Write** tool. The built-in plan mode creates plans in `~/.claude/plans/` which is NOT how OCG works.
+
+**🚨 CORRECT plan location:** `codegen/plans/{{FEATURE_NAME}}/overview.md`
+**❌ WRONG locations:** `codegen/planning_sessions/plans/`, `~/.claude/plans/`, anywhere else
 
 ---
 
@@ -155,39 +158,49 @@ done
 
 **Phase 3: Create Individual Screen Node IDs File**
 
-After parsing, create a new node-ids.txt with INDIVIDUAL screens (not parent frames):
+After parsing, create a new node-ids.txt with INDIVIDUAL screens (not parent frames).
+
+**🚨 CRITICAL: USE ACTUAL FIGMA FRAME NAMES - DO NOT INVENT NAMES**
+
+The second column MUST use the **exact Figma frame name** from the jq output in Phase 2, NOT invented aliases.
 
 ```bash
-# Format: node-id|feature--variant--state|description
-# Naming convention: {feature}--{variant}--{state}
+# Format: node-id|EXACT_FIGMA_FRAME_NAME|description
+# ⚠️ SECOND COLUMN = ACTUAL FIGMA NAME (from Phase 2 jq output)
+# ❌ WRONG: Inventing names like "view-application" when Figma says "View to job"
+# ✅ RIGHT: Using exact Figma name "Job seeker - View to job"
+
 cat > ./codegen/design-system/features/$FEATURE_NAME/node-ids.txt <<'EOF'
-# Organization Mobile Screens
-7698:21514|account-settings--mobile--main|Main settings view
-7725:8547|account-settings--mobile--my-info|My info section
-7698:26923|account-settings--mobile--update-info|Update account info form
-7725:10315|account-settings--mobile--delete-confirm|Delete account confirmation
-7725:15111|account-settings--mobile--email-prefs|Email preferences
-7920:46496|account-settings--mobile--set-password|Set password form
-7920:36808|account-settings--mobile--change-password|Change password form
-# Job Seeker Mobile Screens
-7732:15011|account-settings--mobile-js--main|Job seeker main settings
-7734:2810|account-settings--mobile-js--update-info|Job seeker update info
-7734:4105|account-settings--mobile-js--email-prefs|Job seeker email prefs
-# Desktop Screens
-8344:62923|account-settings--desktop--my-info|Desktop my info view
-8344:63299|account-settings--desktop--update-info|Desktop update form
-8344:64955|account-settings--desktop--set-password|Desktop set password
+# Organization Mobile Screens - NAMES FROM FIGMA
+7698:21514|Job seeker - apply to job|Apply form screen
+7725:8547|Job seeker - View to job|Job detail view screen
+7698:26923|Job seeker - My applications|Applications list screen
+7725:10315|Job seeker - Saved jobs|Saved jobs list screen
 EOF
 ```
 
-**Screenshot Naming Convention:**
+**🚨 WHY THIS MATTERS - REAL EXAMPLE OF FAILURE:**
 
-| Component | Format                                                    | Example                                    |
-| --------- | --------------------------------------------------------- | ------------------------------------------ |
-| Feature   | lowercase, kebab-case                                     | `account-settings`                         |
-| Variant   | `mobile`, `desktop`, `tablet` + optional user type suffix | `mobile`, `mobile-js` (job seeker)         |
-| State     | action or view state                                      | `main`, `edit`, `delete-confirm`, `empty`  |
-| Full name | `{feature}--{variant}--{state}`                           | `account-settings--mobile--delete-confirm` |
+```bash
+# ❌ WRONG - Agent invented "view-application" name:
+7191:26944|apply--mobile-js--view-application|View submitted application
+
+# The Figma frame was actually named "Job seeker - View to job" (viewing the JOB, not the application)
+# This led to planning a "View Submitted Application" feature that DOES NOT EXIST in Figma
+
+# ✅ CORRECT - Use actual Figma frame name:
+7191:26944|Job seeker - View to job|Job detail page (already applied state)
+```
+
+**Verification: Cross-check with Figma Layers Panel**
+
+Before finalizing node-ids.txt:
+
+1. Open Figma file in browser
+2. Navigate to the Layers panel (left sidebar)
+3. Find each frame you're extracting
+4. Verify the name in node-ids.txt EXACTLY matches the Figma layer name
+5. If names don't match, you're at risk of hallucinating features
 
 **Phase 4: Extract Individual Screenshots**
 
@@ -198,6 +211,49 @@ ocg extract-figma-screenshots \
     "./codegen/design-system/features/$FEATURE_NAME/node-ids.txt" \
     "./codegen/design-system/features/$FEATURE_NAME/screenshots"
 ```
+
+**Phase 4b: 🚨 MANDATORY Screenshot Content Verification**
+
+**BLOCKING REQUIREMENT**: You MUST view EVERY extracted screenshot and verify the content matches the Figma frame name.
+
+**For EACH screenshot, you MUST:**
+
+1. **Read the screenshot file** using the Read tool
+2. **Describe what you actually SEE** in the screenshot (not what you expect)
+3. **Compare to the Figma frame name** - do they match?
+4. **Document any mismatches** immediately
+
+**Create a verification table:**
+
+```markdown
+## Screenshot Content Verification
+
+| Screenshot File                             | Figma Frame Name             | What I Actually See                                                                              | Match?                         |
+| ------------------------------------------- | ---------------------------- | ------------------------------------------------------------------------------------------------ | ------------------------------ |
+| `job-seeker-view-to-job-7191-26944.png`     | Job seeker - View to job     | Job detail page with purple "You already applied" banner, job description, disabled Apply button | ✅ Yes - this is viewing a JOB |
+| `job-seeker-my-applications-7191-25737.png` | Job seeker - My applications | List of job cards with "Applied" badges                                                          | ✅ Yes                         |
+```
+
+**🚨 STOP CONDITIONS - Do NOT proceed if:**
+
+- Screenshot shows different content than the frame name suggests
+- You cannot clearly identify what the screenshot represents
+- Screenshot appears to be a variant/state of another screen (document as such)
+
+**Example of catching a problem:**
+
+```markdown
+| Screenshot File            | Figma Frame Name | What I Actually See                                      | Match?            |
+| -------------------------- | ---------------- | -------------------------------------------------------- | ----------------- |
+| `view-application-xxx.png` | View application | ❌ This shows a JOB DETAIL page, NOT an application view | ❌ NO - MISMATCH! |
+```
+
+**If mismatch detected:**
+
+1. STOP planning features based on this screenshot
+2. Re-examine what the screenshot actually represents
+3. Update your understanding of the feature scope
+4. Document: "Screenshot X does NOT show Y - it shows Z instead"
 
 **Phase 5: Generate Screen Index**
 
@@ -416,6 +472,62 @@ You are in the technical planning phase - **detailed implementation planning**. 
 - What are the key components and their interactions?
 - How does this fit with existing system architecture?
 
+**🚨 MANDATORY: Existing Component Audit (BEFORE designing new components)**
+
+Before designing ANY new UI components or views, you MUST audit the existing codebase:
+
+1. **Search for existing views of the same entity**:
+
+   ```bash
+   # Example: If building company job view, check if job seeker view exists
+   grep -r "job_posting" lib/*_web/live/
+   grep -r "JobPosting" lib/*_web/components/
+   ls lib/*_web/live/ | grep -i job
+   ```
+
+2. **Document existing components that display similar data**:
+
+   - What components already exist for this entity type?
+   - What styling patterns do they use?
+   - Can they be reused or adapted?
+
+3. **Compare Figma design to existing implementations**:
+   - Does the Figma design match existing patterns?
+   - Should we create shared components instead of duplicating?
+   - Can we adapt existing components rather than building new ones?
+
+**Questions to answer BEFORE building new components:**
+
+- "Is there an existing view for this entity (job, user, application, etc.)?"
+- "What components does the existing view use?"
+- "Can we reuse those components or create shared ones?"
+- "Does the new feature's design align with existing patterns?"
+
+**Real-World Example of This Mistake:**
+
+> Company job overview (`/company/jobs/:id`) was built from scratch when job seeker view (`/jobs/:id`) already had better-looking, polished components that could have been reused. This wasted development time and created inconsistent UX.
+
+**Include in plan overview.md:**
+
+```markdown
+## Existing Component Audit
+
+**Searched for existing implementations:**
+
+- `lib/app_web/live/jobs_live/` - Job seeker job views (EXISTS)
+- `lib/app_web/components/job_card.ex` - Shared job card (EXISTS)
+
+**Reuse decisions:**
+
+- ✅ Reuse `JobCardComponent` for job details display
+- ✅ Adapt styling from job seeker view
+- ❌ Cannot reuse X because [reason]
+
+**New components needed:**
+
+- `ApplicantListComponent` - No existing equivalent
+```
+
 **Code Integration Analysis**
 
 - What existing code can be reused or extended?
@@ -622,6 +734,77 @@ ocg extract-figma-implementation-specs \
 - Layout properties (Auto Layout, padding, gaps, alignment)
 - Component hierarchy (depth=3)
 
+**4d-2. Extract Component Definitions (for TEXT nodes)**
+
+Component INSTANCES in specs only contain `componentId` references - not their internal content (button labels, etc.). Extract master components:
+
+```bash
+# Extract component definitions (auto-discovers componentIds from specs)
+ocg extract-figma-components \
+    "$REPO_ROOT/codegen/design-system/features/$FEATURE_NAME/specs" \
+    "$REPO_ROOT/codegen/design-system/components"
+```
+
+**What you get:**
+
+- Master component definitions with full internal structure
+- TEXT nodes (actual button labels, headings, etc.)
+- Component usage index (`component-usage.json`)
+
+**4d-3. Build Variable Map (design tokens from specs)**
+
+```bash
+# Extract design token values from specs (workaround for Enterprise-only variables API)
+ocg build-variable-map \
+    "$REPO_ROOT/codegen/design-system/features/$FEATURE_NAME/specs" \
+    "$REPO_ROOT/codegen/design-system/variables-resolved.json"
+```
+
+**What you get:**
+
+- VariableID → actual value mapping (colors as hex, spacing as px)
+- Resolves all `boundVariables` references in specs
+
+**4d-4. Delegate Spec Analysis to Subagent (CRITICAL for context preservation)**
+
+**PROBLEM**: Spec files are 50-200KB each (~5-10K tokens). Reading them directly fills your planning context.
+
+**SOLUTION**: Delegate analysis to a general subagent that returns only the summary you need.
+
+```python
+Task(
+    prompt="""Analyze Figma specs and return a structured summary for planning.
+
+SPECS DIRECTORY: $REPO_ROOT/codegen/design-system/features/$FEATURE_NAME/specs/
+
+FOR EACH SPEC FILE, extract:
+1. Screen name (from filename)
+2. Main sections/components visible (from document.children)
+3. Key UI elements (buttons, forms, lists)
+4. Any text content visible in TEXT nodes
+5. Viewport type (mobile/desktop from node ID prefix: 7xxx=mobile, 8xxx=desktop)
+
+OUTPUT FORMAT (markdown table):
+| Screen | Viewport | Main Sections | Key Elements | Notes |
+|--------|----------|---------------|--------------|-------|
+
+Also identify:
+- Common components across screens
+- Empty states vs populated states
+- Form fields and validation indicators
+
+DO NOT include raw JSON - only the structured summary.""",
+    subagent_type="general"
+)
+```
+
+**Why delegate:**
+
+- Subagent context is separate from planning context
+- You receive only the summary (~50-100 lines vs ~50K tokens)
+- Subagent can read ALL specs without bloating your context
+- Summary is sufficient for planning; implementation uses full specs
+
 **4e. Create URL → Screenshot State Mapping**
 
 **CRITICAL:** Create mapping in plan so ui-specialist knows which screenshot to use for each URL.
@@ -687,6 +870,9 @@ Add design system section to your plan overview.md:
 
 - Design tokens: `./codegen/design-system/variables.json`
 - Design tokens (readable): `./codegen/design-system/variables-readable.json`
+- Variables resolved: `./codegen/design-system/variables-resolved.json` (VariableID → actual values)
+- Component definitions: `./codegen/design-system/components/*.json` (master components with TEXT nodes)
+- Component index: `./codegen/design-system/components/component-usage.json`
 
 **Feature-specific resources:**
 
@@ -716,17 +902,23 @@ Add design system section to your plan overview.md:
 # 1. Design tokens extracted?
 ls $REPO_ROOT/codegen/design-system/variables.json
 
-# 2. Node IDs created?
+# 2. Variables resolved (from specs)?
+ls $REPO_ROOT/codegen/design-system/variables-resolved.json
+
+# 3. Component definitions extracted?
+ls $REPO_ROOT/codegen/design-system/components/component-usage.json
+
+# 4. Node IDs created?
 ls $REPO_ROOT/codegen/design-system/features/$FEATURE_NAME/node-ids.txt
 
-# 3. Screenshots extracted?
+# 5. Screenshots extracted?
 ls $REPO_ROOT/codegen/design-system/features/$FEATURE_NAME/screenshots/*.png
 
-# 4. Implementation specs extracted?
+# 6. Implementation specs extracted?
 ls $REPO_ROOT/codegen/design-system/features/$FEATURE_NAME/specs/*.json
 ```
 
-**All four MUST exist before proceeding with implementation planning.**
+**All six MUST exist before proceeding with implementation planning.**
 
 **If any missing:** Go back and complete bootstrap steps 4a-4g.
 
@@ -827,6 +1019,19 @@ grep -i "schedule.*meeting" codegen/plans/*/overview.md  # Check for missing UI 
 - Plan comprehensive test coverage from the start
 
 ### Output Expectations
+
+**🚨 MANDATORY Plan Location:**
+
+```
+codegen/plans/{{FEATURE_NAME}}/overview.md
+```
+
+**❌ FORBIDDEN locations - NEVER write plans here:**
+
+- `codegen/planning_sessions/plans/` - WRONG
+- `codegen/planning_sessions/` - WRONG
+- `~/.claude/plans/` - WRONG (Claude Code built-in, not OCG)
+- Any other location - WRONG
 
 **Create Modular Plan Structure:**
 
@@ -932,7 +1137,7 @@ Your plan should be detailed enough that an engineer can:
 
 ### 🚨 MANDATORY: Hallucination Check Before Finalizing
 
-**CRITICAL**: After writing your plan, you MUST verify it against official documentation to catch hallucinations.
+**CRITICAL**: After writing your plan, you MUST verify it against official documentation AND Figma screenshots to catch hallucinations.
 
 **PROCESS**:
 
@@ -947,6 +1152,45 @@ Your plan should be detailed enough that an engineer can:
    - ❌ API return values (e.g., returning `context` instead of `{:ok, context}`)
    - ❌ Parameter syntax (e.g., wrong pattern matching format)
    - ❌ Module names (e.g., incorrect namespace paths)
+
+**🚨 FIGMA FEATURE HALLUCINATION CHECK (CRITICAL FOR UI FEATURES)**:
+
+For EACH planned feature/step, answer these questions:
+
+1. **Which specific screenshot(s) show this feature?** (list exact filenames)
+2. **What do you ACTUALLY SEE in those screenshots?** (describe visible elements)
+3. **Is this a NEW page or a STATE of an existing page?**
+4. **If you remove this feature from the plan, which Figma screen would be unimplemented?**
+
+**🚨 REAL EXAMPLE OF FIGMA HALLUCINATION:**
+
+```markdown
+# HALLUCINATED FEATURE (Step 4: View Submitted Application)
+
+Q: Which screenshot shows this feature?
+A: `apply--mobile-js--view-application-7191-26944.png`
+
+Q: What do I ACTUALLY SEE?
+A: Job detail page with "You already applied" banner, job description, disabled Apply button
+
+Q: Is this a new page?
+A: NO - this is the EXISTING job detail page in "already applied" state
+
+Q: If removed, which Figma screen is unimplemented?
+A: NONE - this screenshot is just a state of the job detail page (Step 2)
+
+CONCLUSION: ❌ HALLUCINATED - "View Submitted Application" does NOT exist in Figma
+```
+
+**VERIFICATION CHECKLIST for each planned step:**
+
+- [ ] I can point to a specific Figma screenshot for this feature
+- [ ] The screenshot shows the EXACT feature I'm planning (not something similar)
+- [ ] The Figma frame name matches what I think the feature is
+- [ ] This is not just a state/variant of another screen I already planned
+
+**If ANY checkbox is unchecked, the feature may be hallucinated - investigate before proceeding.**
+
 4. **Document Verification**: Add "Verified Against Documentation" section to overview.md:
 
 ```markdown
