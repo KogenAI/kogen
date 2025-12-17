@@ -21,7 +21,13 @@ Save current work context so a future session can continue where you left off. H
    - **User questions** (even casual ones like "what is this X thing?")
    - **User observations** (anything the user mentioned, even in passing)
 
-   🚨 **ZERO TOLERANCE FOR SKIPPING**: Every single thing the user reported, asked about, or mentioned MUST be documented AND worked on. No exceptions. No "we can handle this later." No prioritization that results in items being dropped or deferred. If the user said it, document it AND it must be fixed/addressed in this work session. Priority labels are for ordering work, NOT for deciding what to skip.
+   🚨 **DISTINGUISH: Resolved vs Remaining**:
+
+   - **Questions answered this session** → Do NOT create context files (already resolved)
+   - **Concerns addressed this session** → Do NOT create context files (already handled)
+   - **Actual remaining work** → Create context files ONLY for these
+
+   Example: User asks "were there hallucinations?" and you investigated and answered "no" → This is RESOLVED, not a pending issue. Only create context files for actual remaining work items.
 
 2. **Read CONTEXT.md** to understand current state
 
@@ -34,6 +40,13 @@ Save current work context so a future session can continue where you left off. H
    - Allows parallel work on different issues
    - Structure for easy pickup by next session
 
+   🚨 **RESOLVED vs PENDING file naming**:
+
+   - **Unresolved work** → `PENDING-issue-{timestamp}-{description}.md`
+   - **Resolved this session** → `RESOLVED-{timestamp}-{description}.md`
+
+   Create RESOLVED files to preserve knowledge from investigations/decisions made this session. Future sessions can reference them but won't try to work on them.
+
 4. **Update CONTEXT.md** with relevant sections:
 
    - Add ALL issues to **CURRENT ISSUES** or **BLOCKING ISSUES**
@@ -45,10 +58,11 @@ Save current work context so a future session can continue where you left off. H
 
    Before presenting the summary, re-read all user messages in the conversation and verify:
 
-   - Every issue mentioned has a context file
-   - Every question asked is addressed or documented
-   - Every observation/complaint has been captured
-   - Create a numbered checklist showing each user-reported item and its corresponding context file
+   - Every **unresolved** issue has a context file
+   - Questions answered this session are marked as RESOLVED (no context file needed)
+   - Create a numbered checklist distinguishing:
+     - ✅ RESOLVED this session (no context file)
+     - 📁 PENDING for next session (has context file)
 
 6. **Present final summary** showing what was saved:
 
@@ -126,6 +140,37 @@ Save current work context so a future session can continue where you left off. H
 [Additional context helpful for fixing this specific issue]
 ```
 
+### Resolved File Template (for preserving knowledge):
+
+```markdown
+# Resolved: [Short Description]
+
+**Created**: [timestamp]
+**Status**: RESOLVED
+**Resolved By**: [investigation/decision/fix applied this session]
+
+## Question/Concern
+
+> "[Original user question or concern]"
+
+## Investigation
+
+[What was checked/analyzed]
+
+## Resolution
+
+[What was found/decided/answered]
+
+## Key Findings
+
+- [Important fact discovered]
+- [Decision made and rationale]
+
+## Relevant Files
+
+- `path/to/file.ex` - [relevance]
+```
+
 ### Summary File Template (optional):
 
 ```markdown
@@ -180,13 +225,13 @@ See individual issue files:
 - `./codegen/context/PENDING-issue-{timestamp}-{issue-2}.md` - ⚠️ [description]
 - `./codegen/context/PENDING-{topic}-{timestamp}.md` (summary, if created)
 
-✅ **Verification Checklist** (user-reported → context file):
-| # | User Reported | Context File | Status |
-|---|---------------|--------------|--------|
-| 1 | [issue/question] | `PENDING-issue-...` | ✅ |
-| 2 | [issue/question] | `PENDING-issue-...` | ✅ |
+✅ **Verification Checklist**:
+| # | User Reported | Resolution | Status |
+|---|---------------|------------|--------|
+| 1 | [question/concern] | `RESOLVED-...` (knowledge preserved) | ✅ RESOLVED |
+| 2 | [actual remaining work] | `PENDING-issue-...` | 📁 PENDING |
 
-**Total: X items reported, X documented, 0 skipped**
+**Total: X items, Y resolved (in RESOLVED- files), Z pending (in PENDING- files)**
 
 🔄 **Ready to close session - run `ocg resume` to continue**
 ```
