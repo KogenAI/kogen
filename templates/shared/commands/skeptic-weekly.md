@@ -2,7 +2,7 @@
 description: Generate weekly Substack digest from latest podcast episodes
 ---
 
-Generate a comprehensive weekly roundup article for Skeptic.bot's Substack, summarizing the latest podcast episodes added to the database in the past 7 days.
+Generate a comprehensive weekly roundup article for Skeptic.bot's Substack, summarizing the latest podcast episodes added to the database in the past 7 days. Then generate Reddit posts when the user provides the Substack link.
 
 ## Arguments
 
@@ -14,7 +14,14 @@ This command requires a path to a PostgreSQL database dump file:
 
 Example: `/skeptic-weekly /Users/almirsarajcic/skeptic_bot_20251219.dump`
 
-## Process
+## Two-Phase Process
+
+**PHASE 1:** Generate Substack article (Steps 1-8)
+**PHASE 2:** When user replies with Substack URL, generate Reddit posts (Step 9)
+
+---
+
+# PHASE 1: Substack Article
 
 **STEP 1: Restore Database Dump**
 
@@ -283,3 +290,139 @@ Construct URLs based on the podcast name and external_id:
 - No speculation beyond what's in the episode summaries
 - All links must be tested and confirmed working before inclusion
 - Keep total article length reasonable (aim for 1500-2500 words)
+
+---
+
+# PHASE 2: Reddit Posts
+
+**STEP 9: Generate Reddit Posts (triggered when user provides Substack URL)**
+
+When the user replies with their Substack URL (e.g., `https://skepticbot.substack.com/p/skepticbot-weekly-december-12-19`), generate a markdown file with Reddit posts.
+
+**IMPORTANT Reddit Guidelines:**
+
+1. **No links in post body** - Reddit filters new accounts posting external links. Put content only in the body.
+2. **Link goes in comments** - After posting, add the Substack link as a comment.
+3. **Space posts out** - One subreddit per day maximum to avoid spam detection.
+4. **r/conspiracy requires account age** - Use r/conspiracy_commons for new accounts.
+
+**Generate file:** `reddit_posts_YYYYMMDD.md` with this structure:
+
+```markdown
+# Reddit Posts for Skeptic.bot Weekly ([Date Range])
+
+Substack URL: [USER_PROVIDED_URL]
+
+---
+
+## r/conspiracy_commons (TEXT)
+
+Note: r/conspiracy requires account age of a few months. Use r/conspiracy_commons for new accounts.
+
+**Click to submit:**
+[URL-encoded link: https://www.reddit.com/r/conspiracy_commons/submit/?type=TEXT&title=...]
+
+**Body:**
+[Post content WITHOUT any links - save link for comments]
+
+**Comment to add after posting:**
+Full breakdown with working links: [SUBSTACK_URL]
+
+---
+
+## r/HighStrangeness (TEXT)
+
+**Flair:** Podcast
+
+**Click to submit:**
+[URL-encoded link]
+
+**Body:**
+[Content focused on one specific episode/topic that fits the sub]
+
+**Comment to add after posting:**
+[SUBSTACK_URL]
+
+---
+
+## r/conspiracytheories (TEXT)
+
+**Click to submit:**
+[URL-encoded link]
+
+**Body:**
+[Content framed as a question to encourage discussion]
+
+**Comment to add after posting:**
+[SUBSTACK_URL]
+
+---
+
+## r/podcasts (TEXT - not LINK to avoid filters)
+
+**Flair:** News & Current Affairs
+
+**Click to submit:**
+[URL-encoded link]
+
+**Body:**
+[Brief podcast roundup description, no links]
+
+**Comment to add after posting:**
+[SUBSTACK_URL]
+
+---
+
+## r/TinFoilHatPod (TEXT) - if TFH episodes exist
+
+**Click to submit:**
+[URL-encoded link with episode numbers in title, ordered correctly]
+
+**Body:**
+[Episode summaries in chronological order by episode number]
+
+**Comment to add after posting:**
+[SUBSTACK_URL]
+
+---
+
+## Posting Schedule
+
+| Day   | Subreddit            | Flair                  |
+| ----- | -------------------- | ---------------------- |
+| Day 1 | r/conspiracy_commons | -                      |
+| Day 2 | r/HighStrangeness    | Podcast                |
+| Day 3 | r/conspiracytheories | -                      |
+| Day 4 | r/podcasts           | News & Current Affairs |
+| Day 5 | r/TinFoilHatPod      | -                      |
+
+**Instructions:**
+
+1. Click the submit URL
+2. Paste the body text
+3. Select flair if required
+4. Post
+5. Immediately add a comment with the Substack link
+```
+
+**Post Content Guidelines:**
+
+- Each post should be tailored to the subreddit's focus
+- r/conspiracy_commons: General weekly overview
+- r/HighStrangeness: Focus on paranormal/strange content (use "Podcast" flair)
+- r/conspiracytheories: Frame as question to encourage discussion
+- r/podcasts: Focus on podcast discovery angle
+- r/TinFoilHatPod: Episode-specific summaries in order
+
+**URL Encoding:**
+
+Use proper URL encoding for the submit links:
+
+- Space: `%20`
+- Colon: `%3A`
+- Slash: `%2F`
+- Hash: `%23`
+- Comma: `%2C`
+- Apostrophe: `%27`
+- Quote: `%22`
+- Parentheses: `%28` and `%29`
