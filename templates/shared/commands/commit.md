@@ -16,6 +16,7 @@ Analyze the current git changes and suggest ONE perfect commit message following
    - Keep under 50 characters
    - Start with a verb (Add, Fix, Update, Remove, Refactor, Prevent, Enable, etc.)
    - Prioritize user/business impact over technical implementation
+   - **Economy of words** - Remove filler words, prefer shorter synonyms, cut redundancy
 
 7. **Consider alternative phrasings** - If your first message uses vague terms like "globally", "system-wide", "overall", use more specific alternatives
 8. **Suggest ONE perfect message** - The most accurate description of why this change was made
@@ -37,3 +38,9 @@ Examples of SPECIFIC vs VAGUE scope:
 - "Fix login errors for Safari users" (not "Fix authentication issues system-wide")
 - "Enable dark mode for mobile app" (not "Add theme support globally")
 - "Prevent memory leaks in data sync" (not "Optimize performance across system")
+
+Examples of ECONOMY OF WORDS:
+
+- "Enable job contract negotiation" (not "Enable contract negotiation for job offers")
+- "Add user avatar uploads" (not "Add the ability to upload user avatars")
+- "Fix cart total calculation" (not "Fix the calculation of the shopping cart total")

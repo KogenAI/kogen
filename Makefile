@@ -116,6 +116,10 @@ extract-figma-components:
 	$(call check_ocg_only,extract-figma-components)
 	@cd "$(ORIGINAL_WORKING_DIR)" && "$(SCRIPT_DIR)/extract_figma_components.sh" $(filter-out $@,$(MAKECMDGOALS))
 
+query-figma-spec:
+	$(call check_ocg_only,query-figma-spec)
+	@cd "$(ORIGINAL_WORKING_DIR)" && "$(SCRIPT_DIR)/query_figma_spec.sh" $(filter-out $@,$(MAKECMDGOALS))
+
 clean-servers:
 	$(call check_ocg_only,clean-servers)
 	@cd "$(ORIGINAL_WORKING_DIR)"; \

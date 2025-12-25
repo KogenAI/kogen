@@ -136,10 +136,17 @@ while IFS='|' read -r NODE_ID SCREEN_NAME DESC; do
     echo "📋 Extracting: $SCREEN_NAME"
     echo "   Node ID: $NODE_ID"
 
-    # Call Figma API with depth=3 to get detailed hierarchy
+    # Call Figma API - NO depth limit to get ALL nested content (TEXT nodes, etc.)
+    # Use FIGMA_DEPTH env var to override if needed (e.g., FIGMA_DEPTH=3 for smaller files)
     # NO geometry parameter = no vector paths (saves space)
+    DEPTH_PARAM=""
+    if [ -n "$FIGMA_DEPTH" ]; then
+        DEPTH_PARAM="&depth=$FIGMA_DEPTH"
+        echo "   Using depth=$FIGMA_DEPTH (from FIGMA_DEPTH env var)"
+    fi
+
     RESPONSE=$(curl -s -X GET \
-        "https://api.figma.com/v1/files/$FIGMA_FILE_KEY/nodes?ids=$NODE_ID&depth=3" \
+        "https://api.figma.com/v1/files/$FIGMA_FILE_KEY/nodes?ids=$NODE_ID$DEPTH_PARAM" \
         -H "X-Figma-Token: $FIGMA_API_TOKEN")
 
     # Check for errors

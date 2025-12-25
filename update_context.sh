@@ -109,13 +109,14 @@ CONTEXT_UPDATE_PROMPT="$CONTEXT_UPDATE_PROMPT
 - \`./codegen/PROJECT_CONTEXT.md\` - The project context to update
 - \`./codegen/FIGMA_MAP.md\` - Figma node ID to component mappings (if it exists and is relevant)
 - \`./codegen/FIGMA_DESIGN_SYSTEM_RULES.md\` - Figma design system rules (if it exists and is relevant)
-- \`./codegen/FIGMA_TOKEN_MAPPING.md\` - Figma token mappings (if it exists and is relevant)"
+- \`./codegen/FIGMA_TOKEN_MAPPING.md\` - Figma token mappings (if it exists and is relevant)
+- \`~/Areas/Optimum/context/rules/subagents/\` - Check existing rules that could be enhanced with learnings from this feature"
 
 if [ "$CONTEXT_EXISTS" = true ]; then
     if [ -d "$CONTEXT_FOLDER" ]; then
         CONTEXT_UPDATE_PROMPT="$CONTEXT_UPDATE_PROMPT
 - \`codegen/contexts/$FEATURE_NAME/CONTEXT.md\` - Archived main feature context
-- \`codegen/contexts/$FEATURE_NAME/context/\` - Archived step context files (if any)
+- \`codegen/contexts/$FEATURE_NAME/context/\` - **CRITICAL: Check ALL RESOLVED-*.md files** (may contain 20+ detailed issue resolutions with exact specifications)
 - \`codegen/contexts/$FEATURE_NAME/FIGMA_*.md\` - Archived modified Figma files (if any)"
     else
         CONTEXT_UPDATE_PROMPT="$CONTEXT_UPDATE_PROMPT
@@ -128,13 +129,19 @@ CONTEXT_UPDATE_PROMPT="$CONTEXT_UPDATE_PROMPT
 
 This updated context will help future AI sessions understand both the existing project structure and the patterns established by this completed feature.
 
+**IMPORTANT: Don't just skim! Many features have extensive documentation:**
+- Main CONTEXT.md may reference 10+ screens compared, OCG commands used, systematic workflows
+- context/ subdirectory may have 20-30 RESOLVED files with detailed learnings
+- RESOLVED files document: Figma comparisons, seeds patterns, exact styling specs, workflow automation
+- Look for: screenshot scripts, seed automation, comparison tables, command infrastructure mentions
+
 **Start by reviewing the current PROJECT_CONTEXT.md"
 
 if [ "$CONTEXT_EXISTS" = true ]; then
-    CONTEXT_UPDATE_PROMPT="$CONTEXT_UPDATE_PROMPT, then CAREFULLY REVIEW the archived feature context in \`codegen/contexts/$FEATURE_NAME.md\` (this contains the actual implementation details)"
+    CONTEXT_UPDATE_PROMPT="$CONTEXT_UPDATE_PROMPT, then CAREFULLY REVIEW the archived feature context in \`codegen/contexts/$FEATURE_NAME/\` **INCLUDING ALL FILES IN THE context/ SUBDIRECTORY** (this contains the actual implementation details, command usage, and learnings)"
 fi
 
-CONTEXT_UPDATE_PROMPT="$CONTEXT_UPDATE_PROMPT, and also check the original feature plan. Then update the main PROJECT_CONTEXT.md with the learnings from this feature development.**"
+CONTEXT_UPDATE_PROMPT="$CONTEXT_UPDATE_PROMPT, and also review the original feature plan. Then update the main PROJECT_CONTEXT.md with the learnings from this feature development.**"
 
 # Add the Integration Example and Recipe Extraction content
 CONTEXT_UPDATE_PROMPT="$CONTEXT_UPDATE_PROMPT

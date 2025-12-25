@@ -78,6 +78,12 @@ if [ -f "$WORKSPACE_PATH/codegen/CONTEXT.md" ]; then
     fi
 
     echo "📦 Context folder archived to: codegen/contexts/${FEATURE_NAME}/"
+
+    # Remind user to integrate learnings
+    echo ""
+    echo "⚠️  IMPORTANT: Don't forget to integrate learnings from this feature!"
+    echo "   Run: ocg update-context ${FEATURE_NAME}"
+    echo "   This will update PROJECT_CONTEXT.md, rules, and create recipes"
 fi
 
 # Deallocate global resources for this workspace

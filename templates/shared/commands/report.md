@@ -31,7 +31,26 @@ Save current work context so a future session can continue where you left off. H
 
 2. **Read CONTEXT.md** to understand current state
 
-3. **Create context files IMMEDIATELY** in `./codegen/context/`:
+3. **🚨 CHECK FOR EXISTING PENDING FILES FIRST**:
+
+   ```bash
+   ls ./codegen/context/PENDING-* 2>/dev/null
+   ```
+
+   **If relevant PENDING files exist for the same topic/feature:**
+
+   - **UPDATE the existing file** instead of creating a new one
+   - Add new findings to existing sections
+   - Update remaining work checklist
+   - Add "Updated: [timestamp]" to the file header
+
+   **Only create NEW files when:**
+
+   - No existing PENDING file covers this topic
+   - The issue is completely separate from existing pending work
+   - You need to split a large file into smaller, focused issues
+
+4. **Create/Update context files** in `./codegen/context/`:
 
    - **IMPORTANT**: If multiple distinct issues found, create **separate files** for each issue
    - **Individual issue files**: `PENDING-issue-{timestamp}-{short-description}.md`
@@ -47,14 +66,14 @@ Save current work context so a future session can continue where you left off. H
 
    Create RESOLVED files to preserve knowledge from investigations/decisions made this session. Future sessions can reference them but won't try to work on them.
 
-4. **Update CONTEXT.md** with relevant sections:
+5. **Update CONTEXT.md** with relevant sections:
 
    - Add ALL issues to **CURRENT ISSUES** or **BLOCKING ISSUES**
    - **ALL items must be worked on** - don't suggest some are "for later" or "low priority can wait"
    - Add decisions to **DECISIONS** section (create if needed)
    - Update **PROGRESS** or **STATUS** sections
 
-5. **VERIFY: Cross-check against conversation**:
+6. **VERIFY: Cross-check against conversation**:
 
    Before presenting the summary, re-read all user messages in the conversation and verify:
 
@@ -64,7 +83,7 @@ Save current work context so a future session can continue where you left off. H
      - ✅ RESOLVED this session (no context file)
      - 📁 PENDING for next session (has context file)
 
-6. **Present final summary** showing what was saved:
+7. **Present final summary** showing what was saved:
 
    ```
    ✅ Context saved for handoff:
@@ -72,8 +91,8 @@ Save current work context so a future session can continue where you left off. H
    📋 **CONTEXT.md Updated**:
    - [what was added/updated]
 
-   📁 **Context Files Created**:
-   - `./codegen/context/PENDING-issue-...` - 🔥 [description]
+   📁 **Context Files Created/Updated**:
+   - `./codegen/context/PENDING-issue-...` - 🔥 [description] (CREATED|UPDATED)
 
    🔄 **Ready to close session - run `ocg resume` to continue**
 
@@ -140,6 +159,118 @@ Save current work context so a future session can continue where you left off. H
 [Additional context helpful for fixing this specific issue]
 ```
 
+### UI Issue File Template (for styling/visual issues):
+
+**🚨 CRITICAL**: UI issues MUST include exact Tailwind specifications, not vague descriptions.
+
+````markdown
+# Issue: [UI Element] Styling Mismatch
+
+**Created**: [timestamp]
+**Status**: PENDING
+**Priority**: 🔥 CRITICAL | ⚠️ HIGH | ⚠️ MEDIUM | ℹ️ LOW
+**Scope**: ui-specialist | feature-developer
+
+## Summary
+
+[1-2 sentence description]
+
+## User Report
+
+> "[Exact quote from user]"
+
+## Exact Tailwind Specifications
+
+### Issue 1: [Element Name]
+
+**Current (Wrong):**
+
+- [What it currently looks like with current classes if known]
+
+**Figma (Correct):**
+
+- [Visual description]
+
+**Exact Tailwind classes:**
+
+```html
+<element class="[exact classes to use]"> Content </element>
+```
+````
+
+**Key classes:**
+
+- `class-name` - what it does (e.g., "12px padding")
+- `class-name` - what it does
+
+### Issue 2: [Next Element]
+
+[Same format...]
+
+## Implementation Checklist
+
+- [ ] Change [specific element] from `old-class` to `new-class`
+- [ ] Add [specific classes] to [element]
+- [ ] Remove `class` from [element]
+
+## Relevant Files
+
+- `path/to/template.html.heex` - [which component/section]
+
+## Testing After Fix
+
+1. Check mobile (375px) - [what to verify]
+2. Check desktop (1280px) - [what to verify]
+
+````
+
+### ❌ BAD UI Issue Documentation (Too Vague):
+
+```markdown
+## Issues:
+- Status color is wrong
+- Needs more padding
+- Font should be lighter
+- Make it look like the design
+````
+
+### ✅ GOOD UI Issue Documentation (Exact Specs):
+
+````markdown
+## Exact Tailwind Specifications
+
+### Issue 1: Status Badge - Wrong Color
+
+**Current:** `text-orange-500` (orange text, no background)
+**Figma:** Purple pill with light background
+
+**Exact Tailwind classes:**
+
+```html
+<span
+  class="px-3 py-1 rounded-full text-sm font-normal text-violet-600 bg-violet-50"
+>
+  Sent
+</span>
+```
+````
+
+**Key classes:**
+
+- `px-3 py-1` - 12px horizontal, 4px vertical padding
+- `rounded-full` - pill shape
+- `text-violet-600` - #7b4eab purple text
+- `bg-violet-50` - #f2edf7 light purple background
+- `font-normal` - weight 400 (remove existing bold)
+
+## Implementation Checklist
+
+- [ ] Change status from `text-orange-500` to `text-violet-600 bg-violet-50`
+- [ ] Add `px-3 py-1 rounded-full` for pill shape
+- [ ] Change `font-bold` to `font-normal`
+
+````
+
 ### Resolved File Template (for preserving knowledge):
 
 ```markdown
@@ -169,7 +300,7 @@ Save current work context so a future session can continue where you left off. H
 ## Relevant Files
 
 - `path/to/file.ex` - [relevance]
-```
+````
 
 ### Summary File Template (optional):
 
@@ -241,6 +372,7 @@ See individual issue files:
 - Make code changes
 - Implement fixes
 - Modify source files
+- **Delete existing context files** - NEVER remove RESOLVED or PENDING files. They contain valuable knowledge. If a PENDING issue is now resolved, rename it to RESOLVED or create a new RESOLVED file - don't delete.
 - **Invent solutions yourself** - Don't make up solutions like "use PubSub" or "wrap in form tag". You are an orchestrator, not a specialist.
 - **Hallucinate or assume details** - If you don't know something (e.g., which platform an error came from), ASK or note uncertainty. Don't guess "browser console" when it might be Flutter logs. Wrong information will mislead agents trying to fix the issue.
 
