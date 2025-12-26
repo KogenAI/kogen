@@ -40,23 +40,41 @@ Verify data was restored:
 psql -U postgres -d skeptic_weekly_temp -c "SELECT COUNT(*) FROM podcast_episodes;"
 ```
 
-**STEP 2: Get Current Date and Query Episodes**
+**STEP 2: Determine Date Range Based on Previous Weekly**
 
-Get the current date and determine the week's date range:
-
-```bash
-date
-```
-
-Then query episodes from the last 7 days. Use the MAX(inserted_at) from the dump as the reference date:
+The date range should continue from where the last weekly ended. Check existing weekly files to find the previous week's end date:
 
 ```bash
-psql -U postgres -d skeptic_weekly_temp -c "SELECT MAX(inserted_at) FROM podcast_episodes;"
+# List existing weekly files to find the last one
+ls -la skeptic_weekly_*.md | tail -5
 ```
 
-Then query all episodes from the 7 days before that date:
+Then determine the start date for this week:
+
+- If the previous weekly was "December 12-19", this week should be "December 19-26"
+- The start date of the new weekly = end date of the previous weekly
+
+Get the MAX(inserted_at) from the dump to determine the end date:
+
+```bash
+psql -U postgres -d skeptic_weekly_temp -c "SELECT MAX(inserted_at)::date as dump_date FROM podcast_episodes;"
+```
+
+**IMPORTANT:** The date range should be calculated as:
+
+- **End date:** The dump date (MAX(inserted_at)::date) or current date, whichever makes sense
+- **Start date:** End date minus 7 days, BUT adjusted to be the day AFTER the previous weekly's end date
+
+For example, if:
+
+- Previous weekly ended on Dec 19
+- Dump date is Dec 26
+- This weekly should cover Dec 19-26 (starting from the 19th to include episodes from that day forward)
+
+Query episodes using the correct start date:
 
 ```sql
+-- Replace START_DATE with the actual start date (e.g., '2025-12-19')
 WITH recent_episodes AS (
   SELECT DISTINCT ON (p.id, pe.title)
     p.name as podcast_name,
@@ -67,7 +85,7 @@ WITH recent_episodes AS (
     pe.inserted_at
   FROM podcast_episodes pe
   JOIN podcasts p ON pe.podcast_id = p.id
-  WHERE pe.inserted_at >= (SELECT MAX(inserted_at) FROM podcast_episodes)::date - INTERVAL '7 days'
+  WHERE pe.inserted_at::date >= 'START_DATE'
   ORDER BY p.id, pe.title, pe.inserted_at DESC
 )
 SELECT
@@ -79,6 +97,12 @@ SELECT
   inserted_at::date as episode_date
 FROM recent_episodes
 ORDER BY inserted_at, podcast_name;
+```
+
+**Alternative:** If no previous weekly exists, use the 7-day window from dump date:
+
+```sql
+WHERE pe.inserted_at >= (SELECT MAX(inserted_at) FROM podcast_episodes)::date - INTERVAL '7 days'
 ```
 
 **STEP 3: Detect and Exclude Backfilled Episodes**
