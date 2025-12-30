@@ -58,13 +58,32 @@ CONTEXT_UPDATE_PROMPT="# Project Context Update for Feature: $FEATURE_NAME
 
 I need you to integrate the archived feature context from \`./codegen/contexts/$FEATURE_NAME.md\` into the main \`./codegen/PROJECT_CONTEXT.md\` file to incorporate learnings from this completed feature implementation.
 
+## 🚨 MANDATORY: Proactive Discovery Report (DO THIS FIRST)
+
+**BEFORE integrating into PROJECT_CONTEXT.md, you MUST analyze the archived feature context and report:**
+
+1. **Rule Enhancements Found**: \"Found N patterns that enhance existing rules:\"
+   - List each rule file to update (e.g., ui-implementation.md, phoenix.md, i18n.md)
+   - Briefly describe what pattern will be added
+
+2. **New Rules Needed** (rare): \"Found N patterns requiring new rules:\"
+   - Only if truly foundational knowledge not fitting existing rules
+   - Provide justification for why enhancement won't work
+
+3. **Recipes Identified**: \"Found N reusable recipes:\"
+   - List each recipe title and problem it solves
+
+4. **Or explicitly state**: \"No rule enhancements or recipes identified\"
+
+**Do NOT proceed to integration without this report. User needs to see findings upfront.**
+
 ## Size Awareness
 
 PROJECT_CONTEXT.md should remain concise (150-250 lines). Do NOT add a feature section - instead integrate learnings directly into relevant existing sections.
 
 ## Your Task
 
-Please review the archived feature context and integrate its learnings into \`./codegen/PROJECT_CONTEXT.md\` with:
+After providing the discovery report above, review the archived feature context and integrate its learnings into \`./codegen/PROJECT_CONTEXT.md\` with:
 
 1. **New modules/contexts** that were created for this feature
 2. **Modified existing modules** that were affected during development
