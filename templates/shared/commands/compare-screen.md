@@ -42,24 +42,51 @@ Look for: `./codegen/design-system/features/{feature}/screenshot-scripts/screen-
 
 - Create it based on the Figma analysis (see Script Structure below)
 
-### 5. Check for existing seed script
+### 5. Find the seed by matching screenshot prefix
 
-Look for: `./codegen/design-system/features/{feature}/seeds/screen-{N}.exs`
+**Convention**: Seed filename matches screenshot prefix. Just look at the screenshot name and find the matching seed.
+
+```
+Screenshot                           →  Seed
+─────────────────────────────────────────────────────────
+message-*.png                        →  message.exs
+s5---jobs-*.png                      →  s5-jobs.exs
+s7---review-matched-*.png            →  s7-review-matched-candidates.exs
+organization-hire-*.png              →  organization-hire-contract.exs
+job-seeker-account-settings-*.png    →  job-seeker-account-settings.exs
+```
+
+**For empty states**, append `-empty` to the seed name:
+
+```
+s7---review-matched-* (empty)        →  s7-review-matched-empty.exs
+s5---jobs-* (saved tab empty)        →  s5-jobs-saved-empty.exs
+```
+
+**Check INDEX.md for full mapping and login credentials:**
+
+```bash
+cat ./codegen/design-system/features/{feature}/seeds/INDEX.md
+```
 
 **If seed exists:**
 
-- Read it and verify it creates data matching Figma
+- Verify it creates data matching Figma
 - **CRITICAL: Verify `locale: :en` is set on all users** (Figma designs are in English)
-- If outdated or missing locale, update it
 
-**If no seed:**
+**If no seed for your screenshot:**
 
-- Create it based on the Figma analysis (see Seed Structure below)
+- Create it with name matching screenshot prefix
+- Add to INDEX.md
 
 ### 6. Run the seed script
 
 ```bash
-mix run ./codegen/design-system/features/{feature}/seeds/screen-{N}.exs
+# Seed name matches screenshot prefix
+mix run ./codegen/design-system/features/{feature}/seeds/{screenshot-prefix}.exs
+
+# Example: For "s7---review-matched-candidtes-mobile-1-*.png"
+mix run ./codegen/design-system/features/{feature}/seeds/s7-review-matched-candidates.exs
 ```
 
 ### 7. Run the screenshot script

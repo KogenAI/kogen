@@ -33,9 +33,18 @@ Save current work context so a future session can continue where you left off. H
 
 3. **🚨 CHECK FOR EXISTING PENDING FILES FIRST**:
 
+   **CRITICAL: Always use RELATIVE paths for context files!**
+
    ```bash
+   # ✅ CORRECT - relative path (works in any workspace)
    ls ./codegen/context/PENDING-* 2>/dev/null
+
+   # ❌ WRONG - absolute path (writes to wrong location!)
+   # /Users/.../bemeda_personal/codegen/context/PENDING-*
    ```
+
+   **Why:** Workspaces are git worktrees with their OWN `./codegen/context/` directory.
+   Using absolute paths writes to the MAIN project, making files INVISIBLE to the orchestrator.
 
    **If relevant PENDING files exist for the same topic/feature:**
 

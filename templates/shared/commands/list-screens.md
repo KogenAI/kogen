@@ -78,16 +78,37 @@ Each todo should have:
 - `status`: "pending"
 - `activeForm`: "Comparing {User Type} {Screen Name} {Viewport}"
 
-### 5. Check script status
+### 5. Show seed mapping convention
 
-For each screen, check if scripts exist and report status:
+**Convention**: Seed filename matches screenshot prefix for easy lookup.
+
+```
+Screenshot                           →  Seed
+─────────────────────────────────────────────────────────
+message-*.png                        →  message.exs
+s5---jobs-*.png                      →  s5-jobs.exs
+s7---review-matched-*.png            →  s7-review-matched-candidates.exs
+organization-hire-*.png              →  organization-hire-contract.exs
+job-seeker-account-settings-*.png    →  job-seeker-account-settings.exs
+*-empty-*.png (or empty state)       →  {prefix}-empty.exs
+```
+
+**Check INDEX.md for full mapping and login credentials:**
 
 ```bash
-ls ./codegen/design-system/features/{feature}/seeds/screen-*.exs 2>/dev/null
+cat ./codegen/design-system/features/{feature}/seeds/INDEX.md
+```
+
+### 6. Check script status
+
+List available seeds and screenshot scripts:
+
+```bash
+ls ./codegen/design-system/features/{feature}/seeds/*.exs 2>/dev/null
 ls ./codegen/design-system/features/{feature}/screenshot-scripts/screen-*.js 2>/dev/null
 ```
 
-### 6. Output summary
+### 7. Output summary
 
 ```
 ## Screens Ready for Comparison
