@@ -286,9 +286,26 @@ ocg usage-rules
 
 **See `shared/session-management.md` for work context file management.**
 
+**🚨 CRITICAL: ALWAYS use RELATIVE paths for context files!**
+
+```bash
+# ✅ CORRECT - relative paths (works in any workspace)
+./codegen/context/PENDING-*.md
+./codegen/context/RESOLVED-*.md
+
+# ❌ WRONG - absolute paths (writes to wrong location!)
+/Users/.../bemeda_personal/codegen/context/PENDING-*.md
+```
+
+**Why this matters:**
+
+- Workspaces are git worktrees with their OWN `./codegen/context/` directory
+- Using absolute paths writes to the MAIN project, not the workspace
+- Files in the wrong location are INVISIBLE to other agents
+
 **Quick reference**:
 
-- Location: `./codegen/context/`
+- Location: `./codegen/context/` (RELATIVE PATH!)
 - Prefixes: `PENDING-*`, `ACTIVE-*`, `RESOLVED-*`
 - Check at session start: `ls ./codegen/context/PENDING-* 2>/dev/null`
 
