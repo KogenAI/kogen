@@ -19,14 +19,15 @@ Generate 5-10 topic suggestions by:
 - Focusing on problems with clear, testable code solutions
 
 **EXECUTION CHECKLIST:**
-□ 1. Request Plausible analytics screenshot (MANDATORY FIRST STEP)
-□ 2. Read ALL coding rules from `./codegen/rules/` directory
-□ 3. Query database for existing drops comprehensively  
-□ 4. Analyze recipes for adaptable patterns
-□ 5. Generate suggestions avoiding ALL redundancy
-□ 6. User selects topic → create content using proper Elixir style
-□ 7. **MANDATORY: Validate all code blocks using `mcp__tidewave__project_eval`**
-□ 8. Test code examples → save markdown file
+□ 1. Plausible analytics screenshot (if user provided it with command, proceed; otherwise request it)
+□ 2. **VERIFY Tidewave MCP is available** - Call `mcp__tidewave__project_eval` with simple code like `1 + 1`. If unavailable, STOP and inform user.
+□ 3. Read ALL coding rules from `./codegen/rules/` directory
+□ 4. Query database for existing drops comprehensively
+□ 5. Analyze recipes for adaptable patterns (check `./drops/` subdirectory for drafts too)
+□ 6. Generate suggestions avoiding ALL redundancy
+□ 7. User selects topic → create content using proper Elixir style
+□ 8. **MANDATORY: Validate all code blocks using `mcp__tidewave__project_eval`**
+□ 9. Test code examples → save markdown file to `./drops/` directory
 
 **Content Discovery Steps (Using index.md):**
 
@@ -45,7 +46,7 @@ Generate 5-10 topic suggestions by:
 3. **Create a duplication avoidance list**: Before generating ANY suggestions, write out the complete list of topics to avoid:
 
    - Existing published drops (from index.md)
-   - Draft drops in current directory (check `ls *.md`)
+   - Draft drops in `./drops/` directory (check `ls ./drops/*.md`)
    - Semantic variations (e.g., "Ecto.StaleEntryError" = "optimistic locking" = "race conditions in updates")
 
 4. **Search for similar topics with semantic understanding:**
@@ -279,10 +280,9 @@ Optional: Links to docs, related patterns, or further reading
 5. **Quality Assurance** - Test and refine:
 
    - **🚨 MANDATORY: Format ALL code blocks with `mix format`** (see step 6 for workflow)
-   - **🚨 MANDATORY: Validate code compiles** - Test each code block individually
-   - If Tidewave MCP is not available, skip MCP validation but MUST still format code
+   - **🚨 MANDATORY: Validate code compiles using `mcp__tidewave__project_eval`** - Test each code block individually. If Tidewave is unavailable, STOP and inform user.
    - Verify type definitions, function signatures, and syntax are valid
-   - Check that the title is SHORT (30-50 characters max)
+   - Check that the title is SHORT (30-57 characters)
    - Verify the solution is the simplest that works
    - Ensure the explanation adds context without being verbose
    - **Verify all API/function calls against actual documentation**:
@@ -306,13 +306,48 @@ Optional: Links to docs, related patterns, or further reading
    # 1. Create temporary .exs file with the code
    echo 'def your_function...' > temp_format.exs
 
-   # 2. Format with mix
+   # 2. Format with mix (use --check-formatted to avoid interactive prompts)
    mix format temp_format.exs
 
    # 3. Copy formatted code back to markdown
    # 4. Delete temporary file
    rm temp_format.exs
    ```
+
+   **⚠️ WARNING**: Running `mix format` in a fresh environment may prompt for Hex installation and hang.
+   If this happens, run `mix local.hex --force` first.
+
+   **Note**: `mix format` and Tidewave serve different purposes:
+
+   - `mix format` - Reformats code (indentation, spacing, line breaks)
+   - `mcp__tidewave__project_eval` - Validates code compiles and runs correctly
+
+   Both are required for quality drops.
+
+   **⚠️ Compile-time macros limitation**: Some code can't be tested in Tidewave's eval context:
+
+   - `~p` sigil (Phoenix verified routes) - requires compile-time module attributes
+   - `~H` sigil (HEEx templates) - same limitation
+
+   For these, create a test `.exs` file and run with `mix run`:
+
+   ```elixir
+   # test_drop_sigil.exs
+   defmodule TestRoutes do
+     use Phoenix.VerifiedRoutes,
+       endpoint: MyAppWeb.Endpoint,
+       router: MyAppWeb.Router
+
+     def test_params do
+       params = %{page: 1, sort: "name"}
+       ~p"/users?#{params}"
+     end
+   end
+
+   IO.puts(TestRoutes.test_params())
+   ```
+
+   Run: `mix run test_drop_sigil.exs`
 
    **Formatting Best Practices**:
 
@@ -333,7 +368,7 @@ Optional: Links to docs, related patterns, or further reading
 
 7. **Final Output** - Save as markdown file AND provide Twitter hook:
 
-   - Use Write tool to save the content as `[topic_name]_drop.md` in the project directory
+   - Use Write tool to save the content as `./drops/[topic_name]_drop.md`
    - Use proper markdown formatting (no code block wrapping)
    - This avoids terminal formatting issues and makes copy/paste clean
    - **MANDATORY: Provide a Twitter-ready hook** - See Twitter Hook Style Guide section above for requirements
