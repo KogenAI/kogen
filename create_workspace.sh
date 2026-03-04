@@ -120,7 +120,7 @@ PORT_TEST=$((NEXT_PORT + 100))
 
 if [ -f "$REPO_ROOT/.env" ]; then
     # Copy .env but remove workspace-specific keys that we'll set with new values
-    grep -v -E "^(PORT|PORT_TEST|MIX_DEV_PARTITION|MIX_TEST_PARTITION|API_URL)=" "$REPO_ROOT/.env" >"$WORKSPACE_PATH/.env"
+    grep -v -E "^(PORT|PORT_TEST|MIX_DEV_PARTITION|MIX_TEST_PARTITION|API_URL)=" "$REPO_ROOT/.env" >"$WORKSPACE_PATH/.env" || true
     echo "" >>"$WORKSPACE_PATH/.env"
 fi
 
