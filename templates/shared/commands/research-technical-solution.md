@@ -22,21 +22,18 @@ First, get the current year using `date +%Y` command to ensure searches include 
 Use TodoWrite to create and track research tasks, then execute systematic research:
 
 1. **Library/Tool Discovery**
-
    - Search for Phoenix/Elixir-specific solutions, including current and previous year in queries (e.g., "Phoenix audit log library 2024 2025")
    - Identify popular libraries and patterns
    - Check GitHub activity, maintenance status, last commits
    - Verify compatibility with current Elixir/Phoenix versions
 
 2. **Implementation Approaches**
-
    - Database-level solutions (triggers, functions)
    - Application-level patterns (contexts, behaviors)
    - Third-party services and integrations
    - Custom implementation strategies
 
 3. **Technical Evaluation**
-
    - Setup complexity and time estimates
    - Code changes required
    - Performance impact analysis

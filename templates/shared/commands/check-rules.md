@@ -44,12 +44,10 @@ From INDEX.md, find the section for this role (e.g., `### ui-specialist`) and ex
 **For planner**, check BOTH SESSION_CONTEXT.md AND INDEX.md:
 
 1. **From SESSION_CONTEXT.md** (what planner is told to load):
-
    - `./codegen/rules/planning.md` - Always required
    - Domain-specific rules (phoenix.md, flutter.md, ui-implementation.md, etc.) based on feature type
 
 2. **From INDEX.md** (cross-reference):
-
    - Check `## 🎯 STANDALONE RULES` section for `planning.md` entry
    - Verify all domain rules mentioned in SESSION_CONTEXT.md are listed in INDEX.md
    - Check if INDEX.md mentions planning-related rules not in SESSION_CONTEXT.md

@@ -7,14 +7,12 @@ Update the ./codegen/CONTEXT.md file with all learnings and insights from the cu
 Steps:
 
 1. **PRESERVE CRITICAL VERIFICATION INFORMATION** - Never lose:
-
    - Current step completion status (✅ COMPLETE / ⏳ IN PROGRESS)
    - Verification evidence section with CI results and test outcomes
    - Step context file references (step-XX-name.md)
    - Last verification timestamp
 
 2. **DISCOVER RELEVANT RULES & RECIPES** for next session:
-
    - Check `./codegen/rules/subagents/INDEX.md` for applicable rules based on:
      - Next step requirements (grep keywords from step plan)
      - Known issues or patterns encountered
@@ -37,7 +35,6 @@ Steps:
    ```
 
 8. **Keep focused** - Target ~50-100 lines by:
-
    - **PRESERVE step completion status and verification evidence**
    - **MOVE detailed implementation to step context files** (not main CONTEXT.md)
    - Keep only current focus, next steps, and session tracking in main file
@@ -46,7 +43,6 @@ Steps:
    - Maintain clear "what's verified vs what needs work" status
 
 9. **Ensure verification continuity**:
-
    - Current Stage section shows accurate step status
    - Verification Evidence section preserved
    - Next step clearly identified

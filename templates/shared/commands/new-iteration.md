@@ -47,7 +47,6 @@ git config user.name
 ### 2. Analyze Changes
 
 - **Count file types changed**:
-
   - Count `lib/spitex/*.ex` files → backend domain logic
   - Count `lib/spitex_web/*.ex` files → UI/LiveView
   - Count `test/*.exs` files → testing

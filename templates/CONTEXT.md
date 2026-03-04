@@ -129,7 +129,6 @@
 **Single-Level Subagent Delegation Workflow:**
 
 1. **Orchestrate step implementation** - main agent delegates directly to specialized subagents:
-
    - **feature-developer**: Phoenix/Elixir code implementation
    - **ui-specialist**: Figma design implementation and styling
    - **test-engineer**: Writes comprehensive tests including feature tests

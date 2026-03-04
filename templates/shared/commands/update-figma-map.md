@@ -7,14 +7,12 @@ Update the `codegen/FIGMA_MAP.md` file with new Figma design mappings for the pr
 ## Steps:
 
 1. **Gather Figma Information**:
-
    - Ask user for Figma URLs or node IDs for new screens
    - Use `ocg extract-figma-screenshots` to capture visual references
    - Use `ocg extract-figma-variables` to extract design tokens
    - Screenshots are saved to `./codegen/design-system/features/[feature]/screenshots/`
 
 2. **Identify the Feature/Flow**:
-
    - Determine which route/LiveView the screens belong to
    - Check if it's a new flow or updates to existing screens
    - Note responsive breakpoints (Mobile/Tablet/Desktop)
@@ -38,37 +36,31 @@ Update the `codegen/FIGMA_MAP.md` file with new Figma design mappings for the pr
    ```
 
 4. **Check for Reusable Components**:
-
    - Identify components that appear across multiple screens
    - Add to "Reusable Component Library" section if new
    - Update existing component references if modified
 
 5. **Document State Variations**:
-
    - For interactive components, document all states (hover, active, disabled)
    - Add to "Component State Mappings" section
    - Include exact Tailwind classes for each state
 
 6. **Identify Token Overrides**:
-
    - Note any screen-specific spacing, colors, or sizes
    - Add to "Design Token Overrides" section
    - Document why these differ from defaults
 
 7. **Extract Assets**:
-
    - List any new icons or illustrations needed
    - Document their intended location in `/priv/static/images/`
    - Note naming conventions to follow
 
 8. **Update Component Mappings**:
-
    - Map Figma components to existing Phoenix components
    - If no match exists, note that a new component is needed
    - Include the Phoenix module path
 
 9. **Add Implementation Notes**:
-
    - Any special considerations for implementation
    - Animations or transitions from Figma
    - Responsive behavior details

@@ -12,7 +12,6 @@ Save current work context so a future session can continue where you left off. H
 🚨 **IMPORTANT: Execute ALL steps in a SINGLE response - do NOT wait for user confirmation**
 
 1. **Analyze conversation EXHAUSTIVELY** to extract:
-
    - Design decisions made
    - Research findings / investigation results
    - Issues discovered (bugs, blockers)
@@ -22,7 +21,6 @@ Save current work context so a future session can continue where you left off. H
    - **User observations** (anything the user mentioned, even in passing)
 
    🚨 **DISTINGUISH: Resolved vs Remaining**:
-
    - **Questions answered this session** → Do NOT create context files (already resolved)
    - **Concerns addressed this session** → Do NOT create context files (already handled)
    - **Actual remaining work** → Create context files ONLY for these
@@ -47,20 +45,17 @@ Save current work context so a future session can continue where you left off. H
    Using absolute paths writes to the MAIN project, making files INVISIBLE to the orchestrator.
 
    **If relevant PENDING files exist for the same topic/feature:**
-
    - **UPDATE the existing file** instead of creating a new one
    - Add new findings to existing sections
    - Update remaining work checklist
    - Add "Updated: [timestamp]" to the file header
 
    **Only create NEW files when:**
-
    - No existing PENDING file covers this topic
    - The issue is completely separate from existing pending work
    - You need to split a large file into smaller, focused issues
 
 4. **Create/Update context files** in `./codegen/context/`:
-
    - **IMPORTANT**: If multiple distinct issues found, create **separate files** for each issue
    - **Individual issue files**: `PENDING-issue-{timestamp}-{short-description}.md`
    - **Summary file** (optional): `PENDING-{topic}-{timestamp}.md` for overview
@@ -69,14 +64,12 @@ Save current work context so a future session can continue where you left off. H
    - Structure for easy pickup by next session
 
    🚨 **RESOLVED vs PENDING file naming**:
-
    - **Unresolved work** → `PENDING-issue-{timestamp}-{description}.md`
    - **Resolved this session** → `RESOLVED-{timestamp}-{description}.md`
 
    Create RESOLVED files to preserve knowledge from investigations/decisions made this session. Future sessions can reference them but won't try to work on them.
 
 5. **Update CONTEXT.md** with relevant sections:
-
    - Add ALL issues to **CURRENT ISSUES** or **BLOCKING ISSUES**
    - **ALL items must be worked on** - don't suggest some are "for later" or "low priority can wait"
    - Add decisions to **DECISIONS** section (create if needed)
@@ -85,7 +78,6 @@ Save current work context so a future session can continue where you left off. H
 6. **VERIFY: Cross-check against conversation**:
 
    Before presenting the summary, re-read all user messages in the conversation and verify:
-
    - Every **unresolved** issue has a context file
    - Questions answered this session are marked as RESOLVED (no context file needed)
    - Create a numbered checklist distinguishing:

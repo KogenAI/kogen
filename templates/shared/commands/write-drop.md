@@ -44,13 +44,11 @@ Generate 5-10 topic suggestions by:
 2. **VERIFY you received ALL drops**: The response should contain 40+ drop titles. If you get less, you FAILED the fetch.
 
 3. **Create a duplication avoidance list**: Before generating ANY suggestions, write out the complete list of topics to avoid:
-
    - Existing published drops (from index.md)
    - Draft drops in `./drops/` directory (check `ls ./drops/*.md`)
    - Semantic variations (e.g., "Ecto.StaleEntryError" = "optimistic locking" = "race conditions in updates")
 
 4. **Search for similar topics with semantic understanding:**
-
    - Don't just match keywords - understand the core problem/solution
    - A drop about "Parameter validation" could overlap with "Safe URL params" or "Ecto changesets"
    - A drop about "String.to_atom" covers "atom exhaustion" AND "preventing atom attacks"
@@ -270,7 +268,6 @@ Optional: Links to docs, related patterns, or further reading
 ```
 
 4. **First Code Snippet Guidelines** - Make it screenshot-worthy:
-
    - Show the "before and after" or the key transformation
    - Use clear, readable variable names and formatting
    - Include just enough context to be self-explanatory
@@ -278,7 +275,6 @@ Optional: Links to docs, related patterns, or further reading
    - Focus on the "aha moment" that makes people want to learn more
 
 5. **Quality Assurance** - Test and refine:
-
    - **🚨 MANDATORY: Format ALL code blocks with `mix format`** (see step 6 for workflow)
    - **🚨 MANDATORY: Validate code compiles using `mcp__tidewave__project_eval`** - Test each code block individually. If Tidewave is unavailable, STOP and inform user.
    - Verify type definitions, function signatures, and syntax are valid
@@ -318,14 +314,12 @@ Optional: Links to docs, related patterns, or further reading
    If this happens, run `mix local.hex --force` first.
 
    **Note**: `mix format` and Tidewave serve different purposes:
-
    - `mix format` - Reformats code (indentation, spacing, line breaks)
    - `mcp__tidewave__project_eval` - Validates code compiles and runs correctly
 
    Both are required for quality drops.
 
    **⚠️ Compile-time macros limitation**: Some code can't be tested in Tidewave's eval context:
-
    - `~p` sigil (Phoenix verified routes) - requires compile-time module attributes
    - `~H` sigil (HEEx templates) - same limitation
 
@@ -350,7 +344,6 @@ Optional: Links to docs, related patterns, or further reading
    Run: `mix run test_drop_sigil.exs`
 
    **Formatting Best Practices**:
-
    - **Comments**: Place on separate lines above code, not inline (better readability)
    - **Pipe formatting**: Each `|>` on its own line with proper indentation
    - **Consistent spacing**: Follow `mix format` output exactly
@@ -358,7 +351,6 @@ Optional: Links to docs, related patterns, or further reading
    - **🚨 CRITICAL: Comment alignment** - Within each function, count characters precisely and align ALL inline comments at the exact same column position (don't guess - actually count!)
 
    **Why this matters**:
-
    - **First code block becomes the social media screenshot** - it must show the solution, not just the problem
    - Visual contrast (❌ vs ✅) in the same block creates immediate engagement
    - People scrolling social media need to see the value instantly
@@ -367,14 +359,12 @@ Optional: Links to docs, related patterns, or further reading
    - Prevents formatting issues that distract from content
 
 7. **Final Output** - Save as markdown file AND provide Twitter hook:
-
    - Use Write tool to save the content as `./drops/[topic_name]_drop.md`
    - Use proper markdown formatting (no code block wrapping)
    - This avoids terminal formatting issues and makes copy/paste clean
    - **MANDATORY: Provide a Twitter-ready hook** - See Twitter Hook Style Guide section above for requirements
 
 8. **Content Categories** - Focus on high-value topics:
-
    - **Core Elixir**: Pattern matching tricks, data transformation, error handling
    - **Phoenix/LiveView**: Components, real-time features, form handling, testing
    - **Database/Ecto**: Query optimization, migrations, data relationships
@@ -383,7 +373,6 @@ Optional: Links to docs, related patterns, or further reading
    - **Integration**: APIs, external services, background jobs
 
 9. **Recipe Transformation Guidelines** - If adapting from recipes:
-
    - Extract the core problem and solution
    - Simplify the code example to the essential parts
    - Focus on one specific aspect rather than the complete implementation

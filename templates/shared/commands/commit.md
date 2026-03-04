@@ -11,7 +11,6 @@ Analyze the current git changes and suggest ONE perfect commit message following
 4. **Focus on the "WHY"** - The commit message should explain why this change was needed
 5. **Be SPECIFIC about scope** - Instead of vague terms like "globally" or "system-wide", use precise language like "between projects", "across workspaces", "for mobile users", etc.
 6. **Follow commit message best practices**:
-
    - Use imperative mood (e.g., "Prevent duplicate entries" not "Prevented duplicate entries")
    - Keep under 50 characters
    - Start with a verb (Add, Fix, Update, Remove, Refactor, Prevent, Enable, etc.)

@@ -77,13 +77,11 @@ After checking the database, search for specific episode details:
 - Breaking news with incomplete official explanations
 
 1. **Gather Recent News (Last 30-60 Days)**:
-
    - **CRITICAL**: First use Bash tool with `date` command to get the ACTUAL current date
    - **IMPORTANT**: The AI assistant does NOT know the current date - it MUST use the terminal output from `date` command
    - **Use the exact date from terminal output** in all WebSearch queries (e.g. if `date` shows "Mon Aug 4 2025", search for "August 2025" not "January 2025")
 
    **PARALLEL RESEARCH STRATEGY** (Run ALL searches simultaneously):
-
    - Use WebSearch to find trending news from major sources (Reuters, AP, BBC, CNN, etc.)
    - Search podcast episodes and news topics in a SINGLE message with multiple WebSearch tool calls
    - **NEVER run searches sequentially** - always batch 8-10 searches per message for maximum efficiency
@@ -115,7 +113,6 @@ After checking the database, search for specific episode details:
      - Masonic or fraternal organization events
 
 2. **Identify Topics With Multiple Perspectives**:
-
    - Stories involving government secrecy or classified information where podcasters may have different interpretations
    - Health-related announcements where alternative viewpoints exist (vaccines, treatments, studies)
    - Technology topics where privacy concerns and official assurances may conflict
@@ -139,14 +136,12 @@ After checking the database, search for specific episode details:
 For each identified topic with multiple perspectives, create investigative questions that:
 
 1. **Ask direct questions about events**:
-
    - "Who killed [person] and why won't they investigate [specific angle]?"
    - "What really happened at [event] that officials aren't telling us?"
    - "Why did [person] die right before [related event]?"
    - "Who benefits from [event] happening when it did?"
 
 2. **Focus on specific claims and connections**:
-
    - "What was [person] about to expose before they died?"
    - "Why are [officials/media] covering up [specific detail] about [event]?"
    - "Who ordered [action] and what are they hiding?"
@@ -226,7 +221,6 @@ Example: "passage: BlackBalled With Arthur Kwon Lee Arthur Kwon Lee discusses hi
 Store TWO versions of each question:
 
 1. **Display Title** (user-facing, can be interrogative/conspiratorial):
-
    - "Why Was Arthur Kwon Lee Blackballed From The Art World?"
 
 2. **Search Query** (for embedding, declarative, keyword-focused):
@@ -293,7 +287,6 @@ Create compelling Twitter hooks that follow this proven format:
 When user asks to create content, provide:
 
 1. **Skeptic.bot Question** (context-rich, specific, 10-20 words):
-
    - Example: "Why did Admiral Byrd warn about craft flying pole to pole in minutes?"
    - Must include specific details: names, dates, measurable claims, or quotes
    - Avoid vague questions like "What's really happening?" or "Who's behind this?"

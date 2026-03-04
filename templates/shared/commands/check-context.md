@@ -11,13 +11,11 @@ Check for pending work that needs attention:
    ```
 
 2. **If PENDING files exist**:
-
    - Read each PENDING-\*.md file
    - Summarize: issue title, priority, target agent, and brief description
    - Report total count of pending items
 
 3. **If no PENDING files**:
-
    - Report "No pending work items found"
    - Optionally mention count of RESOLVED files if relevant
 

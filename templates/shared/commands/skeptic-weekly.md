@@ -290,13 +290,11 @@ Do NOT output the full article content to the terminal.
 Construct URLs based on the podcast name and external_id:
 
 - **YouTube podcasts** (Candace, Deep Waters, Nephilim Death Squad, Broken Simulation):
-
   - `https://www.youtube.com/watch?v=[external_id]`
   - external_id format: YouTube video ID (e.g., `vwG1juDCQZQ`)
   - These URLs are stable and reliable
 
 - **Sam Tripoli podcasts** (Tin Foil Hat, Cash Daddies, Doom Scrollin, Union of the Unwanted, Zero with Sam Tripoli):
-
   - `https://vid.samtripoli.com/w/[external_id]`
   - external_id format: UUID (e.g., `d3f5d9e4-4669-4c4f-a706-174d79f02c76`)
   - **MANDATORY:** Test EVERY Sam Tripoli URL with curl before including

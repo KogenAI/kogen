@@ -21,21 +21,18 @@ Create a basic problem-solution fit statement and verify understanding with the 
 Use TodoWrite to create a research task list, then execute parallel research across these key areas:
 
 1. **Competitive Landscape Analysis**
-
    - Search for direct and adjacent competitors
    - Analyze business models, pricing, and positioning
    - Identify market gaps and differentiation opportunities
    - Create competitive comparison table
 
 2. **Technical Feasibility Research**
-
    - Investigate API limitations and costs
    - Research third-party service constraints
    - Analyze technical architecture requirements
    - Identify potential technical risks and mitigations
 
 3. **User Psychology & Behavior Analysis**
-
    - Research why users prefer certain solutions
    - Analyze switching costs and adoption barriers
    - Understand user preferences and pain points

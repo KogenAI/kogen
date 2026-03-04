@@ -11,13 +11,11 @@ Process:
 **STEP 1: Initial Analysis**
 
 1. **Get current date**:
-
    - **CRITICAL**: First use Bash tool with `date` command to get the ACTUAL current date
    - **IMPORTANT**: The AI agent does NOT know the current date - it MUST use the terminal output from `date` command
    - **Use the exact date from terminal output** in all searches to find recent information
 
 2. **Parse the research request**:
-
    - Identify the core technical problem or decision
    - Extract key terms and technologies mentioned
    - Determine the context (testing, DB ownership, dependencies, etc.)
