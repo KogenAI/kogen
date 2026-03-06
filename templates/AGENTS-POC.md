@@ -4,11 +4,11 @@
 
 PoC-focused guidance for AI agents - optimized for rapid validation over production-ready features.
 
-## ⚠️ MANDATORY: Load PoC Rules FIRST
+## ⚠️ MANDATORY: Load Rules FIRST
 
 **CRITICAL - BEFORE taking ANY action:**
 
-1. **STOP** - Do NOT proceed without loading PoC-specific rules
+1. **STOP** - Do NOT proceed without loading rules
 2. **IDENTIFY** your agent type from the delegation prompt
 3. **LOAD** PoC rules from `./codegen/rules/INDEX.md`:
    - **ALL agents**: Load shared rules (server-management.md, subagent-core-rules.md)
@@ -27,6 +27,35 @@ PoC-focused guidance for AI agents - optimized for rapid validation over product
 - `planning-poc.md` **OVERRIDES** all production patterns
 - Focus on **validation over features**
 - **Minimal infrastructure** over production-ready systems
+
+## 🚨 Planning vs Implementation Rule Separation
+
+**CRITICAL: NEVER load planning rules during implementation**
+
+❌ **FORBIDDEN during implementation**:
+
+- `planning.md` (planning sessions only)
+- `planning-poc.md` (PoC planning sessions only)
+
+✅ **Use these rules ONLY during** planning mode contexts (`ocg bird-eye`, `ocg plan`, `/plan-poc`)
+
+## 🚨 MANDATORY: Rule Compliance Verification
+
+**CRITICAL - All agents must prove rule compliance before claiming completion:**
+
+1. **Document rule loading** - Show actual rule content in your session log
+2. **Execute required searches** - Run all systematic searches your role requires
+3. **Provide proof** - Session log must contain evidence of compliance
+4. **No exceptions** - Claims without proof will be rejected
+
+## Universal Context Files
+
+**ALL agents must read BEFORE any work:**
+
+- `./codegen/PROJECT_CONTEXT.md` - Project architecture and patterns
+- `./codegen/plans/poc/overview.md` - PoC validation goals
+
+Note: No `CONTEXT.md` in PoC — work happens directly on main, not in worktrees.
 
 ## 🎯 PoC-Specific Patterns
 
@@ -75,30 +104,31 @@ PoC-focused guidance for AI agents - optimized for rapid validation over product
 - **Anti-pattern detection**: Prevent over-engineering (database schemas) and under-engineering (mocked integrations)
 - **PoC pattern compliance**: ETS storage, System.cmd() integration, LiveView feedback
 
-## 🚨 SIMPLIFIED: Rule Compliance
-
-**PoC agents must prove they're following PoC patterns:**
-
-1. **Document PoC rule loading** - Show planning-poc.md content in session log
-2. **Validate assumptions** - Every task should test a specific assumption
-3. **Avoid production patterns** - No comprehensive testing, CI, auth, persistence
-4. **Focus on validation** - "Does this prove the concept works?"
-
 ## Workspace Rules
 
 **OCG PoC Workspace:**
 
-- Work in current directory only
-- Check `./codegen/CONTEXT.md` for ports/settings
+- Work in current directory only (never `../` or `../../`)
 - **PoC timeline**: 2-4 weeks maximum for any validation
 
-## Universal Context Files
+## Work Context Management (Agent-to-Agent Communication)
 
-**ALL PoC agents must read**:
+**🚨 CRITICAL: ALWAYS use RELATIVE paths for context files!**
 
-- `./codegen/PROJECT_CONTEXT.md` - Project architecture
-- `./codegen/CONTEXT.md` - Workspace state, ports, progress
-- `./codegen/plans/poc/overview.md` - PoC validation goals
+```bash
+# ✅ CORRECT - relative paths (works in any workspace)
+./codegen/context/PENDING-*.md
+./codegen/context/RESOLVED-*.md
+
+# ❌ WRONG - absolute paths (writes to wrong location!)
+/Users/.../project/codegen/context/PENDING-*.md
+```
+
+**Quick reference**:
+
+- Location: `./codegen/context/` (RELATIVE PATH!)
+- Prefixes: `PENDING-*`, `ACTIVE-*`, `RESOLVED-*`
+- Check at session start: `ls ./codegen/context/PENDING-* 2>/dev/null`
 
 ## 📚 Library Usage Rules
 
@@ -106,51 +136,31 @@ PoC-focused guidance for AI agents - optimized for rapid validation over product
 
 **Usage rules location**: `$OCG_CONTEXT_DIR/usage_rules/` (typically `~/Areas/Optimum/context/usage_rules/`)
 
-### Discovery Pattern for PoCs
-
-**Quick library doc lookup:**
+**Discovery pattern:**
 
 ```bash
-# 1. Find library docs (version-agnostic)
 ls $OCG_CONTEXT_DIR/usage_rules/ | grep -i "^library_name"
-
-# Examples:
+# e.g.
 ls $OCG_CONTEXT_DIR/usage_rules/ | grep -i "^jason"    # jason-1.4.4.md
-ls $OCG_CONTEXT_DIR/usage_rules/ | grep -i "^httpoison" # httpoison-*.md
-
-# 2. Load the found file
-Read file_path="$OCG_CONTEXT_DIR/usage_rules/jason-1.4.4.md"
 ```
 
-### When to Load (PoC Context)
+**Load when integrating external libraries** — Jason, HTTPoison/Finch, Phoenix LiveView, any unfamiliar library.
 
-**Load when integrating external libraries:**
-
-- **Jason** → JSON encoding/decoding for API responses
-- **HTTPoison/Finch** → External API calls (YouTube, OpenAI, etc.)
-- **Phoenix LiveView** → Real-time UI updates and feedback
-- **Any library** you're not familiar with
-
-**PoC-specific focus:**
-
-- Focus on **basic usage patterns** (not comprehensive testing)
-- **External integration** patterns (System.cmd() alternatives)
-- **Quick validation** approaches
-
-### Generate If Missing
+**Generate if missing:**
 
 ```bash
-# Generate docs for all dependencies
 ocg usage-rules
 ```
 
-## 📊 SIMPLIFIED: Session Logging
+## 📊 MANDATORY: Session Logging
 
-**PoC agents log for debugging:**
+**ALL agents** must create session logs.
 
 **WHERE**: `./codegen/logging/$(date -u +%Y%m%d_%H%M%S)_<agent_role>.md`
 
 **Agent roles**: `orchestrator`, `poc-developer`, `verification-engineer`, `code-reviewer`
+
+**When**: Create as SECOND action (after loading rules). Update continuously, not at the end.
 
 **LOG FORMAT**:
 
@@ -160,8 +170,10 @@ ocg usage-rules
 **Started**: $(date -u)
 **PoC Goal**: [Which assumptions are we validating?]
 
-## PoC Rules Loaded
+## Rules Loaded
 
+- [ ] ./codegen/PROJECT_CONTEXT.md
+- [ ] ./codegen/plans/poc/overview.md
 - [ ] ./codegen/rules/shared/server-management.md
 - [ ] ./codegen/rules/shared/subagent-core-rules.md
 - [ ] ./codegen/rules/orchestration/delegation-patterns-poc.md (PoC orchestrator only)
@@ -181,69 +193,37 @@ ocg usage-rules
 
 ## Library Usage Rules Loaded
 
-- [ ] jason-1.4.4.md (JSON for APIs)
-- [ ] phoenix_live_view-1.0.0.md (real-time feedback)
-- [ ] httpoison-\*.md (external API calls)
-- [ ] [list library docs loaded]
 - [ ] None (if only using built-in modules)
+- [ ] [list any loaded]
 
 ## Command Execution Log
 
-**CRITICAL: Log EVERY command with timestamp and duration to debug PoC performance issues**
-
-| Time     | Duration | Command                      | Status | Notes                                 |
-| -------- | -------- | ---------------------------- | ------ | ------------------------------------- |
-| 15:20:15 | 1.8s     | `mix compile`                | ✅     | Quick compilation                     |
-| 15:20:17 | 25.3s    | Test YouTube URL workflow    | ✅     | Real user scenario - slow but working |
-| 15:20:45 | 0.5s     | `mix test --only smoke_test` | ✅     | Basic smoke tests                     |
-
-**PoC Performance Tracking:**
-
-- ✅ **Fast commands** (<5s): Basic compilation, smoke tests
-- ⚠️ **Acceptable PoC delays** (5-30s): Real external API calls, transcript extraction
-- ❌ **PoC blockers** (>30s): Investigate why - should be rapid validation
-
-**Success Patterns for PoC:**
-
-- Use real data but cache when possible for iteration speed
-- Focus on end-to-end workflow validation over comprehensive testing
-- External integration delays are expected but should be <30s per call
+| Time     | Duration | Command       | Status | Notes |
+| -------- | -------- | ------------- | ------ | ----- |
+| HH:MM:SS | Xs       | `mix compile` | ✅     |       |
 
 ## Files Modified
 
-- [ ] [list files created/modified for this validation]
+- [ ] [list files created/modified]
 
 ## Delegation (orchestrator only)
 
-- [x] Delegating to poc-developer: "[specific validation task]" → IN PROGRESS
-- [x] Delegated to poc-developer: → COMPLETED/BLOCKED
+- [x] Delegating to poc-developer: "[task]" → IN PROGRESS
 
 ## Validation Results
 
-- [x] Assumption validated: [yes/no/partially]
+- [ ] Assumption validated: [yes/no/partially]
 - [ ] Next iteration needed: [what to test next]
 
 ## PoC Lessons Learned (for CONTEXT.md)
 
-**CRITICAL: Document PoC-specific lessons to accelerate future validation cycles**
-
 ### ✅ PoC Success Patterns
 
-- [Fast validation approach]: [Why this worked for rapid testing]
-- [Effective external integration]: [How to use this tool/API efficiently]
+- [approach]: [why it worked]
 
 ### ❌ PoC Time Wasters
 
-- [Slow validation approach]: [Why this took too long, avoid next time]
-- [Problematic external tool]: [What caused delays, alternatives to try]
-
-### 🔄 PoC Optimization for Next Time
-
-- [Efficient command sequence for this type of validation]
-- [External tools/approaches that work well for PoC speed]
-- [Performance shortcuts discovered for rapid iteration]
-
-**SAVE TO CONTEXT.md**: Update `./codegen/CONTEXT.md` with PoC-specific lessons to improve validation speed.
+- [approach]: [why it was slow, avoid next time]
 ```
 
 ## PoC Orchestration Pattern
@@ -285,30 +265,28 @@ Task("Review PoC validation readiness",
 - "Are we getting meaningful validation data?"
 - "What's the next assumption to test?"
 
-## Work Context Management
+## 🔄 MANDATORY: Keep PROJECT_CONTEXT.md Up To Date
 
-**Simplified for PoCs:**
+**After ANY code change, update `./codegen/PROJECT_CONTEXT.md`:**
 
-```bash
-# Check for validation work
-ls ./codegen/context/PENDING-* 2>/dev/null || echo "No pending validations"
+- New modules/files → add to Module Directory
+- Changed patterns/conventions → update relevant section
+- New pitfalls discovered → add to Common Pitfalls
+- Schema changes → update Database Schema
+- New env vars or config → update Environment Configuration
+- Update `_Last Updated` timestamp at the bottom
 
-# Create validation context
-TIMESTAMP=$(date -u +"%Y%m%d-%H%M%S")
-cat > ./codegen/context/PENDING-validation-${TIMESTAMP}.md << 'EOF'
-# PoC Validation Task
-**Assumption**: [specific assumption to test]
-**Success Criteria**: [how we know it works]
-**Timeline**: [rapid iteration target]
-EOF
-```
+**This is not optional.** PROJECT_CONTEXT.md is the single source of truth for AI agents. Stale context causes wrong decisions.
 
 ## Universal PoC Requirements
 
+- **Read PROJECT_CONTEXT.md first** - Always, before any work
+- **Update PROJECT_CONTEXT.md after changes** - Keep it current
 - **Validation focus** - Every task tests a specific assumption
 - **Rapid iteration** - 2-4 week maximum timeline
 - **Minimal infrastructure** - Avoid production complexity
 - **External integrations** - Use existing tools via System.cmd()
 - **Real-time feedback** - LiveView for user interaction
 - **Basic validation** - Smoke tests, not comprehensive testing
-- **Session logging** - Track assumption validation progress
+- **Session logging** - ALL agents must log, create as second action
+- **Issue Discovery → Immediate Fixing** - Find issues, fix them — never stop after just documenting
