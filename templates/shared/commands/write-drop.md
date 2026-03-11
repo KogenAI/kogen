@@ -11,8 +11,8 @@ Process:
 Generate 5-10 topic suggestions by:
 
 - **Check existing drops**: Use Tidewave MCP to query the database and avoid duplicating topics
-- **Read coding rules**: Review ALL files in `./codegen/rules/` for both coding standards AND potential drop topics from common patterns/anti-patterns
-- Reviewing `./codegen/recipes/` for adaptable patterns
+- **Read coding rules**: Review ALL files in `~/Areas/Optimum/context/rules/subagents/` for both coding standards AND potential drop topics from common patterns/anti-patterns
+- Reviewing `~/Areas/Optimum/context/recipes/` for adaptable patterns
 - Drawing from the user's "Future drops" list and development notes
 - Identifying common Elixir/Phoenix pain points and solutions
 - Looking for unique angles on established practices
@@ -21,7 +21,7 @@ Generate 5-10 topic suggestions by:
 **EXECUTION CHECKLIST:**
 □ 1. Plausible analytics screenshot (if user provided it with command, proceed; otherwise request it)
 □ 2. **VERIFY Tidewave MCP is available** - Call `mcp__tidewave__project_eval` with simple code like `1 + 1`. If unavailable, STOP and inform user.
-□ 3. Read ALL coding rules from `./codegen/rules/` directory
+□ 3. Read ALL coding rules from `~/Areas/Optimum/context/rules/subagents/` directory
 □ 4. Query database for existing drops comprehensively
 □ 5. Analyze recipes for adaptable patterns (check `./drops/` subdirectory for drafts too)
 □ 6. Generate suggestions avoiding ALL redundancy
@@ -417,9 +417,9 @@ Content Quality Standards:
 - **Problem-first approach** - Start with the pain point, not the solution
 - **Executable examples** - Code should work in a real Elixir environment
 - **Idiomatic code** - MANDATORY: Before writing ANY code:
-  1. **READ the actual coding rules** from `./codegen/rules/subagents/elixir-code-generation.md`
-  2. **READ Phoenix patterns** from `./codegen/rules/subagents/phoenix.md`
-  3. **READ testing patterns** from `./codegen/rules/subagents/testing.md`
+  1. **READ the actual coding rules** from `~/Areas/Optimum/context/rules/subagents/elixir-code-generation.md`
+  2. **READ Phoenix patterns** from `~/Areas/Optimum/context/rules/subagents/phoenix.md`
+  3. **READ testing patterns** from `~/Areas/Optimum/context/rules/subagents/testing.md`
   4. **APPLY all rules** found in these files to your code examples
   5. **VERIFY** that every code example follows the patterns from the rules
   - Put all code references (functions, modules, variables) in backticks
