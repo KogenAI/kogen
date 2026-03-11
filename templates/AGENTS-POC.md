@@ -209,9 +209,14 @@ ocg usage-rules
 
 - [ ] [list files created/modified]
 
-## Delegation (orchestrator only)
+## Delegation Timeline (orchestrator only)
 
-- [x] Delegating to poc-developer: "[task]" → IN PROGRESS
+| Time  | Agent         | Task               | Log File                         | Result         |
+| ----- | ------------- | ------------------ | -------------------------------- | -------------- |
+| HH:MM | poc-developer | [task description] | YYYYMMDD_HHMMSS_poc-developer.md | ⏳ IN PROGRESS |
+
+<!-- Update each row when agent completes. Add new row for each delegation. -->
+<!-- Result options: ⏳ IN PROGRESS | ✅ Done | ❌ Failed | 🔄 Needs iteration -->
 
 ## Validation Results
 
