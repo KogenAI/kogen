@@ -285,7 +285,6 @@ Task("Review PoC validation readiness",
 - New pitfalls discovered → add to Common Pitfalls
 - Schema changes → update Database Schema
 - New env vars or config → update Environment Configuration
-- Update `_Last Updated` timestamp at the bottom
 
 **This is not optional.** PROJECT_CONTEXT.md is the single source of truth for AI agents. Stale context causes wrong decisions.
 
