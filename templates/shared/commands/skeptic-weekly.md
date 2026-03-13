@@ -161,12 +161,12 @@ Create a Substack-formatted Markdown article with this structure:
 
 **Podcast Grouping & Ordering:**
 
-- Each podcast gets its own section with `## Podcast Name` header
+- Each podcast gets its own **single** `## Podcast Name` section — never split a podcast into multiple sections
 - "Doom Scrollin" is a SEPARATE podcast from "Tin Foil Hat" (both are Sam Tripoli shows)
 - Other Sam Tripoli podcasts: Cash Daddies, Union of the Unwanted, Zero with Sam Tripoli
 - Group episodes by podcast name, NOT by host
 - **Order episodes chronologically (oldest to newest)** within each podcast section
-- Order podcast sections by the date of their first episode in the week
+- Order podcast sections by the date of their **earliest** episode in the week (all episodes from that podcast go in one block, regardless of when later episodes aired)
 
 ```markdown
 # Skeptic.bot Weekly: [Date Range]
