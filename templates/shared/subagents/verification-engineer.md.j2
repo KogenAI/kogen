@@ -44,18 +44,18 @@ model: inherit
 - [ ] ./codegen/rules/shared/subagent-core-rules.md
 
 **Core Rules (Critical - Always Load):**
-- [ ] ./codegen/rules/subagents/verification-workflow.md (CRITICAL for comprehensive reporting)
-- [ ] ./codegen/rules/subagents/poc-success-criteria.md
+- [ ] ./codegen/rules/subagents/verification-workflow.md (production) OR verification-workflow-poc.md (PoC context)
+- [ ] ./codegen/rules/subagents/poc-success-criteria.md (PoC context only)
 
 **Standard Rules (Always Load):**
 - [ ] ./codegen/rules/subagents/testing.md
 - [ ] ./codegen/rules/subagents/elixir-ci.md
-- [ ] ./codegen/rules/subagents/github-actions.md
 - [ ] ./codegen/rules/subagents/git.md
+- [ ] ./codegen/rules/subagents/github-actions.md (production only — skip for PoC)
 
 **Context Files:**
 - [ ] ./codegen/PROJECT_CONTEXT.md
-- [ ] ./codegen/CONTEXT.md
+- [ ] ./codegen/CONTEXT.md (production) — no CONTEXT.md in PoC
 
 ## Verification Commands Run
 

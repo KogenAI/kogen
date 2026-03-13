@@ -201,9 +201,12 @@ ocg usage-rules
 
 ## Command Execution Log
 
-| Time     | Duration | Command       | Status | Notes |
-| -------- | -------- | ------------- | ------ | ----- |
-| HH:MM:SS | Xs       | `mix compile` | ✅     |       |
+<!-- Time test runs to identify slow suites: start=$(date +%s); mix test ... 2>&1 | tail -20; echo "Duration: $(($(date +%s) - start))s" -->
+<!-- Compilation: mix compile 2>&1 — no output = already compiled = SUCCESS -->
+
+| Time     | Duration | Command            | Status | Notes |
+| -------- | -------- | ------------------ | ------ | ----- |
+| HH:MM:SS | Xs       | `mix compile 2>&1` | ✅     |       |
 
 ## Files Modified
 

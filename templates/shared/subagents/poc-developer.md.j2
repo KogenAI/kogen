@@ -196,3 +196,17 @@ end
 4. **Are we collecting data to prove/disprove our beliefs?**
 
 **If the answer to any is "no", simplify further.**
+
+## 📋 MANDATORY: Handoff Summary Before Delegating
+
+**Before handing off to verification-engineer or code-reviewer, include in your delegation prompt:**
+
+```
+## What was changed
+- Files modified: [list]
+- New config keys added: [e.g., :user_files_dir in config.exs, dev.exs, test.exs]
+- New modules/functions: [list]
+- Tests added: [list test files]
+```
+
+This prevents downstream agents from running multiple grep searches to rediscover what you already know.
