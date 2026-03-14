@@ -184,8 +184,8 @@ ls $OCG_CONTEXT_DIR/usage_rules/ | grep -i "^library_name"
 **Standard feature cycle:**
 
 ```
-feature-developer → verification-engineer → code-reviewer
-  (implement +         (./codegen/ci.sh)      (quality review)
+feature-developer → verification-engineer → code-reviewer → orchestrator commits
+  (implement +         (./codegen/ci.sh)      (quality review)   (/commit → git commit)
    update context)
 ```
 
@@ -207,6 +207,12 @@ feature-developer → verification-engineer → code-reviewer
 - Reviews for quality, patterns, architecture
 - Reads updated `PROJECT_CONTEXT.md` to understand new additions
 - Reports issues as `PENDING-*` context files for feature-developer to fix
+
+**orchestrator (after "✅ QUALITY APPROVED")**:
+
+- Load `~/.claude/commands/commit.md` and follow its instructions to generate a commit message
+- Run `git add -A && git commit -m "[generated message]"`
+- No confirmation needed — hybrid mode assumes automated commit after all gates pass
 
 ## 🔄 MANDATORY: Update PROJECT_CONTEXT.md Before Handoff
 
