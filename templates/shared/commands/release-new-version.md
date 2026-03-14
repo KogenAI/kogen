@@ -60,16 +60,18 @@ Show a diff of both changes before writing.
 
 If tests fail, stop and report. Do not continue until tests pass.
 
-## STEP 6: Commit, Tag, Push Tag
+## STEP 6: Commit, Tag, Push
 
 ```bash
 git add CHANGELOG.md mix.exs
 git commit -m "Release X.X.X"
 git tag vX.X.X
+git push origin main
 git push origin vX.X.X
 ```
 
-Show the exact commands and ask for confirmation before running them. These are irreversible.
+- Do NOT add a `Co-Authored-By` trailer to the commit message.
+- Show the exact commands and ask for confirmation before running them. These are irreversible.
 
 ## STEP 7: Hex Publish Reminder
 
