@@ -19,7 +19,7 @@ Analyze the current git changes and suggest ONE perfect commit message following
 
 7. **Consider alternative phrasings** - If your first message uses vague terms like "globally", "system-wide", "overall", use more specific alternatives
 8. **Suggest ONE perfect message** - The most accurate description of why this change was made
-9. **Show character count** - Display the length to confirm it's under 50 characters
+9. **Verify character count** - Run `echo -n "your message" | wc -c` to get the exact count, then display it to confirm it's under 50 characters. Never count manually.
 10. **Brief explanation** - One sentence explaining why this message captures the change
 
 If user provided context in the argument, use that to better understand the intent behind the changes.
