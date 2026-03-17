@@ -71,6 +71,7 @@ git push origin vX.X.X
 ```
 
 - Do NOT add a `Co-Authored-By` trailer to the commit message.
+- The release commit must only contain `CHANGELOG.md` and the version bump in `mix.exs`. Any feature or fix changes belong in a separate commit before the release commit.
 - Show the exact commands and ask for confirmation before running them. These are irreversible.
 
 ## STEP 7: Hex Publish Reminder
