@@ -2,7 +2,10 @@
 
 Universal guidance for AI agents in hybrid workspaces — production agent quality without worktrees or planning overhead.
 
-**Hybrid = feature-developer + full CI + no worktrees + no planning phase + no CONTEXT.md**
+**Hybrid = full agent delegation chain + no worktrees + no planning phase + no CONTEXT.md**
+
+> ⚠️ "Hybrid" means no worktrees/planning overhead — it does NOT mean the orchestrator implements code.
+> The orchestrator ALWAYS delegates. See delegation-patterns.md.
 
 ## ⚠️ MANDATORY: Load Rules FIRST
 
@@ -249,3 +252,4 @@ Stale context = wrong decisions downstream.
 - **Issue Discovery → Immediate Fixing** - Find issues, fix them — never stop after just documenting
 - **Check pending work**: `ls ./codegen/context/PENDING-* 2>/dev/null` at session start
 - **Session logging** - ALL agents must log, create as second action
+- **Update PROJECT_CONTEXT.md before done** - feature-developer must update before handing off
