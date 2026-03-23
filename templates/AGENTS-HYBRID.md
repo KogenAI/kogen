@@ -7,6 +7,43 @@ Universal guidance for AI agents in hybrid workspaces — production agent quali
 > ⚠️ "Hybrid" means no worktrees/planning overhead — it does NOT mean the orchestrator implements code.
 > The orchestrator ALWAYS delegates. See delegation-patterns.md.
 
+## 🚨 ORCHESTRATOR: NEVER IMPLEMENT CODE DIRECTLY
+
+**The orchestrator NEVER writes code, tests, or file edits — not even "small" ones.**
+
+❌ **FORBIDDEN for orchestrator**:
+
+- Writing tests directly
+- Editing source files
+- Fixing bugs inline
+- "Just quickly" adding a function or describe block
+
+✅ **ONLY allowed for orchestrator**:
+
+- Loading rules and reading context
+- Creating the session log
+- Delegating tasks to subagents (feature-developer, verification-engineer, code-reviewer)
+- Committing after all gates pass
+
+**If the task involves writing ANY code or tests → delegate to feature-developer immediately.**
+
+No exceptions. Not even for one-line changes. Not even for "simple" test additions.
+
+## 🚨 ORCHESTRATOR: ALWAYS RUN THE FULL CYCLE
+
+**After feature-developer completes, you MUST immediately (without stopping, without asking) delegate:**
+
+1. → **verification-engineer** (runs `./codegen/ci.sh`, reports ALL failures)
+2. → **code-reviewer** (only after verification-engineer reports "ALL CLEAR ✅")
+
+**FORBIDDEN**:
+
+- ❌ Stopping after feature-developer reports done
+- ❌ Asking the user "should I run verification?"
+- ❌ Reporting completion before code-reviewer says "✅ QUALITY APPROVED"
+
+**The cycle is ALWAYS**: feature-developer → verification-engineer → code-reviewer → done
+
 ## ⚠️ MANDATORY: Load Rules FIRST
 
 **CRITICAL - On EVERY session start, including greetings like "Hi":**
@@ -30,8 +67,6 @@ Universal guidance for AI agents in hybrid workspaces — production agent quali
 
 ❌ **FORBIDDEN during implementation**: `planning.md`, `planning-poc.md`
 
-✅ **Use ONLY during** planning mode contexts (`ocg bird-eye`, `ocg plan`)
-
 ## 🚨 MANDATORY: Rule Compliance Verification
 
 **All agents must prove rule compliance before claiming completion:**
@@ -41,32 +76,11 @@ Universal guidance for AI agents in hybrid workspaces — production agent quali
 3. **Provide proof** - Session log must contain evidence of compliance
 4. **No exceptions** - Claims without proof will be rejected
 
-## 🔧 MCP Tools — Optional, Log Failures
+## 🔧 MCP Tools — Log Failures, Never Stop
 
-MCP tools (Tidewave) enhance agent capabilities but are **not required** to proceed.
+MCP tools enhance agent capabilities but are **never** a reason to stop work.
 
-**On session start, attempt MCP verification:**
-
-```elixir
-# Test Tidewave availability
-mcp__tidewave__get_ecto_schemas
-```
-
-**If MCP tools are unavailable:**
-
-- ✅ **Continue work** — do NOT stop the workflow
-- 📝 **Log the failure** in session log under `## MCP Tool Status`
-- 🔧 **Use fallback** — read schema files directly, use `mix run` for eval, grep for code patterns
-- 🚫 **Do NOT** report as a blocker or halt the task
-
-**Session log entry (required whether tools work or not):**
-
-```
-## MCP Tool Status
-- Tidewave: ✅ Available | ❌ Unavailable (fallback: direct file reads)
-```
-
-**Rationale**: Hybrid projects don't always have a running Phoenix server. MCP adds value when present but should never be a hard dependency.
+**If any MCP tool fails**: log it in the session log and continue with fallbacks (read files directly, use `mix run` for eval, grep for code patterns). Never report an MCP failure as a blocker.
 
 ## Universal Context Files
 
@@ -95,23 +109,6 @@ HELPFUL RESOURCES: See ./codegen/recipes/rate-limiting.md
 
 **Your job**: Follow the recipe pattern provided by the orchestrator. Don't search for recipes yourself — the orchestrator handles recipe discovery to save context window space.
 
-## Work Context Management (Agent-to-Agent Communication)
-
-**🚨 CRITICAL: ALWAYS use RELATIVE paths for context files!**
-
-```bash
-# ✅ CORRECT
-./codegen/context/PENDING-*.md
-./codegen/context/RESOLVED-*.md
-
-# ❌ WRONG - absolute paths write to wrong location
-/Users/.../project/codegen/context/PENDING-*.md
-```
-
-- Location: `./codegen/context/` (RELATIVE PATH!)
-- Prefixes: `PENDING-*`, `ACTIVE-*`, `RESOLVED-*`
-- Check at session start: `ls ./codegen/context/PENDING-* 2>/dev/null`
-
 ## 📚 Library Usage Rules
 
 **Load library-specific docs before implementing with any external library.**
@@ -120,22 +117,18 @@ HELPFUL RESOURCES: See ./codegen/recipes/rate-limiting.md
 ls $OCG_CONTEXT_DIR/usage_rules/ | grep -i "^library_name"
 ```
 
-**Generate if missing:** `ocg usage-rules`
-
 ## 📊 MANDATORY: Session Logging
 
-**ALL agents** must create session logs.
+**Orchestrator** creates the session log as its SECOND action. **Subagents append** to the same file — they do NOT create separate files.
 
-**WHERE**: `./codegen/logging/$(date -u +%Y%m%d_%H%M%S)_<agent_role>.md`
+**WHERE**: `./codegen/logging/$(date -u +%Y%m%d_%H%M%S)_session.md`
 
-**Agent roles**: `orchestrator`, `feature-developer`, `verification-engineer`, `code-reviewer`
-
-**When**: Create as SECOND action (after loading rules). Update continuously.
+**When**: Orchestrator creates on session start. Subagents append their section when delegated to.
 
 **LOG FORMAT**:
 
 ```markdown
-# Session Log: <agent_role>
+# Session Log
 
 **Started**: $(date -u)
 **Task**: [What is being implemented/verified/reviewed]
@@ -149,12 +142,7 @@ ls $OCG_CONTEXT_DIR/usage_rules/ | grep -i "^library_name"
 
 ## MCP Tool Status
 
-- Tidewave: ✅ Available | ❌ Unavailable (fallback: direct file reads)
-
-## Library Usage Rules Loaded
-
-- [ ] None (if only using built-in modules)
-- [ ] [list any loaded]
+- MCP tools: ✅ Available | ❌ Unavailable (fallback: direct file reads)
 
 ## Command Execution Log
 
@@ -175,9 +163,9 @@ ls $OCG_CONTEXT_DIR/usage_rules/ | grep -i "^library_name"
 
 ## Delegation Timeline (orchestrator only)
 
-| Time  | Agent             | Task               | Log File                             | Result         |
-| ----- | ----------------- | ------------------ | ------------------------------------ | -------------- |
-| HH:MM | feature-developer | [task description] | YYYYMMDD_HHMMSS_feature-developer.md | ⏳ IN PROGRESS |
+| Time  | Agent             | Task               | Result         |
+| ----- | ----------------- | ------------------ | -------------- |
+| HH:MM | feature-developer | [task description] | ⏳ IN PROGRESS |
 
 <!-- Result options: ⏳ IN PROGRESS | ✅ Done | ❌ Failed | 🔄 Needs iteration -->
 ```
@@ -209,12 +197,11 @@ feature-developer → verification-engineer → code-reviewer → orchestrator c
 
 - Reviews for quality, patterns, architecture
 - Reads updated `PROJECT_CONTEXT.md` to understand new additions
-- Reports issues as `PENDING-*` context files for feature-developer to fix
+- Reports issues directly in session log for orchestrator to delegate fixes
 
 **orchestrator (after "✅ QUALITY APPROVED")**:
 
-- Load `~/.claude/commands/commit.md` and follow its instructions to generate a commit message
-- Run `git add -A && git commit -m "[generated message]"`
+- Use `Skill("commit")` — generates the commit message and commits automatically
 - No confirmation needed — hybrid mode assumes automated commit after all gates pass
 
 ## 🔄 MANDATORY: Update PROJECT_CONTEXT.md Before Handoff
@@ -250,6 +237,5 @@ Stale context = wrong decisions downstream.
 
 - **Read PROJECT_CONTEXT.md first** - Always, before any work
 - **Issue Discovery → Immediate Fixing** - Find issues, fix them — never stop after just documenting
-- **Check pending work**: `ls ./codegen/context/PENDING-* 2>/dev/null` at session start
-- **Session logging** - ALL agents must log, create as second action
+- **Session logging** - Orchestrator creates, subagents append
 - **Update PROJECT_CONTEXT.md before done** - feature-developer must update before handing off
