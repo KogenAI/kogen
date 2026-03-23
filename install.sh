@@ -56,16 +56,15 @@ echo ""
 echo "🚀 Setting up context repository..."
 
 # Clone context repository if it doesn't exist
-CONTEXT_DIR="${OCG_CONTEXT_DIR:-$HOME/Areas/Optimum}"
-CONTEXT_REPO_DIR="$CONTEXT_DIR/context"
+CONTEXT_DIR="${OCG_CONTEXT_DIR:-$HOME/Areas/Optimum/context}"
 
-if [ ! -d "$CONTEXT_REPO_DIR" ]; then
-    echo "   📥 Cloning context repository to: $CONTEXT_REPO_DIR"
+if [ ! -d "$CONTEXT_DIR" ]; then
+    echo "   📥 Cloning context repository to: $CONTEXT_DIR"
     mkdir -p "$CONTEXT_DIR"
-    git clone https://github.com/almirsarajcic/context.git "$CONTEXT_REPO_DIR"
+    git clone git@github.com:Combobulate-HQ/context.git "$CONTEXT_DIR"
     echo "   ✅ Context repository cloned successfully"
 else
-    echo "   ✅ Context repository already exists: $CONTEXT_REPO_DIR"
+    echo "   ✅ Context repository already exists: $CONTEXT_DIR"
 fi
 
 echo ""
