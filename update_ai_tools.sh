@@ -35,8 +35,11 @@ echo ""
 echo "🤖 Updating Cursor CLI..."
 hash -r 2>/dev/null || true
 if command -v cursor-agent >/dev/null 2>&1; then
-    cursor-agent update
-    echo "   ✅ Cursor CLI updated"
+    if cursor-agent update 2>&1; then
+        echo "   ✅ Cursor CLI updated"
+    else
+        echo "   ⚠️  Cursor CLI update failed (may require authentication - try logging in first)"
+    fi
 else
     echo "   ⚠️  Cursor CLI not installed, skipping"
 fi
