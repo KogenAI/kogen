@@ -10,7 +10,7 @@ Process:
 
 Generate 5-10 topic suggestions by:
 
-- **Check existing drops**: Use Tidewave MCP to query the database and avoid duplicating topics
+- **Check existing drops**: Fetch `https://elixirdrops.net/index.md` to get all published drop titles and avoid duplicating topics
 - **Read coding rules**: Review ALL files in `~/Areas/Optimum/context/rules/subagents/` for both coding standards AND potential drop topics from common patterns/anti-patterns
 - Reviewing `~/Areas/Optimum/context/recipes/` for adaptable patterns
 - Drawing from the user's "Future drops" list and development notes
@@ -20,10 +20,10 @@ Generate 5-10 topic suggestions by:
 
 **EXECUTION CHECKLIST:**
 □ 1. Plausible analytics screenshot (if user provided it with command, proceed; otherwise request it)
-□ 2. **VERIFY Tidewave MCP is available** - Call `mcp__tidewave__project_eval` with simple code like `1 + 1`. If unavailable, STOP and inform user.
-□ 3. Read ALL coding rules from `~/Areas/Optimum/context/rules/subagents/` directory
-□ 4. Query database for existing drops comprehensively
-□ 5. Analyze recipes for adaptable patterns (check `./drops/` subdirectory for drafts too)
+□ 2. Read ALL coding rules from `~/Areas/Optimum/context/rules/subagents/` directory
+□ 3. Fetch `https://elixirdrops.net/index.md` for all published drop titles
+□ 4. **Check `./drops/` for existing drafts** — if drafts exist, recommend from those first before suggesting new topics
+□ 5. Analyze recipes for adaptable patterns
 □ 6. Generate suggestions avoiding ALL redundancy
 □ 7. User selects topic → create content using proper Elixir style
 □ 8. **MANDATORY: Validate all code blocks using `mcp__tidewave__project_eval`**
@@ -148,9 +148,9 @@ Generate 5-10 topic suggestions by:
 - **Factual tone** - Present information straightforwardly
 - **Only use facts from the drop** - Don't invent performance numbers, percentages, or metrics not shown in the content
 - **Concrete over abstract** - Say "500 KB → 1 KB" not "99% reduction" unless you show the math
-- **Link at end** - Include drop link for full examples
+- **Link at end** - Include full URL with https:// (e.g. `https://elixirdrops.net/d/[id]`)
 - **Count characters precisely** - Don't guess, actually measure the hook length
-- **No backticks** - Twitter doesn't render them as code, they just add visual noise
+- **Backticks are acceptable** - Twitter renders them as literal backtick characters, not code formatting, but they still signal "this is code" to readers. Use them when the tweet is short enough (under ~220 chars without the URL). Skip them if the tweet is already near the limit.
 
 **🚨 CRITICAL: Preventing Twitter Auto-Link Detection**
 
@@ -261,7 +261,7 @@ Optional additional code snippets:
 # Additional examples, edge cases, or variations
 ```
 
-Optional: Links to docs, related patterns, or further reading
+**MANDATORY: Link to relevant official docs** — always end the drop with a markdown link to the most relevant hexdocs/official docs page (e.g. the specific module or section being discussed). Use the format: `[Module.function/arity docs](https://hexdocs.pm/...)`
 
 ```
 
@@ -358,11 +358,11 @@ Optional: Links to docs, related patterns, or further reading
    - Consistent with Elixir community standards
    - Prevents formatting issues that distract from content
 
-7. **Final Output** - Save as markdown file AND provide Twitter hook:
-   - Use Write tool to save the content as `./drops/[topic_name]_drop.md`
+7. **Final Output** - Save as TWO separate markdown files:
+   - **Drop content**: `./drops/[topic_name]_drop.md` — the full drop body
+   - **Twitter hook**: `./drops/[topic_name]_hook.md` — the hook text only, ready to copy-paste
    - Use proper markdown formatting (no code block wrapping)
-   - This avoids terminal formatting issues and makes copy/paste clean
-   - **MANDATORY: Provide a Twitter-ready hook** - See Twitter Hook Style Guide section above for requirements
+   - **MANDATORY: Twitter hook must only use facts stated in the drop** — cross-check every claim in the hook against the drop content before saving. See Twitter Hook Style Guide above for format requirements.
 
 8. **Content Categories** - Focus on high-value topics:
    - **Core Elixir**: Pattern matching tricks, data transformation, error handling
