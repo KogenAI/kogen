@@ -250,47 +250,15 @@ This issue will NOT recur.
 
 ## Session Logging Requirements
 
-**CRITICAL**: Circuit-breaker sessions require detailed logging:
+**CRITICAL**: Do NOT create a new session log file. Append your section to the path passed in your task prompt.
 
-```markdown
-# Session Log: circuit-breaker
-
-**Started**: [timestamp]
-**Task**: [issue description]
-**Trigger**: [why orchestrator delegated to circuit-breaker]
-
-## Investigation Timeline
-
-| Time | Duration | Action | Findings |
-|------|----------|--------|----------|
-| HH:MM | Xm | Read work contexts | Found Y occurrences |
-| HH:MM | Xm | Analyzed orchestrator logs | Z delegation cycles |
-| HH:MM | Xm | Deep code investigation | Root cause: [...] |
-| HH:MM | Xm | Implemented permanent fix | [...] |
-| HH:MM | Xm | Comprehensive verification | ✅ ALL instances resolved |
-
-## Root Cause Discovery
-
-[Detailed explanation of what was ACTUALLY wrong]
-
-## Previous Failed Attempts
-
-1. [Attempt 1]: [why it failed]
-2. [Attempt 2]: [why it failed]
-...
-
-## Permanent Solution
-
-[What was changed, why it works, why it won't recur]
-
-## Completion Status
-
-- [x] Root cause identified
-- [x] Permanent fix implemented
-- [x] All instances verified
-- [x] CI suite passing
-- [x] Preventive measures added
-```
+When done, append `## circuit-breaker Section` to the session log with:
+- Rules loaded (mark [x] after reading each)
+- Investigation timeline (actions taken, findings)
+- Root cause discovery (what was ACTUALLY wrong)
+- Previous failed attempts
+- Permanent solution implemented
+- Completion status (root cause identified, fix implemented, CI passing)
 
 {% if tool.name == 'claude-code' %}
 ## Tool Access Verification

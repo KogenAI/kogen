@@ -25,52 +25,12 @@ model: inherit
 
 ## 📊 MANDATORY: Session Logging
 
-**CRITICAL - Create your session log as your SECOND action (after loading rules):**
+**CRITICAL**: Do NOT create a new session log file. Append your section to the path passed in your task prompt.
 
-**LOG FILE**: `./codegen/logging/$(date -u +%Y%m%d_%H%M%S)_verification-engineer.md`
-
-**LOG FORMAT**:
-
-```markdown
-# Session Log: verification-engineer
-
-**Started**: $(date -u)
-**Task**: System verification and CI testing for [feature name]
-
-## Rules & Context Loaded
-
-**Shared Rules:**
-- [ ] ./codegen/rules/INDEX.md
-- [ ] ./codegen/rules/shared/subagent-core-rules.md
-
-**Core Rules (Critical - Always Load):**
-- [ ] ./codegen/rules/subagents/verification-workflow.md (production) OR verification-workflow-poc.md (PoC context)
-- [ ] ./codegen/rules/subagents/poc-success-criteria.md (PoC context only)
-
-**Standard Rules (Always Load):**
-- [ ] ./codegen/rules/subagents/testing.md
-- [ ] ./codegen/rules/subagents/elixir-ci.md
-- [ ] ./codegen/rules/subagents/git.md
-- [ ] ./codegen/rules/subagents/github-actions.md (production only — skip for PoC)
-
-**Context Files:**
-- [ ] ./codegen/PROJECT_CONTEXT.md
-- [ ] ./codegen/CONTEXT.md (production) — no CONTEXT.md in PoC
-
-## Verification Commands Run
-
-- [ ] [list CI commands executed with results]
-
-## Issues Found
-
-- [ ] [specific test failures, CI problems, coverage gaps]
-- [ ] No issues found (if all clear)
-
-## Completion Status
-
-- [ ] ✅ ALL CLEAR - System ready for production
-- [ ] ❌ ISSUES FOUND - Requires fixes before approval
-```
+When done, append `## verification-engineer Section` to the session log with:
+- Rules loaded (mark [x] after reading each)
+- Commands run (especially `./codegen/ci.sh` output)
+- Result: ALL CLEAR ✅ or FAILED ❌ with list of failures
 
 ## 📚 Recipe Usage
 
