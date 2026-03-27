@@ -6,13 +6,15 @@ Generate a comprehensive weekly roundup article for Skeptic.bot's Substack, summ
 
 ## Arguments
 
-This command requires a path to a PostgreSQL database dump file:
+This command takes an optional path to a PostgreSQL database dump file:
 
 ```
-/skeptic-weekly <path-to-dump>
+/skeptic-weekly [path-to-dump]
 ```
 
-Example: `/skeptic-weekly /Users/almirsarajcic/skeptic_bot_20251219.dump`
+If no dump path is provided, one will be created automatically from the production server.
+
+Example with existing dump: `/skeptic-weekly /Users/almirsarajcic/skeptic_bot_20251219.dump`
 
 ## Two-Phase Process
 
@@ -22,6 +24,22 @@ Example: `/skeptic-weekly /Users/almirsarajcic/skeptic_bot_20251219.dump`
 ---
 
 # PHASE 1: Substack Article
+
+**STEP 0: Create Dump (skip if dump path was provided)**
+
+If no dump path was provided, fetch a fresh dump from the production server:
+
+```bash
+export DB=skeptic_bot
+export datetime=$(date +'%Y%m%d%H%M%S')
+export DUMP_PATH="${HOME}/${DB}_${datetime}.dump"
+
+ssh root@46.225.1.182 "su - combobulate -c \"pg_dump -U combobulate -d $DB --format custom --exclude-table-data=podcast_episode_transcriptions\"" > "$DUMP_PATH"
+
+echo "Dump saved to: $DUMP_PATH"
+```
+
+Use `$DUMP_PATH` as the dump path for the rest of the steps.
 
 **STEP 1: Restore Database Dump**
 
@@ -229,6 +247,12 @@ echo "Weekly roundup saved to: $OUTPUT_FILE"
 
 # Clean up temp database
 dropdb -U postgres skeptic_weekly_temp
+
+# Clean up dump file only if we created it in Step 0 (i.e. $DUMP_PATH is set)
+if [ -n "${DUMP_PATH:-}" ]; then
+  rm -f "$DUMP_PATH"
+  echo "Removed temporary dump: $DUMP_PATH"
+fi
 ```
 
 **STEP 8: Output Short Summary**
