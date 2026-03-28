@@ -21,7 +21,12 @@ Analyze the current git changes and suggest ONE perfect commit message following
 8. **Suggest ONE perfect message** - The most accurate description of why this change was made
 9. **Verify character count** - Run `echo -n "your message" | wc -c` to get the exact count, then display it to confirm it's under 50 characters. Never count manually.
 10. **Brief explanation** - One sentence explaining why this message captures the change
-11. **Commit** - Run `git add -A && git commit -m "[message]"` immediately after. **NEVER add a Co-Authored-By trailer** — the commit author is the user only.
+11. **Stage selectively, then commit**:
+    - Run `git status` to see ALL changed files
+    - Determine which files belong to THIS task (based on the primary purpose identified above)
+    - If ALL changes belong to this task: `git add -A && git commit -m "[message]"`
+    - If some changes are UNRELATED to this task: stage only the relevant files by name (`git add file1 file2 ...`), leave unrelated changes unstaged, then commit
+    - **NEVER add a Co-Authored-By trailer** — the commit author is the user only
 
 **If the commit already exists** (e.g. user ran /commit on an already-committed change): use `git commit --amend -m "[message]"` instead.
 
