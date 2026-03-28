@@ -34,3 +34,11 @@ Output format — for each step:
 ```
 
 If the work was already split (e.g. in a plan document), review the existing split and suggest improvements — merging steps that are too granular, splitting steps that do too much, or reordering steps that have hidden dependencies.
+
+**Critical: Check gate dependencies before finalizing order**
+
+For each step, identify its verification gate (how you confirm it's done — running tests, a make target, an end-to-end check). Then ask: does that gate actually work right now, or does it depend on something from a later step?
+
+If a step's verification gate requires something from a later step, that later step must come first — even if it feels like a dependency inversion. The order is determined by what you can actually verify, not just what implements what.
+
+Example: "Step 1: refactor tests (gate: run make llm-phoenix)" — but make llm-phoenix hangs because Step 2 fixes the hang. Correct order: Step 2 first, then Step 1.
