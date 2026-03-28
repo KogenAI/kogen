@@ -33,6 +33,8 @@ Output format — for each step:
 [List of specific files/functions/migrations to change]
 ```
 
+Steps are **sequential commits on a single branch** — not parallel branches or PRs. Each step is implemented and committed before the next begins. "Merge candidate" suggestions are appropriate only when two steps touch the same code and separating them would require editing the same lines twice in consecutive commits — in that case, say so explicitly and merge them into one step.
+
 If the work was already split (e.g. in a plan document), review the existing split and suggest improvements — merging steps that are too granular, splitting steps that do too much, or reordering steps that have hidden dependencies.
 
 **Critical: Check gate dependencies before finalizing order**
