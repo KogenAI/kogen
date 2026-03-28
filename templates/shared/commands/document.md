@@ -37,7 +37,7 @@ Write a markdown document that captures everything discussed in this conversatio
    - Test coverage gaps to address
    - Consolidation table (if things were merged/renamed/removed)
 
-4. **Ask where to save it** — suggest a reasonable path based on the project structure (e.g., `codegen/`, `docs/`, project root) but let the user decide.
+4. **Save automatically** — always save to `codegen/` with a descriptive kebab-case filename derived from the topic (e.g. `codegen/bouncer-post-deploy-fixes.md`). Never ask the user for a path.
 
 5. **Present a summary** of what's in the document so the user can verify nothing was missed.
 
