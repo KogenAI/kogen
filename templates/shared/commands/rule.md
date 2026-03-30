@@ -7,7 +7,7 @@ Extract lessons from conversation and add concise rules. **CRITICAL: Keep rules 
 
 ## Writing Guidelines
 
-**📚 Complete style guide**: See `~/Areas/Optimum/context/rules/STYLE_GUIDE.md` for comprehensive guidance on:
+**📚 Complete style guide**: Read `~/Areas/Optimum/context/rules/STYLE_GUIDE.md` before writing any rules. It covers:
 
 - Emoji and criticality marker usage
 - Wording standards and consistency
