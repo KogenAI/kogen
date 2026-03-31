@@ -114,6 +114,7 @@ Renew the YouTube cookies used by skeptic_bot for yt-dlp downloads. Fully automa
       SELECT id, ROW_NUMBER() OVER (ORDER BY id) AS rn
       FROM oban_jobs
       WHERE state = '\''discarded'\''
+        AND queue = '\''downloading'\''
         AND (errors[array_length(errors,1)]->>'\''error'\'' LIKE '\''%utf-8%'\''
           OR errors[array_length(errors,1)]->>'\''error'\'' LIKE '\''%cookie%'\''
           OR errors[array_length(errors,1)]->>'\''error'\'' LIKE '\''%Sign in%'\'')
