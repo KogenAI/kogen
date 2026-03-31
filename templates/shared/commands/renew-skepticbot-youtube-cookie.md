@@ -106,10 +106,24 @@ Renew the YouTube cookies used by skeptic_bot for yt-dlp downloads. Fully automa
 
    Success = no cookie errors (warnings about JS runtime are expected and unrelated).
 
-10. **Retry failed jobs** — reset jobs that were discarded due to cookie/utf-8 errors:
+10. **Retry failed jobs** — reschedule jobs that were discarded due to cookie/utf-8 errors, spaced 1 hour apart to avoid rate limiting. Skips private/404 videos:
 
     ```bash
-    ssh root@46.225.1.182 "su - combobulate -s /bin/bash -c 'psql postgresql://combobulate:postgres@localhost/skeptic_bot -c \"UPDATE oban_jobs SET state = '\''available'\'', max_attempts = attempt + 3 WHERE state = '\''discarded'\'' AND (errors[1]->>'\''error'\'' LIKE '\''%utf-8%'\'' OR errors[1]->>'\''error'\'' LIKE '\''%cookie%'\'' OR errors[1]->>'\''error'\'' LIKE '\''%Sign in%'\'');\"'"
+    ssh root@46.225.1.182 "su - combobulate -s /bin/bash -c 'psql postgresql://combobulate:postgres@localhost/skeptic_bot -c \"
+    WITH retryable AS (
+      SELECT id, ROW_NUMBER() OVER (ORDER BY id) AS rn
+      FROM oban_jobs
+      WHERE state = '\''discarded'\''
+        AND (errors[array_length(errors,1)]->>'\''error'\'' LIKE '\''%utf-8%'\''
+          OR errors[array_length(errors,1)]->>'\''error'\'' LIKE '\''%cookie%'\''
+          OR errors[array_length(errors,1)]->>'\''error'\'' LIKE '\''%Sign in%'\'')
+        AND errors[array_length(errors,1)]->>'\''error'\'' NOT LIKE '\''%private%'\''
+        AND errors[array_length(errors,1)]->>'\''error'\'' NOT LIKE '\''%404%'\''
+    )
+    UPDATE oban_jobs SET state = '\''available'\'', max_attempts = attempt + 3,
+      scheduled_at = NOW() + (retryable.rn * INTERVAL '\''1 hour'\'')
+    FROM retryable WHERE oban_jobs.id = retryable.id;
+    \"'"
     ```
 
 11. **Close the Chrome debug window** after successful verification.
