@@ -128,6 +128,25 @@ if [ "$IS_MONOREPO" = true ]; then
 else
     # Regular project: Run make ci if available
     if [ -f "Makefile" ] && grep -q "^ci:" "Makefile"; then
+        # Shared PLT caching: reuse dialyzer PLTs across user app builds to avoid
+        # rebuilding from scratch every time. PLTs are keyed by Erlang/Elixir version.
+        SHARED_PLTS_DIR="/tmp/combobulate_shared_plts"
+        ERL_VERSION=$(erl -noshell -eval 'io:format("~s", [erlang:system_info(otp_release)]), halt().' 2>/dev/null || echo "unknown")
+        ELX_VERSION=$(elixir --version 2>/dev/null | grep "Elixir" | awk '{print $2}' || echo "unknown")
+        VERSIONED_PLTS_DIR="${SHARED_PLTS_DIR}/otp${ERL_VERSION}_elixir${ELX_VERSION}"
+        mkdir -p "$VERSIONED_PLTS_DIR"
+        mkdir -p "priv/plts"
+
+        # Copy shared PLTs into the app before running CI (warm start).
+        # Only copy if the app has no PLTs yet — existing PLTs are app-specific
+        # and more accurate than the shared ones.
+        if ! ls priv/plts/*.plt >/dev/null 2>&1 && ls "$VERSIONED_PLTS_DIR"/*.plt >/dev/null 2>&1; then
+            if [ $INTERACTIVE -eq 1 ]; then
+                echo "♻️  Restoring shared PLTs from ${VERSIONED_PLTS_DIR}..."
+            fi
+            cp "$VERSIONED_PLTS_DIR"/*.plt priv/plts/ 2>/dev/null || true
+        fi
+
         # Run CI and capture output
         set +e
         if [ $INTERACTIVE -eq 1 ]; then
@@ -142,6 +161,11 @@ else
             ci_exit_code=$?
         fi
         set -e
+
+        # Save PLTs back to shared location after CI (whether pass or fail — PLTs are still valid)
+        if ls priv/plts/*.plt >/dev/null 2>&1; then
+            cp priv/plts/*.plt "$VERSIONED_PLTS_DIR"/ 2>/dev/null || true
+        fi
 
         if [ $ci_exit_code -eq 0 ]; then
             update_status "🎉 Overall Status: PASSED" "$ci_output"
