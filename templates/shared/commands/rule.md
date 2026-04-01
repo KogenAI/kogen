@@ -70,6 +70,25 @@ Extract lessons from conversation and add concise rules. **CRITICAL: Keep rules 
 
 Before adding a rule, check `./codegen/rules/INDEX.md` section "🔍 File Distinction Guide" to understand file boundaries.
 
+### Is it project-specific or universal?
+
+**Ask before placing any rule**: "Would this rule make sense in a completely different project?"
+
+- ❌ **No** (e.g. "LLM tests must run before committing user-app rule changes") → **Do NOT put in shared rule files**. Put in `CLAUDE.md`, `PROJECT_CONTEXT.md`, or a project-specific doc instead.
+- ✅ **Yes** (e.g. "Never run git push") → shared rule file is appropriate
+
+**Each rule file has a strict scope — do not stretch it:**
+
+- **`git.md`** — git operations only: what commands are allowed/forbidden, how to commit, staging rules. NOT for CI gates, workflow requirements, or project-specific constraints.
+- **`workflow.md`** — development cycle, completion checklist. NOT for git operations.
+- **`delegation-patterns.md`** — subagent coordination. NOT for implementation specifics.
+
+If a rule doesn't cleanly fit an existing file's scope, consider:
+
+1. It belongs in a project-specific file (`CLAUDE.md` or `PROJECT_CONTEXT.md`)
+2. It warrants a new focused rule file
+3. It's too narrow to be a rule at all — document it in a design doc instead
+
 ### Orchestration Rules (`rules/orchestration/`)
 
 - **parallel-testing.md** - Test parallelization strategies
