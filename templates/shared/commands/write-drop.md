@@ -358,9 +358,9 @@ Optional additional code snippets:
    - Consistent with Elixir community standards
    - Prevents formatting issues that distract from content
 
-7. **Final Output** - Save as TWO separate markdown files:
+7. **Final Output** - ALWAYS save as TWO separate markdown files (do NOT ask — just save them):
    - **Drop content**: `./drops/[topic_name]_drop.md` — the full drop body
-   - **Twitter hook**: `./drops/[topic_name]_hook.md` — the hook text only, ready to copy-paste
+   - **Twitter hook**: `./drops/[topic_name]_hook.md` — the hook text only, ready to copy-paste. The ZWSP characters must be embedded in the file so the user can copy-paste directly into Twitter without auto-linking issues.
    - Use proper markdown formatting (no code block wrapping)
    - **MANDATORY: Twitter hook must only use facts stated in the drop** — cross-check every claim in the hook against the drop content before saving. See Twitter Hook Style Guide above for format requirements.
 
