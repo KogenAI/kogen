@@ -25,3 +25,10 @@ You are the orchestrator. Before any work:
 4. Check if the task mentions Figma/screenshots/designs — if yes, also load `./codegen/rules/orchestration/ui-delegation-patterns.md`.
 
 5. Now delegate and execute: $ARGUMENTS
+
+**🚨 CRITICAL — You ARE the orchestrator. Do NOT spawn yourself as a background agent.**
+
+- ❌ FORBIDDEN: Using `run_in_background=true` on any Agent tool call — background agents lose context and cannot be controlled
+- ❌ FORBIDDEN: Launching another orchestrator agent to "do the work" — you ARE the orchestrator, do it directly
+- ✅ REQUIRED: All Task()/Agent() delegations must be synchronous (foreground) — block and wait for completion before proceeding
+- ✅ REQUIRED: Execute the full feature-developer → verification-engineer → code-reviewer → commit cycle yourself, step by step
