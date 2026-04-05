@@ -33,7 +33,7 @@ Write a markdown document that captures everything discussed in this conversatio
    - Overview / context (brief — what this document is about)
    - Issues and root causes
    - Proposed changes (grouped by area, not chronologically)
-   - Implementation plan (phased if complex, flat list if simple)
+   - Implementation plan (phased if complex, flat list if simple) — each phase is one commit. Group changes that must ship together into the same phase. Don't create a phase for a single file change that logically belongs with the phase before it.
    - Test coverage gaps to address
    - Consolidation table (if things were merged/renamed/removed)
 

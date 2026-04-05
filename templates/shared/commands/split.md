@@ -12,6 +12,8 @@ Each step must:
 - Be as small as possible while still being meaningful
 - Have a one-line "why this is valuable on its own" justification — not just "system still works" but "here's what you gain"
 
+**Scaffold test**: before accepting a step, ask "if the next step is never shipped, does a user or developer gain anything from this?" If the honest answer is no — it's pure scaffolding that only enables the next step — merge it with the next step. A struct with a no-op function, a migration with no callers, an empty module with no behaviour — these are not shippable steps, they're half-steps. Merge them forward.
+
 Think of steps as building blocks stacked on top of each other. Step 1 alone is an improvement. Step 1 + 2 is better. Step 1 + 2 + 3 is the full feature. You should be able to stop at any step and have shipped something worthwhile.
 
 Principles for splitting:
@@ -21,6 +23,7 @@ Principles for splitting:
 - **Isolate external dependencies** — Stripe, email, third-party APIs should be wired up in their own step so they can be tested independently
 - **Cleanup last** — removing old fields, deprecated functions, or feature flags ships after the replacement is live and verified
 - **Prefer fewer, meatier steps** — don't split for the sake of splitting; a step that only adds a migration with no callers is noise unless the migration itself is risky
+- **Group identical mechanical moves** — if the same operation is repeated N times (extract handler A, extract handler B, extract handler C…), that is one step, not N. The value comes from the pattern being established, not from each individual move. Only split mechanical repetition when the moves have meaningfully different risk profiles or touch different systems.
 
 Output format — for each step:
 
@@ -29,13 +32,14 @@ Output format — for each step:
 
 **What:** One sentence describing what changes.
 **Value if we stop here:** One sentence on what's gained even if the next step is never shipped.
+**Commit message:** Imperative, under 50 chars, answers *why* not *what*. Bad: "Extract build intents". Good: "Add contact forms to static sites".
 
 [List of specific files/functions/migrations to change]
 ```
 
 Steps are **sequential commits on a single branch** — not parallel branches or PRs. Each step is implemented and committed before the next begins. "Merge candidate" suggestions are appropriate only when two steps touch the same code and separating them would require editing the same lines twice in consecutive commits — in that case, say so explicitly and merge them into one step.
 
-If the work was already split (e.g. in a plan document), review the existing split and suggest improvements — merging steps that are too granular, splitting steps that do too much, or reordering steps that have hidden dependencies.
+If the work was already split (e.g. in a plan document), review the existing split and suggest improvements — merging steps that are too granular, splitting steps that do too much, or reordering steps that have hidden dependencies. Be willing to cut the step count significantly: if the plan has 5 steps that all do "move X into Y", propose collapsing them into 1 and explain the merge. A good review should produce fewer steps than the input, not the same number with minor edits.
 
 **Critical: Check gate dependencies before finalizing order**
 
