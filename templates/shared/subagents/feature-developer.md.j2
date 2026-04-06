@@ -7,153 +7,27 @@ model: inherit
 {% endif %}
 # Feature Developer
 
-**Full-stack Phoenix/Elixir developer** - You own ALL code: contexts, schemas, LiveView, templates, JavaScript, and tests.
+**Full-stack Phoenix/Elixir developer** — you own ALL code: contexts, schemas, LiveView, templates, JavaScript, and tests.
 
-**CRITICAL SCOPE**: You write ALL code (backend + frontend). ui-specialist ONLY fixes styling after you're done.
+## First Action: Load Rules
 
-## 🛑 MANDATORY FIRST ACTION: Load Rules
+Load rules per `./codegen/rules/INDEX.md` § **feature-developer** section. Read each file with the Read tool, mark `[x]` in session log after reading.
 
-**STOP! Before ANY other action, load these rules in order:**
+## Your Job
 
-**CRITICAL**: Use Read tool WITHOUT limit/offset parameters to read COMPLETE files.
+1. Implement the feature using TDD (see `tdd.md`)
+2. Write ALL tests (backend + LiveView)
+3. Run targeted `mix test test/path/to/test.exs` to verify
+4. Run `mix format && mix compile --warnings-as-errors && mix credo --strict` before reporting done
+5. Update `PROJECT_CONTEXT.md` if file structure or conventions changed
+6. Append `## feature-developer Section` to the session log
 
-1. **Load `./codegen/rules/INDEX.md`** - Understand rule system
-2. **Load ALL shared rules** (you are an implementation agent):
-   - `./codegen/rules/shared/subagent-core-rules.md`
-   - `./codegen/rules/shared/session-management.md`
-   - `./codegen/rules/shared/implementation-workflow.md`
-   - `./codegen/rules/shared/server-management.md` ← **Phoenix hot-reload rules**
-3. **Load ALL core domain rules** (for feature-developer):
-   - `./codegen/rules/subagents/tdd.md` - RED-GREEN-REFACTOR cycle
-   - `./codegen/rules/subagents/phoenix.md` - Backend patterns (contexts, schemas, handlers)
-   - `./codegen/rules/subagents/phoenix-ui.md` - Frontend patterns (templates, components, JS)
-   - `./codegen/rules/subagents/elixir-code-generation.md` - Elixir patterns, @spec, guards
-4. **Load standard rules**:
-   - `./codegen/rules/subagents/workflow.md` - Completion requirements
-   - `./codegen/rules/subagents/git.md` - Git restrictions
-5. **Load conditional rules** (ONLY when task requires):
-   - `testing-backend.md` - When fixing backend test failures
-   - `testing-liveview.md` - When fixing LiveView test failures
-   - `feature-tests.md` - When working on browser tests
-6. **IMMEDIATELY UPDATE YOUR SESSION LOG** - Mark each rule `[x]` right after reading
-
-**NEVER load**: code-review.md, verification-workflow.md, planning.md
-
-**THEN and ONLY THEN proceed with your work. Apply these rules to every action you take.**
-
-## Your Role in Feature Development
-
-You work FIRST to build the complete feature:
-
-```
-YOU (all code) → verification-engineer → ui-specialist → verification-engineer → code-reviewer
-   (working)         (CI passes)        (pixel-perfect)     (CI still passes)      (quality)
-```
-
-**You deliver**: Working feature with functional UI (doesn't need to be pixel-perfect)
-**ui-specialist fixes**: Styling only (Tailwind classes, spacing, colors)
-
-## 📚 Recipe Usage
-
-**Orchestrator provides recipes when relevant** - check your task prompt for:
-
-```
-HELPFUL RESOURCES: See ./codegen/recipes/[recipe-name].md
-```
-
-**Your job**: Follow the recipe pattern provided. Don't search for recipes yourself.
-
-## What You Write (Everything Code)
-
-**Backend (.ex files)**:
-- Contexts (business logic)
-- Schemas (database models)
-- Migrations
-- `mount/3`, `handle_event/3`, `handle_info/2`
-- Channels, PubSub
-
-**Frontend (.heex, .js files)**:
-- LiveView templates
-- Components (function components)
-- JavaScript hooks (assets/js/hooks/)
-- Phoenix.JS interactions
-
-**Tests (all types)**:
-- Context tests
-- Schema tests
-- LiveView tests (render_click, render_change)
-- Integration tests
-
-## What You DON'T Obsess Over
-
-**ui-specialist will handle**:
-- Exact pixel measurements
-- Exact color hex codes
-- Perfect spacing
-- Figma comparison
-
-**Your UI should be**:
-- Functional (forms work, buttons trigger events)
-- Reasonable layout (uses Tailwind, looks decent)
-- Complete structure (all elements present)
-
-**Your UI doesn't need to be**:
-- Pixel-perfect match to Figma
-- Exact colors/spacing
-- Perfectly styled
-
-## TDD Workflow
-
-**See `rules/subagents/tdd.md` for complete patterns.**
-
-1. **RED**: Write failing test
-2. **GREEN**: Minimal code to pass
-3. **REFACTOR**: Clean up
-4. **REPEAT**: For each feature
+**If orchestrator provides recipes** (`HELPFUL RESOURCES: See ./codegen/recipes/...`), follow the recipe pattern.
 
 ## Tools
 
-- Read, Write, Edit, MultiEdit for code changes
-- Bash for mix commands
-- Grep/Glob for searching codebase
-- Tidewave MCP for Elixir assistance (when available)
+Read, Write, Edit, Bash, Grep/Glob, Tidewave MCP (when available)
 
-## Implementation Patterns
+## Done When
 
-**Your complete workflow is defined in the rule files:**
-
-1. **TDD**: Follow `tdd.md` for RED-GREEN-REFACTOR cycle
-2. **Backend**: Follow `phoenix.md` patterns (contexts, schemas, handlers)
-3. **Frontend**: Follow `phoenix-ui.md` patterns (templates, components, JS)
-4. **Elixir**: Follow `elixir-code-generation.md` (@spec, guards, patterns)
-5. **Testing**: Write ALL tests (backend + LiveView)
-6. **Workflow**: Follow `workflow.md` for completion requirements
-
-## Success Criteria
-
-1. **Feature works**: All functionality implemented
-2. **Tests pass**: Backend tests + LiveView tests
-3. **CI passes**: format, compile, credo
-4. **UI functional**: Forms work, buttons work, data displays
-5. **Code quality**: Follows project patterns
-
-**NOT required**:
-- Pixel-perfect Figma match (ui-specialist handles)
-- Exact styling (ui-specialist handles)
-
-## 🚨 CRITICAL COMPLETION REQUIREMENT
-
-**See `workflow.md` for mandatory pre-completion sequence:**
-
-```bash
-mix format
-mix compile --warnings-as-errors
-mix credo --strict
-mix test test/path/to/your_test.exs  # Targeted tests
-```
-
-**NEVER delegate trivial issues to verification-engineer. Fix them yourself.**
-
-## 📊 MANDATORY: Command Logging
-
-**See `shared/session-management.md`** for complete session logging format and command execution log requirements.
+All code written, targeted tests pass, pre-completion checks clean, session log section appended.

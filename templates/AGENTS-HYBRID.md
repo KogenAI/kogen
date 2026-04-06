@@ -4,238 +4,119 @@ Universal guidance for AI agents in hybrid workspaces — production agent quali
 
 **Hybrid = full agent delegation chain + no worktrees + no planning phase + no CONTEXT.md**
 
-> ⚠️ "Hybrid" means no worktrees/planning overhead — it does NOT mean the orchestrator implements code.
-> The orchestrator ALWAYS delegates. See delegation-patterns.md.
-
 ## 🚨 ORCHESTRATOR: NEVER IMPLEMENT CODE DIRECTLY
 
-**The orchestrator NEVER writes code, tests, or file edits — not even "small" ones.**
+The orchestrator NEVER writes code, tests, or file edits — not even "small" ones.
 
-❌ **FORBIDDEN for orchestrator**:
+❌ **FORBIDDEN**: Writing tests, editing source files, fixing bugs inline, "just quickly" adding anything
 
-- Writing tests directly
-- Editing source files
-- Fixing bugs inline
-- "Just quickly" adding a function or describe block
+✅ **ONLY allowed**: Loading rules, reading context, creating session log, delegating to subagents, committing after all gates pass
 
-✅ **ONLY allowed for orchestrator**:
-
-- Loading rules and reading context
-- Creating the session log
-- Delegating tasks to subagents (feature-developer, verification-engineer, code-reviewer)
-- Committing after all gates pass
-
-**If the task involves writing ANY code or tests → delegate to feature-developer immediately.**
-
-No exceptions. Not even for one-line changes. Not even for "simple" test additions.
+**Any code or tests → delegate to feature-developer immediately. No exceptions.**
 
 ## 🚨 ORCHESTRATOR: ALWAYS RUN THE FULL CYCLE
 
-**After feature-developer completes, you MUST immediately (without stopping, without asking) delegate:**
+**After feature-developer completes — immediately, without stopping or asking:**
 
-1. → **verification-engineer** (runs `./codegen/ci.sh`, reports ALL failures)
-2. → **code-reviewer** (only after verification-engineer reports "ALL CLEAR ✅")
+1. **Identify the step's gate** — what test suite proves this works? CI alone? `make llm-phoenix`? Write it in the session log.
+2. → **verification-engineer** (runs `./codegen/ci.sh` AND the step's gate)
+3. → **code-reviewer** (only after "ALL CLEAR ✅")
+4. → **commit** (only after "✅ QUALITY APPROVED")
+5. → **continue to next step** — do NOT stop after committing
 
-**FORBIDDEN**:
-
-- ❌ Stopping after feature-developer reports done
-- ❌ Asking the user "should I run verification?"
-- ❌ Reporting completion before code-reviewer says "✅ QUALITY APPROVED"
-
-**The cycle is ALWAYS**: feature-developer → verification-engineer → code-reviewer → done
+**No exceptions.** One-line change? Full cycle. Runtime.exs tweak? Full cycle.
 
 ## ⚠️ MANDATORY: Load Rules FIRST
 
-**CRITICAL - On EVERY session start, including greetings like "Hi":**
+On EVERY session start:
 
-1. **STOP** - Do NOT respond to the user until rules are loaded
-2. **IDENTIFY** your agent type — if no delegation prompt, you are the **Orchestrator**
-3. **LOAD** rules from `./codegen/rules/INDEX.md` — follow the loading matrix exactly
-4. **APPLY** rules to every action
+1. **LOAD** `./codegen/rules/orchestration/delegation-patterns.md` and `./codegen/rules/orchestration/user-communication.md`
+2. **READ** `./codegen/PROJECT_CONTEXT.md`
 
-**Rule loading by agent type:**
+## Repository & Symlink Layout
 
-- **ALL agents**: Load shared rules (`subagent-core-rules.md`, `session-management.md`)
-- **Orchestrator**: ALSO load `orchestration/delegation-patterns.md`
-- **feature-developer**: Load per INDEX.md matrix (tdd, phoenix, elixir-code-generation, workflow, git + conditional testing rules)
-- **verification-engineer**: Load `verification-workflow.md`, `testing.md`, `elixir-ci.md`, `git.md` (skip `github-actions.md`)
-- **code-reviewer**: Load `code-review.md`, `phoenix.md`, `elixir-code-generation.md`, `testing.md`, `git.md`
+```
+./                      ← combobulate platform source
+  codegen/
+    PROJECT_CONTEXT.md  → symlink to ../PROJECT_CONTEXT.md (project-specific)
+    rules/              → symlink to shared context repo rules
+    recipes/            → symlink to shared context repo recipes
+    logging/            ← session logs (local)
+  ../infra/             ← infra docs (sibling repo)
+    README.md, operations.md, deploy/, setup/
+```
 
-## 🚨 Planning vs Implementation Rule Separation
+`./codegen/rules/` and `./codegen/recipes/` are symlinks — edits affect ALL projects.
 
-**CRITICAL: NEVER load planning rules during implementation**
+## 🔍 Debugging Sessions
 
-❌ **FORBIDDEN during implementation**: `planning.md`, `planning-poc.md`
+Read infra docs FIRST (`../infra/README.md`), then the relevant doc:
 
-## 🚨 MANDATORY: Rule Compliance Verification
+- **Server/ops** → `operations.md` | **Platform** → `deploy/platform.md` | **Static sites** → `deploy/static_sites.md`
+- **Caddy/DNS** → `setup/caddy.md` | **PostgreSQL** → `setup/databases.md` | **Env vars** → `setup/environment_variables.md`
 
-**All agents must prove rule compliance before claiming completion:**
-
-1. **Document rule loading** - Show actual rule content in your session log
-2. **Execute required searches** - Run all systematic searches your role requires
-3. **Provide proof** - Session log must contain evidence of compliance
-4. **No exceptions** - Claims without proof will be rejected
-
-## 🔧 MCP Tools — Log Failures, Never Stop
-
-MCP tools enhance agent capabilities but are **never** a reason to stop work.
-
-**If any MCP tool fails**: log it in the session log and continue with fallbacks (read files directly, use `mix run` for eval, grep for code patterns). Never report an MCP failure as a blocker.
-
-## Universal Context Files
-
-**ALL agents must read BEFORE any work:**
-
-- `./codegen/PROJECT_CONTEXT.md` - Project architecture, module directory, patterns, pitfalls
-
-Note: No `CONTEXT.md` — work happens directly on main branch, no worktrees.
+SSH: `ssh root@46.225.1.182`, then `su - combobulate`. **Never ask the user to run debug commands** — SSH in directly.
 
 ## Workspace Rules
 
-- Work in current directory only (never `../` or `../../`)
+- Work in current directory only (never `../`)
 - No worktrees — commit directly to main
 - No planning phase — implement from task description directly
 
-## Recipe System
+## 📊 Session Logging
 
-**If the orchestrator provides recipe references in your task prompt, use them.** Recipes contain proven patterns and solutions.
-
-**Example delegation with recipe:**
-
-```
-Task: "Add rate limiting to messaging"
-HELPFUL RESOURCES: See ./codegen/recipes/rate-limiting.md
-```
-
-**Your job**: Follow the recipe pattern provided by the orchestrator. Don't search for recipes yourself — the orchestrator handles recipe discovery to save context window space.
-
-## 📚 Library Usage Rules
-
-**Load library-specific docs before implementing with any external library.**
-
-```bash
-ls $OCG_CONTEXT_DIR/usage_rules/ | grep -i "^library_name"
-```
-
-## 📊 MANDATORY: Session Logging
-
-**Orchestrator** creates the session log as its SECOND action. **Subagents append** to the same file — they do NOT create separate files.
+**Orchestrator** creates the session log as FIRST action. **Subagents append** — never create separate files.
 
 **WHERE**: `./codegen/logging/$(date -u +%Y%m%d_%H%M%S)_session.md`
 
-**When**: Orchestrator creates on session start. Subagents append their section when delegated to.
-
-**LOG FORMAT**:
-
-```markdown
-# Session Log
-
-**Started**: $(date -u)
-**Task**: [What is being implemented/verified/reviewed]
-
-## Rules Loaded
-
-- [ ] ./codegen/PROJECT_CONTEXT.md
-- [ ] ./codegen/rules/shared/subagent-core-rules.md
-- [ ] ./codegen/rules/shared/session-management.md
-- [ ] [list all rules loaded per INDEX.md matrix]
-
-## MCP Tool Status
-
-- MCP tools: ✅ Available | ❌ Unavailable (fallback: direct file reads)
-
-## Command Execution Log
-
-<!-- Time test runs: start=$(date +%s); mix test ... 2>&1 | tail -20; echo "Duration: $(($(date +%s) - start))s" -->
-<!-- Compilation: mix compile 2>&1 — no output = already compiled = SUCCESS -->
-
-| Time     | Duration | Command            | Status | Notes |
-| -------- | -------- | ------------------ | ------ | ----- |
-| HH:MM:SS |          | `mix compile 2>&1` | ✅     |       |
-
-## Files Modified
-
-- [ ] [list files created/modified]
-
-## PROJECT_CONTEXT.md Updated
-
-- [ ] Updated before handoff (feature-developer only)
-
-## Delegation Timeline (orchestrator only)
-
-| Time  | Agent             | Task               | Result         |
-| ----- | ----------------- | ------------------ | -------------- |
-| HH:MM | feature-developer | [task description] | ⏳ IN PROGRESS |
-
-<!-- Result options: ⏳ IN PROGRESS | ✅ Done | ❌ Failed | 🔄 Needs iteration -->
-```
+See `shared/session-management.md` for the complete log format.
 
 ## Agent Roles & Workflow
 
-**Standard feature cycle:**
-
 ```
 feature-developer → verification-engineer → code-reviewer → orchestrator commits
-  (implement +         (./codegen/ci.sh)      (quality review)   (/commit → git commit)
-   update context)
 ```
 
-**feature-developer**:
-
-- Implements full feature (backend + tests), follows TDD
-- Runs targeted `mix test test/path/to/test.exs 2>&1` to verify own work
-- Updates `PROJECT_CONTEXT.md` **before reporting done** (see below)
-- Does NOT run full CI — that's verification-engineer's job
-
-**verification-engineer**:
-
-- Runs `./codegen/ci.sh` (compile + credo + full test suite)
-- For infrastructure/runtime changes: also manually verify runtime behavior — see `PROJECT_CONTEXT.md` for platform-specific commands
-- Reports ALL failures — never fixes code
-
-**code-reviewer**:
-
-- Reviews for quality, patterns, architecture
-- Reads updated `PROJECT_CONTEXT.md` to understand new additions
-- Reports issues directly in session log for orchestrator to delegate fixes
-
-**orchestrator (after "✅ QUALITY APPROVED")**:
-
-- Use `Skill("commit")` — generates the commit message and commits automatically
-- No confirmation needed — hybrid mode assumes automated commit after all gates pass
+- **feature-developer**: Implements feature + tests (TDD), updates PROJECT_CONTEXT.md before reporting done
+- **verification-engineer**: Runs `./codegen/ci.sh`, reports ALL failures, never fixes code
+- **code-reviewer**: Reviews quality/patterns/architecture, reports issues
+- **orchestrator**: Uses `Skill("commit")` after all gates pass
 
 ## 🔄 MANDATORY: Update PROJECT_CONTEXT.md Before Handoff
 
-**feature-developer MUST update `./codegen/PROJECT_CONTEXT.md` before reporting done:**
+feature-developer MUST update before reporting done: new modules → Module Directory, changed patterns → relevant section, new pitfalls → Common Pitfalls.
 
-- New modules/files → add to Module Directory
-- Changed patterns/conventions → update relevant section
-- New pitfalls discovered → add to Common Pitfalls
-- New config keys → update Environment Configuration
+## 🔄 MANDATORY: Update PLATFORM_INFO.md When Flow Changes
 
-**Why before handoff**: verification-engineer and code-reviewer both read PROJECT_CONTEXT.md.
-Stale context = wrong decisions downstream.
-
-**This is not optional.** PROJECT_CONTEXT.md is the single source of truth for all agents.
+feature-developer MUST update `./PLATFORM_INFO.md` when customer-facing flows change. Bouncer loads it on every Haiku call — stale info = wrong answers to users.
 
 ## CI Setup
 
-**`./codegen/ci.sh`** runs `make ci` which executes:
+**`./codegen/ci.sh`** runs `make ci`: compile → deps.unlock → deps.audit → hex.audit → sobelow → format + prettier → credo --strict → dialyzer → test --cover → ecto.rollback
 
-1. `MIX_ENV=test mix compile` — pre-warm compilation
-2. `mix ci` — full suite:
-   - `deps.unlock --check-unused`
-   - `deps.audit` + `hex.audit`
-   - `sobelow --config .sobelow-conf`
-   - `format --check-formatted` + `cmd npx prettier -c .`
-   - `credo --strict`
-   - `dialyzer`
-   - `mix test --cover --warnings-as-errors`
-3. `MIX_ENV=test mix ecto.rollback --all --quiet` — DB cleanup
+## LLM Integration Tests
+
+**Always use `make` targets** — never construct `mix test` commands manually.
+
+- `make llm` — all LLM tests in parallel (~3-4 min)
+- `make llm-summary` — failure summary from last run
+- `make llm-retry` — rerun only failed tests
+- `make llm-kill` — kill background partitions after Ctrl+C
+- Single test: `MIX_TEST_PARTITION=1 MIX_TEST_PARTITIONS=1 mix test --only llm_integration path/to/test.exs`
+
+**Run when diff touches**: system prompts, `parse_build_result`, any `CLAUDE.md` or `codegen/rules/` file, role templates (`.md.j2`), `claude_runner_impl.ex`, `claude_build_runner_impl.ex`, `bouncer.ex`, Claude prompt strings in any module, LLM test infrastructure. **Skip for all other changes.**
+
+**🚨 Orchestrator**: Check the diff before delegating to verification-engineer. If it touches any of the above, tell them the gate includes LLM tests.
+
+**🚨 Applies to debugging too.** Editing CLAUDE.md, context repo files, or system prompts — even as a "quick fix" — requires LLM tests before committing.
+
+**Test naming**: `<app_type>_<stack>_<scenario>_test.exs`. Stacks: HTML, Hugo, React, Vue, Phoenix, multilingual. See `codegen/llm_integration_test_coverage.md` for file list and phone registry.
+
+**When LLM tests fail**: Run in isolation to confirm. Check `main` before claiming "pre-existing". Fix prompts/rules until it passes. Never dismiss as "nondeterminism".
 
 ## Universal Requirements
 
-- **Read PROJECT_CONTEXT.md first** - Always, before any work
-- **Issue Discovery → Immediate Fixing** - Find issues, fix them — never stop after just documenting
-- **Session logging** - Orchestrator creates, subagents append
-- **Update PROJECT_CONTEXT.md before done** - feature-developer must update before handing off
+- **Read PROJECT_CONTEXT.md first** — always, before any work
+- **Issue Discovery → Immediate Fixing** — find issues, fix them, never just document
+- **Session logging** — orchestrator creates, subagents append
+- **Update PROJECT_CONTEXT.md before done** — feature-developer must update before handoff
