@@ -15,6 +15,21 @@ Extract lessons from conversation and add concise rules.
 - Bullet points over paragraphs
 - One example (bad/good pair), not multiple
 
+## Size Check (MANDATORY before writing)
+
+After drafting, count lines: `echo "your section" | wc -l`
+
+- Section > 10 lines → compress before saving
+- Code example > 6 lines → cut to minimal pattern, remove project-specific details
+- "Would this example make sense in a different project?" → No = remove it, state the rule in plain words
+
+## Project-specific Content Check
+
+Before adding any identifier (function name, library name, service name) to a shared rule file, ask:
+
+- Is this universal Elixir/Phoenix/Oban behaviour? → shared rule file
+- Is this specific to this project's stack? → `PROJECT_CONTEXT.md` or `CLAUDE.md` only
+
 ## Process
 
 1. **Extract lessons** from conversation (errors, solutions, patterns)
@@ -67,6 +82,6 @@ If a rule doesn't fit an existing file: consider project-specific file, new focu
 
 ## After Adding Rules
 
-1. Update `./codegen/rules/INDEX.md` keyword index
+1. **Update INDEX.md selectively** — only when introducing a new rule file or renaming a category. Don't add implementation details (e.g., "Oban worker return values"). INDEX.md is a map, not a changelog. Keywords should name primary domains; sub-topics belong inside the rule file.
 2. Verify no duplication with existing rules
 3. Follow STYLE_GUIDE.md compression principles
