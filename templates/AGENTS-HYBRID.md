@@ -18,7 +18,7 @@ The orchestrator NEVER writes code, tests, or file edits — not even "small" on
 
 **After feature-developer completes — immediately, without stopping or asking:**
 
-1. **Identify the step's gate** — what test suite proves this works? CI alone? `make llm-phoenix`? Write it in the session log.
+1. **Identify the step's gate** — what test suite proves this works? CI alone? Write it in the session log.
 2. → **verification-engineer** (runs `make ci` AND the step's gate)
 3. → **code-reviewer** (only after "ALL CLEAR ✅")
 4. → **commit** (only after "✅ QUALITY APPROVED")
@@ -32,30 +32,6 @@ On EVERY session start:
 
 1. **LOAD** `./codegen/rules/orchestration/delegation-patterns.md` and `./codegen/rules/orchestration/user-communication.md`
 2. **READ** `./codegen/PROJECT_CONTEXT.md`
-
-## Repository & Symlink Layout
-
-```
-./                      ← combobulate platform source
-  codegen/
-    PROJECT_CONTEXT.md  → symlink to ../PROJECT_CONTEXT.md (project-specific)
-    rules/              → symlink to shared context repo rules
-    recipes/            → symlink to shared context repo recipes
-    logging/            ← session logs (local)
-  ../infra/             ← infra docs (sibling repo)
-    README.md, operations.md, deploy/, setup/
-```
-
-`./codegen/rules/` and `./codegen/recipes/` are symlinks — edits affect ALL projects.
-
-## 🔍 Debugging Sessions
-
-Read infra docs FIRST (`../infra/README.md`), then the relevant doc:
-
-- **Server/ops** → `operations.md` | **Platform** → `deploy/platform.md` | **Static sites** → `deploy/static_sites.md`
-- **Caddy/DNS** → `setup/caddy.md` | **PostgreSQL** → `setup/databases.md` | **Env vars** → `setup/environment_variables.md`
-
-SSH: `ssh root@46.225.1.182`, then `su - combobulate`. **Never ask the user to run debug commands** — SSH in directly.
 
 ## Workspace Rules
 
@@ -86,33 +62,9 @@ feature-developer → verification-engineer → code-reviewer → orchestrator c
 
 feature-developer MUST update before reporting done: new modules → Module Directory, changed patterns → relevant section, new pitfalls → Common Pitfalls.
 
-## 🔄 MANDATORY: Update PLATFORM_INFO.md When Flow Changes
-
-feature-developer MUST update `./PLATFORM_INFO.md` when customer-facing flows change. Bouncer loads it on every Haiku call — stale info = wrong answers to users.
-
 ## CI Setup
 
 **`make ci`**: compile → deps.unlock → deps.audit → hex.audit → sobelow → format + prettier → credo --strict → dialyzer → test --cover → ecto.rollback
-
-## LLM Integration Tests
-
-**Always use `make` targets** — never construct `mix test` commands manually.
-
-- `make llm` — all LLM tests in parallel (~3-4 min)
-- `make llm-summary` — failure summary from last run
-- `make llm-retry` — rerun only failed tests
-- `make llm-kill` — kill background partitions after Ctrl+C
-- Single test: `MIX_TEST_PARTITION=1 MIX_TEST_PARTITIONS=1 mix test --only llm_integration path/to/test.exs`
-
-**Run when diff touches**: system prompts, `parse_build_result`, any `CLAUDE.md` or `codegen/rules/` file, role templates (`.md.j2`), `claude_runner_impl.ex`, `claude_build_runner_impl.ex`, `bouncer.ex`, Claude prompt strings in any module, LLM test infrastructure. **Skip for all other changes.**
-
-**🚨 Orchestrator**: Check the diff before delegating to verification-engineer. If it touches any of the above, tell them the gate includes LLM tests.
-
-**🚨 Applies to debugging too.** Editing CLAUDE.md, context repo files, or system prompts — even as a "quick fix" — requires LLM tests before committing.
-
-**Test naming**: `<app_type>_<stack>_<scenario>_test.exs`. Stacks: HTML, Hugo, React, Vue, Phoenix, multilingual. See `codegen/llm_integration_test_coverage.md` for file list and phone registry.
-
-**When LLM tests fail**: Run in isolation to confirm. Check `main` before claiming "pre-existing". Fix prompts/rules until it passes. Never dismiss as "nondeterminism".
 
 ## Universal Requirements
 
