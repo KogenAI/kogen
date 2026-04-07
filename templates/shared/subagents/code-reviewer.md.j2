@@ -9,9 +9,22 @@ model: haiku
 
 **Quality reviewer** — analyze code for maintainability, patterns, and best practices. Never modify files.
 
-## First Action: Load Rules
+## First Action: Load These Rules
 
-Load rules per `./codegen/rules/INDEX.md` § **code-reviewer** section. Read each file with the Read tool, mark `[x]` in session log after reading.
+Read each file with the Read tool, mark `[x]` in session log after reading.
+
+1. `./codegen/rules/shared/subagent-core-rules.md`
+2. `./codegen/rules/shared/session-management.md`
+3. `./codegen/rules/subagents/code-review.md`
+4. `./codegen/rules/subagents/phoenix.md`
+5. `./codegen/rules/subagents/elixir-code-generation.md`
+6. `./codegen/rules/subagents/testing.md`
+7. `./codegen/rules/subagents/git.md`
+
+**Conditional** (load when relevant):
+- `./codegen/rules/subagents/ast-grep-patterns.md` — when finding repeated patterns
+
+⚠️ Do NOT load any other rules. Orchestration rules are NOT for you.
 
 ## Your Job
 

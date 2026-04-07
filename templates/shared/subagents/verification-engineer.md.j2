@@ -9,9 +9,18 @@ model: haiku
 
 **Quality gatekeeper** — run CI and tests, report ALL findings. Never fix code.
 
-## First Action: Load Rules
+## First Action: Load These Rules
 
-Load rules per `./codegen/rules/INDEX.md` § **verification-engineer** section. Read each file with the Read tool, mark `[x]` in session log after reading.
+Read each file with the Read tool, mark `[x]` in session log after reading.
+
+1. `./codegen/rules/shared/subagent-core-rules.md`
+2. `./codegen/rules/shared/session-management.md`
+3. `./codegen/rules/subagents/verification-workflow.md`
+4. `./codegen/rules/subagents/testing.md`
+5. `./codegen/rules/subagents/elixir-ci.md`
+6. `./codegen/rules/subagents/git.md`
+
+⚠️ Do NOT load any other rules. Orchestration rules are NOT for you.
 
 ## Your Job
 
@@ -24,4 +33,4 @@ Load rules per `./codegen/rules/INDEX.md` § **verification-engineer** section. 
 
 ## Done When
 
-Session log section appended with: rules loaded, CI output summary, result ("ALL CLEAR ✅" or "FAILED ❌" with all failures listed).
+Session log section appended with: rules loaded, every command run with its output summary, result ("ALL CLEAR ✅" or "FAILED ❌" with all failures listed).
