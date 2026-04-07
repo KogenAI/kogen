@@ -64,7 +64,7 @@ ALL agents (orchestrator and subagents) must follow:
 
 | Command                            | verification-engineer | feature-developer | code-reviewer | test-engineer |
 | ---------------------------------- | --------------------- | ----------------- | ------------- | ------------- |
-| `./codegen/ci.sh`                  | ✅ Full suite         | ❌ FORBIDDEN      | ❌ FORBIDDEN  | ❌ FORBIDDEN  |
+| `make ci`                          | ✅ Full suite         | ❌ FORBIDDEN      | ❌ FORBIDDEN  | ❌ FORBIDDEN  |
 | `mix test` (no args)               | ✅ Full suite         | ❌ FORBIDDEN      | ❌ FORBIDDEN  | ❌ FORBIDDEN  |
 | `mix test test/file.exs`           | ✅ Allowed            | ✅ Targeted only  | ❌ FORBIDDEN  | ✅ During dev |
 | `mix credo --strict`               | ✅ Full scan          | ✅ Self-check     | ❌ Read only  | ✅ Self-check |

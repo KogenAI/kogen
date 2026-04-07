@@ -19,7 +19,7 @@ The orchestrator NEVER writes code, tests, or file edits — not even "small" on
 **After feature-developer completes — immediately, without stopping or asking:**
 
 1. **Identify the step's gate** — what test suite proves this works? CI alone? `make llm-phoenix`? Write it in the session log.
-2. → **verification-engineer** (runs `./codegen/ci.sh` AND the step's gate)
+2. → **verification-engineer** (runs `make ci` AND the step's gate)
 3. → **code-reviewer** (only after "ALL CLEAR ✅")
 4. → **commit** (only after "✅ QUALITY APPROVED")
 5. → **continue to next step** — do NOT stop after committing
@@ -78,7 +78,7 @@ feature-developer → verification-engineer → code-reviewer → orchestrator c
 ```
 
 - **feature-developer**: Implements feature + tests (TDD), updates PROJECT_CONTEXT.md before reporting done
-- **verification-engineer**: Runs `./codegen/ci.sh`, reports ALL failures, never fixes code
+- **verification-engineer**: Runs `make ci`, reports ALL failures, never fixes code
 - **code-reviewer**: Reviews quality/patterns/architecture, reports issues
 - **orchestrator**: Uses `Skill("commit")` after all gates pass
 
@@ -92,7 +92,7 @@ feature-developer MUST update `./PLATFORM_INFO.md` when customer-facing flows ch
 
 ## CI Setup
 
-**`./codegen/ci.sh`** runs `make ci`: compile → deps.unlock → deps.audit → hex.audit → sobelow → format + prettier → credo --strict → dialyzer → test --cover → ecto.rollback
+**`make ci`**: compile → deps.unlock → deps.audit → hex.audit → sobelow → format + prettier → credo --strict → dialyzer → test --cover → ecto.rollback
 
 ## LLM Integration Tests
 

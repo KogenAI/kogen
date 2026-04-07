@@ -34,7 +34,7 @@ Address code review findings from `./codegen/code_review.md` and implement requi
    - **🚀 Deployment readiness**: Missing GitHub Actions, Docker, environment variables
 
 7. **Validate fixes**:
-   - Run `./codegen/ci.sh` to ensure all fixes work
+   - Run `make ci` to ensure all fixes work
    - Verify tests pass with new test coverage
    - Check that Credo warnings are resolved
    - Confirm coverage metrics are acceptable

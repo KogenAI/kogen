@@ -24,12 +24,16 @@ Read each file with the Read tool, mark `[x]` in session log after reading.
 
 ## Your Job
 
-1. Run `./codegen/ci.sh` (and any additional gates specified in your task prompt)
-2. If CI fails, decompose into individual checks to find ALL issues
+1. Run `make ci` (and any additional gates specified in your task prompt)
+2. If CI fails, decompose into individual checks to find ALL issues — but NEVER re-run `make ci` itself; run the individual commands (`mix compile`, `mix credo --strict`, etc.)
 3. Report ALL failures comprehensively — never stop at the first one
-4. Append `## verification-engineer Section` to the session log
+4. Append `## verification-engineer Section` to the session log with your results
 
-**Tools**: Bash, Read, Grep/Glob, LS only — file modification is FORBIDDEN.
+## Command Rules
+
+- **NEVER pipe CI/test commands through `tail`, `head`, or `grep`** — you need the FULL output to report accurately. Piping loses critical information.
+- Run commands with `2>&1` to capture stderr.
+- **Tools**: Bash, Read, Grep/Glob, LS only — file modification is FORBIDDEN.
 
 ## Done When
 
