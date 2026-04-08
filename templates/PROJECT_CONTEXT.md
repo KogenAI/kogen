@@ -14,99 +14,35 @@
 - **Data Flow**: [How data moves through the system]
 - **Key Integrations**: [External systems, APIs, services]
 
+## Domain Context Files
+
+Detailed context is split by business domain. **Load this index always. Load domain files only when relevant to your task.**
+
+| File              | Domain                    | Load when working on... |
+| ----------------- | ------------------------- | ----------------------- |
+| `context/core.md` | [Primary business domain] | [When to load]          |
+
+_Domain files are created during project setup. Add rows as domains emerge._
+
+### Loading examples
+
+- **[Example task 1]**: `context/core.md`
+- **[Example task 2]**: `context/core.md` + `context/development.md`
+
 ## Module Directory
 
 ### Core Modules
 
-- **Module Name**: [Brief description of purpose and responsibilities]
-- **Module Name**: [Brief description of purpose and responsibilities]
+| Module        | Purpose             |
+| ------------- | ------------------- |
+| [Module Name] | [Brief description] |
 
-### Feature Modules
+### Web Layer
 
-- **Module Name**: [Brief description of purpose and responsibilities]
-- **Module Name**: [Brief description of purpose and responsibilities]
+| Module        | Purpose             |
+| ------------- | ------------------- |
+| [Module Name] | [Brief description] |
 
-### Infrastructure Modules
+## Integration Points
 
-- **Module Name**: [Brief description of purpose and responsibilities]
-- **Module Name**: [Brief description of purpose and responsibilities]
-
-## Tech Stack & Patterns
-
-### Primary Technologies
-
-- **Backend**: [Check .tool-versions and mix.exs for exact versions]
-- **Frontend**: [Check package.json and mix.exs for versions]
-- **Database**: [Check mix.exs and config for database details]
-- **Testing**: [Check test/support/ structure - fixtures vs factories vs other patterns]
-
-### Coding Conventions
-
-- **File Organization**: [How files are structured]
-- **Naming Patterns**: [Conventions for modules, functions, variables]
-- **Code Style**: [Formatting and style guidelines]
-
-### Common Patterns
-
-- **Context Pattern**: [How Phoenix contexts are used]
-- **LiveView Patterns**: [Common LiveView implementations]
-- **Database Patterns**: [Schema and migration conventions]
-
-## API Contracts & Interfaces
-
-### Internal APIs
-
-- **Context APIs**: [Key functions exposed by contexts]
-- **LiveView APIs**: [Important LiveView interfaces]
-- **Schema APIs**: [Database schema relationships]
-
-### External APIs
-
-- **Third-party Integrations**: [External services and their interfaces]
-- **Webhooks**: [Incoming/outgoing webhook patterns]
-
-### Routing Architecture
-
-- **Public Routes**: [Routes accessible without authentication]
-- **Authentication Routes**: [Login, registration, password reset flows]
-- **Protected Routes**: [Routes requiring authentication, organized by user type]
-- **Pipelines**: [Authentication and authorization pipelines used]
-
-## Development Guidelines
-
-### Development Rules
-
-- **Centralized Rules**: This project uses shared development rules via `@codegen/rules/INDEX.md`
-- **Rule Categories**: Phoenix, Elixir quality, readability, error handling, testing, planning, project structure
-- **Setup**: Create symbolic link with `ln -s <rules_dir> codegen/rules` to access all rules
-
-### Feature Development
-
-- **Context Boundaries**: [How to respect context boundaries]
-- **Testing Strategy**: [Check test/support/ - are fixtures used? ExMachina? Custom patterns?]
-- **Database Changes**: [Migration and schema guidelines]
-
-### Integration Points
-
-- **Authentication**: [How auth is handled]
-- **Authorization**: [Permission patterns]
-- **Error Handling**: [Error handling conventions]
-- **Logging**: [Logging patterns and levels]
-
-### Performance Considerations
-
-- **Database**: [Query optimization patterns]
-- **LiveView**: [Performance best practices]
-- **Caching**: [Caching strategies used]
-
-## Common Pitfalls & Solutions
-
-### Known Issues
-
-- **Issue**: [Description and solution]
-- **Issue**: [Description and solution]
-
-### Best Practices
-
-- **Practice**: [Why it's important and how to implement]
-- **Practice**: [Why it's important and how to implement]
+- **[Integration]**: [How it connects]

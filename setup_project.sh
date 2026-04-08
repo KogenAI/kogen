@@ -40,6 +40,7 @@ echo "📁 Project: $REPO_ROOT"
 mkdir -p "$REPO_ROOT/codegen"
 mkdir -p "$REPO_ROOT/codegen/plans"
 mkdir -p "$REPO_ROOT/codegen/contexts"
+mkdir -p "$REPO_ROOT/context"
 
 # Create PROJECT_CONTEXT.md - prefer project-specific context, fallback to template
 PROJECT_NAME=$(basename "$REPO_ROOT")
@@ -117,6 +118,37 @@ else
     else
         echo "ℹ️  PROJECT_CONTEXT.md already exists, skipping..."
     fi
+fi
+
+# Create context/ directory with domain templates if new project
+if [ "$NEEDS_AI_ANALYSIS" = true ]; then
+    # Copy domain context templates
+    if [ -d "$SCRIPT_DIR/templates/context" ]; then
+        for tmpl in "$SCRIPT_DIR/templates/context/"*.md; do
+            tmpl_name=$(basename "$tmpl")
+            if [ ! -f "$REPO_ROOT/context/$tmpl_name" ]; then
+                cp "$tmpl" "$REPO_ROOT/context/$tmpl_name"
+                sed -i '' "s|{{PROJECT_NAME}}|$PROJECT_NAME|g" "$REPO_ROOT/context/$tmpl_name"
+            fi
+        done
+        echo "✅ Created domain context templates in context/"
+    fi
+fi
+
+# Create codegen/context symlink to ../context/
+if [ -L "$REPO_ROOT/codegen/context" ]; then
+    echo "ℹ️  codegen/context symlink already exists"
+elif [ -d "$REPO_ROOT/codegen/context" ]; then
+    # Regular directory exists — move contents to context/ and replace with symlink
+    if [ "$(ls -A "$REPO_ROOT/codegen/context" 2>/dev/null)" ]; then
+        mv "$REPO_ROOT/codegen/context/"* "$REPO_ROOT/context/" 2>/dev/null || true
+    fi
+    rmdir "$REPO_ROOT/codegen/context" 2>/dev/null || rm -rf "$REPO_ROOT/codegen/context"
+    ln -s ../context "$REPO_ROOT/codegen/context"
+    echo "✅ Replaced codegen/context/ directory with symlink to ../context/"
+else
+    ln -s ../context "$REPO_ROOT/codegen/context"
+    echo "✅ Created codegen/context symlink to ../context/"
 fi
 
 # Create symlinks to project-specific Figma files
@@ -288,119 +320,90 @@ fi
 if [ "$IS_MONOREPO" = true ]; then
     SETUP_PROMPT="# Monorepo Project Context Setup
 
-I need you to analyze this **monorepo codebase** (backend + mobile) and fill out the PROJECT_CONTEXT.md template completely. This will serve as the foundational knowledge for all future AI development sessions.
+I need you to analyze this **monorepo codebase** (backend + mobile) and fill out the project context files. This will serve as the foundational knowledge for all future AI development sessions.
+
+## Context Structure
+
+This project uses **split domain context**:
+- \`./codegen/PROJECT_CONTEXT.md\` — concise index (~100 lines max). Overview, module directory, domain file loading guide.
+- \`./context/*.md\` — domain-specific files with detailed context per business domain.
+
+Two starter templates exist in \`./context/\`: \`core.md\` (primary business domain) and \`development.md\` (testing, CI, env vars, debugging).
 
 ## Your Task
 
-Please analyze BOTH backend and mobile directories and:
-
-1. **Replace ALL placeholder text** in \`./codegen/PROJECT_CONTEXT.md\` with real project details
-2. **Document BOTH architectures**:
-   - **Backend** (Phoenix/Elixir in \`./backend/\`)
-   - **Mobile** (Flutter/Dart in \`./mobile/\`)
-   - **Integration points** between backend and mobile
-3. **List real modules from BOTH**:
-   - Backend contexts, schemas, LiveViews
-   - Mobile screens, services, models, widgets
-4. **Identify integration points**:
-   - How mobile connects to backend API
-   - API endpoints used by mobile
-   - WebSocket/Phoenix Channel integration (if any)
-5. **Document coding conventions for BOTH**:
-   - Elixir patterns in backend
-   - Dart/Flutter patterns in mobile
-6. **Note any pitfalls** in either backend or mobile development
-7. **Create Figma files if needed** - if this project uses Figma designs, create:
-   - \`./codegen/FIGMA_MAP.md\` - Maps Figma components to code implementation
-   - \`./codegen/FIGMA_DESIGN_SYSTEM_RULES.md\` - Design system implementation rules
-   - \`./codegen/FIGMA_TOKEN_MAPPING.md\` - Maps design tokens to CSS/Tailwind classes
+1. **Fill out \`./codegen/PROJECT_CONTEXT.md\`** — replace placeholders. Keep concise — this is an index.
+2. **Fill out \`./context/development.md\`** — tech stack, testing, env vars, deploy, pitfalls for BOTH backend and mobile.
+3. **Fill out \`./context/core.md\`** — rename if better name fits. Document primary business domain.
+4. **Create additional domain files** in \`./context/\` as needed:
+   - Consider \`backend-api.md\` for Phoenix API endpoints and patterns
+   - Consider \`mobile.md\` for Flutter architecture, screens, services
+   - Consider domain-specific files (e.g., \`billing.md\`, \`notifications.md\`)
+   - Each file is self-contained: modules, env vars, pitfalls for that domain
+5. **Update the domain file table** in \`PROJECT_CONTEXT.md\` to list all created files.
+6. **Create Figma files if needed** — only if evidence of Figma usage exists.
 
 ## Guidelines
 
-- **Be specific, not generic** - use actual module names, not placeholders
-- **Be comprehensive** - analyze BOTH backend and mobile thoroughly
-- **Focus on architecture** - how is each part organized and why?
-- **Document mobile-backend integration** - how do they communicate?
-- **Include examples** - reference actual files and patterns you find
-- **Update the timestamp** - change the \"Last Updated\" date to today's date
-- **Create Figma files only if needed** - only create them if you find evidence of Figma usage in the project
+- **Be specific, not generic** — use actual module names
+- **Keep PROJECT_CONTEXT.md concise** — details go in domain files
+- **Document mobile-backend integration** — how do they communicate?
+- **Each domain file is self-contained** — its own modules, env vars, pitfalls
 
-## Files to Focus On
+## Files to Analyze
 
-**Backend** (\`./backend/\`):
-- \`lib/*/\` - Main application contexts
-- \`lib/*_web/\` - Web layer (controllers, views, LiveViews)
-- \`priv/repo/\` - Database migrations and seeds
-- \`config/\` - Application configuration
-- \`test/\` - Test patterns and structure
-- \`mix.exs\` - Dependencies and project configuration
-
-**Mobile** (\`./mobile/\`):
-- \`lib/\` - Flutter application code
-- \`lib/screens/\` - UI screens
-- \`lib/services/\` - API clients and services
-- \`lib/models/\` - Data models
-- \`lib/config/\` - Configuration (API URLs, etc.)
-- \`test/\` - Widget and unit tests
-- \`pubspec.yaml\` - Dependencies and project configuration
-
-**Common**:
-- \`.tool-versions\` - Runtime versions
-- \`Makefile\` - CI commands
-- Root and per-directory Makefiles
+**Backend** (\`./backend/\`): \`lib/*/\`, \`lib/*_web/\`, \`priv/repo/\`, \`config/\`, \`test/\`, \`mix.exs\`
+**Mobile** (\`./mobile/\`): \`lib/\`, \`lib/screens/\`, \`lib/services/\`, \`lib/models/\`, \`test/\`, \`pubspec.yaml\`
+**Common**: \`.tool-versions\`, \`Makefile\`, root and per-directory Makefiles
 
 ## Important Notes
 $PROJECT_INFO
 
-This PROJECT_CONTEXT.md will be used by all future AI sessions to understand the ENTIRE monorepo project (backend + mobile) without re-analyzing the codebase.
-
-**Start by opening and reviewing \`./codegen/PROJECT_CONTEXT.md\`, then begin your analysis of BOTH backend/ and mobile/ directories.**"
+**Start by reviewing \`./codegen/PROJECT_CONTEXT.md\` and \`./context/*.md\` templates, then analyze BOTH directories.**"
 else
     SETUP_PROMPT="# Project Context Setup
 
-I need you to analyze this Phoenix/Elixir codebase and fill out the PROJECT_CONTEXT.md template completely. This will serve as the foundational knowledge for all future AI development sessions.
+I need you to analyze this Phoenix/Elixir codebase and fill out the project context files. This will serve as the foundational knowledge for all future AI development sessions.
+
+## Context Structure
+
+This project uses **split domain context**:
+- \`./codegen/PROJECT_CONTEXT.md\` — concise index (~100 lines max). Overview, module directory, domain file loading guide.
+- \`./context/*.md\` — domain-specific files with detailed context per business domain.
+
+Two starter templates exist in \`./context/\`: \`core.md\` (primary business domain) and \`development.md\` (testing, CI, env vars, debugging).
 
 ## Your Task
 
-Please analyze the codebase and:
-
-1. **Replace ALL placeholder text** in \`./codegen/PROJECT_CONTEXT.md\` with real project details
-2. **Document the actual architecture** - what patterns are really used?
-3. **List real modules** - what contexts, schemas, and LiveViews exist?
-4. **Identify integration points** - how do different parts connect?
-5. **Document coding conventions** - what patterns do you see in the existing code?
-6. **Note any pitfalls** - what could trip up future development?
-7. **Create Figma files if needed** - if this project uses Figma designs, create:
-   - \`./codegen/FIGMA_MAP.md\` - Maps Figma components to code implementation
-   - \`./codegen/FIGMA_DESIGN_SYSTEM_RULES.md\` - Design system implementation rules
-   - \`./codegen/FIGMA_TOKEN_MAPPING.md\` - Maps design tokens to CSS/Tailwind classes
+1. **Fill out \`./codegen/PROJECT_CONTEXT.md\`** — replace placeholders with real project details. Keep it concise — this is an index, not a dump.
+2. **Fill out \`./context/development.md\`** — tech stack, testing strategy, env vars, deploy, pitfalls.
+3. **Fill out \`./context/core.md\`** — rename if a better domain name fits (e.g., \`accounts.md\`, \`orders.md\`). Document the primary business domain.
+4. **Create additional domain files** in \`./context/\` if the project has multiple distinct domains (e.g., \`billing.md\`, \`notifications.md\`). Each should be self-contained: modules, env vars, and pitfalls for that domain.
+5. **Update the domain file table** in \`PROJECT_CONTEXT.md\` to list all created domain files with loading guidance.
+6. **Create Figma files if needed** — only if evidence of Figma usage exists.
 
 ## Guidelines
 
-- **Be specific, not generic** - use actual module names, not placeholders
-- **Be comprehensive** - this is a one-time setup, so be thorough
-- **Focus on architecture** - how is the code organized and why?
-- **Include examples** - reference actual files and patterns you find
-- **Update the timestamp** - change the \"Last Updated\" date to today's date
-- **Create Figma files only if needed** - only create them if you find evidence of Figma usage in the project
+- **Be specific, not generic** — use actual module names, not placeholders
+- **Keep PROJECT_CONTEXT.md concise** — it's loaded on every session. Details go in domain files.
+- **Each domain file is self-contained** — includes its own modules, env vars, and pitfalls
+- **Focus on architecture** — how is the code organized and why?
 
-## Files to Focus On
+## Files to Analyze
 
-- \`lib/*/\` - Main application contexts
-- \`lib/*_web/\` - Web layer (controllers, views, LiveViews)
-- \`priv/repo/\` - Database migrations and seeds
-- \`config/\` - Application configuration
-- \`test/\` - Test patterns and structure
-- \`.tool-versions\` - Runtime versions
-- \`mix.exs\` - Dependencies and project configuration
-- \`Dockerfile\` - Deployment configuration
+- \`lib/*/\` — Main application contexts
+- \`lib/*_web/\` — Web layer (controllers, views, LiveViews)
+- \`priv/repo/\` — Database migrations and seeds
+- \`config/\` — Application configuration
+- \`test/\` — Test patterns and structure
+- \`.tool-versions\` — Runtime versions
+- \`mix.exs\` — Dependencies and project configuration
+- \`Dockerfile\` — Deployment configuration
 
 ## Important Notes
 $PROJECT_INFO
 
-This PROJECT_CONTEXT.md will be used by all future AI sessions to understand the project without re-analyzing the entire codebase.
-
-**Start by opening and reviewing \`./codegen/PROJECT_CONTEXT.md\`, then begin your analysis.**"
+**Start by reviewing \`./codegen/PROJECT_CONTEXT.md\` and \`./context/*.md\` templates, then analyze the codebase.**"
 fi
 
 open_cursor_setup_chat() {
@@ -467,7 +470,9 @@ echo ""
 echo "🗂️  Files created:"
 echo "   - AGENTS.md (AI agent instructions)"
 echo "   - CLAUDE.md (symlink for backward compatibility)"
-echo "   - codegen/PROJECT_CONTEXT.md (project knowledge base)"
+echo "   - codegen/PROJECT_CONTEXT.md (concise project index)"
+echo "   - context/*.md (domain-specific context files)"
+echo "   - codegen/context/ (symlink to ../context/)"
 echo "   - codegen/rules/ (symbolic link to development rules)"
 echo "   - Updated .gitignore and .dockerignore"
 echo ""

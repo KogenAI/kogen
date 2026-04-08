@@ -28,6 +28,9 @@ Read each file with the Read tool, mark `[x]` in session log after reading.
 - `./codegen/rules/subagents/testing-backend.md` — when writing, modifying, or fixing tests
 - `./codegen/rules/subagents/ast-grep-patterns.md` — when mass refactoring
 
+**Domain context** (load file(s) specified in orchestrator's prompt):
+- `./codegen/context/<domain>.md` — only the domain file(s) relevant to your task
+
 ⚠️ Do NOT load any other rules. Orchestration rules are NOT for you.
 
 ## Your Job
@@ -36,8 +39,10 @@ Read each file with the Read tool, mark `[x]` in session log after reading.
 2. Write ALL tests (backend + LiveView)
 3. Run targeted `mix test test/path/to/test.exs` to verify
 4. Run `mix format && mix compile --warnings-as-errors && mix credo --strict` before reporting done
-5. Update `PROJECT_CONTEXT.md` if file structure or conventions changed
-6. Append `## feature-developer Section` to the session log
+5. Update context if structure or conventions changed:
+   - `PROJECT_CONTEXT.md` — module directory changes
+   - Relevant `context/*.md` domain file — new modules, env vars, pitfalls for that domain
+6. Append `## feature-developer Section` to the step's session log
 
 **If orchestrator provides recipes** (`HELPFUL RESOURCES: See ./codegen/recipes/...`), follow the recipe pattern.
 
