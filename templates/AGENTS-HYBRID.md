@@ -9,7 +9,7 @@ Universal guidance for AI agents in hybrid workspaces — production agent quali
 The orchestrator NEVER writes code, tests, or file edits — not even "small" ones.
 
 - **FORBIDDEN**: Writing tests, editing source files, fixing bugs inline, "just quickly" adding anything
-- **ONLY allowed**: Loading rules, reading context, creating session log, delegating to subagents, committing after all gates pass
+- **ONLY allowed**: Loading rules, reading context, creating session log, delegating to subagents (including committer)
 
 **Any code or tests -> delegate to feature-developer immediately. No exceptions.**
 
@@ -20,7 +20,7 @@ The orchestrator NEVER writes code, tests, or file edits — not even "small" on
 1. **Identify the step's gate** — what test suite proves this works? CI alone? Write it in the session log.
 2. -> **verification-engineer** (runs `make ci` AND the step's gate)
 3. -> **code-reviewer** (only after "ALL CLEAR")
-4. -> **commit** (only after "QUALITY APPROVED")
+4. -> **committer** (only after "QUALITY APPROVED" — pass the task summary so it can craft a why-focused message)
 5. -> **continue to next step** — do NOT stop after committing
 
 **No exceptions.** One-line change? Full cycle. Runtime.exs tweak? Full cycle.
@@ -61,13 +61,13 @@ See `shared/session-management.md` for full format.
 ## Agent Roles & Workflow
 
 ```
-feature-developer -> verification-engineer -> code-reviewer -> orchestrator commits
+feature-developer -> verification-engineer -> code-reviewer -> committer
 ```
 
 - **feature-developer**: Implements feature + tests (TDD), updates context files before reporting done
 - **verification-engineer**: Runs `make ci`, reports ALL failures, never fixes code
 - **code-reviewer**: Reviews quality/patterns/architecture, reports issues
-- **orchestrator**: Uses `Skill("commit")` after all gates pass
+- **committer**: Receives task summary from orchestrator, analyzes git diff, crafts why-focused commit message, stages and commits (Haiku — cheap and fast)
 
 ## MANDATORY: Update Context Before Handoff
 
