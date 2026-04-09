@@ -48,3 +48,7 @@ For each step, identify its verification gate (how you confirm it's done — run
 If a step's verification gate requires something from a later step, that later step must come first — even if it feels like a dependency inversion. The order is determined by what you can actually verify, not just what implements what.
 
 Example: "Step 1: refactor tests (gate: run make llm-phoenix)" — but make llm-phoenix hangs because Step 2 fixes the hang. Correct order: Step 2 first, then Step 1.
+
+**Critical: Verify external assumptions before splitting**
+
+If any step depends on an external API capability, third-party service feature, or infrastructure behavior — verify it FIRST. SSH to the server, call the sandbox API, check the docs. Do not create steps that assume an API supports something without confirmation. A split built on an unverified assumption (e.g. "Namecheap supports ALIAS via API") wastes all time spent on every downstream step that depends on it.

@@ -23,10 +23,13 @@ Write a markdown document that captures everything discussed in this conversatio
    - Anything the user explicitly said to include or exclude
    - Any back-and-forth that resolved an ambiguity — capture the resolution, not the debate
 
-2. **Check for gaps** before writing:
+2. **Check for gaps and second-order consequences** before writing:
    - Are there any issues mentioned but never resolved?
    - Are there proposed changes without clear scope?
    - Are there decisions that contradict each other?
+   - **For every decision**: What breaks? What can't we do anymore? What assumptions does this invalidate? What downstream systems are affected? If a decision works for 8 out of 10 cases, explicitly address the other 2 — don't silently drop them.
+   - **For every "skip this" or "not worth it"**: Is that actually true, or is there a straightforward solution you haven't considered? Never recommend skipping something without exhausting alternatives first.
+   - **For every external dependency** (third-party APIs, DNS providers, CDN services, etc.): Verify capabilities BEFORE writing the plan. Check API docs, test against sandboxes, SSH to the server to confirm. Do not assume an API supports a feature — verify it. A plan built on an unverified assumption wastes all the time spent discussing, writing, and splitting it. If you have access to a server or sandbox environment, use it.
    - If gaps exist, ask the user to clarify before proceeding.
 
 3. **Write the document** with this structure:
