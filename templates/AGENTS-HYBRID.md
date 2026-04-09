@@ -82,7 +82,7 @@ feature-developer MUST update before reporting done:
 
 ## Universal Requirements
 
-- **Read PROJECT_CONTEXT.md first** — always, before any work
+- **Read PROJECT_CONTEXT.md first** — always, before any work. Never assume field names, module paths, or schema structure — check PROJECT_CONTEXT and relevant domain context files before writing queries or code.
 - **Load relevant domain context** — based on task, not all files
 - **Issue Discovery -> Immediate Fixing** — find issues, fix them, never just document
 - **Session logging** — orchestrator creates, subagents append
