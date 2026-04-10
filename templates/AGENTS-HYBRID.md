@@ -1,8 +1,8 @@
 # AGENTS.md - Hybrid Workspace
 
-Universal guidance for AI agents in hybrid workspaces — production agent quality without worktrees or planning overhead.
+Universal guidance for AI agents in hybrid workspaces — production agent quality without worktrees or CONTEXT.md files.
 
-**Hybrid = full agent delegation chain + no worktrees + no planning phase + no CONTEXT.md**
+**Hybrid = full agent delegation chain + no worktrees + Opus planner as Phase 0 + no CONTEXT.md**
 
 ## ORCHESTRATOR: NEVER IMPLEMENT CODE DIRECTLY
 
@@ -14,6 +14,14 @@ The orchestrator NEVER writes code, tests, or file edits — not even "small" on
 **Any code or tests -> delegate to feature-developer immediately. No exceptions.**
 
 ## ORCHESTRATOR: ALWAYS RUN THE FULL CYCLE
+
+**Phase 0 — planner** (skip only when ALL THREE are true):
+
+1. Task is a bug fix or CI-failure fix (message contains `bug`, `fix`, `failing`, `error`, `broken`, `crash`)
+2. No new module, table, migration, endpoint, or external API mentioned (message lacks `add`, `new`, `create`, `integrate`, `implement`)
+3. Scope fits in one domain context file (task mentions at most one of: messaging, hosting, builds, billing, auth, email, development)
+
+If any is false → engage planner. For user-app builds, planner always runs.
 
 **After feature-developer completes — immediately, without stopping or asking:**
 
@@ -44,7 +52,7 @@ See the "Domain Context Files" table in `PROJECT_CONTEXT.md` for the loading gui
 
 - Work in current directory only (never `../`)
 - No worktrees — commit directly to main
-- No planning phase — implement from task description directly
+- Planner (Phase 0) runs before feature-developer for all non-trivial tasks (see skip rule above)
 
 ## Session Logging
 
@@ -56,15 +64,41 @@ See the "Domain Context Files" table in `PROJECT_CONTEXT.md` for the loading gui
 - Step logs: `./codegen/logging/$(date -u +%Y%m%d)_step<N>_<slug>.md`
 - Single-task: `./codegen/logging/$(date -u +%Y%m%d_%H%M%S)_session.md`
 
+Session log template (create BEFORE delegating to planner):
+
+```markdown
+# Session Log
+
+**Started**: $(date -u)
+**Task**: [What you're doing]
+
+## Rules Loaded
+
+- [x] codegen/PROJECT_CONTEXT.md
+- [x] codegen/rules/orchestration/delegation-patterns.md
+
+## Plan
+
+<planner fills this in>
+
+## Delegation Timeline
+
+| Time | Agent | Task | Result |
+| ---- | ----- | ---- | ------ |
+
+## Files Modified
+```
+
 See `shared/session-management.md` for full format.
 
 ## Agent Roles & Workflow
 
 ```
-feature-developer -> verification-engineer -> code-reviewer -> committer
+planner -> feature-developer -> verification-engineer -> code-reviewer -> committer
 ```
 
-- **feature-developer**: Implements feature + tests (TDD), updates context files before reporting done
+- **planner**: Reads codebase, writes structured plan to session log `## Plan` section (Opus — deep analysis)
+- **feature-developer**: Reads `## Plan` from session log, implements feature + tests (TDD), updates context files before reporting done
 - **verification-engineer**: Runs `make ci`, reports ALL failures, never fixes code
 - **code-reviewer**: Reviews quality/patterns/architecture, reports issues
 - **committer**: Receives task summary from orchestrator, analyzes git diff, crafts why-focused commit message, stages and commits (Haiku — cheap and fast)
