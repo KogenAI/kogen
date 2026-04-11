@@ -39,6 +39,17 @@ Output format — for each step:
 
 Steps are **sequential commits on a single branch** — not parallel branches or PRs. Each step is implemented and committed before the next begins. "Merge candidate" suggestions are appropriate only when two steps touch the same code and separating them would require editing the same lines twice in consecutive commits — in that case, say so explicitly and merge them into one step.
 
+**Critical: step numbers ARE the execution order. No implicit ordering.**
+
+The document is the source of truth and will be read by future sessions that have none of your context. If you decide steps should run in a different order than they're physically numbered in the document, you have two choices and only two:
+
+1. Renumber the steps in the document so the physical order matches the execution order. This is almost always the right answer.
+2. If for some reason you cannot renumber (e.g. external references already point at specific step numbers), add an explicit `> **Execution order:** N → M → ...` callout at the top of the steps section, AND add a `**Why this comes after Step X:**` note in each step whose execution order differs from its number.
+
+Never tell the user "the steps execute in order X but I labelled them Y" in chat without writing it into the document. A future session running this document blind will follow the numbers, not your conversation. If the numbers lie, the work ships in the wrong order.
+
+When reviewing or updating an existing split document, if you reorder steps you MUST rewrite the document to reflect the new order — do not just say "do them in this order" in chat. The same rule applies: numbers in the document are the ground truth.
+
 If the work was already split (e.g. in a plan document), review the existing split and suggest improvements — merging steps that are too granular, splitting steps that do too much, or reordering steps that have hidden dependencies. Be willing to cut the step count significantly: if the plan has 5 steps that all do "move X into Y", propose collapsing them into 1 and explain the merge. A good review should produce fewer steps than the input, not the same number with minor edits.
 
 **Critical: Check gate dependencies before finalizing order**
