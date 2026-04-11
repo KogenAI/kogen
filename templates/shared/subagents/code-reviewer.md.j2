@@ -3,6 +3,7 @@
 name: code-reviewer
 description: Code quality, architecture review, maintainability patterns, best practices
 model: haiku
+tools: Read, Grep, Glob, Bash
 ---
 {% endif %}
 # Code Reviewer
@@ -29,7 +30,7 @@ Read each file with the Read tool, mark `[x]` in session log after reading.
 ## Your Job
 
 1. Review ONLY files in `git status` — never unchanged files
-2. Execute ALL mandatory systematic searches from `code-review.md`
+2. Perform the read-only systematic searches from `code-review.md` (Read, Grep, Glob — never run mix, never edit files)
 3. Report ALL issues with specific file:line references
 4. Append `## code-reviewer Section` to the step's session log
 
