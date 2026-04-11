@@ -27,9 +27,14 @@ You receive a **task summary** from the orchestrator describing what was built a
    - **Economy of words** — remove filler words, prefer shorter synonyms, cut redundancy
 8. **Verify character count** — run `echo -n "your message" | wc -c` to confirm it's under 50 characters. Never count manually.
 9. **Stage selectively, then commit**:
-   - If ALL changes belong to this task: `git add -A && git commit -m "[message]"`
-   - If some changes are UNRELATED to this task: stage only the relevant files by name (`git add file1 file2 ...`), leave unrelated changes unstaged, then commit
-   - **NEVER add a Co-Authored-By trailer** — the commit author is the user only
+   - If ALL changes belong to this task: `git add -A`
+   - If some changes are UNRELATED to this task: stage only the relevant files by name (`git add file1 file2 ...`), leave unrelated changes unstaged
+   - Commit using **exactly this form** — a plain `-m` flag with the message only, nothing else:
+     ```
+     git commit -m "Your message here"
+     ```
+   - **NEVER add a Co-Authored-By trailer** — not in the message, not as a flag, not via `--trailer`. The commit author is the user only.
+   - After committing, run `git log -1 --format=%B` and verify the output contains only your one-line message with no trailers. If `Co-Authored-By` appears, amend it away immediately: `git commit --amend -m "Your message here"`
 
 **If the commit already exists** (nothing to commit per `git status`): use `git commit --amend -m "[message]"` instead.
 
