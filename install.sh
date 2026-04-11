@@ -116,6 +116,9 @@ fi
 # Install custom Claude commands
 echo "   📁 Installing custom Claude commands..."
 
+COMMANDS_MANIFEST="$CLAUDE_COMMANDS_DIR/.installed-by-ocg"
+CURRENT_COMMANDS=()
+
 # Copy plain .md commands directly from shared templates
 if [ -d "$CODEGEN_DIR/templates/shared/commands" ]; then
     for cmd_file in "$CODEGEN_DIR/templates/shared/commands"/*.md; do
@@ -123,14 +126,37 @@ if [ -d "$CODEGEN_DIR/templates/shared/commands" ]; then
             cmd_name=$(basename "$cmd_file")
             cp "$cmd_file" "$CLAUDE_COMMANDS_DIR/"
             echo "   ✅ Installed command: /${cmd_name%.md}"
+            CURRENT_COMMANDS+=("$cmd_name")
         fi
     done
 fi
+
+# Delete stale commands (in previous manifest but not current set)
+if [ -f "$COMMANDS_MANIFEST" ]; then
+    while IFS= read -r old_cmd; do
+        if [ -n "$old_cmd" ]; then
+            still_present=false
+            for cur in "${CURRENT_COMMANDS[@]}"; do
+                [ "$cur" = "$old_cmd" ] && still_present=true && break
+            done
+            if [ "$still_present" = "false" ] && [ -f "$CLAUDE_COMMANDS_DIR/$old_cmd" ]; then
+                rm -f "$CLAUDE_COMMANDS_DIR/$old_cmd"
+                echo "   🗑️  Removed stale command: /${old_cmd%.md}"
+            fi
+        fi
+    done <"$COMMANDS_MANIFEST"
+fi
+
+# Write manifest
+printf '%s\n' "${CURRENT_COMMANDS[@]}" >"$COMMANDS_MANIFEST"
 
 # Install Claude sub agents from generated templates
 echo "   🤖 Installing Claude sub agents..."
 CLAUDE_AGENTS_DIR="$CLAUDE_SETTINGS_DIR/agents"
 mkdir -p "$CLAUDE_AGENTS_DIR"
+
+AGENTS_MANIFEST="$CLAUDE_AGENTS_DIR/.installed-by-ocg"
+CURRENT_AGENTS=()
 
 if [ -d "$CODEGEN_DIR/templates/generated/claude-code/agents" ]; then
     for agent_file in "$CODEGEN_DIR/templates/generated/claude-code/agents"/*.md; do
@@ -138,9 +164,29 @@ if [ -d "$CODEGEN_DIR/templates/generated/claude-code/agents" ]; then
             agent_name=$(basename "$agent_file")
             cp "$agent_file" "$CLAUDE_AGENTS_DIR/"
             echo "   ✅ Installed Claude sub agent: ${agent_name%.md}"
+            CURRENT_AGENTS+=("$agent_name")
         fi
     done
 fi
+
+# Delete stale agents (in previous manifest but not current set)
+if [ -f "$AGENTS_MANIFEST" ]; then
+    while IFS= read -r old_agent; do
+        if [ -n "$old_agent" ]; then
+            still_present=false
+            for cur in "${CURRENT_AGENTS[@]}"; do
+                [ "$cur" = "$old_agent" ] && still_present=true && break
+            done
+            if [ "$still_present" = "false" ] && [ -f "$CLAUDE_AGENTS_DIR/$old_agent" ]; then
+                rm -f "$CLAUDE_AGENTS_DIR/$old_agent"
+                echo "   🗑️  Removed stale agent: ${old_agent%.md}"
+            fi
+        fi
+    done <"$AGENTS_MANIFEST"
+fi
+
+# Write manifest
+printf '%s\n' "${CURRENT_AGENTS[@]}" >"$AGENTS_MANIFEST"
 
 # Install required dependencies
 echo ""
