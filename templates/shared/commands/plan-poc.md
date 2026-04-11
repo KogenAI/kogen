@@ -105,8 +105,6 @@ Create a prompt file using Write tool named `./codegen/prompts/poc-planning-prom
 
 ## Planning Instructions
 
-**FIRST**: Load the PoC-specific planning rules by reading `./codegen/rules/planning-poc.md` completely. This file contains critical PoC patterns that override standard planning approaches.
-
 Create a detailed PoC implementation plan that:
 
 1. **Validates core assumptions** through minimal viable implementation
@@ -124,8 +122,6 @@ Create a detailed PoC implementation plan that:
 - **YES external tool integration** - Use System.cmd() for Python libraries
 - **YES real-time updates** - LiveView for processing feedback
 - **YES validation metrics** - Build in feedback collection for assumption testing
-
-Follow the planning-poc.md rules exactly for infrastructure choices, testing strategy, and development timeline.
 ```
 
 **STEP 6: Setup Instructions**

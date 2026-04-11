@@ -29,11 +29,10 @@ OCG planning writes directly to `codegen/bird_eye_plans/{{FEATURE_NAME}}.md` usi
 
 ```
 Read file: ./codegen/rules/planning.md
-Read file: ./codegen/rules/planning/bird-eye.md
 Read file: ./codegen/rules/INDEX.md
 ```
 
-**Checkpoint**: You must have read ALL THREE files above before continuing.
+**Checkpoint**: You must have read BOTH files above before continuing.
 
 ### Step 2: Detect Project Type from PROJECT_CONTEXT.md
 
@@ -58,7 +57,6 @@ Look for these indicators in PROJECT_CONTEXT.md:
 > "I've loaded the following rules:
 >
 > - `./codegen/rules/planning.md` (shared planning rules)
-> - `./codegen/rules/planning/bird-eye.md` (bird-eye specific rules)
 > - `./codegen/rules/INDEX.md` (rule discovery)
 >
 > Project type detected: **Monorepo** (backend/ + mobile/)

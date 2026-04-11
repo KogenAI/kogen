@@ -19,11 +19,6 @@
    - `./codegen/rules/shared/subagent-core-rules.md`
    - `./codegen/rules/orchestration/delegation-patterns.md` (🚨 PRIMARY)
    - `./codegen/rules/subagents/git.md` (🚨 NO agent can stage)
-   - `./codegen/rules/orchestration/bottleneck-patterns.md`
-   - `./codegen/rules/orchestration/parallel-task-patterns.md`
-   - `./codegen/rules/orchestration/recipe-management.md`
-   - `./codegen/rules/orchestration/resource-management.md`
-   - `./codegen/rules/orchestration/work-context-management.md`
 3. Create session log: `./codegen/logging/$(date -u +%Y%m%d_%H%M%S)_orchestrator.md`
 4. Check for work: `ls ./codegen/context/PENDING-* ./codegen/context/ACTIVE-* 2>/dev/null`
 5. Read `./codegen/CONTEXT.md` for current status
@@ -53,7 +48,7 @@
 - Loop through ALL issues until resolved (Discovery → Fix → Verify → Next Issue → Fix → Verify → ...)
 - NEVER stop after just documenting issues - continue until verification ✅ + code review ✅
 
-**Details**: See `./codegen/rules/orchestration/delegation-patterns.md` and `bottleneck-patterns.md`
+**Details**: See `./codegen/rules/orchestration/delegation-patterns.md`
 
 ## Start Implementation
 
@@ -65,8 +60,6 @@
 **Continue automatically** through all steps until complete - no stopping between steps.
 
 ## Delegation
-
-**State preservation**: See `./codegen/rules/orchestration/work-context-management.md` for creating PENDING/ACTIVE/RESOLVED context files.
 
 **Delegation examples**: See `./codegen/rules/orchestration/delegation-patterns.md` for Task() templates.
 

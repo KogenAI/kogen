@@ -12,10 +12,10 @@ PoC-focused guidance for AI agents - optimized for rapid validation over product
 2. **IDENTIFY** your agent type — if no delegation prompt, you are the **Orchestrator** (direct Claude Code session)
 3. **LOAD** PoC rules from `./codegen/rules/INDEX.md`:
    - **ALL agents**: Load shared rules (subagent-core-rules.md, session-management.md)
-   - **Orchestrator** (default for direct Claude Code sessions): ALSO load orchestration rules (delegation-patterns-poc.md)
-   - **poc-developer**: Load subagents/poc-development.md, subagents/poc-success-criteria.md, subagents/phoenix.md, subagents/elixir-code-generation.md, subagents/workflow.md, subagents/testing-backend.md, subagents/git.md
-   - **verification-engineer (PoC context)**: Load subagents/verification-workflow-poc.md, subagents/testing-poc.md, subagents/poc-success-criteria.md, subagents/git.md
-   - **code-reviewer (PoC context)**: Load subagents/code-review-poc.md, subagents/poc-success-criteria.md, subagents/phoenix.md, subagents/elixir-code-generation.md, subagents/testing-backend.md, subagents/git.md
+   - **Orchestrator** (default for direct Claude Code sessions): ALSO load orchestration rules (delegation-patterns.md)
+   - **poc-developer**: Load subagents/phoenix.md, subagents/elixir-code-generation.md, subagents/workflow.md, subagents/testing-backend.md, subagents/git.md
+   - **verification-engineer (PoC context)**: Load subagents/testing-poc.md, subagents/git.md
+   - **code-reviewer (PoC context)**: Load subagents/phoenix.md, subagents/elixir-code-generation.md, subagents/testing-backend.md, subagents/git.md
 4. **APPLY** validation-focused patterns to every action
 
 **🚨 CRITICAL**: When orchestrator delegates to verification-engineer or code-reviewer for PoC work, the delegation prompt MUST specify PoC context:
@@ -24,7 +24,6 @@ PoC-focused guidance for AI agents - optimized for rapid validation over product
 
 **PoC Rule Priority:**
 
-- `planning-poc.md` **OVERRIDES** all production patterns
 - Focus on **validation over features**
 - **Minimal infrastructure** over production-ready systems
 
@@ -35,7 +34,6 @@ PoC-focused guidance for AI agents - optimized for rapid validation over product
 ❌ **FORBIDDEN during implementation**:
 
 - `planning.md` (planning sessions only)
-- `planning-poc.md` (PoC planning sessions only)
 
 ✅ **Use these rules ONLY during** planning mode contexts (`ocg bird-eye`, `ocg plan`, `/plan-poc`)
 
@@ -176,11 +174,7 @@ ocg usage-rules
 - [ ] ./codegen/plans/poc/overview.md
 - [ ] ./codegen/rules/shared/subagent-core-rules.md
 - [ ] ./codegen/rules/shared/session-management.md
-- [ ] ./codegen/rules/orchestration/delegation-patterns-poc.md (PoC orchestrator only)
-- [ ] ./codegen/rules/subagents/poc-development.md (poc-developer only)
-- [ ] ./codegen/rules/subagents/poc-success-criteria.md (poc-developer, verification-engineer, code-reviewer)
-- [ ] ./codegen/rules/subagents/verification-workflow-poc.md (verification-engineer only)
-- [ ] ./codegen/rules/subagents/code-review-poc.md (code-reviewer only)
+- [ ] ./codegen/rules/orchestration/delegation-patterns.md (PoC orchestrator only)
 - [ ] ./codegen/rules/subagents/testing-poc.md (verification-engineer only)
 - [ ] ./codegen/rules/subagents/phoenix.md (poc-developer, code-reviewer)
 - [ ] ./codegen/rules/subagents/elixir-code-generation.md (poc-developer, code-reviewer)

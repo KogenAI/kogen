@@ -51,8 +51,6 @@ Look for these indicators in PROJECT_CONTEXT.md:
 Read file: ./codegen/rules/subagents/phoenix.md
 Read file: ./codegen/rules/subagents/phoenix-ui.md
 Read file: ./codegen/rules/subagents/elixir-code-generation.md
-Read file: ./codegen/rules/subagents/flutter.md
-Read file: ./codegen/rules/subagents/mobile-testing.md
 ```
 
 **For Phoenix/Elixir (includes LiveView UI)**:
@@ -63,13 +61,6 @@ Read file: ./codegen/rules/subagents/phoenix-ui.md
 Read file: ./codegen/rules/subagents/elixir-code-generation.md
 ```
 
-**For Flutter Mobile-only**:
-
-```
-Read file: ./codegen/rules/subagents/flutter.md
-Read file: ./codegen/rules/subagents/mobile-testing.md
-```
-
 **Note**: Phoenix projects ALWAYS include `phoenix-ui.md` because Phoenix LiveView is inherently a UI framework.
 
 ### Step 4: Load Additional Domain Rules Based on Feature
@@ -77,9 +68,7 @@ Read file: ./codegen/rules/subagents/mobile-testing.md
 Based on what the user describes as the feature, also load:
 
 - **Figma design implementation**: `rules/subagents/ui-implementation.md` (pixel-perfect from Figma)
-- **Testing features**: `rules/subagents/testing.md` + `rules/subagents/feature-tests.md`
-- **Translation features**: `rules/subagents/i18n.md`
-- **CI/deployment features**: `rules/subagents/github-actions.md` + `rules/subagents/deployment.md`
+- **Testing features**: `rules/subagents/testing.md`
 
 **Note**: `phoenix-ui.md` (LiveView components, forms, JS hooks) is already loaded in Step 3 for Phoenix projects. `ui-implementation.md` is for Figma-to-code pixel-perfect workflows.
 
@@ -101,7 +90,7 @@ Based on what the user describes as the feature, also load:
 > - `./codegen/rules/subagents/phoenix.md` (Phoenix patterns)
 > - `./codegen/rules/subagents/phoenix-ui.md` (LiveView UI patterns)
 > - `./codegen/rules/subagents/elixir-code-generation.md` (Elixir patterns)
->
+
 > Project type detected: **Phoenix/Elixir** (has lib/ and mix.exs at root)
 >
 > I'm ready for you to describe the feature."

@@ -13,18 +13,10 @@ You are the orchestrator. Before any work:
    - `./codegen/rules/orchestration/delegation-patterns.md`
    - `./codegen/rules/orchestration/user-communication.md`
    - `./codegen/rules/subagents/git.md`
-   - `./codegen/rules/orchestration/bottleneck-patterns.md`
-   - `./codegen/rules/orchestration/parallel-task-patterns.md`
-   - `./codegen/rules/orchestration/parallel-testing.md`
-   - `./codegen/rules/orchestration/recipe-management.md`
-   - `./codegen/rules/orchestration/resource-management.md`
-   - `./codegen/rules/orchestration/work-context-management.md`
 
 3. Read `./codegen/PROJECT_CONTEXT.md`.
 
-4. Check if the task mentions Figma/screenshots/designs — if yes, also load `./codegen/rules/orchestration/ui-delegation-patterns.md`.
-
-5. Now delegate and execute: $ARGUMENTS
+4. Now delegate and execute: $ARGUMENTS
 
 **🚨 CRITICAL — You ARE the orchestrator. Do NOT spawn yourself as a background agent.**
 

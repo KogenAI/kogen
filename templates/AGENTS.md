@@ -29,7 +29,6 @@ ALL agents (orchestrator and subagents) must follow:
 ❌ **FORBIDDEN during implementation**:
 
 - `planning.md` (planning sessions only)
-- `planning-poc.md` (PoC planning sessions only)
 
 ✅ **Use these rules ONLY during**:
 
@@ -41,7 +40,7 @@ ALL agents (orchestrator and subagents) must follow:
 
 **🚨 CRITICAL: Cross-Role Rule Contamination**
 
-**PROBLEM**: Implementation rules (like `testing.md`, `workflow.md`, `github-actions.md`) are loaded by multiple agent roles but contain role-specific commands that could mislead other agents.
+**PROBLEM**: Implementation rules (like `testing.md`, `workflow.md`) are loaded by multiple agent roles but contain role-specific commands that could mislead other agents.
 
 **SOLUTION - Role-Based Rule Loading Restrictions**:
 
@@ -88,7 +87,6 @@ ALL agents (orchestrator and subagents) must follow:
 - **Orchestrators**: `delegation-patterns.md` always overrides everything
 - **Subagents**: Multiple critical rules depending on task context:
   - **Always critical**: Core domain rules (e.g., `phoenix.md` for phoenix-developer)
-  - **Context critical**: Task-specific rules (e.g., `feature-tests.md` when doing browser tests)
   - **Orchestrator specifies context** in delegation prompts
 - **If ANY conflict exists** between critical rules and other sources, the critical rules WIN
 - **Follow critical rules exactly** - no exceptions, no shortcuts, no interpretations
