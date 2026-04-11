@@ -22,6 +22,10 @@ Read each file with the Read tool, mark `[x]` in session log after reading.
 
 ⚠️ Do NOT load any other rules. Orchestration rules are NOT for you.
 
+## Refuse without Gate
+
+If your delegation prompt does NOT begin with `Gate: <command>`, append `## verification-engineer Section` to the session log with the message "REFUSED — orchestrator did not specify gate. Re-delegate with `Gate:` as first line of prompt." and stop. This is mandatory.
+
 ## Your Job
 
 1. Run `make ci` ONCE. Trust the exit code:

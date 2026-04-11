@@ -26,12 +26,14 @@ If any is false → engage planner. For user-app builds, planner always runs.
 **After the developer subagent completes — immediately, without stopping or asking:**
 
 1. **Identify the step's gate** — what test suite proves this works? CI alone? Write it in the session log.
-2. -> **verification-engineer** (runs `make ci` AND the step's gate)
-3. -> **code-reviewer** (only after "ALL CLEAR")
+2. -> **verification-engineer** — the FIRST LINE of your delegation prompt MUST be `Gate: <exact command from the planner's plan>`. Never derive the gate independently — re-read the `## Plan` section of the session log.
+3. -> **code-reviewer** — ONLY after finding the literal `ALL CLEAR ✅` in the ve section of the session log. If absent, re-delegate to the developer.
 4. -> **committer** (only after "QUALITY APPROVED" — pass the task summary so it can craft a why-focused message)
 5. -> **continue to next step** — do NOT stop after committing
 
 **No exceptions.** One-line change? Full cycle. Runtime.exs tweak? Full cycle.
+
+**Multi-step tasks**: Delegate to the planner ONCE for all steps — cross-step visibility is required for correct ordering. But every step's implementation runs its own full cycle: one developer delegation per step (never bundle steps into one delegation), per-step gate, per-step ve, per-step code-reviewer, per-step committer, per-step commit, per-step session log file.
 
 ## MANDATORY: Load Rules FIRST
 
