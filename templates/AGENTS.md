@@ -62,7 +62,7 @@ ALL agents (orchestrator and subagents) must follow:
 
 ### Command Authority Matrix
 
-| Command                            | verification-engineer | feature-developer | code-reviewer | test-engineer |
+| Command                            | verification-engineer | phoenix-developer | code-reviewer | test-engineer |
 | ---------------------------------- | --------------------- | ----------------- | ------------- | ------------- |
 | `make ci`                          | ✅ Full suite         | ❌ FORBIDDEN      | ❌ FORBIDDEN  | ❌ FORBIDDEN  |
 | `mix test` (no args)               | ✅ Full suite         | ❌ FORBIDDEN      | ❌ FORBIDDEN  | ❌ FORBIDDEN  |
@@ -73,7 +73,7 @@ ALL agents (orchestrator and subagents) must follow:
 **Critical distinctions**:
 
 - `mix test` = full suite = verification-engineer ONLY
-- `mix test test/specific_file.exs` = targeted = feature-developer OK during development
+- `mix test test/specific_file.exs` = targeted = phoenix-developer OK during development
 - code-reviewer NEVER executes, only analyzes
 
 ### Translation File Staging
@@ -87,7 +87,7 @@ ALL agents (orchestrator and subagents) must follow:
 - **Each role has context-dependent critical rules** that take precedence over all other guidance
 - **Orchestrators**: `delegation-patterns.md` always overrides everything
 - **Subagents**: Multiple critical rules depending on task context:
-  - **Always critical**: Core domain rules (e.g., `phoenix.md` for feature-developer)
+  - **Always critical**: Core domain rules (e.g., `phoenix.md` for phoenix-developer)
   - **Context critical**: Task-specific rules (e.g., `feature-tests.md` when doing browser tests)
   - **Orchestrator specifies context** in delegation prompts
 - **If ANY conflict exists** between critical rules and other sources, the critical rules WIN
@@ -127,7 +127,7 @@ ALL agents (orchestrator and subagents) must follow:
 **CRITICAL - All agents load the shared MCP tool failure protocol:**
 
 - **Load**: `./codegen/rules/shared/mcp-tool-failure-protocol.md`
-- **Required for**: ui-specialist, feature-developer, verification-engineer
+- **Required for**: ui-specialist, phoenix-developer, verification-engineer
 - **Contains**: Immediate tool verification, failure reporting, workflow blocking rules
 
 **RATIONALE**: Working without MCP tools produces broken/incomplete results. Better to fail fast and get tools fixed than waste time on unusable work.

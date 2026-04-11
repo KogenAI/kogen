@@ -50,7 +50,7 @@
 
 **For each step**:
 
-1. Delegate implementation → **feature-developer** (or **ui-specialist**, **devops-manager**)
+1. Delegate implementation → **phoenix-developer** (or **ui-specialist**, **devops-manager**)
 2. After implementation → delegate to **verification-engineer** (CI/tests)
 3. After "ALL CLEAR ✅" → delegate to **code-reviewer** (quality)
 4. After "✅ QUALITY APPROVED" → **IMMEDIATELY** start next step

@@ -247,7 +247,7 @@ For each screen, record:
 | 2   | Card layout  | border-b dividers           | rounded cards   | YES      | Remove `rounded-xl shadow`, add `border-b border-gray-100` |
 | 3   | Modal type   | slideover                   | bottom_sheet    | NO       | Needs JS viewport detection                                |
 
-### Out of Scope (feature-developer):
+### Out of Scope (phoenix-developer):
 
 - Modal should switch to slideover variant on desktop
 ```
@@ -325,7 +325,7 @@ Create report file based on outcome:
 
 ## Out of Scope (needs other roles)
 
-### feature-developer
+### phoenix-developer
 
 1. Desktop slideover: Modal should switch to slideover variant on desktop
    - File: offer_details_form_component.ex
@@ -352,7 +352,7 @@ For each out-of-scope issue found:
 TIMESTAMP=$(date -u +"%Y%m%d-%H%M%S")
 ```
 
-**Create individual PENDING files for feature-developer:**
+**Create individual PENDING files for phoenix-developer:**
 
 ```markdown
 # File: ./codegen/context/PENDING-structural-{issue-slug}-{timestamp}.md
@@ -360,7 +360,7 @@ TIMESTAMP=$(date -u +"%Y%m%d-%H%M%S")
 # Structural Issue: {Issue Title}
 
 **Source**: ui-specialist (figma comparison)
-**Target**: feature-developer
+**Target**: phoenix-developer
 **Priority**: {HIGH|MEDIUM|LOW}
 **Figma Screen**: {screenshot filename}
 
@@ -421,7 +421,7 @@ TIMESTAMP=$(date -u +"%Y%m%d-%H%M%S")
 
 - Not forgotten after the UI comparison session ends
 - Picked up by the orchestrator in the next iteration
-- Properly delegated to feature-developer with full context
+- Properly delegated to phoenix-developer with full context
 
 ### Phase 8: Final Summary for User
 

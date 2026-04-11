@@ -65,7 +65,7 @@
 
 **Active Subagents** (for current step):
 
-- **feature-developer**: [Not Started | In Progress | Complete | Blocked]
+- **phoenix-developer**: [Not Started | In Progress | Complete | Blocked]
 - **ui-specialist**: [Not Started | In Progress | Complete | Blocked]
 - **test-engineer**: [Not Started | In Progress | Complete | Blocked]
 - **verification-engineer**: [Not Started | In Progress | Complete | Blocked]
@@ -77,7 +77,7 @@
 
 ⚠️ **MANDATORY SEQUENCE - NEVER SKIP STEPS**:
 
-- [ ] **Implementation**: feature-developer reported implementation complete
+- [ ] **Implementation**: phoenix-developer reported implementation complete
 - [ ] **Verification**: verification-engineer reported "ALL CLEAR ✅"
 - [ ] **Code Review**: code-reviewer reported "✅ QUALITY APPROVED"
 - [ ] **STEP COMPLETE**: Only mark complete when all 3 gates pass
@@ -87,7 +87,7 @@
 **🔄 CODE REVIEW FAILURE WORKFLOW**: If code-reviewer reports "❌ QUALITY ISSUES FOUND":
 
 1. **CREATE WORK CONTEXT**: Save issues to `./codegen/context/PENDING-issues-YYYYMMDD-HHMMSS-code-review.md`
-2. Delegate fixes to feature-developer with work context file path
+2. Delegate fixes to phoenix-developer with work context file path
 3. After fixes, restart from verification-engineer (not code-reviewer)
 4. Continue cycle until code-reviewer gives "✅ QUALITY APPROVED"
 
@@ -129,7 +129,7 @@
 **Single-Level Subagent Delegation Workflow:**
 
 1. **Orchestrate step implementation** - main agent delegates directly to specialized subagents:
-   - **feature-developer**: Phoenix/Elixir code implementation
+   - **phoenix-developer**: Phoenix/Elixir code implementation
    - **ui-specialist**: Figma design implementation and styling
    - **test-engineer**: Writes comprehensive tests including feature tests
    - **verification-engineer**: Runs tests and CI verification, reports findings

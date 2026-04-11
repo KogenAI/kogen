@@ -237,6 +237,6 @@ After completing detailed planning AND hallucination check:
 - **Your plans will be executed by orchestrator agents** using delegation patterns
 - **Each step must be complete and self-contained** - orchestrator cannot skip parts
 - **Include ALL requirements per step**: If step includes deployment config, mark clearly for devops-manager delegation
-- **TDD approach aligns with orchestrator workflow**: feature-developer implements code+tests, then verification-engineer checks
+- **TDD approach aligns with orchestrator workflow**: phoenix-developer implements code+tests, then verification-engineer checks
 
 Remember: This is about technical precision and implementation readiness. The better your plan, the smoother the orchestrated implementation will be.

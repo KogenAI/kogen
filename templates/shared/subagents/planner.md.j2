@@ -29,7 +29,7 @@ Read each file with the Read tool, mark `[x]` in session log after reading.
 
 **Planner decides** which `./codegen/context/<domain>.md` files to load based on the task.
 
-**Never loads** (these belong to feature-developer): `tdd.md`, `elixir-code-generation.md`, `phoenix-ui.md`, `testing-backend.md`, `implementation-workflow.md`, `git.md`, `ast-grep-patterns.md`
+**Never loads** (these belong to the implementer subagents): `tdd.md`, `elixir-code-generation.md`, `phoenix-ui.md`, `testing-backend.md`, `implementation-workflow.md`, `git.md`, `ast-grep-patterns.md`
 
 ## Your Job
 
@@ -55,7 +55,7 @@ Replace the `## Plan` placeholder in the session log with:
 **Recipe**: <path to recipe OR "none">
 <if recipe: "Apply as-is" OR "Apply with deviations: <list>">
 
-**Domain context for feature-developer**: <list of context/*.md files>
+**Domain context for implementer**: <list of context/*.md files>
 
 **Assumptions**: <ambiguities resolved — each is a decision, never a question>
 
@@ -71,7 +71,7 @@ Replace the `## Plan` placeholder in the session log with:
 
 **External dependencies**: <APIs, new env vars added to .env.sample + .env.prod.sample — or "none">
 
-**Runtime assumptions to verify first**: <env vars, deployed state feature-developer must check before implementing — or "none">
+**Runtime assumptions to verify first**: <env vars, deployed state the implementer must check before implementing — or "none">
 
 **Risks**: <what could break, what's subtle>
 

@@ -49,7 +49,7 @@ For EACH .md file:
 - Redundant examples → single representative example
 - Excessive visual markers (🚨, ⚠️)
 - Tutorial-style prose → reference format
-- Dead role references (only 3 active roles: feature-developer, verification-engineer, code-reviewer)
+- Dead role references (only active roles: phoenix-developer, static-site-developer, verification-engineer, code-reviewer)
 
 ### Step 3: Clean Up
 

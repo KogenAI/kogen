@@ -11,7 +11,7 @@ The orchestrator NEVER writes code, tests, or file edits — not even "small" on
 - **FORBIDDEN**: Writing tests, editing source files, fixing bugs inline, "just quickly" adding anything
 - **ONLY allowed**: Loading rules, reading context, creating session log, delegating to subagents (including committer)
 
-**Any code or tests -> delegate to feature-developer immediately. No exceptions.**
+**Any code or tests -> delegate to phoenix-developer or static-site-developer (pick by app stack). No exceptions.**
 
 ## ORCHESTRATOR: ALWAYS RUN THE FULL CYCLE
 
@@ -23,7 +23,7 @@ The orchestrator NEVER writes code, tests, or file edits — not even "small" on
 
 If any is false → engage planner. For user-app builds, planner always runs.
 
-**After feature-developer completes — immediately, without stopping or asking:**
+**After the developer subagent completes — immediately, without stopping or asking:**
 
 1. **Identify the step's gate** — what test suite proves this works? CI alone? Write it in the session log.
 2. -> **verification-engineer** (runs `make ci` AND the step's gate)
@@ -52,7 +52,7 @@ See the "Domain Context Files" table in `PROJECT_CONTEXT.md` for the loading gui
 
 - Work in current directory only (never `../`)
 - No worktrees — commit directly to main
-- Planner (Phase 0) runs before feature-developer for all non-trivial tasks (see skip rule above)
+- Planner (Phase 0) runs before the developer subagent for all non-trivial tasks (see skip rule above)
 
 ## Session Logging
 
@@ -94,18 +94,19 @@ See `shared/session-management.md` for full format.
 ## Agent Roles & Workflow
 
 ```
-planner -> feature-developer -> verification-engineer -> code-reviewer -> committer
+planner -> phoenix-developer OR static-site-developer -> verification-engineer -> code-reviewer -> committer
 ```
 
 - **planner**: Reads codebase, writes structured plan to session log `## Plan` section (Opus — deep analysis)
-- **feature-developer**: Reads `## Plan` from session log, implements feature + tests (TDD), updates context files before reporting done
+- **phoenix-developer**: Reads `## Plan` from session log, implements Phoenix/Elixir feature + tests (TDD), updates context files before reporting done
+- **static-site-developer**: Reads `## Plan` from session log, implements static site source files, updates context files before reporting done
 - **verification-engineer**: Runs `make ci`, reports ALL failures, never fixes code
 - **code-reviewer**: Reviews quality/patterns/architecture, reports issues
 - **committer**: Receives task summary from orchestrator, analyzes git diff, crafts why-focused commit message, stages and commits (Haiku — cheap and fast)
 
 ## MANDATORY: Update Context Before Handoff
 
-feature-developer MUST update before reporting done:
+The developer subagent MUST update before reporting done:
 
 - `PROJECT_CONTEXT.md` — if module directory changes
 - Relevant `context/*.md` domain file — new modules, env vars, pitfalls for that domain
@@ -120,4 +121,4 @@ feature-developer MUST update before reporting done:
 - **Load relevant domain context** — based on task, not all files
 - **Issue Discovery -> Immediate Fixing** — find issues, fix them, never just document
 - **Session logging** — orchestrator creates, subagents append
-- **Update context before done** — feature-developer must update index + domain file before handoff
+- **Update context before done** — the developer subagent must update index + domain file before handoff

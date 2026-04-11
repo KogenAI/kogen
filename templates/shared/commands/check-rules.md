@@ -5,7 +5,7 @@ argument-hint: <role>
 
 # Check Rules for Role
 
-**Arguments**: `<role>` — one of: `orchestrator`, `feature-developer`, `verification-engineer`, `code-reviewer`
+**Arguments**: `<role>` — one of: `orchestrator`, `phoenix-developer`, `static-site-developer`, `verification-engineer`, `code-reviewer`
 
 ## Phase 1: Load Role Definition
 

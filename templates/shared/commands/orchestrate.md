@@ -31,4 +31,4 @@ You are the orchestrator. Before any work:
 - ❌ FORBIDDEN: Using `run_in_background=true` on any Agent tool call — background agents lose context and cannot be controlled
 - ❌ FORBIDDEN: Launching another orchestrator agent to "do the work" — you ARE the orchestrator, do it directly
 - ✅ REQUIRED: All Task()/Agent() delegations must be synchronous (foreground) — block and wait for completion before proceeding
-- ✅ REQUIRED: Execute the full feature-developer → verification-engineer → code-reviewer → commit cycle yourself, step by step
+- ✅ REQUIRED: Execute the full phoenix-developer (or static-site-developer) → verification-engineer → code-reviewer → commit cycle yourself, step by step
