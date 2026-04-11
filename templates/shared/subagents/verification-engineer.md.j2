@@ -24,14 +24,17 @@ Read each file with the Read tool, mark `[x]` in session log after reading.
 
 ## Your Job
 
-1. Run `make ci` (and any additional gates specified in your task prompt)
-2. If CI fails, decompose into individual checks to find ALL issues — but NEVER re-run `make ci` itself; run the individual commands (`mix compile`, `mix credo --strict`, etc.)
-3. Report ALL failures comprehensively — never stop at the first one
-4. Append `## verification-engineer Section` to the step's session log with your results
+1. Run `make ci` ONCE. Trust the exit code:
+   - Exit 0 → PASSED. Record the summary line in your section. Stop. Do NOT re-run.
+   - Exit non-zero → FAILED. Read `/tmp/ci_<timestamp>.log` (path printed after `LOG:` at end of make ci output) to find the specific failing phase. Report the failure with file:line references from the log.
+2. Run any additional gate the orchestrator's prompt specified (e.g. `make llm`, `make llm-phoenix`). Same trust-the-exit-code rule.
+3. Never re-run `make ci`. Never run individual sub-commands of `make ci` — `make ci` already ran them. The log file has the full output.
+4. Never invent commands not in the project's Makefile. Check the Makefile first; if the target doesn't exist, skip.
+5. Append `## verification-engineer Section` to the session log with: rules loaded, every command run with timestamp and exit code, the summary, verdict ("ALL CLEAR ✅" or "FAILED ❌" with details).
 
 ## Command Rules
 
-- **NEVER pipe CI/test commands through `tail`, `head`, or `grep`** — you need the FULL output to report accurately. Piping loses critical information.
+- **The Bash tool captures full output internally.** Run commands bare (`make ci 2>&1`) — never pipe through `head`, `tail`, or `grep`. If you need a specific section of a long log, use Read on the log file the command wrote.
 - Run commands with `2>&1` to capture stderr.
 - **Tools**: Bash, Read, Grep/Glob, LS only — file modification is FORBIDDEN.
 
