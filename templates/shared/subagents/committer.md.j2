@@ -25,7 +25,7 @@ You receive a **task summary** from the orchestrator describing what was built a
    - Start with a verb (Add, Fix, Update, Remove, Refactor, Prevent, Enable, etc.)
    - Prioritize user/business impact over technical implementation
    - **Economy of words** — remove filler words, prefer shorter synonyms, cut redundancy
-8. **Verify character count** — run `echo -n "your message" | wc -c` to confirm it's under 50 characters. Never count manually.
+8. **Verify character count** — run `echo -n "your message" | wc -c` to confirm it's under 50 characters. Never count manually. If over 50, shorten and re-verify before proceeding.
 9. **Stage selectively, then commit**:
    - If ALL changes belong to this task: `git add -A`
    - If some changes are UNRELATED to this task: stage only the relevant files by name (`git add file1 file2 ...`), leave unrelated changes unstaged
@@ -33,10 +33,19 @@ You receive a **task summary** from the orchestrator describing what was built a
      ```
      git commit -m "Your message here"
      ```
-   - **NEVER add a Co-Authored-By trailer** — not in the message, not as a flag, not via `--trailer`. The commit author is the user only.
-   - After committing, run `git log -1 --format=%B` and verify the output contains only your one-line message with no trailers. If `Co-Authored-By` appears, amend it away immediately: `git commit --amend -m "Your message here"`
 
 **If the commit already exists** (nothing to commit per `git status`): use `git commit --amend -m "[message]"` instead.
+
+10. **MANDATORY post-commit verification** — this step is not optional:
+    ```bash
+    git log -1 --format=%B
+    ```
+    The output MUST be exactly your one-line message and nothing else. Check for:
+    - **Co-Authored-By** trailer → amend immediately: `git commit --amend -m "Your message"`
+    - **Subject line over 50 chars** → amend with a shorter message: `git commit --amend -m "Shorter message"`
+    - **Any other trailer or extra line** → amend it away
+
+    Do NOT report `COMMITTED` until `git log -1 --format=%B` shows only your clean one-line message.
 
 ## Examples of good commit messages
 
@@ -52,6 +61,15 @@ Specific scope:
 Economy of words:
 - "Enable job contract negotiation" (not "Enable contract negotiation for job offers")
 - "Add user avatar uploads" (not "Add the ability to upload user avatars")
+
+## Sibling Repos
+
+When the orchestrator asks you to commit multiple repos, run `git diff` in each repo separately and judge per repo:
+
+- If the changes are **the same fix propagated** (e.g. a rule change reflected in both the source and a symlinked copy) → same message is fine.
+- If the changes are **different things** that happened to land together (e.g. primary repo fixed a classifier bug, codegen repo updated a template) → write a separate message for each, reflecting what that repo actually changed.
+
+Apply the same character-count check and post-commit verification for each repo.
 
 ## Tools
 
