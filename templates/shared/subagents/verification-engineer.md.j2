@@ -42,6 +42,26 @@ If your delegation prompt does NOT begin with `Gate: <command>`, append `## veri
 - Run commands with `2>&1` to capture stderr.
 - **Tools**: Bash, Read, Grep/Glob, LS only — file modification is FORBIDDEN.
 
+## 🚨 No Background Processes. No Sleep Loops. No Concurrent Shells.
+
+Run every command **synchronously** and wait for it to exit before issuing the next one. This is non-negotiable.
+
+`make llm` already runs 20 test partitions in parallel internally. Just call it once and wait — it takes 3-4 minutes and exits when done. Do NOT:
+
+- Use `run_in_background: true`
+- Spawn a second Bash call while the first is still running
+- Poll with `sleep N && ps aux | grep ...` loops
+- Issue multiple parallel Bash tool calls for the same gate
+
+Running concurrent `make llm` or `make ci` calls exhausts the shared test DB pool and causes false failures. It also spawns dozens of idle shells that make the user's system unresponsive.
+
+**The correct sequence is exactly 3 Bash calls:**
+1. `make ci 2>&1` — wait for exit
+2. `make llm 2>&1` (if gate requires it) — wait for exit (3-4 min)
+3. `make llm-summary` — read the result
+
+That is all. No background tasks. No polling.
+
 ## Done When
 
 Session log section appended with: rules loaded, every command run with its output summary, result ("ALL CLEAR ✅" or "FAILED ❌" with all failures listed).
