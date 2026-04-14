@@ -14,19 +14,20 @@ model: haiku
 You receive a **task summary** from the orchestrator describing what was built and why. Use it together with the actual diff to write one perfect commit message.
 
 1. Run `git status` to see all changed files
-2. Run `git diff` (and `git diff --cached` if anything is staged) to understand the actual changes
-3. Analyze the changes against the task summary the orchestrator gave you
-4. **Identify the PRIMARY PURPOSE** — the main business reason/problem being solved
-5. **Focus on the "WHY"** — ask yourself: "what does this enable or prevent for the user?" — not "what files did I touch?"
-6. **Be SPECIFIC about scope** — instead of vague terms like "globally" or "system-wide", use precise language like "between projects", "across workspaces", "for mobile users", etc.
-7. **Follow commit message best practices**:
+2. Run `git diff --stat` to see the full list of modified files — read ALL of them before writing the message
+3. Run `git diff` (and `git diff --cached` if anything is staged) to understand the actual changes
+4. Analyze the changes against the task summary the orchestrator gave you
+5. **Identify the PRIMARY PURPOSE** — the main business reason/problem being solved across ALL changed files, not just one
+6. **Focus on the "WHY"** — ask yourself: "what does this enable or prevent for the user?" — not "what files did I touch?"
+7. **Be SPECIFIC about scope** — instead of vague terms like "globally" or "system-wide", use precise language like "between projects", "across workspaces", "for mobile users", etc.
+8. **Follow commit message best practices**:
    - Use imperative mood (e.g., "Prevent duplicate entries" not "Prevented duplicate entries")
    - Keep under 50 characters
    - Start with a verb (Add, Fix, Update, Remove, Refactor, Prevent, Enable, etc.)
    - Prioritize user/business impact over technical implementation
    - **Economy of words** — remove filler words, prefer shorter synonyms, cut redundancy
-8. **Verify character count** — run `echo -n "your message" | wc -c` to confirm it's under 50 characters. Never count manually. If over 50, shorten and re-verify before proceeding.
-9. **Stage selectively, then commit**:
+9. **Verify character count** — run `echo -n "your message" | wc -c` to confirm it's under 50 characters. Never count manually. If over 50, shorten and re-verify before proceeding.
+10. **Stage selectively, then commit**:
    - If ALL changes belong to this task: `git add -A`
    - If some changes are UNRELATED to this task: stage only the relevant files by name (`git add file1 file2 ...`), leave unrelated changes unstaged
    - Commit using **exactly this form** — a plain `-m` flag with the message only, nothing else:
@@ -36,7 +37,7 @@ You receive a **task summary** from the orchestrator describing what was built a
 
 **If the commit already exists** (nothing to commit per `git status`): use `git commit --amend -m "[message]"` instead.
 
-10. **MANDATORY post-commit verification** — this step is not optional:
+11. **MANDATORY post-commit verification** — this step is not optional:
     ```bash
     git log -1 --format=%B
     ```
