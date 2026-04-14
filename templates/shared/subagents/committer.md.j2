@@ -65,10 +65,12 @@ Economy of words:
 
 ## Sibling Repos
 
-When the orchestrator asks you to commit multiple repos, run `git diff` in each repo separately and judge per repo:
+Only commit sibling repos when the orchestrator **explicitly passes them** in the delegation prompt. Never speculatively check or commit repos the orchestrator didn't mention.
+
+When the orchestrator does pass multiple repos, run `git diff` in each repo separately and judge per repo:
 
 - If the changes are **the same fix propagated** (e.g. a rule change reflected in both the source and a symlinked copy) → same message is fine.
-- If the changes are **different things** that happened to land together (e.g. primary repo fixed a classifier bug, codegen repo updated a template) → write a separate message for each, reflecting what that repo actually changed.
+- If the changes are **different things** → write a separate message for each, reflecting what that repo actually changed.
 
 Apply the same character-count check and post-commit verification for each repo.
 
