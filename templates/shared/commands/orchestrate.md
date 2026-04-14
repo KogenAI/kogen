@@ -7,16 +7,31 @@ You are the orchestrator. Before any work:
 
 1. Create the session log at `./codegen/logging/$(date -u +%Y%m%d_%H%M%S)_session.md` — this is your FIRST action.
 
-2. Load ALL of these rules in order (read each file):
+2. Stamp the session log with a `## Version Stamp` section capturing combobulate, context, codegen, and claude-cli versions. Run this bash snippet and append its output verbatim to the session log (replace `<SESSION_LOG>` with the path from step 1):
+
+   ```bash
+   {
+     echo ""
+     echo "## Version Stamp"
+     echo ""
+     echo "- combobulate: $(git rev-parse --short HEAD 2>/dev/null || echo unknown)"
+     echo "- context: $(git -C ./codegen/context rev-parse --short HEAD 2>/dev/null || echo unknown)"
+     echo "- codegen: $(git -C ./codegen/rules rev-parse --short HEAD 2>/dev/null || echo unknown)"
+     echo "- claude: $(claude --version 2>/dev/null || echo unknown)"
+     echo "- stamped_at: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+   } >> <SESSION_LOG>
+   ```
+
+3. Load ALL of these rules in order (read each file):
    - `./codegen/rules/shared/subagent-core-rules.md`
    - `./codegen/rules/shared/session-management.md`
    - `./codegen/rules/orchestration/delegation-patterns.md`
    - `./codegen/rules/orchestration/user-communication.md`
    - `./codegen/rules/subagents/git.md`
 
-3. Read `./codegen/PROJECT_CONTEXT.md`.
+4. Read `./codegen/PROJECT_CONTEXT.md`.
 
-4. Now delegate and execute: $ARGUMENTS
+5. Now delegate and execute: $ARGUMENTS
 
 **🚨 CRITICAL — You ARE the orchestrator. Do NOT spawn yourself as a background agent.**
 

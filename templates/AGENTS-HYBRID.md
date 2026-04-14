@@ -66,13 +66,34 @@ See the "Domain Context Files" table in `PROJECT_CONTEXT.md` for the loading gui
 - Step logs: `./codegen/logging/$(date -u +%Y%m%d)_step<N>_<slug>.md`
 - Single-task: `./codegen/logging/$(date -u +%Y%m%d_%H%M%S)_session.md`
 
-Session log template (create BEFORE delegating to planner):
+Session log template (create BEFORE delegating to planner). After writing the file, immediately stamp it by running:
+
+```bash
+{
+  echo ""
+  echo "## Version Stamp"
+  echo ""
+  echo "- combobulate: $(git rev-parse --short HEAD 2>/dev/null || echo unknown)"
+  echo "- context: $(git -C ./codegen/context rev-parse --short HEAD 2>/dev/null || echo unknown)"
+  echo "- codegen: $(git -C ./codegen/rules rev-parse --short HEAD 2>/dev/null || echo unknown)"
+  echo "- claude: $(claude --version 2>/dev/null || echo unknown)"
+  echo "- stamped_at: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+} >> <SESSION_LOG>
+```
 
 ```markdown
 # Session Log
 
 **Started**: $(date -u)
 **Task**: [What you're doing]
+
+## Version Stamp
+
+- combobulate: <hash>
+- context: <hash>
+- codegen: <hash>
+- claude: <version>
+- stamped_at: <iso timestamp>
 
 ## Rules Loaded
 
