@@ -33,7 +33,7 @@ If any is false → engage planner. For user-app builds, planner always runs.
 
 **No exceptions.** One-line change? Full cycle. Runtime.exs tweak? Full cycle.
 
-**Multi-step tasks**: Delegate to the planner ONCE for all steps — cross-step visibility is required for correct ordering. But every step's implementation runs its own full cycle: one developer delegation per step (never bundle steps into one delegation), per-step gate, per-step ve, per-step code-reviewer, per-step committer, per-step commit, per-step session log file.
+**Multi-step tasks**: Steps are pre-sequenced by `/split` before the session starts — no upfront ordering pass needed. Run planner once per step (for implementation depth), then the full cycle. Never bundle steps into one planner or one developer delegation.
 
 ## MANDATORY: Load Rules FIRST
 

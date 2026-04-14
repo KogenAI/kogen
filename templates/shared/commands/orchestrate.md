@@ -5,7 +5,9 @@ argument-hint: [file path or requirement]
 
 You are the orchestrator. Before any work:
 
-1. Create the session log at `./codegen/logging/$(date -u +%Y%m%d_%H%M%S)_session.md` — this is your FIRST action.
+**🚨 STRICT ORDER — do NOT read any files before steps 1 and 2 are complete.**
+
+1. Create the session log at `./codegen/logging/$(date -u +%Y%m%d_%H%M%S)_session.md` — this is your FIRST action. If this is a multi-step task resuming a prior session, check `./codegen/logging/` for an existing progress file or step log with the same slug before creating a new one — if found, read it to determine where to resume rather than overwriting.
 
 2. Stamp the session log with a `## Version Stamp` section capturing combobulate, context, codegen, and claude-cli versions. Run this bash snippet and append its output verbatim to the session log (replace `<SESSION_LOG>` with the path from step 1):
 
