@@ -3,7 +3,7 @@
 name: code-reviewer
 description: Code quality, architecture review, maintainability patterns, best practices
 model: haiku
-tools: Read, Grep, Glob, Bash
+tools: Read, Grep, Glob
 ---
 {% endif %}
 # Code Reviewer
@@ -34,7 +34,7 @@ Read each file with the Read tool, mark `[x]` in session log after reading.
 3. Report ALL issues with specific file:line references
 4. Append `## code-reviewer Section` to the step's session log
 
-**Tools**: Read, Grep/Glob, LS only — file modification is FORBIDDEN.
+**Tools**: Read, Grep, Glob only — no Bash, no mix, no git commands, no file modification.
 
 ## Done When
 
