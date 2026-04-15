@@ -111,6 +111,38 @@
           }
         ]
       }
+    ],
+    "UserPromptSubmit": [
+      {
+        "matcher": "/orchestrate",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash -c 'input=$(cat); session_id=$(echo \"$input\" | jq -r \".session_id\"); prompt=$(echo \"$input\" | jq -r \".user_message // .prompt // \\\"\\\"\"); cwd=$(echo \"$input\" | jq -r \".cwd\"); if echo \"$prompt\" | grep -q \"^/orchestrate\"; then doc_path=$(echo \"$prompt\" | grep -oP \"(?<=@)[^\\\\s]+\" | head -1); echo \"$input\" | jq --arg doc \"$doc_path\" --arg cwd \"$cwd\" --arg prompt \"$prompt\" \"{session_id: .session_id, original_prompt: \\$prompt, document_path: \\$doc, cwd: \\$cwd}\" > \"$HOME/.claude/orchestrate-session-${session_id}.json\"; fi'"
+          }
+        ]
+      }
+    ],
+    "SessionStart": [
+      {
+        "matcher": "compact",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash -c 'input=$(cat); session_id=$(echo \"$input\" | jq -r \".session_id\"); state_file=\"$HOME/.claude/orchestrate-session-${session_id}.json\"; if [ -f \"$state_file\" ]; then original_prompt=$(jq -r \".original_prompt\" \"$state_file\"); context=$(printf \"%s\\n\\nWe\\'ve already worked on this for a while so you should be able to find progress and step log files in codegen/logging/ and see where we left off.\" \"$original_prompt\"); jq -n --arg ctx \"$context\" \"{hookSpecificOutput: {hookEventName: \\\"SessionStart\\\", additionalContext: \\$ctx}}\"; fi'"
+          }
+        ]
+      }
+    ],
+    "SessionEnd": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash -c 'input=$(cat); session_id=$(echo \"$input\" | jq -r \".session_id\"); rm -f \"$HOME/.claude/orchestrate-session-${session_id}.json\"'"
+          }
+        ]
+      }
     ]
   }
 }
