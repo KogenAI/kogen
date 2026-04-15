@@ -21,7 +21,7 @@ Principles for splitting:
 - **Additive before behavioral** — schema changes, new modules, and new functions with no callers ship first; logic changes that use them ship after
 - **Infrastructure before wiring** — add the plumbing before turning on the tap
 - **Isolate external dependencies** — Stripe, email, third-party APIs should be wired up in their own step so they can be tested independently
-- **Cleanup last** — removing old fields, deprecated functions, or feature flags ships after the replacement is live and verified
+- **Cleanup last, but only when it needs to wait** — "cleanup last" applies to feature flags, deprecated DB fields, and code that must stay live while the replacement proves itself in production. It does NOT apply to code that becomes provably unreachable the moment its callers are removed — that goes in the same commit. Splitting caller removal from function deletion forces dead code into the codebase between steps, drops coverage on code about to be deleted, and wastes time writing tests for functions that won't exist in the next commit. Remove dead functions in the same step that removes their last caller.
 - **Prefer fewer, meatier steps** — don't split for the sake of splitting; a step that only adds a migration with no callers is noise unless the migration itself is risky
 - **Group identical mechanical moves** — if the same operation is repeated N times (extract handler A, extract handler B, extract handler C…), that is one step, not N. The value comes from the pattern being established, not from each individual move. Only split mechanical repetition when the moves have meaningfully different risk profiles or touch different systems.
 
