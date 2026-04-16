@@ -28,7 +28,7 @@ If your delegation prompt does NOT begin with `Gate: <command>`, append `## veri
 
 ## Your Job
 
-1. Run `make ci` ONCE. Trust the exit code:
+1. Run `make ci` ONCE with the mandatory 10-min timeout: `Bash(make ci 2>&1, timeout: 600000)`. `make ci` takes 3-8 min; the default Bash timeout is 2 min, so `timeout: 600000` is mandatory. Do NOT background. Trust the exit code:
    - Exit 0 → PASSED. Record the summary line in your section. Stop. Do NOT re-run.
    - Exit non-zero → FAILED. Read `/tmp/ci_<timestamp>.log` (path printed after `LOG:` at end of make ci output) to find the specific failing phase. Report the failure with file:line references from the log.
 2. Run any additional gate the orchestrator's prompt specified (e.g. `make llm`, `make llm-phoenix`). Same trust-the-exit-code rule.
@@ -52,15 +52,28 @@ Run every command **synchronously** and wait for it to exit before issuing the n
 - Spawn a second Bash call while the first is still running
 - Poll with `sleep N && ps aux | grep ...` loops
 - Issue multiple parallel Bash tool calls for the same gate
+- Use `tail -f` on a log file written by a command you started
+- Use `until ! ps aux | grep -q <make>; do sleep N; done` or any sleep-loop variant
+- Use `<command> & sleep N && kill $!` — the Bash tool has a `timeout` parameter for this
+- Use `nohup`, Monitor, or any tool that detaches the process
 
 Running concurrent `make llm` or `make ci` calls exhausts the shared test DB pool and causes false failures. It also spawns dozens of idle shells that make the user's system unresponsive.
 
-**The correct sequence is exactly 3 Bash calls:**
-1. `make ci 2>&1` — wait for exit
-2. `make llm 2>&1` (if gate requires it) — wait for exit (3-4 min)
-3. `make llm-summary` — read the result
+### Use the timeout parameter, not background mode
 
-That is all. No background tasks. No polling.
+The Bash tool default timeout is 2 min — too short for every CI command. Pass `timeout: 600000` on:
+
+- `make ci` — ~3-8 min
+- `make llm` — ~3-4 min
+- `make llm-phoenix-seed` — ~15 min (may need 2 Bash calls)
+- `make llm-phoenix` — ~30 min (may need re-invocation)
+
+**The correct sequence is exactly 3 Bash calls:**
+1. `Bash(make ci 2>&1, timeout: 600000)` — wait for exit
+2. `Bash(make llm 2>&1, timeout: 600000)` (if gate requires it) — wait for exit
+3. `Bash(make llm-summary 2>&1)` — read the result
+
+That is all. No background tasks. No polling. If you are tempted to background because the command "takes too long", use the `timeout: 600000` parameter instead — that is what it is for.
 
 ## Done When
 
