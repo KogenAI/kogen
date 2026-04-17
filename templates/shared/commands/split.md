@@ -14,6 +14,15 @@ Each step must:
 
 **Scaffold test**: before accepting a step, ask "if the next step is never shipped, does a user or developer gain anything from this?" If the honest answer is no — it's pure scaffolding that only enables the next step — merge it with the next step. A struct with a no-op function, a migration with no callers, an empty module with no behaviour — these are not shippable steps, they're half-steps. Merge them forward.
 
+**Regression test**: the flip side of scaffold. Ask "if we stop here, is the system actually worse than before?" A step that ships visible placeholder strings in user output, blocks a previously-working path without providing the new one, writes literal `TODO_REPLACE_ME` tokens into artifacts users see, or leaves two subsystems in contradictory states (e.g. an enforcement hook that blocks action X while the rule file still tells the agent to do X) is a regression, not a step. Merge it forward with whatever step resolves the regression. The rule: every step must leave the system strictly better than the previous commit, not "better eventually once the next step lands". If stopping mid-sequence would make you want to revert, it's not a shippable step.
+
+Common regression-half-step shapes to watch for:
+
+- **Placeholder in output**: recipe ships `XYZ_PLACEHOLDER_URL` as a buy-button target. Without the follow-up step that scans-and-patches, users see literal placeholder text. Merge placeholder introduction with the consumer that replaces it.
+- **Enforcement without guidance**: hook/guard blocks a behaviour while the prompt/rule still instructs the agent to attempt it. Agent hits the block, has no documented alternative, thrashes. Merge the enforcement with the rule rewrite that supplies the alternative.
+- **Callers without implementation**: wiring a feature flag or new branch that calls a module whose real behaviour lands next step. The branch is dead or broken in production for the duration of one commit. Merge.
+- **Half-migrated state**: renaming half the call sites in a commit, the rest in the next. The codebase compiles but readers see two names for the same thing. Merge or complete the rename in one commit.
+
 Think of steps as building blocks stacked on top of each other. Step 1 alone is an improvement. Step 1 + 2 is better. Step 1 + 2 + 3 is the full feature. You should be able to stop at any step and have shipped something worthwhile.
 
 Principles for splitting:
