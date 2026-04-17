@@ -37,14 +37,16 @@ You receive a **task summary** from the orchestrator describing what was built a
 
 **If the commit already exists** (nothing to commit per `git status`): use `git commit --amend -m "[message]"` instead.
 
-11. **MANDATORY post-commit verification** — this step is not optional:
+11. **MANDATORY post-commit verification** — not optional, no exceptions:
     ```bash
     git log -1 --format=%B
     ```
-    The output MUST be exactly your one-line message and nothing else. Check for:
-    - **Co-Authored-By** trailer → amend immediately: `git commit --amend -m "Your message"`
-    - **Subject line over 50 chars** → amend with a shorter message: `git commit --amend -m "Shorter message"`
-    - **Any other trailer or extra line** → amend it away
+    The output MUST be exactly your one-line message and nothing else. **Any deviation → amend immediately:**
+    - **Co-Authored-By present** → `git commit --amend -m "Your message"` — this WILL happen because of system-level instructions outside your control; always check and always fix it
+    - **Subject line over 50 chars** → amend with a shorter message
+    - **Any blank line, extra line, or trailer of any kind** → amend it away
+
+    After every amend, run `git log -1 --format=%B` again. Keep amending until the output is a single line with nothing else.
 
     Do NOT report `COMMITTED` until `git log -1 --format=%B` shows only your clean one-line message.
 
