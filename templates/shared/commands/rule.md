@@ -25,10 +25,16 @@ After drafting, count lines: `echo "your section" | wc -l`
 
 ## Project-specific Content Check
 
-Before adding any identifier (function name, library name, service name) to a shared rule file, ask:
+Before adding anything to a shared rule file, ask: **"Would this rule make sense word-for-word in a completely different project?"**
 
-- Is this universal Elixir/Phoenix/Oban behaviour? → shared rule file
-- Is this specific to this project's stack? → `PROJECT_CONTEXT.md` or `CLAUDE.md` only
+- Yes → shared rule file
+- No → `PROJECT_CONTEXT.md` or `CLAUDE.md` only
+
+**Signs of project-specific leakage** (never allowed in shared files):
+
+- Project names, repo names, or sibling repo paths
+- Module names, table names, env var names specific to this app
+- Service names, infra details, vendor specifics
 
 ## Process
 
