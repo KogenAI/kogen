@@ -113,6 +113,32 @@ if [ -f "$CODEGEN_DIR/templates/generated/claude-code/claude-code-settings.json"
     echo "   ✅ Claude Code settings installed at: $CLAUDE_SETTINGS_FILE"
 fi
 
+echo ""
+echo "🚀 Setting up Claude Code hooks..."
+
+# Install ve-guard PreToolUse hook
+if [ -f "$CODEGEN_DIR/templates/shared/hooks/ve-guard.sh" ]; then
+    mkdir -p "$CLAUDE_SETTINGS_DIR/hooks"
+    cp "$CODEGEN_DIR/templates/shared/hooks/ve-guard.sh" "$CLAUDE_SETTINGS_DIR/hooks/ve-guard.sh"
+    chmod +x "$CLAUDE_SETTINGS_DIR/hooks/ve-guard.sh"
+    echo "   ✅ ve-guard hook installed at: $CLAUDE_SETTINGS_DIR/hooks/ve-guard.sh"
+
+    # Idempotently inject PreToolUse entry into settings.json
+    if [ -f "$CLAUDE_SETTINGS_FILE" ] && command -v jq >/dev/null 2>&1; then
+        # Only inject if the matcher is not already present
+        already_present=$(jq -r '
+            (.hooks.PreToolUse // []) | map(select(.matcher == "Bash|Write|Read|Monitor")) | length
+        ' "$CLAUDE_SETTINGS_FILE" 2>/dev/null || echo "0")
+        if [ "$already_present" = "0" ]; then
+            jq '.hooks.PreToolUse += [{"matcher": "Bash|Write|Read|Monitor", "hooks": [{"type": "command", "command": "$HOME/.claude/hooks/ve-guard.sh"}]}]' \
+                "$CLAUDE_SETTINGS_FILE" >"$CLAUDE_SETTINGS_FILE.tmp" && mv "$CLAUDE_SETTINGS_FILE.tmp" "$CLAUDE_SETTINGS_FILE"
+            echo "   ✅ PreToolUse hook entry added to: $CLAUDE_SETTINGS_FILE"
+        else
+            echo "   ✅ PreToolUse hook entry already present in: $CLAUDE_SETTINGS_FILE"
+        fi
+    fi
+fi
+
 # Install custom Claude commands
 echo "   📁 Installing custom Claude commands..."
 
