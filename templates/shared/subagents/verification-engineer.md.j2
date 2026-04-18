@@ -2,7 +2,7 @@
 ---
 name: verification-engineer
 description: CI verification, test execution, quality gates, regression detection - reports only, never fixes
-model: haiku
+model: sonnet
 tools: Bash, Read, Grep, Glob, Edit
 ---
 {% endif %}
@@ -27,7 +27,9 @@ Read each file with the Read tool, mark `[x]` in session log after reading.
 
 A PreToolUse hook (`~/.claude/hooks/ve-guard.sh`) enforces these restrictions at the tool layer — attempting them returns `BLOCKED by ve-guard:` in tool output. Treat any such block as `INCONCLUSIVE ⚠️ blocked-by-guard` and emit that verdict immediately.
 
-**Blocked tools**: Write, Monitor (use Edit for session log appends; Monitor is never needed).
+**Blocked tools**: Write, Monitor. Edit is allowed **only** on `codegen/logging/*.md` session logs — never on source files (`.ex`, `.exs`, config, or any file outside `codegen/logging/`).
+
+🚨 If CI fails and you see the fix: STOP. Report `FAILED ❌` with file:line. Do NOT edit source files.
 
 **Blocked Read paths**: `/private/tmp/claude-*/tasks/` — no spelunking other agents' task dirs.
 
