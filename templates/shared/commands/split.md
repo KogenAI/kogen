@@ -48,7 +48,7 @@ Output format — for each step:
 
 Steps are **sequential commits on a single branch** — not parallel branches or PRs. Each step is implemented and committed before the next begins. "Merge candidate" suggestions are appropriate only when two steps touch the same code and separating them would require editing the same lines twice in consecutive commits — in that case, say so explicitly and merge them into one step.
 
-**Operational actions are not steps.** Deploys, WhatsApp messages, manual verifications, SSH commands, "trigger a rebuild", "send the connect link" — these are not numbered steps. They have no commit. Put them in a `> **After all steps ship:**` callout at the end of the implementation plan. A numbered step that produces no commit wastes a step slot and misleads future sessions into treating operational work as code work.
+**Operational actions are not steps.** Deploys, WhatsApp messages, manual verifications, SSH commands, "trigger a rebuild", "send the connect link" — these are not numbered steps. They have no commit. If any are required after the code ships, put them in a `> **Human action required after all steps ship:**` callout at the end of the implementation plan — numbered, with the human as the explicit actor. A numbered step that produces no commit wastes a step slot and misleads future sessions into treating operational work as code work.
 
 **Critical: step numbers ARE the execution order. No implicit ordering.**
 

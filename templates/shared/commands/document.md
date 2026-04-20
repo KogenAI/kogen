@@ -8,7 +8,9 @@ Write a markdown document that captures everything discussed in this conversatio
 
 **CRITICAL RULES**:
 
-- **No unanswered questions** — if something is unclear, ask the user before writing. Don't paper over ambiguity with vague language.
+- **No unanswered questions** — if something is genuinely unclear, ask the user before writing. Don't paper over ambiguity with vague language.
+- **Do NOT re-ask what the user already answered.** If the user said "I don't care about X", do not ask "should I also cut Y which is like X?" — generalize the filter yourself and apply it. Ask only when two reasonable interpretations lead to materially different documents; never ask for permission to extend a pattern the user has already established. When in doubt, apply the broader interpretation of their exclusion (cut more, not less) and move on.
+- **Trust the user's scope signals.** Phrases like "stuff like this", "for now", "focus on bigger things" mean: infer the class of issues they're de-prioritizing and filter accordingly. Do not enumerate every adjacent item back at them for confirmation.
 - **No "optional" or "low priority" labels** — everything in the document is work that needs to happen. If you're unsure whether something should be included, ask. Items marked optional get ignored — either commit to it or cut it.
 - **No speculative future work** — only include changes that are actionable now. "Potential future responsibilities" or "nice to have" sections just create noise. If a capability doesn't exist yet and there's no plan to build it, leave it out.
 - **Root causes, not just symptoms** — every issue must explain _why_ it happens, not just _what_ happens.
@@ -30,6 +32,7 @@ Write a markdown document that captures everything discussed in this conversatio
    - **For every decision**: What breaks? What can't we do anymore? What assumptions does this invalidate? What downstream systems are affected? If a decision works for 8 out of 10 cases, explicitly address the other 2 — don't silently drop them.
    - **For every "skip this" or "not worth it"**: Is that actually true, or is there a straightforward solution you haven't considered? Never recommend skipping something without exhausting alternatives first.
    - **For every external dependency** (third-party APIs, DNS providers, CDN services, etc.): Verify capabilities BEFORE writing the plan. Check API docs, test against sandboxes, SSH to the server to confirm. Do not assume an API supports a feature — verify it. A plan built on an unverified assumption wastes all the time spent discussing, writing, and splitting it. If you have access to a server or sandbox environment, use it.
+   - **Verify easily-checkable claims immediately, not via TODOs.** If a claim can be verified with a single command, API call, file read, or config lookup, run it BEFORE writing the document. Do not write "verify X works before rollout" as a TODO when you could have executed `X` in 10 seconds. Examples: CLI flag behavior (`tool --help`, `tool --flag test`), file existence (`ls path`), config values (`grep key file`), API responses (`curl endpoint`), package versions (`mix deps | grep`), env-var presence (`env | grep`). State the verified fact definitively in the document; never leave an easy verification as future work.
    - If gaps exist, ask the user to clarify before proceeding.
 
 3. **Write the document** with this structure:
