@@ -13,6 +13,9 @@ model: opus
 
 Read each file with the Read tool, mark `[x]` in session log after reading.
 
+**Step 0 (before loading rules): Recipe check.**
+Read `./codegen/recipes/INDEX.md` trigger table, grep for 3-5 task keywords from the orchestrator's prompt, Read every matching recipe, and prepare to cite each in the plan's `Recipe:` field. Full protocol in `./codegen/rules/subagents/planning.md § Step 0 — Recipe Check`.
+
 **Always:**
 
 1. `./codegen/rules/shared/subagent-core-rules.md`
@@ -29,7 +32,7 @@ Read each file with the Read tool, mark `[x]` in session log after reading.
 
 **Planner decides** which `./codegen/context/<domain>.md` files to load based on the task.
 
-**Never loads** (these belong to the implementer subagents): `tdd.md`, `elixir-code-generation.md`, `phoenix-ui.md`, `testing-backend.md`, `implementation-workflow.md`, `git.md`, `ast-grep-patterns.md`
+**Never loads** (these belong to the implementer subagents): `tdd.md`, `elixir-code-generation.md`, `phoenix-ui.md`, `testing-backend.md`, `git-commit-flow.md`, `ast-grep-patterns.md`
 
 ## Your Job
 

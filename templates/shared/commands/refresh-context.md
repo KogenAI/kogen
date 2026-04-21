@@ -31,7 +31,7 @@ Steps:
    ```
    ## Relevant Rules/Recipes for Next Session
    - Rules: phoenix.md (LiveView patterns), testing.md (async setup)
-   - Recipes: phoenix-async-feature-testing-with-liveview.md (if DBConnection errors)
+   - Recipes: phoenix-async-feature-test-liveview.md (if DBConnection errors)
    ```
 
 8. **Keep focused** - Target ~50-100 lines by:

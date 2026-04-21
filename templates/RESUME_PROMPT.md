@@ -18,7 +18,7 @@
    - `./codegen/rules/shared/server-management.md`
    - `./codegen/rules/shared/subagent-core-rules.md`
    - `./codegen/rules/orchestration/delegation-patterns.md` (🚨 PRIMARY)
-   - `./codegen/rules/subagents/git.md` (🚨 NO agent can stage)
+   - `./codegen/rules/subagents/git-commit-flow.md`
 3. Create session log: `./codegen/logging/$(date -u +%Y%m%d_%H%M%S)_orchestrator.md`
 4. Check for work: `ls ./codegen/context/PENDING-* ./codegen/context/ACTIVE-* 2>/dev/null`
 5. Read `./codegen/CONTEXT.md` for current status

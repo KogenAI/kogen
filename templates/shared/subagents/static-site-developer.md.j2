@@ -16,7 +16,7 @@ Read each file with the Read tool, mark `[x]` in session log after reading.
 1. `./codegen/rules/shared/subagent-core-rules.md`
 2. `./codegen/rules/shared/session-management.md`
 3. `./codegen/rules/subagents/workflow.md`
-4. `./codegen/rules/subagents/git.md`
+4. `./codegen/rules/subagents/git-commit-flow.md`
 
 **Stack-specific** (load ONE based on orchestrator's `APP TYPE: static-<stack>`):
 - `./codegen/rules/subagents/user-app-static-html.md` — plain HTML + Vite/React (default)
@@ -30,7 +30,7 @@ Read each file with the Read tool, mark `[x]` in session log after reading.
 **Domain context** (load file(s) specified in orchestrator's prompt):
 - `./codegen/context/<domain>.md` — only the domain file(s) relevant to your task
 
-⚠️ Do NOT load any of: `tdd.md`, `phoenix.md`, `phoenix-ui.md`, `elixir-code-generation.md`, `testing-backend.md`, `ast-grep-patterns.md`, `implementation-workflow.md`, `server-management.md`, `elixir-ci.md`. Those are Phoenix/Elixir rules — not for static sites.
+⚠️ Do NOT load any of: `tdd.md`, `phoenix.md`, `phoenix-ui.md`, `elixir-code-generation.md`, `testing-backend.md`, `ast-grep-patterns.md`, `server-management.md`, `elixir-ci.md`. Those are Phoenix/Elixir rules — not for static sites.
 
 ⚠️ Orchestration rules are NOT for you.
 

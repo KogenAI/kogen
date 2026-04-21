@@ -13,9 +13,9 @@ PoC-focused guidance for AI agents - optimized for rapid validation over product
 3. **LOAD** PoC rules from `./codegen/rules/INDEX.md`:
    - **ALL agents**: Load shared rules (subagent-core-rules.md, session-management.md)
    - **Orchestrator** (default for direct Claude Code sessions): ALSO load orchestration rules (delegation-patterns.md)
-   - **poc-developer**: Load subagents/phoenix.md, subagents/elixir-code-generation.md, subagents/workflow.md, subagents/testing-backend.md, subagents/git.md
-   - **verification-engineer (PoC context)**: Load subagents/testing-poc.md, subagents/git.md
-   - **code-reviewer (PoC context)**: Load subagents/phoenix.md, subagents/elixir-code-generation.md, subagents/testing-backend.md, subagents/git.md
+   - **poc-developer**: Load subagents/phoenix.md, subagents/elixir-code-generation.md, subagents/workflow.md, subagents/testing-backend.md, subagents/git-commit-flow.md
+   - **verification-engineer (PoC context)**: Load subagents/testing-poc.md, shared/git-read-only.md
+   - **code-reviewer (PoC context)**: Load subagents/phoenix.md, subagents/elixir-code-generation.md, subagents/testing-backend.md, shared/git-read-only.md
 4. **APPLY** validation-focused patterns to every action
 
 **🚨 CRITICAL**: When orchestrator delegates to verification-engineer or code-reviewer for PoC work, the delegation prompt MUST specify PoC context:
@@ -180,7 +180,8 @@ ocg usage-rules
 - [ ] ./codegen/rules/subagents/elixir-code-generation.md (poc-developer, code-reviewer)
 - [ ] ./codegen/rules/subagents/workflow.md (poc-developer)
 - [ ] ./codegen/rules/subagents/testing-backend.md (poc-developer, code-reviewer)
-- [ ] ./codegen/rules/subagents/git.md (all subagents)
+- [ ] ./codegen/rules/subagents/git-commit-flow.md (poc-developer)
+- [ ] ./codegen/rules/shared/git-read-only.md (verification-engineer, code-reviewer)
 
 ## Validation Focus
 
