@@ -4,6 +4,10 @@
 # Blocks destructive shell patterns and forbidden tools when the active agent
 # is "verification-engineer". All other agents pass through unconditionally.
 #
+# Monitor is PERMITTED (needed for long-gate recipe: run_in_background + Monitor + Read).
+# run_in_background is PERMITTED only for: make llm, make llm-phoenix, make llm-phoenix-seed
+# (seed rebuild only when COMBOBULATE_VE_GATE starts with rebuild-seed-then).
+#
 # Exit codes:
 #   0 — allow the tool call
 #   2 — block the tool call (Claude Code PreToolUse convention)
@@ -33,9 +37,8 @@ fi
 
 # ── Tool-level blocks ─────────────────────────────────────────────────────────
 
-if [ "$tool_name" = "Write" ] || [ "$tool_name" = "Monitor" ]; then
-    printf 'BLOCKED by ve-guard: tool %s forbidden for verification-engineer (use Edit for log appends; Monitor is never needed)\n' \
-        "$tool_name" >&2
+if [ "$tool_name" = "Write" ]; then
+    printf 'BLOCKED by ve-guard: tool Write forbidden for verification-engineer (use Edit for log appends)\n' >&2
     exit 2
 fi
 
@@ -98,6 +101,27 @@ if [ "$tool_name" = "Bash" ]; then
             printf 'BLOCKED by ve-guard: make llm-phoenix-seed is forbidden for verification-engineer — return INCONCLUSIVE ⚠️ seed-suspect; orchestrator owns seed lifecycle\n' >&2
             exit 2
         fi
+    fi
+
+    # run_in_background guard — only permitted for the two long LLM gates and seed-rebuild
+    run_bg=$(printf '%s' "$input" | jq -r '.tool_input.run_in_background // false')
+
+    if [ "$run_bg" = "true" ]; then
+        case "$command" in
+        "make llm" | "make llm "* | "make llm-phoenix" | "make llm-phoenix "*)
+            :
+            ;;
+        "make llm-phoenix-seed" | "make llm-phoenix-seed "*)
+            if [[ "${COMBOBULATE_VE_GATE:-}" != rebuild-seed-then* ]]; then
+                printf 'BLOCKED by ve-guard: make llm-phoenix-seed requires COMBOBULATE_VE_GATE=rebuild-seed-then\n' >&2
+                exit 2
+            fi
+            ;;
+        *)
+            printf 'BLOCKED by ve-guard: run_in_background allowed only for `make llm`, `make llm-phoenix`, and seed-rebuild — got: %s\n' "$command" >&2
+            exit 2
+            ;;
+        esac
     fi
 
 fi

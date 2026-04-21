@@ -1,6 +1,8 @@
 {
   "model": "sonnet",
   "env": {
+    "BASH_DEFAULT_TIMEOUT_MS": "600000",
+    "BASH_MAX_TIMEOUT_MS": "600000",
     "CLAUDE_CODE_DISABLE_AUTO_MEMORY": "1",
     "DISABLE_AUTOUPDATER": "1",
     "MAX_THINKING_TOKENS": "0"
