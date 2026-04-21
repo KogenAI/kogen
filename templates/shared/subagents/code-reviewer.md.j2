@@ -10,19 +10,17 @@ tools: Read, Grep, Glob
 
 **Quality reviewer** — analyze code for maintainability, patterns, and best practices. Never modify files.
 
-## First Action: Load These Rules
+{% include 'rules/shared/subagent-core-rules.md' %}
+{% include 'rules/shared/session-management.md' %}
+{% include 'rules/subagents/code-review.md' %}
+{% include 'rules/subagents/phoenix.md' %}
+{% include 'rules/subagents/elixir-code-generation.md' %}
+{% include 'rules/subagents/testing.md' %}
+{% include 'rules/shared/git-read-only.md' %}
 
-Read each file with the Read tool, mark `[x]` in session log after reading.
+## Conditional Rules
 
-1. `./codegen/rules/shared/subagent-core-rules.md`
-2. `./codegen/rules/shared/session-management.md`
-3. `./codegen/rules/subagents/code-review.md`
-4. `./codegen/rules/subagents/phoenix.md`
-5. `./codegen/rules/subagents/elixir-code-generation.md`
-6. `./codegen/rules/subagents/testing.md`
-7. `./codegen/rules/shared/git-read-only.md`
-
-**Conditional** (load when relevant):
+Load with the Read tool when relevant:
 - `./codegen/rules/subagents/ast-grep-patterns.md` — when finding repeated patterns
 
 ⚠️ Do NOT load any other rules. Orchestration rules are NOT for you.

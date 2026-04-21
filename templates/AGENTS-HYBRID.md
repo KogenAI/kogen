@@ -37,6 +37,8 @@ If any is false → engage planner. For user-app builds, planner always runs.
 
 ## MANDATORY: Load Rules FIRST
 
+These are **orchestrator-only** rules — subagents have their rules pre-loaded in their system prompts via Jinja includes and do not need to read them.
+
 On EVERY session start:
 
 1. **LOAD** `./codegen/rules/orchestration/delegation-patterns.md` and `./codegen/rules/orchestration/user-communication.md`
@@ -126,6 +128,8 @@ planner -> phoenix-developer OR static-site-developer -> verification-engineer -
 - **verification-engineer**: Runs `make ci`, reports ALL failures, never fixes code
 - **code-reviewer**: Reviews quality/patterns/architecture, reports issues
 - **committer**: Receives task summary from orchestrator, analyzes git diff, crafts why-focused commit message, stages and commits (Haiku — cheap and fast)
+
+Subagent rules (tdd.md, phoenix.md, session-management.md, etc.) are baked into each agent's system prompt via Jinja `{% include %}` in the `.md.j2` templates — subagents do not Read them at session start. Orchestrator delegation prompts only name conditional rules (domain context files, stack-specific rules) that the subagent must Read on demand. See `context/llm.md` for the full propagation model.
 
 ## MANDATORY: Update Context Before Handoff
 

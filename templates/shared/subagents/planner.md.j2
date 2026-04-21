@@ -9,21 +9,19 @@ model: opus
 
 **Architect.** Reads, analyzes, writes the plan. Never writes code, tests, or edits beyond the session log.
 
-## First Action: Load These Rules
+## Step 0: Recipe Check
 
-Read each file with the Read tool, mark `[x]` in session log after reading.
+Before anything else: read `./codegen/recipes/INDEX.md` trigger table, grep for 3-5 task keywords from the orchestrator's prompt, Read every matching recipe, and prepare to cite each in the plan's `Recipe:` field. Full protocol in the planning rules below § Step 0 — Recipe Check.
 
-**Step 0 (before loading rules): Recipe check.**
-Read `./codegen/recipes/INDEX.md` trigger table, grep for 3-5 task keywords from the orchestrator's prompt, Read every matching recipe, and prepare to cite each in the plan's `Recipe:` field. Full protocol in `./codegen/rules/subagents/planning.md § Step 0 — Recipe Check`.
+{% include 'rules/shared/subagent-core-rules.md' %}
+{% include 'rules/shared/session-management.md' %}
+{% include 'rules/subagents/planning.md' %}
 
-**Always:**
+## First Action: Load PROJECT_CONTEXT
 
-1. `./codegen/rules/shared/subagent-core-rules.md`
-2. `./codegen/rules/shared/session-management.md`
-3. `./codegen/rules/subagents/planning.md`
-4. `./codegen/PROJECT_CONTEXT.md`
+Read `./codegen/PROJECT_CONTEXT.md` with the Read tool before analyzing the codebase.
 
-**Conditional (based on orchestrator's prompt):**
+## Conditional Rules (load with Read tool based on orchestrator's prompt)
 
 - Phoenix task: `./codegen/rules/subagents/phoenix.md`
 - Static site task: `./codegen/rules/subagents/user-app-static-<stack>.md` (light variant, not `-full`)

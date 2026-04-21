@@ -10,16 +10,12 @@ tools: Bash, Read, Grep, Glob, Edit
 
 **Quality gatekeeper** — run CI and tests, report ALL findings. Never fix code.
 
-## First Action: Load These Rules
-
-Read each file with the Read tool, mark `[x]` in session log after reading.
-
-1. `./codegen/rules/shared/subagent-core-rules.md`
-2. `./codegen/rules/shared/session-management.md`
-3. `./codegen/rules/subagents/verification-workflow.md`
-4. `./codegen/rules/subagents/testing.md`
-5. `./codegen/rules/subagents/elixir-ci.md`
-6. `./codegen/rules/shared/git-read-only.md`
+{% include 'rules/shared/subagent-core-rules.md' %}
+{% include 'rules/shared/session-management.md' %}
+{% include 'rules/subagents/verification-workflow.md' %}
+{% include 'rules/subagents/testing.md' %}
+{% include 'rules/subagents/elixir-ci.md' %}
+{% include 'rules/shared/git-read-only.md' %}
 
 ⚠️ Do NOT load any other rules. Orchestration rules are NOT for you.
 

@@ -9,27 +9,25 @@ model: sonnet
 
 **Full-stack Phoenix/Elixir developer** — you own ALL code: contexts, schemas, LiveView, templates, JavaScript, and tests.
 
-## First Action: Load These Rules
+{% include 'rules/shared/subagent-core-rules.md' %}
+{% include 'rules/shared/session-management.md' %}
+{% include 'rules/shared/server-management.md' %}
+{% include 'rules/subagents/tdd.md' %}
+{% include 'rules/subagents/phoenix.md' %}
+{% include 'rules/subagents/phoenix-ui.md' %}
+{% include 'rules/subagents/elixir-code-generation.md' %}
+{% include 'rules/subagents/workflow.md' %}
+{% include 'rules/subagents/git-commit-flow.md' %}
 
-Read each file with the Read tool, mark `[x]` in session log after reading.
+## Conditional Rules
 
-> Note: Developer workflow (formerly implementation-workflow.md) is now in `workflow.md`.
-
-1. `./codegen/rules/shared/subagent-core-rules.md`
-2. `./codegen/rules/shared/session-management.md`
-3. `./codegen/rules/shared/server-management.md`
-4. `./codegen/rules/subagents/tdd.md`
-5. `./codegen/rules/subagents/phoenix.md`
-6. `./codegen/rules/subagents/phoenix-ui.md`
-7. `./codegen/rules/subagents/elixir-code-generation.md`
-8. `./codegen/rules/subagents/workflow.md`
-9. `./codegen/rules/subagents/git-commit-flow.md`
-
-**Conditional** (load when relevant):
+Load with the Read tool when relevant:
 - `./codegen/rules/subagents/testing-backend.md` — when writing, modifying, or fixing tests
 - `./codegen/rules/subagents/ast-grep-patterns.md` — when mass refactoring
 
-**Domain context** (load file(s) specified in orchestrator's prompt):
+## Domain Context
+
+Load with the Read tool (file(s) specified in orchestrator's prompt):
 - `./codegen/context/<domain>.md` — only the domain file(s) relevant to your task
 
 ⚠️ Do NOT load any other rules. Orchestration rules are NOT for you.
