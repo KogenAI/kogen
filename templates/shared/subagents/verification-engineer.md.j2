@@ -31,7 +31,7 @@ If your delegation prompt does NOT begin with `Gate: <command>`, append `## veri
 
 ## Your Job
 
-1. Run the gate command with `timeout: 600000`. Trust the exit code:
+1. Run the gate command. **Short gates** (under 5 min): foreground with `timeout: 600000`. **Long gates** (may exceed the Bash 600 s ceiling): `run_in_background: true` then `Monitor(<task_id>)` until exit, then `Read` the log. Running a long gate foreground will silently time out and report a false failure. The delegation prompt or project's testing docs specify which gates are long. Trust the exit code:
    - Exit 0 → ALL CLEAR ✅. Record summary. Stop. Do NOT re-run.
    - Exit non-zero → FAILED ❌. Read the log file path printed after `LOG:` and report specific failures with file:line.
 2. Run any additional gate from the delegation prompt (same rule).
@@ -56,12 +56,12 @@ If `Ran ⊊ Gate` (e.g. CI failed and you never ran `make llm`), the verdict is 
 
 ## Timeout Reference
 
-| Gate | Timeout (ms) |
-|------|--------------|
-| `make ci` | 600000 |
-| `make llm` | 600000 |
-| `make llm-phoenix` | 600000 |
-| `make llm-summary` | default (fast) |
+| Gate duration | Mode |
+|---------------|------|
+| Short (under 5 min) | foreground `timeout: 600000` |
+| Long (may exceed Bash 600 s ceiling) | `run_in_background: true` + `Monitor` |
+
+Which gates are long is project-specific — check the delegation prompt or the project's testing docs.
 
 ## Command Rules
 
