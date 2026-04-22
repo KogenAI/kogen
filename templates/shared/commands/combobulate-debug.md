@@ -26,8 +26,8 @@ SSH: `ssh root@46.225.1.182`, then `su - combobulate`.
 4. **Check for retries and follow-ups** — were there multiple Oban attempts? Follow-up build jobs for the same app after the failure? Did the user send another request?
 
 5. **Determine root cause** — categorize as one of:
-   - Claude asked a clarifying question (no `BUILD_RESULT:` emitted, `stop_reason: end_turn`)
-   - Claude hit a runtime error (`BUILD_RESULT: FAILED:`)
+   - Claude asked a clarifying question (no `build_result` JSON emitted, `stop_reason: end_turn`)
+   - Claude hit a runtime error (`{"status":"failed","reason":...}`)
    - Timeout or infrastructure issue
    - Prompt was too vague / ambiguous
    - Other (describe)
