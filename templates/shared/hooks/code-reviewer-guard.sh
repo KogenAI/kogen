@@ -42,7 +42,11 @@ Write)
     exit 2
     ;;
 Edit)
-    printf 'BLOCKED by cr-guard: tool Edit forbidden for code-reviewer (read-only role)\n' >&2
+    file_path=$(printf '%s' "$input" | jq -r '.tool_input.file_path // ""')
+    if printf '%s' "$file_path" | grep -qE 'codegen/logging/[^/]+_(session|step[0-9]+_[^/]+)\.md$'; then
+        exit 0
+    fi
+    printf 'BLOCKED by cr-guard: code-reviewer may not edit files outside session logs: %s\n' "$file_path" >&2
     exit 2
     ;;
 MultiEdit)
