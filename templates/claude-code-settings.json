@@ -106,11 +106,20 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash -c 'file_path=$(jq -r \".tool_input.file_path\"); if echo \"$file_path\" | grep -q \"\\.exs\\?$\"; then abs_path=$(cd \"$(dirname \"$file_path\")\" && pwd)/$(basename \"$file_path\"); dir=$(dirname \"$abs_path\"); while [ \"$dir\" != \"/\" ] && [ \"$dir\" != \"$HOME\" ]; do if [ -f \"$dir/mix.exs\" ]; then cd \"$dir\" && mix format \"$abs_path\" 2>/dev/null || true; break; fi; dir=$(dirname \"$dir\"); done; fi'"
+            "command": "bash -c 'file_path=$(jq -r \".tool_input.file_path\"); if echo \"$file_path\" | grep -q \"\\.exs\\?$\"; then abs_path=$(cd \"$(dirname \"$file_path\")\" && pwd)/$(basename \"$file_path\"); dir=$(dirname \"$abs_path\"); while [ \"$dir\" != \"/\" ] && [ \"$dir\" != \"$HOME\" ]; do if [ -f \"$dir/mix.exs\" ]; then cd \"$dir\" && mix format \"$abs_path\" 2>>/tmp/combobulate-format-errors.log || true; break; fi; dir=$(dirname \"$dir\"); done; fi'"
           },
           {
             "type": "command",
-            "command": "bash -c 'file_path=$(jq -r \".tool_input.file_path\"); if echo \"$file_path\" | grep -qE \"\\.(js|md|json|css|html)$\"; then npx prettier --write \"$file_path\" 2>/dev/null || true; fi'"
+            "command": "bash -c 'file_path=$(jq -r \".tool_input.file_path\"); if echo \"$file_path\" | grep -q \"/codegen/logging/\"; then exit 0; fi; if echo \"$file_path\" | grep -qE \"\\.(js|md|json|css|html)$\"; then npx prettier --write \"$file_path\" 2>>/tmp/combobulate-format-errors.log || true; fi'"
+          }
+        ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash -c 'input=$(cat); cmd=$(echo \"$input\" | jq -r \".tool_input.command // \\\"\\\"\"); out=$(echo \"$input\" | jq -r \".tool_response.stdout // \\\"\\\"\"); if [ -n \"${COMBOBULATE_AUTOVALIDATE_DEBUG:-}\" ]; then printf \"%s cmd=%s\\n\" \"$(date -u +%Y-%m-%dT%H:%M:%SZ)\" \"$cmd\" >>/tmp/autovalidate-debug.log 2>/dev/null || true; fi; if ! echo \"$cmd\" | grep -qE \"\\\\bmake[[:space:]]+llm-phoenix\\\\b\"; then exit 0; fi; if echo \"$cmd\" | grep -qE \"\\\\bmake[[:space:]]+llm-phoenix-(seed|validate|retry|trace|kill|summary|cache)\"; then exit 0; fi; if echo \"$out\" | grep -qE \",[[:space:]]*[1-9][0-9]*[[:space:]]+failures?\\\\b\"; then exit 0; fi; if echo \"$out\" | grep -q \"INFRASTRUCTURE ERROR\"; then exit 0; fi; if [ -d \"$HOME/.combobulate_phoenix_seed\" ]; then date -u > \"$HOME/.combobulate_phoenix_seed/validated\"; fi'"
           }
         ]
       }
@@ -182,6 +191,15 @@
           {
             "type": "command",
             "command": "$HOME/.claude/hooks/planner-guard.sh"
+          }
+        ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "$HOME/.claude/hooks/pre-commit-guard.sh"
           }
         ]
       }
