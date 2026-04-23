@@ -116,93 +116,17 @@ fi
 echo ""
 echo "🚀 Setting up Claude Code hooks..."
 
-# Install ve-guard PreToolUse hook
-if [ -f "$CODEGEN_DIR/templates/shared/hooks/ve-guard.sh" ]; then
+# Install Claude Code hooks
+if [ -d "$CODEGEN_DIR/templates/shared/hooks" ]; then
     mkdir -p "$CLAUDE_SETTINGS_DIR/hooks"
-    cp "$CODEGEN_DIR/templates/shared/hooks/ve-guard.sh" "$CLAUDE_SETTINGS_DIR/hooks/ve-guard.sh"
-    chmod +x "$CLAUDE_SETTINGS_DIR/hooks/ve-guard.sh"
-    echo "   ✅ ve-guard hook installed at: $CLAUDE_SETTINGS_DIR/hooks/ve-guard.sh"
-
-    # Idempotently inject PreToolUse entry into settings.json
-    if [ -f "$CLAUDE_SETTINGS_FILE" ] && command -v jq >/dev/null 2>&1; then
-        # Only inject if the matcher is not already present
-        already_present=$(jq -r '
-            (.hooks.PreToolUse // []) | map(select(.matcher == "Bash|Write|Read|Monitor")) | length
-        ' "$CLAUDE_SETTINGS_FILE" 2>/dev/null || echo "0")
-        if [ "$already_present" = "0" ]; then
-            jq '.hooks.PreToolUse += [{"matcher": "Bash|Write|Read|Monitor", "hooks": [{"type": "command", "command": "$HOME/.claude/hooks/ve-guard.sh"}]}]' \
-                "$CLAUDE_SETTINGS_FILE" >"$CLAUDE_SETTINGS_FILE.tmp" && mv "$CLAUDE_SETTINGS_FILE.tmp" "$CLAUDE_SETTINGS_FILE"
-            echo "   ✅ PreToolUse hook entry added to: $CLAUDE_SETTINGS_FILE"
-        else
-            echo "   ✅ PreToolUse hook entry already present in: $CLAUDE_SETTINGS_FILE"
+    for hook_file in "$CODEGEN_DIR/templates/shared/hooks"/*.sh; do
+        if [ -f "$hook_file" ]; then
+            hook_name=$(basename "$hook_file")
+            cp "$hook_file" "$CLAUDE_SETTINGS_DIR/hooks/$hook_name"
+            chmod +x "$CLAUDE_SETTINGS_DIR/hooks/$hook_name"
+            echo "   ✅ ${hook_name} hook installed at: $CLAUDE_SETTINGS_DIR/hooks/$hook_name"
         fi
-    fi
-fi
-
-# Install code-reviewer-guard PreToolUse hook
-if [ -f "$CODEGEN_DIR/templates/shared/hooks/code-reviewer-guard.sh" ]; then
-    mkdir -p "$CLAUDE_SETTINGS_DIR/hooks"
-    cp "$CODEGEN_DIR/templates/shared/hooks/code-reviewer-guard.sh" "$CLAUDE_SETTINGS_DIR/hooks/code-reviewer-guard.sh"
-    chmod +x "$CLAUDE_SETTINGS_DIR/hooks/code-reviewer-guard.sh"
-    echo "   ✅ code-reviewer-guard hook installed at: $CLAUDE_SETTINGS_DIR/hooks/code-reviewer-guard.sh"
-
-    # Idempotently inject PreToolUse entry into settings.json
-    if [ -f "$CLAUDE_SETTINGS_FILE" ] && command -v jq >/dev/null 2>&1; then
-        already_present=$(jq -r '
-            (.hooks.PreToolUse // []) | map(select(.matcher == "Bash|Write|Edit|MultiEdit|Monitor" and (.hooks[0].command | test("code-reviewer-guard")))) | length
-        ' "$CLAUDE_SETTINGS_FILE" 2>/dev/null || echo "0")
-        if [ "$already_present" = "0" ]; then
-            jq '.hooks.PreToolUse += [{"matcher": "Bash|Write|Edit|MultiEdit|Monitor", "hooks": [{"type": "command", "command": "$HOME/.claude/hooks/code-reviewer-guard.sh"}]}]' \
-                "$CLAUDE_SETTINGS_FILE" >"$CLAUDE_SETTINGS_FILE.tmp" && mv "$CLAUDE_SETTINGS_FILE.tmp" "$CLAUDE_SETTINGS_FILE"
-            echo "   ✅ code-reviewer-guard PreToolUse hook entry added to: $CLAUDE_SETTINGS_FILE"
-        else
-            echo "   ✅ code-reviewer-guard PreToolUse hook entry already present in: $CLAUDE_SETTINGS_FILE"
-        fi
-    fi
-fi
-
-# Install planner-guard PreToolUse hook
-if [ -f "$CODEGEN_DIR/templates/shared/hooks/planner-guard.sh" ]; then
-    mkdir -p "$CLAUDE_SETTINGS_DIR/hooks"
-    cp "$CODEGEN_DIR/templates/shared/hooks/planner-guard.sh" "$CLAUDE_SETTINGS_DIR/hooks/planner-guard.sh"
-    chmod +x "$CLAUDE_SETTINGS_DIR/hooks/planner-guard.sh"
-    echo "   ✅ planner-guard hook installed at: $CLAUDE_SETTINGS_DIR/hooks/planner-guard.sh"
-
-    # Idempotently inject PreToolUse entry into settings.json
-    if [ -f "$CLAUDE_SETTINGS_FILE" ] && command -v jq >/dev/null 2>&1; then
-        already_present=$(jq -r '
-            (.hooks.PreToolUse // []) | map(select(.hooks[0].command | test("planner-guard"))) | length
-        ' "$CLAUDE_SETTINGS_FILE" 2>/dev/null || echo "0")
-        if [ "$already_present" = "0" ]; then
-            jq '.hooks.PreToolUse += [{"matcher": "Bash|Write|Edit|MultiEdit|EnterPlanMode|ExitPlanMode", "hooks": [{"type": "command", "command": "$HOME/.claude/hooks/planner-guard.sh"}]}]' \
-                "$CLAUDE_SETTINGS_FILE" >"$CLAUDE_SETTINGS_FILE.tmp" && mv "$CLAUDE_SETTINGS_FILE.tmp" "$CLAUDE_SETTINGS_FILE"
-            echo "   ✅ planner-guard PreToolUse hook entry added to: $CLAUDE_SETTINGS_FILE"
-        else
-            echo "   ✅ planner-guard PreToolUse hook entry already present in: $CLAUDE_SETTINGS_FILE"
-        fi
-    fi
-fi
-
-# Install stop-resume Stop hook
-if [ -f "$CODEGEN_DIR/templates/shared/hooks/stop-resume.sh" ]; then
-    mkdir -p "$CLAUDE_SETTINGS_DIR/hooks"
-    cp "$CODEGEN_DIR/templates/shared/hooks/stop-resume.sh" "$CLAUDE_SETTINGS_DIR/hooks/stop-resume.sh"
-    chmod +x "$CLAUDE_SETTINGS_DIR/hooks/stop-resume.sh"
-    echo "   ✅ stop-resume hook installed at: $CLAUDE_SETTINGS_DIR/hooks/stop-resume.sh"
-
-    # Idempotently inject Stop entry into settings.json
-    if [ -f "$CLAUDE_SETTINGS_FILE" ] && command -v jq >/dev/null 2>&1; then
-        already_present=$(jq -r '
-            (.hooks.Stop // []) | map(select(.hooks[0].command | test("stop-resume"))) | length
-        ' "$CLAUDE_SETTINGS_FILE" 2>/dev/null || echo "0")
-        if [ "$already_present" = "0" ]; then
-            jq '.hooks.Stop += [{"hooks": [{"type": "command", "command": "$HOME/.claude/hooks/stop-resume.sh"}]}]' \
-                "$CLAUDE_SETTINGS_FILE" >"$CLAUDE_SETTINGS_FILE.tmp" && mv "$CLAUDE_SETTINGS_FILE.tmp" "$CLAUDE_SETTINGS_FILE"
-            echo "   ✅ Stop hook entry added to: $CLAUDE_SETTINGS_FILE"
-        else
-            echo "   ✅ Stop hook entry already present in: $CLAUDE_SETTINGS_FILE"
-        fi
-    fi
+    done
 fi
 
 # Install custom Claude commands
