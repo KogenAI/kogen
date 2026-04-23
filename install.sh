@@ -1,9 +1,16 @@
 #!/bin/bash
 
 # Optimum Codegen CLI Installation Script
-# This script installs the ocg command globally
+# Usage: install.sh [--all]
+#   By default installs Claude Code only.
+#   Pass --all to also install OpenCode and Cursor CLI.
 
 set -e
+
+INSTALL_ALL=false
+for arg in "$@"; do
+    [ "$arg" = "--all" ] && INSTALL_ALL=true
+done
 
 CODEGEN_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 INSTALL_DIR="$HOME/.local/bin"
@@ -87,8 +94,12 @@ fi
 echo ""
 echo "🚀 Generating AI agent templates..."
 
-# Generate templates for both Claude Code and OpenCode
-"$CODEGEN_DIR/templates/generator/generate.sh" all
+# Generate templates — claude only by default, all tools with --all
+if [ "$INSTALL_ALL" = true ]; then
+    "$CODEGEN_DIR/templates/generator/generate.sh" all
+else
+    "$CODEGEN_DIR/templates/generator/generate.sh" claude
+fi
 
 # Clean up generated templates after installation
 cleanup_generated_templates() {
@@ -225,7 +236,7 @@ fi
 
 # Install system ripgrep for Claude Code custom command discovery
 echo "   📦 Installing system ripgrep for Claude Code custom commands..."
-if ! command -v /usr/local/bin/rg >/dev/null 2>&1; then
+if ! command -v rg >/dev/null 2>&1; then
     if command -v brew >/dev/null 2>&1; then
         brew install ripgrep
         echo "   ✅ System ripgrep installed"
@@ -307,173 +318,120 @@ else
     echo "   ✅ Claude Code installed"
 fi
 
-echo ""
-echo "🤖 Installing OpenCode..."
-# Install OpenCode alongside Claude Code
-# Refresh command cache to detect recent removals
-hash -r 2>/dev/null || true
-if command -v opencode >/dev/null 2>&1; then
-    echo "   ✅ OpenCode already installed"
-else
-    curl -fsSL https://opencode.ai/install | bash
-    echo "   ✅ OpenCode installed"
-fi
+if [ "$INSTALL_ALL" = true ]; then
+    echo ""
+    echo "🔧 Setting up OpenCode configuration..."
 
-echo ""
-echo "🤖 Installing Cursor CLI..."
-# Install Cursor CLI alongside Claude Code and OpenCode
-# Refresh command cache to detect recent removals
-hash -r 2>/dev/null || true
-if command -v cursor-agent >/dev/null 2>&1; then
-    echo "   ✅ Cursor CLI already installed"
-else
-    curl https://cursor.com/install -fsSL | bash
-    if command -v cursor-agent >/dev/null 2>&1; then
-        echo "   ✅ Cursor CLI installed successfully"
-    else
-        echo "   ⚠️  Cursor CLI installation may require shell restart"
+    mkdir -p "$HOME/.config/opencode"
+
+    if [ -f "$CODEGEN_DIR/templates/generated/opencode/.opencode.json" ]; then
+        cp "$CODEGEN_DIR/templates/generated/opencode/.opencode.json" "$HOME/.config/opencode/config.json"
+        echo "   ✅ OpenCode configuration installed"
     fi
-fi
 
-echo ""
-echo "🔧 Setting up OpenCode configuration..."
+    if [ -f "$CODEGEN_DIR/templates/generated/opencode/AGENTS.md" ]; then
+        cp "$CODEGEN_DIR/templates/generated/opencode/AGENTS.md" "$HOME/.config/opencode/"
+        echo "   ✅ OpenCode AGENTS.md installed"
+    fi
 
-# Create OpenCode config directory if it doesn't exist
-mkdir -p "$HOME/.config/opencode"
+    echo "   🤖 Installing OpenCode sub agents..."
+    OPENCODE_AGENTS_DIR="$HOME/.config/opencode/agent"
+    mkdir -p "$OPENCODE_AGENTS_DIR"
 
-# Install generated OpenCode configuration files
-if [ -f "$CODEGEN_DIR/templates/generated/opencode/.opencode.json" ]; then
-    cp "$CODEGEN_DIR/templates/generated/opencode/.opencode.json" "$HOME/.config/opencode/config.json"
-    echo "   ✅ OpenCode configuration installed"
-fi
+    if [ -d "$CODEGEN_DIR/templates/generated/opencode/agent" ]; then
+        for agent_file in "$CODEGEN_DIR/templates/generated/opencode/agent"/*.md; do
+            if [ -f "$agent_file" ]; then
+                agent_name=$(basename "$agent_file")
+                cp "$agent_file" "$OPENCODE_AGENTS_DIR/"
+                echo "   ✅ Installed OpenCode sub agent: ${agent_name%.md}"
+            fi
+        done
+    fi
 
-if [ -f "$CODEGEN_DIR/templates/generated/opencode/AGENTS.md" ]; then
-    cp "$CODEGEN_DIR/templates/generated/opencode/AGENTS.md" "$HOME/.config/opencode/"
-    echo "   ✅ OpenCode AGENTS.md installed"
-fi
+    echo "   📁 Installing OpenCode custom commands..."
+    OPENCODE_COMMANDS_DIR="$HOME/.config/opencode/command"
+    mkdir -p "$OPENCODE_COMMANDS_DIR"
 
-# Install OpenCode sub agents from generated templates
-echo "   🤖 Installing OpenCode sub agents..."
-OPENCODE_AGENTS_DIR="$HOME/.config/opencode/agent"
-mkdir -p "$OPENCODE_AGENTS_DIR"
+    if [ -d "$CODEGEN_DIR/templates/shared/commands" ]; then
+        for cmd_file in "$CODEGEN_DIR/templates/shared/commands"/*.md; do
+            if [ -f "$cmd_file" ]; then
+                cmd_name=$(basename "$cmd_file")
+                cp "$cmd_file" "$OPENCODE_COMMANDS_DIR/"
+                echo "   ✅ Installed OpenCode command: /${cmd_name%.md}"
+            fi
+        done
+    fi
 
-if [ -d "$CODEGEN_DIR/templates/generated/opencode/agent" ]; then
-    for agent_file in "$CODEGEN_DIR/templates/generated/opencode/agent"/*.md; do
-        if [ -f "$agent_file" ]; then
-            agent_name=$(basename "$agent_file")
-            cp "$agent_file" "$OPENCODE_AGENTS_DIR/"
-            echo "   ✅ Installed OpenCode sub agent: ${agent_name%.md}"
-        fi
-    done
-fi
+    echo ""
+    echo "🔧 Setting up Cursor CLI configuration..."
 
-# Install OpenCode custom commands
-echo "   📁 Installing OpenCode custom commands..."
-OPENCODE_COMMANDS_DIR="$HOME/.config/opencode/command"
-mkdir -p "$OPENCODE_COMMANDS_DIR"
+    mkdir -p "$HOME/.cursor"
 
-# Copy plain .md commands directly from shared templates
-if [ -d "$CODEGEN_DIR/templates/shared/commands" ]; then
-    for cmd_file in "$CODEGEN_DIR/templates/shared/commands"/*.md; do
-        if [ -f "$cmd_file" ]; then
-            cmd_name=$(basename "$cmd_file")
-            cp "$cmd_file" "$OPENCODE_COMMANDS_DIR/"
-            echo "   ✅ Installed OpenCode command: /${cmd_name%.md}"
-        fi
-    done
-fi
+    echo "   📁 Installing Cursor CLI custom commands..."
+    CURSOR_COMMANDS_DIR="$HOME/.cursor/commands"
+    mkdir -p "$CURSOR_COMMANDS_DIR"
 
-echo ""
-echo "🔧 Setting up Cursor CLI configuration..."
+    if [ -d "$CODEGEN_DIR/templates/shared/commands" ]; then
+        for cmd_file in "$CODEGEN_DIR/templates/shared/commands"/*.md; do
+            if [ -f "$cmd_file" ]; then
+                cmd_name=$(basename "$cmd_file")
+                cp "$cmd_file" "$CURSOR_COMMANDS_DIR/"
+                echo "   ✅ Installed Cursor command: /${cmd_name%.md}"
+            fi
+        done
+    fi
 
-# Create Cursor config directory if it doesn't exist
-mkdir -p "$HOME/.cursor"
+    echo "   🤖 Installing Cursor CLI sub agents..."
+    CURSOR_SUBAGENTS_DIR="$HOME/.cursor/subagents"
+    mkdir -p "$CURSOR_SUBAGENTS_DIR"
 
-# Install Cursor custom commands
-echo "   📁 Installing Cursor CLI custom commands..."
-CURSOR_COMMANDS_DIR="$HOME/.cursor/commands"
-mkdir -p "$CURSOR_COMMANDS_DIR"
-
-# Copy plain .md commands directly from shared templates
-if [ -d "$CODEGEN_DIR/templates/shared/commands" ]; then
-    for cmd_file in "$CODEGEN_DIR/templates/shared/commands"/*.md; do
-        if [ -f "$cmd_file" ]; then
-            cmd_name=$(basename "$cmd_file")
-            cp "$cmd_file" "$CURSOR_COMMANDS_DIR/"
-            echo "   ✅ Installed Cursor command: /${cmd_name%.md}"
-        fi
-    done
-fi
-
-# Install Cursor sub agents from generated templates
-echo "   🤖 Installing Cursor CLI sub agents..."
-CURSOR_SUBAGENTS_DIR="$HOME/.cursor/subagents"
-mkdir -p "$CURSOR_SUBAGENTS_DIR"
-
-if [ -d "$CODEGEN_DIR/templates/generated/cursor/subagents" ]; then
-    for agent_file in "$CODEGEN_DIR/templates/generated/cursor/subagents"/*.md; do
-        if [ -f "$agent_file" ]; then
-            agent_name=$(basename "$agent_file")
-            cp "$agent_file" "$CURSOR_SUBAGENTS_DIR/"
-            echo "   ✅ Installed Cursor sub agent: ${agent_name%.md}"
-        fi
-    done
+    if [ -d "$CODEGEN_DIR/templates/generated/cursor/subagents" ]; then
+        for agent_file in "$CODEGEN_DIR/templates/generated/cursor/subagents"/*.md; do
+            if [ -f "$agent_file" ]; then
+                agent_name=$(basename "$agent_file")
+                cp "$agent_file" "$CURSOR_SUBAGENTS_DIR/"
+                echo "   ✅ Installed Cursor sub agent: ${agent_name%.md}"
+            fi
+        done
+    fi
 fi
 
 # Create OCG config directory
 mkdir -p "$HOME/.ocg"
 
-# AI Assistant Configuration - all three are now installed
 if [ ! -f "$HOME/.ocg/config.json" ]; then
-    echo ""
-    echo "🤖 AI Agent Configuration"
-    echo "   Claude Code, OpenCode, and Cursor CLI are now installed."
-    echo "   Which should be your default AI agent?"
-    echo "   1) claude (Claude Code)"
-    echo "   2) opencode (OpenCode)"
-    echo "   3) cursor (Cursor CLI)"
-    echo ""
-    read -p "   Choose [1-3]: " choice
+    if [ "$INSTALL_ALL" = true ]; then
+        echo ""
+        echo "🤖 AI Agent Configuration"
+        echo "   Claude Code, OpenCode, and Cursor CLI are now installed."
+        echo "   Which should be your default AI agent?"
+        echo "   1) claude (Claude Code)"
+        echo "   2) opencode (OpenCode)"
+        echo "   3) cursor (Cursor CLI)"
+        echo ""
+        read -p "   Choose [1-3]: " choice
 
-    case $choice in
-    1)
+        case $choice in
+        1) default_agent="claude" ;;
+        2) default_agent="opencode" ;;
+        3) default_agent="cursor" ;;
+        *) default_agent="claude" ;;
+        esac
+    else
         default_agent="claude"
-        ;;
-    2)
-        default_agent="opencode"
-        ;;
-    3)
-        default_agent="cursor"
-        ;;
-    *)
-        echo "❌ Invalid choice. Defaulting to claude."
-        default_agent="claude"
-        ;;
-    esac
+    fi
 
-    # Create initial config with all agents enabled
     cat >"$HOME/.ocg/config.json" <<EOF
 {
     "default_agent": "$default_agent",
     "agents": {
-        "claude": {
-            "enabled": true
-        },
-        "opencode": {
-            "enabled": true,
-            "provider": "anthropic"
-        },
-        "cursor": {
-            "enabled": true
-        }
+        "claude": { "enabled": true },
+        "opencode": { "enabled": false, "provider": "anthropic" },
+        "cursor": { "enabled": false }
     }
 }
 EOF
-
     echo "✅ Default AI agent set to: $default_agent"
-    echo ""
-    echo "💡 You can switch between agents anytime with: ocg ai-config set default [claude|opencode|cursor]"
-    echo "💡 Or override per-command with: ocg new feature --agent [claude|opencode|cursor]"
 else
     echo ""
     echo "✅ AI agent configuration already exists"
