@@ -97,7 +97,8 @@
     ],
     "deny": ["Bash(fly:*)", "Bash(flyctl:*)", "Bash(sudo:*)"]
   },
-  "enabledMcpjsonServers": ["tidewave"],
+  "enabledMcpjsonServers": [],
+  "disabledMcpjsonServers": ["tidewave"],
   "hooks": {
     "PostToolUse": [
       {
