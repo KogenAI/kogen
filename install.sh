@@ -183,6 +183,28 @@ if [ -f "$CODEGEN_DIR/templates/shared/hooks/planner-guard.sh" ]; then
     fi
 fi
 
+# Install stop-resume Stop hook
+if [ -f "$CODEGEN_DIR/templates/shared/hooks/stop-resume.sh" ]; then
+    mkdir -p "$CLAUDE_SETTINGS_DIR/hooks"
+    cp "$CODEGEN_DIR/templates/shared/hooks/stop-resume.sh" "$CLAUDE_SETTINGS_DIR/hooks/stop-resume.sh"
+    chmod +x "$CLAUDE_SETTINGS_DIR/hooks/stop-resume.sh"
+    echo "   ✅ stop-resume hook installed at: $CLAUDE_SETTINGS_DIR/hooks/stop-resume.sh"
+
+    # Idempotently inject Stop entry into settings.json
+    if [ -f "$CLAUDE_SETTINGS_FILE" ] && command -v jq >/dev/null 2>&1; then
+        already_present=$(jq -r '
+            (.hooks.Stop // []) | map(select(.hooks[0].command | test("stop-resume"))) | length
+        ' "$CLAUDE_SETTINGS_FILE" 2>/dev/null || echo "0")
+        if [ "$already_present" = "0" ]; then
+            jq '.hooks.Stop += [{"hooks": [{"type": "command", "command": "$HOME/.claude/hooks/stop-resume.sh"}]}]' \
+                "$CLAUDE_SETTINGS_FILE" >"$CLAUDE_SETTINGS_FILE.tmp" && mv "$CLAUDE_SETTINGS_FILE.tmp" "$CLAUDE_SETTINGS_FILE"
+            echo "   ✅ Stop hook entry added to: $CLAUDE_SETTINGS_FILE"
+        else
+            echo "   ✅ Stop hook entry already present in: $CLAUDE_SETTINGS_FILE"
+        fi
+    fi
+fi
+
 # Install custom Claude commands
 echo "   📁 Installing custom Claude commands..."
 
