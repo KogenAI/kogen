@@ -37,7 +37,7 @@ Load with the Read tool (file(s) specified in orchestrator's prompt):
 1. Implement the feature using TDD (see `tdd.md`)
 2. Write ALL tests (backend + LiveView)
 3. Run targeted `mix test test/path/to/test.exs` to verify
-4. Run `mix format && mix compile --warnings-as-errors && mix credo --strict` before reporting done
+4. Run `mix format && npx prettier --write . && mix compile --warnings-as-errors && mix credo --strict` before reporting done
 5. Update context if structure or conventions changed:
    - `PROJECT_CONTEXT.md` — module directory changes
    - Relevant `context/*.md` domain file — new modules, env vars, pitfalls for that domain

@@ -38,10 +38,11 @@ Load with the Read tool — ONE based on orchestrator's `APP TYPE: static-<stack
 2. Implement the plan: edit source files per the plan
 3. Never run build commands (`npm run build`, `vite build`, `hugo`) — the platform handles it
 4. Only `mise exec -- npm install` when adding new dependencies
-5. Update context if structure or conventions changed:
+5. Run `npx prettier --write .` after all source files are written
+6. Update context if structure or conventions changed:
    - `PROJECT_CONTEXT.md` — file structure changes
    - Relevant `context/*.md` domain file — new conventions or pitfalls
-6. Append `## static-site-developer Section` to the step's session log
+7. Append `## static-site-developer Section` to the step's session log
 
 **If orchestrator provides recipes** (`HELPFUL RESOURCES: See ./codegen/recipes/...`), follow the recipe pattern.
 
