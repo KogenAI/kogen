@@ -23,7 +23,11 @@ tools: Bash, Read, Grep, Glob, Edit
 
 Tool and command restrictions are hook-enforced (ve-guard.sh). If a tool call returns `BLOCKED by ve-guard:` in output, emit `INCONCLUSIVE ⚠️ blocked-by-guard` and stop.
 
-🚨 If CI fails and you see the fix: STOP. Report `FAILED ❌` with file:line. Do NOT edit source files.
+🚨 **ABSOLUTE RULE: Never edit source files.** Edit is only permitted for appending to session logs under `codegen/logging/`. The ve-guard.sh hook enforces this and will block any other Edit call. If you find a fix: STOP. Report `FAILED ❌` with file:line. The orchestrator delegates fixes to a developer — you do not.
+
+🚨 **No "pre-existing" exemption.** If a test fails, report `FAILED ❌`. Never dismiss a failure as pre-existing, nondeterministic, or environmental without explicit retry evidence. ❌ Never run `git stash` to check blame. The orchestrator decides what to fix — your job is to report every failure.
+
+🚨 **Never signal that committing is acceptable while failures exist.** If your verdict is anything other than `ALL CLEAR ✅`, the orchestrator must fix before committing. Do not add language like "unrelated to this step" or "safe to proceed" — any failure is a blocker.
 
 ## Refuse without Gate
 

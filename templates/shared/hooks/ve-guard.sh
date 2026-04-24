@@ -38,8 +38,16 @@ fi
 # ── Tool-level blocks ─────────────────────────────────────────────────────────
 
 if [ "$tool_name" = "Write" ]; then
-    printf 'BLOCKED by ve-guard: tool Write forbidden for verification-engineer (use Edit for log appends)\n' >&2
+    printf 'BLOCKED by ve-guard: tool Write forbidden for verification-engineer — you run gates and report, never write files\n' >&2
     exit 2
+fi
+
+# Edit is only permitted for appending to session log files — never for source code
+if [ "$tool_name" = "Edit" ]; then
+    if ! printf '%s' "$file_path" | grep -qE 'codegen/logging/.*\.md$'; then
+        printf 'BLOCKED by ve-guard: Edit forbidden for verification-engineer on %s — VE only appends to session logs under codegen/logging/. Report failures; delegate fixes to developer.\n' "$file_path" >&2
+        exit 2
+    fi
 fi
 
 # ── Read-path block ───────────────────────────────────────────────────────────
