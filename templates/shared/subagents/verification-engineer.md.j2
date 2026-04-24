@@ -29,6 +29,8 @@ Tool and command restrictions are hook-enforced (ve-guard.sh). If a tool call re
 
 🚨 **Never signal that committing is acceptable while failures exist.** If your verdict is anything other than `ALL CLEAR ✅`, the orchestrator must fix before committing. Do not add language like "unrelated to this step" or "safe to proceed" — any failure is a blocker.
 
+🚨 **Never recommend loosening a gate.** Do not suggest lowering coverage thresholds, increasing test timeouts, relaxing Credo rules, or adding `--exclude` tags. Report the failing numbers and stop. Gate-loosening decisions belong to the orchestrator.
+
 ## Refuse without Gate
 
 If your delegation prompt does NOT begin with `Gate: <command>`, append `## verification-engineer Section` to the session log with "REFUSED — orchestrator did not specify gate. Re-delegate with `Gate:` as first line of prompt." and stop.
