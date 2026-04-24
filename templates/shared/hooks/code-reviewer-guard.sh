@@ -17,8 +17,8 @@ input=$(cat)
 tool_name=$(printf '%s' "$input" | jq -r '.tool_name // ""')
 agent_name=$(printf '%s' "$input" | jq -r '.agent_name // ""')
 
-# Debug logging (opt-in via env var)
-if [ -n "${COMBOBULATE_CR_DEBUG:-}" ]; then
+# Debug logging (opt-in via per-script var or the unified COMBOBULATE_HOOKS_DEBUG flag)
+if [ -n "${COMBOBULATE_CR_DEBUG:-}" ] || [ -n "${COMBOBULATE_HOOKS_DEBUG:-}" ]; then
     printf '%s tool=%s agent=%s\n' \
         "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
         "$tool_name" "$agent_name" \
