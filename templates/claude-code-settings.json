@@ -110,7 +110,7 @@
           },
           {
             "type": "command",
-            "command": "bash -c 'file_path=$(jq -r \".tool_input.file_path\"); if echo \"$file_path\" | grep -q \"/codegen/logging/\"; then exit 0; fi; if echo \"$file_path\" | grep -qE \"\\.(js|md|json|css|html)$\"; then npx prettier --write \"$file_path\" 2>>/tmp/combobulate-format-errors.log || true; fi'"
+            "command": "bash -c 'file_path=$(jq -r \".tool_input.file_path\"); if echo \"$file_path\" | grep -q \"/codegen/logging/\"; then exit 0; fi; if echo \"$file_path\" | grep -qE \"\\.(js|md|json|css|html)$\"; then (./node_modules/.bin/prettier --write \"$file_path\" 2>/dev/null || npx --yes prettier --write \"$file_path\") 2>>/tmp/combobulate-format-errors.log || true; fi'"
           }
         ]
       },
