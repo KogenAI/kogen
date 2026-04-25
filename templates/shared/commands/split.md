@@ -5,6 +5,14 @@ argument-hint: [description of work to split, or reference to a plan/doc]
 
 Analyze the work described (or the current plan/document if no argument given) and split it into discrete, independently shippable steps if possible. Some work is too tightly coupled to split meaningfully — if that's the case, say so and explain why rather than forcing an artificial split.
 
+**Where the split lives: in the document, not in chat.**
+
+If the argument references an existing plan/doc (a file path, `@path`, or unambiguous reference to a doc you've just read), the split IS that document's implementation plan. Edit the file in place — replace the existing implementation-plan/phases/steps section with the new step list. Do not paste the full step list into chat. After writing, reply with a short summary only: how many steps, what changed from the prior version (merges, reorderings, cuts), and any open questions. The user will read the steps in the doc.
+
+If there is no source document (the argument is a free-form description of work with no doc backing it), ask the user where to write the plan before producing the steps — typically a new file under `codegen/` or `docs/`. Do not default to dumping the plan into chat. Only when the user explicitly asks for a chat-only response (e.g. "just tell me, don't write it down", "preview only") should the steps appear inline in the reply.
+
+When reviewing or updating an existing split document, if you reorder steps you MUST rewrite the document to reflect the new order — do not just say "do them in this order" in chat. The same rule applies: numbers in the document are the ground truth.
+
 Each step must:
 
 - Leave the system in a better state than before — not just functional, but genuinely more valuable even if no further steps are ever shipped
@@ -59,9 +67,7 @@ The document is the source of truth and will be read by future sessions that hav
 
 Never tell the user "the steps execute in order X but I labelled them Y" in chat without writing it into the document. A future session running this document blind will follow the numbers, not your conversation. If the numbers lie, the work ships in the wrong order.
 
-When reviewing or updating an existing split document, if you reorder steps you MUST rewrite the document to reflect the new order — do not just say "do them in this order" in chat. The same rule applies: numbers in the document are the ground truth.
-
-If the work was already split (e.g. in a plan document), review the existing split and suggest improvements — merging steps that are too granular, splitting steps that do too much, or reordering steps that have hidden dependencies. Be willing to cut the step count significantly: if the plan has 5 steps that all do "move X into Y", propose collapsing them into 1 and explain the merge. A good review should produce fewer steps than the input, not the same number with minor edits.
+If the work was already split (e.g. in a plan document), review the existing split and apply improvements directly to the document — merging steps that are too granular, splitting steps that do too much, or reordering steps that have hidden dependencies. Be willing to cut the step count significantly: if the plan has 5 steps that all do "move X into Y", collapse them into 1. A good review should produce fewer steps than the input, not the same number with minor edits. The chat reply summarizes the diff against the prior version; the new step list goes into the file.
 
 **Critical: Check gate dependencies before finalizing order**
 
