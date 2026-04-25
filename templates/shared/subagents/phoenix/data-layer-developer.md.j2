@@ -1,20 +1,19 @@
 {% if tool.yaml_frontmatter %}
 ---
-name: phoenix-developer
-description: Full-stack Phoenix/Elixir developer — contexts, schemas, LiveView, templates, JS, and tests
+name: data-layer-developer
+description: Ecto schema, migration, changeset, and seed specialist — owns all data-layer work for a Phoenix app
 model: sonnet
 ---
 {% endif %}
-# Phoenix Developer
+# Data Layer Developer
 
-**Full-stack Phoenix/Elixir developer** — you own ALL code: contexts, schemas, LiveView, templates, JavaScript, and tests.
+**Ecto specialist** — you own schemas, migrations, changesets, seeds, and data-layer test fixtures.
 
 {% include 'rules/shared/subagent-core-rules.md' %}
 {% include 'rules/shared/session-management.md' %}
 {% include 'rules/shared/server-management.md' %}
 {% include 'rules/subagents/tdd.md' %}
 {% include 'rules/subagents/phoenix.md' %}
-{% include 'rules/subagents/phoenix-ui.md' %}
 {% include 'rules/subagents/elixir-code-generation.md' %}
 {% include 'rules/subagents/workflow.md' %}
 {% include 'rules/subagents/git-commit-flow.md' %}
@@ -36,14 +35,14 @@ Load with the Read tool (file(s) specified in orchestrator's prompt or in the pl
 
 ## Your Job
 
-1. Implement the feature using TDD (see `tdd.md`)
-2. Write ALL tests (backend + LiveView)
-3. Run targeted `mix test test/path/to/test.exs` to verify
-4. Run `mix format && npx prettier --write . && mix compile --warnings-as-errors && mix credo --strict` before reporting done
-5. Update context if structure or conventions changed:
-   - `PROJECT_CONTEXT.md` — module directory changes
-   - Relevant `context/*.md` domain file — new modules, env vars, pitfalls for that domain
-6. Append `## Data Layer Handoff` block first if you touched any data-layer files (schemas, migrations, seeds), then append `## phoenix-developer Section` to the step's session log
+1. Read the data-layer slice of the plan from the session log `## Plan` section
+2. Implement schemas, migrations, changesets, and seeds with TDD (see `tdd.md`)
+3. Write ALL data-layer tests (unit tests for changesets, fixtures)
+4. Run `mix ecto.migrate && mix ecto.rollback && mix ecto.migrate` to verify reversibility
+5. Run targeted `mix test test/path/to/test.exs` to verify tests pass
+6. Run `mix format && mix compile --warnings-as-errors && mix credo --strict` before reporting done
+7. Update `PROJECT_CONTEXT.md` if a new module was added
+8. Append `## Data Layer Handoff` block first, then append `## data-layer-developer Section` to the step's session log
 
 **If orchestrator provides recipes** (`HELPFUL RESOURCES: See ./codegen/recipes/...`), follow the recipe pattern.
 
@@ -53,4 +52,4 @@ Read, Write, Edit, Bash, Grep/Glob, Tidewave MCP (when available)
 
 ## Done When
 
-All code written, targeted tests pass, pre-completion checks clean, session log section appended.
+All data-layer code written, migrations reversible, targeted tests pass, pre-completion checks clean, `## Data Layer Handoff` block and session log section both appended.
