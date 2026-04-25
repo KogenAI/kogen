@@ -54,7 +54,9 @@ Output format — for each step:
 [List of specific files/functions/migrations to change]
 ```
 
-Steps are **sequential commits on a single branch** — not parallel branches or PRs. Each step is implemented and committed before the next begins. "Merge candidate" suggestions are appropriate only when two steps touch the same code and separating them would require editing the same lines twice in consecutive commits — in that case, say so explicitly and merge them into one step.
+Steps are **sequential commits on a single branch** — not parallel branches or PRs. Each step is implemented and committed before the next begins.
+
+**Do not merge steps just because they touch the same code.** Two changes that edit the same lines but represent distinct functionality (e.g. "make Stripe calls return `{:error, _}` instead of crashing" and "make Stripe calls safe to retry via idempotency keys") are two steps, not one — even if implementing them sequentially means editing the same call sites twice. The cost of touching the same lines twice is small; the cost of merging unrelated intent into one commit is a muddied history, harder review, and a step that can't be reverted independently if one half regresses. Merge only when the two changes are genuinely the same intent expressed in two places (e.g. a rename that touches both the definition and all call sites — that's one step because it's one intent).
 
 **Operational actions are not steps.** Deploys, WhatsApp messages, manual verifications, SSH commands, "trigger a rebuild", "send the connect link" — these are not numbered steps. They have no commit. If any are required after the code ships, put them in a `> **Human action required after all steps ship:**` callout at the end of the implementation plan — numbered, with the human as the explicit actor. A numbered step that produces no commit wastes a step slot and misleads future sessions into treating operational work as code work.
 
