@@ -219,7 +219,7 @@ plan:
 
 install:
 	$(call check_make_only,install)
-	@./install.sh
+	@STACK=$${STACK:-platform} ./install.sh
 
 uninstall:
 	$(call check_ocg_only,uninstall)
@@ -339,8 +339,10 @@ help:
 		echo "  9. Cleanup: $$OCG_CMD clean-branches to remove orphaned feature branches when done"; \
 	else \
 		echo "📦 Available Commands:"; \
-		echo "  make install    📦 Install CLI globally (enables 'ocg' commands)"; \
-		echo "  make format     🎨 Format all shell scripts and files"; \
+		echo "  make install              📦 Install CLI globally with platform stack (enables 'ocg' commands)"; \
+		echo "  STACK=platform make install  📦 Install with platform stack (default — combobulate machines)"; \
+		echo "  STACK=all make install    📦 Install all stacks (back-compat for non-stack-aware projects)"; \
+		echo "  make format               🎨 Format all shell scripts and files"; \
 		echo ""; \
 		echo "💡 Install globally with 'make install' to use 'ocg' commands from anywhere!"; \
 		echo "   After installation, run 'ocg' to see all workspace management features"; \

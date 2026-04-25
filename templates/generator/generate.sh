@@ -112,23 +112,59 @@ generate_for_tool() {
         done
     fi
 
-    # Generate subagent templates
-    if [ -d "$TEMPLATES_DIR/shared/subagents" ]; then
-        for template_file in "$TEMPLATES_DIR/shared/subagents"/*.j2; do
-            if [ -f "$template_file" ]; then
-                local base_name=$(basename "$template_file" .j2)
-                # Output to different dirs for Claude Code vs OpenCode vs Cursor
-                if [ "$tool" = "claude" ]; then
-                    process_template "$template_file" "$tool" "$tool_config" >"$output_dir/agents/$base_name"
-                elif [ "$tool" = "cursor" ]; then
-                    process_template "$template_file" "$tool" "$tool_config" >"$output_dir/subagents/$base_name"
-                else
-                    process_template "$template_file" "$tool" "$tool_config" >"$output_dir/agent/$base_name"
-                fi
-                log_success "Generated subagent: $base_name"
-            fi
-        done
+    # Generate subagent templates — stack-aware
+    # STACK env var controls which subdirs are walked:
+    #   all      (default) — all stacks; back-compat for non-stack-aware projects
+    #   phoenix  — shared/ + phoenix/
+    #   static   — shared/ + static/
+    #   platform — shared/ + phoenix/ (platform is a Phoenix superset; platform/ is empty for now)
+    local stack="${STACK:-all}"
+    local subagents_root="$TEMPLATES_DIR/shared/subagents"
+
+    # Determine which subdirs to walk
+    local subdirs=()
+    subdirs+=("$subagents_root/shared")
+    if [ "$stack" = "all" ]; then
+        subdirs+=("$subagents_root/phoenix")
+        subdirs+=("$subagents_root/static")
+        subdirs+=("$subagents_root/platform")
+    elif [ "$stack" = "phoenix" ]; then
+        subdirs+=("$subagents_root/phoenix")
+    elif [ "$stack" = "static" ]; then
+        subdirs+=("$subagents_root/static")
+    elif [ "$stack" = "platform" ]; then
+        subdirs+=("$subagents_root/phoenix")
+        subdirs+=("$subagents_root/platform")
     fi
+
+    # Determine output subdir for agent files
+    local agents_subdir
+    if [ "$tool" = "claude" ]; then
+        agents_subdir="$output_dir/agents"
+    elif [ "$tool" = "cursor" ]; then
+        agents_subdir="$output_dir/subagents"
+    else
+        agents_subdir="$output_dir/agent"
+    fi
+
+    # Override output dir if OUTPUT_DIR env var is set (used by setup_codegen_dir/2)
+    if [ -n "$OUTPUT_DIR" ]; then
+        agents_subdir="$OUTPUT_DIR"
+        mkdir -p "$agents_subdir"
+    fi
+
+    for subdir in "${subdirs[@]}"; do
+        if [ -d "$subdir" ]; then
+            for template_file in "$subdir"/*.j2; do
+                if [ -f "$template_file" ]; then
+                    local base_name
+                    base_name=$(basename "$template_file" .j2)
+                    process_template "$template_file" "$tool" "$tool_config" >"$agents_subdir/$base_name"
+                    log_success "Generated subagent: $base_name"
+                fi
+            done
+        fi
+    done
 
     log_success "Template generation complete for $tool"
 }

@@ -4,6 +4,13 @@
 # Usage: install.sh [--all]
 #   By default installs Claude Code only.
 #   Pass --all to also install OpenCode and Cursor CLI.
+#
+# Environment variables:
+#   STACK — controls which subagent templates are installed (default: platform)
+#     platform  — shared roles + phoenix-developer (combobulate machines)
+#     phoenix   — shared roles + phoenix-developer (Phoenix user-app builds)
+#     static    — shared roles + static-site-developer (static user-app builds)
+#     all       — all roles (back-compat for non-stack-aware OCG projects)
 
 set -e
 
@@ -11,6 +18,11 @@ INSTALL_ALL=false
 for arg in "$@"; do
     [ "$arg" = "--all" ] && INSTALL_ALL=true
 done
+
+# Stack controls which subagent templates are rendered and installed.
+# Default is "platform" so combobulate developer machines get the right set.
+STACK="${STACK:-platform}"
+export STACK
 
 CODEGEN_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 INSTALL_DIR="$HOME/.local/bin"
