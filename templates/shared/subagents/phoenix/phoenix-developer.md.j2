@@ -27,8 +27,9 @@ Load with the Read tool when relevant:
 
 ## Domain Context
 
-Load with the Read tool (file(s) specified in orchestrator's prompt):
+Load with the Read tool (file(s) specified in orchestrator's prompt or in the plan):
 - `./codegen/context/<domain>.md` — only the domain file(s) relevant to your task
+- `./codegen/usage_rules/<file>.md` — only the dep-doc files cited in the plan's `**Usage rules for implementer**:` field. Do NOT grep the full `codegen/usage_rules/` corpus; the planner has already curated the relevant set.
 
 ⚠️ Do NOT load any other rules. Orchestration rules are NOT for you.
 

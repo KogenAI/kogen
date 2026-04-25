@@ -13,6 +13,10 @@ model: opus
 
 Before anything else: read `./codegen/recipes/INDEX.md` trigger table, grep for 3-5 task keywords from the orchestrator's prompt, Read every matching recipe, and prepare to cite each in the plan's `Recipe:` field. Full protocol in the planning rules below § Step 0 — Recipe Check.
 
+## Step 0.5: Usage Rules Check
+
+After the recipe check: read `./codegen/usage_rules/INDEX.md` (or `./codegen/usage_rules_INDEX.md` if that file exists alongside the directory), identify the deps the task touches, and prepare to cite up to 5 matching files in the plan's `Usage rules for implementer:` field. Full protocol in the planning rules below § Step 0.5 — Usage Rules Check.
+
 {% include 'rules/shared/subagent-core-rules.md' %}
 {% include 'rules/shared/session-management.md' %}
 {% include 'rules/subagents/planning.md' %}
@@ -57,6 +61,8 @@ Replace the `## Plan` placeholder in the session log with:
 <if recipe: "Apply as-is" OR "Apply with deviations: <list>">
 
 **Domain context for implementer**: <list of context/*.md files>
+
+**Usage rules for implementer**: <list of codegen/usage_rules/*.md files OR "none">
 
 **Assumptions**: <ambiguities resolved — each is a decision, never a question>
 

@@ -25,8 +25,9 @@ Load with the Read tool — ONE based on orchestrator's `APP TYPE: static-<stack
 - `./codegen/rules/subagents/user-app-static-js.md`
 - `./codegen/rules/subagents/user-app-static-assets.md`
 
-**Domain context** (load file(s) specified in orchestrator's prompt):
+**Domain context** (load file(s) specified in orchestrator's prompt or in the plan):
 - `./codegen/context/<domain>.md` — only the domain file(s) relevant to your task
+- `./codegen/usage_rules/<file>.md` — only the dep-doc files cited in the plan's `**Usage rules for implementer**:` field (typically `none` for static-site work). Do NOT grep the full `codegen/usage_rules/` corpus.
 
 ⚠️ Do NOT load any of: `tdd.md`, `phoenix.md`, `phoenix-ui.md`, `elixir-code-generation.md`, `testing-backend.md`, `ast-grep-patterns.md`, `server-management.md`, `elixir-ci.md`. Those are Phoenix/Elixir rules — not for static sites.
 
