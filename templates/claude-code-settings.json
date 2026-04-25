@@ -151,7 +151,7 @@
     ],
     "PreToolUse": [
       {
-        "matcher": "Bash|Write|Read|Monitor",
+        "matcher": "Bash|Write|Edit|MultiEdit|Read|Monitor",
         "hooks": [
           {
             "type": "command",
