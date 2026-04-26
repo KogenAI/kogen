@@ -77,39 +77,41 @@ generate_for_tool() {
         output_dir="$TEMPLATES_DIR/generated/claude-code"
     fi
 
-    # Create different subdir for Claude Code vs OpenCode vs Cursor
-    if [ "$tool" = "claude" ]; then
-        mkdir -p "$output_dir/commands" "$output_dir/agents"
-    elif [ "$tool" = "cursor" ]; then
-        mkdir -p "$output_dir/commands" "$output_dir/subagents"
-    else
-        mkdir -p "$output_dir/commands" "$output_dir/agent"
-    fi
-
-    # Generate or copy settings file
-    if [ "$tool" = "claude" ]; then
-        # Claude Code uses a static settings file
-        if [ -f "$TEMPLATES_DIR/claude-code-settings.json" ]; then
-            copy_file "$TEMPLATES_DIR/claude-code-settings.json" "$output_dir/claude-code-settings.json"
-            log_success "Generated claude-code-settings.json"
-        fi
-    elif [ "$tool" = "opencode" ]; then
-        # OpenCode uses a static config file
-        if [ -f "$TEMPLATES_DIR/.opencode.json" ]; then
-            copy_file "$TEMPLATES_DIR/.opencode.json" "$output_dir/.opencode.json"
-            log_success "Generated .opencode.json"
+    # When OUTPUT_DIR is set, agents go directly to destination — no generated/ dir needed
+    if [ -z "$OUTPUT_DIR" ]; then
+        if [ "$tool" = "claude" ]; then
+            mkdir -p "$output_dir/commands" "$output_dir/agents"
+        elif [ "$tool" = "cursor" ]; then
+            mkdir -p "$output_dir/commands" "$output_dir/subagents"
+        else
+            mkdir -p "$output_dir/commands" "$output_dir/agent"
         fi
     fi
 
-    # Generate command templates from .j2 files only
-    if [ -d "$TEMPLATES_DIR/shared/commands" ]; then
-        for template_file in "$TEMPLATES_DIR/shared/commands"/*.j2; do
-            if [ -f "$template_file" ]; then
-                local base_name=$(basename "$template_file" .j2)
-                process_template "$template_file" "$tool" "$tool_config" >"$output_dir/commands/$base_name"
-                log_success "Generated command: $base_name"
+    # Generate or copy settings file (skip when OUTPUT_DIR is set — only agents are needed)
+    if [ -z "$OUTPUT_DIR" ]; then
+        if [ "$tool" = "claude" ]; then
+            if [ -f "$TEMPLATES_DIR/claude-code-settings.json" ]; then
+                copy_file "$TEMPLATES_DIR/claude-code-settings.json" "$output_dir/claude-code-settings.json"
+                log_success "Generated claude-code-settings.json"
             fi
-        done
+        elif [ "$tool" = "opencode" ]; then
+            if [ -f "$TEMPLATES_DIR/.opencode.json" ]; then
+                copy_file "$TEMPLATES_DIR/.opencode.json" "$output_dir/.opencode.json"
+                log_success "Generated .opencode.json"
+            fi
+        fi
+
+        # Generate command templates from .j2 files only
+        if [ -d "$TEMPLATES_DIR/shared/commands" ]; then
+            for template_file in "$TEMPLATES_DIR/shared/commands"/*.j2; do
+                if [ -f "$template_file" ]; then
+                    local base_name=$(basename "$template_file" .j2)
+                    process_template "$template_file" "$tool" "$tool_config" >"$output_dir/commands/$base_name"
+                    log_success "Generated command: $base_name"
+                fi
+            done
+        fi
     fi
 
     # Generate subagent templates — stack-aware
