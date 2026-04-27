@@ -82,3 +82,19 @@ Example: "Step 1: refactor tests (gate: run make llm-phoenix)" — but make llm-
 **Critical: Verify external assumptions before splitting**
 
 If any step depends on an external API capability, third-party service feature, or infrastructure behavior — verify it FIRST. SSH to the server, call the sandbox API, check the docs. Do not create steps that assume an API supports something without confirmation. A split built on an unverified assumption (e.g. "Namecheap supports ALIAS via API") wastes all time spent on every downstream step that depends on it.
+
+**Critical: No deferred decisions inside a step**
+
+Every step must contain only decided things. The implementation cycle (planner → developer → verification) goes all the way to the code level — if a decision is left open in the plan, it'll be re-litigated mid-implementation by an agent that has less context than the planner did. Sweep the step for these phrases and force a decision before finalizing:
+
+- "optional X" → ship it or cut it. "Optional" is what humans write when they haven't decided.
+- "or similar", "or equivalent", "something like" → pick the exact name/path/value.
+- "TBD", "to be decided", "decide later", "we'll figure out", "Phase N concern" (when Phase N is this same plan) → decide now.
+- "may want to", "might need to", "could also", "if we want to" → either it's in the step or it isn't.
+- "for absolute safety", "if profiling surfaces" → either ship the safety/profile check or don't mention it.
+- "If/when X lands, we'll Y" → if X is out of scope, drop the sentence; the future plan will own Y.
+- "escape hatch for future hooks/callers" → cut. Add the flag when the future hook ships.
+
+The exception: hedging about *historical* facts ("`--setting-sources project` was chosen presumably to isolate X") is fine — that's accurate uncertainty about the past, not a deferred decision about the future. The test is "does this defer a decision the implementer will have to make?" If yes, decide now.
+
+This applies to the surrounding doc too, not just the step block. A "Decisions Log" or "Proposed Changes" section riddled with hedges leaks into implementation. When you finalize the step, sweep the whole doc for the same phrases.
