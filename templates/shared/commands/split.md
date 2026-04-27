@@ -95,6 +95,6 @@ Every step must contain only decided things. The implementation cycle (planner �
 - "If/when X lands, we'll Y" → if X is out of scope, drop the sentence; the future plan will own Y.
 - "escape hatch for future hooks/callers" → cut. Add the flag when the future hook ships.
 
-The exception: hedging about *historical* facts ("`--setting-sources project` was chosen presumably to isolate X") is fine — that's accurate uncertainty about the past, not a deferred decision about the future. The test is "does this defer a decision the implementer will have to make?" If yes, decide now.
+The exception: hedging about _historical_ facts ("`--setting-sources project` was chosen presumably to isolate X") is fine — that's accurate uncertainty about the past, not a deferred decision about the future. The test is "does this defer a decision the implementer will have to make?" If yes, decide now.
 
 This applies to the surrounding doc too, not just the step block. A "Decisions Log" or "Proposed Changes" section riddled with hedges leaks into implementation. When you finalize the step, sweep the whole doc for the same phrases.
