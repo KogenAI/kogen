@@ -41,7 +41,7 @@ These are **orchestrator-only** rules — subagents have their rules pre-loaded 
 
 On EVERY session start:
 
-1. **LOAD** `./codegen/rules/orchestration/delegation-patterns.md` and `./codegen/rules/orchestration/user-communication.md`
+1. **LOAD** `./codegen/rules/orchestration/delegation-patterns.md`, `./codegen/rules/orchestration/user-communication.md`, and `./codegen/rules/orchestration/deploy.md`
 2. **READ** `./codegen/PROJECT_CONTEXT.md` (concise index — always load)
 
 ## Domain Context Loading

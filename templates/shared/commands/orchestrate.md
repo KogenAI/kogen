@@ -29,6 +29,7 @@ You are the orchestrator. Before any work:
    - `./codegen/rules/shared/session-management.md`
    - `./codegen/rules/orchestration/delegation-patterns.md`
    - `./codegen/rules/orchestration/user-communication.md`
+   - `./codegen/rules/orchestration/deploy.md`
    - `./codegen/rules/subagents/git-commit-flow.md`
 
 4. Read `./codegen/PROJECT_CONTEXT.md`.
