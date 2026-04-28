@@ -41,15 +41,28 @@ if ! printf '%s' "$command" | grep -qE '\bmake[[:space:]]+ci\b|\bmake[[:space:]]
     exit 0
 fi
 
-# Use agent_id to track per-agent gate history
+# Use agent_id to track per-agent gate history.
+# Store the EXACT normalised command on first run; only block when a later
+# invocation has the same normalised command — narrowing to a specific test
+# file (`mix test path/to/foo_test.exs`) is allowed per CLAUDE.md "Run in
+# isolation to confirm".
 history_file="/tmp/ve-gate-history-${agent_id}"
 
+# Normalise: trim leading/trailing whitespace, collapse internal whitespace runs
+# to a single space.
+normalised_cmd=$(printf '%s' "$command" | awk '{$1=$1; print}')
+
 if [ -f "$history_file" ]; then
-    printf 'BLOCKED by ve-no-rerun-gate: VE already ran the gate. Read the log file instead. To re-run, dispatch a new VE delegation.\n' >&2
-    exit 2
+    while IFS= read -r prev_cmd; do
+        [ -z "$prev_cmd" ] && continue
+        if [ "$prev_cmd" = "$normalised_cmd" ]; then
+            printf 'BLOCKED by ve-no-rerun-gate: VE already ran the exact gate command. Read the log file instead, or narrow to a specific test file. To re-run, dispatch a new VE delegation.\n' >&2
+            exit 2
+        fi
+    done <"$history_file"
 fi
 
-# First invocation — create the tracking file
-touch "$history_file" 2>/dev/null || true
+# Record this invocation
+printf '%s\n' "$normalised_cmd" >>"$history_file" 2>/dev/null || true
 
 exit 0
