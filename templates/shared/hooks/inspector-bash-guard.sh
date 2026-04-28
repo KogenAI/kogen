@@ -31,16 +31,21 @@ fi
 
 command=$(printf '%s' "$input" | jq -r '.tool_input.command // ""')
 
+# Inspector legitimately needs `cmd 2>&1 | head` to capture stderr for failure
+# inspection — strip stderr-redirect tokens before the redirect-overwrite check
+# so they don't get caught.
+redirect_check=$(printf '%s' "$command" | sed -e 's/2>&1//g' -e 's|2>/dev/null||g')
+
 # ── Mutating-command pattern blocks ──────────────────────────────────────────
 
 # Append redirect >>
-if printf '%s' "$command" | grep -qE '>>'; then
+if printf '%s' "$redirect_check" | grep -qE '>>'; then
     printf 'BLOCKED by inspector-bash-guard: append-redirect (>>) is forbidden for Inspector\n' >&2
     exit 2
 fi
 
 # Redirect-overwrite: bare > redirect (but not >>)
-if printf '%s' "$command" | grep -qE '[^>]>[^>]|^>[^>]'; then
+if printf '%s' "$redirect_check" | grep -qE '[^>]>[^>]|^>[^>]'; then
     printf 'BLOCKED by inspector-bash-guard: redirect-write (>) is forbidden for Inspector\n' >&2
     exit 2
 fi
@@ -75,11 +80,24 @@ if printf '%s' "$command" | grep -qE '\bgit[[:space:]]+(commit|add|push|reset|re
     exit 2
 fi
 
-# SQL mutations (case-insensitive)
-if printf '%s' "$command" | grep -qiE '\b(INSERT|UPDATE|DELETE|DROP|TRUNCATE)\b'; then
-    printf 'BLOCKED by inspector-bash-guard: SQL mutation is forbidden for Inspector\n' >&2
-    exit 2
-fi
+# SQL mutations — only fire when the command actually executes SQL.
+# Inspection commands (grep/git/sed/awk/find) often mention SQL keywords
+# legitimately; `pg_dump` exports SQL text without executing mutations.
+# Real executors are psql and Repo.{query,execute,*_all}.
+leading_verb=$(printf '%s' "$command" | awk '{print $1}')
+case "$leading_verb" in
+grep | sed | awk | find | git)
+    # Inspection commands — keywords like DELETE/DROP are legitimate search terms.
+    ;;
+*)
+    if printf '%s' "$command" | grep -qE '\b(psql|Repo\.query|Repo\.execute|Repo\.insert_all|Repo\.update_all|Repo\.delete_all)\b'; then
+        if printf '%s' "$command" | grep -qiE '\b(INSERT|UPDATE|DELETE|DROP|TRUNCATE)\b'; then
+            printf 'BLOCKED by inspector-bash-guard: SQL mutation is forbidden for Inspector\n' >&2
+            exit 2
+        fi
+    fi
+    ;;
+esac
 
 # ── Absolute path outside working dir ────────────────────────────────────────
 
