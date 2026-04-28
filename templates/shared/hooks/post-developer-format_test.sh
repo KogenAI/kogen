@@ -58,6 +58,47 @@ printf 'x = 2\n' >"$TMP_DIR/foo.ex"
 FIXTURE_DEV='{"hook_event_name":"SubagentStop","agent_type":"phoenix-developer","agent_id":"abc","session_id":"s1","cwd":"'"$TMP_DIR"'","stop_hook_active":false}'
 run_test "phoenix-developer on git repo exits 0" "0" "$FIXTURE_DEV"
 
+# Test 4: cwd outside any git repo — exits 0 silently (no error)
+NON_REPO_DIR="$(mktemp -d)"
+FIXTURE_NO_REPO='{"hook_event_name":"SubagentStop","agent_type":"phoenix-developer","agent_id":"abc","session_id":"s1","cwd":"'"$NON_REPO_DIR"'","stop_hook_active":false}'
+run_test "phoenix-developer outside git repo exits 0 silently" "0" "$FIXTURE_NO_REPO"
+rm -rf "$NON_REPO_DIR"
+
+# Test 5: cross-repo edit — change in BOTH the project repo and a sibling repo.
+# Verify the hook surveys both repos and exits 0 (no errors).
+PROJ_REPO="$(mktemp -d)"
+SIB_REPO="$(mktemp -d)"
+(
+    cd "$PROJ_REPO"
+    git init -q
+    git config user.email "test@test.com"
+    git config user.name "Test"
+    printf 'x = 1\n' >foo.ex
+    git add foo.ex
+    git commit -q -m "init"
+) 2>/dev/null
+(
+    cd "$SIB_REPO"
+    git init -q
+    git config user.email "test@test.com"
+    git config user.name "Test"
+    printf '# title\n' >readme.md
+    git add readme.md
+    git commit -q -m "init"
+) 2>/dev/null
+# Modify a file in each
+printf 'x = 2\n' >"$PROJ_REPO/foo.ex"
+printf '# title updated\n' >"$SIB_REPO/readme.md"
+
+# The hook only surveys hard-coded sibling paths
+# (/Users/almirsarajcic/Areas/Optimum/{codegen,context}). Since our test temp
+# repo isn't one of those, the hook bucketing happens via project_dir only.
+# This still exercises the bucketing path: we simulate by passing the project
+# repo as cwd; the hook iterates candidate_repos = [project_dir]. Verify exit 0.
+FIXTURE_CROSS='{"hook_event_name":"SubagentStop","agent_type":"phoenix-developer","agent_id":"abc","session_id":"s1","cwd":"'"$PROJ_REPO"'","stop_hook_active":false}'
+run_test "phoenix-developer with bucketed change exits 0" "0" "$FIXTURE_CROSS"
+rm -rf "$PROJ_REPO" "$SIB_REPO"
+
 echo ""
 echo "Results: $pass passed, $fail failed"
 

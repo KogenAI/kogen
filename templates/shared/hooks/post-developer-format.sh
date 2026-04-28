@@ -78,53 +78,108 @@ if ! git rev-parse --git-dir >/dev/null 2>&1; then
     exit 0
 fi
 
-# Collect changed paths: staged + unstaged + untracked, NUL-separated for safety.
-changed=$({
-    git diff --name-only --diff-filter=ACMR -z HEAD 2>/dev/null
-    git ls-files --others --exclude-standard -z 2>/dev/null
-} | tr '\0' '\n' | awk 'NF' | sort -u)
+# Collect changed ABSOLUTE paths from project_dir + each known sibling repo.
+# Developer subagents may edit files in OCG sibling repos (codegen, context),
+# whose changes don't appear in the combobulate `git diff`. Run each repo's
+# diff separately and concatenate absolute paths.
+collect_changed_abs() {
+    local repo="$1"
+    [ -d "$repo/.git" ] || return 0
+    (
+        cd "$repo" 2>/dev/null || exit 0
+        {
+            git diff --name-only --diff-filter=ACMR -z HEAD 2>/dev/null
+            git ls-files --others --exclude-standard -z 2>/dev/null
+        } | tr '\0' '\n' | awk -v root="$repo" 'NF { print root"/"$0 }'
+    )
+}
 
-if [ -z "$changed" ]; then
+candidate_repos=("$project_dir")
+# Sibling OCG repos — only added if they exist as git repos.
+for sibling in /Users/almirsarajcic/Areas/Optimum/codegen /Users/almirsarajcic/Areas/Optimum/context; do
+    if [ -d "$sibling/.git" ] && [ "$sibling" != "$project_dir" ]; then
+        candidate_repos+=("$sibling")
+    fi
+done
+
+changed_abs=""
+for repo in "${candidate_repos[@]}"; do
+    repo_changes=$(collect_changed_abs "$repo")
+    if [ -n "$repo_changes" ]; then
+        changed_abs="${changed_abs}${repo_changes}
+"
+    fi
+done
+
+# Trim trailing blank lines and dedup.
+changed_abs=$(printf '%s' "$changed_abs" | awk 'NF' | sort -u)
+
+if [ -z "$changed_abs" ]; then
     log "no changed files"
     exit 0
 fi
 
-log "changed files: $(echo "$changed" | tr '\n' ' ')"
+log "changed files: $(echo "$changed_abs" | tr '\n' ' ')"
 
-# ── Phoenix / data-layer: mix format on Elixir files ─────────────────────────
-if [ "$agent_type" = "phoenix-developer" ] || [ "$agent_type" = "data-layer-developer" ]; then
-    ex_files=$(printf '%s\n' "$changed" | grep -E '\.(ex|exs|heex)$' || true)
-    if [ -n "$ex_files" ]; then
-        # Pass paths as args; mix format handles missing files gracefully.
-        # shellcheck disable=SC2086
-        printf '%s\n' "$ex_files" | xargs mix format >/dev/null 2>&1 || log "mix format had errors (non-fatal)"
-        log "mix format ran on $(echo "$ex_files" | wc -l | tr -d ' ') file(s)"
+# Bucket changed files by their containing git repo root, so formatters run
+# from each repo's root with paths relative to that root.
+declare -A files_by_repo
+while IFS= read -r abs_path; do
+    [ -z "$abs_path" ] && continue
+    repo_root=$(cd "$(dirname "$abs_path")" 2>/dev/null && git rev-parse --show-toplevel 2>/dev/null) || {
+        log "skipping $abs_path (not in a git repo)"
+        continue
+    }
+    files_by_repo["$repo_root"]+="$abs_path"$'\n'
+done <<<"$changed_abs"
+
+# Combined list across all repos (relative paths) for LLM-signal detection.
+all_relative=""
+
+for repo_root in "${!files_by_repo[@]}"; do
+    bucket="${files_by_repo[$repo_root]}"
+    # Convert absolute paths to repo-relative paths.
+    rel_files=$(printf '%s' "$bucket" | awk 'NF' | sed "s|^${repo_root}/||")
+    [ -z "$rel_files" ] && continue
+    all_relative="${all_relative}${rel_files}
+"
+
+    # ── mix format on Elixir files (phoenix/data-layer only) ─────────────────
+    if [ "$agent_type" = "phoenix-developer" ] || [ "$agent_type" = "data-layer-developer" ]; then
+        ex_files=$(printf '%s\n' "$rel_files" | grep -E '\.(ex|exs|heex)$' || true)
+        if [ -n "$ex_files" ] && [ -f "$repo_root/mix.exs" ]; then
+            (
+                cd "$repo_root" 2>/dev/null || exit 0
+                # shellcheck disable=SC2086
+                printf '%s\n' "$ex_files" | xargs mix format >/dev/null 2>&1
+            ) || log "mix format had errors in $repo_root (non-fatal)"
+            log "mix format ran in $repo_root on $(echo "$ex_files" | wc -l | tr -d ' ') file(s)"
+        fi
     fi
-fi
 
-# ── All developers: prettier on prettier-relevant files ──────────────────────
-prettier_files=$(printf '%s\n' "$changed" | grep -E '\.(js|ts|jsx|tsx|css|scss|json|md|yml|yaml|html)$' || true)
-if [ -n "$prettier_files" ]; then
-    # Filter out files prettier doesn't know about by piping through xargs
-    # with --no-run-if-empty equivalent.
-    if command -v npx >/dev/null 2>&1; then
-        # shellcheck disable=SC2086
-        printf '%s\n' "$prettier_files" | xargs npx --no-install prettier --write --log-level=warn >/dev/null 2>&1 ||
-            log "prettier had errors (non-fatal)"
-        log "prettier ran on $(echo "$prettier_files" | wc -l | tr -d ' ') file(s)"
+    # ── prettier on prettier-relevant files (all developers) ─────────────────
+    prettier_files=$(printf '%s\n' "$rel_files" | grep -E '\.(js|ts|jsx|tsx|css|scss|json|md|yml|yaml|html)$' || true)
+    if [ -n "$prettier_files" ] && command -v npx >/dev/null 2>&1; then
+        (
+            cd "$repo_root" 2>/dev/null || exit 0
+            # shellcheck disable=SC2086
+            printf '%s\n' "$prettier_files" | xargs npx --no-install prettier --write --log-level=warn >/dev/null 2>&1
+        ) || log "prettier had errors in $repo_root (non-fatal)"
+        log "prettier ran in $repo_root on $(echo "$prettier_files" | wc -l | tr -d ' ') file(s)"
     fi
-fi
+done
 
-# ── LLM-test signal detection ────────────────────────────────────────────────
+# ── LLM-test signal detection (across all repos) ─────────────────────────────
+all_relative=$(printf '%s' "$all_relative" | awk 'NF')
 llm_pattern='context/llm\.md|.*\.md\.j2|codegen/rules/|codegen/recipes/|context/apps/CLAUDE-.*\.md|PLATFORM_INFO\.md'
-if printf '%s\n' "$changed" | grep -qE "$llm_pattern"; then
+if printf '%s\n' "$all_relative" | grep -qE "$llm_pattern"; then
     flag_dir="${project_dir}/codegen/llm-pending"
     mkdir -p "$flag_dir" 2>/dev/null || true
     flag_file="$flag_dir/${session_id}.flag"
     {
         printf 'agent_type=%s\n' "$agent_type"
         printf 'changed_llm_files:\n'
-        printf '%s\n' "$changed" | grep -E "$llm_pattern" | sed 's/^/  /'
+        printf '%s\n' "$all_relative" | grep -E "$llm_pattern" | sed 's/^/  /'
     } >"$flag_file" 2>/dev/null || true
     log "LLM-test signal raised: $flag_file"
 fi
