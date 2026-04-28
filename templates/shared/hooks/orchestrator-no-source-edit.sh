@@ -71,6 +71,16 @@ if printf '%s' "$rel_path" | grep -qE '^[^/]+\.md$'; then
     exit 0
 fi
 
+# Combobulate orchestrator may edit OCG sibling repos (committer commits them
+# independently — see combobulate/CLAUDE.md "Commit Sibling Repos"). Other
+# projects' orchestrators do NOT get this allowance.
+if [ "$cwd" = "/Users/almirsarajcic/Projects/AppBuilder/combobulate" ]; then
+    case "$file_path" in
+    /Users/almirsarajcic/Areas/Optimum/codegen/*) exit 0 ;;
+    /Users/almirsarajcic/Areas/Optimum/context/*) exit 0 ;;
+    esac
+fi
+
 printf 'BLOCKED by orchestrator-no-source-edit: orchestrator must not edit source files directly (%s). Delegate to phoenix-developer / static-site-developer / data-layer-developer.\n' \
     "$file_path" >&2
 exit 2

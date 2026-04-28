@@ -63,6 +63,24 @@ FIXTURE_ABS_BLOCK='{"hook_event_name":"PreToolUse","tool_name":"Edit","tool_inpu
 run_test "orchestrator Edit on absolute lib/ path blocks" "2" "$FIXTURE_ABS_BLOCK"
 rm -rf "$CWD_ABS2"
 
+# Test 8: combobulate orchestrator + sibling OCG codegen path — ALLOW
+COMBO_CWD="/Users/almirsarajcic/Projects/AppBuilder/combobulate"
+FIXTURE_SIBLING_CODEGEN='{"hook_event_name":"PreToolUse","tool_name":"Edit","tool_input":{"file_path":"/Users/almirsarajcic/Areas/Optimum/codegen/templates/shared/hooks/foo.sh","old_string":"x","new_string":"y"},"agent_id":"","agent_type":"","cwd":"'"$COMBO_CWD"'"}'
+run_test "combobulate orchestrator on sibling codegen allows" "0" "$FIXTURE_SIBLING_CODEGEN"
+
+# Test 9: combobulate orchestrator + sibling context path — ALLOW
+FIXTURE_SIBLING_CONTEXT='{"hook_event_name":"PreToolUse","tool_name":"Edit","tool_input":{"file_path":"/Users/almirsarajcic/Areas/Optimum/context/rules/foo.md","old_string":"x","new_string":"y"},"agent_id":"","agent_type":"","cwd":"'"$COMBO_CWD"'"}'
+run_test "combobulate orchestrator on sibling context allows" "0" "$FIXTURE_SIBLING_CONTEXT"
+
+# Test 10: combobulate orchestrator + arbitrary outside path — BLOCK
+FIXTURE_ARBITRARY='{"hook_event_name":"PreToolUse","tool_name":"Edit","tool_input":{"file_path":"/Users/almirsarajcic/Other/foo.md","old_string":"x","new_string":"y"},"agent_id":"","agent_type":"","cwd":"'"$COMBO_CWD"'"}'
+run_test "combobulate orchestrator on arbitrary outside path blocks" "2" "$FIXTURE_ARBITRARY"
+
+# Test 11: DIFFERENT cwd (skeptic_bot) + sibling codegen path — BLOCK (safety guard)
+OTHER_CWD="/Users/almirsarajcic/Areas/Optimum/skeptic_bot"
+FIXTURE_OTHER_SIBLING='{"hook_event_name":"PreToolUse","tool_name":"Edit","tool_input":{"file_path":"/Users/almirsarajcic/Areas/Optimum/codegen/templates/shared/hooks/foo.sh","old_string":"x","new_string":"y"},"agent_id":"","agent_type":"","cwd":"'"$OTHER_CWD"'"}'
+run_test "non-combobulate orchestrator on sibling codegen blocks" "2" "$FIXTURE_OTHER_SIBLING"
+
 echo ""
 echo "Results: $pass passed, $fail failed"
 
