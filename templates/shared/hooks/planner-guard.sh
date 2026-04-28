@@ -83,7 +83,7 @@ if [ "$tool_name" = "Bash" ]; then
     fi
 
     # make ci / make llm variants — test/verification gates
-    if printf '%s' "$command" | grep -qE '\bmake[[:space:]]+(ci|llm|llm-phoenix|llm-phoenix-seed)\b'; then
+    if printf '%s' "$command" | grep -qE '\bmake[[:space:]]+(ci|ci-fast|llm|llm-phoenix|llm-phoenix-seed|llm-summary|llm-retry|llm-kill)\b'; then
         printf 'BLOCKED by planner-guard: make ci/llm/llm-phoenix is forbidden for planner (verification gates belong to verification-engineer)\n' >&2
         exit 2
     fi
@@ -112,10 +112,13 @@ if [ "$tool_name" = "Bash" ]; then
         fi
     fi
 
-    # Redirect to file outside /tmp/ or codegen/logging/ — prevent writes via shell
-    if printf '%s' "$command" | grep -qE '>[[:space:]]*[^/]|>[[:space:]]*/(?!tmp/)'; then
+    # Redirect to file outside /tmp/ or codegen/logging/ — prevent writes via shell.
+    # Strip stderr-redirect tokens (2>&1, 2>/dev/null) before inspection so they
+    # don't get caught by the bare-redirect check.
+    redirect_check=$(printf '%s' "$command" | sed -e 's/2>&1//g' -e 's|2>/dev/null||g')
+    if printf '%s' "$redirect_check" | grep -qE '>[[:space:]]*[^/[:space:]]|>[[:space:]]*/'; then
         # Check if the redirect target is to codegen/logging/ or /tmp/
-        if ! printf '%s' "$command" | grep -qE '>[[:space:]]*(codegen/logging/|/tmp/)'; then
+        if ! printf '%s' "$redirect_check" | grep -qE '>[[:space:]]*(codegen/logging/|/tmp/)'; then
             printf 'BLOCKED by planner-guard: shell redirect to file outside /tmp/ or codegen/logging/ is forbidden for planner\n' >&2
             exit 2
         fi

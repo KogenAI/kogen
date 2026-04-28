@@ -40,6 +40,26 @@ run_test "Write blocked for planner" "2" "$FIXTURE_BLOCK"
 FIXTURE_ALLOW='{"hook_event_name":"PreToolUse","tool_name":"Write","tool_input":{"file_path":"/tmp/foo.ex","content":"x"},"agent_type":"phoenix-developer","agent_id":"abc123"}'
 run_test "Write passes for phoenix-developer" "0" "$FIXTURE_ALLOW"
 
+# Test 3: planner Bash with `2>&1 | head` should NOT be wrongly blocked as a redirect
+FIXTURE_STDERR='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"grep foo lib/bar.ex 2>&1 | head"},"agent_type":"planner","agent_id":"abc123"}'
+run_test "planner Bash with 2>&1 pipe allows" "0" "$FIXTURE_STDERR"
+
+# Test 4: planner make ci-fast — BLOCK (was wrongly allowed)
+FIXTURE_CI_FAST='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"make ci-fast"},"agent_type":"planner","agent_id":"abc123"}'
+run_test "planner make ci-fast blocks" "2" "$FIXTURE_CI_FAST"
+
+# Test 5: planner make llm-summary — BLOCK
+FIXTURE_LLM_SUMMARY='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"make llm-summary"},"agent_type":"planner","agent_id":"abc123"}'
+run_test "planner make llm-summary blocks" "2" "$FIXTURE_LLM_SUMMARY"
+
+# Test 6: planner make llm-kill — BLOCK
+FIXTURE_LLM_KILL='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"make llm-kill"},"agent_type":"planner","agent_id":"abc123"}'
+run_test "planner make llm-kill blocks" "2" "$FIXTURE_LLM_KILL"
+
+# Test 7: planner make llm-retry — BLOCK
+FIXTURE_LLM_RETRY='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"make llm-retry"},"agent_type":"planner","agent_id":"abc123"}'
+run_test "planner make llm-retry blocks" "2" "$FIXTURE_LLM_RETRY"
+
 echo ""
 echo "Results: $pass passed, $fail failed"
 
