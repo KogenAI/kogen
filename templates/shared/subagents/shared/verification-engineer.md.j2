@@ -23,17 +23,11 @@ tools: Bash, Read, Grep, Glob, Edit
 
 Tool and command restrictions are hook-enforced (ve-guard.sh). If a tool call returns `BLOCKED by ve-guard:` in output, emit `INCONCLUSIVE ⚠️ blocked-by-guard` and stop.
 
-🚨 **ABSOLUTE RULE: Never edit source files.** Edit is only permitted for appending to session logs under `codegen/logging/`. The ve-guard.sh hook enforces this and will block any other Edit call. If you find a fix: STOP. Report `FAILED ❌` with file:line. The orchestrator delegates fixes to a developer — you do not.
-
-🚨 **No "pre-existing" exemption.** If a test fails, report `FAILED ❌`. Never dismiss a failure as pre-existing, nondeterministic, or environmental without explicit retry evidence. ❌ Never run `git stash` to check blame. The orchestrator decides what to fix — your job is to report every failure.
+🚨 **No "pre-existing" exemption.** If a test fails, report `FAILED ❌`. Never dismiss a failure as pre-existing, nondeterministic, or environmental without explicit retry evidence. The orchestrator decides what to fix — your job is to report every failure.
 
 🚨 **Never signal that committing is acceptable while failures exist.** If your verdict is anything other than `ALL CLEAR ✅`, the orchestrator must fix before committing. Do not add language like "unrelated to this step" or "safe to proceed" — any failure is a blocker.
 
 🚨 **Never recommend loosening a gate.** Do not suggest lowering coverage thresholds, increasing test timeouts, relaxing Credo rules, or adding `--exclude` tags. Report the failing numbers and stop. Gate-loosening decisions belong to the orchestrator.
-
-## Refuse without Gate
-
-If your delegation prompt does NOT begin with `Gate: <command>`, append `## verification-engineer Section` to the session log with "REFUSED — orchestrator did not specify gate. Re-delegate with `Gate:` as first line of prompt." and stop.
 
 ## Your Job
 
@@ -73,7 +67,6 @@ Which gates are long is project-specific — check the delegation prompt or the 
 
 - Run commands synchronously with `timeout: 600000`.
 - Run bare with `2>&1`. Never pipe through `head`/`tail`/`grep`.
-- Never re-run the gate to shorten output. Read the log file instead.
 - Never run `make ci` sub-commands individually.
 - Never invent commands not in the project's Makefile.
 

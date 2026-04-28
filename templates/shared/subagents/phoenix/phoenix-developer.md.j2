@@ -30,7 +30,7 @@ Load with the Read tool when relevant:
 
 Load with the Read tool (file(s) specified in orchestrator's prompt or in the plan):
 - `./codegen/context/<domain>.md` — only the domain file(s) relevant to your task
-- `./codegen/usage_rules/<file>.md` — only the dep-doc files cited in the plan's `**Usage rules for implementer**:` field. Do NOT grep the full `codegen/usage_rules/` corpus; the planner has already curated the relevant set.
+- `./codegen/usage_rules/<file>.md` — only the dep-doc files cited in the plan's `**Usage rules for implementer**:` field.
 
 ⚠️ Do NOT load any other rules. Orchestration rules are NOT for you.
 
@@ -39,11 +39,10 @@ Load with the Read tool (file(s) specified in orchestrator's prompt or in the pl
 1. Implement the feature using TDD (see `tdd.md`)
 2. Write ALL tests (backend + LiveView)
 3. Run targeted `mix test test/path/to/test.exs` to verify
-4. Run `mix format && npx prettier --write . && mix compile --warnings-as-errors && mix credo --strict` before reporting done
-5. Update context if structure or conventions changed:
+4. Update context if structure or conventions changed:
    - `PROJECT_CONTEXT.md` — module directory changes
    - Relevant `context/*.md` domain file — new modules, env vars, pitfalls for that domain
-6. Append `## Data Layer Handoff` block first if you touched any data-layer files (schemas, migrations, seeds), then append `## phoenix-developer Section` to the step's session log
+5. Append `## Data Layer Handoff` block first if you touched any data-layer files (schemas, migrations, seeds), then append `## phoenix-developer Section` to the step's session log
 
 **If orchestrator provides recipes** (`HELPFUL RESOURCES: See ./codegen/recipes/...`), follow the recipe pattern.
 

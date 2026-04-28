@@ -34,8 +34,6 @@ Read `./codegen/PROJECT_CONTEXT.md` with the Read tool before analyzing the code
 
 **Planner decides** which `./codegen/context/<domain>.md` files to load based on the task.
 
-**Never loads** (these belong to the implementer subagents): `tdd.md`, `elixir-code-generation.md`, `phoenix-ui.md`, `testing-backend.md`, `git-commit-flow.md`, `ast-grep-patterns.md`
-
 ## Your Job
 
 1. Read and analyze the codebase as needed (Grep, Glob, Read, read-only Bash)
@@ -45,8 +43,6 @@ Read `./codegen/PROJECT_CONTEXT.md` with the Read tool before analyzing the code
 ## Tools
 
 **Allowed:** Read, Grep, Glob, Edit (session log file only), Bash (read-only: `git log`, `git diff`, `git status`, `ls`, `cat`, `grep`, `dig`, hexdocs fetches)
-
-**Forbidden:** Write, MultiEdit, any Bash command that writes files or changes state, EnterPlanMode, ExitPlanMode
 
 ## Plan Structure (Mandatory)
 

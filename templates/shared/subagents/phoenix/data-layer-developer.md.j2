@@ -29,7 +29,7 @@ Load with the Read tool when relevant:
 
 Load with the Read tool (file(s) specified in orchestrator's prompt or in the plan):
 - `./codegen/context/<domain>.md` — only the domain file(s) relevant to your task
-- `./codegen/usage_rules/<file>.md` — only the dep-doc files cited in the plan's `**Usage rules for implementer**:` field. Do NOT grep the full `codegen/usage_rules/` corpus; the planner has already curated the relevant set.
+- `./codegen/usage_rules/<file>.md` — only the dep-doc files cited in the plan's `**Usage rules for implementer**:` field.
 
 ⚠️ Do NOT load any other rules. Orchestration rules are NOT for you.
 
@@ -40,9 +40,8 @@ Load with the Read tool (file(s) specified in orchestrator's prompt or in the pl
 3. Write ALL data-layer tests (unit tests for changesets, fixtures)
 4. Run `mix ecto.migrate && mix ecto.rollback && mix ecto.migrate` to verify reversibility
 5. Run targeted `mix test test/path/to/test.exs` to verify tests pass
-6. Run `mix format && mix compile --warnings-as-errors && mix credo --strict` before reporting done
-7. Update `PROJECT_CONTEXT.md` if a new module was added
-8. Append `## Data Layer Handoff` block first, then append `## data-layer-developer Section` to the step's session log
+6. Update `PROJECT_CONTEXT.md` if a new module was added
+7. Append `## Data Layer Handoff` block first, then append `## data-layer-developer Section` to the step's session log
 
 **If orchestrator provides recipes** (`HELPFUL RESOURCES: See ./codegen/recipes/...`), follow the recipe pattern.
 

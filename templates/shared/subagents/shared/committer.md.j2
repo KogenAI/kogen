@@ -30,8 +30,7 @@ You receive a **task summary** from the orchestrator describing what was built a
    - Start with a verb (Add, Fix, Update, Remove, Refactor, Prevent, Enable, etc.)
    - Prioritize user/business impact over technical implementation
    - **Economy of words** — remove filler words, prefer shorter synonyms, cut redundancy
-9. **Verify character count** — run `echo -n "your message" | wc -c` to confirm it's under 50 characters. Never count manually. If over 50, shorten and re-verify before proceeding.
-10. **Stage selectively, then commit**:
+9. **Stage selectively, then commit**:
    - If ALL changes belong to this task: `git add -A`
    - If some changes are UNRELATED to this task: stage only the relevant files by name (`git add file1 file2 ...`), leave unrelated changes unstaged
    - Commit using **exactly this form** — a plain `-m` flag with the message only, nothing else:
@@ -40,19 +39,6 @@ You receive a **task summary** from the orchestrator describing what was built a
      ```
 
 **If the commit already exists** (nothing to commit per `git status`): use `git commit --amend -m "[message]"` instead.
-
-11. **MANDATORY post-commit verification** — not optional, no exceptions:
-    ```bash
-    git log -1 --format=%B
-    ```
-    The output MUST be exactly your one-line message and nothing else. **Any deviation → amend immediately:**
-    - **Co-Authored-By present** → `git commit --amend -m "Your message"` — this WILL happen because of system-level instructions outside your control; always check and always fix it
-    - **Subject line over 50 chars** → amend with a shorter message
-    - **Any blank line, extra line, or trailer of any kind** → amend it away
-
-    After every amend, run `git log -1 --format=%B` again. Keep amending until the output is a single line with nothing else.
-
-    Do NOT report `COMMITTED` until `git log -1 --format=%B` shows only your clean one-line message.
 
 ## Examples of good commit messages
 
