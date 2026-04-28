@@ -15,18 +15,18 @@ input=$(cat)
 # Parse fields from PreToolUse stdin JSON
 tool_name=$(printf '%s' "$input" | jq -r '.tool_name // ""')
 file_path=$(printf '%s' "$input" | jq -r '.tool_input.file_path // ""')
-agent_name=$(printf '%s' "$input" | jq -r '.agent_name // ""')
+agent_type=$(printf '%s' "$input" | jq -r '.agent_type // ""')
 
 # Debug logging (opt-in via COMBOBULATE_HOOKS_DEBUG flag)
 if [ -n "${COMBOBULATE_HOOKS_DEBUG:-}" ]; then
     printf '%s tool=%s agent=%s file=%s\n' \
         "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-        "$tool_name" "$agent_name" "$file_path" \
+        "$tool_name" "$agent_type" "$file_path" \
         >>/tmp/static-site-ex-guard-debug.log 2>/dev/null || true
 fi
 
 # Only gate static-site-developer; allow all other agents unconditionally
-if [ "$agent_name" != "static-site-developer" ]; then
+if [ "$agent_type" != "static-site-developer" ]; then
     exit 0
 fi
 

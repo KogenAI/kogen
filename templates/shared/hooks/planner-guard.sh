@@ -18,18 +18,18 @@ input=$(cat)
 tool_name=$(printf '%s' "$input" | jq -r '.tool_name // ""')
 command=$(printf '%s' "$input" | jq -r '.tool_input.command // ""')
 file_path=$(printf '%s' "$input" | jq -r '.tool_input.file_path // ""')
-agent_name=$(printf '%s' "$input" | jq -r '.agent_name // ""')
+agent_type=$(printf '%s' "$input" | jq -r '.agent_type // ""')
 
 # Debug logging (opt-in via per-script var or the unified COMBOBULATE_HOOKS_DEBUG flag)
 if [ -n "${COMBOBULATE_PLANNER_DEBUG:-}" ] || [ -n "${COMBOBULATE_HOOKS_DEBUG:-}" ]; then
     printf '%s tool=%s agent=%s file=%s cmd=%s\n' \
         "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-        "$tool_name" "$agent_name" "$file_path" "$command" \
+        "$tool_name" "$agent_type" "$file_path" "$command" \
         >>/tmp/planner-guard-debug.log 2>/dev/null || true
 fi
 
 # Only gate planner; allow all other agents unconditionally
-if [ "$agent_name" != "planner" ]; then
+if [ "$agent_type" != "planner" ]; then
     exit 0
 fi
 

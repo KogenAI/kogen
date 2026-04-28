@@ -15,18 +15,18 @@ input=$(cat)
 
 # Parse fields from PreToolUse stdin JSON
 tool_name=$(printf '%s' "$input" | jq -r '.tool_name // ""')
-agent_name=$(printf '%s' "$input" | jq -r '.agent_name // ""')
+agent_type=$(printf '%s' "$input" | jq -r '.agent_type // ""')
 
 # Debug logging (opt-in via per-script var or the unified COMBOBULATE_HOOKS_DEBUG flag)
 if [ -n "${COMBOBULATE_CR_DEBUG:-}" ] || [ -n "${COMBOBULATE_HOOKS_DEBUG:-}" ]; then
     printf '%s tool=%s agent=%s\n' \
         "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-        "$tool_name" "$agent_name" \
+        "$tool_name" "$agent_type" \
         >>/tmp/cr-guard-debug.log 2>/dev/null || true
 fi
 
 # Only gate code-reviewer; allow all other agents unconditionally
-if [ "$agent_name" != "code-reviewer" ]; then
+if [ "$agent_type" != "code-reviewer" ]; then
     exit 0
 fi
 
