@@ -37,7 +37,7 @@ fi
 command=$(printf '%s' "$input" | jq -r '.tool_input.command // ""')
 
 # Only gate gate-running commands
-if ! printf '%s' "$command" | grep -qE '\bmake[[:space:]]+ci\b|\bmake[[:space:]]+ci-fast\b|\bmake[[:space:]]+llm\b|\bmake[[:space:]]+llm-phoenix\b|\bmix[[:space:]]+test\b'; then
+if ! printf '%s' "$command" | grep -qE '\bmake[[:space:]]+ci([[:space:]]|$)|\bmake[[:space:]]+ci-fast([[:space:]]|$)|\bmake[[:space:]]+llm([[:space:]]|$)|\bmake[[:space:]]+llm-phoenix([[:space:]]|$)|\bmix[[:space:]]+test\b'; then
     exit 0
 fi
 
