@@ -114,30 +114,12 @@ generate_for_tool() {
         fi
     fi
 
-    # Generate subagent templates — stack-aware
-    # STACK env var controls which subdirs are walked:
-    #   all      (default) — all stacks; back-compat for non-stack-aware projects
-    #   phoenix  — shared/ + phoenix/
-    #   static   — shared/ + static/
-    #   platform — shared/ + phoenix/ (platform is a Phoenix superset; platform/ is empty for now)
-    local stack="${STACK:-all}"
+    # Generate subagent templates — always renders all subagent templates
+    # regardless of STACK. STACK is informational only and no longer controls
+    # which subdirs are walked.
     local subagents_root="$TEMPLATES_DIR/shared/subagents"
 
-    # Determine which subdirs to walk
-    local subdirs=()
-    subdirs+=("$subagents_root/shared")
-    if [ "$stack" = "all" ]; then
-        subdirs+=("$subagents_root/phoenix")
-        subdirs+=("$subagents_root/static")
-        subdirs+=("$subagents_root/platform")
-    elif [ "$stack" = "phoenix" ]; then
-        subdirs+=("$subagents_root/phoenix")
-    elif [ "$stack" = "static" ]; then
-        subdirs+=("$subagents_root/static")
-    elif [ "$stack" = "platform" ]; then
-        subdirs+=("$subagents_root/phoenix")
-        subdirs+=("$subagents_root/platform")
-    fi
+    local subdirs=("$subagents_root/shared" "$subagents_root/phoenix" "$subagents_root/static" "$subagents_root/platform")
 
     # Determine output subdir for agent files
     local agents_subdir

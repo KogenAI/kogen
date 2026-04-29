@@ -6,11 +6,9 @@
 #   Pass --all to also install OpenCode and Cursor CLI.
 #
 # Environment variables:
-#   STACK — controls which subagent templates are installed (default: platform)
-#     platform  — shared roles + phoenix-developer (combobulate machines)
-#     phoenix   — shared roles + phoenix-developer (Phoenix user-app builds)
-#     static    — shared roles + static-site-developer (static user-app builds)
-#     all       — all roles (back-compat for non-stack-aware OCG projects)
+#   STACK — informational only; does not affect which agents are installed.
+#     All 8 subagent templates (shared, phoenix, static, platform) are always
+#     rendered and installed regardless of this variable.
 
 set -e
 
@@ -18,11 +16,6 @@ INSTALL_ALL=false
 for arg in "$@"; do
     [ "$arg" = "--all" ] && INSTALL_ALL=true
 done
-
-# Stack controls which subagent templates are rendered and installed.
-# Default is "platform" so combobulate developer machines get the right set.
-STACK="${STACK:-platform}"
-export STACK
 
 CODEGEN_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 INSTALL_DIR="$HOME/.local/bin"
@@ -197,21 +190,16 @@ mkdir -p "$CLAUDE_AGENTS_DIR"
 AGENTS_MANIFEST="$CLAUDE_AGENTS_DIR/.installed-by-ocg"
 CURRENT_AGENTS=()
 
-# Stack-scoped installs are additive: the manifest is keyed per-stack so a
-# `STACK=platform make install` doesn't delete files that `STACK=static`
-# previously installed (and vice versa). Combobulate prod hosts run BOTH
-# stacks from a single OS process; both file sets must coexist in ~/.claude/agents/.
-STACK_MANIFEST_KEY="${STACK:-platform}"
-STACK_MANIFEST="$CLAUDE_AGENTS_DIR/.installed-by-ocg.${STACK_MANIFEST_KEY}"
-
-# One-time migration: if the unsuffixed manifest exists AND no per-stack
-# manifests exist yet (first run after upgrading), assume the unsuffixed file
-# was written by the old single-stack logic and rename it to the current stack.
-# Once any per-stack manifest exists, the unsuffixed file is the new combined
-# manifest — do not rename it. Idempotent: runs at most once per host.
-_any_stack_manifest=$(ls "$CLAUDE_AGENTS_DIR"/.installed-by-ocg.* 2>/dev/null | head -1)
-if [ -f "${AGENTS_MANIFEST}" ] && [ ! -f "${STACK_MANIFEST}" ] && [ -z "${_any_stack_manifest}" ]; then
-    mv "${AGENTS_MANIFEST}" "${STACK_MANIFEST}"
+# One-time migration: if any per-stack manifests (.installed-by-ocg.<stack>)
+# exist from a previous install, union them into the unsuffixed manifest and
+# delete the per-stack files. This preserves tracking continuity on hosts that
+# previously ran STACK=platform or STACK=static make install.
+_any_stack_manifests=$(ls "$CLAUDE_AGENTS_DIR"/.installed-by-ocg.* 2>/dev/null || true)
+if [ -n "$_any_stack_manifests" ]; then
+    # shellcheck disable=SC2086
+    sort -u $CLAUDE_AGENTS_DIR/.installed-by-ocg.* >"$AGENTS_MANIFEST"
+    # shellcheck disable=SC2086
+    rm -f $CLAUDE_AGENTS_DIR/.installed-by-ocg.*
 fi
 
 if [ -d "$CODEGEN_DIR/templates/generated/claude-code/agents" ]; then
@@ -225,11 +213,9 @@ if [ -d "$CODEGEN_DIR/templates/generated/claude-code/agents" ]; then
     done
 fi
 
-# Delete stale agents from THIS stack's manifest only — files installed by
-# the other stack's manifest (e.g. static-site-developer.md when running
-# STACK=platform) are preserved because we read from $STACK_MANIFEST, not
-# the combined $AGENTS_MANIFEST.
-if [ -f "$STACK_MANIFEST" ]; then
+# Delete stale agents — files listed in the previous manifest but not in the
+# current install set.
+if [ -f "$AGENTS_MANIFEST" ]; then
     while IFS= read -r old_agent; do
         if [ -n "$old_agent" ]; then
             still_present=false
@@ -241,16 +227,11 @@ if [ -f "$STACK_MANIFEST" ]; then
                 echo "   🗑️  Removed stale agent: ${old_agent%.md}"
             fi
         fi
-    done <"$STACK_MANIFEST"
+    done <"$AGENTS_MANIFEST"
 fi
 
-# Write per-stack manifest so the next install of this stack knows what it owns.
-printf '%s\n' "${CURRENT_AGENTS[@]}" >"$STACK_MANIFEST"
-
-# Maintain the combined (unsuffixed) manifest for back-compat with any callers
-# that read .installed-by-ocg; it lists the union of all currently-installed
-# .md files regardless of which stack installed them.
-(ls "$CLAUDE_AGENTS_DIR"/*.md 2>/dev/null | xargs -n1 basename) >"$AGENTS_MANIFEST" || true
+# Write the combined manifest so the next install knows what this run installed.
+printf '%s\n' "${CURRENT_AGENTS[@]}" >"$AGENTS_MANIFEST"
 
 # Install required dependencies
 echo ""
