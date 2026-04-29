@@ -7,6 +7,8 @@
 # Monitor is PERMITTED (needed for long-gate recipe: run_in_background + Monitor + Read).
 # run_in_background is PERMITTED only for: make llm, make llm-phoenix, make llm-phoenix-seed
 # (seed rebuild only when COMBOBULATE_VE_GATE starts with rebuild-seed-then).
+# Permitted lock cleanup: `make llm-kill` removes stale lock + kills orphaned partitions.
+# `rm -rf /tmp/combobulate_llm.lock` is also not blocked (by omission) but prefer llm-kill.
 #
 # Exit codes:
 #   0 — allow the tool call
