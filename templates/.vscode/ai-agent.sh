@@ -79,7 +79,7 @@ MODEL="${AI_MODEL:-${MODEL:-sonnet}}"
 # Check if agent is configured
 if [ -z "$AI_AGENT" ]; then
     echo "❌ No AI agent configured."
-    echo "   Please run: ocg ai-config set default [claude|opencode|cursor]"
+    echo "   Please run: ocg ai-config set default [claude|codex|cursor]"
     exit 1
 fi
 

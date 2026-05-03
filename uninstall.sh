@@ -121,69 +121,29 @@ else
     echo "   ℹ️  No Claude Code data found"
 fi
 
-# Uninstall OpenCode native binary
+# Uninstall Codex CLI
 echo ""
-echo "🤖 OpenCode uninstallation..."
-if command -v opencode >/dev/null 2>&1; then
-    echo "   ⚠️  Do you want to uninstall OpenCode? [y/N]"
-    read -r confirm_opencode
+echo "🤖 Codex CLI uninstallation..."
+if command -v codex >/dev/null 2>&1; then
+    echo "   ⚠️  Do you want to uninstall Codex CLI? [y/N]"
+    read -r confirm_codex
 
-    if [ "$confirm_opencode" = "y" ] || [ "$confirm_opencode" = "Y" ]; then
-        # Find and remove OpenCode binary from common locations
-        OPENCODE_REMOVED=false
-
-        # Check OpenCode installation paths (based on install script priority)
-        for opencode_path in "$OPENCODE_INSTALL_DIR/opencode" "$XDG_BIN_DIR/opencode" "$HOME/bin/opencode" "$HOME/.opencode/bin/opencode" "$HOME/.local/bin/opencode" "/usr/local/bin/opencode"; do
-            if [ -f "$opencode_path" ]; then
-                rm -f "$opencode_path"
-                echo "   ✅ Removed OpenCode binary: $opencode_path"
-                OPENCODE_REMOVED=true
+    if [ "$confirm_codex" = "y" ] || [ "$confirm_codex" = "Y" ]; then
+        npm uninstall -g @openai/codex 2>/dev/null || echo "   ⚠️  Could not uninstall via npm"
+        # Remove Codex configuration
+        if [ -d "$HOME/.codex" ]; then
+            echo "   ⚠️  Do you want to remove Codex configuration (~/.codex)? [y/N]"
+            read -r confirm_codex_config
+            if [ "$confirm_codex_config" = "y" ] || [ "$confirm_codex_config" = "Y" ]; then
+                rm -rf "$HOME/.codex"
+                echo "   ✅ Removed Codex data: $HOME/.codex"
             fi
-        done
-
-        if [ "$OPENCODE_REMOVED" = false ]; then
-            # Try to find OpenCode binary location
-            OPENCODE_LOCATION=$(command -v opencode 2>/dev/null)
-            if [ -n "$OPENCODE_LOCATION" ]; then
-                rm -f "$OPENCODE_LOCATION"
-                echo "   ✅ Removed OpenCode binary: $OPENCODE_LOCATION"
-            else
-                echo "   ⚠️  Could not locate OpenCode binary for removal"
-            fi
-        fi
-
-        # Remove OpenCode configuration and session data
-        OPENCODE_CLEANUP=false
-        for opencode_data_path in "$HOME/.config/opencode" "$HOME/.local/state/opencode" "$HOME/.local/share/opencode" "$HOME/.cache/opencode"; do
-            if [ -d "$opencode_data_path" ]; then
-                OPENCODE_CLEANUP=true
-                break
-            fi
-        done
-
-        if [ "$OPENCODE_CLEANUP" = "true" ]; then
-            echo "   ⚠️  Do you want to remove OpenCode configuration and session data? [y/N]"
-            read -r confirm_opencode_config
-            if [ "$confirm_opencode_config" = "y" ] || [ "$confirm_opencode_config" = "Y" ]; then
-                for opencode_data_path in "$HOME/.config/opencode" "$HOME/.local/state/opencode" "$HOME/.local/share/opencode" "$HOME/.cache/opencode"; do
-                    if [ -d "$opencode_data_path" ]; then
-                        rm -rf "$opencode_data_path"
-                        echo "   ✅ Removed OpenCode data: $opencode_data_path"
-                    fi
-                done
-            fi
-        fi
-
-        # Remove OpenCode binary directory if it exists and is empty
-        if [ -d "$HOME/.opencode/bin" ]; then
-            rmdir "$HOME/.opencode/bin" 2>/dev/null || true
-            rmdir "$HOME/.opencode" 2>/dev/null || true
         fi
     else
-        echo "   ℹ️  Keeping OpenCode installed"
+        echo "   ℹ️  Keeping Codex installed"
     fi
 else
-    echo "   ℹ️  OpenCode not found"
+    echo "   ℹ️  Codex CLI not found"
 fi
 
 echo ""

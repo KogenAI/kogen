@@ -47,17 +47,16 @@ claude)
         exec claude --dangerously-skip-permissions --model "$MODEL" "$PROMPT_CONTENT"
     fi
     ;;
-opencode)
-    if ! command -v opencode >/dev/null 2>&1; then
-        echo "⚠️  OpenCode not found. Please install OpenCode first and try again."
+codex)
+    if ! command -v codex >/dev/null 2>&1; then
+        echo "⚠️  Codex CLI not found. Please install Codex CLI first and try again."
         exit 1
     fi
-    # Get provider and map model name
-    PROVIDER=$(get_provider "opencode")
-    OC_MODEL=$(map_model "$MODEL" "opencode" "$PROVIDER")
+    # Map model name for Codex
+    CODEX_MODEL=$(map_model "$MODEL" "codex")
 
     # Use interactive mode
-    exec opencode --model "$PROVIDER/$OC_MODEL" --prompt "$PROMPT_CONTENT"
+    exec codex --model "$CODEX_MODEL" --prompt "$PROMPT_CONTENT"
     ;;
 cursor)
     if ! command -v cursor-agent >/dev/null 2>&1; then

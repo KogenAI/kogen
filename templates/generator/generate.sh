@@ -82,7 +82,7 @@ generate_for_tool() {
         if [ "$tool" = "claude" ]; then
             mkdir -p "$output_dir/commands" "$output_dir/agents"
         elif [ "$tool" = "cursor" ]; then
-            mkdir -p "$output_dir/commands" "$output_dir/subagents"
+            mkdir -p "$output_dir/commands" "$output_dir/agents"
         else
             mkdir -p "$output_dir/commands" "$output_dir/agent"
         fi
@@ -94,11 +94,6 @@ generate_for_tool() {
             if [ -f "$TEMPLATES_DIR/claude-code-settings.json" ]; then
                 copy_file "$TEMPLATES_DIR/claude-code-settings.json" "$output_dir/claude-code-settings.json"
                 log_success "Generated claude-code-settings.json"
-            fi
-        elif [ "$tool" = "opencode" ]; then
-            if [ -f "$TEMPLATES_DIR/.opencode.json" ]; then
-                copy_file "$TEMPLATES_DIR/.opencode.json" "$output_dir/.opencode.json"
-                log_success "Generated .opencode.json"
             fi
         fi
 
@@ -126,7 +121,7 @@ generate_for_tool() {
     if [ "$tool" = "claude" ]; then
         agents_subdir="$output_dir/agents"
     elif [ "$tool" = "cursor" ]; then
-        agents_subdir="$output_dir/subagents"
+        agents_subdir="$output_dir/agents"
     else
         agents_subdir="$output_dir/agent"
     fi
@@ -153,6 +148,12 @@ generate_for_tool() {
     log_success "Template generation complete for $tool"
 }
 
+# Generate Codex TOML agents by delegating to generate-codex.sh
+generate_codex() {
+    log_info "Generating templates for codex (TOML)..."
+    bash "$GENERATOR_DIR/generate-codex.sh"
+}
+
 # Main execution
 main() {
     local tool="${1:-all}"
@@ -171,14 +172,16 @@ main() {
     if [ "$tool" = "all" ]; then
         generate_for_tool "claude"
         echo ""
-        generate_for_tool "opencode"
+        generate_codex
         echo ""
         generate_for_tool "cursor"
-    elif [ "$tool" = "claude" ] || [ "$tool" = "opencode" ] || [ "$tool" = "cursor" ]; then
+    elif [ "$tool" = "claude" ] || [ "$tool" = "cursor" ]; then
         generate_for_tool "$tool"
+    elif [ "$tool" = "codex" ]; then
+        generate_codex
     else
         echo "❌ Unknown tool: $tool"
-        echo "Usage: $0 [claude|opencode|cursor|all]"
+        echo "Usage: $0 [claude|codex|cursor|all]"
         exit 1
     fi
 

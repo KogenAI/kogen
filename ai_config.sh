@@ -19,12 +19,11 @@ init_config() {
         "claude": {
             "enabled": true
         },
-        "opencode": {
-            "enabled": true,
-            "provider": "anthropic"
+        "codex": {
+            "enabled": false
         },
         "cursor": {
-            "enabled": true
+            "enabled": false
         }
     }
 }
@@ -78,10 +77,9 @@ show_status() {
     fi
 
     echo ""
-    echo "OpenCode:"
-    echo "  Enabled: $(get_config "agents.opencode.enabled")"
-    echo "  Provider: $(get_config "agents.opencode.provider")"
-    if command -v opencode >/dev/null 2>&1; then
+    echo "Codex:"
+    echo "  Enabled: $(get_config "agents.codex.enabled")"
+    if command -v codex >/dev/null 2>&1; then
         echo "  Installed: ✅"
     else
         echo "  Installed: ❌"
@@ -97,12 +95,6 @@ show_status() {
         echo "  Installed: ❌"
     fi
 
-    echo ""
-    echo "Model Mappings:"
-    # Model mappings are handled by model-mapper.sh, not stored in config
-    source "$SCRIPT_DIR/ai-agents/model-mapper.sh"
-    echo "  sonnet → $(map_model "sonnet" "opencode" "anthropic")"
-    echo "  opus → $(map_model "opus" "opencode" "anthropic")"
 }
 
 # Main command handling
@@ -110,12 +102,12 @@ case "$1" in
 set)
     if [ "$2" = "default" ]; then
         if [ -z "$3" ]; then
-            echo "Usage: ocg ai-config set default [claude|opencode|cursor]"
+            echo "Usage: ocg ai-config set default [claude|codex|cursor]"
             exit 1
         fi
-        if [ "$3" != "claude" ] && [ "$3" != "opencode" ] && [ "$3" != "cursor" ]; then
+        if [ "$3" != "claude" ] && [ "$3" != "codex" ] && [ "$3" != "cursor" ]; then
             echo "❌ Invalid agent: $3"
-            echo "   Valid options: claude, opencode, cursor"
+            echo "   Valid options: claude, codex, cursor"
             exit 1
         fi
         set_config "default_agent" "$3"
@@ -158,7 +150,7 @@ status)
 *)
     echo "Usage: ocg ai-config <action> [options]"
     echo "Actions:"
-    echo "  set default <agent>      Set default AI agent (claude|opencode|cursor)"
+    echo "  set default <agent>      Set default AI agent (claude|codex|cursor)"
     echo "  get default              Show current default agent"
     echo "  get <key>                Get a configuration value"
     echo "  set <key> <value>        Set a configuration value"

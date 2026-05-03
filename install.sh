@@ -3,7 +3,7 @@
 # Optimum Codegen CLI Installation Script
 # Usage: install.sh [--all]
 #   By default installs Claude Code only.
-#   Pass --all to also install OpenCode and Cursor CLI.
+#   Pass --all to also install Codex and Cursor CLI.
 #
 # Environment variables:
 #   STACK — informational only; does not affect which agents are installed.
@@ -338,46 +338,89 @@ fi
 
 if [ "$INSTALL_ALL" = true ]; then
     echo ""
-    echo "🔧 Setting up OpenCode configuration..."
+    echo "🔧 Setting up Codex configuration..."
+    mkdir -p "$HOME/.codex/agents"
+    mkdir -p "$HOME/.codex/hooks"
 
-    mkdir -p "$HOME/.config/opencode"
+    # Copy hook scripts
+    for hook_script in "$CODEGEN_DIR/templates/shared/hooks/codex-inspector-bash-guard.sh" "$CODEGEN_DIR/templates/shared/hooks/codex-inspector-write-guard.sh" "$CODEGEN_DIR/templates/shared/hooks/commit-only-via-committer.sh"; do
+        if [ -f "$hook_script" ]; then
+            cp "$hook_script" "$HOME/.codex/hooks/"
+            chmod +x "$HOME/.codex/hooks/$(basename "$hook_script")"
+        fi
+    done
 
-    if [ -f "$CODEGEN_DIR/templates/generated/opencode/.opencode.json" ]; then
-        cp "$CODEGEN_DIR/templates/generated/opencode/.opencode.json" "$HOME/.config/opencode/config.json"
-        echo "   ✅ OpenCode configuration installed"
-    fi
-
-    if [ -f "$CODEGEN_DIR/templates/generated/opencode/AGENTS.md" ]; then
-        cp "$CODEGEN_DIR/templates/generated/opencode/AGENTS.md" "$HOME/.config/opencode/"
-        echo "   ✅ OpenCode AGENTS.md installed"
-    fi
-
-    echo "   🤖 Installing OpenCode sub agents..."
-    OPENCODE_AGENTS_DIR="$HOME/.config/opencode/agent"
-    mkdir -p "$OPENCODE_AGENTS_DIR"
-
-    if [ -d "$CODEGEN_DIR/templates/generated/opencode/agent" ]; then
-        for agent_file in "$CODEGEN_DIR/templates/generated/opencode/agent"/*.md; do
+    # Install agent TOML files
+    echo "   🤖 Installing Codex agents..."
+    CODEX_AGENTS_MANIFEST="$HOME/.codex/agents/.installed-by-ocg"
+    CURRENT_CODEX_AGENTS=()
+    if [ -d "$CODEGEN_DIR/templates/generated/codex/agents" ]; then
+        for agent_file in "$CODEGEN_DIR/templates/generated/codex/agents"/*.toml; do
             if [ -f "$agent_file" ]; then
                 agent_name=$(basename "$agent_file")
-                cp "$agent_file" "$OPENCODE_AGENTS_DIR/"
-                echo "   ✅ Installed OpenCode sub agent: ${agent_name%.md}"
+                cp "$agent_file" "$HOME/.codex/agents/"
+                echo "   ✅ Installed Codex agent: ${agent_name%.toml}"
+                CURRENT_CODEX_AGENTS+=("$agent_name")
             fi
         done
     fi
-
-    echo "   📁 Installing OpenCode custom commands..."
-    OPENCODE_COMMANDS_DIR="$HOME/.config/opencode/command"
-    mkdir -p "$OPENCODE_COMMANDS_DIR"
-
-    if [ -d "$CODEGEN_DIR/templates/shared/commands" ]; then
-        for cmd_file in "$CODEGEN_DIR/templates/shared/commands"/*.md; do
-            if [ -f "$cmd_file" ]; then
-                cmd_name=$(basename "$cmd_file")
-                cp "$cmd_file" "$OPENCODE_COMMANDS_DIR/"
-                echo "   ✅ Installed OpenCode command: /${cmd_name%.md}"
+    # Delete stale TOML agents from previous installs
+    if [ -f "$CODEX_AGENTS_MANIFEST" ]; then
+        while IFS= read -r old_agent; do
+            if [ -n "$old_agent" ]; then
+                still_present=false
+                for cur in "${CURRENT_CODEX_AGENTS[@]}"; do
+                    [ "$cur" = "$old_agent" ] && still_present=true && break
+                done
+                if [ "$still_present" = "false" ] && [ -f "$HOME/.codex/agents/$old_agent" ]; then
+                    rm -f "$HOME/.codex/agents/$old_agent"
+                    echo "   🗑️  Removed stale Codex agent: ${old_agent%.toml}"
+                fi
             fi
-        done
+        done <"$CODEX_AGENTS_MANIFEST"
+    fi
+    printf '%s\n' "${CURRENT_CODEX_AGENTS[@]}" >"$CODEX_AGENTS_MANIFEST"
+
+    # Install/merge config.toml
+    if [ -f "$CODEGEN_DIR/templates/generated/codex/config.toml" ]; then
+        if [ -f "$HOME/.codex/config.toml" ]; then
+            # Merge: preserve user's model/review_model/theme keys; overwrite [agents]/[features]/[[hooks.PreToolUse]]
+            python3 - "$HOME/.codex/config.toml" "$CODEGEN_DIR/templates/generated/codex/config.toml" <<'PY'
+import sys, shutil
+try:
+    import tomllib
+except ImportError:
+    try:
+        import tomli as tomllib
+    except ImportError:
+        print("   ⚠️  tomllib/tomli not available — overwriting config.toml (user keys NOT preserved)")
+        shutil.copy2(sys.argv[2], sys.argv[1])
+        sys.exit(0)
+try:
+    import tomli_w
+except ImportError:
+    import subprocess
+    subprocess.run(["pip", "install", "--user", "--quiet", "tomli_w"], capture_output=True)
+    try:
+        import tomli_w
+    except ImportError:
+        print("   ⚠️  tomli_w unavailable — overwriting config.toml (user keys NOT preserved)")
+        shutil.copy2(sys.argv[2], sys.argv[1])
+        sys.exit(0)
+with open(sys.argv[1], "rb") as f:
+    user = tomllib.load(f)
+with open(sys.argv[2], "rb") as f:
+    generated = tomllib.load(f)
+# generated keys take priority; user-only keys are preserved via **user base
+merged = {**user, **generated}
+with open(sys.argv[1], "wb") as f:
+    tomli_w.dump(merged, f)
+print("   ✅ Codex config.toml merged (user keys preserved)")
+PY
+        else
+            cp "$CODEGEN_DIR/templates/generated/codex/config.toml" "$HOME/.codex/config.toml"
+            echo "   ✅ Codex config.toml installed"
+        fi
     fi
 
     echo ""
@@ -399,16 +442,16 @@ if [ "$INSTALL_ALL" = true ]; then
         done
     fi
 
-    echo "   🤖 Installing Cursor CLI sub agents..."
-    CURSOR_SUBAGENTS_DIR="$HOME/.cursor/subagents"
+    echo "   🤖 Installing Cursor CLI agents..."
+    CURSOR_SUBAGENTS_DIR="$HOME/.cursor/agents"
     mkdir -p "$CURSOR_SUBAGENTS_DIR"
 
-    if [ -d "$CODEGEN_DIR/templates/generated/cursor/subagents" ]; then
-        for agent_file in "$CODEGEN_DIR/templates/generated/cursor/subagents"/*.md; do
+    if [ -d "$CODEGEN_DIR/templates/generated/cursor/agents" ]; then
+        for agent_file in "$CODEGEN_DIR/templates/generated/cursor/agents"/*.md; do
             if [ -f "$agent_file" ]; then
                 agent_name=$(basename "$agent_file")
                 cp "$agent_file" "$CURSOR_SUBAGENTS_DIR/"
-                echo "   ✅ Installed Cursor sub agent: ${agent_name%.md}"
+                echo "   ✅ Installed Cursor agent: ${agent_name%.md}"
             fi
         done
     fi
@@ -421,17 +464,17 @@ if [ ! -f "$HOME/.ocg/config.json" ]; then
     if [ "$INSTALL_ALL" = true ]; then
         echo ""
         echo "🤖 AI Agent Configuration"
-        echo "   Claude Code, OpenCode, and Cursor CLI are now installed."
+        echo "   Claude Code, Codex, and Cursor CLI are now installed."
         echo "   Which should be your default AI agent?"
         echo "   1) claude (Claude Code)"
-        echo "   2) opencode (OpenCode)"
+        echo "   2) codex (Codex)"
         echo "   3) cursor (Cursor CLI)"
         echo ""
         read -p "   Choose [1-3]: " choice
 
         case $choice in
         1) default_agent="claude" ;;
-        2) default_agent="opencode" ;;
+        2) default_agent="codex" ;;
         3) default_agent="cursor" ;;
         *) default_agent="claude" ;;
         esac
@@ -444,7 +487,7 @@ if [ ! -f "$HOME/.ocg/config.json" ]; then
     "default_agent": "$default_agent",
     "agents": {
         "claude": { "enabled": true },
-        "opencode": { "enabled": false, "provider": "anthropic" },
+        "codex": { "enabled": false },
         "cursor": { "enabled": false }
     }
 }

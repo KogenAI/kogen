@@ -7,10 +7,9 @@ templates:
 commands:
   source_dir: "shared/commands"
   claude_output_dir: "generated/claude-code/commands"
-  opencode_output_dir: "generated/opencode/commands"
 
 # Subagent templates (generated dynamically from shared/subagents/)
 subagents:
   source_dir: "shared/subagents"
   claude_output_dir: "generated/claude-code/subagents"
-  opencode_output_dir: "generated/opencode/subagents"
+  codex_output_dir: "generated/codex/agents"

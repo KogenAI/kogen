@@ -11,8 +11,8 @@ if [ $# -eq 0 ]; then
     echo "Examples:"
     echo "  $0 dashboard-redesign"
     echo "  $0 dashboard-redesign --model opus"
-    echo "  $0 dashboard-redesign --agent opencode"
-    echo "  $0 dashboard-redesign -m opus -a opencode --container"
+    echo "  $0 dashboard-redesign --agent codex"
+    echo "  $0 dashboard-redesign -m opus -a codex --container"
     exit 1
 fi
 
@@ -275,7 +275,7 @@ if [ -f "$SCRIPT_DIR/templates/RESUME_PROMPT.md" ]; then
     sed -i '' "s|{{PORT}}|$PORT|g" "$WORKSPACE_PATH/codegen/PROMPT.md"
 
     # Set the correct agent context file based on AI agent
-    if [ "$AGENT" = "opencode" ]; then
+    if [ "$AGENT" = "codex" ]; then
         sed -i '' "s|{{AGENT_CONTEXT_FILE}}|AGENTS.md|g" "$WORKSPACE_PATH/codegen/PROMPT.md"
     else
         sed -i '' "s|{{AGENT_CONTEXT_FILE}}|CLAUDE.md|g" "$WORKSPACE_PATH/codegen/PROMPT.md"
@@ -290,20 +290,11 @@ if [ -f "$SCRIPT_DIR/templates/RESUME_PROMPT.md" ]; then
 fi
 
 # Update MCP configuration if needed
-if [ "$AGENT" = "opencode" ]; then
-    # Update OpenCode MCP configuration with current ports
-    if [ -f "$SCRIPT_DIR/templates/.opencode-mcp.json" ] && [ -n "$PORT" ]; then
-        sed "s/{{PORT}}/${PORT}/g" \
-            "$SCRIPT_DIR/templates/.opencode-mcp.json" >"$WORKSPACE_PATH/opencode.json"
-        echo "✅ Updated opencode.json with current workspace ports"
-    fi
-else
-    # Update Claude MCP configuration with current ports
-    if [ -f "$SCRIPT_DIR/templates/.mcp.json" ] && [ -n "$PORT" ]; then
-        sed "s/{{PORT}}/${PORT}/g" \
-            "$SCRIPT_DIR/templates/.mcp.json" >"$WORKSPACE_PATH/.mcp.json"
-        echo "✅ Updated .mcp.json with current workspace ports"
-    fi
+# Update Claude MCP configuration with current ports
+if [ -f "$SCRIPT_DIR/templates/.mcp.json" ] && [ -n "$PORT" ]; then
+    sed "s/{{PORT}}/${PORT}/g" \
+        "$SCRIPT_DIR/templates/.mcp.json" >"$WORKSPACE_PATH/.mcp.json"
+    echo "✅ Updated .mcp.json with current workspace ports"
 fi
 
 # Resume workspace - either in container or native

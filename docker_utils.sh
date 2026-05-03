@@ -34,14 +34,6 @@ ensure_shared_ai_volumes() {
         echo "   ✓ Shared Claude volume exists: ocg-claude-shared"
     fi
 
-    # Create OpenCode shared volume
-    if ! docker volume ls | grep -q "ocg-opencode-shared"; then
-        docker volume create "ocg-opencode-shared" >/dev/null 2>&1
-        echo "   ✅ Created shared OpenCode volume: ocg-opencode-shared"
-    else
-        echo "   ✓ Shared OpenCode volume exists: ocg-opencode-shared"
-    fi
-
     # Create AI config shared volume
     if ! docker volume ls | grep -q "ocg-ai-config-shared"; then
         docker volume create "ocg-ai-config-shared" >/dev/null 2>&1

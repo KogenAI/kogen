@@ -11,8 +11,8 @@ if [ $# -eq 0 ]; then
     echo "Examples:"
     echo "  $0 dashboard-redesign"
     echo "  $0 dashboard-redesign --model opus"
-    echo "  $0 dashboard-redesign --agent opencode"
-    echo "  $0 dashboard-redesign -m opus -a opencode --container"
+    echo "  $0 dashboard-redesign --agent codex"
+    echo "  $0 dashboard-redesign -m opus -a codex --container"
     exit 1
 fi
 
@@ -264,7 +264,7 @@ if [ -f "$SCRIPT_DIR/templates/NEW_PROMPT.md" ]; then
     sed -i '' "s|{{PORT}}|$NEXT_PORT|g" "$WORKSPACE_PATH/codegen/PROMPT.md"
 
     # Set the correct agent context file based on AI agent
-    if [ "$AGENT" = "opencode" ]; then
+    if [ "$AGENT" = "codex" ]; then
         sed -i '' "s|{{AGENT_CONTEXT_FILE}}|AGENTS.md|g" "$WORKSPACE_PATH/codegen/PROMPT.md"
     else
         sed -i '' "s|{{AGENT_CONTEXT_FILE}}|CLAUDE.md|g" "$WORKSPACE_PATH/codegen/PROMPT.md"
@@ -303,14 +303,7 @@ ln -sf "AGENTS.md" "$WORKSPACE_PATH/CLAUDE.md"
 echo "✅ Created CLAUDE.md symlink for backward compatibility"
 
 # Create MCP configuration based on agent
-if [ "$AGENT" = "opencode" ]; then
-    # Create OpenCode MCP configuration in workspace root
-    if [ -f "$SCRIPT_DIR/templates/.opencode-mcp.json" ]; then
-        sed "s/{{PORT}}/${NEXT_PORT}/g" \
-            "$SCRIPT_DIR/templates/.opencode-mcp.json" >"$WORKSPACE_PATH/opencode.json"
-        echo "✅ Created opencode.json with MCP configuration and workspace-specific ports"
-    fi
-elif [ "$AGENT" = "cursor" ]; then
+if [ "$AGENT" = "cursor" ]; then
     # Create Cursor MCP configuration (mcp.json, not .mcp.json)
     if [ -f "$SCRIPT_DIR/templates/.mcp.json" ]; then
         sed "s/{{PORT}}/${NEXT_PORT}/g" \

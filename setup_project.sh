@@ -426,7 +426,6 @@ update_ignore_file() {
 /AGENTS.md
 /CLAUDE.md
 .mcp.json
-opencode.json
 *.code-workspace
 .env"
 
@@ -562,13 +561,6 @@ if [ ! -f "$REPO_ROOT/.mcp.json" ]; then
     echo "✅ Created .mcp.json configuration"
 fi
 
-# Create opencode.json from template
-if [ ! -f "$REPO_ROOT/opencode.json" ]; then
-    sed -e "s/{{PORT}}/4000/g" \
-        "$SCRIPT_DIR/templates/.opencode-mcp.json" >"$REPO_ROOT/opencode.json"
-    echo "✅ Created opencode.json configuration"
-fi
-
 # Install dependencies if mix.exs was modified
 if [ -f "$REPO_ROOT/mix.exs" ] && command -v mix >/dev/null 2>&1; then
     echo "📦 Installing dependencies..."
@@ -583,11 +575,11 @@ if [ "$NEEDS_AI_ANALYSIS" = true ]; then
     CONFIG_FILE="$HOME/.ocg/config.json"
     if [ -n "$AGENT_OVERRIDE" ]; then
         case "$AGENT_OVERRIDE" in
-        "claude" | "opencode" | "cursor")
+        "claude" | "codex" | "cursor")
             AI_AGENT="$AGENT_OVERRIDE"
             ;;
         *)
-            echo "⚠️  Invalid agent '$AGENT_OVERRIDE'. Valid agents: claude, opencode, cursor"
+            echo "⚠️  Invalid agent '$AGENT_OVERRIDE'. Valid agents: claude, codex, cursor"
             AI_AGENT=$(jq -r '.default_agent // "claude"' "$CONFIG_FILE" 2>/dev/null || echo "claude")
             ;;
         esac

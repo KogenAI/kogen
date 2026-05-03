@@ -41,8 +41,8 @@ new:
 		echo "Examples:"; \
 		echo "  $$OCG_CMD new dashboard-redesign"; \
 		echo "  $$OCG_CMD new dashboard-redesign --model opus"; \
-		echo "  $$OCG_CMD new dashboard-redesign --agent opencode"; \
-		echo "  $$OCG_CMD new dashboard-redesign -m opus -a opencode --container"; \
+		echo "  $$OCG_CMD new dashboard-redesign --agent codex"; \
+		echo "  $$OCG_CMD new dashboard-redesign -m opus -a codex --container"; \
 		exit 1; \
 	fi
 	@args="$(filter-out $@,$(MAKECMDGOALS))"; \
@@ -175,8 +175,8 @@ resume:
 		echo "Examples:"; \
 		echo "  $$OCG_CMD resume dashboard-redesign"; \
 		echo "  $$OCG_CMD resume dashboard-redesign --model opus"; \
-		echo "  $$OCG_CMD resume dashboard-redesign --agent opencode"; \
-		echo "  $$OCG_CMD resume dashboard-redesign -m opus -a opencode --container"; \
+		echo "  $$OCG_CMD resume dashboard-redesign --agent codex"; \
+		echo "  $$OCG_CMD resume dashboard-redesign -m opus -a codex --container"; \
 		exit 1; \
 	fi
 	@args="$(filter-out $@,$(MAKECMDGOALS))"; \
@@ -264,12 +264,12 @@ ai-config:
 	@if [ -z "$(filter-out $@,$(MAKECMDGOALS))" ]; then \
 		echo "Usage: ocg ai-config <action> [options]"; \
 		echo "Actions:"; \
-		echo "  set default <agent>      Set default AI agent (claude|opencode|cursor)"; \
+		echo "  set default <agent>      Set default AI agent (claude|codex|cursor)"; \
 		echo "  get default              Show current default agent"; \
 		echo "  status                   Show full configuration"; \
 		echo ""; \
 		echo "Examples:"; \
-		echo "  ocg ai-config set default opencode"; \
+		echo "  ocg ai-config set default codex"; \
 		echo "  ocg ai-config get default"; \
 		echo "  ocg ai-config status"; \
 		exit 1; \
@@ -321,10 +321,10 @@ help:
 		echo "  $$OCG_CMD uninstall                   🗑️  Remove global CLI installation"; \
 		echo ""; \
 		echo "🔄 Updates:"; \
-		echo "  $$OCG_CMD update                      🔄 Update all AI agents (Claude Code, OpenCode, Cursor CLI)"; \
+		echo "  $$OCG_CMD update                      🔄 Update all AI agents (Claude Code, Codex, Cursor CLI)"; \
 		echo ""; \
 		echo "🤖 AI Agent Configuration:"; \
-		echo "  $$OCG_CMD ai-config set default       🔧 Set default AI agent (claude|opencode|cursor)"; \
+		echo "  $$OCG_CMD ai-config set default       🔧 Set default AI agent (claude|codex|cursor)"; \
 		echo "  $$OCG_CMD ai-config status            📊 Show AI agent configuration"; \
 		echo ""; \
 		echo "📋 Recommended Workflow:"; \

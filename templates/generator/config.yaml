@@ -14,17 +14,17 @@ tools:
     agents_dir: "agents"
     settings_dir: "$HOME/.claude"
 
-  opencode:
-    name: "opencode"
-    display_name: "OpenCode"
+  codex:
+    name: "codex"
+    display_name: "Codex"
     yaml_frontmatter: false
     permissions_enabled: false
-    hooks_enabled: false # Uses formatter config instead
-    config_file: ".opencode.json"
-    mcp_config: ".opencode-mcp.json"
-    commands_dir: "commands"
+    hooks_enabled: true
+    config_file: "config.toml"
+    mcp_config: null
+    commands_dir: null
     agents_dir: "agents"
-    settings_dir: "$HOME/.config/opencode"
+    settings_dir: "$HOME/.codex"
 
   cursor:
     name: "cursor"
@@ -35,7 +35,7 @@ tools:
     config_file: null
     mcp_config: "mcp.json"
     commands_dir: "commands"
-    agents_dir: "subagents"
+    agents_dir: "agents"
     settings_dir: "$HOME/.cursor"
 
 # Common variables available to all templates
@@ -44,3 +44,37 @@ common:
   agents_file: "AGENTS.md"
   context_file: "CONTEXT.md"
   tidewave_port_template: "{{PORT}}"
+
+harness_models:
+  planner:
+    claude: "claude-opus-4-7"
+    codex: "gpt-5.5"
+    cursor: "claude-opus-4-7-thinking-high"
+  phoenix-developer:
+    claude: "claude-sonnet-4-6"
+    codex: "gpt-5.3-codex"
+    cursor: "claude-sonnet-4-6"
+  data-layer-developer:
+    claude: "claude-sonnet-4-6"
+    codex: "gpt-5.3-codex"
+    cursor: "claude-sonnet-4-6"
+  static-site-developer:
+    claude: "claude-sonnet-4-6"
+    codex: "gpt-5.3-codex"
+    cursor: "claude-sonnet-4-6"
+  verification-engineer:
+    claude: "claude-sonnet-4-6"
+    codex: "gpt-5.3-codex"
+    cursor: "claude-sonnet-4-6"
+  code-reviewer:
+    claude: "claude-sonnet-4-6"
+    codex: "gpt-5.3-codex"
+    cursor: "claude-sonnet-4-6"
+  committer:
+    claude: "claude-haiku-4-5-20251001"
+    codex: "gpt-5.3-codex-spark"
+    cursor: "claude-haiku-4-5-20251001"
+  static-site-verifier:
+    claude: "claude-haiku-4-5-20251001"
+    codex: "gpt-5.3-codex-spark"
+    cursor: "claude-haiku-4-5-20251001"

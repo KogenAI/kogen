@@ -24,43 +24,22 @@ map_model() {
         return
     fi
 
-    # For OpenCode with Anthropic provider, map to full model names
-    if [ "$provider" = "anthropic" ]; then
+    # For Codex, map to OpenAI model names
+    if [ "$assistant" = "codex" ]; then
         case "$model" in
-        haiku) echo "claude-haiku-4-5-20251001" ;;
-        sonnet) echo "claude-sonnet-4-5-20250929" ;;
-        opus) echo "claude-opus-4-1-20250805" ;;
-        *) echo "claude-sonnet-4-5-20250929" ;; # Default to sonnet
+        haiku) echo "gpt-5.3-codex-spark" ;;
+        sonnet) echo "gpt-5.3-codex" ;;
+        opus) echo "gpt-5.5" ;;
+        *) echo "gpt-5.3-codex" ;; # Default to codex
         esac
-    else
-        # For other providers, pass through as-is
-        echo "$model"
+        return
     fi
+
+    # Fallback: pass through as-is
+    echo "$model"
 }
 
-# Get provider from config or environment
+# Get provider from config or environment (retained for backward compatibility)
 get_provider() {
-    local assistant="$1"
-    if [ "$assistant" = "opencode" ]; then
-        # Check environment variable first
-        if [ -n "$OPENCODE_PROVIDER" ]; then
-            echo "$OPENCODE_PROVIDER"
-            return
-        fi
-
-        # Check config file
-        local config_file="$HOME/.ocg/config.json"
-        if [ -f "$config_file" ]; then
-            local provider=$(jq -r '.agents.opencode.provider // empty' "$config_file" 2>/dev/null)
-            if [ -n "$provider" ]; then
-                echo "$provider"
-                return
-            fi
-        fi
-
-        # Default to anthropic
-        echo "anthropic"
-    else
-        echo "anthropic"
-    fi
+    echo "anthropic"
 }

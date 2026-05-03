@@ -254,11 +254,11 @@ PROMPT_EOF
     CONFIG_FILE="$HOME/.ocg/config.json"
     if [ -n "$AGENT_OVERRIDE" ]; then
         case "$AGENT_OVERRIDE" in
-        "claude" | "opencode" | "cursor")
+        "claude" | "codex" | "cursor")
             AI_ASSISTANT="$AGENT_OVERRIDE"
             ;;
         *)
-            echo "⚠️  Invalid agent '$AGENT_OVERRIDE'. Valid agents: claude, opencode, cursor"
+            echo "⚠️  Invalid agent '$AGENT_OVERRIDE'. Valid agents: claude, codex, cursor"
             if [ -f "$CONFIG_FILE" ]; then
                 AI_ASSISTANT=$(jq -r '.default_agent // "claude"' "$CONFIG_FILE" 2>/dev/null || echo "claude")
             else
@@ -370,7 +370,7 @@ while [[ $# -gt 0 ]]; do
         echo "Examples:"
         echo "  ocg usage-rules"
         echo "  ocg usage-rules --model haiku"
-        echo "  ocg usage-rules -m sonnet -a opencode"
+        echo "  ocg usage-rules -m sonnet -a codex"
         exit 0
         ;;
     *)
