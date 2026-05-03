@@ -5,6 +5,10 @@
 # reports done, auto-format their diff so verification-engineer never sees a
 # prettier-only or mix-format-only failure. Also surface any LLM-test signal.
 #
+# Scans the full branch diff (origin/main..HEAD) — not just the working-tree
+# changes — so files committed in earlier steps of a multi-step session are
+# included and formatted.
+#
 # Behaviour:
 #   - phoenix-developer / data-layer-developer:
 #       * mix format on changed .ex/.exs/.heex files
@@ -87,7 +91,12 @@ collect_changed_abs() {
     [ -d "$repo/.git" ] || return 0
     (
         cd "$repo" 2>/dev/null || exit 0
+        # Use full branch diff (origin/main..HEAD) so files committed in earlier
+        # steps of a multi-step session are included — not just working-tree changes.
+        # Fall back to HEAD diff if origin/main is unavailable (e.g. no remote).
+        branch_base=$(git merge-base origin/main HEAD 2>/dev/null || echo "HEAD")
         {
+            git diff --name-only --diff-filter=ACMR -z "${branch_base}" HEAD 2>/dev/null
             git diff --name-only --diff-filter=ACMR -z HEAD 2>/dev/null
             git ls-files --others --exclude-standard -z 2>/dev/null
         } | tr '\0' '\n' | awk -v root="$repo" 'NF { print root"/"$0 }'
