@@ -219,7 +219,7 @@ plan:
 
 install:
 	$(call check_make_only,install)
-	@./install.sh
+	@./install.sh --all
 
 uninstall:
 	$(call check_ocg_only,uninstall)

@@ -400,7 +400,9 @@ try:
     import tomli_w
 except ImportError:
     import subprocess
-    subprocess.run(["pip", "install", "--user", "--quiet", "tomli_w"], capture_output=True)
+    r = subprocess.run(["pip3", "install", "--user", "--quiet", "tomli_w", "--break-system-packages"], capture_output=True)
+    if r.returncode != 0:
+        subprocess.run(["pip3", "install", "--user", "--quiet", "tomli_w"], capture_output=True)
     try:
         import tomli_w
     except ImportError:
