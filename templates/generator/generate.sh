@@ -114,7 +114,7 @@ generate_for_tool() {
     # which subdirs are walked.
     local subagents_root="$TEMPLATES_DIR/shared/subagents"
 
-    local subdirs=("$subagents_root/shared" "$subagents_root/phoenix" "$subagents_root/static" "$subagents_root/platform")
+    local subdirs=("$subagents_root/shared" "$subagents_root/phoenix" "$subagents_root/static")
 
     # Determine output subdir for agent files
     local agents_subdir

@@ -219,7 +219,7 @@ plan:
 
 install:
 	$(call check_make_only,install)
-	@./install.sh --all
+	@./install.sh
 
 uninstall:
 	$(call check_ocg_only,uninstall)
@@ -250,6 +250,80 @@ format:
 	@shfmt -w -i 4 .
 	@npx prettier -w --log-level error .
 	@echo "✅ All files formatted"
+
+doctor:
+	$(call check_make_only,doctor)
+	@set +e; \
+	fails=0; \
+	check() { \
+		local label="$$1"; shift; \
+		if "$$@" >/dev/null 2>&1; then \
+			echo "OK: $$label"; \
+		else \
+			echo "FAIL: $$label"; \
+			fails=$$((fails + 1)); \
+		fi; \
+	}; \
+	echo "🩺 Running OCG codegen doctor..."; \
+	echo ""; \
+	if command -v claude >/dev/null 2>&1 && claude --version >/dev/null 2>&1; then \
+		echo "OK: claude on PATH and --version exits 0"; \
+	else \
+		echo "FAIL: claude on PATH and --version exits 0"; fails=$$((fails + 1)); \
+	fi; \
+	if command -v codex >/dev/null 2>&1 && codex --version >/dev/null 2>&1; then \
+		echo "OK: codex on PATH and --version exits 0"; \
+	else \
+		echo "FAIL: codex on PATH and --version exits 0"; fails=$$((fails + 1)); \
+	fi; \
+	if command -v cursor-agent >/dev/null 2>&1 && cursor-agent --version >/dev/null 2>&1; then \
+		echo "OK: cursor-agent on PATH and --version exits 0"; \
+	else \
+		echo "FAIL: cursor-agent on PATH and --version exits 0"; fails=$$((fails + 1)); \
+	fi; \
+	if [ -f "$$HOME/.codex/config.toml" ]; then \
+		echo "OK: ~/.codex/config.toml exists"; \
+	else \
+		echo "FAIL: ~/.codex/config.toml exists (run 'make install')"; fails=$$((fails + 1)); \
+	fi; \
+	if [ -f "$$HOME/.claude/settings.json" ]; then \
+		echo "OK: ~/.claude/settings.json exists"; \
+	else \
+		echo "FAIL: ~/.claude/settings.json exists (run 'make install')"; fails=$$((fails + 1)); \
+	fi; \
+	if [ -n "$$OCG_CONTEXT_DIR" ] && [ -d "$$OCG_CONTEXT_DIR" ]; then \
+		echo "OK: OCG_CONTEXT_DIR set and directory exists ($$OCG_CONTEXT_DIR)"; \
+	else \
+		echo "FAIL: OCG_CONTEXT_DIR not set or directory missing"; fails=$$((fails + 1)); \
+	fi; \
+	if python3 -c "import yaml" >/dev/null 2>&1; then \
+		echo "OK: python3 -c 'import yaml' (pyyaml available)"; \
+	else \
+		echo "FAIL: pyyaml not installed (pip3 install --user pyyaml)"; fails=$$((fails + 1)); \
+	fi; \
+	if command -v jq >/dev/null 2>&1; then \
+		echo "OK: jq on PATH"; \
+	else \
+		echo "FAIL: jq not on PATH (brew install jq)"; fails=$$((fails + 1)); \
+	fi; \
+	if command -v rg >/dev/null 2>&1; then \
+		echo "OK: rg (ripgrep) on PATH"; \
+	else \
+		echo "FAIL: rg not on PATH (brew install ripgrep)"; fails=$$((fails + 1)); \
+	fi; \
+	if command -v mise >/dev/null 2>&1; then \
+		echo "OK: mise on PATH"; \
+	else \
+		echo "FAIL: mise not on PATH (curl https://mise.run | sh)"; fails=$$((fails + 1)); \
+	fi; \
+	echo ""; \
+	if [ $$fails -eq 0 ]; then \
+		echo "✅ All checks passed"; \
+		exit 0; \
+	else \
+		echo "❌ $$fails check(s) failed"; \
+		exit 1; \
+	fi
 
 remove-comments:
 	$(call check_ocg_only,remove-comments)

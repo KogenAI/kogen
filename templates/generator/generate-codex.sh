@@ -47,7 +47,7 @@ echo "🚀 Generating Codex TOML agents..."
 # process_template.py — see STYLE_GUIDE.md. No per-role allowlist here.
 
 # Walk all subagent template subdirs
-SUBDIRS=("$SUBAGENTS_ROOT/shared" "$SUBAGENTS_ROOT/phoenix" "$SUBAGENTS_ROOT/static" "$SUBAGENTS_ROOT/platform")
+SUBDIRS=("$SUBAGENTS_ROOT/shared" "$SUBAGENTS_ROOT/phoenix" "$SUBAGENTS_ROOT/static")
 
 GENERATED_AGENTS=()
 

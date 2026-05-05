@@ -3,7 +3,7 @@
 Simple Jinja2-like template processor for OCG template generation.
 
 Two output formats:
-  --format=md   (default) — emit Markdown body for Claude/Cursor/OpenCode.
+  --format=md   (default) — emit Markdown body for Claude/Cursor.
   --format=toml          — emit Codex per-agent TOML (requires --config and --role).
 
 For TOML output, the template MUST declare a `tools:` line in its YAML
@@ -43,20 +43,15 @@ def _strip_template_blocks(content, tool_name, yaml_frontmatter):
     else:
         content = re.sub(r'{% if tool\.yaml_frontmatter %}.*?{% endif %}', '', content, flags=re.DOTALL)
 
-    # if/elif/endif: claude vs opencode
-    if tool_name in ('claude', 'codex', 'cursor'):
-        content = re.sub(r'{% if tool\.name == \'claude\' %}(.*?){% elif tool\.name == \'opencode\' %}.*?{% endif %}', r'\1', content, flags=re.DOTALL)
-    elif tool_name == 'opencode':
-        content = re.sub(r'{% if tool\.name == \'claude\' %}.*?{% elif tool\.name == \'opencode\' %}(.*?){% endif %}', r'\1', content, flags=re.DOTALL)
-
-    # Simple if/endif blocks. codex and cursor currently render the claude
-    # branch; explicit branches exist as future-divergence hooks.
+    # if/elif/endif and simple if/endif blocks. Only `claude`, `codex`, and
+    # `cursor` are supported tool names; codex and cursor currently render the
+    # claude branch (explicit branch points exist as future-divergence hooks).
     if tool_name in ('claude', 'codex', 'cursor'):
         content = re.sub(r'{% if tool\.name == \'claude\' %}(.*?){% endif %}', r'\1', content, flags=re.DOTALL)
-        content = re.sub(r'{% if tool\.name == \'opencode\' %}.*?{% endif %}', '', content, flags=re.DOTALL)
-    elif tool_name == 'opencode':
-        content = re.sub(r'{% if tool\.name == \'opencode\' %}(.*?){% endif %}', r'\1', content, flags=re.DOTALL)
-        content = re.sub(r'{% if tool\.name == \'claude\' %}.*?{% endif %}', '', content, flags=re.DOTALL)
+    else:
+        raise ValueError(
+            f"Unsupported tool_name: {tool_name!r} (expected 'claude', 'codex', or 'cursor')"
+        )
 
     # Resolve {% include 'path' %} directives.
     def replace_include(match):
@@ -225,7 +220,7 @@ if __name__ == "__main__":
                         help='Role name to look up in harness_models (required for --format=toml)')
     parser.add_argument('template_file', help='Template file to process')
     parser.add_argument('tool_name', nargs='?', default=None,
-                        help='Tool name (claude, codex, cursor, opencode) — md format only')
+                        help='Tool name (claude, codex, cursor) — md format only')
     parser.add_argument('yaml_frontmatter', nargs='?', default=None,
                         help='Whether to include YAML frontmatter (true/false) — md format only')
 

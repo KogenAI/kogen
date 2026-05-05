@@ -92,8 +92,8 @@ PY
         # yaml_frontmatter=false. Cursor agent files are pure markdown — no
         # YAML header, no name/description metadata, just the body. This
         # matches the format already in ~/.cursor/agents/. process_template.py
-        # has an explicit `cursor` branch alongside `claude`/`opencode` for
-        # future per-harness divergence; today it renders identically to claude.
+        # has an explicit `cursor` branch alongside `claude` for future
+        # per-harness divergence; today it renders identically to claude.
         python3 "$PROCESS_TEMPLATE" "$template_file" cursor false >"$output_file"
     done
 done

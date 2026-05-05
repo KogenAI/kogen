@@ -33,15 +33,15 @@ This replaces the deprecated `READONLY_ROLES` allowlist that previously lived in
 
 ## `tool.name` Branch Pattern
 
-`process_template.py` recognizes four `tool.name` values: `claude`, `codex`, `cursor`, `opencode`.
+`process_template.py` recognizes three `tool.name` values: `claude`, `codex`, `cursor`.
 
-- `claude` and `opencode` are explicit branches in `{% if tool.name == 'claude' %} ... {% elif tool.name == 'opencode' %} ... {% endif %}`.
+- `claude` is the explicit branch in `{% if tool.name == 'claude' %} ... {% endif %}`.
 - `codex` and `cursor` currently render the `claude` branch — explicit branch points exist as future-divergence hooks. Add new branches by extending `_strip_template_blocks` in `process_template.py` rather than introducing a new harness-specific generator script.
 
 ## Generators
 
 - `process_template.py` is the single rendering engine. It supports two output formats:
-  - `--format=md` (default) — Markdown body for Claude/Cursor/OpenCode.
+  - `--format=md` (default) — Markdown body for Claude/Cursor.
   - `--format=toml` — per-agent Codex TOML. Requires `--config=<path>` and `--role=<name>`.
 - `generate-codex.sh` is a thin walker that calls `process_template.py --format=toml` per template.
 - `generate-cursor.sh` is a thin walker that calls `process_template.py <template> cursor false`.
