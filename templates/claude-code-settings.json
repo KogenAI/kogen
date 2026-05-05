@@ -194,6 +194,15 @@
             "command": "$HOME/.claude/hooks/static-site-build-check.sh"
           }
         ]
+      },
+      {
+        "matcher": "phoenix-developer|data-layer-developer",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "$HOME/.claude/hooks/dev-gate.sh"
+          }
+        ]
       }
     ],
     "PreToolUse": [
@@ -257,15 +266,6 @@
           {
             "type": "command",
             "command": "$HOME/.claude/hooks/committer-subject-length.sh"
-          }
-        ]
-      },
-      {
-        "matcher": "Bash",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "$HOME/.claude/hooks/ve-no-rerun-gate.sh"
           }
         ]
       },
