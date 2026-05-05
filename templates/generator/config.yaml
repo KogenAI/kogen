@@ -74,7 +74,3 @@ harness_models:
     claude: "claude-haiku-4-5-20251001"
     codex: "gpt-5.4-mini"
     cursor: "claude-haiku-4-5-20251001"
-  static-site-verifier:
-    claude: "claude-haiku-4-5-20251001"
-    codex: "gpt-5.4-mini"
-    cursor: "claude-haiku-4-5-20251001"

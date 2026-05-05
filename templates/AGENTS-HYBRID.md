@@ -129,6 +129,10 @@ planner -> phoenix-developer OR static-site-developer -> verification-engineer -
 - **code-reviewer**: Reviews quality/patterns/architecture, reports issues
 - **committer**: Receives task summary from orchestrator, analyzes git diff, crafts why-focused commit message, stages and commits (Haiku — cheap and fast)
 
+### Static-site verification
+
+Static-site builds previously routed through a `static-site-verifier` LLM subagent. That role has been collapsed into a deterministic SubagentStop hook — `static-site-build-check.sh` — that runs `mise exec -- npm run build`, asserts `package.json` invariants, and rejects Tailwind v3 config files / directives. The hook fires automatically after `static-site-developer` reports done; on failure it emits a `decision: block` envelope so the developer is re-spawned with the failure reason. No orchestrator delegation step is required.
+
 Subagent rules (tdd.md, phoenix.md, session-management.md, etc.) are baked into each agent's system prompt via Jinja `{% include %}` in the `.md.j2` templates — subagents do not Read them at session start. Orchestrator delegation prompts only name conditional rules (domain context files, stack-specific rules) that the subagent must Read on demand. See `context/llm.md` for the full propagation model.
 
 ## MANDATORY: Update Context Before Handoff

@@ -185,6 +185,15 @@
             "command": "$HOME/.claude/hooks/post-developer-format.sh"
           }
         ]
+      },
+      {
+        "matcher": "static-site-developer",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "$HOME/.claude/hooks/static-site-build-check.sh"
+          }
+        ]
       }
     ],
     "PreToolUse": [
