@@ -52,29 +52,29 @@ harness_models:
     cursor: "claude-opus-4-7-thinking-high"
   phoenix-developer:
     claude: "claude-sonnet-4-6"
-    codex: "gpt-5.3-codex"
+    codex: "gpt-5.4"
     cursor: "claude-sonnet-4-6"
   data-layer-developer:
     claude: "claude-sonnet-4-6"
-    codex: "gpt-5.3-codex"
+    codex: "gpt-5.4"
     cursor: "claude-sonnet-4-6"
   static-site-developer:
     claude: "claude-sonnet-4-6"
-    codex: "gpt-5.3-codex"
+    codex: "gpt-5.4"
     cursor: "claude-sonnet-4-6"
   verification-engineer:
     claude: "claude-sonnet-4-6"
-    codex: "gpt-5.3-codex"
+    codex: "gpt-5.4"
     cursor: "claude-sonnet-4-6"
   code-reviewer:
     claude: "claude-sonnet-4-6"
-    codex: "gpt-5.3-codex"
+    codex: "gpt-5.4"
     cursor: "claude-sonnet-4-6"
   committer:
     claude: "claude-haiku-4-5-20251001"
-    codex: "gpt-5.3-codex-spark"
+    codex: "gpt-5.4-mini"
     cursor: "claude-haiku-4-5-20251001"
   static-site-verifier:
     claude: "claude-haiku-4-5-20251001"
-    codex: "gpt-5.3-codex-spark"
+    codex: "gpt-5.4-mini"
     cursor: "claude-haiku-4-5-20251001"

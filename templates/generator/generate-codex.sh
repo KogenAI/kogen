@@ -139,9 +139,12 @@ readonly_roles  = [r.strip() for r in readonly_roles_str.split() if r.strip()]
 is_readonly     = has_tools or (role_name in readonly_roles)
 sandbox_mode    = 'read-only' if is_readonly else 'workspace-write'
 
-# Model lookup
-role_models = harness_models.get(role_name, {})
-model_val   = role_models.get('codex', 'gpt-5.3-codex')
+# Model lookup — fail loudly when a role has no codex entry rather than
+# silently shipping a mistargeted role to production.
+role_models = harness_models.get(role_name)
+if not role_models or 'codex' not in role_models:
+    sys.exit(f"ERROR: generate-codex.sh: no harness_models[{role_name!r}]['codex'] entry in config.yaml; refusing to ship a silently-mistargeted role.")
+model_val = role_models['codex']
 
 # Reasoning effort
 effort_map = {'high': 'high', 'medium': 'medium', 'low': 'low'}
