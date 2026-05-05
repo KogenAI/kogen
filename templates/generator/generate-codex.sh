@@ -186,34 +186,14 @@ done
 echo ""
 echo "🚀 Generating Codex config.toml..."
 
-# Build config.toml
-python3 - "$OUTPUT_CONFIG" "$OUTPUT_AGENTS_DIR" <<'PY'
-import sys
-import os
+# Build config.toml via the shared renderer (also used by Combobulate.Apps).
+python3 "$SCRIPT_DIR/codex_config.py" \
+    --target=global \
+    --hook 'PreToolUse:$HOME/.codex/hooks/codex-inspector-bash-guard.sh' \
+    --hook 'PreToolUse:$HOME/.codex/hooks/codex-inspector-write-guard.sh' \
+    --out "$OUTPUT_CONFIG"
 
-output_config     = sys.argv[1]
-agents_dir        = sys.argv[2]
-
-lines = []
-lines.append('[features]')
-lines.append('codex_hooks = true')
-lines.append('')
-lines.append('[agents]')
-lines.append('max_depth = 5')
-lines.append('max_threads = 6')
-lines.append('')
-lines.append('[[hooks.PreToolUse]]')
-lines.append('command = "$HOME/.codex/hooks/codex-inspector-bash-guard.sh"')
-lines.append('')
-lines.append('[[hooks.PreToolUse]]')
-lines.append('command = "$HOME/.codex/hooks/codex-inspector-write-guard.sh"')
-lines.append('')
-
-with open(output_config, 'w') as f:
-    f.write('\n'.join(lines))
-
-print(f"   ✅ Written: {os.path.basename(output_config)}")
-PY
+echo "   ✅ Written: $(basename "$OUTPUT_CONFIG")"
 
 echo ""
 echo "✅ Codex generation complete!"
