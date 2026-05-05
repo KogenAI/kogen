@@ -152,6 +152,14 @@
         "hooks": [
           {
             "type": "command",
+            "command": "$HOME/.claude/hooks/stop-cycle-guard.sh"
+          }
+        ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
             "command": "$HOME/.claude/hooks/llm-pending-sweep.sh"
           }
         ]
@@ -267,15 +275,6 @@
           {
             "type": "command",
             "command": "$HOME/.claude/hooks/session-log-section-integrity.sh"
-          }
-        ]
-      },
-      {
-        "matcher": "Bash",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "$HOME/.claude/hooks/commit-only-via-committer.sh"
           }
         ]
       },

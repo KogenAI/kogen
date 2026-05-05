@@ -208,9 +208,6 @@ lines.append('')
 lines.append('[[hooks.PreToolUse]]')
 lines.append('command = "$HOME/.codex/hooks/codex-inspector-write-guard.sh"')
 lines.append('')
-lines.append('[[hooks.PreToolUse]]')
-lines.append('command = "$HOME/.codex/hooks/commit-only-via-committer.sh"')
-lines.append('')
 
 with open(output_config, 'w') as f:
     f.write('\n'.join(lines))

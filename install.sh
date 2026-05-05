@@ -343,7 +343,7 @@ if [ "$INSTALL_ALL" = true ]; then
     mkdir -p "$HOME/.codex/hooks"
 
     # Copy hook scripts
-    for hook_script in "$CODEGEN_DIR/templates/shared/hooks/codex-inspector-bash-guard.sh" "$CODEGEN_DIR/templates/shared/hooks/codex-inspector-write-guard.sh" "$CODEGEN_DIR/templates/shared/hooks/commit-only-via-committer.sh"; do
+    for hook_script in "$CODEGEN_DIR/templates/shared/hooks/codex-inspector-bash-guard.sh" "$CODEGEN_DIR/templates/shared/hooks/codex-inspector-write-guard.sh"; do
         if [ -f "$hook_script" ]; then
             cp "$hook_script" "$HOME/.codex/hooks/"
             chmod +x "$HOME/.codex/hooks/$(basename "$hook_script")"
