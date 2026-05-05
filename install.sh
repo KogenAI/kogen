@@ -448,15 +448,34 @@ PY
     CURSOR_SUBAGENTS_DIR="$HOME/.cursor/agents"
     mkdir -p "$CURSOR_SUBAGENTS_DIR"
 
+    CURSOR_AGENTS_MANIFEST="$CURSOR_SUBAGENTS_DIR/.installed-by-ocg"
+    CURRENT_CURSOR_AGENTS=()
     if [ -d "$CODEGEN_DIR/templates/generated/cursor/agents" ]; then
         for agent_file in "$CODEGEN_DIR/templates/generated/cursor/agents"/*.md; do
             if [ -f "$agent_file" ]; then
                 agent_name=$(basename "$agent_file")
                 cp "$agent_file" "$CURSOR_SUBAGENTS_DIR/"
                 echo "   ✅ Installed Cursor agent: ${agent_name%.md}"
+                CURRENT_CURSOR_AGENTS+=("$agent_name")
             fi
         done
     fi
+    # Delete stale Cursor agents from previous installs
+    if [ -f "$CURSOR_AGENTS_MANIFEST" ]; then
+        while IFS= read -r old_agent; do
+            if [ -n "$old_agent" ]; then
+                still_present=false
+                for cur in "${CURRENT_CURSOR_AGENTS[@]}"; do
+                    [ "$cur" = "$old_agent" ] && still_present=true && break
+                done
+                if [ "$still_present" = "false" ] && [ -f "$CURSOR_SUBAGENTS_DIR/$old_agent" ]; then
+                    rm -f "$CURSOR_SUBAGENTS_DIR/$old_agent"
+                    echo "   🗑️  Removed stale Cursor agent: ${old_agent%.md}"
+                fi
+            fi
+        done <"$CURSOR_AGENTS_MANIFEST"
+    fi
+    printf '%s\n' "${CURRENT_CURSOR_AGENTS[@]}" >"$CURSOR_AGENTS_MANIFEST"
 fi
 
 # Create OCG config directory
