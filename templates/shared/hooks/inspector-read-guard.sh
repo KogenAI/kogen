@@ -3,41 +3,29 @@
 #
 # Blocks Read calls where the requested file_path is outside the Inspector's
 # working directory ($CLAUDE_PROJECT_DIR, falling back to $PWD).
-#
-# Path containment check uses python3 os.path.realpath on both sides so:
-#   - symlinks are resolved to their real targets before comparison
-#   - ".." segments and trailing slashes are normalised
-#   - non-existent paths are handled without error (unlike macOS realpath)
-#
-# Exit codes:
-#   0 — allow the tool call
-#   2 — block the tool call (Claude Code PreToolUse convention)
 
-set -euo pipefail
+set -u
 
-input=$(cat)
-
-tool_name=$(printf '%s' "$input" | jq -r '.tool_name // ""')
+source "$(dirname "$0")/lib/hooks-lib.sh"
+parse_input
 
 # Only gate Read calls.
-if [ "$tool_name" != "Read" ]; then
+if [ "$TOOL_NAME" != "Read" ]; then
     exit 0
 fi
 
-file_path=$(printf '%s' "$input" | jq -r '.tool_input.file_path // ""')
-
 # Empty file_path — let the tool handle it.
-if [ -z "$file_path" ]; then
+if [ -z "$FILE_PATH" ]; then
     exit 0
 fi
 
 # Determine the Inspector's allowed working directory.
 project_dir="${CLAUDE_PROJECT_DIR:-$PWD}"
 
-# Normalise both paths: resolve symlinks, strip "..", normalise slashes.
-# python3 os.path.realpath handles non-existent paths without error.
-real_project_dir=$(python3 -c "import os,sys; print(os.path.realpath(sys.argv[1]))" "$project_dir")
-real_file_path=$(python3 -c "import os,sys; print(os.path.realpath(sys.argv[1]))" "$file_path")
+# Normalise both paths via the lib helper (pure-bash realpath, handles
+# non-existent paths via parent-walk).
+real_project_dir=$(hooks_realpath "$project_dir")
+real_file_path=$(hooks_realpath "$FILE_PATH")
 
 # Add a trailing slash to the project dir so we can do a safe prefix check
 # that won't match /home/alice-extra when project dir is /home/alice.
@@ -50,6 +38,5 @@ if [ "$real_file_path" = "$real_project_dir" ] ||
     exit 0
 fi
 
-printf 'BLOCKED by inspector-read-guard: Read path %s is outside working dir %s\n' \
-    "$file_path" "$project_dir" >&2
-exit 2
+deny "BLOCKED by inspector-read-guard: Read path $FILE_PATH is outside working dir $project_dir"
+exit 0

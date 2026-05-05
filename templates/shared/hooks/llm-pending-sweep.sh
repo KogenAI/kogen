@@ -10,20 +10,13 @@
 
 set -u
 
-input=$(cat)
+source "$(dirname "$0")/lib/hooks-lib.sh"
+parse_input
 
-cwd=$(printf '%s' "$input" | jq -r '.cwd // ""')
+debug_log llm-pending-sweep "cwd=$CWD"
 
-# Debug logging
-if [ -n "${COMBOBULATE_HOOKS_DEBUG:-}" ] || [ -n "${COMBOBULATE_LPS_DEBUG:-}" ]; then
-    printf '%s cwd=%s\n' \
-        "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-        "$cwd" \
-        >>/tmp/llm-pending-sweep-debug.log 2>/dev/null || true
-fi
-
-if [ -n "$cwd" ]; then
-    find "$cwd/codegen/llm-pending" -name '*.flag' -mmin +120 -delete 2>/dev/null || true
+if [ -n "$CWD" ]; then
+    find "$CWD/codegen/llm-pending" -name '*.flag' -mmin +120 -delete 2>/dev/null || true
 fi
 
 exit 0

@@ -143,6 +143,17 @@ if [ -d "$CODEGEN_DIR/templates/shared/hooks" ]; then
             echo "   ✅ ${hook_name} hook installed at: $CLAUDE_SETTINGS_DIR/hooks/$hook_name"
         fi
     done
+
+    # Install hooks lib (sourced by every hook script for parse_input/deny/etc.)
+    if [ -d "$CODEGEN_DIR/templates/shared/hooks/lib" ]; then
+        mkdir -p "$CLAUDE_SETTINGS_DIR/hooks/lib"
+        for lib_file in "$CODEGEN_DIR/templates/shared/hooks/lib"/*; do
+            if [ -f "$lib_file" ]; then
+                cp "$lib_file" "$CLAUDE_SETTINGS_DIR/hooks/lib/"
+            fi
+        done
+        echo "   ✅ Hooks lib installed at: $CLAUDE_SETTINGS_DIR/hooks/lib/"
+    fi
 fi
 
 # Install custom Claude commands

@@ -18,16 +18,28 @@ run_test() {
     local expected="$2"
     local input="$3"
 
-    actual_code=$(
-        printf '%s' "$input" | bash "$GUARD" 2>/dev/null
-        echo $?
-    )
+    # Capture stdout — the hook now emits a permissionDecision JSON envelope
+    # to stdout for deny outcomes (exit 0) instead of stderr + exit 2. We
+    # translate the legacy expected values: "2" means "expect deny",
+    # "0" means "expect allow (no deny envelope)".
+    local stdout
+    stdout=$(printf '%s' "$input" | bash "$GUARD" 2>/dev/null || true)
 
-    if [ "$actual_code" = "$expected" ]; then
-        printf 'PASS: %s\n' "$desc"
+    local outcome
+    if printf '%s' "$stdout" | grep -q '"permissionDecision"[[:space:]]*:[[:space:]]*"deny"'; then
+        outcome="2"
+    else
+        outcome="0"
+    fi
+
+    if [ "$outcome" = "$expected" ]; then
+        printf 'PASS: %s
+' "$desc"
         pass=$((pass + 1))
     else
-        printf 'FAIL: %s — expected exit %s, got %s\n' "$desc" "$expected" "$actual_code"
+        printf 'FAIL: %s — expected %s (deny=2/allow=0), got %s
+  stdout: %s
+' "$desc" "$expected" "$outcome" "$stdout"
         fail=$((fail + 1))
     fi
 }
@@ -59,6 +71,23 @@ FIXTURE_FOLLOWUP=$(jq -n \
     --arg ns "Additional content" \
     '{"hook_event_name":"PreToolUse","tool_name":"Edit","tool_input":{"file_path":$fp,"old_string":"Existing content","new_string":"Additional content"},"agent_type":"phoenix-developer","agent_id":"abc"}')
 run_test "follow-up edit when section already exists allows" "0" "$FIXTURE_FOLLOWUP"
+
+# Test 4: Write to a NEW session log file with header in content — ALLOW
+NEW_LOG_FILE="$TMP_DIR/codegen/logging/new-session.md"
+WRITE_CONTENT_OK=$(printf '# Step\n\n## phoenix-developer Section\n\nbody')
+FIXTURE_WRITE_OK=$(jq -n \
+    --arg fp "$NEW_LOG_FILE" \
+    --arg c "$WRITE_CONTENT_OK" \
+    '{"hook_event_name":"PreToolUse","tool_name":"Write","tool_input":{"file_path":$fp,"content":$c},"agent_type":"phoenix-developer","agent_id":"abc"}')
+run_test "phoenix-developer Write with section header allows" "0" "$FIXTURE_WRITE_OK"
+
+# Test 5: Write to a NEW session log file WITHOUT header in content — BLOCK
+WRITE_CONTENT_BAD="# Step\n\nNo header here"
+FIXTURE_WRITE_BAD=$(jq -n \
+    --arg fp "$TMP_DIR/codegen/logging/another.md" \
+    --arg c "$WRITE_CONTENT_BAD" \
+    '{"hook_event_name":"PreToolUse","tool_name":"Write","tool_input":{"file_path":$fp,"content":$c},"agent_type":"phoenix-developer","agent_id":"abc"}')
+run_test "phoenix-developer Write without section header blocks" "2" "$FIXTURE_WRITE_BAD"
 
 echo ""
 echo "Results: $pass passed, $fail failed"

@@ -19,16 +19,28 @@ run_test() {
     local expected="$2"
     local input="$3"
 
-    actual_code=$(
-        printf '%s' "$input" | bash "$GUARD" 2>/dev/null
-        echo $?
-    )
+    # Capture stdout — the hook now emits a permissionDecision JSON envelope
+    # to stdout for deny outcomes (exit 0) instead of stderr + exit 2. We
+    # translate the legacy expected values: "2" means "expect deny",
+    # "0" means "expect allow (no deny envelope)".
+    local stdout
+    stdout=$(printf '%s' "$input" | bash "$GUARD" 2>/dev/null || true)
 
-    if [ "$actual_code" = "$expected" ]; then
-        printf 'PASS: %s\n' "$desc"
+    local outcome
+    if printf '%s' "$stdout" | grep -q '"permissionDecision"[[:space:]]*:[[:space:]]*"deny"'; then
+        outcome="2"
+    else
+        outcome="0"
+    fi
+
+    if [ "$outcome" = "$expected" ]; then
+        printf 'PASS: %s
+' "$desc"
         pass=$((pass + 1))
     else
-        printf 'FAIL: %s — expected exit %s, got %s\n' "$desc" "$expected" "$actual_code"
+        printf 'FAIL: %s — expected %s (deny=2/allow=0), got %s
+  stdout: %s
+' "$desc" "$expected" "$outcome" "$stdout"
         fail=$((fail + 1))
     fi
 }

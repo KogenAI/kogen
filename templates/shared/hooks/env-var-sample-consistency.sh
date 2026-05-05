@@ -4,39 +4,25 @@
 # Blocks a git commit if staged files include env-var-reading Elixir code
 # (System.get_env / System.fetch_env) but .env.sample and .env.prod.sample
 # are NOT also staged.
-#
-# Exit codes:
-#   0 — allow the tool call
-#   2 — block (Claude Code PreToolUse convention; stderr fed back to model)
 
-set -euo pipefail
+set -u
 
-input=$(cat)
+source "$(dirname "$0")/lib/hooks-lib.sh"
+parse_input
 
-tool_name=$(printf '%s' "$input" | jq -r '.tool_name // ""')
-agent_type=$(printf '%s' "$input" | jq -r '.agent_type // ""')
-
-# Debug logging
-if [ -n "${COMBOBULATE_HOOKS_DEBUG:-}" ] || [ -n "${COMBOBULATE_EVSC_DEBUG:-}" ]; then
-    printf '%s tool=%s agent_type=%s\n' \
-        "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-        "$tool_name" "$agent_type" \
-        >>/tmp/env-var-sample-consistency-debug.log 2>/dev/null || true
-fi
+debug_log env-var-sample-consistency "tool=$TOOL_NAME agent=$AGENT_TYPE"
 
 # Only gate committer
-if [ "$agent_type" != "committer" ]; then
+if [ "$AGENT_TYPE" != "committer" ]; then
     exit 0
 fi
 
-if [ "$tool_name" != "Bash" ]; then
+if [ "$TOOL_NAME" != "Bash" ]; then
     exit 0
 fi
-
-command=$(printf '%s' "$input" | jq -r '.tool_input.command // ""')
 
 # Only inspect git commit commands
-if ! printf '%s' "$command" | grep -qE '\bgit[[:space:]]+commit\b'; then
+if ! printf '%s' "$COMMAND" | grep -qE '\bgit[[:space:]]+commit\b'; then
     exit 0
 fi
 
@@ -73,6 +59,5 @@ fi
 
 # Find the offending files for the error message
 offending=$(printf '%s\n' "$staged_exs" | tr '\n' ' ')
-printf 'BLOCKED by env-var-sample-consistency: commit touches env-var-reading code (%s) but does not stage .env.sample / .env.prod.sample. Add both samples and re-stage.\n' \
-    "$offending" >&2
-exit 2
+deny "BLOCKED by env-var-sample-consistency: commit touches env-var-reading code ($offending) but does not stage .env.sample / .env.prod.sample. Add both samples and re-stage."
+exit 0

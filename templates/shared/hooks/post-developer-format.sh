@@ -34,16 +34,16 @@
 
 set -u
 
-input=$(cat)
+source "$(dirname "$0")/lib/hooks-lib.sh"
+parse_input
 
-agent_type=$(printf '%s' "$input" | jq -r '.agent_type // ""')
-session_id=$(printf '%s' "$input" | jq -r '.session_id // ""')
-project_dir=$(printf '%s' "$input" | jq -r '.cwd // ""')
-stop_hook_active=$(printf '%s' "$input" | jq -r '.stop_hook_active // false')
+agent_type="$AGENT_TYPE"
+session_id="$SESSION_ID"
+project_dir="$CWD"
 
 # Loop guard — if a previous SubagentStop hook already fired for this stop,
 # bail to avoid recursion if anyone ever wires a `decision: block` here.
-if [ "$stop_hook_active" = "true" ]; then
+if [ "$STOP_HOOK_ACTIVE" = "true" ]; then
     exit 0
 fi
 
@@ -53,12 +53,7 @@ if [ -z "$project_dir" ]; then
 fi
 
 log() {
-    if [ -n "${COMBOBULATE_HOOKS_DEBUG:-}" ]; then
-        printf '%s post-developer-format agent=%s session=%s %s\n' \
-            "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-            "$agent_type" "$session_id" "$*" \
-            >>/tmp/post-developer-format-debug.log 2>/dev/null || true
-    fi
+    debug_log post-developer-format "agent=$agent_type session=$session_id $*"
 }
 
 log "fired cwd=$project_dir"

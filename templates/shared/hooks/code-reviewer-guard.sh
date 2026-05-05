@@ -4,58 +4,42 @@
 # Blocks all mutating tools when the active agent is "code-reviewer".
 # The code-reviewer is a read-only analysis role: Read, Grep, Glob only.
 # All other agents pass through unconditionally.
-#
-# Exit codes:
-#   0 — allow the tool call
-#   2 — block the tool call (Claude Code PreToolUse convention)
 
-set -euo pipefail
+set -u
 
-input=$(cat)
+source "$(dirname "$0")/lib/hooks-lib.sh"
+parse_input
 
-# Parse fields from PreToolUse stdin JSON
-tool_name=$(printf '%s' "$input" | jq -r '.tool_name // ""')
-agent_type=$(printf '%s' "$input" | jq -r '.agent_type // ""')
-
-# Debug logging (opt-in via per-script var or the unified COMBOBULATE_HOOKS_DEBUG flag)
-if [ -n "${COMBOBULATE_CR_DEBUG:-}" ] || [ -n "${COMBOBULATE_HOOKS_DEBUG:-}" ]; then
-    printf '%s tool=%s agent=%s\n' \
-        "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-        "$tool_name" "$agent_type" \
-        >>/tmp/cr-guard-debug.log 2>/dev/null || true
-fi
+debug_log cr-guard "tool=$TOOL_NAME agent=$AGENT_TYPE"
 
 # Only gate code-reviewer; allow all other agents unconditionally
-if [ "$agent_type" != "code-reviewer" ]; then
+if [ "$AGENT_TYPE" != "code-reviewer" ]; then
     exit 0
 fi
 
-# ── Tool-level blocks ─────────────────────────────────────────────────────────
-
-case "$tool_name" in
+case "$TOOL_NAME" in
 Bash)
-    printf 'BLOCKED by cr-guard: tool Bash forbidden for code-reviewer (read-only role)\n' >&2
-    exit 2
+    deny "BLOCKED by cr-guard: tool Bash forbidden for code-reviewer (read-only role)"
+    exit 0
     ;;
 Write)
-    printf 'BLOCKED by cr-guard: tool Write forbidden for code-reviewer (read-only role)\n' >&2
-    exit 2
+    deny "BLOCKED by cr-guard: tool Write forbidden for code-reviewer (read-only role)"
+    exit 0
     ;;
 Edit)
-    file_path=$(printf '%s' "$input" | jq -r '.tool_input.file_path // ""')
-    if printf '%s' "$file_path" | grep -qE 'codegen/logging/[^/]+_(session|step[0-9]+_[^/]+)\.md$'; then
+    if printf '%s' "$FILE_PATH" | grep -qE 'codegen/logging/[^/]+_(session|step[0-9]+_[^/]+)\.md$'; then
         exit 0
     fi
-    printf 'BLOCKED by cr-guard: code-reviewer may not edit files outside session logs: %s\n' "$file_path" >&2
-    exit 2
+    deny "BLOCKED by cr-guard: code-reviewer may not edit files outside session logs: $FILE_PATH"
+    exit 0
     ;;
 MultiEdit)
-    printf 'BLOCKED by cr-guard: tool MultiEdit forbidden for code-reviewer (read-only role)\n' >&2
-    exit 2
+    deny "BLOCKED by cr-guard: tool MultiEdit forbidden for code-reviewer (read-only role)"
+    exit 0
     ;;
 Monitor)
-    printf 'BLOCKED by cr-guard: tool Monitor forbidden for code-reviewer (read-only role)\n' >&2
-    exit 2
+    deny "BLOCKED by cr-guard: tool Monitor forbidden for code-reviewer (read-only role)"
+    exit 0
     ;;
 esac
 

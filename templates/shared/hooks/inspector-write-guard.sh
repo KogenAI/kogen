@@ -5,21 +5,16 @@
 # Write, Edit, MultiEdit, and NotebookEdit are already denied via --disallowed-tools
 # in RunnerImpl. This hook is a belt-and-suspenders layer in case --disallowed-tools
 # is bypassed or reordered.
-#
-# Exit codes:
-#   0 — allow the tool call
-#   2 — block the tool call (Claude Code PreToolUse convention)
 
-set -euo pipefail
+set -u
 
-input=$(cat)
+source "$(dirname "$0")/lib/hooks-lib.sh"
+parse_input
 
-tool_name=$(printf '%s' "$input" | jq -r '.tool_name // ""')
-
-case "$tool_name" in
+case "$TOOL_NAME" in
 Write | Edit | MultiEdit | NotebookEdit)
-    printf 'BLOCKED by inspector-write-guard: tool %s is forbidden for Inspector (read-only role)\n' "$tool_name" >&2
-    exit 2
+    deny "BLOCKED by inspector-write-guard: tool $TOOL_NAME is forbidden for Inspector (read-only role)"
+    exit 0
     ;;
 esac
 

@@ -1,52 +1,26 @@
 #!/usr/bin/env bash
 # Stop hook: auto-resume Claude Code when a session ends due to a transient
 # network/API error (stream idle timeout, 500/529, connection refused, etc.)
-#
-# Protocol:
-#   - Claude Code pipes a JSON payload on stdin (session_id, transcript_path,
-#     stop_hook_active, last_assistant_message, ...)
-#   - To resume: print `{"decision":"block","reason":"..."}` to stdout, exit 0.
-#     Claude injects a synthetic user turn "Stop hook feedback:\n<reason>".
-#   - To let the session end normally: exit 0 with no JSON output.
-#
-# Detection strategy: check `last_assistant_message` for known error strings
-# AND grep the tail of `transcript_path` for isApiErrorMessage entries (catches
-# top-level errors) and tool_result contents (catches subagent errors that
-# terminated the parent session).
-#
-# Loop guard: if stop_hook_active == true, this hook already fired once for
-# this stop — exit immediately so we can never recurse.
-#
-# Retry cap: at most 3 retries per session, tracked via
-# /tmp/claude-resume-<session_id>.count. After that we give up and let the
-# session end.
 
 set -u
 
-# --- Read stdin -------------------------------------------------------------
-input=$(cat)
+source "$(dirname "$0")/lib/hooks-lib.sh"
+parse_input
 
-session_id=$(printf '%s' "$input" | jq -r '.session_id // "unknown"')
-stop_hook_active=$(printf '%s' "$input" | jq -r '.stop_hook_active // false')
-transcript_path=$(printf '%s' "$input" | jq -r '.transcript_path // ""')
-last_assistant_message=$(printf '%s' "$input" | jq -r '.last_assistant_message // ""')
+session_id="${SESSION_ID:-unknown}"
 
 counter_file="/tmp/claude-resume-${session_id}.count"
 
 # --- Loop guard -------------------------------------------------------------
-if [ "$stop_hook_active" = "true" ]; then
+if [ "$STOP_HOOK_ACTIVE" = "true" ]; then
     exit 0
 fi
 
 # --- Gather candidate error text -------------------------------------------
-# Source 1: last_assistant_message (populated when top-level session errors).
-# Source 2: tail of transcript JSONL — two patterns:
-#   a) isApiErrorMessage == true entries (top-level session error)
-#   b) tool_result contents in user entries (subagent error returned to parent)
-haystack="$last_assistant_message"
+haystack="$LAST_ASSISTANT_MESSAGE"
 
-if [ -n "$transcript_path" ] && [ -r "$transcript_path" ]; then
-    transcript_errors=$(tail -n 10 "$transcript_path" 2>/dev/null |
+if [ -n "$TRANSCRIPT_PATH" ] && [ -r "$TRANSCRIPT_PATH" ]; then
+    transcript_errors=$(tail -n 10 "$TRANSCRIPT_PATH" 2>/dev/null |
         jq -r '
         (select(.isApiErrorMessage == true)
           | (.message.content // [] | map(select(.type == "text") | .text) | join(" "))),
@@ -107,5 +81,5 @@ printf '%s' "$count" >"$counter_file"
 # --- Emit block decision ----------------------------------------------------
 reason="Network/API error detected (stream idle timeout or transient API failure). Auto-resuming (attempt ${count}/3). Re-read the session log in codegen/logging/ and continue where you left off. Consider breaking the next action into smaller steps to avoid another timeout."
 
-jq -n --arg reason "$reason" '{decision: "block", reason: $reason}'
+block "$reason"
 exit 0

@@ -4,60 +4,41 @@
 # Blocks a second invocation of the gate command (make ci, make ci-fast,
 # make llm, make llm-phoenix, mix test) from the same agent_id.
 # VE should read the log file instead of re-running.
-#
-# Exit codes:
-#   0 — allow the tool call
-#   2 — block (Claude Code PreToolUse convention; stderr fed back to model)
 
-set -euo pipefail
+set -u
 
-input=$(cat)
+source "$(dirname "$0")/lib/hooks-lib.sh"
+parse_input
 
-tool_name=$(printf '%s' "$input" | jq -r '.tool_name // ""')
-agent_type=$(printf '%s' "$input" | jq -r '.agent_type // ""')
-agent_id=$(printf '%s' "$input" | jq -r '.agent_id // ""')
-
-# Debug logging
-if [ -n "${COMBOBULATE_HOOKS_DEBUG:-}" ] || [ -n "${COMBOBULATE_VNRG_DEBUG:-}" ]; then
-    printf '%s tool=%s agent_type=%s agent_id=%s\n' \
-        "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-        "$tool_name" "$agent_type" "$agent_id" \
-        >>/tmp/ve-no-rerun-gate-debug.log 2>/dev/null || true
-fi
+debug_log ve-no-rerun-gate "tool=$TOOL_NAME agent_type=$AGENT_TYPE agent_id=$AGENT_ID"
 
 # Only gate verification-engineer
-if [ "$agent_type" != "verification-engineer" ]; then
+if [ "$AGENT_TYPE" != "verification-engineer" ]; then
     exit 0
 fi
 
-if [ "$tool_name" != "Bash" ]; then
+if [ "$TOOL_NAME" != "Bash" ]; then
     exit 0
 fi
-
-command=$(printf '%s' "$input" | jq -r '.tool_input.command // ""')
 
 # Only gate gate-running commands
-if ! printf '%s' "$command" | grep -qE '\bmake[[:space:]]+ci([[:space:]]|$)|\bmake[[:space:]]+ci-fast([[:space:]]|$)|\bmake[[:space:]]+llm([[:space:]]|$)|\bmake[[:space:]]+llm-phoenix([[:space:]]|$)|\bmix[[:space:]]+test\b'; then
+if ! printf '%s' "$COMMAND" | grep -qE '\bmake[[:space:]]+ci([[:space:]]|$)|\bmake[[:space:]]+ci-fast([[:space:]]|$)|\bmake[[:space:]]+llm([[:space:]]|$)|\bmake[[:space:]]+llm-phoenix([[:space:]]|$)|\bmix[[:space:]]+test\b'; then
     exit 0
 fi
 
 # Use agent_id to track per-agent gate history.
-# Store the EXACT normalised command on first run; only block when a later
-# invocation has the same normalised command — narrowing to a specific test
-# file (`mix test path/to/foo_test.exs`) is allowed per CLAUDE.md "Run in
-# isolation to confirm".
-history_file="/tmp/ve-gate-history-${agent_id}"
+history_file="/tmp/ve-gate-history-${AGENT_ID}"
 
 # Normalise: trim leading/trailing whitespace, collapse internal whitespace runs
 # to a single space.
-normalised_cmd=$(printf '%s' "$command" | awk '{$1=$1; print}')
+normalised_cmd=$(printf '%s' "$COMMAND" | awk '{$1=$1; print}')
 
 if [ -f "$history_file" ]; then
     while IFS= read -r prev_cmd; do
         [ -z "$prev_cmd" ] && continue
         if [ "$prev_cmd" = "$normalised_cmd" ]; then
-            printf 'BLOCKED by ve-no-rerun-gate: VE already ran the exact gate command. Read the log file instead, or narrow to a specific test file. To re-run, dispatch a new VE delegation.\n' >&2
-            exit 2
+            deny "BLOCKED by ve-no-rerun-gate: VE already ran the exact gate command. Read the log file instead, or narrow to a specific test file. To re-run, dispatch a new VE delegation."
+            exit 0
         fi
     done <"$history_file"
 fi

@@ -8,48 +8,33 @@
 #   - codegen/ (any codegen dir file)
 #   - tmp/ (temp files)
 #   - Top-level .md files (CLAUDE.md, README.md, AGENTS.md, etc.)
-#
-# Exit codes:
-#   0 — allow the tool call
-#   2 — block (Claude Code PreToolUse convention; stderr fed back to model)
 
-set -euo pipefail
+set -u
 
-input=$(cat)
+source "$(dirname "$0")/lib/hooks-lib.sh"
+parse_input
 
-tool_name=$(printf '%s' "$input" | jq -r '.tool_name // ""')
-agent_id=$(printf '%s' "$input" | jq -r '.agent_id // ""')
-
-# Debug logging
-if [ -n "${COMBOBULATE_HOOKS_DEBUG:-}" ] || [ -n "${COMBOBULATE_ONSE_DEBUG:-}" ]; then
-    printf '%s tool=%s agent_id=%s\n' \
-        "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-        "$tool_name" "$agent_id" \
-        >>/tmp/orchestrator-no-source-edit-debug.log 2>/dev/null || true
-fi
+debug_log orchestrator-no-source-edit "tool=$TOOL_NAME agent_id=$AGENT_ID"
 
 # Subagents (non-empty agent_id) — pass through
-if [ -n "$agent_id" ]; then
+if [ -n "$AGENT_ID" ]; then
     exit 0
 fi
 
-# Get file path (Edit/Write/MultiEdit use file_path, NotebookEdit uses notebook_path)
-file_path=$(printf '%s' "$input" | jq -r '.tool_input.file_path // .tool_input.notebook_path // ""')
-
-if [ -z "$file_path" ]; then
+if [ -z "$FILE_PATH" ]; then
     exit 0
 fi
 
 # Normalise to a relative path: if the path is absolute and starts with cwd,
 # strip the cwd prefix so the relative-path allowlist patterns match correctly.
-cwd=$(printf '%s' "$input" | jq -r '.cwd // ""')
+cwd="$CWD"
 if [ -z "$cwd" ]; then
     cwd="${CLAUDE_PROJECT_DIR:-$PWD}"
 fi
-rel_path="$file_path"
+rel_path="$FILE_PATH"
 cwd_prefix="${cwd%/}/"
-case "$file_path" in
-"${cwd_prefix}"*) rel_path="${file_path#"$cwd_prefix"}" ;;
+case "$FILE_PATH" in
+"${cwd_prefix}"*) rel_path="${FILE_PATH#"$cwd_prefix"}" ;;
 esac
 
 # Allowed paths for the orchestrator:
@@ -63,7 +48,7 @@ fi
 if printf '%s' "$rel_path" | grep -qE '^tmp/'; then
     exit 0
 fi
-if printf '%s' "$file_path" | grep -qE '^(/private)?/tmp/'; then
+if printf '%s' "$FILE_PATH" | grep -qE '^(/private)?/tmp/'; then
     exit 0
 fi
 # Top-level .md files: no directory separator, ends with .md
@@ -75,12 +60,11 @@ fi
 # independently — see combobulate/CLAUDE.md "Commit Sibling Repos"). Other
 # projects' orchestrators do NOT get this allowance.
 if [ "$cwd" = "/Users/almirsarajcic/Projects/AppBuilder/combobulate" ]; then
-    case "$file_path" in
+    case "$FILE_PATH" in
     /Users/almirsarajcic/Areas/Optimum/codegen/*) exit 0 ;;
     /Users/almirsarajcic/Areas/Optimum/context/*) exit 0 ;;
     esac
 fi
 
-printf 'BLOCKED by orchestrator-no-source-edit: orchestrator must not edit source files directly (%s). Delegate to phoenix-developer / static-site-developer / data-layer-developer.\n' \
-    "$file_path" >&2
-exit 2
+deny "BLOCKED by orchestrator-no-source-edit: orchestrator must not edit source files directly ($FILE_PATH). Delegate to phoenix-developer / static-site-developer / data-layer-developer."
+exit 0

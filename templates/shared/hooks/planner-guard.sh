@@ -5,122 +5,106 @@
 # non-session-log files when the active agent is "planner".
 # The planner's only permitted write action is editing the session log
 # under codegen/logging/. All other agents pass through unconditionally.
-#
-# Exit codes:
-#   0 — allow the tool call
-#   2 — block the tool call (Claude Code PreToolUse convention)
 
-set -euo pipefail
+set -u
 
-input=$(cat)
+source "$(dirname "$0")/lib/hooks-lib.sh"
+parse_input
 
-# Parse fields from PreToolUse stdin JSON
-tool_name=$(printf '%s' "$input" | jq -r '.tool_name // ""')
-command=$(printf '%s' "$input" | jq -r '.tool_input.command // ""')
-file_path=$(printf '%s' "$input" | jq -r '.tool_input.file_path // ""')
-agent_type=$(printf '%s' "$input" | jq -r '.agent_type // ""')
-
-# Debug logging (opt-in via per-script var or the unified COMBOBULATE_HOOKS_DEBUG flag)
-if [ -n "${COMBOBULATE_PLANNER_DEBUG:-}" ] || [ -n "${COMBOBULATE_HOOKS_DEBUG:-}" ]; then
-    printf '%s tool=%s agent=%s file=%s cmd=%s\n' \
-        "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-        "$tool_name" "$agent_type" "$file_path" "$command" \
-        >>/tmp/planner-guard-debug.log 2>/dev/null || true
-fi
+debug_log planner-guard "tool=$TOOL_NAME agent=$AGENT_TYPE file=$FILE_PATH cmd=$COMMAND"
 
 # Only gate planner; allow all other agents unconditionally
-if [ "$agent_type" != "planner" ]; then
+if [ "$AGENT_TYPE" != "planner" ]; then
     exit 0
 fi
 
 # ── Tool-level blocks ─────────────────────────────────────────────────────────
 
-if [ "$tool_name" = "Write" ]; then
-    printf 'BLOCKED by planner-guard: tool Write forbidden for planner (planner never creates files — edit the session log via Edit)\n' >&2
-    exit 2
+if [ "$TOOL_NAME" = "Write" ]; then
+    deny "BLOCKED by planner-guard: tool Write forbidden for planner (planner never creates files — edit the session log via Edit)"
+    exit 0
 fi
 
-if [ "$tool_name" = "MultiEdit" ]; then
-    printf 'BLOCKED by planner-guard: tool MultiEdit forbidden for planner (planner never mass-edits files)\n' >&2
-    exit 2
+if [ "$TOOL_NAME" = "MultiEdit" ]; then
+    deny "BLOCKED by planner-guard: tool MultiEdit forbidden for planner (planner never mass-edits files)"
+    exit 0
 fi
 
-if [ "$tool_name" = "EnterPlanMode" ]; then
-    printf 'BLOCKED by planner-guard: tool EnterPlanMode forbidden for planner (conflicts with orchestrator flow)\n' >&2
-    exit 2
+if [ "$TOOL_NAME" = "EnterPlanMode" ]; then
+    deny "BLOCKED by planner-guard: tool EnterPlanMode forbidden for planner (conflicts with orchestrator flow)"
+    exit 0
 fi
 
-if [ "$tool_name" = "ExitPlanMode" ]; then
-    printf 'BLOCKED by planner-guard: tool ExitPlanMode forbidden for planner (conflicts with orchestrator flow)\n' >&2
-    exit 2
+if [ "$TOOL_NAME" = "ExitPlanMode" ]; then
+    deny "BLOCKED by planner-guard: tool ExitPlanMode forbidden for planner (conflicts with orchestrator flow)"
+    exit 0
 fi
 
 # ── Edit path block ───────────────────────────────────────────────────────────
 # Planner may only Edit session log files under codegen/logging/
 
-if [ "$tool_name" = "Edit" ]; then
-    if ! printf '%s' "$file_path" | grep -qE 'codegen/logging/[^/]+\.md$'; then
-        printf 'BLOCKED by planner-guard: planner may only Edit session log files under codegen/logging/ (got: %s)\n' \
-            "$file_path" >&2
-        exit 2
+if [ "$TOOL_NAME" = "Edit" ]; then
+    if ! printf '%s' "$FILE_PATH" | grep -qE 'codegen/logging/[^/]+\.md$'; then
+        deny "BLOCKED by planner-guard: planner may only Edit session log files under codegen/logging/ (got: $FILE_PATH)"
+        exit 0
     fi
 fi
 
 # ── Bash-pattern blocks ───────────────────────────────────────────────────────
 
-if [ "$tool_name" = "Bash" ]; then
+if [ "$TOOL_NAME" = "Bash" ]; then
 
     # mix test — planner doesn't run tests
-    if printf '%s' "$command" | grep -qE '\bmix[[:space:]]+test\b'; then
-        printf 'BLOCKED by planner-guard: mix test is forbidden for planner (run gates after implementation, not during planning)\n' >&2
-        exit 2
+    if printf '%s' "$COMMAND" | grep -qE '\bmix[[:space:]]+test\b'; then
+        deny "BLOCKED by planner-guard: mix test is forbidden for planner (run gates after implementation, not during planning)"
+        exit 0
     fi
 
     # mix ecto state-modifying commands
-    if printf '%s' "$command" | grep -qE '\bmix[[:space:]]+ecto\.(migrate|reset|drop)\b'; then
-        printf 'BLOCKED by planner-guard: mix ecto.migrate/reset/drop is forbidden for planner (state-modifying)\n' >&2
-        exit 2
+    if printf '%s' "$COMMAND" | grep -qE '\bmix[[:space:]]+ecto\.(migrate|reset|drop)\b'; then
+        deny "BLOCKED by planner-guard: mix ecto.migrate/reset/drop is forbidden for planner (state-modifying)"
+        exit 0
     fi
 
     # make ci / make llm variants — test/verification gates
-    if printf '%s' "$command" | grep -qE '\bmake[[:space:]]+(ci|ci-fast|llm|llm-phoenix|llm-phoenix-seed|llm-summary|llm-retry|llm-kill)\b'; then
-        printf 'BLOCKED by planner-guard: make ci/llm/llm-phoenix is forbidden for planner (verification gates belong to verification-engineer)\n' >&2
-        exit 2
+    if printf '%s' "$COMMAND" | grep -qE '\bmake[[:space:]]+(ci|ci-fast|llm|llm-phoenix|llm-phoenix-seed|llm-summary|llm-retry|llm-kill)\b'; then
+        deny "BLOCKED by planner-guard: make ci/llm/llm-phoenix is forbidden for planner (verification gates belong to verification-engineer)"
+        exit 0
     fi
 
     # git state-modification commands
-    if printf '%s' "$command" | grep -qE '\bgit[[:space:]]+(add|commit|rm|mv|stash|reset|checkout[[:space:]]+[^[:space:]]+|branch[[:space:]]+(-[dD]|-m|-c|[^-]))\b'; then
-        printf 'BLOCKED by planner-guard: git state modification is forbidden for planner (committer owns git)\n' >&2
-        exit 2
+    if printf '%s' "$COMMAND" | grep -qE '\bgit[[:space:]]+(add|commit|rm|mv|stash|reset|checkout[[:space:]]+[^[:space:]]+|branch[[:space:]]+(-[dD]|-m|-c|[^-]))\b'; then
+        deny "BLOCKED by planner-guard: git state modification is forbidden for planner (committer owns git)"
+        exit 0
     fi
 
     # rm / rmdir / mv on paths outside /tmp/ — prevent accidental file deletion
-    if printf '%s' "$command" | grep -qE '\b(rm|rmdir)[[:space:]]+(-[rfRF]+[[:space:]]+)?[^/]'; then
+    if printf '%s' "$COMMAND" | grep -qE '\b(rm|rmdir)[[:space:]]+(-[rfRF]+[[:space:]]+)?[^/]'; then
         # Allow if target is relative path under /tmp/ — but can't tell at guard time,
         # so block all rm/rmdir that don't start with /tmp/ in the path argument
-        if ! printf '%s' "$command" | grep -qE '\b(rm|rmdir)[[:space:]]+(-[rfRF]+[[:space:]]+)?/tmp/'; then
-            printf 'BLOCKED by planner-guard: rm/rmdir outside /tmp/ is forbidden for planner\n' >&2
-            exit 2
+        if ! printf '%s' "$COMMAND" | grep -qE '\b(rm|rmdir)[[:space:]]+(-[rfRF]+[[:space:]]+)?/tmp/'; then
+            deny "BLOCKED by planner-guard: rm/rmdir outside /tmp/ is forbidden for planner"
+            exit 0
         fi
     fi
 
-    if printf '%s' "$command" | grep -qE '\bmv[[:space:]]+'; then
+    if printf '%s' "$COMMAND" | grep -qE '\bmv[[:space:]]+'; then
         # Block mv unless both source and destination are under /tmp/ or codegen/logging/
-        if ! printf '%s' "$command" | grep -qE '\bmv[[:space:]]+(/tmp/|codegen/logging/)'; then
-            printf 'BLOCKED by planner-guard: mv outside /tmp/ or codegen/logging/ is forbidden for planner\n' >&2
-            exit 2
+        if ! printf '%s' "$COMMAND" | grep -qE '\bmv[[:space:]]+(/tmp/|codegen/logging/)'; then
+            deny "BLOCKED by planner-guard: mv outside /tmp/ or codegen/logging/ is forbidden for planner"
+            exit 0
         fi
     fi
 
     # Redirect to file outside /tmp/ or codegen/logging/ — prevent writes via shell.
     # Strip stderr-redirect tokens (2>&1, 2>/dev/null) before inspection so they
     # don't get caught by the bare-redirect check.
-    redirect_check=$(printf '%s' "$command" | sed -e 's/2>&1//g' -e 's|2>/dev/null||g')
+    redirect_check=$(printf '%s' "$COMMAND" | sed -e 's/2>&1//g' -e 's|2>/dev/null||g')
     if printf '%s' "$redirect_check" | grep -qE '>[[:space:]]*[^/[:space:]]|>[[:space:]]*/'; then
         # Check if the redirect target is to codegen/logging/ or /tmp/
         if ! printf '%s' "$redirect_check" | grep -qE '>[[:space:]]*(codegen/logging/|/tmp/)'; then
-            printf 'BLOCKED by planner-guard: shell redirect to file outside /tmp/ or codegen/logging/ is forbidden for planner\n' >&2
-            exit 2
+            deny "BLOCKED by planner-guard: shell redirect to file outside /tmp/ or codegen/logging/ is forbidden for planner"
+            exit 0
         fi
     fi
 
