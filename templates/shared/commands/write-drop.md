@@ -23,10 +23,11 @@ Generate 5-10 topic suggestions by:
 □ 2. Read ALL coding rules from `~/Areas/Optimum/context/rules/subagents/` directory
 □ 3. Fetch `https://elixirdrops.net/index.md` for all published drop titles
 □ 4. **Check `./drops/` for existing drafts** — if drafts exist, recommend from those first before suggesting new topics
+□ 4b. **Check every existing draft for a matching `_hook.md`** — if missing, write the hook too
 □ 5. Analyze recipes for adaptable patterns
 □ 6. Generate suggestions avoiding ALL redundancy
 □ 7. User selects topic → create content using proper Elixir style
-□ 8. **MANDATORY: Validate all code blocks using `mcp__tidewave__project_eval`**
+□ 8. **MANDATORY: Validate all code blocks** — format with `mix format`, compile-check with `Code.string_to_quoted!/1` for illustrative snippets, and run standalone blocks with `elixir /tmp/test.exs`
 □ 9. Test code examples → save markdown file to `./drops/` directory
 
 **Content Discovery Steps (Using index.md):**
@@ -276,7 +277,7 @@ Optional additional code snippets:
 
 5. **Quality Assurance** - Test and refine:
    - **🚨 MANDATORY: Format ALL code blocks with `mix format`** (see step 6 for workflow)
-   - **🚨 MANDATORY: Validate code compiles using `mcp__tidewave__project_eval`** - Test each code block individually. If Tidewave is unavailable, STOP and inform user.
+   - **🚨 MANDATORY: Validate all code blocks** — for each `elixir` block: (a) write to `/tmp/drop_N.exs`, run `mix format /tmp/drop_N.exs`, copy result back; (b) run `elixir /tmp/drop_N.exs` for standalone blocks; (c) for illustrative snippets referencing app modules (MyApp, Repo, etc.), verify syntax with `Code.string_to_quoted!(code)` via `elixir -e`. If Tidewave is available via `mcp__tidewave__project_eval`, use it in addition.
    - Verify type definitions, function signatures, and syntax are valid
    - Check that the title is SHORT (30-57 characters)
    - Verify the solution is the simplest that works
@@ -350,6 +351,13 @@ Optional additional code snippets:
    - **Multiple blocks**: Create separate temp files (temp_format1.exs, temp_format2.exs, etc.)
    - **🚨 CRITICAL: Comment alignment** - Within each function, count characters precisely and align ALL inline comments at the exact same column position (don't guess - actually count!)
 
+   **Known `mix format` surprises in drop content:**
+   - `<%= expr %>` → `{expr}` inside `~H` sigils (HTMLFormatter upgrade)
+   - Extra alignment spaces in `case` arms stripped (e.g. `value      -> value` → `value -> value`)
+   - Multi-line function calls reformatted when LHS + RHS exceeds line length
+   - `do: bare_call` → `do: bare_call()` (parentheses added to single-line do expressions)
+   - Plug `@behaviour` modules need `import Plug.Conn` for unqualified calls like `put_private/3`
+
    **Why this matters**:
    - **First code block becomes the social media screenshot** - it must show the solution, not just the problem
    - Visual contrast (❌ vs ✅) in the same block creates immediate engagement
@@ -358,7 +366,7 @@ Optional additional code snippets:
    - Consistent with Elixir community standards
    - Prevents formatting issues that distract from content
 
-7. **Final Output** - ALWAYS save as TWO separate markdown files (do NOT ask — just save them):
+7. **Final Output** - ALWAYS save as TWO separate markdown files (do NOT ask — just save them). **Delegate all file writes to `static-site-developer`** — the orchestrator hook blocks direct Write calls on source files:
    - **Drop content**: `./drops/[topic_name]_drop.md` — the full drop body
    - **Twitter hook**: `./drops/[topic_name]_hook.md` — the hook text only, ready to copy-paste. The ZWSP characters must be embedded in the file so the user can copy-paste directly into Twitter without auto-linking issues.
    - Use proper markdown formatting (no code block wrapping)
@@ -426,6 +434,8 @@ Content Quality Standards:
   - The rules contain specific formatting requirements, type safety patterns, and Phoenix conventions that MUST be followed
   - **🚨 CRITICAL: Add `import Ecto.Query`** when using `from` query syntax
   - **🚨 CRITICAL: Use `MyAppWeb.Endpoint.subscribe/1`** for PubSub in LiveView, NOT `Phoenix.PubSub.subscribe/2`
+  - **`cast_assoc` vs `put_assoc`**: `cast_assoc` for user-submitted params (runs changeset, validates, handles deletes); `put_assoc` for trusted programmatic data (structs, bypasses validation)
+  - **`on_replace:` option required** on `has_many`/`many_to_many` when using `cast_assoc` to control delete behaviour (`:delete`, `:nilify`, `:raise`)
 - **Context matters** - Explain why the solution works, not just how
 - **Community focused** - Write for developers who will encounter this problem
 - **Searchable titles** - Include relevant keywords developers would search for
