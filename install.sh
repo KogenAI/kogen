@@ -194,6 +194,20 @@ if harness_enabled claude; then
             fi
         done
 
+        # Prune orphan hooks: remove any *.sh in $CLAUDE_SETTINGS_DIR/hooks
+        # that no longer exists in templates/shared/hooks/. Keeps installs in sync
+        # when hooks are deleted upstream. Skips the lib/ subdirectory.
+        if [ -d "$CLAUDE_SETTINGS_DIR/hooks" ]; then
+            for installed_hook in "$CLAUDE_SETTINGS_DIR/hooks"/*.sh; do
+                [ -f "$installed_hook" ] || continue
+                hook_basename=$(basename "$installed_hook")
+                if [ ! -f "$CODEGEN_DIR/templates/shared/hooks/$hook_basename" ]; then
+                    rm -f "$installed_hook"
+                    echo "   Removed orphan hook: $hook_basename"
+                fi
+            done
+        fi
+
         # Install hooks lib (sourced by every hook script for parse_input/deny/etc.)
         if [ -d "$CODEGEN_DIR/templates/shared/hooks/lib" ]; then
             mkdir -p "$CLAUDE_SETTINGS_DIR/hooks/lib"
