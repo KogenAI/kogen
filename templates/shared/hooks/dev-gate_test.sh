@@ -157,7 +157,10 @@ assert_file_contains "long-gate flag has session_id" "session_id=sess-long" "$fl
     printf 'FAIL: latest.flag does not exist\n'
     fail=$((fail + 1))
 }
-assert_file_contains "long-gate placeholder VE section appended" "Long gate started" "$LOG"
+# The hook now blocks and polls — with no Makefile present, `make llm` fails
+# fast and the verdict should be FAILED (or the flag file exists before verdict).
+# We assert the flag file shape and that a verdict was appended (not placeholder).
+assert_file_contains "long-gate verdict VE section appended" "verification-engineer Section" "$LOG"
 # Cleanup any background process we may have spawned
 pkill -f "make llm" 2>/dev/null || true
 rm -rf "$T5"
@@ -210,6 +213,194 @@ out=$(printf '%s' "$(input_for "$T7")" | bash "$HOOK" 2>/dev/null || true)
     fail=$((fail + 1))
 }
 rm -rf "$T7"
+
+# ── Test 8: previous PID alive → INCONCLUSIVE previous-gate-running ─────────
+T8=$(make_project)
+LOG8="$T8/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_step1_prevpid.md"
+cat >"$LOG8" <<'MD'
+# Step
+
+## Plan
+
+**Gate**: `make llm`
+MD
+mkdir -p "$T8/codegen/gate-pending"
+# Start a long-lived background process to stand in as the "previous gate".
+sleep 600 &
+prev_pid=$!
+cat >"$T8/codegen/gate-pending/latest.flag" <<EOF
+gate=make llm
+pid=$prev_pid
+log=$T8/codegen/gate-pending/old.log
+exitcode_file=$T8/codegen/gate-pending/old.log.exitcode
+started_at=2026-01-01T00:00:00Z
+session_id=oldsession
+mode=long
+EOF
+out=$(printf '%s' "$(input_for "$T8" phoenix-developer false sess8)" | DEV_GATE_POLL_TIMEOUT_OVERRIDE=5 bash "$HOOK" 2>/dev/null || true)
+kill "$prev_pid" 2>/dev/null || true
+assert_file_contains "prev-alive: INCONCLUSIVE appended" "INCONCLUSIVE" "$LOG8"
+assert_file_contains "prev-alive: reason is previous-gate-running" "previous-gate-running" "$LOG8"
+# No new flag file should have been created for sess8.
+[ ! -f "$T8/codegen/gate-pending/sess8.flag" ] && {
+    printf 'PASS: prev-alive: no new flag created\n'
+    pass=$((pass + 1))
+} || {
+    printf 'FAIL: prev-alive: new flag was unexpectedly created\n'
+    fail=$((fail + 1))
+}
+rm -rf "$T8"
+
+# ── Test 9: previous PID dead → reaper sweeps orphan files, new gate launches
+# Uses a long-mode gate so the hook enters the long-gate branch where the reaper lives.
+T9=$(make_project)
+LOG9="$T9/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_step1_deadpid.md"
+# Stub `make` exits 0 immediately so the poll loop completes quickly.
+stub_bin9=$(mktemp -d)
+cat >"$stub_bin9/make" <<'SH'
+#!/usr/bin/env bash
+exit 0
+SH
+chmod +x "$stub_bin9/make"
+cat >"$LOG9" <<'MD'
+# Step
+
+## Plan
+
+**Gate**: `make llm`
+
+MD
+mkdir -p "$T9/codegen/gate-pending"
+# Write latest.flag pointing to a dead PID (99999 is reliably dead).
+cat >"$T9/codegen/gate-pending/latest.flag" <<'EOF'
+gate=make llm
+pid=99999
+log=/tmp/nonexistent.log
+exitcode_file=/tmp/nonexistent.log.exitcode
+started_at=2026-01-01T00:00:00Z
+session_id=oldsession
+mode=long
+EOF
+# Create orphan log/exitcode files and backdate them > 24h.
+orphan_log="$T9/codegen/gate-pending/oldsession-20240101T000000Z.log"
+orphan_ec="${orphan_log}.exitcode"
+touch "$orphan_log" "$orphan_ec"
+# macOS: touch -t uses YYYYMMDDHHMM; GNU: touch -d "2 days ago".
+two_days_ago=$(date -v-2d +%Y%m%d%H%M 2>/dev/null || date -d "2 days ago" +%Y%m%d%H%M 2>/dev/null || echo "202401010000")
+touch -t "$two_days_ago" "$orphan_log" "$orphan_ec" 2>/dev/null || true
+out=$(printf '%s' "$(input_for "$T9" phoenix-developer false sess9)" |
+    DEV_GATE_POLL_TIMEOUT_OVERRIDE=10 PATH="$stub_bin9:$PATH" bash "$HOOK" 2>/dev/null || true)
+# Orphan files should be swept (reaper runs in long-gate branch).
+[ ! -f "$orphan_log" ] && {
+    printf 'PASS: dead-pid: orphan .log swept\n'
+    pass=$((pass + 1))
+} || {
+    printf 'FAIL: dead-pid: orphan .log not swept\n'
+    fail=$((fail + 1))
+}
+# New gate launched and verdict produced.
+[ -f "$T9/codegen/gate-pending/sess9.flag" ] && {
+    printf 'PASS: dead-pid: new gate launched\n'
+    pass=$((pass + 1))
+} || {
+    printf 'FAIL: dead-pid: new gate not launched\n'
+    fail=$((fail + 1))
+}
+rm -rf "$T9" "$stub_bin9"
+
+# ── Test 10: mutex contention → INCONCLUSIVE concurrent-launch ──────────────
+T10=$(make_project)
+LOG10="$T10/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_step1_mutex.md"
+cat >"$LOG10" <<'MD'
+# Step
+
+## Plan
+
+**Gate**: `make llm`
+MD
+mkdir -p "$T10/codegen/gate-pending/.launch.lock"
+# Write a live PID into the lock so stale-lock recovery does not remove it.
+echo "$$" >"$T10/codegen/gate-pending/.launch.lock/launched_pid"
+out=$(printf '%s' "$(input_for "$T10" phoenix-developer false sess10)" | DEV_GATE_POLL_TIMEOUT_OVERRIDE=5 bash "$HOOK" 2>/dev/null || true)
+assert_file_contains "mutex: INCONCLUSIVE appended" "INCONCLUSIVE" "$LOG10"
+assert_file_contains "mutex: reason is concurrent-launch" "concurrent-launch" "$LOG10"
+rm -rf "$T10"
+
+# ── Test 11: long gate exit 0 → ALL CLEAR ✅ ────────────────────────────────
+T11=$(make_project)
+LOG11="$T11/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_step1_pass.md"
+# Create a stub `make` that exits 0 after 2s (mode=long because gate is "make llm").
+stub_bin11=$(mktemp -d)
+cat >"$stub_bin11/make" <<'SH'
+#!/usr/bin/env bash
+sleep 2
+exit 0
+SH
+chmod +x "$stub_bin11/make"
+cat >"$LOG11" <<'MD'
+# Step
+
+## Plan
+
+**Gate**: `make llm`
+
+MD
+out=$(printf '%s' "$(input_for "$T11" phoenix-developer false sess11)" |
+    DEV_GATE_POLL_TIMEOUT_OVERRIDE=10 PATH="$stub_bin11:$PATH" bash "$HOOK" 2>/dev/null || true)
+assert_file_contains "long-gate exit-0: ALL CLEAR appended" "ALL CLEAR" "$LOG11"
+rm -rf "$T11" "$stub_bin11"
+
+# ── Test 12: long gate exit 1 → FAILED ❌ ───────────────────────────────────
+T12=$(make_project)
+LOG12="$T12/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_step1_fail_long.md"
+# Create a stub `make` that exits 1 after 2s.
+stub_bin12=$(mktemp -d)
+cat >"$stub_bin12/make" <<'SH'
+#!/usr/bin/env bash
+sleep 2
+exit 1
+SH
+chmod +x "$stub_bin12/make"
+cat >"$LOG12" <<'MD'
+# Step
+
+## Plan
+
+**Gate**: `make llm`
+
+MD
+out=$(printf '%s' "$(input_for "$T12" phoenix-developer false sess12)" |
+    DEV_GATE_POLL_TIMEOUT_OVERRIDE=10 PATH="$stub_bin12:$PATH" bash "$HOOK" 2>/dev/null || true)
+assert_file_contains "long-gate exit-1: FAILED appended" "FAILED" "$LOG12"
+rm -rf "$T12" "$stub_bin12"
+
+# ── Test 13: long gate timeout → INCONCLUSIVE timeout-exceeded ───────────────
+T13=$(make_project)
+LOG13="$T13/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_step1_timeout.md"
+# Create a stub `make` that sleeps for 30s so the poll times out.
+# This must be in a bin dir that shadows the real `make` for the hook subprocess.
+stub_bin13=$(mktemp -d)
+cat >"$stub_bin13/make" <<'SH'
+#!/usr/bin/env bash
+sleep 30
+SH
+chmod +x "$stub_bin13/make"
+cat >"$LOG13" <<'MD'
+# Step
+
+## Plan
+
+**Gate**: `make llm`
+
+MD
+# Use a 1-second poll timeout so the test completes quickly.
+out=$(printf '%s' "$(input_for "$T13" phoenix-developer false sess13)" |
+    DEV_GATE_POLL_TIMEOUT_OVERRIDE=1 PATH="$stub_bin13:$PATH" bash "$HOOK" 2>/dev/null || true)
+assert_file_contains "timeout: INCONCLUSIVE appended" "INCONCLUSIVE" "$LOG13"
+assert_file_contains "timeout: reason is timeout-exceeded" "timeout-exceeded" "$LOG13"
+# Cleanup background sleep (stub make ran in nohup subprocess).
+pkill -f "sleep 30" 2>/dev/null || true
+rm -rf "$T13" "$stub_bin13"
 
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

@@ -23,6 +23,15 @@ assert_eq() {
     fi
 }
 
+# ── gate_timeout_for ────────────────────────────────────────────────────────
+assert_eq "gate_timeout_for(make ci) = 900" "900" "$(gate_timeout_for 'make ci')"
+assert_eq "gate_timeout_for(make llm) = 1500" "1500" "$(gate_timeout_for 'make llm')"
+assert_eq "gate_timeout_for(make ci && make llm) = 1800" "1800" "$(gate_timeout_for 'make ci && make llm')"
+assert_eq "gate_timeout_for(make ci-fast) = 0 (short)" "0" "$(gate_timeout_for 'make ci-fast')"
+assert_eq "gate_timeout_for(make llm-phoenix-validate) = 0 (short)" "0" "$(gate_timeout_for 'make llm-phoenix-validate')"
+assert_eq "gate_timeout_for(make llm-phoenix) = 1500 (llm)" "1500" "$(gate_timeout_for 'make llm-phoenix')"
+assert_eq "gate_timeout_for(rebuild-seed-then) = 1500" "1500" "$(gate_timeout_for 'COMBOBULATE_VE_GATE=rebuild-seed-then make llm-phoenix')"
+
 # ── gate_mode_for ───────────────────────────────────────────────────────────
 assert_eq "gate_mode_for(make ci) = short" "short" "$(gate_mode_for 'make ci')"
 assert_eq "gate_mode_for(make ci-fast) = short" "short" "$(gate_mode_for 'make ci-fast')"
@@ -37,6 +46,7 @@ T_NOCFG=$(mktemp -d)
 out=$(gate_select_decide "$T_NOCFG")
 assert_eq "no-config fallback gate" "gate=make test" "$(printf '%s' "$out" | sed -n '1p')"
 assert_eq "no-config fallback mode" "mode=short" "$(printf '%s' "$out" | sed -n '2p')"
+assert_eq "no-config fallback timeout" "timeout=0" "$(printf '%s' "$out" | sed -n '3p')"
 rm -rf "$T_NOCFG"
 
 # ── Setup helpers ───────────────────────────────────────────────────────────
@@ -87,6 +97,7 @@ echo "x" >"$T1/CLAUDE.md"
 out=$(gate_select_decide "$T1")
 assert_eq "llm-only branch gate" "gate=make ci && make llm" "$(printf '%s' "$out" | sed -n '1p')"
 assert_eq "llm-only branch mode" "mode=long" "$(printf '%s' "$out" | sed -n '2p')"
+assert_eq "llm-only branch timeout" "timeout=1800" "$(printf '%s' "$out" | sed -n '3p')"
 rm -rf "$T1" "$SEED_DIR"
 
 # ── Branch: only PHOENIX paths changed, seed healthy ───────────────────────
@@ -164,6 +175,7 @@ MD
 out=$(gate_select_decide "$T7" "$LOG")
 assert_eq "planner gate wins" "gate=make ci" "$(printf '%s' "$out" | sed -n '1p')"
 assert_eq "planner gate mode" "mode=short" "$(printf '%s' "$out" | sed -n '2p')"
+assert_eq "planner gate timeout" "timeout=900" "$(printf '%s' "$out" | sed -n '3p')"
 rm -rf "$T7" "$SEED_DIR"
 
 printf '\n%d passed, %d failed\n' "$pass" "$fail"

@@ -5,10 +5,11 @@
 #
 #   gate_select_decide <project_dir>
 #
-# It prints two lines to stdout:
+# It prints three lines to stdout:
 #
 #   gate=<command>
 #   mode=<short|long>
+#   timeout=<seconds>   (0 for short gates; the foreground poll budget for long gates)
 #
 # Inputs (in priority order):
 #   1. The active step log's `## Plan` section first `**Gate**:` (or `Gate:`) line.
@@ -49,6 +50,55 @@
 #   anything else                              → short
 
 set -u
+
+# gate_timeout_for <command> — print timeout in seconds for a gate command.
+# The timeout budget is based on substring matching, independent of gate mode:
+#   make ci (with or without llm)  → present in combined → contributes 900
+#   make llm (excluding validate)  → present alone        → 1500
+#   both make ci and make llm      → combined             → 1800
+#   anything else                  → 0
+#
+# The three named gates:
+#   "make ci"              → 900
+#   "make llm"             → 1500
+#   "make ci && make llm"  → 1800
+#   "make ci-fast"         → 0
+#   "make llm-phoenix-validate" → 0
+gate_timeout_for() {
+    local cmd="$1"
+    local has_llm=0
+    local has_ci=0
+
+    # Does command contain a standalone `make ci` (not ci-fast, not ci-skip, etc.)?
+    # Match `make ci` only when followed by end-of-string, space, or non-alphanumeric/dash.
+    if printf '%s' "$cmd" | grep -qE '\bmake[[:space:]]+ci([[:space:]]|$)'; then
+        has_ci=1
+    fi
+
+    # Does command contain a real `make llm` target (llm, llm-phoenix) but NOT
+    # llm-phoenix-validate-only (which is short)?
+    # A command is "llm-bearing" if it has make llm, make llm-phoenix, or rebuild-seed-then
+    # but only if it is NOT exclusively llm-phoenix-validate with nothing else.
+    if printf '%s' "$cmd" | grep -qE '\bmake[[:space:]]+llm([[:space:]]|$)|\bmake[[:space:]]+llm-phoenix([[:space:]]|$)'; then
+        # Exclude validate-only: has llm-phoenix-validate but NOT llm or llm-phoenix (standalone)
+        if printf '%s' "$cmd" | grep -qE '\bmake[[:space:]]+llm-phoenix-validate\b' &&
+            ! printf '%s' "$cmd" | grep -qE '\bmake[[:space:]]+llm([[:space:]]|$)|\bmake[[:space:]]+llm-phoenix([[:space:]]|$)'; then
+            has_llm=0
+        else
+            has_llm=1
+        fi
+    fi
+
+    if [ "$has_ci" -eq 1 ] && [ "$has_llm" -eq 1 ]; then
+        printf '1800'
+    elif [ "$has_ci" -eq 1 ]; then
+        printf '900'
+    elif [ "$has_llm" -eq 1 ]; then
+        printf '1500'
+    else
+        printf '0'
+    fi
+}
 
 # gate_mode_for <command> — print "short" or "long" for a command string.
 gate_mode_for() {
@@ -104,9 +154,10 @@ gate_select_decide() {
         local plan_gate
         plan_gate=$(gate_select_read_planner_gate "$step_log")
         if [ -n "$plan_gate" ]; then
-            local mode
+            local mode timeout
             mode=$(gate_mode_for "$plan_gate")
-            printf 'gate=%s\nmode=%s\n' "$plan_gate" "$mode"
+            timeout=$(gate_timeout_for "$plan_gate")
+            printf 'gate=%s\nmode=%s\ntimeout=%s\n' "$plan_gate" "$mode" "$timeout"
             return 0
         fi
     fi
@@ -115,7 +166,7 @@ gate_select_decide() {
     local config="$project_dir/.claude/gate-config.sh"
     if [ ! -f "$config" ]; then
         # 3. No config — generic fallback.
-        printf 'gate=make test\nmode=short\n'
+        printf 'gate=make test\nmode=short\ntimeout=0\n'
         return 0
     fi
 
@@ -189,7 +240,8 @@ gate_select_decide() {
         gate="make test"
     fi
 
-    local mode
+    local mode timeout
     mode=$(gate_mode_for "$gate")
-    printf 'gate=%s\nmode=%s\n' "$gate" "$mode"
+    timeout=$(gate_timeout_for "$gate")
+    printf 'gate=%s\nmode=%s\ntimeout=%s\n' "$gate" "$mode" "$timeout"
 }
