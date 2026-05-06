@@ -67,9 +67,21 @@ def render(target, hooks):
     lines.append("max_depth = 5")
     lines.append("max_threads = 6")
     lines.append("")
+    # Bucket hooks by event so each event gets one inline-table-array entry.
+    # Codex's TOML parser preserves `PreToolUse = [...]` across operator hand-
+    # edits; the older `[[hooks.PreToolUse]]` array-of-tables form was rewritten
+    # on every provision, fighting hand-edits.
+    by_event = {}
     for event, command in hooks:
-        lines.append("[[hooks.%s]]" % event)
-        lines.append('command = "%s"' % command)
+        by_event.setdefault(event, []).append(command)
+
+    if by_event:
+        lines.append("[hooks]")
+        for event, commands in by_event.items():
+            lines.append("%s = [" % event)
+            for command in commands:
+                lines.append('    { command = "%s" },' % command)
+            lines.append("]")
         lines.append("")
     return "\n".join(lines)
 

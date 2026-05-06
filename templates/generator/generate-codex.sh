@@ -87,6 +87,7 @@ python3 "$SCRIPT_DIR/codex_config.py" \
     --target=global \
     --hook 'PreToolUse:$HOME/.codex/hooks/codex-inspector-bash-guard.sh' \
     --hook 'PreToolUse:$HOME/.codex/hooks/codex-inspector-write-guard.sh' \
+    --hook 'PreToolUse:$HOME/.codex/hooks/codex-inspector-read-guard.sh' \
     --out "$OUTPUT_CONFIG"
 
 echo "   ✅ Written: $(basename "$OUTPUT_CONFIG")"
