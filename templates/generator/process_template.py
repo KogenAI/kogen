@@ -93,7 +93,7 @@ def render_toml(template_file, config_yaml, role_name):
 
     with open(config_yaml, 'r') as f:
         config = yaml.safe_load(f)
-    harness_models = config.get('harness_models', {})
+    harness = config.get('harness', {})
 
     with open(template_file, 'r') as f:
         raw = f.read()
@@ -151,7 +151,14 @@ def render_toml(template_file, config_yaml, role_name):
     # ---- Derive TOML fields ----
     name_val = frontmatter.get('name', role_name)
     description_val = frontmatter.get('description', '')
-    effort_val = frontmatter.get('effort', 'medium')
+    role_cfg = harness.get(role_name)
+    if not role_cfg or 'codex' not in role_cfg:
+        sys.exit(
+            f"ERROR: process_template.py: no harness[{role_name!r}]['codex'] "
+            f"entry in config.yaml; refusing to ship a silently-mistargeted role."
+        )
+    effort_val = role_cfg['codex']['effort']
+    model_val = role_cfg['codex']['model']
 
     if 'tools' not in frontmatter:
         sys.exit(
@@ -172,14 +179,6 @@ def render_toml(template_file, config_yaml, role_name):
 
     writable_tools = {'Write', 'MultiEdit'}
     sandbox_mode = 'workspace-write' if any(t in writable_tools for t in tools_list) else 'read-only'
-
-    role_models = harness_models.get(role_name)
-    if not role_models or 'codex' not in role_models:
-        sys.exit(
-            f"ERROR: process_template.py: no harness_models[{role_name!r}]['codex'] "
-            f"entry in config.yaml; refusing to ship a silently-mistargeted role."
-        )
-    model_val = role_models['codex']
 
     effort_map = {'high': 'high', 'medium': 'medium', 'low': 'low'}
     reasoning_effort = effort_map.get(effort_val, 'medium')
