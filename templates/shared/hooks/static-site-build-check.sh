@@ -104,7 +104,7 @@ check_tailwind_v4_config() {
 
 # ── Check 4: Tailwind v4 directive (@tailwind ...) ──────────────────────────
 check_tailwind_directives() {
-    if grep -rE '^@tailwind ' --include='*.css' . >/dev/null 2>&1; then
+    if grep -rE '^@tailwind ' --include='*.css' --exclude-dir=node_modules . >/dev/null 2>&1; then
         fail "Tailwind v3 @tailwind directive found — use @import \"tailwindcss\"; instead"
     fi
 }
