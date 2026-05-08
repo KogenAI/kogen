@@ -415,6 +415,16 @@ fi # harness_enabled claude
 if harness_enabled codex; then
     echo ""
     echo "🔧 Setting up Codex configuration..."
+
+    echo "🤖 Installing Codex..."
+    hash -r 2>/dev/null || true
+    if command -v codex >/dev/null 2>&1; then
+        echo "   ✅ Codex already installed"
+    else
+        npm install -g "@openai/codex@latest"
+        echo "   ✅ Codex installed"
+    fi
+
     mkdir -p "$HOME/.codex/agents"
     mkdir -p "$HOME/.codex/hooks"
 
