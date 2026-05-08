@@ -2,61 +2,61 @@
 description: Conduct comprehensive business idea research and validation
 ---
 
-Conduct systematic business idea research and validation through analysis of market, competition, technical feasibility, and user psychology. Guide through complete research process from initial concept to architecture-ready state.
+Systematic business idea research and validation: market, competition, technical feasibility, user psychology. Initial concept → architecture-ready state.
 
 **STEP 1: Initial Concept Capture**
 
-Ask the user to describe their business idea, then capture:
+Ask user to describe idea, then capture:
 
-- **Core problem** being solved
-- **Target audience** and demographics
-- **Proposed solution** approach
-- **Key differentiators** from existing solutions
-- **Business model** initial thoughts (B2B, B2C, monetization ideas)
+- Core problem being solved
+- Target audience and demographics
+- Proposed solution approach
+- Key differentiators from existing solutions
+- Business model initial thoughts (B2B, B2C, monetization)
 
-Create a basic problem-solution fit statement and verify understanding with the user.
+Create problem-solution fit statement. Verify understanding with user.
 
 **STEP 2: Automated Research Phase**
 
-Use TodoWrite to create a research task list, then execute parallel research across these key areas:
+Use TodoWrite to create research task list, then execute parallel research:
 
-1. **Competitive Landscape Analysis**
-   - Search for direct and adjacent competitors
-   - Analyze business models, pricing, and positioning
+1. **Competitive Landscape**
+   - Search direct and adjacent competitors
+   - Analyze business models, pricing, positioning
    - Identify market gaps and differentiation opportunities
    - Create competitive comparison table
 
-2. **Technical Feasibility Research**
+2. **Technical Feasibility**
    - Investigate API limitations and costs
    - Research third-party service constraints
-   - Analyze technical architecture requirements
-   - Identify potential technical risks and mitigations
+   - Analyze technical architecture reqs
+   - Identify technical risks and mitigations
 
-3. **User Psychology & Behavior Analysis**
+3. **User Psychology & Behavior**
    - Research why users prefer certain solutions
    - Analyze switching costs and adoption barriers
-   - Understand user preferences and pain points
+   - Understand user pain points
    - Validate assumptions about user behavior
 
 4. **Market Size & Validation**
    - Research market trends and growth patterns
    - Analyze similar product success/failure cases
    - Identify target market size and segments
-   - Look for validation signals in the market
+   - Look for validation signals
 
 **STEP 3: Interactive Refinement**
 
-After presenting research findings, engage with the user to:
+After presenting findings, engage user to:
 
-- **Clarify assumptions** based on research findings
-- **Refine the business model** with new insights
-- **Address concerns** raised by the research
-- **Prioritize features** based on user psychology insights
-- **Plan go-to-market strategy** based on competitive analysis
+- Clarify assumptions based on research
+- Refine business model with new insights
+- Address concerns raised by research
+- Prioritize features based on user psychology
+- Plan go-to-market based on competitive analysis
 
 **STEP 4: Comprehensive Documentation**
 
-Create a detailed business concept markdown file with these sections:
+Create detailed business concept markdown file:
 
 ## Vision
 
@@ -202,35 +202,24 @@ Table comparing key competitors with:
 
 **Research Quality Standards:**
 
-- **Parallel execution** - Run multiple WebSearch calls simultaneously for efficiency
-- **Primary sources** - Focus on official documentation, recent studies, and industry reports
-- **Data validation** - Cross-reference findings across multiple sources
-- **User-centric focus** - Prioritize research that impacts user adoption and retention
-- **Actionable insights** - Convert research into specific business decisions
-- **Risk identification** - Proactively identify and plan for potential challenges
+- Parallel execution — run multiple WebSearch calls simultaneously
+- Primary sources — official docs, recent studies, industry reports
+- Data validation — cross-reference across multiple sources
+- User-centric focus — prioritize research impacting adoption and retention
+- Actionable insights — convert research into specific decisions
+- Risk identification — proactively identify and plan for challenges
 
 **Interactive Approach:**
 
-- **Confirm understanding** before starting research
-- **Present findings incrementally** with user feedback opportunities
-- **Ask clarifying questions** when research reveals important considerations
-- **Adjust research direction** based on user responses and priorities
-- **Validate assumptions** with user throughout the process
-
-**Documentation Standards:**
-
-- **Comprehensive but concise** - Detailed enough for decision-making, brief enough to be actionable
-- **Research-backed** - Every claim supported by findings
-- **Future-focused** - Include implementation roadmap and success metrics
-- **Shareable format** - Professional markdown suitable for investors/stakeholders
+- Confirm understanding before starting research
+- Present findings incrementally with user feedback opportunities
+- Ask clarifying questions when research reveals important considerations
+- Adjust research direction based on user responses
+- Validate assumptions with user throughout
 
 **Output Requirements:**
 
-- **Always use TodoWrite** to track research progress and show completion
-- **Create final markdown file** using Write tool with standardized naming: `{idea-name}-business-concept.md`
-- **Include research date** and sources for future reference
-- **Mark research status** as complete with next steps clearly defined
-
-This systematic approach ensures thorough validation of business ideas before moving to architecture and development phases, reducing the risk of building solutions that don't address real market needs.
-
-The process typically takes 2-4 hours of focused research and analysis, resulting in a comprehensive business concept document ready for technical planning or investor presentation.
+- Use TodoWrite to track research progress
+- Create final markdown file: `{idea-name}-business-concept.md`
+- Include research date and sources for future reference
+- Mark research status as complete with next steps

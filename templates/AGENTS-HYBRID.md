@@ -1,74 +1,78 @@
 # AGENTS.md - Hybrid Workspace
 
-Universal guidance for AI agents in hybrid workspaces — production agent quality without worktrees or CONTEXT.md files.
+Guidance for AI agents in hybrid workspaces — production agent quality without worktrees or CONTEXT.md files.
 
 **Hybrid = full agent delegation chain + no worktrees + Opus planner as Phase 0 + no CONTEXT.md**
 
 ## ORCHESTRATOR: NEVER IMPLEMENT CODE DIRECTLY
 
-The orchestrator NEVER writes code, tests, or file edits — not even "small" ones.
+Orchestrator NEVER writes code, tests, or file edits.
 
-- **FORBIDDEN**: Writing tests, editing source files, fixing bugs inline, "just quickly" adding anything
-- **ONLY allowed**: Loading rules, reading context, creating session log, delegating to subagents (including committer)
+- **FORBIDDEN**: Writing tests, editing source files, fixing bugs inline
+- **ONLY allowed**: Loading rules, reading context, creating session log, delegating to subagents
 
-**Any code or tests -> delegate to phoenix-developer or static-site-developer (pick by app stack). No exceptions.**
+**Any code or tests → delegate to phoenix-developer or static-site-developer. No exceptions.**
 
 ## ORCHESTRATOR: ALWAYS RUN THE FULL CYCLE
 
 **Phase 0 — planner** (skip only when ALL THREE are true):
 
-1. Task is a bug fix or CI-failure fix (message contains `bug`, `fix`, `failing`, `error`, `broken`, `crash`)
-2. No new module, table, migration, endpoint, or external API mentioned (message lacks `add`, `new`, `create`, `integrate`, `implement`)
-3. Scope fits in one domain context file (task mentions at most one of: messaging, hosting, builds, billing, auth, email, development)
+1. Task is bug fix or CI-failure fix (message contains `bug`, `fix`, `failing`, `error`, `broken`, `crash`)
+2. No new module, table, migration, endpoint, or external API (message lacks `add`, `new`, `create`, `integrate`, `implement`)
+3. Scope fits in one domain context file
 
 If any is false → engage planner. For user-app builds, planner always runs.
 
-**After the developer subagent completes — immediately, without stopping or asking:**
+**After dev subagent completes — immediately, without stopping:**
 
-1. **Identify the step's gate** — what test suite proves this works? CI alone? Write it in the session log.
-2. -> **verification-engineer** — the FIRST LINE of your delegation prompt MUST be `Gate: <exact command from the planner's plan>`. Never derive the gate independently — re-read the `## Plan` section of the session log.
-3. -> **code-reviewer** — ONLY after finding the literal `ALL CLEAR ✅` in the ve section of the session log. If absent, re-delegate to the developer.
-4. -> **committer** (only after "QUALITY APPROVED" — pass the task summary so it can craft a why-focused message)
-5. -> **continue to next step** — do NOT stop after committing
+1. **Identify gate** — what test suite proves this works? Write in session log.
+2. → **verification-engineer** — first line of delegation: `Gate: <exact command from planner's plan>`. Never derive independently — re-read `## Plan` section.
+3. → **code-reviewer** — ONLY after finding literal `ALL CLEAR ✅` in ve section. If absent, re-delegate to dev.
+4. → **committer** (only after "QUALITY APPROVED" — pass task summary)
+5. → **continue to next step** — do NOT stop after committing
 
 **No exceptions.** One-line change? Full cycle. Runtime.exs tweak? Full cycle.
 
-**Multi-step tasks**: Steps are pre-sequenced by `/split` before the session starts — no upfront ordering pass needed. Run planner once per step (for implementation depth), then the full cycle. Never bundle steps into one planner or one developer delegation.
+**Multi-step tasks**: Steps pre-sequenced by `/split`. Run planner once per step, then full cycle. Never bundle steps.
+
+## Output Style
+
+Output: caveman ultra. Agents read you, not humans. No preamble. No recap. No pleasantries. Drop articles, filler, hedging. Fragments OK. Arrows for causality (X → Y). Short synonyms (fix not "implement a solution"). Inline acronyms (dev, VE, impl, DB, conn, fn, reqs). NEVER touch JSON schemas, Ecto field names, contracts, code blocks, error strings, "MUST"/"NEVER"/"FORBIDDEN", or hook markers (ALL CLEAR ✅, FAILED ❌, INCONCLUSIVE ⚠️) — verbatim regardless of style. Drop ultra for security warnings or irreversible-action confirmations.
 
 ## MANDATORY: Load Rules FIRST
 
-These are **orchestrator-only** rules — subagents have their rules pre-loaded in their system prompts via Jinja includes and do not need to read them.
+Orchestrator-only rules — subagents have rules pre-loaded via Jinja includes.
 
 On EVERY session start:
 
 1. **LOAD** `./codegen/rules/orchestration/delegation-patterns.md`, `./codegen/rules/orchestration/user-communication.md`, and `./codegen/rules/orchestration/deploy.md`
-2. **READ** `./codegen/PROJECT_CONTEXT.md` (concise index — always load)
+2. **READ** `./codegen/PROJECT_CONTEXT.md`
 
 ## Domain Context Loading
 
-`PROJECT_CONTEXT.md` is a concise index. Detailed context lives in `context/` domain files. Agents load the index always, then only the domain file(s) relevant to their task.
+`PROJECT_CONTEXT.md` is concise index. Detailed context in `context/` domain files. Agents load index always, then only relevant domain files.
 
-See the "Domain Context Files" table in `PROJECT_CONTEXT.md` for the loading guide.
+See "Domain Context Files" table in `PROJECT_CONTEXT.md`.
 
-**Orchestrator**: tell subagents which domain context file(s) to load in the delegation prompt.
+**Orchestrator**: tell subagents which domain context files to load in delegation prompt.
 
 ## Workspace Rules
 
 - Work in current directory only (never `../`)
 - No worktrees — commit directly to main
-- Planner (Phase 0) runs before the developer subagent for all non-trivial tasks (see skip rule above)
+- Planner (Phase 0) runs before dev for all non-trivial tasks
 
 ## Session Logging
 
-**One log per step/task.** Multi-step sessions produce one file per step + a progress file.
+**One log per step/task.** Multi-step sessions → one file per step + progress file.
 
-- **Orchestrator** creates each step's log file before delegating
+- **Orchestrator** creates each step's log before delegating
 - **Subagents** append their section — never create separate files
 - Multi-step progress: `./codegen/logging/$(date -u +%Y%m%d)_progress.md`
 - Step logs: `./codegen/logging/$(date -u +%Y%m%d)_step<N>_<slug>.md`
 - Single-task: `./codegen/logging/$(date -u +%Y%m%d_%H%M%S)_session.md`
 
-Session log template (create BEFORE delegating to planner). After writing the file, immediately stamp it by running:
+Create BEFORE delegating to planner. Then stamp:
 
 ```bash
 {
@@ -122,34 +126,34 @@ See `shared/session-management.md` for full format.
 planner -> phoenix-developer OR static-site-developer -> verification-engineer -> code-reviewer -> committer
 ```
 
-- **planner**: Reads codebase, writes structured plan to session log `## Plan` section (Opus — deep analysis)
-- **phoenix-developer**: Reads `## Plan` from session log, implements Phoenix/Elixir feature + tests (TDD), updates context files before reporting done
-- **static-site-developer**: Reads `## Plan` from session log, implements static site source files, updates context files before reporting done
+- **planner**: Reads codebase, writes structured plan to session log `## Plan` section (Opus)
+- **phoenix-developer**: Reads `## Plan`, implements Phoenix/Elixir feature + tests (TDD), updates context before done
+- **static-site-developer**: Reads `## Plan`, implements static site files, updates context before done
 - **verification-engineer**: Runs `make ci`, reports ALL failures, never fixes code
 - **code-reviewer**: Reviews quality/patterns/architecture, reports issues
-- **committer**: Receives task summary from orchestrator, analyzes git diff, crafts why-focused commit message, stages and commits (Haiku — cheap and fast)
+- **committer**: Receives task summary, analyzes git diff, crafts why-focused commit message, stages and commits
 
 ### Static-site verification
 
-Static-site builds previously routed through a `static-site-verifier` LLM subagent. That role has been collapsed into a deterministic SubagentStop hook — `static-site-build-check.sh` — that runs `mise exec -- npm run build`, asserts `package.json` invariants, and rejects Tailwind v3 config files / directives. The hook fires automatically after `static-site-developer` reports done; on failure it emits a `decision: block` envelope so the developer is re-spawned with the failure reason. No orchestrator delegation step is required.
+Static-site builds collapsed into deterministic SubagentStop hook — `static-site-build-check.sh` — runs `mise exec -- npm run build`, asserts `package.json` invariants, rejects Tailwind v3 config files/directives. Hook fires automatically after `static-site-developer` done; on failure emits `decision: block` → developer re-spawned. No orchestrator delegation step needed.
 
-Subagent rules (tdd.md, phoenix.md, session-management.md, etc.) are baked into each agent's system prompt via Jinja `{% include %}` in the `.md.j2` templates — subagents do not Read them at session start. Orchestrator delegation prompts only name conditional rules (domain context files, stack-specific rules) that the subagent must Read on demand. See `context/llm.md` for the full propagation model.
+Subagent rules baked into each agent's system prompt via Jinja `{% include %}` — subagents do not Read them at session start.
 
 ## MANDATORY: Update Context Before Handoff
 
-The developer subagent MUST update before reporting done:
+Dev subagent MUST update before done:
 
 - `PROJECT_CONTEXT.md` — if module directory changes
-- Relevant `context/*.md` domain file — new modules, env vars, pitfalls for that domain
+- Relevant `context/*.md` domain file — new modules, env vars, pitfalls
 
 ## CI Setup
 
-**`make ci`**: compile -> deps.unlock -> deps.audit -> hex.audit -> sobelow -> format + prettier -> credo --strict -> dialyzer -> test --cover -> ecto.rollback
+**`make ci`**: compile → deps.unlock → deps.audit → hex.audit → sobelow → format + prettier → credo --strict → dialyzer → test --cover → ecto.rollback
 
 ## Universal Requirements
 
-- **Read PROJECT_CONTEXT.md first** — always, before any work. Never assume field names, module paths, or schema structure — check PROJECT_CONTEXT and relevant domain context files before writing queries or code.
+- **Read PROJECT_CONTEXT.md first** — always. Never assume field names, module paths, or schema structure.
 - **Load relevant domain context** — based on task, not all files
-- **Issue Discovery -> Immediate Fixing** — find issues, fix them, never just document
+- **Issue Discovery → Immediate Fixing** — find issues, fix them, never document only
 - **Session logging** — orchestrator creates, subagents append
-- **Update context before done** — the developer subagent must update index + domain file before handoff
+- **Update context before done** — dev must update index + domain file before handoff

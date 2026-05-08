@@ -3,49 +3,49 @@ description: Split work into shippable steps where each commit keeps the system 
 argument-hint: [description of work to split, or reference to a plan/doc]
 ---
 
-Analyze the work described (or the current plan/document if no argument given) and split it into discrete, independently shippable steps if possible. Some work is too tightly coupled to split meaningfully — if that's the case, say so and explain why rather than forcing an artificial split.
+Analyze work described (or current plan/doc if no argument) and split into discrete, independently shippable steps. Some work is too tightly coupled to split — if so, say why rather than forcing artificial split.
 
-**Default the answer to one commit, then justify each additional split.** The user invoking `/split` is a strong prior toward N>1, but it is not proof. Many design docs describe one intent expressed across many files — landing them as N commits produces a half-migrated codebase between commits, N× the CI runtime, N× the review overhead, and a revertability that's almost never used because the intermediate states aren't viable to ship-and-stop on. Before producing any step list, write down "could this be one commit?" and answer it honestly. If the answer is yes or maybe, the result is one step (or a clear "this is one intent, not splittable" reply that updates the doc accordingly). Only produce N>1 when each additional step ships strictly more value than just being part of the whole — e.g. an independent bug fix, a piece of infrastructure that's useful before the rest lands, an external dependency that benefits from isolation. "Each commit is smaller" is not a reason; smaller commits at the cost of half-migrated intermediate states is worse, not better.
+**Default to one commit, then justify each additional split.** User invoking `/split` is strong prior toward N>1, but not proof. Many design docs describe one intent across many files — N commits → half-migrated codebase between commits, N× CI runtime, N× review overhead, revertability almost never used. Before producing any step list, answer "could this be one commit?" honestly. If yes or maybe → one step (or "this is one intent, not splittable" reply that updates doc). Only produce N>1 when each additional step ships strictly more value on its own — e.g. independent bug fix, infrastructure useful before rest lands, external dependency benefiting from isolation. "Each commit is smaller" is not a reason.
 
-The strongest signal that work is one commit, not N: every candidate step boundary fails either the scaffold test or the regression test below. When that happens, write the plan as a single step and explain in a `## Why one commit, not N` section why every candidate boundary failed. The user can override; the default is honest.
+Strongest signal work is one commit: every candidate step boundary fails scaffold test or regression test below. When that happens, write plan as single step with `## Why one commit, not N` section. User can override; default is honest.
 
-**Where the split lives: in the document, not in chat.**
+**Split lives in the document, not in chat.**
 
-If the argument references an existing plan/doc (a file path, `@path`, or unambiguous reference to a doc you've just read), the split IS that document's implementation plan. Edit the file in place — replace the existing implementation-plan/phases/steps section with the new step list. Do not paste the full step list into chat. After writing, reply with a short summary only: how many steps, what changed from the prior version (merges, reorderings, cuts), and any open questions. The user will read the steps in the doc.
+If argument references existing plan/doc (file path, `@path`, or unambiguous reference), the split IS that document's impl plan. Edit file in place — replace existing steps section with new step list. Don't paste full step list into chat. Reply with short summary: how many steps, what changed from prior version (merges, reorderings, cuts), open questions. User reads steps in doc.
 
-If there is no source document (the argument is a free-form description of work with no doc backing it), ask the user where to write the plan before producing the steps — typically a new file under `codegen/` or `docs/`. Do not default to dumping the plan into chat. Only when the user explicitly asks for a chat-only response (e.g. "just tell me, don't write it down", "preview only") should the steps appear inline in the reply.
+If no source document, ask user where to write the plan before producing steps — typically `codegen/` or `docs/`. Don't default to dumping plan into chat. Only when user explicitly asks for chat-only response ("just tell me", "preview only") should steps appear inline.
 
-When reviewing or updating an existing split document, if you reorder steps you MUST rewrite the document to reflect the new order — do not just say "do them in this order" in chat. The same rule applies: numbers in the document are the ground truth.
+When reviewing or updating existing split doc: if you reorder steps you MUST rewrite document to reflect new order. Numbers in document are ground truth.
 
 Each step must:
 
-- Leave the system in a better state than before — not just functional, but genuinely more valuable even if no further steps are ever shipped
-- Be a coherent unit with a clear purpose (not just "schema", but "schema that enables X")
-- Be as small as possible while still being meaningful
-- Have a one-line "why this is valuable on its own" justification — not just "system still works" but "here's what you gain"
+- Leave system in better state — not just functional, genuinely more valuable even if no further steps ship
+- Coherent unit with clear purpose (not just "schema", but "schema that enables X")
+- As small as possible while still meaningful
+- One-line "why this is valuable on its own" justification — not "system still works" but "here's what you gain"
 
-**Scaffold test**: before accepting a step, ask "if the next step is never shipped, does a user or developer gain anything from this?" If the honest answer is no — it's pure scaffolding that only enables the next step — merge it with the next step. A struct with a no-op function, a migration with no callers, an empty module with no behaviour — these are not shippable steps, they're half-steps. Merge them forward.
+**Scaffold test**: before accepting a step, ask "if next step never ships, does a user or dev gain anything?" If no — pure scaffolding that only enables next step — merge forward. Struct with no-op fn, migration with no callers, empty module with no behaviour → half-steps, not shippable. Merge forward.
 
-**Regression test**: the flip side of scaffold. Ask "if we stop here, is the system actually worse than before?" A step that ships visible placeholder strings in user output, blocks a previously-working path without providing the new one, writes literal `TODO_REPLACE_ME` tokens into artifacts users see, or leaves two subsystems in contradictory states (e.g. an enforcement hook that blocks action X while the rule file still tells the agent to do X) is a regression, not a step. Merge it forward with whatever step resolves the regression. The rule: every step must leave the system strictly better than the previous commit, not "better eventually once the next step lands". If stopping mid-sequence would make you want to revert, it's not a shippable step.
+**Regression test**: ask "if we stop here, is system worse than before?" Step that ships visible placeholder strings, blocks previously-working path without providing new one, writes `TODO_REPLACE_ME` into user artifacts, or leaves two subsystems in contradictory states → regression, not step. Merge forward with whatever step resolves it. Every step must leave system strictly better than previous commit.
 
-Common regression-half-step shapes to watch for:
+Common regression-half-step shapes:
 
-- **Placeholder in output**: recipe ships `XYZ_PLACEHOLDER_URL` as a buy-button target. Without the follow-up step that scans-and-patches, users see literal placeholder text. Merge placeholder introduction with the consumer that replaces it.
-- **Enforcement without guidance**: hook/guard blocks a behaviour while the prompt/rule still instructs the agent to attempt it. Agent hits the block, has no documented alternative, thrashes. Merge the enforcement with the rule rewrite that supplies the alternative.
-- **Callers without implementation**: wiring a feature flag or new branch that calls a module whose real behaviour lands next step. The branch is dead or broken in production for the duration of one commit. Merge.
-- **Half-migrated state**: renaming half the call sites in a commit, the rest in the next. The codebase compiles but readers see two names for the same thing. Merge or complete the rename in one commit.
+- **Placeholder in output**: recipe ships `XYZ_PLACEHOLDER_URL` as buy-button target. Without follow-up that scans-and-patches, users see literal placeholder. Merge with consumer that replaces it.
+- **Enforcement without guidance**: hook/guard blocks behaviour while prompt/rule still instructs agent to attempt it. Agent hits block, no documented alternative, thrashes. Merge enforcement with rule rewrite that supplies alternative.
+- **Callers without impl**: wiring feature flag or new branch calling module whose real behaviour lands next step. Branch is dead or broken in production. Merge.
+- **Half-migrated state**: renaming half call sites in commit, rest in next. Codebase compiles but readers see two names. Merge or complete rename in one commit.
 
-Think of steps as building blocks stacked on top of each other. Step 1 alone is an improvement. Step 1 + 2 is better. Step 1 + 2 + 3 is the full feature. You should be able to stop at any step and have shipped something worthwhile.
+Steps are building blocks stacked on each other. Step 1 alone is improvement. Step 1+2 is better. Step 1+2+3 is full feature. Stop at any step and have shipped something worthwhile.
 
 Principles for splitting:
 
-- **Additive before behavioral** — schema changes, new modules, and new functions with no callers ship first; logic changes that use them ship after
-- **Infrastructure before wiring** — add the plumbing before turning on the tap
-- **Isolate external dependencies** — Stripe, email, third-party APIs should be wired up in their own step so they can be tested independently
-- **Cleanup last, but only when it needs to wait** — "cleanup last" applies to feature flags, deprecated DB fields, and code that must stay live while the replacement proves itself in production. It does NOT apply to code that becomes provably unreachable the moment its callers are removed — that goes in the same commit. Splitting caller removal from function deletion forces dead code into the codebase between steps, drops coverage on code about to be deleted, and wastes time writing tests for functions that won't exist in the next commit. Remove dead functions in the same step that removes their last caller.
-- **Prefer fewer, meatier steps** — don't split for the sake of splitting; a step that only adds a migration with no callers is noise unless the migration itself is risky
-- **Group identical mechanical moves** — if the same operation is repeated N times (extract handler A, extract handler B, extract handler C…), that is one step, not N. The value comes from the pattern being established, not from each individual move. Only split mechanical repetition when the moves have meaningfully different risk profiles or touch different systems.
-- **Group one intent expressed across many files** — broader than mechanical-move grouping. If a design doc's whole purpose is "do X" and the implementation is "land twelve hooks + cut twelve prose blocks + add a Makefile target" because that's what "do X" means, all of that is one step. The edits are not mechanically identical (different hooks have different bodies), but the _intent_ is one thing. Splitting it produces commits with names like "land half the hooks", which can't be reverted independently in a useful way (reverting half a strategy is worse than reverting the whole thing) and forces the codebase through a half-migrated intermediate state where the prose still tells the agent to do things the new hooks block. The test: if every candidate boundary leaves the codebase in a self-contradictory state, the work is one intent, not N. Ship as one commit.
+- **Additive before behavioral** — schema changes, new modules, new fns with no callers ship first; logic changes using them ship after
+- **Infrastructure before wiring** — add plumbing before turning on tap
+- **Isolate external dependencies** — Stripe, email, third-party APIs wired in own step for independent testing
+- **Cleanup last, but only when it needs to wait** — applies to feature flags, deprecated DB fields, code that must stay live while replacement proves itself. Does NOT apply to code that becomes provably unreachable when callers are removed — remove dead fns in same step that removes last caller.
+- **Prefer fewer, meatier steps** — don't split for splitting; step adding only migration with no callers is noise unless migration itself is risky
+- **Group identical mechanical moves** — same operation repeated N times (extract handler A, B, C…) is one step, not N. Value comes from pattern established, not each individual move. Split only when moves have different risk profiles or touch different systems.
+- **Group one intent across many files** — if design doc's whole purpose is "do X" and impl is "land twelve hooks + cut twelve prose blocks + Makefile target", all of that is one step. Edits not mechanically identical, but intent is one thing. Splitting → commits named "land half the hooks", can't revert independently in useful way, forces codebase through half-migrated state. Test: if every candidate boundary leaves codebase self-contradictory, work is one intent. Ship as one commit.
 
 Output format — for each step:
 
@@ -53,63 +53,63 @@ Output format — for each step:
 ## Step N — [short name]
 
 **What:** One sentence describing what changes.
-**Value if we stop here:** One sentence on what's gained even if the next step is never shipped.
+**Value if we stop here:** One sentence on what's gained even if next step never ships.
 **Commit message:** Imperative, under 50 chars, answers *why* not *what*. Bad: "Extract build intents". Good: "Add contact forms to static sites".
 
 [List of specific files/functions/migrations to change]
 ```
 
-Steps are **sequential units of intent on a single branch** — not parallel branches or PRs. Each step is implemented and committed before the next begins.
+Steps are **sequential units of intent on single branch** — not parallel branches or PRs. Each step implemented and committed before next begins.
 
-**A step is one logical change, not one physical commit.** Most steps map 1:1 to one commit, but a single step can require multiple physical commits when external constraints force the split — most commonly a multi-repo workspace where each repo must commit independently with its own message. If the work is one intent that happens to span repo boundaries, it is **one step** with N commits inside it, not N steps. Format the step as a single `## Step N` block with `#### Commit 1 (repo: foo)`, `#### Commit 2 (repo: bar)` sub-headers underneath; do not number the commits as separate top-level steps. Future sessions counting "steps" will then see the right number — one logical unit of work — instead of being misled into thinking they're picking up an N-step plan when they're picking up a 1-step plan that requires N commits.
+**A step is one logical change, not one physical commit.** Most steps map 1:1 to one commit, but a step can require multiple physical commits when external constraints force split — most commonly multi-repo workspace where each repo must commit independently. If work is one intent spanning repo boundaries, it is **one step** with N commits inside it, not N steps. Format as single `## Step N` block with `#### Commit 1 (repo: foo)`, `#### Commit 2 (repo: bar)` sub-headers. Future sessions counting "steps" see the right number — one logical unit.
 
-The test: would reverting just one of the commits leave a coherent, shippable intermediate state? If yes, those are separate steps. If no — if reverting one commit forces you to revert the others to avoid leaving the system in a self-contradictory cross-repo state — they are one step expressed across N commits. Repo-boundary splits almost always fall into the second category: half-applied cross-repo changes are typically incoherent (the symlinked rules say one thing while the templates that consume them say another), so revert-the-whole-thing is the only useful rollback.
+Test: would reverting just one commit leave coherent, shippable intermediate state? Yes → separate steps. No → one step expressed across N commits. Repo-boundary splits almost always fall into second category: half-applied cross-repo changes are incoherent, revert-the-whole-thing is only useful rollback.
 
-**Do not merge steps just because they touch the same code or the same file.** Two changes that edit the same lines, or even just the same file, but represent distinct intents (e.g. "make Stripe calls return `{:error, _}` instead of crashing" and "make Stripe calls safe to retry via idempotency keys", or "document module X as deprecated" and "change module X's default model") are two steps, not one — even if implementing them sequentially means editing the same place twice. The cost of touching the same place twice is small; the cost of merging unrelated intents into one commit is a muddied history, harder review, and a step that can't be reverted independently if one half regresses. Phrases like "it's a 3-line change to the same file" or "while we're in there" are not merge reasons — they're rationalizations for losing intent boundaries. Merge only when the two changes are genuinely the same intent expressed in two places (e.g. a rename that touches both the definition and all call sites — that's one step because it's one intent).
+**Don't merge steps just because they touch same code or file.** Two changes editing same lines but representing distinct intents (e.g. "make Stripe calls return `{:error, _}` instead of crashing" and "make Stripe calls safe to retry via idempotency keys") are two steps — even if implementing them sequentially means editing same place twice. Cost of touching same place twice is small; cost of merging unrelated intents is muddied history, harder review, step that can't be reverted independently. "It's a 3-line change to same file" or "while we're in there" are not merge reasons. Merge only when two changes are genuinely same intent expressed in two places (e.g. rename touching definition and all call sites — one intent).
 
-**"Too small for a planner cycle" is not a cut reason.** If the work is worth shipping, it's a step in the plan, regardless of size — a one-line prose change that closes a real parity gap or prevents a known regression is a step. If the work isn't worth shipping, drop it from the plan entirely. The two failure modes here are (a) burying small-but-valuable work in the `> Human action required` callout, where it becomes a vague todo a future session will skip, and (b) dropping it entirely from the plan with a note that it can ship later, where "later" never arrives. The fix: if it's worth doing, give it a step number; if it's not worth doing, delete the line.
+**"Too small for planner cycle" is not a cut reason.** If work is worth shipping, it's a step. One-line prose change closing real parity gap is a step. If not worth shipping, drop entirely. Two failure modes: (a) burying small-but-valuable work in `> Human action required` callout where it becomes vague todo future session skips, (b) dropping with note "can ship later" where "later" never arrives. Fix: if worth doing, give step number; if not, delete line.
 
-**Operational actions are not steps.** Deploys, WhatsApp messages, manual verifications, SSH commands, "trigger a rebuild", "send the connect link", "watch the rollup at 02:30 UTC" — these are not numbered steps. They have no commit. If any are required after the code ships, put them in a `> **Human action required after all steps ship:**` callout at the end of the implementation plan — numbered, with the human as the explicit actor. A numbered step that produces no commit wastes a step slot and misleads future sessions into treating operational work as code work. The callout is for ops actions only; commits never go there, regardless of size.
+**Operational actions are not steps.** Deploys, manual verifications, SSH commands, "trigger rebuild", "watch rollup at 02:30 UTC" — no commit, not numbered steps. Put in `> **Human action required after all steps ship:**` callout at end — numbered, human as explicit actor. Numbered step with no commit wastes step slot and misleads future sessions.
 
-**Critical: step numbers ARE the execution order. No implicit ordering.**
+**Step numbers ARE execution order. No implicit ordering.**
 
-The document is the source of truth and will be read by future sessions that have none of your context. If you decide steps should run in a different order than they're physically numbered in the document, you have two choices and only two:
+Document is source of truth for future sessions with none of your context. If steps should run in different order than numbered, two choices only:
 
-1. Renumber the steps in the document so the physical order matches the execution order. This is almost always the right answer.
-2. If for some reason you cannot renumber (e.g. external references already point at specific step numbers), add an explicit `> **Execution order:** N → M → ...` callout at the top of the steps section, AND add a `**Why this comes after Step X:**` note in each step whose execution order differs from its number.
+1. Renumber steps so physical order matches execution order. Almost always right answer.
+2. If can't renumber (e.g. external references point at specific step numbers): add `> **Execution order:** N → M → ...` callout at top of steps section, AND add `**Why this comes after Step X:**` note in each step whose execution order differs.
 
-Never tell the user "the steps execute in order X but I labelled them Y" in chat without writing it into the document. A future session running this document blind will follow the numbers, not your conversation. If the numbers lie, the work ships in the wrong order.
+NEVER tell user "steps execute in order X but labelled Y" in chat without writing it into document. Future session running this document blind follows numbers, not your conversation. Numbers lie → work ships in wrong order.
 
-If the work was already split (e.g. in a plan document), review the existing split and apply improvements directly to the document — merging steps that are too granular, splitting steps that do too much, or reordering steps that have hidden dependencies. Be willing to cut the step count significantly: if the plan has 5 steps that all do "move X into Y", collapse them into 1. A good review should produce fewer steps than the input, not the same number with minor edits. The chat reply summarizes the diff against the prior version; the new step list goes into the file.
+If work was already split (in plan doc), review existing split and apply improvements directly to document — merging steps that are too granular, splitting steps that do too much, reordering steps with hidden dependencies. Cut step count significantly: 5 steps all doing "move X into Y" → collapse to 1. Good review produces fewer steps than input. Chat reply summarizes diff against prior version; new step list goes into file.
 
-**Critical: Check gate dependencies before finalizing order**
+**Check gate dependencies before finalizing order**
 
-For each step, identify its verification gate (how you confirm it's done — running tests, a make target, an end-to-end check). Then ask: does that gate actually work right now, or does it depend on something from a later step?
+For each step, identify verification gate. Ask: does that gate work right now, or does it depend on something from a later step?
 
-If a step's verification gate requires something from a later step, that later step must come first — even if it feels like a dependency inversion. The order is determined by what you can actually verify, not just what implements what.
+If step's gate requires something from later step → that later step must come first. Order determined by what you can actually verify.
 
-Example: "Step 1: refactor tests (gate: run make llm-phoenix)" — but make llm-phoenix hangs because Step 2 fixes the hang. Correct order: Step 2 first, then Step 1.
+Example: "Step 1: refactor tests (gate: make llm-phoenix)" — but make llm-phoenix hangs because Step 2 fixes hang. Correct order: Step 2 first.
 
-**Critical: Verify external assumptions before splitting — and spike inline, not as a future step**
+**Verify external assumptions before splitting — spike inline, not as future step**
 
-If any step depends on an external API capability, third-party service feature, or infrastructure behavior — verify it FIRST. SSH to the server, call the sandbox API, check the docs, run the CLI command. Do not create steps that assume an API supports something without confirmation. A split built on an unverified assumption (e.g. "Namecheap supports ALIAS via API") wastes all time spent on every downstream step that depends on it.
+If any step depends on external API capability, third-party service, or infra behavior — verify FIRST. SSH to server, call sandbox API, check docs, run CLI. Don't create steps assuming an API supports something without confirmation. Split built on unverified assumption (e.g. "Namecheap supports ALIAS via API") wastes all downstream time.
 
-**Spikes belong in the splitting session, not as a future step.** If the question is "does flag X work with flag Y" and you have the CLI installed, the answer is 30 seconds away — run it now, fold the result into the step (concrete flag values, no "spike protocol"), and delete any "Step N: spike to determine X" entries. A future-spike step is a deferred decision wearing a step-shaped costume; the implementer will inherit the same uncertainty you have right now, with less context than you have right now. Run the command, write the answer.
+**Spikes belong in splitting session.** If "does flag X work with flag Y" and CLI is installed, answer is 30 seconds away — run it now, fold result into step (concrete flag values, no "spike protocol"), delete "Step N: spike to determine X". Future-spike step = deferred decision wearing step-shaped costume; implementer inherits same uncertainty with less context. Run command, write answer.
 
-The test: if you can verify the assumption with a single shell command, an HTTP request, or a one-line test fixture, do it during the split. Reserve "spike step" entries for genuinely expensive verification — multi-hour load tests, things requiring third-party access you don't have, behaviour that only shows up under production traffic. "I would need to run `claude -p` once" is not expensive verification; that's a 30-second check you should do before finalizing the doc.
+Test: if you can verify assumption with single shell command or HTTP request, do it during split. Reserve "spike step" for genuinely expensive verification — multi-hour load tests, third-party access you don't have, behaviour only showing up under production traffic.
 
-**Critical: No deferred decisions inside a step**
+**No deferred decisions inside a step**
 
-Every step must contain only decided things. The implementation cycle (planner → developer → verification) goes all the way to the code level — if a decision is left open in the plan, it'll be re-litigated mid-implementation by an agent that has less context than the planner did. Sweep the step for these phrases and force a decision before finalizing:
+Every step must contain only decided things. If decision is left open in plan, it'll be re-litigated mid-impl by agent with less context. Sweep step for these phrases and decide before finalizing:
 
-- "optional X" → ship it or cut it. "Optional" is what humans write when they haven't decided.
-- "or similar", "or equivalent", "something like" → pick the exact name/path/value.
-- "TBD", "to be decided", "decide later", "we'll figure out", "Phase N concern" (when Phase N is this same plan) → decide now.
-- "may want to", "might need to", "could also", "if we want to" → either it's in the step or it isn't.
-- "for absolute safety", "if profiling surfaces" → either ship the safety/profile check or don't mention it.
-- "If/when X lands, we'll Y" → if X is out of scope, drop the sentence; the future plan will own Y.
-- "escape hatch for future hooks/callers" → cut. Add the flag when the future hook ships.
+- "optional X" → ship it or cut it
+- "or similar", "or equivalent", "something like" → pick exact name/path/value
+- "TBD", "decide later", "Phase N concern" (when Phase N is this plan) → decide now
+- "may want to", "might need to", "could also" → either in step or isn't
+- "for absolute safety", "if profiling surfaces" → ship safety check or don't mention it
+- "If/when X lands, we'll Y" → if X is out of scope, drop the sentence
+- "escape hatch for future hooks/callers" → cut. Add flag when future hook ships.
 
-The exception: hedging about _historical_ facts ("`--setting-sources project` was chosen presumably to isolate X") is fine — that's accurate uncertainty about the past, not a deferred decision about the future. The test is "does this defer a decision the implementer will have to make?" If yes, decide now.
+Exception: hedging about historical facts ("`--setting-sources project` was chosen presumably to isolate X") is fine — accurate uncertainty about the past, not deferred decision about future. Test: "does this defer a decision the implementer will have to make?" If yes, decide now.
 
-This applies to the surrounding doc too, not just the step block. A "Decisions Log" or "Proposed Changes" section riddled with hedges leaks into implementation. When you finalize the step, sweep the whole doc for the same phrases.
+Applies to surrounding doc too. Sweep whole doc for same phrases when finalizing step.

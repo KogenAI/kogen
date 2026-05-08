@@ -2,17 +2,17 @@
 description: Show the current implementation status and progress
 ---
 
-Check the current ./codegen/CONTEXT.md file for implementation stage, review the todo list if one exists, and provide a comprehensive status report.
+Check `./codegen/CONTEXT.md` for impl stage, review todo list if exists, report status.
 
 Report format:
 
-- **Current Stage**: Which phase/stage of implementation
-- **Session Progress**: What's been done in this session
-- **Active Task**: What's currently being worked on
-- **Blockers**: Any current issues or obstacles
-- **Completed**: ✅ List of completed items
-- **In Progress**: 🚧 Current work item(s)
-- **Remaining**: ⏳ List of pending items
-- **Next Steps**: Immediate actions to take
+- **Current Stage**: phase/stage of impl
+- **Session Progress**: done this session
+- **Active Task**: currently being worked on
+- **Blockers**: current issues or obstacles
+- **Completed**: list of completed items
+- **In Progress**: current work items
+- **Remaining**: pending items
+- **Next Steps**: immediate actions
 
-Include recent session activity and identify the current task and any issues that need attention.
+Include recent session activity and identify current task and issues needing attention.

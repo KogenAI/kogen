@@ -2,24 +2,23 @@
 description: Check for pending work items in the context directory
 ---
 
-Check for pending work that needs attention:
+Check for pending work:
 
-1. **List PENDING files**:
+1. **List PENDING files:**
 
    ```bash
    ls ./codegen/context/PENDING-* 2>/dev/null || echo "No pending work found"
    ```
 
-2. **If PENDING files exist**:
-   - Read each PENDING-\*.md file
-   - Summarize: issue title, priority, target agent, and brief description
-   - Report total count of pending items
+2. **If PENDING files exist:**
+   - Read each `PENDING-*.md`
+   - Summarize: issue title, priority, target agent, brief description
+   - Report total count
 
-3. **If no PENDING files**:
+3. **If no PENDING files:**
    - Report "No pending work items found"
-   - Optionally mention count of RESOLVED files if relevant
 
-4. **Output format**:
+4. **Output format:**
 
    ```
    ## Pending Work Items: [count]
@@ -28,8 +27,6 @@ Check for pending work that needs attention:
       - Priority: [HIGH/MEDIUM/LOW]
       - Target: [agent type]
       - Summary: [one-line description]
-
-   [repeat for each]
    ```
 
-Do NOT automatically start fixing issues - just report what's pending.
+Do NOT automatically start fixing issues — just report what's pending.

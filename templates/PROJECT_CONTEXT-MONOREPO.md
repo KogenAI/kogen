@@ -4,17 +4,17 @@
 
 ### Mission & Goals
 
-- **Primary Purpose**: [What this monorepo project aims to achieve - both backend and mobile]
-- **Target Users**: [Who uses this system - web users, mobile app users, API consumers]
-- **Key Value Propositions**: [Main benefits delivered across platforms]
+- **Primary Purpose**: [What this monorepo achieves — both backend and mobile]
+- **Target Users**: [Who uses this — web users, mobile app users, API consumers]
+- **Key Value Propositions**: [Main benefits across platforms]
 
 ### Architecture Overview
 
 - **Monorepo Structure**: Backend (Phoenix/Elixir) + Mobile (Flutter/Dart)
-- **Backend Architecture**: [e.g., Phoenix LiveView, REST API, GraphQL, etc.]
-- **Mobile Architecture**: [e.g., Flutter BLoC, Provider, Riverpod, etc.]
-- **Backend-Mobile Integration**: [How mobile app communicates with backend - REST API, WebSockets, Phoenix Channels]
-- **Data Flow**: [How data moves through the system - from mobile to backend and back]
+- **Backend Architecture**: [e.g., Phoenix LiveView, REST API, GraphQL]
+- **Mobile Architecture**: [e.g., Flutter BLoC, Provider, Riverpod]
+- **Backend-Mobile Integration**: [How mobile communicates with backend]
+- **Data Flow**: [How data moves — mobile to backend and back]
 - **Key Integrations**: [External systems, APIs, services]
 
 ## Module Directory
@@ -23,34 +23,34 @@
 
 #### Core Modules
 
-- **Module Name**: [Brief description of purpose and responsibilities]
-- **Module Name**: [Brief description of purpose and responsibilities]
+- **Module Name**: [Purpose and responsibilities]
+- **Module Name**: [Purpose and responsibilities]
 
 #### Web Modules
 
-- **Module Name**: [Brief description of purpose and responsibilities]
-- **Module Name**: [Brief description of purpose and responsibilities]
+- **Module Name**: [Purpose and responsibilities]
+- **Module Name**: [Purpose and responsibilities]
 
 #### API Modules
 
-- **Module Name**: [API endpoints exposed to mobile app]
+- **Module Name**: [API endpoints exposed to mobile]
 - **Module Name**: [WebSocket/Channel handlers for real-time features]
 
 ### Mobile Modules (Flutter/Dart)
 
 #### Screens
 
-- **Screen Name**: [Brief description of UI and functionality]
-- **Screen Name**: [Brief description of UI and functionality]
+- **Screen Name**: [UI and functionality]
+- **Screen Name**: [UI and functionality]
 
 #### Services
 
-- **Service Name**: [API client, state management, etc.]
+- **Service Name**: [API client, state management]
 - **Service Name**: [Business logic services]
 
 #### Models
 
-- **Model Name**: [Data structures used in mobile app]
+- **Model Name**: [Data structures in mobile app]
 - **Model Name**: [DTOs for API communication]
 
 #### Widgets
@@ -64,16 +64,16 @@
 
 - **Runtime**: [Check .tool-versions for Elixir/Erlang versions]
 - **Framework**: [Phoenix version from mix.exs]
-- **Database**: [PostgreSQL, SQLite, etc. from mix.exs and config]
+- **Database**: [PostgreSQL, SQLite from mix.exs and config]
 - **Testing**: [ExUnit, test factories/fixtures from test/support/]
 - **Key Libraries**: [Important dependencies from mix.exs]
 
 ### Mobile Technologies
 
 - **Runtime**: [Dart/Flutter versions from pubspec.yaml or .tool-versions]
-- **State Management**: [Provider, Riverpod, BLoC, etc.]
-- **HTTP Client**: [http, dio, etc. from pubspec.yaml]
-- **Local Storage**: [SharedPreferences, Hive, etc.]
+- **State Management**: [Provider, Riverpod, BLoC]
+- **HTTP Client**: [http, dio from pubspec.yaml]
+- **Local Storage**: [SharedPreferences, Hive]
 - **Testing**: [flutter_test, widget testing, integration testing]
 - **Key Packages**: [Important dependencies from pubspec.yaml]
 
@@ -95,16 +95,16 @@
 
 ### Common Patterns
 
-#### Backend Patterns
+#### Backend
 
 - **Context Pattern**: [How Phoenix contexts are used]
-- **LiveView Patterns**: [Common LiveView implementations, if any]
+- **LiveView Patterns**: [Common LiveView impls]
 - **Database Patterns**: [Schema and migration conventions]
 - **API Patterns**: [How API endpoints are structured]
 
-#### Mobile Patterns
+#### Mobile
 
-- **Navigation**: [Navigation pattern - Navigator 2.0, go_router, etc.]
+- **Navigation**: [Pattern — Navigator 2.0, go_router]
 - **State Management**: [How state flows through the app]
 - **API Integration**: [How mobile calls backend APIs]
 - **Error Handling**: [How errors from API are handled]
@@ -114,14 +114,14 @@
 ### Backend API Endpoints
 
 - **Endpoint**: [HTTP method, path, purpose]
-- **Endpoint**: [Request/response format, authentication requirements]
+- **Endpoint**: [Request/response format, auth reqs]
 
 ### Mobile API Clients
 
 - **Service Name**: [Which backend endpoints it calls]
-- **Service Name**: [Authentication handling, error handling]
+- **Service Name**: [Auth handling, error handling]
 
-### WebSocket/Channel Integration (if any)
+### WebSocket/Channel Integration
 
 - **Channel Name**: [Real-time features, events]
 - **Channel Name**: [Mobile subscription handling]
@@ -130,33 +130,33 @@
 
 #### Backend Routes
 
-- **Public Routes**: [Routes accessible without authentication]
-- **API Routes**: [Routes used by mobile app]
-- **Protected Routes**: [Routes requiring authentication]
-- **Pipelines**: [Authentication and authorization pipelines used]
+- **Public Routes**: [Routes accessible without auth]
+- **API Routes**: [Routes used by mobile]
+- **Protected Routes**: [Routes requiring auth]
+- **Pipelines**: [Auth and authorization pipelines]
 
 #### Mobile Navigation
 
 - **Routes**: [App navigation structure]
-- **Deep Links**: [Deep linking support, if any]
-- **Route Guards**: [Authentication/authorization checks]
+- **Deep Links**: [Deep linking support]
+- **Route Guards**: [Auth/authorization checks]
 
 ## Development Guidelines
 
 ### Development Rules
 
-- **Centralized Rules**: This project uses shared development rules via `@codegen/rules/INDEX.md`
+- **Centralized Rules**: `@codegen/rules/INDEX.md`
 - **Rule Categories**: Phoenix, Flutter, Elixir quality, Dart quality, testing, planning, project structure
 - **Backend CI**: [What `make ci` runs in backend/]
 - **Mobile CI**: [What `make ci` runs in mobile/]
-- **Monorepo CI**: [What `make ci` runs at root - both backend and mobile]
+- **Monorepo CI**: [What `make ci` runs at root]
 
 ### Backend Feature Development
 
 - **Context Boundaries**: [How to respect context boundaries]
-- **Testing Strategy**: [Check test/support/ - are fixtures used? ExMachina? Custom patterns?]
+- **Testing Strategy**: [Fixtures, ExMachina, custom patterns]
 - **Database Changes**: [Migration and schema guidelines]
-- **API Design**: [How to design endpoints for mobile consumption]
+- **API Design**: [How to design endpoints for mobile]
 
 ### Mobile Feature Development
 
@@ -168,9 +168,9 @@
 ### Integration Points
 
 - **Backend-Mobile Communication**: [How requests/responses work]
-- **Authentication**: [How auth tokens are managed on both sides]
-- **Error Handling**: [How errors propagate from backend to mobile]
-- **Real-time Updates**: [WebSocket/Channel usage, if any]
+- **Authentication**: [How auth tokens managed on both sides]
+- **Error Handling**: [How errors propagate backend → mobile]
+- **Real-time Updates**: [WebSocket/Channel usage]
 
 ### Performance Considerations
 
@@ -178,7 +178,7 @@
 
 - **Database**: [Query optimization patterns]
 - **API Response Time**: [Target latency for mobile]
-- **Caching**: [Caching strategies used]
+- **Caching**: [Caching strategies]
 
 #### Mobile
 
@@ -188,17 +188,17 @@
 
 ## Common Pitfalls & Solutions
 
-### Backend Issues
+### Backend
 
 - **Issue**: [Description and solution]
 - **Issue**: [Description and solution]
 
-### Mobile Issues
+### Mobile
 
 - **Issue**: [Description and solution]
 - **Issue**: [Description and solution]
 
-### Integration Issues
+### Integration
 
 - **Issue**: [Common mobile-backend integration problems]
 - **Issue**: [API versioning, breaking changes]
@@ -207,21 +207,21 @@
 
 #### Backend
 
-- **Practice**: [Why it's important and how to implement]
-- **Practice**: [Why it's important and how to implement]
+- **Practice**: [Why and how to implement]
+- **Practice**: [Why and how to implement]
 
 #### Mobile
 
-- **Practice**: [Why it's important and how to implement]
-- **Practice**: [Why it's important and how to implement]
+- **Practice**: [Why and how to implement]
+- **Practice**: [Why and how to implement]
 
 ## Deployment Configuration
 
 ### Backend Deployment
 
-- **Environment Variables**: [Required env vars for backend]
+- **Environment Variables**: [Required env vars]
 - **Database Setup**: [Migration strategy]
-- **Release Management**: [How releases are built and deployed]
+- **Release Management**: [How releases built and deployed]
 
 ### Mobile Deployment
 

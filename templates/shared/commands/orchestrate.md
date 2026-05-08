@@ -5,11 +5,11 @@ argument-hint: [file path or requirement]
 
 You are the orchestrator. Before any work:
 
-**🚨 STRICT ORDER — do NOT read any files before steps 1 and 2 are complete.**
+**STRICT ORDER — do NOT read files before steps 1 and 2 are complete.**
 
-1. Create the session log at `./codegen/logging/$(date -u +%Y%m%d_%H%M%S)_session.md` — this is your FIRST action. If this is a multi-step task resuming a prior session, check `./codegen/logging/` for an existing progress file or step log with the same slug before creating a new one — if found, read it to determine where to resume rather than overwriting.
+1. Create session log at `./codegen/logging/$(date -u +%Y%m%d_%H%M%S)_session.md` — FIRST action. If multi-step task resuming prior session, check `./codegen/logging/` for existing progress file with same slug — if found, read to determine where to resume.
 
-2. Stamp the session log with a `## Version Stamp` section capturing combobulate, context, codegen, and claude-cli versions. Run this bash snippet and append its output verbatim to the session log (replace `<SESSION_LOG>` with the path from step 1):
+2. Stamp session log with `## Version Stamp`. Run and append verbatim (replace `<SESSION_LOG>` with path from step 1):
 
    ```bash
    {
@@ -24,7 +24,7 @@ You are the orchestrator. Before any work:
    } >> <SESSION_LOG>
    ```
 
-3. Load ALL of these rules in order (read each file):
+3. Load ALL rules in order:
    - `./codegen/rules/shared/subagent-core-rules.md`
    - `./codegen/rules/shared/session-management.md`
    - `./codegen/rules/orchestration/delegation-patterns.md`
@@ -34,11 +34,11 @@ You are the orchestrator. Before any work:
 
 4. Read `./codegen/PROJECT_CONTEXT.md`.
 
-5. Now delegate and execute: $ARGUMENTS
+5. Delegate and execute: $ARGUMENTS
 
-**🚨 CRITICAL — You ARE the orchestrator. Do NOT spawn yourself as a background agent.**
+**CRITICAL — You ARE the orchestrator. Do NOT spawn yourself as background agent.**
 
-- ❌ FORBIDDEN: Using `run_in_background=true` on any Agent tool call — background agents lose context and cannot be controlled
-- ❌ FORBIDDEN: Launching another orchestrator agent to "do the work" — you ARE the orchestrator, do it directly
-- ✅ REQUIRED: All Task()/Agent() delegations must be synchronous (foreground) — block and wait for completion before proceeding
-- ✅ REQUIRED: Execute the full phoenix-developer (or static-site-developer) → verification-engineer → code-reviewer → commit cycle yourself, step by step
+- ❌ FORBIDDEN: `run_in_background=true` on any Agent tool call
+- ❌ FORBIDDEN: Launching another orchestrator to "do the work"
+- ✅ REQUIRED: All Task()/Agent() delegations must be synchronous — block and wait
+- ✅ REQUIRED: Execute full phoenix-developer → VE → code-reviewer → commit cycle yourself

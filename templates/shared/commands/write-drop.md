@@ -2,442 +2,278 @@
 description: Generate ElixirDrops post topic suggestions and write complete drop content
 ---
 
-Generate 5-10 ElixirDrops post topic suggestions based on available recipes and current Elixir/Phoenix development patterns. When user selects a topic, write the complete drop content following established format and quality standards.
-
-Process:
+Generate 5-10 ElixirDrops topic suggestions from available recipes and Elixir/Phoenix patterns. When user selects topic, write complete drop content.
 
 **STEP 1: Topic Suggestion Phase**
 
-Generate 5-10 topic suggestions by:
-
-- **Check existing drops**: Fetch `https://elixirdrops.net/index.md` to get all published drop titles and avoid duplicating topics
-- **Read coding rules**: Review ALL files in `~/Areas/Optimum/context/rules/subagents/` for both coding standards AND potential drop topics from common patterns/anti-patterns
-- Reviewing `~/Areas/Optimum/context/recipes/` for adaptable patterns
-- Drawing from the user's "Future drops" list and development notes
-- Identifying common Elixir/Phoenix pain points and solutions
-- Looking for unique angles on established practices
-- Focusing on problems with clear, testable code solutions
-
 **EXECUTION CHECKLIST:**
-□ 1. Plausible analytics screenshot (if user provided it with command, proceed; otherwise request it)
-□ 2. Read ALL coding rules from `~/Areas/Optimum/context/rules/subagents/` directory
+□ 1. Plausible analytics screenshot — if user provided with command, proceed; otherwise request it
+□ 2. Read ALL coding rules from `~/Areas/Optimum/context/rules/subagents/`
 □ 3. Fetch `https://elixirdrops.net/index.md` for all published drop titles
-□ 4. **Check `./drops/` for existing drafts** — if drafts exist, recommend from those first before suggesting new topics
-□ 4b. **Check every existing draft for a matching `_hook.md`** — if missing, write the hook too
-□ 5. Analyze recipes for adaptable patterns
+□ 4. Check `./drops/` for existing drafts — recommend from those first before suggesting new topics
+□ 4b. Check every existing draft for matching `_hook.md` — if missing, write hook too
+□ 5. Analyze `~/Areas/Optimum/context/recipes/` for adaptable patterns
 □ 6. Generate suggestions avoiding ALL redundancy
 □ 7. User selects topic → create content using proper Elixir style
-□ 8. **MANDATORY: Validate all code blocks** — format with `mix format`, compile-check with `Code.string_to_quoted!/1` for illustrative snippets, and run standalone blocks with `elixir /tmp/test.exs`
-□ 9. Test code examples → save markdown file to `./drops/` directory
+□ 8. Validate all code blocks — format with `mix format`, compile-check with `Code.string_to_quoted!/1` for illustrative snippets, run standalone blocks with `elixir /tmp/test.exs`
+□ 9. Test code examples → save markdown to `./drops/`
 
-**Content Discovery Steps (Using index.md):**
+**Content Discovery — MANDATORY DUPLICATION CHECK:**
 
-🚨 **CRITICAL - MANDATORY DUPLICATION CHECK (NO EXCEPTIONS):**
-
-1. **Fetch the COMPLETE drops index**:
+1. Fetch COMPLETE drops index:
 
    ```
-   Use WebFetch on `https://elixirdrops.net/index.md` with this EXACT prompt:
-   "Extract COMPLETE list of ALL drop titles, one per line, so I can check for duplicates.
-   Include every single drop listed in the index."
+   WebFetch `https://elixirdrops.net/index.md`:
+   "Extract COMPLETE list of ALL drop titles, one per line."
    ```
 
-2. **VERIFY you received ALL drops**: The response should contain 40+ drop titles. If you get less, you FAILED the fetch.
+2. VERIFY you received ALL drops — response should contain 40+ titles. Fewer → fetch failed.
 
-3. **Create a duplication avoidance list**: Before generating ANY suggestions, write out the complete list of topics to avoid:
+3. Create duplication avoidance list:
    - Existing published drops (from index.md)
-   - Draft drops in `./drops/` directory (check `ls ./drops/*.md`)
+   - Draft drops in `./drops/` (check `ls ./drops/*.md`)
    - Semantic variations (e.g., "Ecto.StaleEntryError" = "optimistic locking" = "race conditions in updates")
 
-4. **Search for similar topics with semantic understanding:**
-   - Don't just match keywords - understand the core problem/solution
-   - A drop about "Parameter validation" could overlap with "Safe URL params" or "Ecto changesets"
-   - A drop about "String.to_atom" covers "atom exhaustion" AND "preventing atom attacks"
+4. Cross-check semantically — don't just match keywords:
+   - "Parameter validation" could overlap with "Safe URL params" or "Ecto changesets"
+   - "String.to_atom" covers "atom exhaustion" AND "preventing atom attacks"
 
-5. **Cross-check EVERY suggestion against the avoidance list** - If ANY overlap exists, REMOVE that suggestion
+5. Cross-check EVERY suggestion against avoidance list. ANY overlap → REMOVE that suggestion.
 
-6. **For full content verification**: Access individual drops via `https://elixirdrops.net/d/{short_id}.md`
+6. Full content verification: `https://elixirdrops.net/d/{short_id}.md`
 
-7. **User feedback integration**: If user says "Did you check for redundant content?" - you FAILED and must start over
-
-8. Cross-reference short_ids with Plausible analytics data to understand what formats work best
-
-**BLOCKING RULE**: Do NOT present suggestions to the user until you have verified ZERO duplication against the complete index.
+Do NOT present suggestions until verified ZERO duplication.
 
 **Analytics Integration (MANDATORY FIRST STEP):**
 
-- 🚨 **STOP: Request Plausible screenshot BEFORE generating ANY suggestions**
-- This is not optional - suggestions without analytics data are guesses
-- Analyze the provided statistics to understand high-performing content patterns
-- Look for topics with high engagement (low bounce rate, high time on page, deep scroll)
+- Request Plausible screenshot BEFORE generating ANY suggestions — not optional
+- Analyze for high-performing patterns (low bounce rate, high time on page, deep scroll)
 - Identify content gaps in popular topic areas
-- Consider user behavior patterns (what keeps people reading vs. what makes them leave)
-- Use popular drop patterns to inform new topic suggestions
+- Use popular drop patterns to inform suggestions
 
-**🔥 HIGH-PERFORMING PATTERNS (Based on 2,700+ Impression Analytics)**
+**High-Performing Patterns (from analytics):**
 
-**CRITICAL SUCCESS FACTORS from top-performing drops:**
+1. **Direct Technical Warning + Solution** (3,596 impressions):
+   - Opening: "Stop using `X`" or "`X` can crash your entire BEAM VM"
+   - Structure: Problem → Bad code (❌) → Good code (✅) → Why it works
 
-**1. Direct Technical Warning + Solution Pattern (3,596 impressions):**
+2. **Performance Optimization with Concrete Benefits** (2,768 impressions):
+   - Opening: "Database queries for X become performance bottlenecks fast"
+   - Structure: Problem → ETS/caching solution → Impl → Pro tips
 
-- **Opening Style**: "Stop using `X`" or "`X` can crash your entire BEAM VM"
-- **Hook**: Immediate security/stability concern with code comparison
-- **Structure**: Problem statement → Bad code (❌) → Good code (✅) → Why it works
-- **Examples**: String.to_atom/1 exhaustion, @impl true deprecation
+3. **Developer UX Improvements** (3,791 impressions):
+   - Opening: "Use this LiveView hook to make X automatically Y"
+   - Structure: Goal → Impl → JavaScript hook → Integration steps
 
-**2. Performance Optimization with Concrete Benefits (2,768 impressions):**
+4. **Workflow Optimization** (2,872 impressions):
+   - Opening: "Don't regenerate your entire X for every change"
+   - Structure: Current problem → Incremental approach → Impl → Benefits
 
-- **Opening Style**: "Database queries for X become performance bottlenecks fast"
-- **Hook**: Technical problem → specific solution with measurable improvement
-- **Structure**: Problem → ETS/caching solution → Implementation → Pro tips
-- **Key Words**: "microsecond lookups", "built into the BEAM", performance comparisons
-
-**3. Developer UX Improvements (3,791 impressions):**
-
-- **Opening Style**: "Use this LiveView hook to make X automatically Y"
-- **Hook**: Immediate UX benefit with minimal code
-- **Structure**: Goal → Implementation → JavaScript hook → Integration steps
-- **Focus**: Small code changes with disproportionate UX impact
-
-**4. Workflow Optimization (2,872 impressions):**
-
-- **Opening Style**: "Don't regenerate your entire X for every change"
-- **Hook**: Inefficient current approach → smarter incremental solution
-- **Structure**: Current problem → Incremental approach → Implementation → Benefits
-- **Appeal**: Saves developer time and system resources
-
-**5. Hidden Feature Discovery (6,664 impressions - TOP PERFORMER):**
-
-- **Opening Style**: "Stop using `@impl true`" - direct instruction with authority
-- **Hook**: Common anti-pattern → better built-in alternative most don't know
-- **Structure**: What not to do → What to do instead → Compiler benefits → Examples
-- **Key**: Reveals overlooked framework features that improve code quality
-
-**STRUCTURAL SUCCESS ELEMENTS:**
+5. **Hidden Feature Discovery** (6,664 impressions — TOP PERFORMER):
+   - Opening: "Stop using `@impl true`" — direct instruction with authority
+   - Structure: What not to do → What to do instead → Compiler benefits → Examples
 
 **Opening Paragraph Formula:**
 
-- **Technical authority**: Direct instruction or warning
-- **Immediate value proposition**: What problem this solves
-- **Conversational expertise**: "Here's how we handle..." or "Use this..."
-- **NO fluff**: Jump straight into the technical challenge
+- Technical authority — direct instruction or warning
+- Immediate value proposition
+- NO fluff — jump straight into technical challenge
 
 **First Code Block Requirements:**
 
-- **🚨 CRITICAL: Show the solution in first block** - The first code block gets screenshotted for social media, so it MUST demonstrate the key technique/function, not just the problem
-- **Visual contrast**: ❌/✅ comparison when showing bad vs good (both in same block)
-- **Immediate understanding**: Code should be self-explanatory
-- **Real-world context**: Not toy examples - actual implementation patterns
-- **Progressive complexity**: Start simple, add sophistication
-- **🚨 CRITICAL: Perfect comment alignment** - Within each function, align ALL comments at the exact same column position (count characters precisely, don't guess)
-
-**Content Structure That Drives Engagement:**
-
-- **Problem-first**: Technical pain point developers actually face
-- **Solution-focused**: Concrete code that solves the problem
-- **Authority-driven**: "Stop doing X" or "Here's how we handle Y"
-- **Incremental reveal**: Basic solution → advanced considerations → pro tips
+- Show SOLUTION in first block — gets screenshotted for social media, MUST demonstrate key technique
+- Visual contrast: ❌/✅ comparison when showing bad vs good (both in same block)
+- Real-world context, not toy examples
+- Progressive complexity: start simple, add sophistication
+- Perfect comment alignment — count characters precisely, align ALL comments at same column
 
 **Twitter Hook Style Guide:**
 
-- **280 character limit** - URLs count toward the limit (~35 chars for elixirdrops.net links)
-- **Aim for 240-250 characters max** - Leave buffer for engagement and readability
-- **Clean and direct** - State the problem and solution clearly
-- **Technical focus** - Lead with the code/technical insight
-- **Minimal emojis** - Use sparingly, only when they add clarity
-- **No marketing fluff** - Avoid "🧵 Thread", "👇", "Here's how", etc.
-- **Factual tone** - Present information straightforwardly
-- **Only use facts from the drop** - Don't invent performance numbers, percentages, or metrics not shown in the content
-- **Concrete over abstract** - Say "500 KB → 1 KB" not "99% reduction" unless you show the math
-- **Link at end** - Include full URL with https:// (e.g. `https://elixirdrops.net/d/[id]`)
-- **Count characters precisely** - Don't guess, actually measure the hook length
-- **Backticks are acceptable** - Twitter renders them as literal backtick characters, not code formatting, but they still signal "this is code" to readers. Use them when the tweet is short enough (under ~220 chars without the URL). Skip them if the tweet is already near the limit.
+- 280 char limit — aim 240-250 max for buffer
+- Clean and direct — state problem and solution
+- Technical focus — lead with code/technical insight
+- No marketing fluff — avoid "🧵 Thread", "👇", "Here's how"
+- Factual tone — only use facts from the drop
+- Concrete: "500 KB → 1 KB" not "99% reduction" without showing math
+- Link at end: `https://elixirdrops.net/d/[id]`
+- Count characters precisely — don't guess
 
-**🚨 CRITICAL: Preventing Twitter Auto-Link Detection**
+**Preventing Twitter Auto-Link Detection**
 
-Twitter automatically converts `Module.function` patterns into clickable links (e.g., `File.read!/1` becomes a link to `file.read`). This breaks the visual presentation of Elixir code.
-
-**The Fix: Zero-Width Space (ZWSP) after the dot**
-
-Insert the invisible Unicode character U+200B after the dot to break Twitter's URL pattern detection:
-
-- **Character**: `​` (zero-width space - invisible but copy-pasteable)
-- **Unicode**: U+200B
-- **HTML entity**: `&#8203;`
-- **Windows**: Alt+08203 (numpad)
-
-**How to apply:**
+Twitter converts `Module.function` patterns to clickable links (e.g., `File.read!/1` → link to `file.read`). Fix with Zero-Width Space (ZWSP, U+200B) after the dot:
 
 ```
 ❌ Wrong: File.read!/1 on a 2GB file = 2GB RAM
 ✅ Right: File​.read!/1 on a 2GB file = 2GB RAM (ZWSP after "File")
 ```
 
-**MANDATORY for Twitter hooks**: When providing Twitter-ready text, ALWAYS insert ZWSP after the module name dot in patterns like:
+ALWAYS insert ZWSP after module name dot in Twitter hooks:
 
 - `File​.read!/1`, `File​.stream!/1`
 - `Enum​.map/2`, `Enum​.reduce/3`
 - `Ecto​.Query`, `Phoenix​.LiveView`
 - `String​.to_atom/1`, `GenServer​.call/3`
 
-**Copy this ZWSP character**: `​` (select between the backticks - it's invisible)
+ZWSP character: `​` (invisible, select between backticks to copy)
 
-The ZWSP is invisible to readers but prevents Twitter from interpreting the text as a URL.
+**Rich Topic Sources:**
 
-**Rich Topic Sources Available:**
+- MCP Tools: Tidewave tools in Claude Code, playground usage
+- Phoenix/LiveView: Mixed-language flash messages, custom hooks, dropdown patterns
+- Testing: Wallaby async patterns, umbrella test failures, sys.get/put_state in tests
+- DB: Ecto.StaleEntryError solutions, enum translations, schema patterns
+- Deployment: Fly.io configs, Docker patterns, env setup
+- Email/Templates: MJML patterns, CSS inlining, template optimization
+- Dev Workflow: Custom IEX, JS.exec server-side, feature toggles
+- Integrations: GitHub Actions, webhook verification, file streaming
 
-- **MCP Tools Integration**: Tidewave tools in Claude Code, playground usage
-- **Phoenix/LiveView**: Mixed-language flash messages, custom hooks, dropdown patterns
-- **Testing**: Wallaby async patterns, umbrella test failures, sys.get/putstate in tests
-- **Database**: Ecto.StaleEntryError solutions, enum translations, schema patterns
-- **Deployment**: Fly.io configurations, Docker patterns, environment setup
-- **Email/Templates**: MJML patterns, CSS inlining tricks, template optimization
-- **Development Workflow**: Custom IEX, JS.exec server-side, feature toggles
-- **Infrastructure**: FLAME scaling, microservices, database migrations
-- **Integrations**: GitHub Actions, webhook verification, file streaming
+**Gap Analysis:**
 
-**Gap Analysis Based on Current Drops:**
-
-- Security patterns (missing: webhook verification, parameter sanitization)
-- Error handling (missing: StaleEntryError, GenServer crashes)
-- Email/Communication (missing: MJML templates, notification patterns)
+- Security: webhook verification, parameter sanitization
+- Error handling: StaleEntryError, GenServer crashes
+- Email: MJML templates, notification patterns
 
 **"Hidden Feature" Angle (High Engagement)**
 
-Look for features that are:
+Features that are:
 
-- ✅ **Built into frameworks** but poorly documented
-- ✅ **Solve common problems** but hard to discover
-- ✅ **Mentioned briefly** in docs without examples
-- ✅ **Save significant debugging time** when found
+- Built into frameworks but poorly documented
+- Solve common problems but hard to discover
+- Mentioned briefly in docs without examples
+- Save significant debugging time
 
-**Examples of "hidden" features that work well:**
+Examples:
 
-- `Ecto.Changeset.optimistic_lock/3` - prevents race conditions, buried in changeset docs
-- `:sys.get_state/1` - debug GenServers/LiveViews, mentioned in Erlang docs only
-- `Phoenix.LiveView.assign_new/3` - conditional assigns, not in main guides
-- `Ecto.Query.exclude/2` - remove query parts, rarely mentioned
+- `Ecto.Changeset.optimistic_lock/3` — prevents race conditions, buried in changeset docs
+- `:sys.get_state/1` — debug GenServers/LiveViews, mentioned in Erlang docs only
+- `Phoenix.LiveView.assign_new/3` — conditional assigns, not in main guides
+- `Ecto.Query.exclude/2` — remove query parts, rarely mentioned
 
-**Template for hidden features:**
-"[Framework] has a hidden feature that [solves problem]. It's been [where it's documented] for years, but most developers [what they do instead]. Here's how it works..."
+Template: "[Framework] has a hidden feature that [solves problem]. It's been [where documented] for years, but most devs [what they do instead]. Here's how it works..."
 
 Present each suggestion as:
 
 - **Title**: Proposed drop title
-- **Problem**: Brief description of what it solves
-- **Hook**: The engaging first code snippet concept
+- **Problem**: What it solves
+- **Hook**: Engaging first code snippet concept
 
 **STEP 2: Content Writing Phase (when user selects topic)**
 
-Write the complete drop content following the proven format, then save it as a markdown file in the project directory for easy copy/paste:
+Write complete drop content, save as markdown for copy/paste.
 
-````
-Title: **🚨 CRITICAL: Keep titles concise (30-57 characters)** - Action-oriented, sentence case, code in backticks
+**Title**: 30-57 characters, action-oriented, sentence case, code in backticks.
 
-**Good examples:**
-- "Phoenix contexts should return tuples, not raise" (51 chars) ✅
-- "Stop using bang functions in Phoenix contexts" (46 chars) ✅
-- "Pattern matching on `DateTime` for business logic" (50 chars) ✅
+Good:
 
-**Bad examples:**
-- "Stop using `create_user!` in Phoenix contexts - return `{:ok, result}` tuples instead" (87 chars - WAY too long)
-- "Use `GenServer.call/3` timeout instead of manual cleanup" (57 chars - borderline, could be shortened)
+- "Phoenix contexts should return tuples, not raise" (51 chars)
+- "Stop using bang functions in Phoenix contexts" (46 chars)
+
+Bad:
+
+- "Stop using `create_user!` in Phoenix contexts - return `{:ok, result}` tuples instead" (87 chars — too long)
 
 Body structure:
 
-Opening paragraph: Problem/teaser that works as Twitter copy
-(This becomes your social media post when sharing)
+Opening paragraph: problem/teaser that works as Twitter copy.
 
 ```elixir
 # First code snippet - MOST ENGAGING/CLICKABLE
-# This generates the screenshot for social sharing
-# Make it visually appealing and immediately valuable
-````
-
-Explanation of the solution and why it works
-
-Optional additional code snippets:
-
-```elixir
-# Additional examples, edge cases, or variations
+# Gets screenshotted for social sharing
+# Must be visually appealing and immediately valuable
 ```
 
-**MANDATORY: Link to relevant official docs** — always end the drop with a markdown link to the most relevant hexdocs/official docs page (e.g. the specific module or section being discussed). Use the format: `[Module.function/arity docs](https://hexdocs.pm/...)`
+Explanation of solution and why it works.
 
-```
+Optional additional snippets for edge cases.
 
-```
+**MANDATORY: Link to relevant official docs** — always end with markdown link to most relevant hexdocs page. Format: `[Module.function/arity docs](https://hexdocs.pm/...)`
 
-4. **First Code Snippet Guidelines** - Make it screenshot-worthy:
-   - Show the "before and after" or the key transformation
-   - Use clear, readable variable names and formatting
-   - Include just enough context to be self-explanatory
-   - Make it visually appealing with good whitespace
-   - Focus on the "aha moment" that makes people want to learn more
+4. **First Code Snippet** — make screenshot-worthy:
+   - Show "before and after" or key transformation
+   - Clear variable names and formatting
+   - Just enough context to be self-explanatory
+   - Focus on "aha moment"
 
-5. **Quality Assurance** - Test and refine:
-   - **🚨 MANDATORY: Format ALL code blocks with `mix format`** (see step 6 for workflow)
-   - **🚨 MANDATORY: Validate all code blocks** — for each `elixir` block: (a) write to `/tmp/drop_N.exs`, run `mix format /tmp/drop_N.exs`, copy result back; (b) run `elixir /tmp/drop_N.exs` for standalone blocks; (c) for illustrative snippets referencing app modules (MyApp, Repo, etc.), verify syntax with `Code.string_to_quoted!(code)` via `elixir -e`. If Tidewave is available via `mcp__tidewave__project_eval`, use it in addition.
-   - Verify type definitions, function signatures, and syntax are valid
-   - Check that the title is SHORT (30-57 characters)
-   - Verify the solution is the simplest that works
-   - Ensure the explanation adds context without being verbose
-   - **Verify all API/function calls against actual documentation**:
-     - Check Phoenix/LiveView docs for correct function signatures
-     - Verify Ecto query syntax and required imports
-     - Confirm GenServer/OTP patterns match official guides
-     - Look up any library functions you're unsure about - DON'T GUESS
-   - **No invented metrics or percentages**:
-     - Only use performance numbers that appear in the drop content
-     - Don't make up "90% faster" or "10x improvement" claims
-     - If giving concrete numbers, show the calculation in the drop
-     - Better to say "drops from 500 KB to 1 KB" than "99% reduction" without proof
-   - **Ask user to review for hallucinations** - Before claiming completion, explicitly ask: "Any hallucinations or incorrect patterns?"
+5. **Quality Assurance**:
+   - Format ALL code blocks with `mix format`
+   - Validate all code blocks: (a) write to `/tmp/drop_N.exs`, run `mix format /tmp/drop_N.exs`, copy back; (b) run `elixir /tmp/drop_N.exs` for standalone blocks; (c) for illustrative snippets with app modules, verify syntax with `Code.string_to_quoted!(code)` via `elixir -e`. If Tidewave available via `mcp__tidewave__project_eval`, use it too.
+   - Title SHORT (30-57 chars)
+   - Solution is simplest that works
+   - Verify ALL API/fn calls against actual docs — don't guess
+   - No invented metrics — only performance numbers shown in drop content. Say "drops from 500 KB to 1 KB" not "99% reduction" without proof.
+   - Ask user to review for hallucinations before claiming completion
 
-6. **Code Formatting** - Ensure proper Elixir formatting:
+6. **Code Formatting**:
 
-   **CRITICAL**: Markdown code blocks don't get auto-formatted by `mix format`. Use this workflow:
+   Markdown code blocks don't get auto-formatted by `mix format`. Workflow:
 
    ```bash
-   # For each code block in your drop:
-   # 1. Create temporary .exs file with the code
    echo 'def your_function...' > temp_format.exs
-
-   # 2. Format with mix (use --check-formatted to avoid interactive prompts)
    mix format temp_format.exs
-
-   # 3. Copy formatted code back to markdown
-   # 4. Delete temporary file
+   # copy formatted code back to markdown
    rm temp_format.exs
    ```
 
-   **⚠️ WARNING**: Running `mix format` in a fresh environment may prompt for Hex installation and hang.
-   If this happens, run `mix local.hex --force` first.
+   If `mix format` prompts for Hex installation and hangs: run `mix local.hex --force` first.
 
-   **Note**: `mix format` and Tidewave serve different purposes:
-   - `mix format` - Reformats code (indentation, spacing, line breaks)
-   - `mcp__tidewave__project_eval` - Validates code compiles and runs correctly
+   `mix format` vs Tidewave:
+   - `mix format` — reformats code (indentation, spacing, line breaks)
+   - `mcp__tidewave__project_eval` — validates code compiles and runs
 
-   Both are required for quality drops.
+   Both required.
 
-   **⚠️ Compile-time macros limitation**: Some code can't be tested in Tidewave's eval context:
-   - `~p` sigil (Phoenix verified routes) - requires compile-time module attributes
-   - `~H` sigil (HEEx templates) - same limitation
+   Compile-time macros limitation — can't test `~p` or `~H` sigils in Tidewave eval context. Create `.exs` file and run with `mix run` instead.
 
-   For these, create a test `.exs` file and run with `mix run`:
+   Formatting best practices:
+   - Comments on separate lines above code, not inline
+   - Each `|>` on its own line
+   - Multiple blocks: separate temp files (temp_format1.exs, temp_format2.exs, etc.)
+   - Comment alignment: count characters precisely, align ALL inline comments at same column
 
-   ```elixir
-   # test_drop_sigil.exs
-   defmodule TestRoutes do
-     use Phoenix.VerifiedRoutes,
-       endpoint: MyAppWeb.Endpoint,
-       router: MyAppWeb.Router
+   Known `mix format` surprises:
+   - `<%= expr %>` → `{expr}` inside `~H` sigils
+   - Alignment spaces in `case` arms stripped
+   - Multi-line fn calls reformatted when LHS + RHS exceeds line length
+   - `do: bare_call` → `do: bare_call()` in single-line do expressions
+   - Plug `@behaviour` modules need `import Plug.Conn`
 
-     def test_params do
-       params = %{page: 1, sort: "name"}
-       ~p"/users?#{params}"
-     end
-   end
+7. **Final Output** — ALWAYS save as TWO markdown files (don't ask — just save). Delegate all file writes to `static-site-developer` — orchestrator hook blocks direct Write calls:
+   - Drop content: `./drops/[topic_name]_drop.md`
+   - Twitter hook: `./drops/[topic_name]_hook.md` — hook text only, ZWSP embedded for direct copy-paste
+   - Twitter hook MUST only use facts stated in the drop — cross-check every claim
 
-   IO.puts(TestRoutes.test_params())
-   ```
+8. **Content Categories**:
+   - Core Elixir: Pattern matching, data transformation, error handling
+   - Phoenix/LiveView: Components, real-time features, form handling, testing
+   - DB/Ecto: Query optimization, migrations, data relationships
+   - Dev Workflow: Testing patterns, deployment, debugging, tooling
+   - Performance: Profiling, optimization, memory management
+   - Integration: APIs, external services, background jobs
 
-   Run: `mix run test_drop_sigil.exs`
+9. **Recipe Transformation**:
+   - Extract core problem and solution
+   - Simplify to essential parts
+   - Focus on one specific aspect
+   - Turn detailed considerations into brief gotchas
 
-   **Formatting Best Practices**:
-   - **Comments**: Place on separate lines above code, not inline (better readability)
-   - **Pipe formatting**: Each `|>` on its own line with proper indentation
-   - **Consistent spacing**: Follow `mix format` output exactly
-   - **Multiple blocks**: Create separate temp files (temp_format1.exs, temp_format2.exs, etc.)
-   - **🚨 CRITICAL: Comment alignment** - Within each function, count characters precisely and align ALL inline comments at the exact same column position (don't guess - actually count!)
+**Critical Requirements:**
 
-   **Known `mix format` surprises in drop content:**
-   - `<%= expr %>` → `{expr}` inside `~H` sigils (HTMLFormatter upgrade)
-   - Extra alignment spaces in `case` arms stripped (e.g. `value      -> value` → `value -> value`)
-   - Multi-line function calls reformatted when LHS + RHS exceeds line length
-   - `do: bare_call` → `do: bare_call()` (parentheses added to single-line do expressions)
-   - Plug `@behaviour` modules need `import Plug.Conn` for unqualified calls like `put_private/3`
+- Working code only — every example must compile and run
+- Focused scope — one clear problem, one clear solution
+- Practical value — must solve something devs actually encounter
+- Flexible length — 150-word tip to full blog-post style
 
-   **Why this matters**:
-   - **First code block becomes the social media screenshot** - it must show the solution, not just the problem
-   - Visual contrast (❌ vs ✅) in the same block creates immediate engagement
-   - People scrolling social media need to see the value instantly
-   - Proper formatting makes code more readable and professional
-   - Consistent with Elixir community standards
-   - Prevents formatting issues that distract from content
+**Idiomatic Code — MANDATORY before writing ANY code:**
 
-7. **Final Output** - ALWAYS save as TWO separate markdown files (do NOT ask — just save them). **Delegate all file writes to `static-site-developer`** — the orchestrator hook blocks direct Write calls on source files:
-   - **Drop content**: `./drops/[topic_name]_drop.md` — the full drop body
-   - **Twitter hook**: `./drops/[topic_name]_hook.md` — the hook text only, ready to copy-paste. The ZWSP characters must be embedded in the file so the user can copy-paste directly into Twitter without auto-linking issues.
-   - Use proper markdown formatting (no code block wrapping)
-   - **MANDATORY: Twitter hook must only use facts stated in the drop** — cross-check every claim in the hook against the drop content before saving. See Twitter Hook Style Guide above for format requirements.
+1. Read `~/Areas/Optimum/context/rules/subagents/elixir-code-generation.md`
+2. Read `~/Areas/Optimum/context/rules/subagents/phoenix.md`
+3. Read `~/Areas/Optimum/context/rules/subagents/testing.md`
+4. Apply ALL rules to code examples
 
-8. **Content Categories** - Focus on high-value topics:
-   - **Core Elixir**: Pattern matching tricks, data transformation, error handling
-   - **Phoenix/LiveView**: Components, real-time features, form handling, testing
-   - **Database/Ecto**: Query optimization, migrations, data relationships
-   - **Development Workflow**: Testing patterns, deployment, debugging, tooling
-   - **Performance**: Profiling, optimization techniques, memory management
-   - **Integration**: APIs, external services, background jobs
+Key patterns:
 
-9. **Recipe Transformation Guidelines** - If adapting from recipes:
-   - Extract the core problem and solution
-   - Simplify the code example to the essential parts
-   - Focus on one specific aspect rather than the complete implementation
-   - Turn detailed considerations into brief gotchas or tips
-
-10. **Testing Workflow Example**:
-
-    Create a simple test script to validate your drop:
-
-    ```elixir
-    # test_drop.exs
-    # Test your drop code here
-
-    # Example: Testing a pattern matching solution
-    defmodule DropTest do
-      def test_pattern_matching do
-        # Your drop's code example
-        case {:ok, "result"} do
-          {:ok, value} -> IO.puts("Success: #{value}")
-          {:error, reason} -> IO.puts("Error: #{reason}")
-        end
-      end
-    end
-
-    DropTest.test_pattern_matching()
-    IO.puts("✅ Drop code tested successfully!")
-    ```
-
-    Run with: `elixir test_drop.exs`
-
-Critical Requirements:
-
-- **Working code only** - Every code example must compile and run
-- **Focused scope** - One clear problem, one clear solution
-- **Practical value** - Must solve something developers actually encounter
-- **Proper formatting** - Use ```elixir code blocks for syntax highlighting
-- **Flexible length** - Can range from short 150-word tips to longer blog-post style content
-- **Unique angle** - Don't duplicate existing drops without adding new value
-
-Content Quality Standards:
-
-- **Problem-first approach** - Start with the pain point, not the solution
-- **Executable examples** - Code should work in a real Elixir environment
-- **Idiomatic code** - MANDATORY: Before writing ANY code:
-  1. **READ the actual coding rules** from `~/Areas/Optimum/context/rules/subagents/elixir-code-generation.md`
-  2. **READ Phoenix patterns** from `~/Areas/Optimum/context/rules/subagents/phoenix.md`
-  3. **READ testing patterns** from `~/Areas/Optimum/context/rules/subagents/testing.md`
-  4. **APPLY all rules** found in these files to your code examples
-  5. **VERIFY** that every code example follows the patterns from the rules
-  - Put all code references (functions, modules, variables) in backticks
-  - The rules contain specific formatting requirements, type safety patterns, and Phoenix conventions that MUST be followed
-  - **🚨 CRITICAL: Add `import Ecto.Query`** when using `from` query syntax
-  - **🚨 CRITICAL: Use `MyAppWeb.Endpoint.subscribe/1`** for PubSub in LiveView, NOT `Phoenix.PubSub.subscribe/2`
-  - **`cast_assoc` vs `put_assoc`**: `cast_assoc` for user-submitted params (runs changeset, validates, handles deletes); `put_assoc` for trusted programmatic data (structs, bypasses validation)
-  - **`on_replace:` option required** on `has_many`/`many_to_many` when using `cast_assoc` to control delete behaviour (`:delete`, `:nilify`, `:raise`)
-- **Context matters** - Explain why the solution works, not just how
-- **Community focused** - Write for developers who will encounter this problem
-- **Searchable titles** - Include relevant keywords developers would search for
-
-This process creates valuable, discoverable content that helps the Elixir community solve real problems while building your reputation as a knowledgeable developer.
+- Add `import Ecto.Query` when using `from` query syntax
+- Use `MyAppWeb.Endpoint.subscribe/1` for PubSub in LiveView, NOT `Phoenix.PubSub.subscribe/2`
+- `cast_assoc` for user-submitted params (runs changeset, validates, handles deletes)
+- `put_assoc` for trusted programmatic data (structs, bypasses validation)
+- `on_replace:` option required on `has_many`/`many_to_many` when using `cast_assoc`

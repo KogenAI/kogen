@@ -7,130 +7,89 @@
 - **Model**: Claude Sonnet
 - **Started**: {{SESSION_TIMESTAMP}}
 
-## FORBIDDEN TOOLS - DO NOT USE
+## FORBIDDEN TOOLS
 
-**CRITICAL**: These Claude Code built-in tools CONFLICT with OCG planning workflow:
+NEVER use:
 
-- **EnterPlanMode** - NEVER use
-- **ExitPlanMode** - NEVER use
+- **EnterPlanMode**
+- **ExitPlanMode**
 
-OCG planning writes directly to `codegen/bird_eye_plans/{{FEATURE_NAME}}.md` using the **Write** tool. The built-in plan mode creates plans in `~/.claude/plans/` which is NOT how OCG works.
+OCG planning writes directly to `codegen/bird_eye_plans/{{FEATURE_NAME}}.md` using Write tool.
 
-**CORRECT plan location:** `codegen/bird_eye_plans/{{FEATURE_NAME}}.md`
-**WRONG locations:** `codegen/plans/`, `codegen/planning_sessions/`, `~/.claude/plans/`, anywhere else
+CORRECT plan location: `codegen/bird_eye_plans/{{FEATURE_NAME}}.md`
+WRONG: `codegen/plans/`, `codegen/planning_sessions/`, `~/.claude/plans/`
 
 ---
 
-## BLOCKING: Load Rules BEFORE Anything Else
+## Load Rules BEFORE Anything Else
 
-**STOP! You CANNOT proceed without completing these steps IN ORDER:**
+CANNOT proceed without completing these steps IN ORDER:
 
-### Step 1: Load Core Planning Rules (REQUIRED)
+### Step 1: Load Core Planning Rules
 
 ```
 Read file: ./codegen/rules/planning.md
 Read file: ./codegen/rules/INDEX.md
 ```
 
-**Checkpoint**: You must have read BOTH files above before continuing.
+Must have read BOTH before continuing.
 
 ### Step 2: Detect Project Type from PROJECT_CONTEXT.md
 
-Look for these indicators in PROJECT_CONTEXT.md:
+- Monorepo: has both `backend/` AND `mobile/`
+- Backend-only: has `lib/` and `mix.exs` at root
+- Flutter-only: has `lib/` and `pubspec.yaml` at root
 
-- **Monorepo**: Has both `backend/` AND `mobile/` directories
-- **Backend-only**: Has `lib/` and `mix.exs` at root
-- **Flutter-only**: Has `lib/` and `pubspec.yaml` at root
-
-**This determines feature scope**: A "reactions" feature in a monorepo needs backend API + mobile UI
+This determines feature scope: "reactions" feature in monorepo needs backend API + mobile UI.
 
 ### VALIDATION: Prove You Loaded Rules
 
-**Before asking clarifying questions or starting the plan, you MUST:**
+Before asking clarifying questions or starting plan:
 
-1. **List which rules you loaded** (file paths)
-2. **State the project type** you detected (monorepo/backend-only/etc.)
-3. **Only THEN** proceed to ask clarifying questions
+1. List which rules you loaded (file paths)
+2. State project type detected
+3. Only THEN proceed
 
-**Example correct response after loading rules:**
+Example:
 
-> "I've loaded the following rules:
+> "Loaded: `./codegen/rules/planning.md`, `./codegen/rules/INDEX.md`
 >
-> - `./codegen/rules/planning.md` (shared planning rules)
-> - `./codegen/rules/INDEX.md` (rule discovery)
+> Project type: Monorepo (backend/ + mobile/)
 >
-> Project type detected: **Monorepo** (backend/ + mobile/)
->
-> Now let me ask some clarifying questions..."
+> Clarifying questions..."
 
-**Why**: Even bird-eye plans need to follow planning rules. Loading rules ensures consistent plan structure.
+Why: even bird-eye plans need to follow planning rules.
 
 ---
 
 ## Planning Phase: Strategic Overview
 
-You are in the first phase of feature development - **strategic planning**. This phase focuses on understanding the feature from a high-level, user-centric perspective.
+PLANNING ONLY — NO IMPLEMENTATION. Read PROJECT_CONTEXT.md, analyze feature strategically, plan high-level approach, write plan file.
 
-### CRITICAL: PLANNING ONLY - NO IMPLEMENTATION
+NEVER use Edit or MultiEdit on code files. NEVER look at code impl details.
 
-**DO NOT IMPLEMENT OR EDIT CODE** - This is a planning-only session. You should:
+### Resources
 
-- **Read** PROJECT_CONTEXT.md to understand the system
-- **Analyze** the feature from a strategic perspective
-- **Plan** the high-level approach
-- **Write plan file** to `{{PLAN_OUTPUT_FILE}}` using Write tool
-- **NEVER use Edit or MultiEdit tools** on code files
-- **NEVER modify code files** - only create the plan markdown file
-- \*\*NEVER look at code implementation details
-- **NEVER use EnterPlanMode or ExitPlanMode tools** - these are Claude Code built-in tools that conflict with OCG planning
-
-**Your job is to create a strategic plan, not to implement it.**
-
-### Available Resources
-
-**Project Context**
-
-- Review `codegen/PROJECT_CONTEXT.md` to understand the system, user workflows, and existing features
-- Current planning context is in `codegen/PLANNING_SESSION_CONTEXT.md` (this file)
-- Main project instructions remain in `CLAUDE.md`
+- `codegen/PROJECT_CONTEXT.md` — system, user workflows, existing features
 
 ### Output Expectations
 
-**MANDATORY Plan Location:**
+MANDATORY plan location: `codegen/bird_eye_plans/{{FEATURE_NAME}}.md`
 
-```
-codegen/bird_eye_plans/{{FEATURE_NAME}}.md
-```
+FORBIDDEN: `codegen/plans/`, `codegen/planning_sessions/`, `~/.claude/plans/`
 
-**FORBIDDEN locations - NEVER write plans here:**
+Save to: [{{PLAN_OUTPUT_FILE}}]({{PLAN_OUTPUT_FILE}})
 
-- `codegen/plans/` - WRONG (this is for detailed plans)
-- `codegen/planning_sessions/` - WRONG
-- `~/.claude/plans/` - WRONG (Claude Code built-in, not OCG)
-- Any other location - WRONG
+Plan size: 30-50 lines. Strategic overview, not details. Expanded in detailed planning phase.
 
-Save your final plan to: [{{PLAN_OUTPUT_FILE}}]({{PLAN_OUTPUT_FILE}})
+Include:
 
-**Plan Size Guidelines:**
-
-- Target: 30-50 lines for bird-eye plans
-- Focus on strategic overview, not details
-- Use clear, concise language
-- This plan will be expanded in the detailed planning phase
-
-Include in your plan:
-
-- Clear feature description and user value proposition
+- Feature description and user value proposition
 - Integration analysis with existing features
 - Parallel work recommendations (if applicable)
 - Success criteria and risk assessment
 
 ### Next Steps
 
-After completing bird-eye planning AND verification:
-
-1. Use `ocg plan {{FEATURE_NAME}}` for detailed technical planning
-2. Use `ocg new {{FEATURE_NAME}}` to create implementation workspace
-3. Iterate between planning and implementation as needed
-
-Remember: This is about strategic vision, not tactical execution. Keep your perspective at the "forest" level, not the "trees" level.
+1. `ocg plan {{FEATURE_NAME}}` — detailed technical planning
+2. `ocg new {{FEATURE_NAME}}` — create impl workspace

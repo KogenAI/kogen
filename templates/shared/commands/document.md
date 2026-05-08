@@ -2,67 +2,63 @@
 description: Document session decisions, issues, root causes, and proposed changes into a living design spec
 ---
 
-Write a markdown document that captures everything discussed in this conversation session — issues found, their root causes, proposed changes, and decisions made.
+Write markdown document capturing everything discussed — issues found, root causes, proposed changes, decisions made.
 
-**PURPOSE**: Create a durable, actionable design document from a design/architecture discussion. The document should be comprehensive enough that someone reading it can understand what was decided and why, and can implement the changes without re-reading the conversation.
+**PURPOSE**: Durable, actionable design document from a design/architecture discussion. Comprehensive enough that someone can understand what was decided and why, and can implement without re-reading the conversation.
 
-**CRITICAL RULES**:
+**CRITICAL RULES:**
 
-- **No unanswered questions** — if something is genuinely unclear, ask the user before writing. Don't paper over ambiguity with vague language.
-- **Do NOT re-ask what the user already answered.** If the user said "I don't care about X", do not ask "should I also cut Y which is like X?" — generalize the filter yourself and apply it. Ask only when two reasonable interpretations lead to materially different documents; never ask for permission to extend a pattern the user has already established. When in doubt, apply the broader interpretation of their exclusion (cut more, not less) and move on.
-- **Trust the user's scope signals.** Phrases like "stuff like this", "for now", "focus on bigger things" mean: infer the class of issues they're de-prioritizing and filter accordingly. Do not enumerate every adjacent item back at them for confirmation.
-- **No "optional" or "low priority" labels** — everything in the document is work that needs to happen. If you're unsure whether something should be included, ask. Items marked optional get ignored — either commit to it or cut it.
-- **No speculative future work** — only include changes that are actionable now. "Potential future responsibilities" or "nice to have" sections just create noise. If a capability doesn't exist yet and there's no plan to build it, leave it out.
-- **Root causes, not just symptoms** — every issue must explain _why_ it happens, not just _what_ happens.
+- **No unanswered questions** — if genuinely unclear, ask before writing. Don't paper over ambiguity.
+- **Do NOT re-ask what user already answered.** If user said "I don't care about X", don't ask "should I also cut Y?" — generalize the filter and apply it. Ask only when two reasonable interpretations lead to materially different documents. Apply the broader interpretation (cut more, not less).
+- **Trust scope signals.** "Stuff like this", "for now", "focus on bigger things" → infer the class they're de-prioritizing and filter accordingly.
+- **No "optional" or "low priority" labels** — everything in the document is work that needs to happen. If unsure whether to include, ask. Items marked optional get ignored.
+- **No speculative future work** — only actionable changes now.
+- **Root causes, not just symptoms** — every issue must explain _why_ it happens.
 - **Decisions must include rationale** — "we decided X" is incomplete. "We decided X because Y" is useful.
 
-**PROCESS**:
+**PROCESS:**
 
-1. **Re-read the entire conversation** exhaustively. Extract:
-   - Issues/bugs identified (with root causes)
-   - Design decisions made (with rationale)
+1. **Re-read entire conversation** exhaustively. Extract:
+   - Issues/bugs (with root causes)
+   - Design decisions (with rationale)
    - Proposed changes (grouped logically)
-   - Anything the user explicitly said to include or exclude
-   - Any back-and-forth that resolved an ambiguity — capture the resolution, not the debate
+   - Anything user explicitly included or excluded
+   - Back-and-forth resolutions — capture resolution, not the debate
 
-2. **Check for gaps and second-order consequences** before writing:
-   - Are there any issues mentioned but never resolved?
-   - Are there proposed changes without clear scope?
-   - Are there decisions that contradict each other?
-   - **For every decision**: What breaks? What can't we do anymore? What assumptions does this invalidate? What downstream systems are affected? If a decision works for 8 out of 10 cases, explicitly address the other 2 — don't silently drop them.
-   - **For every "skip this" or "not worth it"**: Is that actually true, or is there a straightforward solution you haven't considered? Never recommend skipping something without exhausting alternatives first.
-   - **For every external dependency** (third-party APIs, DNS providers, CDN services, etc.): Verify capabilities BEFORE writing the plan. Check API docs, test against sandboxes, SSH to the server to confirm. Do not assume an API supports a feature — verify it. A plan built on an unverified assumption wastes all the time spent discussing, writing, and splitting it. If you have access to a server or sandbox environment, use it.
-   - **Verify easily-checkable claims immediately, not via TODOs.** If a claim can be verified with a single command, API call, file read, or config lookup, run it BEFORE writing the document. Do not write "verify X works before rollout" as a TODO when you could have executed `X` in 10 seconds. Examples: CLI flag behavior (`tool --help`, `tool --flag test`), file existence (`ls path`), config values (`grep key file`), API responses (`curl endpoint`), package versions (`mix deps | grep`), env-var presence (`env | grep`). State the verified fact definitively in the document; never leave an easy verification as future work.
-   - If gaps exist, ask the user to clarify before proceeding.
+2. **Check gaps and second-order consequences** before writing:
+   - Issues mentioned but never resolved?
+   - Proposed changes without clear scope?
+   - Decisions that contradict each other?
+   - For every decision: what breaks? What assumptions does this invalidate?
+   - For every "skip this": is there a straightforward solution? Never recommend skipping without exhausting alternatives.
+   - For every external dependency: verify capabilities BEFORE writing the plan. SSH to server, check API docs, test against sandboxes. A plan built on unverified assumptions wastes all time spent discussing and splitting.
+   - **Verify easily-checkable claims immediately, not via TODOs.** If claim can be verified with one command, run it. Never write "verify X works before rollout" when you could run X in 10 seconds.
 
-3. **Write the document** with this structure:
-   - Overview / context (brief — what this document is about)
+3. **Write document:**
+   - Overview / context (brief)
    - Issues and root causes
    - Proposed changes (grouped by area, not chronologically)
-   - Implementation plan (phased if complex, flat list if simple) — each phase is one commit. Group changes that must ship together into the same phase. Don't create a phase for a single file change that logically belongs with the phase before it.
-   - Test coverage gaps to address
+   - Implementation plan (phased if complex, flat if simple) — each phase is one commit
+   - Test coverage gaps
    - Consolidation table (if things were merged/renamed/removed)
 
-4. **Save automatically** — always save to `codegen/` with a descriptive kebab-case filename derived from the topic (e.g. `codegen/bouncer-post-deploy-fixes.md`). Never ask the user for a path.
+4. **Save automatically** — always save to `codegen/` with descriptive kebab-case filename (e.g. `codegen/bouncer-post-deploy-fixes.md`). Never ask for path.
 
-5. **Present a summary** of what's in the document so the user can verify nothing was missed.
+5. **Present summary** so user can verify nothing was missed.
 
-**DOCUMENT QUALITY CHECKS**:
+**DOCUMENT QUALITY CHECKS:**
 
-Before presenting the document, verify:
-
-- [ ] Every issue has a root cause explanation
-- [ ] Every proposed change is assigned to a phase or section (nothing floating)
-- [ ] No items marked as "optional", "low priority", "nice to have", or "worth considering"
-- [ ] No speculative future work without a concrete plan
+- [ ] Every issue has root cause explanation
+- [ ] Every proposed change assigned to phase/section
+- [ ] No items marked "optional", "low priority", "nice to have"
+- [ ] No speculative future work without concrete plan
 - [ ] All decisions include rationale
-- [ ] No unanswered questions — if uncertain, asked the user first
-- [ ] Implementation plan covers all proposed changes (nothing mentioned in the body but missing from the plan)
+- [ ] No unanswered questions
+- [ ] Implementation plan covers all proposed changes
 
-**DO NOT**:
+**DO NOT:**
 
 - Make code changes
-- Create implementation PRs
-- Add items the user didn't discuss or agree to
-- Use priority labels as a way to defer work — if it's not worth doing, cut it; if it is, include it without caveats
-- Write the document chronologically (conversation order) — organize by topic/area
+- Add items user didn't discuss or agree to
+- Use priority labels to defer work — if not worth doing, cut it; if it is, include without caveats
+- Write chronologically — organize by topic/area

@@ -1,6 +1,6 @@
 # /validate-plan Command
 
-Provides comprehensive validation of the current plan context for logical consistency, feasibility, and quality.
+Validate current plan context for logical consistency, feasibility, and quality.
 
 ## Usage
 
@@ -10,108 +10,87 @@ Provides comprehensive validation of the current plan context for logical consis
 
 ## What It Does
 
-Acts as a second pair of eyes reviewing the loaded plan context to identify:
+Second-pair-of-eyes review identifying:
 
-### Validation Categories
+### Logic & Consistency
 
-#### 🧠 Logic & Consistency
+- Contradictory reqs — steps conflicting with each other
+- Missing dependencies — steps depending on unplanned work
+- Circular dependencies — impossible ordering
+- Incomplete sequences — missing critical steps
+- Scope creep — reqs expanding beyond stated goals
 
-- **Contradictory requirements** - Steps that conflict with each other
-- **Missing dependencies** - Steps that depend on unplanned work
-- **Circular dependencies** - Steps that create impossible ordering
-- **Incomplete sequences** - Missing critical steps in workflows
-- **Scope creep** - Requirements that expand beyond stated goals
+### Technical Feasibility
 
-#### 🏗️ Technical Feasibility
+- Architectural anti-patterns — design tokens in Elixir modules, business logic in templates
+- Framework violations — patterns conflicting with framework standards
+- Technology mismatches — wrong tools
+- Performance concerns — approaches causing bottlenecks
+- Security gaps — missing auth, validation, or authorization
+- Scalability issues — solutions that won't handle growth
 
-- **Architectural anti-patterns** - Design tokens in Elixir modules, business logic in templates
-- **Framework violations** - Inventing new patterns that conflict with framework standards and best practices
-- **Technology mismatches** - Using wrong tools for the job
-- **Performance concerns** - Approaches that will cause bottlenecks
-- **Security gaps** - Missing authentication, validation, or authorization
-- **Scalability issues** - Solutions that won't handle growth
+### Impl Reality
 
-#### 📋 Implementation Reality
+- Overly complex solutions — elaborate fixes for simple problems
+- Underestimated complexity — simple-sounding tasks that are complex
+- Missing edge cases — error handling, empty states, validation failures
+- Integration assumptions — assuming external systems work perfectly
+- Resource reqs — steps needing unavailable tools or access
+- Invalid commands/references — non-existent commands, incorrect syntax, outdated patterns
+- Redundant impls — building new components when existing solutions work
 
-- **Overly complex solutions** - Simple problems with elaborate fixes
-- **Underestimated complexity** - Simple-sounding tasks that are actually complex
-- **Missing edge cases** - Error handling, empty states, validation failures
-- **Integration assumptions** - Assuming external systems will work perfectly
-- **Resource requirements** - Steps that need unavailable tools or access
-- **Invalid commands/references** - Non-existent commands, incorrect syntax, or outdated patterns
-- **Redundant implementations** - Building new components when existing solutions already handle the requirements
+### Goal Alignment
 
-#### 🎯 Goal Alignment
+- Feature drift — steps not serving stated objective
+- Gold plating — unnecessary features
+- UX gaps — technical focus without user impact
+- Business logic misalignment — technical solutions not matching business rules
 
-- **Feature drift** - Steps that don't serve the stated objective
-- **Gold plating** - Unnecessary bells and whistles
-- **User experience gaps** - Technical focus without considering user impact
-- **Business logic misalignment** - Technical solutions that don't match business rules
+### Workflow & Process
 
-#### 🔄 Workflow & Process
-
-- **Unrealistic timelines** - Steps that claim unrealistic completion times
-- **Testing gaps** - Missing verification or quality assurance steps
-- **Documentation blind spots** - Changes without proper documentation updates
-- **Migration concerns** - Database or code changes without migration strategy
-- **Temporary file cleanup** - Missing cleanup steps for temporary files, routes, or test components
+- Unrealistic timelines
+- Testing gaps — missing verification steps
+- Documentation blind spots — changes without doc updates
+- Migration concerns — DB or code changes without migration strategy
+- Temporary file cleanup — missing cleanup for temp files, routes, test components
 
 ## Output Format
-
-Provides a structured assessment:
 
 ```
 ## Plan Validation Report
 
-### 🔴 CRITICAL ISSUES (Must Fix)
-- **Logic Error**: Step 2 requires user authentication but Step 1 removes the auth system
+### CRITICAL ISSUES (Must Fix)
+- **Logic Error**: Step 2 requires user auth but Step 1 removes auth system
 - **Architecture**: Design tokens belong in Tailwind config, not Elixir modules
 
-### 🟡 CONCERNS (Should Address)
-- **Complexity**: Email notification system seems overly complex for a simple signup flow
-- **Missing**: No error handling specified for external API failures
+### CONCERNS (Should Address)
+- **Complexity**: Email notification system overly complex for simple signup flow
+- **Missing**: No error handling for external API failures
 
-### 🔵 SUGGESTIONS (Consider)
-- **Simplification**: Could use existing Phoenix components instead of building custom ones
-- **Enhancement**: Consider adding loading states for better UX
+### SUGGESTIONS (Consider)
+- **Simplification**: Could use existing Phoenix components instead of custom ones
+- **Enhancement**: Consider loading states for better UX
 
-### 📊 Summary
-- 2 critical issue(s) that block implementation
-- 3 concern(s) that could cause problems
-- 4 suggestion(s) for improvement
+### Summary
+- 2 critical issues blocking impl
+- 3 concerns that could cause problems
+- 4 suggestions for improvement
 
-### 🎯 Overall Assessment
-Plan shows good technical understanding but has logical inconsistencies in Steps 1-2 that need resolution before proceeding.
+### Overall Assessment
+Plan shows good technical understanding but has logical inconsistencies in Steps 1-2.
 ```
 
 ## Validation Approach
 
-- **Verify before criticizing** - Check file existence, dependencies, and assumptions before flagging issues
-- **Evidence-based analysis** - Only report problems with concrete proof, not hypothetical concerns
-- **Question assumptions** - Challenge "obvious" solutions with actual investigation
-- **Spot real contradictions** - Find conflicting requirements that actually conflict
-- **Reality check complexity** - Flag unrealistic expectations with specific reasoning
-- **Fill logical gaps** - Identify missing pieces that are genuinely missing
-- **Suggest alternatives** - Propose simpler approaches only when current approach is problematic
-- **Validate commands and references** - Verify that mentioned commands, files, and patterns actually exist in the project
-- **Track temporary artifacts** - Ensure temporary files, routes, components, or test pages have explicit cleanup steps
-- **Check for existing solutions** - Investigate whether functionality already exists before planning new implementations
+- Verify before criticizing — check file existence, deps, assumptions before flagging
+- Evidence-based — only report problems with concrete proof, not hypothetical concerns
+- Question assumptions — challenge "obvious" solutions with actual investigation
+- Spot real contradictions — find conflicting reqs that actually conflict
+- Reality check complexity — flag unrealistic expectations with specific reasoning
+- Fill logical gaps — identify genuinely missing pieces
+- Suggest alternatives — propose simpler approaches only when current approach is problematic
+- Validate commands and references — verify commands, files, patterns actually exist
+- Track temp artifacts — ensure temp files/routes/components have explicit cleanup steps
+- Check for existing solutions — investigate whether functionality already exists
 
-**CRITICAL**: Always verify claims before reporting them as issues. Investigate and confirm problems actually exist before flagging them. This includes checking whether referenced commands are valid and files/patterns mentioned actually exist in the codebase.
-
-**WARNING**: Do NOT assume something is wrong based on appearance alone. Use tools to actually verify:
-
-- Figma node IDs that "look like placeholders" may be real - check the actual Figma file
-- Commands that "seem incorrect" may be valid - verify they exist in the project
-- Files that "appear missing" may exist - check the actual file system
-- Only report issues with concrete evidence from actual investigation
-
-## Benefits
-
-- **Prevent implementation disasters** - Catch flawed logic before coding starts
-- **Improve plan quality** - Get objective feedback on approach
-- **Save development time** - Fix issues in planning rather than during implementation
-- **Reduce scope creep** - Keep focus on actual requirements
-- **Learning opportunity** - Understand common planning pitfalls
-
-Use during planning sessions to validate your thinking and catch blind spots before implementation begins.
+NEVER report placeholder node IDs, commands, or files as issues without actual verification. Use tools to confirm problems exist.

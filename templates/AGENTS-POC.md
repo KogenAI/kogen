@@ -1,166 +1,138 @@
 # AGENTS.md - PoC WORKSPACE
 
-🎯 **YOU ARE IN A PoC WORKSPACE** - This is validation-focused development, not production development.
+**IN PoC WORKSPACE** — validation-focused, not production dev.
 
-PoC-focused guidance for AI agents - optimized for rapid validation over production-ready features.
+## MANDATORY: Load Rules FIRST
 
-## ⚠️ MANDATORY: Load Rules FIRST
+**On EVERY session start, including greetings like "Hi":**
 
-**CRITICAL - On EVERY session start, including greetings like "Hi":**
-
-1. **STOP** - Do NOT respond to the user until rules are loaded
-2. **IDENTIFY** your agent type — if no delegation prompt, you are the **Orchestrator** (direct Claude Code session)
-3. **LOAD** PoC rules from `./codegen/rules/INDEX.md`:
-   - **ALL agents**: Load shared rules (subagent-core-rules.md, session-management.md)
-   - **Orchestrator** (default for direct Claude Code sessions): ALSO load orchestration rules (delegation-patterns.md)
+1. **IDENTIFY** agent type — if no delegation prompt, you are **Orchestrator**
+2. **LOAD** PoC rules from `./codegen/rules/INDEX.md`:
+   - **All agents**: Load shared rules (subagent-core-rules.md, session-management.md)
+   - **Orchestrator**: ALSO load orchestration rules (delegation-patterns.md)
    - **poc-developer**: Load subagents/phoenix.md, subagents/elixir-code-generation.md, subagents/workflow.md, subagents/testing-backend.md, subagents/git-commit-flow.md
-   - **verification-engineer (PoC context)**: Load subagents/testing-poc.md, shared/git-read-only.md
-   - **code-reviewer (PoC context)**: Load subagents/phoenix.md, subagents/elixir-code-generation.md, subagents/testing-backend.md, shared/git-read-only.md
-4. **APPLY** validation-focused patterns to every action
+   - **verification-engineer (PoC)**: Load subagents/testing-poc.md, shared/git-read-only.md
+   - **code-reviewer (PoC)**: Load subagents/phoenix.md, subagents/elixir-code-generation.md, subagents/testing-backend.md, shared/git-read-only.md
+3. **APPLY** validation-focused patterns
 
-**🚨 CRITICAL**: When orchestrator delegates to verification-engineer or code-reviewer for PoC work, the delegation prompt MUST specify PoC context:
+When orchestrator delegates to VE or code-reviewer for PoC work, delegation prompt MUST specify PoC context:
 
-- Example: `"CRITICAL RULES CONTEXT: PoC verification - apply verification-workflow-poc.md + testing-poc.md patterns"`
+```
+"CRITICAL RULES CONTEXT: PoC verification - apply verification-workflow-poc.md + testing-poc.md patterns"
+```
 
-**PoC Rule Priority:**
+## Output Style
 
-- Focus on **validation over features**
-- **Minimal infrastructure** over production-ready systems
+Output: caveman ultra. Agents read you, not humans. No preamble. No recap. No pleasantries. Drop articles, filler, hedging. Fragments OK. Arrows for causality (X → Y). Short synonyms (fix not "implement a solution"). Inline acronyms (dev, VE, impl, DB, conn, fn, reqs). NEVER touch JSON schemas, Ecto field names, contracts, code blocks, error strings, "MUST"/"NEVER"/"FORBIDDEN", or hook markers (ALL CLEAR ✅, FAILED ❌, INCONCLUSIVE ⚠️) — verbatim regardless of style. Drop ultra for security warnings or irreversible-action confirmations.
 
-## 🚨 Planning vs Implementation Rule Separation
+## Planning vs Implementation Rule Separation
 
-**CRITICAL: NEVER load planning rules during implementation**
+FORBIDDEN during implementation: `planning.md` (planning sessions only).
 
-❌ **FORBIDDEN during implementation**:
+Use ONLY during `ocg bird-eye`, `ocg plan`, `/plan-poc`.
 
-- `planning.md` (planning sessions only)
+## Rule Compliance Verification
 
-✅ **Use these rules ONLY during** planning mode contexts (`ocg bird-eye`, `ocg plan`, `/plan-poc`)
+All agents must prove compliance before done:
 
-## 🚨 MANDATORY: Rule Compliance Verification
-
-**CRITICAL - All agents must prove rule compliance before claiming completion:**
-
-1. **Document rule loading** - Show actual rule content in your session log
-2. **Execute required searches** - Run all systematic searches your role requires
-3. **Provide proof** - Session log must contain evidence of compliance
-4. **No exceptions** - Claims without proof will be rejected
+1. Document rule loading — show actual rule content in session log
+2. Execute required searches
+3. Provide proof — session log must contain evidence
+4. No exceptions
 
 ## Universal Context Files
 
-**ALL agents must read BEFORE any work:**
+**ALL agents read BEFORE any work:**
 
-- `./codegen/PROJECT_CONTEXT.md` - Project architecture and patterns
-- `./codegen/plans/poc/overview.md` - PoC validation goals
+- `./codegen/PROJECT_CONTEXT.md` — architecture and patterns
+- `./codegen/plans/poc/overview.md` — PoC validation goals
 
-Note: No `CONTEXT.md` in PoC — work happens directly on main, not in worktrees.
+No `CONTEXT.md` in PoC — work happens directly on main, not in worktrees.
 
-## 🎯 PoC-Specific Patterns
-
-**CRITICAL - Apply these patterns consistently:**
+## PoC-Specific Patterns
 
 ### Infrastructure Constraints
 
-- **NO persistent storage** - Use ETS for temporary session data
-- **NO authentication** - Skip unless core to concept validation
-- **NO comprehensive testing** - Basic smoke tests and validation only
-- **NO production deployment** - Simple single-instance deployment
-- **NO complex CI/CD** - Basic verification only
+- **NO persistent storage** — ETS for temporary session data
+- **NO authentication** — skip unless core to concept validation
+- **NO comprehensive testing** — basic smoke tests only
+- **NO production deployment** — simple single-instance
+- **NO complex CI/CD** — basic verification only
 
 ### Validation Focus
 
-- **YES external tool integration** - Use System.cmd() for Python, APIs, etc.
-- **YES real-time updates** - LiveView for processing feedback
-- **YES validation metrics** - Build in assumption testing
-- **YES rapid iteration** - Fast feedback cycles over polish
+- **YES external tool integration** — `System.cmd()` for Python, APIs, etc.
+- **YES real-time updates** — LiveView for processing feedback
+- **YES validation metrics** — build in assumption testing
+- **YES rapid iteration** — fast feedback over polish
 
 ### Agent Roles
 
-**Orchestrator (Main Agent)**:
+**Orchestrator:**
 
-- **PoC-focused delegation**: Use PoC context in all delegations to verification-engineer and code-reviewer
-- **Validation cycles**: Implementation → PoC verification → PoC code review → iteration
-- **Basic validation**: "Does this prove/disprove our assumptions?"
-- **Fast iteration**: Move quickly through validation cycles
+- PoC-focused delegation — PoC context in all VE and CR delegations
+- Basic validation: "Does this prove/disprove assumptions?"
+- Fast iteration through validation cycles
 
-**poc-developer (Subagent)**:
+**poc-developer:**
 
-- **Focused implementation**: Single validation goal per task
-- **External integrations**: Python libraries, APIs, CLI tools via System.cmd()
-- **LiveView interfaces**: Real-time user feedback and processing updates
-- **Basic testing**: Smoke tests to ensure core workflow functions
+- Focused impl: single validation goal per task
+- External integrations: Python libs, APIs, CLI tools via `System.cmd()`
+- LiveView interfaces for real-time feedback
+- Basic smoke tests only
 
-**verification-engineer (PoC context)**:
+**verification-engineer (PoC):**
 
-- **Real user scenario testing**: Test actual workflows with real data, not just automated tests
-- **Basic system health**: Compilation, smoke tests, external integration verification
-- **Validation readiness**: Can users test core assumptions through the interface?
+- Real user scenario testing with actual data
+- Basic system health: compilation, smoke tests, external integration
+- Validation readiness: can users test core assumptions?
 
-**code-reviewer (PoC context)**:
+**code-reviewer (PoC):**
 
-- **Validation readiness review**: Can implementation support assumption testing?
-- **Anti-pattern detection**: Prevent over-engineering (database schemas) and under-engineering (mocked integrations)
-- **PoC pattern compliance**: ETS storage, System.cmd() integration, LiveView feedback
+- Validation readiness review
+- Anti-pattern detection: over-engineering (DB schemas) and under-engineering (mocked integrations)
+- PoC pattern compliance: ETS storage, `System.cmd()` integration, LiveView feedback
 
 ## Workspace Rules
 
-**OCG PoC Workspace:**
+- Work in current directory only (never `../`)
+- PoC timeline: 2-4 weeks maximum
 
-- Work in current directory only (never `../` or `../../`)
-- **PoC timeline**: 2-4 weeks maximum for any validation
+## Work Context Management
 
-## Work Context Management (Agent-to-Agent Communication)
-
-**🚨 CRITICAL: ALWAYS use RELATIVE paths for context files!**
+Use RELATIVE paths. NEVER absolute.
 
 ```bash
-# ✅ CORRECT - relative paths (works in any workspace)
+# ✅ CORRECT
 ./codegen/context/PENDING-*.md
-./codegen/context/RESOLVED-*.md
 
-# ❌ WRONG - absolute paths (writes to wrong location!)
+# ❌ WRONG
 /Users/.../project/codegen/context/PENDING-*.md
 ```
 
-**Quick reference**:
-
-- Location: `./codegen/context/` (RELATIVE PATH!)
+- Location: `./codegen/context/`
 - Prefixes: `PENDING-*`, `ACTIVE-*`, `RESOLVED-*`
 - Check at session start: `ls ./codegen/context/PENDING-* 2>/dev/null`
 
-## 📚 Library Usage Rules
+## Library Usage Rules
 
-**IMPORTANT**: When working with external Elixir libraries, load library-specific usage documentation to ensure correct implementation patterns.
-
-**Usage rules location**: `$OCG_CONTEXT_DIR/usage_rules/` (typically `~/Areas/Optimum/context/usage_rules/`)
-
-**Discovery pattern:**
+**Location**: `$OCG_CONTEXT_DIR/usage_rules/`
 
 ```bash
 ls $OCG_CONTEXT_DIR/usage_rules/ | grep -i "^library_name"
-# e.g.
-ls $OCG_CONTEXT_DIR/usage_rules/ | grep -i "^jason"    # jason-1.4.4.md
 ```
 
-**Load when integrating external libraries** — Jason, HTTPoison/Finch, Phoenix LiveView, any unfamiliar library.
+Load when integrating external libraries. Generate if missing: `ocg usage-rules`.
 
-**Generate if missing:**
+## Session Logging
 
-```bash
-ocg usage-rules
-```
-
-## 📊 MANDATORY: Session Logging
-
-**ALL agents** must create session logs.
+All agents create session logs.
 
 **WHERE**: `./codegen/logging/$(date -u +%Y%m%d_%H%M%S)_<agent_role>.md`
 
 **Agent roles**: `orchestrator`, `poc-developer`, `verification-engineer`, `code-reviewer`
 
-**When**: Create as SECOND action (after loading rules). Update continuously, not at the end.
-
-**LOG FORMAT**:
+Create as SECOND action (after loading rules). Update continuously.
 
 ```markdown
 # PoC Session Log: <agent_role>
@@ -196,9 +168,6 @@ ocg usage-rules
 
 ## Command Execution Log
 
-<!-- Time test runs to identify slow suites: start=$(date +%s); mix test ... 2>&1 | tail -20; echo "Duration: $(($(date +%s) - start))s" -->
-<!-- Compilation: mix compile 2>&1 — no output = already compiled = SUCCESS -->
-
 | Time     | Duration | Command            | Status | Notes |
 | -------- | -------- | ------------------ | ------ | ----- |
 | HH:MM:SS | Xs       | `mix compile 2>&1` | ✅     |       |
@@ -212,9 +181,6 @@ ocg usage-rules
 | Time  | Agent         | Task               | Log File                         | Result         |
 | ----- | ------------- | ------------------ | -------------------------------- | -------------- |
 | HH:MM | poc-developer | [task description] | YYYYMMDD_HHMMSS_poc-developer.md | ⏳ IN PROGRESS |
-
-<!-- Update each row when agent completes. Add new row for each delegation. -->
-<!-- Result options: ⏳ IN PROGRESS | ✅ Done | ❌ Failed | 🔄 Needs iteration -->
 
 ## Validation Results
 
@@ -234,17 +200,13 @@ ocg usage-rules
 
 ## PoC Orchestration Pattern
 
-**PoC Orchestrator Workflow:**
-
-1. **Implementation**: Delegate to poc-developer for focused validation implementation
-2. **PoC Verification**: Delegate to verification-engineer with PoC context for real user scenario testing
-3. **PoC Code Review**: Delegate to code-reviewer with PoC context for validation readiness review
-4. **Rapid iteration**: Move to next assumption validation quickly
-
-**PoC Delegation Examples:**
+1. **Impl**: Delegate to poc-developer for focused validation impl
+2. **PoC Verification**: Delegate to VE with PoC context
+3. **PoC Code Review**: Delegate to code-reviewer with PoC context
+4. **Rapid iteration**: Move to next assumption quickly
 
 ```
-# Implementation
+# Impl
 Task("Implement YouTube transcript PoC",
      prompt="Build minimal YouTube transcript extraction with real-time feedback...",
      subagent_type="poc-developer")
@@ -253,45 +215,43 @@ Task("Implement YouTube transcript PoC",
 Task("Verify PoC validation readiness",
      prompt="CRITICAL RULES CONTEXT: PoC verification - apply verification-workflow-poc.md + testing-poc.md patterns.
 
-             Test real user scenario with actual YouTube URL. Verify external integrations work...",
+             Test real user scenario with actual YouTube URL...",
      subagent_type="verification-engineer")
 
 # PoC Code Review
 Task("Review PoC validation readiness",
      prompt="CRITICAL RULES CONTEXT: PoC code review - apply code-review-poc.md patterns.
 
-             Ensure implementation supports assumption testing without over-engineering...",
+             Ensure impl supports assumption testing without over-engineering...",
      subagent_type="code-reviewer")
 ```
 
-**Focus Questions:**
+Focus questions:
 
 - "Does this prove our assumption?"
 - "Can users complete the core workflow?"
 - "Are we getting meaningful validation data?"
 - "What's the next assumption to test?"
 
-## 🔄 MANDATORY: Keep PROJECT_CONTEXT.md Up To Date
+## MANDATORY: Keep PROJECT_CONTEXT.md Up To Date
 
-**After ANY code change, update `./codegen/PROJECT_CONTEXT.md`:**
+After ANY code change:
 
 - New modules/files → add to Module Directory
-- Changed patterns/conventions → update relevant section
-- New pitfalls discovered → add to Common Pitfalls
-- Schema changes → update Database Schema
-- New env vars or config → update Environment Configuration
-
-**This is not optional.** PROJECT_CONTEXT.md is the single source of truth for AI agents. Stale context causes wrong decisions.
+- Changed patterns → update relevant section
+- New pitfalls → add to Common Pitfalls
+- Schema changes → update DB Schema
+- New env vars → update Environment Configuration
 
 ## Universal PoC Requirements
 
-- **Read PROJECT_CONTEXT.md first** - Always, before any work
-- **Update PROJECT_CONTEXT.md after changes** - Keep it current
-- **Validation focus** - Every task tests a specific assumption
-- **Rapid iteration** - 2-4 week maximum timeline
-- **Minimal infrastructure** - Avoid production complexity
-- **External integrations** - Use existing tools via System.cmd()
-- **Real-time feedback** - LiveView for user interaction
-- **Basic validation** - Smoke tests, not comprehensive testing
-- **Session logging** - ALL agents must log, create as second action
-- **Issue Discovery → Immediate Fixing** - Find issues, fix them — never stop after just documenting
+- **Read PROJECT_CONTEXT.md first** — always, before any work
+- **Update PROJECT_CONTEXT.md after changes**
+- **Validation focus** — every task tests a specific assumption
+- **Rapid iteration** — 2-4 week max timeline
+- **Minimal infrastructure** — avoid production complexity
+- **External integrations** — use existing tools via `System.cmd()`
+- **Real-time feedback** — LiveView for user interaction
+- **Basic validation** — smoke tests, not comprehensive testing
+- **Session logging** — ALL agents must log, create as second action
+- **Issue Discovery → Immediate Fixing** — find issues, fix them — never stop after documenting

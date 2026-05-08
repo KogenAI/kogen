@@ -2,50 +2,34 @@
 description: List all Figma screens available for comparison and create a todo list
 ---
 
-List all Figma screenshots available for UI comparison and create a numbered todo list for systematic comparison.
+List all Figma screenshots and create numbered todo list for systematic comparison.
 
 ## Path Resolution
 
-**IMPORTANT**: Workspaces use symlinks. Always resolve the actual path:
+Workspaces use symlinks — always resolve actual path:
 
 ```bash
-# Get the real path to design-system (resolves symlinks)
 DESIGN_SYSTEM_PATH=$(readlink -f ./codegen/design-system 2>/dev/null || readlink ./codegen/design-system)
-echo "Design system path: $DESIGN_SYSTEM_PATH"
 ```
-
-For file reading, use the resolved absolute path, not `./codegen/design-system/...`
 
 ## Steps
 
 ### 1. Read plan context
 
-First, list the plan directory to find available files:
-
 ```bash
 ls -la ./codegen/plan/
 ```
 
-Then read the plan files using their full paths:
-
-- Read the overview file to identify the feature name
-- Read the screenshot-content-verification file for the screen inventory
+Read overview file to identify feature name and screenshot-content-verification for screen inventory.
 
 ### 2. Verify screenshots exist
 
-List files in the design-system features directory (use resolved path):
-
 ```bash
-# First find the feature directory
 ls ./codegen/design-system/features/
-
-# Then list screenshots for the specific feature
 ls ./codegen/design-system/features/{feature}/screenshots/
 ```
 
 ### 3. Ensure script directories exist
-
-Create directories if they don't exist:
 
 ```bash
 mkdir -p ./codegen/design-system/features/{feature}/screenshot-scripts
@@ -54,33 +38,20 @@ mkdir -p ./codegen/design-system/features/{feature}/seeds
 
 ### 4. Create todo list
 
-Parse the screenshot-content-verification.md to extract screens grouped by:
-
-- Organization (Employer) - Mobile
-- Organization (Employer) - Desktop
-- Job Seeker - Mobile
-- Job Seeker - Desktop
-- Empty States
-- Modals/Forms
-
-Create todo items using TodoWrite:
+Parse screenshot-content-verification.md and create todo items:
 
 ```
 Compare Screen 1: Employer Contracts List (Mobile)
 Compare Screen 2: Employer Contracts List (Desktop)
-Compare Screen 3: Job Seeker Contracts List (Mobile)
 ...
 ```
 
-Each todo should have:
+Each todo:
 
 - `content`: "Compare Screen N: {User Type} {Screen Name} ({Viewport})"
 - `status`: "pending"
-- `activeForm`: "Comparing {User Type} {Screen Name} {Viewport}"
 
 ### 5. Show seed mapping convention
-
-**Convention**: Seed filename matches screenshot prefix for easy lookup.
 
 ```
 Screenshot                           →  Seed
@@ -88,20 +59,16 @@ Screenshot                           →  Seed
 message-*.png                        →  message.exs
 s5---jobs-*.png                      →  s5-jobs.exs
 s7---review-matched-*.png            →  s7-review-matched-candidates.exs
-organization-hire-*.png              →  organization-hire-contract.exs
-job-seeker-account-settings-*.png    →  job-seeker-account-settings.exs
-*-empty-*.png (or empty state)       →  {prefix}-empty.exs
+*-empty-*.png                        →  {prefix}-empty.exs
 ```
 
-**Check INDEX.md for full mapping and login credentials:**
+Check INDEX.md for full mapping:
 
 ```bash
 cat ./codegen/design-system/features/{feature}/seeds/INDEX.md
 ```
 
 ### 6. Check script status
-
-List available seeds and screenshot scripts:
 
 ```bash
 ls ./codegen/design-system/features/{feature}/seeds/*.exs 2>/dev/null
@@ -120,15 +87,6 @@ ls ./codegen/design-system/features/{feature}/screenshot-scripts/screen-*.js 2>/
 | Screen | Seed | Screenshot Script |
 |--------|------|-------------------|
 | 1 | ✅/❌ | ✅/❌ |
-| 2 | ✅/❌ | ✅/❌ |
-...
 
-### Directories:
-- Screenshots: ./codegen/design-system/features/{feature}/screenshots/
-- Seeds: ./codegen/design-system/features/{feature}/seeds/
-- Scripts: ./codegen/design-system/features/{feature}/screenshot-scripts/
-
-Use `/compare-screen 1` to start comparing the first screen.
+Use `/compare-screen 1` to start.
 ```
-
-The todo list provides visual progress tracking as screens are compared.

@@ -4,25 +4,25 @@
 
 ### Mission & Goals
 
-- **Primary Purpose**: [What this project aims to achieve]
+- **Primary Purpose**: [What this project achieves]
 - **Target Users**: [Who uses this system]
 - **Key Value Propositions**: [Main benefits delivered]
 
 ### Architecture Overview
 
-- **Architecture Pattern**: [e.g., Phoenix LiveView, MVC, etc.]
+- **Architecture Pattern**: [e.g., Phoenix LiveView, MVC]
 - **Data Flow**: [How data moves through the system]
 - **Key Integrations**: [External systems, APIs, services]
 
 ## Domain Context Files
 
-Detailed context is split by business domain. **Load this index always. Load domain files only when relevant to your task.**
+Detailed context split by business domain. **Load this index always. Load domain files only when relevant.**
 
 | File              | Domain                    | Load when working on... |
 | ----------------- | ------------------------- | ----------------------- |
 | `context/core.md` | [Primary business domain] | [When to load]          |
 
-_Domain files are created during project setup. Add rows as domains emerge._
+_Domain files created during project setup. Add rows as domains emerge._
 
 ### Loading examples
 

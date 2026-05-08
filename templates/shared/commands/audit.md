@@ -3,35 +3,35 @@ description: Audit a design document against the actual implementation — repor
 argument-hint: [path to design doc]
 ---
 
-Compare the design document against the current codebase. Locate the document using this priority order:
+Compare design document against codebase. Locate document in priority order:
 
-1. **Argument** — use the path provided directly
-2. **Conversation history** — if no argument, scan recent messages for a referenced document or design spec (e.g. a file linked with `@` or mentioned by name)
-3. **`codegen/` directory** — if nothing in history, glob `codegen/*.md` and pick the most recently modified doc that looks like a design/spec (not a session log)
+1. **Argument** — use path provided directly
+2. **Conversation history** — scan recent messages for referenced document
+3. **`codegen/` directory** — glob `codegen/*.md`, pick most recently modified doc that looks like a design/spec (not session log)
 
 ## Process
 
-1. **Read the design doc** in full — extract every proposed change, feature, and test coverage item.
+1. **Read design doc** in full — extract every proposed change, feature, and test coverage item.
 
-2. **Check the codebase** — for each item, grep and read the relevant source files and test files to verify whether it is:
-   - ✅ Implemented — code exists and matches the spec
-   - ✅ Tested — test exists covering the behavior
-   - ⚠️ Partial — exists but incomplete or diverges from spec
+2. **Check codebase** — for each item, grep and read relevant source/test files to verify:
+   - ✅ Implemented — code exists and matches spec
+   - ✅ Tested — test exists covering behavior
+   - ⚠️ Partial — exists but incomplete or diverges
    - ❌ Missing — not implemented at all
 
-3. **Produce a table** grouped by phase/section (matching the doc structure):
+3. **Produce table** grouped by phase/section:
 
    | Item | Implemented | Tested   | Notes |
    | ---- | ----------- | -------- | ----- |
    | ...  | ✅/⚠️/❌    | ✅/⚠️/❌ | ...   |
 
-4. **List gaps** — anything ❌ Missing or ⚠️ Partial with a brief explanation of what's wrong.
+4. **List gaps** — anything ❌ Missing or ⚠️ Partial with brief explanation.
 
-5. **Do not fix anything** — report only. If the user wants fixes, they'll ask.
+5. **Do not fix anything** — report only.
 
 ## Rules
 
-- Check both implementation AND tests separately — code can exist without tests and vice versa
+- Check impl AND tests separately — code can exist without tests and vice versa
 - Read actual source files, don't infer from file names
-- If a spec item is ambiguous, note it rather than guessing
-- Keep the report concise — one line per item in the table, gaps section only for items needing attention
+- If spec item is ambiguous, note it rather than guessing
+- Keep report concise — one line per item in table, gaps section only for items needing attention

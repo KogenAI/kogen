@@ -2,19 +2,19 @@
 description: Generate weekly Substack digest from latest podcast episodes
 ---
 
-Generate a comprehensive weekly roundup article for Skeptic.bot's Substack, summarizing the latest podcast episodes added to the database in the past 7 days. Then generate Reddit posts when the user provides the Substack link.
+Generate weekly roundup for Skeptic.bot's Substack from podcast episodes added in past 7 days. Then generate Reddit posts when user provides Substack link.
 
 ## Arguments
 
-This command takes an optional path to a PostgreSQL database dump file:
+Optional path to PostgreSQL dump file:
 
 ```
 /skeptic-weekly [path-to-dump]
 ```
 
-If no dump path is provided, one will be created automatically from the production server.
+If no dump path, create automatically from production server.
 
-Example with existing dump: `/skeptic-weekly /Users/almirsarajcic/skeptic_bot_20251219.dump`
+Example: `/skeptic-weekly /Users/almirsarajcic/skeptic_bot_20251219.dump`
 
 ## Two-Phase Process
 
@@ -25,9 +25,9 @@ Example with existing dump: `/skeptic-weekly /Users/almirsarajcic/skeptic_bot_20
 
 # PHASE 1: Substack Article
 
-**STEP 0: Create Dump (skip if dump path was provided)**
+**STEP 0: Create Dump (skip if dump path provided)**
 
-If no dump path was provided, fetch a fresh dump from the production server:
+Fetch fresh dump from production server:
 
 ```bash
 export DB=skeptic_bot
@@ -41,9 +41,9 @@ echo "Dump saved to: $DUMP_PATH"
 
 Use `$DUMP_PATH` as the dump path for the rest of the steps.
 
-**STEP 1: Restore Database Dump**
+**STEP 1: Restore DB Dump**
 
-Restore the provided dump file to a temporary PostgreSQL database:
+Restore dump file to temp PostgreSQL DB:
 
 ```bash
 # Create temp database and restore dump
@@ -52,44 +52,35 @@ createdb -U postgres skeptic_weekly_temp
 pg_restore -U postgres -d skeptic_weekly_temp --no-owner --no-privileges <DUMP_PATH> 2>&1 | tail -5
 ```
 
-Verify data was restored:
+Verify restore:
 
 ```bash
 psql -U postgres -d skeptic_weekly_temp -c "SELECT COUNT(*) FROM podcast_episodes;"
 ```
 
-**STEP 2: Determine Date Range Based on Previous Weekly**
+**STEP 2: Determine Date Range**
 
-The date range should continue from where the last weekly ended. Check existing weekly files to find the previous week's end date:
+Continue from where last weekly ended. Check existing files for previous end date:
 
 ```bash
 # List existing weekly files to find the last one
 ls -la skeptic_weekly_*.md | tail -5
 ```
 
-Then determine the start date for this week:
-
-- If the previous weekly was "December 12-19", this week should be "December 19-26"
-- The start date of the new weekly = end date of the previous weekly
-
-Get the MAX(inserted_at) from the dump to determine the end date:
+Start date of new weekly = end date of previous weekly. Get MAX(inserted_at) for end date:
 
 ```bash
 psql -U postgres -d skeptic_weekly_temp -c "SELECT MAX(inserted_at)::date as dump_date FROM podcast_episodes;"
 ```
 
-**IMPORTANT:** The date range should be calculated as:
+Date range:
 
-- **End date:** The dump date (MAX(inserted_at)::date) or current date, whichever makes sense
-- **Start date:** End date minus 7 days, BUT adjusted to be the day AFTER the previous weekly's end date
+- End date: dump date (MAX(inserted_at)::date) or current date
+- Start date: end date minus 7 days, adjusted to day AFTER previous weekly's end date
 
-For example, if:
+Example: previous weekly ended Dec 19, dump date Dec 26 → cover Dec 19-26.
 
-- Previous weekly ended on Dec 19
-- Dump date is Dec 26
-- This weekly should cover Dec 19-26 (starting from the 19th to include episodes from that day forward)
-
-Query episodes using the correct start date:
+Query episodes using correct start date:
 
 ```sql
 -- Replace START_DATE with the actual start date (e.g., '2025-12-19')
@@ -117,7 +108,7 @@ FROM recent_episodes
 ORDER BY inserted_at, podcast_name;
 ```
 
-**Alternative:** If no previous weekly exists, use the 7-day window from dump date:
+If no previous weekly exists, use 7-day window from dump date:
 
 ```sql
 WHERE pe.inserted_at >= (SELECT MAX(inserted_at) FROM podcast_episodes)::date - INTERVAL '7 days'
@@ -125,16 +116,16 @@ WHERE pe.inserted_at >= (SELECT MAX(inserted_at) FROM podcast_episodes)::date - 
 
 **STEP 3: Detect and Exclude Backfilled Episodes**
 
-Since `inserted_at` shows scrape time (not publish time), detect obvious backfills by checking episode numbers:
+`inserted_at` = scrape time, not publish time. Detect backfills by checking episode numbers.
 
-For each podcast with numbered episodes (Candace, Tin Foil Hat):
+For numbered podcasts (Candace, Tin Foil Hat):
 
-1. Find the highest episode number in the results
-2. Exclude episodes where: `(highest_episode_number - episode_number) > 10`
+1. Find highest episode number in results
+2. Exclude: `(highest_episode_number - episode_number) > 10`
 
-Example: If Candace Ep 282 is the highest, exclude anything below Ep 272.
+Example: Candace Ep 282 is highest → exclude anything below Ep 272.
 
-**Note:** Some podcasts don't use episode numbers (Deep Waters, Nephilim Death Squad, Look Into It, Broken Simulation) - for these, include all episodes from the last 7 days.
+Non-numbered podcasts (Deep Waters, Nephilim Death Squad, Look Into It, Broken Simulation) — include all from last 7 days.
 
 **STEP 4: Test Sam Tripoli URLs**
 
@@ -158,33 +149,33 @@ for url in "${urls[@]}"; do
 done
 ```
 
-**IMPORTANT:** Only include episodes that:
+Only include episodes that:
 
 1. Are NOT backfills (episode number check for numbered podcasts)
 2. Have working URLs (200 status for Sam Tripoli URLs)
 
 **STEP 5: Analyze Episodes and Identify Themes**
 
-Review all accessible episode summaries and identify:
+Review accessible episode summaries, identify:
 
-- Common themes across multiple podcasts
-- Major breaking news topics covered
+- Common themes across podcasts
+- Major breaking news topics
 - Controversial claims or investigations
-- Connections between different episodes
+- Connections between episodes
 - Standout guests or revelations
 
 **STEP 6: Generate Article**
 
-Create a Substack-formatted Markdown article with this structure:
+Create Substack-formatted Markdown:
 
 **Podcast Grouping & Ordering:**
 
-- Each podcast gets its own **single** `## Podcast Name` section — never split a podcast into multiple sections
-- "Doom Scrollin" is a SEPARATE podcast from "Tin Foil Hat" (both are Sam Tripoli shows)
+- Each podcast gets ONE `## Podcast Name` section — never split
+- "Doom Scrollin" is SEPARATE podcast from "Tin Foil Hat" (both Sam Tripoli shows)
 - Other Sam Tripoli podcasts: Cash Daddies, Union of the Unwanted, Zero with Sam Tripoli
-- Group episodes by podcast name, NOT by host
-- **Order episodes chronologically (oldest to newest)** within each podcast section
-- Order podcast sections by the date of their **earliest** episode in the week (all episodes from that podcast go in one block, regardless of when later episodes aired)
+- Group by podcast name, NOT host
+- Order episodes chronologically (oldest → newest) within each podcast section
+- Order podcast sections by earliest episode in the week
 
 ```markdown
 # Skeptic.bot Weekly: [Date Range]
@@ -257,7 +248,7 @@ fi
 
 **STEP 8: Output Short Summary**
 
-Output ONLY a brief summary (under 10 lines):
+Output brief summary (under 10 lines) only:
 
 ```
 ## Weekly Roundup: [Date Range]
@@ -271,42 +262,40 @@ Output ONLY a brief summary (under 10 lines):
 - **Tags:** `conspiracy theories`, `alternative media`, `[topic tag 1]`, `[topic tag 2]`, `[topic tag 3]`
 ```
 
-Do NOT output the full article content to the terminal.
+Do NOT output full article to terminal.
 
 ## Content Guidelines
 
 **Opening Paragraph:**
 
-- Hook the reader with the most compelling theme or revelation
-- Reference specific episodes or claims that tie the week together
-- Keep it under 4 sentences
+- Hook with most compelling theme or revelation
+- Reference specific episodes or claims tying the week together
+- Under 4 sentences
 
 **Episode Summaries:**
 
-- Focus on what was actually discussed, not speculation
-- Highlight specific claims, guests, or evidence presented
-- Use the episode's teaser for quick context if summary is too long
+- What was actually discussed, not speculation
+- Highlight specific claims, guests, or evidence
+- Use episode teaser if summary too long
 - Include guest names when mentioned in titles
 
 **Questions to Generate:**
 
-- Make them specific to the episode content
-- Keep them short (6-10 words ideal)
-- Use declarative phrasing for better RAG retrieval (e.g., "Military presence Provo before 9/11" vs "Why was military in Provo?")
-- Connect to actual claims made in the episode
+- Specific to episode content
+- Short (6-10 words ideal)
+- Declarative phrasing for better RAG (e.g., "Military presence Provo before 9/11" not "Why was military in Provo?")
+- Connect to actual claims in episode
 
 **Key Topics:**
 
-- Pull from episode summaries
-- Focus on concrete subjects discussed
-- Use specific names, events, dates when possible
-- Aim for 3-5 topics per episode
+- From episode summaries
+- Concrete subjects — specific names, events, dates
+- 3-5 topics per episode
 
 **Tone:**
 
 - Neutral, journalistic
 - Present claims without endorsing or dismissing
-- Let the content speak for itself
 - Emphasize investigation and evidence analysis
 
 ## Episode URL Logic
@@ -330,29 +319,29 @@ Construct URLs based on the podcast name and external_id:
 
 ## Quality Criteria
 
-- Article must be ready to copy/paste directly into Substack
-- Only include episodes with verified working URLs
-- Group by podcast, then chronological within each podcast
-- No speculation beyond what's in the episode summaries
-- All links must be tested and confirmed working before inclusion
-- Keep total article length reasonable (aim for 1500-2500 words)
+- Ready to copy/paste directly into Substack
+- Only episodes with verified working URLs
+- Group by podcast, chronological within each
+- No speculation beyond episode summaries
+- All links tested before inclusion
+- 1500-2500 words
 
 ---
 
 # PHASE 2: Reddit Posts
 
-**STEP 9: Generate Reddit Posts (triggered when user provides Substack URL)**
+**STEP 9: Generate Reddit Posts (when user provides Substack URL)**
 
-When the user replies with their Substack URL (e.g., `https://skepticbot.substack.com/p/skepticbot-weekly-december-12-19`), generate a markdown file with Reddit posts.
+Generate `reddit_posts_YYYYMMDD.md` when user replies with Substack URL.
 
-**IMPORTANT Reddit Guidelines:**
+**Reddit Guidelines:**
 
-1. **No links in post body** - Reddit filters new accounts posting external links. Put content only in the body.
-2. **Link goes in comments** - After posting, add the Substack link as a comment.
-3. **Space posts out** - One subreddit per day maximum to avoid spam detection.
-4. **r/conspiracy requires account age** - Use r/conspiracy_commons for new accounts.
+1. No links in post body — Reddit filters new accounts posting external links
+2. Link goes in comments — add Substack link as comment after posting
+3. Space posts out — one subreddit per day max
+4. r/conspiracy requires account age — use r/conspiracy_commons for new accounts
 
-**Generate file:** `reddit_posts_YYYYMMDD.md` with this structure:
+File structure:
 
 ```markdown
 # Reddit Posts for Skeptic.bot Weekly ([Date Range])
@@ -451,18 +440,15 @@ Full breakdown with working links: [SUBSTACK_URL]
 5. Immediately add a comment with the Substack link
 ```
 
-**Post Content Guidelines:**
+**Post Content per Subreddit:**
 
-- Each post should be tailored to the subreddit's focus
 - r/conspiracy_commons: General weekly overview
-- r/HighStrangeness: Focus on paranormal/strange content (use "Podcast" flair)
+- r/HighStrangeness: Paranormal/strange content (use "Podcast" flair)
 - r/conspiracytheories: Frame as question to encourage discussion
-- r/podcasts: Focus on podcast discovery angle
+- r/podcasts: Podcast discovery angle
 - r/TinFoilHatPod: Episode-specific summaries in order
 
 **URL Encoding:**
-
-Use proper URL encoding for the submit links:
 
 - Space: `%20`
 - Colon: `%3A`

@@ -2,36 +2,36 @@
 description: Conduct comprehensive technical research and analysis for Phoenix/Elixir solutions
 ---
 
-Conduct systematic research of technical solutions for Phoenix/Elixir applications, evaluating different approaches across key criteria like setup complexity, performance, maintenance, and production readiness.
+Systematic research of technical solutions for Phoenix/Elixir apps. Evaluate approaches across setup complexity, performance, maintenance, and production readiness.
 
-**STEP 1: Understanding the Research Topic**
+**STEP 1: Understanding Research Topic**
 
-Capture the technical challenge or feature being researched:
+Capture:
 
-- **Core problem** - What technical challenge needs solving
-- **Context** - Phoenix/Elixir application specifics
-- **Requirements** - Key criteria that matter (performance, compliance, etc.)
-- **Constraints** - Budget, timeline, team expertise limitations
+- Core problem — what technical challenge needs solving
+- Context — Phoenix/Elixir application specifics
+- Reqs — key criteria (performance, compliance, etc.)
+- Constraints — budget, timeline, team expertise
 
-Confirm understanding before proceeding with research.
+Confirm understanding before proceeding.
 
 **STEP 2: Research Execution**
 
-First, get the current year using `date +%Y` command to ensure searches include the most recent information.
+First, get current year via `date +%Y` to ensure searches include recent info.
 
-Use TodoWrite to create and track research tasks, then execute systematic research:
+Use TodoWrite to create and track research tasks:
 
 1. **Library/Tool Discovery**
-   - Search for Phoenix/Elixir-specific solutions, including current and previous year in queries (e.g., "Phoenix audit log library 2024 2025")
-   - Identify popular libraries and patterns
+   - Search Phoenix/Elixir-specific solutions, include current and previous year in queries (e.g., "Phoenix audit log library 2024 2025")
+   - Identify popular libs and patterns
    - Check GitHub activity, maintenance status, last commits
    - Verify compatibility with current Elixir/Phoenix versions
 
-2. **Implementation Approaches**
-   - Database-level solutions (triggers, functions)
-   - Application-level patterns (contexts, behaviors)
+2. **Impl Approaches**
+   - DB-level solutions (triggers, functions)
+   - App-level patterns (contexts, behaviors)
    - Third-party services and integrations
-   - Custom implementation strategies
+   - Custom impl strategies
 
 3. **Technical Evaluation**
    - Setup complexity and time estimates
@@ -49,19 +49,19 @@ Use TodoWrite to create and track research tasks, then execute systematic resear
 
 **STEP 3: Detailed Analysis**
 
-For each viable approach, analyze:
+For each viable approach:
 
-- **Setup Complexity** - Time estimates, expertise required, steps involved
-- **Code Changes** - Impact on existing codebase with examples
-- **Performance Impact** - Concrete metrics, overhead calculations
-- **Storage Efficiency** - Real-world calculations and estimates
-- **Business Context** - What metadata/context can be captured
-- **Gap Risk** - Potential for missing critical operations
-- **Maintenance Burden** - Long-term implications
+- Setup Complexity — time estimates, expertise required
+- Code Changes — impact on existing codebase with examples
+- Performance Impact — concrete metrics, overhead calculations
+- Storage Efficiency — real-world calculations
+- Business Context — what metadata can be captured
+- Gap Risk — potential for missing critical operations
+- Maintenance Burden — long-term implications
 
 **STEP 4: Create Analysis Document**
 
-Generate a comprehensive markdown analysis with these sections:
+Comprehensive markdown analysis:
 
 ## Executive Summary
 
@@ -117,27 +117,23 @@ Summary of findings with clear recommendation for most common use cases
 
 **Research Quality Standards:**
 
-- **Verify current status** - Always check GitHub repos for last commit dates
-- **Test compatibility** - Confirm libraries work with current Phoenix/Elixir versions
-- **Multiple sources** - Cross-reference documentation, forums, and real usage
-- **Production focus** - Prioritize solutions proven in production
-- **Concrete examples** - Include code snippets and real calculations
+- Verify current status — check GitHub repos for last commit dates
+- Test compatibility — confirm libs work with current Phoenix/Elixir versions
+- Multiple sources — cross-reference docs, forums, real usage
+- Production focus — prioritize solutions proven in production
+- Concrete examples — include code snippets and real calculations
 
 **Critical Checks:**
 
-- **Maintenance status** - Flag any library not updated in 12+ months
-- **Breaking changes** - Note version compatibility issues
-- **Community health** - Check issue response times and PR activity
-- **Documentation** - Verify comprehensive, up-to-date docs exist
+- Maintenance status — flag any lib not updated in 12+ months
+- Breaking changes — note version compatibility issues
+- Community health — check issue response times and PR activity
+- Documentation — verify comprehensive, up-to-date docs exist
 
 **Output Requirements:**
 
-- **Use TodoWrite** throughout to track research progress
-- **Create analysis file** using Write tool: `./codegen/research/{topic}_analysis.md`
-- **Include research date** for future reference
-- **Provide concrete numbers** - Setup times, performance metrics, storage calculations
-- **Real-world examples** - Show actual impact with calculations
-
-This systematic approach ensures thorough evaluation of technical solutions before implementation, reducing risk of choosing deprecated, incompatible, or unsuitable approaches.
-
-The research typically takes 1-3 hours depending on topic complexity, resulting in a comprehensive analysis document that guides implementation decisions.
+- Use TodoWrite throughout to track research progress
+- Create analysis file: `./codegen/research/{topic}_analysis.md`
+- Include research date for future reference
+- Provide concrete numbers — setup times, performance metrics, storage calculations
+- Real-world examples — show actual impact with calculations

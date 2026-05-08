@@ -27,7 +27,7 @@ For EACH .md file:
 
 ### Compression Principles
 
-**Read `~/Areas/Optimum/context/rules/STYLE_GUIDE.md` for full guidelines.** Key points:
+Read `~/Areas/Optimum/context/rules/STYLE_GUIDE.md` for full guidelines. Key points:
 
 - Lead with rule, not rationale
 - One example per pattern (bad → good), never three
@@ -35,15 +35,15 @@ For EACH .md file:
 - Tables over prose
 - Reference shared content, don't duplicate
 
-**NEVER compress**:
+NEVER compress:
 
 - Error messages in application code
-- Configuration examples developers copy-paste
+- Config examples developers copy-paste
 - Complete command examples with flags
 - Code templates meant to be copied
 - Reference data (IDs, URLs, port numbers, paths)
 
-**DO compress**:
+DO compress:
 
 - Verbose explanations → bullet points
 - Redundant examples → single representative example
