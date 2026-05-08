@@ -238,21 +238,19 @@ if harness_enabled claude; then
         done
     fi
 
-    # Delete stale commands (in previous manifest but not current set)
-    if [ -f "$COMMANDS_MANIFEST" ]; then
-        while IFS= read -r old_cmd; do
-            if [ -n "$old_cmd" ]; then
-                still_present=false
-                for cur in "${CURRENT_COMMANDS[@]}"; do
-                    [ "$cur" = "$old_cmd" ] && still_present=true && break
-                done
-                if [ "$still_present" = "false" ] && [ -f "$CLAUDE_COMMANDS_DIR/$old_cmd" ]; then
-                    rm -f "$CLAUDE_COMMANDS_DIR/$old_cmd"
-                    echo "   🗑️  Removed stale command: /${old_cmd%.md}"
-                fi
-            fi
-        done <"$COMMANDS_MANIFEST"
-    fi
+    # Delete stale commands — any .md in commands dir not in the current install set.
+    for installed_cmd in "$CLAUDE_COMMANDS_DIR"/*.md; do
+        [ -f "$installed_cmd" ] || continue
+        cmd_basename=$(basename "$installed_cmd")
+        still_present=false
+        for cur in "${CURRENT_COMMANDS[@]}"; do
+            [ "$cur" = "$cmd_basename" ] && still_present=true && break
+        done
+        if [ "$still_present" = "false" ]; then
+            rm -f "$installed_cmd"
+            echo "   🗑️  Removed stale command: /${cmd_basename%.md}"
+        fi
+    done
 
     # Write manifest
     printf '%s\n' "${CURRENT_COMMANDS[@]}" >"$COMMANDS_MANIFEST"
@@ -288,22 +286,19 @@ if harness_enabled claude; then
         done
     fi
 
-    # Delete stale agents — files listed in the previous manifest but not in the
-    # current install set.
-    if [ -f "$AGENTS_MANIFEST" ]; then
-        while IFS= read -r old_agent; do
-            if [ -n "$old_agent" ]; then
-                still_present=false
-                for cur in "${CURRENT_AGENTS[@]}"; do
-                    [ "$cur" = "$old_agent" ] && still_present=true && break
-                done
-                if [ "$still_present" = "false" ] && [ -f "$CLAUDE_AGENTS_DIR/$old_agent" ]; then
-                    rm -f "$CLAUDE_AGENTS_DIR/$old_agent"
-                    echo "   🗑️  Removed stale agent: ${old_agent%.md}"
-                fi
-            fi
-        done <"$AGENTS_MANIFEST"
-    fi
+    # Delete stale agents — any .md in the agents dir not in the current install set.
+    for installed_agent in "$CLAUDE_AGENTS_DIR"/*.md; do
+        [ -f "$installed_agent" ] || continue
+        agent_basename=$(basename "$installed_agent")
+        still_present=false
+        for cur in "${CURRENT_AGENTS[@]}"; do
+            [ "$cur" = "$agent_basename" ] && still_present=true && break
+        done
+        if [ "$still_present" = "false" ]; then
+            rm -f "$installed_agent"
+            echo "   🗑️  Removed stale agent: ${agent_basename%.md}"
+        fi
+    done
 
     # Write the combined manifest so the next install knows what this run installed.
     printf '%s\n' "${CURRENT_AGENTS[@]}" >"$AGENTS_MANIFEST"
@@ -428,11 +423,24 @@ if harness_enabled codex; then
     mkdir -p "$HOME/.codex/agents"
     mkdir -p "$HOME/.codex/hooks"
 
-    # Copy hook scripts
-    for hook_script in "$CODEGEN_DIR/templates/shared/hooks/codex-inspector-bash-guard.sh" "$CODEGEN_DIR/templates/shared/hooks/codex-inspector-write-guard.sh"; do
-        if [ -f "$hook_script" ]; then
-            cp "$hook_script" "$HOME/.codex/hooks/"
-            chmod +x "$HOME/.codex/hooks/$(basename "$hook_script")"
+    # Copy hook scripts and remove stale ones
+    CURRENT_CODEX_HOOKS=()
+    for hook_script in "$CODEGEN_DIR/templates/shared/hooks"/codex-*.sh; do
+        [ -f "$hook_script" ] || continue
+        cp "$hook_script" "$HOME/.codex/hooks/"
+        chmod +x "$HOME/.codex/hooks/$(basename "$hook_script")"
+        CURRENT_CODEX_HOOKS+=("$(basename "$hook_script")")
+    done
+    for installed_hook in "$HOME/.codex/hooks"/*.sh; do
+        [ -f "$installed_hook" ] || continue
+        hook_basename=$(basename "$installed_hook")
+        still_present=false
+        for cur in "${CURRENT_CODEX_HOOKS[@]}"; do
+            [ "$cur" = "$hook_basename" ] && still_present=true && break
+        done
+        if [ "$still_present" = "false" ]; then
+            rm -f "$installed_hook"
+            echo "   🗑️  Removed stale Codex hook: $hook_basename"
         fi
     done
 
@@ -450,21 +458,19 @@ if harness_enabled codex; then
             fi
         done
     fi
-    # Delete stale TOML agents from previous installs
-    if [ -f "$CODEX_AGENTS_MANIFEST" ]; then
-        while IFS= read -r old_agent; do
-            if [ -n "$old_agent" ]; then
-                still_present=false
-                for cur in "${CURRENT_CODEX_AGENTS[@]}"; do
-                    [ "$cur" = "$old_agent" ] && still_present=true && break
-                done
-                if [ "$still_present" = "false" ] && [ -f "$HOME/.codex/agents/$old_agent" ]; then
-                    rm -f "$HOME/.codex/agents/$old_agent"
-                    echo "   🗑️  Removed stale Codex agent: ${old_agent%.toml}"
-                fi
-            fi
-        done <"$CODEX_AGENTS_MANIFEST"
-    fi
+    # Delete stale TOML agents — any .toml in agents dir not in the current install set.
+    for installed_agent in "$HOME/.codex/agents"/*.toml; do
+        [ -f "$installed_agent" ] || continue
+        agent_basename=$(basename "$installed_agent")
+        still_present=false
+        for cur in "${CURRENT_CODEX_AGENTS[@]}"; do
+            [ "$cur" = "$agent_basename" ] && still_present=true && break
+        done
+        if [ "$still_present" = "false" ]; then
+            rm -f "$installed_agent"
+            echo "   🗑️  Removed stale Codex agent: ${agent_basename%.toml}"
+        fi
+    done
     printf '%s\n' "${CURRENT_CODEX_AGENTS[@]}" >"$CODEX_AGENTS_MANIFEST"
 
     # Install/merge config.toml
@@ -522,15 +528,31 @@ if harness_enabled cursor; then
     CURSOR_COMMANDS_DIR="$HOME/.cursor/commands"
     mkdir -p "$CURSOR_COMMANDS_DIR"
 
+    CURRENT_CURSOR_COMMANDS=()
     if [ -d "$CODEGEN_DIR/templates/shared/commands" ]; then
         for cmd_file in "$CODEGEN_DIR/templates/shared/commands"/*.md; do
             if [ -f "$cmd_file" ]; then
                 cmd_name=$(basename "$cmd_file")
                 cp "$cmd_file" "$CURSOR_COMMANDS_DIR/"
                 echo "   ✅ Installed Cursor command: /${cmd_name%.md}"
+                CURRENT_CURSOR_COMMANDS+=("$cmd_name")
             fi
         done
     fi
+
+    # Delete stale commands — any .md in commands dir not in the current install set.
+    for installed_cmd in "$CURSOR_COMMANDS_DIR"/*.md; do
+        [ -f "$installed_cmd" ] || continue
+        cmd_basename=$(basename "$installed_cmd")
+        still_present=false
+        for cur in "${CURRENT_CURSOR_COMMANDS[@]}"; do
+            [ "$cur" = "$cmd_basename" ] && still_present=true && break
+        done
+        if [ "$still_present" = "false" ]; then
+            rm -f "$installed_cmd"
+            echo "   🗑️  Removed stale Cursor command: /${cmd_basename%.md}"
+        fi
+    done
 
     echo "   🤖 Installing Cursor CLI agents..."
     CURSOR_SUBAGENTS_DIR="$HOME/.cursor/agents"
@@ -548,21 +570,19 @@ if harness_enabled cursor; then
             fi
         done
     fi
-    # Delete stale Cursor agents from previous installs
-    if [ -f "$CURSOR_AGENTS_MANIFEST" ]; then
-        while IFS= read -r old_agent; do
-            if [ -n "$old_agent" ]; then
-                still_present=false
-                for cur in "${CURRENT_CURSOR_AGENTS[@]}"; do
-                    [ "$cur" = "$old_agent" ] && still_present=true && break
-                done
-                if [ "$still_present" = "false" ] && [ -f "$CURSOR_SUBAGENTS_DIR/$old_agent" ]; then
-                    rm -f "$CURSOR_SUBAGENTS_DIR/$old_agent"
-                    echo "   🗑️  Removed stale Cursor agent: ${old_agent%.md}"
-                fi
-            fi
-        done <"$CURSOR_AGENTS_MANIFEST"
-    fi
+    # Delete stale Cursor agents — any .md in agents dir not in the current install set.
+    for installed_agent in "$CURSOR_SUBAGENTS_DIR"/*.md; do
+        [ -f "$installed_agent" ] || continue
+        agent_basename=$(basename "$installed_agent")
+        still_present=false
+        for cur in "${CURRENT_CURSOR_AGENTS[@]}"; do
+            [ "$cur" = "$agent_basename" ] && still_present=true && break
+        done
+        if [ "$still_present" = "false" ]; then
+            rm -f "$installed_agent"
+            echo "   🗑️  Removed stale Cursor agent: ${agent_basename%.md}"
+        fi
+    done
     printf '%s\n' "${CURRENT_CURSOR_AGENTS[@]}" >"$CURSOR_AGENTS_MANIFEST"
 fi
 
