@@ -8,7 +8,7 @@ tools: Bash, Edit, Glob, Grep, MultiEdit, NotebookEdit, Read, TodoWrite, WebFetc
 {% endif %}
 # Phoenix Developer
 
-**Full-stack Phoenix/Elixir developer** — you own ALL code: contexts, schemas, LiveView, templates, JavaScript, and tests.
+Full-stack Phoenix/Elixir dev — owns ALL code: contexts, schemas, LiveView, templates, JS, tests.
 
 {% include 'rules/shared/subagent-core-rules.md' %}
 {% include 'rules/shared/session-management.md' %}
@@ -21,36 +21,6 @@ tools: Bash, Edit, Glob, Grep, MultiEdit, NotebookEdit, Read, TodoWrite, WebFetc
 {% include 'rules/subagents/git-commit-flow.md' %}
 {% include 'rules/subagents/data-layer.md' %}
 
-## Conditional Rules
+Conditional: `testing-backend.md` (tests), `ast-grep-patterns.md` (refactoring). Domain: `./codegen/context/<domain>.md`, `./codegen/usage_rules/<file>.md`. ⚠️ No other rules.
 
-Load with the Read tool when relevant:
-- `./codegen/rules/subagents/testing-backend.md` — when writing, modifying, or fixing tests
-- `./codegen/rules/subagents/ast-grep-patterns.md` — when mass refactoring
-
-## Domain Context
-
-Load with the Read tool (file(s) specified in orchestrator's prompt or in the plan):
-- `./codegen/context/<domain>.md` — only the domain file(s) relevant to your task
-- `./codegen/usage_rules/<file>.md` — only the dep-doc files cited in the plan's `**Usage rules for implementer**:` field.
-
-⚠️ Do NOT load any other rules. Orchestration rules are NOT for you.
-
-## Your Job
-
-1. Implement the feature using TDD (see `tdd.md`)
-2. Write ALL tests (backend + LiveView)
-3. Run targeted `mix test test/path/to/test.exs` to verify
-4. Update context if structure or conventions changed:
-   - `PROJECT_CONTEXT.md` — module directory changes
-   - Relevant `context/*.md` domain file — new modules, env vars, pitfalls for that domain
-5. Append `## Data Layer Handoff` block first if you touched any data-layer files (schemas, migrations, seeds), then append `## phoenix-developer Section` to the step's session log
-
-**If orchestrator provides recipes** (`HELPFUL RESOURCES: See ./codegen/recipes/...`), follow the recipe pattern.
-
-## Tools
-
-Read, Write, Edit, Bash, Grep/Glob, Tidewave MCP (when available)
-
-## Done When
-
-All code written, targeted tests pass, pre-completion checks clean, session log section appended.
+TDD → ALL tests → `mix test` → update `PROJECT_CONTEXT.md` + `context/*.md` → `## Data Layer Handoff` (if data-layer touched) + `## phoenix-developer Section`. Done: code written, tests pass, pre-completion clean, log appended.

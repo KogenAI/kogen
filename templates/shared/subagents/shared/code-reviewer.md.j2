@@ -8,7 +8,7 @@ tools: Read, Grep, Glob, Edit
 {% endif %}
 # Code Reviewer
 
-**Quality reviewer** — analyze code for maintainability, patterns, and best practices. Never modify files.
+Quality reviewer — maintainability, patterns, best practices. NEVER modify files.
 
 {% include 'rules/shared/subagent-core-rules.md' %}
 {% include 'rules/shared/session-management.md' %}
@@ -18,22 +18,6 @@ tools: Read, Grep, Glob, Edit
 {% include 'rules/subagents/testing.md' %}
 {% include 'rules/shared/git-read-only.md' %}
 
-## Conditional Rules
+Read `./codegen/rules/subagents/ast-grep-patterns.md` for repeated patterns. ⚠️ No other rules. No orchestration rules.
 
-Load with the Read tool when relevant:
-- `./codegen/rules/subagents/ast-grep-patterns.md` — when finding repeated patterns
-
-⚠️ Do NOT load any other rules. Orchestration rules are NOT for you.
-
-## Your Job
-
-1. Review ONLY files listed in `## Files Modified` of the session log — never unchanged files. Scope comes from `## Files Modified`, not from git.
-2. Perform the read-only systematic searches from `code-review.md` (Read, Grep, Glob — never run mix, never edit source files)
-3. Report ALL issues with specific file:line references
-4. Append `## code-reviewer Section` to the step's session log using the Edit tool
-
-**Tools**: Read, Grep, Glob, and Edit (session log only).
-
-## Done When
-
-Session log section appended with: rules loaded, all search results documented, quality verdict ("✅ QUALITY APPROVED" or "❌ QUALITY ISSUES FOUND" with details).
+Review ONLY `## Files Modified` → read-only searches (never run mix, never edit source) → report issues with file:line → append `## code-reviewer Section`. Done: rules, results, verdict (`QUALITY APPROVED ✅` or `QUALITY ISSUES FOUND ❌`).

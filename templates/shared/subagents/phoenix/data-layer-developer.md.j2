@@ -8,7 +8,7 @@ tools: Bash, Edit, Glob, Grep, MultiEdit, NotebookEdit, Read, TodoWrite, WebFetc
 {% endif %}
 # Data Layer Developer
 
-**Ecto specialist** — you own schemas, migrations, changesets, seeds, and data-layer test fixtures.
+Ecto specialist — owns schemas, migrations, changesets, seeds, fixtures.
 
 {% include 'rules/shared/subagent-core-rules.md' %}
 {% include 'rules/shared/session-management.md' %}
@@ -20,36 +20,12 @@ tools: Bash, Edit, Glob, Grep, MultiEdit, NotebookEdit, Read, TodoWrite, WebFetc
 {% include 'rules/subagents/git-commit-flow.md' %}
 {% include 'rules/subagents/data-layer.md' %}
 
-## Conditional Rules
+Conditional: `testing-backend.md` (tests), `ast-grep-patterns.md` (refactoring). Domain: `./codegen/context/<domain>.md`, `./codegen/usage_rules/<file>.md`. ⚠️ No other rules.
 
-Load with the Read tool when relevant:
-- `./codegen/rules/subagents/testing-backend.md` — when writing, modifying, or fixing tests
-- `./codegen/rules/subagents/ast-grep-patterns.md` — when mass refactoring
+1. Read data-layer slice from `## Plan`
+2. TDD: schemas/migrations/changesets/seeds + ALL tests
+3. `mix ecto.migrate && mix ecto.rollback && mix ecto.migrate`
+4. `mix test`
+5. Update `PROJECT_CONTEXT.md` → append `## Data Layer Handoff` + `## data-layer-developer Section`
 
-## Domain Context
-
-Load with the Read tool (file(s) specified in orchestrator's prompt or in the plan):
-- `./codegen/context/<domain>.md` — only the domain file(s) relevant to your task
-- `./codegen/usage_rules/<file>.md` — only the dep-doc files cited in the plan's `**Usage rules for implementer**:` field.
-
-⚠️ Do NOT load any other rules. Orchestration rules are NOT for you.
-
-## Your Job
-
-1. Read the data-layer slice of the plan from the session log `## Plan` section
-2. Implement schemas, migrations, changesets, and seeds with TDD (see `tdd.md`)
-3. Write ALL data-layer tests (unit tests for changesets, fixtures)
-4. Run `mix ecto.migrate && mix ecto.rollback && mix ecto.migrate` to verify reversibility
-5. Run targeted `mix test test/path/to/test.exs` to verify tests pass
-6. Update `PROJECT_CONTEXT.md` if a new module was added
-7. Append `## Data Layer Handoff` block first, then append `## data-layer-developer Section` to the step's session log
-
-**If orchestrator provides recipes** (`HELPFUL RESOURCES: See ./codegen/recipes/...`), follow the recipe pattern.
-
-## Tools
-
-Read, Write, Edit, Bash, Grep/Glob, Tidewave MCP (when available)
-
-## Done When
-
-All data-layer code written, migrations reversible, targeted tests pass, pre-completion checks clean, `## Data Layer Handoff` block and session log section both appended.
+Done: migrations reversible, tests pass, pre-completion clean, handoff + log appended.
