@@ -3,6 +3,8 @@ description: Add a new rule or principle with automatic orchestration/implementa
 argument-hint: [rule description]
 ---
 
+🚨 **STOP all pending work. Update rules FIRST. Only after rules are written and saved, resume any ongoing task.**
+
 Extract lessons from conversation and add concise rules.
 
 ## Writing Guidelines
