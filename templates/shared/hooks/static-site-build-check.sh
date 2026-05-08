@@ -65,6 +65,14 @@ fail() {
 check_npm_build() {
     [ -f package.json ] || return 0
 
+    # No scripts object at all → tooling-only package.json (e.g. prettier).
+    # Not a static-site project; skip npm checks silently.
+    jq -e '.scripts' package.json >/dev/null 2>&1 || return 0
+
+    if ! jq -e '.scripts.build' package.json >/dev/null 2>&1; then
+        fail "package.json missing scripts.build"
+    fi
+
     local out
     if ! out=$(mise exec -- npm run build 2>&1); then
         local tail_out
@@ -76,6 +84,9 @@ check_npm_build() {
 # ── Check 2: package.json invariants ────────────────────────────────────────
 check_package_json_invariants() {
     [ -f package.json ] || return 0
+
+    # No scripts object at all → tooling-only package.json; skip invariant checks.
+    jq -e '.scripts' package.json >/dev/null 2>&1 || return 0
 
     if ! jq -e '.scripts.build' package.json >/dev/null 2>&1; then
         fail "package.json missing scripts.build"

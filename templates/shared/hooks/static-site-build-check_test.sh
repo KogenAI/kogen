@@ -101,6 +101,18 @@ JSON
 run_test "missing scripts.build blocks" "block" "$(input_for "$T5")"
 rm -rf "$T5"
 
+# ── Test 5b: tooling-only package.json (no scripts key) passes ──────────────
+T5B=$(mktemp -d)
+cat >"$T5B/package.json" <<'JSON'
+{
+  "devDependencies": {
+    "prettier": "^3.8.1"
+  }
+}
+JSON
+run_test "tooling-only package.json (no scripts) passes" "allow" "$(input_for "$T5B")"
+rm -rf "$T5B"
+
 # ── Test 6: package.json missing scripts.serve blocks ───────────────────────
 T6=$(mktemp -d)
 cat >"$T6/package.json" <<'JSON'
