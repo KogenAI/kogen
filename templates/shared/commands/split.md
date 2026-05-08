@@ -86,9 +86,13 @@ If a step's verification gate requires something from a later step, that later s
 
 Example: "Step 1: refactor tests (gate: run make llm-phoenix)" — but make llm-phoenix hangs because Step 2 fixes the hang. Correct order: Step 2 first, then Step 1.
 
-**Critical: Verify external assumptions before splitting**
+**Critical: Verify external assumptions before splitting — and spike inline, not as a future step**
 
-If any step depends on an external API capability, third-party service feature, or infrastructure behavior — verify it FIRST. SSH to the server, call the sandbox API, check the docs. Do not create steps that assume an API supports something without confirmation. A split built on an unverified assumption (e.g. "Namecheap supports ALIAS via API") wastes all time spent on every downstream step that depends on it.
+If any step depends on an external API capability, third-party service feature, or infrastructure behavior — verify it FIRST. SSH to the server, call the sandbox API, check the docs, run the CLI command. Do not create steps that assume an API supports something without confirmation. A split built on an unverified assumption (e.g. "Namecheap supports ALIAS via API") wastes all time spent on every downstream step that depends on it.
+
+**Spikes belong in the splitting session, not as a future step.** If the question is "does flag X work with flag Y" and you have the CLI installed, the answer is 30 seconds away — run it now, fold the result into the step (concrete flag values, no "spike protocol"), and delete any "Step N: spike to determine X" entries. A future-spike step is a deferred decision wearing a step-shaped costume; the implementer will inherit the same uncertainty you have right now, with less context than you have right now. Run the command, write the answer.
+
+The test: if you can verify the assumption with a single shell command, an HTTP request, or a one-line test fixture, do it during the split. Reserve "spike step" entries for genuinely expensive verification — multi-hour load tests, things requiring third-party access you don't have, behaviour that only shows up under production traffic. "I would need to run `claude -p` once" is not expensive verification; that's a 30-second check you should do before finalizing the doc.
 
 **Critical: No deferred decisions inside a step**
 
