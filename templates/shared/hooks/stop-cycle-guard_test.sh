@@ -1,0 +1,150 @@
+#!/usr/bin/env bash
+# stop-cycle-guard_test.sh — unit tests for stop-cycle-guard.sh
+
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+GUARD="$SCRIPT_DIR/stop-cycle-guard.sh"
+
+pass=0
+fail=0
+
+# run_test desc expected_decision input_json transcript_content [log_content]
+# expected_decision: "block" or "allow"
+run_test() {
+    local desc="$1"
+    local expected="$2"
+    local input_json="$3"
+    local transcript_content="$4"
+    local log_content="${5:-}"
+
+    local tmp
+    tmp=$(mktemp -d)
+    trap 'rm -rf "$tmp"' RETURN
+
+    # Write transcript fixture.
+    printf '%s\n' "$transcript_content" >"$tmp/transcript.jsonl"
+
+    # Write a session log if provided (simulates a stale prior-session log).
+    if [ -n "$log_content" ]; then
+        mkdir -p "$tmp/codegen/logging"
+        printf '%s\n' "$log_content" >"$tmp/codegen/logging/test_session.md"
+        # Touch it so -mmin -60 finds it.
+        touch "$tmp/codegen/logging/test_session.md"
+    fi
+
+    local stdout
+    stdout=$(printf '%s' "$input_json" | bash "$GUARD" 2>/dev/null || true)
+
+    local outcome
+    if printf '%s' "$stdout" | grep -q '"decision"[[:space:]]*:[[:space:]]*"block"'; then
+        outcome="block"
+    else
+        outcome="allow"
+    fi
+
+    if [ "$outcome" = "$expected" ]; then
+        printf 'PASS: %s\n' "$desc"
+        pass=$((pass + 1))
+    else
+        printf 'FAIL: %s — expected %s, got %s\n  stdout: %s\n' \
+            "$desc" "$expected" "$outcome" "$stdout"
+        fail=$((fail + 1))
+    fi
+}
+
+# Helper: build the stdin JSON for the hook.
+# Usage: make_input <transcript_path> <cwd> <stop_hook_active> <last_message>
+make_input() {
+    local transcript_path="$1"
+    local cwd="$2"
+    local stop_hook_active="$3"
+    local last_message="$4"
+    printf '{"hook_event_name":"Stop","session_id":"test-sess","transcript_path":"%s","cwd":"%s","stop_hook_active":%s,"last_assistant_message":"%s"}' \
+        "$transcript_path" "$cwd" "$stop_hook_active" "$last_message"
+}
+
+# Fixture helpers.
+AGENT_ENTRY_DEVELOPER='{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Agent","input":{"subagent_type":"phoenix-developer","description":"x","prompt":"x"}}]}}'
+AGENT_ENTRY_COMMITTER='{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Agent","input":{"subagent_type":"committer","description":"x","prompt":"x"}}]}}'
+AGENT_ENTRY_REVIEWER='{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Agent","input":{"subagent_type":"code-reviewer","description":"x","prompt":"x"}}]}}'
+EMPTY_TRANSCRIPT='{"type":"assistant","message":{"content":[{"type":"text","text":"Just some text, no Agent calls."}]}}'
+
+STALE_LOG_WITH_DEVELOPER='# Session Log
+## Delegation Timeline
+| Time | Agent | Task | Result |
+| ---- | ----- | ---- | ------ |
+| 01:00 | phoenix-developer | Implement feature | done |'
+
+# --- Test 1: Original bug repro ---
+# Empty transcript (no Agent entries) + stale log with phoenix-developer → MUST allow.
+tmp1=$(mktemp -d)
+trap 'rm -rf "$tmp1"' EXIT
+printf '%s\n' "$EMPTY_TRANSCRIPT" >"$tmp1/transcript.jsonl"
+mkdir -p "$tmp1/codegen/logging"
+printf '%s\n' "$STALE_LOG_WITH_DEVELOPER" >"$tmp1/codegen/logging/stale.md"
+touch "$tmp1/codegen/logging/stale.md"
+INPUT1=$(make_input "$tmp1/transcript.jsonl" "$tmp1" "false" "Done.")
+run_test "no_agent_calls: empty transcript + stale log with developer → allow" \
+    "allow" "$INPUT1" "$EMPTY_TRANSCRIPT"
+
+# --- Test 2: Mid-cycle developer ---
+# Transcript ending in phoenix-developer → MUST block.
+tmp2=$(mktemp -d)
+printf '%s\n' "$AGENT_ENTRY_DEVELOPER" >"$tmp2/transcript.jsonl"
+INPUT2=$(make_input "$tmp2/transcript.jsonl" "$tmp2" "false" "Done.")
+run_test "mid_cycle_developer: transcript ends in phoenix-developer → block" \
+    "block" "$INPUT2" "$AGENT_ENTRY_DEVELOPER"
+
+# --- Test 3: Cycle complete (committer) ---
+# Transcript ending in committer → MUST allow.
+tmp3=$(mktemp -d)
+TRANSCRIPT3="${AGENT_ENTRY_DEVELOPER}
+${AGENT_ENTRY_COMMITTER}"
+printf '%s\n' "$TRANSCRIPT3" >"$tmp3/transcript.jsonl"
+INPUT3=$(make_input "$tmp3/transcript.jsonl" "$tmp3" "false" "Done.")
+run_test "cycle_complete_committer: transcript ends in committer → allow" \
+    "allow" "$INPUT3" "$TRANSCRIPT3"
+
+# --- Test 4: Mid-cycle code-reviewer ---
+# Transcript ending in code-reviewer → MUST block.
+tmp4=$(mktemp -d)
+printf '%s\n' "$AGENT_ENTRY_REVIEWER" >"$tmp4/transcript.jsonl"
+INPUT4=$(make_input "$tmp4/transcript.jsonl" "$tmp4" "false" "Done.")
+run_test "mid_cycle_code_reviewer: transcript ends in code-reviewer → block" \
+    "block" "$INPUT4" "$AGENT_ENTRY_REVIEWER"
+
+# --- Test 5: Empty transcript_path (fallback) ---
+# transcript_path is empty with mid-cycle log present → MUST allow.
+tmp5=$(mktemp -d)
+mkdir -p "$tmp5/codegen/logging"
+printf '%s\n' "$STALE_LOG_WITH_DEVELOPER" >"$tmp5/codegen/logging/current.md"
+touch "$tmp5/codegen/logging/current.md"
+INPUT5=$(make_input "" "$tmp5" "false" "Done.")
+run_test "empty_transcript_path: no transcript path → allow (safe fallback)" \
+    "allow" "$INPUT5" ""
+
+# --- Test 6: Intent guard wins ---
+# Transcript ending in phoenix-developer + message ends in "?" → MUST allow.
+tmp6=$(mktemp -d)
+printf '%s\n' "$AGENT_ENTRY_DEVELOPER" >"$tmp6/transcript.jsonl"
+INPUT6=$(make_input "$tmp6/transcript.jsonl" "$tmp6" "false" "Should I continue?")
+run_test "intent_guard_wins: question mark in last message → allow" \
+    "allow" "$INPUT6" "$AGENT_ENTRY_DEVELOPER"
+
+# --- Test 7: STOP_HOOK_ACTIVE wins ---
+# stop_hook_active: true + mid-cycle transcript → MUST allow.
+tmp7=$(mktemp -d)
+printf '%s\n' "$AGENT_ENTRY_DEVELOPER" >"$tmp7/transcript.jsonl"
+INPUT7=$(make_input "$tmp7/transcript.jsonl" "$tmp7" "true" "Done.")
+run_test "stop_hook_active_wins: stop_hook_active=true → allow" \
+    "allow" "$INPUT7" "$AGENT_ENTRY_DEVELOPER"
+
+echo ""
+echo "Results: $pass passed, $fail failed"
+
+if [ "$fail" -gt 0 ]; then
+    exit 1
+fi
+
+exit 0

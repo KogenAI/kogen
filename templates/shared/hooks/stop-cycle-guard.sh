@@ -42,54 +42,25 @@ if [ "$last_char" = "?" ] || printf '%s' "$LAST_ASSISTANT_MESSAGE" | grep -qE "$
     exit 0
 fi
 
-# Locate most recently modified session log under <project>/codegen/logging/.
-logging_dir="$project_dir/codegen/logging"
-if [ ! -d "$logging_dir" ]; then
-    debug_log claude-cycle-guard "skip: no logging dir at $logging_dir"
+# Cycle state from transcript — session-bound, authoritative.
+# Replaces the log-file recency heuristic that matched stale prior-session logs.
+debug_log claude-cycle-guard "transcript_path=$TRANSCRIPT_PATH"
+if [ -z "${TRANSCRIPT_PATH:-}" ] || [ ! -r "$TRANSCRIPT_PATH" ]; then
+    debug_log claude-cycle-guard "skip: no transcript path"
     exit 0
 fi
 
-# Find the most recent .md file modified within the last 60 minutes.
-log_file=$(find "$logging_dir" -maxdepth 1 -type f -name '*.md' -mmin -60 2>/dev/null |
-    xargs -I{} stat -f '%m %N' {} 2>/dev/null |
-    sort -rn |
-    head -n 1 |
-    awk '{$1=""; sub(/^ /, ""); print}')
+last_agent=$(jq -r '
+    select(.message.content)
+    | (.message.content[]?
+        | select(.type == "tool_use" and .name == "Agent")
+        | .input.subagent_type)
+' "$TRANSCRIPT_PATH" 2>/dev/null | tail -n 1)
 
-if [ -z "$log_file" ] || [ ! -r "$log_file" ]; then
-    debug_log claude-cycle-guard "skip: no recent log file"
-    exit 0
-fi
-
-# Extract the `## Delegation Timeline` table.
-timeline=$(awk '
-    /^## Delegation Timeline/ { in_table = 1; next }
-    in_table && /^## / { in_table = 0 }
-    in_table && /^\|/ { print }
-' "$log_file")
-
-if [ -z "$timeline" ]; then
-    debug_log claude-cycle-guard "skip: no delegation timeline section"
-    exit 0
-fi
-
-# Skip header rows (column 2 == "Time" or starts with `---`). Read the agent
-# column (column 3 between the second and third `|`).
-last_agent=$(printf '%s\n' "$timeline" |
-    awk -F'|' '
-        {
-            t = $2
-            gsub(/^[ \t]+|[ \t]+$/, "", t)
-            if (t == "Time" || t ~ /^-+$/ || t == "") next
-            agent = $3
-            gsub(/^[ \t]+|[ \t]+$/, "", agent)
-            if (agent != "") last = agent
-        }
-        END { print last }
-    ')
+debug_log claude-cycle-guard "last_agent=$last_agent"
 
 if [ -z "$last_agent" ]; then
-    debug_log claude-cycle-guard "skip: no agent rows in timeline"
+    debug_log claude-cycle-guard "skip: no Agent calls in transcript"
     exit 0
 fi
 
@@ -103,13 +74,31 @@ phoenix-developer | static-site-developer | data-layer-developer | verification-
     ;;
 esac
 
+# Locate the current-session log path for the block reason text (birth-time filtered).
+transcript_birth=$(stat -f '%B' "$TRANSCRIPT_PATH" 2>/dev/null || echo 0)
+log_file=""
+logging_dir="${project_dir}/codegen/logging"
+if [ -d "$logging_dir" ] && [ "$transcript_birth" -gt 0 ] 2>/dev/null; then
+    log_file=$(find "$logging_dir" -maxdepth 1 -type f -name '*.md' -mmin -60 2>/dev/null |
+        while IFS= read -r f; do
+            b=$(stat -f '%B' "$f" 2>/dev/null || echo 0)
+            if [ "$b" -ge "$transcript_birth" ] 2>/dev/null; then
+                m=$(stat -f '%m' "$f" 2>/dev/null || echo 0)
+                printf '%s %s\n' "$m" "$f"
+            fi
+        done |
+        sort -rn | head -n 1 | awk '{$1=""; sub(/^ /, ""); print}')
+fi
+log_pointer="${log_file:-(no current-session log found under $logging_dir)}"
+debug_log claude-cycle-guard "log_pointer=$log_pointer transcript_birth=$transcript_birth"
+
 # Increment counter and emit block.
 count=$((count + 1))
 printf '%s' "$count" >"$counter_file"
 
-reason="Mid-cycle stop detected. Last delegation timeline row: $last_agent. Per AGENTS.md \"ALWAYS RUN THE FULL CYCLE\", do not return control to the user until committer has run for this step. $next_role_hint Re-read the session log at $log_file and continue immediately. (cycle-guard attempt ${count}/2)"
+reason="Mid-cycle stop detected. Last Agent call in transcript: $last_agent. Per AGENTS.md \"ALWAYS RUN THE FULL CYCLE\", do not return control to the user until committer has run for this step. $next_role_hint Re-read the session log at $log_pointer and continue immediately. (cycle-guard attempt ${count}/2)"
 
-debug_log claude-cycle-guard "BLOCK: last_agent=$last_agent count=$count log=$log_file"
+debug_log claude-cycle-guard "BLOCK: last_agent=$last_agent count=$count log=$log_pointer"
 
 block "$reason"
 exit 0
