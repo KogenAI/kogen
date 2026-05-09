@@ -60,18 +60,37 @@ First: `./codegen/PROJECT_CONTEXT.md`. Conditional: Phoenix → `./codegen/rules
 **Gate**: `make <ci|ci-fast|targeted test run>` — exact command orchestrator passes to dev/VE
 
 **Delegation prompt for phoenix-developer** (orchestrator copy-pastes this verbatim):
+
+Write a self-contained prompt embedding:
+- Role intro: "You are the phoenix-developer subagent."
+- Recipe citation + deviations (from Plan)
+- Domain context files dev should Read
+- Usage rules dev should load (at most 5)
+- `## Files to touch` section — each marked (NEW|EXISTING), what changes in each file
+- Integration points (from Plan)
+- Risks + edge cases (from Plan)
+- Test strategy specifics (from Plan)
+- Gate command (exact `make` from Plan's **Gate** field)
+- Session log path + "Populate ## Files Modified from git status --short, then append ## phoenix-developer Section when done."
+
+NO placeholder shapes. NO `<...>` slots. Write actual content. Orchestrator copies verbatim.
+
+Example structure:
 ```
 You are the phoenix-developer subagent.
 
-APP PATH: <app_path>
-SESSION LOG: <session_log_path>
+Recipe: combobulate-llm-analyzer.md — apply as-is
 
-<exact files to touch, what to change in each, what NOT to do>
+Domain context: context/llm.md, context/builds.md
 
-Run: <gate command>
+## Files to touch
+- lib/mix/tasks/... (NEW) — what changes
+- test/... (NEW) — what changes
 
-Populate ## Files Modified from git status --short, then append ## phoenix-developer Section.
+Gate: make ci-fast
+
+SESSION LOG: codegen/logging/...
 ```
 
-**Self-validation**: <checks run — all 6 pass OR issues found and fixed>
+**Self-validation**: <checks run — all 8 pass OR issues found and fixed>
 ```
