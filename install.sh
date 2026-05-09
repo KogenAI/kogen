@@ -392,6 +392,20 @@ if harness_enabled claude; then
         echo "   ✅ Added autocompletion to $RC_FILE"
     fi
 
+    # Install claude-build wrapper
+    echo ""
+    echo "🚀 Installing claude-build wrapper..."
+
+    cp "$CODEGEN_DIR/templates/shared/claude-build.sh" "$INSTALL_DIR/claude-build"
+    chmod +x "$INSTALL_DIR/claude-build"
+    echo "   ✅ claude-build wrapper installed at: $INSTALL_DIR/claude-build"
+
+    # De-register legacy alias from rc file (idempotent)
+    if grep -q "alias claude-build=" "$RC_FILE" 2>/dev/null; then
+        sed -i '' '/^# Optimum Codegen claude-build alias$/d; /^alias claude-build=/d' "$RC_FILE"
+        echo "   🗑️  Removed legacy claude-build alias from $RC_FILE"
+    fi
+
     echo ""
     echo "🚀 Setting up Claude Code bash environment..."
 
