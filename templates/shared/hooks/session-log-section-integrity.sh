@@ -23,7 +23,8 @@ Edit | Write) ;;
 esac
 
 # No agent_type means orchestrator — not gated here (orchestrator creates files, not edits)
-if [ -z "$AGENT_TYPE" ]; then
+# Planner writes to ## Plan section (not ## planner Section), so bypass the header gate.
+if [ -z "$AGENT_TYPE" ] || [ "$AGENT_TYPE" = "planner" ]; then
     exit 0
 fi
 

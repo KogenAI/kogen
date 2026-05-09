@@ -89,6 +89,22 @@ FIXTURE_WRITE_BAD=$(jq -n \
     '{"hook_event_name":"PreToolUse","tool_name":"Write","tool_input":{"file_path":$fp,"content":$c},"agent_type":"phoenix-developer","agent_id":"abc"}')
 run_test "phoenix-developer Write without section header blocks" "2" "$FIXTURE_WRITE_BAD"
 
+# Test 6: planner Edit without "## planner Section" — ALLOW (planner writes ## Plan, not a Section header)
+PLANNER_LOG="$TMP_DIR/codegen/logging/planner-session.md"
+touch "$PLANNER_LOG"
+FIXTURE_PLANNER_EDIT=$(jq -n \
+    --arg fp "$PLANNER_LOG" \
+    --arg ns "## Plan\n\nStep 1: do thing" \
+    '{"hook_event_name":"PreToolUse","tool_name":"Edit","tool_input":{"file_path":$fp,"old_string":"","new_string":$ns},"agent_type":"planner","agent_id":"abc"}')
+run_test "planner Edit without section header allows" "0" "$FIXTURE_PLANNER_EDIT"
+
+# Test 7: planner Write without "## planner Section" — ALLOW
+FIXTURE_PLANNER_WRITE=$(jq -n \
+    --arg fp "$TMP_DIR/codegen/logging/planner-new.md" \
+    --arg c "# Session Log\n\n## Plan\n\nDo stuff" \
+    '{"hook_event_name":"PreToolUse","tool_name":"Write","tool_input":{"file_path":$fp,"content":$c},"agent_type":"planner","agent_id":"abc"}')
+run_test "planner Write without section header allows" "0" "$FIXTURE_PLANNER_WRITE"
+
 echo ""
 echo "Results: $pass passed, $fail failed"
 
