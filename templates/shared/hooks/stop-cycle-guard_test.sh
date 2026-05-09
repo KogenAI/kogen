@@ -68,6 +68,7 @@ make_input() {
 AGENT_ENTRY_DEVELOPER='{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Agent","input":{"subagent_type":"phoenix-developer","description":"x","prompt":"x"}}]}}'
 AGENT_ENTRY_COMMITTER='{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Agent","input":{"subagent_type":"committer","description":"x","prompt":"x"}}]}}'
 AGENT_ENTRY_REVIEWER='{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Agent","input":{"subagent_type":"code-reviewer","description":"x","prompt":"x"}}]}}'
+AGENT_ENTRY_VE='{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Agent","input":{"subagent_type":"verification-engineer","description":"x","prompt":"x"}}]}}'
 EMPTY_TRANSCRIPT='{"type":"assistant","message":{"content":[{"type":"text","text":"Just some text, no Agent calls."}]}}'
 
 STALE_LOG_WITH_DEVELOPER='# Session Log
@@ -139,6 +140,48 @@ printf '%s\n' "$AGENT_ENTRY_DEVELOPER" >"$tmp7/transcript.jsonl"
 INPUT7=$(make_input "$tmp7/transcript.jsonl" "$tmp7" "true" "Done.")
 run_test "stop_hook_active_wins: stop_hook_active=true → allow" \
     "allow" "$INPUT7" "$AGENT_ENTRY_DEVELOPER"
+
+# --- Test 8: ScheduleWakeup guard ---
+# Transcript ends in phoenix-developer + last message contains "ScheduleWakeup" → MUST allow.
+tmp8=$(mktemp -d)
+printf '%s\n' "$AGENT_ENTRY_DEVELOPER" >"$tmp8/transcript.jsonl"
+INPUT8=$(make_input "$tmp8/transcript.jsonl" "$tmp8" "false" "ScheduleWakeup called. Will check back once the gate finishes.")
+run_test "schedulewakeup_guard: ScheduleWakeup in last message → allow" \
+    "allow" "$INPUT8" "$AGENT_ENTRY_DEVELOPER"
+
+# --- Test 9: async-wait guard ("still running") ---
+# Transcript ends in verification-engineer + last message contains "still running" → MUST allow.
+tmp9=$(mktemp -d)
+printf '%s\n' "$AGENT_ENTRY_VE" >"$tmp9/transcript.jsonl"
+INPUT9=$(make_input "$tmp9/transcript.jsonl" "$tmp9" "false" "The gate is still running, will resume when done.")
+run_test "async_wait_guard: still running in last message → allow" \
+    "allow" "$INPUT9" "$AGENT_ENTRY_VE"
+
+# --- Test 10: Verdict guard — VE in transcript, session log exists but no verdict string → allow ---
+# Log is created before transcript so log birth <= transcript birth; to ensure log birth >= transcript
+# birth we create log and transcript in the same second (sufficient for the >= check) by creating
+# the log directory and file first, then the transcript immediately after.
+tmp10=$(mktemp -d)
+mkdir -p "$tmp10/codegen/logging"
+printf '# Session Log\n## verification-engineer Section\nDiagnosis: timeout.\n' \
+    >"$tmp10/codegen/logging/test_session.md"
+touch "$tmp10/codegen/logging/test_session.md"
+printf '%s\n' "$AGENT_ENTRY_VE" >"$tmp10/transcript.jsonl"
+INPUT10=$(make_input "$tmp10/transcript.jsonl" "$tmp10" "false" "Done.")
+run_test "verdict_guard_no_verdict: VE in transcript, log exists but no verdict → allow" \
+    "allow" "$INPUT10" "$AGENT_ENTRY_VE"
+
+# --- Test 11: Verdict guard — VE in transcript, session log has ALL CLEAR → block ---
+# Same timing approach: log created before transcript in same second so birth times satisfy >=.
+tmp11=$(mktemp -d)
+mkdir -p "$tmp11/codegen/logging"
+printf '# Session Log\n## verification-engineer Section\nALL CLEAR ✅\n' \
+    >"$tmp11/codegen/logging/test_session.md"
+touch "$tmp11/codegen/logging/test_session.md"
+printf '%s\n' "$AGENT_ENTRY_VE" >"$tmp11/transcript.jsonl"
+INPUT11=$(make_input "$tmp11/transcript.jsonl" "$tmp11" "false" "Done.")
+run_test "verdict_guard_with_verdict: VE in transcript, log has ALL CLEAR → block" \
+    "block" "$INPUT11" "$AGENT_ENTRY_VE"
 
 echo ""
 echo "Results: $pass passed, $fail failed"

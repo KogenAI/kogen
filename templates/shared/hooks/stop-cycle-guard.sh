@@ -74,6 +74,35 @@ phoenix-developer | static-site-developer | data-layer-developer | verification-
     ;;
 esac
 
+# ScheduleWakeup / async-wait guard — orchestrator is yielding for a background event,
+# not abandoning a cycle. Let it stop.
+if printf '%s' "$LAST_ASSISTANT_MESSAGE" | grep -qE 'ScheduleWakeup|scheduled.*wakeup|checking back in|seed rebuild|still running|in flight'; then
+    debug_log claude-cycle-guard "skip: async-wait signal in last message"
+    exit 0
+fi
+
+# Verdict guard — only block if the session log contains an actual VE gate verdict.
+# Without this, a VE that was blocked by ve-guard or returned INCONCLUSIVE (no actionable
+# verdict) still triggers the cycle-guard, causing false-positive blocks.
+transcript_birth=$(stat -f '%B' "$TRANSCRIPT_PATH" 2>/dev/null || echo 0)
+logging_dir_pre="${CWD:-${CLAUDE_PROJECT_DIR:-$PWD}}/codegen/logging"
+if [ -d "$logging_dir_pre" ] && [ "${transcript_birth:-0}" -gt 0 ] 2>/dev/null; then
+    recent_log=$(find "$logging_dir_pre" -maxdepth 1 -type f -name '*.md' -mmin -120 2>/dev/null |
+        while IFS= read -r f; do
+            b=$(stat -f '%B' "$f" 2>/dev/null || echo 0)
+            if [ "$b" -ge "$transcript_birth" ] 2>/dev/null; then
+                m=$(stat -f '%m' "$f" 2>/dev/null || echo 0)
+                printf '%s %s\n' "$m" "$f"
+            fi
+        done | sort -rn | head -n 1 | awk '{$1=""; sub(/^ /, ""); print}')
+    if [ -n "$recent_log" ] && [ -r "$recent_log" ]; then
+        if ! grep -qE 'ALL CLEAR ✅|FAILED ❌|INCONCLUSIVE ⚠️' "$recent_log" 2>/dev/null; then
+            debug_log claude-cycle-guard "skip: no VE verdict in session log $recent_log"
+            exit 0
+        fi
+    fi
+fi
+
 # Locate the current-session log path for the block reason text (birth-time filtered).
 transcript_birth=$(stat -f '%B' "$TRANSCRIPT_PATH" 2>/dev/null || echo 0)
 log_file=""
