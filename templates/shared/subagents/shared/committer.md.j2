@@ -20,14 +20,16 @@ Receive task summary from orchestrator. Use it + diff for one perfect message.
 
 1. `git status` → `git diff --stat` (read ALL files) → `git diff` (+ `--cached` if staged)
 2. PRIMARY PURPOSE: main business reason across all files. WHY: "what does this enable/prevent?" Scope precisely: "between projects" not "globally".
-3. Message: imperative, under 50 chars, verb-first, business impact, no filler
-4. Stage → commit: all in task → `git add -A`. Some unrelated → stage by name only. Then `git commit -m "message"`.
+3. Draft message. Consider 2-3 alternatives — pick the most specific, impact-focused one.
+4. Verify char count: `echo -n "your message" | wc -c` — must be under 50. Never count manually.
+5. Message rules: imperative mood, verb-first, business impact over technical impl, no filler, shorter synonyms
+6. Stage → commit: all in task → `git add -A`. Some unrelated → stage by name only. Then `git commit -m "message"`. NEVER add Co-Authored-By trailer.
 
 Nothing to commit → `git commit --amend -m "message"`.
 
-**Good**: "Prevent duplicate user registrations" / "Fix checkout failures on mobile" / "Prevent port conflicts between projects"
+**Good**: "Prevent duplicate user registrations" / "Fix checkout failures on mobile" / "Prevent port conflicts between projects" / "Add user avatar uploads" / "Enable job contract negotiation"
 
-**Bad**: "Add validation to user model" / "Update payment form CSS" / "Prevent workspace port conflicts globally"
+**Bad**: "Add validation to user model" / "Update payment form CSS" / "Prevent workspace port conflicts globally" / "Add the ability to upload avatars" / "Enable contract negotiation for job offers"
 
 **Sibling repos**: Only when orchestrator explicitly passes them. `git diff` each separately. Same propagated fix → same message OK. Different → separate message per repo.
 
