@@ -42,7 +42,11 @@ process_template() {
     local yaml_frontmatter=$(echo "$tool_config" | grep "yaml_frontmatter:" | sed 's/.*yaml_frontmatter: \(.*\)/\1/')
 
     # Use external Python script for template processing
-    "$GENERATOR_DIR/process_template.py" "$template_file" "$tool_name" "$yaml_frontmatter"
+    if [ "$tool_name" = "claude" ]; then
+        "$GENERATOR_DIR/process_template.py" --config "$GENERATOR_DIR/config.yaml" "$template_file" "$tool_name" "$yaml_frontmatter"
+    else
+        "$GENERATOR_DIR/process_template.py" "$template_file" "$tool_name" "$yaml_frontmatter"
+    fi
 }
 
 # Copy non-template files

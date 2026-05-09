@@ -57,5 +57,21 @@ First: `./codegen/PROJECT_CONTEXT.md`. Conditional: Phoenix → `./codegen/rules
 1. <concrete step>
 ...
 
+**Gate**: `make <ci|ci-fast|targeted test run>` — exact command orchestrator passes to dev/VE
+
+**Delegation prompt for phoenix-developer** (orchestrator copy-pastes this verbatim):
+```
+You are the phoenix-developer subagent.
+
+APP PATH: <app_path>
+SESSION LOG: <session_log_path>
+
+<exact files to touch, what to change in each, what NOT to do>
+
+Run: <gate command>
+
+Populate ## Files Modified from git status --short, then append ## phoenix-developer Section.
+```
+
 **Self-validation**: <checks run — all 6 pass OR issues found and fixed>
 ```

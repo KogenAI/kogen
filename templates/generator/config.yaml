@@ -47,38 +47,38 @@ common:
 
 harness:
   planner:
-    claude: { model: claude-opus-4-7, effort: high }
+    claude: { model: opus, effort: high }
     codex: { model: gpt-5.5, effort: high }
-    cursor: { model: claude-opus-4-7-thinking-high, effort: high }
+    cursor: { model: opus-thinking-high, effort: high }
   phoenix-developer:
-    claude: { model: claude-sonnet-4-6, effort: high }
+    claude: { model: sonnet, effort: medium }
     codex: { model: gpt-5.5, effort: medium }
-    cursor: { model: claude-sonnet-4-6, effort: medium }
+    cursor: { model: sonnet, effort: medium }
   data-layer-developer:
-    claude: { model: claude-sonnet-4-6, effort: high }
+    claude: { model: sonnet, effort: medium }
     codex: { model: gpt-5.5, effort: medium }
-    cursor: { model: claude-sonnet-4-6, effort: medium }
+    cursor: { model: sonnet, effort: medium }
   static-site-developer:
-    claude: { model: claude-sonnet-4-6, effort: high }
+    claude: { model: sonnet, effort: high }
     codex: { model: gpt-5.5, effort: medium }
-    cursor: { model: claude-sonnet-4-6, effort: medium }
+    cursor: { model: sonnet, effort: medium }
   verification-engineer:
-    claude: { model: claude-sonnet-4-6, effort: medium }
+    claude: { model: sonnet, effort: medium }
     codex: { model: gpt-5.5, effort: low }
-    cursor: { model: claude-sonnet-4-6, effort: medium }
+    cursor: { model: sonnet, effort: medium }
   code-reviewer:
-    claude: { model: claude-sonnet-4-6, effort: medium }
+    claude: { model: sonnet, effort: medium }
     codex: { model: gpt-5.5, effort: medium }
-    cursor: { model: claude-sonnet-4-6, effort: medium }
+    cursor: { model: sonnet, effort: medium }
   committer:
-    claude: { model: claude-haiku-4-5-20251001, effort: medium }
+    claude: { model: haiku, effort: medium }
     codex: { model: gpt-5.5-mini, effort: medium }
-    cursor: { model: claude-haiku-4-5-20251001, effort: medium }
+    cursor: { model: haiku, effort: medium }
   build:
-    claude: { model: claude-sonnet-4-6, effort: medium }
-    codex: { model: gpt-5.5, effort: medium }
-    cursor: { model: claude-sonnet-4-6, effort: medium }
+    claude: { model: haiku, effort: medium }
+    codex: { model: gpt-4.1-mini, effort: medium }
+    cursor: { model: haiku, effort: medium }
   inspector:
-    claude: { model: claude-sonnet-4-6, effort: medium }
+    claude: { model: sonnet, effort: medium }
     codex: { model: gpt-5.5, effort: medium }
-    cursor: { model: claude-sonnet-4-6, effort: medium }
+    cursor: { model: sonnet, effort: medium }

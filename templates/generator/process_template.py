@@ -71,11 +71,56 @@ def _strip_template_blocks(content, tool_name, yaml_frontmatter):
     return content
 
 
-def process_template(template_file, tool_name, yaml_frontmatter):
-    """Process a template file with the given configuration (Markdown output)."""
+def process_template(template_file, tool_name, yaml_frontmatter, config_yaml=None):
+    """Process a template file with the given configuration (Markdown output).
+
+    When tool_name == 'claude' and config_yaml is provided, the YAML frontmatter
+    model: line is rewritten using harness[role][claude].model and an effort: line
+    is injected immediately after it.  Role name is derived from the template
+    basename (e.g. planner.md.j2 -> planner).  Silent no-op when role is absent
+    from harness or config_yaml is unset.
+    """
     with open(template_file, 'r') as f:
         content = f.read()
     content = _strip_template_blocks(content, tool_name, yaml_frontmatter)
+
+    if tool_name == 'claude' and config_yaml:
+        try:
+            import yaml
+        except ImportError:
+            yaml = None
+
+        if yaml is not None:
+            with open(config_yaml, 'r') as f:
+                config = yaml.safe_load(f)
+            harness = config.get('harness', {})
+            # Strip both extensions: planner.md.j2 -> planner.md -> planner
+            role_name = os.path.splitext(os.path.splitext(os.path.basename(template_file))[0])[0]
+            role_cfg = harness.get(role_name, {}).get('claude')
+            if role_cfg:
+                model_val = role_cfg.get('model')
+                effort_val = role_cfg.get('effort')
+                if model_val and effort_val:
+                    # Rewrite the model: line inside the first frontmatter block
+                    # (between the first pair of --- delimiters) and inject effort:.
+                    def rewrite_frontmatter(m):
+                        fm = m.group(1)
+                        fm = re.sub(
+                            r'^model:[ \t]*.+$',
+                            f'model: {model_val}\neffort: {effort_val}',
+                            fm,
+                            flags=re.MULTILINE,
+                        )
+                        return f'---\n{fm}\n---'
+
+                    content = re.sub(
+                        r'^---\n(.*?)\n---',
+                        rewrite_frontmatter,
+                        content,
+                        count=1,
+                        flags=re.DOTALL,
+                    )
+
     print(content, end='')
 
 
@@ -233,4 +278,4 @@ if __name__ == "__main__":
         if args.tool_name is None or args.yaml_frontmatter is None:
             sys.exit("ERROR: --format=md requires positional <tool_name> <yaml_frontmatter>")
         yaml_frontmatter = args.yaml_frontmatter.lower() == 'true'
-        process_template(args.template_file, args.tool_name, yaml_frontmatter)
+        process_template(args.template_file, args.tool_name, yaml_frontmatter, args.config_yaml)

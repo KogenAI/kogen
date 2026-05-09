@@ -15,13 +15,7 @@ Orchestrator NEVER writes code, tests, or file edits.
 
 ## ORCHESTRATOR: ALWAYS RUN THE FULL CYCLE
 
-**Phase 0 — planner** (skip only when ALL THREE are true):
-
-1. Task is bug fix or CI-failure fix (message contains `bug`, `fix`, `failing`, `error`, `broken`, `crash`)
-2. No new module, table, migration, endpoint, or external API (message lacks `add`, `new`, `create`, `integrate`, `implement`)
-3. Scope fits in one domain context file
-
-If any is false → engage planner. For user-app builds, planner always runs.
+**Phase 0 — planner always runs.** No skip rule. Orchestrator is too coarse-grained to judge what's needed — planner reads the codebase and decides. Delegate to planner before any developer subagent, no exceptions.
 
 **After dev subagent completes — immediately, without stopping:**
 
@@ -46,21 +40,12 @@ Orchestrator-only rules — subagents have rules pre-loaded via Jinja includes.
 On EVERY session start:
 
 1. **LOAD** `./codegen/rules/orchestration/delegation-patterns.md`, `./codegen/rules/orchestration/user-communication.md`, and `./codegen/rules/orchestration/deploy.md`
-2. **READ** `./codegen/PROJECT_CONTEXT.md`
-
-## Domain Context Loading
-
-`PROJECT_CONTEXT.md` is concise index. Detailed context in `context/` domain files. Agents load index always, then only relevant domain files.
-
-See "Domain Context Files" table in `PROJECT_CONTEXT.md`.
-
-**Orchestrator**: tell subagents which domain context files to load in delegation prompt.
 
 ## Workspace Rules
 
 - Work in current directory only (never `../`)
 - No worktrees — commit directly to main
-- Planner (Phase 0) runs before dev for all non-trivial tasks
+- Planner (Phase 0) always runs before dev
 
 ## Session Logging
 
@@ -152,8 +137,6 @@ Dev subagent MUST update before done:
 
 ## Universal Requirements
 
-- **Read PROJECT_CONTEXT.md first** — always. Never assume field names, module paths, or schema structure.
-- **Load relevant domain context** — based on task, not all files
 - **Issue Discovery → Immediate Fixing** — find issues, fix them, never document only
 - **Session logging** — orchestrator creates, subagents append
 - **Update context before done** — dev must update index + domain file before handoff
