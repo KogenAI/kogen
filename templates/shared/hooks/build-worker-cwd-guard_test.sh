@@ -40,10 +40,10 @@ run_test() {
     fi
 }
 
-# Use a user-app-like cwd so the guard engages (guard is a no-op outside /user_apps/).
-# mktemp gives us a real dir; we embed it under a synthetic /user_apps/ path.
+# Use a user-app-like cwd so the guard engages (guard is a no-op outside real apps_root).
+# mktemp gives us a real dir; we embed it under a synthetic */AppBuilder/apps/ path.
 BASE_TMP="$(mktemp -d)"
-PROJECT_DIR="${BASE_TMP}/user_apps/abc123"
+PROJECT_DIR="${BASE_TMP}/AppBuilder/apps/abc123"
 mkdir -p "$PROJECT_DIR"
 cleanup() { rm -rf "$BASE_TMP"; }
 trap cleanup EXIT
@@ -71,16 +71,22 @@ run_test "orchestrator Bash cd /tmp allows (whitelist)" "0" "$FIXTURE_ALLOW_TMP"
 FIXTURE_BLOCK_BASH='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"cat /etc/hosts"},"agent_id":"","agent_type":"","cwd":"'"$PROJECT_DIR"'"}'
 run_test "orchestrator Bash /etc/hosts blocks" "2" "$FIXTURE_BLOCK_BASH"
 
-# Test 6: Orchestrator Read of /etc/passwd in platform repo (non-user_apps cwd) — ALLOW
-# The guard is a no-op when cwd is not under a /user_apps/ path.
+# Test 6: Orchestrator Read of /etc/passwd in platform repo (non-apps_root cwd) — ALLOW
+# The guard is a no-op when cwd is not under a real apps_root path.
 PLATFORM_DIR="/Users/almirsarajcic/Projects/AppBuilder/combobulate"
 FIXTURE_PLATFORM_READ='{"hook_event_name":"PreToolUse","tool_name":"Read","tool_input":{"file_path":"/etc/passwd"},"agent_id":"","agent_type":"","cwd":"'"$PLATFORM_DIR"'"}'
-run_test "orchestrator Read in platform repo (non-user_apps cwd) allows" "0" "$FIXTURE_PLATFORM_READ"
+run_test "orchestrator Read in platform repo (non-apps_root cwd) allows" "0" "$FIXTURE_PLATFORM_READ"
 
 # Test 7: Orchestrator Read of file outside project in user-app cwd — BLOCK
-USER_APP_DIR="/home/combobulate/user_apps/abc123"
+USER_APP_DIR="/home/combobulate/apps/abc123"
 FIXTURE_USER_APP_BLOCK='{"hook_event_name":"PreToolUse","tool_name":"Read","tool_input":{"file_path":"/etc/passwd"},"agent_id":"","agent_type":"","cwd":"'"$USER_APP_DIR"'"}'
 run_test "orchestrator Read /etc/passwd in user-app cwd blocks" "2" "$FIXTURE_USER_APP_BLOCK"
+
+# Test 8: Orchestrator Read of /etc/passwd in test-partition cwd — BLOCK
+TEST_APPS_DIR="${BASE_TMP}/.combobulate_test_apps/part1/apps/abc123"
+mkdir -p "$TEST_APPS_DIR"
+FIXTURE_TEST_APPS_BLOCK='{"hook_event_name":"PreToolUse","tool_name":"Read","tool_input":{"file_path":"/etc/passwd"},"agent_id":"","agent_type":"","cwd":"'"$TEST_APPS_DIR"'"}'
+run_test "orchestrator Read /etc/passwd in test-partition cwd blocks" "2" "$FIXTURE_TEST_APPS_BLOCK"
 
 echo ""
 echo "Results: $pass passed, $fail failed"

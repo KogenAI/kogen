@@ -23,9 +23,15 @@ fi
 project_dir="${CWD:-${CLAUDE_PROJECT_DIR:-$PWD}}"
 
 # ── Platform-repo bypass ─────────────────────────────────────────────────────
+# Real apps_root values (source-of-truth: combobulate config/{test,dev,runtime}.exs):
+#   - ~/.combobulate_test_apps/part<N>/apps  (test partitions, MIX_TEST_PARTITION)
+#   - /home/combobulate/apps                  (production, APPS_ROOT env)
+#   - */AppBuilder/apps                       (local dev — host-dependent prefix)
 case "$project_dir" in
-*/user_apps/*) ;; # user-app build context — continue with the guard
-*) exit 0 ;;      # platform repo or other non-user-app context — no-op
+*/.combobulate_test_apps/*/apps/*) ;; # test partition workspace
+/home/combobulate/apps/*) ;;          # production apps_root
+*/AppBuilder/apps/*) ;;               # local dev apps_root
+*) exit 0 ;;                          # platform repo or other non-user-app context — no-op
 esac
 real_project_dir=$(hooks_realpath "$project_dir")
 project_prefix="${real_project_dir%/}/"
