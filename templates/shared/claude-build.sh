@@ -6,6 +6,7 @@ PROMPT_FILE="$CODEGEN_DIR/templates/shared/claude-build-system-prompt.txt"
 
 exec claude \
     --model haiku \
+    --effort medium \
     --dangerously-skip-permissions \
     --disallowed-tools EnterPlanMode,ExitPlanMode,EnterWorktree,AskUserQuestion \
     --system-prompt "$(cat "$PROMPT_FILE")" \
