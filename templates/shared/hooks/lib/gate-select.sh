@@ -137,6 +137,18 @@ gate_select_read_planner_gate() {
                 # Strip leading/trailing backticks and whitespace
                 gsub(/^`+|`+$/, "", rest)
                 gsub(/^[[:space:]]+|[[:space:]]+$/, "", rest)
+                # If backticks present, truncate at first backtick (closing fence)
+                if (match(rest, /`/)) {
+                    rest = substr(rest, 1, RSTART - 1)
+                    gsub(/[[:space:]]+$/, "", rest)
+                }
+                # If no backticks, truncate at prose separators: ` (`, ` —`, ` - `
+                else {
+                    if (match(rest, / *\(/))     { rest = substr(rest, 1, RSTART - 1) }
+                    else if (match(rest, / *—/)) { rest = substr(rest, 1, RSTART - 1) }
+                    else if (match(rest, / +-+ /)) { rest = substr(rest, 1, RSTART - 1) }
+                    gsub(/[[:space:]]+$/, "", rest)
+                }
                 if (length(rest) > 0) { print rest; exit }
             }
         }

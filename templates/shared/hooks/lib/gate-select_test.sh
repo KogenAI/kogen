@@ -41,6 +41,136 @@ assert_eq "gate_mode_for(make ci && make llm) = long" "long" "$(gate_mode_for 'm
 assert_eq "gate_mode_for(make llm-phoenix-validate) = short" "short" "$(gate_mode_for 'make llm-phoenix-validate')"
 assert_eq "gate_mode_for(rebuild-seed-then) = long" "long" "$(gate_mode_for 'COMBOBULATE_VE_GATE=rebuild-seed-then make llm-phoenix')"
 
+# ── gate_select_read_planner_gate ───────────────────────────────────────────
+
+# Case 1: backticked gate value
+TMP=$(mktemp)
+cat >"$TMP" <<'MD'
+# Step
+
+## Plan
+
+**Gate**: `make ci`
+
+stuff
+MD
+assert_eq "read_planner_gate: backticked" "make ci" "$(gate_select_read_planner_gate "$TMP")"
+rm -f "$TMP"
+
+# Case 2: backticked + prose suffix
+TMP=$(mktemp)
+cat >"$TMP" <<'MD'
+# Step
+
+## Plan
+
+**Gate**: `make ci` (single-step task, full gate required)
+
+stuff
+MD
+assert_eq "read_planner_gate: backticked + prose" "make ci" "$(gate_select_read_planner_gate "$TMP")"
+rm -f "$TMP"
+
+# Case 3: bare value, no suffix
+TMP=$(mktemp)
+cat >"$TMP" <<'MD'
+# Step
+
+## Plan
+
+**Gate**: make ci
+
+stuff
+MD
+assert_eq "read_planner_gate: bare value" "make ci" "$(gate_select_read_planner_gate "$TMP")"
+rm -f "$TMP"
+
+# Case 4: bare value + paren prose
+TMP=$(mktemp)
+cat >"$TMP" <<'MD'
+# Step
+
+## Plan
+
+**Gate**: make ci (note)
+
+stuff
+MD
+assert_eq "read_planner_gate: bare + paren prose" "make ci" "$(gate_select_read_planner_gate "$TMP")"
+rm -f "$TMP"
+
+# Case 5: bare value + em dash (U+2014)
+TMP=$(mktemp)
+cat >"$TMP" <<'MD'
+# Step
+
+## Plan
+
+**Gate**: make ci — note
+
+stuff
+MD
+assert_eq "read_planner_gate: bare + em dash" "make ci" "$(gate_select_read_planner_gate "$TMP")"
+rm -f "$TMP"
+
+# Case 6: plain Gate: prefix (no bold)
+TMP=$(mktemp)
+cat >"$TMP" <<'MD'
+# Step
+
+## Plan
+
+Gate: make ci
+
+stuff
+MD
+assert_eq "read_planner_gate: plain Gate: prefix" "make ci" "$(gate_select_read_planner_gate "$TMP")"
+rm -f "$TMP"
+
+# Case 7: ## Plan section with no Gate line
+TMP=$(mktemp)
+cat >"$TMP" <<'MD'
+# Step
+
+## Plan
+
+some content but no gate line
+
+stuff
+MD
+assert_eq "read_planner_gate: no Gate line" "" "$(gate_select_read_planner_gate "$TMP")"
+rm -f "$TMP"
+
+# Case 8: Gate: line present but in ## Approach section (after ## Plan)
+TMP=$(mktemp)
+cat >"$TMP" <<'MD'
+# Step
+
+## Plan
+
+no gate here
+
+## Approach
+
+Gate: make ci
+MD
+assert_eq "read_planner_gate: Gate in wrong section" "" "$(gate_select_read_planner_gate "$TMP")"
+rm -f "$TMP"
+
+# Case 9: bare value + ASCII hyphen with surrounding spaces
+TMP=$(mktemp)
+cat >"$TMP" <<'MD'
+# Step
+
+## Plan
+
+**Gate**: make ci - note
+
+stuff
+MD
+assert_eq "read_planner_gate: bare + hyphen separator" "make ci" "$(gate_select_read_planner_gate "$TMP")"
+rm -f "$TMP"
+
 # ── No-config fallback ──────────────────────────────────────────────────────
 T_NOCFG=$(mktemp -d)
 out=$(gate_select_decide "$T_NOCFG")
