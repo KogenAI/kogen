@@ -3,16 +3,26 @@ description: Create a new Claude Code slash command
 argument-hint: [/command-name]
 ---
 
-Create new Claude Code slash command and add to templates directory.
+Create new Claude Code slash command.
 
 Process:
 
 1. **Parse command name** — extract from argument (e.g., `/do-something` → `do-something`)
 2. **Ask for purpose** — what should command do and when would it be used
-3. **Design workflow** — break down steps the command should execute
-4. **Create frontmatter** — add `description` and `argument-hint` if command takes params
-5. **Write instructions** — use actionable language without excessive documentation
-6. **Save** — `./codegen/templates/shared/commands/{command-name}.md`
+3. **Determine save location** — analyze purpose/name and recommend ONE of three paths:
+   - **Project `./.claude/commands/{name}.md`** — if command depends on this project's context, codebase, or domain (e.g. `combobulate-debug`, `blog-post` tied to combobulate.dev, project-specific debugging). Confirm with user.
+   - **Shared `~/Areas/Optimum/codegen/templates/shared/commands/{name}.md`** — if command is generic and useful across all projects (e.g. `document`, `split`, `research`). Propagates via symlinks.
+   - **User `~/.claude/commands/{name}.md`** — personal cross-project command that shouldn't propagate to teammates. Rare; only when user explicitly wants it.
+     Heuristic signals:
+   - Mentions project-specific paths/modules/products → project
+   - References `PROJECT_CONTEXT.md` or project-specific tools → project
+   - Generic workflow concept (research, plan, review, commit) → shared
+   - Hot-take/style/personal-preference → user
+     State recommendation + reasoning, ask user to confirm or override.
+4. **Design workflow** — break down steps the command should execute
+5. **Create frontmatter** — add `description` and `argument-hint` if command takes params
+6. **Write instructions** — use actionable language without excessive documentation
+7. **Save** to chosen path
 
 Format requirements:
 
@@ -25,8 +35,8 @@ Format requirements:
 
 Usage examples:
 
-- `/command /do-something` → creates `do-something.md`
-- `/command /analyze-performance` → creates `analyze-performance.md`
-- `/command /create-migration` → creates `create-migration.md`
+- `/command /do-something` → analyze, recommend location, save to chosen path
+- `/command /analyze-performance` → likely shared (generic)
+- `/command /combobulate-debug` → likely project (name signals combobulate-specific)
 
 Then ask user what functionality they want the new command to provide.
