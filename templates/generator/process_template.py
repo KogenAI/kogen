@@ -43,14 +43,46 @@ def _strip_template_blocks(content, tool_name, yaml_frontmatter):
     else:
         content = re.sub(r'{% if tool\.yaml_frontmatter %}.*?{% endif %}', '', content, flags=re.DOTALL)
 
-    # if/elif/endif and simple if/endif blocks. Only `claude`, `codex`, and
-    # `cursor` are supported tool names; codex and cursor currently render the
-    # claude branch (explicit branch points exist as future-divergence hooks).
-    if tool_name in ('claude', 'codex', 'cursor'):
-        content = re.sub(r'{% if tool\.name == \'claude\' %}(.*?){% endif %}', r'\1', content, flags=re.DOTALL)
-    else:
+    # if/else/endif and simple if/endif blocks.
+    # Supported tool names: 'claude', 'codex', 'cursor'.
+    # Dual-render pattern:
+    #   {% if tool.name == 'claude' %}<claude-branch>{% else %}<codex-branch>{% endif %}
+    # claude → renders claude-branch (e.g. @-imports)
+    # codex/cursor → renders else-branch (e.g. → See pointers)
+    if tool_name not in ('claude', 'codex', 'cursor'):
         raise ValueError(
             f"Unsupported tool_name: {tool_name!r} (expected 'claude', 'codex', or 'cursor')"
+        )
+
+    if tool_name == 'claude':
+        # Keep claude-branch; drop else-branch if present.
+        content = re.sub(
+            r'\{%\s*if\s+tool\.name\s*==\s*\'claude\'\s*%\}(.*?)\{%\s*else\s*%\}.*?\{%\s*endif\s*%\}',
+            r'\1',
+            content,
+            flags=re.DOTALL,
+        )
+        # Simple if (no else).
+        content = re.sub(
+            r'\{%\s*if\s+tool\.name\s*==\s*\'claude\'\s*%\}(.*?)\{%\s*endif\s*%\}',
+            r'\1',
+            content,
+            flags=re.DOTALL,
+        )
+    else:
+        # codex / cursor: keep else-branch; drop claude-branch.
+        content = re.sub(
+            r'\{%\s*if\s+tool\.name\s*==\s*\'claude\'\s*%\}.*?\{%\s*else\s*%\}(.*?)\{%\s*endif\s*%\}',
+            r'\1',
+            content,
+            flags=re.DOTALL,
+        )
+        # Simple if (no else) — drop entire block for non-claude.
+        content = re.sub(
+            r'\{%\s*if\s+tool\.name\s*==\s*\'claude\'\s*%\}.*?\{%\s*endif\s*%\}',
+            '',
+            content,
+            flags=re.DOTALL,
         )
 
     # Resolve {% include 'path' %} directives.

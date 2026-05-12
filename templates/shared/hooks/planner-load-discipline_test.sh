@@ -40,25 +40,25 @@ run_test() {
     fi
 }
 
-# Test 1: planner Read on tdd.md — BLOCK
-FIXTURE_TDD='{"hook_event_name":"PreToolUse","tool_name":"Read","tool_input":{"file_path":"./codegen/rules/subagents/tdd.md"},"agent_type":"planner","agent_id":"abc"}'
-run_test "planner Read tdd.md blocks" "2" "$FIXTURE_TDD"
+# Test 1: planner Read on testing.md — BLOCK
+FIXTURE_TB='{"hook_event_name":"PreToolUse","tool_name":"Read","tool_input":{"file_path":"./codegen/rules/stacks/phoenix/testing.md"},"agent_type":"planner","agent_id":"abc"}'
+run_test "planner Read stacks/phoenix/testing.md blocks" "2" "$FIXTURE_TB"
 
-# Test 2: planner Read on phoenix.md — ALLOW (not in forbidden list)
-FIXTURE_PHOENIX='{"hook_event_name":"PreToolUse","tool_name":"Read","tool_input":{"file_path":"./codegen/rules/subagents/phoenix.md"},"agent_type":"planner","agent_id":"abc"}'
-run_test "planner Read phoenix.md allows" "0" "$FIXTURE_PHOENIX"
+# Test 2: planner Read on phoenix/_core.md — ALLOW (not in forbidden list — planner needs framework knowledge)
+FIXTURE_PHOENIX='{"hook_event_name":"PreToolUse","tool_name":"Read","tool_input":{"file_path":"./codegen/rules/stacks/phoenix/_core.md"},"agent_type":"planner","agent_id":"abc"}'
+run_test "planner Read stacks/phoenix/_core.md allows" "0" "$FIXTURE_PHOENIX"
 
-# Test 3: planner Read on subagents/tdd.md (different path, same basename) — BLOCK
-FIXTURE_TDD2='{"hook_event_name":"PreToolUse","tool_name":"Read","tool_input":{"file_path":"./codegen/rules/subagents/tdd.md"},"agent_type":"planner","agent_id":"abc"}'
-run_test "planner Read subagents/tdd.md blocks (basename match)" "2" "$FIXTURE_TDD2"
+# Test 3: planner Read on roles/reviewer.md — BLOCK (impl-only)
+FIXTURE_AST='{"hook_event_name":"PreToolUse","tool_name":"Read","tool_input":{"file_path":"./codegen/rules/roles/reviewer.md"},"agent_type":"planner","agent_id":"abc"}'
+run_test "planner Read reviewer.md blocks (impl-only)" "2" "$FIXTURE_AST"
 
-# Test 4: phoenix-developer Read on tdd.md — ALLOW (not planner)
-FIXTURE_DEV='{"hook_event_name":"PreToolUse","tool_name":"Read","tool_input":{"file_path":"./codegen/rules/subagents/tdd.md"},"agent_type":"phoenix-developer","agent_id":"abc"}'
-run_test "phoenix-developer Read tdd.md allows (not planner)" "0" "$FIXTURE_DEV"
+# Test 4: developer-phoenix-backend Read on testing.md — ALLOW (not planner)
+FIXTURE_DEV='{"hook_event_name":"PreToolUse","tool_name":"Read","tool_input":{"file_path":"./codegen/rules/stacks/phoenix/testing.md"},"agent_type":"developer-phoenix-backend","agent_id":"abc"}'
+run_test "developer-phoenix-backend Read stacks/phoenix/testing.md allows (not planner)" "0" "$FIXTURE_DEV"
 
-# Test 5: planner Read on elixir-code-generation.md — BLOCK
-FIXTURE_ECG='{"hook_event_name":"PreToolUse","tool_name":"Read","tool_input":{"file_path":"./codegen/rules/subagents/elixir-code-generation.md"},"agent_type":"planner","agent_id":"abc"}'
-run_test "planner Read elixir-code-generation.md blocks" "2" "$FIXTURE_ECG"
+# Test 5: planner Read on roles/developer.md — BLOCK (impl-only)
+FIXTURE_ECG='{"hook_event_name":"PreToolUse","tool_name":"Read","tool_input":{"file_path":"./codegen/rules/roles/developer.md"},"agent_type":"planner","agent_id":"abc"}'
+run_test "planner Read developer.md blocks (impl-only)" "2" "$FIXTURE_ECG"
 
 echo ""
 echo "Results: $pass passed, $fail failed"

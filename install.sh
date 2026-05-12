@@ -62,6 +62,20 @@ harness_enabled() {
     return 1
 }
 
+# content_stable_cp <src> <dst>
+# Copies src to dst ONLY when dst doesn't exist or its bytes differ from src.
+# Skipping identical files preserves mtime and keeps the Claude Code prompt
+# cache valid (each write busts cache fleet-wide on the next session).
+# Returns 0 in both cases; caller can inspect exit code of the underlying cp.
+content_stable_cp() {
+    local src="$1"
+    local dst="$2"
+    if [ -f "$dst" ] && cmp -s "$src" "$dst"; then
+        return 0 # identical — skip write
+    fi
+    cp "$src" "$dst"
+}
+
 CODEGEN_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 INSTALL_DIR="$HOME/.local/bin"
 SYMLINK_NAME="ocg"
@@ -137,7 +151,7 @@ fi
 
 # Copy README only if it doesn't exist
 if [ ! -f "$RECIPES_DIR/README.md" ] && [ -f "$CODEGEN_DIR/templates/recipes-README.md" ]; then
-    cp "$CODEGEN_DIR/templates/recipes-README.md" "$RECIPES_DIR/README.md"
+    content_stable_cp "$CODEGEN_DIR/templates/recipes-README.md" "$RECIPES_DIR/README.md"
     echo "   ✅ Recipes README installed"
 fi
 
@@ -154,6 +168,32 @@ else
         "$CODEGEN_DIR/templates/generator/generate.sh" "$h"
     done
 fi
+
+# Render user-app orchestrator AGENTS templates (.j2 -> .md) back into context repo.
+# These .md files are symlinked into user-app workspaces by Combobulate.Apps.copy_agents_md/2
+# at provision time, so they must exist as regenerable artifacts beside their .j2 source.
+# Rendered with tool.name=claude (@-imports) since the consumer is Claude Code in build runs.
+echo ""
+echo "🚀 Rendering user-app AGENTS templates (.j2 -> .md)..."
+APPS_DIR="$CONTEXT_DIR/apps"
+PROCESS_TEMPLATE="$CODEGEN_DIR/templates/generator/process_template.py"
+for base in AGENTS-phoenix AGENTS-static; do
+    src="$APPS_DIR/$base.md.j2"
+    dst="$APPS_DIR/$base.md"
+    if [ -f "$src" ]; then
+        tmp="$(mktemp)"
+        OCG_CONTEXT_DIR="$CONTEXT_DIR" python3 "$PROCESS_TEMPLATE" "$src" claude false >"$tmp"
+        if [ ! -f "$dst" ] || ! cmp -s "$tmp" "$dst"; then
+            mv "$tmp" "$dst"
+            echo "   ✅ Rendered $base.md"
+        else
+            rm -f "$tmp"
+            echo "   ✅ $base.md already up to date"
+        fi
+    else
+        echo "   ⚠️  $src missing — skipping render"
+    fi
+done
 
 # Clean up generated templates after installation
 cleanup_generated_templates() {
@@ -175,7 +215,7 @@ if harness_enabled claude; then
 
     # Install generated Claude Code files
     if [ -f "$CODEGEN_DIR/templates/generated/claude-code/claude-code-settings.json" ]; then
-        cp "$CODEGEN_DIR/templates/generated/claude-code/claude-code-settings.json" "$CLAUDE_SETTINGS_FILE"
+        content_stable_cp "$CODEGEN_DIR/templates/generated/claude-code/claude-code-settings.json" "$CLAUDE_SETTINGS_FILE"
         echo "   ✅ Claude Code settings installed at: $CLAUDE_SETTINGS_FILE"
     fi
 
@@ -188,7 +228,7 @@ if harness_enabled claude; then
         for hook_file in "$CODEGEN_DIR/templates/shared/hooks"/*.sh; do
             if [ -f "$hook_file" ]; then
                 hook_name=$(basename "$hook_file")
-                cp "$hook_file" "$CLAUDE_SETTINGS_DIR/hooks/$hook_name"
+                content_stable_cp "$hook_file" "$CLAUDE_SETTINGS_DIR/hooks/$hook_name"
                 chmod +x "$CLAUDE_SETTINGS_DIR/hooks/$hook_name"
                 echo "   ✅ ${hook_name} hook installed at: $CLAUDE_SETTINGS_DIR/hooks/$hook_name"
             fi
@@ -213,7 +253,7 @@ if harness_enabled claude; then
             mkdir -p "$CLAUDE_SETTINGS_DIR/hooks/lib"
             for lib_file in "$CODEGEN_DIR/templates/shared/hooks/lib"/*; do
                 if [ -f "$lib_file" ]; then
-                    cp "$lib_file" "$CLAUDE_SETTINGS_DIR/hooks/lib/"
+                    content_stable_cp "$lib_file" "$CLAUDE_SETTINGS_DIR/hooks/lib/$(basename "$lib_file")"
                 fi
             done
             echo "   ✅ Hooks lib installed at: $CLAUDE_SETTINGS_DIR/hooks/lib/"
@@ -231,7 +271,7 @@ if harness_enabled claude; then
         for cmd_file in "$CODEGEN_DIR/templates/shared/commands"/*.md; do
             if [ -f "$cmd_file" ]; then
                 cmd_name=$(basename "$cmd_file")
-                cp "$cmd_file" "$CLAUDE_COMMANDS_DIR/"
+                content_stable_cp "$cmd_file" "$CLAUDE_COMMANDS_DIR/$cmd_name"
                 echo "   ✅ Installed command: /${cmd_name%.md}"
                 CURRENT_COMMANDS+=("$cmd_name")
             fi
@@ -279,7 +319,7 @@ if harness_enabled claude; then
         for agent_file in "$CODEGEN_DIR/templates/generated/claude-code/agents"/*.md; do
             if [ -f "$agent_file" ]; then
                 agent_name=$(basename "$agent_file")
-                cp "$agent_file" "$CLAUDE_AGENTS_DIR/"
+                content_stable_cp "$agent_file" "$CLAUDE_AGENTS_DIR/$agent_name"
                 echo "   ✅ Installed Claude sub agent: ${agent_name%.md}"
                 CURRENT_AGENTS+=("$agent_name")
             fi
@@ -287,18 +327,24 @@ if harness_enabled claude; then
     fi
 
     # Delete stale agents — any .md in the agents dir not in the current install set.
-    for installed_agent in "$CLAUDE_AGENTS_DIR"/*.md; do
-        [ -f "$installed_agent" ] || continue
-        agent_basename=$(basename "$installed_agent")
-        still_present=false
-        for cur in "${CURRENT_AGENTS[@]}"; do
-            [ "$cur" = "$agent_basename" ] && still_present=true && break
+    # Safety: skip prune entirely when CURRENT_AGENTS is empty (generator failed / dir missing) —
+    # never wipe the whole agents dir on a script bug.
+    if [ ${#CURRENT_AGENTS[@]} -eq 0 ]; then
+        echo "   ⚠️  Skipping Claude agent prune — install set is empty (generator may have failed)"
+    else
+        for installed_agent in "$CLAUDE_AGENTS_DIR"/*.md; do
+            [ -f "$installed_agent" ] || continue
+            agent_basename=$(basename "$installed_agent")
+            still_present=false
+            for cur in "${CURRENT_AGENTS[@]}"; do
+                [ "$cur" = "$agent_basename" ] && still_present=true && break
+            done
+            if [ "$still_present" = "false" ]; then
+                rm -f "$installed_agent"
+                echo "   🗑️  Removed stale agent: ${agent_basename%.md}"
+            fi
         done
-        if [ "$still_present" = "false" ]; then
-            rm -f "$installed_agent"
-            echo "   🗑️  Removed stale agent: ${agent_basename%.md}"
-        fi
-    done
+    fi
 
     # Write the combined manifest so the next install knows what this run installed.
     printf '%s\n' "${CURRENT_AGENTS[@]}" >"$AGENTS_MANIFEST"
@@ -396,7 +442,7 @@ if harness_enabled claude; then
     echo ""
     echo "🚀 Installing claude-build wrapper..."
 
-    cp "$CODEGEN_DIR/templates/shared/claude-build.sh" "$INSTALL_DIR/claude-build"
+    content_stable_cp "$CODEGEN_DIR/templates/shared/claude-build.sh" "$INSTALL_DIR/claude-build"
     chmod +x "$INSTALL_DIR/claude-build"
     echo "   ✅ claude-build wrapper installed at: $INSTALL_DIR/claude-build"
 
@@ -404,6 +450,48 @@ if harness_enabled claude; then
     if grep -q "alias claude-build=" "$RC_FILE" 2>/dev/null; then
         sed -i '' '/^# Optimum Codegen claude-build alias$/d; /^alias claude-build=/d' "$RC_FILE"
         echo "   🗑️  Removed legacy claude-build alias from $RC_FILE"
+    fi
+
+    # Install claude-design wrapper
+    echo ""
+    echo "🚀 Installing claude-design wrapper..."
+
+    content_stable_cp "$CODEGEN_DIR/templates/shared/claude-design.sh" "$INSTALL_DIR/claude-design"
+    chmod +x "$INSTALL_DIR/claude-design"
+    echo "   ✅ claude-design wrapper installed at: $INSTALL_DIR/claude-design"
+
+    # De-register legacy alias from rc file (idempotent)
+    if grep -q "alias claude-design=" "$RC_FILE" 2>/dev/null; then
+        sed -i '' '/^# Optimum Codegen claude-design alias$/d; /^alias claude-design=/d' "$RC_FILE"
+        echo "   🗑️  Removed legacy claude-design alias from $RC_FILE"
+    fi
+
+    # Install claude-multi-step wrapper
+    echo ""
+    echo "🚀 Installing claude-multi-step wrapper..."
+
+    content_stable_cp "$CODEGEN_DIR/templates/shared/claude-multi-step.sh" "$INSTALL_DIR/claude-multi-step"
+    chmod +x "$INSTALL_DIR/claude-multi-step"
+    echo "   ✅ claude-multi-step wrapper installed at: $INSTALL_DIR/claude-multi-step"
+
+    # De-register legacy alias from rc file (idempotent)
+    if grep -q "alias claude-multi-step=" "$RC_FILE" 2>/dev/null; then
+        sed -i '' '/^# Optimum Codegen claude-multi-step alias$/d; /^alias claude-multi-step=/d' "$RC_FILE"
+        echo "   🗑️  Removed legacy claude-multi-step alias from $RC_FILE"
+    fi
+
+    # Install claude-debug wrapper
+    echo ""
+    echo "🚀 Installing claude-debug wrapper..."
+
+    content_stable_cp "$CODEGEN_DIR/templates/shared/claude-debug.sh" "$INSTALL_DIR/claude-debug"
+    chmod +x "$INSTALL_DIR/claude-debug"
+    echo "   ✅ claude-debug wrapper installed at: $INSTALL_DIR/claude-debug"
+
+    # De-register legacy alias from rc file (idempotent)
+    if grep -q "alias claude-debug=" "$RC_FILE" 2>/dev/null; then
+        sed -i '' '/^# Optimum Codegen claude-debug alias$/d; /^alias claude-debug=/d' "$RC_FILE"
+        echo "   🗑️  Removed legacy claude-debug alias from $RC_FILE"
     fi
 
     echo ""
@@ -441,7 +529,7 @@ if harness_enabled codex; then
     CURRENT_CODEX_HOOKS=()
     for hook_script in "$CODEGEN_DIR/templates/shared/hooks"/codex-*.sh; do
         [ -f "$hook_script" ] || continue
-        cp "$hook_script" "$HOME/.codex/hooks/"
+        content_stable_cp "$hook_script" "$HOME/.codex/hooks/$(basename "$hook_script")"
         chmod +x "$HOME/.codex/hooks/$(basename "$hook_script")"
         CURRENT_CODEX_HOOKS+=("$(basename "$hook_script")")
     done
@@ -466,25 +554,30 @@ if harness_enabled codex; then
         for agent_file in "$CODEGEN_DIR/templates/generated/codex/agents"/*.toml; do
             if [ -f "$agent_file" ]; then
                 agent_name=$(basename "$agent_file")
-                cp "$agent_file" "$HOME/.codex/agents/"
+                content_stable_cp "$agent_file" "$HOME/.codex/agents/$agent_name"
                 echo "   ✅ Installed Codex agent: ${agent_name%.toml}"
                 CURRENT_CODEX_AGENTS+=("$agent_name")
             fi
         done
     fi
     # Delete stale TOML agents — any .toml in agents dir not in the current install set.
-    for installed_agent in "$HOME/.codex/agents"/*.toml; do
-        [ -f "$installed_agent" ] || continue
-        agent_basename=$(basename "$installed_agent")
-        still_present=false
-        for cur in "${CURRENT_CODEX_AGENTS[@]}"; do
-            [ "$cur" = "$agent_basename" ] && still_present=true && break
+    # Safety: skip prune when install set is empty (generator failure).
+    if [ ${#CURRENT_CODEX_AGENTS[@]} -eq 0 ]; then
+        echo "   ⚠️  Skipping Codex agent prune — install set is empty (generator may have failed)"
+    else
+        for installed_agent in "$HOME/.codex/agents"/*.toml; do
+            [ -f "$installed_agent" ] || continue
+            agent_basename=$(basename "$installed_agent")
+            still_present=false
+            for cur in "${CURRENT_CODEX_AGENTS[@]}"; do
+                [ "$cur" = "$agent_basename" ] && still_present=true && break
+            done
+            if [ "$still_present" = "false" ]; then
+                rm -f "$installed_agent"
+                echo "   🗑️  Removed stale Codex agent: ${agent_basename%.toml}"
+            fi
         done
-        if [ "$still_present" = "false" ]; then
-            rm -f "$installed_agent"
-            echo "   🗑️  Removed stale Codex agent: ${agent_basename%.toml}"
-        fi
-    done
+    fi
     printf '%s\n' "${CURRENT_CODEX_AGENTS[@]}" >"$CODEX_AGENTS_MANIFEST"
 
     # Install/merge config.toml
@@ -526,7 +619,7 @@ with open(sys.argv[1], "wb") as f:
 print("   ✅ Codex config.toml merged (user keys preserved)")
 PY
         else
-            cp "$CODEGEN_DIR/templates/generated/codex/config.toml" "$HOME/.codex/config.toml"
+            content_stable_cp "$CODEGEN_DIR/templates/generated/codex/config.toml" "$HOME/.codex/config.toml"
             echo "   ✅ Codex config.toml installed"
         fi
     fi
@@ -547,7 +640,7 @@ if harness_enabled cursor; then
         for cmd_file in "$CODEGEN_DIR/templates/shared/commands"/*.md; do
             if [ -f "$cmd_file" ]; then
                 cmd_name=$(basename "$cmd_file")
-                cp "$cmd_file" "$CURSOR_COMMANDS_DIR/"
+                content_stable_cp "$cmd_file" "$CURSOR_COMMANDS_DIR/$cmd_name"
                 echo "   ✅ Installed Cursor command: /${cmd_name%.md}"
                 CURRENT_CURSOR_COMMANDS+=("$cmd_name")
             fi
@@ -578,25 +671,30 @@ if harness_enabled cursor; then
         for agent_file in "$CODEGEN_DIR/templates/generated/cursor/agents"/*.md; do
             if [ -f "$agent_file" ]; then
                 agent_name=$(basename "$agent_file")
-                cp "$agent_file" "$CURSOR_SUBAGENTS_DIR/"
+                content_stable_cp "$agent_file" "$CURSOR_SUBAGENTS_DIR/$agent_name"
                 echo "   ✅ Installed Cursor agent: ${agent_name%.md}"
                 CURRENT_CURSOR_AGENTS+=("$agent_name")
             fi
         done
     fi
     # Delete stale Cursor agents — any .md in agents dir not in the current install set.
-    for installed_agent in "$CURSOR_SUBAGENTS_DIR"/*.md; do
-        [ -f "$installed_agent" ] || continue
-        agent_basename=$(basename "$installed_agent")
-        still_present=false
-        for cur in "${CURRENT_CURSOR_AGENTS[@]}"; do
-            [ "$cur" = "$agent_basename" ] && still_present=true && break
+    # Safety: skip prune when install set is empty (generator failure).
+    if [ ${#CURRENT_CURSOR_AGENTS[@]} -eq 0 ]; then
+        echo "   ⚠️  Skipping Cursor agent prune — install set is empty (generator may have failed)"
+    else
+        for installed_agent in "$CURSOR_SUBAGENTS_DIR"/*.md; do
+            [ -f "$installed_agent" ] || continue
+            agent_basename=$(basename "$installed_agent")
+            still_present=false
+            for cur in "${CURRENT_CURSOR_AGENTS[@]}"; do
+                [ "$cur" = "$agent_basename" ] && still_present=true && break
+            done
+            if [ "$still_present" = "false" ]; then
+                rm -f "$installed_agent"
+                echo "   🗑️  Removed stale Cursor agent: ${agent_basename%.md}"
+            fi
         done
-        if [ "$still_present" = "false" ]; then
-            rm -f "$installed_agent"
-            echo "   🗑️  Removed stale Cursor agent: ${agent_basename%.md}"
-        fi
-    done
+    fi
     printf '%s\n' "${CURRENT_CURSOR_AGENTS[@]}" >"$CURSOR_AGENTS_MANIFEST"
 fi
 

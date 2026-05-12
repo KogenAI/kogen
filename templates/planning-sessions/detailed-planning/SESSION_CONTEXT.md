@@ -45,19 +45,16 @@ Must have read ALL THREE before continuing.
 For Monorepo or Phoenix/Elixir:
 
 ```
-Read file: ./codegen/rules/subagents/phoenix.md
-Read file: ./codegen/rules/subagents/phoenix-ui.md
-Read file: ./codegen/rules/subagents/elixir-code-generation.md
+Read file: ./codegen/rules/stacks/phoenix/_core.md
+Read file: ./codegen/rules/stacks/phoenix/planner.md
 ```
 
-Phoenix projects ALWAYS include `phoenix-ui.md` — LiveView is inherently UI framework.
+LiveView UI patterns live in `phoenix/_core.md`.
 
 ### Step 4: Load Additional Rules Based on Feature
 
 - Figma design impl → `rules/subagents/ui-implementation.md` (pixel-perfect from Figma)
-- Testing features → `rules/subagents/testing.md`
-
-`phoenix-ui.md` (LiveView components, forms, JS hooks) already loaded in Step 3. `ui-implementation.md` is for Figma-to-code workflows.
+- Testing features → `rules/stacks/phoenix/testing.md`
 
 ### VALIDATION: Prove You Loaded Rules
 
@@ -69,7 +66,7 @@ Before saying "ready for feature description":
 
 Example correct response:
 
-> "Loaded: `./codegen/rules/planning.md`, `./codegen/rules/planning/detailed.md`, `./codegen/rules/INDEX.md`, `./codegen/rules/subagents/phoenix.md`, `./codegen/rules/subagents/phoenix-ui.md`, `./codegen/rules/subagents/elixir-code-generation.md`
+> "Loaded: `./codegen/rules/planning.md`, `./codegen/rules/planning/detailed.md`, `./codegen/rules/INDEX.md`, `./codegen/rules/stacks/phoenix/_core.md`, `./codegen/rules/stacks/phoenix/planner.md`
 >
 > Project type: Phoenix/Elixir (lib/ and mix.exs at root)
 >

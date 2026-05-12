@@ -45,10 +45,10 @@ FIXTURE_NOOP='{"hook_event_name":"SubagentStop","agent_type":"planner","agent_id
 run_test "non-developer agent_type is no-op" "0" "$FIXTURE_NOOP"
 
 # Test 2: stop_hook_active=true exits 0 immediately
-FIXTURE_ACTIVE='{"hook_event_name":"SubagentStop","agent_type":"phoenix-developer","agent_id":"abc","session_id":"s1","cwd":"/tmp","stop_hook_active":true}'
+FIXTURE_ACTIVE='{"hook_event_name":"SubagentStop","agent_type":"developer-phoenix-backend","agent_id":"abc","session_id":"s1","cwd":"/tmp","stop_hook_active":true}'
 run_test "stop_hook_active=true exits 0 immediately" "0" "$FIXTURE_ACTIVE"
 
-# Test 3: phoenix-developer SubagentStop on git repo exits 0
+# Test 3: developer-phoenix-backend SubagentStop on git repo exits 0
 TMP_DIR="$(mktemp -d)"
 cleanup() { rm -rf "$TMP_DIR"; }
 trap cleanup EXIT
@@ -67,13 +67,13 @@ trap cleanup EXIT
 # Now make a change
 printf 'x = 2\n' >"$TMP_DIR/foo.ex"
 
-FIXTURE_DEV='{"hook_event_name":"SubagentStop","agent_type":"phoenix-developer","agent_id":"abc","session_id":"s1","cwd":"'"$TMP_DIR"'","stop_hook_active":false}'
-run_test "phoenix-developer on git repo exits 0" "0" "$FIXTURE_DEV"
+FIXTURE_DEV='{"hook_event_name":"SubagentStop","agent_type":"developer-phoenix-backend","agent_id":"abc","session_id":"s1","cwd":"'"$TMP_DIR"'","stop_hook_active":false}'
+run_test "developer-phoenix-backend on git repo exits 0" "0" "$FIXTURE_DEV"
 
 # Test 4: cwd outside any git repo — exits 0 silently (no error)
 NON_REPO_DIR="$(mktemp -d)"
-FIXTURE_NO_REPO='{"hook_event_name":"SubagentStop","agent_type":"phoenix-developer","agent_id":"abc","session_id":"s1","cwd":"'"$NON_REPO_DIR"'","stop_hook_active":false}'
-run_test "phoenix-developer outside git repo exits 0 silently" "0" "$FIXTURE_NO_REPO"
+FIXTURE_NO_REPO='{"hook_event_name":"SubagentStop","agent_type":"developer-phoenix-backend","agent_id":"abc","session_id":"s1","cwd":"'"$NON_REPO_DIR"'","stop_hook_active":false}'
+run_test "developer-phoenix-backend outside git repo exits 0 silently" "0" "$FIXTURE_NO_REPO"
 rm -rf "$NON_REPO_DIR"
 
 # Test 5: cross-repo edit — change in BOTH the project repo and a sibling repo.
@@ -107,8 +107,8 @@ printf '# title updated\n' >"$SIB_REPO/readme.md"
 # repo isn't one of those, the hook bucketing happens via project_dir only.
 # This still exercises the bucketing path: we simulate by passing the project
 # repo as cwd; the hook iterates candidate_repos = [project_dir]. Verify exit 0.
-FIXTURE_CROSS='{"hook_event_name":"SubagentStop","agent_type":"phoenix-developer","agent_id":"abc","session_id":"s1","cwd":"'"$PROJ_REPO"'","stop_hook_active":false}'
-run_test "phoenix-developer with bucketed change exits 0" "0" "$FIXTURE_CROSS"
+FIXTURE_CROSS='{"hook_event_name":"SubagentStop","agent_type":"developer-phoenix-backend","agent_id":"abc","session_id":"s1","cwd":"'"$PROJ_REPO"'","stop_hook_active":false}'
+run_test "developer-phoenix-backend with bucketed change exits 0" "0" "$FIXTURE_CROSS"
 rm -rf "$PROJ_REPO" "$SIB_REPO"
 
 echo ""

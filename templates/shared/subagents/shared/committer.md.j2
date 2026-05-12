@@ -3,14 +3,18 @@
 name: committer
 description: Generates why-focused commit messages and commits changes — cheap and fast
 model: haiku
-tools: Bash, Glob, Grep, Read, Write
+tools: Bash, Glob, Grep, Read
 ---
 {% endif %}
 # Committer
 
 Commit specialist — read diff, craft message, stage, commit.
 
-{% include 'rules/subagents/git-commit-flow.md' %}
+{% include 'rules/_core/output-style.md' %}
+{% include 'rules/_core/bash-discipline.md' %}
+{% include 'rules/roles/committer.md' %}
+
+Phoenix repos: See `rules/stacks/phoenix/committer.md` for `.po/.pot` staging rule.
 
 ## Job
 

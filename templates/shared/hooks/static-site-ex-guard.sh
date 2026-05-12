@@ -1,8 +1,8 @@
 #!/bin/bash
-# static-site-ex-guard.sh — PreToolUse hook for static-site-developer
+# static-site-ex-guard.sh — PreToolUse hook for developer-html | developer-hugo | developer-vite
 #
 # Blocks Write and Edit tool calls targeting Elixir/HEEX files when the active
-# agent is "static-site-developer". All other agents pass through unconditionally.
+# agent is "developer-html | developer-hugo | developer-vite". All other agents pass through unconditionally.
 
 set -u
 
@@ -11,15 +11,16 @@ parse_input
 
 debug_log static-site-ex-guard "tool=$TOOL_NAME agent=$AGENT_TYPE file=$FILE_PATH"
 
-# Only gate static-site-developer; allow all other agents unconditionally
-if [ "$AGENT_TYPE" != "static-site-developer" ]; then
-    exit 0
-fi
+# Only gate static-site developers; allow all other agents unconditionally
+case "$AGENT_TYPE" in
+developer-html | developer-hugo | developer-vite) ;;
+*) exit 0 ;;
+esac
 
 # Block Write or Edit calls targeting Elixir/HEEX files
 if [ "$TOOL_NAME" = "Write" ] || [ "$TOOL_NAME" = "Edit" ]; then
     if printf '%s' "$FILE_PATH" | grep -qE '\.(ex|exs|heex)$'; then
-        deny "BLOCKED by static-site-ex-guard: static-site-developer cannot edit Elixir/HEEX files ($FILE_PATH). Re-delegate to phoenix-developer."
+        deny "BLOCKED by static-site-ex-guard: static-site developer cannot edit Elixir/HEEX files ($FILE_PATH). Re-delegate to developer-phoenix-backend / developer-phoenix-frontend."
         exit 0
     fi
 fi

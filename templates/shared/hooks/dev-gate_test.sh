@@ -72,7 +72,7 @@ make_project() {
 
 input_for() {
     local cwd="$1"
-    local agent_type="${2:-phoenix-developer}"
+    local agent_type="${2:-developer-phoenix-backend}"
     local stop_active="${3:-false}"
     local sid="${4:-sess1}"
     cat <<JSON
@@ -82,13 +82,13 @@ JSON
 
 # ── Test 1: stop_hook_active=true is a no-op ────────────────────────────────
 T1=$(make_project)
-out=$(printf '%s' "$(input_for "$T1" phoenix-developer true)" | bash "$HOOK" 2>/dev/null || true)
+out=$(printf '%s' "$(input_for "$T1" developer-phoenix-backend true)" | bash "$HOOK" 2>/dev/null || true)
 assert_not_contains "stop_hook_active short-circuits (no block)" '"decision":"block"' "$out"
 rm -rf "$T1"
 
 # ── Test 2: non-developer agent_type is a no-op ─────────────────────────────
 T2=$(make_project)
-out=$(printf '%s' "$(input_for "$T2" code-reviewer)" | bash "$HOOK" 2>/dev/null || true)
+out=$(printf '%s' "$(input_for "$T2" reviewer-phoenix)" | bash "$HOOK" 2>/dev/null || true)
 assert_not_contains "non-developer agent_type is no-op" '"decision":"block"' "$out"
 rm -rf "$T2"
 
@@ -140,7 +140,7 @@ MD
 # fails fast in this temp dir (no Makefile). Either way the flag file is
 # written before the gate completes. We just need to assert the flag exists
 # and has the right keys.
-out=$(printf '%s' "$(input_for "$T5" phoenix-developer false sess-long)" | bash "$HOOK" 2>/dev/null || true)
+out=$(printf '%s' "$(input_for "$T5" developer-phoenix-backend false sess-long)" | bash "$HOOK" 2>/dev/null || true)
 sleep 0.5
 flag="$T5/codegen/gate-pending/sess-long.flag"
 assert_file_contains "long-gate flag has gate=" "gate=make llm" "$flag"
@@ -160,7 +160,7 @@ assert_file_contains "long-gate flag has session_id" "session_id=sess-long" "$fl
 # The hook now blocks and polls — with no Makefile present, `make llm` fails
 # fast and the verdict should be FAILED (or the flag file exists before verdict).
 # We assert the flag file shape and that a verdict was appended (not placeholder).
-assert_file_contains "long-gate verdict VE section appended" "verification-engineer Section" "$LOG"
+assert_file_contains "long-gate verdict dev-gate section appended" "dev-gate Section" "$LOG"
 # Cleanup any background process we may have spawned
 pkill -f "make llm" 2>/dev/null || true
 rm -rf "$T5"
@@ -237,7 +237,7 @@ started_at=2026-01-01T00:00:00Z
 session_id=oldsession
 mode=long
 EOF
-out=$(printf '%s' "$(input_for "$T8" phoenix-developer false sess8)" | DEV_GATE_POLL_TIMEOUT_OVERRIDE=5 bash "$HOOK" 2>/dev/null || true)
+out=$(printf '%s' "$(input_for "$T8" developer-phoenix-backend false sess8)" | DEV_GATE_POLL_TIMEOUT_OVERRIDE=5 bash "$HOOK" 2>/dev/null || true)
 kill "$prev_pid" 2>/dev/null || true
 assert_file_contains "prev-alive: INCONCLUSIVE appended" "INCONCLUSIVE" "$LOG8"
 assert_file_contains "prev-alive: reason is previous-gate-running" "previous-gate-running" "$LOG8"
@@ -288,7 +288,7 @@ touch "$orphan_log" "$orphan_ec"
 # macOS: touch -t uses YYYYMMDDHHMM; GNU: touch -d "2 days ago".
 two_days_ago=$(date -v-2d +%Y%m%d%H%M 2>/dev/null || date -d "2 days ago" +%Y%m%d%H%M 2>/dev/null || echo "202401010000")
 touch -t "$two_days_ago" "$orphan_log" "$orphan_ec" 2>/dev/null || true
-out=$(printf '%s' "$(input_for "$T9" phoenix-developer false sess9)" |
+out=$(printf '%s' "$(input_for "$T9" developer-phoenix-backend false sess9)" |
     DEV_GATE_POLL_TIMEOUT_OVERRIDE=10 PATH="$stub_bin9:$PATH" bash "$HOOK" 2>/dev/null || true)
 # Orphan files should be swept (reaper runs in long-gate branch).
 [ ! -f "$orphan_log" ] && {
@@ -321,7 +321,7 @@ MD
 mkdir -p "$T10/codegen/gate-pending/.launch.lock"
 # Write a live PID into the lock so stale-lock recovery does not remove it.
 echo "$$" >"$T10/codegen/gate-pending/.launch.lock/launched_pid"
-out=$(printf '%s' "$(input_for "$T10" phoenix-developer false sess10)" | DEV_GATE_POLL_TIMEOUT_OVERRIDE=5 bash "$HOOK" 2>/dev/null || true)
+out=$(printf '%s' "$(input_for "$T10" developer-phoenix-backend false sess10)" | DEV_GATE_POLL_TIMEOUT_OVERRIDE=5 bash "$HOOK" 2>/dev/null || true)
 assert_file_contains "mutex: INCONCLUSIVE appended" "INCONCLUSIVE" "$LOG10"
 assert_file_contains "mutex: reason is concurrent-launch" "concurrent-launch" "$LOG10"
 rm -rf "$T10"
@@ -345,7 +345,7 @@ cat >"$LOG11" <<'MD'
 **Gate**: `make llm`
 
 MD
-out=$(printf '%s' "$(input_for "$T11" phoenix-developer false sess11)" |
+out=$(printf '%s' "$(input_for "$T11" developer-phoenix-backend false sess11)" |
     DEV_GATE_POLL_TIMEOUT_OVERRIDE=10 PATH="$stub_bin11:$PATH" bash "$HOOK" 2>/dev/null || true)
 assert_file_contains "long-gate exit-0: ALL CLEAR appended" "ALL CLEAR" "$LOG11"
 rm -rf "$T11" "$stub_bin11"
@@ -369,7 +369,7 @@ cat >"$LOG12" <<'MD'
 **Gate**: `make llm`
 
 MD
-out=$(printf '%s' "$(input_for "$T12" phoenix-developer false sess12)" |
+out=$(printf '%s' "$(input_for "$T12" developer-phoenix-backend false sess12)" |
     DEV_GATE_POLL_TIMEOUT_OVERRIDE=10 PATH="$stub_bin12:$PATH" bash "$HOOK" 2>/dev/null || true)
 assert_file_contains "long-gate exit-1: FAILED appended" "FAILED" "$LOG12"
 rm -rf "$T12" "$stub_bin12"
@@ -394,7 +394,7 @@ cat >"$LOG13" <<'MD'
 
 MD
 # Use a 1-second poll timeout so the test completes quickly.
-out=$(printf '%s' "$(input_for "$T13" phoenix-developer false sess13)" |
+out=$(printf '%s' "$(input_for "$T13" developer-phoenix-backend false sess13)" |
     DEV_GATE_POLL_TIMEOUT_OVERRIDE=1 PATH="$stub_bin13:$PATH" bash "$HOOK" 2>/dev/null || true)
 assert_file_contains "timeout: INCONCLUSIVE appended" "INCONCLUSIVE" "$LOG13"
 assert_file_contains "timeout: reason is timeout-exceeded" "timeout-exceeded" "$LOG13"

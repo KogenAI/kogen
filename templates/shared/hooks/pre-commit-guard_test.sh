@@ -2,8 +2,8 @@
 # pre-commit-guard_test.sh — unit tests for pre-commit-guard.sh
 #
 # Tests:
-#   1. git commit is BLOCKED for phoenix-developer (exit 2)
-#   2. git status PASSES for phoenix-developer (exit 0)
+#   1. git commit is BLOCKED for developer-phoenix-backend (exit 2)
+#   2. git status PASSES for developer-phoenix-backend (exit 0)
 #   3. git commit PASSES for committer (exit 0)
 
 set -euo pipefail
@@ -45,13 +45,13 @@ run_test() {
     fi
 }
 
-# Test 1: git commit is BLOCKED for phoenix-developer
-FIXTURE_COMMIT_BLOCKED='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"git commit -m '\''foo'\''"},"agent_type":"phoenix-developer","agent_id":"abc123"}'
-run_test "git commit blocked for phoenix-developer" "2" "$FIXTURE_COMMIT_BLOCKED"
+# Test 1: git commit is BLOCKED for developer-phoenix-backend
+FIXTURE_COMMIT_BLOCKED='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"git commit -m '\''foo'\''"},"agent_type":"developer-phoenix-backend","agent_id":"abc123"}'
+run_test "git commit blocked for developer-phoenix-backend" "2" "$FIXTURE_COMMIT_BLOCKED"
 
-# Test 2: git status PASSES for phoenix-developer
-FIXTURE_STATUS_ALLOWED='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"git status"},"agent_type":"phoenix-developer","agent_id":"abc123"}'
-run_test "git status passes for phoenix-developer" "0" "$FIXTURE_STATUS_ALLOWED"
+# Test 2: git status PASSES for developer-phoenix-backend
+FIXTURE_STATUS_ALLOWED='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"git status"},"agent_type":"developer-phoenix-backend","agent_id":"abc123"}'
+run_test "git status passes for developer-phoenix-backend" "0" "$FIXTURE_STATUS_ALLOWED"
 
 # Test 3: git commit PASSES for committer
 FIXTURE_COMMIT_ALLOWED='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"git commit -m '\''foo'\''"},"agent_type":"committer","agent_id":"abc123"}'

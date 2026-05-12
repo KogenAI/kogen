@@ -48,46 +48,46 @@ LOG_FILE="$TMP_DIR/codegen/logging/foo.md"
 mkdir -p "$(dirname "$LOG_FILE")"
 touch "$LOG_FILE"
 
-# Test 1: phoenix-developer Edit with section header in new_string — ALLOW
-NEW_WITH_HEADER=$(printf '## phoenix-developer Section\n\nSome content')
+# Test 1: developer-phoenix-backend Edit with section header in new_string — ALLOW
+NEW_WITH_HEADER=$(printf '## developer-phoenix-backend Section\n\nSome content')
 FIXTURE_ALLOW=$(jq -n \
     --arg fp "$LOG_FILE" \
     --arg ns "$NEW_WITH_HEADER" \
-    '{"hook_event_name":"PreToolUse","tool_name":"Edit","tool_input":{"file_path":$fp,"old_string":"","new_string":$ns},"agent_type":"phoenix-developer","agent_id":"abc"}')
-run_test "phoenix-developer Edit with section header allows" "0" "$FIXTURE_ALLOW"
+    '{"hook_event_name":"PreToolUse","tool_name":"Edit","tool_input":{"file_path":$fp,"old_string":"","new_string":$ns},"agent_type":"developer-phoenix-backend","agent_id":"abc"}')
+run_test "developer-phoenix-backend Edit with section header allows" "0" "$FIXTURE_ALLOW"
 
-# Test 2: phoenix-developer Edit without section header — BLOCK
+# Test 2: developer-phoenix-backend Edit without section header — BLOCK
 NEW_WITHOUT_HEADER="Some content without the required header"
 FIXTURE_BLOCK=$(jq -n \
     --arg fp "$LOG_FILE" \
     --arg ns "$NEW_WITHOUT_HEADER" \
-    '{"hook_event_name":"PreToolUse","tool_name":"Edit","tool_input":{"file_path":$fp,"old_string":"","new_string":$ns},"agent_type":"phoenix-developer","agent_id":"abc"}')
-run_test "phoenix-developer Edit without section header blocks" "2" "$FIXTURE_BLOCK"
+    '{"hook_event_name":"PreToolUse","tool_name":"Edit","tool_input":{"file_path":$fp,"old_string":"","new_string":$ns},"agent_type":"developer-phoenix-backend","agent_id":"abc"}')
+run_test "developer-phoenix-backend Edit without section header blocks" "2" "$FIXTURE_BLOCK"
 
 # Test 3: If section header already in file, follow-up edit is allowed without header in new_string
-printf '## phoenix-developer Section\n\nExisting content\n' >"$LOG_FILE"
+printf '## developer-phoenix-backend Section\n\nExisting content\n' >"$LOG_FILE"
 FIXTURE_FOLLOWUP=$(jq -n \
     --arg fp "$LOG_FILE" \
     --arg ns "Additional content" \
-    '{"hook_event_name":"PreToolUse","tool_name":"Edit","tool_input":{"file_path":$fp,"old_string":"Existing content","new_string":"Additional content"},"agent_type":"phoenix-developer","agent_id":"abc"}')
+    '{"hook_event_name":"PreToolUse","tool_name":"Edit","tool_input":{"file_path":$fp,"old_string":"Existing content","new_string":"Additional content"},"agent_type":"developer-phoenix-backend","agent_id":"abc"}')
 run_test "follow-up edit when section already exists allows" "0" "$FIXTURE_FOLLOWUP"
 
 # Test 4: Write to a NEW session log file with header in content — ALLOW
 NEW_LOG_FILE="$TMP_DIR/codegen/logging/new-session.md"
-WRITE_CONTENT_OK=$(printf '# Step\n\n## phoenix-developer Section\n\nbody')
+WRITE_CONTENT_OK=$(printf '# Step\n\n## developer-phoenix-backend Section\n\nbody')
 FIXTURE_WRITE_OK=$(jq -n \
     --arg fp "$NEW_LOG_FILE" \
     --arg c "$WRITE_CONTENT_OK" \
-    '{"hook_event_name":"PreToolUse","tool_name":"Write","tool_input":{"file_path":$fp,"content":$c},"agent_type":"phoenix-developer","agent_id":"abc"}')
-run_test "phoenix-developer Write with section header allows" "0" "$FIXTURE_WRITE_OK"
+    '{"hook_event_name":"PreToolUse","tool_name":"Write","tool_input":{"file_path":$fp,"content":$c},"agent_type":"developer-phoenix-backend","agent_id":"abc"}')
+run_test "developer-phoenix-backend Write with section header allows" "0" "$FIXTURE_WRITE_OK"
 
 # Test 5: Write to a NEW session log file WITHOUT header in content — BLOCK
 WRITE_CONTENT_BAD="# Step\n\nNo header here"
 FIXTURE_WRITE_BAD=$(jq -n \
     --arg fp "$TMP_DIR/codegen/logging/another.md" \
     --arg c "$WRITE_CONTENT_BAD" \
-    '{"hook_event_name":"PreToolUse","tool_name":"Write","tool_input":{"file_path":$fp,"content":$c},"agent_type":"phoenix-developer","agent_id":"abc"}')
-run_test "phoenix-developer Write without section header blocks" "2" "$FIXTURE_WRITE_BAD"
+    '{"hook_event_name":"PreToolUse","tool_name":"Write","tool_input":{"file_path":$fp,"content":$c},"agent_type":"developer-phoenix-backend","agent_id":"abc"}')
+run_test "developer-phoenix-backend Write without section header blocks" "2" "$FIXTURE_WRITE_BAD"
 
 # Test 6: planner Edit without "## planner Section" — ALLOW (planner writes ## Plan, not a Section header)
 PLANNER_LOG="$TMP_DIR/codegen/logging/planner-session.md"

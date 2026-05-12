@@ -11,7 +11,7 @@ Extract lessons from conversation and add concise rules.
 
 Read `~/Areas/Optimum/context/rules/STYLE_GUIDE.md` before writing. Key points:
 
-- **Caveman ultra style** — rules are read by agents, not humans. No preamble, no hedging, no pleasantries. Fragments OK. Arrows for causality (X → Y).
+- **Caveman ultra style** — rules read by agents, not humans. No preamble, no hedging. Fragments OK. Arrows for causality (X → Y).
 - Max 10 lines per rule section
 - Action-oriented — commands/searches first, not theory
 - One concept per rule
@@ -21,98 +21,115 @@ Read `~/Areas/Optimum/context/rules/STYLE_GUIDE.md` before writing. Key points:
 
 ## Size Check (MANDATORY before writing)
 
-After drafting, count lines: `echo "your section" | wc -l`
+After drafting: `echo "your section" | wc -l`. Section > 10 lines → compress. Code example > 6 lines → cut to minimal pattern.
 
-- Section > 10 lines → compress before saving
-- Code example > 6 lines → cut to minimal pattern, remove project-specific details
-- "Would this example make sense in a different project?" → No = remove it, state rule in plain words
+## Project-Specific Content Check
 
-## Project-specific Content Check
+"Would this rule make sense word-for-word in a different project?" Yes → shared rule file. No → `PROJECT_CONTEXT.md` / `CLAUDE.md` only.
 
-Before adding to shared rule file: "Would this rule make sense word-for-word in a completely different project?"
-
-- Yes → shared rule file
-- No → `PROJECT_CONTEXT.md` or `CLAUDE.md` only
-
-Signs of project-specific leakage (never in shared files):
-
-- Project names, repo names, sibling repo paths
-- Module names, table names, env var names specific to app
-- Service names, infra details, vendor specifics
+Signs of leakage: project names, repo paths, app-specific module/table/env-var names, infra/vendor specifics.
 
 ## Process
 
-1. Extract lessons from conversation (errors, solutions, patterns)
-2. Identify the responsible role (see below)
-3. Write concisely — max 5-10 lines per rule
-4. Place in the correct file for that role
+1. Extract lessons (errors, solutions, patterns)
+2. Identify responsible role (decision tree below)
+3. Write concisely — max 5-10 lines
+4. Place in correct file
 
-## Find the Responsible Role
+## Placement Decision Tree
 
-Before writing, identify whose job description covers the behaviour. Read role definitions from:
+1. **Whose behavior?** → role
+2. **Stack-scoped?**
+   - No → `roles/<role>.md`
+   - Phoenix → step 3
+   - Static → step 4
+3. **Phoenix**:
+   - Cross-role fact (idiom, Ecto, LiveView pattern) → `stacks/phoenix/_core.md`
+   - Role-specific → `stacks/phoenix/<role>.md`
+   - Testing → `stacks/phoenix/testing.md` (LiveView/browser → `testing-liveview.md`)
+4. **Static**:
+   - Role-specific (universal across substacks) → `stacks/static/<role>.md`
+   - Substack-specific (HTML/Hugo/Vite) → `stacks/static/<substack>.md` (or `hugo-deep.md` for advanced Hugo)
+   - Cross-substack (Tailwind/assets/JS) → `stacks/static/{tailwind,assets,js}.md`
+5. **Cross-role primitive** (git read-only, etc.) → `shared/<concept>.md`
+6. **Universal subagent rule** (output, bash, log) → `_core/<concept>.md`
+7. **Build runtime** (result JSON) → `build-runtime/<concept>.md`
 
-- `codegen/templates/shared/subagents/` — committer, planner, verification-engineer, code-reviewer, phoenix-developer, static-site-developer, data-layer-developer
-- Project `CLAUDE.md` / `AGENTS.md` — orchestrator responsibilities
+## Role Ownership Quick Reference
 
-**Role ownership quick reference:**
+| Mistake                                                | Role         | File                                                                                                                              |
+| ------------------------------------------------------ | ------------ | --------------------------------------------------------------------------------------------------------------------------------- |
+| Orchestrator delegated wrong time / communicated badly | Orchestrator | `roles/orchestrator.md`                                                                                                           |
+| Committer wrote wrong message / committed wrong files  | Committer    | `roles/committer.md`                                                                                                              |
+| Developer wrote wrong code / skipped tests             | Developer    | `roles/developer.md` (universal) or `stacks/phoenix/developer.md` (Elixir style) or `stacks/phoenix/testing.md` (test discipline) |
+| Gate misclassified verdict                             | Hook author  | `codegen/templates/shared/hooks/dev-gate.sh`                                                                                      |
+| CR approved bad code / missed issues                   | CR           | `roles/reviewer.md` (universal) or `stacks/<stack>/reviewer.md` (stack-specific)                                                  |
+| Any agent broke Elixir code style                      | Developer    | `stacks/phoenix/developer.md`                                                                                                     |
+| Any agent broke CI                                     | Developer    | `stacks/phoenix/testing.md`                                                                                                       |
 
-| Who made the mistake                                  | Responsible role | Rule goes in                                 |
-| ----------------------------------------------------- | ---------------- | -------------------------------------------- |
-| Orchestrator delegated at wrong time                  | Orchestrator     | `rules/orchestration/delegation-patterns.md` |
-| Orchestrator communicated badly                       | Orchestrator     | `rules/orchestration/user-communication.md`  |
-| Committer wrote wrong message / committed wrong files | Committer        | `rules/subagents/git-commit-flow.md`         |
-| Developer wrote wrong code / skipped tests            | Developer        | `rules/subagents/workflow.md` or `tdd.md`    |
-| VE ran gates it shouldn't / missed failures           | VE               | `rules/subagents/verification-workflow.md`   |
-| CR approved bad code / missed issues                  | CR               | `rules/subagents/code-review.md`             |
-| Any agent broke Elixir code style                     | Developer        | `rules/subagents/elixir-code-generation.md`  |
-| Any agent broke CI                                    | Developer/VE     | `rules/subagents/elixir-ci.md`               |
+**Key principle**: if orchestrator made wrong call, rule goes on orchestrator — even if subagent executed the action.
 
-**Key principle**: if the orchestrator made the wrong call (e.g., delegated to committer too early), the rule goes on the **orchestrator** — even if a subagent executed the action. The subagent did its job correctly; the orchestrator invoked it at the wrong time.
-
-**Split rule** (both orchestrator and subagent need it): write one entry in each file. Keep each under 10 lines.
+**Split rule** (both orchestrator and subagent need it): one entry in each file. Each <10 lines.
 
 ## Classification
 
-**Orchestration signals**: delegation timing, when-to-commit, gate sequencing, coordination, parallel execution, sequencing steps
+**Orchestration signals**: delegation timing, when-to-commit, gate sequencing, coordination, parallel execution.
 
-**Subagent signals**: how to implement, code patterns, API usage, framework specifics, testing approaches, debugging, how to commit
+**Subagent signals**: how to implement, code patterns, API usage, framework specifics, testing approaches, debugging, how to commit.
 
-## File Placement
+## File Placement Reference
 
 Check `codegen/rules/INDEX.md` first to understand file boundaries.
 
-- "Would this rule make sense in a different project?" → No = `CLAUDE.md` or `PROJECT_CONTEXT.md`, Yes = shared rule file
+### Core (`rules/_core/`) — loaded by every subagent
 
-Each rule file has strict scope:
+- `output-style.md` — caveman ultra
+- `bash-discipline.md` — Bash + Read + token budget + ports
+- `session-log.md` — file naming, skeleton, citations
 
-- `git-commit-flow.md` — how commits are structured; committer/dev execution details
-- `delegation-patterns.md` — orchestrator decisions: when to commit, when to delegate, gate sequencing
-- `workflow.md` — dev workflow and completion requirements, not git operations
+### Shared (`rules/shared/`)
 
-If rule doesn't fit existing file: consider project-specific file, new focused rule file, or it's too narrow.
+- `git-readonly.md` — read-only git ops, workspace, credentials
 
-### Orchestration Rules (`rules/orchestration/`)
+### Role (`rules/roles/`)
 
-- `delegation-patterns.md` — subagent selection, coordination, gates, commit timing
-- `user-communication.md` — communication style, autonomy, background task handling
+| File              | Scope                                                      |
+| ----------------- | ---------------------------------------------------------- |
+| `orchestrator.md` | Universal delegation/gates/commit timing/user comms/deploy |
+| `planner.md`      | Universal — recipe/usage rules/plan structure              |
+| `developer.md`    | Universal dev workflow — completion, pre-completion        |
+| `reviewer.md`     | Universal 15-step review + ast-grep                        |
+| `committer.md`    | Universal commit message, multi-repo                       |
 
-### Impl Rules (`rules/subagents/`)
+### Stacks (`rules/stacks/`)
 
-| File                      | Scope                                         |
-| ------------------------- | --------------------------------------------- |
-| git-commit-flow.md        | Commit structure, message format, git ops     |
-| phoenix.md                | Phoenix/LiveView patterns, contexts, routing  |
-| testing.md                | Testing patterns, CI authority, coverage      |
-| testing-backend.md        | Backend testing (contexts, schemas, Req.Test) |
-| elixir-code-generation.md | Code style, @spec, @impl, module organization |
-| workflow.md               | Dev workflow, completion reqs                 |
-| tdd.md                    | Red-green-refactor, pre-handoff checklist     |
-| verification-workflow.md  | CI verification, reporting                    |
-| code-review.md            | Quality analysis, systematic searches         |
-| elixir-ci.md              | Credo, Dialyzer, CI pipeline                  |
+| File                          | Scope                                                            |
+| ----------------------------- | ---------------------------------------------------------------- |
+| `phoenix/_core.md`            | Cross-role idioms, Ecto, contexts, LiveView UI                   |
+| `phoenix/orchestrator.md`     | Gate commands, INCONCLUSIVE, ext→agent, slice routing            |
+| `phoenix/planner.md`          | Phoenix dep scan + OTP convention                                |
+| `phoenix/developer.md`        | Pre-completion greps, mix workflow, hot reload, codegen patterns |
+| `phoenix/reviewer.md`         | @spec/@type/~p/Gettext/github_workflows                          |
+| `phoenix/committer.md`        | `.po/.pot` staging                                               |
+| `phoenix/testing.md`          | CI/TDD/coverage/BDD/LLM partitions/backend                       |
+| `phoenix/testing-liveview.md` | LiveView/HEEx/browser/SPA testing                                |
+| `static/planner.md`           | Substack detection, tailwind detect                              |
+| `static/developer.md`         | Output dir, build pipeline, npm, Tailwind v4 invariants          |
+| `static/reviewer.md`          | Selector/a11y/asset/JS checks                                    |
+| `static/html.md`              | Plain HTML stack                                                 |
+| `static/hugo.md`              | Hugo quickref                                                    |
+| `static/hugo-deep.md`         | Hugo deep (lazy load)                                            |
+| `static/vite.md`              | Vite + React                                                     |
+| `static/tailwind.md`          | Tailwind v4                                                      |
+| `static/assets.md`            | Favicons, robots, og                                             |
+| `static/js.md`                | Static-site JS                                                   |
+
+### Build-Runtime (`rules/build-runtime/`)
+
+- `result-json.md` — final JSON contract
 
 ## After Adding Rules
 
-1. Update `INDEX.md` selectively — only when introducing a new rule file or renaming a category. Don't add impl details. INDEX.md is a map, not a changelog.
-2. Verify no duplication with existing rules
-3. Follow STYLE_GUIDE.md compression principles
+1. Update `INDEX.md` selectively — only on new file/category rename
+2. Verify no duplication
+3. Follow `STYLE_GUIDE.md`

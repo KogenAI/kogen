@@ -8,6 +8,7 @@ source "$SCRIPT_DIR/utils.sh"
 # Parse command line arguments
 MODEL_OVERRIDE=""
 AGENT_OVERRIDE=""
+UPDATE_MODE=false
 while [[ $# -gt 0 ]]; do
     case $1 in
     --model | -m)
@@ -18,11 +19,17 @@ while [[ $# -gt 0 ]]; do
         AGENT_OVERRIDE="$2"
         shift 2
         ;;
+    --update)
+        UPDATE_MODE=true
+        shift
+        ;;
     --help | -h)
         echo "Usage: ocg setup [options]"
         echo "Options:"
         echo "  --model, -m <model>    AI model to use (haiku/sonnet/opus, default: opus)"
         echo "  --agent, -a <name>     AI agent to use (default: from config)"
+        echo "  --update               Re-render AGENTS.md + CLAUDE.md from upstream template"
+        echo "                         even when target files already exist."
         exit 0
         ;;
     *)
@@ -237,6 +244,53 @@ else
     # No file exists - create symlink
     ln -sf "AGENTS.md" "$REPO_ROOT/CLAUDE.md"
     echo "✅ Created CLAUDE.md symlink for backward compatibility"
+fi
+
+# --update: force re-render AGENTS.md (codex mode, → See pointers) and
+# CLAUDE.md (claude mode, @-imports) from upstream HYBRID template.
+# Mirrors install.sh's pattern for rendering AGENTS-phoenix/static .j2 sources.
+if [ "$UPDATE_MODE" = true ]; then
+    HYBRID_TEMPLATE="$SCRIPT_DIR/templates/AGENTS-HYBRID.md.j2"
+    PROCESS_TEMPLATE="$SCRIPT_DIR/templates/generator/process_template.py"
+
+    if [ ! -f "$HYBRID_TEMPLATE" ]; then
+        echo "❌ ERROR: HYBRID template not found at: $HYBRID_TEMPLATE"
+        exit 1
+    fi
+    if [ ! -f "$PROCESS_TEMPLATE" ]; then
+        echo "❌ ERROR: process_template.py not found at: $PROCESS_TEMPLATE"
+        exit 1
+    fi
+
+    echo ""
+    echo "🔄 --update: re-rendering AGENTS.md + CLAUDE.md from HYBRID template..."
+
+    render_hybrid() {
+        local tool_name="$1"
+        local dst="$2"
+        local tmp
+        tmp="$(mktemp)"
+        if ! OCG_CONTEXT_DIR="$OCG_CONTEXT_DIR" python3 "$PROCESS_TEMPLATE" \
+            "$HYBRID_TEMPLATE" "$tool_name" false >"$tmp"; then
+            echo "❌ ERROR: failed to render $HYBRID_TEMPLATE (tool=$tool_name)"
+            rm -f "$tmp"
+            return 1
+        fi
+        # Replace symlink or file with regenerated content.
+        if [ -L "$dst" ] || [ -f "$dst" ]; then
+            rm -f "$dst"
+        fi
+        if [ ! -f "$dst" ] || ! cmp -s "$tmp" "$dst"; then
+            mv "$tmp" "$dst"
+            echo "   ✅ Rendered $(basename "$dst") (tool=$tool_name)"
+        else
+            rm -f "$tmp"
+            echo "   ✅ $(basename "$dst") already up to date"
+        fi
+    }
+
+    render_hybrid claude "$REPO_ROOT/CLAUDE.md"
+    render_hybrid codex "$REPO_ROOT/AGENTS.md"
 fi
 
 # Create symbolic link to rules

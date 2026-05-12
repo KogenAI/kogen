@@ -94,7 +94,7 @@
     "deny": ["Bash(fly:*)", "Bash(flyctl:*)", "Bash(sudo:*)"]
   },
   "enabledMcpjsonServers": [],
-  "disabledMcpjsonServers": ["tidewave"],
+  "disabledMcpjsonServers": ["tidewave", "claude-in-chrome"],
   "hooks": {
     "PostToolUse": [
       {
@@ -103,6 +103,17 @@
           {
             "type": "command",
             "command": "bash -c 'input=$(cat); cmd=$(echo \"$input\" | jq -r \".tool_input.command // \\\"\\\"\"); out=$(echo \"$input\" | jq -r \".tool_response.stdout // \\\"\\\"\"); if [ -n \"${COMBOBULATE_AUTOVALIDATE_DEBUG:-}\" ]; then printf \"%s cmd=%s\\n\" \"$(date -u +%Y-%m-%dT%H:%M:%SZ)\" \"$cmd\" >>/tmp/autovalidate-debug.log 2>/dev/null || true; fi; if ! echo \"$cmd\" | grep -qE \"\\\\bmake[[:space:]]+llm-phoenix\\\\b\"; then exit 0; fi; if echo \"$cmd\" | grep -qE \"\\\\bmake[[:space:]]+llm-phoenix-(seed|validate|retry|trace|kill|summary|cache)\"; then exit 0; fi; if echo \"$out\" | grep -qE \",[[:space:]]*[1-9][0-9]*[[:space:]]+failures?\\\\b\"; then exit 0; fi; if echo \"$out\" | grep -q \"INFRASTRUCTURE ERROR\"; then exit 0; fi; if [ -d \"$HOME/.combobulate_phoenix_seed\" ]; then date -u > \"$HOME/.combobulate_phoenix_seed/validated\"; fi'"
+          }
+        ]
+      }
+    ],
+    "PostToolUseFailure": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "$HOME/.claude/hooks/track-tool-failures.sh"
           }
         ]
       }
@@ -165,20 +176,9 @@
         ]
       }
     ],
-    "SubagentStart": [
-      {
-        "matcher": "verification-engineer",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "$HOME/.claude/hooks/ve-gate-prompt-validator.sh"
-          }
-        ]
-      }
-    ],
     "SubagentStop": [
       {
-        "matcher": "phoenix-developer|data-layer-developer|static-site-developer",
+        "matcher": "developer-phoenix-backend|developer-phoenix-frontend|developer-html|developer-hugo|developer-vite",
         "hooks": [
           {
             "type": "command",
@@ -187,7 +187,7 @@
         ]
       },
       {
-        "matcher": "static-site-developer",
+        "matcher": "developer-html|developer-hugo|developer-vite",
         "hooks": [
           {
             "type": "command",
@@ -196,7 +196,7 @@
         ]
       },
       {
-        "matcher": "phoenix-developer|data-layer-developer",
+        "matcher": "developer-phoenix-backend|developer-phoenix-frontend",
         "hooks": [
           {
             "type": "command",
@@ -207,20 +207,11 @@
     ],
     "PreToolUse": [
       {
-        "matcher": "Bash|Write|Edit|MultiEdit|Read|Monitor",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "$HOME/.claude/hooks/ve-guard.sh"
-          }
-        ]
-      },
-      {
         "matcher": "Bash|Write|Edit|MultiEdit|Monitor",
         "hooks": [
           {
             "type": "command",
-            "command": "$HOME/.claude/hooks/code-reviewer-guard.sh"
+            "command": "$HOME/.claude/hooks/reviewer-guard.sh"
           }
         ]
       },
@@ -297,6 +288,15 @@
         ]
       },
       {
+        "matcher": "Edit|Write|MultiEdit|NotebookEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "$HOME/.claude/hooks/track-subagent-edits.sh"
+          }
+        ]
+      },
+      {
         "matcher": "Bash",
         "hooks": [
           {
@@ -310,7 +310,34 @@
         "hooks": [
           {
             "type": "command",
-            "command": "$HOME/.claude/hooks/ve-no-stash-guard.sh"
+            "command": "$HOME/.claude/hooks/dev-no-ci.sh"
+          }
+        ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "$HOME/.claude/hooks/no-git-stash.sh"
+          }
+        ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "$HOME/.claude/hooks/no-cat-pipe.sh"
+          }
+        ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "$HOME/.claude/hooks/no-python-json.sh"
           }
         ]
       },
@@ -320,6 +347,15 @@
           {
             "type": "command",
             "command": "$HOME/.claude/hooks/planner-load-discipline.sh"
+          }
+        ]
+      },
+      {
+        "matcher": "Read",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "$HOME/.claude/hooks/orchestrator-read-discipline.sh"
           }
         ]
       }

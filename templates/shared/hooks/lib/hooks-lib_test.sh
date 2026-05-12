@@ -22,7 +22,7 @@ assert_eq() {
 }
 
 # ── parse_input — PreToolUse Edit fixture ────────────────────────────────────
-INPUT_EDIT='{"tool_name":"Edit","agent_type":"phoenix-developer","agent_id":"abc","tool_input":{"file_path":"lib/foo.ex","new_string":"defmodule Foo do\nend"},"cwd":"/tmp/proj"}'
+INPUT_EDIT='{"tool_name":"Edit","agent_type":"developer-phoenix-backend","agent_id":"abc","tool_input":{"file_path":"lib/foo.ex","new_string":"defmodule Foo do\nend"},"cwd":"/tmp/proj"}'
 {
     parse_input <<<"$INPUT_EDIT"
 } <<<"$INPUT_EDIT"
@@ -49,12 +49,12 @@ parse_in_subshell() {
 
 result=$(parse_in_subshell "$INPUT_EDIT")
 assert_eq "parse_input TOOL_NAME" "TOOL=Edit" "$(printf '%s\n' "$result" | grep '^TOOL=')"
-assert_eq "parse_input AGENT_TYPE" "AGENT=phoenix-developer" "$(printf '%s\n' "$result" | grep '^AGENT=')"
+assert_eq "parse_input AGENT_TYPE" "AGENT=developer-phoenix-backend" "$(printf '%s\n' "$result" | grep '^AGENT=')"
 assert_eq "parse_input FILE_PATH" "FP=lib/foo.ex" "$(printf '%s\n' "$result" | grep '^FP=')"
 assert_eq "parse_input CWD" "CWD=/tmp/proj" "$(printf '%s\n' "$result" | grep '^CWD=')"
 
 # ── parse_input — Write fixture (uses content, not new_string) ──────────────
-INPUT_WRITE='{"tool_name":"Write","agent_type":"phoenix-developer","tool_input":{"file_path":"lib/bar.ex","content":"defmodule Bar do\nend"}}'
+INPUT_WRITE='{"tool_name":"Write","agent_type":"developer-phoenix-backend","tool_input":{"file_path":"lib/bar.ex","content":"defmodule Bar do\nend"}}'
 result=$(printf '%s' "$INPUT_WRITE" | (
     parse_input
     printf '%s\n' "TOOL=$TOOL_NAME"

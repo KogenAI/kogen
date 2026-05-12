@@ -49,7 +49,7 @@ DO compress:
 - Redundant examples → single representative example
 - Excessive visual markers (🚨, ⚠️)
 - Tutorial-style prose → reference format
-- Dead role references (only active roles: phoenix-developer, static-site-developer, verification-engineer, code-reviewer)
+- Dead role references (only active roles: developer-phoenix-backend, developer-phoenix-frontend, developer-html/developer-hugo/developer-vite, reviewer-phoenix, reviewer-static)
 
 ### Step 3: Clean Up
 

@@ -46,27 +46,47 @@ common:
   tidewave_port_template: "{{PORT}}"
 
 harness:
-  planner:
+  planner-phoenix:
     claude: { model: opus, effort: high }
     codex: { model: gpt-5.5, effort: high }
     cursor: { model: opus-thinking-high, effort: high }
-  phoenix-developer:
+  planner-html:
+    claude: { model: opus, effort: high }
+    codex: { model: gpt-5.5, effort: high }
+    cursor: { model: opus-thinking-high, effort: high }
+  planner-hugo:
+    claude: { model: opus, effort: high }
+    codex: { model: gpt-5.5, effort: high }
+    cursor: { model: opus-thinking-high, effort: high }
+  planner-vite:
+    claude: { model: opus, effort: high }
+    codex: { model: gpt-5.5, effort: high }
+    cursor: { model: opus-thinking-high, effort: high }
+  developer-phoenix-backend:
     claude: { model: sonnet, effort: medium }
     codex: { model: gpt-5.5, effort: medium }
     cursor: { model: sonnet, effort: medium }
-  data-layer-developer:
+  developer-phoenix-frontend:
     claude: { model: sonnet, effort: medium }
     codex: { model: gpt-5.5, effort: medium }
     cursor: { model: sonnet, effort: medium }
-  static-site-developer:
+  developer-html:
     claude: { model: sonnet, effort: high }
     codex: { model: gpt-5.5, effort: medium }
     cursor: { model: sonnet, effort: medium }
-  verification-engineer:
-    claude: { model: sonnet, effort: medium }
-    codex: { model: gpt-5.5, effort: low }
+  developer-hugo:
+    claude: { model: sonnet, effort: high }
+    codex: { model: gpt-5.5, effort: medium }
     cursor: { model: sonnet, effort: medium }
-  code-reviewer:
+  developer-vite:
+    claude: { model: sonnet, effort: high }
+    codex: { model: gpt-5.5, effort: medium }
+    cursor: { model: sonnet, effort: medium }
+  reviewer-phoenix:
+    claude: { model: sonnet, effort: medium }
+    codex: { model: gpt-5.5, effort: medium }
+    cursor: { model: sonnet, effort: medium }
+  reviewer-static:
     claude: { model: sonnet, effort: medium }
     codex: { model: gpt-5.5, effort: medium }
     cursor: { model: sonnet, effort: medium }

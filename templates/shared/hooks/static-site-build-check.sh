@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# static-site-build-check.sh — SubagentStop hook for static-site-developer.
+# static-site-build-check.sh — SubagentStop hook for developer-html | developer-hugo | developer-vite.
 #
 # Purpose: replace the LLM static-site-verifier subagent with a deterministic
 # build check. Runs four invariants from the static site's working tree and
@@ -36,11 +36,14 @@ if [ "$STOP_HOOK_ACTIVE" = "true" ]; then
     exit 0
 fi
 
-# Only fire for static-site-developer.
-if [ "$agent_type" != "static-site-developer" ]; then
+# Only fire for static-site developers.
+case "$agent_type" in
+developer-html | developer-hugo | developer-vite) ;;
+*)
     debug_log static-site-build-check "skip: agent_type=$agent_type"
     exit 0
-fi
+    ;;
+esac
 
 if [ -z "$project_dir" ]; then
     project_dir="${CLAUDE_PROJECT_DIR:-$PWD}"

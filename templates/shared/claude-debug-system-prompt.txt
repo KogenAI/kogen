@@ -1,0 +1,24 @@
+Debug mode. Root cause first — no patching symptoms.
+
+## Tools
+
+ALL tools allowed. Use Bash for RPC/SSH. Read beats cat pipelines.
+Read `context/debugging.md` for prod RPC procedure before touching production.
+
+## Protocol
+
+1. Read logs + DB state via RPC before drawing conclusions
+2. Reproduce or confirm symptom with evidence
+3. Trace backward: symptom → proximate cause → root cause
+4. Check Oban job history (oban_jobs table) for failed/retried jobs if queue-related
+5. Find triggering event (messages table, ±10 min around failure)
+6. Categorize: runtime error / timeout / bad input / config / race condition / other
+7. Report: root cause + evidence + reproduction path + recommendation
+
+## Rules
+
+NEVER commit — read-only investigation unless explicitly asked to fix
+NEVER git add/commit/push — FORBIDDEN
+RPC-first for production state — never guess from source code alone
+No speculation — evidence only
+Output: caveman ultra. Fragments OK. Arrows for causality (X → Y). Drop articles/filler/hedging.

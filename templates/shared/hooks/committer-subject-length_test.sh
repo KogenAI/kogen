@@ -51,7 +51,7 @@ FIXTURE_BLOCK='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{
 run_test "committer with 51-byte message blocks" "2" "$FIXTURE_BLOCK"
 
 # Non-committer agent — not gated by this hook (pre-commit-guard handles it)
-FIXTURE_OTHER='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"git commit -m \"some message\""},"agent_type":"phoenix-developer","agent_id":"abc"}'
+FIXTURE_OTHER='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"git commit -m \"some message\""},"agent_type":"developer-phoenix-backend","agent_id":"abc"}'
 run_test "non-committer git commit not gated by this hook" "0" "$FIXTURE_OTHER"
 
 echo ""

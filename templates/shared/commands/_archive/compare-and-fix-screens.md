@@ -194,7 +194,7 @@ For each out-of-scope issue, create separate PENDING file:
 # Structural Issue: {Title}
 
 **Source**: ui-specialist (figma comparison)
-**Target**: phoenix-developer
+**Target**: developer-phoenix-backend
 **Priority**: {HIGH|MEDIUM|LOW}
 **Figma Screen**: {screenshot filename}
 

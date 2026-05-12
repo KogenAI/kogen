@@ -13,7 +13,7 @@ Steps:
    - Last verification timestamp
 
 2. **DISCOVER RELEVANT RULES & RECIPES** for next session:
-   - Check `./codegen/rules/subagents/INDEX.md` for applicable rules based on next step reqs
+   - Check `./codegen/rules/INDEX.md` for applicable rules based on next step reqs
    - Check `./codegen/recipes/INDEX.md` for solutions to problems encountered
 
 3. Update `./codegen/CONTEXT.md` with new patterns, insights, and important info from this session

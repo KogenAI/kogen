@@ -45,7 +45,7 @@ FIXTURE_BLOCK='{"hook_event_name":"PreToolUse","tool_name":"Edit","tool_input":{
 run_test "orchestrator Edit on lib/ blocks" "2" "$FIXTURE_BLOCK"
 
 # Test 2: subagent (non-empty agent_id) Edit on lib/ — ALLOW
-FIXTURE_SUBAGENT='{"hook_event_name":"PreToolUse","tool_name":"Edit","tool_input":{"file_path":"lib/combobulate/foo.ex","old_string":"x","new_string":"y"},"agent_id":"abc123","agent_type":"phoenix-developer"}'
+FIXTURE_SUBAGENT='{"hook_event_name":"PreToolUse","tool_name":"Edit","tool_input":{"file_path":"lib/combobulate/foo.ex","old_string":"x","new_string":"y"},"agent_id":"abc123","agent_type":"developer-phoenix-backend"}'
 run_test "subagent Edit on lib/ allows" "0" "$FIXTURE_SUBAGENT"
 
 # Test 3: orchestrator Edit on codegen/logging/x.md — ALLOW

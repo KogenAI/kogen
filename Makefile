@@ -221,6 +221,39 @@ install:
 	$(call check_make_only,install)
 	@./install.sh
 
+# rule-parity: re-render AGENTS-HYBRID.md.j2 in both modes to temp files and
+# diff against committed AGENTS.md / CLAUDE.md. Exits non-zero on drift.
+rule-parity:
+	$(call check_make_only,rule-parity)
+	@SCRIPT_DIR="$(SCRIPT_DIR)"; \
+	TEMPLATE="$$SCRIPT_DIR/templates/AGENTS-HYBRID.md.j2"; \
+	PYTHON="$$SCRIPT_DIR/templates/generator/process_template.py"; \
+	COMBOBULATE_DIR="$${COMBOBULATE_DIR:-$$SCRIPT_DIR/../combobulate}"; \
+	AGENTS_COMMITTED="$$COMBOBULATE_DIR/AGENTS.md"; \
+	CLAUDE_COMMITTED="$$COMBOBULATE_DIR/CLAUDE.md"; \
+	if [ ! -f "$$AGENTS_COMMITTED" ] && [ ! -f "$$CLAUDE_COMMITTED" ]; then \
+		echo "rule-parity: ERROR — neither AGENTS.md nor CLAUDE.md found under $$COMBOBULATE_DIR"; \
+		echo "rule-parity: set COMBOBULATE_DIR=/path/to/combobulate (current default assumes sibling of codegen)"; \
+		exit 2; \
+	fi; \
+	TMPDIR_PARITY="$$(mktemp -d)"; \
+	python3 "$$PYTHON" "$$TEMPLATE" codex false > "$$TMPDIR_PARITY/AGENTS.md"; \
+	python3 "$$PYTHON" "$$TEMPLATE" claude false > "$$TMPDIR_PARITY/CLAUDE.md"; \
+	FAIL=0; \
+	if [ -f "$$AGENTS_COMMITTED" ] && ! diff -q "$$TMPDIR_PARITY/AGENTS.md" "$$AGENTS_COMMITTED" > /dev/null 2>&1; then \
+		echo "DRIFT: AGENTS.md differs from AGENTS-HYBRID.md.j2 (codex render)"; \
+		diff "$$TMPDIR_PARITY/AGENTS.md" "$$AGENTS_COMMITTED" || true; \
+		FAIL=1; \
+	fi; \
+	if [ -f "$$CLAUDE_COMMITTED" ] && ! diff -q "$$TMPDIR_PARITY/CLAUDE.md" "$$CLAUDE_COMMITTED" > /dev/null 2>&1; then \
+		echo "DRIFT: CLAUDE.md differs from AGENTS-HYBRID.md.j2 (claude render)"; \
+		diff "$$TMPDIR_PARITY/CLAUDE.md" "$$CLAUDE_COMMITTED" || true; \
+		FAIL=1; \
+	fi; \
+	rm -rf "$$TMPDIR_PARITY"; \
+	if [ $$FAIL -eq 1 ]; then exit 1; fi; \
+	echo "rule-parity: OK (no drift) [checked: $$COMBOBULATE_DIR]"
+
 uninstall:
 	$(call check_ocg_only,uninstall)
 	@./uninstall.sh

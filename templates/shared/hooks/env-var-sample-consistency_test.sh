@@ -64,7 +64,7 @@ trap cleanup EXIT
 )
 
 # Test 1: Non-committer — not gated by this hook
-FIXTURE_NON_COMMITTER='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"git commit -m \"test\""},"agent_type":"phoenix-developer","agent_id":"abc"}'
+FIXTURE_NON_COMMITTER='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"git commit -m \"test\""},"agent_type":"developer-phoenix-backend","agent_id":"abc"}'
 run_test "non-committer is not gated" "0" "$FIXTURE_NON_COMMITTER" "$TMP_DIR"
 
 # Test 2: Committer with non-env staged files — ALLOW

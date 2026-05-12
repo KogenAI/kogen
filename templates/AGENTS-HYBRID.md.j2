@@ -1,0 +1,132 @@
+# AGENTS.md - Hybrid Workspace
+
+Universal guidance for AI agents in hybrid workspaces — production agent quality without worktrees or CONTEXT.md files.
+
+**Hybrid = full agent delegation chain + no worktrees + Opus planner as Phase 0 + no CONTEXT.md**
+
+## ORCHESTRATOR: NEVER IMPLEMENT CODE DIRECTLY
+
+Orchestrator NEVER writes code, tests, edits — not even "small" ones.
+
+- **FORBIDDEN**: writing tests, editing source, fixing bugs inline, "just quickly" adding anything
+- **ONLY allowed**: loading rules, reading context, creating session log, delegating to subagents (incl. committer)
+
+Any code/tests → slice-specific dev (`developer-phoenix-backend`/`developer-phoenix-frontend`). No exceptions.
+
+## ORCHESTRATOR: ALWAYS RUN FULL CYCLE
+
+Each step → own full cycle. Never plan all steps upfront. planner → dev → cr → committer for step N, commit, then step N+1 from scratch. Gate verdict (incl. INCONCLUSIVE classification) appended by `dev-gate.sh` hook — no separate VE delegation.
+
+Output style: see `rules/_core/output-style.md` (canonical). Applies to session logs, delegation prompts, inter-agent comms, commit bodies.
+
+Delegation prompt comes from planner verbatim. Orchestrator NEVER writes dev prompts. Planner writes recipe + files + gate + session log. Orchestrator copy-pastes into Task tool unchanged.
+
+**Phase 0 — planner always runs.** No skip rule. Orchestrator too coarse-grained to judge what's needed — planner reads codebase, decides. Delegate to planner before any dev subagent, no exceptions.
+
+After dev subagent completes — immediately, without stopping or asking:
+
+`~/.claude/hooks/dev-gate.sh` SubagentStop hook decides gate, runs inline (short) or launches + polls exitcode file (long). Hook appends verdict — `ALL CLEAR ✅`, `FAILED ❌`, or `INCONCLUSIVE ⚠️` — to active step log before subagent exits.
+
+1. **Read active step log's `## dev-gate Section`**.
+   - `ALL CLEAR ✅` → proceed to reviewer-phoenix.
+   - `FAILED ❌` → re-delegate to dev with failure summary from log.
+   - `INCONCLUSIVE ⚠️ <classification>` → look up in `codegen/rules/roles/orchestrator.md` § INCONCLUSIVE table (universal) or `codegen/rules/stacks/phoenix/orchestrator.md` § INCONCLUSIVE (Phoenix), run prescribed action.
+   - Section absent → hook didn't fire. Re-delegate to dev.
+2. → **reviewer-phoenix** — ONLY after literal `ALL CLEAR ✅`.
+3. → **committer** (only after "QUALITY APPROVED" — pass task summary for why-focused msg)
+4. → **continue to next step** — do NOT stop after committing
+
+Long gate in flight when stepped away → run `make gate-status` before delegating.
+
+### Subagent thrash signal (run after every delegation)
+
+After subagent (dev, reviewer, committer) returns, BEFORE next role:
+
+1. Run project's session analyzer (per PROJECT_CONTEXT.md) — one line per subagent (JSONL-derived; session logs under-count bash ~5x).
+2. Find line for subagent that just finished. Paste verbatim into row in session log `## Delegation Timeline` table.
+3. Thrash escalation — line shows EITHER `python-json-refine >= 1` OR `test-rerun-pipe >= 3` → prepend to NEXT delegation prompt (before `Gate:`):
+
+   ```
+   Previous <role> exhibited thrash: <copy the full one-liner>.
+   Do not use python3 to parse JSON — use the Read tool. Do not re-run test commands with different pipes/filters — run once with `2>&1` and Read the output. If you catch yourself writing a second inline python3/jq pipeline, stop and use Read instead.
+   ```
+
+   No thrash → delegate normally, no warning.
+
+No exceptions. One-line change? Full cycle. Runtime.exs tweak? Full cycle.
+
+**Multi-step tasks**: `/split` pre-sequences before session — no upfront ordering pass. Planner once per step, then full cycle. Never bundle steps into one planner or one dev delegation.
+
+## MANDATORY: Load Rules FIRST
+
+Orchestrator-only rules — subagents pre-loaded via Jinja includes; they don't need to read them.
+
+On EVERY session start:
+
+1. **LOAD** `./codegen/rules/roles/orchestrator.md`, `./codegen/rules/stacks/phoenix/_core.md`, `./codegen/rules/stacks/phoenix/orchestrator.md`, `./codegen/rules/shared/git-readonly.md`, `./codegen/rules/_core/bash-discipline.md`, `./codegen/rules/_core/session-log.md`, `./codegen/rules/_core/output-style.md`
+
+Do NOT read PROJECT_CONTEXT.md, domain context, or recipes. Planner does that — pass task to planner.
+
+### Token Budget (Orchestrator Baseline)
+
+Startup target ≤22K per `/context`. Mid-session ≤80K. Auto-compact 167K.
+
+Every Read = tokens. Prefer Explore subagent for "where is X" (~100 tokens vs 5K). Never Read codebase directly; delegate exploration.
+
+{% if tool.name == 'claude' %}@context/repo-layout.md
+{% else %}→ See `context/repo-layout.md` when editing rules or recipes.
+{% endif %}
+
+## Agent Roles & Workflow
+
+```
+planner -> (developer-phoenix-backend)? -> (developer-phoenix-frontend)? -> [dev-gate.sh hook] -> reviewer-phoenix -> committer
+```
+
+- **planner**: reads codebase, writes structured plan to session log `## Plan` incl. `## Slices` list (Opus — deep analysis)
+- **developer-phoenix-backend**: reads `## Plan`, implements schemas/migrations/seeds, contexts/business-logic/Oban/mailers/controllers for `backend` slice (incl. data layer)
+- **developer-phoenix-frontend**: reads `## Plan`, implements LiveView render/HEEx/JS hooks/Tailwind/browser tests for `frontend` slice
+- **reviewer-phoenix**: reviews Phoenix/Elixir quality/patterns/architecture, reports issues
+- **committer**: receives task summary from orchestrator, analyzes git diff, crafts why-focused commit msg, stages and commits (Haiku — cheap and fast)
+
+Subagent rules baked into each agent's system prompt via Jinja `{% include %}` in `.md.j2` templates — subagents do NOT re-read at session start. Delegation prompts only name conditional rules (domain context, stack-specific) for subagent to Read on demand.
+
+## Routing per Slice
+
+Orchestrator reads `## Slices` from planner's plan. Delegates per slice in order:
+
+- `backend` → `developer-phoenix-backend` (includes data layer: schemas, migrations, seeds)
+- `frontend` → `developer-phoenix-frontend`
+
+Backend runs before frontend by default; frontend treats files modified by backend as constraints.
+
+## Workspace Rules
+
+- Work in current directory only (never `../`)
+- No worktrees — commit directly to main
+- Planner (Phase 0) always runs before dev subagent
+
+{% if tool.name == 'claude' %}@codegen/rules/_core/session-log.md
+{% else %}→ Session logging format: `codegen/rules/_core/session-log.md`. Orchestrator creates log before delegating; subagents append.
+{% endif %}
+
+## Universal Requirements
+
+- **Issue Discovery → Immediate Fixing** — find, fix, never just document
+- **Session logging** — orchestrator creates, subagents append
+- **Update context before done** — dev subagent updates index + domain file before handoff
+
+## No Acknowledgment Before Acting
+
+See `rules/roles/orchestrator.md` § No Acknowledgment Before Acting.
+
+## Credentials
+
+Never replace real credential/token values with placeholders. See `rules/shared/git-readonly.md` § Credentials.
+
+## NEVER Commit Directly — Always Use Committer
+
+Orchestrator + all subagents **must never run `git commit` directly**. All commits via committer subagent.
+
+- ❌ `git commit -m "..."` from orchestrator or any other agent
+- ✅ Delegate to committer with task summary; reads diff, crafts message

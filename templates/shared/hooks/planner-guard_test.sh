@@ -3,7 +3,7 @@
 #
 # Tests:
 #   1. Write tool is BLOCKED for planner (exit 2)
-#   2. Write tool PASSES for phoenix-developer (exit 0)
+#   2. Write tool PASSES for developer-phoenix-backend (exit 0)
 
 set -euo pipefail
 
@@ -48,9 +48,9 @@ run_test() {
 FIXTURE_BLOCK='{"hook_event_name":"PreToolUse","tool_name":"Write","tool_input":{"file_path":"/tmp/foo.ex","content":"x"},"agent_type":"planner","agent_id":"abc123"}'
 run_test "Write blocked for planner" "2" "$FIXTURE_BLOCK"
 
-# Test 2: Write tool PASSES for phoenix-developer
-FIXTURE_ALLOW='{"hook_event_name":"PreToolUse","tool_name":"Write","tool_input":{"file_path":"/tmp/foo.ex","content":"x"},"agent_type":"phoenix-developer","agent_id":"abc123"}'
-run_test "Write passes for phoenix-developer" "0" "$FIXTURE_ALLOW"
+# Test 2: Write tool PASSES for developer-phoenix-backend
+FIXTURE_ALLOW='{"hook_event_name":"PreToolUse","tool_name":"Write","tool_input":{"file_path":"/tmp/foo.ex","content":"x"},"agent_type":"developer-phoenix-backend","agent_id":"abc123"}'
+run_test "Write passes for developer-phoenix-backend" "0" "$FIXTURE_ALLOW"
 
 # Test 3: planner Bash with `2>&1 | head` should NOT be wrongly blocked as a redirect
 FIXTURE_STDERR='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"grep foo lib/bar.ex 2>&1 | head"},"agent_type":"planner","agent_id":"abc123"}'

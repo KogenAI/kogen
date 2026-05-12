@@ -25,12 +25,12 @@ You are the orchestrator. Before any work:
    ```
 
 3. Load ALL rules in order:
-   - `./codegen/rules/shared/subagent-core-rules.md`
-   - `./codegen/rules/shared/session-management.md`
-   - `./codegen/rules/orchestration/delegation-patterns.md`
-   - `./codegen/rules/orchestration/user-communication.md`
-   - `./codegen/rules/orchestration/deploy.md`
-   - `./codegen/rules/subagents/git-commit-flow.md`
+   - `./codegen/rules/shared/git-readonly.md`
+   - `./codegen/rules/_core/session-log.md`
+   - `./codegen/rules/_core/bash-discipline.md`
+   - `./codegen/rules/_core/output-style.md`
+   - `./codegen/rules/roles/orchestrator.md`
+   - `./codegen/rules/roles/committer.md`
 
 4. Read `./codegen/PROJECT_CONTEXT.md`.
 
@@ -41,4 +41,4 @@ You are the orchestrator. Before any work:
 - ❌ FORBIDDEN: `run_in_background=true` on any Agent tool call
 - ❌ FORBIDDEN: Launching another orchestrator to "do the work"
 - ✅ REQUIRED: All Task()/Agent() delegations must be synchronous — block and wait
-- ✅ REQUIRED: Execute full phoenix-developer → VE → code-reviewer → commit cycle yourself
+- ✅ REQUIRED: Execute full developer-phoenix-backend → [dev-gate.sh hook gate] → reviewer-phoenix → commit cycle yourself

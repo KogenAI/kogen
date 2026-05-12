@@ -1,8 +1,8 @@
 #!/bin/bash
 # post-developer-format.sh — SubagentStop hook for developer subagents.
 #
-# Purpose: when phoenix-developer / data-layer-developer / static-site-developer
-# reports done, auto-format their diff so verification-engineer never sees a
+# Purpose: when developer-phoenix-backend / developer-phoenix-frontend / developer-html | developer-hugo | developer-vite
+# reports done, auto-format their diff so the dev-gate.sh hook never sees a
 # prettier-only or mix-format-only failure. Also surface any LLM-test signal.
 #
 # Scans the full branch diff (origin/main..HEAD) — not just the working-tree
@@ -10,10 +10,10 @@
 # included and formatted.
 #
 # Behaviour:
-#   - phoenix-developer / data-layer-developer:
+#   - developer-phoenix-backend / developer-phoenix-frontend:
 #       * mix format on changed .ex/.exs/.heex files
 #       * npx prettier --write on changed prettier-relevant files
-#   - static-site-developer:
+#   - developer-html | developer-hugo | developer-vite:
 #       * npx prettier --write on changed files
 #   - All developers: detect LLM-affecting paths in the diff and write a
 #     pending-flag file the orchestrator can check.
@@ -59,7 +59,7 @@ log() {
 log "fired cwd=$project_dir"
 
 case "$agent_type" in
-phoenix-developer | data-layer-developer | static-site-developer) ;;
+developer-phoenix-backend | developer-phoenix-frontend | developer-html | developer-hugo | developer-vite) ;;
 *)
     log "skip (not a developer agent_type)"
     exit 0
@@ -77,11 +77,25 @@ if ! git rev-parse --git-dir >/dev/null 2>&1; then
     exit 0
 fi
 
-# Collect changed ABSOLUTE paths from project_dir + each known sibling repo.
-# Developer subagents may edit files in OCG sibling repos (codegen, context),
-# whose changes don't appear in the combobulate `git diff`. Run each repo's
-# diff separately and concatenate absolute paths.
-collect_changed_abs() {
+# ── Collect changed ABSOLUTE paths ───────────────────────────────────────────
+#
+# Strategy (in priority order):
+#
+# 1. Ledger path — if track-subagent-edits.sh is installed and the current
+#    subagent has written a ledger (~/.claude/post-format/<session>_<agent>.txt),
+#    use ONLY those files. Scoped per subagent → no parallel-dev collisions.
+#
+# 2. Git diff fallback — if no ledger exists (legacy hook not installed, or
+#    orchestrator-level stop), fall back to the original git diff approach.
+#    Bug-for-bug compatible: formats per-repo branch diff + untracked files.
+
+agent_id="$AGENT_ID"
+ledger_file=""
+if [ -n "$SESSION_ID" ] && [ -n "$agent_id" ]; then
+    ledger_file="$HOME/.claude/post-format/${SESSION_ID}_${agent_id}.txt"
+fi
+
+collect_changed_abs_git() {
     local repo="$1"
     [ -d "$repo/.git" ] || return 0
     (
@@ -98,22 +112,31 @@ collect_changed_abs() {
     )
 }
 
-candidate_repos=("$project_dir")
-# Sibling OCG repos — only added if they exist as git repos.
-for sibling in /Users/almirsarajcic/Areas/Optimum/codegen /Users/almirsarajcic/Areas/Optimum/context; do
-    if [ -d "$sibling/.git" ] && [ "$sibling" != "$project_dir" ]; then
-        candidate_repos+=("$sibling")
-    fi
-done
-
 changed_abs=""
-for repo in "${candidate_repos[@]}"; do
-    repo_changes=$(collect_changed_abs "$repo")
-    if [ -n "$repo_changes" ]; then
-        changed_abs="${changed_abs}${repo_changes}
+
+if [ -n "$ledger_file" ] && [ -f "$ledger_file" ] && [ -s "$ledger_file" ]; then
+    # Ledger path: use per-subagent file list, already absolute paths.
+    log "using ledger=$ledger_file"
+    changed_abs=$(sort -u "$ledger_file")
+else
+    # Git diff fallback (legacy): scan project_dir + known sibling repos.
+    log "ledger not found or empty — falling back to git diff"
+    candidate_repos=("$project_dir")
+    # Sibling OCG repos — only added if they exist as git repos.
+    for sibling in /Users/almirsarajcic/Areas/Optimum/codegen /Users/almirsarajcic/Areas/Optimum/context; do
+        if [ -d "$sibling/.git" ] && [ "$sibling" != "$project_dir" ]; then
+            candidate_repos+=("$sibling")
+        fi
+    done
+
+    for repo in "${candidate_repos[@]}"; do
+        repo_changes=$(collect_changed_abs_git "$repo")
+        if [ -n "$repo_changes" ]; then
+            changed_abs="${changed_abs}${repo_changes}
 "
-    fi
-done
+        fi
+    done
+fi
 
 # Trim trailing blank lines and dedup.
 changed_abs=$(printf '%s' "$changed_abs" | awk 'NF' | sort -u)
@@ -149,7 +172,7 @@ for repo_root in "${!files_by_repo[@]}"; do
 "
 
     # ── mix format on Elixir files (phoenix/data-layer only) ─────────────────
-    if [ "$agent_type" = "phoenix-developer" ] || [ "$agent_type" = "data-layer-developer" ]; then
+    if [ "$agent_type" = "developer-phoenix-backend" ] || [ "$agent_type" = "developer-phoenix-frontend" ]; then
         ex_files=$(printf '%s\n' "$rel_files" | grep -E '\.(ex|exs|heex)$' || true)
         if [ -n "$ex_files" ] && [ -f "$repo_root/mix.exs" ]; then
             (
@@ -186,6 +209,19 @@ if printf '%s\n' "$all_relative" | grep -qE "$llm_pattern"; then
         printf '%s\n' "$all_relative" | grep -E "$llm_pattern" | sed 's/^/  /'
     } >"$flag_file" 2>/dev/null || true
     log "LLM-test signal raised: $flag_file"
+fi
+
+# ── Ledger cleanup ────────────────────────────────────────────────────────────
+# Delete the per-subagent ledger now that formatting is complete.
+# Stale ledgers (older than 7 days) are also GC'd here as a safety net.
+if [ -n "$ledger_file" ] && [ -f "$ledger_file" ]; then
+    rm -f "$ledger_file"
+    log "deleted ledger=$ledger_file"
+fi
+# GC stale ledgers older than 7 days.
+ledger_dir="$HOME/.claude/post-format"
+if [ -d "$ledger_dir" ]; then
+    find "$ledger_dir" -maxdepth 1 -name "*.txt" -mtime +7 -delete 2>/dev/null || true
 fi
 
 exit 0

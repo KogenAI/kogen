@@ -5,7 +5,7 @@ argument-hint: [optional focus area]
 
 Implement fixes from `./codegen/code_review.md`.
 
-1. **Load code review rules** — `./codegen/rules/subagents/code-review.md`
+1. **Load code review rules** — `./codegen/rules/roles/reviewer.md`
 2. **Load report** — `./codegen/code_review.md`
 
 3. **Prioritize critical failures first:**

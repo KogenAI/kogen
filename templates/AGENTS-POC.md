@@ -10,16 +10,18 @@
 2. **LOAD** PoC rules from `./codegen/rules/INDEX.md`:
    - **All agents**: Load shared rules (subagent-core-rules.md, session-management.md)
    - **Orchestrator**: ALSO load orchestration rules (delegation-patterns.md)
-   - **poc-developer**: Load subagents/phoenix.md, subagents/elixir-code-generation.md, subagents/workflow.md, subagents/testing-backend.md, subagents/git-commit-flow.md
-   - **verification-engineer (PoC)**: Load subagents/testing-poc.md, shared/git-read-only.md
-   - **code-reviewer (PoC)**: Load subagents/phoenix.md, subagents/elixir-code-generation.md, subagents/testing-backend.md, shared/git-read-only.md
+   - **poc-developer**: Load subagents/phoenix.md, subagents/elixir-code-generation.md, subagents/workflow.md, subagents/testing.md, subagents/git-commit-flow.md
+   - **dev-gate.sh (PoC mode)**: Load subagents/testing-poc.md, shared/git-read-only.md
+   - **reviewer-phoenix (PoC)**: Load subagents/phoenix.md, subagents/elixir-code-generation.md, subagents/testing.md, shared/subagent-core-rules.md (covers git read-only)
 3. **APPLY** validation-focused patterns
 
-When orchestrator delegates to VE or code-reviewer for PoC work, delegation prompt MUST specify PoC context:
+When orchestrator delegates to reviewer-phoenix for PoC work, delegation prompt MUST specify PoC context:
 
 ```
-"CRITICAL RULES CONTEXT: PoC verification - apply verification-workflow-poc.md + testing-poc.md patterns"
+"CRITICAL RULES CONTEXT: PoC code review - apply code-review-poc.md + testing-poc.md patterns"
 ```
+
+PoC verification: dev-gate.sh hook fires automatically on developer SubagentStop and appends verdict (`ALL CLEAR ✅` / `FAILED ❌` / `INCONCLUSIVE ⚠️ <suffix>`) to the active step log.
 
 ## Output Style
 
@@ -33,7 +35,7 @@ Use ONLY during `ocg bird-eye`, `ocg plan`, `/plan-poc`.
 
 ## Rule Compliance Verification
 
-All agents must prove compliance before done:
+All subagents must prove compliance before done:
 
 1. Document rule loading — show actual rule content in session log
 2. Execute required searches
@@ -70,7 +72,7 @@ No `CONTEXT.md` in PoC — work happens directly on main, not in worktrees.
 
 **Orchestrator:**
 
-- PoC-focused delegation — PoC context in all VE and CR delegations
+- PoC-focused delegation — PoC context in all reviewer-phoenix delegations
 - Basic validation: "Does this prove/disprove assumptions?"
 - Fast iteration through validation cycles
 
@@ -81,13 +83,13 @@ No `CONTEXT.md` in PoC — work happens directly on main, not in worktrees.
 - LiveView interfaces for real-time feedback
 - Basic smoke tests only
 
-**verification-engineer (PoC):**
+**dev-gate.sh hook (PoC mode):**
 
-- Real user scenario testing with actual data
-- Basic system health: compilation, smoke tests, external integration
-- Validation readiness: can users test core assumptions?
+- Deterministic gate selection via `lib/gate-select.sh` (CI / ci-fast / phoenix gates)
+- Verdict appended to step log: `ALL CLEAR ✅`, `FAILED ❌`, or `INCONCLUSIVE ⚠️ <classification>`
+- INCONCLUSIVE classifications: seed-missing, pool-exhaustion, partial-gate, timeout-exceeded, previous-gate-running, concurrent-launch
 
-**code-reviewer (PoC):**
+**reviewer-phoenix (PoC):**
 
 - Validation readiness review
 - Anti-pattern detection: over-engineering (DB schemas) and under-engineering (mocked integrations)
@@ -130,7 +132,7 @@ All agents create session logs.
 
 **WHERE**: `./codegen/logging/$(date -u +%Y%m%d_%H%M%S)_<agent_role>.md`
 
-**Agent roles**: `orchestrator`, `poc-developer`, `verification-engineer`, `code-reviewer`
+**Agent roles**: `orchestrator`, `poc-developer`, `reviewer-phoenix`
 
 Create as SECOND action (after loading rules). Update continuously.
 
@@ -144,16 +146,15 @@ Create as SECOND action (after loading rules). Update continuously.
 
 - [ ] ./codegen/PROJECT_CONTEXT.md
 - [ ] ./codegen/plans/poc/overview.md
-- [ ] ./codegen/rules/shared/subagent-core-rules.md
-- [ ] ./codegen/rules/shared/session-management.md
-- [ ] ./codegen/rules/orchestration/delegation-patterns.md (PoC orchestrator only)
-- [ ] ./codegen/rules/subagents/testing-poc.md (verification-engineer only)
-- [ ] ./codegen/rules/subagents/phoenix.md (poc-developer, code-reviewer)
-- [ ] ./codegen/rules/subagents/elixir-code-generation.md (poc-developer, code-reviewer)
-- [ ] ./codegen/rules/subagents/workflow.md (poc-developer)
-- [ ] ./codegen/rules/subagents/testing-backend.md (poc-developer, code-reviewer)
-- [ ] ./codegen/rules/subagents/git-commit-flow.md (poc-developer)
-- [ ] ./codegen/rules/shared/git-read-only.md (verification-engineer, code-reviewer)
+- [ ] ./codegen/rules/shared/git-readonly.md
+- [ ] ./codegen/rules/\_core/session-log.md
+- [ ] ./codegen/rules/roles/orchestrator.md (PoC orchestrator only)
+- [ ] ./codegen/rules/subagents/testing-poc.md (consumed by dev-gate.sh hook classifications)
+- [ ] ./codegen/rules/stacks/phoenix/\_core.md (poc-developer, reviewer-phoenix)
+- [ ] ./codegen/rules/stacks/phoenix/developer.md (poc-developer)
+- [ ] ./codegen/rules/roles/developer.md (poc-developer)
+- [ ] ./codegen/rules/stacks/phoenix/testing.md (poc-developer, reviewer-phoenix — covers CI, TDD, backend patterns)
+- [ ] ./codegen/rules/roles/committer.md (poc-developer)
 
 ## Validation Focus
 
@@ -201,8 +202,8 @@ Create as SECOND action (after loading rules). Update continuously.
 ## PoC Orchestration Pattern
 
 1. **Impl**: Delegate to poc-developer for focused validation impl
-2. **PoC Verification**: Delegate to VE with PoC context
-3. **PoC Code Review**: Delegate to code-reviewer with PoC context
+2. **PoC Verification**: dev-gate.sh SubagentStop hook fires automatically; orchestrator reads verdict from step log
+3. **PoC Code Review**: Delegate to reviewer-phoenix with PoC context
 4. **Rapid iteration**: Move to next assumption quickly
 
 ```
@@ -211,19 +212,16 @@ Task("Implement YouTube transcript PoC",
      prompt="Build minimal YouTube transcript extraction with real-time feedback...",
      subagent_type="poc-developer")
 
-# PoC Verification
-Task("Verify PoC validation readiness",
-     prompt="CRITICAL RULES CONTEXT: PoC verification - apply verification-workflow-poc.md + testing-poc.md patterns.
-
-             Test real user scenario with actual YouTube URL...",
-     subagent_type="verification-engineer")
+# PoC Verification — automatic via dev-gate.sh hook (no Task() call).
+# After poc-developer SubagentStop, hook appends `ALL CLEAR ✅` / `FAILED ❌` /
+# `INCONCLUSIVE ⚠️ <classification>` to the active step log.
 
 # PoC Code Review
 Task("Review PoC validation readiness",
      prompt="CRITICAL RULES CONTEXT: PoC code review - apply code-review-poc.md patterns.
 
              Ensure impl supports assumption testing without over-engineering...",
-     subagent_type="code-reviewer")
+     subagent_type="reviewer-phoenix")
 ```
 
 Focus questions:

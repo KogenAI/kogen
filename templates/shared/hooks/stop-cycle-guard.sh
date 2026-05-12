@@ -65,8 +65,8 @@ if [ -z "$last_agent" ]; then
 fi
 
 case "$last_agent" in
-phoenix-developer | static-site-developer | data-layer-developer | verification-engineer | code-reviewer)
-    next_role_hint="$last_agent just finished — continue the cycle (VE → CR → committer, or back to developer if issues found)."
+developer-phoenix-backend | developer-phoenix-frontend | developer-html | developer-hugo | developer-vite | reviewer-phoenix | reviewer-static)
+    next_role_hint="$last_agent just finished — continue the cycle (review → committer, or back to developer if issues found)."
     ;;
 *)
     debug_log claude-cycle-guard "skip: last_agent=$last_agent is not mid-cycle"

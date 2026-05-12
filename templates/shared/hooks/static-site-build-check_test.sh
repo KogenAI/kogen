@@ -54,7 +54,7 @@ JSON
 
 input_for() {
     local cwd="$1"
-    local agent_type="${2:-static-site-developer}"
+    local agent_type="${2:-developer-html}"
     local stop_active="${3:-false}"
     cat <<JSON
 {"hook_event_name":"SubagentStop","agent_type":"$agent_type","agent_id":"abc","session_id":"s1","cwd":"$cwd","stop_hook_active":$stop_active}
@@ -63,12 +63,12 @@ JSON
 
 # ── Test 1: stop_hook_active=true short-circuits ────────────────────────────
 T1=$(make_tmp_site)
-run_test "stop_hook_active=true short-circuits" "allow" "$(input_for "$T1" static-site-developer true)"
+run_test "stop_hook_active=true short-circuits" "allow" "$(input_for "$T1" developer-html true)"
 rm -rf "$T1"
 
 # ── Test 2: non-static-site agent_type exits 0 ──────────────────────────────
 T2=$(make_tmp_site)
-run_test "non-static-site agent_type is no-op" "allow" "$(input_for "$T2" phoenix-developer)"
+run_test "non-static-site agent_type is no-op" "allow" "$(input_for "$T2" developer-phoenix-backend)"
 rm -rf "$T2"
 
 # ── Test 3: missing package.json (Hugo case) passes ─────────────────────────

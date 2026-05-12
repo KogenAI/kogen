@@ -61,28 +61,26 @@
 
 **Active Subagents** (for current step):
 
-- **phoenix-developer**: [Not Started | In Progress | Complete | Blocked]
-- **ui-specialist**: [Not Started | In Progress | Complete | Blocked]
-- **test-engineer**: [Not Started | In Progress | Complete | Blocked]
-- **verification-engineer**: [Not Started | In Progress | Complete | Blocked]
-- **code-reviewer**: [Not Started | In Progress | Complete | Blocked]
-- **devops-manager**: [Not Started | In Progress | Complete | Blocked]
-- **translator**: [Not Started | In Progress | Complete | Blocked]
+- **planner-phoenix**: [Not Started | In Progress | Complete | Blocked]
+- **developer-phoenix-backend**: [Not Started | In Progress | Complete | Blocked]
+- **developer-phoenix-frontend**: [Not Started | In Progress | Complete | Blocked]
+- **reviewer-phoenix**: [Not Started | In Progress | Complete | Blocked]
+- **committer**: [Not Started | In Progress | Complete | Blocked]
 
 **COMPLETION GATE CHECKLIST** — MANDATORY SEQUENCE, NEVER SKIP:
 
-- [ ] **Implementation**: phoenix-developer reported complete
-- [ ] **Verification**: VE reported `ALL CLEAR ✅`
-- [ ] **Code Review**: code-reviewer reported `✅ QUALITY APPROVED`
+- [ ] **Implementation**: developer-phoenix-backend / developer-phoenix-frontend reported complete
+- [ ] **Verification**: dev-gate.sh hook appended `ALL CLEAR ✅` to step log
+- [ ] **Code Review**: reviewer-phoenix reported `✅ QUALITY APPROVED`
 - [ ] **STEP COMPLETE**: Only mark complete when all 3 gates pass
 
-After ANY impl work → delegate to VE immediately. After `ALL CLEAR ✅` → delegate to code-reviewer. NO EXCEPTIONS.
+After ANY impl work → dev-gate.sh hook fires automatically; orchestrator reads verdict from `## dev-gate Section`. On `ALL CLEAR ✅` → delegate to reviewer-phoenix. NO EXCEPTIONS.
 
-**CODE REVIEW FAILURE WORKFLOW** — if code-reviewer reports `❌ QUALITY ISSUES FOUND`:
+**CODE REVIEW FAILURE WORKFLOW** — if reviewer-phoenix reports `❌ QUALITY ISSUES FOUND`:
 
 1. Save issues to `./codegen/context/PENDING-issues-YYYYMMDD-HHMMSS-code-review.md`
-2. Delegate fixes to phoenix-developer with context file path
-3. After fixes, restart from VE (not code-reviewer)
+2. Delegate fixes to developer-phoenix-backend (or developer-phoenix-frontend) with context file path
+3. After fixes, dev-gate.sh hook re-runs; restart review only after fresh `ALL CLEAR ✅`
 4. Continue until `✅ QUALITY APPROVED`
 
 **CURRENT DELEGATION:**
@@ -117,14 +115,11 @@ After ANY impl work → delegate to VE immediately. After `ALL CLEAR ✅` → de
 ### Development Workflow
 
 1. **Orchestrate step impl** — delegate to specialized subagents:
-   - **phoenix-developer**: Phoenix/Elixir code impl
-   - **ui-specialist**: Figma design impl and styling
-   - **test-engineer**: Writes comprehensive tests
-   - **verification-engineer**: Runs tests and CI, reports findings
-   - **devops-manager**: Infrastructure and deployment
-   - **translator**: Internationalization
+   - **planner-phoenix**: Writes plan + delegation prompts (Phase 0)
+   - **developer-phoenix-backend**: Phoenix/Elixir backend code (contexts, Ecto, Oban, mailers, controllers, schemas, migrations)
+   - **developer-phoenix-frontend**: LiveView, HEEx, JS hooks, Tailwind, browser tests
 
-2. **Delegate verification** — ALL testing and CI to VE
+2. **Verification** — dev-gate.sh SubagentStop hook runs CI/tests automatically; verdict appended to step log
 3. **Integration coordination** — ensure subagent work integrates properly
 4. **Step completion** — update context with verification evidence before proceeding
 5. **Wait for user review** — pause before proceeding to next stage

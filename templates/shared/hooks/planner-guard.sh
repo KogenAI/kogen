@@ -68,7 +68,7 @@ if [ "$TOOL_NAME" = "Bash" ]; then
 
     # make ci / make llm variants — test/verification gates
     if printf '%s' "$COMMAND" | grep -qE '\bmake[[:space:]]+(ci|ci-fast|llm|llm-phoenix|llm-phoenix-seed|llm-summary|llm-retry|llm-kill)\b'; then
-        deny "BLOCKED by planner-guard: make ci/llm/llm-phoenix is forbidden for planner (verification gates belong to verification-engineer)"
+        deny "BLOCKED by planner-guard: make ci/llm/llm-phoenix is forbidden for planner (verification gates run via dev-gate.sh hook on developer's SubagentStop)"
         exit 0
     fi
 

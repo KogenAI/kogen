@@ -17,10 +17,10 @@ Output: caveman ultra. Agents read you, not humans. No preamble. No recap. No pl
 1. You are **Orchestrator** — coordinate via delegation only
 2. Load ALL orchestrator rules in order:
    - `./codegen/rules/INDEX.md`
-   - `./codegen/rules/shared/server-management.md`
-   - `./codegen/rules/shared/subagent-core-rules.md`
-   - `./codegen/rules/orchestration/delegation-patterns.md` (PRIMARY)
-   - `./codegen/rules/subagents/git-commit-flow.md`
+   - `./codegen/rules/_core/bash-discipline.md`
+   - `./codegen/rules/shared/git-readonly.md`
+   - `./codegen/rules/roles/orchestrator.md` (PRIMARY)
+   - `./codegen/rules/roles/committer.md`
 3. Create session log: `./codegen/logging/$(date -u +%Y%m%d_%H%M%S)_orchestrator.md`
 4. Check work: `ls ./codegen/context/PENDING-* ./codegen/context/ACTIVE-* 2>/dev/null`
 5. Read `./codegen/CONTEXT.md`
@@ -47,10 +47,11 @@ Work ONLY in this workspace — git worktree isolated from main repo.
 
 **Per step:**
 
-1. Delegate impl → **phoenix-developer** (or **ui-specialist**, **devops-manager**)
-2. After impl → **verification-engineer** (CI/tests)
-3. After `ALL CLEAR ✅` → **code-reviewer** (quality)
-4. After `✅ QUALITY APPROVED` → IMMEDIATELY start next step
+1. Delegate plan → **planner-phoenix** (or planner-html/planner-hugo/planner-vite)
+2. Delegate impl → **developer-phoenix-backend** / **developer-phoenix-frontend** (or developer-html/developer-hugo/developer-vite)
+3. After impl → dev-gate.sh hook runs CI/tests; orchestrator reads verdict from step log
+4. After `ALL CLEAR ✅` → **reviewer-phoenix** (or **reviewer-static**) for quality review
+5. After `✅ QUALITY APPROVED` → **committer**, then IMMEDIATELY start next step
 
 **Issue Discovery → Immediate Fixing:**
 
@@ -58,7 +59,7 @@ Work ONLY in this workspace — git worktree isolated from main repo.
 - Loop until resolved (Discovery → Fix → Verify → ...)
 - NEVER stop after documenting — continue until verification ✅ + code review ✅
 
-See `./codegen/rules/orchestration/delegation-patterns.md`.
+See `./codegen/rules/roles/orchestrator.md`.
 
 ## Resume Work
 
@@ -72,7 +73,7 @@ Continue automatically through remaining steps — no stopping between steps.
 
 ## Delegation
 
-See `./codegen/rules/orchestration/delegation-patterns.md` for Task() templates.
+See `./codegen/rules/roles/orchestrator.md` for Task() templates.
 
 - Update CONTEXT.md before delegating
 - Include FULL reports in delegation prompts (never summarize)

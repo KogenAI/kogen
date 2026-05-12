@@ -39,24 +39,24 @@ Why forbidden: planning rules contain constraints for planning sessions → conf
 
 NEVER LOAD unless specified in your role template:
 
-- `code-review.md`: ONLY for code-reviewer
-- `verification-workflow.md`: ONLY for verification-engineer
+- `code-review.md`: ONLY for reviewer-phoenix / reviewer-static
+- `verification-workflow.md`: superseded by `dev-gate.sh` hook classifications
 
 When loading a rule file, ONLY follow commands appropriate for your role. Rule files may contain examples for other roles — ignore them.
 
 ### Command Authority Matrix
 
-| Command                            | verification-engineer | phoenix-developer | code-reviewer | test-engineer |
-| ---------------------------------- | --------------------- | ----------------- | ------------- | ------------- |
-| `make ci`                          | ✅ Full suite         | ❌ FORBIDDEN      | ❌ FORBIDDEN  | ❌ FORBIDDEN  |
-| `mix test` (no args)               | ✅ Full suite         | ❌ FORBIDDEN      | ❌ FORBIDDEN  | ❌ FORBIDDEN  |
-| `mix test test/file.exs`           | ✅ Allowed            | ✅ Targeted only  | ❌ FORBIDDEN  | ✅ During dev |
-| `mix credo --strict`               | ✅ Full scan          | ✅ Self-check     | ❌ Read only  | ✅ Self-check |
-| `mix compile --warnings-as-errors` | ✅ Verification       | ✅ Self-check     | ❌ FORBIDDEN  | ✅ Self-check |
+| Command                            | dev-gate.sh hook | developer-phoenix-backend | developer-phoenix-frontend | reviewer-phoenix |
+| ---------------------------------- | ---------------- | ------------------------- | -------------------------- | ---------------- |
+| `make ci`                          | ✅ Full suite    | ❌ FORBIDDEN              | ❌ FORBIDDEN               | ❌ FORBIDDEN     |
+| `mix test` (no args)               | ✅ Full suite    | ❌ FORBIDDEN              | ❌ FORBIDDEN               | ❌ FORBIDDEN     |
+| `mix test test/file.exs`           | ✅ Allowed       | ✅ Targeted only          | ✅ Targeted only           | ❌ FORBIDDEN     |
+| `mix credo --strict`               | ✅ Full scan     | ✅ Self-check             | ✅ Self-check              | ❌ Read only     |
+| `mix compile --warnings-as-errors` | ✅ Verification  | ✅ Self-check             | ✅ Self-check              | ❌ FORBIDDEN     |
 
-- `mix test` = full suite = verification-engineer ONLY
-- `mix test test/specific_file.exs` = targeted = phoenix-developer OK
-- code-reviewer NEVER executes, only analyzes
+- `mix test` = full suite = dev-gate.sh hook ONLY (runs `make ci` / `make ci-fast` per gate-select.sh)
+- `mix test test/specific_file.exs` = targeted = developer-phoenix-backend / developer-phoenix-frontend OK
+- reviewer-phoenix NEVER executes, only analyzes
 
 ### Translation File Staging
 
@@ -65,14 +65,14 @@ See `git.md`. Only translator agent can stage .po/.pot files.
 ## Rule Hierarchy
 
 - Orchestrators: `delegation-patterns.md` always overrides everything
-- Subagents: core domain rules always critical (e.g. `phoenix.md` for phoenix-developer)
+- Subagents: core domain rules always critical (e.g. `phoenix.md` for developer-phoenix-backend)
 - ANY conflict → critical rules WIN, no exceptions
 
 ## MCP Tool Failure Protocol
 
 All agents load `./codegen/rules/shared/mcp-tool-failure-protocol.md`.
 
-Required for: ui-specialist, phoenix-developer, verification-engineer.
+Required for: developer-phoenix-backend, developer-phoenix-frontend.
 
 Working without MCP tools → broken/incomplete results. Fail fast.
 

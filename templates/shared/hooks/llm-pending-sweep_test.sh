@@ -48,7 +48,7 @@ mkdir -p "$TMP_DIR/codegen/llm-pending"
 
 # Test 1: Old flag (>120 min) gets deleted, exit 0
 OLD_FLAG="$TMP_DIR/codegen/llm-pending/old-session.flag"
-printf 'agent_type=phoenix-developer\n' >"$OLD_FLAG"
+printf 'agent_type=developer-phoenix-backend\n' >"$OLD_FLAG"
 # Force mtime to be 3 hours ago using touch -t
 touch -t "$(date -v -3H +%Y%m%d%H%M.%S 2>/dev/null || date -d '3 hours ago' +%Y%m%d%H%M.%S 2>/dev/null || echo "202001010000.00")" "$OLD_FLAG" 2>/dev/null || true
 
@@ -63,7 +63,7 @@ fi
 
 # Test 2: Fresh flag is preserved, exit 0
 FRESH_FLAG="$TMP_DIR/codegen/llm-pending/fresh-session.flag"
-printf 'agent_type=phoenix-developer\n' >"$FRESH_FLAG"
+printf 'agent_type=developer-phoenix-backend\n' >"$FRESH_FLAG"
 
 FIXTURE_FRESH=$(jq -n --arg cwd "$TMP_DIR" '{"hook_event_name":"Stop","cwd":$cwd}')
 run_test "fresh flag preserved, exit 0" "0" "$FIXTURE_FRESH"

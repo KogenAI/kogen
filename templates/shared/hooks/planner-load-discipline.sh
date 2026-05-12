@@ -29,7 +29,7 @@ fi
 basename="${FILE_PATH##*/}"
 
 # Check against forbidden implementer rule files
-forbidden_list="tdd.md elixir-code-generation.md phoenix-ui.md testing-backend.md git-commit-flow.md ast-grep-patterns.md"
+forbidden_list="testing.md testing-liveview.md developer.md reviewer.md committer.md"
 for forbidden in $forbidden_list; do
     if [ "$basename" = "$forbidden" ]; then
         deny "BLOCKED by planner-load-discipline: planner must not load implementer rules ($basename). These are baked into the implementer subagent prompts already."

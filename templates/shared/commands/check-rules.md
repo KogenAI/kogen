@@ -5,14 +5,14 @@ argument-hint: <role>
 
 # Check Rules for Role
 
-**Arguments**: `<role>` — one of: `orchestrator`, `phoenix-developer`, `static-site-developer`, `verification-engineer`, `code-reviewer`
+**Arguments**: `<role>` — one of: `orchestrator`, `developer-phoenix-backend`, `developer-html/developer-hugo/developer-vite`, `reviewer-phoenix`, `reviewer-static`
 
 ## Phase 1: Load Role Definition
 
 **If role is `orchestrator`:**
 
 - Load `./codegen/templates/AGENTS-HYBRID.md`
-- Load `./codegen/rules/orchestration/delegation-patterns.md`
+- Load `./codegen/rules/roles/orchestrator.md`
 
 **For subagent roles:**
 

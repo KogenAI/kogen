@@ -66,5 +66,5 @@ if [ "$cwd" = "/Users/almirsarajcic/Projects/AppBuilder/combobulate" ]; then
     esac
 fi
 
-deny "BLOCKED by orchestrator-no-source-edit: orchestrator must not edit source files directly ($FILE_PATH). Delegate to phoenix-developer / static-site-developer / data-layer-developer."
+deny "BLOCKED by orchestrator-no-source-edit: orchestrator must not edit source files directly ($FILE_PATH). Delegate to developer-phoenix-backend / developer-phoenix-frontend / developer-html | developer-hugo | developer-vite."
 exit 0

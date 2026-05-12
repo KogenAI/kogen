@@ -1,0 +1,11 @@
+# Test Template — Dual Render
+
+{% if tool.name == 'claude' %}@context/rules/_core/output-style.md
+{% else %}→ See `context/rules/_core/output-style.md` for output-style rules.
+{% endif %}
+
+{% if tool.name == 'claude' %}@context/rules/_core/session-log.md
+{% else %}→ See `context/rules/_core/session-log.md` for session-log format.
+{% endif %}
+
+Body text that appears in both modes.

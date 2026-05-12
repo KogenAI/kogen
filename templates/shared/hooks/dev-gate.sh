@@ -1,18 +1,18 @@
 #!/usr/bin/env bash
-# dev-gate.sh — SubagentStop hook for phoenix-developer | data-layer-developer.
+# dev-gate.sh — SubagentStop hook for developer-phoenix-backend | developer-phoenix-frontend.
 #
-# Replaces the LLM verification-engineer's "decide and start the gate" step
+# Replaces the prior agent-based "decide and start the gate" step
 # with a deterministic decision tree (see lib/gate-select.sh) and a
 # launch protocol (inline for short gates, foreground-poll for long gates).
 #
 # Behaviour:
 #   1. Loop guard: STOP_HOOK_ACTIVE=true → exit 0.
-#   2. Skip if agent_type is not phoenix-developer or data-layer-developer.
+#   2. Skip if agent_type is not developer-phoenix-backend or developer-phoenix-frontend.
 #   3. Discover the active step log under <project>/codegen/logging/ (most
 #      recently modified .md within the last 60 minutes), source
 #      lib/gate-select.sh, call gate_select_decide → produces gate + mode + timeout.
 #   4. SHORT gate → run inline. Exit 0 → log success and append synthetic
-#      verification-engineer ALL CLEAR ✅ section. Non-zero → emit `block`
+#      ALL CLEAR ✅ verdict section. Non-zero → emit `block`
 #      envelope so the developer is re-spawned with the failure reason.
 #   5. LONG gate → launch via nohup, write the flag file at
 #      <project>/codegen/gate-pending/<session_id>.flag and update the
@@ -20,8 +20,10 @@
 #      $effective_timeout seconds waiting for the exitcode file. This is
 #      intentional: the developer subagent's exit is held until the gate
 #      verdict is ready, so the orchestrator sees the real verdict in the
-#      step log immediately — no separate VE Monitor delegation needed.
-#      VE is only invoked when the verdict is INCONCLUSIVE.
+#      step log immediately — no separate Monitor delegation needed.
+#      INCONCLUSIVE verdicts carry an inline classification suffix
+#      (seed-missing | pool-exhaustion | partial-gate | timeout-exceeded |
+#      previous-gate-running | concurrent-launch) — no VE agent involved.
 #
 # Flag file format (key=value, one per line):
 #   gate=<command>
@@ -53,7 +55,7 @@ if [ "$STOP_HOOK_ACTIVE" = "true" ]; then
 fi
 
 case "$agent_type" in
-phoenix-developer | data-layer-developer) ;;
+developer-phoenix-backend | developer-phoenix-frontend) ;;
 *)
     debug_log dev-gate "skip: agent_type=$agent_type"
     exit 0
@@ -97,6 +99,67 @@ debug_log dev-gate "gate='$gate' mode=$mode timeout=$gate_timeout"
 
 ts_now() { date -u +%Y-%m-%dT%H:%M:%SZ; }
 
+# ── Classification helpers ──────────────────────────────────────────────────
+# Each returns suffix string for `INCONCLUSIVE ⚠️ <suffix>`, or empty if signal
+# absent. Composed cheapest → most specific. Deterministic signals from a fixed
+# set replace the dropped LLM diagnostic role — no LLM round-trip.
+
+classify_seed_missing() {
+    # Only meaningful when the gate actually uses the seed (llm-phoenix targets).
+    local gate="$1"
+    [ -n "$gate" ] || return 0
+    printf '%s' "$gate" | grep -qE 'llm-phoenix' || return 0
+    local seed_dir="$HOME/.combobulate_phoenix_seed"
+    local missing=""
+    [ -f "$seed_dir/seed.bundle" ] || missing="seed.bundle"
+    if [ -z "$missing" ] && [ ! -f "$seed_dir/seed.sql" ]; then
+        missing="seed.sql"
+    fi
+    [ -n "$missing" ] && printf 'seed-missing (file: %s/%s)' "$seed_dir" "$missing"
+}
+
+classify_pool_exhaustion() {
+    local log="$1"
+    [ -f "$log" ] || return 0
+    if grep -qE 'all workers busy|DBConnection\.ConnectionError|connection not available' "$log" 2>/dev/null; then
+        printf 'pool-exhaustion'
+    fi
+}
+
+classify_partial_gate() {
+    local gate="$1" log="$2"
+    [ -f "$log" ] || return 0
+    local expected actual
+    expected=$(printf '%s' "$gate" | awk -F'&&' '{print NF}')
+    actual=$(grep -cE '^(make|mix) ' "$log" 2>/dev/null || echo 0)
+    if [ "$expected" -gt 1 ] && [ "$actual" -lt "$expected" ]; then
+        printf 'partial-gate (expected: %s, actual: %s)' "$expected" "$actual"
+    fi
+}
+
+# Pick most specific classification. Falls back to `reason` (timeout-exceeded,
+# previous-gate-running, concurrent-launch) when no other signal matches.
+classify_inconclusive() {
+    local gate="$1" log="$2" reason="$3"
+    local out=""
+    out=$(classify_seed_missing "$gate")
+    [ -n "$out" ] && {
+        printf '%s' "$out"
+        return
+    }
+    out=$(classify_pool_exhaustion "$log")
+    [ -n "$out" ] && {
+        printf '%s' "$out"
+        return
+    }
+    out=$(classify_partial_gate "$gate" "$log")
+    [ -n "$out" ] && {
+        printf '%s' "$out"
+        return
+    }
+    printf '%s' "$reason"
+}
+
 append_ve_section() {
     local verdict="$1"
     local detail="$2"
@@ -104,7 +167,7 @@ append_ve_section() {
     local ts
     ts=$(ts_now)
     {
-        printf '\n## verification-engineer Section\n\n'
+        printf '\n## dev-gate Section\n\n'
         printf 'Gate: %s\n' "$gate"
         printf 'Ran: %s\n\n' "$gate"
         printf '**Rules loaded**: deterministic hook (dev-gate.sh) — no rules loaded\n\n'
@@ -136,8 +199,17 @@ if [ "$mode" = "short" ]; then
     fi
 
     tail_out=$(tail -n 40 "$log_path" 2>/dev/null || true)
-    block "Gate '$gate' failed (exit $rc). Log: $log_path. Tail:\n$tail_out"
-    append_ve_section "FAILED ❌ exit=$rc" "Log: $log_path"
+    # Re-classify before FAILED in case it's environmental.
+    short_seed=$(classify_seed_missing "$gate")
+    short_pool=$(classify_pool_exhaustion "$log_path")
+    if [ -n "$short_seed" ]; then
+        append_ve_section "INCONCLUSIVE ⚠️ $short_seed" "Log: $log_path"
+    elif [ -n "$short_pool" ]; then
+        append_ve_section "INCONCLUSIVE ⚠️ $short_pool" "Log: $log_path"
+    else
+        block "Gate '$gate' failed (exit $rc). Log: $log_path. Tail:\n$tail_out"
+        append_ve_section "FAILED ❌ exit=$rc" "Log: $log_path"
+    fi
     exit 0
 fi
 
@@ -146,8 +218,9 @@ fi
 # This branch INTENTIONALLY blocks the developer subagent's exit for up to
 # $effective_timeout seconds. The subagent stays "stopped" until the gate
 # completes, so the orchestrator sees the real verdict in the step log
-# immediately — no separate VE Monitor delegation is needed for normal cases.
-# VE is only invoked when the verdict is INCONCLUSIVE (timeout, crash, etc.).
+# immediately. INCONCLUSIVE verdicts include a classification suffix the
+# orchestrator looks up in `codegen/rules/roles/orchestrator.md`
+# § INCONCLUSIVE table — no VE agent involved.
 
 flag_dir="$project_dir/codegen/gate-pending"
 
@@ -156,8 +229,9 @@ flag_dir="$project_dir/codegen/gate-pending"
 if [ -e "$flag_dir/latest.flag" ]; then
     prev_pid=$(grep '^pid=' "$flag_dir/latest.flag" 2>/dev/null | cut -d= -f2-)
     if [ -n "$prev_pid" ] && kill -0 "$prev_pid" 2>/dev/null; then
+        prev_start=$(grep '^started_at=' "$flag_dir/latest.flag" 2>/dev/null | cut -d= -f2-)
         debug_log dev-gate "previous gate pid=$prev_pid still alive; skipping new launch"
-        append_ve_section "INCONCLUSIVE ⚠️ previous-gate-running" \
+        append_ve_section "INCONCLUSIVE ⚠️ previous-gate-running (PID: $prev_pid, started: $prev_start)" \
             "A previous gate (PID $prev_pid) is still running. No new gate launched. Check flag: $flag_dir/latest.flag"
         exit 0
     fi
@@ -187,8 +261,10 @@ fi
 
 # ── Mutex ───────────────────────────────────────────────────────────────────
 if ! mkdir "$flag_dir/.launch.lock" 2>/dev/null; then
+    other_pid=""
+    [ -f "$flag_dir/.launch.lock/launched_pid" ] && other_pid=$(cat "$flag_dir/.launch.lock/launched_pid" 2>/dev/null)
     debug_log dev-gate "concurrent launch detected; skipping"
-    append_ve_section "INCONCLUSIVE ⚠️ concurrent-launch" \
+    append_ve_section "INCONCLUSIVE ⚠️ concurrent-launch (other PID: ${other_pid:-unknown})" \
         "Another dev-gate launch is already in progress (lock: $flag_dir/.launch.lock)."
     exit 0
 fi
@@ -248,7 +324,8 @@ done
 # ── Classify and append verdict ─────────────────────────────────────────────
 if [ ! -f "$exitcode_path" ]; then
     debug_log dev-gate "long-gate timed out after ${elapsed}s"
-    append_ve_section "INCONCLUSIVE ⚠️ timeout-exceeded" \
+    classification=$(classify_inconclusive "$gate" "$log_path" "timeout-exceeded")
+    append_ve_section "INCONCLUSIVE ⚠️ $classification" \
         "Gate '$gate' did not complete within ${effective_timeout}s. Log: $log_path"
 elif [ "$(cat "$exitcode_path")" = "0" ]; then
     debug_log dev-gate "long-gate exit=0; appended ALL CLEAR"
@@ -256,9 +333,25 @@ elif [ "$(cat "$exitcode_path")" = "0" ]; then
 else
     rc=$(cat "$exitcode_path")
     tail_out=$(tail -n 40 "$log_path" 2>/dev/null || true)
-    debug_log dev-gate "long-gate exit=$rc; appended FAILED"
-    append_ve_section "FAILED ❌ exit=$rc" \
-        "$(printf 'Gate '"'"'%s'"'"' failed. Log: %s\n\nTail:\n%s' "$gate" "$log_path" "$tail_out")"
+    # Pool exhaustion / seed missing should be INCONCLUSIVE not FAILED — they're
+    # environmental, not code-level. Re-check before emitting FAILED.
+    classification=""
+    pool_check=$(classify_pool_exhaustion "$log_path")
+    seed_check=$(classify_seed_missing "$gate")
+    if [ -n "$seed_check" ]; then
+        classification="$seed_check"
+    elif [ -n "$pool_check" ]; then
+        classification="$pool_check"
+    fi
+    if [ -n "$classification" ]; then
+        debug_log dev-gate "long-gate exit=$rc classified as $classification"
+        append_ve_section "INCONCLUSIVE ⚠️ $classification" \
+            "$(printf 'Gate '"'"'%s'"'"' failed exit=%s (environmental). Log: %s\n\nTail:\n%s' "$gate" "$rc" "$log_path" "$tail_out")"
+    else
+        debug_log dev-gate "long-gate exit=$rc; appended FAILED"
+        append_ve_section "FAILED ❌ exit=$rc" \
+            "$(printf 'Gate '"'"'%s'"'"' failed. Log: %s\n\nTail:\n%s' "$gate" "$log_path" "$tail_out")"
+    fi
 fi
 
 exit 0
