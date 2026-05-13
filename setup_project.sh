@@ -197,6 +197,7 @@ fi
 
 # Ensure project-specific AGENTS.md exists in context directory
 if [ ! -f "$PROJECT_CONTEXT_DIR/AGENTS.md" ]; then
+    mkdir -p "$PROJECT_CONTEXT_DIR"
     if [ "$IS_POC_PROJECT" = true ]; then
         cp "$SCRIPT_DIR/templates/AGENTS-POC.md" "$PROJECT_CONTEXT_DIR/AGENTS.md"
         echo "✅ Created project-specific AGENTS.md from POC template in context"
@@ -206,92 +207,50 @@ if [ ! -f "$PROJECT_CONTEXT_DIR/AGENTS.md" ]; then
     fi
 fi
 
-# Create or update symlink from project root to project-specific AGENTS.md
-if [ -L "$REPO_ROOT/AGENTS.md" ]; then
-    # Existing symlink - check if it points to project-specific AGENTS.md
-    if [ "$(readlink "$REPO_ROOT/AGENTS.md")" != "$PROJECT_CONTEXT_DIR/AGENTS.md" ]; then
-        ln -sf "$PROJECT_CONTEXT_DIR/AGENTS.md" "$REPO_ROOT/AGENTS.md"
-        echo "✅ Updated AGENTS.md symlink to project context"
+# Render CLAUDE.md (claude, @-imports) and AGENTS.md (codex, → See pointers) as regular
+# tracked files from the HYBRID template. Runs on every setup (not just --update).
+# --update skips the cmp-s guard and forces re-render.
+HYBRID_TEMPLATE="$SCRIPT_DIR/templates/AGENTS-HYBRID.md.j2"
+PROCESS_TEMPLATE="$SCRIPT_DIR/templates/generator/process_template.py"
+
+if [ ! -f "$HYBRID_TEMPLATE" ]; then
+    echo "❌ ERROR: HYBRID template not found at: $HYBRID_TEMPLATE"
+    exit 1
+fi
+if [ ! -f "$PROCESS_TEMPLATE" ]; then
+    echo "❌ ERROR: process_template.py not found at: $PROCESS_TEMPLATE"
+    exit 1
+fi
+
+echo ""
+echo "🔄 Rendering CLAUDE.md + AGENTS.md from HYBRID template..."
+
+render_hybrid() {
+    local tool_name="$1"
+    local dst="$2"
+    local tmp
+    tmp="$(mktemp)"
+    if ! OCG_CONTEXT_DIR="$OCG_CONTEXT_DIR" python3 "$PROCESS_TEMPLATE" \
+        "$HYBRID_TEMPLATE" "$tool_name" false >"$tmp"; then
+        echo "❌ ERROR: failed to render $HYBRID_TEMPLATE (tool=$tool_name)"
+        rm -f "$tmp"
+        return 1
+    fi
+    # Remove any existing symlink or file before writing.
+    if [ -L "$dst" ] || [ -f "$dst" ]; then
+        rm -f "$dst"
+    fi
+    if [ "$UPDATE_MODE" = true ] || [ ! -f "$dst" ] || ! cmp -s "$tmp" "$dst"; then
+        mv "$tmp" "$dst"
+        echo "   ✅ Rendered $(basename "$dst") (tool=$tool_name)"
     else
-        echo "ℹ️  AGENTS.md symlink already points to project context"
+        rm -f "$tmp"
+        echo "   ✅ $(basename "$dst") already up to date"
     fi
-elif [ -f "$REPO_ROOT/AGENTS.md" ]; then
-    # Regular file exists - replace with symlink
-    rm "$REPO_ROOT/AGENTS.md"
-    ln -sf "$PROJECT_CONTEXT_DIR/AGENTS.md" "$REPO_ROOT/AGENTS.md"
-    echo "✅ Replaced AGENTS.md with symlink to project context"
-else
-    # No file exists - create symlink
-    ln -sf "$PROJECT_CONTEXT_DIR/AGENTS.md" "$REPO_ROOT/AGENTS.md"
-    echo "✅ Created AGENTS.md symlink to project context"
-fi
+}
 
-# Create CLAUDE.md symlink for backward compatibility
-if [ -L "$REPO_ROOT/CLAUDE.md" ]; then
-    # Existing symlink - check if it points to AGENTS.md
-    if [ "$(readlink "$REPO_ROOT/CLAUDE.md")" != "AGENTS.md" ]; then
-        ln -sf "AGENTS.md" "$REPO_ROOT/CLAUDE.md"
-        echo "✅ Updated CLAUDE.md symlink for backward compatibility"
-    else
-        echo "ℹ️  CLAUDE.md symlink already points to AGENTS.md"
-    fi
-elif [ -f "$REPO_ROOT/CLAUDE.md" ]; then
-    # Regular file exists - replace with symlink (no backup)
-    rm "$REPO_ROOT/CLAUDE.md"
-    ln -sf "AGENTS.md" "$REPO_ROOT/CLAUDE.md"
-    echo "✅ Replaced CLAUDE.md with symlink for backward compatibility"
-else
-    # No file exists - create symlink
-    ln -sf "AGENTS.md" "$REPO_ROOT/CLAUDE.md"
-    echo "✅ Created CLAUDE.md symlink for backward compatibility"
-fi
-
-# --update: force re-render AGENTS.md (codex mode, → See pointers) and
-# CLAUDE.md (claude mode, @-imports) from upstream HYBRID template.
-# Mirrors install.sh's pattern for rendering AGENTS-phoenix/static .j2 sources.
-if [ "$UPDATE_MODE" = true ]; then
-    HYBRID_TEMPLATE="$SCRIPT_DIR/templates/AGENTS-HYBRID.md.j2"
-    PROCESS_TEMPLATE="$SCRIPT_DIR/templates/generator/process_template.py"
-
-    if [ ! -f "$HYBRID_TEMPLATE" ]; then
-        echo "❌ ERROR: HYBRID template not found at: $HYBRID_TEMPLATE"
-        exit 1
-    fi
-    if [ ! -f "$PROCESS_TEMPLATE" ]; then
-        echo "❌ ERROR: process_template.py not found at: $PROCESS_TEMPLATE"
-        exit 1
-    fi
-
-    echo ""
-    echo "🔄 --update: re-rendering AGENTS.md + CLAUDE.md from HYBRID template..."
-
-    render_hybrid() {
-        local tool_name="$1"
-        local dst="$2"
-        local tmp
-        tmp="$(mktemp)"
-        if ! OCG_CONTEXT_DIR="$OCG_CONTEXT_DIR" python3 "$PROCESS_TEMPLATE" \
-            "$HYBRID_TEMPLATE" "$tool_name" false >"$tmp"; then
-            echo "❌ ERROR: failed to render $HYBRID_TEMPLATE (tool=$tool_name)"
-            rm -f "$tmp"
-            return 1
-        fi
-        # Replace symlink or file with regenerated content.
-        if [ -L "$dst" ] || [ -f "$dst" ]; then
-            rm -f "$dst"
-        fi
-        if [ ! -f "$dst" ] || ! cmp -s "$tmp" "$dst"; then
-            mv "$tmp" "$dst"
-            echo "   ✅ Rendered $(basename "$dst") (tool=$tool_name)"
-        else
-            rm -f "$tmp"
-            echo "   ✅ $(basename "$dst") already up to date"
-        fi
-    }
-
-    render_hybrid claude "$REPO_ROOT/CLAUDE.md"
-    render_hybrid codex "$REPO_ROOT/AGENTS.md"
-fi
+render_hybrid claude "$REPO_ROOT/CLAUDE.md"
+render_hybrid codex "$REPO_ROOT/AGENTS.md"
 
 # Create symbolic link to rules
 if [ -d "$OCG_CONTEXT_DIR/rules" ]; then

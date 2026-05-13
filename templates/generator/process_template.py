@@ -33,6 +33,38 @@ def resolve_include(path):
         return f.read()
 
 
+def process_includes_recursively(content, depth=0):
+    """Recursively process {% include %} directives until none remain.
+
+    Args:
+        content: Template content with include directives
+        depth: Current recursion depth (prevents infinite loops)
+
+    Returns:
+        Content with all includes resolved
+    """
+    MAX_DEPTH = 10
+
+    if depth >= MAX_DEPTH:
+        return content
+
+    def replace_include(match):
+        include_path = match.group(1).strip().strip("'\"")
+        included = resolve_include(include_path)
+        if included and not included.endswith('\n'):
+            included += '\n'
+        return included
+
+    # Process includes in this content
+    new_content = re.sub(r'\{%\s*include\s+[\'"]([^\'"]+)[\'"]\s*%\}', replace_include, content)
+
+    # If content changed, recursively process the result for nested includes
+    if new_content != content:
+        return process_includes_recursively(new_content, depth + 1)
+
+    return new_content
+
+
 def _strip_template_blocks(content, tool_name, yaml_frontmatter):
     """Strip Jinja-style {% %} blocks based on tool/frontmatter selectors."""
     # Process YAML frontmatter blocks
@@ -85,15 +117,8 @@ def _strip_template_blocks(content, tool_name, yaml_frontmatter):
             flags=re.DOTALL,
         )
 
-    # Resolve {% include 'path' %} directives.
-    def replace_include(match):
-        include_path = match.group(1).strip().strip("'\"")
-        included = resolve_include(include_path)
-        if included and not included.endswith('\n'):
-            included += '\n'
-        return included
-
-    content = re.sub(r'\{%\s*include\s+[\'"]([^\'"]+)[\'"]\s*%\}', replace_include, content)
+    # Resolve {% include 'path' %} directives recursively (handles nested includes).
+    content = process_includes_recursively(content)
 
     # Replace simple variables.
     content = content.replace('{{ tool.name }}', tool_name)
@@ -200,7 +225,7 @@ def render_toml(template_file, config_yaml, role_name):
         flags=re.DOTALL,
     )
 
-    # Resolve {% include 'path' %} directives via OCG_CONTEXT_DIR.
+    # Resolve {% include 'path' %} directives recursively (handles nested includes).
     context_dir = os.environ.get('OCG_CONTEXT_DIR')
     if not context_dir:
         sys.exit(
@@ -208,18 +233,7 @@ def render_toml(template_file, config_yaml, role_name):
             "Run 'make install' or set it manually."
         )
 
-    def resolve_include_local(m):
-        path = m.group(1).strip().strip("'\"")
-        full_path = os.path.join(context_dir, path)
-        if not os.path.exists(full_path):
-            raise FileNotFoundError(f"Include not found: {full_path}")
-        with open(full_path, 'r') as f:
-            content = f.read()
-        if content and not content.endswith('\n'):
-            content += '\n'
-        return content
-
-    body = re.sub(r'\{%\s*include\s+[\'"]([^\'"]+)[\'"]\s*%\}', resolve_include_local, body)
+    body = process_includes_recursively(body)
 
     # Remove any remaining Jinja-style tags.
     body = re.sub(r'\{%[^%]*%\}', '', body)

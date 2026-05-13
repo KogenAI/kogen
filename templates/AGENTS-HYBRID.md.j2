@@ -15,9 +15,13 @@ Any code/tests → slice-specific dev (`developer-phoenix-backend`/`developer-ph
 
 ## ORCHESTRATOR: ALWAYS RUN FULL CYCLE
 
-Each step → own full cycle. Never plan all steps upfront. planner → dev → cr → committer for step N, commit, then step N+1 from scratch. Gate verdict (incl. INCONCLUSIVE classification) appended by `dev-gate.sh` hook — no separate VE delegation.
+Each step → own full cycle. Never plan all steps upfront. planner → dev → cr → committer for step N, commit, then step N+1 from scratch. {% if tool.name == 'claude' %}Gate verdict (incl. INCONCLUSIVE classification) appended by `dev-gate.sh` hook — no separate VE delegation.
+{% else %}Gate verdict (incl. INCONCLUSIVE classification) decided by orchestrator after running planner's `**Gate**` command — no separate VE delegation.
+{% endif %}
 
-Output style: see `rules/_core/output-style.md` (canonical). Applies to session logs, delegation prompts, inter-agent comms, commit bodies.
+{% if tool.name == 'claude' %}Output style: @codegen/rules/_core/output-style.md (canonical). Applies to session logs, delegation prompts, inter-agent comms, commit bodies.
+{% else %}Output style: see `codegen/rules/_core/output-style.md` (canonical) — applies to session logs, delegation prompts, inter-agent comms, commit bodies. Read at session start.
+{% endif %}
 
 Delegation prompt comes from planner verbatim. Orchestrator NEVER writes dev prompts. Planner writes recipe + files + gate + session log. Orchestrator copy-pastes into Task tool unchanged.
 
@@ -25,18 +29,26 @@ Delegation prompt comes from planner verbatim. Orchestrator NEVER writes dev pro
 
 After dev subagent completes — immediately, without stopping or asking:
 
-`~/.claude/hooks/dev-gate.sh` SubagentStop hook decides gate, runs inline (short) or launches + polls exitcode file (long). Hook appends verdict — `ALL CLEAR ✅`, `FAILED ❌`, or `INCONCLUSIVE ⚠️` — to active step log before subagent exits.
+{% if tool.name == 'claude' %}`~/.claude/hooks/dev-gate.sh` SubagentStop hook decides gate, runs inline (short) or launches + polls exitcode file (long). Hook appends verdict — `ALL CLEAR ✅`, `FAILED ❌`, or `INCONCLUSIVE ⚠️` — to active step log before subagent exits.
+{% else %}Orchestrator runs gate command from planner's `**Gate**` field after dev subagent returns. Capture `2>&1`, classify verdict — `ALL CLEAR ✅`, `FAILED ❌`, or `INCONCLUSIVE ⚠️` — append to active step log `## dev-gate Section` before proceeding.
+{% endif %}
 
 1. **Read active step log's `## dev-gate Section`**.
    - `ALL CLEAR ✅` → proceed to reviewer-phoenix.
    - `FAILED ❌` → re-delegate to dev with failure summary from log.
-   - `INCONCLUSIVE ⚠️ <classification>` → look up in `codegen/rules/roles/orchestrator.md` § INCONCLUSIVE table (universal) or `codegen/rules/stacks/phoenix/orchestrator.md` § INCONCLUSIVE (Phoenix), run prescribed action.
-   - Section absent → hook didn't fire. Re-delegate to dev.
+{% if tool.name == 'claude' %}   - `INCONCLUSIVE ⚠️ <classification>` → look up § INCONCLUSIVE in already-loaded rules (`codegen/rules/roles/orchestrator.md` universal or `codegen/rules/stacks/phoenix/orchestrator.md` Phoenix), run prescribed action.
+{% else %}   - `INCONCLUSIVE ⚠️ <classification>` → Read `codegen/rules/roles/orchestrator.md` § INCONCLUSIVE table (universal) or `codegen/rules/stacks/phoenix/orchestrator.md` § INCONCLUSIVE (Phoenix), run prescribed action.
+{% endif %}
+{% if tool.name == 'claude' %}   - Section absent → hook didn't fire. Re-delegate to dev.
+{% else %}   - Section absent → gate not run. Run it now or re-delegate to dev.
+{% endif %}
 2. → **reviewer-phoenix** — ONLY after literal `ALL CLEAR ✅`.
 3. → **committer** (only after "QUALITY APPROVED" — pass task summary for why-focused msg)
 4. → **continue to next step** — do NOT stop after committing
 
-Long gate in flight when stepped away → run `make gate-status` before delegating.
+{% if tool.name == 'claude' %}Long gate in flight when stepped away → run `make gate-status` before delegating.
+{% else %}Long gate in flight when stepped away → check gate process status before delegating.
+{% endif %}
 
 ### Subagent thrash signal (run after every delegation)
 
@@ -63,8 +75,20 @@ Orchestrator-only rules — subagents pre-loaded via Jinja includes; they don't 
 
 On EVERY session start:
 
-1. **LOAD** `./codegen/rules/roles/orchestrator.md`, `./codegen/rules/stacks/phoenix/_core.md`, `./codegen/rules/stacks/phoenix/orchestrator.md`, `./codegen/rules/shared/git-readonly.md`, `./codegen/rules/_core/bash-discipline.md`, `./codegen/rules/_core/session-log.md`, `./codegen/rules/_core/output-style.md`
+{% if tool.name == 'claude' %}1. **AUTO-LOADED** via imports below — review at session start:
 
+@codegen/rules/roles/orchestrator.md
+@codegen/rules/stacks/phoenix/_core.md
+@codegen/rules/stacks/phoenix/orchestrator.md
+@codegen/rules/shared/git-readonly.md
+@codegen/rules/_core/bash-discipline.md
+@codegen/rules/_core/session-log.md
+@codegen/rules/_core/output-style.md
+{% else %}1. **LOAD** (Read each file at session start): `./codegen/rules/roles/orchestrator.md`, `./codegen/rules/stacks/phoenix/_core.md`, `./codegen/rules/stacks/phoenix/orchestrator.md`, `./codegen/rules/shared/git-readonly.md`, `./codegen/rules/_core/bash-discipline.md`, `./codegen/rules/_core/session-log.md`, `./codegen/rules/_core/output-style.md`
+{% endif %}
+{% if tool.name != 'claude' %}
+
+{% endif %}
 Do NOT read PROJECT_CONTEXT.md, domain context, or recipes. Planner does that — pass task to planner.
 
 ### Token Budget (Orchestrator Baseline)
@@ -80,8 +104,9 @@ Every Read = tokens. Prefer Explore subagent for "where is X" (~100 tokens vs 5K
 ## Agent Roles & Workflow
 
 ```
-planner -> (developer-phoenix-backend)? -> (developer-phoenix-frontend)? -> [dev-gate.sh hook] -> reviewer-phoenix -> committer
-```
+{% if tool.name == 'claude' %}planner -> (developer-phoenix-backend)? -> (developer-phoenix-frontend)? -> [dev-gate.sh hook] -> reviewer-phoenix -> committer
+{% else %}planner -> (developer-phoenix-backend)? -> (developer-phoenix-frontend)? -> [gate] -> reviewer-phoenix -> committer
+{% endif %}```
 
 - **planner**: reads codebase, writes structured plan to session log `## Plan` incl. `## Slices` list (Opus — deep analysis)
 - **developer-phoenix-backend**: reads `## Plan`, implements schemas/migrations/seeds, contexts/business-logic/Oban/mailers/controllers for `backend` slice (incl. data layer)
@@ -118,11 +143,13 @@ Backend runs before frontend by default; frontend treats files modified by backe
 
 ## No Acknowledgment Before Acting
 
-See `rules/roles/orchestrator.md` § No Acknowledgment Before Acting.
+{% if tool.name == 'claude' %}See § "No Acknowledgment Before Acting" in already-loaded `codegen/rules/roles/orchestrator.md`.
+{% else %}See `codegen/rules/roles/orchestrator.md` § No Acknowledgment Before Acting.
+{% endif %}
 
 ## Credentials
 
-Never replace real credential/token values with placeholders. See `rules/shared/git-readonly.md` § Credentials.
+Never replace real credential/token values with placeholders. {% if tool.name == 'claude' %}See § Credentials in already-loaded `codegen/rules/shared/git-readonly.md`.{% else %}See `codegen/rules/shared/git-readonly.md` § Credentials.{% endif %}
 
 ## NEVER Commit Directly — Always Use Committer
 

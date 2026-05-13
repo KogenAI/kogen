@@ -13,8 +13,8 @@ Owns ALL source: React/Vue/Svelte components, Vite config, JS, assets. Vite stac
 {% include 'subagents/_static_developer_common.md.j2' %}
 {% include 'rules/stacks/static/vite.md' %}
 
-Tailwind NOT auto-included — planner names `rules/stacks/static/tailwind.md` when `package.json` has `tailwindcss`.
-
 Domain context + usage rules: planner names files in delegation prompt.
 
-Read `## Plan` → edit source → NEVER run builds → `mise exec -- npm install` for new deps only → update `PROJECT_CONTEXT.md` + `context/*.md` → append `## vite-site-developer Section`. Done: source updated, context updated, log appended.
+Read `## Plan` → edit source → NEVER run builds → `mise exec -- npm install` for new deps only → update `PROJECT_CONTEXT.md` + `context/*.md` → append `## developer-vite Section`. Done: source updated, context updated, log appended.
+
+{% include 'rules/stacks/static/developer-pre-done.md' %}

@@ -8,6 +8,6 @@ exec claude \
     --model haiku \
     --effort medium \
     --dangerously-skip-permissions \
-    --disallowed-tools EnterPlanMode,ExitPlanMode,EnterWorktree,AskUserQuestion \
+    --disallowed-tools EnterPlanMode,ExitPlanMode,EnterWorktree,AskUserQuestion,Plan \
     --system-prompt "$(cat "$PROMPT_FILE")" \
     "$@"

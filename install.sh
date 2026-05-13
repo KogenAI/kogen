@@ -172,27 +172,41 @@ fi
 # Render user-app orchestrator AGENTS templates (.j2 -> .md) back into context repo.
 # These .md files are symlinked into user-app workspaces by Combobulate.Apps.copy_agents_md/2
 # at provision time, so they must exist as regenerable artifacts beside their .j2 source.
-# Rendered with tool.name=claude (@-imports) since the consumer is Claude Code in build runs.
+# Each template renders TWICE:
+#   codex render  → AGENTS-{variant}.md  (→ See pointers; consumed by Codex/Cursor)
+#   claude render → CLAUDE-{variant}.md  (@ auto-load imports; consumed by Claude Code)
 echo ""
 echo "🚀 Rendering user-app AGENTS templates (.j2 -> .md)..."
 APPS_DIR="$CONTEXT_DIR/apps"
 PROCESS_TEMPLATE="$CODEGEN_DIR/templates/generator/process_template.py"
-for base in AGENTS-phoenix AGENTS-static; do
-    src="$APPS_DIR/$base.md.j2"
-    dst="$APPS_DIR/$base.md"
+
+render_to_md() {
+    local src="$1"
+    local tool_name="$2"
+    local dst="$3"
     if [ -f "$src" ]; then
+        local tmp
         tmp="$(mktemp)"
-        OCG_CONTEXT_DIR="$CONTEXT_DIR" python3 "$PROCESS_TEMPLATE" "$src" claude false >"$tmp"
+        OCG_CONTEXT_DIR="$CONTEXT_DIR" python3 "$PROCESS_TEMPLATE" "$src" "$tool_name" false >"$tmp"
         if [ ! -f "$dst" ] || ! cmp -s "$tmp" "$dst"; then
             mv "$tmp" "$dst"
-            echo "   ✅ Rendered $base.md"
+            echo "   ✅ Rendered $(basename "$dst") (tool=$tool_name)"
         else
             rm -f "$tmp"
-            echo "   ✅ $base.md already up to date"
+            echo "   ✅ $(basename "$dst") already up to date"
         fi
     else
         echo "   ⚠️  $src missing — skipping render"
     fi
+}
+
+for base in AGENTS-phoenix AGENTS-static; do
+    src="$APPS_DIR/$base.md.j2"
+    # codex render → canonical AGENTS-{variant}.md
+    render_to_md "$src" codex "$APPS_DIR/$base.md"
+    # claude render → CLAUDE-{variant}.md  (strip "AGENTS-" prefix, add "CLAUDE-")
+    variant="${base#AGENTS-}"
+    render_to_md "$src" claude "$APPS_DIR/CLAUDE-${variant}.md"
 done
 
 # Clean up generated templates after installation

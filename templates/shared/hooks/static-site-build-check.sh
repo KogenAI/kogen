@@ -128,6 +128,46 @@ check_package_json_invariants
 check_tailwind_v4_config
 check_tailwind_directives
 
+# ── Check 5: CSS file exists in output directory ─────────────────────────────
+check_css_output() {
+    [ -f package.json ] || return 0
+
+    # No scripts object → tooling-only; skip.
+    jq -e '.scripts' package.json >/dev/null 2>&1 || return 0
+
+    if [ ! -d "public" ] && [ ! -d "dist" ]; then
+        fail "No output directory (public/ or dist/) — build may have failed"
+    fi
+
+    output_dir="public"
+    [ -d "dist" ] && output_dir="dist"
+
+    if ! find "$output_dir" -name "*.css" -type f | head -1 | grep -q .; then
+        fail "No .css file found in $output_dir — Tailwind compilation failed or missing"
+    fi
+}
+
+# ── Check 6: Built index.html links stylesheet ───────────────────────────────
+check_html_stylesheet_link() {
+    [ -f package.json ] || return 0
+
+    # No scripts object → tooling-only; skip.
+    jq -e '.scripts' package.json >/dev/null 2>&1 || return 0
+
+    output_dir="public"
+    [ -d "dist" ] && output_dir="dist"
+
+    built_html="$output_dir/index.html"
+    if [ -f "$built_html" ]; then
+        if ! grep -q '<link.*rel.*stylesheet\|<style' "$built_html"; then
+            fail "Built index.html has no <link rel=stylesheet> or <style> tag — CSS not linked"
+        fi
+    fi
+}
+
+check_css_output
+check_html_stylesheet_link
+
 # ── Success: append synthetic SSV section to the active step log ────────────
 logging_dir="$project_dir/codegen/logging"
 if [ -d "$logging_dir" ]; then
@@ -149,6 +189,8 @@ if [ -d "$logging_dir" ]; then
             printf '| %s | jq .scripts.build/.scripts.serve | 0 | package.json invariants |\n' "$ts"
             printf '| %s | test -f tailwind.config.js / postcss.config.js | 1 | Tailwind v4 config absence |\n' "$ts"
             printf '| %s | grep -rE @tailwind --include=*.css . | 1 | Tailwind v4 directive check |\n' "$ts"
+            printf '| %s | find public/dist -name *.css | 0 | CSS output file check |\n' "$ts"
+            printf '| %s | grep link.rel.stylesheet public/index.html | 0 | stylesheet link check |\n' "$ts"
             printf '\n**Result**: ALL CLEAR ✅\n'
         } >>"$log_file"
         debug_log static-site-build-check "appended SSV section to $log_file"
