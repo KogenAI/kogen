@@ -382,6 +382,29 @@ if harness_enabled claude; then
         echo "   ✅ jq already installed"
     fi
 
+    # Install yq for YAML processing
+    if ! command -v yq >/dev/null 2>&1; then
+        if [[ "$OSTYPE" == "darwin"* ]]; then
+            echo "   📦 Installing yq with brew..."
+            if command -v brew >/dev/null 2>&1; then
+                brew install yq
+                echo "   ✅ yq installed"
+            else
+                echo "   ❌ Homebrew not found. Please install yq manually:"
+                echo "      brew install yq"
+                exit 1
+            fi
+        elif [[ "$OSTYPE" == "linux-gnu"* ]]; then
+            echo "   📦 Installing yq with apt..."
+            sudo apt-get update && sudo apt-get install -y yq
+            echo "   ✅ yq installed"
+        else
+            echo "Warning: yq installation not supported on this OS. Install manually: https://github.com/mikefarah/yq"
+        fi
+    else
+        echo "   ✅ yq already installed"
+    fi
+
     # Install system ripgrep for Claude Code custom command discovery
     echo "   📦 Installing system ripgrep for Claude Code custom commands..."
     if ! command -v rg >/dev/null 2>&1; then
