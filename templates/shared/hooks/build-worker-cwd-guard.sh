@@ -84,6 +84,12 @@ Bash)
         exit 0
     fi
 
+    # Deny relative path traversal (..).
+    if printf '%s' "$COMMAND" | grep -qE '\.\./' ; then
+        deny "BLOCKED by build-worker-cwd-guard: relative path traversal (..) forbidden — use absolute paths only"
+        exit 0
+    fi
+
     # Extract absolute path tokens.
     abs_paths=$(printf '%s' "$COMMAND" | grep -oE '/[^ "'"'"'`)]+' || true)
 

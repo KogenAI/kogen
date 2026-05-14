@@ -44,7 +44,19 @@ fi
 # Planner may only Edit session log files under codegen/logging/
 
 if [ "$TOOL_NAME" = "Edit" ]; then
-    if ! printf '%s' "$FILE_PATH" | grep -qE 'codegen/logging/[^/]+\.md$'; then
+    # Allow only paths that START directly with codegen/logging/ (relative)
+    # OR are absolute paths whose last two directory components are codegen/logging/
+    # (i.e. /some/root/codegen/logging/file.md).
+    # This prevents deep/fake/codegen/logging/ from matching as a relative path.
+    relative_ok=0
+    absolute_ok=0
+    if printf '%s' "$FILE_PATH" | grep -qE '^codegen/logging/[^/]+\.md$'; then
+        relative_ok=1
+    fi
+    if printf '%s' "$FILE_PATH" | grep -qE '^/.*/codegen/logging/[^/]+\.md$'; then
+        absolute_ok=1
+    fi
+    if [ "$relative_ok" = "0" ] && [ "$absolute_ok" = "0" ]; then
         deny "BLOCKED by planner-guard: planner may only Edit session log files under codegen/logging/ (got: $FILE_PATH)"
         exit 0
     fi
@@ -53,6 +65,12 @@ fi
 # ── Bash-pattern blocks ───────────────────────────────────────────────────────
 
 if [ "$TOOL_NAME" = "Bash" ]; then
+
+    # Deny any command containing relative path traversal (../).
+    if printf '%s' "$COMMAND" | grep -qE '\.\./' ; then
+        deny "BLOCKED by planner-guard: relative path traversal (..) forbidden — use absolute paths only"
+        exit 0
+    fi
 
     # mix test — planner doesn't run tests
     if printf '%s' "$COMMAND" | grep -qE '\bmix[[:space:]]+test\b'; then
@@ -66,9 +84,19 @@ if [ "$TOOL_NAME" = "Bash" ]; then
         exit 0
     fi
 
-    # make ci / make llm variants — test/verification gates
+    # make ci / make llm variants — test/verification gates.
+    # llm-phoenix-seed is blocked here because it mutates the seed DB, which is
+    # a state-modifying operation. dev-no-ci.sh also blocks llm-phoenix (not seed)
+    # for developers — policy is: developer can run seed rebuild explicitly, but
+    # planner never should (planner investigates only, never mutates state).
+    #
+    # LLM allowlist rationale: the patterns blocked here (ci, ci-fast, llm,
+    # llm-phoenix, llm-phoenix-seed, llm-summary, llm-retry, llm-kill) are ALL
+    # verification/gate commands. Planner's job is investigation and planning,
+    # never triggering CI or VE gates. Gates run via dev-gate.sh SubagentStop
+    # hook after developer completes — planner must not short-circuit that flow.
     if printf '%s' "$COMMAND" | grep -qE '\bmake[[:space:]]+(ci|ci-fast|llm|llm-phoenix|llm-phoenix-seed|llm-summary|llm-retry|llm-kill)\b'; then
-        deny "BLOCKED by planner-guard: make ci/llm/llm-phoenix is forbidden for planner (verification gates run via dev-gate.sh hook on developer's SubagentStop)"
+        deny "BLOCKED by planner-guard: make ci/llm/llm-phoenix/llm-phoenix-seed is forbidden for planner (verification gates run via dev-gate.sh hook on developer's SubagentStop; llm-phoenix-seed mutates state)"
         exit 0
     fi
 
@@ -89,11 +117,17 @@ if [ "$TOOL_NAME" = "Bash" ]; then
     fi
 
     if printf '%s' "$COMMAND" | grep -qE '\bmv[[:space:]]+'; then
-        # Block mv unless both source and destination are under /tmp/ or codegen/logging/
-        if ! printf '%s' "$COMMAND" | grep -qE '\bmv[[:space:]]+(/tmp/|codegen/logging/)'; then
-            deny "BLOCKED by planner-guard: mv outside /tmp/ or codegen/logging/ is forbidden for planner"
-            exit 0
-        fi
+        # Both source AND destination must be under /tmp/ or codegen/logging/.
+        # Use printf '%s\n' to ensure sed sees a newline-terminated string (required for
+        # macOS sed to process the final line correctly without an explicit $ anchor).
+        src=$(printf '%s\n' "$COMMAND" | sed -nE 's/^mv[[:space:]]+([^[:space:]]+).*/\1/p' | head -1)
+        dst=$(printf '%s\n' "$COMMAND" | sed -nE 's/^mv[[:space:]]+[^[:space:]]+[[:space:]]+([^[:space:]]+).*/\1/p' | head -1)
+        for mv_arg in "$src" "$dst"; do
+            case "$mv_arg" in
+                /tmp/*|codegen/logging/*) ;;
+                *) deny "BLOCKED by planner-guard: mv argument \"$mv_arg\" outside /tmp/ or codegen/logging/ is forbidden for planner"; exit 0 ;;
+            esac
+        done
     fi
 
     # Redirect to file outside /tmp/ or codegen/logging/ — prevent writes via shell.

@@ -105,6 +105,20 @@ FIXTURE_PLANNER_WRITE=$(jq -n \
     '{"hook_event_name":"PreToolUse","tool_name":"Write","tool_input":{"file_path":$fp,"content":$c},"agent_type":"planner","agent_id":"abc"}')
 run_test "planner Write without section header allows" "0" "$FIXTURE_PLANNER_WRITE"
 
+# Test 8: MultiEdit on session log with section header in one edit's new_string — ALLOW
+MULTI_EDIT_LOG="$TMP_DIR/codegen/logging/multi.md"
+touch "$MULTI_EDIT_LOG"
+FIXTURE_MULTIEDIT_ALLOW=$(jq -n \
+    --arg fp "$MULTI_EDIT_LOG" \
+    '{"hook_event_name":"PreToolUse","tool_name":"MultiEdit","tool_input":{"file_path":$fp,"edits":[{"old_string":"x","new_string":"## developer-phoenix-backend Section\n\nbody"}]},"agent_type":"developer-phoenix-backend","agent_id":"abc"}')
+run_test "developer-phoenix-backend MultiEdit with section header allows" "0" "$FIXTURE_MULTIEDIT_ALLOW"
+
+# Test 9: MultiEdit on session log WITHOUT section header — BLOCK
+FIXTURE_MULTIEDIT_BLOCK=$(jq -n \
+    --arg fp "$MULTI_EDIT_LOG" \
+    '{"hook_event_name":"PreToolUse","tool_name":"MultiEdit","tool_input":{"file_path":$fp,"edits":[{"old_string":"x","new_string":"no header here"}]},"agent_type":"developer-phoenix-backend","agent_id":"abc"}')
+run_test "developer-phoenix-backend MultiEdit without section header blocks" "2" "$FIXTURE_MULTIEDIT_BLOCK"
+
 echo ""
 echo "Results: $pass passed, $fail failed"
 

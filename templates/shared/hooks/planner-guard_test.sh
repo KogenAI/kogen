@@ -72,6 +72,34 @@ run_test "planner make llm-kill blocks" "2" "$FIXTURE_LLM_KILL"
 FIXTURE_LLM_RETRY='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"make llm-retry"},"agent_type":"planner","agent_id":"abc123"}'
 run_test "planner make llm-retry blocks" "2" "$FIXTURE_LLM_RETRY"
 
+# Test 8: mv /tmp/a /etc/passwd — BLOCK (dest outside allowed dirs)
+FIXTURE_MV_ESCAPE='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"mv /tmp/a /etc/passwd"},"agent_type":"planner","agent_id":"abc123"}'
+run_test "planner mv to /etc/passwd blocks" "2" "$FIXTURE_MV_ESCAPE"
+
+# Test 9: mv /tmp/a /tmp/b — ALLOW (both in /tmp/)
+FIXTURE_MV_TMP='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"mv /tmp/a /tmp/b"},"agent_type":"planner","agent_id":"abc123"}'
+run_test "planner mv within /tmp/ allows" "0" "$FIXTURE_MV_TMP"
+
+# Test 10: Edit on codegen/logging/session.md — ALLOW
+FIXTURE_EDIT_LOG='{"hook_event_name":"PreToolUse","tool_name":"Edit","tool_input":{"file_path":"codegen/logging/session.md","old_string":"x","new_string":"## planner Section\ny"},"agent_type":"planner","agent_id":"abc123"}'
+run_test "planner Edit on codegen/logging/ allows" "0" "$FIXTURE_EDIT_LOG"
+
+# Test 11: Edit on deep/fake/codegen/logging/forged.md — BLOCK (not a direct child)
+FIXTURE_EDIT_FAKE='{"hook_event_name":"PreToolUse","tool_name":"Edit","tool_input":{"file_path":"deep/fake/codegen/logging/forged.md","old_string":"x","new_string":"y"},"agent_type":"planner","agent_id":"abc123"}'
+run_test "planner Edit on deep/fake/codegen/logging/ blocks" "2" "$FIXTURE_EDIT_FAKE"
+
+# Test 12: planner make llm-phoenix-seed — BLOCK
+FIXTURE_SEED='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"make llm-phoenix-seed"},"agent_type":"planner","agent_id":"abc123"}'
+run_test "planner make llm-phoenix-seed blocks" "2" "$FIXTURE_SEED"
+
+# Test 13: planner Bash with ../ path traversal — BLOCK
+FIXTURE_TRAVERSAL='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"cat ../../../etc/passwd"},"agent_type":"planner","agent_id":"abc123"}'
+run_test "planner path traversal ../ blocks" "2" "$FIXTURE_TRAVERSAL"
+
+# Test 14: non-planner Bash with ../ path traversal — ALLOW (guard only applies to planner)
+FIXTURE_TRAVERSAL_OTHER='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"cat ../../../etc/passwd"},"agent_type":"developer-phoenix-backend","agent_id":"abc123"}'
+run_test "non-planner path traversal ../ not blocked by planner-guard" "0" "$FIXTURE_TRAVERSAL_OTHER"
+
 echo ""
 echo "Results: $pass passed, $fail failed"
 

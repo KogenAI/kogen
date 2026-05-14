@@ -288,6 +288,15 @@
         ]
       },
       {
+        "matcher": "Edit|Write|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "$HOME/.claude/hooks/frontend-developer-guard.sh"
+          }
+        ]
+      },
+      {
         "matcher": "Edit|Write|MultiEdit|NotebookEdit",
         "hooks": [
           {
@@ -338,6 +347,15 @@
           {
             "type": "command",
             "command": "$HOME/.claude/hooks/no-python-json.sh"
+          }
+        ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "$HOME/.claude/hooks/debug-bash-safety-guard.sh"
           }
         ]
       },

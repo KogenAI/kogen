@@ -20,6 +20,14 @@ fi
 # Strip stderr-redirect tokens before the redirect-overwrite check.
 redirect_check=$(printf '%s' "$COMMAND" | sed -e 's/2>&1//g' -e 's|2>/dev/null||g')
 
+# ── Path traversal block ─────────────────────────────────────────────────────
+
+# Deny any command containing relative path traversal (../).
+if printf '%s' "$COMMAND" | grep -qE '\.\./' ; then
+    deny "BLOCKED by codex-inspector-bash-guard: relative path traversal (..) forbidden — use absolute paths only"
+    exit 0
+fi
+
 # ── Mutating-command pattern blocks ──────────────────────────────────────────
 
 # Append redirect >>

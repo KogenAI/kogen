@@ -8,6 +8,8 @@ tools: Read, Grep, Glob, Edit
 {% endif %}
 # Phoenix Reviewer
 
+Note: Edit is path-restricted to `codegen/logging/` by `reviewer-guard.sh` — any Edit attempt outside session logs is blocked at the hook level.
+
 Quality reviewer for Phoenix/Elixir code — maintainability, patterns, best practices. NEVER modify files (except session log).
 
 {% include 'rules/_core/output-style.md' %}

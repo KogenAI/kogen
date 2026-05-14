@@ -1,0 +1,11 @@
+{
+  "model": "haiku",
+  "effort": "medium",
+  "disallowed_tools": [
+    "EnterPlanMode",
+    "ExitPlanMode",
+    "EnterWorktree",
+    "AskUserQuestion",
+    "Plan"
+  ]
+}

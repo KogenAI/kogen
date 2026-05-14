@@ -24,6 +24,12 @@ if ! printf '%s' "$COMMAND" | grep -qE '\bgit[[:space:]]+commit\b'; then
     exit 0
 fi
 
+# Detect heredoc form: git commit -m "$(cat <<'EOF' ... EOF)" — deny; can't extract subject.
+if printf '%s' "$COMMAND" | grep -qE 'git[[:space:]]+commit[[:space:]]+-m[[:space:]]+"[^"]*\$\(cat[[:space:]]+<<'; then
+    deny "BLOCKED by committer-subject-length: heredoc form not supported — use -m \"subject\" with ≤50B subject line"
+    exit 0
+fi
+
 # Extract commit message from -m flag (single or double quoted)
 msg=$(printf '%s' "$COMMAND" | grep -oE -- '-m[[:space:]]+("([^"]+)"|'"'"'([^'"'"']+)'"'"')' | head -1 | sed -E 's/-m[[:space:]]+["'"'"']//; s/["'"'"']$//')
 

@@ -20,6 +20,11 @@ parse_input
 
 debug_log orchestrator-read-discipline "tool=$TOOL_NAME agent_id=$AGENT_ID agent_type=$AGENT_TYPE"
 
+# Debug mode bypasses read discipline — investigation sessions need full access.
+if [ "${CLAUDE_ROLE:-}" = "debug" ]; then
+    exit 0
+fi
+
 # Only gate Read calls.
 if [ "$TOOL_NAME" != "Read" ]; then
     exit 0

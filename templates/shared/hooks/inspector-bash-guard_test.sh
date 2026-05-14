@@ -52,41 +52,61 @@ run_test() {
 FIXTURE_NON_BASH='{"hook_event_name":"PreToolUse","tool_name":"Read","tool_input":{"file_path":"/tmp/foo"}}'
 run_test "non-Bash tool allows" "0" "$FIXTURE_NON_BASH"
 
-# Test 2: stderr-capture pipe `2>&1 | head` — ALLOW (was wrongly blocked)
-FIXTURE_STDERR='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"git log --oneline 2>&1 | head"}}'
+# Test 2: stderr-capture pipe `2>&1 | head` — ALLOW (was wrongly blocked; inspector agent)
+FIXTURE_STDERR='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"git log --oneline 2>&1 | head"},"agent_type":"inspector","agent_id":"abc"}'
 run_test "git log with 2>&1 pipe allows" "0" "$FIXTURE_STDERR"
 
-# Test 3: redirect-overwrite — BLOCK
-FIXTURE_REDIRECT='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"echo foo > bar.txt"}}'
+# Test 3: redirect-overwrite — BLOCK (inspector agent)
+FIXTURE_REDIRECT='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"echo foo > bar.txt"},"agent_type":"inspector","agent_id":"abc"}'
 run_test "redirect-overwrite blocks" "2" "$FIXTURE_REDIRECT"
 
-# Test 4: grep DELETE in source — ALLOW (was wrongly blocked)
-FIXTURE_GREP_SQL='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"grep DELETE module.ex"}}'
+# Test 4: grep DELETE in source — ALLOW (was wrongly blocked; inspector agent)
+FIXTURE_GREP_SQL='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"grep DELETE module.ex"},"agent_type":"inspector","agent_id":"abc"}'
 run_test "grep DELETE keyword allows" "0" "$FIXTURE_GREP_SQL"
 
-# Test 5: git log --grep=DROP — ALLOW
-FIXTURE_GIT_GREP='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"git log --grep=DROP"}}'
+# Test 5: git log --grep=DROP — ALLOW (inspector agent)
+FIXTURE_GIT_GREP='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"git log --grep=DROP"},"agent_type":"inspector","agent_id":"abc"}'
 run_test "git log --grep=DROP allows" "0" "$FIXTURE_GIT_GREP"
 
-# Test 6: psql with DELETE — BLOCK (real SQL execution)
-FIXTURE_PSQL_DELETE='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"psql -c \"DELETE FROM users\""}}'
+# Test 6: psql with DELETE — BLOCK (real SQL execution; inspector agent)
+FIXTURE_PSQL_DELETE='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"psql -c \"DELETE FROM users\""},"agent_type":"inspector","agent_id":"abc"}'
 run_test "psql DELETE blocks" "2" "$FIXTURE_PSQL_DELETE"
 
-# Test 7: pg_dump piped to grep DROP — ALLOW (inspection of dump output)
-FIXTURE_PG_DUMP_GREP='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"pg_dump app | grep DROP"}}'
+# Test 7: pg_dump piped to grep DROP — ALLOW (inspection of dump output; inspector agent)
+FIXTURE_PG_DUMP_GREP='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"pg_dump app | grep DROP"},"agent_type":"inspector","agent_id":"abc"}'
 run_test "pg_dump | grep DROP allows" "0" "$FIXTURE_PG_DUMP_GREP"
 
-# Test 8: append-redirect >> — BLOCK
-FIXTURE_APPEND='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"echo foo >> bar.txt"}}'
+# Test 8: append-redirect >> — BLOCK (inspector agent)
+FIXTURE_APPEND='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"echo foo >> bar.txt"},"agent_type":"inspector","agent_id":"abc"}'
 run_test "append-redirect blocks" "2" "$FIXTURE_APPEND"
 
-# Test 9: rm — BLOCK
-FIXTURE_RM='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"rm foo.txt"}}'
+# Test 9: rm — BLOCK (inspector agent)
+FIXTURE_RM='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"rm foo.txt"},"agent_type":"inspector","agent_id":"abc"}'
 run_test "rm blocks" "2" "$FIXTURE_RM"
 
-# Test 10: 2>/dev/null — ALLOW
-FIXTURE_DEV_NULL='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"git status 2>/dev/null"}}'
+# Test 10: 2>/dev/null — ALLOW (inspector agent)
+FIXTURE_DEV_NULL='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"git status 2>/dev/null"},"agent_type":"inspector","agent_id":"abc"}'
 run_test "2>/dev/null allows" "0" "$FIXTURE_DEV_NULL"
+
+# Test 11: AGENT_TYPE="" (orchestrator) + mkdir — ALLOW (non-inspector passes through)
+FIXTURE_ORCHESTRATOR_MKDIR='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"mkdir codegen/logging/foo"},"agent_type":"","agent_id":""}'
+run_test "orchestrator mkdir not blocked by inspector guard" "0" "$FIXTURE_ORCHESTRATOR_MKDIR"
+
+# Test 12: AGENT_TYPE="developer-phoenix-backend" + heredoc — ALLOW (non-inspector passes through)
+FIXTURE_DEV_HEREDOC='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"cat << EOF\nhello\nEOF"},"agent_type":"developer-phoenix-backend","agent_id":"abc"}'
+run_test "developer heredoc not blocked by inspector guard" "0" "$FIXTURE_DEV_HEREDOC"
+
+# Test 13: AGENT_TYPE="inspector" + path traversal ../  — BLOCK
+FIXTURE_TRAVERSAL='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"cat ../../../etc/passwd"},"agent_type":"inspector","agent_id":"abc"}'
+run_test "inspector path traversal ../ blocks" "2" "$FIXTURE_TRAVERSAL"
+
+# Test 14: AGENT_TYPE="inspector-phoenix" + path traversal — BLOCK
+FIXTURE_TRAVERSAL_PHX='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"ls ../secret"},"agent_type":"inspector-phoenix","agent_id":"abc"}'
+run_test "inspector-phoenix path traversal ../ blocks" "2" "$FIXTURE_TRAVERSAL_PHX"
+
+# Test 15: AGENT_TYPE="inspector" + normal command without ../ — ALLOW
+FIXTURE_NO_TRAVERSAL='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"ls /tmp/logs"},"agent_type":"inspector","agent_id":"abc"}'
+run_test "inspector command without traversal allows" "0" "$FIXTURE_NO_TRAVERSAL" "$TMP_DIR"
 
 echo ""
 echo "Results: $pass passed, $fail failed"

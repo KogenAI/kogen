@@ -54,6 +54,18 @@ run_test "committer with 51-byte message blocks" "2" "$FIXTURE_BLOCK"
 FIXTURE_OTHER='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"git commit -m \"some message\""},"agent_type":"developer-phoenix-backend","agent_id":"abc"}'
 run_test "non-committer git commit not gated by this hook" "0" "$FIXTURE_OTHER"
 
+# Heredoc form — BLOCK (can't extract subject, deny to force explicit -m "subject")
+HEREDOC_CMD='git commit -m "$(cat <<'"'"'EOF'"'"'\nAdd feature\nEOF\n)"'
+FIXTURE_HEREDOC=$(jq -n \
+    --arg cmd "$HEREDOC_CMD" \
+    '{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":$cmd},"agent_type":"committer","agent_id":"abc"}')
+run_test "committer heredoc form is denied" "2" "$FIXTURE_HEREDOC"
+
+# Exactly 50-byte message — ALLOW (boundary)
+MSG_50="Add user auth feature with JWT tokens (50b)"
+FIXTURE_50='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"git commit -m \"'"$MSG_50"'\""},"agent_type":"committer","agent_id":"abc"}'
+run_test "committer with exactly 50-byte message allows" "0" "$FIXTURE_50"
+
 echo ""
 echo "Results: $pass passed, $fail failed"
 

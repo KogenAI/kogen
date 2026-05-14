@@ -16,9 +16,9 @@ parse_input
 
 debug_log session-log-section-integrity "tool=$TOOL_NAME agent_type=$AGENT_TYPE"
 
-# Only gate Edit and Write tools
+# Only gate Edit, Write, and MultiEdit tools
 case "$TOOL_NAME" in
-Edit | Write) ;;
+Edit | Write | MultiEdit) ;;
 *) exit 0 ;;
 esac
 
@@ -64,6 +64,10 @@ Edit)
     ;;
 Write)
     payload=$(printf '%s' "$RAW_INPUT" | jq -r '.tool_input.content // ""')
+    ;;
+MultiEdit)
+    # MultiEdit carries an array of edits; concatenate all new_string values.
+    payload=$(printf '%s' "$RAW_INPUT" | jq -r '[.tool_input.edits[]?.new_string // ""] | join("\n")')
     ;;
 esac
 

@@ -16,6 +16,12 @@ parse_input
 
 debug_log orchestrator-no-source-edit "tool=$TOOL_NAME agent_id=$AGENT_ID"
 
+# Debug mode is read-only investigation — no writes allowed.
+if [ "${CLAUDE_ROLE:-}" = "debug" ]; then
+    deny "BLOCKED by orchestrator-no-source-edit: debug mode is read-only investigation — Edit/Write forbidden"
+    exit 0
+fi
+
 # Subagents (non-empty agent_id) — pass through
 if [ -n "$AGENT_ID" ]; then
     exit 0

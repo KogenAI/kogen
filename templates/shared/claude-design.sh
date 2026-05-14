@@ -1,13 +1,23 @@
 #!/usr/bin/env bash
 set -euo pipefail
+export CLAUDE_ROLE=design
 
 CODEGEN_DIR="${OCG_CODEGEN_DIR:-$HOME/Areas/Optimum/codegen}"
-PROMPT_FILE="$CODEGEN_DIR/templates/shared/claude-design-system-prompt.txt"
+export CODEGEN_DIR
+
+source "$CODEGEN_DIR/templates/shared/load-role.sh"
+load_role design
+
+CONTEXT_FLAGS=()
+if [[ -f "./PROJECT_CONTEXT.md" ]]; then
+    CONTEXT_FLAGS+=(--append-system-prompt "$(cat ./PROJECT_CONTEXT.md)")
+fi
 
 exec claude \
-    --model opus \
-    --effort high \
+    --model "$ROLE_MODEL" \
+    --effort "$ROLE_EFFORT" \
     --dangerously-skip-permissions \
-    --disallowed-tools EnterPlanMode,ExitPlanMode,EnterWorktree \
-    --system-prompt "$(cat "$PROMPT_FILE")" \
+    --disallowed-tools "$ROLE_DISALLOWED" \
+    --system-prompt "$ROLE_SYSTEM_PROMPT" \
+    "${CONTEXT_FLAGS[@]+"${CONTEXT_FLAGS[@]}"}" \
     "$@"
