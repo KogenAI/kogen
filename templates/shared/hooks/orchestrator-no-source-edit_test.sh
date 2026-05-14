@@ -93,6 +93,32 @@ OTHER_CWD="/Users/almirsarajcic/Areas/Optimum/skeptic_bot"
 FIXTURE_OTHER_SIBLING='{"hook_event_name":"PreToolUse","tool_name":"Edit","tool_input":{"file_path":"/Users/almirsarajcic/Areas/Optimum/codegen/templates/shared/hooks/foo.sh","old_string":"x","new_string":"y"},"agent_id":"","agent_type":"","cwd":"'"$OTHER_CWD"'"}'
 run_test "non-combobulate orchestrator on sibling codegen blocks" "2" "$FIXTURE_OTHER_SIBLING"
 
+# Test 12: fake nested path /fake/codegen/logging/test.md — BLOCK (path injection guard)
+FIXTURE_FAKE_NESTED='{"hook_event_name":"PreToolUse","tool_name":"Write","tool_input":{"file_path":"/fake/codegen/logging/test.md","content":"x"},"agent_id":"","agent_type":""}'
+run_test "orchestrator Write on /fake/codegen/logging/ blocks" "2" "$FIXTURE_FAKE_NESTED"
+
+# Test 13: CLAUDE_ROLE=debug + Edit on any file — BLOCK (debug mode is read-only)
+FIXTURE_DEBUG='{"hook_event_name":"PreToolUse","tool_name":"Edit","tool_input":{"file_path":"lib/combobulate/foo.ex","old_string":"x","new_string":"y"},"agent_id":"","agent_type":""}'
+stdout_debug=$(printf '%s' "$FIXTURE_DEBUG" | CLAUDE_ROLE=debug bash "$GUARD" 2>/dev/null || true)
+if printf '%s' "$stdout_debug" | grep -q '"permissionDecision"[[:space:]]*:[[:space:]]*"deny"'; then
+    printf 'PASS: debug mode Edit blocks\n'
+    pass=$((pass + 1))
+else
+    printf 'FAIL: debug mode Edit blocks — expected deny, got allow\n  stdout: %s\n' "$stdout_debug"
+    fail=$((fail + 1))
+fi
+
+# Test 14: CLAUDE_ROLE=debug + Edit on codegen/logging/ — still BLOCK (debug mode overrides everything)
+FIXTURE_DEBUG_LOG='{"hook_event_name":"PreToolUse","tool_name":"Edit","tool_input":{"file_path":"codegen/logging/session.md","old_string":"x","new_string":"y"},"agent_id":"","agent_type":""}'
+stdout_debug_log=$(printf '%s' "$FIXTURE_DEBUG_LOG" | CLAUDE_ROLE=debug bash "$GUARD" 2>/dev/null || true)
+if printf '%s' "$stdout_debug_log" | grep -q '"permissionDecision"[[:space:]]*:[[:space:]]*"deny"'; then
+    printf 'PASS: debug mode Edit on codegen/logging/ also blocks\n'
+    pass=$((pass + 1))
+else
+    printf 'FAIL: debug mode Edit on codegen/logging/ should also block\n  stdout: %s\n' "$stdout_debug_log"
+    fail=$((fail + 1))
+fi
+
 echo ""
 echo "Results: $pass passed, $fail failed"
 

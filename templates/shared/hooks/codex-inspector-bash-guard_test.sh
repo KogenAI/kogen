@@ -96,6 +96,10 @@ run_test "sed -i blocks" "2" "$FIXTURE_SED_I"
 FIXTURE_DEVNULL='{"hook_event_name":"PreToolUse","tool_name":"shell","tool_input":{"command":"git status 2>/dev/null"}}'
 run_test "2>/dev/null allows" "0" "$FIXTURE_DEVNULL"
 
+# Test 13: relative path traversal ../ — BLOCK
+FIXTURE_TRAVERSAL='{"hook_event_name":"PreToolUse","tool_name":"shell","tool_input":{"command":"cat ../../../etc/passwd"}}'
+run_test "relative path traversal ../ blocks" "2" "$FIXTURE_TRAVERSAL"
+
 echo ""
 echo "Results: $pass passed, $fail failed"
 

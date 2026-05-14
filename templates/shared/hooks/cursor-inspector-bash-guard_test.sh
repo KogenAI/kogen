@@ -76,6 +76,10 @@ run_test "psql DELETE blocks" "2" "$FIXTURE_PSQL"
 FIXTURE_GREP='{"cwd":"'"$TMP_DIR"'","command":"grep -r DELETE '"$TMP_DIR"'/lib/"}'
 run_test "grep inside project allows" "0" "$FIXTURE_GREP"
 
+# Test 9: relative path traversal ../ — BLOCK
+FIXTURE_TRAVERSAL='{"cwd":"'"$TMP_DIR"'","command":"cat ../../../etc/passwd"}'
+run_test "relative path traversal ../ blocks" "2" "$FIXTURE_TRAVERSAL"
+
 echo ""
 echo "Results: $pass passed, $fail failed"
 

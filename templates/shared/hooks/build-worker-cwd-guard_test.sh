@@ -88,6 +88,10 @@ mkdir -p "$TEST_APPS_DIR"
 FIXTURE_TEST_APPS_BLOCK='{"hook_event_name":"PreToolUse","tool_name":"Read","tool_input":{"file_path":"/etc/passwd"},"agent_id":"","agent_type":"","cwd":"'"$TEST_APPS_DIR"'"}'
 run_test "orchestrator Read /etc/passwd in test-partition cwd blocks" "2" "$FIXTURE_TEST_APPS_BLOCK"
 
+# Test 9: Orchestrator Bash with relative path traversal ../ — BLOCK
+FIXTURE_TRAVERSAL='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"cat ../../../etc/passwd"},"agent_id":"","agent_type":"","cwd":"'"$PROJECT_DIR"'"}'
+run_test "orchestrator Bash relative path traversal ../ blocks" "2" "$FIXTURE_TRAVERSAL"
+
 echo ""
 echo "Results: $pass passed, $fail failed"
 
