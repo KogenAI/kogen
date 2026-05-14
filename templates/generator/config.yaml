@@ -102,3 +102,98 @@ harness:
     claude: { model: sonnet, effort: medium }
     codex: { model: gpt-5.5, effort: medium }
     cursor: { model: sonnet, effort: medium }
+
+roles:
+  build:
+    output_format: stream-json
+    disallowed_tools:
+      - EnterPlanMode
+      - ExitPlanMode
+      - EnterWorktree
+      - AskUserQuestion
+      - Plan
+    system_prompt_file: shared/claude-build-system-prompt.txt
+    append_project_context: false
+
+  debug:
+    model: opus
+    effort: high
+    output_format: text
+    disallowed_tools:
+      - EnterPlanMode
+      - ExitPlanMode
+      - EnterWorktree
+      - AskUserQuestion
+      - Plan
+      - Agent
+      - Skill
+      - Edit
+      - Write
+      - MultiEdit
+      - NotebookEdit
+      - TodoWrite
+    system_prompt_file: shared/claude-debug-system-prompt.txt
+    append_project_context: true
+
+  design:
+    model: opus
+    effort: high
+    output_format: text
+    disallowed_tools:
+      - EnterPlanMode
+      - ExitPlanMode
+      - EnterWorktree
+      - AskUserQuestion
+      - Plan
+      - Agent
+      - Skill
+      - Edit
+      - Write
+      - MultiEdit
+      - NotebookEdit
+      - TodoWrite
+    system_prompt_file: shared/claude-design-system-prompt.txt
+    append_project_context: true
+
+  multi_step:
+    model: sonnet
+    effort: medium
+    output_format: text
+    disallowed_tools:
+      - EnterPlanMode
+      - ExitPlanMode
+      - EnterWorktree
+      - AskUserQuestion
+      - Plan
+    system_prompt_file: shared/claude-multi-step-system-prompt.txt
+    system_prompt_template: true
+
+  housekeeper:
+    model: haiku
+    effort: medium
+    output_format: text
+    allowed_tools:
+      - Write
+      - Edit
+    disallowed_tools: null
+    system_prompt: |
+      Update PROJECT_CONTEXT.md from build summary. Output only the updated file. Output: caveman ultra. Agents read you, not humans. No preamble. No recap. No pleasantries. Drop articles, filler, hedging. Fragments OK. Arrows for causality (X → Y). Short synonyms (fix not "implement a solution"). Inline acronyms (dev, VE, impl, DB, conn, fn, reqs). NEVER touch JSON schemas, Ecto field names, contracts, code blocks, error strings, "MUST"/"NEVER"/"FORBIDDEN", or hook markers (ALL CLEAR ✅, FAILED ❌, INCONCLUSIVE ⚠️) — verbatim regardless of style. Drop ultra for security warnings or irreversible-action confirmations.
+
+  inspector:
+    model: sonnet
+    effort: medium
+    output_format: text
+    disallowed_tools:
+      - EnterPlanMode
+      - ExitPlanMode
+      - EnterWorktree
+      - AskUserQuestion
+      - Write
+      - Edit
+      - MultiEdit
+      - NotebookEdit
+      - Plan
+    system_prompt: |
+      Read-only inspector. Answer user's question by examining app state in working directory.
+      Read files via Read tool. Query db/logs via Bash (SELECT, grep, tail — read-only).
+      Do not mutate anything. Report: what you found, why it matters, recommended next steps.
