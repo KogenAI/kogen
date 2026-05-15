@@ -788,6 +788,12 @@ fi
 # Clean up generated templates now that everything is installed
 cleanup_generated_templates
 
+# Format context repo after install finishes regenerating files
+CONTEXT_DIR="${OCG_CONTEXT_DIR:-$HOME/Areas/Optimum/context}"
+if [ -d "$CONTEXT_DIR" ]; then
+	npx prettier -w --log-level error "$CONTEXT_DIR"
+fi
+
 echo ""
 echo "✅ Installation complete!"
 echo ""
