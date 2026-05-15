@@ -95,11 +95,19 @@ Do NOT read PROJECT_CONTEXT.md, domain context, or recipes. Planner does that �
 
 Startup target ≤22K per `/context`. Mid-session ≤80K. Auto-compact 167K.
 
-Every Read = tokens. Prefer Explore subagent for "where is X" (~100 tokens vs 5K). Never Read codebase directly; delegate exploration.
+Every Read = tokens. Prefer project planner subagent for "where is X" (~100 tokens vs 5K). Never Read codebase directly; delegate exploration.
 
 {% if tool.name == 'claude' %}@context/repo-layout.md
 {% else %}→ See `context/repo-layout.md` when editing rules or recipes.
 {% endif %}
+
+## Hook authoring discipline
+
+When editing anything under `templates/shared/hooks/` or `templates/claude-code-settings.json`:
+
+1. Run `make test` from `/Users/almirsarajcic/Areas/Optimum/codegen` before delegating to committer. Hook unit tests are hermetic and run in parallel; expect <10s.
+2. Every hook script must be registered: claude-harness hooks go in `templates/claude-code-settings.json`, `codex-inspector-*` go in `templates/generator/generate-codex.sh`, `cursor-inspector-*` go in the Cursor generator. A hook script with no registration is dead code.
+3. After tests pass, run `make install` to propagate the new settings + script into `~/.claude/`. Without this, the active harness keeps running the previous version.
 
 ## Agent Roles & Workflow
 

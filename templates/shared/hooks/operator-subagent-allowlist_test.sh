@@ -51,27 +51,27 @@ run_test "debug + general-purpose denied" "deny" "debug" "$(mk_agent 'general-pu
 # 4: Plan denied under design (we don't use Plan tool)
 run_test "design + Plan denied" "deny" "design" "$(mk_agent 'Plan')"
 
-# 5: committer denied under debug (closes the git-commit escape hatch)
-run_test "debug + committer denied" "deny" "debug" "$(mk_agent 'committer')"
+# 5: committer allowed under debug (project subagents are allowed everywhere)
+run_test "debug + committer allowed" "allow" "debug" "$(mk_agent 'committer')"
 
-# 6: developer-phoenix-backend denied under design
-run_test "design + developer-phoenix-backend denied" "deny" "design" "$(mk_agent 'developer-phoenix-backend')"
+# 6: developer-phoenix-backend allowed under design (project subagents allowed everywhere)
+run_test "design + developer-phoenix-backend allowed" "allow" "design" "$(mk_agent 'developer-phoenix-backend')"
 
-# 7: planner-phoenix denied under design
-run_test "design + planner-phoenix denied" "deny" "design" "$(mk_agent 'planner-phoenix')"
+# 7: planner-phoenix allowed under design (project subagents allowed everywhere)
+run_test "design + planner-phoenix allowed" "allow" "design" "$(mk_agent 'planner-phoenix')"
 
-# 8: reviewer-phoenix denied under debug
-run_test "debug + reviewer-phoenix denied" "deny" "debug" "$(mk_agent 'reviewer-phoenix')"
+# 8: reviewer-phoenix allowed under debug (project subagents allowed everywhere)
+run_test "debug + reviewer-phoenix allowed" "allow" "debug" "$(mk_agent 'reviewer-phoenix')"
 
-# 9: Hook inactive under unrelated role (orchestrator, no CLAUDE_ROLE set)
-ORCHESTRATOR_INPUT='{"hook_event_name":"PreToolUse","tool_name":"Agent","tool_input":{"subagent_type":"developer-phoenix-backend","description":"x","prompt":"y"},"agent_id":"","agent_type":""}'
-stdout_orch=$(printf '%s' "$ORCHESTRATOR_INPUT" | bash "$GUARD" 2>/dev/null || true)
+# 9: Hook active under unrelated role (orchestrator, no CLAUDE_ROLE set) — Explore denied
+ORCHESTRATOR_EXPLORE_INPUT='{"hook_event_name":"PreToolUse","tool_name":"Agent","tool_input":{"subagent_type":"Explore","description":"x","prompt":"y"},"agent_id":"","agent_type":""}'
+stdout_orch=$(printf '%s' "$ORCHESTRATOR_EXPLORE_INPUT" | bash "$GUARD" 2>/dev/null || true)
 if printf '%s' "$stdout_orch" | grep -q '"permissionDecision"[[:space:]]*:[[:space:]]*"deny"'; then
-    printf 'FAIL: orchestrator (no CLAUDE_ROLE) should allow any subagent — got deny\n  stdout: %s\n' "$stdout_orch"
-    fail=$((fail + 1))
-else
-    printf 'PASS: orchestrator (no CLAUDE_ROLE) allows any subagent (hook inactive)\n'
+    printf 'PASS: orchestrator (no CLAUDE_ROLE) Explore denied — only allowed under debug/design\n'
     pass=$((pass + 1))
+else
+    printf 'FAIL: orchestrator (no CLAUDE_ROLE) should deny Explore — got allow\n  stdout: %s\n' "$stdout_orch"
+    fail=$((fail + 1))
 fi
 
 # 10: Hook inactive for non-Agent tool calls under debug
@@ -87,6 +87,83 @@ fi
 
 # 11: empty subagent_type denied under debug (defensive — should never happen but if it does, fail closed)
 run_test "debug + empty subagent_type denied" "deny" "debug" "$(mk_agent '')"
+
+# 12: unset + Plan denied (built-in denied in all modes)
+ORCHESTRATOR_PLAN_INPUT='{"hook_event_name":"PreToolUse","tool_name":"Agent","tool_input":{"subagent_type":"Plan","description":"x","prompt":"y"},"agent_id":"","agent_type":""}'
+stdout_plan=$(printf '%s' "$ORCHESTRATOR_PLAN_INPUT" | bash "$GUARD" 2>/dev/null || true)
+if printf '%s' "$stdout_plan" | grep -q '"permissionDecision"[[:space:]]*:[[:space:]]*"deny"'; then
+    printf 'PASS: unset CLAUDE_ROLE + Plan denied\n'
+    pass=$((pass + 1))
+else
+    printf 'FAIL: unset CLAUDE_ROLE + Plan should be denied — got allow\n  stdout: %s\n' "$stdout_plan"
+    fail=$((fail + 1))
+fi
+
+# 13: unset + Explore denied (must mention claude-debug or claude-design in reason)
+ORCHESTRATOR_EXPLORE2_INPUT='{"hook_event_name":"PreToolUse","tool_name":"Agent","tool_input":{"subagent_type":"Explore","description":"x","prompt":"y"},"agent_id":"","agent_type":""}'
+stdout_explore2=$(printf '%s' "$ORCHESTRATOR_EXPLORE2_INPUT" | bash "$GUARD" 2>/dev/null || true)
+if printf '%s' "$stdout_explore2" | grep -q '"permissionDecision"[[:space:]]*:[[:space:]]*"deny"'; then
+    if printf '%s' "$stdout_explore2" | grep -qE 'claude-debug|claude-design'; then
+        printf 'PASS: unset CLAUDE_ROLE + Explore denied with claude-debug/claude-design mention\n'
+        pass=$((pass + 1))
+    else
+        printf 'FAIL: unset CLAUDE_ROLE + Explore denied but reason does not mention claude-debug or claude-design\n  stdout: %s\n' "$stdout_explore2"
+        fail=$((fail + 1))
+    fi
+else
+    printf 'FAIL: unset CLAUDE_ROLE + Explore should be denied — got allow\n  stdout: %s\n' "$stdout_explore2"
+    fail=$((fail + 1))
+fi
+
+# 14: unset + general-purpose denied (built-in denied in all modes)
+ORCHESTRATOR_GP_INPUT='{"hook_event_name":"PreToolUse","tool_name":"Agent","tool_input":{"subagent_type":"general-purpose","description":"x","prompt":"y"},"agent_id":"","agent_type":""}'
+stdout_gp=$(printf '%s' "$ORCHESTRATOR_GP_INPUT" | bash "$GUARD" 2>/dev/null || true)
+if printf '%s' "$stdout_gp" | grep -q '"permissionDecision"[[:space:]]*:[[:space:]]*"deny"'; then
+    printf 'PASS: unset CLAUDE_ROLE + general-purpose denied\n'
+    pass=$((pass + 1))
+else
+    printf 'FAIL: unset CLAUDE_ROLE + general-purpose should be denied — got allow\n  stdout: %s\n' "$stdout_gp"
+    fail=$((fail + 1))
+fi
+
+# 15: unset + statusline-setup denied (built-in denied in all modes)
+ORCHESTRATOR_SLS_INPUT='{"hook_event_name":"PreToolUse","tool_name":"Agent","tool_input":{"subagent_type":"statusline-setup","description":"x","prompt":"y"},"agent_id":"","agent_type":""}'
+stdout_sls=$(printf '%s' "$ORCHESTRATOR_SLS_INPUT" | bash "$GUARD" 2>/dev/null || true)
+if printf '%s' "$stdout_sls" | grep -q '"permissionDecision"[[:space:]]*:[[:space:]]*"deny"'; then
+    printf 'PASS: unset CLAUDE_ROLE + statusline-setup denied\n'
+    pass=$((pass + 1))
+else
+    printf 'FAIL: unset CLAUDE_ROLE + statusline-setup should be denied — got allow\n  stdout: %s\n' "$stdout_sls"
+    fail=$((fail + 1))
+fi
+
+# 16: unset + planner-phoenix allowed (project subagent, no CLAUDE_ROLE restriction)
+ORCHESTRATOR_PLANNER_INPUT='{"hook_event_name":"PreToolUse","tool_name":"Agent","tool_input":{"subagent_type":"planner-phoenix","description":"x","prompt":"y"},"agent_id":"","agent_type":""}'
+stdout_planner=$(printf '%s' "$ORCHESTRATOR_PLANNER_INPUT" | bash "$GUARD" 2>/dev/null || true)
+if printf '%s' "$stdout_planner" | grep -q '"permissionDecision"[[:space:]]*:[[:space:]]*"deny"'; then
+    printf 'FAIL: unset CLAUDE_ROLE + planner-phoenix should be allowed — got deny\n  stdout: %s\n' "$stdout_planner"
+    fail=$((fail + 1))
+else
+    printf 'PASS: unset CLAUDE_ROLE + planner-phoenix allowed\n'
+    pass=$((pass + 1))
+fi
+
+# 17: unset + committer allowed (project subagent, no CLAUDE_ROLE restriction)
+ORCHESTRATOR_COMMITTER_INPUT='{"hook_event_name":"PreToolUse","tool_name":"Agent","tool_input":{"subagent_type":"committer","description":"x","prompt":"y"},"agent_id":"","agent_type":""}'
+stdout_committer=$(printf '%s' "$ORCHESTRATOR_COMMITTER_INPUT" | bash "$GUARD" 2>/dev/null || true)
+if printf '%s' "$stdout_committer" | grep -q '"permissionDecision"[[:space:]]*:[[:space:]]*"deny"'; then
+    printf 'FAIL: unset CLAUDE_ROLE + committer should be allowed — got deny\n  stdout: %s\n' "$stdout_committer"
+    fail=$((fail + 1))
+else
+    printf 'PASS: unset CLAUDE_ROLE + committer allowed\n'
+    pass=$((pass + 1))
+fi
+
+# 18: debug + Plan denied (explicit debug variant — test 4 covers design+Plan)
+run_test "debug + Plan denied" "deny" "debug" "$(mk_agent 'Plan')"
+
+# 19: design + general-purpose denied (explicit design variant — test 3 covers debug+general-purpose)
+run_test "design + general-purpose denied" "deny" "design" "$(mk_agent 'general-purpose')"
 
 echo ""
 echo "Results: $pass passed, $fail failed"
