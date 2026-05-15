@@ -105,6 +105,8 @@ harness:
 
 roles:
   build:
+    model: haiku
+    effort: medium
     output_format: stream-json
     # build uses --tools allowlist (load gate) instead of --disallowed-tools
     # (permission filter). Same rationale as debug/design: only listed tools
