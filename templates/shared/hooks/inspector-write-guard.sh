@@ -11,6 +11,13 @@ set -u
 source "$(dirname "$0")/lib/hooks-lib.sh"
 parse_input
 
+# Inspector write guard — only active for inspector agents.
+# If not an inspector, allow (this hook is not responsible for non-inspector constraints).
+case "${AGENT_TYPE:-}" in
+inspector | inspector-phoenix | codex-inspector | cursor-inspector) ;;
+*) exit 0 ;;
+esac
+
 case "$TOOL_NAME" in
 Write | Edit | MultiEdit | NotebookEdit)
     deny "BLOCKED by inspector-write-guard: tool $TOOL_NAME is forbidden for Inspector (read-only role)"

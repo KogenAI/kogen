@@ -29,32 +29,37 @@ run_test() {
     fi
 
     if [ "$outcome" = "$expected" ]; then
-        printf 'PASS: %s
-' "$desc"
+        printf 'PASS: %s\n' "$desc"
         pass=$((pass + 1))
     else
-        printf 'FAIL: %s — expected %s (deny=2/allow=0), got %s
-  stdout: %s
-' "$desc" "$expected" "$outcome" "$stdout"
+        printf 'FAIL: %s — expected %s (deny=2/allow=0), got %s\n  stdout: %s\n' "$desc" "$expected" "$outcome" "$stdout"
         fail=$((fail + 1))
     fi
 }
 
-# Test 1: Write tool — BLOCK
-FIXTURE_WRITE='{"hook_event_name":"PreToolUse","tool_name":"Write","tool_input":{"file_path":"/tmp/foo.ex","content":"x"}}'
-run_test "Write tool blocked" "2" "$FIXTURE_WRITE"
+# Test 1: Write tool — BLOCK (inspector agent)
+FIXTURE_WRITE='{"hook_event_name":"PreToolUse","tool_name":"Write","tool_input":{"file_path":"/tmp/foo.ex","content":"x"},"agent_type":"inspector","agent_id":"abc"}'
+run_test "Write tool blocked for inspector" "2" "$FIXTURE_WRITE"
 
-# Test 2: Edit tool — BLOCK
-FIXTURE_EDIT='{"hook_event_name":"PreToolUse","tool_name":"Edit","tool_input":{"file_path":"/tmp/foo.ex","old_string":"x","new_string":"y"}}'
-run_test "Edit tool blocked" "2" "$FIXTURE_EDIT"
+# Test 2: Edit tool — BLOCK (inspector agent)
+FIXTURE_EDIT='{"hook_event_name":"PreToolUse","tool_name":"Edit","tool_input":{"file_path":"/tmp/foo.ex","old_string":"x","new_string":"y"},"agent_type":"inspector","agent_id":"abc"}'
+run_test "Edit tool blocked for inspector" "2" "$FIXTURE_EDIT"
 
-# Test 3: Read tool — ALLOW
-FIXTURE_READ='{"hook_event_name":"PreToolUse","tool_name":"Read","tool_input":{"file_path":"/tmp/foo.ex"}}'
-run_test "Read tool allowed" "0" "$FIXTURE_READ"
+# Test 3: Read tool — ALLOW (inspector agent)
+FIXTURE_READ='{"hook_event_name":"PreToolUse","tool_name":"Read","tool_input":{"file_path":"/tmp/foo.ex"},"agent_type":"inspector","agent_id":"abc"}'
+run_test "Read tool allowed for inspector" "0" "$FIXTURE_READ"
 
-# Test 4: Bash tool — ALLOW (not a write tool)
-FIXTURE_BASH='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"ls"}}'
-run_test "Bash tool allowed" "0" "$FIXTURE_BASH"
+# Test 4: Bash tool — ALLOW (inspector agent; not a write tool)
+FIXTURE_BASH='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"ls"},"agent_type":"inspector","agent_id":"abc"}'
+run_test "Bash tool allowed for inspector" "0" "$FIXTURE_BASH"
+
+# Test 5: Write tool — ALLOW for developer-phoenix-backend (non-inspector passes through)
+FIXTURE_DEV_WRITE='{"hook_event_name":"PreToolUse","tool_name":"Write","tool_input":{"file_path":"/tmp/foo.ex","content":"x"},"agent_type":"developer-phoenix-backend","agent_id":"abc"}'
+run_test "Write tool allowed for developer-phoenix-backend" "0" "$FIXTURE_DEV_WRITE"
+
+# Test 6: Edit tool — ALLOW for orchestrator/empty agent_type (non-inspector passes through)
+FIXTURE_ORCH_EDIT='{"hook_event_name":"PreToolUse","tool_name":"Edit","tool_input":{"file_path":"/tmp/foo.ex","old_string":"x","new_string":"y"},"agent_type":"","agent_id":""}'
+run_test "Edit tool allowed for orchestrator (empty agent_type)" "0" "$FIXTURE_ORCH_EDIT"
 
 echo ""
 echo "Results: $pass passed, $fail failed"
