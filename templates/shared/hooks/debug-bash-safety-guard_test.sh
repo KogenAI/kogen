@@ -158,6 +158,26 @@ run_test "docker ps allowed in debug role" "0" \
 run_test "systemctl status allowed in debug role" "0" \
     "$(mk 'systemctl status app.service')" "debug"
 
+# 26: rm -rf blocked in design role
+run_test "rm -rf blocked in design role" "2" \
+    "$(mk 'rm -rf /tmp/foo')" "design"
+
+# 27: git push blocked in design role
+run_test "git push blocked in design role" "2" \
+    "$(mk 'git push origin main')" "design"
+
+# 28: ls allowed in design role
+run_test "ls allowed in design role" "0" \
+    "$(mk 'ls -la /tmp')" "design"
+
+# 29: curl -X POST blocked in design role
+run_test "curl -X POST blocked in design role" "2" \
+    "$(mk 'curl -X POST https://api.example.com/users')" "design"
+
+# 30: rm -rf still allowed in unrelated role (build)
+run_test "rm -rf allowed in build role (guard inactive)" "0" \
+    "$(mk 'rm -rf _build')" "build"
+
 echo ""
 echo "Results: $pass passed, $fail failed"
 

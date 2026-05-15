@@ -67,7 +67,7 @@ fi
 if [ "$TOOL_NAME" = "Bash" ]; then
 
     # Deny any command containing relative path traversal (../).
-    if printf '%s' "$COMMAND" | grep -qE '\.\./' ; then
+    if printf '%s' "$COMMAND" | grep -qE '\.\./'; then
         deny "BLOCKED by planner-guard: relative path traversal (..) forbidden — use absolute paths only"
         exit 0
     fi
@@ -124,8 +124,11 @@ if [ "$TOOL_NAME" = "Bash" ]; then
         dst=$(printf '%s\n' "$COMMAND" | sed -nE 's/^mv[[:space:]]+[^[:space:]]+[[:space:]]+([^[:space:]]+).*/\1/p' | head -1)
         for mv_arg in "$src" "$dst"; do
             case "$mv_arg" in
-                /tmp/*|codegen/logging/*) ;;
-                *) deny "BLOCKED by planner-guard: mv argument \"$mv_arg\" outside /tmp/ or codegen/logging/ is forbidden for planner"; exit 0 ;;
+            /tmp/* | codegen/logging/*) ;;
+            *)
+                deny "BLOCKED by planner-guard: mv argument \"$mv_arg\" outside /tmp/ or codegen/logging/ is forbidden for planner"
+                exit 0
+                ;;
             esac
         done
     fi

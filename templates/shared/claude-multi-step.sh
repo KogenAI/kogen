@@ -15,10 +15,10 @@ STEP_NUM=0
 TOTAL_STEPS="?"
 
 SYSTEM_PROMPT=$(sed -e "s|{{CHECKPOINT_FILE}}|$CHECKPOINT_FILE|g" \
-                     -e "s|{{LOG_PATH}}|$LOG_PATH|g" \
-                     -e "s|{{STEP}}|$STEP_NUM|g" \
-                     -e "s|{{TOTAL}}|$TOTAL_STEPS|g" \
-                     <<< "$ROLE_SYSTEM_PROMPT")
+    -e "s|{{LOG_PATH}}|$LOG_PATH|g" \
+    -e "s|{{STEP}}|$STEP_NUM|g" \
+    -e "s|{{TOTAL}}|$TOTAL_STEPS|g" \
+    <<<"$ROLE_SYSTEM_PROMPT")
 
 exec claude \
     --model "$ROLE_MODEL" \

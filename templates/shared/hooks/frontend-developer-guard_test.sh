@@ -22,7 +22,7 @@ fail=0
 
 run_test() {
     local desc="$1"
-    local expected="$2"  # "2" = deny, "0" = allow
+    local expected="$2" # "2" = deny, "0" = allow
     local input="$3"
 
     local stdout

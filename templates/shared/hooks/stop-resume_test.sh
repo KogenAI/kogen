@@ -25,19 +25,19 @@ cleanup() {
     # Counter files persist across runs and would push the static-session tests
     # past the retry cap → spurious "got allow" failures on the 4th+ run.
     rm -f /tmp/claude-resume-sess-t1.count \
-          /tmp/claude-resume-sess-t2.count \
-          /tmp/claude-resume-sess-t3.count \
-          /tmp/claude-resume-sess-t4.count \
-          /tmp/claude-resume-sess-t7.count \
-          /tmp/claude-resume-sess-t8.count \
-          /tmp/claude-resume-sess-loop.count
+        /tmp/claude-resume-sess-t2.count \
+        /tmp/claude-resume-sess-t3.count \
+        /tmp/claude-resume-sess-t4.count \
+        /tmp/claude-resume-sess-t7.count \
+        /tmp/claude-resume-sess-t8.count \
+        /tmp/claude-resume-sess-loop.count
 }
 trap cleanup EXIT
-cleanup  # clean any leftovers from previous suite runs before tests start
+cleanup # clean any leftovers from previous suite runs before tests start
 
 run_test() {
     local desc="$1"
-    local expected="$2"  # "block" or "allow"
+    local expected="$2" # "block" or "allow"
     local input="$3"
     local extra_env="${4:-}"
 
@@ -92,7 +92,7 @@ run_test "normal stop (no error) does not block" "allow" \
 # Test 5: Retry cap — 4th attempt should NOT block (cap = 3)
 SESSION_CAP="sess-cap-$(date +%s%N)"
 COUNTER_FILE="/tmp/claude-resume-${SESSION_CAP}.count"
-printf '%s' "3" > "$COUNTER_FILE"  # simulate already at cap
+printf '%s' "3" >"$COUNTER_FILE" # simulate already at cap
 RETRYABLE_MSG="$(mk_stop 'Stream idle timeout occurred' "$SESSION_CAP")"
 stdout_cap=$(printf '%s' "$RETRYABLE_MSG" | env STOP_HOOK_ACTIVE=false bash "$GUARD" 2>/dev/null || true)
 if printf '%s' "$stdout_cap" | grep -q '"decision"[[:space:]]*:[[:space:]]*"block"'; then

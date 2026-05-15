@@ -10,6 +10,7 @@
 #   - codegen/rules/stacks/phoenix/_core.md, codegen/rules/stacks/phoenix/orchestrator.md (Phoenix orchestrator rules)
 #   - codegen/rules/INDEX.md, codegen/rules/STYLE_GUIDE.md
 #   - codegen/*.md (top-level design docs — NOT subdirs like recipes/, templates/, rules/)
+#   - codegen/designs/** (design-doc lifecycle dirs — drafts/, ready/, archive/; matches the write-hook surface so /document can read its own drafts)
 #
 # Subagents (non-empty agent_id) are always allowed through.
 
@@ -75,6 +76,12 @@ fi
 
 # Allowlist check 3: codegen/*.md (top-level design docs only — no subdirs)
 if printf '%s' "$rel_path" | grep -qE '^codegen/[^/]+\.md$'; then
+    exit 0
+fi
+
+# Allowlist check 4: codegen/designs/ (drafts/ready/archive) — matches the
+# write-hook surface so /document can re-read its own drafts from any session.
+if printf '%s' "$rel_path" | grep -qE '^codegen/designs/'; then
     exit 0
 fi
 

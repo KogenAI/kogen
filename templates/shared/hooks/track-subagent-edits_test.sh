@@ -26,7 +26,7 @@ export HOME="$TMP_DIR"
 
 run_test() {
     local desc="$1"
-    local expected="$2"  # "0" = allow (no deny), "2" = deny
+    local expected="$2" # "0" = allow (no deny), "2" = deny
     local input="$3"
 
     local stdout exit_code

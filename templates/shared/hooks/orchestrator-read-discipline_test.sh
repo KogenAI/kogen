@@ -135,6 +135,25 @@ run_test "orchestrator Read on codegen/rules/stacks/phoenix/_core.md allows" "0"
 FIXTURE_GIT_RO='{"hook_event_name":"PreToolUse","tool_name":"Read","tool_input":{"file_path":"codegen/rules/shared/git-readonly.md"},"agent_id":"","agent_type":""}'
 run_test "orchestrator Read on codegen/rules/shared/git-readonly.md allows" "0" "$FIXTURE_GIT_RO"
 
+# Test 23: orchestrator Read on codegen/designs/drafts/foo.md — ALLOW (/document re-read)
+FIXTURE_DRAFT='{"hook_event_name":"PreToolUse","tool_name":"Read","tool_input":{"file_path":"codegen/designs/drafts/foo.md"},"agent_id":"","agent_type":""}'
+run_test "orchestrator Read on codegen/designs/drafts/ allows" "0" "$FIXTURE_DRAFT"
+
+# Test 24: orchestrator Read on codegen/designs/ready/foo.md — ALLOW (/split re-read)
+FIXTURE_READY='{"hook_event_name":"PreToolUse","tool_name":"Read","tool_input":{"file_path":"codegen/designs/ready/foo.md"},"agent_id":"","agent_type":""}'
+run_test "orchestrator Read on codegen/designs/ready/ allows" "0" "$FIXTURE_READY"
+
+# Test 25: orchestrator Read on codegen/designs/archive/foo.md — ALLOW
+FIXTURE_ARCHIVE='{"hook_event_name":"PreToolUse","tool_name":"Read","tool_input":{"file_path":"codegen/designs/archive/foo.md"},"agent_id":"","agent_type":""}'
+run_test "orchestrator Read on codegen/designs/archive/ allows" "0" "$FIXTURE_ARCHIVE"
+
+# Test 26: orchestrator Read on absolute codegen/designs/drafts/ path — ALLOW
+TMP_CWD4="$(mktemp -d)"
+ABS_DRAFT="${TMP_CWD4}/codegen/designs/drafts/foo.md"
+FIXTURE_ABS_DRAFT='{"hook_event_name":"PreToolUse","tool_name":"Read","tool_input":{"file_path":"'"$ABS_DRAFT"'"},"agent_id":"","agent_type":"","cwd":"'"$TMP_CWD4"'"}'
+run_test "orchestrator Read on absolute codegen/designs/drafts/ path allows" "0" "$FIXTURE_ABS_DRAFT"
+rm -rf "$TMP_CWD4"
+
 echo ""
 echo "Results: $pass passed, $fail failed"
 

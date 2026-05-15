@@ -10,60 +10,60 @@ Typical firing order for common roles:
 
 ### Orchestrator (top-level, no `agent_id`)
 
-| Event | Hooks that fire |
-|-------|----------------|
-| `Bash` | `orchestrator-read-discipline`, `no-cat-pipe`, `no-git-stash`, `no-python-json`, `build-worker-cwd-guard` |
-| `Edit`/`Write` | `orchestrator-no-source-edit`, `session-log-section-integrity`, `build-worker-cwd-guard` |
+| Event          | Hooks that fire                                                                                           |
+| -------------- | --------------------------------------------------------------------------------------------------------- |
+| `Bash`         | `orchestrator-read-discipline`, `no-cat-pipe`, `no-git-stash`, `no-python-json`, `build-worker-cwd-guard` |
+| `Edit`/`Write` | `orchestrator-no-source-edit`, `session-log-section-integrity`, `build-worker-cwd-guard`                  |
 
 ### Developer (`agent_type=developer-phoenix-backend` / `developer-phoenix-frontend`)
 
-| Event | Hooks that fire |
-|-------|----------------|
-| `Bash` | `dev-no-ci`, `no-cat-pipe`, `no-python-json`, `no-git-stash` |
+| Event                      | Hooks that fire                                                                       |
+| -------------------------- | ------------------------------------------------------------------------------------- |
+| `Bash`                     | `dev-no-ci`, `no-cat-pipe`, `no-python-json`, `no-git-stash`                          |
 | `Edit`/`Write`/`MultiEdit` | `session-log-section-integrity`, `track-subagent-edits`, `env-var-sample-consistency` |
-| `PostToolUse` (failure) | `track-tool-failures` |
+| `PostToolUse` (failure)    | `track-tool-failures`                                                                 |
 
 ### Planner (`agent_type=planner`)
 
-| Event | Hooks that fire |
-|-------|----------------|
-| `Bash` | `planner-guard`, `planner-load-discipline` |
-| `Edit` | `planner-guard` (only `codegen/logging/*.md` allowed) |
-| `Write`/`MultiEdit` | `planner-guard` (always denied) |
+| Event               | Hooks that fire                                       |
+| ------------------- | ----------------------------------------------------- |
+| `Bash`              | `planner-guard`, `planner-load-discipline`            |
+| `Edit`              | `planner-guard` (only `codegen/logging/*.md` allowed) |
+| `Write`/`MultiEdit` | `planner-guard` (always denied)                       |
 
 ### Inspector (`agent_type=inspector` / `inspector-phoenix` / `codex-inspector` / `cursor-inspector`)
 
-| Event | Hooks that fire |
-|-------|----------------|
-| `Bash` | `inspector-bash-guard` (Claude Code), `codex-inspector-bash-guard` (Codex), `cursor-inspector-bash-guard` (Cursor) |
-| `Edit`/`Write` | `inspector-write-guard`, `codex-inspector-write-guard`, `cursor-inspector-bash-guard` |
-| `Read` | `inspector-read-guard`, `codex-inspector-read-guard` |
+| Event          | Hooks that fire                                                                                                    |
+| -------------- | ------------------------------------------------------------------------------------------------------------------ |
+| `Bash`         | `inspector-bash-guard` (Claude Code), `codex-inspector-bash-guard` (Codex), `cursor-inspector-bash-guard` (Cursor) |
+| `Edit`/`Write` | `inspector-write-guard`, `codex-inspector-write-guard`, `cursor-inspector-bash-guard`                              |
+| `Read`         | `inspector-read-guard`, `codex-inspector-read-guard`                                                               |
 
 ### Committer (`agent_type=committer`)
 
-| Event | Hooks that fire |
-|-------|----------------|
+| Event               | Hooks that fire                                |
+| ------------------- | ---------------------------------------------- |
 | `Bash` (git commit) | `committer-subject-length`, `pre-commit-guard` |
 
 ### Debug (`CLAUDE_ROLE=debug`)
 
-| Event | Hooks that fire |
-|-------|----------------|
-| `Bash` | `debug-bash-safety-guard` |
+| Event          | Hooks that fire                                           |
+| -------------- | --------------------------------------------------------- |
+| `Bash`         | `debug-bash-safety-guard`                                 |
 | `Edit`/`Write` | `orchestrator-no-source-edit` (deny — debug is read-only) |
 
 ---
 
 ## Policy Summary
 
-| Role | Bash writes | File writes | Git | Notes |
-|------|-------------|-------------|-----|-------|
-| Orchestrator | mkdir/log only | codegen/logging/, tmp/ | read-only | no source edits |
-| Developer | any (no `make ci`) | any | read-only | no CI gates |
-| Planner | read-only + /tmp/ | codegen/logging/ only | read-only | investigation only |
-| Inspector | none | none | read-only | read-only investigation |
-| Committer | `git commit/add/push` | none | write | subject ≤50B |
-| Debug | none (read-only) | none | read-only | investigation, no mutations |
+| Role         | Bash writes           | File writes            | Git       | Notes                       |
+| ------------ | --------------------- | ---------------------- | --------- | --------------------------- |
+| Orchestrator | mkdir/log only        | codegen/logging/, codegen/designs/, /tmp/ | read-only | no source edits             |
+| Developer    | any (no `make ci`)    | any                    | read-only | no CI gates                 |
+| Planner      | read-only + /tmp/     | codegen/logging/ only  | read-only | investigation only          |
+| Inspector    | none                  | none                   | read-only | read-only investigation     |
+| Committer    | `git commit/add/push` | none                   | write     | subject ≤50B                |
+| Debug        | none (read-only)      | none                   | read-only | investigation, no mutations |
 
 ---
 
@@ -71,7 +71,7 @@ Typical firing order for common roles:
 
 ### Blocking hooks (deny on violation)
 
-- **`orchestrator-no-source-edit`** — Prevents orchestrator from editing source files. Allows `codegen/logging/`, `codegen/`, `tmp/`, top-level `.md`. Debug mode (`CLAUDE_ROLE=debug`) is denied unconditionally.
+- **`orchestrator-no-source-edit`** — Restricts orchestrator writes per launcher. Plain orchestrator (no `CLAUDE_ROLE`, also covers `claude-build`) writes allowed under `codegen/logging/`, `codegen/designs/`, and absolute `/tmp/`. `claude-debug` / `claude-design` (`CLAUDE_ROLE=debug|design`) writes scoped to `codegen/designs/` only — for both the orchestrator and Agent-spawned helpers. Subagents under plain orchestrator bypass the hook.
 - **`inspector-bash-guard`** — Blocks filesystem mutations, git writes, SQL mutations, path traversal (`../`), and redirect writes for inspector agents. Other agent types pass through.
 - **`codex-inspector-bash-guard`** / **`cursor-inspector-bash-guard`** — Same as above for Codex/Cursor environments.
 - **`build-worker-cwd-guard`** — In user-app context (combobulate apps_root), prevents orchestrator from reading/writing outside the user app directory.

@@ -106,33 +106,48 @@ harness:
 roles:
   build:
     output_format: stream-json
-    disallowed_tools:
+    # build uses --tools allowlist (load gate) instead of --disallowed-tools
+    # (permission filter). Same rationale as debug/design: only listed tools
+    # enter context, and ToolSearch can't be used to re-expand the surface
+    # mid-session. Allowlist covers orchestrate + delegate + dev work. Write
+    # surface is further restricted to codegen/logging/ by
+    # orchestrator-no-source-edit.sh (plain-orchestrator branch — CLAUDE_ROLE unset).
+    tools:
       - Agent
-      - AskUserQuestion
-      - EnterPlanMode
-      - EnterWorktree
-      - ExitPlanMode
-      - Plan
+      - Bash
+      - Edit
+      - Glob
+      - Grep
+      - Read
+      - Skill
+      - Write
     system_prompt_file: shared/claude-build-system-prompt.txt
     append_project_context: false
 
+  # debug/design use --tools allowlist (load gate) instead of --disallowed-tools
+  # (permission filter). The deferred-tool harness already keeps most tools out
+  # of context by default, so denylists do nothing for context — the only real
+  # context-trim happens when you exclude default-loaded tools (AskUserQuestion,
+  # ScheduleWakeup, ToolSearch). --tools "A,B,C" gives precise control: only
+  # listed tools ever enter context, and ToolSearch can't be used to re-expand
+  # the surface mid-session.
+  #
+  # Allowlist: investigation + design-doc authoring only. Write surface is then
+  # path-scoped to codegen/designs/** by orchestrator-no-source-edit.sh, and
+  # destructive Bash is filtered by debug-bash-safety-guard.sh.
   debug:
     model: opus
     effort: high
     output_format: text
-    disallowed_tools:
-      - EnterPlanMode
-      - ExitPlanMode
-      - EnterWorktree
-      - AskUserQuestion
-      - Plan
+    tools:
       - Agent
-      - Skill
+      - Bash
       - Edit
+      - Glob
+      - Grep
+      - Read
+      - Skill
       - Write
-      - MultiEdit
-      - NotebookEdit
-      - TodoWrite
     system_prompt_file: shared/claude-debug-system-prompt.txt
     append_project_context: true
 
@@ -140,19 +155,15 @@ roles:
     model: opus
     effort: high
     output_format: text
-    disallowed_tools:
-      - EnterPlanMode
-      - ExitPlanMode
-      - EnterWorktree
-      - AskUserQuestion
-      - Plan
+    tools:
       - Agent
-      - Skill
+      - Bash
       - Edit
+      - Glob
+      - Grep
+      - Read
+      - Skill
       - Write
-      - MultiEdit
-      - NotebookEdit
-      - TodoWrite
     system_prompt_file: shared/claude-design-system-prompt.txt
     append_project_context: true
 

@@ -12,8 +12,8 @@ parse_input
 # Inspector bash guard — only active for inspector agents.
 # If not an inspector, allow (this hook is not responsible for non-inspector constraints).
 case "${AGENT_TYPE:-}" in
-    inspector|inspector-phoenix|codex-inspector|cursor-inspector) ;;
-    *) exit 0 ;;
+inspector | inspector-phoenix | codex-inspector | cursor-inspector) ;;
+*) exit 0 ;;
 esac
 
 # Only gate Bash calls.
@@ -29,7 +29,7 @@ redirect_check=$(printf '%s' "$COMMAND" | sed -e 's/2>&1//g' -e 's|2>/dev/null||
 # ── Path traversal block ─────────────────────────────────────────────────────
 
 # Deny any command containing relative path traversal (../).
-if printf '%s' "$COMMAND" | grep -qE '\.\./' ; then
+if printf '%s' "$COMMAND" | grep -qE '\.\./'; then
     deny "BLOCKED by inspector-bash-guard: relative path traversal (..) forbidden — use absolute paths only"
     exit 0
 fi

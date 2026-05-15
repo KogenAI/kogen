@@ -42,7 +42,9 @@ Write markdown document capturing everything discussed — issues found, root ca
    - Test coverage gaps
    - Consolidation table (if things were merged/renamed/removed)
 
-4. **Save automatically** — always save to `codegen/` with descriptive kebab-case filename (e.g. `codegen/bouncer-post-deploy-fixes.md`). Never ask for path.
+4. **Save automatically** — save with a descriptive kebab-case filename. Never ask for path.
+   - If `CLAUDE_ROLE` is `debug` or `design` (set by `claude-debug.sh` / `claude-design.sh`): `mkdir -p codegen/designs/drafts` then save to `codegen/designs/drafts/<slug>.md`. Re-running on an existing slug → Edit in place; the doc is a living spec. Promotion to `codegen/designs/ready/` happens via `/split` when the design is implementation-ready; archival from `ready/` to `codegen/designs/archive/` is manual (ask `claude-build` when work is shipped).
+   - Otherwise: save to `codegen/<slug>.md` (e.g. `codegen/bouncer-post-deploy-fixes.md`).
 
 5. **Present summary** so user can verify nothing was missed.
 

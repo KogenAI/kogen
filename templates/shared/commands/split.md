@@ -17,6 +17,8 @@ If no source document, ask user where to write the plan before producing steps �
 
 When reviewing or updating existing split doc: if you reorder steps you MUST rewrite document to reflect new order. Numbers in document are ground truth.
 
+**Promote drafts when splitting them.** If source document path is under `codegen/designs/drafts/`, after rewriting the steps section, move the file: `mv codegen/designs/drafts/<slug>.md codegen/designs/ready/<slug>.md`. The move IS the promotion signal — `drafts/` = still being shaped, `ready/` = step list exists, implementation can start. Mention the new path in the reply. Archival from `ready/` to `codegen/designs/archive/` is manual and only triggered by user instruction to `claude-build` after work ships — never archive from `/split`.
+
 Each step must:
 
 - Leave system in better state — not just functional, genuinely more valuable even if no further steps ship
