@@ -149,12 +149,13 @@ assert_file_contains "long-gate flag has log=" "log=" "$flag"
 assert_file_contains "long-gate flag has exitcode_file=" "exitcode_file=" "$flag"
 assert_file_contains "long-gate flag has mode=long" "mode=long" "$flag"
 assert_file_contains "long-gate flag has session_id" "session_id=sess-long" "$flag"
-# latest.flag should point to (or copy) the same content
-[ -e "$T5/codegen/gate-pending/latest.flag" ] && {
-    printf 'PASS: latest.flag exists\n'
+# latest.flag is removed after long-gate completion (invariant: exists ⇔ in flight).
+# The per-session flag (sess-long.flag) still exists; only latest.flag is unlinked.
+[ ! -e "$T5/codegen/gate-pending/latest.flag" ] && {
+    printf 'PASS: latest.flag removed after long-gate completion\n'
     pass=$((pass + 1))
 } || {
-    printf 'FAIL: latest.flag does not exist\n'
+    printf 'FAIL: latest.flag still exists after long-gate completion\n'
     fail=$((fail + 1))
 }
 # The hook now blocks and polls — with no Makefile present, `make llm` fails
@@ -401,6 +402,139 @@ assert_file_contains "timeout: reason is timeout-exceeded" "timeout-exceeded" "$
 # Cleanup background sleep (stub make ran in nohup subprocess).
 pkill -f "sleep 30" 2>/dev/null || true
 rm -rf "$T13" "$stub_bin13"
+
+# ── Test 14: long-gate ALL CLEAR removes latest.flag ────────────────────────
+T14=$(make_project)
+LOG14="$T14/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_step1_sweep_allclear.md"
+stub_bin14=$(mktemp -d)
+cat >"$stub_bin14/make" <<'SH'
+#!/usr/bin/env bash
+exit 0
+SH
+chmod +x "$stub_bin14/make"
+cat >"$LOG14" <<'MD'
+# Step
+
+## Plan
+
+**Gate**: `make llm`
+MD
+out=$(printf '%s' "$(input_for "$T14" developer-phoenix-backend false sess14)" |
+    DEV_GATE_POLL_TIMEOUT_OVERRIDE=10 PATH="$stub_bin14:$PATH" bash "$HOOK" 2>/dev/null || true)
+assert_file_contains "T14: long-gate ALL CLEAR appended" "ALL CLEAR" "$LOG14"
+[ ! -e "$T14/codegen/gate-pending/latest.flag" ] && {
+    printf 'PASS: T14: latest.flag removed after long-gate completion\n'
+    pass=$((pass + 1))
+} || {
+    printf 'FAIL: T14: latest.flag still exists after long-gate completion\n'
+    fail=$((fail + 1))
+}
+rm -rf "$T14" "$stub_bin14"
+
+# ── Test 15: short-gate sweeps pre-seeded terminal flag ─────────────────────
+T15=$(make_project)
+LOG15="$T15/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_step1_sweep_short.md"
+cat >"$LOG15" <<'MD'
+# Step
+
+## Plan
+
+**Gate**: `true`
+MD
+mkdir -p "$T15/codegen/gate-pending"
+# Seed a terminal exitcode file then a flag pointing at it.
+ec15="$T15/codegen/gate-pending/oldsession-stale.log.exitcode"
+echo 0 >"$ec15"
+cat >"$T15/codegen/gate-pending/latest.flag" <<EOF
+gate=make llm
+pid=99999
+log=$T15/codegen/gate-pending/oldsession-stale.log
+exitcode_file=$ec15
+started_at=2026-01-01T00:00:00Z
+session_id=oldsession
+mode=long
+EOF
+out=$(printf '%s' "$(input_for "$T15" developer-phoenix-backend false sess15)" | bash "$HOOK" 2>/dev/null || true)
+[ ! -e "$T15/codegen/gate-pending/latest.flag" ] && {
+    printf 'PASS: T15: pre-seeded terminal latest.flag swept by hook entry\n'
+    pass=$((pass + 1))
+} || {
+    printf 'FAIL: T15: pre-seeded terminal latest.flag not swept\n'
+    fail=$((fail + 1))
+}
+assert_file_contains "T15: short-gate verdict appended normally" "ALL CLEAR" "$LOG15"
+rm -rf "$T15"
+
+# ── Test 16: live PID + absent exitcode_file → flag preserved ───────────────
+T16=$(make_project)
+LOG16="$T16/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_step1_sweep_live.md"
+cat >"$LOG16" <<'MD'
+# Step
+
+## Plan
+
+**Gate**: `make llm`
+MD
+mkdir -p "$T16/codegen/gate-pending"
+nonexistent_ec="/tmp/nonexistent-dev-gate-test-$$-$(date -u +%s).exitcode"
+rm -f "$nonexistent_ec"
+cat >"$T16/codegen/gate-pending/latest.flag" <<EOF
+gate=make llm
+pid=$$
+log=/tmp/nonexistent-dev-gate-test.log
+exitcode_file=$nonexistent_ec
+started_at=2026-01-01T00:00:00Z
+session_id=livesession
+mode=long
+EOF
+out=$(printf '%s' "$(input_for "$T16" developer-phoenix-backend false sess16)" | DEV_GATE_POLL_TIMEOUT_OVERRIDE=5 bash "$HOOK" 2>/dev/null || true)
+[ -e "$T16/codegen/gate-pending/latest.flag" ] && {
+    printf 'PASS: T16: live-PID flag preserved (no false sweep)\n'
+    pass=$((pass + 1))
+} || {
+    printf 'FAIL: T16: live-PID flag unexpectedly swept\n'
+    fail=$((fail + 1))
+}
+rm -rf "$T16"
+
+# ── Test 17: reused-PID stale flag → sweep prevents false lockout ───────────
+T17=$(make_project)
+LOG17="$T17/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_step1_sweep_reused.md"
+cat >"$LOG17" <<'MD'
+# Step
+
+## Plan
+
+**Gate**: `true`
+MD
+mkdir -p "$T17/codegen/gate-pending"
+# Spawn a long-lived process to simulate a reused PID.
+sleep 600 &
+reused_pid=$!
+# Seed a terminal exitcode file — gate finished, but coincidentally that PID is now in use.
+ec17="$T17/codegen/gate-pending/oldsession-reused.log.exitcode"
+echo 0 >"$ec17"
+cat >"$T17/codegen/gate-pending/latest.flag" <<EOF
+gate=make llm
+pid=$reused_pid
+log=$T17/codegen/gate-pending/oldsession-reused.log
+exitcode_file=$ec17
+started_at=2026-01-01T00:00:00Z
+session_id=oldsession
+mode=long
+EOF
+out=$(printf '%s' "$(input_for "$T17" developer-phoenix-backend false sess17)" | bash "$HOOK" 2>/dev/null || true)
+kill "$reused_pid" 2>/dev/null || true
+# Without the sweep, the lockout would fire because PID is alive.
+# With the sweep, the terminal flag is removed before the lockout check sees it.
+if grep -qF "previous-gate-running" "$LOG17"; then
+    printf 'FAIL: T17: false previous-gate-running lockout fired despite terminal flag\n'
+    fail=$((fail + 1))
+else
+    printf 'PASS: T17: sweep prevented false previous-gate-running lockout\n'
+    pass=$((pass + 1))
+fi
+rm -rf "$T17"
 
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

@@ -34,6 +34,14 @@
 #   session_id=<id>
 #   mode=long
 #
+# Invariant: latest.flag exists ⇔ a long gate is currently in flight.
+# Created on long-gate launch (write near `ln -s "$flag_path"`).
+# Removed on long-gate completion (all four verdict branches: timeout,
+# ALL CLEAR, INCONCLUSIVE-environmental, FAILED).
+# Swept at hook entry if its referenced exitcode_file exists as a regular
+# file (i.e., the prior gate has terminated). Short gates do not write
+# latest.flag.
+#
 # Planner-wins contract: if `## Plan` in the active step log contains a
 # `**Gate**:` (or `Gate:`) line, that string is used verbatim, regardless
 # of what the diff-based tree would have chosen. Document this in the log.
@@ -44,6 +52,26 @@ source "$(dirname "$0")/lib/hooks-lib.sh"
 # shellcheck disable=SC1091
 source "$(dirname "$0")/lib/gate-select.sh"
 parse_input
+
+# ── Stale-flag sweep helper ─────────────────────────────────────────────────
+# Invariant: latest.flag exists ⇔ a long gate is currently in flight.
+# Sweep: if latest.flag's referenced exitcode_file exists as a regular file,
+# the gate has terminated → unlink latest.flag. Idempotent and safe: never
+# touches a flag whose exitcode_file is absent (gate still running or never
+# ran).
+sweep_stale_latest_flag() {
+    local flag_dir="$1"
+    local latest="$flag_dir/latest.flag"
+    [ -e "$latest" ] || return 0
+    local ec
+    ec=$(grep '^exitcode_file=' "$latest" 2>/dev/null | head -n 1 | cut -d= -f2-)
+    if [ -n "$ec" ] && [ -f "$ec" ]; then
+        rm -f "$latest"
+        debug_log dev-gate "swept stale latest.flag (terminal exitcode_file=$ec)"
+    fi
+}
+
+sweep_stale_latest_flag "${CWD:-${CLAUDE_PROJECT_DIR:-$PWD}}/codegen/gate-pending"
 
 agent_type="$AGENT_TYPE"
 session_id="$SESSION_ID"
@@ -353,5 +381,7 @@ else
             "$(printf 'Gate '"'"'%s'"'"' failed. Log: %s\n\nTail:\n%s' "$gate" "$log_path" "$tail_out")"
     fi
 fi
+
+rm -f "$flag_dir/latest.flag"
 
 exit 0
