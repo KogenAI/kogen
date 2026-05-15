@@ -107,10 +107,11 @@ roles:
   build:
     output_format: stream-json
     disallowed_tools:
-      - EnterPlanMode
-      - ExitPlanMode
-      - EnterWorktree
+      - Agent
       - AskUserQuestion
+      - EnterPlanMode
+      - EnterWorktree
+      - ExitPlanMode
       - Plan
     system_prompt_file: shared/claude-build-system-prompt.txt
     append_project_context: false
