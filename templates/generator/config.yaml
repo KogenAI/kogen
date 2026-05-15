@@ -169,19 +169,6 @@ roles:
     system_prompt_file: shared/claude-design-system-prompt.txt
     append_project_context: true
 
-  multi_step:
-    model: sonnet
-    effort: medium
-    output_format: text
-    disallowed_tools:
-      - EnterPlanMode
-      - ExitPlanMode
-      - EnterWorktree
-      - AskUserQuestion
-      - Plan
-    system_prompt_file: shared/claude-multi-step-system-prompt.txt
-    system_prompt_template: true
-
   housekeeper:
     model: haiku
     effort: medium

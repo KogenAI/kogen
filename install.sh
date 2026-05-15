@@ -503,20 +503,6 @@ if harness_enabled claude; then
         echo "   🗑️  Removed legacy claude-design alias from $RC_FILE"
     fi
 
-    # Install claude-multi-step wrapper
-    echo ""
-    echo "🚀 Installing claude-multi-step wrapper..."
-
-    content_stable_cp "$CODEGEN_DIR/templates/shared/claude-multi-step.sh" "$INSTALL_DIR/claude-multi-step"
-    chmod +x "$INSTALL_DIR/claude-multi-step"
-    echo "   ✅ claude-multi-step wrapper installed at: $INSTALL_DIR/claude-multi-step"
-
-    # De-register legacy alias from rc file (idempotent)
-    if grep -q "alias claude-multi-step=" "$RC_FILE" 2>/dev/null; then
-        sed -i '' '/^# Optimum Codegen claude-multi-step alias$/d; /^alias claude-multi-step=/d' "$RC_FILE"
-        echo "   🗑️  Removed legacy claude-multi-step alias from $RC_FILE"
-    fi
-
     # Install claude-debug wrapper
     echo ""
     echo "🚀 Installing claude-debug wrapper..."
