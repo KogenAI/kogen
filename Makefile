@@ -221,6 +221,13 @@ install:
 	$(call check_make_only,install)
 	@./install.sh
 
+# test: run every PreToolUse/SubagentStop/Stop hook unit-test script in parallel.
+# Each *_test.sh is hermetic — own tmp dirs, no shared state — so xargs -P is safe.
+# Job count caps at 8 to avoid thrashing on smaller machines.
+test:
+	$(call check_make_only,test)
+	@./templates/shared/hooks/run-tests.sh
+
 # rule-parity: re-render AGENTS-HYBRID.md.j2 in both modes to temp files and
 # diff against committed AGENTS.md / CLAUDE.md. Exits non-zero on drift.
 rule-parity:

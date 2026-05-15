@@ -159,7 +159,8 @@ rm -rf "$T10"
 
 # ── Test 11: all checks pass — appends SSV section ──────────────────────────
 T11=$(make_tmp_site)
-mkdir -p "$T11/codegen/logging"
+mkdir -p "$T11/public" "$T11/codegen/logging"
+touch "$T11/public/app.css"
 LOG="$T11/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_session.md"
 cat >"$LOG" <<'MD'
 # Session Log

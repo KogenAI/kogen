@@ -20,8 +20,20 @@ pass=0
 fail=0
 
 TMP_DIR="$(mktemp -d)"
-cleanup() { rm -rf "$TMP_DIR"; }
+cleanup() {
+    rm -rf "$TMP_DIR"
+    # Counter files persist across runs and would push the static-session tests
+    # past the retry cap → spurious "got allow" failures on the 4th+ run.
+    rm -f /tmp/claude-resume-sess-t1.count \
+          /tmp/claude-resume-sess-t2.count \
+          /tmp/claude-resume-sess-t3.count \
+          /tmp/claude-resume-sess-t4.count \
+          /tmp/claude-resume-sess-t7.count \
+          /tmp/claude-resume-sess-t8.count \
+          /tmp/claude-resume-sess-loop.count
+}
 trap cleanup EXIT
+cleanup  # clean any leftovers from previous suite runs before tests start
 
 run_test() {
     local desc="$1"
