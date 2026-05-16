@@ -199,6 +199,22 @@ roles:
       Read files via Read tool. Query db/logs via Bash (SELECT, grep, tail — read-only).
       Do not mutate anything. Report: what you found, why it matters, recommended next steps.
 
+  bouncer:
+    model: haiku
+    effort: low
+    output_format: stream-json
+    json_schema: bouncer.json
+  concierge:
+    model: haiku
+    effort: low
+    output_format: stream-json
+    json_schema: concierge.json
+  preference_extractor:
+    model: haiku
+    effort: low
+    output_format: stream-json
+    json_schema: preference_extractor.json
+
 budgets:
   build: 25.0
   classifier: 0.50
