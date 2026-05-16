@@ -108,5 +108,16 @@ Gate: make ci-fast
 SESSION LOG: codegen/logging/...
 ```
 
+## LLM-Test Gate Catalog
+
+Sanctioned commands for LLM-integration gate selection:
+- `make ci` — full suite incl. dialyzer + coverage. Use for final steps.
+- `make ci-fast` — skips dialyzer/`--cover`. Use for non-final steps.
+- `make llm` — full LLM integration suite (10-partition parallel). Gate use only.
+- `make llm-phoenix` — Phoenix-stack LLM suite (10-partition parallel). Gate use only.
+- `make llm-single FILE=<path>` — one LLM test file, no partitioning. Dev iteration only.
+
+Composing `MIX_TEST_PARTITION=N MIX_TEST_PARTITIONS=M mix test --only llm_integration ...` is FORBIDDEN. Hooks block this. Use `make llm-single FILE=<path>` for one file, `make llm` for the suite.
+
 **Self-validation**: <checks run — all 8 pass OR issues found and fixed>
 ```
