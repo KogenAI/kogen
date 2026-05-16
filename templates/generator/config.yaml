@@ -202,6 +202,11 @@ roles:
     effort: low
     output_format: stream-json
     json_schema: preference_extractor.json
+  user_app_build:
+    model: sonnet
+    effort: medium
+    output_format: stream-json
+    json_schema: user_app_build.json
 
 budgets:
   build: 25.0
