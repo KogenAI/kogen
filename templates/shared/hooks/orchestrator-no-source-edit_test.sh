@@ -181,6 +181,111 @@ rm -rf "$CWD_DESIGNS"
 FIXTURE_FAKE_DESIGNS='{"hook_event_name":"PreToolUse","tool_name":"Write","tool_input":{"file_path":"/fake/codegen/designs/foo.md","content":"x"},"agent_id":"","agent_type":""}'
 run_test "orchestrator Write on /fake/codegen/designs/ blocks" "2" "$FIXTURE_FAKE_DESIGNS"
 
+run_test_parity() {
+    local desc="$1"
+    local expected="$2"
+    local env_var="$3"
+    local role_val="$4"
+    local input="$5"
+
+    local stdout
+    stdout=$(printf '%s' "$input" | env "$env_var=$role_val" bash "$GUARD" 2>/dev/null || true)
+
+    local outcome
+    if printf '%s' "$stdout" | grep -q '"permissionDecision"[[:space:]]*:[[:space:]]*"deny"'; then
+        outcome="2"
+    else
+        outcome="0"
+    fi
+
+    if [ "$outcome" = "$expected" ]; then
+        printf 'PASS: %s\n' "$desc"
+        pass=$((pass + 1))
+    else
+        printf 'FAIL: %s — expected %s (deny=2/allow=0), got %s\n  stdout: %s\n' "$desc" "$expected" "$outcome" "$stdout"
+        fail=$((fail + 1))
+    fi
+}
+
+# PI_ROLE parity tests
+
+# Test 27: PI_ROLE=debug + Edit on lib/ — BLOCK
+FIXTURE_PI_DEBUG_LIB='{"hook_event_name":"PreToolUse","tool_name":"Edit","tool_input":{"file_path":"lib/combobulate/foo.ex","old_string":"x","new_string":"y"},"agent_id":"","agent_type":""}'
+run_test_parity "PI_ROLE=debug Edit on lib/ blocks" "2" "PI_ROLE" "debug" "$FIXTURE_PI_DEBUG_LIB"
+
+# Test 28: PI_ROLE=debug + Write to codegen/designs/drafts/ — ALLOW
+FIXTURE_PI_DEBUG_DRAFT='{"hook_event_name":"PreToolUse","tool_name":"Write","tool_input":{"file_path":"codegen/designs/drafts/foo.md","content":"x"},"agent_id":"","agent_type":""}'
+run_test_parity "PI_ROLE=debug Write to drafts/ allows" "0" "PI_ROLE" "debug" "$FIXTURE_PI_DEBUG_DRAFT"
+
+# Test 29: PI_ROLE=design + Edit lib/ — BLOCK
+FIXTURE_PI_DESIGN_LIB='{"hook_event_name":"PreToolUse","tool_name":"Edit","tool_input":{"file_path":"lib/combobulate/foo.ex","old_string":"x","new_string":"y"},"agent_id":"","agent_type":""}'
+run_test_parity "PI_ROLE=design Edit on lib/ blocks" "2" "PI_ROLE" "design" "$FIXTURE_PI_DESIGN_LIB"
+
+# Test 30: PI_ROLE=design + Write to codegen/designs/drafts/ — ALLOW
+FIXTURE_PI_DESIGN_DRAFT='{"hook_event_name":"PreToolUse","tool_name":"Write","tool_input":{"file_path":"codegen/designs/drafts/foo.md","content":"x"},"agent_id":"","agent_type":""}'
+run_test_parity "PI_ROLE=design Write to drafts/ allows" "0" "PI_ROLE" "design" "$FIXTURE_PI_DESIGN_DRAFT"
+
+# CODEX_ROLE parity tests
+
+# Test 31: CODEX_ROLE=debug + Edit on lib/ — BLOCK
+FIXTURE_CODEX_DEBUG_LIB='{"hook_event_name":"PreToolUse","tool_name":"Edit","tool_input":{"file_path":"lib/combobulate/foo.ex","old_string":"x","new_string":"y"},"agent_id":"","agent_type":""}'
+run_test_parity "CODEX_ROLE=debug Edit on lib/ blocks" "2" "CODEX_ROLE" "debug" "$FIXTURE_CODEX_DEBUG_LIB"
+
+# Test 32: CODEX_ROLE=debug + Write to codegen/designs/drafts/ — ALLOW
+FIXTURE_CODEX_DEBUG_DRAFT='{"hook_event_name":"PreToolUse","tool_name":"Write","tool_input":{"file_path":"codegen/designs/drafts/foo.md","content":"x"},"agent_id":"","agent_type":""}'
+run_test_parity "CODEX_ROLE=debug Write to drafts/ allows" "0" "CODEX_ROLE" "debug" "$FIXTURE_CODEX_DEBUG_DRAFT"
+
+# Test 33: CODEX_ROLE=design + Edit lib/ — BLOCK
+FIXTURE_CODEX_DESIGN_LIB='{"hook_event_name":"PreToolUse","tool_name":"Edit","tool_input":{"file_path":"lib/combobulate/foo.ex","old_string":"x","new_string":"y"},"agent_id":"","agent_type":""}'
+run_test_parity "CODEX_ROLE=design Edit on lib/ blocks" "2" "CODEX_ROLE" "design" "$FIXTURE_CODEX_DESIGN_LIB"
+
+# Test 34: CODEX_ROLE=design + Write to codegen/designs/drafts/ — ALLOW
+FIXTURE_CODEX_DESIGN_DRAFT='{"hook_event_name":"PreToolUse","tool_name":"Write","tool_input":{"file_path":"codegen/designs/drafts/foo.md","content":"x"},"agent_id":"","agent_type":""}'
+run_test_parity "CODEX_ROLE=design Write to drafts/ allows" "0" "CODEX_ROLE" "design" "$FIXTURE_CODEX_DESIGN_DRAFT"
+
+# Precedence tests
+
+# Test 35: CLAUDE_ROLE=debug + PI_ROLE=build + CODEX_ROLE=build → CLAUDE_ROLE wins → debug branch → blocks lib/
+FIXTURE_PREC_LIB='{"hook_event_name":"PreToolUse","tool_name":"Edit","tool_input":{"file_path":"lib/foo.ex","old_string":"x","new_string":"y"},"agent_id":"","agent_type":""}'
+stdout_prec=$(printf '%s' "$FIXTURE_PREC_LIB" | CLAUDE_ROLE=debug PI_ROLE=build CODEX_ROLE=build bash "$GUARD" 2>/dev/null || true)
+if printf '%s' "$stdout_prec" | grep -q '"permissionDecision"[[:space:]]*:[[:space:]]*"deny"'; then
+    printf 'PASS: precedence — CLAUDE_ROLE=debug wins over PI_ROLE/CODEX_ROLE=build → blocks lib/\n'
+    pass=$((pass + 1))
+else
+    printf 'FAIL: precedence — CLAUDE_ROLE=debug should win and block lib/ — got allow\n  stdout: %s\n' "$stdout_prec"
+    fail=$((fail + 1))
+fi
+
+# Test 36: only PI_ROLE=debug set (CLAUDE_ROLE unset) → behaves as debug → blocks lib/
+stdout_pi_only=$(printf '%s' "$FIXTURE_PREC_LIB" | PI_ROLE=debug bash "$GUARD" 2>/dev/null || true)
+if printf '%s' "$stdout_pi_only" | grep -q '"permissionDecision"[[:space:]]*:[[:space:]]*"deny"'; then
+    printf 'PASS: only PI_ROLE=debug set — behaves as debug, blocks lib/\n'
+    pass=$((pass + 1))
+else
+    printf 'FAIL: only PI_ROLE=debug set — should behave as debug and block lib/ — got allow\n  stdout: %s\n' "$stdout_pi_only"
+    fail=$((fail + 1))
+fi
+
+# Test 37: only CODEX_ROLE=debug set (CLAUDE_ROLE, PI_ROLE unset) → behaves as debug → blocks lib/
+stdout_codex_only=$(printf '%s' "$FIXTURE_PREC_LIB" | CODEX_ROLE=debug bash "$GUARD" 2>/dev/null || true)
+if printf '%s' "$stdout_codex_only" | grep -q '"permissionDecision"[[:space:]]*:[[:space:]]*"deny"'; then
+    printf 'PASS: only CODEX_ROLE=debug set — behaves as debug, blocks lib/\n'
+    pass=$((pass + 1))
+else
+    printf 'FAIL: only CODEX_ROLE=debug set — should behave as debug and block lib/ — got allow\n  stdout: %s\n' "$stdout_codex_only"
+    fail=$((fail + 1))
+fi
+
+# Test 38: all three unset → orchestrator default → blocks lib/ (no subagent bypass)
+stdout_all_unset=$(printf '%s' "$FIXTURE_PREC_LIB" | bash "$GUARD" 2>/dev/null || true)
+if printf '%s' "$stdout_all_unset" | grep -q '"permissionDecision"[[:space:]]*:[[:space:]]*"deny"'; then
+    printf 'PASS: all role vars unset — orchestrator default, blocks lib/\n'
+    pass=$((pass + 1))
+else
+    printf 'FAIL: all role vars unset — should block lib/ for plain orchestrator — got allow\n  stdout: %s\n' "$stdout_all_unset"
+    fail=$((fail + 1))
+fi
+
 echo ""
 echo "Results: $pass passed, $fail failed"
 

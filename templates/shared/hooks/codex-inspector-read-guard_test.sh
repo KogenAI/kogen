@@ -15,9 +15,18 @@ run_test() {
     local input="$3"
 
     local project_dir="${4:-/tmp}"
+    # Use ${5-inspector}: only substitute default when arg 5 is UNSET (not when empty).
+    # Passing "" explicitly means "no CODEX_ROLE" (simulate unset by exporting empty).
+    local codex_role
+    if [ "${5+set}" = "set" ]; then
+        codex_role="$5"
+    else
+        codex_role="inspector"
+    fi
     local stdout
     stdout=$(
         export CODEX_PROJECT_DIR="$project_dir"
+        export CODEX_ROLE="$codex_role"
         printf '%s' "$input" | bash "$GUARD" 2>/dev/null || true
     )
 
@@ -59,6 +68,10 @@ run_test "shell tool allowed" "0" "$FIXTURE_SHELL" "$TMP_DIR"
 # Test 4: read_file with .. traversal — BLOCK
 FIXTURE_DOTDOT='{"hook_event_name":"PreToolUse","tool_name":"read_file","tool_input":{"file_path":"'"$TMP_DIR/../../../etc/passwd"'"}}'
 run_test "read_file with .. traversal blocks" "2" "$FIXTURE_DOTDOT" "$TMP_DIR"
+
+# Test 5: CODEX_ROLE unset — hook is no-op, outside-project read_file allowed
+FIXTURE_OUTSIDE_NOOP='{"hook_event_name":"PreToolUse","tool_name":"read_file","tool_input":{"file_path":"/etc/passwd"}}'
+run_test "CODEX_ROLE unset — hook no-op, outside-project read_file allowed" "0" "$FIXTURE_OUTSIDE_NOOP" "$TMP_DIR" ""
 
 echo ""
 echo "Results: $pass passed, $fail failed"

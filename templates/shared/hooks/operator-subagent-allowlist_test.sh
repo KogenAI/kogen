@@ -165,6 +165,44 @@ run_test "debug + Plan denied" "deny" "debug" "$(mk_agent 'Plan')"
 # 19: design + general-purpose denied (explicit design variant — test 3 covers debug+general-purpose)
 run_test "design + general-purpose denied" "deny" "design" "$(mk_agent 'general-purpose')"
 
+# PI_ROLE parity tests (via env var, no CLAUDE_ROLE set)
+
+run_test_env() {
+    local desc="$1"
+    local expected="$2"
+    local env_var="$3"
+    local role_val="$4"
+    local input="$5"
+
+    local stdout
+    stdout=$(printf '%s' "$input" | env "$env_var=$role_val" bash "$GUARD" 2>/dev/null || true)
+
+    local outcome="allow"
+    if printf '%s' "$stdout" | grep -q '"permissionDecision"[[:space:]]*:[[:space:]]*"deny"'; then
+        outcome="deny"
+    fi
+
+    if [ "$outcome" = "$expected" ]; then
+        printf 'PASS: %s\n' "$desc"
+        pass=$((pass + 1))
+    else
+        printf 'FAIL: %s — expected %s, got %s\n  stdout: %s\n' "$desc" "$expected" "$outcome" "$stdout"
+        fail=$((fail + 1))
+    fi
+}
+
+# 20: PI_ROLE=debug + Explore allowed
+run_test_env "PI_ROLE=debug + Explore allowed" "allow" "PI_ROLE" "debug" "$(mk_agent 'Explore')"
+
+# 21: PI_ROLE=design + Explore allowed
+run_test_env "PI_ROLE=design + Explore allowed" "allow" "PI_ROLE" "design" "$(mk_agent 'Explore')"
+
+# 22: CODEX_ROLE=debug + Explore allowed
+run_test_env "CODEX_ROLE=debug + Explore allowed" "allow" "CODEX_ROLE" "debug" "$(mk_agent 'Explore')"
+
+# 23: CODEX_ROLE=design + Explore allowed
+run_test_env "CODEX_ROLE=design + Explore allowed" "allow" "CODEX_ROLE" "design" "$(mk_agent 'Explore')"
+
 echo ""
 echo "Results: $pass passed, $fail failed"
 

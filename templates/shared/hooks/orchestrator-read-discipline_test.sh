@@ -162,6 +162,26 @@ CLAUDE_ROLE=debug run_test "CLAUDE_ROLE=debug bypasses read discipline" "0" "$FI
 FIXTURE_DESIGN_BYPASS='{"hook_event_name":"PreToolUse","tool_name":"Read","tool_input":{"file_path":"lib/combobulate/apps.ex"},"agent_id":"","agent_type":""}'
 CLAUDE_ROLE=design run_test "CLAUDE_ROLE=design bypasses read discipline" "0" "$FIXTURE_DESIGN_BYPASS"
 
+# PI_ROLE parity tests
+
+# Test 29: PI_ROLE=debug bypasses read discipline
+FIXTURE_PI_DEBUG_BYPASS='{"hook_event_name":"PreToolUse","tool_name":"Read","tool_input":{"file_path":"lib/combobulate/apps.ex"},"agent_id":"","agent_type":""}'
+PI_ROLE=debug run_test "PI_ROLE=debug bypasses read discipline" "0" "$FIXTURE_PI_DEBUG_BYPASS"
+
+# Test 30: PI_ROLE=design bypasses read discipline
+FIXTURE_PI_DESIGN_BYPASS='{"hook_event_name":"PreToolUse","tool_name":"Read","tool_input":{"file_path":"lib/combobulate/apps.ex"},"agent_id":"","agent_type":""}'
+PI_ROLE=design run_test "PI_ROLE=design bypasses read discipline" "0" "$FIXTURE_PI_DESIGN_BYPASS"
+
+# CODEX_ROLE parity tests
+
+# Test 31: CODEX_ROLE=debug bypasses read discipline
+FIXTURE_CODEX_DEBUG_BYPASS='{"hook_event_name":"PreToolUse","tool_name":"Read","tool_input":{"file_path":"lib/combobulate/apps.ex"},"agent_id":"","agent_type":""}'
+CODEX_ROLE=debug run_test "CODEX_ROLE=debug bypasses read discipline" "0" "$FIXTURE_CODEX_DEBUG_BYPASS"
+
+# Test 32: CODEX_ROLE=design bypasses read discipline
+FIXTURE_CODEX_DESIGN_BYPASS='{"hook_event_name":"PreToolUse","tool_name":"Read","tool_input":{"file_path":"lib/combobulate/apps.ex"},"agent_id":"","agent_type":""}'
+CODEX_ROLE=design run_test "CODEX_ROLE=design bypasses read discipline" "0" "$FIXTURE_CODEX_DESIGN_BYPASS"
+
 echo ""
 echo "Results: $pass passed, $fail failed"
 

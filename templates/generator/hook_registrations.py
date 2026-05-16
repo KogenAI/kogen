@@ -39,7 +39,7 @@ from pathlib import Path
 
 REQUIRED_FIELDS = {"event", "matcher", "surface", "signal", "role"}
 VALID_SURFACES = {"user_global", "per_call_inspector", "both"}
-VALID_SIGNALS = {"AGENT_TYPE", "CLAUDE_ROLE", "none"}
+VALID_SIGNALS = {"AGENT_TYPE", "CLAUDE_ROLE", "CLAUDE_ROLE_FAMILY", "CODEX_ROLE", "none"}
 
 # Hook events managed entirely by manifests — regenerated from script headers.
 MANIFEST_DRIVEN_EVENTS = {"PreToolUse", "SubagentStop", "Stop", "PostToolUseFailure"}
@@ -120,6 +120,14 @@ def validate_signal(script_path: Path, manifest: dict) -> None:
     """Verify declared signal appears in script body.
 
     Exits non-zero if signal declared but not referenced in body.
+
+    Signal semantics:
+      CLAUDE_ROLE         — body must reference CLAUDE_ROLE literal.
+      CLAUDE_ROLE_FAMILY  — body must call resolve_role() (from _role.sh); supports CLAUDE_ROLE,
+                            PI_ROLE, CODEX_ROLE with unified precedence.
+      CODEX_ROLE          — body must reference CODEX_ROLE literal.
+      AGENT_TYPE          — body must reference AGENT_TYPE or require_inspector_agent_type.
+      none                — no signal check.
     """
     signal = manifest["signal"]
     if signal == "none":
@@ -140,15 +148,37 @@ def validate_signal(script_path: Path, manifest: dict) -> None:
                 file=sys.stderr,
             )
             sys.exit(1)
+    elif signal == "CLAUDE_ROLE_FAMILY":
+        if "resolve_role" not in content:
+            print(
+                f"ERROR: {script_path.name} declares signal: CLAUDE_ROLE_FAMILY but body does not call resolve_role (sourced from _role.sh)",
+                file=sys.stderr,
+            )
+            sys.exit(1)
+    elif signal == "CODEX_ROLE":
+        if "CODEX_ROLE" not in content:
+            print(
+                f"ERROR: {script_path.name} declares signal: CODEX_ROLE but body does not reference CODEX_ROLE",
+                file=sys.stderr,
+            )
+            sys.exit(1)
 
 
 def collect_hooks(hooks_dir: Path) -> list:  # type: ignore[type-arg]
-    """Find all .sh files (excluding _test.sh and run-tests.sh) and parse manifests."""
+    """Find all .sh files (excluding _test.sh, run-tests.sh, and _*.sh helpers) and parse manifests.
+
+    Files starting with '_' are library helpers sourced by hook scripts, not registered hooks.
+    Canonical example: _role.sh (shared resolve_role() helper).
+    """
     hooks = []
     for sh_file in sorted(hooks_dir.glob("*.sh")):
         if sh_file.name.endswith("_test.sh"):
             continue
         if sh_file.name == "run-tests.sh":
+            continue
+        # Skip library helpers: files whose basename starts with '_'.
+        # These are sourced by hook scripts and must not appear in settings.json.
+        if sh_file.name.startswith("_"):
             continue
         manifest = parse_manifest(sh_file)
         validate_signal(sh_file, manifest)

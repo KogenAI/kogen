@@ -178,6 +178,67 @@ run_test "curl -X POST blocked in design role" "2" \
 run_test "rm -rf allowed in build role (guard inactive)" "0" \
     "$(mk 'rm -rf _build')" "build"
 
+# PI_ROLE parity tests (run_test uses CLAUDE_ROLE env var; use separate helper for PI_ROLE/CODEX_ROLE)
+
+run_test_env() {
+    local desc="$1"
+    local expected="$2"
+    local input="$3"
+    local env_var="$4"
+    local role_val="$5"
+
+    local stdout
+    stdout=$(printf '%s' "$input" | env "$env_var=$role_val" bash "$GUARD" 2>/dev/null || true)
+
+    local outcome
+    if printf '%s' "$stdout" | grep -q '"permissionDecision"[[:space:]]*:[[:space:]]*"deny"'; then
+        outcome="2"
+    else
+        outcome="0"
+    fi
+
+    if [ "$outcome" = "$expected" ]; then
+        printf 'PASS: %s\n' "$desc"
+        pass=$((pass + 1))
+    else
+        printf 'FAIL: %s — expected %s (deny=2/allow=0), got %s\n  stdout: %s\n' \
+            "$desc" "$expected" "$outcome" "$stdout"
+        fail=$((fail + 1))
+    fi
+}
+
+# 31: PI_ROLE=debug + rm -rf → deny
+run_test_env "PI_ROLE=debug rm -rf blocked" "2" \
+    "$(mk 'rm -rf /tmp/foo')" "PI_ROLE" "debug"
+
+# 32: PI_ROLE=debug + ls → allow
+run_test_env "PI_ROLE=debug ls allowed" "0" \
+    "$(mk 'ls -la /tmp')" "PI_ROLE" "debug"
+
+# 33: PI_ROLE=design + git push → deny
+run_test_env "PI_ROLE=design git push blocked" "2" \
+    "$(mk 'git push origin main')" "PI_ROLE" "design"
+
+# 34: PI_ROLE=design + ls → allow
+run_test_env "PI_ROLE=design ls allowed" "0" \
+    "$(mk 'ls -la /tmp')" "PI_ROLE" "design"
+
+# 35: CODEX_ROLE=debug + rm -rf → deny
+run_test_env "CODEX_ROLE=debug rm -rf blocked" "2" \
+    "$(mk 'rm -rf /tmp/foo')" "CODEX_ROLE" "debug"
+
+# 36: CODEX_ROLE=debug + ls → allow
+run_test_env "CODEX_ROLE=debug ls allowed" "0" \
+    "$(mk 'ls -la /tmp')" "CODEX_ROLE" "debug"
+
+# 37: CODEX_ROLE=design + git push → deny
+run_test_env "CODEX_ROLE=design git push blocked" "2" \
+    "$(mk 'git push origin main')" "CODEX_ROLE" "design"
+
+# 38: CODEX_ROLE=design + ls → allow
+run_test_env "CODEX_ROLE=design ls allowed" "0" \
+    "$(mk 'ls -la /tmp')" "CODEX_ROLE" "design"
+
 echo ""
 echo "Results: $pass passed, $fail failed"
 

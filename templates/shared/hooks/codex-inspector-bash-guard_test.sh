@@ -23,9 +23,18 @@ run_test() {
     # translate the legacy expected values: "2" means "expect deny",
     # "0" means "expect allow (no deny envelope)".
     local project_dir="${4:-$TMP_DIR}"
+    # Use ${5+set} check: only default to "inspector" when arg 5 is UNSET (not when empty).
+    # Passing "" explicitly means "no CODEX_ROLE" (simulate unset by exporting empty).
+    local codex_role
+    if [ "${5+set}" = "set" ]; then
+        codex_role="$5"
+    else
+        codex_role="inspector"
+    fi
     local stdout
     stdout=$(
         export CODEX_PROJECT_DIR="$project_dir"
+        export CODEX_ROLE="$codex_role"
         printf '%s' "$input" | bash "$GUARD" 2>/dev/null || true
     )
 
@@ -99,6 +108,10 @@ run_test "2>/dev/null allows" "0" "$FIXTURE_DEVNULL"
 # Test 13: relative path traversal ../ — BLOCK
 FIXTURE_TRAVERSAL='{"hook_event_name":"PreToolUse","tool_name":"shell","tool_input":{"command":"cat ../../../etc/passwd"}}'
 run_test "relative path traversal ../ blocks" "2" "$FIXTURE_TRAVERSAL"
+
+# Test 14: CODEX_ROLE unset — hook is no-op, previously-denied command now allows
+FIXTURE_REDIRECT_NOOP='{"hook_event_name":"PreToolUse","tool_name":"shell","tool_input":{"command":"echo foo > bar.txt"}}'
+run_test "CODEX_ROLE unset — hook no-op, redirect-overwrite allowed" "0" "$FIXTURE_REDIRECT_NOOP" "$TMP_DIR" ""
 
 echo ""
 echo "Results: $pass passed, $fail failed"

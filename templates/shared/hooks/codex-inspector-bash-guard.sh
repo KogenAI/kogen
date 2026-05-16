@@ -5,7 +5,7 @@
 # event: PreToolUse
 # matcher: shell|local_shell
 # surface: per_call_inspector
-# signal: none
+# signal: CODEX_ROLE
 # role: codex-inspector
 #
 # Blocks shell/local_shell tool calls that mutate the filesystem or database,
@@ -18,6 +18,9 @@ set -u
 
 source "$(dirname "$0")/lib/hooks-lib.sh"
 parse_input
+
+# Only active when CODEX_ROLE=inspector.
+[ "${CODEX_ROLE:-}" = "inspector" ] || exit 0
 
 # Only gate shell/local_shell calls.
 if ! printf '%s' "$TOOL_NAME" | grep -qE '^shell$|^local_shell$'; then

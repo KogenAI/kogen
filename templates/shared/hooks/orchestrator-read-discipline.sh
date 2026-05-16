@@ -20,16 +20,22 @@
 #   - codegen/designs/** (design-doc lifecycle dirs — drafts/, ready/, archive/; matches the write-hook surface so /document can read its own drafts)
 #
 # Subagents (non-empty agent_id) are always allowed through.
+#
+# Responds to CLAUDE_ROLE (Claude Code), PI_ROLE (PI harness), and CODEX_ROLE
+# (Codex) via resolve_role() for the debug/design bypass — precedence: CLAUDE_ROLE > PI_ROLE > CODEX_ROLE.
+# Primary signal is AGENT_TYPE (set by Claude Code on subagent spawn); role check is secondary.
 
 set -u
 
 source "$(dirname "$0")/lib/hooks-lib.sh"
+source "$(dirname "$0")/_role.sh"
 parse_input
 
 debug_log orchestrator-read-discipline "tool=$TOOL_NAME agent_id=$AGENT_ID agent_type=$AGENT_TYPE"
 
 # Debug and design modes bypass read discipline — investigation and design sessions need full access.
-if [ "${CLAUDE_ROLE:-}" = "debug" ] || [ "${CLAUDE_ROLE:-}" = "design" ]; then
+_role=$(resolve_role)
+if [ "$_role" = "debug" ] || [ "$_role" = "design" ]; then
     exit 0
 fi
 

@@ -237,6 +237,7 @@ install: hook-parity
 		--output-settings "$(SCRIPT_DIR)/templates/claude-code-settings.json" \
 		--combobulate-dir "$(COMBOBULATE_DIR)"
 	@./install.sh
+	@./install-launchers.sh
 
 # test: run every PreToolUse/SubagentStop/Stop hook unit-test script in parallel.
 # Each *_test.sh is hermetic — own tmp dirs, no shared state — so xargs -P is safe.

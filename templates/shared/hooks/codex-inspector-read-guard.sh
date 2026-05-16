@@ -5,7 +5,7 @@
 # event: PreToolUse
 # matcher: read_file
 # surface: per_call_inspector
-# signal: none
+# signal: CODEX_ROLE
 # role: codex-inspector
 #
 # Blocks read_file calls where the requested path is outside the Inspector's
@@ -19,6 +19,9 @@ set -u
 
 source "$(dirname "$0")/lib/hooks-lib.sh"
 parse_input
+
+# Only active when CODEX_ROLE=inspector.
+[ "${CODEX_ROLE:-}" = "inspector" ] || exit 0
 
 # Only gate read_file calls.
 if [ "$TOOL_NAME" != "read_file" ]; then
