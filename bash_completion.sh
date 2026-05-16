@@ -38,7 +38,7 @@ _codegen_completion() {
         elif [[ "$prev" == "--model" || "$prev" == "-m" ]]; then
             COMPREPLY=($(compgen -W "haiku sonnet opus" -- "$cur"))
         elif [[ "$prev" == "--agent" || "$prev" == "-a" ]]; then
-            COMPREPLY=($(compgen -W "claude codex cursor" -- "$cur"))
+            COMPREPLY=($(compgen -W "claude codex" -- "$cur"))
         fi
         ;;
     update-context)
@@ -75,7 +75,7 @@ _codegen_completion() {
         elif [[ "$prev" == "--model" || "$prev" == "-m" ]]; then
             COMPREPLY=($(compgen -W "haiku sonnet opus" -- "$cur"))
         elif [[ "$prev" == "--agent" || "$prev" == "-a" || "$prev" == "--ai" ]]; then
-            COMPREPLY=($(compgen -W "claude codex cursor" -- "$cur"))
+            COMPREPLY=($(compgen -W "claude codex" -- "$cur"))
         fi
         ;;
     resume)
@@ -88,7 +88,7 @@ _codegen_completion() {
         elif [[ "$prev" == "--model" || "$prev" == "-m" ]]; then
             COMPREPLY=($(compgen -W "haiku sonnet opus" -- "$cur"))
         elif [[ "$prev" == "--agent" || "$prev" == "-a" || "$prev" == "--ai" ]]; then
-            COMPREPLY=($(compgen -W "claude codex cursor" -- "$cur"))
+            COMPREPLY=($(compgen -W "claude codex" -- "$cur"))
         fi
         ;;
     bird-eye | plan)
@@ -104,7 +104,7 @@ _codegen_completion() {
         elif [[ "$prev" == "--model" || "$prev" == "-m" ]]; then
             COMPREPLY=($(compgen -W "haiku sonnet opus" -- "$cur"))
         elif [[ "$prev" == "--agent" || "$prev" == "-a" || "$prev" == "--ai" ]]; then
-            COMPREPLY=($(compgen -W "claude codex cursor" -- "$cur"))
+            COMPREPLY=($(compgen -W "claude codex" -- "$cur"))
         fi
         ;;
     ai-config)
@@ -113,7 +113,7 @@ _codegen_completion() {
         elif [[ ${COMP_CWORD} == 3 && "$prev" == "set" ]]; then
             COMPREPLY=($(compgen -W "default" -- "$cur"))
         elif [[ ${COMP_CWORD} == 4 && "${COMP_WORDS[2]}" == "set" && "${COMP_WORDS[3]}" == "default" ]]; then
-            COMPREPLY=($(compgen -W "claude codex cursor" -- "$cur"))
+            COMPREPLY=($(compgen -W "claude codex" -- "$cur"))
         elif [[ ${COMP_CWORD} == 3 && "$prev" == "get" ]]; then
             COMPREPLY=($(compgen -W "default" -- "$cur"))
         fi
@@ -129,7 +129,7 @@ _codegen_completion() {
         elif [[ "$prev" == "--model" || "$prev" == "-m" ]]; then
             COMPREPLY=($(compgen -W "haiku sonnet opus" -- "$cur"))
         elif [[ "$prev" == "--agent" || "$prev" == "-a" || "$prev" == "--ai" ]]; then
-            COMPREPLY=($(compgen -W "claude codex cursor" -- "$cur"))
+            COMPREPLY=($(compgen -W "claude codex" -- "$cur"))
         fi
         ;;
     esac

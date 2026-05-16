@@ -13,20 +13,6 @@ map_model() {
         return
     fi
 
-    # For Cursor CLI, map to cursor-agent model names
-    if [ "$assistant" = "cursor" ]; then
-        case "$model" in
-        haiku) echo "haiku-4.5" ;;
-        sonnet) echo "sonnet-4.5" ;;
-        opus) echo "opus-4.1" ;;
-        *)
-            echo "ERROR: model-mapper: unknown cursor model shorthand '$model' (known: haiku, sonnet, opus)" >&2
-            exit 64
-            ;;
-        esac
-        return
-    fi
-
     # For Codex, map to OpenAI model names
     if [ "$assistant" = "codex" ]; then
         case "$model" in

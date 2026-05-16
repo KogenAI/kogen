@@ -26,18 +26,6 @@ tools:
     agents_dir: "agents"
     settings_dir: "$HOME/.codex"
 
-  cursor:
-    name: "cursor"
-    display_name: "Cursor CLI"
-    yaml_frontmatter: false
-    permissions_enabled: false
-    hooks_enabled: false
-    config_file: null
-    mcp_config: "mcp.json"
-    commands_dir: "commands"
-    agents_dir: "agents"
-    settings_dir: "$HOME/.cursor"
-
 # Common variables available to all templates
 common:
   project_context_file: "PROJECT_CONTEXT.md"
@@ -49,59 +37,45 @@ harness:
   planner-phoenix:
     claude: { model: opus, effort: high }
     codex: { model: gpt-5.5, effort: high }
-    cursor: { model: opus-thinking-high, effort: high }
   planner-html:
     claude: { model: opus, effort: high }
     codex: { model: gpt-5.5, effort: high }
-    cursor: { model: opus-thinking-high, effort: high }
   planner-hugo:
     claude: { model: opus, effort: high }
     codex: { model: gpt-5.5, effort: high }
-    cursor: { model: opus-thinking-high, effort: high }
   planner-vite:
     claude: { model: opus, effort: high }
     codex: { model: gpt-5.5, effort: high }
-    cursor: { model: opus-thinking-high, effort: high }
   developer-phoenix-backend:
     claude: { model: sonnet, effort: medium }
     codex: { model: gpt-5.5, effort: medium }
-    cursor: { model: sonnet, effort: medium }
   developer-phoenix-frontend:
     claude: { model: sonnet, effort: medium }
     codex: { model: gpt-5.5, effort: medium }
-    cursor: { model: sonnet, effort: medium }
   developer-html:
     claude: { model: sonnet, effort: high }
     codex: { model: gpt-5.5, effort: medium }
-    cursor: { model: sonnet, effort: medium }
   developer-hugo:
     claude: { model: sonnet, effort: high }
     codex: { model: gpt-5.5, effort: medium }
-    cursor: { model: sonnet, effort: medium }
   developer-vite:
     claude: { model: sonnet, effort: high }
     codex: { model: gpt-5.5, effort: medium }
-    cursor: { model: sonnet, effort: medium }
   reviewer-phoenix:
     claude: { model: sonnet, effort: medium }
     codex: { model: gpt-5.5, effort: medium }
-    cursor: { model: sonnet, effort: medium }
   reviewer-static:
     claude: { model: sonnet, effort: medium }
     codex: { model: gpt-5.5, effort: medium }
-    cursor: { model: sonnet, effort: medium }
   committer:
     claude: { model: haiku, effort: low }
     codex: { model: gpt-5.5-mini, effort: medium }
-    cursor: { model: haiku, effort: medium }
   build:
     claude: { model: haiku, effort: medium }
     codex: { model: gpt-4.1-mini, effort: medium }
-    cursor: { model: haiku, effort: medium }
   inspector:
     claude: { model: sonnet, effort: medium }
     codex: { model: gpt-5.5, effort: medium }
-    cursor: { model: sonnet, effort: medium }
 
 roles:
   build:

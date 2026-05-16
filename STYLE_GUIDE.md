@@ -33,19 +33,19 @@ This replaces the deprecated `READONLY_ROLES` allowlist that previously lived in
 
 ## `tool.name` Branch Pattern
 
-`process_template.py` recognizes three `tool.name` values: `claude`, `codex`, `cursor`. Two branches render differently — not future hooks, real divergence today.
+`process_template.py` recognizes two `tool.name` values: `claude`, `codex`. Two branches render differently — not future hooks, real divergence today.
 
 **Mechanics** (`process_template.py` `_strip_template_blocks`, regex pass):
 
-- `{% if tool.name == 'claude' %}A{% else %}B{% endif %}` → claude keeps `A`, codex/cursor keep `B`.
-- `{% if tool.name == 'claude' %}A{% endif %}` (no else) → claude keeps `A`, codex/cursor drop entire block.
+- `{% if tool.name == 'claude' %}A{% else %}B{% endif %}` → claude keeps `A`, codex keeps `B`.
+- `{% if tool.name == 'claude' %}A{% endif %}` (no else) → claude keeps `A`, codex drops entire block.
 
 **Why two branches** (semantic intent):
 
 - Claude Code auto-loads `@path/to/file.md` recursively when CLAUDE.md is ingested → claude branch emits `@<path>` for free recursive inclusion.
-- Codex (AGENTS.md) and Cursor do NOT auto-resolve `@`-references → else branch must instruct the agent explicitly: `→ See \`<path>\` for <reason>` so the agent Reads on demand.
+- Codex (AGENTS.md) does NOT auto-resolve `@`-references → else branch must instruct the agent explicitly: `→ See \`<path>\` for <reason>` so the agent Reads on demand.
 
-Same intent, different delivery mechanism. Don't collapse to one branch — codex/cursor agents would silently miss the file.
+Same intent, different delivery mechanism. Don't collapse to one branch — codex agents would silently miss the file.
 
 **Path caveat**: claude-branch `@`-paths sometimes use the `codegen/` symlink prefix (Claude resolves `@` against project root where the symlink lives, e.g. `@codegen/rules/foo.md`) while the else-branch uses the real path under `context/` or `rules/` (e.g. `→ See \`rules/foo.md\``). Both resolve to the same file via the symlink, but the prefix differs because `@` ingestion and explicit Read have different working-dir semantics.
 
@@ -74,9 +74,8 @@ See combobulate `context/rules-authoring.md` for full ordering law + bucket assi
 ## Generators
 
 - `process_template.py` is the single rendering engine. It supports two output formats:
-  - `--format=md` (default) — Markdown body for Claude/Cursor.
+  - `--format=md` (default) — Markdown body for Claude.
   - `--format=toml` — per-agent Codex TOML. Requires `--config=<path>` and `--role=<name>`.
 - `generate-codex.sh` is a thin walker that calls `process_template.py --format=toml` per template.
-- `generate-cursor.sh` is a thin walker that calls `process_template.py <template> cursor false`.
 
 When adding a new harness, prefer extending `process_template.py` (new `tool.name` branch + new `--format` mode) over introducing a parallel renderer.

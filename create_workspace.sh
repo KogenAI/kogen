@@ -302,22 +302,11 @@ fi
 ln -sf "AGENTS.md" "$WORKSPACE_PATH/CLAUDE.md"
 echo "✅ Created CLAUDE.md symlink for backward compatibility"
 
-# Create MCP configuration based on agent
-if [ "$AGENT" = "cursor" ]; then
-    # Create Cursor MCP configuration (mcp.json, not .mcp.json)
-    if [ -f "$SCRIPT_DIR/templates/.mcp.json" ]; then
-        sed "s/{{PORT}}/${NEXT_PORT}/g" \
-            "$SCRIPT_DIR/templates/.mcp.json" >"$WORKSPACE_PATH/mcp.json"
-        echo "✅ Created mcp.json with workspace-specific ports for Cursor"
-    fi
-    # Cursor reads AGENTS.md from workspace root (already copied from templates/AGENTS.md above)
-else
-    # Create Claude MCP configuration
-    if [ -f "$SCRIPT_DIR/templates/.mcp.json" ]; then
-        sed "s/{{PORT}}/${NEXT_PORT}/g" \
-            "$SCRIPT_DIR/templates/.mcp.json" >"$WORKSPACE_PATH/.mcp.json"
-        echo "✅ Created .mcp.json with workspace-specific ports"
-    fi
+# Create MCP configuration
+if [ -f "$SCRIPT_DIR/templates/.mcp.json" ]; then
+    sed "s/{{PORT}}/${NEXT_PORT}/g" \
+        "$SCRIPT_DIR/templates/.mcp.json" >"$WORKSPACE_PATH/.mcp.json"
+    echo "✅ Created .mcp.json with workspace-specific ports"
 fi
 
 # Copy ci.sh to workspace codegen directory for workspace-specific CI checks

@@ -6,7 +6,7 @@
 # matcher: Read
 # surface: per_call_inspector
 # signal: AGENT_TYPE
-# role: inspector|inspector-phoenix|codex-inspector|cursor-inspector
+# role: inspector|inspector-phoenix|codex-inspector
 #
 # Blocks Read calls where the requested file_path is outside the Inspector's
 # working directory ($CLAUDE_PROJECT_DIR, falling back to $PWD).

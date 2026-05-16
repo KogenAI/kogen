@@ -6,7 +6,7 @@
 # matcher: Bash
 # surface: per_call_inspector
 # signal: AGENT_TYPE
-# role: inspector|inspector-phoenix|codex-inspector|cursor-inspector
+# role: inspector|inspector-phoenix|codex-inspector
 #
 # Blocks Bash commands that mutate the filesystem or database, and commands
 # that reference absolute paths outside $CLAUDE_PROJECT_DIR.

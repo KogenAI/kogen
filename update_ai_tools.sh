@@ -1,12 +1,12 @@
 #!/bin/bash
 
-# Update all AI agents (Claude Code, Codex, Cursor CLI)
+# Update all AI agents (Claude Code, Codex)
 
 set -e
 
 CODEGEN_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-echo "🔄 Updating all AI agents (Claude Code, Codex, Cursor CLI)..."
+echo "🔄 Updating all AI agents (Claude Code, Codex)..."
 echo ""
 
 # Update Claude Code — check npm registry first to skip the slow update when already current
@@ -45,20 +45,6 @@ else
 fi
 echo ""
 
-# Update Cursor CLI
-echo "🤖 Updating Cursor CLI..."
-hash -r 2>/dev/null || true
-if command -v cursor-agent >/dev/null 2>&1; then
-    if cursor-agent update 2>&1; then
-        echo "   ✅ Cursor CLI updated"
-    else
-        echo "   ⚠️  Cursor CLI update failed (may require authentication - try logging in first)"
-    fi
-else
-    echo "   ⚠️  cursor-agent not on PATH — install from https://cursor.sh or check mise activation" >&2
-fi
-echo ""
-
-echo "✅ All AI agents have been updated (Claude Code, Codex, Cursor CLI)!"
+echo "✅ All AI agents have been updated (Claude Code, Codex)!"
 echo ""
 echo "💡 Run 'make install' to regenerate and reinstall OCG templates and commands"

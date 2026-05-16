@@ -6,7 +6,7 @@
 # matcher: Write|Edit|MultiEdit|NotebookEdit
 # surface: per_call_inspector
 # signal: AGENT_TYPE
-# role: inspector|inspector-phoenix|codex-inspector|cursor-inspector
+# role: inspector|inspector-phoenix|codex-inspector
 #
 # Blocks all write/edit tools when invoked for any Inspector call.
 # Write, Edit, MultiEdit, and NotebookEdit are already denied via --disallowed-tools

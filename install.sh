@@ -2,24 +2,28 @@
 
 # Optimum Codegen CLI Installation Script
 # Usage: install.sh [--harness=<list>]
-#   --harness=claude,codex,cursor — comma-separated list of harnesses to install.
-#   When omitted, installs all three harnesses (claude, codex, cursor).
+#   --harness=claude,codex — comma-separated list of harnesses to install.
+#   When omitted, installs both harnesses (claude, codex).
 #   Invalid harness names cause a fail-fast exit with a helpful message.
 #
 # Examples:
-#   install.sh                          # installs claude + codex + cursor
+#   install.sh                          # installs claude + codex
 #   install.sh --harness=claude         # claude only
-#   install.sh --harness=codex,cursor   # codex + cursor, skip claude
+#   install.sh --harness=codex          # codex only, skip claude
 
 set -e
 
+DRY_RUN=false
 HARNESSES=()
 for arg in "$@"; do
     case "$arg" in
+    --dry-run)
+        DRY_RUN=true
+        ;;
     --harness=*)
         list="${arg#--harness=}"
         if [ -z "$list" ]; then
-            echo "❌ --harness= requires a value (one or more of: claude, codex, cursor)" >&2
+            echo "❌ --harness= requires a value (one or more of: claude, codex)" >&2
             exit 1
         fi
         IFS=',' read -ra _tokens <<<"$list"
@@ -27,7 +31,7 @@ for arg in "$@"; do
             tok="$(echo "$tok" | tr -d '[:space:]')"
             [ -z "$tok" ] && continue
             case "$tok" in
-            claude | codex | cursor)
+            claude | codex)
                 # Deduplicate
                 already=false
                 for existing in "${HARNESSES[@]}"; do
@@ -36,7 +40,7 @@ for arg in "$@"; do
                 [ "$already" = "false" ] && HARNESSES+=("$tok")
                 ;;
             *)
-                echo "❌ Unknown harness: '$tok' (expected one or more of: claude, codex, cursor)" >&2
+                echo "❌ Unknown harness: '$tok' (expected one or more of: claude, codex)" >&2
                 exit 1
                 ;;
             esac
@@ -49,9 +53,9 @@ for arg in "$@"; do
     esac
 done
 
-# Default = all three harnesses when --harness flag omitted
+# Default = both harnesses when --harness flag omitted
 if [ ${#HARNESSES[@]} -eq 0 ]; then
-    HARNESSES=("claude" "codex" "cursor")
+    HARNESSES=("claude" "codex")
 fi
 
 harness_enabled() {
@@ -159,9 +163,9 @@ echo ""
 echo "🚀 Generating AI agent templates..."
 
 # Generate templates for the selected harnesses. generate.sh accepts:
-#   all | claude | codex | cursor
-# We pass `all` only when all three are selected; otherwise we invoke per-harness.
-if harness_enabled claude && harness_enabled codex && harness_enabled cursor; then
+#   all | claude | codex
+# We pass `all` only when both are selected; otherwise we invoke per-harness.
+if harness_enabled claude && harness_enabled codex; then
     "$CODEGEN_DIR/templates/generator/generate.sh" all
 else
     for h in "${HARNESSES[@]}"; do
@@ -173,7 +177,7 @@ fi
 # These .md files are symlinked into user-app workspaces by Combobulate.Apps.copy_agents_md/2
 # at provision time, so they must exist as regenerable artifacts beside their .j2 source.
 # Each template renders TWICE:
-#   codex render  → AGENTS-{variant}.md  (→ See pointers; consumed by Codex/Cursor)
+#   codex render  → AGENTS-{variant}.md  (→ See pointers; consumed by Codex)
 #   claude render → CLAUDE-{variant}.md  (@ auto-load imports; consumed by Claude Code)
 echo ""
 echo "🚀 Rendering user-app AGENTS templates (.j2 -> .md)..."
@@ -648,79 +652,6 @@ PY
     fi
 fi # harness_enabled codex
 
-if harness_enabled cursor; then
-    echo ""
-    echo "🔧 Setting up Cursor CLI configuration..."
-
-    mkdir -p "$HOME/.cursor"
-
-    echo "   📁 Installing Cursor CLI custom commands..."
-    CURSOR_COMMANDS_DIR="$HOME/.cursor/commands"
-    mkdir -p "$CURSOR_COMMANDS_DIR"
-
-    CURRENT_CURSOR_COMMANDS=()
-    if [ -d "$CODEGEN_DIR/templates/shared/commands" ]; then
-        for cmd_file in "$CODEGEN_DIR/templates/shared/commands"/*.md; do
-            if [ -f "$cmd_file" ]; then
-                cmd_name=$(basename "$cmd_file")
-                content_stable_cp "$cmd_file" "$CURSOR_COMMANDS_DIR/$cmd_name"
-                echo "   ✅ Installed Cursor command: /${cmd_name%.md}"
-                CURRENT_CURSOR_COMMANDS+=("$cmd_name")
-            fi
-        done
-    fi
-
-    # Delete stale commands — any .md in commands dir not in the current install set.
-    for installed_cmd in "$CURSOR_COMMANDS_DIR"/*.md; do
-        [ -f "$installed_cmd" ] || continue
-        cmd_basename=$(basename "$installed_cmd")
-        still_present=false
-        for cur in "${CURRENT_CURSOR_COMMANDS[@]}"; do
-            [ "$cur" = "$cmd_basename" ] && still_present=true && break
-        done
-        if [ "$still_present" = "false" ]; then
-            rm -f "$installed_cmd"
-            echo "   🗑️  Removed stale Cursor command: /${cmd_basename%.md}"
-        fi
-    done
-
-    echo "   🤖 Installing Cursor CLI agents..."
-    CURSOR_SUBAGENTS_DIR="$HOME/.cursor/agents"
-    mkdir -p "$CURSOR_SUBAGENTS_DIR"
-
-    CURSOR_AGENTS_MANIFEST="$CURSOR_SUBAGENTS_DIR/.installed-by-ocg"
-    CURRENT_CURSOR_AGENTS=()
-    if [ -d "$CODEGEN_DIR/templates/generated/cursor/agents" ]; then
-        for agent_file in "$CODEGEN_DIR/templates/generated/cursor/agents"/*.md; do
-            if [ -f "$agent_file" ]; then
-                agent_name=$(basename "$agent_file")
-                content_stable_cp "$agent_file" "$CURSOR_SUBAGENTS_DIR/$agent_name"
-                echo "   ✅ Installed Cursor agent: ${agent_name%.md}"
-                CURRENT_CURSOR_AGENTS+=("$agent_name")
-            fi
-        done
-    fi
-    # Delete stale Cursor agents — any .md in agents dir not in the current install set.
-    # Safety: skip prune when install set is empty (generator failure).
-    if [ ${#CURRENT_CURSOR_AGENTS[@]} -eq 0 ]; then
-        echo "   ⚠️  Skipping Cursor agent prune — install set is empty (generator may have failed)"
-    else
-        for installed_agent in "$CURSOR_SUBAGENTS_DIR"/*.md; do
-            [ -f "$installed_agent" ] || continue
-            agent_basename=$(basename "$installed_agent")
-            still_present=false
-            for cur in "${CURRENT_CURSOR_AGENTS[@]}"; do
-                [ "$cur" = "$agent_basename" ] && still_present=true && break
-            done
-            if [ "$still_present" = "false" ]; then
-                rm -f "$installed_agent"
-                echo "   🗑️  Removed stale Cursor agent: ${agent_basename%.md}"
-            fi
-        done
-    fi
-    printf '%s\n' "${CURRENT_CURSOR_AGENTS[@]}" >"$CURSOR_AGENTS_MANIFEST"
-fi
-
 # Create OCG config directory
 mkdir -p "$HOME/.ocg"
 
@@ -750,18 +681,15 @@ if [ ! -f "$HOME/.ocg/config.json" ]; then
 
     claude_enabled=false
     codex_enabled=false
-    cursor_enabled=false
     harness_enabled claude && claude_enabled=true
     harness_enabled codex && codex_enabled=true
-    harness_enabled cursor && cursor_enabled=true
 
     cat >"$HOME/.ocg/config.json" <<EOF
 {
     "default_agent": "$default_agent",
     "agents": {
         "claude": { "enabled": $claude_enabled },
-        "codex": { "enabled": $codex_enabled },
-        "cursor": { "enabled": $cursor_enabled }
+        "codex": { "enabled": $codex_enabled }
     }
 }
 EOF

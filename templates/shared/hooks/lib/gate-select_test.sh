@@ -209,7 +209,7 @@ GATE_LLM_AND_PHOENIX="make ci && make llm && make llm-phoenix"
 GATE_PHOENIX="make llm-phoenix"
 GATE_PHOENIX_VALIDATE_THEN="make llm-phoenix-validate && make llm-phoenix"
 GATE_PHOENIX_REBUILD_THEN="COMBOBULATE_VE_GATE=rebuild-seed-then make llm-phoenix"
-LLM_PATHS_REGEX="(claude_runner_impl|(claude|codex|cursor)_build_runner_impl|bouncer\\.ex|system_prompts|CLAUDE\\.md|codegen/rules/|codegen/recipes/|\\.md\\.j2\$|PLATFORM_INFO\\.md|llm_integration.*\\.exs)"
+LLM_PATHS_REGEX="(claude_runner_impl|(claude|codex)_build_runner_impl|bouncer\\.ex|system_prompts|CLAUDE\\.md|codegen/rules/|codegen/recipes/|\\.md\\.j2\$|PLATFORM_INFO\\.md|llm_integration.*\\.exs)"
 PHOENIX_PATHS_REGEX="(context/apps/CLAUDE-phoenix\\.md|codegen/recipes/.*phoenix)"
 SEED_BUNDLE_PATH="$2"
 SEED_SQL_PATH="$3"
@@ -320,19 +320,6 @@ assert_eq "codex_build_runner_impl branch gate" "gate=make ci && make llm" "$(pr
 assert_eq "codex_build_runner_impl branch mode" "mode=long" "$(printf '%s' "$out" | sed -n '2p')"
 assert_eq "codex_build_runner_impl branch timeout" "timeout=1800" "$(printf '%s' "$out" | sed -n '3p')"
 rm -rf "$T8" "$SEED_DIR"
-
-# ── Branch: cursor_build_runner_impl edited → LLM gate ─────────────────────
-T9=$(make_project)
-SEED_DIR=$(mktemp -d)
-touch "$SEED_DIR/seed.bundle" "$SEED_DIR/seed.sql" "$SEED_DIR/validated"
-write_combobulate_config "$T9" "$SEED_DIR/seed.bundle" "$SEED_DIR/seed.sql" "$SEED_DIR/validated"
-mkdir -p "$T9/lib/combobulate/builds"
-echo "x" >"$T9/lib/combobulate/builds/cursor_build_runner_impl.ex"
-out=$(gate_select_decide "$T9")
-assert_eq "cursor_build_runner_impl branch gate" "gate=make ci && make llm" "$(printf '%s' "$out" | sed -n '1p')"
-assert_eq "cursor_build_runner_impl branch mode" "mode=long" "$(printf '%s' "$out" | sed -n '2p')"
-assert_eq "cursor_build_runner_impl branch timeout" "timeout=1800" "$(printf '%s' "$out" | sed -n '3p')"
-rm -rf "$T9" "$SEED_DIR"
 
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

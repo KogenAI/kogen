@@ -333,11 +333,6 @@ doctor:
 	else \
 		echo "FAIL: codex on PATH and --version exits 0"; fails=$$((fails + 1)); \
 	fi; \
-	if command -v cursor-agent >/dev/null 2>&1 && cursor-agent --version >/dev/null 2>&1; then \
-		echo "OK: cursor-agent on PATH and --version exits 0"; \
-	else \
-		echo "FAIL: cursor-agent on PATH and --version exits 0"; fails=$$((fails + 1)); \
-	fi; \
 	if [ -f "$$HOME/.codex/config.toml" ]; then \
 		echo "OK: ~/.codex/config.toml exists"; \
 	else \
@@ -395,7 +390,7 @@ ai-config:
 	@if [ -z "$(filter-out $@,$(MAKECMDGOALS))" ]; then \
 		echo "Usage: ocg ai-config <action> [options]"; \
 		echo "Actions:"; \
-		echo "  set default <agent>      Set default AI agent (claude|codex|cursor)"; \
+		echo "  set default <agent>      Set default AI agent (claude|codex)"; \
 		echo "  get default              Show current default agent"; \
 		echo "  status                   Show full configuration"; \
 		echo ""; \
@@ -452,10 +447,10 @@ help:
 		echo "  $$OCG_CMD uninstall                   🗑️  Remove global CLI installation"; \
 		echo ""; \
 		echo "🔄 Updates:"; \
-		echo "  $$OCG_CMD update                      🔄 Update all AI agents (Claude Code, Codex, Cursor CLI)"; \
+		echo "  $$OCG_CMD update                      🔄 Update all AI agents (Claude Code, Codex)"; \
 		echo ""; \
 		echo "🤖 AI Agent Configuration:"; \
-		echo "  $$OCG_CMD ai-config set default       🔧 Set default AI agent (claude|codex|cursor)"; \
+		echo "  $$OCG_CMD ai-config set default       🔧 Set default AI agent (claude|codex)"; \
 		echo "  $$OCG_CMD ai-config status            📊 Show AI agent configuration"; \
 		echo ""; \
 		echo "📋 Recommended Workflow:"; \

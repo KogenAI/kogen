@@ -58,22 +58,6 @@ codex)
     # Use interactive mode
     exec codex --model "$CODEX_MODEL" --prompt "$PROMPT_CONTENT"
     ;;
-cursor)
-    if ! command -v cursor-agent >/dev/null 2>&1; then
-        echo "⚠️  Cursor CLI not found. Please install Cursor CLI first and try again."
-        exit 1
-    fi
-
-    # Map model name for Cursor
-    CURSOR_MODEL=$(map_model "$MODEL" "cursor")
-
-    # Unset environment variables that cause cursor-agent to launch GUI instead of terminal
-    unset CURSOR_CLI CURSOR_CLI_MODE CURSOR_TRACE_ID
-    unset VSCODE_GIT_ASKPASS_NODE VSCODE_GIT_ASKPASS_MAIN GIT_ASKPASS
-
-    # Interactive mode with force flag (no confirmations)
-    cursor-agent --model "$CURSOR_MODEL" --force "$PROMPT_CONTENT"
-    ;;
 *)
     echo "❌ Unknown AI agent: $AGENT"
     exit 1

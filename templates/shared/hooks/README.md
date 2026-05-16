@@ -31,13 +31,13 @@ Typical firing order for common roles:
 | `Edit`              | `planner-guard` (only `codegen/logging/*.md` allowed) |
 | `Write`/`MultiEdit` | `planner-guard` (always denied)                       |
 
-### Inspector (`agent_type=inspector` / `inspector-phoenix` / `codex-inspector` / `cursor-inspector`)
+### Inspector (`agent_type=inspector` / `inspector-phoenix` / `codex-inspector`)
 
-| Event          | Hooks that fire                                                                                                    |
-| -------------- | ------------------------------------------------------------------------------------------------------------------ |
-| `Bash`         | `inspector-bash-guard` (Claude Code), `codex-inspector-bash-guard` (Codex), `cursor-inspector-bash-guard` (Cursor) |
-| `Edit`/`Write` | `inspector-write-guard`, `codex-inspector-write-guard`, `cursor-inspector-bash-guard`                              |
-| `Read`         | `inspector-read-guard`, `codex-inspector-read-guard`                                                               |
+| Event          | Hooks that fire                                                                              |
+| -------------- | -------------------------------------------------------------------------------------------- |
+| `Bash`         | `inspector-bash-guard` (Claude Code), `codex-inspector-bash-guard` (Codex)                  |
+| `Edit`/`Write` | `inspector-write-guard`, `codex-inspector-write-guard`                                       |
+| `Read`         | `inspector-read-guard`, `codex-inspector-read-guard`                                         |
 
 ### Committer (`agent_type=committer`)
 
@@ -73,7 +73,7 @@ Typical firing order for common roles:
 
 - **`orchestrator-no-source-edit`** — Restricts orchestrator writes per launcher. Plain orchestrator (no `CLAUDE_ROLE`, also covers `claude-build`) writes allowed under `codegen/logging/`, `codegen/designs/`, and absolute `/tmp/`. `claude-debug` / `claude-design` (`CLAUDE_ROLE=debug|design`) writes scoped to `codegen/designs/` only — for both the orchestrator and Agent-spawned helpers. Subagents under plain orchestrator bypass the hook.
 - **`inspector-bash-guard`** — Blocks filesystem mutations, git writes, SQL mutations, path traversal (`../`), and redirect writes for inspector agents. Other agent types pass through.
-- **`codex-inspector-bash-guard`** / **`cursor-inspector-bash-guard`** — Same as above for Codex/Cursor environments.
+- **`codex-inspector-bash-guard`** — Same as above for Codex environments.
 - **`build-worker-cwd-guard`** — In user-app context (combobulate apps_root), prevents orchestrator from reading/writing outside the user app directory.
 - **`planner-guard`** — Restricts planner to read-only bash, Edit on `codegen/logging/*.md` only, no `Write`/`MultiEdit`. Both src AND dest must be in allowed dirs for `mv`.
 - **`planner-load-discipline`** — Blocks planner from loading usage_rules files directly (recipes are loaded on demand via recipes/; rules are baked into subagents).

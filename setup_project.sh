@@ -588,11 +588,11 @@ if [ "$NEEDS_AI_ANALYSIS" = true ]; then
     CONFIG_FILE="$HOME/.ocg/config.json"
     if [ -n "$AGENT_OVERRIDE" ]; then
         case "$AGENT_OVERRIDE" in
-        "claude" | "codex" | "cursor")
+        "claude" | "codex")
             AI_AGENT="$AGENT_OVERRIDE"
             ;;
         *)
-            echo "⚠️  Invalid agent '$AGENT_OVERRIDE'. Valid agents: claude, codex, cursor"
+            echo "⚠️  Invalid agent '$AGENT_OVERRIDE'. Valid agents: claude, codex"
             AI_AGENT=$(jq -r '.default_agent // "claude"' "$CONFIG_FILE" 2>/dev/null || echo "claude")
             ;;
         esac

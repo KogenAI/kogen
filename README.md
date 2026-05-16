@@ -12,7 +12,7 @@ Optimum Codegen (OCG) is a workspace management system that enables parallel dev
 - Git
 - Cursor IDE (recommended) or VS Code
 - Phoenix/Elixir project
-- AI Assistant: Claude Code, Codex, and Cursor CLI (all installed automatically by `make install`)
+- AI Assistant: Claude Code and Codex (installed automatically by `make install`)
 
 ## Configuration
 
@@ -147,7 +147,7 @@ Each workspace can run in an isolated Docker container with:
 
 - `ocg new <name> [options]` - Create new feature workspace
   - `--model, -m <model>` - AI model to use (haiku/sonnet/opus, default: sonnet)
-  - `--agent, -a <name>` - AI agent to use (claude/codex/cursor, default: from config)
+  - `--agent, -a <name>` - AI agent to use (claude/codex, default: from config)
   - `--container` - Run in Docker container
 - `ocg resume <name> [options]` - Resume existing workspace
   - `--model, -m <model>` - AI model to use (default: from workspace)
@@ -158,7 +158,7 @@ Each workspace can run in an isolated Docker container with:
 
 ### AI Agent Configuration
 
-- `ocg ai-config set default <agent>` - Set default AI agent (claude/codex/cursor)
+- `ocg ai-config set default <agent>` - Set default AI agent (claude/codex)
 - `ocg ai-config get default` - Show current default agent
 - `ocg ai-config status` - Show full AI agent configuration
 
@@ -173,11 +173,11 @@ Each workspace can run in an isolated Docker container with:
 
 - `ocg usage-rules [options]` - Generate usage rules for Elixir dependencies from mix.exs
   - `--model, -m <model>` - AI model to use (haiku/sonnet/opus, default: haiku)
-  - `--agent, -a <name>` - AI agent to use (claude/codex/cursor, default: from config)
+  - `--agent, -a <name>` - AI agent to use (claude/codex, default: from config)
   - `--help` - Show usage information
 - `ocg remove-comments` - Remove comments from git diff changes
 - `ocg format` - Format all shell scripts and files
-- `ocg update` - Update all AI agents (Claude Code, Codex, Cursor CLI)
+- `ocg update` - Update all AI agents (Claude Code, Codex)
 - `ocg uninstall` - Remove global CLI installation
 - `make install` - Install CLI globally for `ocg` commands (run from codegen directory)
 
@@ -230,29 +230,27 @@ Install globally to use `ocg` commands from anywhere:
 
 ```bash
 cd /path/to/codegen && make install
-# Installs Claude Code, Codex, and Cursor CLI
+# Installs Claude Code and Codex
 # Prompts for default AI agent preference
 # Then use: ocg new my-feature, ocg ls, etc.
 ```
 
 ### AI Agent Support
 
-OCG supports three AI agents:
+OCG supports two AI agents:
 
 - **Claude Code**: Official Anthropic CLI with rich terminal UI
 - **Codex**: OpenAI Codex CLI with sandbox mode isolation
-- **Cursor CLI**: Developer-focused CLI with native AGENTS.md support
 
-During installation, all three agents are installed and you'll be prompted to choose a default. You can switch between them anytime:
+During installation, both agents are installed and you'll be prompted to choose a default. You can switch between them anytime:
 
 ```bash
 # Set default agent
-ocg ai-config set default cursor
+ocg ai-config set default codex
 
 # Use specific agent for a workspace
 ocg new my-feature --agent claude
 ocg new my-feature -a codex --model opus
-ocg new my-feature -a cursor --model sonnet
 
 # Check current configuration
 ocg ai-config status

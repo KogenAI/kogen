@@ -215,7 +215,7 @@ hooks_realpath() {
 # inspector-scoped hooks from firing in non-inspector contexts.
 require_inspector_agent_type() {
     case "${AGENT_TYPE:-}" in
-    inspector | inspector-phoenix | codex-inspector | cursor-inspector) return 0 ;;
+    inspector | inspector-phoenix | codex-inspector) return 0 ;;
     *) exit 0 ;;
     esac
 }

@@ -85,8 +85,6 @@ generate_for_tool() {
     if [ -z "$OUTPUT_DIR" ]; then
         if [ "$tool" = "claude" ]; then
             mkdir -p "$output_dir/commands" "$output_dir/agents"
-        elif [ "$tool" = "cursor" ]; then
-            mkdir -p "$output_dir/commands" "$output_dir/agents"
         else
             mkdir -p "$output_dir/commands" "$output_dir/agent"
         fi
@@ -123,8 +121,6 @@ generate_for_tool() {
     # Determine output subdir for agent files
     local agents_subdir
     if [ "$tool" = "claude" ]; then
-        agents_subdir="$output_dir/agents"
-    elif [ "$tool" = "cursor" ]; then
         agents_subdir="$output_dir/agents"
     else
         agents_subdir="$output_dir/agent"
@@ -177,15 +173,13 @@ main() {
         generate_for_tool "claude"
         echo ""
         generate_codex
-        echo ""
-        generate_for_tool "cursor"
-    elif [ "$tool" = "claude" ] || [ "$tool" = "cursor" ]; then
+    elif [ "$tool" = "claude" ]; then
         generate_for_tool "$tool"
     elif [ "$tool" = "codex" ]; then
         generate_codex
     else
         echo "❌ Unknown tool: $tool"
-        echo "Usage: $0 [claude|codex|cursor|all]"
+        echo "Usage: $0 [claude|codex|all]"
         exit 1
     fi
 

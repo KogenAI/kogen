@@ -3,7 +3,7 @@
 Simple Jinja2-like template processor for OCG template generation.
 
 Two output formats:
-  --format=md   (default) — emit Markdown body for Claude/Cursor.
+  --format=md   (default) — emit Markdown body for Claude.
   --format=toml          — emit Codex per-agent TOML (requires --config and --role).
 
 For TOML output, the template MUST declare a `tools:` line in its YAML
@@ -76,14 +76,14 @@ def _strip_template_blocks(content, tool_name, yaml_frontmatter):
         content = re.sub(r'{% if tool\.yaml_frontmatter %}.*?{% endif %}', '', content, flags=re.DOTALL)
 
     # if/else/endif and simple if/endif blocks.
-    # Supported tool names: 'claude', 'codex', 'cursor'.
+    # Supported tool names: 'claude', 'codex'.
     # Dual-render pattern:
     #   {% if tool.name == 'claude' %}<claude-branch>{% else %}<codex-branch>{% endif %}
     # claude → renders claude-branch (e.g. @-imports)
-    # codex/cursor → renders else-branch (e.g. → See pointers)
-    if tool_name not in ('claude', 'codex', 'cursor'):
+    # codex → renders else-branch (e.g. → See pointers)
+    if tool_name not in ('claude', 'codex'):
         raise ValueError(
-            f"Unsupported tool_name: {tool_name!r} (expected 'claude', 'codex', or 'cursor')"
+            f"Unsupported tool_name: {tool_name!r} (expected 'claude' or 'codex')"
         )
 
     if tool_name == 'claude':
@@ -102,7 +102,7 @@ def _strip_template_blocks(content, tool_name, yaml_frontmatter):
             flags=re.DOTALL,
         )
     else:
-        # codex / cursor: keep else-branch; drop claude-branch.
+        # codex: keep else-branch; drop claude-branch.
         content = re.sub(
             r'\{%\s*if\s+tool\.name\s*==\s*\'claude\'\s*%\}.*?\{%\s*else\s*%\}(.*?)\{%\s*endif\s*%\}',
             r'\1',
@@ -310,7 +310,7 @@ if __name__ == "__main__":
                         help='Role name to look up in harness_models (required for --format=toml)')
     parser.add_argument('template_file', help='Template file to process')
     parser.add_argument('tool_name', nargs='?', default=None,
-                        help='Tool name (claude, codex, cursor) — md format only')
+                        help='Tool name (claude, codex) — md format only')
     parser.add_argument('yaml_frontmatter', nargs='?', default=None,
                         help='Whether to include YAML frontmatter (true/false) — md format only')
 

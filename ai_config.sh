@@ -21,9 +21,6 @@ init_config() {
         },
         "codex": {
             "enabled": false
-        },
-        "cursor": {
-            "enabled": false
         }
     }
 }
@@ -85,15 +82,6 @@ show_status() {
         echo "  Installed: ❌"
     fi
 
-    echo ""
-    echo "Cursor CLI:"
-    echo "  Enabled: $(get_config "agents.cursor.enabled")"
-    if command -v cursor-agent >/dev/null 2>&1; then
-        echo "  Installed: ✅"
-        cursor-agent --version 2>/dev/null || echo "  Version: unknown"
-    else
-        echo "  Installed: ❌"
-    fi
 
 }
 
@@ -102,12 +90,12 @@ case "$1" in
 set)
     if [ "$2" = "default" ]; then
         if [ -z "$3" ]; then
-            echo "Usage: ocg ai-config set default [claude|codex|cursor]"
+            echo "Usage: ocg ai-config set default [claude|codex]"
             exit 1
         fi
-        if [ "$3" != "claude" ] && [ "$3" != "codex" ] && [ "$3" != "cursor" ]; then
+        if [ "$3" != "claude" ] && [ "$3" != "codex" ]; then
             echo "❌ Invalid agent: $3"
-            echo "   Valid options: claude, codex, cursor"
+            echo "   Valid options: claude, codex"
             exit 1
         fi
         set_config "default_agent" "$3"
@@ -150,7 +138,7 @@ status)
 *)
     echo "Usage: ocg ai-config <action> [options]"
     echo "Actions:"
-    echo "  set default <agent>      Set default AI agent (claude|codex|cursor)"
+    echo "  set default <agent>      Set default AI agent (claude|codex)"
     echo "  get default              Show current default agent"
     echo "  get <key>                Get a configuration value"
     echo "  set <key> <value>        Set a configuration value"
