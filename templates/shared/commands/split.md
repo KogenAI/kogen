@@ -9,6 +9,10 @@ Analyze work described (or current plan/doc if no argument) and split into discr
 
 Strongest signal work is one commit: every candidate step boundary fails scaffold test or regression test below. When that happens, write plan as single step with `## Why one commit, not N` section. User can override; default is honest.
 
+**Single-step plans are the expected shape, not a degenerate case.** A `/split` output of one step with `## Why one commit, not N` is the right answer for most design docs. The visual shape of a numbered list does not justify producing one. If the candidate split has steps whose `Why` fields name failure modes that the later step structurally eliminates, the earlier step is duplicate work and the plan is one commit. If each step's `Value if we stop here` is honest only because the next step might never ship, but in practice all steps ship in the same week, the value framing is artificial and the plan is one commit. Test before producing N>1: "would a reviewer reading just the diff for the combined change be confused about why it exists?" If no — combined diff is coherent — produce one step.
+
+**When the plan is one step, write a `## Why one commit, not N` section** above the step. Name the candidate boundaries you considered and rejected. Cite the failure mode each candidate boundary would expose. This section is what makes the single-step output legibly the right shape rather than a missing-content shape.
+
 **Split lives in the document, not in chat.**
 
 If argument references existing plan/doc (file path, `@path`, or unambiguous reference), the split IS that document's impl plan. Edit file in place — replace existing steps section with new step list. Don't paste full step list into chat. Reply with short summary: how many steps, what changed from prior version (merges, reorderings, cuts), open questions. User reads steps in doc.
@@ -19,6 +23,8 @@ When reviewing or updating existing split doc: if you reorder steps you MUST rew
 
 **Promote drafts when splitting them.** If source document path is under `codegen/designs/drafts/`, after rewriting the steps section, move the file: `mv codegen/designs/drafts/<slug>.md codegen/designs/ready/<slug>.md`. The move IS the promotion signal — `drafts/` = still being shaped, `ready/` = step list exists, implementation can start. Mention the new path in the reply. Archival from `ready/` to `codegen/designs/archive/` is manual and only triggered by user instruction to `claude-build` after work ships — never archive from `/split`.
 
+Each Step's `Why` field is a verbatim copy (or one-paragraph compression) of the corresponding entry in the source design doc's § Proposed Changes. Never paraphrase — paraphrase introduces hedging, drops the named alternative, and degrades the field's value as a delegation payload. If a § Proposed Changes entry can't be matched to any step, that's drift between design and plan: flag in the chat reply summary and decide before promoting — either add the missing step or remove the orphaned § Proposed Changes entry from the design doc. Both are valid; ignoring the mismatch is not. If a step has no source § Proposed Changes entry to draw its Why from, the step is malformed and must be sourced (rewrite the design first) or cut.
+
 Each step must:
 
 - Leave system in better state — not just functional, genuinely more valuable even if no further steps ship
@@ -27,6 +33,8 @@ Each step must:
 - One-line "why this is valuable on its own" justification — not "system still works" but "here's what you gain"
 
 **Scaffold test**: before accepting a step, ask "if next step never ships, does a user or dev gain anything?" If no — pure scaffolding that only enables next step — merge forward. Struct with no-op fn, migration with no callers, empty module with no behaviour → half-steps, not shippable. Merge forward.
+
+**Why test**: read the Why aloud as the opening line of a planner prompt. Can planner make decisions from it? Can reviewer scope a CR? Can committer write a why-focused message? If the Why is "for parity" / "for clarity" / "for consistency" → planner has no lever. If the Why overlaps a neighboring step's Why → cut signal. Whys that survive name a concrete failure mode in subagent-actionable language.
 
 **Regression test**: ask "if we stop here, is system worse than before?" Step that ships visible placeholder strings, blocks previously-working path without providing new one, writes `TODO_REPLACE_ME` into user artifacts, or leaves two subsystems in contradictory states → regression, not step. Merge forward with whatever step resolves it. Every step must leave system strictly better than previous commit.
 
@@ -57,9 +65,14 @@ Output format — for each step:
 **What:** One sentence describing what changes.
 **Value if we stop here:** One sentence on what's gained even if next step never ships.
 **Commit message:** Imperative, under 50 chars, answers *why* not *what*. Bad: "Extract build intents". Good: "Add contact forms to static sites".
+**Why:** One sentence naming the concrete failure mode this step prevents — phrased so planner/dev/reviewer/committer can act on it. Not "for clarity" or "to be consistent" — those give a planner no lever. Orchestrator copies this verbatim into every delegation prompt. Source: the corresponding § Proposed Changes entry in the design doc. If the design doc has no usable Why, the step is a candidate for cutting.
 
 [List of specific files/functions/migrations to change]
 ```
+
+The orchestrator delegating this step constructs each subagent prompt by including the step's `Why` field verbatim above the role-specific instructions. Planner sees `Why: ...` at the top of its prompt; the planner's dev-prompt copies it through; reviewer-phoenix sees it; committer sees it. This is the mechanism by which the design-doc rationale becomes the operative context for every subagent in the chain. Subagents may cite the Why in their session-log section (`## <role> Section`) when explaining decisions. The committer specifically MUST draft its commit message body from the Why, not infer one from the diff — `codegen/rules/roles/committer.md` § why-focused commit messages is satisfied only when committer's prompt contains the Why and committer uses it.
+
+**Context docs ship with the code commit they describe.** Never produce a "context-docs only" commit. Every prose change in `context/*.md`, rule files, or any other documentation that describes runtime behavior MUST be in the same commit as the code that makes the prose true. If a doc edit can't be matched to a code commit (e.g. it documents existing behavior more accurately), it's a separate plan, not a separate commit in this plan. The orchestrator running a step must see the doc and the code land together — otherwise the doc lies for one commit and future bisects through this range read a system that doesn't exist.
 
 Steps are **sequential units of intent on single branch** — not parallel branches or PRs. Each step implemented and committed before next begins.
 

@@ -38,7 +38,7 @@ Write markdown document capturing everything discussed — issues found, root ca
    - Overview / context (brief)
    - Issues and root causes
    - Proposed changes (grouped by area, not chronologically)
-   - Implementation plan (phased if complex, flat if simple) — each phase is one commit
+   - Implementation plan (phased if complex, flat if simple) — each phase is one commit. The rationale you record per § Proposed Changes entry becomes `/split`'s `Why` field, which the orchestrator copies verbatim into every subagent delegation prompt (planner, developer, reviewer, committer). Write each rationale as the answer to "what concrete failure does this prevent, in language a subagent can act on" — not as design-doc commentary. The committer's commit message will draw from this text; the future debugger reading `git log` will see it. Hedged or vague rationale ("for clarity", "to be consistent") cripples every downstream role.
    - Test coverage gaps
    - Consolidation table (if things were merged/renamed/removed)
 
