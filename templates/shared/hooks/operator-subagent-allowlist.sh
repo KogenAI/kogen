@@ -1,6 +1,13 @@
 #!/bin/bash
 # operator-subagent-allowlist.sh — PreToolUse Agent hook.
 #
+# HOOK-MANIFEST:
+# event: PreToolUse
+# matcher: Agent
+# surface: user_global
+# signal: CLAUDE_ROLE
+# role: *
+#
 # Enforces subagent spawn rules across all launcher modes:
 #
 #   Built-in subagents {Plan, general-purpose, statusline-setup} denied always.

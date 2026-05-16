@@ -1,6 +1,13 @@
 #!/bin/bash
 # planner-guard.sh — PreToolUse hook for planner
 #
+# HOOK-MANIFEST:
+# event: PreToolUse
+# matcher: Bash|Write|Edit|MultiEdit|EnterPlanMode|ExitPlanMode
+# surface: user_global
+# signal: AGENT_TYPE
+# role: planner
+#
 # Blocks file-creation, state-modifying shell commands, and Edit calls on
 # non-session-log files when the active agent is "planner".
 # The planner's only permitted write action is editing the session log

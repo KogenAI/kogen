@@ -1,6 +1,13 @@
 #!/bin/bash
 # static-site-ex-guard.sh — PreToolUse hook for developer-html | developer-hugo | developer-vite
 #
+# HOOK-MANIFEST:
+# event: PreToolUse
+# matcher: Write|Edit
+# surface: user_global
+# signal: AGENT_TYPE
+# role: developer-html|developer-hugo|developer-vite
+#
 # Blocks Write and Edit tool calls targeting Elixir/HEEX files when the active
 # agent is "developer-html | developer-hugo | developer-vite". All other agents pass through unconditionally.
 

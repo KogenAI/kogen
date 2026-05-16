@@ -1,6 +1,13 @@
 #!/bin/bash
 # codex-inspector-bash-guard.sh — PreToolUse hook for Codex Inspector
 #
+# HOOK-MANIFEST:
+# event: PreToolUse
+# matcher: shell|local_shell
+# surface: per_call_inspector
+# signal: none
+# role: codex-inspector
+#
 # Blocks shell/local_shell tool calls that mutate the filesystem or database,
 # OR that read files outside $CODEX_PROJECT_DIR.
 #

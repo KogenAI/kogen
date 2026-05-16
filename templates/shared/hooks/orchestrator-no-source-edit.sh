@@ -1,6 +1,13 @@
 #!/bin/bash
 # orchestrator-no-source-edit.sh — PreToolUse Edit|Write|MultiEdit|NotebookEdit hook.
 #
+# HOOK-MANIFEST:
+# event: PreToolUse
+# matcher: Write|Edit|MultiEdit|NotebookEdit
+# surface: user_global
+# signal: CLAUDE_ROLE
+# role: *
+#
 # Blocks the orchestrator from editing source files directly.
 # Subagents (non-empty agent_id) are allowed under no CLAUDE_ROLE (standard
 # orchestrator). Under any operator role (debug, design) the write surface is

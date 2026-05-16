@@ -1,6 +1,13 @@
 #!/bin/bash
 # committer-subject-length.sh — PreToolUse Bash hook scoped to committer.
 #
+# HOOK-MANIFEST:
+# event: PreToolUse
+# matcher: Bash
+# surface: user_global
+# signal: AGENT_TYPE
+# role: committer
+#
 # Blocks git commit commands where the subject line exceeds 50 bytes.
 
 set -u

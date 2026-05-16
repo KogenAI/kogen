@@ -217,8 +217,25 @@ plan:
 	$(call check_ocg_only,plan)
 	@./modes/plan_session.sh $(filter-out $@,$(MAKECMDGOALS))
 
-install:
+COMBOBULATE_DIR ?= $(SCRIPT_DIR)/../combobulate
+
+.PHONY: hook-parity
+hook-parity:
+	$(call check_make_only,hook-parity)
+	@cd "$(SCRIPT_DIR)/templates" && python3 generator/hook_registrations.py \
+		--hooks-dir shared/hooks \
+		--output-settings /tmp/claude-code-settings-parity.json \
+		--existing-settings "$(SCRIPT_DIR)/templates/claude-code-settings.json" \
+		--combobulate-dir /tmp/hook-parity-test
+	@diff -u "$(SCRIPT_DIR)/templates/claude-code-settings.json" /tmp/claude-code-settings-parity.json || exit 1
+	@echo "hook-parity: PASS"
+
+install: hook-parity
 	$(call check_make_only,install)
+	@python3 "$(SCRIPT_DIR)/templates/generator/hook_registrations.py" \
+		--hooks-dir "$(SCRIPT_DIR)/templates/shared/hooks" \
+		--output-settings "$(SCRIPT_DIR)/templates/claude-code-settings.json" \
+		--combobulate-dir "$(COMBOBULATE_DIR)"
 	@./install.sh
 
 # test: run every PreToolUse/SubagentStop/Stop hook unit-test script in parallel.

@@ -1,6 +1,13 @@
 #!/usr/bin/env bash
 # static-site-build-check.sh — SubagentStop hook for developer-html | developer-hugo | developer-vite.
 #
+# HOOK-MANIFEST:
+# event: SubagentStop
+# matcher: developer-html|developer-hugo|developer-vite
+# surface: user_global
+# signal: AGENT_TYPE
+# role: developer-html|developer-hugo|developer-vite
+#
 # Purpose: replace the LLM static-site-verifier subagent with a deterministic
 # build check. Runs four invariants from the static site's working tree and
 # emits a Stop-event `block` envelope on failure so the developer subagent

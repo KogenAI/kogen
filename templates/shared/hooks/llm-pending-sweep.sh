@@ -1,6 +1,13 @@
 #!/bin/bash
 # llm-pending-sweep.sh — Stop event hook.
 #
+# HOOK-MANIFEST:
+# event: Stop
+# matcher: *
+# surface: user_global
+# signal: none
+# role: *
+#
 # Sweeps stale LLM-pending flag files (older than 120 minutes) from the
 # codegen/llm-pending/ sidecar directory. Old flags are noise — the dev
 # session that wrote them ended long ago. Fresh flags survive the sweep

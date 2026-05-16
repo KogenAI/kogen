@@ -1,6 +1,13 @@
 #!/bin/bash
 # reviewer-guard.sh — PreToolUse hook for reviewer-phoenix / reviewer-static
 #
+# HOOK-MANIFEST:
+# event: PreToolUse
+# matcher: Bash|Write|Edit|MultiEdit|Monitor
+# surface: user_global
+# signal: AGENT_TYPE
+# role: reviewer-phoenix|reviewer-static
+#
 # Blocks all mutating tools when the active agent is "reviewer-phoenix" or
 # "reviewer-static". Reviewers are read-only analysis roles: Read, Grep, Glob
 # only, plus Edit on session logs. All other agents pass through unconditionally.

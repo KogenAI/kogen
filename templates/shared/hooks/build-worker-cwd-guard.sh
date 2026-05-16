@@ -2,6 +2,13 @@
 # build-worker-cwd-guard.sh — PreToolUse hook scoped to the BuildWorker
 # orchestrator only.
 #
+# HOOK-MANIFEST:
+# event: PreToolUse
+# matcher: Bash|Write|Edit|MultiEdit|Read|Monitor
+# surface: user_global
+# signal: AGENT_TYPE
+# role: *
+#
 # Goal: enforce that the orchestrator (top-level claude --print invocation in
 # the user-app cwd) cannot Read/Write/Edit files outside the user app directory,
 # and cannot run Bash commands referencing absolute paths outside it.

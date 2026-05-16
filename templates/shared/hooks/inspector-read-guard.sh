@@ -1,6 +1,13 @@
 #!/bin/bash
 # inspector-read-guard.sh — PreToolUse hook for Inspector
 #
+# HOOK-MANIFEST:
+# event: PreToolUse
+# matcher: Read
+# surface: per_call_inspector
+# signal: AGENT_TYPE
+# role: inspector|inspector-phoenix|codex-inspector|cursor-inspector
+#
 # Blocks Read calls where the requested file_path is outside the Inspector's
 # working directory ($CLAUDE_PROJECT_DIR, falling back to $PWD).
 
@@ -8,6 +15,8 @@ set -u
 
 source "$(dirname "$0")/lib/hooks-lib.sh"
 parse_input
+
+require_inspector_agent_type
 
 # Only gate Read calls.
 if [ "$TOOL_NAME" != "Read" ]; then

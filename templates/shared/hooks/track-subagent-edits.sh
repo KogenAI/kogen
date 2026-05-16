@@ -1,6 +1,13 @@
 #!/bin/bash
 # track-subagent-edits.sh — PreToolUse hook (matcher: Edit|Write|MultiEdit).
 #
+# HOOK-MANIFEST:
+# event: PreToolUse
+# matcher: Edit|Write|MultiEdit|NotebookEdit
+# surface: user_global
+# signal: AGENT_TYPE
+# role: *
+#
 # Records each file path written/edited by a subagent into a per-subagent
 # ledger so post-developer-format.sh can format ONLY that subagent's files.
 #

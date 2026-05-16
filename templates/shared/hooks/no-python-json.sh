@@ -1,6 +1,13 @@
 #!/bin/bash
 # no-python-json.sh — PreToolUse hook: deny inline python JSON parsing.
 #
+# HOOK-MANIFEST:
+# event: PreToolUse
+# matcher: Bash
+# surface: user_global
+# signal: none
+# role: *
+#
 # Blocks: python -c "...import json..." / python3 -c "...json.load..."
 #
 # Allows: python3 script.py, python3 -c "print(1)", any python invocation

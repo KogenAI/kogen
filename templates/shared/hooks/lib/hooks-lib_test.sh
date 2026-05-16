@@ -111,6 +111,57 @@ else
 fi
 rm -f "$LOG"
 
+# ── require_inspector_agent_type ─────────────────────────────────────────────
+
+# unset AGENT_TYPE → exit 0 (allow, not inspector context)
+exit_code=0
+AGENT_TYPE="" bash -c "source '$SCRIPT_DIR/hooks-lib.sh' && require_inspector_agent_type && exit 1 || exit 0" || exit_code=$?
+if [ "$exit_code" -eq 0 ]; then
+    printf 'PASS: require_inspector_agent_type exits 0 when AGENT_TYPE unset\n'
+    pass=$((pass + 1))
+else
+    printf 'FAIL: require_inspector_agent_type did not exit 0 when AGENT_TYPE unset (exit %s)\n' "$exit_code"
+    fail=$((fail + 1))
+fi
+
+# developer-phoenix-backend AGENT_TYPE → exit 0
+exit_code=0
+AGENT_TYPE="developer-phoenix-backend" bash -c "source '$SCRIPT_DIR/hooks-lib.sh' && require_inspector_agent_type && exit 1 || exit 0" || exit_code=$?
+if [ "$exit_code" -eq 0 ]; then
+    printf 'PASS: require_inspector_agent_type exits 0 for developer-phoenix-backend\n'
+    pass=$((pass + 1))
+else
+    printf 'FAIL: require_inspector_agent_type did not exit 0 for developer-phoenix-backend (exit %s)\n' "$exit_code"
+    fail=$((fail + 1))
+fi
+
+# inspector AGENT_TYPE → returns (continue), so the subshell exits 0 via && exit 0
+exit_code=0
+AGENT_TYPE="inspector" bash -c "source '$SCRIPT_DIR/hooks-lib.sh' && require_inspector_agent_type && exit 0" || exit_code=$?
+if [ "${exit_code:-0}" -eq 0 ]; then
+    printf 'PASS: require_inspector_agent_type returns (continues) for inspector\n'
+    pass=$((pass + 1))
+else
+    printf 'FAIL: require_inspector_agent_type did not continue for inspector (exit %s)\n' "$exit_code"
+    fail=$((fail + 1))
+fi
+
+# ── is_subagent ──────────────────────────────────────────────────────────────
+
+result=$(AGENT_TYPE="developer-phoenix-backend" bash -c "source '$SCRIPT_DIR/hooks-lib.sh'; is_subagent && echo yes || echo no")
+assert_eq "is_subagent true when AGENT_TYPE set" "yes" "$result"
+
+result=$(AGENT_TYPE="" bash -c "source '$SCRIPT_DIR/hooks-lib.sh'; is_subagent && echo yes || echo no")
+assert_eq "is_subagent false when AGENT_TYPE unset" "no" "$result"
+
+# ── is_outer_session ─────────────────────────────────────────────────────────
+
+result=$(AGENT_TYPE="" bash -c "source '$SCRIPT_DIR/hooks-lib.sh'; is_outer_session && echo yes || echo no")
+assert_eq "is_outer_session true when AGENT_TYPE unset" "yes" "$result"
+
+result=$(AGENT_TYPE="inspector" bash -c "source '$SCRIPT_DIR/hooks-lib.sh'; is_outer_session && echo yes || echo no")
+assert_eq "is_outer_session false when AGENT_TYPE set" "no" "$result"
+
 echo ""
 echo "Results: $pass passed, $fail failed"
 

@@ -1,6 +1,13 @@
 #!/bin/bash
 # no-cat-pipe.sh — PreToolUse hook: deny `cat FILE | head|tail|grep|less|more`.
 #
+# HOOK-MANIFEST:
+# event: PreToolUse
+# matcher: Bash
+# surface: user_global
+# signal: none
+# role: *
+#
 # Blocks: cat file | head, cat file | tail, cat file | grep, cat file | less,
 #         cat file | more.
 #

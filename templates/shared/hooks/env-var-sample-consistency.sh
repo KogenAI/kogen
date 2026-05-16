@@ -1,6 +1,13 @@
 #!/bin/bash
 # env-var-sample-consistency.sh — PreToolUse Bash hook scoped to committer.
 #
+# HOOK-MANIFEST:
+# event: PreToolUse
+# matcher: Bash
+# surface: user_global
+# signal: AGENT_TYPE
+# role: committer
+#
 # Blocks a git commit if staged files include env-var-reading Elixir code
 # (System.get_env / System.fetch_env) but .env.sample and .env.prod.sample
 # are NOT also staged.

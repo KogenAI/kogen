@@ -1,6 +1,13 @@
 #!/usr/bin/env bash
 # dev-gate.sh — SubagentStop hook for developer-phoenix-backend | developer-phoenix-frontend.
 #
+# HOOK-MANIFEST:
+# event: SubagentStop
+# matcher: developer-phoenix-backend|developer-phoenix-frontend
+# surface: user_global
+# signal: AGENT_TYPE
+# role: developer-phoenix-backend|developer-phoenix-frontend
+#
 # Replaces the prior agent-based "decide and start the gate" step
 # with a deterministic decision tree (see lib/gate-select.sh) and a
 # launch protocol (inline for short gates, foreground-poll for long gates).

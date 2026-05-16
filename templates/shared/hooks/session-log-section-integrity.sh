@@ -1,6 +1,13 @@
 #!/bin/bash
 # session-log-section-integrity.sh — PreToolUse Edit|Write hook.
 #
+# HOOK-MANIFEST:
+# event: PreToolUse
+# matcher: Edit|Write|MultiEdit
+# surface: user_global
+# signal: AGENT_TYPE
+# role: *
+#
 # When a subagent edits or writes a session log file (codegen/logging/*.md),
 # the new_string (Edit) or content (Write) must include
 # "## <agent_type> Section" so the session log retains the required section

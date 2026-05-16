@@ -1,6 +1,13 @@
 #!/bin/bash
 # inspector-bash-guard.sh — PreToolUse hook for Inspector
 #
+# HOOK-MANIFEST:
+# event: PreToolUse
+# matcher: Bash
+# surface: per_call_inspector
+# signal: AGENT_TYPE
+# role: inspector|inspector-phoenix|codex-inspector|cursor-inspector
+#
 # Blocks Bash commands that mutate the filesystem or database, and commands
 # that reference absolute paths outside $CLAUDE_PROJECT_DIR.
 
@@ -9,12 +16,7 @@ set -u
 source "$(dirname "$0")/lib/hooks-lib.sh"
 parse_input
 
-# Inspector bash guard — only active for inspector agents.
-# If not an inspector, allow (this hook is not responsible for non-inspector constraints).
-case "${AGENT_TYPE:-}" in
-inspector | inspector-phoenix | codex-inspector | cursor-inspector) ;;
-*) exit 0 ;;
-esac
+require_inspector_agent_type
 
 # Only gate Bash calls.
 if [ "$TOOL_NAME" != "Bash" ]; then

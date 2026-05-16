@@ -1,6 +1,13 @@
 #!/usr/bin/env bash
 # stop-cycle-guard.sh — Stop hook that prevents the orchestrator from ending
 # its turn mid-delegation-cycle.
+#
+# HOOK-MANIFEST:
+# event: Stop
+# matcher: *
+# surface: user_global
+# signal: none
+# role: *
 
 set -u
 

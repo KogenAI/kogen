@@ -1,6 +1,13 @@
 #!/bin/bash
 # post-developer-format.sh — SubagentStop hook for developer subagents.
 #
+# HOOK-MANIFEST:
+# event: SubagentStop
+# matcher: developer-phoenix-backend|developer-phoenix-frontend|developer-html|developer-hugo|developer-vite
+# surface: user_global
+# signal: AGENT_TYPE
+# role: developer-phoenix-backend|developer-phoenix-frontend|developer-html|developer-hugo|developer-vite
+#
 # Purpose: when developer-phoenix-backend / developer-phoenix-frontend / developer-html | developer-hugo | developer-vite
 # reports done, auto-format their diff so the dev-gate.sh hook never sees a
 # prettier-only or mix-format-only failure. Also surface any LLM-test signal.

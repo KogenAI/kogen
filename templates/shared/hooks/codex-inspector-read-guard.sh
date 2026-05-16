@@ -1,6 +1,13 @@
 #!/bin/bash
 # codex-inspector-read-guard.sh — PreToolUse hook for Codex Inspector
 #
+# HOOK-MANIFEST:
+# event: PreToolUse
+# matcher: read_file
+# surface: per_call_inspector
+# signal: none
+# role: codex-inspector
+#
 # Blocks read_file calls where the requested path is outside the Inspector's
 # working directory ($CODEX_PROJECT_DIR, falling back to $PWD).
 #

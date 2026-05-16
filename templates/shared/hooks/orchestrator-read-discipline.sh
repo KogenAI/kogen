@@ -1,6 +1,13 @@
 #!/bin/bash
 # orchestrator-read-discipline.sh — PreToolUse Read hook for orchestrator.
 #
+# HOOK-MANIFEST:
+# event: PreToolUse
+# matcher: Read
+# surface: user_global
+# signal: AGENT_TYPE
+# role: *
+#
 # Blocks the orchestrator from reading arbitrary codebase files.
 # Orchestrator should delegate exploration to planner or Explore subagent.
 #

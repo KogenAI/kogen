@@ -1,6 +1,13 @@
 #!/bin/bash
 # planner-load-discipline.sh — PreToolUse Read hook scoped to planner.
 #
+# HOOK-MANIFEST:
+# event: PreToolUse
+# matcher: Read
+# surface: user_global
+# signal: AGENT_TYPE
+# role: planner
+#
 # Blocks the planner from loading implementer-only rule files that are
 # already baked into the implementer subagent prompts. Loading them
 # wastes tokens and risks the planner over-specifying implementation.

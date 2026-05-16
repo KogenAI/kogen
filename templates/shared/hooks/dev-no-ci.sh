@@ -1,6 +1,13 @@
 #!/bin/bash
 # dev-no-ci.sh — PreToolUse hook: deny gate commands for developer-* agents.
 #
+# HOOK-MANIFEST:
+# event: PreToolUse
+# matcher: Bash
+# surface: user_global
+# signal: AGENT_TYPE
+# role: developer-*
+#
 # Blocks: make ci / ci-fast / ci-cover / predeploy / llm / llm-phoenix / llm-all
 #         bare `mix test` (no path argument)
 #         `mix test` with only flags (no path)

@@ -1,6 +1,13 @@
 #!/bin/bash
 # inspector-write-guard.sh — PreToolUse hook for Inspector (belt-and-suspenders)
 #
+# HOOK-MANIFEST:
+# event: PreToolUse
+# matcher: Write|Edit|MultiEdit|NotebookEdit
+# surface: per_call_inspector
+# signal: AGENT_TYPE
+# role: inspector|inspector-phoenix|codex-inspector|cursor-inspector
+#
 # Blocks all write/edit tools when invoked for any Inspector call.
 # Write, Edit, MultiEdit, and NotebookEdit are already denied via --disallowed-tools
 # in RunnerImpl. This hook is a belt-and-suspenders layer in case --disallowed-tools
@@ -11,12 +18,7 @@ set -u
 source "$(dirname "$0")/lib/hooks-lib.sh"
 parse_input
 
-# Inspector write guard — only active for inspector agents.
-# If not an inspector, allow (this hook is not responsible for non-inspector constraints).
-case "${AGENT_TYPE:-}" in
-inspector | inspector-phoenix | codex-inspector | cursor-inspector) ;;
-*) exit 0 ;;
-esac
+require_inspector_agent_type
 
 case "$TOOL_NAME" in
 Write | Edit | MultiEdit | NotebookEdit)

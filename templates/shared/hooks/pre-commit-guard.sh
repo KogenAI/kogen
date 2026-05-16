@@ -1,6 +1,13 @@
 #!/bin/bash
 # pre-commit-guard.sh — PreToolUse hook for every agent except "committer"
 #
+# HOOK-MANIFEST:
+# event: PreToolUse
+# matcher: Bash
+# surface: user_global
+# signal: AGENT_TYPE
+# role: *
+#
 # Blocks state-modifying git commands (commit, rebase, push --force,
 # reset --hard, cherry-pick, revert, merge) when the active agent is
 # anything other than "committer". The orchestrator itself (agent_type

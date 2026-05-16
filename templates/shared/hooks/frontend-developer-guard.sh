@@ -1,6 +1,13 @@
 #!/bin/bash
 # frontend-developer-guard.sh — PreToolUse hook for developer-phoenix-frontend
 #
+# HOOK-MANIFEST:
+# event: PreToolUse
+# matcher: Edit|Write|MultiEdit
+# surface: user_global
+# signal: AGENT_TYPE
+# role: developer-phoenix-frontend
+#
 # Blocks Edit/Write/MultiEdit on backend-owned paths so the frontend developer
 # cannot accidentally clobber Ecto schemas, migrations, contexts, services,
 # workers, or other backend-only files.

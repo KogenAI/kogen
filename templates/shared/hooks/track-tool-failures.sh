@@ -1,6 +1,13 @@
 #!/bin/bash
 # track-tool-failures.sh — PostToolUseFailure hook (matcher: *).
 #
+# HOOK-MANIFEST:
+# event: PostToolUseFailure
+# matcher: *
+# surface: user_global
+# signal: AGENT_TYPE
+# role: *
+#
 # Records every tool failure into a per-subagent JSONL ledger so the
 # orchestrator (or later analysis) can detect the "developer dropped a
 # tool error and proceeded" anti-pattern without scraping transcripts.

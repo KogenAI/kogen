@@ -1,6 +1,13 @@
 #!/usr/bin/env bash
 # Stop hook: auto-resume Claude Code when a session ends due to a transient
 # network/API error (stream idle timeout, 500/529, connection refused, etc.)
+#
+# HOOK-MANIFEST:
+# event: Stop
+# matcher: *
+# surface: user_global
+# signal: none
+# role: *
 
 set -u
 

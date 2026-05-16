@@ -1,6 +1,13 @@
 #!/bin/bash
 # no-git-stash.sh — PreToolUse hook: deny any `git stash` invocation.
 #
+# HOOK-MANIFEST:
+# event: PreToolUse
+# matcher: Bash
+# surface: user_global
+# signal: none
+# role: *
+#
 # Blocks: git stash / git stash push / git stash pop / git stash list / etc.
 #
 # Allows: git status, git log (even with --stash flag — not a stash subcommand).

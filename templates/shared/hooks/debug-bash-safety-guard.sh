@@ -2,6 +2,13 @@
 # debug-bash-safety-guard.sh — PreToolUse hook: block destructive Bash in
 # debug and design sessions.
 #
+# HOOK-MANIFEST:
+# event: PreToolUse
+# matcher: Bash
+# surface: user_global
+# signal: CLAUDE_ROLE
+# role: *
+#
 # Active when CLAUDE_ROLE is `debug` (claude-debug.sh) or `design`
 # (claude-design.sh). Both are investigation/design-doc-authoring sessions —
 # their only legitimate write surface is codegen/designs/ (enforced by

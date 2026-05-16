@@ -1,6 +1,13 @@
 #!/bin/bash
 # usage-rules-grep-guard.sh — PreToolUse Bash|Grep hook.
 #
+# HOOK-MANIFEST:
+# event: PreToolUse
+# matcher: Bash|Grep
+# surface: user_global
+# signal: AGENT_TYPE
+# role: *
+#
 # Blocks non-planner agents from grepping/scanning codegen/usage_rules/.
 # Only the planner may scan the full corpus — all other agents must read
 # only the files cited in the plan's "Usage rules for implementer:" field.

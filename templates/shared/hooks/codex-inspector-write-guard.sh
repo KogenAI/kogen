@@ -1,6 +1,13 @@
 #!/bin/bash
 # codex-inspector-write-guard.sh — PreToolUse hook for Codex Inspector
 #
+# HOOK-MANIFEST:
+# event: PreToolUse
+# matcher: apply_patch
+# surface: per_call_inspector
+# signal: none
+# role: codex-inspector
+#
 # Blocks apply_patch tool calls when invoked for a Codex Inspector session.
 # apply_patch is Codex's primary write surface — Inspector is read-only.
 

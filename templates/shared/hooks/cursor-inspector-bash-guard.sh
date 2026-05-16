@@ -1,6 +1,13 @@
 #!/bin/bash
 # cursor-inspector-bash-guard.sh — beforeShellExecution hook for Cursor Inspector
 #
+# HOOK-MANIFEST:
+# event: PreToolUse
+# matcher: beforeShellExecution
+# surface: per_call_inspector
+# signal: none
+# role: cursor-inspector
+#
 # Blocks shell commands that mutate the filesystem or database, and commands
 # that reference absolute paths outside the project directory.
 
