@@ -238,6 +238,7 @@ install: hook-parity
 		--combobulate-dir "$(COMBOBULATE_DIR)"
 	@./install.sh
 	@./install-launchers.sh
+	@bash install-pi-prompts.sh
 
 # test: run every PreToolUse/SubagentStop/Stop hook unit-test script in parallel.
 # Each *_test.sh is hermetic — own tmp dirs, no shared state — so xargs -P is safe.

@@ -37,45 +37,59 @@ harness:
   planner-phoenix:
     claude: { model: opus, effort: high }
     codex: { model: gpt-5.5, effort: high }
+    pi: { model: openai-codex/gpt-5.5, effort: high }
   planner-html:
     claude: { model: opus, effort: high }
     codex: { model: gpt-5.5, effort: high }
+    pi: { model: openai-codex/gpt-5.5, effort: high }
   planner-hugo:
     claude: { model: opus, effort: high }
     codex: { model: gpt-5.5, effort: high }
+    pi: { model: openai-codex/gpt-5.5, effort: high }
   planner-vite:
     claude: { model: opus, effort: high }
     codex: { model: gpt-5.5, effort: high }
+    pi: { model: openai-codex/gpt-5.5, effort: high }
   developer-phoenix-backend:
     claude: { model: sonnet, effort: medium }
     codex: { model: gpt-5.5, effort: medium }
+    pi: { model: openai-codex/gpt-5.3-codex, effort: medium }
   developer-phoenix-frontend:
     claude: { model: sonnet, effort: medium }
     codex: { model: gpt-5.5, effort: medium }
+    pi: { model: openai-codex/gpt-5.3-codex, effort: medium }
   developer-html:
     claude: { model: sonnet, effort: high }
     codex: { model: gpt-5.5, effort: medium }
+    pi: { model: openai-codex/gpt-5.3-codex, effort: medium }
   developer-hugo:
     claude: { model: sonnet, effort: high }
     codex: { model: gpt-5.5, effort: medium }
+    pi: { model: openai-codex/gpt-5.3-codex, effort: medium }
   developer-vite:
     claude: { model: sonnet, effort: high }
     codex: { model: gpt-5.5, effort: medium }
+    pi: { model: openai-codex/gpt-5.3-codex, effort: medium }
   reviewer-phoenix:
     claude: { model: sonnet, effort: medium }
     codex: { model: gpt-5.5, effort: medium }
+    pi: { model: openai-codex/gpt-5.3-codex, effort: medium }
   reviewer-static:
     claude: { model: sonnet, effort: medium }
     codex: { model: gpt-5.5, effort: medium }
+    pi: { model: openai-codex/gpt-5.3-codex, effort: medium }
   committer:
     claude: { model: haiku, effort: low }
     codex: { model: gpt-5.5-mini, effort: medium }
+    pi: { model: openai-codex/gpt-5.4-mini, effort: medium }
   build:
     claude: { model: haiku, effort: medium }
     codex: { model: gpt-4.1-mini, effort: medium }
+    pi: { model: openai-codex/gpt-5.4-mini, effort: medium }
   inspector:
     claude: { model: sonnet, effort: medium }
     codex: { model: gpt-5.5, effort: medium }
+    pi: { model: openai-codex/gpt-5.3-codex, effort: medium }
 
 roles:
   build:

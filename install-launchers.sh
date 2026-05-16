@@ -44,4 +44,9 @@ install_launcher "$CODEGEN_DIR/templates/shared/codex-build.sh"     "codex-build
 install_launcher "$CODEGEN_DIR/templates/shared/codex-inspector.sh" "codex-inspector"
 install_launcher "$CODEGEN_DIR/templates/shared/codex-design.sh"    "codex-design"
 
+# Pi trio
+install_launcher "$CODEGEN_DIR/templates/shared/pi-build.sh"     "pi-build"
+install_launcher "$CODEGEN_DIR/templates/shared/pi-inspector.sh" "pi-inspector"
+install_launcher "$CODEGEN_DIR/templates/shared/pi-design.sh"    "pi-design"
+
 echo "install-launchers: OK"
