@@ -23,11 +23,19 @@ Read `~/Areas/Optimum/context/rules/STYLE_GUIDE.md` before writing. Key points:
 
 After drafting: `echo "your section" | wc -l`. Section > 10 lines → compress. Code example > 6 lines → cut to minimal pattern.
 
-## Project-Specific Content Check
+## Layered Placement (MANDATORY — check in order)
 
-"Would this rule make sense word-for-word in a different project?" Yes → shared rule file. No → `PROJECT_CONTEXT.md` / `CLAUDE.md` only.
+1. **Shared rule** (`~/Areas/Optimum/context/rules/`) — universally true across ALL projects, baked into subagent system prompts, makes sense word-for-word in an unrelated project.
+2. **Shared context** (`~/Areas/Optimum/context/`) — universal platform/tooling knowledge not in `rules/` (e.g., `claude-code-cli.md` for CLI semantics).
+3. **Project `context/` file** (`./context/*.md`) — project-specific domain knowledge, infra pitfalls, per-tool config. Read on demand by planner. NOT baked into subagent prompts.
+4. **`PROJECT_CONTEXT.md` / `CLAUDE.md`** — short operational facts, gate commands, port numbers.
 
-Signs of leakage: project names, repo paths, app-specific module/table/env-var names, infra/vendor specifics.
+Ask BEFORE placing:
+- "Does a different project's planner/dev need this?" No → stay in `./context/`.
+- "Which agent READS the target file?" Rule audience must match. ❌ Test-assertion guidance in `vite.md` (read by UI dev). ❌ Hook internals in `orchestrator.md`.
+- "Is `make <target>` project-specific?" Yes → `./context/ci.md`, not shared rules.
+
+Signs of leakage into shared rules: project names, repo paths, app-specific module/table/env-var names, infra/vendor specifics.
 
 ## Process
 
