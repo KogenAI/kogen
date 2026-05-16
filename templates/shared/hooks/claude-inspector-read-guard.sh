@@ -1,5 +1,5 @@
 #!/bin/bash
-# inspector-read-guard.sh — PreToolUse hook for Inspector
+# claude-inspector-read-guard.sh — PreToolUse hook for Inspector
 #
 # HOOK-MANIFEST:
 # event: PreToolUse
@@ -47,5 +47,5 @@ if [ "$real_file_path" = "$real_project_dir" ] ||
     exit 0
 fi
 
-deny "BLOCKED by inspector-read-guard: Read path $FILE_PATH is outside working dir $project_dir"
+deny "BLOCKED by claude-inspector-read-guard: Read path $FILE_PATH is outside working dir $project_dir"
 exit 0

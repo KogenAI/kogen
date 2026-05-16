@@ -1,5 +1,5 @@
 #!/bin/bash
-# debug-bash-safety-guard_test.sh — unit tests for debug-bash-safety-guard.sh
+# claude-debug-bash-guard_test.sh — unit tests for claude-debug-bash-guard.sh
 #
 # Tests:
 #   1:  rm -rf path → deny (debug role)
@@ -20,7 +20,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-GUARD="$SCRIPT_DIR/debug-bash-safety-guard.sh"
+GUARD="$SCRIPT_DIR/claude-debug-bash-guard.sh"
 
 pass=0
 fail=0

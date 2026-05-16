@@ -216,7 +216,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "$HOME/.claude/hooks/committer-subject-length.sh"
+            "command": "$HOME/.claude/hooks/claude-debug-bash-guard.sh"
           }
         ]
       },
@@ -225,7 +225,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "$HOME/.claude/hooks/debug-bash-safety-guard.sh"
+            "command": "$HOME/.claude/hooks/committer-subject-length.sh"
           }
         ]
       },

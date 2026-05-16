@@ -1,5 +1,5 @@
 #!/bin/bash
-# inspector-bash-guard.sh — PreToolUse hook for Inspector
+# claude-inspector-bash-guard.sh — PreToolUse hook for Inspector
 #
 # HOOK-MANIFEST:
 # event: PreToolUse
@@ -32,7 +32,7 @@ redirect_check=$(printf '%s' "$COMMAND" | sed -e 's/2>&1//g' -e 's|2>/dev/null||
 
 # Deny any command containing relative path traversal (../).
 if printf '%s' "$COMMAND" | grep -qE '\.\./'; then
-    deny "BLOCKED by inspector-bash-guard: relative path traversal (..) forbidden — use absolute paths only"
+    deny "BLOCKED by claude-inspector-bash-guard: relative path traversal (..) forbidden — use absolute paths only"
     exit 0
 fi
 
@@ -40,43 +40,43 @@ fi
 
 # Append redirect >>
 if printf '%s' "$redirect_check" | grep -qE '>>'; then
-    deny "BLOCKED by inspector-bash-guard: append-redirect (>>) is forbidden for Inspector"
+    deny "BLOCKED by claude-inspector-bash-guard: append-redirect (>>) is forbidden for Inspector"
     exit 0
 fi
 
 # Redirect-overwrite: bare > redirect (but not >>)
 if printf '%s' "$redirect_check" | grep -qE '[^>]>[^>]|^>[^>]'; then
-    deny "BLOCKED by inspector-bash-guard: redirect-write (>) is forbidden for Inspector"
+    deny "BLOCKED by claude-inspector-bash-guard: redirect-write (>) is forbidden for Inspector"
     exit 0
 fi
 
 # heredoc: cat <<
 if printf '%s' "$COMMAND" | grep -qE 'cat[[:space:]]+<<'; then
-    deny "BLOCKED by inspector-bash-guard: heredoc (cat <<) is forbidden for Inspector"
+    deny "BLOCKED by claude-inspector-bash-guard: heredoc (cat <<) is forbidden for Inspector"
     exit 0
 fi
 
 # tee
 if printf '%s' "$COMMAND" | grep -qE '\btee\b'; then
-    deny "BLOCKED by inspector-bash-guard: tee is forbidden for Inspector"
+    deny "BLOCKED by claude-inspector-bash-guard: tee is forbidden for Inspector"
     exit 0
 fi
 
 # sed -i (in-place edit)
 if printf '%s' "$COMMAND" | grep -qE '\bsed[[:space:]]+(-[^ ]*i|--in-place)'; then
-    deny "BLOCKED by inspector-bash-guard: sed -i is forbidden for Inspector"
+    deny "BLOCKED by claude-inspector-bash-guard: sed -i is forbidden for Inspector"
     exit 0
 fi
 
 # Mutating file-system commands: mv, cp, rm, mkdir, touch, chmod, chown
 if printf '%s' "$COMMAND" | grep -qE '\b(mv|cp|rm|mkdir|touch|chmod|chown)\b'; then
-    deny "BLOCKED by inspector-bash-guard: filesystem-mutation command is forbidden for Inspector"
+    deny "BLOCKED by claude-inspector-bash-guard: filesystem-mutation command is forbidden for Inspector"
     exit 0
 fi
 
 # Git mutation commands
 if printf '%s' "$COMMAND" | grep -qE '\bgit[[:space:]]+(commit|add|push|reset|rebase)\b'; then
-    deny "BLOCKED by inspector-bash-guard: git write command is forbidden for Inspector"
+    deny "BLOCKED by claude-inspector-bash-guard: git write command is forbidden for Inspector"
     exit 0
 fi
 
@@ -89,7 +89,7 @@ grep | sed | awk | find | git)
 *)
     if printf '%s' "$COMMAND" | grep -qE '\b(psql|Repo\.query|Repo\.execute|Repo\.insert_all|Repo\.update_all|Repo\.delete_all)\b'; then
         if printf '%s' "$COMMAND" | grep -qiE '\b(INSERT|UPDATE|DELETE|DROP|TRUNCATE)\b'; then
-            deny "BLOCKED by inspector-bash-guard: SQL mutation is forbidden for Inspector"
+            deny "BLOCKED by claude-inspector-bash-guard: SQL mutation is forbidden for Inspector"
             exit 0
         fi
     fi
@@ -128,7 +128,7 @@ while IFS= read -r abs_path; do
         ;;
     esac
 
-    deny "BLOCKED by inspector-bash-guard: absolute path $abs_path is outside working dir $project_dir"
+    deny "BLOCKED by claude-inspector-bash-guard: absolute path $abs_path is outside working dir $project_dir"
     exit 0
 done <<<"$abs_paths"
 

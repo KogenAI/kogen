@@ -277,14 +277,24 @@ def regenerate_settings(
 def write_combobulate_artifacts(
     per_call_hooks: list, all_hooks: list, combobulate_dir: Path
 ) -> None:
-    """Write inspector_settings.json and hook_manifest.json into combobulate/priv/claude_config/."""
-    priv_dir = combobulate_dir / "priv" / "claude_config"
-    priv_dir.mkdir(parents=True, exist_ok=True)
+    """Write inspector_settings.json and hook_manifest.json into combobulate/priv/<harness>_config/.
 
-    # inspector_settings.json: array of hook objects for per_call_inspector hooks
-    inspector_entries = []
-    for h in sorted(per_call_hooks, key=lambda x: x["filename"]):
-        inspector_entries.append(
+    priv/claude_config/ — canonical full manifest (all hooks) + claude-prefixed inspector entries.
+    priv/codex_config/  — codex-prefixed inspector entries.
+    priv/pi_config/     — pi-prefixed inspector entries (empty today).
+
+    The full hook_manifest.json in claude_config is kept for backward compat with
+    check_user_global_parity!/1 which loads all registered hooks.
+    """
+    # ── claude_config (canonical) ────────────────────────────────────────────
+    claude_priv_dir = combobulate_dir / "priv" / "claude_config"
+    claude_priv_dir.mkdir(parents=True, exist_ok=True)
+
+    # inspector_settings.json: claude-prefixed per_call_inspector entries only
+    claude_inspector_hooks = [h for h in per_call_hooks if h["filename"].startswith("claude-")]
+    claude_inspector_entries = []
+    for h in sorted(claude_inspector_hooks, key=lambda x: x["filename"]):
+        claude_inspector_entries.append(
             {
                 "event": h["event"],
                 "matcher": h["matcher"],
@@ -294,11 +304,11 @@ def write_combobulate_artifacts(
                 "role": h["role"],
             }
         )
-    inspector_path = priv_dir / "inspector_settings.json"
-    inspector_path.write_text(json.dumps(inspector_entries, indent=2) + "\n")
-    print(f"Wrote {inspector_path}")
+    claude_inspector_path = claude_priv_dir / "inspector_settings.json"
+    claude_inspector_path.write_text(json.dumps(claude_inspector_entries, indent=2) + "\n")
+    print(f"Wrote {claude_inspector_path}")
 
-    # hook_manifest.json: flat list of all hooks with metadata
+    # hook_manifest.json: full canonical list of ALL hooks (used by check_user_global_parity!/1)
     manifest_entries = []
     for h in sorted(all_hooks, key=lambda x: x["filename"]):
         manifest_entries.append(
@@ -311,9 +321,83 @@ def write_combobulate_artifacts(
                 "role": h["role"],
             }
         )
-    manifest_path = priv_dir / "hook_manifest.json"
+    manifest_path = claude_priv_dir / "hook_manifest.json"
     manifest_path.write_text(json.dumps(manifest_entries, indent=2) + "\n")
     print(f"Wrote {manifest_path}")
+
+    # ── codex_config ─────────────────────────────────────────────────────────
+    codex_priv_dir = combobulate_dir / "priv" / "codex_config"
+    codex_priv_dir.mkdir(parents=True, exist_ok=True)
+
+    codex_inspector_hooks = [h for h in per_call_hooks if h["filename"].startswith("codex-")]
+    codex_inspector_entries = []
+    for h in sorted(codex_inspector_hooks, key=lambda x: x["filename"]):
+        codex_inspector_entries.append(
+            {
+                "event": h["event"],
+                "matcher": h["matcher"],
+                "hookScript": h["filename"],
+                "surface": h["surface"],
+                "signal": h["signal"],
+                "role": h["role"],
+            }
+        )
+    codex_inspector_path = codex_priv_dir / "inspector_settings.json"
+    codex_inspector_path.write_text(json.dumps(codex_inspector_entries, indent=2) + "\n")
+    print(f"Wrote {codex_inspector_path}")
+
+    codex_manifest_entries = []
+    for h in sorted(codex_inspector_hooks, key=lambda x: x["filename"]):
+        codex_manifest_entries.append(
+            {
+                "filename": h["filename"],
+                "event": h["event"],
+                "matcher": h["matcher"],
+                "surface": h["surface"],
+                "signal": h["signal"],
+                "role": h["role"],
+            }
+        )
+    codex_manifest_path = codex_priv_dir / "hook_manifest.json"
+    codex_manifest_path.write_text(json.dumps(codex_manifest_entries, indent=2) + "\n")
+    print(f"Wrote {codex_manifest_path}")
+
+    # ── pi_config (empty today — pi uses load-gate enforcement, no per-call hooks) ──
+    pi_priv_dir = combobulate_dir / "priv" / "pi_config"
+    pi_priv_dir.mkdir(parents=True, exist_ok=True)
+
+    pi_inspector_hooks = [h for h in per_call_hooks if h["filename"].startswith("pi-")]
+    pi_inspector_entries = []
+    for h in sorted(pi_inspector_hooks, key=lambda x: x["filename"]):
+        pi_inspector_entries.append(
+            {
+                "event": h["event"],
+                "matcher": h["matcher"],
+                "hookScript": h["filename"],
+                "surface": h["surface"],
+                "signal": h["signal"],
+                "role": h["role"],
+            }
+        )
+    pi_inspector_path = pi_priv_dir / "inspector_settings.json"
+    pi_inspector_path.write_text(json.dumps(pi_inspector_entries, indent=2) + "\n")
+    print(f"Wrote {pi_inspector_path}")
+
+    pi_manifest_entries = []
+    for h in sorted(pi_inspector_hooks, key=lambda x: x["filename"]):
+        pi_manifest_entries.append(
+            {
+                "filename": h["filename"],
+                "event": h["event"],
+                "matcher": h["matcher"],
+                "surface": h["surface"],
+                "signal": h["signal"],
+                "role": h["role"],
+            }
+        )
+    pi_manifest_path = pi_priv_dir / "hook_manifest.json"
+    pi_manifest_path.write_text(json.dumps(pi_manifest_entries, indent=2) + "\n")
+    print(f"Wrote {pi_manifest_path}")
 
 
 def main() -> None:

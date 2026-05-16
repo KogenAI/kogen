@@ -1,10 +1,10 @@
 #!/bin/bash
-# inspector-read-guard_test.sh — unit tests for inspector-read-guard.sh
+# claude-inspector-read-guard_test.sh — unit tests for claude-inspector-read-guard.sh
 
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-GUARD="$SCRIPT_DIR/inspector-read-guard.sh"
+GUARD="$SCRIPT_DIR/claude-inspector-read-guard.sh"
 
 pass=0
 fail=0

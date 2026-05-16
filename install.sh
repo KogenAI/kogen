@@ -23,7 +23,7 @@ for arg in "$@"; do
     --harness=*)
         list="${arg#--harness=}"
         if [ -z "$list" ]; then
-            echo "❌ --harness= requires a value (one or more of: claude, codex)" >&2
+            echo "❌ --harness= requires a value (one or more of: claude, codex, pi)" >&2
             exit 1
         fi
         IFS=',' read -ra _tokens <<<"$list"
@@ -31,7 +31,7 @@ for arg in "$@"; do
             tok="$(echo "$tok" | tr -d '[:space:]')"
             [ -z "$tok" ] && continue
             case "$tok" in
-            claude | codex)
+            claude | codex | pi)
                 # Deduplicate
                 already=false
                 for existing in "${HARNESSES[@]}"; do
@@ -40,7 +40,7 @@ for arg in "$@"; do
                 [ "$already" = "false" ] && HARNESSES+=("$tok")
                 ;;
             *)
-                echo "❌ Unknown harness: '$tok' (expected one or more of: claude, codex)" >&2
+                echo "❌ Unknown harness: '$tok' (expected one or more of: claude, codex, pi)" >&2
                 exit 1
                 ;;
             esac
@@ -53,9 +53,9 @@ for arg in "$@"; do
     esac
 done
 
-# Default = both harnesses when --harness flag omitted
+# Default = all three harnesses when --harness flag omitted
 if [ ${#HARNESSES[@]} -eq 0 ]; then
-    HARNESSES=("claude" "codex")
+    HARNESSES=("claude" "codex" "pi")
 fi
 
 harness_enabled() {
@@ -162,15 +162,23 @@ fi
 echo ""
 echo "🚀 Generating AI agent templates..."
 
-# Generate templates for the selected harnesses. generate.sh accepts:
+# Generate templates for the selected harnesses. generate-claude.sh accepts:
 #   all | claude | codex
-# We pass `all` only when both are selected; otherwise we invoke per-harness.
+# We pass `all` only when both claude and codex are selected; otherwise per-harness.
+# Pi has its own dedicated generator (generate-pi.sh).
 if harness_enabled claude && harness_enabled codex; then
-    "$CODEGEN_DIR/templates/generator/generate.sh" all
+    "$CODEGEN_DIR/templates/generator/generate-claude.sh" all
 else
-    for h in "${HARNESSES[@]}"; do
-        "$CODEGEN_DIR/templates/generator/generate.sh" "$h"
-    done
+    if harness_enabled claude; then
+        "$CODEGEN_DIR/templates/generator/generate-claude.sh" claude
+    fi
+    if harness_enabled codex; then
+        "$CODEGEN_DIR/templates/generator/generate-claude.sh" codex
+    fi
+fi
+
+if harness_enabled pi; then
+    bash "$CODEGEN_DIR/templates/generator/generate-pi.sh"
 fi
 
 # Render user-app orchestrator AGENTS templates (.j2 -> .md) back into context repo.
@@ -652,6 +660,45 @@ PY
     fi
 fi # harness_enabled codex
 
+if harness_enabled pi; then
+    echo ""
+    echo "🔧 Setting up Pi configuration..."
+
+    mkdir -p "$HOME/.pi/agent/agents"
+
+    # Install agent Markdown files
+    echo "   🤖 Installing Pi agents..."
+    CURRENT_PI_AGENTS=()
+    if [ -d "$CODEGEN_DIR/templates/generated/pi/agent" ]; then
+        for agent_file in "$CODEGEN_DIR/templates/generated/pi/agent"/*.md; do
+            if [ -f "$agent_file" ]; then
+                agent_name=$(basename "$agent_file")
+                content_stable_cp "$agent_file" "$HOME/.pi/agent/agents/$agent_name"
+                echo "   ✅ Installed Pi agent: ${agent_name%.md}"
+                CURRENT_PI_AGENTS+=("$agent_name")
+            fi
+        done
+    fi
+    if [ ${#CURRENT_PI_AGENTS[@]} -eq 0 ]; then
+        echo "   ⚠️  Skipping Pi agent prune — install set is empty (generator may have failed)"
+    else
+        for installed_agent in "$HOME/.pi/agent/agents"/*.md; do
+            [ -f "$installed_agent" ] || continue
+            agent_basename=$(basename "$installed_agent")
+            still_present=false
+            for cur in "${CURRENT_PI_AGENTS[@]}"; do
+                [ "$cur" = "$agent_basename" ] && still_present=true && break
+            done
+            if [ "$still_present" = "false" ]; then
+                rm -f "$installed_agent"
+                echo "   🗑️  Removed stale Pi agent: ${agent_basename%.md}"
+            fi
+        done
+    fi
+
+    echo "   ✅ Pi configuration complete"
+fi # harness_enabled pi
+
 # Create OCG config directory
 mkdir -p "$HOME/.ocg"
 
@@ -681,15 +728,18 @@ if [ ! -f "$HOME/.ocg/config.json" ]; then
 
     claude_enabled=false
     codex_enabled=false
+    pi_enabled=false
     harness_enabled claude && claude_enabled=true
     harness_enabled codex && codex_enabled=true
+    harness_enabled pi && pi_enabled=true
 
     cat >"$HOME/.ocg/config.json" <<EOF
 {
     "default_agent": "$default_agent",
     "agents": {
         "claude": { "enabled": $claude_enabled },
-        "codex": { "enabled": $codex_enabled }
+        "codex": { "enabled": $codex_enabled },
+        "pi": { "enabled": $pi_enabled }
     }
 }
 EOF

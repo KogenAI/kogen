@@ -1,5 +1,5 @@
 #!/bin/bash
-# inspector-write-guard.sh — PreToolUse hook for Inspector (belt-and-suspenders)
+# claude-inspector-write-guard.sh — PreToolUse hook for Inspector (belt-and-suspenders)
 #
 # HOOK-MANIFEST:
 # event: PreToolUse
@@ -22,7 +22,7 @@ require_inspector_agent_type
 
 case "$TOOL_NAME" in
 Write | Edit | MultiEdit | NotebookEdit)
-    deny "BLOCKED by inspector-write-guard: tool $TOOL_NAME is forbidden for Inspector (read-only role)"
+    deny "BLOCKED by claude-inspector-write-guard: tool $TOOL_NAME is forbidden for Inspector (read-only role)"
     exit 0
     ;;
 esac

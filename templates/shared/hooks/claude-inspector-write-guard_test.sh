@@ -1,10 +1,10 @@
 #!/bin/bash
-# inspector-write-guard_test.sh — unit tests for inspector-write-guard.sh
+# claude-inspector-write-guard_test.sh — unit tests for claude-inspector-write-guard.sh
 
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-GUARD="$SCRIPT_DIR/inspector-write-guard.sh"
+GUARD="$SCRIPT_DIR/claude-inspector-write-guard.sh"
 
 pass=0
 fail=0

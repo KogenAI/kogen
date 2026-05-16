@@ -33,11 +33,11 @@ Typical firing order for common roles:
 
 ### Inspector (`agent_type=inspector` / `inspector-phoenix` / `codex-inspector`)
 
-| Event          | Hooks that fire                                                                              |
-| -------------- | -------------------------------------------------------------------------------------------- |
-| `Bash`         | `inspector-bash-guard` (Claude Code), `codex-inspector-bash-guard` (Codex)                  |
-| `Edit`/`Write` | `inspector-write-guard`, `codex-inspector-write-guard`                                       |
-| `Read`         | `inspector-read-guard`, `codex-inspector-read-guard`                                         |
+| Event          | Hooks that fire                                                                                        |
+| -------------- | ------------------------------------------------------------------------------------------------------ |
+| `Bash`         | `claude-inspector-bash-guard` (Claude Code), `codex-inspector-bash-guard` (Codex)                     |
+| `Edit`/`Write` | `claude-inspector-write-guard`, `codex-inspector-write-guard`                                          |
+| `Read`         | `claude-inspector-read-guard`, `codex-inspector-read-guard`                                            |
 
 ### Committer (`agent_type=committer`)
 
@@ -47,10 +47,10 @@ Typical firing order for common roles:
 
 ### Debug (`CLAUDE_ROLE=debug`)
 
-| Event          | Hooks that fire                                           |
-| -------------- | --------------------------------------------------------- |
-| `Bash`         | `debug-bash-safety-guard`                                 |
-| `Edit`/`Write` | `orchestrator-no-source-edit` (deny — debug is read-only) |
+| Event          | Hooks that fire                                              |
+| -------------- | ------------------------------------------------------------ |
+| `Bash`         | `claude-debug-bash-guard`                                    |
+| `Edit`/`Write` | `orchestrator-no-source-edit` (deny — debug is read-only)    |
 
 ---
 
@@ -72,14 +72,14 @@ Typical firing order for common roles:
 ### Blocking hooks (deny on violation)
 
 - **`orchestrator-no-source-edit`** — Restricts orchestrator writes per launcher. Plain orchestrator (no `CLAUDE_ROLE`, also covers `claude-build`) writes allowed under `codegen/logging/`, `codegen/designs/`, and absolute `/tmp/`. `claude-debug` / `claude-design` (`CLAUDE_ROLE=debug|design`) writes scoped to `codegen/designs/` only — for both the orchestrator and Agent-spawned helpers. Subagents under plain orchestrator bypass the hook.
-- **`inspector-bash-guard`** — Blocks filesystem mutations, git writes, SQL mutations, path traversal (`../`), and redirect writes for inspector agents. Other agent types pass through.
+- **`claude-inspector-bash-guard`** — Blocks filesystem mutations, git writes, SQL mutations, path traversal (`../`), and redirect writes for inspector agents. Other agent types pass through.
 - **`codex-inspector-bash-guard`** — Same as above for Codex environments.
 - **`build-worker-cwd-guard`** — In user-app context (combobulate apps_root), prevents orchestrator from reading/writing outside the user app directory.
 - **`planner-guard`** — Restricts planner to read-only bash, Edit on `codegen/logging/*.md` only, no `Write`/`MultiEdit`. Both src AND dest must be in allowed dirs for `mv`.
 - **`planner-load-discipline`** — Blocks planner from loading usage_rules files directly (recipes are loaded on demand via recipes/; rules are baked into subagents).
 - **`committer-subject-length`** — Blocks `git commit -m "subject"` where subject exceeds 50 bytes. Heredoc form denied (can't extract subject).
 - **`dev-no-ci`** — Blocks developers from running `make ci`, `make llm`, `make llm-phoenix`. Gate commands run via `dev-gate.sh` SubagentStop hook.
-- **`debug-bash-safety-guard`** — In debug sessions (`CLAUDE_ROLE=debug`), blocks: recursive rm, DB migrations, git writes, mix deps.get, seeds, destructive SQL, curl mutations (POST/PUT/PATCH/DELETE), docker mutations, systemctl/launchctl mutations, kill/pkill, package installs.
+- **`claude-debug-bash-guard`** — In debug sessions (`CLAUDE_ROLE=debug`), blocks: recursive rm, DB migrations, git writes, mix deps.get, seeds, destructive SQL, curl mutations (POST/PUT/PATCH/DELETE), docker mutations, systemctl/launchctl mutations, kill/pkill, package installs.
 - **`session-log-section-integrity`** — Requires `## <agent_type> Section` header in `Edit`/`Write`/`MultiEdit` payloads on session log files. Exceptions: orchestrator (creates files), planner (writes `## Plan`).
 - **`frontend-developer-guard`** — Blocks frontend developer from editing backend files.
 - **`reviewer-guard`** — Blocks reviewer from editing any files (review-only role).
@@ -120,8 +120,8 @@ Run individual:
 
 ```bash
 bash orchestrator-no-source-edit_test.sh
-bash inspector-bash-guard_test.sh
-bash debug-bash-safety-guard_test.sh
+bash claude-inspector-bash-guard_test.sh
+bash claude-debug-bash-guard_test.sh
 bash planner-guard_test.sh
 bash committer-subject-length_test.sh
 bash session-log-section-integrity_test.sh

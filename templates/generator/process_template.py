@@ -81,9 +81,9 @@ def _strip_template_blocks(content, tool_name, yaml_frontmatter):
     #   {% if tool.name == 'claude' %}<claude-branch>{% else %}<codex-branch>{% endif %}
     # claude → renders claude-branch (e.g. @-imports)
     # codex → renders else-branch (e.g. → See pointers)
-    if tool_name not in ('claude', 'codex'):
+    if tool_name not in ('claude', 'codex', 'pi'):
         raise ValueError(
-            f"Unsupported tool_name: {tool_name!r} (expected 'claude' or 'codex')"
+            f"Unsupported tool_name: {tool_name!r} (expected 'claude', 'codex', or 'pi')"
         )
 
     if tool_name == 'claude':
