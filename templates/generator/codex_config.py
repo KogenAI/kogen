@@ -61,7 +61,7 @@ def render(target, hooks):
 
     lines = []
     lines.append("[features]")
-    lines.append("codex_hooks = true")
+    lines.append("hooks = true")
     lines.append("")
     lines.append("[agents]")
     lines.append("max_depth = 5")

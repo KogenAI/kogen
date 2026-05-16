@@ -16,7 +16,7 @@ map_model() {
     # For Codex, map to OpenAI model names
     if [ "$assistant" = "codex" ]; then
         case "$model" in
-        haiku) echo "gpt-5.5-mini" ;;
+        haiku) echo "gpt-5.4-mini" ;;
         sonnet) echo "gpt-5.5" ;;
         opus) echo "gpt-5.5" ;;
         *)
