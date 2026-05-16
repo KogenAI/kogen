@@ -91,7 +91,7 @@ harness:
     codex: { model: gpt-5.5, effort: medium }
     cursor: { model: sonnet, effort: medium }
   committer:
-    claude: { model: haiku, effort: medium }
+    claude: { model: haiku, effort: low }
     codex: { model: gpt-5.5-mini, effort: medium }
     cursor: { model: haiku, effort: medium }
   build:
