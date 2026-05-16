@@ -154,6 +154,14 @@ FIXTURE_ABS_DRAFT='{"hook_event_name":"PreToolUse","tool_name":"Read","tool_inpu
 run_test "orchestrator Read on absolute codegen/designs/drafts/ path allows" "0" "$FIXTURE_ABS_DRAFT"
 rm -rf "$TMP_CWD4"
 
+# Test 27: CLAUDE_ROLE=debug bypasses read discipline — investigation sessions need full access
+FIXTURE_DEBUG_BYPASS='{"hook_event_name":"PreToolUse","tool_name":"Read","tool_input":{"file_path":"lib/combobulate/apps.ex"},"agent_id":"","agent_type":""}'
+CLAUDE_ROLE=debug run_test "CLAUDE_ROLE=debug bypasses read discipline" "0" "$FIXTURE_DEBUG_BYPASS"
+
+# Test 28: CLAUDE_ROLE=design bypasses read discipline — design sessions need full access (Phase 0 preload)
+FIXTURE_DESIGN_BYPASS='{"hook_event_name":"PreToolUse","tool_name":"Read","tool_input":{"file_path":"lib/combobulate/apps.ex"},"agent_id":"","agent_type":""}'
+CLAUDE_ROLE=design run_test "CLAUDE_ROLE=design bypasses read discipline" "0" "$FIXTURE_DESIGN_BYPASS"
+
 echo ""
 echo "Results: $pass passed, $fail failed"
 

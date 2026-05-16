@@ -28,8 +28,8 @@ parse_input
 
 debug_log orchestrator-read-discipline "tool=$TOOL_NAME agent_id=$AGENT_ID agent_type=$AGENT_TYPE"
 
-# Debug mode bypasses read discipline — investigation sessions need full access.
-if [ "${CLAUDE_ROLE:-}" = "debug" ]; then
+# Debug and design modes bypass read discipline — investigation and design sessions need full access.
+if [ "${CLAUDE_ROLE:-}" = "debug" ] || [ "${CLAUDE_ROLE:-}" = "design" ]; then
     exit 0
 fi
 
