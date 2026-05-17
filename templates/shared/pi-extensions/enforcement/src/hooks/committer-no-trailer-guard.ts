@@ -20,8 +20,7 @@ export function register(pi: ExtensionAPI): void {
     if (event.toolName !== "bash") return;
     if (parseAgentType() !== "committer") return;
 
-    const command: string =
-      (event.input as { command?: string }).command ?? "";
+    const command: string = (event.input as { command?: string }).command ?? "";
     debugLog("committer-no-trailer-guard", `cmd=${command}`);
 
     if (!/\bgit\s+commit\b/.test(command)) return;
@@ -32,13 +31,13 @@ export function register(pi: ExtensionAPI): void {
     // --file or -F forms — denied
     if (/\bgit\s+commit\b.*(-F\s|--file\s)/.test(command)) {
       return deny(
-        "BLOCKED by committer-no-trailer-guard: git commit --file/-F not allowed. Use -m \"subject\" with inline message."
+        'BLOCKED by committer-no-trailer-guard: git commit --file/-F not allowed. Use -m "subject" with inline message.',
       );
     }
 
     // Bare git commit (no -m) — denied
     return deny(
-      'BLOCKED by committer-no-trailer-guard: git commit requires -m "subject". Use: git commit -m "subject line"'
+      'BLOCKED by committer-no-trailer-guard: git commit requires -m "subject". Use: git commit -m "subject line"',
     );
   });
 }

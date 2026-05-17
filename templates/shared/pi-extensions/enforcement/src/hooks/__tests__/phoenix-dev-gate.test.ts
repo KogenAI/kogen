@@ -8,7 +8,11 @@
 import { describe, it, beforeEach } from "node:test";
 import assert from "node:assert/strict";
 
-function makeShutdownEvent(agentType: string, cwd = "/tmp", stop_hook_active = false) {
+function makeShutdownEvent(
+  agentType: string,
+  cwd = "/tmp",
+  stop_hook_active = false,
+) {
   return {
     toolName: "session_shutdown",
     toolCallId: "test-id",
@@ -26,11 +30,19 @@ describe("phoenix-dev-gate", () => {
     },
   };
 
-  async function runHook(agentType: string, cwd = "/tmp", stop_hook_active = false) {
+  async function runHook(
+    agentType: string,
+    cwd = "/tmp",
+    stop_hook_active = false,
+  ) {
     process.env["AGENT_TYPE"] = agentType;
     const { register } = await import("../phoenix-dev-gate");
-    register(mockPi as unknown as import("@earendil-works/pi-coding-agent").ExtensionAPI);
-    return _capturedHandler(makeShutdownEvent(agentType, cwd, stop_hook_active));
+    register(
+      mockPi as unknown as import("@earendil-works/pi-coding-agent").ExtensionAPI,
+    );
+    return _capturedHandler(
+      makeShutdownEvent(agentType, cwd, stop_hook_active),
+    );
   }
 
   beforeEach(() => {

@@ -17,10 +17,16 @@ describe("stop-cycle-guard", () => {
     },
   };
 
-  async function runHook(agentType: string, stop_hook_active = false, cwd = "/tmp") {
+  async function runHook(
+    agentType: string,
+    stop_hook_active = false,
+    cwd = "/tmp",
+  ) {
     process.env["AGENT_TYPE"] = agentType;
     const { register } = await import("../stop-cycle-guard");
-    register(mockPi as unknown as import("@earendil-works/pi-coding-agent").ExtensionAPI);
+    register(
+      mockPi as unknown as import("@earendil-works/pi-coding-agent").ExtensionAPI,
+    );
     return _capturedHandler({
       toolName: "session_shutdown",
       toolCallId: "test-id",

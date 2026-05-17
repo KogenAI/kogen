@@ -36,7 +36,10 @@ export function register(pi: ExtensionAPI): void {
 
     const projectDir = process.env["CWD"] ?? process.cwd();
     const sessionId = process.env["SESSION_ID"] ?? "unknown";
-    debugLog("phoenix-dev-gate", `agent=${agentType} cwd=${projectDir} session=${sessionId}`);
+    debugLog(
+      "phoenix-dev-gate",
+      `agent=${agentType} cwd=${projectDir} session=${sessionId}`,
+    );
 
     // Find active step log
     const loggingDir = path.join(projectDir, "codegen", "logging");
@@ -81,8 +84,10 @@ export function register(pi: ExtensionAPI): void {
       execSync(gateCmd, { cwd: projectDir, stdio: "pipe" });
       verdict = "ALL CLEAR ✅";
     } catch (err) {
-      const output = (err as { stdout?: Buffer; stderr?: Buffer }).stdout?.toString() ?? "";
-      const errOutput = (err as { stdout?: Buffer; stderr?: Buffer }).stderr?.toString() ?? "";
+      const output =
+        (err as { stdout?: Buffer; stderr?: Buffer }).stdout?.toString() ?? "";
+      const errOutput =
+        (err as { stdout?: Buffer; stderr?: Buffer }).stderr?.toString() ?? "";
       verdict = `FAILED ❌\n\n${output}\n${errOutput}`.trim();
     }
 

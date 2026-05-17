@@ -10,7 +10,13 @@ import * as os from "node:os";
 import * as path from "node:path";
 
 function makeSessionShutdownEvent(agentType: string, sessionId: string) {
-  return { toolName: "session_shutdown", toolCallId: "test-id", input: {}, sessionId, agentType };
+  return {
+    toolName: "session_shutdown",
+    toolCallId: "test-id",
+    input: {},
+    sessionId,
+    agentType,
+  };
 }
 
 describe("developer-no-self-gate-reset", () => {
@@ -26,7 +32,9 @@ describe("developer-no-self-gate-reset", () => {
     process.env["AGENT_TYPE"] = agentType;
     process.env["SESSION_ID"] = sessionId;
     const { register } = await import("../developer-no-self-gate-reset");
-    register(mockPi as unknown as import("@earendil-works/pi-coding-agent").ExtensionAPI);
+    register(
+      mockPi as unknown as import("@earendil-works/pi-coding-agent").ExtensionAPI,
+    );
     return _capturedHandler(makeSessionShutdownEvent(agentType, sessionId));
   }
 

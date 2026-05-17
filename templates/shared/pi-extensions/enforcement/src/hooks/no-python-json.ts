@@ -19,8 +19,7 @@ export function register(pi: ExtensionAPI): void {
   pi.on("tool_call", async (event) => {
     if (event.toolName !== "bash") return;
 
-    const command: string =
-      (event.input as { command?: string }).command ?? "";
+    const command: string = (event.input as { command?: string }).command ?? "";
     debugLog("no-python-json", `cmd=${command}`);
 
     if (
@@ -28,7 +27,7 @@ export function register(pi: ExtensionAPI): void {
       /import\s+json|json\.load/.test(command)
     ) {
       return deny(
-        "Don't parse JSON with python3 -c. Use Read tool — JSON files render readably. Inline python parsing is a thrash anti-pattern (see token-budget rule)."
+        "Don't parse JSON with python3 -c. Use Read tool — JSON files render readably. Inline python parsing is a thrash anti-pattern (see token-budget rule).",
       );
     }
   });

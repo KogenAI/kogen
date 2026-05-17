@@ -19,10 +19,16 @@ describe("static-site-build-check", () => {
     },
   };
 
-  async function runHook(agentType: string, cwd: string, stop_hook_active = false) {
+  async function runHook(
+    agentType: string,
+    cwd: string,
+    stop_hook_active = false,
+  ) {
     process.env["AGENT_TYPE"] = agentType;
     const { register } = await import("../static-site-build-check");
-    register(mockPi as unknown as import("@earendil-works/pi-coding-agent").ExtensionAPI);
+    register(
+      mockPi as unknown as import("@earendil-works/pi-coding-agent").ExtensionAPI,
+    );
     return _capturedHandler({
       toolName: "session_shutdown",
       toolCallId: "test-id",
@@ -39,7 +45,9 @@ describe("static-site-build-check", () => {
     const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "ssbc-test-"));
     try {
       const result = await runHook("developer-html", tmpDir, true);
-      assert.ok(result == null || (result as { block?: boolean }).block !== true);
+      assert.ok(
+        result == null || (result as { block?: boolean }).block !== true,
+      );
     } finally {
       fs.rmSync(tmpDir, { recursive: true, force: true });
     }
@@ -49,7 +57,9 @@ describe("static-site-build-check", () => {
     const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "ssbc-test-"));
     try {
       const result = await runHook("developer-phoenix-backend", tmpDir);
-      assert.ok(result == null || (result as { block?: boolean }).block !== true);
+      assert.ok(
+        result == null || (result as { block?: boolean }).block !== true,
+      );
     } finally {
       fs.rmSync(tmpDir, { recursive: true, force: true });
     }
@@ -59,7 +69,9 @@ describe("static-site-build-check", () => {
     const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "ssbc-hugo-"));
     try {
       const result = await runHook("developer-html", tmpDir);
-      assert.ok(result == null || (result as { block?: boolean }).block !== true);
+      assert.ok(
+        result == null || (result as { block?: boolean }).block !== true,
+      );
     } finally {
       fs.rmSync(tmpDir, { recursive: true, force: true });
     }

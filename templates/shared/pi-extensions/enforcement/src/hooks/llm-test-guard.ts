@@ -19,13 +19,12 @@ export function register(pi: ExtensionAPI): void {
   pi.on("tool_call", async (event) => {
     if (event.toolName !== "bash") return;
 
-    const command: string =
-      (event.input as { command?: string }).command ?? "";
+    const command: string = (event.input as { command?: string }).command ?? "";
     debugLog("llm-test-guard", `cmd=${command}`);
 
     if (
       !/mix\s+test.*--only\s+llm_integration|mix\s+test.*--only=llm_integration/.test(
-        command
+        command,
       )
     ) {
       return;
@@ -38,7 +37,7 @@ export function register(pi: ExtensionAPI): void {
     if (hasPartition1 && hasPartitions1 && hasExsPath) return;
 
     return deny(
-      "Unbounded `mix test --only llm_integration` runs the LLM suite without partitioning. Use `make llm` (10-partition parallel) for the full suite, or `make llm-single FILE=test/.../foo_test.exs` for one file."
+      "Unbounded `mix test --only llm_integration` runs the LLM suite without partitioning. Use `make llm` (10-partition parallel) for the full suite, or `make llm-single FILE=test/.../foo_test.exs` for one file.",
     );
   });
 }

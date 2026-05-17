@@ -21,17 +21,25 @@ describe("no-python-json", () => {
 
   async function runHook(toolName: string, command: string) {
     const { register } = await import("../no-python-json");
-    register(mockPi as unknown as import("@earendil-works/pi-coding-agent").ExtensionAPI);
+    register(
+      mockPi as unknown as import("@earendil-works/pi-coding-agent").ExtensionAPI,
+    );
     return _capturedHandler(makeToolCallEvent(toolName, command));
   }
 
   it("blocks python3 -c with import json", async () => {
-    const result = await runHook("bash", "python3 -c 'import json; data = json.load(open(\"f\"))'");
+    const result = await runHook(
+      "bash",
+      "python3 -c 'import json; data = json.load(open(\"f\"))'",
+    );
     assert.ok((result as { block?: boolean }).block === true);
   });
 
   it("blocks python -c with json.load", async () => {
-    const result = await runHook("bash", "python -c \"import json; print(json.load(open('x')))\"");
+    const result = await runHook(
+      "bash",
+      "python -c \"import json; print(json.load(open('x')))\"",
+    );
     assert.ok((result as { block?: boolean }).block === true);
   });
 

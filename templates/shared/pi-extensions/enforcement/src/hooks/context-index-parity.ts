@@ -23,8 +23,7 @@ export function register(pi: ExtensionAPI): void {
   pi.on("tool_call", async (event) => {
     if (event.toolName !== "bash") return;
 
-    const command: string =
-      (event.input as { command?: string }).command ?? "";
+    const command: string = (event.input as { command?: string }).command ?? "";
 
     if (!/\bgit\s+commit\b/.test(command)) return;
     debugLog("context-index-parity", `cmd=${command}`);
@@ -37,8 +36,8 @@ export function register(pi: ExtensionAPI): void {
         .filter(Boolean);
 
       // Find context/*.md files that were Added or Deleted (not Modified)
-      const contextChanges = statusLines.filter(
-        (l) => /^[AD]\s+context\/[^/]+\.md$/.test(l)
+      const contextChanges = statusLines.filter((l) =>
+        /^[AD]\s+context\/[^/]+\.md$/.test(l),
       );
 
       if (contextChanges.length === 0) return;
@@ -64,7 +63,7 @@ export function register(pi: ExtensionAPI): void {
 
       if (!stagedFiles.includes(indexFile)) {
         return deny(
-          `BLOCKED by context-index-parity: context/*.md added/deleted but ${indexFile} is not staged. Update the index file.`
+          `BLOCKED by context-index-parity: context/*.md added/deleted but ${indexFile} is not staged. Update the index file.`,
         );
       }
     } catch {

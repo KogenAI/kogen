@@ -19,10 +19,15 @@ describe("llm-suite-guard", () => {
     },
   };
 
-  async function runHook(command: string, agentType = "developer-phoenix-backend") {
+  async function runHook(
+    command: string,
+    agentType = "developer-phoenix-backend",
+  ) {
     process.env["AGENT_TYPE"] = agentType;
     const { register } = await import("../llm-suite-guard");
-    register(mockPi as unknown as import("@earendil-works/pi-coding-agent").ExtensionAPI);
+    register(
+      mockPi as unknown as import("@earendil-works/pi-coding-agent").ExtensionAPI,
+    );
     return _capturedHandler(makeToolCallEvent(command));
   }
 
@@ -41,7 +46,9 @@ describe("llm-suite-guard", () => {
   });
 
   it("allows make llm-single FILE=... for developer-*", async () => {
-    const result = await runHook("make llm-single FILE=test/combobulate/llm_integration/foo_test.exs");
+    const result = await runHook(
+      "make llm-single FILE=test/combobulate/llm_integration/foo_test.exs",
+    );
     assert.ok(result == null || (result as { block?: boolean }).block !== true);
   });
 

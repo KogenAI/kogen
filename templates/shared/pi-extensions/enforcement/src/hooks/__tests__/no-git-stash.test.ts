@@ -28,7 +28,9 @@ describe("no-git-stash", () => {
   async function runHook(toolName: string, command: string) {
     const { register } = await import("../no-git-stash");
     blockResult = undefined;
-    register(mockPi as unknown as import("@earendil-works/pi-coding-agent").ExtensionAPI);
+    register(
+      mockPi as unknown as import("@earendil-works/pi-coding-agent").ExtensionAPI,
+    );
     blockResult = await _capturedHandler(makeToolCallEvent(toolName, command));
     return blockResult;
   }
@@ -37,7 +39,8 @@ describe("no-git-stash", () => {
     const result = await runHook("bash", "git stash");
     assert.deepStrictEqual(result, {
       block: true,
-      reason: "git stash forbidden. Commit WIP to a scratch branch or use worktrees. Stash hides work from orchestrator + reviewer.",
+      reason:
+        "git stash forbidden. Commit WIP to a scratch branch or use worktrees. Stash hides work from orchestrator + reviewer.",
     });
   });
 

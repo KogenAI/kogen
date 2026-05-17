@@ -20,9 +20,12 @@ if (!fs.existsSync(distHooksDir)) {
 
 const handlers = [];
 
-const files = fs.readdirSync(distHooksDir).filter(
-  (f) => f.endsWith(".js") && !f.includes("__tests__") && !f.endsWith(".test.js")
-);
+const files = fs
+  .readdirSync(distHooksDir)
+  .filter(
+    (f) =>
+      f.endsWith(".js") && !f.includes("__tests__") && !f.endsWith(".test.js"),
+  );
 
 for (const file of files.sort()) {
   const modulePath = path.join(distHooksDir, file);

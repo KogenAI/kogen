@@ -18,7 +18,9 @@ describe("step-log-completeness", () => {
 
   async function runHook(stop_hook_active = false, cwd = "/tmp") {
     const { register } = await import("../step-log-completeness");
-    register(mockPi as unknown as import("@earendil-works/pi-coding-agent").ExtensionAPI);
+    register(
+      mockPi as unknown as import("@earendil-works/pi-coding-agent").ExtensionAPI,
+    );
     return _capturedHandler({
       toolName: "session_shutdown",
       toolCallId: "test-id",

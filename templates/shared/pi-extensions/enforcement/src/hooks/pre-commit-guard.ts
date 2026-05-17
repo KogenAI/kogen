@@ -23,43 +23,42 @@ export function register(pi: ExtensionAPI): void {
     const agentType = parseAgentType();
     if (agentType === "committer") return;
 
-    const command: string =
-      (event.input as { command?: string }).command ?? "";
+    const command: string = (event.input as { command?: string }).command ?? "";
     debugLog("pre-commit-guard", `agent=${agentType} cmd=${command}`);
 
     if (/\bgit\s+commit\b/.test(command)) {
       return deny(
-        `BLOCKED by pre-commit-guard: git commit forbidden for agent "${agentType}" — committer owns commit creation (see CLAUDE.md "NEVER Commit Directly")`
+        `BLOCKED by pre-commit-guard: git commit forbidden for agent "${agentType}" — committer owns commit creation (see CLAUDE.md "NEVER Commit Directly")`,
       );
     }
     if (/\bgit\s+rebase\b/.test(command)) {
       return deny(
-        `BLOCKED by pre-commit-guard: git rebase forbidden for agent "${agentType}" — committer owns history`
+        `BLOCKED by pre-commit-guard: git rebase forbidden for agent "${agentType}" — committer owns history`,
       );
     }
     if (/\bgit\s+cherry-pick\b/.test(command)) {
       return deny(
-        `BLOCKED by pre-commit-guard: git cherry-pick forbidden for agent "${agentType}" — committer owns history`
+        `BLOCKED by pre-commit-guard: git cherry-pick forbidden for agent "${agentType}" — committer owns history`,
       );
     }
     if (/\bgit\s+revert\b/.test(command)) {
       return deny(
-        `BLOCKED by pre-commit-guard: git revert forbidden for agent "${agentType}" — committer owns history`
+        `BLOCKED by pre-commit-guard: git revert forbidden for agent "${agentType}" — committer owns history`,
       );
     }
     if (/\bgit\s+merge\b/.test(command)) {
       return deny(
-        `BLOCKED by pre-commit-guard: git merge forbidden for agent "${agentType}" — committer owns history`
+        `BLOCKED by pre-commit-guard: git merge forbidden for agent "${agentType}" — committer owns history`,
       );
     }
     if (/\bgit\s+reset\b.*--hard\b/.test(command)) {
       return deny(
-        `BLOCKED by pre-commit-guard: git reset --hard forbidden for agent "${agentType}" — destructive (use stash or committer)`
+        `BLOCKED by pre-commit-guard: git reset --hard forbidden for agent "${agentType}" — destructive (use stash or committer)`,
       );
     }
     if (/\bgit\s+push\b.*(--force(-with-lease)?|\s-f(\s|$))/.test(command)) {
       return deny(
-        `BLOCKED by pre-commit-guard: git push --force forbidden for agent "${agentType}" — committer owns push discipline`
+        `BLOCKED by pre-commit-guard: git push --force forbidden for agent "${agentType}" — committer owns push discipline`,
       );
     }
   });

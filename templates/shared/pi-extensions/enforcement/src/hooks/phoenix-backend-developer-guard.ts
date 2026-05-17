@@ -18,11 +18,11 @@ export const HANDLER_META = {
 
 // Frontend-owned path patterns
 const FRONTEND_PATTERNS = [
-  /\/[^/]+_web\//,   // lib/<app>_web/
-  /\/assets\//,      // assets/
+  /\/[^/]+_web\//, // lib/<app>_web/
+  /\/assets\//, // assets/
   /\/priv\/static\//, // priv/static/
-  /\.heex$/,         // HEEx templates
-  /_html\.ex$/,      // Phoenix HTML modules
+  /\.heex$/, // HEEx templates
+  /_html\.ex$/, // Phoenix HTML modules
 ];
 
 export function register(pi: ExtensionAPI): void {
@@ -42,7 +42,7 @@ export function register(pi: ExtensionAPI): void {
     for (const pattern of FRONTEND_PATTERNS) {
       if (pattern.test(filePath)) {
         return deny(
-          `BLOCKED by phoenix-backend-developer-guard: path "${filePath}" is frontend-owned. Backend dev must not touch LiveView/HEEx/JS/assets — delegate to developer-phoenix-frontend.`
+          `BLOCKED by phoenix-backend-developer-guard: path "${filePath}" is frontend-owned. Backend dev must not touch LiveView/HEEx/JS/assets — delegate to developer-phoenix-frontend.`,
         );
       }
     }

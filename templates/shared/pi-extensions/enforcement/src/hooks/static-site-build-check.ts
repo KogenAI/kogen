@@ -48,7 +48,7 @@ export function register(pi: ExtensionAPI): void {
       debugLog("static-site-build-check", `build FAILED: ${errOutput}`);
       // Log to stderr for orchestrator visibility (Pi doesn't support decision:block in session_shutdown)
       process.stderr.write(
-        `[pi-enforcement:static-site-build-check] build FAILED:\n${output}\n${errOutput}\n`
+        `[pi-enforcement:static-site-build-check] build FAILED:\n${output}\n${errOutput}\n`,
       );
     }
   });

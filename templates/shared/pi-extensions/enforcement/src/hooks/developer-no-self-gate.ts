@@ -34,13 +34,12 @@ export function register(pi: ExtensionAPI): void {
     const agentType = parseAgentType();
     if (!DEV_AGENTS.has(agentType)) return;
 
-    const command: string =
-      (event.input as { command?: string }).command ?? "";
+    const command: string = (event.input as { command?: string }).command ?? "";
     debugLog("developer-no-self-gate", `agent=${agentType} cmd=${command}`);
 
     if (
       !/\bmix\s+(test|credo|format)\b|\bmake\s+(ci|ci-fast|test)\b/.test(
-        command
+        command,
       )
     ) {
       return;
@@ -52,7 +51,7 @@ export function register(pi: ExtensionAPI): void {
       "unknown";
     const counterFile = path.join(
       os.tmpdir(),
-      `combobulate-self-gate-${sessionId}.count`
+      `combobulate-self-gate-${sessionId}.count`,
     );
 
     let count = 0;
@@ -65,14 +64,11 @@ export function register(pi: ExtensionAPI): void {
 
     count += 1;
     fs.writeFileSync(counterFile, String(count));
-    debugLog(
-      "developer-no-self-gate",
-      `session=${sessionId} count=${count}`
-    );
+    debugLog("developer-no-self-gate", `session=${sessionId} count=${count}`);
 
     if (count >= 3) {
       return deny(
-        `BLOCKED by developer-no-self-gate: use dev-gate.sh handoff — return control to orchestrator. You have run CI/test commands ${count} times in this session. Complete your implementation and stop — the gate runs automatically via SubagentStop hook.`
+        `BLOCKED by developer-no-self-gate: use dev-gate.sh handoff — return control to orchestrator. You have run CI/test commands ${count} times in this session. Complete your implementation and stop — the gate runs automatically via SubagentStop hook.`,
       );
     }
   });

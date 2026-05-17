@@ -37,14 +37,14 @@ export function register(pi: ExtensionAPI): void {
     // priv/repo/migrations/ — always backend
     if (/(^|\/)priv\/repo\/migrations\//.test(filePath)) {
       return deny(
-        `BLOCKED by phoenix-frontend-developer-guard: "${filePath}" is a backend migration file. Delegate to developer-phoenix-backend.`
+        `BLOCKED by phoenix-frontend-developer-guard: "${filePath}" is a backend migration file. Delegate to developer-phoenix-backend.`,
       );
     }
 
     // lib/*/contexts/, lib/*/services/, lib/*/workers/ — backend subtrees
     if (/(^|\/)lib\/[^/]+\/(contexts|services|workers)\//.test(filePath)) {
       return deny(
-        `BLOCKED by phoenix-frontend-developer-guard: "${filePath}" is a backend context/service/worker path. Delegate to developer-phoenix-backend.`
+        `BLOCKED by phoenix-frontend-developer-guard: "${filePath}" is a backend context/service/worker path. Delegate to developer-phoenix-backend.`,
       );
     }
 
@@ -56,7 +56,7 @@ export function register(pi: ExtensionAPI): void {
     // lib/<app>/ (non-_web) — backend
     if (/(^|\/)lib\/[^/]+\//.test(filePath)) {
       return deny(
-        `BLOCKED by phoenix-frontend-developer-guard: "${filePath}" is under lib/<app>/ (backend). Delegate to developer-phoenix-backend.`
+        `BLOCKED by phoenix-frontend-developer-guard: "${filePath}" is under lib/<app>/ (backend). Delegate to developer-phoenix-backend.`,
       );
     }
   });

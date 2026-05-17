@@ -23,24 +23,26 @@ export function register(pi: ExtensionAPI): void {
     const agentType = parseAgentType();
     if (agentType === "planner" || /^planner-/.test(agentType)) return;
 
-    debugLog("usage-rules-grep-guard", `tool=${event.toolName} agent=${agentType}`);
+    debugLog(
+      "usage-rules-grep-guard",
+      `tool=${event.toolName} agent=${agentType}`,
+    );
 
     if (event.toolName === "bash") {
       const command: string =
         (event.input as { command?: string }).command ?? "";
       if (/(grep|rg)\s+.*codegen\/usage_rules\//.test(command)) {
         return deny(
-          "BLOCKED by usage-rules-grep-guard: only planner may scan codegen/usage_rules/. Read only the files cited in the plan's \"Usage rules for implementer:\" field."
+          'BLOCKED by usage-rules-grep-guard: only planner may scan codegen/usage_rules/. Read only the files cited in the plan\'s "Usage rules for implementer:" field.',
         );
       }
     }
 
     if (event.toolName === "grep") {
-      const grepPath: string =
-        (event.input as { path?: string }).path ?? "";
+      const grepPath: string = (event.input as { path?: string }).path ?? "";
       if (grepPath.includes("codegen/usage_rules")) {
         return deny(
-          "BLOCKED by usage-rules-grep-guard: only planner may scan codegen/usage_rules/. Read only the files cited in the plan's \"Usage rules for implementer:\" field."
+          'BLOCKED by usage-rules-grep-guard: only planner may scan codegen/usage_rules/. Read only the files cited in the plan\'s "Usage rules for implementer:" field.',
         );
       }
     }

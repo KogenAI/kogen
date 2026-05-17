@@ -38,7 +38,7 @@ export function register(pi: ExtensionAPI): void {
 
     if (/\.exs?$/.test(filePath)) {
       return deny(
-        `BLOCKED by static-site-ex-guard: static-site developer "${agentType}" may not edit Elixir files (${filePath}).`
+        `BLOCKED by static-site-ex-guard: static-site developer "${agentType}" may not edit Elixir files (${filePath}).`,
       );
     }
   });

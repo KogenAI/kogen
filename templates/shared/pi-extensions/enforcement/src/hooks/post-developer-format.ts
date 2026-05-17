@@ -15,7 +15,8 @@ import * as path from "node:path";
 export const HANDLER_META = {
   name: "post-developer-format",
   event: "session_shutdown",
-  matcher: "developer-phoenix-backend|developer-phoenix-frontend|developer-html|developer-hugo|developer-vite",
+  matcher:
+    "developer-phoenix-backend|developer-phoenix-frontend|developer-html|developer-hugo|developer-vite",
 } as const;
 
 const DEV_AGENTS = new Set([
@@ -50,7 +51,7 @@ export function register(pi: ExtensionAPI): void {
 
       const diffOutput = execSync(
         `git diff --name-only --diff-filter=ACMR ${branchBase} HEAD && git diff --name-only HEAD`,
-        { encoding: "utf8", cwd: projectDir }
+        { encoding: "utf8", cwd: projectDir },
       );
       changedFiles = diffOutput.split("\n").filter(Boolean);
     } catch {
@@ -65,13 +66,19 @@ export function register(pi: ExtensionAPI): void {
       agentType === "developer-phoenix-frontend"
     ) {
       const exFiles = changedFiles.filter((f) => /\.(ex|exs|heex)$/.test(f));
-      if (exFiles.length > 0 && fs.existsSync(path.join(projectDir, "mix.exs"))) {
+      if (
+        exFiles.length > 0 &&
+        fs.existsSync(path.join(projectDir, "mix.exs"))
+      ) {
         try {
           execSync(`mix format ${exFiles.join(" ")}`, {
             cwd: projectDir,
             stdio: "ignore",
           });
-          debugLog("post-developer-format", `mix format: ${exFiles.length} file(s)`);
+          debugLog(
+            "post-developer-format",
+            `mix format: ${exFiles.length} file(s)`,
+          );
         } catch {
           // Non-fatal
         }
@@ -80,15 +87,18 @@ export function register(pi: ExtensionAPI): void {
 
     // prettier on web/config files
     const prettierFiles = changedFiles.filter((f) =>
-      /\.(js|ts|jsx|tsx|css|scss|json|md|yml|yaml|html)$/.test(f)
+      /\.(js|ts|jsx|tsx|css|scss|json|md|yml|yaml|html)$/.test(f),
     );
     if (prettierFiles.length > 0) {
       try {
         execSync(
           `npx --no-install prettier --write --log-level=warn ${prettierFiles.join(" ")}`,
-          { cwd: projectDir, stdio: "ignore" }
+          { cwd: projectDir, stdio: "ignore" },
         );
-        debugLog("post-developer-format", `prettier: ${prettierFiles.length} file(s)`);
+        debugLog(
+          "post-developer-format",
+          `prettier: ${prettierFiles.length} file(s)`,
+        );
       } catch {
         // Non-fatal
       }

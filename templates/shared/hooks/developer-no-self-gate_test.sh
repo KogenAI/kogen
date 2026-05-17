@@ -66,7 +66,13 @@ rm -f "/tmp/combobulate-self-gate-${SID3}.count"
 out=$(make_input "mix test test/foo_test.exs" "developer-phoenix-backend" "$SID3" | bash "$HOOK" 2>/dev/null || true)
 assert_not_contains "1st CI invocation (count=1) ALLOWED" '"permissionDecision"' "$out"
 count=$(cat "/tmp/combobulate-self-gate-${SID3}.count" 2>/dev/null || echo 0)
-[ "$count" = "1" ] && { printf 'PASS: counter incremented to 1\n'; pass=$((pass + 1)); } || { printf 'FAIL: counter expected 1, got %s\n' "$count"; fail=$((fail + 1)); }
+[ "$count" = "1" ] && {
+    printf 'PASS: counter incremented to 1\n'
+    pass=$((pass + 1))
+} || {
+    printf 'FAIL: counter expected 1, got %s\n' "$count"
+    fail=$((fail + 1))
+}
 rm -f "/tmp/combobulate-self-gate-${SID3}.count"
 
 # ── Test 4: 3rd CI invocation → BLOCK ────────────────────────────────────────

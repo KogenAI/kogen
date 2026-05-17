@@ -55,11 +55,11 @@ export function register(pi: ExtensionAPI): void {
 
     if (hasDeveloper && hasAllClear && !hasReviewer) {
       process.stderr.write(
-        "[pi-enforcement:step-log-completeness] WARNING: developer ALL CLEAR present but reviewer section absent — cycle incomplete.\n"
+        "[pi-enforcement:step-log-completeness] WARNING: developer ALL CLEAR present but reviewer section absent — cycle incomplete.\n",
       );
     } else if (hasReviewer && !hasCommitter) {
       process.stderr.write(
-        "[pi-enforcement:step-log-completeness] WARNING: reviewer section present but committer section absent — cycle incomplete.\n"
+        "[pi-enforcement:step-log-completeness] WARNING: reviewer section present but committer section absent — cycle incomplete.\n",
       );
     }
   });

@@ -15,18 +15,36 @@ describe("phoenix-frontend-developer-guard", () => {
     },
   };
 
-  async function runHookEdit(filePath: string, agentType = "developer-phoenix-frontend") {
+  async function runHookEdit(
+    filePath: string,
+    agentType = "developer-phoenix-frontend",
+  ) {
     process.env["AGENT_TYPE"] = agentType;
     const { register } = await import("../phoenix-frontend-developer-guard");
-    register(mockPi as unknown as import("@earendil-works/pi-coding-agent").ExtensionAPI);
-    return _capturedHandler({ toolName: "edit", toolCallId: "test-id", input: { file_path: filePath } });
+    register(
+      mockPi as unknown as import("@earendil-works/pi-coding-agent").ExtensionAPI,
+    );
+    return _capturedHandler({
+      toolName: "edit",
+      toolCallId: "test-id",
+      input: { file_path: filePath },
+    });
   }
 
-  async function runHookRead(filePath: string, agentType = "developer-phoenix-frontend") {
+  async function runHookRead(
+    filePath: string,
+    agentType = "developer-phoenix-frontend",
+  ) {
     process.env["AGENT_TYPE"] = agentType;
     const { register } = await import("../phoenix-frontend-developer-guard");
-    register(mockPi as unknown as import("@earendil-works/pi-coding-agent").ExtensionAPI);
-    return _capturedHandler({ toolName: "read", toolCallId: "test-id", input: { file_path: filePath } });
+    register(
+      mockPi as unknown as import("@earendil-works/pi-coding-agent").ExtensionAPI,
+    );
+    return _capturedHandler({
+      toolName: "read",
+      toolCallId: "test-id",
+      input: { file_path: filePath },
+    });
   }
 
   beforeEach(() => {
@@ -34,7 +52,9 @@ describe("phoenix-frontend-developer-guard", () => {
   });
 
   it("blocks Edit on migration path", async () => {
-    const result = await runHookEdit("/app/priv/repo/migrations/20240101_create_users.exs");
+    const result = await runHookEdit(
+      "/app/priv/repo/migrations/20240101_create_users.exs",
+    );
     assert.ok((result as { block?: boolean }).block === true);
   });
 
@@ -44,12 +64,16 @@ describe("phoenix-frontend-developer-guard", () => {
   });
 
   it("blocks Edit on lib/app/services/", async () => {
-    const result = await runHookEdit("/app/lib/my_app/services/email_service.ex");
+    const result = await runHookEdit(
+      "/app/lib/my_app/services/email_service.ex",
+    );
     assert.ok((result as { block?: boolean }).block === true);
   });
 
   it("blocks Edit on lib/app/workers/", async () => {
-    const result = await runHookEdit("/app/lib/my_app/workers/digest_worker.ex");
+    const result = await runHookEdit(
+      "/app/lib/my_app/workers/digest_worker.ex",
+    );
     assert.ok((result as { block?: boolean }).block === true);
   });
 
@@ -69,12 +93,17 @@ describe("phoenix-frontend-developer-guard", () => {
   });
 
   it("allows Edit on migration by backend agent (not gated)", async () => {
-    const result = await runHookEdit("/app/priv/repo/migrations/20240101_create_users.exs", "developer-phoenix-backend");
+    const result = await runHookEdit(
+      "/app/priv/repo/migrations/20240101_create_users.exs",
+      "developer-phoenix-backend",
+    );
     assert.ok(result == null || (result as { block?: boolean }).block !== true);
   });
 
   it("allows Read on migration (not gated tool)", async () => {
-    const result = await runHookRead("/app/priv/repo/migrations/20240101_create_users.exs");
+    const result = await runHookRead(
+      "/app/priv/repo/migrations/20240101_create_users.exs",
+    );
     assert.ok(result == null || (result as { block?: boolean }).block !== true);
   });
 });

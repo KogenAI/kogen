@@ -21,8 +21,7 @@ export function register(pi: ExtensionAPI): void {
     if (event.toolName !== "bash") return;
     if (parseAgentType() !== "committer") return;
 
-    const command: string =
-      (event.input as { command?: string }).command ?? "";
+    const command: string = (event.input as { command?: string }).command ?? "";
     debugLog("committer-single-line-guard", `cmd=${command}`);
 
     if (!/\bgit\s+commit\b/.test(command)) return;
@@ -30,14 +29,14 @@ export function register(pi: ExtensionAPI): void {
     // Deny if command contains actual newline character
     if (command.includes("\n")) {
       return deny(
-        "BLOCKED by committer-single-line-guard: git commit command contains actual newline. Use a single-line subject only."
+        "BLOCKED by committer-single-line-guard: git commit command contains actual newline. Use a single-line subject only.",
       );
     }
 
     // Deny if command contains literal \n (backslash + n)
     if (command.includes("\\n")) {
       return deny(
-        "BLOCKED by committer-single-line-guard: commit -m payload contains literal \\n. Use a single-line subject only."
+        "BLOCKED by committer-single-line-guard: commit -m payload contains literal \\n. Use a single-line subject only.",
       );
     }
   });

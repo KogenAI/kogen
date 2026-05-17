@@ -7,7 +7,12 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 
-function makeToolResultEvent(toolName: string, isError: boolean, agentType: string, sessionId = "sess-t1") {
+function makeToolResultEvent(
+  toolName: string,
+  isError: boolean,
+  agentType: string,
+  sessionId = "sess-t1",
+) {
   return {
     toolName,
     toolCallId: "test-id",
@@ -29,26 +34,39 @@ describe("track-tool-failures", () => {
   async function register(agentType: string) {
     process.env["AGENT_TYPE"] = agentType;
     const { register: reg } = await import("../track-tool-failures");
-    reg(mockPi as unknown as import("@earendil-works/pi-coding-agent").ExtensionAPI);
+    reg(
+      mockPi as unknown as import("@earendil-works/pi-coding-agent").ExtensionAPI,
+    );
   }
 
   it("hook always exits without blocking (never blocks)", async () => {
     await register("developer-phoenix-backend");
-    const result = await _capturedHandler(makeToolResultEvent("bash", true, "developer-phoenix-backend"));
+    const result = await _capturedHandler(
+      makeToolResultEvent("bash", true, "developer-phoenix-backend"),
+    );
     assert.ok(result == null || (result as { block?: boolean }).block !== true);
     delete process.env["AGENT_TYPE"];
   });
 
   it("non-error tool result does not block", async () => {
     await register("developer-phoenix-backend");
-    const result = await _capturedHandler(makeToolResultEvent("edit", false, "developer-phoenix-backend", "sess-t2"));
+    const result = await _capturedHandler(
+      makeToolResultEvent(
+        "edit",
+        false,
+        "developer-phoenix-backend",
+        "sess-t2",
+      ),
+    );
     assert.ok(result == null || (result as { block?: boolean }).block !== true);
     delete process.env["AGENT_TYPE"];
   });
 
   it("orchestrator (empty agent) does not block", async () => {
     await register("");
-    const result = await _capturedHandler(makeToolResultEvent("read", true, "", "sess-t3"));
+    const result = await _capturedHandler(
+      makeToolResultEvent("read", true, "", "sess-t3"),
+    );
     assert.ok(result == null || (result as { block?: boolean }).block !== true);
     delete process.env["AGENT_TYPE"];
   });

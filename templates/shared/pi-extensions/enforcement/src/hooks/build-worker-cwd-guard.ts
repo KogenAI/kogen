@@ -26,9 +26,7 @@ export function register(pi: ExtensionAPI): void {
     if (isSubagent()) return;
 
     const projectDir =
-      process.env["CWD"] ??
-      process.env["PI_PROJECT_DIR"] ??
-      process.cwd();
+      process.env["CWD"] ?? process.env["PI_PROJECT_DIR"] ?? process.cwd();
 
     // Platform-repo bypass: test apps, production apps, local dev apps
     if (
@@ -42,7 +40,10 @@ export function register(pi: ExtensionAPI): void {
       return;
     }
 
-    debugLog("build-worker-cwd-guard", `tool=${event.toolName} projectDir=${projectDir}`);
+    debugLog(
+      "build-worker-cwd-guard",
+      `tool=${event.toolName} projectDir=${projectDir}`,
+    );
 
     if (event.toolName === "bash") {
       const command: string =
@@ -51,9 +52,13 @@ export function register(pi: ExtensionAPI): void {
       const absPathMatch = command.match(/\/[^\s'"]+/g);
       if (absPathMatch) {
         for (const p of absPathMatch) {
-          if (!p.startsWith(projectDir) && !p.startsWith("/tmp") && !p.startsWith("/dev")) {
+          if (
+            !p.startsWith(projectDir) &&
+            !p.startsWith("/tmp") &&
+            !p.startsWith("/dev")
+          ) {
             return deny(
-              `BLOCKED by build-worker-cwd-guard: Bash command references path outside workspace: ${p}`
+              `BLOCKED by build-worker-cwd-guard: Bash command references path outside workspace: ${p}`,
             );
           }
         }
@@ -70,7 +75,7 @@ export function register(pi: ExtensionAPI): void {
         !filePath.startsWith("/tmp")
       ) {
         return deny(
-          `BLOCKED by build-worker-cwd-guard: ${event.toolName} path outside workspace: ${filePath}`
+          `BLOCKED by build-worker-cwd-guard: ${event.toolName} path outside workspace: ${filePath}`,
         );
       }
     }

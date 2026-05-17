@@ -21,8 +21,14 @@ describe("build-no-success-before-commit", () => {
 
   async function runHook(command: string, toolName = "bash") {
     const { register } = await import("../build-no-success-before-commit");
-    register(mockPi as unknown as import("@earendil-works/pi-coding-agent").ExtensionAPI);
-    return _capturedHandler({ toolName, toolCallId: "test-id", input: { command } });
+    register(
+      mockPi as unknown as import("@earendil-works/pi-coding-agent").ExtensionAPI,
+    );
+    return _capturedHandler({
+      toolName,
+      toolCallId: "test-id",
+      input: { command },
+    });
   }
 
   beforeEach(() => {
@@ -41,7 +47,9 @@ describe("build-no-success-before-commit", () => {
   });
 
   it("passes through for non-bash tool with BUILD_RESULT:", async () => {
-    process.env["COMBOBULATE_BUILD_START_TS"] = String(Math.floor(Date.now() / 1000));
+    process.env["COMBOBULATE_BUILD_START_TS"] = String(
+      Math.floor(Date.now() / 1000),
+    );
     const result = await runHook("BUILD_RESULT: foo", "read");
     assert.ok(result == null || (result as { block?: boolean }).block !== true);
   });

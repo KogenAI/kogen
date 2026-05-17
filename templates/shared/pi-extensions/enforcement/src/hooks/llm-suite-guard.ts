@@ -23,13 +23,12 @@ export function register(pi: ExtensionAPI): void {
     const agentType = parseAgentType();
     if (!/^developer-/.test(agentType)) return;
 
-    const command: string =
-      (event.input as { command?: string }).command ?? "";
+    const command: string = (event.input as { command?: string }).command ?? "";
     debugLog("llm-suite-guard", `agent=${agentType} cmd=${command}`);
 
     if (/^\s*make\s+(llm|llm-phoenix)(\s|$)/.test(command)) {
       return deny(
-        "Devs MUST NOT run the full LLM suite. Use `make llm-single FILE=<path>` to iterate on one file. The gate runs `make llm`/`make llm-phoenix` after you exit."
+        "Devs MUST NOT run the full LLM suite. Use `make llm-single FILE=<path>` to iterate on one file. The gate runs `make llm`/`make llm-phoenix` after you exit.",
       );
     }
   });

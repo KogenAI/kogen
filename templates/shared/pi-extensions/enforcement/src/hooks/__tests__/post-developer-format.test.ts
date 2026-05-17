@@ -28,7 +28,9 @@ describe("post-developer-format", () => {
   async function runHook(agentType: string, cwd = "/tmp") {
     process.env["AGENT_TYPE"] = agentType;
     const { register } = await import("../post-developer-format");
-    register(mockPi as unknown as import("@earendil-works/pi-coding-agent").ExtensionAPI);
+    register(
+      mockPi as unknown as import("@earendil-works/pi-coding-agent").ExtensionAPI,
+    );
     return _capturedHandler(makeShutdownEvent(agentType, cwd));
   }
 

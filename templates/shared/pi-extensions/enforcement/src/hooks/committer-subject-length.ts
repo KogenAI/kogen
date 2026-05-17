@@ -21,8 +21,7 @@ export function register(pi: ExtensionAPI): void {
     if (event.toolName !== "bash") return;
     if (parseAgentType() !== "committer") return;
 
-    const command: string =
-      (event.input as { command?: string }).command ?? "";
+    const command: string = (event.input as { command?: string }).command ?? "";
     debugLog("committer-subject-length", `cmd=${command}`);
 
     if (!/\bgit\s+commit\b/.test(command)) return;
@@ -30,7 +29,7 @@ export function register(pi: ExtensionAPI): void {
     // Block heredoc form — can't extract subject
     if (/git\s+commit\s+-m\s+"[^"]*\$\(cat\s+<</.test(command)) {
       return deny(
-        "BLOCKED by committer-subject-length: heredoc form not supported — use -m \"subject\" with ≤50B subject line"
+        'BLOCKED by committer-subject-length: heredoc form not supported — use -m "subject" with ≤50B subject line',
       );
     }
 
@@ -43,7 +42,7 @@ export function register(pi: ExtensionAPI): void {
 
     if (byteLen > 50) {
       return deny(
-        `BLOCKED by committer-subject-length: commit subject "${msg}" is ${byteLen} bytes; max 50. Shorten and retry.`
+        `BLOCKED by committer-subject-length: commit subject "${msg}" is ${byteLen} bytes; max 50. Shorten and retry.`,
       );
     }
   });

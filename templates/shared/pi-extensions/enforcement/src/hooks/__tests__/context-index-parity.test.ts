@@ -8,7 +8,11 @@
 import { describe, it, beforeEach } from "node:test";
 import assert from "node:assert/strict";
 
-function makeCommitEvent(command: string, agentType: string, toolName = "bash") {
+function makeCommitEvent(
+  command: string,
+  agentType: string,
+  toolName = "bash",
+) {
   return { toolName, toolCallId: "test-id", input: { command } };
 }
 
@@ -21,10 +25,16 @@ describe("context-index-parity", () => {
     },
   };
 
-  async function runHook(command: string, agentType = "committer", toolName = "bash") {
+  async function runHook(
+    command: string,
+    agentType = "committer",
+    toolName = "bash",
+  ) {
     process.env["AGENT_TYPE"] = agentType;
     const { register } = await import("../context-index-parity");
-    register(mockPi as unknown as import("@earendil-works/pi-coding-agent").ExtensionAPI);
+    register(
+      mockPi as unknown as import("@earendil-works/pi-coding-agent").ExtensionAPI,
+    );
     return _capturedHandler(makeCommitEvent(command, agentType, toolName));
   }
 
@@ -43,7 +53,10 @@ describe("context-index-parity", () => {
   });
 
   it("non-committer passes through regardless of command", async () => {
-    const result = await runHook('git commit -m "x"', "developer-phoenix-backend");
+    const result = await runHook(
+      'git commit -m "x"',
+      "developer-phoenix-backend",
+    );
     assert.ok(result == null || (result as { block?: boolean }).block !== true);
   });
 

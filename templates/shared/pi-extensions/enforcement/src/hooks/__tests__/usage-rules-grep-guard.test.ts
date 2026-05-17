@@ -21,13 +21,19 @@ describe("usage-rules-grep-guard", () => {
 
   async function register() {
     const { register: reg } = await import("../usage-rules-grep-guard");
-    reg(mockPi as unknown as import("@earendil-works/pi-coding-agent").ExtensionAPI);
+    reg(
+      mockPi as unknown as import("@earendil-works/pi-coding-agent").ExtensionAPI,
+    );
   }
 
   it("blocks developer-phoenix-backend grep usage_rules via bash", async () => {
     process.env["AGENT_TYPE"] = "developer-phoenix-backend";
     await register();
-    const result = await _capturedHandler(makeToolCallEvent("bash", { command: "grep foo codegen/usage_rules/oban.md" }));
+    const result = await _capturedHandler(
+      makeToolCallEvent("bash", {
+        command: "grep foo codegen/usage_rules/oban.md",
+      }),
+    );
     assert.ok((result as { block?: boolean }).block === true);
     delete process.env["AGENT_TYPE"];
   });
@@ -35,7 +41,11 @@ describe("usage-rules-grep-guard", () => {
   it("allows planner grep usage_rules via bash", async () => {
     process.env["AGENT_TYPE"] = "planner";
     await register();
-    const result = await _capturedHandler(makeToolCallEvent("bash", { command: "grep foo codegen/usage_rules/oban.md" }));
+    const result = await _capturedHandler(
+      makeToolCallEvent("bash", {
+        command: "grep foo codegen/usage_rules/oban.md",
+      }),
+    );
     assert.ok(result == null || (result as { block?: boolean }).block !== true);
     delete process.env["AGENT_TYPE"];
   });
@@ -43,7 +53,11 @@ describe("usage-rules-grep-guard", () => {
   it("allows developer-phoenix-backend grep codegen/recipes/", async () => {
     process.env["AGENT_TYPE"] = "developer-phoenix-backend";
     await register();
-    const result = await _capturedHandler(makeToolCallEvent("bash", { command: "grep foo codegen/recipes/INDEX.md" }));
+    const result = await _capturedHandler(
+      makeToolCallEvent("bash", {
+        command: "grep foo codegen/recipes/INDEX.md",
+      }),
+    );
     assert.ok(result == null || (result as { block?: boolean }).block !== true);
     delete process.env["AGENT_TYPE"];
   });
@@ -51,7 +65,12 @@ describe("usage-rules-grep-guard", () => {
   it("blocks developer-phoenix-backend Grep tool on usage_rules path", async () => {
     process.env["AGENT_TYPE"] = "developer-phoenix-backend";
     await register();
-    const result = await _capturedHandler(makeToolCallEvent("grep", { pattern: "foo", path: "codegen/usage_rules/oban.md" }));
+    const result = await _capturedHandler(
+      makeToolCallEvent("grep", {
+        pattern: "foo",
+        path: "codegen/usage_rules/oban.md",
+      }),
+    );
     assert.ok((result as { block?: boolean }).block === true);
     delete process.env["AGENT_TYPE"];
   });

@@ -21,7 +21,9 @@ describe("no-cat-pipe", () => {
 
   async function runHook(toolName: string, command: string) {
     const { register } = await import("../no-cat-pipe");
-    register(mockPi as unknown as import("@earendil-works/pi-coding-agent").ExtensionAPI);
+    register(
+      mockPi as unknown as import("@earendil-works/pi-coding-agent").ExtensionAPI,
+    );
     return _capturedHandler(makeToolCallEvent(toolName, command));
   }
 

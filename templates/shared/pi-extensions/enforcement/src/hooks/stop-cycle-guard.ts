@@ -27,7 +27,7 @@ export function register(pi: ExtensionAPI): void {
     const projectDir = process.env["CWD"] ?? process.cwd();
     const counterFile = path.join(
       os.tmpdir(),
-      `claude-cycle-guard-${sessionId}.count`
+      `claude-cycle-guard-${sessionId}.count`,
     );
 
     debugLog("stop-cycle-guard", `session=${sessionId}`);
@@ -69,12 +69,14 @@ export function register(pi: ExtensionAPI): void {
     const hasReviewer = /## reviewer.*Section/i.test(logContent);
     const hasCommitter = /## committer.*Section/i.test(logContent);
 
-    if ((hasDeveloper && hasAllClear && !hasReviewer) ||
-        (hasReviewer && !hasCommitter)) {
+    if (
+      (hasDeveloper && hasAllClear && !hasReviewer) ||
+      (hasReviewer && !hasCommitter)
+    ) {
       count += 1;
       fs.writeFileSync(counterFile, String(count));
       process.stderr.write(
-        `[pi-enforcement:stop-cycle-guard] WARNING: mid-cycle stop detected — reviewer/committer not yet run. Count: ${count}\n`
+        `[pi-enforcement:stop-cycle-guard] WARNING: mid-cycle stop detected — reviewer/committer not yet run. Count: ${count}\n`,
       );
     } else {
       fs.rmSync(counterFile, { force: true });

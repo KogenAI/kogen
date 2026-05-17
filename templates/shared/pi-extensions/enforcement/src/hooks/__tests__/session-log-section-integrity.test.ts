@@ -22,7 +22,9 @@ describe("session-log-section-integrity", () => {
   async function register(agentType: string) {
     process.env["AGENT_TYPE"] = agentType;
     const { register: reg } = await import("../session-log-section-integrity");
-    reg(mockPi as unknown as import("@earendil-works/pi-coding-agent").ExtensionAPI);
+    reg(
+      mockPi as unknown as import("@earendil-works/pi-coding-agent").ExtensionAPI,
+    );
   }
 
   beforeEach(() => {
@@ -38,7 +40,11 @@ describe("session-log-section-integrity", () => {
     const result = await _capturedHandler({
       toolName: "edit",
       toolCallId: "test-id",
-      input: { file_path: logFile, old_string: "", new_string: "## developer-phoenix-backend Section\n\nSome content" },
+      input: {
+        file_path: logFile,
+        old_string: "",
+        new_string: "## developer-phoenix-backend Section\n\nSome content",
+      },
     });
     assert.ok(result == null || (result as { block?: boolean }).block !== true);
   });
@@ -50,30 +56,49 @@ describe("session-log-section-integrity", () => {
     const result = await _capturedHandler({
       toolName: "edit",
       toolCallId: "test-id",
-      input: { file_path: logFile, old_string: "", new_string: "Some content without the required header" },
+      input: {
+        file_path: logFile,
+        old_string: "",
+        new_string: "Some content without the required header",
+      },
     });
     assert.ok((result as { block?: boolean }).block === true);
   });
 
   it("allows follow-up edit when section already exists in file", async () => {
     const logFile = path.join(tmpDir, "codegen", "logging", "foo.md");
-    fs.writeFileSync(logFile, "## developer-phoenix-backend Section\n\nExisting content\n");
+    fs.writeFileSync(
+      logFile,
+      "## developer-phoenix-backend Section\n\nExisting content\n",
+    );
     await register("developer-phoenix-backend");
     const result = await _capturedHandler({
       toolName: "edit",
       toolCallId: "test-id",
-      input: { file_path: logFile, old_string: "Existing content", new_string: "Additional content" },
+      input: {
+        file_path: logFile,
+        old_string: "Existing content",
+        new_string: "Additional content",
+      },
     });
     assert.ok(result == null || (result as { block?: boolean }).block !== true);
   });
 
   it("allows Write with section header in content", async () => {
-    const newLogFile = path.join(tmpDir, "codegen", "logging", "new-session.md");
+    const newLogFile = path.join(
+      tmpDir,
+      "codegen",
+      "logging",
+      "new-session.md",
+    );
     await register("developer-phoenix-backend");
     const result = await _capturedHandler({
       toolName: "write",
       toolCallId: "test-id",
-      input: { file_path: newLogFile, content: "# Step\n\n## developer-phoenix-backend Section\n\nbody" },
+      input: {
+        file_path: newLogFile,
+        content: "# Step\n\n## developer-phoenix-backend Section\n\nbody",
+      },
     });
     assert.ok(result == null || (result as { block?: boolean }).block !== true);
   });
@@ -90,13 +115,22 @@ describe("session-log-section-integrity", () => {
   });
 
   it("allows planner Edit without section header (planner writes ## Plan)", async () => {
-    const plannerLog = path.join(tmpDir, "codegen", "logging", "planner-session.md");
+    const plannerLog = path.join(
+      tmpDir,
+      "codegen",
+      "logging",
+      "planner-session.md",
+    );
     fs.writeFileSync(plannerLog, "");
     await register("planner");
     const result = await _capturedHandler({
       toolName: "edit",
       toolCallId: "test-id",
-      input: { file_path: plannerLog, old_string: "", new_string: "## Plan\n\nStep 1: do thing" },
+      input: {
+        file_path: plannerLog,
+        old_string: "",
+        new_string: "## Plan\n\nStep 1: do thing",
+      },
     });
     assert.ok(result == null || (result as { block?: boolean }).block !== true);
   });
@@ -109,7 +143,11 @@ describe("session-log-section-integrity", () => {
     const result = await _capturedHandler({
       toolName: "edit",
       toolCallId: "test-id",
-      input: { file_path: libFile, old_string: "", new_string: "some code without header" },
+      input: {
+        file_path: libFile,
+        old_string: "",
+        new_string: "some code without header",
+      },
     });
     assert.ok(result == null || (result as { block?: boolean }).block !== true);
   });

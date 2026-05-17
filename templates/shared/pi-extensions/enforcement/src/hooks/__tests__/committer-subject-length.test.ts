@@ -22,7 +22,9 @@ describe("committer-subject-length", () => {
   async function runHook(command: string, agentType = "committer") {
     process.env["AGENT_TYPE"] = agentType;
     const { register } = await import("../committer-subject-length");
-    register(mockPi as unknown as import("@earendil-works/pi-coding-agent").ExtensionAPI);
+    register(
+      mockPi as unknown as import("@earendil-works/pi-coding-agent").ExtensionAPI,
+    );
     return _capturedHandler(makeToolCallEvent(command));
   }
 
@@ -49,7 +51,10 @@ describe("committer-subject-length", () => {
 
   it("passes through for non-committer agent", async () => {
     const longSubject = "A".repeat(60);
-    const result = await runHook(`git commit -m "${longSubject}"`, "developer-phoenix-backend");
+    const result = await runHook(
+      `git commit -m "${longSubject}"`,
+      "developer-phoenix-backend",
+    );
     assert.ok(result == null || (result as { block?: boolean }).block !== true);
   });
 

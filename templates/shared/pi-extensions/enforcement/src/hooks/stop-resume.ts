@@ -37,12 +37,12 @@ export function register(pi: ExtensionAPI): void {
 
     const lastMessage = process.env["LAST_ASSISTANT_MESSAGE"] ?? "";
     const isTransient = TRANSIENT_ERROR_PATTERNS.some((p) =>
-      p.test(lastMessage)
+      p.test(lastMessage),
     );
 
     if (isTransient) {
       process.stderr.write(
-        "[pi-enforcement:stop-resume] Transient error detected — consider resuming with `pi --resume`\n"
+        "[pi-enforcement:stop-resume] Transient error detected — consider resuming with `pi --resume`\n",
       );
     }
   });

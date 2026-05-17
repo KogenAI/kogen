@@ -22,7 +22,7 @@ export function register(pi: ExtensionAPI): void {
     const agentType = parseAgentType();
     debugLog(
       "track-tool-failures",
-      `tool=${event.toolName} agent=${agentType} error=true`
+      `tool=${event.toolName} agent=${agentType} error=true`,
     );
 
     // Telemetry only — no blocking

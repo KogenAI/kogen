@@ -15,10 +15,16 @@ describe("build-worker-cwd-guard", () => {
     },
   };
 
-  async function runHook(toolName: string, input: Record<string, string>, agentType = "") {
+  async function runHook(
+    toolName: string,
+    input: Record<string, string>,
+    agentType = "",
+  ) {
     process.env["AGENT_TYPE"] = agentType;
     const { register } = await import("../build-worker-cwd-guard");
-    register(mockPi as unknown as import("@earendil-works/pi-coding-agent").ExtensionAPI);
+    register(
+      mockPi as unknown as import("@earendil-works/pi-coding-agent").ExtensionAPI,
+    );
     return _capturedHandler({ toolName, toolCallId: "test-id", input });
   }
 
@@ -27,7 +33,11 @@ describe("build-worker-cwd-guard", () => {
   });
 
   it("subagent Read of /etc/passwd allows (escape hatch)", async () => {
-    const result = await runHook("read", { file_path: "/etc/passwd" }, "planner");
+    const result = await runHook(
+      "read",
+      { file_path: "/etc/passwd" },
+      "planner",
+    );
     assert.ok(result == null || (result as { block?: boolean }).block !== true);
   });
 
@@ -37,7 +47,11 @@ describe("build-worker-cwd-guard", () => {
   });
 
   it("non-orchestrator Read allows (not applicable)", async () => {
-    const result = await runHook("read", { file_path: "/etc/passwd" }, "developer-phoenix-backend");
+    const result = await runHook(
+      "read",
+      { file_path: "/etc/passwd" },
+      "developer-phoenix-backend",
+    );
     assert.ok(result == null || (result as { block?: boolean }).block !== true);
   });
 });

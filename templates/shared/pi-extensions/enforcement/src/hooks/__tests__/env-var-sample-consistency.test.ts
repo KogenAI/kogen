@@ -24,7 +24,9 @@ describe("env-var-sample-consistency", () => {
   async function runHook(command: string, agentType = "committer") {
     process.env["AGENT_TYPE"] = agentType;
     const { register } = await import("../env-var-sample-consistency");
-    register(mockPi as unknown as import("@earendil-works/pi-coding-agent").ExtensionAPI);
+    register(
+      mockPi as unknown as import("@earendil-works/pi-coding-agent").ExtensionAPI,
+    );
     return _capturedHandler(makeCommitEvent(command, agentType));
   }
 
@@ -33,7 +35,10 @@ describe("env-var-sample-consistency", () => {
   });
 
   it("non-committer is not gated", async () => {
-    const result = await runHook('git commit -m "test"', "developer-phoenix-backend");
+    const result = await runHook(
+      'git commit -m "test"',
+      "developer-phoenix-backend",
+    );
     assert.ok(result == null || (result as { block?: boolean }).block !== true);
   });
 
@@ -45,7 +50,9 @@ describe("env-var-sample-consistency", () => {
   it("non-bash tool passes through", async () => {
     process.env["AGENT_TYPE"] = "committer";
     const { register } = await import("../env-var-sample-consistency");
-    register(mockPi as unknown as import("@earendil-works/pi-coding-agent").ExtensionAPI);
+    register(
+      mockPi as unknown as import("@earendil-works/pi-coding-agent").ExtensionAPI,
+    );
     const result = await _capturedHandler({
       toolName: "read",
       toolCallId: "test-id",

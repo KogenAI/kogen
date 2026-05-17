@@ -15,7 +15,8 @@ import * as path from "node:path";
 export const HANDLER_META = {
   name: "developer-no-self-gate-reset",
   event: "session_shutdown",
-  matcher: "developer-phoenix-backend|developer-phoenix-frontend|developer-html|developer-hugo|developer-vite",
+  matcher:
+    "developer-phoenix-backend|developer-phoenix-frontend|developer-html|developer-hugo|developer-vite",
 } as const;
 
 const DEV_AGENTS = new Set([
@@ -37,14 +38,14 @@ export function register(pi: ExtensionAPI): void {
       "unknown";
     const counterFile = path.join(
       os.tmpdir(),
-      `combobulate-self-gate-${sessionId}.count`
+      `combobulate-self-gate-${sessionId}.count`,
     );
 
     if (fs.existsSync(counterFile)) {
       fs.rmSync(counterFile, { force: true });
       debugLog(
         "developer-no-self-gate-reset",
-        `removed counter_file=${counterFile}`
+        `removed counter_file=${counterFile}`,
       );
     }
   });

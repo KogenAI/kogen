@@ -28,7 +28,7 @@ export function register(pi: ExtensionAPI): void {
 
     debugLog(
       "track-subagent-edits",
-      `tool=${event.toolName} agent=${agentType} file=${filePath}`
+      `tool=${event.toolName} agent=${agentType} file=${filePath}`,
     );
 
     // Telemetry only — no blocking

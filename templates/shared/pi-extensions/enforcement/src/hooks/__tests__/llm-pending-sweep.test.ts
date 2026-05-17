@@ -21,20 +21,26 @@ describe("llm-pending-sweep", () => {
 
   async function register() {
     const { register: reg } = await import("../llm-pending-sweep");
-    reg(mockPi as unknown as import("@earendil-works/pi-coding-agent").ExtensionAPI);
+    reg(
+      mockPi as unknown as import("@earendil-works/pi-coding-agent").ExtensionAPI,
+    );
   }
 
   it("session_shutdown exits without blocking", async () => {
     await register();
     const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "llm-pending-test-"));
-    fs.mkdirSync(path.join(tmpDir, "codegen", "llm-pending"), { recursive: true });
+    fs.mkdirSync(path.join(tmpDir, "codegen", "llm-pending"), {
+      recursive: true,
+    });
     try {
       const result = await _capturedHandler({
         toolName: "session_shutdown",
         toolCallId: "test-id",
         input: { cwd: tmpDir },
       });
-      assert.ok(result == null || (result as { block?: boolean }).block !== true);
+      assert.ok(
+        result == null || (result as { block?: boolean }).block !== true,
+      );
     } finally {
       fs.rmSync(tmpDir, { recursive: true, force: true });
     }
@@ -53,7 +59,9 @@ describe("llm-pending-sweep", () => {
         toolCallId: "test-id",
         input: { cwd: tmpDir },
       });
-      assert.ok(result == null || (result as { block?: boolean }).block !== true);
+      assert.ok(
+        result == null || (result as { block?: boolean }).block !== true,
+      );
       // Fresh flag should still exist (not swept)
       assert.ok(fs.existsSync(freshFlag));
     } finally {

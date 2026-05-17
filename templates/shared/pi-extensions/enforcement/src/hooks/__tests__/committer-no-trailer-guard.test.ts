@@ -22,7 +22,9 @@ describe("committer-no-trailer-guard", () => {
   async function runHook(command: string, agentType = "committer") {
     process.env["AGENT_TYPE"] = agentType;
     const { register } = await import("../committer-no-trailer-guard");
-    register(mockPi as unknown as import("@earendil-works/pi-coding-agent").ExtensionAPI);
+    register(
+      mockPi as unknown as import("@earendil-works/pi-coding-agent").ExtensionAPI,
+    );
     return _capturedHandler(makeToolCallEvent("bash", command));
   }
 

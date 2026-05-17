@@ -22,8 +22,7 @@ export function register(pi: ExtensionAPI): void {
     if (event.toolName !== "bash") return;
     if (parseAgentType() !== "committer") return;
 
-    const command: string =
-      (event.input as { command?: string }).command ?? "";
+    const command: string = (event.input as { command?: string }).command ?? "";
     debugLog("env-var-sample-consistency", `cmd=${command}`);
 
     if (!/\bgit\s+commit\b/.test(command)) return;
@@ -40,10 +39,9 @@ export function register(pi: ExtensionAPI): void {
       const stagedExs = stagedFiles.filter((f) => /\.exs?$/.test(f));
       if (stagedExs.length === 0) return;
 
-      const exDiff = execSync(
-        `git diff --cached -- ${stagedExs.join(" ")}`,
-        { encoding: "utf8" }
-      );
+      const exDiff = execSync(`git diff --cached -- ${stagedExs.join(" ")}`, {
+        encoding: "utf8",
+      });
 
       if (
         !/(System\.get_env|System\.fetch_env)/.test(exDiff) ||
@@ -56,18 +54,19 @@ export function register(pi: ExtensionAPI): void {
       const addedEnvLines = exDiff
         .split("\n")
         .filter(
-          (l) => l.startsWith("+") && /(System\.get_env|System\.fetch_env)/.test(l)
+          (l) =>
+            l.startsWith("+") && /(System\.get_env|System\.fetch_env)/.test(l),
         );
 
       if (addedEnvLines.length === 0) return;
 
       const sampleStaged = stagedFiles.some((f) =>
-        [".env.sample", ".env.prod.sample"].includes(f)
+        [".env.sample", ".env.prod.sample"].includes(f),
       );
 
       if (!sampleStaged) {
         return deny(
-          "BLOCKED by env-var-sample-consistency: staged Elixir files add System.get_env/fetch_env calls, but .env.sample and .env.prod.sample are not staged. Stage the sample files with the new env var."
+          "BLOCKED by env-var-sample-consistency: staged Elixir files add System.get_env/fetch_env calls, but .env.sample and .env.prod.sample are not staged. Stage the sample files with the new env var.",
         );
       }
     } catch {

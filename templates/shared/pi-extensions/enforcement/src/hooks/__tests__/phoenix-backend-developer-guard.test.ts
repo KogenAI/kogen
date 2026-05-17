@@ -7,7 +7,11 @@ import { describe, it, beforeEach } from "node:test";
 import assert from "node:assert/strict";
 
 function makeEditEvent(filePath: string, agentType: string) {
-  return { toolName: "edit", toolCallId: "test-id", input: { file_path: filePath } };
+  return {
+    toolName: "edit",
+    toolCallId: "test-id",
+    input: { file_path: filePath },
+  };
 }
 
 describe("phoenix-backend-developer-guard", () => {
@@ -19,18 +23,32 @@ describe("phoenix-backend-developer-guard", () => {
     },
   };
 
-  async function runHookEdit(filePath: string, agentType = "developer-phoenix-backend") {
+  async function runHookEdit(
+    filePath: string,
+    agentType = "developer-phoenix-backend",
+  ) {
     process.env["AGENT_TYPE"] = agentType;
     const { register } = await import("../phoenix-backend-developer-guard");
-    register(mockPi as unknown as import("@earendil-works/pi-coding-agent").ExtensionAPI);
+    register(
+      mockPi as unknown as import("@earendil-works/pi-coding-agent").ExtensionAPI,
+    );
     return _capturedHandler(makeEditEvent(filePath, agentType));
   }
 
-  async function runHookRead(filePath: string, agentType = "developer-phoenix-backend") {
+  async function runHookRead(
+    filePath: string,
+    agentType = "developer-phoenix-backend",
+  ) {
     process.env["AGENT_TYPE"] = agentType;
     const { register } = await import("../phoenix-backend-developer-guard");
-    register(mockPi as unknown as import("@earendil-works/pi-coding-agent").ExtensionAPI);
-    return _capturedHandler({ toolName: "read", toolCallId: "test-id", input: { file_path: filePath } });
+    register(
+      mockPi as unknown as import("@earendil-works/pi-coding-agent").ExtensionAPI,
+    );
+    return _capturedHandler({
+      toolName: "read",
+      toolCallId: "test-id",
+      input: { file_path: filePath },
+    });
   }
 
   beforeEach(() => {
@@ -53,12 +71,16 @@ describe("phoenix-backend-developer-guard", () => {
   });
 
   it("blocks Edit on .heex files", async () => {
-    const result = await runHookEdit("/app/lib/my_app_web/templates/page.html.heex");
+    const result = await runHookEdit(
+      "/app/lib/my_app_web/templates/page.html.heex",
+    );
     assert.ok((result as { block?: boolean }).block === true);
   });
 
   it("blocks Edit on _html.ex files", async () => {
-    const result = await runHookEdit("/app/lib/my_app_web/controllers/page_html.ex");
+    const result = await runHookEdit(
+      "/app/lib/my_app_web/controllers/page_html.ex",
+    );
     assert.ok((result as { block?: boolean }).block === true);
   });
 
@@ -68,12 +90,17 @@ describe("phoenix-backend-developer-guard", () => {
   });
 
   it("allows Edit on priv/repo/migrations/", async () => {
-    const result = await runHookEdit("/app/priv/repo/migrations/20240101_create_users.exs");
+    const result = await runHookEdit(
+      "/app/priv/repo/migrations/20240101_create_users.exs",
+    );
     assert.ok(result == null || (result as { block?: boolean }).block !== true);
   });
 
   it("allows Edit by frontend agent (pass-through)", async () => {
-    const result = await runHookEdit("/app/lib/my_app_web/live/user_live.ex", "developer-phoenix-frontend");
+    const result = await runHookEdit(
+      "/app/lib/my_app_web/live/user_live.ex",
+      "developer-phoenix-frontend",
+    );
     assert.ok(result == null || (result as { block?: boolean }).block !== true);
   });
 

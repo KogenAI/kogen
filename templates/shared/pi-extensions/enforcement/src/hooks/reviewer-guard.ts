@@ -26,13 +26,13 @@ export function register(pi: ExtensionAPI): void {
 
     if (event.toolName === "write" || event.toolName === "edit") {
       return deny(
-        `BLOCKED by reviewer-guard: reviewer "${agentType}" is read-only — no Edit/Write allowed.`
+        `BLOCKED by reviewer-guard: reviewer "${agentType}" is read-only — no Edit/Write allowed.`,
       );
     }
 
     if (event.toolName === "bash") {
       return deny(
-        `BLOCKED by reviewer-guard: reviewer "${agentType}" may not run Bash — read-only investigation only.`
+        `BLOCKED by reviewer-guard: reviewer "${agentType}" may not run Bash — read-only investigation only.`,
       );
     }
   });

@@ -22,7 +22,9 @@ describe("pre-commit-guard", () => {
   async function runHook(toolName: string, command: string, agentType = "") {
     process.env["AGENT_TYPE"] = agentType;
     const { register } = await import("../pre-commit-guard");
-    register(mockPi as unknown as import("@earendil-works/pi-coding-agent").ExtensionAPI);
+    register(
+      mockPi as unknown as import("@earendil-works/pi-coding-agent").ExtensionAPI,
+    );
     return _capturedHandler(makeToolCallEvent(toolName, command));
   }
 
@@ -31,12 +33,20 @@ describe("pre-commit-guard", () => {
   });
 
   it("blocks git commit for developer agent", async () => {
-    const result = await runHook("bash", "git commit -m 'fix'", "developer-phoenix-backend");
+    const result = await runHook(
+      "bash",
+      "git commit -m 'fix'",
+      "developer-phoenix-backend",
+    );
     assert.ok((result as { block?: boolean }).block === true);
   });
 
   it("allows git status for developer agent", async () => {
-    const result = await runHook("bash", "git status", "developer-phoenix-backend");
+    const result = await runHook(
+      "bash",
+      "git status",
+      "developer-phoenix-backend",
+    );
     assert.ok(result == null || (result as { block?: boolean }).block !== true);
   });
 
@@ -46,17 +56,29 @@ describe("pre-commit-guard", () => {
   });
 
   it("blocks git rebase for non-committer", async () => {
-    const result = await runHook("bash", "git rebase -i HEAD~2", "developer-phoenix-frontend");
+    const result = await runHook(
+      "bash",
+      "git rebase -i HEAD~2",
+      "developer-phoenix-frontend",
+    );
     assert.ok((result as { block?: boolean }).block === true);
   });
 
   it("blocks git push --force for non-committer", async () => {
-    const result = await runHook("bash", "git push origin main --force", "planner-phoenix");
+    const result = await runHook(
+      "bash",
+      "git push origin main --force",
+      "planner-phoenix",
+    );
     assert.ok((result as { block?: boolean }).block === true);
   });
 
   it("blocks git reset --hard for non-committer", async () => {
-    const result = await runHook("bash", "git reset --hard HEAD~1", "developer-phoenix-backend");
+    const result = await runHook(
+      "bash",
+      "git reset --hard HEAD~1",
+      "developer-phoenix-backend",
+    );
     assert.ok((result as { block?: boolean }).block === true);
   });
 

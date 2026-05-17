@@ -29,7 +29,7 @@ export function register(pi: ExtensionAPI): void {
     // Write is always blocked for planners
     if (event.toolName === "write") {
       return deny(
-        `BLOCKED by planner-guard: tool write forbidden for planner (planner never creates files — edit the session log via edit)`
+        `BLOCKED by planner-guard: tool write forbidden for planner (planner never creates files — edit the session log via edit)`,
       );
     }
 
@@ -45,7 +45,7 @@ export function register(pi: ExtensionAPI): void {
       const absoluteOk = /^\/.+\/codegen\/logging\/[^/]+\.md$/.test(filePath);
       if (!relativeOk && !absoluteOk) {
         return deny(
-          `BLOCKED by planner-guard: planner may only edit session log files under codegen/logging/ (got: ${filePath})`
+          `BLOCKED by planner-guard: planner may only edit session log files under codegen/logging/ (got: ${filePath})`,
         );
       }
       return; // allowed
@@ -59,35 +59,43 @@ export function register(pi: ExtensionAPI): void {
       // Path traversal
       if (/\.\.\//.test(command)) {
         return deny(
-          `BLOCKED by planner-guard: relative path traversal (..) forbidden — use absolute paths only`
+          `BLOCKED by planner-guard: relative path traversal (..) forbidden — use absolute paths only`,
         );
       }
 
       // mix test
       if (/\bmix\s+test\b/.test(command)) {
         return deny(
-          `BLOCKED by planner-guard: mix test is forbidden for planner`
+          `BLOCKED by planner-guard: mix test is forbidden for planner`,
         );
       }
 
       // mix ecto state-modifying
       if (/\bmix\s+ecto\.(migrate|reset|drop)\b/.test(command)) {
         return deny(
-          `BLOCKED by planner-guard: mix ecto.migrate/reset/drop is forbidden for planner`
+          `BLOCKED by planner-guard: mix ecto.migrate/reset/drop is forbidden for planner`,
         );
       }
 
       // make ci/llm variants
-      if (/\bmake\s+(ci|ci-fast|llm|llm-phoenix|llm-phoenix-seed|llm-summary|llm-retry|llm-kill)\b/.test(command)) {
+      if (
+        /\bmake\s+(ci|ci-fast|llm|llm-phoenix|llm-phoenix-seed|llm-summary|llm-retry|llm-kill)\b/.test(
+          command,
+        )
+      ) {
         return deny(
-          `BLOCKED by planner-guard: make ci/llm/llm-phoenix/llm-phoenix-seed is forbidden for planner`
+          `BLOCKED by planner-guard: make ci/llm/llm-phoenix/llm-phoenix-seed is forbidden for planner`,
         );
       }
 
       // git state modification
-      if (/\bgit\s+(add|commit|rm|mv|stash|reset|checkout\s+\S+|branch\s+(-[dDmcC]|[^-]))\b/.test(command)) {
+      if (
+        /\bgit\s+(add|commit|rm|mv|stash|reset|checkout\s+\S+|branch\s+(-[dDmcC]|[^-]))\b/.test(
+          command,
+        )
+      ) {
         return deny(
-          `BLOCKED by planner-guard: git state modification is forbidden for planner`
+          `BLOCKED by planner-guard: git state modification is forbidden for planner`,
         );
       }
 
@@ -99,7 +107,7 @@ export function register(pi: ExtensionAPI): void {
         for (const arg of [src, dst]) {
           if (!arg.startsWith("/tmp/") && !arg.startsWith("codegen/logging/")) {
             return deny(
-              `BLOCKED by planner-guard: mv argument "${arg}" outside /tmp/ or codegen/logging/ is forbidden for planner`
+              `BLOCKED by planner-guard: mv argument "${arg}" outside /tmp/ or codegen/logging/ is forbidden for planner`,
             );
           }
         }
@@ -108,11 +116,13 @@ export function register(pi: ExtensionAPI): void {
 
       // Shell redirect outside /tmp/ or codegen/logging/
       // Strip stderr tokens first
-      const redirectCheck = command.replace(/2>&1/g, "").replace(/2>\/dev\/null/g, "");
+      const redirectCheck = command
+        .replace(/2>&1/g, "")
+        .replace(/2>\/dev\/null/g, "");
       if (/>\s*[^/\s]|>\s*\//.test(redirectCheck)) {
         if (!/>\s*(codegen\/logging\/|\/tmp\/)/.test(redirectCheck)) {
           return deny(
-            `BLOCKED by planner-guard: shell redirect to file outside /tmp/ or codegen/logging/ is forbidden for planner`
+            `BLOCKED by planner-guard: shell redirect to file outside /tmp/ or codegen/logging/ is forbidden for planner`,
           );
         }
       }
@@ -130,10 +140,16 @@ export function register(pi: ExtensionAPI): void {
       if (!filePath) return;
 
       const basename = filePath.split("/").pop() ?? "";
-      const forbidden = new Set(["testing.md", "testing-liveview.md", "developer.md", "reviewer.md", "committer.md"]);
+      const forbidden = new Set([
+        "testing.md",
+        "testing-liveview.md",
+        "developer.md",
+        "reviewer.md",
+        "committer.md",
+      ]);
       if (forbidden.has(basename)) {
         return deny(
-          `BLOCKED by planner-guard: planner must not load implementer rules (${basename})`
+          `BLOCKED by planner-guard: planner must not load implementer rules (${basename})`,
         );
       }
     }

@@ -22,7 +22,9 @@ describe("reviewer-guard", () => {
   async function runHook(command: string, agentType: string) {
     process.env["AGENT_TYPE"] = agentType;
     const { register } = await import("../reviewer-guard");
-    register(mockPi as unknown as import("@earendil-works/pi-coding-agent").ExtensionAPI);
+    register(
+      mockPi as unknown as import("@earendil-works/pi-coding-agent").ExtensionAPI,
+    );
     return _capturedHandler(makeToolCallEvent("bash", command));
   }
 

@@ -29,7 +29,12 @@ export function register(pi: ExtensionAPI): void {
     const agentType = parseAgentType();
 
     // Orchestrator (empty agent_type) and planner bypass — they write ## Plan, not ## X Section
-    if (!agentType || agentType === "planner" || agentType.startsWith("planner-")) return;
+    if (
+      !agentType ||
+      agentType === "planner" ||
+      agentType.startsWith("planner-")
+    )
+      return;
 
     const filePath: string =
       (event.input as { path?: string; file_path?: string }).path ??
@@ -39,9 +44,13 @@ export function register(pi: ExtensionAPI): void {
     if (!filePath) return;
 
     // Only gate session log files
-    if (!filePath.includes("codegen/logging/") || !filePath.endsWith(".md")) return;
+    if (!filePath.includes("codegen/logging/") || !filePath.endsWith(".md"))
+      return;
 
-    debugLog("session-log-section-integrity", `tool=${event.toolName} agent=${agentType} file=${filePath}`);
+    debugLog(
+      "session-log-section-integrity",
+      `tool=${event.toolName} agent=${agentType} file=${filePath}`,
+    );
 
     const expectedHeader = `## ${agentType} Section`;
 
@@ -68,7 +77,7 @@ export function register(pi: ExtensionAPI): void {
     if (payload.includes(expectedHeader)) return;
 
     return deny(
-      `BLOCKED by session-log-section-integrity: ${event.toolName} on ${filePath} from ${agentType} must include "${expectedHeader}" in the payload.`
+      `BLOCKED by session-log-section-integrity: ${event.toolName} on ${filePath} from ${agentType} must include "${expectedHeader}" in the payload.`,
     );
   });
 }

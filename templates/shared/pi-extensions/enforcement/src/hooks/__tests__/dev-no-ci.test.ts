@@ -19,10 +19,15 @@ describe("dev-no-ci", () => {
     },
   };
 
-  async function runHook(command: string, agentType = "developer-phoenix-backend") {
+  async function runHook(
+    command: string,
+    agentType = "developer-phoenix-backend",
+  ) {
     process.env["AGENT_TYPE"] = agentType;
     const { register } = await import("../dev-no-ci");
-    register(mockPi as unknown as import("@earendil-works/pi-coding-agent").ExtensionAPI);
+    register(
+      mockPi as unknown as import("@earendil-works/pi-coding-agent").ExtensionAPI,
+    );
     return _capturedHandler(makeToolCallEvent("bash", command));
   }
 
@@ -51,7 +56,9 @@ describe("dev-no-ci", () => {
   });
 
   it("allows mix test with specific file path", async () => {
-    const result = await runHook("mix test test/combobulate/llm/backend/pi_test.exs");
+    const result = await runHook(
+      "mix test test/combobulate/llm/backend/pi_test.exs",
+    );
     assert.ok(result == null || (result as { block?: boolean }).block !== true);
   });
 

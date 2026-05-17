@@ -22,7 +22,9 @@ describe("committer-single-line-guard", () => {
   async function runHook(command: string, agentType = "committer") {
     process.env["AGENT_TYPE"] = agentType;
     const { register } = await import("../committer-single-line-guard");
-    register(mockPi as unknown as import("@earendil-works/pi-coding-agent").ExtensionAPI);
+    register(
+      mockPi as unknown as import("@earendil-works/pi-coding-agent").ExtensionAPI,
+    );
     return _capturedHandler(makeToolCallEvent("bash", command));
   }
 
@@ -46,20 +48,29 @@ describe("committer-single-line-guard", () => {
   });
 
   it("allows non-committer with multi-line message", async () => {
-    const result = await runHook('git commit -m "bad\\nmsg"', "developer-phoenix-backend");
+    const result = await runHook(
+      'git commit -m "bad\\nmsg"',
+      "developer-phoenix-backend",
+    );
     assert.ok(result == null || (result as { block?: boolean }).block !== true);
   });
 
   it("blocks -m with actual embedded newline", async () => {
-    const result = await runHook("git commit -m \"Add feature\ndetails\"");
+    const result = await runHook('git commit -m "Add feature\ndetails"');
     assert.ok((result as { block?: boolean }).block === true);
   });
 
   it("allows non-bash tool", async () => {
-    const event = { toolName: "read", toolCallId: "test-id", input: { file_path: "/tmp/foo" } };
+    const event = {
+      toolName: "read",
+      toolCallId: "test-id",
+      input: { file_path: "/tmp/foo" },
+    };
     process.env["AGENT_TYPE"] = "committer";
     const { register } = await import("../committer-single-line-guard");
-    register(mockPi as unknown as import("@earendil-works/pi-coding-agent").ExtensionAPI);
+    register(
+      mockPi as unknown as import("@earendil-works/pi-coding-agent").ExtensionAPI,
+    );
     const result = await _capturedHandler(event);
     assert.ok(result == null || (result as { block?: boolean }).block !== true);
   });

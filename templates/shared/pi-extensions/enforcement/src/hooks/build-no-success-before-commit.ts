@@ -21,14 +21,16 @@ export function register(pi: ExtensionAPI): void {
   pi.on("tool_call", async (event) => {
     if (event.toolName !== "bash") return;
 
-    const command: string =
-      (event.input as { command?: string }).command ?? "";
+    const command: string = (event.input as { command?: string }).command ?? "";
 
     if (!command.includes("BUILD_RESULT:")) return;
 
     const buildStartTs = process.env["COMBOBULATE_BUILD_START_TS"];
     if (!buildStartTs) {
-      debugLog("build-no-success-before-commit", "allow: COMBOBULATE_BUILD_START_TS unset");
+      debugLog(
+        "build-no-success-before-commit",
+        "allow: COMBOBULATE_BUILD_START_TS unset",
+      );
       return;
     }
 
@@ -48,7 +50,7 @@ export function register(pi: ExtensionAPI): void {
     }
 
     return deny(
-      "BLOCKED by build-no-success-before-commit: cannot signal BUILD_RESULT: before a commit has been made. Commit your changes first."
+      "BLOCKED by build-no-success-before-commit: cannot signal BUILD_RESULT: before a commit has been made. Commit your changes first.",
     );
   });
 }

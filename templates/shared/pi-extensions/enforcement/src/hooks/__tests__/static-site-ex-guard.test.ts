@@ -18,8 +18,14 @@ describe("static-site-ex-guard", () => {
   async function runHook(filePath: string, agentType = "developer-html") {
     process.env["AGENT_TYPE"] = agentType;
     const { register } = await import("../static-site-ex-guard");
-    register(mockPi as unknown as import("@earendil-works/pi-coding-agent").ExtensionAPI);
-    return _capturedHandler({ toolName: "write", toolCallId: "test-id", input: { file_path: filePath, content: "x" } });
+    register(
+      mockPi as unknown as import("@earendil-works/pi-coding-agent").ExtensionAPI,
+    );
+    return _capturedHandler({
+      toolName: "write",
+      toolCallId: "test-id",
+      input: { file_path: filePath, content: "x" },
+    });
   }
 
   beforeEach(() => {
@@ -42,7 +48,10 @@ describe("static-site-ex-guard", () => {
   });
 
   it("allows .ex file write for developer-phoenix-backend (not static site)", async () => {
-    const result = await runHook("/app/lib/my_app/context.ex", "developer-phoenix-backend");
+    const result = await runHook(
+      "/app/lib/my_app/context.ex",
+      "developer-phoenix-backend",
+    );
     assert.ok(result == null || (result as { block?: boolean }).block !== true);
   });
 });
