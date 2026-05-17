@@ -7,6 +7,8 @@
 # surface: per_call_inspector
 # signal: AGENT_TYPE
 # role: inspector|inspector-phoenix|codex-inspector
+# harnesses: claude_code
+# rationale: Claude Code per-call inspector hook; Pi uses load-gate tool restriction
 #
 # Blocks all write/edit tools when invoked for any Inspector call.
 # Write, Edit, MultiEdit, and NotebookEdit are already denied via --disallowed-tools

@@ -220,6 +220,7 @@ plan:
 COMBOBULATE_DIR ?= $(SCRIPT_DIR)/../combobulate
 HOOKS_MD_PATH := $(COMBOBULATE_DIR)/context/hooks.md
 HOOKS_MD_ARG := $(if $(wildcard $(HOOKS_MD_PATH)),--hooks-md-path "$(HOOKS_MD_PATH)",)
+PI_EXTENSION_DIR ?= $(SCRIPT_DIR)/templates/shared/pi-extensions/enforcement
 
 .PHONY: hook-parity
 hook-parity:
@@ -239,11 +240,13 @@ hook-parity:
 
 install: hook-parity
 	$(call check_make_only,install)
+	@bash "$(SCRIPT_DIR)/templates/generator/generate-pi-extension.sh" "$(PI_EXTENSION_DIR)"
 	@python3 "$(SCRIPT_DIR)/templates/generator/hook_registrations.py" \
 		--hooks-dir "$(SCRIPT_DIR)/templates/shared/hooks" \
 		--output-settings "$(SCRIPT_DIR)/templates/claude-code-settings.json" \
 		--combobulate-dir "$(COMBOBULATE_DIR)" \
 		--subagents-dir "$(SCRIPT_DIR)/templates/shared/subagents" \
+		--pi-extension-dir "$(PI_EXTENSION_DIR)" \
 		$(HOOKS_MD_ARG)
 	@./install.sh
 	@./install-launchers.sh
@@ -255,6 +258,7 @@ install: hook-parity
 test:
 	$(call check_make_only,test)
 	@./templates/shared/hooks/run-tests.sh
+	@cd "$(PI_EXTENSION_DIR)" && npm test
 
 # rule-parity: re-render AGENTS-HYBRID.md.j2 in both modes to temp files and
 # diff against committed AGENTS.md / CLAUDE.md. Exits non-zero on drift.

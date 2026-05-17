@@ -7,6 +7,8 @@
 # surface: user_global
 # signal: AGENT_TYPE
 # role: *
+# harnesses: claude_code
+# rationale: CLAUDE_ROLE-keyed; Pi orchestrator has no equivalent read discipline hook
 #
 # Blocks the orchestrator from reading arbitrary codebase files.
 # Orchestrator should delegate exploration to planner or Explore subagent.

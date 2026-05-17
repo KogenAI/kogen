@@ -7,6 +7,7 @@
 # surface: user_global
 # signal: AGENT_TYPE
 # role: committer
+# harnesses: all
 #
 # Blocks git commit -m "..." where the -m payload contains a literal \n
 # (two chars: backslash + n) or an actual 0x0A newline byte.

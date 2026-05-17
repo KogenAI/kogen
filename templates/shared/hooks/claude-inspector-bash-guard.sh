@@ -7,6 +7,8 @@
 # surface: per_call_inspector
 # signal: AGENT_TYPE
 # role: inspector|inspector-phoenix|codex-inspector
+# harnesses: claude_code
+# rationale: Claude Code per-call inspector hook; Pi uses load-gate tool restriction
 #
 # Blocks Bash commands that mutate the filesystem or database, and commands
 # that reference absolute paths outside $CLAUDE_PROJECT_DIR.

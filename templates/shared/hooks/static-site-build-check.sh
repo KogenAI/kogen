@@ -7,6 +7,7 @@
 # surface: user_global
 # signal: AGENT_TYPE
 # role: developer-html|developer-hugo|developer-vite
+# harnesses: all
 #
 # Purpose: replace the LLM static-site-verifier subagent with a deterministic
 # build check. Runs four invariants from the static site's working tree and

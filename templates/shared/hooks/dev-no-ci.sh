@@ -7,6 +7,7 @@
 # surface: user_global
 # signal: AGENT_TYPE
 # role: developer-*
+# harnesses: all
 #
 # Blocks: make ci / ci-fast / ci-cover / predeploy / llm / llm-phoenix / llm-all
 #         bare `mix test` (no path argument)

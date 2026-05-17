@@ -8,6 +8,7 @@
 # surface: user_global
 # signal: none
 # role: *
+# harnesses: all
 
 set -u
 

@@ -7,6 +7,7 @@
 # surface: user_global
 # signal: none
 # role: *
+# harnesses: all
 #
 # Blocks: git stash / git stash push / git stash pop / git stash list / etc.
 #

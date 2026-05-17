@@ -7,6 +7,7 @@
 # surface: user_global
 # signal: AGENT_TYPE
 # role: *
+# harnesses: all
 #
 # Records every tool failure into a per-subagent JSONL ledger so the
 # orchestrator (or later analysis) can detect the "developer dropped a

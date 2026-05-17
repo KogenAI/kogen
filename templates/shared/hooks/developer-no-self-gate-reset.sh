@@ -7,6 +7,7 @@
 # surface: user_global
 # signal: AGENT_TYPE
 # role: developer-*
+# harnesses: all
 #
 # Removes the per-session counter file when a developer subagent stops,
 # so the next invocation of the same session starts with a clean count.

@@ -7,6 +7,8 @@
 # surface: per_call_inspector
 # signal: CODEX_ROLE
 # role: codex-inspector
+# harnesses: claude_code
+# rationale: Codex-specific per-call inspector hook
 #
 # Blocks read_file calls where the requested path is outside the Inspector's
 # working directory ($CODEX_PROJECT_DIR, falling back to $PWD).

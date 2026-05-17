@@ -7,6 +7,7 @@
 # surface: user_global
 # signal: AGENT_TYPE
 # role: *
+# harnesses: all
 #
 # Blocks state-modifying git commands (commit, rebase, push --force,
 # reset --hard, cherry-pick, revert, merge) when the active agent is

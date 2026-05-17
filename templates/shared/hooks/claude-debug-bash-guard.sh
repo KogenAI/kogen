@@ -8,6 +8,8 @@
 # surface: user_global
 # signal: CLAUDE_ROLE_FAMILY
 # role: *
+# harnesses: claude_code
+# rationale: CLAUDE_ROLE_FAMILY-keyed; Pi investigation sessions use load-gate not role flags
 #
 # Active when the active role (via resolve_role) is `debug`, `shape`, or `refactor`.
 # Responds to CLAUDE_ROLE (Claude Code), PI_ROLE (PI harness), and CODEX_ROLE

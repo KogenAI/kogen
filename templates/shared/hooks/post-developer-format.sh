@@ -7,6 +7,7 @@
 # surface: user_global
 # signal: AGENT_TYPE
 # role: developer-phoenix-backend|developer-phoenix-frontend|developer-html|developer-hugo|developer-vite
+# harnesses: all
 #
 # Purpose: when developer-phoenix-backend / developer-phoenix-frontend / developer-html | developer-hugo | developer-vite
 # reports done, auto-format their diff so the dev-gate.sh hook never sees a

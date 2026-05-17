@@ -7,6 +7,7 @@
 # surface: user_global
 # signal: AGENT_TYPE
 # role: committer
+# harnesses: all
 #
 # Blocks git commit commands that lack a -m "..." flag.
 # Allows: git commit -m "...", git commit --amend -m "..."

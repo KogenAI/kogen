@@ -1,0 +1,14 @@
+{
+  "name": "@combobulate/pi-enforcement",
+  "version": "0.1.0",
+  "description": "Pi extension: enforcement hooks ported from Claude Code hook scripts",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc -p . && node scripts/emit-handlers.js",
+    "test": "node --test dist/hooks/__tests__/*.test.js"
+  },
+  "devDependencies": {
+    "@earendil-works/pi-coding-agent": "*",
+    "typescript": "^5.0.0"
+  }
+}

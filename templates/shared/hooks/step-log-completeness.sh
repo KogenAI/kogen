@@ -8,6 +8,7 @@
 # surface: user_global
 # signal: none
 # role: *
+# harnesses: all
 #
 # Blocks Stop when:
 #   (a) A developer-* Section AND a (phoenix-)?dev-gate Section with ALL CLEAR ✅

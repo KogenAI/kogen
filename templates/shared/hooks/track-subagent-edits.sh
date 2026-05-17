@@ -7,6 +7,7 @@
 # surface: user_global
 # signal: AGENT_TYPE
 # role: *
+# harnesses: all
 #
 # Records each file path written/edited by a subagent into a per-subagent
 # ledger so post-developer-format.sh can format ONLY that subagent's files.

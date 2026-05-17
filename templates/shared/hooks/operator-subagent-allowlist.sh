@@ -7,6 +7,8 @@
 # surface: user_global
 # signal: CLAUDE_ROLE_FAMILY
 # role: *
+# harnesses: claude_code
+# rationale: Agent tool not present in Pi harness
 #
 # Enforces subagent spawn rules across all launcher modes:
 #

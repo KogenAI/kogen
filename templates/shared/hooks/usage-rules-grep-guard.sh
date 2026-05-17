@@ -7,6 +7,7 @@
 # surface: user_global
 # signal: AGENT_TYPE
 # role: *
+# harnesses: all
 #
 # Blocks non-planner agents from grepping/scanning codegen/usage_rules/.
 # Only the planner may scan the full corpus — all other agents must read

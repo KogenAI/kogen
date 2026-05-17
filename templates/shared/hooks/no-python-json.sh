@@ -7,6 +7,7 @@
 # surface: user_global
 # signal: none
 # role: *
+# harnesses: all
 #
 # Blocks: python -c "...import json..." / python3 -c "...json.load..."
 #

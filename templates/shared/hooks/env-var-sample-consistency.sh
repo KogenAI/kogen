@@ -7,6 +7,7 @@
 # surface: user_global
 # signal: AGENT_TYPE
 # role: committer
+# harnesses: all
 #
 # Blocks a git commit if staged files include env-var-reading Elixir code
 # (System.get_env / System.fetch_env) but .env.sample and .env.prod.sample

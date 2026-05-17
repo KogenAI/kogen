@@ -7,6 +7,7 @@
 # surface: user_global
 # signal: AGENT_TYPE
 # role: developer-phoenix-backend
+# harnesses: all
 #
 # Blocks Edit/Write/MultiEdit on frontend-owned paths so the backend developer
 # cannot accidentally clobber LiveView templates, HEEx files, JS hooks, or

@@ -9,6 +9,7 @@
 # surface: user_global
 # signal: none
 # role: unset
+# harnesses: all
 #
 # Firing contract: no CLAUDE_ROLE gating (signal: none) — fires for all roles in all repos.
 # Subagent inheritance: intentional — committer runs as subagent and this hook MUST

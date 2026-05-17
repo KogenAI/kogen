@@ -8,6 +8,7 @@
 # surface: user_global
 # signal: AGENT_TYPE
 # role: *
+# harnesses: all
 #
 # Goal: enforce that the orchestrator (top-level claude --print invocation in
 # the user-app cwd) cannot Read/Write/Edit files outside the user app directory,

@@ -7,6 +7,8 @@
 # surface: per_call_inspector
 # signal: CODEX_ROLE
 # role: codex-inspector
+# harnesses: claude_code
+# rationale: Codex-specific per-call inspector hook
 #
 # Blocks apply_patch tool calls when invoked for a Codex Inspector session.
 # apply_patch is Codex's primary write surface — Inspector is read-only.

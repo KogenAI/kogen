@@ -7,6 +7,7 @@
 # surface: user_global
 # signal: AGENT_TYPE
 # role: planner-*
+# harnesses: all
 #
 # Blocks file-creation, state-modifying shell commands, Edit calls on
 # non-session-log files, and reads of implementer-only rule files when

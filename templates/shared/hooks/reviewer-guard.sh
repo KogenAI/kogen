@@ -7,6 +7,7 @@
 # surface: user_global
 # signal: AGENT_TYPE
 # role: reviewer-phoenix|reviewer-static
+# harnesses: all
 #
 # Blocks all mutating tools when the active agent is "reviewer-phoenix" or
 # "reviewer-static". Reviewers are read-only analysis roles: Read, Grep, Glob

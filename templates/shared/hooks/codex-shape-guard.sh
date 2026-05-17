@@ -7,6 +7,8 @@
 # surface: per_call_inspector
 # signal: CODEX_ROLE
 # role: codex-shape, codex-refactor
+# harnesses: claude_code
+# rationale: Codex-specific shape mode guard
 #
 # Blocks apply_patch writes to paths outside codegen/pitches/ when CODEX_ROLE=shape or CODEX_ROLE=refactor.
 # Codex apply_patch carries a unified-diff patch body; target paths are parsed from

@@ -7,6 +7,7 @@
 # surface: user_global
 # signal: none
 # role: *
+# harnesses: all
 #
 # Blocks: cat file | head, cat file | tail, cat file | grep, cat file | less,
 #         cat file | more.

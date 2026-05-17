@@ -7,6 +7,7 @@
 # surface: user_global
 # signal: AGENT_TYPE
 # role: developer-*
+# harnesses: all
 #
 # Counts CI/test invocations per session. Once the counter reaches 3,
 # denies further attempts and instructs the dev to hand off to the

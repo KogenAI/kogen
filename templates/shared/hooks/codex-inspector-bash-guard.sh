@@ -7,6 +7,8 @@
 # surface: per_call_inspector
 # signal: CODEX_ROLE
 # role: codex-inspector
+# harnesses: claude_code
+# rationale: Codex-specific per-call inspector hook
 #
 # Blocks shell/local_shell tool calls that mutate the filesystem or database,
 # OR that read files outside $CODEX_PROJECT_DIR.

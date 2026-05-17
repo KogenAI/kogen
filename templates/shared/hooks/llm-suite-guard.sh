@@ -7,6 +7,7 @@
 # surface: user_global
 # signal: AGENT_TYPE
 # role: developer-*
+# harnesses: all
 #
 # Blocks: bare `make llm` and `make llm-phoenix` (no further subcommand suffix).
 #

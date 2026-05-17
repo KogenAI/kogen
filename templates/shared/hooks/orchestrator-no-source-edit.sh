@@ -7,6 +7,8 @@
 # surface: user_global
 # signal: CLAUDE_ROLE_FAMILY
 # role: *
+# harnesses: claude_code
+# rationale: CLAUDE_ROLE_FAMILY-keyed launcher mode guard, Pi has no equivalent launcher concept
 #
 # Blocks the orchestrator from editing source files directly.
 # Subagents (non-empty agent_id) are allowed under no CLAUDE_ROLE_FAMILY (standard

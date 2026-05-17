@@ -122,15 +122,14 @@ def parse_manifest(script_path: Path) -> dict:
                     fields[key] = val
                 elif key == "harnesses":
                     fields["harnesses"] = val
-                # Stop once all required fields are collected — avoids overwriting
-                # already-parsed values from prose comment lines that match the regex.
-                if REQUIRED_FIELDS.issubset(fields.keys()):
-                    break
-            elif stripped.startswith("#") or stripped == "":
-                # Still in comment block — continue
-                continue
-            else:
-                # Non-comment line after manifest start — manifest block ended
+                # Continue scanning for optional fields (harnesses may follow required).
+            elif stripped == "#" or stripped == "":
+                # Blank comment line or empty line → end of manifest key-value block.
+                # Stop here to avoid parsing prose comment lines that may accidentally
+                # match the key: value regex and overwrite already-parsed fields.
+                break
+            elif not stripped.startswith("#"):
+                # Non-comment line → manifest block ended
                 break
 
     missing = REQUIRED_FIELDS - set(fields.keys())
@@ -156,16 +155,22 @@ def parse_manifest(script_path: Path) -> dict:
         sys.exit(1)
 
     # Parse and validate optional harnesses field.
+    # "all" or absent → None (ships everywhere, default).
+    # Explicit list (e.g. "claude_code") → list of tokens.
     if "harnesses" in fields:
-        tokens = [t.strip() for t in fields["harnesses"].split(",")]
-        invalid = [t for t in tokens if t not in VALID_HARNESSES]
-        if invalid:
-            print(
-                f"ERROR: {script_path.name} has invalid harnesses tokens: {invalid}. Must be from: {VALID_HARNESSES}",
-                file=sys.stderr,
-            )
-            sys.exit(1)
-        fields["harnesses"] = tokens
+        raw_val = fields["harnesses"]
+        if raw_val.strip() == "all":
+            fields["harnesses"] = None  # "all" is shorthand for ships-everywhere
+        else:
+            tokens = [t.strip() for t in raw_val.split(",")]
+            invalid = [t for t in tokens if t not in VALID_HARNESSES]
+            if invalid:
+                print(
+                    f"ERROR: {script_path.name} has invalid harnesses tokens: {invalid}. Must be from: {VALID_HARNESSES} or 'all'",
+                    file=sys.stderr,
+                )
+                sys.exit(1)
+            fields["harnesses"] = tokens
     else:
         fields["harnesses"] = None  # None = ships everywhere (default)
 
@@ -628,8 +633,37 @@ def regenerate_settings(
     print(f"Wrote {settings_path}")
 
 
+def validate_pi_ts_handlers(pi_hooks: list, pi_extension_dir: Path) -> None:
+    """Verify every Pi-targeted hook has a matching TypeScript handler.
+
+    For each hook in pi_hooks, derives handler name = filename without .sh extension,
+    then checks <pi_extension_dir>/src/hooks/<name>.ts exists.
+    Exits non-zero with a descriptive message listing all missing handlers.
+    """
+    hooks_src_dir = pi_extension_dir / "src" / "hooks"
+    missing = []
+    for h in sorted(pi_hooks, key=lambda x: x["filename"]):
+        name = h["filename"][:-3] if h["filename"].endswith(".sh") else h["filename"]
+        ts_path = hooks_src_dir / f"{name}.ts"
+        if not ts_path.exists():
+            missing.append(f"  {h['filename']} → expected {ts_path}")
+
+    if missing:
+        print(
+            "ERROR: Pi handler parity check FAILED. "
+            f"The following {len(missing)} hook(s) have no TypeScript handler in "
+            f"{hooks_src_dir}:\n" + "\n".join(missing) + "\n"
+            "Add the missing .ts handler(s) before running make install.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
+    print(f"Pi TS handler parity: OK ({len(pi_hooks)} hooks matched)")
+
+
 def write_combobulate_artifacts(
-    per_call_hooks: list, all_hooks: list, combobulate_dir: Path
+    per_call_hooks: list, all_hooks: list, combobulate_dir: Path,
+    pi_extension_dir: "Path | None" = None,
 ) -> None:
     """Write inspector_settings.json and hook_manifest.json into combobulate/priv/<harness>_config/.
 
@@ -716,29 +750,24 @@ def write_combobulate_artifacts(
     codex_manifest_path.write_text(json.dumps(codex_manifest_entries, indent=2) + "\n")
     print(f"Wrote {codex_manifest_path}")
 
-    # ── pi_config (empty today — pi uses load-gate enforcement, no per-call hooks) ──
+    # ── pi_config ─────────────────────────────────────────────────────────────
+    # Pi manifest contains every hook where harnesses is None (ships everywhere)
+    # OR harnesses explicitly includes "pi".
+    # hooks with harnesses=["claude_code"] or harnesses=["codex"] only are excluded.
     pi_priv_dir = combobulate_dir / "priv" / "pi_config"
     pi_priv_dir.mkdir(parents=True, exist_ok=True)
 
-    pi_inspector_hooks = [h for h in per_call_hooks if h["filename"].startswith("pi-")]
-    pi_inspector_entries = []
-    for h in sorted(pi_inspector_hooks, key=lambda x: x["filename"]):
-        pi_inspector_entries.append(
-            {
-                "event": h["event"],
-                "matcher": h["matcher"],
-                "hookScript": h["filename"],
-                "surface": h["surface"],
-                "signal": h["signal"],
-                "role": h["role"],
-            }
-        )
+    pi_hooks = [
+        h for h in all_hooks
+        if h.get("harnesses") is None or "pi" in (h.get("harnesses") or [])
+    ]
+
     pi_inspector_path = pi_priv_dir / "inspector_settings.json"
-    pi_inspector_path.write_text(json.dumps(pi_inspector_entries, indent=2) + "\n")
+    pi_inspector_path.write_text(json.dumps([], indent=2) + "\n")
     print(f"Wrote {pi_inspector_path}")
 
     pi_manifest_entries = []
-    for h in sorted(pi_inspector_hooks, key=lambda x: x["filename"]):
+    for h in sorted(pi_hooks, key=lambda x: x["filename"]):
         pi_manifest_entries.append(
             {
                 "filename": h["filename"],
@@ -751,7 +780,11 @@ def write_combobulate_artifacts(
         )
     pi_manifest_path = pi_priv_dir / "hook_manifest.json"
     pi_manifest_path.write_text(json.dumps(pi_manifest_entries, indent=2) + "\n")
-    print(f"Wrote {pi_manifest_path}")
+    print(f"Wrote {pi_manifest_path} ({len(pi_manifest_entries)} Pi-targeted hooks)")
+
+    # Validate TS handler parity if pi-extension-dir provided
+    if pi_extension_dir is not None:
+        validate_pi_ts_handlers(pi_hooks, pi_extension_dir)
 
 
 def main() -> None:
@@ -782,6 +815,10 @@ def main() -> None:
         "--hooks-md-path",
         help="Path to context/hooks.md (updates Stack-Fit Reference section)",
     )
+    parser.add_argument(
+        "--pi-extension-dir",
+        help="Path to Pi extension package root (validates TS handler parity for Pi-targeted hooks)",
+    )
     args = parser.parse_args()
 
     hooks_dir = Path(args.hooks_dir)
@@ -811,7 +848,8 @@ def main() -> None:
     agents: dict = {}
     if args.combobulate_dir:
         combobulate_dir = Path(args.combobulate_dir)
-        write_combobulate_artifacts(per_call_hooks, all_hooks, combobulate_dir)
+        pi_ext_dir = Path(args.pi_extension_dir) if args.pi_extension_dir else None
+        write_combobulate_artifacts(per_call_hooks, all_hooks, combobulate_dir, pi_ext_dir)
 
         if args.subagents_dir:
             subagents_dir = Path(args.subagents_dir)

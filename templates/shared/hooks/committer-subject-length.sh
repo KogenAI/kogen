@@ -7,6 +7,7 @@
 # surface: user_global
 # signal: AGENT_TYPE
 # role: committer
+# harnesses: all
 #
 # Blocks git commit commands where the subject line exceeds 50 bytes.
 
