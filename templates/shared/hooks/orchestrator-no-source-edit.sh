@@ -10,8 +10,8 @@
 #
 # Blocks the orchestrator from editing source files directly.
 # Subagents (non-empty agent_id) are allowed under no CLAUDE_ROLE_FAMILY (standard
-# orchestrator). Under any operator role (debug, design) the write surface is
-# narrowed for BOTH the orchestrator AND Agent-spawned helpers.
+# orchestrator). Under any operator role (debug, shape, refactor) the write surface
+# is narrowed for BOTH the orchestrator AND Agent-spawned helpers.
 #
 # Responds to CLAUDE_ROLE (Claude Code), PI_ROLE (PI harness), and CODEX_ROLE
 # (Codex) via resolve_role() — precedence: CLAUDE_ROLE > PI_ROLE > CODEX_ROLE.
@@ -37,17 +37,17 @@ case "$FILE_PATH" in
 "${cwd_prefix}"*) rel_path="${FILE_PATH#"$cwd_prefix"}" ;;
 esac
 
-# Debug/design operators (read-only investigation + design-doc authoring).
-# Writes scoped to codegen/designs/{drafts,ready}/ — applies to subagents too,
+# Debug/shape/refactor operators (read-only investigation + pitch authoring).
+# Writes scoped to codegen/pitches/ — applies to subagents too,
 # so Agent-spawned helpers can't slip writes past the role's boundary.
-if [ "$role" = "debug" ] || [ "$role" = "design" ]; then
+if [ "$role" = "debug" ] || [ "$role" = "shape" ] || [ "$role" = "refactor" ]; then
     if [ -z "$FILE_PATH" ]; then
         exit 0
     fi
-    if printf '%s' "$rel_path" | grep -qE '^codegen/designs/'; then
+    if printf '%s' "$rel_path" | grep -qE '^codegen/pitches/'; then
         exit 0
     fi
-    deny "BLOCKED by orchestrator-no-source-edit: ${role} mode may only write to codegen/designs/ — got $FILE_PATH"
+    deny "BLOCKED by orchestrator-no-source-edit: ${role} mode may only write to codegen/pitches/ — got $FILE_PATH"
     exit 0
 fi
 
@@ -68,9 +68,9 @@ fi
 if printf '%s' "$FILE_PATH" | grep -qE '^(/private)?/tmp/'; then
     exit 0
 fi
-if printf '%s' "$rel_path" | grep -qE '^codegen/designs/'; then
+if printf '%s' "$rel_path" | grep -qE '^codegen/pitches/'; then
     exit 0
 fi
 
-deny "BLOCKED by orchestrator-no-source-edit: ${role:-orchestrator} may only write to codegen/logging/, codegen/designs/, or absolute /tmp/ ($FILE_PATH). Delegate source edits to developer-phoenix-backend / developer-phoenix-frontend / developer-html | developer-hugo | developer-vite."
+deny "BLOCKED by orchestrator-no-source-edit: ${role:-orchestrator} may only write to codegen/logging/, codegen/pitches/, or absolute /tmp/ ($FILE_PATH). Delegate source edits to developer-phoenix-backend / developer-phoenix-frontend / developer-html | developer-hugo | developer-vite."
 exit 0

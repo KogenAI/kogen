@@ -1,14 +1,14 @@
 #!/bin/bash
-# codex-design-guard.sh — PreToolUse apply_patch hook for Codex Design sessions.
+# codex-shape-guard.sh — PreToolUse apply_patch hook for Codex Shape/Refactor sessions.
 #
 # HOOK-MANIFEST:
 # event: PreToolUse
 # matcher: apply_patch
 # surface: per_call_inspector
 # signal: CODEX_ROLE
-# role: codex-design
+# role: codex-shape, codex-refactor
 #
-# Blocks apply_patch writes to paths outside codegen/designs/ when CODEX_ROLE=design.
+# Blocks apply_patch writes to paths outside codegen/pitches/ when CODEX_ROLE=shape or CODEX_ROLE=refactor.
 # Codex apply_patch carries a unified-diff patch body; target paths are parsed from
 # "+++ <path>" lines in the patch content.
 
@@ -17,8 +17,8 @@ set -u
 source "$(dirname "$0")/lib/hooks-lib.sh"
 parse_input
 
-# Only active when CODEX_ROLE=design.
-[ "${CODEX_ROLE:-}" = "design" ] || exit 0
+# Only active when CODEX_ROLE=shape or CODEX_ROLE=refactor.
+[ "${CODEX_ROLE:-}" = "shape" ] || [ "${CODEX_ROLE:-}" = "refactor" ] || exit 0
 
 # Only gate apply_patch.
 if ! printf '%s' "$TOOL_NAME" | grep -qE '^apply_patch$'; then
@@ -42,15 +42,15 @@ if [ -z "$target_paths" ]; then
     exit 0
 fi
 
-# Check every target path is under codegen/designs/.
+# Check every target path is under codegen/pitches/.
 while IFS= read -r path; do
     [ -z "$path" ] && continue
     # Allow /dev/null (deleted-file marker in unified diffs).
     [ "$path" = "/dev/null" ] && continue
     # Normalise: strip leading ./ if present.
     rel_path="${path#./}"
-    if ! printf '%s' "$rel_path" | grep -qE '^codegen/designs/'; then
-        deny "BLOCKED by codex-design-guard: CODEX_ROLE=design may only write to codegen/designs/ — patch target path '$path' is outside this boundary"
+    if ! printf '%s' "$rel_path" | grep -qE '^codegen/pitches/'; then
+        deny "BLOCKED by codex-shape-guard: CODEX_ROLE=${CODEX_ROLE:-} may only write to codegen/pitches/ — patch target path '$path' is outside this boundary"
         exit 0
     fi
 done <<<"$target_paths"

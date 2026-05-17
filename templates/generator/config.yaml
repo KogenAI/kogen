@@ -117,7 +117,7 @@ roles:
     system_prompt_file: shared/claude-build-system-prompt.txt
     append_project_context: false
 
-  # debug/design use --tools allowlist (load gate) instead of --disallowed-tools
+  # debug/shape/refactor use --tools allowlist (load gate) instead of --disallowed-tools
   # (permission filter). The deferred-tool harness already keeps most tools out
   # of context by default, so denylists do nothing for context — the only real
   # context-trim happens when you exclude default-loaded tools (AskUserQuestion,
@@ -125,9 +125,9 @@ roles:
   # listed tools ever enter context, and ToolSearch can't be used to re-expand
   # the surface mid-session.
   #
-  # Allowlist: investigation + design-doc authoring only. Write surface is then
-  # path-scoped to codegen/designs/** by orchestrator-no-source-edit.sh, and
-  # destructive Bash is filtered by debug-bash-safety-guard.sh.
+  # Allowlist: investigation + pitch authoring only. Write surface is then
+  # path-scoped to codegen/pitches/** by orchestrator-no-source-edit.sh, and
+  # destructive Bash is filtered by claude-debug-bash-guard.sh.
   debug:
     model: opus
     effort: high
@@ -144,12 +144,13 @@ roles:
     system_prompt_file: shared/claude-debug-system-prompt.txt
     append_project_context: true
 
-  design:
+  shape:
     model: opus
     effort: high
     output_format: text
     tools:
       - Agent
+      - AskUserQuestion
       - Bash
       - Edit
       - Glob
@@ -157,7 +158,24 @@ roles:
       - Read
       - Skill
       - Write
-    system_prompt_file: shared/claude-design-system-prompt.txt
+    system_prompt_file: shared/claude-shape-system-prompt.txt
+    append_project_context: true
+
+  refactor:
+    model: opus
+    effort: high
+    output_format: text
+    tools:
+      - Agent
+      - AskUserQuestion
+      - Bash
+      - Edit
+      - Glob
+      - Grep
+      - Read
+      - Skill
+      - Write
+    system_prompt_file: shared/claude-refactor-system-prompt.txt
     append_project_context: true
 
   housekeeper:

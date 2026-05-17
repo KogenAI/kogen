@@ -135,32 +135,36 @@ run_test "orchestrator Read on codegen/rules/stacks/phoenix/_core.md allows" "0"
 FIXTURE_GIT_RO='{"hook_event_name":"PreToolUse","tool_name":"Read","tool_input":{"file_path":"codegen/rules/shared/git-readonly.md"},"agent_id":"","agent_type":""}'
 run_test "orchestrator Read on codegen/rules/shared/git-readonly.md allows" "0" "$FIXTURE_GIT_RO"
 
-# Test 23: orchestrator Read on codegen/designs/drafts/foo.md — ALLOW (/document re-read)
-FIXTURE_DRAFT='{"hook_event_name":"PreToolUse","tool_name":"Read","tool_input":{"file_path":"codegen/designs/drafts/foo.md"},"agent_id":"","agent_type":""}'
-run_test "orchestrator Read on codegen/designs/drafts/ allows" "0" "$FIXTURE_DRAFT"
+# Test 23: orchestrator Read on codegen/pitches/draft/foo.md — ALLOW (/document re-read)
+FIXTURE_DRAFT='{"hook_event_name":"PreToolUse","tool_name":"Read","tool_input":{"file_path":"codegen/pitches/draft/foo.md"},"agent_id":"","agent_type":""}'
+run_test "orchestrator Read on codegen/pitches/draft/ allows" "0" "$FIXTURE_DRAFT"
 
-# Test 24: orchestrator Read on codegen/designs/ready/foo.md — ALLOW (/split re-read)
-FIXTURE_READY='{"hook_event_name":"PreToolUse","tool_name":"Read","tool_input":{"file_path":"codegen/designs/ready/foo.md"},"agent_id":"","agent_type":""}'
-run_test "orchestrator Read on codegen/designs/ready/ allows" "0" "$FIXTURE_READY"
+# Test 24: orchestrator Read on codegen/pitches/ready/foo.md — ALLOW
+FIXTURE_READY='{"hook_event_name":"PreToolUse","tool_name":"Read","tool_input":{"file_path":"codegen/pitches/ready/foo.md"},"agent_id":"","agent_type":""}'
+run_test "orchestrator Read on codegen/pitches/ready/ allows" "0" "$FIXTURE_READY"
 
-# Test 25: orchestrator Read on codegen/designs/archive/foo.md — ALLOW
-FIXTURE_ARCHIVE='{"hook_event_name":"PreToolUse","tool_name":"Read","tool_input":{"file_path":"codegen/designs/archive/foo.md"},"agent_id":"","agent_type":""}'
-run_test "orchestrator Read on codegen/designs/archive/ allows" "0" "$FIXTURE_ARCHIVE"
+# Test 25: orchestrator Read on codegen/pitches/shipped/foo.md — ALLOW
+FIXTURE_SHIPPED='{"hook_event_name":"PreToolUse","tool_name":"Read","tool_input":{"file_path":"codegen/pitches/shipped/foo.md"},"agent_id":"","agent_type":""}'
+run_test "orchestrator Read on codegen/pitches/shipped/ allows" "0" "$FIXTURE_SHIPPED"
 
-# Test 26: orchestrator Read on absolute codegen/designs/drafts/ path — ALLOW
+# Test 26: orchestrator Read on absolute codegen/pitches/draft/ path — ALLOW
 TMP_CWD4="$(mktemp -d)"
-ABS_DRAFT="${TMP_CWD4}/codegen/designs/drafts/foo.md"
+ABS_DRAFT="${TMP_CWD4}/codegen/pitches/draft/foo.md"
 FIXTURE_ABS_DRAFT='{"hook_event_name":"PreToolUse","tool_name":"Read","tool_input":{"file_path":"'"$ABS_DRAFT"'"},"agent_id":"","agent_type":"","cwd":"'"$TMP_CWD4"'"}'
-run_test "orchestrator Read on absolute codegen/designs/drafts/ path allows" "0" "$FIXTURE_ABS_DRAFT"
+run_test "orchestrator Read on absolute codegen/pitches/draft/ path allows" "0" "$FIXTURE_ABS_DRAFT"
 rm -rf "$TMP_CWD4"
 
 # Test 27: CLAUDE_ROLE=debug bypasses read discipline — investigation sessions need full access
 FIXTURE_DEBUG_BYPASS='{"hook_event_name":"PreToolUse","tool_name":"Read","tool_input":{"file_path":"lib/combobulate/apps.ex"},"agent_id":"","agent_type":""}'
 CLAUDE_ROLE=debug run_test "CLAUDE_ROLE=debug bypasses read discipline" "0" "$FIXTURE_DEBUG_BYPASS"
 
-# Test 28: CLAUDE_ROLE=design bypasses read discipline — design sessions need full access (Phase 0 preload)
-FIXTURE_DESIGN_BYPASS='{"hook_event_name":"PreToolUse","tool_name":"Read","tool_input":{"file_path":"lib/combobulate/apps.ex"},"agent_id":"","agent_type":""}'
-CLAUDE_ROLE=design run_test "CLAUDE_ROLE=design bypasses read discipline" "0" "$FIXTURE_DESIGN_BYPASS"
+# Test 28: CLAUDE_ROLE=shape bypasses read discipline — shaping sessions need full access (Phase 0 preload)
+FIXTURE_SHAPE_BYPASS='{"hook_event_name":"PreToolUse","tool_name":"Read","tool_input":{"file_path":"lib/combobulate/apps.ex"},"agent_id":"","agent_type":""}'
+CLAUDE_ROLE=shape run_test "CLAUDE_ROLE=shape bypasses read discipline" "0" "$FIXTURE_SHAPE_BYPASS"
+
+# Test 28b: CLAUDE_ROLE=refactor bypasses read discipline
+FIXTURE_REFACTOR_BYPASS='{"hook_event_name":"PreToolUse","tool_name":"Read","tool_input":{"file_path":"lib/combobulate/apps.ex"},"agent_id":"","agent_type":""}'
+CLAUDE_ROLE=refactor run_test "CLAUDE_ROLE=refactor bypasses read discipline" "0" "$FIXTURE_REFACTOR_BYPASS"
 
 # PI_ROLE parity tests
 
@@ -168,9 +172,13 @@ CLAUDE_ROLE=design run_test "CLAUDE_ROLE=design bypasses read discipline" "0" "$
 FIXTURE_PI_DEBUG_BYPASS='{"hook_event_name":"PreToolUse","tool_name":"Read","tool_input":{"file_path":"lib/combobulate/apps.ex"},"agent_id":"","agent_type":""}'
 PI_ROLE=debug run_test "PI_ROLE=debug bypasses read discipline" "0" "$FIXTURE_PI_DEBUG_BYPASS"
 
-# Test 30: PI_ROLE=design bypasses read discipline
-FIXTURE_PI_DESIGN_BYPASS='{"hook_event_name":"PreToolUse","tool_name":"Read","tool_input":{"file_path":"lib/combobulate/apps.ex"},"agent_id":"","agent_type":""}'
-PI_ROLE=design run_test "PI_ROLE=design bypasses read discipline" "0" "$FIXTURE_PI_DESIGN_BYPASS"
+# Test 30: PI_ROLE=shape bypasses read discipline
+FIXTURE_PI_SHAPE_BYPASS='{"hook_event_name":"PreToolUse","tool_name":"Read","tool_input":{"file_path":"lib/combobulate/apps.ex"},"agent_id":"","agent_type":""}'
+PI_ROLE=shape run_test "PI_ROLE=shape bypasses read discipline" "0" "$FIXTURE_PI_SHAPE_BYPASS"
+
+# Test 30b: PI_ROLE=refactor bypasses read discipline
+FIXTURE_PI_REFACTOR_BYPASS='{"hook_event_name":"PreToolUse","tool_name":"Read","tool_input":{"file_path":"lib/combobulate/apps.ex"},"agent_id":"","agent_type":""}'
+PI_ROLE=refactor run_test "PI_ROLE=refactor bypasses read discipline" "0" "$FIXTURE_PI_REFACTOR_BYPASS"
 
 # CODEX_ROLE parity tests
 
@@ -178,9 +186,13 @@ PI_ROLE=design run_test "PI_ROLE=design bypasses read discipline" "0" "$FIXTURE_
 FIXTURE_CODEX_DEBUG_BYPASS='{"hook_event_name":"PreToolUse","tool_name":"Read","tool_input":{"file_path":"lib/combobulate/apps.ex"},"agent_id":"","agent_type":""}'
 CODEX_ROLE=debug run_test "CODEX_ROLE=debug bypasses read discipline" "0" "$FIXTURE_CODEX_DEBUG_BYPASS"
 
-# Test 32: CODEX_ROLE=design bypasses read discipline
-FIXTURE_CODEX_DESIGN_BYPASS='{"hook_event_name":"PreToolUse","tool_name":"Read","tool_input":{"file_path":"lib/combobulate/apps.ex"},"agent_id":"","agent_type":""}'
-CODEX_ROLE=design run_test "CODEX_ROLE=design bypasses read discipline" "0" "$FIXTURE_CODEX_DESIGN_BYPASS"
+# Test 32: CODEX_ROLE=shape bypasses read discipline
+FIXTURE_CODEX_SHAPE_BYPASS='{"hook_event_name":"PreToolUse","tool_name":"Read","tool_input":{"file_path":"lib/combobulate/apps.ex"},"agent_id":"","agent_type":""}'
+CODEX_ROLE=shape run_test "CODEX_ROLE=shape bypasses read discipline" "0" "$FIXTURE_CODEX_SHAPE_BYPASS"
+
+# Test 32b: CODEX_ROLE=refactor bypasses read discipline
+FIXTURE_CODEX_REFACTOR_BYPASS='{"hook_event_name":"PreToolUse","tool_name":"Read","tool_input":{"file_path":"lib/combobulate/apps.ex"},"agent_id":"","agent_type":""}'
+CODEX_ROLE=refactor run_test "CODEX_ROLE=refactor bypasses read discipline" "0" "$FIXTURE_CODEX_REFACTOR_BYPASS"
 
 echo ""
 echo "Results: $pass passed, $fail failed"

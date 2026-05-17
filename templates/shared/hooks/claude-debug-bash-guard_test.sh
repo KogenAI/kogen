@@ -158,21 +158,37 @@ run_test "docker ps allowed in debug role" "0" \
 run_test "systemctl status allowed in debug role" "0" \
     "$(mk 'systemctl status app.service')" "debug"
 
-# 26: rm -rf blocked in design role
-run_test "rm -rf blocked in design role" "2" \
-    "$(mk 'rm -rf /tmp/foo')" "design"
+# 26: rm -rf blocked in shape role
+run_test "rm -rf blocked in shape role" "2" \
+    "$(mk 'rm -rf /tmp/foo')" "shape"
 
-# 27: git push blocked in design role
-run_test "git push blocked in design role" "2" \
-    "$(mk 'git push origin main')" "design"
+# 27: git push blocked in shape role
+run_test "git push blocked in shape role" "2" \
+    "$(mk 'git push origin main')" "shape"
 
-# 28: ls allowed in design role
-run_test "ls allowed in design role" "0" \
-    "$(mk 'ls -la /tmp')" "design"
+# 28: ls allowed in shape role
+run_test "ls allowed in shape role" "0" \
+    "$(mk 'ls -la /tmp')" "shape"
 
-# 29: curl -X POST blocked in design role
-run_test "curl -X POST blocked in design role" "2" \
-    "$(mk 'curl -X POST https://api.example.com/users')" "design"
+# 29: curl -X POST blocked in shape role
+run_test "curl -X POST blocked in shape role" "2" \
+    "$(mk 'curl -X POST https://api.example.com/users')" "shape"
+
+# 29b: rm -rf blocked in refactor role
+run_test "rm -rf blocked in refactor role" "2" \
+    "$(mk 'rm -rf /tmp/foo')" "refactor"
+
+# 29c: git push blocked in refactor role
+run_test "git push blocked in refactor role" "2" \
+    "$(mk 'git push origin main')" "refactor"
+
+# 29d: ls allowed in refactor role
+run_test "ls allowed in refactor role" "0" \
+    "$(mk 'ls -la /tmp')" "refactor"
+
+# 29e: curl -X POST blocked in refactor role
+run_test "curl -X POST blocked in refactor role" "2" \
+    "$(mk 'curl -X POST https://api.example.com/users')" "refactor"
 
 # 30: rm -rf still allowed in unrelated role (build)
 run_test "rm -rf allowed in build role (guard inactive)" "0" \
@@ -215,13 +231,21 @@ run_test_env "PI_ROLE=debug rm -rf blocked" "2" \
 run_test_env "PI_ROLE=debug ls allowed" "0" \
     "$(mk 'ls -la /tmp')" "PI_ROLE" "debug"
 
-# 33: PI_ROLE=design + git push → deny
-run_test_env "PI_ROLE=design git push blocked" "2" \
-    "$(mk 'git push origin main')" "PI_ROLE" "design"
+# 33: PI_ROLE=shape + git push → deny
+run_test_env "PI_ROLE=shape git push blocked" "2" \
+    "$(mk 'git push origin main')" "PI_ROLE" "shape"
 
-# 34: PI_ROLE=design + ls → allow
-run_test_env "PI_ROLE=design ls allowed" "0" \
-    "$(mk 'ls -la /tmp')" "PI_ROLE" "design"
+# 34: PI_ROLE=shape + ls → allow
+run_test_env "PI_ROLE=shape ls allowed" "0" \
+    "$(mk 'ls -la /tmp')" "PI_ROLE" "shape"
+
+# 34b: PI_ROLE=refactor + git push → deny
+run_test_env "PI_ROLE=refactor git push blocked" "2" \
+    "$(mk 'git push origin main')" "PI_ROLE" "refactor"
+
+# 34c: PI_ROLE=refactor + ls → allow
+run_test_env "PI_ROLE=refactor ls allowed" "0" \
+    "$(mk 'ls -la /tmp')" "PI_ROLE" "refactor"
 
 # 35: CODEX_ROLE=debug + rm -rf → deny
 run_test_env "CODEX_ROLE=debug rm -rf blocked" "2" \
@@ -231,13 +255,21 @@ run_test_env "CODEX_ROLE=debug rm -rf blocked" "2" \
 run_test_env "CODEX_ROLE=debug ls allowed" "0" \
     "$(mk 'ls -la /tmp')" "CODEX_ROLE" "debug"
 
-# 37: CODEX_ROLE=design + git push → deny
-run_test_env "CODEX_ROLE=design git push blocked" "2" \
-    "$(mk 'git push origin main')" "CODEX_ROLE" "design"
+# 37: CODEX_ROLE=shape + git push → deny
+run_test_env "CODEX_ROLE=shape git push blocked" "2" \
+    "$(mk 'git push origin main')" "CODEX_ROLE" "shape"
 
-# 38: CODEX_ROLE=design + ls → allow
-run_test_env "CODEX_ROLE=design ls allowed" "0" \
-    "$(mk 'ls -la /tmp')" "CODEX_ROLE" "design"
+# 38: CODEX_ROLE=shape + ls → allow
+run_test_env "CODEX_ROLE=shape ls allowed" "0" \
+    "$(mk 'ls -la /tmp')" "CODEX_ROLE" "shape"
+
+# 38b: CODEX_ROLE=refactor + git push → deny
+run_test_env "CODEX_ROLE=refactor git push blocked" "2" \
+    "$(mk 'git push origin main')" "CODEX_ROLE" "refactor"
+
+# 38c: CODEX_ROLE=refactor + ls → allow
+run_test_env "CODEX_ROLE=refactor ls allowed" "0" \
+    "$(mk 'ls -la /tmp')" "CODEX_ROLE" "refactor"
 
 echo ""
 echo "Results: $pass passed, $fail failed"

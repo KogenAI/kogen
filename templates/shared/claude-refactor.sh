@@ -5,15 +5,18 @@
 #   - which built-in subagents are denied (Plan, general-purpose, statusline-setup
 #     always; Explore allowed only under CLAUDE_ROLE=debug/shape/refactor)
 set -euo pipefail
+export CLAUDE_ROLE=refactor
+
 CODEGEN_DIR="${OCG_CODEGEN_DIR:-$HOME/Areas/Optimum/codegen}"
 export CODEGEN_DIR
 
 source "$CODEGEN_DIR/templates/shared/load-role.sh"
-load_role build
+load_role refactor
 
-cfg="${CODEGEN_DIR}/templates/generator/config.yaml"
-ROLE_MODEL=$(yq -r ".harness.build.claude.model" "$cfg")
-ROLE_EFFORT=$(yq -r ".harness.build.claude.effort" "$cfg")
+CONTEXT_FLAGS=()
+if [[ -f "./PROJECT_CONTEXT.md" ]]; then
+    CONTEXT_FLAGS+=(--append-system-prompt "$(cat ./PROJECT_CONTEXT.md)")
+fi
 
 TOOL_FLAGS=()
 if [ -n "$ROLE_TOOLS" ]; then
@@ -22,41 +25,52 @@ elif [ -n "$ROLE_DISALLOWED" ]; then
     TOOL_FLAGS+=(--disallowed-tools "$ROLE_DISALLOWED")
 fi
 
-# Basename resolver (permissive) against $PWD/codegen/pitches/ready/
+# Cold-start: no args → open conversation directly, model asks "What's the structural concern?"
+if [[ $# -eq 0 ]]; then
+    exec claude \
+        --model "$ROLE_MODEL" \
+        --effort "$ROLE_EFFORT" \
+        --dangerously-skip-permissions \
+        "${TOOL_FLAGS[@]+"${TOOL_FLAGS[@]}"}" \
+        --system-prompt "$ROLE_SYSTEM_PROMPT" \
+        "${CONTEXT_FLAGS[@]+"${CONTEXT_FLAGS[@]}"}"
+fi
+
+# Basename resolver (strict) against $PWD/codegen/pitches/draft/
 # 1. Contains / or ends in .md or contains space → pass through unchanged.
-# 2. codegen/pitches/ready/<arg>.md exists → @-mention it.
+# 2. codegen/pitches/draft/<arg>.md exists → @-mention it.
 # 3. Exactly one prefix match → @-mention it.
 # 4. Multiple prefix matches → error + list + exit 1.
-# 5. No match → pass through unchanged (preserves Elixir runner free-form-prompt path).
-PROMPT_PARTS=()
-READY_DIR="$PWD/codegen/pitches/ready"
+# 5. No match → error + exit 1.
+RESOLVED_ARGS=()
+DRAFT_DIR="$PWD/codegen/pitches/draft"
 for arg in "$@"; do
     if [[ "$arg" == */* ]] || [[ "$arg" == *.md ]] || [[ "$arg" == *" "* ]]; then
-        PROMPT_PARTS+=("$arg")
+        RESOLVED_ARGS+=("$arg")
         continue
     fi
-    if [[ -f "$READY_DIR/${arg}.md" ]]; then
-        PROMPT_PARTS+=("@codegen/pitches/ready/${arg}.md")
+    if [[ -f "$DRAFT_DIR/${arg}.md" ]]; then
+        RESOLVED_ARGS+=("@codegen/pitches/draft/${arg}.md")
         continue
     fi
     matches=()
-    if [[ -d "$READY_DIR" ]]; then
+    if [[ -d "$DRAFT_DIR" ]]; then
         while IFS= read -r -d '' f; do
             bn="$(basename "$f" .md)"
             if [[ "$bn" == "${arg}"* ]]; then
                 matches+=("$bn")
             fi
-        done < <(find "$READY_DIR" -maxdepth 1 -name "*.md" -print0 2>/dev/null)
+        done < <(find "$DRAFT_DIR" -maxdepth 1 -name "*.md" -print0 2>/dev/null)
     fi
     if [[ ${#matches[@]} -eq 1 ]]; then
-        PROMPT_PARTS+=("@codegen/pitches/ready/${matches[0]}.md")
+        RESOLVED_ARGS+=("@codegen/pitches/draft/${matches[0]}.md")
     elif [[ ${#matches[@]} -gt 1 ]]; then
-        printf 'claude-build: ambiguous basename %q; matches:\n' "$arg" >&2
+        printf 'claude-refactor: ambiguous basename %q; matches:\n' "$arg" >&2
         for m in "${matches[@]}"; do printf '  %s\n' "$m" >&2; done
         exit 1
     else
-        # Permissive: no match → pass through as literal prompt token
-        PROMPT_PARTS+=("$arg")
+        printf 'claude-refactor: no draft matching %q in codegen/pitches/draft/\n' "$arg" >&2
+        exit 1
     fi
 done
 
@@ -66,4 +80,5 @@ exec claude \
     --dangerously-skip-permissions \
     "${TOOL_FLAGS[@]+"${TOOL_FLAGS[@]}"}" \
     --system-prompt "$ROLE_SYSTEM_PROMPT" \
-    "${PROMPT_PARTS[@]+"${PROMPT_PARTS[@]}"}"
+    "${CONTEXT_FLAGS[@]+"${CONTEXT_FLAGS[@]}"}" \
+    "${RESOLVED_ARGS[@]+"${RESOLVED_ARGS[@]}"}"

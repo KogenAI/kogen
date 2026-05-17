@@ -42,23 +42,23 @@ mk_agent() {
 # 1: Explore allowed under debug
 run_test "debug + Explore allowed" "allow" "debug" "$(mk_agent 'Explore')"
 
-# 2: Explore allowed under design
-run_test "design + Explore allowed" "allow" "design" "$(mk_agent 'Explore')"
+# 2: Explore allowed under shape
+run_test "shape + Explore allowed" "allow" "shape" "$(mk_agent 'Explore')"
 
 # 3: general-purpose denied under debug
 run_test "debug + general-purpose denied" "deny" "debug" "$(mk_agent 'general-purpose')"
 
-# 4: Plan denied under design (we don't use Plan tool)
-run_test "design + Plan denied" "deny" "design" "$(mk_agent 'Plan')"
+# 4: Plan denied under shape (we don't use Plan tool)
+run_test "shape + Plan denied" "deny" "shape" "$(mk_agent 'Plan')"
 
 # 5: committer allowed under debug (project subagents are allowed everywhere)
 run_test "debug + committer allowed" "allow" "debug" "$(mk_agent 'committer')"
 
-# 6: developer-phoenix-backend allowed under design (project subagents allowed everywhere)
-run_test "design + developer-phoenix-backend allowed" "allow" "design" "$(mk_agent 'developer-phoenix-backend')"
+# 6: developer-phoenix-backend allowed under shape (project subagents allowed everywhere)
+run_test "shape + developer-phoenix-backend allowed" "allow" "shape" "$(mk_agent 'developer-phoenix-backend')"
 
-# 7: planner-phoenix allowed under design (project subagents allowed everywhere)
-run_test "design + planner-phoenix allowed" "allow" "design" "$(mk_agent 'planner-phoenix')"
+# 7: planner-phoenix allowed under shape (project subagents allowed everywhere)
+run_test "shape + planner-phoenix allowed" "allow" "shape" "$(mk_agent 'planner-phoenix')"
 
 # 8: reviewer-phoenix allowed under debug (project subagents allowed everywhere)
 run_test "debug + reviewer-phoenix allowed" "allow" "debug" "$(mk_agent 'reviewer-phoenix')"
@@ -99,15 +99,15 @@ else
     fail=$((fail + 1))
 fi
 
-# 13: unset + Explore denied (must mention claude-debug or claude-design in reason)
+# 13: unset + Explore denied (must mention claude-debug, claude-shape, or claude-refactor in reason)
 ORCHESTRATOR_EXPLORE2_INPUT='{"hook_event_name":"PreToolUse","tool_name":"Agent","tool_input":{"subagent_type":"Explore","description":"x","prompt":"y"},"agent_id":"","agent_type":""}'
 stdout_explore2=$(printf '%s' "$ORCHESTRATOR_EXPLORE2_INPUT" | bash "$GUARD" 2>/dev/null || true)
 if printf '%s' "$stdout_explore2" | grep -q '"permissionDecision"[[:space:]]*:[[:space:]]*"deny"'; then
-    if printf '%s' "$stdout_explore2" | grep -qE 'claude-debug|claude-design'; then
-        printf 'PASS: unset CLAUDE_ROLE + Explore denied with claude-debug/claude-design mention\n'
+    if printf '%s' "$stdout_explore2" | grep -qE 'claude-debug|claude-shape|claude-refactor'; then
+        printf 'PASS: unset CLAUDE_ROLE + Explore denied with claude-debug/claude-shape/claude-refactor mention\n'
         pass=$((pass + 1))
     else
-        printf 'FAIL: unset CLAUDE_ROLE + Explore denied but reason does not mention claude-debug or claude-design\n  stdout: %s\n' "$stdout_explore2"
+        printf 'FAIL: unset CLAUDE_ROLE + Explore denied but reason does not mention claude-debug, claude-shape, or claude-refactor\n  stdout: %s\n' "$stdout_explore2"
         fail=$((fail + 1))
     fi
 else
@@ -162,8 +162,14 @@ fi
 # 18: debug + Plan denied (explicit debug variant — test 4 covers design+Plan)
 run_test "debug + Plan denied" "deny" "debug" "$(mk_agent 'Plan')"
 
-# 19: design + general-purpose denied (explicit design variant — test 3 covers debug+general-purpose)
-run_test "design + general-purpose denied" "deny" "design" "$(mk_agent 'general-purpose')"
+# 19: shape + general-purpose denied (explicit shape variant — test 3 covers debug+general-purpose)
+run_test "shape + general-purpose denied" "deny" "shape" "$(mk_agent 'general-purpose')"
+
+# 19b: refactor + Explore allowed (refactor is investigation mode)
+run_test "refactor + Explore allowed" "allow" "refactor" "$(mk_agent 'Explore')"
+
+# 19c: refactor + Plan denied (built-in denied always)
+run_test "refactor + Plan denied" "deny" "refactor" "$(mk_agent 'Plan')"
 
 # PI_ROLE parity tests (via env var, no CLAUDE_ROLE set)
 
@@ -194,14 +200,20 @@ run_test_env() {
 # 20: PI_ROLE=debug + Explore allowed
 run_test_env "PI_ROLE=debug + Explore allowed" "allow" "PI_ROLE" "debug" "$(mk_agent 'Explore')"
 
-# 21: PI_ROLE=design + Explore allowed
-run_test_env "PI_ROLE=design + Explore allowed" "allow" "PI_ROLE" "design" "$(mk_agent 'Explore')"
+# 21: PI_ROLE=shape + Explore allowed
+run_test_env "PI_ROLE=shape + Explore allowed" "allow" "PI_ROLE" "shape" "$(mk_agent 'Explore')"
+
+# 21b: PI_ROLE=refactor + Explore allowed
+run_test_env "PI_ROLE=refactor + Explore allowed" "allow" "PI_ROLE" "refactor" "$(mk_agent 'Explore')"
 
 # 22: CODEX_ROLE=debug + Explore allowed
 run_test_env "CODEX_ROLE=debug + Explore allowed" "allow" "CODEX_ROLE" "debug" "$(mk_agent 'Explore')"
 
-# 23: CODEX_ROLE=design + Explore allowed
-run_test_env "CODEX_ROLE=design + Explore allowed" "allow" "CODEX_ROLE" "design" "$(mk_agent 'Explore')"
+# 23: CODEX_ROLE=shape + Explore allowed
+run_test_env "CODEX_ROLE=shape + Explore allowed" "allow" "CODEX_ROLE" "shape" "$(mk_agent 'Explore')"
+
+# 23b: CODEX_ROLE=refactor + Explore allowed
+run_test_env "CODEX_ROLE=refactor + Explore allowed" "allow" "CODEX_ROLE" "refactor" "$(mk_agent 'Explore')"
 
 echo ""
 echo "Results: $pass passed, $fail failed"

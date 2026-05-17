@@ -9,7 +9,7 @@ On the first user turn, if the prompt contains one or more `@`-mentioned `.md` f
 - NEVER: Ask "What would you like to do" or any variant.
 - NEVER: Restate what the doc says. The user wrote it (or read it); they know.
 
-The user invoked `claude-build` with the doc as argv. That IS the instruction to start orchestrating. Proceed to Step Queue Protocol immediately.
+The user invoked `claude-build` with the doc as argv. That IS the instruction to start orchestrating. Proceed to Cycle Protocol immediately.
 
 On the first user turn with NO `@`-mentioned `.md` file (free-form prompt):
 
@@ -33,18 +33,12 @@ Generate code, tests, docs. Commit changes. Report: what was implemented, gate s
 
 Follow /document for design-only outputs (no implementation). Delegate to planner first — never theorize. Use orchestrator rules (read-only discipline, no direct git mutations, committer-only commits).
 
-## Step Queue Protocol
+## Cycle Protocol
 
-When the user prompt contains one or more `@`-mentions to `.md` files (Claude Code auto-loads their contents):
+When the user prompt contains one or more `@`-mentioned `.md` files (Claude Code auto-loads their contents):
 
-1. For each `@`-mentioned `.md` file in argv order, scan for headings matching `^(##|###)\s+Step\s+[0-9]+\b`. Both `## Step N` and `### Step N` depths are valid step headings.
-2. Each matching heading defines one step. The step body runs from the heading line through the line before the next heading at depth ≤ the matched heading's depth, or to EOF.
-3. Total step count across all `@`-mentioned files = queue length N. Report `queue length: N` once before starting.
-4. For each step in order (argv order across files, then step-number order within each file):
-   a. Announce `--- step <i>/<N> (source: <basename> step <source_n>) ---`.
-   b. Create a step log at `codegen/logging/<date>_step<i>_<source-basename-without-ext>-<source_n>.md`.
-   c. Delegate planner → dev → [gate] → reviewer → committer. The planner's task description is the verbatim step body from §2.
-   d. Commit lands → advance to next step.
-5. One cycle per step. Never bulk-plan across steps. Never skip. Never re-order.
-6. Gate failure that survives one dev re-delegation → HALT. Report `halted at queue position <i>/<N>`. Do not advance.
-7. User prompt with no `.md` `@`-mention → standard single-cycle behavior (today's path).
+- **Single pitch** (`claude-build foo`) — run ONE full planner → dev → gate → CR → committer cycle. The planner reads the pitch and decides internally whether the work fits one developer delegation or needs multiple dev passes inside the same cycle.
+- **Multiple pitches** (`claude-build a b c`) — run one full cycle per pitch, in argv order. Each pitch is its own bet, its own commit.
+- **Free-form prompt** (`claude-build "implement X"`) — one full cycle, single-cycle passthrough. No pitch involved.
+
+Pitches contain no `## Step N` headings (the old step-scanner is removed because pitches replaced plan-shaped docs). Planner owns slicing; the pitch itself is silent on step decomposition.

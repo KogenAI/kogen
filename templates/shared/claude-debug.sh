@@ -3,7 +3,7 @@
 #   - what --tools actually controls (built-in tools, NOT subagents)
 #   - how the Agent tool is gated to only project subagents
 #   - which built-in subagents are denied (Plan, general-purpose, statusline-setup
-#     always; Explore allowed only under CLAUDE_ROLE=debug/design)
+#     always; Explore allowed only under CLAUDE_ROLE=debug/shape/refactor)
 set -euo pipefail
 export CLAUDE_ROLE=debug
 

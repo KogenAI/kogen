@@ -34,7 +34,4 @@ echo "Installing Pi prompts into $PROMPTS_DST..."
 content_stable_cp "$PROMPTS_SRC/document.md" "$PROMPTS_DST/document.md"
 echo "   Installed: $PROMPTS_DST/document.md"
 
-content_stable_cp "$PROMPTS_SRC/split.md" "$PROMPTS_DST/split.md"
-echo "   Installed: $PROMPTS_DST/split.md"
-
 echo "install-pi-prompts: OK"

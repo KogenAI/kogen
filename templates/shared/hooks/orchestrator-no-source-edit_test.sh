@@ -126,60 +126,68 @@ run_test_role() {
 FIXTURE_DEBUG_LIB='{"hook_event_name":"PreToolUse","tool_name":"Edit","tool_input":{"file_path":"lib/combobulate/foo.ex","old_string":"x","new_string":"y"},"agent_id":"","agent_type":""}'
 run_test_role "debug mode Edit on lib/ blocks" "2" "debug" "$FIXTURE_DEBUG_LIB"
 
-# Test 14: CLAUDE_ROLE=debug + Edit on codegen/logging/ — BLOCK (debug only writes to designs/)
+# Test 14: CLAUDE_ROLE=debug + Edit on codegen/logging/ — BLOCK (debug only writes to pitches/)
 FIXTURE_DEBUG_LOG='{"hook_event_name":"PreToolUse","tool_name":"Edit","tool_input":{"file_path":"codegen/logging/session.md","old_string":"x","new_string":"y"},"agent_id":"","agent_type":""}'
 run_test_role "debug mode Edit on codegen/logging/ blocks" "2" "debug" "$FIXTURE_DEBUG_LOG"
 
-# Test 15: CLAUDE_ROLE=debug + Write to codegen/designs/drafts/ — ALLOW
-FIXTURE_DEBUG_DRAFT='{"hook_event_name":"PreToolUse","tool_name":"Write","tool_input":{"file_path":"codegen/designs/drafts/foo.md","content":"x"},"agent_id":"","agent_type":""}'
-run_test_role "debug mode Write to drafts/ allows" "0" "debug" "$FIXTURE_DEBUG_DRAFT"
+# Test 15: CLAUDE_ROLE=debug + Write to codegen/pitches/draft/ — ALLOW
+FIXTURE_DEBUG_DRAFT='{"hook_event_name":"PreToolUse","tool_name":"Write","tool_input":{"file_path":"codegen/pitches/draft/foo.md","content":"x"},"agent_id":"","agent_type":""}'
+run_test_role "debug mode Write to pitches/draft/ allows" "0" "debug" "$FIXTURE_DEBUG_DRAFT"
 
-# Test 16: CLAUDE_ROLE=debug + Edit codegen/designs/ready/ — ALLOW (e.g. via /split)
-FIXTURE_DEBUG_READY='{"hook_event_name":"PreToolUse","tool_name":"Edit","tool_input":{"file_path":"codegen/designs/ready/foo.md","old_string":"x","new_string":"y"},"agent_id":"","agent_type":""}'
-run_test_role "debug mode Edit on ready/ allows" "0" "debug" "$FIXTURE_DEBUG_READY"
+# Test 16: CLAUDE_ROLE=debug + Edit codegen/pitches/ready/ — ALLOW
+FIXTURE_DEBUG_READY='{"hook_event_name":"PreToolUse","tool_name":"Edit","tool_input":{"file_path":"codegen/pitches/ready/foo.md","old_string":"x","new_string":"y"},"agent_id":"","agent_type":""}'
+run_test_role "debug mode Edit on pitches/ready/ allows" "0" "debug" "$FIXTURE_DEBUG_READY"
 
-# Test 17: CLAUDE_ROLE=design + Write to codegen/designs/drafts/ — ALLOW
-FIXTURE_DESIGN_DRAFT='{"hook_event_name":"PreToolUse","tool_name":"Write","tool_input":{"file_path":"codegen/designs/drafts/foo.md","content":"x"},"agent_id":"","agent_type":""}'
-run_test_role "design mode Write to drafts/ allows" "0" "design" "$FIXTURE_DESIGN_DRAFT"
+# Test 17: CLAUDE_ROLE=shape + Write to codegen/pitches/draft/ — ALLOW
+FIXTURE_SHAPE_DRAFT='{"hook_event_name":"PreToolUse","tool_name":"Write","tool_input":{"file_path":"codegen/pitches/draft/foo.md","content":"x"},"agent_id":"","agent_type":""}'
+run_test_role "shape mode Write to pitches/draft/ allows" "0" "shape" "$FIXTURE_SHAPE_DRAFT"
 
-# Test 18: CLAUDE_ROLE=design + Edit lib/ — BLOCK
-FIXTURE_DESIGN_LIB='{"hook_event_name":"PreToolUse","tool_name":"Edit","tool_input":{"file_path":"lib/combobulate/foo.ex","old_string":"x","new_string":"y"},"agent_id":"","agent_type":""}'
-run_test_role "design mode Edit on lib/ blocks" "2" "design" "$FIXTURE_DESIGN_LIB"
+# Test 18: CLAUDE_ROLE=shape + Edit lib/ — BLOCK
+FIXTURE_SHAPE_LIB='{"hook_event_name":"PreToolUse","tool_name":"Edit","tool_input":{"file_path":"lib/combobulate/foo.ex","old_string":"x","new_string":"y"},"agent_id":"","agent_type":""}'
+run_test_role "shape mode Edit on lib/ blocks" "2" "shape" "$FIXTURE_SHAPE_LIB"
 
-# Test 19: CLAUDE_ROLE=debug + subagent Edit on lib/ — BLOCK (subagent bypass disabled under debug/design)
+# Test 18b: CLAUDE_ROLE=refactor + Write to codegen/pitches/draft/ — ALLOW
+FIXTURE_REFACTOR_DRAFT='{"hook_event_name":"PreToolUse","tool_name":"Write","tool_input":{"file_path":"codegen/pitches/draft/foo.md","content":"x"},"agent_id":"","agent_type":""}'
+run_test_role "refactor mode Write to pitches/draft/ allows" "0" "refactor" "$FIXTURE_REFACTOR_DRAFT"
+
+# Test 18c: CLAUDE_ROLE=refactor + Edit lib/ — BLOCK
+FIXTURE_REFACTOR_LIB='{"hook_event_name":"PreToolUse","tool_name":"Edit","tool_input":{"file_path":"lib/combobulate/foo.ex","old_string":"x","new_string":"y"},"agent_id":"","agent_type":""}'
+run_test_role "refactor mode Edit on lib/ blocks" "2" "refactor" "$FIXTURE_REFACTOR_LIB"
+
+# Test 19: CLAUDE_ROLE=debug + subagent Edit on lib/ — BLOCK (subagent bypass disabled under debug/shape/refactor)
 FIXTURE_DEBUG_SUB_LIB='{"hook_event_name":"PreToolUse","tool_name":"Edit","tool_input":{"file_path":"lib/combobulate/foo.ex","old_string":"x","new_string":"y"},"agent_id":"abc123","agent_type":"general-purpose"}'
 run_test_role "debug mode subagent Edit on lib/ blocks" "2" "debug" "$FIXTURE_DEBUG_SUB_LIB"
 
-# Test 20: CLAUDE_ROLE=debug + subagent Write to drafts/ — ALLOW
-FIXTURE_DEBUG_SUB_DRAFT='{"hook_event_name":"PreToolUse","tool_name":"Write","tool_input":{"file_path":"codegen/designs/drafts/foo.md","content":"x"},"agent_id":"abc123","agent_type":"general-purpose"}'
-run_test_role "debug mode subagent Write to drafts/ allows" "0" "debug" "$FIXTURE_DEBUG_SUB_DRAFT"
+# Test 20: CLAUDE_ROLE=debug + subagent Write to pitches/draft/ — ALLOW
+FIXTURE_DEBUG_SUB_DRAFT='{"hook_event_name":"PreToolUse","tool_name":"Write","tool_input":{"file_path":"codegen/pitches/draft/foo.md","content":"x"},"agent_id":"abc123","agent_type":"general-purpose"}'
+run_test_role "debug mode subagent Write to pitches/draft/ allows" "0" "debug" "$FIXTURE_DEBUG_SUB_DRAFT"
 
-# Test 21: orchestrator (no role) Write to drafts/ — ALLOW (codegen/designs/ open to every session)
-FIXTURE_PLAIN_DRAFT='{"hook_event_name":"PreToolUse","tool_name":"Write","tool_input":{"file_path":"codegen/designs/drafts/foo.md","content":"x"},"agent_id":"","agent_type":""}'
-run_test "orchestrator (no role) Write to drafts/ allows" "0" "$FIXTURE_PLAIN_DRAFT"
+# Test 21: orchestrator (no role) Write to pitches/draft/ — ALLOW (codegen/pitches/ open to every session)
+FIXTURE_PLAIN_DRAFT='{"hook_event_name":"PreToolUse","tool_name":"Write","tool_input":{"file_path":"codegen/pitches/draft/foo.md","content":"x"},"agent_id":"","agent_type":""}'
+run_test "orchestrator (no role) Write to pitches/draft/ allows" "0" "$FIXTURE_PLAIN_DRAFT"
 
 # Test 22: no role + absolute /tmp/foo.txt — ALLOW
 FIXTURE_ABS_TMP='{"hook_event_name":"PreToolUse","tool_name":"Write","tool_input":{"file_path":"/tmp/scratch.txt","content":"x"},"agent_id":"","agent_type":""}'
 run_test "orchestrator (no role) Write to absolute /tmp/ allows" "0" "$FIXTURE_ABS_TMP"
 
-# Test 23: orchestrator (no role) Write to codegen/designs/ready/ — ALLOW
-FIXTURE_PLAIN_READY='{"hook_event_name":"PreToolUse","tool_name":"Write","tool_input":{"file_path":"codegen/designs/ready/foo.md","content":"x"},"agent_id":"","agent_type":""}'
-run_test "orchestrator (no role) Write to designs/ready/ allows" "0" "$FIXTURE_PLAIN_READY"
+# Test 23: orchestrator (no role) Write to codegen/pitches/ready/ — ALLOW
+FIXTURE_PLAIN_READY='{"hook_event_name":"PreToolUse","tool_name":"Write","tool_input":{"file_path":"codegen/pitches/ready/foo.md","content":"x"},"agent_id":"","agent_type":""}'
+run_test "orchestrator (no role) Write to pitches/ready/ allows" "0" "$FIXTURE_PLAIN_READY"
 
-# Test 24: orchestrator (no role) Write to codegen/designs/archive/ — ALLOW
-FIXTURE_PLAIN_ARCHIVE='{"hook_event_name":"PreToolUse","tool_name":"Write","tool_input":{"file_path":"codegen/designs/archive/foo.md","content":"x"},"agent_id":"","agent_type":""}'
-run_test "orchestrator (no role) Write to designs/archive/ allows" "0" "$FIXTURE_PLAIN_ARCHIVE"
+# Test 24: orchestrator (no role) Write to codegen/pitches/shipped/ — ALLOW
+FIXTURE_PLAIN_SHIPPED='{"hook_event_name":"PreToolUse","tool_name":"Write","tool_input":{"file_path":"codegen/pitches/shipped/foo.md","content":"x"},"agent_id":"","agent_type":""}'
+run_test "orchestrator (no role) Write to pitches/shipped/ allows" "0" "$FIXTURE_PLAIN_SHIPPED"
 
-# Test 25: orchestrator (no role) Write to absolute codegen/designs/ path under cwd — ALLOW
-CWD_DESIGNS="$(mktemp -d)"
-ABS_DESIGNS_PATH="${CWD_DESIGNS}/codegen/designs/drafts/foo.md"
-FIXTURE_ABS_DESIGNS='{"hook_event_name":"PreToolUse","tool_name":"Write","tool_input":{"file_path":"'"$ABS_DESIGNS_PATH"'","content":"x"},"agent_id":"","agent_type":"","cwd":"'"$CWD_DESIGNS"'"}'
-run_test "orchestrator (no role) Write to absolute codegen/designs/ path allows" "0" "$FIXTURE_ABS_DESIGNS"
-rm -rf "$CWD_DESIGNS"
+# Test 25: orchestrator (no role) Write to absolute codegen/pitches/ path under cwd — ALLOW
+CWD_PITCHES="$(mktemp -d)"
+ABS_PITCHES_PATH="${CWD_PITCHES}/codegen/pitches/draft/foo.md"
+FIXTURE_ABS_PITCHES='{"hook_event_name":"PreToolUse","tool_name":"Write","tool_input":{"file_path":"'"$ABS_PITCHES_PATH"'","content":"x"},"agent_id":"","agent_type":"","cwd":"'"$CWD_PITCHES"'"}'
+run_test "orchestrator (no role) Write to absolute codegen/pitches/ path allows" "0" "$FIXTURE_ABS_PITCHES"
+rm -rf "$CWD_PITCHES"
 
-# Test 26: orchestrator (no role) Write to /fake/codegen/designs/ — BLOCK (path-injection guard)
-FIXTURE_FAKE_DESIGNS='{"hook_event_name":"PreToolUse","tool_name":"Write","tool_input":{"file_path":"/fake/codegen/designs/foo.md","content":"x"},"agent_id":"","agent_type":""}'
-run_test "orchestrator Write on /fake/codegen/designs/ blocks" "2" "$FIXTURE_FAKE_DESIGNS"
+# Test 26: orchestrator (no role) Write to /fake/codegen/pitches/ — BLOCK (path-injection guard)
+FIXTURE_FAKE_PITCHES='{"hook_event_name":"PreToolUse","tool_name":"Write","tool_input":{"file_path":"/fake/codegen/pitches/foo.md","content":"x"},"agent_id":"","agent_type":""}'
+run_test "orchestrator Write on /fake/codegen/pitches/ blocks" "2" "$FIXTURE_FAKE_PITCHES"
 
 run_test_parity() {
     local desc="$1"
@@ -213,17 +221,21 @@ run_test_parity() {
 FIXTURE_PI_DEBUG_LIB='{"hook_event_name":"PreToolUse","tool_name":"Edit","tool_input":{"file_path":"lib/combobulate/foo.ex","old_string":"x","new_string":"y"},"agent_id":"","agent_type":""}'
 run_test_parity "PI_ROLE=debug Edit on lib/ blocks" "2" "PI_ROLE" "debug" "$FIXTURE_PI_DEBUG_LIB"
 
-# Test 28: PI_ROLE=debug + Write to codegen/designs/drafts/ — ALLOW
-FIXTURE_PI_DEBUG_DRAFT='{"hook_event_name":"PreToolUse","tool_name":"Write","tool_input":{"file_path":"codegen/designs/drafts/foo.md","content":"x"},"agent_id":"","agent_type":""}'
-run_test_parity "PI_ROLE=debug Write to drafts/ allows" "0" "PI_ROLE" "debug" "$FIXTURE_PI_DEBUG_DRAFT"
+# Test 28: PI_ROLE=debug + Write to codegen/pitches/draft/ — ALLOW
+FIXTURE_PI_DEBUG_DRAFT='{"hook_event_name":"PreToolUse","tool_name":"Write","tool_input":{"file_path":"codegen/pitches/draft/foo.md","content":"x"},"agent_id":"","agent_type":""}'
+run_test_parity "PI_ROLE=debug Write to pitches/draft/ allows" "0" "PI_ROLE" "debug" "$FIXTURE_PI_DEBUG_DRAFT"
 
-# Test 29: PI_ROLE=design + Edit lib/ — BLOCK
-FIXTURE_PI_DESIGN_LIB='{"hook_event_name":"PreToolUse","tool_name":"Edit","tool_input":{"file_path":"lib/combobulate/foo.ex","old_string":"x","new_string":"y"},"agent_id":"","agent_type":""}'
-run_test_parity "PI_ROLE=design Edit on lib/ blocks" "2" "PI_ROLE" "design" "$FIXTURE_PI_DESIGN_LIB"
+# Test 29: PI_ROLE=shape + Edit lib/ — BLOCK
+FIXTURE_PI_SHAPE_LIB='{"hook_event_name":"PreToolUse","tool_name":"Edit","tool_input":{"file_path":"lib/combobulate/foo.ex","old_string":"x","new_string":"y"},"agent_id":"","agent_type":""}'
+run_test_parity "PI_ROLE=shape Edit on lib/ blocks" "2" "PI_ROLE" "shape" "$FIXTURE_PI_SHAPE_LIB"
 
-# Test 30: PI_ROLE=design + Write to codegen/designs/drafts/ — ALLOW
-FIXTURE_PI_DESIGN_DRAFT='{"hook_event_name":"PreToolUse","tool_name":"Write","tool_input":{"file_path":"codegen/designs/drafts/foo.md","content":"x"},"agent_id":"","agent_type":""}'
-run_test_parity "PI_ROLE=design Write to drafts/ allows" "0" "PI_ROLE" "design" "$FIXTURE_PI_DESIGN_DRAFT"
+# Test 30: PI_ROLE=shape + Write to codegen/pitches/draft/ — ALLOW
+FIXTURE_PI_SHAPE_DRAFT='{"hook_event_name":"PreToolUse","tool_name":"Write","tool_input":{"file_path":"codegen/pitches/draft/foo.md","content":"x"},"agent_id":"","agent_type":""}'
+run_test_parity "PI_ROLE=shape Write to pitches/draft/ allows" "0" "PI_ROLE" "shape" "$FIXTURE_PI_SHAPE_DRAFT"
+
+# Test 30b: PI_ROLE=refactor + Write to codegen/pitches/draft/ — ALLOW
+FIXTURE_PI_REFACTOR_DRAFT='{"hook_event_name":"PreToolUse","tool_name":"Write","tool_input":{"file_path":"codegen/pitches/draft/foo.md","content":"x"},"agent_id":"","agent_type":""}'
+run_test_parity "PI_ROLE=refactor Write to pitches/draft/ allows" "0" "PI_ROLE" "refactor" "$FIXTURE_PI_REFACTOR_DRAFT"
 
 # CODEX_ROLE parity tests
 
@@ -231,17 +243,25 @@ run_test_parity "PI_ROLE=design Write to drafts/ allows" "0" "PI_ROLE" "design" 
 FIXTURE_CODEX_DEBUG_LIB='{"hook_event_name":"PreToolUse","tool_name":"Edit","tool_input":{"file_path":"lib/combobulate/foo.ex","old_string":"x","new_string":"y"},"agent_id":"","agent_type":""}'
 run_test_parity "CODEX_ROLE=debug Edit on lib/ blocks" "2" "CODEX_ROLE" "debug" "$FIXTURE_CODEX_DEBUG_LIB"
 
-# Test 32: CODEX_ROLE=debug + Write to codegen/designs/drafts/ — ALLOW
-FIXTURE_CODEX_DEBUG_DRAFT='{"hook_event_name":"PreToolUse","tool_name":"Write","tool_input":{"file_path":"codegen/designs/drafts/foo.md","content":"x"},"agent_id":"","agent_type":""}'
-run_test_parity "CODEX_ROLE=debug Write to drafts/ allows" "0" "CODEX_ROLE" "debug" "$FIXTURE_CODEX_DEBUG_DRAFT"
+# Test 32: CODEX_ROLE=debug + Write to codegen/pitches/draft/ — ALLOW
+FIXTURE_CODEX_DEBUG_DRAFT='{"hook_event_name":"PreToolUse","tool_name":"Write","tool_input":{"file_path":"codegen/pitches/draft/foo.md","content":"x"},"agent_id":"","agent_type":""}'
+run_test_parity "CODEX_ROLE=debug Write to pitches/draft/ allows" "0" "CODEX_ROLE" "debug" "$FIXTURE_CODEX_DEBUG_DRAFT"
 
-# Test 33: CODEX_ROLE=design + Edit lib/ — BLOCK
-FIXTURE_CODEX_DESIGN_LIB='{"hook_event_name":"PreToolUse","tool_name":"Edit","tool_input":{"file_path":"lib/combobulate/foo.ex","old_string":"x","new_string":"y"},"agent_id":"","agent_type":""}'
-run_test_parity "CODEX_ROLE=design Edit on lib/ blocks" "2" "CODEX_ROLE" "design" "$FIXTURE_CODEX_DESIGN_LIB"
+# Test 33: CODEX_ROLE=shape + Edit lib/ — BLOCK
+FIXTURE_CODEX_SHAPE_LIB='{"hook_event_name":"PreToolUse","tool_name":"Edit","tool_input":{"file_path":"lib/combobulate/foo.ex","old_string":"x","new_string":"y"},"agent_id":"","agent_type":""}'
+run_test_parity "CODEX_ROLE=shape Edit on lib/ blocks" "2" "CODEX_ROLE" "shape" "$FIXTURE_CODEX_SHAPE_LIB"
 
-# Test 34: CODEX_ROLE=design + Write to codegen/designs/drafts/ — ALLOW
-FIXTURE_CODEX_DESIGN_DRAFT='{"hook_event_name":"PreToolUse","tool_name":"Write","tool_input":{"file_path":"codegen/designs/drafts/foo.md","content":"x"},"agent_id":"","agent_type":""}'
-run_test_parity "CODEX_ROLE=design Write to drafts/ allows" "0" "CODEX_ROLE" "design" "$FIXTURE_CODEX_DESIGN_DRAFT"
+# Test 34: CODEX_ROLE=shape + Write to codegen/pitches/draft/ — ALLOW
+FIXTURE_CODEX_SHAPE_DRAFT='{"hook_event_name":"PreToolUse","tool_name":"Write","tool_input":{"file_path":"codegen/pitches/draft/foo.md","content":"x"},"agent_id":"","agent_type":""}'
+run_test_parity "CODEX_ROLE=shape Write to pitches/draft/ allows" "0" "CODEX_ROLE" "shape" "$FIXTURE_CODEX_SHAPE_DRAFT"
+
+# Test 34b: CODEX_ROLE=refactor + Edit lib/ — BLOCK
+FIXTURE_CODEX_REFACTOR_LIB='{"hook_event_name":"PreToolUse","tool_name":"Edit","tool_input":{"file_path":"lib/combobulate/foo.ex","old_string":"x","new_string":"y"},"agent_id":"","agent_type":""}'
+run_test_parity "CODEX_ROLE=refactor Edit on lib/ blocks" "2" "CODEX_ROLE" "refactor" "$FIXTURE_CODEX_REFACTOR_LIB"
+
+# Test 34c: CODEX_ROLE=refactor + Write to codegen/pitches/draft/ — ALLOW
+FIXTURE_CODEX_REFACTOR_DRAFT='{"hook_event_name":"PreToolUse","tool_name":"Write","tool_input":{"file_path":"codegen/pitches/draft/foo.md","content":"x"},"agent_id":"","agent_type":""}'
+run_test_parity "CODEX_ROLE=refactor Write to pitches/draft/ allows" "0" "CODEX_ROLE" "refactor" "$FIXTURE_CODEX_REFACTOR_DRAFT"
 
 # Precedence tests
 

@@ -17,12 +17,12 @@
 #   - codegen/rules/stacks/phoenix/_core.md, codegen/rules/stacks/phoenix/orchestrator.md (Phoenix orchestrator rules)
 #   - codegen/rules/INDEX.md, codegen/rules/STYLE_GUIDE.md
 #   - codegen/*.md (top-level design docs — NOT subdirs like recipes/, templates/, rules/)
-#   - codegen/designs/** (design-doc lifecycle dirs — drafts/, ready/, archive/; matches the write-hook surface so /document can read its own drafts)
+#   - codegen/pitches/** (pitch lifecycle dirs — draft/, ready/, shipped/; matches the write-hook surface so /document can read its own drafts)
 #
 # Subagents (non-empty agent_id) are always allowed through.
 #
 # Responds to CLAUDE_ROLE (Claude Code), PI_ROLE (PI harness), and CODEX_ROLE
-# (Codex) via resolve_role() for the debug/design bypass — precedence: CLAUDE_ROLE > PI_ROLE > CODEX_ROLE.
+# (Codex) via resolve_role() for the debug/shape/refactor bypass — precedence: CLAUDE_ROLE > PI_ROLE > CODEX_ROLE.
 # Primary signal is AGENT_TYPE (set by Claude Code on subagent spawn); role check is secondary.
 
 set -u
@@ -33,9 +33,9 @@ parse_input
 
 debug_log orchestrator-read-discipline "tool=$TOOL_NAME agent_id=$AGENT_ID agent_type=$AGENT_TYPE"
 
-# Debug and design modes bypass read discipline — investigation and design sessions need full access.
+# Debug, shape, and refactor modes bypass read discipline — investigation and shaping sessions need full access.
 _role=$(resolve_role)
-if [ "$_role" = "debug" ] || [ "$_role" = "design" ]; then
+if [ "$_role" = "debug" ] || [ "$_role" = "shape" ] || [ "$_role" = "refactor" ]; then
     exit 0
 fi
 
@@ -92,9 +92,9 @@ if printf '%s' "$rel_path" | grep -qE '^codegen/[^/]+\.md$'; then
     exit 0
 fi
 
-# Allowlist check 4: codegen/designs/ (drafts/ready/archive) — matches the
+# Allowlist check 4: codegen/pitches/ (draft/ready/shipped) — matches the
 # write-hook surface so /document can re-read its own drafts from any session.
-if printf '%s' "$rel_path" | grep -qE '^codegen/designs/'; then
+if printf '%s' "$rel_path" | grep -qE '^codegen/pitches/'; then
     exit 0
 fi
 

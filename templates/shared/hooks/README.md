@@ -58,7 +58,7 @@ Typical firing order for common roles:
 
 | Role         | Bash writes           | File writes                               | Git       | Notes                       |
 | ------------ | --------------------- | ----------------------------------------- | --------- | --------------------------- |
-| Orchestrator | mkdir/log only        | codegen/logging/, codegen/designs/, /tmp/ | read-only | no source edits             |
+| Orchestrator | mkdir/log only        | codegen/logging/, codegen/pitches/, /tmp/ | read-only | no source edits             |
 | Developer    | any (no `make ci`)    | any                                       | read-only | no CI gates                 |
 | Planner      | read-only + /tmp/     | codegen/logging/ only                     | read-only | investigation only          |
 | Inspector    | none                  | none                                      | read-only | read-only investigation     |
@@ -71,7 +71,7 @@ Typical firing order for common roles:
 
 ### Blocking hooks (deny on violation)
 
-- **`orchestrator-no-source-edit`** — Restricts orchestrator writes per launcher. Plain orchestrator (no `CLAUDE_ROLE`, also covers `claude-build`) writes allowed under `codegen/logging/`, `codegen/designs/`, and absolute `/tmp/`. `claude-debug` / `claude-design` (`CLAUDE_ROLE=debug|design`) writes scoped to `codegen/designs/` only — for both the orchestrator and Agent-spawned helpers. Subagents under plain orchestrator bypass the hook.
+- **`orchestrator-no-source-edit`** — Restricts orchestrator writes per launcher. Plain orchestrator (no `CLAUDE_ROLE`, also covers `claude-build`) writes allowed under `codegen/logging/`, `codegen/pitches/`, and absolute `/tmp/`. `claude-debug` / `claude-shape` / `claude-refactor` (`CLAUDE_ROLE=debug|shape|refactor`) writes scoped to `codegen/pitches/` only — for both the orchestrator and Agent-spawned helpers. Subagents under plain orchestrator bypass the hook.
 - **`claude-inspector-bash-guard`** — Blocks filesystem mutations, git writes, SQL mutations, path traversal (`../`), and redirect writes for inspector agents. Other agent types pass through.
 - **`codex-inspector-bash-guard`** — Same as above for Codex environments.
 - **`build-worker-cwd-guard`** — In user-app context (combobulate apps_root), prevents orchestrator from reading/writing outside the user app directory.

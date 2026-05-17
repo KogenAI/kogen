@@ -501,19 +501,32 @@ if harness_enabled claude; then
         echo "   🗑️  Removed legacy claude-build alias from $RC_FILE"
     fi
 
-    # Install claude-design wrapper
-    echo ""
-    echo "🚀 Installing claude-design wrapper..."
-
-    content_stable_cp "$CODEGEN_DIR/templates/shared/claude-design.sh" "$INSTALL_DIR/claude-design"
-    chmod +x "$INSTALL_DIR/claude-design"
-    echo "   ✅ claude-design wrapper installed at: $INSTALL_DIR/claude-design"
-
+    # Remove legacy claude-design binary (idempotent)
+    if [ -f "$INSTALL_DIR/claude-design" ]; then
+        rm -f "$INSTALL_DIR/claude-design"
+        echo "   Removed legacy: $INSTALL_DIR/claude-design"
+    fi
     # De-register legacy alias from rc file (idempotent)
     if grep -q "alias claude-design=" "$RC_FILE" 2>/dev/null; then
         sed -i '' '/^# Optimum Codegen claude-design alias$/d; /^alias claude-design=/d' "$RC_FILE"
         echo "   🗑️  Removed legacy claude-design alias from $RC_FILE"
     fi
+
+    # Install claude-shape wrapper
+    echo ""
+    echo "🚀 Installing claude-shape wrapper..."
+
+    content_stable_cp "$CODEGEN_DIR/templates/shared/claude-shape.sh" "$INSTALL_DIR/claude-shape"
+    chmod +x "$INSTALL_DIR/claude-shape"
+    echo "   ✅ claude-shape wrapper installed at: $INSTALL_DIR/claude-shape"
+
+    # Install claude-refactor wrapper
+    echo ""
+    echo "🚀 Installing claude-refactor wrapper..."
+
+    content_stable_cp "$CODEGEN_DIR/templates/shared/claude-refactor.sh" "$INSTALL_DIR/claude-refactor"
+    chmod +x "$INSTALL_DIR/claude-refactor"
+    echo "   ✅ claude-refactor wrapper installed at: $INSTALL_DIR/claude-refactor"
 
     # Install claude-debug wrapper
     echo ""

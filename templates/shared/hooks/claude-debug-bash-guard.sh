@@ -9,11 +9,11 @@
 # signal: CLAUDE_ROLE_FAMILY
 # role: *
 #
-# Active when the active role (via resolve_role) is `debug` or `design`.
+# Active when the active role (via resolve_role) is `debug`, `shape`, or `refactor`.
 # Responds to CLAUDE_ROLE (Claude Code), PI_ROLE (PI harness), and CODEX_ROLE
 # (Codex) — precedence: CLAUDE_ROLE > PI_ROLE > CODEX_ROLE.
-# Both debug and design are investigation/design-doc-authoring sessions —
-# their only legitimate write surface is codegen/designs/ (enforced by
+# debug, shape, and refactor are investigation/shaping sessions —
+# their only legitimate write surface is codegen/pitches/ (enforced by
 # orchestrator-no-source-edit.sh). Destructive Bash in these contexts is
 # almost always accidental — especially via Agent-spawned subagents.
 #
@@ -37,8 +37,8 @@ if [ "$TOOL_NAME" != "Bash" ]; then
     exit 0
 fi
 
-# Only active in debug or design sessions.
-if [ "${role}" != "debug" ] && [ "${role}" != "design" ]; then
+# Only active in debug, shape, or refactor sessions.
+if [ "${role}" != "debug" ] && [ "${role}" != "shape" ] && [ "${role}" != "refactor" ]; then
     exit 0
 fi
 

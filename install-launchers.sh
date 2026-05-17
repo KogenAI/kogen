@@ -34,19 +34,48 @@ install_launcher() {
 
 echo "Installing launchers into $INSTALL_DIR..."
 
-# Claude trio
+# Remove legacy design binaries (idempotent)
+for legacy in claude-design codex-design pi-design; do
+    [ -f "$INSTALL_DIR/$legacy" ] && rm -f "$INSTALL_DIR/$legacy" && echo "   Removed legacy: $INSTALL_DIR/$legacy" || true
+done
+
+# Claude launchers
 install_launcher "$CODEGEN_DIR/templates/shared/claude-build.sh" "claude-build"
 install_launcher "$CODEGEN_DIR/templates/shared/claude-debug.sh" "claude-debug"
-install_launcher "$CODEGEN_DIR/templates/shared/claude-design.sh" "claude-design"
+install_launcher "$CODEGEN_DIR/templates/shared/claude-shape.sh" "claude-shape"
+install_launcher "$CODEGEN_DIR/templates/shared/claude-refactor.sh" "claude-refactor"
 
-# Codex trio
+# Codex launchers
 install_launcher "$CODEGEN_DIR/templates/shared/codex-build.sh" "codex-build"
 install_launcher "$CODEGEN_DIR/templates/shared/codex-inspector.sh" "codex-inspector"
-install_launcher "$CODEGEN_DIR/templates/shared/codex-design.sh" "codex-design"
+install_launcher "$CODEGEN_DIR/templates/shared/codex-shape.sh" "codex-shape"
+install_launcher "$CODEGEN_DIR/templates/shared/codex-refactor.sh" "codex-refactor"
 
-# Pi trio
+# Pi launchers
 install_launcher "$CODEGEN_DIR/templates/shared/pi-build.sh" "pi-build"
 install_launcher "$CODEGEN_DIR/templates/shared/pi-inspector.sh" "pi-inspector"
-install_launcher "$CODEGEN_DIR/templates/shared/pi-design.sh" "pi-design"
+install_launcher "$CODEGEN_DIR/templates/shared/pi-shape.sh" "pi-shape"
+install_launcher "$CODEGEN_DIR/templates/shared/pi-refactor.sh" "pi-refactor"
+
+# zsh completion files
+ZSH_COMPLETION_DIRS=(
+    "/opt/homebrew/share/zsh/site-functions"
+    "$HOME/.zsh/completions"
+)
+ZSH_COMPLETION_DST=""
+for d in "${ZSH_COMPLETION_DIRS[@]}"; do
+    if [ -d "$d" ] && [ -w "$d" ]; then
+        ZSH_COMPLETION_DST="$d"
+        break
+    fi
+done
+if [ -n "$ZSH_COMPLETION_DST" ]; then
+    for comp in _claude-shape _claude-refactor _claude-build; do
+        content_stable_cp "$CODEGEN_DIR/templates/shared/$comp" "$ZSH_COMPLETION_DST/$comp"
+        echo "   Installed zsh completion: $ZSH_COMPLETION_DST/$comp"
+    done
+else
+    echo "WARNING: no writable zsh completion dir found (tried ${ZSH_COMPLETION_DIRS[*]}); skipping completion install" >&2
+fi
 
 echo "install-launchers: OK"

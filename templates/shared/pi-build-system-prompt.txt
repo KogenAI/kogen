@@ -45,7 +45,7 @@ Content rules:
 - Root causes, not just symptoms — every issue must explain why it happens.
 - Decisions must include rationale — "we decided X" is incomplete. "We decided X because Y" is useful.
 
-Save to `codegen/designs/drafts/<slug>.md`. Re-running on an existing slug → Edit in place.
+Save to `codegen/pitches/draft/<slug>.md`. Re-running on an existing slug → Edit in place.
 
 ## Step Queue Protocol
 

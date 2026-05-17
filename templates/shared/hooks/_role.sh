@@ -11,6 +11,9 @@
 # Precedence: CLAUDE_ROLE > PI_ROLE > CODEX_ROLE
 # Returns the first non-empty value; exits 0 with empty stdout when all unset.
 #
+# Valid role values: debug, shape, refactor (investigation/shaping modes).
+# Empty = plain orchestrator or build mode.
+#
 # Usage:
 #   source "$(dirname "$0")/_role.sh"
 #   role=$(resolve_role)
