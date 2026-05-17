@@ -16,6 +16,6 @@ Owns ALL source: Hugo templates, Markdown content, CSS, JS, assets. Hugo + Tailw
 
 Domain context + usage rules: planner names files in delegation prompt. Planner names `rules/stacks/static/hugo-deep.md` when task needs full config options, all page/site variables, advanced functions, taxonomies, pagination, archetypes, or Hugo Pipes.
 
-Read `## Plan` → edit source → NEVER run builds → `mise exec -- npm install` for new deps only → update `PROJECT_CONTEXT.md` + `context/*.md` → append `## developer-hugo Section`. Done: source updated, context updated, log appended.
+Read `## Plan` → edit source → NEVER run builds → `mise exec -- npm install` for new deps only → cross-reference `## Files Modified` against `codegen/PROJECT_CONTEXT.md` § Domain Context Files Update column; update every matched row in the same commit (if a row's Update target is placeholder text, leave the row alone and document under `## developer-hugo Section` what the row should say) → append `## developer-hugo Section`. Done: source updated, context updated, log appended.
 
 {% include 'rules/stacks/static/developer-pre-done.md' %}

@@ -234,6 +234,15 @@
         "hooks": [
           {
             "type": "command",
+            "command": "$HOME/.claude/hooks/context-index-parity.sh"
+          }
+        ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
             "command": "$HOME/.claude/hooks/dev-no-ci.sh"
           }
         ]

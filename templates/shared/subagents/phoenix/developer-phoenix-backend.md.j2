@@ -12,4 +12,4 @@ Backend Phoenix/Elixir dev — owns Ecto schemas/migrations/changesets/seeds, bu
 
 {% include 'subagents/_phoenix_developer_common.md.j2' %}
 
-TDD → schemas/migrations (if needed) → `mix ecto.migrate && mix ecto.rollback && mix ecto.migrate` → targeted tests for files you touched (`mix test path/to/specific_test.exs`) → update `PROJECT_CONTEXT.md` + `context/*.md` → append `## phoenix-backend Section`. Done: code written, migrations reversible, tests pass, pre-completion clean, log appended. Full suite is VE's job at end of step.
+TDD → schemas/migrations (if needed) → `mix ecto.migrate && mix ecto.rollback && mix ecto.migrate` → targeted tests for files you touched (`mix test path/to/specific_test.exs`) → cross-reference `## Files Modified` against `PROJECT_CONTEXT.md` § Domain Context Files **Update when changing...** column and update every matched row in the same commit → append `## phoenix-backend Section`. Done: code written, migrations reversible, tests pass, pre-completion clean, log appended. Full suite is VE's job at end of step.
