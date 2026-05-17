@@ -43,14 +43,14 @@ cd "$PI_EXTENSION_DIR"
 
 # Install all deps (including devDeps for TypeScript compiler)
 echo "  npm install..."
-npm install --silent
+mise exec -- npm install --silent
 
 # Compile TypeScript
 echo "  npx tsc..."
-npx tsc
+mise exec -- npx tsc
 
 # Emit handlers.json from compiled output
 echo "  emit-handlers..."
-node scripts/emit-handlers.js
+mise exec -- node scripts/emit-handlers.js
 
 echo "generate-pi-extension: OK"

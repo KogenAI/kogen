@@ -258,7 +258,7 @@ install: hook-parity
 test:
 	$(call check_make_only,test)
 	@./templates/shared/hooks/run-tests.sh
-	@cd "$(PI_EXTENSION_DIR)" && npm test
+	@cd "$(PI_EXTENSION_DIR)" && mise exec -- npm test
 
 # rule-parity: re-render AGENTS-HYBRID.md.j2 in both modes to temp files and
 # diff against committed AGENTS.md / CLAUDE.md. Exits non-zero on drift.
