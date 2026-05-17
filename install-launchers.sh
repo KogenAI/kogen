@@ -35,18 +35,18 @@ install_launcher() {
 echo "Installing launchers into $INSTALL_DIR..."
 
 # Claude trio
-install_launcher "$CODEGEN_DIR/templates/shared/claude-build.sh"  "claude-build"
-install_launcher "$CODEGEN_DIR/templates/shared/claude-debug.sh"  "claude-debug"
+install_launcher "$CODEGEN_DIR/templates/shared/claude-build.sh" "claude-build"
+install_launcher "$CODEGEN_DIR/templates/shared/claude-debug.sh" "claude-debug"
 install_launcher "$CODEGEN_DIR/templates/shared/claude-design.sh" "claude-design"
 
 # Codex trio
-install_launcher "$CODEGEN_DIR/templates/shared/codex-build.sh"     "codex-build"
+install_launcher "$CODEGEN_DIR/templates/shared/codex-build.sh" "codex-build"
 install_launcher "$CODEGEN_DIR/templates/shared/codex-inspector.sh" "codex-inspector"
-install_launcher "$CODEGEN_DIR/templates/shared/codex-design.sh"    "codex-design"
+install_launcher "$CODEGEN_DIR/templates/shared/codex-design.sh" "codex-design"
 
 # Pi trio
-install_launcher "$CODEGEN_DIR/templates/shared/pi-build.sh"     "pi-build"
+install_launcher "$CODEGEN_DIR/templates/shared/pi-build.sh" "pi-build"
 install_launcher "$CODEGEN_DIR/templates/shared/pi-inspector.sh" "pi-inspector"
-install_launcher "$CODEGEN_DIR/templates/shared/pi-design.sh"    "pi-design"
+install_launcher "$CODEGEN_DIR/templates/shared/pi-design.sh" "pi-design"
 
 echo "install-launchers: OK"

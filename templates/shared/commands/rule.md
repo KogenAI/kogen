@@ -31,6 +31,7 @@ After drafting: `echo "your section" | wc -l`. Section > 10 lines → compress. 
 4. **`PROJECT_CONTEXT.md` / `CLAUDE.md`** — short operational facts, gate commands, port numbers.
 
 Ask BEFORE placing:
+
 - "Does a different project's planner/dev need this?" No → stay in `./context/`.
 - "Which agent READS the target file?" Rule audience must match. ❌ Test-assertion guidance in `vite.md` (read by UI dev). ❌ Hook internals in `orchestrator.md`.
 - "Is `make <target>` project-specific?" Yes → `./context/ci.md`, not shared rules.

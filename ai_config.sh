@@ -82,7 +82,6 @@ show_status() {
         echo "  Installed: ❌"
     fi
 
-
 }
 
 # Main command handling

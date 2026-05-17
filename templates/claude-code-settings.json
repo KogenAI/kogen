@@ -91,17 +91,10 @@
       "WebSearch",
       "Write"
     ],
-    "deny": [
-      "Bash(fly:*)",
-      "Bash(flyctl:*)",
-      "Bash(sudo:*)"
-    ]
+    "deny": ["Bash(fly:*)", "Bash(flyctl:*)", "Bash(sudo:*)"]
   },
   "enabledMcpjsonServers": [],
-  "disabledMcpjsonServers": [
-    "tidewave",
-    "claude-in-chrome"
-  ],
+  "disabledMcpjsonServers": ["tidewave", "claude-in-chrome"],
   "hooks": {
     "PostToolUse": [
       {

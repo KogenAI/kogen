@@ -77,10 +77,10 @@ fi
 
 # Find context/*.md files that are Added or Deleted in the staged index.
 # Filter: only direct children of context/ — no subdirectory traversal.
-orphan_files=$(git -C "$repo_root" diff --cached --name-status 2>/dev/null \
-    | grep -E '^[AD][[:space:]]+context/[^/]+\.md$' \
-    | awk '{print $2}' \
-    || true)
+orphan_files=$(git -C "$repo_root" diff --cached --name-status 2>/dev/null |
+    grep -E '^[AD][[:space:]]+context/[^/]+\.md$' |
+    awk '{print $2}' ||
+    true)
 
 # No orphan adds/deletes → allow.
 if [ -z "$orphan_files" ]; then

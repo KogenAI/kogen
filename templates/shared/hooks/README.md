@@ -33,11 +33,11 @@ Typical firing order for common roles:
 
 ### Inspector (`agent_type=inspector` / `inspector-phoenix` / `codex-inspector`)
 
-| Event          | Hooks that fire                                                                                        |
-| -------------- | ------------------------------------------------------------------------------------------------------ |
-| `Bash`         | `claude-inspector-bash-guard` (Claude Code), `codex-inspector-bash-guard` (Codex)                     |
-| `Edit`/`Write` | `claude-inspector-write-guard`, `codex-inspector-write-guard`                                          |
-| `Read`         | `claude-inspector-read-guard`, `codex-inspector-read-guard`                                            |
+| Event          | Hooks that fire                                                                   |
+| -------------- | --------------------------------------------------------------------------------- |
+| `Bash`         | `claude-inspector-bash-guard` (Claude Code), `codex-inspector-bash-guard` (Codex) |
+| `Edit`/`Write` | `claude-inspector-write-guard`, `codex-inspector-write-guard`                     |
+| `Read`         | `claude-inspector-read-guard`, `codex-inspector-read-guard`                       |
 
 ### Committer (`agent_type=committer`)
 
@@ -47,23 +47,23 @@ Typical firing order for common roles:
 
 ### Debug (`CLAUDE_ROLE=debug`)
 
-| Event          | Hooks that fire                                              |
-| -------------- | ------------------------------------------------------------ |
-| `Bash`         | `claude-debug-bash-guard`                                    |
-| `Edit`/`Write` | `orchestrator-no-source-edit` (deny — debug is read-only)    |
+| Event          | Hooks that fire                                           |
+| -------------- | --------------------------------------------------------- |
+| `Bash`         | `claude-debug-bash-guard`                                 |
+| `Edit`/`Write` | `orchestrator-no-source-edit` (deny — debug is read-only) |
 
 ---
 
 ## Policy Summary
 
-| Role         | Bash writes           | File writes            | Git       | Notes                       |
-| ------------ | --------------------- | ---------------------- | --------- | --------------------------- |
+| Role         | Bash writes           | File writes                               | Git       | Notes                       |
+| ------------ | --------------------- | ----------------------------------------- | --------- | --------------------------- |
 | Orchestrator | mkdir/log only        | codegen/logging/, codegen/designs/, /tmp/ | read-only | no source edits             |
-| Developer    | any (no `make ci`)    | any                    | read-only | no CI gates                 |
-| Planner      | read-only + /tmp/     | codegen/logging/ only  | read-only | investigation only          |
-| Inspector    | none                  | none                   | read-only | read-only investigation     |
-| Committer    | `git commit/add/push` | none                   | write     | subject ≤50B                |
-| Debug        | none (read-only)      | none                   | read-only | investigation, no mutations |
+| Developer    | any (no `make ci`)    | any                                       | read-only | no CI gates                 |
+| Planner      | read-only + /tmp/     | codegen/logging/ only                     | read-only | investigation only          |
+| Inspector    | none                  | none                                      | read-only | read-only investigation     |
+| Committer    | `git commit/add/push` | none                                      | write     | subject ≤50B                |
+| Debug        | none (read-only)      | none                                      | read-only | investigation, no mutations |
 
 ---
 

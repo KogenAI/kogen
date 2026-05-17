@@ -25,11 +25,11 @@ fi
 # Transform .md args to @-mentions for auto-load
 PROMPT_PARTS=()
 for arg in "$@"; do
-  if [[ "$arg" == *.md ]]; then
-    PROMPT_PARTS+=("@$arg")
-  else
-    PROMPT_PARTS+=("$arg")
-  fi
+    if [[ "$arg" == *.md ]]; then
+        PROMPT_PARTS+=("@$arg")
+    else
+        PROMPT_PARTS+=("$arg")
+    fi
 done
 
 exec claude \

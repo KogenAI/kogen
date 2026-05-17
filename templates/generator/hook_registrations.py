@@ -37,6 +37,28 @@ import re
 import sys
 from pathlib import Path
 
+
+def dumps_compact(obj, indent=2, print_width=80):
+    """json.dumps with indent=2 but keeps flat string-only arrays on one line when they fit within print_width."""
+    raw = json.dumps(obj, indent=indent)
+
+    def collapse_if_fits(m):
+        collapsed = "[" + ", ".join(s.strip() for s in m.group(1).split(",\n")) + "]"
+        # Measure indent of the opening bracket by looking at chars before the match
+        start = m.start()
+        line_start = raw.rfind("\n", 0, start) + 1
+        indent_len = start - line_start
+        if indent_len + len(collapsed) <= print_width:
+            return collapsed
+        return m.group(0)
+
+    # Collapse arrays that contain only quoted strings (no nested objects/arrays)
+    return re.sub(
+        r'\[\n\s+("(?:[^"\\]|\\.)*"(?:,\n\s+"(?:[^"\\]|\\.)*")*)\n\s+\]',
+        collapse_if_fits,
+        raw,
+    )
+
 REQUIRED_FIELDS = {"event", "matcher", "surface", "signal", "role"}
 VALID_SURFACES = {"user_global", "per_call_inspector", "both"}
 VALID_SIGNALS = {"AGENT_TYPE", "CLAUDE_ROLE", "CLAUDE_ROLE_FAMILY", "CODEX_ROLE", "none"}
@@ -270,7 +292,7 @@ def regenerate_settings(
             ordered_hooks[evt] = new_hooks[evt]
 
     settings["hooks"] = ordered_hooks
-    settings_path.write_text(json.dumps(settings, indent=2) + "\n")
+    settings_path.write_text(dumps_compact(settings) + "\n")
     print(f"Wrote {settings_path}")
 
 

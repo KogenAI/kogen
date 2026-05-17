@@ -45,7 +45,7 @@ make_fixture() {
     git -C "$dir" config user.email "t@t"
     git -C "$dir" config user.name "t"
     # Seed a base PROJECT_CONTEXT.md so the repo has at least one commit's worth of history.
-    printf '# PROJECT_CONTEXT.md\n## Domain Context Files\n' > "$dir/PROJECT_CONTEXT.md"
+    printf '# PROJECT_CONTEXT.md\n## Domain Context Files\n' >"$dir/PROJECT_CONTEXT.md"
     git -C "$dir" add PROJECT_CONTEXT.md
     git -C "$dir" commit -q -m "init"
     FIXTURES+=("$dir")
@@ -81,7 +81,7 @@ run_test() {
 # Test 1: git commit -m "x", staged adds context/foo.md, no PROJECT_CONTEXT.md
 # ---------------------------------------------------------------------------
 dir1=$(make_fixture 1)
-printf 'context\n' > "$dir1/context/foo.md"
+printf 'context\n' >"$dir1/context/foo.md"
 git -C "$dir1" add "context/foo.md"
 
 run_test "staged add context/foo.md, no PROJECT_CONTEXT.md change → DENY" "2" \
@@ -91,7 +91,7 @@ run_test "staged add context/foo.md, no PROJECT_CONTEXT.md change → DENY" "2" 
 # Test 2: staged deletes context/foo.md, no PROJECT_CONTEXT.md
 # ---------------------------------------------------------------------------
 dir2=$(make_fixture 2)
-printf 'context\n' > "$dir2/context/bar.md"
+printf 'context\n' >"$dir2/context/bar.md"
 git -C "$dir2" add "context/bar.md"
 git -C "$dir2" commit -q -m "add bar"
 git -C "$dir2" rm -q "context/bar.md"
@@ -104,9 +104,9 @@ run_test "staged delete context/bar.md, no PROJECT_CONTEXT.md change → DENY" "
 # Test 3: adds context/foo.md AND modifies PROJECT_CONTEXT.md → ALLOW
 # ---------------------------------------------------------------------------
 dir3=$(make_fixture 3)
-printf 'context\n' > "$dir3/context/new.md"
+printf 'context\n' >"$dir3/context/new.md"
 git -C "$dir3" add "context/new.md"
-printf '# PROJECT_CONTEXT.md\n## Domain Context Files\n- context/new.md\n' > "$dir3/PROJECT_CONTEXT.md"
+printf '# PROJECT_CONTEXT.md\n## Domain Context Files\n- context/new.md\n' >"$dir3/PROJECT_CONTEXT.md"
 git -C "$dir3" add "PROJECT_CONTEXT.md"
 
 run_test "staged add context/new.md + PROJECT_CONTEXT.md → ALLOW" "0" \
@@ -116,10 +116,10 @@ run_test "staged add context/new.md + PROJECT_CONTEXT.md → ALLOW" "0" \
 # Test 4: modifies context/foo.md only (no A/D) → ALLOW
 # ---------------------------------------------------------------------------
 dir4=$(make_fixture 4)
-printf 'v1\n' > "$dir4/context/existing.md"
+printf 'v1\n' >"$dir4/context/existing.md"
 git -C "$dir4" add "context/existing.md"
 git -C "$dir4" commit -q -m "add existing"
-printf 'v2\n' > "$dir4/context/existing.md"
+printf 'v2\n' >"$dir4/context/existing.md"
 git -C "$dir4" add "context/existing.md"
 
 run_test "modify-only context/existing.md (M) → ALLOW" "0" \
@@ -129,7 +129,7 @@ run_test "modify-only context/existing.md (M) → ALLOW" "0" \
 # Test 5: touches lib/foo.ex only → ALLOW
 # ---------------------------------------------------------------------------
 dir5=$(make_fixture 5)
-printf 'defmodule Foo do\nend\n' > "$dir5/lib/foo.ex"
+printf 'defmodule Foo do\nend\n' >"$dir5/lib/foo.ex"
 git -C "$dir5" add "lib/foo.ex"
 
 run_test "lib/foo.ex only → ALLOW" "0" \
@@ -139,7 +139,7 @@ run_test "lib/foo.ex only → ALLOW" "0" \
 # Test 6: git status (non-commit) → ALLOW (regex non-match)
 # ---------------------------------------------------------------------------
 dir6=$(make_fixture 6)
-printf 'x\n' > "$dir6/context/a.md"
+printf 'x\n' >"$dir6/context/a.md"
 git -C "$dir6" add "context/a.md"
 
 run_test "git status (non-commit) → ALLOW" "0" \
@@ -149,7 +149,7 @@ run_test "git status (non-commit) → ALLOW" "0" \
 # Test 7: echo "git commit" → ALLOW (anchor prevents substring match)
 # ---------------------------------------------------------------------------
 dir7=$(make_fixture 7)
-printf 'x\n' > "$dir7/context/b.md"
+printf 'x\n' >"$dir7/context/b.md"
 git -C "$dir7" add "context/b.md"
 
 run_test "echo \"git commit\" substring → ALLOW" "0" \
@@ -159,7 +159,7 @@ run_test "echo \"git commit\" substring → ALLOW" "0" \
 # Test 8: Read tool with git commit payload → ALLOW (TOOL_NAME guard)
 # ---------------------------------------------------------------------------
 dir8=$(make_fixture 8)
-printf 'x\n' > "$dir8/context/c.md"
+printf 'x\n' >"$dir8/context/c.md"
 git -C "$dir8" add "context/c.md"
 
 run_test "Read tool with git commit payload → ALLOW" "0" \
@@ -180,7 +180,7 @@ run_test "non-git CWD → ALLOW (graceful)" "0" \
 # Test 10: git commit --amend with orphan add → DENY
 # ---------------------------------------------------------------------------
 dir10=$(make_fixture 10)
-printf 'content\n' > "$dir10/context/amend.md"
+printf 'content\n' >"$dir10/context/amend.md"
 git -C "$dir10" add "context/amend.md"
 
 run_test "git commit --amend with orphan add → DENY" "2" \
@@ -198,7 +198,7 @@ make_fixture_userapp() {
     git -C "$dir" init -q
     git -C "$dir" config user.email "t@t"
     git -C "$dir" config user.name "t"
-    printf '# PROJECT_CONTEXT.md (codegen)\n## Domain Context Files\n' > "$dir/codegen/PROJECT_CONTEXT.md"
+    printf '# PROJECT_CONTEXT.md (codegen)\n## Domain Context Files\n' >"$dir/codegen/PROJECT_CONTEXT.md"
     git -C "$dir" add "codegen/PROJECT_CONTEXT.md"
     git -C "$dir" commit -q -m "init"
     FIXTURES+=("$dir")
@@ -210,7 +210,7 @@ make_fixture_userapp() {
 # Committer runs as subagent — AGENT_TYPE set. Hook MUST still fire.
 # ---------------------------------------------------------------------------
 dir11=$(make_fixture_userapp 11)
-printf 'content\n' > "$dir11/context/foo.md"
+printf 'content\n' >"$dir11/context/foo.md"
 git -C "$dir11" add "context/foo.md"
 
 run_test "user-app layout: staged add context/foo.md, no codegen/PROJECT_CONTEXT.md change, committer subagent → DENY" "2" \
@@ -220,9 +220,9 @@ run_test "user-app layout: staged add context/foo.md, no codegen/PROJECT_CONTEXT
 # Test 12: user-app layout, staged orphan context/foo.md AND codegen/PROJECT_CONTEXT.md → ALLOW
 # ---------------------------------------------------------------------------
 dir12=$(make_fixture_userapp 12)
-printf 'content\n' > "$dir12/context/new.md"
+printf 'content\n' >"$dir12/context/new.md"
 git -C "$dir12" add "context/new.md"
-printf '# PROJECT_CONTEXT.md (codegen)\n## Domain Context Files\n- context/new.md\n' > "$dir12/codegen/PROJECT_CONTEXT.md"
+printf '# PROJECT_CONTEXT.md (codegen)\n## Domain Context Files\n- context/new.md\n' >"$dir12/codegen/PROJECT_CONTEXT.md"
 git -C "$dir12" add "codegen/PROJECT_CONTEXT.md"
 
 run_test "user-app layout: staged add context/new.md + codegen/PROJECT_CONTEXT.md → ALLOW" "0" \
@@ -237,10 +237,10 @@ mkdir -p "$dir13/context"
 git -C "$dir13" init -q
 git -C "$dir13" config user.email "t@t"
 git -C "$dir13" config user.name "t"
-printf 'readme\n' > "$dir13/README.md"
+printf 'readme\n' >"$dir13/README.md"
 git -C "$dir13" add "README.md"
 git -C "$dir13" commit -q -m "init"
-printf 'content\n' > "$dir13/context/foo.md"
+printf 'content\n' >"$dir13/context/foo.md"
 git -C "$dir13" add "context/foo.md"
 FIXTURES+=("$dir13")
 
@@ -251,12 +251,12 @@ run_test "no PROJECT_CONTEXT.md anywhere → ALLOW (not in scope)" "0" \
 # Test 14: user-app layout deny message names codegen/PROJECT_CONTEXT.md (not root)
 # ---------------------------------------------------------------------------
 dir14=$(make_fixture_userapp 14)
-printf 'content\n' > "$dir14/context/orphan.md"
+printf 'content\n' >"$dir14/context/orphan.md"
 git -C "$dir14" add "context/orphan.md"
 
 stdout14=$(printf '%s' \
-    "{\"hook_event_name\":\"PreToolUse\",\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"git commit -m \\\"x\\\"\"},\"agent_type\":\"committer\",\"agent_id\":\"a\",\"cwd\":\"$dir14\"}" \
-    | bash "$GUARD" 2>/dev/null || true)
+    "{\"hook_event_name\":\"PreToolUse\",\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"git commit -m \\\"x\\\"\"},\"agent_type\":\"committer\",\"agent_id\":\"a\",\"cwd\":\"$dir14\"}" |
+    bash "$GUARD" 2>/dev/null || true)
 
 if printf '%s' "$stdout14" | grep -q "codegen/PROJECT_CONTEXT.md"; then
     printf 'PASS: user-app layout deny message names codegen/PROJECT_CONTEXT.md\n'
