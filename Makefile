@@ -226,8 +226,13 @@ hook-parity:
 		--hooks-dir shared/hooks \
 		--output-settings /tmp/claude-code-settings-parity.json \
 		--existing-settings "$(SCRIPT_DIR)/templates/claude-code-settings.json" \
-		--combobulate-dir /tmp/hook-parity-test
+		--combobulate-dir /tmp/hook-parity-test \
+		--subagents-dir "$(SCRIPT_DIR)/templates/shared/subagents" \
+		--hooks-md-path "$(COMBOBULATE_DIR)/context/hooks.md"
 	@diff -u "$(SCRIPT_DIR)/templates/claude-code-settings.json" /tmp/claude-code-settings-parity.json || exit 1
+	@if [ -f "$(COMBOBULATE_DIR)/priv/claude_config/agent_manifest.json" ]; then \
+		diff -u "$(COMBOBULATE_DIR)/priv/claude_config/agent_manifest.json" /tmp/hook-parity-test/priv/claude_config/agent_manifest.json || exit 1; \
+	fi
 	@echo "hook-parity: PASS"
 
 install: hook-parity
@@ -235,7 +240,9 @@ install: hook-parity
 	@python3 "$(SCRIPT_DIR)/templates/generator/hook_registrations.py" \
 		--hooks-dir "$(SCRIPT_DIR)/templates/shared/hooks" \
 		--output-settings "$(SCRIPT_DIR)/templates/claude-code-settings.json" \
-		--combobulate-dir "$(COMBOBULATE_DIR)"
+		--combobulate-dir "$(COMBOBULATE_DIR)" \
+		--subagents-dir "$(SCRIPT_DIR)/templates/shared/subagents" \
+		--hooks-md-path "$(COMBOBULATE_DIR)/context/hooks.md"
 	@./install.sh
 	@./install-launchers.sh
 	@bash install-pi-prompts.sh
