@@ -1,15 +1,16 @@
 #!/bin/bash
-# planner-guard.sh — PreToolUse hook for planner
+# planner-guard.sh — PreToolUse hook for planner-* variants
 #
 # HOOK-MANIFEST:
 # event: PreToolUse
-# matcher: Bash|Write|Edit|MultiEdit|EnterPlanMode|ExitPlanMode
+# matcher: Bash|Write|Edit|MultiEdit|EnterPlanMode|ExitPlanMode|Read
 # surface: user_global
 # signal: AGENT_TYPE
-# role: planner
+# role: planner-*
 #
-# Blocks file-creation, state-modifying shell commands, and Edit calls on
-# non-session-log files when the active agent is "planner".
+# Blocks file-creation, state-modifying shell commands, Edit calls on
+# non-session-log files, and reads of implementer-only rule files when
+# the active agent is any planner-* variant.
 # The planner's only permitted write action is editing the session log
 # under codegen/logging/. All other agents pass through unconditionally.
 
@@ -20,10 +21,13 @@ parse_input
 
 debug_log planner-guard "tool=$TOOL_NAME agent=$AGENT_TYPE file=$FILE_PATH cmd=$COMMAND"
 
-# Only gate planner; allow all other agents unconditionally
-if [ "$AGENT_TYPE" != "planner" ]; then
+# Only gate planner-* variants; allow all other agents unconditionally
+case "$AGENT_TYPE" in
+planner-*) ;;
+*)
     exit 0
-fi
+    ;;
+esac
 
 # ── Tool-level blocks ─────────────────────────────────────────────────────────
 
@@ -152,6 +156,29 @@ if [ "$TOOL_NAME" = "Bash" ]; then
         fi
     fi
 
+fi
+
+# ── Read path block (merged from planner-load-discipline) ────────────────────
+# Planner must not load implementer-only rule files that are already baked into
+# the implementer subagent prompts. Loading them wastes tokens and risks the
+# planner over-specifying implementation.
+
+if [ "$TOOL_NAME" = "Read" ]; then
+    if [ -z "$FILE_PATH" ]; then
+        exit 0
+    fi
+
+    # Get basename of the file
+    read_basename="${FILE_PATH##*/}"
+
+    # Check against forbidden implementer rule files
+    forbidden_list="testing.md testing-liveview.md developer.md reviewer.md committer.md"
+    for forbidden in $forbidden_list; do
+        if [ "$read_basename" = "$forbidden" ]; then
+            deny "BLOCKED by planner-guard: planner must not load implementer rules ($read_basename). These are baked into the implementer subagent prompts already."
+            exit 0
+        fi
+    done
 fi
 
 exit 0

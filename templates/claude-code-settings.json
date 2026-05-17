@@ -163,6 +163,14 @@
         "hooks": [
           {
             "type": "command",
+            "command": "$HOME/.claude/hooks/step-log-completeness.sh"
+          }
+        ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
             "command": "$HOME/.claude/hooks/stop-cycle-guard.sh"
           }
         ]
@@ -178,11 +186,20 @@
     ],
     "SubagentStop": [
       {
+        "matcher": "developer-phoenix-backend|developer-phoenix-frontend|developer-html|developer-hugo|developer-vite",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "$HOME/.claude/hooks/developer-no-self-gate-reset.sh"
+          }
+        ]
+      },
+      {
         "matcher": "developer-phoenix-backend|developer-phoenix-frontend",
         "hooks": [
           {
             "type": "command",
-            "command": "$HOME/.claude/hooks/dev-gate.sh"
+            "command": "$HOME/.claude/hooks/phoenix-dev-gate.sh"
           }
         ]
       },
@@ -207,6 +224,15 @@
     ],
     "PreToolUse": [
       {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "$HOME/.claude/hooks/build-no-success-before-commit.sh"
+          }
+        ]
+      },
+      {
         "matcher": "Bash|Write|Edit|MultiEdit|Read|Monitor",
         "hooks": [
           {
@@ -221,6 +247,24 @@
           {
             "type": "command",
             "command": "$HOME/.claude/hooks/claude-debug-bash-guard.sh"
+          }
+        ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "$HOME/.claude/hooks/committer-no-trailer-guard.sh"
+          }
+        ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "$HOME/.claude/hooks/committer-single-line-guard.sh"
           }
         ]
       },
@@ -256,16 +300,16 @@
         "hooks": [
           {
             "type": "command",
-            "command": "$HOME/.claude/hooks/env-var-sample-consistency.sh"
+            "command": "$HOME/.claude/hooks/developer-no-self-gate.sh"
           }
         ]
       },
       {
-        "matcher": "Edit|Write|MultiEdit",
+        "matcher": "Bash",
         "hooks": [
           {
             "type": "command",
-            "command": "$HOME/.claude/hooks/frontend-developer-guard.sh"
+            "command": "$HOME/.claude/hooks/env-var-sample-consistency.sh"
           }
         ]
       },
@@ -342,20 +386,29 @@
         ]
       },
       {
-        "matcher": "Bash|Write|Edit|MultiEdit|EnterPlanMode|ExitPlanMode",
+        "matcher": "Edit|Write|MultiEdit",
         "hooks": [
           {
             "type": "command",
-            "command": "$HOME/.claude/hooks/planner-guard.sh"
+            "command": "$HOME/.claude/hooks/phoenix-backend-developer-guard.sh"
           }
         ]
       },
       {
-        "matcher": "Read",
+        "matcher": "Edit|Write|MultiEdit",
         "hooks": [
           {
             "type": "command",
-            "command": "$HOME/.claude/hooks/planner-load-discipline.sh"
+            "command": "$HOME/.claude/hooks/phoenix-frontend-developer-guard.sh"
+          }
+        ]
+      },
+      {
+        "matcher": "Bash|Write|Edit|MultiEdit|EnterPlanMode|ExitPlanMode|Read",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "$HOME/.claude/hooks/planner-guard.sh"
           }
         ]
       },

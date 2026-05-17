@@ -218,6 +218,8 @@ plan:
 	@./modes/plan_session.sh $(filter-out $@,$(MAKECMDGOALS))
 
 COMBOBULATE_DIR ?= $(SCRIPT_DIR)/../combobulate
+HOOKS_MD_PATH := $(COMBOBULATE_DIR)/context/hooks.md
+HOOKS_MD_ARG := $(if $(wildcard $(HOOKS_MD_PATH)),--hooks-md-path "$(HOOKS_MD_PATH)",)
 
 .PHONY: hook-parity
 hook-parity:
@@ -228,7 +230,7 @@ hook-parity:
 		--existing-settings "$(SCRIPT_DIR)/templates/claude-code-settings.json" \
 		--combobulate-dir /tmp/hook-parity-test \
 		--subagents-dir "$(SCRIPT_DIR)/templates/shared/subagents" \
-		--hooks-md-path "$(COMBOBULATE_DIR)/context/hooks.md"
+		$(HOOKS_MD_ARG)
 	@diff -u "$(SCRIPT_DIR)/templates/claude-code-settings.json" /tmp/claude-code-settings-parity.json || exit 1
 	@if [ -f "$(COMBOBULATE_DIR)/priv/claude_config/agent_manifest.json" ]; then \
 		diff -u "$(COMBOBULATE_DIR)/priv/claude_config/agent_manifest.json" /tmp/hook-parity-test/priv/claude_config/agent_manifest.json || exit 1; \
@@ -242,7 +244,7 @@ install: hook-parity
 		--output-settings "$(SCRIPT_DIR)/templates/claude-code-settings.json" \
 		--combobulate-dir "$(COMBOBULATE_DIR)" \
 		--subagents-dir "$(SCRIPT_DIR)/templates/shared/subagents" \
-		--hooks-md-path "$(COMBOBULATE_DIR)/context/hooks.md"
+		$(HOOKS_MD_ARG)
 	@./install.sh
 	@./install-launchers.sh
 	@bash install-pi-prompts.sh

@@ -173,6 +173,94 @@ def parse_manifest(script_path: Path) -> dict:
     return fields
 
 
+def validate_role_match(script_path: Path, manifest: dict) -> None:
+    """Verify that literal role values appear in script body as guard patterns.
+
+    For literal role values (no *, |, not in {*, all}):
+      - body must contain [ "$AGENT_TYPE" = "<literal>" ]
+        OR case "$AGENT_TYPE" in ... <literal>) ;;
+    For glob roles (planner-*, developer-*):
+      - body must contain case "$AGENT_TYPE" in <glob>) ;;
+        OR printf '%s' "$AGENT_TYPE" | grep -qE '^<prefix>-'
+    For wildcard roles (*, all):
+      - no check required.
+    Exits non-zero on mismatch (prints script name + pattern detail).
+    """
+    signal = manifest["signal"]
+    # Only validate AGENT_TYPE signal hooks — others use CLAUDE_ROLE etc.
+    if signal != "AGENT_TYPE":
+        return
+
+    content = script_path.read_text()
+    role_raw = manifest["role"]
+
+    # Split multi-value roles on |
+    role_tokens = [t.strip() for t in role_raw.split("|")]
+
+    for token in role_tokens:
+        # Universal wildcards — no body check needed
+        if token in ("*", "all"):
+            continue
+
+        # Glob role (ends with -*)
+        if token.endswith("-*"):
+            prefix = token[:-2]  # strip trailing -*
+            # Accept: case ... in <prefix>-*) or grep -qE '^<prefix>-'
+            glob_case = f"case \"$AGENT_TYPE\" in"
+            glob_pattern = f"{prefix}-"
+            if glob_case not in content or glob_pattern not in content:
+                # Also accept grep-based guard
+                grep_pattern = f"'^{prefix}-'"
+                if grep_pattern not in content and glob_pattern not in content:
+                    print(
+                        f"ERROR: {script_path.name} declares role: {token} (glob) but body "
+                        f"does not contain case \"$AGENT_TYPE\" in ... {prefix}-*) or grep '^{prefix}-'",
+                        file=sys.stderr,
+                    )
+                    sys.exit(1)
+            continue
+
+        # Literal role with | — multi-case, expect case statement or helper fn
+        if "|" in role_raw:
+            # Each token in a multi-value role must appear in a case statement,
+            # OR the hook uses require_inspector_agent_type (covers all inspector roles).
+            # Case patterns can be: token) OR token | othertoken)
+            inspector_fn = "require_inspector_agent_type"
+            token_in_case = f'{token})' in content or f'{token} |' in content or f'{token} )' in content
+            if (
+                f'"{token}"' not in content
+                and not token_in_case
+                and not ("inspector" in token and inspector_fn in content)
+            ):
+                print(
+                    f"ERROR: {script_path.name} declares role: {token} but body "
+                    f"does not contain \"{token}\" or {token}) in a case statement",
+                    file=sys.stderr,
+                )
+                sys.exit(1)
+            continue
+
+        # Single literal role — accept [ "$AGENT_TYPE" = "<literal>" ] (equality),
+        # [ "$AGENT_TYPE" != "<literal>" ] (inequality guard), case statement,
+        # or require_inspector_agent_type (for inspector roles)
+        eq_check = f'[ "$AGENT_TYPE" = "{token}" ]'
+        ne_check = f'[ "$AGENT_TYPE" != "{token}" ]'
+        case_check = f'{token})'
+        inspector_fn = "require_inspector_agent_type"
+        if (
+            eq_check not in content
+            and ne_check not in content
+            and case_check not in content
+            and not ("inspector" in token and inspector_fn in content)
+        ):
+            print(
+                f"ERROR: {script_path.name} declares role: {token} but body "
+                f"does not contain [ \"$AGENT_TYPE\" = \"{token}\" ] or {token}) in a case statement",
+                file=sys.stderr,
+            )
+            sys.exit(1)
+
+
 def validate_signal(script_path: Path, manifest: dict) -> None:
     """Verify declared signal appears in script body.
 
@@ -239,6 +327,7 @@ def collect_hooks(hooks_dir: Path) -> list:  # type: ignore[type-arg]
             continue
         manifest = parse_manifest(sh_file)
         validate_signal(sh_file, manifest)
+        validate_role_match(sh_file, manifest)
         hooks.append(manifest)
     return hooks
 

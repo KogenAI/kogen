@@ -1,5 +1,5 @@
 #!/bin/bash
-# frontend-developer-guard.sh — PreToolUse hook for developer-phoenix-frontend
+# phoenix-frontend-developer-guard.sh — PreToolUse hook for developer-phoenix-frontend
 #
 # HOOK-MANIFEST:
 # event: PreToolUse
@@ -26,7 +26,7 @@ set -u
 source "$(dirname "$0")/lib/hooks-lib.sh"
 parse_input
 
-debug_log frontend-developer-guard "tool=$TOOL_NAME agent=$AGENT_TYPE file=$FILE_PATH"
+debug_log phoenix-frontend-developer-guard "tool=$TOOL_NAME agent=$AGENT_TYPE file=$FILE_PATH"
 
 # Only gate the frontend developer; all other agents pass through
 case "$AGENT_TYPE" in
@@ -49,13 +49,13 @@ fi
 
 # priv/repo/migrations/ — always backend
 if printf '%s' "$FILE_PATH" | grep -qE '(^|/)priv/repo/migrations/'; then
-    deny "BLOCKED by frontend-developer-guard: $FILE_PATH is a backend migration file. Delegate to developer-phoenix-backend."
+    deny "BLOCKED by phoenix-frontend-developer-guard: $FILE_PATH is a backend migration file. Delegate to developer-phoenix-backend."
     exit 0
 fi
 
 # lib/*/contexts/, lib/*/services/, lib/*/workers/ — backend subtrees
 if printf '%s' "$FILE_PATH" | grep -qE '(^|/)lib/[^/]+/(contexts|services|workers)/'; then
-    deny "BLOCKED by frontend-developer-guard: $FILE_PATH is a backend context/service/worker path. Delegate to developer-phoenix-backend."
+    deny "BLOCKED by phoenix-frontend-developer-guard: $FILE_PATH is a backend context/service/worker path. Delegate to developer-phoenix-backend."
     exit 0
 fi
 
@@ -66,7 +66,7 @@ if printf '%s' "$FILE_PATH" | grep -qE '(^|/)lib/[^/]+_web(/|$)'; then
     exit 0
 fi
 if printf '%s' "$FILE_PATH" | grep -qE '(^|/)lib/[^/]+/'; then
-    deny "BLOCKED by frontend-developer-guard: $FILE_PATH is under lib/<app>/ (backend). Delegate to developer-phoenix-backend."
+    deny "BLOCKED by phoenix-frontend-developer-guard: $FILE_PATH is under lib/<app>/ (backend). Delegate to developer-phoenix-backend."
     exit 0
 fi
 

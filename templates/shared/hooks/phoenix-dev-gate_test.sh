@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# dev-gate_test.sh — unit tests for dev-gate.sh
+# phoenix-dev-gate_test.sh — unit tests for phoenix-dev-gate.sh
 #
 # Covers: short-gate-success (no block), short-gate-failure (block),
 # long-gate-flag-file-shape, planner-gate-wins, no-step-log graceful exit,
@@ -8,7 +8,7 @@
 set -u
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-HOOK="$SCRIPT_DIR/dev-gate.sh"
+HOOK="$SCRIPT_DIR/phoenix-dev-gate.sh"
 
 pass=0
 fail=0

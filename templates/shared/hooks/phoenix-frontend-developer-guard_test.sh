@@ -1,5 +1,5 @@
 #!/bin/bash
-# frontend-developer-guard_test.sh — unit tests for frontend-developer-guard.sh
+# phoenix-frontend-developer-guard_test.sh — unit tests for phoenix-frontend-developer-guard.sh
 #
 # Tests:
 #   1. Edit on migration path       → BLOCKED (deny)
@@ -15,7 +15,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-GUARD="$SCRIPT_DIR/frontend-developer-guard.sh"
+GUARD="$SCRIPT_DIR/phoenix-frontend-developer-guard.sh"
 
 pass=0
 fail=0

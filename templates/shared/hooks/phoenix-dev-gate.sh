@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# dev-gate.sh — SubagentStop hook for developer-phoenix-backend | developer-phoenix-frontend.
+# phoenix-dev-gate.sh — SubagentStop hook for developer-phoenix-backend | developer-phoenix-frontend.
 #
 # HOOK-MANIFEST:
 # event: SubagentStop
