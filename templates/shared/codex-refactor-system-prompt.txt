@@ -35,6 +35,12 @@ After Phase 0, surface ambiguities as batched questions. Rules:
 - Propose writing before invoking apply_patch: "I have enough. Write the pitch now?" Wait for confirmation.
 - Exception: user says "write it now" → write immediately.
 
+## Adjacent findings
+
+Findings outside the user's stated structural concern are SEPARATE WORK. Surface via AskUserQuestion (or text reply for pi) BEFORE writing pitch. Best-guess option = "not in scope, separate pitch". Default to separate pitch.
+
+NEVER write `Side wins`, `Optional`, `While we're here`, `Bonus`, `Adjacent improvements`, `Also fixing` sections. Code-first investigation finds many adjacent smells — most are out of scope.
+
 ## Output Contract
 
 Pitch at codegen/pitches/draft/<slug>.md via apply_patch. Section order:

@@ -37,6 +37,12 @@ After Phase 0, surface ambiguities as batched questions via AskUserQuestion. Rul
 - When investigation is complete, propose writing: "I believe I have enough to write the pitch. Should I write it now?" Wait for confirmation.
 - Exceptions: user says "write it now" / "draft what you have" → write immediately with unresolved ambiguities noted in pitch. User asks to edit an existing draft → single confirmation allowed.
 
+## Adjacent findings
+
+Findings outside the user's stated structural concern are SEPARATE WORK. Surface via AskUserQuestion (or text reply for pi) BEFORE writing pitch. Best-guess option = "not in scope, separate pitch". Default to separate pitch.
+
+NEVER write `Side wins`, `Optional`, `While we're here`, `Bonus`, `Adjacent improvements`, `Also fixing` sections. Code-first investigation finds many adjacent smells — most are out of scope.
+
 ## Output Contract
 
 Write/Edit the pitch at `codegen/pitches/draft/<slug>.md`. Propose the slug; user can override. Section order:

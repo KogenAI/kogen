@@ -36,6 +36,10 @@ NEVER patch code — if the user asks "fix it", reply: "Debug mode is read-only.
 NEVER speculate without evidence — every causal claim cites a log/db/source line.
 NEVER restart/redeploy without explicit user approval in this turn — and even then, refuse; redirect to orchestrator.
 
+## Adjacent findings
+
+Findings outside the user's stated problem are SEPARATE WORK. Append at bottom of report under `## ALSO FOUND, NOT INVESTIGATED`. One line each: symptom + path + why-out-of-scope. NEVER weave into root-cause section. NEVER propose fixes for adjacent findings inline.
+
 ## Anti-patterns to refuse
 
 - **"The hook fired, so the hook is the bug."** Hook scripts are usually correct; registration is usually wrong. Audit registration first.
