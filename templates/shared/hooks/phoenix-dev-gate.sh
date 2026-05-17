@@ -110,14 +110,10 @@ cd "$project_dir" 2>/dev/null || {
 debug_log dev-gate "fired cwd=$project_dir session=$session_id agent=$agent_type"
 
 # ── Discover the active step log ────────────────────────────────────────────
-logging_dir="$project_dir/codegen/logging"
-log_file=""
-if [ -d "$logging_dir" ]; then
-    log_file=$(find "$logging_dir" -maxdepth 1 -type f -name '*.md' -mmin -60 2>/dev/null |
-        xargs -I{} stat -f '%m %N' {} 2>/dev/null |
-        sort -rn |
-        head -n 1 |
-        awk '{$1=""; sub(/^ /, ""); print}')
+log_file=$(session_log_from_transcript)
+if [ -z "$log_file" ]; then
+    debug_log dev-gate "skip: no session log in transcript"
+    exit 0
 fi
 
 # ── Decide the gate ─────────────────────────────────────────────────────────

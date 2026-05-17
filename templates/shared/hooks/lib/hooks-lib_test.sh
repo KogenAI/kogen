@@ -162,6 +162,65 @@ assert_eq "is_outer_session true when AGENT_TYPE unset" "yes" "$result"
 result=$(AGENT_TYPE="inspector" bash -c "source '$SCRIPT_DIR/hooks-lib.sh'; is_outer_session && echo yes || echo no")
 assert_eq "is_outer_session false when AGENT_TYPE set" "no" "$result"
 
+# ── session_log_from_transcript ──────────────────────────────────────────────
+
+# Helper: build one JSONL line with a Write tool_use for the given path.
+make_write_line() {
+    local path="$1"
+    printf '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Write","input":{"file_path":"%s"}}]}}\n' "$path"
+}
+
+make_edit_line() {
+    local path="$1"
+    printf '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Edit","input":{"file_path":"%s"}}]}}\n' "$path"
+}
+
+# Case 1: A's log only → returns A's path.
+TMP_T1=$(mktemp -d)
+make_write_line "$TMP_T1/codegen/logging/A_session.md" >"$TMP_T1/transcript.jsonl"
+result=$(TRANSCRIPT_PATH="$TMP_T1/transcript.jsonl" bash -c "source '$SCRIPT_DIR/hooks-lib.sh'; session_log_from_transcript")
+assert_eq "session_log_from_transcript: A only → A path" "$TMP_T1/codegen/logging/A_session.md" "$result"
+rm -rf "$TMP_T1"
+
+# Case 2: B's log only → returns B's path.
+TMP_T2=$(mktemp -d)
+make_write_line "$TMP_T2/codegen/logging/B_session.md" >"$TMP_T2/transcript.jsonl"
+result=$(TRANSCRIPT_PATH="$TMP_T2/transcript.jsonl" bash -c "source '$SCRIPT_DIR/hooks-lib.sh'; session_log_from_transcript")
+assert_eq "session_log_from_transcript: B only → B path" "$TMP_T2/codegen/logging/B_session.md" "$result"
+rm -rf "$TMP_T2"
+
+# Case 3: Interleaved A+B writes → returns LAST (B).
+TMP_T3=$(mktemp -d)
+{
+    make_write_line "$TMP_T3/codegen/logging/A_session.md"
+    make_write_line "$TMP_T3/codegen/logging/B_session.md"
+} >"$TMP_T3/transcript.jsonl"
+result=$(TRANSCRIPT_PATH="$TMP_T3/transcript.jsonl" bash -c "source '$SCRIPT_DIR/hooks-lib.sh'; session_log_from_transcript")
+assert_eq "session_log_from_transcript: interleaved A+B → last (B)" "$TMP_T3/codegen/logging/B_session.md" "$result"
+rm -rf "$TMP_T3"
+
+# Case 4: Zero tool_use writes to logging path → empty.
+TMP_T4=$(mktemp -d)
+printf '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Write","input":{"file_path":"/tmp/other/not-logging.md"}}]}}\n' >"$TMP_T4/transcript.jsonl"
+result=$(TRANSCRIPT_PATH="$TMP_T4/transcript.jsonl" bash -c "source '$SCRIPT_DIR/hooks-lib.sh'; session_log_from_transcript")
+assert_eq "session_log_from_transcript: no logging writes → empty" "" "$result"
+rm -rf "$TMP_T4"
+
+# Case 5: TRANSCRIPT_PATH="" → empty.
+result=$(TRANSCRIPT_PATH="" bash -c "source '$SCRIPT_DIR/hooks-lib.sh'; session_log_from_transcript")
+assert_eq "session_log_from_transcript: empty TRANSCRIPT_PATH → empty" "" "$result"
+
+# Case 6: TRANSCRIPT_PATH set to non-existent file → empty.
+result=$(TRANSCRIPT_PATH="/tmp/no-such-transcript-$(date -u +%s).jsonl" bash -c "source '$SCRIPT_DIR/hooks-lib.sh'; session_log_from_transcript")
+assert_eq "session_log_from_transcript: missing file → empty" "" "$result"
+
+# Case 7: Edit tool_use also matched.
+TMP_T7=$(mktemp -d)
+make_edit_line "$TMP_T7/codegen/logging/edit_session.md" >"$TMP_T7/transcript.jsonl"
+result=$(TRANSCRIPT_PATH="$TMP_T7/transcript.jsonl" bash -c "source '$SCRIPT_DIR/hooks-lib.sh'; session_log_from_transcript")
+assert_eq "session_log_from_transcript: Edit tool_use matched" "$TMP_T7/codegen/logging/edit_session.md" "$result"
+rm -rf "$TMP_T7"
+
 echo ""
 echo "Results: $pass passed, $fail failed"
 

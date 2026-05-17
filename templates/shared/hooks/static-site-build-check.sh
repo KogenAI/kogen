@@ -177,34 +177,26 @@ check_css_output
 check_html_stylesheet_link
 
 # ── Success: append synthetic SSV section to the active step log ────────────
-logging_dir="$project_dir/codegen/logging"
-if [ -d "$logging_dir" ]; then
-    log_file=$(find "$logging_dir" -maxdepth 1 -type f -name '*.md' -mmin -60 2>/dev/null |
-        xargs -I{} stat -f '%m %N' {} 2>/dev/null |
-        sort -rn |
-        head -n 1 |
-        awk '{$1=""; sub(/^ /, ""); print}')
-
-    if [ -n "$log_file" ] && [ -w "$log_file" ]; then
-        ts=$(date -u +%Y-%m-%dT%H:%M:%SZ)
-        {
-            printf '\n## static-site-verifier Section\n\n'
-            printf '**Rules loaded**: deterministic hook (static-site-build-check.sh) — no rules loaded\n\n'
-            printf '**Commands executed**:\n\n'
-            printf '| Time (HH:MM:SS UTC) | Command | Exit | Notes |\n'
-            printf '| ------------------- | ------- | ---- | ----- |\n'
-            printf '| %s | mise exec -- npm run build | 0 | (skipped if no package.json) |\n' "$ts"
-            printf '| %s | jq .scripts.build/.scripts.serve | 0 | package.json invariants |\n' "$ts"
-            printf '| %s | test -f tailwind.config.js / postcss.config.js | 1 | Tailwind v4 config absence |\n' "$ts"
-            printf '| %s | grep -rE @tailwind --include=*.css . | 1 | Tailwind v4 directive check |\n' "$ts"
-            printf '| %s | find public/dist -name *.css | 0 | CSS output file check |\n' "$ts"
-            printf '| %s | grep link.rel.stylesheet public/index.html | 0 | stylesheet link check |\n' "$ts"
-            printf '\n**Result**: ALL CLEAR ✅\n'
-        } >>"$log_file"
-        debug_log static-site-build-check "appended SSV section to $log_file"
-    else
-        debug_log static-site-build-check "no recent step log under $logging_dir"
-    fi
+log_file=$(session_log_from_transcript)
+if [ -z "$log_file" ]; then
+    debug_log static-site-build-check "no session log in transcript"
+elif [ -w "$log_file" ]; then
+    ts=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+    {
+        printf '\n## static-site-verifier Section\n\n'
+        printf '**Rules loaded**: deterministic hook (static-site-build-check.sh) — no rules loaded\n\n'
+        printf '**Commands executed**:\n\n'
+        printf '| Time (HH:MM:SS UTC) | Command | Exit | Notes |\n'
+        printf '| ------------------- | ------- | ---- | ----- |\n'
+        printf '| %s | mise exec -- npm run build | 0 | (skipped if no package.json) |\n' "$ts"
+        printf '| %s | jq .scripts.build/.scripts.serve | 0 | package.json invariants |\n' "$ts"
+        printf '| %s | test -f tailwind.config.js / postcss.config.js | 1 | Tailwind v4 config absence |\n' "$ts"
+        printf '| %s | grep -rE @tailwind --include=*.css . | 1 | Tailwind v4 directive check |\n' "$ts"
+        printf '| %s | find public/dist -name *.css | 0 | CSS output file check |\n' "$ts"
+        printf '| %s | grep link.rel.stylesheet public/index.html | 0 | stylesheet link check |\n' "$ts"
+        printf '\n**Result**: ALL CLEAR ✅\n'
+    } >>"$log_file"
+    debug_log static-site-build-check "appended SSV section to $log_file"
 fi
 
 exit 0

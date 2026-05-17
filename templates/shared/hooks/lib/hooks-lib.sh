@@ -5,15 +5,17 @@
 #   source "$(dirname "$0")/lib/hooks-lib.sh"
 #
 # What this library provides:
-#   parse_input          — read stdin once, populate exported vars (see contract below)
-#   deny "<reason>"      — emit a PreToolUse permissionDecision: "deny" JSON envelope
-#                          to stdout. Caller should `exit 0` after.
-#   block "<reason>"     — emit a Stop-event {"decision":"block","reason":...} JSON
-#                          envelope to stdout. Caller should `exit 0` after.
-#   debug_log <slug> ...  — append a timestamped line to /tmp/<slug>-debug.log when
-#                          COMBOBULATE_HOOKS_DEBUG or per-slug overrides are set
-#   hooks_realpath <path> — pure-bash equivalent of `python3 os.path.realpath`,
-#                          handling non-existent paths via parent-walk fallback
+#   parse_input                  — read stdin once, populate exported vars (see contract below)
+#   deny "<reason>"              — emit a PreToolUse permissionDecision: "deny" JSON envelope
+#                                  to stdout. Caller should `exit 0` after.
+#   block "<reason>"             — emit a Stop-event {"decision":"block","reason":...} JSON
+#                                  envelope to stdout. Caller should `exit 0` after.
+#   debug_log <slug> ...         — append a timestamped line to /tmp/<slug>-debug.log when
+#                                  COMBOBULATE_HOOKS_DEBUG or per-slug overrides are set
+#   hooks_realpath <path>        — pure-bash equivalent of `python3 os.path.realpath`,
+#                                  handling non-existent paths via parent-walk fallback
+#   session_log_from_transcript  — return the last codegen/logging/*.md path written by
+#                                  this session, from $TRANSCRIPT_PATH. Empty if none.
 #
 # Input contract (PreToolUse + SubagentStop + Stop fields, parse_input fills any
 # field present on stdin and leaves the rest empty):
@@ -205,6 +207,32 @@ hooks_realpath() {
     else
         printf '%s/%s' "$resolved_existing" "$tail"
     fi
+}
+
+# session_log_from_transcript — return the last codegen/logging/*.md path written
+# by this session, derived from $TRANSCRIPT_PATH (set by parse_input).
+#
+# Reads TRANSCRIPT_PATH as a JSONL file (one JSON object per line). Filters
+# assistant tool_use entries with name in {Write, Edit, MultiEdit} whose
+# input.file_path matches the pattern codegen/logging/.*\.md$. Outputs the
+# LAST matching file_path (tail -n 1 semantics — most recent write in
+# transcript order). Empty result when:
+#   - TRANSCRIPT_PATH is unset or empty
+#   - TRANSCRIPT_PATH does not exist or is not readable
+#   - No matching tool_use entries found
+# jq errors are swallowed via 2>/dev/null. No --slurp (streams line-by-line).
+session_log_from_transcript() {
+    if [ -z "${TRANSCRIPT_PATH:-}" ] || [ ! -r "$TRANSCRIPT_PATH" ]; then
+        printf ''
+        return 0
+    fi
+    jq -r '
+        .message.content[]?
+        | select(.type == "tool_use"
+            and (.name == "Write" or .name == "Edit" or .name == "MultiEdit"))
+        | select(.input.file_path | test("codegen/logging/.*\\.md$"))
+        | .input.file_path
+    ' "$TRANSCRIPT_PATH" 2>/dev/null | tail -n 1
 }
 
 # require_inspector_agent_type — guard for inspector-only hooks.

@@ -42,15 +42,26 @@ make_project() {
     printf '%s' "$dir"
 }
 
+# make_transcript <transcript_path> <log_path> — write synthetic JSONL
+# recording a Write to <log_path>.
+make_transcript() {
+    local transcript_path="$1"
+    local log_path="$2"
+    printf '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Write","input":{"file_path":"%s"}}]}}\n' \
+        "$log_path" >"$transcript_path"
+}
+
 make_input() {
     local cwd="$1"
     local stop_active="${2:-false}"
     local last_msg="${3:-}"
+    local transcript_path="${4:-}"
     jq -n \
         --arg cwd "$cwd" \
         --argjson stop_active "$stop_active" \
         --arg last_msg "$last_msg" \
-        '{"hook_event_name":"Stop","cwd":$cwd,"session_id":"testsession","stop_hook_active":$stop_active,"last_assistant_message":$last_msg}'
+        --arg transcript_path "$transcript_path" \
+        '{"hook_event_name":"Stop","cwd":$cwd,"session_id":"testsession","stop_hook_active":$stop_active,"last_assistant_message":$last_msg,"transcript_path":$transcript_path}'
 }
 
 # ── Test 1: STOP_HOOK_ACTIVE=true → no block ────────────────────────────────
@@ -61,7 +72,8 @@ cat >"$LOG1" <<'MD'
 ## dev-gate Section
 ALL CLEAR ✅
 MD
-out=$(make_input "$T1" true | bash "$HOOK" 2>/dev/null || true)
+make_transcript "$T1/transcript.jsonl" "$LOG1"
+out=$(make_input "$T1" true "" "$T1/transcript.jsonl" | bash "$HOOK" 2>/dev/null || true)
 assert_not_contains "stop_hook_active short-circuits (no block)" '"decision"' "$out"
 rm -rf "$T1"
 
@@ -78,7 +90,8 @@ Some content
 Gate: make ci-fast
 ALL CLEAR ✅
 MD
-out=$(make_input "$T2" false | bash "$HOOK" 2>/dev/null || true)
+make_transcript "$T2/transcript.jsonl" "$LOG2"
+out=$(make_input "$T2" false "" "$T2/transcript.jsonl" | bash "$HOOK" 2>/dev/null || true)
 assert_contains "dev+gate ALL CLEAR no reviewer → BLOCK" '"decision"' "$out"
 rm -rf "$T2"
 
@@ -96,7 +109,8 @@ ALL CLEAR ✅
 
 QUALITY APPROVED ✅
 MD
-out=$(make_input "$T3" false | bash "$HOOK" 2>/dev/null || true)
+make_transcript "$T3/transcript.jsonl" "$LOG3"
+out=$(make_input "$T3" false "" "$T3/transcript.jsonl" | bash "$HOOK" 2>/dev/null || true)
 assert_contains "reviewer no committer → BLOCK" '"decision"' "$out"
 rm -rf "$T3"
 
@@ -118,7 +132,8 @@ QUALITY APPROVED ✅
 
 Committed.
 MD
-out=$(make_input "$T4" false | bash "$HOOK" 2>/dev/null || true)
+make_transcript "$T4/transcript.jsonl" "$LOG4"
+out=$(make_input "$T4" false "" "$T4/transcript.jsonl" | bash "$HOOK" 2>/dev/null || true)
 assert_not_contains "full cycle complete → no block" '"decision"' "$out"
 rm -rf "$T4"
 
@@ -132,13 +147,14 @@ cat >"$LOG5" <<'MD'
 
 INCONCLUSIVE ⚠️ pool-exhaustion
 MD
-out=$(make_input "$T5" false | bash "$HOOK" 2>/dev/null || true)
+make_transcript "$T5/transcript.jsonl" "$LOG5"
+out=$(make_input "$T5" false "" "$T5/transcript.jsonl" | bash "$HOOK" 2>/dev/null || true)
 assert_not_contains "INCONCLUSIVE in log → skip (no block)" '"decision"' "$out"
 rm -rf "$T5"
 
-# ── Test 6: no log found → no block ─────────────────────────────────────────
+# ── Test 6: no log in transcript → no block ─────────────────────────────────
 T6=$(make_project)
-# No log files created
+# No transcript_path provided → helper returns empty → exit 0
 out=$(make_input "$T6" false | bash "$HOOK" 2>/dev/null || true)
 assert_not_contains "no log → no block" '"decision"' "$out"
 rm -rf "$T6"
@@ -153,7 +169,8 @@ cat >"$LOG7" <<'MD'
 
 ALL CLEAR ✅
 MD
-out=$(make_input "$T7" false "Should I proceed with the next step?" | bash "$HOOK" 2>/dev/null || true)
+make_transcript "$T7/transcript.jsonl" "$LOG7"
+out=$(make_input "$T7" false "Should I proceed with the next step?" "$T7/transcript.jsonl" | bash "$HOOK" 2>/dev/null || true)
 assert_not_contains "intent question → no block" '"decision"' "$out"
 rm -rf "$T7"
 
@@ -167,7 +184,8 @@ cat >"$LOG8" <<'MD'
 
 ALL CLEAR ✅
 MD
-out=$(make_input "$T8" false "Gate still running, checking back in shortly." | bash "$HOOK" 2>/dev/null || true)
+make_transcript "$T8/transcript.jsonl" "$LOG8"
+out=$(make_input "$T8" false "Gate still running, checking back in shortly." "$T8/transcript.jsonl" | bash "$HOOK" 2>/dev/null || true)
 assert_not_contains "async-wait signal → no block" '"decision"' "$out"
 rm -rf "$T8"
 
@@ -182,7 +200,8 @@ cat >"$LOG9" <<'MD'
 Gate: make ci-fast
 ALL CLEAR ✅
 MD
-out=$(make_input "$T9" false | bash "$HOOK" 2>/dev/null || true)
+make_transcript "$T9/transcript.jsonl" "$LOG9"
+out=$(make_input "$T9" false "" "$T9/transcript.jsonl" | bash "$HOOK" 2>/dev/null || true)
 assert_contains "phoenix-dev-gate Section header accepted for ALL CLEAR" '"decision"' "$out"
 rm -rf "$T9"
 
@@ -197,9 +216,40 @@ cat >"$LOG10" <<'MD'
 
 FAILED ❌ exit=1
 MD
-out=$(make_input "$T10" false | bash "$HOOK" 2>/dev/null || true)
+make_transcript "$T10/transcript.jsonl" "$LOG10"
+out=$(make_input "$T10" false "" "$T10/transcript.jsonl" | bash "$HOOK" 2>/dev/null || true)
 assert_not_contains "dev-gate FAILED (no ALL CLEAR) → no block by this hook" '"decision"' "$out"
 rm -rf "$T10"
+
+# ── Test 11: A+B regression — A's transcript, B's newer log on disk → A's log
+# B has newer mtime; transcript only records A → hook must read A, block correctly.
+T11A=$(make_project)
+T11B=$(make_project)
+LOG11A="$T11A/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_step1_A.md"
+cat >"$LOG11A" <<'MD'
+## developer-phoenix-backend Section
+
+## dev-gate Section
+
+ALL CLEAR ✅
+MD
+sleep 1
+LOG11B="$T11B/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_step1_B.md"
+cat >"$LOG11B" <<'MD'
+# Step B — no reviewer yet
+MD
+# A's transcript only records A's log.
+make_transcript "$T11A/transcript.jsonl" "$LOG11A"
+out=$(make_input "$T11A" false "" "$T11A/transcript.jsonl" | bash "$HOOK" 2>/dev/null || true)
+# Should block (dev+gate no reviewer) and NOT reference B's log in reason.
+if printf '%s' "$out" | grep -q '"decision"' && ! printf '%s' "$out" | grep -qF "$LOG11B"; then
+    printf 'PASS: A+B regression: blocked for correct log (A), B not referenced\n'
+    pass=$((pass + 1))
+else
+    printf 'FAIL: A+B regression: wrong outcome or B referenced\n  out: %s\n' "$out"
+    fail=$((fail + 1))
+fi
+rm -rf "$T11A" "$T11B"
 
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

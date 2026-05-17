@@ -52,12 +52,22 @@ JSON
     printf '%s' "$d"
 }
 
+# make_transcript <transcript_path> <log_path> — write synthetic JSONL
+# recording a Write to <log_path>.
+make_transcript() {
+    local transcript_path="$1"
+    local log_path="$2"
+    printf '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Write","input":{"file_path":"%s"}}]}}\n' \
+        "$log_path" >"$transcript_path"
+}
+
 input_for() {
     local cwd="$1"
     local agent_type="${2:-developer-html}"
     local stop_active="${3:-false}"
+    local transcript_path="${4:-}"
     cat <<JSON
-{"hook_event_name":"SubagentStop","agent_type":"$agent_type","agent_id":"abc","session_id":"s1","cwd":"$cwd","stop_hook_active":$stop_active}
+{"hook_event_name":"SubagentStop","agent_type":"$agent_type","agent_id":"abc","session_id":"s1","cwd":"$cwd","stop_hook_active":$stop_active,"transcript_path":"$transcript_path"}
 JSON
 }
 
@@ -170,7 +180,8 @@ cat >"$LOG" <<'MD'
 | Time | Agent | Task | Result |
 | ---- | ----- | ---- | ------ |
 MD
-out=$(printf '%s' "$(input_for "$T11")" | bash "$HOOK" 2>/dev/null || true)
+make_transcript "$T11/transcript.jsonl" "$LOG"
+out=$(printf '%s' "$(input_for "$T11" developer-html false "$T11/transcript.jsonl")" | bash "$HOOK" 2>/dev/null || true)
 if [ -z "$out" ] && grep -q '## static-site-verifier Section' "$LOG"; then
     printf 'PASS: %s\n' "all checks pass — SSV section appended"
     pass=$((pass + 1))
@@ -180,6 +191,33 @@ else
     fail=$((fail + 1))
 fi
 rm -rf "$T11"
+
+# ── Test 12: A+B regression — A's transcript, B's newer log on disk → A's log ─
+# B's log has newer mtime; transcript only records A → SSV appended to A's log.
+T12A=$(make_tmp_site)
+T12B=$(make_tmp_site)
+mkdir -p "$T12A/public" "$T12A/codegen/logging" "$T12B/codegen/logging"
+touch "$T12A/public/app.css"
+LOG_A="$T12A/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_session_A.md"
+cat >"$LOG_A" <<'MD'
+# Session A
+MD
+sleep 1
+LOG_B="$T12B/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_session_B.md"
+cat >"$LOG_B" <<'MD'
+# Session B
+MD
+# A's transcript only records A's log.
+make_transcript "$T12A/transcript.jsonl" "$LOG_A"
+out=$(printf '%s' "$(input_for "$T12A" developer-html false "$T12A/transcript.jsonl")" | bash "$HOOK" 2>/dev/null || true)
+if grep -q '## static-site-verifier Section' "$LOG_A" && ! grep -q '## static-site-verifier Section' "$LOG_B"; then
+    printf 'PASS: A+B regression: SSV appended to A only\n'
+    pass=$((pass + 1))
+else
+    printf 'FAIL: A+B regression: wrong log got SSV section\n  A: %s\n  B: %s\n' "$(cat "$LOG_A")" "$(cat "$LOG_B")"
+    fail=$((fail + 1))
+fi
+rm -rf "$T12A" "$T12B"
 
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

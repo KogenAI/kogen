@@ -70,13 +70,23 @@ make_project() {
     printf '%s' "$dir"
 }
 
+# make_transcript <transcript_path> <log_path> — write a synthetic JSONL
+# transcript recording a Write to <log_path>.
+make_transcript() {
+    local transcript_path="$1"
+    local log_path="$2"
+    printf '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Write","input":{"file_path":"%s"}}]}}\n' \
+        "$log_path" >"$transcript_path"
+}
+
 input_for() {
     local cwd="$1"
     local agent_type="${2:-developer-phoenix-backend}"
     local stop_active="${3:-false}"
     local sid="${4:-sess1}"
+    local transcript_path="${5:-}"
     cat <<JSON
-{"hook_event_name":"SubagentStop","agent_type":"$agent_type","agent_id":"abc","session_id":"$sid","cwd":"$cwd","stop_hook_active":$stop_active}
+{"hook_event_name":"SubagentStop","agent_type":"$agent_type","agent_id":"abc","session_id":"$sid","cwd":"$cwd","stop_hook_active":$stop_active,"transcript_path":"$transcript_path"}
 JSON
 }
 
@@ -104,8 +114,8 @@ cat >"$LOG" <<'MD'
 
 stuff
 MD
-# touch the log to ensure mtime within 60min (it already is)
-out=$(printf '%s' "$(input_for "$T3")" | bash "$HOOK" 2>/dev/null || true)
+make_transcript "$T3/transcript.jsonl" "$LOG"
+out=$(printf '%s' "$(input_for "$T3" developer-phoenix-backend false sess1 "$T3/transcript.jsonl")" | bash "$HOOK" 2>/dev/null || true)
 assert_not_contains "short-gate success no block" '"decision":"block"' "$out"
 assert_file_contains "short-gate success appends ALL CLEAR" "ALL CLEAR" "$LOG"
 rm -rf "$T3"
@@ -120,7 +130,8 @@ cat >"$LOG" <<'MD'
 
 **Gate**: `false`
 MD
-out=$(printf '%s' "$(input_for "$T4")" | bash "$HOOK" 2>/dev/null || true)
+make_transcript "$T4/transcript.jsonl" "$LOG"
+out=$(printf '%s' "$(input_for "$T4" developer-phoenix-backend false sess1 "$T4/transcript.jsonl")" | bash "$HOOK" 2>/dev/null || true)
 assert_contains "short-gate failure emits block" '"decision": "block"' "$out"
 assert_file_contains "short-gate failure appends FAILED" "FAILED" "$LOG"
 rm -rf "$T4"
@@ -135,12 +146,13 @@ cat >"$LOG" <<'MD'
 
 **Gate**: `make llm`
 MD
+make_transcript "$T5/transcript.jsonl" "$LOG"
 # Pre-empt: stub out `make` would actually run "make llm" forever. Instead,
 # rely on the gate string going via `nohup bash -c "make llm > ..."` which
 # fails fast in this temp dir (no Makefile). Either way the flag file is
 # written before the gate completes. We just need to assert the flag exists
 # and has the right keys.
-out=$(printf '%s' "$(input_for "$T5" developer-phoenix-backend false sess-long)" | bash "$HOOK" 2>/dev/null || true)
+out=$(printf '%s' "$(input_for "$T5" developer-phoenix-backend false sess-long "$T5/transcript.jsonl")" | bash "$HOOK" 2>/dev/null || true)
 sleep 0.5
 flag="$T5/codegen/gate-pending/sess-long.flag"
 assert_file_contains "long-gate flag has gate=" "gate=make llm" "$flag"
@@ -194,17 +206,15 @@ cat >"$LOG" <<'MD'
 
 **Gate**: `true`
 MD
-out=$(printf '%s' "$(input_for "$T6")" | bash "$HOOK" 2>/dev/null || true)
+make_transcript "$T6/transcript.jsonl" "$LOG"
+out=$(printf '%s' "$(input_for "$T6" developer-phoenix-backend false sess1 "$T6/transcript.jsonl")" | bash "$HOOK" 2>/dev/null || true)
 assert_not_contains "planner gate wins (no block from $(false))" '"decision":"block"' "$out"
 assert_file_contains "planner gate logs $(true)" "Gate: true" "$LOG"
 rm -rf "$T6"
 
 # ── Test 7: no step log → graceful no-op (no flag file) ─────────────────────
+# No log file and no transcript → hook exits 0 immediately (no session log in transcript)
 T7=$(make_project)
-# No log file in logging dir, no config — falls back to `make test` which
-# would `block`. We assert it does not crash and emits one of the two valid
-# outcomes (block or empty). The key assertion is no flag file is written
-# for short gates.
 out=$(printf '%s' "$(input_for "$T7")" | bash "$HOOK" 2>/dev/null || true)
 [ ! -d "$T7/codegen/gate-pending" ] || [ -z "$(ls "$T7/codegen/gate-pending" 2>/dev/null)" ] && {
     printf 'PASS: no flag file written for short fallback gate\n'
@@ -238,7 +248,8 @@ started_at=2026-01-01T00:00:00Z
 session_id=oldsession
 mode=long
 EOF
-out=$(printf '%s' "$(input_for "$T8" developer-phoenix-backend false sess8)" | DEV_GATE_POLL_TIMEOUT_OVERRIDE=5 bash "$HOOK" 2>/dev/null || true)
+make_transcript "$T8/transcript.jsonl" "$LOG8"
+out=$(printf '%s' "$(input_for "$T8" developer-phoenix-backend false sess8 "$T8/transcript.jsonl")" | DEV_GATE_POLL_TIMEOUT_OVERRIDE=5 bash "$HOOK" 2>/dev/null || true)
 kill "$prev_pid" 2>/dev/null || true
 assert_file_contains "prev-alive: INCONCLUSIVE appended" "INCONCLUSIVE" "$LOG8"
 assert_file_contains "prev-alive: reason is previous-gate-running" "previous-gate-running" "$LOG8"
@@ -289,7 +300,8 @@ touch "$orphan_log" "$orphan_ec"
 # macOS: touch -t uses YYYYMMDDHHMM; GNU: touch -d "2 days ago".
 two_days_ago=$(date -v-2d +%Y%m%d%H%M 2>/dev/null || date -d "2 days ago" +%Y%m%d%H%M 2>/dev/null || echo "202401010000")
 touch -t "$two_days_ago" "$orphan_log" "$orphan_ec" 2>/dev/null || true
-out=$(printf '%s' "$(input_for "$T9" developer-phoenix-backend false sess9)" |
+make_transcript "$T9/transcript.jsonl" "$LOG9"
+out=$(printf '%s' "$(input_for "$T9" developer-phoenix-backend false sess9 "$T9/transcript.jsonl")" |
     DEV_GATE_POLL_TIMEOUT_OVERRIDE=10 PATH="$stub_bin9:$PATH" bash "$HOOK" 2>/dev/null || true)
 # Orphan files should be swept (reaper runs in long-gate branch).
 [ ! -f "$orphan_log" ] && {
@@ -322,7 +334,8 @@ MD
 mkdir -p "$T10/codegen/gate-pending/.launch.lock"
 # Write a live PID into the lock so stale-lock recovery does not remove it.
 echo "$$" >"$T10/codegen/gate-pending/.launch.lock/launched_pid"
-out=$(printf '%s' "$(input_for "$T10" developer-phoenix-backend false sess10)" | DEV_GATE_POLL_TIMEOUT_OVERRIDE=5 bash "$HOOK" 2>/dev/null || true)
+make_transcript "$T10/transcript.jsonl" "$LOG10"
+out=$(printf '%s' "$(input_for "$T10" developer-phoenix-backend false sess10 "$T10/transcript.jsonl")" | DEV_GATE_POLL_TIMEOUT_OVERRIDE=5 bash "$HOOK" 2>/dev/null || true)
 assert_file_contains "mutex: INCONCLUSIVE appended" "INCONCLUSIVE" "$LOG10"
 assert_file_contains "mutex: reason is concurrent-launch" "concurrent-launch" "$LOG10"
 rm -rf "$T10"
@@ -346,7 +359,8 @@ cat >"$LOG11" <<'MD'
 **Gate**: `make llm`
 
 MD
-out=$(printf '%s' "$(input_for "$T11" developer-phoenix-backend false sess11)" |
+make_transcript "$T11/transcript.jsonl" "$LOG11"
+out=$(printf '%s' "$(input_for "$T11" developer-phoenix-backend false sess11 "$T11/transcript.jsonl")" |
     DEV_GATE_POLL_TIMEOUT_OVERRIDE=10 PATH="$stub_bin11:$PATH" bash "$HOOK" 2>/dev/null || true)
 assert_file_contains "long-gate exit-0: ALL CLEAR appended" "ALL CLEAR" "$LOG11"
 rm -rf "$T11" "$stub_bin11"
@@ -370,7 +384,8 @@ cat >"$LOG12" <<'MD'
 **Gate**: `make llm`
 
 MD
-out=$(printf '%s' "$(input_for "$T12" developer-phoenix-backend false sess12)" |
+make_transcript "$T12/transcript.jsonl" "$LOG12"
+out=$(printf '%s' "$(input_for "$T12" developer-phoenix-backend false sess12 "$T12/transcript.jsonl")" |
     DEV_GATE_POLL_TIMEOUT_OVERRIDE=10 PATH="$stub_bin12:$PATH" bash "$HOOK" 2>/dev/null || true)
 assert_file_contains "long-gate exit-1: FAILED appended" "FAILED" "$LOG12"
 rm -rf "$T12" "$stub_bin12"
@@ -394,8 +409,9 @@ cat >"$LOG13" <<'MD'
 **Gate**: `make llm`
 
 MD
+make_transcript "$T13/transcript.jsonl" "$LOG13"
 # Use a 1-second poll timeout so the test completes quickly.
-out=$(printf '%s' "$(input_for "$T13" developer-phoenix-backend false sess13)" |
+out=$(printf '%s' "$(input_for "$T13" developer-phoenix-backend false sess13 "$T13/transcript.jsonl")" |
     DEV_GATE_POLL_TIMEOUT_OVERRIDE=1 PATH="$stub_bin13:$PATH" bash "$HOOK" 2>/dev/null || true)
 assert_file_contains "timeout: INCONCLUSIVE appended" "INCONCLUSIVE" "$LOG13"
 assert_file_contains "timeout: reason is timeout-exceeded" "timeout-exceeded" "$LOG13"
@@ -419,7 +435,8 @@ cat >"$LOG14" <<'MD'
 
 **Gate**: `make llm`
 MD
-out=$(printf '%s' "$(input_for "$T14" developer-phoenix-backend false sess14)" |
+make_transcript "$T14/transcript.jsonl" "$LOG14"
+out=$(printf '%s' "$(input_for "$T14" developer-phoenix-backend false sess14 "$T14/transcript.jsonl")" |
     DEV_GATE_POLL_TIMEOUT_OVERRIDE=10 PATH="$stub_bin14:$PATH" bash "$HOOK" 2>/dev/null || true)
 assert_file_contains "T14: long-gate ALL CLEAR appended" "ALL CLEAR" "$LOG14"
 [ ! -e "$T14/codegen/gate-pending/latest.flag" ] && {
@@ -454,7 +471,8 @@ started_at=2026-01-01T00:00:00Z
 session_id=oldsession
 mode=long
 EOF
-out=$(printf '%s' "$(input_for "$T15" developer-phoenix-backend false sess15)" | bash "$HOOK" 2>/dev/null || true)
+make_transcript "$T15/transcript.jsonl" "$LOG15"
+out=$(printf '%s' "$(input_for "$T15" developer-phoenix-backend false sess15 "$T15/transcript.jsonl")" | bash "$HOOK" 2>/dev/null || true)
 [ ! -e "$T15/codegen/gate-pending/latest.flag" ] && {
     printf 'PASS: T15: pre-seeded terminal latest.flag swept by hook entry\n'
     pass=$((pass + 1))
@@ -487,7 +505,8 @@ started_at=2026-01-01T00:00:00Z
 session_id=livesession
 mode=long
 EOF
-out=$(printf '%s' "$(input_for "$T16" developer-phoenix-backend false sess16)" | DEV_GATE_POLL_TIMEOUT_OVERRIDE=5 bash "$HOOK" 2>/dev/null || true)
+make_transcript "$T16/transcript.jsonl" "$LOG16"
+out=$(printf '%s' "$(input_for "$T16" developer-phoenix-backend false sess16 "$T16/transcript.jsonl")" | DEV_GATE_POLL_TIMEOUT_OVERRIDE=5 bash "$HOOK" 2>/dev/null || true)
 [ -e "$T16/codegen/gate-pending/latest.flag" ] && {
     printf 'PASS: T16: live-PID flag preserved (no false sweep)\n'
     pass=$((pass + 1))
@@ -523,7 +542,8 @@ started_at=2026-01-01T00:00:00Z
 session_id=oldsession
 mode=long
 EOF
-out=$(printf '%s' "$(input_for "$T17" developer-phoenix-backend false sess17)" | bash "$HOOK" 2>/dev/null || true)
+make_transcript "$T17/transcript.jsonl" "$LOG17"
+out=$(printf '%s' "$(input_for "$T17" developer-phoenix-backend false sess17 "$T17/transcript.jsonl")" | bash "$HOOK" 2>/dev/null || true)
 kill "$reused_pid" 2>/dev/null || true
 # Without the sweep, the lockout would fire because PID is alive.
 # With the sweep, the terminal flag is removed before the lockout check sees it.
@@ -535,6 +555,42 @@ else
     pass=$((pass + 1))
 fi
 rm -rf "$T17"
+
+# ── Test 18: A+B regression — A's transcript, B's newer log on disk → A's log ─
+# B's log exists with newer mtime on disk, but transcript only records A.
+# Gate verdict MUST be appended to A's log, not B's.
+T18A=$(make_project)
+T18B=$(make_project)
+LOG_A="$T18A/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_step1_A.md"
+cat >"$LOG_A" <<'MD'
+# Step A
+
+## Plan
+
+**Gate**: `true`
+MD
+# Create B's log with a newer mtime (sleep 1 to guarantee).
+sleep 1
+LOG_B="$T18B/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_step1_B.md"
+cat >"$LOG_B" <<'MD'
+# Step B
+
+## Plan
+
+**Gate**: `true`
+MD
+# A's transcript only records A's log write.
+make_transcript "$T18A/transcript.jsonl" "$LOG_A"
+out=$(printf '%s' "$(input_for "$T18A" developer-phoenix-backend false sess18 "$T18A/transcript.jsonl")" | bash "$HOOK" 2>/dev/null || true)
+# A's log must have ALL CLEAR; B's log must NOT.
+if grep -qF "ALL CLEAR" "$LOG_A" && ! grep -qF "ALL CLEAR" "$LOG_B"; then
+    printf 'PASS: A+B regression: verdict appended to A only\n'
+    pass=$((pass + 1))
+else
+    printf 'FAIL: A+B regression: wrong log got verdict\n  A: %s\n  B: %s\n' "$(cat "$LOG_A")" "$(cat "$LOG_B")"
+    fail=$((fail + 1))
+fi
+rm -rf "$T18A" "$T18B"
 
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

@@ -55,17 +55,8 @@ if printf '%s' "$LAST_ASSISTANT_MESSAGE" | grep -qE 'ScheduleWakeup|scheduled.*w
     exit 0
 fi
 
-# Locate the active step log — most recently modified .md in codegen/logging/
-# within the last 60 minutes. Matches both *_session.md and *_step*.md.
-logging_dir="$project_dir/codegen/logging"
-log_file=""
-if [ -d "$logging_dir" ]; then
-    log_file=$(find "$logging_dir" -maxdepth 1 -type f -name '*.md' -mmin -60 2>/dev/null |
-        xargs -I{} stat -f '%m %N' {} 2>/dev/null |
-        sort -rn |
-        head -n 1 |
-        awk '{$1=""; sub(/^ /, ""); print}')
-fi
+# Locate the active step log from the session transcript.
+log_file=$(session_log_from_transcript)
 
 if [ -z "$log_file" ] || [ ! -r "$log_file" ]; then
     debug_log step-log-completeness "skip: no active step log"

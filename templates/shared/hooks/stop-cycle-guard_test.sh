@@ -162,8 +162,11 @@ tmp10=$(mktemp -d)
 mkdir -p "$tmp10/codegen/logging"
 printf '# Session Log\n## dev-gate Section\nDiagnosis: timeout.\n' \
     >"$tmp10/codegen/logging/test_session.md"
-touch "$tmp10/codegen/logging/test_session.md"
-printf '%s\n' "$AGENT_ENTRY_DEVELOPER" >"$tmp10/transcript.jsonl"
+# Transcript must record the Write to the log so session_log_from_transcript finds it.
+{
+    printf '%s\n' "$AGENT_ENTRY_DEVELOPER"
+    printf '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Write","input":{"file_path":"%s/codegen/logging/test_session.md"}}]}}\n' "$tmp10"
+} >"$tmp10/transcript.jsonl"
 INPUT10=$(make_input "$tmp10/transcript.jsonl" "$tmp10" "false" "Done.")
 run_test "verdict_guard_no_verdict: developer in transcript, log exists but no verdict → allow" \
     "allow" "$INPUT10" "$AGENT_ENTRY_DEVELOPER"
@@ -173,11 +176,44 @@ tmp11=$(mktemp -d)
 mkdir -p "$tmp11/codegen/logging"
 printf '# Session Log\n## dev-gate Section\nALL CLEAR ✅\n' \
     >"$tmp11/codegen/logging/test_session.md"
-touch "$tmp11/codegen/logging/test_session.md"
-printf '%s\n' "$AGENT_ENTRY_DEVELOPER" >"$tmp11/transcript.jsonl"
+# Transcript must record the Write so session_log_from_transcript finds it.
+{
+    printf '%s\n' "$AGENT_ENTRY_DEVELOPER"
+    printf '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Write","input":{"file_path":"%s/codegen/logging/test_session.md"}}]}}\n' "$tmp11"
+} >"$tmp11/transcript.jsonl"
 INPUT11=$(make_input "$tmp11/transcript.jsonl" "$tmp11" "false" "Done.")
 run_test "verdict_guard_with_verdict: developer in transcript, log has ALL CLEAR → block" \
     "block" "$INPUT11" "$AGENT_ENTRY_DEVELOPER"
+
+# --- Test 12: A+B regression — A's transcript + B's newer log on disk → block reason cites A ---
+# B's log has newer mtime; A's transcript records only A's log.
+# Verdict guard must read A's log (which has ALL CLEAR) → block with A's path, not B's.
+tmp12A=$(mktemp -d)
+tmp12B=$(mktemp -d)
+mkdir -p "$tmp12A/codegen/logging" "$tmp12B/codegen/logging"
+LOG12A="$tmp12A/codegen/logging/A_session.md"
+printf '# Session A\n## dev-gate Section\nALL CLEAR ✅\n' >"$LOG12A"
+sleep 1
+LOG12B="$tmp12B/codegen/logging/B_session.md"
+printf '# Session B\n## dev-gate Section\nALL CLEAR ✅\n' >"$LOG12B"
+# A's transcript records Write to A's log + developer agent call.
+{
+    printf '%s\n' "$AGENT_ENTRY_DEVELOPER"
+    printf '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Write","input":{"file_path":"%s"}}]}}\n' "$LOG12A"
+} >"$tmp12A/transcript.jsonl"
+INPUT12=$(make_input "$tmp12A/transcript.jsonl" "$tmp12A" "false" "Done.")
+stdout12=$(printf '%s' "$INPUT12" | bash "$GUARD" 2>/dev/null || true)
+# Must block (A's log has verdict) and reason must reference A's path, not B's.
+if printf '%s' "$stdout12" | grep -q '"decision"[[:space:]]*:[[:space:]]*"block"' &&
+   printf '%s' "$stdout12" | grep -qF "$LOG12A" &&
+   ! printf '%s' "$stdout12" | grep -qF "$LOG12B"; then
+    printf 'PASS: A+B regression: block cites A log, not B\n'
+    pass=$((pass + 1))
+else
+    printf 'FAIL: A+B regression: wrong block reason\n  stdout: %s\n' "$stdout12"
+    fail=$((fail + 1))
+fi
+rm -rf "$tmp12A" "$tmp12B"
 
 echo ""
 echo "Results: $pass passed, $fail failed"
