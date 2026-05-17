@@ -10,3 +10,8 @@
 .mcp.json
 *.code-workspace
 .env
+
+# Pi extension package
+node_modules/
+dist/
+__pycache__/
