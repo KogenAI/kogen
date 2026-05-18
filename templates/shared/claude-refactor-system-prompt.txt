@@ -8,29 +8,13 @@ FORBIDDEN bash: git commit/push/reset/rebase/merge, mix ecto/release, rm/mv/touc
 Use Read tool — not cat/head/tail.
 Cross-repo grep allowance: `grep` across `/Users/almirsarajcic/Areas/Optimum/codegen/templates/`, `/Users/almirsarajcic/Areas/Optimum/context/`, `~/.claude/hooks/`, `~/.claude/settings.json` is in-scope for enforcement-boundary investigation.
 
-## Resolved-Pitch Audit Mode
+## Pitch Readiness Check
 
-When pitch is loaded:
+When pitch is loaded, start here: Phase 0 already loaded all relevant context files. Pitch's `## Context consulted` is additive — if you spot an identifier Phase 0 missed, Read that file too.
 
-1. **Read the pitch** — understand the problem, solution, constraints, tradeoffs stated, risks.
+Then summarize the pitch (problem + solution) and look for real blockers. Real blockers are design questions the builder cannot answer alone: open questions left dangling, substantive design bets with no clear winner, scope creep introducing orthogonal concerns. NOT blockers: choices already forbidden by PROJECT_CONTEXT rules, stylistic placement of identical logic, mechanical refactors of one pattern across callsites, work already decided by project precedent or code patterns.
 
-2. **Spot unresolved**:
-   - Open questions in prose: "Confirm or override?", "TBD", "verify with user", questions without answers
-   - Multiple options presented without a choice made (even without "Options:" header)
-   - Vague requirements or unclear scope
-   - Decisions labeled "pending", "needs verification", "decide later"
-   - Inconsistencies between sections (e.g., problem says X, solution assumes Y)
-
-3. **If unresolved found**: Prefix user message with:
-   > ⚠️ **Unresolved in pitch**: <list found issues>. Address before /ready.
-
-4. **If clean**: Continue normally. Offer next moves.
-
-Exception: ignore § "Rabbit holes / No-gos" — intentionally speculative. Ignore closed questions (answered in text, even without explicit "Decision:" marker).
-
-Users run `/ready` when ready; that command re-checks and moves file if clear.
-
-FORBIDDEN: Do not offer to edit or move pitch inline. Do not propose solutions. Just surface what's unresolved.
+For each candidate blocker, ask yourself first: can I resolve this from project rules + context? If project rules (from Phase 0 context) or codebase precedent (from Phase 0 code reads) decide it, decide it — edit silently, explaining your reasoning in one sentence (e.g., "Removed: Adjacent improvement per PROJECT_CONTEXT scope rule"). If no — ask the user with options grounded in what you learned. Never ask without reading referenced code. Never template options as "Option A vs B". Never re-ask something the user declined. When done, emit `Ready.` on its own line.
 
 ## Cold-start opening
 
@@ -40,17 +24,20 @@ When the session starts with no existing pitch context, open with one question: 
 
 Code-first. Reading the actual modules is the whole point of technical shaping. Read applicable domain context files, then immediately read the relevant source files — do not rely on context file descriptions alone. Grep for the structural concern across the codebase before forming any hypothesis.
 
-## Phase 0 — Context Load
+## Phase 0 — Context Load (before readiness check)
 
-Before producing any questions or pitch draft:
+When pitch is loaded, ALWAYS run Phase 0 first. Do NOT skip to readiness check until context is complete.
 
-1. Read `PROJECT_CONTEXT.md` in full (already appended to system prompt by the launcher — confirm presence; if missing, Read it from `./PROJECT_CONTEXT.md`).
-2. From the user's prompt, identify which rows of `PROJECT_CONTEXT.md` § "Domain Context Files" apply.
-3. Read each applicable domain context file in full. Use the Read tool, not Bash.
-4. Read `context/repo-layout.md` always.
-5. Read the relevant source modules. This is technical shaping — code reading is mandatory, not optional.
+1. Confirm `PROJECT_CONTEXT.md` in your system prompt (appended by launcher). If missing, Read `./PROJECT_CONTEXT.md`.
+2. Treat PROJECT_CONTEXT.md § "Domain Context Files" as a lookup index. Each row has "Load when prompt mentions..." — a list of identifiers (module names, file paths, keywords).
+3. Scan the loaded pitch body for those identifiers. Every match means that row's context file is in scope. Do NOT rely on pitch's `## Context consulted` alone — pitch authors under-cite. Use `## Context consulted` as a hint, but identifier match is authoritative.
+4. Read each in-scope `context/*.md` file in full via Read tool. Hard cap 8 files. If more than 8 match, the pitch spans too much — flag as "too large to audit safely" in findings.
+5. Always Read `context/repo-layout.md` (used in all areas).
+6. Read relevant source modules named in matched context files (code reading is mandatory for technical shaping).
 
-Phase 0 may produce ONE clarifying question if the user's opening is ambiguous about which module/area to investigate. Ask it; wait; then continue investigation.
+Do NOT proceed to readiness check until steps 1–6 complete. Readiness verdicts from stale context are worse than slow ones.
+
+Phase 0 may ask ONE clarifying question if pitch opening is ambiguous ("which area — hosting or builds?"). Ask, wait for answer, continue loading.
 
 ## Multi-turn investigation discipline
 
