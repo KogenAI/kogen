@@ -1,0 +1,3 @@
+agent_type=developer-phoenix-frontend
+changed_llm_files:
+  templates/shared/subagents/phoenix/planner-phoenix.md.j2

@@ -751,15 +751,14 @@ def write_combobulate_artifacts(
     print(f"Wrote {codex_manifest_path}")
 
     # ── pi_config ─────────────────────────────────────────────────────────────
-    # Pi manifest contains every hook where harnesses is None (ships everywhere)
-    # OR harnesses explicitly includes "pi".
-    # hooks with harnesses=["claude_code"] or harnesses=["codex"] only are excluded.
+    # Pi uses load-gate (no per-call hooks), so the manifest is always empty.
+    # Only hooks that explicitly declare harnesses: pi are included; today none do.
     pi_priv_dir = combobulate_dir / "priv" / "pi_config"
     pi_priv_dir.mkdir(parents=True, exist_ok=True)
 
     pi_hooks = [
         h for h in all_hooks
-        if h.get("harnesses") is None or "pi" in (h.get("harnesses") or [])
+        if "pi" in (h.get("harnesses") or [])
     ]
 
     pi_inspector_path = pi_priv_dir / "inspector_settings.json"

@@ -321,5 +321,49 @@ assert_eq "codex_build_runner_impl branch mode" "mode=long" "$(printf '%s' "$out
 assert_eq "codex_build_runner_impl branch timeout" "timeout=1800" "$(printf '%s' "$out" | sed -n '3p')"
 rm -rf "$T8" "$SEED_DIR"
 
+# ── GATE_FINAL_STEP_DETECTOR with exit-based script (regression: exit killed fn) ──
+T9=$(make_project)
+SEED_DIR=$(mktemp -d)
+touch "$SEED_DIR/seed.bundle" "$SEED_DIR/seed.sql" "$SEED_DIR/validated"
+# Use exit-based detector (like combobulate's real gate-config.sh) instead of "true"
+cat >"$T9/.claude/gate-config.sh" <<'EOF'
+GATE_SHORT_DEFAULT="make ci-fast"
+GATE_SHORT_FINAL="make ci"
+GATE_LLM="make ci && make llm"
+GATE_LLM_AND_PHOENIX="make ci && make llm && make llm-phoenix"
+GATE_PHOENIX="make llm-phoenix"
+GATE_PHOENIX_VALIDATE_THEN="make llm-phoenix-validate && make llm-phoenix"
+GATE_PHOENIX_REBUILD_THEN="COMBOBULATE_VE_GATE=rebuild-seed-then make llm-phoenix"
+LLM_PATHS_REGEX="(claude_runner_impl|CLAUDE\.md|codegen/rules/)"
+PHOENIX_PATHS_REGEX="(context/apps/CLAUDE-phoenix\.md)"
+GATE_FINAL_STEP_DETECTOR='exit 0'
+EOF
+mkdir -p "$T9/lib"
+echo "x" >"$T9/lib/foo.ex"
+out=$(gate_select_decide "$T9")
+assert_eq "exit-detector final step gate" "gate=make ci" "$(printf '%s' "$out" | sed -n '1p')"
+assert_eq "exit-detector final step mode" "mode=short" "$(printf '%s' "$out" | sed -n '2p')"
+rm -rf "$T9" "$SEED_DIR"
+
+# ── GATE_FINAL_STEP_DETECTOR with exit 1 → SHORT_DEFAULT ──────────────────
+T10=$(make_project)
+cat >"$T10/.claude/gate-config.sh" <<'EOF'
+GATE_SHORT_DEFAULT="make ci-fast"
+GATE_SHORT_FINAL="make ci"
+GATE_LLM="make ci && make llm"
+GATE_LLM_AND_PHOENIX="make ci && make llm && make llm-phoenix"
+GATE_PHOENIX="make llm-phoenix"
+GATE_PHOENIX_VALIDATE_THEN="make llm-phoenix-validate && make llm-phoenix"
+GATE_PHOENIX_REBUILD_THEN="COMBOBULATE_VE_GATE=rebuild-seed-then make llm-phoenix"
+LLM_PATHS_REGEX="(claude_runner_impl|CLAUDE\.md|codegen/rules/)"
+PHOENIX_PATHS_REGEX="(context/apps/CLAUDE-phoenix\.md)"
+GATE_FINAL_STEP_DETECTOR='exit 1'
+EOF
+mkdir -p "$T10/lib"
+echo "x" >"$T10/lib/foo.ex"
+out=$(gate_select_decide "$T10")
+assert_eq "exit-1-detector non-final gate" "gate=make ci-fast" "$(printf '%s' "$out" | sed -n '1p')"
+rm -rf "$T10"
+
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

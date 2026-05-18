@@ -241,7 +241,9 @@ gate_select_decide() {
         fi
     else
         # No matches — final-step detection.
-        if eval "$GATE_FINAL_STEP_DETECTOR" >/dev/null 2>&1; then
+        # Wrap eval in a subshell so that `exit 0`/`exit 1` inside the
+        # detector script terminates the subshell, not the parent function.
+        if (eval "$GATE_FINAL_STEP_DETECTOR") >/dev/null 2>&1; then
             gate="$GATE_SHORT_FINAL"
         else
             gate="$GATE_SHORT_DEFAULT"

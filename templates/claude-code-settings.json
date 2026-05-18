@@ -171,6 +171,14 @@
         "hooks": [
           {
             "type": "command",
+            "command": "$HOME/.claude/hooks/step-log-missing-guard.sh"
+          }
+        ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
             "command": "$HOME/.claude/hooks/stop-cycle-guard.sh"
           }
         ]
@@ -180,6 +188,14 @@
           {
             "type": "command",
             "command": "$HOME/.claude/hooks/stop-resume.sh"
+          }
+        ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "$HOME/.claude/hooks/stop-verify-planner-gate.sh"
           }
         ]
       }
@@ -364,6 +380,15 @@
           {
             "type": "command",
             "command": "$HOME/.claude/hooks/operator-subagent-allowlist.sh"
+          }
+        ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "$HOME/.claude/hooks/orchestrator-no-ci.sh"
           }
         ]
       },
