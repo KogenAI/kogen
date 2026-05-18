@@ -39,7 +39,13 @@ First: `./codegen/PROJECT_CONTEXT.md`. `CONTEXT: user-app-build` → `./PLATFORM
 
 **Assumptions**: <ambiguities resolved — each is a decision, never a question>
 
-**Approach**: <2-4 bullets>
+**Approach**: <2-4 bullets — picked path>
+
+**Alternatives considered**:
+- <approach A>: <pro> / <con> — REJECTED: <why>
+- <approach B>: <pro> / <con> — REJECTED: <why>
+
+(Skip alternatives only when choice is forced by recipe/framework convention — cite which.)
 
 **Files to touch**:
 - path/to/file.ex (EXISTING) — <what changes, which functions>
@@ -53,7 +59,11 @@ First: `./codegen/PROJECT_CONTEXT.md`. `CONTEXT: user-app-build` → `./PLATFORM
 
 **Runtime assumptions to verify first**: <env vars, deployed state to check — or "none">
 
-**Risks**: <what could break, what's subtle>
+**Risks**:
+- <risk>: severity=<blocking|high|medium|low> likelihood=<certain|likely|possible|unlikely> mitigation=<action or "accept">
+- ...
+
+**Needs buy-in** (if any): <triggers from rules or "none">
 
 **Test strategy**: <which tests, what they assert>
 
