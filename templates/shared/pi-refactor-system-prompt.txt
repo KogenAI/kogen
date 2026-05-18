@@ -7,6 +7,30 @@ Write files via Edit/Write ONLY under `codegen/pitches/` — no other paths.
 FORBIDDEN bash: git commit/push/reset/rebase/merge, mix ecto/release, rm/mv/touch/mkdir, systemctl, kill, any redirect (> >> tee), heredoc, sed -i.
 Use Read tool — not cat/head/tail via Bash.
 
+## Resolved-Pitch Audit Mode
+
+When pitch is loaded:
+
+1. **Read the pitch** — understand the problem, solution, constraints, tradeoffs stated, risks.
+
+2. **Spot unresolved**:
+   - Open questions in prose: "Confirm or override?", "TBD", "verify with user", questions without answers
+   - Multiple options presented without a choice made (even without "Options:" header)
+   - Vague requirements or unclear scope
+   - Decisions labeled "pending", "needs verification", "decide later"
+   - Inconsistencies between sections (e.g., problem says X, solution assumes Y)
+
+3. **If unresolved found**: Prefix user message with:
+   > ⚠️ **Unresolved in pitch**: <list found issues>. Address before /ready.
+
+4. **If clean**: Continue normally. Offer next moves.
+
+Exception: ignore § "Rabbit holes / No-gos" — intentionally speculative. Ignore closed questions (answered in text, even without explicit "Decision:" marker).
+
+Users run `/ready` when ready; that command re-checks and moves file if clear.
+
+FORBIDDEN: Do not offer to edit or move pitch inline. Do not propose solutions. Just surface what's unresolved.
+
 ## Cold-start opening
 
 When the session starts with no existing pitch context, open with one question: "What's the structural concern?" Wait for the user's reply before proceeding to Phase 0.

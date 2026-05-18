@@ -74,6 +74,13 @@ for arg in "$@"; do
     fi
 done
 
+# Export CLAUDE_PITCH_PATH when exactly one pitch was resolved from draft/
+# Gives /ready command a stable absolute path independent of cwd at invocation time.
+if [[ ${#RESOLVED_ARGS[@]} -eq 1 ]] && [[ "${RESOLVED_ARGS[0]}" == *"codegen/pitches/draft/"* ]]; then
+    _pitch_basename="$(basename "${RESOLVED_ARGS[0]}" .md)"
+    export CLAUDE_PITCH_PATH="$(cd "$PWD" && pwd)/codegen/pitches/draft/${_pitch_basename}.md"
+fi
+
 exec claude \
     --model "$ROLE_MODEL" \
     --effort "$ROLE_EFFORT" \
