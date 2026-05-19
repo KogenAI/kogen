@@ -13,12 +13,13 @@ When the session starts with no existing pitch context, open with one question: 
 
 ## Pitch Readiness Check
 
-First, Phase 0 already loaded all relevant context files. Pitch's `## Context consulted` is additive — if you spot an identifier Phase 0 missed, Read that file too.
+First, Phase 0 already loaded all relevant context files. Pitch's `## References` is additive — if you spot an identifier Phase 0 missed, Read that file too.
 
 When pitch is loaded, run Phase 0 first (see below), then this loop:
 
 1. **Summarize**: state pitch in 1–2 sentences (problem + solution). Single chat line, no preamble.
-2. **Scan for blockers**:
+2. **Scan for blockers** — run in this order, highest priority first:
+   - **Unverified empirical claims** — falsifiable assertions about tool/config/code/CI behavior with no adjacent probe transcript in `## References`. Scan for patterns: "X does Y", "X never Y", "X always Y", "deleting X is safe because Y", "only Z triggers Y". For each match: check if a `$ <command>` + fenced output block appears in the same paragraph or under `## References`. If yes → not a blocker. If no → blocker. Run a narrow read-only probe to verify. Allowed probes: `grep` / `find` / `ls` (file existence, contract-test checks), `mix help <task>` (task behavior), `mix test --cover <one_test_file>` (single file, coverage-tool behavior), `MIX_ENV=test mix run -e "IO.inspect(...)"` (runtime config), `git log -p -- <path>` ("always been like X" claims). If probe confirms → embed verbatim output in `## References` (`$ <command>` line + fenced 3–10 line output block); claim stands. If probe contradicts or is inconclusive → raise concern in chat with numbered options; wait for user reply: (a) revise claim to match probe reality, (b) drop claim and dependent solution, (c) reshape solution around probe reality. NEVER embed inconclusive evidence. FORBIDDEN: silently accepting a claim because source code suggests it — reading source is NOT verification, you must execute the code path. NO leave-as-is option for this blocker type.
    - **Open questions** in the prose (not closed with a decision)
    - **Multiple approaches without a choice** — alternatives presented without saying which wins
    - **Scope creep** — solution introduces problems/features orthogonal to the stated problem, left undecided
@@ -39,6 +40,27 @@ When pitch is loaded, run Phase 0 first (see below), then this loop:
 5. **Loop ends** when no unresolved blockers remain → emit `Ready.`
 
 **Option templates by blocker type:**
+
+**Unverified empirical claim** (falsifiable assertion about tool/config/code/CI behavior, no probe transcript in ## References):
+```
+Blocker: Empirical claim at <section>, line <N>: "<quoted claim>". No probe transcript found in ## References.
+
+Probe run: `$ <command>`
+```
+<output>
+<3–10 lines of verbatim output>
+</output>
+```
+
+Result: probe [confirms / contradicts / is inconclusive].
+
+Options:
+  a) Revise claim to match probe reality: "<what claim should say instead>". Embed probe transcript in ## References.
+  b) Drop this claim and all dependent solution steps. Pitch narrowed.
+  c) Reshape solution around probe reality: "<what the solution would need to change>".
+
+Reply with a/b/c.
+```
 
 **Multiple approaches without a choice** (e.g., "Option A vs B both presented, A recommended"):
 ```
@@ -157,7 +179,7 @@ Produce pitch at `codegen/pitches/draft/<slug>.md` (via Edit/Write — restrict 
 4. **Rabbit holes** — explicitly fenced off; quote user deferrals.
 5. **No-gos** — adjacent work deliberately left out.
 6. **Scope warning** — ONLY if appetite is "too big — split"; names proposed sub-pitches.
-7. **Context consulted** — paths only.
+7. **References** — paths AND cited probe transcripts. Path entries are bare references to material read. Probe entries are references to executed verifications: a single line `$ <command>` followed by a fenced code block with 3–10 lines of verbatim output.
 
 Page budget: ~80 lines small-batch, ~160 lines big-batch.
 
@@ -172,3 +194,12 @@ If existing draft slug matches in `codegen/pitches/draft/`, Edit that file rathe
 Output: caveman ultra. Fragments OK. Arrows for causality (X → Y). Drop articles/filler/hedging.
 Preserve verbatim: MUST/NEVER/FORBIDDEN, file paths, error strings, code identifiers.
 Phase 0 MUST complete before any file write.
+
+## Anti-patterns to refuse
+
+- **"The hook fired, so the hook is the bug."** Audit registration first.
+- **"Add a `CLAUDE_ROLE=debug` early-exit to fix it."** Fix is the registration site or the manifest header, not the hook body.
+- **"It works for orchestrator so it's fine."** Subagents inherit hooks. Always test with a subagent spawn before concluding.
+- **"The doc says X so I'll trust it."** Always grep both templates and `~/.claude/settings.json`.
+- **"Reading source ≠ running the tool."** Inferring "X does Y" from reading `deps/X/lib/X.ex` without invoking X is forbidden when the claim is load-bearing.
+- **"Reading tests ≠ grepping for contract tests."** Before proposing deletion of a file or function, `grep -r <basename> test/` is mandatory. Contract tests on Makefiles, config files, and module structure DO exist and are binding.

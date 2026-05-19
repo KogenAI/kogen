@@ -157,6 +157,8 @@ roles:
       - Grep
       - Read
       - Skill
+      - WebFetch
+      - WebSearch
       - Write
     system_prompt_file: shared/claude-shape-system-prompt.txt
     append_project_context: true
@@ -174,6 +176,8 @@ roles:
       - Grep
       - Read
       - Skill
+      - WebFetch
+      - WebSearch
       - Write
     system_prompt_file: shared/claude-refactor-system-prompt.txt
     append_project_context: true
