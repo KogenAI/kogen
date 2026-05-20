@@ -95,7 +95,8 @@ out=$(make_input "$T2" false "" "$T2/transcript.jsonl" | bash "$HOOK" 2>/dev/nul
 assert_contains "dev+gate ALL CLEAR no reviewer → BLOCK" '"decision"' "$out"
 rm -rf "$T2"
 
-# ── Test 3: developer + ALL CLEAR + reviewer, no committer → BLOCK ──────────
+# ── Test 3: developer + ALL CLEAR + reviewer, no curator, no committer → BLOCK ──
+# Expect curator block (b1), not committer block.
 T3=$(make_project)
 LOG3="$T3/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_step1_test.md"
 cat >"$LOG3" <<'MD'
@@ -111,10 +112,11 @@ QUALITY APPROVED ✅
 MD
 make_transcript "$T3/transcript.jsonl" "$LOG3"
 out=$(make_input "$T3" false "" "$T3/transcript.jsonl" | bash "$HOOK" 2>/dev/null || true)
-assert_contains "reviewer no committer → BLOCK" '"decision"' "$out"
+assert_contains "reviewer no curator no committer → BLOCK (curator hint)" '"decision"' "$out"
+assert_contains "block reason mentions context-curator" 'context-curator' "$out"
 rm -rf "$T3"
 
-# ── Test 4: developer + ALL CLEAR + reviewer + committer → no block ──────────
+# ── Test 4: developer + ALL CLEAR + reviewer + curator + committer → no block ─
 T4=$(make_project)
 LOG4="$T4/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_step1_test.md"
 cat >"$LOG4" <<'MD'
@@ -128,13 +130,17 @@ ALL CLEAR ✅
 
 QUALITY APPROVED ✅
 
+## context-curator Section
+
+Done.
+
 ## committer Section
 
 Committed.
 MD
 make_transcript "$T4/transcript.jsonl" "$LOG4"
 out=$(make_input "$T4" false "" "$T4/transcript.jsonl" | bash "$HOOK" 2>/dev/null || true)
-assert_not_contains "full cycle complete → no block" '"decision"' "$out"
+assert_not_contains "full cycle complete (with curator) → no block" '"decision"' "$out"
 rm -rf "$T4"
 
 # ── Test 5: INCONCLUSIVE in log → no block ───────────────────────────────────
@@ -250,6 +256,92 @@ else
     fail=$((fail + 1))
 fi
 rm -rf "$T11A" "$T11B"
+
+# ── Test 12: reviewer present, curator absent, committer absent → BLOCK (curator) ─
+T12=$(make_project)
+LOG12="$T12/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_step1_test.md"
+cat >"$LOG12" <<'MD'
+## developer-phoenix-backend Section
+
+## dev-gate Section
+
+ALL CLEAR ✅
+
+## reviewer-phoenix Section
+
+QUALITY APPROVED ✅
+MD
+make_transcript "$T12/transcript.jsonl" "$LOG12"
+out=$(make_input "$T12" false "" "$T12/transcript.jsonl" | bash "$HOOK" 2>/dev/null || true)
+assert_contains "reviewer+no curator+no committer → BLOCK mentioning context-curator" 'context-curator' "$out"
+rm -rf "$T12"
+
+# ── Test 13: reviewer + curator present, committer absent → BLOCK (committer) ─
+T13=$(make_project)
+LOG13="$T13/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_step1_test.md"
+cat >"$LOG13" <<'MD'
+## developer-phoenix-backend Section
+
+## dev-gate Section
+
+ALL CLEAR ✅
+
+## reviewer-phoenix Section
+
+QUALITY APPROVED ✅
+
+## context-curator Section
+
+Done.
+MD
+make_transcript "$T13/transcript.jsonl" "$LOG13"
+out=$(make_input "$T13" false "" "$T13/transcript.jsonl" | bash "$HOOK" 2>/dev/null || true)
+assert_contains "reviewer+curator+no committer → BLOCK mentioning committer" '"decision"' "$out"
+assert_contains "block reason mentions committer" 'committer' "$out"
+rm -rf "$T13"
+
+# ── Test 14: all sections (dev+gate+reviewer+curator+committer) → no block ────
+T14=$(make_project)
+LOG14="$T14/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_step1_test.md"
+cat >"$LOG14" <<'MD'
+## developer-phoenix-backend Section
+
+## dev-gate Section
+
+ALL CLEAR ✅
+
+## reviewer-phoenix Section
+
+QUALITY APPROVED ✅
+
+## context-curator Section
+
+Done.
+
+## committer Section
+
+Committed.
+MD
+make_transcript "$T14/transcript.jsonl" "$LOG14"
+out=$(make_input "$T14" false "" "$T14/transcript.jsonl" | bash "$HOOK" 2>/dev/null || true)
+assert_not_contains "all five sections present → no block" '"decision"' "$out"
+rm -rf "$T14"
+
+# ── Test 15: git log behind (no verdict) → no block by this hook ─────────────
+# This hook only checks section presence, not git state. No verdict → no block.
+T15=$(make_project)
+LOG15="$T15/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_step1_test.md"
+cat >"$LOG15" <<'MD'
+## developer-phoenix-backend Section
+
+## dev-gate Section
+
+FAILED ❌ exit=1
+MD
+make_transcript "$T15/transcript.jsonl" "$LOG15"
+out=$(make_input "$T15" false "" "$T15/transcript.jsonl" | bash "$HOOK" 2>/dev/null || true)
+assert_not_contains "gate FAILED (no ALL CLEAR) → no block by this hook" '"decision"' "$out"
+rm -rf "$T15"
 
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

@@ -76,6 +76,7 @@ fi
 has_developer_section=0
 has_gate_all_clear=0
 has_reviewer_section=0
+has_curator_section=0
 has_committer_section=0
 
 # developer-* Section present?
@@ -96,22 +97,33 @@ if grep -qE '^## reviewer-.+ Section|^## reviewer-phoenix Section|^## reviewer-s
     has_reviewer_section=1
 fi
 
+# context-curator Section present?
+if grep -qE '^## context-curator Section' "$log_file" 2>/dev/null; then
+    has_curator_section=1
+fi
+
 # committer Section present?
 if grep -qE '^## committer Section' "$log_file" 2>/dev/null; then
     has_committer_section=1
 fi
 
-debug_log step-log-completeness "dev=$has_developer_section gate_clear=$has_gate_all_clear reviewer=$has_reviewer_section committer=$has_committer_section"
+debug_log step-log-completeness "dev=$has_developer_section gate_clear=$has_gate_all_clear reviewer=$has_reviewer_section curator=$has_curator_section committer=$has_committer_section"
 
 # Case (a): developer + gate ALL CLEAR present, reviewer absent → block
 if [ "$has_developer_section" = "1" ] && [ "$has_gate_all_clear" = "1" ] && [ "$has_reviewer_section" = "0" ]; then
-    block "step-log-completeness: developer gate cleared (ALL CLEAR ✅) but reviewer has not run yet. Continue the cycle: delegate to reviewer-phoenix, then committer. Step log: $log_file"
+    block "step-log-completeness: developer gate cleared (ALL CLEAR ✅) but reviewer has not run yet. Continue the cycle: delegate to reviewer-phoenix, then context-curator, then committer. Step log: $log_file"
     exit 0
 fi
 
-# Case (b): reviewer present, committer absent → block
-if [ "$has_reviewer_section" = "1" ] && [ "$has_committer_section" = "0" ]; then
-    block "step-log-completeness: reviewer-* Section found but committer has not run yet. Continue the cycle: delegate to committer. Step log: $log_file"
+# Case (b1): reviewer present, curator absent → block (must run curator before committer)
+if [ "$has_reviewer_section" = "1" ] && [ "$has_curator_section" = "0" ]; then
+    block "step-log-completeness: reviewer-* Section found but context-curator has not run yet. Continue the cycle: delegate to context-curator, then committer. Step log: $log_file"
+    exit 0
+fi
+
+# Case (b2): reviewer + curator present, committer absent → block
+if [ "$has_reviewer_section" = "1" ] && [ "$has_curator_section" = "1" ] && [ "$has_committer_section" = "0" ]; then
+    block "step-log-completeness: reviewer-* and context-curator Sections found but committer has not run yet. Continue the cycle: delegate to committer. Step log: $log_file"
     exit 0
 fi
 

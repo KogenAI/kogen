@@ -85,6 +85,10 @@ harness:
     claude: { model: haiku, effort: low }
     codex: { model: gpt-5.4-mini, effort: medium }
     pi: { model: openai-codex/gpt-5.4-mini, effort: medium }
+  context-curator:
+    claude: { model: haiku, effort: low }
+    codex: { model: gpt-5.4-mini, effort: low }
+    pi: { model: openai-codex/gpt-5.4-mini, effort: low }
   build:
     claude: { model: haiku, effort: medium }
     codex: { model: gpt-5.4-mini, effort: medium }

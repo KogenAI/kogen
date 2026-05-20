@@ -215,6 +215,37 @@ else
 fi
 rm -rf "$tmp12A" "$tmp12B"
 
+# --- Test 13: context-curator mid-cycle → BLOCK ---
+# Transcript ending in context-curator with a session log containing ALL CLEAR → MUST block.
+# Use a unique session_id to avoid counter-file exhaustion from earlier blocking tests.
+tmp13=$(mktemp -d)
+mkdir -p "$tmp13/codegen/logging"
+printf '# Session Log\n## dev-gate Section\nALL CLEAR ✅\n' \
+    >"$tmp13/codegen/logging/test_session.md"
+# Remove any stale counter file for the unique session.
+rm -f "/tmp/claude-cycle-guard-test-sess-13.count"
+AGENT_ENTRY_CURATOR='{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Agent","input":{"subagent_type":"context-curator","description":"x","prompt":"x"}}]}}'
+{
+    printf '%s\n' "$AGENT_ENTRY_CURATOR"
+    printf '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Write","input":{"file_path":"%s/codegen/logging/test_session.md"}}]}}\n' "$tmp13"
+} >"$tmp13/transcript.jsonl"
+INPUT13=$(printf '{"hook_event_name":"Stop","session_id":"test-sess-13","transcript_path":"%s/transcript.jsonl","cwd":"%s","stop_hook_active":false,"last_assistant_message":"Done."}' "$tmp13" "$tmp13")
+run_test "mid_cycle_context_curator: transcript ends in context-curator + ALL CLEAR → block" \
+    "block" "$INPUT13" "$AGENT_ENTRY_CURATOR"
+rm -rf "$tmp13"
+
+# --- Test 14: committer is terminal → ALLOW ---
+# Transcript ending in committer → MUST allow (not mid-cycle).
+# This confirms the committer case is NOT in the mid-cycle blocker.
+tmp14=$(mktemp -d)
+TRANSCRIPT14="${AGENT_ENTRY_DEVELOPER}
+${AGENT_ENTRY_COMMITTER}"
+printf '%s\n' "$TRANSCRIPT14" >"$tmp14/transcript.jsonl"
+INPUT14=$(make_input "$tmp14/transcript.jsonl" "$tmp14" "false" "Done.")
+run_test "committer_terminal: transcript ends in committer → allow (cycle complete)" \
+    "allow" "$INPUT14" "$TRANSCRIPT14"
+rm -rf "$tmp14"
+
 echo ""
 echo "Results: $pass passed, $fail failed"
 

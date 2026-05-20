@@ -393,12 +393,17 @@ def collect_agents(subagents_dir: Path) -> dict:
     """
     stack_map: dict = {"phoenix": [], "static_html": [], "static_hugo": [], "static_vite": []}
 
-    # Parse committer from shared/
+    # Parse committer and curator from shared/
     shared_dir = subagents_dir / "shared"
     committer_name = None
     if (shared_dir / "committer.md.j2").exists():
         fm = parse_subagent_frontmatter(shared_dir / "committer.md.j2")
         committer_name = fm["name"]
+
+    curator_name = None
+    if (shared_dir / "context-curator.md.j2").exists():
+        fm = parse_subagent_frontmatter(shared_dir / "context-curator.md.j2")
+        curator_name = fm["name"]
 
     # Parse phoenix agents
     phoenix_dir = subagents_dir / "phoenix"
@@ -429,10 +434,14 @@ def collect_agents(subagents_dir: Path) -> dict:
                 stack_map["static_hugo"].append(name)
                 stack_map["static_vite"].append(name)
 
-    # Merge committer into every concrete stack
+    # Merge committer and curator into every concrete stack
     if committer_name:
         for key in stack_map:
             stack_map[key].append(committer_name)
+
+    if curator_name:
+        for key in stack_map:
+            stack_map[key].append(curator_name)
 
     # Sort each stack
     for key in stack_map:
