@@ -13,3 +13,15 @@ Backend Phoenix/Elixir dev — owns Ecto schemas/migrations/changesets/seeds, bu
 {% include 'subagents/_phoenix_developer_common.md.j2' %}
 
 TDD → schemas/migrations (if needed) → `mix ecto.migrate && mix ecto.rollback && mix ecto.migrate` → targeted tests for files you touched (`mix test path/to/specific_test.exs`) → cross-reference `## Files Modified` against `PROJECT_CONTEXT.md` § Domain Context Files **Update when changing...** column and update every matched row in the same commit → append `## phoenix-backend Section`. Done: code written, migrations reversible, tests pass, pre-completion clean, log appended. Full suite is VE's job at end of step.
+
+## Stuck-loop escalation
+
+Same approach failed twice OR same test failing 3+ times → escalate BEFORE the next retry. ONE escalation per loop.
+
+Run this Bash row (keep `STUCK-ESCALATION:` prefix verbatim — `mix combobulate.session.analyze` counts it):
+
+```bash
+claude --agent planner-phoenix --print --output-format text "STUCK-ESCALATION: <problem> + <what I tried> + <current failure>. One recommendation."
+```
+
+Log the Bash invocation in your `## <role> Section` **Commands executed** table per standard session-log discipline. Read the planner's stdout, apply the one recommendation, continue. Do not escalate again in the same loop.

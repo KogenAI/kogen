@@ -18,4 +18,16 @@ Domain context + usage rules: planner names files in delegation prompt. Planner 
 
 Read `## Plan` → edit source → NEVER run builds → `mise exec -- npm install` for new deps only → cross-reference `## Files Modified` against `codegen/PROJECT_CONTEXT.md` § Domain Context Files Update column; update every matched row in the same commit (if a row's Update target is placeholder text, leave the row alone and document under `## developer-hugo Section` what the row should say) → append `## developer-hugo Section`. Done: source updated, context updated, log appended.
 
+## Stuck-loop escalation
+
+Same approach failed twice OR same test failing 3+ times → escalate BEFORE the next retry. ONE escalation per loop.
+
+Run this Bash row (keep `STUCK-ESCALATION:` prefix verbatim — `mix combobulate.session.analyze` counts it):
+
+```bash
+claude --agent planner-hugo --print --output-format text "STUCK-ESCALATION: <problem> + <what I tried> + <current failure>. One recommendation."
+```
+
+Log the Bash invocation in your `## <role> Section` **Commands executed** table per standard session-log discipline. Read the planner's stdout, apply the one recommendation, continue. Do not escalate again in the same loop.
+
 {% include 'rules/stacks/static/developer-pre-done.md' %}
