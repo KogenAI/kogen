@@ -236,6 +236,13 @@ hook-parity:
 	@if [ -f "$(COMBOBULATE_DIR)/priv/claude_config/agent_manifest.json" ]; then \
 		diff -u "$(COMBOBULATE_DIR)/priv/claude_config/agent_manifest.json" /tmp/hook-parity-test/priv/claude_config/agent_manifest.json || exit 1; \
 	fi
+	@if [ -f "$(COMBOBULATE_DIR)/priv/claude_config/hook_manifest.json" ]; then \
+		diff -u "$(COMBOBULATE_DIR)/priv/claude_config/hook_manifest.json" /tmp/hook-parity-test/priv/claude_config/hook_manifest.json || exit 1; \
+	fi
+	@if [ -f "$(COMBOBULATE_DIR)/priv/claude_config/expected_hook_manifest_hash.txt" ]; then \
+		diff -u "$(COMBOBULATE_DIR)/priv/claude_config/expected_hook_manifest_hash.txt" /tmp/hook-parity-test/priv/claude_config/expected_hook_manifest_hash.txt || exit 1; \
+	fi
+	@echo "hook-manifest-parity: PASS"
 	@echo "hook-parity: PASS"
 
 install: hook-parity
@@ -255,7 +262,7 @@ install: hook-parity
 # test: run every PreToolUse/SubagentStop/Stop hook unit-test script in parallel.
 # Each *_test.sh is hermetic — own tmp dirs, no shared state — so xargs -P is safe.
 # Job count caps at 8 to avoid thrashing on smaller machines.
-test:
+test: hook-parity
 	$(call check_make_only,test)
 	@./templates/shared/hooks/run-tests.sh
 	@cd "$(PI_EXTENSION_DIR)" && mise exec -- npm test

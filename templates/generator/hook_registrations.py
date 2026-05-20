@@ -31,6 +31,7 @@ Hook ordering within each event:
 """
 
 import argparse
+import hashlib
 import json
 import os
 import re
@@ -721,6 +722,9 @@ def write_combobulate_artifacts(
     manifest_path = claude_priv_dir / "hook_manifest.json"
     manifest_path.write_text(json.dumps(manifest_entries, indent=2) + "\n")
     print(f"Wrote {manifest_path}")
+    claude_hash_path = claude_priv_dir / "expected_hook_manifest_hash.txt"
+    claude_hash_path.write_text(hashlib.md5(manifest_path.read_bytes()).hexdigest())
+    print(f"Wrote {claude_hash_path}")
 
     # ── codex_config ─────────────────────────────────────────────────────────
     codex_priv_dir = combobulate_dir / "priv" / "codex_config"
@@ -758,6 +762,9 @@ def write_combobulate_artifacts(
     codex_manifest_path = codex_priv_dir / "hook_manifest.json"
     codex_manifest_path.write_text(json.dumps(codex_manifest_entries, indent=2) + "\n")
     print(f"Wrote {codex_manifest_path}")
+    codex_hash_path = codex_priv_dir / "expected_hook_manifest_hash.txt"
+    codex_hash_path.write_text(hashlib.md5(codex_manifest_path.read_bytes()).hexdigest())
+    print(f"Wrote {codex_hash_path}")
 
     # ── pi_config ─────────────────────────────────────────────────────────────
     # Pi uses load-gate (no per-call hooks), so the manifest is always empty.
@@ -789,6 +796,9 @@ def write_combobulate_artifacts(
     pi_manifest_path = pi_priv_dir / "hook_manifest.json"
     pi_manifest_path.write_text(json.dumps(pi_manifest_entries, indent=2) + "\n")
     print(f"Wrote {pi_manifest_path} ({len(pi_manifest_entries)} Pi-targeted hooks)")
+    pi_hash_path = pi_priv_dir / "expected_hook_manifest_hash.txt"
+    pi_hash_path.write_text(hashlib.md5(pi_manifest_path.read_bytes()).hexdigest())
+    print(f"Wrote {pi_hash_path}")
 
     # Validate TS handler parity if pi-extension-dir provided
     if pi_extension_dir is not None:
