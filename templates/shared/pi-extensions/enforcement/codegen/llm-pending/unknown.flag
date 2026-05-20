@@ -5,3 +5,15 @@ changed_llm_files:
   templates/shared/subagents/static/developer-html.md.j2
   templates/shared/subagents/static/developer-hugo.md.j2
   templates/shared/subagents/static/developer-vite.md.j2
+  templates/shared/subagents/phoenix/developer-phoenix-backend.md.j2
+  templates/shared/subagents/phoenix/developer-phoenix-frontend.md.j2
+  templates/shared/subagents/phoenix/planner-phoenix.md.j2
+  templates/shared/subagents/phoenix/reviewer-phoenix.md.j2
+  templates/shared/subagents/shared/committer.md.j2
+  templates/shared/subagents/static/developer-html.md.j2
+  templates/shared/subagents/static/developer-hugo.md.j2
+  templates/shared/subagents/static/developer-vite.md.j2
+  templates/shared/subagents/static/planner-html.md.j2
+  templates/shared/subagents/static/planner-hugo.md.j2
+  templates/shared/subagents/static/planner-vite.md.j2
+  templates/shared/subagents/static/reviewer-static.md.j2
