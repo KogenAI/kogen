@@ -194,6 +194,21 @@ CODEX_ROLE=shape run_test "CODEX_ROLE=shape bypasses read discipline" "0" "$FIXT
 FIXTURE_CODEX_REFACTOR_BYPASS='{"hook_event_name":"PreToolUse","tool_name":"Read","tool_input":{"file_path":"lib/combobulate/apps.ex"},"agent_id":"","agent_type":""}'
 CODEX_ROLE=refactor run_test "CODEX_ROLE=refactor bypasses read discipline" "0" "$FIXTURE_CODEX_REFACTOR_BYPASS"
 
+# Test 33: orchestrator Read codegen/PROJECT_CONTEXT.md (relative symlink form) — DENY
+FIXTURE_PC_CODEGEN='{"hook_event_name":"PreToolUse","tool_name":"Read","tool_input":{"file_path":"codegen/PROJECT_CONTEXT.md"},"agent_id":"","agent_type":""}'
+run_test "orchestrator Read on codegen/PROJECT_CONTEXT.md denies (symlink relative form)" "2" "$FIXTURE_PC_CODEGEN"
+
+# Test 34: orchestrator Read absolute <cwd>/codegen/PROJECT_CONTEXT.md — DENY
+TMP_CWD_PC="$(mktemp -d)"
+ABS_PC="${TMP_CWD_PC}/codegen/PROJECT_CONTEXT.md"
+FIXTURE_ABS_PC='{"hook_event_name":"PreToolUse","tool_name":"Read","tool_input":{"file_path":"'"$ABS_PC"'"},"agent_id":"","agent_type":"","cwd":"'"$TMP_CWD_PC"'"}'
+run_test "orchestrator Read on absolute codegen/PROJECT_CONTEXT.md denies" "2" "$FIXTURE_ABS_PC"
+rm -rf "$TMP_CWD_PC"
+
+# Test 35: orchestrator Read codegen/token-budget-design.md — still ALLOW (regression guard)
+FIXTURE_DESIGN_REG='{"hook_event_name":"PreToolUse","tool_name":"Read","tool_input":{"file_path":"codegen/token-budget-design.md"},"agent_id":"","agent_type":""}'
+run_test "orchestrator Read on codegen/token-budget-design.md still allows (regression guard)" "0" "$FIXTURE_DESIGN_REG"
+
 echo ""
 echo "Results: $pass passed, $fail failed"
 

@@ -50,6 +50,7 @@ First: `./codegen/PROJECT_CONTEXT.md`. `CONTEXT: user-app-build` → `./PLATFORM
 **Files to touch**:
 - path/to/file.ex (EXISTING) — <what changes, which functions>
 - path/to/new_file.ex (NEW) — <purpose>
+- context/<area>.md (EDIT) — <what gets added or clarified>
 
 **Integration points**: <how new code connects to existing modules>
 
@@ -112,6 +113,7 @@ Domain context: context/llm.md, context/builds.md
 ## Files to touch
 - lib/<app>/<context>.ex (EXISTING) — add fn X
 - test/<app>/<context>_test.exs (NEW) — what asserts
+- context/<area>.md (EDIT) — update section Y with new behavior
 
 Gate: make ci-fast
 

@@ -90,8 +90,12 @@ if printf '%s' "$rel_path" | grep -qE '^codegen/rules/build-runtime/[^/]+\.md$';
 fi
 
 # Allowlist check 3: codegen/*.md (top-level design docs only — no subdirs)
+# Exclude PROJECT_CONTEXT.md — planner reads it, orchestrator must not.
 if printf '%s' "$rel_path" | grep -qE '^codegen/[^/]+\.md$'; then
-    exit 0
+    bn="${rel_path##*/}"
+    if [ "$bn" != "PROJECT_CONTEXT.md" ]; then
+        exit 0
+    fi
 fi
 
 # Allowlist check 4: codegen/pitches/ (draft/ready/shipped) — matches the

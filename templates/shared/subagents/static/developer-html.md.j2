@@ -16,7 +16,7 @@ Owns ALL source: HTML, CSS, JS, assets. Plain HTML + Tailwind v4 stack.
 
 Domain context + usage rules: planner names files in delegation prompt.
 
-Read `## Plan` → edit source → NEVER run builds → `mise exec -- npm install` for new deps only → cross-reference `## Files Modified` against `codegen/PROJECT_CONTEXT.md` § Domain Context Files Update column; update every matched row in the same commit (if a row's Update target is placeholder text, leave the row alone and document under `## developer-html Section` what the row should say) → write your section body under the existing `## developer-html Section` header the orchestrator already inserted. Done: source updated, context updated, log appended.
+Read `## Plan` → edit source → NEVER run builds → `mise exec -- npm install` for new deps only → edit ONLY files in planner's `## Files to touch` — context/rules updates are curator's job post-reviewer → write your section body under the existing `## developer-html Section` header the orchestrator already inserted. Done: source updated, log appended.
 
 ## Stuck-loop escalation
 
