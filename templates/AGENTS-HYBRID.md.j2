@@ -15,7 +15,7 @@ Any code/tests → slice-specific dev (`developer-phoenix-backend`/`developer-ph
 
 ## ORCHESTRATOR: ALWAYS RUN FULL CYCLE
 
-Each step → own full cycle. Never plan all steps upfront. planner → dev → cr → committer for step N, commit, then step N+1 from scratch. {% if tool.name == 'claude' %}Gate verdict (incl. INCONCLUSIVE classification) appended by `phoenix-dev-gate.sh` hook — no separate VE delegation.
+Each step → own full cycle. Never plan all steps upfront. planner → dev → cr → committer for step N, commit, then step N+1 from scratch. {% if tool.name == 'claude' %}Gate verdict (incl. INCONCLUSIVE classification) appended by `dev-gate.sh` hook — no separate VE delegation.
 {% else %}Gate verdict (incl. INCONCLUSIVE classification) decided by orchestrator after running planner's `**Gate**` command — no separate VE delegation.
 {% endif %}
 
@@ -29,7 +29,7 @@ Delegation prompt comes from planner verbatim. Orchestrator NEVER writes dev pro
 
 After dev subagent completes — immediately, without stopping or asking:
 
-{% if tool.name == 'claude' %}`~/.claude/hooks/phoenix-dev-gate.sh` SubagentStop hook decides gate, runs inline (short) or launches + polls exitcode file (long). Hook appends verdict — `ALL CLEAR ✅`, `FAILED ❌`, or `INCONCLUSIVE ⚠️` — to active step log before subagent exits.
+{% if tool.name == 'claude' %}`~/.claude/hooks/dev-gate.sh` SubagentStop hook decides gate, runs inline (short) or launches + polls exitcode file (long). Hook appends verdict — `ALL CLEAR ✅`, `FAILED ❌`, or `INCONCLUSIVE ⚠️` — to active step log before subagent exits.
 {% else %}Orchestrator runs gate command from planner's `**Gate**` field after dev subagent returns. Capture `2>&1`, classify verdict — `ALL CLEAR ✅`, `FAILED ❌`, or `INCONCLUSIVE ⚠️` — append to active step log `## dev-gate Section` before proceeding.
 {% endif %}
 
@@ -112,7 +112,7 @@ When editing anything under `templates/shared/hooks/` or `templates/claude-code-
 ## Agent Roles & Workflow
 
 ```
-{% if tool.name == 'claude' %}planner -> (developer-phoenix-backend)? -> (developer-phoenix-frontend)? -> [phoenix-dev-gate.sh hook] -> reviewer-phoenix -> committer
+{% if tool.name == 'claude' %}planner -> (developer-phoenix-backend)? -> (developer-phoenix-frontend)? -> [dev-gate.sh hook] -> reviewer-phoenix -> committer
 {% else %}planner -> (developer-phoenix-backend)? -> (developer-phoenix-frontend)? -> [gate] -> reviewer-phoenix -> committer
 {% endif %}```
 
