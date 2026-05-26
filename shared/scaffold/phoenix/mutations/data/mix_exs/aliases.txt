@@ -1,0 +1,29 @@
+        setup: [
+          "deps.get",
+          "cmd npm i -D prettier prettier-plugin-toml",
+          "ecto.setup",
+          "assets.setup",
+          "assets.build"
+        ],
+        "ecto.setup": ["ecto.create", "ecto.migrate", "run priv/repo/seeds.exs"],
+        "ecto.reset": ["ecto.drop", "ecto.setup"],
+        test: ["ecto.create --quiet", "ecto.migrate --quiet", "test"],
+        "assets.setup": ["tailwind.install --if-missing", "esbuild.install --if-missing"],
+        "assets.build": ["tailwind <%= app_name %>", "esbuild <%= app_name %>"],
+        "assets.deploy": [
+          "tailwind <%= app_name %> --minify",
+          "esbuild <%= app_name %> --minify",
+          "phx.digest"
+        ],
+        ci: [
+          "deps.unlock --check-unused",
+          "deps.audit",
+          "hex.audit",
+          "sobelow --config .sobelow-conf",
+          "format --check-formatted",
+          "cmd npx prettier -c .",
+          "credo --strict",
+          "dialyzer",
+          "test --cover --warnings-as-errors"
+        ],
+        prettier: ["cmd npx prettier -w ."]
