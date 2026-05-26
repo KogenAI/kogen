@@ -1,0 +1,61 @@
+# Rules Stacks Domain — Stack-Specific and Cross-Stack Rules
+
+Stack-specific rules (Phoenix vs static sites) plus cross-stack shared rules (git safety, hook layering, config discipline). These layer on top of core and role rules to give stack-appropriate guidance to planners and developers.
+
+## Components
+
+| File / Dir                                        | Purpose                                                              |
+| ------------------------------------------------- | -------------------------------------------------------------------- |
+| `shared/rules/stacks/phoenix/_core.md`            | Phoenix stack fundamentals — Elixir/OTP patterns, LiveView basics   |
+| `shared/rules/stacks/phoenix/orchestrator.md`     | Phoenix-specific orchestrator guidance + INCONCLUSIVE classification table |
+| `shared/rules/stacks/phoenix/planner.md`          | Phoenix planner guidance — slice definitions, backend/frontend split |
+| `shared/rules/stacks/phoenix/developer.md`        | Phoenix developer patterns — contexts, schemas, Oban, migrations     |
+| `shared/rules/stacks/phoenix/testing.md`          | Phoenix/ExUnit testing patterns                                      |
+| `shared/rules/stacks/phoenix/testing-liveview.md` | LiveView-specific test patterns                                      |
+| `shared/rules/stacks/static/`                     | Static site stack rules (mirrors phoenix structure)                  |
+| `shared/rules/shared/git-readonly.md`             | Git safety rules — never force-push, credential handling            |
+| `shared/rules/shared/hook-layering.md`            | How hooks layer across harnesses and events                          |
+| `shared/rules/shared/hook-test-coverage.md`       | Rules for maintaining hook test coverage                             |
+| `shared/rules/shared/config-single-source.md`     | Config must have a single source of truth — no duplication          |
+| `shared/rules/build-runtime/result-json.md`       | Result-JSON format for build-mode subagent output                   |
+
+## Key Paths
+
+```
+shared/rules/stacks/
+  phoenix/
+    _core.md
+    orchestrator.md
+    planner.md
+    developer.md
+    testing.md
+    testing-liveview.md
+  static/
+    *.md              ← mirrors phoenix structure for static stacks
+shared/rules/shared/
+  git-readonly.md
+  hook-layering.md
+  hook-test-coverage.md
+  config-single-source.md
+  (others)
+shared/rules/build-runtime/
+  result-json.md
+```
+
+## Integration Points
+
+- **subagents**: stack-specific `.md.j2` templates `{% include %}` the matching stack rules — `developer-phoenix-backend.md.j2` includes phoenix rules; `developer-html.md.j2` includes static rules
+- **hooks**: `gate-select.sh` picks the correct gate script (phoenix vs static) based on detected stack — see `context/hooks.md`
+- **rules-core**: stack rules are additive; core discipline rules (`context/rules-core.md`) apply regardless of stack
+- **rules-roles**: stack rules extend role rules for stack-specific scenarios (e.g. phoenix orchestrator INCONCLUSIVE table extends generic orchestrator rules)
+
+## Trigger Keywords
+
+phoenix rules, static rules, git-readonly, config-single-source, hook-layering, multi-repo-ordering, result-json, LiveView patterns, ExUnit, Oban, migrations, static site stack
+
+## Pitfalls
+
+- **Phoenix and static rule files mirror each other in structure** — when adding a new rule category to one stack, evaluate whether the other stack needs an equivalent
+- **`shared/rules/shared/`** is cross-stack — not phoenix-specific despite living alongside phoenix rules; applies to both harnesses
+- **INCONCLUSIVE table** — `stacks/phoenix/orchestrator.md` contains the classification table; generic orchestrator rules are in `roles/orchestrator.md`
+- **Rule changes are not live** — must `make install` to propagate to running agents
