@@ -70,7 +70,20 @@ modes:
     model: opus
     effort: high
     output_format: text
-    tools: [Agent, AskUserQuestion, Bash, Edit, Glob, Grep, Read, Skill, WebFetch, WebSearch, Write]
+    tools:
+      [
+        Agent,
+        AskUserQuestion,
+        Bash,
+        Edit,
+        Glob,
+        Grep,
+        Read,
+        Skill,
+        WebFetch,
+        WebSearch,
+        Write,
+      ]
     system_prompt_file: harnesses/claude/claude-shape-system-prompt.txt
     tools_header: harnesses/claude/tools-header/shape.txt
     prompt_body: harnesses/shared/prompt-bodies/shape.txt
@@ -79,7 +92,20 @@ modes:
     model: opus
     effort: high
     output_format: text
-    tools: [Agent, AskUserQuestion, Bash, Edit, Glob, Grep, Read, Skill, WebFetch, WebSearch, Write]
+    tools:
+      [
+        Agent,
+        AskUserQuestion,
+        Bash,
+        Edit,
+        Glob,
+        Grep,
+        Read,
+        Skill,
+        WebFetch,
+        WebSearch,
+        Write,
+      ]
     system_prompt_file: harnesses/claude/claude-refactor-system-prompt.txt
     tools_header: harnesses/claude/tools-header/refactor.txt
     prompt_body: harnesses/shared/prompt-bodies/refactor.txt
@@ -87,18 +113,18 @@ modes:
 # ─── Install / uninstall steps (declarative record) ──────────────────────────
 # Actual execution is in install.sh manifest-driven loop.
 install_steps:
-  - generate_agents          # generate.sh claude → templates/generated/claude-code/
-  - install_settings         # content_stable_cp settings_source → settings_file
-  - install_hooks            # copy hooks_source/*.sh → hooks_dir, prune orphans, install lib/
-  - install_commands         # copy commands_source/*.md → commands_dir, prune stale
-  - install_agents           # copy generated agents → agents_dir, prune stale
-  - install_launchers        # content_stable_cp + chmod+x each launcher entry
-  - install_completions      # content_stable_cp each completion to ZSH_COMPLETION_DST
-  - install_deps             # jq, yq, rg, claude (claude-specific deps)
+  - generate_agents # generate.sh claude → templates/generated/claude-code/
+  - install_settings # content_stable_cp settings_source → settings_file
+  - install_hooks # copy hooks_source/*.sh → hooks_dir, prune orphans, install lib/
+  - install_commands # copy commands_source/*.md → commands_dir, prune stale
+  - install_agents # copy generated agents → agents_dir, prune stale
+  - install_launchers # content_stable_cp + chmod+x each launcher entry
+  - install_completions # content_stable_cp each completion to ZSH_COMPLETION_DST
+  - install_deps # jq, yq, rg, claude (claude-specific deps)
 
 uninstall_steps:
-  - remove_agents            # rm agents_dir/*.md from installed-by-ocg manifest
-  - remove_commands          # rm commands_dir/*.md from installed-by-ocg manifest
-  - remove_hooks             # rm hooks_dir/*.sh
-  - remove_launchers         # rm INSTALL_DIR/{claude-build,claude-debug,claude-shape,claude-refactor}
-  - remove_completions       # rm ZSH_COMPLETION_DST/{_claude-build,_claude-debug,_claude-shape,_claude-refactor}
+  - remove_agents # rm agents_dir/*.md from installed-by-ocg manifest
+  - remove_commands # rm commands_dir/*.md from installed-by-ocg manifest
+  - remove_hooks # rm hooks_dir/*.sh
+  - remove_launchers # rm INSTALL_DIR/{claude-build,claude-debug,claude-shape,claude-refactor}
+  - remove_completions # rm ZSH_COMPLETION_DST/{_claude-build,_claude-debug,_claude-shape,_claude-refactor}

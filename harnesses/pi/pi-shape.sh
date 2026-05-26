@@ -8,6 +8,14 @@
 # PROJECT_CONTEXT.md appended to system prompt when present (mirrors claude-shape.sh).
 # Interactive mode: user types prompts in the TUI.
 set -euo pipefail
+
+if ! command -v pi >/dev/null 2>&1; then
+    echo "ERROR: 'pi' binary not found in PATH." >&2
+    echo "Install: npm install -g @earendil-works/pi-coding-agent" >&2
+    echo "See README.md § Prerequisites for details." >&2
+    exit 127
+fi
+
 export PI_ROLE=shape
 
 CODEGEN_DIR="${OCG_CODEGEN_DIR:-$HOME/Areas/Optimum/codegen}"

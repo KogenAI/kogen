@@ -6,6 +6,13 @@
 
 set -euo pipefail
 
+if ! command -v pi >/dev/null 2>&1; then
+    echo "ERROR: 'pi' binary not found in PATH." >&2
+    echo "Install: npm install -g @earendil-works/pi-coding-agent" >&2
+    echo "See README.md § Prerequisites for details." >&2
+    exit 127
+fi
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SP_FILE="$SCRIPT_DIR/pi-build-system-prompt.txt"
 SYSTEM_PROMPT_FLAG=()
@@ -55,9 +62,10 @@ if [[ $# -gt 1 ]]; then
     done
 fi
 
-PRINT_FLAG=()
+# Non-interactive: pass JSON output flags. Interactive: omit (pi handles tty detection).
+NON_INTERACTIVE_FLAGS=()
 if [[ -n "$NON_INTERACTIVE" ]]; then
-    PRINT_FLAG+=(-p)
+    NON_INTERACTIVE_FLAGS+=(-p --mode json --no-session)
 fi
 
 # Consume CWD env var set by codegen-build
@@ -72,9 +80,7 @@ exec env \
     -u CURSOR_API_KEY \
     pi \
     "${SYSTEM_PROMPT_FLAG[@]+"${SYSTEM_PROMPT_FLAG[@]}"}" \
-    "${PRINT_FLAG[@]+"${PRINT_FLAG[@]}"}" \
-    --mode json \
-    --no-session \
+    "${NON_INTERACTIVE_FLAGS[@]+"${NON_INTERACTIVE_FLAGS[@]}"}" \
     --no-context-files \
     "${EXTENSION_ARG[@]+"${EXTENSION_ARG[@]}"}" \
     --provider openai-codex \

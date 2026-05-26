@@ -6,6 +6,14 @@
 # read,grep,find,ls are available. No edit/write tools — enforcement at CLI level.
 # Interactive mode: user types prompts in the TUI.
 set -euo pipefail
+
+if ! command -v pi >/dev/null 2>&1; then
+    echo "ERROR: 'pi' binary not found in PATH." >&2
+    echo "Install: npm install -g @earendil-works/pi-coding-agent" >&2
+    echo "See README.md § Prerequisites for details." >&2
+    exit 127
+fi
+
 export PI_ROLE=debug
 
 CODEGEN_DIR="${OCG_CODEGEN_DIR:-$HOME/Areas/Optimum/codegen}"

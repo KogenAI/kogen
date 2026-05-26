@@ -33,11 +33,11 @@ Typical firing order for common roles:
 
 ### Inspector (`agent_type=inspector` / `inspector-phoenix`)
 
-| Event          | Hooks that fire                        |
-| -------------- | -------------------------------------- |
-| `Bash`         | `claude-inspector-bash-guard`          |
-| `Edit`/`Write` | `claude-inspector-write-guard`         |
-| `Read`         | `claude-inspector-read-guard`          |
+| Event          | Hooks that fire                |
+| -------------- | ------------------------------ |
+| `Bash`         | `claude-inspector-bash-guard`  |
+| `Edit`/`Write` | `claude-inspector-write-guard` |
+| `Read`         | `claude-inspector-read-guard`  |
 
 ### Committer (`agent_type=committer`)
 

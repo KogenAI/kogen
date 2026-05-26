@@ -10,13 +10,13 @@ Optimum Codegen (OCG) is a workspace management system that enables parallel dev
 
 OCG supports multiple LLM harnesses (`claude`, `pi`). Each harness is declared in a single manifest file — the manifest is the single source of truth (SSoT) for launchers, agents, completions, system prompts, and install/uninstall steps.
 
-| File | Role |
-|------|------|
-| `harnesses/<h>/manifest.yaml` | SSoT — full surface declaration |
-| `harnesses/<h>/tools-header/<mode>.txt` | Per-harness system prompt content per mode |
-| `harnesses/shared/prompt-bodies/<mode>.txt` | Shared system prompt body (common across harnesses) |
-| `templates/generator/generate.sh` | Unified generator (reads manifest, renders subagents, assembles prompts) |
-| `templates/generator/manifest-lib.sh` | Manifest helper library (sourced by generate.sh + install.sh) |
+| File                                        | Role                                                                     |
+| ------------------------------------------- | ------------------------------------------------------------------------ |
+| `harnesses/<h>/manifest.yaml`               | SSoT — full surface declaration                                          |
+| `harnesses/<h>/tools-header/<mode>.txt`     | Per-harness system prompt content per mode                               |
+| `harnesses/shared/prompt-bodies/<mode>.txt` | Shared system prompt body (common across harnesses)                      |
+| `templates/generator/generate.sh`           | Unified generator (reads manifest, renders subagents, assembles prompts) |
+| `templates/generator/manifest-lib.sh`       | Manifest helper library (sourced by generate.sh + install.sh)            |
 
 `make install` drives the full generate → install flow. Adding or swapping a harness = drop one manifest + `make install`.
 
@@ -26,11 +26,11 @@ See **[docs/adding-a-harness.md](docs/adding-a-harness.md)** for the end-to-end 
 
 Three Makefile targets, increasing cost:
 
-| Target             | What it runs                                                                                    | Cost                      | When                   |
-| ------------------ | ----------------------------------------------------------------------------------------------- | ------------------------- | ---------------------- |
-| `make test`        | bash hook unit tests + `codegen-build_test.sh` + pi npm tests                                  | seconds                   | every commit           |
-| `make test-stacks` | ExUnit stack scaffold tests under `test_harness/` for both harnesses in parallel               | minutes + real LLM tokens | before deploy          |
-| `make test-all`    | `test` → `test-stacks` → writes `test_harness/last_green.json`                                 | same as test-stacks       | weekly pre-deploy gate |
+| Target             | What it runs                                                                     | Cost                      | When                   |
+| ------------------ | -------------------------------------------------------------------------------- | ------------------------- | ---------------------- |
+| `make test`        | bash hook unit tests + `codegen-build_test.sh` + pi npm tests                    | seconds                   | every commit           |
+| `make test-stacks` | ExUnit stack scaffold tests under `test_harness/` for both harnesses in parallel | minutes + real LLM tokens | before deploy          |
+| `make test-all`    | `test` → `test-stacks` → writes `test_harness/last_green.json`                   | same as test-stacks       | weekly pre-deploy gate |
 
 `make test` is bash-only and runs without Elixir installed. `make test-stacks` requires Elixir 1.15+.
 
@@ -43,6 +43,7 @@ Three Makefile targets, increasing cost:
 - Cursor IDE (recommended) or VS Code
 - Phoenix/Elixir project
 - AI Assistant: Claude Code (installed automatically by `make install`)
+- AI Assistant: Pi (install manually: `npm install -g @earendil-works/pi-coding-agent`; `make install` configures `~/.pi/agent/` but does NOT install the binary)
 
 ## Configuration
 

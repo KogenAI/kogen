@@ -43,20 +43,20 @@ harnesses/
 
 ### Top-level
 
-| Field | Type | Description |
-|-------|------|-------------|
-| `harness` | string | Harness name (must match directory name). |
-| `agents_dir` | path | Where rendered subagent `.md` files are installed (e.g. `~/.claude/agents`). |
-| `generator` | path (relative to CODEGEN_DIR) | Script that renders subagent templates. Currently both harnesses use `templates/generator/generate.sh`. |
-| `prompts_dir` | path | (Pi only) Where slash-command prompts land (`~/.pi/agent/prompts`). |
-| `prompts_source` | path | (Pi only) Source dir for prompts. |
-| `prompts_install` | list | (Pi only) Specific files to install from `prompts_source`. |
-| `settings_file` | path | (Claude only) Claude Code settings JSON destination. |
-| `settings_source` | path | (Claude only) Source settings JSON. |
-| `hooks_dir` | path | (Claude only) Where hook scripts are installed. |
-| `hooks_source` | path | (Claude only) Source hook scripts directory. |
-| `commands_dir` | path | (Claude only) Where slash commands are installed. |
-| `commands_source` | path | (Claude only) Source commands directory. |
+| Field             | Type                           | Description                                                                                             |
+| ----------------- | ------------------------------ | ------------------------------------------------------------------------------------------------------- |
+| `harness`         | string                         | Harness name (must match directory name).                                                               |
+| `agents_dir`      | path                           | Where rendered subagent `.md` files are installed (e.g. `~/.claude/agents`).                            |
+| `generator`       | path (relative to CODEGEN_DIR) | Script that renders subagent templates. Currently both harnesses use `templates/generator/generate.sh`. |
+| `prompts_dir`     | path                           | (Pi only) Where slash-command prompts land (`~/.pi/agent/prompts`).                                     |
+| `prompts_source`  | path                           | (Pi only) Source dir for prompts.                                                                       |
+| `prompts_install` | list                           | (Pi only) Specific files to install from `prompts_source`.                                              |
+| `settings_file`   | path                           | (Claude only) Claude Code settings JSON destination.                                                    |
+| `settings_source` | path                           | (Claude only) Source settings JSON.                                                                     |
+| `hooks_dir`       | path                           | (Claude only) Where hook scripts are installed.                                                         |
+| `hooks_source`    | path                           | (Claude only) Source hook scripts directory.                                                            |
+| `commands_dir`    | path                           | (Claude only) Where slash commands are installed.                                                       |
+| `commands_source` | path                           | (Claude only) Source commands directory.                                                                |
 
 ### `launchers` list
 
@@ -64,8 +64,8 @@ Each entry installs one executable to `~/.local/bin/`:
 
 ```yaml
 launchers:
-  - name: claude-build     # destination filename in ~/.local/bin/
-    src: harnesses/claude/claude-build.sh   # source, relative to CODEGEN_DIR
+  - name: claude-build # destination filename in ~/.local/bin/
+    src: harnesses/claude/claude-build.sh # source, relative to CODEGEN_DIR
 ```
 
 ### `completions` list
@@ -86,11 +86,11 @@ One entry per launcher mode (`build`, `debug`, `shape`, `refactor`):
 ```yaml
 modes:
   shape:
-    model: opus                           # Model short-name (claude) or full ID (pi)
-    effort: high                          # Effort level
-    output_format: text                   # stream-json | text
-    tools: [Agent, Bash, ...]             # Claude: --tools list. Pi: comma-separated string.
-    extensions: [askuserquestion, ...]    # Pi only: --extension list
+    model: opus # Model short-name (claude) or full ID (pi)
+    effort: high # Effort level
+    output_format: text # stream-json | text
+    tools: [Agent, Bash, ...] # Claude: --tools list. Pi: comma-separated string.
+    extensions: [askuserquestion, ...] # Pi only: --extension list
     system_prompt_file: harnesses/claude/claude-shape-system-prompt.txt
     tools_header: harnesses/claude/tools-header/shape.txt
     prompt_body: harnesses/shared/prompt-bodies/shape.txt
@@ -176,6 +176,7 @@ cat tools-header/<mode>.txt shared/prompt-bodies/<mode>.txt > <harness>-<mode>-s
 
 The `*-system-prompt.txt` files are committed as regenerated artifacts (content-stable;
 `make install` rewrites only when content changes). Launchers load them at runtime:
+
 - Claude: `load-role.sh` reads `config.yaml roles.<mode>.system_prompt_file`
 - Pi: launchers directly `cat "$SYSTEM_PROMPT_FILE"`
 

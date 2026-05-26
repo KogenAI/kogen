@@ -32,7 +32,8 @@ export function register(pi: ExtensionAPI): void {
 
     const subagentType: string =
       (event.input as { agent?: string; subagent_type?: string }).agent ??
-      (event.input as { agent?: string; subagent_type?: string }).subagent_type ??
+      (event.input as { agent?: string; subagent_type?: string })
+        .subagent_type ??
       "";
 
     const role = resolveRole();
