@@ -6,13 +6,43 @@ A powerful workspace management system for Phoenix/Elixir projects that creates 
 
 Optimum Codegen (OCG) is a workspace management system that enables parallel development of multiple features with separate environments, ports, and databases. Each workspace is an isolated git worktree with its own branch, Phoenix port, database partition, and optional Docker container.
 
+## Harnesses
+
+OCG supports multiple LLM harnesses (`claude`, `pi`). Each harness is declared in a single manifest file — the manifest is the single source of truth (SSoT) for launchers, agents, completions, system prompts, and install/uninstall steps.
+
+| File | Role |
+|------|------|
+| `harnesses/<h>/manifest.yaml` | SSoT — full surface declaration |
+| `harnesses/<h>/tools-header/<mode>.txt` | Per-harness system prompt content per mode |
+| `harnesses/shared/prompt-bodies/<mode>.txt` | Shared system prompt body (common across harnesses) |
+| `templates/generator/generate.sh` | Unified generator (reads manifest, renders subagents, assembles prompts) |
+| `templates/generator/manifest-lib.sh` | Manifest helper library (sourced by generate.sh + install.sh) |
+
+`make install` drives the full generate → install flow. Adding or swapping a harness = drop one manifest + `make install`.
+
+See **[docs/adding-a-harness.md](docs/adding-a-harness.md)** for the end-to-end guide: every manifest field, the generate/install flow, and how to add a new harness.
+
+## Testing
+
+Three Makefile targets, increasing cost:
+
+| Target             | What it runs                                                                                    | Cost                      | When                   |
+| ------------------ | ----------------------------------------------------------------------------------------------- | ------------------------- | ---------------------- |
+| `make test`        | bash hook unit tests + `codegen-build_test.sh` + pi npm tests                                  | seconds                   | every commit           |
+| `make test-stacks` | ExUnit stack scaffold tests under `test_harness/` for both harnesses in parallel               | minutes + real LLM tokens | before deploy          |
+| `make test-all`    | `test` → `test-stacks` → writes `test_harness/last_green.json`                                 | same as test-stacks       | weekly pre-deploy gate |
+
+`make test` is bash-only and runs without Elixir installed. `make test-stacks` requires Elixir 1.15+.
+
+`test_harness/last_green.json` records the codegen sha + harness versions + timestamp of the last green `make test-all` run. It is committed in this repo and consumed by downstream pin tooling (e.g., `mix combobulate.codegen.pin`).
+
 ## Prerequisites
 
 - Docker Desktop installed and running (for container mode)
 - Git
 - Cursor IDE (recommended) or VS Code
 - Phoenix/Elixir project
-- AI Assistant: Claude Code and Codex (installed automatically by `make install`)
+- AI Assistant: Claude Code (installed automatically by `make install`)
 
 ## Configuration
 
@@ -147,7 +177,7 @@ Each workspace can run in an isolated Docker container with:
 
 - `ocg new <name> [options]` - Create new feature workspace
   - `--model, -m <model>` - AI model to use (haiku/sonnet/opus, default: sonnet)
-  - `--agent, -a <name>` - AI agent to use (claude/codex, default: from config)
+  - `--agent, -a <name>` - AI agent to use (claude/pi, default: from config)
   - `--container` - Run in Docker container
 - `ocg resume <name> [options]` - Resume existing workspace
   - `--model, -m <model>` - AI model to use (default: from workspace)
@@ -158,7 +188,7 @@ Each workspace can run in an isolated Docker container with:
 
 ### AI Agent Configuration
 
-- `ocg ai-config set default <agent>` - Set default AI agent (claude/codex)
+- `ocg ai-config set default <agent>` - Set default AI agent (claude/pi)
 - `ocg ai-config get default` - Show current default agent
 - `ocg ai-config status` - Show full AI agent configuration
 
@@ -173,11 +203,11 @@ Each workspace can run in an isolated Docker container with:
 
 - `ocg usage-rules [options]` - Generate usage rules for Elixir dependencies from mix.exs
   - `--model, -m <model>` - AI model to use (haiku/sonnet/opus, default: haiku)
-  - `--agent, -a <name>` - AI agent to use (claude/codex, default: from config)
+  - `--agent, -a <name>` - AI agent to use (claude/pi, default: from config)
   - `--help` - Show usage information
 - `ocg remove-comments` - Remove comments from git diff changes
 - `ocg format` - Format all shell scripts and files
-- `ocg update` - Update all AI agents (Claude Code, Codex)
+- `ocg update` - Update all AI agents (Claude Code)
 - `ocg uninstall` - Remove global CLI installation
 - `make install` - Install CLI globally for `ocg` commands (run from codegen directory)
 
@@ -230,7 +260,7 @@ Install globally to use `ocg` commands from anywhere:
 
 ```bash
 cd /path/to/codegen && make install
-# Installs Claude Code and Codex
+# Installs Claude Code
 # Prompts for default AI agent preference
 # Then use: ocg new my-feature, ocg ls, etc.
 ```
@@ -240,17 +270,17 @@ cd /path/to/codegen && make install
 OCG supports two AI agents:
 
 - **Claude Code**: Official Anthropic CLI with rich terminal UI
-- **Codex**: OpenAI Codex CLI with sandbox mode isolation
+- **Pi**: Pi CLI agent
 
 During installation, both agents are installed and you'll be prompted to choose a default. You can switch between them anytime:
 
 ```bash
 # Set default agent
-ocg ai-config set default codex
+ocg ai-config set default pi
 
 # Use specific agent for a workspace
 ocg new my-feature --agent claude
-ocg new my-feature -a codex --model opus
+ocg new my-feature -a pi --model opus
 
 # Check current configuration
 ocg ai-config status

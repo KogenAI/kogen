@@ -10,7 +10,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-HOOKS_DIR="$SCRIPT_DIR/../templates/shared/hooks"
+HOOKS_DIR="$SCRIPT_DIR/../harnesses/claude/hooks"
 
 LLM_TEST_GUARD="$HOOKS_DIR/llm-test-guard.sh"
 LLM_SUITE_GUARD="$HOOKS_DIR/llm-suite-guard.sh"

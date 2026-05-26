@@ -42,18 +42,3 @@ When the user prompt contains one or more `@`-mentioned `.md` files (Claude Code
 - **Free-form prompt** (`claude-build "implement X"`) — one full cycle, single-cycle passthrough. No pitch involved.
 
 Pitches contain no `## Step N` headings (the old step-scanner is removed because pitches replaced plan-shaped docs). Planner owns slicing; the pitch itself is silent on step decomposition.
-
-## Working Directory
-
-<!-- KEEP IN SYNC WITH shared/rules/_core/cwd-discipline.md -->
-
-You start in a specific cwd (the launcher `cd`s into it before exec'ing you). All file outputs MUST land relative to that cwd.
-
-- NEVER write project source files to absolute `/tmp/` paths.
-- NEVER invoke `mix phx.new /tmp/<app>` — use `mix phx.new .` or a relative name.
-- NEVER Bash `cat > /tmp/<file>` for final project outputs.
-- ALWAYS use the Write tool with a relative path, or an absolute path that begins with the cwd you were given.
-
-`/tmp/` is permitted ONLY as scratch for image-processing pipelines (`sips`, `qlmanage`) that `cp` the result back into the project tree, and for one-shot hook-payload probes during debug sessions. Final project files belong under cwd.
-
-When you delegate to subagents via Agent(), they inherit this cwd. Their delegation prompts you write MUST NOT instruct them to write to absolute `/tmp/` paths.

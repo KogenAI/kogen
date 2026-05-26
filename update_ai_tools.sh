@@ -1,12 +1,12 @@
 #!/bin/bash
 
-# Update all AI agents (Claude Code, Codex)
+# Update all AI agents (Claude Code + pi)
 
 set -e
 
 CODEGEN_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-echo "🔄 Updating all AI agents (Claude Code, Codex)..."
+echo "🔄 Updating all AI agents (Claude Code + pi)..."
 echo ""
 
 # Update Claude Code — check npm registry first to skip the slow update when already current
@@ -27,24 +27,28 @@ else
 fi
 echo ""
 
-# Update Codex CLI
-echo "🤖 Updating Codex..."
+# Update pi — npm global package @earendil-works/pi-coding-agent
+echo "🤖 Updating pi..."
 hash -r 2>/dev/null || true
-if command -v codex >/dev/null 2>&1; then
-    current=$(codex --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)
-    latest=$(curl -s --max-time 5 "https://registry.npmjs.org/@openai/codex/latest" 2>/dev/null | python3 -c "import json,sys; print(json.load(sys.stdin).get('version',''))" 2>/dev/null)
-    if [ -n "$latest" ] && [ "$current" = "$latest" ]; then
-        echo "   ✅ Codex already up to date ($current)"
+if command -v pi >/dev/null 2>&1; then
+    current_pi=$(pi --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)
+    latest_pi=$(curl -s --max-time 5 "https://registry.npmjs.org/@earendil-works/pi-coding-agent/latest" 2>/dev/null | python3 -c "import json,sys; print(json.load(sys.stdin).get('version',''))" 2>/dev/null)
+    if [ -n "$latest_pi" ] && [ "$current_pi" = "$latest_pi" ]; then
+        echo "   ✅ pi already up to date ($current_pi)"
+    elif [ -n "$latest_pi" ]; then
+        echo "   ⬆️  Updating pi $current_pi → $latest_pi"
+        npm update -g @earendil-works/pi-coding-agent
+        echo "   ✅ pi updated"
     else
-        echo "   ⬆️  Updating $current → $latest"
-        npm install -g "@openai/codex@latest" 2>&1 || echo "   ⚠️  Codex update failed"
-        echo "   ✅ Codex updated"
+        echo "   ⚠️  Could not determine latest pi version — running update anyway"
+        npm update -g @earendil-works/pi-coding-agent
+        echo "   ✅ pi update attempted"
     fi
 else
-    echo "   ⚠️  Codex not on PATH — install with 'npm install -g @openai/codex' or check mise activation" >&2
+    echo "   ⚠️  pi not installed, skipping"
 fi
 echo ""
 
-echo "✅ All AI agents have been updated (Claude Code, Codex)!"
+echo "✅ All AI agents have been updated (Claude Code + pi)!"
 echo ""
 echo "💡 Run 'make install' to regenerate and reinstall OCG templates and commands"

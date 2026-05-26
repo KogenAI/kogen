@@ -15,3 +15,27 @@
 node_modules/
 dist/
 __pycache__/
+
+# Test harness — ignore everything by default, negate tracked sources.
+# Stray scaffolded app dirs from test runs are caught by this default-ignore.
+# Any NEW tracked file under test_harness/ needs a matching `!/test_harness/<name>` negation.
+/test_harness/**
+!/test_harness/.formatter.exs
+!/test_harness/mix.exs
+!/test_harness/last_green.json
+!/test_harness/record-green.sh
+!/test_harness/lib/
+!/test_harness/lib/**
+!/test_harness/test/
+!/test_harness/test/**
+!/test_harness/hello_world/
+!/test_harness/hello_world/**
+
+# Re-ignore Elixir/Phoenix build artefacts inside the negated subtrees.
+/test_harness/**/_build/
+/test_harness/**/deps/
+/test_harness/**/*.beam
+/test_harness/**/*.ez
+/test_harness/**/erl_crash.dump
+/test_harness/SESSION*.md
+/test_harness/tmp/

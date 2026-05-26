@@ -24,7 +24,7 @@ TEMPLATES_DIR="$(dirname "$SCRIPT_DIR")"
 if [ -n "$1" ]; then
     PI_EXTENSION_DIR="$1"
 else
-    PI_EXTENSION_DIR="$TEMPLATES_DIR/shared/pi-extensions/enforcement"
+    PI_EXTENSION_DIR="$(dirname "$TEMPLATES_DIR")/harnesses/pi/pi-extensions/enforcement"
 fi
 
 if [ ! -d "$PI_EXTENSION_DIR" ]; then

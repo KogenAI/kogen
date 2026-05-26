@@ -3,7 +3,7 @@
 
 Usage:
     python3 templates/generator/hook_registrations.py \
-        --hooks-dir templates/shared/hooks \
+        --hooks-dir harnesses/claude/hooks \
         --output-settings templates/claude-code-settings.json \
         --combobulate-dir /path/to/combobulate
 
@@ -62,8 +62,8 @@ def dumps_compact(obj, indent=2, print_width=80):
 
 REQUIRED_FIELDS = {"event", "matcher", "surface", "signal", "role"}
 VALID_SURFACES = {"user_global", "per_call_inspector", "both"}
-VALID_SIGNALS = {"AGENT_TYPE", "CLAUDE_ROLE", "CLAUDE_ROLE_FAMILY", "CODEX_ROLE", "none"}
-VALID_HARNESSES = {"claude_code", "codex", "pi"}
+VALID_SIGNALS = {"AGENT_TYPE", "CLAUDE_ROLE", "CLAUDE_ROLE_FAMILY", "none"}
+VALID_HARNESSES = {"claude_code", "pi"}
 
 # Generic tool names — matchers consisting only of these tokens ship to every stack.
 GENERIC_TOOL_NAMES = {
@@ -275,8 +275,7 @@ def validate_signal(script_path: Path, manifest: dict) -> None:
     Signal semantics:
       CLAUDE_ROLE         — body must reference CLAUDE_ROLE literal.
       CLAUDE_ROLE_FAMILY  — body must call resolve_role() (from _role.sh); supports CLAUDE_ROLE,
-                            PI_ROLE, CODEX_ROLE with unified precedence.
-      CODEX_ROLE          — body must reference CODEX_ROLE literal.
+                            PI_ROLE with unified precedence.
       AGENT_TYPE          — body must reference AGENT_TYPE or require_inspector_agent_type.
       none                — no signal check.
     """
@@ -306,15 +305,6 @@ def validate_signal(script_path: Path, manifest: dict) -> None:
                 file=sys.stderr,
             )
             sys.exit(1)
-    elif signal == "CODEX_ROLE":
-        if "CODEX_ROLE" not in content:
-            print(
-                f"ERROR: {script_path.name} declares signal: CODEX_ROLE but body does not reference CODEX_ROLE",
-                file=sys.stderr,
-            )
-            sys.exit(1)
-
-
 def collect_hooks(hooks_dir: Path) -> list:  # type: ignore[type-arg]
     """Find all .sh files (excluding _test.sh, run-tests.sh, and _*.sh helpers) and parse manifests.
 
@@ -678,7 +668,6 @@ def write_combobulate_artifacts(
     """Write inspector_settings.json and hook_manifest.json into combobulate/priv/<harness>_config/.
 
     priv/claude_config/ — canonical full manifest (all hooks) + claude-prefixed inspector entries.
-    priv/codex_config/  — codex-prefixed inspector entries.
     priv/pi_config/     — pi-prefixed inspector entries (empty today).
 
     The full hook_manifest.json in claude_config is kept for backward compat with
@@ -725,46 +714,6 @@ def write_combobulate_artifacts(
     claude_hash_path = claude_priv_dir / "expected_hook_manifest_hash.txt"
     claude_hash_path.write_text(hashlib.md5(manifest_path.read_bytes()).hexdigest())
     print(f"Wrote {claude_hash_path}")
-
-    # ── codex_config ─────────────────────────────────────────────────────────
-    codex_priv_dir = combobulate_dir / "priv" / "codex_config"
-    codex_priv_dir.mkdir(parents=True, exist_ok=True)
-
-    codex_inspector_hooks = [h for h in per_call_hooks if h["filename"].startswith("codex-")]
-    codex_inspector_entries = []
-    for h in sorted(codex_inspector_hooks, key=lambda x: x["filename"]):
-        codex_inspector_entries.append(
-            {
-                "event": h["event"],
-                "matcher": h["matcher"],
-                "hookScript": h["filename"],
-                "surface": h["surface"],
-                "signal": h["signal"],
-                "role": h["role"],
-            }
-        )
-    codex_inspector_path = codex_priv_dir / "inspector_settings.json"
-    codex_inspector_path.write_text(json.dumps(codex_inspector_entries, indent=2) + "\n")
-    print(f"Wrote {codex_inspector_path}")
-
-    codex_manifest_entries = []
-    for h in sorted(codex_inspector_hooks, key=lambda x: x["filename"]):
-        codex_manifest_entries.append(
-            {
-                "filename": h["filename"],
-                "event": h["event"],
-                "matcher": h["matcher"],
-                "surface": h["surface"],
-                "signal": h["signal"],
-                "role": h["role"],
-            }
-        )
-    codex_manifest_path = codex_priv_dir / "hook_manifest.json"
-    codex_manifest_path.write_text(json.dumps(codex_manifest_entries, indent=2) + "\n")
-    print(f"Wrote {codex_manifest_path}")
-    codex_hash_path = codex_priv_dir / "expected_hook_manifest_hash.txt"
-    codex_hash_path.write_text(hashlib.md5(codex_manifest_path.read_bytes()).hexdigest())
-    print(f"Wrote {codex_hash_path}")
 
     # ── pi_config ─────────────────────────────────────────────────────────────
     # Pi uses load-gate (no per-call hooks), so the manifest is always empty.

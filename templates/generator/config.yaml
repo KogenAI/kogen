@@ -14,18 +14,6 @@ tools:
     agents_dir: "agents"
     settings_dir: "$HOME/.claude"
 
-  codex:
-    name: "codex"
-    display_name: "Codex"
-    yaml_frontmatter: false
-    permissions_enabled: false
-    hooks_enabled: true
-    config_file: "config.toml"
-    mcp_config: null
-    commands_dir: null
-    agents_dir: "agents"
-    settings_dir: "$HOME/.codex"
-
 # Common variables available to all templates
 common:
   project_context_file: "PROJECT_CONTEXT.md"
@@ -36,67 +24,61 @@ common:
 harness:
   planner-phoenix:
     claude: { model: opus, effort: high }
-    codex: { model: gpt-5.5, effort: high }
     pi: { model: openai-codex/gpt-5.5, effort: high }
   planner-html:
     claude: { model: opus, effort: high }
-    codex: { model: gpt-5.5, effort: high }
     pi: { model: openai-codex/gpt-5.5, effort: high }
   planner-hugo:
     claude: { model: opus, effort: high }
-    codex: { model: gpt-5.5, effort: high }
     pi: { model: openai-codex/gpt-5.5, effort: high }
   planner-vite:
     claude: { model: opus, effort: high }
-    codex: { model: gpt-5.5, effort: high }
     pi: { model: openai-codex/gpt-5.5, effort: high }
   developer-phoenix-backend:
     claude: { model: sonnet, effort: medium }
-    codex: { model: gpt-5.5, effort: medium }
     pi: { model: openai-codex/gpt-5.3-codex, effort: medium }
   developer-phoenix-frontend:
     claude: { model: sonnet, effort: medium }
-    codex: { model: gpt-5.5, effort: medium }
     pi: { model: openai-codex/gpt-5.3-codex, effort: medium }
   developer-html:
     claude: { model: sonnet, effort: high }
-    codex: { model: gpt-5.5, effort: medium }
     pi: { model: openai-codex/gpt-5.3-codex, effort: medium }
   developer-hugo:
     claude: { model: sonnet, effort: high }
-    codex: { model: gpt-5.5, effort: medium }
     pi: { model: openai-codex/gpt-5.3-codex, effort: medium }
   developer-vite:
     claude: { model: sonnet, effort: high }
-    codex: { model: gpt-5.5, effort: medium }
     pi: { model: openai-codex/gpt-5.3-codex, effort: medium }
   reviewer-phoenix:
     claude: { model: sonnet, effort: medium }
-    codex: { model: gpt-5.5, effort: medium }
     pi: { model: openai-codex/gpt-5.3-codex, effort: medium }
   reviewer-static:
     claude: { model: sonnet, effort: medium }
-    codex: { model: gpt-5.5, effort: medium }
     pi: { model: openai-codex/gpt-5.3-codex, effort: medium }
-  # Codex and Pi share the openai-codex model namespace; Pi requires openai-codex/ prefix
-  # per pi CLI syntax, codex uses bare identifier. ChatGPT-auth codex rejects gpt-5.5-mini
-  # and gpt-4.1-mini (HTTP 400). Verify mini-tier bumps via: codex exec --model <ID> --sandbox read-only --skip-git-repo-check "say hi"
+  # Pi uses the openai-codex model namespace; Pi requires openai-codex/ prefix per pi CLI syntax.
   committer:
     claude: { model: haiku, effort: low }
-    codex: { model: gpt-5.4-mini, effort: medium }
     pi: { model: openai-codex/gpt-5.4-mini, effort: medium }
   context-curator:
     claude: { model: haiku, effort: low }
-    codex: { model: gpt-5.4-mini, effort: low }
     pi: { model: openai-codex/gpt-5.4-mini, effort: low }
   build:
     claude: { model: haiku, effort: medium }
-    codex: { model: gpt-5.4-mini, effort: medium }
     pi: { model: openai-codex/gpt-5.4-mini, effort: medium }
   inspector:
     claude: { model: sonnet, effort: medium }
-    codex: { model: gpt-5.5, effort: medium }
     pi: { model: openai-codex/gpt-5.3-codex, effort: medium }
+  # debug = pi-debug launcher config; read by pi-debug.sh via yq .harness.debug.pi.model
+  # Distinct from harness.inspector (combobulate HarnessConfig.model_and_effort_for(:inspector,...))
+  debug:
+    claude: { model: sonnet, effort: medium }
+    pi: { model: openai-codex/gpt-5.3-codex, effort: medium }
+  shape:
+    claude: { model: opus, effort: high }
+    pi: { model: openai-codex/gpt-5.5, effort: high }
+  refactor:
+    claude: { model: opus, effort: high }
+    pi: { model: openai-codex/gpt-5.5, effort: high }
 
 roles:
   build:
@@ -118,7 +100,7 @@ roles:
       - Read
       - Skill
       - Write
-    system_prompt_file: shared/claude-build-system-prompt.txt
+    system_prompt_file: harnesses/claude/claude-build-system-prompt.txt
     append_project_context: false
 
   # debug/shape/refactor use --tools allowlist (load gate) instead of --disallowed-tools
@@ -145,7 +127,7 @@ roles:
       - Read
       - Skill
       - Write
-    system_prompt_file: shared/claude-debug-system-prompt.txt
+    system_prompt_file: harnesses/claude/claude-debug-system-prompt.txt
     append_project_context: true
 
   shape:
@@ -164,7 +146,7 @@ roles:
       - WebFetch
       - WebSearch
       - Write
-    system_prompt_file: shared/claude-shape-system-prompt.txt
+    system_prompt_file: harnesses/claude/claude-shape-system-prompt.txt
     append_project_context: true
 
   refactor:
@@ -183,7 +165,7 @@ roles:
       - WebFetch
       - WebSearch
       - Write
-    system_prompt_file: shared/claude-refactor-system-prompt.txt
+    system_prompt_file: harnesses/claude/claude-refactor-system-prompt.txt
     append_project_context: true
 
   housekeeper:

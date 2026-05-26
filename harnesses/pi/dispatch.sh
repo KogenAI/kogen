@@ -6,6 +6,13 @@
 
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SP_FILE="$SCRIPT_DIR/pi-build-system-prompt.txt"
+SYSTEM_PROMPT_FLAG=()
+if [[ -f "$SP_FILE" ]]; then
+    SYSTEM_PROMPT_FLAG+=(--system-prompt "$(cat "$SP_FILE")")
+fi
+
 # Consume env vars set by codegen-build
 MODEL="${CODEGEN_BUILD_MODEL:-}"
 EFFORT="${CODEGEN_BUILD_EFFORT:-}"
@@ -24,8 +31,12 @@ fi
 MODEL="${MODEL:-openai-codex/gpt-5.4-mini}"
 EFFORT="${EFFORT:-high}"
 
-# Extra flags and prompt: last positional arg is always the PROMPT
-PROMPT="${*: -1}"
+# Extra flags and prompt: last positional arg is PROMPT (only if any positional args given)
+if [[ $# -gt 0 ]]; then
+    PROMPT="${*: -1}"
+else
+    PROMPT=""
+fi
 EXTRA_FLAGS=()
 EXTENSION_ARG=()
 
@@ -49,11 +60,18 @@ if [[ -n "$NON_INTERACTIVE" ]]; then
     PRINT_FLAG+=(-p)
 fi
 
+# Consume CWD env var set by codegen-build
+CWD="${CODEGEN_BUILD_CWD:-}"
+if [[ -n "$CWD" ]]; then
+    cd "$CWD"
+fi
+
 exec env \
     -u OPENAI_API_KEY \
     -u ANTHROPIC_API_KEY \
     -u CURSOR_API_KEY \
     pi \
+    "${SYSTEM_PROMPT_FLAG[@]+"${SYSTEM_PROMPT_FLAG[@]}"}" \
     "${PRINT_FLAG[@]+"${PRINT_FLAG[@]}"}" \
     --mode json \
     --no-session \
@@ -63,4 +81,4 @@ exec env \
     --model "$MODEL" \
     --thinking "$EFFORT" \
     "${EXTRA_FLAGS[@]+"${EXTRA_FLAGS[@]}"}" \
-    "$PROMPT"
+    ${PROMPT:+"$PROMPT"}

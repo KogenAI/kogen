@@ -1,0 +1,198 @@
+#!/usr/bin/env bash
+# codegen-scaffold — deterministic scaffold entrypoint for user app provisioning.
+#
+# Usage:
+#   codegen-scaffold --stack=<phoenix|static> --cwd=<dir> --slug=<slug> [options]
+#
+# Options:
+#   --stack=<phoenix|static>   required: project stack
+#   --cwd=<dir>                required: working directory (app root)
+#   --slug=<slug>              required: URL-safe app slug
+#   --app-name=<name>          human-readable app name (used by static scaffold; default: slug)
+#   --elixir-version=<v>       phoenix only; default: 1.19.5
+#   --node-version=<v>         phoenix only; default: 24.14.0
+#   --otp-version=<v>          phoenix only; default: 28.4.1
+#   --symlinks-only            skip scaffold.sh / static scaffold; only drop agent-file + rules symlinks
+#
+# Exit codes: 0 = success, 1 = runtime error, 2 = usage/config error.
+# Scaffold.sh exit code propagates when --symlinks-only is not set.
+
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+STACK=""
+CWD=""
+SLUG=""
+APP_NAME=""
+ELIXIR_VERSION="1.19.5"
+NODE_VERSION="24.14.0"
+OTP_VERSION="28.4.1"
+SYMLINKS_ONLY=""
+
+usage() {
+  printf 'Usage: codegen-scaffold --stack=<phoenix|static> --cwd=<dir> --slug=<slug> [--app-name=<name>] [--elixir-version=<v>] [--node-version=<v>] [--otp-version=<v>] [--symlinks-only]\n' >&2
+  exit 2
+}
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --stack=*)
+      STACK="${1#--stack=}"
+      shift
+      ;;
+    --stack)
+      STACK="$2"
+      shift 2
+      ;;
+    --cwd=*)
+      CWD="${1#--cwd=}"
+      shift
+      ;;
+    --cwd)
+      CWD="$2"
+      shift 2
+      ;;
+    --slug=*)
+      SLUG="${1#--slug=}"
+      shift
+      ;;
+    --slug)
+      SLUG="$2"
+      shift 2
+      ;;
+    --app-name=*)
+      APP_NAME="${1#--app-name=}"
+      shift
+      ;;
+    --app-name)
+      APP_NAME="$2"
+      shift 2
+      ;;
+    --elixir-version=*)
+      ELIXIR_VERSION="${1#--elixir-version=}"
+      shift
+      ;;
+    --elixir-version)
+      ELIXIR_VERSION="$2"
+      shift 2
+      ;;
+    --node-version=*)
+      NODE_VERSION="${1#--node-version=}"
+      shift
+      ;;
+    --node-version)
+      NODE_VERSION="$2"
+      shift 2
+      ;;
+    --otp-version=*)
+      OTP_VERSION="${1#--otp-version=}"
+      shift
+      ;;
+    --otp-version)
+      OTP_VERSION="$2"
+      shift 2
+      ;;
+    --symlinks-only)
+      SYMLINKS_ONLY="1"
+      shift
+      ;;
+    --*)
+      printf 'codegen-scaffold: unknown flag %q\n' "$1" >&2
+      usage
+      ;;
+    *)
+      printf 'codegen-scaffold: unexpected positional arg %q\n' "$1" >&2
+      usage
+      ;;
+  esac
+done
+
+# Validate required args
+if [[ -z "$STACK" ]]; then
+  printf 'codegen-scaffold: --stack is required\n' >&2
+  usage
+fi
+
+if [[ -z "$CWD" ]]; then
+  printf 'codegen-scaffold: --cwd is required\n' >&2
+  usage
+fi
+
+if [[ -z "$SLUG" ]]; then
+  printf 'codegen-scaffold: --slug is required\n' >&2
+  usage
+fi
+
+if [[ "$STACK" != "phoenix" && "$STACK" != "static" ]]; then
+  printf 'codegen-scaffold: --stack must be "phoenix" or "static", got %q\n' "$STACK" >&2
+  usage
+fi
+
+# Default app-name to slug when not provided
+if [[ -z "$APP_NAME" ]]; then
+  APP_NAME="$SLUG"
+fi
+
+SCAFFOLD_EXIT=0
+
+# ── Dispatch: scaffold step (skipped when --symlinks-only) ────────────────────
+if [[ -z "$SYMLINKS_ONLY" ]]; then
+  case "$STACK" in
+    phoenix)
+      PHOENIX_SCAFFOLD="$SCRIPT_DIR/shared/scaffold/phoenix/scaffold.sh"
+      if [[ ! -x "$PHOENIX_SCAFFOLD" ]]; then
+        printf 'codegen-scaffold: phoenix scaffold not found or not executable: %s\n' "$PHOENIX_SCAFFOLD" >&2
+        exit 1
+      fi
+      "$PHOENIX_SCAFFOLD" "$SLUG" "$CWD" \
+        --elixir-version "$ELIXIR_VERSION" \
+        --node-version "$NODE_VERSION" \
+        --otp-version "$OTP_VERSION" || SCAFFOLD_EXIT=$?
+      ;;
+    static)
+      STATIC_SCAFFOLD="$SCRIPT_DIR/shared/scaffold/static/scaffold.sh"
+      if [[ ! -x "$STATIC_SCAFFOLD" ]]; then
+        printf 'codegen-scaffold: static scaffold not found or not executable: %s\n' "$STATIC_SCAFFOLD" >&2
+        exit 1
+      fi
+      "$STATIC_SCAFFOLD" "$SLUG" "$CWD" --app-name "$APP_NAME" || SCAFFOLD_EXIT=$?
+      ;;
+  esac
+
+  # Propagate scaffold exit code — symlink stage is skipped on failure
+  if [[ "$SCAFFOLD_EXIT" -ne 0 ]]; then
+    exit "$SCAFFOLD_EXIT"
+  fi
+fi
+
+# ── Symlink stage: always run (idempotent ln -sf) ─────────────────────────────
+# Determine per-stack agent files
+case "$STACK" in
+  phoenix)
+    AGENTS_SOURCE="$SCRIPT_DIR/shared/apps/AGENTS-phoenix.md"
+    CLAUDE_SOURCE="$SCRIPT_DIR/shared/apps/CLAUDE-phoenix.md"
+    ;;
+  static)
+    AGENTS_SOURCE="$SCRIPT_DIR/shared/apps/AGENTS-static.md"
+    CLAUDE_SOURCE="$SCRIPT_DIR/shared/apps/CLAUDE-static.md"
+    ;;
+esac
+
+RULES_SOURCE="$SCRIPT_DIR/shared/rules"
+USAGE_RULES_SOURCE="$SCRIPT_DIR/shared/usage_rules"
+
+# AGENTS.md → <cwd>/AGENTS.md
+ln -sf "$AGENTS_SOURCE" "$CWD/AGENTS.md"
+
+# CLAUDE.md → <cwd>/CLAUDE.md
+ln -sf "$CLAUDE_SOURCE" "$CWD/CLAUDE.md"
+
+# codegen/rules → shared/rules  (mkdir -p <cwd>/codegen first)
+mkdir -p "$CWD/codegen"
+ln -sf "$RULES_SOURCE" "$CWD/codegen/rules"
+
+# codegen/usage_rules → shared/usage_rules
+ln -sf "$USAGE_RULES_SOURCE" "$CWD/codegen/usage_rules"
+
+printf '[codegen-scaffold] Symlinks created for stack=%s at %s\n' "$STACK" "$CWD"
