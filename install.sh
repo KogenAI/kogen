@@ -2,14 +2,14 @@
 
 # Optimum Codegen CLI Installation Script
 # Usage: install.sh [--harness=<list>]
-#   --harness=claude,codex — comma-separated list of harnesses to install.
-#   When omitted, installs both harnesses (claude, codex).
+#   --harness=claude,pi — comma-separated list of harnesses to install.
+#   When omitted, installs both harnesses (claude, pi).
 #   Invalid harness names cause a fail-fast exit with a helpful message.
 #
 # Examples:
-#   install.sh                          # installs claude + codex
+#   install.sh                          # installs claude + pi
 #   install.sh --harness=claude         # claude only
-#   install.sh --harness=codex          # codex only, skip claude
+#   install.sh --harness=pi             # pi only, skip claude
 
 set -e
 
@@ -23,7 +23,7 @@ for arg in "$@"; do
     --harness=*)
         list="${arg#--harness=}"
         if [ -z "$list" ]; then
-            echo "❌ --harness= requires a value (one or more of: claude, codex, pi)" >&2
+            echo "❌ --harness= requires a value (one or more of: claude, pi)" >&2
             exit 1
         fi
         IFS=',' read -ra _tokens <<<"$list"
@@ -31,7 +31,7 @@ for arg in "$@"; do
             tok="$(echo "$tok" | tr -d '[:space:]')"
             [ -z "$tok" ] && continue
             case "$tok" in
-            claude | codex | pi)
+            claude | pi)
                 # Deduplicate
                 already=false
                 for existing in "${HARNESSES[@]}"; do
@@ -40,7 +40,7 @@ for arg in "$@"; do
                 [ "$already" = "false" ] && HARNESSES+=("$tok")
                 ;;
             *)
-                echo "❌ Unknown harness: '$tok' (expected one or more of: claude, codex, pi)" >&2
+                echo "❌ Unknown harness: '$tok' (expected one or more of: claude, pi)" >&2
                 exit 1
                 ;;
             esac
@@ -53,9 +53,9 @@ for arg in "$@"; do
     esac
 done
 
-# Default = all three harnesses when --harness flag omitted
+# Default = all harnesses when --harness flag omitted
 if [ ${#HARNESSES[@]} -eq 0 ]; then
-    HARNESSES=("claude" "codex" "pi")
+    HARNESSES=("claude" "pi")
 fi
 
 harness_enabled() {
@@ -128,24 +128,10 @@ else
 fi
 
 echo ""
-echo "🚀 Setting up context repository..."
-
-# Clone context repository if it doesn't exist
-CONTEXT_DIR="${OCG_CONTEXT_DIR:-$HOME/Areas/Optimum/context}"
-
-if [ ! -d "$CONTEXT_DIR" ]; then
-    echo "   📥 Cloning context repository to: $CONTEXT_DIR"
-    mkdir -p "$CONTEXT_DIR"
-    git clone git@github.com:Combobulate-HQ/context.git "$CONTEXT_DIR"
-    echo "   ✅ Context repository cloned successfully"
-else
-    echo "   ✅ Context repository already exists: $CONTEXT_DIR"
-fi
-
-echo ""
 echo "🚀 Setting up recipes directory..."
 
-RECIPES_DIR="${OCG_CONTEXT_DIR:-$HOME/Areas/Optimum/context}/recipes"
+# Context repository is now part of codegen as codegen/shared/ — no separate clone needed.
+RECIPES_DIR="$CODEGEN_DIR/shared/recipes"
 if [ ! -d "$RECIPES_DIR" ]; then
     echo "   📚 Creating recipes directory at: $RECIPES_DIR"
     mkdir -p "$RECIPES_DIR"
@@ -162,34 +148,22 @@ fi
 echo ""
 echo "🚀 Generating AI agent templates..."
 
-# Generate templates for the selected harnesses. generate-claude.sh accepts:
-#   all | claude | codex
-# We pass `all` only when both claude and codex are selected; otherwise per-harness.
-# Pi has its own dedicated generator (generate-pi.sh).
-if harness_enabled claude && harness_enabled codex; then
-    "$CODEGEN_DIR/templates/generator/generate-claude.sh" all
-else
-    if harness_enabled claude; then
-        "$CODEGEN_DIR/templates/generator/generate-claude.sh" claude
-    fi
-    if harness_enabled codex; then
-        "$CODEGEN_DIR/templates/generator/generate-claude.sh" codex
-    fi
-fi
+# Generate templates for the selected harnesses via unified manifest-driven generator.
+# Source manifest helpers for launcher/completion iteration (used in harness install loop below).
+source "$CODEGEN_DIR/templates/generator/manifest-lib.sh"
 
-if harness_enabled pi; then
-    bash "$CODEGEN_DIR/templates/generator/generate-pi.sh"
-fi
+# Pass all selected harnesses to generate.sh in one call.
+bash "$CODEGEN_DIR/templates/generator/generate.sh" "${HARNESSES[@]}"
 
 # Render user-app orchestrator AGENTS templates (.j2 -> .md) back into context repo.
 # These .md files are symlinked into user-app workspaces by Combobulate.Apps.copy_agents_md/2
 # at provision time, so they must exist as regenerable artifacts beside their .j2 source.
 # Each template renders TWICE:
-#   codex render  → AGENTS-{variant}.md  (→ See pointers; consumed by Codex)
+#   pi render     → AGENTS-{variant}.md  (→ See pointers; consumed by Pi)
 #   claude render → CLAUDE-{variant}.md  (@ auto-load imports; consumed by Claude Code)
 echo ""
 echo "🚀 Rendering user-app AGENTS templates (.j2 -> .md)..."
-APPS_DIR="$CONTEXT_DIR/apps"
+APPS_DIR="$CODEGEN_DIR/shared/apps"
 PROCESS_TEMPLATE="$CODEGEN_DIR/templates/generator/process_template.py"
 
 render_to_md() {
@@ -199,7 +173,7 @@ render_to_md() {
     if [ -f "$src" ]; then
         local tmp
         tmp="$(mktemp)"
-        OCG_CONTEXT_DIR="$CONTEXT_DIR" python3 "$PROCESS_TEMPLATE" "$src" "$tool_name" false >"$tmp"
+        python3 "$PROCESS_TEMPLATE" "$src" "$tool_name" false >"$tmp"
         if [ ! -f "$dst" ] || ! cmp -s "$tmp" "$dst"; then
             mv "$tmp" "$dst"
             echo "   ✅ Rendered $(basename "$dst") (tool=$tool_name)"
@@ -214,8 +188,8 @@ render_to_md() {
 
 for base in AGENTS-phoenix AGENTS-static; do
     src="$APPS_DIR/$base.md.j2"
-    # codex render → canonical AGENTS-{variant}.md
-    render_to_md "$src" codex "$APPS_DIR/$base.md"
+    # pi render → canonical AGENTS-{variant}.md
+    render_to_md "$src" pi "$APPS_DIR/$base.md"
     # claude render → CLAUDE-{variant}.md  (strip "AGENTS-" prefix, add "CLAUDE-")
     variant="${base#AGENTS-}"
     render_to_md "$src" claude "$APPS_DIR/CLAUDE-${variant}.md"
@@ -228,489 +202,400 @@ cleanup_generated_templates() {
     echo "   ✅ Generated templates cleaned up"
 }
 
-if harness_enabled claude; then
-    echo ""
-    echo "🚀 Setting up Claude Code configuration..."
-
-    CLAUDE_SETTINGS_DIR="$HOME/.claude"
-    CLAUDE_SETTINGS_FILE="$CLAUDE_SETTINGS_DIR/settings.json"
-    CLAUDE_COMMANDS_DIR="$CLAUDE_SETTINGS_DIR/commands"
-
-    mkdir -p "$CLAUDE_SETTINGS_DIR"
-    mkdir -p "$CLAUDE_COMMANDS_DIR"
-
-    # Install generated Claude Code files
-    if [ -f "$CODEGEN_DIR/templates/generated/claude-code/claude-code-settings.json" ]; then
-        content_stable_cp "$CODEGEN_DIR/templates/generated/claude-code/claude-code-settings.json" "$CLAUDE_SETTINGS_FILE"
-        echo "   ✅ Claude Code settings installed at: $CLAUDE_SETTINGS_FILE"
+# ─── Manifest-driven harness install loop ─────────────────────────────────────
+# Replaces the former inline claude + pi branches.
+# Each harness's manifest.yaml declares its surface; this loop reads it.
+#
+# Zsh completions: install into first writable dir.
+ZSH_COMPLETION_DIRS=(
+    "/opt/homebrew/share/zsh/site-functions"
+    "$HOME/.zsh/completions"
+)
+ZSH_COMPLETION_DST=""
+for _d in "${ZSH_COMPLETION_DIRS[@]}"; do
+    if [ -d "$_d" ] && [ -w "$_d" ]; then
+        ZSH_COMPLETION_DST="$_d"
+        break
     fi
+done
 
+for _harness in "${HARNESSES[@]}"; do
     echo ""
-    echo "🚀 Setting up Claude Code hooks..."
+    echo "🚀 Setting up $_harness harness..."
 
-    # Install Claude Code hooks
-    if [ -d "$CODEGEN_DIR/templates/shared/hooks" ]; then
-        mkdir -p "$CLAUDE_SETTINGS_DIR/hooks"
-        for hook_file in "$CODEGEN_DIR/templates/shared/hooks"/*.sh; do
-            if [ -f "$hook_file" ]; then
-                hook_name=$(basename "$hook_file")
-                content_stable_cp "$hook_file" "$CLAUDE_SETTINGS_DIR/hooks/$hook_name"
-                chmod +x "$CLAUDE_SETTINGS_DIR/hooks/$hook_name"
-                echo "   ✅ ${hook_name} hook installed at: $CLAUDE_SETTINGS_DIR/hooks/$hook_name"
+    case "$_harness" in
+    claude)
+        # ── Claude-specific: settings, hooks, commands, agents, deps ──────────
+        CLAUDE_SETTINGS_DIR="$HOME/.claude"
+        CLAUDE_SETTINGS_FILE="$CLAUDE_SETTINGS_DIR/settings.json"
+        CLAUDE_COMMANDS_DIR="$CLAUDE_SETTINGS_DIR/commands"
+
+        mkdir -p "$CLAUDE_SETTINGS_DIR"
+        mkdir -p "$CLAUDE_COMMANDS_DIR"
+
+        # Install settings
+        if [ -f "$CODEGEN_DIR/templates/generated/claude-code/claude-code-settings.json" ]; then
+            content_stable_cp "$CODEGEN_DIR/templates/generated/claude-code/claude-code-settings.json" "$CLAUDE_SETTINGS_FILE"
+            echo "   ✅ Claude Code settings installed at: $CLAUDE_SETTINGS_FILE"
+        fi
+
+        echo ""
+        echo "🚀 Setting up Claude Code hooks..."
+
+        if [ -d "$CODEGEN_DIR/harnesses/claude/hooks" ]; then
+            mkdir -p "$CLAUDE_SETTINGS_DIR/hooks"
+            for hook_file in "$CODEGEN_DIR/harnesses/claude/hooks"/*.sh; do
+                if [ -f "$hook_file" ]; then
+                    hook_name=$(basename "$hook_file")
+                    content_stable_cp "$hook_file" "$CLAUDE_SETTINGS_DIR/hooks/$hook_name"
+                    chmod +x "$CLAUDE_SETTINGS_DIR/hooks/$hook_name"
+                    echo "   ✅ ${hook_name} hook installed at: $CLAUDE_SETTINGS_DIR/hooks/$hook_name"
+                fi
+            done
+
+            # Prune orphan hooks
+            if [ -d "$CLAUDE_SETTINGS_DIR/hooks" ]; then
+                for installed_hook in "$CLAUDE_SETTINGS_DIR/hooks"/*.sh; do
+                    [ -f "$installed_hook" ] || continue
+                    hook_basename=$(basename "$installed_hook")
+                    if [ ! -f "$CODEGEN_DIR/harnesses/claude/hooks/$hook_basename" ]; then
+                        rm -f "$installed_hook"
+                        echo "   Removed orphan hook: $hook_basename"
+                    fi
+                done
             fi
-        done
 
-        # Prune orphan hooks: remove any *.sh in $CLAUDE_SETTINGS_DIR/hooks
-        # that no longer exists in templates/shared/hooks/. Keeps installs in sync
-        # when hooks are deleted upstream. Skips the lib/ subdirectory.
-        if [ -d "$CLAUDE_SETTINGS_DIR/hooks" ]; then
-            for installed_hook in "$CLAUDE_SETTINGS_DIR/hooks"/*.sh; do
-                [ -f "$installed_hook" ] || continue
-                hook_basename=$(basename "$installed_hook")
-                if [ ! -f "$CODEGEN_DIR/templates/shared/hooks/$hook_basename" ]; then
-                    rm -f "$installed_hook"
-                    echo "   Removed orphan hook: $hook_basename"
+            # Install hooks lib
+            if [ -d "$CODEGEN_DIR/harnesses/claude/hooks/lib" ]; then
+                mkdir -p "$CLAUDE_SETTINGS_DIR/hooks/lib"
+                for lib_file in "$CODEGEN_DIR/harnesses/claude/hooks/lib"/*; do
+                    if [ -f "$lib_file" ]; then
+                        content_stable_cp "$lib_file" "$CLAUDE_SETTINGS_DIR/hooks/lib/$(basename "$lib_file")"
+                    fi
+                done
+                echo "   ✅ Hooks lib installed at: $CLAUDE_SETTINGS_DIR/hooks/lib/"
+            fi
+        fi
+
+        # Install custom Claude commands
+        echo "   📁 Installing custom Claude commands..."
+
+        COMMANDS_MANIFEST="$CLAUDE_COMMANDS_DIR/.installed-by-ocg"
+        CURRENT_COMMANDS=()
+
+        if [ -d "$CODEGEN_DIR/harnesses/claude/commands" ]; then
+            for cmd_file in "$CODEGEN_DIR/harnesses/claude/commands"/*.md; do
+                if [ -f "$cmd_file" ]; then
+                    cmd_name=$(basename "$cmd_file")
+                    content_stable_cp "$cmd_file" "$CLAUDE_COMMANDS_DIR/$cmd_name"
+                    echo "   ✅ Installed command: /${cmd_name%.md}"
+                    CURRENT_COMMANDS+=("$cmd_name")
                 fi
             done
         fi
 
-        # Install hooks lib (sourced by every hook script for parse_input/deny/etc.)
-        if [ -d "$CODEGEN_DIR/templates/shared/hooks/lib" ]; then
-            mkdir -p "$CLAUDE_SETTINGS_DIR/hooks/lib"
-            for lib_file in "$CODEGEN_DIR/templates/shared/hooks/lib"/*; do
-                if [ -f "$lib_file" ]; then
-                    content_stable_cp "$lib_file" "$CLAUDE_SETTINGS_DIR/hooks/lib/$(basename "$lib_file")"
-                fi
-            done
-            echo "   ✅ Hooks lib installed at: $CLAUDE_SETTINGS_DIR/hooks/lib/"
-        fi
-    fi
-
-    # Install custom Claude commands
-    echo "   📁 Installing custom Claude commands..."
-
-    COMMANDS_MANIFEST="$CLAUDE_COMMANDS_DIR/.installed-by-ocg"
-    CURRENT_COMMANDS=()
-
-    # Copy plain .md commands directly from shared templates
-    if [ -d "$CODEGEN_DIR/templates/shared/commands" ]; then
-        for cmd_file in "$CODEGEN_DIR/templates/shared/commands"/*.md; do
-            if [ -f "$cmd_file" ]; then
-                cmd_name=$(basename "$cmd_file")
-                content_stable_cp "$cmd_file" "$CLAUDE_COMMANDS_DIR/$cmd_name"
-                echo "   ✅ Installed command: /${cmd_name%.md}"
-                CURRENT_COMMANDS+=("$cmd_name")
-            fi
-        done
-    fi
-
-    # Delete stale commands — any .md in commands dir not in the current install set.
-    for installed_cmd in "$CLAUDE_COMMANDS_DIR"/*.md; do
-        [ -f "$installed_cmd" ] || continue
-        cmd_basename=$(basename "$installed_cmd")
-        still_present=false
-        for cur in "${CURRENT_COMMANDS[@]}"; do
-            [ "$cur" = "$cmd_basename" ] && still_present=true && break
-        done
-        if [ "$still_present" = "false" ]; then
-            rm -f "$installed_cmd"
-            echo "   🗑️  Removed stale command: /${cmd_basename%.md}"
-        fi
-    done
-
-    # Write manifest
-    printf '%s\n' "${CURRENT_COMMANDS[@]}" >"$COMMANDS_MANIFEST"
-
-    # Install Claude sub agents from generated templates
-    echo "   🤖 Installing Claude sub agents..."
-    CLAUDE_AGENTS_DIR="$CLAUDE_SETTINGS_DIR/agents"
-    mkdir -p "$CLAUDE_AGENTS_DIR"
-
-    AGENTS_MANIFEST="$CLAUDE_AGENTS_DIR/.installed-by-ocg"
-    CURRENT_AGENTS=()
-
-    # One-time migration: if any per-stack manifests (.installed-by-ocg.<stack>)
-    # exist from a previous install, union them into the unsuffixed manifest and
-    # delete the per-stack files. This preserves tracking continuity on hosts that
-    # previously ran STACK=platform or STACK=static make install.
-    _any_stack_manifests=$(ls "$CLAUDE_AGENTS_DIR"/.installed-by-ocg.* 2>/dev/null || true)
-    if [ -n "$_any_stack_manifests" ]; then
-        # shellcheck disable=SC2086
-        sort -u $CLAUDE_AGENTS_DIR/.installed-by-ocg.* >"$AGENTS_MANIFEST"
-        # shellcheck disable=SC2086
-        rm -f $CLAUDE_AGENTS_DIR/.installed-by-ocg.*
-    fi
-
-    if [ -d "$CODEGEN_DIR/templates/generated/claude-code/agents" ]; then
-        for agent_file in "$CODEGEN_DIR/templates/generated/claude-code/agents"/*.md; do
-            if [ -f "$agent_file" ]; then
-                agent_name=$(basename "$agent_file")
-                content_stable_cp "$agent_file" "$CLAUDE_AGENTS_DIR/$agent_name"
-                echo "   ✅ Installed Claude sub agent: ${agent_name%.md}"
-                CURRENT_AGENTS+=("$agent_name")
-            fi
-        done
-    fi
-
-    # Delete stale agents — any .md in the agents dir not in the current install set.
-    # Safety: skip prune entirely when CURRENT_AGENTS is empty (generator failed / dir missing) —
-    # never wipe the whole agents dir on a script bug.
-    if [ ${#CURRENT_AGENTS[@]} -eq 0 ]; then
-        echo "   ⚠️  Skipping Claude agent prune — install set is empty (generator may have failed)"
-    else
-        for installed_agent in "$CLAUDE_AGENTS_DIR"/*.md; do
-            [ -f "$installed_agent" ] || continue
-            agent_basename=$(basename "$installed_agent")
+        for installed_cmd in "$CLAUDE_COMMANDS_DIR"/*.md; do
+            [ -f "$installed_cmd" ] || continue
+            cmd_basename=$(basename "$installed_cmd")
             still_present=false
-            for cur in "${CURRENT_AGENTS[@]}"; do
-                [ "$cur" = "$agent_basename" ] && still_present=true && break
+            for cur in "${CURRENT_COMMANDS[@]}"; do
+                [ "$cur" = "$cmd_basename" ] && still_present=true && break
             done
             if [ "$still_present" = "false" ]; then
-                rm -f "$installed_agent"
-                echo "   🗑️  Removed stale agent: ${agent_basename%.md}"
+                rm -f "$installed_cmd"
+                echo "   🗑️  Removed stale command: /${cmd_basename%.md}"
             fi
         done
-    fi
 
-    # Write the combined manifest so the next install knows what this run installed.
-    printf '%s\n' "${CURRENT_AGENTS[@]}" >"$AGENTS_MANIFEST"
+        printf '%s\n' "${CURRENT_COMMANDS[@]}" >"$COMMANDS_MANIFEST"
 
-    # Install required dependencies
-    echo ""
-    echo "🚀 Installing required dependencies..."
+        # Install Claude sub agents
+        echo "   🤖 Installing Claude sub agents..."
+        CLAUDE_AGENTS_DIR="$CLAUDE_SETTINGS_DIR/agents"
+        mkdir -p "$CLAUDE_AGENTS_DIR"
 
-    # Install jq for JSON processing
-    if ! command -v jq >/dev/null 2>&1; then
-        echo "   📦 Installing jq with brew..."
-        if command -v brew >/dev/null 2>&1; then
-            brew install jq
-            echo "   ✅ jq installed"
-        else
-            echo "   ❌ Homebrew not found. Please install jq manually:"
-            echo "      brew install jq"
-            exit 1
+        AGENTS_MANIFEST="$CLAUDE_AGENTS_DIR/.installed-by-ocg"
+        CURRENT_AGENTS=()
+
+        # One-time migration: union per-stack manifests into single manifest.
+        _any_stack_manifests=$(ls "$CLAUDE_AGENTS_DIR"/.installed-by-ocg.* 2>/dev/null || true)
+        if [ -n "$_any_stack_manifests" ]; then
+            # shellcheck disable=SC2086
+            sort -u $CLAUDE_AGENTS_DIR/.installed-by-ocg.* >"$AGENTS_MANIFEST"
+            # shellcheck disable=SC2086
+            rm -f $CLAUDE_AGENTS_DIR/.installed-by-ocg.*
         fi
-    else
-        echo "   ✅ jq already installed"
-    fi
 
-    # Install yq for YAML processing
-    if ! command -v yq >/dev/null 2>&1; then
-        if [[ "$OSTYPE" == "darwin"* ]]; then
-            echo "   📦 Installing yq with brew..."
+        if [ -d "$CODEGEN_DIR/templates/generated/claude-code/agents" ]; then
+            for agent_file in "$CODEGEN_DIR/templates/generated/claude-code/agents"/*.md; do
+                if [ -f "$agent_file" ]; then
+                    agent_name=$(basename "$agent_file")
+                    content_stable_cp "$agent_file" "$CLAUDE_AGENTS_DIR/$agent_name"
+                    echo "   ✅ Installed Claude sub agent: ${agent_name%.md}"
+                    CURRENT_AGENTS+=("$agent_name")
+                fi
+            done
+        fi
+
+        if [ ${#CURRENT_AGENTS[@]} -eq 0 ]; then
+            echo "   ⚠️  Skipping Claude agent prune — install set is empty (generator may have failed)"
+        else
+            for installed_agent in "$CLAUDE_AGENTS_DIR"/*.md; do
+                [ -f "$installed_agent" ] || continue
+                agent_basename=$(basename "$installed_agent")
+                still_present=false
+                for cur in "${CURRENT_AGENTS[@]}"; do
+                    [ "$cur" = "$agent_basename" ] && still_present=true && break
+                done
+                if [ "$still_present" = "false" ]; then
+                    rm -f "$installed_agent"
+                    echo "   🗑️  Removed stale agent: ${agent_basename%.md}"
+                fi
+            done
+        fi
+
+        printf '%s\n' "${CURRENT_AGENTS[@]}" >"$AGENTS_MANIFEST"
+
+        # Install required dependencies (claude-specific)
+        echo ""
+        echo "🚀 Installing required dependencies..."
+
+        if ! command -v jq >/dev/null 2>&1; then
+            echo "   📦 Installing jq with brew..."
             if command -v brew >/dev/null 2>&1; then
-                brew install yq
-                echo "   ✅ yq installed"
+                brew install jq
+                echo "   ✅ jq installed"
             else
-                echo "   ❌ Homebrew not found. Please install yq manually:"
-                echo "      brew install yq"
+                echo "   ❌ Homebrew not found. Please install jq manually:"
+                echo "      brew install jq"
                 exit 1
             fi
-        elif [[ "$OSTYPE" == "linux-gnu"* ]]; then
-            echo "   📦 Installing yq with apt..."
-            sudo apt-get update && sudo apt-get install -y yq
-            echo "   ✅ yq installed"
         else
-            echo "Warning: yq installation not supported on this OS. Install manually: https://github.com/mikefarah/yq"
+            echo "   ✅ jq already installed"
         fi
-    else
-        echo "   ✅ yq already installed"
-    fi
 
-    # Install system ripgrep for Claude Code custom command discovery
-    echo "   📦 Installing system ripgrep for Claude Code custom commands..."
-    if ! command -v rg >/dev/null 2>&1; then
-        if command -v brew >/dev/null 2>&1; then
-            brew install ripgrep
-            echo "   ✅ System ripgrep installed"
+        if ! command -v yq >/dev/null 2>&1; then
+            if [[ "$OSTYPE" == "darwin"* ]]; then
+                echo "   📦 Installing yq with brew..."
+                if command -v brew >/dev/null 2>&1; then
+                    brew install yq
+                    echo "   ✅ yq installed"
+                else
+                    echo "   ❌ Homebrew not found. Please install yq manually:"
+                    echo "      brew install yq"
+                    exit 1
+                fi
+            elif [[ "$OSTYPE" == "linux-gnu"* ]]; then
+                echo "   📦 Installing yq with apt..."
+                sudo apt-get update && sudo apt-get install -y yq
+                echo "   ✅ yq installed"
+            else
+                echo "Warning: yq installation not supported on this OS. Install manually: https://github.com/mikefarah/yq"
+            fi
         else
-            echo "   ❌ Homebrew not found. Please install ripgrep manually:"
-            echo "      brew install ripgrep"
-            echo "   ⚠️  Custom Claude Code commands may not work without system ripgrep"
+            echo "   ✅ yq already installed"
         fi
-    else
-        echo "   ✅ System ripgrep already installed"
-    fi
 
-    # Set up OCG_CONTEXT_DIR environment variable
-    echo ""
-    echo "🚀 Setting up OCG_CONTEXT_DIR environment variable..."
-
-    CONTEXT_DIR_VAR="export OCG_CONTEXT_DIR=\"$HOME/Areas/Optimum/context\""
-
-    if [ "$SHELL" = "/bin/zsh" ] || [ "$SHELL" = "/usr/bin/zsh" ]; then
-        RC_FILE="$HOME/.zshrc"
-    else
-        RC_FILE="$HOME/.bashrc"
-    fi
-
-    if grep -q "OCG_CONTEXT_DIR" "$RC_FILE" 2>/dev/null; then
-        echo "   ✅ OCG_CONTEXT_DIR already set in $RC_FILE"
-    else
-        echo "" >>"$RC_FILE"
-        echo "# Optimum Codegen context directory" >>"$RC_FILE"
-        echo "$CONTEXT_DIR_VAR" >>"$RC_FILE"
-        echo "   ✅ Added OCG_CONTEXT_DIR to $RC_FILE"
-    fi
-
-    # Set up USE_BUILTIN_RIPGREP=0 for Claude Code custom command discovery
-    echo ""
-    echo "🚀 Setting up Claude Code custom command support..."
-
-    RIPGREP_VAR="export USE_BUILTIN_RIPGREP=0"
-
-    if grep -q "USE_BUILTIN_RIPGREP" "$RC_FILE" 2>/dev/null; then
-        echo "   ✅ USE_BUILTIN_RIPGREP already set in $RC_FILE"
-    else
-        echo "" >>"$RC_FILE"
-        echo "# Claude Code custom command discovery (requires system ripgrep)" >>"$RC_FILE"
-        echo "$RIPGREP_VAR" >>"$RC_FILE"
-        echo "   ✅ Added USE_BUILTIN_RIPGREP=0 to $RC_FILE"
-    fi
-
-    # Set up autocompletion
-    echo ""
-    echo "🚀 Setting up autocompletion..."
-
-    if [ "$SHELL" = "/bin/zsh" ] || [ "$SHELL" = "/usr/bin/zsh" ]; then
-        RC_FILE="$HOME/.zshrc"
-    else
-        RC_FILE="$HOME/.bashrc"
-    fi
-
-    if grep -q "bash_completion.sh" "$RC_FILE" 2>/dev/null; then
-        echo "   ⚠️  Completion already appears to be set up in $RC_FILE"
-    else
-        echo "" >>"$RC_FILE"
-        echo "# Optimum Codegen autocompletion" >>"$RC_FILE"
-        echo "source \"$CODEGEN_DIR/bash_completion.sh\"" >>"$RC_FILE"
-        echo "   ✅ Added autocompletion to $RC_FILE"
-    fi
-
-    # Install claude-build wrapper
-    echo ""
-    echo "🚀 Installing claude-build wrapper..."
-
-    content_stable_cp "$CODEGEN_DIR/templates/shared/claude-build.sh" "$INSTALL_DIR/claude-build"
-    chmod +x "$INSTALL_DIR/claude-build"
-    echo "   ✅ claude-build wrapper installed at: $INSTALL_DIR/claude-build"
-
-    # De-register legacy alias from rc file (idempotent)
-    if grep -q "alias claude-build=" "$RC_FILE" 2>/dev/null; then
-        sed -i '' '/^# Optimum Codegen claude-build alias$/d; /^alias claude-build=/d' "$RC_FILE"
-        echo "   🗑️  Removed legacy claude-build alias from $RC_FILE"
-    fi
-
-    # Remove legacy claude-design binary (idempotent)
-    if [ -f "$INSTALL_DIR/claude-design" ]; then
-        rm -f "$INSTALL_DIR/claude-design"
-        echo "   Removed legacy: $INSTALL_DIR/claude-design"
-    fi
-    # De-register legacy alias from rc file (idempotent)
-    if grep -q "alias claude-design=" "$RC_FILE" 2>/dev/null; then
-        sed -i '' '/^# Optimum Codegen claude-design alias$/d; /^alias claude-design=/d' "$RC_FILE"
-        echo "   🗑️  Removed legacy claude-design alias from $RC_FILE"
-    fi
-
-    # Install claude-shape wrapper
-    echo ""
-    echo "🚀 Installing claude-shape wrapper..."
-
-    content_stable_cp "$CODEGEN_DIR/templates/shared/claude-shape.sh" "$INSTALL_DIR/claude-shape"
-    chmod +x "$INSTALL_DIR/claude-shape"
-    echo "   ✅ claude-shape wrapper installed at: $INSTALL_DIR/claude-shape"
-
-    # Install claude-refactor wrapper
-    echo ""
-    echo "🚀 Installing claude-refactor wrapper..."
-
-    content_stable_cp "$CODEGEN_DIR/templates/shared/claude-refactor.sh" "$INSTALL_DIR/claude-refactor"
-    chmod +x "$INSTALL_DIR/claude-refactor"
-    echo "   ✅ claude-refactor wrapper installed at: $INSTALL_DIR/claude-refactor"
-
-    # Install claude-debug wrapper
-    echo ""
-    echo "🚀 Installing claude-debug wrapper..."
-
-    content_stable_cp "$CODEGEN_DIR/templates/shared/claude-debug.sh" "$INSTALL_DIR/claude-debug"
-    chmod +x "$INSTALL_DIR/claude-debug"
-    echo "   ✅ claude-debug wrapper installed at: $INSTALL_DIR/claude-debug"
-
-    # De-register legacy alias from rc file (idempotent)
-    if grep -q "alias claude-debug=" "$RC_FILE" 2>/dev/null; then
-        sed -i '' '/^# Optimum Codegen claude-debug alias$/d; /^alias claude-debug=/d' "$RC_FILE"
-        echo "   🗑️  Removed legacy claude-debug alias from $RC_FILE"
-    fi
-
-    echo ""
-    echo "🚀 Setting up Claude Code bash environment..."
-
-    # Install Claude Code using the official curl installer (2025 method)
-    echo "🤖 Installing Claude Code..."
-    # Refresh command cache to detect recent removals
-    hash -r 2>/dev/null || true
-    if command -v claude >/dev/null 2>&1; then
-        echo "   ✅ Claude Code already installed"
-    else
-        curl -fsSL https://claude.ai/install.sh | bash
-        echo "   ✅ Claude Code installed"
-    fi
-fi # harness_enabled claude
-
-if harness_enabled codex; then
-    echo ""
-    echo "🔧 Setting up Codex configuration..."
-
-    echo "🤖 Installing Codex..."
-    hash -r 2>/dev/null || true
-    if command -v codex >/dev/null 2>&1; then
-        echo "   ✅ Codex already installed"
-    else
-        npm install -g "@openai/codex@latest"
-        echo "   ✅ Codex installed"
-    fi
-
-    mkdir -p "$HOME/.codex/agents"
-    mkdir -p "$HOME/.codex/hooks"
-
-    # Copy hook scripts and remove stale ones
-    CURRENT_CODEX_HOOKS=()
-    for hook_script in "$CODEGEN_DIR/templates/shared/hooks"/codex-*.sh; do
-        [ -f "$hook_script" ] || continue
-        content_stable_cp "$hook_script" "$HOME/.codex/hooks/$(basename "$hook_script")"
-        chmod +x "$HOME/.codex/hooks/$(basename "$hook_script")"
-        CURRENT_CODEX_HOOKS+=("$(basename "$hook_script")")
-    done
-    for installed_hook in "$HOME/.codex/hooks"/*.sh; do
-        [ -f "$installed_hook" ] || continue
-        hook_basename=$(basename "$installed_hook")
-        still_present=false
-        for cur in "${CURRENT_CODEX_HOOKS[@]}"; do
-            [ "$cur" = "$hook_basename" ] && still_present=true && break
-        done
-        if [ "$still_present" = "false" ]; then
-            rm -f "$installed_hook"
-            echo "   🗑️  Removed stale Codex hook: $hook_basename"
+        echo "   📦 Installing system ripgrep for Claude Code custom commands..."
+        if ! command -v rg >/dev/null 2>&1; then
+            if command -v brew >/dev/null 2>&1; then
+                brew install ripgrep
+                echo "   ✅ System ripgrep installed"
+            else
+                echo "   ❌ Homebrew not found. Please install ripgrep manually:"
+                echo "      brew install ripgrep"
+                echo "   ⚠️  Custom Claude Code commands may not work without system ripgrep"
+            fi
+        else
+            echo "   ✅ System ripgrep already installed"
         fi
-    done
 
-    # Install agent TOML files
-    echo "   🤖 Installing Codex agents..."
-    CODEX_AGENTS_MANIFEST="$HOME/.codex/agents/.installed-by-ocg"
-    CURRENT_CODEX_AGENTS=()
-    if [ -d "$CODEGEN_DIR/templates/generated/codex/agents" ]; then
-        for agent_file in "$CODEGEN_DIR/templates/generated/codex/agents"/*.toml; do
-            if [ -f "$agent_file" ]; then
-                agent_name=$(basename "$agent_file")
-                content_stable_cp "$agent_file" "$HOME/.codex/agents/$agent_name"
-                echo "   ✅ Installed Codex agent: ${agent_name%.toml}"
-                CURRENT_CODEX_AGENTS+=("$agent_name")
+        # Determine shell rc file
+        if [ "$SHELL" = "/bin/zsh" ] || [ "$SHELL" = "/usr/bin/zsh" ]; then
+            RC_FILE="$HOME/.zshrc"
+        else
+            RC_FILE="$HOME/.bashrc"
+        fi
+
+        echo ""
+        echo "🚀 Setting up Claude Code custom command support..."
+
+        RIPGREP_VAR="export USE_BUILTIN_RIPGREP=0"
+        if grep -q "USE_BUILTIN_RIPGREP" "$RC_FILE" 2>/dev/null; then
+            echo "   ✅ USE_BUILTIN_RIPGREP already set in $RC_FILE"
+        else
+            echo "" >>"$RC_FILE"
+            echo "# Claude Code custom command discovery (requires system ripgrep)" >>"$RC_FILE"
+            echo "$RIPGREP_VAR" >>"$RC_FILE"
+            echo "   ✅ Added USE_BUILTIN_RIPGREP=0 to $RC_FILE"
+        fi
+
+        echo ""
+        echo "🚀 Setting up autocompletion..."
+
+        if grep -q "bash_completion.sh" "$RC_FILE" 2>/dev/null; then
+            echo "   ⚠️  Completion already appears to be set up in $RC_FILE"
+        else
+            echo "" >>"$RC_FILE"
+            echo "# Optimum Codegen autocompletion" >>"$RC_FILE"
+            echo "source \"$CODEGEN_DIR/bash_completion.sh\"" >>"$RC_FILE"
+            echo "   ✅ Added autocompletion to $RC_FILE"
+        fi
+
+        # De-register legacy aliases (idempotent)
+        for _legacy_alias in claude-build claude-design claude-debug; do
+            if grep -q "alias ${_legacy_alias}=" "$RC_FILE" 2>/dev/null; then
+                sed -i '' "/^# Optimum Codegen ${_legacy_alias} alias\$/d; /^alias ${_legacy_alias}=/d" "$RC_FILE"
+                echo "   🗑️  Removed legacy ${_legacy_alias} alias from $RC_FILE"
             fi
         done
-    fi
-    # Delete stale TOML agents — any .toml in agents dir not in the current install set.
-    # Safety: skip prune when install set is empty (generator failure).
-    if [ ${#CURRENT_CODEX_AGENTS[@]} -eq 0 ]; then
-        echo "   ⚠️  Skipping Codex agent prune — install set is empty (generator may have failed)"
-    else
-        for installed_agent in "$HOME/.codex/agents"/*.toml; do
-            [ -f "$installed_agent" ] || continue
-            agent_basename=$(basename "$installed_agent")
-            still_present=false
-            for cur in "${CURRENT_CODEX_AGENTS[@]}"; do
-                [ "$cur" = "$agent_basename" ] && still_present=true && break
+
+        # Remove legacy claude-design binary (idempotent)
+        if [ -f "$INSTALL_DIR/claude-design" ]; then
+            rm -f "$INSTALL_DIR/claude-design"
+            echo "   Removed legacy: $INSTALL_DIR/claude-design"
+        fi
+
+        echo ""
+        echo "🚀 Setting up Claude Code bash environment..."
+        echo "🤖 Installing Claude Code..."
+        hash -r 2>/dev/null || true
+        if command -v claude >/dev/null 2>&1; then
+            echo "   ✅ Claude Code already installed"
+        else
+            curl -fsSL https://claude.ai/install.sh | bash
+            echo "   ✅ Claude Code installed"
+        fi
+        ;;
+
+    pi)
+        # ── Pi-specific: agents ───────────────────────────────────────────────
+        echo "🔧 Setting up Pi configuration..."
+
+        mkdir -p "$HOME/.pi/agent/agents"
+
+        echo "   🤖 Installing Pi agents..."
+        CURRENT_PI_AGENTS=()
+        if [ -d "$CODEGEN_DIR/templates/generated/pi/agent" ]; then
+            for agent_file in "$CODEGEN_DIR/templates/generated/pi/agent"/*.md; do
+                if [ -f "$agent_file" ]; then
+                    agent_name=$(basename "$agent_file")
+                    content_stable_cp "$agent_file" "$HOME/.pi/agent/agents/$agent_name"
+                    echo "   ✅ Installed Pi agent: ${agent_name%.md}"
+                    CURRENT_PI_AGENTS+=("$agent_name")
+                fi
             done
-            if [ "$still_present" = "false" ]; then
-                rm -f "$installed_agent"
-                echo "   🗑️  Removed stale Codex agent: ${agent_basename%.toml}"
-            fi
-        done
-    fi
-    printf '%s\n' "${CURRENT_CODEX_AGENTS[@]}" >"$CODEX_AGENTS_MANIFEST"
-
-    # Install/merge config.toml
-    if [ -f "$CODEGEN_DIR/templates/generated/codex/config.toml" ]; then
-        if [ -f "$HOME/.codex/config.toml" ]; then
-            # Merge: preserve user's model/review_model/theme keys; overwrite [agents]/[features]/[[hooks.PreToolUse]]
-            python3 - "$HOME/.codex/config.toml" "$CODEGEN_DIR/templates/generated/codex/config.toml" <<'PY'
-import sys, shutil
-try:
-    import tomllib
-except ImportError:
-    try:
-        import tomli as tomllib
-    except ImportError:
-        print("   ⚠️  tomllib/tomli not available — overwriting config.toml (user keys NOT preserved)")
-        shutil.copy2(sys.argv[2], sys.argv[1])
-        sys.exit(0)
-try:
-    import tomli_w
-except ImportError:
-    import subprocess
-    r = subprocess.run(["pip3", "install", "--user", "--quiet", "tomli_w", "--break-system-packages"], capture_output=True)
-    if r.returncode != 0:
-        subprocess.run(["pip3", "install", "--user", "--quiet", "tomli_w"], capture_output=True)
-    try:
-        import tomli_w
-    except ImportError:
-        print("   ⚠️  tomli_w unavailable — overwriting config.toml (user keys NOT preserved)")
-        shutil.copy2(sys.argv[2], sys.argv[1])
-        sys.exit(0)
-with open(sys.argv[1], "rb") as f:
-    user = tomllib.load(f)
-with open(sys.argv[2], "rb") as f:
-    generated = tomllib.load(f)
-# generated keys take priority; user-only keys are preserved via **user base
-merged = {**user, **generated}
-with open(sys.argv[1], "wb") as f:
-    tomli_w.dump(merged, f)
-print("   ✅ Codex config.toml merged (user keys preserved)")
-PY
-        else
-            content_stable_cp "$CODEGEN_DIR/templates/generated/codex/config.toml" "$HOME/.codex/config.toml"
-            echo "   ✅ Codex config.toml installed"
         fi
-    fi
-fi # harness_enabled codex
-
-if harness_enabled pi; then
-    echo ""
-    echo "🔧 Setting up Pi configuration..."
-
-    mkdir -p "$HOME/.pi/agent/agents"
-
-    # Install agent Markdown files
-    echo "   🤖 Installing Pi agents..."
-    CURRENT_PI_AGENTS=()
-    if [ -d "$CODEGEN_DIR/templates/generated/pi/agent" ]; then
-        for agent_file in "$CODEGEN_DIR/templates/generated/pi/agent"/*.md; do
-            if [ -f "$agent_file" ]; then
-                agent_name=$(basename "$agent_file")
-                content_stable_cp "$agent_file" "$HOME/.pi/agent/agents/$agent_name"
-                echo "   ✅ Installed Pi agent: ${agent_name%.md}"
-                CURRENT_PI_AGENTS+=("$agent_name")
-            fi
-        done
-    fi
-    if [ ${#CURRENT_PI_AGENTS[@]} -eq 0 ]; then
-        echo "   ⚠️  Skipping Pi agent prune — install set is empty (generator may have failed)"
-    else
-        for installed_agent in "$HOME/.pi/agent/agents"/*.md; do
-            [ -f "$installed_agent" ] || continue
-            agent_basename=$(basename "$installed_agent")
-            still_present=false
-            for cur in "${CURRENT_PI_AGENTS[@]}"; do
-                [ "$cur" = "$agent_basename" ] && still_present=true && break
+        if [ ${#CURRENT_PI_AGENTS[@]} -eq 0 ]; then
+            echo "   ⚠️  Skipping Pi agent prune — install set is empty (generator may have failed)"
+        else
+            for installed_agent in "$HOME/.pi/agent/agents"/*.md; do
+                [ -f "$installed_agent" ] || continue
+                agent_basename=$(basename "$installed_agent")
+                still_present=false
+                for cur in "${CURRENT_PI_AGENTS[@]}"; do
+                    [ "$cur" = "$agent_basename" ] && still_present=true && break
+                done
+                if [ "$still_present" = "false" ]; then
+                    rm -f "$installed_agent"
+                    echo "   🗑️  Removed stale Pi agent: ${agent_basename%.md}"
+                fi
             done
-            if [ "$still_present" = "false" ]; then
-                rm -f "$installed_agent"
-                echo "   🗑️  Removed stale Pi agent: ${agent_basename%.md}"
+        fi
+
+        # Install pi extensions — npm install runtime deps (no tsc; pi loads .ts via jiti)
+        # askuserquestion: peerDeps only, no runtime deps — skip npm install
+        # subagents + web-utils: have runtime dependencies that need node_modules
+        echo "   📦 Installing Pi extension dependencies..."
+        PI_EXTENSIONS_DIR="$CODEGEN_DIR/harnesses/pi/pi-extensions"
+        for _ext_dir in "$PI_EXTENSIONS_DIR/subagents" "$PI_EXTENSIONS_DIR/web-utils"; do
+            if [ -d "$_ext_dir" ] && [ -f "$_ext_dir/package.json" ]; then
+                _ext_name=$(basename "$_ext_dir")
+                echo "   Installing deps for pi-extension: $_ext_name..."
+                (cd "$_ext_dir" && mise exec -- npm install --prefer-offline 2>&1 | sed 's/^/      /')
+                echo "   ✅ pi-extension deps installed: $_ext_name"
+            fi
+        done
+
+        # Install pi prompts — full generated set with mkdir + prune
+        PROMPTS_DST="$HOME/.pi/agent/prompts"
+        PROMPTS_SRC="$CODEGEN_DIR/templates/generated/pi/prompts"
+        mkdir -p "$PROMPTS_DST"
+        CURRENT_PI_PROMPTS=()
+        if [ -d "$PROMPTS_SRC" ]; then
+            echo "   Installing Pi prompts into $PROMPTS_DST..."
+            for _prompt_file in "$PROMPTS_SRC"/*.md; do
+                [ -f "$_prompt_file" ] || continue
+                _prompt_name=$(basename "$_prompt_file")
+                content_stable_cp "$_prompt_file" "$PROMPTS_DST/$_prompt_name"
+                echo "   ✅ Installed Pi prompt: $_prompt_name"
+                CURRENT_PI_PROMPTS+=("$_prompt_name")
+            done
+        fi
+        # Prune stale prompts
+        if [ ${#CURRENT_PI_PROMPTS[@]} -eq 0 ]; then
+            echo "   ⚠️  Skipping Pi prompt prune — install set is empty (generator may have failed)"
+        else
+            for _installed_prompt in "$PROMPTS_DST"/*.md; do
+                [ -f "$_installed_prompt" ] || continue
+                _prompt_basename=$(basename "$_installed_prompt")
+                _still_present=false
+                for _cur in "${CURRENT_PI_PROMPTS[@]}"; do
+                    [ "$_cur" = "$_prompt_basename" ] && _still_present=true && break
+                done
+                if [ "$_still_present" = "false" ]; then
+                    rm -f "$_installed_prompt"
+                    echo "   🗑️  Removed stale Pi prompt: $_prompt_basename"
+                fi
+            done
+        fi
+
+        echo "   ✅ Pi configuration complete"
+        ;;
+    esac
+
+    # ── Manifest-driven: launchers + completions (all harnesses) ─────────────
+    echo ""
+    echo "🚀 Installing $_harness launchers..."
+    mkdir -p "$INSTALL_DIR"
+
+    CURRENT_LAUNCHERS=()
+    while IFS=' ' read -r _src _dest_name; do
+        _dest="$INSTALL_DIR/$_dest_name"
+        content_stable_cp "$CODEGEN_DIR/$_src" "$_dest"
+        chmod +x "$_dest"
+        echo "   ✅ Installed launcher: $_dest_name → $_dest"
+        CURRENT_LAUNCHERS+=("$_dest_name")
+    done < <(manifest_launchers "$_harness")
+
+    # Prune stale launchers for this harness (prefix = harness name + dash)
+    if [ ${#CURRENT_LAUNCHERS[@]} -gt 0 ]; then
+        for _installed_launcher in "$INSTALL_DIR/${_harness}-"*; do
+            [ -f "$_installed_launcher" ] || continue
+            _launcher_basename=$(basename "$_installed_launcher")
+            _launcher_still_present=false
+            for _cur_launcher in "${CURRENT_LAUNCHERS[@]}"; do
+                [ "$_cur_launcher" = "$_launcher_basename" ] && _launcher_still_present=true && break
+            done
+            if [ "$_launcher_still_present" = "false" ]; then
+                rm -f "$_installed_launcher"
+                echo "   🗑️  Removed stale launcher: $_launcher_basename"
             fi
         done
     fi
 
-    echo "   ✅ Pi configuration complete"
-fi # harness_enabled pi
+    echo ""
+    echo "🚀 Installing $_harness zsh completions..."
+    if [ -n "$ZSH_COMPLETION_DST" ]; then
+        while IFS= read -r _comp; do
+            content_stable_cp "$CODEGEN_DIR/harnesses/$_harness/$_comp" "$ZSH_COMPLETION_DST/$_comp"
+            echo "   Installed zsh completion: $ZSH_COMPLETION_DST/$_comp"
+        done < <(manifest_completions "$_harness")
+    else
+        echo "WARNING: no writable zsh completion dir found (tried ${ZSH_COMPLETION_DIRS[*]}); skipping $_harness completion install" >&2
+    fi
+
+done # harness loop
 
 # Create OCG config directory
 mkdir -p "$HOME/.ocg"
@@ -740,10 +625,8 @@ if [ ! -f "$HOME/.ocg/config.json" ]; then
     fi
 
     claude_enabled=false
-    codex_enabled=false
     pi_enabled=false
     harness_enabled claude && claude_enabled=true
-    harness_enabled codex && codex_enabled=true
     harness_enabled pi && pi_enabled=true
 
     cat >"$HOME/.ocg/config.json" <<EOF
@@ -751,7 +634,6 @@ if [ ! -f "$HOME/.ocg/config.json" ]; then
     "default_agent": "$default_agent",
     "agents": {
         "claude": { "enabled": $claude_enabled },
-        "codex": { "enabled": $codex_enabled },
         "pi": { "enabled": $pi_enabled }
     }
 }
@@ -765,10 +647,9 @@ fi
 # Clean up generated templates now that everything is installed
 cleanup_generated_templates
 
-# Format context repo after install finishes regenerating files
-CONTEXT_DIR="${OCG_CONTEXT_DIR:-$HOME/Areas/Optimum/context}"
-if [ -d "$CONTEXT_DIR" ]; then
-    npx prettier -w --log-level error "$CONTEXT_DIR"
+# Format codegen shared dir after install finishes regenerating files
+if [ -d "$CODEGEN_DIR/shared" ]; then
+    npx prettier -w --log-level error "$CODEGEN_DIR/shared"
 fi
 
 echo ""

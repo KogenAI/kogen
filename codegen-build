@@ -1,0 +1,190 @@
+#!/usr/bin/env bash
+# codegen-build — canonical entrypoint for all harness-based build invocations.
+#
+# Usage:
+#   codegen-build --harness=<claude|pi> --stack=<phoenix|static> [options] PROMPT
+#
+# Options:
+#   --harness=<claude|pi>     required: which harness to use
+#   --stack=<phoenix|static>  required: project stack
+#   --cwd=<dir>               working directory (default: $PWD)
+#   --non-interactive         force non-interactive mode (default: auto via [ -t 1 ])
+#   --max-turns=<n>           pass --max-turns to harness dispatch
+#   --model=<m>               model override
+#   --effort=<e>              effort override
+#   PROMPT                    the prompt string (required, positional, last arg)
+#
+# Exit codes from dispatch propagate (0 = success, 1 = error, 2 = config/usage error, 130 = SIGINT).
+# STDERR: diagnostics only. STDOUT: byte-transparent (stream-json from harness).
+
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+HARNESS=""
+STACK=""
+CWD="$PWD"
+NON_INTERACTIVE=""
+MAX_TURNS=""
+MODEL=""
+EFFORT=""
+EXTRA_FLAGS=()
+PROMPT=""
+
+usage() {
+    printf 'Usage: codegen-build --harness=<claude|pi> --stack=<phoenix|static> [--cwd=<dir>] [--non-interactive] [--max-turns=<n>] [--model=<m>] [--effort=<e>] PROMPT\n' >&2
+    exit 2
+}
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --harness=*)
+            HARNESS="${1#--harness=}"
+            shift
+            ;;
+        --harness)
+            HARNESS="$2"
+            shift 2
+            ;;
+        --stack=*)
+            STACK="${1#--stack=}"
+            shift
+            ;;
+        --stack)
+            STACK="$2"
+            shift 2
+            ;;
+        --cwd=*)
+            CWD="${1#--cwd=}"
+            shift
+            ;;
+        --cwd)
+            CWD="$2"
+            shift 2
+            ;;
+        --non-interactive)
+            NON_INTERACTIVE="1"
+            shift
+            ;;
+        --max-turns=*)
+            MAX_TURNS="${1#--max-turns=}"
+            shift
+            ;;
+        --max-turns)
+            MAX_TURNS="$2"
+            shift 2
+            ;;
+        --model=*)
+            MODEL="${1#--model=}"
+            shift
+            ;;
+        --model)
+            MODEL="$2"
+            shift 2
+            ;;
+        --effort=*)
+            EFFORT="${1#--effort=}"
+            shift
+            ;;
+        --effort)
+            EFFORT="$2"
+            shift 2
+            ;;
+        --max-budget-usd=*|--max-budget-usd)
+            EXTRA_FLAGS+=("$1")
+            if [[ "$1" == "--max-budget-usd" ]]; then
+                EXTRA_FLAGS+=("$2")
+                shift
+            fi
+            shift
+            ;;
+        --fallback-model=*|--fallback-model)
+            EXTRA_FLAGS+=("$1")
+            if [[ "$1" == "--fallback-model" ]]; then
+                EXTRA_FLAGS+=("$2")
+                shift
+            fi
+            shift
+            ;;
+        --extension=*|--extension)
+            EXTRA_FLAGS+=("$1")
+            if [[ "$1" == "--extension" ]]; then
+                EXTRA_FLAGS+=("$2")
+                shift
+            fi
+            shift
+            ;;
+        --)
+            shift
+            PROMPT="$*"
+            break
+            ;;
+        --*)
+            printf 'codegen-build: unknown flag %q\n' "$1" >&2
+            usage
+            ;;
+        *)
+            if [[ -z "$PROMPT" ]]; then
+                PROMPT="$1"
+            else
+                PROMPT="$PROMPT $1"
+            fi
+            shift
+            ;;
+    esac
+done
+
+# Validate required args
+if [[ -z "$HARNESS" ]]; then
+    printf 'codegen-build: --harness is required\n' >&2
+    usage
+fi
+
+if [[ -n "$NON_INTERACTIVE" && -z "$PROMPT" ]]; then
+    printf 'codegen-build: PROMPT is required in non-interactive mode\n' >&2
+    usage
+fi
+
+if [[ "$HARNESS" != "claude" && "$HARNESS" != "pi" ]]; then
+    printf 'codegen-build: --harness must be "claude" or "pi", got %q\n' "$HARNESS" >&2
+    usage
+fi
+
+if [[ -n "$STACK" && "$STACK" != "phoenix" && "$STACK" != "static" ]]; then
+    printf 'codegen-build: --stack must be "phoenix" or "static", got %q\n' "$STACK" >&2
+    usage
+fi
+
+# Auto-detect non-interactive only when caller did not set it via
+# --non-interactive flag OR CODEGEN_BUILD_NON_INTERACTIVE env var.
+# The env var (even when empty) is an explicit caller decision — honour it.
+# ${VAR+set} is "set" iff the variable was assigned, even to empty string.
+if [[ -z "$NON_INTERACTIVE" && -z "${CODEGEN_BUILD_NON_INTERACTIVE+set}" ]]; then
+    if [ -t 1 ]; then
+        NON_INTERACTIVE=""
+    else
+        NON_INTERACTIVE="1"
+    fi
+fi
+
+# Export parsed values for dispatch.sh
+export CODEGEN_BUILD_HARNESS="$HARNESS"
+export CODEGEN_BUILD_STACK="${STACK:-phoenix}"
+export CODEGEN_BUILD_CWD="$CWD"
+export CODEGEN_BUILD_NON_INTERACTIVE="${NON_INTERACTIVE:-}"
+export CODEGEN_BUILD_MAX_TURNS="${MAX_TURNS:-}"
+export CODEGEN_BUILD_MODEL="${MODEL:-}"
+export CODEGEN_BUILD_EFFORT="${EFFORT:-}"
+
+DISPATCH="$SCRIPT_DIR/harnesses/$HARNESS/dispatch.sh"
+
+if [[ ! -x "$DISPATCH" ]]; then
+    printf 'codegen-build: dispatch script not found or not executable: %s\n' "$DISPATCH" >&2
+    exit 2
+fi
+
+if [[ -n "$PROMPT" ]]; then
+    exec "$DISPATCH" "${EXTRA_FLAGS[@]+"${EXTRA_FLAGS[@]}"}" "$PROMPT"
+else
+    exec "$DISPATCH" "${EXTRA_FLAGS[@]+"${EXTRA_FLAGS[@]}"}"
+fi

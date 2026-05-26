@@ -12,227 +12,30 @@ define check_ocg_only
 	fi
 endef
 
-define check_make_only
-	@if [ "$$OCG_CLI" = "true" ]; then \
-		echo "❌ The $(1) command only works with 'make $(1)'"; \
-		echo "   Please use 'make $(1)' instead of 'ocg $(1)'"; \
-		exit 1; \
-	fi
-endef
 
-init:
-	$(call check_ocg_only,init)
-	@cd "$(ORIGINAL_WORKING_DIR)" && "$(SCRIPT_DIR)/init_project.sh" $(filter-out $@,$(MAKECMDGOALS))
 
-setup:
-	$(call check_ocg_only,setup)
-	@cd "$(ORIGINAL_WORKING_DIR)" && "$(SCRIPT_DIR)/setup_project.sh"
-
-new:
-	$(call check_ocg_only,new)
-	@if [ -z "$(filter-out $@,$(MAKECMDGOALS))" ]; then \
-		. ./utils.sh; \
-		echo "Usage: $$OCG_CMD new <feature-name> [options]"; \
-		echo "Options:"; \
-		echo "  --model, -m <model>      AI model to use (default: sonnet)"; \
-		echo "  --agent, -a <name>   AI agent to use (default: from config)"; \
-		echo "  --container              Run in Docker container"; \
-		echo ""; \
-		echo "Examples:"; \
-		echo "  $$OCG_CMD new dashboard-redesign"; \
-		echo "  $$OCG_CMD new dashboard-redesign --model opus"; \
-		echo "  $$OCG_CMD new dashboard-redesign --agent codex"; \
-		echo "  $$OCG_CMD new dashboard-redesign -m opus -a codex --container"; \
-		exit 1; \
-	fi
-	@args="$(filter-out $@,$(MAKECMDGOALS))"; \
-	if echo "$$args" | grep -q -- "--container"; then \
-		clean_args=$$(echo "$$args" | sed 's/--container//g' | xargs); \
-		./create_workspace.sh $$clean_args --container; \
-	else \
-		./create_workspace.sh $$args; \
-	fi
-
-clean:
-	$(call check_ocg_only,clean)
-	@echo "🧹 Removing all feature workspaces..."
-	@cd "$(ORIGINAL_WORKING_DIR)"; \
-	WORKSPACES=$$("$(SCRIPT_DIR)/list_workspaces.sh" 2>/dev/null | grep "^📁" | grep -v "Main Repository" | sed 's/^📁 //'); \
-	if [ -z "$$WORKSPACES" ]; then \
-		echo "ℹ️  No feature workspaces found to remove"; \
-	else \
-		echo "📋 Found workspaces to remove:"; \
-		echo "$$WORKSPACES" | sed 's/^/      - /'; \
-		echo "⚠️  This will remove ALL feature workspaces. Continue? [y/N]"; \
-		read -r confirm; \
-		if [ "$$confirm" != "y" ] && [ "$$confirm" != "Y" ]; then \
-			echo "❌ Operation cancelled"; \
-			exit 1; \
-		fi; \
-		echo ""; \
-		. "$(SCRIPT_DIR)/config.sh"; \
-		for workspace in $$WORKSPACES; do \
-			WORKSPACE_PATH="$$TARGET_REPO_PATH/codegen/workspaces/$$workspace"; \
-			"$(SCRIPT_DIR)/cleanup_servers.sh" "$$WORKSPACE_PATH" --quiet; \
-			echo "🗑️  Removing workspace: $$workspace"; \
-			$(MAKE) rm "$$workspace" || echo "⚠️  Failed to remove workspace: $$workspace"; \
-		done; \
-		echo "✅ Finished removing all workspaces"; \
-	fi; \
-	echo ""; \
-	echo "💡 Tip: Feature branches are preserved by default"; \
-	. "$(SCRIPT_DIR)/utils.sh"; \
-	echo "   To also remove orphaned feature branches, run: $$OCG_CMD clean-branches"
-
-clean-branches:
-	$(call check_ocg_only,clean-branches)
-	@cd "$(ORIGINAL_WORKING_DIR)" && "$(SCRIPT_DIR)/clean_branches.sh"
-
-prepare:
-	$(call check_ocg_only,prepare)
-	@cd "$(ORIGINAL_WORKING_DIR)" && "$(SCRIPT_DIR)/prepare_environment.sh" $(filter-out $@,$(MAKECMDGOALS))
-
-extract-figma-screenshots:
-	$(call check_ocg_only,extract-figma-screenshots)
-	@cd "$(ORIGINAL_WORKING_DIR)" && "$(SCRIPT_DIR)/extract_figma_screenshots.sh" $(filter-out $@,$(MAKECMDGOALS))
-
-extract-figma-metadata:
-	$(call check_ocg_only,extract-figma-metadata)
-	@cd "$(ORIGINAL_WORKING_DIR)" && "$(SCRIPT_DIR)/extract_figma_metadata.sh" $(filter-out $@,$(MAKECMDGOALS))
-
-extract-figma-variables:
-	$(call check_ocg_only,extract-figma-variables)
-	@cd "$(ORIGINAL_WORKING_DIR)" && "$(SCRIPT_DIR)/extract_figma_variables.sh" $(filter-out $@,$(MAKECMDGOALS))
-
-extract-figma-implementation-specs:
-	$(call check_ocg_only,extract-figma-implementation-specs)
-	@cd "$(ORIGINAL_WORKING_DIR)" && "$(SCRIPT_DIR)/extract_figma_implementation_specs.sh" $(filter-out $@,$(MAKECMDGOALS))
-
-build-variable-map:
-	$(call check_ocg_only,build-variable-map)
-	@cd "$(ORIGINAL_WORKING_DIR)" && "$(SCRIPT_DIR)/build_variable_map.sh" $(filter-out $@,$(MAKECMDGOALS))
-
-extract-figma-components:
-	$(call check_ocg_only,extract-figma-components)
-	@cd "$(ORIGINAL_WORKING_DIR)" && "$(SCRIPT_DIR)/extract_figma_components.sh" $(filter-out $@,$(MAKECMDGOALS))
-
-query-figma-spec:
-	$(call check_ocg_only,query-figma-spec)
-	@cd "$(ORIGINAL_WORKING_DIR)" && "$(SCRIPT_DIR)/query_figma_spec.sh" $(filter-out $@,$(MAKECMDGOALS))
-
-clean-servers:
-	$(call check_ocg_only,clean-servers)
-	@cd "$(ORIGINAL_WORKING_DIR)"; \
-	case "$$MAKEFLAGS" in \
-		*s*|*--silent*|*--quiet*) QUIET=true ;; \
-		*) QUIET=false ;; \
-	esac; \
-	if [ "$$QUIET" = "false" ]; then \
-		echo "🧹 Cleaning up servers for all workspaces..."; \
-	fi; \
-	. "$(SCRIPT_DIR)/config.sh"; \
-	WORKSPACES=$$("$(SCRIPT_DIR)/list_workspaces.sh" 2>/dev/null | grep "^📁" | grep -v "Main Repository" | sed 's/^📁 //'); \
-	if [ -z "$$WORKSPACES" ]; then \
-		if [ "$$QUIET" = "false" ]; then \
-			echo "ℹ️  No workspaces found"; \
-		fi; \
-	else \
-		for workspace in $$WORKSPACES; do \
-			WORKSPACE_PATH="$$TARGET_REPO_PATH/codegen/workspaces/$$workspace"; \
-			"$(SCRIPT_DIR)/cleanup_servers.sh" "$$WORKSPACE_PATH" --quiet; \
-		done; \
-		if [ "$$QUIET" = "false" ]; then \
-			echo "✅ Server cleanup complete"; \
-		fi; \
-	fi
-
-rm:
-	$(call check_ocg_only,rm)
-	@if [ -z "$(filter-out $@,$(MAKECMDGOALS))" ]; then \
-		. ./utils.sh; \
-		echo "Usage: $$OCG_CMD rm <feature-name>"; \
-		echo "Example: $$OCG_CMD rm dashboard-redesign"; \
-		exit 1; \
-	fi
-	@cd "$(ORIGINAL_WORKING_DIR)"; \
-	. "$(SCRIPT_DIR)/config.sh"; \
-	WORKSPACE_PATH="$$TARGET_REPO_PATH/codegen/workspaces/$(filter-out $@,$(MAKECMDGOALS))"; \
-	if [ -d "$$WORKSPACE_PATH" ]; then \
-		"$(SCRIPT_DIR)/cleanup_servers.sh" "$$WORKSPACE_PATH" --quiet; \
-	fi; \
-	"$(SCRIPT_DIR)/remove_workspace.sh" $(filter-out $@,$(MAKECMDGOALS))
-
-resume:
-	$(call check_ocg_only,resume)
-	@if [ -z "$(filter-out $@,$(MAKECMDGOALS))" ]; then \
-		. ./utils.sh; \
-		echo "Usage: $$OCG_CMD resume <feature-name> [options]"; \
-		echo "Options:"; \
-		echo "  --model, -m <model>      AI model to use (default: from workspace)"; \
-		echo "  --agent, -a <name>   AI agent to use (default: from workspace)"; \
-		echo "  --container              Run in Docker container"; \
-		echo ""; \
-		echo "Examples:"; \
-		echo "  $$OCG_CMD resume dashboard-redesign"; \
-		echo "  $$OCG_CMD resume dashboard-redesign --model opus"; \
-		echo "  $$OCG_CMD resume dashboard-redesign --agent codex"; \
-		echo "  $$OCG_CMD resume dashboard-redesign -m opus -a codex --container"; \
-		exit 1; \
-	fi
-	@args="$(filter-out $@,$(MAKECMDGOALS))"; \
-	if echo "$$args" | grep -q -- "--container"; then \
-		clean_args=$$(echo "$$args" | sed 's/--container//g' | xargs); \
-		./resume_workspace.sh $$clean_args --container; \
-	else \
-		./resume_workspace.sh $$args; \
-	fi
-
-update-context:
-	$(call check_ocg_only,update-context)
-	@if [ -z "$(filter-out $@,$(MAKECMDGOALS))" ]; then \
-		. ./utils.sh; \
-		echo "Usage: $$OCG_CMD update-context <feature-name>"; \
-		echo "Example: $$OCG_CMD update-context dashboard-redesign"; \
-		exit 1; \
-	fi
-	@./update_context.sh $(filter-out $@,$(MAKECMDGOALS))
-
-consolidate-context:
-	$(call check_ocg_only,consolidate-context)
-	@./consolidate_context.sh
-
-ls:
-	$(call check_ocg_only,ls)
-	@./list_workspaces.sh
-
-resources:
-	$(call check_ocg_only,resources)
-	@./show_global_resources.sh $(filter-out $@,$(MAKECMDGOALS))
-
-bird-eye:
-	$(call check_ocg_only,bird-eye)
-	@./modes/bird_eye_session.sh $(filter-out $@,$(MAKECMDGOALS))
-
-plan:
-	$(call check_ocg_only,plan)
-	@./modes/plan_session.sh $(filter-out $@,$(MAKECMDGOALS))
-
-COMBOBULATE_DIR ?= $(SCRIPT_DIR)/../combobulate
+COMBOBULATE_DIR ?= $(shell \
+  if [ -f "$(SCRIPT_DIR)/../combobulate/CLAUDE.md" ] || [ -f "$(SCRIPT_DIR)/../combobulate/AGENTS.md" ]; then \
+    echo "$(SCRIPT_DIR)/../combobulate"; \
+  elif [ -f "$(HOME)/Projects/AppBuilder/combobulate/CLAUDE.md" ] || [ -f "$(HOME)/Projects/AppBuilder/combobulate/AGENTS.md" ]; then \
+    echo "$(HOME)/Projects/AppBuilder/combobulate"; \
+  else \
+    echo "$(SCRIPT_DIR)/../combobulate"; \
+  fi)
 HOOKS_MD_PATH := $(COMBOBULATE_DIR)/context/hooks.md
 HOOKS_MD_ARG := $(if $(wildcard $(HOOKS_MD_PATH)),--hooks-md-path "$(HOOKS_MD_PATH)",)
-PI_EXTENSION_DIR ?= $(SCRIPT_DIR)/templates/shared/pi-extensions/enforcement
+PI_EXTENSION_DIR ?= $(SCRIPT_DIR)/harnesses/pi/pi-extensions/enforcement
 
 .PHONY: hook-parity
 hook-parity:
-	$(call check_make_only,hook-parity)
 	@cd "$(SCRIPT_DIR)/templates" && python3 generator/hook_registrations.py \
-		--hooks-dir shared/hooks \
+		--hooks-dir ../harnesses/claude/hooks \
 		--output-settings /tmp/claude-code-settings-parity.json \
-		--existing-settings "$(SCRIPT_DIR)/templates/claude-code-settings.json" \
+		--existing-settings "$(SCRIPT_DIR)/harnesses/claude/claude-code-settings.json" \
 		--combobulate-dir /tmp/hook-parity-test \
-		--subagents-dir "$(SCRIPT_DIR)/templates/shared/subagents" \
+		--subagents-dir "$(SCRIPT_DIR)/shared/subagents" \
 		$(HOOKS_MD_ARG)
-	@diff -u "$(SCRIPT_DIR)/templates/claude-code-settings.json" /tmp/claude-code-settings-parity.json || exit 1
+	@diff -u "$(SCRIPT_DIR)/harnesses/claude/claude-code-settings.json" /tmp/claude-code-settings-parity.json || exit 1
 	@if [ -f "$(COMBOBULATE_DIR)/priv/claude_config/agent_manifest.json" ]; then \
 		diff -u "$(COMBOBULATE_DIR)/priv/claude_config/agent_manifest.json" /tmp/hook-parity-test/priv/claude_config/agent_manifest.json || exit 1; \
 	fi
@@ -246,35 +49,114 @@ hook-parity:
 	@echo "hook-parity: PASS"
 
 install: hook-parity
-	$(call check_make_only,install)
 	@bash "$(SCRIPT_DIR)/templates/generator/generate-pi-extension.sh" "$(PI_EXTENSION_DIR)"
 	@python3 "$(SCRIPT_DIR)/templates/generator/hook_registrations.py" \
-		--hooks-dir "$(SCRIPT_DIR)/templates/shared/hooks" \
-		--output-settings "$(SCRIPT_DIR)/templates/claude-code-settings.json" \
+		--hooks-dir "$(SCRIPT_DIR)/harnesses/claude/hooks" \
+		--output-settings "$(SCRIPT_DIR)/harnesses/claude/claude-code-settings.json" \
 		--combobulate-dir "$(COMBOBULATE_DIR)" \
-		--subagents-dir "$(SCRIPT_DIR)/templates/shared/subagents" \
+		--subagents-dir "$(SCRIPT_DIR)/shared/subagents" \
 		--pi-extension-dir "$(PI_EXTENSION_DIR)" \
 		$(HOOKS_MD_ARG)
 	@./install.sh
-	@./install-launchers.sh
-	@bash install-pi-prompts.sh
+
+# harness-parity: verify codegen-build + dispatch.sh stubs are self-consistent.
+# Runs the codegen-build_test.sh script in isolation.
+.PHONY: harness-parity
+harness-parity:
+	@bash "$(SCRIPT_DIR)/harnesses/claude/hooks/codegen-build_test.sh"
+	@bash "$(SCRIPT_DIR)/shared/scaffold/static/scaffold_test.sh"
+	@echo "harness-parity: PASS"
 
 # test: run every PreToolUse/SubagentStop/Stop hook unit-test script in parallel.
 # Each *_test.sh is hermetic — own tmp dirs, no shared state — so xargs -P is safe.
 # Job count caps at 8 to avoid thrashing on smaller machines.
-test: hook-parity
-	$(call check_make_only,test)
-	@./templates/shared/hooks/run-tests.sh
+test: hook-parity harness-parity
+	@./harnesses/claude/hooks/run-tests.sh
 	@cd "$(PI_EXTENSION_DIR)" && mise exec -- npm test
+
+# test-stacks: run ExUnit stack scaffold tests under test_harness/ for both
+# harnesses in parallel. Real LLM calls — slow + costs tokens. Pre-deploy gate.
+.PHONY: test-stacks test-stacks-claude test-stacks-pi test-stacks-claude-compile test-stacks-pi-compile test-stacks-claude-p1 test-stacks-claude-p2 test-stacks-claude-p3 test-stacks-claude-p4 test-stacks-pi-p1 test-stacks-pi-p2 test-stacks-pi-p3 test-stacks-pi-p4 test-all record-green
+test-stacks:
+	$(MAKE) test-stacks-claude
+	$(MAKE) test-stacks-pi
+
+# test-stacks-claude: precompile once into _build/claude_test, then fan out
+# 7 partition processes via `$(MAKE) -j7`. Each partition is its own BEAM/OS
+# process running `mix test --partitions 4 --no-compile --only slow` with a
+# distinct `MIX_TEST_PARTITION` value. Mix sorts test files round-robin into
+# partitions; with 7 slow test files we get 1 file per partition. Tests
+# within a partition use the module's `async: true` for intra-file parallelism
+# (only meaningful for `test/stacks/static/iteration_test.exs` which has 5
+# tests; the other 6 files have 1 test each).
+test-stacks-claude: test-stacks-claude-compile
+	$(MAKE) -j4 test-stacks-claude-p1 test-stacks-claude-p2 test-stacks-claude-p3 test-stacks-claude-p4
+
+test-stacks-claude-compile:
+	cd "$(SCRIPT_DIR)/test_harness" && \
+		MIX_BUILD_PATH=_build/claude_test mix compile
+
+test-stacks-claude-p1:
+	cd "$(SCRIPT_DIR)/test_harness" && \
+		HARNESS=claude MIX_BUILD_PATH=_build/claude_test MIX_TEST_PARTITION=1 \
+		mix test --partitions 4 --no-compile --only slow
+
+test-stacks-claude-p2:
+	cd "$(SCRIPT_DIR)/test_harness" && \
+		HARNESS=claude MIX_BUILD_PATH=_build/claude_test MIX_TEST_PARTITION=2 \
+		mix test --partitions 4 --no-compile --only slow
+
+test-stacks-claude-p3:
+	cd "$(SCRIPT_DIR)/test_harness" && \
+		HARNESS=claude MIX_BUILD_PATH=_build/claude_test MIX_TEST_PARTITION=3 \
+		mix test --partitions 4 --no-compile --only slow
+
+test-stacks-claude-p4:
+	cd "$(SCRIPT_DIR)/test_harness" && \
+		HARNESS=claude MIX_BUILD_PATH=_build/claude_test MIX_TEST_PARTITION=4 \
+		mix test --partitions 4 --no-compile --only slow
+
+test-stacks-pi: test-stacks-pi-compile
+	$(MAKE) -j4 test-stacks-pi-p1 test-stacks-pi-p2 test-stacks-pi-p3 test-stacks-pi-p4
+
+test-stacks-pi-compile:
+	cd "$(SCRIPT_DIR)/test_harness" && \
+		MIX_BUILD_PATH=_build/pi_test mix compile
+
+test-stacks-pi-p1:
+	cd "$(SCRIPT_DIR)/test_harness" && \
+		HARNESS=pi MIX_BUILD_PATH=_build/pi_test MIX_TEST_PARTITION=1 \
+		mix test --partitions 4 --no-compile --only slow
+
+test-stacks-pi-p2:
+	cd "$(SCRIPT_DIR)/test_harness" && \
+		HARNESS=pi MIX_BUILD_PATH=_build/pi_test MIX_TEST_PARTITION=2 \
+		mix test --partitions 4 --no-compile --only slow
+
+test-stacks-pi-p3:
+	cd "$(SCRIPT_DIR)/test_harness" && \
+		HARNESS=pi MIX_BUILD_PATH=_build/pi_test MIX_TEST_PARTITION=3 \
+		mix test --partitions 4 --no-compile --only slow
+
+test-stacks-pi-p4:
+	cd "$(SCRIPT_DIR)/test_harness" && \
+		HARNESS=pi MIX_BUILD_PATH=_build/pi_test MIX_TEST_PARTITION=4 \
+		mix test --partitions 4 --no-compile --only slow
+
+# test-all: full pre-deploy gate. Chains hook tests + stack tests, then
+# writes last_green.json. Only the all-green path overwrites last_green.json.
+test-all: test test-stacks record-green
+
+record-green:
+	@"$(SCRIPT_DIR)/test_harness/record-green.sh"
 
 # rule-parity: re-render AGENTS-HYBRID.md.j2 in both modes to temp files and
 # diff against committed AGENTS.md / CLAUDE.md. Exits non-zero on drift.
 rule-parity:
-	$(call check_make_only,rule-parity)
 	@SCRIPT_DIR="$(SCRIPT_DIR)"; \
 	TEMPLATE="$$SCRIPT_DIR/templates/AGENTS-HYBRID.md.j2"; \
 	PYTHON="$$SCRIPT_DIR/templates/generator/process_template.py"; \
-	COMBOBULATE_DIR="$${COMBOBULATE_DIR:-$$SCRIPT_DIR/../combobulate}"; \
+	COMBOBULATE_DIR="$(COMBOBULATE_DIR)"; \
 	AGENTS_COMMITTED="$$COMBOBULATE_DIR/AGENTS.md"; \
 	CLAUDE_COMMITTED="$$COMBOBULATE_DIR/CLAUDE.md"; \
 	if [ ! -f "$$AGENTS_COMMITTED" ] && [ ! -f "$$CLAUDE_COMMITTED" ]; then \
@@ -283,11 +165,11 @@ rule-parity:
 		exit 2; \
 	fi; \
 	TMPDIR_PARITY="$$(mktemp -d)"; \
-	python3 "$$PYTHON" "$$TEMPLATE" codex false > "$$TMPDIR_PARITY/AGENTS.md"; \
+	python3 "$$PYTHON" "$$TEMPLATE" pi false > "$$TMPDIR_PARITY/AGENTS.md"; \
 	python3 "$$PYTHON" "$$TEMPLATE" claude false > "$$TMPDIR_PARITY/CLAUDE.md"; \
 	FAIL=0; \
 	if [ -f "$$AGENTS_COMMITTED" ] && ! diff -q "$$TMPDIR_PARITY/AGENTS.md" "$$AGENTS_COMMITTED" > /dev/null 2>&1; then \
-		echo "DRIFT: AGENTS.md differs from AGENTS-HYBRID.md.j2 (codex render)"; \
+		echo "DRIFT: AGENTS.md differs from AGENTS-HYBRID.md.j2 (pi render)"; \
 		diff "$$TMPDIR_PARITY/AGENTS.md" "$$AGENTS_COMMITTED" || true; \
 		FAIL=1; \
 	fi; \
@@ -298,7 +180,19 @@ rule-parity:
 	fi; \
 	rm -rf "$$TMPDIR_PARITY"; \
 	if [ $$FAIL -eq 1 ]; then exit 1; fi; \
-	echo "rule-parity: OK (no drift) [checked: $$COMBOBULATE_DIR]"
+	echo "rule-parity: OK (no drift) [checked: $$COMBOBULATE_DIR]"; \
+	echo "rule-parity: checking harness path isolation..."; \
+	AGENTS_DIR="$(HOME)/.claude/agents"; \
+	if [ -d "$$AGENTS_DIR" ]; then \
+		if grep -rl "templates/shared/claude-\|templates/shared/pi-" "$$AGENTS_DIR" 2>/dev/null | grep -q .; then \
+			echo "rule-parity: ERROR — generated agent files reference old templates/shared/claude-* or pi-* paths"; \
+			grep -rl "templates/shared/claude-\|templates/shared/pi-" "$$AGENTS_DIR" 2>/dev/null; \
+			exit 1; \
+		fi; \
+		echo "rule-parity: OK — no stale harness paths in baked agents [checked: $$AGENTS_DIR]"; \
+	else \
+		echo "rule-parity: SKIP harness path isolation — $$AGENTS_DIR not found (run make install first)"; \
+	fi
 
 uninstall:
 	$(call check_ocg_only,uninstall)
@@ -309,7 +203,6 @@ update:
 	@./update_ai_tools.sh
 
 format:
-	$(call check_make_only,format)
 	@echo "🎨 Formatting all files..."
 	@if ! command -v mise >/dev/null 2>&1; then \
 		echo "❌ mise not found. Please install mise first."; \
@@ -331,7 +224,6 @@ format:
 	@echo "✅ All files formatted"
 
 doctor:
-	$(call check_make_only,doctor)
 	@set +e; \
 	fails=0; \
 	check() { \
@@ -350,25 +242,15 @@ doctor:
 	else \
 		echo "FAIL: claude on PATH and --version exits 0"; fails=$$((fails + 1)); \
 	fi; \
-	if command -v codex >/dev/null 2>&1 && codex --version >/dev/null 2>&1; then \
-		echo "OK: codex on PATH and --version exits 0"; \
-	else \
-		echo "FAIL: codex on PATH and --version exits 0"; fails=$$((fails + 1)); \
-	fi; \
-	if [ -f "$$HOME/.codex/config.toml" ]; then \
-		echo "OK: ~/.codex/config.toml exists"; \
-	else \
-		echo "FAIL: ~/.codex/config.toml exists (run 'make install')"; fails=$$((fails + 1)); \
-	fi; \
 	if [ -f "$$HOME/.claude/settings.json" ]; then \
 		echo "OK: ~/.claude/settings.json exists"; \
 	else \
 		echo "FAIL: ~/.claude/settings.json exists (run 'make install')"; fails=$$((fails + 1)); \
 	fi; \
-	if [ -n "$$OCG_CONTEXT_DIR" ] && [ -d "$$OCG_CONTEXT_DIR" ]; then \
-		echo "OK: OCG_CONTEXT_DIR set and directory exists ($$OCG_CONTEXT_DIR)"; \
+	if [ -d "$(SCRIPT_DIR)/shared" ]; then \
+		echo "OK: codegen/shared/ exists"; \
 	else \
-		echo "FAIL: OCG_CONTEXT_DIR not set or directory missing"; fails=$$((fails + 1)); \
+		echo "FAIL: codegen/shared/ missing (run 'make install')"; fails=$$((fails + 1)); \
 	fi; \
 	if python3 -c "import yaml" >/dev/null 2>&1; then \
 		echo "OK: python3 -c 'import yaml' (pyyaml available)"; \
@@ -399,103 +281,24 @@ doctor:
 		exit 1; \
 	fi
 
-remove-comments:
-	$(call check_ocg_only,remove-comments)
-	@if [ -z "$(ORIGINAL_WORKING_DIR)" ]; then \
-		./remove_comments.sh $(filter-out $@,$(MAKECMDGOALS)); \
-	else \
-		cd "$(ORIGINAL_WORKING_DIR)" && "$(SCRIPT_DIR)/remove_comments.sh" $(filter-out $@,$(MAKECMDGOALS)); \
-	fi
-
-ai-config:
-	$(call check_ocg_only,ai-config)
-	@if [ -z "$(filter-out $@,$(MAKECMDGOALS))" ]; then \
-		echo "Usage: ocg ai-config <action> [options]"; \
-		echo "Actions:"; \
-		echo "  set default <agent>      Set default AI agent (claude|codex)"; \
-		echo "  get default              Show current default agent"; \
-		echo "  status                   Show full configuration"; \
-		echo ""; \
-		echo "Examples:"; \
-		echo "  ocg ai-config set default codex"; \
-		echo "  ocg ai-config get default"; \
-		echo "  ocg ai-config status"; \
-		exit 1; \
-	fi
-	@./ai_config.sh $(filter-out $@,$(MAKECMDGOALS))
-
-usage-rules:
-	$(call check_ocg_only,usage-rules)
-	@./usage_rules.sh $(filter-out $@,$(MAKECMDGOALS))
-
 
 help:
-	@echo "🚀 Optimum Codegen"
-	@echo "================="
+	@echo "Optimum Codegen"
+	@echo "==============="
 	@echo ""
-	@. ./utils.sh; \
-	if [ "$$OCG_CLI" = "true" ]; then \
-		echo "🚀 Project Initialization:"; \
-		echo "  $$OCG_CMD init <name> [options]       🎯 Create new Phoenix/Ash project with OCG"; \
-		echo ""; \
-		echo "🚀 Project Management:"; \
-		echo "  $$OCG_CMD setup                       🚀 Initialize codegen in existing project (requires OCG_CONTEXT_DIR environment variable)"; \
-		echo "  $$OCG_CMD prepare                     🔧 Install Elixir/Erlang versions from .tool-versions (native mode)"; \
-		echo "  $$OCG_CMD update-context <name>       🔄 Update project context, extract recipes & rules, update Figma files"; \
-		echo "  $$OCG_CMD consolidate-context         📋 Consolidate PROJECT_CONTEXT.md by removing redundancies"; \
-		echo ""; \
-		echo "📋 Planning Sessions:"; \
-		echo "  $$OCG_CMD bird-eye [name] [model]     🦅 Start bird-eye planning session (default model: opus)"; \
-		echo "  $$OCG_CMD plan [name] [model]         📝 Start detailed planning session (default model: opus)"; \
-		echo ""; \
-		echo "🎨 Workspaces:"; \
-		echo "  $$OCG_CMD prepare --container         📦 Build Docker image and prepare base volumes"; \
-		echo "  $$OCG_CMD new <name> [options]        🎨 Create new feature workspace"; \
-		echo "  $$OCG_CMD new <name> --container      🐳 Create workspace in Docker container"; \
-		echo "  $$OCG_CMD rm <name>                   🗑️  Remove feature workspace"; \
-		echo "  $$OCG_CMD clean                       🧹 Remove ALL feature workspaces (with confirmation)"; \
-		echo "  $$OCG_CMD clean-branches              🌿 Remove all orphaned feature branches (with confirmation)"; \
-		echo "  $$OCG_CMD clean-servers               🔧 Kill servers for all workspace ports"; \
-		echo "  $$OCG_CMD resume <name> [options]     🔄 Resume feature workspace"; \
-		echo "  $$OCG_CMD resume <name> --container   🐳 Resume workspace in Docker container"; \
-		echo "  $$OCG_CMD ls                          📋 List all feature workspaces"; \
-		echo "  $$OCG_CMD resources [--cleanup-orphaned] 🌐 Show global resource allocation"; \
-		echo ""; \
-		echo "🧹 Code Maintenance:"; \
-		echo "  $$OCG_CMD remove-comments             🗑️  Remove comments from git diff changes"; \
-		echo "  $$OCG_CMD usage-rules                 📚 Generate usage rules for Elixir dependencies from mix.exs"; \
-		echo ""; \
-		echo "🗑️  Uninstallation:"; \
-		echo "  $$OCG_CMD uninstall                   🗑️  Remove global CLI installation"; \
-		echo ""; \
-		echo "🔄 Updates:"; \
-		echo "  $$OCG_CMD update                      🔄 Update all AI agents (Claude Code, Codex)"; \
-		echo ""; \
-		echo "🤖 AI Agent Configuration:"; \
-		echo "  $$OCG_CMD ai-config set default       🔧 Set default AI agent (claude|codex)"; \
-		echo "  $$OCG_CMD ai-config status            📊 Show AI agent configuration"; \
-		echo ""; \
-		echo "📋 Recommended Workflow:"; \
-		echo "  1. Run: $$OCG_CMD setup (one-time project initialization)"; \
-		echo "  2. Run: $$OCG_CMD prepare [--container] (install Elixir/Erlang or build Docker image)"; \
-		echo "  3. Plan: $$OCG_CMD bird-eye <name> (high-level planning)"; \
-		echo "  4. Plan: $$OCG_CMD plan <name> (detailed technical planning)"; \
-		echo "  5. Implement: $$OCG_CMD new <name> (create workspace and start development)"; \
-		echo "  6. Work on your feature in the workspace"; \
-		echo "  7. Finish: $$OCG_CMD rm <name> (archives feature context to codegen/contexts/)"; \
-		echo "  8. Learn: $$OCG_CMD update-context <name> (update PROJECT_CONTEXT.md + extract recipes & rules + update Figma files)"; \
-		echo "  9. Cleanup: $$OCG_CMD clean-branches to remove orphaned feature branches when done"; \
-	else \
-		echo "📦 Available Commands:"; \
-		echo "  make install              📦 Install CLI globally — installs all subagents (platform + phoenix + static)"; \
-		echo "  make format               🎨 Format all shell scripts and files"; \
-		echo ""; \
-		echo "💡 Install globally with 'make install' to use 'ocg' commands from anywhere!"; \
-		echo "   After installation, run 'ocg' to see all workspace management features"; \
-		echo ""; \
-		echo "⚠️  Note: Commands like 'status' and 'resources' are only available via 'ocg'"; \
-		echo "   from your project repositories, not from this codegen repository."; \
-	fi
+	@echo "Available commands (make):"
+	@echo "  make install        Install CLI globally — installs all subagents"
+	@echo "  make test           Run hook unit tests"
+	@echo "  make test-stacks    Run ExUnit stack scaffold tests (claude+pi parallel, real LLM, slow)"
+	@echo "  make test-all       Full pre-deploy gate: test + test-stacks + record-green"
+	@echo "  make record-green   Write test_harness/last_green.json with current sha + versions"
+	@echo "  make hook-parity    Verify hook registrations match claude-code-settings.json"
+	@echo "  make rule-parity    Verify AGENTS.md / CLAUDE.md match template render"
+	@echo "  make format         Format all shell scripts and files"
+	@echo "  make doctor         Check required tools and config"
+	@echo "  make uninstall      Remove global CLI installation (via ocg)"
+	@echo "  make update         Update all AI agents (via ocg)"
+	@echo "  make help           Show this help"
 
 # Default target shows help
 .DEFAULT_GOAL := help

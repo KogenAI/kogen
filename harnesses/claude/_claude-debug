@@ -1,0 +1,17 @@
+#compdef claude-debug
+# _claude-debug — zsh completion for claude-debug
+# Completes basenames (without .md) from $PWD/codegen/pitches/draft/
+
+_claude_debug() {
+    local draft_dir="$PWD/codegen/pitches/draft"
+    if [[ ! -d "$draft_dir" ]]; then
+        return 0
+    fi
+    local -a pitches
+    pitches=("${draft_dir}"/*.md(N:t:r))
+    if [[ ${#pitches[@]} -gt 0 ]]; then
+        _describe 'draft pitch' pitches
+    fi
+}
+
+_claude_debug "$@"

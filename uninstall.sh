@@ -3,8 +3,13 @@
 # Optimum Codegen CLI Uninstallation Script
 # This script removes the globally installed ocg commands
 
+CODEGEN_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 INSTALL_DIR="$HOME/.local/bin"
 SYMLINK_NAME="ocg"
+
+# Source manifest-lib for manifest_launchers / manifest_completions
+# shellcheck source=templates/generator/manifest-lib.sh
+source "$CODEGEN_DIR/templates/generator/manifest-lib.sh" 2>/dev/null || true
 
 echo "🗑️  Uninstalling Optimum Codegen CLI..."
 
@@ -121,29 +126,94 @@ else
     echo "   ℹ️  No Claude Code data found"
 fi
 
-# Uninstall Codex CLI
+# ── Pi uninstall ──────────────────────────────────────────────────────────────
 echo ""
-echo "🤖 Codex CLI uninstallation..."
-if command -v codex >/dev/null 2>&1; then
-    echo "   ⚠️  Do you want to uninstall Codex CLI? [y/N]"
-    read -r confirm_codex
+echo "🤖 Pi uninstallation..."
 
-    if [ "$confirm_codex" = "y" ] || [ "$confirm_codex" = "Y" ]; then
-        npm uninstall -g @openai/codex 2>/dev/null || echo "   ⚠️  Could not uninstall via npm"
-        # Remove Codex configuration
-        if [ -d "$HOME/.codex" ]; then
-            echo "   ⚠️  Do you want to remove Codex configuration (~/.codex)? [y/N]"
-            read -r confirm_codex_config
-            if [ "$confirm_codex_config" = "y" ] || [ "$confirm_codex_config" = "Y" ]; then
-                rm -rf "$HOME/.codex"
-                echo "   ✅ Removed Codex data: $HOME/.codex"
-            fi
+# Remove pi launchers
+if command -v manifest_launchers >/dev/null 2>&1 && [ -f "$CODEGEN_DIR/harnesses/pi/manifest.yaml" ]; then
+    echo "   🔗 Removing Pi launchers..."
+    while IFS=' ' read -r _src _dest_name; do
+        _dest="$INSTALL_DIR/$_dest_name"
+        if [ -f "$_dest" ]; then
+            rm -f "$_dest"
+            echo "   ✅ Removed Pi launcher: $_dest_name"
         fi
+    done < <(manifest_launchers pi 2>/dev/null)
+else
+    # Fallback: remove known launcher names
+    for _launcher in pi-build pi-debug pi-shape pi-refactor; do
+        if [ -f "$INSTALL_DIR/$_launcher" ]; then
+            rm -f "$INSTALL_DIR/$_launcher"
+            echo "   ✅ Removed Pi launcher: $_launcher"
+        fi
+    done
+fi
+
+# Remove pi agents
+PI_AGENTS_DIR="$HOME/.pi/agent/agents"
+if [ -d "$PI_AGENTS_DIR" ]; then
+    _pi_agent_count=0
+    for _agent in "$PI_AGENTS_DIR"/*.md; do
+        [ -f "$_agent" ] || continue
+        rm -f "$_agent"
+        _pi_agent_count=$((_pi_agent_count + 1))
+    done
+    if [ "$_pi_agent_count" -gt 0 ]; then
+        echo "   ✅ Removed $_pi_agent_count Pi agent(s) from $PI_AGENTS_DIR"
     else
-        echo "   ℹ️  Keeping Codex installed"
+        echo "   ℹ️  No Pi agents found in $PI_AGENTS_DIR"
     fi
 else
-    echo "   ℹ️  Codex CLI not found"
+    echo "   ℹ️  Pi agents dir not found: $PI_AGENTS_DIR"
+fi
+
+# Remove pi prompts
+PI_PROMPTS_DIR="$HOME/.pi/agent/prompts"
+if [ -d "$PI_PROMPTS_DIR" ]; then
+    _pi_prompt_count=0
+    for _prompt in "$PI_PROMPTS_DIR"/*.md; do
+        [ -f "$_prompt" ] || continue
+        rm -f "$_prompt"
+        _pi_prompt_count=$((_pi_prompt_count + 1))
+    done
+    if [ "$_pi_prompt_count" -gt 0 ]; then
+        echo "   ✅ Removed $_pi_prompt_count Pi prompt(s) from $PI_PROMPTS_DIR"
+    else
+        echo "   ℹ️  No Pi prompts found in $PI_PROMPTS_DIR"
+    fi
+else
+    echo "   ℹ️  Pi prompts dir not found: $PI_PROMPTS_DIR"
+fi
+
+# Remove pi zsh completions
+_ZSH_COMPLETION_DIRS=("/usr/local/share/zsh/site-functions" "$HOME/.zsh/completions" "$HOME/.local/share/zsh/site-functions")
+_ZSH_COMPLETION_DST=""
+for _dir in "${_ZSH_COMPLETION_DIRS[@]}"; do
+    if [ -d "$_dir" ] && [ -w "$_dir" ]; then
+        _ZSH_COMPLETION_DST="$_dir"
+        break
+    fi
+done
+
+if [ -n "$_ZSH_COMPLETION_DST" ] && command -v manifest_completions >/dev/null 2>&1 && [ -f "$CODEGEN_DIR/harnesses/pi/manifest.yaml" ]; then
+    while IFS= read -r _comp; do
+        _comp_path="$_ZSH_COMPLETION_DST/$_comp"
+        if [ -f "$_comp_path" ]; then
+            rm -f "$_comp_path"
+            echo "   ✅ Removed Pi zsh completion: $_comp"
+        fi
+    done < <(manifest_completions pi 2>/dev/null)
+else
+    # Fallback: remove known completion names
+    for _comp in _pi-build _pi-debug _pi-shape _pi-refactor; do
+        for _dir in "${_ZSH_COMPLETION_DIRS[@]}"; do
+            if [ -f "$_dir/$_comp" ]; then
+                rm -f "$_dir/$_comp"
+                echo "   ✅ Removed Pi zsh completion: $_comp from $_dir"
+            fi
+        done
+    done
 fi
 
 echo ""

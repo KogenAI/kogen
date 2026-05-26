@@ -1,0 +1,8 @@
+Agent
+Bash
+Edit
+Glob
+Grep
+Read
+Skill
+Write

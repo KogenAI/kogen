@@ -1,0 +1,101 @@
+# harnesses/pi/manifest.yaml — single-source-of-truth for the pi harness.
+# Generate + install: make install (runs generate.sh pi then install.sh loop reads this file).
+# Add a harness: see docs/adding-a-harness.md.
+
+harness: pi
+
+# ─── Agent installation ───────────────────────────────────────────────────────
+agents_dir: ~/.pi/agent/agents
+# Agents are rendered from shared/subagents/{shared,phoenix,static}/*.md.j2
+# via generate.sh (calls generate-pi.sh internally).
+generator: templates/generator/generate.sh
+
+# ─── Prompts (pi-specific — slash commands / built-in prompts) ─────────────────
+prompts_dir: ~/.pi/agent/prompts
+prompts_source: templates/generated/pi/prompts
+prompts_install: all  # install.sh installs all *.md from prompts_source with prune
+
+# ─── Launchers ────────────────────────────────────────────────────────────────
+launchers:
+  - name: pi-build
+    src: harnesses/pi/pi-build.sh
+  - name: pi-debug
+    src: harnesses/pi/pi-debug.sh
+  - name: pi-shape
+    src: harnesses/pi/pi-shape.sh
+  - name: pi-refactor
+    src: harnesses/pi/pi-refactor.sh
+
+# ─── Zsh completions ──────────────────────────────────────────────────────────
+completions:
+  - _pi-build
+  - _pi-debug
+  - _pi-shape
+  - _pi-refactor
+
+# ─── Per-mode configuration ───────────────────────────────────────────────────
+# model/effort read at runtime from templates/generator/config.yaml roles.<mode> via yq.
+# tools: pi CLI --tools allowlist (positional string, not config.yaml).
+# extensions: pi CLI --extension list (loaded at runtime from EXTENSIONS_DIR).
+# system_prompt_file: path relative to CODEGEN_DIR.
+# prompt_body: harnesses/shared/prompt-bodies/<mode>.txt (currently empty — full content in tools-header).
+# tools_header: harnesses/pi/tools-header/<mode>.txt (full per-harness prompt body).
+# generate.sh concats tools_header + prompt_body → system_prompt_file (byte-identical to original).
+modes:
+  build:
+    model: openai-codex/gpt-5.4-mini   # from config.yaml harness.build.pi
+    effort: medium
+    tools: read,grep,find,ls,edit,write,bash
+    extensions: []                      # build uses dispatch.sh (codegen-build), not pi directly
+    system_prompt_file: harnesses/pi/pi-build-system-prompt.txt
+    tools_header: harnesses/pi/tools-header/build.txt
+    prompt_body: harnesses/shared/prompt-bodies/build.txt
+
+  debug:
+    model: openai-codex/gpt-5.3-codex  # from config.yaml harness.debug.pi
+    effort: medium
+    tools: read,grep,find,ls            # debug: no edit/write/bash mutations
+    extensions:
+      - subagents
+    system_prompt_file: harnesses/pi/pi-debug-system-prompt.txt
+    tools_header: harnesses/pi/tools-header/debug.txt
+    prompt_body: harnesses/shared/prompt-bodies/debug.txt
+
+  shape:
+    model: openai-codex/gpt-5.5        # from config.yaml roles.shape (pi variant)
+    effort: high
+    tools: read,grep,find,ls,edit,write,bash
+    extensions:
+      - askuserquestion
+      - subagents
+      - web-utils
+    system_prompt_file: harnesses/pi/pi-shape-system-prompt.txt
+    tools_header: harnesses/pi/tools-header/shape.txt
+    prompt_body: harnesses/shared/prompt-bodies/shape.txt
+
+  refactor:
+    model: openai-codex/gpt-5.5        # from config.yaml roles.refactor (pi variant)
+    effort: high
+    tools: read,grep,find,ls,edit,write,bash
+    extensions:
+      - askuserquestion
+      - subagents
+      - web-utils
+    system_prompt_file: harnesses/pi/pi-refactor-system-prompt.txt
+    tools_header: harnesses/pi/tools-header/refactor.txt
+    prompt_body: harnesses/shared/prompt-bodies/refactor.txt
+
+# ─── Install / uninstall steps (declarative record) ──────────────────────────
+# Actual execution is in install.sh manifest-driven loop.
+install_steps:
+  - generate_agents          # generate.sh pi → templates/generated/pi/agent/
+  - install_agents           # content_stable_cp generated agents → agents_dir, prune stale
+  - install_prompts          # content_stable_cp prompts_source/document.md → prompts_dir
+  - install_launchers        # content_stable_cp + chmod+x each launcher entry
+  - install_completions      # content_stable_cp each completion to ZSH_COMPLETION_DST
+
+uninstall_steps:
+  - remove_agents            # rm agents_dir/*.md from installed manifest
+  - remove_prompts           # rm prompts_dir/document.md
+  - remove_launchers         # rm INSTALL_DIR/{pi-build,pi-debug,pi-shape,pi-refactor}
+  - remove_completions       # rm ZSH_COMPLETION_DST/{_pi-build,_pi-debug,_pi-shape,_pi-refactor}

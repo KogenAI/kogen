@@ -1,0 +1,17 @@
+#compdef pi-build
+# _pi-build — zsh completion for pi-build
+# Completes basenames (without .md) from $PWD/codegen/pitches/ready/
+
+_pi_build() {
+    local ready_dir="$PWD/codegen/pitches/ready"
+    if [[ ! -d "$ready_dir" ]]; then
+        return 0
+    fi
+    local -a pitches
+    pitches=("${ready_dir}"/*.md(N:t:r))
+    if [[ ${#pitches[@]} -gt 0 ]]; then
+        _describe 'ready pitch' pitches
+    fi
+}
+
+_pi_build "$@"
