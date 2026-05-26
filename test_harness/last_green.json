@@ -1,0 +1,9 @@
+{
+  "codegen_sha": null,
+  "harness_versions": {
+    "claude": null,
+    "pi": null
+  },
+  "test_passed_at": null,
+  "test_command": "make test-all"
+}

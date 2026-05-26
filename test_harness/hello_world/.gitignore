@@ -1,0 +1,19 @@
+# Editor files
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+*.code-workspace
+
+# IDE files
+.DS_Store
+.AppleDouble
+.LSOverride
+Thumbs.db
+
+# OS files
+*.swp
+*.swo
+*~
+.env
+.env.local
