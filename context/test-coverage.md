@@ -1,0 +1,198 @@
+# Test Coverage Inventory
+
+Enumerates every executable surface in the codegen repo and names the test that exercises it. Empty `Test` cells are work items for later pitch stages.
+
+Source of truth for the test-coverage-everything pitch (`codegen/pitches/ready/test-coverage-everything.md`). Updated by context curator as tests are added.
+
+Columns:
+
+- **Surface** — short name
+- **Type** — launcher | generator | install | extension | mutation | hook | hook-lib | exunit | shared-lib | make-target
+- **File/Path** — where the surface lives
+- **Test that exercises it** — file path or "—" (no test)
+- **Notes** — stage that owns adding the test, or special remarks
+
+### Section 1 — Harness × Mode Launchers
+
+| Surface                | Type     | File/Path                             | Test that exercises it                                                                                                                                     | Notes                                                                                                                                                                                            |
+| ---------------------- | -------- | ------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| claude-build           | launcher | `harnesses/claude/claude-build.sh`    | `test_harness/test/stacks/phoenix/{scaffold,seed,gate,committer,iteration}_test.exs`; `test_harness/test/stacks/static/{html_scaffold,iteration}_test.exs` | All 11 ExUnit cases use `codegen-build` → `claude-build` when `HARNESS=claude`                                                                                                                   |
+| claude-debug           | launcher | `harnesses/claude/claude-debug.sh`    | `test_harness/test/stacks/modes/debug_test.exs`                                                                                                            | Stage 4 (HARNESS=claude)                                                                                                                                                                         |
+| claude-shape           | launcher | `harnesses/claude/claude-shape.sh`    | `test_harness/test/stacks/modes/shape_test.exs`                                                                                                            | Stage 4 (HARNESS=claude)                                                                                                                                                                         |
+| claude-refactor        | launcher | `harnesses/claude/claude-refactor.sh` | `test_harness/test/stacks/modes/refactor_test.exs`                                                                                                         | Stage 4 (HARNESS=claude). Refactor mode produces a draft pitch (per claude-refactor-system-prompt.txt), NOT a committed refactor — deviation from pitch wording, system prompt is the authority. |
+| pi-build               | launcher | `harnesses/pi/pi-build.sh`            | Same 7 ExUnit files when `HARNESS=pi`                                                                                                                      | Exercised via `make test-stacks-pi-p{1..4}`                                                                                                                                                      |
+| pi-debug               | launcher | `harnesses/pi/pi-debug.sh`            | `test_harness/test/stacks/modes/debug_test.exs`                                                                                                            | Stage 4 (HARNESS=pi)                                                                                                                                                                             |
+| pi-shape               | launcher | `harnesses/pi/pi-shape.sh`            | `test_harness/test/stacks/modes/shape_test.exs`                                                                                                            | Stage 4 (HARNESS=pi)                                                                                                                                                                             |
+| pi-refactor            | launcher | `harnesses/pi/pi-refactor.sh`         | `test_harness/test/stacks/modes/refactor_test.exs`                                                                                                         | Stage 4 (HARNESS=pi). Refactor mode produces a draft pitch (per pi-refactor-system-prompt.txt), NOT a committed refactor — deviation from pitch wording, system prompt is the authority.         |
+| claude dispatch        | launcher | `harnesses/claude/dispatch.sh`        | `harnesses/claude/hooks/codegen-build_test.sh` (via `make harness-parity`)                                                                                 | Stubs validated; runtime path indirect via ExUnit                                                                                                                                                |
+| pi dispatch            | launcher | `harnesses/pi/dispatch.sh`            | `harnesses/claude/hooks/codegen-build_test.sh` (via `make harness-parity`)                                                                                 | Same as above                                                                                                                                                                                    |
+| codegen-build entry    | launcher | `codegen-build` (repo root)           | `harnesses/claude/hooks/codegen-build_test.sh` (via `make harness-parity`); 11 ExUnit cases                                                                | Top-level harness API                                                                                                                                                                            |
+| codegen-scaffold entry | launcher | `codegen-scaffold` (repo root)        | Indirect — used in ExUnit setup blocks                                                                                                                     | No dedicated test                                                                                                                                                                                |
+
+### Section 2 — Stacks (ExUnit dimension)
+
+| Surface                         | Type   | File/Path                                                | Test that exercises it                                                      | Notes |
+| ------------------------------- | ------ | -------------------------------------------------------- | --------------------------------------------------------------------------- | ----- |
+| Phoenix scaffold                | exunit | `test_harness/test/stacks/phoenix/scaffold_test.exs`     | self (1 test)                                                               |       |
+| Phoenix seed                    | exunit | `test_harness/test/stacks/phoenix/seed_test.exs`         | self (1 test)                                                               |       |
+| Phoenix gate                    | exunit | `test_harness/test/stacks/phoenix/gate_test.exs`         | self (1 test)                                                               |       |
+| Phoenix committer               | exunit | `test_harness/test/stacks/phoenix/committer_test.exs`    | self (1 test)                                                               |       |
+| Phoenix iteration               | exunit | `test_harness/test/stacks/phoenix/iteration_test.exs`    | self (1 test)                                                               |       |
+| Static html scaffold            | exunit | `test_harness/test/stacks/static/html_scaffold_test.exs` | self (1 test)                                                               |       |
+| Static iteration (html)         | exunit | `test_harness/test/stacks/static/iteration_test.exs`     | self — `"html change-request lands new commit with faq markers"`            |       |
+| Static iteration (hugo)         | exunit | `test_harness/test/stacks/static/iteration_test.exs`     | self — `"hugo change-request lands new commit with new post"`               |       |
+| Static iteration (react/vite)   | exunit | `test_harness/test/stacks/static/iteration_test.exs`     | self — `"react change-request lands new commit with step input marker"`     |       |
+| Static iteration (vue/vite)     | exunit | `test_harness/test/stacks/static/iteration_test.exs`     | self — `"vue change-request lands new commit with reset button marker"`     |       |
+| Static iteration (multilingual) | exunit | `test_harness/test/stacks/static/iteration_test.exs`     | self — `"multilingual change-request lands new commit with language links"` |       |
+
+### Section 3 — Generator Pipeline
+
+| Surface                  | Type                | File/Path                                      | Test that exercises it                                                                         | Notes                |
+| ------------------------ | ------------------- | ---------------------------------------------- | ---------------------------------------------------------------------------------------------- | -------------------- |
+| generate.sh              | generator           | `templates/generator/generate.sh`              | `templates/generator/generate_test.sh` (arg validation + OUTPUT_DIR isolation)                 |                      |
+| process_template.py      | generator           | `templates/generator/process_template.py`      | `templates/generator/tests/test_process_template.py` (23 unittest cases)                       |                      |
+| hook_registrations.py    | generator           | `templates/generator/hook_registrations.py`    | `templates/generator/tests/test_hook_registrations.py` (38 unittest cases); `make hook-parity` |                      |
+| manifest-lib.sh          | generator           | `templates/generator/manifest-lib.sh`          | `templates/generator/manifest-lib_test.sh` (14 bash cases)                                     |                      |
+| generate-pi-extension.sh | generator           | `templates/generator/generate-pi-extension.sh` | Indirect via `make install` (Makefile:52)                                                      | Stage 5              |
+| config.yaml              | generator           | `templates/generator/config.yaml`              | Indirect via `make install` rendering                                                          | Schema not validated |
+| test_dual_render.sh      | generator-self-test | `templates/generator/test_dual_render.sh`      | self — wired into `make test` via `templates/generator/run-tests.sh`                           |                      |
+
+### Section 4 — Install Lifecycle
+
+| Surface             | Type    | File/Path             | Test that exercises it                                                                                         | Notes                                                                                                      |
+| ------------------- | ------- | --------------------- | -------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
+| install.sh          | install | `install.sh`          | `test_harness/install/install_claude_round_trip_test.sh`; `test_harness/install/install_pi_round_trip_test.sh` | Hermetic — `HOME` override + `ZSH_COMPLETION_DIRS` env-toggle; runner: `test_harness/install/run-tests.sh` |
+| uninstall.sh        | install | `uninstall.sh`        | same round-trip tests (called after install to verify removal)                                                 | `ZSH_COMPLETION_DIRS` env-toggle applied; interactive prompts via `printf 'N\nN\n' \|`                     |
+| resource_manager.sh | install | `resource_manager.sh` | —                                                                                                              | Sourced by install.sh; indirectly exercised                                                                |
+| update_ai_tools.sh  | install | `update_ai_tools.sh`  | —                                                                                                              | No dedicated test; manual only                                                                             |
+| config.sh           | install | `config.sh`           | —                                                                                                              | No dedicated test; sourced everywhere                                                                      |
+| utils.sh            | install | `utils.sh`            | —                                                                                                              | `content_stable_cp` and helpers; no test                                                                   |
+
+### Section 5 — Pi Extensions
+
+| Surface         | Type      | File/Path                                     | Test that exercises it                                                                                                      | Notes                                                                                     |
+| --------------- | --------- | --------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
+| enforcement     | extension | `harnesses/pi/pi-extensions/enforcement/`     | `npm test` via `make test` for-loop (Makefile)                                                                              | `npm run test:coverage` (c8) wired by Stage 2; invoked by `make test-coverage-typescript` |
+| askuserquestion | extension | `harnesses/pi/pi-extensions/askuserquestion/` | `npm test` via `make test` for-loop (Makefile)                                                                              | `npm run test:coverage` (vitest+istanbul) wired by Stage 2                                |
+| subagents       | extension | `harnesses/pi/pi-extensions/subagents/`       | `npm test` (= `test:unit`) via `make test` for-loop; `test:integration` guarded — runs only when `test/integration/` exists | `npm run test:coverage` (c8) wired by Stage 2; test/integration/ absent on this machine   |
+| web-utils       | extension | `harnesses/pi/pi-extensions/web-utils/`       | `npm test` (vitest run) via `make test` for-loop; `test/utils/formatters.test.ts` (1 case)                                  | vitest + `@vitest/coverage-istanbul` devDeps added Stage 5; `test:coverage` wired         |
+
+### Section 6 — Scaffold Mutations
+
+| Surface             | Type            | File/Path                                            | Test that exercises it                                                                                                          | Notes                                                                             |
+| ------------------- | --------------- | ---------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------- |
+| config_exs.sh       | mutation        | `shared/scaffold/phoenix/mutations/config_exs.sh`    | `shared/scaffold/phoenix/mutations/config_exs_test.sh` (2 cases: happy + idempotent) via `shared/scaffold/phoenix/run-tests.sh` | bash 3.2 compatible; fixture: `test_harness/mutations/fixtures/phx_new_skeleton/` |
+| data_case.sh        | mutation        | `shared/scaffold/phoenix/mutations/data_case.sh`     | `shared/scaffold/phoenix/mutations/data_case_test.sh` (2 cases)                                                                 |                                                                                   |
+| endpoint.sh         | mutation        | `shared/scaffold/phoenix/mutations/endpoint.sh`      | `shared/scaffold/phoenix/mutations/endpoint_test.sh` (3 cases: happy + idempotent + missing-anchor warning)                     |                                                                                   |
+| formatter_exs.sh    | mutation        | `shared/scaffold/phoenix/mutations/formatter_exs.sh` | `shared/scaffold/phoenix/mutations/formatter_exs_test.sh` (2 cases)                                                             |                                                                                   |
+| gitignore.sh        | mutation        | `shared/scaffold/phoenix/mutations/gitignore.sh`     | `shared/scaffold/phoenix/mutations/gitignore_test.sh` (2 cases)                                                                 |                                                                                   |
+| mix_exs.sh          | mutation        | `shared/scaffold/phoenix/mutations/mix_exs.sh`       | `shared/scaffold/phoenix/mutations/mix_exs_test.sh` (7 assertions: 5 step checks + idempotency)                                 |                                                                                   |
+| prod_exs.sh         | mutation        | `shared/scaffold/phoenix/mutations/prod_exs.sh`      | `shared/scaffold/phoenix/mutations/prod_exs_test.sh` (3 cases: created + has import Config + idempotent no-op)                  |                                                                                   |
+| router.sh           | mutation        | `shared/scaffold/phoenix/mutations/router.sh`        | `shared/scaffold/phoenix/mutations/router_test.sh` (3 cases: happy + idempotent + find-fallback)                                | bash 3.2 bug fixed: `${@L}` → `tr '[:upper:]' '[:lower:]'`                        |
+| telemetry.sh        | mutation        | `shared/scaffold/phoenix/mutations/telemetry.sh`     | `shared/scaffold/phoenix/mutations/telemetry_test.sh` (2 cases)                                                                 |                                                                                   |
+| eex_render.sh       | mutation-helper | `shared/scaffold/phoenix/eex_render.sh`              | `shared/scaffold/phoenix/eex_render_test.sh` (3 cases: single var + multi var + unknown var pass-through)                       | bash 3.2 bug fixed: `declare -A` → direct key=value loop                          |
+| phoenix scaffold.sh | scaffold-entry  | `shared/scaffold/phoenix/scaffold.sh`                | Indirect via `test_harness/test/stacks/phoenix/scaffold_test.exs`                                                               | Drives mutations                                                                  |
+| static scaffold.sh  | scaffold-entry  | `shared/scaffold/static/scaffold.sh`                 | `shared/scaffold/static/scaffold_test.sh` (via `make harness-parity`)                                                           | Already covered                                                                   |
+
+### Section 7 — Hook Scripts (paired tests)
+
+For every `harnesses/claude/hooks/<name>.sh` there is a paired `<name>_test.sh` in the same dir. After Stage 1's `run-tests.sh` fix, all of them — including the two under `lib/` — execute via `make test`.
+
+| Surface                          | Type           | File/Path                                       | Test that exercises it                               | Notes                                        |
+| -------------------------------- | -------------- | ----------------------------------------------- | ---------------------------------------------------- | -------------------------------------------- |
+| build-no-success-before-commit   | hook           | `.../hooks/build-no-success-before-commit.sh`   | `.../hooks/build-no-success-before-commit_test.sh`   |                                              |
+| build-worker-cwd-guard           | hook           | `.../hooks/build-worker-cwd-guard.sh`           | `.../hooks/build-worker-cwd-guard_test.sh`           |                                              |
+| claude-debug-bash-guard          | hook           | `.../hooks/claude-debug-bash-guard.sh`          | `.../hooks/claude-debug-bash-guard_test.sh`          |                                              |
+| claude-inspector-bash-guard      | hook           | `.../hooks/claude-inspector-bash-guard.sh`      | `.../hooks/claude-inspector-bash-guard_test.sh`      |                                              |
+| claude-inspector-read-guard      | hook           | `.../hooks/claude-inspector-read-guard.sh`      | `.../hooks/claude-inspector-read-guard_test.sh`      |                                              |
+| claude-inspector-write-guard     | hook           | `.../hooks/claude-inspector-write-guard.sh`     | `.../hooks/claude-inspector-write-guard_test.sh`     |                                              |
+| codegen-build (harness parity)   | hook-test-only | (no script — test is the surface)               | `.../hooks/codegen-build_test.sh`                    | Invoked separately via `make harness-parity` |
+| committer-no-trailer-guard       | hook           | `.../hooks/committer-no-trailer-guard.sh`       | `.../hooks/committer-no-trailer-guard_test.sh`       |                                              |
+| committer-single-line-guard      | hook           | `.../hooks/committer-single-line-guard.sh`      | `.../hooks/committer-single-line-guard_test.sh`      |                                              |
+| committer-subject-length         | hook           | `.../hooks/committer-subject-length.sh`         | `.../hooks/committer-subject-length_test.sh`         |                                              |
+| context-curator-guard            | hook           | `.../hooks/context-curator-guard.sh`            | `.../hooks/context-curator-guard_test.sh`            |                                              |
+| context-index-parity             | hook           | `.../hooks/context-index-parity.sh`             | `.../hooks/context-index-parity_test.sh`             |                                              |
+| dev-no-ci                        | hook           | `.../hooks/dev-no-ci.sh`                        | `.../hooks/dev-no-ci_test.sh`                        |                                              |
+| developer-no-self-gate           | hook           | `.../hooks/developer-no-self-gate.sh`           | `.../hooks/developer-no-self-gate_test.sh`           |                                              |
+| developer-no-self-gate-reset     | hook           | `.../hooks/developer-no-self-gate-reset.sh`     | `.../hooks/developer-no-self-gate-reset_test.sh`     |                                              |
+| env-var-sample-consistency       | hook           | `.../hooks/env-var-sample-consistency.sh`       | `.../hooks/env-var-sample-consistency_test.sh`       |                                              |
+| llm-pending-sweep                | hook           | `.../hooks/llm-pending-sweep.sh`                | `.../hooks/llm-pending-sweep_test.sh`                |                                              |
+| llm-suite-guard                  | hook           | `.../hooks/llm-suite-guard.sh`                  | `.../hooks/llm-suite-guard_test.sh`                  |                                              |
+| llm-test-guard                   | hook           | `.../hooks/llm-test-guard.sh`                   | `.../hooks/llm-test-guard_test.sh`                   |                                              |
+| no-cat-pipe                      | hook           | `.../hooks/no-cat-pipe.sh`                      | `.../hooks/no-cat-pipe_test.sh`                      |                                              |
+| no-git-stash                     | hook           | `.../hooks/no-git-stash.sh`                     | `.../hooks/no-git-stash_test.sh`                     |                                              |
+| no-python-json                   | hook           | `.../hooks/no-python-json.sh`                   | `.../hooks/no-python-json_test.sh`                   |                                              |
+| operator-subagent-allowlist      | hook           | `.../hooks/operator-subagent-allowlist.sh`      | `.../hooks/operator-subagent-allowlist_test.sh`      |                                              |
+| orchestrator-no-ci               | hook           | `.../hooks/orchestrator-no-ci.sh`               | `.../hooks/orchestrator-no-ci_test.sh`               |                                              |
+| orchestrator-no-source-edit      | hook           | `.../hooks/orchestrator-no-source-edit.sh`      | `.../hooks/orchestrator-no-source-edit_test.sh`      |                                              |
+| orchestrator-read-discipline     | hook           | `.../hooks/orchestrator-read-discipline.sh`     | `.../hooks/orchestrator-read-discipline_test.sh`     |                                              |
+| phoenix-backend-developer-guard  | hook           | `.../hooks/phoenix-backend-developer-guard.sh`  | `.../hooks/phoenix-backend-developer-guard_test.sh`  |                                              |
+| phoenix-dev-gate                 | hook           | `.../hooks/phoenix-dev-gate.sh`                 | `.../hooks/phoenix-dev-gate_test.sh`                 |                                              |
+| phoenix-frontend-developer-guard | hook           | `.../hooks/phoenix-frontend-developer-guard.sh` | `.../hooks/phoenix-frontend-developer-guard_test.sh` |                                              |
+| planner-guard                    | hook           | `.../hooks/planner-guard.sh`                    | `.../hooks/planner-guard_test.sh`                    |                                              |
+| post-developer-format            | hook           | `.../hooks/post-developer-format.sh`            | `.../hooks/post-developer-format_test.sh`            |                                              |
+| pre-commit-guard                 | hook           | `.../hooks/pre-commit-guard.sh`                 | `.../hooks/pre-commit-guard_test.sh`                 |                                              |
+| reviewer-guard                   | hook           | `.../hooks/reviewer-guard.sh`                   | `.../hooks/reviewer-guard_test.sh`                   |                                              |
+| session-log-section-integrity    | hook           | `.../hooks/session-log-section-integrity.sh`    | `.../hooks/session-log-section-integrity_test.sh`    |                                              |
+| static-site-build-check          | hook           | `.../hooks/static-site-build-check.sh`          | `.../hooks/static-site-build-check_test.sh`          |                                              |
+| static-site-ex-guard             | hook           | `.../hooks/static-site-ex-guard.sh`             | `.../hooks/static-site-ex-guard_test.sh`             |                                              |
+| step-log-completeness            | hook           | `.../hooks/step-log-completeness.sh`            | `.../hooks/step-log-completeness_test.sh`            |                                              |
+| step-log-missing-guard           | hook           | `.../hooks/step-log-missing-guard.sh`           | `.../hooks/step-log-missing-guard_test.sh`           |                                              |
+| stop-cycle-guard                 | hook           | `.../hooks/stop-cycle-guard.sh`                 | `.../hooks/stop-cycle-guard_test.sh`                 |                                              |
+| stop-resume                      | hook           | `.../hooks/stop-resume.sh`                      | `.../hooks/stop-resume_test.sh`                      |                                              |
+| stop-verify-planner-gate         | hook           | `.../hooks/stop-verify-planner-gate.sh`         | `.../hooks/stop-verify-planner-gate_test.sh`         |                                              |
+| subagent-read-discipline         | hook           | `.../hooks/subagent-read-discipline.sh`         | `.../hooks/subagent-read-discipline_test.sh`         |                                              |
+| subagent-retrospective-guard     | hook           | `.../hooks/subagent-retrospective-guard.sh`     | `.../hooks/subagent-retrospective-guard_test.sh`     |                                              |
+| track-subagent-edits             | hook           | `.../hooks/track-subagent-edits.sh`             | `.../hooks/track-subagent-edits_test.sh`             |                                              |
+| track-tool-failures              | hook           | `.../hooks/track-tool-failures.sh`              | `.../hooks/track-tool-failures_test.sh`              |                                              |
+| usage-rules-grep-guard           | hook           | `.../hooks/usage-rules-grep-guard.sh`           | `.../hooks/usage-rules-grep-guard_test.sh`           |                                              |
+
+### Section 8 — Hook Shared Libraries (`hooks/lib/`)
+
+| Surface        | Type        | File/Path                                   | Test that exercises it                           | Notes                                                                                      |
+| -------------- | ----------- | ------------------------------------------- | ------------------------------------------------ | ------------------------------------------------------------------------------------------ |
+| hooks-lib.sh   | hook-lib    | `harnesses/claude/hooks/lib/hooks-lib.sh`   | `harnesses/claude/hooks/lib/hooks-lib_test.sh`   | **Previously silently skipped** (`run-tests.sh` `-maxdepth 1`); reactivated by Stage 1 fix |
+| gate-select.sh | hook-lib    | `harnesses/claude/hooks/lib/gate-select.sh` | `harnesses/claude/hooks/lib/gate-select_test.sh` | **Previously silently skipped**; reactivated by Stage 1 fix                                |
+| run-tests.sh   | hook-runner | `harnesses/claude/hooks/run-tests.sh`       | — (runner itself)                                | No meta-test                                                                               |
+
+### Section 9 — Shared / Root Utilities
+
+| Surface                            | Type        | File/Path                                             | Test that exercises it              | Notes                                                    |
+| ---------------------------------- | ----------- | ----------------------------------------------------- | ----------------------------------- | -------------------------------------------------------- |
+| utils.sh                           | shared-lib  | `utils.sh` (repo root)                                | —                                   | `content_stable_cp` and logging helpers                  |
+| config.sh                          | shared-lib  | `config.sh` (repo root)                               | —                                   | Sourced env config                                       |
+| bash_completion.sh                 | shared-lib  | `bash_completion.sh` (repo root)                      | —                                   | Shell completion                                         |
+| ocg                                | launcher    | `ocg` (repo root)                                     | —                                   | User CLI dispatcher                                      |
+| bin/test-llm-hooks.sh              | dev-utility | `bin/test-llm-hooks.sh`                               | —                                   | Manual dev utility; not CI-wired                         |
+| record-green.sh                    | shared-lib  | `test_harness/record-green.sh`                        | —                                   | Stamps `last_green.json`; invoked by `make record-green` |
+| codegen_test_harness/assertions.ex | shared-lib  | `test_harness/lib/codegen_test_harness/assertions.ex` | Indirect — used by all ExUnit tests |                                                          |
+| codegen_test_harness/fixtures.ex   | shared-lib  | `test_harness/lib/codegen_test_harness/fixtures.ex`   | Indirect — used by all ExUnit tests |                                                          |
+
+### Section 10 — Make Targets (executable surfaces)
+
+| Surface             | Type        | File/Path         | Test that exercises it                                      | Notes                                                                                    |
+| ------------------- | ----------- | ----------------- | ----------------------------------------------------------- | ---------------------------------------------------------------------------------------- |
+| make install        | make-target | `Makefile:51-60`  | —                                                           | Manual; round-trip in Stage 5                                                            |
+| make uninstall      | make-target | `Makefile:197+`   | —                                                           | Manual; round-trip in Stage 5                                                            |
+| make test           | make-target | `Makefile:73-88`  | self-referential                                            | runs hook tests + mutation tests + install round-trips + all 4 pi extensions (for-loop)  |
+| make test-stacks    | make-target | `Makefile:80-145` | self-referential                                            | runs ExUnit                                                                              |
+| make test-all       | make-target | `Makefile:148`    | self-referential                                            |                                                                                          |
+| make hook-parity    | make-target | `Makefile:30-49`  | Round-trip diff (no unit test)                              |                                                                                          |
+| make harness-parity | make-target | `Makefile:65-68`  | Invokes `codegen-build_test.sh` + `static/scaffold_test.sh` |                                                                                          |
+| make rule-parity    | make-target | `Makefile:155+`   | Round-trip diff                                             |                                                                                          |
+| make doctor         | make-target | `Makefile:226+`   | —                                                           | Diagnostic only                                                                          |
+| make format         | make-target | `Makefile:205+`   | —                                                           | Formatter                                                                                |
+| make record-green   | make-target | `Makefile:150`    | —                                                           | Baseline-stamper                                                                         |
+| make test-coverage  | make-target | `Makefile:77+`    | `make test-coverage && make test` (Stage 2 gate)            | Chains elixir/typescript/shell/python/summary sub-targets; outputs to `coverage/<lang>/` |
+| make test-generator | make-target | `Makefile`        | self-referential                                            | runs Python unittest + bash `*_test.sh` for generator pipeline                           |
+
+### Section 11 — Summary
+
+- 17 ExUnit cases across 10 files cover the `build` mode for `claude` + `pi` harnesses against 2 stacks (phoenix scaffold/seed/gate/committer/iteration + static html_scaffold/iteration × 5 sub-stacks) plus 6 mode×harness launcher cells.
+- After Stage 1: **48** bash hook tests run via `make test` (was 46 — `hooks-lib_test.sh` and `gate-select_test.sh` reactivated).
+- 6 mode×harness launcher cells now covered by `test_harness/test/stacks/modes/` (Stage 4): `claude-{debug,shape,refactor}` + `pi-{debug,shape,refactor}`.
+- After Stage 5: **9 phoenix mutations + `eex_render.sh`** have isolated unit tests (`*_test.sh` per script) wired into `make test` via `shared/scaffold/phoenix/run-tests.sh`. Two bash 3.2 bugs fixed: `router.sh` (`${@L}` → `tr`) and `eex_render.sh` (`declare -A` → direct loop).
+- After Stage 5: **all 4 pi-extensions** wired into `make test` via a for-loop. `web-utils` gained vitest + 1 test case. `subagents test:integration` guarded (no-op when `test/integration/` absent).
+- After Stage 5: **install.sh + uninstall.sh** covered by hermetic round-trip tests (`test_harness/install/`) with `HOME` override + `ZSH_COMPLETION_DIRS` env-toggle. Tests for both `--harness=claude` (15 cases) and `--harness=pi` (13 cases) wired into `make test` via `test_harness/install/run-tests.sh`.
+- Generator pipeline now has 4 unit test files (Python unittest + bash) wired into `make test`; `test_dual_render.sh` integrated into the runner via `templates/generator/run-tests.sh`.
+- Coverage entry-points wired: ExCoveralls (Elixir), c8 (enforcement+subagents), vitest+istanbul (askuserquestion+web-utils), kcov (shell), coverage.py declared (Python — Stage 3).

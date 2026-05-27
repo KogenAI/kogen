@@ -27,5 +27,5 @@ run_one() {
 
 export -f run_one
 
-find "$HOOKS_DIR" -maxdepth 1 -name '*_test.sh' -type f -print0 |
+find "$HOOKS_DIR" -name '*_test.sh' -type f -print0 |
     xargs -0 -n1 -P"$JOBS" -I{} bash -c 'run_one "$@"' _ {}

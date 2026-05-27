@@ -187,7 +187,8 @@ else
 fi
 
 # Remove pi zsh completions
-_ZSH_COMPLETION_DIRS=("/usr/local/share/zsh/site-functions" "$HOME/.zsh/completions" "$HOME/.local/share/zsh/site-functions")
+# Override search list via env: ZSH_COMPLETION_DIRS="/path1:/path2" (colon-separated, same toggle as install.sh).
+IFS=':' read -ra _ZSH_COMPLETION_DIRS <<< "${ZSH_COMPLETION_DIRS:-/usr/local/share/zsh/site-functions:$HOME/.zsh/completions:$HOME/.local/share/zsh/site-functions}"
 _ZSH_COMPLETION_DST=""
 for _dir in "${_ZSH_COMPLETION_DIRS[@]}"; do
     if [ -d "$_dir" ] && [ -w "$_dir" ]; then

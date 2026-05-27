@@ -207,10 +207,9 @@ cleanup_generated_templates() {
 # Each harness's manifest.yaml declares its surface; this loop reads it.
 #
 # Zsh completions: install into first writable dir.
-ZSH_COMPLETION_DIRS=(
-    "/opt/homebrew/share/zsh/site-functions"
-    "$HOME/.zsh/completions"
-)
+# Override search list via env: ZSH_COMPLETION_DIRS="/path1:/path2" (colon-separated).
+# Default: /opt/homebrew/share/zsh/site-functions and $HOME/.zsh/completions.
+IFS=':' read -ra ZSH_COMPLETION_DIRS <<< "${ZSH_COMPLETION_DIRS:-/opt/homebrew/share/zsh/site-functions:$HOME/.zsh/completions}"
 ZSH_COMPLETION_DST=""
 for _d in "${ZSH_COMPLETION_DIRS[@]}"; do
     if [ -d "$_d" ] && [ -w "$_d" ]; then

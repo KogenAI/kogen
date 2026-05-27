@@ -48,6 +48,7 @@ defmodule CodegenTestHarness.Stacks.Static.IterationTest do
            "expected id=\"faq\" and <details in at least one HTML file under #{cwd}. " <>
              "Files: #{inspect(html_files)}"
 
+    Assertions.assert_npm_builds!(cwd)
     Assertions.assert_git_committed!(cwd)
     Assertions.assert_commit_well_formed!(cwd)
     Assertions.assert_commit_subject_length!(cwd)
@@ -83,6 +84,7 @@ defmodule CodegenTestHarness.Stacks.Static.IterationTest do
            "Expected 'Spring Garden Tips' in at least one file under #{cwd}. " <>
              "Files searched: #{length(all_files)}"
 
+    Assertions.assert_hugo_builds!(cwd)
     Assertions.assert_git_committed!(cwd)
     Assertions.assert_commit_well_formed!(cwd)
     Assertions.assert_commit_subject_length!(cwd)

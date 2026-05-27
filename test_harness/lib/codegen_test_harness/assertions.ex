@@ -155,4 +155,40 @@ defmodule CodegenTestHarness.Assertions do
     assert String.trim(log) != "", "no git commit found in #{cwd}"
     :ok
   end
+
+  @spec assert_hugo_builds!(String.t()) :: :ok
+  def assert_hugo_builds!(cwd) do
+    case System.find_executable("hugo") do
+      nil ->
+        IO.warn("hugo not on PATH — skipping assert_hugo_builds! in #{cwd}")
+        :ok
+
+      _hugo ->
+        {output, exit_code} =
+          System.cmd("hugo", ["--quiet"], cd: cwd, stderr_to_stdout: true, env: [])
+
+        assert exit_code == 0, "hugo --quiet failed in #{cwd}:\n#{output}"
+        :ok
+    end
+  end
+
+  @spec assert_assets_deploy!(String.t()) :: :ok
+  def assert_assets_deploy!(cwd) do
+    {output, exit_code} =
+      System.cmd("mix", ["assets.deploy"], cd: cwd, stderr_to_stdout: true)
+
+    assert exit_code == 0, "mix assets.deploy failed in #{cwd}:\n#{output}"
+
+    css = Path.join([cwd, "priv", "static", "assets", "app.css"])
+    assert File.exists?(css), "expected #{css} after mix assets.deploy"
+    assert File.stat!(css).size > 0, "expected #{css} non-empty"
+
+    js = Path.join([cwd, "priv", "static", "assets", "app.js"])
+
+    if File.exists?(js) do
+      assert File.stat!(js).size > 0, "expected #{js} non-empty"
+    end
+
+    :ok
+  end
 end

@@ -38,6 +38,7 @@ exec pi \
     --thinking "$ROLE_EFFORT" \
     --tools read,grep,find,ls \
     -nt \
+    --no-extensions \
     --extension "$EXTENSIONS_DIR/subagents" \
     --system-prompt "$ROLE_SYSTEM_PROMPT" \
     "$@"

@@ -70,9 +70,92 @@ harness-parity:
 # test: run every PreToolUse/SubagentStop/Stop hook unit-test script in parallel.
 # Each *_test.sh is hermetic — own tmp dirs, no shared state — so xargs -P is safe.
 # Job count caps at 8 to avoid thrashing on smaller machines.
-test: hook-parity harness-parity
+test: hook-parity harness-parity test-generator
 	@./harnesses/claude/hooks/run-tests.sh
-	@cd "$(PI_EXTENSION_DIR)" && mise exec -- npm test
+	@./shared/scaffold/phoenix/run-tests.sh
+	@./test_harness/install/run-tests.sh
+	@for ext in enforcement askuserquestion subagents web-utils; do \
+		ext_dir="$(SCRIPT_DIR)/harnesses/pi/pi-extensions/$$ext"; \
+		if [ -f "$$ext_dir/package.json" ] && grep -q '"test"[[:space:]]*:' "$$ext_dir/package.json"; then \
+			echo "▶ Test: $$ext"; \
+			(cd "$$ext_dir" && mise exec -- npm test) || exit 1; \
+		fi; \
+	done
+	@ext_dir="$(SCRIPT_DIR)/harnesses/pi/pi-extensions/subagents"; \
+	if [ -d "$$ext_dir/test/integration" ] && [ -n "$$(ls "$$ext_dir/test/integration/"*.test.ts 2>/dev/null)" ]; then \
+		echo "▶ Test:integration: subagents"; \
+		(cd "$$ext_dir" && mise exec -- npm run test:integration) || exit 1; \
+	fi
+
+.PHONY: test-generator test-generator-python
+test-generator: test-generator-python
+	@bash "$(SCRIPT_DIR)/templates/generator/run-tests.sh"
+test-generator-python:
+	@cd "$(SCRIPT_DIR)/templates/generator" && python3 -m unittest discover -s tests -v
+
+.PHONY: test-coverage test-coverage-elixir test-coverage-typescript test-coverage-shell test-coverage-python test-coverage-summary
+
+# test-coverage: run coverage instrumentation per language. Slower than `make test`.
+# Output: coverage/<language>/ at repo root.
+test-coverage: test-coverage-elixir test-coverage-typescript test-coverage-shell test-coverage-python test-coverage-summary
+
+test-coverage-elixir:
+	@mkdir -p "$(SCRIPT_DIR)/coverage/elixir"
+	cd "$(SCRIPT_DIR)/test_harness" && mix coveralls.json --include slow
+	@cp "$(SCRIPT_DIR)/test_harness/cover/excoveralls.json" "$(SCRIPT_DIR)/coverage/elixir/excoveralls.json"
+
+test-coverage-typescript:
+	@mkdir -p "$(SCRIPT_DIR)/coverage/typescript"
+	@for ext in enforcement subagents askuserquestion; do \
+		ext_dir="$(SCRIPT_DIR)/harnesses/pi/pi-extensions/$$ext"; \
+		if [ -f "$$ext_dir/package.json" ] && grep -q '"test:coverage"' "$$ext_dir/package.json"; then \
+			echo "▶ Coverage: $$ext"; \
+			(cd "$$ext_dir" && mise exec -- npm run test:coverage) || echo "⚠  $$ext: test:coverage exited $$? (no test files or error — continuing)"; \
+			mkdir -p "$(SCRIPT_DIR)/coverage/typescript/$$ext"; \
+			[ -d "$$ext_dir/coverage" ] && cp -R "$$ext_dir/coverage/." "$(SCRIPT_DIR)/coverage/typescript/$$ext/"; \
+		else \
+			echo "⏭  Skip $$ext (no test:coverage script)"; \
+		fi \
+	done
+
+test-coverage-shell:
+	@{ command -v kcov >/dev/null 2>&1 || { echo "⚠  kcov not installed — shell coverage skipped (brew install kcov)"; exit 0; }; } && \
+		mkdir -p "$(SCRIPT_DIR)/coverage/shell" && \
+		kcov --include-path="$(SCRIPT_DIR)/harnesses/claude/hooks","$(SCRIPT_DIR)/shared/scaffold" \
+			--exclude-pattern=_test.sh \
+			"$(SCRIPT_DIR)/coverage/shell" \
+			"$(SCRIPT_DIR)/harnesses/claude/hooks/run-tests.sh"
+
+test-coverage-python:
+	@mkdir -p "$(SCRIPT_DIR)/coverage/python"
+	@cd "$(SCRIPT_DIR)/templates/generator" && \
+		PYTHONPATH=. python3 -m coverage run --source=process_template,hook_registrations -m unittest discover -s tests && \
+		python3 -m coverage xml -o "$(SCRIPT_DIR)/coverage/python/coverage.xml" && \
+		python3 -m coverage html -d "$(SCRIPT_DIR)/coverage/python/htmlcov"
+
+# test-coverage-summary: parse each tool's output and print one line per language.
+test-coverage-summary:
+	@echo ""
+	@echo "═══ Coverage Summary ═══"
+	@if [ -f "$(SCRIPT_DIR)/coverage/elixir/excoveralls.json" ]; then \
+		pct=$$(jq -r '([.source_files[] | .coverage[] | select(. != null)] | length) as $$all | ([.source_files[] | .coverage[] | select(. != null and . > 0)] | length) as $$hit | if $$all > 0 then (($$hit * 100 / $$all) | floor | tostring) else "0" end' "$(SCRIPT_DIR)/coverage/elixir/excoveralls.json" 2>/dev/null || echo "—"); \
+		echo "Elixir:     $$pct%"; \
+	else echo "Elixir:     (no data)"; fi
+	@for ext in enforcement subagents askuserquestion; do \
+		f="$(SCRIPT_DIR)/coverage/typescript/$$ext/coverage-summary.json"; \
+		if [ -f "$$f" ]; then \
+			pct=$$(jq -r '.total.lines.pct' "$$f" 2>/dev/null || echo "—"); \
+			printf "TS %-15s %s%%\n" "$$ext:" "$$pct"; \
+		else printf "TS %-15s (no data)\n" "$$ext:"; fi \
+	done
+	@if [ -d "$(SCRIPT_DIR)/coverage/shell" ] && [ -f "$(SCRIPT_DIR)/coverage/shell/index.html" ]; then \
+		echo "Shell:      see coverage/shell/index.html"; \
+	else echo "Shell:      (no data)"; fi
+	@if [ -f "$(SCRIPT_DIR)/coverage/python/coverage.xml" ]; then \
+		pct=$$(python3 -c "import xml.etree.ElementTree as ET; t=ET.parse('$(SCRIPT_DIR)/coverage/python/coverage.xml').getroot(); print(int(float(t.get('line-rate','0'))*100))" 2>/dev/null || echo "—"); \
+		echo "Python:     $$pct%"; \
+	else echo "Python:     (no data — run make test-coverage-python)"; fi
+	@echo "════════════════════════"
 
 # test-stacks: run ExUnit stack scaffold tests under test_harness/ for both
 # harnesses in parallel. Real LLM calls — slow + costs tokens. Pre-deploy gate.
@@ -289,6 +372,8 @@ help:
 	@echo "Available commands (make):"
 	@echo "  make install        Install CLI globally — installs all subagents"
 	@echo "  make test           Run hook unit tests"
+	@echo "  make test-generator  Run Python unittest + bash unit tests for generator pipeline"
+	@echo "  make test-coverage  Coverage report per language → coverage/<lang>/"
 	@echo "  make test-stacks    Run ExUnit stack scaffold tests (claude+pi parallel, real LLM, slow)"
 	@echo "  make test-all       Full pre-deploy gate: test + test-stacks + record-green"
 	@echo "  make record-green   Write test_harness/last_green.json with current sha + versions"

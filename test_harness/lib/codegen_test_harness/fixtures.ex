@@ -21,8 +21,6 @@ defmodule CodegenTestHarness.Fixtures do
   the first scaffolds the app, the second applies the change request.
   Returns `{commits_before, commits_after}` where both are commit-count integers.
 
-  Stack prompt+marker tables shared by parametrized tests:
-  - `static_stacks/0` — list of `{stack_atom, prompt, markers}` tuples
   """
 
   @codegen_build Path.expand("../../../codegen-build", __DIR__)
@@ -33,10 +31,6 @@ defmodule CodegenTestHarness.Fixtures do
 
   IMPORTANT: After completing the work, you MUST commit ALL changes via the committer subagent before exiting. The test harness counts git commits to verify completion. The commit subject (first line) MUST be ≤72 characters. Use imperative mood (e.g., "Add", "Fix", "Update") with no trailing period.
   """
-
-  @type stack :: atom()
-  @type marker :: String.t()
-  @type stack_spec :: {stack(), String.t(), [marker()]}
 
   @doc """
   Creates an isolated, git-initialised temporary directory outside the OCG
@@ -184,33 +178,6 @@ defmodule CodegenTestHarness.Fixtures do
     commits_after = count_commits!(cwd)
 
     {commits_before, commits_after}
-  end
-
-  @doc """
-  Returns the static stack specs used by parametrized iteration tests.
-
-  Each entry is `{stack_atom, change_request_prompt, [contracted_markers]}`.
-  The `stack_atom` is passed as `stack:` opt to `run_codegen_build/3`.
-  """
-  @spec static_stacks() :: [stack_spec()]
-  def static_stacks do
-    [
-      {:static,
-       "Add a <section id=\"faq\"> with three <details> elements containing <summary> and <p> children.",
-       [~s(id="faq"), "<details", "<summary"]},
-      {:hugo,
-       "Add a new blog post titled 'Spring Garden Tips' with at least 100 words of body content.",
-       ["Spring Garden Tips"]},
-      {:vite_react,
-       "Add a <input data-testid=\"step\" type=\"number\"> to the counter. Each increment click MUST add the step value (default 1).",
-       [~s(data-testid="step")]},
-      {:vite_vue,
-       "Add a <button data-testid=\"reset\"> that resets the hex output to #000000.",
-       [~s(data-testid="reset")]},
-      {:multilingual,
-       "Add an <a href=\"/en\"> English link and <a href=\"/hr\"> Croatian link to the nav.",
-       [~s(href="/en"), ~s(href="/hr")]}
-    ]
   end
 
   # ── Private helpers ───────────────────────────────────────────────────────────

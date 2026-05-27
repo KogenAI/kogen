@@ -19,18 +19,11 @@ template="$1"
 output="$2"
 shift 2
 
-declare -A bindings
+content="$(cat "$template")"
 
 for arg in "$@"; do
   key="${arg%%=*}"
   val="${arg#*=}"
-  bindings["$key"]="$val"
-done
-
-content="$(cat "$template")"
-
-for key in "${!bindings[@]}"; do
-  val="${bindings[$key]}"
   # Escape & and \ in replacement value for sed
   escaped_val="$(printf '%s' "$val" | sed 's/[&\\/]/\\&/g')"
   content="$(printf '%s' "$content" | sed "s/<%= ${key} %>/${escaped_val}/g")"

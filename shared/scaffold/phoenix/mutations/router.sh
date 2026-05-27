@@ -10,7 +10,7 @@ set -euo pipefail
 APP_PATH="$1"
 APP_NAME_MODULE="$2"
 
-ROUTER="$APP_PATH/lib/${APP_NAME_MODULE@L}_web/router.ex"
+ROUTER="$APP_PATH/lib/$(echo "$APP_NAME_MODULE" | tr '[:upper:]' '[:lower:]')_web/router.ex"
 
 # Fallback: scan for the router file if naming differs
 if [ ! -f "$ROUTER" ]; then

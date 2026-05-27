@@ -37,6 +37,8 @@
     "access": "public"
   },
   "scripts": {
+    "test": "vitest run",
+    "test:coverage": "vitest run --coverage.enabled --coverage.provider=istanbul --coverage.reportsDirectory=coverage --coverage.reporter=lcov --coverage.reporter=json-summary --coverage.reporter=text",
     "typecheck": "tsc --noEmit",
     "lint": "tsc --noEmit",
     "prepublishOnly": "bun run typecheck"
@@ -53,7 +55,9 @@
   "devDependencies": {
     "@types/node": "^22.19.11",
     "@types/turndown": "^5.0.6",
-    "typescript": "^5.9.3"
+    "@vitest/coverage-istanbul": "3.2.4",
+    "typescript": "^5.9.3",
+    "vitest": "^3.0.0"
   },
   "pi": {
     "extensions": [

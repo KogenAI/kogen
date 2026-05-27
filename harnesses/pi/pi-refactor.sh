@@ -46,6 +46,7 @@ exec pi \
     --model "$ROLE_MODEL" \
     --thinking "$ROLE_EFFORT" \
     --tools read,grep,find,ls,edit,write,bash \
+    --no-extensions \
     --extension "$EXTENSIONS_DIR/askuserquestion" \
     --extension "$EXTENSIONS_DIR/subagents" \
     --extension "$EXTENSIONS_DIR/web-utils" \

@@ -1,0 +1,21 @@
+harness: stub
+
+launchers:
+  - src: harnesses/stub/stub-build.sh
+    name: stub-build
+  - src: harnesses/stub/stub-debug.sh
+    name: stub-debug
+
+completions:
+  - _stub-build
+  - _stub-debug
+
+modes:
+  build:
+    tools_header: shared/tools-headers/build.txt
+    prompt_body: shared/prompt-bodies/build.txt
+    system_prompt_file: harnesses/stub/stub-build-system-prompt.txt
+  debug:
+    tools_header: shared/tools-headers/debug.txt
+    prompt_body: shared/prompt-bodies/debug.txt
+    system_prompt_file: harnesses/stub/stub-debug-system-prompt.txt

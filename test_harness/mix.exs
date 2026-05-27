@@ -8,7 +8,18 @@ defmodule CodegenTestHarness.MixProject do
       elixir: "~> 1.15",
       start_permanent: false,
       deps: deps(),
-      elixirc_paths: elixirc_paths(Mix.env())
+      elixirc_paths: elixirc_paths(Mix.env()),
+      test_coverage: [tool: ExCoveralls]
+    ]
+  end
+
+  def cli do
+    [
+      preferred_envs: [
+        coveralls: :test,
+        "coveralls.json": :test,
+        "coveralls.html": :test
+      ]
     ]
   end
 
@@ -17,7 +28,9 @@ defmodule CodegenTestHarness.MixProject do
   end
 
   defp deps do
-    []
+    [
+      {:excoveralls, "~> 0.18", only: :test, runtime: false}
+    ]
   end
 
   defp elixirc_paths(:test), do: ["lib", "test/support"]
