@@ -66,6 +66,13 @@ Signs of leakage into shared rules: project names, repo paths, app-specific modu
 
 ## Role Ownership Quick Reference
 
+**Actor vs instructor** — before placing, ask: WHO ACTS on this behaviour vs WHO INSTRUCTS it.
+Rule goes on the actor's file; instruction framing goes on the instructor's file.
+If A tells B to do X → how to do X → B's file; how A communicates X → A's file.
+
+❌ "orchestrator passes task summary to committer" in `committer.md` — committer doesn't decide how orchestrator communicates.
+✅ Delegation framing → `orchestrator.md`; committer's file covers only what committer does with what it receives.
+
 | Mistake                                                | Role         | File                                                                                                                              |
 | ------------------------------------------------------ | ------------ | --------------------------------------------------------------------------------------------------------------------------------- |
 | Orchestrator delegated wrong time / communicated badly | Orchestrator | `roles/orchestrator.md`                                                                                                           |

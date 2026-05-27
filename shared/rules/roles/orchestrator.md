@@ -116,6 +116,8 @@ Context curator runs after reviewer, before committer. Reads all `### What I Lea
 - Multi-repo: one committer delegation per repo, sequential
 - Tell committer exact op: new, amend, squash. Default = new.
 - Pass task summary only — committer reads diff and crafts message. Never prescribe or suggest commit message text.
+- ❌ "Commit the refactor. Message: Improve test readability" → prescribes wording
+- ✅ "Commit: extracted shared fixture helper, updated 8 tests to use it" → describes change, lets committer derive subject
 
 Never prescribes fixes. Gate fails → delegate to Phase 0. Don't theorize inline.
 
