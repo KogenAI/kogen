@@ -11,8 +11,8 @@
 set -euo pipefail
 
 if [ $# -lt 2 ]; then
-  echo "Usage: $0 <template_file> <output_file> [key=value ...]" >&2
-  exit 1
+    echo "Usage: $0 <template_file> <output_file> [key=value ...]" >&2
+    exit 1
 fi
 
 template="$1"
@@ -22,12 +22,12 @@ shift 2
 content="$(cat "$template")"
 
 for arg in "$@"; do
-  key="${arg%%=*}"
-  val="${arg#*=}"
-  # Escape & and \ in replacement value for sed
-  escaped_val="$(printf '%s' "$val" | sed 's/[&\\/]/\\&/g')"
-  content="$(printf '%s' "$content" | sed "s/<%= ${key} %>/${escaped_val}/g")"
+    key="${arg%%=*}"
+    val="${arg#*=}"
+    # Escape & and \ in replacement value for sed
+    escaped_val="$(printf '%s' "$val" | sed 's/[&\\/]/\\&/g')"
+    content="$(printf '%s' "$content" | sed "s/<%= ${key} %>/${escaped_val}/g")"
 done
 
 mkdir -p "$(dirname "$output")"
-printf '%s' "$content" > "$output"
+printf '%s' "$content" >"$output"

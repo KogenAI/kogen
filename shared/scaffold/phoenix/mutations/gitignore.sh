@@ -10,12 +10,12 @@ APP_PATH="$1"
 GITIGNORE="$APP_PATH/.gitignore"
 
 if [ ! -f "$GITIGNORE" ]; then
-  echo "[gitignore.sh] ERROR: $GITIGNORE not found" >&2
-  exit 1
+    echo "[gitignore.sh] ERROR: $GITIGNORE not found" >&2
+    exit 1
 fi
 
 if ! grep -qF '# Optimum development/test artifacts' "$GITIGNORE"; then
-  cat >> "$GITIGNORE" << 'EOF'
+    cat >>"$GITIGNORE" <<'EOF'
 
 # Optimum development/test artifacts
 /node_modules/

@@ -38,8 +38,8 @@ assert_contains() {
     local haystack="$2"
     local needle="$3"
 
-    if printf '%s' "$haystack" | grep -Fq -- "$needle" 2>/dev/null || \
-       printf '%s' "$haystack" | fgrep -q "$needle" 2>/dev/null; then
+    if printf '%s' "$haystack" | grep -Fq -- "$needle" 2>/dev/null ||
+        printf '%s' "$haystack" | fgrep -q "$needle" 2>/dev/null; then
         printf 'PASS: %s\n' "$desc"
         pass=$((pass + 1))
     else
@@ -93,7 +93,7 @@ make_pi_harness() {
 make_stub() {
     local path="$1"
     local body="$2"
-    printf '#!/usr/bin/env bash\n%s\n' "$body" > "$path"
+    printf '#!/usr/bin/env bash\n%s\n' "$body" >"$path"
     chmod +x "$path"
 }
 
@@ -101,7 +101,7 @@ make_stub() {
 # Test (c): missing --harness → exit 2 + usage on stderr
 # ─────────────────────────────────────────────────────────────────────────────
 CB_C="$(make_cb_root cb_c)"
-make_claude_harness "$CB_C" > /dev/null
+make_claude_harness "$CB_C" >/dev/null
 
 actual_exit=0
 "$CB_C/codegen-build" "some prompt" 2>/dev/null || actual_exit=$?
@@ -114,7 +114,7 @@ assert_contains "(c) usage on stderr contains harness keyword" "$stderr_c" "harn
 # Test (d): missing prompt in non-interactive mode → exit 2
 # ─────────────────────────────────────────────────────────────────────────────
 CB_D="$(make_cb_root cb_d)"
-make_claude_harness "$CB_D" > /dev/null
+make_claude_harness "$CB_D" >/dev/null
 
 actual_exit=0
 "$CB_D/codegen-build" --harness=claude --stack=phoenix --non-interactive 2>/dev/null || actual_exit=$?
@@ -142,8 +142,8 @@ for ec in 0 1 130; do
 
     actual_ec=0
     "$CB_E/codegen-build" --harness=claude --stack=phoenix --non-interactive \
-        "test prompt" 2>/dev/null \
-        || actual_ec=$?
+        "test prompt" 2>/dev/null ||
+        actual_ec=$?
 
     check "(e) exit code $ec propagates" "$ec" "$actual_ec"
 done
@@ -152,7 +152,7 @@ done
 # Test (a): --harness=claude → dispatch.sh with correct argv (--tools from build-tools.txt)
 # ─────────────────────────────────────────────────────────────────────────────
 CB_A="$(make_cb_root cb_a)"
-make_claude_harness "$CB_A" > /dev/null
+make_claude_harness "$CB_A" >/dev/null
 
 ARGS_A="$BASE_TMP/args_a.txt"
 CLAUDE_A_DIR="$BASE_TMP/bin_a"
@@ -162,11 +162,11 @@ make_stub "$CLAUDE_A_DIR/claude" "printf '%s\n' \"\$@\" > '$ARGS_A'; printf '{\"
 
 actual_ec=0
 PATH="$CLAUDE_A_DIR:$PATH" \
-OCG_CODEGEN_DIR="$CODEGEN_ROOT" \
-CODEGEN_BUILD_MODEL="" CODEGEN_BUILD_EFFORT="" \
+    OCG_CODEGEN_DIR="$CODEGEN_ROOT" \
+    CODEGEN_BUILD_MODEL="" CODEGEN_BUILD_EFFORT="" \
     "$CB_A/codegen-build" --harness=claude --stack=phoenix --non-interactive \
-    "hello prompt" 2>/dev/null \
-    || actual_ec=$?
+    "hello prompt" 2>/dev/null ||
+    actual_ec=$?
 
 if [[ -f "$ARGS_A" ]]; then
     ARGS_A_CONTENT="$(cat "$ARGS_A")"
@@ -187,7 +187,7 @@ fi
 # Test (b): --harness=pi → dispatch.sh with correct argv
 # ─────────────────────────────────────────────────────────────────────────────
 CB_B="$(make_cb_root cb_b)"
-make_pi_harness "$CB_B" > /dev/null
+make_pi_harness "$CB_B" >/dev/null
 
 ARGS_B="$BASE_TMP/args_b.txt"
 PI_B_DIR="$BASE_TMP/bin_b"
@@ -196,11 +196,11 @@ make_stub "$PI_B_DIR/pi" "printf '%s\n' \"\$@\" > '$ARGS_B'"
 
 actual_ec=0
 PATH="$PI_B_DIR:$PATH" \
-OCG_CODEGEN_DIR="$CODEGEN_ROOT" \
-CODEGEN_BUILD_MODEL="" CODEGEN_BUILD_EFFORT="" \
+    OCG_CODEGEN_DIR="$CODEGEN_ROOT" \
+    CODEGEN_BUILD_MODEL="" CODEGEN_BUILD_EFFORT="" \
     "$CB_B/codegen-build" --harness=pi --stack=phoenix --non-interactive \
-    "pi prompt" 2>/dev/null \
-    || actual_ec=$?
+    "pi prompt" 2>/dev/null ||
+    actual_ec=$?
 
 if [[ -f "$ARGS_B" ]]; then
     ARGS_B_CONTENT="$(cat "$ARGS_B")"
@@ -221,18 +221,18 @@ fi
 FIXTURE_LINE='{"type":"result","is_error":false,"usage":{"input_tokens":42,"output_tokens":7}}'
 
 CB_F="$(make_cb_root cb_f)"
-make_claude_harness "$CB_F" > /dev/null
+make_claude_harness "$CB_F" >/dev/null
 
 CLAUDE_F_DIR="$BASE_TMP/bin_f"
 mkdir -p "$CLAUDE_F_DIR"
 make_stub "$CLAUDE_F_DIR/claude" "printf '%s\n' '${FIXTURE_LINE}'"
 
 ACTUAL_F_OUT=$(PATH="$CLAUDE_F_DIR:$PATH" \
-OCG_CODEGEN_DIR="$CODEGEN_ROOT" \
-CODEGEN_BUILD_MODEL="" CODEGEN_BUILD_EFFORT="" \
+    OCG_CODEGEN_DIR="$CODEGEN_ROOT" \
+    CODEGEN_BUILD_MODEL="" CODEGEN_BUILD_EFFORT="" \
     "$CB_F/codegen-build" --harness=claude --stack=phoenix --non-interactive \
-    "fixture prompt" 2>/dev/null \
-    || true)
+    "fixture prompt" 2>/dev/null ||
+    true)
 
 ACTUAL_FIRST_LINE="$(printf '%s\n' "$ACTUAL_F_OUT" | head -1)"
 check "(f) stdout byte-identical pass-through" "$FIXTURE_LINE" "$ACTUAL_FIRST_LINE"
@@ -241,7 +241,7 @@ check "(f) stdout byte-identical pass-through" "$FIXTURE_LINE" "$ACTUAL_FIRST_LI
 # Test (g): interactive mode — non-interactive flags must NOT be passed
 # ─────────────────────────────────────────────────────────────────────────────
 CB_G="$(make_cb_root cb_g)"
-make_claude_harness "$CB_G" > /dev/null
+make_claude_harness "$CB_G" >/dev/null
 
 ARGS_G="$BASE_TMP/args_g.txt"
 CLAUDE_G_DIR="$BASE_TMP/bin_g"
@@ -251,12 +251,12 @@ make_stub "$CLAUDE_G_DIR/claude" "printf '%s\n' \"\$@\" > '$ARGS_G'"
 actual_ec=0
 # Explicitly unset NON_INTERACTIVE — simulate interactive call with a prompt
 CODEGEN_BUILD_NON_INTERACTIVE="" \
-PATH="$CLAUDE_G_DIR:$PATH" \
-OCG_CODEGEN_DIR="$CODEGEN_ROOT" \
-CODEGEN_BUILD_MODEL="" CODEGEN_BUILD_EFFORT="" \
+    PATH="$CLAUDE_G_DIR:$PATH" \
+    OCG_CODEGEN_DIR="$CODEGEN_ROOT" \
+    CODEGEN_BUILD_MODEL="" CODEGEN_BUILD_EFFORT="" \
     "$CB_G/codegen-build" --harness=claude --stack=phoenix \
-    "interactive prompt" 2>/dev/null \
-    || actual_ec=$?
+    "interactive prompt" 2>/dev/null ||
+    actual_ec=$?
 
 if [[ -f "$ARGS_G" ]]; then
     ARGS_G_CONTENT="$(cat "$ARGS_G")"
@@ -295,7 +295,7 @@ fi
 #           print-family flags in non-interactive only
 # ─────────────────────────────────────────────────────────────────────────────
 CB_I="$(make_cb_root cb_i)"
-make_claude_harness "$CB_I" > /dev/null
+make_claude_harness "$CB_I" >/dev/null
 
 ARGS_I_NI="$BASE_TMP/args_i_ni.txt"
 ARGS_I_INT="$BASE_TMP/args_i_int.txt"
@@ -308,23 +308,23 @@ make_stub "$CLAUDE_I_DIR/claude" 'printf '"'"'%s\n'"'"' "$@" > "${TARGET_ARGS_FI
 # Non-interactive run
 actual_ec=0
 TARGET_ARGS_FILE="$ARGS_I_NI" \
-PATH="$CLAUDE_I_DIR:$PATH" \
-OCG_CODEGEN_DIR="$CODEGEN_ROOT" \
-CODEGEN_BUILD_MODEL="" CODEGEN_BUILD_EFFORT="" \
+    PATH="$CLAUDE_I_DIR:$PATH" \
+    OCG_CODEGEN_DIR="$CODEGEN_ROOT" \
+    CODEGEN_BUILD_MODEL="" CODEGEN_BUILD_EFFORT="" \
     "$CB_I/codegen-build" --harness=claude --stack=phoenix --non-interactive \
-    "test prompt i" 2>/dev/null \
-    || actual_ec=$?
+    "test prompt i" 2>/dev/null ||
+    actual_ec=$?
 
 # Interactive run
 actual_ec=0
 TARGET_ARGS_FILE="$ARGS_I_INT" \
-CODEGEN_BUILD_NON_INTERACTIVE="" \
-PATH="$CLAUDE_I_DIR:$PATH" \
-OCG_CODEGEN_DIR="$CODEGEN_ROOT" \
-CODEGEN_BUILD_MODEL="" CODEGEN_BUILD_EFFORT="" \
+    CODEGEN_BUILD_NON_INTERACTIVE="" \
+    PATH="$CLAUDE_I_DIR:$PATH" \
+    OCG_CODEGEN_DIR="$CODEGEN_ROOT" \
+    CODEGEN_BUILD_MODEL="" CODEGEN_BUILD_EFFORT="" \
     "$CB_I/codegen-build" --harness=claude --stack=phoenix \
-    "test prompt i" 2>/dev/null \
-    || actual_ec=$?
+    "test prompt i" 2>/dev/null ||
+    actual_ec=$?
 
 if [[ -f "$ARGS_I_NI" && -f "$ARGS_I_INT" ]]; then
     ARGS_I_NI_CONTENT="$(cat "$ARGS_I_NI")"

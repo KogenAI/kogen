@@ -41,67 +41,67 @@ codegen/                          ← repo root
 
 ### Entry-Point Scripts
 
-| File | Role | Who calls it |
-|---|---|---|
-| `ocg` | User CLI dispatcher — wraps `make` targets with a friendly interface; symlinked into `$PATH` at install time; sets `OCG_CLI=true` so Makefile can gate ocg-only commands | End users, shell tab-completion |
-| `codegen-build` | Harness API — canonical entrypoint for all harness-based build invocations; accepts `--harness`, `--stack`, `--cwd`, `--model`, `--effort`, `--max-turns`; delegates to `harnesses/<harness>/dispatch.sh` | Platform, CI, downstream app Makefiles, direct dev invocations |
-| `codegen-scaffold` | One-time provisioning — scaffolds a new downstream Phoenix or static-site project from templates; accepts `--stack`, `--cwd`, `--slug`; delegates to `shared/scaffold/<stack>/scaffold.sh` | Platform setup, `ocg setup` |
+| File               | Role                                                                                                                                                                                                      | Who calls it                                                   |
+| ------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------- |
+| `ocg`              | User CLI dispatcher — wraps `make` targets with a friendly interface; symlinked into `$PATH` at install time; sets `OCG_CLI=true` so Makefile can gate ocg-only commands                                  | End users, shell tab-completion                                |
+| `codegen-build`    | Harness API — canonical entrypoint for all harness-based build invocations; accepts `--harness`, `--stack`, `--cwd`, `--model`, `--effort`, `--max-turns`; delegates to `harnesses/<harness>/dispatch.sh` | Platform, CI, downstream app Makefiles, direct dev invocations |
+| `codegen-scaffold` | One-time provisioning — scaffolds a new downstream Phoenix or static-site project from templates; accepts `--stack`, `--cwd`, `--slug`; delegates to `shared/scaffold/<stack>/scaffold.sh`                | Platform setup, `ocg setup`                                    |
 
 `ocg` vs `codegen-build`: `ocg` is user-facing (menu, doctor, install). `codegen-build` is the machine API that downstream Makefiles call to invoke an AI build session. Never conflate them.
 
 ### Lifecycle Scripts
 
-| File | Purpose | Trigger |
-|---|---|---|
-| `install.sh` | Reads `harnesses/<harness>/manifest.yaml`, runs declared install steps (generate agents, register hooks, write settings.json, symlink binaries) | `make install` or `ocg install` |
-| `uninstall.sh` | Removes artifacts listed in manifest `uninstall_steps`; reads `resource_manager.sh` tracker to avoid removing unowned files | `make uninstall` or `ocg uninstall` |
-| `update_ai_tools.sh` | Post-install: updates Claude CLI binary and AI tool dependencies to latest versions | `make update` or `ocg update` |
+| File                 | Purpose                                                                                                                                         | Trigger                             |
+| -------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------- |
+| `install.sh`         | Reads `harnesses/<harness>/manifest.yaml`, runs declared install steps (generate agents, register hooks, write settings.json, symlink binaries) | `make install` or `ocg install`     |
+| `uninstall.sh`       | Removes artifacts listed in manifest `uninstall_steps`; reads `resource_manager.sh` tracker to avoid removing unowned files                     | `make uninstall` or `ocg uninstall` |
+| `update_ai_tools.sh` | Post-install: updates Claude CLI binary and AI tool dependencies to latest versions                                                             | `make update` or `ocg update`       |
 
 ### Support Libraries
 
-| File | Purpose | Sourced by |
-|---|---|---|
-| `config.sh` | Shared env/path config — defines `CODEGEN_DIR`, `SHARED_DIR`, harness paths, model defaults; sourced by every script that needs codegen paths | `install.sh`, `codegen-build`, all harness launchers |
-| `resource_manager.sh` | Tracks which files were installed by ocg vs pre-existing; prevents orphaned artifacts on uninstall | `install.sh`, `uninstall.sh` |
-| `utils.sh` | Common bash utilities: logging helpers, `content_stable_cp` (copy only if content changed), path normalization | Harness launchers, scaffold scripts |
-| `bash_completion.sh` | Provides tab-completion for `ocg` subcommands; installed into shell profile by `install.sh` | Shell (bash/zsh via profile source) |
+| File                  | Purpose                                                                                                                                       | Sourced by                                           |
+| --------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------- |
+| `config.sh`           | Shared env/path config — defines `CODEGEN_DIR`, `SHARED_DIR`, harness paths, model defaults; sourced by every script that needs codegen paths | `install.sh`, `codegen-build`, all harness launchers |
+| `resource_manager.sh` | Tracks which files were installed by ocg vs pre-existing; prevents orphaned artifacts on uninstall                                            | `install.sh`, `uninstall.sh`                         |
+| `utils.sh`            | Common bash utilities: logging helpers, `content_stable_cp` (copy only if content changed), path normalization                                | Harness launchers, scaffold scripts                  |
+| `bash_completion.sh`  | Provides tab-completion for `ocg` subcommands; installed into shell profile by `install.sh`                                                   | Shell (bash/zsh via profile source)                  |
 
 ### Build Surface (Makefile)
 
-| Target | Purpose | Notes |
-|---|---|---|
-| `make install` | Full install cycle: `hook-parity` check → generate pi-extension → render hooks into settings.json → run `install.sh` | Primary dev loop entrypoint |
-| `make test` | Run bash hook unit tests via `run-tests.sh` + pi-extension npm tests | Fast; no LLM calls |
-| `make test-stacks` | Run ExUnit scaffold tests for both harnesses in parallel partitions | Slow; real LLM calls; pre-deploy gate |
-| `make test-all` | `test` + `test-stacks` + `record-green` | Full pre-deploy gate |
-| `make hook-parity` | Verify `claude-code-settings.json` hook entries match the hook source directory | Runs before every `make install` |
-| `make rule-parity` | Diff `AGENTS.md` / `CLAUDE.md` against fresh render of `templates/AGENTS-HYBRID.md.j2` | Catches drift between template and committed file |
-| `make harness-parity` | Verify `codegen-build` + `dispatch.sh` stubs are self-consistent | Runs `codegen-build_test.sh` + `scaffold_test.sh` |
-| `make format` | Format all shell scripts with `shfmt` and all other files with `prettier` | Uses `mise exec` for tool version isolation |
-| `make doctor` | Check required tools on PATH (claude, jq, rg, mise, pyyaml) and config files | Diagnostic only; exits non-zero on failures |
-| `make record-green` | Write `test_harness/last_green.json` with current commit SHA + tool versions | Only runs after all tests pass |
-| `make uninstall` | Remove global CLI installation (ocg-only guarded) | Via `ocg uninstall` |
-| `make update` | Update AI agents (ocg-only guarded) | Via `ocg update` |
+| Target                | Purpose                                                                                                              | Notes                                             |
+| --------------------- | -------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------- |
+| `make install`        | Full install cycle: `hook-parity` check → generate pi-extension → render hooks into settings.json → run `install.sh` | Primary dev loop entrypoint                       |
+| `make test`           | Run bash hook unit tests via `run-tests.sh` + pi-extension npm tests                                                 | Fast; no LLM calls                                |
+| `make test-stacks`    | Run ExUnit scaffold tests for both harnesses in parallel partitions                                                  | Slow; real LLM calls; pre-deploy gate             |
+| `make test-all`       | `test` + `test-stacks` + `record-green`                                                                              | Full pre-deploy gate                              |
+| `make hook-parity`    | Verify `claude-code-settings.json` hook entries match the hook source directory                                      | Runs before every `make install`                  |
+| `make rule-parity`    | Diff `AGENTS.md` / `CLAUDE.md` against fresh render of `templates/AGENTS-HYBRID.md.j2`                               | Catches drift between template and committed file |
+| `make harness-parity` | Verify `codegen-build` + `dispatch.sh` stubs are self-consistent                                                     | Runs `codegen-build_test.sh` + `scaffold_test.sh` |
+| `make format`         | Format all shell scripts with `shfmt` and all other files with `prettier`                                            | Uses `mise exec` for tool version isolation       |
+| `make doctor`         | Check required tools on PATH (claude, jq, rg, mise, pyyaml) and config files                                         | Diagnostic only; exits non-zero on failures       |
+| `make record-green`   | Write `test_harness/last_green.json` with current commit SHA + tool versions                                         | Only runs after all tests pass                    |
+| `make uninstall`      | Remove global CLI installation (ocg-only guarded)                                                                    | Via `ocg uninstall`                               |
+| `make update`         | Update AI agents (ocg-only guarded)                                                                                  | Via `ocg update`                                  |
 
 ### Documentation Files
 
-| File | Audience | Content |
-|---|---|---|
-| `README.md` | New users / contributors — user quickstart | Installation steps, prerequisites, quick-start commands |
-| `AGENTS.md` | AI orchestrators (pi harness render) — runtime rules | Orchestrator rules, agent workflow, delegation chain, INCONCLUSIVE table |
-| `CLAUDE.md` | AI orchestrators (claude harness render) — symlink to `AGENTS.md` | Same content; separate file so Claude Code loads it by convention |
-| `STYLE_GUIDE.md` | All contributors and AI agents — cross-cutting style | Naming conventions, formatting rules, review checklist |
-| `PROJECT_CONTEXT.md` | AI orchestrators starting a session — orientation snapshot | Session analyzer command, gate commands, key paths, harness dispatch guide |
+| File                 | Audience                                                          | Content                                                                    |
+| -------------------- | ----------------------------------------------------------------- | -------------------------------------------------------------------------- |
+| `README.md`          | New users / contributors — user quickstart                        | Installation steps, prerequisites, quick-start commands                    |
+| `AGENTS.md`          | AI orchestrators (pi harness render) — runtime rules              | Orchestrator rules, agent workflow, delegation chain, INCONCLUSIVE table   |
+| `CLAUDE.md`          | AI orchestrators (claude harness render) — symlink to `AGENTS.md` | Same content; separate file so Claude Code loads it by convention          |
+| `STYLE_GUIDE.md`     | All contributors and AI agents — cross-cutting style              | Naming conventions, formatting rules, review checklist                     |
+| `PROJECT_CONTEXT.md` | AI orchestrators starting a session — orientation snapshot        | Session analyzer command, gate commands, key paths, harness dispatch guide |
 
 **Important**: `AGENTS.md` is a plain file (pi render). `CLAUDE.md` is a symlink pointing to `AGENTS.md`. Both are generated from `templates/AGENTS-HYBRID.md.j2` — hand-editing either is overwritten by `make install`. The authoritative source is the template. Run `make rule-parity` to detect drift.
 
 ### Root-Level Oddities
 
-| File | Why it exists | What it is NOT |
-|---|---|---|
-| `index.html` | Test fixture used by `test_harness/test/stacks/static/` tests to assert static-site build output shape | Not a project homepage; not meant to be served |
-| `package.json` | Declares `prettier` as a dev dependency for `make format` | Not a project npm package; has no build/serve scripts; `"private": true` |
-| `package-lock.json` | Locks prettier version | Auto-generated; update by running `npm install` at repo root |
+| File                | Why it exists                                                                                          | What it is NOT                                                           |
+| ------------------- | ------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------ |
+| `index.html`        | Test fixture used by `test_harness/test/stacks/static/` tests to assert static-site build output shape | Not a project homepage; not meant to be served                           |
+| `package.json`      | Declares `prettier` as a dev dependency for `make format`                                              | Not a project npm package; has no build/serve scripts; `"private": true` |
+| `package-lock.json` | Locks prettier version                                                                                 | Auto-generated; update by running `npm install` at repo root             |
 
 ---
 
@@ -131,8 +131,8 @@ bin/
 
 **Purpose**: Developer utility scripts that are not part of the install or build pipeline. Currently contains exactly one file.
 
-| File | Purpose |
-|---|---|
+| File                    | Purpose                                                                                                                         |
+| ----------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
 | `bin/test-llm-hooks.sh` | Manual developer utility for testing hook behavior against a live LLM session; not called by any Makefile target or CI pipeline |
 
 **Naming note**: Despite the directory name, `bin/` does not contain binaries or scripts that are symlinked to `$PATH`. The user-facing binary is `ocg` (at repo root). Do not add install-pipeline scripts here.
@@ -187,24 +187,24 @@ context/
 
 **Ownership rule**: Each `context/*.md` file owns its domain. Cross-domain pointers belong in a single file, not scattered.
 
-| File | Domain covered |
-|---|---|
-| `core.md` | Manifest schema, generator pipeline, install/uninstall lifecycle |
-| `development.md` | Dev loop, tech stack, make targets, environment configuration |
-| `harnesses.md` | Per-harness launchers, dispatch logic, system prompt assembly, settings |
-| `hooks.md` | Hook scripts, registration, bash test suite, lifecycle events |
-| `pi-extensions.md` | Pi TypeScript extensions (askuserquestion, enforcement, subagents, web-utils) |
-| `recipes.md` | Recipe catalog — step-by-step implementation guides |
-| `rules-core.md` | Cross-cutting discipline rules included in every subagent |
-| `rules-roles.md` | Per-role rules (orchestrator, planner, developer, reviewer, committer) |
-| `rules-stacks.md` | Per-stack rules (phoenix, static) |
-| `scaffold.md` | Downstream app scaffolding pipeline |
-| `subagent-influence-stack.md` | How subagent system prompts are assembled and what influences each layer |
-| `subagents.md` | Subagent templates, roles, Jinja include graph |
-| `test-harness.md` | ExUnit scaffold test suite |
-| `repo-structure.md` | Physical repo layout (this file) |
-| `claude-token-mechanics.md` | Claude token budget mechanics and context window behavior |
-| `claude-token-tuning.md` | Practical token tuning strategies for agent sessions |
+| File                          | Domain covered                                                                |
+| ----------------------------- | ----------------------------------------------------------------------------- |
+| `core.md`                     | Manifest schema, generator pipeline, install/uninstall lifecycle              |
+| `development.md`              | Dev loop, tech stack, make targets, environment configuration                 |
+| `harnesses.md`                | Per-harness launchers, dispatch logic, system prompt assembly, settings       |
+| `hooks.md`                    | Hook scripts, registration, bash test suite, lifecycle events                 |
+| `pi-extensions.md`            | Pi TypeScript extensions (askuserquestion, enforcement, subagents, web-utils) |
+| `recipes.md`                  | Recipe catalog — step-by-step implementation guides                           |
+| `rules-core.md`               | Cross-cutting discipline rules included in every subagent                     |
+| `rules-roles.md`              | Per-role rules (orchestrator, planner, developer, reviewer, committer)        |
+| `rules-stacks.md`             | Per-stack rules (phoenix, static)                                             |
+| `scaffold.md`                 | Downstream app scaffolding pipeline                                           |
+| `subagent-influence-stack.md` | How subagent system prompts are assembled and what influences each layer      |
+| `subagents.md`                | Subagent templates, roles, Jinja include graph                                |
+| `test-harness.md`             | ExUnit scaffold test suite                                                    |
+| `repo-structure.md`           | Physical repo layout (this file)                                              |
+| `claude-token-mechanics.md`   | Claude token budget mechanics and context window behavior                     |
+| `claude-token-tuning.md`      | Practical token tuning strategies for agent sessions                          |
 
 ---
 
@@ -217,8 +217,8 @@ docs/
 
 **Purpose**: Contributor guides for non-trivial tasks that require multi-file coordination. Not AI orientation files (those are in `context/`). Not user quickstart (that is `README.md`).
 
-| File | Audience | Content |
-|---|---|---|
+| File                       | Audience                                         | Content                                                                      |
+| -------------------------- | ------------------------------------------------ | ---------------------------------------------------------------------------- |
 | `docs/adding-a-harness.md` | Contributors adding support for a new AI harness | Step-by-step: manifest, launcher scripts, dispatch, hooks, generate pipeline |
 
 Add new docs here when a task requires coordinated changes across multiple subsystems that cannot be captured in a single domain context file.
@@ -277,44 +277,44 @@ harnesses/
 
 The Claude harness. Contains everything specific to operating the `claude` CLI as the AI backend.
 
-| File / Dir | Purpose |
-|---|---|
-| `claude-build.sh` | Build mode launcher — sets model/effort, invokes `claude` with system prompt and hooks |
-| `claude-debug.sh` | Debug mode launcher (Opus, high effort) |
-| `claude-shape.sh` | Shape mode launcher (Opus, high effort, web tools enabled) |
-| `claude-refactor.sh` | Refactor mode launcher (Opus, high effort, web tools enabled) |
-| `dispatch.sh` | Mode dispatcher — reads manifest, selects launcher, execs claude |
-| `load-role.sh` | Reads `templates/generator/config.yaml` to resolve model/effort/tools for a given role name |
-| `tools-header/` | Per-mode system prompt header fragments; prepended to shared prompt bodies at generate time |
-| `claude-build-system-prompt.txt` | **Generated file** — concatenation of tools-header + prompt-body; do not hand-edit; regenerated by `make install` |
-| `claude-code-settings.json` | Source Claude Code settings: hook registrations, permissions, environment variables; updated by `hook_registrations.py` |
-| `claude-build-config.json` | Build mode config: model, effort, tool allowlist |
-| `manifest.yaml` | Claude harness install contract — declares agents, hooks, launchers, modes, install/uninstall steps |
-| `commands/` | Slash command source files installed to `~/.claude/commands/` at install time |
-| `hooks/` | Hook scripts (PreToolUse, SubagentStop, Stop) + paired `_test.sh` files + `lib/` |
-| `build-tools.txt` | Tool allowlist for build mode |
+| File / Dir                       | Purpose                                                                                                                 |
+| -------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| `claude-build.sh`                | Build mode launcher — sets model/effort, invokes `claude` with system prompt and hooks                                  |
+| `claude-debug.sh`                | Debug mode launcher (Opus, high effort)                                                                                 |
+| `claude-shape.sh`                | Shape mode launcher (Opus, high effort, web tools enabled)                                                              |
+| `claude-refactor.sh`             | Refactor mode launcher (Opus, high effort, web tools enabled)                                                           |
+| `dispatch.sh`                    | Mode dispatcher — reads manifest, selects launcher, execs claude                                                        |
+| `load-role.sh`                   | Reads `templates/generator/config.yaml` to resolve model/effort/tools for a given role name                             |
+| `tools-header/`                  | Per-mode system prompt header fragments; prepended to shared prompt bodies at generate time                             |
+| `claude-build-system-prompt.txt` | **Generated file** — concatenation of tools-header + prompt-body; do not hand-edit; regenerated by `make install`       |
+| `claude-code-settings.json`      | Source Claude Code settings: hook registrations, permissions, environment variables; updated by `hook_registrations.py` |
+| `claude-build-config.json`       | Build mode config: model, effort, tool allowlist                                                                        |
+| `manifest.yaml`                  | Claude harness install contract — declares agents, hooks, launchers, modes, install/uninstall steps                     |
+| `commands/`                      | Slash command source files installed to `~/.claude/commands/` at install time                                           |
+| `hooks/`                         | Hook scripts (PreToolUse, SubagentStop, Stop) + paired `_test.sh` files + `lib/`                                        |
+| `build-tools.txt`                | Tool allowlist for build mode                                                                                           |
 
 #### `harnesses/claude/hooks/`
 
 All hook scripts for the claude harness. Each hook enforces one discipline rule and has a paired `<name>_test.sh` hermetic bash test.
 
-| Subdirectory / File | Purpose |
-|---|---|
-| `lib/hooks-lib.sh` | Shared bash library: `session_log_from_transcript`, role detection, gate verdict helpers |
-| `lib/gate-select.sh` | Selects which gate to run based on stack detected in project |
-| `run-tests.sh` | Runs all `*_test.sh` files in parallel (up to 8 jobs); used by `make test` |
-| `phoenix-dev-gate.sh` | SubagentStop — runs Phoenix test suite, appends `ALL CLEAR / FAILED / INCONCLUSIVE` to step log |
-| `static-site-build-check.sh` | SubagentStop — builds static site, appends gate verdict |
-| `step-log-missing-guard.sh` | Stop — blocks session exit if dev ran but no step log Write found in transcript |
-| `stop-cycle-guard.sh` | Stop — blocks premature stop before full delegation cycle completes |
-| `stop-resume.sh` | Stop — resumes orchestration when session was interrupted mid-cycle |
-| `session-log-section-integrity.sh` | PreToolUse — enforces `## <role> Section` header present before subagent Edit |
-| `no-python-json.sh` | PreToolUse — blocks inline `python3 -c` JSON parsing |
-| `no-cat-pipe.sh` | PreToolUse — blocks `cat file | ...`, `head`, `tail` pipe patterns |
-| `orchestrator-no-source-edit.sh` | PreToolUse — blocks orchestrator from writing source files directly |
-| `pre-commit-guard.sh` | PreToolUse — blocks `git commit` outside committer role |
-| `subagent-read-discipline.sh` | PreToolUse — blocks subagents from reading context files they should not touch |
-| `context-curator-guard.sh` | PreToolUse — enforces context curator edit scope |
+| Subdirectory / File                | Purpose                                                                                         |
+| ---------------------------------- | ----------------------------------------------------------------------------------------------- | ---------------------------------- |
+| `lib/hooks-lib.sh`                 | Shared bash library: `session_log_from_transcript`, role detection, gate verdict helpers        |
+| `lib/gate-select.sh`               | Selects which gate to run based on stack detected in project                                    |
+| `run-tests.sh`                     | Runs all `*_test.sh` files in parallel (up to 8 jobs); used by `make test`                      |
+| `phoenix-dev-gate.sh`              | SubagentStop — runs Phoenix test suite, appends `ALL CLEAR / FAILED / INCONCLUSIVE` to step log |
+| `static-site-build-check.sh`       | SubagentStop — builds static site, appends gate verdict                                         |
+| `step-log-missing-guard.sh`        | Stop — blocks session exit if dev ran but no step log Write found in transcript                 |
+| `stop-cycle-guard.sh`              | Stop — blocks premature stop before full delegation cycle completes                             |
+| `stop-resume.sh`                   | Stop — resumes orchestration when session was interrupted mid-cycle                             |
+| `session-log-section-integrity.sh` | PreToolUse — enforces `## <role> Section` header present before subagent Edit                   |
+| `no-python-json.sh`                | PreToolUse — blocks inline `python3 -c` JSON parsing                                            |
+| `no-cat-pipe.sh`                   | PreToolUse — blocks `cat file                                                                   | ...`, `head`, `tail` pipe patterns |
+| `orchestrator-no-source-edit.sh`   | PreToolUse — blocks orchestrator from writing source files directly                             |
+| `pre-commit-guard.sh`              | PreToolUse — blocks `git commit` outside committer role                                         |
+| `subagent-read-discipline.sh`      | PreToolUse — blocks subagents from reading context files they should not touch                  |
+| `context-curator-guard.sh`         | PreToolUse — enforces context curator edit scope                                                |
 
 Full hook catalog: `context/hooks.md`.
 
@@ -322,37 +322,37 @@ Full hook catalog: `context/hooks.md`.
 
 Slash command source files. Installed to `~/.claude/commands/` at `make install` time. Each `.md` file becomes an available `/command` in Claude Code sessions.
 
-| File | Slash command |
-|---|---|
-| `command.md` | `/command` — start a new build session |
-| `document.md` | `/document` — run documentation mode |
-| `ready.md` | `/ready` — check session readiness |
+| File                     | Slash command                             |
+| ------------------------ | ----------------------------------------- |
+| `command.md`             | `/command` — start a new build session    |
+| `document.md`            | `/document` — run documentation mode      |
+| `ready.md`               | `/ready` — check session readiness        |
 | `release-new-version.md` | `/release-new-version` — release workflow |
-| `rule.md` | `/rule` — add a new rule |
+| `rule.md`                | `/rule` — add a new rule                  |
 
 #### `harnesses/pi/`
 
 The Pi harness. Mirrors the claude harness structure but delegates to the `pi` CLI.
 
-| File / Dir | Purpose |
-|---|---|
-| `pi-build.sh` / `pi-debug.sh` / `pi-shape.sh` / `pi-refactor.sh` | Mode launchers for Pi |
-| `dispatch.sh` | Pi mode dispatcher |
-| `manifest.yaml` | Pi harness install contract |
-| `pi-extensions/` | TypeScript npm packages that extend Pi with custom tools |
-| `pi-prompts/` | Pi-specific prompt fragments (one file: `document.md`) |
-| `tools-header/` | Per-mode system prompt header fragments |
+| File / Dir                                                       | Purpose                                                  |
+| ---------------------------------------------------------------- | -------------------------------------------------------- |
+| `pi-build.sh` / `pi-debug.sh` / `pi-shape.sh` / `pi-refactor.sh` | Mode launchers for Pi                                    |
+| `dispatch.sh`                                                    | Pi mode dispatcher                                       |
+| `manifest.yaml`                                                  | Pi harness install contract                              |
+| `pi-extensions/`                                                 | TypeScript npm packages that extend Pi with custom tools |
+| `pi-prompts/`                                                    | Pi-specific prompt fragments (one file: `document.md`)   |
+| `tools-header/`                                                  | Per-mode system prompt header fragments                  |
 
 #### `harnesses/pi/pi-extensions/`
 
 TypeScript npm packages, each independently installable. Extend Pi with tools the base CLI does not provide.
 
-| Extension | Purpose |
-|---|---|
+| Extension          | Purpose                                                                         |
+| ------------------ | ------------------------------------------------------------------------------- |
 | `askuserquestion/` | Implements `AskUserQuestion` tool — interactive user prompts during Pi sessions |
-| `enforcement/` | Rule enforcement at runtime — blocks disallowed patterns (mirrors claude hooks) |
-| `subagents/` | Agent delegation bridge — enables Pi to delegate to subagents |
-| `web-utils/` | HTTP fetch, web search helpers |
+| `enforcement/`     | Rule enforcement at runtime — blocks disallowed patterns (mirrors claude hooks) |
+| `subagents/`       | Agent delegation bridge — enables Pi to delegate to subagents                   |
+| `web-utils/`       | HTTP fetch, web search helpers                                                  |
 
 Each extension has its own `package.json`, `src/`, compiled output, and `node_modules/`. Do not edit compiled output directly — edit `src/` and rebuild.
 
@@ -391,16 +391,16 @@ shared/
 
 Templates and rendered copies for downstream project agent files.
 
-| File | Purpose |
-|---|---|
-| `AGENTS-phoenix.md.j2` | Jinja source — downstream `AGENTS.md` for Phoenix apps |
-| `AGENTS-phoenix.md` | Rendered reference copy (checked in; must stay in sync with `.j2`) |
-| `AGENTS-static.md.j2` | Jinja source — downstream `AGENTS.md` for static sites |
-| `AGENTS-static.md` | Rendered reference copy for static sites |
-| `CLAUDE-phoenix.md` | Downstream `CLAUDE.md` for Phoenix apps (plain file, not symlink) |
-| `CLAUDE-static.md` | Downstream `CLAUDE.md` for static sites |
-| `PROJECT_CONTEXT-phoenix-template.md` | Format reference for downstream `PROJECT_CONTEXT.md` |
-| `PROJECT_CONTEXT-static-template.md` | Format reference for static site `PROJECT_CONTEXT.md` |
+| File                                  | Purpose                                                            |
+| ------------------------------------- | ------------------------------------------------------------------ |
+| `AGENTS-phoenix.md.j2`                | Jinja source — downstream `AGENTS.md` for Phoenix apps             |
+| `AGENTS-phoenix.md`                   | Rendered reference copy (checked in; must stay in sync with `.j2`) |
+| `AGENTS-static.md.j2`                 | Jinja source — downstream `AGENTS.md` for static sites             |
+| `AGENTS-static.md`                    | Rendered reference copy for static sites                           |
+| `CLAUDE-phoenix.md`                   | Downstream `CLAUDE.md` for Phoenix apps (plain file, not symlink)  |
+| `CLAUDE-static.md`                    | Downstream `CLAUDE.md` for static sites                            |
+| `PROJECT_CONTEXT-phoenix-template.md` | Format reference for downstream `PROJECT_CONTEXT.md`               |
+| `PROJECT_CONTEXT-static-template.md`  | Format reference for static site `PROJECT_CONTEXT.md`              |
 
 `codegen-scaffold` copies these into a new project directory during provisioning.
 
@@ -440,14 +440,14 @@ shared/rules/
 
 Rules are `{% include %}`d into subagent `.md.j2` templates at generate time. Subagents do not read rules at runtime — they are baked in. To add a rule: write the `.md` file, add an `{% include %}` in the relevant `.md.j2` template(s), run `make install`.
 
-| Directory | Covers |
-|---|---|
-| `_core/` | Universal rules for all agents: bash discipline, cwd discipline, output style, session log format |
-| `build-runtime/` | Rules specific to build-runtime behavior and edge cases |
-| `roles/` | Per-role rules: what each agent is allowed/forbidden to do |
-| `shared/` | Shared rule fragments referenced by multiple roles |
-| `stacks/phoenix/` | Phoenix/Elixir specific rules: testing, LiveView, developer pre-done checklist |
-| `stacks/static/` | Static site rules: Tailwind v4, Hugo, Vite, assets, JavaScript |
+| Directory         | Covers                                                                                            |
+| ----------------- | ------------------------------------------------------------------------------------------------- |
+| `_core/`          | Universal rules for all agents: bash discipline, cwd discipline, output style, session log format |
+| `build-runtime/`  | Rules specific to build-runtime behavior and edge cases                                           |
+| `roles/`          | Per-role rules: what each agent is allowed/forbidden to do                                        |
+| `shared/`         | Shared rule fragments referenced by multiple roles                                                |
+| `stacks/phoenix/` | Phoenix/Elixir specific rules: testing, LiveView, developer pre-done checklist                    |
+| `stacks/static/`  | Static site rules: Tailwind v4, Hugo, Vite, assets, JavaScript                                    |
 
 Full domain: `context/rules-core.md`, `context/rules-roles.md`, `context/rules-stacks.md`.
 
@@ -560,14 +560,14 @@ templates/generator/
     dual_render.md.j2       ← fixture template used by generator self-tests
 ```
 
-| File | Purpose |
-|---|---|
-| `generate.sh` | Entry — reads manifest, renders `.md.j2` templates into `templates/generated/<harness>/` |
-| `process_template.py` | Jinja-style `{% include %}` processor; inlines rule/recipe files into subagent templates |
+| File                    | Purpose                                                                                                                              |
+| ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| `generate.sh`           | Entry — reads manifest, renders `.md.j2` templates into `templates/generated/<harness>/`                                             |
+| `process_template.py`   | Jinja-style `{% include %}` processor; inlines rule/recipe files into subagent templates                                             |
 | `hook_registrations.py` | Reads `harnesses/claude/hooks/*.sh`, generates hook entries in `claude-code-settings.json` and optionally into combobulate manifests |
-| `config.yaml` | Maps role names (planner-phoenix, developer-html…) to model IDs, effort levels, and tool configurations |
-| `manifest-lib.sh` | Bash library wrapping `yq` for structured manifest field access |
-| `test_dual_render.sh` | Renders both harnesses from same templates, diffs output; catches template divergence between pi and claude |
+| `config.yaml`           | Maps role names (planner-phoenix, developer-html…) to model IDs, effort levels, and tool configurations                              |
+| `manifest-lib.sh`       | Bash library wrapping `yq` for structured manifest field access                                                                      |
+| `test_dual_render.sh`   | Renders both harnesses from same templates, diffs output; catches template divergence between pi and claude                          |
 
 Full domain: `context/core.md`.
 
@@ -602,15 +602,15 @@ test_harness/
 
 **Purpose**: Elixir/ExUnit project that validates scaffold output and stack behavior end-to-end. Tests scaffold a fresh app using `codegen-scaffold`, run assertions on the generated code, and exercise real LLM build sessions through `codegen-build`. Not fast — these are the "does the whole system produce a working app?" gate.
 
-| File | Purpose |
-|---|---|
-| `mix.exs` | Elixir project definition — deps, test paths, mix aliases |
-| `test/stacks/phoenix/` | ExUnit tests for Phoenix scaffold: compiles, seeds, routes, LiveView renders |
-| `test/stacks/static/` | ExUnit tests for static scaffold: builds, CSS emitted, HTML valid |
-| `lib/codegen_test_harness/assertions.ex` | Shared assertion helpers used across stack tests |
-| `lib/codegen_test_harness/fixtures.ex` | Fixture helpers for scaffold and generated output tests |
-| `last_green.json` | Baseline: last commit SHA where full test suite passed; written by `record-green.sh` |
-| `record-green.sh` | Writes `last_green.json` with current commit SHA + tool versions |
+| File                                     | Purpose                                                                              |
+| ---------------------------------------- | ------------------------------------------------------------------------------------ |
+| `mix.exs`                                | Elixir project definition — deps, test paths, mix aliases                            |
+| `test/stacks/phoenix/`                   | ExUnit tests for Phoenix scaffold: compiles, seeds, routes, LiveView renders         |
+| `test/stacks/static/`                    | ExUnit tests for static scaffold: builds, CSS emitted, HTML valid                    |
+| `lib/codegen_test_harness/assertions.ex` | Shared assertion helpers used across stack tests                                     |
+| `lib/codegen_test_harness/fixtures.ex`   | Fixture helpers for scaffold and generated output tests                              |
+| `last_green.json`                        | Baseline: last commit SHA where full test suite passed; written by `record-green.sh` |
+| `record-green.sh`                        | Writes `last_green.json` with current commit SHA + tool versions                     |
 
 Run via `make test-stacks` (both harnesses, parallel partitions) or `make test-stacks-claude` / `make test-stacks-pi` individually. Full domain: `context/test-harness.md`.
 
@@ -626,39 +626,39 @@ Do not add application packages here. Pi extension npm packages have their own `
 
 ## Artifact Ownership and Update Triggers
 
-| Artifact | Owner | Updated by | Trigger |
-|---|---|---|---|
-| `harnesses/claude/claude-code-settings.json` | Generator | `hook_registrations.py` | `make install` or `make hook-parity` |
-| `harnesses/claude/claude-build-system-prompt.txt` | Generator | `generate.sh` | `make install` |
-| `AGENTS.md` (repo root) | Template | `process_template.py` rendering `AGENTS-HYBRID.md.j2` | `make install` |
-| `CLAUDE.md` (repo root) | Symlink | Created once by `install.sh`; points to `AGENTS.md` | Never needs updating |
-| `shared/` (all subdirs) | Contributors / curator | Manual edit or context-curator subagent | Feature development, learning accumulation |
-| `context/*.md` | Context curator | `context-curator.md.j2` subagent + manual | Post-reviewer in each dev cycle |
-| `codegen/logging/*.md` | Orchestrator + subagents | Session log write/edit during dev sessions | Every dev cycle on THIS repo |
-| `test_harness/last_green.json` | CI / `record-green.sh` | `make record-green` after `make test-all` passes | Pre-deploy gate |
-| `harnesses/pi/pi-extensions/*/node_modules/` | npm | `npm install` in extension dir | After any `package.json` change |
-| Root `node_modules/` | npm | `npm install` at repo root | After `package.json` changes |
+| Artifact                                          | Owner                    | Updated by                                            | Trigger                                    |
+| ------------------------------------------------- | ------------------------ | ----------------------------------------------------- | ------------------------------------------ |
+| `harnesses/claude/claude-code-settings.json`      | Generator                | `hook_registrations.py`                               | `make install` or `make hook-parity`       |
+| `harnesses/claude/claude-build-system-prompt.txt` | Generator                | `generate.sh`                                         | `make install`                             |
+| `AGENTS.md` (repo root)                           | Template                 | `process_template.py` rendering `AGENTS-HYBRID.md.j2` | `make install`                             |
+| `CLAUDE.md` (repo root)                           | Symlink                  | Created once by `install.sh`; points to `AGENTS.md`   | Never needs updating                       |
+| `shared/` (all subdirs)                           | Contributors / curator   | Manual edit or context-curator subagent               | Feature development, learning accumulation |
+| `context/*.md`                                    | Context curator          | `context-curator.md.j2` subagent + manual             | Post-reviewer in each dev cycle            |
+| `codegen/logging/*.md`                            | Orchestrator + subagents | Session log write/edit during dev sessions            | Every dev cycle on THIS repo               |
+| `test_harness/last_green.json`                    | CI / `record-green.sh`   | `make record-green` after `make test-all` passes      | Pre-deploy gate                            |
+| `harnesses/pi/pi-extensions/*/node_modules/`      | npm                      | `npm install` in extension dir                        | After any `package.json` change            |
+| Root `node_modules/`                              | npm                      | `npm install` at repo root                            | After `package.json` changes               |
 
 ---
 
 ## Cross-References
 
-| Topic | File |
-|---|---|
-| Generator pipeline, manifest schema, install lifecycle | `context/core.md` |
-| Harness launchers, dispatch, system prompt assembly | `context/harnesses.md` |
-| Hook scripts, registration, lifecycle events | `context/hooks.md` |
-| Pi TypeScript extensions | `context/pi-extensions.md` |
-| Recipe catalog | `context/recipes.md` |
-| Core discipline rules | `context/rules-core.md` |
-| Per-role rules | `context/rules-roles.md` |
-| Per-stack rules | `context/rules-stacks.md` |
-| Downstream app scaffolding | `context/scaffold.md` |
-| Subagent templates and Jinja include graph | `context/subagents.md` |
-| ExUnit stack test suite | `context/test-harness.md` |
-| Dev loop, tech stack, make targets | `context/development.md` |
-| Subagent system prompt assembly layers | `context/subagent-influence-stack.md` |
-| Claude token budget and context window behavior | `context/claude-token-mechanics.md` |
+| Topic                                                  | File                                  |
+| ------------------------------------------------------ | ------------------------------------- |
+| Generator pipeline, manifest schema, install lifecycle | `context/core.md`                     |
+| Harness launchers, dispatch, system prompt assembly    | `context/harnesses.md`                |
+| Hook scripts, registration, lifecycle events           | `context/hooks.md`                    |
+| Pi TypeScript extensions                               | `context/pi-extensions.md`            |
+| Recipe catalog                                         | `context/recipes.md`                  |
+| Core discipline rules                                  | `context/rules-core.md`               |
+| Per-role rules                                         | `context/rules-roles.md`              |
+| Per-stack rules                                        | `context/rules-stacks.md`             |
+| Downstream app scaffolding                             | `context/scaffold.md`                 |
+| Subagent templates and Jinja include graph             | `context/subagents.md`                |
+| ExUnit stack test suite                                | `context/test-harness.md`             |
+| Dev loop, tech stack, make targets                     | `context/development.md`              |
+| Subagent system prompt assembly layers                 | `context/subagent-influence-stack.md` |
+| Claude token budget and context window behavior        | `context/claude-token-mechanics.md`   |
 
 ---
 
@@ -689,6 +689,7 @@ repo layout, directory structure, where does X go, file tree, top-level files, c
 ## Update When Changing
 
 Update this file when:
+
 - A new top-level directory is added to the repo root
 - An existing directory's purpose changes (e.g., `ai-agents/` gains actual content)
 - A new root-level script or config file is added

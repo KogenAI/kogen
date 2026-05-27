@@ -23,8 +23,8 @@ DATA_DIR="$SCRIPT_DIR/data/mix_exs"
 MIX_EXS="$APP_PATH/mix.exs"
 
 if [ ! -f "$MIX_EXS" ]; then
-  echo "[mix_exs.sh] ERROR: $MIX_EXS not found" >&2
-  exit 1
+    echo "[mix_exs.sh] ERROR: $MIX_EXS not found" >&2
+    exit 1
 fi
 
 # ---------------------------------------------------------------------------
@@ -32,11 +32,11 @@ fi
 # Idempotent: skip if :credo or :tidewave already present.
 # ---------------------------------------------------------------------------
 if ! grep -qF '      {:credo,' "$MIX_EXS"; then
-  sed -i '' "s|      {:lazy_html,|      {:credo, \"~> 1.7\", only: [:dev, :test], runtime: false},\n      {:lazy_html,|" "$MIX_EXS"
+    sed -i '' "s|      {:lazy_html,|      {:credo, \"~> 1.7\", only: [:dev, :test], runtime: false},\n      {:lazy_html,|" "$MIX_EXS"
 fi
 
 if ! grep -qF '      {:tidewave,' "$MIX_EXS"; then
-  sed -i '' "s|      {:lazy_html,|      {:tidewave, \"~> 0.5\", only: [:dev]},\n      {:lazy_html,|" "$MIX_EXS"
+    sed -i '' "s|      {:lazy_html,|      {:tidewave, \"~> 0.5\", only: [:dev]},\n      {:lazy_html,|" "$MIX_EXS"
 fi
 
 # ---------------------------------------------------------------------------
@@ -44,11 +44,11 @@ fi
 # Idempotent: skip if "ecto.setup" alias already present.
 # ---------------------------------------------------------------------------
 if ! grep -qF '"ecto.setup":' "$MIX_EXS"; then
-  # Build aliases content with app_name substituted
-  ALIASES_CONTENT="$(sed "s/<%= app_name %>/${APP_NAME}/g" "$DATA_DIR/aliases.txt")"
+    # Build aliases content with app_name substituted
+    ALIASES_CONTENT="$(sed "s/<%= app_name %>/${APP_NAME}/g" "$DATA_DIR/aliases.txt")"
 
-  # Use Python to do the multi-line replacement safely
-  python3 - "$MIX_EXS" "$ALIASES_CONTENT" << 'PYEOF'
+    # Use Python to do the multi-line replacement safely
+    python3 - "$MIX_EXS" "$ALIASES_CONTENT" <<'PYEOF'
 import sys
 import re
 
@@ -77,9 +77,9 @@ fi
 # Idempotent: skip if sobelow preferred_env already present.
 # ---------------------------------------------------------------------------
 if ! grep -qF 'sobelow: :test' "$MIX_EXS"; then
-  CLI_CONTENT="$(cat "$DATA_DIR/cli.txt")"
+    CLI_CONTENT="$(cat "$DATA_DIR/cli.txt")"
 
-  python3 - "$MIX_EXS" "$CLI_CONTENT" << 'PYEOF'
+    python3 - "$MIX_EXS" "$CLI_CONTENT" <<'PYEOF'
 import sys
 import re
 
@@ -117,12 +117,12 @@ fi
 # Idempotent: skip if dialyzer plt_file already present.
 # ---------------------------------------------------------------------------
 if ! grep -qF 'plt_file: {:no_warn' "$MIX_EXS"; then
-  PROJECT_CONTENT="$(sed \
-    -e "s/<%= app_name_module %>/${APP_NAME_MODULE}/g" \
-    -e "s/<%= app_name %>/${APP_NAME}/g" \
-    "$DATA_DIR/project.txt")"
+    PROJECT_CONTENT="$(sed \
+        -e "s/<%= app_name_module %>/${APP_NAME_MODULE}/g" \
+        -e "s/<%= app_name %>/${APP_NAME}/g" \
+        "$DATA_DIR/project.txt")"
 
-  python3 - "$MIX_EXS" "$PROJECT_CONTENT" << 'PYEOF'
+    python3 - "$MIX_EXS" "$PROJECT_CONTENT" <<'PYEOF'
 import sys
 import re
 
@@ -152,9 +152,9 @@ fi
 # Idempotent: skip if phoenix_deps already defined.
 # ---------------------------------------------------------------------------
 if ! grep -qF 'defp phoenix_deps do' "$MIX_EXS"; then
-  DEPS_CONTENT="$(cat "$DATA_DIR/deps.txt")"
+    DEPS_CONTENT="$(cat "$DATA_DIR/deps.txt")"
 
-  python3 - "$MIX_EXS" "$DEPS_CONTENT" << 'PYEOF'
+    python3 - "$MIX_EXS" "$DEPS_CONTENT" <<'PYEOF'
 import sys
 import re
 

@@ -80,8 +80,8 @@ fi
 
 # Block if gate matches placeholder denylist (case-insensitive)
 gate_lower=$(printf '%s' "$gate_value" | tr '[:upper:]' '[:lower:]')
-if printf '%s' "$gate_lower" | grep -qE '^(tbd|pending|to be determined|todo)$' || \
-   printf '%s' "$gate_value" | grep -qE '^<.*>$'; then
+if printf '%s' "$gate_lower" | grep -qE '^(tbd|pending|to be determined|todo)$' ||
+    printf '%s' "$gate_value" | grep -qE '^<.*>$'; then
     reason="stop-verify-planner-gate: planner stopped with \`**Gate**:\` missing or placeholder in \`## Plan\` of ${log_file}. Per codegen/rules/roles/planner.md Outputs (1), planner MUST declare exact gate command before Stop. Edit step log to set \`**Gate**: <make target>\` inside ## Plan, then return."
     debug_log stop-verify-planner-gate "BLOCK: gate is placeholder ($gate_value)"
     block "$reason"

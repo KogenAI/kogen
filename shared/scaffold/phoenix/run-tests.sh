@@ -10,29 +10,29 @@ total_fail=0
 any_fail=0
 
 run_test() {
-  local t="$1"
-  local name
-  name="$(basename "$t")"
-  local out
-  out="$(bash "$t" 2>&1)"
-  local rc=$?
-  echo "$out"
-  # Extract pass/fail counts from last "N passed, N failed" line
-  local summary
-  summary="$(echo "$out" | grep -E '^[0-9]+ passed, [0-9]+ failed$' | tail -1)"
-  if [ -n "$summary" ]; then
-    local p f
-    p="$(echo "$summary" | awk '{print $1}')"
-    f="$(echo "$summary" | awk '{print $3}')"
-    echo "ok: $name — $summary"
-  else
-    if [ "$rc" -ne 0 ]; then
-      echo "FAIL: $name — no summary line (exit $rc)"
+    local t="$1"
+    local name
+    name="$(basename "$t")"
+    local out
+    out="$(bash "$t" 2>&1)"
+    local rc=$?
+    echo "$out"
+    # Extract pass/fail counts from last "N passed, N failed" line
+    local summary
+    summary="$(echo "$out" | grep -E '^[0-9]+ passed, [0-9]+ failed$' | tail -1)"
+    if [ -n "$summary" ]; then
+        local p f
+        p="$(echo "$summary" | awk '{print $1}')"
+        f="$(echo "$summary" | awk '{print $3}')"
+        echo "ok: $name — $summary"
     else
-      echo "ok: $name — (no summary)"
+        if [ "$rc" -ne 0 ]; then
+            echo "FAIL: $name — no summary line (exit $rc)"
+        else
+            echo "ok: $name — (no summary)"
+        fi
     fi
-  fi
-  return $rc
+    return $rc
 }
 
 fails=0
@@ -40,25 +40,25 @@ files=()
 
 # Collect mutation tests
 while IFS= read -r -d '' f; do
-  files+=("$f")
+    files+=("$f")
 done < <(find "$HERE/mutations" -maxdepth 1 -name '*_test.sh' -type f -print0 2>/dev/null)
 
 # Collect eex_render_test.sh
 while IFS= read -r -d '' f; do
-  files+=("$f")
+    files+=("$f")
 done < <(find "$HERE" -maxdepth 1 -name 'eex_render_test.sh' -type f -print0 2>/dev/null)
 
 if [ "${#files[@]}" -eq 0 ]; then
-  echo "scaffold mutation tests: no test files found under $HERE"
-  exit 1
+    echo "scaffold mutation tests: no test files found under $HERE"
+    exit 1
 fi
 
 for t in "${files[@]}"; do
-  run_test "$t" || fails=$((fails + 1))
+    run_test "$t" || fails=$((fails + 1))
 done
 
 if [ "$fails" -gt 0 ]; then
-  echo "scaffold mutation tests: $fails file(s) FAILED"
-  exit 1
+    echo "scaffold mutation tests: $fails file(s) FAILED"
+    exit 1
 fi
 echo "scaffold mutation tests: all PASS"

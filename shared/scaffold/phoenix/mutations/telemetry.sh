@@ -13,8 +13,8 @@ APP_NAME="$2"
 TELEMETRY="$APP_PATH/lib/${APP_NAME}_web/telemetry.ex"
 
 if [ ! -f "$TELEMETRY" ]; then
-  echo "[telemetry.sh] ERROR: $TELEMETRY not found" >&2
-  exit 1
+    echo "[telemetry.sh] ERROR: $TELEMETRY not found" >&2
+    exit 1
 fi
 
 # Replace "use Supervisor\n  import" with "use Supervisor\n\n  import"
@@ -22,7 +22,7 @@ fi
 sed -i '' "s/use Supervisor$'\n'  import/use Supervisor$'\n'$'\n'  import/" "$TELEMETRY" 2>/dev/null || true
 
 # BSD sed doesn't interpolate $'...' in -e expressions; use printf approach instead
-python3 - "$TELEMETRY" << 'PYEOF'
+python3 - "$TELEMETRY" <<'PYEOF'
 import sys
 
 path = sys.argv[1]

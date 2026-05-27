@@ -26,46 +26,46 @@ CWD=""
 APP_NAME=""
 
 while [[ $# -gt 0 ]]; do
-  case "$1" in
+    case "$1" in
     --app-name=*)
-      APP_NAME="${1#--app-name=}"
-      shift
-      ;;
+        APP_NAME="${1#--app-name=}"
+        shift
+        ;;
     --app-name)
-      APP_NAME="$2"
-      shift 2
-      ;;
+        APP_NAME="$2"
+        shift 2
+        ;;
     -*)
-      printf '[static/scaffold.sh] Unknown flag: %s\n' "$1" >&2
-      exit 1
-      ;;
-    *)
-      if [[ -z "$SLUG" ]]; then
-        SLUG="$1"
-      elif [[ -z "$CWD" ]]; then
-        CWD="$1"
-      else
-        printf '[static/scaffold.sh] Unexpected positional arg: %s\n' "$1" >&2
+        printf '[static/scaffold.sh] Unknown flag: %s\n' "$1" >&2
         exit 1
-      fi
-      shift
-      ;;
-  esac
+        ;;
+    *)
+        if [[ -z "$SLUG" ]]; then
+            SLUG="$1"
+        elif [[ -z "$CWD" ]]; then
+            CWD="$1"
+        else
+            printf '[static/scaffold.sh] Unexpected positional arg: %s\n' "$1" >&2
+            exit 1
+        fi
+        shift
+        ;;
+    esac
 done
 
 if [[ -z "$SLUG" || -z "$CWD" ]]; then
-  printf 'Usage: scaffold.sh <slug> <cwd> --app-name <name>\n' >&2
-  exit 2
+    printf 'Usage: scaffold.sh <slug> <cwd> --app-name <name>\n' >&2
+    exit 2
 fi
 
 if [[ -z "$APP_NAME" ]]; then
-  # Fall back to slug if app-name not provided
-  APP_NAME="$SLUG"
+    # Fall back to slug if app-name not provided
+    APP_NAME="$SLUG"
 fi
 
 # ── assets/css/app.css ────────────────────────────────────────────────────────
 mkdir -p "$CWD/assets/css"
-printf '@import "tailwindcss";\n' > "$CWD/assets/css/app.css"
+printf '@import "tailwindcss";\n' >"$CWD/assets/css/app.css"
 
 # ── static/images/.keep and static/js/.keep ───────────────────────────────────
 mkdir -p "$CWD/static/images"
@@ -75,7 +75,7 @@ mkdir -p "$CWD/static/js"
 touch "$CWD/static/js/.keep"
 
 # ── static/index.html ─────────────────────────────────────────────────────────
-cat > "$CWD/static/index.html" <<EOF
+cat >"$CWD/static/index.html" <<EOF
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -91,7 +91,7 @@ cat > "$CWD/static/index.html" <<EOF
 EOF
 
 # ── package.json ──────────────────────────────────────────────────────────────
-cat > "$CWD/package.json" <<EOF
+cat >"$CWD/package.json" <<EOF
 {
   "name": "${SLUG}",
   "scripts": {
@@ -110,7 +110,7 @@ cat > "$CWD/package.json" <<EOF
 EOF
 
 # ── README.md ─────────────────────────────────────────────────────────────────
-cat > "$CWD/README.md" <<EOF
+cat >"$CWD/README.md" <<EOF
 # ${APP_NAME}
 
 ${APP_NAME} is a static website built with [Combobulate](https://combobulate.dev).

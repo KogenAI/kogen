@@ -14,20 +14,20 @@ ROUTER="$APP_PATH/lib/$(echo "$APP_NAME_MODULE" | tr '[:upper:]' '[:lower:]')_we
 
 # Fallback: scan for the router file if naming differs
 if [ ! -f "$ROUTER" ]; then
-  # app slug may differ from module name due to camelization
-  ROUTER="$(find "$APP_PATH/lib" -name "router.ex" -path "*_web*" | head -1)"
+    # app slug may differ from module name due to camelization
+    ROUTER="$(find "$APP_PATH/lib" -name "router.ex" -path "*_web*" | head -1)"
 fi
 
 if [ ! -f "$ROUTER" ]; then
-  echo "[router.sh] ERROR: router.ex not found under $APP_PATH/lib" >&2
-  exit 1
+    echo "[router.sh] ERROR: router.ex not found under $APP_PATH/lib" >&2
+    exit 1
 fi
 
 HEALTH_ROUTE="  resources \"/health\", ${APP_NAME_MODULE}Web.HealthController, only: [:index]"
 
 if ! grep -qF 'HealthController' "$ROUTER"; then
-  # Append before the final `end` of the file
-  sed -i '' "s|^end$|${HEALTH_ROUTE}\nend|" "$ROUTER"
+    # Append before the final `end` of the file
+    sed -i '' "s|^end$|${HEALTH_ROUTE}\nend|" "$ROUTER"
 fi
 
 echo "[router.sh] done"

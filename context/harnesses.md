@@ -6,25 +6,25 @@ System prompt assembly: `tools-header/<mode>.txt` + `harnesses/shared/prompt-bod
 
 ## Components
 
-| File / Dir                                    | Purpose                                                               |
-| --------------------------------------------- | --------------------------------------------------------------------- |
-| `harnesses/claude/claude-build.sh`            | Launcher for build mode — sets model/effort, invokes `claude`        |
-| `harnesses/claude/claude-debug.sh`            | Launcher for debug mode (Opus, high effort)                           |
-| `harnesses/claude/claude-shape.sh`            | Launcher for shape mode (Opus, high effort, web tools enabled)        |
-| `harnesses/claude/claude-refactor.sh`         | Launcher for refactor mode (Opus, high effort, web tools enabled)     |
-| `harnesses/claude/dispatch.sh`                | Mode dispatcher — reads manifest, sets flags, execs claude            |
-| `harnesses/claude/load-role.sh`               | Reads `config.yaml` to resolve model/effort/tools for a given role   |
-| `harnesses/claude/tools-header/`              | Per-mode system prompt header fragments (build, debug, shape, refactor) |
-| `harnesses/claude/claude-code-settings.json`  | Source Claude Code settings (hooks, permissions, env)                 |
-| `harnesses/claude/claude-build-system-prompt.txt` | Generated (do not hand-edit) — concat of tools-header + prompt-body |
-| `harnesses/claude/commands/`                  | Slash commands installed to `~/.claude/commands/`                     |
-| `harnesses/pi/pi-build.sh`                    | Pi build mode launcher                                                |
-| `harnesses/pi/pi-debug.sh`                    | Pi debug mode launcher                                                |
-| `harnesses/pi/pi-shape.sh`                    | Pi shape mode launcher                                                |
-| `harnesses/pi/pi-refactor.sh`                 | Pi refactor mode launcher                                             |
-| `harnesses/pi/dispatch.sh`                    | Pi mode dispatcher                                                    |
-| `harnesses/pi/pi-prompts/`                    | Pi-specific prompt fragments                                          |
-| `harnesses/shared/prompt-bodies/`             | Shared prompt body text (build, debug, shape, refactor) appended to tools-header |
+| File / Dir                                        | Purpose                                                                          |
+| ------------------------------------------------- | -------------------------------------------------------------------------------- |
+| `harnesses/claude/claude-build.sh`                | Launcher for build mode — sets model/effort, invokes `claude`                    |
+| `harnesses/claude/claude-debug.sh`                | Launcher for debug mode (Opus, high effort)                                      |
+| `harnesses/claude/claude-shape.sh`                | Launcher for shape mode (Opus, high effort, web tools enabled)                   |
+| `harnesses/claude/claude-refactor.sh`             | Launcher for refactor mode (Opus, high effort, web tools enabled)                |
+| `harnesses/claude/dispatch.sh`                    | Mode dispatcher — reads manifest, sets flags, execs claude                       |
+| `harnesses/claude/load-role.sh`                   | Reads `config.yaml` to resolve model/effort/tools for a given role               |
+| `harnesses/claude/tools-header/`                  | Per-mode system prompt header fragments (build, debug, shape, refactor)          |
+| `harnesses/claude/claude-code-settings.json`      | Source Claude Code settings (hooks, permissions, env)                            |
+| `harnesses/claude/claude-build-system-prompt.txt` | Generated (do not hand-edit) — concat of tools-header + prompt-body              |
+| `harnesses/claude/commands/`                      | Slash commands installed to `~/.claude/commands/`                                |
+| `harnesses/pi/pi-build.sh`                        | Pi build mode launcher                                                           |
+| `harnesses/pi/pi-debug.sh`                        | Pi debug mode launcher                                                           |
+| `harnesses/pi/pi-shape.sh`                        | Pi shape mode launcher                                                           |
+| `harnesses/pi/pi-refactor.sh`                     | Pi refactor mode launcher                                                        |
+| `harnesses/pi/dispatch.sh`                        | Pi mode dispatcher                                                               |
+| `harnesses/pi/pi-prompts/`                        | Pi-specific prompt fragments                                                     |
+| `harnesses/shared/prompt-bodies/`                 | Shared prompt body text (build, debug, shape, refactor) appended to tools-header |
 
 ## Key Paths
 

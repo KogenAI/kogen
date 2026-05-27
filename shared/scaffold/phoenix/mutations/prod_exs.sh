@@ -10,8 +10,8 @@ APP_PATH="$1"
 PROD_CONFIG="$APP_PATH/config/prod.exs"
 
 if [ ! -f "$PROD_CONFIG" ]; then
-  mkdir -p "$(dirname "$PROD_CONFIG")"
-  printf 'import Config\n' > "$PROD_CONFIG"
+    mkdir -p "$(dirname "$PROD_CONFIG")"
+    printf 'import Config\n' >"$PROD_CONFIG"
 fi
 
 echo "[prod_exs.sh] done"

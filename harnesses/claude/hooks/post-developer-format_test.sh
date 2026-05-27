@@ -111,6 +111,54 @@ FIXTURE_CROSS='{"hook_event_name":"SubagentStop","agent_type":"developer-phoenix
 run_test "developer-phoenix-backend with bucketed change exits 0" "0" "$FIXTURE_CROSS"
 rm -rf "$PROJ_REPO" "$SIB_REPO"
 
+# Test 6: project with `make format` target → make format is called, exits 0
+MAKE_REPO="$(mktemp -d)"
+(
+    cd "$MAKE_REPO"
+    git init -q
+    git config user.email "test@test.com"
+    git config user.name "Test"
+    printf 'x = 1\n' >foo.ex
+    git add foo.ex
+    git commit -q -m "init"
+    # Makefile with a format target that creates a sentinel file
+    printf 'format:\n\ttouch .formatted\n' >Makefile
+    git add Makefile
+    git commit -q -m "add makefile"
+) 2>/dev/null
+# Make a working-tree change so there are changed files.
+printf 'x = 2\n' >"$MAKE_REPO/foo.ex"
+
+FIXTURE_MAKE='{"hook_event_name":"SubagentStop","agent_type":"developer-phoenix-backend","agent_id":"abc","session_id":"s1","cwd":"'"$MAKE_REPO"'","stop_hook_active":false}'
+printf '%s' "$FIXTURE_MAKE" | bash "$HOOK" 2>/dev/null || true
+
+if [ -f "$MAKE_REPO/.formatted" ]; then
+    printf 'PASS: project with make format target — make format called, exits 0\n'
+    pass=$((pass + 1))
+else
+    printf 'FAIL: project with make format target — .formatted sentinel not created\n'
+    fail=$((fail + 1))
+fi
+rm -rf "$MAKE_REPO"
+
+# Test 7: project without Makefile → falls back to per-file formatters, exits 0
+# (Confirms fallback path explicitly; test 3 already covers exit 0 for this path.)
+NO_MAKE_REPO="$(mktemp -d)"
+(
+    cd "$NO_MAKE_REPO"
+    git init -q
+    git config user.email "test@test.com"
+    git config user.name "Test"
+    printf 'x = 1\n' >foo.ex
+    git add foo.ex
+    git commit -q -m "init"
+) 2>/dev/null
+printf 'x = 2\n' >"$NO_MAKE_REPO/foo.ex"
+
+FIXTURE_NO_MAKE='{"hook_event_name":"SubagentStop","agent_type":"developer-phoenix-backend","agent_id":"abc","session_id":"s1","cwd":"'"$NO_MAKE_REPO"'","stop_hook_active":false}'
+run_test "project without Makefile falls back to per-file formatters, exits 0" "0" "$FIXTURE_NO_MAKE"
+rm -rf "$NO_MAKE_REPO"
+
 echo ""
 echo "Results: $pass passed, $fail failed"
 

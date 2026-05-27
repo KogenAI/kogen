@@ -13,11 +13,11 @@ PI_V="$(pi --version 2>/dev/null || echo unknown)"
 TS="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 
 jq -n \
-  --arg sha "$SHA" \
-  --arg cv "$CLAUDE_V" \
-  --arg pv "$PI_V" \
-  --arg ts "$TS" \
-  '{codegen_sha: $sha, harness_versions: {claude: $cv, pi: $pv}, test_passed_at: $ts, test_command: "make test-all"}' \
-  > "$OUTPUT"
+    --arg sha "$SHA" \
+    --arg cv "$CLAUDE_V" \
+    --arg pv "$PI_V" \
+    --arg ts "$TS" \
+    '{codegen_sha: $sha, harness_versions: {claude: $cv, pi: $pv}, test_passed_at: $ts, test_command: "make test-all"}' \
+    >"$OUTPUT"
 
 echo "wrote $OUTPUT (codegen_sha=$SHA, ts=$TS)"

@@ -156,6 +156,18 @@ fi
 
 log "changed files: $(echo "$changed_abs" | tr '\n' ' ')"
 
+# ── make format shortcut ──────────────────────────────────────────────────────
+# If the project defines a `make format` target, delegate entirely to it.
+# This covers formatters the hook doesn't know about (shfmt, custom tools).
+if grep -q '^format:' "$project_dir/Makefile" 2>/dev/null; then
+    log "make format target found — delegating to make format"
+    (cd "$project_dir" && make format >/dev/null 2>&1) || log "make format had errors (non-fatal)"
+    # Still run LLM-signal detection below, but skip per-file formatter logic.
+    _ran_make_format=1
+else
+    _ran_make_format=0
+fi
+
 # Bucket changed files by their containing git repo root, so formatters run
 # from each repo's root with paths relative to that root.
 declare -A files_by_repo
@@ -171,38 +183,49 @@ done <<<"$changed_abs"
 # Combined list across all repos (relative paths) for LLM-signal detection.
 all_relative=""
 
-for repo_root in "${!files_by_repo[@]}"; do
-    bucket="${files_by_repo[$repo_root]}"
-    # Convert absolute paths to repo-relative paths.
-    rel_files=$(printf '%s' "$bucket" | awk 'NF' | sed "s|^${repo_root}/||")
-    [ -z "$rel_files" ] && continue
-    all_relative="${all_relative}${rel_files}
+if [ "$_ran_make_format" -eq 0 ]; then
+    for repo_root in "${!files_by_repo[@]}"; do
+        bucket="${files_by_repo[$repo_root]}"
+        # Convert absolute paths to repo-relative paths.
+        rel_files=$(printf '%s' "$bucket" | awk 'NF' | sed "s|^${repo_root}/||")
+        [ -z "$rel_files" ] && continue
+        all_relative="${all_relative}${rel_files}
 "
 
-    # ── mix format on Elixir files (phoenix/data-layer only) ─────────────────
-    if [ "$agent_type" = "developer-phoenix-backend" ] || [ "$agent_type" = "developer-phoenix-frontend" ]; then
-        ex_files=$(printf '%s\n' "$rel_files" | grep -E '\.(ex|exs|heex)$' || true)
-        if [ -n "$ex_files" ] && [ -f "$repo_root/mix.exs" ]; then
+        # ── mix format on Elixir files (phoenix/data-layer only) ─────────────────
+        if [ "$agent_type" = "developer-phoenix-backend" ] || [ "$agent_type" = "developer-phoenix-frontend" ]; then
+            ex_files=$(printf '%s\n' "$rel_files" | grep -E '\.(ex|exs|heex)$' || true)
+            if [ -n "$ex_files" ] && [ -f "$repo_root/mix.exs" ]; then
+                (
+                    cd "$repo_root" 2>/dev/null || exit 0
+                    # shellcheck disable=SC2086
+                    printf '%s\n' "$ex_files" | xargs mix format >/dev/null 2>&1
+                ) || log "mix format had errors in $repo_root (non-fatal)"
+                log "mix format ran in $repo_root on $(echo "$ex_files" | wc -l | tr -d ' ') file(s)"
+            fi
+        fi
+
+        # ── prettier on prettier-relevant files (all developers) ─────────────────
+        prettier_files=$(printf '%s\n' "$rel_files" | grep -E '\.(js|ts|jsx|tsx|css|scss|json|md|yml|yaml|html)$' || true)
+        if [ -n "$prettier_files" ] && command -v npx >/dev/null 2>&1; then
             (
                 cd "$repo_root" 2>/dev/null || exit 0
                 # shellcheck disable=SC2086
-                printf '%s\n' "$ex_files" | xargs mix format >/dev/null 2>&1
-            ) || log "mix format had errors in $repo_root (non-fatal)"
-            log "mix format ran in $repo_root on $(echo "$ex_files" | wc -l | tr -d ' ') file(s)"
+                printf '%s\n' "$prettier_files" | xargs npx --no-install prettier --write --log-level=warn >/dev/null 2>&1
+            ) || log "prettier had errors in $repo_root (non-fatal)"
+            log "prettier ran in $repo_root on $(echo "$prettier_files" | wc -l | tr -d ' ') file(s)"
         fi
-    fi
-
-    # ── prettier on prettier-relevant files (all developers) ─────────────────
-    prettier_files=$(printf '%s\n' "$rel_files" | grep -E '\.(js|ts|jsx|tsx|css|scss|json|md|yml|yaml|html)$' || true)
-    if [ -n "$prettier_files" ] && command -v npx >/dev/null 2>&1; then
-        (
-            cd "$repo_root" 2>/dev/null || exit 0
-            # shellcheck disable=SC2086
-            printf '%s\n' "$prettier_files" | xargs npx --no-install prettier --write --log-level=warn >/dev/null 2>&1
-        ) || log "prettier had errors in $repo_root (non-fatal)"
-        log "prettier ran in $repo_root on $(echo "$prettier_files" | wc -l | tr -d ' ') file(s)"
-    fi
-done
+    done
+else
+    # make format ran — still populate all_relative for LLM-signal detection.
+    for repo_root in "${!files_by_repo[@]}"; do
+        bucket="${files_by_repo[$repo_root]}"
+        rel_files=$(printf '%s' "$bucket" | awk 'NF' | sed "s|^${repo_root}/||")
+        [ -z "$rel_files" ] && continue
+        all_relative="${all_relative}${rel_files}
+"
+    done
+fi
 
 # ── LLM-test signal detection (across all repos) ─────────────────────────────
 all_relative=$(printf '%s' "$all_relative" | awk 'NF')

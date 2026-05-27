@@ -65,8 +65,8 @@ echo "---------------------------------"
 
 rm -rf "$OCG_CONTEXT_DIR"
 
-pass=$(( fail == 0 ? 1 : 0 ))
-fail=$(( fail > 0 ? 1 : 0 ))
+pass=$((fail == 0 ? 1 : 0))
+fail=$((fail > 0 ? 1 : 0))
 echo "$pass passed, $fail failed"
 if [ "$fail" -eq 0 ]; then
     echo "PASS: dual-render produces correct @-imports (claude) and → See pointers (pi)"

@@ -38,99 +38,99 @@ usage() {
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
-        --harness=*)
-            HARNESS="${1#--harness=}"
+    --harness=*)
+        HARNESS="${1#--harness=}"
+        shift
+        ;;
+    --harness)
+        HARNESS="$2"
+        shift 2
+        ;;
+    --stack=*)
+        STACK="${1#--stack=}"
+        shift
+        ;;
+    --stack)
+        STACK="$2"
+        shift 2
+        ;;
+    --cwd=*)
+        CWD="${1#--cwd=}"
+        shift
+        ;;
+    --cwd)
+        CWD="$2"
+        shift 2
+        ;;
+    --non-interactive)
+        NON_INTERACTIVE="1"
+        shift
+        ;;
+    --max-turns=*)
+        MAX_TURNS="${1#--max-turns=}"
+        shift
+        ;;
+    --max-turns)
+        MAX_TURNS="$2"
+        shift 2
+        ;;
+    --model=*)
+        MODEL="${1#--model=}"
+        shift
+        ;;
+    --model)
+        MODEL="$2"
+        shift 2
+        ;;
+    --effort=*)
+        EFFORT="${1#--effort=}"
+        shift
+        ;;
+    --effort)
+        EFFORT="$2"
+        shift 2
+        ;;
+    --max-budget-usd=* | --max-budget-usd)
+        EXTRA_FLAGS+=("$1")
+        if [[ "$1" == "--max-budget-usd" ]]; then
+            EXTRA_FLAGS+=("$2")
             shift
-            ;;
-        --harness)
-            HARNESS="$2"
-            shift 2
-            ;;
-        --stack=*)
-            STACK="${1#--stack=}"
+        fi
+        shift
+        ;;
+    --fallback-model=* | --fallback-model)
+        EXTRA_FLAGS+=("$1")
+        if [[ "$1" == "--fallback-model" ]]; then
+            EXTRA_FLAGS+=("$2")
             shift
-            ;;
-        --stack)
-            STACK="$2"
-            shift 2
-            ;;
-        --cwd=*)
-            CWD="${1#--cwd=}"
+        fi
+        shift
+        ;;
+    --extension=* | --extension)
+        EXTRA_FLAGS+=("$1")
+        if [[ "$1" == "--extension" ]]; then
+            EXTRA_FLAGS+=("$2")
             shift
-            ;;
-        --cwd)
-            CWD="$2"
-            shift 2
-            ;;
-        --non-interactive)
-            NON_INTERACTIVE="1"
-            shift
-            ;;
-        --max-turns=*)
-            MAX_TURNS="${1#--max-turns=}"
-            shift
-            ;;
-        --max-turns)
-            MAX_TURNS="$2"
-            shift 2
-            ;;
-        --model=*)
-            MODEL="${1#--model=}"
-            shift
-            ;;
-        --model)
-            MODEL="$2"
-            shift 2
-            ;;
-        --effort=*)
-            EFFORT="${1#--effort=}"
-            shift
-            ;;
-        --effort)
-            EFFORT="$2"
-            shift 2
-            ;;
-        --max-budget-usd=*|--max-budget-usd)
-            EXTRA_FLAGS+=("$1")
-            if [[ "$1" == "--max-budget-usd" ]]; then
-                EXTRA_FLAGS+=("$2")
-                shift
-            fi
-            shift
-            ;;
-        --fallback-model=*|--fallback-model)
-            EXTRA_FLAGS+=("$1")
-            if [[ "$1" == "--fallback-model" ]]; then
-                EXTRA_FLAGS+=("$2")
-                shift
-            fi
-            shift
-            ;;
-        --extension=*|--extension)
-            EXTRA_FLAGS+=("$1")
-            if [[ "$1" == "--extension" ]]; then
-                EXTRA_FLAGS+=("$2")
-                shift
-            fi
-            shift
-            ;;
-        --)
-            shift
-            PROMPT="$*"
-            break
-            ;;
-        --*)
-            printf 'codegen-build: unknown flag %q\n' "$1" >&2
-            usage
-            ;;
-        *)
-            if [[ -z "$PROMPT" ]]; then
-                PROMPT="$1"
-            else
-                PROMPT="$PROMPT $1"
-            fi
-            shift
-            ;;
+        fi
+        shift
+        ;;
+    --)
+        shift
+        PROMPT="$*"
+        break
+        ;;
+    --*)
+        printf 'codegen-build: unknown flag %q\n' "$1" >&2
+        usage
+        ;;
+    *)
+        if [[ -z "$PROMPT" ]]; then
+            PROMPT="$1"
+        else
+            PROMPT="$PROMPT $1"
+        fi
+        shift
+        ;;
     esac
 done
 

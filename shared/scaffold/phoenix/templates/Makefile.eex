@@ -1,3 +1,7 @@
+format:
+	mix format
+	npx prettier --write .
+
 ci:
 	MIX_ENV=test mix compile
 	mix ci

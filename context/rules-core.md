@@ -4,14 +4,14 @@ Core discipline rules that apply to ALL agents regardless of role or stack. Thes
 
 ## Components
 
-| File                                    | Purpose                                                        |
-| --------------------------------------- | -------------------------------------------------------------- |
-| `shared/rules/INDEX.md`                 | Registry — file → trigger keywords; loaded by orchestrators/planners |
-| `shared/rules/STYLE_GUIDE.md`           | Cross-cutting style rules for all agents                       |
-| `shared/rules/_core/bash-discipline.md` | Forbidden bash patterns, token-budget rules, safe alternatives |
-| `shared/rules/_core/output-style.md`    | Caveman Ultra output compression rules                         |
+| File                                    | Purpose                                                                |
+| --------------------------------------- | ---------------------------------------------------------------------- |
+| `shared/rules/INDEX.md`                 | Registry — file → trigger keywords; loaded by orchestrators/planners   |
+| `shared/rules/STYLE_GUIDE.md`           | Cross-cutting style rules for all agents                               |
+| `shared/rules/_core/bash-discipline.md` | Forbidden bash patterns, token-budget rules, safe alternatives         |
+| `shared/rules/_core/output-style.md`    | Caveman Ultra output compression rules                                 |
 | `shared/rules/_core/session-log.md`     | Session log format, ownership, section headers, subagent body template |
-| `shared/rules/_core/cwd-discipline.md`  | Working-directory rules — no /tmp writes, absolute paths only  |
+| `shared/rules/_core/cwd-discipline.md`  | Working-directory rules — no /tmp writes, absolute paths only          |
 
 ## Key Paths
 

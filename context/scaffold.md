@@ -10,24 +10,24 @@ scaffold.sh, eex_render, mutations, AGENTS.md.j2, PROJECT_CONTEXT.md.j2, ocg set
 
 ## Components
 
-| File / Dir                                     | Purpose                                                              |
-| ---------------------------------------------- | -------------------------------------------------------------------- |
-| `shared/scaffold/phoenix/scaffold.sh`           | Phoenix scaffold entry — creates new Phoenix app via mutations        |
-| `shared/scaffold/phoenix/mutations/`            | Per-file bash mutation scripts (config_exs.sh, mix_exs.sh, etc.)    |
-| `shared/scaffold/phoenix/eex_render.sh`         | Renders `.eex` templates with variable substitution                  |
-| `shared/scaffold/phoenix/templates/`            | `.eex` source templates for Phoenix scaffold output                  |
-| `shared/scaffold/static/scaffold.sh`            | Static site scaffold entry                                           |
-| `shared/scaffold/static/scaffold_test.sh`       | Bash tests for static scaffold                                       |
-| `shared/scaffold/phoenix/README.md`             | Phoenix scaffold setup and mutation authoring guide                  |
-| `shared/apps/AGENTS-phoenix.md.j2`              | Downstream AGENTS.md template (Jinja — rendered for each new app)    |
-| `shared/apps/AGENTS-static.md.j2`              | Downstream AGENTS.md template for static sites                       |
-| `shared/apps/AGENTS-phoenix.md`                 | Rendered reference copy (static, checked in)                         |
-| `shared/apps/AGENTS-static.md`                 | Rendered reference copy for static sites                             |
-| `shared/apps/CLAUDE-phoenix.md`                 | Downstream CLAUDE.md content for Phoenix apps                        |
-| `shared/apps/CLAUDE-static.md`                 | Downstream CLAUDE.md content for static sites                        |
-| `shared/apps/PROJECT_CONTEXT-phoenix-template.md` | Format reference for downstream PROJECT_CONTEXT.md              |
-| `shared/apps/PROJECT_CONTEXT-static-template.md` | Format reference for static site PROJECT_CONTEXT.md              |
-| `codegen-scaffold`                              | Top-level launcher — selects stack, delegates to scaffold.sh         |
+| File / Dir                                        | Purpose                                                           |
+| ------------------------------------------------- | ----------------------------------------------------------------- |
+| `shared/scaffold/phoenix/scaffold.sh`             | Phoenix scaffold entry — creates new Phoenix app via mutations    |
+| `shared/scaffold/phoenix/mutations/`              | Per-file bash mutation scripts (config_exs.sh, mix_exs.sh, etc.)  |
+| `shared/scaffold/phoenix/eex_render.sh`           | Renders `.eex` templates with variable substitution               |
+| `shared/scaffold/phoenix/templates/`              | `.eex` source templates for Phoenix scaffold output               |
+| `shared/scaffold/static/scaffold.sh`              | Static site scaffold entry                                        |
+| `shared/scaffold/static/scaffold_test.sh`         | Bash tests for static scaffold                                    |
+| `shared/scaffold/phoenix/README.md`               | Phoenix scaffold setup and mutation authoring guide               |
+| `shared/apps/AGENTS-phoenix.md.j2`                | Downstream AGENTS.md template (Jinja — rendered for each new app) |
+| `shared/apps/AGENTS-static.md.j2`                 | Downstream AGENTS.md template for static sites                    |
+| `shared/apps/AGENTS-phoenix.md`                   | Rendered reference copy (static, checked in)                      |
+| `shared/apps/AGENTS-static.md`                    | Rendered reference copy for static sites                          |
+| `shared/apps/CLAUDE-phoenix.md`                   | Downstream CLAUDE.md content for Phoenix apps                     |
+| `shared/apps/CLAUDE-static.md`                    | Downstream CLAUDE.md content for static sites                     |
+| `shared/apps/PROJECT_CONTEXT-phoenix-template.md` | Format reference for downstream PROJECT_CONTEXT.md                |
+| `shared/apps/PROJECT_CONTEXT-static-template.md`  | Format reference for static site PROJECT_CONTEXT.md               |
+| `codegen-scaffold`                                | Top-level launcher — selects stack, delegates to scaffold.sh      |
 
 ## Key Paths
 

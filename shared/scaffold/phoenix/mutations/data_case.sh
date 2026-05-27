@@ -15,12 +15,12 @@ APP_PATH="$1"
 CREDO="$APP_PATH/.credo.exs"
 
 if [ ! -f "$CREDO" ]; then
-  echo "[data_case.sh] ERROR: $CREDO not found" >&2
-  exit 1
+    echo "[data_case.sh] ERROR: $CREDO not found" >&2
+    exit 1
 fi
 
 if ! grep -qF '/data_case\.ex$"' "$CREDO"; then
-  python3 - "$CREDO" << 'PYEOF'
+    python3 - "$CREDO" <<'PYEOF'
 import sys
 import re
 

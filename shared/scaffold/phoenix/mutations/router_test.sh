@@ -11,16 +11,20 @@ failed=0
 fail_lines=()
 
 assert() {
-  local label="$1" cond="$2"
-  if eval "$cond"; then passed=$((passed + 1))
-  else failed=$((failed + 1)); fail_lines+=("FAIL: $label"); fi
+    local label="$1" cond="$2"
+    if eval "$cond"; then
+        passed=$((passed + 1))
+    else
+        failed=$((failed + 1))
+        fail_lines+=("FAIL: $label")
+    fi
 }
 
 setup_tmp() {
-  local tmp
-  tmp="$(mktemp -d -t mut-XXXXXX)"
-  cp -R "$FIXTURE_BASE/." "$tmp/"
-  echo "$tmp"
+    local tmp
+    tmp="$(mktemp -d -t mut-XXXXXX)"
+    cp -R "$FIXTURE_BASE/." "$tmp/"
+    echo "$tmp"
 }
 
 # Case 1: happy path — inserts HealthController route
@@ -49,8 +53,11 @@ mv "$tmp/lib/fixture_app_web/router.ex" "$tmp/lib/other_app_web/router.ex"
 rmdir "$tmp/lib/fixture_app_web" 2>/dev/null || true
 "$MUTATION" "$tmp" FixtureApp >/dev/null
 assert "fallback-find: HealthController route added when router at non-standard path" \
-  'grep -qF "HealthController" "$tmp/lib/other_app_web/router.ex"'
+    'grep -qF "HealthController" "$tmp/lib/other_app_web/router.ex"'
 rm -rf "$tmp"
 
 echo "$passed passed, $failed failed"
-if [ "$failed" -gt 0 ]; then printf '%s\n' "${fail_lines[@]}" >&2; exit 1; fi
+if [ "$failed" -gt 0 ]; then
+    printf '%s\n' "${fail_lines[@]}" >&2
+    exit 1
+fi

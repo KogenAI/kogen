@@ -24,54 +24,54 @@ pass=0
 fail=0
 
 check() {
-  local desc="$1"
-  local expected="$2"
-  local actual="$3"
-  if [[ "$actual" == "$expected" ]]; then
-    printf 'PASS: %s\n' "$desc"
-    pass=$((pass + 1))
-  else
-    printf 'FAIL: %s — expected %q, got %q\n' "$desc" "$expected" "$actual"
-    fail=$((fail + 1))
-  fi
+    local desc="$1"
+    local expected="$2"
+    local actual="$3"
+    if [[ "$actual" == "$expected" ]]; then
+        printf 'PASS: %s\n' "$desc"
+        pass=$((pass + 1))
+    else
+        printf 'FAIL: %s — expected %q, got %q\n' "$desc" "$expected" "$actual"
+        fail=$((fail + 1))
+    fi
 }
 
 assert_contains() {
-  local desc="$1"
-  local haystack="$2"
-  local needle="$3"
-  if [[ "$haystack" == *"$needle"* ]]; then
-    printf 'PASS: %s\n' "$desc"
-    pass=$((pass + 1))
-  else
-    printf 'FAIL: %s — expected to find %q in output\n' "$desc" "$needle"
-    fail=$((fail + 1))
-  fi
+    local desc="$1"
+    local haystack="$2"
+    local needle="$3"
+    if [[ "$haystack" == *"$needle"* ]]; then
+        printf 'PASS: %s\n' "$desc"
+        pass=$((pass + 1))
+    else
+        printf 'FAIL: %s — expected to find %q in output\n' "$desc" "$needle"
+        fail=$((fail + 1))
+    fi
 }
 
 assert_file_exists() {
-  local desc="$1"
-  local path="$2"
-  if [[ -e "$path" ]]; then
-    printf 'PASS: %s\n' "$desc"
-    pass=$((pass + 1))
-  else
-    printf 'FAIL: %s — file not found: %s\n' "$desc" "$path"
-    fail=$((fail + 1))
-  fi
+    local desc="$1"
+    local path="$2"
+    if [[ -e "$path" ]]; then
+        printf 'PASS: %s\n' "$desc"
+        pass=$((pass + 1))
+    else
+        printf 'FAIL: %s — file not found: %s\n' "$desc" "$path"
+        fail=$((fail + 1))
+    fi
 }
 
 assert_exit() {
-  local desc="$1"
-  local expected_exit="$2"
-  local actual_exit="$3"
-  if [[ "$actual_exit" == "$expected_exit" ]]; then
-    printf 'PASS: %s\n' "$desc"
-    pass=$((pass + 1))
-  else
-    printf 'FAIL: %s — expected exit %s, got %s\n' "$desc" "$expected_exit" "$actual_exit"
-    fail=$((fail + 1))
-  fi
+    local desc="$1"
+    local expected_exit="$2"
+    local actual_exit="$3"
+    if [[ "$actual_exit" == "$expected_exit" ]]; then
+        printf 'PASS: %s\n' "$desc"
+        pass=$((pass + 1))
+    else
+        printf 'FAIL: %s — expected exit %s, got %s\n' "$desc" "$expected_exit" "$actual_exit"
+        fail=$((fail + 1))
+    fi
 }
 
 # ── Setup: hermetic tmp dir ───────────────────────────────────────────────────
@@ -89,11 +89,11 @@ APP_NAME="My Test App"
 "$STATIC_SCAFFOLD" "$SLUG" "$TMPDIR" --app-name "$APP_NAME"
 
 # (a) assets/css/app.css contains "tailwindcss"
-CSS_CONTENT="$(< "$TMPDIR/assets/css/app.css")"
+CSS_CONTENT="$(<"$TMPDIR/assets/css/app.css")"
 assert_contains "assets/css/app.css contains tailwindcss" "$CSS_CONTENT" "tailwindcss"
 
 # (b) package.json name == slug
-PKG_CONTENT="$(< "$TMPDIR/package.json")"
+PKG_CONTENT="$(<"$TMPDIR/package.json")"
 assert_contains "package.json name field is slug" "$PKG_CONTENT" "\"name\": \"$SLUG\""
 
 # (c) package.json has "serve" and "build" scripts
@@ -101,11 +101,11 @@ assert_contains "package.json has serve script" "$PKG_CONTENT" "\"serve\""
 assert_contains "package.json has build script" "$PKG_CONTENT" "\"build\""
 
 # (d) static/index.html contains app-name
-INDEX_CONTENT="$(< "$TMPDIR/static/index.html")"
+INDEX_CONTENT="$(<"$TMPDIR/static/index.html")"
 assert_contains "static/index.html contains app-name" "$INDEX_CONTENT" "$APP_NAME"
 
 # (e) README.md contains app-name + npm commands
-README_CONTENT="$(< "$TMPDIR/README.md")"
+README_CONTENT="$(<"$TMPDIR/README.md")"
 assert_contains "README.md contains app-name" "$README_CONTENT" "$APP_NAME"
 assert_contains "README.md contains npm install" "$README_CONTENT" "npm install"
 assert_contains "README.md contains npm run build" "$README_CONTENT" "npm run build"
@@ -140,24 +140,24 @@ assert_file_exists "--symlinks-only creates codegen/usage_rules symlink" "$SYMLI
 
 # Verify they are actually symlinks (not files)
 if [[ -L "$SYMLINKS_CWD/AGENTS.md" ]]; then
-  printf 'PASS: AGENTS.md is a symlink\n'
-  pass=$((pass + 1))
+    printf 'PASS: AGENTS.md is a symlink\n'
+    pass=$((pass + 1))
 else
-  printf 'FAIL: AGENTS.md is not a symlink\n'
-  fail=$((fail + 1))
+    printf 'FAIL: AGENTS.md is not a symlink\n'
+    fail=$((fail + 1))
 fi
 
 if [[ -L "$SYMLINKS_CWD/codegen/rules" ]]; then
-  printf 'PASS: codegen/rules is a symlink\n'
-  pass=$((pass + 1))
+    printf 'PASS: codegen/rules is a symlink\n'
+    pass=$((pass + 1))
 else
-  printf 'FAIL: codegen/rules is not a symlink\n'
-  fail=$((fail + 1))
+    printf 'FAIL: codegen/rules is not a symlink\n'
+    fail=$((fail + 1))
 fi
 
 # ── Summary ───────────────────────────────────────────────────────────────────
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 
 if [[ "$fail" -gt 0 ]]; then
-  exit 1
+    exit 1
 fi

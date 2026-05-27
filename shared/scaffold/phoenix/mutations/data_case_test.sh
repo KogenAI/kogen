@@ -11,16 +11,20 @@ failed=0
 fail_lines=()
 
 assert() {
-  local label="$1" cond="$2"
-  if eval "$cond"; then passed=$((passed + 1))
-  else failed=$((failed + 1)); fail_lines+=("FAIL: $label"); fi
+    local label="$1" cond="$2"
+    if eval "$cond"; then
+        passed=$((passed + 1))
+    else
+        failed=$((failed + 1))
+        fail_lines+=("FAIL: $label")
+    fi
 }
 
 setup_tmp() {
-  local tmp
-  tmp="$(mktemp -d -t mut-XXXXXX)"
-  cp -R "$FIXTURE_BASE/." "$tmp/"
-  echo "$tmp"
+    local tmp
+    tmp="$(mktemp -d -t mut-XXXXXX)"
+    cp -R "$FIXTURE_BASE/." "$tmp/"
+    echo "$tmp"
 }
 
 # Case 1: happy path — adds data_case exclusion to .credo.exs
@@ -39,4 +43,7 @@ assert "data_case.sh second invocation is a no-op" '[ "$sha_after_first" = "$sha
 rm -rf "$tmp"
 
 echo "$passed passed, $failed failed"
-if [ "$failed" -gt 0 ]; then printf '%s\n' "${fail_lines[@]}" >&2; exit 1; fi
+if [ "$failed" -gt 0 ]; then
+    printf '%s\n' "${fail_lines[@]}" >&2
+    exit 1
+fi

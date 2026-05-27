@@ -42,7 +42,7 @@ _assert_contains() {
 
 _assert_true() {
     local label="$1"
-    local cond="$2"  # "true" or "false"
+    local cond="$2" # "true" or "false"
     if [ "$cond" = "true" ]; then
         pass=$((pass + 1))
     else
@@ -54,7 +54,8 @@ _assert_true() {
 # ── Case (a): no args → exit 1 + "Usage:" on stderr ─────────────────────────
 
 output_a=$(bash "$GENERATE_SH" 2>&1 || true)
-bash "$GENERATE_SH" 2>/dev/null >/dev/null; rc_a=$?
+bash "$GENERATE_SH" 2>/dev/null >/dev/null
+rc_a=$?
 
 _assert_exit "(a) no args exits 1" "1" "$rc_a"
 _assert_contains "(a) stderr contains 'Usage:'" "Usage:" "$output_a"
@@ -121,13 +122,14 @@ trap 'rm -rf "$nopy_dir"' EXIT
 for f in /usr/bin/* /bin/*; do
     bname="$(basename "$f")"
     case "$bname" in
-        python3|python3.*|python) ;;  # skip all python variants
-        *) ln -s "$f" "$nopy_dir/$bname" 2>/dev/null || true ;;
+    python3 | python3.* | python) ;; # skip all python variants
+    *) ln -s "$f" "$nopy_dir/$bname" 2>/dev/null || true ;;
     esac
 done
 
 output_d=$(PATH="$nopy_dir" bash "$GENERATE_SH" claude 2>&1 || true)
-PATH="$nopy_dir" bash "$GENERATE_SH" claude 2>/dev/null >/dev/null; rc_d=$?
+PATH="$nopy_dir" bash "$GENERATE_SH" claude 2>/dev/null >/dev/null
+rc_d=$?
 
 _assert_exit "(d) no python3 on PATH exits 1" "1" "$rc_d"
 _assert_contains "(d) error contains 'Python3 is required'" "Python3 is required" "$output_d"

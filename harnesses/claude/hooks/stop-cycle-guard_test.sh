@@ -205,8 +205,8 @@ INPUT12=$(make_input "$tmp12A/transcript.jsonl" "$tmp12A" "false" "Done.")
 stdout12=$(printf '%s' "$INPUT12" | bash "$GUARD" 2>/dev/null || true)
 # Must block (A's log has verdict) and reason must reference A's path, not B's.
 if printf '%s' "$stdout12" | grep -q '"decision"[[:space:]]*:[[:space:]]*"block"' &&
-   printf '%s' "$stdout12" | grep -qF "$LOG12A" &&
-   ! printf '%s' "$stdout12" | grep -qF "$LOG12B"; then
+    printf '%s' "$stdout12" | grep -qF "$LOG12A" &&
+    ! printf '%s' "$stdout12" | grep -qF "$LOG12B"; then
     printf 'PASS: A+B regression: block cites A log, not B\n'
     pass=$((pass + 1))
 else

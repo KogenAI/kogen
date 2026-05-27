@@ -13,12 +13,12 @@ APP_NAME="$2"
 ENDPOINT="$APP_PATH/lib/${APP_NAME}_web/endpoint.ex"
 
 if [ ! -f "$ENDPOINT" ]; then
-  echo "[endpoint.sh] ERROR: $ENDPOINT not found" >&2
-  exit 1
+    echo "[endpoint.sh] ERROR: $ENDPOINT not found" >&2
+    exit 1
 fi
 
 if ! grep -qF 'plug Tidewave' "$ENDPOINT"; then
-  python3 - "$ENDPOINT" "$APP_NAME" << 'PYEOF'
+    python3 - "$ENDPOINT" "$APP_NAME" <<'PYEOF'
 import sys
 import re
 

@@ -37,27 +37,40 @@ APP_NAME=""
 TARGET_DIR=""
 
 while [[ $# -gt 0 ]]; do
-  case "$1" in
-    --elixir-version) ELIXIR_VERSION="$2"; shift 2 ;;
-    --node-version)   NODE_VERSION="$2";   shift 2 ;;
-    --otp-version)    OTP_VERSION="$2";    shift 2 ;;
-    -*) echo "[scaffold.sh] Unknown flag: $1" >&2; exit 1 ;;
+    case "$1" in
+    --elixir-version)
+        ELIXIR_VERSION="$2"
+        shift 2
+        ;;
+    --node-version)
+        NODE_VERSION="$2"
+        shift 2
+        ;;
+    --otp-version)
+        OTP_VERSION="$2"
+        shift 2
+        ;;
+    -*)
+        echo "[scaffold.sh] Unknown flag: $1" >&2
+        exit 1
+        ;;
     *)
-      if [ -z "$APP_NAME" ]; then
-        APP_NAME="$1"
-      elif [ -z "$TARGET_DIR" ]; then
-        TARGET_DIR="$1"
-      else
-        echo "[scaffold.sh] Unexpected argument: $1" >&2; exit 1
-      fi
-      shift
-      ;;
-  esac
+        if [ -z "$APP_NAME" ]; then
+            APP_NAME="$1"
+        elif [ -z "$TARGET_DIR" ]; then
+            TARGET_DIR="$1"
+        else
+            echo "[scaffold.sh] Unexpected argument: $1" >&2
+            exit 1
+        fi
+        shift
+        ;;
+    esac
 done
 
 if [ -z "$APP_NAME" ] || [ -z "$TARGET_DIR" ]; then
-  echo "Usage: scaffold.sh <app_name> <target_dir> [--elixir-version <v>] [--node-version <v>] [--otp-version <v>]" >&2
-  exit 1
+    echo "Usage: scaffold.sh <app_name> <target_dir> [--elixir-version <v>] [--node-version <v>] [--otp-version <v>]" >&2
+    exit 1
 fi
 
 # Normalise app_name: hyphens → underscores
@@ -75,8 +88,8 @@ SLUG="$(basename "$TARGET_DIR")"
 echo "[scaffold.sh] app_name=$APP_NAME module=$APP_NAME_MODULE target=$TARGET_DIR"
 
 if [ -d "$TARGET_DIR" ]; then
-  echo "[scaffold.sh] ERROR: target_dir already exists: $TARGET_DIR (mix phx.new would refuse — remove it first)" >&2
-  exit 1
+    echo "[scaffold.sh] ERROR: target_dir already exists: $TARGET_DIR (mix phx.new would refuse — remove it first)" >&2
+    exit 1
 fi
 
 # ---------------------------------------------------------------------------
@@ -85,14 +98,14 @@ fi
 echo "[scaffold.sh] running mix phx.new $SLUG..."
 mkdir -p "$PARENT_DIR"
 mix phx.new "$SLUG" \
-  --app "$APP_NAME" \
-  --module "$APP_NAME_MODULE" \
-  --binary-id \
-  --no-mailer \
-  --no-dashboard \
-  --no-agents-md \
-  --no-version-check \
-  --install
+    --app "$APP_NAME" \
+    --module "$APP_NAME_MODULE" \
+    --binary-id \
+    --no-mailer \
+    --no-dashboard \
+    --no-agents-md \
+    --no-version-check \
+    --install
 echo "[scaffold.sh] mix phx.new complete"
 
 # ---------------------------------------------------------------------------
@@ -101,21 +114,21 @@ echo "[scaffold.sh] mix phx.new complete"
 echo "[scaffold.sh] rendering templates..."
 
 render() {
-  local template_rel="$1"
-  local output_rel="${template_rel%.eex}"  # strip .eex suffix
-  # Replace app_name placeholder in output path
-  output_rel="${output_rel//app_name_module/$APP_NAME_MODULE}"
-  output_rel="${output_rel//app_name/$APP_NAME}"
+    local template_rel="$1"
+    local output_rel="${template_rel%.eex}" # strip .eex suffix
+    # Replace app_name placeholder in output path
+    output_rel="${output_rel//app_name_module/$APP_NAME_MODULE}"
+    output_rel="${output_rel//app_name/$APP_NAME}"
 
-  "$RENDER_SH" \
-    "$TEMPLATES_DIR/$template_rel" \
-    "$TARGET_DIR/$output_rel" \
-    "app_name=$APP_NAME" \
-    "app_name_module=$APP_NAME_MODULE" \
-    "elixir_version=$ELIXIR_VERSION" \
-    "node_version=$NODE_VERSION" \
-    "otp_version=$OTP_VERSION" \
-    "otp_major_version=$OTP_MAJOR_VERSION"
+    "$RENDER_SH" \
+        "$TEMPLATES_DIR/$template_rel" \
+        "$TARGET_DIR/$output_rel" \
+        "app_name=$APP_NAME" \
+        "app_name_module=$APP_NAME_MODULE" \
+        "elixir_version=$ELIXIR_VERSION" \
+        "node_version=$NODE_VERSION" \
+        "otp_version=$OTP_VERSION" \
+        "otp_major_version=$OTP_MAJOR_VERSION"
 }
 
 render "Makefile.eex"
@@ -138,15 +151,15 @@ render "test/app_name_web/controllers/health_controller_test.exs.eex"
 # ---------------------------------------------------------------------------
 echo "[scaffold.sh] running mutations..."
 
-bash "$MUTATIONS_DIR/mix_exs.sh"      "$TARGET_DIR" "$APP_NAME" "$APP_NAME_MODULE"
-bash "$MUTATIONS_DIR/config_exs.sh"   "$TARGET_DIR"
-bash "$MUTATIONS_DIR/prod_exs.sh"     "$TARGET_DIR"
+bash "$MUTATIONS_DIR/mix_exs.sh" "$TARGET_DIR" "$APP_NAME" "$APP_NAME_MODULE"
+bash "$MUTATIONS_DIR/config_exs.sh" "$TARGET_DIR"
+bash "$MUTATIONS_DIR/prod_exs.sh" "$TARGET_DIR"
 bash "$MUTATIONS_DIR/formatter_exs.sh" "$TARGET_DIR"
-bash "$MUTATIONS_DIR/gitignore.sh"    "$TARGET_DIR"
-bash "$MUTATIONS_DIR/router.sh"       "$TARGET_DIR" "$APP_NAME_MODULE"
-bash "$MUTATIONS_DIR/endpoint.sh"     "$TARGET_DIR" "$APP_NAME"
-bash "$MUTATIONS_DIR/telemetry.sh"    "$TARGET_DIR" "$APP_NAME"
-bash "$MUTATIONS_DIR/data_case.sh"    "$TARGET_DIR"
+bash "$MUTATIONS_DIR/gitignore.sh" "$TARGET_DIR"
+bash "$MUTATIONS_DIR/router.sh" "$TARGET_DIR" "$APP_NAME_MODULE"
+bash "$MUTATIONS_DIR/endpoint.sh" "$TARGET_DIR" "$APP_NAME"
+bash "$MUTATIONS_DIR/telemetry.sh" "$TARGET_DIR" "$APP_NAME"
+bash "$MUTATIONS_DIR/data_case.sh" "$TARGET_DIR"
 
 # ---------------------------------------------------------------------------
 # Phase 3: ensure priv/plts dir exists

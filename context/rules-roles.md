@@ -4,14 +4,14 @@ Role-specific rules that define what each agent role MUST and MUST NOT do. These
 
 ## Components
 
-| File                                    | Purpose                                                              |
-| --------------------------------------- | -------------------------------------------------------------------- |
-| `shared/rules/roles/orchestrator.md`    | Orchestrator-only rules — delegation, never-implement, full-cycle, INCONCLUSIVE table |
-| `shared/rules/roles/planner.md`         | Planner rules — plan structure, slice definitions, gate command      |
+| File                                    | Purpose                                                                                |
+| --------------------------------------- | -------------------------------------------------------------------------------------- |
+| `shared/rules/roles/orchestrator.md`    | Orchestrator-only rules — delegation, never-implement, full-cycle, INCONCLUSIVE table  |
+| `shared/rules/roles/planner.md`         | Planner rules — plan structure, slice definitions, gate command                        |
 | `shared/rules/roles/developer.md`       | Universal developer rules — verify-not-declare, fix-root-cause, test with every change |
-| `shared/rules/roles/reviewer.md`        | Reviewer rules — what to check, how to report, block/pass criteria  |
-| `shared/rules/roles/committer.md`       | Committer rules — commit message format, never amend, why-focused   |
-| `shared/rules/roles/context-curator.md` | Context curator rules — what to update, when, retrospective routing  |
+| `shared/rules/roles/reviewer.md`        | Reviewer rules — what to check, how to report, block/pass criteria                     |
+| `shared/rules/roles/committer.md`       | Committer rules — commit message format, never amend, why-focused                      |
+| `shared/rules/roles/context-curator.md` | Context curator rules — what to update, when, retrospective routing                    |
 
 ## Key Paths
 

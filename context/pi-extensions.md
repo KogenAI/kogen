@@ -6,16 +6,16 @@ Current extensions: `askuserquestion` (interactive user prompts), `enforcement` 
 
 ## Components
 
-| File / Dir                                              | Purpose                                                           |
-| ------------------------------------------------------- | ----------------------------------------------------------------- |
-| `harnesses/pi/pi-extensions/askuserquestion/`           | Implements `AskUserQuestion` tool for Pi harness                  |
-| `harnesses/pi/pi-extensions/askuserquestion/src/`       | TypeScript source                                                 |
-| `harnesses/pi/pi-extensions/enforcement/`               | Rule enforcement extension (blocks disallowed patterns)           |
-| `harnesses/pi/pi-extensions/subagents/`                 | Subagent delegation bridge for Pi                                 |
-| `harnesses/pi/pi-extensions/web-utils/`                 | HTTP fetch, web search helpers                                    |
-| `harnesses/pi/pi-extensions/web-utils/src/`             | TypeScript source                                                 |
-| `templates/generator/generate-pi-extension.sh`          | Scaffolds a new extension from template                           |
-| `templates/shared/pi-extensions/`                       | Extension scaffold template (package.json, tsconfig, src stub)    |
+| File / Dir                                        | Purpose                                                        |
+| ------------------------------------------------- | -------------------------------------------------------------- |
+| `harnesses/pi/pi-extensions/askuserquestion/`     | Implements `AskUserQuestion` tool for Pi harness               |
+| `harnesses/pi/pi-extensions/askuserquestion/src/` | TypeScript source                                              |
+| `harnesses/pi/pi-extensions/enforcement/`         | Rule enforcement extension (blocks disallowed patterns)        |
+| `harnesses/pi/pi-extensions/subagents/`           | Subagent delegation bridge for Pi                              |
+| `harnesses/pi/pi-extensions/web-utils/`           | HTTP fetch, web search helpers                                 |
+| `harnesses/pi/pi-extensions/web-utils/src/`       | TypeScript source                                              |
+| `templates/generator/generate-pi-extension.sh`    | Scaffolds a new extension from template                        |
+| `templates/shared/pi-extensions/`                 | Extension scaffold template (package.json, tsconfig, src stub) |
 
 ## Key Paths
 
@@ -42,6 +42,7 @@ templates/shared/pi-extensions/
 ## Dev Workflow
 
 Adding a new extension:
+
 1. `generate-pi-extension.sh <name>` — scaffolds from template
 2. Implement in `src/`
 3. `npm install && npm run build` in extension dir

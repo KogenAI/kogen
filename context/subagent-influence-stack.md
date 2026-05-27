@@ -78,14 +78,14 @@ Work top-down when subagent does wrong thing:
 
 ## Where to Add a Constraint
 
-| Constraint type                        | Layer             | File                                                                     |
-| -------------------------------------- | ----------------- | ------------------------------------------------------------------------ |
-| Role behavior / coding pattern         | 1 — Shared rules  | OCG `shared/rules/<topic>.md`                                            |
-| Role contract / gate / slice scope     | 2 — System prompt | OCG `shared/subagents/<role>.md.j2`                                      |
-| Project-specific domain knowledge      | 3 — Context files | `./context/<topic>.md` + `PROJECT_CONTEXT.md` trigger row                |
-| Tool allowlist / model / schema        | 4 — CLI flags     | Your platform's harness builder (Example: `HarnessConfig.build/2`)       |
-| Block a tool call / enforce at runtime | 5 — Hooks         | New hook in OCG `shared/hooks/` + manifest header + `make install`       |
-| Reusable implementation pattern        | 6 — Recipes       | `./codegen/recipes/<slug>.md`                                            |
+| Constraint type                        | Layer             | File                                                               |
+| -------------------------------------- | ----------------- | ------------------------------------------------------------------ |
+| Role behavior / coding pattern         | 1 — Shared rules  | OCG `shared/rules/<topic>.md`                                      |
+| Role contract / gate / slice scope     | 2 — System prompt | OCG `shared/subagents/<role>.md.j2`                                |
+| Project-specific domain knowledge      | 3 — Context files | `./context/<topic>.md` + `PROJECT_CONTEXT.md` trigger row          |
+| Tool allowlist / model / schema        | 4 — CLI flags     | Your platform's harness builder (Example: `HarnessConfig.build/2`) |
+| Block a tool call / enforce at runtime | 5 — Hooks         | New hook in OCG `shared/hooks/` + manifest header + `make install` |
+| Reusable implementation pattern        | 6 — Recipes       | `./codegen/recipes/<slug>.md`                                      |
 
 ## Load Triggers (PROJECT_CONTEXT.md)
 
