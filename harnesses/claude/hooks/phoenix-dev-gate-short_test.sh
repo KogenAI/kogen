@@ -1,0 +1,259 @@
+#!/usr/bin/env bash
+# phoenix-dev-gate-short_test.sh — gate-validation tests (short gate, no long-running stub).
+#
+# Tests: 1-4, 6, 7, 15, 18
+# Covers: stop_hook_active short-circuit, non-developer no-op, short-gate success/failure,
+# planner-gate-wins, no-step-log graceful exit, pre-seeded terminal flag sweep,
+# A+B transcript-vs-mtime regression.
+
+set -u
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+HOOK="$SCRIPT_DIR/phoenix-dev-gate.sh"
+
+pass=0
+fail=0
+
+assert_contains() {
+    local desc="$1"
+    local needle="$2"
+    local haystack="$3"
+    if printf '%s' "$haystack" | grep -qF "$needle"; then
+        printf 'PASS: %s\n' "$desc"
+        pass=$((pass + 1))
+    else
+        printf 'FAIL: %s\n  needle: %s\n  haystack: %s\n' "$desc" "$needle" "$haystack"
+        fail=$((fail + 1))
+    fi
+}
+
+assert_not_contains() {
+    local desc="$1"
+    local needle="$2"
+    local haystack="$3"
+    if printf '%s' "$haystack" | grep -qF "$needle"; then
+        printf 'FAIL: %s\n  unexpected: %s\n  haystack: %s\n' "$desc" "$needle" "$haystack"
+        fail=$((fail + 1))
+    else
+        printf 'PASS: %s\n' "$desc"
+        pass=$((pass + 1))
+    fi
+}
+
+assert_file_contains() {
+    local desc="$1"
+    local needle="$2"
+    local file="$3"
+    if [ -f "$file" ] && grep -qF "$needle" "$file"; then
+        printf 'PASS: %s\n' "$desc"
+        pass=$((pass + 1))
+    else
+        printf 'FAIL: %s\n  needle: %s\n  file: %s\n' "$desc" "$needle" "$file"
+        if [ -f "$file" ]; then printf '  contents:\n%s\n' "$(cat "$file")"; fi
+        fail=$((fail + 1))
+    fi
+}
+
+make_project() {
+    local dir
+    dir=$(mktemp -d)
+    (
+        cd "$dir"
+        git init -q
+        git config user.email t@t
+        git config user.name t
+        git checkout -q -b main
+        echo init >README
+        git add README
+        git commit -qm init
+    )
+    mkdir -p "$dir/.claude" "$dir/codegen/logging"
+    printf '%s' "$dir"
+}
+
+# make_transcript <transcript_path> <log_path> — write a synthetic JSONL
+# transcript recording a Write to <log_path>.
+make_transcript() {
+    local transcript_path="$1"
+    local log_path="$2"
+    printf '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Write","input":{"file_path":"%s"}}]}}\n' \
+        "$log_path" >"$transcript_path"
+}
+
+input_for() {
+    local cwd="$1"
+    local agent_type="${2:-developer-phoenix-backend}"
+    local stop_active="${3:-false}"
+    local sid="${4:-sess1}"
+    local transcript_path="${5:-}"
+    cat <<JSON
+{"hook_event_name":"SubagentStop","agent_type":"$agent_type","agent_id":"abc","session_id":"$sid","cwd":"$cwd","stop_hook_active":$stop_active,"transcript_path":"$transcript_path"}
+JSON
+}
+
+# ── Test 1: stop_hook_active=true is a no-op ────────────────────────────────
+T1=$(make_project)
+out=$(printf '%s' "$(input_for "$T1" developer-phoenix-backend true)" | bash "$HOOK" 2>/dev/null || true)
+assert_not_contains "stop_hook_active short-circuits (no block)" '"decision":"block"' "$out"
+rm -rf "$T1"
+
+# ── Test 2: non-developer agent_type is a no-op ─────────────────────────────
+T2=$(make_project)
+out=$(printf '%s' "$(input_for "$T2" reviewer-phoenix)" | bash "$HOOK" 2>/dev/null || true)
+assert_not_contains "non-developer agent_type is no-op" '"decision":"block"' "$out"
+rm -rf "$T2"
+
+# ── Test 3: short-gate success (planner says `make true`) ───────────────────
+T3=$(make_project)
+LOG="$T3/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_step1_test.md"
+cat >"$LOG" <<'MD'
+# Step
+
+## Plan
+
+**Gate**: `true`
+
+stuff
+MD
+make_transcript "$T3/transcript.jsonl" "$LOG"
+out=$(printf '%s' "$(input_for "$T3" developer-phoenix-backend false sess1 "$T3/transcript.jsonl")" | bash "$HOOK" 2>/dev/null || true)
+assert_not_contains "short-gate success no block" '"decision":"block"' "$out"
+assert_file_contains "short-gate success appends ALL CLEAR" "ALL CLEAR" "$LOG"
+rm -rf "$T3"
+
+# ── Test 4: short-gate failure emits block envelope ─────────────────────────
+T4=$(make_project)
+LOG="$T4/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_step1_fail.md"
+cat >"$LOG" <<'MD'
+# Step
+
+## Plan
+
+**Gate**: `false`
+MD
+make_transcript "$T4/transcript.jsonl" "$LOG"
+out=$(printf '%s' "$(input_for "$T4" developer-phoenix-backend false sess1 "$T4/transcript.jsonl")" | bash "$HOOK" 2>/dev/null || true)
+assert_contains "short-gate failure emits block" '"decision": "block"' "$out"
+assert_file_contains "short-gate failure appends FAILED" "FAILED" "$LOG"
+rm -rf "$T4"
+
+# ── Test 6: planner gate wins over decision tree ────────────────────────────
+T6=$(make_project)
+# Add LLM-changing path that would normally produce `make ci && make llm`
+# but planner says `true`. Project config defines the tree.
+cat >"$T6/.claude/gate-config.sh" <<'EOF'
+GATE_SHORT_DEFAULT="false"
+GATE_SHORT_FINAL="false"
+GATE_LLM="false"
+GATE_LLM_AND_PHOENIX="false"
+GATE_PHOENIX="false"
+GATE_PHOENIX_VALIDATE_THEN="false"
+GATE_PHOENIX_REBUILD_THEN="false"
+LLM_PATHS_REGEX="CLAUDE\\.md"
+PHOENIX_PATHS_REGEX="phoenix"
+SEED_BUNDLE_PATH=""
+SEED_SQL_PATH=""
+SEED_VALIDATED_PATH=""
+GATE_FINAL_STEP_DETECTOR="true"
+EOF
+echo "x" >"$T6/CLAUDE.md"
+LOG="$T6/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_step1_planner.md"
+cat >"$LOG" <<'MD'
+# Step
+
+## Plan
+
+**Gate**: `true`
+MD
+make_transcript "$T6/transcript.jsonl" "$LOG"
+out=$(printf '%s' "$(input_for "$T6" developer-phoenix-backend false sess1 "$T6/transcript.jsonl")" | bash "$HOOK" 2>/dev/null || true)
+assert_not_contains "planner gate wins (no block from $(false))" '"decision":"block"' "$out"
+assert_file_contains "planner gate logs $(true)" "Gate: true" "$LOG"
+rm -rf "$T6"
+
+# ── Test 7: no step log → graceful no-op (no flag file) ─────────────────────
+# No log file and no transcript → hook exits 0 immediately (no session log in transcript)
+T7=$(make_project)
+out=$(printf '%s' "$(input_for "$T7")" | bash "$HOOK" 2>/dev/null || true)
+[ ! -d "$T7/codegen/gate-pending" ] || [ -z "$(ls "$T7/codegen/gate-pending" 2>/dev/null)" ] && {
+    printf 'PASS: no flag file written for short fallback gate\n'
+    pass=$((pass + 1))
+} || {
+    printf 'FAIL: flag file written for short gate\n'
+    fail=$((fail + 1))
+}
+rm -rf "$T7"
+
+# ── Test 15: short-gate sweeps pre-seeded terminal flag ─────────────────────
+T15=$(make_project)
+LOG15="$T15/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_step1_sweep_short.md"
+cat >"$LOG15" <<'MD'
+# Step
+
+## Plan
+
+**Gate**: `true`
+MD
+mkdir -p "$T15/codegen/gate-pending"
+# Seed a terminal exitcode file then a flag pointing at it.
+ec15="$T15/codegen/gate-pending/oldsession-stale.log.exitcode"
+echo 0 >"$ec15"
+cat >"$T15/codegen/gate-pending/latest.flag" <<EOF
+gate=make llm
+pid=99999
+log=$T15/codegen/gate-pending/oldsession-stale.log
+exitcode_file=$ec15
+started_at=2026-01-01T00:00:00Z
+session_id=oldsession
+mode=long
+EOF
+make_transcript "$T15/transcript.jsonl" "$LOG15"
+out=$(printf '%s' "$(input_for "$T15" developer-phoenix-backend false sess15 "$T15/transcript.jsonl")" | bash "$HOOK" 2>/dev/null || true)
+[ ! -e "$T15/codegen/gate-pending/latest.flag" ] && {
+    printf 'PASS: T15: pre-seeded terminal latest.flag swept by hook entry\n'
+    pass=$((pass + 1))
+} || {
+    printf 'FAIL: T15: pre-seeded terminal latest.flag not swept\n'
+    fail=$((fail + 1))
+}
+assert_file_contains "T15: short-gate verdict appended normally" "ALL CLEAR" "$LOG15"
+rm -rf "$T15"
+
+# ── Test 18: A+B regression — A's transcript, B's newer log on disk → A's log ─
+# B's log exists with newer mtime on disk, but transcript only records A.
+# Gate verdict MUST be appended to A's log, not B's.
+T18A=$(make_project)
+T18B=$(make_project)
+LOG_A="$T18A/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_step1_A.md"
+cat >"$LOG_A" <<'MD'
+# Step A
+
+## Plan
+
+**Gate**: `true`
+MD
+# Create B's log with a newer mtime (sleep 1 to guarantee).
+sleep 1
+LOG_B="$T18B/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_step1_B.md"
+cat >"$LOG_B" <<'MD'
+# Step B
+
+## Plan
+
+**Gate**: `true`
+MD
+# A's transcript only records A's log write.
+make_transcript "$T18A/transcript.jsonl" "$LOG_A"
+out=$(printf '%s' "$(input_for "$T18A" developer-phoenix-backend false sess18 "$T18A/transcript.jsonl")" | bash "$HOOK" 2>/dev/null || true)
+# A's log must have ALL CLEAR; B's log must NOT.
+if grep -qF "ALL CLEAR" "$LOG_A" && ! grep -qF "ALL CLEAR" "$LOG_B"; then
+    printf 'PASS: A+B regression: verdict appended to A only\n'
+    pass=$((pass + 1))
+else
+    printf 'FAIL: A+B regression: wrong log got verdict\n  A: %s\n  B: %s\n' "$(cat "$LOG_A")" "$(cat "$LOG_B")"
+    fail=$((fail + 1))
+fi
+rm -rf "$T18A" "$T18B"
+
+printf '\n%d passed, %d failed\n' "$pass" "$fail"
+[ "$fail" -eq 0 ]

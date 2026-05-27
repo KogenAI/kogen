@@ -1,13 +1,5 @@
-defmodule CodegenTestHarness.Stacks.Static.SeedTest do
-  @moduledoc """
-  Idempotent rebuild scenario for static stacks: html, hugo, vite-react, vite-vue, multilingual.
-
-  For each substack:
-  1. First `codegen-build` scaffolds the app and commits.
-  2. Second `codegen-build` applies a change request from the committed state.
-  3. Asserts: new commit landed, tree still builds, commit is well-formed.
-  """
-
+defmodule CodegenTestHarness.Stacks.Static.SeedTest.Html do
+  @moduledoc "html: second build from committed state produces fresh commit"
   use ExUnit.Case, async: true
 
   alias CodegenTestHarness.Assertions
@@ -19,8 +11,6 @@ defmodule CodegenTestHarness.Stacks.Static.SeedTest do
   setup do
     {:ok, cwd: Fixtures.isolated_tmp_dir()}
   end
-
-  # ── html ──────────────────────────────────────────────────────────────────────
 
   @html_first_prompt ~s(Build a single-page landing site for a coffee shop called Brew & Co. ) <>
                        ~s(Include a <section id="hours"> with opening hours.)
@@ -41,7 +31,27 @@ defmodule CodegenTestHarness.Stacks.Static.SeedTest do
     Assertions.assert_not_revert_head!(cwd)
   end
 
-  # ── hugo ──────────────────────────────────────────────────────────────────────
+  defp count_commits!(cwd) do
+    {log, 0} =
+      System.cmd("git", ["log", "--oneline"], cd: cwd, stderr_to_stdout: true, env: [])
+
+    log |> String.split("\n", trim: true) |> length()
+  end
+end
+
+defmodule CodegenTestHarness.Stacks.Static.SeedTest.Hugo do
+  @moduledoc "hugo: second build from committed state produces fresh commit"
+  use ExUnit.Case, async: true
+
+  alias CodegenTestHarness.Assertions
+  alias CodegenTestHarness.Fixtures
+
+  @moduletag :slow
+  @moduletag timeout: 1_800_000
+
+  setup do
+    {:ok, cwd: Fixtures.isolated_tmp_dir()}
+  end
 
   @hugo_first_prompt ~s(Create a Hugo blog with three sample posts about gardening. ) <>
                        ~s(Each post must have a title and at least 50 words of body content.)
@@ -63,7 +73,27 @@ defmodule CodegenTestHarness.Stacks.Static.SeedTest do
     Assertions.assert_not_revert_head!(cwd)
   end
 
-  # ── vite-react ────────────────────────────────────────────────────────────────
+  defp count_commits!(cwd) do
+    {log, 0} =
+      System.cmd("git", ["log", "--oneline"], cd: cwd, stderr_to_stdout: true, env: [])
+
+    log |> String.split("\n", trim: true) |> length()
+  end
+end
+
+defmodule CodegenTestHarness.Stacks.Static.SeedTest.ViteReact do
+  @moduledoc "vite-react: second build from committed state produces fresh commit"
+  use ExUnit.Case, async: true
+
+  alias CodegenTestHarness.Assertions
+  alias CodegenTestHarness.Fixtures
+
+  @moduletag :slow
+  @moduletag timeout: 1_800_000
+
+  setup do
+    {:ok, cwd: Fixtures.isolated_tmp_dir()}
+  end
 
   @react_first_prompt ~s(Create a React app with Vite that shows a counter ) <>
                         ~s(with data-testid="increment" and data-testid="count" elements.)
@@ -85,7 +115,27 @@ defmodule CodegenTestHarness.Stacks.Static.SeedTest do
     Assertions.assert_not_revert_head!(cwd)
   end
 
-  # ── vite-vue ──────────────────────────────────────────────────────────────────
+  defp count_commits!(cwd) do
+    {log, 0} =
+      System.cmd("git", ["log", "--oneline"], cd: cwd, stderr_to_stdout: true, env: [])
+
+    log |> String.split("\n", trim: true) |> length()
+  end
+end
+
+defmodule CodegenTestHarness.Stacks.Static.SeedTest.ViteVue do
+  @moduledoc "vite-vue: second build from committed state produces fresh commit"
+  use ExUnit.Case, async: true
+
+  alias CodegenTestHarness.Assertions
+  alias CodegenTestHarness.Fixtures
+
+  @moduletag :slow
+  @moduletag timeout: 1_800_000
+
+  setup do
+    {:ok, cwd: Fixtures.isolated_tmp_dir()}
+  end
 
   @vue_first_prompt ~s(Create a Vue app with Vite that displays a color picker ) <>
                       ~s(with a hex output display element with data-testid="hex-output".)
@@ -106,7 +156,27 @@ defmodule CodegenTestHarness.Stacks.Static.SeedTest do
     Assertions.assert_not_revert_head!(cwd)
   end
 
-  # ── multilingual ──────────────────────────────────────────────────────────────
+  defp count_commits!(cwd) do
+    {log, 0} =
+      System.cmd("git", ["log", "--oneline"], cd: cwd, stderr_to_stdout: true, env: [])
+
+    log |> String.split("\n", trim: true) |> length()
+  end
+end
+
+defmodule CodegenTestHarness.Stacks.Static.SeedTest.Multilingual do
+  @moduledoc "multilingual: second build from committed state produces fresh commit"
+  use ExUnit.Case, async: true
+
+  alias CodegenTestHarness.Assertions
+  alias CodegenTestHarness.Fixtures
+
+  @moduletag :slow
+  @moduletag timeout: 1_800_000
+
+  setup do
+    {:ok, cwd: Fixtures.isolated_tmp_dir()}
+  end
 
   @multilingual_first_prompt ~s(Create a simple multilingual site with both English and Croatian versions. ) <>
                                ~s(Include a nav with language switcher links.)
@@ -126,8 +196,6 @@ defmodule CodegenTestHarness.Stacks.Static.SeedTest do
     Assertions.assert_commit_well_formed!(cwd)
     Assertions.assert_not_revert_head!(cwd)
   end
-
-  # ── Private helpers ───────────────────────────────────────────────────────────
 
   defp count_commits!(cwd) do
     {log, 0} =

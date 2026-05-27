@@ -180,6 +180,89 @@ defmodule CodegenTestHarness.Fixtures do
     {commits_before, commits_after}
   end
 
+  @doc """
+  Runs the mode launcher for the given harness and mode non-interactively.
+
+  For the `claude` harness: calls `claude --print` directly with the
+  appropriate system prompt, bypassing `{harness}-{mode}.sh` which requires
+  interactive stdin.
+
+  For other harnesses (e.g. `pi`): delegates to `{harness}-{mode}.sh` as
+  before.
+
+  Returns `{output, exit_code}` — does NOT raise on failure (callers inspect
+  exit_code themselves).
+
+  Mode is an atom: :debug | :shape | :refactor
+  """
+  @spec run_mode_launcher(String.t(), atom(), String.t()) :: {String.t(), non_neg_integer()}
+  def run_mode_launcher(cwd, mode, prompt) do
+    harness_val = harness()
+    mode_str = Atom.to_string(mode)
+
+    case harness_val do
+      "claude" ->
+        codegen_dir = Path.expand("../../..", __DIR__)
+
+        sp_file =
+          Path.join([codegen_dir, "harnesses", harness_val, "#{harness_val}-#{mode_str}-system-prompt.txt"])
+
+        unless File.exists?(sp_file) do
+          raise "system prompt not found at #{sp_file}"
+        end
+
+        system_prompt = File.read!(sp_file)
+
+        System.cmd(
+          "claude",
+          ["--print", "--dangerously-skip-permissions", "--system-prompt", system_prompt, prompt],
+          cd: cwd,
+          stderr_to_stdout: true
+        )
+
+      _ ->
+        script =
+          Path.expand(
+            "../../../harnesses/#{harness_val}/#{harness_val}-#{mode_str}.sh",
+            __DIR__
+          )
+
+        unless File.exists?(script) do
+          raise "mode launcher not found at #{script}"
+        end
+
+        System.cmd(script, [prompt], cd: cwd, stderr_to_stdout: true)
+    end
+  end
+
+  @doc """
+  Writes a minimal Shape Up pitch skeleton to
+  `{cwd}/codegen/pitches/draft/{slug}.md`. Creates parent directories.
+  Returns the path written.
+  """
+  @spec write_stub_pitch!(String.t(), String.t()) :: String.t()
+  def write_stub_pitch!(cwd, slug) do
+    dir = Path.join([cwd, "codegen", "pitches", "draft"])
+    File.mkdir_p!(dir)
+    path = Path.join(dir, "#{slug}.md")
+
+    File.write!(path, """
+    # Pitch: #{slug}
+
+    ## Problem
+
+    The project's test suite runs all hook tests sequentially in a single shell
+    process, making CI feedback slow. Each test takes 2–5 seconds; with 40 tests,
+    total wall time exceeds 3 minutes. Engineers wait too long for local feedback.
+
+    ## Appetite
+
+    Small batch — 1 week.
+    """)
+
+    path
+  end
+
   # ── Private helpers ───────────────────────────────────────────────────────────
 
   defp run_with_timeout(cmd, args, _opts, timeout_ms) do

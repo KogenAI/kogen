@@ -74,9 +74,13 @@ For full make-target index including install/uninstall/CI targets, see `context/
 - `last_green.json` is checked in — diff against it to spot regressions before merging
 - Run a single test file: `mix test test/stacks/phoenix_test.exs` from `test_harness/`
 - Async: most stack tests are synchronous (file system I/O)
+- **ExUnit concurrency**: `max_cases` (default `System.schedulers_online() * 2`) governs how many test _modules_ run in parallel. Tests within a single module always run serially, regardless of `async: true`. To maximize concurrency, split fat modules into multiple `defmodule` blocks per file (each becomes an independent async unit). `test_harness/test/test_helper.exs` omits `:max_cases` override — the default is sufficient. Partition infrastructure (`--partitions 4`) was dropped in commit 9b09dc8 after splitting `static/iteration_test.exs`, `static/seed_test.exs`, `static/scaffold_test.exs` into 14 modules; single `mix test` per harness now scales naturally.
 
 ## Pitfalls
 
 - **`mix test` must be scoped** — bare `mix test` runs all ExUnit tests; always scope to file or tag (`--only phoenix`)
 - **`last_green.json` is not auto-updated** — run `make record-green` explicitly after a clean passing suite
 - **Hook tests are bash, not ExUnit** — do not run them via `mix test`; use `run-tests.sh`
+- **`mix assets.deploy` exits 0 silently if alias undefined** — guard optional pipeline assertions with filesystem + config checks (check both `assets/` dir presence + `"assets.deploy"` alias in `mix.exs`) rather than assuming silent success means success
+- **`count_commits!/1` duplicated across test modules** — candidate for promotion to public `Fixtures` fn to avoid copy-paste across `seed_test.exs` (static + phoenix)
+- **Multi-module ExUnit files** — private helpers cannot be shared across modules in same file; promote to public in support module or keep private per-module copy

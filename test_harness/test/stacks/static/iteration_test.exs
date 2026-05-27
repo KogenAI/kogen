@@ -1,14 +1,5 @@
-defmodule CodegenTestHarness.Stacks.Static.IterationTest do
-  @moduledoc """
-  Change-request parity across static stacks: html, hugo, react (vite), vue (vite),
-  multilingual. Parametrized via the Fixtures stack table.
-
-  For each stack:
-  1. First codegen-build scaffolds the app.
-  2. Second codegen-build applies the change request in the same tmp_dir.
-  3. Asserts: new commit landed, contracted markers present in the tree.
-  """
-
+defmodule CodegenTestHarness.Stacks.Static.IterationTest.HtmlChangeRequest do
+  @moduledoc "html change-request: new commit with faq markers"
   use ExUnit.Case, async: true
 
   alias CodegenTestHarness.Assertions
@@ -20,8 +11,6 @@ defmodule CodegenTestHarness.Stacks.Static.IterationTest do
   setup do
     {:ok, cwd: Fixtures.isolated_tmp_dir()}
   end
-
-  # ── html change-request ───────────────────────────────────────────────────────
 
   @html_first_prompt ~s(Build a single-page landing site for a coffee shop called Brew & Co. ) <>
                        ~s(Include a <section id="hours"> with opening hours.)
@@ -54,8 +43,21 @@ defmodule CodegenTestHarness.Stacks.Static.IterationTest do
     Assertions.assert_commit_subject_length!(cwd)
     Assertions.assert_not_revert_head!(cwd)
   end
+end
 
-  # ── hugo change-request ───────────────────────────────────────────────────────
+defmodule CodegenTestHarness.Stacks.Static.IterationTest.HugoChangeRequest do
+  @moduledoc "hugo change-request: new commit with new post"
+  use ExUnit.Case, async: true
+
+  alias CodegenTestHarness.Assertions
+  alias CodegenTestHarness.Fixtures
+
+  @moduletag :slow
+  @moduletag timeout: 1_800_000
+
+  setup do
+    {:ok, cwd: Fixtures.isolated_tmp_dir()}
+  end
 
   @hugo_first_prompt ~s(Create a Hugo blog with three sample posts about gardening. ) <>
                        ~s(Each post must have a title and at least 50 words of body content.)
@@ -70,7 +72,6 @@ defmodule CodegenTestHarness.Stacks.Static.IterationTest do
     assert commits_after > commits_before,
            "hugo change request must produce a new commit. Before: #{commits_before}, after: #{commits_after}"
 
-    # Look for Spring Garden Tips in any markdown/html file
     all_files =
       [Path.join(cwd, "**/*.md"), Path.join(cwd, "**/*.html")]
       |> Enum.flat_map(&Path.wildcard/1)
@@ -90,8 +91,21 @@ defmodule CodegenTestHarness.Stacks.Static.IterationTest do
     Assertions.assert_commit_subject_length!(cwd)
     Assertions.assert_not_revert_head!(cwd)
   end
+end
 
-  # ── react (vite) change-request ───────────────────────────────────────────────
+defmodule CodegenTestHarness.Stacks.Static.IterationTest.ReactChangeRequest do
+  @moduledoc "react (vite) change-request: new commit with step input marker"
+  use ExUnit.Case, async: true
+
+  alias CodegenTestHarness.Assertions
+  alias CodegenTestHarness.Fixtures
+
+  @moduletag :slow
+  @moduletag timeout: 1_800_000
+
+  setup do
+    {:ok, cwd: Fixtures.isolated_tmp_dir()}
+  end
 
   @react_first_prompt ~s(Create a React app with Vite that shows a counter ) <>
                         ~s(with data-testid="increment" and data-testid="count" elements.)
@@ -125,8 +139,21 @@ defmodule CodegenTestHarness.Stacks.Static.IterationTest do
     Assertions.assert_commit_subject_length!(cwd)
     Assertions.assert_not_revert_head!(cwd)
   end
+end
 
-  # ── vue change-request ────────────────────────────────────────────────────────
+defmodule CodegenTestHarness.Stacks.Static.IterationTest.VueChangeRequest do
+  @moduledoc "vue (vite) change-request: new commit with reset button marker"
+  use ExUnit.Case, async: true
+
+  alias CodegenTestHarness.Assertions
+  alias CodegenTestHarness.Fixtures
+
+  @moduletag :slow
+  @moduletag timeout: 1_800_000
+
+  setup do
+    {:ok, cwd: Fixtures.isolated_tmp_dir()}
+  end
 
   @vue_first_prompt ~s(Create a Vue app with Vite that displays a color picker ) <>
                       ~s(with a hex output display element with data-testid="hex-output".)
@@ -159,8 +186,21 @@ defmodule CodegenTestHarness.Stacks.Static.IterationTest do
     Assertions.assert_commit_subject_length!(cwd)
     Assertions.assert_not_revert_head!(cwd)
   end
+end
 
-  # ── multilingual change-request ───────────────────────────────────────────────
+defmodule CodegenTestHarness.Stacks.Static.IterationTest.MultilingualChangeRequest do
+  @moduledoc "multilingual change-request: new commit with language links"
+  use ExUnit.Case, async: true
+
+  alias CodegenTestHarness.Assertions
+  alias CodegenTestHarness.Fixtures
+
+  @moduletag :slow
+  @moduletag timeout: 1_800_000
+
+  setup do
+    {:ok, cwd: Fixtures.isolated_tmp_dir()}
+  end
 
   @multilingual_first_prompt ~s(Create a simple multilingual site with both English and Croatian versions. ) <>
                                ~s(Include a nav with language switcher links.)

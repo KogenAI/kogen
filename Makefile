@@ -70,22 +70,37 @@ harness-parity:
 # test: run every PreToolUse/SubagentStop/Stop hook unit-test script in parallel.
 # Each *_test.sh is hermetic — own tmp dirs, no shared state — so xargs -P is safe.
 # Job count caps at 8 to avoid thrashing on smaller machines.
+# Post-deps stages (hook-tests, phoenix scaffold, test_harness/install, npm) run
+# concurrently via & + wait to reduce wall time.
 test: hook-parity harness-parity test-generator
-	@./harnesses/claude/hooks/run-tests.sh
-	@./shared/scaffold/phoenix/run-tests.sh
-	@./test_harness/install/run-tests.sh
-	@for ext in enforcement askuserquestion subagents web-utils; do \
-		ext_dir="$(SCRIPT_DIR)/harnesses/pi/pi-extensions/$$ext"; \
-		if [ -f "$$ext_dir/package.json" ] && grep -q '"test"[[:space:]]*:' "$$ext_dir/package.json"; then \
-			echo "▶ Test: $$ext"; \
-			(cd "$$ext_dir" && mise exec -- npm test) || exit 1; \
-		fi; \
-	done
-	@ext_dir="$(SCRIPT_DIR)/harnesses/pi/pi-extensions/subagents"; \
-	if [ -d "$$ext_dir/test/integration" ] && [ -n "$$(ls "$$ext_dir/test/integration/"*.test.ts 2>/dev/null)" ]; then \
-		echo "▶ Test:integration: subagents"; \
-		(cd "$$ext_dir" && mise exec -- npm run test:integration) || exit 1; \
-	fi
+	@set -e; \
+	pids=(); \
+	./harnesses/claude/hooks/run-tests.sh & pids+=($$!); \
+	./shared/scaffold/phoenix/run-tests.sh & pids+=($$!); \
+	./test_harness/install/run-tests.sh & pids+=($$!); \
+	( \
+		npm_pids=(); \
+		for ext in enforcement askuserquestion subagents web-utils; do \
+			ext_dir="$(SCRIPT_DIR)/harnesses/pi/pi-extensions/$$ext"; \
+			if [ -f "$$ext_dir/package.json" ] && grep -q '"test"[[:space:]]*:' "$$ext_dir/package.json"; then \
+				echo "▶ Test: $$ext"; \
+				(cd "$$ext_dir" && mise exec -- npm test) & npm_pids+=($$!); \
+			fi; \
+		done; \
+		fail=0; \
+		for p in "$${npm_pids[@]+"$${npm_pids[@]}"}"; do wait "$$p" || fail=1; done; \
+		exit "$$fail" \
+	) & pids+=($$!); \
+	( \
+		ext_dir="$(SCRIPT_DIR)/harnesses/pi/pi-extensions/subagents"; \
+		if [ -d "$$ext_dir/test/integration" ] && [ -n "$$(ls "$$ext_dir/test/integration/"*.test.ts 2>/dev/null)" ]; then \
+			echo "▶ Test:integration: subagents"; \
+			(cd "$$ext_dir" && mise exec -- npm run test:integration) || exit 1; \
+		fi \
+	) & pids+=($$!); \
+	fail=0; \
+	for p in "$${pids[@]}"; do wait "$$p" || fail=1; done; \
+	exit "$$fail"
 
 .PHONY: test-generator test-generator-python
 test-generator: test-generator-python
@@ -159,72 +174,29 @@ test-coverage-summary:
 
 # test-stacks: run ExUnit stack scaffold tests under test_harness/ for both
 # harnesses in parallel. Real LLM calls — slow + costs tokens. Pre-deploy gate.
-.PHONY: test-stacks test-stacks-claude test-stacks-pi test-stacks-claude-compile test-stacks-pi-compile test-stacks-claude-p1 test-stacks-claude-p2 test-stacks-claude-p3 test-stacks-claude-p4 test-stacks-pi-p1 test-stacks-pi-p2 test-stacks-pi-p3 test-stacks-pi-p4 test-all record-green
+# All 18 async modules run within a single BEAM via ExUnit's :max_cases default
+# (System.schedulers_online * 2). No partition fanout needed.
+.PHONY: test-stacks test-stacks-claude test-stacks-pi test-stacks-claude-compile test-stacks-pi-compile test-all record-green
 test-stacks:
-	$(MAKE) test-stacks-claude
-	$(MAKE) test-stacks-pi
+	$(MAKE) -j2 test-stacks-claude test-stacks-pi
 
-# test-stacks-claude: precompile once into _build/claude_test, then fan out
-# 7 partition processes via `$(MAKE) -j7`. Each partition is its own BEAM/OS
-# process running `mix test --partitions 4 --no-compile --only slow` with a
-# distinct `MIX_TEST_PARTITION` value. Mix sorts test files round-robin into
-# partitions; with 7 slow test files we get 1 file per partition. Tests
-# within a partition use the module's `async: true` for intra-file parallelism
-# (only meaningful for `test/stacks/static/iteration_test.exs` which has 5
-# tests; the other 6 files have 1 test each).
 test-stacks-claude: test-stacks-claude-compile
-	$(MAKE) -j4 test-stacks-claude-p1 test-stacks-claude-p2 test-stacks-claude-p3 test-stacks-claude-p4
+	cd "$(SCRIPT_DIR)/test_harness" && \
+	  HARNESS=claude MIX_BUILD_PATH=_build/claude_test \
+	  mix test --no-compile --only slow
 
 test-stacks-claude-compile:
 	cd "$(SCRIPT_DIR)/test_harness" && \
 		MIX_BUILD_PATH=_build/claude_test mix compile
 
-test-stacks-claude-p1:
-	cd "$(SCRIPT_DIR)/test_harness" && \
-		HARNESS=claude MIX_BUILD_PATH=_build/claude_test MIX_TEST_PARTITION=1 \
-		mix test --partitions 4 --no-compile --only slow
-
-test-stacks-claude-p2:
-	cd "$(SCRIPT_DIR)/test_harness" && \
-		HARNESS=claude MIX_BUILD_PATH=_build/claude_test MIX_TEST_PARTITION=2 \
-		mix test --partitions 4 --no-compile --only slow
-
-test-stacks-claude-p3:
-	cd "$(SCRIPT_DIR)/test_harness" && \
-		HARNESS=claude MIX_BUILD_PATH=_build/claude_test MIX_TEST_PARTITION=3 \
-		mix test --partitions 4 --no-compile --only slow
-
-test-stacks-claude-p4:
-	cd "$(SCRIPT_DIR)/test_harness" && \
-		HARNESS=claude MIX_BUILD_PATH=_build/claude_test MIX_TEST_PARTITION=4 \
-		mix test --partitions 4 --no-compile --only slow
-
 test-stacks-pi: test-stacks-pi-compile
-	$(MAKE) -j4 test-stacks-pi-p1 test-stacks-pi-p2 test-stacks-pi-p3 test-stacks-pi-p4
+	cd "$(SCRIPT_DIR)/test_harness" && \
+	  HARNESS=pi MIX_BUILD_PATH=_build/pi_test \
+	  mix test --no-compile --only slow
 
 test-stacks-pi-compile:
 	cd "$(SCRIPT_DIR)/test_harness" && \
 		MIX_BUILD_PATH=_build/pi_test mix compile
-
-test-stacks-pi-p1:
-	cd "$(SCRIPT_DIR)/test_harness" && \
-		HARNESS=pi MIX_BUILD_PATH=_build/pi_test MIX_TEST_PARTITION=1 \
-		mix test --partitions 4 --no-compile --only slow
-
-test-stacks-pi-p2:
-	cd "$(SCRIPT_DIR)/test_harness" && \
-		HARNESS=pi MIX_BUILD_PATH=_build/pi_test MIX_TEST_PARTITION=2 \
-		mix test --partitions 4 --no-compile --only slow
-
-test-stacks-pi-p3:
-	cd "$(SCRIPT_DIR)/test_harness" && \
-		HARNESS=pi MIX_BUILD_PATH=_build/pi_test MIX_TEST_PARTITION=3 \
-		mix test --partitions 4 --no-compile --only slow
-
-test-stacks-pi-p4:
-	cd "$(SCRIPT_DIR)/test_harness" && \
-		HARNESS=pi MIX_BUILD_PATH=_build/pi_test MIX_TEST_PARTITION=4 \
-		mix test --partitions 4 --no-compile --only slow
 
 # test-all: full pre-deploy gate. Chains hook tests + stack tests, then
 # writes last_green.json. Only the all-green path overwrites last_green.json.

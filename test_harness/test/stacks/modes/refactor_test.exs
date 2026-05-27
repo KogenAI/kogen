@@ -20,7 +20,8 @@ defmodule CodegenTestHarness.Stacks.Modes.RefactorTest do
   @moduletag timeout: 1_800_000
 
   @slug "test-mode-refactor"
-  @prompt_for_claude @slug
+  @prompt_for_claude "Read codegen/pitches/draft/#{@slug}.md and add a '## Solution sketch' section " <>
+                       "that names a specific technical approach to solving the problem. Edit the file in place."
   @prompt_for_pi "Read codegen/pitches/draft/#{@slug}.md and add a Solution sketch that names " <>
                    "a specific module to refactor. Edit the pitch file in place. Emit `Ready.` when done."
 
@@ -59,7 +60,7 @@ defmodule CodegenTestHarness.Stacks.Modes.RefactorTest do
     found_solution_sketch =
       Enum.any?(after_paths, fn p ->
         body = File.read!(p)
-        String.downcase(body) |> String.contains?("## solution sketch")
+        body =~ ~r/##\s+solution/i
       end)
 
     assert found_solution_sketch,

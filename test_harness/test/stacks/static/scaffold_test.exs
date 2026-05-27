@@ -1,16 +1,5 @@
-defmodule CodegenTestHarness.Stacks.Static.ScaffoldTest do
-  @moduledoc """
-  Asserts that `codegen-build --stack=static` provisions each supported static
-  substack from an empty directory: hugo, vite-react, vite-vue, multilingual.
-
-  Each test:
-  1. Runs `codegen-build` with `--stack=static` and a substack-specific prompt.
-  2. Asserts exit 0.
-  3. Asserts stack-specific files exist.
-  4. Runs the appropriate build assertion.
-  5. Asserts at least one git commit landed.
-  """
-
+defmodule CodegenTestHarness.Stacks.Static.ScaffoldTest.Hugo do
+  @moduledoc "codegen-build provisions hugo blog from empty dir"
   use ExUnit.Case, async: true
 
   alias CodegenTestHarness.Assertions
@@ -22,8 +11,6 @@ defmodule CodegenTestHarness.Stacks.Static.ScaffoldTest do
   setup do
     {:ok, cwd: Fixtures.isolated_tmp_dir()}
   end
-
-  # ── hugo ──────────────────────────────────────────────────────────────────────
 
   test "codegen-build provisions hugo blog from empty dir", %{cwd: cwd} do
     harness = Fixtures.harness()
@@ -50,8 +37,21 @@ defmodule CodegenTestHarness.Stacks.Static.ScaffoldTest do
     Assertions.assert_hugo_builds!(cwd)
     Assertions.assert_git_committed!(cwd)
   end
+end
 
-  # ── vite-react ────────────────────────────────────────────────────────────────
+defmodule CodegenTestHarness.Stacks.Static.ScaffoldTest.ViteReact do
+  @moduledoc "codegen-build provisions vite-react app from empty dir"
+  use ExUnit.Case, async: true
+
+  alias CodegenTestHarness.Assertions
+  alias CodegenTestHarness.Fixtures
+
+  @moduletag :slow
+  @moduletag timeout: 1_800_000
+
+  setup do
+    {:ok, cwd: Fixtures.isolated_tmp_dir()}
+  end
 
   test "codegen-build provisions vite-react app from empty dir", %{cwd: cwd} do
     harness = Fixtures.harness()
@@ -82,8 +82,21 @@ defmodule CodegenTestHarness.Stacks.Static.ScaffoldTest do
     Assertions.assert_npm_builds!(cwd)
     Assertions.assert_git_committed!(cwd)
   end
+end
 
-  # ── vite-vue ──────────────────────────────────────────────────────────────────
+defmodule CodegenTestHarness.Stacks.Static.ScaffoldTest.ViteVue do
+  @moduledoc "codegen-build provisions vite-vue app from empty dir"
+  use ExUnit.Case, async: true
+
+  alias CodegenTestHarness.Assertions
+  alias CodegenTestHarness.Fixtures
+
+  @moduletag :slow
+  @moduletag timeout: 1_800_000
+
+  setup do
+    {:ok, cwd: Fixtures.isolated_tmp_dir()}
+  end
 
   test "codegen-build provisions vite-vue app from empty dir", %{cwd: cwd} do
     harness = Fixtures.harness()
@@ -112,8 +125,21 @@ defmodule CodegenTestHarness.Stacks.Static.ScaffoldTest do
     Assertions.assert_npm_builds!(cwd)
     Assertions.assert_git_committed!(cwd)
   end
+end
 
-  # ── multilingual ──────────────────────────────────────────────────────────────
+defmodule CodegenTestHarness.Stacks.Static.ScaffoldTest.Multilingual do
+  @moduledoc "codegen-build provisions multilingual site from empty dir"
+  use ExUnit.Case, async: true
+
+  alias CodegenTestHarness.Assertions
+  alias CodegenTestHarness.Fixtures
+
+  @moduletag :slow
+  @moduletag timeout: 1_800_000
+
+  setup do
+    {:ok, cwd: Fixtures.isolated_tmp_dir()}
+  end
 
   test "codegen-build provisions multilingual site from empty dir", %{cwd: cwd} do
     harness = Fixtures.harness()

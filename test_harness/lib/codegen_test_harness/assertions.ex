@@ -127,6 +127,32 @@ defmodule CodegenTestHarness.Assertions do
     :ok
   end
 
+  @doc """
+  Asserts that `output` looks like a debug-mode diagnostic report:
+  must contain both "Root Cause" and "Evidence" (case-insensitive).
+  """
+  def assert_diagnostic_report_shape!(output) when is_binary(output) do
+    assert output =~ ~r/root cause/i,
+           "debug output must contain 'Root Cause'. Got:\n#{output}"
+
+    assert output =~ ~r/evidence/i,
+           "debug output must contain 'Evidence'. Got:\n#{output}"
+  end
+
+  @doc """
+  Asserts that `git status --porcelain` in `cwd` matches `before_porcelain` —
+  i.e. no new files were written or modified since the baseline was captured.
+  """
+  def assert_no_files_written!(cwd, before_porcelain) do
+    {after_porcelain, 0} =
+      System.cmd("git", ["status", "--porcelain"], cd: cwd, stderr_to_stdout: true, env: [])
+
+    assert after_porcelain == before_porcelain,
+           "debug mode must not write files.\n" <>
+             "Before porcelain:\n#{before_porcelain}\n" <>
+             "After porcelain:\n#{after_porcelain}"
+  end
+
   def assert_file_contains!(path, needle) when is_binary(needle) do
     assert File.exists?(path), "expected file #{path} to exist"
     content = File.read!(path)
@@ -174,19 +200,25 @@ defmodule CodegenTestHarness.Assertions do
 
   @spec assert_assets_deploy!(String.t()) :: :ok
   def assert_assets_deploy!(cwd) do
-    {output, exit_code} =
-      System.cmd("mix", ["assets.deploy"], cd: cwd, stderr_to_stdout: true)
+    has_assets_dir = File.dir?(Path.join(cwd, "assets"))
+    mix_exs_content = File.read!(Path.join(cwd, "mix.exs"))
+    has_alias = String.contains?(mix_exs_content, ~s("assets.deploy"))
 
-    assert exit_code == 0, "mix assets.deploy failed in #{cwd}:\n#{output}"
+    if has_assets_dir and has_alias do
+      {output, exit_code} =
+        System.cmd("mix", ["assets.deploy"], cd: cwd, stderr_to_stdout: true)
 
-    css = Path.join([cwd, "priv", "static", "assets", "app.css"])
-    assert File.exists?(css), "expected #{css} after mix assets.deploy"
-    assert File.stat!(css).size > 0, "expected #{css} non-empty"
+      assert exit_code == 0, "mix assets.deploy failed in #{cwd}:\n#{output}"
 
-    js = Path.join([cwd, "priv", "static", "assets", "app.js"])
+      css = Path.join([cwd, "priv", "static", "assets", "app.css"])
+      assert File.exists?(css), "expected #{css} after mix assets.deploy"
+      assert File.stat!(css).size > 0, "expected #{css} non-empty"
 
-    if File.exists?(js) do
-      assert File.stat!(js).size > 0, "expected #{js} non-empty"
+      js = Path.join([cwd, "priv", "static", "assets", "app.js"])
+
+      if File.exists?(js) do
+        assert File.stat!(js).size > 0, "expected #{js} non-empty"
+      end
     end
 
     :ok

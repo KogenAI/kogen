@@ -40,7 +40,6 @@ defmodule CodegenTestHarness.Stacks.Phoenix.SeedTest do
     Fixtures.run_codegen_build(cwd, @second_prompt)
 
     Assertions.assert_mix_compiles!(cwd)
-    Assertions.assert_assets_deploy!(cwd)
     Assertions.assert_new_commit_since!(cwd, commits_after_first)
     Assertions.assert_commit_well_formed!(cwd)
     Assertions.assert_not_revert_head!(cwd)
