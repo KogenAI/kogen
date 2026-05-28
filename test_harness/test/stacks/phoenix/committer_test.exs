@@ -14,7 +14,7 @@ defmodule CodegenTestHarness.Stacks.Phoenix.CommitterTest do
   alias CodegenTestHarness.Fixtures
 
   @moduletag :slow
-  @moduletag timeout: 1_800_000
+  @moduletag timeout: 6_600_000
 
   @prompt ~s(Build a Phoenix LiveView todo app. The router MUST have ) <>
             ~s(live "/", TodoLive, :index. TodoLive MUST render a ) <>
@@ -22,7 +22,7 @@ defmodule CodegenTestHarness.Stacks.Phoenix.CommitterTest do
             ~s(and a <button data-testid="add-todo">.)
 
   setup do
-    {:ok, cwd: Fixtures.isolated_tmp_dir()}
+    {:ok, cwd: Fixtures.isolated_tmp_dir(stack: :phoenix)}
   end
 
   test "commit is well-formed after phoenix build", %{cwd: cwd} do

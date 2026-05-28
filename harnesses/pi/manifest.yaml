@@ -46,7 +46,7 @@ modes:
     model: openai-codex/gpt-5.4-mini # from config.yaml harness.build.pi
     effort: medium
     tools: read,grep,find,ls,edit,write,bash
-    extensions: [] # build uses dispatch.sh (codegen-build), not pi directly
+    extensions: [] # direct build mode — pi implements the app itself, no subagent delegation
     system_prompt_file: harnesses/pi/pi-build-system-prompt.txt
     tools_header: harnesses/pi/tools-header/build.txt
     prompt_body: harnesses/shared/prompt-bodies/build.txt

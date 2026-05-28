@@ -20,3 +20,5 @@ __pycache__/
 coverage/
 test_harness/cover/
 harnesses/pi/pi-extensions/*/coverage/
+
+test_harness/_diagnostics/

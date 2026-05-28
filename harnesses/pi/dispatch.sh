@@ -14,7 +14,15 @@ if ! command -v pi >/dev/null 2>&1; then
 fi
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-SP_FILE="$SCRIPT_DIR/pi-build-system-prompt.txt"
+# Direct-build prompt (no subagents; pi builds the app itself).
+# Note: pi-build-system-prompt.txt is regenerated from tools-header/build.txt
+# on `make install` and is dormant for build mode — only the *-direct.txt file
+# is consumed by dispatch.
+STACK="${CODEGEN_BUILD_STACK:-phoenix}"
+SP_FILE="$SCRIPT_DIR/pi-build-system-prompt-direct-${STACK}.txt"
+if [[ ! -f "$SP_FILE" ]]; then
+  SP_FILE="$SCRIPT_DIR/pi-build-system-prompt-direct-phoenix.txt"
+fi
 SYSTEM_PROMPT_FLAG=()
 if [[ -f "$SP_FILE" ]]; then
     SYSTEM_PROMPT_FLAG+=(--system-prompt "$(cat "$SP_FILE")")

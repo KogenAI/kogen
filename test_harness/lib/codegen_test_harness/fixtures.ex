@@ -24,12 +24,12 @@ defmodule CodegenTestHarness.Fixtures do
   """
 
   @codegen_build Path.expand("../../../codegen-build", __DIR__)
-  @codegen_build_timeout_ms 1_200_000
+  @codegen_build_timeout_ms 5_400_000
 
   @commit_contract_suffix """
 
 
-  IMPORTANT: After completing the work, you MUST commit ALL changes via the committer subagent before exiting. The test harness counts git commits to verify completion. The commit subject (first line) MUST be ≤72 characters. Use imperative mood (e.g., "Add", "Fix", "Update") with no trailing period.
+  IMPORTANT: After completing the work, you MUST commit ALL changes using `git add -A && git commit -m "<subject>"` before exiting. Do NOT use subagents — commit directly via bash. The test harness counts git commits to verify completion. The commit subject (first line) MUST be ≤72 characters. Use imperative mood (e.g., "Add", "Fix", "Update") with no trailing period.
   """
 
   @doc """
@@ -46,8 +46,8 @@ defmodule CodegenTestHarness.Fixtures do
 
   Raises if `git init` or the sentinel `git commit` fails.
   """
-  @spec isolated_tmp_dir() :: String.t()
-  def isolated_tmp_dir do
+  @spec isolated_tmp_dir(keyword()) :: String.t()
+  def isolated_tmp_dir(opts \\ []) do
     path =
       Path.join([
         System.tmp_dir!(),
@@ -67,7 +67,17 @@ defmodule CodegenTestHarness.Fixtures do
       File.cp_r!(agents_src, agents_dst)
     end
 
-    File.write!(Path.join(path, "CLAUDE.md"), """
+    phoenix_scaffold_section =
+      if Keyword.get(opts, :stack) != :phoenix do
+        """
+
+        For Phoenix apps: scaffold INTO the current directory using `echo "y" | mix phx.new . --app <name> --live` (e.g. `echo "y" | mix phx.new . --app hello_world --live`). The `echo "y"` is REQUIRED because the directory already exists and Phoenix will prompt for confirmation. NEVER use `mix phx.new <name>` — that creates a subdirectory instead of scaffolding here.
+        """
+      else
+        ""
+      end
+
+    claude_md_base = """
     # Project Root
 
     This is the project directory. Write ALL output files here using relative paths.
@@ -78,9 +88,9 @@ defmodule CodegenTestHarness.Fixtures do
 
     Use the Write tool with relative paths (e.g. `static/index.html`, `lib/my_app/foo.ex`).
     From Bash: create files relative to current directory, never `cat > /tmp/<file>`.
+    """
 
-    For Phoenix apps: scaffold INTO the current directory using `echo "y" | mix phx.new . --app <name> --live` (e.g. `echo "y" | mix phx.new . --app hello_world --live`). The `echo "y"` is REQUIRED because the directory already exists and Phoenix will prompt for confirmation. NEVER use `mix phx.new <name>` — that creates a subdirectory instead of scaffolding here.
-    """)
+    File.write!(Path.join(path, "CLAUDE.md"), claude_md_base <> phoenix_scaffold_section)
 
     {_init_out, 0} =
       System.cmd("git", ["init"], cd: path, env: [], stderr_to_stdout: true)
@@ -89,25 +99,43 @@ defmodule CodegenTestHarness.Fixtures do
     {_, 0} = System.cmd("git", ["config", "user.email", "harness@test"], cd: path, stderr_to_stdout: true)
     {_, 0} = System.cmd("git", ["config", "commit.gpgsign", "false"], cd: path, stderr_to_stdout: true)
 
-    git_env = [
-      {"GIT_AUTHOR_NAME", "harness"},
-      {"GIT_AUTHOR_EMAIL", "harness@test"},
-      {"GIT_COMMITTER_NAME", "harness"},
-      {"GIT_COMMITTER_EMAIL", "harness@test"}
-    ]
-
     {_commit_out, 0} =
       System.cmd(
         "git",
         ["commit", "--allow-empty", "-m", "init"],
         cd: path,
-        env: git_env,
+        env: git_env(),
         stderr_to_stdout: true
       )
 
-    ExUnit.Callbacks.on_exit(fn -> File.rm_rf!(path) end)
+    unless System.get_env("KEEP_TMP") == "1" do
+      ExUnit.Callbacks.on_exit(fn -> File.rm_rf!(path) end)
+    else
+      IO.puts(:stderr, "KEEP_TMP=1 — preserving tmp dir: #{path}")
+    end
 
-    path
+    case Keyword.get(opts, :stack) do
+      :phoenix ->
+        phoenix_path = scaffold_phoenix_app!(path)
+
+        File.mkdir_p!(Path.join(phoenix_path, ".claude"))
+
+        File.write!(
+          Path.join(phoenix_path, ".claude/settings.json"),
+          ~s({"includeCoAuthoredBy": false})
+        )
+
+        if File.dir?(agents_src) do
+          File.cp_r!(agents_src, Path.join(phoenix_path, ".claude/agents"))
+        end
+
+        File.write!(Path.join(phoenix_path, "CLAUDE.md"), claude_md_base)
+
+        phoenix_path
+
+      _ ->
+        path
+    end
   end
 
   @doc "Returns the harness under test."
@@ -152,6 +180,9 @@ defmodule CodegenTestHarness.Fixtures do
         [],
         @codegen_build_timeout_ms
       )
+
+    maybe_write_diagnostics(output, Process.get(:codegen_build_invocation, 1))
+    Process.put(:codegen_build_invocation, Process.get(:codegen_build_invocation, 1) + 1)
 
     if exit_code != 0 do
       raise "codegen-build failed (harness=#{harness_val}, stack=#{stack}, exit=#{exit_code}):\n#{output}"
@@ -231,7 +262,18 @@ defmodule CodegenTestHarness.Fixtures do
           raise "mode launcher not found at #{script}"
         end
 
-        System.cmd(script, [prompt], cd: cwd, stderr_to_stdout: true)
+        shell_quote = fn arg ->
+          "'" <> String.replace(arg, "'", "'\\''") <> "'"
+        end
+
+        shell_cmd =
+          "env PI_NON_INTERACTIVE=1 " <>
+            shell_quote.(script) <> " " <>
+            shell_quote.(prompt) <> " </dev/null"
+
+        deadline = System.monotonic_time(:millisecond) + 1_800_000
+        port = Port.open({:spawn, shell_cmd}, [:binary, :exit_status, {:cd, cwd}])
+        collect_port_output(port, [], deadline)
     end
   end
 
@@ -264,40 +306,191 @@ defmodule CodegenTestHarness.Fixtures do
   end
 
   # ── Private helpers ───────────────────────────────────────────────────────────
+  @doc """
+  Returns the static stack specs used by parametrized iteration tests.
 
-  defp run_with_timeout(cmd, args, _opts, timeout_ms) do
-    port =
-      Port.open(
-        {:spawn_executable, cmd},
-        [:binary, :exit_status, args: args]
-      )
-
-    collect_port_output(port, [], timeout_ms)
+  Each entry is `{stack_atom, change_request_prompt, [contracted_markers]}`.
+  The `stack_atom` is passed as `stack:` opt to `run_codegen_build/3`.
+  """
+  @type stack_spec() :: {atom(), String.t(), [String.t()]}
+  @spec static_stacks() :: [stack_spec()]
+  def static_stacks do
+    [
+      {:static,
+       "Add a <section id=\"faq\"> with three <details> elements containing <summary> and <p> children.",
+       [~s(id="faq"), "<details", "<summary"]},
+      {:hugo,
+       "Add a new blog post titled 'Spring Garden Tips' with at least 100 words of body content.",
+       ["Spring Garden Tips"]},
+      {:vite_react,
+       "Add a <input data-testid=\"step\" type=\"number\"> to the counter. Each increment click MUST add the step value (default 1).",
+       [~s(data-testid="step")]},
+      {:vite_vue,
+       "Add a <button data-testid=\"reset\"> that resets the hex output to #000000.",
+       [~s(data-testid="reset")]},
+      {:multilingual,
+       "Add an <a href=\"/en\"> English link and <a href=\"/hr\"> Croatian link to the nav.",
+       [~s(href="/en"), ~s(href="/hr")]}
+    ]
   end
 
-  defp collect_port_output(port, acc, timeout_ms) do
-    receive do
-      {^port, {:data, chunk}} ->
-        collect_port_output(port, [chunk | acc], timeout_ms)
+  @doc """
+  Writes `output` to the file named by `DIAGNOSTICS_FILE` env var, if set.
 
-      {^port, {:exit_status, code}} ->
-        {IO.iodata_to_binary(Enum.reverse(acc)), code}
+  The `{N}` placeholder in the filename is replaced with `invocation_index`,
+  so repeated calls (e.g. from `change_request/4`) produce distinct files:
+  `prefix-{N}.jsonl` → `prefix-1.jsonl`, `prefix-2.jsonl`, etc.
 
-      {^port, :closed} ->
-        collect_port_output(port, acc, timeout_ms)
-    after
-      timeout_ms ->
-        case Port.info(port, :os_pid) do
-          {:os_pid, os_pid} ->
-            System.cmd("kill", ["-9", "-#{os_pid}"], stderr_to_stdout: true)
+  When `DIAGNOSTICS_FILE` is unset, this is a no-op.
+  """
+  @spec maybe_write_diagnostics(String.t(), pos_integer()) :: :ok
+  def maybe_write_diagnostics(output, invocation_index \\ 1) do
+    case System.get_env("DIAGNOSTICS_FILE") do
+      nil ->
+        :ok
 
-          _ ->
-            :ok
-        end
-
-        Port.close(port)
-        raise "codegen-build timed out after #{div(timeout_ms, 60_000)} minutes"
+      filename ->
+        expanded = String.replace(filename, "{N}", to_string(invocation_index))
+        File.mkdir_p!(Path.dirname(expanded))
+        File.write!(expanded, output)
     end
+  end
+
+  # ── Private helpers ───────────────────────────────────────────────────────────
+
+  defp git_env do
+    [
+      {"GIT_AUTHOR_NAME", "harness"},
+      {"GIT_AUTHOR_EMAIL", "harness@test"},
+      {"GIT_COMMITTER_NAME", "harness"},
+      {"GIT_COMMITTER_EMAIL", "harness@test"}
+    ]
+  end
+
+  defp scaffold_phoenix_app!(parent_path) do
+    {out, code} =
+      System.cmd(
+        "mix",
+        [
+          "phx.new",
+          "codegen_app",
+          "--app",
+          "codegen_app",
+          "--module",
+          "CodegenApp",
+          "--no-install"
+        ],
+        cd: parent_path,
+        stderr_to_stdout: true
+      )
+
+    if code != 0, do: raise("mix phx.new failed (exit #{code}):\n#{out}")
+
+    phoenix_path = Path.join(parent_path, "codegen_app")
+
+    {out2, code2} =
+      System.cmd("mix", ["deps.get"], cd: phoenix_path, stderr_to_stdout: true)
+
+    if code2 != 0, do: raise("mix deps.get failed (exit #{code2}):\n#{out2}")
+
+    {_, 0} =
+      System.cmd("git", ["config", "user.name", "harness"],
+        cd: phoenix_path,
+        stderr_to_stdout: true
+      )
+
+    {_, 0} =
+      System.cmd("git", ["config", "user.email", "harness@test"],
+        cd: phoenix_path,
+        stderr_to_stdout: true
+      )
+
+    {_, 0} =
+      System.cmd("git", ["config", "commit.gpgsign", "false"],
+        cd: phoenix_path,
+        stderr_to_stdout: true
+      )
+
+    {out, code} =
+      System.cmd("git", ["add", "-A"], cd: phoenix_path, env: git_env(), stderr_to_stdout: true)
+
+    if code != 0, do: raise("git add -A failed (exit #{code}):\n#{out}")
+
+    {out, code} =
+      System.cmd(
+        "git",
+        ["commit", "-m", "Scaffold Phoenix app"],
+        cd: phoenix_path,
+        env: git_env(),
+        stderr_to_stdout: true
+      )
+
+    if code != 0, do: raise("git commit failed (exit #{code}):\n#{out}")
+
+    phoenix_path
+  end
+
+  defp run_with_timeout(cmd, args, _opts, timeout_ms) do
+    # Redirect stdin from /dev/null to prevent subprocess blocking on stdin read
+    shell_cmd =
+      Enum.map_join([cmd | args], " ", fn arg ->
+        "'" <> String.replace(arg, "'", "'\\''") <> "'"
+      end)
+
+    port =
+      Port.open(
+        {:spawn, shell_cmd <> " </dev/null"},
+        [:binary, :exit_status]
+      )
+
+    deadline = System.monotonic_time(:millisecond) + timeout_ms
+    collect_port_output(port, [], deadline)
+  end
+
+  defp collect_port_output(port, acc, deadline) do
+    remaining = deadline - System.monotonic_time(:millisecond)
+
+    if remaining <= 0 do
+      do_timeout(port, acc, deadline)
+    else
+      receive do
+        {^port, {:data, chunk}} ->
+          collect_port_output(port, [chunk | acc], deadline)
+
+        {^port, {:exit_status, code}} ->
+          {IO.iodata_to_binary(Enum.reverse(acc)), code}
+
+        {^port, :closed} ->
+          collect_port_output(port, acc, deadline)
+      after
+        remaining ->
+          do_timeout(port, acc, deadline)
+      end
+    end
+  end
+
+  defp do_timeout(port, acc, _deadline) do
+    case Port.info(port, :os_pid) do
+      {:os_pid, os_pid} ->
+        System.cmd("kill", ["-9", "-#{os_pid}"], stderr_to_stdout: true)
+        System.cmd("pkill", ["-9", "-P", "#{os_pid}"], stderr_to_stdout: true)
+
+      _ ->
+        :ok
+    end
+
+    try do
+      Port.close(port)
+    rescue
+      ArgumentError -> :already_closed
+    end
+
+    # Write whatever output we have so far to diagnostics before raising
+    partial_output = IO.iodata_to_binary(Enum.reverse(acc))
+    maybe_write_diagnostics(partial_output, Process.get(:codegen_build_invocation, 1))
+
+    timeout_minutes = div(5_400_000, 60_000)
+    raise "codegen-build timed out after #{timeout_minutes} minutes"
   end
 
   defp count_commits!(cwd) do

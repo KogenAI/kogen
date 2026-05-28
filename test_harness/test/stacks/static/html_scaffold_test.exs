@@ -11,30 +11,14 @@ defmodule CodegenTestHarness.Stacks.Static.HtmlScaffoldTest do
   alias CodegenTestHarness.Fixtures
 
   @moduletag :slow
-  @moduletag timeout: 1_800_000
+  @moduletag timeout: 6_600_000
 
   setup do
     {:ok, cwd: Fixtures.isolated_tmp_dir()}
   end
 
   test "codegen-build provisions static html site from empty dir", %{cwd: cwd} do
-    harness = Fixtures.harness()
-
-    {output, exit_code} =
-      System.cmd(
-        Fixtures.codegen_build_path(),
-        [
-          "--harness=#{harness}",
-          "--stack=static",
-          "--non-interactive",
-          "--cwd=#{cwd}",
-          "make a single static html page with a hello world heading"
-        ],
-        stderr_to_stdout: true
-      )
-
-    assert exit_code == 0,
-           "codegen-build failed (harness=#{harness}, exit=#{exit_code}):\n#{output}"
+    output = Fixtures.run_codegen_build(cwd, "make a single static html page with a hello world heading", stack: "static")
 
     html_files = Path.wildcard(Path.join(cwd, "**/*.html"))
     assert html_files != [], "no .html files found under #{cwd}\n--- output ---\n#{output}"

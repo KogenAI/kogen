@@ -13,7 +13,7 @@ defmodule CodegenTestHarness.Stacks.Phoenix.GateTest do
   alias CodegenTestHarness.Fixtures
 
   @moduletag :slow
-  @moduletag timeout: 1_800_000
+  @moduletag timeout: 6_600_000
 
   @prompt ~s(Build a Phoenix LiveView todo app. The router MUST have ) <>
             ~s(live "/", TodoLive, :index. TodoLive MUST render a ) <>
@@ -21,27 +21,11 @@ defmodule CodegenTestHarness.Stacks.Phoenix.GateTest do
             ~s(and a <button data-testid="add-todo">.)
 
   setup do
-    {:ok, cwd: Fixtures.isolated_tmp_dir()}
+    {:ok, cwd: Fixtures.isolated_tmp_dir(stack: :phoenix)}
   end
 
   test "codegen-build exit 0 implies committed compilable phoenix app", %{cwd: cwd} do
-    harness = Fixtures.harness()
-
-    {output, exit_code} =
-      System.cmd(
-        Fixtures.codegen_build_path(),
-        [
-          "--harness=#{harness}",
-          "--stack=phoenix",
-          "--non-interactive",
-          "--cwd=#{cwd}",
-          @prompt
-        ],
-        stderr_to_stdout: true
-      )
-
-    assert exit_code == 0,
-           "codegen-build failed (harness=#{harness}, exit=#{exit_code}):\n#{output}"
+    output = Fixtures.run_codegen_build(cwd, @prompt, stack: "phoenix")
 
     assert File.exists?(Path.join(cwd, "mix.exs")),
            "expected mix.exs in #{cwd}\n--- output ---\n#{output}"

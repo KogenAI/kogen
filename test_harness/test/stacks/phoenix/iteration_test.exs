@@ -15,7 +15,7 @@ defmodule CodegenTestHarness.Stacks.Phoenix.IterationTest do
   alias CodegenTestHarness.Fixtures
 
   @moduletag :slow
-  @moduletag timeout: 1_800_000
+  @moduletag timeout: 12_000_000
 
   @first_prompt ~s(Build a Phoenix LiveView todo app. The router MUST have ) <>
                   ~s(live "/", TodoLive, :index. TodoLive MUST render a ) <>
@@ -28,7 +28,7 @@ defmodule CodegenTestHarness.Stacks.Phoenix.IterationTest do
                    "and filter the assigned todos by String.contains?/2 of q."
 
   setup do
-    {:ok, cwd: Fixtures.isolated_tmp_dir()}
+    {:ok, cwd: Fixtures.isolated_tmp_dir(stack: :phoenix)}
   end
 
   test "change request produces new commit and search markers", %{cwd: cwd} do

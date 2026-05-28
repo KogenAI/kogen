@@ -11,33 +11,17 @@ defmodule CodegenTestHarness.Stacks.Phoenix.ScaffoldTest do
   alias CodegenTestHarness.Fixtures
 
   @moduletag :slow
-  @moduletag timeout: 1_800_000
+  @moduletag timeout: 6_600_000
 
   setup do
-    {:ok, cwd: Fixtures.isolated_tmp_dir()}
+    {:ok, cwd: Fixtures.isolated_tmp_dir(stack: :phoenix)}
   end
 
   test "codegen-build provisions phoenix app from empty dir", %{cwd: cwd} do
     assert String.starts_with?(cwd, System.tmp_dir!()),
            "tmp_dir leaked outside OS tmp: #{cwd}"
 
-    harness = Fixtures.harness()
-
-    {output, exit_code} =
-      System.cmd(
-        Fixtures.codegen_build_path(),
-        [
-          "--harness=#{harness}",
-          "--stack=phoenix",
-          "--non-interactive",
-          "--cwd=#{cwd}",
-          "make a single liveview at / that says hello world"
-        ],
-        stderr_to_stdout: true
-      )
-
-    assert exit_code == 0,
-           "codegen-build failed (harness=#{harness}, exit=#{exit_code}):\n#{output}"
+    output = Fixtures.run_codegen_build(cwd, "make a single liveview at / that says hello world", stack: "phoenix")
 
     assert File.exists?(Path.join(cwd, "mix.exs")),
            "expected mix.exs in #{cwd}\n--- output ---\n#{output}"

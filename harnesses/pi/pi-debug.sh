@@ -32,7 +32,13 @@ ROLE_EFFORT=$(yq -r ".harness.debug.pi.effort" "$cfg")
 
 EXTENSIONS_DIR="$CODEGEN_DIR/harnesses/pi/pi-extensions"
 
+NON_INTERACTIVE_FLAGS=()
+if [[ -n "${PI_NON_INTERACTIVE:-}" ]]; then
+    NON_INTERACTIVE_FLAGS+=(-p --mode text --no-session)
+fi
+
 exec pi \
+    "${NON_INTERACTIVE_FLAGS[@]+"${NON_INTERACTIVE_FLAGS[@]}"}" \
     --provider openai-codex \
     --model "$ROLE_MODEL" \
     --thinking "$ROLE_EFFORT" \
