@@ -102,8 +102,8 @@ Create PENDING files AND delegate fixes. Never "8 issues for next session".
 Context curator runs after reviewer, before committer. Reads all `### What I Learned This Step` blocks from the step log and routes edits:
 
 1. Curator runs and makes edits (local context files and/or OCG rules).
-2. **OCG rules edited** → orchestrator runs `make install` in `/Users/almirsarajcic/Areas/Optimum/codegen` after curator returns. Then two commits: OCG repo first (context/rules changes + regenerated subagents), combobulate second (dev code + combobulate context edits).
-3. **Combobulate-only edits** (no OCG rules touched) → single commit as normal.
+2. **OCG rules edited** → orchestrator runs `make install` in `/Users/almirsarajcic/Areas/Optimum/codegen` after curator returns. Then two commits: OCG repo first (context/rules changes + regenerated subagents), current project repo second (dev code + project context edits).
+3. **Project-only edits** (no OCG rules touched) → single commit as normal.
 
 `make install` is blocking — wait for exit before committing.
 

@@ -6,12 +6,14 @@ Runs once per step, post-final-reviewer, before committer. Accumulates blocks ac
 
 ## Routing Heuristic
 
-| Tag        | Content type                                                                                | Target                                                            |
-| ---------- | ------------------------------------------------------------------------------------------- | ----------------------------------------------------------------- |
-| `[local]`  | Combobulate module names, file paths, schemas, business logic, project-specific conventions | `context/**` in combobulate repo                                  |
-| `[shared]` | Elixir/Phoenix idioms, cross-cutting patterns, language style, framework quirks             | `/Users/almirsarajcic/Areas/Optimum/context/rules/**` in OCG repo |
+| Tag        | Content type                                                                                | Target                                                                                                                                                                                   |
+| ---------- | ------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `[local]`  | Combobulate module names, file paths, schemas, business logic, project-specific conventions | `context/**` in combobulate repo                                                                                                                                                         |
+| `[shared]` | Elixir/Phoenix idioms, cross-cutting patterns, language style, framework quirks             | `codegen/rules/stacks/phoenix/_core.md` (cross-role idioms), `codegen/rules/stacks/phoenix/<role>.md` (role-scoped), or `codegen/rules/_core/**` / `codegen/rules/shared/**` (universal) |
 
 When tag is missing or ambiguous: default to `[local]` unless the observation is clearly framework-level (applies to any Elixir/Phoenix project).
+
+CRITICAL: `[shared]` learnings route to `codegen/rules/**` (OCG repo via symlink). They MUST escape combobulate's `context/**` — that path is `[local]` only.
 
 ## Stale-Line Preference
 
@@ -28,11 +30,22 @@ Never duplicate. If the file already says it, skip.
 
 Curator MAY ONLY edit:
 
-- `context/**` — combobulate domain context files
-- `/Users/almirsarajcic/Areas/Optimum/context/rules/**` — OCG shared rules
+- `context/**` — combobulate domain context files (`[local]` targets only)
+- `codegen/rules/**` — OCG rules via symlink (`[shared]` targets: `_core/`, `shared/`, `stacks/phoenix/`)
 - `codegen/logging/**` — active step log (own section body only)
 
 ❌ `lib/`, `priv/`, `assets/`, `test/`, config files, migrations — those are dev territory.
+❌ Absolute paths under `/Users/almirsarajcic/Areas/Optimum/**` — always go via symlink (`codegen/rules/...`).
+
+## OCG Rule Edits → make install Required
+
+When curator edits any file under `codegen/rules/**`, those changes land in the OCG repo (via symlink). Subagent system prompts are baked at install time — the edits do NOT take effect until regenerated.
+
+After curator completes, orchestrator MUST:
+
+1. Run `make install` in `/Users/almirsarajcic/Areas/Optimum/codegen` — regenerates all subagent `.md` files and hook manifests.
+2. Commit OCG repo first (rules + regenerated subagents).
+3. Commit current project repo second (dev code + local context edits).
 
 ## Curator Self-Retrospective
 
