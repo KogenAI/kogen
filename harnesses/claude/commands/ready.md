@@ -10,10 +10,16 @@ Ask yourself: Is this pitch ready for a developer to build without asking you cl
 
 **Not ready** = Open questions remain (even in casual phrasing), multiple options without a choice, vague requirements, unresolved tradeoffs, inconsistencies between sections, or empirical claims without adjacent probe transcripts in `## References`.
 
-**Empirical-claim check (run before all other readiness checks):** Scan pitch prose for falsifiable assertions about tool/config/code/CI behavior: "X does Y", "X never Y", "X always Y", "deleting X is safe because Y", "only Z triggers Y". For each match: check if a `$ <command>` + fenced output block appears in the same paragraph or under `## References`. If any claim lacks a probe transcript → not ready. List each offending claim with its line number. Do NOT move the file. Allowed probes to run inline: `grep` / `find` / `ls`, `mix help <task>`, `mix test --cover <one_test_file>`, `MIX_ENV=test mix run -e "IO.inspect(...)"`, `git log -p -- <path>`. FORBIDDEN: accepting claim because source code suggests it — must execute the code path.
+**Empirical-claim check (run before all other readiness checks):** Scan pitch prose for falsifiable assertions about tool/config/code/CI behavior: "X does Y", "X never Y", "X always Y", "deleting X is safe because Y", "only Z triggers Y". For each match: check if a `$ <command>` + fenced output block appears in the same paragraph or under `## References`. If a claim lacks a probe transcript → **run the probe yourself NOW, inline, without asking the user**. Allowed probes: `grep` / `find` / `ls`, `mix help <task>`, `mix test --cover <one_test_file>`, `MIX_ENV=test mix run -e "IO.inspect(...)"`, `git log -p -- <path>`. After each probe:
+
+- Probe confirms → Edit pitch to embed the `$ <command>` line + fenced 3–10 line output block in `## References`. Claim passes. Continue scan.
+- Probe contradicts → raise via `AskUserQuestion` with options: (a) revise claim to match probe reality, (b) drop claim and dependent solution step, (c) reshape solution around probe reality. Pitch is NOT ready until user picks and edit lands.
+- Probe inconclusive → raise via `AskUserQuestion` with the same three options plus (d) run a more targeted probe — specify which.
+
+NEVER list unprobed claims and stop. NEVER ask the user "should I probe X?" — just run it. NEVER move the file while any claim's probe contradicts/is inconclusive without user resolution. FORBIDDEN: accepting claim because source code suggests it — must execute the code path.
 
 **If ready**: Move `codegen/pitches/draft/<slug>.md` → `codegen/pitches/ready/<slug>.md`. Bash: `mv <source> <dest>`. Report: "READY. Moved to ready/."
 
 **If not ready**: List what's unresolved and where (cite line or section). Be specific — quote the question or inconsistency. Stop. Do not move file.
 
-**FORBIDDEN**: Suggest edits. Ask user. Just assess readiness.
+**FORBIDDEN**: Suggest edits for non-empirical blockers. Ask user for non-empirical blockers (just assess and report). For empirical claims specifically: probe autonomously, embed on confirm, `AskUserQuestion` only on contradict/inconclusive (see Empirical-claim check above).
