@@ -5,6 +5,16 @@
 - Single: `./codegen/logging/$(date -u +%Y%m%d_%H%M%S)_session.md`
 - Multi-step: `./codegen/logging/$(date -u +%Y%m%d)_step<N>_<slug>.md`
 
+## Path Discipline
+
+**ALL roles** (orchestrator, planner, dev, reviewer, committer) MUST use relative paths when:
+
+- Creating/updating session logs (`./codegen/logging/*.md`)
+- Editing project files via Edit tool (`./lib/`, `./test/`, `./bin/`, `./priv/`, etc.)
+- Running git operations (`git diff`, `git log`, `git add`, `git status` — all relative to project root)
+
+Absolute paths FORBIDDEN in rules, logs, and delegation prompts — breaks reproducibility across machines and CI environments.
+
 ## Ownership
 
 - Orchestrator creates step log FIRST — BEFORE delegating to planner, for ALL prompt types (pitch-driven, free-form, slash-command, `claude-build` non-interactive).

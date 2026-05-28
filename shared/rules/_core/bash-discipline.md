@@ -75,6 +75,10 @@ Never hardcode. Use `$PORT` or `PROJECT_CONTEXT.md`.
 curl http://localhost:${PORT:-4000}/health
 ```
 
+## Git Paths
+
+All git commands use relative paths (workspace root is cwd). `git add ./file`, `git diff -- ./path/to/file`, `git log -- ./src/` all work from project root. NEVER hardcode `/Users/<user>/...` in git operations — breaks CI and cross-machine execution.
+
 ## Git mv
 
 `git mv <src> <dst>` — parent of `<dst>` must exist first; `git mv` does NOT create intermediate directories. Use `mkdir -p <dst-parent>` before `git mv`.
