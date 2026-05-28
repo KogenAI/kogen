@@ -24,6 +24,8 @@ commands_source: harnesses/claude/commands
 launchers:
   - name: codegen-build
     src: codegen-build
+  - name: codegen-call
+    src: codegen-call
   - name: claude-build
     src: harnesses/claude/claude-build.sh
   - name: claude-debug

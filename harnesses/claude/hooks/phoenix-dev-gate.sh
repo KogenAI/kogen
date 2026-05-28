@@ -309,9 +309,24 @@ exitcode_path="${log_path}.exitcode"
 flag_path="$flag_dir/${sid}.flag"
 
 # ── Launch ──────────────────────────────────────────────────────────────────
-# nohup so the gate survives if the hook is killed, but we poll it inline.
-nohup bash -c "$gate >$log_path 2>&1; echo \$? >$exitcode_path" >/dev/null 2>&1 &
-launched_pid=$!
+# Subshell-detach pattern: the inner subshell forks the gate with nohup and
+# immediately exits, reparenting the grandchild to PID 1 (launchd/init).
+# This makes the gate immune to PGID kills — Claude Code SIGKILLs the process
+# group on Bash tool timeout; nohup alone only protects against SIGHUP.
+# The outer `wait $!` waits for the subshell to exit (fast — fork + echo PID),
+# then we read the grandchild PID from the tmp file.
+launched_pid_tmp="$flag_dir/.launch.lock/launched_pid_tmp"
+(
+    nohup bash -c "{ $gate; } >\"$log_path\" 2>&1; echo \$? >\"$exitcode_path\"" >/dev/null 2>&1 &
+    echo $! >"$launched_pid_tmp"
+) &
+wait $!
+launched_pid=$(cat "$launched_pid_tmp" 2>/dev/null || echo "")
+rm -f "$launched_pid_tmp"
+if [[ -z "$launched_pid" ]]; then
+    append_ve_section "INCONCLUSIVE ⚠️ launch-failed" "Could not capture detached gate PID."
+    exit 0
+fi
 
 # Record PID in lock dir so stale-lock recovery can check it later.
 echo "$launched_pid" >"$flag_dir/.launch.lock/launched_pid"

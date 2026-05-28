@@ -21,7 +21,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 STACK="${CODEGEN_BUILD_STACK:-phoenix}"
 SP_FILE="$SCRIPT_DIR/pi-build-system-prompt-direct-${STACK}.txt"
 if [[ ! -f "$SP_FILE" ]]; then
-  SP_FILE="$SCRIPT_DIR/pi-build-system-prompt-direct-phoenix.txt"
+    SP_FILE="$SCRIPT_DIR/pi-build-system-prompt-direct-phoenix.txt"
 fi
 SYSTEM_PROMPT_FLAG=()
 if [[ -f "$SP_FILE" ]]; then

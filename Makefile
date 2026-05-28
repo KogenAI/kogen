@@ -64,6 +64,7 @@ install: hook-parity
 .PHONY: harness-parity
 harness-parity:
 	@bash "$(SCRIPT_DIR)/harnesses/claude/hooks/codegen-build_test.sh"
+	@bash "$(SCRIPT_DIR)/harnesses/claude/hooks/codegen-call_test.sh"
 	@bash "$(SCRIPT_DIR)/shared/scaffold/static/scaffold_test.sh"
 	@echo "harness-parity: PASS"
 

@@ -65,6 +65,18 @@ harness:
   build:
     claude: { model: haiku, effort: medium }
     pi: { model: openai-codex/gpt-5.4-mini, effort: medium }
+  bouncer:
+    claude: { model: haiku, effort: low }
+    pi: { model: openai-codex/gpt-5.4-mini, effort: low }
+  concierge:
+    claude: { model: haiku, effort: low }
+    pi: { model: openai-codex/gpt-5.4-mini, effort: low }
+  preference_extractor:
+    claude: { model: haiku, effort: low }
+    pi: { model: openai-codex/gpt-5.4-mini, effort: low }
+  user_app_build:
+    claude: { model: sonnet, effort: medium }
+    pi: { model: openai-codex/gpt-5.3-codex, effort: medium }
   inspector:
     claude: { model: sonnet, effort: medium }
     pi: { model: openai-codex/gpt-5.3-codex, effort: medium }
@@ -203,21 +215,25 @@ roles:
     effort: low
     output_format: stream-json
     json_schema: bouncer.json
+    system_prompt: ""
   concierge:
     model: haiku
     effort: low
     output_format: stream-json
     json_schema: concierge.json
+    system_prompt: ""
   preference_extractor:
     model: haiku
     effort: low
     output_format: stream-json
     json_schema: preference_extractor.json
+    system_prompt: ""
   user_app_build:
     model: sonnet
     effort: medium
     output_format: stream-json
     json_schema: user_app_build.json
+    system_prompt: ""
 
 budgets:
   build: 25.0
