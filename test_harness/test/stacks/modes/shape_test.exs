@@ -37,7 +37,7 @@ defmodule CodegenTestHarness.Stacks.Modes.ShapeTest do
         "pi" -> @prompt_for_pi
       end
 
-    {output, exit_code} = Fixtures.run_mode_launcher(cwd, :shape, prompt)
+    {output, exit_code} = Fixtures.run_mode_launcher(cwd, :shape, prompt, test_name: "shape_mode")
 
     assert exit_code == 0,
            "#{Fixtures.harness()}-shape exit #{exit_code}:\n#{output}"
@@ -62,5 +62,6 @@ defmodule CodegenTestHarness.Stacks.Modes.ShapeTest do
            "no draft pitch contains '## solution sketch' (shape mode must add it). " <>
              "Files: #{inspect(after_paths)}"
 
+    Fixtures.bench_assertions_passed!("modes", "shape_mode")
   end
 end

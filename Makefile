@@ -177,13 +177,27 @@ test-coverage-summary:
 # harnesses in parallel. Real LLM calls — slow + costs tokens. Pre-deploy gate.
 # All 18 async modules run within a single BEAM via ExUnit's :max_cases default
 # (System.schedulers_online * 2). No partition fanout needed.
+#
+# Benchmarking mode: set BENCH=1 REASON="<reason>" to capture per-test
+# stream-json telemetry into codegen/benchmarks/<UTC-ts>/. BENCH unset
+# (default) is byte-identical to pre-bench behaviour.
 .PHONY: test-stacks test-stacks-claude test-stacks-pi test-stacks-claude-compile test-stacks-pi-compile test-all record-green
+ifeq ($(BENCH),1)
+test-stacks:
+	$(eval BENCH_RUN_DIR := $(shell BENCH=1 REASON="$(REASON)" "$(SCRIPT_DIR)/test_harness/bench-prepare.sh"))
+	$(MAKE) -j2 \
+		BENCH_RUN_DIR="$(BENCH_RUN_DIR)" \
+		test-stacks-claude \
+		test-stacks-pi
+else
 test-stacks:
 	$(MAKE) -j2 test-stacks-claude test-stacks-pi
+endif
 
 test-stacks-claude: test-stacks-claude-compile
 	cd "$(SCRIPT_DIR)/test_harness" && \
 	  HARNESS=claude MIX_BUILD_PATH=_build/claude_test \
+	  $(if $(BENCH_RUN_DIR),BENCH_RUN_DIR="$(BENCH_RUN_DIR)") \
 	  mix test --no-compile --only slow
 
 test-stacks-claude-compile:
@@ -193,11 +207,39 @@ test-stacks-claude-compile:
 test-stacks-pi: test-stacks-pi-compile
 	cd "$(SCRIPT_DIR)/test_harness" && \
 	  HARNESS=pi MIX_BUILD_PATH=_build/pi_test \
+	  $(if $(BENCH_RUN_DIR),BENCH_RUN_DIR="$(BENCH_RUN_DIR)") \
 	  mix test --no-compile --only slow
 
 test-stacks-pi-compile:
 	cd "$(SCRIPT_DIR)/test_harness" && \
 		MIX_BUILD_PATH=_build/pi_test mix compile
+
+# bench: full benchmarking run + markdown summary.
+# Requires REASON. Creates codegen/benchmarks/<UTC-ts>/, runs both harness
+# stack suites under that dir (real LLM, slow, costs tokens), then writes
+# <run-dir>/summary.md aggregating all per-test harness_summary JSONL records.
+.PHONY: bench
+bench:
+	@if [ -z "$(REASON)" ]; then \
+		echo "❌ REASON is required. Usage: make bench REASON=\"your reason\""; \
+		exit 1; \
+	fi
+	$(eval BENCH_RUN_DIR := $(shell BENCH=1 REASON="$(REASON)" "$(SCRIPT_DIR)/test_harness/bench-prepare.sh"))
+	@if [ -z "$(BENCH_RUN_DIR)" ] || [ ! -d "$(BENCH_RUN_DIR)" ]; then \
+		echo "❌ bench-prepare.sh did not produce a run dir"; \
+		exit 1; \
+	fi
+	@echo "▶ bench run dir: $(BENCH_RUN_DIR)"
+	$(MAKE) -j2 \
+		BENCH_RUN_DIR="$(BENCH_RUN_DIR)" \
+		test-stacks-claude \
+		test-stacks-pi; \
+	BENCH_EXIT=$$?; \
+	node "$(SCRIPT_DIR)/test_harness/bench/summarize.js" "$(BENCH_RUN_DIR)" > /dev/null; \
+	cat "$(BENCH_RUN_DIR)/summary-short.txt"; \
+	echo ""; \
+	echo "✅ summary: $(BENCH_RUN_DIR)/summary.md"; \
+	exit $$BENCH_EXIT
 
 # test-all: full pre-deploy gate. Chains hook tests + stack tests, then
 # writes last_green.json. Only the all-green path overwrites last_green.json.
@@ -348,6 +390,7 @@ help:
 	@echo "  make test-generator  Run Python unittest + bash unit tests for generator pipeline"
 	@echo "  make test-coverage  Coverage report per language → coverage/<lang>/"
 	@echo "  make test-stacks    Run ExUnit stack scaffold tests (claude+pi parallel, real LLM, slow)"
+	@echo "  make bench REASON=  Run benchmark stacks + write summary.md (real LLM, slow)"
 	@echo "  make test-all       Full pre-deploy gate: test + test-stacks + record-green"
 	@echo "  make record-green   Write test_harness/last_green.json with current sha + versions"
 	@echo "  make hook-parity    Verify hook registrations match claude-code-settings.json"

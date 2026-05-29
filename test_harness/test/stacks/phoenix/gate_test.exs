@@ -25,7 +25,8 @@ defmodule CodegenTestHarness.Stacks.Phoenix.GateTest do
   end
 
   test "codegen-build exit 0 implies committed compilable phoenix app", %{cwd: cwd} do
-    output = Fixtures.run_codegen_build(cwd, @prompt, stack: "phoenix")
+    output =
+      Fixtures.run_codegen_build(cwd, @prompt, stack: "phoenix", test_name: "gate_phoenix_exit0")
 
     assert File.exists?(Path.join(cwd, "mix.exs")),
            "expected mix.exs in #{cwd}\n--- output ---\n#{output}"
@@ -40,5 +41,7 @@ defmodule CodegenTestHarness.Stacks.Phoenix.GateTest do
 
     assert live_files != [],
            "expected at least one LiveView file under lib/*_web/live/ in #{cwd}"
+
+    Fixtures.bench_assertions_passed!("phoenix", "gate_phoenix_exit0")
   end
 end

@@ -21,7 +21,21 @@ defmodule CodegenTestHarness.Fixtures do
   the first scaffolds the app, the second applies the change request.
   Returns `{commits_before, commits_after}` where both are commit-count integers.
 
+  When `BENCH_RUN_DIR` env var is set, each `run_codegen_build/3` call writes
+  the captured stdout as JSONL to
+  `<BENCH_RUN_DIR>/runs/<harness>/<stack>/<test_name>.jsonl` and appends a
+  synthetic `harness_summary` record as the last line. For static stacks
+  (`:static`, `:hugo`, `:vite_react`, `:vite_vue`, `:multilingual`), a
+  full-page PNG screenshot is also captured to
+  `<BENCH_RUN_DIR>/runs/<harness>/<stack>/<test_name>.png` via
+  `BenchArtifacts.capture_screenshot/4`. Screenshot failures are non-fatal.
+  Pass `test_name:` in opts to identify the call site (default: `"unnamed"`).
   """
+
+  alias CodegenTestHarness.BenchArtifacts
+  alias CodegenTestHarness.BenchCommon
+  alias CodegenTestHarness.BenchManifest
+  alias CodegenTestHarness.UsageParser
 
   @codegen_build Path.expand("../../../codegen-build", __DIR__)
   @codegen_build_timeout_ms 5_400_000
@@ -95,9 +109,17 @@ defmodule CodegenTestHarness.Fixtures do
     {_init_out, 0} =
       System.cmd("git", ["init"], cd: path, env: [], stderr_to_stdout: true)
 
-    {_, 0} = System.cmd("git", ["config", "user.name", "harness"], cd: path, stderr_to_stdout: true)
-    {_, 0} = System.cmd("git", ["config", "user.email", "harness@test"], cd: path, stderr_to_stdout: true)
-    {_, 0} = System.cmd("git", ["config", "commit.gpgsign", "false"], cd: path, stderr_to_stdout: true)
+    {_, 0} =
+      System.cmd("git", ["config", "user.name", "harness"], cd: path, stderr_to_stdout: true)
+
+    {_, 0} =
+      System.cmd("git", ["config", "user.email", "harness@test"],
+        cd: path,
+        stderr_to_stdout: true
+      )
+
+    {_, 0} =
+      System.cmd("git", ["config", "commit.gpgsign", "false"], cd: path, stderr_to_stdout: true)
 
     {_commit_out, 0} =
       System.cmd(
@@ -141,7 +163,7 @@ defmodule CodegenTestHarness.Fixtures do
   @doc "Returns the harness under test."
   @spec harness() :: String.t()
   def harness do
-    System.get_env("HARNESS") || "claude"
+    BenchCommon.detect_harness()
   end
 
   @doc "Returns the absolute path to the `codegen-build` script."
@@ -158,14 +180,20 @@ defmodule CodegenTestHarness.Fixtures do
   Runs `codegen-build` with the given stack and prompt in `cwd`.
 
   Asserts exit 0 and returns the combined stdout+stderr output string.
-  `opts` may include `stack:` (string, default `"phoenix"`) and any other
-  keyword options (currently unused).
+
+  `opts` may include:
+  - `stack:` (string, default `"phoenix"`)
+  - `test_name:` (string, default `"unnamed"`) — stable identifier written to
+    the benchmark JSONL file when `BENCH_RUN_DIR` is set
   """
   @spec run_codegen_build(String.t(), String.t(), keyword()) :: String.t()
   def run_codegen_build(cwd, prompt, opts \\ []) do
     harness_val = harness()
     stack = Keyword.get(opts, :stack, "phoenix")
+    test_name = Keyword.get(opts, :test_name, "unnamed")
     prompt_with_contract = prompt <> @commit_contract_suffix
+
+    build_started_at = System.monotonic_time(:millisecond)
 
     {output, exit_code} =
       run_with_timeout(
@@ -181,8 +209,15 @@ defmodule CodegenTestHarness.Fixtures do
         @codegen_build_timeout_ms
       )
 
-    maybe_write_diagnostics(output, Process.get(:codegen_build_invocation, 1))
-    Process.put(:codegen_build_invocation, Process.get(:codegen_build_invocation, 1) + 1)
+    build_duration_ms = System.monotonic_time(:millisecond) - build_started_at
+
+    invocation_index = Process.get(:codegen_build_invocation, 1)
+    maybe_write_diagnostics(output, invocation_index)
+    Process.put(:codegen_build_invocation, invocation_index + 1)
+
+    maybe_write_bench_record(output, exit_code, harness_val, stack, test_name, build_duration_ms)
+
+    if exit_code == 0, do: maybe_capture_screenshot(cwd, stack, test_name)
 
     if exit_code != 0 do
       raise "codegen-build failed (harness=#{harness_val}, stack=#{stack}, exit=#{exit_code}):\n#{output}"
@@ -198,14 +233,21 @@ defmodule CodegenTestHarness.Fixtures do
 
   Returns `{commits_before, commits_after}` where each value is the git commit
   count after the respective build.
+
+  When `test_name:` is in opts, the two calls use `<test_name>_scaffold` and
+  `<test_name>_change` as their individual names for bench JSONL output.
   """
   @spec change_request(String.t(), String.t(), String.t(), keyword()) ::
           {non_neg_integer(), non_neg_integer()}
   def change_request(cwd, first_prompt, second_prompt, opts \\ []) do
-    run_codegen_build(cwd, first_prompt, opts)
+    base_name = Keyword.get(opts, :test_name, "unnamed")
+    first_opts = Keyword.put(opts, :test_name, "#{base_name}_scaffold")
+    second_opts = Keyword.put(opts, :test_name, "#{base_name}_change")
+
+    run_codegen_build(cwd, first_prompt, first_opts)
     commits_before = count_commits!(cwd)
 
-    run_codegen_build(cwd, second_prompt, opts)
+    run_codegen_build(cwd, second_prompt, second_opts)
     commits_after = count_commits!(cwd)
 
     {commits_before, commits_after}
@@ -225,56 +267,76 @@ defmodule CodegenTestHarness.Fixtures do
   exit_code themselves).
 
   Mode is an atom: :debug | :shape | :refactor
+
+  `opts` may include:
+  - `test_name:` (string, default `"<mode>_mode"`) — stable identifier written to
+    the benchmark JSONL file when `BENCH_RUN_DIR` is set
   """
-  @spec run_mode_launcher(String.t(), atom(), String.t()) :: {String.t(), non_neg_integer()}
-  def run_mode_launcher(cwd, mode, prompt) do
+  @spec run_mode_launcher(String.t(), atom(), String.t(), keyword()) ::
+          {String.t(), non_neg_integer()}
+  def run_mode_launcher(cwd, mode, prompt, opts \\ []) do
     harness_val = harness()
     mode_str = Atom.to_string(mode)
+    test_name = Keyword.get(opts, :test_name, "#{mode_str}_mode")
 
-    case harness_val do
-      "claude" ->
-        codegen_dir = Path.expand("../../..", __DIR__)
+    build_started_at = System.monotonic_time(:millisecond)
 
-        sp_file =
-          Path.join([codegen_dir, "harnesses", harness_val, "#{harness_val}-#{mode_str}-system-prompt.txt"])
+    {output, exit_code} =
+      case harness_val do
+        "claude" ->
+          codegen_dir = Path.expand("../../..", __DIR__)
 
-        unless File.exists?(sp_file) do
-          raise "system prompt not found at #{sp_file}"
-        end
+          sp_file =
+            Path.join([
+              codegen_dir,
+              "harnesses",
+              harness_val,
+              "#{harness_val}-#{mode_str}-system-prompt.txt"
+            ])
 
-        system_prompt = File.read!(sp_file)
+          unless File.exists?(sp_file) do
+            raise "system prompt not found at #{sp_file}"
+          end
 
-        System.cmd(
-          "claude",
-          ["--print", "--dangerously-skip-permissions", "--system-prompt", system_prompt, prompt],
-          cd: cwd,
-          stderr_to_stdout: true
-        )
+          system_prompt = File.read!(sp_file)
 
-      _ ->
-        script =
-          Path.expand(
-            "../../../harnesses/#{harness_val}/#{harness_val}-#{mode_str}.sh",
-            __DIR__
+          System.cmd(
+            "claude",
+            ["--print", "--dangerously-skip-permissions", "--system-prompt", system_prompt, prompt],
+            cd: cwd,
+            stderr_to_stdout: true
           )
 
-        unless File.exists?(script) do
-          raise "mode launcher not found at #{script}"
-        end
+        _ ->
+          script =
+            Path.expand(
+              "../../../harnesses/#{harness_val}/#{harness_val}-#{mode_str}.sh",
+              __DIR__
+            )
 
-        shell_quote = fn arg ->
-          "'" <> String.replace(arg, "'", "'\\''") <> "'"
-        end
+          unless File.exists?(script) do
+            raise "mode launcher not found at #{script}"
+          end
 
-        shell_cmd =
-          "env PI_NON_INTERACTIVE=1 " <>
-            shell_quote.(script) <> " " <>
-            shell_quote.(prompt) <> " </dev/null"
+          shell_quote = fn arg ->
+            "'" <> String.replace(arg, "'", "'\\''") <> "'"
+          end
 
-        deadline = System.monotonic_time(:millisecond) + 1_800_000
-        port = Port.open({:spawn, shell_cmd}, [:binary, :exit_status, {:cd, cwd}])
-        collect_port_output(port, [], deadline)
-    end
+          shell_cmd =
+            "env PI_NON_INTERACTIVE=1 " <>
+              shell_quote.(script) <>
+              " " <>
+              shell_quote.(prompt) <> " </dev/null"
+
+          deadline = System.monotonic_time(:millisecond) + 1_800_000
+          port = Port.open({:spawn, shell_cmd}, [:binary, :exit_status, {:cd, cwd}])
+          collect_port_output(port, [], deadline)
+      end
+
+    build_duration_ms = System.monotonic_time(:millisecond) - build_started_at
+    maybe_write_mode_bench_record(output, exit_code, harness_val, "modes", test_name, build_duration_ms)
+
+    {output, exit_code}
   end
 
   @doc """
@@ -325,8 +387,7 @@ defmodule CodegenTestHarness.Fixtures do
       {:vite_react,
        "Add a <input data-testid=\"step\" type=\"number\"> to the counter. Each increment click MUST add the step value (default 1).",
        [~s(data-testid="step")]},
-      {:vite_vue,
-       "Add a <button data-testid=\"reset\"> that resets the hex output to #000000.",
+      {:vite_vue, "Add a <button data-testid=\"reset\"> that resets the hex output to #000000.",
        [~s(data-testid="reset")]},
       {:multilingual,
        "Add an <a href=\"/en\"> English link and <a href=\"/hr\"> Croatian link to the nav.",
@@ -356,7 +417,183 @@ defmodule CodegenTestHarness.Fixtures do
     end
   end
 
+  @doc """
+  Finalizes the bench JSONL record for the given stack+test_name by flipping
+  `assertion_passed` to `true` in the last `harness_summary` line.
+
+  Call this AFTER the last ExUnit assertion in a test that uses
+  `run_codegen_build/3` or `run_mode_launcher/4`. The record is written with
+  `assertion_passed: false` (write-pending) at build time; this function flips
+  it to `true` only when all assertions have passed.
+
+  When `BENCH_RUN_DIR` is unset, this is a no-op.
+  """
+  @spec bench_assertions_passed!(String.t(), String.t()) :: :ok
+  def bench_assertions_passed!(stack, test_name) do
+    bench_run_dir = System.get_env("BENCH_RUN_DIR", "")
+
+    if bench_run_dir == "" do
+      :ok
+    else
+      harness_val = harness()
+      path = bench_jsonl_path(bench_run_dir, harness_val, stack, test_name)
+
+      if File.exists?(path) do
+        content = File.read!(path)
+        lines = String.split(content, "\n", trim: true)
+
+        idx =
+          lines
+          |> Enum.with_index()
+          |> Enum.filter(fn {line, _} ->
+            case Jason.decode(line) do
+              {:ok, %{"type" => "harness_summary"}} -> true
+              _ -> false
+            end
+          end)
+          |> List.last()
+
+        case idx do
+          {line, i} ->
+            {:ok, decoded} = Jason.decode(line)
+            updated = Jason.encode!(Map.put(decoded, "assertion_passed", true))
+            new_lines = List.replace_at(lines, i, updated)
+            File.write!(path, Enum.join(new_lines, "\n") <> "\n")
+
+          nil ->
+            IO.warn("bench_assertions_passed!: no harness_summary found in #{path}")
+        end
+      else
+        IO.warn(
+          "bench_assertions_passed!: no JSONL found at #{path} — test_name mismatch?"
+        )
+      end
+    end
+  end
+
   # ── Private helpers ───────────────────────────────────────────────────────────
+
+  defp bench_jsonl_path(bench_run_dir, harness_val, stack, test_name) do
+    Path.join([bench_run_dir, "runs", harness_val, stack, "#{test_name}.jsonl"])
+  end
+
+  defp maybe_write_bench_record(output, exit_code, harness_val, stack, test_name, build_duration_ms) do
+    bench_run_dir = System.get_env("BENCH_RUN_DIR")
+
+    if is_nil(bench_run_dir) or String.trim(bench_run_dir) == "" do
+      :ok
+    else
+      harness_atom =
+        case harness_val do
+          "claude" -> :claude
+          "pi" -> :pi
+          other -> String.to_atom(other)
+        end
+
+      parsed =
+        output
+        |> UsageParser.parse(harness_atom)
+        |> Map.put(:build_duration_ms, build_duration_ms)
+
+      jsonl_dir = Path.join([bench_run_dir, "runs", harness_val, stack])
+      File.mkdir_p!(jsonl_dir)
+      jsonl_path = bench_jsonl_path(bench_run_dir, harness_val, stack, test_name)
+
+      raw_lines =
+        output
+        |> String.split("\n", trim: true)
+        |> Enum.filter(fn line ->
+          case Jason.decode(line) do
+            {:ok, _} -> true
+            _ -> false
+          end
+        end)
+        |> Enum.join("\n")
+
+      parsed_serializable =
+        Map.new(parsed, fn
+          {k, :unknown} -> {k, ":unknown"}
+          {k, v} -> {k, v}
+        end)
+
+      summary = %{
+        "type" => "harness_summary",
+        "test_name" => test_name,
+        "exit_code" => exit_code,
+        "assertion_passed" => false,
+        "parsed" => parsed_serializable
+      }
+
+      summary_line = Jason.encode!(summary)
+      content = if raw_lines == "", do: summary_line, else: raw_lines <> "\n" <> summary_line
+      File.write!(jsonl_path, content)
+
+      resolved_model =
+        case parsed.model do
+          :unknown -> "unknown"
+          model -> model
+        end
+
+      BenchManifest.record_resolution(
+        bench_run_dir,
+        harness_val,
+        # role defaults to "user_app_build" — all 12 test call sites use this role;
+        # update here and add a role: opt to run_codegen_build/3 if a new role is needed
+        "user_app_build",
+        resolved_model
+      )
+    end
+  end
+
+  defp maybe_write_mode_bench_record(output, exit_code, harness_val, stack, test_name, build_duration_ms) do
+    bench_run_dir = System.get_env("BENCH_RUN_DIR")
+
+    if is_nil(bench_run_dir) or String.trim(bench_run_dir) == "" do
+      :ok
+    else
+      harness_atom =
+        case harness_val do
+          "claude" -> :claude
+          "pi" -> :pi
+          other -> String.to_atom(other)
+        end
+
+      parsed =
+        output
+        |> UsageParser.parse(harness_atom)
+        |> Map.put(:build_duration_ms, build_duration_ms)
+
+      jsonl_dir = Path.join([bench_run_dir, "runs", harness_val, stack])
+      File.mkdir_p!(jsonl_dir)
+      jsonl_path = bench_jsonl_path(bench_run_dir, harness_val, stack, test_name)
+
+      parsed_serializable =
+        Map.new(parsed, fn
+          {k, :unknown} -> {k, ":unknown"}
+          {k, v} -> {k, v}
+        end)
+
+      summary = %{
+        "type" => "harness_summary",
+        "test_name" => test_name,
+        "exit_code" => exit_code,
+        "assertion_passed" => false,
+        "parsed" => parsed_serializable
+      }
+
+      File.write!(jsonl_path, Jason.encode!(summary))
+    end
+  end
+
+  defp maybe_capture_screenshot(cwd, stack, test_name) do
+    bench_run_dir = System.get_env("BENCH_RUN_DIR")
+
+    if is_nil(bench_run_dir) or String.trim(bench_run_dir) == "" do
+      :ok
+    else
+      BenchArtifacts.capture_screenshot(cwd, stack, bench_run_dir, test_name)
+    end
+  end
 
   defp git_env do
     [

@@ -22,3 +22,11 @@ test_harness/cover/
 harnesses/pi/pi-extensions/*/coverage/
 
 test_harness/_diagnostics/
+
+# Benchmark run dirs (created by make test-stacks BENCH=1)
+codegen/benchmarks/
+
+# Temporary build artifacts
+tmp/
+test_harness/bench_run.log
+bench_run_*.log

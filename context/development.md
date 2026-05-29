@@ -27,6 +27,7 @@ One-liner per target — for test target semantics see `context/test-harness.md`
 | `make test-stacks`        | Run ExUnit stack scaffold tests — see `context/test-harness.md` for semantics |
 | `make test-stacks-claude` | Run ExUnit suite for Claude harness only                                      |
 | `make test-stacks-pi`     | Run ExUnit suite for Pi harness only                                          |
+| `make bench REASON=`      | Full benchmark run (both harnesses) + writes `summary.md` via `summarize.js`  |
 | `make record-green`       | Stamp `last_green.json` after clean passing suite                             |
 | `make gate-status`        | Check in-flight gate process status                                           |
 | `make uninstall`          | Remove installed claude harness artifacts                                     |
@@ -35,13 +36,15 @@ One-liner per target — for test target semantics see `context/test-harness.md`
 
 ## Environment Configuration
 
-| Variable             | Purpose                      | Notes                   |
-| -------------------- | ---------------------------- | ----------------------- |
-| `CODEGEN_DIR`        | Absolute path to this repo   | Set by `config.sh`      |
-| `INSTALL_DIR`        | Launcher install destination | Default: `~/bin`        |
-| `ZSH_COMPLETION_DST` | Zsh completions destination  | Set in `config.sh`      |
-| `ANTHROPIC_API_KEY`  | Claude/Pi API key            | Required; not in `.env` |
-| `CLAUDE_MODEL`       | Override default model       | Optional                |
+| Variable             | Purpose                      | Notes                                                                                                                                                                                                                                                                      |
+| -------------------- | ---------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `CODEGEN_DIR`        | Absolute path to this repo   | Set by `config.sh`                                                                                                                                                                                                                                                         |
+| `INSTALL_DIR`        | Launcher install destination | Default: `~/bin`                                                                                                                                                                                                                                                           |
+| `ZSH_COMPLETION_DST` | Zsh completions destination  | Set in `config.sh`                                                                                                                                                                                                                                                         |
+| `ANTHROPIC_API_KEY`  | Claude/Pi API key            | Required; not in `.env`                                                                                                                                                                                                                                                    |
+| `CLAUDE_MODEL`       | Override default model       | Optional                                                                                                                                                                                                                                                                   |
+| `BENCH`              | Enable benchmark capture     | Set to `1` with `make test-stacks`; requires `REASON` non-empty; must be literal non-empty string (Makefile conditional checks via `$(if var,...)` emits empty when var unset)                                                                                             |
+| `REASON`             | Human-readable run label     | Required when `BENCH=1`; stored in run dir as `reason.txt`; JSON deserialization at viewer time via `String.to_atom(k)` — never use `to_existing_atom/1` on untrusted key strings (smoke test caught `ArgumentError: not an already existing atom` on `"duration_api_ms"`) |
 
 See `.env.sample` and `.env.prod.sample` for full variable lists.
 
@@ -62,6 +65,23 @@ See `.env.sample` and `.env.prod.sample` for full variable lists.
 | `test_harness/record-green.sh`              | Stamp last_green.json              |
 | `templates/generator/generate.sh <harness>` | Render agent prompts for harness   |
 | `update_ai_tools.sh`                        | Update Claude CLI and AI tool deps |
+
+## Benchmark Viewer (Mix Tasks)
+
+Run from `test_harness/`:
+
+- `mix codegen.bench.list` — lists all runs under `codegen/benchmarks/` newest-first
+- `mix codegen.bench.view --run codegen/benchmarks/<ts>` — ASCII metrics table for one run; add `--compare <prev>` for delta column
+
+## Benchmark Prerequisites
+
+Screenshot capture for static-stack benchmark runs requires:
+
+- `node` — already required by vite stacks; must be on `PATH`
+- `playwright` npm devDependency — pinned at `^1.60.0` in root `package.json`; install via `npm install` at repo root
+- Chromium browser binary — one-time install: `npx playwright install chromium`
+
+Missing Playwright is **non-fatal**: `BenchArtifacts.capture_screenshot/4` detects the missing module, logs `playwright not installed — skipping screenshot capture`, and returns `:ok`. JSONL bench records are always written regardless of screenshot availability.
 
 ## Common Pitfalls
 

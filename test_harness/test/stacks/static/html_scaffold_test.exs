@@ -18,7 +18,11 @@ defmodule CodegenTestHarness.Stacks.Static.HtmlScaffoldTest do
   end
 
   test "codegen-build provisions static html site from empty dir", %{cwd: cwd} do
-    output = Fixtures.run_codegen_build(cwd, "make a single static html page with a hello world heading", stack: "static")
+    output =
+      Fixtures.run_codegen_build(cwd, "make a single static html page with a hello world heading",
+        stack: "static",
+        test_name: "scaffold_static_html_hello"
+      )
 
     html_files = Path.wildcard(Path.join(cwd, "**/*.html"))
     assert html_files != [], "no .html files found under #{cwd}\n--- output ---\n#{output}"
@@ -32,5 +36,6 @@ defmodule CodegenTestHarness.Stacks.Static.HtmlScaffoldTest do
            "no .html file under #{cwd} contains /hello\\s*world/i\nfiles: #{inspect(html_files)}"
 
     Assertions.assert_git_committed!(cwd)
+    Fixtures.bench_assertions_passed!("static", "scaffold_static_html_hello")
   end
 end

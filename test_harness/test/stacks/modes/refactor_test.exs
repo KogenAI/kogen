@@ -43,7 +43,7 @@ defmodule CodegenTestHarness.Stacks.Modes.RefactorTest do
         "pi" -> @prompt_for_pi
       end
 
-    {output, exit_code} = Fixtures.run_mode_launcher(cwd, :refactor, prompt)
+    {output, exit_code} = Fixtures.run_mode_launcher(cwd, :refactor, prompt, test_name: "refactor_mode")
 
     assert exit_code == 0,
            "#{Fixtures.harness()}-refactor exit #{exit_code}:\n#{output}"
@@ -77,5 +77,7 @@ defmodule CodegenTestHarness.Stacks.Modes.RefactorTest do
     assert found_refactor_concern,
            "no draft pitch body references a technical refactor concern " <>
              "(module/function/refactor/restructure). Files: #{inspect(after_paths)}"
+
+    Fixtures.bench_assertions_passed!("modes", "refactor_mode")
   end
 end

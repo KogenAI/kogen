@@ -2,6 +2,7 @@
   "name": "optimum-codegen",
   "private": true,
   "devDependencies": {
+    "playwright": "^1.60.0",
     "prettier": "^3.8.1"
   }
 }

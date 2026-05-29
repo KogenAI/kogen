@@ -1,0 +1,94 @@
+# bench/
+
+Node helpers for benchmark artifact capture.
+
+## Summary
+
+`summarize.js` reads every `runs/<harness>/<stack>/*.jsonl` file, finds the `harness_summary` line in each, aggregates cost / tokens / duration / turns / pass-rate and screenshot counts, then writes `<BENCH_RUN_DIR>/summary.md`.
+
+Invoked automatically by `make bench` after both harness suites finish. Can also be run manually:
+
+```sh
+node test_harness/bench/summarize.js path/to/codegen/benchmarks/<run-dir>
+```
+
+The produced `summary.md` contains:
+
+- Run metadata (date, sha, reason, harness versions)
+- Pass rate per harness
+- Cost table (per-harness, per-stack, grand total)
+- Tokens table (input + cache totals, output)
+- Duration / turns (Claude only — Pi records `:unknown`, rendered as `—`)
+- Full per-test results table
+- Screenshot counts per harness / stack
+
+## Screenshots
+
+`screenshot.js` captures a full-page PNG of each static-stack benchmark run.
+
+**Screenshots require Playwright. Install once: `npm install` from this dir.**
+
+After `npm install`, Playwright's Chromium browser is downloaded automatically on first use. If you need to pre-install it explicitly:
+
+```sh
+npx playwright install chromium
+```
+
+First benchmark run installs Playwright Chromium automatically via npm.
+
+## Stack Detection
+
+`screenshot.js` maps each `--stack` argument to a serve directory via `resolveServeDir()`. Phoenix is handled separately — it spawns its own server rather than using a static serve directory. The fallback chains per static stack are:
+
+### Vite Bundle-Marker Detection
+
+An agent may write a source-shape `index.html` into `public/` (e.g. `<!doctype html>...<div id="root"></div>`) without running `npm run build`. With `outDir: "public"` (Vite project rule), the screenshot logic would find `public/index.html` and serve it directly — but it has no `<script src="/assets/index-HASH.js">` reference, so React/Vue never loads and the PNG is blank.
+
+`hasBundledScript(html)` scans the first 4KB of any candidate `index.html` for a `<script src="...">` pointing to a built asset (hashed filename like `index-UV0H7q2h.js`, or paths under `/assets/` or `/dist/`). If the check fails **and** the sub-stack is Vite, the existing file is ignored and the Vite build branch runs, overwriting `public/index.html` with real bundled output. This applies to both `public/index.html` and `dist/index.html`.
+
+### Phoenix Server Lifecycle
+
+`case "phoenix"` in `main()` bypasses `resolveServeDir` entirely — Phoenix runs its own HTTP server. Sequence:
+
+1. `allocFreePort()` — bind Node `net.Server` to port 0, capture OS-assigned port, close immediately.
+2. `execSync("mix deps.get", { timeout: 60_000 })` — fetch dependencies.
+3. `execSync("mix compile", { timeout: 90_000 })` — compile the project; separate timeout gives clear diagnostics if compile is slow.
+4. `startPhoenixServer(cwd, port)` — `spawn("mix", ["phx.server"], { detached: true })` in a new process group. Pipes stdout/stderr to `process.stderr` with `[phx]` prefix.
+5. `waitForHttp200(port, 30_000)` — poll `http://localhost:<port>/` every 200ms; resolve on 2xx/3xx; treat `ECONNREFUSED` as retry.
+6. Chromium screenshot at `http://localhost:<port>/`.
+7. `stopPhoenixServer(child)` — `process.kill(-pgid, 'SIGTERM')`, wait 2s, `process.kill(-pgid, 'SIGKILL')`. Both wrapped in try/catch; `ESRCH` treated as success (process already exited). A `process.on('exit', ...)` safety net registered before the try block kills the group even on uncaught exceptions.
+
+### `static`
+
+Sub-stack is detected first (before any directory existence check) to avoid the Vite source-convention trap: Vite projects place a source `index.html` at the cwd root, which looks like a plain-HTML project but references untranspiled ESM files that browsers cannot load.
+
+Detection order:
+
+1. `public/index.html` exists **and** passes bundle-marker check → serve `public/` (already built — Hugo or Vite output)
+2. `dist/index.html` exists **and** passes bundle-marker check → serve `dist/` (already built — Vite output)
+3. `vite.config.*` + `package.json` detected (or bundle-marker check failed above) → run `npm install && npm run build`, then serve `dist/` (or `public/` if build outputs there)
+4. Hugo config (`hugo.toml` / `config.toml` / `hugo.yaml` / `hugo.json`) detected → run `hugo --quiet`, serve `public/`
+5. `index.html` at cwd root (plain HTML) → serve cwd
+6. Any `.html` file at cwd root → serve cwd
+
+### `multilingual`
+
+Detection order:
+
+1. `public/index.html` exists → serve `public/` (already built Hugo output)
+2. `dist/index.html` exists → serve `dist/` (Vite multilingual build)
+3. Hugo config found → run `hugo --quiet`, serve `public/` if produced
+4. `static/index.html` exists → serve `static/` (plain multi-page layout without Hugo)
+5. Fallback: serve cwd
+
+### `hugo`
+
+Checks `public/`. If missing, runs `hugo --quiet` and serves `public/`.
+
+### `vite_react` / `vite_vue`
+
+Checks `dist/`. If missing, runs `npm install && npm run build` and serves `dist/`.
+
+## CSS Injection
+
+SPAs (React, Vue) render onto transparent canvases with low-contrast text, producing visually blank PNGs. Before `page.screenshot()`, `screenshot.js` injects a visibility stylesheet via `page.addStyleTag()` that forces a white background, frames interactive elements with a light border, and sets link colors. This produces a "visibility-normalized" view — useful for confirming a page rendered at all, not for pixel-perfect visual regression. If CSS injection fails (strict CSP), the failure is logged to stderr and the screenshot proceeds with original rendering.

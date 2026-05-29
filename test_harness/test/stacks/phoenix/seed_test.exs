@@ -30,19 +30,21 @@ defmodule CodegenTestHarness.Stacks.Phoenix.SeedTest do
 
   test "second build from committed state produces fresh commit and still compiles", %{cwd: cwd} do
     # First build
-    Fixtures.run_codegen_build(cwd, @first_prompt)
+    Fixtures.run_codegen_build(cwd, @first_prompt, test_name: "seed_phoenix_first_build")
 
     Assertions.assert_mix_compiles!(cwd)
     commits_after_first = count_commits!(cwd)
     assert commits_after_first >= 1, "First build must produce at least one commit"
 
     # Second build from committed state
-    Fixtures.run_codegen_build(cwd, @second_prompt)
+    Fixtures.run_codegen_build(cwd, @second_prompt, test_name: "seed_phoenix_second_build")
 
     Assertions.assert_mix_compiles!(cwd)
     Assertions.assert_new_commit_since!(cwd, commits_after_first)
     Assertions.assert_commit_well_formed!(cwd)
     Assertions.assert_not_revert_head!(cwd)
+    Fixtures.bench_assertions_passed!("phoenix", "seed_phoenix_first_build")
+    Fixtures.bench_assertions_passed!("phoenix", "seed_phoenix_second_build")
   end
 
   defp count_commits!(cwd) do

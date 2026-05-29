@@ -4,14 +4,15 @@ Role-specific rules that define what each agent role MUST and MUST NOT do. These
 
 ## Components
 
-| File                                    | Purpose                                                                                |
-| --------------------------------------- | -------------------------------------------------------------------------------------- |
-| `shared/rules/roles/orchestrator.md`    | Orchestrator-only rules — delegation, never-implement, full-cycle, INCONCLUSIVE table  |
-| `shared/rules/roles/planner.md`         | Planner rules — plan structure, slice definitions, gate command                        |
-| `shared/rules/roles/developer.md`       | Universal developer rules — verify-not-declare, fix-root-cause, test with every change |
-| `shared/rules/roles/reviewer.md`        | Reviewer rules — what to check, how to report, block/pass criteria                     |
-| `shared/rules/roles/committer.md`       | Committer rules — commit message format, never amend, why-focused                      |
-| `shared/rules/roles/context-curator.md` | Context curator rules — what to update, when, retrospective routing                    |
+| File                                    | Purpose                                                                                          |
+| --------------------------------------- | ------------------------------------------------------------------------------------------------ |
+| `shared/rules/roles/orchestrator.md`    | Orchestrator-only rules — delegation, never-implement, full-cycle, INCONCLUSIVE table            |
+| `shared/rules/roles/planner.md`         | Planner rules — plan structure, slice definitions, gate command                                  |
+| `shared/rules/roles/developer.md`       | Universal developer rules — verify-not-declare, fix-root-cause, test with every change           |
+| `shared/rules/roles/reviewer.md`        | Reviewer rules — what to check, how to report, block/pass criteria                               |
+| `shared/rules/roles/committer.md`       | Committer rules — commit message format, never amend, why-focused                                |
+| `shared/rules/roles/context-curator.md` | Context curator rules — what to update, when, retrospective routing                              |
+| `context/curator-routing.md`            | Project routing targets for context-curator — where [local]/[shared] learnings land in THIS repo |
 
 ## Key Paths
 
@@ -31,6 +32,7 @@ shared/rules/roles/
 - **hooks**: several hooks enforce role rules at runtime — e.g. `orchestrator-no-source-edit.sh` enforces orchestrator's never-implement rule; `pre-commit-guard.sh` enforces committer-only commits — see `context/hooks.md`
 - **rules-core**: role rules are layered on top of core discipline rules (`context/rules-core.md`); both must be satisfied
 - **scaffold**: `AGENTS-phoenix.md.j2` and `AGENTS-static.md.j2` embed orchestrator rules for downstream apps — sync burden when orchestrator.md changes; see `context/scaffold.md`
+- **curator-routing**: context-curator's generic rule (`shared/rules/roles/context-curator.md`) delegates project paths to `context/curator-routing.md` — the `[shared]` write surface is `shared/rules/**`, not `codegen/rules/**`
 
 ## Trigger Keywords
 

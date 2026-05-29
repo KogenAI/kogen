@@ -21,7 +21,11 @@ defmodule CodegenTestHarness.Stacks.Phoenix.ScaffoldTest do
     assert String.starts_with?(cwd, System.tmp_dir!()),
            "tmp_dir leaked outside OS tmp: #{cwd}"
 
-    output = Fixtures.run_codegen_build(cwd, "make a single liveview at / that says hello world", stack: "phoenix")
+    output =
+      Fixtures.run_codegen_build(cwd, "make a single liveview at / that says hello world",
+        stack: "phoenix",
+        test_name: "scaffold_provisions_phoenix"
+      )
 
     assert File.exists?(Path.join(cwd, "mix.exs")),
            "expected mix.exs in #{cwd}\n--- output ---\n#{output}"
@@ -35,5 +39,6 @@ defmodule CodegenTestHarness.Stacks.Phoenix.ScaffoldTest do
     Assertions.assert_file_matches!(router, ~r/live\s+"\/"/)
 
     Assertions.assert_git_committed!(cwd)
+    Fixtures.bench_assertions_passed!("phoenix", "scaffold_provisions_phoenix")
   end
 end

@@ -33,7 +33,10 @@ defmodule CodegenTestHarness.Stacks.Phoenix.IterationTest do
 
   test "change request produces new commit and search markers", %{cwd: cwd} do
     {commits_before, commits_after} =
-      Fixtures.change_request(cwd, @first_prompt, @change_prompt, stack: "phoenix")
+      Fixtures.change_request(cwd, @first_prompt, @change_prompt,
+        stack: "phoenix",
+        test_name: "iteration_phoenix_search"
+      )
 
     assert commits_after > commits_before,
            "change request must produce at least one new commit. " <>
@@ -66,5 +69,7 @@ defmodule CodegenTestHarness.Stacks.Phoenix.IterationTest do
     Assertions.assert_commit_well_formed!(cwd)
     Assertions.assert_commit_subject_length!(cwd)
     Assertions.assert_not_revert_head!(cwd)
+    Fixtures.bench_assertions_passed!("phoenix", "iteration_phoenix_search_scaffold")
+    Fixtures.bench_assertions_passed!("phoenix", "iteration_phoenix_search_change")
   end
 end

@@ -20,7 +20,10 @@ defmodule CodegenTestHarness.Stacks.Static.IterationTest.HtmlChangeRequest do
 
   test "html change-request lands new commit with faq markers", %{cwd: cwd} do
     {commits_before, commits_after} =
-      Fixtures.change_request(cwd, @html_first_prompt, @html_change_prompt, stack: "static")
+      Fixtures.change_request(cwd, @html_first_prompt, @html_change_prompt,
+        stack: "static",
+        test_name: "iteration_static_html_faq"
+      )
 
     assert commits_after > commits_before,
            "html change request must produce a new commit. Before: #{commits_before}, after: #{commits_after}"
@@ -42,6 +45,8 @@ defmodule CodegenTestHarness.Stacks.Static.IterationTest.HtmlChangeRequest do
     Assertions.assert_commit_well_formed!(cwd)
     Assertions.assert_commit_subject_length!(cwd)
     Assertions.assert_not_revert_head!(cwd)
+    Fixtures.bench_assertions_passed!("static", "iteration_static_html_faq_scaffold")
+    Fixtures.bench_assertions_passed!("static", "iteration_static_html_faq_change")
   end
 end
 
@@ -67,7 +72,10 @@ defmodule CodegenTestHarness.Stacks.Static.IterationTest.HugoChangeRequest do
 
   test "hugo change-request lands new commit with new post", %{cwd: cwd} do
     {commits_before, commits_after} =
-      Fixtures.change_request(cwd, @hugo_first_prompt, @hugo_change_prompt, stack: "static")
+      Fixtures.change_request(cwd, @hugo_first_prompt, @hugo_change_prompt,
+        stack: "static",
+        test_name: "iteration_static_hugo_spring"
+      )
 
     assert commits_after > commits_before,
            "hugo change request must produce a new commit. Before: #{commits_before}, after: #{commits_after}"
@@ -90,6 +98,8 @@ defmodule CodegenTestHarness.Stacks.Static.IterationTest.HugoChangeRequest do
     Assertions.assert_commit_well_formed!(cwd)
     Assertions.assert_commit_subject_length!(cwd)
     Assertions.assert_not_revert_head!(cwd)
+    Fixtures.bench_assertions_passed!("static", "iteration_static_hugo_spring_scaffold")
+    Fixtures.bench_assertions_passed!("static", "iteration_static_hugo_spring_change")
   end
 end
 
@@ -115,7 +125,10 @@ defmodule CodegenTestHarness.Stacks.Static.IterationTest.ReactChangeRequest do
 
   test "react change-request lands new commit with step input marker", %{cwd: cwd} do
     {commits_before, commits_after} =
-      Fixtures.change_request(cwd, @react_first_prompt, @react_change_prompt, stack: "static")
+      Fixtures.change_request(cwd, @react_first_prompt, @react_change_prompt,
+        stack: "static",
+        test_name: "iteration_static_react_step"
+      )
 
     assert commits_after > commits_before,
            "react change request must produce a new commit. Before: #{commits_before}, after: #{commits_after}"
@@ -138,6 +151,8 @@ defmodule CodegenTestHarness.Stacks.Static.IterationTest.ReactChangeRequest do
     Assertions.assert_commit_well_formed!(cwd)
     Assertions.assert_commit_subject_length!(cwd)
     Assertions.assert_not_revert_head!(cwd)
+    Fixtures.bench_assertions_passed!("static", "iteration_static_react_step_scaffold")
+    Fixtures.bench_assertions_passed!("static", "iteration_static_react_step_change")
   end
 end
 
@@ -162,7 +177,10 @@ defmodule CodegenTestHarness.Stacks.Static.IterationTest.VueChangeRequest do
 
   test "vue change-request lands new commit with reset button marker", %{cwd: cwd} do
     {commits_before, commits_after} =
-      Fixtures.change_request(cwd, @vue_first_prompt, @vue_change_prompt, stack: "static")
+      Fixtures.change_request(cwd, @vue_first_prompt, @vue_change_prompt,
+        stack: "static",
+        test_name: "iteration_static_vue_reset"
+      )
 
     assert commits_after > commits_before,
            "vue change request must produce a new commit. Before: #{commits_before}, after: #{commits_after}"
@@ -185,6 +203,8 @@ defmodule CodegenTestHarness.Stacks.Static.IterationTest.VueChangeRequest do
     Assertions.assert_commit_well_formed!(cwd)
     Assertions.assert_commit_subject_length!(cwd)
     Assertions.assert_not_revert_head!(cwd)
+    Fixtures.bench_assertions_passed!("static", "iteration_static_vue_reset_scaffold")
+    Fixtures.bench_assertions_passed!("static", "iteration_static_vue_reset_change")
   end
 end
 
@@ -214,7 +234,8 @@ defmodule CodegenTestHarness.Stacks.Static.IterationTest.MultilingualChangeReque
         cwd,
         @multilingual_first_prompt,
         @multilingual_change_prompt,
-        stack: "static"
+        stack: "static",
+        test_name: "iteration_static_multilingual_links"
       )
 
     assert commits_after > commits_before,
@@ -237,5 +258,7 @@ defmodule CodegenTestHarness.Stacks.Static.IterationTest.MultilingualChangeReque
     Assertions.assert_commit_well_formed!(cwd)
     Assertions.assert_commit_subject_length!(cwd)
     Assertions.assert_not_revert_head!(cwd)
+    Fixtures.bench_assertions_passed!("static", "iteration_static_multilingual_links_scaffold")
+    Fixtures.bench_assertions_passed!("static", "iteration_static_multilingual_links_change")
   end
 end

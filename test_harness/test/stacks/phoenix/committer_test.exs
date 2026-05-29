@@ -26,11 +26,15 @@ defmodule CodegenTestHarness.Stacks.Phoenix.CommitterTest do
   end
 
   test "commit is well-formed after phoenix build", %{cwd: cwd} do
-    Fixtures.run_codegen_build(cwd, @prompt, stack: "phoenix")
+    Fixtures.run_codegen_build(cwd, @prompt,
+      stack: "phoenix",
+      test_name: "committer_phoenix_well_formed"
+    )
 
     Assertions.assert_git_committed!(cwd)
     Assertions.assert_commit_well_formed!(cwd)
     Assertions.assert_commit_subject_length!(cwd)
     Assertions.assert_not_revert_head!(cwd)
+    Fixtures.bench_assertions_passed!("phoenix", "committer_phoenix_well_formed")
   end
 end

@@ -29,6 +29,7 @@ defmodule CodegenTestHarness.MixProject do
 
   defp deps do
     [
+      {:jason, "~> 1.4"},
       {:excoveralls, "~> 0.18", only: :test, runtime: false}
     ]
   end

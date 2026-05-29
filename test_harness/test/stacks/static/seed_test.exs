@@ -19,16 +19,24 @@ defmodule CodegenTestHarness.Stacks.Static.SeedTest.Html do
                         "each containing a <summary> (the question) and a <p> (the answer)."
 
   test "html: second build from committed state produces fresh commit", %{cwd: cwd} do
-    Fixtures.run_codegen_build(cwd, @html_first_prompt, stack: "static")
+    Fixtures.run_codegen_build(cwd, @html_first_prompt,
+      stack: "static",
+      test_name: "seed_static_html_first"
+    )
 
     commits_after_first = count_commits!(cwd)
     assert commits_after_first >= 1, "First html build must produce at least one commit"
 
-    Fixtures.run_codegen_build(cwd, @html_change_prompt, stack: "static")
+    Fixtures.run_codegen_build(cwd, @html_change_prompt,
+      stack: "static",
+      test_name: "seed_static_html_second"
+    )
 
     Assertions.assert_new_commit_since!(cwd, commits_after_first)
     Assertions.assert_commit_well_formed!(cwd)
     Assertions.assert_not_revert_head!(cwd)
+    Fixtures.bench_assertions_passed!("static", "seed_static_html_first")
+    Fixtures.bench_assertions_passed!("static", "seed_static_html_second")
   end
 
   defp count_commits!(cwd) do
@@ -60,17 +68,25 @@ defmodule CodegenTestHarness.Stacks.Static.SeedTest.Hugo do
                         ~s(with at least 100 words of body content about planting vegetables.)
 
   test "hugo: second build from committed state produces fresh commit", %{cwd: cwd} do
-    Fixtures.run_codegen_build(cwd, @hugo_first_prompt, stack: "static")
+    Fixtures.run_codegen_build(cwd, @hugo_first_prompt,
+      stack: "static",
+      test_name: "seed_static_hugo_first"
+    )
 
     commits_after_first = count_commits!(cwd)
     assert commits_after_first >= 1, "First hugo build must produce at least one commit"
 
-    Fixtures.run_codegen_build(cwd, @hugo_change_prompt, stack: "static")
+    Fixtures.run_codegen_build(cwd, @hugo_change_prompt,
+      stack: "static",
+      test_name: "seed_static_hugo_second"
+    )
 
     Assertions.assert_new_commit_since!(cwd, commits_after_first)
     Assertions.assert_hugo_builds!(cwd)
     Assertions.assert_commit_well_formed!(cwd)
     Assertions.assert_not_revert_head!(cwd)
+    Fixtures.bench_assertions_passed!("static", "seed_static_hugo_first")
+    Fixtures.bench_assertions_passed!("static", "seed_static_hugo_second")
   end
 
   defp count_commits!(cwd) do
@@ -102,17 +118,25 @@ defmodule CodegenTestHarness.Stacks.Static.SeedTest.ViteReact do
                          "Each click of data-testid=\"increment\" MUST add the step value (default 1) to the count."
 
   test "vite-react: second build from committed state produces fresh commit", %{cwd: cwd} do
-    Fixtures.run_codegen_build(cwd, @react_first_prompt, stack: "static")
+    Fixtures.run_codegen_build(cwd, @react_first_prompt,
+      stack: "static",
+      test_name: "seed_static_react_first"
+    )
 
     commits_after_first = count_commits!(cwd)
     assert commits_after_first >= 1, "First vite-react build must produce at least one commit"
 
-    Fixtures.run_codegen_build(cwd, @react_change_prompt, stack: "static")
+    Fixtures.run_codegen_build(cwd, @react_change_prompt,
+      stack: "static",
+      test_name: "seed_static_react_second"
+    )
 
     Assertions.assert_new_commit_since!(cwd, commits_after_first)
     Assertions.assert_npm_builds!(cwd)
     Assertions.assert_commit_well_formed!(cwd)
     Assertions.assert_not_revert_head!(cwd)
+    Fixtures.bench_assertions_passed!("static", "seed_static_react_first")
+    Fixtures.bench_assertions_passed!("static", "seed_static_react_second")
   end
 
   defp count_commits!(cwd) do
@@ -143,17 +167,25 @@ defmodule CodegenTestHarness.Stacks.Static.SeedTest.ViteVue do
   @vue_change_prompt ~s(Add a <button data-testid="reset"> that resets the hex output to #000000.)
 
   test "vite-vue: second build from committed state produces fresh commit", %{cwd: cwd} do
-    Fixtures.run_codegen_build(cwd, @vue_first_prompt, stack: "static")
+    Fixtures.run_codegen_build(cwd, @vue_first_prompt,
+      stack: "static",
+      test_name: "seed_static_vue_first"
+    )
 
     commits_after_first = count_commits!(cwd)
     assert commits_after_first >= 1, "First vite-vue build must produce at least one commit"
 
-    Fixtures.run_codegen_build(cwd, @vue_change_prompt, stack: "static")
+    Fixtures.run_codegen_build(cwd, @vue_change_prompt,
+      stack: "static",
+      test_name: "seed_static_vue_second"
+    )
 
     Assertions.assert_new_commit_since!(cwd, commits_after_first)
     Assertions.assert_npm_builds!(cwd)
     Assertions.assert_commit_well_formed!(cwd)
     Assertions.assert_not_revert_head!(cwd)
+    Fixtures.bench_assertions_passed!("static", "seed_static_vue_first")
+    Fixtures.bench_assertions_passed!("static", "seed_static_vue_second")
   end
 
   defp count_commits!(cwd) do
@@ -185,16 +217,24 @@ defmodule CodegenTestHarness.Stacks.Static.SeedTest.Multilingual do
                                 ~s(to the site navigation if not already present.)
 
   test "multilingual: second build from committed state produces fresh commit", %{cwd: cwd} do
-    Fixtures.run_codegen_build(cwd, @multilingual_first_prompt, stack: "static")
+    Fixtures.run_codegen_build(cwd, @multilingual_first_prompt,
+      stack: "static",
+      test_name: "seed_static_multilingual_first"
+    )
 
     commits_after_first = count_commits!(cwd)
     assert commits_after_first >= 1, "First multilingual build must produce at least one commit"
 
-    Fixtures.run_codegen_build(cwd, @multilingual_change_prompt, stack: "static")
+    Fixtures.run_codegen_build(cwd, @multilingual_change_prompt,
+      stack: "static",
+      test_name: "seed_static_multilingual_second"
+    )
 
     Assertions.assert_new_commit_since!(cwd, commits_after_first)
     Assertions.assert_commit_well_formed!(cwd)
     Assertions.assert_not_revert_head!(cwd)
+    Fixtures.bench_assertions_passed!("static", "seed_static_multilingual_first")
+    Fixtures.bench_assertions_passed!("static", "seed_static_multilingual_second")
   end
 
   defp count_commits!(cwd) do
