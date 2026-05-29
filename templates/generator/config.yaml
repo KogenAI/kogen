@@ -88,6 +88,9 @@ harness:
   shape:
     claude: { model: opus, effort: high }
     pi: { model: openai-codex/gpt-5.5, effort: high }
+  ops:
+    claude: { model: opus, effort: high }
+    pi: { model: openai-codex/gpt-5.5, effort: high }
   refactor:
     claude: { model: opus, effort: high }
     pi: { model: openai-codex/gpt-5.5, effort: high }
@@ -159,6 +162,25 @@ roles:
       - WebSearch
       - Write
     system_prompt_file: harnesses/claude/claude-shape-system-prompt.txt
+    append_project_context: true
+
+  ops:
+    model: opus
+    effort: high
+    output_format: text
+    tools:
+      - Agent
+      - AskUserQuestion
+      - Bash
+      - Edit
+      - Glob
+      - Grep
+      - Read
+      - Skill
+      - WebFetch
+      - WebSearch
+      - Write
+    system_prompt_file: harnesses/claude/claude-ops-system-prompt.txt
     append_project_context: true
 
   refactor:

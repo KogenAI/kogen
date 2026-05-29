@@ -11,7 +11,7 @@
 # Precedence: CLAUDE_ROLE > PI_ROLE
 # Returns the first non-empty value; exits 0 with empty stdout when all unset.
 #
-# Valid role values: debug, shape, refactor (investigation/shaping modes).
+# Valid role values: debug, shape, refactor, ops (investigation/shaping/ops modes).
 # Empty = plain orchestrator or build mode.
 #
 # Usage:

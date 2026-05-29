@@ -32,6 +32,8 @@ launchers:
     src: harnesses/claude/claude-debug.sh
   - name: claude-shape
     src: harnesses/claude/claude-shape.sh
+  - name: claude-ops
+    src: harnesses/claude/claude-ops.sh
   - name: claude-refactor
     src: harnesses/claude/claude-refactor.sh
 
@@ -39,6 +41,7 @@ launchers:
 completions:
   - _claude-build
   - _claude-debug
+  - _claude-ops
   - _claude-shape
   - _claude-refactor
 
@@ -90,6 +93,28 @@ modes:
     tools_header: harnesses/claude/tools-header/shape.txt
     prompt_body: harnesses/shared/prompt-bodies/shape.txt
 
+  ops:
+    model: opus
+    effort: high
+    output_format: text
+    tools:
+      [
+        Agent,
+        AskUserQuestion,
+        Bash,
+        Edit,
+        Glob,
+        Grep,
+        Read,
+        Skill,
+        WebFetch,
+        WebSearch,
+        Write,
+      ]
+    system_prompt_file: harnesses/claude/claude-ops-system-prompt.txt
+    tools_header: harnesses/claude/tools-header/ops.txt
+    prompt_body: harnesses/shared/prompt-bodies/ops.txt
+
   refactor:
     model: opus
     effort: high
@@ -128,5 +153,5 @@ uninstall_steps:
   - remove_agents # rm agents_dir/*.md from installed-by-ocg manifest
   - remove_commands # rm commands_dir/*.md from installed-by-ocg manifest
   - remove_hooks # rm hooks_dir/*.sh
-  - remove_launchers # rm INSTALL_DIR/{claude-build,claude-debug,claude-shape,claude-refactor}
+  - remove_launchers # rm INSTALL_DIR/{claude-build,claude-debug,claude-shape,claude-refactor,claude-ops}
   - remove_completions # rm ZSH_COMPLETION_DST/{_claude-build,_claude-debug,_claude-shape,_claude-refactor}

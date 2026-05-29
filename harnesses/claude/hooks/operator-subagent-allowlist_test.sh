@@ -171,6 +171,15 @@ run_test "refactor + Explore allowed" "allow" "refactor" "$(mk_agent 'Explore')"
 # 19c: refactor + Plan denied (built-in denied always)
 run_test "refactor + Plan denied" "deny" "refactor" "$(mk_agent 'Plan')"
 
+# 19d: ops + Explore allowed (ops needs Agent/Explore for on-box investigation)
+run_test "ops + Explore allowed" "allow" "ops" "$(mk_agent 'Explore')"
+
+# 19e: ops + Plan denied (built-in denied always, even under ops)
+run_test "ops + Plan denied" "deny" "ops" "$(mk_agent 'Plan')"
+
+# 19f: ops + developer-phoenix-backend allowed (project subagents always allowed)
+run_test "ops + developer-phoenix-backend allowed" "allow" "ops" "$(mk_agent 'developer-phoenix-backend')"
+
 # PI_ROLE parity tests (via env var, no CLAUDE_ROLE set)
 
 run_test_env() {

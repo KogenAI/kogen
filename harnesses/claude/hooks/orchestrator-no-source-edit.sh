@@ -14,6 +14,7 @@
 # Subagents (non-empty agent_id) are allowed under no CLAUDE_ROLE_FAMILY (standard
 # orchestrator). Under any operator role (debug, shape, refactor) the write surface
 # is narrowed for BOTH the orchestrator AND Agent-spawned helpers.
+# ops mode has full write surface — no restriction applies.
 #
 # Responds to CLAUDE_ROLE (Claude Code) and PI_ROLE (PI harness)
 # via resolve_role() — precedence: CLAUDE_ROLE > PI_ROLE.
@@ -38,6 +39,11 @@ cwd_prefix="${cwd%/}/"
 case "$FILE_PATH" in
 "${cwd_prefix}"*) rel_path="${FILE_PATH#"$cwd_prefix"}" ;;
 esac
+
+# Ops mode — full write surface, no restriction (interactive ops on live boxes).
+if [ "$role" = "ops" ]; then
+    exit 0
+fi
 
 # Debug/shape/refactor operators (read-only investigation + pitch authoring).
 # Writes scoped to codegen/pitches/ — applies to subagents too,

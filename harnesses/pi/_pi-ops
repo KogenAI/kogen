@@ -1,0 +1,10 @@
+#compdef pi-ops
+# _pi-ops — zsh completion for pi-ops
+# Completes SSH host aliases from ~/.ssh/config via _ssh_hosts helper.
+
+_pi_ops() {
+    _arguments \
+        '1: :_ssh_hosts'
+}
+
+_pi_ops "$@"

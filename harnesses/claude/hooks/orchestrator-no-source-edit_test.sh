@@ -154,6 +154,14 @@ run_test_role "refactor mode Write to pitches/draft/ allows" "0" "refactor" "$FI
 FIXTURE_REFACTOR_LIB='{"hook_event_name":"PreToolUse","tool_name":"Edit","tool_input":{"file_path":"lib/combobulate/foo.ex","old_string":"x","new_string":"y"},"agent_id":"","agent_type":""}'
 run_test_role "refactor mode Edit on lib/ blocks" "2" "refactor" "$FIXTURE_REFACTOR_LIB"
 
+# Test 18d: CLAUDE_ROLE=ops + Write arbitrary on-box path — ALLOW (full write surface)
+FIXTURE_OPS_ONBOX='{"hook_event_name":"PreToolUse","tool_name":"Write","tool_input":{"file_path":"/srv/myapp/config.yaml","content":"x"},"agent_id":"","agent_type":""}'
+run_test_role "ops mode Write to arbitrary on-box path allows" "0" "ops" "$FIXTURE_OPS_ONBOX"
+
+# Test 18e: CLAUDE_ROLE=ops + Edit lib/ — ALLOW (ops has full write surface)
+FIXTURE_OPS_LIB='{"hook_event_name":"PreToolUse","tool_name":"Edit","tool_input":{"file_path":"lib/combobulate/foo.ex","old_string":"x","new_string":"y"},"agent_id":"","agent_type":""}'
+run_test_role "ops mode Edit on lib/ allows" "0" "ops" "$FIXTURE_OPS_LIB"
+
 # Test 19: CLAUDE_ROLE=debug + subagent Edit on lib/ — BLOCK (subagent bypass disabled under debug/shape/refactor)
 FIXTURE_DEBUG_SUB_LIB='{"hook_event_name":"PreToolUse","tool_name":"Edit","tool_input":{"file_path":"lib/combobulate/foo.ex","old_string":"x","new_string":"y"},"agent_id":"abc123","agent_type":"general-purpose"}'
 run_test_role "debug mode subagent Edit on lib/ blocks" "2" "debug" "$FIXTURE_DEBUG_SUB_LIB"
