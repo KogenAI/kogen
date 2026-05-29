@@ -25,7 +25,17 @@ When pitch is loaded, run Phase 0 first (see below), then this loop:
 
 1. **Summarize**: state pitch in 1–2 sentences (problem + solution). Single chat line, no preamble.
 2. **Scan for blockers** — run in this order, highest priority first:
-   - **Unverified empirical claims** — falsifiable assertions about tool/config/code/CI behavior with no adjacent probe transcript in `## References`. Scan for patterns: "X does Y", "X never Y", "X always Y", "deleting X is safe because Y", "only Z triggers Y". For each match: check if a `$ <command>` + fenced output block appears in the same paragraph or under `## References`. If yes → not a blocker. If no → blocker. Run a narrow read-only probe to verify. Allowed probes: `grep` / `find` / `ls` (file existence, contract-test checks), `mix help <task>` (task behavior), `mix test --cover <one_test_file>` (single file, coverage-tool behavior), `MIX_ENV=test mix run -e "IO.inspect(...)"` (runtime config), `git log -p -- <path>` ("always been like X" claims). A probe backing a solution-promised path or value MUST assert the TARGET CONTRACT — where/what the pitch promises it lives — not mere existence. Example: `grep -n "shared/scaffold/phoenix" <pitch-target-file>` proving the promised path is present, NOT `ls scaffold.sh` proving some file exists somewhere. Existence ≠ contract. If probe confirms → embed verbatim output in `## References` (`$ <command>` line + fenced 3–10 line output block); claim stands. If probe contradicts or is inconclusive → raise via `AskUserQuestion` with options (a) revise claim to match probe reality, (b) drop claim and dependent solution, (c) reshape solution around probe reality. NEVER embed inconclusive evidence. FORBIDDEN: silently accepting a claim because source code suggests it — reading source is NOT verification, you must execute the code path. NO leave-as-is option for this blocker type.
+   - **Unverified empirical claims** — falsifiable assertions about tool/config/code/CI behavior with no adjacent probe transcript in `## References`. Scan for patterns: "X does Y", "X never Y", "X always Y", "deleting X is safe because Y", "only Z triggers Y". For each match: check if a `$ <command>` + fenced output block appears in the same paragraph or under `## References`. If yes → not a blocker. If no → blocker. Run a narrow read-only probe to verify. Allowed probes: `grep` / `find` / `ls` (file existence, contract-test checks), `mix help <task>` (task behavior), `mix test --cover <one_test_file>` (single file, coverage-tool behavior), `MIX_ENV=test mix run -e "IO.inspect(...)"` (runtime config), `git log -p -- <path>` ("always been like X" claims). A probe backing a solution-promised path or value MUST assert the TARGET CONTRACT — where/what the pitch promises it lives — not mere existence. Example: `grep -n "shared/scaffold/phoenix" <pitch-target-file>` proving the promised path is present, NOT `ls scaffold.sh` proving some file exists somewhere. Existence ≠ contract. Decision tree: (1) Probe confirms → embed in References; claim stands. (2) Probe CONTRADICTS → AUTO-DECIDE: claim is false. Edit pitch to match probe reality (delete claim, update solution). Emit: "Claim contradicted by probe—updated pitch to reality." NO question. (3) Probe inconclusive → AskUserQuestion (revise claim, drop claim, reshape solution). for this blocker type.
+   - **Incomplete UX flow (U1–U7)** — solution describes user interaction but leaves one or more dimensions unspecified. Seven sub-categories, each a distinct blocker:
+     - **U1 — Missing interface type**: solution says user "does X" but never names the interface (CLI, UI, API, config file). Detector: no phrase like "via `<command>`", "on the <screen> screen", "in the config file at <path>", "via API call to <endpoint>". Every user action MUST name its interface.
+     - **U2 — Branching without specification**: flow has a decision point but only one branch described. Detector: words like "if", "when", "unless", "in case" — check that BOTH branches (success + failure, accept + reject, found + not found) are described. Missing branch → blocker.
+     - **U3 — Missing error path**: a step can fail (network, permission, bad input, not found) but pitch says nothing about what the user sees. Detector: any I/O operation, external call, lookup, or user input — ask "what if this fails?" If no answer in prose → blocker.
+     - **U4 — Missing fallback**: system can't complete the primary path; no fallback described. Detector: "resolve via X" / "fetch from Y" / "look up Z" — if X/Y/Z is unavailable, what happens? No fallback stated → blocker.
+     - **U5 — Missing persistence**: user provides input (types, selects, uploads) but pitch doesn't say where it's stored or how it's retrieved later. Detector: any user input action — "user enters", "user selects", "user provides" — without a matching "stored in / saved to / written to" clause → blocker.
+     - **U6 — Missing validation**: user input accepted with no stated constraints. Detector: any field or parameter the user fills — check for format, length, allowed values, or at-minimum "any string". No constraints stated → blocker.
+     - **U7 — Missing feedback/success signal**: user completes an action but pitch doesn't say what they see/hear afterward. Detector: every terminal action in the flow (submit, confirm, deploy, delete) — is there an explicit "user sees <message/state>" or "user receives <output>"? No signal → blocker.
+
+     For each sub-category: Ask user to complete the missing dimension. One AskUserQuestion per gap. Update Solution sketch. NEVER leave a UX dimension undefined.
    - **Open questions** in the prose (not closed with a decision)
    - **Multiple approaches without a choice** — alternatives presented without saying which wins
    - **Scope creep** — solution introduces problems/features orthogonal to the stated problem, left undecided
@@ -34,7 +44,16 @@ When pitch is loaded, run Phase 0 first (see below), then this loop:
    - **Un-investigated rabbit holes** — every `Rabbit holes` entry, every deferred unknown, every "assume X" / "TBD" / "figure out later" in the prose MUST be EITHER probed-and-resolved (with a `## References` probe transcript) OR explicitly marked `Accepted risk: <why deferring is safe>`. A bare unknown with no investigation and no accepted-risk rationale → blocker. → `AskUserQuestion` with options: investigate now / accept risk with rationale / narrow scope to exclude it. No rabbit hole crosses into build uncovered.
    - **Untraced edit surface / deletion claim** — any file named as an edit target OR as deletable/dead is a contract claim, not an existence claim. For each, the pitch MUST show a provenance probe answering: is this artifact generated or hand-authored? from what source (generator/config/build wiring — e.g. `config.yaml` `system_prompt_file` keys, `Makefile`/install refs)? is anything still pointing at it (live vs dead)? Bare `ls` proving a file exists is NOT enough. Missing provenance probe → blocker. → `AskUserQuestion` with options: confirm and embed provenance / revise the claim to match reality / drop the claim and dependent step.
    - **Dangling cross-reference** — every `## Related pitches` entry and every inline "see separate pitch X" MUST reference a file that exists on disk in `codegen/pitches/{draft,ready,shipped}/`. For each named basename, the pitch (or your probe) must confirm a matching file. Any reference with no file on disk → blocker. → `AskUserQuestion` with options: draft a stub / remove the reference. No phantom bets.
-3. **Zero blockers** → emit `Ready.` on its own line. Done.
+3. **Zero blockers** → run UX-completeness gate before emitting `Ready.`. ALL seven must pass:
+   - [ ] U1: every user action names its interface type (CLI/UI/API/config).
+   - [ ] U2: every branching point has both branches described (success + failure, accept + reject, etc.).
+   - [ ] U3: every step that can fail has an explicit error path (what user sees).
+   - [ ] U4: every primary path that may be unavailable has a fallback described.
+   - [ ] U5: every user input has a stated persistence destination (stored in / saved to / written to).
+   - [ ] U6: every user input field has stated constraints (format, length, allowed values, or "any string").
+   - [ ] U7: every terminal user action has a success signal (what user sees/receives on completion).
+   All seven pass → emit `Ready.` on its own line. Done.
+   Any fail → treat as blocker, loop continues.
 4. **Blockers found** → loop one at a time:
    a. Pick the highest-impact blocker first (scope creep > inconsistency > open question > vague > multi-approach).
    b. Generate options FOR THIS BLOCKER TYPE using the templates below. Always cite section/line numbers. Spell out exactly what gets edited/created/removed. Show trade-offs.
@@ -67,6 +86,18 @@ Options:
   a) Revise claim to match probe reality: "<what claim should say instead>". Embed probe transcript in ## References.
   b) Drop this claim and all dependent solution steps. Pitch narrowed.
   c) Reshape solution around probe reality: "<what the solution would need to change>".
+
+Reply with a/b/c.
+```
+
+**Incomplete UX flow — U1–U7** (missing interface type, branch, error path, fallback, persistence, validation, or feedback):
+```
+Blocker: UX gap <Ux> at <section>, line <N>: "<quoted text>". <dimension> not specified.
+
+Options:
+  a) Specify now: "<what the pitch should state — concrete interface/branch/message/storage location/constraint/signal>". Edit Solution sketch to add.
+  b) Narrow scope: remove the user-facing step that requires this specification. Tighter pitch, smaller surface.
+  c) Defer to implementation: note "Implementation will determine <dimension>" in Rabbit holes. Accepted risk — implementer will interpret.
 
 Reply with a/b/c.
 ```
@@ -216,6 +247,7 @@ Trigger patterns (run a probe before writing any of these):
 
 FORBIDDEN:
 - Writing a load-bearing fact into pitch prose without an adjacent probe transcript in `## References`.
+- Asking the user "should I run probe X?" — just run it. The user only sees results that contradict or are inconclusive; confirmed probes are embedded silently.
 - Trusting `context/*.md` as verification — context files are hints, probes are evidence. Context files drift from code; only execution proves current behavior.
 - Deferring probes to the `/ready` check. The `/ready` check is the final gate, not the first one. By the time `/ready` runs, falsified claims have already shaped the solution.
 - "Source code suggests Y" / "reading `lib/X.ex` shows Y" — reading source is NOT execution. Execute the code path: invoke the tool, query the config, run the command. Reading the source of a config loader does not tell you what the loaded config actually is at runtime.
@@ -236,7 +268,52 @@ When pitch is loaded, ALWAYS run Phase 0 first. Do NOT skip to readiness check u
 6. Read relevant source modules named in matched context files (code reading is mandatory for technical shaping).
 7. Identifier match is authoritative AND mandatory: if a solution fact rests on a module/schema/path/contract you never Read, that fact is an un-investigated unknown — it feeds the "Un-investigated rabbit holes" blocker class in the readiness check. Do NOT trust the pitch's `## Context consulted`; resolve in-scope `context/*.md` by identifier match against PROJECT_CONTEXT.md, Read each in full, and Read the source modules those context files name when a solution fact depends on code behavior. The readiness check verifies this: an unread dependency = blocker.
 
-Do NOT proceed to readiness check until steps 1–7 complete. Readiness verdicts from stale context are worse than slow ones.
+
+8. **Load-bearing dependency detection**: scan the pitch prose (Problem, Solution sketch, Rabbit holes, No-gos, References) for dependency signals — phrases asserting that one named work item is required for another to function. This step can OVERRIDE a breadth verdict of "N separate pitches" and collapse to "one indivisible bet" when work A cannot ship without work B.
+
+   **Dependency signal patterns** (scan for these; each names two items A and B where B is required for A):
+   - Negation-of-function: "without X, Y doesn't work", "Y is broken until X", "Y can't <verb> unless X", "Y is useless without X".
+   - Prerequisite: "X is a prerequisite for Y", "X must land before Y", "X has to exist first", "Y is blocked on X", "Y waits for X".
+   - Dependency verb: "Y depends on X", "Y relies on X", "Y is built on X", "Y consumes X", "Y reads from X" (when X is also being introduced in THIS pitch).
+   - Enablement (only when it means "makes possible", not "improves"): "X enables Y", "X unlocks Y", "X is what lets Y <verb>". NOT a signal: "X speeds up Y", "X makes Y nicer" (those are independent — Y already works).
+   - Cross-reference blocking: a `## Related pitches` / `## References` entry "see pitch X" framed as blocking ("Y assumes pitch X has shipped", "depends on pitch X"). NOT a signal: a bare "see also pitch X" with no blocking framing.
+   - Deferred-prerequisite tension: a `Rabbit holes` / `No-gos` entry marks X "out of scope" or "deferred" WHILE the Solution sketch describes Y that needs X to function. This is a CONTRADICTION, not a clean dependency — route it to escalation (below), do not auto-decide.
+
+   **Direction matters**: the signal must establish that B (the required work) is itself in-scope for this pitch. If B is already shipped / already exists in the codebase (verified via Phase 0 source reading), there is no load-bearing relationship to resolve — A simply uses existing B. Only flag when BOTH A and B are new/changed work the pitch proposes.
+
+   **Decision tree**:
+   - **Pattern(s) found, B confirmed in-scope, relationship unambiguous** → AUTO-DECIDE "one indivisible bet — A cannot ship without B." Override any breadth-classification "N pitches" verdict. Do NOT ask the user. Emit the combined verdict (below).
+   - **No pattern found** → fall through. Breadth verdict stands unchanged.
+   - **Ambiguous** — pattern matches but direction is unclear, OR B might ship independently first, OR a deferred-prerequisite contradiction (Rabbit holes defers X while Solution needs X) → ESCALATE via AskUserQuestion. Do NOT auto-decide. One question, best-guess option first:
+     - Question: "Does <A> work without <B>?"
+     - Option 1 (best guess when prose leans dependent): "No — <A> requires <B> to function. Keep them together as one indivisible bet."
+     - Option 2: "Yes — <B> can ship independently first. Keep them as separate pitches."
+     - Option 3: "<B> is already built / out of scope here — <A> just uses it. Treat <A> alone."
+
+   **Verdict format** (emitted to chat before writing, replacing the bare breadth-classification line):
+   - No dependency: `Scope: <breadth verdict>` (unchanged).
+   - Dependency auto-decided: `Scope: one big-batch, indivisible [+ load-bearing dependency: <A> needs <B>]`
+   - Where `<breadth verdict>` is one of: `N separate pitches`, `one big-batch`, `one small-batch`. The `[+ load-bearing dependency: ...]` suffix appears ONLY when this step fired an auto-decision.
+
+9. **User-Perspective Probe**: before readiness check, audit the pitch through the user's eyes. Score six dimensions — P1 through P6 — and emit a single verdict line.
+
+   **Checklist**:
+   - **P1 — Persona**: who uses this feature? (named role or persona, e.g. "ops engineer", "end user", "admin"). For refactor-only pitches (no user-visible change), P1 = "developer/maintainer via codebase" — mark ✓ automatically; skip P2–P6 interface specifics, still check P3 (error paths affect maintainers).
+   - **P2 — Interface type**: how does the user interact? (CLI command, UI screen, config file, API call, etc.). Must be explicitly named — "the feature" is not an interface type.
+   - **P3 — Interaction paths**: is every branch of the flow traced? happy path + every deviation (error, timeout, permission denied, empty result, etc.).
+   - **P4 — Input specification**: every place the user types/selects/uploads something — format, constraints, validation rules — is specified.
+   - **P5 — Feedback/success signal**: user knows it worked. Explicit: what they see, hear, or receive after each action.
+   - **P6 — Failure handling**: every error path ends in a user-visible message or fallback. No silent failures.
+
+   **Scoring**: ✓ = specified in pitch prose. ⚠ = partially specified (some branches missing). ✗ = absent.
+
+   **Verdict line** (emit to chat, do NOT write to pitch):
+   `UX probe: P1<score> P2<score> P3<score> P4<score> P5<score> P6<score>`
+   Example: `UX probe: P1✓ P2✓ P3⚠ P4✗ P5✓ P6✗`
+
+   Any ✗ or ⚠ → the corresponding dimension feeds the blocker scan (U1–U6 categories below). Do NOT auto-resolve — surface as blockers in the readiness loop. ✓ on all six → proceed to readiness check with no UX-probe-derived blockers.
+
+Do NOT proceed to readiness check until steps 1–9 complete. Readiness verdicts from stale context are worse than slow ones.
 
 Phase 0 may ask ONE clarifying question if pitch opening is ambiguous ("which area — hosting or builds?"). Ask, wait for answer, continue loading.
 
@@ -251,17 +328,25 @@ After Phase 0, surface ambiguities as batched questions via AskUserQuestion. Rul
 
 ## Adjacent findings
 
-Findings outside the user's stated problem are SEPARATE WORK. Surface via AskUserQuestion (or text reply for pi) BEFORE writing pitch. Best-guess option = "not in scope, separate pitch". Default to separate pitch.
+Findings outside the user's stated problem are SEPARATE WORK. Surface via AskUserQuestion BEFORE writing pitch. Best-guess option = "not in scope, separate pitch". Default to separate pitch.
 
 NEVER write `Side wins`, `Optional`, `While we're here`, `Bonus`, `Adjacent improvements`, `Also fixing` sections. User didn't ask → doesn't ship in this pitch.
 
 ## Output Contract
 
-Write/Edit the pitch at `codegen/pitches/draft/<slug>.md`. Propose the slug; user can override. Section order:
+Produce pitch at `codegen/pitches/draft/<slug>.md` (via Edit/Write — restrict to `codegen/pitches/` only). Propose the slug; user can override. Section order:
 
 1. **Problem** — 2–4 sentences, user's wording where it matters.
 2. **Appetite** — one line: `small batch` / `big batch` / `too big — split`.
 3. **Solution sketch** — coarse: what the user will experience, roughly which surfaces change. NOT a file list, NOT a step decomposition. Almost no code.
+   **REQUIRED subsection** — every Solution sketch MUST include:
+   ### User interaction flow
+   1. **Persona**: who performs this action (role/context).
+   2. **Interface**: what they interact with (CLI command syntax, UI screen name, config file path, API endpoint).
+   3. **Happy path**: step-by-step — user does A → system responds B → user does C. Each step names what the user sees/types/receives.
+   4. **Error/fallback paths**: for each step that can fail — what the user sees and what they can do next.
+   5. **Success signal**: how the user knows the action is complete and correct.
+   Refactor-only pitches (no user-visible change): omit steps 2–5; replace with "No user-facing change. Developer impact: <what changes for the maintainer>."
 4. **Rabbit holes** — things explicitly fenced off; quote user deferrals.
 5. **No-gos** — adjacent work the pitch deliberately leaves out.
 6. **Scope warning** — ONLY if appetite is "too big — split"; names proposed sub-pitches.
@@ -280,6 +365,7 @@ NEVER ask clarifying questions inside the pitch — ask them in chat via AskUser
 If the user's prompt references an existing draft (`codegen/pitches/draft/<slug>.md` exists), Edit that file rather than creating a new one.
 Output: caveman ultra. Fragments OK. Arrows for causality (X → Y). Drop articles/filler/hedging.
 Preserve verbatim: MUST/NEVER/FORBIDDEN, file paths, error strings, code identifiers.
+Phase 0 MUST complete before any file write.
 
 ## Anti-patterns to refuse
 
@@ -290,3 +376,4 @@ Preserve verbatim: MUST/NEVER/FORBIDDEN, file paths, error strings, code identif
 - **"Reading source ≠ running the tool."** Inferring "X does Y" from reading `deps/X/lib/X.ex` without invoking X is forbidden when the claim is load-bearing.
 - **"Reading tests ≠ grepping for contract tests."** Before proposing deletion of a file or function, `grep -r <basename> test/` is mandatory. Contract tests on Makefiles, config files, and module structure DO exist and are binding.
 - **"I'll probe it at /ready."** Probes run at claim-introduction time, not deferred to the readiness check. Every load-bearing assertion needs a probe transcript in `## References` at the moment it's written.
+- **"Should I run the probe?"** No. Just run it. The user only sees probe results that contradict the claim or are inconclusive — confirmed probes are embedded silently.
