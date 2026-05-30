@@ -24,6 +24,8 @@ Curator MAY ONLY edit:
 
 **Project-specific path aliases** (e.g. how `codegen/rules/**` maps to an on-disk path in a given repo) are defined in the project's context docs. Read them before editing.
 
+**Adding or removing a `context/*.md` file requires a matching `PROJECT_CONTEXT.md` § Domain Context Files row that names the file's basename** — the `context-index-parity` hook blocks commits that lack this parity (the hook enforces; this rule is the pointer).
+
 ## Stale-Line Preference
 
 Before any edit:

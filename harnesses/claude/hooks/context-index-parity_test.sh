@@ -2,20 +2,25 @@
 # context-index-parity_test.sh — unit tests for context-index-parity.sh
 #
 # Tests:
-#   1: git commit -m "x", staged adds context/foo.md, no PROJECT_CONTEXT.md → DENY
-#   2: git commit -m "x", staged deletes context/foo.md, no PROJECT_CONTEXT.md → DENY
-#   3: Adds context/foo.md AND modifies PROJECT_CONTEXT.md → ALLOW
+#   1: git commit -m "x", staged adds context/foo.md, no PROJECT_CONTEXT.md staged → DENY
+#   2: git commit -m "x", staged deletes context/bar.md, stale row in HEAD index → DENY
+#   3: Adds context/foo.md AND stages PROJECT_CONTEXT.md with matching row → ALLOW
 #   4: Modifies context/foo.md only (no A/D) → ALLOW
 #   5: Touches lib/foo.ex only → ALLOW
 #   6: git status (non-commit) → ALLOW (regex non-match)
 #   7: echo "git commit" → ALLOW (anchor)
 #   8: Read tool with git commit payload → ALLOW (TOOL_NAME guard)
 #   9: git commit -m "x" in fixture without .git → ALLOW (graceful)
-#  10: git commit --amend with orphan add → DENY
-#  11: user-app layout (codegen/PROJECT_CONTEXT.md), staged orphan context/foo.md → DENY (subagent committer)
-#  12: user-app layout, staged orphan context/foo.md AND codegen/PROJECT_CONTEXT.md → ALLOW
+#  10: git commit --amend with orphan add, no index staged → DENY
+#  11: user-app layout (codegen/PROJECT_CONTEXT.md), staged orphan context/foo.md, no index staged → DENY (subagent committer)
+#  12: user-app layout, staged orphan context/foo.md AND codegen/PROJECT_CONTEXT.md with matching row → ALLOW
 #  13: repo with neither PROJECT_CONTEXT.md nor codegen/PROJECT_CONTEXT.md → ALLOW (not in scope)
 #  14: user-app layout deny message names codegen/PROJECT_CONTEXT.md (not root PROJECT_CONTEXT.md)
+#  15: add context/foo.md + stage PROJECT_CONTEXT.md mentioning only unrelated → DENY (core gap)
+#  16: delete context/gone.md + stage index with gone row removed → ALLOW
+#  17: delete context/stale.md, re-stage index with stale row still present → DENY
+#  18: live add-parity gap fixture — add context/bench-prohibition.md + index lacking basename → DENY
+#  19: live delete-parity gap fixture — delete context/curator-routing.md + stale row remains → DENY
 
 set -euo pipefail
 
@@ -78,7 +83,7 @@ run_test() {
 }
 
 # ---------------------------------------------------------------------------
-# Test 1: git commit -m "x", staged adds context/foo.md, no PROJECT_CONTEXT.md
+# Test 1: git commit -m "x", staged adds context/foo.md, no PROJECT_CONTEXT.md staged → DENY
 # ---------------------------------------------------------------------------
 dir1=$(make_fixture 1)
 printf 'context\n' >"$dir1/context/foo.md"
@@ -88,20 +93,24 @@ run_test "staged add context/foo.md, no PROJECT_CONTEXT.md change → DENY" "2" 
     "{\"hook_event_name\":\"PreToolUse\",\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"git commit -m \\\"x\\\"\"},\"agent_type\":\"committer\",\"agent_id\":\"a\",\"cwd\":\"$dir1\"}"
 
 # ---------------------------------------------------------------------------
-# Test 2: staged deletes context/foo.md, no PROJECT_CONTEXT.md
+# Test 2: staged deletes context/bar.md, stale row remains in HEAD index → DENY
+# Commit bar.md + a "- context/bar.md" row in the index, then git rm bar.md
+# without removing the row — index not staged → HEAD body still mentions bar → DENY.
 # ---------------------------------------------------------------------------
 dir2=$(make_fixture 2)
 printf 'context\n' >"$dir2/context/bar.md"
 git -C "$dir2" add "context/bar.md"
-git -C "$dir2" commit -q -m "add bar"
+printf '# PROJECT_CONTEXT.md\n## Domain Context Files\n- context/bar.md\n' >"$dir2/PROJECT_CONTEXT.md"
+git -C "$dir2" add "PROJECT_CONTEXT.md"
+git -C "$dir2" commit -q -m "add bar with row"
 git -C "$dir2" rm -q "context/bar.md"
-# PROJECT_CONTEXT.md is NOT staged for modification.
+# PROJECT_CONTEXT.md is NOT re-staged — stale row remains in HEAD.
 
-run_test "staged delete context/bar.md, no PROJECT_CONTEXT.md change → DENY" "2" \
+run_test "staged delete context/bar.md, stale row in HEAD index, no index re-stage → DENY" "2" \
     "{\"hook_event_name\":\"PreToolUse\",\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"git commit -m \\\"remove\\\"\"},\"agent_type\":\"committer\",\"agent_id\":\"a\",\"cwd\":\"$dir2\"}"
 
 # ---------------------------------------------------------------------------
-# Test 3: adds context/foo.md AND modifies PROJECT_CONTEXT.md → ALLOW
+# Test 3: adds context/foo.md AND stages PROJECT_CONTEXT.md with matching row → ALLOW
 # ---------------------------------------------------------------------------
 dir3=$(make_fixture 3)
 printf 'context\n' >"$dir3/context/new.md"
@@ -109,7 +118,7 @@ git -C "$dir3" add "context/new.md"
 printf '# PROJECT_CONTEXT.md\n## Domain Context Files\n- context/new.md\n' >"$dir3/PROJECT_CONTEXT.md"
 git -C "$dir3" add "PROJECT_CONTEXT.md"
 
-run_test "staged add context/new.md + PROJECT_CONTEXT.md → ALLOW" "0" \
+run_test "staged add context/new.md + PROJECT_CONTEXT.md mentioning new → ALLOW" "0" \
     "{\"hook_event_name\":\"PreToolUse\",\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"git commit -m \\\"add context\\\"\"},\"agent_type\":\"committer\",\"agent_id\":\"a\",\"cwd\":\"$dir3\"}"
 
 # ---------------------------------------------------------------------------
@@ -177,7 +186,7 @@ run_test "non-git CWD → ALLOW (graceful)" "0" \
     "{\"hook_event_name\":\"PreToolUse\",\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"git commit -m \\\"x\\\"\"},\"agent_type\":\"committer\",\"agent_id\":\"a\",\"cwd\":\"$dir9\"}"
 
 # ---------------------------------------------------------------------------
-# Test 10: git commit --amend with orphan add → DENY
+# Test 10: git commit --amend with orphan add, no index staged → DENY
 # ---------------------------------------------------------------------------
 dir10=$(make_fixture 10)
 printf 'content\n' >"$dir10/context/amend.md"
@@ -206,7 +215,7 @@ make_fixture_userapp() {
 }
 
 # ---------------------------------------------------------------------------
-# Test 11: user-app layout, staged orphan context/foo.md, no index update → DENY
+# Test 11: user-app layout, staged orphan context/foo.md, no index staged → DENY
 # Committer runs as subagent — AGENT_TYPE set. Hook MUST still fire.
 # ---------------------------------------------------------------------------
 dir11=$(make_fixture_userapp 11)
@@ -217,7 +226,8 @@ run_test "user-app layout: staged add context/foo.md, no codegen/PROJECT_CONTEXT
     "{\"hook_event_name\":\"PreToolUse\",\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"git commit -m \\\"add foo\\\"\"},\"agent_type\":\"committer\",\"agent_id\":\"a\",\"cwd\":\"$dir11\"}"
 
 # ---------------------------------------------------------------------------
-# Test 12: user-app layout, staged orphan context/foo.md AND codegen/PROJECT_CONTEXT.md → ALLOW
+# Test 12: user-app layout, staged orphan context/foo.md AND codegen/PROJECT_CONTEXT.md
+#          with matching row → ALLOW
 # ---------------------------------------------------------------------------
 dir12=$(make_fixture_userapp 12)
 printf 'content\n' >"$dir12/context/new.md"
@@ -225,7 +235,7 @@ git -C "$dir12" add "context/new.md"
 printf '# PROJECT_CONTEXT.md (codegen)\n## Domain Context Files\n- context/new.md\n' >"$dir12/codegen/PROJECT_CONTEXT.md"
 git -C "$dir12" add "codegen/PROJECT_CONTEXT.md"
 
-run_test "user-app layout: staged add context/new.md + codegen/PROJECT_CONTEXT.md → ALLOW" "0" \
+run_test "user-app layout: staged add context/new.md + codegen/PROJECT_CONTEXT.md mentioning new → ALLOW" "0" \
     "{\"hook_event_name\":\"PreToolUse\",\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"git commit -m \\\"add context\\\"\"},\"agent_type\":\"committer\",\"agent_id\":\"a\",\"cwd\":\"$dir12\"}"
 
 # ---------------------------------------------------------------------------
@@ -263,6 +273,121 @@ if printf '%s' "$stdout14" | grep -q "codegen/PROJECT_CONTEXT.md"; then
     pass=$((pass + 1))
 else
     printf 'FAIL: user-app layout deny message does not name codegen/PROJECT_CONTEXT.md\n  stdout: %s\n' "$stdout14"
+    fail=$((fail + 1))
+fi
+
+# ---------------------------------------------------------------------------
+# Test 15: add context/foo.md + stage PROJECT_CONTEXT.md mentioning only "unrelated"
+#          (not foo) → DENY (core semantic gap)
+# ---------------------------------------------------------------------------
+dir15=$(make_fixture 15)
+printf 'content\n' >"$dir15/context/foo.md"
+git -C "$dir15" add "context/foo.md"
+printf '# PROJECT_CONTEXT.md\n## Domain Context Files\n- context/unrelated.md\n' >"$dir15/PROJECT_CONTEXT.md"
+git -C "$dir15" add "PROJECT_CONTEXT.md"
+
+stdout15=$(printf '%s' \
+    "{\"hook_event_name\":\"PreToolUse\",\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"git commit -m \\\"x\\\"\"},\"agent_type\":\"committer\",\"agent_id\":\"a\",\"cwd\":\"$dir15\"}" |
+    bash "$GUARD" 2>/dev/null || true)
+
+if printf '%s' "$stdout15" | grep -q '"permissionDecision"[[:space:]]*:[[:space:]]*"deny"' &&
+    printf '%s' "$stdout15" | grep -q "foo"; then
+    printf 'PASS: add with staged index missing basename → DENY naming foo\n'
+    pass=$((pass + 1))
+else
+    printf 'FAIL: add with staged index missing basename — expected DENY naming foo\n  stdout: %s\n' "$stdout15"
+    fail=$((fail + 1))
+fi
+
+# ---------------------------------------------------------------------------
+# Test 16: delete context/gone.md + stage index with gone row removed → ALLOW
+# ---------------------------------------------------------------------------
+dir16=$(make_fixture 16)
+printf 'content\n' >"$dir16/context/gone.md"
+git -C "$dir16" add "context/gone.md"
+printf '# PROJECT_CONTEXT.md\n## Domain Context Files\n- context/gone.md\n' >"$dir16/PROJECT_CONTEXT.md"
+git -C "$dir16" add "PROJECT_CONTEXT.md"
+git -C "$dir16" commit -q -m "add gone with row"
+git -C "$dir16" rm -q "context/gone.md"
+# Stage index with the gone row removed.
+printf '# PROJECT_CONTEXT.md\n## Domain Context Files\n' >"$dir16/PROJECT_CONTEXT.md"
+git -C "$dir16" add "PROJECT_CONTEXT.md"
+
+run_test "delete context/gone.md + stage index with gone row removed → ALLOW" "0" \
+    "{\"hook_event_name\":\"PreToolUse\",\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"git commit -m \\\"remove gone\\\"\"},\"agent_type\":\"committer\",\"agent_id\":\"a\",\"cwd\":\"$dir16\"}"
+
+# ---------------------------------------------------------------------------
+# Test 17: delete context/stale.md, re-stage index with stale row still present → DENY
+# ---------------------------------------------------------------------------
+dir17=$(make_fixture 17)
+printf 'content\n' >"$dir17/context/stale.md"
+git -C "$dir17" add "context/stale.md"
+printf '# PROJECT_CONTEXT.md\n## Domain Context Files\n- context/stale.md\n' >"$dir17/PROJECT_CONTEXT.md"
+git -C "$dir17" add "PROJECT_CONTEXT.md"
+git -C "$dir17" commit -q -m "add stale with row"
+git -C "$dir17" rm -q "context/stale.md"
+# Re-stage index unchanged (stale row still present).
+git -C "$dir17" add "PROJECT_CONTEXT.md"
+
+stdout17=$(printf '%s' \
+    "{\"hook_event_name\":\"PreToolUse\",\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"git commit -m \\\"remove stale\\\"\"},\"agent_type\":\"committer\",\"agent_id\":\"a\",\"cwd\":\"$dir17\"}" |
+    bash "$GUARD" 2>/dev/null || true)
+
+if printf '%s' "$stdout17" | grep -q '"permissionDecision"[[:space:]]*:[[:space:]]*"deny"' &&
+    printf '%s' "$stdout17" | grep -q "stale"; then
+    printf 'PASS: delete with stale row still in staged index → DENY naming stale\n'
+    pass=$((pass + 1))
+else
+    printf 'FAIL: delete with stale row still in staged index — expected DENY naming stale\n  stdout: %s\n' "$stdout17"
+    fail=$((fail + 1))
+fi
+
+# ---------------------------------------------------------------------------
+# Test 18: live add-parity gap fixture — add context/bench-prohibition.md
+#          + stage PROJECT_CONTEXT.md body lacking bench-prohibition → DENY
+# ---------------------------------------------------------------------------
+dir18=$(make_fixture 18)
+printf 'content\n' >"$dir18/context/bench-prohibition.md"
+git -C "$dir18" add "context/bench-prohibition.md"
+printf '# PROJECT_CONTEXT.md\n## Domain Context Files\n- context/other-file.md\n' >"$dir18/PROJECT_CONTEXT.md"
+git -C "$dir18" add "PROJECT_CONTEXT.md"
+
+stdout18=$(printf '%s' \
+    "{\"hook_event_name\":\"PreToolUse\",\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"git commit -m \\\"add bench\\\"\"},\"agent_type\":\"committer\",\"agent_id\":\"a\",\"cwd\":\"$dir18\"}" |
+    bash "$GUARD" 2>/dev/null || true)
+
+if printf '%s' "$stdout18" | grep -q '"permissionDecision"[[:space:]]*:[[:space:]]*"deny"' &&
+    printf '%s' "$stdout18" | grep -q "bench-prohibition"; then
+    printf 'PASS: live add-parity gap: bench-prohibition not in index → DENY naming bench-prohibition\n'
+    pass=$((pass + 1))
+else
+    printf 'FAIL: live add-parity gap: expected DENY naming bench-prohibition\n  stdout: %s\n' "$stdout18"
+    fail=$((fail + 1))
+fi
+
+# ---------------------------------------------------------------------------
+# Test 19: live delete-parity gap fixture — delete context/curator-routing.md
+#          + stale row remains in HEAD index → DENY naming curator-routing
+# ---------------------------------------------------------------------------
+dir19=$(make_fixture 19)
+printf 'content\n' >"$dir19/context/curator-routing.md"
+git -C "$dir19" add "context/curator-routing.md"
+printf '# PROJECT_CONTEXT.md\n## Domain Context Files\n- context/curator-routing.md\n' >"$dir19/PROJECT_CONTEXT.md"
+git -C "$dir19" add "PROJECT_CONTEXT.md"
+git -C "$dir19" commit -q -m "add curator-routing with row"
+git -C "$dir19" rm -q "context/curator-routing.md"
+# PROJECT_CONTEXT.md is NOT re-staged — stale row remains in HEAD.
+
+stdout19=$(printf '%s' \
+    "{\"hook_event_name\":\"PreToolUse\",\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"git commit -m \\\"remove curator-routing\\\"\"},\"agent_type\":\"committer\",\"agent_id\":\"a\",\"cwd\":\"$dir19\"}" |
+    bash "$GUARD" 2>/dev/null || true)
+
+if printf '%s' "$stdout19" | grep -q '"permissionDecision"[[:space:]]*:[[:space:]]*"deny"' &&
+    printf '%s' "$stdout19" | grep -q "curator-routing"; then
+    printf 'PASS: live delete-parity gap: curator-routing stale row → DENY naming curator-routing\n'
+    pass=$((pass + 1))
+else
+    printf 'FAIL: live delete-parity gap: expected DENY naming curator-routing\n  stdout: %s\n' "$stdout19"
     fail=$((fail + 1))
 fi
 
