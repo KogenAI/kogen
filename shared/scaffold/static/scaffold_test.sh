@@ -12,6 +12,11 @@
 #  (g) bad --stack=x exits 2
 #  (h) missing --slug exits 2
 #  (i) --symlinks-only --stack=phoenix creates AGENTS.md, CLAUDE.md, codegen/rules, codegen/usage_rules symlinks
+#  (j) --symlinks-only creates codegen/recipes symlink
+#  (k) --symlinks-only creates Makefile with format: target
+#  (l) --symlinks-only appends ## Codegen integration to README.md
+#  (m) idempotency: second run produces exactly one format: line and one ## Codegen integration heading
+#  (n) pre-existing format: target is not clobbered (custom recipe survives)
 
 set -euo pipefail
 
@@ -154,6 +159,42 @@ else
     printf 'FAIL: codegen/rules is not a symlink\n'
     fail=$((fail + 1))
 fi
+
+# (j) recipes symlink
+if [[ -L "$SYMLINKS_CWD/codegen/recipes" ]]; then
+    printf 'PASS: codegen/recipes is a symlink\n'
+    pass=$((pass + 1))
+else
+    printf 'FAIL: codegen/recipes is not a symlink\n'
+    fail=$((fail + 1))
+fi
+assert_file_exists "codegen/recipes/INDEX.md exists via symlink" "$SYMLINKS_CWD/codegen/recipes/INDEX.md"
+
+# (k) format: target in Makefile
+FORMAT_COUNT=$(grep -c '^format:' "$SYMLINKS_CWD/Makefile" || true)
+check "Makefile has exactly one format: target" "1" "$FORMAT_COUNT"
+
+# (l) README.md contains ## Codegen integration heading
+README_CODEGEN=$(grep -cF '## Codegen integration' "$SYMLINKS_CWD/README.md" || true)
+check "README.md contains ## Codegen integration heading" "1" "$README_CODEGEN"
+
+# (m) idempotency: second run must not duplicate format: or ## Codegen integration
+"$CODEGEN_SCAFFOLD" --stack=phoenix --cwd="$SYMLINKS_CWD" --slug=test-app --symlinks-only
+
+check "exactly one format: line after re-run" "1" "$(grep -c '^format:' "$SYMLINKS_CWD/Makefile" || true)"
+check "exactly one Codegen integration heading after re-run" "1" "$(grep -cF '## Codegen integration' "$SYMLINKS_CWD/README.md" || true)"
+
+# (n) pre-existing format: target is not clobbered
+NOCLOBBER_CWD="$BASE_TMP/noclobber_test"
+mkdir -p "$NOCLOBBER_CWD/codegen"
+printf 'format:\n\tmy-custom-formatter --all\n' >"$NOCLOBBER_CWD/Makefile"
+ORIGINAL_FORMAT_COUNT=$(grep -c '^format:' "$NOCLOBBER_CWD/Makefile" || true)
+
+"$CODEGEN_SCAFFOLD" --stack=phoenix --cwd="$NOCLOBBER_CWD" --slug=test-app --symlinks-only
+
+AFTER_FORMAT_COUNT=$(grep -c '^format:' "$NOCLOBBER_CWD/Makefile" || true)
+check "no-clobber: pre-existing format: target count unchanged" "$ORIGINAL_FORMAT_COUNT" "$AFTER_FORMAT_COUNT"
+assert_contains "custom format recipe body preserved" "$(cat "$NOCLOBBER_CWD/Makefile")" "my-custom-formatter --all"
 
 # ── Summary ───────────────────────────────────────────────────────────────────
 printf '\n%d passed, %d failed\n' "$pass" "$fail"

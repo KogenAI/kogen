@@ -12,7 +12,8 @@
 #   --elixir-version=<v>       phoenix only; default: 1.19.5
 #   --node-version=<v>         phoenix only; default: 24.14.0
 #   --otp-version=<v>          phoenix only; default: 28.4.1
-#   --symlinks-only            skip scaffold.sh / static scaffold; only drop agent-file + rules symlinks
+#   --symlinks-only            skip scaffold.sh / static scaffold; only drop agent-file + rules symlinks,
+#                              wire codegen/recipes symlink, inject format: Makefile target, append README codegen-integration note
 #
 # Exit codes: 0 = success, 1 = runtime error, 2 = usage/config error.
 # Scaffold.sh exit code propagates when --symlinks-only is not set.
@@ -194,5 +195,40 @@ ln -sf "$RULES_SOURCE" "$CWD/codegen/rules"
 
 # codegen/usage_rules → shared/usage_rules
 ln -sf "$USAGE_RULES_SOURCE" "$CWD/codegen/usage_rules"
+
+# codegen/recipes → shared/recipes
+RECIPES_SOURCE="$SCRIPT_DIR/shared/recipes"
+ln -sf "$RECIPES_SOURCE" "$CWD/codegen/recipes"
+
+# ── format: Makefile target injection (idempotent) ────────────────────────────
+if [[ ! -f "$CWD/Makefile" ]]; then
+    # Create a minimal Makefile with just the format target
+    case "$STACK" in
+    phoenix)
+        printf 'format:\n\tmix format\n\tnpx prettier --write .\n' >"$CWD/Makefile"
+        ;;
+    static)
+        printf 'format:\n\tnpx prettier --write .\n' >"$CWD/Makefile"
+        ;;
+    esac
+elif ! grep -q '^format:' "$CWD/Makefile"; then
+    # Append to existing Makefile (append-only, never truncate)
+    case "$STACK" in
+    phoenix)
+        printf '\nformat:\n\tmix format\n\tnpx prettier --write .\n' >>"$CWD/Makefile"
+        ;;
+    static)
+        printf '\nformat:\n\tnpx prettier --write .\n' >>"$CWD/Makefile"
+        ;;
+    esac
+fi
+
+# ── README codegen-integration note (idempotent) ─────────────────────────────
+if [[ ! -f "$CWD/README.md" ]]; then
+    printf '# %s\n' "$SLUG" >"$CWD/README.md"
+fi
+if ! grep -qF '## Codegen integration' "$CWD/README.md"; then
+    printf '\n## Codegen integration\n\nThis project is managed by [codegen](https://github.com/optimum/codegen).\n\nRun AI-assisted development from this project root:\n\n```bash\n# Full build cycle (plan → dev → review → commit)\ncodegen-build\n\n# Single agent call\ncodegen-call "your task here"\n```\n\nNo project-local config needed — `codegen-scaffold --symlinks-only` wires agent files and rules automatically.\n' >>"$CWD/README.md"
+fi
 
 printf '[codegen-scaffold] Symlinks created for stack=%s at %s\n' "$STACK" "$CWD"
