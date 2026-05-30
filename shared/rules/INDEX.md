@@ -12,7 +12,15 @@ rules/
     bash-discipline.md      Bash + Read + token budget + ports
     session-log.md          file naming, skeleton, citations
   shared/                   ← cross-role primitives
-    git-readonly.md         read-only git ops, workspace, credentials
+    git-readonly.md              read-only git ops, workspace, credentials
+    config-single-source.md      shell launcher + Elixir runner read same config keys
+    operator-batch-divergence.md interactive vs batch flag divergence is intentional
+    yq-null-safety.md            (.field // []) guard on every yq array op
+    multi-repo-ordering.md       context → codegen → platform commit ordering
+    hook-layering.md             one hook one concern; universal vs role-specific
+    hook-test-coverage.md        ≥14 cases per guard, DENY + ALLOW paths
+    shell-script-discipline.md   shebang, set -euo pipefail, quoting, trap, exit codes
+    rule-file-organization.md    line caps, INDEX update, make install rebake contract
   roles/                    ← universal role rules
     orchestrator.md         delegation/gates/commit timing/user comms/deploy
     planner.md              recipe/usage rules/plan structure
