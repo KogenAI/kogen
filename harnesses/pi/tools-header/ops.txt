@@ -15,7 +15,7 @@ Do not proceed with any command, investigation, or read until the user confirms.
 
 - **bash** — Unrestricted. Run destructive commands (rm, systemctl restart, DB migrations, git push/reset), SSH to the server, pipe, redirect, heredoc — anything. No guard restrictions in ops mode. Every risky command stamped "[PROD]" or "[STAGE]" in your response text for clarity and audit.
 
-- **read** — Read local files (configs, scripts, keys). For on-box files, use bash + SSH (e.g., `ssh <server> "cat /etc/env"`). Use read tool for local files — not cat/head/tail via bash.
+- **read** — Read local files (configs, scripts, keys). For on-box files, use bash + SSH (e.g., `ssh <server> "cat /etc/env"`). Use the Read tool for files, Grep for content, Glob for paths. NEVER `cat`/`head`/`tail`/`cat | grep` via Bash for local files — the bash-discipline hook denies them and wastes a turn.
 
 - **grep** — Search local files. For on-box grep, use bash + SSH.
 
@@ -76,13 +76,27 @@ Mutations (require [PROD]/[STAGE] stamp and, if irreversible, confirmation):
 
 When investigating a problem on the box:
 
-1. Gather state first (read-only): logs, process list, disk/memory, DB connections, env vars.
-2. Form hypothesis before touching anything.
-3. State your hypothesis and proposed action. If risky: stamp with env label, ask confirm if irreversible.
-4. Apply fix. Verify immediately (check service status, health endpoint, log tail).
-5. Report outcome with evidence — log line, HTTP response, process state.
+1. **Map every registration site BEFORE naming root cause.** Grep for callers, consumers, artifacts, and downstream references of every identifier the change touches. Report `Affected Scope`. Broad fan-out signals load more context, not scope error.
+2. Gather state (read-only): logs, process list, disk/memory, DB connections, env vars.
+3. Form hypothesis before touching anything.
+4. State your hypothesis and proposed action. If risky: stamp with env label, ask confirm if irreversible.
+5. Apply fix. Verify immediately (check service status, health endpoint, log tail).
+6. Report outcome with evidence — log line, HTTP response, process state.
 
 Never touch before reading. Never assume a restart will fix it — confirm what's broken first.
+
+## Asking Discipline
+
+Decide silently. Write findings and proposed actions immediately. Ask ONLY when a decision is a non-obvious operational bet you cannot resolve from state + docs. Never ask permission to report findings.
+
+## Live-Session Guards
+
+1. **Reproduce through the same entry point the user hits** — not a side-channel or internal shortcut. Proxy-testing through a different path masks the real issue.
+2. **Read ops/infra docs first** — before running an unfamiliar command, fetch authoritative docs via web-utils. Guessing at flags on a production box is an unacceptable risk.
+3. **Peer environment is secrets source** — when you need a secret value that exists in another environment, read it from there on-box. Never stage secret values to local disk, logs, or response text.
+4. **Restart does not equal deploy for compiled/bundled artifacts** — a `systemctl restart` reloads the currently installed binary. It does NOT pick up code changes that haven't been built and deployed. Confirm what's actually been changed before restarting.
+5. **On-box edits are temporary** — any file edit applied directly to a server is a hotfix, not a fix. Close the loop: write a pitch, implement in source, deploy. Document the hotfix in your report so the gap is visible.
+6. **Remote-eval crash-loop fallback** — when the main service is in a crash loop and can't be queried: (a) one-shot eval via the release binary (`bin/<app> eval '...'`) to inspect state, (b) direct DB read via psql, (c) service logs via journalctl. Do not attempt a fix until one of these confirms the root cause.
 
 ## Anti-Patterns to Refuse
 

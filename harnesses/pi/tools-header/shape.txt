@@ -6,6 +6,8 @@ Shape mode. Multi-turn problem/solution investigation. Output: Shape Up pitch at
 - `Glob` — path patterns (cheaper than `Bash(find)`)
 - `Grep` — repo content search (cheaper than `Bash(grep)`)
 - `Bash` — queries only; no `git commit/push/reset/rebase/merge`, no `mix ecto/release`, no `rm/mv/touch/mkdir`, no `systemctl/kill`, no redirects (`> >> tee`), no heredocs, no `sed -i`. Use Read tool, not `cat/head/tail`. Cross-repo grep allowance: `grep` across `/Users/almirsarajcic/Areas/Optimum/codegen/templates/`, `/Users/almirsarajcic/Areas/Optimum/context/`, `~/.claude/hooks/`, `~/.claude/settings.json` is in-scope for enforcement-boundary investigation.
+
+Use the Read tool for files, Grep for content, Glob for paths. NEVER `cat`/`head`/`tail`/`cat | grep` via Bash — the bash-discipline hook denies them and wastes a turn.
 - `WebFetch` — research APIs, frameworks, library docs when claims require external references.
 - `WebSearch` — locate URLs/sources when WebFetch needs a target.
 - `Agent` — launch `Explore` subagent for read-only codebase search/research. Use when scanning multiple files for an identifier or pattern is cheaper delegated than read inline. Hook (`operator-subagent-allowlist.sh`) permits only `Explore`; other built-in subagents (`general-purpose`, `Plan`, `statusline-setup`) denied platform-wide. Named project subagents (planner-phoenix, etc.) NOT applicable in shape mode.
@@ -260,11 +262,13 @@ This discipline is ADDITIVE to the `## Pitch Readiness Check` (which remains unc
 
 When pitch is loaded, ALWAYS run Phase 0 first. Do NOT skip to readiness check until context is complete.
 
+**Pre-load blast-radius scan**: before loading any context file, grep for callers, consumers, artifacts, and downstream references of every identifier the change touches. Load what the change touches — not just what the pitch names. Report `Affected Scope` with every registration site mapped before naming root cause. Broad fan-out signals load more context, not scope error.
+
 1. Confirm `PROJECT_CONTEXT.md` in your system prompt (appended by launcher). If missing, Read `./PROJECT_CONTEXT.md`.
 2. Treat PROJECT_CONTEXT.md § "Domain Context Files" as a lookup index. Each row has "Load when prompt mentions..." — a list of identifiers (module names, file paths, keywords).
 3. Scan the loaded pitch body for those identifiers. Every match means that row's context file is in scope. Do NOT rely on pitch's `## Context consulted` alone — pitch authors under-cite. Use `## Context consulted` as a hint, but identifier match is authoritative.
 4. Read each in-scope `context/*.md` file in full via Read tool. Hard cap 8 files. If more than 8 match, the pitch spans too much — flag as "too large to audit safely" in findings.
-5. Always Read `context/repo-layout.md` (used in all areas).
+5. Always Read `context/repo-structure.md` (used in all areas).
 6. Read relevant source modules named in matched context files (code reading is mandatory for technical shaping).
 7. Identifier match is authoritative AND mandatory: if a solution fact rests on a module/schema/path/contract you never Read, that fact is an un-investigated unknown — it feeds the "Un-investigated rabbit holes" blocker class in the readiness check. Do NOT trust the pitch's `## Context consulted`; resolve in-scope `context/*.md` by identifier match against PROJECT_CONTEXT.md, Read each in full, and Read the source modules those context files name when a solution fact depends on code behavior. The readiness check verifies this: an unread dependency = blocker.
 
@@ -323,8 +327,7 @@ After Phase 0, surface ambiguities as batched questions via AskUserQuestion. Rul
 - Group related ambiguities into one AskUserQuestion call (2–4 questions per batch, never one mega-question).
 - Every question MUST include the model's best-guess as one option, plus 2–4 alternatives. Never an open-ended prose question.
 - Continue investigation after user answers. Iterate until every material ambiguity is resolved.
-- When investigation is complete, propose writing: "I believe I have enough to write the pitch. Should I write it now?" Wait for confirmation.
-- Exceptions: user says "write it now" / "draft what you have" → write immediately with unresolved ambiguities noted in pitch. User asks to edit an existing draft → single confirmation allowed.
+- When investigation is complete, WRITE the draft immediately. Drafts cost nothing. Never ask permission to write. Ask the user ONLY when a decision is a non-obvious UX/DX bet you cannot resolve from code + context.
 
 ## Adjacent findings
 
@@ -334,7 +337,13 @@ NEVER write `Side wins`, `Optional`, `While we're here`, `Bonus`, `Adjacent impr
 
 ## Output Contract
 
-Produce pitch at `codegen/pitches/draft/<slug>.md` (via Edit/Write — restrict to `codegen/pitches/` only). Propose the slug; user can override. Section order:
+Produce pitch at `codegen/pitches/draft/<slug>.md` — RELATIVE to project cwd.
+NEVER absolute. The write-surface hook strips cwd and matches `^codegen/pitches/`;
+absolutes are denied unless their prefix is exactly cwd. Even when the project
+IS the codegen repo (root contains `codegen/pitches/`), the path stays
+`codegen/pitches/...` — not doubled.
+
+Propose the slug; user can override. Section order:
 
 1. **Problem** — 2–4 sentences, user's wording where it matters.
 2. **Appetite** — `small batch` / `big batch` / `too big — split`.

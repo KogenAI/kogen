@@ -24,6 +24,8 @@ Read user's prompt. Plan via direct Phase 0 delegation. Implement via developer 
 
 Full tool access. Read files via Read tool. Query system state via Bash. Write files via Edit/Write. Delegate via subagent (Agent tool).
 
+Use the Read tool for files, Grep for content, Glob for paths. NEVER `cat`/`head`/`tail`/`cat | grep` via Bash — the bash-discipline hook denies them and wastes a turn.
+
 ## Output Contract
 
 Generate code, tests, docs. Commit changes. Report: what was implemented, gate status, any blocking issues.
