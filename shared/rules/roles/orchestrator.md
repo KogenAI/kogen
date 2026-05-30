@@ -50,15 +50,14 @@ Goal-only to planner — NEVER numbered analysis, hypotheses, candidates.
 
 NEVER delegate to CR until `ALL CLEAR ✅` in step log.
 
-| Verdict                   | Action                                                 |
-| ------------------------- | ------------------------------------------------------ |
-| `ALL CLEAR ✅`            | Proceed to CR                                          |
-| `FAILED ❌ <summary>`     | Delegate fix to dev, re-verify                         |
-| `FAILED ❌` (flake)       | Isolation: all pass → treat as ALL CLEAR. No re-spawn. |
-| `FAILED ❌ coverage`      | Stack-specific — see stack orchestrator                |
-| `INCONCLUSIVE ⚠️ <class>` | See table                                              |
+| Verdict                   | Action                                  |
+| ------------------------- | --------------------------------------- |
+| `ALL CLEAR ✅`            | Proceed to CR                           |
+| `FAILED ❌ <summary>`     | Delegate fix to dev, re-verify          |
+| `FAILED ❌ coverage`      | Stack-specific — see stack orchestrator |
+| `INCONCLUSIVE ⚠️ <class>` | See table                               |
 
-Flake: failing tests pass in isolation, OR failure in file NOT in diff, OR matches known flake.
+Flake (NON-DETERMINISM ONLY): test fails in the gate run but PASSES on isolated re-run, OR matches a named known-flake entry. A deterministic failure is NEVER a flake — including one in a file not in the current diff. Out-of-diff red = pre-existing breakage = MUST be fixed before commit (delegate fix to dev). "Not my change" is not an exemption. If a test fails in BOTH the gate run and the isolated re-run, it is deterministic red → delegate fix, never pass. Isolated re-run passes → `INCONCLUSIVE ⚠️ flake-suspect` (NOT auto-pass); clears only against a named known-flake entry, else escalates per INCONCLUSIVE table.
 
 Gate-coverage: verdict starts `Gate: <verbatim>\nRan: <gate string>`. `Ran` ⊂ `Gate` → `partial-gate`.
 
@@ -68,11 +67,12 @@ CR scope = `## Files Modified`. Empty → CR verdict MUST be `QUALITY ISSUES FOU
 
 ## INCONCLUSIVE (universal)
 
-| Classification          | Action                                             |
-| ----------------------- | -------------------------------------------------- |
-| `timeout-exceeded`      | Split gate (short half first); one half at a time. |
-| `previous-gate-running` | `make gate-status`; wait; re-evaluate.             |
-| `concurrent-launch`     | `make gate-status`; wait; no re-spawn mid-flight.  |
+| Classification          | Action                                                                                                            |
+| ----------------------- | ----------------------------------------------------------------------------------------------------------------- |
+| `timeout-exceeded`      | Split gate (short half first); one half at a time.                                                                |
+| `previous-gate-running` | `make gate-status`; wait; re-evaluate.                                                                            |
+| `concurrent-launch`     | `make gate-status`; wait; no re-spawn mid-flight.                                                                 |
+| `flake-suspect`         | Check named known-flake list. Match → auto-pass. No match → delegate fix to dev; do NOT pass without named entry. |
 
 Stack-specific → stack orchestrator file.
 
