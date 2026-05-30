@@ -360,6 +360,7 @@ doctor:
 	else \
 		echo "FAIL: jq not on PATH (brew install jq)"; fails=$$((fails + 1)); \
 	fi; \
+	if command -v yq >/dev/null 2>&1; then echo "OK: yq on PATH"; else echo "FAIL: yq not on PATH (brew install yq)"; fails=$$((fails + 1)); fi; \
 	if command -v rg >/dev/null 2>&1; then \
 		echo "OK: rg (ripgrep) on PATH"; \
 	else \

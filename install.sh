@@ -6,6 +6,12 @@
 #   When omitted, installs both harnesses (claude, pi).
 #   Invalid harness names cause a fail-fast exit with a helpful message.
 #
+# Environment variables (all optional):
+#   OCG_DEFAULT_AGENT=<claude|pi>   — skips agent-selection prompt; must match an installed harness.
+#   OCG_NONINTERACTIVE=1            — auto-trusts nested .mise.toml; hard-fails if a prompt would block.
+#                                     Requires OCG_DEFAULT_AGENT when multiple harnesses are installed.
+#   OCG_CODEGEN_DIR=<path>          — dispatch fallback used by codegen-call when harnesses/ symlink unavailable.
+#
 # Examples:
 #   install.sh                          # installs claude + pi
 #   install.sh --harness=claude         # claude only
@@ -104,6 +110,16 @@ fi
 echo "   🔗 Creating symlink: $SYMLINK_PATH -> $CODEGEN_DIR/ocg"
 ln -s "$CODEGEN_DIR/ocg" "$SYMLINK_PATH"
 
+# Wire dispatch path: codegen-call resolves $SCRIPT_DIR/harnesses at runtime.
+# A sibling harnesses/ symlink in INSTALL_DIR makes tier-1 dispatch resolve without env-var fallback.
+HARNESSES_SYMLINK="$INSTALL_DIR/harnesses"
+rm -f "$HARNESSES_SYMLINK"
+ln -sfn "$CODEGEN_DIR/harnesses" "$HARNESSES_SYMLINK"
+if [ ! -d "$HARNESSES_SYMLINK/" ]; then
+    echo "❌ could not wire dispatch path: $HARNESSES_SYMLINK -> $CODEGEN_DIR/harnesses. Set fallback: export OCG_CODEGEN_DIR=$CODEGEN_DIR"
+    exit 1
+fi
+
 # Check if ~/.local/bin is in PATH
 if [[ ":$PATH:" != *":$INSTALL_DIR:"* ]]; then
     echo ""
@@ -123,8 +139,10 @@ if [[ ":$PATH:" != *":$INSTALL_DIR:"* ]]; then
     echo "   echo 'export PATH=\"\$HOME/.local/bin:\$PATH\"' >> $RC_FILE"
     echo ""
     echo "   Then restart your terminal or run: source $RC_FILE"
+    echo "   export OCG_CODEGEN_DIR=$CODEGEN_DIR   # dispatch fallback if harnesses/ symlink unavailable"
 else
     echo "   ✅ $INSTALL_DIR is already in your PATH"
+    echo "   export OCG_CODEGEN_DIR=$CODEGEN_DIR   # dispatch fallback if harnesses/ symlink unavailable"
 fi
 
 echo ""
@@ -148,8 +166,25 @@ fi
 echo ""
 echo "🚀 Generating AI agent templates..."
 
+# Platform symlinks: expose shared/ tables under codegen/ for agents resolving relative paths.
+# Agents and tools resolve codegen/recipes/INDEX.md, codegen/rules/INDEX.md, etc. relative to
+# the repo root; these symlinks make $CODEGEN_DIR/codegen/<x> -> $CODEGEN_DIR/shared/<x>.
+mkdir -p "$CODEGEN_DIR/codegen"
+for _link in rules recipes usage_rules subagents; do
+    ln -sfn "$CODEGEN_DIR/shared/$_link" "$CODEGEN_DIR/codegen/$_link"
+    if [ ! -e "$CODEGEN_DIR/codegen/$_link" ]; then
+        echo "❌ platform symlink unresolved: codegen/$_link -> shared/$_link"
+        exit 1
+    fi
+done
+
 # Generate templates for the selected harnesses via unified manifest-driven generator.
 # Source manifest helpers for launcher/completion iteration (used in harness install loop below).
+# Upfront yq gate: generate.sh and manifest-lib.sh consume yq; fail fast before sourcing.
+if ! command -v yq >/dev/null 2>&1; then
+    echo "❌ yq required but not found — install it: brew install yq (macOS) | https://github.com/mikefarah/yq"
+    exit 1
+fi
 source "$CODEGEN_DIR/templates/generator/manifest-lib.sh"
 
 # Pass all selected harnesses to generate.sh in one call.
@@ -502,6 +537,12 @@ for _harness in "${HARNESSES[@]}"; do
             done
         fi
 
+        # Auto-trust nested .mise.toml when running non-interactively to prevent mise
+        # from blocking the install with an interactive trust prompt.
+        if [ "${OCG_NONINTERACTIVE:-}" = "1" ] && command -v mise >/dev/null 2>&1; then
+            mise trust "$CODEGEN_DIR/harnesses/pi/pi-extensions/enforcement/.mise.toml" >/dev/null 2>&1 || true
+        fi
+
         # Install pi extensions — npm install runtime deps (no tsc; pi loads .ts via jiti)
         # askuserquestion: peerDeps only, no runtime deps — skip npm install
         # subagents + web-utils: have runtime dependencies that need node_modules
@@ -605,21 +646,32 @@ if [ ! -f "$HOME/.ocg/config.json" ]; then
     if [ ${#HARNESSES[@]} -eq 1 ]; then
         default_agent="${HARNESSES[0]}"
     else
-        echo ""
-        echo "🤖 AI Agent Configuration"
-        echo "   The following AI agents are installed: ${HARNESSES[*]}"
-        echo "   Which should be your default AI agent?"
-        i=1
-        for h in "${HARNESSES[@]}"; do
-            echo "   $i) $h"
-            i=$((i + 1))
-        done
-        echo ""
-        read -p "   Choose [1-${#HARNESSES[@]}]: " choice
-        if [[ "$choice" =~ ^[0-9]+$ ]] && [ "$choice" -ge 1 ] && [ "$choice" -le ${#HARNESSES[@]} ]; then
-            default_agent="${HARNESSES[$((choice - 1))]}"
+        if [ -n "${OCG_DEFAULT_AGENT:-}" ]; then
+            if ! harness_enabled "$OCG_DEFAULT_AGENT"; then
+                echo "❌ OCG_DEFAULT_AGENT=$OCG_DEFAULT_AGENT not among installed harnesses (${HARNESSES[*]})"
+                exit 1
+            fi
+            default_agent="$OCG_DEFAULT_AGENT"
+        elif [ "${OCG_NONINTERACTIVE:-}" = "1" ]; then
+            echo "❌ OCG_NONINTERACTIVE=1 set but OCG_DEFAULT_AGENT unset and multiple harnesses installed (${HARNESSES[*]})"
+            exit 1
         else
-            default_agent="${HARNESSES[0]}"
+            echo ""
+            echo "🤖 AI Agent Configuration"
+            echo "   The following AI agents are installed: ${HARNESSES[*]}"
+            echo "   Which should be your default AI agent?"
+            i=1
+            for h in "${HARNESSES[@]}"; do
+                echo "   $i) $h"
+                i=$((i + 1))
+            done
+            echo ""
+            read -p "   Choose [1-${#HARNESSES[@]}]: " choice
+            if [[ "$choice" =~ ^[0-9]+$ ]] && [ "$choice" -ge 1 ] && [ "$choice" -le ${#HARNESSES[@]} ]; then
+                default_agent="${HARNESSES[$((choice - 1))]}"
+            else
+                default_agent="${HARNESSES[0]}"
+            fi
         fi
     fi
 

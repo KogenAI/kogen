@@ -68,6 +68,27 @@ hook_src_count="$(find "$CODEGEN_DIR/harnesses/claude/hooks" -maxdepth 1 -name '
 hook_dst_count="$(find "$tmp_home/.claude/hooks" -maxdepth 1 -name '*.sh' -type f 2>/dev/null | wc -l | tr -d ' ')"
 assert "hook count matches source ($hook_src_count hooks)" '[ "$hook_src_count" -eq "$hook_dst_count" ]'
 
+# Assert dispatch symlink wired
+assert "harnesses dispatch symlink exists" '[ -L "$tmp_home/.local/bin/harnesses" ]'
+assert "harnesses dispatch symlink resolves to claude/" '[ -d "$tmp_home/.local/bin/harnesses/claude" ]'
+
+# Assert platform symlinks wired in CODEGEN_DIR/codegen/
+assert "codegen/rules platform symlink resolves" '[ -e "$CODEGEN_DIR/codegen/rules/INDEX.md" ]'
+assert "codegen/recipes platform symlink resolves" '[ -e "$CODEGEN_DIR/codegen/recipes/INDEX.md" ]'
+assert "codegen/usage_rules platform symlink resolves" '[ -e "$CODEGEN_DIR/codegen/usage_rules/INDEX.md" ]'
+assert "codegen/subagents platform symlink resolves" '[ -e "$CODEGEN_DIR/codegen/subagents" ]'
+
+# Assert non-interactive run with OCG_DEFAULT_AGENT exits 0
+# config.json already written by first run — delete it so the second run hits the selection path
+rm -f "$tmp_home/.ocg/config.json"
+if ! OCG_DEFAULT_AGENT=claude OCG_NONINTERACTIVE=1 "$CODEGEN_DIR/install.sh" --harness=claude </dev/null >"$tmp_home/install2.log" 2>&1; then
+    failed=$((failed + 1))
+    fail_lines+=("FAIL: non-interactive install.sh exited non-zero")
+    cat "$tmp_home/install2.log" >&2
+fi
+assert "non-interactive run sets default_agent=claude" \
+    '[ "$(jq -r .default_agent "$tmp_home/.ocg/config.json" 2>/dev/null)" = "claude" ]'
+
 # Run uninstall (answer N to both prompts → keep claude data tree)
 printf 'N\nN\n' | SHELL=/bin/bash "$CODEGEN_DIR/uninstall.sh" >"$tmp_home/uninstall.log" 2>&1 || {
     failed=$((failed + 1))
