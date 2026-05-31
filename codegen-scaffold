@@ -191,14 +191,14 @@ ln -sf "$CLAUDE_SOURCE" "$CWD/CLAUDE.md"
 
 # codegen/rules → shared/rules  (mkdir -p <cwd>/codegen first)
 mkdir -p "$CWD/codegen"
-ln -sf "$RULES_SOURCE" "$CWD/codegen/rules"
+ln -sfn "$RULES_SOURCE" "$CWD/codegen/rules"
 
 # codegen/usage_rules → shared/usage_rules
-ln -sf "$USAGE_RULES_SOURCE" "$CWD/codegen/usage_rules"
+ln -sfn "$USAGE_RULES_SOURCE" "$CWD/codegen/usage_rules"
 
 # codegen/recipes → shared/recipes
 RECIPES_SOURCE="$SCRIPT_DIR/shared/recipes"
-ln -sf "$RECIPES_SOURCE" "$CWD/codegen/recipes"
+ln -sfn "$RECIPES_SOURCE" "$CWD/codegen/recipes"
 
 # ── format: Makefile target injection (idempotent) ────────────────────────────
 if [[ ! -f "$CWD/Makefile" ]]; then
