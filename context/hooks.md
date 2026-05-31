@@ -2,7 +2,7 @@
 
 The hooks domain covers all Claude Code hook scripts, their shared library, registration mechanism, and bash test suite. Hooks fire on `PreToolUse`, `SubagentStop`, and `Stop` lifecycle events — enforcing discipline rules at runtime (no `cat` pipes, no direct commits, gate verdicts, etc.). Each hook has a paired `_test.sh` file; `run-tests.sh` runs the full suite.
 
-Hook registration: `hook_registrations.py` reads `harnesses/claude/hooks/*.sh`, generates entries in `~/.claude/settings.json`. Source: `harnesses/claude/claude-code-settings.json`.
+Hook registration: `hook_registrations.py` reads `harnesses/claude/hooks/*.sh`, generates entries in `harnesses/claude/claude-code-settings.json` (source). `install.sh` then copies that file to `~/.claude/settings.json` (installed destination).
 
 ## Components
 
@@ -54,7 +54,6 @@ Hook registration: `hook_registrations.py` reads `harnesses/claude/hooks/*.sh`, 
 | `harnesses/claude/hooks/claude-inspector-bash-guard.sh`      | PreToolUse — bash guards in claude-inspector mode                                          |
 | `harnesses/claude/hooks/claude-inspector-read-guard.sh`      | PreToolUse — read guards in claude-inspector mode                                          |
 | `harnesses/claude/hooks/claude-inspector-write-guard.sh`     | PreToolUse — write guards in claude-inspector mode                                         |
-| `harnesses/claude/hooks/phoenix-backend-developer-guard.sh`  | PreToolUse — guards backend developer writes to correct file scope                         |
 | `harnesses/claude/hooks/lib/hooks-lib.sh`                    | Shared bash library: `session_log_from_transcript`, transcript JSONL parsing, path helpers |
 | `harnesses/claude/hooks/lib/gate-select.sh`                  | Selects appropriate gate script based on stack detected                                    |
 | `harnesses/claude/hooks/run-tests.sh`                        | Runs all `*_test.sh` hook tests                                                            |

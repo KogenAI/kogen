@@ -6,23 +6,23 @@ Two common fragments (`_phoenix_developer_common.md.j2`, `_static_developer_comm
 
 ## Components
 
-| File                                                        | Purpose                                                          |
-| ----------------------------------------------------------- | ---------------------------------------------------------------- |
-| `shared/subagents/phoenix/planner-phoenix.md.j2`            | Phoenix planner — reads codebase, writes structured plan         |
-| `shared/subagents/phoenix/developer-phoenix-backend.md.j2`  | Backend developer — schemas, contexts, migrations, Oban          |
-| `shared/subagents/phoenix/developer-phoenix-frontend.md.j2` | Frontend developer — LiveView, HEEx, JS hooks, Tailwind          |
-| `shared/subagents/phoenix/reviewer-phoenix.md.j2`           | Phoenix reviewer — quality, patterns, architecture               |
-| `shared/subagents/static/developer-html.md.j2`              | Plain HTML + Tailwind v4 developer                               |
-| `shared/subagents/static/developer-hugo.md.j2`              | Hugo static site developer                                       |
-| `shared/subagents/static/developer-vite.md.j2`              | Vite/React static site developer                                 |
-| `shared/subagents/static/planner-html.md.j2`                | HTML stack planner                                               |
-| `shared/subagents/static/planner-hugo.md.j2`                | Hugo stack planner                                               |
-| `shared/subagents/static/planner-vite.md.j2`                | Vite stack planner                                               |
-| `shared/subagents/static/reviewer-static.md.j2`             | Static site reviewer                                             |
-| `shared/subagents/shared/committer.md.j2`                   | Committer — analyzes diff, crafts why-focused commit message     |
-| `shared/subagents/shared/context-curator.md.j2`             | Context curator — updates domain context files post-reviewer     |
-| `shared/subagents/_phoenix_developer_common.md.j2`          | Shared rules fragment included by backend + frontend templates   |
-| `shared/subagents/_static_developer_common.md.j2`           | Shared rules fragment included by all static developer templates |
+| File                                                        | Purpose                                                                         |
+| ----------------------------------------------------------- | ------------------------------------------------------------------------------- |
+| `shared/subagents/phoenix/planner-phoenix.md.j2`            | Phoenix planner — reads codebase, writes structured plan                        |
+| `shared/subagents/phoenix/developer-phoenix-backend.md.j2`  | Backend developer — schemas, contexts, migrations, Oban                         |
+| `shared/subagents/phoenix/developer-phoenix-frontend.md.j2` | Frontend developer — LiveView, HEEx, JS hooks, Tailwind                         |
+| `shared/subagents/phoenix/reviewer-phoenix.md.j2`           | Phoenix reviewer — quality, patterns, architecture                              |
+| `shared/subagents/static/developer-html.md.j2`              | Plain HTML + Tailwind v4 developer                                              |
+| `shared/subagents/static/developer-hugo.md.j2`              | Hugo static site developer                                                      |
+| `shared/subagents/static/developer-vite.md.j2`              | Vite static site developer — covers React, Vue, and Svelte component-based apps |
+| `shared/subagents/static/planner-html.md.j2`                | HTML stack planner                                                              |
+| `shared/subagents/static/planner-hugo.md.j2`                | Hugo stack planner                                                              |
+| `shared/subagents/static/planner-vite.md.j2`                | Vite stack planner                                                              |
+| `shared/subagents/static/reviewer-static.md.j2`             | Static site reviewer                                                            |
+| `shared/subagents/shared/committer.md.j2`                   | Committer — analyzes diff, crafts why-focused commit message                    |
+| `shared/subagents/shared/context-curator.md.j2`             | Context curator — updates domain context files post-reviewer                    |
+| `shared/subagents/_phoenix_developer_common.md.j2`          | Shared rules fragment included by backend + frontend templates                  |
+| `shared/subagents/_static_developer_common.md.j2`           | Shared rules fragment included by all static developer templates                |
 
 ## Key Paths
 
@@ -36,7 +36,7 @@ shared/subagents/
     developer-phoenix-frontend.md.j2
     reviewer-phoenix.md.j2
   static/
-    developer-html.md.j2, developer-hugo.md.j2, developer-vite.md.j2
+    developer-html.md.j2, developer-hugo.md.j2, developer-vite.md.j2  ← React/Vue/Svelte
     planner-html.md.j2, planner-hugo.md.j2, planner-vite.md.j2
     reviewer-static.md.j2
   shared/

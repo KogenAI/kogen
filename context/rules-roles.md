@@ -32,7 +32,7 @@ shared/rules/roles/
 - **hooks**: several hooks enforce role rules at runtime — e.g. `orchestrator-no-source-edit.sh` enforces orchestrator's never-implement rule; `pre-commit-guard.sh` enforces committer-only commits — see `context/hooks.md`
 - **rules-core**: role rules are layered on top of core discipline rules (`context/rules-core.md`); both must be satisfied
 - **scaffold**: `AGENTS-phoenix.md.j2` and `AGENTS-static.md.j2` embed orchestrator rules for downstream apps — sync burden when orchestrator.md changes; see `context/scaffold.md`
-- **curator-routing**: context-curator's generic rule (`shared/rules/roles/context-curator.md`) delegates project paths to `context/curator-routing.md` — the `[shared]` write surface is `shared/rules/**`, not `codegen/rules/**`
+- **curator-routing**: context-curator's generic rule (`shared/rules/roles/context-curator.md`) delegates project paths to `context/curator-routing.md` — the `[shared]` write surface on disk is `shared/rules/**`; `codegen/rules/` is a symlink to `shared/rules/` created by `make install` and must NOT be edited directly
 
 ## Trigger Keywords
 
@@ -42,4 +42,4 @@ orchestrator rules, planner rules, developer rules, reviewer rules, committer ru
 
 - **Rule changes are not live** — must `make install` to regenerate agent prompts
 - **`AGENTS-*.md.j2` embeds orchestrator rules** — downstream app templates in `shared/apps/` carry a copy of orchestrator rules; when `orchestrator.md` changes, update those templates too
-- **Role identity at runtime** — hooks detect role by reading `$AGENT_TYPE` env var set by the launcher; wrong role assignment causes wrong hook enforcement
+- **Role identity at runtime** — hooks use two discriminators: `AGENT_TYPE` (per-subagent identity, set per-spawn) and `CLAUDE_ROLE_FAMILY` (per-launcher mode, set by outer session harness). `AGENT_TYPE` is used for per-role guards on subagents; `CLAUDE_ROLE_FAMILY` is used for `claude-debug`/`claude-shape`/`claude-refactor` session-level guards. Not all hooks use both — check each hook's discriminator before assuming universal `$AGENT_TYPE` behavior

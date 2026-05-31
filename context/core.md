@@ -6,25 +6,26 @@ Data flow: `manifest.yaml` → `generate.sh` (renders via `process_template.py`)
 
 ## Key Modules
 
-| Module                                      | Purpose                                                                                |
-| ------------------------------------------- | -------------------------------------------------------------------------------------- |
-| `templates/generator/generate.sh`           | Entry — renders `.md.j2` templates for a named harness                                 |
-| `templates/generator/process_template.py`   | Jinja-style `{% include %}` processor; inlines rule/recipe files                       |
-| `templates/generator/hook_registrations.py` | Generates `settings.json` hook entries from hook source dir                            |
-| `templates/generator/manifest-lib.sh`       | Bash lib wrapping `yq` for manifest field extraction                                   |
-| `templates/generator/config.yaml`           | Role → model/effort/tools mapping; read by `load-role.sh`                              |
-| `templates/generator/test_dual_render.sh`   | Self-test: renders both harnesses and diffs output for regressions                     |
-| `templates/generator/test_fixtures/`        | Fixture `.md.j2` templates used by generator self-tests                                |
-| `harnesses/claude/manifest.yaml`            | Claude harness install contract (agents, hooks, launchers, modes)                      |
-| `harnesses/pi/manifest.yaml`                | Pi harness install contract                                                            |
-| `install.sh`                                | Manifest-driven install loop; calls per-step functions                                 |
-| `uninstall.sh`                              | Removes artifacts listed in manifest uninstall_steps                                   |
-| `codegen-build`                             | Top-level launcher: auto-detects harness type, routes to claude-build or pi-build      |
-| `codegen-scaffold`                          | Downstream app scaffolder: renders `shared/scaffold/` templates into a new project dir |
-| `config.sh`                                 | Shared env/path config sourced by all scripts                                          |
-| `resource_manager.sh`                       | Tracks installed-by-ocg manifest; prevents orphaned artifacts                          |
-| `utils.sh`                                  | Common bash utilities: logging, `content_stable_cp`, path helpers                      |
-| `update_ai_tools.sh`                        | Post-install: updates Claude CLI and AI tool deps                                      |
+| Module                                      | Purpose                                                                                                                                        |
+| ------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| `templates/generator/generate.sh`           | Entry — renders `.md.j2` templates for a named harness                                                                                         |
+| `templates/generator/process_template.py`   | Jinja-style `{% include %}` processor; inlines rule/recipe files                                                                               |
+| `templates/generator/hook_registrations.py` | Generates `settings.json` hook entries from hook source dir                                                                                    |
+| `templates/generator/manifest-lib.sh`       | Bash lib wrapping `yq` for manifest field extraction                                                                                           |
+| `templates/generator/config.yaml`           | Role → model/effort/tools mapping; read by `load-role.sh`                                                                                      |
+| `templates/generator/test_dual_render.sh`   | Self-test: renders both harnesses and diffs output for regressions                                                                             |
+| `templates/generator/test_fixtures/`        | Fixture `.md.j2` templates used by generator self-tests                                                                                        |
+| `harnesses/claude/manifest.yaml`            | Claude harness install contract (agents, hooks, launchers, modes)                                                                              |
+| `harnesses/pi/manifest.yaml`                | Pi harness install contract                                                                                                                    |
+| `install.sh`                                | Hardcoded per-harness install via case statement (line 260); reads manifest for step names                                                     |
+| `uninstall.sh`                              | Removes artifacts listed in manifest uninstall_steps                                                                                           |
+| `codegen-build`                             | Top-level launcher: requires --harness flag; delegates to harnesses/<harness>/dispatch.sh, which execs claude/pi with model/effort/tools flags |
+| `codegen-scaffold`                          | Downstream app scaffolder: renders `shared/scaffold/` templates into a new project dir                                                         |
+| `codegen-call`                              | One-shot structured LLM call binary: requires --harness, --role, --model, --effort, --system-prompt                                            |
+| `config.sh`                                 | Shared env/path config sourced by all scripts                                                                                                  |
+| `resource_manager.sh`                       | Manages port allocation across OCG projects system-wide via ~/.ocg/resources.json                                                              |
+| `utils.sh`                                  | Common bash utilities: OCG_CMD invocation, open_cursor_workspace                                                                               |
+| `update_ai_tools.sh`                        | Post-install: updates Claude CLI and AI tool deps                                                                                              |
 
 ## Key Paths
 
@@ -41,6 +42,7 @@ install.sh
 uninstall.sh
 codegen-build
 codegen-scaffold
+codegen-call
 config.sh
 resource_manager.sh
 utils.sh
@@ -51,12 +53,13 @@ update_ai_tools.sh
 
 Three entry-point scripts at repo root — each serves a distinct invocation context:
 
-| Launcher           | Purpose                                                                                                                                                       |
-| ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `codegen-build`    | Default agent build launcher — auto-detects harness type, routes to `claude-build.sh` or `pi-build.sh` via harness `dispatch.sh`                              |
-| `codegen-scaffold` | Downstream app scaffolder — invoked as `codegen-scaffold <stack> <output-dir>`; renders `shared/apps/` and `shared/scaffold/` templates into target directory |
+| Launcher           | Purpose                                                                                                                                                                                           |
+| ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `codegen-build`    | Default agent build launcher — requires `--harness` flag (exits 2 if absent); delegates to `harnesses/<harness>/dispatch.sh`, which execs `claude` or `pi` directly with model/effort/tools flags |
+| `codegen-scaffold` | Downstream app scaffolder — invoked as `codegen-scaffold <stack> <output-dir>`; renders `shared/apps/` and `shared/scaffold/` templates into target directory                                     |
+| `codegen-call`     | One-shot structured LLM call binary — requires `--harness`, `--role`, `--model`, `--effort`, `--system-prompt @<path>`; used for non-build single calls                                           |
 
-Routing flow: `codegen-build` → detects harness → `harnesses/<harness>/dispatch.sh` → reads `config.yaml` via `load-role.sh` → execs launcher with model/effort/tools flags.
+Routing flow: `codegen-build` → `harnesses/<harness>/dispatch.sh` → reads `config.yaml` directly via `yq` (NOT via `load-role.sh`) → execs launcher with model/effort/tools flags. `load-role.sh` is used only by debug/shape/refactor/ops launchers, not build dispatch.
 
 ## Manifest Schema
 
@@ -81,12 +84,12 @@ Each harness declares its full installation contract in `harnesses/<harness>/man
 
 Several scripts and dirs at repo root are owned or managed by the core pipeline:
 
-| Artifact             | Owner / Purpose                                                                           |
-| -------------------- | ----------------------------------------------------------------------------------------- |
-| `bin/`               | Compiled or generated launcher binaries — managed by `install.sh`                         |
-| `ai-agents/`         | Agent prompt output landing zone (may mirror `templates/generated/`)                      |
-| `bash_completion.sh` | Zsh/Bash completions for codegen CLI commands — installed by `install.sh`                 |
-| `config.sh`          | Shared env config sourced by all scripts — single source for `CODEGEN_DIR`, `INSTALL_DIR` |
+| Artifact             | Owner / Purpose                                                                                                          |
+| -------------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| `bin/`               | Developer utility scripts only — contains `bin/test-llm-hooks.sh`; NOT managed by `install.sh`; NOT symlinked to `$PATH` |
+| `ai-agents/`         | Orphaned placeholder — `install.sh` writes agent files to `~/.claude/agents/`, not here                                  |
+| `bash_completion.sh` | Zsh/Bash completions for codegen CLI commands — installed by `install.sh`                                                |
+| `config.sh`          | Shared env config sourced by all scripts — single source for `CODEGEN_DIR`, `INSTALL_DIR`                                |
 
 Note: if a root-level artifact's ownership is unclear, check `resource_manager.sh` which tracks the installed-by-ocg manifest.
 

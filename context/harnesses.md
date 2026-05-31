@@ -6,57 +6,61 @@ System prompt assembly: `tools-header/<mode>.txt` + `harnesses/shared/prompt-bod
 
 ## Components
 
-| File / Dir                                        | Purpose                                                                          |
-| ------------------------------------------------- | -------------------------------------------------------------------------------- |
-| `harnesses/claude/claude-build.sh`                | Launcher for build mode — sets model/effort, invokes `claude`                    |
-| `harnesses/claude/claude-debug.sh`                | Launcher for debug mode (Opus, high effort)                                      |
-| `harnesses/claude/claude-shape.sh`                | Launcher for shape mode (Opus, high effort, web tools enabled)                   |
-| `harnesses/claude/claude-refactor.sh`             | Launcher for refactor mode (Opus, high effort, web tools enabled)                |
-| `harnesses/claude/dispatch.sh`                    | Mode dispatcher — reads manifest, sets flags, execs claude                       |
-| `harnesses/claude/load-role.sh`                   | Reads `config.yaml` to resolve model/effort/tools for a given role               |
-| `harnesses/claude/tools-header/`                  | Per-mode system prompt header fragments (build, debug, shape, refactor)          |
-| `harnesses/claude/claude-code-settings.json`      | Source Claude Code settings (hooks, permissions, env)                            |
-| `harnesses/claude/claude-build-system-prompt.txt` | Generated (do not hand-edit) — concat of tools-header + prompt-body              |
-| `harnesses/claude/commands/`                      | Slash commands installed to `~/.claude/commands/`                                |
-| `harnesses/pi/pi-build.sh`                        | Pi build mode launcher                                                           |
-| `harnesses/pi/pi-debug.sh`                        | Pi debug mode launcher                                                           |
-| `harnesses/pi/pi-shape.sh`                        | Pi shape mode launcher                                                           |
-| `harnesses/pi/pi-refactor.sh`                     | Pi refactor mode launcher                                                        |
-| `harnesses/pi/dispatch.sh`                        | Pi mode dispatcher                                                               |
-| `harnesses/pi/pi-prompts/`                        | Pi-specific prompt fragments                                                     |
-| `harnesses/shared/prompt-bodies/`                 | Shared prompt body text (build, debug, shape, refactor) appended to tools-header |
+| File / Dir                                        | Purpose                                                                               |
+| ------------------------------------------------- | ------------------------------------------------------------------------------------- |
+| `harnesses/claude/claude-build.sh`                | Launcher for build mode — sets model/effort, invokes `claude`                         |
+| `harnesses/claude/claude-debug.sh`                | Launcher for debug mode (Opus, high effort)                                           |
+| `harnesses/claude/claude-shape.sh`                | Launcher for shape mode (Opus, high effort, web tools enabled)                        |
+| `harnesses/claude/claude-ops.sh`                  | Launcher for ops mode (Opus, high effort)                                             |
+| `harnesses/claude/claude-refactor.sh`             | Launcher for refactor mode (Opus, high effort, web tools enabled)                     |
+| `harnesses/claude/dispatch.sh`                    | Mode dispatcher — reads manifest, sets flags, execs claude                            |
+| `harnesses/claude/load-role.sh`                   | Reads `config.yaml` to resolve model/effort/tools for a given role                    |
+| `harnesses/claude/tools-header/`                  | Per-mode system prompt header fragments (build, debug, shape, ops, refactor)          |
+| `harnesses/claude/claude-code-settings.json`      | Source Claude Code settings (hooks, permissions, env)                                 |
+| `harnesses/claude/claude-build-system-prompt.txt` | Generated (do not hand-edit) — concat of tools-header + prompt-body                   |
+| `harnesses/claude/commands/`                      | Slash commands installed to `~/.claude/commands/`                                     |
+| `harnesses/pi/pi-build.sh`                        | Pi build mode launcher                                                                |
+| `harnesses/pi/pi-debug.sh`                        | Pi debug mode launcher                                                                |
+| `harnesses/pi/pi-shape.sh`                        | Pi shape mode launcher                                                                |
+| `harnesses/pi/pi-ops.sh`                          | Pi ops mode launcher                                                                  |
+| `harnesses/pi/pi-refactor.sh`                     | Pi refactor mode launcher                                                             |
+| `harnesses/pi/dispatch.sh`                        | Pi mode dispatcher                                                                    |
+| `harnesses/pi/pi-prompts/`                        | Pi-specific prompt fragments                                                          |
+| `harnesses/shared/prompt-bodies/`                 | Shared prompt body text (build, debug, shape, ops, refactor) appended to tools-header |
 
 ## Key Paths
 
 ```
 harnesses/claude/
-  claude-build.sh, claude-debug.sh, claude-shape.sh, claude-refactor.sh
+  claude-build.sh, claude-debug.sh, claude-shape.sh, claude-ops.sh, claude-refactor.sh
   dispatch.sh, load-role.sh
-  tools-header/{build,debug,shape,refactor}.txt  ← disk path uses hyphen
+  tools-header/{build,debug,shape,ops,refactor}.txt  ← disk path uses hyphen
   claude-code-settings.json
   claude-build-system-prompt.txt   ← generated
   commands/
 harnesses/pi/
-  pi-build.sh, pi-debug.sh, pi-shape.sh, pi-refactor.sh
+  pi-build.sh, pi-debug.sh, pi-shape.sh, pi-ops.sh, pi-refactor.sh
   dispatch.sh
   pi-prompts/
 harnesses/shared/prompt-bodies/
-  build.txt, debug.txt, shape.txt, refactor.txt
+  build.txt, debug.txt, shape.txt, ops.txt, refactor.txt
 ```
+
+**Note on prompt-bodies**: `build.txt`, `debug.txt`, `shape.txt`, and `refactor.txt` are 0 bytes — their mode content lives entirely in `tools-header/<mode>.txt` + `build-tools.txt`. Only `ops.txt` (7420 B) carries meaningful prose.
 
 ## Dispatcher Routing
 
 `codegen-build` (see `context/core.md`) routes via `harnesses/<harness>/dispatch.sh`, which reads mode config and invokes the harness launcher:
 
 ```
-codegen-build → harnesses/<harness>/dispatch.sh → load-role.sh reads config.yaml → execs claude-build.sh / pi-build.sh with model/effort/tools flags
+claude-build.sh → codegen-build → harnesses/<harness>/dispatch.sh → execs claude-<mode>.sh / pi-<mode>.sh with model/effort/tools flags
 ```
 
 For harness install contract details (agents_dir, hooks_dir, modes, launchers), see `harnesses/<harness>/manifest.yaml` documented in `context/core.md` Manifest Schema section.
 
 ## Integration Points
 
-- **core**: manifest.yaml `modes` section documents model/effort/tools per mode; launchers read via `load-role.sh`; for manifest schema see `context/core.md`
+- **core**: manifest.yaml `modes` section documents model/effort/tools per mode; config.yaml is canonical source; for manifest schema see `context/core.md`
 - **subagents**: system prompt files include rendered agent rules baked at generate time
 - **hooks**: `claude-code-settings.json` is source for hook registration; `hook_registrations.py` writes the installed version; see `context/hooks.md`
 - **pi-extensions**: Pi launchers invoke compiled TypeScript extensions from `harnesses/pi/pi-extensions/`
@@ -66,9 +70,13 @@ For harness install contract details (agents_dir, hooks_dir, modes, launchers), 
 Pi harness supports two operational modes via `dispatch.sh` SP_FILE selection:
 
 - **Interactive mode** (`pi-build.sh` manual launcher): Full orchestrator workflow (5-role chain), consumes `pi-build-system-prompt.txt`
-- **Non-interactive mode** (`codegen-build --harness=pi --non-interactive`): Direct-build single-process agent, consumes `pi-build-system-prompt-direct.txt`
+- **Non-interactive mode** (`codegen-build --harness=pi --non-interactive`): Direct-build single-process agent, consumes `pi-build-system-prompt-direct-phoenix.txt` or `pi-build-system-prompt-direct-static.txt` (stack-gated)
 
 Mode selection gated by `$NON_INTERACTIVE` env var (wired in `dispatch.sh:26`). Direct-build prompt forbids `mix phx.new` and orchestration vocabulary; app must be pre-scaffolded (fixture responsibility). Non-interactive mode removes subagents extension — skips the 5-role chain to fit within small-model token budget and internal timeout constraints. Test suite assertions only check compile + route + commit format — zero assertions on multi-agent artifacts.
+
+## Pi Extensions
+
+Pi launchers load TypeScript extensions from `harnesses/pi/pi-extensions/` via compiled modules. Extensions are versioned with the harness and provide task-specific logic (dispatch, hook bindings, snippet handling). Extensions are invoked via flags, not indirectly by launcher env — see `harnesses/pi/<mode>.sh` for extension invocation signatures.
 
 ## Pitfalls
 
@@ -76,3 +84,4 @@ Mode selection gated by `$NON_INTERACTIVE` env var (wired in `dispatch.sh:26`). 
 - **Mode tools lists** are canonical in `config.yaml` (not in manifest `modes` — manifest is documentation-of-record only)
 - **`dispatch.sh` uses `COMMON_FLAGS` array** — under `set -u`, use `"${ARR[@]+"${ARR[@]}"}"` for empty-safe splicing
 - **SP_FILE selection** — dispatch.sh must check `$NON_INTERACTIVE` before constructing prompt path; order matters (env var read must precede SP_FILE block)
+- **Direct-build prompts are stack-gated** — pi-build-system-prompt-direct-phoenix.txt for Phoenix, -static.txt for static-site; dispatch.sh reads `$STACK` to select the correct file

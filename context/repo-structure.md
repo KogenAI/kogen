@@ -6,20 +6,21 @@ This file documents the physical layout of the codegen repository: what each top
 codegen/                          ← repo root
 ├── ocg                           ← user CLI dispatcher (symlinked to PATH)
 ├── codegen-build                 ← harness API entrypoint
+├── codegen-call                  ← one-shot structured LLM call binary
 ├── codegen-scaffold              ← one-time downstream app provisioning
 ├── install.sh                    ← manifest-driven harness installer
 ├── uninstall.sh                  ← manifest-driven harness uninstaller
 ├── update_ai_tools.sh            ← post-install tool updater
 ├── config.sh                     ← shared env/path config (sourced by all scripts)
 ├── resource_manager.sh           ← installed-artifact tracker
-├── utils.sh                      ← shared bash utilities
+├── utils.sh                      ← shared bash utilities (OCG_CMD, open_cursor_workspace)
 ├── bash_completion.sh            ← shell tab-completion for ocg commands
 ├── Makefile                      ← build surface (install, test, format, doctor…)
 ├── package.json                  ← root npm manifest (prettier only)
 ├── package-lock.json             ← lockfile for root prettier dep
 ├── index.html                    ← static-site test fixture (NOT a site page)
 ├── AGENTS.md                     ← codegen session loop docs (hand-authored plain file, pi render)
-├── CLAUDE.md                     ← codegen session loop docs (hand-authored plain file, claude render)
+├── CLAUDE.md                     ← codegen session loop docs (gitignored local install artifact; see note)
 ├── PROJECT_CONTEXT.md            ← codegen project context for AI agents
 ├── README.md                     ← user quickstart guide
 ├── STYLE_GUIDE.md                ← cross-cutting style reference
@@ -27,11 +28,14 @@ codegen/                          ← repo root
 ├── bin/                          ← single dev-utility script
 ├── codegen/                      ← self-meta directory (THIS repo's session logs)
 ├── context/                      ← domain context files (AI orientation)
+├── coverage/                     ← test coverage output (gitignored; per-language subdirs)
 ├── docs/                         ← contributor guides
 ├── harnesses/                    ← per-harness launchers, hooks, settings
 ├── node_modules/                 ← npm packages (prettier; gitignored)
+├── pitches/                      ← codegen-on-codegen pitch documents
 ├── shared/                       ← runtime artifacts (rules, recipes, subagents…)
 ├── templates/                    ← generator pipeline + .j2 source templates
+├── tmp/                          ← ephemeral scratch space (gitignored)
 └── test_harness/                 ← ExUnit scaffold test suite
 ```
 
@@ -41,11 +45,12 @@ codegen/                          ← repo root
 
 ### Entry-Point Scripts
 
-| File               | Role                                                                                                                                                                                                      | Who calls it                                                   |
-| ------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------- |
-| `ocg`              | User CLI dispatcher — wraps `make` targets with a friendly interface; symlinked into `$PATH` at install time; sets `OCG_CLI=true` so Makefile can gate ocg-only commands                                  | End users, shell tab-completion                                |
-| `codegen-build`    | Harness API — canonical entrypoint for all harness-based build invocations; accepts `--harness`, `--stack`, `--cwd`, `--model`, `--effort`, `--max-turns`; delegates to `harnesses/<harness>/dispatch.sh` | Platform, CI, downstream app Makefiles, direct dev invocations |
-| `codegen-scaffold` | One-time provisioning — scaffolds a new downstream Phoenix or static-site project from templates; accepts `--stack`, `--cwd`, `--slug`; delegates to `shared/scaffold/<stack>/scaffold.sh`                | Platform setup, `ocg setup`                                    |
+| File               | Role                                                                                                                                                                                                                 | Who calls it                                                   |
+| ------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------- |
+| `ocg`              | User CLI dispatcher — wraps `make` targets with a friendly interface; symlinked into `$PATH` at install time; sets `OCG_CLI=true` so Makefile can gate ocg-only commands                                             | End users, shell tab-completion                                |
+| `codegen-build`    | Harness API — canonical entrypoint for all harness-based build invocations; accepts `--harness` (required), `--stack`, `--cwd`, `--model`, `--effort`, `--max-turns`; delegates to `harnesses/<harness>/dispatch.sh` | Platform, CI, downstream app Makefiles, direct dev invocations |
+| `codegen-scaffold` | One-time provisioning — scaffolds a new downstream Phoenix or static-site project from templates; accepts `--stack`, `--cwd`, `--slug`; delegates to `shared/scaffold/<stack>/scaffold.sh`                           | Platform setup, `ocg setup`                                    |
+| `codegen-call`     | One-shot structured LLM call — accepts `--harness`, `--role`, `--model`, `--effort`, `--system-prompt @<path>`, optional `--json-schema`, `--allowed-tools`, `--settings`, `--extension`; single-response binary     | Consuming platform for non-build single-role calls             |
 
 `ocg` vs `codegen-build`: `ocg` is user-facing (menu, doctor, install). `codegen-build` is the machine API that downstream Makefiles call to invoke an AI build session. Never conflate them.
 
@@ -59,12 +64,12 @@ codegen/                          ← repo root
 
 ### Support Libraries
 
-| File                  | Purpose                                                                                                                                       | Sourced by                                           |
-| --------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------- |
-| `config.sh`           | Shared env/path config — defines `CODEGEN_DIR`, `SHARED_DIR`, harness paths, model defaults; sourced by every script that needs codegen paths | `install.sh`, `codegen-build`, all harness launchers |
-| `resource_manager.sh` | Tracks which files were installed by ocg vs pre-existing; prevents orphaned artifacts on uninstall                                            | `install.sh`, `uninstall.sh`                         |
-| `utils.sh`            | Common bash utilities: logging helpers, `content_stable_cp` (copy only if content changed), path normalization                                | Harness launchers, scaffold scripts                  |
-| `bash_completion.sh`  | Provides tab-completion for `ocg` subcommands; installed into shell profile by `install.sh`                                                   | Shell (bash/zsh via profile source)                  |
+| File                  | Purpose                                                                                                                                                     | Sourced by                                           |
+| --------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------- |
+| `config.sh`           | Shared env/path config — defines `CODEGEN_DIR`, `SHARED_DIR`, harness paths, model defaults; sourced by every script that needs codegen paths               | `install.sh`, `codegen-build`, all harness launchers |
+| `resource_manager.sh` | Tracks which files were installed by ocg vs pre-existing; prevents orphaned artifacts on uninstall                                                          | `install.sh`, `uninstall.sh`                         |
+| `utils.sh`            | Common bash utilities: `OCG_CMD` (ocg vs make dispatcher), `open_cursor_workspace` (IDE helper). Note: `content_stable_cp` lives in `install.sh`, not here. | Harness launchers, scaffold scripts                  |
+| `bash_completion.sh`  | Provides tab-completion for `ocg` subcommands; installed into shell profile by `install.sh`                                                                 | Shell (bash/zsh via profile source)                  |
 
 ### Build Surface (Makefile)
 
@@ -85,13 +90,13 @@ codegen/                          ← repo root
 
 ### Documentation Files
 
-| File                 | Audience                                                        | Content                                                                                          |
-| -------------------- | --------------------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
-| `README.md`          | New users / contributors — user quickstart                      | Installation steps, prerequisites, quick-start commands                                          |
-| `AGENTS.md`          | AI sessions (pi harness render) — codegen session loop docs     | What codegen is, real dev loop, workspace rules (hand-authored plain file)                       |
-| `CLAUDE.md`          | AI sessions (claude harness render) — codegen session loop docs | Same content as AGENTS.md; `@import` syntax instead of prose pointers (hand-authored plain file) |
-| `STYLE_GUIDE.md`     | All contributors and AI agents — cross-cutting style            | Naming conventions, formatting rules, review checklist                                           |
-| `PROJECT_CONTEXT.md` | AI orchestrators starting a session — orientation snapshot      | Session analyzer command, gate commands, key paths, harness dispatch guide                       |
+| File                 | Audience                                                        | Content                                                                                                                                       |
+| -------------------- | --------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| `README.md`          | New users / contributors — user quickstart                      | Installation steps, prerequisites, quick-start commands                                                                                       |
+| `AGENTS.md`          | AI sessions (pi harness render) — codegen session loop docs     | What codegen is, real dev loop, workspace rules (hand-authored plain file; committed)                                                         |
+| `CLAUDE.md`          | AI sessions (claude harness render) — codegen session loop docs | Same content as AGENTS.md; gitignored local install artifact; NOT committed; regenerated by claude harness renderer on each developer machine |
+| `STYLE_GUIDE.md`     | All contributors and AI agents — cross-cutting style            | Naming conventions, formatting rules, review checklist                                                                                        |
+| `PROJECT_CONTEXT.md` | AI orchestrators starting a session — orientation snapshot      | Session analyzer command, gate commands, key paths, harness dispatch guide                                                                    |
 
 **Important**: Both `AGENTS.md` and `CLAUDE.md` at repo root are hand-authored plain files describing codegen's own session loop. They are NOT generated and NOT symlinked — edit them directly. `templates/AGENTS-HYBRID.md.j2` generates a downstream repo's docs (verified by `make rule-parity`), not these root files. Run `make rule-parity` to detect drift between the template and the downstream repo's committed docs.
 
@@ -178,9 +183,13 @@ context/
   subagent-influence-stack.md
   subagents.md
   test-harness.md
-  repo-structure.md     ← THIS FILE
+  test-coverage.md
+  repo-structure.md         ← THIS FILE
   claude-token-mechanics.md
   claude-token-tuning.md
+  curator-routing.md
+  pitch-writing-guide.md
+  bench-prohibition.md
 ```
 
 **Purpose**: Domain context files for AI agents orienting on the codegen codebase. Each file covers one functional domain: what it does, what files implement it, key paths, and trigger keywords. Orchestrators and planners read these files to understand the codebase before delegating work.
@@ -204,9 +213,13 @@ context/
 | `subagent-influence-stack.md` | How subagent system prompts are assembled and what influences each layer      |
 | `subagents.md`                | Subagent templates, roles, Jinja include graph                                |
 | `test-harness.md`             | ExUnit scaffold test suite                                                    |
+| `test-coverage.md`            | Executable surface inventory + per-surface test coverage                      |
 | `repo-structure.md`           | Physical repo layout (this file)                                              |
 | `claude-token-mechanics.md`   | Claude token budget mechanics and context window behavior                     |
 | `claude-token-tuning.md`      | Practical token tuning strategies for agent sessions                          |
+| `curator-routing.md`          | Context curator routing targets — where [local]/[shared] learnings land       |
+| `pitch-writing-guide.md`      | Pitch writing conventions, slug rules, write-surface hook behavior            |
+| `bench-prohibition.md`        | Benchmarking prohibitions and policies                                        |
 
 ---
 
@@ -279,26 +292,27 @@ harnesses/
 
 The Claude harness. Contains everything specific to operating the `claude` CLI as the AI backend.
 
-| File / Dir                       | Purpose                                                                                                                 |
-| -------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
-| `claude-build.sh`                | Build mode launcher — sets model/effort, invokes `claude` with system prompt and hooks                                  |
-| `claude-debug.sh`                | Debug mode launcher (Opus, high effort)                                                                                 |
-| `claude-shape.sh`                | Shape mode launcher (Opus, high effort, web tools enabled)                                                              |
-| `claude-refactor.sh`             | Refactor mode launcher (Opus, high effort, web tools enabled)                                                           |
-| `dispatch.sh`                    | Mode dispatcher — reads manifest, selects launcher, execs claude                                                        |
-| `load-role.sh`                   | Reads `templates/generator/config.yaml` to resolve model/effort/tools for a given role name                             |
-| `tools-header/`                  | Per-mode system prompt header fragments; prepended to shared prompt bodies at generate time                             |
-| `claude-build-system-prompt.txt` | **Generated file** — concatenation of tools-header + prompt-body; do not hand-edit; regenerated by `make install`       |
-| `claude-code-settings.json`      | Source Claude Code settings: hook registrations, permissions, environment variables; updated by `hook_registrations.py` |
-| `claude-build-config.json`       | Build mode config: model, effort, tool allowlist                                                                        |
-| `manifest.yaml`                  | Claude harness install contract — declares agents, hooks, launchers, modes, install/uninstall steps                     |
-| `commands/`                      | Slash command source files installed to `~/.claude/commands/` at install time                                           |
-| `hooks/`                         | Hook scripts (PreToolUse, SubagentStop, Stop) + paired `_test.sh` files + `lib/`                                        |
-| `build-tools.txt`                | Tool allowlist for build mode                                                                                           |
+| File / Dir                       | Purpose                                                                                                                                                    |
+| -------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `claude-build.sh`                | Build mode launcher — sets model/effort, invokes `claude` with system prompt and hooks                                                                     |
+| `claude-debug.sh`                | Debug mode launcher (Opus, high effort)                                                                                                                    |
+| `claude-shape.sh`                | Shape mode launcher (Opus, high effort, web tools enabled)                                                                                                 |
+| `claude-refactor.sh`             | Refactor mode launcher (Opus, high effort, web tools enabled)                                                                                              |
+| `dispatch.sh`                    | Mode dispatcher — reads manifest, selects launcher, execs claude                                                                                           |
+| `call-dispatch.sh`               | Dispatcher for `codegen-call` one-shot invocations (separate from build dispatch)                                                                          |
+| `load-role.sh`                   | Reads `templates/generator/config.yaml` to resolve model/effort/tools for a given role name (used by debug/shape/refactor/ops; NOT used by build dispatch) |
+| `tools-header/`                  | Per-mode system prompt header fragments; prepended to shared prompt bodies at generate time                                                                |
+| `claude-build-system-prompt.txt` | **Generated file** — concatenation of tools-header + prompt-body; do not hand-edit; regenerated by `make install`                                          |
+| `claude-code-settings.json`      | Source Claude Code settings: hook registrations, permissions, environment variables; updated by `hook_registrations.py`                                    |
+| `claude-build-config.json`       | Build mode config: model, effort, tool allowlist                                                                                                           |
+| `manifest.yaml`                  | Claude harness install contract — declares agents, hooks, launchers, modes, install/uninstall steps                                                        |
+| `commands/`                      | Slash command source files installed to `~/.claude/commands/` at install time                                                                              |
+| `hooks/`                         | Hook scripts (PreToolUse, SubagentStop, Stop) + paired `_test.sh` files + `lib/`                                                                           |
+| `build-tools.txt`                | Tool allowlist for build mode                                                                                                                              |
 
 #### `harnesses/claude/hooks/`
 
-All hook scripts for the claude harness. Each hook enforces one discipline rule and has a paired `<name>_test.sh` hermetic bash test.
+All hook scripts for the claude harness. Each hook enforces one discipline rule and has a paired `<name>_test.sh` hermetic bash test. **47 hook scripts** exist at HEAD (plus `call-dispatch.sh`); full catalog including all hooks: `context/hooks.md`.
 
 | Subdirectory / File                | Purpose                                                                                         |
 | ---------------------------------- | ----------------------------------------------------------------------------------------------- | ---------------------------------- |
@@ -372,6 +386,8 @@ harnesses/shared/
 ```
 
 Shared prompt body text files. At generate time, `generate.sh` concatenates `tools-header/<mode>.txt` + `prompt-bodies/<mode>.txt` to produce the final `<harness>-<mode>-system-prompt.txt`. This is the only directory shared between claude and pi at the harness level — everything else is harness-specific.
+
+**Note**: `build.txt`, `debug.txt`, `shape.txt`, and `refactor.txt` are 0 bytes — their mode content lives entirely in `tools-header/<mode>.txt`. Only `ops.txt` (7420 B) carries meaningful prose. The concatenation pattern still holds for ops mode.
 
 ---
 

@@ -26,7 +26,7 @@ harnesses/pi/pi-extensions/
   enforcement/
     package.json, src/          ← no root-level index.ts; entry is under src/
   subagents/
-    index.ts, package.json      ← no src/ subdirectory
+    index.ts, package.json, src/
   web-utils/
     index.ts, package.json, src/
 templates/generator/generate-pi-extension.sh
@@ -54,4 +54,4 @@ Adding a new extension:
 - **`package-lock.json` files are per-extension** — commit them; they are the reproducibility guarantee
 - **`package-lock.json` churn is normal** — `subagents/package-lock.json` and `web-utils/package-lock.json` may appear dirty when different npm versions resolve deps differently; do not panic-commit these changes without intentional npm updates
 - **TypeScript compile errors block Pi harness** — extension build failures prevent Pi from loading the tool
-- **Extension structure varies** — `enforcement` has no root-level `index.ts` (entry is under `src/`); `subagents` has no `src/` subdirectory; do not assume a uniform layout across all four extensions
+- **Extension structure varies** — `enforcement` has no root-level `index.ts` (entry is under `src/`); all four extensions have a `src/` subdirectory; do not assume a uniform layout at root level across all four extensions

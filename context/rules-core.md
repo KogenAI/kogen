@@ -28,7 +28,7 @@ shared/rules/
 
 ## Integration Points
 
-- **subagents**: every `.md.j2` template `{% include %}`s these files — changes require `make install` to propagate
+- **subagents**: `_core` rules are `{% include %}`d selectively per role — NOT every subagent includes all 4. Developer templates (via `_phoenix_developer_common.md.j2` / `_static_developer_common.md.j2`) include all 4. Planners include 3 (omit `cwd-discipline`). Committers include only `output-style` + `bash-discipline`. Check each `.md.j2` template for exact includes. Changes require `make install` to propagate
 - **hooks**: some hooks enforce these rules at runtime (e.g. `no-python-json.sh` enforces `bash-discipline.md`; `no-cat-pipe.sh` enforces pipe patterns) — see `context/hooks.md`
 - **rules-roles**: role rules are layered on top of these core rules; core rules define the floor
 - **INDEX.md must stay in sync** — each rule file must have an INDEX row or orchestrators won't load it on demand

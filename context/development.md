@@ -22,14 +22,12 @@ One-liner per target — for test target semantics see `context/test-harness.md`
 | Target                    | Purpose                                                                       |
 | ------------------------- | ----------------------------------------------------------------------------- |
 | `make install`            | Generate agents + install claude harness (full cycle)                         |
-| `make install-pi`         | Generate + install pi harness                                                 |
 | `make test`               | Run bash hook tests (`run-tests.sh`) — separate from ExUnit                   |
 | `make test-stacks`        | Run ExUnit stack scaffold tests — see `context/test-harness.md` for semantics |
 | `make test-stacks-claude` | Run ExUnit suite for Claude harness only                                      |
 | `make test-stacks-pi`     | Run ExUnit suite for Pi harness only                                          |
 | `make bench REASON=`      | Full benchmark run (both harnesses) + writes `summary.md` via `summarize.js`  |
 | `make record-green`       | Stamp `last_green.json` after clean passing suite                             |
-| `make gate-status`        | Check in-flight gate process status                                           |
 | `make uninstall`          | Remove installed claude harness artifacts                                     |
 | `make test-coverage`      | Run coverage per language → `coverage/<lang>/`                                |
 | `make test-generator`     | Run Python unittest + bash unit tests for generator pipeline                  |
@@ -50,7 +48,7 @@ See `.env.sample` and `.env.prod.sample` for full variable lists.
 
 ## Coding Conventions
 
-- **Bash**: `set -euo pipefail` in all scripts; `content_stable_cp` from `utils.sh` for idempotent file copies
+- **Bash**: `set -euo pipefail` in all scripts; `content_stable_cp` is defined in `install.sh` (not `utils.sh`) for idempotent file copies; `utils.sh` provides only `OCG_CMD` and `open_cursor_workspace`
 - **Python**: stdlib only in generator scripts — no third-party deps
 - **TypeScript**: strict mode; each extension self-contained with own `package.json`
 - **Commit messages**: why-focused, delegated to committer subagent — never written directly by orchestrator

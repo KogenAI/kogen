@@ -14,6 +14,36 @@ Low turn count → cache write/read ratio near 1.0. Each turn loads large Read p
 
 Cache reads dominate. Hit ratio should be 0.85+. A 30k-token system prompt at 0.1× over 30 turns = ~900k cache reads. If caching breaks (invalidation, lookback miss), those 30 turns re-bill the prefix at 1.0× — roughly 9× more expensive. **Most sensitive** to system prompt size and to anything that invalidates the prefix mid-session.
 
-## BuildWorker (Sonnet, up to 2h)
+## BuildWorker (Haiku, medium effort)
 
 **Cache is the budget.** Anything that touches the stable prefix mid-build (tool definitions, system prompt, agent JSON, settings JSON, `PLATFORM_INFO.md`) is effectively a deploy event: measure before/after via your platform's agent-measurement script and verify `total_cache_hit_ratio` in the project's daily stats table the next day. (Example: a platform provides an agent-measurement script + a daily-stats table.)
+
+## Role → Model/Effort Reference
+
+Full mapping from `templates/generator/config.yaml` (Claude harness):
+
+| Role                       | Model  | Effort |
+| -------------------------- | ------ | ------ |
+| planner-phoenix            | opus   | high   |
+| planner-html               | opus   | high   |
+| planner-hugo               | opus   | high   |
+| planner-vite               | opus   | high   |
+| developer-phoenix-backend  | sonnet | medium |
+| developer-phoenix-frontend | sonnet | medium |
+| developer-html             | sonnet | high   |
+| developer-hugo             | sonnet | high   |
+| developer-vite             | sonnet | high   |
+| reviewer-phoenix           | sonnet | medium |
+| reviewer-static            | sonnet | medium |
+| committer                  | haiku  | low    |
+| context-curator            | haiku  | low    |
+| build (orchestrator)       | haiku  | medium |
+| bouncer                    | haiku  | low    |
+| concierge                  | haiku  | low    |
+| preference_extractor       | haiku  | low    |
+| user_app_build             | sonnet | medium |
+| inspector                  | sonnet | medium |
+| debug                      | sonnet | medium |
+| shape                      | opus   | high   |
+| ops                        | opus   | high   |
+| refactor                   | opus   | high   |

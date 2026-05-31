@@ -52,7 +52,7 @@ codegen-scaffold
 
 ## Integration Points
 
-- **core**: `codegen-scaffold` is a core launcher invoked as `codegen-scaffold <stack> <output-dir>` — renders `shared/apps/` and `shared/scaffold/` templates into target directory; see `context/core.md`
+- **core**: `codegen-scaffold` is a core launcher invoked via flags: `codegen-scaffold --stack=<stack> --cwd=<dir> [--slug=<name>] [--symlinks-only]` — renders `shared/apps/` and `shared/scaffold/` templates into target directory; `--symlinks-only` skips file generation and only re-creates symlinks; see `context/core.md`
 - **subagents**: `AGENTS-phoenix.md.j2` references subagent roles by name; changes to agent roles may require updating this template
 - **rules**: `AGENTS-phoenix.md` encodes orchestrator rules for downstream apps; kept in sync with `shared/rules/roles/orchestrator.md` — see `context/rules-roles.md`
 - **test-harness**: ExUnit tests in `test_harness/test/stacks/` validate scaffold output — scaffold changes require test updates; see `context/test-harness.md`
@@ -69,4 +69,4 @@ codegen-scaffold
 - **Mutation scripts are order-sensitive** — scaffold.sh runs mutations in a defined sequence; inserting out of order can break the generated app
 - **`AGENTS-*.md` vs `AGENTS-*.md.j2`** — `.j2` is the Jinja template; `.md` is the rendered reference copy checked in for human review. Both must stay in sync when changing agent roles or rules
 - **`eex_render.sh` variable scope** — variables must be exported before calling `eex_render.sh`; unset vars render as empty string silently
-- **AGENTS-phoenix.md.j2 and CLAUDE-phoenix.md.j2 embed orchestrator rules** — downstream app templates in `shared/apps/` carry a copy of orchestrator rules; when `orchestrator.md` (rules-roles.md) changes, update these templates too to avoid sync drift
+- **AGENTS-phoenix.md.j2 embeds orchestrator rules** — downstream app templates in `shared/apps/` carry a copy of orchestrator rules; when `orchestrator.md` (rules-roles.md) changes, update these templates too to avoid sync drift. Note: there is no `CLAUDE-phoenix.md.j2` — `CLAUDE-phoenix.md` is a plain file (not a Jinja template)

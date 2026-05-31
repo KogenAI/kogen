@@ -39,6 +39,6 @@ Launchers like `shape` and `refactor` also auto-edit pitches via `codegen/pitche
 
 ## Cross-reference
 
-Output Contract section in `harnesses/claude/tools-header/shape.txt` and `harnesses/pi/tools-header/shape.txt` (identical in both):
+Output Contract section in `harnesses/claude/tools-header/shape.txt` and `harnesses/pi/tools-header/shape.txt`. The `## Output Contract` section is identical in both; other sections may diverge (minor wording differences at HEAD):
 
 > Produce pitch at `codegen/pitches/draft/<slug>.md` — RELATIVE to project cwd. NEVER absolute. The write-surface hook strips cwd and matches `^codegen/pitches/`; absolutes are denied unless their prefix is exactly cwd. Even when the project IS the codegen repo (root contains `codegen/pitches/`), the path stays `codegen/pitches/...` — not doubled.

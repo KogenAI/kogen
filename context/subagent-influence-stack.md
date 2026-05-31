@@ -19,7 +19,7 @@ Source: OCG `shared/rules/` directory (canonical path varies per workstation —
 
 Orchestrator loads rules LIVE at session start via `@codegen/rules/...` auto-includes. Subagents only see what was baked at last `make install`. Diverge silently if `make install` skipped after edit.
 
-Scope: editing any file under `codegen/rules/` or `codegen/templates/` → MUST run `make install`.
+Scope: editing any file under `shared/rules/` or `codegen/templates/` → MUST run `make install`. (`codegen/rules/` is a symlink to `shared/rules/` post-install; edit `shared/rules/` directly, not through the symlink.)
 
 ## Layer 2 — Subagent System Prompt
 
@@ -47,7 +47,7 @@ Built by the consuming platform's harness-config builder (Example: returns `%{cl
 
 ## Layer 5 — Hooks
 
-Files: `~/.claude/hooks/*.sh` (installed via `make install`). Fire on `PreToolUse` / `PostToolUse` / `SubagentStop` / `Stop` events. NEVER edit `~/.claude/hooks/*.sh` directly — overwritten by next `make install`. Edit template in OCG `shared/hooks/`, update `*_test.sh`, run `make test`, then `make install`.
+Files: `~/.claude/hooks/*.sh` (installed via `make install`). Fire on `PreToolUse` / `PostToolUse` / `SubagentStop` / `Stop` events. NEVER edit `~/.claude/hooks/*.sh` directly — overwritten by next `make install`. Edit template in OCG `harnesses/claude/hooks/`, update `*_test.sh`, run `make test`, then `make install`.
 
 Two discriminators:
 
@@ -78,14 +78,14 @@ Work top-down when subagent does wrong thing:
 
 ## Where to Add a Constraint
 
-| Constraint type                        | Layer             | File                                                               |
-| -------------------------------------- | ----------------- | ------------------------------------------------------------------ |
-| Role behavior / coding pattern         | 1 — Shared rules  | OCG `shared/rules/<topic>.md`                                      |
-| Role contract / gate / slice scope     | 2 — System prompt | OCG `shared/subagents/<role>.md.j2`                                |
-| Project-specific domain knowledge      | 3 — Context files | `./context/<topic>.md` + `PROJECT_CONTEXT.md` trigger row          |
-| Tool allowlist / model / schema        | 4 — CLI flags     | Your platform's harness builder (Example: `HarnessConfig.build/2`) |
-| Block a tool call / enforce at runtime | 5 — Hooks         | New hook in OCG `shared/hooks/` + manifest header + `make install` |
-| Reusable implementation pattern        | 6 — Recipes       | `./codegen/recipes/<slug>.md`                                      |
+| Constraint type                        | Layer             | File                                                                         |
+| -------------------------------------- | ----------------- | ---------------------------------------------------------------------------- |
+| Role behavior / coding pattern         | 1 — Shared rules  | OCG `shared/rules/<topic>.md`                                                |
+| Role contract / gate / slice scope     | 2 — System prompt | OCG `shared/subagents/<role>.md.j2`                                          |
+| Project-specific domain knowledge      | 3 — Context files | `./context/<topic>.md` + `PROJECT_CONTEXT.md` trigger row                    |
+| Tool allowlist / model / schema        | 4 — CLI flags     | Your platform's harness builder (Example: `HarnessConfig.build/2`)           |
+| Block a tool call / enforce at runtime | 5 — Hooks         | New hook in OCG `harnesses/claude/hooks/` + manifest header + `make install` |
+| Reusable implementation pattern        | 6 — Recipes       | `./codegen/recipes/<slug>.md`                                                |
 
 ## Load Triggers (PROJECT_CONTEXT.md)
 

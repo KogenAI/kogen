@@ -13,7 +13,7 @@ Load this index always. Load every row whose trigger matches the prompt. Files a
 
 | File                                  | Domain                                                                              | Load when prompt mentions...                                                                                                                                 | Update when changing...                                                                                                        |
 | ------------------------------------- | ----------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------ |
-| `context/core.md`                     | Manifest + generator pipeline                                                       | manifest.yaml, generate.sh, harness install, install.sh, hook_registrations.py, codegen-build, codegen-scaffold                                              | harnesses/, install.sh, templates/generator/, generator scripts, manifest schema                                               |
+| `context/core.md`                     | Manifest + generator pipeline                                                       | manifest.yaml, generate.sh, harness install, install.sh, hook_registrations.py, codegen-build, codegen-scaffold, codegen-call                                | harnesses/, install.sh, templates/generator/, generator scripts, manifest schema                                               |
 | `context/harnesses.md`                | Claude + Pi harness specifics                                                       | claude-build, claude-debug, claude-shape, claude-refactor, pi-build, dispatch.sh, launcher, system prompt, modes, tools-header                               | harnesses/claude/, harnesses/pi/, launcher scripts, mode definitions, system-prompt-\*.txt                                     |
 | `context/subagents.md`                | Subagent templates + roles                                                          | Planner, developer-phoenix-backend, developer-phoenix-frontend, developer-html/hugo/vite, reviewer, committer, .md.j2 template, agent rendering              | shared/subagents/, .md.j2 files, agent prompt bodies, rule includes in templates                                               |
 | `context/rules-core.md`               | Core discipline rules                                                               | bash-discipline, output-style, session-log, cwd-discipline, STYLE_GUIDE, INDEX.md                                                                            | shared/rules/\_core/\*.md, shared/rules/INDEX.md, shared/rules/STYLE_GUIDE.md                                                  |
@@ -35,21 +35,22 @@ Load this index always. Load every row whose trigger matches the prompt. Files a
 
 ## Generator Pipeline
 
-| Module                                      | Purpose                                                                            |
-| ------------------------------------------- | ---------------------------------------------------------------------------------- |
-| `templates/generator/generate.sh`           | Entry point — renders `.md.j2` templates for a given harness                       |
-| `templates/generator/process_template.py`   | Jinja-style `{% include %}` processor — inlines rule files into agent prompts      |
-| `templates/generator/hook_registrations.py` | Writes `settings.json` hook entries from hook source dir                           |
-| `templates/generator/manifest-lib.sh`       | Bash lib for parsing manifest YAML fields (wraps `yq`)                             |
-| `templates/generator/config.yaml`           | Role/model/effort/tools mapping consumed by `load-role.sh`                         |
-| `install.sh`                                | Manifest-driven install loop — reads manifest, runs install_steps                  |
-| `uninstall.sh`                              | Removes installed artifacts listed in manifest                                     |
-| `codegen-build`                             | Top-level launcher: picks harness, delegates to `claude-build.sh` or `pi-build.sh` |
-| `codegen-scaffold`                          | Scaffolds a new downstream app from `shared/scaffold/` templates                   |
-| `config.sh`                                 | Shared env/path config sourced by all scripts                                      |
-| `resource_manager.sh`                       | Tracks installed-by-ocg manifest to avoid orphaned artifacts                       |
-| `utils.sh`                                  | Common bash utilities (logging, content-stable copy, etc.)                         |
-| `update_ai_tools.sh`                        | Updates Claude CLI and other AI tool deps after install                            |
+| Module                                      | Purpose                                                                                                                    |
+| ------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| `templates/generator/generate.sh`           | Entry point — renders `.md.j2` templates for a given harness                                                               |
+| `templates/generator/process_template.py`   | Jinja-style `{% include %}` processor — inlines rule files into agent prompts                                              |
+| `templates/generator/hook_registrations.py` | Writes `settings.json` hook entries from hook source dir                                                                   |
+| `templates/generator/manifest-lib.sh`       | Bash lib for parsing manifest YAML fields (wraps `yq`)                                                                     |
+| `templates/generator/config.yaml`           | Role/model/effort/tools mapping; read by `load-role.sh` (debug/shape/refactor/ops) and directly via `yq` by build dispatch |
+| `install.sh`                                | Manifest-driven install loop — reads manifest, runs install_steps; defines `content_stable_cp`                             |
+| `uninstall.sh`                              | Removes installed artifacts listed in manifest                                                                             |
+| `codegen-build`                             | Top-level launcher: requires `--harness` flag; delegates to `harnesses/<harness>/dispatch.sh`                              |
+| `codegen-scaffold`                          | Scaffolds a new downstream app from `shared/scaffold/` templates (flag-based: `--stack`, `--cwd`, `--slug`)                |
+| `codegen-call`                              | One-shot structured LLM call binary: requires `--harness`, `--role`, `--model`, `--effort`, `--system-prompt`              |
+| `config.sh`                                 | Shared env/path config sourced by all scripts                                                                              |
+| `resource_manager.sh`                       | Tracks installed-by-ocg manifest to avoid orphaned artifacts                                                               |
+| `utils.sh`                                  | Common bash utilities: `OCG_CMD` + `open_cursor_workspace` only; `content_stable_cp` is in `install.sh`                    |
+| `update_ai_tools.sh`                        | Updates Claude CLI and other AI tool deps after install                                                                    |
 
 ## Integration Points
 
