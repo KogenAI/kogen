@@ -16,4 +16,4 @@ Cache reads dominate. Hit ratio should be 0.85+. A 30k-token system prompt at 0.
 
 ## BuildWorker (Sonnet, up to 2h)
 
-**Cache is the budget.** Anything that touches the stable prefix mid-build (tool definitions, system prompt, agent JSON, settings JSON, `PLATFORM_INFO.md`) is effectively a deploy event: measure before/after via your platform's agent-measurement script and verify `total_cache_hit_ratio` in the project's daily stats table the next day. (Example: Combobulate uses `bin/measure-agents.sh` + `llm_daily_stats`.)
+**Cache is the budget.** Anything that touches the stable prefix mid-build (tool definitions, system prompt, agent JSON, settings JSON, `PLATFORM_INFO.md`) is effectively a deploy event: measure before/after via your platform's agent-measurement script and verify `total_cache_hit_ratio` in the project's daily stats table the next day. (Example: a platform provides an agent-measurement script + a daily-stats table.)

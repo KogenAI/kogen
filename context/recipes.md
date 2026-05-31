@@ -54,12 +54,6 @@ Recipes are step-by-step implementation guides referenced from planner plans. Th
 | `shared/recipes/semantic-component-api-design.md`        | Semantic API design for Phoenix/HEEx components                    |
 | `shared/recipes/test-coverage-strategies.md`             | Test coverage strategies for Elixir/Phoenix projects               |
 | `shared/recipes/flaky-test-fix.md`                       | Diagnosing and fixing flaky tests                                  |
-| `shared/recipes/combobulate-magic-link-auth.md`          | Magic-link authentication for Combobulate                          |
-| `shared/recipes/combobulate-stripe-paywall.md`           | Stripe paywall integration for Combobulate                         |
-| `shared/recipes/combobulate-transactional-email.md`      | Transactional email setup for Combobulate                          |
-| `shared/recipes/combobulate-contact-form.md`             | Contact form implementation for Combobulate                        |
-| `shared/recipes/combobulate-file-upload.md`              | File upload for Combobulate                                        |
-| `shared/recipes/combobulate-gumroad-buy-button.md`       | Gumroad buy button integration for Combobulate                     |
 | `shared/recipes/github-workflows-mix-generator.md`       | GitHub Actions workflows for Elixir/Mix projects                   |
 | `shared/recipes/caddy-dynamic-routing.md`                | Dynamic routing with Caddy reverse proxy                           |
 | `shared/recipes/claude-cli-subprocess.md`                | Invoking Claude CLI as a subprocess                                |
@@ -94,7 +88,7 @@ shared/recipes/
 
 ## Trigger Keywords
 
-recipe, recipe INDEX, static-html-base-template, static-vite-scaffold, phoenix-feature-test-setup, oban-job-rescheduling, mox-verify-on-exit-scope, elixir-context-test-structure, combobulate-magic-link-auth, combobulate-stripe-paywall
+recipe, recipe INDEX, static-html-base-template, static-vite-scaffold, phoenix-feature-test-setup, oban-job-rescheduling, mox-verify-on-exit-scope, elixir-context-test-structure
 
 ## Pitfalls
 

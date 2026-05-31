@@ -18,8 +18,8 @@ codegen/                          ← repo root
 ├── package.json                  ← root npm manifest (prettier only)
 ├── package-lock.json             ← lockfile for root prettier dep
 ├── index.html                    ← static-site test fixture (NOT a site page)
-├── AGENTS.md                     ← orchestrator rules (plain file, pi render)
-├── CLAUDE.md                     ← symlink → AGENTS.md (claude render)
+├── AGENTS.md                     ← codegen session loop docs (hand-authored plain file, pi render)
+├── CLAUDE.md                     ← codegen session loop docs (hand-authored plain file, claude render)
 ├── PROJECT_CONTEXT.md            ← codegen project context for AI agents
 ├── README.md                     ← user quickstart guide
 ├── STYLE_GUIDE.md                ← cross-cutting style reference
@@ -68,32 +68,34 @@ codegen/                          ← repo root
 
 ### Build Surface (Makefile)
 
-| Target                | Purpose                                                                                                              | Notes                                             |
-| --------------------- | -------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------- |
-| `make install`        | Full install cycle: `hook-parity` check → generate pi-extension → render hooks into settings.json → run `install.sh` | Primary dev loop entrypoint                       |
-| `make test`           | Run bash hook unit tests via `run-tests.sh` + pi-extension npm tests                                                 | Fast; no LLM calls                                |
-| `make test-stacks`    | Run ExUnit scaffold tests for both harnesses in parallel partitions                                                  | Slow; real LLM calls; pre-deploy gate             |
-| `make test-all`       | `test` + `test-stacks` + `record-green`                                                                              | Full pre-deploy gate                              |
-| `make hook-parity`    | Verify `claude-code-settings.json` hook entries match the hook source directory                                      | Runs before every `make install`                  |
-| `make rule-parity`    | Diff `AGENTS.md` / `CLAUDE.md` against fresh render of `templates/AGENTS-HYBRID.md.j2`                               | Catches drift between template and committed file |
-| `make harness-parity` | Verify `codegen-build` + `dispatch.sh` stubs are self-consistent                                                     | Runs `codegen-build_test.sh` + `scaffold_test.sh` |
-| `make format`         | Format all shell scripts with `shfmt` and all other files with `prettier`                                            | Uses `mise exec` for tool version isolation       |
-| `make doctor`         | Check required tools on PATH (claude, jq, rg, mise, pyyaml) and config files                                         | Diagnostic only; exits non-zero on failures       |
-| `make record-green`   | Write `test_harness/last_green.json` with current commit SHA + tool versions                                         | Only runs after all tests pass                    |
-| `make uninstall`      | Remove global CLI installation (ocg-only guarded)                                                                    | Via `ocg uninstall`                               |
-| `make update`         | Update AI agents (ocg-only guarded)                                                                                  | Via `ocg update`                                  |
+| Target                | Purpose                                                                                                              | Notes                                                         |
+| --------------------- | -------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------- |
+| `make install`        | Full install cycle: `hook-parity` check → generate pi-extension → render hooks into settings.json → run `install.sh` | Primary dev loop entrypoint                                   |
+| `make test`           | Run bash hook unit tests via `run-tests.sh` + pi-extension npm tests                                                 | Fast; no LLM calls                                            |
+| `make test-stacks`    | Run ExUnit scaffold tests for both harnesses in parallel partitions                                                  | Slow; real LLM calls; pre-deploy gate                         |
+| `make test-all`       | `test` + `test-stacks` + `record-green`                                                                              | Full pre-deploy gate                                          |
+| `make hook-parity`    | Verify `claude-code-settings.json` hook entries match the hook source directory                                      | Runs before every `make install`                              |
+| `make rule-parity`    | Diff downstream repo's `AGENTS.md` / `CLAUDE.md` against fresh render of `templates/AGENTS-HYBRID.md.j2`             | Catches drift between template and downstream committed files |
+| `make harness-parity` | Verify `codegen-build` + `dispatch.sh` stubs are self-consistent                                                     | Runs `codegen-build_test.sh` + `scaffold_test.sh`             |
+| `make format`         | Format all shell scripts with `shfmt` and all other files with `prettier`                                            | Uses `mise exec` for tool version isolation                   |
+| `make doctor`         | Check required tools on PATH (claude, jq, rg, mise, pyyaml) and config files                                         | Diagnostic only; exits non-zero on failures                   |
+| `make record-green`   | Write `test_harness/last_green.json` with current commit SHA + tool versions                                         | Only runs after all tests pass                                |
+| `make uninstall`      | Remove global CLI installation (ocg-only guarded)                                                                    | Via `ocg uninstall`                                           |
+| `make update`         | Update AI agents (ocg-only guarded)                                                                                  | Via `ocg update`                                              |
 
 ### Documentation Files
 
-| File                 | Audience                                                          | Content                                                                    |
-| -------------------- | ----------------------------------------------------------------- | -------------------------------------------------------------------------- |
-| `README.md`          | New users / contributors — user quickstart                        | Installation steps, prerequisites, quick-start commands                    |
-| `AGENTS.md`          | AI orchestrators (pi harness render) — runtime rules              | Orchestrator rules, agent workflow, delegation chain, INCONCLUSIVE table   |
-| `CLAUDE.md`          | AI orchestrators (claude harness render) — symlink to `AGENTS.md` | Same content; separate file so Claude Code loads it by convention          |
-| `STYLE_GUIDE.md`     | All contributors and AI agents — cross-cutting style              | Naming conventions, formatting rules, review checklist                     |
-| `PROJECT_CONTEXT.md` | AI orchestrators starting a session — orientation snapshot        | Session analyzer command, gate commands, key paths, harness dispatch guide |
+| File                 | Audience                                                        | Content                                                                                          |
+| -------------------- | --------------------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
+| `README.md`          | New users / contributors — user quickstart                      | Installation steps, prerequisites, quick-start commands                                          |
+| `AGENTS.md`          | AI sessions (pi harness render) — codegen session loop docs     | What codegen is, real dev loop, workspace rules (hand-authored plain file)                       |
+| `CLAUDE.md`          | AI sessions (claude harness render) — codegen session loop docs | Same content as AGENTS.md; `@import` syntax instead of prose pointers (hand-authored plain file) |
+| `STYLE_GUIDE.md`     | All contributors and AI agents — cross-cutting style            | Naming conventions, formatting rules, review checklist                                           |
+| `PROJECT_CONTEXT.md` | AI orchestrators starting a session — orientation snapshot      | Session analyzer command, gate commands, key paths, harness dispatch guide                       |
 
-**Important**: `AGENTS.md` is a plain file (pi render). `CLAUDE.md` is a symlink pointing to `AGENTS.md`. Both are generated from `templates/AGENTS-HYBRID.md.j2` — hand-editing either is overwritten by `make install`. The authoritative source is the template. Run `make rule-parity` to detect drift.
+**Important**: Both `AGENTS.md` and `CLAUDE.md` at repo root are hand-authored plain files describing codegen's own session loop. They are NOT generated and NOT symlinked — edit them directly. `templates/AGENTS-HYBRID.md.j2` generates a downstream repo's docs (verified by `make rule-parity`), not these root files. Run `make rule-parity` to detect drift between the template and the downstream repo's committed docs.
+
+**Artifact status**: `CLAUDE.md` is gitignored (`/CLAUDE.md` in `.gitignore`) — it is a local install artifact generated by the claude harness renderer, never committed. `AGENTS.md` is committed (pi render). Committer MUST NOT stage `CLAUDE.md`.
 
 ### Root-Level Oddities
 
@@ -514,7 +516,7 @@ Hex library usage rules, one file per library-version (e.g., `phoenix_live_view-
 
 ```
 templates/
-  AGENTS-HYBRID.md.j2       ← source for root AGENTS.md + CLAUDE.md
+  AGENTS-HYBRID.md.j2       ← source for downstream consumer repo's AGENTS.md + CLAUDE.md
   AGENTS-POC.md
   AGENTS.md                 ← rendered copy (pi render)
   CLAUDE.md                 ← rendered copy (claude render)
@@ -541,9 +543,9 @@ templates/
 
 #### `templates/AGENTS-HYBRID.md.j2`
 
-The authoritative source for the root `AGENTS.md` and `CLAUDE.md`. Rendered by `make rule-parity` (diffed against committed files) and by `make install` (overwrites committed files). Contains Jinja conditionals for pi vs claude render paths.
+Source template for the **downstream consumer repo's** `AGENTS.md` and `CLAUDE.md`. Rendered by `make rule-parity` (diffed against the downstream repo's committed files) and by `process_template.py` (pi or claude render mode). Contains Jinja conditionals for pi vs claude render paths.
 
-Do not hand-edit `AGENTS.md` or `CLAUDE.md` at repo root — changes are overwritten by the next `make install`. Edit `templates/AGENTS-HYBRID.md.j2` instead.
+This template does **not** generate codegen's own root docs. Codegen's root `AGENTS.md` (pi-render prose) and `CLAUDE.md` (claude-render `@import` form) are hand-authored plain files — edit them directly. Changes to this template affect the downstream project's agent docs, not codegen's.
 
 #### `templates/generator/`
 
@@ -560,14 +562,14 @@ templates/generator/
     dual_render.md.j2       ← fixture template used by generator self-tests
 ```
 
-| File                    | Purpose                                                                                                                              |
-| ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
-| `generate.sh`           | Entry — reads manifest, renders `.md.j2` templates into `templates/generated/<harness>/`                                             |
-| `process_template.py`   | Jinja-style `{% include %}` processor; inlines rule/recipe files into subagent templates                                             |
-| `hook_registrations.py` | Reads `harnesses/claude/hooks/*.sh`, generates hook entries in `claude-code-settings.json` and optionally into combobulate manifests |
-| `config.yaml`           | Maps role names (planner-phoenix, developer-html…) to model IDs, effort levels, and tool configurations                              |
-| `manifest-lib.sh`       | Bash library wrapping `yq` for structured manifest field access                                                                      |
-| `test_dual_render.sh`   | Renders both harnesses from same templates, diffs output; catches template divergence between pi and claude                          |
+| File                    | Purpose                                                                                                                                     |
+| ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| `generate.sh`           | Entry — reads manifest, renders `.md.j2` templates into `templates/generated/<harness>/`                                                    |
+| `process_template.py`   | Jinja-style `{% include %}` processor; inlines rule/recipe files into subagent templates                                                    |
+| `hook_registrations.py` | Reads `harnesses/claude/hooks/*.sh`, generates hook entries in `claude-code-settings.json` and optionally into downstream project manifests |
+| `config.yaml`           | Maps role names (planner-phoenix, developer-html…) to model IDs, effort levels, and tool configurations                                     |
+| `manifest-lib.sh`       | Bash library wrapping `yq` for structured manifest field access                                                                             |
+| `test_dual_render.sh`   | Renders both harnesses from same templates, diffs output; catches template divergence between pi and claude                                 |
 
 Full domain: `context/core.md`.
 
@@ -626,18 +628,18 @@ Do not add application packages here. Pi extension npm packages have their own `
 
 ## Artifact Ownership and Update Triggers
 
-| Artifact                                          | Owner                    | Updated by                                            | Trigger                                    |
-| ------------------------------------------------- | ------------------------ | ----------------------------------------------------- | ------------------------------------------ |
-| `harnesses/claude/claude-code-settings.json`      | Generator                | `hook_registrations.py`                               | `make install` or `make hook-parity`       |
-| `harnesses/claude/claude-build-system-prompt.txt` | Generator                | `generate.sh`                                         | `make install`                             |
-| `AGENTS.md` (repo root)                           | Template                 | `process_template.py` rendering `AGENTS-HYBRID.md.j2` | `make install`                             |
-| `CLAUDE.md` (repo root)                           | Symlink                  | Created once by `install.sh`; points to `AGENTS.md`   | Never needs updating                       |
-| `shared/` (all subdirs)                           | Contributors / curator   | Manual edit or context-curator subagent               | Feature development, learning accumulation |
-| `context/*.md`                                    | Context curator          | `context-curator.md.j2` subagent + manual             | Post-reviewer in each dev cycle            |
-| `codegen/logging/*.md`                            | Orchestrator + subagents | Session log write/edit during dev sessions            | Every dev cycle on THIS repo               |
-| `test_harness/last_green.json`                    | CI / `record-green.sh`   | `make record-green` after `make test-all` passes      | Pre-deploy gate                            |
-| `harnesses/pi/pi-extensions/*/node_modules/`      | npm                      | `npm install` in extension dir                        | After any `package.json` change            |
-| Root `node_modules/`                              | npm                      | `npm install` at repo root                            | After `package.json` changes               |
+| Artifact                                          | Owner                    | Updated by                                       | Trigger                                    |
+| ------------------------------------------------- | ------------------------ | ------------------------------------------------ | ------------------------------------------ |
+| `harnesses/claude/claude-code-settings.json`      | Generator                | `hook_registrations.py`                          | `make install` or `make hook-parity`       |
+| `harnesses/claude/claude-build-system-prompt.txt` | Generator                | `generate.sh`                                    | `make install`                             |
+| `AGENTS.md` (repo root)                           | Hand-authored plain file | Manual edit by developer                         | When codegen session loop docs change      |
+| `CLAUDE.md` (repo root)                           | Hand-authored plain file | Manual edit by developer                         | When codegen session loop docs change      |
+| `shared/` (all subdirs)                           | Contributors / curator   | Manual edit or context-curator subagent          | Feature development, learning accumulation |
+| `context/*.md`                                    | Context curator          | `context-curator.md.j2` subagent + manual        | Post-reviewer in each dev cycle            |
+| `codegen/logging/*.md`                            | Orchestrator + subagents | Session log write/edit during dev sessions       | Every dev cycle on THIS repo               |
+| `test_harness/last_green.json`                    | CI / `record-green.sh`   | `make record-green` after `make test-all` passes | Pre-deploy gate                            |
+| `harnesses/pi/pi-extensions/*/node_modules/`      | npm                      | `npm install` in extension dir                   | After any `package.json` change            |
+| Root `node_modules/`                              | npm                      | `npm install` at repo root                       | After `package.json` changes               |
 
 ---
 
@@ -662,13 +664,21 @@ Do not add application packages here. Pi extension npm packages have their own `
 
 ---
 
+## Multi-Repo Boundary Documentation
+
+**One-way knowledge boundary**: Codegen is a lower layer consumed by downstream projects (e.g., the Combobulate platform). This boundary is enforced in documentation:
+
+- **Codegen docs MUST NOT name any consumer** — all examples and references must use generic phrasing ("the consuming app", "downstream projects", "the harness config builder"). Even meta-commentary in doc sections (e.g., "This section explains X, which combobulate uses for Y") violates the one-way rule. Use "the consuming platform" instead.
+- **Downstream consumer docs MAY name codegen** — context files, examples, and implementation notes in a consumer project may reference codegen internals (`make install`, paths, hook mechanics) because the consumer is explicitly allowed to know about its dependencies.
+- **Enforcement**: `grep -ri "combobulate\|<specific-consumer-name>" context/ AGENTS.md CLAUDE.md` must return zero hits. Template sections referencing codegen internals are not documented in root docs; the downstream consumer (which reads the template via `make rule-parity`) handles its own obligations.
+
 ## Gaps and Clarifications
 
 **`ai-agents/` status**: Directory exists but is orphaned. `install.sh` writes to `~/.claude/agents/`, not here. The empty `ai-agents/claude/commands/` path was an earlier design; ignore it.
 
-**`codegen/` vs project `codegen/`**: The `codegen/` directory at repo root is THIS repo's own session log storage. Downstream projects (combobulate, etc.) each have their own `codegen/` at their root. These are entirely separate directory trees.
+**`codegen/` vs project `codegen/`**: The `codegen/` directory at repo root is THIS repo's own session log storage. Downstream projects each have their own `codegen/` at their root. These are entirely separate directory trees.
 
-**`templates/AGENTS.md` and `templates/CLAUDE.md`**: These are rendered copies inside `templates/` (separate from root-level `AGENTS.md` and `CLAUDE.md`). They exist as reference snapshots. Root-level files are what `make install` distributes.
+**`templates/AGENTS.md` and `templates/CLAUDE.md`**: These are rendered copies inside `templates/` (separate from root-level `AGENTS.md` and `CLAUDE.md`). They exist as reference snapshots. The downstream consumer repo's AGENTS.md/CLAUDE.md are rendered from this template (compared by `make rule-parity`).
 
 **`bin/test-llm-hooks.sh`**: The `bin/` name implies runnable utilities, but this file is a manual dev tool, not a CI script. It is not called by any Makefile target.
 

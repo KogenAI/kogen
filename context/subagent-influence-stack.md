@@ -33,7 +33,7 @@ Files: `./context/*.md`. NOT auto-loaded into subagent prompts. Planner reads on
 
 ## Layer 4 — Runtime CLI Flags
 
-Built by your platform's harness-config builder (Example: Combobulate's `Combobulate.LLM.HarnessConfig.build/2` returns `%{cli_flags, ...}`). Key flags:
+Built by the consuming platform's harness-config builder (Example: returns `%{cli_flags, ...}`). Key flags:
 
 | Flag                             | Used for                                                                         |
 | -------------------------------- | -------------------------------------------------------------------------------- |

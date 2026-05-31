@@ -38,7 +38,7 @@ Key rules:
 - **Minimum cacheable prefix**: Opus 4.5+/Haiku 4.5 = 4096 tokens; Sonnet 4.6 = 2048; older Sonnet/Opus 4/4.1 = 1024. Below floor: caching silently skipped — both cache counters return 0.
 - **Lookback window: 20 blocks.** Entries more than 20 content blocks behind the current breakpoint are invisible; add an explicit breakpoint to keep old entries findable.
 - **TTLs refresh on hit.** A cache read resets the timer at 0.1× cost.
-- **`ENABLE_PROMPT_CACHING_1H=1`**: extends server-side TTL from 5 min to 1 hour. Trade-off: 2.0× write cost but survives multi-minute idle gaps between chained workers on the same user request — typically worth it when workers hand off slowly. (Example: Combobulate sets this in `Combobulate.LLM.Backend.ClaudeCode.claude_env_prefix/0` to span Bouncer → Concierge → BuildWorker handoffs.)
+- **`ENABLE_PROMPT_CACHING_1H=1`**: extends server-side TTL from 5 min to 1 hour. Trade-off: 2.0× write cost but survives multi-minute idle gaps between chained workers on the same user request — typically worth it when workers hand off slowly. (Example: the consuming app's LLM backend sets this in its claude env prefix function to span chained worker handoffs.)
 
 Claude Code uses **automatic caching**: a single top-level `cache_control` flag, and the API manages breakpoint position as the conversation grows. The large static prefix (system prompt + CLAUDE.md + tool schemas + agent files via `--agents`) is cached aggressively; each new turn extends the suffix.
 
@@ -78,7 +78,7 @@ When invoking `claude --print --output-format stream-json`, the `usage` field ap
 Two distinct terminal events:
 
 - **`{"type": "message_stop"}`** — API-level streaming terminal. Signals the model finished generating.
-- **`{"type": "result", ...}`** — Claude Code CLI-level terminal. Carries `usage`, `cost_usd`, `num_turns`, `is_error`. This is what a usage-parser must read. Missing this event → parse error (Example: Combobulate's `UsageParser.parse_log_file/1` returns `{:error, {:no_result, ...}}`).
+- **`{"type": "result", ...}`** — Claude Code CLI-level terminal. Carries `usage`, `cost_usd`, `num_turns`, `is_error`. This is what a usage-parser must read. Missing this event → parse error (Example: a project-provided usage parser returns `{:error, {:no_result, ...}}`).
 
 Example `result` event shape (relevant fields):
 
@@ -101,7 +101,7 @@ Example `result` event shape (relevant fields):
 
 This flag moves per-machine sections (cwd, environment, git context) from the system prompt into the first user message — improving cache reuse across machines and users who share a stable system prompt. See https://code.claude.com/docs/en/cli-reference.md.
 
-A worker that runs from `System.tmp_dir!()` (or equivalent neutral cwd) prevents hook pollution of `--print` output — same principle: keep per-machine noise out of the cacheable prefix. Adding `--exclude-dynamic-system-prompt-sections` further improves cache consistency across builds. (Example: Combobulate's BuildWorker already runs from `System.tmp_dir!()`; adding the flag to `build_stream_cmd/4` is a pending optimization.)
+A worker that runs from `System.tmp_dir!()` (or equivalent neutral cwd) prevents hook pollution of `--print` output — same principle: keep per-machine noise out of the cacheable prefix. Adding `--exclude-dynamic-system-prompt-sections` further improves cache consistency across builds. (Example: the consuming app's build worker already runs from a neutral tmp dir; adding the flag to the stream command builder is a common pending optimization.)
 
 Note: `--bare` is API SDK probe only — not for `claude --agent <name> --print` CLI.
 
@@ -111,7 +111,7 @@ Note: `--bare` is API SDK probe only — not for `claude --agent <name> --print`
 
 ## 8. Context Window
 
-200k base for all models. 1M extended context available via API parameter for Opus 4.7 and Sonnet 4.6 — no CLI flag exposes this. Cached tokens still count toward the window — caching does not raise the ceiling. (Example: Combobulate does not enable 1M extended context.)
+200k base for all models. 1M extended context available via API parameter for Opus 4.7 and Sonnet 4.6 — no CLI flag exposes this. Cached tokens still count toward the window — caching does not raise the ceiling. (Most consuming apps do not enable 1M extended context.)
 
 ## 9. Cache Regression Signals
 
@@ -124,7 +124,7 @@ cache_hit_ratio =
   cache_read_input_tokens + cache_creation_input_tokens + input_tokens
 ```
 
-Healthy: 0.85–0.95 on warm builds, 0.4–0.6 on cold first turns. Project-specific drop threshold (Example: Combobulate uses ≥10pp 7-day drop in `context/llm.md` § Telemetry & Metrics).
+Healthy: 0.85–0.95 on warm builds, 0.4–0.6 on cold first turns. Project-specific drop threshold (Example: the consuming app defines a ≥10pp 7-day drop threshold in its LLM telemetry docs).
 
 ## 10. Fleet Implications
 
@@ -132,9 +132,9 @@ Per-role token economics (Planner/Developer/BuildWorker, subagent isolation) →
 
 ## 11. Quick Diagnostics
 
-Per-session forensics (thrash signals, subagent breakdown) — project provides an analyzer. (Example: Combobulate exposes `mix combobulate.session.analyze`.)
+Per-session forensics (thrash signals, subagent breakdown) — project provides an analyzer. (Example: the consuming app exposes a session-analysis mix task.)
 
-Static prompt assembly size (system prompt + tools + agent files) — project provides a budget tool. (Example: `mix combobulate.llm.token_budget`.)
+Static prompt assembly size (system prompt + tools + agent files) — project provides a budget tool. (Example: the consuming app exposes a token-budget mix task.)
 
 Aggregate cache hit ratio (last 14 days) — project-specific stats table:
 
