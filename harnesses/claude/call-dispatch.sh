@@ -43,7 +43,6 @@ COMMON_FLAGS=(
     --system-prompt "$SYSTEM_PROMPT"
     --model "$MODEL"
     --effort "$EFFORT"
-    --max-turns 1
 )
 
 # --tools: pass if explicitly set (including empty string = no tools)
@@ -81,7 +80,7 @@ env \
     ENABLE_PROMPT_CACHING_1H=1 \
     MAX_THINKING_TOKENS=0 \
     MCP_CONNECTION_NONBLOCKING=true \
-    claude "${COMMON_FLAGS[@]}" -- "$PROMPT" >"$TMP_OUT" 2>&1
+    claude "${COMMON_FLAGS[@]}" -- "$PROMPT" </dev/null >"$TMP_OUT" 2>&1
 EXIT_CODE=$?
 set -e
 
@@ -90,7 +89,7 @@ LATENCY_MS=$((END_TS_MS - START_TS_MS))
 
 # ── Parse stream-json into envelope ──────────────────────────────────────────
 # Extract the last result event from stream-json
-RESULT_EVENT="$(jq -c 'select(.type == "result")' "$TMP_OUT" 2>/dev/null | tail -1 || true)"
+RESULT_EVENT="$(jq -c -R 'fromjson? | select(.type == "result")' "$TMP_OUT" 2>/dev/null | tail -1 || true)"
 
 if [[ $EXIT_CODE -ne 0 ]] && [[ -z "$RESULT_EVENT" ]]; then
     # Claude binary failed with no parseable output
@@ -198,27 +197,33 @@ fi
 # If json-schema was requested, try to find JSON in the assistant message
 VALUE_JSON="null"
 if [[ -n "$JSON_SCHEMA_CONTENT" ]] && [[ "$STATUS" == "success" || "$STATUS" == "schema_retry_exhausted" ]]; then
-    # Search for last assistant message with parseable JSON content
-    LAST_ASSISTANT_JSON="$(
-        jq -r '
-            select(.type == "assistant") |
-            .message.content[]? |
-            select(.type == "text") |
-            .text
-        ' "$TMP_OUT" 2>/dev/null | tail -1 || true
-    )"
-    if [[ -n "$LAST_ASSISTANT_JSON" ]]; then
-        # Try to extract JSON from the text (may be embedded)
-        PARSED="$(printf '%s' "$LAST_ASSISTANT_JSON" | jq -c '.' 2>/dev/null || true)"
-        if [[ -n "$PARSED" ]]; then
-            VALUE_JSON="$PARSED"
-        fi
+    # Prefer structured_output from the result event (StructuredOutput tool path)
+    SO_JSON="$(printf '%s' "$RESULT_EVENT" | jq -c '.structured_output // empty' 2>/dev/null || true)"
+    if [[ -n "$SO_JSON" ]] && [[ "$SO_JSON" != "null" ]]; then
+        VALUE_JSON="$SO_JSON"
     fi
-    # Fall back to result text if no JSON found in assistant messages
-    if [[ "$VALUE_JSON" == "null" ]] && [[ -n "$RESULT_TEXT" ]]; then
-        PARSED="$(printf '%s' "$RESULT_TEXT" | jq -c '.' 2>/dev/null || true)"
-        if [[ -n "$PARSED" ]]; then
-            VALUE_JSON="$PARSED"
+    if [[ "$VALUE_JSON" == "null" ]]; then
+        # Fall back: search for last assistant message with parseable JSON content
+        LAST_ASSISTANT_JSON="$(
+            jq -c -R 'fromjson? | select(.type == "assistant") |
+                .message.content[]? |
+                select(.type == "text") |
+                .text
+            ' "$TMP_OUT" 2>/dev/null | tail -1 || true
+        )"
+        if [[ -n "$LAST_ASSISTANT_JSON" ]]; then
+            # Try to extract JSON from the text (may be embedded)
+            PARSED="$(printf '%s' "$LAST_ASSISTANT_JSON" | jq -c '.' 2>/dev/null || true)"
+            if [[ -n "$PARSED" ]]; then
+                VALUE_JSON="$PARSED"
+            fi
+        fi
+        # Fall back to result text if no JSON found in assistant messages
+        if [[ "$VALUE_JSON" == "null" ]] && [[ -n "$RESULT_TEXT" ]]; then
+            PARSED="$(printf '%s' "$RESULT_TEXT" | jq -c '.' 2>/dev/null || true)"
+            if [[ -n "$PARSED" ]]; then
+                VALUE_JSON="$PARSED"
+            fi
         fi
     fi
 elif [[ "$STATUS" == "success" || "$STATUS" == "clarifying_question" ]]; then
