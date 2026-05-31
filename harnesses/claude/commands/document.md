@@ -9,7 +9,7 @@ Write a short pitch skeleton capturing the essence of what was discussed — a s
 **SKELETON SHAPE** (all sections, keep each to 2–5 lines):
 
 1. **Problem** — Extract from conversation. Quote the user's wording where it matters. 2–4 sentences max.
-2. **Open questions** — Unresolved items from the conversation. These become the first `AskUserQuestion` batch in the shaping session.
+2. **Open questions** — Unresolved items from the conversation. These become the first things the shaping session investigates and resolves — asking only if no sensible default exists.
 3. **Context consulted** — Paths touched in this session. Paths only.
 
 **FORBIDDEN sections**: Appetite, Solution sketch, Rabbit holes, Implementation plan, Step N, Files Modified, Consolidation, Proposed changes, Why one commit.

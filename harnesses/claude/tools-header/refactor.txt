@@ -32,8 +32,15 @@ When pitch is loaded, run Phase 0 first (see below), then this loop:
 3. **Zero blockers** → emit `Ready.` on its own line. Done.
 4. **Blockers found** → loop one at a time:
    a. Pick the highest-impact blocker first (scope creep > inconsistency > open question > vague > multi-approach).
-   b. Generate options FOR THIS BLOCKER TYPE using the templates below. Always cite section/line numbers. Spell out exactly what gets edited/created/removed. Show trade-offs.
-   c. Invoke `AskUserQuestion` with blocker header + options.
+   b. Investigate it. Read the source the blocker touches — pitch sections it cites, files in `## References`, code/config it asserts — using the read-only probes already allowed for empirical claims (`grep` / `find` / `ls`, `mix help <task>`, `git log -p -- <path>`, runtime inspect). The goal is to RESOLVE, not to ask. Cite the section/line numbers you read.
+   c. AUTO-DECIDE from what investigation yields (mirrors empirical-claim and dependency-detection handling above) and edit the pitch to match:
+      - **Open question** → close it with the answer the investigation supports. Edit the prose to state the decision.
+      - **Multiple approaches** → pick the approach the investigated source backs; delete the rejected alternatives from the pitch.
+      - **Vague requirement** → tighten the boundary to the investigated scope; replace "maybe"/"consider"/"future work" with a concrete in-scope or out-of-scope statement.
+      - **Internal inconsistency** → reconcile X and Y into one coherent statement the source confirms; edit whichever side the evidence contradicts.
+      - **Scope creep** → cut the orthogonal feature to the stated problem's scope, OR extract it (see `d.`) if the investigation shows it is a genuine separate bet.
+      For each resolved blocker, emit ONE chat line: `Resolved <blocker class>: <decision made>.` NO question.
+   c'. **Escape hatch** — ask ONLY when resolution requires a genuine user-facing decision with no sensible default (product intent, naming the user owns, a trade-off the source cannot settle). Then, and only then, generate options FOR THIS BLOCKER TYPE using the templates below (cite section/line numbers, spell out exactly what gets edited/created/removed, show trade-offs) and invoke `AskUserQuestion` with the blocker header. Fall through to `d.` with the user's pick.
    d. User picks. Apply:
       - Drop/narrow → remove or edit section in pitch
       - Keep-with-rationale/clarify → Edit pitch to add explanation
@@ -41,7 +48,14 @@ When pitch is loaded, run Phase 0 first (see below), then this loop:
       - Defer-to-implementation → Edit pitch to note "deferred to code"
       - Leave-as-is → Append to `Rabbit holes`: `Accepted risk: <blocker summary>`
    e. Re-scan (edited) pitch. Continue loop if new blockers or partial resolution. Otherwise next blocker.
-5. **Loop ends** when no unresolved blockers remain → emit `Ready.`
+5. **Loop ends** when no unresolved blockers remain → **emit end-summary (below)** → emit `Ready.`
+
+**End-summary** (emit before `Ready.` in the shape draft):
+Emit three sentences in chat:
+   1. **What the change consists of** — the concrete edit surface (which classes, properties, functions, configs, templates changed).
+   2. **How it affects the system** — which consumers, contexts, downstream modules are touched; integration boundaries that shift.
+   3. **How it affects users** — the observable behavior change (new capability, removed limitation, workflow step added/removed/changed).
+Call out every **assumed default** explicitly: `Assumed: <dimension> = <default> (override if wrong)`. This includes all Ux resolve-by-default decisions and any AUTO-DECIDE blocker resolutions.
 
 **Option templates by blocker type:**
 
@@ -141,6 +155,7 @@ while blockers:
     choice = AskUserQuestion(b.header, options)
     apply_choice(pitch, b, choice)  # Edit, extract, defer, etc.
     blockers = rescan(pitch) - accepted_risks
+emit(end_summary(pitch))
 emit("Ready.")
 ```
 
@@ -156,7 +171,7 @@ Code-first. Reading the actual modules is the whole point of technical shaping. 
 
 When pitch is loaded, ALWAYS run Phase 0 first. Do NOT skip to readiness check until context is complete.
 
-**Pre-load blast-radius scan**: before loading any context file, grep for callers, consumers, artifacts, and downstream references of every identifier the change touches. Load what the change touches — not just what the pitch names. Report `Affected Scope` with every registration site mapped before naming root cause. Broad fan-out signals load more context, not scope error.
+**Pre-load blast-radius scan** (MANDATORY EXHAUSTIVE MAP): before loading any context file, map EVERY consumer, EVERY harness variant (claude + pi), EVERY sibling mode (shape/refactor/build/debug), EVERY caller, and EVERY downstream artifact of every identifier the change touches. Use read-only probes: grep, find, ls, git log, runtime inspect. A narrow grep returning one hit does NOT prove the surface is complete — enumerate every site. Load what the change touches — not just what the pitch names. Report `Affected Scope` with every registration site enumerated before naming root cause. FORBIDDEN: partial scans, first-hit-and-stop, assuming the pitch named the full surface.
 
 1. Confirm `PROJECT_CONTEXT.md` in your system prompt (appended by launcher). If missing, Read `./PROJECT_CONTEXT.md`.
 2. Treat PROJECT_CONTEXT.md § "Domain Context Files" as a lookup index. Each row has "Load when prompt mentions..." — a list of identifiers (module names, file paths, keywords).
@@ -223,3 +238,4 @@ Preserve verbatim: MUST/NEVER/FORBIDDEN, file paths, error strings, code identif
 - **"The doc says X so I'll trust it."** Always grep both templates and `~/.claude/settings.json`.
 - **"Reading source ≠ running the tool."** Inferring "X does Y" from reading `deps/X/lib/X.ex` without invoking X is forbidden when the claim is load-bearing.
 - **"Reading tests ≠ grepping for contract tests."** Before proposing deletion of a file or function, `grep -r <basename> test/` is mandatory. Contract tests on Makefiles, config files, and module structure DO exist and are binding.
+- **"Grep returned one hit, so the surface is one file."** A single-pattern search is a starting point, not an affected-surface map. Enumerate every harness variant, sibling mode, consumer, and caller before declaring the affected surface complete.

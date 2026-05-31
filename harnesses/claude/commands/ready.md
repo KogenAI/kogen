@@ -10,7 +10,9 @@ Ask yourself: Is this pitch ready for a developer to build without asking you cl
 
 **Not ready** = Open questions remain (even in casual phrasing), multiple options without a choice, vague requirements, unresolved tradeoffs, inconsistencies between sections, or empirical claims without adjacent probe transcripts in `## References`.
 
-**Empirical-claim check (run before all other readiness checks):** Scan pitch prose for falsifiable assertions about tool/config/code/CI behavior: "X does Y", "X never Y", "X always Y", "deleting X is safe because Y", "only Z triggers Y". For each match: check if a `$ <command>` + fenced output block appears in the same paragraph or under `## References`. If a claim lacks a probe transcript → **run the probe yourself NOW, inline, without asking the user**. Allowed probes: `grep` / `find` / `ls`, `mix help <task>`, `mix test --cover <one_test_file>`, `MIX_ENV=test mix run -e "IO.inspect(...)"`, `git log -p -- <path>`. After each probe:
+**Pre-readiness blast-radius map** (run before all checks): Exhaustively map every consumer, harness variant, sibling mode, caller, and downstream artifact. A narrow grep is NOT sufficient. Report `Affected Scope` with every site enumerated.
+
+**Empirical-claim check** (run after blast-radius map): Scan pitch prose for falsifiable assertions about tool/config/code/CI behavior: "X does Y", "X never Y", "X always Y", "deleting X is safe because Y", "only Z triggers Y". For each match: check if a `$ <command>` + fenced output block appears in the same paragraph or under `## References`. If a claim lacks a probe transcript → **run the probe yourself NOW, inline, without asking the user**. Allowed probes: `grep` / `find` / `ls`, `mix help <task>`, `mix test --cover <one_test_file>`, `MIX_ENV=test mix run -e "IO.inspect(...)"`, `git log -p -- <path>`. After each probe:
 
 - Probe confirms → Edit pitch to embed the `$ <command>` line + fenced 3–10 line output block in `## References`. Claim passes. Continue scan.
 - Probe contradicts → raise via `AskUserQuestion` with options: (a) revise claim to match probe reality, (b) drop claim and dependent solution step, (c) reshape solution around probe reality. Pitch is NOT ready until user picks and edit lands.
@@ -18,8 +20,23 @@ Ask yourself: Is this pitch ready for a developer to build without asking you cl
 
 NEVER list unprobed claims and stop. NEVER ask the user "should I probe X?" — just run it. NEVER move the file while any claim's probe contradicts/is inconclusive without user resolution. FORBIDDEN: accepting claim because source code suggests it — must execute the code path.
 
-**If ready**: Move `codegen/pitches/draft/<slug>.md` → `codegen/pitches/ready/<slug>.md`. Bash: `mv <source> <dest>`. Report: "READY. Moved to ready/."
+**If ready**: Move `codegen/pitches/draft/<slug>.md` → `codegen/pitches/ready/<slug>.md`. Bash: `mv <source> <dest>`.
 
-**If not ready**: List what's unresolved and where (cite line or section). Be specific — quote the question or inconsistency. Stop. Do not move file.
+**Before move to ready/**: Emit end-summary in chat —
 
-**FORBIDDEN**: Suggest edits for non-empirical blockers. Ask user for non-empirical blockers (just assess and report). For empirical claims specifically: probe autonomously, embed on confirm, `AskUserQuestion` only on contradict/inconclusive (see Empirical-claim check above).
+1.  **What the change consists of** — the concrete edit surface.
+2.  **How it affects the system** — which consumers, contexts, modules are touched.
+3.  **How it affects users** — observable behavior change.
+    Call out every **assumed default** explicitly: `Assumed: <dimension> = <default> (override if wrong)`. This includes all auto-decide blocker resolutions.
+
+Report: "READY. Moved to ready/."
+
+**If not ready**: Resolve-by-investigation loop:
+
+1.  Pick one unresolved blocker (open question, vague scope, conflict, empirical gap, structural issue, unclear consumer).
+2.  Investigate it (read the pitch sections it cites, files in `## References`, code it asserts, using read-only probes: `grep`, `find`, `ls`, `mix help`, `git log`, runtime inspect). Goal: RESOLVE, not ask.
+3.  AUTO-DECIDE from what investigation yields and edit the pitch (per shape.txt L61–69 blocker resolution; only emit `Resolved <class>: <decision>.` to chat). Emit end-summary (above) if this resolution closes all blockers. Otherwise, loop to step 1.
+4.  If escape hatch (no sensible default — product intent / user-owned naming / unsettleable trade-off): generate options FOR THIS BLOCKER TYPE and invoke `AskUserQuestion`. Apply user's pick. Recheck readiness (start at step 1).
+    If unresolved blockers remain after loop, stop. Do not move file.
+
+**Empirical claims**: probe autonomously, embed on confirm, `AskUserQuestion` only on contradict/inconclusive (see Empirical-claim check above). **Non-empirical blockers**: resolve by investigation (see resolve-by-investigation block above) — auto-decide per blocker class, ask ONLY when no sensible default (product intent / user-owned naming / unsettleable trade-off).
