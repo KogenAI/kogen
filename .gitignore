@@ -1,12 +1,10 @@
 /node_modules/
-/CLAUDE.md
 /templates/generated/
 
 # Optimum Codegen
 /.vscode/
 /codegen/
 /AGENTS.md
-/CLAUDE.md
 .mcp.json
 *.code-workspace
 .env

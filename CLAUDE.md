@@ -4,9 +4,9 @@ Guidance for AI agents working in the codegen repository.
 
 **Codegen = polyglot generator repo.** Generates and installs AI-agent harnesses (Claude Code, Pi) consumed by downstream Phoenix and static-site projects. Tech stack: Bash + Python (`process_template.py`, `hook_registrations.py`) + Jinja-style `.md.j2` templates + TypeScript Pi extensions + Elixir/ExUnit test harness.
 
-→ See `context/repo-structure.md` for physical layout of every file and directory.
+@context/repo-structure.md
 
-→ See `context/development.md` for Make targets, tech stack details, and coding conventions.
+@context/development.md
 
 ---
 
