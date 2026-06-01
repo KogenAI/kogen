@@ -28,15 +28,12 @@ export function register(pi: ExtensionAPI): void {
     const projectDir =
       process.env["CWD"] ?? process.env["PI_PROJECT_DIR"] ?? process.cwd();
 
-    // Platform-repo bypass: test apps, production apps, local dev apps
-    if (
-      /\/.combobulate_test_apps\/.*\/apps\//.test(projectDir) ||
-      /^\/home\/combobulate\/apps\//.test(projectDir) ||
-      /\/AppBuilder\/apps\//.test(projectDir)
-    ) {
-      // Within a user app workspace — enforcement active
-    } else {
-      // Not a user-app workspace — pass through
+    // Platform-repo bypass: only enforce when OCG_APPS_ROOT is set and projectDir is under it.
+    // If OCG_APPS_ROOT is unset, this session is not a managed build worker — pass through.
+    const appsRoot = process.env["OCG_APPS_ROOT"];
+    if (!appsRoot) return;
+    if (!projectDir.startsWith(appsRoot.replace(/\/$/, "") + "/")) {
+      // Outside the consumer apps root — not a build worker context; pass through
       return;
     }
 

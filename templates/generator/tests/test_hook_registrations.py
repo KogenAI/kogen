@@ -1,5 +1,5 @@
 """Unit tests for hook_registrations.py — cover parse_manifest, validate_signal,
-validate_role_match, dumps_compact, _hook_fits_stack, group_by_event, build_hook_entry.
+validate_role_match, dumps_compact, group_by_event, build_hook_entry.
 """
 
 import io
@@ -292,44 +292,6 @@ class TestDumpsCompact(unittest.TestCase):
         result = hr.dumps_compact(obj)
         parsed = json.loads(result)
         self.assertEqual(parsed, obj)
-
-
-# ── TestHookFitsStack ────────────────────────────────────────────────────────
-
-class TestHookFitsStack(unittest.TestCase):
-
-    def _hook(self, matcher, role, surface="user_global"):
-        return {"matcher": matcher, "role": role, "surface": surface}
-
-    def test_all_generic_matcher_returns_true(self):
-        """All matcher tokens are generic → fits every stack."""
-        hook = self._hook("Bash", "*")
-        self.assertTrue(hr._hook_fits_stack(hook, ["developer-phoenix-backend"]))
-
-    def test_matcher_intersects_agent_set(self):
-        """Matcher token in agent set → True."""
-        hook = self._hook("developer-phoenix-backend", "*")
-        self.assertTrue(hr._hook_fits_stack(hook, ["developer-phoenix-backend", "committer"]))
-
-    def test_role_wildcard_returns_true(self):
-        """Role = '*' → True regardless of matcher/agent_set."""
-        hook = self._hook("SomeSpecialTool", "*")
-        self.assertTrue(hr._hook_fits_stack(hook, ["committer"]))
-
-    def test_role_glob_ends_with_star_returns_true(self):
-        """Role ends with -* → True (developer-*, planner-*, etc.)."""
-        hook = self._hook("SomeSpecialTool", "developer-*")
-        self.assertTrue(hr._hook_fits_stack(hook, ["committer"]))
-
-    def test_role_token_in_agent_set_returns_true(self):
-        """Literal role token in agent_set → True."""
-        hook = self._hook("SomeSpecialTool", "planner-phoenix")
-        self.assertTrue(hr._hook_fits_stack(hook, ["planner-phoenix", "committer"]))
-
-    def test_no_match_returns_false(self):
-        """No matcher, role, or wildcard match → False."""
-        hook = self._hook("SomeSpecialTool", "planner-phoenix")
-        self.assertFalse(hr._hook_fits_stack(hook, ["committer", "reviewer-phoenix"]))
 
 
 # ── TestGroupByEvent ─────────────────────────────────────────────────────────

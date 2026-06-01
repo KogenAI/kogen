@@ -14,16 +14,6 @@ endef
 
 
 
-COMBOBULATE_DIR ?= $(shell \
-  if [ -f "$(SCRIPT_DIR)/../combobulate/CLAUDE.md" ] || [ -f "$(SCRIPT_DIR)/../combobulate/AGENTS.md" ]; then \
-    echo "$(SCRIPT_DIR)/../combobulate"; \
-  elif [ -f "$(HOME)/Projects/AppBuilder/combobulate/CLAUDE.md" ] || [ -f "$(HOME)/Projects/AppBuilder/combobulate/AGENTS.md" ]; then \
-    echo "$(HOME)/Projects/AppBuilder/combobulate"; \
-  else \
-    echo "$(SCRIPT_DIR)/../combobulate"; \
-  fi)
-HOOKS_MD_PATH := $(COMBOBULATE_DIR)/context/hooks.md
-HOOKS_MD_ARG := $(if $(wildcard $(HOOKS_MD_PATH)),--hooks-md-path "$(HOOKS_MD_PATH)",)
 PI_EXTENSION_DIR ?= $(SCRIPT_DIR)/harnesses/pi/pi-extensions/enforcement
 
 .PHONY: hook-parity
@@ -31,21 +21,8 @@ hook-parity:
 	@cd "$(SCRIPT_DIR)/templates" && python3 generator/hook_registrations.py \
 		--hooks-dir ../harnesses/claude/hooks \
 		--output-settings /tmp/claude-code-settings-parity.json \
-		--existing-settings "$(SCRIPT_DIR)/harnesses/claude/claude-code-settings.json" \
-		--combobulate-dir /tmp/hook-parity-test \
-		--subagents-dir "$(SCRIPT_DIR)/shared/subagents" \
-		$(HOOKS_MD_ARG)
+		--existing-settings "$(SCRIPT_DIR)/harnesses/claude/claude-code-settings.json"
 	@diff -u "$(SCRIPT_DIR)/harnesses/claude/claude-code-settings.json" /tmp/claude-code-settings-parity.json || exit 1
-	@if [ -f "$(COMBOBULATE_DIR)/priv/claude_config/agent_manifest.json" ]; then \
-		diff -u "$(COMBOBULATE_DIR)/priv/claude_config/agent_manifest.json" /tmp/hook-parity-test/priv/claude_config/agent_manifest.json || exit 1; \
-	fi
-	@if [ -f "$(COMBOBULATE_DIR)/priv/claude_config/hook_manifest.json" ]; then \
-		diff -u "$(COMBOBULATE_DIR)/priv/claude_config/hook_manifest.json" /tmp/hook-parity-test/priv/claude_config/hook_manifest.json || exit 1; \
-	fi
-	@if [ -f "$(COMBOBULATE_DIR)/priv/claude_config/expected_hook_manifest_hash.txt" ]; then \
-		diff -u "$(COMBOBULATE_DIR)/priv/claude_config/expected_hook_manifest_hash.txt" /tmp/hook-parity-test/priv/claude_config/expected_hook_manifest_hash.txt || exit 1; \
-	fi
-	@echo "hook-manifest-parity: PASS"
 	@echo "hook-parity: PASS"
 
 install:
@@ -59,10 +36,7 @@ install:
 	@python3 "$(SCRIPT_DIR)/templates/generator/hook_registrations.py" \
 		--hooks-dir "$(SCRIPT_DIR)/harnesses/claude/hooks" \
 		--output-settings "$(SCRIPT_DIR)/harnesses/claude/claude-code-settings.json" \
-		--combobulate-dir "$(COMBOBULATE_DIR)" \
-		--subagents-dir "$(SCRIPT_DIR)/shared/subagents" \
-		--pi-extension-dir "$(PI_EXTENSION_DIR)" \
-		$(HOOKS_MD_ARG)
+		--pi-extension-dir "$(PI_EXTENSION_DIR)"
 	@./install.sh
 
 # harness-parity: verify codegen-build + dispatch.sh stubs are self-consistent.
@@ -301,39 +275,10 @@ test-all: test test-stacks record-green
 record-green:
 	@"$(SCRIPT_DIR)/test_harness/record-green.sh"
 
-# rule-parity: re-render AGENTS-HYBRID.md.j2 in both modes to temp files and
-# diff against committed AGENTS.md / CLAUDE.md. Exits non-zero on drift.
+# rule-parity: verify baked agent files do not reference stale harness paths.
+# Exits non-zero if any generated agent contains old templates/shared/claude-* or pi-* paths.
 rule-parity:
-	@SCRIPT_DIR="$(SCRIPT_DIR)"; \
-	TEMPLATE="$$SCRIPT_DIR/templates/AGENTS-HYBRID.md.j2"; \
-	PYTHON="$$SCRIPT_DIR/templates/generator/process_template.py"; \
-	COMBOBULATE_DIR="$(COMBOBULATE_DIR)"; \
-	AGENTS_COMMITTED="$$COMBOBULATE_DIR/AGENTS.md"; \
-	CLAUDE_COMMITTED="$$COMBOBULATE_DIR/CLAUDE.md"; \
-	if [ ! -f "$$AGENTS_COMMITTED" ] && [ ! -f "$$CLAUDE_COMMITTED" ]; then \
-		echo "rule-parity: ERROR — neither AGENTS.md nor CLAUDE.md found under $$COMBOBULATE_DIR"; \
-		echo "rule-parity: set COMBOBULATE_DIR=/path/to/combobulate (current default assumes sibling of codegen)"; \
-		exit 2; \
-	fi; \
-	TMPDIR_PARITY="$$(mktemp -d)"; \
-	python3 "$$PYTHON" "$$TEMPLATE" pi false > "$$TMPDIR_PARITY/AGENTS.md"; \
-	python3 "$$PYTHON" "$$TEMPLATE" claude false > "$$TMPDIR_PARITY/CLAUDE.md"; \
-	FAIL=0; \
-	if [ -f "$$AGENTS_COMMITTED" ] && ! diff -q "$$TMPDIR_PARITY/AGENTS.md" "$$AGENTS_COMMITTED" > /dev/null 2>&1; then \
-		echo "DRIFT: AGENTS.md differs from AGENTS-HYBRID.md.j2 (pi render)"; \
-		diff "$$TMPDIR_PARITY/AGENTS.md" "$$AGENTS_COMMITTED" || true; \
-		FAIL=1; \
-	fi; \
-	if [ -f "$$CLAUDE_COMMITTED" ] && ! diff -q "$$TMPDIR_PARITY/CLAUDE.md" "$$CLAUDE_COMMITTED" > /dev/null 2>&1; then \
-		echo "DRIFT: CLAUDE.md differs from AGENTS-HYBRID.md.j2 (claude render)"; \
-		diff "$$TMPDIR_PARITY/CLAUDE.md" "$$CLAUDE_COMMITTED" || true; \
-		FAIL=1; \
-	fi; \
-	rm -rf "$$TMPDIR_PARITY"; \
-	if [ $$FAIL -eq 1 ]; then exit 1; fi; \
-	echo "rule-parity: OK (no drift) [checked: $$COMBOBULATE_DIR]"; \
-	echo "rule-parity: checking harness path isolation..."; \
-	AGENTS_DIR="$(HOME)/.claude/agents"; \
+	@AGENTS_DIR="$(HOME)/.claude/agents"; \
 	if [ -d "$$AGENTS_DIR" ]; then \
 		if grep -rl "templates/shared/claude-\|templates/shared/pi-" "$$AGENTS_DIR" 2>/dev/null | grep -q .; then \
 			echo "rule-parity: ERROR — generated agent files reference old templates/shared/claude-* or pi-* paths"; \

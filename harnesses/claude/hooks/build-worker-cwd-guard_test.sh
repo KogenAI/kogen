@@ -41,9 +41,10 @@ run_test() {
 }
 
 # Use a user-app-like cwd so the guard engages (guard is a no-op outside real apps_root).
-# mktemp gives us a real dir; we embed it under a synthetic */AppBuilder/apps/ path.
+# OCG_APPS_ROOT drives enforcement; PROJECT_DIR is a synthetic user-app under it.
 BASE_TMP="$(mktemp -d)"
-PROJECT_DIR="${BASE_TMP}/AppBuilder/apps/abc123"
+export OCG_APPS_ROOT="${BASE_TMP}/apps"
+PROJECT_DIR="${OCG_APPS_ROOT}/abc123"
 mkdir -p "$PROJECT_DIR"
 cleanup() { rm -rf "$BASE_TMP"; }
 trap cleanup EXIT
@@ -71,22 +72,34 @@ run_test "orchestrator Bash cd /tmp allows (whitelist)" "0" "$FIXTURE_ALLOW_TMP"
 FIXTURE_BLOCK_BASH='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"cat /etc/hosts"},"agent_id":"","agent_type":"","cwd":"'"$PROJECT_DIR"'"}'
 run_test "orchestrator Bash /etc/hosts blocks" "2" "$FIXTURE_BLOCK_BASH"
 
-# Test 6: Orchestrator Read of /etc/passwd in platform repo (non-apps_root cwd) — ALLOW
-# The guard is a no-op when cwd is not under a real apps_root path.
-PLATFORM_DIR="/Users/almirsarajcic/Projects/AppBuilder/combobulate"
+# Test 6: Orchestrator Read of /etc/passwd in platform repo (cwd outside OCG_APPS_ROOT) — ALLOW
+# The guard is a no-op when cwd is not under OCG_APPS_ROOT.
+PLATFORM_DIR="${BASE_TMP}/platform-repo"
+mkdir -p "$PLATFORM_DIR"
 FIXTURE_PLATFORM_READ='{"hook_event_name":"PreToolUse","tool_name":"Read","tool_input":{"file_path":"/etc/passwd"},"agent_id":"","agent_type":"","cwd":"'"$PLATFORM_DIR"'"}'
-run_test "orchestrator Read in platform repo (non-apps_root cwd) allows" "0" "$FIXTURE_PLATFORM_READ"
+run_test "orchestrator Read in platform repo (outside OCG_APPS_ROOT) allows" "0" "$FIXTURE_PLATFORM_READ"
 
-# Test 7: Orchestrator Read of file outside project in user-app cwd — BLOCK
-USER_APP_DIR="/home/combobulate/apps/abc123"
+# Test 7: Orchestrator Read of file outside project in user-app cwd (under OCG_APPS_ROOT) — BLOCK
+USER_APP_DIR="${OCG_APPS_ROOT}/user-project-abc"
+mkdir -p "$USER_APP_DIR"
 FIXTURE_USER_APP_BLOCK='{"hook_event_name":"PreToolUse","tool_name":"Read","tool_input":{"file_path":"/etc/passwd"},"agent_id":"","agent_type":"","cwd":"'"$USER_APP_DIR"'"}'
-run_test "orchestrator Read /etc/passwd in user-app cwd blocks" "2" "$FIXTURE_USER_APP_BLOCK"
+run_test "orchestrator Read /etc/passwd in user-app cwd (under OCG_APPS_ROOT) blocks" "2" "$FIXTURE_USER_APP_BLOCK"
 
-# Test 8: Orchestrator Read of /etc/passwd in test-partition cwd — BLOCK
-TEST_APPS_DIR="${BASE_TMP}/.combobulate_test_apps/part1/apps/abc123"
-mkdir -p "$TEST_APPS_DIR"
-FIXTURE_TEST_APPS_BLOCK='{"hook_event_name":"PreToolUse","tool_name":"Read","tool_input":{"file_path":"/etc/passwd"},"agent_id":"","agent_type":"","cwd":"'"$TEST_APPS_DIR"'"}'
-run_test "orchestrator Read /etc/passwd in test-partition cwd blocks" "2" "$FIXTURE_TEST_APPS_BLOCK"
+# Test 8: Orchestrator Read of /etc/passwd with unset OCG_APPS_ROOT — ALLOW (unknown boundary)
+# Use env -u to unset OCG_APPS_ROOT in the child process so the hook sees it as absent.
+FIXTURE_UNSET_ROOT='{"hook_event_name":"PreToolUse","tool_name":"Read","tool_input":{"file_path":"/etc/passwd"},"agent_id":"","agent_type":"","cwd":"'"$PROJECT_DIR"'"}'
+stdout_t8=$(printf '%s' "$FIXTURE_UNSET_ROOT" | env -u OCG_APPS_ROOT bash "$GUARD" 2>/dev/null || true)
+outcome_t8="0"
+if printf '%s' "$stdout_t8" | grep -q '"permissionDecision"[[:space:]]*:[[:space:]]*"deny"'; then
+    outcome_t8="2"
+fi
+if [ "$outcome_t8" = "0" ]; then
+    printf 'PASS: orchestrator Read with unset OCG_APPS_ROOT allows (unknown boundary)\n'
+    pass=$((pass + 1))
+else
+    printf 'FAIL: orchestrator Read with unset OCG_APPS_ROOT allows — expected 0, got %s\n  stdout: %s\n' "$outcome_t8" "$stdout_t8"
+    fail=$((fail + 1))
+fi
 
 # Test 9: Orchestrator Bash with relative path traversal ../ — BLOCK
 FIXTURE_TRAVERSAL='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"cat ../../../etc/passwd"},"agent_id":"","agent_type":"","cwd":"'"$PROJECT_DIR"'"}'

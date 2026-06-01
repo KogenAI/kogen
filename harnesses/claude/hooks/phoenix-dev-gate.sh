@@ -141,7 +141,11 @@ classify_seed_missing() {
     local gate="$1"
     [ -n "$gate" ] || return 0
     printf '%s' "$gate" | grep -qE 'llm-phoenix' || return 0
-    local seed_dir="$HOME/.combobulate_phoenix_seed"
+    local seed_dir="${OCG_PHOENIX_SEED_DIR:-}"
+    if [ -z "$seed_dir" ]; then
+        printf 'seed-missing (OCG_PHOENIX_SEED_DIR unset)'
+        return 0
+    fi
     local missing=""
     [ -f "$seed_dir/seed.bundle" ] || missing="seed.bundle"
     if [ -z "$missing" ] && [ ! -f "$seed_dir/seed.sql" ]; then

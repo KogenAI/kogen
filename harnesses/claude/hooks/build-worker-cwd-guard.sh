@@ -31,15 +31,16 @@ fi
 project_dir="${CWD:-${CLAUDE_PROJECT_DIR:-$PWD}}"
 
 # ── Platform-repo bypass ─────────────────────────────────────────────────────
-# Real apps_root values (source-of-truth: combobulate config/{test,dev,runtime}.exs):
-#   - ~/.combobulate_test_apps/part<N>/apps  (test partitions, MIX_TEST_PARTITION)
-#   - /home/combobulate/apps                  (production, APPS_ROOT env)
-#   - */AppBuilder/apps                       (local dev — host-dependent prefix)
+# Real apps_root values: from OCG_APPS_ROOT env (set by the consuming platform).
+# If OCG_APPS_ROOT is unset, codegen cannot know the boundary — allow everything
+# (this session is not a managed build worker).
+apps_root="${OCG_APPS_ROOT:-}"
+if [ -z "$apps_root" ]; then
+    exit 0
+fi
 case "$project_dir" in
-*/.combobulate_test_apps/*/apps/*) ;; # test partition workspace
-/home/combobulate/apps/*) ;;          # production apps_root
-*/AppBuilder/apps/*) ;;               # local dev apps_root
-*) exit 0 ;;                          # platform repo or other non-user-app context — no-op
+"${apps_root%/}"/*) ;; # within the consumer apps root — enforcement active
+*) exit 0 ;;           # outside apps root — not a managed build worker; no-op
 esac
 real_project_dir=$(hooks_realpath "$project_dir")
 project_prefix="${real_project_dir%/}/"
@@ -50,9 +51,13 @@ whitelist=(
     "/private/tmp"
     "/tmp"
     "/dev/null"
-    "$home_dir/.combobulate_phoenix_seed"
     "$home_dir/.phx_new_cache"
 )
+# Add OCG_PHOENIX_SEED_DIR to whitelist only when set.
+seed_dir="${OCG_PHOENIX_SEED_DIR:-}"
+if [ -n "$seed_dir" ]; then
+    whitelist+=("$seed_dir")
+fi
 
 is_allowed_path() {
     local p="$1"

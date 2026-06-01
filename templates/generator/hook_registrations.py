@@ -4,8 +4,7 @@
 Usage:
     python3 templates/generator/hook_registrations.py \
         --hooks-dir harnesses/claude/hooks \
-        --output-settings templates/claude-code-settings.json \
-        --combobulate-dir /path/to/combobulate
+        --output-settings templates/claude-code-settings.json
 
 Algorithm:
     1. Find all .sh files (excluding _test.sh and run-tests.sh) in --hooks-dir.
@@ -14,8 +13,6 @@ Algorithm:
     4. Build user_global and per_call_inspector lists.
     5. Emit --output-settings (user_global entries replace manifest-driven hook events;
        non-manifest-driven events preserved verbatim from existing JSON).
-    6. Emit priv/claude_config/inspector_settings.json and hook_manifest.json
-       (if --combobulate-dir provided).
 
 Non-manifest-driven hook events (preserved verbatim from existing settings.json):
     PostToolUse, UserPromptSubmit, SessionStart, SessionEnd
@@ -28,10 +25,13 @@ Manifest-driven hook events (fully regenerated):
 
 Hook ordering within each event:
     Sorted alphabetically by filename for deterministic output.
+
+Pi TS handler parity:
+    When --pi-extension-dir is provided, validates that every Pi-targeted hook
+    has a matching TypeScript handler in <pi-extension-dir>/src/hooks/.
 """
 
 import argparse
-import hashlib
 import json
 import os
 import re
@@ -64,20 +64,6 @@ REQUIRED_FIELDS = {"event", "matcher", "surface", "signal", "role"}
 VALID_SURFACES = {"user_global", "per_call_inspector", "both"}
 VALID_SIGNALS = {"AGENT_TYPE", "CLAUDE_ROLE", "CLAUDE_ROLE_FAMILY", "none"}
 VALID_HARNESSES = {"claude_code", "pi"}
-
-# Generic tool names — matchers consisting only of these tokens ship to every stack.
-GENERIC_TOOL_NAMES = {
-    "Agent",
-    "Bash",
-    "Edit",
-    "Glob",
-    "Grep",
-    "Monitor",
-    "MultiEdit",
-    "NotebookEdit",
-    "Read",
-    "Write",
-}
 
 # Hook events managed entirely by manifests — regenerated from script headers.
 MANIFEST_DRIVEN_EVENTS = {"PreToolUse", "SubagentStop", "Stop", "PostToolUseFailure"}
@@ -369,180 +355,6 @@ def parse_subagent_frontmatter(subagent_path: Path) -> dict:
     return result
 
 
-def collect_agents(subagents_dir: Path) -> dict:
-    """Scan subagent .md.j2 templates; return stack → sorted agent-name list.
-
-    Discovers:
-    - <subagents_dir>/phoenix/*.md.j2  → "phoenix" stack
-    - <subagents_dir>/static/*.md.j2   → individual static stacks (html/hugo/vite) derived from `name:` field
-    - <subagents_dir>/shared/committer.md.j2 → merged into every concrete stack
-
-    Skip files whose basename starts with '_' (shared partials).
-
-    static_unknown = sorted union of all static stacks.
-    committer is merged into every concrete stack and static_unknown.
-    """
-    stack_map: dict = {"phoenix": [], "static_html": [], "static_hugo": [], "static_vite": []}
-
-    # Parse committer and curator from shared/
-    shared_dir = subagents_dir / "shared"
-    committer_name = None
-    if (shared_dir / "committer.md.j2").exists():
-        fm = parse_subagent_frontmatter(shared_dir / "committer.md.j2")
-        committer_name = fm["name"]
-
-    curator_name = None
-    if (shared_dir / "context-curator.md.j2").exists():
-        fm = parse_subagent_frontmatter(shared_dir / "context-curator.md.j2")
-        curator_name = fm["name"]
-
-    # Parse phoenix agents
-    phoenix_dir = subagents_dir / "phoenix"
-    if phoenix_dir.is_dir():
-        for f in sorted(phoenix_dir.glob("*.md.j2")):
-            if f.name.startswith("_"):
-                continue
-            fm = parse_subagent_frontmatter(f)
-            stack_map["phoenix"].append(fm["name"])
-
-    # Parse static agents — assign to stack by name prefix
-    static_dir = subagents_dir / "static"
-    if static_dir.is_dir():
-        for f in sorted(static_dir.glob("*.md.j2")):
-            if f.name.startswith("_"):
-                continue
-            fm = parse_subagent_frontmatter(f)
-            name = fm["name"]
-            if "-html" in name or name.endswith("-html"):
-                stack_map["static_html"].append(name)
-            elif "-hugo" in name or name.endswith("-hugo"):
-                stack_map["static_hugo"].append(name)
-            elif "-vite" in name or name.endswith("-vite"):
-                stack_map["static_vite"].append(name)
-            else:
-                # reviewer-static and similar shared-across-static names go into all three
-                stack_map["static_html"].append(name)
-                stack_map["static_hugo"].append(name)
-                stack_map["static_vite"].append(name)
-
-    # Merge committer and curator into every concrete stack
-    if committer_name:
-        for key in stack_map:
-            stack_map[key].append(committer_name)
-
-    if curator_name:
-        for key in stack_map:
-            stack_map[key].append(curator_name)
-
-    # Sort each stack
-    for key in stack_map:
-        stack_map[key] = sorted(stack_map[key])
-
-    # static_unknown = sorted union of all static stacks
-    static_union = sorted(
-        set(stack_map["static_html"]) | set(stack_map["static_hugo"]) | set(stack_map["static_vite"])
-    )
-    stack_map["static_unknown"] = static_union
-
-    return stack_map
-
-
-def write_agent_manifest(agents: dict, combobulate_dir: Path) -> None:
-    """Write priv/claude_config/agent_manifest.json."""
-    claude_priv_dir = combobulate_dir / "priv" / "claude_config"
-    claude_priv_dir.mkdir(parents=True, exist_ok=True)
-    manifest_path = claude_priv_dir / "agent_manifest.json"
-    manifest_path.write_text(json.dumps(agents, indent=2) + "\n")
-    print(f"Wrote {manifest_path}")
-
-
-def _hook_fits_stack(hook: dict, agent_set: list) -> bool:
-    """Return True if hook is applicable to a stack with the given agent_set.
-
-    Stack-fit heuristic (Approach 3):
-      (a) All matcher tokens are generic tool names (ships everywhere), OR
-      (b) Any matcher token (split on |) intersects the agent set, OR
-      (c) Any role token (split on |, ignoring *, all, developer-*) intersects the agent set, OR
-      (d) Role is one of the universal wildcards: *, all, or developer-*
-    """
-    agent_set_s = set(agent_set)
-    matcher_tokens = [t.strip() for t in hook["matcher"].split("|")]
-    role_tokens = [t.strip() for t in hook["role"].split("|")]
-
-    # (a) All matcher tokens are generic tool names
-    if all(t in GENERIC_TOOL_NAMES for t in matcher_tokens):
-        return True
-
-    # (b) Matcher tokens intersect agent set
-    if agent_set_s & set(matcher_tokens):
-        return True
-
-    # (c/d) Role token analysis
-    for token in role_tokens:
-        if token in ("*", "all"):
-            return True
-        if token.endswith("-*") or token == "developer-*":
-            return True
-        if token in agent_set_s:
-            return True
-
-    return False
-
-
-def write_stack_fit_reference(hooks: list, agents: dict, hooks_md_path: Path) -> None:
-    """Write ## Stack-Fit Reference table between <!-- BEGIN GENERATED --> / <!-- END GENERATED --> markers.
-
-    If markers absent, appends a new prose section + markers at file end.
-    Idempotent: re-running produces identical content.
-    """
-    BEGIN_MARKER = "<!-- BEGIN GENERATED -->"
-    END_MARKER = "<!-- END GENERATED -->"
-
-    stack_keys = ["phoenix", "static_html", "static_hugo", "static_vite", "static_unknown"]
-
-    # Build table rows — one per hook, sorted alphabetically by filename
-    rows = []
-    for hook in sorted(hooks, key=lambda x: x["filename"]):
-        applicable_stacks = [k for k in stack_keys if _hook_fits_stack(hook, agents.get(k, []))]
-        stacks_str = ", ".join(applicable_stacks) if applicable_stacks else "—"
-        harnesses = hook.get("harnesses")
-        if harnesses is None:
-            harnesses_str = "all"
-        else:
-            harnesses_str = ", ".join(harnesses)
-        # Replace | with \| in matcher so Prettier doesn't split the cell into columns.
-        matcher_escaped = hook["matcher"].replace("|", "\\|")
-        rows.append(
-            f"| `{hook['filename']}` | {hook['event']} | `{matcher_escaped}` | {stacks_str} | {harnesses_str} |"
-        )
-
-    table_lines = [
-        "<!-- prettier-ignore -->",
-        "| hook | event | matcher | stacks | harnesses |",
-        "| ---- | ----- | ------- | ------ | --------- |",
-    ] + rows
-
-    generated_block = "\n".join(table_lines)
-
-    content = hooks_md_path.read_text()
-
-    if BEGIN_MARKER in content and END_MARKER in content:
-        # Replace existing block between markers
-        before = content[: content.index(BEGIN_MARKER) + len(BEGIN_MARKER)].rstrip()
-        after = content[content.index(END_MARKER):].lstrip()
-        new_content = before + "\n\n" + generated_block + "\n\n" + after
-    else:
-        # Append prose section + markers + table at end
-        prose = (
-            "\n\n## Stack-Fit Reference\n\n"
-            "Auto-generated by `make install` from `hook_manifest.json` + `agent_manifest.json`.\n"
-            "Shows which stacks each hook applies to, derived by the stack-fit heuristic in\n"
-            "`templates/generator/hook_registrations.py`. Do not hand-edit — re-run `make install`.\n\n"
-        )
-        new_content = content + prose + BEGIN_MARKER + "\n\n" + generated_block + "\n\n" + END_MARKER + "\n"
-
-    hooks_md_path.write_text(new_content)
-    print(f"Wrote stack-fit reference → {hooks_md_path}")
 
 
 def build_hook_entry(manifest: dict) -> dict:
@@ -661,97 +473,6 @@ def validate_pi_ts_handlers(pi_hooks: list, pi_extension_dir: Path) -> None:
     print(f"Pi TS handler parity: OK ({len(pi_hooks)} hooks matched)")
 
 
-def write_combobulate_artifacts(
-    per_call_hooks: list, all_hooks: list, combobulate_dir: Path,
-    pi_extension_dir: "Path | None" = None,
-) -> None:
-    """Write inspector_settings.json and hook_manifest.json into combobulate/priv/<harness>_config/.
-
-    priv/claude_config/ — canonical full manifest (all hooks) + claude-prefixed inspector entries.
-    priv/pi_config/     — pi-prefixed inspector entries (empty today).
-
-    The full hook_manifest.json in claude_config is kept for backward compat with
-    check_user_global_parity!/1 which loads all registered hooks.
-    """
-    # ── claude_config (canonical) ────────────────────────────────────────────
-    claude_priv_dir = combobulate_dir / "priv" / "claude_config"
-    claude_priv_dir.mkdir(parents=True, exist_ok=True)
-
-    # inspector_settings.json: claude-prefixed per_call_inspector entries only
-    claude_inspector_hooks = [h for h in per_call_hooks if h["filename"].startswith("claude-")]
-    claude_inspector_entries = []
-    for h in sorted(claude_inspector_hooks, key=lambda x: x["filename"]):
-        claude_inspector_entries.append(
-            {
-                "event": h["event"],
-                "matcher": h["matcher"],
-                "hookScript": h["filename"],
-                "surface": h["surface"],
-                "signal": h["signal"],
-                "role": h["role"],
-            }
-        )
-    claude_inspector_path = claude_priv_dir / "inspector_settings.json"
-    claude_inspector_path.write_text(json.dumps(claude_inspector_entries, indent=2) + "\n")
-    print(f"Wrote {claude_inspector_path}")
-
-    # hook_manifest.json: full canonical list of ALL hooks (used by check_user_global_parity!/1)
-    manifest_entries = []
-    for h in sorted(all_hooks, key=lambda x: x["filename"]):
-        entry = {
-            "filename": h["filename"],
-            "event": h["event"],
-            "matcher": h["matcher"],
-            "surface": h["surface"],
-            "signal": h["signal"],
-            "role": h["role"],
-            "harnesses": h.get("harnesses"),  # None = ships everywhere; list = explicit opt-in
-        }
-        manifest_entries.append(entry)
-    manifest_path = claude_priv_dir / "hook_manifest.json"
-    manifest_path.write_text(json.dumps(manifest_entries, indent=2) + "\n")
-    print(f"Wrote {manifest_path}")
-    claude_hash_path = claude_priv_dir / "expected_hook_manifest_hash.txt"
-    claude_hash_path.write_text(hashlib.md5(manifest_path.read_bytes()).hexdigest())
-    print(f"Wrote {claude_hash_path}")
-
-    # ── pi_config ─────────────────────────────────────────────────────────────
-    # Pi uses load-gate (no per-call hooks), so the manifest is always empty.
-    # Only hooks that explicitly declare harnesses: pi are included; today none do.
-    pi_priv_dir = combobulate_dir / "priv" / "pi_config"
-    pi_priv_dir.mkdir(parents=True, exist_ok=True)
-
-    pi_hooks = [
-        h for h in all_hooks
-        if "pi" in (h.get("harnesses") or [])
-    ]
-
-    pi_inspector_path = pi_priv_dir / "inspector_settings.json"
-    pi_inspector_path.write_text(json.dumps([], indent=2) + "\n")
-    print(f"Wrote {pi_inspector_path}")
-
-    pi_manifest_entries = []
-    for h in sorted(pi_hooks, key=lambda x: x["filename"]):
-        pi_manifest_entries.append(
-            {
-                "filename": h["filename"],
-                "event": h["event"],
-                "matcher": h["matcher"],
-                "surface": h["surface"],
-                "signal": h["signal"],
-                "role": h["role"],
-            }
-        )
-    pi_manifest_path = pi_priv_dir / "hook_manifest.json"
-    pi_manifest_path.write_text(json.dumps(pi_manifest_entries, indent=2) + "\n")
-    print(f"Wrote {pi_manifest_path} ({len(pi_manifest_entries)} Pi-targeted hooks)")
-    pi_hash_path = pi_priv_dir / "expected_hook_manifest_hash.txt"
-    pi_hash_path.write_text(hashlib.md5(pi_manifest_path.read_bytes()).hexdigest())
-    print(f"Wrote {pi_hash_path}")
-
-    # Validate TS handler parity if pi-extension-dir provided
-    if pi_extension_dir is not None:
-        validate_pi_ts_handlers(pi_hooks, pi_extension_dir)
 
 
 def main() -> None:
@@ -769,18 +490,6 @@ def main() -> None:
     parser.add_argument(
         "--existing-settings",
         help="Path to read existing settings from (for preserved events). Defaults to --output-settings.",
-    )
-    parser.add_argument(
-        "--combobulate-dir",
-        help="Path to combobulate repo (writes priv/claude_config/ artifacts)",
-    )
-    parser.add_argument(
-        "--subagents-dir",
-        help="Path to subagents template directory (writes priv/claude_config/agent_manifest.json)",
-    )
-    parser.add_argument(
-        "--hooks-md-path",
-        help="Path to context/hooks.md (updates Stack-Fit Reference section)",
     )
     parser.add_argument(
         "--pi-extension-dir",
@@ -811,33 +520,10 @@ def main() -> None:
     existing = load_existing_settings(settings_path, existing_settings_path)
     regenerate_settings(existing, user_global_hooks, settings_path)
 
-    # Write combobulate artifacts if requested
-    agents: dict = {}
-    if args.combobulate_dir:
-        combobulate_dir = Path(args.combobulate_dir)
-        pi_ext_dir = Path(args.pi_extension_dir) if args.pi_extension_dir else None
-        write_combobulate_artifacts(per_call_hooks, all_hooks, combobulate_dir, pi_ext_dir)
-
-        if args.subagents_dir:
-            subagents_dir = Path(args.subagents_dir)
-            if not subagents_dir.is_dir():
-                print(
-                    f"ERROR: --subagents-dir '{subagents_dir}' is not a directory",
-                    file=sys.stderr,
-                )
-                sys.exit(1)
-            agents = collect_agents(subagents_dir)
-            write_agent_manifest(agents, combobulate_dir)
-
-    if agents and args.hooks_md_path:
-        hooks_md_path = Path(args.hooks_md_path)
-        if not hooks_md_path.exists():
-            print(
-                f"ERROR: --hooks-md-path '{hooks_md_path}' does not exist",
-                file=sys.stderr,
-            )
-            sys.exit(1)
-        write_stack_fit_reference(all_hooks, agents, hooks_md_path)
+    # Validate Pi TS handler parity if --pi-extension-dir provided
+    if args.pi_extension_dir:
+        pi_hooks = [h for h in all_hooks if "pi" in (h.get("harnesses") or [])]
+        validate_pi_ts_handlers(pi_hooks, Path(args.pi_extension_dir))
 
     print("hook_registrations.py: OK")
 

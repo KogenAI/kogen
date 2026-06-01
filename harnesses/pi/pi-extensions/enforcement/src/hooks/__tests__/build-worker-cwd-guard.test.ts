@@ -3,8 +3,14 @@
  * Mirrors cases from build-worker-cwd-guard_test.sh.
  */
 
-import { describe, it, beforeEach } from "node:test";
+import { describe, it, before, beforeEach, after } from "node:test";
 import assert from "node:assert/strict";
+import * as os from "node:os";
+import * as path from "node:path";
+
+// Synthetic apps root for test isolation — mirrors OCG_APPS_ROOT env var.
+const SYNTHETIC_APPS_ROOT = path.join(os.tmpdir(), "ocg-test-apps-root");
+const SYNTHETIC_PROJECT_DIR = path.join(SYNTHETIC_APPS_ROOT, "test-project");
 
 describe("build-worker-cwd-guard", () => {
   let _capturedHandler: (event: unknown) => Promise<unknown>;
@@ -19,14 +25,29 @@ describe("build-worker-cwd-guard", () => {
     toolName: string,
     input: Record<string, string>,
     agentType = "",
+    cwdOverride?: string,
   ) {
     process.env["AGENT_TYPE"] = agentType;
+    if (cwdOverride !== undefined) {
+      process.env["CWD"] = cwdOverride;
+    }
     const { register } = await import("../build-worker-cwd-guard");
     register(
       mockPi as unknown as import("@earendil-works/pi-coding-agent").ExtensionAPI,
     );
     return _capturedHandler({ toolName, toolCallId: "test-id", input });
   }
+
+  before(() => {
+    // Set OCG_APPS_ROOT so enforcement cases can reach the cwd boundary check.
+    process.env["OCG_APPS_ROOT"] = SYNTHETIC_APPS_ROOT;
+    process.env["CWD"] = SYNTHETIC_PROJECT_DIR;
+  });
+
+  after(() => {
+    delete process.env["OCG_APPS_ROOT"];
+    delete process.env["CWD"];
+  });
 
   beforeEach(() => {
     delete process.env["AGENT_TYPE"];
@@ -53,5 +74,18 @@ describe("build-worker-cwd-guard", () => {
       "developer-phoenix-backend",
     );
     assert.ok(result == null || (result as { block?: boolean }).block !== true);
+  });
+
+  it("unset OCG_APPS_ROOT passes through (unknown boundary)", async () => {
+    const saved = process.env["OCG_APPS_ROOT"];
+    delete process.env["OCG_APPS_ROOT"];
+    try {
+      const result = await runHook("read", { file_path: "/etc/passwd" }, "");
+      assert.ok(
+        result == null || (result as { block?: boolean }).block !== true,
+      );
+    } finally {
+      if (saved !== undefined) process.env["OCG_APPS_ROOT"] = saved;
+    }
   });
 });
