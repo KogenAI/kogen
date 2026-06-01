@@ -102,12 +102,12 @@ if [ "$TOOL_NAME" = "Bash" ]; then
     # for developers — policy is: developer can run seed rebuild explicitly, but
     # planner never should (planner investigates only, never mutates state).
     #
-    # LLM allowlist rationale: the patterns blocked here (ci, ci-fast, llm,
+    # LLM allowlist rationale: the patterns blocked here (ci, llm,
     # llm-phoenix, llm-phoenix-seed, llm-summary, llm-retry, llm-kill) are ALL
     # verification/gate commands. Planner's job is investigation and planning,
     # never triggering CI or VE gates. Gates run via dev-gate.sh SubagentStop
     # hook after developer completes — planner must not short-circuit that flow.
-    if printf '%s' "$COMMAND" | grep -qE '\bmake[[:space:]]+(ci|ci-fast|llm|llm-phoenix|llm-phoenix-seed|llm-summary|llm-retry|llm-kill)\b'; then
+    if printf '%s' "$COMMAND" | grep -qE '\bmake[[:space:]]+(ci|llm|llm-phoenix|llm-phoenix-seed|llm-summary|llm-retry|llm-kill)\b'; then
         deny "BLOCKED by planner-guard: make ci/llm/llm-phoenix/llm-phoenix-seed is forbidden for planner (verification gates run via dev-gate.sh hook on developer's SubagentStop; llm-phoenix-seed mutates state)"
         exit 0
     fi

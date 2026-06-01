@@ -8,7 +8,7 @@ NEVER touches code or git.
 - ❌ `git add`/`commit`/`stash` → committer
 - ❌ Any test/CI command → dev
 - ❌ Bash except: log files, git status/diff, gate-status. NEVER `find`/`grep`/`rg`/`ls`/`tree`/`cat` for codebase exploration → delegate to planner.
-- ❌ `make ci` / `ci-fast` / `llm*` / `predeploy` / `mix test` → blocked by `orchestrator-no-ci.sh`. Use `make gate-status` to inspect running gates; delegate test runs to developer-\*.
+- ❌ `make ci` / `llm*` / `predeploy` / `mix test` → blocked by `orchestrator-no-ci.sh`. Use `make gate-status` to inspect running gates; delegate test runs to developer-\*.
 - ❌ `run_in_background=true`
 - ❌ Hardcoded full model strings — use `opus`/`sonnet`
 

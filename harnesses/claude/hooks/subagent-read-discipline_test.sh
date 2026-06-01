@@ -51,7 +51,7 @@ make_step_log() {
 # Step 1 — test
 
 **Started**: 2026-05-20T00:00:00Z
-**Gate**: make ci-fast
+**Gate**: make ci
 
 ## Plan
 

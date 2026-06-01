@@ -10,7 +10,7 @@ Orchestrator-level hooks fire when `AGENT_TYPE` is empty (outer session). Three 
 | --------------------------------- | ---------------------------------------------------------------------- | ------------------------------------------------------------------------------ | ------------------------------------------------------------------------------- |
 | `orchestrator-read-discipline.sh` | **gated** — path allowlist + Bash exploration-verb deny                | **bypassed** — investigation and shaping sessions need full Read + Bash access | **bypassed** — ops runs on live boxes; full inspection needed                   |
 | `orchestrator-no-source-edit.sh`  | **gated** — blocks Write/Edit/MultiEdit on source files                | **scoped to `codegen/pitches/`** — shape/refactor can edit pitch drafts only   | **bypassed** — ops edits infra/ configs on live boxes                           |
-| `orchestrator-no-ci.sh`           | **gated** — blocks make ci/ci-fast/llm/mix test                        | **gated (intended)** — debug/shape/refactor do not run gate commands           | **bypassed** — ops needs make ci-fast / mix test for live-box inspection        |
+| `orchestrator-no-ci.sh`           | **gated** — blocks make ci/llm/mix test                                | **gated (intended)** — debug/shape/refactor do not run gate commands           | **bypassed** — ops needs make ci / mix test for live-box inspection             |
 | `pre-commit-guard.sh`             | **gated** — blocks state-modifying git ops for all non-committer roles | **gated** — debug/shape/refactor must not write git history                    | **bypassed** — full git surface, no restriction (interactive ops on live boxes) |
 
 ## How Bypasses Work

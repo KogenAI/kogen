@@ -82,8 +82,7 @@ NO placeholder shapes. NO `<...>` slots. Write actual content. Orchestrator copi
 ## LLM-Test Gate Catalog
 
 Sanctioned commands for LLM-integration gate selection:
-- `make ci` — full suite incl. dialyzer + coverage. Use for final steps.
-- `make ci-fast` — skips dialyzer/`--cover`. Use for non-final steps.
+- `make ci` — full suite incl. dialyzer + coverage. Use for all steps.
 - `make llm` — full LLM integration suite (10-partition parallel). Gate use only.
 - `make llm-phoenix` — Phoenix-stack LLM suite (10-partition parallel). Gate use only.
 - `make llm-single FILE=<path>` — one LLM test file, no partitioning. Dev iteration only.

@@ -48,9 +48,9 @@ run_test() {
 run_test "make ci blocked for developer-phoenix-backend" "2" \
     '{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"make ci"},"agent_type":"developer-phoenix-backend","agent_id":"abc123"}'
 
-# Test 2: make ci-fast → deny
-run_test "make ci-fast blocked for developer-phoenix-backend" "2" \
-    '{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"make ci-fast"},"agent_type":"developer-phoenix-backend","agent_id":"abc123"}'
+# Test 2: make ci (duplicate coverage)
+run_test "make ci blocked for developer-phoenix-backend (2)" "2" \
+    '{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"make ci"},"agent_type":"developer-phoenix-backend","agent_id":"abc123"}'
 
 # Test 3: make ci-cover → deny
 run_test "make ci-cover blocked for developer-phoenix-backend" "2" \

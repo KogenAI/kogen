@@ -2,8 +2,7 @@
 
 ## Sanctioned Gate Commands
 
-- `make ci` — full. Single-step + final step.
-- `make ci-fast` — skips dialyzer/`--cover`. Non-final steps.
+- `make ci` — full. All steps.
 - `make predeploy` — pre-deploy. NEVER per-commit gate.
 - `make llm`, `make llm-phoenix` — pre-deploy components. Not direct gates.
 

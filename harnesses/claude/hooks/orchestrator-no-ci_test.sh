@@ -3,19 +3,19 @@
 #
 # Tests:
 #   1:  orchestrator make ci → deny (2)
-#   2:  orchestrator make ci-fast → deny (2) — literal observed violation
-#   3:  orchestrator make ci-fast 2>&1 | tail -100 → deny (2) — literal observed command
+#   2:  orchestrator make ci (duplicate) → deny (2)
+#   3:  orchestrator make ci 2>&1 | tail -100 → deny (2)
 #   4:  orchestrator make gate-status → allow (0) — INCONCLUSIVE recovery
 #   5:  orchestrator make gate-logs → allow (0)
 #   6:  orchestrator make gate-kill → allow (0)
 #   7:  orchestrator make llm-phoenix → deny (2)
 #   8:  orchestrator mix test (bare) → deny (2)
 #   9:  orchestrator mix test test/foo_test.exs → deny (2) — orchestrator NEVER runs tests
-#   10: developer-phoenix-backend make ci-fast → allow (0) — dev-no-ci.sh owns this
-#   11: planner-phoenix make ci-fast → allow (0) — planner-guard.sh owns this
-#   12: subagent with non-empty agent_id, empty agent_type, make ci-fast → allow (0)
-#   13: CLAUDE_ROLE=ops make ci-fast → allow (0) — ops bypass via resolve_role
-#   14: PI_ROLE=ops make ci-fast → allow (0) — ops bypass via resolve_role
+#   10: developer-phoenix-backend make ci → allow (0) — dev-no-ci.sh owns this
+#   11: planner-phoenix make ci → allow (0) — planner-guard.sh owns this
+#   12: subagent with non-empty agent_id, empty agent_type, make ci → allow (0)
+#   13: CLAUDE_ROLE=ops make ci → allow (0) — ops bypass via resolve_role
+#   14: PI_ROLE=ops make ci → allow (0) — ops bypass via resolve_role
 
 set -euo pipefail
 
@@ -56,13 +56,13 @@ run_test() {
 run_test "orchestrator make ci → deny" "2" \
     '{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"make ci"},"agent_type":"","agent_id":""}'
 
-# Test 2: make ci-fast → deny (literal observed violation)
-run_test "orchestrator make ci-fast → deny" "2" \
-    '{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"make ci-fast"},"agent_type":"","agent_id":""}'
+# Test 2: make ci (duplicate coverage) → deny
+run_test "orchestrator make ci → deny (2)" "2" \
+    '{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"make ci"},"agent_type":"","agent_id":""}'
 
-# Test 3: make ci-fast 2>&1 | tail -100 → deny (literal observed command incl. pipe)
-run_test "orchestrator make ci-fast 2>&1 | tail -100 → deny" "2" \
-    '{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"make ci-fast 2>&1 | tail -100"},"agent_type":"","agent_id":""}'
+# Test 3: make ci 2>&1 | tail -100 → deny (pipe variant)
+run_test "orchestrator make ci 2>&1 | tail -100 → deny" "2" \
+    '{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"make ci 2>&1 | tail -100"},"agent_type":"","agent_id":""}'
 
 # Test 4: make gate-status → allow (INCONCLUSIVE recovery)
 run_test "orchestrator make gate-status → allow" "0" \
@@ -88,25 +88,25 @@ run_test "orchestrator mix test bare → deny" "2" \
 run_test "orchestrator mix test specific file → deny" "2" \
     '{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"mix test test/foo_test.exs"},"agent_type":"","agent_id":""}'
 
-# Test 10: developer-phoenix-backend make ci-fast → allow (dev-no-ci.sh owns this)
-run_test "developer-phoenix-backend make ci-fast → allow (skip)" "0" \
-    '{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"make ci-fast"},"agent_type":"developer-phoenix-backend","agent_id":"abc123"}'
+# Test 10: developer-phoenix-backend make ci → allow (dev-no-ci.sh owns this)
+run_test "developer-phoenix-backend make ci → allow (skip)" "0" \
+    '{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"make ci"},"agent_type":"developer-phoenix-backend","agent_id":"abc123"}'
 
-# Test 11: planner-phoenix make ci-fast → allow (planner-guard.sh owns this)
-run_test "planner-phoenix make ci-fast → allow (skip)" "0" \
-    '{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"make ci-fast"},"agent_type":"planner-phoenix","agent_id":"xyz789"}'
+# Test 11: planner-phoenix make ci → allow (planner-guard.sh owns this)
+run_test "planner-phoenix make ci → allow (skip)" "0" \
+    '{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"make ci"},"agent_type":"planner-phoenix","agent_id":"xyz789"}'
 
 # Test 12: subagent with non-empty agent_id but empty agent_type → allow (not orchestrator)
-run_test "subagent non-empty agent_id empty agent_type make ci-fast → allow (skip)" "0" \
-    '{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"make ci-fast"},"agent_type":"","agent_id":"subagent999"}'
+run_test "subagent non-empty agent_id empty agent_type make ci → allow (skip)" "0" \
+    '{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"make ci"},"agent_type":"","agent_id":"subagent999"}'
 
-# Test 13: CLAUDE_ROLE=ops make ci-fast → allow (ops bypass — live box inspection)
-CLAUDE_ROLE=ops run_test "CLAUDE_ROLE=ops make ci-fast → allow (ops bypass)" "0" \
-    '{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"make ci-fast"},"agent_type":"","agent_id":""}'
+# Test 13: CLAUDE_ROLE=ops make ci → allow (ops bypass — live box inspection)
+CLAUDE_ROLE=ops run_test "CLAUDE_ROLE=ops make ci → allow (ops bypass)" "0" \
+    '{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"make ci"},"agent_type":"","agent_id":""}'
 
-# Test 14: PI_ROLE=ops make ci-fast → allow (ops bypass via PI_ROLE parity)
-PI_ROLE=ops run_test "PI_ROLE=ops make ci-fast → allow (ops bypass)" "0" \
-    '{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"make ci-fast"},"agent_type":"","agent_id":""}'
+# Test 14: PI_ROLE=ops make ci → allow (ops bypass via PI_ROLE parity)
+PI_ROLE=ops run_test "PI_ROLE=ops make ci → allow (ops bypass)" "0" \
+    '{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"make ci"},"agent_type":"","agent_id":""}'
 
 echo ""
 echo "Results: $pass passed, $fail failed"

@@ -15,7 +15,7 @@
 #
 # Tracked patterns:
 #   mix test, mix credo, mix format
-#   make ci, make ci-fast, make test
+#   make ci, make test
 
 set -u
 
@@ -37,7 +37,7 @@ if [ "$TOOL_NAME" != "Bash" ]; then
 fi
 
 # Check if command matches a self-gate pattern
-if ! printf '%s' "$COMMAND" | grep -qE '\bmix[[:space:]]+(test|credo|format)\b|\bmake[[:space:]]+(ci|ci-fast|test)\b'; then
+if ! printf '%s' "$COMMAND" | grep -qE '\bmix[[:space:]]+(test|credo|format)\b|\bmake[[:space:]]+(ci|test)\b'; then
     exit 0
 fi
 

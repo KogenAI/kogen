@@ -27,14 +27,14 @@ assert_eq() {
 assert_eq "gate_timeout_for(make ci) = 900" "900" "$(gate_timeout_for 'make ci')"
 assert_eq "gate_timeout_for(make llm) = 1500" "1500" "$(gate_timeout_for 'make llm')"
 assert_eq "gate_timeout_for(make ci && make llm) = 1800" "1800" "$(gate_timeout_for 'make ci && make llm')"
-assert_eq "gate_timeout_for(make ci-fast) = 0 (short)" "0" "$(gate_timeout_for 'make ci-fast')"
+assert_eq "gate_timeout_for(make ci) = 900 (short)" "900" "$(gate_timeout_for 'make ci')"
 assert_eq "gate_timeout_for(make llm-phoenix-validate) = 0 (short)" "0" "$(gate_timeout_for 'make llm-phoenix-validate')"
 assert_eq "gate_timeout_for(make llm-phoenix) = 1500 (llm)" "1500" "$(gate_timeout_for 'make llm-phoenix')"
 assert_eq "gate_timeout_for(rebuild-seed-then) = 1500" "1500" "$(gate_timeout_for 'COMBOBULATE_VE_GATE=rebuild-seed-then make llm-phoenix')"
 
 # ── gate_mode_for ───────────────────────────────────────────────────────────
 assert_eq "gate_mode_for(make ci) = short" "short" "$(gate_mode_for 'make ci')"
-assert_eq "gate_mode_for(make ci-fast) = short" "short" "$(gate_mode_for 'make ci-fast')"
+assert_eq "gate_mode_for(make ci) = short" "short" "$(gate_mode_for 'make ci')"
 assert_eq "gate_mode_for(make llm) = long" "long" "$(gate_mode_for 'make llm')"
 assert_eq "gate_mode_for(make llm-phoenix) = long" "long" "$(gate_mode_for 'make llm-phoenix')"
 assert_eq "gate_mode_for(make ci && make llm) = long" "long" "$(gate_mode_for 'make ci && make llm')"
@@ -202,7 +202,7 @@ make_project() {
 write_combobulate_config() {
     local dir="$1"
     cat >"$dir/.claude/gate-config.sh" <<EOF
-GATE_SHORT_DEFAULT="make ci-fast"
+GATE_SHORT_DEFAULT="make ci"
 GATE_SHORT_FINAL="make ci"
 GATE_LLM="make ci && make llm"
 GATE_LLM_AND_PHOENIX="make ci && make llm && make llm-phoenix"
@@ -314,7 +314,7 @@ SEED_DIR=$(mktemp -d)
 touch "$SEED_DIR/seed.bundle" "$SEED_DIR/seed.sql" "$SEED_DIR/validated"
 # Use exit-based detector (like combobulate's real gate-config.sh) instead of "true"
 cat >"$T9/.claude/gate-config.sh" <<'EOF'
-GATE_SHORT_DEFAULT="make ci-fast"
+GATE_SHORT_DEFAULT="make ci"
 GATE_SHORT_FINAL="make ci"
 GATE_LLM="make ci && make llm"
 GATE_LLM_AND_PHOENIX="make ci && make llm && make llm-phoenix"
@@ -335,7 +335,7 @@ rm -rf "$T9" "$SEED_DIR"
 # ── GATE_FINAL_STEP_DETECTOR with exit 1 → SHORT_DEFAULT ──────────────────
 T10=$(make_project)
 cat >"$T10/.claude/gate-config.sh" <<'EOF'
-GATE_SHORT_DEFAULT="make ci-fast"
+GATE_SHORT_DEFAULT="make ci"
 GATE_SHORT_FINAL="make ci"
 GATE_LLM="make ci && make llm"
 GATE_LLM_AND_PHOENIX="make ci && make llm && make llm-phoenix"
@@ -349,7 +349,7 @@ EOF
 mkdir -p "$T10/lib"
 echo "x" >"$T10/lib/foo.ex"
 out=$(gate_select_decide "$T10")
-assert_eq "exit-1-detector non-final gate" "gate=make ci-fast" "$(printf '%s' "$out" | sed -n '1p')"
+assert_eq "exit-1-detector non-final gate" "gate=make ci" "$(printf '%s' "$out" | sed -n '1p')"
 rm -rf "$T10"
 
 printf '\n%d passed, %d failed\n' "$pass" "$fail"

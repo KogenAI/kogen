@@ -55,9 +55,9 @@ run_test "Write passes for developer-phoenix-backend" "0" "$FIXTURE_ALLOW"
 FIXTURE_STDERR='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"grep foo lib/bar.ex 2>&1 | head"},"agent_type":"planner-html","agent_id":"abc123"}'
 run_test "planner-html Bash with 2>&1 pipe allows" "0" "$FIXTURE_STDERR"
 
-# Test 4: planner-vite make ci-fast — BLOCK
-FIXTURE_CI_FAST='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"make ci-fast"},"agent_type":"planner-vite","agent_id":"abc123"}'
-run_test "planner-vite make ci-fast blocks" "2" "$FIXTURE_CI_FAST"
+# Test 4: planner-vite make ci — BLOCK
+FIXTURE_CI_FAST='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"make ci"},"agent_type":"planner-vite","agent_id":"abc123"}'
+run_test "planner-vite make ci blocks" "2" "$FIXTURE_CI_FAST"
 
 # Test 5: planner-hugo make llm-summary — BLOCK
 FIXTURE_LLM_SUMMARY='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"make llm-summary"},"agent_type":"planner-hugo","agent_id":"abc123"}'

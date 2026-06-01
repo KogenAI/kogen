@@ -23,7 +23,7 @@
 # Project config contract (`<project_dir>/.claude/gate-config.sh`):
 #
 #   GATE_SHORT_DEFAULT       — gate when none of the path regexes match and
-#                              this is NOT the final step (e.g. "make ci-fast")
+#                              this is NOT the final step (e.g. "make ci")
 #   GATE_SHORT_FINAL         — gate when none match and step is final
 #                              (e.g. "make ci")
 #   GATE_LLM                 — gate when LLM_PATHS_REGEX matches
@@ -62,14 +62,14 @@ set -u
 #   "make ci"              → 900
 #   "make llm"             → 1500
 #   "make ci && make llm"  → 1800
-#   "make ci-fast"         → 0
+#   "make ci" (short)      → 900
 #   "make llm-phoenix-validate" → 0
 gate_timeout_for() {
     local cmd="$1"
     local has_llm=0
     local has_ci=0
 
-    # Does command contain a standalone `make ci` (not ci-fast, not ci-skip, etc.)?
+    # Does command contain a standalone `make ci` (not ci-cover, not ci-skip, etc.)?
     # Match `make ci` only when followed by end-of-string, space, or non-alphanumeric/dash.
     if printf '%s' "$cmd" | grep -qE '\bmake[[:space:]]+ci([[:space:]]|$)'; then
         has_ci=1

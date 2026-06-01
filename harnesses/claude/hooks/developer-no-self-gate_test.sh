@@ -83,11 +83,11 @@ assert_contains "3rd CI invocation BLOCKED" '"permissionDecision"' "$out"
 assert_contains "3rd CI block mentions dev-gate handoff" 'dev-gate.sh handoff' "$out"
 rm -f "/tmp/combobulate-self-gate-${SID4}.count"
 
-# ── Test 5: make ci-fast pattern matched ─────────────────────────────────────
+# ── Test 5: make ci pattern matched ──────────────────────────────────────────
 SID5="sid5-$$-$(date -u +%s)"
 printf '2' >"/tmp/combobulate-self-gate-${SID5}.count"
-out=$(make_input "make ci-fast" "developer-html" "$SID5" | bash "$HOOK" 2>/dev/null || true)
-assert_contains "make ci-fast at count=3 BLOCKED" '"permissionDecision"' "$out"
+out=$(make_input "make ci" "developer-html" "$SID5" | bash "$HOOK" 2>/dev/null || true)
+assert_contains "make ci at count=3 BLOCKED" '"permissionDecision"' "$out"
 rm -f "/tmp/combobulate-self-gate-${SID5}.count"
 
 # ── Test 6: mix credo pattern matched ────────────────────────────────────────

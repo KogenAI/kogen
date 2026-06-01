@@ -6,7 +6,7 @@
 | -------------------- | ------------------------------------------------------------------------------------------- |
 | developer-phoenix-\* | `mix test test/specific_test.exs` (single, no `--cover`); `:42`; `--trace path/to/file.exs` |
 | reviewer-phoenix     | none                                                                                        |
-| Gate (auto)          | `make ci`, `make ci-fast`, `make llm`, `make llm-phoenix`                                   |
+| Gate (auto)          | `make ci`, `make llm`, `make llm-phoenix`                                                   |
 
 `--trace` sets `--max-cases 1`, disables timeouts. Dev MUST NOT run `make ci`, bare `mix test`, `--cover`/`coveralls`. Zero Credo warnings, zero failures.
 

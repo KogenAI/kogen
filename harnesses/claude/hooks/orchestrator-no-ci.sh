@@ -15,7 +15,7 @@
 # and needs full gate-command access for inspection.
 #
 # Blocks:
-#   make ci / ci-fast / ci-cover / predeploy
+#   make ci / ci-cover / predeploy
 #   make llm / llm-phoenix / llm-all / llm-phoenix-seed / llm-phoenix-validate
 #        / llm-retry / llm-summary / llm-kill
 #   bare mix test (no path), mix test flags-only, mix test --cover, mix coveralls*
@@ -60,9 +60,9 @@ if printf '%s' "$COMMAND" | grep -qE '^[[:space:]]*make[[:space:]]+(gate-status|
     exit 0
 fi
 
-# Block: make ci / ci-fast / ci-cover / predeploy
-if printf '%s' "$COMMAND" | grep -qE '^[[:space:]]*make[[:space:]]+(ci|ci-fast|ci-cover|predeploy)([[:space:]]|$|[[:space:]]*2>&1)'; then
-    debug_log orchestrator-no-ci "DENY: make ci/ci-fast/ci-cover/predeploy"
+# Block: make ci / ci-cover / predeploy
+if printf '%s' "$COMMAND" | grep -qE '^[[:space:]]*make[[:space:]]+(ci|ci-cover|predeploy)([[:space:]]|$|[[:space:]]*2>&1)'; then
+    debug_log orchestrator-no-ci "DENY: make ci/ci-cover/predeploy"
     _deny_gate
 fi
 

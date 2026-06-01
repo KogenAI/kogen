@@ -85,7 +85,7 @@ No `CONTEXT.md` in PoC — work happens directly on main, not in worktrees.
 
 **dev-gate.sh hook (PoC mode):**
 
-- Deterministic gate selection via `lib/gate-select.sh` (CI / ci-fast / phoenix gates)
+- Deterministic gate selection via `lib/gate-select.sh` (CI / phoenix gates)
 - Verdict appended to step log: `ALL CLEAR ✅`, `FAILED ❌`, or `INCONCLUSIVE ⚠️ <classification>`
 - INCONCLUSIVE classifications: seed-missing, pool-exhaustion, partial-gate, timeout-exceeded, previous-gate-running, concurrent-launch
 

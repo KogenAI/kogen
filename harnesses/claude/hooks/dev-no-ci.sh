@@ -9,7 +9,7 @@
 # role: developer-*
 # harnesses: all
 #
-# Blocks: make ci / ci-fast / ci-cover / predeploy / llm / llm-phoenix / llm-all
+# Blocks: make ci / ci-cover / predeploy / llm / llm-phoenix / llm-all
 #         bare `mix test` (no path argument)
 #         `mix test` with only flags (no path)
 #
@@ -38,8 +38,8 @@ if [ "$TOOL_NAME" != "Bash" ]; then
     exit 0
 fi
 
-# Deny: make ci / make ci-fast / make ci-cover / make predeploy / make llm / make llm-phoenix / make llm-all
-if printf '%s' "$COMMAND" | grep -qE '^[[:space:]]*make[[:space:]]+(ci|ci-fast|ci-cover|predeploy|llm|llm-phoenix|llm-all)([[:space:]]|$)'; then
+# Deny: make ci / make ci-cover / make predeploy / make llm / make llm-phoenix / make llm-all
+if printf '%s' "$COMMAND" | grep -qE '^[[:space:]]*make[[:space:]]+(ci|ci-cover|predeploy|llm|llm-phoenix|llm-all)([[:space:]]|$)'; then
     deny "Dev MUST NOT run gate commands. The dev-gate.sh SubagentStop hook runs the gate after you exit. Specific test files are OK: \`mix test test/path/file.exs\`."
     exit 0
 fi

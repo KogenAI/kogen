@@ -87,7 +87,7 @@ Some content
 
 ## dev-gate Section
 
-Gate: make ci-fast
+Gate: make ci
 ALL CLEAR ✅
 MD
 make_transcript "$T2/transcript.jsonl" "$LOG2"
@@ -203,7 +203,7 @@ cat >"$LOG9" <<'MD'
 
 ## phoenix-dev-gate Section
 
-Gate: make ci-fast
+Gate: make ci
 ALL CLEAR ✅
 MD
 make_transcript "$T9/transcript.jsonl" "$LOG9"

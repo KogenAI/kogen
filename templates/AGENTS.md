@@ -54,7 +54,7 @@ When loading a rule file, ONLY follow commands appropriate for your role. Rule f
 | `mix credo --strict`               | ✅ Full scan     | ✅ Self-check             | ✅ Self-check              | ❌ Read only     |
 | `mix compile --warnings-as-errors` | ✅ Verification  | ✅ Self-check             | ✅ Self-check              | ❌ FORBIDDEN     |
 
-- `mix test` = full suite = dev-gate.sh hook ONLY (runs `make ci` / `make ci-fast` per gate-select.sh)
+- `mix test` = full suite = dev-gate.sh hook ONLY (runs `make ci` per gate-select.sh)
 - `mix test test/specific_file.exs` = targeted = developer-phoenix-backend / developer-phoenix-frontend OK
 - reviewer-phoenix NEVER executes, only analyzes
 
