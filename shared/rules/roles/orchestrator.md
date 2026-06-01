@@ -50,12 +50,13 @@ Goal-only to planner — NEVER numbered analysis, hypotheses, candidates.
 
 NEVER delegate to CR until `ALL CLEAR ✅` in step log.
 
-| Verdict                   | Action                                  |
-| ------------------------- | --------------------------------------- |
-| `ALL CLEAR ✅`            | Proceed to CR                           |
-| `FAILED ❌ <summary>`     | Delegate fix to dev, re-verify          |
-| `FAILED ❌ coverage`      | Stack-specific — see stack orchestrator |
-| `INCONCLUSIVE ⚠️ <class>` | See table                               |
+| Verdict                                      | Action                                                                                                                                                                                                                                    |
+| -------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `ALL CLEAR ✅`                               | Proceed to CR                                                                                                                                                                                                                             |
+| `FAILED ❌ ... attempt 1 — dev-fixable`      | Mechanical failure. Delegate fix to **developer**, re-verify.                                                                                                                                                                             |
+| `FAILED ❌ ... ROOT-CAUSE: route to planner` | Delegate to **planner-phoenix**: "Gate failed N×: [tail]. Diagnose root cause + design the fix approach (≥2 alternatives if non-trivial). Write the dev fix prompt." Planner returns plan → orchestrator delegates verbatim to developer. |
+| `FAILED ❌ coverage`                         | Stack-specific — see stack orchestrator                                                                                                                                                                                                   |
+| `INCONCLUSIVE ⚠️ <class>`                    | See table                                                                                                                                                                                                                                 |
 
 Flake (NON-DETERMINISM ONLY): test fails in the gate run but PASSES on isolated re-run, OR matches a named known-flake entry. A deterministic failure is NEVER a flake — including one in a file not in the current diff. Out-of-diff red = pre-existing breakage = MUST be fixed before commit (delegate fix to dev). "Not my change" is not an exemption. If a test fails in BOTH the gate run and the isolated re-run, it is deterministic red → delegate fix, never pass. Isolated re-run passes → `INCONCLUSIVE ⚠️ flake-suspect` (NOT auto-pass); clears only against a named known-flake entry, else escalates per INCONCLUSIVE table.
 
@@ -119,7 +120,7 @@ Context curator runs after reviewer, before committer. Reads all `### What I Lea
 - ❌ "Commit the refactor. Message: Improve test readability" → prescribes wording
 - ✅ "Commit: extracted shared fixture helper, updated 8 tests to use it" → describes change, lets committer derive subject
 
-Never prescribes fixes. Gate fails → delegate to Phase 0. Don't theorize inline.
+Never prescribes fixes. Gate fails attempt 1 → delegate fix to developer. Gate fails attempt 2+ (ROOT-CAUSE) → delegate to planner-phoenix first. Don't theorize inline.
 
 > 30 min without return → break into smaller delegations.
 

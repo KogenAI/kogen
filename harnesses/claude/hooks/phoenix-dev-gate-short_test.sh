@@ -255,5 +255,39 @@ else
 fi
 rm -rf "$T18A" "$T18B"
 
+# ── Test 19: first failure → "attempt 1 — dev-fixable" in log ──────────────
+T19=$(make_project)
+LOG19="$T19/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_step1_attempt1.md"
+cat >"$LOG19" <<'MD'
+# Step
+
+## Plan
+
+**Gate**: `false`
+MD
+make_transcript "$T19/transcript.jsonl" "$LOG19"
+out=$(printf '%s' "$(input_for "$T19" developer-phoenix-backend false sess19 "$T19/transcript.jsonl")" | bash "$HOOK" 2>/dev/null || true)
+assert_file_contains "T19: first failure labels as attempt 1 dev-fixable" "attempt 1 — dev-fixable" "$LOG19"
+rm -rf "$T19"
+
+# ── Test 20: second failure (pre-seeded FAILED ❌) → "ROOT-CAUSE: route to planner" ─
+T20=$(make_project)
+LOG20="$T20/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_step1_attempt2.md"
+cat >"$LOG20" <<'MD'
+# Step
+
+## Plan
+
+**Gate**: `false`
+
+## dev-gate Section
+
+**Result**: FAILED ❌ exit=1 (attempt 1 — dev-fixable)
+MD
+make_transcript "$T20/transcript.jsonl" "$LOG20"
+out=$(printf '%s' "$(input_for "$T20" developer-phoenix-backend false sess20 "$T20/transcript.jsonl")" | bash "$HOOK" 2>/dev/null || true)
+assert_file_contains "T20: second failure labels as ROOT-CAUSE: route to planner" "ROOT-CAUSE: route to planner" "$LOG20"
+rm -rf "$T20"
+
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

@@ -214,6 +214,20 @@ append_ve_section() {
     } >>"$log_file"
 }
 
+failed_suffix() {
+    local prior=0
+    local n
+    if [ -f "$log_file" ]; then
+        prior=$(
+            grep -c 'FAILED ❌' "$log_file" 2>/dev/null
+            true
+        )
+        [ -z "$prior" ] && prior=0
+    fi
+    n=$((prior + 1))
+    [ "$n" -lt 2 ] && echo "attempt $n — dev-fixable" || echo "attempt $n — ROOT-CAUSE: route to planner"
+}
+
 # ── SHORT gate: run inline ──────────────────────────────────────────────────
 if [ "$mode" = "short" ]; then
     log_path="/tmp/dev-gate-${session_id:-unknown}-$(date -u +%s).log"
@@ -240,7 +254,7 @@ if [ "$mode" = "short" ]; then
         append_ve_section "INCONCLUSIVE ⚠️ $short_pool" "Log: $log_path"
     else
         block "Gate '$gate' failed (exit $rc). Log: $log_path. Tail:\n$tail_out"
-        append_ve_section "FAILED ❌ exit=$rc" "Log: $log_path"
+        append_ve_section "FAILED ❌ exit=$rc ($(failed_suffix))" "Log: $log_path"
     fi
     exit 0
 fi
@@ -396,7 +410,7 @@ else
             "$(printf 'Gate '"'"'%s'"'"' failed exit=%s (environmental). Log: %s\n\nTail:\n%s' "$gate" "$rc" "$log_path" "$tail_out")"
     else
         debug_log dev-gate "long-gate exit=$rc; appended FAILED"
-        append_ve_section "FAILED ❌ exit=$rc" \
+        append_ve_section "FAILED ❌ exit=$rc ($(failed_suffix))" \
             "$(printf 'Gate '"'"'%s'"'"' failed. Log: %s\n\nTail:\n%s' "$gate" "$log_path" "$tail_out")"
     fi
 fi

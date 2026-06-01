@@ -16,6 +16,8 @@ TDD → schemas/migrations (if needed) → `mix ecto.migrate && mix ecto.rollbac
 
 ## Stuck-loop escalation
 
+If the gate log contains 2+ prior `FAILED ❌` sections for this task → escalate to planner-phoenix BEFORE the next retry (do not patch again). The counter is persistent across spawns — read it from the active step log, not from memory.
+
 Same approach failed twice OR same test failing 3+ times → escalate BEFORE the next retry. ONE escalation per loop.
 
 Run this Bash row (keep `STUCK-ESCALATION:` prefix verbatim — `mix combobulate.session.analyze` counts it):
@@ -25,3 +27,5 @@ claude --agent planner-phoenix --print --output-format text "STUCK-ESCALATION: <
 ```
 
 Log the Bash invocation in your `## <role> Section` **Commands executed** table per standard session-log discipline. Read the planner's stdout, apply the one recommendation, continue. Do not escalate again in the same loop.
+
+If you identify a root cause that implies an **architectural or design choice** (sync vs async, data-structure/algorithm change, comparator/ordering semantics, schema shape), do NOT implement it — escalate to planner-phoenix with the diagnosis so the approach is planned. You implement plans; you do not design them.
