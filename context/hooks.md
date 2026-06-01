@@ -165,6 +165,10 @@ SubagentStop fires → gate-select.sh picks stack →
 
 Orchestrator reads verdict before deciding next delegation.
 
+## See Also
+
+For matrix of which hooks gate which launcher modes (build vs debug/shape/refactor vs ops), see `context/launcher-hook-matrix.md`.
+
 ## Pitfalls
 
 - **Hook tests are bash, not ExUnit** — run via `run-tests.sh`, not `mix test`

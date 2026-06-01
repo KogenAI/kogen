@@ -120,6 +120,22 @@ run_test "git reset --hard denied for non-committer" "2" "$FIXTURE_RESET_HARD"
 FIXTURE_RESET_SOFT='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"git reset HEAD~1"},"agent_type":"developer-phoenix-backend","agent_id":"a"}'
 run_test "git reset soft allowed for non-committer" "0" "$FIXTURE_RESET_SOFT"
 
+# Test 11: ops role + git commit — MUST ALLOW (ops bypasses pre-commit-guard entirely)
+FIXTURE_OPS_COMMIT='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"git commit -m \"hotfix: patch config\""},"agent_type":"","agent_id":"a"}'
+run_test_env "ops role + git commit allowed" "0" "$FIXTURE_OPS_COMMIT" "CLAUDE_ROLE=ops"
+
+# Test 12: ops role + git reset --hard — MUST ALLOW
+FIXTURE_OPS_RESET='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"git reset --hard HEAD~1"},"agent_type":"","agent_id":"a"}'
+run_test_env "ops role + git reset --hard allowed" "0" "$FIXTURE_OPS_RESET" "CLAUDE_ROLE=ops"
+
+# Test 13: ops role + git push --force — MUST ALLOW
+FIXTURE_OPS_PUSH='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"git push --force origin main"},"agent_type":"","agent_id":"a"}'
+run_test_env "ops role + git push --force allowed" "0" "$FIXTURE_OPS_PUSH" "CLAUDE_ROLE=ops"
+
+# Test 14: PI_ROLE=ops + git commit — MUST ALLOW (parity with CLAUDE_ROLE=ops)
+FIXTURE_PI_OPS_COMMIT='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"git commit -m \"pi-ops hotfix\""},"agent_type":"","agent_id":"a"}'
+run_test_env "PI_ROLE=ops + git commit allowed" "0" "$FIXTURE_PI_OPS_COMMIT" "PI_ROLE=ops"
+
 echo ""
 echo "Results: $pass passed, $fail failed"
 

@@ -14,6 +14,8 @@
 #   10: developer-phoenix-backend make ci-fast → allow (0) — dev-no-ci.sh owns this
 #   11: planner-phoenix make ci-fast → allow (0) — planner-guard.sh owns this
 #   12: subagent with non-empty agent_id, empty agent_type, make ci-fast → allow (0)
+#   13: CLAUDE_ROLE=ops make ci-fast → allow (0) — ops bypass via resolve_role
+#   14: PI_ROLE=ops make ci-fast → allow (0) — ops bypass via resolve_role
 
 set -euo pipefail
 
@@ -97,6 +99,14 @@ run_test "planner-phoenix make ci-fast → allow (skip)" "0" \
 # Test 12: subagent with non-empty agent_id but empty agent_type → allow (not orchestrator)
 run_test "subagent non-empty agent_id empty agent_type make ci-fast → allow (skip)" "0" \
     '{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"make ci-fast"},"agent_type":"","agent_id":"subagent999"}'
+
+# Test 13: CLAUDE_ROLE=ops make ci-fast → allow (ops bypass — live box inspection)
+CLAUDE_ROLE=ops run_test "CLAUDE_ROLE=ops make ci-fast → allow (ops bypass)" "0" \
+    '{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"make ci-fast"},"agent_type":"","agent_id":""}'
+
+# Test 14: PI_ROLE=ops make ci-fast → allow (ops bypass via PI_ROLE parity)
+PI_ROLE=ops run_test "PI_ROLE=ops make ci-fast → allow (ops bypass)" "0" \
+    '{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"make ci-fast"},"agent_type":"","agent_id":""}'
 
 echo ""
 echo "Results: $pass passed, $fail failed"

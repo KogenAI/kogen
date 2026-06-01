@@ -14,13 +14,21 @@
 # anything other than "committer". The orchestrator itself (agent_type
 # is "") is also blocked — per CLAUDE.md only the committer may touch
 # history.
+#
+# Ops mode (CLAUDE_ROLE=ops / PI_ROLE=ops) bypasses entirely — full git
+# surface, no restriction (interactive ops on live boxes).
 
 set -u
 
 source "$(dirname "$0")/lib/hooks-lib.sh"
+source "$(dirname "$0")/_role.sh"
 parse_input
 
 debug_log pre-commit-guard "tool=$TOOL_NAME agent=$AGENT_TYPE cmd=$COMMAND"
+
+# ops mode bypasses: full git surface for interactive ops on live boxes.
+_role=$(resolve_role)
+[ "$_role" = "ops" ] && exit 0
 
 # Only guard Bash — git ops go through Bash exclusively.
 if [ "$TOOL_NAME" != "Bash" ]; then

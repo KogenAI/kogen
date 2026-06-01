@@ -180,6 +180,18 @@ PI_ROLE=shape run_test "PI_ROLE=shape bypasses read discipline" "0" "$FIXTURE_PI
 FIXTURE_PI_REFACTOR_BYPASS='{"hook_event_name":"PreToolUse","tool_name":"Read","tool_input":{"file_path":"lib/combobulate/apps.ex"},"agent_id":"","agent_type":""}'
 PI_ROLE=refactor run_test "PI_ROLE=refactor bypasses read discipline" "0" "$FIXTURE_PI_REFACTOR_BYPASS"
 
+# Test 31: CLAUDE_ROLE=ops bypasses read discipline — ops runs on live boxes, full access needed
+FIXTURE_OPS_BYPASS='{"hook_event_name":"PreToolUse","tool_name":"Read","tool_input":{"file_path":"lib/combobulate/apps.ex"},"agent_id":"","agent_type":""}'
+CLAUDE_ROLE=ops run_test "CLAUDE_ROLE=ops bypasses read discipline" "0" "$FIXTURE_OPS_BYPASS"
+
+# Test 32: PI_ROLE=ops bypasses read discipline
+FIXTURE_PI_OPS_BYPASS='{"hook_event_name":"PreToolUse","tool_name":"Read","tool_input":{"file_path":"lib/combobulate/apps.ex"},"agent_id":"","agent_type":""}'
+PI_ROLE=ops run_test "PI_ROLE=ops bypasses read discipline" "0" "$FIXTURE_PI_OPS_BYPASS"
+
+# Test B18b: CLAUDE_ROLE=ops Bash grep — ALLOW (ops needs full local inspection)
+FIXTURE_BASH_OPS_GREP='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"grep foo"},"agent_id":"","agent_type":""}'
+CLAUDE_ROLE=ops run_test "CLAUDE_ROLE=ops Bash grep allows" "0" "$FIXTURE_BASH_OPS_GREP"
+
 # Test 33: orchestrator Read codegen/PROJECT_CONTEXT.md (relative symlink form) — DENY
 FIXTURE_PC_CODEGEN='{"hook_event_name":"PreToolUse","tool_name":"Read","tool_input":{"file_path":"codegen/PROJECT_CONTEXT.md"},"agent_id":"","agent_type":""}'
 run_test "orchestrator Read on codegen/PROJECT_CONTEXT.md denies (symlink relative form)" "2" "$FIXTURE_PC_CODEGEN"

@@ -81,7 +81,7 @@ completions:
 
 ### `modes` map
 
-One entry per launcher mode (`build`, `debug`, `shape`, `refactor`):
+One entry per launcher mode (`build`, `debug`, `shape`, `refactor`, `ops`):
 
 ```yaml
 modes:
@@ -153,17 +153,21 @@ make install
    - Wire into `codegen-build` and `harnesses/<harness>/dispatch.sh` per existing pattern.
    - Update `codegen-build_test.sh` test cases.
 
-6. **Register the harness name** in `install.sh` arg-parse (`claude | pi | <name>` in case statement)
+6. **Wire orchestrator-level hook bypasses** — for each hook in `context/launcher-hook-matrix.md`,
+   decide gated vs bypassed for each new mode and add the `resolve_role()` branch + paired `_test.sh` case.
+   See canonical pattern in `harnesses/claude/hooks/orchestrator-no-source-edit.sh`.
+
+7. **Register the harness name** in `install.sh` arg-parse (`claude | pi | <name>` in case statement)
    and add a `<name>)` case in the harness install loop for any harness-specific install steps.
 
-7. **Add generator support** in `generate.sh`:
+8. **Add generator support** in `generate.sh`:
    - Add `_generate_<name>()` function.
    - Add `<name>)` case in the main loop.
 
-8. **Run `make install --harness=<name>`** — verify agents install, launchers land in `~/.local/bin/`,
+9. **Run `make install --harness=<name>`** — verify agents install, launchers land in `~/.local/bin/`,
    completions install.
 
-9. **Run `make test && make rule-parity && make hook-parity`** — all must pass.
+10. **Run `make test && make rule-parity && make hook-parity`** — all must pass.
 
 ## System Prompt Authorship
 
