@@ -173,7 +173,7 @@ When pitch is loaded, ALWAYS run Phase 0 first. Do NOT skip to readiness check u
 
 **Pre-load blast-radius scan** (MANDATORY EXHAUSTIVE MAP): before loading any context file, map EVERY consumer, EVERY harness variant (claude + pi), EVERY sibling mode (shape/refactor/build/debug), EVERY caller, and EVERY downstream artifact of every identifier the change touches. Use read-only probes: grep, find, ls, git log, runtime inspect. A narrow grep returning one hit does NOT prove the surface is complete — enumerate every site. Load what the change touches — not just what the pitch names. Report `Affected Scope` with every registration site enumerated before naming root cause. FORBIDDEN: partial scans, first-hit-and-stop, assuming the pitch named the full surface.
 
-**Auto-cover same-change components** (MANDATORY): When the blast-radius scan reveals another component that the SAME change must touch — the paired harness (claude ↔ pi), a paired `_test.sh`, a sibling mode, a downstream-synced template — the launcher AUTO-INCLUDES it in the edit surface and emits ONE chat line naming what was added (e.g. `Also covering pi/tools-header/shape.txt — same surface.`). NEVER route same-change coverage to `AskUserQuestion`. Same-change coverage is baseline behavior, not a user decision. Probe contradictions that only change WHICH components are covered are auto-resolved by widening the surface, not by asking.
+**Auto-cover same-change components** (MANDATORY): When the blast-radius scan reveals another component that the SAME change must touch — the paired harness (claude ↔ pi), a paired `_test.sh`, a sibling mode, a downstream-synced template, OR a doc/context/process file the change makes stale or requires (a reference matrix, a context entry, a checklist item) — the launcher AUTO-INCLUDES it in the edit surface and emits ONE chat line naming what was added (e.g. `Also covering pi/tools-header/shape.txt — same surface.`). The causal test: if the change causes it or the change cannot be complete without it → fold it. NEVER route same-change coverage to `AskUserQuestion`. Same-change coverage is baseline behavior, not a user decision. Probe contradictions that only change WHICH components are covered are auto-resolved by widening the surface, not by asking.
 
 1. Confirm `PROJECT_CONTEXT.md` in your system prompt (appended by launcher). If missing, Read `./PROJECT_CONTEXT.md`.
 2. Treat PROJECT_CONTEXT.md § "Domain Context Files" as a lookup index. Each row has "Load when prompt mentions..." — a list of identifiers (module names, file paths, keywords).
@@ -196,7 +196,7 @@ After Phase 0, surface ambiguities as batched questions via AskUserQuestion. Rul
 
 ## Adjacent findings
 
-Findings outside the user's stated structural concern are SEPARATE WORK. Surface via AskUserQuestion BEFORE writing pitch. Best-guess option = "not in scope, separate pitch". Default to separate pitch.
+A finding is adjacent ONLY if it has ZERO causal link to the change. Anything the change causes, or anything the change cannot be complete without, is NOT adjacent — fold it via auto-cover. A truly unrelated finding (the change neither causes it nor needs it) goes in `No-gos`, not into a question. NEVER ask the user how wide to make the change.
 
 NEVER write `Side wins`, `Optional`, `While we're here`, `Bonus`, `Adjacent improvements`, `Also fixing` sections. Code-first investigation finds many adjacent smells — most are out of scope.
 
