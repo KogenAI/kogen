@@ -8,7 +8,10 @@
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { parseAgentType, debugLog } from "../lib/hook-helpers";
-import { execSync } from "node:child_process";
+import {
+  execSync,
+  type ExecSyncOptionsWithStringEncoding,
+} from "node:child_process";
 import * as fs from "node:fs";
 import * as path from "node:path";
 
@@ -25,11 +28,16 @@ const STATIC_DEV_AGENTS = new Set([
 ]);
 
 export function register(pi: ExtensionAPI): void {
-  pi.on("session_shutdown", async () => {
+  pi.on("session_shutdown", async (event) => {
+    const ev = event as {
+      input?: { cwd?: string; stop_hook_active?: boolean };
+    };
+    if (ev?.input?.stop_hook_active) return;
+
     const agentType = parseAgentType();
     if (!STATIC_DEV_AGENTS.has(agentType)) return;
 
-    const projectDir = process.env["CWD"] ?? process.cwd();
+    const projectDir = ev?.input?.cwd ?? process.env["CWD"] ?? process.cwd();
     debugLog("static-site-build-check", `agent=${agentType} cwd=${projectDir}`);
 
     if (!fs.existsSync(path.join(projectDir, "package.json"))) return;
@@ -50,6 +58,79 @@ export function register(pi: ExtensionAPI): void {
       process.stderr.write(
         `[pi-enforcement:static-site-build-check] build FAILED:\n${output}\n${errOutput}\n`,
       );
+      return;
     }
+
+    // ── Render verification ────────────────────────────────────────────────
+    // Determine output dir (public/ or dist/).
+    const outputDir = fs.existsSync(path.join(projectDir, "dist"))
+      ? path.join(projectDir, "dist")
+      : path.join(projectDir, "public");
+
+    if (!fs.existsSync(outputDir)) {
+      debugLog(
+        "static-site-build-check",
+        "no output dir — skipping render check",
+      );
+      return;
+    }
+
+    const codegenDir = process.env["CODEGEN_DIR"] ?? "";
+    const renderCheckScript = codegenDir
+      ? path.join(
+          codegenDir,
+          "harnesses",
+          "claude",
+          "hooks",
+          "lib",
+          "render-check.js",
+        )
+      : "";
+
+    if (!renderCheckScript || !fs.existsSync(renderCheckScript)) {
+      debugLog(
+        "static-site-build-check",
+        "render-check.js not found — skipping",
+      );
+      return;
+    }
+
+    let renderRaw = "";
+    try {
+      const opts: ExecSyncOptionsWithStringEncoding = {
+        cwd: codegenDir || projectDir,
+        stdio: ["ignore", "pipe", "pipe"],
+        timeout: 35_000,
+        encoding: "utf8",
+      };
+      renderRaw = execSync(
+        `node "${renderCheckScript}" --mode static --timeout 30000 "${outputDir}"`,
+        opts,
+      ).toString();
+    } catch (err) {
+      renderRaw =
+        (err as { stdout?: Buffer | string }).stdout?.toString() ?? "";
+    }
+
+    const verdictLine = renderRaw
+      .split("\n")
+      .find((l) => l.startsWith("RENDER_VERDICT="));
+    const renderVerdict = verdictLine ? verdictLine.split("=")[1] : "";
+
+    debugLog("static-site-build-check", `render verdict: ${renderVerdict}`);
+
+    if (renderVerdict.startsWith("FAIL:")) {
+      const reason = renderVerdict.slice("FAIL:".length);
+      process.stderr.write(
+        `[pi-enforcement:static-site-build-check] render FAILED: ${reason}\n`,
+      );
+    } else if (renderVerdict.startsWith("INCONCLUSIVE:")) {
+      const detail = renderVerdict.slice("INCONCLUSIVE:".length);
+      debugLog(
+        "static-site-build-check",
+        `render INCONCLUSIVE: ${detail} — non-fatal`,
+      );
+    }
+    // PASS: no action needed (non-blocking success)
   });
 }

@@ -14,7 +14,10 @@
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { parseAgentType, debugLog } from "../lib/hook-helpers";
-import { execSync } from "node:child_process";
+import {
+  execSync,
+  type ExecSyncOptionsWithStringEncoding,
+} from "node:child_process";
 import * as fs from "node:fs";
 import * as path from "node:path";
 
@@ -91,8 +94,73 @@ export function register(pi: ExtensionAPI): void {
       verdict = `FAILED ❌\n\n${output}\n${errOutput}`.trim();
     }
 
+    // ── Render verification (after gate passes) ────────────────────────────
+    let renderSummary = "";
+    if (verdict === "ALL CLEAR ✅") {
+      const codegenDir = process.env["CODEGEN_DIR"] ?? "";
+      const renderCheckScript = codegenDir
+        ? path.join(
+            codegenDir,
+            "harnesses",
+            "claude",
+            "hooks",
+            "lib",
+            "render-check.js",
+          )
+        : "";
+
+      if (renderCheckScript && fs.existsSync(renderCheckScript)) {
+        const phoenixPort = process.env["PHOENIX_DEV_PORT"] ?? "4000";
+        let renderRaw = "";
+        try {
+          const opts: ExecSyncOptionsWithStringEncoding = {
+            cwd: codegenDir,
+            stdio: ["ignore", "pipe", "pipe"],
+            timeout: 35_000,
+            encoding: "utf8",
+          };
+          renderRaw = execSync(
+            `node "${renderCheckScript}" --mode phoenix --port ${phoenixPort} --timeout 30000`,
+            opts,
+          ).toString();
+        } catch (err) {
+          renderRaw =
+            (err as { stdout?: Buffer | string }).stdout?.toString() ?? "";
+        }
+
+        const verdictLine = renderRaw
+          .split("\n")
+          .find((l) => l.startsWith("RENDER_VERDICT="));
+        const renderVerdict = verdictLine ? verdictLine.split("=")[1] : "";
+
+        debugLog("phoenix-dev-gate", `render verdict: ${renderVerdict}`);
+
+        if (renderVerdict.startsWith("FAIL:")) {
+          const reason = renderVerdict.slice("FAIL:".length);
+          process.stderr.write(
+            `[pi-enforcement:phoenix-dev-gate] render FAILED: ${reason}\n`,
+          );
+          verdict = `FAILED ❌ render check failed: ${reason}`;
+        } else if (renderVerdict.startsWith("INCONCLUSIVE:")) {
+          const detail = renderVerdict.slice("INCONCLUSIVE:".length);
+          debugLog(
+            "phoenix-dev-gate",
+            `render INCONCLUSIVE: ${detail} — non-fatal`,
+          );
+          renderSummary = `render: INCONCLUSIVE (${detail}) — skipped`;
+        } else if (renderVerdict === "PASS") {
+          renderSummary = "render: DOM non-empty, styles applied, 0 JS errors";
+        }
+      } else {
+        debugLog(
+          "phoenix-dev-gate",
+          "render-check.js not found — skipping render check",
+        );
+      }
+    }
+
     // Append verdict to step log
-    const verdictSection = [
+    const verdictLines = [
       "",
       "## phoenix-dev-gate Section",
       "",
@@ -101,7 +169,11 @@ export function register(pi: ExtensionAPI): void {
       "",
       verdict,
       "",
-    ].join("\n");
+    ];
+    if (renderSummary) {
+      verdictLines.push(renderSummary, "");
+    }
+    const verdictSection = verdictLines.join("\n");
 
     fs.appendFileSync(activeLog, verdictSection);
     debugLog("phoenix-dev-gate", `verdict=${verdict.slice(0, 50)}`);

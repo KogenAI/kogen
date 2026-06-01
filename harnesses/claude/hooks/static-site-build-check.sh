@@ -176,6 +176,54 @@ check_html_stylesheet_link() {
 check_css_output
 check_html_stylesheet_link
 
+# ── Check 7: render verification (headless Chromium) ─────────────────────────
+# Runs after all static-file checks pass. Uses render-check.js which serves
+# the output dir over a throwaway localhost server and verifies: non-empty DOM,
+# styles applied, no JS errors. Non-fatal if browser not installed on host.
+
+render_verdict=""
+render_summary="render: skipped (no output dir)"
+
+run_render_check() {
+    local out_dir="$1"
+    local -a render_check_cmd_arr
+    read -ra render_check_cmd_arr <<<"${RENDER_CHECK_CMD:-node \"${CODEGEN_DIR}/harnesses/claude/hooks/lib/render-check.js\"}"
+    local raw
+    raw=$("${render_check_cmd_arr[@]}" --mode static --timeout 30000 "$out_dir" 2>/dev/null || true)
+    render_verdict=$(printf '%s' "$raw" | grep '^RENDER_VERDICT=' | head -n 1 | cut -d= -f2-)
+}
+
+# Determine output dir — same logic as check_css_output/check_html_stylesheet_link.
+if [ -f package.json ] && jq -e '.scripts' package.json >/dev/null 2>&1; then
+    _output_dir="public"
+    [ -d "dist" ] && _output_dir="dist"
+
+    if [ -d "$_output_dir" ]; then
+        run_render_check "$_output_dir"
+
+        case "$render_verdict" in
+        PASS)
+            render_summary="render: DOM non-empty, styles applied, 0 JS errors"
+            debug_log static-site-build-check "render check PASS"
+            ;;
+        FAIL:*)
+            reason="${render_verdict#FAIL:}"
+            debug_log static-site-build-check "render check FAIL: $reason"
+            fail "render check failed: $reason"
+            ;;
+        INCONCLUSIVE:*)
+            detail="${render_verdict#INCONCLUSIVE:}"
+            render_summary="render: INCONCLUSIVE ($detail) — skipped"
+            debug_log static-site-build-check "render check INCONCLUSIVE: $detail"
+            ;;
+        *)
+            render_summary="render: skipped (browser not installed)"
+            debug_log static-site-build-check "render check: no verdict (browser not installed)"
+            ;;
+        esac
+    fi
+fi
+
 # ── Success: append synthetic SSV section to the active step log ────────────
 log_file=$(session_log_from_transcript)
 if [ -z "$log_file" ]; then
@@ -194,7 +242,9 @@ elif [ -w "$log_file" ]; then
         printf '| %s | grep -rE @tailwind --include=*.css . | 1 | Tailwind v4 directive check |\n' "$ts"
         printf '| %s | find public/dist -name *.css | 0 | CSS output file check |\n' "$ts"
         printf '| %s | grep link.rel.stylesheet public/index.html | 0 | stylesheet link check |\n' "$ts"
+        printf '| %s | node render-check.js --mode static | 0 | render verification |\n' "$ts"
         printf '\n**Result**: ALL CLEAR ✅\n'
+        printf '\n%s\n' "$render_summary"
     } >>"$log_file"
     debug_log static-site-build-check "appended SSV section to $log_file"
 fi

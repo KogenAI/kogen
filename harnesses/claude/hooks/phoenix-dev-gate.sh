@@ -131,6 +131,35 @@ debug_log dev-gate "gate='$gate' mode=$mode timeout=$gate_timeout"
 
 ts_now() { date -u +%Y-%m-%dT%H:%M:%SZ; }
 
+# ── Render verification helper ──────────────────────────────────────────────
+# Invokes render-check.js in phoenix mode against the running dev server
+# (assumed to be on port 4000, the Phoenix default). Returns the verdict
+# string: PASS, FAIL:<reason>, INCONCLUSIVE:<reason>, or "" if skipped.
+run_phoenix_render_check() {
+    local -a render_check_cmd_arr
+    read -ra render_check_cmd_arr <<<"${RENDER_CHECK_CMD:-node \"${CODEGEN_DIR}/harnesses/claude/hooks/lib/render-check.js\"}"
+    local raw
+    raw=$("${render_check_cmd_arr[@]}" --mode phoenix --port "${PHOENIX_DEV_PORT:-4000}" --timeout 30000 2>/dev/null || true)
+    printf '%s' "$raw" | grep '^RENDER_VERDICT=' | head -n 1 | cut -d= -f2-
+}
+
+# Appends render verdict detail to the log file as a trailing line.
+# $1 = render verdict string (may be empty)
+append_render_detail() {
+    local rv="$1"
+    [ -z "$rv" ] && return 0
+    [ -n "$log_file" ] && [ -w "$log_file" ] || return 0
+    case "$rv" in
+    PASS)
+        printf 'render: DOM non-empty, styles applied, 0 JS errors\n' >>"$log_file"
+        ;;
+    INCONCLUSIVE:*)
+        local detail="${rv#INCONCLUSIVE:}"
+        printf 'render: INCONCLUSIVE (%s) — skipped\n' "$detail" >>"$log_file"
+        ;;
+    esac
+}
+
 # ── Classification helpers ──────────────────────────────────────────────────
 # Each returns suffix string for `INCONCLUSIVE ⚠️ <suffix>`, or empty if signal
 # absent. Composed cheapest → most specific. Deterministic signals from a fixed
@@ -243,8 +272,22 @@ if [ "$mode" = "short" ]; then
     set -e 2>/dev/null || true
 
     if [ "$rc" -eq 0 ]; then
-        append_ve_section "ALL CLEAR ✅" ""
-        debug_log dev-gate "short-gate exit=0; appended ALL CLEAR"
+        # Gate passed — run render verification before declaring ALL CLEAR.
+        render_verdict=$(run_phoenix_render_check)
+        debug_log dev-gate "short-gate exit=0; render_verdict=${render_verdict:-none}"
+        case "$render_verdict" in
+        FAIL:*)
+            reason="${render_verdict#FAIL:}"
+            debug_log dev-gate "render check FAIL: $reason"
+            append_ve_section "FAILED ❌ render check failed: $reason ($(failed_suffix))" "Log: $log_path"
+            block "Render check failed after gate passed: $reason"
+            ;;
+        *)
+            append_ve_section "ALL CLEAR ✅" ""
+            append_render_detail "$render_verdict"
+            debug_log dev-gate "short-gate ALL CLEAR (render=${render_verdict:-skipped})"
+            ;;
+        esac
         exit 0
     fi
 
@@ -393,8 +436,23 @@ if [ ! -f "$exitcode_path" ]; then
     append_ve_section "INCONCLUSIVE ⚠️ $classification" \
         "Gate '$gate' did not complete within ${effective_timeout}s. Log: $log_path"
 elif [ "$(cat "$exitcode_path")" = "0" ]; then
-    debug_log dev-gate "long-gate exit=0; appended ALL CLEAR"
-    append_ve_section "ALL CLEAR ✅" "Gate '$gate' passed. Log: $log_path"
+    # Gate passed — run render verification before declaring ALL CLEAR.
+    long_render_verdict=$(run_phoenix_render_check)
+    debug_log dev-gate "long-gate exit=0; render_verdict=${long_render_verdict:-none}"
+    case "$long_render_verdict" in
+    FAIL:*)
+        long_reason="${long_render_verdict#FAIL:}"
+        debug_log dev-gate "render check FAIL: $long_reason"
+        append_ve_section "FAILED ❌ render check failed: $long_reason ($(failed_suffix))" \
+            "Gate '$gate' passed but render check failed. Log: $log_path"
+        block "Render check failed after gate passed: $long_reason"
+        ;;
+    *)
+        append_ve_section "ALL CLEAR ✅" "Gate '$gate' passed. Log: $log_path"
+        append_render_detail "$long_render_verdict"
+        debug_log dev-gate "long-gate ALL CLEAR (render=${long_render_verdict:-skipped})"
+        ;;
+    esac
 else
     rc=$(cat "$exitcode_path")
     tail_out=$(tail -n 40 "$log_path" 2>/dev/null || true)

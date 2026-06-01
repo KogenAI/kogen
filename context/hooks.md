@@ -8,8 +8,8 @@ Hook registration: `hook_registrations.py` reads `harnesses/claude/hooks/*.sh`, 
 
 | File                                                         | Purpose                                                                                    |
 | ------------------------------------------------------------ | ------------------------------------------------------------------------------------------ |
-| `harnesses/claude/hooks/phoenix-dev-gate.sh`                 | SubagentStop — runs Phoenix test suite, appends gate verdict                               |
-| `harnesses/claude/hooks/static-site-build-check.sh`          | SubagentStop — builds static site, appends gate verdict                                    |
+| `harnesses/claude/hooks/phoenix-dev-gate.sh`                 | SubagentStop — runs Phoenix test suite + render check, appends gate verdict                |
+| `harnesses/claude/hooks/static-site-build-check.sh`          | SubagentStop — builds static site + render check, appends gate verdict                     |
 | `harnesses/claude/hooks/step-log-missing-guard.sh`           | Stop — blocks if dev ran but no step log Write found in transcript                         |
 | `harnesses/claude/hooks/stop-cycle-guard.sh`                 | Stop — blocks premature stop before full cycle completes                                   |
 | `harnesses/claude/hooks/stop-resume.sh`                      | Stop — resumes orchestration if session was interrupted mid-cycle                          |
@@ -56,6 +56,7 @@ Hook registration: `hook_registrations.py` reads `harnesses/claude/hooks/*.sh`, 
 | `harnesses/claude/hooks/claude-inspector-write-guard.sh`     | PreToolUse — write guards in claude-inspector mode                                         |
 | `harnesses/claude/hooks/lib/hooks-lib.sh`                    | Shared bash library: `session_log_from_transcript`, transcript JSONL parsing, path helpers |
 | `harnesses/claude/hooks/lib/gate-select.sh`                  | Selects appropriate gate script based on stack detected                                    |
+| `harnesses/claude/hooks/lib/render-check.js`                 | Headless Chromium render verdict engine: DOM non-empty, styles applied, no JS errors       |
 | `harnesses/claude/hooks/run-tests.sh`                        | Runs all `*_test.sh` hook tests                                                            |
 
 ## Hook Event Types and Scripts
