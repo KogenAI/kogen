@@ -195,6 +195,80 @@ rm -rf "$TMP_CWD_PC"
 FIXTURE_DESIGN_REG='{"hook_event_name":"PreToolUse","tool_name":"Read","tool_input":{"file_path":"codegen/token-budget-design.md"},"agent_id":"","agent_type":""}'
 run_test "orchestrator Read on codegen/token-budget-design.md still allows (regression guard)" "0" "$FIXTURE_DESIGN_REG"
 
+# ── Bash gate tests ──────────────────────────────────────────────────────────
+
+# Test B1: orchestrator Bash grep -rn — DENY
+FIXTURE_BASH_GREP='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"grep -rn foo lib/"},"agent_id":"","agent_type":""}'
+run_test "orchestrator Bash grep -rn denies" "2" "$FIXTURE_BASH_GREP"
+
+# Test B2: orchestrator Bash rg — DENY
+FIXTURE_BASH_RG='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"rg foo"},"agent_id":"","agent_type":""}'
+run_test "orchestrator Bash rg denies" "2" "$FIXTURE_BASH_RG"
+
+# Test B3: orchestrator Bash find — DENY
+FIXTURE_BASH_FIND='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"find . -name '\''*.ex'\''"},"agent_id":"","agent_type":""}'
+run_test "orchestrator Bash find denies" "2" "$FIXTURE_BASH_FIND"
+
+# Test B4: orchestrator Bash ls — DENY
+FIXTURE_BASH_LS='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"ls lib/"},"agent_id":"","agent_type":""}'
+run_test "orchestrator Bash ls denies" "2" "$FIXTURE_BASH_LS"
+
+# Test B5: orchestrator Bash tree — DENY
+FIXTURE_BASH_TREE='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"tree lib/"},"agent_id":"","agent_type":""}'
+run_test "orchestrator Bash tree denies" "2" "$FIXTURE_BASH_TREE"
+
+# Test B6: orchestrator Bash cat — DENY
+FIXTURE_BASH_CAT='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"cat lib/foo.ex"},"agent_id":"","agent_type":""}'
+run_test "orchestrator Bash cat denies" "2" "$FIXTURE_BASH_CAT"
+
+# Test B7: orchestrator Bash leading whitespace grep — DENY
+FIXTURE_BASH_WS='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"  grep x"},"agent_id":"","agent_type":""}'
+run_test "orchestrator Bash leading-whitespace grep denies" "2" "$FIXTURE_BASH_WS"
+
+# Test B8: orchestrator Bash git status — ALLOW
+FIXTURE_BASH_GIT_STATUS='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"git status"},"agent_id":"","agent_type":""}'
+run_test "orchestrator Bash git status allows" "0" "$FIXTURE_BASH_GIT_STATUS"
+
+# Test B9: orchestrator Bash git diff — ALLOW
+FIXTURE_BASH_GIT_DIFF='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"git diff -- lib/foo.ex"},"agent_id":"","agent_type":""}'
+run_test "orchestrator Bash git diff allows" "0" "$FIXTURE_BASH_GIT_DIFF"
+
+# Test B10: orchestrator Bash git log — ALLOW
+FIXTURE_BASH_GIT_LOG='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"git log origin/main..HEAD --oneline"},"agent_id":"","agent_type":""}'
+run_test "orchestrator Bash git log allows" "0" "$FIXTURE_BASH_GIT_LOG"
+
+# Test B11: orchestrator Bash make gate-status — ALLOW
+FIXTURE_BASH_GATE='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"make gate-status"},"agent_id":"","agent_type":""}'
+run_test "orchestrator Bash make gate-status allows" "0" "$FIXTURE_BASH_GATE"
+
+# Test B12: orchestrator Bash date — ALLOW
+FIXTURE_BASH_DATE='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"date -u +%Y%m%d"},"agent_id":"","agent_type":""}'
+run_test "orchestrator Bash date allows" "0" "$FIXTURE_BASH_DATE"
+
+# Test B13: orchestrator Bash git log --grep= — ALLOW (grep not leading)
+FIXTURE_BASH_GIT_LOG_GREP='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"git log --grep=foo"},"agent_id":"","agent_type":""}'
+run_test "orchestrator Bash git log --grep= allows (grep not leading)" "0" "$FIXTURE_BASH_GIT_LOG_GREP"
+
+# Test B14: subagent (non-empty agent_id) Bash grep — ALLOW
+FIXTURE_BASH_SUBAGENT='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"grep -rn foo lib/"},"agent_id":"abc123","agent_type":"developer-phoenix-backend"}'
+run_test "subagent Bash grep allows (not orchestrator)" "0" "$FIXTURE_BASH_SUBAGENT"
+
+# Test B15: planner (agent_type=planner) Bash grep — ALLOW
+FIXTURE_BASH_PLANNER='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"grep -rn foo lib/"},"agent_id":"","agent_type":"planner"}'
+run_test "planner Bash grep allows (AGENT_TYPE non-empty)" "0" "$FIXTURE_BASH_PLANNER"
+
+# Test B16: CLAUDE_ROLE=debug Bash grep — ALLOW
+FIXTURE_BASH_DEBUG='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"grep foo"},"agent_id":"","agent_type":""}'
+CLAUDE_ROLE=debug run_test "CLAUDE_ROLE=debug Bash grep allows" "0" "$FIXTURE_BASH_DEBUG"
+
+# Test B17: CLAUDE_ROLE=shape Bash find — ALLOW
+FIXTURE_BASH_SHAPE='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"find ."},"agent_id":"","agent_type":""}'
+CLAUDE_ROLE=shape run_test "CLAUDE_ROLE=shape Bash find allows" "0" "$FIXTURE_BASH_SHAPE"
+
+# Test B18: PI_ROLE=debug Bash grep — ALLOW
+FIXTURE_BASH_PI_DEBUG='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"grep foo"},"agent_id":"","agent_type":""}'
+PI_ROLE=debug run_test "PI_ROLE=debug Bash grep allows" "0" "$FIXTURE_BASH_PI_DEBUG"
+
 echo ""
 echo "Results: $pass passed, $fail failed"
 

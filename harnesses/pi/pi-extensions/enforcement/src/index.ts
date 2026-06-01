@@ -25,6 +25,7 @@ import { register as registerDeveloperNoSelfGate } from "./hooks/developer-no-se
 import { register as registerEnvVarSampleConsistency } from "./hooks/env-var-sample-consistency";
 import { register as registerLlmSuiteGuard } from "./hooks/llm-suite-guard";
 import { register as registerLlmTestGuard } from "./hooks/llm-test-guard";
+import { register as registerOrchestratorReadDiscipline } from "./hooks/orchestrator-read-discipline";
 // BEGIN-GENERATED-ENFORCEMENT-BLOCK
 import { register as registerNoCatPipe } from "./hooks/no-cat-pipe";
 import { register as registerNoGitStash } from "./hooks/no-git-stash";
@@ -67,6 +68,7 @@ export default function (pi: ExtensionAPI): void {
   registerEnvVarSampleConsistency(pi);
   registerLlmSuiteGuard(pi);
   registerLlmTestGuard(pi);
+  registerOrchestratorReadDiscipline(pi);
   // BEGIN-GENERATED-ENFORCEMENT-BLOCK
   registerNoCatPipe(pi);
   registerNoGitStash(pi);

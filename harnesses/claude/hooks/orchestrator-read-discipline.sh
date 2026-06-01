@@ -1,25 +1,32 @@
 #!/bin/bash
-# orchestrator-read-discipline.sh — PreToolUse Read hook for orchestrator.
+# orchestrator-read-discipline.sh — PreToolUse Read|Bash hook for orchestrator.
 #
 # HOOK-MANIFEST:
 # event: PreToolUse
-# matcher: Read
+# matcher: Read|Bash
 # surface: user_global
 # signal: AGENT_TYPE
 # role: *
 # harnesses: claude_code
-# rationale: CLAUDE_ROLE-keyed; Pi orchestrator has no equivalent read discipline hook
+# rationale: CLAUDE_ROLE-keyed; gates orchestrator Read (path allowlist) and Bash (exploration-verb deny)
 #
-# Blocks the orchestrator from reading arbitrary codebase files.
+# Blocks the orchestrator from:
+#   1. Reading arbitrary codebase files (Read tool — path allowlist enforced)
+#   2. Investigating via Bash with exploration verbs: find, grep, rg, ls, tree, cat
+#      (denial anchored on LEADING token only so git/make/date/cp pass through)
+#
 # Orchestrator should delegate exploration to planner or Explore subagent.
 #
-# Allowed paths:
+# Read — Allowed paths:
 #   - codegen/logging/* (session logs only)
 #   - codegen/rules/roles/orchestrator.md, codegen/rules/shared/git-readonly.md, codegen/rules/_core/* (orchestrator rules)
 #   - codegen/rules/stacks/phoenix/_core.md, codegen/rules/stacks/phoenix/orchestrator.md (Phoenix orchestrator rules)
 #   - codegen/rules/INDEX.md, codegen/rules/STYLE_GUIDE.md
 #   - codegen/*.md (top-level design docs — NOT subdirs like recipes/, templates/, rules/)
 #   - codegen/pitches/** (pitch lifecycle dirs — draft/, ready/, shipped/; matches the write-hook surface so /document can read its own drafts)
+#
+# Bash — Denied when command LEADS with: find | grep | rg | ls | tree | cat
+#   Any other Bash (git status/diff, git log, make gate-status, date, cp, log redirects) → allowed.
 #
 # Subagents (non-empty agent_id) are always allowed through.
 #
@@ -41,11 +48,6 @@ if [ "$_role" = "debug" ] || [ "$_role" = "shape" ] || [ "$_role" = "refactor" ]
     exit 0
 fi
 
-# Only gate Read calls.
-if [ "$TOOL_NAME" != "Read" ]; then
-    exit 0
-fi
-
 # Subagents (non-empty agent_id) — pass through.
 if [ -n "$AGENT_ID" ]; then
     exit 0
@@ -54,6 +56,25 @@ fi
 # Only apply to orchestrator (empty agent_type = orchestrator level).
 # Planner and other named agents have non-empty AGENT_TYPE.
 if [ -n "$AGENT_TYPE" ]; then
+    exit 0
+fi
+
+# Branch on tool name.
+if [ "$TOOL_NAME" = "Bash" ]; then
+    # Deny when command leads with an exploration verb.
+    # Anchor on leading token only — never substring — so git log --grep=, make gate-status, date, cp stay allowed.
+    _cmd="${COMMAND:-}"
+    if printf '%s' "$_cmd" | grep -qE '^[[:space:]]*(find|grep|rg|ls|tree|cat)\b'; then
+        # Extract the leading verb for the deny message.
+        _verb=$(printf '%s' "$_cmd" | grep -oE '(find|grep|rg|ls|tree|cat)' | head -1)
+        deny "Orchestrator cannot investigate via Bash (\`${_verb}\`). Delegate to Explore subagent or planner.
+Example: delegate to planner with 'Find X in lib/...' — planner reads/greps codebase, returns 100-token answer instead of flooding orchestrator context."
+    fi
+    exit 0
+fi
+
+# Read tool — apply path allowlist.
+if [ "$TOOL_NAME" != "Read" ]; then
     exit 0
 fi
 

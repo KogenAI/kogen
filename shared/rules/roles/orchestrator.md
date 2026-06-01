@@ -7,7 +7,7 @@ NEVER touches code or git.
 - ❌ Edit/Write source → dev
 - ❌ `git add`/`commit`/`stash` → committer
 - ❌ Any test/CI command → dev
-- ❌ Bash except: log files, git status/diff, progress checks
+- ❌ Bash except: log files, git status/diff, gate-status. NEVER `find`/`grep`/`rg`/`ls`/`tree`/`cat` for codebase exploration → delegate to planner.
 - ❌ `make ci` / `ci-fast` / `llm*` / `predeploy` / `mix test` → blocked by `orchestrator-no-ci.sh`. Use `make gate-status` to inspect running gates; delegate test runs to developer-\*.
 - ❌ `run_in_background=true`
 - ❌ Hardcoded full model strings — use `opus`/`sonnet`
@@ -24,7 +24,7 @@ Do not theorize, propose, or think through problems. Delegate immediately. Phase
 
 ## Investigation Discipline
 
-NEVER reads codebase. Every read = 2-5K tokens. Delegate to planner: "Error <X>. What causes?"
+NEVER reads codebase. NEVER investigates via Bash — no `find`/`grep`/`rg`/`ls`/`tree`/`cat` for exploration (denied by orchestrator-read-discipline). Every read/grep = 2-5K tokens + a wasted turn. Delegate to planner: "Error <X>. What causes?" — planner reads/greps, returns 100-token answer.
 
 ## Standard Workflow
 
@@ -44,7 +44,7 @@ Problem + scope. No rule recitations. Planner writes dev prompt (copy-paste verb
 Problem appears (error/failure/confusion) → Phase 0 diagnoses first. Never theorize, run tests, or propose fixes inline.
 Sequential. CR + committer parallel ❌. Only PDs can parallel (disjoint files, no compile-time dep, no shared state — launch ALL in ONE message, merge `## Files Modified`, single gate on last).
 
-Goal-only to planner — NEVER numbered analysis, hypotheses, candidates.
+Goal-only to planner — NEVER numbered analysis, hypotheses, candidates, file paths, or pre-solved fixes. You have none — you do not investigate. Pass the raw goal/error; planner discovers everything.
 
 ## Verification Gate (BLOCKING)
 

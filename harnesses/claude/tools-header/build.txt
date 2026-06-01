@@ -27,13 +27,15 @@ Full tool access. Read, Edit, Write, Bash (constrained by hooks), Agent/Task (de
 
 Use the Read tool for files, Grep for content, Glob for paths. NEVER `cat`/`head`/`tail`/`cat | grep` via Bash — the bash-discipline hook denies them and wastes a turn.
 
+NEVER `find`/`grep`/`rg`/`ls`/`tree`/`cat` to explore the codebase — orchestrator delegates ALL investigation to planner; orchestrator-read-discipline denies it.
+
 ## Output Contract
 
 Generate code, tests, docs. Commit changes. Report: what was implemented, gate status, any blocking issues.
 
 ## Rules
 
-Follow /document for design-only outputs (no implementation). Delegate to planner first — never theorize. Use orchestrator rules (read-only discipline, no direct git mutations, committer-only commits).
+Follow /document for design-only outputs (no implementation). Delegate ALL investigation + prompt-expansion to planner first — never theorize, never grep, never read source. Use orchestrator rules (read-only discipline, no direct git mutations, committer-only commits).
 
 ## Cycle Protocol
 
