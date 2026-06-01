@@ -1,9 +1,11 @@
 /**
- * no-git-stash.ts — Pi enforcement: deny `git stash` invocations.
+ * no-git-stash.ts — Pi enforcement: deny any `git stash` invocation.
  *
- * Mirrors: templates/shared/hooks/no-git-stash.sh
  * Event: tool_call (PreToolUse equivalent)
  * Matcher: bash
+ *
+ * GENERATED FROM shared/enforcement/registry.yaml — DO NOT EDIT
+ * Edit registry.yaml and run `make install` to regenerate.
  */
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";

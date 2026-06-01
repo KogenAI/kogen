@@ -142,6 +142,7 @@ codegen/                          ← repo root
 | `shared/rules/_core/`  | Universal rules: bash discipline, cwd, output style, session log                            |
 | `shared/rules/roles/`  | Per-role rules: committer, context-curator, developer, orchestrator, planner, reviewer      |
 | `shared/rules/stacks/` | Stack rules: `phoenix/` (Elixir/LiveView), `static/` (Tailwind v4, Hugo, Vite)              |
+| `shared/enforcement/`  | Declarative enforcement registry (`registry.yaml`) + schema docs; compiler generates hooks  |
 | `shared/scaffold/`     | `scaffold.sh` + `mutations/` + `.eex` templates used by `codegen-scaffold`                  |
 | `shared/subagents/`    | `.md.j2` templates rendered into per-harness agent prompts installed to `~/.claude/agents/` |
 | `shared/usage_rules/`  | Machine-generated hex library API summaries; one file per library-version                   |
@@ -160,18 +161,21 @@ codegen/                          ← repo root
 
 ## Artifact Ownership and Update Triggers
 
-| Artifact                                          | Owner                    | Updated by                                       | Trigger                                    |
-| ------------------------------------------------- | ------------------------ | ------------------------------------------------ | ------------------------------------------ |
-| `harnesses/claude/claude-code-settings.json`      | Generator                | `hook_registrations.py`                          | `make install` or `make hook-parity`       |
-| `harnesses/claude/claude-build-system-prompt.txt` | Generator                | `generate.sh`                                    | `make install`                             |
-| `AGENTS.md` (repo root)                           | Hand-authored plain file | Manual edit by developer                         | When codegen session loop docs change      |
-| `CLAUDE.md` (repo root)                           | Hand-authored plain file | Manual edit by developer                         | When codegen session loop docs change      |
-| `shared/` (all subdirs)                           | Contributors / curator   | Manual edit or context-curator subagent          | Feature development, learning accumulation |
-| `context/*.md`                                    | Context curator          | `context-curator.md.j2` subagent + manual        | Post-reviewer in each dev cycle            |
-| `codegen/logging/*.md`                            | Orchestrator + subagents | Session log write/edit during dev sessions       | Every dev cycle on THIS repo               |
-| `test_harness/last_green.json`                    | CI / `record-green.sh`   | `make record-green` after `make test-all` passes | Pre-deploy gate                            |
-| `harnesses/pi/pi-extensions/*/node_modules/`      | npm                      | `npm install` in extension dir                   | After any `package.json` change            |
-| Root `node_modules/`                              | npm                      | `npm install` at repo root                       | After `package.json` changes               |
+| Artifact                                          | Owner                     | Updated by                                       | Trigger                                    |
+| ------------------------------------------------- | ------------------------- | ------------------------------------------------ | ------------------------------------------ |
+| `harnesses/claude/claude-code-settings.json`      | Generator                 | `hook_registrations.py`                          | `make install` or `make hook-parity`       |
+| `harnesses/claude/claude-build-system-prompt.txt` | Generator                 | `generate.sh`                                    | `make install`                             |
+| `AGENTS.md` (repo root)                           | Hand-authored plain file  | Manual edit by developer                         | When codegen session loop docs change      |
+| `CLAUDE.md` (repo root)                           | Hand-authored plain file  | Manual edit by developer                         | When codegen session loop docs change      |
+| `shared/` (all subdirs)                           | Contributors / curator    | Manual edit or context-curator subagent          | Feature development, learning accumulation |
+| `context/*.md`                                    | Context curator           | `context-curator.md.j2` subagent + manual        | Post-reviewer in each dev cycle            |
+| `codegen/logging/*.md`                            | Orchestrator + subagents  | Session log write/edit during dev sessions       | Every dev cycle on THIS repo               |
+| `test_harness/last_green.json`                    | CI / `record-green.sh`    | `make record-green` after `make test-all` passes | Pre-deploy gate                            |
+| `harnesses/pi/pi-extensions/*/node_modules/`      | npm                       | `npm install` in extension dir                   | After any `package.json` change            |
+| Root `node_modules/`                              | npm                       | `npm install` at repo root                       | After `package.json` changes               |
+| `shared/enforcement/registry.yaml`                | Contributors / curator    | Manual edit; compiler reads at `make install`    | When adding/changing denial rules          |
+| `harnesses/claude/hooks/no-*.sh` (generated)      | `enforcement_compiler.py` | `make install` (compiler step)                   | When `registry.yaml` changes               |
+| `harnesses/pi/.../hooks/no-*.ts` (generated)      | `enforcement_compiler.py` | `make install` (compiler step)                   | When `registry.yaml` changes               |
 
 ---
 

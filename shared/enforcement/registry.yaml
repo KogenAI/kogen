@@ -1,0 +1,67 @@
+# enforcement/registry.yaml — declarative enforcement hook registry.
+#
+# Each entry is the single source of truth for one denial rule.
+# Fields:
+#   id          — kebab-case slug; becomes the filename (no-cat-pipe → no-cat-pipe.sh / .ts)
+#   generated   — true means the compiler owns the output files; false means hand-authored
+#   event       — Claude Code hook event (PreToolUse, SubagentStop, Stop)
+#   tool_guard  — tool name that triggers the check (Bash, Write, Edit, …)
+#   match       — regex-neutral pattern string (single); dialect-translated per target
+#   match_all   — list of regex-neutral patterns (all must match; AND logic)
+#                 mutually exclusive with `match`
+#   message     — denial reason shown to the agent (verbatim string)
+#   surface     — hook surface (user_global, project, …)
+#   signal      — hook signal (none, AGENT_TYPE, …)
+#   role        — role scope (* = all roles)
+#   harnesses   — which harnesses deploy this hook (all, claude, pi)
+#
+# Pattern dialect rules:
+#   Registry patterns use regex-neutral syntax:
+#     \s    — whitespace (NOT [[:space:]] — that is bash-ERE only)
+#     \b    — word boundary (supported in both bash ERE and JS)
+#     (a|b) — alternation (both dialects)
+#   Compiler translates to target dialect:
+#     bash:  \s → [[:space:]]
+#     ts/js: \s → \s (pass through — JS already uses \s)
+#
+# FORBIDDEN in registry patterns:
+#   backreferences (\1, \2, …)
+#   lookahead/lookbehind ((?=…), (?!…), (?<=…), (?<!…))
+
+- id: no-cat-pipe
+  generated: true
+  description: "deny `cat FILE | head|tail|grep|less|more`"
+  event: PreToolUse
+  tool_guard: Bash
+  match: "cat\\s+[^|]*\\|\\s*(head|tail|grep|less|more)\\b"
+  message: "Use Read tool with offset/limit instead of `cat | head/tail`. Use Grep tool instead of `cat | grep`. Truncation hides relevant lines."
+  surface: user_global
+  signal: none
+  role: "*"
+  harnesses: all
+
+- id: no-git-stash
+  generated: true
+  description: "deny any `git stash` invocation"
+  event: PreToolUse
+  tool_guard: Bash
+  match: "\\bgit\\s+stash\\b"
+  message: "git stash forbidden. Commit WIP to a scratch branch or use worktrees. Stash hides work from orchestrator + reviewer."
+  surface: user_global
+  signal: none
+  role: "*"
+  harnesses: all
+
+- id: no-python-json
+  generated: true
+  description: "deny inline python JSON parsing"
+  event: PreToolUse
+  tool_guard: Bash
+  match_all:
+    - "\\bpython3?\\b[^|;&]*-c\\b"
+    - "import\\s+json|json\\.load"
+  message: "Don't parse JSON with python3 -c. Use Read tool — JSON files render readably. Inline python parsing is a thrash anti-pattern (see token-budget rule)."
+  surface: user_global
+  signal: none
+  role: "*"
+  harnesses: all

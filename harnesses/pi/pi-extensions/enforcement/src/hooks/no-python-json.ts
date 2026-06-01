@@ -1,9 +1,11 @@
 /**
  * no-python-json.ts — Pi enforcement: deny inline python JSON parsing.
  *
- * Mirrors: templates/shared/hooks/no-python-json.sh
  * Event: tool_call (PreToolUse equivalent)
  * Matcher: bash
+ *
+ * GENERATED FROM shared/enforcement/registry.yaml — DO NOT EDIT
+ * Edit registry.yaml and run `make install` to regenerate.
  */
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";

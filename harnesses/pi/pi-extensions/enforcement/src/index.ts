@@ -25,9 +25,11 @@ import { register as registerDeveloperNoSelfGate } from "./hooks/developer-no-se
 import { register as registerEnvVarSampleConsistency } from "./hooks/env-var-sample-consistency";
 import { register as registerLlmSuiteGuard } from "./hooks/llm-suite-guard";
 import { register as registerLlmTestGuard } from "./hooks/llm-test-guard";
+// BEGIN-GENERATED-ENFORCEMENT-BLOCK
 import { register as registerNoCatPipe } from "./hooks/no-cat-pipe";
 import { register as registerNoGitStash } from "./hooks/no-git-stash";
 import { register as registerNoPythonJson } from "./hooks/no-python-json";
+// END-GENERATED-ENFORCEMENT-BLOCK
 import { register as registerPhoenixBackendDeveloperGuard } from "./hooks/phoenix-backend-developer-guard";
 import { register as registerPhoenixFrontendDeveloperGuard } from "./hooks/phoenix-frontend-developer-guard";
 import { register as registerPlannerGuard } from "./hooks/planner-guard";
@@ -65,9 +67,11 @@ export default function (pi: ExtensionAPI): void {
   registerEnvVarSampleConsistency(pi);
   registerLlmSuiteGuard(pi);
   registerLlmTestGuard(pi);
+  // BEGIN-GENERATED-ENFORCEMENT-BLOCK
   registerNoCatPipe(pi);
   registerNoGitStash(pi);
   registerNoPythonJson(pi);
+  // END-GENERATED-ENFORCEMENT-BLOCK
   registerPhoenixBackendDeveloperGuard(pi);
   registerPhoenixFrontendDeveloperGuard(pi);
   registerPlannerGuard(pi);

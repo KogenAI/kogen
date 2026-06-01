@@ -1,9 +1,11 @@
 /**
  * no-cat-pipe.ts — Pi enforcement: deny `cat FILE | head|tail|grep|less|more`.
  *
- * Mirrors: templates/shared/hooks/no-cat-pipe.sh
  * Event: tool_call (PreToolUse equivalent)
  * Matcher: bash
+ *
+ * GENERATED FROM shared/enforcement/registry.yaml — DO NOT EDIT
+ * Edit registry.yaml and run `make install` to regenerate.
  */
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";

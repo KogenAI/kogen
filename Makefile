@@ -48,7 +48,13 @@ hook-parity:
 	@echo "hook-manifest-parity: PASS"
 	@echo "hook-parity: PASS"
 
-install: hook-parity
+install:
+	@python3 "$(SCRIPT_DIR)/templates/generator/enforcement_compiler.py" \
+		--registry "$(SCRIPT_DIR)/shared/enforcement/registry.yaml" \
+		--bash-out "$(SCRIPT_DIR)/harnesses/claude/hooks" \
+		--ts-out "$(SCRIPT_DIR)/harnesses/pi/pi-extensions/enforcement/src/hooks" \
+		--index "$(SCRIPT_DIR)/harnesses/pi/pi-extensions/enforcement/src/index.ts"
+	@$(MAKE) hook-parity
 	@bash "$(SCRIPT_DIR)/templates/generator/generate-pi-extension.sh" "$(PI_EXTENSION_DIR)"
 	@python3 "$(SCRIPT_DIR)/templates/generator/hook_registrations.py" \
 		--hooks-dir "$(SCRIPT_DIR)/harnesses/claude/hooks" \
@@ -61,6 +67,53 @@ install: hook-parity
 
 # harness-parity: verify codegen-build + dispatch.sh stubs are self-consistent.
 # Runs the codegen-build_test.sh script in isolation.
+# enforce-registry-parity: compile to /tmp and diff all generated files vs committed.
+# Exits non-zero if any generated file differs from what is committed.
+.PHONY: enforce-registry-parity
+enforce-registry-parity:
+	@cp "$(SCRIPT_DIR)/harnesses/pi/pi-extensions/enforcement/src/index.ts" /tmp/enforce-parity-index.ts.tmp
+	@python3 "$(SCRIPT_DIR)/templates/generator/enforcement_compiler.py" \
+		--registry "$(SCRIPT_DIR)/shared/enforcement/registry.yaml" \
+		--bash-out /tmp/enforce-parity-bash \
+		--ts-out /tmp/enforce-parity-ts \
+		--index /tmp/enforce-parity-index.ts.tmp > /dev/null 2>&1
+	@fail=0; \
+	for f in /tmp/enforce-parity-bash/*.sh; do \
+		name=$$(basename "$$f"); \
+		committed="$(SCRIPT_DIR)/harnesses/claude/hooks/$$name"; \
+		if [ ! -f "$$committed" ]; then \
+			echo "enforce-registry-parity: MISSING committed $$committed"; \
+			fail=1; \
+		elif ! diff -q "$$committed" "$$f" > /dev/null 2>&1; then \
+			echo "enforce-registry-parity: DRIFT in $$name (bash)"; \
+			diff -u "$$committed" "$$f" || true; \
+			fail=1; \
+		fi; \
+	done; \
+	for f in /tmp/enforce-parity-ts/*.ts; do \
+		name=$$(basename "$$f"); \
+		committed="$(SCRIPT_DIR)/harnesses/pi/pi-extensions/enforcement/src/hooks/$$name"; \
+		if [ ! -f "$$committed" ]; then \
+			echo "enforce-registry-parity: MISSING committed $$committed"; \
+			fail=1; \
+		elif ! diff -q "$$committed" "$$f" > /dev/null 2>&1; then \
+			echo "enforce-registry-parity: DRIFT in $$name (ts)"; \
+			diff -u "$$committed" "$$f" || true; \
+			fail=1; \
+		fi; \
+	done; \
+	committed_index="$(SCRIPT_DIR)/harnesses/pi/pi-extensions/enforcement/src/index.ts"; \
+	if [ ! -f "$$committed_index" ]; then \
+		echo "enforce-registry-parity: MISSING committed $$committed_index"; \
+		fail=1; \
+	elif ! diff -q "$$committed_index" /tmp/enforce-parity-index.ts.tmp > /dev/null 2>&1; then \
+		echo "enforce-registry-parity: DRIFT in index.ts"; \
+		diff -u "$$committed_index" /tmp/enforce-parity-index.ts.tmp || true; \
+		fail=1; \
+	fi; \
+	if [ $$fail -eq 0 ]; then echo "enforce-registry-parity: PASS"; fi; \
+	exit $$fail
+
 .PHONY: harness-parity
 harness-parity:
 	@bash "$(SCRIPT_DIR)/harnesses/claude/hooks/codegen-build_test.sh"
@@ -73,7 +126,7 @@ harness-parity:
 # Job count caps at 8 to avoid thrashing on smaller machines.
 # Post-deps stages (hook-tests, phoenix scaffold, test_harness/install, npm) run
 # concurrently via & + wait to reduce wall time.
-test: hook-parity harness-parity test-generator
+test: hook-parity harness-parity test-generator enforce-registry-parity
 	@set -e; \
 	pids=(); \
 	./harnesses/claude/hooks/run-tests.sh & pids+=($$!); \
