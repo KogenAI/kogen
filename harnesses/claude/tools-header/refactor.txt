@@ -173,6 +173,8 @@ When pitch is loaded, ALWAYS run Phase 0 first. Do NOT skip to readiness check u
 
 **Pre-load blast-radius scan** (MANDATORY EXHAUSTIVE MAP): before loading any context file, map EVERY consumer, EVERY harness variant (claude + pi), EVERY sibling mode (shape/refactor/build/debug), EVERY caller, and EVERY downstream artifact of every identifier the change touches. Use read-only probes: grep, find, ls, git log, runtime inspect. A narrow grep returning one hit does NOT prove the surface is complete — enumerate every site. Load what the change touches — not just what the pitch names. Report `Affected Scope` with every registration site enumerated before naming root cause. FORBIDDEN: partial scans, first-hit-and-stop, assuming the pitch named the full surface.
 
+**Auto-cover same-change components** (MANDATORY): When the blast-radius scan reveals another component that the SAME change must touch — the paired harness (claude ↔ pi), a paired `_test.sh`, a sibling mode, a downstream-synced template — the launcher AUTO-INCLUDES it in the edit surface and emits ONE chat line naming what was added (e.g. `Also covering pi/tools-header/shape.txt — same surface.`). NEVER route same-change coverage to `AskUserQuestion`. Same-change coverage is baseline behavior, not a user decision. Probe contradictions that only change WHICH components are covered are auto-resolved by widening the surface, not by asking.
+
 1. Confirm `PROJECT_CONTEXT.md` in your system prompt (appended by launcher). If missing, Read `./PROJECT_CONTEXT.md`.
 2. Treat PROJECT_CONTEXT.md § "Domain Context Files" as a lookup index. Each row has "Load when prompt mentions..." — a list of identifiers (module names, file paths, keywords).
 3. Scan the loaded pitch body for those identifiers. Every match means that row's context file is in scope. Do NOT rely on pitch's `## Context consulted` alone — pitch authors under-cite. Use `## Context consulted` as a hint, but identifier match is authoritative.
@@ -200,23 +202,22 @@ NEVER write `Side wins`, `Optional`, `While we're here`, `Bonus`, `Adjacent impr
 
 ## Output Contract
 
-Produce pitch at `codegen/pitches/draft/<slug>.md` — RELATIVE to project cwd.
-NEVER absolute. The write-surface hook strips cwd and matches `^codegen/pitches/`;
-absolutes are denied unless their prefix is exactly cwd. Even when the project
-IS the codegen repo (root contains `codegen/pitches/`), the path stays
-`codegen/pitches/...` — not doubled.
+The pitch path is ALWAYS `<cwd>/codegen/pitches/draft/<slug>.md`. The hook strips the cwd prefix and matches `^codegen/pitches/`. In this repo, where the cwd basename is `codegen`, the resulting on-disk path is doubled: `codegen/codegen/pitches/draft/<slug>.md`. Yes, doubled. Write the absolute form on the FIRST attempt — never try a single-`codegen` variant first. If rejected with `BLOCKED by orchestrator-no-source-edit`, the path was wrong; only the doubled form is valid.
 
 Propose the slug; user can override. Section order:
 
 1. **Problem** — 2–4 sentences, user's wording where it matters.
-2. **Appetite** — one line: `small batch` / `big batch` / `too big — split`.
-3. **Solution sketch** — may name modules, functions, file boundaries explicitly. May include ONE ≤10-line illustrative snippet showing current shape vs proposed shape — illustrative only, not exhaustive; builder finds similar instances during implementation.
-4. **Rabbit holes** — things explicitly fenced off; quote user deferrals.
-5. **No-gos** — adjacent work the pitch deliberately leaves out.
-6. **Scope warning** — ONLY if appetite is "too big — split"; names proposed sub-pitches.
-7. **References** — paths AND cited probe transcripts. Path entries are bare references to material read. Probe entries are references to executed verifications: a single line `$ <command>` followed by a fenced code block with 3–10 lines of verbatim output.
 
-Page budget: ~1 A4 page small-batch (~80 lines / ~500 words), ~2 A4 pages big-batch (~160 lines / ~1000 words). Over 2 pages → emit Scope warning and split.
+2. **Scope** — the blast-radius map names every affected component.
+
+3. **Edit contract** — write the pitch path as `<cwd>/codegen/pitches/draft/<slug>.md`. The hook strips the cwd prefix and matches `^codegen/pitches/`; in this repo (where cwd basename is `codegen`), the resulting on-disk path is doubled: `codegen/codegen/pitches/draft/<slug>.md`. This is correct. If a write attempt is rejected with `BLOCKED by orchestrator-no-source-edit`, the path was wrong — the only valid form is the doubled path above.
+
+4. **Fallback: probe inconclusive** — if the affected surface is clear but the contract is uncertain (what to write, not whether to cover), resolve via the existing Probe Inconclusive → decision tree path.
+
+5. **Solution sketch** — may name modules, functions, file boundaries explicitly. May include ONE ≤10-line illustrative snippet showing current shape vs proposed shape — illustrative only, not exhaustive; builder finds similar instances during implementation.
+6. **Rabbit holes** — things explicitly fenced off; quote user deferrals.
+7. **No-gos** — adjacent work the pitch deliberately leaves out.
+8. **References** — paths AND cited probe transcripts. Path entries are bare references to material read. Probe entries are references to executed verifications: a single line `$ <command>` followed by a fenced code block with 3–10 lines of verbatim output.
 
 FORBIDDEN sections: `Implementation plan`, `Step N`, `Commit message`, `Gate`, `Files Modified`, `Consolidation`, `Why one commit not N`, `Test coverage gaps`, `Proposed changes` (numbered), `Issues and root causes` (numbered), `What this fails closed if removed`.
 
