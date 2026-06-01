@@ -32,7 +32,32 @@ shared/rules/roles/
 - **hooks**: several hooks enforce role rules at runtime — e.g. `orchestrator-no-source-edit.sh` enforces orchestrator's never-implement rule; `pre-commit-guard.sh` enforces committer-only commits; `curator-before-committer.sh` enforces reviewer → curator → committer sequencing — see `context/hooks.md`
 - **rules-core**: role rules are layered on top of core discipline rules (`context/rules-core.md`); both must be satisfied
 - **scaffold**: `AGENTS-phoenix.md.j2` and `AGENTS-static.md.j2` embed orchestrator rules for downstream apps — sync burden when orchestrator.md changes; see `context/scaffold.md`
-- **curator-routing**: context-curator's generic rule (`shared/rules/roles/context-curator.md`) delegates project paths to `context/curator-routing.md` — the `[shared]` write surface on disk is `shared/rules/**`; `codegen/rules/` is a symlink to `shared/rules/` created by `make install` and must NOT be edited directly
+- **curator-routing**: context-curator's generic rule (`shared/rules/roles/context-curator.md`) defines the write surface and decision tree — see § Curator Write Surface below; `context/curator-routing.md` carries project-specific path targets; `codegen/rules/` is a symlink to `shared/rules/` — all curators edit via the symlink path `codegen/rules/**`, never via `shared/rules/` directly
+
+## Curator Write Surface
+
+The guard `context-curator-guard.sh` enforces exactly three allowed path patterns (line numbers in the hook source):
+
+- Line 46: `(^|/)context/` — allows `context/*.md` relative to any project root (all repos)
+- Line 51: `(^|/)codegen/rules(/|$)` — allows `codegen/rules/**` symlink path (all repos; symlink target is `<codegen-repo>/shared/rules`)
+- Line 56: `(^|/)codegen/logging/` — allows `codegen/logging/*.md` session logs (codegen-on-codegen only)
+
+**Path-nesting note**: all curators use `codegen/rules/**` (the symlink path). Direct `shared/rules/` edits are DENIED — the guard does not allow them. Hook receives raw symlink path (not resolved target). Boundary: `codegen/recipes/` and `codegen/rulesets/` still DENIED — pattern anchors on `/rules(/|$)`.
+
+**Propagation difference**:
+
+- `context/*.md` — checked-in file; sticks on commit; `make install` never touches it.
+- `codegen/rules/**` — symlink to `shared/rules/`; source for `{% include %}` in `.md.j2` templates; edit is inert until `make install` re-renders agent prompts and installs them to `~/.claude/`.
+
+**Decision tree** (determines where a `[shared]` learning goes):
+
+1. Learning is about hooks, enforcement, generator pipeline, or framework mechanics (already captured in agent-readable context data) → `context/*.md` — commit, no regeneration.
+2. Learning requires a new rule or discipline edit in `shared/rules/**`:
+   - Downstream repo → edit `codegen/rules/<path>` via symlink path (guard allows it); note `make install` must run in codegen repo before agents see the change.
+   - Codegen-on-codegen → edit `codegen/rules/<path>` via symlink path (guard allows it); note `make install` required before agents see the change. Rule edits should be deferred to framework-focused sessions, not routine curation cycles.
+3. Learning is project-specific (module names, file paths, business logic) → skip; out of curator scope.
+
+Cross-reference: full guard pattern analysis and path-nesting mechanics → `context/hooks.md` § context-curator-guard Write Surface; rule text → `shared/rules/roles/context-curator.md` § Write Surface.
 
 ## Committer Spawn Timing
 

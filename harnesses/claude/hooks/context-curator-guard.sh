@@ -11,7 +11,7 @@
 #
 # Restricts Edit/Write/MultiEdit to the curator's allowed write surface:
 #   - project context/**: context/** relative to CWD
-#   - canonical rules: codegen/shared/rules/**
+#   - rules: codegen/rules/** (symlink to shared/rules; used by all curators)
 #   - session logs: codegen/logging/** relative to CWD
 #
 # All other agents pass through unconditionally.
@@ -47,8 +47,8 @@ if printf '%s' "$FILE_PATH" | grep -qE '(^|/)context/'; then
     exit 0
 fi
 
-# Allowed: canonical codegen/shared/rules/**
-if printf '%s' "$FILE_PATH" | grep -qE '/codegen/shared/rules(/|$)'; then
+# Allowed: codegen/rules/** (symlink to shared/rules)
+if printf '%s' "$FILE_PATH" | grep -qE '(^|/)codegen/rules(/|$)'; then
     exit 0
 fi
 
@@ -58,5 +58,5 @@ if printf '%s' "$FILE_PATH" | grep -qE '(^|/)codegen/logging/'; then
 fi
 
 # Everything else is denied for context-curator.
-deny "BLOCKED by context-curator-guard: $FILE_PATH is outside the curator's allowed write surface. Curator may only write to: context/**, codegen/shared/rules/**, codegen/logging/**."
+deny "BLOCKED by context-curator-guard: $FILE_PATH is outside the curator's allowed write surface. Curator may only write to: context/**, codegen/rules/**, codegen/logging/**."
 exit 0

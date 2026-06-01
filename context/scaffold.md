@@ -68,14 +68,14 @@ codegen-scaffold
 
 `AGENTS-phoenix.md.j2` and `AGENTS-static.md.j2` define phases that guide the orchestrator through each agent cycle:
 
-| Phase | Agent         | Role                                                               |
-| ----- | ------------- | ------------------------------------------------------------------ |
-| 0     | Orchestrator  | Session start, context load                                        |
-| 1     | Planner       | Planning and slicing                                               |
-| 2     | Developer     | Implementation                                                     |
-| 3     | Reviewer      | Code review and approval                                           |
+| Phase | Agent           | Role                                                                 |
+| ----- | --------------- | -------------------------------------------------------------------- |
+| 0     | Orchestrator    | Session start, context load                                          |
+| 1     | Planner         | Planning and slicing                                                 |
+| 2     | Developer       | Implementation                                                       |
+| 3     | Reviewer        | Code review and approval                                             |
 | 3.5   | Context-curator | Updates context files post-reviewer; provides backstop before commit |
-| 4     | Committer     | Commits changes to git                                             |
+| 4     | Committer       | Commits changes to git                                               |
 
 **Phase 3.5 curator insertion**: When updating downstream templates due to orchestrator role changes, ensure Phase 3.5 exists between reviewer (Phase 3) and committer (Phase 4). The curator phase enforces the reviewer → curator → committer ordering. Remove any "Act now" skip logic that bypasses curator, as that breaks the ordering contract.
 

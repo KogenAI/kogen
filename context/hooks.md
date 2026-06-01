@@ -114,6 +114,25 @@ Claude Code exposes the following lifecycle events. Codegen registers only the s
 
 **Orchestrator ordering**: All four cycle statements in both harnesses' build prompt (`harnesses/claude/tools-header/build.txt` and `harnesses/pi/tools-header/build.txt`) name the full sequence: `reviewer → context-curator → committer`. The prompt alone is not enough — the spawn-time guard provides enforcement at the moment committer delegation is attempted.
 
+## context-curator-guard Write Surface
+
+`harnesses/claude/hooks/context-curator-guard.sh` — PreToolUse hook that restricts curator to its allowed write surface. Fires only when `AGENT_TYPE == "context-curator"` and tool is `Edit|Write|MultiEdit`.
+
+**Allowed patterns (exact lines in hook source)**:
+
+- Line 46: `(^|/)context/` — allows `context/**` in any project
+- Line 51: `(^|/)codegen/rules(/|$)` — allows `codegen/rules/**` symlink path in any project (symlink target is `<codegen-repo>/shared/rules`)
+- Line 56: `(^|/)codegen/logging/` — allows `codegen/logging/**` session logs
+
+**Path-nesting and symlink mechanics**: all curators (codegen-on-codegen and downstream) use the symlink path.
+
+- All repos: `codegen-scaffold` creates `<project>/codegen/rules` as a symlink pointing to `<codegen-repo>/shared/rules` (absolute). The hook receives the **symlink path** — NOT the resolved target — so the path seen is `<project>/codegen/rules/foo.md`. Pattern `(^|/)codegen/rules(/|$)` matches → ALLOWED.
+- Codegen-on-codegen: same symlink exists at `<codegen-repo>/codegen/rules` → use `codegen/rules/<path>` path, not `shared/rules/<path>` directly.
+
+**Important**: Direct `shared/rules/` paths are DENIED — only the `codegen/rules/` symlink path is allowed. Boundary cases that must still be DENIED: `codegen/recipes/`, `codegen/rulesets/` — the pattern anchors on `/rules(/|$)` so these do not match.
+
+Cross-reference: curator decision tree → `context/rules-roles.md` § Curator Write Surface; rule text → `shared/rules/roles/context-curator.md` § Write Surface.
+
 ## Session Log Section Detection
 
 Hooks that check session log state use the `## <role>.*Section` pattern to detect agent completion:
@@ -123,6 +142,7 @@ Hooks that check session log state use the `## <role>.*Section` pattern to detec
 - `## developer-*`, `## planner Section` — other agent sections (literal for planner, variant for developer)
 
 This pattern is used by:
+
 - `curator-before-committer.sh` — checks for `## reviewer-*` AND missing `## context-curator Section`
 - `step-log-completeness.sh` — verifies all expected sections present before session end
 
@@ -204,12 +224,14 @@ Orchestrator reads verdict before deciding next delegation.
 New guards can be added to codegen by following established patterns:
 
 **Claude Code** (`harnesses/claude/hooks/`)
+
 - `PreToolUse` on `Agent` tool + `tool_input.subagent_type == "name"` match — intercepts subagent spawning (e.g., `curator-before-committer.sh` blocks committer spawn)
 - `PreToolUse` on any tool — blocks arbitrary tool calls (e.g., `no-git-stash.sh` blocks `git stash`)
 - `SubagentStop` — fires when a subagent completes, for post-agent logic (e.g., `phoenix-dev-gate.sh` appends gate verdict)
 - `Stop` — fires at session end for final guards (e.g., `step-log-completeness.sh` checks log integrity before exit)
 
 **Pi harness** (`harnesses/pi/pi-extensions/enforcement/src/hooks/`)
+
 - `tool_call` on `"subagent"` tool name — Pi mirror of Claude's `Agent` PreToolUse matchers (e.g., `curator-before-committer.ts`)
 - `tool_call` on any tool name — Pi mirror of Claude's PreToolUse guards
 - `subagent_stop` — Pi mirror of Claude's SubagentStop

@@ -41,8 +41,8 @@ OTHER="developer-phoenix-backend"
 run_test "Edit on context/domain.md ALLOWED" "allow" \
     "{\"hook_event_name\":\"PreToolUse\",\"tool_name\":\"Edit\",\"tool_input\":{\"file_path\":\"/Users/almirsarajcic/Projects/AppBuilder/combobulate/context/domain.md\"},\"agent_type\":\"$CURATOR\",\"agent_id\":\"abc\"}"
 
-# 2. codegen/shared/rules/** → ALLOW
-run_test "Edit on codegen/shared/rules/some-rule.md ALLOWED" "allow" \
+# 2. shared/rules/** direct path → DENY (use symlink path only)
+run_test "Edit on codegen/shared/rules/some-rule.md DENIED (direct, use symlink)" "deny" \
     "{\"hook_event_name\":\"PreToolUse\",\"tool_name\":\"Edit\",\"tool_input\":{\"file_path\":\"/Users/almirsarajcic/Areas/Optimum/codegen/shared/rules/some-rule.md\"},\"agent_type\":\"$CURATOR\",\"agent_id\":\"abc\"}"
 
 # 3. codegen/logging/** → ALLOW
@@ -77,12 +77,12 @@ run_test "Edit on Makefile by non-curator ALLOWED (pass-through)" "allow" \
 run_test "Read on lib/ by curator ALLOWED (tool not gated)" "allow" \
     "{\"hook_event_name\":\"PreToolUse\",\"tool_name\":\"Read\",\"tool_input\":{\"file_path\":\"/project/lib/my_app/accounts.ex\"},\"agent_type\":\"$CURATOR\",\"agent_id\":\"abc\"}"
 
-# 11. MultiEdit on codegen/shared/rules/ subdirectory → ALLOW
-run_test "MultiEdit on codegen/shared/rules/roles/orchestrator.md ALLOWED" "allow" \
+# 11. shared/rules/ subdirectory direct path → DENY (use symlink path only)
+run_test "MultiEdit on codegen/shared/rules/roles/orchestrator.md DENIED (direct, use symlink)" "deny" \
     "{\"hook_event_name\":\"PreToolUse\",\"tool_name\":\"MultiEdit\",\"tool_input\":{\"file_path\":\"/Users/almirsarajcic/Areas/Optimum/codegen/shared/rules/roles/orchestrator.md\"},\"agent_type\":\"$CURATOR\",\"agent_id\":\"abc\"}"
 
-# 12. codegen/shared/rules nested path → ALLOW
-run_test "Edit on codegen/shared/rules/stacks/phoenix/_core.md ALLOWED" "allow" \
+# 12. shared/rules nested path direct → DENY (use symlink path only)
+run_test "Edit on codegen/shared/rules/stacks/phoenix/_core.md DENIED (direct, use symlink)" "deny" \
     "{\"hook_event_name\":\"PreToolUse\",\"tool_name\":\"Edit\",\"tool_input\":{\"file_path\":\"/Users/almirsarajcic/Areas/Optimum/codegen/shared/rules/stacks/phoenix/_core.md\"},\"agent_type\":\"$CURATOR\",\"agent_id\":\"abc\"}"
 
 # 13. Empty file path → ALLOW (defensive)
@@ -92,6 +92,30 @@ run_test "Empty file path ALLOWED (defensive)" "allow" \
 # 14. codegen/shared/recipes/ → DENY (shared/rules allow must not over-match sibling shared/ dirs)
 run_test "Edit on codegen/shared/recipes/x.md DENIED (not caught by shared/rules allow)" "deny" \
     "{\"hook_event_name\":\"PreToolUse\",\"tool_name\":\"Edit\",\"tool_input\":{\"file_path\":\"/Users/almirsarajcic/Areas/Optimum/codegen/shared/recipes/x.md\"},\"agent_type\":\"$CURATOR\",\"agent_id\":\"abc\"}"
+
+# 15. downstream symlink path codegen/rules/** → ALLOW
+run_test "Edit on downstream codegen/rules/foo.md ALLOWED (symlink path)" "allow" \
+    "{\"hook_event_name\":\"PreToolUse\",\"tool_name\":\"Edit\",\"tool_input\":{\"file_path\":\"/Users/almirsarajcic/Projects/myapp/codegen/rules/foo.md\"},\"agent_type\":\"$CURATOR\",\"agent_id\":\"abc\"}"
+
+# 16. downstream symlink path codegen/rules/ nested → ALLOW
+run_test "Edit on downstream codegen/rules/roles/developer.md ALLOWED (symlink nested)" "allow" \
+    "{\"hook_event_name\":\"PreToolUse\",\"tool_name\":\"Edit\",\"tool_input\":{\"file_path\":\"/Users/almirsarajcic/Projects/myapp/codegen/rules/roles/developer.md\"},\"agent_type\":\"$CURATOR\",\"agent_id\":\"abc\"}"
+
+# 17. downstream codegen/recipes/ → DENY (boundary: rules allow must not over-match sibling dirs)
+run_test "Edit on downstream codegen/recipes/x.md DENIED (not rules)" "deny" \
+    "{\"hook_event_name\":\"PreToolUse\",\"tool_name\":\"Edit\",\"tool_input\":{\"file_path\":\"/Users/almirsarajcic/Projects/myapp/codegen/recipes/x.md\"},\"agent_type\":\"$CURATOR\",\"agent_id\":\"abc\"}"
+
+# 18. downstream codegen/rulesets/ → DENY (must not match on prefix similarity)
+run_test "Edit on downstream codegen/rulesets/x.md DENIED (rulesets not rules)" "deny" \
+    "{\"hook_event_name\":\"PreToolUse\",\"tool_name\":\"Edit\",\"tool_input\":{\"file_path\":\"/Users/almirsarajcic/Projects/myapp/codegen/rulesets/x.md\"},\"agent_type\":\"$CURATOR\",\"agent_id\":\"abc\"}"
+
+# 19. /codegen/shared/rules/foo.md wrong pattern → DENY (must not accept)
+run_test "Edit on /codegen/shared/rules/foo.md DENIED (wrong pattern, not symlink)" "deny" \
+    "{\"hook_event_name\":\"PreToolUse\",\"tool_name\":\"Edit\",\"tool_input\":{\"file_path\":\"/codegen/shared/rules/foo.md\"},\"agent_type\":\"$CURATOR\",\"agent_id\":\"abc\"}"
+
+# 20. codegen/rules/** as absolute path → ALLOW (symlink path)
+run_test "Edit on /project/codegen/rules/stacks/phoenix/core.md ALLOWED (symlink path)" "allow" \
+    "{\"hook_event_name\":\"PreToolUse\",\"tool_name\":\"Edit\",\"tool_input\":{\"file_path\":\"/project/codegen/rules/stacks/phoenix/core.md\"},\"agent_type\":\"$CURATOR\",\"agent_id\":\"abc\"}"
 
 echo ""
 echo "Results: $pass passed, $fail failed"
