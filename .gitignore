@@ -30,3 +30,4 @@ test_harness/bench_run.log
 bench_run_*.log
 *-system-prompt.txt
 *.bak
+unknown.flag
