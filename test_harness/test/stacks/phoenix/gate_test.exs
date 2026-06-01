@@ -32,6 +32,7 @@ defmodule CodegenTestHarness.Stacks.Phoenix.GateTest do
            "expected mix.exs in #{cwd}\n--- output ---\n#{output}"
 
     Assertions.assert_mix_compiles!(cwd)
+    Assertions.assert_generated_tests_pass!(cwd)
     Assertions.assert_git_committed!(cwd)
 
     live_files =
@@ -41,6 +42,11 @@ defmodule CodegenTestHarness.Stacks.Phoenix.GateTest do
 
     assert live_files != [],
            "expected at least one LiveView file under lib/*_web/live/ in #{cwd}"
+
+    router_files = Path.wildcard(Path.join(cwd, "lib/*_web/router.ex"))
+    assert router_files != [], "no router.ex found under lib/*_web/ in #{cwd}"
+    [router | _] = router_files
+    Assertions.assert_router_root_route_replaced!(router)
 
     Fixtures.bench_assertions_passed!("phoenix", "gate_phoenix_exit0")
   end

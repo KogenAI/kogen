@@ -198,6 +198,49 @@ defmodule CodegenTestHarness.Assertions do
     end
   end
 
+  @doc """
+  Runs `mix test --max-failures 1` in `cwd` and asserts exit code is 0.
+
+  Returns `:ok`.
+  """
+  @spec assert_generated_tests_pass!(String.t()) :: :ok
+  def assert_generated_tests_pass!(cwd) do
+    {out, code} = System.cmd("mix", ["test", "--max-failures", "1"],
+                             cd: cwd, stderr_to_stdout: true, env: [{"MIX_ENV", "test"}])
+    assert code == 0, "generated app's own tests failed in #{cwd}:\n#{out}"
+    :ok
+  end
+
+  @doc """
+  Asserts the router at `router_path` has a `live "/"` route and does NOT
+  still contain the default `get "/", PageController` route.
+
+  Returns `:ok`.
+  """
+  @spec assert_router_root_route_replaced!(String.t()) :: :ok
+  def assert_router_root_route_replaced!(router_path) do
+    content = File.read!(router_path)
+    assert content =~ ~r/live\s+"\/"/, "router missing live \"/\" route"
+    refute content =~ ~r/get\s+"\/"\s*,\s*\w+Controller/,
+           "default get \"/\" PageController route still present — generated app must REPLACE it, not add alongside (router serves blank default page)"
+    :ok
+  end
+
+  @doc """
+  Asserts that a built HTML file at `Path.join(cwd, rel)` exists and contains
+  more than 50 visible characters (stripped of HTML tags).
+
+  Returns `:ok`.
+  """
+  @spec assert_built_html_non_blank!(String.t(), String.t()) :: :ok
+  def assert_built_html_non_blank!(cwd, rel \\ "dist/index.html") do
+    path = Path.join(cwd, rel)
+    assert File.exists?(path), "expected #{rel} after build"
+    html = File.read!(path)
+    body = Regex.replace(~r/<[^>]+>/, html, "") |> String.trim()
+    assert String.length(body) > 50, "#{rel} body is blank (#{String.length(body)} visible chars) — site built but renders empty"
+  end
+
   @spec assert_assets_deploy!(String.t()) :: :ok
   def assert_assets_deploy!(cwd) do
     has_assets_dir = File.dir?(Path.join(cwd, "assets"))

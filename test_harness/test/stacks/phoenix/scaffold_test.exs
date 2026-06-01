@@ -36,7 +36,7 @@ defmodule CodegenTestHarness.Stacks.Phoenix.ScaffoldTest do
     assert router_files != [], "no router.ex found under lib/*_web/ in #{cwd}"
     [router | _] = router_files
 
-    Assertions.assert_file_matches!(router, ~r/live\s+"\/"/)
+    Assertions.assert_router_root_route_replaced!(router)
 
     Assertions.assert_git_committed!(cwd)
     Fixtures.bench_assertions_passed!("phoenix", "scaffold_provisions_phoenix")

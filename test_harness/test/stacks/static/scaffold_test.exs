@@ -27,6 +27,7 @@ defmodule CodegenTestHarness.Stacks.Static.ScaffoldTest.Hugo do
            "no content/**/*.md files found under #{cwd}\n--- output ---\n#{output}"
 
     Assertions.assert_hugo_builds!(cwd)
+    Assertions.assert_built_html_non_blank!(cwd, "public/index.html")
     Assertions.assert_git_committed!(cwd)
     Fixtures.bench_assertions_passed!("static", "scaffold_static_hugo")
   end
@@ -63,6 +64,7 @@ defmodule CodegenTestHarness.Stacks.Static.ScaffoldTest.ViteReact do
            "no src/**/*.{jsx,tsx} files found under #{cwd}\n--- output ---\n#{output}"
 
     Assertions.assert_npm_builds!(cwd)
+    Assertions.assert_built_html_non_blank!(cwd, "dist/index.html")
     Assertions.assert_git_committed!(cwd)
     Fixtures.bench_assertions_passed!("static", "scaffold_static_vite_react")
   end
@@ -97,6 +99,7 @@ defmodule CodegenTestHarness.Stacks.Static.ScaffoldTest.ViteVue do
            "no src/**/*.vue files found under #{cwd}\n--- output ---\n#{output}"
 
     Assertions.assert_npm_builds!(cwd)
+    Assertions.assert_built_html_non_blank!(cwd, "dist/index.html")
     Assertions.assert_git_committed!(cwd)
     Fixtures.bench_assertions_passed!("static", "scaffold_static_vite_vue")
   end
