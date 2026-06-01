@@ -107,7 +107,9 @@ Note: `--bare` is API SDK probe only — not for `claude --agent <name> --print`
 
 ## 7. Forbidden Flags
 
-`--max-turns N`, `--max-budget-usd N`, agentic-loop caps — see role-specific worker docs for the FORBIDDEN list.
+`--max-turns N` is **FORBIDDEN in ALL codegen invocations** — a turn cap kills agentic builds (bouncer returned empty at `--max-turns 1`). NEVER pass it. The codegen build chain does not pass `--max-turns` and no caller should add it.
+
+`--max-budget-usd N` — permitted; passes through via `EXTRA_FLAGS` in `codegen-build`.
 
 ## 8. Context Window
 

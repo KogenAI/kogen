@@ -45,12 +45,12 @@ codegen/                          ← repo root
 
 ## Entry-Point Scripts
 
-| File               | Purpose                                                                                                                             | Caller                                             |
-| ------------------ | ----------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------- |
-| `ocg`              | User CLI dispatcher — wraps `make` targets; symlinked to `$PATH`; sets `OCG_CLI=true` for ocg-only targets                          | End users, shell tab-completion                    |
-| `codegen-build`    | Harness API — `--harness`, `--stack`, `--cwd`, `--model`, `--effort`, `--max-turns`; delegates to `harnesses/<harness>/dispatch.sh` | Platform, CI, downstream Makefiles                 |
-| `codegen-scaffold` | One-time provisioning — `--stack`, `--cwd`, `--slug`; delegates to `shared/scaffold/<stack>/scaffold.sh`                            | Platform setup, `ocg setup`                        |
-| `codegen-call`     | One-shot LLM call — `--harness`, `--role`, `--system-prompt`, optional `--json-schema`; single-response                             | Consuming platform for non-build single-role calls |
+| File               | Purpose                                                                                                              | Caller                                             |
+| ------------------ | -------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------- |
+| `ocg`              | User CLI dispatcher — wraps `make` targets; symlinked to `$PATH`; sets `OCG_CLI=true` for ocg-only targets           | End users, shell tab-completion                    |
+| `codegen-build`    | Harness API — `--harness`, `--stack`, `--cwd`, `--model`, `--effort`; delegates to `harnesses/<harness>/dispatch.sh` | Platform, CI, downstream Makefiles                 |
+| `codegen-scaffold` | One-time provisioning — `--stack`, `--cwd`, `--slug`; delegates to `shared/scaffold/<stack>/scaffold.sh`             | Platform setup, `ocg setup`                        |
+| `codegen-call`     | One-shot LLM call — `--harness`, `--role`, `--system-prompt`, optional `--json-schema`; single-response              | Consuming platform for non-build single-role calls |
 
 `ocg` = user-facing (menu, doctor, install). `codegen-build` = machine API for downstream Makefiles. Never conflate them.
 

@@ -58,7 +58,6 @@ else
 fi
 
 NON_INTERACTIVE="${CODEGEN_BUILD_NON_INTERACTIVE:-}"
-MAX_TURNS="${CODEGEN_BUILD_MAX_TURNS:-60}"
 
 # Non-interactive: pass all non-interactive flags. Interactive: omit (claude handles tty detection).
 NON_INTERACTIVE_FLAGS=()
@@ -98,7 +97,6 @@ exec env \
     "${COMMON_FLAGS[@]+"${COMMON_FLAGS[@]}"}" \
     --model "$MODEL" \
     --effort "$EFFORT" \
-    --max-turns "$MAX_TURNS" \
     --tools "$TOOLS" \
     "${EXTRA_FLAGS[@]+"${EXTRA_FLAGS[@]}"}" \
     ${PROMPT:+-- "$PROMPT"}

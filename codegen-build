@@ -9,7 +9,6 @@
 #   --stack=<phoenix|static>  required: project stack
 #   --cwd=<dir>               working directory (default: $PWD)
 #   --non-interactive         force non-interactive mode (default: auto via [ -t 1 ])
-#   --max-turns=<n>           pass --max-turns to harness dispatch
 #   --model=<m>               model override
 #   --effort=<e>              effort override
 #   PROMPT                    the prompt string (required, positional, last arg)
@@ -25,14 +24,13 @@ HARNESS=""
 STACK=""
 CWD="$PWD"
 NON_INTERACTIVE=""
-MAX_TURNS=""
 MODEL=""
 EFFORT=""
 EXTRA_FLAGS=()
 PROMPT=""
 
 usage() {
-    printf 'Usage: codegen-build --harness=<claude|pi> --stack=<phoenix|static> [--cwd=<dir>] [--non-interactive] [--max-turns=<n>] [--model=<m>] [--effort=<e>] PROMPT\n' >&2
+    printf 'Usage: codegen-build --harness=<claude|pi> --stack=<phoenix|static> [--cwd=<dir>] [--non-interactive] [--model=<m>] [--effort=<e>] PROMPT\n' >&2
     exit 2
 }
 
@@ -65,14 +63,6 @@ while [[ $# -gt 0 ]]; do
     --non-interactive)
         NON_INTERACTIVE="1"
         shift
-        ;;
-    --max-turns=*)
-        MAX_TURNS="${1#--max-turns=}"
-        shift
-        ;;
-    --max-turns)
-        MAX_TURNS="$2"
-        shift 2
         ;;
     --model=*)
         MODEL="${1#--model=}"
@@ -172,7 +162,6 @@ export CODEGEN_BUILD_HARNESS="$HARNESS"
 export CODEGEN_BUILD_STACK="${STACK:-phoenix}"
 export CODEGEN_BUILD_CWD="$CWD"
 export CODEGEN_BUILD_NON_INTERACTIVE="${NON_INTERACTIVE:-}"
-export CODEGEN_BUILD_MAX_TURNS="${MAX_TURNS:-}"
 export CODEGEN_BUILD_MODEL="${MODEL:-}"
 export CODEGEN_BUILD_EFFORT="${EFFORT:-}"
 
