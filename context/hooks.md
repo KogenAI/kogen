@@ -1,6 +1,6 @@
 # Hooks Domain — Hook System (Bash + Tests)
 
-The hooks domain covers all Claude Code hook scripts, their shared library, registration mechanism, and bash test suite. Hooks fire on `PreToolUse`, `SubagentStop`, and `Stop` lifecycle events — enforcing discipline rules at runtime (no `cat` pipes, no direct commits, gate verdicts, etc.). Each hook has a paired `_test.sh` file; `run-tests.sh` runs the full suite.
+The hooks domain covers all Claude Code hook scripts, their shared library, registration mechanism, and bash test suite. Hooks fire on `PreToolUse`, `SubagentStop`, and `Stop` lifecycle events — these are the events codegen currently registers; Claude Code supports a larger event catalog (see § Full Claude Code Event Catalog below). Each hook has a paired `_test.sh` file; `run-tests.sh` runs the full suite.
 
 Hook registration: `hook_registrations.py` reads `harnesses/claude/hooks/*.sh`, generates entries in `harnesses/claude/claude-code-settings.json` (source). `install.sh` then copies that file to `~/.claude/settings.json` (installed destination).
 
@@ -73,6 +73,29 @@ Event → script mapping from `harnesses/claude/claude-code-settings.json`:
 | `SessionStart`       | (inline: orchestrate session context restore)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                | Restores context after compact             |
 | `SessionEnd`         | (inline: cleans up orchestrate session JSON)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 | Cleanup                                    |
 
+### Full Claude Code Event Catalog
+
+Claude Code exposes the following lifecycle events. Codegen registers only the subset listed in the table above; events not in that table are unused by codegen today.
+
+| Event                 | Notes                                                  |
+| --------------------- | ------------------------------------------------------ |
+| `SessionStart`        | Fires when a new session begins                        |
+| `Setup`               | Environment setup phase before first turn              |
+| `UserPromptSubmit`    | Fires when user submits a prompt                       |
+| `UserPromptExpansion` | Fires when a prompt is expanded (e.g. slash command)   |
+| `PreToolUse`          | **Registered by codegen** — fires before any tool call |
+| `PermissionRequest`   | Fires when a tool requests permission                  |
+| `PermissionDenied`    | Fires when a permission request is denied              |
+| `PostToolUse`         | **Registered by codegen** (selectively) — after tool   |
+| `PostToolUseFailure`  | **Registered by codegen** — fires on tool failure      |
+| `PreCompact`          | Fires before context compaction                        |
+| `PostCompact`         | Fires after context compaction completes               |
+| `SubagentStart`       | Fires when a subagent Task spawns                      |
+| `SubagentStop`        | **Registered by codegen** — fires when subagent stops  |
+| `Stop`                | **Registered by codegen** — fires when session stops   |
+| `Notification`        | General notification event                             |
+| `SessionEnd`          | **Registered by codegen** (inline) — session teardown  |
+
 ## Key Paths
 
 ```
@@ -94,6 +117,43 @@ templates/generator/hook_registrations.py  ← generates settings.json entries
 - **harnesses**: `claude-code-settings.json` declares hook event → script mappings; generated version installed at `~/.claude/settings.json`; see `context/harnesses.md` for harness install contract details
 - **rules**: hooks enforce rules at runtime (e.g. `no-python-json.sh` → `bash-discipline.md` rule). Hooks own verdict _generation_ (appending gate result to step log); for verdict _reaction_ logic (what orchestrator does after reading verdict), see `context/rules-roles.md` (orchestrator rules)
 - **test-harness**: hook tests (`*_test.sh`) are bash scripts; `run-tests.sh` runs them separately from ExUnit suite
+
+## Hook Output Protocol
+
+Hook scripts communicate decisions back to Claude Code via JSON on stdout. The shape varies by event type.
+
+**Decision field (top-level `decision`)** — applies to: `Stop`, `SubagentStop`, `PreCompact`, `UserPromptSubmit`, `PostToolUse`:
+
+```json
+{
+  "decision": "block",
+  "reason": "Human-readable explanation shown to the model"
+}
+```
+
+Omitting `decision` (or exiting 0 with no JSON) means "proceed". Non-zero exit code also blocks.
+
+**PreToolUse — permission decision** — uses `hookSpecificOutput.permissionDecision`:
+
+```json
+{
+  "hookSpecificOutput": {
+    "permissionDecision": "deny",
+    "reason": "Denied by no-git-stash.sh: git stash is forbidden"
+  }
+}
+```
+
+Valid `permissionDecision` values:
+
+| Value   | Meaning                                           |
+| ------- | ------------------------------------------------- |
+| `allow` | Explicitly allow this tool call                   |
+| `deny`  | Block this tool call, surface reason to model     |
+| `ask`   | Escalate to user for interactive approval         |
+| `defer` | No opinion — let Claude Code apply default policy |
+
+**Events codegen does not yet use** — for `PreCompact`, `PermissionRequest`, `PostCompact`, `SubagentStart`, and other unregistered events, verify the exact field shape against https://code.claude.com/docs/en/hooks before relying on them. Codegen has not exercised these events in production; the protocol above is confirmed only for the events in the registered subset.
 
 ## Gate Verdict Flow
 

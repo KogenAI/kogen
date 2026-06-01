@@ -35,7 +35,7 @@ Key rules:
 
 - **Max 4 breakpoints per request.** Automatic caching consumes one slot.
 - **Ordering is fixed.** Prefix hierarchy: `tools → system → messages`. A breakpoint implicitly caches everything earlier.
-- **Minimum cacheable prefix**: Opus 4.5+/Haiku 4.5 = 4096 tokens; Sonnet 4.6 = 2048; older Sonnet/Opus 4/4.1 = 1024. Below floor: caching silently skipped — both cache counters return 0.
+- **Minimum cacheable prefix**: Opus 4.5+/Haiku 4.5 = 4096 tokens; Sonnet 4.6 = 1024; older Sonnet/Opus 4/4.1 = 1024. Below floor: caching silently skipped — both cache counters return 0.
 - **Lookback window: 20 blocks.** Entries more than 20 content blocks behind the current breakpoint are invisible; add an explicit breakpoint to keep old entries findable.
 - **TTLs refresh on hit.** A cache read resets the timer at 0.1× cost.
 - **`ENABLE_PROMPT_CACHING_1H=1`**: extends server-side TTL from 5 min to 1 hour. Trade-off: 2.0× write cost but survives multi-minute idle gaps between chained workers on the same user request — typically worth it when workers hand off slowly. (Example: the consuming app's LLM backend sets this in its claude env prefix function to span chained worker handoffs.)
