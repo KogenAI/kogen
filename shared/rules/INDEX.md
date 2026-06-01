@@ -19,6 +19,7 @@ rules/
     multi-repo-ordering.md       context → codegen → platform commit ordering
     hook-layering.md             one hook one concern; universal vs role-specific
     hook-test-coverage.md        ≥14 cases per guard, DENY + ALLOW paths
+    nodejs-process-management.md process groups, SIGTERM/SIGKILL, detached spawn cleanup
     shell-script-discipline.md   shebang, set -euo pipefail, quoting, trap, exit codes
     rule-file-organization.md    line caps, INDEX update, make install rebake contract
   roles/                    ← universal role rules
@@ -27,6 +28,7 @@ rules/
     developer.md            workflow, completion, pre-completion
     reviewer.md             15-step process + ast-grep
     committer.md            commit message rules, multi-repo
+    context-curator.md      routing learnings, write surface, stale-line preference
   stacks/
     phoenix/
       _core.md              idioms, Ecto, contexts, LiveView UI
@@ -54,15 +56,16 @@ rules/
 
 ## Role Ownership
 
-| Mistake                           | Role         | File                                                 |
-| --------------------------------- | ------------ | ---------------------------------------------------- |
-| Orchestrator delegated wrong time | Orchestrator | `roles/orchestrator.md`                              |
-| Committer wrote wrong message     | Committer    | `roles/committer.md`                                 |
-| Developer wrote wrong code        | Developer    | `roles/developer.md`                                 |
-| Gate misclassified                | Hook author  | `codegen/harnesses/claude/hooks/phoenix-dev-gate.sh` |
-| CR missed issues                  | CR           | `roles/reviewer.md`                                  |
-| Elixir style broken               | Developer    | `stacks/phoenix/developer.md`                        |
-| CI broken                         | Developer    | `stacks/phoenix/testing.md`                          |
+| Mistake                           | Role            | File                                                 |
+| --------------------------------- | --------------- | ---------------------------------------------------- |
+| Orchestrator delegated wrong time | Orchestrator    | `roles/orchestrator.md`                              |
+| Committer wrote wrong message     | Committer       | `roles/committer.md`                                 |
+| Developer wrote wrong code        | Developer       | `roles/developer.md`                                 |
+| Curator edited wrong path         | Context Curator | `roles/context-curator.md`                           |
+| Gate misclassified                | Hook author     | `codegen/harnesses/claude/hooks/phoenix-dev-gate.sh` |
+| CR missed issues                  | CR              | `roles/reviewer.md`                                  |
+| Elixir style broken               | Developer       | `stacks/phoenix/developer.md`                        |
+| CI broken                         | Developer       | `stacks/phoenix/testing.md`                          |
 
 **Key principle**: if orchestrator made wrong call, rule goes on orchestrator — even if subagent executed action.
 

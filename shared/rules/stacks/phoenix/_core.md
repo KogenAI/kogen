@@ -56,6 +56,24 @@ Seeds: schema change → `seeds.exs` update. Test: `mix run priv/repo/seeds.exs`
 
 Required env var in prod: `System.get_env("VAR") || raise "missing VAR"`. Compile-time missing → fix `runtime.exs` (canonical).
 
+## Env Var Reading
+
+`System.get_env` ONLY in `config/` (mostly `runtime.exs`). NEVER in `lib/` app code.
+Read config via `Application.get_env/3` (runtime) or `Application.compile_env/2` (compile-time).
+Why: env read once at boot → efficient; all env vars greppable in one dir; missing-var fail-fast lives in `runtime.exs` `required_env`, not scattered downstream.
+
+- ❌ `lib/.../foo.ex`: `System.get_env("STRIPE_WEBHOOK_SECRET") || ""` — silent-empty, ungreppable, no boot fail-fast
+- ✅ `runtime.exs`: add to `required_env.(~w(... STRIPE_WEBHOOK_SECRET))` → `config :app, :stripe_webhook_secret, required["..."]`; `lib/` reads `Application.fetch_env!(:app, :stripe_webhook_secret)`
+
+## Asset Bundling
+
+Vite/esbuild configs must include asset hash markers in output filenames (e.g., `/assets/index-HASH.js`). Detection pattern in build tools should distinguish between source imports (`/src/main.jsx`) and built assets using the hash discriminator `\.\w+\.js` (hashed segment). Example:
+
+- ❌ Source shape: `<script src="/src/main.jsx"></script>` (no build output)
+- ✅ Built shape: `<script src="/assets/index-a1b2c3d4.js"></script>` (hash present)
+
+Regex: `\.\w+\.` matches the hash dot-sep-dot pattern; use as gate to fall through to build step if absent.
+
 ## LiveView UI
 
 - WHAT not THAT: ❌ `render_display_components` → ✅ `display_components`
@@ -69,6 +87,37 @@ Required env var in prod: `System.get_env("VAR") || raise "missing VAR"`. Compil
 - `cursor-pointer` on interactive; padding/bg on `<.link>` with `block`
 - Explicit helper fns — `Media.get_media_asset_url(@media_asset)`
 - npm: `cd assets` first
+
+## Test Discipline
+
+`Application.put_env` is process-global → mutating it from `async: true` ExUnit tests races with any other async test reading the same key, even when Mox stubs are process-local. Fix: split offenders into a sibling `async: false` module in the same file (e.g., `ChannelsTest` alongside `ChannelsSyncTest`). When splitting, verify ALL env-mutating tests migrate to the serial block — partial migration leaves races intact.
+
+`async: false` + `Sandbox.start_owner!(shared: true)` flips the GLOBAL sandbox connection mode, causing concurrent `async: true` tests to route through the shared connection → `40P01 deadlock`. Fix: `@moduletag :no_shared_sandbox` + DataCase guard that skips `shared: true` for serial modules that don't need cross-test isolation (e.g., filesystem-only tests with no DB writes).
+
+ExUnit **does NOT** inject `:async => false` into the tags map for `async: false` modules — tag absent → `tags[:async]` = `nil` → `not nil` = `ArgumentError`. Always use `tags[:key] != true` (or `!!tags[:key]`) when checking optional boolean tags. Never use `not tags[:key]`.
+
+Example pattern (channels_test.exs):
+
+```elixir
+# Tests that mutate Application env or run serially without needing shared sandbox
+defmodule ChannelsSyncTest do
+  use ExUnit.Case, async: false
+  @moduletag :no_shared_sandbox  # Opt out of shared sandbox; safe for FS-only tests
+
+  setup do
+    # Application.put_env(...) safe here; no DB deadlock risk
+  end
+
+  test "send_to_owner handles no_owner_configured" do
+    # ...
+  end
+end
+
+defmodule ChannelsTest do
+  use ExUnit.Case, async: true
+  # Safe for async — does not mutate Application env
+end
+```
 
 ## Misc
 

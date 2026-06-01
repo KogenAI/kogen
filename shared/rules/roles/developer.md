@@ -26,7 +26,7 @@ Every Bash = one row.
 
 ## Explore Before Implementing
 
-Unknown CLI/flag/env → `--help` or docs first. New external API → hit real endpoint before integration code.
+Unknown CLI/flag/env → `--help` or docs first. New external API → hit real endpoint before integration code. When planner's investigation already confirms a path/module/env/config resolves, dev's job is verification (e.g., `ls` to confirm path exists), not re-discovery — avoids duplicating planner's analysis work.
 
 ## AskUserQuestion
 

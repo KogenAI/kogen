@@ -165,6 +165,8 @@ SubagentStop fires → gate-select.sh picks stack →
 
 Orchestrator reads verdict before deciding next delegation.
 
+**Gate Scope — Codegen Output Only**: Gates validate the _generated harness and codegen artifacts_ (e.g., hook unit tests, scaffold output compilation in test_harness). Gates do NOT validate downstream project state, symlink health, or consumer setup. Downstream validation belongs in the consuming app's own CI — that is where `curator-guard` will catch stale symlinks and fail loudly. This one-way boundary keeps codegen focused on artifact generation and prevents coupling to consumer-specific paths or assumptions.
+
 ## See Also
 
 For matrix of which hooks gate which launcher modes (build vs debug/shape/refactor vs ops), see `context/launcher-hook-matrix.md`.

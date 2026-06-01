@@ -19,6 +19,8 @@ public/                 ← build output (gitignored)
 .gitignore              ← node_modules/, public/, dist/
 ```
 
+**Modern Vite (v5+) defaults**: Entry point at project root (`index.html`), not `public/`. Build output goes to `dist/` by default, but this stack overrides to `public/` in vite.config.js. When detecting built artifacts: check `dist/` first (default), then root `index.html`, then `public/`. If custom `outDir` is set, the detection order respects it, but verify empirically.
+
 ## Mandatory Files
 
 - `index.html` at project root. Missing → `Could not resolve entry module "index.html"`.
@@ -58,6 +60,7 @@ React Router — don't switch to Hugo.
 - `outDir: "dist"` — platform serves `public/`. Always `outDir: "public"`
 - `require()` in `vite.config.js` — ESM only. Use `import`
 - No `"type": "module"` — required for ESM imports
+- `npm create vite` in non-empty directory hangs on interactive prompt when stdin is `/dev/null`. Fix: use `echo "Overwrite" | npm create vite` or add `--force` flag to scaffold non-interactively.
 
 ## Reactive Initial Values
 

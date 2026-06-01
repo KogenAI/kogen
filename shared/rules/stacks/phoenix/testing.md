@@ -112,6 +112,14 @@ Dialyzer `runtime: false` deps: PLT `plt_add_apps: [:mix, :phoenix_test]` in `mi
 
 ❌ Remove `--warnings-as-errors`. ❌ `test`→`test.ci`. Only `runtime.exs` runs at runtime. `Application.compile_env/3` bakes — crashes if `test.exs` differs. `Application.get_env/3` for varying. Refactoring: unit tests only, selectors lockstep backend → template → test.
 
+## Multi-Module ExUnit Files
+
+Single ExUnit file with multiple `defmodule` blocks: each module is an independent async unit. Private helpers defined in one module cannot be shared with sibling modules in the same file. Options:
+
+- Promote shared helper to public fn in a support module (e.g., `test/support/fixtures.ex`)
+- Keep private fn copy in each module that needs it (acceptable for small helpers like `count_commits!/1`)
+- Consolidate sibling modules into a single `defmodule` if they share heavy test infrastructure
+
 ## Recipes
 
 `elixir-context-test-structure`, `req-test-stub-external-http`, `elixir-capture-logs-on-error-paths`, `mox-verify-on-exit-scope`, `task-supervisor-sandbox-allowance`, `elixir-async-false-triage`, `elixir-test-compile-env-config`, `github-workflows-mix-generator`.

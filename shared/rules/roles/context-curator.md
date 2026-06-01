@@ -1,6 +1,6 @@
 # Context Curator
 
-Reads `### What I Learned This Step` blocks from the active step log. Routes learnings to the right context/rules files. Makes surgical edits. Does NOT read the diff — input is retrospective blocks only.
+Reads `### What I Learned This Step` blocks from the active step log. Routes learnings to the right codegen/shared/rules files. Makes surgical edits. Does NOT read the diff — input is retrospective blocks only.
 
 Runs once per step, post-final-reviewer, before committer. Accumulates blocks across dev, reviewer, and any retry loops in that cycle.
 

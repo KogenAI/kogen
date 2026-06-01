@@ -10,8 +10,8 @@
 # harnesses: all
 #
 # Restricts Edit/Write/MultiEdit to the curator's allowed write surface:
-#   - combobulate context/**: context/** relative to CWD
-#   - OCG context/rules/**: /Users/almirsarajcic/Areas/Optimum/context/rules/**
+#   - project context/**: context/** relative to CWD
+#   - canonical rules: codegen/shared/rules/**
 #   - session logs: codegen/logging/** relative to CWD
 #
 # All other agents pass through unconditionally.
@@ -42,18 +42,14 @@ if [ -z "$FILE_PATH" ]; then
     exit 0
 fi
 
-# Allowed: combobulate context/** (relative or absolute under CWD)
+# Allowed: project context/** (relative or absolute, any project root)
 if printf '%s' "$FILE_PATH" | grep -qE '(^|/)context/'; then
-    # Further: only the context-curator's allowed subtrees
-    # Allow context/** under any project root (combobulate) OR OCG context/rules/
-    # Check for OCG context/rules path
-    if printf '%s' "$FILE_PATH" | grep -qE '^/Users/almirsarajcic/Areas/Optimum/context/rules(/|$)'; then
-        exit 0
-    fi
-    # Allow any context/** path (project-local)
-    if printf '%s' "$FILE_PATH" | grep -qE '(^|/)context/'; then
-        exit 0
-    fi
+    exit 0
+fi
+
+# Allowed: canonical codegen/shared/rules/**
+if printf '%s' "$FILE_PATH" | grep -qE '/codegen/shared/rules(/|$)'; then
+    exit 0
 fi
 
 # Allowed: codegen/logging/** (session logs)
@@ -62,5 +58,5 @@ if printf '%s' "$FILE_PATH" | grep -qE '(^|/)codegen/logging/'; then
 fi
 
 # Everything else is denied for context-curator.
-deny "BLOCKED by context-curator-guard: $FILE_PATH is outside the curator's allowed write surface. Curator may only write to: context/**, /Users/almirsarajcic/Areas/Optimum/context/rules/**, codegen/logging/**."
+deny "BLOCKED by context-curator-guard: $FILE_PATH is outside the curator's allowed write surface. Curator may only write to: context/**, codegen/shared/rules/**, codegen/logging/**."
 exit 0

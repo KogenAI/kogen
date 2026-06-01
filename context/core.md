@@ -101,6 +101,10 @@ Note: if a root-level artifact's ownership is unclear, check `resource_manager.s
 - **scaffold**: `codegen-scaffold` delegates to `shared/scaffold/<stack>/scaffold.sh`
 - **test-harness**: ExUnit tests validate the rendered output and scaffold behaviour end-to-end
 
+## Architectural Constraints
+
+**One-way knowledge boundary**: Codegen MUST NOT know about, name, or validate downstream consumer projects. Codegen installs artifacts into `~/.claude/` and `~/.pi/` only; if a consumer symlink is stale or if the consumer's own setup validation fails, that failure happens in the consumer's build (the right place). Codegen does not own consumer validation. This keeps codegen focused on generator mechanics and prevents coupling to downstream-specific paths or concerns. Any cross-consumer validation logic (e.g. drift-guard) violates this boundary and should be removed.
+
 ## Update When Changing
 
 Load this file when touching: `manifest.yaml`, `generate.sh`, `process_template.py`, `hook_registrations.py`, `install.sh`, `uninstall.sh`, `codegen-build`, `codegen-scaffold`, `config.sh`, `resource_manager.sh`, `utils.sh`.

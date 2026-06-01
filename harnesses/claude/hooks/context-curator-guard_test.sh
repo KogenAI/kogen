@@ -41,9 +41,9 @@ OTHER="developer-phoenix-backend"
 run_test "Edit on context/domain.md ALLOWED" "allow" \
     "{\"hook_event_name\":\"PreToolUse\",\"tool_name\":\"Edit\",\"tool_input\":{\"file_path\":\"/Users/almirsarajcic/Projects/AppBuilder/combobulate/context/domain.md\"},\"agent_type\":\"$CURATOR\",\"agent_id\":\"abc\"}"
 
-# 2. OCG context/rules/** → ALLOW
-run_test "Edit on OCG context/rules/foo.md ALLOWED" "allow" \
-    "{\"hook_event_name\":\"PreToolUse\",\"tool_name\":\"Edit\",\"tool_input\":{\"file_path\":\"/Users/almirsarajcic/Areas/Optimum/context/rules/some-rule.md\"},\"agent_type\":\"$CURATOR\",\"agent_id\":\"abc\"}"
+# 2. codegen/shared/rules/** → ALLOW
+run_test "Edit on codegen/shared/rules/some-rule.md ALLOWED" "allow" \
+    "{\"hook_event_name\":\"PreToolUse\",\"tool_name\":\"Edit\",\"tool_input\":{\"file_path\":\"/Users/almirsarajcic/Areas/Optimum/codegen/shared/rules/some-rule.md\"},\"agent_type\":\"$CURATOR\",\"agent_id\":\"abc\"}"
 
 # 3. codegen/logging/** → ALLOW
 run_test "Write on codegen/logging/session.md ALLOWED" "allow" \
@@ -77,17 +77,21 @@ run_test "Edit on Makefile by non-curator ALLOWED (pass-through)" "allow" \
 run_test "Read on lib/ by curator ALLOWED (tool not gated)" "allow" \
     "{\"hook_event_name\":\"PreToolUse\",\"tool_name\":\"Read\",\"tool_input\":{\"file_path\":\"/project/lib/my_app/accounts.ex\"},\"agent_type\":\"$CURATOR\",\"agent_id\":\"abc\"}"
 
-# 11. MultiEdit on OCG context/rules/ → ALLOW
-run_test "MultiEdit on OCG context/rules/role.md ALLOWED" "allow" \
-    "{\"hook_event_name\":\"PreToolUse\",\"tool_name\":\"MultiEdit\",\"tool_input\":{\"file_path\":\"/Users/almirsarajcic/Areas/Optimum/context/rules/roles/orchestrator.md\"},\"agent_type\":\"$CURATOR\",\"agent_id\":\"abc\"}"
+# 11. MultiEdit on codegen/shared/rules/ subdirectory → ALLOW
+run_test "MultiEdit on codegen/shared/rules/roles/orchestrator.md ALLOWED" "allow" \
+    "{\"hook_event_name\":\"PreToolUse\",\"tool_name\":\"MultiEdit\",\"tool_input\":{\"file_path\":\"/Users/almirsarajcic/Areas/Optimum/codegen/shared/rules/roles/orchestrator.md\"},\"agent_type\":\"$CURATOR\",\"agent_id\":\"abc\"}"
 
-# 12. OCG context/ path outside rules/ → still ALLOW (context/ prefix match)
-run_test "Edit on OCG context/ (non-rules subdir) ALLOWED" "allow" \
-    "{\"hook_event_name\":\"PreToolUse\",\"tool_name\":\"Edit\",\"tool_input\":{\"file_path\":\"/Users/almirsarajcic/Areas/Optimum/context/domain-notes.md\"},\"agent_type\":\"$CURATOR\",\"agent_id\":\"abc\"}"
+# 12. codegen/shared/rules nested path → ALLOW
+run_test "Edit on codegen/shared/rules/stacks/phoenix/_core.md ALLOWED" "allow" \
+    "{\"hook_event_name\":\"PreToolUse\",\"tool_name\":\"Edit\",\"tool_input\":{\"file_path\":\"/Users/almirsarajcic/Areas/Optimum/codegen/shared/rules/stacks/phoenix/_core.md\"},\"agent_type\":\"$CURATOR\",\"agent_id\":\"abc\"}"
 
 # 13. Empty file path → ALLOW (defensive)
 run_test "Empty file path ALLOWED (defensive)" "allow" \
     "{\"hook_event_name\":\"PreToolUse\",\"tool_name\":\"Edit\",\"tool_input\":{\"file_path\":\"\"},\"agent_type\":\"$CURATOR\",\"agent_id\":\"abc\"}"
+
+# 14. codegen/shared/recipes/ → DENY (shared/rules allow must not over-match sibling shared/ dirs)
+run_test "Edit on codegen/shared/recipes/x.md DENIED (not caught by shared/rules allow)" "deny" \
+    "{\"hook_event_name\":\"PreToolUse\",\"tool_name\":\"Edit\",\"tool_input\":{\"file_path\":\"/Users/almirsarajcic/Areas/Optimum/codegen/shared/recipes/x.md\"},\"agent_type\":\"$CURATOR\",\"agent_id\":\"abc\"}"
 
 echo ""
 echo "Results: $pass passed, $fail failed"

@@ -9,7 +9,7 @@ Extract lessons from conversation and add concise rules.
 
 ## Writing Guidelines
 
-Read `~/Areas/Optimum/context/rules/STYLE_GUIDE.md` before writing. Key points:
+Read `~/Areas/Optimum/codegen/shared/rules/STYLE_GUIDE.md` before writing. Key points:
 
 - **Caveman ultra style** — rules read by agents, not humans. No preamble, no hedging. Fragments OK. Arrows for causality (X → Y).
 - Max 10 lines per rule section
@@ -25,7 +25,7 @@ After drafting: `echo "your section" | wc -l`. Section > 10 lines → compress. 
 
 ## Layered Placement (MANDATORY — check in order)
 
-1. **Shared rule** (`~/Areas/Optimum/context/rules/`) — universally true across ALL projects, baked into subagent system prompts, makes sense word-for-word in an unrelated project.
+1. **Shared rule** (`~/Areas/Optimum/codegen/shared/rules/`) — universally true across ALL projects, baked into subagent system prompts, makes sense word-for-word in an unrelated project.
 2. **Shared context** (`~/Areas/Optimum/context/`) — universal platform/tooling knowledge not in `rules/` (e.g., `claude-code-cli.md` for CLI semantics).
 3. **Project `context/` file** (`./context/*.md`) — project-specific domain knowledge, infra pitfalls, per-tool config. Read on demand by planner. NOT baked into subagent prompts.
 4. **`PROJECT_CONTEXT.md` / `CLAUDE.md`** — short operational facts, gate commands, port numbers.
