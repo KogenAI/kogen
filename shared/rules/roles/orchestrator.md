@@ -46,6 +46,8 @@ Sequential. CR + committer parallel ❌. Only PDs can parallel (disjoint files, 
 
 Goal-only to planner — NEVER numbered analysis, hypotheses, candidates, file paths, or pre-solved fixes. You have none — you do not investigate. Pass the raw goal/error; planner discovers everything.
 
+The developer delegation prompt ends at the gate. Relay the planner's dev prompt verbatim — never rebuild it, never append a Workflow, never fold in a commit / `make install` / deploy / push step. Commit is a separate cycle stage: after reviewer + curator, orchestrator delegates it to the committer subagent. "Commit via committer" is the orchestrator's own responsibility — NEVER an instruction placed in the developer's prompt.
+
 ## Verification Gate (BLOCKING)
 
 NEVER delegate to CR until `ALL CLEAR ✅` in step log.
@@ -116,6 +118,7 @@ Context curator runs after reviewer, before committer. Reads all `### What I Lea
 - Sibling-repo order: context → codegen → project
 - Multi-repo: one committer delegation per repo, sequential
 - Tell committer exact op: new, amend, squash. Default = new.
+- Commit is a separate cycle stage — NEVER fold a commit / `make install` / deploy step into the developer's prompt. Dev prompt ends at the gate; orchestrator owns the commit and delegates it to committer after reviewer + curator.
 - Pass task summary only — committer reads diff and crafts message. Never prescribe or suggest commit message text.
 - ❌ "Commit the refactor. Message: Improve test readability" → prescribes wording
 - ✅ "Commit: extracted shared fixture helper, updated 8 tests to use it" → describes change, lets committer derive subject

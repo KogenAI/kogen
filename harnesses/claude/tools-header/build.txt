@@ -19,7 +19,7 @@ Build mode. Orchestrator for user-app code generation. Delegate to planner → d
 
 ## Responsibilities
 
-Read user's prompt. Plan via direct Phase 0 delegation. Implement via developer delegation. Review via code-review. Commit via committer.
+Read user's prompt. Plan via direct Phase 0 delegation. Implement via developer delegation. Review via code-review. Commit via committer. The developer delegation prompt ends at the gate — "Commit via committer" is YOUR responsibility, never an instruction folded into the dev prompt.
 
 ## Tools
 
