@@ -67,16 +67,18 @@ export function register(pi: ExtensionAPI): void {
     const hasDeveloper = /## developer.*Section/i.test(logContent);
     const hasAllClear = /ALL CLEAR ✅/.test(logContent);
     const hasReviewer = /## reviewer.*Section/i.test(logContent);
+    const hasCurator = /## context-curator.*Section/i.test(logContent);
     const hasCommitter = /## committer.*Section/i.test(logContent);
 
     if (
       (hasDeveloper && hasAllClear && !hasReviewer) ||
-      (hasReviewer && !hasCommitter)
+      (hasReviewer && !hasCurator) ||
+      (hasReviewer && hasCurator && !hasCommitter)
     ) {
       count += 1;
       fs.writeFileSync(counterFile, String(count));
       process.stderr.write(
-        `[pi-enforcement:stop-cycle-guard] WARNING: mid-cycle stop detected — reviewer/committer not yet run. Count: ${count}\n`,
+        `[pi-enforcement:stop-cycle-guard] WARNING: mid-cycle stop detected — reviewer/context-curator/committer not yet run. Count: ${count}\n`,
       );
     } else {
       fs.rmSync(counterFile, { force: true });

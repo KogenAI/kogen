@@ -64,9 +64,24 @@ codegen-scaffold
 - `shared/apps/` — `.j2` template files, rendered reference `.md` copies
 - `shared/scaffold/<stack>/templates/` — .eex source templates
 
+## Downstream Agent Phase Structure
+
+`AGENTS-phoenix.md.j2` and `AGENTS-static.md.j2` define phases that guide the orchestrator through each agent cycle:
+
+| Phase | Agent         | Role                                                               |
+| ----- | ------------- | ------------------------------------------------------------------ |
+| 0     | Orchestrator  | Session start, context load                                        |
+| 1     | Planner       | Planning and slicing                                               |
+| 2     | Developer     | Implementation                                                     |
+| 3     | Reviewer      | Code review and approval                                           |
+| 3.5   | Context-curator | Updates context files post-reviewer; provides backstop before commit |
+| 4     | Committer     | Commits changes to git                                             |
+
+**Phase 3.5 curator insertion**: When updating downstream templates due to orchestrator role changes, ensure Phase 3.5 exists between reviewer (Phase 3) and committer (Phase 4). The curator phase enforces the reviewer → curator → committer ordering. Remove any "Act now" skip logic that bypasses curator, as that breaks the ordering contract.
+
 ## Pitfalls
 
 - **Mutation scripts are order-sensitive** — scaffold.sh runs mutations in a defined sequence; inserting out of order can break the generated app
 - **`AGENTS-*.md` vs `AGENTS-*.md.j2`** — `.j2` is the Jinja template; `.md` is the rendered reference copy checked in for human review. Both must stay in sync when changing agent roles or rules
 - **`eex_render.sh` variable scope** — variables must be exported before calling `eex_render.sh`; unset vars render as empty string silently
-- **AGENTS-phoenix.md.j2 embeds orchestrator rules** — downstream app templates in `shared/apps/` carry a copy of orchestrator rules; when `orchestrator.md` (rules-roles.md) changes, update these templates too to avoid sync drift. Note: there is no `CLAUDE-phoenix.md.j2` — `CLAUDE-phoenix.md` is a plain file (not a Jinja template)
+- **AGENTS-phoenix.md.j2 embeds orchestrator rules** — downstream app templates in `shared/apps/` carry a copy of orchestrator rules; when `orchestrator.md` (rules-roles.md) changes, update these templates too to avoid sync drift. Ensure Phase 3.5 curator always precedes Phase 4 committer. Note: there is no `CLAUDE-phoenix.md.j2` — `CLAUDE-phoenix.md` is a plain file (not a Jinja template)

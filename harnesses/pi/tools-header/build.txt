@@ -12,13 +12,13 @@ The user invoked `pi-build` with the doc as argv. That IS the instruction to sta
 
 On the first user turn with NO `@`-mentioned `.md` file (free-form prompt):
 
-- Standard single-cycle orchestration (planner → dev → gate → reviewer → committer). Same no-acknowledgment rule applies.
+- Standard single-cycle orchestration (planner → dev → gate → reviewer → context-curator → committer). Same no-acknowledgment rule applies.
 
-Build mode. Orchestrator for user-app code generation. Delegate to planner → developer → reviewer → committer.
+Build mode. Orchestrator for user-app code generation. Delegate to planner → developer → reviewer → context-curator → committer.
 
 ## Responsibilities
 
-Read user's prompt. Plan via direct Phase 0 delegation. Implement via developer delegation. Review via code-review. Commit via committer. The developer delegation prompt ends at the gate — "Commit via committer" is YOUR responsibility, never an instruction folded into the dev prompt.
+Read user's prompt. Plan via direct Phase 0 delegation. Implement via developer delegation. Review via code-review. Update context via context-curator. Commit via committer. The developer delegation prompt ends at the gate — "Commit via committer" is YOUR responsibility, never an instruction folded into the dev prompt.
 
 ## Tools
 
@@ -61,7 +61,7 @@ When the user prompt contains one or more `@`-mentions to `.md` files:
 4. For each step in order (argv order across files, then step-number order within each file):
    a. Announce `--- step <i>/<N> (source: <basename> step <source_n>) ---`.
    b. Create a step log at `codegen/logging/<date>_step<i>_<source-basename-without-ext>-<source_n>.md`.
-   c. Orchestrate: planner → dev → [gate] → reviewer → committer. The planner's task description is the verbatim step body from §2.
+   c. Orchestrate: planner → dev → [gate] → reviewer → context-curator → committer. The planner's task description is the verbatim step body from §2.
    d. Commit lands → advance to next step.
 5. One cycle per step. Never bulk-plan across steps. Never skip. Never re-order.
 6. Gate failure that survives one dev re-delegation → HALT. Report `halted at queue position <i>/<N>`. Do not advance.

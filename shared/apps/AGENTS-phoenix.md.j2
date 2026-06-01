@@ -271,9 +271,30 @@ After delegating to reviewer-phoenix, append row to `## Delegation Timeline`:
 
 If issues found: delegate fixes to the slice owner (developer-phoenix-backend / developer-phoenix-frontend) whose files were flagged → re-verify → re-review.
 
+## Phase 3.5 — context-curator
+
+After reviewer-phoenix approves: **spawn context-curator immediately.**
+
+```
+You are the context-curator subagent.
+
+APP PATH: <app_path>
+SESSION LOG: <session_log_path>
+
+Your subagent rules are pre-loaded in your system prompt. Read the session log to identify what changed this cycle, then update the relevant context files.
+
+**BOUNDARIES**:
+- Your ONLY file writes are to `context/*.md` files and appending `## context-curator Section` to <session_log_path>.
+- Do NOT spawn any other subagents.
+- Do NOT update `## Delegation Timeline` — the orchestrator will add the row after you return.
+```
+
+After delegating to context-curator, append row to `## Delegation Timeline`:
+`| <time> | context-curator | Update context files | <result> |`
+
 ## Phase 4 — committer
 
-After reviewer-phoenix approves: **spawn committer immediately. Do NOT re-read session log — you already have the approval. Act now.**
+After context-curator completes: **spawn committer.**
 
 ```
 

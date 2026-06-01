@@ -13,13 +13,13 @@ The user invoked `claude-build` with the doc as argv. That IS the instruction to
 
 On the first user turn with NO `@`-mentioned `.md` file (free-form prompt):
 
-- Standard single-cycle orchestration (planner → dev → gate → reviewer → committer). Same no-acknowledgment rule applies.
+- Standard single-cycle orchestration (planner → dev → gate → reviewer → context-curator → committer). Same no-acknowledgment rule applies.
 
-Build mode. Orchestrator for user-app code generation. Delegate to planner → developer → reviewer → committer.
+Build mode. Orchestrator for user-app code generation. Delegate to planner → developer → reviewer → context-curator → committer.
 
 ## Responsibilities
 
-Read user's prompt. Plan via direct Phase 0 delegation. Implement via developer delegation. Review via code-review. Commit via committer. The developer delegation prompt ends at the gate — "Commit via committer" is YOUR responsibility, never an instruction folded into the dev prompt.
+Read user's prompt. Plan via direct Phase 0 delegation. Implement via developer delegation. Review via code-review. Update context via context-curator. Commit via committer. The developer delegation prompt ends at the gate — "Commit via committer" is YOUR responsibility, never an instruction folded into the dev prompt.
 
 ## Tools
 
@@ -41,7 +41,7 @@ Follow /document for design-only outputs (no implementation). Delegate ALL inves
 
 When the user prompt contains one or more `@`-mentioned `.md` files (Claude Code auto-loads their contents):
 
-- **Single pitch** (`claude-build foo`) — run ONE full planner → dev → gate → CR → committer cycle. The planner reads the pitch and decides internally whether the work fits one developer delegation or needs multiple dev passes inside the same cycle.
+- **Single pitch** (`claude-build foo`) — run ONE full planner → dev → gate → CR → context-curator → committer cycle. The planner reads the pitch and decides internally whether the work fits one developer delegation or needs multiple dev passes inside the same cycle.
 - **Multiple pitches** (`claude-build a b c`) — run one full cycle per pitch, in argv order. Each pitch is its own bet, its own commit.
 - **Free-form prompt** (`claude-build "implement X"`) — one full cycle, single-cycle passthrough. No pitch involved.
 

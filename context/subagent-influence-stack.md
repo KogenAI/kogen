@@ -27,6 +27,8 @@ File: `~/.claude/agents/<role>.md`. Generated from `<role>.md.j2` template. Cont
 
 To inspect what a subagent actually has: Read tool on `~/.claude/agents/<role>.md` (Example: `~/.claude/agents/developer-phoenix-backend.md`).
 
+**Orchestrator prompt assembly** — Special case: the build orchestrator prompt is assembled from `harnesses/<harness>/tools-header/build.txt` ONLY. The `tools-header/build.txt` file contains all cycle statements (reviewer → curator → committer sequencing). Edits to `shared/rules/roles/orchestrator.md` do NOT propagate to orchestrator invocations; `build.txt` is the canonical source. Edits to `build.txt` are NOT templated (unlike other agent prompts) — they are inlined directly by `codegen-build` at launch. After editing `build.txt`, run `make install` to validate syntax, then re-invoke `codegen-build`.
+
 ## Layer 3 — Project Context Files
 
 Files: `./context/*.md`. NOT auto-loaded into subagent prompts. Planner reads on demand based on trigger keywords in `PROJECT_CONTEXT.md`, then passes relevant excerpts in delegation prompt. Audience = planner + orchestrator — dev subagents only see what planner forwards.

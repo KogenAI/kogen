@@ -51,15 +51,20 @@ export function register(pi: ExtensionAPI): void {
     const hasDeveloper = /## developer.*Section/i.test(logContent);
     const hasAllClear = /ALL CLEAR ✅/.test(logContent);
     const hasReviewer = /## reviewer.*Section/i.test(logContent);
+    const hasCurator = /## context-curator.*Section/i.test(logContent);
     const hasCommitter = /## committer.*Section/i.test(logContent);
 
     if (hasDeveloper && hasAllClear && !hasReviewer) {
       process.stderr.write(
         "[pi-enforcement:step-log-completeness] WARNING: developer ALL CLEAR present but reviewer section absent — cycle incomplete.\n",
       );
-    } else if (hasReviewer && !hasCommitter) {
+    } else if (hasReviewer && !hasCurator) {
       process.stderr.write(
-        "[pi-enforcement:step-log-completeness] WARNING: reviewer section present but committer section absent — cycle incomplete.\n",
+        "[pi-enforcement:step-log-completeness] WARNING: reviewer section present but context-curator section absent — cycle incomplete.\n",
+      );
+    } else if (hasReviewer && hasCurator && !hasCommitter) {
+      process.stderr.write(
+        "[pi-enforcement:step-log-completeness] WARNING: reviewer and context-curator sections present but committer section absent — cycle incomplete.\n",
       );
     }
   });

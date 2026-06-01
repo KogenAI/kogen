@@ -74,7 +74,7 @@ fi
 
 case "$last_agent" in
 developer-phoenix-backend | developer-phoenix-frontend | developer-html | developer-hugo | developer-vite | reviewer-phoenix | reviewer-static)
-    next_role_hint="$last_agent just finished — continue the cycle (review → committer, or back to developer if issues found)."
+    next_role_hint="$last_agent just finished — continue the cycle (review → context-curator → committer, or back to developer if issues found)."
     ;;
 context-curator)
     next_role_hint="context-curator just finished — continue to committer."

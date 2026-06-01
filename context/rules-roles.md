@@ -29,10 +29,19 @@ shared/rules/roles/
 ## Integration Points
 
 - **subagents**: each `.md.j2` template `{% include %}`s its role's rule file — changes require `make install`
-- **hooks**: several hooks enforce role rules at runtime — e.g. `orchestrator-no-source-edit.sh` enforces orchestrator's never-implement rule; `pre-commit-guard.sh` enforces committer-only commits — see `context/hooks.md`
+- **hooks**: several hooks enforce role rules at runtime — e.g. `orchestrator-no-source-edit.sh` enforces orchestrator's never-implement rule; `pre-commit-guard.sh` enforces committer-only commits; `curator-before-committer.sh` enforces reviewer → curator → committer sequencing — see `context/hooks.md`
 - **rules-core**: role rules are layered on top of core discipline rules (`context/rules-core.md`); both must be satisfied
 - **scaffold**: `AGENTS-phoenix.md.j2` and `AGENTS-static.md.j2` embed orchestrator rules for downstream apps — sync burden when orchestrator.md changes; see `context/scaffold.md`
 - **curator-routing**: context-curator's generic rule (`shared/rules/roles/context-curator.md`) delegates project paths to `context/curator-routing.md` — the `[shared]` write surface on disk is `shared/rules/**`; `codegen/rules/` is a symlink to `shared/rules/` created by `make install` and must NOT be edited directly
+
+## Committer Spawn Timing
+
+Committer is a leaf agent with no independent decision-making power about when it runs. Ordering enforcement happens in two layers:
+
+1. **Orchestrator prompt** — all four cycle statements in `harnesses/<harness>/tools-header/build.txt` name the full sequence: `reviewer → context-curator → committer`. This is the primary guidance.
+2. **Spawn-time guard** — `curator-before-committer.sh` (Claude) and `.ts` mirror (Pi) block committer spawning when reviewer section is present in the active step log but curator section is absent. Provides hard enforcement at the moment delegation is attempted.
+
+**Fail-open principle**: both Claude and Pi spawn guards check the active session log (discovered via transcript analysis). If the log is missing, unreadable, or cannot be parsed, the guard exits successfully (allow the spawn). This is deliberate — missing evidence should not block action. The prompt guidance is the primary enforcer; the guard is a backstop to catch obvious out-of-order violations. If session logs are inaccessible, fall back to orchestrator prompt guidance.
 
 ## Trigger Keywords
 
