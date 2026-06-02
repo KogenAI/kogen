@@ -32,7 +32,7 @@ Hook registration: `hook_registrations.py` reads `harnesses/claude/hooks/*.sh`, 
 | `harnesses/claude/hooks/context-curator-guard.sh`            | PreToolUse — guards context file edits to curator role only                                |
 | `harnesses/claude/hooks/context-index-parity.sh`             | PreToolUse — enforces context file + PROJECT_CONTEXT.md index parity                       |
 | `harnesses/claude/hooks/curator-before-committer.sh`         | PreToolUse — blocks committer spawn before context-curator has run                         |
-| `harnesses/claude/hooks/operator-subagent-allowlist.sh`      | PreToolUse — enforces agent delegation allowlist                                           |
+| `harnesses/claude/hooks/operator-subagent-allowlist.sh`      | PreToolUse — enforces agent delegation allowlist (role ∈ {debug, shape, refactor, ops}); gates slash commands that spawn subagents |
 | `harnesses/claude/hooks/build-worker-cwd-guard.sh`           | PreToolUse — guards build worker cwd discipline                                            |
 | `harnesses/claude/hooks/build-no-success-before-commit.sh`   | PreToolUse — blocks declaring success before commit completes                              |
 | `harnesses/claude/hooks/committer-no-trailer-guard.sh`       | PreToolUse — blocks commit trailers (Co-authored-by, etc.)                                 |

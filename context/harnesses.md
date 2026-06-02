@@ -30,6 +30,7 @@ System prompt assembly: `tools-header/<mode>.txt` + each entry in `prompt_body[]
 | `harnesses/pi/prompt-bodies/`                     | Per-harness prompt body files for pi (build, debug, ops) — mode-specific non-tools content      |
 | `harnesses/shared/prompt-bodies/`                 | Shared harness-agnostic body text (shape, refactor, plus shared ops rules)                      |
 | `shared/prompt-fragments/`                        | Reusable prompt fragments included via `{% include %}` — `_probing.txt`, `_authoring-spine.txt` |
+| `harnesses/claude/commands/`                      | Slash commands (`.md.j2` templates) installed to `~/.claude/commands/` at install time        |
 
 ## Key Paths
 
@@ -87,7 +88,7 @@ tools-header/<mode>.txt   (per-harness: mode title + ## Tools + any pre-Tools co
 
 **Per-harness vs shared bodies**: build/debug/ops have per-harness bodies (different content for claude vs pi). shape/refactor share bodies + fragments (content is identical between harnesses).
 
-**`/ready` command**: `harnesses/claude/commands/ready.md.j2` — a Jinja2 template that `{% include 'prompt-fragments/_probing.txt' %}`. Rendered to `templates/generated/claude-code/commands/ready.md` by `generate.sh`, then installed from there by `install.sh`.
+**Slash commands**: Templates in `harnesses/claude/commands/*.md.j2` (Jinja2) are rendered by `generate.sh` → `templates/generated/claude-code/commands/` → installed to `~/.claude/commands/` by `install.sh`. Commands can spawn subagent swarms (e.g., `/poke-holes` spawns Explore agents). Gating via `operator-subagent-allowlist.sh` enforces role ∈ {debug, shape, refactor, ops}. Examples: `/ready` (readiness gate), `/poke-holes` (stress-test pitch via Explore swarm). Pi gets an inert copy of all commands; no Pi-specific overrides yet.
 
 ## Dispatcher Routing
 

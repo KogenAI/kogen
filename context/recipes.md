@@ -90,6 +90,10 @@ shared/recipes/
 
 recipe, recipe INDEX, static-html-base-template, static-vite-scaffold, phoenix-feature-test-setup, oban-job-rescheduling, mox-verify-on-exit-scope, elixir-context-test-structure
 
+## Notable Patterns
+
+**Slash-command-to-subagent-swarm pattern**: Slash commands (in `harnesses/claude/commands/`) can spawn swarms of subagents for stress-testing or exploration. Example: `/poke-holes` spawns an Explore swarm with multiple attack angles (scope holes, unverified claims, contract breakage, consistency gaps). Spawned agents auto-fold confirmed findings back into the pitch. Gating via `operator-subagent-allowlist.sh` restricts spawning to debug/shape/refactor/ops roles.
+
 ## Pitfalls
 
 - **Recipes are templates, not installed artifacts** — they are `{% include %}`d at generate time via `process_template.py`; they do not exist as standalone files in deployed agents
