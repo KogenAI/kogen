@@ -36,15 +36,24 @@ export function register(pi: ExtensionAPI): void {
       );
     }
 
-    // Deny: coverage flags / mix coveralls
+    // Deny: full-suite coverage formatters — unconditional (no single-file form).
     if (
-      /(^|\s)--cover(\s|$)|\bcoveralls\.(html|json)\b|\bmix\s+coveralls\b/.test(
-        command,
-      )
+      /\bcoveralls\.(html|json)\b|\bmix\s+coveralls\b/.test(command)
     ) {
       return deny(
-        "Dev MUST NOT run coverage (--cover, coveralls.html, coveralls.json, mix coveralls). Coverage runs the full suite — the dev-gate.sh SubagentStop hook handles it after you exit.",
+        "Dev MUST NOT run coverage formatters (coveralls.html, coveralls.json, mix coveralls). Coverage runs the full suite — the dev-gate.sh SubagentStop hook handles it after you exit.",
       );
+    }
+
+    // Deny: bare `mix test --cover` (no path) — full-suite coverage.
+    // Allow `mix test --cover test/path/file.exs` as single-file aid.
+    if (/(^|\s)--cover(\s|$)/.test(command)) {
+      const hasPath = /[^\s]+\.exs|[^\s]+\/[^\s]+/.test(command);
+      if (!hasPath) {
+        return deny(
+          "Bare `mix test --cover` runs full-suite coverage — dev MUST NOT. The dev-gate.sh SubagentStop hook handles full coverage. A single file is OK: `mix test --cover test/path/file.exs`.",
+        );
+      }
     }
 
     // Deny: bare `mix test`

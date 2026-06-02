@@ -71,4 +71,14 @@ describe("dev-no-ci", () => {
     const result = await runHook("make llm-phoenix");
     assert.ok((result as { block?: boolean }).block === true);
   });
+
+  it("allows mix test --cover with file path", async () => {
+    const result = await runHook("mix test --cover test/foo_test.exs");
+    assert.ok(result == null || (result as { block?: boolean }).block !== true);
+  });
+
+  it("blocks bare mix test --cover", async () => {
+    const result = await runHook("mix test --cover");
+    assert.ok((result as { block?: boolean }).block === true);
+  });
 });

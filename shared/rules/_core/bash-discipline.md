@@ -82,3 +82,20 @@ All git commands use relative paths (workspace root is cwd). `git add ./file`, `
 ## Git mv
 
 `git mv <src> <dst>` — parent of `<dst>` must exist first; `git mv` does NOT create intermediate directories. Use `mkdir -p <dst-parent>` before `git mv`.
+
+## Path-Gating Heuristic (has_path idiom)
+
+When a hook must distinguish full-suite runs from single-file runs (e.g., deny `mix test --cover` but allow `mix test --cover test/foo_test.exs`), use the `has_path` idiom:
+
+```bash
+has_path=$(printf '%s' "$COMMAND" | grep -oE '[^[:space:]]+' | grep -E '(/|\.exs$)' | head -1 || true)
+if [ -z "$has_path" ]; then
+    deny "Bare command runs full suite..."
+fi
+```
+
+**Reuse, do NOT inline**: this idiom is trusted across multiple guards. Duplicate definitions → multiple sources of truth.
+
+**Limitation**: heuristic admits false positives. A flag value containing `/` (e.g., `--env MIX_ENV=test/config`) may match as a path. Severity: low — contrived invocation patterns. Inherent to the approach; not a regression vs. guards that do not gate on path presence.
+
+**TS port difference**: when porting to TypeScript (e.g., pi-harness), test the FULL command string for path presence, NOT a prefix-stripped version. Elixir `mix test --cover <path>` may appear in any token order; a TS guard that strips `mix test ` before testing path presence would miss `mix test <path> --cover`.

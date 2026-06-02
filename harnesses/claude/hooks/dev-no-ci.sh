@@ -44,11 +44,22 @@ if printf '%s' "$COMMAND" | grep -qE '^[[:space:]]*make[[:space:]]+(ci|ci-cover|
     exit 0
 fi
 
-# Deny: coverage flags / artifacts / mix coveralls (any variant).
-# Coverage runs full suite — dev MUST NOT. The dev-gate.sh hook handles coverage.
-if printf '%s' "$COMMAND" | grep -qE '(^|[[:space:]])--cover([[:space:]]|$)|\bcoveralls\.(html|json)\b|\bmix[[:space:]]+coveralls\b'; then
-    deny "Dev MUST NOT run coverage (--cover, coveralls.html, coveralls.json, mix coveralls). Coverage runs the full suite — the dev-gate.sh SubagentStop hook handles it after you exit."
+# Deny: full-suite coverage formatters — unconditional (no single-file form).
+# `mix coveralls` / coveralls.html / coveralls.json always run the full suite.
+if printf '%s' "$COMMAND" | grep -qE '\bcoveralls\.(html|json)\b|\bmix[[:space:]]+coveralls\b'; then
+    deny "Dev MUST NOT run coverage formatters (coveralls.html, coveralls.json, mix coveralls). Coverage runs the full suite — the dev-gate.sh SubagentStop hook handles it after you exit."
     exit 0
+fi
+
+# Deny: bare `mix test --cover` (no path) — full-suite coverage.
+# Allow `mix test --cover test/path/M_test.exs` as the optional single-file aid
+# (reuse the same path-token check as the flags-only guard below).
+if printf '%s' "$COMMAND" | grep -qE '(^|[[:space:]])--cover([[:space:]]|$)'; then
+    has_path=$(printf '%s' "$COMMAND" | grep -oE '[^[:space:]]+' | grep -E '(/|\.exs$)' | head -1 || true)
+    if [ -z "$has_path" ]; then
+        deny "Bare \`mix test --cover\` runs full-suite coverage — dev MUST NOT. The dev-gate.sh SubagentStop hook handles full coverage. A single file is OK: \`mix test --cover test/path/file.exs\`."
+        exit 0
+    fi
 fi
 
 # Deny: bare `mix test` (no path argument, no flags)

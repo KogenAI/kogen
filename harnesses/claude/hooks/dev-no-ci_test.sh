@@ -6,6 +6,13 @@
 #   10-12: mix test with specific file path → allow (0)
 #   13:   non-Bash tool → allow (0)
 #   14:   non-developer-* agent → allow (0)
+#   15:   mix test --cover with file path → allow (0)  [single-file coverage OK]
+#   16:   mix coveralls → deny (2)
+#   17:   mix coveralls.html → deny (2)
+#   18:   mix coveralls.json → deny (2)
+#   19:   mix test --trace flag-only → deny (2)
+#   20:   mix test --trace with path → allow (0)
+#   21:   bare mix test --cover (no path) → deny (2)
 
 set -euo pipefail
 
@@ -100,9 +107,9 @@ run_test "make ci on Read tool allowed (non-Bash)" "0" \
 run_test "make ci allowed for committer (non-developer-*)" "0" \
     '{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"make ci"},"agent_type":"committer","agent_id":"abc123"}'
 
-# Coverage denials (H4 extension)
-# Test 15: mix test --cover → deny
-run_test "mix test --cover blocked for developer" "2" \
+# Coverage cases
+# Test 15: mix test --cover with file path → allow (single-file coverage permitted)
+run_test "mix test --cover with file path allowed for developer" "0" \
     '{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"mix test --cover test/foo_test.exs"},"agent_type":"developer-phoenix-backend","agent_id":"abc123"}'
 
 # Test 16: mix coveralls → deny
@@ -130,6 +137,10 @@ run_test "mix test --trace flag-only blocked" "2" \
 # Test 20: mix test --trace test/path.exs → allow (flag + path)
 run_test "mix test --trace with path allowed" "0" \
     '{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"mix test --trace test/foo_test.exs"},"agent_type":"developer-phoenix-backend","agent_id":"abc123"}'
+
+# Test 21: bare mix test --cover (no path) → deny
+run_test "bare mix test --cover (no path) blocked for developer" "2" \
+    '{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"mix test --cover"},"agent_type":"developer-phoenix-backend","agent_id":"abc123"}'
 
 echo ""
 echo "Results: $pass passed, $fail failed"
