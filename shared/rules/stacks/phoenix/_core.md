@@ -127,6 +127,10 @@ end
 - Custom static dirs in `static_paths/0` (backend_web.ex)
 - GenServer debounce: `Process.send_after` + cancel-and-reset. `Task.Supervisor.start_child` (not `Task.start`) for test stub propagation.
 - Coveralls `# coveralls-ignore-start/stop` pragmas inside `case` arm bodies are formatter-accepted — `mix format` does not reindent them.
+- **Default args on single-clause private fns**: Elixir warns "default values for optional arguments never used" when a single-clause `defp` fn has default args but no caller uses the default path. Fix: remove defaults, pass explicit arg at all call sites. Affects `mix compile --warnings-as-errors`.
+- **Code complexity limits (Credo)**: ABC size (30) and nesting depth (2) limits trigger on deeply nested `if/else` or `case` inside `case` arm bodies. Fix: extract nested dispatch to a named helper fn (keeps each fn focused). Example: nested `if deploy_fun / if phoenix_app?` inside a `case` arm → extract to `run_deploy/2` private fn with explicit dispatch logic.
+- **Nested case → fn clauses**: Replace nested `case` inside `case` arm with separate fn clauses for each result pattern. Eliminates nesting depth and reduces ABC; pass accumulated context as fn args. Example: `do_promote/1` → split inner `case deploy_result` into `handle_deploy_result/3` with clauses for `:ok`, `{:error, _}`.
+- **Minimal coverage fix for private fns without opts seam**: When a private fn calls an external module with no opts/mock seam to stub, inject a thin `Application.get_env` config key (nil-safe default) inside the private fn. In tests, `Application.put_env` to inject a stub, exercising the private fn without full module setup. Example: `do_promote/1` → read `:preview_deploy_fun` config inside the fn (nil → use real Deploy, non-nil → call stub), avoid Mox on entire module.
 
 ## Compile-Time Config
 
