@@ -90,11 +90,13 @@ Regex: `\.\w+\.` matches the hash dot-sep-dot pattern; use as gate to fall throu
 
 ## Test Discipline
 
-`Application.put_env` is process-global → mutating it from `async: true` ExUnit tests races with any other async test reading the same key, even when Mox stubs are process-local. Fix: split offenders into a sibling `async: false` module in the same file (e.g., `ChannelsTest` alongside `ChannelsSyncTest`). When splitting, verify ALL env-mutating tests migrate to the serial block — partial migration leaves races intact.
+`Application.put_env` is process-global → mutating it from `async: true` ExUnit tests races with any other async test reading the same key, even when Mox stubs are process-local. Fix: split offenders into a sibling `async: false` module in the same file (e.g., `ChannelsTest` alongside `ChannelsSyncTest`). When splitting, verify ALL env-mutating tests migrate to the serial block — partial migration leaves races intact. Also guard with `System.put_env` mutations: they mutate the OS-level `environ`, not the Erlang app config — any async test + concurrent subprocess call races via PATH / HOME / env reads.
 
-`async: false` + `Sandbox.start_owner!(shared: true)` flips the GLOBAL sandbox connection mode, causing concurrent `async: true` tests to route through the shared connection → `40P01 deadlock`. Fix: `@moduletag :no_shared_sandbox` + DataCase guard that skips `shared: true` for serial modules that don't need cross-test isolation (e.g., filesystem-only tests with no DB writes).
+`async: false` + `Sandbox.start_owner!(shared: true)` flips the GLOBAL sandbox connection mode, causing concurrent `async: true` tests to route through the shared connection → `40P01 deadlock`. Fix: `@moduletag :no_shared_sandbox` + DataCase guard that skips `shared: true` for serial modules that don't need cross-test isolation (e.g., filesystem-only tests with no DB writes). **Critical**: `async: false` does NOT prevent async tests from running concurrently — it only serializes within the serial queue. Squatting a shared filesystem path (e.g., `partci55/user_files`) still races with any async test touching that path. Isolate filesystem mutations via `Application.put_env(:combobulate, :user_files_dir, System.tmp_dir!())` to force the test to use a unique path.
 
 ExUnit **does NOT** inject `:async => false` into the tags map for `async: false` modules — tag absent → `tags[:async]` = `nil` → `not nil` = `ArgumentError`. Always use `tags[:key] != true` (or `!!tags[:key]`) when checking optional boolean tags. Never use `not tags[:key]`.
+
+**Credo module layout order** (StrictModuleLayout): `use` → `import` → `alias` → module attributes (`@moduletag`). Inserting `@moduletag` between `use` and `import`/`alias` triggers two separate violations. Always place module tags after ALL imports and aliases.
 
 Example pattern (channels_test.exs):
 
@@ -119,6 +121,8 @@ defmodule ChannelsTest do
 end
 ```
 
+**`System.cmd/3` env semantics**: `env: []` passes an EMPTY environment to the child process — it does NOT inherit the caller's OS env. Subprocesses run shell scripts like `#!/usr/bin/env bash` which depend on PATH. Fix: use `env: prod_env([])` (or a computed clean env dict) to explicitly construct and pass a release-safe PATH. Never use `env: []` for subprocesses that run shell scripts — results in "env: bash: No such file or directory" when concurrent tests have mutated the caller's PATH via `System.put_env`.
+
 ## Misc
 
 - Explicit helpers over virtual fields
@@ -127,6 +131,7 @@ end
 - Custom static dirs in `static_paths/0` (backend_web.ex)
 - GenServer debounce: `Process.send_after` + cancel-and-reset. `Task.Supervisor.start_child` (not `Task.start`) for test stub propagation.
 - Coveralls `# coveralls-ignore-start/stop` pragmas inside `case` arm bodies are formatter-accepted — `mix format` does not reindent them.
+- **File operations on directory paths that may have non-dir squatters**: When hardening `mkdir_p!` calls, check one level up. Clear any non-dir at `Path.dirname(path)` BEFORE clearing any non-dir at `path` itself, then let `mkdir_p!` create the chain. Example: `File.mkdir_p!(user_files_dir)` can fail with "not a directory" at an intermediate parent if a concurrent test has briefly replaced that parent with a file. Guard: `parent = Path.dirname(path); File.exists?(parent) and not File.dir?(parent) and File.rm_rf!(parent)` — the `File.exists?` check prevents deletion of real dirs. Mis-configured/nil path → `Path.dirname(nil)` raises before any `rm_rf!` → fail-fast, safe.
 - **Default args on single-clause private fns**: Elixir warns "default values for optional arguments never used" when a single-clause `defp` fn has default args but no caller uses the default path. Fix: remove defaults, pass explicit arg at all call sites. Affects `mix compile --warnings-as-errors`.
 - **Code complexity limits (Credo)**: ABC size (30) and nesting depth (2) limits trigger on deeply nested `if/else` or `case` inside `case` arm bodies. Fix: extract nested dispatch to a named helper fn (keeps each fn focused). Example: nested `if deploy_fun / if phoenix_app?` inside a `case` arm → extract to `run_deploy/2` private fn with explicit dispatch logic.
 - **Nested case → fn clauses**: Replace nested `case` inside `case` arm with separate fn clauses for each result pattern. Eliminates nesting depth and reduces ABC; pass accumulated context as fn args. Example: `do_promote/1` → split inner `case deploy_result` into `handle_deploy_result/3` with clauses for `:ok`, `{:error, _}`.
