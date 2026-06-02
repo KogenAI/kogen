@@ -209,6 +209,43 @@ hooks_realpath() {
     fi
 }
 
+# repo_relative — convert a path to a repo-relative form.
+#
+# Given an absolute or relative path, returns the path relative to the project
+# root (CWD / CLAUDE_PROJECT_DIR / $PWD). If the canonicalised path does not
+# start with the cwd prefix it is returned as-is (absolute).
+#
+# Usage: rel=$(repo_relative "$FILE_PATH")
+repo_relative() {
+    local path="$1"
+    # Relative paths are already repo-relative — pass through unchanged.
+    # Only absolute paths need cwd-prefix stripping (with symlink resolution
+    # so /tmp → /private/tmp works on macOS).
+    case "$path" in
+    /*) ;;
+    *)
+        printf '%s\n' "$path"
+        return 0
+        ;;
+    esac
+    local canonical
+    canonical=$(hooks_realpath "$path") || return 1
+    local raw_cwd="${CWD:-${CLAUDE_PROJECT_DIR:-$PWD}}"
+    # Canonicalise cwd too — on macOS /tmp is a symlink to /private/tmp.
+    local cwd_prefix
+    cwd_prefix=$(hooks_realpath "$raw_cwd") || cwd_prefix="$raw_cwd"
+    # Ensure cwd_prefix ends with /
+    case "$cwd_prefix" in
+    */) ;;
+    *) cwd_prefix="${cwd_prefix}/" ;;
+    esac
+    # Strip prefix if canonical path starts with cwd_prefix
+    case "$canonical" in
+    "${cwd_prefix}"*) printf '%s\n' "${canonical#"$cwd_prefix"}" ;;
+    *) printf '%s\n' "$canonical" ;;
+    esac
+}
+
 # session_log_from_transcript — return the last codegen/logging/*.md path written
 # by this session, derived from $TRANSCRIPT_PATH (set by parse_input).
 #

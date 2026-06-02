@@ -28,17 +28,9 @@ parse_input
 role=$(resolve_role)
 debug_log orchestrator-no-source-edit "tool=$TOOL_NAME agent_id=$AGENT_ID role=${role}"
 
-# Normalise to a relative path: if the path is absolute and starts with cwd,
-# strip the cwd prefix so the relative-path allowlist patterns match correctly.
-cwd="$CWD"
-if [ -z "$cwd" ]; then
-    cwd="${CLAUDE_PROJECT_DIR:-$PWD}"
-fi
-rel_path="$FILE_PATH"
-cwd_prefix="${cwd%/}/"
-case "$FILE_PATH" in
-"${cwd_prefix}"*) rel_path="${FILE_PATH#"$cwd_prefix"}" ;;
-esac
+# Normalise to a repo-relative path so allowlist patterns match both relative
+# and abs-in-cwd forms (deliberate loosening — see session-log.md § Path Discipline).
+rel_path=$(repo_relative "$FILE_PATH")
 
 # Ops mode — full write surface, no restriction (interactive ops on live boxes).
 if [ "$role" = "ops" ]; then

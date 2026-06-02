@@ -2,25 +2,37 @@
 
 ## File Naming
 
-- Single: `./codegen/logging/$(date -u +%Y%m%d_%H%M%S)_session.md`
-- Multi-step: `./codegen/logging/$(date -u +%Y%m%d)_step<N>_<slug>.md`
+Canonical schema (single source of truth — hooks and guards match against this):
+
+```
+codegen/logging/[0-9]{8}_[0-9]{6}(_[a-z0-9-]+)?_(session|step[0-9]+_[a-z0-9-]+)\.md$
+```
+
+- Single: `./codegen/logging/$(date -u +%Y%m%d_%H%M%S)[_<slug>]_session.md` (slug optional)
+- Multi-step: `./codegen/logging/$(date -u +%Y%m%d_%H%M%S)_step<N>_<slug>.md` (full %H%M%S, not date-only)
 
 ## Path Discipline
 
-**ALL roles** (orchestrator, planner, dev, reviewer, committer) MUST use relative paths when:
+**ALL roles** (orchestrator, planner, dev, reviewer, committer) MUST use relative paths OR absolute paths that start with the cwd when:
 
 - Creating/updating session logs (`./codegen/logging/*.md`)
 - Editing project files via Edit tool (`./lib/`, `./test/`, `./bin/`, `./priv/`, etc.)
 - Running git operations (`git diff`, `git log`, `git add`, `git status` — all relative to project root)
 
-Absolute paths FORBIDDEN in rules, logs, and delegation prompts — breaks reproducibility across machines and CI environments.
+<!-- DELIBERATE LOOSENING from prior 'absolute paths FORBIDDEN' wording:
+     cwd-discipline.md line 10 permits absolute paths that start with cwd.
+     This rule now aligns with that. Hooks (reviewer-guard, orchestrator-*)
+     normalise FILE_PATH via repo_relative() before pattern matching, so
+     both relative and abs-in-cwd forms pass guards correctly. -->
+
+Use relative paths OR absolute paths THAT START WITH the cwd you were given; see `cwd-discipline.md` for path-form authority. Absolute paths to unrelated directories are FORBIDDEN.
 
 ## Ownership
 
 - Orchestrator creates step log FIRST — BEFORE delegating to planner, for ALL prompt types (pitch-driven, free-form, slash-command, `claude-build` non-interactive).
   - Same slug exists → read; committed → skip.
   - Free-form prompt (no pitch file) → use single-session form `./codegen/logging/$(date -u +%Y%m%d_%H%M%S)_session.md`.
-  - Multi-step (`/split` or explicit step plan) → use `./codegen/logging/$(date -u +%Y%m%d)_step<N>_<slug>.md`.
+  - Multi-step (`/split` or explicit step plan) → use `./codegen/logging/$(date -u +%Y%m%d_%H%M%S)_step<N>_<slug>.md`.
 - Orchestrator inserts `## <agent_type> Section` header into the step log via Edit BEFORE each `Agent()` call (delegation-time Edit, not Step-0).
 - Subagents write their section body under the existing header — never emit the header themselves. Hook `session-log-section-integrity.sh` lines 50–66 bypass: file already contains expected header → Edit allowed.
 - Planner exception: writes to `## Plan` (top-level skeleton header), not `## planner Section`. Hook line 35 bypasses `AGENT_TYPE=planner` literal only — stack-prefixed planner variants (`planner-phoenix`, `planner-html`, etc.) REQUIRE a stub `## planner-<stack> Section` header (literal stack name) in any Edit payload. The hook's bypass (line 35) does not widen to stack-prefixed variants; they must satisfy the normal `session-log-section-integrity.sh` header-present rule (lines 50–66).

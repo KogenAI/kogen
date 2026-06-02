@@ -30,6 +30,7 @@ import { register as registerOrchestratorReadDiscipline } from "./hooks/orchestr
 import { register as registerNoCatPipe } from "./hooks/no-cat-pipe";
 import { register as registerNoGitStash } from "./hooks/no-git-stash";
 import { register as registerNoPythonJson } from "./hooks/no-python-json";
+import { register as registerReviewerGuardSessionLogWrite } from "./hooks/reviewer-guard-session-log-write";
 // END-GENERATED-ENFORCEMENT-BLOCK
 import { register as registerPhoenixBackendDeveloperGuard } from "./hooks/phoenix-backend-developer-guard";
 import { register as registerPhoenixFrontendDeveloperGuard } from "./hooks/phoenix-frontend-developer-guard";
@@ -73,6 +74,7 @@ export default function (pi: ExtensionAPI): void {
   registerNoCatPipe(pi);
   registerNoGitStash(pi);
   registerNoPythonJson(pi);
+  registerReviewerGuardSessionLogWrite(pi);
   // END-GENERATED-ENFORCEMENT-BLOCK
   registerPhoenixBackendDeveloperGuard(pi);
   registerPhoenixFrontendDeveloperGuard(pi);

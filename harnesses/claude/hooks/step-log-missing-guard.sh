@@ -88,7 +88,7 @@ fi
 
 # ── Block: developer-* delegated but no step log created ─────────────────────
 
-template='codegen/logging/$(date -u +%Y%m%d_%H%M%S)_session.md'
+template='codegen/logging/$(date -u +%Y%m%d_%H%M%S)_<slug>_session.md'
 
 bash_redirect_create=$(jq -r '
     .message.content[]?

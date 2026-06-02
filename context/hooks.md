@@ -6,59 +6,59 @@ Hook registration: `hook_registrations.py` reads `harnesses/claude/hooks/*.sh`, 
 
 ## Components
 
-| File                                                         | Purpose                                                                                    |
-| ------------------------------------------------------------ | ------------------------------------------------------------------------------------------ |
-| `harnesses/claude/hooks/phoenix-dev-gate.sh`                 | SubagentStop — runs Phoenix test suite + render check, appends gate verdict                |
-| `harnesses/claude/hooks/static-site-build-check.sh`          | SubagentStop — builds static site + render check, appends gate verdict                     |
-| `harnesses/claude/hooks/step-log-missing-guard.sh`           | Stop — blocks if dev ran but no step log Write found in transcript                         |
-| `harnesses/claude/hooks/stop-cycle-guard.sh`                 | Stop — blocks premature stop before full cycle completes                                   |
-| `harnesses/claude/hooks/stop-resume.sh`                      | Stop — resumes orchestration if session was interrupted mid-cycle                          |
-| `harnesses/claude/hooks/stop-verify-planner-gate.sh`         | Stop — verifies planner ran before dev delegation                                          |
-| `harnesses/claude/hooks/step-log-completeness.sh`            | Stop — checks step log completeness before session ends                                    |
-| `harnesses/claude/hooks/llm-pending-sweep.sh`                | Stop — sweeps for pending LLM-generated artifacts before exit                              |
-| `harnesses/claude/hooks/session-log-section-integrity.sh`    | PreToolUse — enforces section header presence before Edit                                  |
-| `harnesses/claude/hooks/no-python-json.sh`                   | PreToolUse — blocks inline `python3 -c` JSON parsing                                       |
-| `harnesses/claude/hooks/no-cat-pipe.sh`                      | PreToolUse — blocks `cat file \| ...` and `head`/`tail` pipe patterns                      |
-| `harnesses/claude/hooks/no-git-stash.sh`                     | PreToolUse — blocks `git stash` usage                                                      |
-| `harnesses/claude/hooks/orchestrator-no-source-edit.sh`      | PreToolUse — blocks orchestrator from editing source files                                 |
-| `harnesses/claude/hooks/orchestrator-no-ci.sh`               | PreToolUse — blocks orchestrator from running CI/test commands                             |
-| `harnesses/claude/hooks/orchestrator-read-discipline.sh`     | PreToolUse — blocks orchestrator from reading files it shouldn't                           |
-| `harnesses/claude/hooks/subagent-read-discipline.sh`         | PreToolUse — blocks subagents from reading context files they shouldn't                    |
-| `harnesses/claude/hooks/pre-commit-guard.sh`                 | PreToolUse — blocks direct `git commit` outside committer role                             |
-| `harnesses/claude/hooks/dev-no-ci.sh`                        | PreToolUse — blocks developer from running CI gate commands                                |
-| `harnesses/claude/hooks/developer-no-self-gate.sh`           | PreToolUse — blocks developer from running its own gate check                              |
-| `harnesses/claude/hooks/planner-guard.sh`                    | PreToolUse — enforces planner constraints (no writes, no bash exec)                        |
-| `harnesses/claude/hooks/reviewer-guard.sh`                   | PreToolUse — enforces reviewer constraints                                                 |
-| `harnesses/claude/hooks/context-curator-guard.sh`            | PreToolUse — guards context file edits to curator role only                                |
-| `harnesses/claude/hooks/context-index-parity.sh`             | PreToolUse — enforces context file + PROJECT_CONTEXT.md index parity                       |
-| `harnesses/claude/hooks/curator-before-committer.sh`         | PreToolUse — blocks committer spawn before context-curator has run                         |
+| File                                                         | Purpose                                                                                                                            |
+| ------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------- |
+| `harnesses/claude/hooks/phoenix-dev-gate.sh`                 | SubagentStop — runs Phoenix test suite + render check, appends gate verdict                                                        |
+| `harnesses/claude/hooks/static-site-build-check.sh`          | SubagentStop — builds static site + render check, appends gate verdict                                                             |
+| `harnesses/claude/hooks/step-log-missing-guard.sh`           | Stop — blocks if dev ran but no step log Write found in transcript                                                                 |
+| `harnesses/claude/hooks/stop-cycle-guard.sh`                 | Stop — blocks premature stop before full cycle completes                                                                           |
+| `harnesses/claude/hooks/stop-resume.sh`                      | Stop — resumes orchestration if session was interrupted mid-cycle                                                                  |
+| `harnesses/claude/hooks/stop-verify-planner-gate.sh`         | Stop — verifies planner ran before dev delegation                                                                                  |
+| `harnesses/claude/hooks/step-log-completeness.sh`            | Stop — checks step log completeness before session ends                                                                            |
+| `harnesses/claude/hooks/llm-pending-sweep.sh`                | Stop — sweeps for pending LLM-generated artifacts before exit                                                                      |
+| `harnesses/claude/hooks/session-log-section-integrity.sh`    | PreToolUse — enforces section header presence before Edit                                                                          |
+| `harnesses/claude/hooks/no-python-json.sh`                   | PreToolUse — blocks inline `python3 -c` JSON parsing                                                                               |
+| `harnesses/claude/hooks/no-cat-pipe.sh`                      | PreToolUse — blocks `cat file \| ...` and `head`/`tail` pipe patterns                                                              |
+| `harnesses/claude/hooks/no-git-stash.sh`                     | PreToolUse — blocks `git stash` usage                                                                                              |
+| `harnesses/claude/hooks/orchestrator-no-source-edit.sh`      | PreToolUse — blocks orchestrator from editing source files                                                                         |
+| `harnesses/claude/hooks/orchestrator-no-ci.sh`               | PreToolUse — blocks orchestrator from running CI/test commands                                                                     |
+| `harnesses/claude/hooks/orchestrator-read-discipline.sh`     | PreToolUse — blocks orchestrator from reading files it shouldn't                                                                   |
+| `harnesses/claude/hooks/subagent-read-discipline.sh`         | PreToolUse — blocks subagents from reading context files they shouldn't                                                            |
+| `harnesses/claude/hooks/pre-commit-guard.sh`                 | PreToolUse — blocks direct `git commit` outside committer role                                                                     |
+| `harnesses/claude/hooks/dev-no-ci.sh`                        | PreToolUse — blocks developer from running CI gate commands                                                                        |
+| `harnesses/claude/hooks/developer-no-self-gate.sh`           | PreToolUse — blocks developer from running its own gate check                                                                      |
+| `harnesses/claude/hooks/planner-guard.sh`                    | PreToolUse — enforces planner constraints (no writes, no bash exec)                                                                |
+| `harnesses/claude/hooks/reviewer-guard.sh`                   | PreToolUse — enforces reviewer constraints                                                                                         |
+| `harnesses/claude/hooks/context-curator-guard.sh`            | PreToolUse — guards context file edits to curator role only                                                                        |
+| `harnesses/claude/hooks/context-index-parity.sh`             | PreToolUse — enforces context file + PROJECT_CONTEXT.md index parity                                                               |
+| `harnesses/claude/hooks/curator-before-committer.sh`         | PreToolUse — blocks committer spawn before context-curator has run                                                                 |
 | `harnesses/claude/hooks/operator-subagent-allowlist.sh`      | PreToolUse — enforces agent delegation allowlist (role ∈ {debug, shape, refactor, ops}); gates slash commands that spawn subagents |
-| `harnesses/claude/hooks/build-worker-cwd-guard.sh`           | PreToolUse — guards build worker cwd discipline                                            |
-| `harnesses/claude/hooks/build-no-success-before-commit.sh`   | PreToolUse — blocks declaring success before commit completes                              |
-| `harnesses/claude/hooks/committer-no-trailer-guard.sh`       | PreToolUse — blocks commit trailers (Co-authored-by, etc.)                                 |
-| `harnesses/claude/hooks/committer-single-line-guard.sh`      | PreToolUse — enforces single-line commit subject                                           |
-| `harnesses/claude/hooks/committer-subject-length.sh`         | PreToolUse — enforces commit subject line length limit                                     |
-| `harnesses/claude/hooks/phoenix-backend-developer-guard.sh`  | PreToolUse — guards backend developer file scope                                           |
-| `harnesses/claude/hooks/phoenix-frontend-developer-guard.sh` | PreToolUse — guards frontend developer file scope                                          |
-| `harnesses/claude/hooks/static-site-ex-guard.sh`             | PreToolUse — blocks .ex file writes in static site context                                 |
-| `harnesses/claude/hooks/session-log-section-integrity.sh`    | PreToolUse — enforces session log section header rules                                     |
-| `harnesses/claude/hooks/subagent-retrospective-guard.sh`     | SubagentStop — validates retrospective placement in step log                               |
-| `harnesses/claude/hooks/post-developer-format.sh`            | SubagentStop — runs code formatter after developer completes                               |
-| `harnesses/claude/hooks/developer-no-self-gate-reset.sh`     | SubagentStop — blocks developer from resetting its own gate                                |
-| `harnesses/claude/hooks/track-subagent-edits.sh`             | PreToolUse — tracks files edited per subagent for session log                              |
-| `harnesses/claude/hooks/track-tool-failures.sh`              | PostToolUseFailure — logs tool failures for diagnostics                                    |
-| `harnesses/claude/hooks/usage-rules-grep-guard.sh`           | PreToolUse — enforces grep usage rules (no bare grep on files)                             |
-| `harnesses/claude/hooks/env-var-sample-consistency.sh`       | PreToolUse — checks env var sample file consistency                                        |
-| `harnesses/claude/hooks/llm-suite-guard.sh`                  | PreToolUse — guards LLM test suite invocations                                             |
-| `harnesses/claude/hooks/llm-test-guard.sh`                   | PreToolUse — guards individual LLM test invocations                                        |
-| `harnesses/claude/hooks/claude-debug-bash-guard.sh`          | PreToolUse — bash guards in claude-debug mode                                              |
-| `harnesses/claude/hooks/claude-inspector-bash-guard.sh`      | PreToolUse — bash guards in claude-inspector mode                                          |
-| `harnesses/claude/hooks/claude-inspector-read-guard.sh`      | PreToolUse — read guards in claude-inspector mode                                          |
-| `harnesses/claude/hooks/claude-inspector-write-guard.sh`     | PreToolUse — write guards in claude-inspector mode                                         |
-| `harnesses/claude/hooks/lib/hooks-lib.sh`                    | Shared bash library: `session_log_from_transcript`, transcript JSONL parsing, path helpers |
-| `harnesses/claude/hooks/lib/gate-select.sh`                  | Selects appropriate gate script based on stack detected                                    |
-| `harnesses/claude/hooks/lib/render-check.js`                 | Headless Chromium render verdict engine: DOM non-empty, styles applied, no JS errors       |
-| `harnesses/claude/hooks/run-tests.sh`                        | Runs all `*_test.sh` hook tests                                                            |
+| `harnesses/claude/hooks/build-worker-cwd-guard.sh`           | PreToolUse — guards build worker cwd discipline                                                                                    |
+| `harnesses/claude/hooks/build-no-success-before-commit.sh`   | PreToolUse — blocks declaring success before commit completes                                                                      |
+| `harnesses/claude/hooks/committer-no-trailer-guard.sh`       | PreToolUse — blocks commit trailers (Co-authored-by, etc.)                                                                         |
+| `harnesses/claude/hooks/committer-single-line-guard.sh`      | PreToolUse — enforces single-line commit subject                                                                                   |
+| `harnesses/claude/hooks/committer-subject-length.sh`         | PreToolUse — enforces commit subject line length limit                                                                             |
+| `harnesses/claude/hooks/phoenix-backend-developer-guard.sh`  | PreToolUse — guards backend developer file scope                                                                                   |
+| `harnesses/claude/hooks/phoenix-frontend-developer-guard.sh` | PreToolUse — guards frontend developer file scope                                                                                  |
+| `harnesses/claude/hooks/static-site-ex-guard.sh`             | PreToolUse — blocks .ex file writes in static site context                                                                         |
+| `harnesses/claude/hooks/session-log-section-integrity.sh`    | PreToolUse — enforces session log section header rules                                                                             |
+| `harnesses/claude/hooks/subagent-retrospective-guard.sh`     | SubagentStop — validates retrospective placement in step log                                                                       |
+| `harnesses/claude/hooks/post-developer-format.sh`            | SubagentStop — runs code formatter after developer completes                                                                       |
+| `harnesses/claude/hooks/developer-no-self-gate-reset.sh`     | SubagentStop — blocks developer from resetting its own gate                                                                        |
+| `harnesses/claude/hooks/track-subagent-edits.sh`             | PreToolUse — tracks files edited per subagent for session log                                                                      |
+| `harnesses/claude/hooks/track-tool-failures.sh`              | PostToolUseFailure — logs tool failures for diagnostics                                                                            |
+| `harnesses/claude/hooks/usage-rules-grep-guard.sh`           | PreToolUse — enforces grep usage rules (no bare grep on files)                                                                     |
+| `harnesses/claude/hooks/env-var-sample-consistency.sh`       | PreToolUse — checks env var sample file consistency                                                                                |
+| `harnesses/claude/hooks/llm-suite-guard.sh`                  | PreToolUse — guards LLM test suite invocations                                                                                     |
+| `harnesses/claude/hooks/llm-test-guard.sh`                   | PreToolUse — guards individual LLM test invocations                                                                                |
+| `harnesses/claude/hooks/claude-debug-bash-guard.sh`          | PreToolUse — bash guards in claude-debug mode                                                                                      |
+| `harnesses/claude/hooks/claude-inspector-bash-guard.sh`      | PreToolUse — bash guards in claude-inspector mode                                                                                  |
+| `harnesses/claude/hooks/claude-inspector-read-guard.sh`      | PreToolUse — read guards in claude-inspector mode                                                                                  |
+| `harnesses/claude/hooks/claude-inspector-write-guard.sh`     | PreToolUse — write guards in claude-inspector mode                                                                                 |
+| `harnesses/claude/hooks/lib/hooks-lib.sh`                    | Shared bash library: `session_log_from_transcript`, transcript JSONL parsing, path helpers                                         |
+| `harnesses/claude/hooks/lib/gate-select.sh`                  | Selects appropriate gate script based on stack detected                                                                            |
+| `harnesses/claude/hooks/lib/render-check.js`                 | Headless Chromium render verdict engine: DOM non-empty, styles applied, no JS errors                                               |
+| `harnesses/claude/hooks/run-tests.sh`                        | Runs all `*_test.sh` hook tests                                                                                                    |
 
 ## Hook Event Types and Scripts
 

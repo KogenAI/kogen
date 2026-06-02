@@ -30,7 +30,7 @@ System prompt assembly: `tools-header/<mode>.txt` + each entry in `prompt_body[]
 | `harnesses/pi/prompt-bodies/`                     | Per-harness prompt body files for pi (build, debug, ops) — mode-specific non-tools content      |
 | `harnesses/shared/prompt-bodies/`                 | Shared harness-agnostic body text (shape, refactor, plus shared ops rules)                      |
 | `shared/prompt-fragments/`                        | Reusable prompt fragments included via `{% include %}` — `_probing.txt`, `_authoring-spine.txt` |
-| `harnesses/claude/commands/`                      | Slash commands (`.md.j2` templates) installed to `~/.claude/commands/` at install time        |
+| `harnesses/claude/commands/`                      | Slash commands (`.md.j2` templates) installed to `~/.claude/commands/` at install time          |
 
 ## Key Paths
 

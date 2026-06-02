@@ -38,9 +38,9 @@ Write)
     exit 0
     ;;
 Edit)
-    if printf '%s' "$FILE_PATH" | grep -qE 'codegen/logging/[^/]+_(session|step[0-9]+_[^/]+)\.md$'; then
-        exit 0
-    fi
+    # SCHEMA: session-log.md — canonical session log filename pattern
+    rel=$(repo_relative "$FILE_PATH") &&
+        printf '%s' "$rel" | grep -qE 'codegen/logging/[0-9]{8}_[0-9]{6}(_[a-z0-9-]+)?_(session|step[0-9]+_[a-z0-9-]+)\.md$' && exit 0
     deny "BLOCKED by reviewer-guard: $AGENT_TYPE may not edit files outside session logs: $FILE_PATH"
     exit 0
     ;;

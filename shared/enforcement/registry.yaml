@@ -65,3 +65,19 @@
   signal: none
   role: "*"
   harnesses: all
+
+# SCHEMA: session-log.md — reviewer may only edit session logs (canonical schema)
+- id: reviewer-guard-session-log-write
+  generated: true
+  description: "reviewer may only edit canonical session log files (allowlist)"
+  event: PreToolUse
+  source: FILE_PATH
+  mode: allowlist
+  canonicalize: repo_relative
+  tool_guard: "Write|Edit"
+  match: 'codegen/logging/[0-9]{8}_[0-9]{6}(_[a-z0-9-]+)?_(session|step[0-9]+_[a-z0-9-]+)\.md$'
+  message: "BLOCKED by reviewer-guard-session-log-write: reviewer may only write to canonical session logs"
+  surface: user_global
+  signal: AGENT_TYPE
+  role: "reviewer-phoenix|reviewer-static"
+  harnesses: pi

@@ -1,8 +1,8 @@
 #!/bin/bash
 # enforcement_compiler_test.sh — unit tests for enforcement_compiler.py.
 #
-# Tests (14):
-#   1:  parse valid registry (3 entries loaded)
+# Tests (18):
+#   1:  parse valid registry (4 entries: 3 bash+ts + 1 pi-only); 7 sections in dry-run
 #   2:  dialect translation bash: \\s → [[:space:]] in generated .sh
 #   3:  match_all AND logic: two grep -qE calls joined with &&
 #   4:  generated:false entry skipped (no file emitted)
@@ -16,6 +16,10 @@
 #  12:  no-python-json.ts (match_all) generates correctly in TypeScript
 #  13:  message backtick escaped in bash deny call
 #  14:  match_all ts: both patterns present in generated .ts
+#  15:  FILE_PATH source + allowlist: generated .ts contains repoRelative call
+#  16:  FILE_PATH source + allowlist: generated .ts contains role guard
+#  17:  FILE_PATH source + allowlist: pi-only entry does NOT emit .sh
+#  18:  FILE_PATH source + allowlist: generated .ts deny message present
 
 set -euo pipefail
 
@@ -81,7 +85,7 @@ count=$(
     grep -c "^===" "$tmpdir/dry_run.txt" 2>/dev/null
     true
 )
-assert_eq "parse valid registry: 6 sections (3 bash + 3 ts)" "6" "$count"
+assert_eq "parse valid registry: 7 sections (3 bash+ts pairs + 1 pi-only ts)" "7" "$count"
 
 # ── Test 2: dialect translation bash: \s → [[:space:]] ───────────────────────
 
@@ -272,6 +276,20 @@ assert_contains "bash: backticks escaped in deny message" 'instead of \`cat' "$c
 ts_python=$(cat "$tmpdir/real_ts/no-python-json.ts")
 assert_contains "ts match_all: pattern 1 present" "python3?" "$ts_python"
 assert_contains "ts match_all: && present" "&&" "$ts_python"
+
+# ── Tests 15-18: FILE_PATH source + allowlist mode ───────────────────────────
+
+reviewer_ts="$tmpdir/real_ts/reviewer-guard-session-log-write.ts"
+assert_eq "FILE_PATH allowlist: .ts file generated" "true" "$([ -f "$reviewer_ts" ] && echo true || echo false)"
+
+ts_reviewer=$(cat "$reviewer_ts" 2>/dev/null || echo "")
+assert_contains "FILE_PATH allowlist: repoRelative call present" "repoRelative" "$ts_reviewer"
+assert_contains "FILE_PATH allowlist: role guard for reviewer-phoenix" "reviewer-phoenix" "$ts_reviewer"
+assert_contains "FILE_PATH allowlist: deny message present" "reviewer may only write to canonical session logs" "$ts_reviewer"
+
+# Pi-only entry must NOT emit a .sh file
+reviewer_sh="$tmpdir/real_bash/reviewer-guard-session-log-write.sh"
+assert_eq "FILE_PATH allowlist pi-only: no .sh emitted" "false" "$([ -f "$reviewer_sh" ] && echo true || echo false)"
 
 # ── Summary ───────────────────────────────────────────────────────────────────
 

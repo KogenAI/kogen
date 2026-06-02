@@ -73,9 +73,11 @@ def _to_ts(pattern):
     r"""Translate registry regex-neutral pattern to TypeScript/JS regex body.
 
     \\s stays \\s — JS already uses \\s.
+    / is escaped as \/ so the pattern can be used inside a regex literal /.../.
     All other tokens pass through.
     """
-    return pattern
+    # Escape forward slashes for use in JS regex literals.
+    return pattern.replace("/", r"\/")
 
 
 # ---------------------------------------------------------------------------
@@ -147,6 +149,45 @@ fi
 exit 0
 """
 
+# Template for FILE_PATH source, allowlist mode (deny when pattern does NOT match).
+# Multi-tool guard uses a case statement.
+_BASH_TEMPLATE_FILEPATH_ALLOWLIST = """\
+#!/bin/bash
+# {id}.sh — PreToolUse hook: {description}.
+#
+# HOOK-MANIFEST:
+# event: {event}
+# matcher: {tool_guard}
+# surface: {surface}
+# signal: {signal}
+# role: {role}
+# harnesses: {harnesses}
+#
+# GENERATED FROM shared/enforcement/registry.yaml — DO NOT EDIT
+# Edit registry.yaml and run `make install` to regenerate.
+
+set -u
+
+source "$(dirname "$0")/lib/hooks-lib.sh"
+parse_input
+
+debug_log {id} "tool=$TOOL_NAME agent=$AGENT_TYPE file=$FILE_PATH"
+
+# Only guard {tool_guard} tool(s).
+case "$TOOL_NAME" in
+{tool_guard_case_arms}) ;;
+*) exit 0 ;;
+esac
+{agent_type_guard}
+# Allowlist: normalise to repo-relative path, then check pattern.
+{canonicalize_prelude}if printf '%s' "$rel" | grep -qE '{match_bash}'; then
+    exit 0
+fi
+
+deny "{message}: $FILE_PATH"
+exit 0
+"""
+
 _BASH_TEMPLATE_ALL = """\
 #!/bin/bash
 # {id}.sh — PreToolUse hook: {description}.
@@ -205,6 +246,55 @@ def _render_bash(entry):
     role = entry["role"]
     harnesses = entry["harnesses"]
     message = _bash_escape_message(entry["message"])
+
+    # New: FILE_PATH source + allowlist mode
+    source = entry.get("source", "COMMAND")
+    mode = entry.get("mode", "deny")
+    canonicalize = entry.get("canonicalize", "")
+
+    if source == "FILE_PATH" and mode == "allowlist":
+        pattern = entry["match"]
+        _check_forbidden(pattern, eid)
+        match_bash = _to_bash(pattern)
+
+        # Build multi-tool case arms (e.g. "Write|Edit" → "Write)\nEdit)")
+        arms = "\n".join(f"{t})" for t in tool_guard.split("|"))
+
+        # Canonicalize prelude
+        if canonicalize == "repo_relative":
+            canon_prelude = 'rel=$(repo_relative "$FILE_PATH")\n'
+        else:
+            canon_prelude = 'rel="$FILE_PATH"\n'
+
+        # Agent-type guard for role-scoped entries
+        if role and role != "*":
+            # Build case match: "reviewer-phoenix|reviewer-static"
+            role_case = "|".join(role.split("|"))
+            agent_guard = (
+                f'\n# Only apply to role(s): {role}\n'
+                f'case "$AGENT_TYPE" in\n'
+                f'{role_case}) ;;\n'
+                f'*) exit 0 ;;\n'
+                f'esac\n'
+            )
+        else:
+            agent_guard = ""
+
+        return _BASH_TEMPLATE_FILEPATH_ALLOWLIST.format(
+            id=eid,
+            description=description,
+            event=event,
+            tool_guard=tool_guard,
+            tool_guard_case_arms=arms,
+            surface=surface,
+            signal=signal,
+            role=role,
+            harnesses=harnesses,
+            message=message,
+            match_bash=match_bash,
+            canonicalize_prelude=canon_prelude,
+            agent_type_guard=agent_guard,
+        )
 
     if "match_all" in entry:
         patterns = entry["match_all"]
@@ -286,6 +376,47 @@ export function register(pi: ExtensionAPI): void {{
 }}
 """
 
+# Template for FILE_PATH source, allowlist mode (deny when pattern does NOT match).
+# Handles multi-tool guards as an array of toolName checks.
+_TS_TEMPLATE_FILEPATH_ALLOWLIST = """\
+/**
+ * {id}.ts — Pi enforcement: {description}.
+ *
+ * Event: tool_call (PreToolUse equivalent)
+ * Matcher: {tool_guard}
+ *
+ * GENERATED FROM shared/enforcement/registry.yaml — DO NOT EDIT
+ * Edit registry.yaml and run `make install` to regenerate.
+ */
+
+import type {{ ExtensionAPI }} from "@earendil-works/pi-coding-agent";
+import {{ deny, debugLog, repoRelative }} from "../lib/hook-helpers";
+
+export const HANDLER_META = {{
+  name: "{id}",
+  event: "tool_call",
+  matcher: "{tool_guard_lower}",
+}} as const;
+
+export function register(pi: ExtensionAPI): void {{
+  pi.on("tool_call", async (event) => {{
+    if (!{tool_guard_ts_check}) return;
+{agent_type_guard}
+    const filePath: string = (event.input as {{ file_path?: string }}).file_path ?? "";
+    debugLog("{id}", `file=${{filePath}}`);
+
+    const rel = {canonicalize_ts_prelude}(filePath);
+    if (/{match_ts}/.test(rel)) {{
+      return;
+    }}
+
+    return deny(
+      "{message}: " + filePath,
+    );
+  }});
+}}
+"""
+
 _TS_TEMPLATE_ALL = """\
 /**
  * {id}.ts — Pi enforcement: {description}.
@@ -330,6 +461,58 @@ def _render_ts(entry):
     eid = entry["id"]
     description = entry.get("description", f"deny {eid} invocations")
     message = entry["message"]
+
+    # New: FILE_PATH source + allowlist mode
+    source = entry.get("source", "COMMAND")
+    mode = entry.get("mode", "deny")
+    canonicalize = entry.get("canonicalize", "")
+    tool_guard = entry["tool_guard"]
+
+    if source == "FILE_PATH" and mode == "allowlist":
+        pattern = entry["match"]
+        _check_forbidden(pattern, eid)
+        match_ts = _to_ts(pattern)
+
+        # Build multi-tool check: "Write|Edit" → [write, edit] checks
+        tools = tool_guard.split("|")
+        if len(tools) == 1:
+            ts_check = f'event.toolName === "{tools[0].lower()}"'
+        else:
+            checks = " || ".join(f'event.toolName === "{t.lower()}"' for t in tools)
+            ts_check = f"({checks})"
+
+        # Canonicalize prelude function call
+        if canonicalize == "repo_relative":
+            canon_fn = "repoRelative"
+        else:
+            canon_fn = "(x: string) => x"
+
+        # Agent-type guard for role-scoped entries (non-wildcard role)
+        role = entry.get("role", "*")
+        if role and role != "*":
+            # Build OR check: "reviewer-phoenix|reviewer-static"
+            role_patterns = role.split("|")
+            role_checks = " || ".join(
+                f'agentType === "{r}"' for r in role_patterns
+            )
+            agent_type_guard = (
+                '\n    const agentType = process.env["AGENT_TYPE"] ?? "";\n'
+                f"    if (!({role_checks})) return;\n"
+            )
+        else:
+            agent_type_guard = ""
+
+        return _TS_TEMPLATE_FILEPATH_ALLOWLIST.format(
+            id=eid,
+            description=description,
+            message=message,
+            tool_guard=tool_guard,
+            tool_guard_lower=tool_guard.lower(),
+            tool_guard_ts_check=ts_check,
+            match_ts=match_ts,
+            canonicalize_ts_prelude=canon_fn,
+            agent_type_guard=agent_type_guard,
+        )
 
     if "match_all" in entry:
         patterns = entry["match_all"]
@@ -517,28 +700,40 @@ def main():
         if not has_match and not has_match_all:
             sys.exit(f"ERROR: entry '{eid}': neither 'match' nor 'match_all' present")
 
-        bash_content = _render_bash(entry)
-        ts_content = _render_ts(entry)
+        # Determine which outputs to emit based on harnesses field.
+        # "all" / "claude" → emit bash; "all" / "pi" → emit ts
+        harnesses_val = str(entry.get("harnesses", "all"))
+        emit_bash = harnesses_val in ("all", "claude")
+        emit_ts = harnesses_val in ("all", "pi")
+
+        bash_content = _render_bash(entry) if emit_bash else None
+        ts_content = _render_ts(entry) if emit_ts else None
 
         bash_path = bash_out / f"{eid}.sh"
         ts_path = ts_out / f"{eid}.ts"
 
         if args.dry_run:
-            print(f"=== {bash_path} ===")
-            print(bash_content)
-            print(f"=== {ts_path} ===")
-            print(ts_content)
+            if emit_bash:
+                print(f"=== {bash_path} ===")
+                print(bash_content)
+            if emit_ts:
+                print(f"=== {ts_path} ===")
+                print(ts_content)
         else:
-            bash_out.mkdir(parents=True, exist_ok=True)
-            ts_out.mkdir(parents=True, exist_ok=True)
-            bash_path.write_text(bash_content)
-            ts_path.write_text(ts_content)
-            # Make bash hook executable.
-            bash_path.chmod(bash_path.stat().st_mode | 0o111)
-            print(f"generated: {bash_path}")
-            print(f"generated: {ts_path}")
+            if emit_bash:
+                bash_out.mkdir(parents=True, exist_ok=True)
+                bash_path.write_text(bash_content)
+                # Make bash hook executable.
+                bash_path.chmod(bash_path.stat().st_mode | 0o111)
+                print(f"generated: {bash_path}")
+            if emit_ts:
+                ts_out.mkdir(parents=True, exist_ok=True)
+                ts_path.write_text(ts_content)
+                print(f"generated: {ts_path}")
 
-        generated_ids.append(eid)
+        # Only add to generated_ids for index.ts update if TS is emitted.
+        if emit_ts:
+            generated_ids.append(eid)
 
     if not args.dry_run and generated_ids:
         _update_index(index_path, generated_ids)

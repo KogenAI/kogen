@@ -39,3 +39,10 @@ mix phx.new . --no-mailer  # current dir
 # NOT
 mix phx.new /tmp/some_app
 ```
+
+## Session Log Naming
+
+The canonical session log filename schema is defined in `session-log.md` (reference that rule for forms and the canonical regex). This rule (`cwd-discipline.md`) governs **path form** (relative vs absolute); `session-log.md` governs **naming/schema**. Both rules must be satisfied:
+
+- Path form: relative OR absolute starting with cwd (line 10 above)
+- Schema: matches canonical regex in `session-log.md § File Naming`

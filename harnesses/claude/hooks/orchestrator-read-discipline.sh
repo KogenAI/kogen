@@ -83,17 +83,9 @@ if [ -z "$FILE_PATH" ]; then
     exit 0
 fi
 
-# Normalise to a relative path: if the path is absolute and starts with cwd,
-# strip the cwd prefix so the relative-path allowlist patterns match correctly.
-cwd="$CWD"
-if [ -z "$cwd" ]; then
-    cwd="${CLAUDE_PROJECT_DIR:-$PWD}"
-fi
-rel_path="$FILE_PATH"
-cwd_prefix="${cwd%/}/"
-case "$FILE_PATH" in
-"${cwd_prefix}"*) rel_path="${FILE_PATH#"$cwd_prefix"}" ;;
-esac
+# Normalise to a repo-relative path so allowlist patterns match both relative
+# and abs-in-cwd forms (deliberate loosening — see session-log.md § Path Discipline).
+rel_path=$(repo_relative "$FILE_PATH")
 
 # Allowlist check 1: codegen/logging/ (session logs)
 if printf '%s' "$rel_path" | grep -qE '^codegen/logging/'; then
