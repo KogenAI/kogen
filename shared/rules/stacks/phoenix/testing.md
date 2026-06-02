@@ -120,6 +120,20 @@ Single ExUnit file with multiple `defmodule` blocks: each module is an independe
 - Keep private fn copy in each module that needs it (acceptable for small helpers like `count_commits!/1`)
 - Consolidate sibling modules into a single `defmodule` if they share heavy test infrastructure
 
+## Ecto Timestamp Handling in Tests
+
+Ecto `:utc_datetime` rejects microseconds. When building stub DB records with future/past timestamps, always truncate to seconds:
+
+```elixir
+build(:llm_call, created_at: DateTime.truncate(DateTime.utc_now(), :second))
+```
+
+Postgres `date_trunc` returns `NaiveDateTime` (not `DateTime`). Functions handling DB-grouped results must match `%NaiveDateTime{}`.
+
+## Coveralls Ignores in case Arms
+
+`# coveralls-ignore-start`/`-stop` pragmas inside `case` arm bodies are accepted by `mix format` without reindenting. Use for wrapping genuinely-unreachable catch-all clauses.
+
 ## Recipes
 
 `elixir-context-test-structure`, `req-test-stub-external-http`, `elixir-capture-logs-on-error-paths`, `mox-verify-on-exit-scope`, `task-supervisor-sandbox-allowance`, `elixir-async-false-triage`, `elixir-test-compile-env-config`, `github-workflows-mix-generator`.

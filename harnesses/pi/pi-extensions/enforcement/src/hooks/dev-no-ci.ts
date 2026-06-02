@@ -37,9 +37,7 @@ export function register(pi: ExtensionAPI): void {
     }
 
     // Deny: full-suite coverage formatters — unconditional (no single-file form).
-    if (
-      /\bcoveralls\.(html|json)\b|\bmix\s+coveralls\b/.test(command)
-    ) {
+    if (/\bcoveralls\.(html|json)\b|\bmix\s+coveralls\b/.test(command)) {
       return deny(
         "Dev MUST NOT run coverage formatters (coveralls.html, coveralls.json, mix coveralls). Coverage runs the full suite — the dev-gate.sh SubagentStop hook handles it after you exit.",
       );

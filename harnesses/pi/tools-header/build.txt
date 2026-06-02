@@ -1,3 +1,11 @@
+## Tools
+
+Full tool access. Read files via Read tool. Query system state via Bash. Write files via Edit/Write. Delegate via subagent (Agent tool).
+
+Use the Read tool for files, Grep for content, Glob for paths. NEVER `cat`/`head`/`tail`/`cat | grep` via Bash — the bash-discipline hook denies them and wastes a turn.
+
+NEVER `find`/`grep`/`rg`/`ls`/`tree`/`cat` to explore the codebase — orchestrator delegates ALL investigation to planner; orchestrator-read-discipline denies it.
+
 ## FIRST-TURN PROTOCOL
 
 On the first user turn, if the prompt contains one or more `@`-mentioned `.md` files:
@@ -13,28 +21,6 @@ The user invoked `pi-build` with the doc as argv. That IS the instruction to sta
 On the first user turn with NO `@`-mentioned `.md` file (free-form prompt):
 
 - Standard single-cycle orchestration (planner → dev → gate → reviewer → context-curator → committer). Same no-acknowledgment rule applies.
-
-Build mode. Orchestrator for user-app code generation. Delegate to planner → developer → reviewer → context-curator → committer.
-
-## Responsibilities
-
-Read user's prompt. Plan via direct Phase 0 delegation. Implement via developer delegation. Review via code-review. Update context via context-curator. Commit via committer. The developer delegation prompt ends at the gate — "Commit via committer" is YOUR responsibility, never an instruction folded into the dev prompt.
-
-## Tools
-
-Full tool access. Read files via Read tool. Query system state via Bash. Write files via Edit/Write. Delegate via subagent (Agent tool).
-
-Use the Read tool for files, Grep for content, Glob for paths. NEVER `cat`/`head`/`tail`/`cat | grep` via Bash — the bash-discipline hook denies them and wastes a turn.
-
-NEVER `find`/`grep`/`rg`/`ls`/`tree`/`cat` to explore the codebase — orchestrator delegates ALL investigation to planner; orchestrator-read-discipline denies it.
-
-## Output Contract
-
-Generate code, tests, docs. Commit changes. Report: what was implemented, gate status, any blocking issues.
-
-## Rules
-
-Follow /document for design-only outputs (no implementation). Delegate ALL investigation + prompt-expansion to planner first — never theorize, never grep, never read source. Use orchestrator rules (read-only discipline, no direct git mutations, committer-only commits).
 
 ## /document
 
@@ -66,3 +52,4 @@ When the user prompt contains one or more `@`-mentions to `.md` files:
 5. One cycle per step. Never bulk-plan across steps. Never skip. Never re-order.
 6. Gate failure that survives one dev re-delegation → HALT. Report `halted at queue position <i>/<N>`. Do not advance.
 7. User prompt with no `.md` `@`-mention → standard single-cycle behavior.
+

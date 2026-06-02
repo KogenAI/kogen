@@ -154,4 +154,110 @@ result=$(
 _assert_contains "manifest_launchers line has src and name" "harnesses/stub/stub-build.sh" "$result"
 _assert_contains "manifest_launchers line has name token" "stub-build" "$result"
 
+# ── Test: manifest_regenerate_prompts single-entry list ───────────────────────
+# Non-empty body: output = header + body concatenated.
+
+_setup_regenerate_tmp() {
+    local tmpdir
+    tmpdir=$(mktemp -d)
+    mkdir -p "$tmpdir/harnesses/stub" \
+        "$tmpdir/shared/tools-headers" \
+        "$tmpdir/shared/prompt-bodies" \
+        "$tmpdir/shared/prompt-fragments"
+    cp "$STUB_YAML" "$tmpdir/harnesses/stub/manifest.yaml"
+    printf 'HEADER\n' >"$tmpdir/shared/tools-headers/build.txt"
+    printf 'HEADER\n' >"$tmpdir/shared/tools-headers/debug.txt"
+    echo "$tmpdir"
+}
+
+# Test: single non-empty body entry → header+body
+tmpdir=$(_setup_regenerate_tmp)
+printf 'BODY\n' >"$tmpdir/shared/prompt-bodies/build.txt"
+printf 'BODY\n' >"$tmpdir/shared/prompt-bodies/debug.txt"
+(
+    export CODEGEN_DIR="$tmpdir"
+    source "$SCRIPT_DIR/manifest-lib.sh"
+    manifest_regenerate_prompts stub 2>/dev/null
+)
+result=$(cat "$tmpdir/harnesses/stub/stub-build-system-prompt.txt" 2>/dev/null || echo "MISSING")
+_assert_eq "regenerate single-entry: header+body concatenated" "$(printf 'HEADER\nBODY\n')" "$result"
+rm -rf "$tmpdir"
+
+# Test: empty body entry → header only (skipped)
+tmpdir=$(_setup_regenerate_tmp)
+printf '' >"$tmpdir/shared/prompt-bodies/build.txt" # zero bytes
+printf '' >"$tmpdir/shared/prompt-bodies/debug.txt"
+(
+    export CODEGEN_DIR="$tmpdir"
+    source "$SCRIPT_DIR/manifest-lib.sh"
+    manifest_regenerate_prompts stub 2>/dev/null
+)
+result=$(cat "$tmpdir/harnesses/stub/stub-build-system-prompt.txt" 2>/dev/null || echo "MISSING")
+_assert_eq "regenerate empty body entry: header only" "$(printf 'HEADER\n')" "$result"
+rm -rf "$tmpdir"
+
+# Test: multi-entry prompt_body (N=2) — correct order
+# Use a manifest with two body entries
+tmpdir=$(_setup_regenerate_tmp)
+printf 'BODY_A\n' >"$tmpdir/shared/prompt-bodies/build.txt"
+printf 'FRAG_B\n' >"$tmpdir/shared/prompt-fragments/frag.txt"
+printf 'BODY_A\n' >"$tmpdir/shared/prompt-bodies/debug.txt"
+# Write a manifest with two entries for build mode
+cat >"$tmpdir/harnesses/stub/manifest.yaml" <<'YAML'
+harness: stub
+launchers:
+  - src: harnesses/stub/stub-build.sh
+    name: stub-build
+completions:
+  - _stub-build
+modes:
+  build:
+    tools_header: shared/tools-headers/build.txt
+    prompt_body:
+      - shared/prompt-bodies/build.txt
+      - shared/prompt-fragments/frag.txt
+    system_prompt_file: harnesses/stub/stub-build-system-prompt.txt
+YAML
+(
+    export CODEGEN_DIR="$tmpdir"
+    source "$SCRIPT_DIR/manifest-lib.sh"
+    manifest_regenerate_prompts stub 2>/dev/null
+)
+result=$(cat "$tmpdir/harnesses/stub/stub-build-system-prompt.txt" 2>/dev/null || echo "MISSING")
+_assert_eq "regenerate multi-entry: header+body_a+frag_b in order" "$(printf 'HEADER\nBODY_A\nFRAG_B\n')" "$result"
+rm -rf "$tmpdir"
+
+# Test: missing body entry → return 1, no output file
+tmpdir=$(_setup_regenerate_tmp)
+# do NOT create build.txt
+printf '' >"$tmpdir/shared/prompt-bodies/debug.txt"
+exit_code=0
+(
+    export CODEGEN_DIR="$tmpdir"
+    source "$SCRIPT_DIR/manifest-lib.sh"
+    manifest_regenerate_prompts stub 2>/dev/null
+) || exit_code=$?
+_assert_eq "regenerate missing body: non-zero exit" "1" "$exit_code"
+if [ -f "$tmpdir/harnesses/stub/stub-build-system-prompt.txt" ]; then
+    fail=$((fail + 1))
+    echo "FAIL: regenerate missing body: output file should not exist"
+else
+    pass=$((pass + 1))
+fi
+rm -rf "$tmpdir"
+
+# Test: missing tools_header → return 1
+tmpdir=$(_setup_regenerate_tmp)
+printf 'BODY\n' >"$tmpdir/shared/prompt-bodies/build.txt"
+printf 'BODY\n' >"$tmpdir/shared/prompt-bodies/debug.txt"
+rm "$tmpdir/shared/tools-headers/build.txt"
+exit_code=0
+(
+    export CODEGEN_DIR="$tmpdir"
+    source "$SCRIPT_DIR/manifest-lib.sh"
+    manifest_regenerate_prompts stub 2>/dev/null
+) || exit_code=$?
+_assert_eq "regenerate missing header: non-zero exit" "1" "$exit_code"
+rm -rf "$tmpdir"
+
 echo "$pass passed, $fail failed"

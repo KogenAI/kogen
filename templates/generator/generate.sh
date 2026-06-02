@@ -135,6 +135,14 @@ _generate_pi() {
 
     local shared_commands_dir="$CODEGEN_DIR/harnesses/claude/commands"
     if [ -d "$shared_commands_dir" ]; then
+        for cmd_file in "$shared_commands_dir"/*.j2; do
+            if [ -f "$cmd_file" ]; then
+                local cmd_name
+                cmd_name=$(basename "$cmd_file" .j2)
+                _process_template "$cmd_file" pi true >"$output_prompts_dir/$cmd_name"
+                echo "   Processed command: $cmd_name"
+            fi
+        done
         for cmd_file in "$shared_commands_dir"/*.md; do
             if [ -f "$cmd_file" ]; then
                 local cmd_name

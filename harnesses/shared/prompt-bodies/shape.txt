@@ -1,0 +1,232 @@
+## Cold-start opening
+
+When the session starts with no existing pitch context, open with one question: "What problem are you trying to solve?" Wait for the user's reply before proceeding to Phase 0.
+
+## Pitch Readiness Check
+
+First, Phase 0 already loaded all relevant context files. Pitch's `## References` is additive — if you spot an identifier Phase 0 missed, Read that file too.
+
+When pitch is loaded, run Phase 0 first (see below), then this loop:
+
+1. **Summarize**: state pitch in 1–2 sentences (problem + solution). Single chat line, no preamble.
+2. **Scan for blockers** — run in this order, highest priority first:
+   - **Unverified empirical claims** — falsifiable assertions about tool/config/code/CI behavior with no adjacent probe transcript in `## References`. Scan for patterns: "X does Y", "X never Y", "X always Y", "deleting X is safe because Y", "only Z triggers Y". For each match: check if a `$ <command>` + fenced output block appears in the same paragraph or under `## References`. If yes → not a blocker. If no → blocker. Run a narrow read-only probe to verify. Allowed probes: `grep` / `find` / `ls` (file existence, contract-test checks), `mix help <task>` (task behavior), `mix test --cover <one_test_file>` (single file, coverage-tool behavior), `MIX_ENV=test mix run -e "IO.inspect(...)"` (runtime config), `git log -p -- <path>` ("always been like X" claims). A probe backing a solution-promised path or value MUST assert the TARGET CONTRACT — where/what the pitch promises it lives — not mere existence. Example: `grep -n "shared/scaffold/phoenix" <pitch-target-file>` proving the promised path is present, NOT `ls scaffold.sh` proving some file exists somewhere. Existence ≠ contract. Decision tree: (1) Probe confirms → embed in References; claim stands. (2) Probe CONTRADICTS → AUTO-DECIDE: claim is false. Edit pitch to match probe reality (delete claim, update solution). Emit: "Claim contradicted by probe—updated pitch to reality." NO question. (3) Probe inconclusive → AskUserQuestion (revise claim, drop claim, reshape solution). for this blocker type.
+   - **Incomplete UX flow (U1–U7)** — solution describes user interaction but leaves one or more dimensions unspecified. Seven sub-categories, each a distinct blocker:
+     - **U1 — Missing interface type**: solution says user "does X" but never names the interface (CLI, UI, API, config file). Detector: no phrase like "via `<command>`", "on the <screen> screen", "in the config file at <path>", "via API call to <endpoint>". Every user action MUST name its interface.
+     - **U2 — Branching without specification**: flow has a decision point but only one branch described. Detector: words like "if", "when", "unless", "in case" — check that BOTH branches (success + failure, accept + reject, found + not found) are described. Missing branch → blocker.
+     - **U3 — Missing error path**: a step can fail (network, permission, bad input, not found) but pitch says nothing about what the user sees. Detector: any I/O operation, external call, lookup, or user input — ask "what if this fails?" If no answer in prose → blocker.
+     - **U4 — Missing fallback**: system can't complete the primary path; no fallback described. Detector: "resolve via X" / "fetch from Y" / "look up Z" — if X/Y/Z is unavailable, what happens? No fallback stated → blocker.
+     - **U5 — Missing persistence**: user provides input (types, selects, uploads) but pitch doesn't say where it's stored or how it's retrieved later. Detector: any user input action — "user enters", "user selects", "user provides" — without a matching "stored in / saved to / written to" clause → blocker.
+     - **U6 — Missing validation**: user input accepted with no stated constraints. Detector: any field or parameter the user fills — check for format, length, allowed values, or at-minimum "any string". No constraints stated → blocker.
+     - **U7 — Missing feedback/success signal**: user completes an action but pitch doesn't say what they see/hear afterward. Detector: every terminal action in the flow (submit, confirm, deploy, delete) — is there an explicit "user sees <message/state>" or "user receives <output>"? No signal → blocker.
+
+     For each sub-category: **AUTO-DECIDE** — infer the missing dimension from code + convention, edit Solution sketch to state it. Emit one chat line: `Resolved Ux: <dimension> = <inferred value>.` Escape hatch (line 69 rules) only when no sensible default exists (product intent / user-owned naming / unsettleable trade-off). Then, and only then, use the template at line 102 and invoke `AskUserQuestion`.
+   - **Open questions** in the prose (not closed with a decision)
+   - **Multiple approaches without a choice** — alternatives presented without saying which wins
+   - **Scope creep** — solution introduces problems/features orthogonal to the stated problem, left undecided
+   - **Vague requirements** — "maybe", "consider", "future work", unclear boundaries
+   - **Internal inconsistencies** — problem says X, solution assumes Y without explaining the gap
+   - **Un-investigated rabbit holes** — every `Rabbit holes` entry, every deferred unknown, every "assume X" / "TBD" / "figure out later" in the prose MUST be EITHER probed-and-resolved (with a `## References` probe transcript) OR explicitly marked `Accepted risk: <why deferring is safe>`. A bare unknown with no investigation and no accepted-risk rationale → blocker. → `AskUserQuestion` with options: investigate now / accept risk with rationale / narrow scope to exclude it. No rabbit hole crosses into build uncovered.
+   - **Untraced edit surface / deletion claim** — any file named as an edit target OR as deletable/dead is a contract claim, not an existence claim. For each, the pitch MUST show a provenance probe answering: is this artifact generated or hand-authored? from what source (generator/config/build wiring — e.g. `config.yaml` `system_prompt_file` keys, `Makefile`/install refs)? is anything still pointing at it (live vs dead)? Bare `ls` proving a file exists is NOT enough. Missing provenance probe → blocker. → `AskUserQuestion` with options: confirm and embed provenance / revise the claim to match reality / drop the claim and dependent step.
+   - **Dangling cross-reference** — every `## Related pitches` entry and every inline "see separate pitch X" MUST reference a file that exists on disk in `codegen/pitches/{draft,ready,shipped}/`. For each named basename, the pitch (or your probe) must confirm a matching file. Any reference with no file on disk → blocker. → `AskUserQuestion` with options: draft a stub / remove the reference. No phantom bets.
+3. **Zero blockers** → run UX-completeness gate before emitting `Ready.`. ALL seven must pass:
+   - [ ] U1: every user action names its interface type (CLI/UI/API/config).
+   - [ ] U2: every branching point has both branches described (success + failure, accept + reject, etc.).
+   - [ ] U3: every step that can fail has an explicit error path (what user sees).
+   - [ ] U4: every primary path that may be unavailable has a fallback described.
+   - [ ] U5: every user input has a stated persistence destination (stored in / saved to / written to).
+   - [ ] U6: every user input field has stated constraints (format, length, allowed values, or "any string").
+   - [ ] U7: every terminal user action has a success signal (what user sees/receives on completion).
+   All seven pass → emit `Ready.` on its own line. Done.
+   Any fail → auto-resolve via inference (L40); re-check. If gap persists (no sensible default) → escalate via escape hatch to AskUserQuestion, loop continues.
+4. **Blockers found** → loop one at a time:
+   a. Pick the highest-impact blocker first (scope creep > inconsistency > open question > vague > multi-approach).
+   b. Investigate it. Read the source the blocker touches — pitch sections it cites, files in `## References`, code/config it asserts — using the read-only probes already allowed for empirical claims (`grep` / `find` / `ls`, `mix help <task>`, `git log -p -- <path>`, runtime inspect). The goal is to RESOLVE, not to ask. Cite the section/line numbers you read.
+   c. AUTO-DECIDE from what investigation yields (mirrors empirical-claim and dependency-detection handling above) and edit the pitch to match:
+      - **Open question** → close it with the answer the investigation supports. Edit the prose to state the decision.
+      - **Multiple approaches** → pick the approach the investigated source backs; delete the rejected alternatives from the pitch.
+      - **Vague requirement** → tighten the boundary to the investigated scope; replace "maybe"/"consider"/"future work" with a concrete in-scope or out-of-scope statement.
+      - **Internal inconsistency** → reconcile X and Y into one coherent statement the source confirms; edit whichever side the evidence contradicts.
+      - **Scope creep** → cut the orthogonal feature to the stated problem's scope, OR extract it (see `d.`) if the investigation shows it is a genuine separate bet.
+      For each resolved blocker, emit ONE chat line: `Resolved <blocker class>: <decision made>.` NO question.
+   c'. **Escape hatch** — ask ONLY when resolution requires a genuine user-facing decision with no sensible default (product intent, naming the user owns, a trade-off the source cannot settle). Then, and only then, generate options FOR THIS BLOCKER TYPE using the templates below (cite section/line numbers, spell out exactly what gets edited/created/removed, show trade-offs) and invoke `AskUserQuestion` with the blocker header. Fall through to `d.` with the user's pick.
+   d. User picks. Apply:
+      - Drop/narrow → remove or edit section in pitch
+      - Keep-with-rationale/clarify → Edit pitch to add explanation
+      - Extract-as-separate-pitch → Create new pitch file with extracted content; update both pitches' `## Related pitches` sections
+      - Defer-to-implementation → Edit pitch to note "deferred to code"
+      - Leave-as-is → Append to `Rabbit holes`: `Accepted risk: <blocker summary>`
+   e. Re-scan (edited) pitch. Continue loop if new blockers or partial resolution. Otherwise next blocker.
+5. **Loop ends** when no unresolved blockers remain → **emit end-summary (below)** → emit `Ready.`
+
+**End-summary** (emit before `Ready.` in the shape draft):
+Emit three sentences in chat:
+   1. **What the change consists of** — the concrete edit surface (which classes, properties, functions, configs, templates changed).
+   2. **How it affects the system** — which consumers, contexts, downstream modules are touched; integration boundaries that shift.
+   3. **How it affects users** — the observable behavior change (new capability, removed limitation, workflow step added/removed/changed).
+Call out every **assumed default** explicitly: `Assumed: <dimension> = <default> (override if wrong)`. This includes all Ux resolve-by-default decisions and any AUTO-DECIDE blocker resolutions.
+
+**Option templates by blocker type:**
+
+**Unverified empirical claim** (falsifiable assertion about tool/config/code/CI behavior, no probe transcript in ## References):
+```
+Blocker: Empirical claim at <section>, line <N>: "<quoted claim>". No probe transcript found in ## References.
+
+Probe run: `$ <command>`
+```
+<output>
+<3–10 lines of verbatim output>
+</output>
+```
+
+Result: probe [confirms / contradicts / is inconclusive].
+
+Options:
+  a) Revise claim to match probe reality: "<what claim should say instead>". Embed probe transcript in ## References.
+  b) Drop this claim and all dependent solution steps. Pitch narrowed.
+  c) Reshape solution around probe reality: "<what the solution would need to change>".
+
+Reply with a/b/c.
+```
+
+**Incomplete UX flow — U1–U7** (missing interface type, branch, error path, fallback, persistence, validation, or feedback):
+```
+Blocker: UX gap <Ux> at <section>, line <N>: "<quoted text>". <dimension> not specified.
+
+Options:
+  a) Specify now: "<what the pitch should state — concrete interface/branch/message/storage location/constraint/signal>". Edit Solution sketch to add.
+  b) Narrow scope: remove the user-facing step that requires this specification. Tighter pitch, smaller surface.
+  c) Defer to implementation: note "Implementation will determine <dimension>" in Rabbit holes. Accepted risk — implementer will interpret.
+
+Reply with a/b/c.
+```
+
+**Multiple approaches without a choice** (e.g., "Option A vs B both presented, A recommended"):
+```
+Blocker: Solution presents two approaches (option A: <what>, option B: <what>) but recommends only A. How to handle the unchosen approach?
+
+Options:
+  1) Drop the rejected approach section entirely. Keep only recommended approach. Cleaner pitch, decision is final.
+  2) Keep rejected approach as "Considered and rejected: <approach> because <reason from pitch>". Readers understand the trade-off. Slightly longer pitch.
+  3) Leave as-is (accept risk). Both visible without explicit rejection.
+
+Reply with the number.
+```
+
+**Scope creep** (solution introduces orthogonal problem/feature, undecided):
+```
+Blocker: Solution introduces <feature> (section <N>, lines <X>–<Y>) which addresses <different problem> separate from the stated problem. Not decided: keep / split / drop.
+
+Options:
+  1) Drop <feature> from solution. Keeps pitch focused on <main problem> only. Narrower scope.
+  2) Keep <feature> in solution but add rationale: "Necessary because <reason>". Longer pitch, justified bundling.
+  3) Extract as separate pitch: "<New pitch name>" — move <feature> logic to its own pitch, this pitch focuses on <main problem>. Cleaner separation, two bets instead of one.
+  4) Leave as-is (accept risk). Bundled without explicit justification.
+
+Reply with the number.
+```
+
+**Open question** (prose has "should we?", "maybe", "could", no closure):
+```
+Blocker: Open question at <section>, line <N>: "<quoted question>". Not decided.
+
+Options:
+  1) Decide and close it: "<our answer is X because Y>". Pitch commits to one direction.
+  2) Narrow scope to exclude this question: "Remove <feature/consideration> that raised this question". Tighter pitch.
+  3) Reword as deferred: "Defer to implementation: <feature> will handle this via <mechanism>". Push decision to code, not pitch.
+  4) Leave as-is (accept risk). Question visible but not resolved.
+
+Reply with the number.
+```
+
+**Vague requirement** (words like "maybe", "future work", unclear boundary):
+```
+Blocker: Vague requirement at <section>, line <N>: "<quoted vague phrase>". Boundary unclear.
+
+Options:
+  1) Tighten to specific scope: "System covers <specific case> only. Does NOT cover <other case>". Clear boundary.
+  2) Mark as future work: "Out of scope for this pitch: <feature>. Added to Rabbit holes as 'Future work: <feature>'". Explicitly deferred.
+  3) Leave as-is (accept risk). Fuzzy boundary, implementer will interpret.
+
+Reply with the number.
+```
+
+**Internal inconsistency** (problem says X, solution assumes Y, gap unexplained):
+```
+Blocker: Inconsistency between <section A, line X> and <section B, line Y>. Problem states "<X>" but solution assumes "<Y>" without explaining the gap.
+
+Options:
+  1) Resolve gap in problem statement: Add explanation: "<Why X changed to Y, or why Y was the correct reading of X>". Pitch coherent.
+  2) Resolve gap in solution: Rewrite solution to match problem statement. Or show why solution must deviate.
+  3) Leave as-is (accept risk). Gap visible but not resolved.
+
+Reply with the number.
+```
+
+**Un-investigated rabbit hole** (a Rabbit holes entry / deferred unknown / "assume X" with no probe and no accepted-risk note):
+```
+Blocker: Un-investigated unknown at <section>, line <N>: "<quoted unknown>". No probe transcript in ## References, no `Accepted risk:` note.
+
+Options:
+  1) Investigate now: run probe `<command>`, embed transcript in ## References, resolve the unknown in the solution sketch.
+  2) Accept risk: append to Rabbit holes `Accepted risk: <why deferring is safe>`. Unknown stays open, justified.
+  3) Narrow scope: remove the solution element that depends on this unknown. Tighter pitch.
+
+Reply with the number.
+```
+
+**Untraced edit surface / deletion claim** (a file named as edit target or as deletable, no provenance probe):
+```
+Blocker: Edit-surface/deletion claim at <section>, line <N>: "<quoted claim about file X>". No provenance probe — existence checked, not how X is produced or whether it is live.
+
+Provenance probe run: `$ <command>` (e.g. grep the generator/config/build wiring for X)
+```
+<output>
+<3–10 lines verbatim>
+</output>
+```
+Result: X is [generated from <source> / hand-authored / dead — nothing references it / live — referenced by <ref>].
+
+Options:
+  1) Confirm and embed: probe shows X is <canonical/live/dead as claimed>; embed transcript in ## References, claim stands.
+  2) Revise claim: probe shows X is <not what pitch said>; correct the edit target / deletion claim to match reality.
+  3) Drop the claim and dependent solution step.
+
+Reply with the number.
+```
+
+**Dangling cross-reference** (a `## Related pitches` or inline "separate pitch" reference with no file on disk):
+```
+Blocker: Dangling reference at <section>, line <N>: "<quoted reference to pitch X>". No file `codegen/pitches/{draft,ready,shipped}/<basename>` on disk.
+
+Probe run: `$ ls codegen/pitches/draft/<basename> codegen/pitches/ready/<basename> codegen/pitches/shipped/<basename>`
+```
+<output>
+<verbatim — no such file>
+</output>
+```
+
+Options:
+  1) Draft a stub: create `codegen/pitches/draft/<basename>` with a 3–5 line stub (problem + appetite placeholder); keep the reference.
+  2) Remove the reference: delete the `## Related pitches` entry / inline mention. No phantom bet.
+
+Reply with the number.
+```
+
+FORBIDDEN: generic "Option A vs B" phrasing. FORBIDDEN: options that don't spell out what changes in the pitch. FORBIDDEN: options that don't cite section/line. FORBIDDEN: batch multiple blockers in one `AskUserQuestion` call. FORBIDDEN: ask questions in chat prose — only via `AskUserQuestion`. FORBIDDEN: re-flag a blocker user chose "leave-as-is" for. FORBIDDEN: list every decision found — only itemize actual problems.
+
+Pseudo-code:
+```
+summary = extract_problem_solution(pitch)
+emit(summary)
+blockers = scan(pitch)
+while blockers:
+    b = highest_impact(blockers)
+    options = generate_options_for_type(b.type, b.content, b.section, b.line)  # Concrete, specific, cited
+    choice = AskUserQuestion(b.header, options)
+    apply_choice(pitch, b, choice)  # Edit, extract, defer, etc.
+    blockers = rescan(pitch) - accepted_risks
+emit(end_summary(pitch))
+emit("Ready.")
+```
+

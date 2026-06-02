@@ -328,6 +328,18 @@ for _harness in "${HARNESSES[@]}"; do
             done
         fi
 
+        # Install generated commands (from .j2 templates rendered by generate.sh).
+        if [ -d "$CODEGEN_DIR/templates/generated/claude-code/commands" ]; then
+            for cmd_file in "$CODEGEN_DIR/templates/generated/claude-code/commands"/*.md; do
+                if [ -f "$cmd_file" ]; then
+                    cmd_name=$(basename "$cmd_file")
+                    content_stable_cp "$cmd_file" "$CLAUDE_COMMANDS_DIR/$cmd_name"
+                    echo "   ✅ Installed command (generated): /${cmd_name%.md}"
+                    CURRENT_COMMANDS+=("$cmd_name")
+                fi
+            done
+        fi
+
         for installed_cmd in "$CLAUDE_COMMANDS_DIR"/*.md; do
             [ -f "$installed_cmd" ] || continue
             cmd_basename=$(basename "$installed_cmd")

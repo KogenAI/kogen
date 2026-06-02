@@ -41,9 +41,11 @@ completions:
 # tools: pi CLI --tools allowlist (positional string, not config.yaml).
 # extensions: pi CLI --extension list (loaded at runtime from EXTENSIONS_DIR).
 # system_prompt_file: path relative to CODEGEN_DIR.
-# prompt_body: harnesses/shared/prompt-bodies/<mode>.txt (currently empty — full content in tools-header).
-# tools_header: harnesses/pi/tools-header/<mode>.txt (full per-harness prompt body).
-# generate.sh concats tools_header + prompt_body → system_prompt_file (byte-identical to original).
+# prompt_body: ordered list of paths (relative to CODEGEN_DIR) concatenated after tools_header.
+#   Each entry must exist. Empty files are skipped (no separator added).
+#   Fragments from shared/prompt-fragments/ may be appended for shape/refactor modes.
+# tools_header: harnesses/pi/tools-header/<mode>.txt (per-harness ## Tools section + mode header).
+# manifest_regenerate_prompts() cats tools_header + each prompt_body entry → system_prompt_file.
 modes:
   build:
     model: openai-codex/gpt-5.4-mini # from config.yaml harness.build.pi
@@ -52,7 +54,8 @@ modes:
     extensions: [] # direct build mode — pi implements the app itself, no subagent delegation
     system_prompt_file: harnesses/pi/pi-build-system-prompt.txt
     tools_header: harnesses/pi/tools-header/build.txt
-    prompt_body: harnesses/shared/prompt-bodies/build.txt
+    prompt_body:
+      - harnesses/shared/prompt-bodies/build.txt
 
   debug:
     model: openai-codex/gpt-5.3-codex # from config.yaml harness.debug.pi
@@ -62,7 +65,8 @@ modes:
       - subagents
     system_prompt_file: harnesses/pi/pi-debug-system-prompt.txt
     tools_header: harnesses/pi/tools-header/debug.txt
-    prompt_body: harnesses/shared/prompt-bodies/debug.txt
+    prompt_body:
+      - harnesses/shared/prompt-bodies/debug.txt
 
   shape:
     model: openai-codex/gpt-5.5 # from config.yaml roles.shape (pi variant)
@@ -74,7 +78,10 @@ modes:
       - web-utils
     system_prompt_file: harnesses/pi/pi-shape-system-prompt.txt
     tools_header: harnesses/pi/tools-header/shape.txt
-    prompt_body: harnesses/shared/prompt-bodies/shape.txt
+    prompt_body:
+      - harnesses/shared/prompt-bodies/shape.txt
+      - shared/prompt-fragments/_probing.txt
+      - shared/prompt-fragments/_authoring-spine.txt
 
   ops:
     model: openai-codex/gpt-5.5 # from config.yaml harness.ops.pi
@@ -86,7 +93,8 @@ modes:
       - web-utils
     system_prompt_file: harnesses/pi/pi-ops-system-prompt.txt
     tools_header: harnesses/pi/tools-header/ops.txt
-    prompt_body: harnesses/shared/prompt-bodies/ops.txt
+    prompt_body:
+      - harnesses/shared/prompt-bodies/ops.txt
 
   refactor:
     model: openai-codex/gpt-5.5 # from config.yaml roles.refactor (pi variant)
@@ -98,7 +106,10 @@ modes:
       - web-utils
     system_prompt_file: harnesses/pi/pi-refactor-system-prompt.txt
     tools_header: harnesses/pi/tools-header/refactor.txt
-    prompt_body: harnesses/shared/prompt-bodies/refactor.txt
+    prompt_body:
+      - harnesses/shared/prompt-bodies/refactor.txt
+      - shared/prompt-fragments/_probing.txt
+      - shared/prompt-fragments/_authoring-spine.txt
 
 # ─── Install / uninstall steps (declarative record) ──────────────────────────
 # Actual execution is in install.sh manifest-driven loop.

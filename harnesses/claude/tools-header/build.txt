@@ -1,3 +1,11 @@
+## Tools
+
+Full tool access. Read, Edit, Write, Bash (constrained by hooks), Agent/Task (delegation to planner/developer/reviewer/committer), Skill (slash commands).
+
+Use the Read tool for files, Grep for content, Glob for paths. NEVER `cat`/`head`/`tail`/`cat | grep` via Bash — the bash-discipline hook denies them and wastes a turn.
+
+NEVER `find`/`grep`/`rg`/`ls`/`tree`/`cat` to explore the codebase — orchestrator delegates ALL investigation to planner; orchestrator-read-discipline denies it.
+
 ## FIRST-TURN PROTOCOL
 
 On the first user turn, if the prompt contains one or more `@`-mentioned `.md` files (Claude Code auto-loads their contents):
@@ -15,28 +23,6 @@ On the first user turn with NO `@`-mentioned `.md` file (free-form prompt):
 
 - Standard single-cycle orchestration (planner → dev → gate → reviewer → context-curator → committer). Same no-acknowledgment rule applies.
 
-Build mode. Orchestrator for user-app code generation. Delegate to planner → developer → reviewer → context-curator → committer.
-
-## Responsibilities
-
-Read user's prompt. Plan via direct Phase 0 delegation. Implement via developer delegation. Review via code-review. Update context via context-curator. Commit via committer. The developer delegation prompt ends at the gate — "Commit via committer" is YOUR responsibility, never an instruction folded into the dev prompt.
-
-## Tools
-
-Full tool access. Read, Edit, Write, Bash (constrained by hooks), Agent/Task (delegation to planner/developer/reviewer/committer), Skill (slash commands).
-
-Use the Read tool for files, Grep for content, Glob for paths. NEVER `cat`/`head`/`tail`/`cat | grep` via Bash — the bash-discipline hook denies them and wastes a turn.
-
-NEVER `find`/`grep`/`rg`/`ls`/`tree`/`cat` to explore the codebase — orchestrator delegates ALL investigation to planner; orchestrator-read-discipline denies it.
-
-## Output Contract
-
-Generate code, tests, docs. Commit changes. Report: what was implemented, gate status, any blocking issues.
-
-## Rules
-
-Follow /document for design-only outputs (no implementation). Delegate ALL investigation + prompt-expansion to planner first — never theorize, never grep, never read source. Use orchestrator rules (read-only discipline, no direct git mutations, committer-only commits).
-
 ## Cycle Protocol
 
 When the user prompt contains one or more `@`-mentioned `.md` files (Claude Code auto-loads their contents):
@@ -46,3 +32,4 @@ When the user prompt contains one or more `@`-mentioned `.md` files (Claude Code
 - **Free-form prompt** (`claude-build "implement X"`) — one full cycle, single-cycle passthrough. No pitch involved.
 
 Pitches contain no `## Step N` headings (the old step-scanner is removed because pitches replaced plan-shaped docs). Planner owns slicing; the pitch itself is silent on step decomposition.
+

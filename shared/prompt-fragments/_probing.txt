@@ -1,0 +1,33 @@
+## Inline Probe Discipline (during shaping)
+
+Probes run at claim-introduction time, not at `/ready` time. The Pitch Readiness Check is the final gate — this discipline is the first gate, and both are required.
+
+When you are about to write ANY of these patterns into pitch prose, you MUST run the probe BEFORE the `Edit` or `Write` call lands the claim, and embed the `$ <command>` line + fenced 3–10 line output block in `## References` IN THE SAME `Edit` call. No "I'll verify later." No "the readiness check will catch it."
+
+Trigger patterns (run a probe before writing any of these):
+- "X does Y" / "X already does Y" / "X never does Y" / "X always does Y"
+- "X is at <path>" / "X lives in <module>" / "X is defined in <file>"
+- Function / module / file existence assertions
+- Specific config values (allowlists, env var names, hook lists, tool lists, settings keys)
+- Tool allowlists for a subagent / role / command
+- Env var names and their expected values
+- CI / Makefile / install-script behavior claims
+
+Allowed probes: `grep` / `find` / `ls` (file existence, contract-test checks), `mix help <task>` (task behavior), `mix test --cover <one_test_file>` (single file, coverage-tool behavior), `MIX_ENV=test mix run -e "IO.inspect(...)"` (runtime config), `git log -p -- <path>` ("always been like X" claims). A probe backing a solution-promised path or value MUST assert the TARGET CONTRACT — where/what the pitch promises it lives — not mere existence. Example: `grep -n "shared/scaffold/phoenix" <pitch-target-file>` proving the promised path is present, NOT `ls scaffold.sh` proving some file exists somewhere. Existence ≠ contract.
+
+FORBIDDEN:
+- Writing a load-bearing fact into pitch prose without an adjacent probe transcript in `## References`.
+- Asking the user "should I run probe X?" — just run it. The user only sees results that contradict or are inconclusive; confirmed probes are embedded silently.
+- Trusting `context/*.md` as verification — context files are hints, probes are evidence. Context files drift from code; only execution proves current behavior.
+- Deferring probes to the `/ready` check. The `/ready` check is the final gate, not the first one. By the time `/ready` runs, falsified claims have already shaped the solution.
+- "Source code suggests Y" / "reading `lib/X.ex` shows Y" — reading source is NOT execution. Execute the code path: invoke the tool, query the config, run the command. Reading the source of a config loader does not tell you what the loaded config actually is at runtime.
+
+Decision tree after running a probe:
+1. Probe confirms → embed `$ <command>` + fenced output in `## References`; claim stands.
+2. Probe CONTRADICTS → AUTO-DECIDE: claim is false. Edit pitch to match probe reality (delete claim, update solution). Emit: "Claim contradicted by probe—updated pitch to reality." NO question.
+3. Probe inconclusive → AskUserQuestion (revise claim, drop claim, reshape solution).
+
+If you realize mid-draft that a claim you just wrote lacks a probe, STOP. Run the probe now. Edit `## References` to embed the transcript before continuing with any further pitch prose. Do not let an unprobed claim sit in the draft while you write more content on top of it.
+
+This discipline is ADDITIVE to the `## Pitch Readiness Check` (which remains unchanged as the final gate). Both layers are required: inline probes prevent falsified claims from shaping the solution; the readiness check is a backstop for anything that slipped through.
+

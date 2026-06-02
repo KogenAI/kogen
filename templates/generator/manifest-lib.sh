@@ -76,8 +76,10 @@ manifest_mode_get() {
 }
 
 # manifest_regenerate_prompts <harness>
-# For each mode: concat tools-header/<mode>.txt + shared/prompt-bodies/<mode>.txt
+# For each mode: concat tools_header + each entry in prompt_body[] (ordered list)
 # → harnesses/<harness>/<harness>-<mode>-system-prompt.txt (byte-stable write).
+# prompt_body is a YAML sequence; each entry is a path relative to CODEGEN_DIR.
+# Error (return 1) if tools_header or any prompt_body entry is missing.
 manifest_regenerate_prompts() {
     local harness="$1"
     local manifest
@@ -86,9 +88,8 @@ manifest_regenerate_prompts() {
     modes=$(manifest_modes "$harness")
 
     for mode in $modes; do
-        local header body dest tmp
+        local header dest tmp
         header="$CODEGEN_DIR/$(manifest_mode_get "$harness" "$mode" tools_header)"
-        body="$CODEGEN_DIR/$(manifest_mode_get "$harness" "$mode" prompt_body)"
         dest="$CODEGEN_DIR/$(manifest_mode_get "$harness" "$mode" system_prompt_file)"
 
         if [ ! -f "$header" ]; then
@@ -96,12 +97,31 @@ manifest_regenerate_prompts() {
             return 1
         fi
 
+        # Collect prompt_body entries (YAML sequence).
+        local body_count body_entries
+        body_count=$(yq -r ".modes.$mode.prompt_body | length" "$manifest")
+        body_entries=()
+        local j=0
+        while [ "$j" -lt "$body_count" ]; do
+            local entry
+            entry="$CODEGEN_DIR/$(yq -r ".modes.$mode.prompt_body[$j]" "$manifest")"
+            if [ ! -f "$entry" ]; then
+                echo "manifest-lib: ERROR — prompt_body[$j] not found: $entry" >&2
+                return 1
+            fi
+            body_entries+=("$entry")
+            j=$((j + 1))
+        done
+
         tmp=$(mktemp)
-        if [ -f "$body" ] && [ -s "$body" ]; then
-            cat "$header" "$body" >"$tmp"
-        else
-            cat "$header" >"$tmp"
-        fi
+        # Cat header first, then each body entry in order (skip empty entries).
+        local inputs=("$header")
+        for entry in "${body_entries[@]+"${body_entries[@]}"}"; do
+            if [ -s "$entry" ]; then
+                inputs+=("$entry")
+            fi
+        done
+        cat "${inputs[@]}" >"$tmp"
 
         # Byte-stable write: only overwrite if content changed.
         if [ ! -f "$dest" ] || ! cmp -s "$tmp" "$dest"; then
