@@ -134,6 +134,17 @@ Postgres `date_trunc` returns `NaiveDateTime` (not `DateTime`). Functions handli
 
 `# coveralls-ignore-start`/`-stop` pragmas inside `case` arm bodies are accepted by `mix format` without reindenting. Use for wrapping genuinely-unreachable catch-all clauses.
 
+## CLI Tool Testing (git, System.cmd)
+
+Regression tests for CLI tool wrappers benefit from explicit artifact setup (symlinks, directories, cruft files) documenting the full scenario. Assertions on all artifact types (live symlink, live dir, unrelated cruft) provide complete coverage.
+
+Example: `git clean` exclusion patterns tested by:
+
+1. Init repo + create untracked artifacts: `File.mkdir_p!("public-123")`, `File.write!("public-123/index.html", ...)`, `File.ln_s!("public-123", "current")`, `File.write!("junk.txt", "cruft")`.
+2. Assert three outcomes: `assert File.exists?("current")`, `assert File.dir?("public-123")`, `refute File.exists?("junk.txt")`.
+
+Explicit setup documents intent (what should be protected vs. removed); full assertion coverage prevents silent failures when exclusion patterns drift.
+
 ## Recipes
 
 `elixir-context-test-structure`, `req-test-stub-external-http`, `elixir-capture-logs-on-error-paths`, `mox-verify-on-exit-scope`, `task-supervisor-sandbox-allowance`, `elixir-async-false-triage`, `elixir-test-compile-env-config`, `github-workflows-mix-generator`.
