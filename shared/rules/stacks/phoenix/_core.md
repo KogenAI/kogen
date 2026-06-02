@@ -123,6 +123,10 @@ end
 
 **`System.cmd/3` env semantics**: `env: []` passes an EMPTY environment to the child process — it does NOT inherit the caller's OS env. Subprocesses run shell scripts like `#!/usr/bin/env bash` which depend on PATH. Fix: use `env: prod_env([])` (or a computed clean env dict) to explicitly construct and pass a release-safe PATH. Never use `env: []` for subprocesses that run shell scripts — results in "env: bash: No such file or directory" when concurrent tests have mutated the caller's PATH via `System.put_env`.
 
+**ExCoveralls marker instrumentation semantics**: `# coveralls-ignore-*` directives are applied at INSTRUMENTATION time (during `mix compile`), not at report-render time. If a `.coverdata` artifact exists from a prior compile that predates marker additions, the report reflects the unannotated version — adding markers to source has no effect on stale artifacts. Critical workflow: after adding or modifying any `# coveralls-ignore-*` annotations in source, delete the stale artifacts (`rm -f cover/*.coverdata cover/excoveralls.json`) before re-running the gate. The next gate run recompiles with markers active, regenerates fresh `.coverdata`, and re-renders `excoveralls.json` — the annotated lines flip from `0` (missed) to `null` (ignored) and floor coverage jumps accordingly. Diagnosis: compare `cover/excoveralls.json` timestamp (generated at gate time) vs source file mtime (when markers were added); if JSON predates the edits, it's stale.
+
+**Application.put_env in async: false with on_exit**: When a `async: false` test module mutates `Application.put_env(:app, :key, value)` and calls `Application.put_env(:app, :key, old_value)` or `Application.restore_env(:app, :key)` in `on_exit`, the LIFO execution order of `on_exit` callbacks creates race: cleanup from test N fires after setup of test N+1 is already running. Fix: use `Application.delete_env(:app, :key)` in `on_exit` (idempotent, does not re-set a stale value), and establish a fresh default or per-test value via module-level `setup` block that runs before each test. Pairs module-level `setup` (sets) + test-level `on_exit` (deletes), with no restore. Also guard filesystem mutations: use isolated unique paths (e.g., `System.tmp_dir!()`) per test rather than shared, so cleanup from one test does not squat a dir another test is writing to.
+
 ## Misc
 
 - Explicit helpers over virtual fields
@@ -130,7 +134,7 @@ end
 - Security ignores in `.sobelow-conf`, not inline
 - Custom static dirs in `static_paths/0` (backend_web.ex)
 - GenServer debounce: `Process.send_after` + cancel-and-reset. `Task.Supervisor.start_child` (not `Task.start`) for test stub propagation.
-- Coveralls `# coveralls-ignore-start/stop` pragmas inside `case` arm bodies are formatter-accepted — `mix format` does not reindent them.
+- Coveralls `# coveralls-ignore-start/stop` pragmas inside `case` arm bodies are formatter-accepted — `mix format` does not reindent them. **Critical distinction**: `# coveralls-ignore-next-line` applies to the line it precedes (pattern line in a `case` arm, param line in a multi-line fn head); body expressions sit on the NEXT line and are NOT suppressed. Use `coveralls-ignore-start/stop` wrapping body expressions directly. Erlang's coverage tool marks `nil ->` pattern lines, `) do` lines (multi-line fn head), and param lines as 0 even when the arm/fn is called and body is executed — these are tracking artifacts, not real coverage. Annotate the pattern/param line with `# coveralls-ignore-next-line: Erlang coverage false negative — ... not counted despite fn being called` (one line above the false-negative line).
 - **File operations on directory paths that may have non-dir squatters**: When hardening `mkdir_p!` calls, check one level up. Clear any non-dir at `Path.dirname(path)` BEFORE clearing any non-dir at `path` itself, then let `mkdir_p!` create the chain. Example: `File.mkdir_p!(user_files_dir)` can fail with "not a directory" at an intermediate parent if a concurrent test has briefly replaced that parent with a file. Guard: `parent = Path.dirname(path); File.exists?(parent) and not File.dir?(parent) and File.rm_rf!(parent)` — the `File.exists?` check prevents deletion of real dirs. Mis-configured/nil path → `Path.dirname(nil)` raises before any `rm_rf!` → fail-fast, safe.
 - **Default args on single-clause private fns**: Elixir warns "default values for optional arguments never used" when a single-clause `defp` fn has default args but no caller uses the default path. Fix: remove defaults, pass explicit arg at all call sites. Affects `mix compile --warnings-as-errors`.
 - **Code complexity limits (Credo)**: ABC size (30) and nesting depth (2) limits trigger on deeply nested `if/else` or `case` inside `case` arm bodies. Fix: extract nested dispatch to a named helper fn (keeps each fn focused). Example: nested `if deploy_fun / if phoenix_app?` inside a `case` arm → extract to `run_deploy/2` private fn with explicit dispatch logic.
@@ -138,6 +142,20 @@ end
 - **Minimal coverage fix for private fns without opts seam**: When a private fn calls an external module with no opts/mock seam to stub, inject a thin `Application.get_env` config key (nil-safe default) inside the private fn. In tests, `Application.put_env` to inject a stub, exercising the private fn without full module setup. Example: `do_promote/1` → read `:preview_deploy_fun` config inside the fn (nil → use real Deploy, non-nil → call stub), avoid Mox on entire module.
 - **Public fn calling public fn for internal cleanup**: When a public fn calls another public fn internally (not for its full side-effects but only for cleanup/state-reset), and the called fn later gains new side-effects (e.g., re-pinning a state invariant), the caller must bypass to the private primitive to avoid premature/duplicate effects. Example: `add_preview_route/2` calling `remove_preview_route/1` — when re-pin is added to `remove_preview_route/1`, `add_preview_route/2` must call the private `remove_all_copies/1` instead to avoid re-pinning mid-route-addition.
 - **Caddy route ordering**: `POST .../routes/0` prepends, `POST .../routes` (no index) appends. Neither prepend nor a one-time append survives later mutations without re-shadowing. The only order-independent "keep last" guarantee is explicit delete-by-id + append run as the final step of every mutation (not just at boot). Single HTTP server per listen address (Caddy: `listener address repeated` error if >1 server on same port — catch-all 404 must be a terminal route in the existing server, not a separate server).
+
+## Test Seams
+
+**Req.Test for HTTP stubs**: `Req.Test.json/2` (not `/3` — there is no 3-arity version) returns a mocked JSON response. For HTTP error responses (non-2xx status), use `Plug.Conn.put_resp_content_type/2` + `Plug.Conn.send_resp/3` directly:
+
+```elixir
+Req.Test.stub(MyAdapter, fn conn ->
+  conn
+  |> Plug.Conn.put_resp_content_type("application/json")
+  |> Plug.Conn.send_resp(400, Jason.encode!(%{"error" => "message"}))
+end)
+```
+
+Calling code that handles `:error` from the adapter will see `{:error, _}` as expected. This pattern is used in handler tests where the seam is at the `Channels.send/2` level (stubbing the adapter module).
 
 ## Compile-Time Config
 
