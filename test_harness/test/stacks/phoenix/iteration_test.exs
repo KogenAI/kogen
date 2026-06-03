@@ -65,10 +65,12 @@ defmodule CodegenTestHarness.Stacks.Phoenix.IterationTest do
     Assertions.assert_file_matches!(todo_live_path, ~r/phx-change="search"/)
     Assertions.assert_file_matches!(todo_live_path, ~r/handle_event\("search"/)
 
+    Assertions.assert_mix_compiles!(cwd)
     Assertions.assert_git_committed!(cwd)
     Assertions.assert_commit_well_formed!(cwd)
     Assertions.assert_commit_subject_length!(cwd)
     Assertions.assert_not_revert_head!(cwd)
+    Assertions.assert_renders!(cwd, :phoenix)
     Fixtures.bench_assertions_passed!("phoenix", "iteration_phoenix_search_scaffold")
     Fixtures.bench_assertions_passed!("phoenix", "iteration_phoenix_search_change")
   end

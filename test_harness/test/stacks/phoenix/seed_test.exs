@@ -43,6 +43,18 @@ defmodule CodegenTestHarness.Stacks.Phoenix.SeedTest do
     Assertions.assert_new_commit_since!(cwd, commits_after_first)
     Assertions.assert_commit_well_formed!(cwd)
     Assertions.assert_not_revert_head!(cwd)
+
+    # Verify 2nd-prompt marker landed in the TodoLive file
+    live_files = Path.wildcard(Path.join(cwd, "lib/*_web/live/**/*.ex"))
+    todo_files = Enum.filter(live_files, fn f -> f |> Path.basename() |> String.downcase() |> String.contains?("todo") end)
+    fallback = Path.wildcard(Path.join(cwd, "lib/**/todo*.ex"))
+    target_files = if todo_files == [], do: fallback, else: todo_files
+
+    if target_files != [] do
+      [todo_live_path | _] = target_files
+      Assertions.assert_file_matches!(todo_live_path, ~r/data-testid="app-footer"/)
+    end
+
     Fixtures.bench_assertions_passed!("phoenix", "seed_phoenix_first_build")
     Fixtures.bench_assertions_passed!("phoenix", "seed_phoenix_second_build")
   end

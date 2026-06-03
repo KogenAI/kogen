@@ -241,6 +241,53 @@ defmodule CodegenTestHarness.Assertions do
     assert String.length(body) > 50, "#{rel} body is blank (#{String.length(body)} visible chars) — site built but renders empty"
   end
 
+  @doc """
+  Asserts that rendering the app at `cwd` produces PASS or INCONCLUSIVE.
+  INCONCLUSIVE is tolerated — browser or server may be absent in CI (mirrors
+  `assert_hugo_builds!` semantics). FAIL causes a flunk.
+
+  `mode` is `:phoenix` or `:static`.
+
+  Returns `:ok`.
+  """
+  @spec assert_renders!(String.t(), :phoenix | :static) :: :ok
+  def assert_renders!(cwd, mode) do
+    case CodegenTestHarness.Fixtures.render_verdict(cwd, mode) do
+      {:pass} ->
+        :ok
+
+      {:inconclusive, reason} ->
+        IO.warn("render INCONCLUSIVE in #{cwd} (#{mode}): #{reason}")
+        :ok
+
+      {:fail, reason} ->
+        flunk("render failed in #{cwd} (#{mode}): #{reason}")
+    end
+  end
+
+  @doc """
+  Bundles quality assertions for a build: compile + tests (Phoenix only) +
+  render + committed.
+
+  `opts`:
+  - `:mode` — `:phoenix` or `:static` (required)
+
+  Returns `:ok`.
+  """
+  @spec assert_build_quality!(String.t(), keyword()) :: :ok
+  def assert_build_quality!(cwd, opts) do
+    mode = Keyword.fetch!(opts, :mode)
+
+    if File.exists?(Path.join(cwd, "mix.exs")) do
+      assert_mix_compiles!(cwd)
+      assert_generated_tests_pass!(cwd)
+    end
+
+    assert_renders!(cwd, mode)
+    assert_git_committed!(cwd)
+    :ok
+  end
+
   @spec assert_assets_deploy!(String.t()) :: :ok
   def assert_assets_deploy!(cwd) do
     has_assets_dir = File.dir?(Path.join(cwd, "assets"))

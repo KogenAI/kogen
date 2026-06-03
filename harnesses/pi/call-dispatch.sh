@@ -201,14 +201,31 @@ elif [[ -n "$JSON_SCHEMA_CONTENT" ]]; then
         REASON="pi returned non-JSON reply when JSON schema was expected"
         VALUE_JSON="$(printf '%s' "$ASSISTANT_TEXT" | jq -Rs '.')"
     fi
-elif [[ "$ASSISTANT_TEXT" =~ \?[[:space:]]*$ ]]; then
-    # Clarifying question heuristic
+elif [[ -z "$JSON_SCHEMA_CONTENT" ]] && [[ "$ASSISTANT_TEXT" =~ \?[[:space:]]*$ ]]; then
+    # Clarifying question heuristic (only when no JSON schema was requested)
     STATUS="clarifying_question"
     CLARIFYING_QUESTION="$ASSISTANT_TEXT"
     VALUE_JSON="$(printf '%s' "$ASSISTANT_TEXT" | jq -Rs '.')"
 else
     STATUS="success"
     VALUE_JSON="$(printf '%s' "$ASSISTANT_TEXT" | jq -Rs '.')"
+fi
+
+# ── Schema validation (only when a schema was requested and call succeeded) ──
+if [[ -n "$JSON_SCHEMA_CONTENT" ]] && [[ "$STATUS" == "success" ]] && [[ "$VALUE_JSON" != "null" ]]; then
+    SCHEMA_TMP="$(mktemp -t codegen-call-schema.XXXXXX.json)"
+    VALUE_TMP="$(mktemp -t codegen-call-value.XXXXXX.json)"
+    printf '%s' "$JSON_SCHEMA_CONTENT" >"$SCHEMA_TMP"
+    printf '%s' "$VALUE_JSON" >"$VALUE_TMP"
+    VALIDATE_ERR=""
+    VALIDATE_CODE=0
+    VALIDATE_ERR="$(node "$(dirname "${BASH_SOURCE[0]}")/../claude/hooks/lib/schema-validate.js" "$SCHEMA_TMP" "$VALUE_TMP" 2>&1)" || VALIDATE_CODE=$?
+    rm -f "$SCHEMA_TMP" "$VALUE_TMP"
+    if [[ "$VALIDATE_CODE" -eq 1 ]]; then
+        STATUS="failed"
+        REASON="schema validation failed: ${VALIDATE_ERR}"
+    fi
+    # exit 2 (validator unavailable) → pass through unchanged
 fi
 
 # Build envelope

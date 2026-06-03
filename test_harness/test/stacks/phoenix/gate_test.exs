@@ -47,6 +47,7 @@ defmodule CodegenTestHarness.Stacks.Phoenix.GateTest do
     assert router_files != [], "no router.ex found under lib/*_web/ in #{cwd}"
     [router | _] = router_files
     Assertions.assert_router_root_route_replaced!(router)
+    Assertions.assert_renders!(cwd, :phoenix)
 
     Fixtures.bench_assertions_passed!("phoenix", "gate_phoenix_exit0")
   end

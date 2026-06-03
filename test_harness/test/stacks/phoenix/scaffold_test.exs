@@ -39,6 +39,7 @@ defmodule CodegenTestHarness.Stacks.Phoenix.ScaffoldTest do
     Assertions.assert_router_root_route_replaced!(router)
 
     Assertions.assert_git_committed!(cwd)
+    Assertions.assert_renders!(cwd, :phoenix)
     Fixtures.bench_assertions_passed!("phoenix", "scaffold_provisions_phoenix")
   end
 end

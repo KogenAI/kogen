@@ -38,6 +38,7 @@ defmodule CodegenTestHarness.Fixtures do
   alias CodegenTestHarness.UsageParser
 
   @codegen_build Path.expand("../../../codegen-build", __DIR__)
+  @codegen_call Path.expand("../../../codegen-call", __DIR__)
   @codegen_build_timeout_ms 5_400_000
 
   @commit_contract_suffix """
@@ -174,6 +175,116 @@ defmodule CodegenTestHarness.Fixtures do
     end
 
     @codegen_build
+  end
+
+  @doc "Returns the absolute path to the `codegen-call` script."
+  @spec codegen_call_path() :: String.t()
+  def codegen_call_path do
+    unless File.exists?(@codegen_call) do
+      raise "codegen-call not found at #{@codegen_call}"
+    end
+
+    @codegen_call
+  end
+
+  @doc """
+  Invokes `codegen-call` with a structured JSON schema and returns the
+  decoded envelope map.
+
+  `opts`:
+  - `:role` — string role name (required)
+  - `:system_prompt` — string system prompt (required)
+
+  Raises on non-zero exit from codegen-call.
+  """
+  @spec run_codegen_call(String.t(), String.t(), keyword()) :: map()
+  def run_codegen_call(prompt, schema, opts) do
+    harness_val = harness()
+    role = Keyword.fetch!(opts, :role)
+    system_prompt = Keyword.fetch!(opts, :system_prompt)
+
+    {output, exit_code} =
+      System.cmd(
+        codegen_call_path(),
+        [
+          "--harness=#{harness_val}",
+          "--role=#{role}",
+          "--system-prompt=#{system_prompt}",
+          "--json-schema=#{schema}",
+          prompt
+        ],
+        stderr_to_stdout: true
+      )
+
+    if exit_code != 0 do
+      raise "codegen-call failed (exit=#{exit_code}):\n#{output}"
+    end
+
+    Jason.decode!(output)
+  end
+
+  @doc """
+  Runs `render-check.js` against `cwd` and returns a render verdict tuple.
+
+  Returns:
+  - `{:pass}` — render checks passed
+  - `{:fail, reason}` — render check failed
+  - `{:inconclusive, reason}` — browser/server absent or other non-fatal miss
+
+  `mode` is `:phoenix` or `:static`.
+  """
+  @type render_verdict() :: {:pass} | {:fail, String.t()} | {:inconclusive, String.t()}
+  @spec render_verdict(String.t(), :phoenix | :static) :: render_verdict()
+  def render_verdict(cwd, mode) do
+    script = Path.expand("../../../harnesses/claude/hooks/lib/render-check.js", __DIR__)
+    codegen_dir = Path.expand("../../..", __DIR__)
+
+    {output, _exit_code} =
+      case mode do
+        :phoenix ->
+          System.cmd(
+            "node",
+            [script, "--mode", "phoenix", "--spawn", cwd],
+            cd: cwd,
+            stderr_to_stdout: false,
+            env: [{"CODEGEN_DIR", codegen_dir}]
+          )
+
+        :static ->
+          built_dir =
+            cond do
+              File.exists?(Path.join(cwd, "dist/index.html")) -> Path.join(cwd, "dist")
+              File.exists?(Path.join(cwd, "public/index.html")) -> Path.join(cwd, "public")
+              true -> cwd
+            end
+
+          System.cmd(
+            "node",
+            [script, "--mode", "static", built_dir],
+            cd: cwd,
+            stderr_to_stdout: false,
+            env: [{"CODEGEN_DIR", codegen_dir}]
+          )
+      end
+
+    parse_render_verdict(output)
+  end
+
+  @spec parse_render_verdict(String.t()) :: render_verdict()
+  defp parse_render_verdict(output) do
+    case Regex.run(~r/RENDER_VERDICT=(.+)/, output) do
+      [_, "PASS"] ->
+        {:pass}
+
+      [_, "FAIL:" <> reason] ->
+        {:fail, reason}
+
+      [_, "INCONCLUSIVE:" <> reason] ->
+        {:inconclusive, reason}
+
+      _ ->
+        {:inconclusive, "no verdict line"}
+    end
   end
 
   @doc """

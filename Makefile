@@ -266,6 +266,7 @@ bench:
 	cat "$(BENCH_RUN_DIR)/summary-short.txt"; \
 	echo ""; \
 	echo "✅ summary: $(BENCH_RUN_DIR)/summary.md"; \
+	-cd "$(SCRIPT_DIR)/test_harness" && mix codegen.bench.check-regression --run "$(BENCH_RUN_DIR)" || true; \
 	exit $$BENCH_EXIT
 
 # test-all: full pre-deploy gate. Chains hook tests + stack tests, then

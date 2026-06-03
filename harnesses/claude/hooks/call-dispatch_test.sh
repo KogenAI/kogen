@@ -13,6 +13,9 @@ set -euo pipefail
 HOOKS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DISPATCH_SCRIPT="$(cd "$HOOKS_DIR/.." && pwd)/call-dispatch.sh"
 FIXTURE="$HOOKS_DIR/fixtures/bouncer_classify_structured.jsonl"
+FIXTURE_CQ="$HOOKS_DIR/fixtures/clarifying_question.jsonl"
+FIXTURE_ERR="$HOOKS_DIR/fixtures/is_error.jsonl"
+FIXTURE_SCHEMA_FAIL="$HOOKS_DIR/fixtures/schema_validate_fail.jsonl"
 
 pass=0
 fail=0
@@ -121,6 +124,85 @@ else
     printf 'FAIL: dispatch exits 0 — got exit %d\n' "$actual_exit"
     fail=$((fail + 1))
 fi
+
+# ── Case (a): clarifying-question — no JSON schema, text ends "?" ─────────────
+(
+    export FIXTURE_PATH="$FIXTURE_CQ"
+    export CODEGEN_CALL_SYSTEM_PROMPT="You are a test assistant."
+    export CODEGEN_CALL_MODEL="claude-haiku-4-5"
+    export CODEGEN_CALL_EFFORT="low"
+    export CODEGEN_CALL_PROMPT="Tell me something."
+    unset CODEGEN_CALL_JSON_SCHEMA 2>/dev/null || true
+    unset CODEGEN_CALL_JSON_SCHEMA_PATH 2>/dev/null || true
+    unset CODEGEN_CALL_ALLOWED_TOOLS_SET 2>/dev/null || true
+    unset CODEGEN_CALL_ALLOWED_TOOLS 2>/dev/null || true
+    unset CODEGEN_CALL_SETTINGS_PATH 2>/dev/null || true
+    bash "$DISPATCH_SCRIPT" 2>/dev/null
+) >"$BASE_TMP/cq_envelope.json" 2>/dev/null || true
+
+CQ_ENVELOPE="$(cat "$BASE_TMP/cq_envelope.json")"
+
+assert_jq \
+    "(a) clarifying_question: result.status" \
+    "$CQ_ENVELOPE" \
+    ".result.status" \
+    "clarifying_question"
+
+assert_jq_truthy \
+    "(a) clarifying_question: clarifying_question field ends ?" \
+    "$CQ_ENVELOPE" \
+    '(.result.clarifying_question // "") | test("\\?[[:space:]]*$")'
+
+# ── Case (b): failed — is_error:true in fixture ───────────────────────────────
+(
+    export FIXTURE_PATH="$FIXTURE_ERR"
+    export CODEGEN_CALL_SYSTEM_PROMPT="You are a test assistant."
+    export CODEGEN_CALL_MODEL="claude-haiku-4-5"
+    export CODEGEN_CALL_EFFORT="low"
+    export CODEGEN_CALL_PROMPT="Do something."
+    unset CODEGEN_CALL_JSON_SCHEMA 2>/dev/null || true
+    unset CODEGEN_CALL_JSON_SCHEMA_PATH 2>/dev/null || true
+    unset CODEGEN_CALL_ALLOWED_TOOLS_SET 2>/dev/null || true
+    unset CODEGEN_CALL_ALLOWED_TOOLS 2>/dev/null || true
+    unset CODEGEN_CALL_SETTINGS_PATH 2>/dev/null || true
+    bash "$DISPATCH_SCRIPT" 2>/dev/null
+) >"$BASE_TMP/err_envelope.json" 2>/dev/null || true
+
+ERR_ENVELOPE="$(cat "$BASE_TMP/err_envelope.json")"
+
+assert_jq \
+    "(b) is_error: result.status == failed" \
+    "$ERR_ENVELOPE" \
+    ".result.status" \
+    "failed"
+
+# ── Case (c): schema-validate FAIL — structured_output missing required field ─
+(
+    export FIXTURE_PATH="$FIXTURE_SCHEMA_FAIL"
+    export CODEGEN_CALL_SYSTEM_PROMPT="You are a test assistant."
+    export CODEGEN_CALL_MODEL="claude-haiku-4-5"
+    export CODEGEN_CALL_EFFORT="low"
+    export CODEGEN_CALL_PROMPT="Classify this."
+    export CODEGEN_CALL_JSON_SCHEMA='{"type":"object","properties":{"lang":{"type":"string"},"intent":{"type":"string"}},"required":["lang","intent"]}'
+    unset CODEGEN_CALL_JSON_SCHEMA_PATH 2>/dev/null || true
+    unset CODEGEN_CALL_ALLOWED_TOOLS_SET 2>/dev/null || true
+    unset CODEGEN_CALL_ALLOWED_TOOLS 2>/dev/null || true
+    unset CODEGEN_CALL_SETTINGS_PATH 2>/dev/null || true
+    bash "$DISPATCH_SCRIPT" 2>/dev/null
+) >"$BASE_TMP/schema_fail_envelope.json" 2>/dev/null || true
+
+SCHEMA_FAIL_ENVELOPE="$(cat "$BASE_TMP/schema_fail_envelope.json")"
+
+assert_jq \
+    "(c) schema-validate FAIL: result.status == failed" \
+    "$SCHEMA_FAIL_ENVELOPE" \
+    ".result.status" \
+    "failed"
+
+assert_jq_truthy \
+    "(c) schema-validate FAIL: reason contains 'schema'" \
+    "$SCHEMA_FAIL_ENVELOPE" \
+    '(.result.reason // "") | test("schema")'
 
 # ─────────────────────────────────────────────────────────────────────────────
 echo ""

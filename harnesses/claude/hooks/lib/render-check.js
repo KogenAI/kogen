@@ -24,6 +24,12 @@ const path = require("path");
 const fs = require("fs");
 const http = require("http");
 const net = require("net");
+const {
+  allocFreePort,
+  startPhoenixServer,
+  waitForHttp200,
+  stopPhoenixServer,
+} = require("./phoenix-server.js");
 
 const DEFAULT_TIMEOUT_MS = 30_000;
 const PHOENIX_READINESS_MS = 20_000;
@@ -40,6 +46,8 @@ function parseArgs(argv) {
       args.port = parseInt(argv[++i], 10);
     } else if (arg === "--timeout") {
       args.timeout = parseInt(argv[++i], 10);
+    } else if (arg === "--spawn") {
+      args.spawn = argv[++i];
     } else if (!arg.startsWith("--")) {
       args.outputDir = arg;
     }
@@ -392,18 +400,45 @@ async function main() {
       server.close();
     }
   } else if (args.mode === "phoenix") {
-    const port = args.port;
-    log(`phoenix mode: checking readiness on port ${port}`);
+    if (args.spawn) {
+      // --spawn <cwd>: boot mix phx.server ourselves, then run checks
+      let port;
+      try {
+        port = await allocFreePort();
+      } catch (e) {
+        log(`port alloc failed: ${e.message}`);
+        verdict("INCONCLUSIVE:config-error");
+        return;
+      }
 
-    try {
-      await waitForHttp200(port, PHOENIX_READINESS_MS);
-    } catch (_e) {
-      log(`phoenix server not ready on port ${port}`);
-      verdict("INCONCLUSIVE:server-unready");
-      return;
+      const child = startPhoenixServer(args.spawn, port);
+      try {
+        try {
+          await waitForHttp200(port, PHOENIX_READINESS_MS);
+        } catch (_e) {
+          log(`phoenix server did not start in ${args.spawn}`);
+          verdict("INCONCLUSIVE:server-unready");
+          return;
+        }
+        await runChecks(`http://localhost:${port}/`, timeoutMs);
+      } finally {
+        await stopPhoenixServer(child);
+      }
+    } else {
+      // --port <N>: assume server already running
+      const port = args.port;
+      log(`phoenix mode: checking readiness on port ${port}`);
+
+      try {
+        await waitForHttp200(port, PHOENIX_READINESS_MS);
+      } catch (_e) {
+        log(`phoenix server not ready on port ${port}`);
+        verdict("INCONCLUSIVE:server-unready");
+        return;
+      }
+
+      await runChecks(`http://localhost:${port}/`, timeoutMs);
     }
-
-    await runChecks(`http://localhost:${port}/`, timeoutMs);
   } else {
     log(`unknown mode: ${args.mode}`);
     verdict("INCONCLUSIVE:config-error");

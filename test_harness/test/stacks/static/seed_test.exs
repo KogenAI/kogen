@@ -35,6 +35,15 @@ defmodule CodegenTestHarness.Stacks.Static.SeedTest.Html do
     Assertions.assert_new_commit_since!(cwd, commits_after_first)
     Assertions.assert_commit_well_formed!(cwd)
     Assertions.assert_not_revert_head!(cwd)
+
+    # Verify 2nd-prompt marker (faq section) survived the second build
+    html_files = Path.wildcard(Path.join(cwd, "**/*.html"))
+    faq_found = Enum.any?(html_files, fn path ->
+      content = File.read!(path)
+      String.contains?(content, ~s(id="faq")) and String.contains?(content, "<details")
+    end)
+    assert faq_found, "expected id=\"faq\" and <details in at least one HTML file after second build"
+
     Fixtures.bench_assertions_passed!("static", "seed_static_html_first")
     Fixtures.bench_assertions_passed!("static", "seed_static_html_second")
   end
@@ -85,6 +94,12 @@ defmodule CodegenTestHarness.Stacks.Static.SeedTest.Hugo do
     Assertions.assert_hugo_builds!(cwd)
     Assertions.assert_commit_well_formed!(cwd)
     Assertions.assert_not_revert_head!(cwd)
+
+    # Verify 2nd-prompt marker (Spring Garden Tips) survived the second build
+    all_files = [Path.join(cwd, "**/*.md"), Path.join(cwd, "**/*.html")] |> Enum.flat_map(&Path.wildcard/1)
+    spring_found = Enum.any?(all_files, fn path -> File.read!(path) =~ ~r/spring garden tips/i end)
+    assert spring_found, "expected 'Spring Garden Tips' in at least one file after second build"
+
     Fixtures.bench_assertions_passed!("static", "seed_static_hugo_first")
     Fixtures.bench_assertions_passed!("static", "seed_static_hugo_second")
   end
@@ -135,6 +150,12 @@ defmodule CodegenTestHarness.Stacks.Static.SeedTest.ViteReact do
     Assertions.assert_npm_builds!(cwd)
     Assertions.assert_commit_well_formed!(cwd)
     Assertions.assert_not_revert_head!(cwd)
+
+    # Verify 2nd-prompt marker (step input) survived the second build
+    jsx_files = [Path.join(cwd, "src/**/*.jsx"), Path.join(cwd, "src/**/*.tsx")] |> Enum.flat_map(&Path.wildcard/1)
+    step_found = Enum.any?(jsx_files, fn path -> String.contains?(File.read!(path), ~s(data-testid="step")) end)
+    assert step_found, "expected data-testid=\"step\" in at least one JSX/TSX file after second build"
+
     Fixtures.bench_assertions_passed!("static", "seed_static_react_first")
     Fixtures.bench_assertions_passed!("static", "seed_static_react_second")
   end
@@ -184,6 +205,12 @@ defmodule CodegenTestHarness.Stacks.Static.SeedTest.ViteVue do
     Assertions.assert_npm_builds!(cwd)
     Assertions.assert_commit_well_formed!(cwd)
     Assertions.assert_not_revert_head!(cwd)
+
+    # Verify 2nd-prompt marker (reset button) survived the second build
+    vue_files = [Path.join(cwd, "src/**/*.vue"), Path.join(cwd, "src/**/*.js")] |> Enum.flat_map(&Path.wildcard/1)
+    reset_found = Enum.any?(vue_files, fn path -> String.contains?(File.read!(path), ~s(data-testid="reset")) end)
+    assert reset_found, "expected data-testid=\"reset\" in at least one Vue/JS file after second build"
+
     Fixtures.bench_assertions_passed!("static", "seed_static_vue_first")
     Fixtures.bench_assertions_passed!("static", "seed_static_vue_second")
   end
@@ -233,6 +260,14 @@ defmodule CodegenTestHarness.Stacks.Static.SeedTest.Multilingual do
     Assertions.assert_new_commit_since!(cwd, commits_after_first)
     Assertions.assert_commit_well_formed!(cwd)
     Assertions.assert_not_revert_head!(cwd)
+
+    # Verify 2nd-prompt markers (language links) survived the second build
+    all_files = [Path.join(cwd, "**/*.html"), Path.join(cwd, "**/*.md")] |> Enum.flat_map(&Path.wildcard/1)
+    en_found = Enum.any?(all_files, fn p -> File.read!(p) =~ ~r(href=.?/en) end)
+    hr_found = Enum.any?(all_files, fn p -> File.read!(p) =~ ~r(href=.?/hr) end)
+    assert en_found, "expected href=\"/en\" link in at least one file after second build"
+    assert hr_found, "expected href=\"/hr\" link in at least one file after second build"
+
     Fixtures.bench_assertions_passed!("static", "seed_static_multilingual_first")
     Fixtures.bench_assertions_passed!("static", "seed_static_multilingual_second")
   end

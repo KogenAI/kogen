@@ -31,6 +31,7 @@ defmodule CodegenTestHarness.Stacks.Phoenix.CommitterTest do
       test_name: "committer_phoenix_well_formed"
     )
 
+    Assertions.assert_mix_compiles!(cwd)
     Assertions.assert_git_committed!(cwd)
     Assertions.assert_commit_well_formed!(cwd)
     Assertions.assert_commit_subject_length!(cwd)

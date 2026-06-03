@@ -45,6 +45,7 @@ defmodule CodegenTestHarness.Stacks.Static.IterationTest.HtmlChangeRequest do
     Assertions.assert_commit_well_formed!(cwd)
     Assertions.assert_commit_subject_length!(cwd)
     Assertions.assert_not_revert_head!(cwd)
+    Assertions.assert_renders!(cwd, :static)
     Fixtures.bench_assertions_passed!("static", "iteration_static_html_faq_scaffold")
     Fixtures.bench_assertions_passed!("static", "iteration_static_html_faq_change")
   end
@@ -98,6 +99,7 @@ defmodule CodegenTestHarness.Stacks.Static.IterationTest.HugoChangeRequest do
     Assertions.assert_commit_well_formed!(cwd)
     Assertions.assert_commit_subject_length!(cwd)
     Assertions.assert_not_revert_head!(cwd)
+    Assertions.assert_renders!(cwd, :static)
     Fixtures.bench_assertions_passed!("static", "iteration_static_hugo_spring_scaffold")
     Fixtures.bench_assertions_passed!("static", "iteration_static_hugo_spring_change")
   end
@@ -151,6 +153,7 @@ defmodule CodegenTestHarness.Stacks.Static.IterationTest.ReactChangeRequest do
     Assertions.assert_commit_well_formed!(cwd)
     Assertions.assert_commit_subject_length!(cwd)
     Assertions.assert_not_revert_head!(cwd)
+    Assertions.assert_renders!(cwd, :static)
     Fixtures.bench_assertions_passed!("static", "iteration_static_react_step_scaffold")
     Fixtures.bench_assertions_passed!("static", "iteration_static_react_step_change")
   end
@@ -203,6 +206,7 @@ defmodule CodegenTestHarness.Stacks.Static.IterationTest.VueChangeRequest do
     Assertions.assert_commit_well_formed!(cwd)
     Assertions.assert_commit_subject_length!(cwd)
     Assertions.assert_not_revert_head!(cwd)
+    Assertions.assert_renders!(cwd, :static)
     Fixtures.bench_assertions_passed!("static", "iteration_static_vue_reset_scaffold")
     Fixtures.bench_assertions_passed!("static", "iteration_static_vue_reset_change")
   end
@@ -258,6 +262,7 @@ defmodule CodegenTestHarness.Stacks.Static.IterationTest.MultilingualChangeReque
     Assertions.assert_commit_well_formed!(cwd)
     Assertions.assert_commit_subject_length!(cwd)
     Assertions.assert_not_revert_head!(cwd)
+    Assertions.assert_renders!(cwd, :static)
     Fixtures.bench_assertions_passed!("static", "iteration_static_multilingual_links_scaffold")
     Fixtures.bench_assertions_passed!("static", "iteration_static_multilingual_links_change")
   end
