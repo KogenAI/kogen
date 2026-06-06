@@ -54,6 +54,34 @@ Generated output lands in `templates/generated/<harness>/` then installed to `~/
 - **scaffold**: `shared/apps/AGENTS-phoenix.md.j2` and `AGENTS-static.md.j2` are downstream AGENTS.md templates (separate from subagent templates here)
 - **commands**: slash commands in `harnesses/claude/commands/` can spawn subagent swarms (e.g., `/poke-holes` spawns Explore agents to stress-test a pitch). Spawned subagents must satisfy role allowlist in `operator-subagent-allowlist.sh` (debug, shape, refactor, ops roles only).
 
+## Authoring Spine Rules (Shape/Refactor)
+
+The `shared/prompt-fragments/_authoring-spine.txt` is included in both `shape.txt` and `refactor.txt` mode bodies. It encodes the investigative readiness loop that gates pitch advancement (Phase 0 context load → multi-turn investigation → readiness check before writing). Six core rules govern this loop:
+
+**Rule A: Intent-guard before AskUserQuestion** — before emitting any question, check whether every proposed option preserves the pitch's core intent. Any option that would undo the primary claim or nullify the stated goal is FORBIDDEN; auto-narrow coverage instead of offering null options.
+
+**Rule B: Plain-language discipline** — suppress internal shorthand (bare flags, internal probe names, unqualified identifiers, file paths, line numbers) in user-facing prose. Describe what something does. Exception: protected literals (`shared/rules/_core/output-style.md` § Verbatim) stay verbatim — code blocks, error strings, JSON field names, `MUST`/`NEVER`/`FORBIDDEN`, gate markers.
+
+**Rule C: Command-level pairing auto-cover** — a claude-X launcher (claude-shape, claude-refactor, etc.) always auto-includes its pi-X counterpart (pi-shape, pi-refactor, etc.) as same-change coverage. Never ask "should I cover both harnesses?"; the answer is always yes.
+
+**Rule D: Duplication-detection Phase-0 step** — during the blast-radius scan, grep for logic equivalent to the proposed change elsewhere in the codebase. If found, EXTRACTION (consolidating at the existing site) is the default proposal, never duplicate implementations. Auto-decide without asking.
+
+**Rule E: Symptom-vs-target discipline** — when user names both a SYMPTOM (observed bad behavior) and a TARGET (thing to improve), the TARGET is the investigation subject. Probe the symptom ONCE to confirm origin, then pivot immediately to the target. Never let symptom-chasing displace target investigation.
+
+**Rule F: Context-drift auto-cover** — when Phase 0 reveals a `context/*.md` file that disagrees with actual codebase state, auto-include that stale context file in the edit surface. Never ask whether to update it; including it is automatic.
+
+These rules are baked into the shape/refactor system prompts at install time. Changes to `_authoring-spine.txt` require `make install` to propagate.
+
+## Deletion-Safety Blocker Classes (Shape/Refactor)
+
+Shape and refactor modes gate pitch readiness by scanning for three deletion-safety blocker classes:
+
+- **Un-investigated rabbit holes** — a Rabbit holes entry or deferred unknown with no probe transcript and no accepted-risk note.
+- **Untraced edit surface / deletion claim** — a file named as an edit target or as deletable, with no provenance probe confirming its relevance.
+- **Dangling cross-reference** — every `## Related pitches` entry must reference a file on disk in `codegen/pitches/{draft,ready,shipped}/`; unresolved references block pitch advancement.
+
+Refactor mode carries all three classes (ported from shape); shape introduces the framework. Both modes emit blockers with quoted context and remediation options before advancing to readiness-check verdict.
+
 ## Pitfalls
 
 - **Rule changes don't auto-update running agents** — must run `make install` to regenerate and reinstall

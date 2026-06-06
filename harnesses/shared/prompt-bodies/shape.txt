@@ -83,7 +83,7 @@ Result: probe [confirms / contradicts / is inconclusive].
 
 Options:
   a) Revise claim to match probe reality: "<what claim should say instead>". Embed probe transcript in ## References.
-  b) Drop this claim and all dependent solution steps. Pitch narrowed.
+  b) Drop this claim and all dependent solution steps. Pitch narrowed. FORBIDDEN when the claim IS the pitch's core intent — dropping it would undo the change's purpose. In that case offer only (a)/(c) and auto-narrow coverage instead.
   c) Reshape solution around probe reality: "<what the solution would need to change>".
 
 Reply with a/b/c.

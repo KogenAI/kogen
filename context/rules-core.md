@@ -29,6 +29,7 @@ shared/rules/
 ## Integration Points
 
 - **subagents**: `_core` rules are `{% include %}`d selectively per role — NOT every subagent includes all 4. Developer templates (via `_phoenix_developer_common.md.j2` / `_static_developer_common.md.j2`) include all 4. Planners include 3 (omit `cwd-discipline`). Committers include only `output-style` + `bash-discipline`. Check each `.md.j2` template for exact includes. Changes require `make install` to propagate
+- **shape/refactor spine**: The authoring spine (`_authoring-spine.txt`, included in both shape and refactor mode bodies) enforces the "plain-language discipline" rule (Rule B), which cites `output-style.md` § Verbatim to define protected literal categories (code blocks, error strings, JSON field names, `MUST`/`NEVER`/`FORBIDDEN`, gate markers). The rule allows these literals to appear verbatim in user-facing prose while suppressing other internal shorthand.
 - **hooks**: some hooks enforce these rules at runtime (e.g. `no-python-json.sh` enforces `bash-discipline.md`; `no-cat-pipe.sh` enforces pipe patterns) — see `context/hooks.md`
 - **rules-roles**: role rules are layered on top of these core rules; core rules define the floor
 - **INDEX.md must stay in sync** — each rule file must have an INDEX row or orchestrators won't load it on demand
