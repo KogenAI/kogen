@@ -71,6 +71,19 @@ export function register(pi: ExtensionAPI): void {
       );
     }
 
+    // Shape/refactor modes are read-only — deny source-editing subagents.
+    if (role === "shape" || role === "refactor") {
+      if (
+        subagentType.startsWith("developer-") ||
+        subagentType.startsWith("reviewer-") ||
+        subagentType === "committer"
+      ) {
+        return deny(
+          `BLOCKED by subagent-allowlist: shaping modes are read-only — they investigate and write pitches; spawn a builder from build mode instead.`,
+        );
+      }
+    }
+
     // All other subagent types (project subagents) — allow.
     return;
   });

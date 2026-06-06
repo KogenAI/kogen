@@ -59,5 +59,15 @@ if [ "$subagent_type" = "Explore" ]; then
     exit 0
 fi
 
+# Shape/refactor modes are read-only — deny source-editing subagents.
+if [ "$_role" = "shape" ] || [ "$_role" = "refactor" ]; then
+    case "$subagent_type" in
+    developer-* | reviewer-* | committer)
+        deny "BLOCKED by operator-subagent-allowlist: shaping modes are read-only — they investigate and write pitches; spawn a builder from build mode instead."
+        exit 0
+        ;;
+    esac
+fi
+
 # All other subagent types (project subagents) — allow.
 exit 0

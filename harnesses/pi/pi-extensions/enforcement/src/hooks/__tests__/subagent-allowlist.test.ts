@@ -37,9 +37,34 @@ describe("subagent-allowlist", () => {
     assert.ok(result == null || (result as { block?: boolean }).block !== true);
   });
 
-  it("allows project subagents (developer-phoenix-backend)", async () => {
+  it("allows project subagents (developer-phoenix-backend) under build", async () => {
     const result = await runHook("developer-phoenix-backend", "build");
     assert.ok(result == null || (result as { block?: boolean }).block !== true);
+  });
+
+  it("blocks developer-phoenix-backend under shape role", async () => {
+    const result = await runHook("developer-phoenix-backend", "shape");
+    assert.ok((result as { block?: boolean }).block === true);
+  });
+
+  it("blocks reviewer-phoenix under shape role", async () => {
+    const result = await runHook("reviewer-phoenix", "shape");
+    assert.ok((result as { block?: boolean }).block === true);
+  });
+
+  it("blocks committer under shape role", async () => {
+    const result = await runHook("committer", "shape");
+    assert.ok((result as { block?: boolean }).block === true);
+  });
+
+  it("blocks developer-phoenix-backend under refactor role", async () => {
+    const result = await runHook("developer-phoenix-backend", "refactor");
+    assert.ok((result as { block?: boolean }).block === true);
+  });
+
+  it("blocks committer under refactor role", async () => {
+    const result = await runHook("committer", "refactor");
+    assert.ok((result as { block?: boolean }).block === true);
   });
 
   it("blocks built-in Plan subagent", async () => {

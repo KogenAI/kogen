@@ -54,10 +54,22 @@ run_test "shape + Plan denied" "deny" "shape" "$(mk_agent 'Plan')"
 # 5: committer allowed under debug (project subagents are allowed everywhere)
 run_test "debug + committer allowed" "allow" "debug" "$(mk_agent 'committer')"
 
-# 6: developer-phoenix-backend allowed under shape (project subagents allowed everywhere)
-run_test "shape + developer-phoenix-backend allowed" "allow" "shape" "$(mk_agent 'developer-phoenix-backend')"
+# 6: developer-phoenix-backend denied under shape (shape is read-only)
+run_test "shape + developer-phoenix-backend denied" "deny" "shape" "$(mk_agent 'developer-phoenix-backend')"
 
-# 7: planner-phoenix allowed under shape (project subagents allowed everywhere)
+# 6b: reviewer-phoenix denied under shape (shape is read-only)
+run_test "shape + reviewer-phoenix denied" "deny" "shape" "$(mk_agent 'reviewer-phoenix')"
+
+# 6c: committer denied under shape (shape is read-only)
+run_test "shape + committer denied" "deny" "shape" "$(mk_agent 'committer')"
+
+# 6d: developer-phoenix-backend denied under refactor (refactor is read-only)
+run_test "refactor + developer-phoenix-backend denied" "deny" "refactor" "$(mk_agent 'developer-phoenix-backend')"
+
+# 6e: committer denied under refactor (refactor is read-only)
+run_test "refactor + committer denied" "deny" "refactor" "$(mk_agent 'committer')"
+
+# 7: planner-phoenix allowed under shape (planner is investigation, not editing)
 run_test "shape + planner-phoenix allowed" "allow" "shape" "$(mk_agent 'planner-phoenix')"
 
 # 8: reviewer-phoenix allowed under debug (project subagents allowed everywhere)
