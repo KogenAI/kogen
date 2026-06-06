@@ -25,9 +25,24 @@ elif [ -n "$ROLE_DISALLOWED" ]; then
     TOOL_FLAGS+=(--disallowed-tools "$ROLE_DISALLOWED")
 fi
 
+# Non-interactive: pass all non-interactive flags. Interactive: omit (claude handles tty detection).
+NON_INTERACTIVE_FLAGS=()
+if [[ -n "${CLAUDE_NONINTERACTIVE:-}" ]]; then
+    NON_INTERACTIVE_FLAGS+=(
+        --print
+        --verbose
+        --output-format stream-json
+        --setting-sources project
+        --strict-mcp-config
+        --no-session-persistence
+        --disable-slash-commands
+    )
+fi
+
 # Cold-start: no args → open conversation directly, model asks "What's the structural concern?"
 if [[ $# -eq 0 ]]; then
     exec claude \
+        "${NON_INTERACTIVE_FLAGS[@]+"${NON_INTERACTIVE_FLAGS[@]}"}" \
         --model "$ROLE_MODEL" \
         --effort "$ROLE_EFFORT" \
         --dangerously-skip-permissions \
@@ -82,6 +97,7 @@ if [[ ${#RESOLVED_ARGS[@]} -eq 1 ]] && [[ "${RESOLVED_ARGS[0]}" == *"codegen/pit
 fi
 
 exec claude \
+    "${NON_INTERACTIVE_FLAGS[@]+"${NON_INTERACTIVE_FLAGS[@]}"}" \
     --model "$ROLE_MODEL" \
     --effort "$ROLE_EFFORT" \
     --dangerously-skip-permissions \

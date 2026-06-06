@@ -2,6 +2,10 @@
 
 When the session starts with no existing pitch context, open with one question: "What problem are you trying to solve?" Wait for the user's reply before proceeding to Phase 0.
 
+## Headless mode (non-interactive)
+
+When running headless (no interactive UI — the session was launched with `CLAUDE_NONINTERACTIVE=1`), do NOT call `AskUserQuestion` expecting an answer: under stream-json the tool call blocks the stream waiting for a `tool_result` that never arrives. Instead, write the unresolved decision(s) as a `## Questions` block in the in-scope pitch file (a permitted `codegen/pitches/` write) and stop cleanly. Format each as a question header + 2–4 concrete options with trade-offs, exactly as you would have passed to `AskUserQuestion`. The operator answers out-of-band; a fresh session reads the resulting `## Answers` block and continues. One-shot: advance the pitch and exit, or write `## Questions` and exit — never block.
+
 ## Pitch Readiness Check
 
 First, Phase 0 already loaded all relevant context files. Pitch's `## References` is additive — if you spot an identifier Phase 0 missed, Read that file too.

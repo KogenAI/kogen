@@ -44,6 +44,10 @@ Hooks registered on the `Agent` matcher fire on every subagent spawn. These are 
 
 `curator-before-committer` does not have a per-mode bypass — it fires in all launcher modes (`role: *`). The fail-open path (no step log) handles the edge case where the orchestrator spawns committer before any log is written.
 
+## Headless Investigative Mode
+
+The four investigative modes (debug, shape, refactor, ops) now have a headless variant activated by `CLAUDE_NONINTERACTIVE=1`. Headless mode passes the full 7-flag build set (`--print`, `--output-format stream-json`, `--no-session-persistence`, `--disable-slash-commands`, etc.) directly to `claude`. This does **not** change the hook bypass profile — all hooks that gate or bypass for a given role continue to fire identically in headless mode. In particular, `orchestrator-no-source-edit.sh` still scopes shape/refactor writes to `codegen/pitches/`; headless mode does NOT relax this gate. Write surface is unchanged.
+
 ## Trigger Keywords
 
 new launcher mode, claude-ops, pi-ops, CLAUDE_ROLE bypass, PI_ROLE bypass, resolve_role, AGENT_TYPE gate, orchestrator hook leak, which hook gates, per-role bypass, ops bypass, ops mode, per-mode hook bypass, hook discipline, build orchestrator gate, debug bypass, shape bypass, refactor bypass, hook_registrations.py, signal field

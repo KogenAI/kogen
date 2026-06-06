@@ -113,6 +113,26 @@ Mode selection gated by `$NON_INTERACTIVE` env var (wired in `dispatch.sh:26`). 
 
 Pi launchers load TypeScript extensions from `harnesses/pi/pi-extensions/` via compiled modules. Extensions are versioned with the harness and provide task-specific logic (dispatch, hook bindings, snippet handling). Extensions are invoked via flags, not indirectly by launcher env — see `harnesses/pi/<mode>.sh` for extension invocation signatures.
 
+## Headless Investigative Mode
+
+The four Claude investigative launchers (`claude-shape`, `claude-refactor`, `claude-ops`, `claude-debug`) honor the `CLAUDE_NONINTERACTIVE` env var. When set to any non-empty value, each launcher builds a `NON_INTERACTIVE_FLAGS` array containing the full 7-flag build set (byte-identical to `dispatch.sh`):
+
+```
+--print
+--verbose
+--output-format stream-json
+--setting-sources project
+--strict-mcp-config
+--no-session-persistence
+--disable-slash-commands
+```
+
+These flags are spliced as the **first positional** after `exec claude` (before `--model`). The env var name `CLAUDE_NONINTERACTIVE` intentionally diverges from `CODEGEN_BUILD_NON_INTERACTIVE` (dispatch) and `PI_NON_INTERACTIVE` (Pi).
+
+**One-shot semantics**: headless investigative sessions run once and exit. There is no resume. If the agent needs a user decision (e.g., a pitch blocker in shape mode), it writes a `## Questions` block in the in-scope pitch file (permitted `codegen/pitches/` write) and stops. The operator answers out-of-band via a `## Answers` block; a fresh session continues.
+
+**SSH launchers (ops, debug)**: before calling `resolve_ssh_target`, the launcher exports `SSH_TARGET_NON_INTERACTIVE=1` when `CLAUDE_NONINTERACTIVE` is set. `ssh-target.sh` reads this flag and exits 1 on alias miss instead of prompting — ensuring no interactive hang in headless mode.
+
 ## See Also
 
 See `context/launcher-hook-matrix.md` for which orchestrator-level hooks gate each launcher mode (build vs debug/shape/refactor vs ops).

@@ -16,6 +16,8 @@ export CODEGEN_DIR
 source "$CODEGEN_DIR/harnesses/claude/load-role.sh"
 load_role ops
 
+[[ -n "${CLAUDE_NONINTERACTIVE:-}" ]] && export SSH_TARGET_NON_INTERACTIVE=1
+
 source "$CODEGEN_DIR/harnesses/claude/ssh-target.sh"
 resolve_ssh_target "$server" OPS claude-ops
 
@@ -28,6 +30,20 @@ elif [ -n "$ROLE_DISALLOWED" ]; then
     TOOL_FLAGS+=(--disallowed-tools "$ROLE_DISALLOWED")
 fi
 
+# Non-interactive: pass all non-interactive flags. Interactive: omit (claude handles tty detection).
+NON_INTERACTIVE_FLAGS=()
+if [[ -n "${CLAUDE_NONINTERACTIVE:-}" ]]; then
+    NON_INTERACTIVE_FLAGS+=(
+        --print
+        --verbose
+        --output-format stream-json
+        --setting-sources project
+        --strict-mcp-config
+        --no-session-persistence
+        --disable-slash-commands
+    )
+fi
+
 OPS_STARTUP_MSG=$'## OPS STARTUP CONTEXT\n'"${OPS_CONTEXT}"$'\n\nConfirm before proceeding.'
 
 CONTEXT_FLAGS=(
@@ -35,6 +51,7 @@ CONTEXT_FLAGS=(
 )
 
 exec claude \
+    "${NON_INTERACTIVE_FLAGS[@]+"${NON_INTERACTIVE_FLAGS[@]}"}" \
     --model "$ROLE_MODEL" \
     --effort "$ROLE_EFFORT" \
     --dangerously-skip-permissions \

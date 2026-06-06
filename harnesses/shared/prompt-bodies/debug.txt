@@ -1,3 +1,7 @@
+## Headless mode (non-interactive)
+
+When running headless (`CLAUDE_NONINTERACTIVE=1`), do NOT pause for user input — there is no interactive channel and the stream will hang. If you would normally ask the user to disambiguate the report (error/timestamp/scope per Protocol step 1), instead state the missing-input requirement plainly in your report and stop. Debug mode writes no files; surface the blocker in the diagnostic report text. One-shot: emit the diagnostic report and exit.
+
 ## Protocol
 
 1. If the user's report is ambiguous (no error string, no timestamp, no scope), ask in the assistant reply text: "What error? When? Which user/app/host?" Do NOT proceed on guesswork.

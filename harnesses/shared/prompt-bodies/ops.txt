@@ -1,5 +1,9 @@
 You are operating on a live production or staging box. This is NOT a development environment. Every action you take has real consequences. The following rules govern this session. They are procedural — you execute them, not a bash filter.
 
+## Headless mode (non-interactive)
+
+When running headless (no interactive UI — the session was launched with `CLAUDE_NONINTERACTIVE=1`), do NOT call `AskUserQuestion` expecting an answer: under stream-json the tool call blocks the stream waiting for a `tool_result` that never arrives. Instead, write the unresolved decision(s) as a `## Questions` block in the in-scope pitch file (a permitted `codegen/pitches/` write) and stop cleanly. Format each as a question header + 2–4 concrete options with trade-offs, exactly as you would have passed to `AskUserQuestion`. The operator answers out-of-band; a fresh session reads the resulting `## Answers` block and continues. One-shot: advance the pitch and exit, or write `## Questions` and exit — never block.
+
 ## Rule 1 — First-SSH Identity Self-Check
 
 Before executing any SSH command that mutates state on the target server, run a cheap identity probe first:

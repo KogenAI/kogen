@@ -48,6 +48,12 @@ Adding a new extension:
 3. `npm install && npm run build` in extension dir
 4. Register in `harnesses/pi/manifest.yaml` install_steps if needed
 
+## AskUserQuestion — Headless (`!ctx.hasUI`) Behaviour
+
+When Pi is invoked without a UI context (`ctx.hasUI === false`), the `askuserquestion` extension **deregisters** the tool via `pi.setActiveTools(...)` and returns a cancelled response with text `"Error: ask_user_question requires an interactive session. The tool has been disabled for this session."`. This is a runtime backstop — the extension cannot write files, it has no pitch path or write method in `ctx`.
+
+The durable `## Questions` artifact is written by the **agent** (not the extension), via the `## Headless mode (non-interactive)` clause baked into each investigative mode's shared prompt body (`harnesses/shared/prompt-bodies/{shape,refactor,ops,debug}.txt`). The agent writes unresolved decisions as a `## Questions` block in the in-scope pitch file directly; the extension only prevents a blocking tool-call loop.
+
 ## Pitfalls
 
 - **Each extension is an independent npm package** — `npm install` must be run per-extension, not at repo root
