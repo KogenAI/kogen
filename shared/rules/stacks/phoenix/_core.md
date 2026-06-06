@@ -131,6 +131,8 @@ end
 
 ## Misc
 
+- **Logger metadata key registration**: Structured logging keys added via `Logger.metadata([key: val])` or conn assigns must be registered in `config :logger, :default_formatter, metadata: [...]` (alphabetical order) or Credo warns. Pattern: add new key to the config array at the same time as the logging site.
+- **Nil-safe nested access via `get_in` + `Access.key`**: Extract nested struct+map paths safely with `get_in(struct, [Access.key(:struct_field), "map_key"])` — returns `nil` on struct fields missing AND plain map keys absent, never raises. Useful for parsing API responses (e.g., Stripe metadata) where the path may be partially populated. Pattern: use string keys for API-returned maps (e.g., `metadata["app_id"]`), atom keys for internal maps.
 - Explicit helpers over virtual fields
 - Only support formats you actually send
 - Security ignores in `.sobelow-conf`, not inline

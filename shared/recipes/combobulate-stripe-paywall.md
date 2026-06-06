@@ -172,13 +172,16 @@ end
 
 ## Webhook Setup
 
-Stripe sends `checkout.session.completed` events to:
+The Connect webhook is a single fixed URL registered once in the Stripe dashboard — no app-side code required.
 
-```
-POST https://app.combobulate.dev/api/payments/:app_id/webhook
-```
+**Dashboard setup** (one-time, per environment):
 
-Handled automatically by platform — no webhook code needed in your app.
+1. Go to Stripe Dashboard → Developers → Webhooks → Add endpoint.
+2. Set endpoint URL to: `https://app.combobulate.dev/webhooks/stripe/connect`
+3. Enable **"Listen to events on Connected accounts"**.
+4. Subscribe to event: `checkout.session.completed` only.
+
+Handled entirely by the platform — no webhook code needed in your app.
 
 ---
 
