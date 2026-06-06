@@ -5,6 +5,10 @@
 #   - which built-in subagents are denied (Plan, general-purpose, statusline-setup
 #     always; Explore allowed only under CLAUDE_ROLE=debug/shape/refactor)
 set -euo pipefail
+
+server="${1:?Usage: claude-debug <server> [claude args...]}"
+shift
+
 export CLAUDE_ROLE=debug
 
 CODEGEN_DIR="${OCG_CODEGEN_DIR:-$HOME/Areas/Optimum/codegen}"
@@ -13,10 +17,12 @@ export CODEGEN_DIR
 source "$CODEGEN_DIR/harnesses/claude/load-role.sh"
 load_role debug
 
-CONTEXT_FLAGS=()
-if [[ -f "./PROJECT_CONTEXT.md" ]]; then
-    CONTEXT_FLAGS+=(--append-system-prompt "$(cat ./PROJECT_CONTEXT.md)")
-fi
+source "$CODEGEN_DIR/harnesses/claude/ssh-target.sh"
+resolve_ssh_target "$server" DEBUG claude-debug
+
+DEBUG_CONTEXT="Server: ${server_resolved} (resolved from '${server}'), Environment: ${ENV_LABEL}"
+
+DEBUG_STARTUP_MSG=$'## DEBUG STARTUP CONTEXT\n'"${DEBUG_CONTEXT}"$'\n\n## SSH cold-start self-check\nBefore investigating, confirm connectivity:\n  ssh '"${server_resolved}"$' "uptime && whoami"\nIf connection fails, stop and report to user — do not proceed on guesswork.\nOnce connected: read logs and config; do NOT run mutations.'
 
 TOOL_FLAGS=()
 if [ -n "$ROLE_TOOLS" ]; then
@@ -31,5 +37,5 @@ exec claude \
     --dangerously-skip-permissions \
     "${TOOL_FLAGS[@]+"${TOOL_FLAGS[@]}"}" \
     --system-prompt "$ROLE_SYSTEM_PROMPT" \
-    "${CONTEXT_FLAGS[@]+"${CONTEXT_FLAGS[@]}"}" \
+    --append-system-prompt "${DEBUG_STARTUP_MSG}" \
     "$@"
