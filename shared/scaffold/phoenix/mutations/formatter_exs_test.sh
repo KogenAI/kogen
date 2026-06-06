@@ -42,6 +42,17 @@ sha_after_second="$(shasum "$tmp/.formatter.exs" | awk '{print $1}')"
 assert "formatter_exs.sh second invocation is a no-op" '[ "$sha_after_first" = "$sha_after_second" ]'
 rm -rf "$tmp"
 
+# Case 3: missing anchor — script exits 1 and emits ERROR on stderr
+# Remove Phoenix.LiveView.HTMLFormatter so the sed substitution produces no match
+# and DoctestFormatter is absent from the output
+tmp="$(setup_tmp)"
+sed -i '' 's/Phoenix\.LiveView\.HTMLFormatter/SomeOtherFormatter/' "$tmp/.formatter.exs"
+missing_anchor_exit=0
+missing_anchor_out="$("$MUTATION" "$tmp" 2>&1)" || missing_anchor_exit=$?
+assert "formatter_exs missing anchor exits 1" '[ "$missing_anchor_exit" -eq 1 ]'
+assert "formatter_exs missing anchor emits ERROR message" 'echo "$missing_anchor_out" | grep -qi "ERROR\|post-condition\|DoctestFormatter"'
+rm -rf "$tmp"
+
 echo "$passed passed, $failed failed"
 if [ "$failed" -gt 0 ]; then
     printf '%s\n' "${fail_lines[@]}" >&2

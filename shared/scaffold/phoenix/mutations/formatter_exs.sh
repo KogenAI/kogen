@@ -19,4 +19,10 @@ if ! grep -qF 'DoctestFormatter' "$FORMATTER"; then
     sed -i '' 's/Phoenix\.LiveView\.HTMLFormatter/DoctestFormatter, Phoenix.LiveView.HTMLFormatter/' "$FORMATTER"
 fi
 
+# Post-condition: DoctestFormatter must be present
+if ! grep -qF 'DoctestFormatter' "$FORMATTER"; then
+    echo "[formatter_exs.sh] ERROR: post-condition failed — 'DoctestFormatter' not found after substitution (anchor: Phoenix.LiveView.HTMLFormatter)" >&2
+    exit 1
+fi
+
 echo "[formatter_exs.sh] done"

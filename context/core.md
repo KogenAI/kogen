@@ -53,11 +53,11 @@ update_ai_tools.sh
 
 Three entry-point scripts at repo root — each serves a distinct invocation context:
 
-| Launcher           | Purpose                                                                                                                                                                                           |
-| ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `codegen-build`    | Default agent build launcher — requires `--harness` flag (exits 2 if absent); delegates to `harnesses/<harness>/dispatch.sh`, which execs `claude` or `pi` directly with model/effort/tools flags |
-| `codegen-scaffold` | Downstream app scaffolder — invoked as `codegen-scaffold <stack> <output-dir>`; renders `shared/apps/` and `shared/scaffold/` templates into target directory                                     |
-| `codegen-call`     | One-shot structured LLM call binary — requires `--harness`, `--role`, `--model`, `--effort`, `--system-prompt @<path>`; used for non-build single calls                                           |
+| Launcher           | Purpose                                                                                                                                                                                                     |
+| ------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `codegen-build`    | Default agent build launcher — requires `--harness` flag (exits 2 if absent); delegates to `harnesses/<harness>/dispatch.sh`, which execs `claude` or `pi` directly with model/effort/tools flags           |
+| `codegen-scaffold` | Downstream app scaffolder — two subcommands: `codegen-scaffold create --stack=... --cwd=... --slug=...` (full scaffold) and `codegen-scaffold integrate --stack=... --cwd=... [--slug=...]` (symlinks only) |
+| `codegen-call`     | One-shot structured LLM call binary — requires `--harness`, `--role`, `--model`, `--effort`, `--system-prompt @<path>`; used for non-build single calls                                                     |
 
 Routing flow: `codegen-build` → `harnesses/<harness>/dispatch.sh` → reads `config.yaml` directly via `yq` (NOT via `load-role.sh`) → execs launcher with model/effort/tools flags. `load-role.sh` is used only by debug/shape/refactor/ops launchers, not build dispatch.
 

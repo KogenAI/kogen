@@ -99,3 +99,50 @@ fi
 **Limitation**: heuristic admits false positives. A flag value containing `/` (e.g., `--env MIX_ENV=test/config`) may match as a path. Severity: low — contrived invocation patterns. Inherent to the approach; not a regression vs. guards that do not gate on path presence.
 
 **TS port difference**: when porting to TypeScript (e.g., pi-harness), test the FULL command string for path presence, NOT a prefix-stripped version. Elixir `mix test --cover <path>` may appear in any token order; a TS guard that strips `mix test ` before testing path presence would miss `mix test <path> --cover`.
+
+## Transactional Multi-Step File Creation
+
+When a script must orchestrate multiple file mutations that should either all succeed or all fail (no partial state), use a **temp parent + trap** pattern:
+
+```bash
+# Create temp dir on same filesystem as final target (atomic mv)
+TEMP_PARENT="$(mktemp -d "$(dirname "$target_dir")/.work.tmp.XXXXXX")"
+trap 'rm -rf "$TEMP_PARENT"' EXIT
+
+# Run all mutations against TEMP_PARENT/slug
+some_mutation "$TEMP_PARENT/$SLUG"
+another_mutation "$TEMP_PARENT/$SLUG"
+
+# Atomic move into final position
+mkdir -p "$(dirname "$target_dir")"
+mv "$TEMP_PARENT/$SLUG" "$target_dir"
+
+# Success — disarm trap
+trap - EXIT
+rm -rf "$TEMP_PARENT"
+```
+
+Ensures: if any mutation fails, trap cleanup removes partial state; if move succeeds, trap is disarmed and final cleanup is explicit. The temp parent must be a sibling (same filesystem) for `mv` to be atomic.
+
+## Post-Condition Assertions in Mutations
+
+Each mutation script should validate both preconditions (file exists, anchor present) and postconditions (expected lines added, placeholders resolved) before returning success. Fail loudly rather than silently:
+
+```bash
+# Precondition
+if [ ! -f "$TARGET" ]; then
+    echo "[mutation.sh] ERROR: $TARGET not found" >&2
+    exit 1
+fi
+
+# Mutation logic
+# ...
+
+# Postcondition
+if ! grep -qF "expected marker" "$TARGET"; then
+    echo "[mutation.sh] ERROR: post-condition failed — marker not found after patch" >&2
+    exit 1
+fi
+```
+
+Prevents silent failures that would surface only when the app is run. Template renderers (e.g. `eex_render.sh`) should also fail if leftover unresolved `<%= ... %>` placeholders remain in output.

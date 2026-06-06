@@ -28,11 +28,12 @@ TEMPLATES_DIR="$SCRIPT_DIR/templates"
 MUTATIONS_DIR="$SCRIPT_DIR/mutations"
 RENDER_SH="$SCRIPT_DIR/eex_render.sh"
 
-ELIXIR_VERSION="1.19.5"
-NODE_VERSION="24.14.0"
-OTP_VERSION="28.4.1"
-
 # Parse positional and flag args
+# Note: version defaults are NOT set here — callers (codegen-scaffold) always pass them explicitly.
+ELIXIR_VERSION=""
+NODE_VERSION=""
+OTP_VERSION=""
+
 APP_NAME=""
 TARGET_DIR=""
 

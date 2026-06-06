@@ -42,8 +42,15 @@ if anchor in content:
     with open(endpoint_path, 'w') as f:
         f.write(new_content)
 else:
-    print(f'[endpoint.sh] WARNING: could not find anchor "{anchor}" — skipping Tidewave plug')
+    print(f'[endpoint.sh] ERROR: could not find anchor "{anchor}" — aborting', file=sys.stderr)
+    sys.exit(1)
 PYEOF
+fi
+
+# Post-condition: plug Tidewave must be present
+if ! grep -qF 'plug Tidewave' "$ENDPOINT"; then
+    echo "[endpoint.sh] ERROR: post-condition failed — 'plug Tidewave' not found in $ENDPOINT after patch" >&2
+    exit 1
 fi
 
 echo "[endpoint.sh] done"

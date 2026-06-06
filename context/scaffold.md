@@ -52,7 +52,7 @@ codegen-scaffold
 
 ## Integration Points
 
-- **core**: `codegen-scaffold` is a core launcher invoked via flags: `codegen-scaffold --stack=<stack> --cwd=<dir> [--slug=<name>] [--symlinks-only]` — renders `shared/apps/` and `shared/scaffold/` templates into target directory; `--symlinks-only` skips file generation and only re-creates symlinks; see `context/core.md`
+- **core**: `codegen-scaffold` is a core launcher with two subcommands: `codegen-scaffold create --stack=<stack> --cwd=<dir> --slug=<name>` (full scaffold) and `codegen-scaffold integrate --stack=<stack> --cwd=<dir> [--slug=<name>]` (wire symlinks only); see `context/core.md`
 - **subagents**: `AGENTS-phoenix.md.j2` references subagent roles by name; changes to agent roles may require updating this template
 - **rules**: `AGENTS-phoenix.md` encodes orchestrator rules for downstream apps; kept in sync with `shared/rules/roles/orchestrator.md` — see `context/rules-roles.md`
 - **test-harness**: ExUnit tests in `test_harness/test/stacks/` validate scaffold output — scaffold changes require test updates; see `context/test-harness.md`
@@ -79,9 +79,25 @@ codegen-scaffold
 
 **Phase 3.5 curator insertion**: When updating downstream templates due to orchestrator role changes, ensure Phase 3.5 exists between reviewer (Phase 3) and committer (Phase 4). The curator phase enforces the reviewer → curator → committer ordering. Remove any "Act now" skip logic that bypasses curator, as that breaks the ordering contract.
 
+## Subcommand Dispatch: `create` vs `integrate`
+
+`codegen-scaffold` has two subcommands rather than flags:
+
+| Subcommand | Purpose | Use case |
+| ---------- | ------- | -------- |
+| `create` | Full scaffold (phx.new or static scaffold + integrate) | Initial app provisioning |
+| `integrate` | Wire symlinks + Makefile + README + .gitignore only | Add codegen to existing app |
+
+Both accept `--stack=<phoenix|static>` and `--cwd=<dir>`. `create` requires `--slug=<name>` and version pins; `integrate` auto-derives `--slug` from `--cwd` basename if not provided. Version pins (`--elixir-version`, `--node-version`, `--otp-version`) are stored in `codegen-scaffold` itself as single source of truth — not duplicated in mutation scripts.
+
+The `create` path uses **transactional temp-parent + trap**: all mutations run in a temp sibling dir; if any fails, cleanup is automatic; on success, move is atomic into final position. See `codegen/rules/_core/bash-discipline.md` § Transactional Multi-Step File Creation.
+
 ## Pitfalls
 
 - **Mutation scripts are order-sensitive** — scaffold.sh runs mutations in a defined sequence; inserting out of order can break the generated app
 - **`AGENTS-*.md` vs `AGENTS-*.md.j2`** — `.j2` is the Jinja template; `.md` is the rendered reference copy checked in for human review. Both must stay in sync when changing agent roles or rules
 - **`eex_render.sh` variable scope** — variables must be exported before calling `eex_render.sh`; unset vars render as empty string silently
+- **Post-condition assertions** — each mutation script validates its own success (lines added, anchors found, placeholders resolved) before returning; see `codegen/rules/_core/bash-discipline.md` § Post-Condition Assertions in Mutations
+- **`eex_render.sh` hard-errors on unresolved placeholders** — any leftover `<%= ... %>` in output causes non-zero exit
 - **AGENTS-phoenix.md.j2 embeds orchestrator rules** — downstream app templates in `shared/apps/` carry a copy of orchestrator rules; when `orchestrator.md` (rules-roles.md) changes, update these templates too to avoid sync drift. Ensure Phase 3.5 curator always precedes Phase 4 committer. Note: there is no `CLAUDE-phoenix.md.j2` — `CLAUDE-phoenix.md` is a plain file (not a Jinja template)
+- **Idempotent .gitignore updates use section markers** — repeated `integrate` runs do not duplicate codegen symlink entries in .gitignore; marker comment detects already-present section

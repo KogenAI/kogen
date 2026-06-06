@@ -17,11 +17,6 @@ if [ ! -f "$TELEMETRY" ]; then
     exit 1
 fi
 
-# Replace "use Supervisor\n  import" with "use Supervisor\n\n  import"
-# sed -i '' handles the macOS BSD sed; \n in replacement is literal newline via $'\n'
-sed -i '' "s/use Supervisor$'\n'  import/use Supervisor$'\n'$'\n'  import/" "$TELEMETRY" 2>/dev/null || true
-
-# BSD sed doesn't interpolate $'...' in -e expressions; use printf approach instead
 python3 - "$TELEMETRY" <<'PYEOF'
 import sys
 
@@ -34,5 +29,15 @@ patched = content.replace('use Supervisor\n  import', 'use Supervisor\n\n  impor
 with open(path, 'w') as f:
     f.write(patched)
 PYEOF
+
+# Post-condition: assert blank line between `use Supervisor` and `import` is present after patching
+if ! python3 -c "
+import sys
+content = open('$TELEMETRY').read()
+sys.exit(0 if 'use Supervisor\n\n  import' in content else 1)
+"; then
+    echo "[telemetry.sh] ERROR: post-condition failed — blank line between 'use Supervisor' and 'import' not found in $TELEMETRY" >&2
+    exit 1
+fi
 
 echo "[telemetry.sh] done"

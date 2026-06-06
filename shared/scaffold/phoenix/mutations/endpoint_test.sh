@@ -42,13 +42,15 @@ sha_after_second="$(shasum "$tmp/lib/fixture_app_web/endpoint.ex" | awk '{print 
 assert "endpoint.sh second invocation is a no-op" '[ "$sha_after_first" = "$sha_after_second" ]'
 rm -rf "$tmp"
 
-# Case 3: missing anchor — script emits WARNING and exits 0 (does not fail)
+# Case 3: missing anchor — script exits 1 and emits ERROR on stderr
 tmp="$(setup_tmp)"
 # Replace the anchor so it won't be found
 sed -i '' 's/use Phoenix.Endpoint, otp_app: :fixture_app/use Phoenix.Endpoint, otp_app: :other_app/' \
     "$tmp/lib/fixture_app_web/endpoint.ex"
-all_out="$("$MUTATION" "$tmp" fixture_app 2>&1 || true)"
-assert "missing anchor exits 0 and emits warning" 'echo "$all_out" | grep -qi "WARNING\|could not find anchor\|skipping"'
+missing_anchor_exit=0
+missing_anchor_out="$("$MUTATION" "$tmp" fixture_app 2>&1)" || missing_anchor_exit=$?
+assert "missing anchor exits 1" '[ "$missing_anchor_exit" -eq 1 ]'
+assert "missing anchor emits ERROR message" 'echo "$missing_anchor_out" | grep -qi "ERROR\|could not find anchor"'
 rm -rf "$tmp"
 
 echo "$passed passed, $failed failed"

@@ -10,13 +10,16 @@
 #  (f) static/images/ and static/js/ directories exist
 #  codegen-scaffold smoke:
 #  (g) bad --stack=x exits 2
-#  (h) missing --slug exits 2
-#  (i) --symlinks-only --stack=phoenix creates AGENTS.md, CLAUDE.md, codegen/rules, codegen/usage_rules symlinks
-#  (j) --symlinks-only creates codegen/recipes symlink
-#  (k) --symlinks-only creates Makefile with format: target
-#  (l) --symlinks-only appends ## Codegen integration to README.md
+#  (h) missing --slug for create exits 2
+#  (i) integrate --stack=phoenix creates AGENTS.md, CLAUDE.md, codegen/rules, codegen/usage_rules symlinks
+#  (j) integrate creates codegen/recipes symlink
+#  (k) integrate creates Makefile with format: target
+#  (l) integrate appends ## Codegen integration to README.md
 #  (m) idempotency: second run produces exactly one format: line and one ## Codegen integration heading
 #  (n) pre-existing format: target is not clobbered (custom recipe survives)
+#  (o) integrate appends AGENTS.md, CLAUDE.md, /codegen/ to .gitignore
+#  (p) integrate on a dir with no .gitignore creates one with the markers
+#  (q) integrate is idempotent for gitignore (re-running doesn't duplicate lines)
 
 set -euo pipefail
 
@@ -124,24 +127,24 @@ assert_file_exists "static/js/ directory exists" "$TMPDIR/static/js"
 
 # (g) bad --stack=x exits 2
 BAD_STACK_EXIT=0
-"$CODEGEN_SCAFFOLD" --stack=bad_stack --cwd="$BASE_TMP/bad" --slug=test 2>/dev/null || BAD_STACK_EXIT=$?
+"$CODEGEN_SCAFFOLD" create --stack=bad_stack --cwd="$BASE_TMP/bad" --slug=test 2>/dev/null || BAD_STACK_EXIT=$?
 assert_exit "bad --stack exits 2" "2" "$BAD_STACK_EXIT"
 
-# (h) missing --slug exits 2
+# (h) missing --slug for create exits 2
 MISSING_SLUG_EXIT=0
-"$CODEGEN_SCAFFOLD" --stack=phoenix --cwd="$BASE_TMP/noslug" 2>/dev/null || MISSING_SLUG_EXIT=$?
-assert_exit "missing --slug exits 2" "2" "$MISSING_SLUG_EXIT"
+"$CODEGEN_SCAFFOLD" create --stack=phoenix --cwd="$BASE_TMP/noslug" 2>/dev/null || MISSING_SLUG_EXIT=$?
+assert_exit "missing --slug for create exits 2" "2" "$MISSING_SLUG_EXIT"
 
-# (i) --symlinks-only --stack=phoenix creates 4 symlinks in tmp cwd
+# (i) integrate --stack=phoenix creates 4 symlinks in tmp cwd
 SYMLINKS_CWD="$BASE_TMP/symlinks_test"
 mkdir -p "$SYMLINKS_CWD/codegen"
 
-"$CODEGEN_SCAFFOLD" --stack=phoenix --cwd="$SYMLINKS_CWD" --slug=test-app --symlinks-only
+"$CODEGEN_SCAFFOLD" integrate --stack=phoenix --cwd="$SYMLINKS_CWD" --slug=test-app
 
-assert_file_exists "--symlinks-only creates AGENTS.md" "$SYMLINKS_CWD/AGENTS.md"
-assert_file_exists "--symlinks-only creates CLAUDE.md" "$SYMLINKS_CWD/CLAUDE.md"
-assert_file_exists "--symlinks-only creates codegen/rules symlink" "$SYMLINKS_CWD/codegen/rules"
-assert_file_exists "--symlinks-only creates codegen/usage_rules symlink" "$SYMLINKS_CWD/codegen/usage_rules"
+assert_file_exists "integrate creates AGENTS.md" "$SYMLINKS_CWD/AGENTS.md"
+assert_file_exists "integrate creates CLAUDE.md" "$SYMLINKS_CWD/CLAUDE.md"
+assert_file_exists "integrate creates codegen/rules symlink" "$SYMLINKS_CWD/codegen/rules"
+assert_file_exists "integrate creates codegen/usage_rules symlink" "$SYMLINKS_CWD/codegen/usage_rules"
 
 # Verify they are actually symlinks (not files)
 if [[ -L "$SYMLINKS_CWD/AGENTS.md" ]]; then
@@ -179,7 +182,7 @@ README_CODEGEN=$(grep -cF '## Codegen integration' "$SYMLINKS_CWD/README.md" || 
 check "README.md contains ## Codegen integration heading" "1" "$README_CODEGEN"
 
 # (m) idempotency: second run must not duplicate format: or ## Codegen integration
-"$CODEGEN_SCAFFOLD" --stack=phoenix --cwd="$SYMLINKS_CWD" --slug=test-app --symlinks-only
+"$CODEGEN_SCAFFOLD" integrate --stack=phoenix --cwd="$SYMLINKS_CWD" --slug=test-app
 
 check "exactly one format: line after re-run" "1" "$(grep -c '^format:' "$SYMLINKS_CWD/Makefile" || true)"
 check "exactly one Codegen integration heading after re-run" "1" "$(grep -cF '## Codegen integration' "$SYMLINKS_CWD/README.md" || true)"
@@ -190,11 +193,48 @@ mkdir -p "$NOCLOBBER_CWD/codegen"
 printf 'format:\n\tmy-custom-formatter --all\n' >"$NOCLOBBER_CWD/Makefile"
 ORIGINAL_FORMAT_COUNT=$(grep -c '^format:' "$NOCLOBBER_CWD/Makefile" || true)
 
-"$CODEGEN_SCAFFOLD" --stack=phoenix --cwd="$NOCLOBBER_CWD" --slug=test-app --symlinks-only
+"$CODEGEN_SCAFFOLD" integrate --stack=phoenix --cwd="$NOCLOBBER_CWD" --slug=test-app
 
 AFTER_FORMAT_COUNT=$(grep -c '^format:' "$NOCLOBBER_CWD/Makefile" || true)
 check "no-clobber: pre-existing format: target count unchanged" "$ORIGINAL_FORMAT_COUNT" "$AFTER_FORMAT_COUNT"
 assert_contains "custom format recipe body preserved" "$(cat "$NOCLOBBER_CWD/Makefile")" "my-custom-formatter --all"
+
+# (o) integrate appends machine-local symlink markers to .gitignore
+GITIGNORE_CWD="$BASE_TMP/gitignore_test"
+mkdir -p "$GITIGNORE_CWD"
+printf '*.beam\n_build/\n' >"$GITIGNORE_CWD/.gitignore"
+
+"$CODEGEN_SCAFFOLD" integrate --stack=phoenix --cwd="$GITIGNORE_CWD" --slug=test-app
+
+GITIGNORE_CONTENT="$(cat "$GITIGNORE_CWD/.gitignore")"
+assert_contains "gitignore contains AGENTS.md entry" "$GITIGNORE_CONTENT" "AGENTS.md"
+assert_contains "gitignore contains CLAUDE.md entry" "$GITIGNORE_CONTENT" "CLAUDE.md"
+assert_contains "gitignore contains /codegen/ entry" "$GITIGNORE_CONTENT" "/codegen/"
+assert_contains "gitignore contains marker comment" "$GITIGNORE_CONTENT" "# Codegen machine-local symlinks (do not commit)"
+
+# (p) integrate on a dir with no .gitignore creates one with the markers
+NOGITIGNORE_CWD="$BASE_TMP/nogitignore_test"
+mkdir -p "$NOGITIGNORE_CWD"
+
+"$CODEGEN_SCAFFOLD" integrate --stack=phoenix --cwd="$NOGITIGNORE_CWD" --slug=test-app
+
+assert_file_exists "integrate creates .gitignore when absent" "$NOGITIGNORE_CWD/.gitignore"
+CREATED_GITIGNORE="$(cat "$NOGITIGNORE_CWD/.gitignore")"
+assert_contains "created .gitignore contains AGENTS.md" "$CREATED_GITIGNORE" "AGENTS.md"
+assert_contains "created .gitignore contains CLAUDE.md" "$CREATED_GITIGNORE" "CLAUDE.md"
+assert_contains "created .gitignore contains /codegen/" "$CREATED_GITIGNORE" "/codegen/"
+
+# (q) integrate is idempotent for gitignore (re-running doesn't duplicate lines)
+"$CODEGEN_SCAFFOLD" integrate --stack=phoenix --cwd="$GITIGNORE_CWD" --slug=test-app
+
+AGENTS_COUNT=$(grep -c '^AGENTS.md$' "$GITIGNORE_CWD/.gitignore" || true)
+CLAUDE_COUNT=$(grep -c '^CLAUDE.md$' "$GITIGNORE_CWD/.gitignore" || true)
+CODEGEN_COUNT=$(grep -c '^/codegen/$' "$GITIGNORE_CWD/.gitignore" || true)
+MARKER_COUNT=$(grep -cF '# Codegen machine-local symlinks (do not commit)' "$GITIGNORE_CWD/.gitignore" || true)
+check "gitignore idempotent: AGENTS.md appears exactly once" "1" "$AGENTS_COUNT"
+check "gitignore idempotent: CLAUDE.md appears exactly once" "1" "$CLAUDE_COUNT"
+check "gitignore idempotent: /codegen/ appears exactly once" "1" "$CODEGEN_COUNT"
+check "gitignore idempotent: marker appears exactly once" "1" "$MARKER_COUNT"
 
 # ── Summary ───────────────────────────────────────────────────────────────────
 printf '\n%d passed, %d failed\n' "$pass" "$fail"

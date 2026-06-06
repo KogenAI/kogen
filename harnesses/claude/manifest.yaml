@@ -26,6 +26,8 @@ launchers:
     src: codegen-build
   - name: codegen-call
     src: codegen-call
+  - name: codegen-scaffold
+    src: codegen-scaffold
   - name: claude-build
     src: harnesses/claude/claude-build.sh
   - name: claude-debug

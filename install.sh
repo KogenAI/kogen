@@ -120,6 +120,12 @@ if [ ! -d "$HARNESSES_SYMLINK/" ]; then
     exit 1
 fi
 
+# Wire shared/ path: codegen-scaffold resolves $SCRIPT_DIR/shared at runtime.
+# A sibling shared/ symlink in INSTALL_DIR makes it resolve without a full CODEGEN_DIR.
+SHARED_SYMLINK="$INSTALL_DIR/shared"
+rm -f "$SHARED_SYMLINK"
+ln -sfn "$CODEGEN_DIR/shared" "$SHARED_SYMLINK"
+
 # Check if ~/.local/bin is in PATH
 if [[ ":$PATH:" != *":$INSTALL_DIR:"* ]]; then
     echo ""

@@ -46,6 +46,16 @@ sha_after_second="$(shasum "$tmp/lib/fixture_app_web/telemetry.ex" | awk '{print
 assert "telemetry.sh second invocation is a no-op" '[ "$sha_after_first" = "$sha_after_second" ]'
 rm -rf "$tmp"
 
+# Case 3: missing anchor — script exits 1 and emits ERROR on stderr
+tmp="$(setup_tmp)"
+# Remove the anchor so post-condition fails
+sed -i '' 's/use Supervisor/use_Supervisor_removed/' "$tmp/lib/fixture_app_web/telemetry.ex"
+missing_anchor_exit=0
+missing_anchor_out="$("$MUTATION" "$tmp" fixture_app 2>&1)" || missing_anchor_exit=$?
+assert "telemetry missing anchor exits 1" '[ "$missing_anchor_exit" -eq 1 ]'
+assert "telemetry missing anchor emits ERROR message" 'echo "$missing_anchor_out" | grep -qi "ERROR\|post-condition"'
+rm -rf "$tmp"
+
 echo "$passed passed, $failed failed"
 if [ "$failed" -gt 0 ]; then
     printf '%s\n' "${fail_lines[@]}" >&2

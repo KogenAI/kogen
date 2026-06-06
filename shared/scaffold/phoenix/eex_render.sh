@@ -31,3 +31,9 @@ done
 
 mkdir -p "$(dirname "$output")"
 printf '%s' "$content" >"$output"
+
+# Post-condition: fail if any unresolved <%= ... %> placeholders remain
+if grep -q '<%= ' "$output"; then
+    echo "[eex_render.sh] ERROR: unresolved placeholder in $output" >&2
+    exit 1
+fi

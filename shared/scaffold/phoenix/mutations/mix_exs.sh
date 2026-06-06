@@ -39,6 +39,16 @@ if ! grep -qF '      {:tidewave,' "$MIX_EXS"; then
     sed -i '' "s|      {:lazy_html,|      {:tidewave, \"~> 0.5\", only: [:dev]},\n      {:lazy_html,|" "$MIX_EXS"
 fi
 
+# Post-condition: both deps must be present
+if ! grep -qF '{:credo,' "$MIX_EXS"; then
+    echo "[mix_exs.sh] ERROR: post-condition failed — '{:credo,' not found after Step 1" >&2
+    exit 1
+fi
+if ! grep -qF '{:tidewave,' "$MIX_EXS"; then
+    echo "[mix_exs.sh] ERROR: post-condition failed — '{:tidewave,' not found after Step 1" >&2
+    exit 1
+fi
+
 # ---------------------------------------------------------------------------
 # Step 2: replace defp aliases do [...] end with Optimum aliases
 # Idempotent: skip if "ecto.setup" alias already present.
@@ -70,6 +80,12 @@ new_content = re.sub(
 with open(mix_exs_path, 'w') as f:
     f.write(new_content)
 PYEOF
+fi
+
+# Post-condition: ecto.setup alias must be present
+if ! grep -qF '"ecto.setup":' "$MIX_EXS"; then
+    echo "[mix_exs.sh] ERROR: post-condition failed — '\"ecto.setup\":' not found after Step 2" >&2
+    exit 1
 fi
 
 # ---------------------------------------------------------------------------
@@ -112,6 +128,12 @@ with open(mix_exs_path, 'w') as f:
 PYEOF
 fi
 
+# Post-condition: sobelow preferred_env must be present
+if ! grep -qF 'sobelow: :test' "$MIX_EXS"; then
+    echo "[mix_exs.sh] ERROR: post-condition failed — 'sobelow: :test' not found after Step 3" >&2
+    exit 1
+fi
+
 # ---------------------------------------------------------------------------
 # Step 4: inject project-info sections into def project do
 # Idempotent: skip if dialyzer plt_file already present.
@@ -145,6 +167,12 @@ new_content = re.sub(
 with open(mix_exs_path, 'w') as f:
     f.write(new_content)
 PYEOF
+fi
+
+# Post-condition: plt_file must be present
+if ! grep -qF 'plt_file: {:no_warn' "$MIX_EXS"; then
+    echo "[mix_exs.sh] ERROR: post-condition failed — 'plt_file: {:no_warn' not found after Step 4" >&2
+    exit 1
 fi
 
 # ---------------------------------------------------------------------------
@@ -223,6 +251,12 @@ if match:
 with open(mix_exs_path, 'w') as f:
     f.write(content)
 PYEOF
+fi
+
+# Post-condition: phoenix_deps function must be present
+if ! grep -qF 'defp phoenix_deps do' "$MIX_EXS"; then
+    echo "[mix_exs.sh] ERROR: post-condition failed — 'defp phoenix_deps do' not found after Step 5" >&2
+    exit 1
 fi
 
 echo "[mix_exs.sh] done"

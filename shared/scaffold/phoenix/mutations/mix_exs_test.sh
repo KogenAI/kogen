@@ -58,6 +58,16 @@ sha_after_second="$(shasum "$tmp/mix.exs" | awk '{print $1}')"
 assert "mix_exs.sh second invocation is a no-op" '[ "$sha_after_first" = "$sha_after_second" ]'
 rm -rf "$tmp"
 
+# Case 7: missing anchor — script exits 1 and emits ERROR on stderr
+# Remove the {:lazy_html, anchor so Step 1 post-condition fails
+tmp="$(setup_tmp)"
+sed -i '' 's/{:lazy_html,.*/{:no_such_dep, "~> 0.0"}/' "$tmp/mix.exs"
+missing_anchor_exit=0
+missing_anchor_out="$("$MUTATION" "$tmp" fixture_app FixtureApp 2>&1)" || missing_anchor_exit=$?
+assert "mix_exs missing anchor exits 1" '[ "$missing_anchor_exit" -eq 1 ]'
+assert "mix_exs missing anchor emits ERROR message" 'echo "$missing_anchor_out" | grep -qi "ERROR\|post-condition"'
+rm -rf "$tmp"
+
 echo "$passed passed, $failed failed"
 if [ "$failed" -gt 0 ]; then
     printf '%s\n' "${fail_lines[@]}" >&2

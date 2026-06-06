@@ -32,10 +32,12 @@ echo 'app=<%= app_name %> mod=<%= app_name_module %>' >"$tmp/t2.in"
 "$RENDER" "$tmp/t2.in" "$tmp/t2.out" app_name=my_app app_name_module=MyApp
 assert "multiple bindings substituted" '[ "$(cat "$tmp/t2.out")" = "app=my_app mod=MyApp" ]'
 
-# Case 3: unrecognized placeholder retained (no binding provided)
+# Case 3: unresolved placeholder causes non-zero exit and error on stderr
 echo 'hi <%= unknown %>!' >"$tmp/t3.in"
-"$RENDER" "$tmp/t3.in" "$tmp/t3.out" other=value
-assert "unrecognized placeholder retained" 'grep -qF "<%= unknown %>" "$tmp/t3.out"'
+t3_exit=0
+t3_out="$("$RENDER" "$tmp/t3.in" "$tmp/t3.out" other=value 2>&1)" || t3_exit=$?
+assert "unresolved placeholder exits non-zero" '[ "$t3_exit" -ne 0 ]'
+assert "unresolved placeholder emits error message" 'echo "$t3_out" | grep -qi "ERROR\|unresolved placeholder"'
 
 echo "$passed passed, $failed failed"
 if [ "$failed" -gt 0 ]; then
