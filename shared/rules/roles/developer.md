@@ -52,6 +52,7 @@ Pure fns → unit tests. New public fns → tests. Bug fix → regression test. 
 - Server: ASSUME running. NEVER restart — report to orchestrator.
 - Cleanup: removing test files → grep source first. Target specific files; never blast build dirs.
 - No unprompted backward compat. Pitch says replace → remove old, implement new. Legacy fallback branch when old format is gone = dead code = scope creep. ❌ `cond do: legacy -> ...; new -> ...` ✅ new format only.
+- **Re-read target file before editing** — when applying a fix from reviewer feedback or from a retrospective, re-read the exact current state of the file before using the Edit tool. Avoids stale-context edits that miss intervening changes from other steps.
 
 ## Rule K — Red-Green: Show the Test Failing First
 

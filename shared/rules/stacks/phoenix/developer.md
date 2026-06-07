@@ -46,6 +46,34 @@ Then targeted test file(s). Dead modules → Credo warnings → wire via `grep -
 - `case` over nested `if`. `with` for 3+ chained failable ops.
 - Grep fn usage before modifying/removing. Removing features: remove ALL related code, imports, tests.
 
+## Credo VariableReDeclaration
+
+Credo fires `VariableReDeclaration` when the same variable is bound in two sequential `=` assignments within the same function clause, even if the second is a conditional:
+
+```elixir
+# ❌ Credo violation: socket bound twice
+socket = socket |> assign(:foo, bar)
+socket = if connected?(socket) do ... else ... end
+```
+
+Fix: merge both assignments into a single `|>` pipeline using `then/2`, renaming the inner anonymous parameter to avoid shadowing:
+
+```elixir
+# ✅ Single binding; then/2 for conditional branching
+socket =
+  socket
+  |> assign(:foo, bar)
+  |> then(fn s ->
+    if connected?(s) do
+      load_data(s)
+    else
+      s |> stream(:items, []) |> assign(:empty?, true)
+    end
+  end)
+```
+
+This pattern is already idiomatic in the codebase and preserves full readability.
+
 ## Cleanup
 
 Remove generator file → check source first:

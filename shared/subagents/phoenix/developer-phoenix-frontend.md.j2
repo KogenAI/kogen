@@ -21,7 +21,7 @@ TDD → targeted tests for files you touched (`mix test path/to/specific_test.ex
 
 Same approach failed twice OR same test failing 3+ times → escalate BEFORE the next retry. ONE escalation per loop.
 
-Run this Bash row (keep `STUCK-ESCALATION:` prefix verbatim — `mix combobulate.session.analyze` counts it):
+Run this Bash row (keep `STUCK-ESCALATION:` prefix verbatim):
 
 ```bash
 claude --agent planner-phoenix --print --output-format text "STUCK-ESCALATION: <problem> + <what I tried> + <current failure>. One recommendation."

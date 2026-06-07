@@ -92,6 +92,55 @@ Regex: `\.\w+\.` matches the hash dot-sep-dot pattern; use as gate to fall throu
 - Explicit helper fns — `Media.get_media_asset_url(@media_asset)`
 - npm: `cd assets` first
 
+## Dead-Render Placeholders
+
+**Mount runs twice**: `mount/3` → `handle_params/3` run on dead render (`connected?==false`), then again on WS connect (`connected?==true`). Unguarded DB loads execute both times.
+
+Guard each load behind `connected?(socket)`. On dead render, assign placeholders (empty lists, zero counts, safe defaults) for all keys the template references. Stream placeholders MUST call `stream(socket, :key, [], reset: true)` even when skipping the load — LiveView raises `KeyError` on stream reference without `stream/3` init. Hooks (`on_mount`) count as setters: if `on_mount` initializes `:foo`, the LiveView's dead-render branch does NOT need to re-assign `:foo`.
+
+```elixir
+# ❌ Dead render will KeyError on @streams.comments (never initialized)
+def handle_params(_params, _uri, socket) do
+  if connected?(socket) do
+    {:noreply, assign_comments(socket, drop)}
+  else
+    {:noreply, socket}  # ← @streams.comments undefined
+  end
+end
+
+# ✅ Stream initialized on both paths, comments data guarded behind connected?
+def handle_params(_params, _uri, socket) do
+  if connected?(socket) do
+    {:noreply, assign_comments(socket, drop)}
+  else
+    {:noreply, socket |> stream(:comments, [], reset: true) |> assign(:comment_count, 0)}
+  end
+end
+```
+
+## then/2 for Conditional Pipelines
+
+`then/2` is the clean pattern for conditional branching at the tail of a `|>` pipeline in `mount/3` or `handle_params/3`. Avoids rebinding the socket or intermediate variables when the condition is a boolean branch.
+
+```elixir
+# ❌ Breaks pipeline; Credo VariableReDeclaration (double socket= binding)
+socket = socket |> assign(:search_query, query) |> update_search_filters(q)
+socket = if connected?(socket) do ... else ... end
+
+# ✅ Single binding; condition is a pipeline step; rename inner param to avoid shadowing
+socket =
+  socket
+  |> assign(:search_query, query)
+  |> update_search_filters(q)
+  |> then(fn s ->
+    if connected?(s) do
+      assign_drops(s)
+    else
+      s |> stream(:drops, [], reset: true) |> assign(:drops_empty?, true)
+    end
+  end)
+```
+
 ## Test Discipline
 
 `Application.put_env` is process-global → mutating it from `async: true` ExUnit tests races with any other async test reading the same key, even when Mox stubs are process-local. Fix: split offenders into a sibling `async: false` module in the same file (e.g., `ChannelsTest` alongside `ChannelsSyncTest`). When splitting, verify ALL env-mutating tests migrate to the serial block — partial migration leaves races intact. Also guard with `System.put_env` mutations: they mutate the OS-level `environ`, not the Erlang app config — any async test + concurrent subprocess call races via PATH / HOME / env reads.

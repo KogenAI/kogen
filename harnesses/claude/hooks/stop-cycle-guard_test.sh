@@ -54,14 +54,15 @@ run_test() {
 }
 
 # Helper: build the stdin JSON for the hook.
-# Usage: make_input <transcript_path> <cwd> <stop_hook_active> <last_message>
+# Usage: make_input <transcript_path> <cwd> <stop_hook_active> <last_message> [session_id]
 make_input() {
     local transcript_path="$1"
     local cwd="$2"
     local stop_hook_active="$3"
     local last_message="$4"
-    printf '{"hook_event_name":"Stop","session_id":"test-sess","transcript_path":"%s","cwd":"%s","stop_hook_active":%s,"last_assistant_message":"%s"}' \
-        "$transcript_path" "$cwd" "$stop_hook_active" "$last_message"
+    local session_id="${5:-test-sess}"
+    printf '{"hook_event_name":"Stop","session_id":"%s","transcript_path":"%s","cwd":"%s","stop_hook_active":%s,"last_assistant_message":"%s"}' \
+        "$session_id" "$transcript_path" "$cwd" "$stop_hook_active" "$last_message"
 }
 
 # Fixture helpers.
@@ -90,9 +91,10 @@ run_test "no_agent_calls: empty transcript + stale log with developer → allow"
 
 # --- Test 2: Mid-cycle developer ---
 # Transcript ending in developer-phoenix-backend → MUST block.
+rm -f "/tmp/claude-cycle-guard-test-sess-2.count"
 tmp2=$(mktemp -d)
 printf '%s\n' "$AGENT_ENTRY_DEVELOPER" >"$tmp2/transcript.jsonl"
-INPUT2=$(make_input "$tmp2/transcript.jsonl" "$tmp2" "false" "Done.")
+INPUT2=$(make_input "$tmp2/transcript.jsonl" "$tmp2" "false" "Done." "test-sess-2")
 run_test "mid_cycle_developer: transcript ends in developer-phoenix-backend → block" \
     "block" "$INPUT2" "$AGENT_ENTRY_DEVELOPER"
 
@@ -108,9 +110,10 @@ run_test "cycle_complete_committer: transcript ends in committer → allow" \
 
 # --- Test 4: Mid-cycle reviewer-phoenix ---
 # Transcript ending in reviewer-phoenix → MUST block.
+rm -f "/tmp/claude-cycle-guard-test-sess-4.count"
 tmp4=$(mktemp -d)
 printf '%s\n' "$AGENT_ENTRY_REVIEWER" >"$tmp4/transcript.jsonl"
-INPUT4=$(make_input "$tmp4/transcript.jsonl" "$tmp4" "false" "Done.")
+INPUT4=$(make_input "$tmp4/transcript.jsonl" "$tmp4" "false" "Done." "test-sess-4")
 run_test "mid_cycle_reviewer_phoenix: transcript ends in reviewer-phoenix → block" \
     "block" "$INPUT4" "$AGENT_ENTRY_REVIEWER"
 
@@ -140,24 +143,30 @@ INPUT7=$(make_input "$tmp7/transcript.jsonl" "$tmp7" "true" "Done.")
 run_test "stop_hook_active_wins: stop_hook_active=true → allow" \
     "allow" "$INPUT7" "$AGENT_ENTRY_DEVELOPER"
 
-# --- Test 8: ScheduleWakeup guard ---
-# Transcript ends in developer-phoenix-backend + last message contains "ScheduleWakeup" → MUST allow.
+# --- Test 8: ScheduleWakeup tool_use in transcript → ALLOW ---
+# Transcript ends in developer-phoenix-backend + ScheduleWakeup tool_use entry → MUST allow.
+# The guard keys on the tool-call record, not prose.
 tmp8=$(mktemp -d)
-printf '%s\n' "$AGENT_ENTRY_DEVELOPER" >"$tmp8/transcript.jsonl"
-INPUT8=$(make_input "$tmp8/transcript.jsonl" "$tmp8" "false" "ScheduleWakeup called. Will check back once the gate finishes.")
-run_test "schedulewakeup_guard: ScheduleWakeup in last message → allow" \
+SCHEDULE_WAKEUP_ENTRY='{"type":"assistant","message":{"content":[{"type":"tool_use","name":"ScheduleWakeup","input":{"delay_seconds":60}}]}}'
+printf '%s\n%s\n' "$AGENT_ENTRY_DEVELOPER" "$SCHEDULE_WAKEUP_ENTRY" >"$tmp8/transcript.jsonl"
+INPUT8=$(make_input "$tmp8/transcript.jsonl" "$tmp8" "false" "Gate still running, scheduled wakeup.")
+run_test "schedulewakeup_tool_use: ScheduleWakeup tool_use in transcript → allow" \
     "allow" "$INPUT8" "$AGENT_ENTRY_DEVELOPER"
 
-# --- Test 9: async-wait guard ("still running") ---
-# Transcript ends in developer + last message contains "still running" → MUST allow.
+# --- Test 9: async-wait prose without ScheduleWakeup tool_use → BLOCK ---
+# "still running" prose alone is no longer sufficient — requires a real tool call.
+rm -f "/tmp/claude-cycle-guard-test-sess-9.count"
 tmp9=$(mktemp -d)
 printf '%s\n' "$AGENT_ENTRY_DEVELOPER" >"$tmp9/transcript.jsonl"
-INPUT9=$(make_input "$tmp9/transcript.jsonl" "$tmp9" "false" "The gate is still running, will resume when done.")
-run_test "async_wait_guard: still running in last message → allow" \
-    "allow" "$INPUT9" "$AGENT_ENTRY_DEVELOPER"
+INPUT9=$(make_input "$tmp9/transcript.jsonl" "$tmp9" "false" "The gate is still running, will resume when done." "test-sess-9")
+run_test "async_wait_prose_no_tool_use: still running prose without ScheduleWakeup tool_use → block" \
+    "block" "$INPUT9" "$AGENT_ENTRY_DEVELOPER"
 
-# --- Test 10: Verdict guard — developer in transcript, session log exists but no verdict string → allow ---
-# (Hook writes the dev-gate Section.)
+# --- Test 10a: Developer + no verdict + no gate-result.json → BLOCK ---
+# VE never ran: developer finished, session log has no emoji verdict, no gate-result.json.
+# Previously this allowed the stop — now it BLOCKS.
+# Uses unique session_id to avoid cap exhaustion from earlier blocking tests.
+rm -f "/tmp/claude-cycle-guard-test-sess-10a.count"
 tmp10=$(mktemp -d)
 mkdir -p "$tmp10/codegen/logging"
 printf '# Session Log\n## dev-gate Section\nDiagnosis: timeout.\n' \
@@ -167,11 +176,28 @@ printf '# Session Log\n## dev-gate Section\nDiagnosis: timeout.\n' \
     printf '%s\n' "$AGENT_ENTRY_DEVELOPER"
     printf '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Write","input":{"file_path":"%s/codegen/logging/test_session.md"}}]}}\n' "$tmp10"
 } >"$tmp10/transcript.jsonl"
-INPUT10=$(make_input "$tmp10/transcript.jsonl" "$tmp10" "false" "Done.")
-run_test "verdict_guard_no_verdict: developer in transcript, log exists but no verdict → allow" \
-    "allow" "$INPUT10" "$AGENT_ENTRY_DEVELOPER"
+INPUT10=$(printf '{"hook_event_name":"Stop","session_id":"test-sess-10a","transcript_path":"%s/transcript.jsonl","cwd":"%s","stop_hook_active":false,"last_assistant_message":"Done."}' "$tmp10" "$tmp10")
+run_test "verdict_guard_developer_no_verdict_no_gate_result: developer ran, no verdict, no gate-result.json → block" \
+    "block" "$INPUT10" "$AGENT_ENTRY_DEVELOPER"
+rm -rf "$tmp10"
+
+# --- Test 10b: Reviewer + no verdict → ALLOW ---
+# reviewer-* with no emoji verdict: VE may have been blocked/INCONCLUSIVE — still allow.
+tmp10b=$(mktemp -d)
+mkdir -p "$tmp10b/codegen/logging"
+printf '# Session Log\n## reviewer-phoenix Section\nReview complete.\n' \
+    >"$tmp10b/codegen/logging/test_session.md"
+{
+    printf '%s\n' "$AGENT_ENTRY_REVIEWER"
+    printf '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Write","input":{"file_path":"%s/codegen/logging/test_session.md"}}]}}\n' "$tmp10b"
+} >"$tmp10b/transcript.jsonl"
+INPUT10b=$(printf '{"hook_event_name":"Stop","session_id":"test-sess-10b","transcript_path":"%s/transcript.jsonl","cwd":"%s","stop_hook_active":false,"last_assistant_message":"Done."}' "$tmp10b" "$tmp10b")
+run_test "verdict_guard_reviewer_no_verdict: reviewer ran, no verdict → allow" \
+    "allow" "$INPUT10b" "$AGENT_ENTRY_REVIEWER"
+rm -rf "$tmp10b"
 
 # --- Test 11: Verdict guard — developer in transcript, session log has ALL CLEAR → block ---
+rm -f "/tmp/claude-cycle-guard-test-sess-11.count"
 tmp11=$(mktemp -d)
 mkdir -p "$tmp11/codegen/logging"
 printf '# Session Log\n## dev-gate Section\nALL CLEAR ✅\n' \
@@ -181,7 +207,7 @@ printf '# Session Log\n## dev-gate Section\nALL CLEAR ✅\n' \
     printf '%s\n' "$AGENT_ENTRY_DEVELOPER"
     printf '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Write","input":{"file_path":"%s/codegen/logging/test_session.md"}}]}}\n' "$tmp11"
 } >"$tmp11/transcript.jsonl"
-INPUT11=$(make_input "$tmp11/transcript.jsonl" "$tmp11" "false" "Done.")
+INPUT11=$(make_input "$tmp11/transcript.jsonl" "$tmp11" "false" "Done." "test-sess-11")
 run_test "verdict_guard_with_verdict: developer in transcript, log has ALL CLEAR → block" \
     "block" "$INPUT11" "$AGENT_ENTRY_DEVELOPER"
 
@@ -201,7 +227,8 @@ printf '# Session B\n## dev-gate Section\nALL CLEAR ✅\n' >"$LOG12B"
     printf '%s\n' "$AGENT_ENTRY_DEVELOPER"
     printf '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Write","input":{"file_path":"%s"}}]}}\n' "$LOG12A"
 } >"$tmp12A/transcript.jsonl"
-INPUT12=$(make_input "$tmp12A/transcript.jsonl" "$tmp12A" "false" "Done.")
+rm -f "/tmp/claude-cycle-guard-test-sess-12.count"
+INPUT12=$(make_input "$tmp12A/transcript.jsonl" "$tmp12A" "false" "Done." "test-sess-12")
 stdout12=$(printf '%s' "$INPUT12" | bash "$GUARD" 2>/dev/null || true)
 # Must block (A's log has verdict) and reason must reference A's path, not B's.
 if printf '%s' "$stdout12" | grep -q '"decision"[[:space:]]*:[[:space:]]*"block"' &&
@@ -268,17 +295,19 @@ rm -f "$tmp15/codegen/gate-pending/latest.flag"
 ln -sf "$tmp15/codegen/gate-pending/${LIVE_PID_15}.flag" "$tmp15/codegen/gate-pending/latest.flag" 2>/dev/null ||
     cp "$tmp15/codegen/gate-pending/${LIVE_PID_15}.flag" "$tmp15/codegen/gate-pending/latest.flag"
 printf '%s\n' "$AGENT_ENTRY_DEVELOPER" >"$tmp15/transcript.jsonl"
-INPUT15=$(make_input "$tmp15/transcript.jsonl" "$tmp15" "false" "Done.")
+rm -f "/tmp/claude-cycle-guard-test-sess-15.count"
+INPUT15=$(make_input "$tmp15/transcript.jsonl" "$tmp15" "false" "Done." "test-sess-15")
 run_test "inflight_gate_blocks: live PID flag present → BLOCK" \
     "block" "$INPUT15" "$AGENT_ENTRY_DEVELOPER"
 rm -rf "$tmp15"
 
-# ── Test 16: no-flag async-wait → ALLOW ─────────────────────────────────────
-# When no flag is in flight, the existing async-wait escape still works.
+# ── Test 16: no-flag async-wait with ScheduleWakeup tool_use → ALLOW ────────
+# When no flag is in flight + ScheduleWakeup tool_use exists in transcript → allow.
 tmp16=$(mktemp -d)
-printf '%s\n' "$AGENT_ENTRY_DEVELOPER" >"$tmp16/transcript.jsonl"
+SCHEDULE_WAKEUP_ENTRY16='{"type":"assistant","message":{"content":[{"type":"tool_use","name":"ScheduleWakeup","input":{"delay_seconds":60}}]}}'
+printf '%s\n%s\n' "$AGENT_ENTRY_DEVELOPER" "$SCHEDULE_WAKEUP_ENTRY16" >"$tmp16/transcript.jsonl"
 INPUT16=$(make_input "$tmp16/transcript.jsonl" "$tmp16" "false" "ScheduleWakeup called. Will check back once gate finishes.")
-run_test "no_flag_async_wait_allow: no flag + ScheduleWakeup → allow" \
+run_test "no_flag_async_wait_allow: no flag + ScheduleWakeup tool_use → allow" \
     "allow" "$INPUT16" "$AGENT_ENTRY_DEVELOPER"
 rm -rf "$tmp16"
 
@@ -305,6 +334,34 @@ INPUT17=$(make_input "$tmp17/transcript.jsonl" "$tmp17" "false" "Done.")
 run_test "dead_pid_flag_not_inflight: dead PID flag → not in-flight → allow (no agents)" \
     "allow" "$INPUT17" '{"type":"assistant","message":{"content":[{"type":"text","text":"Done."}]}}'
 rm -rf "$tmp17"
+
+# ── Test 18: bare "Blocked" keyword in last message + developer → BLOCK ──────
+# The intent guard no longer grants escape on "Blocked" substring — only trailing "?" counts.
+rm -f "/tmp/claude-cycle-guard-test-sess-18.count"
+tmp18=$(mktemp -d)
+printf '%s\n' "$AGENT_ENTRY_DEVELOPER" >"$tmp18/transcript.jsonl"
+INPUT18=$(make_input "$tmp18/transcript.jsonl" "$tmp18" "false" "I am Blocked on this task." "test-sess-18")
+run_test "bare_blocked_keyword_blocks: Blocked keyword alone no longer escapes intent guard → block" \
+    "block" "$INPUT18" "$AGENT_ENTRY_DEVELOPER"
+rm -rf "$tmp18"
+
+# ── Test 19: developer + gate-result.json inconclusive → ALLOW ───────────────
+# gate-result.json says inconclusive → VE ran but was inconclusive (not "never ran") → allow.
+# gate_result_verdict reads from <project_dir>/codegen/gate-pending/gate-result.json
+tmp19=$(mktemp -d)
+mkdir -p "$tmp19/codegen/logging" "$tmp19/codegen/gate-pending"
+printf '# Session Log\n## dev-gate Section\nDiagnosis: pool exhausted.\n' \
+    >"$tmp19/codegen/logging/test_session.md"
+printf '{"verdict":"inconclusive","gate":"make test","mode":"short"}\n' \
+    >"$tmp19/codegen/gate-pending/gate-result.json"
+{
+    printf '%s\n' "$AGENT_ENTRY_DEVELOPER"
+    printf '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Write","input":{"file_path":"%s/codegen/logging/test_session.md"}}]}}\n' "$tmp19"
+} >"$tmp19/transcript.jsonl"
+INPUT19=$(make_input "$tmp19/transcript.jsonl" "$tmp19" "false" "Done.")
+run_test "developer_gate_result_inconclusive: developer + gate-result=inconclusive → allow" \
+    "allow" "$INPUT19" "$AGENT_ENTRY_DEVELOPER"
+rm -rf "$tmp19"
 
 echo ""
 echo "Results: $pass passed, $fail failed"

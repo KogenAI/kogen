@@ -48,8 +48,7 @@ fi
 # Intent guard: orchestrator is asking the user something — let it stop.
 trimmed=$(printf '%s' "$LAST_ASSISTANT_MESSAGE" | sed -E 's/[[:space:]]+$//')
 last_char="${trimmed: -1}"
-intent_regex='[Ss]hould I|[Nn]eed clarification|[Bb]locked|[Ss]tuck|[Ww]aiting for|[Pp]lease confirm|[Ww]ant me to|[Cc]onfirm before'
-if [ "$last_char" = "?" ] || printf '%s' "$LAST_ASSISTANT_MESSAGE" | grep -qE "$intent_regex"; then
+if [ "$last_char" = "?" ]; then
     debug_log claude-cycle-guard "skip: intent — last_char=$last_char"
     exit 0
 fi
@@ -105,26 +104,63 @@ fi
 # ── ScheduleWakeup / async-wait guard ──────────────────────────────────────
 # Only allow async-wait escape when NO flag is in flight (enforced above).
 # Orchestrator is yielding for a background event, not abandoning a cycle.
-if printf '%s' "$LAST_ASSISTANT_MESSAGE" | grep -qE 'ScheduleWakeup|scheduled.*wakeup|checking back in|seed rebuild|still running|in flight'; then
-    debug_log claude-cycle-guard "skip: async-wait signal in last message"
+# Only allow async-wait escape when a ScheduleWakeup tool_use appears in the
+# transcript — prose alone ("still running", "in flight") is insufficient and
+# can be spoofed. Require a real tool-call record.
+has_schedule_wakeup=$(jq -r '
+    select(.message.content)
+    | (.message.content[]?
+        | select(.type == "tool_use" and .name == "ScheduleWakeup")
+        | .name)
+' "$TRANSCRIPT_PATH" 2>/dev/null | tail -n 1)
+
+if [ -n "$has_schedule_wakeup" ]; then
+    debug_log claude-cycle-guard "skip: ScheduleWakeup tool_use in transcript"
     exit 0
 fi
 
-# Verdict guard — only block if the session log contains an actual VE gate verdict.
-# When gate-result.json exists, cross-check its verdict field.
-# Without this, a VE that was blocked by ve-guard or returned INCONCLUSIVE (no actionable
-# verdict) still triggers the cycle-guard, causing false-positive blocks.
+# Verdict guard — behaviour differs by role:
+#
+#   developer-* + no emoji verdict + no gate-result.json  → BLOCK (VE never ran)
+#   developer-* + gate-result.json verdict=inconclusive   → allow (explicit recorded state)
+#   reviewer-* + no emoji verdict                         → allow (VE blocked/inconclusive is ok)
+#   all roles   + gate-result.json non-clear              → allow (gate ran, result recorded)
+#
+# Rationale: "developer finished + no verdict + no gate-result" is exactly the
+# historical #1 bail — gate never executed at all. Distinguish from the
+# legitimate case where VE ran but produced INCONCLUSIVE (gate-result.json present).
 recent_log=$(session_log_from_transcript)
 if [ -n "$recent_log" ] && [ -r "$recent_log" ]; then
     if ! grep -qE 'ALL CLEAR ✅|FAILED ❌|INCONCLUSIVE ⚠️' "$recent_log" 2>/dev/null; then
         # No emoji verdict in log — check gate-result.json as secondary source
         stored_verdict=$(gate_result_verdict "$project_dir")
-        if [ -z "$stored_verdict" ] || [ "$stored_verdict" = "inconclusive" ]; then
-            debug_log claude-cycle-guard "skip: no VE verdict in session log $recent_log (gate-result: ${stored_verdict:-absent})"
-            exit 0
-        fi
-        # gate-result.json says failed/clear but log lacks emoji — log may be out of sync
-        debug_log claude-cycle-guard "gate-result.json verdict=$stored_verdict but log has no emoji marker"
+        case "$last_agent" in
+        developer-phoenix-backend | developer-phoenix-frontend | developer-html | developer-hugo | developer-vite)
+            if [ -z "$stored_verdict" ]; then
+                # Developer ran but VE never produced any verdict — BLOCK.
+                debug_log claude-cycle-guard "BLOCK: developer ran but gate never produced a verdict (gate-result absent)"
+                count=$((count + 1))
+                printf '%s' "$count" >"$counter_file"
+                log_file=$(session_log_from_transcript)
+                log_pointer="${log_file:-(no session log written yet)}"
+                block "Developer finished but the gate never produced a verdict (no emoji in session log, no gate-result.json). VE never ran. You MUST NOT stop here — continue the cycle: re-read $log_pointer and run the gate before handing off to reviewer."
+                exit 0
+            elif [ "$stored_verdict" = "inconclusive" ]; then
+                debug_log claude-cycle-guard "skip: developer ran, gate-result=inconclusive (explicit recorded state)"
+                exit 0
+            fi
+            # gate-result.json says failed/clear but log lacks emoji — log may be out of sync; fall through to block
+            debug_log claude-cycle-guard "gate-result.json verdict=$stored_verdict but log has no emoji marker"
+            ;;
+        *)
+            # reviewer-* or context-curator: no verdict is ok — VE may have been blocked
+            if [ -z "$stored_verdict" ] || [ "$stored_verdict" = "inconclusive" ]; then
+                debug_log claude-cycle-guard "skip: no VE verdict in session log $recent_log (gate-result: ${stored_verdict:-absent})"
+                exit 0
+            fi
+            debug_log claude-cycle-guard "gate-result.json verdict=$stored_verdict but log has no emoji marker"
+            ;;
+        esac
     fi
     # When gate-result.json says non-clear, don't treat stale log ALL CLEAR as satisfying
     stored_verdict=$(gate_result_verdict "$project_dir")

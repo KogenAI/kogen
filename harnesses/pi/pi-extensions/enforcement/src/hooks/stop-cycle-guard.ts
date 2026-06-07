@@ -2,7 +2,7 @@
  * stop-cycle-guard.ts — Pi enforcement: guard against mid-cycle session
  * shutdown (Stop equivalent).
  *
- * Mirrors: templates/shared/hooks/stop-cycle-guard.sh
+ * Mirrors: harnesses/claude/hooks/stop-cycle-guard.sh
  * Event: session_shutdown (Stop equivalent)
  *
  * Note: In Pi, session_shutdown cannot block the session from ending.
@@ -104,13 +104,33 @@ export function register(pi: ExtensionAPI): void {
     const logContent = fs.readFileSync(activeLog, "utf8");
 
     const hasDeveloper = /## developer.*Section/i.test(logContent);
-    const hasAllClear = /ALL CLEAR ✅/.test(logContent);
+    const hasVeVerdict = /ALL CLEAR ✅|FAILED ❌|INCONCLUSIVE ⚠️/.test(
+      logContent,
+    );
     const hasReviewer = /## reviewer.*Section/i.test(logContent);
     const hasCurator = /## context-curator.*Section/i.test(logContent);
     const hasCommitter = /## committer.*Section/i.test(logContent);
 
+    // Hardening #1 (advisory): developer section present but no VE verdict
+    // and no gate-result.json → VE likely never ran (mirrors stop-cycle-guard.sh).
+    const gateResultPath = path.join(
+      projectDir,
+      "codegen",
+      "gate-pending",
+      "gate-result.json",
+    );
+    const hasGateResult = fs.existsSync(gateResultPath);
+    if (hasDeveloper && !hasVeVerdict && !hasGateResult && !hasReviewer) {
+      count += 1;
+      fs.writeFileSync(counterFile, String(count));
+      process.stderr.write(
+        `[pi-enforcement:stop-cycle-guard] WARNING: developer ran but gate never produced a verdict (no emoji in log, no gate-result.json). VE likely never ran. Count: ${count}\n`,
+      );
+      return;
+    }
+
     if (
-      (hasDeveloper && hasAllClear && !hasReviewer) ||
+      (hasDeveloper && hasVeVerdict && !hasReviewer) ||
       (hasReviewer && !hasCurator) ||
       (hasReviewer && hasCurator && !hasCommitter)
     ) {
