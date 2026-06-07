@@ -24,4 +24,12 @@ First-build Vite plans MUST include in `Files to touch`:
 
 ## Gate
 
-Static sites: `Gate: none` — no CI gate; build check runs via deploy hook.
+Static sites use gate-json block with command "none" — no CI gate; build check runs via deploy hook.
+
+```gate-json
+{
+  "command": "none",
+  "mode": "short",
+  "timeout": 0
+}
+```

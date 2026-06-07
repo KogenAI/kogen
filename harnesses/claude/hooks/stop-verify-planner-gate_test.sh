@@ -155,5 +155,53 @@ out=$(make_stop_input "$T7_dir" "planner-phoenix" false "$T7_transcript" | bash 
 assert_contains "planner Stop, **Gate**: pending → block" '"decision"' "$out"
 rm -rf "$T7_dir"
 
+# ── Test 8: gate-json parse error → block with parse-error reason ─────────────
+T8_dir=$(mktemp -d)
+mkdir -p "$T8_dir/codegen/logging"
+T8_log="$T8_dir/codegen/logging/20260518_step1_test.md"
+T8_transcript="$T8_dir/transcript.jsonl"
+# Write a log with a malformed gate-json block
+cat >"$T8_log" <<'MD'
+# Step 1 — test
+
+## Plan
+
+**Gate**:
+
+```gate-json
+{ "command": "make ci", bad json here
+```
+MD
+make_transcript_with_log_write "$T8_transcript" "$T8_log"
+out=$(make_stop_input "$T8_dir" "planner-phoenix" false "$T8_transcript" | bash "$HOOK" 2>/dev/null || true)
+assert_contains "planner Stop, malformed gate-json → block" '"decision"' "$out"
+assert_contains "block reason cites parse error" 'stop-verify-planner-gate' "$out"
+rm -rf "$T8_dir"
+
+# ── Test 9: valid gate-json block → allow ─────────────────────────────────────
+T9_dir=$(mktemp -d)
+mkdir -p "$T9_dir/codegen/logging"
+T9_log="$T9_dir/codegen/logging/20260518_step1_test.md"
+T9_transcript="$T9_dir/transcript.jsonl"
+cat >"$T9_log" <<'MD'
+# Step 1 — test
+
+## Plan
+
+**Gate**:
+
+```gate-json
+{
+  "command": "make ci",
+  "mode": "short",
+  "timeout": 900
+}
+```
+MD
+make_transcript_with_log_write "$T9_transcript" "$T9_log"
+out=$(make_stop_input "$T9_dir" "planner-phoenix" false "$T9_transcript" | bash "$HOOK" 2>/dev/null || true)
+assert_not_contains "planner Stop, valid gate-json block → allow" '"decision"' "$out"
+rm -rf "$T9_dir"
+
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

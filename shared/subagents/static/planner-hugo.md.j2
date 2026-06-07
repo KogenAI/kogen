@@ -61,7 +61,17 @@ First: `./codegen/PROJECT_CONTEXT.md`. `CONTEXT: user-app-build` → `./PLATFORM
 1. <concrete step>
 ...
 
-**Gate**: `none` — static sites have no CI gate; build check runs via deploy hook
+**Gate**:
+
+```gate-json
+{
+  "command": "none",
+  "mode": "short",
+  "timeout": 0
+}
+```
+
+(static sites have no CI gate; build check runs via deploy hook)
 
 ## Slices
 

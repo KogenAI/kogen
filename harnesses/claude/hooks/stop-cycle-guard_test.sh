@@ -246,6 +246,66 @@ run_test "committer_terminal: transcript ends in committer → allow (cycle comp
     "allow" "$INPUT14" "$TRANSCRIPT14"
 rm -rf "$tmp14"
 
+# ── Test 15: in-flight gate (live PID flag) → BLOCK ─────────────────────────
+# When latest.flag exists and PID is alive, stop-cycle-guard must BLOCK
+# regardless of transcript state.
+tmp15=$(mktemp -d)
+mkdir -p "$tmp15/codegen/gate-pending"
+# Use own PID as a live PID
+LIVE_PID_15=$$
+NOW_ISO_15=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+cat >"$tmp15/codegen/gate-pending/${LIVE_PID_15}.flag" <<EOF
+gate=make ci
+pid=$LIVE_PID_15
+log=$tmp15/gate.log
+exitcode_file=$tmp15/gate.exitcode
+started_at=$NOW_ISO_15
+session_id=test-15
+mode=long
+status=running
+EOF
+rm -f "$tmp15/codegen/gate-pending/latest.flag"
+ln -sf "$tmp15/codegen/gate-pending/${LIVE_PID_15}.flag" "$tmp15/codegen/gate-pending/latest.flag" 2>/dev/null ||
+    cp "$tmp15/codegen/gate-pending/${LIVE_PID_15}.flag" "$tmp15/codegen/gate-pending/latest.flag"
+printf '%s\n' "$AGENT_ENTRY_DEVELOPER" >"$tmp15/transcript.jsonl"
+INPUT15=$(make_input "$tmp15/transcript.jsonl" "$tmp15" "false" "Done.")
+run_test "inflight_gate_blocks: live PID flag present → BLOCK" \
+    "block" "$INPUT15" "$AGENT_ENTRY_DEVELOPER"
+rm -rf "$tmp15"
+
+# ── Test 16: no-flag async-wait → ALLOW ─────────────────────────────────────
+# When no flag is in flight, the existing async-wait escape still works.
+tmp16=$(mktemp -d)
+printf '%s\n' "$AGENT_ENTRY_DEVELOPER" >"$tmp16/transcript.jsonl"
+INPUT16=$(make_input "$tmp16/transcript.jsonl" "$tmp16" "false" "ScheduleWakeup called. Will check back once gate finishes.")
+run_test "no_flag_async_wait_allow: no flag + ScheduleWakeup → allow" \
+    "allow" "$INPUT16" "$AGENT_ENTRY_DEVELOPER"
+rm -rf "$tmp16"
+
+# ── Test 17: dead-PID flag → not-in-flight → allow (falls through to other guards) ─
+tmp17=$(mktemp -d)
+mkdir -p "$tmp17/codegen/gate-pending"
+# Dead PID
+cat >"$tmp17/codegen/gate-pending/9999999.flag" <<EOF
+gate=make ci
+pid=9999999
+log=$tmp17/gate.log
+exitcode_file=$tmp17/gate.exitcode
+started_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+session_id=test-17
+mode=long
+status=running
+EOF
+rm -f "$tmp17/codegen/gate-pending/latest.flag"
+ln -sf "$tmp17/codegen/gate-pending/9999999.flag" "$tmp17/codegen/gate-pending/latest.flag" 2>/dev/null ||
+    cp "$tmp17/codegen/gate-pending/9999999.flag" "$tmp17/codegen/gate-pending/latest.flag"
+# No transcript → allow (no agent calls)
+printf '{"type":"assistant","message":{"content":[{"type":"text","text":"Done."}]}}\n' >"$tmp17/transcript.jsonl"
+INPUT17=$(make_input "$tmp17/transcript.jsonl" "$tmp17" "false" "Done.")
+run_test "dead_pid_flag_not_inflight: dead PID flag → not in-flight → allow (no agents)" \
+    "allow" "$INPUT17" '{"type":"assistant","message":{"content":[{"type":"text","text":"Done."}]}}'
+rm -rf "$tmp17"
+
 echo ""
 echo "Results: $pass passed, $fail failed"
 

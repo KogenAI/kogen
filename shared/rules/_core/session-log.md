@@ -48,7 +48,7 @@ Enforcement: `step-log-missing-guard.sh` (Stop hook) detects "developer-\* subag
 # Step <N> — <slug>
 
 **Started**: <ISO timestamp>
-**Gate**: <command — planner fills in>
+**Gate**: (planner fills in — gate-json block inside ## Plan section)
 
 ## Version Stamp
 

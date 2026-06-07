@@ -56,7 +56,9 @@ Hook registration: `hook_registrations.py` reads `harnesses/claude/hooks/*.sh`, 
 | `harnesses/claude/hooks/claude-inspector-read-guard.sh`      | PreToolUse — read guards in claude-inspector mode                                                                                  |
 | `harnesses/claude/hooks/claude-inspector-write-guard.sh`     | PreToolUse — write guards in claude-inspector mode                                                                                 |
 | `harnesses/claude/hooks/lib/hooks-lib.sh`                    | Shared bash library: `session_log_from_transcript`, transcript JSONL parsing, path helpers                                         |
-| `harnesses/claude/hooks/lib/gate-select.sh`                  | Selects appropriate gate script based on stack detected                                                                            |
+| `harnesses/claude/hooks/lib/gate-select.sh`                  | Selects gate command from ```gate-json block (jq-parsed) or prose `**Gate**:`fallback; emits`gate=`, `mode=`, `timeout=` lines     |
+| `harnesses/claude/hooks/lib/gate-result.sh`                  | Shared helper: `write_gate_result` writes structured `codegen/gate-pending/gate-result.json`; `gate_result_verdict` reads verdict  |
+| `harnesses/claude/hooks/lib/gate-control.sh`                 | PID-liveness helper: `gate_control_status` checks in-flight gate; `gate_control_kill` terminates; used by stop-cycle-guard         |
 | `harnesses/claude/hooks/lib/render-check.js`                 | Headless Chromium render verdict engine: DOM non-empty, styles applied, no JS errors                                               |
 | `harnesses/claude/hooks/run-tests.sh`                        | Runs all `*_test.sh` hook tests                                                                                                    |
 
@@ -224,10 +226,31 @@ Valid `permissionDecision` values:
 ```
 SubagentStop fires → gate-select.sh picks stack →
   phoenix-dev-gate.sh (mix test) OR static-site-build-check.sh (npm run build) →
+  writes codegen/gate-pending/gate-result.json (structured verdict file) →
   appends "ALL CLEAR ✅" / "FAILED ❌" / "INCONCLUSIVE ⚠️ <class>" to step log ## dev-gate Section
 ```
 
 Orchestrator reads verdict before deciding next delegation.
+
+**Structured result file** (`<project>/codegen/gate-pending/gate-result.json`):
+
+- Written by `write_gate_result` (from `lib/gate-result.sh`) on every gate branch to `<project>/codegen/gate-pending/gate-result.json` (created at session start by gate-select.sh)
+- Fields: `gate`, `mode`, `verdict` (clear|failed|inconclusive), `exit_code`, `execution_evidence`, `expected_segments`, `render_verdict`, `classification`, `started_at`, `ended_at`, `session_id`, `log`, `runner_found`
+- `build-no-success-before-commit.sh` reads `verdict` field — requires `clear` before allowing BUILD_RESULT signal
+- `stop-cycle-guard.sh` reads `verdict` field — cross-checks log emoji with structured verdict
+- `step-log-completeness.sh` reads `verdict` field — `clear` enables completion even without log ALL CLEAR marker
+
+**Gate JSON block format** (new — `gate-select.sh` parses gate-json fence in `## Plan`):
+
+```gate-json
+{
+  "command": "make ci",
+  "mode": "short",
+  "timeout": 900
+}
+```
+
+Gate-json block scoping: block is parsed ONLY when it immediately follows the `**Gate**:` line (up to one blank line); example/documentation blocks elsewhere in the plan body are ignored. This prevents format documentation from being misidentified as the authoritative gate spec. Prose `**Gate**: make ci` still accepted as fallback for backward compat.
 
 **Gate Scope — Codegen Output Only**: Gates validate the _generated harness and codegen artifacts_ (e.g., hook unit tests, scaffold output compilation in test_harness). Gates do NOT validate downstream project state, symlink health, or consumer setup. Downstream validation belongs in the consuming app's own CI — that is where `curator-guard` will catch stale symlinks and fail loudly. This one-way boundary keeps codegen focused on artifact generation and prevents coupling to consumer-specific paths or assumptions.
 
@@ -287,6 +310,7 @@ Run `make install` after any enforcement rule change to regenerate the `.ts` fil
 
 - **Hook tests are bash, not ExUnit** — run via `run-tests.sh`, not `mix test`
 - **`session_log_from_transcript`** filters Write/Edit/MultiEdit tool_use in transcript JSONL; Bash redirects (`echo >`) are invisible to it → always use Write tool for step logs
+- **Gate-json awk scoping** — `gate-select.sh` awk pattern must require gate-json block to immediately follow `**Gate**:` line; use `after_gate=1` on line match, then enter block mode only if next non-blank line is ` ```gate-json `. Free-floating example blocks in plan body are otherwise misidentified as authoritative gates.
 - **Hook registration is not in manifest** — `hook_registrations.py` owns it independently; manifest only documents that hooks exist
 - **Per-harness hook strategy** — hooks under `harnesses/claude/hooks/` are Claude-specific; Pi harness enforcement runs through Pi extension system (`harnesses/pi/pi-extensions/enforcement/`), not bash hooks. Do not assume Claude hooks apply to Pi harness.
 - **Hook table is selective** — the Components table lists all ~45 hook scripts; see `harnesses/claude/hooks/` directory for the definitive list as it may grow

@@ -62,19 +62,50 @@ export function register(pi: ExtensionAPI): void {
     const activeLog = path.join(loggingDir, logFiles[0].name);
     const logContent = fs.readFileSync(activeLog, "utf8");
 
-    // Extract Gate: directive from step log
-    const gateMatch = logContent.match(/\*\*Gate\*\*:\s*`?([^\n`]+)`?/);
-    if (!gateMatch) {
-      debugLog("phoenix-dev-gate", "no Gate: directive found");
-      return;
+    // Extract Gate from step log — try gate-json block first, fall back to prose
+    let gateCmd = "";
+    let isLongGate = false;
+
+    const jsonBlockMatch = logContent.match(/```gate-json\n([\s\S]*?)```/);
+    if (jsonBlockMatch) {
+      try {
+        const parsed = JSON.parse(jsonBlockMatch[1]) as {
+          command?: string;
+          mode?: string;
+          timeout?: number;
+        };
+        if (parsed.command) {
+          gateCmd = parsed.command.trim();
+          isLongGate = parsed.mode === "long";
+          debugLog(
+            "phoenix-dev-gate",
+            `gate from JSON block: ${gateCmd} mode=${parsed.mode}`,
+          );
+        } else {
+          debugLog("phoenix-dev-gate", "gate-json block missing command field");
+          return;
+        }
+      } catch {
+        debugLog("phoenix-dev-gate", "gate-json block is not valid JSON");
+        return;
+      }
+    } else {
+      // Prose fallback
+      const gateMatch = logContent.match(/\*\*Gate\*\*:\s*`?([^\n`]+)`?/);
+      if (!gateMatch) {
+        debugLog("phoenix-dev-gate", "no Gate: directive found");
+        return;
+      }
+      gateCmd = gateMatch[1].trim();
+      // Determine mode from command string
+      isLongGate = /make\s+(ci|llm|llm-phoenix|llm-all|predeploy)([^-]|$)/.test(
+        gateCmd,
+      );
+      debugLog("phoenix-dev-gate", `gate from prose: ${gateCmd}`);
     }
 
-    const gateCmd = gateMatch[1].trim();
+    if (!gateCmd) return;
     debugLog("phoenix-dev-gate", `gate=${gateCmd}`);
-
-    // Only run short gates inline (not make ci, make llm-phoenix, etc.)
-    const isLongGate =
-      /make\s+(ci|llm|llm-phoenix|llm-all|predeploy)([^-]|$)/.test(gateCmd);
 
     if (isLongGate) {
       debugLog("phoenix-dev-gate", "long gate — skipping inline run");
@@ -145,8 +176,10 @@ export function register(pi: ExtensionAPI): void {
           const detail = renderVerdict.slice("INCONCLUSIVE:".length);
           debugLog(
             "phoenix-dev-gate",
-            `render INCONCLUSIVE: ${detail} — non-fatal`,
+            `render INCONCLUSIVE: ${detail} — downgrade to INCONCLUSIVE`,
           );
+          // Render INCONCLUSIVE → gate verdict is INCONCLUSIVE, not ALL CLEAR
+          verdict = `INCONCLUSIVE ⚠️ render-inconclusive: ${detail}`;
           renderSummary = `render: INCONCLUSIVE (${detail}) — skipped`;
         } else if (renderVerdict === "PASS") {
           renderSummary = "render: DOM non-empty, styles applied, 0 JS errors";
@@ -157,6 +190,55 @@ export function register(pi: ExtensionAPI): void {
           "render-check.js not found — skipping render check",
         );
       }
+    }
+
+    // Derive structured verdict for gate-result.json
+    let structuredVerdict = "failed";
+    let structuredMarker = "FAILED ❌";
+    if (verdict === "ALL CLEAR ✅") {
+      structuredVerdict = "clear";
+      structuredMarker = "ALL CLEAR ✅";
+    } else if (verdict.startsWith("INCONCLUSIVE")) {
+      structuredVerdict = "inconclusive";
+      structuredMarker = "INCONCLUSIVE ⚠️";
+    }
+
+    // Write gate-result.json
+    const gateResultDir = path.join(projectDir, "codegen", "gate-pending");
+    try {
+      fs.mkdirSync(gateResultDir, { recursive: true });
+      const now = new Date().toISOString();
+      const gateResult = {
+        gate: gateCmd,
+        mode: isLongGate ? "long" : "short",
+        diff_sha: "unknown",
+        diff_files_count: 0,
+        runner_found: true,
+        exit: 0,
+        execution_evidence: 1,
+        expected_segments: 1,
+        render_verdict: renderSummary,
+        verdict: structuredVerdict,
+        verdict_marker: structuredMarker,
+        classification: "",
+        started: now,
+        ended: now,
+        session_id: sessionId,
+        log: "",
+      };
+      fs.writeFileSync(
+        path.join(gateResultDir, "gate-result.json"),
+        JSON.stringify(gateResult, null, 2),
+      );
+      debugLog(
+        "phoenix-dev-gate",
+        `wrote gate-result.json verdict=${structuredVerdict}`,
+      );
+    } catch (e) {
+      debugLog(
+        "phoenix-dev-gate",
+        `failed to write gate-result.json: ${String(e)}`,
+      );
     }
 
     // Append verdict to step log

@@ -26,9 +26,27 @@ Note: developer reads context/_.md ONLY if the path appears in planner's `## Fil
 
 Orchestrator = haiku coordinator. Planner = opus — one expensive turn. Planner owns ALL orchestration decisions.
 
-Outputs: (1) **Gate** exact command, (2) **Delegation prompt** copy-paste verbatim, (3) **Redundancy check**.
+Outputs: (1) **Gate** structured block, (2) **Delegation prompt** copy-paste verbatim, (3) **Redundancy check**.
 
-**Gate** = literal command, no placeholders (TBD, pending, <...>). Stop hook `planner-gate-set-guard.sh` blocks Stop if **Gate** is missing or placeholder. Fix by editing step log before stopping.
+**Gate** = structured ```gate-json block in `## Plan`, no placeholders. Stop hook `stop-verify-planner-gate.sh` blocks Stop if **Gate** block is missing, placeholder, or malformed JSON (`**GATE_PARSE_ERROR**:` sentinel). Fix by editing step log before stopping.
+
+Gate block SCOPING: gate-json block MUST immediately follow the `**Gate**:` line (max one blank line). Example/documentation gate-json blocks elsewhere in the plan body are not parsed — only the block immediately after `**Gate**:` is authoritative. This prevents format documentation from being misidentified as the actual gate specification.
+
+Gate block format:
+
+```gate-json
+{
+  "command": "make ci",
+  "mode": "short",
+  "timeout": 900
+}
+```
+
+- `command` (string, REQUIRED): exact gate command — no prose, no backticks
+- `mode` (string, REQUIRED): "short" | "long" — "long" for any gate containing `make llm` or `rebuild-seed-then`
+- `timeout` (integer, REQUIRED): seconds; 0 for short gates, 900 for `make ci`, 1500 for `make llm`, 1800 for combined
+
+Prose `**Gate**: \`make ci\`` fallback still accepted for backward compat — but new plans MUST use the gate-json block.
 
 ❌ Never write a commit message or suggest one. Committer owns commit messages — derives from diff.
 
@@ -43,7 +61,7 @@ Domain context: context/<area>.md
 ## Files to touch
 - path/to/file (NEW) — purpose
 
-Gate: <exact command>
+Gate: make ci  (from Plan's gate-json block "command" field)
 ```
 
 ## Core Principles

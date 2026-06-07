@@ -352,5 +352,198 @@ out=$(gate_select_decide "$T10")
 assert_eq "exit-1-detector non-final gate" "gate=make ci" "$(printf '%s' "$out" | sed -n '1p')"
 rm -rf "$T10"
 
+# ── JSON gate block tests ───────────────────────────────────────────────────
+
+# Case J1: Valid gate-json block → correct command/mode/timeout extracted
+TJ1=$(mktemp)
+cat >"$TJ1" <<'MD'
+# Step 1 — test
+
+## Plan
+
+**Gate**:
+
+```gate-json
+{
+  "command": "make ci",
+  "mode": "short",
+  "timeout": 900
+}
+```
+
+## Slices
+MD
+out=$(gate_select_decide "$(mktemp -d)" "$TJ1")
+assert_eq "json gate: command" "gate=make ci" "$(printf '%s' "$out" | sed -n '1p')"
+assert_eq "json gate: mode=short" "mode=short" "$(printf '%s' "$out" | sed -n '2p')"
+assert_eq "json gate: timeout=900" "timeout=900" "$(printf '%s' "$out" | sed -n '3p')"
+rm -f "$TJ1"
+
+# Case J2: Valid gate-json block with long mode
+TJ2=$(mktemp)
+cat >"$TJ2" <<'MD'
+# Step 1 — test
+
+## Plan
+
+**Gate**:
+
+```gate-json
+{
+  "command": "make ci && make llm",
+  "mode": "long",
+  "timeout": 1800
+}
+```
+
+## Slices
+MD
+out=$(gate_select_decide "$(mktemp -d)" "$TJ2")
+assert_eq "json gate long: command" "gate=make ci && make llm" "$(printf '%s' "$out" | sed -n '1p')"
+assert_eq "json gate long: mode=long" "mode=long" "$(printf '%s' "$out" | sed -n '2p')"
+assert_eq "json gate long: timeout=1800" "timeout=1800" "$(printf '%s' "$out" | sed -n '3p')"
+rm -f "$TJ2"
+
+# Case J3: Malformed JSON block → __GATE_PARSE_ERROR__
+TJ3=$(mktemp)
+cat >"$TJ3" <<'MD'
+# Step 1 — test
+
+## Plan
+
+**Gate**:
+
+```gate-json
+{ "command": "make ci", bad json here
+```
+
+## Slices
+MD
+out=$(gate_select_decide "$(mktemp -d)" "$TJ3")
+# gate_select_decide propagates the parse error sentinel
+if printf '%s' "$out" | grep -q '__GATE_PARSE_ERROR__'; then
+    printf 'PASS: malformed json block → __GATE_PARSE_ERROR__\n'
+    pass=$((pass + 1))
+else
+    printf 'FAIL: malformed json block → expected __GATE_PARSE_ERROR__\n  out: %s\n' "$out"
+    fail=$((fail + 1))
+fi
+rm -f "$TJ3"
+
+# Case J4: No JSON block → prose fallback still works
+TJ4=$(mktemp)
+cat >"$TJ4" <<'MD'
+# Step 1 — test
+
+## Plan
+
+**Gate**: `make test`
+
+## Slices
+MD
+out=$(gate_select_decide "$(mktemp -d)" "$TJ4")
+assert_eq "no json block prose fallback: command" "gate=make test" "$(printf '%s' "$out" | sed -n '1p')"
+assert_eq "no json block prose fallback: mode" "mode=short" "$(printf '%s' "$out" | sed -n '2p')"
+rm -f "$TJ4"
+
+# Case J5: JSON mode/timeout override classifier (command says make test but json says long/1500)
+TJ5=$(mktemp)
+cat >"$TJ5" <<'MD'
+# Step 1 — test
+
+## Plan
+
+**Gate**:
+
+```gate-json
+{
+  "command": "make test",
+  "mode": "long",
+  "timeout": 1500
+}
+```
+MD
+out=$(gate_select_decide "$(mktemp -d)" "$TJ5")
+assert_eq "json mode override: mode=long (classifier would say short)" "mode=long" "$(printf '%s' "$out" | sed -n '2p')"
+assert_eq "json timeout override: timeout=1500 (classifier would say 0)" "timeout=1500" "$(printf '%s' "$out" | sed -n '3p')"
+rm -f "$TJ5"
+
+# Case J6: JSON block missing required field → parse error
+TJ6=$(mktemp)
+cat >"$TJ6" <<'MD'
+# Step 1 — test
+
+## Plan
+
+**Gate**:
+
+```gate-json
+{
+  "mode": "short",
+  "timeout": 900
+}
+```
+MD
+out=$(gate_select_decide "$(mktemp -d)" "$TJ6")
+if printf '%s' "$out" | grep -q '__GATE_PARSE_ERROR__'; then
+    printf 'PASS: json missing command field → __GATE_PARSE_ERROR__\n'
+    pass=$((pass + 1))
+else
+    printf 'FAIL: json missing command field → expected __GATE_PARSE_ERROR__\n  out: %s\n' "$out"
+    fail=$((fail + 1))
+fi
+rm -f "$TJ6"
+
+# Case J7: gate-json block in plan body as an EXAMPLE (not after **Gate**:) → prose fallback used
+TJ7=$(mktemp)
+cat >"$TJ7" <<'MD'
+# Step — test
+
+## Plan
+
+**Goal**: Illustrate new gate format.
+
+**Gate format (new)**: gate-json block after **Gate**: in ## Plan, jq-parsed.
+
+**Key assumptions**:
+- Example only: the block below is INSIDE a code fence demo, not the authoritative gate.
+
+**Gate**: `make test`
+
+## Files Modified
+
+nothing
+MD
+out=$(gate_select_decide "$(mktemp -d)" "$TJ7")
+assert_eq "example block in body not extracted: prose gate wins" "gate=make test" "$(printf '%s' "$out" | sed -n '1p')"
+rm -f "$TJ7"
+
+# Case J8: gate-json block after **Gate**: in ## Plan → authoritative (not example)
+TJ8=$(mktemp)
+cat >"$TJ8" <<'MD'
+# Step — test
+
+## Plan
+
+**Goal**: Real gate-json block.
+
+**Gate**:
+
+```gate-json
+{
+  "command": "make test",
+  "mode": "short",
+  "timeout": 0
+}
+```
+
+## Files Modified
+
+nothing
+MD
+out=$(gate_select_decide "$(mktemp -d)" "$TJ8")
+assert_eq "authoritative gate-json block extracted" "gate=make test" "$(printf '%s' "$out" | sed -n '1p')"
+rm -f "$TJ8"
+
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

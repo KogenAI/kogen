@@ -13,6 +13,10 @@
 set -u
 
 source "$(dirname "$0")/lib/hooks-lib.sh"
+# shellcheck disable=SC1091
+source "$(dirname "$0")/lib/gate-control.sh"
+# shellcheck disable=SC1091
+source "$(dirname "$0")/lib/gate-result.sh"
 parse_input
 
 session_id="${SESSION_ID:-unknown}"
@@ -85,20 +89,47 @@ context-curator)
     ;;
 esac
 
-# ScheduleWakeup / async-wait guard — orchestrator is yielding for a background event,
-# not abandoning a cycle. Let it stop.
+# ── In-flight gate check: block if a gate is still running ─────────────────
+# Must run BEFORE async-wait guard and verdict guard to ensure we block when
+# a gate PID is genuinely alive. Only allow the stop if no flag is in flight.
+in_flight_summary=$(gate_control_status "$project_dir" 2>/dev/null || true)
+if [ -n "$in_flight_summary" ]; then
+    # gate_control_status exits 0 and prints summary only when in-flight
+    in_flight_pid=$(printf '%s' "$in_flight_summary" | grep -oE 'pid=[0-9]+' | head -n 1 | cut -d= -f2-)
+    in_flight_gate=$(printf '%s' "$in_flight_summary" | grep -oE 'gate=[^[:space:]]+' | head -n 1 | cut -d= -f2-)
+    debug_log claude-cycle-guard "BLOCK: gate in-flight pid=$in_flight_pid gate=$in_flight_gate"
+    block "An in-flight gate (PID ${in_flight_pid:-unknown}, gate '${in_flight_gate:-unknown}') has not produced a verdict. You MUST NOT end your turn while a gate runs. Wait for the gate to complete and write its verdict to the step log before stopping."
+    exit 0
+fi
+
+# ── ScheduleWakeup / async-wait guard ──────────────────────────────────────
+# Only allow async-wait escape when NO flag is in flight (enforced above).
+# Orchestrator is yielding for a background event, not abandoning a cycle.
 if printf '%s' "$LAST_ASSISTANT_MESSAGE" | grep -qE 'ScheduleWakeup|scheduled.*wakeup|checking back in|seed rebuild|still running|in flight'; then
     debug_log claude-cycle-guard "skip: async-wait signal in last message"
     exit 0
 fi
 
 # Verdict guard — only block if the session log contains an actual VE gate verdict.
+# When gate-result.json exists, cross-check its verdict field.
 # Without this, a VE that was blocked by ve-guard or returned INCONCLUSIVE (no actionable
 # verdict) still triggers the cycle-guard, causing false-positive blocks.
 recent_log=$(session_log_from_transcript)
 if [ -n "$recent_log" ] && [ -r "$recent_log" ]; then
     if ! grep -qE 'ALL CLEAR ✅|FAILED ❌|INCONCLUSIVE ⚠️' "$recent_log" 2>/dev/null; then
-        debug_log claude-cycle-guard "skip: no VE verdict in session log $recent_log"
+        # No emoji verdict in log — check gate-result.json as secondary source
+        stored_verdict=$(gate_result_verdict "$project_dir")
+        if [ -z "$stored_verdict" ] || [ "$stored_verdict" = "inconclusive" ]; then
+            debug_log claude-cycle-guard "skip: no VE verdict in session log $recent_log (gate-result: ${stored_verdict:-absent})"
+            exit 0
+        fi
+        # gate-result.json says failed/clear but log lacks emoji — log may be out of sync
+        debug_log claude-cycle-guard "gate-result.json verdict=$stored_verdict but log has no emoji marker"
+    fi
+    # When gate-result.json says non-clear, don't treat stale log ALL CLEAR as satisfying
+    stored_verdict=$(gate_result_verdict "$project_dir")
+    if [ -n "$stored_verdict" ] && [ "$stored_verdict" != "clear" ]; then
+        debug_log claude-cycle-guard "skip: gate-result.json verdict=$stored_verdict (non-clear)"
         exit 0
     fi
 fi

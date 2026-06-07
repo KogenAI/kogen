@@ -49,10 +49,35 @@ export function register(pi: ExtensionAPI): void {
     if (logContent.includes("INCONCLUSIVE ⚠️")) return;
 
     const hasDeveloper = /## developer.*Section/i.test(logContent);
-    const hasAllClear = /ALL CLEAR ✅/.test(logContent);
+    let hasAllClear = /ALL CLEAR ✅/.test(logContent);
     const hasReviewer = /## reviewer.*Section/i.test(logContent);
     const hasCurator = /## context-curator.*Section/i.test(logContent);
     const hasCommitter = /## committer.*Section/i.test(logContent);
+
+    // Reconcile ALL CLEAR with gate-result.json verdict field
+    const gateResultPath = path.join(
+      projectDir,
+      "codegen",
+      "gate-pending",
+      "gate-result.json",
+    );
+    if (fs.existsSync(gateResultPath)) {
+      try {
+        const gateResult = JSON.parse(
+          fs.readFileSync(gateResultPath, "utf8"),
+        ) as { verdict?: string };
+        if (gateResult.verdict === "clear") {
+          hasAllClear = true; // gate-result.json authoritative clear
+        } else if (
+          gateResult.verdict === "failed" ||
+          gateResult.verdict === "inconclusive"
+        ) {
+          hasAllClear = false; // gate-result.json overrides stale log marker
+        }
+      } catch {
+        // malformed gate-result.json — use log marker only
+      }
+    }
 
     if (hasDeveloper && hasAllClear && !hasReviewer) {
       process.stderr.write(

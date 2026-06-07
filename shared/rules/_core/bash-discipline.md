@@ -63,6 +63,10 @@ set -u  # bare ${ARR[@]} would error if ARR is unset
 exec cmd "${ARR[@]+"${ARR[@]}"}" other_args  # safe even if ARR=() or unset
 ```
 
+**`local` keyword in conditional blocks under `set -u`** — `local` in `if`/`elif` body (main script scope, not function) silently fails under `set -u` if the subsequent variable expansion is unbound — produces no output, no error, script continues. Remove `local` keyword; use bare assignment `VAR=value`. Function scope: `local` is safe.
+
+**Unbound variable in default-value expansion** — `${VAR}` inside `${OTHER:-node "$VAR/path"}` still fails under `set -u` if `VAR` is unset, even though `OTHER` has a default. Use `${VAR:-}` to make unset safe within expansions.
+
 ## Cache Mechanics
 
 Stack rules baked at install via Jinja `{% include %}`. Do NOT runtime-load already-included rules.

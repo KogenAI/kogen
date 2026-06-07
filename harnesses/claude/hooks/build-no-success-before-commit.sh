@@ -25,6 +25,8 @@
 set -u
 
 source "$(dirname "$0")/lib/hooks-lib.sh"
+# shellcheck disable=SC1091
+source "$(dirname "$0")/lib/gate-result.sh"
 parse_input
 
 debug_log build-no-success-before-commit "tool=$TOOL_NAME"
@@ -55,5 +57,12 @@ if [ -z "$latest_commit_ts" ] || [ "$latest_commit_ts" -le "$COMBOBULATE_BUILD_S
     exit 0
 fi
 
-debug_log build-no-success-before-commit "allow: commit at $latest_commit_ts found after build start $COMBOBULATE_BUILD_START_TS"
+# Require structured gate-result.json with verdict=clear in addition to commit check.
+gate_verdict=$(gate_result_verdict "$project_dir")
+if [ "$gate_verdict" != "clear" ]; then
+    deny "BLOCKED by build-no-success-before-commit: BUILD_RESULT: found but gate-result.json does not show verdict=clear (current verdict: '${gate_verdict:-absent}'). A gate must run and produce a clear verdict before signaling build success."
+    exit 0
+fi
+
+debug_log build-no-success-before-commit "allow: commit at $latest_commit_ts found after build start $COMBOBULATE_BUILD_START_TS and gate verdict=clear"
 exit 0

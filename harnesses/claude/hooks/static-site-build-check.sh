@@ -32,6 +32,8 @@
 set -u
 
 source "$(dirname "$0")/lib/hooks-lib.sh"
+# shellcheck disable=SC1091
+source "$(dirname "$0")/lib/gate-result.sh"
 parse_input
 
 # Derive CODEGEN_DIR from script location when not inherited from environment.
@@ -77,12 +79,21 @@ fail() {
 }
 
 # ── Check 1: npm run build ──────────────────────────────────────────────────
+# Sets _NPM_BUILD_SKIPPED=true when package.json is absent (Hugo case).
+_NPM_BUILD_SKIPPED=false
+
 check_npm_build() {
-    [ -f package.json ] || return 0
+    if [ ! -f package.json ]; then
+        _NPM_BUILD_SKIPPED=true
+        return 0
+    fi
 
     # No scripts object at all → tooling-only package.json (e.g. prettier).
     # Not a static-site project; skip npm checks silently.
-    jq -e '.scripts' package.json >/dev/null 2>&1 || return 0
+    if ! jq -e '.scripts' package.json >/dev/null 2>&1; then
+        _NPM_BUILD_SKIPPED=true
+        return 0
+    fi
 
     if ! jq -e '.scripts.build' package.json >/dev/null 2>&1; then
         fail "package.json missing scripts.build"
@@ -91,7 +102,7 @@ check_npm_build() {
     local out
     if ! out=$(mise exec -- npm run build 2>&1); then
         local tail_out
-        tail_out=$(printf '%s' "$out" | tail -n 30)
+        tail_out=$(printf '%s' "$out" | awk '{lines[NR]=$0} END{start=(NR>30)?(NR-29):1; for(i=start;i<=NR;i++) print lines[i]}')
         fail "npm run build failed: $tail_out"
     fi
 }
@@ -191,7 +202,7 @@ render_summary="render: skipped (no output dir)"
 run_render_check() {
     local out_dir="$1"
     local -a render_check_cmd_arr
-    read -ra render_check_cmd_arr <<<"${RENDER_CHECK_CMD:-node \"${CODEGEN_DIR}/harnesses/claude/hooks/lib/render-check.js\"}"
+    read -ra render_check_cmd_arr <<<"${RENDER_CHECK_CMD:-node \"${CODEGEN_DIR:-}/harnesses/claude/hooks/lib/render-check.js\"}"
     local raw
     raw=$("${render_check_cmd_arr[@]}" --mode static --timeout 30000 "$out_dir" 2>/dev/null || true)
     render_verdict=$(printf '%s' "$raw" | grep '^RENDER_VERDICT=' | head -n 1 | cut -d= -f2-)
@@ -228,12 +239,58 @@ if [ -f package.json ] && jq -e '.scripts' package.json >/dev/null 2>&1; then
     fi
 fi
 
-# ── Success: append synthetic SSV section to the active step log ────────────
+# ── Write structured gate result + append SSV section ───────────────────────
 log_file=$(session_log_from_transcript)
+
+# Determine final verdict based on render check result and build mode
+_gate_cmd="mise exec -- npm run build"
+_diff_sha=$(git -C "$project_dir" rev-parse --short HEAD 2>/dev/null || printf 'unknown')
+_diff_count=$(git -C "$project_dir" diff --name-only origin/main...HEAD 2>/dev/null | wc -l | tr -d ' ' || printf '0')
+_ts_now=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+_runner_found="true"
+_render_for_result="$render_verdict"
+
+if [ "$_NPM_BUILD_SKIPPED" = "true" ]; then
+    # No package.json (Hugo case) — runner not applicable, skip gate-result write
+    _runner_found="false"
+    _render_for_result=""
+fi
+
+if [ "$_runner_found" = "true" ]; then
+    case "$render_verdict" in
+    INCONCLUSIVE:*)
+        write_gate_result "$_gate_cmd" "short" "$_diff_sha" "$_diff_count" \
+            "true" 0 1 1 "$render_verdict" "render-inconclusive" \
+            "$_ts_now" "$_ts_now" "${session_id:-unknown}" "" "$project_dir"
+        ;;
+    FAIL:*)
+        # fail() would have already exited; this branch is unreachable here
+        ;;
+    *)
+        write_gate_result "$_gate_cmd" "short" "$_diff_sha" "$_diff_count" \
+            "true" 0 1 1 "$_render_for_result" "" \
+            "$_ts_now" "$_ts_now" "${session_id:-unknown}" "" "$project_dir"
+        ;;
+    esac
+fi
+
 if [ -z "$log_file" ]; then
     debug_log static-site-build-check "no session log in transcript"
 elif [ -w "$log_file" ]; then
-    ts=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+    ts="$_ts_now"
+
+    # Choose result line based on render verdict
+    result_line=""
+    case "$render_verdict" in
+    INCONCLUSIVE:*)
+        inc_detail="${render_verdict#INCONCLUSIVE:}"
+        result_line="INCONCLUSIVE ⚠️ render-inconclusive: $inc_detail"
+        ;;
+    *)
+        result_line="ALL CLEAR ✅"
+        ;;
+    esac
+
     {
         printf '\n## static-site-verifier Section\n\n'
         printf '**Rules loaded**: deterministic hook (static-site-build-check.sh) — no rules loaded\n\n'
@@ -247,10 +304,10 @@ elif [ -w "$log_file" ]; then
         printf '| %s | find public/dist -name *.css | 0 | CSS output file check |\n' "$ts"
         printf '| %s | grep link.rel.stylesheet public/index.html | 0 | stylesheet link check |\n' "$ts"
         printf '| %s | node render-check.js --mode static | 0 | render verification |\n' "$ts"
-        printf '\n**Result**: ALL CLEAR ✅\n'
+        printf '\n**Result**: %s\n' "$result_line"
         printf '\n%s\n' "$render_summary"
     } >>"$log_file"
-    debug_log static-site-build-check "appended SSV section to $log_file"
+    debug_log static-site-build-check "appended SSV section ($result_line) to $log_file"
 fi
 
 exit 0

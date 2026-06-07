@@ -210,7 +210,7 @@ STUB5=$(make_render_stub "INCONCLUSIVE:browser-not-installed")
 out5=$(printf '%s' "$(input_for "$T5" developer-phoenix-backend false sess1 "$T5/transcript.jsonl")" |
     RENDER_CHECK_CMD="$STUB5" CODEGEN_DIR="$SCRIPT_DIR" bash "$HOOK" 2>/dev/null || true)
 assert_not_contains "render INCONCLUSIVE: no block" '"decision": "block"' "$out5"
-assert_file_contains "render INCONCLUSIVE: ALL CLEAR in log" "ALL CLEAR" "$LOG5"
+assert_file_not_contains "render INCONCLUSIVE: no ALL CLEAR in log (downgraded to INCONCLUSIVE)" "ALL CLEAR" "$LOG5"
 assert_file_contains "render INCONCLUSIVE: INCONCLUSIVE note in log" "INCONCLUSIVE" "$LOG5"
 rm -f "$STUB5"
 rm -rf "$T5"
@@ -230,7 +230,8 @@ STUB6=$(make_render_stub "INCONCLUSIVE:server-unready")
 out6=$(printf '%s' "$(input_for "$T6" developer-phoenix-backend false sess1 "$T6/transcript.jsonl")" |
     RENDER_CHECK_CMD="$STUB6" CODEGEN_DIR="$SCRIPT_DIR" bash "$HOOK" 2>/dev/null || true)
 assert_not_contains "render server-unready: no block" '"decision": "block"' "$out6"
-assert_file_contains "render server-unready: ALL CLEAR in log" "ALL CLEAR" "$LOG6"
+assert_file_not_contains "render server-unready: no ALL CLEAR in log (downgraded to INCONCLUSIVE)" "ALL CLEAR" "$LOG6"
+assert_file_contains "render server-unready: INCONCLUSIVE note in log" "INCONCLUSIVE" "$LOG6"
 rm -f "$STUB6"
 rm -rf "$T6"
 

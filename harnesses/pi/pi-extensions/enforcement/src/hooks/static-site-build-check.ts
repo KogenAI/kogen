@@ -40,7 +40,14 @@ export function register(pi: ExtensionAPI): void {
     const projectDir = ev?.input?.cwd ?? process.env["CWD"] ?? process.cwd();
     debugLog("static-site-build-check", `agent=${agentType} cwd=${projectDir}`);
 
-    if (!fs.existsSync(path.join(projectDir, "package.json"))) return;
+    // No package.json → Hugo case; runner not applicable, skip ALL CLEAR (not a build project)
+    if (!fs.existsSync(path.join(projectDir, "package.json"))) {
+      debugLog(
+        "static-site-build-check",
+        "no package.json — Hugo/static site, skipping npm build check",
+      );
+      return;
+    }
 
     try {
       execSync("mise exec -- npm run build", {
@@ -128,7 +135,11 @@ export function register(pi: ExtensionAPI): void {
       const detail = renderVerdict.slice("INCONCLUSIVE:".length);
       debugLog(
         "static-site-build-check",
-        `render INCONCLUSIVE: ${detail} — non-fatal`,
+        `render INCONCLUSIVE: ${detail} — downgrade to INCONCLUSIVE (not ALL CLEAR)`,
+      );
+      // Render INCONCLUSIVE → surface as INCONCLUSIVE warning, not silent pass
+      process.stderr.write(
+        `[pi-enforcement:static-site-build-check] render INCONCLUSIVE: ${detail} — gate is inconclusive, not ALL CLEAR\n`,
       );
     }
     // PASS: no action needed (non-blocking success)

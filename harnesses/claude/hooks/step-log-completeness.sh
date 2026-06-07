@@ -27,6 +27,8 @@
 set -u
 
 source "$(dirname "$0")/lib/hooks-lib.sh"
+# shellcheck disable=SC1091
+source "$(dirname "$0")/lib/gate-result.sh"
 parse_input
 
 session_id="${SESSION_ID:-unknown}"
@@ -86,9 +88,26 @@ fi
 
 # (phoenix-)?dev-gate Section with ALL CLEAR ✅ present?
 # Accept either "## dev-gate Section" or "## phoenix-dev-gate Section"
+# Also check gate-result.json verdict field as authoritative source.
 if grep -qE '^## (phoenix-)?dev-gate Section' "$log_file" 2>/dev/null; then
     if grep -qF 'ALL CLEAR ✅' "$log_file" 2>/dev/null; then
+        # Cross-check with gate-result.json when present.
+        # If gate-result.json verdict is non-clear, don't count stale log as ALL CLEAR.
+        stored_verdict=$(gate_result_verdict "$project_dir")
+        if [ -z "$stored_verdict" ] || [ "$stored_verdict" = "clear" ]; then
+            has_gate_all_clear=1
+        else
+            debug_log step-log-completeness "gate-result.json verdict=$stored_verdict overrides log ALL CLEAR"
+        fi
+    fi
+fi
+
+# Also accept gate-result.json verdict=clear even without log ALL CLEAR marker
+if [ "$has_gate_all_clear" = "0" ] && grep -qE '^## (phoenix-)?dev-gate Section' "$log_file" 2>/dev/null; then
+    stored_verdict=$(gate_result_verdict "$project_dir")
+    if [ "$stored_verdict" = "clear" ]; then
         has_gate_all_clear=1
+        debug_log step-log-completeness "gate-result.json verdict=clear (log marker absent)"
     fi
 fi
 

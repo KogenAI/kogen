@@ -70,9 +70,20 @@ gate_value=$(gate_select_read_planner_gate "$log_file")
 
 debug_log stop-verify-planner-gate "gate_value=$gate_value"
 
+# Block if gate-json block parse error
+case "$gate_value" in
+__GATE_PARSE_ERROR__:*)
+    parse_reason="${gate_value#__GATE_PARSE_ERROR__:}"
+    reason="stop-verify-planner-gate: planner stopped with a malformed \`\`\`gate-json block in \`## Plan\` of ${log_file}: ${parse_reason}. Fix the gate-json block so it is valid JSON with required fields command, mode, timeout (all strings/integers), then return."
+    debug_log stop-verify-planner-gate "BLOCK: gate-json parse error: $parse_reason"
+    block "$reason"
+    exit 0
+    ;;
+esac
+
 # Block if gate is empty
 if [ -z "$gate_value" ]; then
-    reason="stop-verify-planner-gate: planner stopped with \`**Gate**:\` missing or placeholder in \`## Plan\` of ${log_file}. Per codegen/rules/roles/planner.md Outputs (1), planner MUST declare exact gate command before Stop. Edit step log to set \`**Gate**: <make target>\` inside ## Plan, then return."
+    reason="stop-verify-planner-gate: planner stopped with \`**Gate**:\` missing or placeholder in \`## Plan\` of ${log_file}. Per codegen/rules/roles/planner.md Outputs (1), planner MUST declare exact gate command before Stop. Edit step log to set a \`\`\`gate-json block or \`**Gate**: <make target>\` inside ## Plan, then return."
     debug_log stop-verify-planner-gate "BLOCK: gate empty"
     block "$reason"
     exit 0

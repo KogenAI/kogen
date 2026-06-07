@@ -45,7 +45,7 @@ shared/rules/build-runtime/
 ## Integration Points
 
 - **subagents**: stack-specific `.md.j2` templates `{% include %}` the matching stack rules — `developer-phoenix-backend.md.j2` includes phoenix rules; `developer-html.md.j2` includes static rules
-- **hooks**: `gate-select.sh` picks the correct gate script (phoenix vs static) based on detected stack — see `context/hooks.md`
+- **hooks**: `gate-select.sh` picks the correct gate script (phoenix vs static) based on detected stack; parses ```gate-json block from `## Plan`— see`context/hooks.md`
 - **rules-core**: stack rules are additive; core discipline rules (`context/rules-core.md`) apply regardless of stack
 - **rules-roles**: stack rules extend role rules for stack-specific scenarios (e.g. phoenix orchestrator INCONCLUSIVE table extends generic orchestrator rules)
 

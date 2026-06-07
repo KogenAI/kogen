@@ -80,7 +80,15 @@ First: `./codegen/PROJECT_CONTEXT.md`. `CONTEXT: user-app-build` → `./PLATFORM
 1. <concrete step>
 ...
 
-**Gate**: `make <ci|targeted test run>` — exact command orchestrator passes to dev/VE
+**Gate**:
+
+```gate-json
+{
+  "command": "make <ci|targeted test run>",
+  "mode": "<short|long>",
+  "timeout": <seconds; 0 for short, 900 for make ci, 1500 for make llm, 1800 for make ci && make llm>
+}
+```
 
 ## Slices
 
@@ -123,7 +131,7 @@ Domain context: context/llm.md, context/builds.md
 - test/<app>/<context>_test.exs (NEW) — what asserts
 - context/<area>.md (EDIT) — update section Y with new behavior
 
-Gate: make ci
+Gate: make ci  (from Plan's gate-json block "command" field)
 
 SESSION LOG: codegen/logging/...
 ```

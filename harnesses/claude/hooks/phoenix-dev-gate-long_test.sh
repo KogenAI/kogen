@@ -136,9 +136,11 @@ rm -rf "$T5"
 T11=$(make_project)
 LOG11="$T11/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_step1_pass.md"
 # Create a stub `make` that exits 0 after 2s (mode=long because gate is "make llm").
+# Prints a "make llm" line so the execution evidence check sees evidence.
 stub_bin11=$(mktemp -d)
 cat >"$stub_bin11/make" <<'SH'
 #!/usr/bin/env bash
+echo "make llm"
 sleep 2
 exit 0
 SH
@@ -217,6 +219,7 @@ LOG14="$T14/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_step1_sweep_allclear.md"
 stub_bin14=$(mktemp -d)
 cat >"$stub_bin14/make" <<'SH'
 #!/usr/bin/env bash
+echo "make llm"
 exit 0
 SH
 chmod +x "$stub_bin14/make"

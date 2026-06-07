@@ -81,7 +81,7 @@ assert_contains "BUILD_START_TS set, no new commit → BLOCK" '"permissionDecisi
 assert_contains "BLOCK reason mentions commit" 'git commit' "$out"
 rm -rf "$T3"
 
-# ── Test 4: BUILD_START_TS set, commit made after ts → ALLOW ────────────────
+# ── Test 4: BUILD_START_TS set, commit made after ts, gate-result clear → ALLOW ─
 T4=$(make_project)
 ts4=$(date -u +%s)
 # Small sleep to ensure commit is after ts4
@@ -92,6 +92,9 @@ sleep 1
     git add README
     git commit -qm "generated code"
 )
+# Write a gate-result.json with verdict=clear so the hook's gate check passes
+mkdir -p "$T4/codegen/gate-pending"
+printf '{"verdict":"clear","gate":"make ci","exit_code":0}\n' >"$T4/codegen/gate-pending/gate-result.json"
 out=$(make_input 'echo "BUILD_RESULT: success"' "$T4" | COMBOBULATE_BUILD_START_TS="$ts4" bash "$HOOK" 2>/dev/null || true)
 assert_not_contains "commit after BUILD_START_TS → ALLOW" '"permissionDecision"' "$out"
 rm -rf "$T4"

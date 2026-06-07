@@ -45,6 +45,45 @@ export function register(pi: ExtensionAPI): void {
       return;
     }
 
+    // Check for in-flight gate (latest.flag with live PID)
+    const flagPath = path.join(
+      projectDir,
+      "codegen",
+      "gate-pending",
+      "latest.flag",
+    );
+    if (fs.existsSync(flagPath)) {
+      try {
+        const flagContent = fs.readFileSync(flagPath, "utf8");
+        const pidMatch = flagContent.match(/^pid=(\d+)/m);
+        const gateMatch = flagContent.match(/^gate=(.+)/m);
+        if (pidMatch) {
+          const pid = parseInt(pidMatch[1], 10);
+          const gateCmd = gateMatch ? gateMatch[1].trim() : "unknown";
+          // Check if PID is alive
+          try {
+            process.kill(pid, 0); // throws if dead
+            // PID is alive — gate in flight
+            count += 1;
+            fs.writeFileSync(counterFile, String(count));
+            process.stderr.write(
+              `[pi-enforcement:stop-cycle-guard] WARNING: An in-flight gate (PID ${pid}, gate '${gateCmd}') has not produced a verdict. You MUST NOT end your turn while a gate runs. Count: ${count}\n`,
+            );
+            return;
+          } catch {
+            // PID dead — sweep flag
+            try {
+              fs.rmSync(flagPath, { force: true });
+            } catch {
+              // ignore cleanup errors
+            }
+          }
+        }
+      } catch {
+        // flag read error — ignore
+      }
+    }
+
     // Find active step log
     const loggingDir = path.join(projectDir, "codegen", "logging");
     if (!fs.existsSync(loggingDir)) return;

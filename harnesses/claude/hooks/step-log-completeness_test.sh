@@ -343,5 +343,42 @@ out=$(make_input "$T15" false "" "$T15/transcript.jsonl" | bash "$HOOK" 2>/dev/n
 assert_not_contains "gate FAILED (no ALL CLEAR) → no block by this hook" '"decision"' "$out"
 rm -rf "$T15"
 
+# ── Test 16: gate-result.json verdict=failed overrides log ALL CLEAR → no block ─
+# Log has ALL CLEAR ✅ but gate-result.json says verdict=failed → treat as not cleared
+T16=$(make_project)
+LOG16="$T16/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_step1_test.md"
+cat >"$LOG16" <<'MD'
+## developer-phoenix-backend Section
+
+## dev-gate Section
+
+ALL CLEAR ✅
+MD
+mkdir -p "$T16/codegen/gate-pending"
+printf '{"verdict":"failed","verdict_marker":"FAILED ❌"}' >"$T16/codegen/gate-pending/gate-result.json"
+make_transcript "$T16/transcript.jsonl" "$LOG16"
+out=$(make_input "$T16" false "" "$T16/transcript.jsonl" | bash "$HOOK" 2>/dev/null || true)
+# verdict=failed in gate-result.json means has_gate_all_clear=0 → no block from section A
+assert_not_contains "gate-result.json failed overrides log ALL CLEAR → no block from section A" '"decision"' "$out"
+rm -rf "$T16"
+
+# ── Test 17: gate-result.json verdict=clear enables block even without log marker ─
+T17=$(make_project)
+LOG17="$T17/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_step1_test.md"
+cat >"$LOG17" <<'MD'
+## developer-phoenix-backend Section
+
+## dev-gate Section
+
+Gate ran but no ALL CLEAR marker written.
+MD
+mkdir -p "$T17/codegen/gate-pending"
+printf '{"verdict":"clear","verdict_marker":"ALL CLEAR ✅"}' >"$T17/codegen/gate-pending/gate-result.json"
+make_transcript "$T17/transcript.jsonl" "$LOG17"
+out=$(make_input "$T17" false "" "$T17/transcript.jsonl" | bash "$HOOK" 2>/dev/null || true)
+# gate-result.json clear → has_gate_all_clear=1 → block (no reviewer yet)
+assert_contains "gate-result.json clear enables ALL CLEAR detection → BLOCK" '"decision"' "$out"
+rm -rf "$T17"
+
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

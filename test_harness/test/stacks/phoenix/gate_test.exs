@@ -49,6 +49,20 @@ defmodule CodegenTestHarness.Stacks.Phoenix.GateTest do
     Assertions.assert_router_root_route_replaced!(router)
     Assertions.assert_renders!(cwd, :phoenix)
 
+    # Structured gate-result.json must be produced by the dev-gate hook
+    gate_result_path = Path.join(cwd, "codegen/gate-pending/gate-result.json")
+
+    assert File.exists?(gate_result_path),
+           "expected gate-result.json at #{gate_result_path} — dev-gate hook must write structured result"
+
+    gate_result = gate_result_path |> File.read!() |> Jason.decode!()
+
+    assert gate_result["verdict"] == "clear",
+           "expected gate-result.json verdict=clear, got: #{inspect(gate_result["verdict"])}"
+
+    assert is_binary(gate_result["gate"]) and gate_result["gate"] != "",
+           "expected gate-result.json gate field to be non-empty string"
+
     Fixtures.bench_assertions_passed!("phoenix", "gate_phoenix_exit0")
   end
 end
