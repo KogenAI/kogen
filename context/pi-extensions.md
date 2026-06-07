@@ -55,8 +55,12 @@ Pi `tool_call` event handlers receive `event.toolName` as lowercase pipe-separat
 ```typescript
 pi.on("tool_call", (event) => {
   const toolNames = event.toolName.split("|");
-  if (toolNames.includes("bash")) { /* ... */ }
-  if (toolNames.includes("edit")) { /* ... */ }
+  if (toolNames.includes("bash")) {
+    /* ... */
+  }
+  if (toolNames.includes("edit")) {
+    /* ... */
+  }
 });
 ```
 

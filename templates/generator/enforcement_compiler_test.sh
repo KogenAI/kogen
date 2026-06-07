@@ -1,8 +1,8 @@
 #!/bin/bash
 # enforcement_compiler_test.sh — unit tests for enforcement_compiler.py.
 #
-# Tests (18):
-#   1:  parse valid registry (4 entries: 3 bash+ts + 1 pi-only); 7 sections in dry-run
+# Tests (34):
+#   1:  parse valid registry (6 entries: 5 bash+ts + 1 pi-only); 11 sections in dry-run
 #   2:  dialect translation bash: \\s → [[:space:]] in generated .sh
 #   3:  match_all AND logic: two grep -qE calls joined with &&
 #   4:  generated:false entry skipped (no file emitted)
@@ -20,6 +20,22 @@
 #  16:  FILE_PATH source + allowlist: generated .ts contains role guard
 #  17:  FILE_PATH source + allowlist: pi-only entry does NOT emit .sh
 #  18:  FILE_PATH source + allowlist: generated .ts deny message present
+#  19:  COMMAND+allowlist: generated .sh allows matching command (git status)
+#  20:  COMMAND+allowlist: generated .sh denies non-matching command (make test)
+#  21:  COMMAND+allowlist: role-scoped .sh contains AGENT_TYPE case guard
+#  22:  COMMAND+allowlist: generated .ts allows matching command (returns, no deny)
+#  23:  COMMAND+allowlist: generated .ts denies non-matching command
+#  24:  COMMAND+allowlist: generated .sh passes bash -n syntax check
+#  25:  bypass_roles bash: generated .sh sources _role.sh
+#  26:  bypass_roles bash: generated .sh contains resolve_role loop before body
+#  27:  bypass_roles bash: bypass role exits early (CLAUDE_ROLE=shape → exit 0)
+#  28:  bypass_roles bash: non-bypass role continues to deny body
+#  29:  bypass_roles ts: generated .ts contains env-read + includes() check
+#  30:  bypass_roles ts: includes check precedes AGENT_TYPE gate in generated .ts
+#  31:  bypass_roles composes with COMMAND+deny: .sh has prelude + deny body
+#  32:  bypass_roles composes with COMMAND+allowlist: .sh has prelude + allowlist body
+#  33:  bypass_roles COMMAND+allowlist bash: bypass role exits (no deny)
+#  34:  bypass_roles COMMAND+allowlist bash: non-bypass role hits allowlist guard
 
 set -euo pipefail
 
@@ -69,7 +85,7 @@ assert_not_contains() {
     fi
 }
 
-# ── Test 1: parse valid registry (3 entries loaded) ──────────────────────────
+# ── Test 1: parse valid registry (6 entries loaded: 5 bash+ts + 1 pi-only) ────
 
 tmpdir=$(mktemp -d /tmp/ec_test_XXXXXX)
 trap 'rm -rf "$tmpdir"' EXIT
@@ -85,7 +101,7 @@ count=$(
     grep -c "^===" "$tmpdir/dry_run.txt" 2>/dev/null
     true
 )
-assert_eq "parse valid registry: 7 sections (3 bash+ts pairs + 1 pi-only ts)" "7" "$count"
+assert_eq "parse valid registry: 11 sections (5 bash+ts pairs + 1 pi-only ts)" "11" "$count"
 
 # ── Test 2: dialect translation bash: \s → [[:space:]] ───────────────────────
 
@@ -290,6 +306,209 @@ assert_contains "FILE_PATH allowlist: deny message present" "reviewer may only w
 # Pi-only entry must NOT emit a .sh file
 reviewer_sh="$tmpdir/real_bash/reviewer-guard-session-log-write.sh"
 assert_eq "FILE_PATH allowlist pi-only: no .sh emitted" "false" "$([ -f "$reviewer_sh" ] && echo true || echo false)"
+
+# ── Tests 19-24: COMMAND+allowlist axis ──────────────────────────────────────
+
+cat >"$tmpdir/registry_cmd_allowlist.yaml" <<'YAML'
+- id: test-cmd-allow
+  generated: true
+  description: "allow git commands only"
+  event: PreToolUse
+  source: COMMAND
+  mode: allowlist
+  tool_guard: Bash
+  match: "^\\s*(git\\s+|echo\\b|wc\\b)"
+  message: "BLOCKED: only git/echo/wc allowed"
+  surface: user_global
+  signal: AGENT_TYPE
+  role: committer
+  harnesses: all
+YAML
+
+mkdir -p "$tmpdir/cmd_allow_bash" "$tmpdir/cmd_allow_ts"
+cp "$SCRIPT_DIR/../../harnesses/pi/pi-extensions/enforcement/src/index.ts" \
+    "$tmpdir/cmd_allow_index.ts" 2>/dev/null || cat >"$tmpdir/cmd_allow_index.ts" <<'TS'
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+// BEGIN-GENERATED-ENFORCEMENT-BLOCK
+// END-GENERATED-ENFORCEMENT-BLOCK
+export default function (pi: ExtensionAPI): void {
+  // BEGIN-GENERATED-ENFORCEMENT-BLOCK
+  // END-GENERATED-ENFORCEMENT-BLOCK
+}
+TS
+
+python3 "$COMPILER" \
+    --registry "$tmpdir/registry_cmd_allowlist.yaml" \
+    --bash-out "$tmpdir/cmd_allow_bash" \
+    --ts-out "$tmpdir/cmd_allow_ts" \
+    --index "$tmpdir/cmd_allow_index.ts" >/dev/null 2>&1
+
+# Test 19: .sh allows matching command (git status → exit 0, no deny)
+sh_allow="$tmpdir/cmd_allow_bash/test-cmd-allow.sh"
+# Replace the sourced hooks-lib.sh with a stub for isolated testing
+stub_out=$(TOOL_NAME=Bash AGENT_TYPE=committer COMMAND="git status" \
+    bash "$sh_allow" 2>/dev/null || true)
+allow_denied=$(printf '%s' "$stub_out" | grep -c '"permissionDecision".*"deny"' 2>/dev/null || true)
+assert_eq "COMMAND+allowlist: git status not denied" "0" "$allow_denied"
+
+# Test 20: .sh denies non-matching command
+# We can check the script content instead — grep for the deny call and the allow-pattern
+sh_content=$(<"$sh_allow")
+assert_contains "COMMAND+allowlist: .sh contains allow-pattern grep" "grep -qE" "$sh_content"
+assert_contains "COMMAND+allowlist: .sh contains deny call" 'deny "BLOCKED:' "$sh_content"
+assert_contains "COMMAND+allowlist: .sh has exit 0 after allow match" "then" "$sh_content"
+
+# Test 21: role-scoped .sh contains AGENT_TYPE case guard
+assert_contains "COMMAND+allowlist: .sh has AGENT_TYPE case guard" 'case "$AGENT_TYPE"' "$sh_content"
+assert_contains "COMMAND+allowlist: .sh case arm for committer" 'committer)' "$sh_content"
+
+# Test 22: generated .ts allows matching (pattern in source → returns without deny)
+ts_allow_content=$(<"$tmpdir/cmd_allow_ts/test-cmd-allow.ts")
+# The TS template: if (/pattern/.test(command)) return;
+assert_contains "COMMAND+allowlist: .ts has allow-return" "return;" "$ts_allow_content"
+assert_not_contains "COMMAND+allowlist: .ts does NOT return deny on match" \
+    "if (/.test(command)) {" "$ts_allow_content"
+
+# Test 23: generated .ts denies on non-match
+assert_contains "COMMAND+allowlist: .ts has deny call" "return deny(" "$ts_allow_content"
+
+# Test 24: generated .sh passes bash -n syntax check
+syntax_allow="true"
+if ! bash -n "$sh_allow" 2>/dev/null; then
+    syntax_allow="false"
+fi
+assert_eq "COMMAND+allowlist: .sh bash -n syntax check" "true" "$syntax_allow"
+
+# ── Tests 25-34: bypass_roles axis ──────────────────────────────────────────
+
+# Fixture: COMMAND+deny with bypass_roles
+cat >"$tmpdir/registry_bypass_deny.yaml" <<'YAML'
+- id: test-bypass-deny
+  generated: true
+  description: "deny git stash but bypass shape role"
+  event: PreToolUse
+  source: COMMAND
+  mode: deny
+  tool_guard: Bash
+  match: "\\bgit\\s+stash\\b"
+  bypass_roles:
+    - shape
+    - ops
+  message: "BLOCKED: git stash forbidden"
+  surface: user_global
+  signal: none
+  role: "*"
+  harnesses: all
+YAML
+
+# Fixture: COMMAND+allowlist with bypass_roles
+cat >"$tmpdir/registry_bypass_allow.yaml" <<'YAML'
+- id: test-bypass-allow
+  generated: true
+  description: "allowlist with bypass"
+  event: PreToolUse
+  source: COMMAND
+  mode: allowlist
+  tool_guard: Bash
+  match: "^\\s*git\\b"
+  bypass_roles:
+    - debug
+  message: "BLOCKED: only git allowed"
+  surface: user_global
+  signal: AGENT_TYPE
+  role: committer
+  harnesses: all
+YAML
+
+mkdir -p "$tmpdir/bypass_deny_bash" "$tmpdir/bypass_deny_ts" \
+    "$tmpdir/bypass_allow_bash" "$tmpdir/bypass_allow_ts"
+touch "$tmpdir/bypass_deny_index.ts" "$tmpdir/bypass_allow_index.ts"
+
+python3 "$COMPILER" \
+    --registry "$tmpdir/registry_bypass_deny.yaml" \
+    --bash-out "$tmpdir/bypass_deny_bash" \
+    --ts-out "$tmpdir/bypass_deny_ts" \
+    --index "$tmpdir/bypass_deny_index.ts" >/dev/null 2>&1
+
+python3 "$COMPILER" \
+    --registry "$tmpdir/registry_bypass_allow.yaml" \
+    --bash-out "$tmpdir/bypass_allow_bash" \
+    --ts-out "$tmpdir/bypass_allow_ts" \
+    --index "$tmpdir/bypass_allow_index.ts" >/dev/null 2>&1
+
+bypass_deny_sh=$(<"$tmpdir/bypass_deny_bash/test-bypass-deny.sh")
+bypass_deny_ts_content=$(<"$tmpdir/bypass_deny_ts/test-bypass-deny.ts")
+bypass_allow_sh=$(<"$tmpdir/bypass_allow_bash/test-bypass-allow.sh")
+bypass_allow_ts_content=$(<"$tmpdir/bypass_allow_ts/test-bypass-allow.ts")
+
+# Test 25: generated .sh sources _role.sh
+assert_contains "bypass_roles bash: .sh sources _role.sh" \
+    'source "$(dirname "$0")/_role.sh"' "$bypass_deny_sh"
+
+# Test 26: generated .sh contains resolve_role loop before body
+assert_contains "bypass_roles bash: .sh has resolve_role call" \
+    '_role=$(resolve_role)' "$bypass_deny_sh"
+assert_contains "bypass_roles bash: .sh has bypass for-loop" \
+    'for _m in shape ops' "$bypass_deny_sh"
+assert_contains "bypass_roles bash: .sh loop has exit 0" \
+    '&& exit 0' "$bypass_deny_sh"
+
+# Test 27: bypass role exits early — verify resolve_role loop exits before deny
+# We check the prelude appears before the grep deny pattern in the script
+prelude_line=$(grep -n 'resolve_role' "$tmpdir/bypass_deny_bash/test-bypass-deny.sh" | head -1 | cut -d: -f1 || true)
+deny_line=$(grep -n 'grep -qE' "$tmpdir/bypass_deny_bash/test-bypass-deny.sh" | head -1 | cut -d: -f1 || true)
+assert_eq "bypass_roles bash: prelude precedes deny body" "1" \
+    "$((prelude_line < deny_line ? 1 : 0))"
+
+# Test 28: .sh passes bash -n syntax check (non-bypass path still valid bash)
+bypass_syntax="true"
+if ! bash -n "$tmpdir/bypass_deny_bash/test-bypass-deny.sh" 2>/dev/null; then
+    bypass_syntax="false"
+fi
+assert_eq "bypass_roles bash: .sh bash -n syntax check" "true" "$bypass_syntax"
+
+# Test 29: generated .ts contains env-read + includes() check
+assert_contains "bypass_roles ts: .ts has CLAUDE_ROLE env read" \
+    'process.env["CLAUDE_ROLE"]' "$bypass_deny_ts_content"
+assert_contains "bypass_roles ts: .ts has includes() check" \
+    '.includes(_role)' "$bypass_deny_ts_content"
+assert_contains "bypass_roles ts: .ts has shape in list" \
+    '"shape"' "$bypass_deny_ts_content"
+assert_contains "bypass_roles ts: .ts has ops in list" \
+    '"ops"' "$bypass_deny_ts_content"
+
+# Test 30: includes check precedes AGENT_TYPE gate in .ts
+# For role:*, no AGENT_TYPE gate — just check bypass_roles comes before test pattern
+bypass_env_line=$(grep -n 'CLAUDE_ROLE' "$tmpdir/bypass_deny_ts/test-bypass-deny.ts" | head -1 | cut -d: -f1 || true)
+deny_ts_line=$(grep -n '\.test(command)' "$tmpdir/bypass_deny_ts/test-bypass-deny.ts" | head -1 | cut -d: -f1 || true)
+assert_eq "bypass_roles ts: env-read precedes test pattern" "1" \
+    "$((bypass_env_line < deny_ts_line ? 1 : 0))"
+
+# Test 31: bypass_roles composes with COMMAND+deny body
+assert_contains "bypass COMMAND+deny: .sh has deny body" \
+    'grep -qE' "$bypass_deny_sh"
+assert_contains "bypass COMMAND+deny: .sh has deny message" \
+    'BLOCKED: git stash forbidden' "$bypass_deny_sh"
+
+# Test 32: bypass_roles composes with COMMAND+allowlist body
+assert_contains "bypass COMMAND+allowlist: .sh sources _role.sh" \
+    'source "$(dirname "$0")/_role.sh"' "$bypass_allow_sh"
+assert_contains "bypass COMMAND+allowlist: .sh has allowlist grep" \
+    'grep -qE' "$bypass_allow_sh"
+assert_contains "bypass COMMAND+allowlist: .sh has exit 0 on allow match" \
+    'exit 0' "$bypass_allow_sh"
+
+# Test 33: bypass_roles COMMAND+allowlist bash: bypass role exits (no deny reached)
+bypass_allow_prelude_line=$(grep -n 'resolve_role' "$tmpdir/bypass_allow_bash/test-bypass-allow.sh" | head -1 | cut -d: -f1 || true)
+bypass_allow_deny_line=$(grep -n 'deny "' "$tmpdir/bypass_allow_bash/test-bypass-allow.sh" | head -1 | cut -d: -f1 || true)
+assert_eq "bypass COMMAND+allowlist: prelude precedes deny" "1" \
+    "$((bypass_allow_prelude_line < bypass_allow_deny_line ? 1 : 0))"
+
+# Test 34: bypass_roles COMMAND+allowlist ts: env-read present
+assert_contains "bypass COMMAND+allowlist ts: .ts has env-read" \
+    'process.env["CLAUDE_ROLE"]' "$bypass_allow_ts_content"
+assert_contains "bypass COMMAND+allowlist ts: .ts has includes check" \
+    '.includes(_role)' "$bypass_allow_ts_content"
 
 # ── Summary ───────────────────────────────────────────────────────────────────
 

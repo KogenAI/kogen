@@ -1,6 +1,6 @@
 /**
- * Tests for committer-tool-guard hook.
- * Mirrors cases from committer-tool-guard_test.sh.
+ * Tests for committer-bash-allowlist hook.
+ * Ports cases 1-13 and 19 from committer-tool-guard_test.sh / committer-tool-guard.test.ts.
  */
 
 import { describe, it, beforeEach } from "node:test";
@@ -14,7 +14,7 @@ function makeFileEvent(toolName: "write" | "edit", file_path: string) {
   return { toolName, toolCallId: "test-id", input: { file_path } };
 }
 
-describe("committer-tool-guard", () => {
+describe("committer-bash-allowlist", () => {
   let _capturedHandler: (event: unknown) => Promise<unknown>;
 
   const mockPi = {
@@ -25,7 +25,7 @@ describe("committer-tool-guard", () => {
 
   async function runBashHook(command: string, agentType = "committer") {
     process.env["AGENT_TYPE"] = agentType;
-    const { register } = await import("../committer-tool-guard");
+    const { register } = await import("../committer-bash-allowlist");
     register(
       mockPi as unknown as import("@earendil-works/pi-coding-agent").ExtensionAPI,
     );
@@ -38,7 +38,7 @@ describe("committer-tool-guard", () => {
     agentType = "committer",
   ) {
     process.env["AGENT_TYPE"] = agentType;
-    const { register } = await import("../committer-tool-guard");
+    const { register } = await import("../committer-bash-allowlist");
     register(
       mockPi as unknown as import("@earendil-works/pi-coding-agent").ExtensionAPI,
     );
@@ -118,44 +118,6 @@ describe("committer-tool-guard", () => {
     assert.ok((result as { block?: boolean }).block === true);
   });
 
-  // ── Write/Edit: ALLOW (canonical session log path) ─────────────────────
-
-  it("allows Write to canonical session log", async () => {
-    const result = await runFileHook(
-      "write",
-      "codegen/logging/20260607_120000_session.md",
-    );
-    assert.ok(result == null || (result as { block?: boolean }).block !== true);
-  });
-
-  it("allows Edit to canonical step log", async () => {
-    const result = await runFileHook(
-      "edit",
-      "codegen/logging/20260607_120000_step1_my-task.md",
-    );
-    assert.ok(result == null || (result as { block?: boolean }).block !== true);
-  });
-
-  // ── Write/Edit: DENY (source files) ──────────────────────────────────
-
-  it("blocks Write to hook ts file", async () => {
-    const result = await runFileHook(
-      "write",
-      "harnesses/claude/hooks/reviewer-guard-session-log-write.ts",
-    );
-    assert.ok((result as { block?: boolean }).block === true);
-  });
-
-  it("blocks Edit to lib source file", async () => {
-    const result = await runFileHook("edit", "lib/foo.ex");
-    assert.ok((result as { block?: boolean }).block === true);
-  });
-
-  it("blocks Write to scaffold.sh", async () => {
-    const result = await runFileHook("write", "scaffold.sh");
-    assert.ok((result as { block?: boolean }).block === true);
-  });
-
   // ── Pass-through: non-committer agents ────────────────────────────────
 
   it("passes through make test for non-committer (developer)", async () => {
@@ -163,8 +125,22 @@ describe("committer-tool-guard", () => {
     assert.ok(result == null || (result as { block?: boolean }).block !== true);
   });
 
-  it("passes through source edit for non-committer (reviewer)", async () => {
-    const result = await runFileHook("edit", "lib/foo.ex", "reviewer-phoenix");
+  // ── Bonus: git push/pull forbidden ────────────────────────────────────
+
+  it("blocks git push for committer (not in allowlist)", async () => {
+    const result = await runBashHook("git push origin main");
+    assert.ok((result as { block?: boolean }).block === true);
+  });
+
+  it("blocks git pull for committer (not in allowlist)", async () => {
+    const result = await runBashHook("git pull");
+    assert.ok((result as { block?: boolean }).block === true);
+  });
+
+  // ── Pass-through: non-Bash tools ──────────────────────────────────────
+
+  it("passes through Write tool for committer (different hook's job)", async () => {
+    const result = await runFileHook("write", "lib/foo.ex");
     assert.ok(result == null || (result as { block?: boolean }).block !== true);
   });
 });

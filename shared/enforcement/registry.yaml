@@ -2,18 +2,28 @@
 #
 # Each entry is the single source of truth for one denial rule.
 # Fields:
-#   id          — kebab-case slug; becomes the filename (no-cat-pipe → no-cat-pipe.sh / .ts)
-#   generated   — true means the compiler owns the output files; false means hand-authored
-#   event       — Claude Code hook event (PreToolUse, SubagentStop, Stop)
-#   tool_guard  — tool name that triggers the check (Bash, Write, Edit, …)
-#   match       — regex-neutral pattern string (single); dialect-translated per target
-#   match_all   — list of regex-neutral patterns (all must match; AND logic)
-#                 mutually exclusive with `match`
-#   message     — denial reason shown to the agent (verbatim string)
-#   surface     — hook surface (user_global, project, …)
-#   signal      — hook signal (none, AGENT_TYPE, …)
-#   role        — role scope (* = all roles)
-#   harnesses   — which harnesses deploy this hook (all, claude, pi)
+#   id           — kebab-case slug; becomes the filename (no-cat-pipe → no-cat-pipe.sh / .ts)
+#   generated    — true means the compiler owns the output files; false means hand-authored
+#   event        — Claude Code hook event (PreToolUse, SubagentStop, Stop)
+#   source       — what the match pattern applies to: COMMAND (default) or FILE_PATH
+#   mode         — matching mode: deny (default, match→deny) or allowlist (no-match→deny)
+#                  allowlist is valid for both source: COMMAND and source: FILE_PATH
+#   tool_guard   — tool name that triggers the check (Bash, Write, Edit, …)
+#   match        — regex-neutral pattern string (single); dialect-translated per target
+#   match_all    — list of regex-neutral patterns (all must match; AND logic)
+#                  mutually exclusive with `match`
+#   message      — denial reason shown to the agent (verbatim string)
+#   surface      — hook surface (user_global, project, …)
+#   signal       — hook signal (none, AGENT_TYPE, …)
+#   role         — role scope (* = all roles; pipe-separated for multiple, e.g. "a|b")
+#   harnesses    — which harnesses deploy this hook (all, claude, pi)
+#   canonicalize — path canonicalization (repo_relative); only used with source: FILE_PATH
+#   bypass_roles — optional list of launcher-mode values (from resolve_role / CLAUDE_ROLE /
+#                  PI_ROLE) that exit 0 before the role/match gate. Emits a _role.sh bypass
+#                  prelude in bash and a process.env env-read + includes() check in TS.
+#                  Placement: after parse_input, before AGENT_TYPE gate. Composes with all
+#                  body types (COMMAND+deny, COMMAND+allowlist, FILE_PATH+allowlist, match_all).
+#                  Valid values: debug, shape, ops (launcher mode values)
 #
 # Pattern dialect rules:
 #   Registry patterns use regex-neutral syntax:
@@ -64,6 +74,37 @@
   surface: user_global
   signal: none
   role: "*"
+  harnesses: all
+
+# SCHEMA: committer.md — committer Bash allowlist (default-deny; git + safe shell utilities only)
+- id: committer-bash-allowlist
+  generated: true
+  description: "committer may only run git commands and safe shell utilities (allowlist)"
+  event: PreToolUse
+  source: COMMAND
+  mode: allowlist
+  tool_guard: Bash
+  match: "^\\s*(git\\s+(diff|status|log|show|commit|add|rm|mv|tag|checkout|switch|branch|restore|reset)\\b|echo\\b|wc\\b|cat\\b|ls\\b|true\\b|:)"
+  message: "BLOCKED by committer-bash-allowlist: only git read/write commands and safe shell utilities allowed for committer"
+  surface: user_global
+  signal: AGENT_TYPE
+  role: committer
+  harnesses: all
+
+# SCHEMA: session-log.md — committer may only write to canonical session logs
+- id: committer-write-allowlist
+  generated: true
+  description: "committer may only edit canonical session log files (allowlist)"
+  event: PreToolUse
+  source: FILE_PATH
+  mode: allowlist
+  canonicalize: repo_relative
+  tool_guard: "Write|Edit"
+  match: 'codegen/logging/[0-9]{8}_[0-9]{6}(_[a-z0-9-]+)?_(session|step[0-9]+_[a-z0-9-]+)\.md$'
+  message: "BLOCKED by committer-write-allowlist: committer may only write to canonical session logs"
+  surface: user_global
+  signal: AGENT_TYPE
+  role: committer
   harnesses: all
 
 # SCHEMA: session-log.md — reviewer may only edit session logs (canonical schema)

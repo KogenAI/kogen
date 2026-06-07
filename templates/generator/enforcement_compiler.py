@@ -131,7 +131,7 @@ _BASH_TEMPLATE_SINGLE = """\
 set -u
 
 source "$(dirname "$0")/lib/hooks-lib.sh"
-parse_input
+{role_source_prelude}parse_input
 
 debug_log {id} "tool=$TOOL_NAME agent=$AGENT_TYPE cmd=$COMMAND"
 
@@ -139,7 +139,7 @@ debug_log {id} "tool=$TOOL_NAME agent=$AGENT_TYPE cmd=$COMMAND"
 if [ "$TOOL_NAME" != "{tool_guard}" ]; then
     exit 0
 fi
-
+{bypass_roles_prelude}
 # Deny: pattern match.
 if printf '%s' "$COMMAND" | grep -qE '{match_bash}'; then
     deny "{message}"
@@ -175,7 +175,7 @@ debug_log {id} "tool=$TOOL_NAME agent=$AGENT_TYPE file=$FILE_PATH"
 
 # Only guard {tool_guard} tool(s).
 case "$TOOL_NAME" in
-{tool_guard_case_arms}) ;;
+{tool_guard_case_arms}
 *) exit 0 ;;
 esac
 {agent_type_guard}
@@ -185,6 +185,44 @@ esac
 fi
 
 deny "{message}: $FILE_PATH"
+exit 0
+"""
+
+# Template for COMMAND source, allowlist mode (default-deny: deny when pattern does NOT match).
+# Uses a single tool_guard (Bash only) with optional AGENT_TYPE role guard.
+_BASH_TEMPLATE_COMMAND_ALLOWLIST = """\
+#!/bin/bash
+# {id}.sh — PreToolUse hook: {description}.
+#
+# HOOK-MANIFEST:
+# event: {event}
+# matcher: {tool_guard}
+# surface: {surface}
+# signal: {signal}
+# role: {role}
+# harnesses: {harnesses}
+#
+# GENERATED FROM shared/enforcement/registry.yaml — DO NOT EDIT
+# Edit registry.yaml and run `make install` to regenerate.
+
+set -u
+
+source "$(dirname "$0")/lib/hooks-lib.sh"
+{role_source_prelude}parse_input
+
+debug_log {id} "tool=$TOOL_NAME agent=$AGENT_TYPE cmd=$COMMAND"
+
+# Only guard {tool_guard} tool.
+if [ "$TOOL_NAME" != "{tool_guard}" ]; then
+    exit 0
+fi
+{bypass_roles_prelude}{agent_type_guard}
+# Allowlist: allow matching commands; deny everything else.
+if printf '%s' "$COMMAND" | grep -qE '{match_bash}'; then
+    exit 0
+fi
+
+deny "{message}"
 exit 0
 """
 
@@ -206,7 +244,7 @@ _BASH_TEMPLATE_ALL = """\
 set -u
 
 source "$(dirname "$0")/lib/hooks-lib.sh"
-parse_input
+{role_source_prelude}parse_input
 
 debug_log {id} "tool=$TOOL_NAME agent=$AGENT_TYPE cmd=$COMMAND"
 
@@ -214,7 +252,7 @@ debug_log {id} "tool=$TOOL_NAME agent=$AGENT_TYPE cmd=$COMMAND"
 if [ "$TOOL_NAME" != "{tool_guard}" ]; then
     exit 0
 fi
-
+{bypass_roles_prelude}
 # Deny: all patterns must match (AND logic).
 if {match_all_bash}; then
     deny "{message}"
@@ -233,6 +271,38 @@ def _bash_escape_message(message):
     currently have those in denial messages; included for correctness).
     """
     return message.replace("`", r"\`")
+
+
+# ---------------------------------------------------------------------------
+# Role-guard helpers (shared by FILE_PATH + COMMAND branches)
+# ---------------------------------------------------------------------------
+
+def _bash_agent_guard(role):
+    """Return bash AGENT_TYPE case-guard snippet, or '' for wildcard role."""
+    if role and role != "*":
+        role_case = "|".join(role.split("|"))
+        return (
+            f'\n# Only apply to role(s): {role}\n'
+            f'case "$AGENT_TYPE" in\n'
+            f'{role_case}) ;;\n'
+            f'*) exit 0 ;;\n'
+            f'esac\n'
+        )
+    return ""
+
+
+def _ts_agent_guard(role):
+    """Return TS AGENT_TYPE guard snippet (indented), or '' for wildcard role."""
+    if role and role != "*":
+        role_patterns = role.split("|")
+        role_checks = " || ".join(
+            f'agentType === "{r}"' for r in role_patterns
+        )
+        return (
+            '\n    const agentType = process.env["AGENT_TYPE"] ?? "";\n'
+            f"    if (!({role_checks})) return;\n"
+        )
+    return ""
 
 
 def _render_bash(entry):
@@ -257,8 +327,8 @@ def _render_bash(entry):
         _check_forbidden(pattern, eid)
         match_bash = _to_bash(pattern)
 
-        # Build multi-tool case arms (e.g. "Write|Edit" → "Write)\nEdit)")
-        arms = "\n".join(f"{t})" for t in tool_guard.split("|"))
+        # Build multi-tool case arms (e.g. "Write|Edit" → "Write) ;;\nEdit) ;;")
+        arms = "\n".join(f"{t}) ;;" for t in tool_guard.split("|"))
 
         # Canonicalize prelude
         if canonicalize == "repo_relative":
@@ -266,19 +336,7 @@ def _render_bash(entry):
         else:
             canon_prelude = 'rel="$FILE_PATH"\n'
 
-        # Agent-type guard for role-scoped entries
-        if role and role != "*":
-            # Build case match: "reviewer-phoenix|reviewer-static"
-            role_case = "|".join(role.split("|"))
-            agent_guard = (
-                f'\n# Only apply to role(s): {role}\n'
-                f'case "$AGENT_TYPE" in\n'
-                f'{role_case}) ;;\n'
-                f'*) exit 0 ;;\n'
-                f'esac\n'
-            )
-        else:
-            agent_guard = ""
+        agent_guard = _bash_agent_guard(role)
 
         return _BASH_TEMPLATE_FILEPATH_ALLOWLIST.format(
             id=eid,
@@ -295,6 +353,55 @@ def _render_bash(entry):
             canonicalize_prelude=canon_prelude,
             agent_type_guard=agent_guard,
         )
+
+    if source == "COMMAND" and mode == "allowlist":
+        pattern = entry["match"]
+        _check_forbidden(pattern, eid)
+        match_bash = _to_bash(pattern)
+
+        agent_guard = _bash_agent_guard(role)
+
+        # bypass_roles prelude
+        bypass_roles = entry.get("bypass_roles") or []
+        if bypass_roles:
+            role_source_prelude = 'source "$(dirname "$0")/_role.sh"\n'
+            roles_joined = " ".join(bypass_roles)
+            bypass_prelude = (
+                f'\n_role=$(resolve_role)\n'
+                f'for _m in {roles_joined}; do [ "$_role" = "$_m" ] && exit 0; done\n'
+            )
+        else:
+            role_source_prelude = ""
+            bypass_prelude = ""
+
+        return _BASH_TEMPLATE_COMMAND_ALLOWLIST.format(
+            id=eid,
+            description=description,
+            event=event,
+            tool_guard=tool_guard,
+            surface=surface,
+            signal=signal,
+            role=role,
+            harnesses=harnesses,
+            message=message,
+            match_bash=match_bash,
+            agent_type_guard=agent_guard,
+            bypass_roles_prelude=bypass_prelude,
+            role_source_prelude=role_source_prelude,
+        )
+
+    # Compute bypass_roles prelude for COMMAND+deny and match_all paths.
+    bypass_roles = entry.get("bypass_roles") or []
+    if bypass_roles:
+        role_source_prelude = 'source "$(dirname "$0")/_role.sh"\n'
+        roles_joined = " ".join(bypass_roles)
+        bypass_prelude = (
+            f'\n_role=$(resolve_role)\n'
+            f'for _m in {roles_joined}; do [ "$_role" = "$_m" ] && exit 0; done\n'
+        )
+    else:
+        role_source_prelude = ""
+        bypass_prelude = ""
 
     if "match_all" in entry:
         patterns = entry["match_all"]
@@ -317,6 +424,8 @@ def _render_bash(entry):
             harnesses=harnesses,
             message=message,
             match_all_bash=match_all_bash,
+            role_source_prelude=role_source_prelude,
+            bypass_roles_prelude=bypass_prelude,
         )
     else:
         pattern = entry["match"]
@@ -333,6 +442,8 @@ def _render_bash(entry):
             harnesses=harnesses,
             message=message,
             match_bash=match_bash,
+            role_source_prelude=role_source_prelude,
+            bypass_roles_prelude=bypass_prelude,
         )
 
 
@@ -363,7 +474,7 @@ export const HANDLER_META = {{
 export function register(pi: ExtensionAPI): void {{
   pi.on("tool_call", async (event) => {{
     if (event.toolName !== "bash") return;
-
+{bypass_roles_prelude}
     const command: string = (event.input as {{ command?: string }}).command ?? "";
     debugLog("{id}", `cmd=${{command}}`);
 
@@ -440,7 +551,7 @@ export const HANDLER_META = {{
 export function register(pi: ExtensionAPI): void {{
   pi.on("tool_call", async (event) => {{
     if (event.toolName !== "bash") return;
-
+{bypass_roles_prelude}
     const command: string = (event.input as {{ command?: string }}).command ?? "";
     debugLog("{id}", `cmd=${{command}}`);
 
@@ -451,6 +562,47 @@ export function register(pi: ExtensionAPI): void {{
         "{message}",
       );
     }}
+  }});
+}}
+"""
+
+
+# Template for COMMAND source, allowlist mode (TS/Pi version).
+# Allow-pattern: if match, return; otherwise deny.
+_TS_TEMPLATE_COMMAND_ALLOWLIST = """\
+/**
+ * {id}.ts — Pi enforcement: {description}.
+ *
+ * Event: tool_call (PreToolUse equivalent)
+ * Matcher: bash
+ *
+ * GENERATED FROM shared/enforcement/registry.yaml — DO NOT EDIT
+ * Edit registry.yaml and run `make install` to regenerate.
+ */
+
+import type {{ ExtensionAPI }} from "@earendil-works/pi-coding-agent";
+import {{ deny, debugLog }} from "../lib/hook-helpers";
+
+export const HANDLER_META = {{
+  name: "{id}",
+  event: "tool_call",
+  matcher: "bash",
+}} as const;
+
+export function register(pi: ExtensionAPI): void {{
+  pi.on("tool_call", async (event) => {{
+    if (event.toolName !== "bash") return;
+{bypass_roles_prelude}
+    const command: string = (event.input as {{ command?: string }}).command ?? "";
+    debugLog("{id}", `cmd=${{command}}`);
+{agent_type_guard}
+    if (/{match_ts}/.test(command)) {{
+      return;
+    }}
+
+    return deny(
+      "{message}",
+    );
   }});
 }}
 """
@@ -489,18 +641,7 @@ def _render_ts(entry):
 
         # Agent-type guard for role-scoped entries (non-wildcard role)
         role = entry.get("role", "*")
-        if role and role != "*":
-            # Build OR check: "reviewer-phoenix|reviewer-static"
-            role_patterns = role.split("|")
-            role_checks = " || ".join(
-                f'agentType === "{r}"' for r in role_patterns
-            )
-            agent_type_guard = (
-                '\n    const agentType = process.env["AGENT_TYPE"] ?? "";\n'
-                f"    if (!({role_checks})) return;\n"
-            )
-        else:
-            agent_type_guard = ""
+        agent_type_guard = _ts_agent_guard(role)
 
         return _TS_TEMPLATE_FILEPATH_ALLOWLIST.format(
             id=eid,
@@ -513,6 +654,45 @@ def _render_ts(entry):
             canonicalize_ts_prelude=canon_fn,
             agent_type_guard=agent_type_guard,
         )
+
+    if source == "COMMAND" and mode == "allowlist":
+        pattern = entry["match"]
+        _check_forbidden(pattern, eid)
+        match_ts = _to_ts(pattern)
+
+        role = entry.get("role", "*")
+        agent_type_guard = _ts_agent_guard(role)
+
+        # bypass_roles prelude
+        bypass_roles = entry.get("bypass_roles") or []
+        if bypass_roles:
+            quoted = ", ".join(f'"{r}"' for r in bypass_roles)
+            bypass_prelude = (
+                f'\n    const _role = process.env["CLAUDE_ROLE"] || process.env["PI_ROLE"] || "";\n'
+                f"    if ([{quoted}].includes(_role)) return;\n"
+            )
+        else:
+            bypass_prelude = ""
+
+        return _TS_TEMPLATE_COMMAND_ALLOWLIST.format(
+            id=eid,
+            description=description,
+            message=message,
+            match_ts=match_ts,
+            agent_type_guard=agent_type_guard,
+            bypass_roles_prelude=bypass_prelude,
+        )
+
+    # Compute bypass_roles prelude for COMMAND+deny and match_all paths.
+    bypass_roles_ts = entry.get("bypass_roles") or []
+    if bypass_roles_ts:
+        quoted = ", ".join(f'"{r}"' for r in bypass_roles_ts)
+        bypass_prelude_ts = (
+            f'\n    const _role = process.env["CLAUDE_ROLE"] || process.env["PI_ROLE"] || "";\n'
+            f"    if ([{quoted}].includes(_role)) return;\n"
+        )
+    else:
+        bypass_prelude_ts = ""
 
     if "match_all" in entry:
         patterns = entry["match_all"]
@@ -531,6 +711,7 @@ def _render_ts(entry):
             description=description,
             message=message,
             match_all_ts=match_all_ts,
+            bypass_roles_prelude=bypass_prelude_ts,
         )
     else:
         pattern = entry["match"]
@@ -541,6 +722,7 @@ def _render_ts(entry):
             description=description,
             message=message,
             match_ts=match_ts,
+            bypass_roles_prelude=bypass_prelude_ts,
         )
 
 

@@ -11,6 +11,7 @@ Data flow: `manifest.yaml` → `generate.sh` (renders via `process_template.py`)
 | `templates/generator/generate.sh`           | Entry — renders `.md.j2` templates for a named harness                                                                                         |
 | `templates/generator/process_template.py`   | Jinja-style `{% include %}` processor; inlines rule/recipe files                                                                               |
 | `templates/generator/hook_registrations.py` | Generates `settings.json` hook entries from hook source dir                                                                                    |
+| `templates/generator/enforcement_compiler.py` | Generates enforcement hook scripts (bash + TS) from `shared/enforcement/registry.yaml`                                                        |
 | `templates/generator/manifest-lib.sh`       | Bash lib wrapping `yq` for manifest field extraction                                                                                           |
 | `templates/generator/config.yaml`           | Role → model/effort/tools mapping; read by `load-role.sh`                                                                                      |
 | `templates/generator/test_dual_render.sh`   | Self-test: renders both harnesses and diffs output for regressions                                                                             |
@@ -61,6 +62,76 @@ Three entry-point scripts at repo root — each serves a distinct invocation con
 
 Routing flow: `codegen-build` → `harnesses/<harness>/dispatch.sh` → reads `config.yaml` directly via `yq` (NOT via `load-role.sh`) → execs launcher with model/effort/tools flags. `load-role.sh` is used only by debug/shape/refactor/ops launchers, not build dispatch.
 
+## Enforcement Compiler
+
+`templates/generator/enforcement_compiler.py` generates enforcement hook scripts from a declarative registry (`shared/enforcement/registry.yaml`). Each registry entry becomes a pair of generated hooks — Bash (`.sh`) and TypeScript (`.ts`) — deployed to harness hook directories.
+
+### Compiler Axes
+
+**Source axis** — what the guard pattern matches:
+- `source: COMMAND` — matches the bash command being executed
+- `source: FILE_PATH` — matches the file path argument to Write/Edit
+
+**Mode axis** — matching logic:
+- `mode: deny` (default) — if pattern matches → deny; default is pass-through
+- `mode: allowlist` — if pattern does NOT match → deny; default is allow; valid for both COMMAND and FILE_PATH sources
+
+**Role axis** — scope by agent:
+- `signal: AGENT_TYPE` — gate-guard on `$CLAUDE_ROLE` or `$PI_ROLE`; check proceeds only for listed role(s)
+- `bypass_roles: [list]` — launcher-mode values (debug, shape, ops, …) that exit 0 immediately before role/match gates (from `resolve_role()` which folds `CLAUDE_ROLE > PI_ROLE`); emits prelude sourcing `_role.sh` (bash) or env-reading process.env (TS); placement: after `parse_input`, before AGENT_TYPE gate
+
+### Template Forms
+
+| Source | Mode | Body Template | Role Gate |
+| ------ | ---- | ------------- | --------- |
+| COMMAND | deny | `if grep -qE '<pattern>' <<< "$COMMAND"; then deny; fi` | AGENT_TYPE guard wraps entire body |
+| COMMAND | allowlist | `if grep -qE '<pattern>' <<< "$COMMAND"; then exit 0; fi; deny` | AGENT_TYPE guard wraps entire body |
+| FILE_PATH | allowlist | Multi-tool switch (Write/Edit); each arm: `if grep -qE '<pattern>' <<< "$FILE_PATH"; then exit 0; fi` | AGENT_TYPE guard wraps entire body |
+
+All forms compose with `bypass_roles` prelude (if specified): the bypass exits early, skipping both role and match gates.
+
+### Registry Fields
+
+| Field | Type | Purpose | Default |
+| ----- | ---- | ------- | ------- |
+| `id` | string | Hook filename slug (kebab-case) | — |
+| `generated` | bool | Compiler owns the output; `make install` regenerates it | — |
+| `event` | string | Hook event (PreToolUse, SubagentStop, Stop) | — |
+| `source` | string | COMMAND or FILE_PATH | COMMAND |
+| `mode` | string | deny or allowlist | deny |
+| `tool_guard` | string | Tool name (Bash, Write, Edit, …) | — |
+| `match` | string | Single regex-neutral pattern (mutually exclusive with `match_all`) | — |
+| `match_all` | list | AND-logic pattern list (mutually exclusive with `match`) | — |
+| `message` | string | Denial reason shown to agent | — |
+| `signal` | string | Hook signal (none, AGENT_TYPE, …) | none |
+| `role` | string | Role scope: `*` (all) or pipe-separated (e.g., committer\|reviewer) | `*` |
+| `bypass_roles` | list | Launcher-mode values (debug, shape, ops) that exit before gates | — |
+| `harnesses` | string | Deployment target (all, claude, pi) | all |
+| `canonicalize` | string | Path canonicalization (repo_relative); FILE_PATH only | — |
+
+### Pattern Dialect
+
+Registry patterns use dialect-neutral syntax; compiler translates to target:
+
+| Pattern | Bash (ERE) | JavaScript |
+| ------- | ---------- | ---------- |
+| `\s` | `[[:space:]]` | `\s` (pass-through) |
+| `\b` | `\b` | `\b` |
+| `(a\|b)` | `(a\|b)` | `(a\|b)` |
+
+FORBIDDEN: backreferences (`\1`, `\2`), lookahead/lookbehind (`(?=...)`, `(?!...)`, `(?<=...)`, `(?<!...)`).
+
+### Installation Workflow
+
+1. `make install` → runs `enforcement_compiler.py`
+2. Compiler reads `shared/enforcement/registry.yaml`
+3. For each entry with `generated: true`, emits:
+   - Bash hook → `harnesses/claude/hooks/<id>.sh` (chmod +x)
+   - TypeScript hook → `harnesses/pi/pi-extensions/enforcement/src/hooks/<id>.ts`
+4. Compiler invokes `_update_index()` to update Pi `index.ts` GENERATED block with new hook imports + registrations
+5. `hook_registrations.py` rescans hook source dirs and rewrites `claude-code-settings.json` + pi manifest entries
+6. Committed generated files must be byte-identical to compiler output → `make enforce-registry-parity` gate (part of `make test`) verifies this
+
 ## Manifest Schema
 
 Each harness declares its full installation contract in `harnesses/<harness>/manifest.yaml`. This is the single source of truth for install behavior — `install.sh` and `uninstall.sh` read it to drive every step.
@@ -107,4 +178,4 @@ Note: if a root-level artifact's ownership is unclear, check `resource_manager.s
 
 ## Update When Changing
 
-Load this file when touching: `manifest.yaml`, `generate.sh`, `process_template.py`, `hook_registrations.py`, `install.sh`, `uninstall.sh`, `codegen-build`, `codegen-scaffold`, `config.sh`, `resource_manager.sh`, `utils.sh`.
+Load this file when touching: `manifest.yaml`, `generate.sh`, `process_template.py`, `hook_registrations.py`, `enforcement_compiler.py`, `install.sh`, `uninstall.sh`, `codegen-build`, `codegen-scaffold`, `config.sh`, `resource_manager.sh`, `utils.sh`, or `shared/enforcement/registry.yaml`.

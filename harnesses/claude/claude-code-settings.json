@@ -305,6 +305,15 @@
         "hooks": [
           {
             "type": "command",
+            "command": "$HOME/.claude/hooks/committer-bash-allowlist.sh"
+          }
+        ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
             "command": "$HOME/.claude/hooks/committer-no-trailer-guard.sh"
           }
         ]
@@ -328,11 +337,11 @@
         ]
       },
       {
-        "matcher": "Bash|Write|Edit",
+        "matcher": "Write|Edit",
         "hooks": [
           {
             "type": "command",
-            "command": "$HOME/.claude/hooks/committer-tool-guard.sh"
+            "command": "$HOME/.claude/hooks/committer-write-allowlist.sh"
           }
         ]
       },

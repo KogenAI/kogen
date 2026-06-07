@@ -19,7 +19,6 @@ import { register as registerBuildWorkerCwdGuard } from "./hooks/build-worker-cw
 import { register as registerCommitterNoTrailerGuard } from "./hooks/committer-no-trailer-guard";
 import { register as registerCommitterSingleLineGuard } from "./hooks/committer-single-line-guard";
 import { register as registerCommitterSubjectLength } from "./hooks/committer-subject-length";
-import { register as registerCommitterToolGuard } from "./hooks/committer-tool-guard";
 import { register as registerContextIndexParity } from "./hooks/context-index-parity";
 import { register as registerDevNoCi } from "./hooks/dev-no-ci";
 import { register as registerDeveloperNoSelfGate } from "./hooks/developer-no-self-gate";
@@ -28,6 +27,8 @@ import { register as registerLlmSuiteGuard } from "./hooks/llm-suite-guard";
 import { register as registerLlmTestGuard } from "./hooks/llm-test-guard";
 import { register as registerOrchestratorReadDiscipline } from "./hooks/orchestrator-read-discipline";
 // BEGIN-GENERATED-ENFORCEMENT-BLOCK
+import { register as registerCommitterBashAllowlist } from "./hooks/committer-bash-allowlist";
+import { register as registerCommitterWriteAllowlist } from "./hooks/committer-write-allowlist";
 import { register as registerNoCatPipe } from "./hooks/no-cat-pipe";
 import { register as registerNoGitStash } from "./hooks/no-git-stash";
 import { register as registerNoPythonJson } from "./hooks/no-python-json";
@@ -66,7 +67,6 @@ export default function (pi: ExtensionAPI): void {
   registerCommitterNoTrailerGuard(pi);
   registerCommitterSingleLineGuard(pi);
   registerCommitterSubjectLength(pi);
-  registerCommitterToolGuard(pi);
   registerContextIndexParity(pi);
   registerDevNoCi(pi);
   registerDeveloperNoSelfGate(pi);
@@ -75,6 +75,8 @@ export default function (pi: ExtensionAPI): void {
   registerLlmTestGuard(pi);
   registerOrchestratorReadDiscipline(pi);
   // BEGIN-GENERATED-ENFORCEMENT-BLOCK
+  registerCommitterBashAllowlist(pi);
+  registerCommitterWriteAllowlist(pi);
   registerNoCatPipe(pi);
   registerNoGitStash(pi);
   registerNoPythonJson(pi);

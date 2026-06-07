@@ -1,10 +1,11 @@
 #!/bin/bash
-# committer-tool-guard_test.sh — unit tests for committer-tool-guard.sh
+# committer-bash-allowlist_test.sh — unit tests for committer-bash-allowlist.sh
+# Ports cases 1-13 and 19 from committer-tool-guard_test.sh against the generated hook.
 
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-GUARD="$SCRIPT_DIR/committer-tool-guard.sh"
+GUARD="$SCRIPT_DIR/committer-bash-allowlist.sh"
 
 pass=0
 fail=0
@@ -36,7 +37,6 @@ run_test() {
 
 COMMITTER='committer'
 BACKEND='developer-phoenix-backend'
-REVIEWER='reviewer-phoenix'
 
 # ── Bash: ALLOW (git commands and safe utilities) ──────────────────────────
 
@@ -68,7 +68,7 @@ run_test "committer git log ALLOWED" "0" \
 run_test "committer git show ALLOWED" "0" \
     "{\"hook_event_name\":\"PreToolUse\",\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"git show HEAD\"},\"agent_type\":\"$COMMITTER\",\"agent_id\":\"abc\"}"
 
-# 8. echo ... | wc -c → ALLOW
+# 8. echo ... | wc -c → ALLOW (echo and wc both in allowlist)
 run_test "committer echo | wc -c ALLOWED" "0" \
     "{\"hook_event_name\":\"PreToolUse\",\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"echo -n \\\"subject line\\\" | wc -c\"},\"agent_type\":\"$COMMITTER\",\"agent_id\":\"abc\"}"
 
@@ -94,39 +94,23 @@ run_test "committer node script.js DENIED" "2" \
 run_test "committer pytest DENIED" "2" \
     "{\"hook_event_name\":\"PreToolUse\",\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"pytest tests/\"},\"agent_type\":\"$COMMITTER\",\"agent_id\":\"abc\"}"
 
-# ── Write/Edit: ALLOW (canonical session log path) ─────────────────────────
-
-# 14. Write to canonical session log → ALLOW
-run_test "committer Write session log ALLOWED" "0" \
-    "{\"hook_event_name\":\"PreToolUse\",\"tool_name\":\"Write\",\"tool_input\":{\"file_path\":\"codegen/logging/20260607_120000_session.md\"},\"agent_type\":\"$COMMITTER\",\"agent_id\":\"abc\"}"
-
-# 15. Edit canonical session log → ALLOW
-run_test "committer Edit session log ALLOWED" "0" \
-    "{\"hook_event_name\":\"PreToolUse\",\"tool_name\":\"Edit\",\"tool_input\":{\"file_path\":\"codegen/logging/20260607_120000_step1_my-task.md\"},\"agent_type\":\"$COMMITTER\",\"agent_id\":\"abc\"}"
-
-# ── Write/Edit: DENY (source files) ──────────────────────────────────────
-
-# 16. Write to a hook ts file → DENY
-run_test "committer Write hook ts DENIED" "2" \
-    "{\"hook_event_name\":\"PreToolUse\",\"tool_name\":\"Write\",\"tool_input\":{\"file_path\":\"harnesses/claude/hooks/reviewer-guard-session-log-write.ts\"},\"agent_type\":\"$COMMITTER\",\"agent_id\":\"abc\"}"
-
-# 17. Edit lib/foo.ex → DENY
-run_test "committer Edit lib source DENIED" "2" \
-    "{\"hook_event_name\":\"PreToolUse\",\"tool_name\":\"Edit\",\"tool_input\":{\"file_path\":\"lib/foo.ex\"},\"agent_type\":\"$COMMITTER\",\"agent_id\":\"abc\"}"
-
-# 18. Write scaffold.sh → DENY
-run_test "committer Write scaffold.sh DENIED" "2" \
-    "{\"hook_event_name\":\"PreToolUse\",\"tool_name\":\"Write\",\"tool_input\":{\"file_path\":\"scaffold.sh\"},\"agent_type\":\"$COMMITTER\",\"agent_id\":\"abc\"}"
-
 # ── Pass-through: non-committer agents ────────────────────────────────────
 
-# 19. developer-phoenix-backend running make test → ALLOW (not this hook's job)
+# 19 (from original test numbering). developer-phoenix-backend running make test → ALLOW (not this hook's job)
 run_test "non-committer make test ALLOWED (pass-through)" "0" \
     "{\"hook_event_name\":\"PreToolUse\",\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"make test\"},\"agent_type\":\"$BACKEND\",\"agent_id\":\"abc\"}"
 
-# 20. reviewer-phoenix editing source → ALLOW (not this hook's job)
-run_test "non-committer source edit ALLOWED (pass-through)" "0" \
-    "{\"hook_event_name\":\"PreToolUse\",\"tool_name\":\"Edit\",\"tool_input\":{\"file_path\":\"lib/foo.ex\"},\"agent_type\":\"$REVIEWER\",\"agent_id\":\"abc\"}"
+# Bonus: git push → DENY (allowlist does not include push; committer.md forbids it)
+run_test "committer git push DENIED" "2" \
+    "{\"hook_event_name\":\"PreToolUse\",\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"git push origin main\"},\"agent_type\":\"$COMMITTER\",\"agent_id\":\"abc\"}"
+
+# Bonus: git pull → DENY
+run_test "committer git pull DENIED" "2" \
+    "{\"hook_event_name\":\"PreToolUse\",\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"git pull\"},\"agent_type\":\"$COMMITTER\",\"agent_id\":\"abc\"}"
+
+# Bonus: Write tool passes through (not Bash)
+run_test "committer Write tool ALLOWED (not Bash, different hook)" "0" \
+    "{\"hook_event_name\":\"PreToolUse\",\"tool_name\":\"Write\",\"tool_input\":{\"file_path\":\"lib/foo.ex\"},\"agent_type\":\"$COMMITTER\",\"agent_id\":\"abc\"}"
 
 echo ""
 echo "Results: $pass passed, $fail failed"
