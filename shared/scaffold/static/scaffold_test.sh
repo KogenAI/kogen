@@ -36,7 +36,7 @@ check() {
     local expected="$2"
     local actual="$3"
     if [[ "$actual" == "$expected" ]]; then
-        printf 'PASS: %s\n' "$desc"
+        [ -n "${VERBOSE:-}" ] && printf 'PASS: %s\n' "$desc"
         pass=$((pass + 1))
     else
         printf 'FAIL: %s — expected %q, got %q\n' "$desc" "$expected" "$actual"
@@ -49,7 +49,7 @@ assert_contains() {
     local haystack="$2"
     local needle="$3"
     if [[ "$haystack" == *"$needle"* ]]; then
-        printf 'PASS: %s\n' "$desc"
+        [ -n "${VERBOSE:-}" ] && printf 'PASS: %s\n' "$desc"
         pass=$((pass + 1))
     else
         printf 'FAIL: %s — expected to find %q in output\n' "$desc" "$needle"
@@ -61,7 +61,7 @@ assert_file_exists() {
     local desc="$1"
     local path="$2"
     if [[ -e "$path" ]]; then
-        printf 'PASS: %s\n' "$desc"
+        [ -n "${VERBOSE:-}" ] && printf 'PASS: %s\n' "$desc"
         pass=$((pass + 1))
     else
         printf 'FAIL: %s — file not found: %s\n' "$desc" "$path"
@@ -74,7 +74,7 @@ assert_exit() {
     local expected_exit="$2"
     local actual_exit="$3"
     if [[ "$actual_exit" == "$expected_exit" ]]; then
-        printf 'PASS: %s\n' "$desc"
+        [ -n "${VERBOSE:-}" ] && printf 'PASS: %s\n' "$desc"
         pass=$((pass + 1))
     else
         printf 'FAIL: %s — expected exit %s, got %s\n' "$desc" "$expected_exit" "$actual_exit"
@@ -148,7 +148,7 @@ assert_file_exists "integrate creates codegen/usage_rules symlink" "$SYMLINKS_CW
 
 # Verify they are actually symlinks (not files)
 if [[ -L "$SYMLINKS_CWD/AGENTS.md" ]]; then
-    printf 'PASS: AGENTS.md is a symlink\n'
+    [ -n "${VERBOSE:-}" ] && printf 'PASS: AGENTS.md is a symlink\n'
     pass=$((pass + 1))
 else
     printf 'FAIL: AGENTS.md is not a symlink\n'
@@ -156,7 +156,7 @@ else
 fi
 
 if [[ -L "$SYMLINKS_CWD/codegen/rules" ]]; then
-    printf 'PASS: codegen/rules is a symlink\n'
+    [ -n "${VERBOSE:-}" ] && printf 'PASS: codegen/rules is a symlink\n'
     pass=$((pass + 1))
 else
     printf 'FAIL: codegen/rules is not a symlink\n'
@@ -165,7 +165,7 @@ fi
 
 # (j) recipes symlink
 if [[ -L "$SYMLINKS_CWD/codegen/recipes" ]]; then
-    printf 'PASS: codegen/recipes is a symlink\n'
+    [ -n "${VERBOSE:-}" ] && printf 'PASS: codegen/recipes is a symlink\n'
     pass=$((pass + 1))
 else
     printf 'FAIL: codegen/recipes is not a symlink\n'

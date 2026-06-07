@@ -33,7 +33,7 @@ run_test() {
     fi
 
     if [ "$outcome" = "$expected" ]; then
-        printf 'PASS: %s\n' "$desc"
+        [ -n "${VERBOSE:-}" ] && printf 'PASS: %s\n' "$desc"
         pass=$((pass + 1))
     else
         printf 'FAIL: %s — expected %s (deny=2/allow=0), got %s\n  stdout: %s\n' "$desc" "$expected" "$outcome" "$stdout"
@@ -74,7 +74,7 @@ if printf '%s' "$result_outer" | grep -q '"permissionDecision"[[:space:]]*:[[:sp
     printf 'FAIL: outer-session Read should allow (early exit) but got deny\n'
     fail=$((fail + 1))
 else
-    printf 'PASS: outer-session Read allows (early exit)\n'
+    [ -n "${VERBOSE:-}" ] && printf 'PASS: outer-session Read allows (early exit)\n'
     pass=$((pass + 1))
 fi
 
@@ -88,7 +88,7 @@ if printf '%s' "$result_dev" | grep -q '"permissionDecision"[[:space:]]*:[[:spac
     printf 'FAIL: developer-phoenix-backend Read should allow (early exit) but got deny\n'
     fail=$((fail + 1))
 else
-    printf 'PASS: developer-phoenix-backend Read allows (early exit)\n'
+    [ -n "${VERBOSE:-}" ] && printf 'PASS: developer-phoenix-backend Read allows (early exit)\n'
     pass=$((pass + 1))
 fi
 
@@ -99,7 +99,7 @@ result_inspector=$(
     printf '%s' "$FIXTURE_INSPECTOR_OUTSIDE" | bash "$GUARD" 2>/dev/null || true
 )
 if printf '%s' "$result_inspector" | grep -q '"permissionDecision"[[:space:]]*:[[:space:]]*"deny"'; then
-    printf 'PASS: inspector Read outside project dir blocks\n'
+    [ -n "${VERBOSE:-}" ] && printf 'PASS: inspector Read outside project dir blocks\n'
     pass=$((pass + 1))
 else
     printf 'FAIL: inspector Read outside project dir should block but got allow\n  stdout: %s\n' "$result_inspector"

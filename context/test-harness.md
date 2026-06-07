@@ -145,6 +145,7 @@ Parser (`CodegenTestHarness.UsageParser`) trims each harness envelope to `{model
 
 ## Pitfalls
 
+- **Leaf test summary line format is load-bearing** — each leaf test runner emits either `N passed, N failed` or `Results: N passed, N failed` (two pre-existing formats). Runner grep patterns require exact match of one format; any ad-hoc change breaks silent parse failure. Preserve each leaf's existing summary format verbatim; cross-leaf format normalization is out of scope for individual pitches.
 - **Round-trip tests (install/uninstall) fail loud on missing tools** — tests require claude, jq, yq, rg, node on PATH; formerly self-skipped to green, now fail explicitly if tools absent (pitch INTENT: fresh-box provisioning must verify full toolchain). Operator must ensure `make test` box has all tools.
 - **`mix test` must be scoped** — bare `mix test` runs all ExUnit tests; always scope to file or tag (`--only phoenix`)
 - **`last_green.json` is not auto-updated** — run `make record-green` explicitly after a clean passing suite

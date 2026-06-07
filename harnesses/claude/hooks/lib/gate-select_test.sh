@@ -15,7 +15,7 @@ assert_eq() {
     local expected="$2"
     local actual="$3"
     if [ "$expected" = "$actual" ]; then
-        printf 'PASS: %s\n' "$desc"
+        [ -n "${VERBOSE:-}" ] && printf 'PASS: %s\n' "$desc"
         pass=$((pass + 1))
     else
         printf 'FAIL: %s\n  expected: %s\n  actual:   %s\n' "$desc" "$expected" "$actual"
@@ -422,7 +422,7 @@ MD
 out=$(gate_select_decide "$(mktemp -d)" "$TJ3")
 # gate_select_decide propagates the parse error sentinel
 if printf '%s' "$out" | grep -q '__GATE_PARSE_ERROR__'; then
-    printf 'PASS: malformed json block → __GATE_PARSE_ERROR__\n'
+    [ -n "${VERBOSE:-}" ] && printf 'PASS: malformed json block → __GATE_PARSE_ERROR__\n'
     pass=$((pass + 1))
 else
     printf 'FAIL: malformed json block → expected __GATE_PARSE_ERROR__\n  out: %s\n' "$out"
@@ -486,7 +486,7 @@ cat >"$TJ6" <<'MD'
 MD
 out=$(gate_select_decide "$(mktemp -d)" "$TJ6")
 if printf '%s' "$out" | grep -q '__GATE_PARSE_ERROR__'; then
-    printf 'PASS: json missing command field → __GATE_PARSE_ERROR__\n'
+    [ -n "${VERBOSE:-}" ] && printf 'PASS: json missing command field → __GATE_PARSE_ERROR__\n'
     pass=$((pass + 1))
 else
     printf 'FAIL: json missing command field → expected __GATE_PARSE_ERROR__\n  out: %s\n' "$out"

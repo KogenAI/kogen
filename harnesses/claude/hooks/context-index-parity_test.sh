@@ -73,7 +73,7 @@ run_test() {
     fi
 
     if [ "$outcome" = "$expected" ]; then
-        printf 'PASS: %s\n' "$desc"
+        [ -n "${VERBOSE:-}" ] && printf 'PASS: %s\n' "$desc"
         pass=$((pass + 1))
     else
         printf 'FAIL: %s — expected %s (deny=2/allow=0), got %s\n  stdout: %s\n' \
@@ -269,7 +269,7 @@ stdout14=$(printf '%s' \
     bash "$GUARD" 2>/dev/null || true)
 
 if printf '%s' "$stdout14" | grep -q "codegen/PROJECT_CONTEXT.md"; then
-    printf 'PASS: user-app layout deny message names codegen/PROJECT_CONTEXT.md\n'
+    [ -n "${VERBOSE:-}" ] && printf 'PASS: user-app layout deny message names codegen/PROJECT_CONTEXT.md\n'
     pass=$((pass + 1))
 else
     printf 'FAIL: user-app layout deny message does not name codegen/PROJECT_CONTEXT.md\n  stdout: %s\n' "$stdout14"
@@ -292,7 +292,7 @@ stdout15=$(printf '%s' \
 
 if printf '%s' "$stdout15" | grep -q '"permissionDecision"[[:space:]]*:[[:space:]]*"deny"' &&
     printf '%s' "$stdout15" | grep -q "foo"; then
-    printf 'PASS: add with staged index missing basename → DENY naming foo\n'
+    [ -n "${VERBOSE:-}" ] && printf 'PASS: add with staged index missing basename → DENY naming foo\n'
     pass=$((pass + 1))
 else
     printf 'FAIL: add with staged index missing basename — expected DENY naming foo\n  stdout: %s\n' "$stdout15"
@@ -335,7 +335,7 @@ stdout17=$(printf '%s' \
 
 if printf '%s' "$stdout17" | grep -q '"permissionDecision"[[:space:]]*:[[:space:]]*"deny"' &&
     printf '%s' "$stdout17" | grep -q "stale"; then
-    printf 'PASS: delete with stale row still in staged index → DENY naming stale\n'
+    [ -n "${VERBOSE:-}" ] && printf 'PASS: delete with stale row still in staged index → DENY naming stale\n'
     pass=$((pass + 1))
 else
     printf 'FAIL: delete with stale row still in staged index — expected DENY naming stale\n  stdout: %s\n' "$stdout17"
@@ -358,7 +358,7 @@ stdout18=$(printf '%s' \
 
 if printf '%s' "$stdout18" | grep -q '"permissionDecision"[[:space:]]*:[[:space:]]*"deny"' &&
     printf '%s' "$stdout18" | grep -q "bench-prohibition"; then
-    printf 'PASS: live add-parity gap: bench-prohibition not in index → DENY naming bench-prohibition\n'
+    [ -n "${VERBOSE:-}" ] && printf 'PASS: live add-parity gap: bench-prohibition not in index → DENY naming bench-prohibition\n'
     pass=$((pass + 1))
 else
     printf 'FAIL: live add-parity gap: expected DENY naming bench-prohibition\n  stdout: %s\n' "$stdout18"
@@ -384,7 +384,7 @@ stdout19=$(printf '%s' \
 
 if printf '%s' "$stdout19" | grep -q '"permissionDecision"[[:space:]]*:[[:space:]]*"deny"' &&
     printf '%s' "$stdout19" | grep -q "curator-routing"; then
-    printf 'PASS: live delete-parity gap: curator-routing stale row → DENY naming curator-routing\n'
+    [ -n "${VERBOSE:-}" ] && printf 'PASS: live delete-parity gap: curator-routing stale row → DENY naming curator-routing\n'
     pass=$((pass + 1))
 else
     printf 'FAIL: live delete-parity gap: expected DENY naming curator-routing\n  stdout: %s\n' "$stdout19"

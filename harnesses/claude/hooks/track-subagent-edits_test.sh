@@ -40,7 +40,7 @@ run_test() {
     fi
 
     if [ "$outcome" = "$expected" ]; then
-        printf 'PASS: %s\n' "$desc"
+        [ -n "${VERBOSE:-}" ] && printf 'PASS: %s\n' "$desc"
         pass=$((pass + 1))
     else
         printf 'FAIL: %s — expected %s (deny=2/allow=0), got %s\n  stdout: %s\n' \
@@ -57,7 +57,7 @@ assert_ledger_contains() {
 
     local ledger="$TMP_DIR/.claude/post-format/${session_id}_${agent_id}.txt"
     if [ -f "$ledger" ] && grep -qF "$expected_path" "$ledger"; then
-        printf 'PASS: %s\n' "$desc"
+        [ -n "${VERBOSE:-}" ] && printf 'PASS: %s\n' "$desc"
         pass=$((pass + 1))
     else
         printf 'FAIL: %s — ledger %s does not contain %s\n  ledger contents: %s\n' \
@@ -76,7 +76,7 @@ assert_ledger_absent() {
         printf 'FAIL: %s — unexpected ledger files found for session %s\n' "$desc" "$session_id"
         fail=$((fail + 1))
     else
-        printf 'PASS: %s\n' "$desc"
+        [ -n "${VERBOSE:-}" ] && printf 'PASS: %s\n' "$desc"
         pass=$((pass + 1))
     fi
 }

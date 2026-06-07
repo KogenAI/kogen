@@ -14,7 +14,7 @@ assert_contains() {
     local needle="$2"
     local haystack="$3"
     if printf '%s' "$haystack" | grep -q "$needle"; then
-        printf 'PASS: %s\n' "$desc"
+        [ -n "${VERBOSE:-}" ] && printf 'PASS: %s\n' "$desc"
         pass=$((pass + 1))
     else
         printf 'FAIL: %s\n  needle: %s\n  haystack: %s\n' "$desc" "$needle" "$haystack"
@@ -30,7 +30,7 @@ assert_not_contains() {
         printf 'FAIL: %s\n  unexpected: %s\n  haystack: %s\n' "$desc" "$needle" "$haystack"
         fail=$((fail + 1))
     else
-        printf 'PASS: %s\n' "$desc"
+        [ -n "${VERBOSE:-}" ] && printf 'PASS: %s\n' "$desc"
         pass=$((pass + 1))
     fi
 }
@@ -249,7 +249,7 @@ make_transcript "$T11A/transcript.jsonl" "$LOG11A"
 out=$(make_input "$T11A" false "" "$T11A/transcript.jsonl" | bash "$HOOK" 2>/dev/null || true)
 # Should block (dev+gate no reviewer) and NOT reference B's log in reason.
 if printf '%s' "$out" | grep -q '"decision"' && ! printf '%s' "$out" | grep -qF "$LOG11B"; then
-    printf 'PASS: A+B regression: blocked for correct log (A), B not referenced\n'
+    [ -n "${VERBOSE:-}" ] && printf 'PASS: A+B regression: blocked for correct log (A), B not referenced\n'
     pass=$((pass + 1))
 else
     printf 'FAIL: A+B regression: wrong outcome or B referenced\n  out: %s\n' "$out"

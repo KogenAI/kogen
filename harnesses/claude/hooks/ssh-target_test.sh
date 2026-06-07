@@ -27,7 +27,7 @@ assert_eq() {
     local expected="$2"
     local actual="$3"
     if [ "$expected" = "$actual" ]; then
-        printf 'PASS: %s\n' "$desc"
+        [ -n "${VERBOSE:-}" ] && printf 'PASS: %s\n' "$desc"
         pass=$((pass + 1))
     else
         printf 'FAIL: %s\n  expected: %s\n  actual:   %s\n' "$desc" "$expected" "$actual"

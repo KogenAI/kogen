@@ -29,8 +29,7 @@ run_test() {
     fi
 
     if [ "$outcome" = "$expected" ]; then
-        printf 'PASS: %s
-' "$desc"
+        [ -n "${VERBOSE:-}" ] && printf 'PASS: %s\n' "$desc"
         pass=$((pass + 1))
     else
         printf 'FAIL: %s — expected %s (deny=2/allow=0), got %s
@@ -133,7 +132,7 @@ FIXTURE_MAKE='{"hook_event_name":"SubagentStop","agent_type":"developer-phoenix-
 printf '%s' "$FIXTURE_MAKE" | bash "$HOOK" 2>/dev/null || true
 
 if [ -f "$MAKE_REPO/.formatted" ]; then
-    printf 'PASS: project with make format target — make format called, exits 0\n'
+    [ -n "${VERBOSE:-}" ] && printf 'PASS: project with make format target — make format called, exits 0\n'
     pass=$((pass + 1))
 else
     printf 'FAIL: project with make format target — .formatted sentinel not created\n'

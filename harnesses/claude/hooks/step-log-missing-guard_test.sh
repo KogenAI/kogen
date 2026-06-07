@@ -14,7 +14,7 @@ assert_contains() {
     local needle="$2"
     local haystack="$3"
     if printf '%s' "$haystack" | grep -q "$needle"; then
-        printf 'PASS: %s\n' "$desc"
+        [ -n "${VERBOSE:-}" ] && printf 'PASS: %s\n' "$desc"
         pass=$((pass + 1))
     else
         printf 'FAIL: %s\n  needle: %s\n  haystack: %s\n' "$desc" "$needle" "$haystack"
@@ -30,7 +30,7 @@ assert_not_contains() {
         printf 'FAIL: %s\n  unexpected: %s\n  haystack: %s\n' "$desc" "$needle" "$haystack"
         fail=$((fail + 1))
     else
-        printf 'PASS: %s\n' "$desc"
+        [ -n "${VERBOSE:-}" ] && printf 'PASS: %s\n' "$desc"
         pass=$((pass + 1))
     fi
 }

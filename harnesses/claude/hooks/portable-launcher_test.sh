@@ -28,7 +28,7 @@ fail=0
 assert_eq() {
     local desc="$1" expected="$2" actual="$3"
     if [[ "$actual" == "$expected" ]]; then
-        printf 'PASS: %s\n' "$desc"
+        [ -n "${VERBOSE:-}" ] && printf 'PASS: %s\n' "$desc"
         pass=$((pass + 1))
     else
         printf 'FAIL: %s\n  expected: %q\n  actual:   %q\n' "$desc" "$expected" "$actual"
@@ -39,7 +39,7 @@ assert_eq() {
 assert_contains() {
     local desc="$1" needle="$2" haystack="$3"
     if printf '%s' "$haystack" | grep -qF "$needle"; then
-        printf 'PASS: %s\n' "$desc"
+        [ -n "${VERBOSE:-}" ] && printf 'PASS: %s\n' "$desc"
         pass=$((pass + 1))
     else
         printf 'FAIL: %s\n  needle: %s\n  haystack: %s\n' "$desc" "$needle" "${haystack:0:300}"
@@ -53,7 +53,7 @@ assert_not_contains() {
         printf 'FAIL: %s\n  unexpected: %s\n  haystack: %s\n' "$desc" "$needle" "${haystack:0:300}"
         fail=$((fail + 1))
     else
-        printf 'PASS: %s\n' "$desc"
+        [ -n "${VERBOSE:-}" ] && printf 'PASS: %s\n' "$desc"
         pass=$((pass + 1))
     fi
 }
@@ -61,7 +61,7 @@ assert_not_contains() {
 assert_exit() {
     local desc="$1" expected="$2" actual="$3"
     if [[ "$actual" == "$expected" ]]; then
-        printf 'PASS: %s (exit=%s)\n' "$desc" "$actual"
+        [ -n "${VERBOSE:-}" ] && printf 'PASS: %s (exit=%s)\n' "$desc" "$actual"
         pass=$((pass + 1))
     else
         printf 'FAIL: %s — expected exit %s, got %s\n' "$desc" "$expected" "$actual"
@@ -121,7 +121,7 @@ make_stub "$T1/codegen-build" "printf '%s\n' \"\$@\" > '$ARGS_T1'"
 actual_exit=0
 HOME="/tmp/nonexistent_user_xyz" bash "$T1/claude-build.sh" "hello prompt" 2>/dev/null || actual_exit=$?
 if [[ -f "$ARGS_T1" ]] && grep -q "harness=claude" "$ARGS_T1"; then
-    printf 'PASS: (1) claude-build.sh resolves sibling codegen-build without HOME fallback\n'
+    [ -n "${VERBOSE:-}" ] && printf 'PASS: (1) claude-build.sh resolves sibling codegen-build without HOME fallback\n'
     pass=$((pass + 1))
 else
     printf 'FAIL: (1) claude-build.sh did not invoke sibling codegen-build (exit=%s)\n' "$actual_exit"
@@ -138,7 +138,7 @@ make_stub "$T2/codegen-build" "printf '%s\n' \"\$@\" > '$ARGS_T2'"
 actual_exit=0
 HOME="/tmp/nonexistent_user_xyz" bash "$T2/pi-build.sh" "pi prompt" 2>/dev/null || actual_exit=$?
 if [[ -f "$ARGS_T2" ]] && grep -q "harness=pi" "$ARGS_T2"; then
-    printf 'PASS: (2) pi-build.sh resolves sibling codegen-build without HOME fallback\n'
+    [ -n "${VERBOSE:-}" ] && printf 'PASS: (2) pi-build.sh resolves sibling codegen-build without HOME fallback\n'
     pass=$((pass + 1))
 else
     printf 'FAIL: (2) pi-build.sh did not invoke sibling codegen-build (exit=%s)\n' "$actual_exit"
@@ -462,7 +462,7 @@ for f in "${FILES_TO_CHECK[@]}"; do
     fi
 done
 if [[ -z "$found_literal" ]]; then
-    printf 'PASS: (14) no hardcoded Areas/Optimum/codegen in launchers/dispatch/load-role/orchestrator.md\n'
+    [ -n "${VERBOSE:-}" ] && printf 'PASS: (14) no hardcoded Areas/Optimum/codegen in launchers/dispatch/load-role/orchestrator.md\n'
     pass=$((pass + 1))
 else
     printf 'FAIL: (14) hardcoded Areas/Optimum/codegen found in:%s\n' "$found_literal"

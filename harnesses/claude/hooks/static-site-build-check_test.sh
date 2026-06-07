@@ -24,7 +24,7 @@ run_test() {
     fi
 
     if [ "$outcome" = "$expected" ]; then
-        printf 'PASS: %s\n' "$desc"
+        [ -n "${VERBOSE:-}" ] && printf 'PASS: %s\n' "$desc"
         pass=$((pass + 1))
     else
         printf 'FAIL: %s — expected %s, got %s\n  stdout: %s\n' \
@@ -183,7 +183,7 @@ MD
 make_transcript "$T11/transcript.jsonl" "$LOG"
 out=$(printf '%s' "$(input_for "$T11" developer-html false "$T11/transcript.jsonl")" | bash "$HOOK" 2>/dev/null || true)
 if [ -z "$out" ] && grep -q '## static-site-verifier Section' "$LOG"; then
-    printf 'PASS: %s\n' "all checks pass — SSV section appended"
+    [ -n "${VERBOSE:-}" ] && printf 'PASS: %s\n' "all checks pass — SSV section appended"
     pass=$((pass + 1))
 else
     printf 'FAIL: %s\n  stdout: %s\n  log: %s\n' \
@@ -211,7 +211,7 @@ MD
 make_transcript "$T12A/transcript.jsonl" "$LOG_A"
 out=$(printf '%s' "$(input_for "$T12A" developer-html false "$T12A/transcript.jsonl")" | bash "$HOOK" 2>/dev/null || true)
 if grep -q '## static-site-verifier Section' "$LOG_A" && ! grep -q '## static-site-verifier Section' "$LOG_B"; then
-    printf 'PASS: A+B regression: SSV appended to A only\n'
+    [ -n "${VERBOSE:-}" ] && printf 'PASS: A+B regression: SSV appended to A only\n'
     pass=$((pass + 1))
 else
     printf 'FAIL: A+B regression: wrong log got SSV section\n  A: %s\n  B: %s\n' "$(cat "$LOG_A")" "$(cat "$LOG_B")"
@@ -250,7 +250,7 @@ STUB13=$(make_render_stub "PASS")
 out13=$(printf '%s' "$(input_for "$T13" developer-html false "$T13/transcript.jsonl")" |
     RENDER_CHECK_CMD="$STUB13" CODEGEN_DIR="$SCRIPT_DIR" bash "$HOOK" 2>/dev/null || true)
 if [ -z "$out13" ] && grep -q 'DOM non-empty' "$LOG13"; then
-    printf 'PASS: %s\n' "render PASS — SSV section includes render summary"
+    [ -n "${VERBOSE:-}" ] && printf 'PASS: %s\n' "render PASS — SSV section includes render summary"
     pass=$((pass + 1))
 else
     printf 'FAIL: render PASS — SSV section includes render summary\n  stdout: %s\n  log: %s\n' \
@@ -272,7 +272,7 @@ out14=$(printf '%s' "$(input_for "$T14")" |
 outcome14="allow"
 printf '%s' "$out14" | grep -q '"decision"[[:space:]]*:[[:space:]]*"block"' && outcome14="block"
 if [ "$outcome14" = "block" ]; then
-    printf 'PASS: %s\n' "render FAIL empty-dom blocks"
+    [ -n "${VERBOSE:-}" ] && printf 'PASS: %s\n' "render FAIL empty-dom blocks"
     pass=$((pass + 1))
 else
     printf 'FAIL: render FAIL empty-dom blocks\n  stdout: %s\n' "$out14"
@@ -292,7 +292,7 @@ out15=$(printf '%s' "$(input_for "$T15")" |
 outcome15="allow"
 printf '%s' "$out15" | grep -q '"decision"[[:space:]]*:[[:space:]]*"block"' && outcome15="block"
 if [ "$outcome15" = "block" ]; then
-    printf 'PASS: %s\n' "render FAIL unstyled blocks"
+    [ -n "${VERBOSE:-}" ] && printf 'PASS: %s\n' "render FAIL unstyled blocks"
     pass=$((pass + 1))
 else
     printf 'FAIL: render FAIL unstyled blocks\n  stdout: %s\n' "$out15"
@@ -317,7 +317,7 @@ out16=$(printf '%s' "$(input_for "$T16")" |
 outcome16="allow"
 printf '%s' "$out16" | grep -q '"decision"[[:space:]]*:[[:space:]]*"block"' && outcome16="block"
 if [ "$outcome16" = "block" ]; then
-    printf 'PASS: %s\n' "render FAIL js-error blocks"
+    [ -n "${VERBOSE:-}" ] && printf 'PASS: %s\n' "render FAIL js-error blocks"
     pass=$((pass + 1))
 else
     printf 'FAIL: render FAIL js-error blocks\n  stdout: %s\n' "$out16"
@@ -341,7 +341,7 @@ out17=$(printf '%s' "$(input_for "$T17" developer-html false "$T17/transcript.js
 outcome17="allow"
 printf '%s' "$out17" | grep -q '"decision"[[:space:]]*:[[:space:]]*"block"' && outcome17="block"
 if [ "$outcome17" = "allow" ] && grep -q '## static-site-verifier Section' "$LOG17"; then
-    printf 'PASS: %s\n' "render INCONCLUSIVE browser-not-installed non-fatal"
+    [ -n "${VERBOSE:-}" ] && printf 'PASS: %s\n' "render INCONCLUSIVE browser-not-installed non-fatal"
     pass=$((pass + 1))
 else
     printf 'FAIL: render INCONCLUSIVE browser-not-installed non-fatal\n  outcome: %s\n  stdout: %s\n' \

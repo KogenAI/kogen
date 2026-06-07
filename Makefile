@@ -118,10 +118,10 @@ harness-parity:
 # concurrently via & + wait to reduce wall time.
 test: hook-parity harness-parity test-generator enforce-registry-parity
 	@set -e; \
-	pids=(); \
-	./harnesses/claude/hooks/run-tests.sh & pids+=($$!); \
-	./shared/scaffold/phoenix/run-tests.sh & pids+=($$!); \
-	./test_harness/install/run-tests.sh & pids+=($$!); \
+	pids=(); labels=(); \
+	./harnesses/claude/hooks/run-tests.sh & pids+=($$!); labels+=(hooks); \
+	./shared/scaffold/phoenix/run-tests.sh & pids+=($$!); labels+=(scaffold-phoenix); \
+	./test_harness/install/run-tests.sh & pids+=($$!); labels+=(install); \
 	( \
 		npm_pids=(); \
 		for ext in enforcement askuserquestion subagents web-utils; do \
@@ -134,23 +134,34 @@ test: hook-parity harness-parity test-generator enforce-registry-parity
 		fail=0; \
 		for p in "$${npm_pids[@]+"$${npm_pids[@]}"}"; do wait "$$p" || fail=1; done; \
 		exit "$$fail" \
-	) & pids+=($$!); \
+	) & pids+=($$!); labels+=(npm-ext); \
 	( \
 		ext_dir="$(SCRIPT_DIR)/harnesses/pi/pi-extensions/subagents"; \
 		if [ -d "$$ext_dir/test/integration" ] && [ -n "$$(ls "$$ext_dir/test/integration/"*.test.ts 2>/dev/null)" ]; then \
 			echo "▶ Test:integration: subagents"; \
 			(cd "$$ext_dir" && mise exec -- npm run test:integration) || exit 1; \
 		fi \
-	) & pids+=($$!); \
-	fail=0; \
-	for p in "$${pids[@]}"; do wait "$$p" || fail=1; done; \
+	) & pids+=($$!); labels+=(subagents-integration); \
+	fail=0; failed_labels=(); \
+	for i in "$${!pids[@]}"; do \
+		if ! wait "$${pids[$$i]}"; then \
+			fail=1; \
+			failed_labels+=("$${labels[$$i]}"); \
+		fi; \
+	done; \
+	if [ "$$fail" -eq 0 ]; then \
+		echo "ALL CLEAR ✅ make test"; \
+	else \
+		joined=$$(printf '%s, ' "$${failed_labels[@]}"); joined=$${joined%, }; \
+		echo "FAILED ❌ make test — $$joined"; \
+	fi; \
 	exit "$$fail"
 
 .PHONY: test-generator test-generator-python
 test-generator: test-generator-python
 	@bash "$(SCRIPT_DIR)/templates/generator/run-tests.sh"
 test-generator-python:
-	@cd "$(SCRIPT_DIR)/templates/generator" && python3 -m unittest discover -s tests -v
+	@cd "$(SCRIPT_DIR)/templates/generator" && out=$$(python3 -m unittest discover -s tests 2>&1); rc=$$?; [ $$rc -eq 0 ] || printf '%s\n' "$$out"; exit $$rc
 
 .PHONY: test-coverage test-coverage-elixir test-coverage-typescript test-coverage-shell test-coverage-python test-coverage-summary
 

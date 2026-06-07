@@ -67,6 +67,20 @@ exec cmd "${ARR[@]+"${ARR[@]}"}" other_args  # safe even if ARR=() or unset
 
 **Unbound variable in default-value expansion** — `${VAR}` inside `${OTHER:-node "$VAR/path"}` still fails under `set -u` if `VAR` is unset, even though `OTHER` has a default. Use `${VAR:-}` to make unset safe within expansions.
 
+## IFS Multi-Character Join Pitfall
+
+**`IFS=', '; echo "${arr[*]}"` uses ONLY the first character of IFS as separator** — to join with `', '` (comma-space), use `printf '%s, ' "${arr[@]}"` then strip trailing comma:
+
+```bash
+# WRONG — separator is only the first char ','
+IFS=', '; echo "${arr[*]}"  # → "a, b,c" (space is ignored)
+
+# CORRECT — printf respects the full string
+printf '%s, ' "${arr[@]}" | sed 's/, $//'  # → "a, b, c"
+```
+
+This is bash builtin behavior and applies across all platforms (bash 3.2+). Using `${arr[*]}` for multi-char separators is a silent failure pattern.
+
 ## Cache Mechanics
 
 Stack rules baked at install via Jinja `{% include %}`. Do NOT runtime-load already-included rules.
@@ -228,3 +242,13 @@ When an install script runs in a hermetic test environment where `$HOME` is chan
   2. Scan `$PATH` for non-shim entries (exclude paths containing `"shims"`) to find the real binary.
 - Example: instead of `npx prettier`, find the real prettier binary: `grep -v shims <<< "$PATH" | tr ':' '\n' | while read p; do [ -x "$p/prettier" ] && { "$p/prettier" ...; break; }; done`
 - Also note: `MISE_SKIP_CONFIG=1` skips tool-version config loading but does NOT bypass global config trust checks — the trust lookup uses `getpwuid()` for path resolution, not `$HOME` env var, so trust records may still fail with a changed `$HOME`.
+
+## Test Output Control (VERBOSE Gating)
+
+**Quiet-on-pass pattern with VERBOSE gating** — suppress verbose test output in normal runs, emit on demand:
+
+```bash
+[ -n "${VERBOSE:-}" ] && printf 'debug output'
+```
+
+This pattern is bash-3.2-safe (no `set -e` failure with `&&`), scales across many test files, and is consistent. Guards multiple test runners and leaf test files. Use this idiom for any debug output that should be controlled by the `VERBOSE` environment variable. Example: `[ -n "${VERBOSE:-}" ] && echo "Testing $file"` emits only when `VERBOSE=1` is set.

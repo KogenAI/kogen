@@ -39,7 +39,7 @@ run_test() {
     fi
 
     if [ "$outcome" = "$expected" ]; then
-        printf 'PASS: %s\n' "$desc"
+        [ -n "${VERBOSE:-}" ] && printf 'PASS: %s\n' "$desc"
         pass=$((pass + 1))
     else
         printf 'FAIL: %s — expected %s (deny=2/allow=0), got %s\n  stdout: %s\n' \
@@ -63,7 +63,7 @@ assert_jsonl_field() {
     local actual
     actual=$(tail -1 "$ledger" | jq -r --arg f "$field" '.[$f] // ""' 2>/dev/null)
     if [ "$actual" = "$expected_value" ]; then
-        printf 'PASS: %s\n' "$desc"
+        [ -n "${VERBOSE:-}" ] && printf 'PASS: %s\n' "$desc"
         pass=$((pass + 1))
     else
         printf 'FAIL: %s — field %s expected "%s", got "%s"\n' "$desc" "$field" "$expected_value" "$actual"
@@ -86,7 +86,7 @@ assert_jsonl_valid() {
         printf '%s' "$line" | jq . >/dev/null 2>&1 || printf 'invalid: %s\n' "$line"
     done)
     if [ -z "$invalid" ]; then
-        printf 'PASS: %s\n' "$desc"
+        [ -n "${VERBOSE:-}" ] && printf 'PASS: %s\n' "$desc"
         pass=$((pass + 1))
     else
         printf 'FAIL: %s — invalid JSON lines: %s\n' "$desc" "$invalid"
@@ -111,7 +111,7 @@ assert_jsonl_field "ledger has correct error field" "$LEDGER_T2" "error" "file n
 if [ -f "$LEDGER_T2" ]; then
     ts_val=$(tail -1 "$LEDGER_T2" | jq -r '.ts // ""' 2>/dev/null)
     if printf '%s' "$ts_val" | grep -qE '^[0-9]{4}-[0-9]{2}-[0-9]{2}T'; then
-        printf 'PASS: ledger has ISO timestamp in ts field\n'
+        [ -n "${VERBOSE:-}" ] && printf 'PASS: ledger has ISO timestamp in ts field\n'
         pass=$((pass + 1))
     else
         printf 'FAIL: ledger ts field not an ISO timestamp: "%s"\n' "$ts_val"
@@ -137,7 +137,7 @@ printf '%s' "$DOUBLE_INPUT" | bash "$GUARD" 2>/dev/null || true
 printf '%s' "$DOUBLE_INPUT" | bash "$GUARD" 2>/dev/null || true
 line_count=$(grep -c '{' "$LEDGER_T5" 2>/dev/null || echo 0)
 if [ "$line_count" -ge 2 ]; then
-    printf 'PASS: double write produces 2 valid lines\n'
+    [ -n "${VERBOSE:-}" ] && printf 'PASS: double write produces 2 valid lines\n'
     pass=$((pass + 1))
 else
     printf 'FAIL: double write should produce >= 2 lines, got %s\n' "$line_count"

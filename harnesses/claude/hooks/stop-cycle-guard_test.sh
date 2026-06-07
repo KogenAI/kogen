@@ -44,7 +44,7 @@ run_test() {
     fi
 
     if [ "$outcome" = "$expected" ]; then
-        printf 'PASS: %s\n' "$desc"
+        [ -n "${VERBOSE:-}" ] && printf 'PASS: %s\n' "$desc"
         pass=$((pass + 1))
     else
         printf 'FAIL: %s — expected %s, got %s\n  stdout: %s\n' \
@@ -207,7 +207,7 @@ stdout12=$(printf '%s' "$INPUT12" | bash "$GUARD" 2>/dev/null || true)
 if printf '%s' "$stdout12" | grep -q '"decision"[[:space:]]*:[[:space:]]*"block"' &&
     printf '%s' "$stdout12" | grep -qF "$LOG12A" &&
     ! printf '%s' "$stdout12" | grep -qF "$LOG12B"; then
-    printf 'PASS: A+B regression: block cites A log, not B\n'
+    [ -n "${VERBOSE:-}" ] && printf 'PASS: A+B regression: block cites A log, not B\n'
     pass=$((pass + 1))
 else
     printf 'FAIL: A+B regression: wrong block reason\n  stdout: %s\n' "$stdout12"

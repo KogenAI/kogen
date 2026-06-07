@@ -13,7 +13,7 @@ fail=0
 assert_eq() {
     local desc="$1" expected="$2" actual="$3"
     if [ "$expected" = "$actual" ]; then
-        printf 'PASS: %s\n' "$desc"
+        [ -n "${VERBOSE:-}" ] && printf 'PASS: %s\n' "$desc"
         pass=$((pass + 1))
     else
         printf 'FAIL: %s\n  expected: %s\n  actual:   %s\n' "$desc" "$expected" "$actual"
@@ -98,13 +98,13 @@ if [ -e "$LOG" ]; then
     printf 'FAIL: debug_log without env wrote to %s\n' "$LOG"
 else
     pass=$((pass + 1))
-    printf 'PASS: debug_log silent without env\n'
+    [ -n "${VERBOSE:-}" ] && printf 'PASS: debug_log silent without env\n'
 fi
 
 COMBOBULATE_HOOKS_DEBUG=1 debug_log hooks-lib-test-slug "with env: should log"
 if grep -q "with env: should log" "$LOG" 2>/dev/null; then
     pass=$((pass + 1))
-    printf 'PASS: debug_log writes when COMBOBULATE_HOOKS_DEBUG set\n'
+    [ -n "${VERBOSE:-}" ] && printf 'PASS: debug_log writes when COMBOBULATE_HOOKS_DEBUG set\n'
 else
     fail=$((fail + 1))
     printf 'FAIL: debug_log did not write to %s\n' "$LOG"
@@ -117,7 +117,7 @@ rm -f "$LOG"
 exit_code=0
 AGENT_TYPE="" bash -c "source '$SCRIPT_DIR/hooks-lib.sh' && require_inspector_agent_type && exit 1 || exit 0" || exit_code=$?
 if [ "$exit_code" -eq 0 ]; then
-    printf 'PASS: require_inspector_agent_type exits 0 when AGENT_TYPE unset\n'
+    [ -n "${VERBOSE:-}" ] && printf 'PASS: require_inspector_agent_type exits 0 when AGENT_TYPE unset\n'
     pass=$((pass + 1))
 else
     printf 'FAIL: require_inspector_agent_type did not exit 0 when AGENT_TYPE unset (exit %s)\n' "$exit_code"
@@ -128,7 +128,7 @@ fi
 exit_code=0
 AGENT_TYPE="developer-phoenix-backend" bash -c "source '$SCRIPT_DIR/hooks-lib.sh' && require_inspector_agent_type && exit 1 || exit 0" || exit_code=$?
 if [ "$exit_code" -eq 0 ]; then
-    printf 'PASS: require_inspector_agent_type exits 0 for developer-phoenix-backend\n'
+    [ -n "${VERBOSE:-}" ] && printf 'PASS: require_inspector_agent_type exits 0 for developer-phoenix-backend\n'
     pass=$((pass + 1))
 else
     printf 'FAIL: require_inspector_agent_type did not exit 0 for developer-phoenix-backend (exit %s)\n' "$exit_code"
@@ -139,7 +139,7 @@ fi
 exit_code=0
 AGENT_TYPE="inspector" bash -c "source '$SCRIPT_DIR/hooks-lib.sh' && require_inspector_agent_type && exit 0" || exit_code=$?
 if [ "${exit_code:-0}" -eq 0 ]; then
-    printf 'PASS: require_inspector_agent_type returns (continues) for inspector\n'
+    [ -n "${VERBOSE:-}" ] && printf 'PASS: require_inspector_agent_type returns (continues) for inspector\n'
     pass=$((pass + 1))
 else
     printf 'FAIL: require_inspector_agent_type did not continue for inspector (exit %s)\n' "$exit_code"

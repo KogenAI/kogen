@@ -35,7 +35,7 @@ assert_eq() {
     local expected="$2"
     local actual="$3"
     if [ "$expected" = "$actual" ]; then
-        printf 'PASS: %s\n' "$desc"
+        [ -n "${VERBOSE:-}" ] && printf 'PASS: %s\n' "$desc"
         pass=$((pass + 1))
     else
         printf 'FAIL: %s\n  expected: %s\n  actual:   %s\n' "$desc" "$expected" "$actual"
@@ -48,7 +48,7 @@ assert_contains() {
     local needle="$2"
     local haystack="$3"
     if printf '%s' "$haystack" | grep -qF "$needle"; then
-        printf 'PASS: %s\n' "$desc"
+        [ -n "${VERBOSE:-}" ] && printf 'PASS: %s\n' "$desc"
         pass=$((pass + 1))
     else
         printf 'FAIL: %s\n  needle not found: %s\n' "$desc" "$needle"
@@ -64,7 +64,7 @@ assert_not_contains() {
         printf 'FAIL: %s\n  needle found (should not be): %s\n' "$desc" "$needle"
         fail=$((fail + 1))
     else
-        printf 'PASS: %s\n' "$desc"
+        [ -n "${VERBOSE:-}" ] && printf 'PASS: %s\n' "$desc"
         pass=$((pass + 1))
     fi
 }
@@ -252,7 +252,7 @@ python3 "$COMPILER" \
     --index "$tmpdir/real_index.ts" >/dev/null 2>&1
 
 if diff -q "$tmpdir/real_index_orig.ts" "$tmpdir/real_index.ts" >/dev/null 2>&1; then
-    printf 'PASS: index.ts update is idempotent\n'
+    [ -n "${VERBOSE:-}" ] && printf 'PASS: index.ts update is idempotent\n'
     pass=$((pass + 1))
 else
     printf 'FAIL: index.ts update is NOT idempotent\n'

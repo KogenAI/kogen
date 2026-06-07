@@ -19,7 +19,7 @@ assert_contains() {
     local needle="$2"
     local haystack="$3"
     if printf '%s' "$haystack" | grep -qF "$needle"; then
-        printf 'PASS: %s\n' "$desc"
+        [ -n "${VERBOSE:-}" ] && printf 'PASS: %s\n' "$desc"
         pass=$((pass + 1))
     else
         printf 'FAIL: %s\n  needle: %s\n  haystack: %s\n' "$desc" "$needle" "$haystack"
@@ -35,7 +35,7 @@ assert_not_contains() {
         printf 'FAIL: %s\n  unexpected: %s\n  haystack: %s\n' "$desc" "$needle" "$haystack"
         fail=$((fail + 1))
     else
-        printf 'PASS: %s\n' "$desc"
+        [ -n "${VERBOSE:-}" ] && printf 'PASS: %s\n' "$desc"
         pass=$((pass + 1))
     fi
 }
@@ -45,7 +45,7 @@ assert_file_contains() {
     local needle="$2"
     local file="$3"
     if [ -f "$file" ] && grep -qF "$needle" "$file"; then
-        printf 'PASS: %s\n' "$desc"
+        [ -n "${VERBOSE:-}" ] && printf 'PASS: %s\n' "$desc"
         pass=$((pass + 1))
     else
         printf 'FAIL: %s\n  needle: %s\n  file: %s\n' "$desc" "$needle" "$file"
@@ -121,7 +121,7 @@ assert_file_contains "prev-alive: INCONCLUSIVE appended" "INCONCLUSIVE" "$LOG8"
 assert_file_contains "prev-alive: reason is previous-gate-running" "previous-gate-running" "$LOG8"
 # No new flag file should have been created for sess8.
 [ ! -f "$T8/codegen/gate-pending/sess8.flag" ] && {
-    printf 'PASS: prev-alive: no new flag created\n'
+    [ -n "${VERBOSE:-}" ] && printf 'PASS: prev-alive: no new flag created\n'
     pass=$((pass + 1))
 } || {
     printf 'FAIL: prev-alive: new flag was unexpectedly created\n'
@@ -171,7 +171,7 @@ out=$(printf '%s' "$(input_for "$T9" developer-phoenix-backend false sess9 "$T9/
     DEV_GATE_POLL_TIMEOUT_OVERRIDE=10 PATH="$stub_bin9:$PATH" bash "$HOOK" 2>/dev/null || true)
 # Orphan files should be swept (reaper runs in long-gate branch).
 [ ! -f "$orphan_log" ] && {
-    printf 'PASS: dead-pid: orphan .log swept\n'
+    [ -n "${VERBOSE:-}" ] && printf 'PASS: dead-pid: orphan .log swept\n'
     pass=$((pass + 1))
 } || {
     printf 'FAIL: dead-pid: orphan .log not swept\n'
@@ -179,7 +179,7 @@ out=$(printf '%s' "$(input_for "$T9" developer-phoenix-backend false sess9 "$T9/
 }
 # New gate launched and verdict produced.
 [ -f "$T9/codegen/gate-pending/sess9.flag" ] && {
-    printf 'PASS: dead-pid: new gate launched\n'
+    [ -n "${VERBOSE:-}" ] && printf 'PASS: dead-pid: new gate launched\n'
     pass=$((pass + 1))
 } || {
     printf 'FAIL: dead-pid: new gate not launched\n'
@@ -231,7 +231,7 @@ EOF
 make_transcript "$T16/transcript.jsonl" "$LOG16"
 out=$(printf '%s' "$(input_for "$T16" developer-phoenix-backend false sess16 "$T16/transcript.jsonl")" | DEV_GATE_POLL_TIMEOUT_OVERRIDE=5 bash "$HOOK" 2>/dev/null || true)
 [ -e "$T16/codegen/gate-pending/latest.flag" ] && {
-    printf 'PASS: T16: live-PID flag preserved (no false sweep)\n'
+    [ -n "${VERBOSE:-}" ] && printf 'PASS: T16: live-PID flag preserved (no false sweep)\n'
     pass=$((pass + 1))
 } || {
     printf 'FAIL: T16: live-PID flag unexpectedly swept\n'
@@ -274,7 +274,7 @@ if grep -qF "previous-gate-running" "$LOG17"; then
     printf 'FAIL: T17: false previous-gate-running lockout fired despite terminal flag\n'
     fail=$((fail + 1))
 else
-    printf 'PASS: T17: sweep prevented false previous-gate-running lockout\n'
+    [ -n "${VERBOSE:-}" ] && printf 'PASS: T17: sweep prevented false previous-gate-running lockout\n'
     pass=$((pass + 1))
 fi
 rm -rf "$T17"

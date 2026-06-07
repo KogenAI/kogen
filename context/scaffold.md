@@ -10,24 +10,24 @@ scaffold.sh, eex_render, mutations, AGENTS.md.j2, PROJECT_CONTEXT.md.j2, ocg set
 
 ## Components
 
-| File / Dir                                        | Purpose                                                           |
-| ------------------------------------------------- | ----------------------------------------------------------------- |
-| `shared/scaffold/phoenix/scaffold.sh`             | Phoenix scaffold entry — creates new Phoenix app via mutations    |
-| `shared/scaffold/phoenix/mutations/`              | Per-file bash mutation scripts (config_exs.sh, mix_exs.sh, credo_fix.sh, etc.)  |
-| `shared/scaffold/phoenix/eex_render.sh`           | Renders `.eex` templates with variable substitution               |
-| `shared/scaffold/phoenix/templates/`              | `.eex` source templates for Phoenix scaffold output               |
-| `shared/scaffold/static/scaffold.sh`              | Static site scaffold entry                                        |
-| `shared/scaffold/static/scaffold_test.sh`         | Bash tests for static scaffold                                    |
-| `shared/scaffold/phoenix/README.md`               | Phoenix scaffold setup and mutation authoring guide               |
-| `shared/apps/AGENTS-phoenix.md.j2`                | Downstream AGENTS.md template (Jinja — rendered for each new app) |
-| `shared/apps/AGENTS-static.md.j2`                 | Downstream AGENTS.md template for static sites                    |
-| `shared/apps/AGENTS-phoenix.md`                   | Rendered reference copy (static, checked in)                      |
-| `shared/apps/AGENTS-static.md`                    | Rendered reference copy for static sites                          |
-| `shared/apps/CLAUDE-phoenix.md`                   | Downstream CLAUDE.md content for Phoenix apps                     |
-| `shared/apps/CLAUDE-static.md`                    | Downstream CLAUDE.md content for static sites                     |
-| `shared/apps/PROJECT_CONTEXT-phoenix-template.md` | Format reference for downstream PROJECT_CONTEXT.md                |
-| `shared/apps/PROJECT_CONTEXT-static-template.md`  | Format reference for static site PROJECT_CONTEXT.md               |
-| `codegen-scaffold`                                | Top-level launcher — selects stack, delegates to scaffold.sh      |
+| File / Dir                                        | Purpose                                                                        |
+| ------------------------------------------------- | ------------------------------------------------------------------------------ |
+| `shared/scaffold/phoenix/scaffold.sh`             | Phoenix scaffold entry — creates new Phoenix app via mutations                 |
+| `shared/scaffold/phoenix/mutations/`              | Per-file bash mutation scripts (config_exs.sh, mix_exs.sh, credo_fix.sh, etc.) |
+| `shared/scaffold/phoenix/eex_render.sh`           | Renders `.eex` templates with variable substitution                            |
+| `shared/scaffold/phoenix/templates/`              | `.eex` source templates for Phoenix scaffold output                            |
+| `shared/scaffold/static/scaffold.sh`              | Static site scaffold entry                                                     |
+| `shared/scaffold/static/scaffold_test.sh`         | Bash tests for static scaffold                                                 |
+| `shared/scaffold/phoenix/README.md`               | Phoenix scaffold setup and mutation authoring guide                            |
+| `shared/apps/AGENTS-phoenix.md.j2`                | Downstream AGENTS.md template (Jinja — rendered for each new app)              |
+| `shared/apps/AGENTS-static.md.j2`                 | Downstream AGENTS.md template for static sites                                 |
+| `shared/apps/AGENTS-phoenix.md`                   | Rendered reference copy (static, checked in)                                   |
+| `shared/apps/AGENTS-static.md`                    | Rendered reference copy for static sites                                       |
+| `shared/apps/CLAUDE-phoenix.md`                   | Downstream CLAUDE.md content for Phoenix apps                                  |
+| `shared/apps/CLAUDE-static.md`                    | Downstream CLAUDE.md content for static sites                                  |
+| `shared/apps/PROJECT_CONTEXT-phoenix-template.md` | Format reference for downstream PROJECT_CONTEXT.md                             |
+| `shared/apps/PROJECT_CONTEXT-static-template.md`  | Format reference for static site PROJECT_CONTEXT.md                            |
+| `codegen-scaffold`                                | Top-level launcher — selects stack, delegates to scaffold.sh                   |
 
 ## Key Paths
 
@@ -168,10 +168,10 @@ Patch `rel/overlays/bin/server` to set `APP_REVISION` env var (reads from `git d
 
 ### Dependencies & Versions
 
-| Dep               | Version  | Notes                               |
-| ----------------- | -------- | ----------------------------------- |
-| optimum_credo     | ~> 0.4   | Upgraded 0.3 → 0.4 (adds LiveViewBareMatch check)     |
-| appsignal_phoenix | (opt-in) | Only if `--with-appsignal` supplied |
+| Dep               | Version  | Notes                                             |
+| ----------------- | -------- | ------------------------------------------------- |
+| optimum_credo     | ~> 0.4   | Upgraded 0.3 → 0.4 (adds LiveViewBareMatch check) |
+| appsignal_phoenix | (opt-in) | Only if `--with-appsignal` supplied               |
 
 ### Fixture Regeneration (B4 — Gate-Affecting)
 
@@ -190,6 +190,7 @@ The fixture `test_harness/mutations/fixtures/phx_new_skeleton/` must stay in syn
 `shared/scaffold/phoenix/mutations/credo_fix.sh` patches FIX-bucket phx.new files to pass credo checks post-generation:
 
 **Scope & Fixes**:
+
 - **FIX bucket** (mutation adds @moduledoc/@spec, fixes ordering; removes from .credo.exs exclusions):
   - `core_components.ex`, `layouts.ex`: add @moduledoc + @spec
   - `<app>_web.ex`: fix alias/import order
@@ -203,6 +204,7 @@ The fixture `test_harness/mutations/fixtures/phx_new_skeleton/` must stay in syn
 **Module ordering rule** (from `shared/recipes/elixir-module-organization-skeleton.md`): `@moduledoc` ALWAYS AFTER `defmodule ... do` and BEFORE `use` — StrictModuleLayout requires `[:shortdoc, :moduledoc, :use, ...]` order.
 
 **Fixture coverage**: `test_harness/mutations/fixtures/phx_new_skeleton/` includes FIX-bucket files at phx.new 1.8 paths:
+
 - `lib/<app>_web.ex`
 - `lib/<app>_web/components/{core_components,layouts}.ex`
 - `lib/<app>_web/controllers/{page_controller,error_html,error_json}.ex`

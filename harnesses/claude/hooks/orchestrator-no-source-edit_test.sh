@@ -29,8 +29,7 @@ run_test() {
     fi
 
     if [ "$outcome" = "$expected" ]; then
-        printf 'PASS: %s
-' "$desc"
+        [ -n "${VERBOSE:-}" ] && printf 'PASS: %s\n' "$desc"
         pass=$((pass + 1))
     else
         printf 'FAIL: %s — expected %s (deny=2/allow=0), got %s
@@ -114,7 +113,7 @@ run_test_role() {
     fi
 
     if [ "$outcome" = "$expected" ]; then
-        printf 'PASS: %s\n' "$desc"
+        [ -n "${VERBOSE:-}" ] && printf 'PASS: %s\n' "$desc"
         pass=$((pass + 1))
     else
         printf 'FAIL: %s — expected %s (deny=2/allow=0), got %s\n  stdout: %s\n' "$desc" "$expected" "$outcome" "$stdout"
@@ -215,7 +214,7 @@ run_test_parity() {
     fi
 
     if [ "$outcome" = "$expected" ]; then
-        printf 'PASS: %s\n' "$desc"
+        [ -n "${VERBOSE:-}" ] && printf 'PASS: %s\n' "$desc"
         pass=$((pass + 1))
     else
         printf 'FAIL: %s — expected %s (deny=2/allow=0), got %s\n  stdout: %s\n' "$desc" "$expected" "$outcome" "$stdout"
@@ -251,7 +250,7 @@ run_test_parity "PI_ROLE=refactor Write to pitches/draft/ allows" "0" "PI_ROLE" 
 FIXTURE_PREC_LIB='{"hook_event_name":"PreToolUse","tool_name":"Edit","tool_input":{"file_path":"lib/foo.ex","old_string":"x","new_string":"y"},"agent_id":"","agent_type":""}'
 stdout_prec=$(printf '%s' "$FIXTURE_PREC_LIB" | CLAUDE_ROLE=debug PI_ROLE=build bash "$GUARD" 2>/dev/null || true)
 if printf '%s' "$stdout_prec" | grep -q '"permissionDecision"[[:space:]]*:[[:space:]]*"deny"'; then
-    printf 'PASS: precedence — CLAUDE_ROLE=debug wins over PI_ROLE=build → blocks lib/\n'
+    [ -n "${VERBOSE:-}" ] && printf 'PASS: precedence — CLAUDE_ROLE=debug wins over PI_ROLE=build → blocks lib/\n'
     pass=$((pass + 1))
 else
     printf 'FAIL: precedence — CLAUDE_ROLE=debug should win and block lib/ — got allow\n  stdout: %s\n' "$stdout_prec"
@@ -261,7 +260,7 @@ fi
 # Test 36: only PI_ROLE=debug set (CLAUDE_ROLE unset) → behaves as debug → blocks lib/
 stdout_pi_only=$(printf '%s' "$FIXTURE_PREC_LIB" | PI_ROLE=debug bash "$GUARD" 2>/dev/null || true)
 if printf '%s' "$stdout_pi_only" | grep -q '"permissionDecision"[[:space:]]*:[[:space:]]*"deny"'; then
-    printf 'PASS: only PI_ROLE=debug set — behaves as debug, blocks lib/\n'
+    [ -n "${VERBOSE:-}" ] && printf 'PASS: only PI_ROLE=debug set — behaves as debug, blocks lib/\n'
     pass=$((pass + 1))
 else
     printf 'FAIL: only PI_ROLE=debug set — should behave as debug and block lib/ — got allow\n  stdout: %s\n' "$stdout_pi_only"
@@ -271,7 +270,7 @@ fi
 # Test 38: all role vars unset → orchestrator default → blocks lib/ (no subagent bypass)
 stdout_all_unset=$(printf '%s' "$FIXTURE_PREC_LIB" | bash "$GUARD" 2>/dev/null || true)
 if printf '%s' "$stdout_all_unset" | grep -q '"permissionDecision"[[:space:]]*:[[:space:]]*"deny"'; then
-    printf 'PASS: all role vars unset — orchestrator default, blocks lib/\n'
+    [ -n "${VERBOSE:-}" ] && printf 'PASS: all role vars unset — orchestrator default, blocks lib/\n'
     pass=$((pass + 1))
 else
     printf 'FAIL: all role vars unset — should block lib/ for plain orchestrator — got allow\n  stdout: %s\n' "$stdout_all_unset"

@@ -19,7 +19,7 @@ assert_contains() {
     local needle="$2"
     local haystack="$3"
     if printf '%s' "$haystack" | grep -qF "$needle"; then
-        printf 'PASS: %s\n' "$desc"
+        [ -n "${VERBOSE:-}" ] && printf 'PASS: %s\n' "$desc"
         pass=$((pass + 1))
     else
         printf 'FAIL: %s\n  needle: %s\n  haystack: %s\n' "$desc" "$needle" "$haystack"
@@ -35,7 +35,7 @@ assert_not_contains() {
         printf 'FAIL: %s\n  unexpected: %s\n  haystack: %s\n' "$desc" "$needle" "$haystack"
         fail=$((fail + 1))
     else
-        printf 'PASS: %s\n' "$desc"
+        [ -n "${VERBOSE:-}" ] && printf 'PASS: %s\n' "$desc"
         pass=$((pass + 1))
     fi
 }
@@ -45,7 +45,7 @@ assert_file_contains() {
     local needle="$2"
     local file="$3"
     if [ -f "$file" ] && grep -qF "$needle" "$file"; then
-        printf 'PASS: %s\n' "$desc"
+        [ -n "${VERBOSE:-}" ] && printf 'PASS: %s\n' "$desc"
         pass=$((pass + 1))
     else
         printf 'FAIL: %s\n  needle: %s\n  file: %s\n' "$desc" "$needle" "$file"
@@ -176,7 +176,7 @@ rm -rf "$T6"
 T7=$(make_project)
 out=$(printf '%s' "$(input_for "$T7")" | bash "$HOOK" 2>/dev/null || true)
 [ ! -d "$T7/codegen/gate-pending" ] || [ -z "$(ls "$T7/codegen/gate-pending" 2>/dev/null)" ] && {
-    printf 'PASS: no flag file written for short fallback gate\n'
+    [ -n "${VERBOSE:-}" ] && printf 'PASS: no flag file written for short fallback gate\n'
     pass=$((pass + 1))
 } || {
     printf 'FAIL: flag file written for short gate\n'
@@ -210,7 +210,7 @@ EOF
 make_transcript "$T15/transcript.jsonl" "$LOG15"
 out=$(printf '%s' "$(input_for "$T15" developer-phoenix-backend false sess15 "$T15/transcript.jsonl")" | bash "$HOOK" 2>/dev/null || true)
 [ ! -e "$T15/codegen/gate-pending/latest.flag" ] && {
-    printf 'PASS: T15: pre-seeded terminal latest.flag swept by hook entry\n'
+    [ -n "${VERBOSE:-}" ] && printf 'PASS: T15: pre-seeded terminal latest.flag swept by hook entry\n'
     pass=$((pass + 1))
 } || {
     printf 'FAIL: T15: pre-seeded terminal latest.flag not swept\n'
@@ -247,7 +247,7 @@ make_transcript "$T18A/transcript.jsonl" "$LOG_A"
 out=$(printf '%s' "$(input_for "$T18A" developer-phoenix-backend false sess18 "$T18A/transcript.jsonl")" | bash "$HOOK" 2>/dev/null || true)
 # A's log must have ALL CLEAR; B's log must NOT.
 if grep -qF "ALL CLEAR" "$LOG_A" && ! grep -qF "ALL CLEAR" "$LOG_B"; then
-    printf 'PASS: A+B regression: verdict appended to A only\n'
+    [ -n "${VERBOSE:-}" ] && printf 'PASS: A+B regression: verdict appended to A only\n'
     pass=$((pass + 1))
 else
     printf 'FAIL: A+B regression: wrong log got verdict\n  A: %s\n  B: %s\n' "$(cat "$LOG_A")" "$(cat "$LOG_B")"

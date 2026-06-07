@@ -13,7 +13,7 @@ fail=0
 assert_eq() {
     local desc="$1" expected="$2" actual="$3"
     if [ "$expected" = "$actual" ]; then
-        printf 'PASS: %s\n' "$desc"
+        [ -n "${VERBOSE:-}" ] && printf 'PASS: %s\n' "$desc"
         pass=$((pass + 1))
     else
         printf 'FAIL: %s\n  expected: %s\n  actual:   %s\n' "$desc" "$expected" "$actual"
@@ -25,7 +25,7 @@ assert_exit_0() {
     local desc="$1"
     local cmd="$2"
     if eval "$cmd" >/dev/null 2>&1; then
-        printf 'PASS: %s\n' "$desc"
+        [ -n "${VERBOSE:-}" ] && printf 'PASS: %s\n' "$desc"
         pass=$((pass + 1))
     else
         printf 'FAIL: %s — expected exit 0\n' "$desc"
@@ -37,7 +37,7 @@ assert_exit_1() {
     local desc="$1"
     local cmd="$2"
     if ! eval "$cmd" >/dev/null 2>&1; then
-        printf 'PASS: %s\n' "$desc"
+        [ -n "${VERBOSE:-}" ] && printf 'PASS: %s\n' "$desc"
         pass=$((pass + 1))
     else
         printf 'FAIL: %s — expected non-zero exit\n' "$desc"
@@ -94,7 +94,7 @@ rc=$?
 assert_eq "status live PID → exit 0" "0" "$rc"
 # Output should mention the PID
 if printf '%s' "$out" | grep -q "pid=$LIVE_PID"; then
-    printf 'PASS: status live PID output mentions pid\n'
+    [ -n "${VERBOSE:-}" ] && printf 'PASS: status live PID output mentions pid\n'
     pass=$((pass + 1))
 else
     printf 'FAIL: status live PID output missing pid\n  out: %s\n' "$out"
@@ -132,7 +132,7 @@ ln -sf "$T6/codegen/gate-pending/live.flag" "$T6/codegen/gate-pending/latest.fla
     cp "$T6/codegen/gate-pending/live.flag" "$T6/codegen/gate-pending/latest.flag"
 out=$(gate_control_logs "$T6" 2>/dev/null)
 if printf '%s' "$out" | grep -q "line 1"; then
-    printf 'PASS: logs present log → prints content\n'
+    [ -n "${VERBOSE:-}" ] && printf 'PASS: logs present log → prints content\n'
     pass=$((pass + 1))
 else
     printf 'FAIL: logs present log → expected content\n  out: %s\n' "$out"
@@ -196,7 +196,7 @@ ln -sf "$T10/codegen/gate-pending/${SLEEP_PID}.flag" "$T10/codegen/gate-pending/
 kill -TERM "$SLEEP_PID" 2>/dev/null || true
 sleep 0.2
 if ! kill -0 "$SLEEP_PID" 2>/dev/null; then
-    printf 'PASS: kill live PID with pgid → process terminated\n'
+    [ -n "${VERBOSE:-}" ] && printf 'PASS: kill live PID with pgid → process terminated\n'
     pass=$((pass + 1))
 else
     kill "$SLEEP_PID" 2>/dev/null || true
@@ -228,7 +228,7 @@ ln -sf "$T11/codegen/gate-pending/${SLEEP_PID2}.flag" "$T11/codegen/gate-pending
 gate_control_kill "$T11" >/dev/null 2>&1 || true
 sleep 0.2
 if ! kill -0 "$SLEEP_PID2" 2>/dev/null; then
-    printf 'PASS: kill live PID no pgid → fallback pid kill works\n'
+    [ -n "${VERBOSE:-}" ] && printf 'PASS: kill live PID no pgid → fallback pid kill works\n'
     pass=$((pass + 1))
 else
     kill "$SLEEP_PID2" 2>/dev/null || true

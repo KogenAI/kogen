@@ -13,7 +13,7 @@ assert_block() {
     local desc="$1"
     local out="$2"
     if printf '%s' "$out" | grep -q '"decision"[[:space:]]*:[[:space:]]*"block"'; then
-        printf 'PASS: %s\n' "$desc"
+        [ -n "${VERBOSE:-}" ] && printf 'PASS: %s\n' "$desc"
         pass=$((pass + 1))
     else
         printf 'FAIL: %s — expected block, got: %s\n' "$desc" "$out"
@@ -28,7 +28,7 @@ assert_allow() {
         printf 'FAIL: %s — expected allow, got: %s\n' "$desc" "$out"
         fail=$((fail + 1))
     else
-        printf 'PASS: %s\n' "$desc"
+        [ -n "${VERBOSE:-}" ] && printf 'PASS: %s\n' "$desc"
         pass=$((pass + 1))
     fi
 }

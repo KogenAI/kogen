@@ -18,7 +18,7 @@ assert_contains() {
     local needle="$2"
     local haystack="$3"
     if printf '%s' "$haystack" | grep -qF "$needle"; then
-        printf 'PASS: %s\n' "$desc"
+        [ -n "${VERBOSE:-}" ] && printf 'PASS: %s\n' "$desc"
         pass=$((pass + 1))
     else
         printf 'FAIL: %s\n  needle: %s\n  haystack: %s\n' "$desc" "$needle" "$haystack"
@@ -34,7 +34,7 @@ assert_not_contains() {
         printf 'FAIL: %s\n  unexpected: %s\n  haystack: %s\n' "$desc" "$needle" "$haystack"
         fail=$((fail + 1))
     else
-        printf 'PASS: %s\n' "$desc"
+        [ -n "${VERBOSE:-}" ] && printf 'PASS: %s\n' "$desc"
         pass=$((pass + 1))
     fi
 }
@@ -44,7 +44,7 @@ assert_file_contains() {
     local needle="$2"
     local file="$3"
     if [ -f "$file" ] && grep -qF "$needle" "$file"; then
-        printf 'PASS: %s\n' "$desc"
+        [ -n "${VERBOSE:-}" ] && printf 'PASS: %s\n' "$desc"
         pass=$((pass + 1))
     else
         printf 'FAIL: %s\n  needle: %s\n  file: %s\n' "$desc" "$needle" "$file"
@@ -118,7 +118,7 @@ assert_file_contains "long-gate flag has session_id" "session_id=sess-long" "$fl
 # latest.flag is removed after long-gate completion (invariant: exists ⇔ in flight).
 # The per-session flag (sess-long.flag) still exists; only latest.flag is unlinked.
 [ ! -e "$T5/codegen/gate-pending/latest.flag" ] && {
-    printf 'PASS: latest.flag removed after long-gate completion\n'
+    [ -n "${VERBOSE:-}" ] && printf 'PASS: latest.flag removed after long-gate completion\n'
     pass=$((pass + 1))
 } || {
     printf 'FAIL: latest.flag still exists after long-gate completion\n'
@@ -235,7 +235,7 @@ out=$(printf '%s' "$(input_for "$T14" developer-phoenix-backend false sess14 "$T
     DEV_GATE_POLL_TIMEOUT_OVERRIDE=10 PATH="$stub_bin14:$PATH" bash "$HOOK" 2>/dev/null || true)
 assert_file_contains "T14: long-gate ALL CLEAR appended" "ALL CLEAR" "$LOG14"
 [ ! -e "$T14/codegen/gate-pending/latest.flag" ] && {
-    printf 'PASS: T14: latest.flag removed after long-gate completion\n'
+    [ -n "${VERBOSE:-}" ] && printf 'PASS: T14: latest.flag removed after long-gate completion\n'
     pass=$((pass + 1))
 } || {
     printf 'FAIL: T14: latest.flag still exists after long-gate completion\n'

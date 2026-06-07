@@ -28,7 +28,7 @@ assert_jq() {
     local actual
     actual="$(printf '%s' "$json" | jq -r "$jq_expr" 2>/dev/null || printf 'JQ_ERROR')"
     if [[ "$actual" == "$expected" ]]; then
-        printf 'PASS: %s\n' "$desc"
+        [ -n "${VERBOSE:-}" ] && printf 'PASS: %s\n' "$desc"
         pass=$((pass + 1))
     else
         printf 'FAIL: %s — jq %q expected %q, got %q\n  json: %s\n' "$desc" "$jq_expr" "$expected" "$actual" "${json:0:300}"
@@ -43,7 +43,7 @@ assert_jq_truthy() {
     local actual
     actual="$(printf '%s' "$json" | jq -r "$jq_expr" 2>/dev/null || printf 'JQ_ERROR')"
     if [[ "$actual" == "true" ]]; then
-        printf 'PASS: %s\n' "$desc"
+        [ -n "${VERBOSE:-}" ] && printf 'PASS: %s\n' "$desc"
         pass=$((pass + 1))
     else
         printf 'FAIL: %s — jq %q expected true, got %q\n  json: %s\n' "$desc" "$jq_expr" "$actual" "${json:0:300}"
@@ -118,7 +118,7 @@ assert_jq_truthy \
 
 # exit code should be 0
 if [[ "$actual_exit" -eq 0 ]]; then
-    printf 'PASS: dispatch exits 0\n'
+    [ -n "${VERBOSE:-}" ] && printf 'PASS: dispatch exits 0\n'
     pass=$((pass + 1))
 else
     printf 'FAIL: dispatch exits 0 — got exit %d\n' "$actual_exit"

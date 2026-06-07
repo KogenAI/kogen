@@ -4,21 +4,21 @@ Stack-specific rules (Phoenix vs static sites) plus cross-stack shared rules (gi
 
 ## Components
 
-| File / Dir                                        | Purpose                                                                    |
-| ------------------------------------------------- | -------------------------------------------------------------------------- |
-| `shared/rules/stacks/phoenix/_core.md`            | Phoenix stack fundamentals — Elixir/OTP patterns, LiveView basics          |
-| `shared/rules/stacks/phoenix/orchestrator.md`     | Phoenix-specific orchestrator guidance + INCONCLUSIVE classification table |
-| `shared/rules/stacks/phoenix/planner.md`          | Phoenix planner guidance — slice definitions, backend/frontend split       |
-| `shared/rules/stacks/phoenix/developer.md`        | Phoenix developer patterns — contexts, schemas, Oban, migrations           |
-| `shared/rules/stacks/phoenix/testing.md`          | Phoenix/ExUnit testing patterns                                            |
-| `shared/rules/stacks/phoenix/testing-liveview.md` | LiveView-specific test patterns                                            |
+| File / Dir                                        | Purpose                                                                                |
+| ------------------------------------------------- | -------------------------------------------------------------------------------------- |
+| `shared/rules/stacks/phoenix/_core.md`            | Phoenix stack fundamentals — Elixir/OTP patterns, LiveView basics                      |
+| `shared/rules/stacks/phoenix/orchestrator.md`     | Phoenix-specific orchestrator guidance + INCONCLUSIVE classification table             |
+| `shared/rules/stacks/phoenix/planner.md`          | Phoenix planner guidance — slice definitions, backend/frontend split                   |
+| `shared/rules/stacks/phoenix/developer.md`        | Phoenix developer patterns — contexts, schemas, Oban, migrations                       |
+| `shared/rules/stacks/phoenix/testing.md`          | Phoenix/ExUnit testing patterns                                                        |
+| `shared/rules/stacks/phoenix/testing-liveview.md` | LiveView-specific test patterns                                                        |
 | `shared/rules/stacks/phoenix/generators.md`       | Generator discipline — ALWAYS phx.gen.schema/auth, NEVER hand-write schemas/migrations |
-| `shared/rules/stacks/static/`                     | Static site stack rules (mirrors phoenix structure)                        |
-| `shared/rules/shared/git-readonly.md`             | Git safety rules — never force-push, credential handling                   |
-| `shared/rules/shared/hook-layering.md`            | How hooks layer across harnesses and events                                |
-| `shared/rules/shared/hook-test-coverage.md`       | Rules for maintaining hook test coverage                                   |
-| `shared/rules/shared/config-single-source.md`     | Config must have a single source of truth — no duplication                 |
-| `shared/rules/build-runtime/result-json.md`       | Result-JSON format for build-mode subagent output                          |
+| `shared/rules/stacks/static/`                     | Static site stack rules (mirrors phoenix structure)                                    |
+| `shared/rules/shared/git-readonly.md`             | Git safety rules — never force-push, credential handling                               |
+| `shared/rules/shared/hook-layering.md`            | How hooks layer across harnesses and events                                            |
+| `shared/rules/shared/hook-test-coverage.md`       | Rules for maintaining hook test coverage                                               |
+| `shared/rules/shared/config-single-source.md`     | Config must have a single source of truth — no duplication                             |
+| `shared/rules/build-runtime/result-json.md`       | Result-JSON format for build-mode subagent output                                      |
 
 ## Key Paths
 

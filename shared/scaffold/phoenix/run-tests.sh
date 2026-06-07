@@ -16,16 +16,18 @@ run_test() {
     local out
     out="$(bash "$t" 2>&1)"
     local rc=$?
-    echo "$out"
     # Extract pass/fail counts from last "N passed, N failed" line
     local summary
     summary="$(echo "$out" | grep -E '^[0-9]+ passed, [0-9]+ failed$' | tail -1)"
     if [ -n "$summary" ]; then
-        local p f
-        p="$(echo "$summary" | awk '{print $1}')"
-        f="$(echo "$summary" | awk '{print $3}')"
-        echo "ok: $name — $summary"
+        if [ "$rc" -ne 0 ]; then
+            echo "$out"
+            echo "FAIL: $name — $summary"
+        else
+            echo "ok: $name — $summary"
+        fi
     else
+        echo "$out"
         if [ "$rc" -ne 0 ]; then
             echo "FAIL: $name — no summary line (exit $rc)"
         else

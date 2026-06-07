@@ -55,7 +55,7 @@ run_test() {
     fi
 
     if [ "$outcome" = "$expected" ]; then
-        printf 'PASS: %s\n' "$desc"
+        [ -n "${VERBOSE:-}" ] && printf 'PASS: %s\n' "$desc"
         pass=$((pass + 1))
     else
         printf 'FAIL: %s — expected %s, got %s\n  stdout: %s\n' \
@@ -99,7 +99,7 @@ if printf '%s' "$stdout_cap" | grep -q '"decision"[[:space:]]*:[[:space:]]*"bloc
     printf 'FAIL: retry cap — 4th attempt should NOT block\n  stdout: %s\n' "$stdout_cap"
     fail=$((fail + 1))
 else
-    printf 'PASS: retry cap — 4th attempt does not block\n'
+    [ -n "${VERBOSE:-}" ] && printf 'PASS: retry cap — 4th attempt does not block\n'
     pass=$((pass + 1))
 fi
 rm -f "$COUNTER_FILE"
@@ -112,7 +112,7 @@ if printf '%s' "$stdout_loop" | grep -q '"decision"[[:space:]]*:[[:space:]]*"blo
     printf 'FAIL: STOP_HOOK_ACTIVE=true should skip block\n  stdout: %s\n' "$stdout_loop"
     fail=$((fail + 1))
 else
-    printf 'PASS: STOP_HOOK_ACTIVE=true skips block (loop guard)\n'
+    [ -n "${VERBOSE:-}" ] && printf 'PASS: STOP_HOOK_ACTIVE=true skips block (loop guard)\n'
     pass=$((pass + 1))
 fi
 
@@ -134,7 +134,7 @@ count_after_1=$(cat "$COUNTER_INC" 2>/dev/null || echo "0")
 printf '%s' "$INC_MSG" | env STOP_HOOK_ACTIVE=false bash "$GUARD" 2>/dev/null || true
 count_after_2=$(cat "$COUNTER_INC" 2>/dev/null || echo "0")
 if [ "$count_after_1" = "1" ] && [ "$count_after_2" = "2" ]; then
-    printf 'PASS: retry counter increments correctly (1 then 2)\n'
+    [ -n "${VERBOSE:-}" ] && printf 'PASS: retry counter increments correctly (1 then 2)\n'
     pass=$((pass + 1))
 else
     printf 'FAIL: retry counter incorrect — after 1st: %s, after 2nd: %s\n' "$count_after_1" "$count_after_2"

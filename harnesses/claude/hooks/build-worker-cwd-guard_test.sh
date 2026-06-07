@@ -29,8 +29,7 @@ run_test() {
     fi
 
     if [ "$outcome" = "$expected" ]; then
-        printf 'PASS: %s
-' "$desc"
+        [ -n "${VERBOSE:-}" ] && printf 'PASS: %s\n' "$desc"
         pass=$((pass + 1))
     else
         printf 'FAIL: %s — expected %s (deny=2/allow=0), got %s
@@ -94,7 +93,7 @@ if printf '%s' "$stdout_t8" | grep -q '"permissionDecision"[[:space:]]*:[[:space
     outcome_t8="2"
 fi
 if [ "$outcome_t8" = "0" ]; then
-    printf 'PASS: orchestrator Read with unset OCG_APPS_ROOT allows (unknown boundary)\n'
+    [ -n "${VERBOSE:-}" ] && printf 'PASS: orchestrator Read with unset OCG_APPS_ROOT allows (unknown boundary)\n'
     pass=$((pass + 1))
 else
     printf 'FAIL: orchestrator Read with unset OCG_APPS_ROOT allows — expected 0, got %s\n  stdout: %s\n' "$outcome_t8" "$stdout_t8"

@@ -29,8 +29,7 @@ run_test() {
     fi
 
     if [ "$outcome" = "$expected" ]; then
-        printf 'PASS: %s
-' "$desc"
+        [ -n "${VERBOSE:-}" ] && printf 'PASS: %s\n' "$desc"
         pass=$((pass + 1))
     else
         printf 'FAIL: %s — expected %s (deny=2/allow=0), got %s
@@ -69,7 +68,7 @@ FIXTURE_FRESH=$(jq -n --arg cwd "$TMP_DIR" '{"hook_event_name":"Stop","cwd":$cwd
 run_test "fresh flag preserved, exit 0" "0" "$FIXTURE_FRESH"
 
 if [ -f "$FRESH_FLAG" ]; then
-    printf 'PASS: fresh flag still exists (correct)\n'
+    [ -n "${VERBOSE:-}" ] && printf 'PASS: fresh flag still exists (correct)\n'
     pass=$((pass + 1))
 else
     printf 'FAIL: fresh flag was incorrectly deleted\n'

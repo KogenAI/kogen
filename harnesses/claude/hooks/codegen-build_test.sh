@@ -25,7 +25,7 @@ check() {
     local expected="$2"
     local actual="$3"
     if [[ "$actual" == "$expected" ]]; then
-        printf 'PASS: %s\n' "$desc"
+        [ -n "${VERBOSE:-}" ] && printf 'PASS: %s\n' "$desc"
         pass=$((pass + 1))
     else
         printf 'FAIL: %s — expected %q, got %q\n' "$desc" "$expected" "$actual"
@@ -40,12 +40,12 @@ assert_contains() {
 
     if printf '%s' "$haystack" | grep -Fq -- "$needle" 2>/dev/null ||
         printf '%s' "$haystack" | fgrep -q "$needle" 2>/dev/null; then
-        printf 'PASS: %s\n' "$desc"
+        [ -n "${VERBOSE:-}" ] && printf 'PASS: %s\n' "$desc"
         pass=$((pass + 1))
     else
         # fallback: string comparison
         if [[ "$haystack" == *"$needle"* ]]; then
-            printf 'PASS: %s\n' "$desc"
+            [ -n "${VERBOSE:-}" ] && printf 'PASS: %s\n' "$desc"
             pass=$((pass + 1))
         else
             printf 'FAIL: %s — expected to find %q\n  got: %s\n' "$desc" "$needle" "${haystack:0:200}"
@@ -262,21 +262,21 @@ if [[ -f "$ARGS_G" ]]; then
     ARGS_G_CONTENT="$(cat "$ARGS_G")"
     # Non-interactive flags must be absent in interactive mode
     if [[ "$ARGS_G_CONTENT" != *"--no-session-persistence"* ]]; then
-        printf 'PASS: (g) --no-session-persistence absent in interactive mode\n'
+        [ -n "${VERBOSE:-}" ] && printf 'PASS: (g) --no-session-persistence absent in interactive mode\n'
         pass=$((pass + 1))
     else
         printf 'FAIL: (g) --no-session-persistence present in interactive mode\n  got: %s\n' "${ARGS_G_CONTENT:0:300}"
         fail=$((fail + 1))
     fi
     if [[ "$ARGS_G_CONTENT" != *"--disable-slash-commands"* ]]; then
-        printf 'PASS: (g) --disable-slash-commands absent in interactive mode\n'
+        [ -n "${VERBOSE:-}" ] && printf 'PASS: (g) --disable-slash-commands absent in interactive mode\n'
         pass=$((pass + 1))
     else
         printf 'FAIL: (g) --disable-slash-commands present in interactive mode\n  got: %s\n' "${ARGS_G_CONTENT:0:300}"
         fail=$((fail + 1))
     fi
     if [[ "$ARGS_G_CONTENT" != *"--print"* ]]; then
-        printf 'PASS: (g) --print absent in interactive mode\n'
+        [ -n "${VERBOSE:-}" ] && printf 'PASS: (g) --print absent in interactive mode\n'
         pass=$((pass + 1))
     else
         printf 'FAIL: (g) --print present in interactive mode\n  got: %s\n' "${ARGS_G_CONTENT:0:300}"
@@ -344,21 +344,21 @@ if [[ -f "$ARGS_I_NI" && -f "$ARGS_I_INT" ]]; then
     assert_contains "(i) --disable-slash-commands in non-interactive" "$ARGS_I_NI_CONTENT" "--disable-slash-commands"
 
     if [[ "$ARGS_I_INT_CONTENT" != *"--print"* ]]; then
-        printf 'PASS: (i) --print absent in interactive\n'
+        [ -n "${VERBOSE:-}" ] && printf 'PASS: (i) --print absent in interactive\n'
         pass=$((pass + 1))
     else
         printf 'FAIL: (i) --print present in interactive\n  got: %s\n' "${ARGS_I_INT_CONTENT:0:300}"
         fail=$((fail + 1))
     fi
     if [[ "$ARGS_I_INT_CONTENT" != *"--no-session-persistence"* ]]; then
-        printf 'PASS: (i) --no-session-persistence absent in interactive\n'
+        [ -n "${VERBOSE:-}" ] && printf 'PASS: (i) --no-session-persistence absent in interactive\n'
         pass=$((pass + 1))
     else
         printf 'FAIL: (i) --no-session-persistence present in interactive\n  got: %s\n' "${ARGS_I_INT_CONTENT:0:300}"
         fail=$((fail + 1))
     fi
     if [[ "$ARGS_I_INT_CONTENT" != *"--disable-slash-commands"* ]]; then
-        printf 'PASS: (i) --disable-slash-commands absent in interactive\n'
+        [ -n "${VERBOSE:-}" ] && printf 'PASS: (i) --disable-slash-commands absent in interactive\n'
         pass=$((pass + 1))
     else
         printf 'FAIL: (i) --disable-slash-commands present in interactive\n  got: %s\n' "${ARGS_I_INT_CONTENT:0:300}"

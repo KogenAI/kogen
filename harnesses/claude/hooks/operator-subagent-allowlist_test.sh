@@ -24,7 +24,7 @@ run_test() {
     fi
 
     if [ "$outcome" = "$expected" ]; then
-        printf 'PASS: %s\n' "$desc"
+        [ -n "${VERBOSE:-}" ] && printf 'PASS: %s\n' "$desc"
         pass=$((pass + 1))
     else
         printf 'FAIL: %s — expected %s, got %s\n  stdout: %s\n' \
@@ -79,7 +79,7 @@ run_test "debug + reviewer-phoenix allowed" "allow" "debug" "$(mk_agent 'reviewe
 ORCHESTRATOR_EXPLORE_INPUT='{"hook_event_name":"PreToolUse","tool_name":"Agent","tool_input":{"subagent_type":"Explore","description":"x","prompt":"y"},"agent_id":"","agent_type":""}'
 stdout_orch=$(printf '%s' "$ORCHESTRATOR_EXPLORE_INPUT" | bash "$GUARD" 2>/dev/null || true)
 if printf '%s' "$stdout_orch" | grep -q '"permissionDecision"[[:space:]]*:[[:space:]]*"deny"'; then
-    printf 'PASS: orchestrator (no CLAUDE_ROLE) Explore denied — only allowed under debug/design\n'
+    [ -n "${VERBOSE:-}" ] && printf 'PASS: orchestrator (no CLAUDE_ROLE) Explore denied — only allowed under debug/design\n'
     pass=$((pass + 1))
 else
     printf 'FAIL: orchestrator (no CLAUDE_ROLE) should deny Explore — got allow\n  stdout: %s\n' "$stdout_orch"
@@ -93,7 +93,7 @@ if printf '%s' "$stdout_bash" | grep -q '"permissionDecision"[[:space:]]*:[[:spa
     printf 'FAIL: debug + Bash should not be touched by Agent-matcher hook — got deny\n  stdout: %s\n' "$stdout_bash"
     fail=$((fail + 1))
 else
-    printf 'PASS: debug + non-Agent tool ignored by this hook\n'
+    [ -n "${VERBOSE:-}" ] && printf 'PASS: debug + non-Agent tool ignored by this hook\n'
     pass=$((pass + 1))
 fi
 
@@ -104,7 +104,7 @@ run_test "debug + empty subagent_type denied" "deny" "debug" "$(mk_agent '')"
 ORCHESTRATOR_PLAN_INPUT='{"hook_event_name":"PreToolUse","tool_name":"Agent","tool_input":{"subagent_type":"Plan","description":"x","prompt":"y"},"agent_id":"","agent_type":""}'
 stdout_plan=$(printf '%s' "$ORCHESTRATOR_PLAN_INPUT" | bash "$GUARD" 2>/dev/null || true)
 if printf '%s' "$stdout_plan" | grep -q '"permissionDecision"[[:space:]]*:[[:space:]]*"deny"'; then
-    printf 'PASS: unset CLAUDE_ROLE + Plan denied\n'
+    [ -n "${VERBOSE:-}" ] && printf 'PASS: unset CLAUDE_ROLE + Plan denied\n'
     pass=$((pass + 1))
 else
     printf 'FAIL: unset CLAUDE_ROLE + Plan should be denied — got allow\n  stdout: %s\n' "$stdout_plan"
@@ -116,7 +116,7 @@ ORCHESTRATOR_EXPLORE2_INPUT='{"hook_event_name":"PreToolUse","tool_name":"Agent"
 stdout_explore2=$(printf '%s' "$ORCHESTRATOR_EXPLORE2_INPUT" | bash "$GUARD" 2>/dev/null || true)
 if printf '%s' "$stdout_explore2" | grep -q '"permissionDecision"[[:space:]]*:[[:space:]]*"deny"'; then
     if printf '%s' "$stdout_explore2" | grep -qE 'claude-debug|claude-shape|claude-refactor'; then
-        printf 'PASS: unset CLAUDE_ROLE + Explore denied with claude-debug/claude-shape/claude-refactor mention\n'
+        [ -n "${VERBOSE:-}" ] && printf 'PASS: unset CLAUDE_ROLE + Explore denied with claude-debug/claude-shape/claude-refactor mention\n'
         pass=$((pass + 1))
     else
         printf 'FAIL: unset CLAUDE_ROLE + Explore denied but reason does not mention claude-debug, claude-shape, or claude-refactor\n  stdout: %s\n' "$stdout_explore2"
@@ -131,7 +131,7 @@ fi
 ORCHESTRATOR_GP_INPUT='{"hook_event_name":"PreToolUse","tool_name":"Agent","tool_input":{"subagent_type":"general-purpose","description":"x","prompt":"y"},"agent_id":"","agent_type":""}'
 stdout_gp=$(printf '%s' "$ORCHESTRATOR_GP_INPUT" | bash "$GUARD" 2>/dev/null || true)
 if printf '%s' "$stdout_gp" | grep -q '"permissionDecision"[[:space:]]*:[[:space:]]*"deny"'; then
-    printf 'PASS: unset CLAUDE_ROLE + general-purpose denied\n'
+    [ -n "${VERBOSE:-}" ] && printf 'PASS: unset CLAUDE_ROLE + general-purpose denied\n'
     pass=$((pass + 1))
 else
     printf 'FAIL: unset CLAUDE_ROLE + general-purpose should be denied — got allow\n  stdout: %s\n' "$stdout_gp"
@@ -142,7 +142,7 @@ fi
 ORCHESTRATOR_SLS_INPUT='{"hook_event_name":"PreToolUse","tool_name":"Agent","tool_input":{"subagent_type":"statusline-setup","description":"x","prompt":"y"},"agent_id":"","agent_type":""}'
 stdout_sls=$(printf '%s' "$ORCHESTRATOR_SLS_INPUT" | bash "$GUARD" 2>/dev/null || true)
 if printf '%s' "$stdout_sls" | grep -q '"permissionDecision"[[:space:]]*:[[:space:]]*"deny"'; then
-    printf 'PASS: unset CLAUDE_ROLE + statusline-setup denied\n'
+    [ -n "${VERBOSE:-}" ] && printf 'PASS: unset CLAUDE_ROLE + statusline-setup denied\n'
     pass=$((pass + 1))
 else
     printf 'FAIL: unset CLAUDE_ROLE + statusline-setup should be denied — got allow\n  stdout: %s\n' "$stdout_sls"
@@ -156,7 +156,7 @@ if printf '%s' "$stdout_planner" | grep -q '"permissionDecision"[[:space:]]*:[[:
     printf 'FAIL: unset CLAUDE_ROLE + planner-phoenix should be allowed — got deny\n  stdout: %s\n' "$stdout_planner"
     fail=$((fail + 1))
 else
-    printf 'PASS: unset CLAUDE_ROLE + planner-phoenix allowed\n'
+    [ -n "${VERBOSE:-}" ] && printf 'PASS: unset CLAUDE_ROLE + planner-phoenix allowed\n'
     pass=$((pass + 1))
 fi
 
@@ -167,7 +167,7 @@ if printf '%s' "$stdout_committer" | grep -q '"permissionDecision"[[:space:]]*:[
     printf 'FAIL: unset CLAUDE_ROLE + committer should be allowed — got deny\n  stdout: %s\n' "$stdout_committer"
     fail=$((fail + 1))
 else
-    printf 'PASS: unset CLAUDE_ROLE + committer allowed\n'
+    [ -n "${VERBOSE:-}" ] && printf 'PASS: unset CLAUDE_ROLE + committer allowed\n'
     pass=$((pass + 1))
 fi
 
@@ -210,7 +210,7 @@ run_test_env() {
     fi
 
     if [ "$outcome" = "$expected" ]; then
-        printf 'PASS: %s\n' "$desc"
+        [ -n "${VERBOSE:-}" ] && printf 'PASS: %s\n' "$desc"
         pass=$((pass + 1))
     else
         printf 'FAIL: %s — expected %s, got %s\n  stdout: %s\n' "$desc" "$expected" "$outcome" "$stdout"

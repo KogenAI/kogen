@@ -24,7 +24,7 @@ COUNTER1="/tmp/combobulate-self-gate-${SID1}.count"
 printf '2' >"$COUNTER1"
 make_input "developer-phoenix-backend" "$SID1" | bash "$HOOK" 2>/dev/null || true
 if [ ! -f "$COUNTER1" ]; then
-    printf 'PASS: developer-phoenix-backend counter file removed\n'
+    [ -n "${VERBOSE:-}" ] && printf 'PASS: developer-phoenix-backend counter file removed\n'
     pass=$((pass + 1))
 else
     printf 'FAIL: developer-phoenix-backend counter file NOT removed\n'
@@ -38,7 +38,7 @@ COUNTER2="/tmp/combobulate-self-gate-${SID2}.count"
 printf '1' >"$COUNTER2"
 make_input "developer-phoenix-frontend" "$SID2" | bash "$HOOK" 2>/dev/null || true
 if [ ! -f "$COUNTER2" ]; then
-    printf 'PASS: developer-phoenix-frontend counter file removed\n'
+    [ -n "${VERBOSE:-}" ] && printf 'PASS: developer-phoenix-frontend counter file removed\n'
     pass=$((pass + 1))
 else
     printf 'FAIL: developer-phoenix-frontend counter file NOT removed\n'
@@ -52,7 +52,7 @@ COUNTER3="/tmp/combobulate-self-gate-${SID3}.count"
 printf '3' >"$COUNTER3"
 make_input "developer-html" "$SID3" | bash "$HOOK" 2>/dev/null || true
 if [ ! -f "$COUNTER3" ]; then
-    printf 'PASS: developer-html counter file removed\n'
+    [ -n "${VERBOSE:-}" ] && printf 'PASS: developer-html counter file removed\n'
     pass=$((pass + 1))
 else
     printf 'FAIL: developer-html counter file NOT removed\n'
@@ -66,7 +66,7 @@ COUNTER4="/tmp/combobulate-self-gate-${SID4}.count"
 printf '2' >"$COUNTER4"
 make_input "reviewer-phoenix" "$SID4" | bash "$HOOK" 2>/dev/null || true
 if [ -f "$COUNTER4" ]; then
-    printf 'PASS: reviewer agent does NOT remove counter file\n'
+    [ -n "${VERBOSE:-}" ] && printf 'PASS: reviewer agent does NOT remove counter file\n'
     pass=$((pass + 1))
 else
     printf 'FAIL: reviewer agent unexpectedly removed counter file\n'
@@ -81,7 +81,7 @@ rm -f "$COUNTER5"
 make_input "developer-vite" "$SID5" | bash "$HOOK" 2>/dev/null
 rc=$?
 if [ "$rc" = "0" ]; then
-    printf 'PASS: no counter file → exits cleanly (rc=0)\n'
+    [ -n "${VERBOSE:-}" ] && printf 'PASS: no counter file → exits cleanly (rc=0)\n'
     pass=$((pass + 1))
 else
     printf 'FAIL: no counter file → exit %s (expected 0)\n' "$rc"
@@ -94,7 +94,7 @@ COUNTER6="/tmp/combobulate-self-gate-${SID6}.count"
 printf '1' >"$COUNTER6"
 make_input "developer-hugo" "$SID6" | bash "$HOOK" 2>/dev/null || true
 if [ ! -f "$COUNTER6" ]; then
-    printf 'PASS: developer-hugo counter file removed\n'
+    [ -n "${VERBOSE:-}" ] && printf 'PASS: developer-hugo counter file removed\n'
     pass=$((pass + 1))
 else
     printf 'FAIL: developer-hugo counter file NOT removed\n'

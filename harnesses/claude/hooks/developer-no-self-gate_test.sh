@@ -14,7 +14,7 @@ assert_contains() {
     local needle="$2"
     local haystack="$3"
     if printf '%s' "$haystack" | grep -qF "$needle"; then
-        printf 'PASS: %s\n' "$desc"
+        [ -n "${VERBOSE:-}" ] && printf 'PASS: %s\n' "$desc"
         pass=$((pass + 1))
     else
         printf 'FAIL: %s\n  needle: %s\n  haystack: %s\n' "$desc" "$needle" "$haystack"
@@ -30,7 +30,7 @@ assert_not_contains() {
         printf 'FAIL: %s\n  unexpected: %s\n  haystack: %s\n' "$desc" "$needle" "$haystack"
         fail=$((fail + 1))
     else
-        printf 'PASS: %s\n' "$desc"
+        [ -n "${VERBOSE:-}" ] && printf 'PASS: %s\n' "$desc"
         pass=$((pass + 1))
     fi
 }
@@ -67,7 +67,7 @@ out=$(make_input "mix test test/foo_test.exs" "developer-phoenix-backend" "$SID3
 assert_not_contains "1st CI invocation (count=1) ALLOWED" '"permissionDecision"' "$out"
 count=$(cat "/tmp/combobulate-self-gate-${SID3}.count" 2>/dev/null || echo 0)
 [ "$count" = "1" ] && {
-    printf 'PASS: counter incremented to 1\n'
+    [ -n "${VERBOSE:-}" ] && printf 'PASS: counter incremented to 1\n'
     pass=$((pass + 1))
 } || {
     printf 'FAIL: counter expected 1, got %s\n' "$count"

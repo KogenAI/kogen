@@ -21,20 +21,23 @@ for t in "${files[@]}"; do
     name="$(basename "$t")"
     out="$(bash "$t" 2>&1)"
     rc=$?
-    echo "$out"
     summary="$(echo "$out" | grep -E '^[0-9]+ passed, [0-9]+ failed$' | tail -1)"
     if [ -n "$summary" ]; then
-        echo "ok: $name — $summary"
+        if [ "$rc" -ne 0 ]; then
+            echo "$out"
+            echo "FAIL: $name — $summary"
+            fails=$((fails + 1))
+        else
+            echo "ok: $name — $summary"
+        fi
     else
+        echo "$out"
         if [ "$rc" -ne 0 ]; then
             echo "FAIL: $name — no summary line (exit $rc)"
             fails=$((fails + 1))
         else
             echo "ok: $name — (no summary)"
         fi
-    fi
-    if [ "$rc" -ne 0 ]; then
-        fails=$((fails + 1))
     fi
 done
 

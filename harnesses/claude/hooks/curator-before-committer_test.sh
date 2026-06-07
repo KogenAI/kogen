@@ -13,7 +13,7 @@ assert_deny() {
     local desc="$1"
     local stdout="$2"
     if printf '%s' "$stdout" | grep -q '"permissionDecision"[[:space:]]*:[[:space:]]*"deny"'; then
-        printf 'PASS: %s\n' "$desc"
+        [ -n "${VERBOSE:-}" ] && printf 'PASS: %s\n' "$desc"
         pass=$((pass + 1))
     else
         printf 'FAIL: %s — expected deny\n  stdout: %s\n' "$desc" "$stdout"
@@ -28,7 +28,7 @@ assert_allow() {
         printf 'FAIL: %s — expected allow, got deny\n  stdout: %s\n' "$desc" "$stdout"
         fail=$((fail + 1))
     else
-        printf 'PASS: %s\n' "$desc"
+        [ -n "${VERBOSE:-}" ] && printf 'PASS: %s\n' "$desc"
         pass=$((pass + 1))
     fi
 }
