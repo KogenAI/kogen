@@ -39,6 +39,7 @@ rules/
       committer.md          .po/.pot translator note
       testing.md            CI authority, TDD, coverage, BDD, LLM partitions, backend
       testing-liveview.md   LiveView/HEEx/browser/SPA testing
+      generators.md         force phx.gen.schema/auth; never hand-write schemas or migrations
     static/
       planner.md            substack detection, tailwind detect
       developer.md          output dir, build pipeline, npm, Tailwind v4 invariants

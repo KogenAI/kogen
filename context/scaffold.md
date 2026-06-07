@@ -13,7 +13,7 @@ scaffold.sh, eex_render, mutations, AGENTS.md.j2, PROJECT_CONTEXT.md.j2, ocg set
 | File / Dir                                        | Purpose                                                           |
 | ------------------------------------------------- | ----------------------------------------------------------------- |
 | `shared/scaffold/phoenix/scaffold.sh`             | Phoenix scaffold entry — creates new Phoenix app via mutations    |
-| `shared/scaffold/phoenix/mutations/`              | Per-file bash mutation scripts (config_exs.sh, mix_exs.sh, etc.)  |
+| `shared/scaffold/phoenix/mutations/`              | Per-file bash mutation scripts (config_exs.sh, mix_exs.sh, credo_fix.sh, etc.)  |
 | `shared/scaffold/phoenix/eex_render.sh`           | Renders `.eex` templates with variable substitution               |
 | `shared/scaffold/phoenix/templates/`              | `.eex` source templates for Phoenix scaffold output               |
 | `shared/scaffold/static/scaffold.sh`              | Static site scaffold entry                                        |
@@ -96,8 +96,8 @@ The `create` path uses **transactional temp-parent + trap**: all mutations run i
 
 ### Command-line Flags (codegen-scaffold create)
 
-| Flag                       | Purpose                                                  | Default |
-| -------------------------- | -------------------------------------------------------- | ------- |
+| Flag                        | Purpose                                                  | Default |
+| --------------------------- | -------------------------------------------------------- | ------- |
 | `--stack=<phoenix\|static>` | Target stack                                             | (req)   |
 | `--cwd=<dir>`               | Scaffold parent directory                                | (req)   |
 | `--slug=<name>`             | App name (create only)                                   | (req)   |
@@ -126,15 +126,15 @@ If any step fails, the trap cleanup (activated at temp-parent assignment) wipes 
 
 ### New Templates (codegen 0.5+)
 
-| Template                    | Purpose                                                 |
-| --------------------------- | ------------------------------------------------------- |
-| `.env.eex`                  | (NEW) Environment overrides: SECRET_KEY_BASE, DATABASE_URL, PHX_HOST, PORT |
-| `.env.sample.eex`           | Populated with placeholder description (previously empty) |
-| `.env.prod.sample.eex`       | SECRET_KEY_BASE replaced with placeholder (was hardcoded) |
-| `.claude/gate-config.sh.eex` | (NEW) Per-app instance of gate-control wrapper (dev-port derivation) |
-| `.mcp.json.eex`             | (NEW) Claude MCP config for tidewave mcp-proxy (port from codegen templates) |
-| `coveralls.json.eex`        | Updated: minimum_coverage 0 → 35.1 (line 3)            |
-| `Makefile.eex`              | Gate targets + delegating stubs: gate-status, gate-kill, gate-logs |
+| Template                     | Purpose                                                                      |
+| ---------------------------- | ---------------------------------------------------------------------------- |
+| `.env.eex`                   | (NEW) Environment overrides: SECRET_KEY_BASE, DATABASE_URL, PHX_HOST, PORT   |
+| `.env.sample.eex`            | Populated with placeholder description (previously empty)                    |
+| `.env.prod.sample.eex`       | SECRET_KEY_BASE replaced with placeholder (was hardcoded)                    |
+| `.claude/gate-config.sh.eex` | (NEW) Per-app instance of gate-control wrapper (dev-port derivation)         |
+| `.mcp.json.eex`              | (NEW) Claude MCP config for tidewave mcp-proxy (port from codegen templates) |
+| `coveralls.json.eex`         | Updated: minimum_coverage 0 → 35.1 (line 3)                                  |
+| `Makefile.eex`               | Gate targets + delegating stubs: gate-status, gate-kill, gate-logs           |
 
 ### Machine-Global PLT Cache (B3 — Dormant until full `make ci`)
 
@@ -168,10 +168,10 @@ Patch `rel/overlays/bin/server` to set `APP_REVISION` env var (reads from `git d
 
 ### Dependencies & Versions
 
-| Dep              | Version  | Notes                                        |
-| ---------------- | -------- | -------------------------------------------- |
-| optimum_credo    | ~> 0.3   | Upgraded from 0.2 in this pitch              |
-| appsignal_phoenix | (opt-in) | Only if `--with-appsignal` supplied          |
+| Dep               | Version  | Notes                               |
+| ----------------- | -------- | ----------------------------------- |
+| optimum_credo     | ~> 0.4   | Upgraded 0.3 → 0.4 (adds LiveViewBareMatch check)     |
+| appsignal_phoenix | (opt-in) | Only if `--with-appsignal` supplied |
 
 ### Fixture Regeneration (B4 — Gate-Affecting)
 
@@ -184,6 +184,30 @@ The fixture `test_harness/mutations/fixtures/phx_new_skeleton/` must stay in syn
 5. Run `shared/scaffold/phoenix/run-tests.sh` to completion (all mutation tests pass against new fixture)
 
 **Gate impact**: Fixture changes perturb `make test` (mutation unit tests run vs this fixture via Makefile:123). Highest gate risk if fixture drifts.
+
+## Credo Violations Cleanup (New)
+
+`shared/scaffold/phoenix/mutations/credo_fix.sh` patches FIX-bucket phx.new files to pass credo checks post-generation:
+
+**Scope & Fixes**:
+- **FIX bucket** (mutation adds @moduledoc/@spec, fixes ordering; removes from .credo.exs exclusions):
+  - `core_components.ex`, `layouts.ex`: add @moduledoc + @spec
+  - `<app>_web.ex`: fix alias/import order
+  - `page_controller.ex`, `error_html.ex`, `error_json.ex`: add @moduledoc + @spec
+- **EXCLUDE bucket** (keep in .credo.exs — irreducible framework one-liners):
+  - `application.ex`, `endpoint.ex`, `release.ex`, `telemetry.ex`, `*_case.ex` family
+  - Data violations (ImplTrue, Specs, ModuleDependencies) required by framework boilerplate
+
+**Execution timing**: Runs after `data_case.sh`, before Phase 5 `mix format` (scaffold.sh L209→credo_fix→L236). Format normalises whitespace after ordering edits.
+
+**Module ordering rule** (from `shared/recipes/elixir-module-organization-skeleton.md`): `@moduledoc` ALWAYS AFTER `defmodule ... do` and BEFORE `use` — StrictModuleLayout requires `[:shortdoc, :moduledoc, :use, ...]` order.
+
+**Fixture coverage**: `test_harness/mutations/fixtures/phx_new_skeleton/` includes FIX-bucket files at phx.new 1.8 paths:
+- `lib/<app>_web.ex`
+- `lib/<app>_web/components/{core_components,layouts}.ex`
+- `lib/<app>_web/controllers/{page_controller,error_html,error_json}.ex`
+
+See credo_fix_test.sh for idempotency assertions.
 
 ## Portable Sed Idiom (Class A)
 

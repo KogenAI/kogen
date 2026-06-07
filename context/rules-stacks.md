@@ -12,6 +12,7 @@ Stack-specific rules (Phoenix vs static sites) plus cross-stack shared rules (gi
 | `shared/rules/stacks/phoenix/developer.md`        | Phoenix developer patterns — contexts, schemas, Oban, migrations           |
 | `shared/rules/stacks/phoenix/testing.md`          | Phoenix/ExUnit testing patterns                                            |
 | `shared/rules/stacks/phoenix/testing-liveview.md` | LiveView-specific test patterns                                            |
+| `shared/rules/stacks/phoenix/generators.md`       | Generator discipline — ALWAYS phx.gen.schema/auth, NEVER hand-write schemas/migrations |
 | `shared/rules/stacks/static/`                     | Static site stack rules (mirrors phoenix structure)                        |
 | `shared/rules/shared/git-readonly.md`             | Git safety rules — never force-push, credential handling                   |
 | `shared/rules/shared/hook-layering.md`            | How hooks layer across harnesses and events                                |
@@ -30,6 +31,7 @@ shared/rules/stacks/
     developer.md
     testing.md
     testing-liveview.md
+    generators.md
   static/
     *.md              ← mirrors phoenix structure for static stacks
 shared/rules/shared/

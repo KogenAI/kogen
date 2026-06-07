@@ -207,6 +207,7 @@ bash "$MUTATIONS_DIR/router.sh" "$TARGET_DIR" "$APP_NAME_MODULE"
 bash "$MUTATIONS_DIR/endpoint.sh" "$TARGET_DIR" "$APP_NAME"
 bash "$MUTATIONS_DIR/telemetry.sh" "$TARGET_DIR" "$APP_NAME"
 bash "$MUTATIONS_DIR/data_case.sh" "$TARGET_DIR" "${EXTRA_FLAGS[@]+"${EXTRA_FLAGS[@]}"}"
+bash "$MUTATIONS_DIR/credo_fix.sh" "$TARGET_DIR" "$APP_NAME_MODULE" "${EXTRA_FLAGS[@]+"${EXTRA_FLAGS[@]}"}"
 
 # ---------------------------------------------------------------------------
 # Phase 3: ensure priv/plts dir exists

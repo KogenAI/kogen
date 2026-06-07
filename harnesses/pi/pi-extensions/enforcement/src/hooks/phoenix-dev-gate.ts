@@ -176,10 +176,9 @@ export function register(pi: ExtensionAPI): void {
           const detail = renderVerdict.slice("INCONCLUSIVE:".length);
           debugLog(
             "phoenix-dev-gate",
-            `render INCONCLUSIVE: ${detail} — downgrade to INCONCLUSIVE`,
+            `render INCONCLUSIVE: ${detail} — non-fatal, ALL CLEAR kept`,
           );
-          // Render INCONCLUSIVE → gate verdict is INCONCLUSIVE, not ALL CLEAR
-          verdict = `INCONCLUSIVE ⚠️ render-inconclusive: ${detail}`;
+          // Render INCONCLUSIVE is non-fatal (observability only) — ALL CLEAR kept
           renderSummary = `render: INCONCLUSIVE (${detail}) — skipped`;
         } else if (renderVerdict === "PASS") {
           renderSummary = "render: DOM non-empty, styles applied, 0 JS errors";

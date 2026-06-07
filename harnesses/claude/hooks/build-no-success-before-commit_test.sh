@@ -68,7 +68,7 @@ rm -rf "$T1"
 
 # ── Test 2: COMBOBULATE_BUILD_START_TS unset → ALLOW ────────────────────────
 T2=$(make_project)
-out=$(make_input 'echo "BUILD_RESULT: success"' "$T2" | bash "$HOOK" 2>/dev/null || true)
+out=$(make_input 'echo "BUILD_RESULT: success"' "$T2" | env -u COMBOBULATE_BUILD_START_TS bash "$HOOK" 2>/dev/null || true)
 assert_not_contains "BUILD_START_TS unset → ALLOW" '"permissionDecision"' "$out"
 rm -rf "$T2"
 

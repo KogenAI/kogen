@@ -89,8 +89,6 @@
              if_called_more_often_than: 0,
              files: %{
                excluded: [
-                 ~r"/core_components\.ex$",
-                 ~r"/layouts\.ex$",
                  ~r"/data_case\.ex$",
                  ~r"/conn_case\.ex$",
                  ~r"/channel_case\.ex$"
@@ -111,7 +109,6 @@
           {Credo.Check.Readability.AliasOrder, [
             files: %{
               excluded: [
-                ~r"_web\.ex$",
                 ~r"/conn_case\.ex$",
                 ~r"/channel_case\.ex$"
               ]
@@ -143,7 +140,6 @@
           {OptimumCredo.Check.Readability.ImportOrder, [
             files: %{
               excluded: [
-                ~r"_web\.ex$",
                 ~r"/conn_case\.ex$",
                 ~r"/channel_case\.ex$",
                 ~r"/data_case\.ex$"
@@ -210,8 +206,6 @@
           {Credo.Check.Consistency.UnusedVariableNames, [
             files: %{
               excluded: [
-                ~r"/core_components\.ex$",
-                ~r"/layouts\.ex$",
                 ~r"/release\.ex$",
                 ~r"/data_case\.ex$",
                 ~r"/conn_case\.ex$",
@@ -250,12 +244,6 @@
           {Credo.Check.Readability.Specs, [
             files: %{
               excluded: [
-                ~r"/core_components\.ex$",
-                ~r"/layouts\.ex$",
-                ~r"/page_controller\.ex$",
-                ~r"/error_html\.ex$",
-                ~r"/error_json\.ex$",
-                ~r"_web\.ex$",
                 ~r"/endpoint\.ex$",
                 ~r"/telemetry\.ex$",
                 ~r"/application\.ex$",
@@ -279,7 +267,6 @@
             max_deps: 20,
             files: %{
               excluded: [
-                ~r"_web\.ex$",
                 ~r"/endpoint\.ex$"
               ]
             }

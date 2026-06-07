@@ -50,6 +50,7 @@ See `.env.sample` and `.env.prod.sample` for full variable lists.
 
 - **Bash**: `set -euo pipefail` in all scripts; `content_stable_cp` is defined in `install.sh` (not `utils.sh`) for idempotent file copies; `utils.sh` provides only `OCG_CMD` and `open_cursor_workspace`
 - **Bash sed portability**: `sed -i ''` (BSD macOS) is not portable to GNU sed (Linux). Use temp-file rewrite instead: `sed 'EXPR' file >"${file}.tmp" && mv "${file}.tmp" file`. Canonical reference: `install.sh` lines 474–483 (mktemp/cmp/mv pattern). Mutation scripts in `shared/scaffold/` use this idiom throughout.
+- **Elixir module @moduledoc/@spec ordering**: credo's StrictModuleLayout requires `[:shortdoc, :moduledoc, :use, ...]` order — `@moduledoc` ALWAYS comes AFTER `defmodule ... do` and BEFORE `use`. Scaffold mutation credo_fix.sh enforces this when injecting @moduledoc into generated files.
 - **Bash module name derivation**: When converting slug to CamelCase module names, use `python3` one-liner (`python3 -c '...capitalize join...'`); pure-sed BRE is fragile across BSD/GNU + bash 3.2 case-fold gaps. Reference: `scaffold.sh` line 81.
 - **Python**: stdlib only in generator scripts — no third-party deps. One-liner scripts (e.g., module name derivation) can use python3 directly in Bash heredocs.
 - **TypeScript**: strict mode; each extension self-contained with own `package.json`
