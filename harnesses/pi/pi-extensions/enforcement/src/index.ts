@@ -19,6 +19,7 @@ import { register as registerBuildWorkerCwdGuard } from "./hooks/build-worker-cw
 import { register as registerCommitterNoTrailerGuard } from "./hooks/committer-no-trailer-guard";
 import { register as registerCommitterSingleLineGuard } from "./hooks/committer-single-line-guard";
 import { register as registerCommitterSubjectLength } from "./hooks/committer-subject-length";
+import { register as registerCommitterToolGuard } from "./hooks/committer-tool-guard";
 import { register as registerContextIndexParity } from "./hooks/context-index-parity";
 import { register as registerDevNoCi } from "./hooks/dev-no-ci";
 import { register as registerDeveloperNoSelfGate } from "./hooks/developer-no-self-gate";
@@ -65,6 +66,7 @@ export default function (pi: ExtensionAPI): void {
   registerCommitterNoTrailerGuard(pi);
   registerCommitterSingleLineGuard(pi);
   registerCommitterSubjectLength(pi);
+  registerCommitterToolGuard(pi);
   registerContextIndexParity(pi);
   registerDevNoCi(pi);
   registerDeveloperNoSelfGate(pi);

@@ -1,0 +1,4 @@
+# Generated files — do not reformat; must match enforcement_compiler.py output exactly.
+# Reformatting breaks enforce-registry-parity (make test).
+harnesses/pi/pi-extensions/enforcement/src/hooks/
+harnesses/pi/pi-extensions/enforcement/src/index.ts

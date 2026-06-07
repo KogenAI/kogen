@@ -48,6 +48,20 @@ Adding a new extension:
 3. `npm install && npm run build` in extension dir
 4. Register in `harnesses/pi/manifest.yaml` install_steps if needed
 
+## Tool Call Event Handler — Pi Tool Name Lowercasing
+
+Pi `tool_call` event handlers receive `event.toolName` as lowercase pipe-separated values (`"bash|write|edit"`), not CamelCase. A single `pi.on("tool_call", ...)` event handler branches on `event.toolName` to route to tool-specific logic. Do NOT register separate handlers per tool — use one handler with internal branching:
+
+```typescript
+pi.on("tool_call", (event) => {
+  const toolNames = event.toolName.split("|");
+  if (toolNames.includes("bash")) { /* ... */ }
+  if (toolNames.includes("edit")) { /* ... */ }
+});
+```
+
+Example: `enforcement/src/hooks/curator-before-committer.ts` receives `event.toolName == "subagent"` (lowercase, singular) for subagent spawning.
+
 ## AskUserQuestion — Headless (`!ctx.hasUI`) Behaviour
 
 When Pi is invoked without a UI context (`ctx.hasUI === false`), the `askuserquestion` extension **deregisters** the tool via `pi.setActiveTools(...)` and returns a cancelled response with text `"Error: ask_user_question requires an interactive session. The tool has been disabled for this session."`. This is a runtime backstop — the extension cannot write files, it has no pitch path or write method in `ctx`.

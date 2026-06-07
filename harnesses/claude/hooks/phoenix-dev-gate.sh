@@ -309,8 +309,10 @@ if [ "$mode" = "short" ]; then
     if [ "$rc" -eq 0 ]; then
         # Execution evidence check — guard against no-op gate.
         # Count segments that start with make/mix (expected evidence producers).
+        # Also count "ALL CLEAR ✅" lines — codegen's make test uses @-silenced recipes
+        # so no make/mix lines appear in the log, but the sentinel IS execution evidence.
         expected_segs=$(printf '%s' "$gate" | tr '&' '\n' | awk '/^\s*(make|mix) /{n++} END{print n+0}')
-        actual_segs=$(awk '/^(make|mix) /{n++} END{print n+0}' "$log_path" 2>/dev/null || printf '0')
+        actual_segs=$(awk '/^(make|mix) |ALL CLEAR /{n++} END{print n+0}' "$log_path" 2>/dev/null || printf '0')
 
         # Gate passed — run render verification before declaring ALL CLEAR.
         render_verdict=$(run_phoenix_render_check)
@@ -538,7 +540,7 @@ if [ ! -f "$exitcode_path" ]; then
 elif [ "$(cat "$exitcode_path")" = "0" ]; then
     # Gate passed — execution evidence check + render verification
     long_expected_segs=$(printf '%s' "$gate" | tr '&' '\n' | awk '/^\s*(make|mix) /{n++} END{print n+0}')
-    long_actual_segs=$(awk '/^(make|mix) /{n++} END{print n+0}' "$log_path" 2>/dev/null || printf '0')
+    long_actual_segs=$(awk '/^(make|mix) |ALL CLEAR /{n++} END{print n+0}' "$log_path" 2>/dev/null || printf '0')
 
     long_render_verdict=$(run_phoenix_render_check)
     debug_log dev-gate "long-gate exit=0; render_verdict=${long_render_verdict:-none} evidence=$long_actual_segs/$long_expected_segs"

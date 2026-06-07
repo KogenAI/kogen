@@ -94,6 +94,8 @@ Missing Playwright is **non-fatal**: `BenchArtifacts.capture_screenshot/4` detec
 - **Do not run `npm install` at repo root for Pi extensions** — each extension has its own node_modules; run per-extension dir (only root install is managed by install.sh)
 - **Hook test failures are not ExUnit** — `make test` runs bash tests; `make test-stacks` runs ExUnit; they are separate suites
 - **`CODEGEN_DIR` must be absolute** — relative paths break symlink resolution in launchers
+- **Session log filename format must include `_HHMMSS`** — orchestrator creates logs with canonical `YYYYMMDD_HHMMSS_slug.md` naming; non-canonical forms (e.g., `YYYYMMDD-slug.md`) are blocked by reviewer-guard and dev-gate hooks at Edit time
+- **Flaky enforcement tests under parallel runners** — `pitch-shipped-before-stop.test.ts` in enforcement ext has pre-existing flakiness under parallel test execution (since commit 12775cd); use `git stash` + isolated test run to confirm pre-existing before investigating
 
 ## Deployment / Distribution
 
