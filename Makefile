@@ -18,10 +18,12 @@ PI_EXTENSION_DIR ?= $(SCRIPT_DIR)/harnesses/pi/pi-extensions/enforcement
 
 .PHONY: hook-parity
 hook-parity:
-	@cd "$(SCRIPT_DIR)/templates" && python3 generator/hook_registrations.py \
+	@out=$$(cd "$(SCRIPT_DIR)/templates" && python3 generator/hook_registrations.py \
 		--hooks-dir ../harnesses/claude/hooks \
 		--output-settings /tmp/claude-code-settings-parity.json \
-		--existing-settings "$(SCRIPT_DIR)/harnesses/claude/claude-code-settings.json"
+		--existing-settings "$(SCRIPT_DIR)/harnesses/claude/claude-code-settings.json" 2>&1); \
+	rc=$$?; [ -n "$$VERBOSE" ] && printf '%s\n' "$$out"; \
+	[ $$rc -eq 0 ] || { [ -z "$$VERBOSE" ] && printf '%s\n' "$$out"; exit $$rc; }
 	@diff -u "$(SCRIPT_DIR)/harnesses/claude/claude-code-settings.json" /tmp/claude-code-settings-parity.json || exit 1
 	@echo "hook-parity: PASS"
 
@@ -106,10 +108,21 @@ enforce-registry-parity:
 
 .PHONY: harness-parity
 harness-parity:
-	@bash "$(SCRIPT_DIR)/harnesses/claude/hooks/codegen-build_test.sh"
-	@bash "$(SCRIPT_DIR)/harnesses/claude/hooks/codegen-call_test.sh"
-	@bash "$(SCRIPT_DIR)/shared/scaffold/static/scaffold_test.sh"
-	@echo "harness-parity: PASS"
+	@fail=0; \
+	for t in \
+		"$(SCRIPT_DIR)/harnesses/claude/hooks/codegen-build_test.sh" \
+		"$(SCRIPT_DIR)/harnesses/claude/hooks/codegen-call_test.sh" \
+		"$(SCRIPT_DIR)/shared/scaffold/static/scaffold_test.sh"; do \
+		out=$$(bash "$$t" 2>&1); rc=$$?; \
+		if [ -n "$$VERBOSE" ]; then printf '%s\n' "$$out"; fi; \
+		if [ $$rc -ne 0 ]; then \
+			[ -z "$$VERBOSE" ] && printf '%s\n' "$$out"; \
+			echo "harness-parity: FAIL — $$(basename "$$t")"; \
+			fail=1; \
+		fi; \
+	done; \
+	[ $$fail -eq 0 ] && echo "harness-parity: PASS"; \
+	exit $$fail
 
 # test: run every PreToolUse/SubagentStop/Stop hook unit-test script in parallel.
 # Each *_test.sh is hermetic — own tmp dirs, no shared state — so xargs -P is safe.
@@ -123,23 +136,39 @@ test: hook-parity harness-parity test-generator enforce-registry-parity
 	./shared/scaffold/phoenix/run-tests.sh & pids+=($$!); labels+=(scaffold-phoenix); \
 	./test_harness/install/run-tests.sh & pids+=($$!); labels+=(install); \
 	( \
-		npm_pids=(); \
+		fail=0; \
 		for ext in enforcement askuserquestion subagents web-utils; do \
 			ext_dir="$(SCRIPT_DIR)/harnesses/pi/pi-extensions/$$ext"; \
 			if [ -f "$$ext_dir/package.json" ] && grep -q '"test"[[:space:]]*:' "$$ext_dir/package.json"; then \
-				echo "▶ Test: $$ext"; \
-				(cd "$$ext_dir" && mise exec -- npm test) & npm_pids+=($$!); \
+				if [ -n "$$VERBOSE" ]; then \
+					echo "▶ Test: $$ext"; \
+					(cd "$$ext_dir" && mise exec -- npm test) || fail=1; \
+				else \
+					out=$$(cd "$$ext_dir" && mise exec -- npm test 2>&1); rc=$$?; \
+					if [ $$rc -ne 0 ]; then \
+						echo "▶ Test: $$ext — FAILED"; \
+						printf '%s\n' "$$out"; \
+						fail=1; \
+					fi; \
+				fi; \
 			fi; \
 		done; \
-		fail=0; \
-		for p in "$${npm_pids[@]+"$${npm_pids[@]}"}"; do wait "$$p" || fail=1; done; \
 		exit "$$fail" \
 	) & pids+=($$!); labels+=(npm-ext); \
 	( \
 		ext_dir="$(SCRIPT_DIR)/harnesses/pi/pi-extensions/subagents"; \
 		if [ -d "$$ext_dir/test/integration" ] && [ -n "$$(ls "$$ext_dir/test/integration/"*.test.ts 2>/dev/null)" ]; then \
-			echo "▶ Test:integration: subagents"; \
-			(cd "$$ext_dir" && mise exec -- npm run test:integration) || exit 1; \
+			if [ -n "$$VERBOSE" ]; then \
+				echo "▶ Test:integration: subagents"; \
+				(cd "$$ext_dir" && mise exec -- npm run test:integration) || exit 1; \
+			else \
+				out=$$(cd "$$ext_dir" && mise exec -- npm run test:integration 2>&1); rc=$$?; \
+				if [ $$rc -ne 0 ]; then \
+					echo "▶ Test:integration: subagents — FAILED"; \
+					printf '%s\n' "$$out"; \
+					exit 1; \
+				fi; \
+			fi; \
 		fi \
 	) & pids+=($$!); labels+=(subagents-integration); \
 	fail=0; failed_labels=(); \
