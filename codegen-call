@@ -38,7 +38,7 @@ set -euo pipefail
 #   1. SCRIPT_DIR has a harnesses/ subdir → use it (direct / test invocation)
 #   2. OCG_CODEGEN_DIR env var set         → use it (installed copy with env)
 #   3. Fall back to SCRIPT_DIR             → error will surface from dispatch check
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 if [[ ! -d "$SCRIPT_DIR/harnesses" ]] && [[ -n "${OCG_CODEGEN_DIR:-}" ]]; then
     SCRIPT_DIR="$OCG_CODEGEN_DIR"
 fi

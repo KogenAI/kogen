@@ -130,12 +130,11 @@ else
     # Git diff fallback (legacy): scan project_dir + known sibling repos.
     log "ledger not found or empty — falling back to git diff"
     candidate_repos=("$project_dir")
-    # Sibling OCG repos — only added if they exist as git repos.
-    for sibling in /Users/almirsarajcic/Areas/Optimum/codegen /Users/almirsarajcic/Areas/Optimum/context; do
-        if [ -d "$sibling/.git" ] && [ "$sibling" != "$project_dir" ]; then
-            candidate_repos+=("$sibling")
-        fi
-    done
+    # Sibling OCG repo — only added if it exists as a git repo.
+    _ocg_dir="${OCG_CODEGEN_DIR:-${CODEGEN_DIR:-}}"
+    if [ -n "$_ocg_dir" ] && [ -d "$_ocg_dir/.git" ] && [ "$_ocg_dir" != "$project_dir" ]; then
+        candidate_repos+=("$_ocg_dir")
+    fi
 
     for repo in "${candidate_repos[@]}"; do
         repo_changes=$(collect_changed_abs_git "$repo")
@@ -168,24 +167,29 @@ else
     _ran_make_format=0
 fi
 
-# Bucket changed files by their containing git repo root, so formatters run
-# from each repo's root with paths relative to that root.
-declare -A files_by_repo
+# Bucket changed files by their containing git repo root (bash-3.2-safe: no declare -A).
+# Accumulate unique repo roots into an indexed array; filter changed_abs per root via awk.
+repo_roots=()
 while IFS= read -r abs_path; do
     [ -z "$abs_path" ] && continue
     repo_root=$(cd "$(dirname "$abs_path")" 2>/dev/null && git rev-parse --show-toplevel 2>/dev/null) || {
         log "skipping $abs_path (not in a git repo)"
         continue
     }
-    files_by_repo["$repo_root"]+="$abs_path"$'\n'
+    # Only append if not already in repo_roots (bash-3.2-safe uniqueness check).
+    case " ${repo_roots[*]} " in
+    *" $repo_root "*) ;;
+    *) repo_roots+=("$repo_root") ;;
+    esac
 done <<<"$changed_abs"
 
 # Combined list across all repos (relative paths) for LLM-signal detection.
 all_relative=""
 
 if [ "$_ran_make_format" -eq 0 ]; then
-    for repo_root in "${!files_by_repo[@]}"; do
-        bucket="${files_by_repo[$repo_root]}"
+    for repo_root in "${repo_roots[@]+${repo_roots[@]}}"; do
+        # Filter absolute paths belonging to this repo root.
+        bucket=$(printf '%s\n' "$changed_abs" | awk -v r="$repo_root/" 'index($0,r)==1')
         # Convert absolute paths to repo-relative paths.
         rel_files=$(printf '%s' "$bucket" | awk 'NF' | sed "s|^${repo_root}/||")
         [ -z "$rel_files" ] && continue
@@ -218,8 +222,8 @@ if [ "$_ran_make_format" -eq 0 ]; then
     done
 else
     # make format ran — still populate all_relative for LLM-signal detection.
-    for repo_root in "${!files_by_repo[@]}"; do
-        bucket="${files_by_repo[$repo_root]}"
+    for repo_root in "${repo_roots[@]+${repo_roots[@]}}"; do
+        bucket=$(printf '%s\n' "$changed_abs" | awk -v r="$repo_root/" 'index($0,r)==1')
         rel_files=$(printf '%s' "$bucket" | awk 'NF' | sed "s|^${repo_root}/||")
         [ -z "$rel_files" ] && continue
         all_relative="${all_relative}${rel_files}

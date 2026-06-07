@@ -10,7 +10,14 @@ server="${1:?Usage: claude-ops <server>}"
 
 export CLAUDE_ROLE=ops
 
-CODEGEN_DIR="${OCG_CODEGEN_DIR:-$HOME/Areas/Optimum/codegen}"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [[ -n "${OCG_CODEGEN_DIR:-}" ]]; then
+    CODEGEN_DIR="$OCG_CODEGEN_DIR"
+elif [[ -L "$SCRIPT_DIR/harnesses" || -d "$SCRIPT_DIR/harnesses" ]]; then
+    CODEGEN_DIR="$(cd -P "$SCRIPT_DIR/harnesses" && cd .. && pwd)"
+else
+    CODEGEN_DIR="$(cd "$SCRIPT_DIR/../.." && pwd -P)"
+fi
 export CODEGEN_DIR
 
 source "$CODEGEN_DIR/harnesses/claude/load-role.sh"

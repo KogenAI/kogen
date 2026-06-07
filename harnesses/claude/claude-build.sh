@@ -5,8 +5,9 @@
 #   - which built-in subagents are denied (Plan, general-purpose, statusline-setup
 #     always; Explore allowed only under CLAUDE_ROLE=debug/shape/refactor)
 set -euo pipefail
-CODEGEN_DIR="${OCG_CODEGEN_DIR:-$HOME/Areas/Optimum/codegen}"
-export CODEGEN_DIR
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
+BUILD_BIN="${OCG_CODEGEN_DIR:+$OCG_CODEGEN_DIR/codegen-build}"
+BUILD_BIN="${BUILD_BIN:-$SCRIPT_DIR/codegen-build}"
 
 # Basename resolver (permissive) against $PWD/codegen/pitches/ready/
 # 1. Contains / or ends in .md or contains space → pass through unchanged.
@@ -46,7 +47,7 @@ for arg in "$@"; do
     fi
 done
 
-exec "$CODEGEN_DIR/codegen-build" \
+exec "$BUILD_BIN" \
     --harness=claude \
     --stack="${STACK:-phoenix}" \
     "${PROMPT_PARTS[@]+"${PROMPT_PARTS[@]}"}"

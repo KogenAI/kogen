@@ -18,7 +18,14 @@ fi
 
 export PI_ROLE=shape
 
-CODEGEN_DIR="${OCG_CODEGEN_DIR:-$HOME/Areas/Optimum/codegen}"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [[ -n "${OCG_CODEGEN_DIR:-}" ]]; then
+    CODEGEN_DIR="$OCG_CODEGEN_DIR"
+elif [[ -L "$SCRIPT_DIR/harnesses" || -d "$SCRIPT_DIR/harnesses" ]]; then
+    CODEGEN_DIR="$(cd -P "$SCRIPT_DIR/harnesses" && cd .. && pwd)"
+else
+    CODEGEN_DIR="$(cd "$SCRIPT_DIR/../.." && pwd -P)"
+fi
 export CODEGEN_DIR
 
 SYSTEM_PROMPT_FILE="$CODEGEN_DIR/harnesses/pi/pi-shape-system-prompt.txt"

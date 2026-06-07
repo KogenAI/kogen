@@ -23,7 +23,23 @@ Root differs per machine AND OS — NOTHING hardcodes it. Every script that need
 CODEGEN_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ```
 
-See `install.sh`, `uninstall.sh`, `update_ai_tools.sh` — all use this idiom at line 1. Launcher scripts (`harnesses/claude/*.sh`, `harnesses/pi/*.sh`) use `${OCG_CODEGEN_DIR:-$HOME/Areas/Optimum/codegen}` because they are installed copies (symlinked to `~/bin/` or `/usr/local/bin/`) and are no longer physically adjacent to the repo root — they cannot derive the root from their own location.
+See `install.sh`, `uninstall.sh`, `update_ai_tools.sh` — all use this idiom at line 1. Launcher scripts installed to `~/bin/` or `/usr/local/bin/` are no longer physically adjacent to the repo root and use one of two derivation strategies depending on launcher type.
+
+## Symlink Resolution Mechanics (Critical for `harnesses/` symlink traversal)
+
+When `harnesses/` is symlinked from `$SCRIPT_DIR` (install target) back to the codegen repo root, path traversal via `..` is context-sensitive:
+
+- **`cd symlink/..`** — resolves `..` relative to the symlink's LOCATION (not its target). If symlink is `~/bin/harnesses → /path/to/repo/harnesses`, then `cd ~/bin/harnesses/.. → ~/bin`, NOT `/path/to/repo`.
+- **`cd -P symlink && cd ..`** — `-P` flag forces physical path resolution. Traversing the symlink target's real parent correctly. This is the portable pattern for symlink-aware launchers.
+
+Non-build launchers (shape, refactor, debug, ops) that derive `CODEGEN_DIR` via the installed `harnesses/` symlink MUST use `cd -P` to avoid landing in `~/bin` instead of the repo root.
+
+- **Build launchers** (`claude-build.sh`, `pi-build.sh`): resolve the `codegen-build` binary as a sibling of `$SCRIPT_DIR` (co-installed in the same directory). No repo-root walk needed.
+- **Non-build launchers** (shape, refactor, debug, ops, etc.): 3-branch `CODEGEN_DIR` derivation:
+  1. `OCG_CODEGEN_DIR` env override if set (escape hatch)
+  2. Installed-flat: follow the `harnesses/` symlink from `$SCRIPT_DIR` to derive the repo root
+  3. In-repo checkout fallback: `$SCRIPT_DIR/../..`
+- **`dispatch.sh`**: derives repo root via `$(cd "$SCRIPT_DIR/../.." && pwd -P)`, walking the physical path of the installed `harnesses/` symlink.
 
 ## Install Targets vs Source Location
 
@@ -45,7 +61,7 @@ See `install.sh`, `uninstall.sh`, `update_ai_tools.sh` — all use this idiom at
 export OCG_CODEGEN_DIR=/path/to/codegen   # override only when BASH_SOURCE derivation is unavailable
 ```
 
-`OCG_CODEGEN_DIR` is NOT the primary mechanism. `BASH_SOURCE` derivation is primary (used by `install.sh`, `uninstall.sh`, `update_ai_tools.sh`). Launchers fall back to it via `${OCG_CODEGEN_DIR:-$HOME/Areas/Optimum/codegen}` because they cannot self-derive from their installed location.
+`OCG_CODEGEN_DIR` is NOT the primary mechanism. `BASH_SOURCE` derivation is primary (used by `install.sh`, `uninstall.sh`, `update_ai_tools.sh`). For non-build launchers, `OCG_CODEGEN_DIR` is branch 1 of 3 in the `CODEGEN_DIR` derivation; if unset the launcher walks the `harnesses/` symlink (branch 2) or falls back to `$SCRIPT_DIR/../..` (branch 3). Build launchers (`claude-build.sh`, `pi-build.sh`) do not need it — they resolve the `codegen-build` sibling binary directly from `$SCRIPT_DIR`.
 
 Cross-reference: `shared/rules/shared/shell-script-discipline.md` — "Derive Root, Never Hardcode" section.
 

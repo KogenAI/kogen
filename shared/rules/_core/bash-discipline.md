@@ -124,6 +124,45 @@ rm -rf "$TEMP_PARENT"
 
 Ensures: if any mutation fails, trap cleanup removes partial state; if move succeeds, trap is disarmed and final cleanup is explicit. The temp parent must be a sibling (same filesystem) for `mv` to be atomic.
 
+## Portable sed (-i Syntax)
+
+**BSD `sed -i ''` (macOS system sed) is NOT portable to GNU sed (Linux).** Portable pattern:
+
+```bash
+TEMP_FILE=$(mktemp)
+filter_cmd >"$TEMP_FILE"  # e.g., sed, awk, any transformation
+if cmp -s "$TEMP_FILE" "$TARGET"; then
+    rm "$TEMP_FILE"       # No change — clean up
+else
+    mv "$TEMP_FILE" "$TARGET"  # Atomic replace
+fi
+```
+
+This pattern is idempotent (cmp check ensures nothing changes if the output is identical) and works on both BSD and GNU sed. Use `install.sh` and `uninstall.sh` as canonical references. NEVER use `sed -i` without a fallback; always prefer the `mktemp/cmp/mv` pattern for maximum portability.
+
+## Bash 3.2 Compatibility (macOS system bash)
+
+**`declare -A` associative arrays require bash ≥4.0; macOS system bash is 3.2 and lacks them.** Portable pattern for collecting unique keys:
+
+```bash
+# Instead of: declare -A keys; keys[$key]=1
+# Use: indexed array + awk to filter values by prefix
+
+declare -a values=()
+values+=("prefix/value1" "other/value2" "prefix/value3")
+
+# Extract values matching prefix (awk approach):
+awk -v r="prefix/" 'index($0, r) == 1 { print }' <(printf '%s\n' "${values[@]}")
+```
+
+For bash-native key-value accumulation on bash 3.2:
+
+1. Use indexed arrays for values.
+2. Use `awk` or `grep` to filter by key prefix.
+3. Never rely on `declare -A` in cross-platform scripts.
+
+Reference: `post-developer-format.sh` uses this pattern to filter env vars safely on both macOS and Linux.
+
 ## Post-Condition Assertions in Mutations
 
 Each mutation script should validate both preconditions (file exists, anchor present) and postconditions (expected lines added, placeholders resolved) before returning success. Fail loudly rather than silently:

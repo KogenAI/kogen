@@ -497,7 +497,14 @@ for _harness in "${HARNESSES[@]}"; do
         # De-register legacy aliases (idempotent)
         for _legacy_alias in claude-build claude-design claude-debug; do
             if grep -q "alias ${_legacy_alias}=" "$RC_FILE" 2>/dev/null; then
-                sed -i '' "/^# Optimum Codegen ${_legacy_alias} alias\$/d; /^alias ${_legacy_alias}=/d" "$RC_FILE"
+                _TEMP_FILE=$(mktemp)
+                grep -v "^# Optimum Codegen ${_legacy_alias} alias$" "$RC_FILE" |
+                    grep -v "^alias ${_legacy_alias}=" >"$_TEMP_FILE"
+                if ! cmp -s "$RC_FILE" "$_TEMP_FILE"; then
+                    mv "$_TEMP_FILE" "$RC_FILE"
+                else
+                    rm -f "$_TEMP_FILE"
+                fi
                 echo "   🗑️  Removed legacy ${_legacy_alias} alias from $RC_FILE"
             fi
         done

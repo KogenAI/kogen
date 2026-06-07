@@ -7,8 +7,9 @@
 set -euo pipefail
 export PI_ROLE=build
 
-CODEGEN_DIR="${OCG_CODEGEN_DIR:-$HOME/Areas/Optimum/codegen}"
-export CODEGEN_DIR
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
+BUILD_BIN="${OCG_CODEGEN_DIR:+$OCG_CODEGEN_DIR/codegen-build}"
+BUILD_BIN="${BUILD_BIN:-$SCRIPT_DIR/codegen-build}"
 
 PROMPT_PARTS=()
 READY_DIR="$PWD/codegen/pitches/ready"
@@ -41,7 +42,7 @@ for arg in "$@"; do
     fi
 done
 
-exec "$CODEGEN_DIR/codegen-build" \
+exec "$BUILD_BIN" \
     --harness=pi \
     --stack="${STACK:-phoenix}" \
     "${PROMPT_PARTS[@]+"${PROMPT_PARTS[@]}"}"

@@ -7,7 +7,7 @@
 
 set -euo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 SP_FILE="$SCRIPT_DIR/claude-build-system-prompt.txt"
 
 COMMON_FLAGS=(--dangerously-skip-permissions)
@@ -30,16 +30,25 @@ EFFORT="${CODEGEN_BUILD_EFFORT:-}"
 
 # Fall back to config.yaml values if not set
 if [[ -z "$MODEL" || -z "$EFFORT" ]]; then
-    CODEGEN_DIR="${OCG_CODEGEN_DIR:-$HOME/Areas/Optimum/codegen}"
+    CODEGEN_DIR="${OCG_CODEGEN_DIR:-$(cd "$SCRIPT_DIR/../.." && pwd -P)}"
     cfg="$CODEGEN_DIR/templates/generator/config.yaml"
     if [[ -f "$cfg" ]]; then
-        [[ -z "$MODEL" ]] && MODEL=$(yq -r ".harness.build.claude.model" "$cfg" 2>/dev/null || echo "")
-        [[ -z "$EFFORT" ]] && EFFORT=$(yq -r ".harness.build.claude.effort" "$cfg" 2>/dev/null || echo "")
+        [[ -z "$MODEL" ]] && MODEL=$(yq -r ".harness.build.claude.model" "$cfg")
+        [[ -z "$EFFORT" ]] && EFFORT=$(yq -r ".harness.build.claude.effort" "$cfg")
+    else
+        printf 'claude dispatch: config.yaml not found at %s\n' "$cfg" >&2
+        exit 1
     fi
 fi
 
-MODEL="${MODEL:-haiku}"
-EFFORT="${EFFORT:-medium}"
+if [[ -z "$MODEL" || "$MODEL" == "null" ]]; then
+    printf 'claude dispatch: harness.build.claude.model missing/empty in config.yaml\n' >&2
+    exit 1
+fi
+if [[ -z "$EFFORT" || "$EFFORT" == "null" ]]; then
+    printf 'claude dispatch: harness.build.claude.effort missing/empty in config.yaml\n' >&2
+    exit 1
+fi
 
 # Extra flags (--max-budget-usd, --fallback-model, etc.) passed through as $@
 # Last arg is the PROMPT (only if any positional args were given)
@@ -81,6 +90,11 @@ if [[ -n "$CWD" ]]; then
     cd "$CWD"
 fi
 
+GATE_PATH="$PATH"
+if [[ -d "$HOME/.local/share/mise/shims" ]]; then
+    GATE_PATH="$HOME/.local/share/mise/shims:$PATH"
+fi
+
 exec env \
     -u CLAUDECODE \
     -u CLAUDE_CODE_SSE_PORT \
@@ -88,6 +102,7 @@ exec env \
     -u CLAUDE_CODE_SESSION_ID \
     -u CLAUDE_CODE_EXECPATH \
     -u AI_AGENT \
+    PATH="$GATE_PATH" \
     ENABLE_PROMPT_CACHING_1H=1 \
     MAX_THINKING_TOKENS=0 \
     MCP_CONNECTION_NONBLOCKING=true \

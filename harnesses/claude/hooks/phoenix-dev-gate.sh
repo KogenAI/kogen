@@ -261,6 +261,20 @@ failed_suffix() {
     [ "$n" -lt 2 ] && echo "attempt $n — dev-fixable" || echo "attempt $n — ROOT-CAUSE: route to planner"
 }
 
+# ── Pre-flight: gate runner must be on PATH ──────────────────────────────
+gate_runner=$(printf '%s' "$gate" | awk '{print $1}')
+case "$gate_runner" in
+mix | make)
+    if ! command -v "$gate_runner" >/dev/null 2>&1; then
+        debug_log dev-gate "gate runner '$gate_runner' not on PATH"
+        append_ve_section "FAILED ❌ gate-runner-missing: $gate_runner not on PATH — gate did not execute" \
+            "Gate runner '$gate_runner' is not installed or not on PATH. Gate '$gate' did not run."
+        block "Gate runner '$gate_runner' not on PATH — gate did not execute. Install/activate mise (or the toolchain) so '$gate_runner' is available."
+        exit 0
+    fi
+    ;;
+esac
+
 # ── SHORT gate: run inline ──────────────────────────────────────────────────
 if [ "$mode" = "short" ]; then
     log_path="/tmp/dev-gate-${session_id:-unknown}-$(date -u +%s).log"
@@ -270,6 +284,13 @@ if [ "$mode" = "short" ]; then
     bash -c "$gate" >"$log_path" 2>&1
     rc=$?
     set -e 2>/dev/null || true
+
+    if [ "$rc" -eq 126 ] || [ "$rc" -eq 127 ]; then
+        debug_log dev-gate "short-gate could-not-execute exit=$rc"
+        append_ve_section "FAILED ❌ gate-runner-missing: exit=$rc — gate did not execute" "Log: $log_path"
+        block "Gate '$gate' could not execute (exit $rc — command not found / not executable). Log: $log_path"
+        exit 0
+    fi
 
     if [ "$rc" -eq 0 ]; then
         # Gate passed — run render verification before declaring ALL CLEAR.
@@ -455,6 +476,13 @@ elif [ "$(cat "$exitcode_path")" = "0" ]; then
     esac
 else
     rc=$(cat "$exitcode_path")
+    if [ "$rc" = "126" ] || [ "$rc" = "127" ]; then
+        debug_log dev-gate "long-gate could-not-execute exit=$rc"
+        append_ve_section "FAILED ❌ gate-runner-missing: exit=$rc — gate did not execute" "Log: $log_path"
+        block "Gate '$gate' could not execute (exit $rc). Log: $log_path"
+        rm -f "$flag_dir/latest.flag"
+        exit 0
+    fi
     tail_out=$(tail -n 40 "$log_path" 2>/dev/null || true)
     # Pool exhaustion / seed missing should be INCONCLUSIVE not FAILED — they're
     # environmental, not code-level. Re-check before emitting FAILED.

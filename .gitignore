@@ -31,3 +31,5 @@ bench_run_*.log
 *-system-prompt.txt
 *.bak
 unknown.flag
+
+/.claude/

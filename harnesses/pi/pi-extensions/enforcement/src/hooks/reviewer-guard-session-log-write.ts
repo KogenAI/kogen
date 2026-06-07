@@ -22,25 +22,18 @@ export function register(pi: ExtensionAPI): void {
     if (!(event.toolName === "write" || event.toolName === "edit")) return;
 
     const agentType = process.env["AGENT_TYPE"] ?? "";
-    if (!(agentType === "reviewer-phoenix" || agentType === "reviewer-static"))
-      return;
+    if (!(agentType === "reviewer-phoenix" || agentType === "reviewer-static")) return;
 
-    const filePath: string =
-      (event.input as { file_path?: string }).file_path ?? "";
+    const filePath: string = (event.input as { file_path?: string }).file_path ?? "";
     debugLog("reviewer-guard-session-log-write", `file=${filePath}`);
 
     const rel = repoRelative(filePath);
-    if (
-      /codegen\/logging\/[0-9]{8}_[0-9]{6}(_[a-z0-9-]+)?_(session|step[0-9]+_[a-z0-9-]+)\.md$/.test(
-        rel,
-      )
-    ) {
+    if (/codegen\/logging\/[0-9]{8}_[0-9]{6}(_[a-z0-9-]+)?_(session|step[0-9]+_[a-z0-9-]+)\.md$/.test(rel)) {
       return;
     }
 
     return deny(
-      "BLOCKED by reviewer-guard-session-log-write: reviewer may only write to canonical session logs: " +
-        filePath,
+      "BLOCKED by reviewer-guard-session-log-write: reviewer may only write to canonical session logs: " + filePath,
     );
   });
 }

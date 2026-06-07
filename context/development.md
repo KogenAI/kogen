@@ -19,18 +19,18 @@ The codegen repo is a Bash + Python + TypeScript + Elixir toolchain. Primary dev
 
 One-liner per target — for test target semantics see `context/test-harness.md`; for hook-parity semantics see `context/hooks.md`.
 
-| Target                    | Purpose                                                                       |
-| ------------------------- | ----------------------------------------------------------------------------- |
-| `make install`            | Generate agents + install claude harness (full cycle)                         |
+| Target                    | Purpose                                                                                                                                                                                  |
+| ------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `make install`            | Generate agents + install claude harness (full cycle)                                                                                                                                    |
 | `make test`               | Hook-parity + harness-parity + test-generator + enforce-registry-parity + bash hook tests (`run-tests.sh`) + scaffold run-tests — parity/structure validation only; separate from ExUnit |
-| `make test-stacks`        | Run ExUnit stack scaffold tests — see `context/test-harness.md` for semantics |
-| `make test-stacks-claude` | Run ExUnit suite for Claude harness only                                      |
-| `make test-stacks-pi`     | Run ExUnit suite for Pi harness only                                          |
-| `make bench REASON=`      | Full benchmark run (both harnesses) + writes `summary.md` via `summarize.js`  |
-| `make record-green`       | Stamp `last_green.json` after clean passing suite                             |
-| `make uninstall`          | Remove installed claude harness artifacts                                     |
-| `make test-coverage`      | Run coverage per language → `coverage/<lang>/`                                |
-| `make test-generator`     | Run Python unittest + bash unit tests for generator pipeline                  |
+| `make test-stacks`        | Run ExUnit stack scaffold tests — see `context/test-harness.md` for semantics                                                                                                            |
+| `make test-stacks-claude` | Run ExUnit suite for Claude harness only                                                                                                                                                 |
+| `make test-stacks-pi`     | Run ExUnit suite for Pi harness only                                                                                                                                                     |
+| `make bench REASON=`      | Full benchmark run (both harnesses) + writes `summary.md` via `summarize.js`                                                                                                             |
+| `make record-green`       | Stamp `last_green.json` after clean passing suite                                                                                                                                        |
+| `make uninstall`          | Remove installed claude harness artifacts                                                                                                                                                |
+| `make test-coverage`      | Run coverage per language → `coverage/<lang>/`                                                                                                                                           |
+| `make test-generator`     | Run Python unittest + bash unit tests for generator pipeline                                                                                                                             |
 
 ## Environment Configuration
 

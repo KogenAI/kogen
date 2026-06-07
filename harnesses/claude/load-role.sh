@@ -13,8 +13,16 @@ load_role() {
         exit 1
     fi
 
-    ROLE_MODEL=$(yq -r "(.roles.$role.model // \"\")" "$cfg")
-    ROLE_EFFORT=$(yq -r "(.roles.$role.effort // \"\")" "$cfg")
+    ROLE_MODEL=$(yq -r ".roles.$role.model // \"\"" "$cfg")
+    ROLE_EFFORT=$(yq -r ".roles.$role.effort // \"\"" "$cfg")
+    if [ -z "$ROLE_MODEL" ] || [ "$ROLE_MODEL" = "null" ]; then
+        echo "ERROR: roles.$role.model missing/empty in $cfg" >&2
+        exit 1
+    fi
+    if [ -z "$ROLE_EFFORT" ] || [ "$ROLE_EFFORT" = "null" ]; then
+        echo "ERROR: roles.$role.effort missing/empty in $cfg" >&2
+        exit 1
+    fi
     ROLE_DISALLOWED=$(yq -r "(.roles.$role.disallowed_tools // []) | join(\",\")" "$cfg")
     ROLE_ALLOWED=$(yq -r "(.roles.$role.allowed_tools // []) | join(\",\")" "$cfg")
     ROLE_TOOLS=$(yq -r "(.roles.$role.tools // []) | join(\",\")" "$cfg")

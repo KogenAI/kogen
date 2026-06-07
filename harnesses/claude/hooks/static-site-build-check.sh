@@ -34,6 +34,10 @@ set -u
 source "$(dirname "$0")/lib/hooks-lib.sh"
 parse_input
 
+# Derive CODEGEN_DIR from script location when not inherited from environment.
+# Hook lives at harnesses/claude/hooks/ — three dirs up is repo root.
+: "${CODEGEN_DIR:="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd -P)"}"
+
 agent_type="$AGENT_TYPE"
 session_id="$SESSION_ID"
 project_dir="$CWD"

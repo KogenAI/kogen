@@ -13,7 +13,7 @@ if ! command -v pi >/dev/null 2>&1; then
     exit 127
 fi
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 # Direct-build prompt (no subagents; pi builds the app itself).
 # Note: pi-build-system-prompt.txt is regenerated from tools-header/build.txt
 # on `make install` and is dormant for build mode — only the *-direct.txt file
@@ -35,16 +35,25 @@ NON_INTERACTIVE="${CODEGEN_BUILD_NON_INTERACTIVE:-}"
 
 # Fall back to config.yaml values if not set
 if [[ -z "$MODEL" || -z "$EFFORT" ]]; then
-    CODEGEN_DIR="${OCG_CODEGEN_DIR:-$HOME/Areas/Optimum/codegen}"
+    CODEGEN_DIR="${OCG_CODEGEN_DIR:-$(cd "$SCRIPT_DIR/../.." && pwd -P)}"
     cfg="$CODEGEN_DIR/templates/generator/config.yaml"
     if [[ -f "$cfg" ]]; then
-        [[ -z "$MODEL" ]] && MODEL=$(yq -r ".harness.build.pi.model" "$cfg" 2>/dev/null || echo "")
-        [[ -z "$EFFORT" ]] && EFFORT=$(yq -r ".harness.build.pi.effort" "$cfg" 2>/dev/null || echo "")
+        [[ -z "$MODEL" ]] && MODEL=$(yq -r ".harness.build.pi.model" "$cfg")
+        [[ -z "$EFFORT" ]] && EFFORT=$(yq -r ".harness.build.pi.effort" "$cfg")
+    else
+        printf 'pi dispatch: config.yaml not found at %s\n' "$cfg" >&2
+        exit 1
     fi
 fi
 
-MODEL="${MODEL:-openai-codex/gpt-5.4-mini}"
-EFFORT="${EFFORT:-high}"
+if [[ -z "$MODEL" || "$MODEL" == "null" ]]; then
+    printf 'pi dispatch: harness.build.pi.model missing/empty in config.yaml\n' >&2
+    exit 1
+fi
+if [[ -z "$EFFORT" || "$EFFORT" == "null" ]]; then
+    printf 'pi dispatch: harness.build.pi.effort missing/empty in config.yaml\n' >&2
+    exit 1
+fi
 
 # Extra flags and prompt: last positional arg is PROMPT (only if any positional args given)
 if [[ $# -gt 0 ]]; then
