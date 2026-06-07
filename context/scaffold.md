@@ -261,6 +261,7 @@ fi
 **Cosmetic whitespace artifact**: Post-render strips may leave blank lines where lines were removed (e.g., health_controller.ex Ecto imports). This is harmless (Elixir tolerates blank lines) but cosmetic. The trade-off avoids conditionalizing per-line removal logic in `.eex` templates; templates remain readable, and `mix format` runs at startup (scaffold.sh L131) to normalize output before LLM sees it.
 
 **Reference implementations**:
+
 - Makefile `ecto.rollback` strip: scaffold.sh:187-189
 - Health controller Ecto imports strip: scaffold.sh:196-201
 

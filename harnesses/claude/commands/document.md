@@ -12,12 +12,14 @@ Write a short pitch skeleton capturing the essence of what was discussed — a s
 2. **Open questions** — Unresolved items from the conversation. These become the first things the shaping session investigates and resolves — asking only if no sensible default exists.
 3. **Context consulted** — Paths touched in this session. Paths only.
 
+**Status enum**: Begin the file with `> Status: SKELETON`. The enum has three values — SKELETON (raw, this command), SHAPING (shape session mid-investigation), SHAPED (fully designed, no open questions). SHAPING/SHAPED are set by the shape session; this command always writes SKELETON.
+
 **FORBIDDEN sections**: Appetite, Solution sketch, Rabbit holes, Implementation plan, Step N, Files Modified, Consolidation, Proposed changes, Why one commit.
 
 **PROCESS:**
 
 1. Re-read the conversation. Extract: the problem statement (user's wording), any unresolved questions, and any paths/files referenced.
-2. Write the skeleton — 3 sections only, ≤1 A4 page (~60 lines / ~400 words).
+2. Write `> Status: SKELETON` as the first line, then write the skeleton — 3 sections only, ≤1 A4 page (~60 lines / ~400 words).
 3. Save automatically — kebab-case slug. `mkdir -p codegen/pitches/draft` then save to `codegen/pitches/draft/<slug>.md`. Re-running on existing slug → Edit in place; the doc is a living skeleton.
 4. Present the file path in chat. Done.
 

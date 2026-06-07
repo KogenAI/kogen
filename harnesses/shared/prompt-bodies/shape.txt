@@ -4,7 +4,50 @@ When the session starts with no existing pitch context, open with one question: 
 
 ## Headless mode (non-interactive)
 
-When running headless (no interactive UI — the session was launched with `CLAUDE_NONINTERACTIVE=1`), do NOT call `AskUserQuestion` expecting an answer: under stream-json the tool call blocks the stream waiting for a `tool_result` that never arrives. Instead, write the unresolved decision(s) as a `## Questions` block in the in-scope pitch file (a permitted `codegen/pitches/` write) and stop cleanly. Format each as a question header + 2–4 concrete options with trade-offs, exactly as you would have passed to `AskUserQuestion`. The operator answers out-of-band; a fresh session reads the resulting `## Answers` block and continues. One-shot: advance the pitch and exit, or write `## Questions` and exit — never block.
+When running headless (no interactive UI — the session was launched with `CLAUDE_NONINTERACTIVE=1`), do NOT call `AskUserQuestion` expecting an answer: under stream-json the tool call blocks the stream waiting for a `tool_result` that never arrives. Instead, write the unresolved decision(s) as a `## Questions` block in the in-scope pitch file (a permitted `codegen/pitches/` write) and stop cleanly. The operator answers out-of-band; a fresh session reads the resulting `## Answers` block and continues. One-shot: advance the pitch and exit, or write `## Questions` and exit — never block.
+
+Format `## Questions` and `## Answers` using the EXACT grammar below (enforced by the pitch-format-validator Stop hook):
+
+```
+## Questions
+
+### Q1: <question title>
+
+- **a)** <option text — include trade-off>
+- **b)** <option text — include trade-off>
+[- **c)** optional third option]
+[- **d)** optional fourth option]
+
+### Q2: <question title>
+
+- **a)** <option text>
+- **b)** <option text>
+
+## Answers
+
+### Q1: <letter>
+
+<brief rationale>
+
+### Q2: <letter>
+
+<brief rationale>
+```
+
+Rules:
+- Each `### Q<n>:` heading MUST have ≥2 `- **<letter>)**` option bullets before the next heading.
+- `## Answers` bindings use `### Q<n>:` headings; each bound Q<n> must match a heading in `## Questions`.
+- Orphan `## Answers` (with no `## Questions`) is allowed — it means questions were resolved and the headings deleted.
+- Answer the operator's choices by writing `## Answers` entries and removing resolved `### Q<n>:` blocks from `## Questions` (delete answered questions, keep unanswered ones).
+
+## Status stamping
+
+The in-scope pitch begins with a `> Status:` line (enum: SKELETON | SHAPING | SHAPED). Keep it current as you work:
+
+- **On first advance** — the first time you edit a loaded SKELETON pitch to advance it (resolve a blocker, answer a question, tighten the solution), set the first line to `> Status: SHAPING`. Also write `> Status: SHAPING` when running headless and you exit after writing a `## Questions` block (investigation is mid-flight, not done).
+- **On completion** — when the readiness loop ends with no unresolved blockers and no open `## Questions`, set the first line to `> Status: SHAPED` immediately before emitting `Ready.`.
+
+If the pitch has no `> Status:` line, add it as the first line. Only one `> Status:` line per file.
 
 ## Pitch Readiness Check
 
@@ -41,7 +84,7 @@ When pitch is loaded, run Phase 0 first (see below), then this loop:
    - [ ] U5: every user input has a stated persistence destination (stored in / saved to / written to).
    - [ ] U6: every user input field has stated constraints (format, length, allowed values, or "any string").
    - [ ] U7: every terminal user action has a success signal (what user sees/receives on completion).
-   All seven pass → emit `Ready.` on its own line. Done.
+   All seven pass → set `> Status: SHAPED` in the pitch file, then emit `Ready.` on its own line. Done.
    Any fail → auto-resolve via inference (L40); re-check. If gap persists (no sensible default) → escalate via escape hatch to AskUserQuestion, loop continues.
 4. **Blockers found** → loop one at a time:
    a. Pick the highest-impact blocker first (scope creep > inconsistency > open question > vague > multi-approach).
@@ -61,7 +104,7 @@ When pitch is loaded, run Phase 0 first (see below), then this loop:
       - Defer-to-implementation → Edit pitch to note "deferred to code"
       - Leave-as-is → Append to `Rabbit holes`: `Accepted risk: <blocker summary>`
    e. Re-scan (edited) pitch. Continue loop if new blockers or partial resolution. Otherwise next blocker.
-5. **Loop ends** when no unresolved blockers remain → **emit end-summary (below)** → emit `Ready.`
+5. **Loop ends** when no unresolved blockers remain → **emit end-summary (below)** → set `> Status: SHAPED` in the pitch file → emit `Ready.`
 
 **End-summary** (emit before `Ready.` in the shape draft):
 Emit three sentences in chat:

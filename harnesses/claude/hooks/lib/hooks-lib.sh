@@ -16,6 +16,10 @@
 #                                  handling non-existent paths via parent-walk fallback
 #   session_log_from_transcript  — return the last codegen/logging/*.md path written by
 #                                  this session, from $TRANSCRIPT_PATH. Empty if none.
+#   pitch_from_transcript        — return the last codegen/pitches/*.md path written by
+#                                  this session, from $TRANSCRIPT_PATH. Empty if none.
+#                                  Exact mirror of session_log_from_transcript but matches
+#                                  the codegen/pitches/.*\.md$ pattern.
 #
 # Input contract (PreToolUse + SubagentStop + Stop fields, parse_input fills any
 # field present on stdin and leaves the rest empty):
@@ -268,6 +272,31 @@ session_log_from_transcript() {
         | select(.type == "tool_use"
             and (.name == "Write" or .name == "Edit" or .name == "MultiEdit"))
         | select(.input.file_path | test("codegen/logging/.*\\.md$"))
+        | .input.file_path
+    ' "$TRANSCRIPT_PATH" 2>/dev/null | tail -n 1
+}
+
+# pitch_from_transcript — return the last codegen/pitches/*.md path written
+# by this session, derived from $TRANSCRIPT_PATH (set by parse_input).
+#
+# Exact mirror of session_log_from_transcript but matches the pattern
+# codegen/pitches/.*\.md$ instead of codegen/logging/.*\.md$. Returns
+# the LAST matching file_path (tail -n 1 semantics — most recent write in
+# transcript order). Empty result when:
+#   - TRANSCRIPT_PATH is unset or empty
+#   - TRANSCRIPT_PATH does not exist or is not readable
+#   - No matching tool_use entries found
+# jq errors are swallowed via 2>/dev/null. No --slurp (streams line-by-line).
+pitch_from_transcript() {
+    if [ -z "${TRANSCRIPT_PATH:-}" ] || [ ! -r "$TRANSCRIPT_PATH" ]; then
+        printf ''
+        return 0
+    fi
+    jq -r '
+        .message.content[]?
+        | select(.type == "tool_use"
+            and (.name == "Write" or .name == "Edit" or .name == "MultiEdit"))
+        | select(.input.file_path | test("codegen/pitches/.*\\.md$"))
         | .input.file_path
     ' "$TRANSCRIPT_PATH" 2>/dev/null | tail -n 1
 }

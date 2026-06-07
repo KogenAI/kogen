@@ -163,6 +163,14 @@
         "hooks": [
           {
             "type": "command",
+            "command": "$HOME/.claude/hooks/pitch-format-validator.sh"
+          }
+        ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
             "command": "$HOME/.claude/hooks/step-log-completeness.sh"
           }
         ]
