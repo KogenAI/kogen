@@ -39,6 +39,8 @@ import { register as registerPreCommitGuard } from "./hooks/pre-commit-guard";
 import { register as registerReviewerGuard } from "./hooks/reviewer-guard";
 import { register as registerSessionLogSectionIntegrity } from "./hooks/session-log-section-integrity";
 import { register as registerStaticSiteExGuard } from "./hooks/static-site-ex-guard";
+import { register as registerPitchShippedBeforeStop } from "./hooks/pitch-shipped-before-stop";
+import { register as registerStepLogSectionBeforeSpawn } from "./hooks/step-log-section-before-spawn";
 import { register as registerSubagentAllowlist } from "./hooks/subagent-allowlist";
 import { register as registerTrackSubagentEdits } from "./hooks/track-subagent-edits";
 import { register as registerUsageRulesGrepGuard } from "./hooks/usage-rules-grep-guard";
@@ -83,6 +85,7 @@ export default function (pi: ExtensionAPI): void {
   registerReviewerGuard(pi);
   registerSessionLogSectionIntegrity(pi);
   registerStaticSiteExGuard(pi);
+  registerStepLogSectionBeforeSpawn(pi);
   registerSubagentAllowlist(pi);
   registerTrackSubagentEdits(pi);
   registerUsageRulesGrepGuard(pi);
@@ -97,6 +100,7 @@ export default function (pi: ExtensionAPI): void {
   registerPostDeveloperFormat(pi);
   registerStaticSiteBuildCheck(pi);
   registerStepLogCompleteness(pi);
+  registerPitchShippedBeforeStop(pi);
   registerStopCycleGuard(pi);
   registerStopResume(pi);
 }

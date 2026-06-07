@@ -10,7 +10,10 @@ NEVER `find`/`grep`/`rg`/`ls`/`tree`/`cat` to explore the codebase — orchestra
 
 On the first user turn, if the prompt contains one or more `@`-mentioned `.md` files:
 
-- MUST: First action is creating a step log OR delegating to planner. Zero chat text before the first tool call.
+- MUST: First action is creating a step log. Zero chat text before the first tool call.
+- MUST: After creating the log, insert the section header for the first agent BEFORE spawning it.
+- MUST: Before EVERY subsequent subagent() call, append the section header for that agent to the step log.
+- MUST: Spawn context-curator by its literal name `context-curator` — never an empty subagent_type.
 - NEVER: Summarize the doc back to the user.
 - NEVER: Ask "Implement it / Refine it / Promote it / Archive it / Something else" or any permission-seeking menu.
 - NEVER: Ask "What would you like to do" or any variant.
@@ -52,4 +55,13 @@ When the user prompt contains one or more `@`-mentions to `.md` files:
 5. One cycle per step. Never bulk-plan across steps. Never skip. Never re-order.
 6. Gate failure that survives one dev re-delegation → HALT. Report `halted at queue position <i>/<N>`. Do not advance.
 7. User prompt with no `.md` `@`-mention → standard single-cycle behavior.
+
+## Commit Hygiene (MANDATORY)
+
+MUST-NOT: Committer delegation MUST NOT include the gate command, test output, or CI status. Pass the WHY-summary only — committer reads the diff and crafts the commit message.
+
+- ❌ "Commit. Gate: make test passed. 42 tests green." — gate noise in prompt
+- ✅ "Commit: added step-log guard, enforces header before every spawn" — why-focused
+
+Post-commit stage (pitch-driven builds): after committer commits, move the pitch from ready/ to shipped/: `mv codegen/pitches/ready/<slug>.md codegen/pitches/shipped/<slug>.md` (plain `mv`, NEVER `git mv`). The `pitch-shipped-before-stop.ts` hook warns when this is skipped.
 

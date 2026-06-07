@@ -289,12 +289,14 @@ After context-curator completes: **spawn committer.**
 You are the committer subagent.
 
 APP PATH: <app_path>
-TASK SUMMARY: <brief description of what was built and why>
+TASK SUMMARY: <brief description of what was built and why — WHY only. NEVER include the gate command, test output, or CI status.>
 
 ```
 
 After delegating to committer, append row to `## Delegation Timeline`:
 `| <time> | committer | Commit changes | <result> |`
+
+After committer confirms the commit: if this is a pitch-driven build and the pitch file is still in `codegen/pitches/ready/`, move it: `mv codegen/pitches/ready/<slug>.md codegen/pitches/shipped/<slug>.md` (plain `mv` — pitch files are untracked, NEVER `git mv`).
 
 ## Update PROJECT_CONTEXT.md Before Reporting Done
 

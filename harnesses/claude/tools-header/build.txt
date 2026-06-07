@@ -10,7 +10,10 @@ NEVER `find`/`grep`/`rg`/`ls`/`tree`/`cat` to explore the codebase — orchestra
 
 On the first user turn, if the prompt contains one or more `@`-mentioned `.md` files (Claude Code auto-loads their contents):
 
-- MUST: First action is Bash creating a step log OR Agent call to planner. Zero chat text before the first tool call.
+- MUST: First action is Bash creating a step log. Zero chat text before the first tool call.
+- MUST: After creating the log, insert `## planner-<stack> Section` header (or `## Plan` per the planner exception — the log skeleton already contains `## Plan`), THEN spawn planner.
+- MUST: Before EVERY subsequent Agent() call, Edit the step log to append the section header for that agent, THEN spawn.
+- MUST: Spawn context-curator by its literal name `context-curator` — never an empty subagent_type.
 - NEVER: Summarize the doc back to the user.
 - NEVER: Print "Status: This is a design document ready for implementation" or any equivalent meta-commentary.
 - NEVER: Ask "Implement it / Refine it / Promote it / Archive it / Something else" or any permission-seeking menu.
@@ -32,4 +35,13 @@ When the user prompt contains one or more `@`-mentioned `.md` files (Claude Code
 - **Free-form prompt** (`claude-build "implement X"`) — one full cycle, single-cycle passthrough. No pitch involved.
 
 Pitches contain no `## Step N` headings (the old step-scanner is removed because pitches replaced plan-shaped docs). Planner owns slicing; the pitch itself is silent on step decomposition.
+
+## Commit Hygiene (MANDATORY)
+
+MUST-NOT: Committer delegation MUST NOT include the gate command, test output, or CI status. Pass the WHY-summary only — committer reads the diff and crafts the commit message.
+
+- ❌ "Commit. Gate: make test passed. 42 tests green." — gate noise in prompt
+- ✅ "Commit: added step-log guard, enforces header before every spawn" — why-focused
+
+Post-commit stage (pitch-driven builds): after committer commits, move the pitch from ready/ to shipped/: `mv codegen/pitches/ready/<slug>.md codegen/pitches/shipped/<slug>.md` (plain `mv`, NEVER `git mv`). The `pitch-shipped-before-stop.sh` hook blocks the session from ending until this is done.
 

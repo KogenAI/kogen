@@ -171,6 +171,14 @@
         "hooks": [
           {
             "type": "command",
+            "command": "$HOME/.claude/hooks/pitch-shipped-before-stop.sh"
+          }
+        ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
             "command": "$HOME/.claude/hooks/step-log-completeness.sh"
           }
         ]
@@ -505,6 +513,15 @@
           {
             "type": "command",
             "command": "$HOME/.claude/hooks/static-site-ex-guard.sh"
+          }
+        ]
+      },
+      {
+        "matcher": "Agent",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "$HOME/.claude/hooks/step-log-section-before-spawn.sh"
           }
         ]
       },

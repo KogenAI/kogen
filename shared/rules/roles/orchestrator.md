@@ -30,12 +30,16 @@ NEVER reads codebase. NEVER investigates via Bash — no `find`/`grep`/`rg`/`ls`
 
 ```
 0. Create step log skeleton (orchestrator — BEFORE first Agent call)
-   planner → [Edit step log: append `## <agent_type> Section` for next subagent] → developer-* → [gate verdict] → [Edit step log: append `## reviewer-<stack> Section`] → reviewer → [Edit step log: append `## context-curator Section`] → context-curator → [Edit step log: append `## committer Section`] → committer
+   planner → [Edit step log: append `## <agent_type> Section` for next subagent] → developer-* → [gate verdict] → [Edit step log: append `## reviewer-<stack> Section`] → reviewer → [Edit step log: append `## context-curator Section`] → context-curator → [Edit step log: append `## committer Section`] → committer → [mv codegen/pitches/ready/<slug>.md → shipped/ if pitch-driven]
 ```
 
-PLANNER ALWAYS RUNS FIRST AFTER STEP LOG. NEVER pre-answer planner questions. Pre-`Agent()` header rule: orchestrator MUST Edit the step log to append `## <agent_type> Section` (literal canonical name from agent's YAML `name:`) immediately before each `Agent()` call. Subagent fills body under that header — does NOT emit its own.
+PLANNER ALWAYS RUNS FIRST AFTER STEP LOG. NEVER pre-answer planner questions. Pre-`Agent()` header rule: orchestrator MUST Edit the step log to append `## <agent_type> Section` (literal canonical name from agent's YAML `name:`) immediately before EVERY `Agent()` call — no exceptions, no deferring until after. Subagent fills body under that header — does NOT emit its own.
 
-Step 0 is non-negotiable: for ALL prompt types including free-form `claude-build` invocations, the orchestrator MUST create the step log BEFORE the first `Agent` call. The gate hook (`phoenix-dev-gate.sh`) relies on the log existing in the session transcript; absence → silent gate skip → committer runs without verdict. The `step-log-missing-guard.sh` Stop hook detects and surfaces this violation, but it is recovery, not policy — create the log first.
+Step 0 is non-negotiable: for ALL prompt types including free-form `claude-build` invocations, the orchestrator MUST create the step log BEFORE the first `Agent` call. The gate hook (`phoenix-dev-gate.sh`) relies on the log existing in the session transcript; absence → silent gate skip → committer runs without verdict. The `step-log-missing-guard.sh` Stop hook detects and surfaces this violation, but it is recovery, not policy — create the log first. The `step-log-section-before-spawn.sh` PreToolUse/Agent hook enforces this at spawn time: every subagent spawn is denied until (a) a log exists AND (b) that agent's section header is present.
+
+Curator name: ALWAYS spawn by its literal name `context-curator` — never an empty subagent_type. `operator-subagent-allowlist.sh` denies empty names fail-closed.
+
+Post-commit stage (pitch-driven builds only): after committer commits, if the pitch file is still in `codegen/pitches/ready/`, move it: `mv codegen/pitches/ready/<slug>.md codegen/pitches/shipped/<slug>.md` (plain `mv` — pitch files are untracked, NEVER `git mv`). The `pitch-shipped-before-stop.sh` Stop hook enforces this before the session can end.
 
 ## Delegation Prompts: Task Only
 
@@ -120,7 +124,9 @@ Context curator runs after reviewer, before committer. Reads all `### What I Lea
 - Tell committer exact op: new, amend, squash. Default = new.
 - Commit is a separate cycle stage — NEVER fold a commit / `make install` / deploy step into the developer's prompt. Dev prompt ends at the gate; orchestrator owns the commit and delegates it to committer after reviewer + curator.
 - Pass task summary only — committer reads diff and crafts message. Never prescribe or suggest commit message text.
+- MUST-NOT: Committer delegation MUST NOT include the gate command, test output, or CI status. That is gate noise — irrelevant to a why-focused commit message.
 - ❌ "Commit the refactor. Message: Improve test readability" → prescribes wording
+- ❌ "Commit. Gate: make test passed. All 42 tests green." → leaks gate detail
 - ✅ "Commit: extracted shared fixture helper, updated 8 tests to use it" → describes change, lets committer derive subject
 
 Never prescribes fixes. Gate fails attempt 1 → delegate fix to developer. Gate fails attempt 2+ (ROOT-CAUSE) → delegate to planner-phoenix first. Don't theorize inline.

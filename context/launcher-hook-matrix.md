@@ -37,12 +37,18 @@ Placement before `AGENT_TYPE` gate is critical: ops outer sessions have empty `A
 
 Hooks registered on the `Agent` matcher fire on every subagent spawn. These are distinct from the orchestrator-level hooks in the bypass matrix above, which fire on Bash/Read/Write tools at the outer session level.
 
-| Hook                          | Fires when                                                         | Action                                | Fail-open?           |
-| ----------------------------- | ------------------------------------------------------------------ | ------------------------------------- | -------------------- |
-| `operator-subagent-allowlist` | Any Agent spawn                                                    | Deny built-ins; gate Explore to debug | No (deny empty type) |
-| `curator-before-committer`    | `committer` spawn attempted after reviewer ran but curator has not | Deny committer; prompt curator first  | Yes (no log → allow) |
+| Hook                            | Fires when                                                         | Action                                           | Fail-open?                            |
+| ------------------------------- | ------------------------------------------------------------------ | ------------------------------------------------ | ------------------------------------- |
+| `operator-subagent-allowlist`   | Any Agent spawn                                                    | Deny built-ins; gate Explore to debug            | No (deny empty type)                  |
+| `curator-before-committer`      | `committer` spawn attempted after reviewer ran but curator has not | Deny committer; prompt curator first             | Yes (no log → allow)                  |
+| `step-log-section-before-spawn` | Any Agent spawn                                                    | Deny if no log or section header absent          | Yes (unreadable transcript → allow)   |
+| `pitch-shipped-before-stop`     | Stop event, after committer-section present + pitch in ready/      | Block session end; instruct mv ready/ → shipped/ | Yes (no transcript / no pitch → skip) |
 
 `curator-before-committer` does not have a per-mode bypass — it fires in all launcher modes (`role: *`). The fail-open path (no step log) handles the edge case where the orchestrator spawns committer before any log is written.
+
+`step-log-section-before-spawn` fires in all launcher modes (`signal: none`, `role: *`). Fail-open when transcript is unreadable. Primary enforcement for step-0 log creation and per-agent header insertion; `step-log-missing-guard.sh` remains the Stop backstop (defense in depth). Bash version fail-opens on transcript unreadability; Pi version uses mtime-based file scan of `codegen/logging/` (architectural difference: Pi always has a project dir) — both patterns are correct per harness model.
+
+`pitch-shipped-before-stop` uses a **dual-path bypass** pattern: bypassed under `CLAUDE_ROLE=dashboard-build` (dashboard manages the shipped/ move post-merge) **OR** `CODEGEN_NO_AUTOSHIP=1` (explicit operator suppression). Scoped to pitch-driven sessions (no pitch in transcript → skip). Uses `CLAUDE_ROLE_FAMILY` signal + `resolve_role()` for role-aware dispatch. Retry cap at 2 (counter file `/tmp/claude-autoship-guard-*.count`) prevents infinite block loops.
 
 ## Headless Investigative Mode
 
