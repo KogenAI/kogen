@@ -32,6 +32,7 @@ rules/
   stacks/
     phoenix/
       _core.md              idioms, Ecto, contexts, LiveView UI
+      no-defensive-code.md  discriminating test: defensive swallow (forbidden) vs boundary validation / OTP carve-outs (allowed)
       orchestrator.md       gate commands, INCONCLUSIVE, ext→agent, slice routing
       planner.md            dep scan, OTP convention
       developer.md          pre-completion greps, mix workflow, hot reload, cleanup, codegen
