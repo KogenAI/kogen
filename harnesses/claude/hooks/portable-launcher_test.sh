@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 # portable-launcher_test.sh — contract tests for portable launcher derivation and related guards.
 #
-# Assertions (>=14):
+# Assertions (>=15):
 #  1. claude-build.sh sibling resolution (OCG_CODEGEN_DIR unset, non-Mac HOME)
 #  2. pi-build.sh same
-#  3. claude-shape.sh installed-flat layout (harnesses symlink → repo root)
-#  4. claude-shape.sh in-repo-checkout layout
-#  5. OCG_CODEGEN_DIR override wins for a non-build launcher
+#  3. claude-shape.sh installed-flat layout — REAL launcher run; capture exported CODEGEN_DIR
+#  4. claude-shape.sh in-repo-checkout layout — REAL launcher run; no sibling harnesses dir
+#  5. OCG_CODEGEN_DIR override wins — REAL launcher run with populated fake OCG tree
 #  6. dispatch.sh (claude) missing config → exit 1 + "config.yaml not found" in stderr
 #  7. dispatch.sh (claude) empty model block → exit 1 (no silent haiku fallback)
 #  8. load-role.sh model fail-loud on missing model
@@ -16,6 +16,7 @@
 # 12. gate: happy-path exit 0 → ALL CLEAR preserved (regression guard)
 # 13. post-developer-format.sh bash-3.2 two-repo run → no crash, exit 0
 # 14. Static grep: no Areas/Optimum/codegen literal in launchers/dispatch/load-role/orchestrator.md
+# 15. Drift loop: SCRIPT_DIR + CODEGEN_DIR derivation block byte-identical across all non-build launchers
 
 set -u
 
@@ -145,68 +146,121 @@ else
     fail=$((fail + 1))
 fi
 
-# ── Test 3: claude-shape.sh installed-flat layout (harnesses symlink → repo root) ─
-# Simulate: scripts installed flat in INSTALL_DIR; harnesses symlink present next to scripts
+# ── Test 3: claude-shape.sh installed-flat layout — run REAL launcher ────────
+# Simulate: scripts installed flat in INSTALL_DIR; harnesses symlink present next to scripts.
+# Stub claude to capture the exported CODEGEN_DIR that crosses the exec boundary.
 T3="$BASE_TMP/t3_install"
 mkdir -p "$T3"
 cp "$CODEGEN_ROOT/harnesses/claude/claude-shape.sh" "$T3/claude-shape.sh"
 # harnesses symlink → real codegen root harnesses (so SCRIPT_DIR/harnesses exists)
 ln -s "$CODEGEN_ROOT/harnesses" "$T3/harnesses"
 
-ARGS_T3="$BASE_TMP/t3_args.txt"
-CLAUDE_T3="$BASE_TMP/t3_bin"
-mkdir -p "$CLAUDE_T3"
-make_stub "$CLAUDE_T3/claude" "printf '%s\n' \"\$@\" > '$ARGS_T3'"
-make_stub "$CLAUDE_T3/yq" 'echo "sonnet"' # load-role.sh will be called
+CAPTURE_T3="$BASE_TMP/t3_captured_codegen_dir.txt"
+BIN_T3="$BASE_TMP/t3_bin"
+mkdir -p "$BIN_T3"
+# stub claude: capture the CODEGEN_DIR env var that the launcher exports before exec
+make_stub "$BIN_T3/claude" "printf '%s' \"\$CODEGEN_DIR\" > '$CAPTURE_T3'"
+# Use real yq so load_role shape succeeds against the real config.yaml (resolved via harnesses symlink)
+YQ_REAL=$(command -v yq 2>/dev/null || true)
+[ -n "$YQ_REAL" ] && ln -s "$YQ_REAL" "$BIN_T3/yq"
 
-# claude-shape requires no args (cold-start) and execs claude — but we stub claude
-# so it won't actually open an interactive session. Just verify CODEGEN_DIR is derived.
 actual_exit=0
-PATH="$CLAUDE_T3:$PATH" HOME="/tmp/nonexistent_user_xyz" \
+PATH="$BIN_T3:$PATH" HOME="/tmp/nonexistent_user_xyz" \
     bash "$T3/claude-shape.sh" 2>/dev/null || actual_exit=$?
-# Shape either execs claude (exit whatever stub exits) or exits with load-role error
-# Key: it must NOT exit because HOME-based CODEGEN_DIR was missing
-# We check that CODEGEN_DIR would resolve via harnesses symlink using cd -P:
-derived=$(HOME="/tmp/nonexistent_user_xyz" bash -c '
-    SCRIPT_DIR="'"$T3"'"
-    if [[ -d "$SCRIPT_DIR/harnesses" ]]; then
-        cd -P "$SCRIPT_DIR/harnesses" && cd .. && pwd
-    else
-        echo MISS
-    fi
-')
-assert_eq "(3) claude-shape.sh installed-flat: harnesses branch resolves codegen root" "$CODEGEN_ROOT" "$derived"
+# Read what the REAL launcher exported as CODEGEN_DIR
+derived3=""
+[ -f "$CAPTURE_T3" ] && derived3=$(cat "$CAPTURE_T3")
+assert_eq "(3) claude-shape.sh installed-flat: real launcher exports CODEGEN_DIR == repo root" "$CODEGEN_ROOT" "$derived3"
 
-# ── Test 4: claude-shape.sh in-repo-checkout layout ──────────────────────────
-# Script lives at harnesses/claude/claude-shape.sh; no harnesses dir next to it;
-# $SCRIPT_DIR/../.. = repo root
-T4_SCRIPT="$CODEGEN_ROOT/harnesses/claude/claude-shape.sh"
-derived4=$(bash -c '
-    SCRIPT_DIR="$(cd "$(dirname "'"$T4_SCRIPT"'")" && pwd)"
-    if [[ -n "${OCG_CODEGEN_DIR:-}" ]]; then
-        echo "$OCG_CODEGEN_DIR"
-    elif [[ -d "$SCRIPT_DIR/harnesses" ]]; then
-        cd "$SCRIPT_DIR/harnesses/.." && pwd -P
-    else
-        cd "$SCRIPT_DIR/../.." && pwd -P
-    fi
-')
-assert_eq "(4) claude-shape.sh in-repo layout: SCRIPT_DIR/../.. = repo root" "$CODEGEN_ROOT" "$derived4"
+# ── Test 4: claude-shape.sh in-repo-checkout layout — run REAL launcher ──────
+# Script lives at harnesses/claude/claude-shape.sh inside repo; no sibling harnesses dir;
+# SCRIPT_DIR/../.. = repo root. Run the real launcher; capture derived CODEGEN_DIR.
+CAPTURE_T4="$BASE_TMP/t4_captured_codegen_dir.txt"
+BIN_T4="$BASE_TMP/t4_bin"
+mkdir -p "$BIN_T4"
+make_stub "$BIN_T4/claude" "printf '%s' \"\$CODEGEN_DIR\" > '$CAPTURE_T4'"
+# Use real yq; in-repo layout resolves CODEGEN_DIR to repo root where real config.yaml lives
+YQ_REAL=$(command -v yq 2>/dev/null || true)
+[ -n "$YQ_REAL" ] && ln -s "$YQ_REAL" "$BIN_T4/yq"
 
-# ── Test 5: OCG_CODEGEN_DIR override wins for non-build launcher ──────────────
+actual_exit=0
+PATH="$BIN_T4:$PATH" \
+    bash "$CODEGEN_ROOT/harnesses/claude/claude-shape.sh" 2>/dev/null || actual_exit=$?
+derived4=""
+[ -f "$CAPTURE_T4" ] && derived4=$(cat "$CAPTURE_T4")
+assert_eq "(4) claude-shape.sh in-repo layout: real launcher exports CODEGEN_DIR == repo root" "$CODEGEN_ROOT" "$derived4"
+
+# ── Test 5: OCG_CODEGEN_DIR override wins — run REAL launcher ────────────────
+# Override must win over both the harnesses-symlink and SCRIPT_DIR/../.. branches.
+# Populate FAKE_OCG with a minimal config.yaml so load_role shape succeeds.
 FAKE_OCG="$BASE_TMP/fake_ocg"
-mkdir -p "$FAKE_OCG"
-derived5=$(OCG_CODEGEN_DIR="$FAKE_OCG" bash -c '
-    SCRIPT_DIR="/tmp/some/random/install/dir"
-    if [[ -n "${OCG_CODEGEN_DIR:-}" ]]; then
-        echo "$OCG_CODEGEN_DIR"
-    elif [[ -d "$SCRIPT_DIR/harnesses" ]]; then
-        cd "$SCRIPT_DIR/harnesses/.." && pwd -P
-    else
-        cd "$SCRIPT_DIR/../.." && pwd -P
+mkdir -p "$FAKE_OCG/templates/generator"
+cat >"$FAKE_OCG/templates/generator/config.yaml" <<'YAML'
+roles:
+  shape:
+    model: opus
+    effort: high
+    system_prompt: "stub"
+    tools: []
+YAML
+# Also need the harnesses/claude directory for load-role.sh source path
+mkdir -p "$FAKE_OCG/harnesses/claude"
+cp "$CODEGEN_ROOT/harnesses/claude/load-role.sh" "$FAKE_OCG/harnesses/claude/load-role.sh"
+
+CAPTURE_T5="$BASE_TMP/t5_captured_codegen_dir.txt"
+BIN_T5="$BASE_TMP/t5_bin"
+mkdir -p "$BIN_T5"
+make_stub "$BIN_T5/claude" "printf '%s' \"\$CODEGEN_DIR\" > '$CAPTURE_T5'"
+# real yq or stub — both work since config.yaml is well-formed
+if command -v yq >/dev/null 2>&1; then
+    ln -s "$(command -v yq)" "$BIN_T5/yq"
+else
+    make_stub "$BIN_T5/yq" 'echo "opus"'
+fi
+
+actual_exit=0
+# Run REAL launcher (in-repo path) with OCG_CODEGEN_DIR pointing to FAKE_OCG
+PATH="$BIN_T5:$PATH" OCG_CODEGEN_DIR="$FAKE_OCG" \
+    bash "$CODEGEN_ROOT/harnesses/claude/claude-shape.sh" 2>/dev/null || actual_exit=$?
+derived5=""
+[ -f "$CAPTURE_T5" ] && derived5=$(cat "$CAPTURE_T5")
+assert_eq "(5) OCG_CODEGEN_DIR override wins: real launcher exports CODEGEN_DIR == FAKE_OCG" "$FAKE_OCG" "$derived5"
+
+# ── Drift loop: derivation block must be byte-identical across all non-build launchers ──
+# Extracts the 7-line derivation block from claude-shape.sh (lines 10-17) and
+# asserts every sibling launcher carries the identical text. Catches copy-paste drift at
+# zero extra cost — pure grep/bash, no LLM calls.
+REFERENCE_LAUNCHER="$CODEGEN_ROOT/harnesses/claude/claude-shape.sh"
+# Extract the portable derivation block: SCRIPT_DIR assignment + 3-branch CODEGEN_DIR if/elif/else/fi + export
+DERIV_BLOCK=$(grep -A 8 '^SCRIPT_DIR=' "$REFERENCE_LAUNCHER" | head -9)
+LAUNCHERS_TO_CHECK=(
+    "$CODEGEN_ROOT/harnesses/claude/claude-refactor.sh"
+    "$CODEGEN_ROOT/harnesses/claude/claude-debug.sh"
+    "$CODEGEN_ROOT/harnesses/claude/claude-ops.sh"
+    "$CODEGEN_ROOT/harnesses/pi/pi-shape.sh"
+    "$CODEGEN_ROOT/harnesses/pi/pi-refactor.sh"
+    "$CODEGEN_ROOT/harnesses/pi/pi-debug.sh"
+    "$CODEGEN_ROOT/harnesses/pi/pi-ops.sh"
+)
+drift_found=""
+for launcher in "${LAUNCHERS_TO_CHECK[@]}"; do
+    if [ ! -f "$launcher" ]; then
+        drift_found="${drift_found} MISSING:$(basename "$launcher")"
+        continue
     fi
-')
-assert_eq "(5) OCG_CODEGEN_DIR override wins" "$FAKE_OCG" "$derived5"
+    candidate=$(grep -A 8 '^SCRIPT_DIR=' "$launcher" | head -9)
+    if [[ "$candidate" != "$DERIV_BLOCK" ]]; then
+        drift_found="${drift_found} DRIFT:$(basename "$launcher")"
+    fi
+done
+if [[ -z "$drift_found" ]]; then
+    [ -n "${VERBOSE:-}" ] && printf 'PASS: (drift-loop) derivation block identical across all non-build launchers\n'
+    pass=$((pass + 1))
+else
+    printf 'FAIL: (drift-loop) derivation block differs in:%s\n' "$drift_found"
+    printf '  reference (%s):\n%s\n' "$(basename "$REFERENCE_LAUNCHER")" "$DERIV_BLOCK"
+    fail=$((fail + 1))
+fi
 
 # ── Test 6: dispatch.sh (claude) missing config → exit 1 ─────────────────────
 T6="$BASE_TMP/t6_dispatch"

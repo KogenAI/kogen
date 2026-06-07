@@ -81,6 +81,32 @@ Gate: make ci  (from Plan's gate-json block "command" field)
 
 Re-read plan: consistency, framework fit, redundancy (grep), edge cases, integration points, test coverage, usage-rules ≤5, delegation prompt concrete, alternatives weighed (or convention cited), risks classified (severity + likelihood + mitigation), no "investigate further" deferrals. Summary on `Self-validation` line. Fix before finishing.
 
+## Rule J — Parallel Cases Get Parallel Treatment
+
+When a plan touches two or more sibling sites in the same family (same derivation logic, same config-resolution path, same fallback-default branch), they receive the SAME investigation and the SAME fix — or the plan explicitly names `Out-of-scope: <sibling> — <why>`.
+
+Silently treating one sibling while leaving the other uninvestigated is a plan defect; reviewer will flag it.
+
+### Provenance Tags (MANDATORY on path / env / config / derivation claims)
+
+Every factual claim in `Assumptions`, `Approach`, and `Findings` MUST carry one of:
+
+| Tag        | Meaning                                                                           |
+| ---------- | --------------------------------------------------------------------------------- |
+| `ran:`     | Executable proof — command was run and output confirms the claim                  |
+| `read:`    | Static proof — source code or config file was read and the relevant line is cited |
+| `assumed:` | No proof obtained; planner believes it is true but has not verified               |
+
+**FORBIDDEN**: using `assumed:` for any claim about path derivation, env-var resolution, config-key presence, fallback-default branch behavior, or version-dependent behavior. These MUST be `ran:` or `read:`.
+
+Examples:
+
+- ❌ `assumed: the override env var resolves to /opt/apps when set` (code review only, not proof)
+- ✅ `read: line 11 — if [[ -n "${OVERRIDE_DIR:-}" ]]; then WORK_DIR="$OVERRIDE_DIR"` (static proof)
+- ✅ `ran: OVERRIDE_DIR=/opt/apps bash my-script.sh 2>&1 — exit 0, WORK_DIR=/opt/apps captured` (executable proof)
+
+Reading the code is `read:`, not `ran:`. Executable proof requires running the artifact and observing the output.
+
 ## Version Stamp Bash
 
 ```bash

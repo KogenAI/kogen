@@ -52,3 +52,27 @@ Pure fns → unit tests. New public fns → tests. Bug fix → regression test. 
 - Server: ASSUME running. NEVER restart — report to orchestrator.
 - Cleanup: removing test files → grep source first. Target specific files; never blast build dirs.
 - No unprompted backward compat. Pitch says replace → remove old, implement new. Legacy fallback branch when old format is gone = dead code = scope creep. ❌ `cond do: legacy -> ...; new -> ...` ✅ new format only.
+
+## Rule K — Red-Green: Show the Test Failing First
+
+Before implementing a fix, confirm the new or modified test actually fails for the right reason. A test that passes before any fix is a green-from-birth test — it proves nothing about the change and masks the real defect.
+
+Discipline: write (or point to) the failing assertion, run the targeted test, read the failure output, confirm it names the correct missing behavior. Then implement the fix. Then re-run and confirm green.
+
+This is advice — no mechanical hook enforces it. The gate catches surviving green-from-birth tests; catching them before the gate is cheaper.
+
+## Rule O — Curator-Capture on Near-Misses
+
+Emit a `### What I Learned This Step` block (in addition to the unconditional block already required) when:
+
+- A green-from-birth test is caught — a test that passed before the fix was applied, meaning it was not testing the intended behavior.
+- An override-masked branch is detected — a test that sets the very variable whose _absence_ is under test, so the default / fallback branch never executes.
+
+Format the entry:
+
+```
+- [local] Caught green-from-birth test in <file>: <test name> passed before fix applied — masked <what it was supposed to catch>
+- [local] Caught override-masked branch in <test>: test sets <VAR> but <source fn> branches on absence of <VAR> — default branch never ran
+```
+
+The hook `subagent-retrospective-guard.sh` already enforces an unconditional block; Rule O adds the specific near-miss trigger so the curator accumulates the pattern across cycles.
