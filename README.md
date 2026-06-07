@@ -39,9 +39,15 @@ Three Makefile targets, increasing cost:
 ## Prerequisites
 
 - Docker Desktop installed and running (for container mode)
-- Git
+- Git (`brew install git` / system package manager)
 - Cursor IDE (recommended) or VS Code
 - Phoenix/Elixir project
+- mise — tool version manager (`curl https://mise.run | sh`)
+- python3 + pyyaml (`pip3 install --user pyyaml`) — required by generator pipeline
+- jq — JSON processor (`brew install jq`)
+- yq — YAML processor, **mikefarah/yq required** (`brew install yq` on macOS; `apt python-yq` is **incompatible** — install from https://github.com/mikefarah/yq)
+- ripgrep/rg (`brew install ripgrep`)
+- node — required for ajv/playwright hook verification (install via mise: `mise install node`)
 - AI Assistant: Claude Code (installed automatically by `make install`)
 - AI Assistant: Pi (install manually: `npm install -g @earendil-works/pi-coding-agent`; `make install` configures `~/.pi/agent/` but does NOT install the binary)
 

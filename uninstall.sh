@@ -59,7 +59,12 @@ echo ""
 echo "🤖 Claude Code uninstallation..."
 if command -v claude >/dev/null 2>&1; then
     echo "   ⚠️  Do you want to uninstall Claude Code? [y/N]"
-    read -r confirm_claude
+    if [[ -t 0 ]]; then
+        read -r confirm_claude
+    else
+        echo "   ℹ️  non-interactive (no TTY): keeping Claude Code installed"
+        confirm_claude=N
+    fi
 
     if [ "$confirm_claude" = "y" ] || [ "$confirm_claude" = "Y" ]; then
         # Find and remove Claude Code binary from common locations
@@ -109,7 +114,12 @@ if [ "$CLAUDE_DATA_FOUND" = "true" ]; then
     echo "   ⚙️  Found Claude Code data (configuration, settings, sessions, cache)"
     echo "   ⚠️  Do you want to remove ALL Claude Code data? [y/N]"
     echo "       This includes: settings, commands, sub agents, sessions, and cache"
-    read -r confirm_claude_all
+    if [[ -t 0 ]]; then
+        read -r confirm_claude_all
+    else
+        echo "   ℹ️  non-interactive (no TTY): keeping Claude Code data"
+        confirm_claude_all=N
+    fi
 
     if [ "$confirm_claude_all" = "y" ] || [ "$confirm_claude_all" = "Y" ]; then
         # Remove all Claude Code data locations

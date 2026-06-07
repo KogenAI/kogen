@@ -184,11 +184,35 @@ for _link in rules recipes usage_rules subagents; do
     fi
 done
 
+# Install root node_modules (ajv, playwright, prettier) so schema-validate.js and render-check.js
+# can resolve their dependencies from $CODEGEN_DIR/node_modules.
+# Skip if node_modules already present and up-to-date (idempotent).
+if [ -f "$CODEGEN_DIR/package.json" ]; then
+    if [ ! -d "$CODEGEN_DIR/node_modules/ajv" ]; then
+        echo ""
+        echo "📦 Installing root node deps (ajv, playwright, prettier)..."
+        # Use MISE_SKIP_CONFIG=1 so the npm shim runs without requiring mise trust on HOME-derived configs.
+        # This is safe: we only need npm here, not mise's tool version management.
+        _npm_install_failed=0
+        (cd "$CODEGEN_DIR" && MISE_SKIP_CONFIG=1 npm install) 2>&1 || _npm_install_failed=1
+        if [ "$_npm_install_failed" -eq 1 ]; then
+            echo "❌ root npm install failed — schema-validate/render-check need node_modules" >&2
+            exit 1
+        fi
+    else
+        echo "   ✅ Root node_modules/ajv already present — skipping npm install"
+    fi
+fi
+
 # Generate templates for the selected harnesses via unified manifest-driven generator.
 # Source manifest helpers for launcher/completion iteration (used in harness install loop below).
 # Upfront yq gate: generate.sh and manifest-lib.sh consume yq; fail fast before sourcing.
 if ! command -v yq >/dev/null 2>&1; then
     echo "❌ yq required but not found — install it: brew install yq (macOS) | https://github.com/mikefarah/yq"
+    exit 1
+fi
+if ! yq --version 2>&1 | grep -qi mikefarah; then
+    echo "❌ installed yq is not mikefarah/yq (apt python-yq is incompatible) — install from https://github.com/mikefarah/yq"
     exit 1
 fi
 source "$CODEGEN_DIR/templates/generator/manifest-lib.sh"
@@ -440,6 +464,10 @@ for _harness in "${HARNESSES[@]}"; do
             elif [[ "$OSTYPE" == "linux-gnu"* ]]; then
                 echo "   📦 Installing yq with apt..."
                 sudo apt-get update && sudo apt-get install -y yq
+                if ! yq --version 2>&1 | grep -qi mikefarah; then
+                    echo "   ❌ installed yq is not mikefarah/yq (apt python-yq is incompatible) — install from https://github.com/mikefarah/yq" >&2
+                    exit 1
+                fi
                 echo "   ✅ yq installed"
             else
                 echo "Warning: yq installation not supported on this OS. Install manually: https://github.com/mikefarah/yq"
@@ -562,9 +590,8 @@ for _harness in "${HARNESSES[@]}"; do
             done
         fi
 
-        # Auto-trust nested .mise.toml when running non-interactively to prevent mise
-        # from blocking the install with an interactive trust prompt.
-        if [ "${OCG_NONINTERACTIVE:-}" = "1" ] && command -v mise >/dev/null 2>&1; then
+        # Auto-trust nested .mise.toml to prevent mise from blocking with an interactive trust prompt.
+        if command -v mise >/dev/null 2>&1; then
             mise trust "$CODEGEN_DIR/harnesses/pi/pi-extensions/enforcement/.mise.toml" >/dev/null 2>&1 || true
         fi
 
@@ -691,6 +718,10 @@ if [ ! -f "$HOME/.ocg/config.json" ]; then
                 i=$((i + 1))
             done
             echo ""
+            if [[ ! -t 0 ]]; then
+                echo "❌ install.sh needs a TTY for agent selection; set OCG_DEFAULT_AGENT=<claude|pi> for non-interactive installs" >&2
+                exit 1
+            fi
             read -p "   Choose [1-${#HARNESSES[@]}]: " choice
             if [[ "$choice" =~ ^[0-9]+$ ]] && [ "$choice" -ge 1 ] && [ "$choice" -le ${#HARNESSES[@]} ]; then
                 default_agent="${HARNESSES[$((choice - 1))]}"
@@ -724,8 +755,34 @@ fi
 cleanup_generated_templates
 
 # Format codegen shared dir after install finishes regenerating files
+# Resolve prettier's real CJS entry and run via a non-shim node binary.
+# Resolving through the mise shim triggers trust checks when HOME is changed in tests;
+# scanning PATH for a non-shim node entry avoids mise entirely.
+# Non-fatal: formatting is cosmetic; installation succeeds even if prettier can't run.
 if [ -d "$CODEGEN_DIR/shared" ]; then
-    npx prettier -w --log-level error "$CODEGEN_DIR/shared"
+    _prettier_cjs="$CODEGEN_DIR/node_modules/prettier/bin/prettier.cjs"
+    if [ -f "$_prettier_cjs" ]; then
+        # Find a real (non-shim) node binary by scanning PATH entries.
+        _real_node=""
+        _old_IFS="$IFS"
+        IFS=:
+        for _dir in $PATH; do
+            IFS="$_old_IFS"
+            if [ -x "$_dir/node" ] && printf '%s' "$_dir" | grep -qv "shims"; then
+                _real_node="$_dir/node"
+                break
+            fi
+            IFS=:
+        done
+        IFS="$_old_IFS"
+        # Fallback: use the shim (may fail with trust error but non-fatal)
+        if [ -z "$_real_node" ]; then
+            _real_node="$(command -v node 2>/dev/null || true)"
+        fi
+        if [ -n "$_real_node" ] && [ -x "$_real_node" ]; then
+            "$_real_node" "$_prettier_cjs" -w --log-level error "$CODEGEN_DIR/shared" 2>/dev/null || true
+        fi
+    fi
 fi
 
 echo ""

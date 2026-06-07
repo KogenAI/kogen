@@ -217,3 +217,14 @@ run_pin_check() {
 ```
 
 Capture the inner command's exit code BEFORE cleanup runs, then propagate it after cleanup completes. This ensures the caller sees the actual success/failure of the work, not the cleanup side-effect.
+
+## Install Scripts in Hermetic Test Environments
+
+When an install script runs in a hermetic test environment where `$HOME` is changed (e.g., test fixture with temp home dir), avoid binaries routed through tool shims (e.g., mise shims in `~/.local/share/mise/shims/`):
+
+- Symptom: `npx`, `node`, `prettier` operate via `~/.local/share/mise/shims/` which consult `$MISE_DATA_DIR` (defaults to `$HOME/.local/share/mise`) for tool trust records. Changing `$HOME` breaks the trust lookup → shims cannot locate the real binary.
+- **Do NOT trust shims in hermetic contexts.** Either:
+  1. Use absolute paths to the real binary (outside shims), OR
+  2. Scan `$PATH` for non-shim entries (exclude paths containing `"shims"`) to find the real binary.
+- Example: instead of `npx prettier`, find the real prettier binary: `grep -v shims <<< "$PATH" | tr ':' '\n' | while read p; do [ -x "$p/prettier" ] && { "$p/prettier" ...; break; }; done`
+- Also note: `MISE_SKIP_CONFIG=1` skips tool-version config loading but does NOT bypass global config trust checks — the trust lookup uses `getpwuid()` for path resolution, not `$HOME` env var, so trust records may still fail with a changed `$HOME`.

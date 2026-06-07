@@ -239,17 +239,15 @@ class TestProcessTemplate(unittest.TestCase):
             # role absent → no rewrite → original model stays
             self.assertIn("model: sonnet", output)
 
-    def test_missing_yaml_module_no_op(self):
-        """yaml import failure → silent no-op (model unchanged)."""
+    def test_missing_yaml_module_raises(self):
+        """yaml import failure → SystemExit with install hint (fail-loud)."""
         with tempfile.TemporaryDirectory() as tmpdir:
             template = self._make_template(tmpdir, "planner-phoenix.md.j2", self.TEMPLATE_CONTENT)
             config = self._make_config(tmpdir, self.CONFIG_YAML)
             with patch.dict(sys.modules, {"yaml": None}):
-                with patch("sys.stdout", new_callable=StringIO) as mock_out:
+                with self.assertRaises(SystemExit) as ctx:
                     pt.process_template(template, "claude", False, config)
-                    output = mock_out.getvalue()
-            # yaml unavailable → no rewrite
-            self.assertIn("model: sonnet", output)
+            self.assertIn("pyyaml", str(ctx.exception).lower())
 
     def test_no_config_no_rewrite(self):
         """config_yaml=None → model line stays as-is."""

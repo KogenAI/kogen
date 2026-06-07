@@ -245,8 +245,10 @@ if [[ -n "$JSON_SCHEMA_CONTENT" ]] && [[ "$STATUS" == "success" ]] && [[ "$VALUE
     if [[ "$VALIDATE_CODE" -eq 1 ]]; then
         STATUS="failed"
         REASON="schema validation failed: ${VALIDATE_ERR}"
+    elif [[ "$VALIDATE_CODE" -eq 2 ]]; then
+        STATUS="failed"
+        REASON="schema validator unavailable (ajv not resolvable) — cannot verify structured output; run npm install in codegen"
     fi
-    # exit 2 (validator unavailable) → pass through unchanged
 fi
 
 # Build envelope

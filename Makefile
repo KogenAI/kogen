@@ -26,6 +26,22 @@ hook-parity:
 	@echo "hook-parity: PASS"
 
 install:
+	@if ! command -v python3 >/dev/null 2>&1; then \
+		echo "❌ python3 required but not found — install python3 first"; \
+		exit 1; \
+	fi
+	@if ! command -v node >/dev/null 2>&1; then \
+		echo "❌ node required but not found — install via mise: mise install node"; \
+		exit 1; \
+	fi
+	@if ! command -v yq >/dev/null 2>&1; then \
+		echo "❌ yq required but not found — install mikefarah/yq: brew install yq (macOS) | https://github.com/mikefarah/yq"; \
+		exit 1; \
+	fi
+	@if ! yq --version 2>&1 | grep -qi mikefarah; then \
+		echo "❌ installed yq is not mikefarah/yq (apt python-yq is incompatible) — install from https://github.com/mikefarah/yq"; \
+		exit 1; \
+	fi
 	@python3 "$(SCRIPT_DIR)/templates/generator/enforcement_compiler.py" \
 		--registry "$(SCRIPT_DIR)/shared/enforcement/registry.yaml" \
 		--bash-out "$(SCRIPT_DIR)/harnesses/claude/hooks" \
@@ -288,7 +304,8 @@ rule-parity:
 		fi; \
 		echo "rule-parity: OK — no stale harness paths in baked agents [checked: $$AGENTS_DIR]"; \
 	else \
-		echo "rule-parity: SKIP harness path isolation — $$AGENTS_DIR not found (run make install first)"; \
+		echo "rule-parity: FAIL — $$AGENTS_DIR not found (run make install first)"; \
+		exit 1; \
 	fi
 
 uninstall:
@@ -359,7 +376,17 @@ doctor:
 	else \
 		echo "FAIL: jq not on PATH (brew install jq)"; fails=$$((fails + 1)); \
 	fi; \
-	if command -v yq >/dev/null 2>&1; then echo "OK: yq on PATH"; else echo "FAIL: yq not on PATH (brew install yq)"; fails=$$((fails + 1)); fi; \
+	if command -v yq >/dev/null 2>&1; then \
+		if yq --version 2>&1 | grep -qi mikefarah; then \
+			echo "OK: yq on PATH (mikefarah/yq)"; \
+		else \
+			echo "FAIL: yq on PATH but is NOT mikefarah/yq (apt python-yq is incompatible) — install from https://github.com/mikefarah/yq"; \
+			fails=$$((fails + 1)); \
+		fi; \
+	else \
+		echo "FAIL: yq not on PATH (brew install yq / https://github.com/mikefarah/yq)"; \
+		fails=$$((fails + 1)); \
+	fi; \
 	if command -v rg >/dev/null 2>&1; then \
 		echo "OK: rg (ripgrep) on PATH"; \
 	else \
@@ -369,6 +396,30 @@ doctor:
 		echo "OK: mise on PATH"; \
 	else \
 		echo "FAIL: mise not on PATH (curl https://mise.run | sh)"; fails=$$((fails + 1)); \
+	fi; \
+	if command -v node >/dev/null 2>&1 && node --version >/dev/null 2>&1; then \
+		echo "OK: node on PATH"; \
+	else \
+		echo "FAIL: node not on PATH (install via mise: mise install node)"; fails=$$((fails + 1)); \
+	fi; \
+	if command -v pi >/dev/null 2>&1; then \
+		echo "OK: pi on PATH"; \
+	else \
+		echo "FAIL: pi not on PATH (npm install -g @earendil-works/pi-coding-agent)"; fails=$$((fails + 1)); \
+	fi; \
+	if command -v git >/dev/null 2>&1; then \
+		echo "OK: git on PATH"; \
+	else \
+		echo "FAIL: git not on PATH (install git)"; fails=$$((fails + 1)); \
+	fi; \
+	case ":$$PATH:" in \
+		*":$$HOME/.local/bin:"*) echo "OK: ~/.local/bin on PATH" ;; \
+		*) echo "FAIL: ~/.local/bin not on PATH (add to shell profile: export PATH=\"\$$HOME/.local/bin:\$$PATH\")"; fails=$$((fails + 1)) ;; \
+	esac; \
+	if [ -d "$(SCRIPT_DIR)/node_modules/ajv" ]; then \
+		echo "OK: ajv node_modules present"; \
+	else \
+		echo "FAIL: ajv not in codegen node_modules (run: npm install in codegen root)"; fails=$$((fails + 1)); \
 	fi; \
 	echo ""; \
 	if [ $$fails -eq 0 ]; then \

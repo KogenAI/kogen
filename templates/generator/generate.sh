@@ -65,6 +65,7 @@ _ensure_pyyaml() {
 # ─── Per-harness generators ───────────────────────────────────────────────────
 
 _generate_claude() {
+    _ensure_pyyaml
     _log_info "Generating templates for claude..."
 
     local output_dir="$TEMPLATES_DIR/generated/claude-code"

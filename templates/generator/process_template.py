@@ -154,38 +154,40 @@ def process_template(template_file, tool_name, yaml_frontmatter, config_yaml=Non
         try:
             import yaml
         except ImportError:
-            yaml = None
+            raise SystemExit(
+                "process_template.py: PyYAML required for claude config rendering but not installed"
+                " — pip3 install pyyaml"
+            )
 
-        if yaml is not None:
-            with open(config_yaml, 'r') as f:
-                config = yaml.safe_load(f)
-            harness = config.get('harness', {})
-            # Strip both extensions: planner.md.j2 -> planner.md -> planner
-            role_name = os.path.splitext(os.path.splitext(os.path.basename(template_file))[0])[0]
-            role_cfg = harness.get(role_name, {}).get('claude')
-            if role_cfg:
-                model_val = role_cfg.get('model')
-                effort_val = role_cfg.get('effort')
-                if model_val and effort_val:
-                    # Rewrite the model: line inside the first frontmatter block
-                    # (between the first pair of --- delimiters) and inject effort:.
-                    def rewrite_frontmatter(m):
-                        fm = m.group(1)
-                        fm = re.sub(
-                            r'^model:[ \t]*.+$',
-                            f'model: {model_val}\neffort: {effort_val}',
-                            fm,
-                            flags=re.MULTILINE,
-                        )
-                        return f'---\n{fm}\n---'
-
-                    content = re.sub(
-                        r'^---\n(.*?)\n---',
-                        rewrite_frontmatter,
-                        content,
-                        count=1,
-                        flags=re.DOTALL,
+        with open(config_yaml, 'r') as f:
+            config = yaml.safe_load(f)
+        harness = config.get('harness', {})
+        # Strip both extensions: planner.md.j2 -> planner.md -> planner
+        role_name = os.path.splitext(os.path.splitext(os.path.basename(template_file))[0])[0]
+        role_cfg = harness.get(role_name, {}).get('claude')
+        if role_cfg:
+            model_val = role_cfg.get('model')
+            effort_val = role_cfg.get('effort')
+            if model_val and effort_val:
+                # Rewrite the model: line inside the first frontmatter block
+                # (between the first pair of --- delimiters) and inject effort:.
+                def rewrite_frontmatter(m):
+                    fm = m.group(1)
+                    fm = re.sub(
+                        r'^model:[ \t]*.+$',
+                        f'model: {model_val}\neffort: {effort_val}',
+                        fm,
+                        flags=re.MULTILINE,
                     )
+                    return f'---\n{fm}\n---'
+
+                content = re.sub(
+                    r'^---\n(.*?)\n---',
+                    rewrite_frontmatter,
+                    content,
+                    count=1,
+                    flags=re.DOTALL,
+                )
 
     print(content, end='')
 

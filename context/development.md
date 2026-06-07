@@ -21,7 +21,7 @@ One-liner per target — for test target semantics see `context/test-harness.md`
 
 | Target                    | Purpose                                                                                                                                                                                  |
 | ------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `make install`            | Generate agents + install claude harness (full cycle)                                                                                                                                    |
+| `make install`            | Gate: verify python3 + node + yq-mikefarah; then generate agents + install claude harness (full cycle); npm install root node_modules                                                  |
 | `make test`               | Hook-parity + harness-parity + test-generator + enforce-registry-parity + bash hook tests (`run-tests.sh`) + scaffold run-tests — parity/structure validation only; separate from ExUnit |
 | `make test-stacks`        | Run ExUnit stack scaffold tests — see `context/test-harness.md` for semantics                                                                                                            |
 | `make test-stacks-claude` | Run ExUnit suite for Claude harness only                                                                                                                                                 |
@@ -55,14 +55,14 @@ See `.env.sample` and `.env.prod.sample` for full variable lists.
 
 ## Dev Scripts
 
-| Script                                      | Purpose                            |
-| ------------------------------------------- | ---------------------------------- |
-| `install.sh <harness>`                      | Install named harness              |
-| `uninstall.sh <harness>`                    | Remove named harness               |
-| `harnesses/claude/hooks/run-tests.sh`       | Run all bash hook tests            |
-| `test_harness/record-green.sh`              | Stamp last_green.json              |
-| `templates/generator/generate.sh <harness>` | Render agent prompts for harness   |
-| `update_ai_tools.sh`                        | Update Claude CLI and AI tool deps |
+| Script                                      | Purpose                                                                       |
+| ------------------------------------------- | ----------------------------------------------------------------------------- |
+| `install.sh <harness>`                      | Install named harness                                                         |
+| `uninstall.sh <harness>`                    | Remove named harness                                                          |
+| `harnesses/claude/hooks/run-tests.sh`       | Run all bash hook tests                                                       |
+| `test_harness/record-green.sh`              | Stamp `last_green.json` + tool versions (elixir, otp, node, yq, os)           |
+| `templates/generator/generate.sh <harness>` | Render agent prompts for harness                                              |
+| `update_ai_tools.sh`                        | Update Claude CLI and AI tool deps                                            |
 
 ## Benchmark Viewer (Mix Tasks)
 
@@ -83,9 +83,12 @@ Missing Playwright is **non-fatal**: `BenchArtifacts.capture_screenshot/4` detec
 
 ## Common Pitfalls
 
+- **`make install` gated on python3, node, yq-mikefarah** — fresh-box installs fail loud if build-critical tools missing (not jq/rg, which install.sh installs). Verify `yq --version | grep -qi mikefarah`; `apt install yq` installs python-yq (incompatible, silently wrong manifest parsing) — use mikefarah/yq binary instead.
+- **`npm install` at codegen root required before hook use** — root `node_modules/` (ajv, playwright, prettier) must exist for schema-validate.js and render-check.js; install.sh now runs this automatically. If absent, verification hooks emit INCONCLUSIVE (cannot run, not passed).
 - **`make install` required after any rule/template change** — running agents see the old baked prompts otherwise
-- **`yq` version matters** — `manifest-lib.sh` uses yq v4 syntax; v3 will silently return wrong values
-- **Do not run `npm install` at repo root for Pi extensions** — each extension has its own node_modules; run per-extension dir
+- **Root node_modules absence is a trap** — hooks silently degrade (INCONCLUSIVE verdict) if ajv/playwright unresolvable. Run `npm install` at codegen root or rely on install.sh to do it.
+- **`mise trust` runs unconditionally on install** — enforcement `.mise.toml` is now trusted without `OCG_NONINTERACTIVE` gate; interactive installs no longer hang on trust prompt.
+- **Do not run `npm install` at repo root for Pi extensions** — each extension has its own node_modules; run per-extension dir (only root install is managed by install.sh)
 - **Hook test failures are not ExUnit** — `make test` runs bash tests; `make test-stacks` runs ExUnit; they are separate suites
 - **`CODEGEN_DIR` must be absolute** — relative paths break symlink resolution in launchers
 

@@ -85,6 +85,7 @@ _NPM_BUILD_SKIPPED=false
 check_npm_build() {
     if [ ! -f package.json ]; then
         _NPM_BUILD_SKIPPED=true
+        debug_log static-site-build-check "no package.json (Hugo/no-JS site) — npm build + render not verified; INCONCLUSIVE"
         return 0
     fi
 
@@ -232,8 +233,9 @@ if [ -f package.json ] && jq -e '.scripts' package.json >/dev/null 2>&1; then
             debug_log static-site-build-check "render check INCONCLUSIVE: $detail"
             ;;
         *)
-            render_summary="render: skipped (browser not installed)"
-            debug_log static-site-build-check "render check: no verdict (browser not installed)"
+            render_verdict="INCONCLUSIVE:browser-not-installed"
+            render_summary="render: INCONCLUSIVE (browser-not-installed) — install chromium: npx playwright install chromium"
+            debug_log static-site-build-check "render check INCONCLUSIVE: browser not installed — install chromium via: npx playwright install chromium"
             ;;
         esac
     fi
@@ -279,17 +281,21 @@ if [ -z "$log_file" ]; then
 elif [ -w "$log_file" ]; then
     ts="$_ts_now"
 
-    # Choose result line based on render verdict
+    # Choose result line based on render verdict and build mode
     result_line=""
-    case "$render_verdict" in
-    INCONCLUSIVE:*)
-        inc_detail="${render_verdict#INCONCLUSIVE:}"
-        result_line="INCONCLUSIVE ⚠️ render-inconclusive: $inc_detail"
-        ;;
-    *)
-        result_line="ALL CLEAR ✅"
-        ;;
-    esac
+    if [ "$_NPM_BUILD_SKIPPED" = "true" ]; then
+        result_line="INCONCLUSIVE ⚠️ no-package-json: static build check not applicable (Hugo/no-JS site) — npm build + render not verified"
+    else
+        case "$render_verdict" in
+        INCONCLUSIVE:*)
+            inc_detail="${render_verdict#INCONCLUSIVE:}"
+            result_line="INCONCLUSIVE ⚠️ render-inconclusive: $inc_detail"
+            ;;
+        *)
+            result_line="ALL CLEAR ✅"
+            ;;
+        esac
+    fi
 
     {
         printf '\n## static-site-verifier Section\n\n'

@@ -7,8 +7,7 @@
  *
  * Exit codes:
  *   0 — value is valid
- *   1 — value is invalid (errors on stderr) OR value JSON parse error
- *   2 — ajv not resolvable (validator unavailable, NOT a validation failure)
+ *   1 — value is invalid (errors on stderr), value JSON parse error, OR validator unavailable
  */
 
 "use strict";
@@ -47,8 +46,10 @@ try {
     }
   }
 } catch (_e) {
-  process.stderr.write("[schema-validate] ajv not resolvable\n");
-  process.exit(2);
+  process.stderr.write(
+    "[schema-validate] ajv unavailable — cannot verify (run npm install in codegen)\n",
+  );
+  process.exit(1);
 }
 
 // Read and parse schema

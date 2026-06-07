@@ -41,6 +41,12 @@ echo "generate-pi-extension: building $PI_EXTENSION_DIR"
 
 cd "$PI_EXTENSION_DIR"
 
+# Trust .mise.toml before running mise exec so it does not prompt interactively.
+if command -v mise >/dev/null 2>&1; then
+    mise trust "$PI_EXTENSION_DIR/.mise.toml" >/dev/null 2>&1 || true
+    mise trust . >/dev/null 2>&1 || true
+fi
+
 # Install all deps (including devDeps for TypeScript compiler)
 echo "  npm install..."
 mise exec -- npm install --silent

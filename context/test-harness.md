@@ -145,6 +145,7 @@ Parser (`CodegenTestHarness.UsageParser`) trims each harness envelope to `{model
 
 ## Pitfalls
 
+- **Round-trip tests (install/uninstall) fail loud on missing tools** — tests require claude, jq, yq, rg, node on PATH; formerly self-skipped to green, now fail explicitly if tools absent (pitch INTENT: fresh-box provisioning must verify full toolchain). Operator must ensure `make test` box has all tools.
 - **`mix test` must be scoped** — bare `mix test` runs all ExUnit tests; always scope to file or tag (`--only phoenix`)
 - **`last_green.json` is not auto-updated** — run `make record-green` explicitly after a clean passing suite
 - **Hook tests are bash, not ExUnit** — do not run them via `mix test`; use `run-tests.sh`

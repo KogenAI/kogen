@@ -18,12 +18,12 @@ assert() {
     fi
 }
 
-# Pre-flight: skip if required tools absent (brew/curl side-effects escape HOME)
+# Pre-flight: fail if required tools absent (brew/curl side-effects escape HOME)
 for cmd in jq yq rg claude; do
     if ! command -v "$cmd" >/dev/null 2>&1; then
-        echo "SKIP: $cmd not on host PATH — round-trip test requires pre-installed tools"
-        echo "1 passed, 0 failed"
-        exit 0
+        echo "FAIL: required tool '$cmd' not on host PATH — install it to run this test" >&2
+        echo "0 passed, 1 failed"
+        exit 1
     fi
 done
 
@@ -35,6 +35,15 @@ trap 'rm -rf "$tmp_home"' EXIT
 mkdir -p "$tmp_home/.zsh/completions"
 # Pre-create rc files so uninstall.sh can clean them
 touch "$tmp_home/.zshrc" "$tmp_home/.bashrc"
+
+# Capture real MISE_DATA_DIR before HOME is changed, so mise shims can find trust records.
+# Without this, mise derives data dir from $HOME (now tmp) and can't find trusted configs.
+if [ -z "${MISE_DATA_DIR:-}" ]; then
+    _real_mise_data_dir="${HOME}/.local/share/mise"
+    if command -v mise >/dev/null 2>&1 && [ -d "$_real_mise_data_dir" ]; then
+        export MISE_DATA_DIR="$_real_mise_data_dir"
+    fi
+fi
 
 export HOME="$tmp_home"
 export SHELL="/bin/bash"
