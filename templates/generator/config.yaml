@@ -91,9 +91,6 @@ harness:
   ops:
     claude: { model: opus, effort: high }
     pi: { model: openai-codex/gpt-5.5, effort: high }
-  refactor:
-    claude: { model: opus, effort: high }
-    pi: { model: openai-codex/gpt-5.5, effort: high }
 
 roles:
   build:
@@ -118,7 +115,7 @@ roles:
     system_prompt_file: harnesses/claude/claude-build-system-prompt.txt
     append_project_context: false
 
-  # debug/shape/refactor use --tools allowlist (load gate) instead of --disallowed-tools
+  # debug/shape use --tools allowlist (load gate) instead of --disallowed-tools
   # (permission filter). The deferred-tool harness already keeps most tools out
   # of context by default, so denylists do nothing for context — the only real
   # context-trim happens when you exclude default-loaded tools (AskUserQuestion,
@@ -181,25 +178,6 @@ roles:
       - WebSearch
       - Write
     system_prompt_file: harnesses/claude/claude-ops-system-prompt.txt
-    append_project_context: true
-
-  refactor:
-    model: opus
-    effort: high
-    output_format: text
-    tools:
-      - Agent
-      - AskUserQuestion
-      - Bash
-      - Edit
-      - Glob
-      - Grep
-      - Read
-      - Skill
-      - WebFetch
-      - WebSearch
-      - Write
-    system_prompt_file: harnesses/claude/claude-refactor-system-prompt.txt
     append_project_context: true
 
   housekeeper:

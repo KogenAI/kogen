@@ -8,7 +8,7 @@
  * Rules (mirroring operator-subagent-allowlist.sh):
  *   Built-in subagent types {Plan, general-purpose, statusline-setup} — denied always.
  *   Empty subagent_type — denied defensively (fail-closed).
- *   Explore — allowed only under debug/shape/refactor PI_ROLE.
+ *   Explore — allowed only under debug/shape PI_ROLE.
  *   All other project subagents — allowed.
  */
 
@@ -61,18 +61,18 @@ export function register(pi: ExtensionAPI): void {
       );
     }
 
-    // Explore — allowed only under debug/shape/refactor operator roles.
+    // Explore — allowed only under debug/shape operator roles.
     if (subagentType === "Explore") {
-      if (role === "debug" || role === "shape" || role === "refactor") {
+      if (role === "debug" || role === "shape") {
         return;
       }
       return deny(
-        `BLOCKED by subagent-allowlist: Explore subagent is only available under pi-debug, pi-shape, or pi-refactor launcher modes. Use planner-phoenix / planner-html / etc. instead for investigation within a standard build session.`,
+        `BLOCKED by subagent-allowlist: Explore subagent is only available under pi-debug or pi-shape launcher modes. Use planner-phoenix / planner-html / etc. instead for investigation within a standard build session.`,
       );
     }
 
-    // Shape/refactor modes are read-only — deny source-editing subagents.
-    if (role === "shape" || role === "refactor") {
+    // Shape mode is read-only — deny source-editing subagents.
+    if (role === "shape") {
       if (
         subagentType.startsWith("developer-") ||
         subagentType.startsWith("reviewer-") ||

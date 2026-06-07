@@ -234,11 +234,9 @@ REFERENCE_LAUNCHER="$CODEGEN_ROOT/harnesses/claude/claude-shape.sh"
 # Extract the portable derivation block: SCRIPT_DIR assignment + 3-branch CODEGEN_DIR if/elif/else/fi + export
 DERIV_BLOCK=$(grep -A 8 '^SCRIPT_DIR=' "$REFERENCE_LAUNCHER" | head -9)
 LAUNCHERS_TO_CHECK=(
-    "$CODEGEN_ROOT/harnesses/claude/claude-refactor.sh"
     "$CODEGEN_ROOT/harnesses/claude/claude-debug.sh"
     "$CODEGEN_ROOT/harnesses/claude/claude-ops.sh"
     "$CODEGEN_ROOT/harnesses/pi/pi-shape.sh"
-    "$CODEGEN_ROOT/harnesses/pi/pi-refactor.sh"
     "$CODEGEN_ROOT/harnesses/pi/pi-debug.sh"
     "$CODEGEN_ROOT/harnesses/pi/pi-ops.sh"
 )
@@ -496,12 +494,10 @@ rm -rf "$T13A" "$T13B" "$T13_HOME"
 FILES_TO_CHECK=(
     "$CODEGEN_ROOT/harnesses/claude/claude-build.sh"
     "$CODEGEN_ROOT/harnesses/claude/claude-shape.sh"
-    "$CODEGEN_ROOT/harnesses/claude/claude-refactor.sh"
     "$CODEGEN_ROOT/harnesses/claude/claude-debug.sh"
     "$CODEGEN_ROOT/harnesses/claude/claude-ops.sh"
     "$CODEGEN_ROOT/harnesses/pi/pi-build.sh"
     "$CODEGEN_ROOT/harnesses/pi/pi-shape.sh"
-    "$CODEGEN_ROOT/harnesses/pi/pi-refactor.sh"
     "$CODEGEN_ROOT/harnesses/pi/pi-debug.sh"
     "$CODEGEN_ROOT/harnesses/pi/pi-ops.sh"
     "$CODEGEN_ROOT/harnesses/claude/dispatch.sh"

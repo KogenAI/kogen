@@ -54,7 +54,7 @@ Files: `~/.claude/hooks/*.sh` (installed via `make install`). Fire on `PreToolUs
 Two discriminators:
 
 - `AGENT_TYPE` — per-subagent identity (inner). Use for per-role guards.
-- `CLAUDE_ROLE` — per-launcher mode (outer). Use for `claude-debug`/`claude-shape`/`claude-refactor` session guards.
+- `CLAUDE_ROLE` — per-launcher mode (outer). Use for `claude-debug`/`claude-shape` session guards.
 
 Hooks can't read LLM output content — only tool calls and subagent identity. `SubagentStart` CANNOT block (inject context only). All subagent gating uses `PreToolUse` on `Agent` matched by `tool_input.subagent_type`.
 

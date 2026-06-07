@@ -409,7 +409,7 @@ defmodule CodegenTestHarness.Fixtures do
   Returns `{output, exit_code}` — does NOT raise on failure (callers inspect
   exit_code themselves).
 
-  Mode is an atom: :debug | :shape | :refactor
+  Mode is an atom: :debug | :shape
 
   `opts` may include:
   - `test_name:` (string, default `"<mode>_mode"`) — stable identifier written to

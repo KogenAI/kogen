@@ -249,15 +249,6 @@ describe("orchestrator-read-discipline", () => {
     assert.ok(result == null || (result as { block?: boolean }).block !== true);
   });
 
-  it("allows PI_ROLE=refactor Bash grep", async () => {
-    const result = await runHook(
-      "bash",
-      { command: "grep foo" },
-      { PI_ROLE: "refactor" },
-    );
-    assert.ok(result == null || (result as { block?: boolean }).block !== true);
-  });
-
   it("allows subagent (AGENT_TYPE=planner) Read on lib/ file", async () => {
     const result = await runHook(
       "read",

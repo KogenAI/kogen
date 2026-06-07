@@ -12,7 +12,7 @@
 #
 # Blocks the orchestrator from editing source files directly.
 # Subagents (non-empty agent_id) are allowed under no CLAUDE_ROLE_FAMILY (standard
-# orchestrator). Under any operator role (debug, shape, refactor) the write surface
+# orchestrator). Under any operator role (debug, shape) the write surface
 # is narrowed for BOTH the orchestrator AND Agent-spawned helpers.
 # ops mode has full write surface — no restriction applies.
 #
@@ -37,10 +37,10 @@ if [ "$role" = "ops" ]; then
     exit 0
 fi
 
-# Debug/shape/refactor operators (read-only investigation + pitch authoring).
+# Debug/shape operators (read-only investigation + pitch authoring).
 # Writes scoped to codegen/pitches/ — applies to subagents too,
 # so Agent-spawned helpers can't slip writes past the role's boundary.
-if [ "$role" = "debug" ] || [ "$role" = "shape" ] || [ "$role" = "refactor" ]; then
+if [ "$role" = "debug" ] || [ "$role" = "shape" ]; then
     if [ -z "$FILE_PATH" ]; then
         exit 0
     fi

@@ -62,7 +62,7 @@ The `shared/prompt-fragments/_authoring-spine.txt` is included in both `shape.tx
 
 **Rule B: Plain-language discipline** — suppress internal shorthand (bare flags, internal probe names, unqualified identifiers, file paths, line numbers) in user-facing prose. Describe what something does. Exception: protected literals (`shared/rules/_core/output-style.md` § Verbatim) stay verbatim — code blocks, error strings, JSON field names, `MUST`/`NEVER`/`FORBIDDEN`, gate markers.
 
-**Rule C: Command-level pairing auto-cover** — a claude-X launcher (claude-shape, claude-refactor, etc.) always auto-includes its pi-X counterpart (pi-shape, pi-refactor, etc.) as same-change coverage. Never ask "should I cover both harnesses?"; the answer is always yes.
+**Rule C: Command-level pairing auto-cover** — a claude-X launcher (claude-shape, etc.) always auto-includes its pi-X counterpart (pi-shape, etc.) as same-change coverage. Never ask "should I cover both harnesses?"; the answer is always yes.
 
 **Rule D: Duplication-detection Phase-0 step** — during the blast-radius scan, grep for logic equivalent to the proposed change elsewhere in the codebase. If found, EXTRACTION (consolidating at the existing site) is the default proposal, never duplicate implementations. Auto-decide without asking.
 
@@ -70,17 +70,17 @@ The `shared/prompt-fragments/_authoring-spine.txt` is included in both `shape.tx
 
 **Rule F: Context-drift auto-cover** — when Phase 0 reveals a `context/*.md` file that disagrees with actual codebase state, auto-include that stale context file in the edit surface. Never ask whether to update it; including it is automatic.
 
-These rules are baked into the shape/refactor system prompts at install time. Changes to `_authoring-spine.txt` require `make install` to propagate.
+These rules are baked into the shape system prompt at install time. Changes to `_authoring-spine.txt` require `make install` to propagate.
 
-## Deletion-Safety Blocker Classes (Shape/Refactor)
+## Deletion-Safety Blocker Classes (Shape)
 
-Shape and refactor modes gate pitch readiness by scanning for three deletion-safety blocker classes:
+Shape mode gates pitch readiness by scanning for three deletion-safety blocker classes:
 
 - **Un-investigated rabbit holes** — a Rabbit holes entry or deferred unknown with no probe transcript and no accepted-risk note.
 - **Untraced edit surface / deletion claim** — a file named as an edit target or as deletable, with no provenance probe confirming its relevance.
 - **Dangling cross-reference** — every `## Related pitches` entry must reference a file on disk in `codegen/pitches/{draft,ready,shipped}/`; unresolved references block pitch advancement.
 
-Refactor mode carries all three classes (ported from shape); shape introduces the framework. Both modes emit blockers with quoted context and remediation options before advancing to readiness-check verdict.
+Shape mode emits blockers with quoted context and remediation options before advancing to readiness-check verdict.
 
 ## Pitfalls
 

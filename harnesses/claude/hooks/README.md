@@ -71,7 +71,7 @@ Typical firing order for common roles:
 
 ### Blocking hooks (deny on violation)
 
-- **`orchestrator-no-source-edit`** — Restricts orchestrator writes per launcher. Plain orchestrator (no `CLAUDE_ROLE`, also covers `claude-build`) writes allowed under `codegen/logging/`, `codegen/pitches/`, and absolute `/tmp/`. `claude-debug` / `claude-shape` / `claude-refactor` (`CLAUDE_ROLE=debug|shape|refactor`) writes scoped to `codegen/pitches/` only — for both the orchestrator and Agent-spawned helpers. Subagents under plain orchestrator bypass the hook.
+- **`orchestrator-no-source-edit`** — Restricts orchestrator writes per launcher. Plain orchestrator (no `CLAUDE_ROLE`, also covers `claude-build`) writes allowed under `codegen/logging/`, `codegen/pitches/`, and absolute `/tmp/`. `claude-debug` / `claude-shape` (`CLAUDE_ROLE=debug|shape`) writes scoped to `codegen/pitches/` only — for both the orchestrator and Agent-spawned helpers. Subagents under plain orchestrator bypass the hook.
 - **`claude-inspector-bash-guard`** — Blocks filesystem mutations, git writes, SQL mutations, path traversal (`../`), and redirect writes for inspector agents. Other agent types pass through.
 - **`build-worker-cwd-guard`** — In user-app context (combobulate apps_root), prevents orchestrator from reading/writing outside the user app directory.
 - **`planner-guard`** — Restricts planner to read-only bash, Edit on `codegen/logging/*.md` only, no `Write`/`MultiEdit`. Both src AND dest must be in allowed dirs for `mv`.

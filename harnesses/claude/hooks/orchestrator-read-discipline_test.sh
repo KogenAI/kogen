@@ -162,10 +162,6 @@ CLAUDE_ROLE=debug run_test "CLAUDE_ROLE=debug bypasses read discipline" "0" "$FI
 FIXTURE_SHAPE_BYPASS='{"hook_event_name":"PreToolUse","tool_name":"Read","tool_input":{"file_path":"lib/combobulate/apps.ex"},"agent_id":"","agent_type":""}'
 CLAUDE_ROLE=shape run_test "CLAUDE_ROLE=shape bypasses read discipline" "0" "$FIXTURE_SHAPE_BYPASS"
 
-# Test 28b: CLAUDE_ROLE=refactor bypasses read discipline
-FIXTURE_REFACTOR_BYPASS='{"hook_event_name":"PreToolUse","tool_name":"Read","tool_input":{"file_path":"lib/combobulate/apps.ex"},"agent_id":"","agent_type":""}'
-CLAUDE_ROLE=refactor run_test "CLAUDE_ROLE=refactor bypasses read discipline" "0" "$FIXTURE_REFACTOR_BYPASS"
-
 # PI_ROLE parity tests
 
 # Test 29: PI_ROLE=debug bypasses read discipline
@@ -175,10 +171,6 @@ PI_ROLE=debug run_test "PI_ROLE=debug bypasses read discipline" "0" "$FIXTURE_PI
 # Test 30: PI_ROLE=shape bypasses read discipline
 FIXTURE_PI_SHAPE_BYPASS='{"hook_event_name":"PreToolUse","tool_name":"Read","tool_input":{"file_path":"lib/combobulate/apps.ex"},"agent_id":"","agent_type":""}'
 PI_ROLE=shape run_test "PI_ROLE=shape bypasses read discipline" "0" "$FIXTURE_PI_SHAPE_BYPASS"
-
-# Test 30b: PI_ROLE=refactor bypasses read discipline
-FIXTURE_PI_REFACTOR_BYPASS='{"hook_event_name":"PreToolUse","tool_name":"Read","tool_input":{"file_path":"lib/combobulate/apps.ex"},"agent_id":"","agent_type":""}'
-PI_ROLE=refactor run_test "PI_ROLE=refactor bypasses read discipline" "0" "$FIXTURE_PI_REFACTOR_BYPASS"
 
 # Test 31: CLAUDE_ROLE=ops bypasses read discipline — ops runs on live boxes, full access needed
 FIXTURE_OPS_BYPASS='{"hook_event_name":"PreToolUse","tool_name":"Read","tool_input":{"file_path":"lib/combobulate/apps.ex"},"agent_id":"","agent_type":""}'

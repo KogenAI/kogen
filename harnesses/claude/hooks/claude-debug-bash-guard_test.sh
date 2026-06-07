@@ -16,6 +16,7 @@
 #   12: rm -rf path in non-debug role → allow
 #   13: non-Bash tool → allow
 #   14: read-only command (ls) in debug role → allow
+#   (refactor tests removed — refactor mode dropped)
 
 set -euo pipefail
 
@@ -174,22 +175,6 @@ run_test "ls allowed in shape role" "0" \
 run_test "curl -X POST blocked in shape role" "2" \
     "$(mk 'curl -X POST https://api.example.com/users')" "shape"
 
-# 29b: rm -rf blocked in refactor role
-run_test "rm -rf blocked in refactor role" "2" \
-    "$(mk 'rm -rf /tmp/foo')" "refactor"
-
-# 29c: git push blocked in refactor role
-run_test "git push blocked in refactor role" "2" \
-    "$(mk 'git push origin main')" "refactor"
-
-# 29d: ls allowed in refactor role
-run_test "ls allowed in refactor role" "0" \
-    "$(mk 'ls -la /tmp')" "refactor"
-
-# 29e: curl -X POST blocked in refactor role
-run_test "curl -X POST blocked in refactor role" "2" \
-    "$(mk 'curl -X POST https://api.example.com/users')" "refactor"
-
 # 30: rm -rf still allowed in unrelated role (build)
 run_test "rm -rf allowed in build role (guard inactive)" "0" \
     "$(mk 'rm -rf _build')" "build"
@@ -238,14 +223,6 @@ run_test_env "PI_ROLE=shape git push blocked" "2" \
 # 34: PI_ROLE=shape + ls → allow
 run_test_env "PI_ROLE=shape ls allowed" "0" \
     "$(mk 'ls -la /tmp')" "PI_ROLE" "shape"
-
-# 34b: PI_ROLE=refactor + git push → deny
-run_test_env "PI_ROLE=refactor git push blocked" "2" \
-    "$(mk 'git push origin main')" "PI_ROLE" "refactor"
-
-# 34c: PI_ROLE=refactor + ls → allow
-run_test_env "PI_ROLE=refactor ls allowed" "0" \
-    "$(mk 'ls -la /tmp')" "PI_ROLE" "refactor"
 
 echo ""
 echo "Results: $pass passed, $fail failed"

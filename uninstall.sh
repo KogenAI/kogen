@@ -152,7 +152,7 @@ if command -v manifest_launchers >/dev/null 2>&1 && [ -f "$CODEGEN_DIR/harnesses
     done < <(manifest_launchers pi 2>/dev/null)
 else
     # Fallback: remove known launcher names
-    for _launcher in pi-build pi-debug pi-shape pi-refactor; do
+    for _launcher in pi-build pi-debug pi-shape pi-ops; do
         if [ -f "$INSTALL_DIR/$_launcher" ]; then
             rm -f "$INSTALL_DIR/$_launcher"
             echo "   ✅ Removed Pi launcher: $_launcher"
@@ -217,7 +217,7 @@ if [ -n "$_ZSH_COMPLETION_DST" ] && command -v manifest_completions >/dev/null 2
     done < <(manifest_completions pi 2>/dev/null)
 else
     # Fallback: remove known completion names
-    for _comp in _pi-build _pi-debug _pi-shape _pi-refactor; do
+    for _comp in _pi-build _pi-debug _pi-shape _pi-ops; do
         for _dir in "${_ZSH_COMPLETION_DIRS[@]}"; do
             if [ -f "$_dir/$_comp" ]; then
                 rm -f "$_dir/$_comp"

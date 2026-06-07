@@ -63,12 +63,6 @@ run_test "shape + reviewer-phoenix denied" "deny" "shape" "$(mk_agent 'reviewer-
 # 6c: committer denied under shape (shape is read-only)
 run_test "shape + committer denied" "deny" "shape" "$(mk_agent 'committer')"
 
-# 6d: developer-phoenix-backend denied under refactor (refactor is read-only)
-run_test "refactor + developer-phoenix-backend denied" "deny" "refactor" "$(mk_agent 'developer-phoenix-backend')"
-
-# 6e: committer denied under refactor (refactor is read-only)
-run_test "refactor + committer denied" "deny" "refactor" "$(mk_agent 'committer')"
-
 # 7: planner-phoenix allowed under shape (planner is investigation, not editing)
 run_test "shape + planner-phoenix allowed" "allow" "shape" "$(mk_agent 'planner-phoenix')"
 
@@ -111,15 +105,15 @@ else
     fail=$((fail + 1))
 fi
 
-# 13: unset + Explore denied (must mention claude-debug, claude-shape, or claude-refactor in reason)
+# 13: unset + Explore denied (must mention claude-debug or claude-shape in reason)
 ORCHESTRATOR_EXPLORE2_INPUT='{"hook_event_name":"PreToolUse","tool_name":"Agent","tool_input":{"subagent_type":"Explore","description":"x","prompt":"y"},"agent_id":"","agent_type":""}'
 stdout_explore2=$(printf '%s' "$ORCHESTRATOR_EXPLORE2_INPUT" | bash "$GUARD" 2>/dev/null || true)
 if printf '%s' "$stdout_explore2" | grep -q '"permissionDecision"[[:space:]]*:[[:space:]]*"deny"'; then
-    if printf '%s' "$stdout_explore2" | grep -qE 'claude-debug|claude-shape|claude-refactor'; then
-        [ -n "${VERBOSE:-}" ] && printf 'PASS: unset CLAUDE_ROLE + Explore denied with claude-debug/claude-shape/claude-refactor mention\n'
+    if printf '%s' "$stdout_explore2" | grep -qE 'claude-debug|claude-shape'; then
+        [ -n "${VERBOSE:-}" ] && printf 'PASS: unset CLAUDE_ROLE + Explore denied with claude-debug/claude-shape mention\n'
         pass=$((pass + 1))
     else
-        printf 'FAIL: unset CLAUDE_ROLE + Explore denied but reason does not mention claude-debug, claude-shape, or claude-refactor\n  stdout: %s\n' "$stdout_explore2"
+        printf 'FAIL: unset CLAUDE_ROLE + Explore denied but reason does not mention claude-debug or claude-shape\n  stdout: %s\n' "$stdout_explore2"
         fail=$((fail + 1))
     fi
 else
@@ -177,12 +171,6 @@ run_test "debug + Plan denied" "deny" "debug" "$(mk_agent 'Plan')"
 # 19: shape + general-purpose denied (explicit shape variant — test 3 covers debug+general-purpose)
 run_test "shape + general-purpose denied" "deny" "shape" "$(mk_agent 'general-purpose')"
 
-# 19b: refactor + Explore allowed (refactor is investigation mode)
-run_test "refactor + Explore allowed" "allow" "refactor" "$(mk_agent 'Explore')"
-
-# 19c: refactor + Plan denied (built-in denied always)
-run_test "refactor + Plan denied" "deny" "refactor" "$(mk_agent 'Plan')"
-
 # 19d: ops + Explore allowed (ops needs Agent/Explore for on-box investigation)
 run_test "ops + Explore allowed" "allow" "ops" "$(mk_agent 'Explore')"
 
@@ -223,9 +211,6 @@ run_test_env "PI_ROLE=debug + Explore allowed" "allow" "PI_ROLE" "debug" "$(mk_a
 
 # 21: PI_ROLE=shape + Explore allowed
 run_test_env "PI_ROLE=shape + Explore allowed" "allow" "PI_ROLE" "shape" "$(mk_agent 'Explore')"
-
-# 21b: PI_ROLE=refactor + Explore allowed
-run_test_env "PI_ROLE=refactor + Explore allowed" "allow" "PI_ROLE" "refactor" "$(mk_agent 'Explore')"
 
 echo ""
 echo "Results: $pass passed, $fail failed"

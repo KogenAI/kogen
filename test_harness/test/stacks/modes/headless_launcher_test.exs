@@ -1,7 +1,7 @@
 defmodule CodegenTestHarness.Stacks.Modes.HeadlessLauncherTest do
   @moduledoc """
-  Deterministic tests for CLAUDE_NONINTERACTIVE=1 headless mode across the four
-  investigative launchers: claude-shape, claude-refactor, claude-ops, claude-debug.
+  Deterministic tests for CLAUDE_NONINTERACTIVE=1 headless mode across the three
+  investigative launchers: claude-shape, claude-ops, claude-debug.
 
   No real SSH connections or LLM calls. Stubs `claude` on PATH with a script that
   captures all arguments to a file. Overrides HOME to a temp dir. Uses an explicit
@@ -15,7 +15,6 @@ defmodule CodegenTestHarness.Stacks.Modes.HeadlessLauncherTest do
   @codegen_dir Path.expand("../../../../", __DIR__)
 
   @shape_script Path.join([@codegen_dir, "harnesses", "claude", "claude-shape.sh"])
-  @refactor_script Path.join([@codegen_dir, "harnesses", "claude", "claude-refactor.sh"])
   @ops_script Path.join([@codegen_dir, "harnesses", "claude", "claude-ops.sh"])
   @debug_script Path.join([@codegen_dir, "harnesses", "claude", "claude-debug.sh"])
 
@@ -130,38 +129,6 @@ defmodule CodegenTestHarness.Stacks.Modes.HeadlessLauncherTest do
     env = base_env(tmp, stub_dir)
 
     {_output, exit_code} = run_launcher(@shape_script, [], env)
-    assert exit_code == 0
-
-    flags = captured_flags(capture_file)
-    refute_headless_flags(flags)
-  end
-
-  # ── claude-refactor.sh ───────────────────────────────────────────────────────
-
-  @tag timeout: 30_000
-  test "claude-refactor WITH CLAUDE_NONINTERACTIVE=1 passes all headless flags", %{
-    tmp: tmp,
-    stub_dir: stub_dir,
-    capture_file: capture_file
-  } do
-    env = base_env(tmp, stub_dir) ++ [{"CLAUDE_NONINTERACTIVE", "1"}]
-
-    {_output, exit_code} = run_launcher(@refactor_script, [], env)
-    assert exit_code == 0
-
-    flags = captured_flags(capture_file)
-    assert_headless_flags(flags)
-  end
-
-  @tag timeout: 30_000
-  test "claude-refactor WITHOUT CLAUDE_NONINTERACTIVE does not pass --print", %{
-    tmp: tmp,
-    stub_dir: stub_dir,
-    capture_file: capture_file
-  } do
-    env = base_env(tmp, stub_dir)
-
-    {_output, exit_code} = run_launcher(@refactor_script, [], env)
     assert exit_code == 0
 
     flags = captured_flags(capture_file)

@@ -145,14 +145,6 @@ run_test_role "shape mode Write to pitches/draft/ allows" "0" "shape" "$FIXTURE_
 FIXTURE_SHAPE_LIB='{"hook_event_name":"PreToolUse","tool_name":"Edit","tool_input":{"file_path":"lib/combobulate/foo.ex","old_string":"x","new_string":"y"},"agent_id":"","agent_type":""}'
 run_test_role "shape mode Edit on lib/ blocks" "2" "shape" "$FIXTURE_SHAPE_LIB"
 
-# Test 18b: CLAUDE_ROLE=refactor + Write to codegen/pitches/draft/ — ALLOW
-FIXTURE_REFACTOR_DRAFT='{"hook_event_name":"PreToolUse","tool_name":"Write","tool_input":{"file_path":"codegen/pitches/draft/foo.md","content":"x"},"agent_id":"","agent_type":""}'
-run_test_role "refactor mode Write to pitches/draft/ allows" "0" "refactor" "$FIXTURE_REFACTOR_DRAFT"
-
-# Test 18c: CLAUDE_ROLE=refactor + Edit lib/ — BLOCK
-FIXTURE_REFACTOR_LIB='{"hook_event_name":"PreToolUse","tool_name":"Edit","tool_input":{"file_path":"lib/combobulate/foo.ex","old_string":"x","new_string":"y"},"agent_id":"","agent_type":""}'
-run_test_role "refactor mode Edit on lib/ blocks" "2" "refactor" "$FIXTURE_REFACTOR_LIB"
-
 # Test 18d: CLAUDE_ROLE=ops + Write arbitrary on-box path — ALLOW (full write surface)
 FIXTURE_OPS_ONBOX='{"hook_event_name":"PreToolUse","tool_name":"Write","tool_input":{"file_path":"/srv/myapp/config.yaml","content":"x"},"agent_id":"","agent_type":""}'
 run_test_role "ops mode Write to arbitrary on-box path allows" "0" "ops" "$FIXTURE_OPS_ONBOX"
@@ -161,7 +153,7 @@ run_test_role "ops mode Write to arbitrary on-box path allows" "0" "ops" "$FIXTU
 FIXTURE_OPS_LIB='{"hook_event_name":"PreToolUse","tool_name":"Edit","tool_input":{"file_path":"lib/combobulate/foo.ex","old_string":"x","new_string":"y"},"agent_id":"","agent_type":""}'
 run_test_role "ops mode Edit on lib/ allows" "0" "ops" "$FIXTURE_OPS_LIB"
 
-# Test 19: CLAUDE_ROLE=debug + subagent Edit on lib/ — BLOCK (subagent bypass disabled under debug/shape/refactor)
+# Test 19: CLAUDE_ROLE=debug + subagent Edit on lib/ — BLOCK (subagent bypass disabled under debug/shape)
 FIXTURE_DEBUG_SUB_LIB='{"hook_event_name":"PreToolUse","tool_name":"Edit","tool_input":{"file_path":"lib/combobulate/foo.ex","old_string":"x","new_string":"y"},"agent_id":"abc123","agent_type":"general-purpose"}'
 run_test_role "debug mode subagent Edit on lib/ blocks" "2" "debug" "$FIXTURE_DEBUG_SUB_LIB"
 
@@ -239,10 +231,6 @@ run_test_parity "PI_ROLE=shape Edit on lib/ blocks" "2" "PI_ROLE" "shape" "$FIXT
 # Test 30: PI_ROLE=shape + Write to codegen/pitches/draft/ — ALLOW
 FIXTURE_PI_SHAPE_DRAFT='{"hook_event_name":"PreToolUse","tool_name":"Write","tool_input":{"file_path":"codegen/pitches/draft/foo.md","content":"x"},"agent_id":"","agent_type":""}'
 run_test_parity "PI_ROLE=shape Write to pitches/draft/ allows" "0" "PI_ROLE" "shape" "$FIXTURE_PI_SHAPE_DRAFT"
-
-# Test 30b: PI_ROLE=refactor + Write to codegen/pitches/draft/ — ALLOW
-FIXTURE_PI_REFACTOR_DRAFT='{"hook_event_name":"PreToolUse","tool_name":"Write","tool_input":{"file_path":"codegen/pitches/draft/foo.md","content":"x"},"agent_id":"","agent_type":""}'
-run_test_parity "PI_ROLE=refactor Write to pitches/draft/ allows" "0" "PI_ROLE" "refactor" "$FIXTURE_PI_REFACTOR_DRAFT"
 
 # Precedence tests
 

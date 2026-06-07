@@ -6,52 +6,49 @@ System prompt assembly: `tools-header/<mode>.txt` + each entry in `prompt_body[]
 
 ## Components
 
-| File / Dir                                        | Purpose                                                                                             |
-| ------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
-| `harnesses/claude/claude-build.sh`                | Launcher for build mode — sets model/effort, invokes `claude`                                       |
-| `harnesses/claude/claude-debug.sh`                | Launcher for debug mode (Opus, high effort)                                                         |
-| `harnesses/claude/claude-shape.sh`                | Launcher for shape mode (Opus, high effort, web tools enabled)                                      |
-| `harnesses/claude/claude-ops.sh`                  | Launcher for ops mode (Opus, high effort)                                                           |
-| `harnesses/claude/claude-refactor.sh`             | Launcher for refactor mode (Opus, high effort, web tools enabled)                                   |
-| `harnesses/claude/dispatch.sh`                    | Mode dispatcher — reads manifest, sets flags, execs claude                                          |
-| `harnesses/claude/load-role.sh`                   | Reads `config.yaml` to resolve model/effort/tools for a given role                                  |
-| `harnesses/claude/tools-header/`                  | Per-mode system prompt header fragments (build, debug, shape, ops, refactor)                        |
-| `harnesses/claude/claude-code-settings.json`      | Source Claude Code settings (hooks, permissions, env)                                               |
-| `harnesses/claude/claude-build-system-prompt.txt` | Generated (do not hand-edit) — concat of tools-header + prompt-body                                 |
-| `harnesses/claude/commands/`                      | Slash commands installed to `~/.claude/commands/`                                                   |
-| `harnesses/pi/pi-build.sh`                        | Pi build mode launcher                                                                              |
-| `harnesses/pi/pi-debug.sh`                        | Pi debug mode launcher                                                                              |
-| `harnesses/pi/pi-shape.sh`                        | Pi shape mode launcher                                                                              |
-| `harnesses/pi/pi-ops.sh`                          | Pi ops mode launcher                                                                                |
-| `harnesses/pi/pi-refactor.sh`                     | Pi refactor mode launcher                                                                           |
-| `harnesses/pi/dispatch.sh`                        | Pi mode dispatcher                                                                                  |
-| `harnesses/pi/pi-prompts/`                        | Pi-specific prompt fragments                                                                        |
-| `harnesses/shared/prompt-bodies/`                 | Shared harness-agnostic body text (build, debug, shape, refactor, ops) — consumed by both harnesses |
-| `shared/prompt-fragments/`                        | Reusable prompt fragments included via `{% include %}` — `_probing.txt`, `_authoring-spine.txt`     |
-| `harnesses/claude/commands/`                      | Slash commands (`.md.j2` templates) installed to `~/.claude/commands/` at install time              |
+| File / Dir                                        | Purpose                                                                                         |
+| ------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
+| `harnesses/claude/claude-build.sh`                | Launcher for build mode — sets model/effort, invokes `claude`                                   |
+| `harnesses/claude/claude-debug.sh`                | Launcher for debug mode (Opus, high effort)                                                     |
+| `harnesses/claude/claude-shape.sh`                | Launcher for shape mode (Opus, high effort, web tools enabled)                                  |
+| `harnesses/claude/claude-ops.sh`                  | Launcher for ops mode (Opus, high effort)                                                       |
+| `harnesses/claude/dispatch.sh`                    | Mode dispatcher — reads manifest, sets flags, execs claude                                      |
+| `harnesses/claude/load-role.sh`                   | Reads `config.yaml` to resolve model/effort/tools for a given role                              |
+| `harnesses/claude/tools-header/`                  | Per-mode system prompt header fragments (build, debug, shape, ops)                              |
+| `harnesses/claude/claude-code-settings.json`      | Source Claude Code settings (hooks, permissions, env)                                           |
+| `harnesses/claude/claude-build-system-prompt.txt` | Generated (do not hand-edit) — concat of tools-header + prompt-body                             |
+| `harnesses/claude/commands/`                      | Slash commands installed to `~/.claude/commands/`                                               |
+| `harnesses/pi/pi-build.sh`                        | Pi build mode launcher                                                                          |
+| `harnesses/pi/pi-debug.sh`                        | Pi debug mode launcher                                                                          |
+| `harnesses/pi/pi-shape.sh`                        | Pi shape mode launcher                                                                          |
+| `harnesses/pi/pi-ops.sh`                          | Pi ops mode launcher                                                                            |
+| `harnesses/pi/dispatch.sh`                        | Pi mode dispatcher                                                                              |
+| `harnesses/pi/pi-prompts/`                        | Pi-specific prompt fragments                                                                    |
+| `harnesses/shared/prompt-bodies/`                 | Shared harness-agnostic body text (build, debug, shape, ops) — consumed by both harnesses       |
+| `shared/prompt-fragments/`                        | Reusable prompt fragments included via `{% include %}` — `_probing.txt`, `_authoring-spine.txt` |
+| `harnesses/claude/commands/`                      | Slash commands (`.md.j2` templates) installed to `~/.claude/commands/` at install time          |
 
 ## Key Paths
 
 ```
 harnesses/claude/
-  claude-build.sh, claude-debug.sh, claude-shape.sh, claude-ops.sh, claude-refactor.sh
+  claude-build.sh, claude-debug.sh, claude-shape.sh, claude-ops.sh
   dispatch.sh, load-role.sh
-  tools-header/{build,debug,shape,ops,refactor}.txt  ← disk path uses hyphen
+  tools-header/{build,debug,shape,ops}.txt  ← disk path uses hyphen
   claude-code-settings.json
   claude-build-system-prompt.txt   ← generated
   commands/
 harnesses/pi/
-  pi-build.sh, pi-debug.sh, pi-shape.sh, pi-ops.sh, pi-refactor.sh
+  pi-build.sh, pi-debug.sh, pi-shape.sh, pi-ops.sh
   dispatch.sh
   pi-prompts/
 harnesses/shared/prompt-bodies/
   build.txt   ← Cycle Protocol + FIRST-TURN PROTOCOL body (shared between claude/pi)
   debug.txt   ← Protocol + Allowed Queries + Forbidden + Refusal & Pivot (shared between claude/pi)
   shape.txt   ← Cold-start + Pitch Readiness Check (shared between claude/pi)
-  refactor.txt ← Cold-start + Investigation depth + Pitch Readiness Check
   ops.txt     ← Rule 1-5 procedural ops rules (shared between claude/pi)
 shared/prompt-fragments/
-  _probing.txt         ← Inline Probe Discipline section (included in shape/refactor + /ready)
+  _probing.txt         ← Inline Probe Discipline section (included in shape + /ready)
   _authoring-spine.txt ← Phase 0 (9-step), Multi-turn, Adjacent, Output Contract, Rules, Anti-patterns
 ```
 
@@ -67,23 +64,22 @@ tools-header/<mode>.txt   (per-harness: mode title + ## Tools + any pre-Tools co
 
 **Mode assembly map:**
 
-| Mode     | tools-header contains              | prompt_body list                                                        |
-| -------- | ---------------------------------- | ----------------------------------------------------------------------- |
-| build    | FIRST-TURN PROTOCOL + ## Tools     | [harnesses/shared/prompt-bodies/build.txt]                              |
-| debug    | mode description + ## Tools        | [harnesses/shared/prompt-bodies/debug.txt]                              |
-| shape    | mode title + ## Tools              | [shared/prompt-bodies/shape.txt, _probing.txt, _authoring-spine.txt]    |
-| ops      | mode title + Cold-Start + ## Tools | [harnesses/shared/prompt-bodies/ops.txt]                                |
-| refactor | mode title + ## Tools              | [shared/prompt-bodies/refactor.txt, _probing.txt, _authoring-spine.txt] |
+| Mode  | tools-header contains              | prompt_body list                                                     |
+| ----- | ---------------------------------- | -------------------------------------------------------------------- |
+| build | FIRST-TURN PROTOCOL + ## Tools     | [harnesses/shared/prompt-bodies/build.txt]                           |
+| debug | mode description + ## Tools        | [harnesses/shared/prompt-bodies/debug.txt]                           |
+| shape | mode title + ## Tools              | [shared/prompt-bodies/shape.txt, _probing.txt, _authoring-spine.txt] |
+| ops   | mode title + Cold-Start + ## Tools | [harnesses/shared/prompt-bodies/ops.txt]                             |
 
 **Fragment paths** in manifest are relative to `CODEGEN_DIR`. The `manifest_mode_get` function returns scalars; `prompt_body` uses `yq '.modes.<mode>.prompt_body[]'` to enumerate the list.
 
-**Per-harness vs shared bodies**: All modes (build, debug, ops, shape, refactor) use shared bodies from `harnesses/shared/prompt-bodies/`. Per-harness body directories no longer exist. shape/refactor additionally append shared fragments (`_probing.txt`, `_authoring-spine.txt`). ssh cold-start context for debug/ops is launcher-injected via `--append-system-prompt`, not baked into the shared body.
+**Per-harness vs shared bodies**: All modes (build, debug, ops, shape) use shared bodies from `harnesses/shared/prompt-bodies/`. Per-harness body directories no longer exist. shape additionally appends shared fragments (`_probing.txt`, `_authoring-spine.txt`). ssh cold-start context for debug/ops is launcher-injected via `--append-system-prompt`, not baked into the shared body.
 
-**Shape/refactor investigative disciplines**: Both modes include the `_authoring-spine.txt` fragment, which encodes the readiness-loop gateway (Phase 0 context load → multi-turn investigation → readiness check). The spine enforces six core rules (A–F) — intent-guard, plain-language discipline, command-pairing auto-cover, duplication-detection, symptom-vs-target, context-drift auto-cover — and three deletion-safety blocker classes (un-investigated rabbit holes, untraced edit surface, dangling cross-reference). See `context/subagents.md` § Authoring Spine Rules for full details. The intent-guard rule (A) is additionally patched into the empirical-claim blocker template option-(b) in both `shape.txt` and `refactor.txt`, enforcing that no readiness-check option may nullify the pitch's core intent.
+**Shape investigative disciplines**: Shape mode includes the `_authoring-spine.txt` fragment, which encodes the readiness-loop gateway (Phase 0 context load → multi-turn investigation → readiness check). The spine enforces six core rules (A–F) — intent-guard, plain-language discipline, command-pairing auto-cover, duplication-detection, symptom-vs-target, context-drift auto-cover — and three deletion-safety blocker classes (un-investigated rabbit holes, untraced edit surface, dangling cross-reference). See `context/subagents.md` § Authoring Spine Rules for full details. The intent-guard rule (A) is additionally patched into the empirical-claim blocker template option-(b) in `shape.txt`, enforcing that no readiness-check option may nullify the pitch's core intent.
 
-**Pitch-format contract**: `shape.txt` and `ops.txt` both specify the EXACT grammar for `## Questions` / `## Answers` blocks in headless mode. The contract is machine-parseable and enforced at Stop time by the `pitch-format-validator.sh` Stop hook (fires for shape/refactor/ops roles). Grammar: each `### Q<n>:` heading must be followed by ≥2 `- **<letter>)**` option bullets; `## Answers` Q-bindings must reference matching Q headings in `## Questions`; `> Status:` (if present) must be SKELETON, SHAPING, or SHAPED. The `/document` slash command writes `> Status: SKELETON` as the first line of every new skeleton pitch. Shape sessions advance the status to SHAPING (mid-investigation) or SHAPED (fully designed).
+**Pitch-format contract**: `shape.txt` and `ops.txt` both specify the EXACT grammar for `## Questions` / `## Answers` blocks in headless mode. The contract is machine-parseable and enforced at Stop time by the `pitch-format-validator.sh` Stop hook (fires for shape/ops roles). Grammar: each `### Q<n>:` heading must be followed by ≥2 `- **<letter>)**` option bullets; `## Answers` Q-bindings must reference matching Q headings in `## Questions`; `> Status:` (if present) must be SKELETON, SHAPING, or SHAPED. The `/document` slash command writes `> Status: SKELETON` as the first line of every new skeleton pitch. Shape sessions advance the status to SHAPING (mid-investigation) or SHAPED (fully designed).
 
-**Slash commands**: Templates in `harnesses/claude/commands/*.md.j2` (Jinja2) are rendered by `generate.sh` → `templates/generated/claude-code/commands/` → installed to `~/.claude/commands/` by `install.sh`. Commands can spawn subagent swarms (e.g., `/poke-holes` spawns Explore agents). Gating via `operator-subagent-allowlist.sh` enforces role ∈ {debug, shape, refactor, ops}. Examples: `/ready` (readiness gate), `/poke-holes` (stress-test pitch via Explore swarm). Pi gets an inert copy of all commands; no Pi-specific overrides yet.
+**Slash commands**: Templates in `harnesses/claude/commands/*.md.j2` (Jinja2) are rendered by `generate.sh` → `templates/generated/claude-code/commands/` → installed to `~/.claude/commands/` by `install.sh`. Commands can spawn subagent swarms (e.g., `/poke-holes` spawns Explore agents). Gating via `operator-subagent-allowlist.sh` enforces role ∈ {debug, shape, ops}. Examples: `/ready` (readiness gate), `/poke-holes` (stress-test pitch via Explore swarm). Pi gets an inert copy of all commands; no Pi-specific overrides yet.
 
 ## Dispatcher Routing
 
@@ -117,7 +113,7 @@ Pi launchers load TypeScript extensions from `harnesses/pi/pi-extensions/` via c
 
 ## Headless Investigative Mode
 
-The four Claude investigative launchers (`claude-shape`, `claude-refactor`, `claude-ops`, `claude-debug`) honor the `CLAUDE_NONINTERACTIVE` env var. When set to any non-empty value, each launcher builds a `NON_INTERACTIVE_FLAGS` array containing the full 7-flag build set (byte-identical to `dispatch.sh`):
+The three Claude investigative launchers (`claude-shape`, `claude-ops`, `claude-debug`) honor the `CLAUDE_NONINTERACTIVE` env var. When set to any non-empty value, each launcher builds a `NON_INTERACTIVE_FLAGS` array containing the full 7-flag build set (byte-identical to `dispatch.sh`):
 
 ```
 --print

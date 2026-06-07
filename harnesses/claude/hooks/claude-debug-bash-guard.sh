@@ -11,9 +11,9 @@
 # harnesses: claude_code
 # rationale: CLAUDE_ROLE_FAMILY-keyed; Pi investigation sessions use load-gate not role flags
 #
-# Active when the active role (via resolve_role) is `debug`, `shape`, or `refactor`.
+# Active when the active role (via resolve_role) is `debug` or `shape`.
 # Responds to CLAUDE_ROLE (Claude Code) and PI_ROLE (PI harness) — precedence: CLAUDE_ROLE > PI_ROLE.
-# debug, shape, and refactor are investigation/shaping sessions —
+# debug and shape are investigation/shaping sessions —
 # their only legitimate write surface is codegen/pitches/ (enforced by
 # orchestrator-no-source-edit.sh). Destructive Bash in these contexts is
 # almost always accidental — especially via Agent-spawned subagents.
@@ -38,8 +38,8 @@ if [ "$TOOL_NAME" != "Bash" ]; then
     exit 0
 fi
 
-# Only active in debug, shape, or refactor sessions.
-if [ "${role}" != "debug" ] && [ "${role}" != "shape" ] && [ "${role}" != "refactor" ]; then
+# Only active in debug or shape sessions.
+if [ "${role}" != "debug" ] && [ "${role}" != "shape" ]; then
     exit 0
 fi
 

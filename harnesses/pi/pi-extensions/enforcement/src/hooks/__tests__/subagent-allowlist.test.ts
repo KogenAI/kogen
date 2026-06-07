@@ -57,16 +57,6 @@ describe("subagent-allowlist", () => {
     assert.ok((result as { block?: boolean }).block === true);
   });
 
-  it("blocks developer-phoenix-backend under refactor role", async () => {
-    const result = await runHook("developer-phoenix-backend", "refactor");
-    assert.ok((result as { block?: boolean }).block === true);
-  });
-
-  it("blocks committer under refactor role", async () => {
-    const result = await runHook("committer", "refactor");
-    assert.ok((result as { block?: boolean }).block === true);
-  });
-
   it("blocks built-in Plan subagent", async () => {
     const result = await runHook("Plan", "build");
     assert.ok((result as { block?: boolean }).block === true);
@@ -94,11 +84,6 @@ describe("subagent-allowlist", () => {
 
   it("allows Explore under shape role", async () => {
     const result = await runHook("Explore", "shape");
-    assert.ok(result == null || (result as { block?: boolean }).block !== true);
-  });
-
-  it("allows Explore under refactor role", async () => {
-    const result = await runHook("Explore", "refactor");
     assert.ok(result == null || (result as { block?: boolean }).block !== true);
   });
 

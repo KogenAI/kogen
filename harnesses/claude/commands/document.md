@@ -4,7 +4,7 @@ description: Capture current session discussion into a short pitch skeleton for 
 
 Write a short pitch skeleton capturing the essence of what was discussed — a seed for later shaping, not a full design doc.
 
-**PURPOSE**: Quick capture from any session (orchestrator, `claude-build`, `claude-shape`, `claude-refactor`, `claude-debug`). Drops a skeleton into `codegen/pitches/draft/` for later shaping. Not a plan. Not a spec.
+**PURPOSE**: Quick capture from any session (orchestrator, `claude-build`, `claude-shape`, `claude-debug`). Drops a skeleton into `codegen/pitches/draft/` for later shaping. Not a plan. Not a spec.
 
 **SKELETON SHAPE** (all sections, keep each to 2–5 lines):
 
