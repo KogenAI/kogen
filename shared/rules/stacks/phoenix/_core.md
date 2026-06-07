@@ -205,3 +205,11 @@ config :myapp, :notify_owner_on_tls_alert, true
 UI: `phoenix-component-attribute-ordering`, `phoenix-dropdown-blur`, `phoenix-modal-js-animations`, `phoenix-file-upload-html-labels`, `phoenix-live-title-page-titles`, `phoenix-storybook-setup`.
 
 Elixir: `elixir-with-for-chained-failable-ops`, `elixir-module-organization-skeleton`, `elixir-type-duplication`, `oban-worker-return-contract`, `tidewave-mcp-verification`.
+
+## JSON Encoding & Make Recipes
+
+**`Jason.OrderedObject.new/1` for key-order preservation**: When JSON output format specifies field ordering different from alphabetical default, use `Jason.OrderedObject.new/1` with a keyword list. `Jason.encode!/1` respects the insertion order, emitting keys in the order supplied. Example: hook_manifest.json and inspector_settings.json require specific key ordering; pass keyword lists to `OrderedObject.new/1` to preserve output field order.
+
+**Elixir heredoc syntax**: Closing `"""` MUST be on its own line, never inline with content. ❌ `"""content"""` (syntax error). ✅ `"""` / `content` / `"""`. Inline trailing `"""` terminates the heredoc immediately, breaking the parse.
+
+**Make variable escaping**: In Makefile recipes (lines after the target + `:` rule), a literal shell variable reference requires double-`$`. Example: `echo $${VAR:-default}` in a recipe emits `${VAR:-default}` to the shell, allowing shell parameter expansion. Single `$` is Make syntax (refers to Make variable). This is critical for `export OCG_CODEGEN_DIR=$${OCG_CODEGEN_DIR:-/path}` patterns that default env vars in CI/dev-independent shells.
