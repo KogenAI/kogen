@@ -21,7 +21,7 @@ One-liner per target — for test target semantics see `context/test-harness.md`
 
 | Target                    | Purpose                                                                                                                                                                                  |
 | ------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `make install`            | Gate: verify python3 + node + yq-mikefarah; then generate agents + install claude harness (full cycle); npm install root node_modules                                                  |
+| `make install`            | Gate: verify python3 + node + yq-mikefarah; then generate agents + install claude harness (full cycle); npm install root node_modules                                                    |
 | `make test`               | Hook-parity + harness-parity + test-generator + enforce-registry-parity + bash hook tests (`run-tests.sh`) + scaffold run-tests — parity/structure validation only; separate from ExUnit |
 | `make test-stacks`        | Run ExUnit stack scaffold tests — see `context/test-harness.md` for semantics                                                                                                            |
 | `make test-stacks-claude` | Run ExUnit suite for Claude harness only                                                                                                                                                 |
@@ -49,20 +49,22 @@ See `.env.sample` and `.env.prod.sample` for full variable lists.
 ## Coding Conventions
 
 - **Bash**: `set -euo pipefail` in all scripts; `content_stable_cp` is defined in `install.sh` (not `utils.sh`) for idempotent file copies; `utils.sh` provides only `OCG_CMD` and `open_cursor_workspace`
-- **Python**: stdlib only in generator scripts — no third-party deps
+- **Bash sed portability**: `sed -i ''` (BSD macOS) is not portable to GNU sed (Linux). Use temp-file rewrite instead: `sed 'EXPR' file >"${file}.tmp" && mv "${file}.tmp" file`. Canonical reference: `install.sh` lines 474–483 (mktemp/cmp/mv pattern). Mutation scripts in `shared/scaffold/` use this idiom throughout.
+- **Bash module name derivation**: When converting slug to CamelCase module names, use `python3` one-liner (`python3 -c '...capitalize join...'`); pure-sed BRE is fragile across BSD/GNU + bash 3.2 case-fold gaps. Reference: `scaffold.sh` line 81.
+- **Python**: stdlib only in generator scripts — no third-party deps. One-liner scripts (e.g., module name derivation) can use python3 directly in Bash heredocs.
 - **TypeScript**: strict mode; each extension self-contained with own `package.json`
 - **Commit messages**: why-focused, delegated to committer subagent — never written directly by orchestrator
 
 ## Dev Scripts
 
-| Script                                      | Purpose                                                                       |
-| ------------------------------------------- | ----------------------------------------------------------------------------- |
-| `install.sh <harness>`                      | Install named harness                                                         |
-| `uninstall.sh <harness>`                    | Remove named harness                                                          |
-| `harnesses/claude/hooks/run-tests.sh`       | Run all bash hook tests                                                       |
-| `test_harness/record-green.sh`              | Stamp `last_green.json` + tool versions (elixir, otp, node, yq, os)           |
-| `templates/generator/generate.sh <harness>` | Render agent prompts for harness                                              |
-| `update_ai_tools.sh`                        | Update Claude CLI and AI tool deps                                            |
+| Script                                      | Purpose                                                             |
+| ------------------------------------------- | ------------------------------------------------------------------- |
+| `install.sh <harness>`                      | Install named harness                                               |
+| `uninstall.sh <harness>`                    | Remove named harness                                                |
+| `harnesses/claude/hooks/run-tests.sh`       | Run all bash hook tests                                             |
+| `test_harness/record-green.sh`              | Stamp `last_green.json` + tool versions (elixir, otp, node, yq, os) |
+| `templates/generator/generate.sh <harness>` | Render agent prompts for harness                                    |
+| `update_ai_tools.sh`                        | Update Claude CLI and AI tool deps                                  |
 
 ## Benchmark Viewer (Mix Tasks)
 

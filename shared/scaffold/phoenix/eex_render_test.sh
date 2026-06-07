@@ -19,7 +19,7 @@ assert() {
     fi
 }
 
-tmp="$(mktemp -d -t render-XXXXXX)"
+tmp="$(mktemp -d "${TMPDIR:-/tmp}/render-XXXXXX")"
 trap 'rm -rf "$tmp"' EXIT
 
 # Case 1: single binding substitution

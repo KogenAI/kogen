@@ -22,7 +22,7 @@ assert() {
 
 setup_tmp() {
     local tmp
-    tmp="$(mktemp -d -t mut-XXXXXX)"
+    tmp="$(mktemp -d "${TMPDIR:-/tmp}/mut-XXXXXX")"
     cp -R "$FIXTURE_BASE/." "$tmp/"
     echo "$tmp"
 }

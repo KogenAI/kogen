@@ -92,6 +92,111 @@ Both accept `--stack=<phoenix|static>` and `--cwd=<dir>`. `create` requires `--s
 
 The `create` path uses **transactional temp-parent + trap**: all mutations run in a temp sibling dir; if any fails, cleanup is automatic; on success, move is atomic into final position. See `codegen/rules/_core/bash-discipline.md` § Transactional Multi-Step File Creation.
 
+## Flags & Capabilities
+
+### Command-line Flags (codegen-scaffold create)
+
+| Flag                       | Purpose                                                  | Default |
+| -------------------------- | -------------------------------------------------------- | ------- |
+| `--stack=<phoenix\|static>` | Target stack                                             | (req)   |
+| `--cwd=<dir>`               | Scaffold parent directory                                | (req)   |
+| `--slug=<name>`             | App name (create only)                                   | (req)   |
+| `--no-ecto`                 | Omit Ecto dependency; skip DB pieces (migrations, tests) | false   |
+| `--with-appsignal`          | Include AppSignal integration (prod-only)                | false   |
+| `--github-url=<full-url>`   | GitHub repository URL for source_url in mix.exs          | (none)  |
+
+`--no-ecto`: Drops DATABASE_URL from .env, excludes Ecto from deps, removes aliases (setup ecto, ci ecto.rollback, test ecto.setup), skips DataCase, removes ecto.rollback from Makefile ci target.
+
+`--with-appsignal`: Adds appsignal_phoenix dep (dev-only for telemetry testing); requires `APPSIGNAL_PUSH_API_KEY` env var at runtime (opt-in, not default).
+
+`--github-url`: Populates `source_url:` line in mix.exs project() block; omitted if not supplied.
+
+### First-Run Activation (Classes B & B2)
+
+After scaffold creates the directory tree, `scaffold.sh` automatically:
+
+1. Runs `mise trust` on the generated app's `.mise.toml` (mirrors guarded form in install.sh:595)
+2. Renders `.env` with generated `SECRET_KEY_BASE`, `DATABASE_URL` (unless `--no-ecto`), `PHX_HOST`, `PORT`
+3. Runs `mix deps.get && mix format` (bootstrap + formatting)
+4. Runs `mix setup && mix compile --warnings-as-errors` (self-validation; exits non-zero on compile warnings)
+5. Creates initial git commit (`git add -A && git commit -m "Initial commit"`) — commit rides atomic mv; failure aborts scaffold
+6. Prints readiness summary to stdout
+
+If any step fails, the trap cleanup (activated at temp-parent assignment) wipes the partial directory and returns non-zero.
+
+### New Templates (codegen 0.5+)
+
+| Template                    | Purpose                                                 |
+| --------------------------- | ------------------------------------------------------- |
+| `.env.eex`                  | (NEW) Environment overrides: SECRET_KEY_BASE, DATABASE_URL, PHX_HOST, PORT |
+| `.env.sample.eex`           | Populated with placeholder description (previously empty) |
+| `.env.prod.sample.eex`       | SECRET_KEY_BASE replaced with placeholder (was hardcoded) |
+| `.claude/gate-config.sh.eex` | (NEW) Per-app instance of gate-control wrapper (dev-port derivation) |
+| `.mcp.json.eex`             | (NEW) Claude MCP config for tidewave mcp-proxy (port from codegen templates) |
+| `coveralls.json.eex`        | Updated: minimum_coverage 0 → 35.1 (line 3)            |
+| `Makefile.eex`              | Gate targets + delegating stubs: gate-status, gate-kill, gate-logs |
+
+### Machine-Global PLT Cache (B3 — Dormant until full `make ci`)
+
+`scaffold.sh` (lines ~340) initializes a machine-global Dialyzer PLT cache helper:
+
+- Location: `~/.cache/codegen-plt/<otp>-<elixir>-<lockhash>/`
+- On first hit: generated app's `.mix_dialyzer_plt/` is populated from cache
+- On cache miss: Dialyzer builds the PLT; cache is saved for future runs
+- Status: **Dormant** — dialyzer only runs under full `make ci`, which is gated behind credo-clean landing. The lock commit + cache infrastructure is in place; the reuse path activates once full `make ci` is enabled.
+
+### Optimum Templates Submodule
+
+`scaffold.sh` (B5) conditionally adds the optimum_templates submodule:
+
+```bash
+git submodule add https://github.com/optimumBA/optimum_templates priv/templates || \
+  echo "WARN: git submodule add offline or failed" >&2
+```
+
+Non-fatal: warns on offline/failure but does not abort scaffold. Submodule is optional.
+
+### Releases Always-On
+
+`scaffold.sh` (C5) generates release artifacts:
+
+```bash
+( cd "$TARGET_DIR" && mix phx.gen.release )
+```
+
+Patch `rel/overlays/bin/server` to set `APP_REVISION` env var (reads from `git describe --tags --always`).
+
+### Dependencies & Versions
+
+| Dep              | Version  | Notes                                        |
+| ---------------- | -------- | -------------------------------------------- |
+| optimum_credo    | ~> 0.3   | Upgraded from 0.2 in this pitch              |
+| appsignal_phoenix | (opt-in) | Only if `--with-appsignal` supplied          |
+
+### Fixture Regeneration (B4 — Gate-Affecting)
+
+The fixture `test_harness/mutations/fixtures/phx_new_skeleton/` must stay in sync with live `mix phx.new` output. B4 regeneration:
+
+1. Run `mix phx.new fixture_app --binary-id --no-mailer --no-dashboard --no-agents-md --no-version-check` in a temp directory
+2. Prune to only files the fixture needs: `mix.exs`, `.formatter.exs`, `config/config.exs`, `lib/*_web/{router,endpoint,telemetry}.ex`
+3. Re-verify every mutation anchor (grep patterns) against regenerated content
+4. Delete dead mutation scripts (config_exs.sh, prod_exs.sh, mix_exs Step 1) — grep-confirmed guarded no-ops
+5. Run `shared/scaffold/phoenix/run-tests.sh` to completion (all mutation tests pass against new fixture)
+
+**Gate impact**: Fixture changes perturb `make test` (mutation unit tests run vs this fixture via Makefile:123). Highest gate risk if fixture drifts.
+
+## Portable Sed Idiom (Class A)
+
+All sed rewrites in mutation scripts use **temp-file rewrite**, never `sed -i ''`:
+
+```bash
+sed "s|old|new|" "$FILE" >"${FILE}.tmp" && mv "${FILE}.tmp" "$FILE"
+```
+
+- **Why**: `sed -i ''` (BSD macOS) is not portable to GNU sed (Linux). Temp-file idiom works on both.
+- **Idempotency**: Pairs well with `cmp -s` checks in mutation assertions; if output is byte-identical, the mv is skipped.
+- **Reference**: `install.sh` lines 474–483 (mktemp/cmp/mv pattern) is the canonical portable-file-edit reference.
+
 ## Pitfalls
 
 - **Mutation scripts are order-sensitive** — scaffold.sh runs mutations in a defined sequence; inserting out of order can break the generated app
@@ -101,3 +206,5 @@ The `create` path uses **transactional temp-parent + trap**: all mutations run i
 - **`eex_render.sh` hard-errors on unresolved placeholders** — any leftover `<%= ... %>` in output causes non-zero exit
 - **AGENTS-phoenix.md.j2 embeds orchestrator rules** — downstream app templates in `shared/apps/` carry a copy of orchestrator rules; when `orchestrator.md` (rules-roles.md) changes, update these templates too to avoid sync drift. Ensure Phase 3.5 curator always precedes Phase 4 committer. Note: there is no `CLAUDE-phoenix.md.j2` — `CLAUDE-phoenix.md` is a plain file (not a Jinja template)
 - **Idempotent .gitignore updates use section markers** — repeated `integrate` runs do not duplicate codegen symlink entries in .gitignore; marker comment detects already-present section
+- **Post-condition anchor drift** — after B4 fixture regeneration, re-verify every mutation's `grep -qF` anchor; mutations with drifted anchors will silently skip during tests (idempotency guard matches but post-condition fails). Always pair idempotency guard + post-condition on the same anchor.
+- **Fixture regeneration breaks make test** — B4 fixture regen is gate-affecting; fixture file changes → mutation unit tests run against new content. Re-run `shared/scaffold/phoenix/run-tests.sh` after any regen to catch anchor drift or mutation failures.

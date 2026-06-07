@@ -16,7 +16,7 @@ fi
 
 if ! grep -qF 'DoctestFormatter' "$FORMATTER"; then
     # Replace existing Phoenix.LiveView.HTMLFormatter (or nothing) with both plugins
-    sed -i '' 's/Phoenix\.LiveView\.HTMLFormatter/DoctestFormatter, Phoenix.LiveView.HTMLFormatter/' "$FORMATTER"
+    sed 's/Phoenix\.LiveView\.HTMLFormatter/DoctestFormatter, Phoenix.LiveView.HTMLFormatter/' "$FORMATTER" >"${FORMATTER}.tmp" && mv "${FORMATTER}.tmp" "$FORMATTER"
 fi
 
 # Post-condition: DoctestFormatter must be present

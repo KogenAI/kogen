@@ -22,7 +22,7 @@ assert() {
 
 setup_tmp() {
     local tmp
-    tmp="$(mktemp -d -t mut-XXXXXX)"
+    tmp="$(mktemp -d "${TMPDIR:-/tmp}/mut-XXXXXX")"
     cp -R "$FIXTURE_BASE/." "$tmp/"
     echo "$tmp"
 }
@@ -49,7 +49,7 @@ rm -rf "$tmp"
 # Case 3: missing anchor — script exits 1 and emits ERROR on stderr
 tmp="$(setup_tmp)"
 # Remove the anchor so post-condition fails
-sed -i '' 's/use Supervisor/use_Supervisor_removed/' "$tmp/lib/fixture_app_web/telemetry.ex"
+sed 's/use Supervisor/use_Supervisor_removed/' "$tmp/lib/fixture_app_web/telemetry.ex" >"$tmp/lib/fixture_app_web/telemetry.ex.tmp" && mv "$tmp/lib/fixture_app_web/telemetry.ex.tmp" "$tmp/lib/fixture_app_web/telemetry.ex"
 missing_anchor_exit=0
 missing_anchor_out="$("$MUTATION" "$tmp" fixture_app 2>&1)" || missing_anchor_exit=$?
 assert "telemetry missing anchor exits 1" '[ "$missing_anchor_exit" -eq 1 ]'

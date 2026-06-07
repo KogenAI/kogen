@@ -104,6 +104,10 @@ while [[ $# -gt 0 ]]; do
         fi
         shift
         ;;
+    --print-dir)
+        printf '%s\n' "$SCRIPT_DIR"
+        exit 0
+        ;;
     --)
         shift
         PROMPT="$*"

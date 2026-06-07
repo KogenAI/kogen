@@ -6,6 +6,6 @@
         {:excoveralls, "~> 0.18", only: :test},
         {:faker, "~> 0.18", only: :test},
         {:mix_audit, "~> 2.1", only: :test, runtime: false},
-        {:optimum_credo, "~> 0.2", only: :test, runtime: false},
+        {:optimum_credo, "~> 0.3", only: :test, runtime: false},
         {:sobelow, "~> 0.14", only: :test, runtime: false},
         {:tidewave, "~> 0.5", only: :dev}

@@ -22,7 +22,7 @@ assert() {
 
 setup_tmp() {
     local tmp
-    tmp="$(mktemp -d -t mut-XXXXXX)"
+    tmp="$(mktemp -d "${TMPDIR:-/tmp}/mut-XXXXXX")"
     cp -R "$FIXTURE_BASE/." "$tmp/"
     echo "$tmp"
 }
@@ -46,7 +46,7 @@ rm -rf "$tmp"
 # Remove Phoenix.LiveView.HTMLFormatter so the sed substitution produces no match
 # and DoctestFormatter is absent from the output
 tmp="$(setup_tmp)"
-sed -i '' 's/Phoenix\.LiveView\.HTMLFormatter/SomeOtherFormatter/' "$tmp/.formatter.exs"
+sed 's/Phoenix\.LiveView\.HTMLFormatter/SomeOtherFormatter/' "$tmp/.formatter.exs" >"$tmp/.formatter.exs.tmp" && mv "$tmp/.formatter.exs.tmp" "$tmp/.formatter.exs"
 missing_anchor_exit=0
 missing_anchor_out="$("$MUTATION" "$tmp" 2>&1)" || missing_anchor_exit=$?
 assert "formatter_exs missing anchor exits 1" '[ "$missing_anchor_exit" -eq 1 ]'

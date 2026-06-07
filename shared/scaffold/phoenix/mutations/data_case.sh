@@ -7,11 +7,41 @@
 # The template already ships with data_case excluded; this mutation is kept
 # as a fallback in case the credo template diverges.
 #
-# Usage: data_case.sh <app_path>
+# Usage: data_case.sh <app_path> [--no-ecto]
+#   --no-ecto  skip DataCase mutation entirely
 
 set -euo pipefail
 
 APP_PATH="$1"
+shift
+
+NO_ECTO=""
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+    --no-ecto)
+        NO_ECTO="1"
+        shift
+        ;;
+    --with-appsignal)
+        # Accepted but ignored by this mutation
+        shift
+        ;;
+    --github-url)
+        # Accepted but ignored; consumes next arg as value
+        shift 2
+        ;;
+    *)
+        shift
+        ;;
+    esac
+done
+
+# When --no-ecto is set, DataCase is not generated — skip mutation
+if [[ -n "$NO_ECTO" ]]; then
+    echo "[data_case.sh] --no-ecto set — skipping DataCase mutation"
+    exit 0
+fi
+
 CREDO="$APP_PATH/.credo.exs"
 
 if [ ! -f "$CREDO" ]; then
@@ -36,6 +66,12 @@ new_content = content.replace(anchor, replacement, 1)
 with open(credo_path, 'w') as f:
     f.write(new_content)
 PYEOF
+fi
+
+# Post-condition: data_case exclusion must be present
+if ! grep -qF '/data_case\.ex$"' "$CREDO"; then
+    echo "[data_case.sh] ERROR: post-condition failed — '/data_case\\.ex\$\"' not found after mutation (anchor: channel_case)" >&2
+    exit 1
 fi
 
 echo "[data_case.sh] done"

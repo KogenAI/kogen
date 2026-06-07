@@ -42,6 +42,9 @@ STACK=""
 CWD=""
 SLUG=""
 APP_NAME=""
+NO_ECTO=""
+WITH_APPSIGNAL=""
+GITHUB_URL=""
 
 usage() {
     printf 'Usage:\n' >&2
@@ -128,6 +131,22 @@ while [[ $# -gt 0 ]]; do
         ;;
     --otp-version)
         OTP_VERSION="$2"
+        shift 2
+        ;;
+    --no-ecto)
+        NO_ECTO="1"
+        shift
+        ;;
+    --with-appsignal)
+        WITH_APPSIGNAL="1"
+        shift
+        ;;
+    --github-url=*)
+        GITHUB_URL="${1#--github-url=}"
+        shift
+        ;;
+    --github-url)
+        GITHUB_URL="$2"
         shift 2
         ;;
     --*)
@@ -267,7 +286,11 @@ do_create() {
     # Transactional temp parent (sibling of target → same filesystem → atomic mv)
     local TEMP_PARENT
     TEMP_PARENT="$(mktemp -d "$(dirname "$target_dir")/.scaffold.tmp.XXXXXX")"
-    trap 'rm -rf "$TEMP_PARENT"' EXIT
+    if [[ -z "${TEMP_PARENT:-}" ]]; then
+        printf 'codegen-scaffold: mktemp failed to create temp parent\n' >&2
+        exit 1
+    fi
+    trap 'rm -rf "${TEMP_PARENT:-}"' EXIT
 
     case "$STACK" in
     phoenix)
@@ -278,10 +301,15 @@ do_create() {
         fi
         # scaffold.sh creates <slug> inside the directory it runs in;
         # pass TEMP_PARENT as the target dir so it scaffolds into TEMP_PARENT/SLUG
+        local phoenix_extra_flags=()
+        [[ -n "$NO_ECTO" ]] && phoenix_extra_flags+=("--no-ecto")
+        [[ -n "$WITH_APPSIGNAL" ]] && phoenix_extra_flags+=("--with-appsignal")
+        [[ -n "$GITHUB_URL" ]] && phoenix_extra_flags+=("--github-url" "$GITHUB_URL")
         "$phoenix_scaffold" "$SLUG" "$TEMP_PARENT/$SLUG" \
             --elixir-version "$ELIXIR_VERSION" \
             --node-version "$NODE_VERSION" \
-            --otp-version "$OTP_VERSION"
+            --otp-version "$OTP_VERSION" \
+            "${phoenix_extra_flags[@]+"${phoenix_extra_flags[@]}"}"
         ;;
     static)
         local static_scaffold="$SCRIPT_DIR/shared/scaffold/static/scaffold.sh"

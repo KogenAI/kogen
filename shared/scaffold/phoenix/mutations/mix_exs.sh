@@ -16,6 +16,31 @@ set -euo pipefail
 APP_PATH="$1"
 APP_NAME="$2"
 APP_NAME_MODULE="$3"
+shift 3
+
+# Parse optional flags
+WITH_APPSIGNAL=""
+GITHUB_URL=""
+NO_ECTO=""
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+    --with-appsignal)
+        WITH_APPSIGNAL="1"
+        shift
+        ;;
+    --github-url)
+        GITHUB_URL="$2"
+        shift 2
+        ;;
+    --no-ecto)
+        NO_ECTO="1"
+        shift
+        ;;
+    *)
+        shift
+        ;;
+    esac
+done
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DATA_DIR="$SCRIPT_DIR/data/mix_exs"
@@ -32,11 +57,11 @@ fi
 # Idempotent: skip if :credo or :tidewave already present.
 # ---------------------------------------------------------------------------
 if ! grep -qF '      {:credo,' "$MIX_EXS"; then
-    sed -i '' "s|      {:lazy_html,|      {:credo, \"~> 1.7\", only: [:dev, :test], runtime: false},\n      {:lazy_html,|" "$MIX_EXS"
+    sed "s|      {:lazy_html,|      {:credo, \"~> 1.7\", only: [:dev, :test], runtime: false},\n      {:lazy_html,|" "$MIX_EXS" >"${MIX_EXS}.tmp" && mv "${MIX_EXS}.tmp" "$MIX_EXS"
 fi
 
 if ! grep -qF '      {:tidewave,' "$MIX_EXS"; then
-    sed -i '' "s|      {:lazy_html,|      {:tidewave, \"~> 0.5\", only: [:dev]},\n      {:lazy_html,|" "$MIX_EXS"
+    sed "s|      {:lazy_html,|      {:tidewave, \"~> 0.5\", only: [:dev]},\n      {:lazy_html,|" "$MIX_EXS" >"${MIX_EXS}.tmp" && mv "${MIX_EXS}.tmp" "$MIX_EXS"
 fi
 
 # Post-condition: both deps must be present
@@ -51,11 +76,15 @@ fi
 
 # ---------------------------------------------------------------------------
 # Step 2: replace defp aliases do [...] end with Optimum aliases
-# Idempotent: skip if "ecto.setup" alias already present.
+# Idempotent: skip if ci: alias already present (stock phx.new has "ecto.setup": but not ci:).
 # ---------------------------------------------------------------------------
-if ! grep -qF '"ecto.setup":' "$MIX_EXS"; then
+if ! grep -qF 'ci:' "$MIX_EXS"; then
     # Build aliases content with app_name substituted
     ALIASES_CONTENT="$(sed "s/<%= app_name %>/${APP_NAME}/g" "$DATA_DIR/aliases.txt")"
+    # If --no-ecto, strip ecto.* alias lines
+    if [[ -n "$NO_ECTO" ]]; then
+        ALIASES_CONTENT="$(echo "$ALIASES_CONTENT" | grep -v '"ecto\.')"
+    fi
 
     # Use Python to do the multi-line replacement safely
     python3 - "$MIX_EXS" "$ALIASES_CONTENT" <<'PYEOF'
@@ -82,9 +111,16 @@ with open(mix_exs_path, 'w') as f:
 PYEOF
 fi
 
-# Post-condition: ecto.setup alias must be present
-if ! grep -qF '"ecto.setup":' "$MIX_EXS"; then
-    echo "[mix_exs.sh] ERROR: post-condition failed — '\"ecto.setup\":' not found after Step 2" >&2
+# Post-condition: ecto.setup alias must be present (skipped when --no-ecto)
+if [[ -z "$NO_ECTO" ]]; then
+    if ! grep -qF '"ecto.setup":' "$MIX_EXS"; then
+        echo "[mix_exs.sh] ERROR: post-condition failed — '\"ecto.setup\":' not found after Step 2" >&2
+        exit 1
+    fi
+fi
+# Post-condition: ci: alias must always be present
+if ! grep -qF 'ci:' "$MIX_EXS"; then
+    echo "[mix_exs.sh] ERROR: post-condition failed — 'ci:' not found after Step 2" >&2
     exit 1
 fi
 
@@ -143,6 +179,13 @@ if ! grep -qF 'plt_file: {:no_warn' "$MIX_EXS"; then
         -e "s/<%= app_name_module %>/${APP_NAME_MODULE}/g" \
         -e "s/<%= app_name %>/${APP_NAME}/g" \
         "$DATA_DIR/project.txt")"
+
+    # Handle source_url: inject --github-url value or drop the line
+    if [[ -n "$GITHUB_URL" ]]; then
+        PROJECT_CONTENT="$(echo "$PROJECT_CONTENT" | sed "s|source_url: \"https://github.com/Combobulate-HQ/user-apps\"|source_url: \"${GITHUB_URL}\"|")"
+    else
+        PROJECT_CONTENT="$(echo "$PROJECT_CONTENT" | grep -v 'source_url:')"
+    fi
 
     python3 - "$MIX_EXS" "$PROJECT_CONTENT" <<'PYEOF'
 import sys
@@ -257,6 +300,32 @@ fi
 if ! grep -qF 'defp phoenix_deps do' "$MIX_EXS"; then
     echo "[mix_exs.sh] ERROR: post-condition failed — 'defp phoenix_deps do' not found after Step 5" >&2
     exit 1
+fi
+
+# ---------------------------------------------------------------------------
+# Step 6 (conditional): inject {:appsignal_phoenix,...} when --with-appsignal
+# Idempotent: skip if appsignal_phoenix already present.
+# ---------------------------------------------------------------------------
+if [[ -n "$WITH_APPSIGNAL" ]] && ! grep -qF '{:appsignal_phoenix,' "$MIX_EXS"; then
+    # Add to app_deps()
+    python3 - "$MIX_EXS" <<'PYEOF'
+import sys
+import re
+
+mix_exs_path = sys.argv[1]
+
+with open(mix_exs_path, 'r') as f:
+    content = f.read()
+
+# Insert {:appsignal_phoenix, "~> 2.0"} into defp app_deps do block
+content = content.replace(
+    '  defp app_deps do\n    []\n  end',
+    '  defp app_deps do\n    [\n      {:appsignal_phoenix, "~> 2.0"}\n    ]\n  end'
+)
+
+with open(mix_exs_path, 'w') as f:
+    f.write(content)
+PYEOF
 fi
 
 echo "[mix_exs.sh] done"

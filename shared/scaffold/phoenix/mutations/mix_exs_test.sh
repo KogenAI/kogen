@@ -22,7 +22,7 @@ assert() {
 
 setup_tmp() {
     local tmp
-    tmp="$(mktemp -d -t mut-XXXXXX)"
+    tmp="$(mktemp -d "${TMPDIR:-/tmp}/mut-XXXXXX")"
     cp -R "$FIXTURE_BASE/." "$tmp/"
     echo "$tmp"
 }
@@ -61,11 +61,18 @@ rm -rf "$tmp"
 # Case 7: missing anchor — script exits 1 and emits ERROR on stderr
 # Remove the {:lazy_html, anchor so Step 1 post-condition fails
 tmp="$(setup_tmp)"
-sed -i '' 's/{:lazy_html,.*/{:no_such_dep, "~> 0.0"}/' "$tmp/mix.exs"
+sed 's/{:lazy_html,.*/{:no_such_dep, "~> 0.0"}/' "$tmp/mix.exs" >"$tmp/mix.exs.tmp" && mv "$tmp/mix.exs.tmp" "$tmp/mix.exs"
 missing_anchor_exit=0
 missing_anchor_out="$("$MUTATION" "$tmp" fixture_app FixtureApp 2>&1)" || missing_anchor_exit=$?
 assert "mix_exs missing anchor exits 1" '[ "$missing_anchor_exit" -eq 1 ]'
 assert "mix_exs missing anchor emits ERROR message" 'echo "$missing_anchor_out" | grep -qi "ERROR\|post-condition"'
+rm -rf "$tmp"
+
+# Case 8: --no-ecto — ecto.setup absent, "ci": present, exits 0
+tmp="$(setup_tmp)"
+"$MUTATION" "$tmp" fixture_app FixtureApp --no-ecto >/dev/null
+assert "no-ecto: ecto.setup alias absent" '! grep -qF "\"ecto.setup\":" "$tmp/mix.exs"'
+assert "no-ecto: ci alias present" 'grep -qF "ci:" "$tmp/mix.exs"'
 rm -rf "$tmp"
 
 echo "$passed passed, $failed failed"
