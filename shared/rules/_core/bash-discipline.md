@@ -146,3 +146,31 @@ fi
 ```
 
 Prevents silent failures that would surface only when the app is run. Template renderers (e.g. `eex_render.sh`) should also fail if leftover unresolved `<%= ... %>` placeholders remain in output.
+
+## Cleanup Wrappers & Exit Code Propagation
+
+When wrapping a command in a cleanup block (e.g., `bash -c "cmd; rm -rf $TMP"`), the inner command's exit code is lost if cleanup succeeds. Pattern:
+
+```bash
+# WRONG: cleanup succeeds → exit 0 even if cmd failed
+bash -c "cmd; rm -rf $TMP"
+
+# CORRECT: capture exit, cleanup, then propagate
+RESULT=0
+inner_cmd || RESULT=$?
+cleanup_code
+exit $RESULT
+```
+
+For functions with cleanup-on-exit via `trap`, use the same pattern:
+
+```bash
+run_pin_check() {
+  local rc=0
+  # ... work ...
+  rm -rf "$TMP" || true  # cleanup must not override rc
+  return $rc
+}
+```
+
+Capture the inner command's exit code BEFORE cleanup runs, then propagate it after cleanup completes. This ensures the caller sees the actual success/failure of the work, not the cleanup side-effect.
