@@ -204,6 +204,7 @@ codegen/                          ← repo root
 - [ ] **`ai-agents/`** is orphaned — do not add files expecting them to be installed.
 - [ ] **`content_stable_cp`** lives in `install.sh`, not `utils.sh`.
 - [ ] **Rules are baked at install time** — subagents do not read rule files at runtime. Change a rule → `make install` to propagate.
+- [ ] **Repo root differs per machine/OS** — Linux servers (`~/apps/codegen` on the dashboard box) vs operator Macs (`~/Areas/Optimum/codegen`). NOTHING hardcodes it; scripts derive `CODEGEN_DIR` from `BASH_SOURCE`. See `context/deployment-topology.md`.
 
 ---
 
@@ -225,6 +226,7 @@ codegen/                          ← repo root
 | Dev loop, tech stack, make targets                     | `context/development.md`              |
 | Subagent system prompt assembly layers                 | `context/subagent-influence-stack.md` |
 | Claude token budget and context window behavior        | `context/claude-token-mechanics.md`   |
+| Deployment locations & path derivation                 | `context/deployment-topology.md`      |
 
 ---
 

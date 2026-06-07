@@ -15,7 +15,7 @@
 
 ## Layer 1 — Shared Rules (baked into system prompt)
 
-Source: OCG `shared/rules/` directory (canonical path varies per workstation — e.g., `~/Areas/Optimum/codegen/shared/rules/`). Baked into subagent prompts via Jinja `{% include %}` in templates under `shared/subagents/`. `make install` regenerates `~/.claude/agents/*.md` and commits to each project.
+Source: OCG `shared/rules/` directory (canonical root differs across machines AND OSes — Linux servers like combobulate + the Hetzner dashboard box, and operator Macs — so it is never hardcoded; e.g. `~/apps/codegen/shared/rules/` on the box vs `~/Areas/Optimum/codegen/shared/rules/` on a Mac. See `context/deployment-topology.md`). Baked into subagent prompts via Jinja `{% include %}` in templates under `shared/subagents/`. `make install` regenerates `~/.claude/agents/*.md` and commits to each project.
 
 Orchestrator loads rules LIVE at session start via `@codegen/rules/...` auto-includes. Subagents only see what was baked at last `make install`. Diverge silently if `make install` skipped after edit.
 

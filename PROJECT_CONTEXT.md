@@ -3,7 +3,7 @@
 ## Overview
 
 - **What**: Meta-tooling repo that generates and installs AI-agent harnesses (Claude Code, Pi) into developer machines. Produces launcher scripts, hook systems, subagent prompt files, and scaffold templates consumed by downstream Phoenix and static-site projects.
-- **Location**: `~/Areas/Optimum/codegen/` (dev) — installed artifacts land in `~/.claude/`, `~/.pi/`, and `/usr/local/bin/` (or `~/bin/`)
+- **Location**: codegen runs from different roots per machine/OS — Linux servers (combobulate prod/staging, Hetzner dashboard box `~/apps/codegen`) and operator Macs (`~/Areas/Optimum/codegen`). Root is never hardcoded; scripts derive it from `BASH_SOURCE`. Installed artifacts land in `~/.claude/`, `~/.pi/`, `/usr/local/bin/` (or `~/bin/`) — these are install targets, not source. See `context/deployment-topology.md`.
 - **Stack**: Bash + Python (generator pipeline), TypeScript (Pi extensions), Elixir/ExUnit (test harness), Jinja2-like template rendering via `process_template.py`
 - **Data flow**: `manifest.yaml` → `generate.sh` → rendered agent `.md` files → `install.sh` → `~/.claude/agents/`, hooks, launchers
 
@@ -33,6 +33,7 @@ Load this index always. Load every row whose trigger matches the prompt. Files a
 | `context/pi-extensions.md`            | Pi TypeScript extensions                                                            | pi-extension, askuserquestion, enforcement, web-utils, subagents extension, npm, TypeScript                                                                                                                         | harnesses/pi/pi-extensions/, generate-pi-extension.sh, npm modules, TypeScript source files                                    |
 | `context/development.md`              | Dev workflow + make targets                                                         | make install, make test, make test-stacks, CI/CD, Makefile, contribution, README, env vars                                                                                                                          | Makefile, README.md, STYLE_GUIDE.md, .env.sample, CI workflows                                                                 |
 | `context/repo-structure.md`           | Repository artifact ownership & structure                                           | ai-agents/, codegen/, bin/, index.html, ocg, codegen-build, codegen-scaffold, package.json, Makefile, root-level files, directory contents, artifact purpose                                                        | harnesses/, shared/, templates/, test_harness/, all top-level scripts, all top-level directories, .gitignore, Makefile changes |
+| `context/deployment-topology.md`      | Deployment locations, path derivation, multi-location topology                      | deployment, server, prod, staging, dashboard box, Hetzner, CODEGEN_DIR, OCG_CODEGEN_DIR, hardcode, BASH_SOURCE, multi-location, install target vs source                                                            | harnesses/, install.sh, context/deployment-topology.md (self)                                                                  |
 
 ## Generator Pipeline
 

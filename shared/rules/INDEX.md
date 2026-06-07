@@ -20,7 +20,7 @@ rules/
     hook-layering.md             one hook one concern; universal vs role-specific
     hook-test-coverage.md        ≥14 cases per guard, DENY + ALLOW paths
     nodejs-process-management.md process groups, SIGTERM/SIGKILL, detached spawn cleanup
-    shell-script-discipline.md   shebang, set -euo pipefail, quoting, trap, exit codes
+    shell-script-discipline.md   shebang, set -euo pipefail, quoting, trap, exit codes, path derivation
     rule-file-organization.md    line caps, INDEX update, make install rebake contract
   roles/                    ← universal role rules
     orchestrator.md         delegation/gates/commit timing/user comms/deploy

@@ -22,7 +22,7 @@ One-liner per target — for test target semantics see `context/test-harness.md`
 | Target                    | Purpose                                                                       |
 | ------------------------- | ----------------------------------------------------------------------------- |
 | `make install`            | Generate agents + install claude harness (full cycle)                         |
-| `make test`               | Run bash hook tests (`run-tests.sh`) — separate from ExUnit                   |
+| `make test`               | Hook-parity + harness-parity + test-generator + enforce-registry-parity + bash hook tests (`run-tests.sh`) + scaffold run-tests — parity/structure validation only; separate from ExUnit |
 | `make test-stacks`        | Run ExUnit stack scaffold tests — see `context/test-harness.md` for semantics |
 | `make test-stacks-claude` | Run ExUnit suite for Claude harness only                                      |
 | `make test-stacks-pi`     | Run ExUnit suite for Pi harness only                                          |
@@ -91,4 +91,4 @@ Missing Playwright is **non-fatal**: `BenchArtifacts.capture_screenshot/4` detec
 
 ## Deployment / Distribution
 
-No server deployment. Distribution = `make install` on each developer machine. CI validates that scaffold output compiles and hook tests pass. PRs require both `make test` and `make test-stacks` green before merge.
+Codegen runs on servers too — combobulate prod/staging and the Hetzner dashboard box all run codegen, in addition to operator Macs. Distribution = `make install` on each machine (server or Mac); each derives its root from `BASH_SOURCE`, never hardcoded. CI validates that scaffold output compiles and hook tests pass. PRs require both `make test` and `make test-stacks` green before merge. See `context/deployment-topology.md`.

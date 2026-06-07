@@ -133,6 +133,18 @@ Claude Code exposes the following lifecycle events. Codegen registers only the s
 
 Cross-reference: curator decision tree → `context/rules-roles.md` § Curator Write Surface; rule text → `shared/rules/roles/context-curator.md` § Write Surface.
 
+## context-index-parity Guard
+
+`harnesses/claude/hooks/context-index-parity.sh` — **PreToolUse (staging) + commit-time enforcement** — ensures context file additions are reflected in `PROJECT_CONTEXT.md` Domain Context Files table.
+
+**What it does**: When a `context/*.md` file is staged for addition (`git add context/foo.md`), the hook checks if `PROJECT_CONTEXT.md` is also staged AND its body contains the file's basename (`grep -qF "foo"`). Hook blocks Edit of either file if parity is broken.
+
+**Timing**: **Not a `make test` gate.** Fires during `git add` (staging) and is a commit-time block — the committer role will be unable to commit if a new `context/*.md` was added without a corresponding `PROJECT_CONTEXT.md` Domain Context Files table row.
+
+**Why it matters**: `PROJECT_CONTEXT.md` is the index that the planner uses to route work and select context files for delegation. A new context file without an index entry is invisible to the planner. The hook ensures the two stay synchronized.
+
+**How to satisfy it**: When adding a new context file, append a row to `PROJECT_CONTEXT.md` § Domain Context Files table with the file's basename in one of the table columns (typically the first column, the filename). The basename string (e.g., `"deployment-topology"` for `context/deployment-topology.md`) must appear in the staged `PROJECT_CONTEXT.md` body.
+
 ## Session Log Section Detection
 
 Hooks that check session log state use the `## <role>.*Section` pattern to detect agent completion:

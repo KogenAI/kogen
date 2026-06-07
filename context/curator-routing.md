@@ -22,6 +22,7 @@ All `[local]` blocks (project-specific knowledge about codegen's structure, mode
 - **Token mechanics (caching, prefix, lookback)** → `context/claude-token-mechanics.md`
 - **Pitch writing conventions** → `context/pitch-writing-guide.md`
 - **Benchmarking prohibitions** → `context/bench-prohibition.md`
+- **Deployment locations, path derivation, server topology** → `context/deployment-topology.md`
 
 Add new `context/*.md` files and **register them in `PROJECT_CONTEXT.md`** Domain Context Files table to maintain context-index-parity.
 
