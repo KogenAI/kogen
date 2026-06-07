@@ -76,6 +76,29 @@ For full make-target index including install/uninstall/CI targets, see `context/
 - Async: most stack tests are synchronous (file system I/O)
 - **ExUnit concurrency**: `max_cases` (default `System.schedulers_online() * 2`) governs how many test _modules_ run in parallel. Tests within a single module always run serially, regardless of `async: true`. To maximize concurrency, split fat modules into multiple `defmodule` blocks per file (each becomes an independent async unit). `test_harness/test/test_helper.exs` omits `:max_cases` override — the default is sufficient. Partition infrastructure (`--partitions 4`) was dropped in commit 9b09dc8 after splitting `static/iteration_test.exs`, `static/seed_test.exs`, `static/scaffold_test.exs` into 14 modules; single `mix test` per harness now scales naturally.
 
+## Deterministic Scaffold Testing vs. LLM-Driven Build Testing
+
+**Two distinct test paths**:
+
+1. **Deterministic scaffold variants** (e.g., `--no-ecto`): Use direct `codegen-scaffold` invocation via fixture helpers; no LLM involved. Validates scaffold output structure and compile correctness. Examples: `no_ecto_scaffold_test.exs` uses `run_no_ecto_scaffold/2`.
+2. **LLM-driven builds**: Use `run_codegen_build/3` (harness launcher via JSONL stream). Validates LLM iteration patterns, commit messages, reviewer phase. Example: `scaffold_test.exs` via `run_codegen_build`.
+
+**Fixture helper naming convention**: When a helper hardwires specific flags (e.g., `--no-ecto`), encode the flags in the function name for clarity:
+
+- ✅ `run_no_ecto_scaffold/2` — signals this helper runs with `--no-ecto` fixed
+- ❌ `run_codegen_scaffold/2` — too generic; doesn't signal fixed flags
+
+Naming prevents accidental parameter overrides that would be silently ignored. Example:
+
+```elixir
+def run_no_ecto_scaffold(root_dir, app_name) do
+  %{"NO_ECTO" => "1"}
+  |> System.cmd(codegen-scaffold, ["create", "--stack=phoenix", "--cwd=#{root_dir}", "--slug=#{app_name}"], ...)
+end
+```
+
+**Timeout guidance**: Deterministic scaffold runs (fixture setup only, no LLM) complete in seconds. Multi-phase LLM builds (scaffold + dev + review + commit) require 210+ seconds per iteration (deps.get 60s + compile 90s + LLM roundtrip 30-60s per phase).
+
 ## Fixture Isolation + Build Paths
 
 `Fixtures.isolated_tmp_dir/1` creates separate temp directories for each harness test, with stack-specific config:

@@ -188,6 +188,26 @@ if [[ -n "$NO_ECTO" ]] && [[ -f "$TARGET_DIR/Makefile" ]]; then
     grep -v 'ecto.rollback' "$TARGET_DIR/Makefile" >"$TARGET_DIR/Makefile.tmp" && mv "$TARGET_DIR/Makefile.tmp" "$TARGET_DIR/Makefile"
 fi
 
+# If --no-ecto, strip the two Ecto lines from the health controller
+# (mix phx.new --no-ecto generates no Repo module → SQL.query!/alias would fail compile).
+# Pattern set is unique to health_controller across all templates (verified, zero false positives).
+HEALTH_CONTROLLER="$TARGET_DIR/lib/${APP_NAME}_web/controllers/health_controller.ex"
+if [[ -n "$NO_ECTO" ]] && [[ -f "$HEALTH_CONTROLLER" ]]; then
+    # grep -v exits 1 when no lines match (impossible here — file always has other lines),
+    # but splitting grep and mv avoids the `&&` short-circuit that would abort under set -e
+    # before mv runs, leaving an empty .tmp in place of the original. Unconditional mv is safe.
+    # Note: mix format ran before Phase 1 (line ~131), so extra blank lines left by stripping
+    # these two Ecto lines remain in the generated file — cosmetic, Elixir-tolerant, harmless.
+    grep -vE 'alias Ecto\.Adapters\.SQL|SQL\.query!' "$HEALTH_CONTROLLER" \
+        >"$HEALTH_CONTROLLER.tmp"
+    mv "$HEALTH_CONTROLLER.tmp" "$HEALTH_CONTROLLER"
+    # Post-condition: both Ecto references must be gone
+    if grep -qE 'alias Ecto\.Adapters\.SQL|SQL\.query!' "$HEALTH_CONTROLLER"; then
+        echo "[scaffold.sh] ERROR: --no-ecto strip failed — Ecto refs remain in health_controller.ex" >&2
+        exit 1
+    fi
+fi
+
 # ---------------------------------------------------------------------------
 # Phase 2: run mutation scripts in fixed order
 # ---------------------------------------------------------------------------

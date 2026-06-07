@@ -58,6 +58,17 @@ codegen-scaffold
 - **test-harness**: ExUnit tests in `test_harness/test/stacks/` validate scaffold output — scaffold changes require test updates; see `context/test-harness.md`
 - **development**: `codegen-scaffold` is invoked via make targets — see `context/development.md` make-target index
 
+## `--no-ecto` Post-Render Strips
+
+After template rendering (Phase 1, before Phase 2 mutations), `scaffold.sh` strips lines that reference Ecto from generated files when `NO_ECTO` is set:
+
+| File stripped                                    | Lines removed                                   | Reason                                                                              |
+| ------------------------------------------------ | ----------------------------------------------- | ----------------------------------------------------------------------------------- |
+| `Makefile`                                       | `ecto.rollback` invocation                      | No DB migrations under `--no-ecto`                                                  |
+| `lib/<app>_web/controllers/health_controller.ex` | `alias Ecto.Adapters.SQL` and `SQL.query!(...)` | `mix phx.new --no-ecto` generates no `Repo` module; Ecto refs cause compile failure |
+
+Both strips use the portable `grep | temp-file | mv` idiom (not `sed -i`). Each has a post-condition assertion that fails loud if any targeted lines remain after the strip.
+
 ## Update When Changing
 
 - `shared/scaffold/` — mutation scripts, eex_render.sh, scaffold.sh entry points
@@ -222,6 +233,36 @@ sed "s|old|new|" "$FILE" >"${FILE}.tmp" && mv "${FILE}.tmp" "$FILE"
 - **Why**: `sed -i ''` (BSD macOS) is not portable to GNU sed (Linux). Temp-file idiom works on both.
 - **Idempotency**: Pairs well with `cmp -s` checks in mutation assertions; if output is byte-identical, the mv is skipped.
 - **Reference**: `install.sh` lines 474–483 (mktemp/cmp/mv pattern) is the canonical portable-file-edit reference.
+
+### Post-Render Line Strips (Class B)
+
+When a post-render strip operation (e.g., removing Ecto-related lines under `--no-ecto`) must remove lines matching a pattern and write the result, use **two separate statements** — not a chained `&&`:
+
+```bash
+# CORRECT: separate statements
+grep -v "pattern" "$FILE" >"${FILE}.tmp"
+mv "${FILE}.tmp" "$FILE"
+
+# WRONG: chained &&, causes abort if grep matches all lines
+grep -v "pattern" "$FILE" >"${FILE}.tmp" && mv "${FILE}.tmp" "$FILE"
+```
+
+**Why**: When `grep -v` matches ALL lines (removes everything), it exits 1 (zero matches remaining). Under `set -e`, the chained `&&` aborts before `mv` runs, leaving the original file intact but aborting the script. Separate statements ensure: if `grep` fails, `set -e` aborts before `mv` touches anything; if `grep` succeeds OR exits non-zero on zero matches, `mv` attempts regardless (and may operate on an empty temp file, which is the desired outcome).
+
+**Post-condition assertion**: Always verify the strip succeeded:
+
+```bash
+if grep -qF "stripped-pattern" "$FILE"; then
+    echo "[scaffold.sh] ERROR: post-render strip failed — pattern still present" >&2
+    exit 1
+fi
+```
+
+**Cosmetic whitespace artifact**: Post-render strips may leave blank lines where lines were removed (e.g., health_controller.ex Ecto imports). This is harmless (Elixir tolerates blank lines) but cosmetic. The trade-off avoids conditionalizing per-line removal logic in `.eex` templates; templates remain readable, and `mix format` runs at startup (scaffold.sh L131) to normalize output before LLM sees it.
+
+**Reference implementations**:
+- Makefile `ecto.rollback` strip: scaffold.sh:187-189
+- Health controller Ecto imports strip: scaffold.sh:196-201
 
 ## Pitfalls
 

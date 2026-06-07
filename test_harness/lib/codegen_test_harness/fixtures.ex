@@ -39,6 +39,7 @@ defmodule CodegenTestHarness.Fixtures do
 
   @codegen_build Path.expand("../../../codegen-build", __DIR__)
   @codegen_call Path.expand("../../../codegen-call", __DIR__)
+  @codegen_scaffold Path.expand("../../../codegen-scaffold", __DIR__)
   @codegen_build_timeout_ms 5_400_000
 
   @commit_contract_suffix """
@@ -185,6 +186,37 @@ defmodule CodegenTestHarness.Fixtures do
     end
 
     @codegen_call
+  end
+
+  @doc """
+  Runs `codegen-scaffold create --stack=phoenix --cwd=<parent> --slug=<slug> --no-ecto`
+  and returns the path to the scaffolded app directory.
+
+  The `--no-ecto` flag is unconditional — use this fixture only for no-ecto
+  scaffold tests. For general scaffold invocations, extend with a flags opt.
+
+  Raises if the scaffold exits non-zero.
+  """
+  @spec run_no_ecto_scaffold(String.t(), keyword()) :: String.t()
+  def run_no_ecto_scaffold(parent, opts) do
+    slug = Keyword.fetch!(opts, :slug)
+
+    unless File.exists?(@codegen_scaffold) do
+      raise "codegen-scaffold not found at #{@codegen_scaffold}"
+    end
+
+    {output, exit_code} =
+      System.cmd(
+        @codegen_scaffold,
+        ["create", "--stack=phoenix", "--cwd=#{parent}", "--slug=#{slug}", "--no-ecto"],
+        stderr_to_stdout: true
+      )
+
+    if exit_code != 0 do
+      raise "codegen-scaffold failed (exit=#{exit_code}):\n#{output}"
+    end
+
+    Path.join(parent, slug)
   end
 
   @doc """
