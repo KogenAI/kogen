@@ -53,7 +53,7 @@ See `.env.sample` and `.env.prod.sample` for full variable lists.
 - **Elixir module @moduledoc/@spec ordering**: credo's StrictModuleLayout requires `[:shortdoc, :moduledoc, :use, ...]` order — `@moduledoc` ALWAYS comes AFTER `defmodule ... do` and BEFORE `use`. Scaffold mutation credo_fix.sh enforces this when injecting @moduledoc into generated files.
 - **Bash module name derivation**: When converting slug to CamelCase module names, use `python3` one-liner (`python3 -c '...capitalize join...'`); pure-sed BRE is fragile across BSD/GNU + bash 3.2 case-fold gaps. Reference: `scaffold.sh` line 81.
 - **Python**: stdlib only in generator scripts — no third-party deps. One-liner scripts (e.g., module name derivation) can use python3 directly in Bash heredocs.
-- **TypeScript**: strict mode; each extension self-contained with own `package.json`
+- **TypeScript**: strict mode; each extension self-contained with own `package.json`. **Test isolation under parallel runners**: when tests capture stderr/stdout (e.g., to verify error handling), move capture to test-body scope rather than `beforeEach`/`afterEach` hooks — this ensures each test owns its capture window and avoids cross-test pollution under concurrent test runners. Restore streams in both resolve and reject paths to prevent leakage on assertion failure.
 - **Commit messages**: why-focused, delegated to committer subagent — never written directly by orchestrator
 
 ## Dev Scripts
@@ -95,7 +95,9 @@ Missing Playwright is **non-fatal**: `BenchArtifacts.capture_screenshot/4` detec
 - **Hook test failures are not ExUnit** — `make test` runs bash tests; `make test-stacks` runs ExUnit; they are separate suites
 - **`CODEGEN_DIR` must be absolute** — relative paths break symlink resolution in launchers
 - **Session log filename format must include `_HHMMSS`** — orchestrator creates logs with canonical `YYYYMMDD_HHMMSS_slug.md` naming; non-canonical forms (e.g., `YYYYMMDD-slug.md`) are blocked by reviewer-guard and dev-gate hooks at Edit time
-- **Flaky enforcement tests under parallel runners** — `pitch-shipped-before-stop.test.ts` in enforcement ext has pre-existing flakiness under parallel test execution (since commit 12775cd); use `git stash` + isolated test run to confirm pre-existing before investigating
+- **Makefile recipes run under `/bin/sh`, not bash** — process substitution (`< <(...)`) fails even on macOS where `/bin/sh` is bash-compat. Use pipeline patterns (`cat file | grep | tr | sed`) instead of bash-specific syntax in Makefile recipes and variable assignments.
+- **Flaky tests often indicate state leakage, not async timing** — investigate persistent state first (counter files, temp dirs, session IDs) before blaming concurrency. Example: counter files from `runHook()` calls (e.g., `claude-autoship-guard-<sessionId>.count`) persist across test runs; add explicit cleanup in `afterEach` to prevent accumulation and retry-cap failures every ~3rd run.
+- **TypeScript test isolation: capture streams at test-body scope** — when tests capture stderr/stdout to verify error handling, move capture to the test-body scope rather than `beforeEach`/`afterEach` hooks. Ensures each test owns its capture window and avoids cross-test pollution under parallel runners. Restore streams in both resolve and reject paths to prevent leakage on assertion failure.
 
 ## Deployment / Distribution
 

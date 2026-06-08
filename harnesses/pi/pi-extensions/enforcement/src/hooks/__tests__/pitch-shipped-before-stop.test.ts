@@ -11,17 +11,10 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 
-describe("pitch-shipped-before-stop", () => {
-  let _capturedHandler: (event: unknown) => Promise<unknown>;
+// concurrency: false — tests mutate process.env (CWD, SESSION_ID) and
+// process.stderr.write, which are process-global. Serialise to avoid races.
+describe("pitch-shipped-before-stop", { concurrency: false }, () => {
   let tmpDir: string;
-  let stderrOutput: string;
-  const originalStderrWrite = process.stderr.write.bind(process.stderr);
-
-  const mockPi = {
-    on: (_event: string, handler: (event: unknown) => Promise<unknown>) => {
-      _capturedHandler = handler;
-    },
-  };
 
   beforeEach(() => {
     tmpDir = fs.mkdtempSync(
@@ -34,21 +27,27 @@ describe("pitch-shipped-before-stop", () => {
     fs.mkdirSync(path.join(tmpDir, "codegen", "pitches", "shipped"), {
       recursive: true,
     });
-
-    stderrOutput = "";
-    // Capture stderr
-    (process.stderr as unknown as { write: (s: string) => boolean }).write = (
-      s: string,
-    ) => {
-      stderrOutput += s;
-      return true;
-    };
   });
 
   afterEach(() => {
-    // Restore stderr
-    (process.stderr as unknown as { write: typeof originalStderrWrite }).write =
-      originalStderrWrite;
+    // Clean up all counter files from this test suite — both the tmpDir-basename
+    // derived file (tests using default session ID) and any fixed session IDs
+    // used by specific tests (e.g. "name-check-sess-13"). Without this broad
+    // sweep, fixed-ID counter files accumulate across repeated runs; every ~3rd
+    // run hits the retry cap (>= 2) and runHook() returns early without warning,
+    // causing assertion failures.
+    const tmpBase = os.tmpdir();
+    try {
+      const files = fs.readdirSync(tmpBase);
+      files.forEach((f) => {
+        if (/^claude-autoship-guard-.*\.count$/.test(f)) {
+          fs.rmSync(path.join(tmpBase, f), { force: true });
+        }
+      });
+    } catch {
+      // tmpBase read failure; ignore — cleanup is best-effort
+    }
+
     fs.rmSync(tmpDir, { recursive: true, force: true });
     delete process.env["CWD"];
     delete process.env["SESSION_ID"];
@@ -81,25 +80,56 @@ describe("pitch-shipped-before-stop", () => {
     );
   }
 
-  async function runHook(sessionId = "test-session") {
-    process.env["CWD"] = tmpDir;
-    process.env["SESSION_ID"] = sessionId;
+  /**
+   * Run the hook and return captured stderr.
+   * Session ID defaults to tmpDir basename so each test run gets a unique
+   * counter file; afterEach cleans it up by the same derivation.
+   * Pass an explicit sessionId only when the test pre-seeds a counter file
+   * with a known name (tests 8, 11) — those tests clean up their own files.
+   */
+  async function runHook(
+    localTmpDir: string,
+    sessionId?: string,
+  ): Promise<string> {
+    const effectiveSessionId = sessionId ?? path.basename(localTmpDir);
+    process.env["CWD"] = localTmpDir;
+    process.env["SESSION_ID"] = effectiveSessionId;
+
+    let capturedHandler: (event: unknown) => Promise<unknown>;
+    const localMockPi = {
+      on: (_event: string, handler: (event: unknown) => Promise<unknown>) => {
+        capturedHandler = handler;
+      },
+    };
+
     const mod = await import("../pitch-shipped-before-stop");
     mod.register(
-      mockPi as unknown as import("@earendil-works/pi-coding-agent").ExtensionAPI,
+      localMockPi as unknown as import("@earendil-works/pi-coding-agent").ExtensionAPI,
     );
-    return _capturedHandler({
-      toolName: "session_shutdown",
-      toolCallId: "test-id",
-      input: {},
-    });
+
+    let stderrOutput = "";
+    const origStderrWrite = process.stderr.write.bind(process.stderr);
+    process.stderr.write = (s: string) => {
+      stderrOutput += s;
+      return true;
+    };
+    try {
+      await capturedHandler!({
+        toolName: "session_shutdown",
+        toolCallId: "test-id",
+        input: {},
+      });
+    } finally {
+      process.stderr.write = origStderrWrite;
+    }
+    return stderrOutput;
   }
 
   // ── Test 1: warns when committer-section present + pitch in ready/ ─────────
   it("warns when committer section present and pitch in ready/", async () => {
     writeLog("## committer Section\n\nCommitted.\n");
     writePitchReady("my-feature.md");
-    await runHook("warn-sess-1");
+    const stderrOutput = await runHook(tmpDir);
     assert.ok(
       stderrOutput.includes("pitch-shipped-before-stop"),
       "expected warning on stderr",
@@ -111,7 +141,7 @@ describe("pitch-shipped-before-stop", () => {
   it("does not warn when no pitches in ready/", async () => {
     writeLog("## committer Section\n\nCommitted.\n");
     writePitchShipped("my-feature.md");
-    await runHook("shipped-sess-2");
+    const stderrOutput = await runHook(tmpDir);
     assert.ok(
       !stderrOutput.includes("pitch-shipped-before-stop"),
       "expected no warning",
@@ -121,7 +151,7 @@ describe("pitch-shipped-before-stop", () => {
   // ── Test 3: no warning when no step log ────────────────────────────────────
   it("does not warn when no step log exists", async () => {
     writePitchReady("my-feature.md");
-    await runHook("no-log-sess-3");
+    const stderrOutput = await runHook(tmpDir, "no-log-sess-3");
     assert.ok(!stderrOutput.includes("WARNING"), "expected no warning");
   });
 
@@ -129,7 +159,7 @@ describe("pitch-shipped-before-stop", () => {
   it("does not warn when committer section absent", async () => {
     writeLog("## reviewer-phoenix Section\n\nQUALITY APPROVED\n");
     writePitchReady("my-feature.md");
-    await runHook("no-committer-sess-4");
+    const stderrOutput = await runHook(tmpDir, "no-committer-sess-4");
     assert.ok(!stderrOutput.includes("WARNING"), "expected no warning");
   });
 
@@ -138,7 +168,7 @@ describe("pitch-shipped-before-stop", () => {
     process.env["CLAUDE_ROLE"] = "dashboard-build";
     writeLog("## committer Section\n\nCommitted.\n");
     writePitchReady("my-feature.md");
-    await runHook("dashboard-sess-5");
+    const stderrOutput = await runHook(tmpDir, "dashboard-sess-5");
     assert.ok(!stderrOutput.includes("WARNING"), "expected no warning");
   });
 
@@ -147,7 +177,7 @@ describe("pitch-shipped-before-stop", () => {
     process.env["CODEGEN_NO_AUTOSHIP"] = "1";
     writeLog("## committer Section\n\nCommitted.\n");
     writePitchReady("my-feature.md");
-    await runHook("no-autoship-sess-6");
+    const stderrOutput = await runHook(tmpDir, "no-autoship-sess-6");
     assert.ok(!stderrOutput.includes("WARNING"), "expected no warning");
   });
 
@@ -156,7 +186,7 @@ describe("pitch-shipped-before-stop", () => {
     process.env["PI_ROLE"] = "dashboard-build";
     writeLog("## committer Section\n\nCommitted.\n");
     writePitchReady("my-feature.md");
-    await runHook("pi-role-sess-7");
+    const stderrOutput = await runHook(tmpDir, "pi-role-sess-7");
     assert.ok(!stderrOutput.includes("WARNING"), "expected no warning");
   });
 
@@ -171,7 +201,7 @@ describe("pitch-shipped-before-stop", () => {
     );
     fs.writeFileSync(counterFile, "2");
 
-    await runHook("cap-sess-8");
+    const stderrOutput = await runHook(tmpDir, "cap-sess-8");
     assert.ok(!stderrOutput.includes("WARNING"), "expected no warning at cap");
 
     fs.rmSync(counterFile, { force: true });
@@ -188,7 +218,7 @@ describe("pitch-shipped-before-stop", () => {
     );
     fs.rmSync(counterFile, { force: true });
 
-    await runHook("count-sess-9");
+    await runHook(tmpDir, "count-sess-9");
     const cnt = parseInt(
       fs.readFileSync(counterFile, "utf8").trim() || "0",
       10,
@@ -205,7 +235,7 @@ describe("pitch-shipped-before-stop", () => {
       recursive: true,
       force: true,
     });
-    await runHook("no-pitches-sess-10");
+    const stderrOutput = await runHook(tmpDir, "no-pitches-sess-10");
     assert.ok(!stderrOutput.includes("WARNING"), "expected no warning");
   });
 
@@ -220,7 +250,7 @@ describe("pitch-shipped-before-stop", () => {
     );
     fs.writeFileSync(counterFile, "1");
 
-    await runHook("second-warn-sess-11");
+    const stderrOutput = await runHook(tmpDir, "second-warn-sess-11");
     assert.ok(stderrOutput.includes("WARNING"), "expected warning at count=1");
     fs.rmSync(counterFile, { force: true });
   });
@@ -232,7 +262,7 @@ describe("pitch-shipped-before-stop", () => {
       force: true,
     });
     writePitchReady("my-feature.md");
-    await runHook("no-logging-sess-12");
+    const stderrOutput = await runHook(tmpDir, "no-logging-sess-12");
     assert.ok(!stderrOutput.includes("WARNING"), "expected no warning");
   });
 
@@ -240,7 +270,7 @@ describe("pitch-shipped-before-stop", () => {
   it("warning message includes pitch basename", async () => {
     writeLog("## committer Section\n\nCommitted.\n");
     writePitchReady("orchestrator-discipline.md");
-    await runHook("name-check-sess-13");
+    const stderrOutput = await runHook(tmpDir, "name-check-sess-13");
     assert.ok(
       stderrOutput.includes("orchestrator-discipline.md"),
       "expected pitch basename in warning",
@@ -251,7 +281,36 @@ describe("pitch-shipped-before-stop", () => {
   it("returns null/undefined (observe-only — cannot block)", async () => {
     writeLog("## committer Section\n\nCommitted.\n");
     writePitchReady("my-feature.md");
-    const result = await runHook("observe-sess-14");
+
+    // Run hook directly to capture return value alongside stderr
+    process.env["CWD"] = tmpDir;
+    process.env["SESSION_ID"] = "observe-sess-14";
+
+    let capturedHandler: (event: unknown) => Promise<unknown>;
+    const localMockPi = {
+      on: (_event: string, handler: (event: unknown) => Promise<unknown>) => {
+        capturedHandler = handler;
+      },
+    };
+
+    const mod = await import("../pitch-shipped-before-stop");
+    mod.register(
+      localMockPi as unknown as import("@earendil-works/pi-coding-agent").ExtensionAPI,
+    );
+
+    let result: unknown;
+    const origStderrWrite = process.stderr.write.bind(process.stderr);
+    process.stderr.write = (_s: string) => true;
+    try {
+      result = await capturedHandler!({
+        toolName: "session_shutdown",
+        toolCallId: "test-id",
+        input: {},
+      });
+    } finally {
+      process.stderr.write = origStderrWrite;
+    }
+
     // session_shutdown handlers must NOT return a block result
     assert.ok(
       result == null || (result as { block?: boolean }).block !== true,

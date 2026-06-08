@@ -24,14 +24,18 @@ run_test() {
             echo "$out"
             echo "FAIL: $name — $summary"
         else
-            echo "ok: $name — $summary"
+            if [ -n "${VERBOSE:-}" ]; then
+                echo "ok: $name — $summary"
+            fi
         fi
     else
         echo "$out"
         if [ "$rc" -ne 0 ]; then
             echo "FAIL: $name — no summary line (exit $rc)"
         else
-            echo "ok: $name — (no summary)"
+            if [ -n "${VERBOSE:-}" ]; then
+                echo "ok: $name — (no summary)"
+            fi
         fi
     fi
     return $rc
@@ -63,4 +67,6 @@ if [ "$fails" -gt 0 ]; then
     echo "scaffold mutation tests: $fails file(s) FAILED"
     exit 1
 fi
-echo "scaffold mutation tests: all PASS"
+if [ -n "${VERBOSE:-}" ]; then
+    echo "scaffold mutation tests: all PASS"
+fi

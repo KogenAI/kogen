@@ -25,7 +25,10 @@ run_one() {
         printf 'FAIL: %s — %s\n%s\n' "$name" "$last" "$out"
         return 1
     fi
-    printf 'ok:   %s — %s\n' "$name" "$last"
+    if [ -n "${VERBOSE:-}" ]; then
+        printf 'ok:   %s — %s\n' "$name" "$last"
+    fi
+    return 0
 }
 
 export -f run_one
@@ -47,7 +50,9 @@ py_rc=$?
 if [ "$py_rc" -eq 0 ]; then
     # Extract test count from unittest output (e.g. "Ran 61 tests in 0.025s")
     py_summary=$(printf '%s' "$py_out" | grep -E "^Ran [0-9]+ test" | tail -1 || echo "")
-    printf 'ok:   python-unittest — %s\n' "$py_summary"
+    if [ -n "${VERBOSE:-}" ]; then
+        printf 'ok:   python-unittest — %s\n' "$py_summary"
+    fi
 else
     printf 'FAIL: python-unittest\n%s\n' "$py_out"
 fi

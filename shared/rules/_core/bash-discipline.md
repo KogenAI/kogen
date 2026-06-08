@@ -243,12 +243,40 @@ When an install script runs in a hermetic test environment where `$HOME` is chan
 - Example: instead of `npx prettier`, find the real prettier binary: `grep -v shims <<< "$PATH" | tr ':' '\n' | while read p; do [ -x "$p/prettier" ] && { "$p/prettier" ...; break; }; done`
 - Also note: `MISE_SKIP_CONFIG=1` skips tool-version config loading but does NOT bypass global config trust checks — the trust lookup uses `getpwuid()` for path resolution, not `$HOME` env var, so trust records may still fail with a changed `$HOME`.
 
+## Conditional Final Statements
+
+**FORBIDDEN: `[ condition ] && action` as final statement** — the one-liner flips the exit/return code when condition is false.
+
+```bash
+# WRONG: if VERBOSE unset, exits/returns non-zero
+my_func() {
+  do_work
+  [ -n "${VERBOSE:-}" ] && printf 'debug'  # ← LAST LINE: flips rc
+}
+
+# CORRECT: if/then/fi + explicit return
+my_func() {
+  do_work
+  if [ -n "${VERBOSE:-}" ]; then
+    printf 'debug'
+  fi
+  return 0
+}
+```
+
+The `&&` exits with the **condition's** result, not the action's. When condition fails (e.g., `VERBOSE` unset), the one-liner exits 1, breaking pass/fail accounting.
+
+Safe only when followed by other statements. Use `if/then/fi` + explicit `return 0` or `exit 0` for last-statement conditionals. Applies to any `[ test ] && action` pattern as function/script final line.
+
 ## Test Output Control (VERBOSE Gating)
 
 **Quiet-on-pass pattern with VERBOSE gating** — suppress verbose test output in normal runs, emit on demand:
 
 ```bash
-[ -n "${VERBOSE:-}" ] && printf 'debug output'
+if [ -n "${VERBOSE:-}" ]; then
+    printf 'debug output'
+fi
+return 0
 ```
 
-This pattern is bash-3.2-safe (no `set -e` failure with `&&`), scales across many test files, and is consistent. Guards multiple test runners and leaf test files. Use this idiom for any debug output that should be controlled by the `VERBOSE` environment variable. Example: `[ -n "${VERBOSE:-}" ] && echo "Testing $file"` emits only when `VERBOSE=1` is set.
+Scales across test files and is bash-3.2-compatible. Example: `if [ -n "${VERBOSE:-}" ]; then echo "Testing $file"; fi` emits only when `VERBOSE=1` is set, and does not flip the exit code.

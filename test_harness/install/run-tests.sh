@@ -28,7 +28,9 @@ for t in "${files[@]}"; do
             echo "FAIL: $name — $summary"
             fails=$((fails + 1))
         else
-            echo "ok: $name — $summary"
+            if [ -n "${VERBOSE:-}" ]; then
+                echo "ok: $name — $summary"
+            fi
         fi
     else
         echo "$out"
@@ -36,7 +38,9 @@ for t in "${files[@]}"; do
             echo "FAIL: $name — no summary line (exit $rc)"
             fails=$((fails + 1))
         else
-            echo "ok: $name — (no summary)"
+            if [ -n "${VERBOSE:-}" ]; then
+                echo "ok: $name — (no summary)"
+            fi
         fi
     fi
 done
@@ -45,4 +49,6 @@ if [ "$fails" -gt 0 ]; then
     echo "install tests: $fails file(s) FAILED"
     exit 1
 fi
-echo "install tests: all PASS"
+if [ -n "${VERBOSE:-}" ]; then
+    echo "install tests: all PASS"
+fi

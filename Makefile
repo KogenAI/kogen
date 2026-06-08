@@ -25,7 +25,7 @@ hook-parity:
 	rc=$$?; [ -n "$$VERBOSE" ] && printf '%s\n' "$$out"; \
 	[ $$rc -eq 0 ] || { [ -z "$$VERBOSE" ] && printf '%s\n' "$$out"; exit $$rc; }
 	@diff -u "$(SCRIPT_DIR)/harnesses/claude/claude-code-settings.json" /tmp/claude-code-settings-parity.json || exit 1
-	@echo "hook-parity: PASS"
+	@[ -z "$$VERBOSE" ] || echo "hook-parity: PASS"
 
 .PHONY: hook-header-parity
 hook-header-parity:
@@ -35,7 +35,7 @@ hook-header-parity:
 		--check-headers 2>&1); \
 	rc=$$?; [ -n "$$VERBOSE" ] && printf '%s\n' "$$out"; \
 	[ $$rc -eq 0 ] || { [ -z "$$VERBOSE" ] && printf '%s\n' "$$out"; exit $$rc; }
-	@echo "hook-header-parity: PASS"
+	@[ -z "$$VERBOSE" ] || echo "hook-header-parity: PASS"
 
 install:
 	@if ! command -v python3 >/dev/null 2>&1; then \
@@ -117,7 +117,7 @@ enforce-registry-parity:
 		diff -u "$$committed_index" /tmp/enforce-parity-index.ts.tmp || true; \
 		fail=1; \
 	fi; \
-	if [ $$fail -eq 0 ]; then echo "enforce-registry-parity: PASS"; fi; \
+	if [ $$fail -eq 0 ] && [ -n "$$VERBOSE" ]; then echo "enforce-registry-parity: PASS"; fi; \
 	exit $$fail
 
 .PHONY: harness-parity
@@ -135,7 +135,7 @@ harness-parity:
 			fail=1; \
 		fi; \
 	done; \
-	[ $$fail -eq 0 ] && echo "harness-parity: PASS"; \
+	[ $$fail -eq 0 ] && [ -n "$$VERBOSE" ] && echo "harness-parity: PASS" || true; \
 	exit $$fail
 
 # test: run every PreToolUse/SubagentStop/Stop hook unit-test script in parallel.
@@ -145,11 +145,13 @@ harness-parity:
 # concurrently via & + wait to reduce wall time.
 test: hook-parity hook-header-parity harness-parity test-generator enforce-registry-parity
 	@set -e; \
-	pids=(); labels=(); \
-	./harnesses/claude/hooks/run-tests.sh & pids+=($$!); labels+=(hooks); \
-	./shared/scaffold/phoenix/run-tests.sh & pids+=($$!); labels+=(scaffold-phoenix); \
-	./test_harness/install/run-tests.sh & pids+=($$!); labels+=(install); \
-	( \
+	tmp_hooks=$$(mktemp); tmp_scaffold=$$(mktemp); tmp_install=$$(mktemp); \
+	tmp_npm=$$(mktemp); tmp_subagents=$$(mktemp); \
+	pids=(); labels=(); tmps=(); \
+	{ ./harnesses/claude/hooks/run-tests.sh; } > "$$tmp_hooks" 2>&1 & pids+=($$!); labels+=(hooks); tmps+=("$$tmp_hooks"); \
+	{ ./shared/scaffold/phoenix/run-tests.sh; } > "$$tmp_scaffold" 2>&1 & pids+=($$!); labels+=(scaffold-phoenix); tmps+=("$$tmp_scaffold"); \
+	{ ./test_harness/install/run-tests.sh; } > "$$tmp_install" 2>&1 & pids+=($$!); labels+=(install); tmps+=("$$tmp_install"); \
+	{ \
 		fail=0; \
 		for ext in enforcement askuserquestion subagents web-utils; do \
 			ext_dir="$(SCRIPT_DIR)/harnesses/pi/pi-extensions/$$ext"; \
@@ -167,9 +169,9 @@ test: hook-parity hook-header-parity harness-parity test-generator enforce-regis
 				fi; \
 			fi; \
 		done; \
-		exit "$$fail" \
-	) & pids+=($$!); labels+=(npm-ext); \
-	( \
+		exit "$$fail"; \
+	} > "$$tmp_npm" 2>&1 & pids+=($$!); labels+=(npm-ext); tmps+=("$$tmp_npm"); \
+	{ \
 		ext_dir="$(SCRIPT_DIR)/harnesses/pi/pi-extensions/subagents"; \
 		if [ -d "$$ext_dir/test/integration" ] && [ -n "$$(ls "$$ext_dir/test/integration/"*.test.ts 2>/dev/null)" ]; then \
 			if [ -n "$$VERBOSE" ]; then \
@@ -183,21 +185,31 @@ test: hook-parity hook-header-parity harness-parity test-generator enforce-regis
 					exit 1; \
 				fi; \
 			fi; \
-		fi \
-	) & pids+=($$!); labels+=(subagents-integration); \
+		fi; \
+	} > "$$tmp_subagents" 2>&1 & pids+=($$!); labels+=(subagents-integration); tmps+=("$$tmp_subagents"); \
 	fail=0; failed_labels=(); \
 	for i in "$${!pids[@]}"; do \
 		if ! wait "$${pids[$$i]}"; then \
 			fail=1; \
 			failed_labels+=("$${labels[$$i]}"); \
 		fi; \
+		cat "$${tmps[$$i]}"; \
 	done; \
 	if [ "$$fail" -eq 0 ]; then \
 		echo "ALL CLEAR ✅ make test"; \
 	else \
+		bash_fails=$$(cat "$$tmp_hooks" "$$tmp_scaffold" "$$tmp_install" 2>/dev/null | grep -oE 'FAIL: [^ —]+' | sed 's/FAIL: //' | tr '\n' ',' | sed 's/,$$//' || true); \
+		npm_fails=$$(cat "$$tmp_npm" "$$tmp_subagents" 2>/dev/null | grep -oE '▶ Test: [^ —]+' | sed 's/▶ Test: //' | tr '\n' ',' | sed 's/,$$//' || true); \
+		all_fails="$$bash_fails"; \
+		[ -n "$$npm_fails" ] && [ -n "$$all_fails" ] && all_fails="$$all_fails,$$npm_fails" || all_fails="$$all_fails$$npm_fails"; \
 		joined=$$(printf '%s, ' "$${failed_labels[@]}"); joined=$${joined%, }; \
-		echo "FAILED ❌ make test — $$joined"; \
+		if [ -n "$$all_fails" ]; then \
+			echo "FAILED ❌ make test — $$joined ($$all_fails)"; \
+		else \
+			echo "FAILED ❌ make test — $$joined"; \
+		fi; \
 	fi; \
+	rm -f "$$tmp_hooks" "$$tmp_scaffold" "$$tmp_install" "$$tmp_npm" "$$tmp_subagents"; \
 	exit "$$fail"
 
 .PHONY: test-generator test-generator-python

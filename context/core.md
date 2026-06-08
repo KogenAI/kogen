@@ -100,24 +100,24 @@ All forms compose with `bypass_roles` prelude (if specified): the bypass exits e
 
 ### Registry Fields
 
-| Field          | Type   | Purpose                                                             | Default |
-| -------------- | ------ | ------------------------------------------------------------------- | ------- |
-| `id`           | string | Hook filename slug (kebab-case)                                     | —       |
-| `kind`         | string | `denial` (full-file generation) or `registration` (header-only injection) | `denial` |
-| `generated`    | bool   | Compiler owns the output; `make install` regenerates it. Only valid for `kind: denial` | —       |
-| `event`        | string | Hook event (PreToolUse, SubagentStop, Stop)                         | —       |
-| `source`       | string | COMMAND or FILE_PATH                                                | COMMAND |
-| `mode`         | string | deny or allowlist                                                   | deny    |
-| `tool_guard`   | string | Canonical registry form; rendered to hook header as `matcher:`. Tool name (Bash, Write, Edit, …) | —       |
-| `match`        | string | Single regex-neutral pattern (mutually exclusive with `match_all`). Only for `kind: denial` | —       |
-| `match_all`    | list   | AND-logic pattern list (mutually exclusive with `match`). Only for `kind: denial` | —       |
-| `message`      | string | Denial reason shown to agent. Only for `kind: denial`               | —       |
-| `signal`       | string | Hook signal (none, AGENT_TYPE, …)                                   | none    |
-| `role`         | string | Role scope: `*` (all) or pipe-separated (e.g., committer\|reviewer) | `*`     |
-| `bypass_roles` | list   | Launcher-mode values (debug, shape, ops) that exit before gates     | —       |
-| `harnesses`    | string | Canonical form: `claude` or `pi` (registry enum). Rendered to hook header as `claude_code` or `pi`. Deployment target (all, claude, pi) | all       |
-| `rationale`    | string | Hook rationale text (optional, supports multi-line via YAML block scalar `\|`). For `kind: registration` only | —       |
-| `canonicalize` | string | Path canonicalization (repo_relative); FILE_PATH only               | —       |
+| Field          | Type   | Purpose                                                                                                                                 | Default  |
+| -------------- | ------ | --------------------------------------------------------------------------------------------------------------------------------------- | -------- |
+| `id`           | string | Hook filename slug (kebab-case)                                                                                                         | —        |
+| `kind`         | string | `denial` (full-file generation) or `registration` (header-only injection)                                                               | `denial` |
+| `generated`    | bool   | Compiler owns the output; `make install` regenerates it. Only valid for `kind: denial`                                                  | —        |
+| `event`        | string | Hook event (PreToolUse, SubagentStop, Stop)                                                                                             | —        |
+| `source`       | string | COMMAND or FILE_PATH                                                                                                                    | COMMAND  |
+| `mode`         | string | deny or allowlist                                                                                                                       | deny     |
+| `tool_guard`   | string | Canonical registry form; rendered to hook header as `matcher:`. Tool name (Bash, Write, Edit, …)                                        | —        |
+| `match`        | string | Single regex-neutral pattern (mutually exclusive with `match_all`). Only for `kind: denial`                                             | —        |
+| `match_all`    | list   | AND-logic pattern list (mutually exclusive with `match`). Only for `kind: denial`                                                       | —        |
+| `message`      | string | Denial reason shown to agent. Only for `kind: denial`                                                                                   | —        |
+| `signal`       | string | Hook signal (none, AGENT_TYPE, …)                                                                                                       | none     |
+| `role`         | string | Role scope: `*` (all) or pipe-separated (e.g., committer\|reviewer)                                                                     | `*`      |
+| `bypass_roles` | list   | Launcher-mode values (debug, shape, ops) that exit before gates                                                                         | —        |
+| `harnesses`    | string | Canonical form: `claude` or `pi` (registry enum). Rendered to hook header as `claude_code` or `pi`. Deployment target (all, claude, pi) | all      |
+| `rationale`    | string | Hook rationale text (optional, supports multi-line via YAML block scalar `\|`). For `kind: registration` only                           | —        |
+| `canonicalize` | string | Path canonicalization (repo_relative); FILE_PATH only                                                                                   | —        |
 
 ### Pattern Dialect
 

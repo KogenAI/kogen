@@ -22,7 +22,10 @@ run_one() {
         printf 'FAIL: %s — %s\n%s\n' "$name" "$last" "$out"
         return 1
     fi
-    printf 'ok:   %s — %s\n' "$name" "$last"
+    if [ -n "${VERBOSE:-}" ]; then
+        printf 'ok:   %s — %s\n' "$name" "$last"
+    fi
+    return 0
 }
 
 export -f run_one
