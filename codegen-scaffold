@@ -31,10 +31,10 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 
-# ── Version pins (single in-repo source) ──────────────────────────────────────
-ELIXIR_VERSION="1.19.5"
-NODE_VERSION="24.14.0"
-OTP_VERSION="28.4.1"
+# ── Version defaults (empty = resolve from mise at runtime) ───────────────────
+ELIXIR_VERSION=""
+NODE_VERSION=""
+OTP_VERSION=""
 
 # ── Arg state ─────────────────────────────────────────────────────────────────
 SUBCOMMAND=""
@@ -159,6 +159,18 @@ while [[ $# -gt 0 ]]; do
         ;;
     esac
 done
+
+# ── Fill empty version vars from box-live mise current ────────────────────────
+# Allows flag overrides to win; falls back to resolved versions on this machine.
+if [[ -z "$ELIXIR_VERSION" ]]; then
+    ELIXIR_VERSION="$(mise current elixir 2>/dev/null || true)"
+fi
+if [[ -z "$OTP_VERSION" ]]; then
+    OTP_VERSION="$(mise current erlang 2>/dev/null || true)"
+fi
+if [[ -z "$NODE_VERSION" ]]; then
+    NODE_VERSION="$(mise current node 2>/dev/null || true)"
+fi
 
 # ── Validate common required args ─────────────────────────────────────────────
 if [[ -z "$STACK" ]]; then
@@ -327,6 +339,10 @@ do_create() {
     # Atomic move into final position
     mkdir -p "$parent_dir"
     mv "$TEMP_PARENT/$SLUG" "$target_dir"
+
+    # Re-trust after atomic mv: mise trust is keyed to the config file's absolute path;
+    # a mv invalidates trust recorded against the pre-move temp path.
+    mise trust "$target_dir/.mise.toml" >/dev/null 2>&1 || true
 
     # Success — disarm trap
     trap - EXIT

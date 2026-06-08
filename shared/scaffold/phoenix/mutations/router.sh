@@ -23,7 +23,7 @@ if [ ! -f "$ROUTER" ]; then
     exit 1
 fi
 
-HEALTH_ROUTE="    get \"/health\", ${APP_NAME_MODULE}Web.HealthController, :index"
+HEALTH_ROUTE="    get \"/health\", HealthController, :index"
 
 if ! grep -qF 'HealthController' "$ROUTER"; then
     # Insert health route before the closing `end` of the first `scope "/"` block.

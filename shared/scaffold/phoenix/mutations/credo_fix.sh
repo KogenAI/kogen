@@ -42,7 +42,7 @@ APP_NAME="$(echo "$APP_MODULE" | sed 's/\([A-Z]\)/_\1/g' | tr '[:upper:]' '[:low
 # ---------------------------------------------------------------------------
 CORE_COMPONENTS="$APP_PATH/lib/${APP_NAME}_web/components/core_components.ex"
 if [ -f "$CORE_COMPONENTS" ]; then
-    if ! grep -qF '@moduledoc "Provides core UI components."' "$CORE_COMPONENTS"; then
+    if ! grep -q '@moduledoc' "$CORE_COMPONENTS"; then
         python3 - "$CORE_COMPONENTS" <<'PYEOF'
 import sys, re
 
@@ -79,7 +79,7 @@ fi
 # ---------------------------------------------------------------------------
 LAYOUTS="$APP_PATH/lib/${APP_NAME}_web/components/layouts.ex"
 if [ -f "$LAYOUTS" ]; then
-    if ! grep -qF '@moduledoc "Provides layout components."' "$LAYOUTS"; then
+    if ! grep -q '@moduledoc' "$LAYOUTS"; then
         python3 - "$LAYOUTS" <<'PYEOF'
 import sys, re
 
@@ -121,7 +121,7 @@ fi
 # ---------------------------------------------------------------------------
 WEB_EX="$APP_PATH/lib/${APP_NAME}_web.ex"
 if [ -f "$WEB_EX" ]; then
-    if ! grep -qF '@moduledoc false' "$WEB_EX"; then
+    if ! grep -q '@moduledoc' "$WEB_EX"; then
         python3 - "$WEB_EX" <<'PYEOF'
 import sys, re
 
@@ -158,7 +158,7 @@ fi
 # ---------------------------------------------------------------------------
 PAGE_CTRL="$APP_PATH/lib/${APP_NAME}_web/controllers/page_controller.ex"
 if [ -f "$PAGE_CTRL" ]; then
-    if ! grep -qF '@moduledoc false' "$PAGE_CTRL"; then
+    if ! grep -q '@moduledoc' "$PAGE_CTRL"; then
         python3 - "$PAGE_CTRL" <<'PYEOF'
 import sys, re
 
@@ -218,7 +218,7 @@ fi
 # ---------------------------------------------------------------------------
 ERROR_HTML="$APP_PATH/lib/${APP_NAME}_web/controllers/error_html.ex"
 if [ -f "$ERROR_HTML" ]; then
-    if ! grep -qF '@moduledoc false' "$ERROR_HTML"; then
+    if ! grep -q '@moduledoc' "$ERROR_HTML"; then
         python3 - "$ERROR_HTML" <<'PYEOF'
 import sys, re
 
@@ -275,7 +275,7 @@ fi
 # ---------------------------------------------------------------------------
 ERROR_JSON="$APP_PATH/lib/${APP_NAME}_web/controllers/error_json.ex"
 if [ -f "$ERROR_JSON" ]; then
-    if ! grep -qF '@moduledoc false' "$ERROR_JSON"; then
+    if ! grep -q '@moduledoc' "$ERROR_JSON"; then
         python3 - "$ERROR_JSON" <<'PYEOF'
 import sys, re
 

@@ -69,6 +69,12 @@ After template rendering (Phase 1, before Phase 2 mutations), `scaffold.sh` stri
 
 Both strips use the portable `grep | temp-file | mv` idiom (not `sed -i`). Each has a post-condition assertion that fails loud if any targeted lines remain after the strip.
 
+### HealthController Route in Router
+
+The `shared/scaffold/phoenix/mutations/router.sh` mutation wires the health check endpoint into the router. Prior to the bug-fix session, the route string included an unnecessary module prefix: `${APP_NAME_MODULE}Web.HealthController`. This was aliased away by default Phoenix router scope configuration, making it overly verbose.
+
+Fixed: **bare `HealthController`** (drop `${APP_NAME_MODULE}Web.` prefix) — the router scope already provides the alias, so the full path is redundant. The idempotency guard (`grep -qF 'HealthController'`) still matches the bare form.
+
 ## Update When Changing
 
 - `shared/scaffold/` — mutation scripts, eex_render.sh, scaffold.sh entry points
@@ -121,6 +127,20 @@ The `create` path uses **transactional temp-parent + trap**: all mutations run i
 `--with-appsignal`: Adds appsignal_phoenix dep (dev-only for telemetry testing); requires `APPSIGNAL_PUSH_API_KEY` env var at runtime (opt-in, not default).
 
 `--github-url`: Populates `source_url:` line in mix.exs project() block; omitted if not supplied.
+
+### Version Defaults (Dispatcher → Scaffold Flow)
+
+`codegen-scaffold` maintains version pins as the single source of truth. The dispatcher (entry point) initializes version variables with empty strings, then fills them post-flag-parse with two strategies:
+
+1. **Flag-supplied values** — if `--elixir-version`, `--node-version`, `--otp-version` flags are provided, they override defaults
+2. **`mise current` fallback** — if a flag is not supplied (and the variable remains empty), `mise current <tool>` is called to resolve the current system version
+
+This approach ensures:
+- Explicit flag values are honored (developer control)
+- Fresh-box scenarios without explicit flags still populate `.tool-versions.eex` with sensible defaults from the system's current mise environment
+- No hardcoded version fallbacks that could drift from reality
+
+Flow: dispatcher version vars → `scaffold.sh` `render` args (L159-161) → `.tool-versions.eex` template substitution.
 
 ### First-Run Activation (Classes B & B2)
 
@@ -221,6 +241,25 @@ The fixture `test_harness/mutations/fixtures/phx_new_skeleton/` must stay in syn
 - `lib/<app>_web/controllers/{page_controller,error_html,error_json}.ex`
 
 See credo_fix_test.sh for idempotency assertions.
+
+### Credo Fix Guard Pattern
+
+`credo_fix.sh` uses **paired guards** for each file injection:
+- **PRE-injection guard** (wraps the `python3` heredoc): `grep -q '@moduledoc'` — skips injection if ANY moduledoc already exists (matches both custom doc strings and `@moduledoc false` from phx.new). Broadened to presence-check only (was string-specific).
+- **POST-condition guard** (after injection): exact string match on the target moduledoc value (e.g., `'@moduledoc false'`) — validates correct injection. Remains untouched (correct logic).
+
+Both pairs appear in credo_fix.sh at L45/82/124/161/221/278 (PRE) and L71/108/150/210/267/324 (POST). Only PRE guards were broadened during bug-fix; POST guards continue exact-match validation.
+
+### Mise Trust After Move
+
+`mise trust` records are keyed to the config file's **absolute path**. When `codegen-scaffold` uses atomic `mv` to move the app from a temp parent dir to the final location, the trust record recorded against the temp path becomes stale. Re-trust after the move is required:
+
+```bash
+# After: mv "$TEMP_PARENT/$SLUG" "$target_dir"
+mise trust "$target_dir/.mise.toml" ... || true
+```
+
+Non-fatal: `|| true` allows fresh-box scenarios where mise is not yet configured globally. Essential for clean `mise install` on the generated app's first run.
 
 ## Portable Sed Idiom (Class A)
 
