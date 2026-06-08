@@ -8,6 +8,7 @@
 # signal: AGENT_TYPE
 # role: developer-phoenix-backend
 # harnesses: all
+# GENERATED FROM shared/enforcement/registry.yaml — DO NOT EDIT
 #
 # Blocks Edit/Write/MultiEdit on frontend-owned paths so the backend developer
 # cannot accidentally clobber LiveView templates, HEEx files, JS hooks, or

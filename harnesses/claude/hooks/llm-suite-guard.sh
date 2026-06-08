@@ -8,6 +8,7 @@
 # signal: AGENT_TYPE
 # role: developer-*
 # harnesses: all
+# GENERATED FROM shared/enforcement/registry.yaml — DO NOT EDIT
 #
 # Blocks: bare `make llm` and `make llm-phoenix` (no further subcommand suffix).
 #

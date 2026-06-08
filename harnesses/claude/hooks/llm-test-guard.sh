@@ -8,6 +8,7 @@
 # signal: AGENT_TYPE
 # role: all
 # harnesses: all
+# GENERATED FROM shared/enforcement/registry.yaml — DO NOT EDIT
 #
 # Blocks: `mix test --only llm_integration` UNLESS the command ALSO contains
 #         literal `MIX_TEST_PARTITION=1` AND `MIX_TEST_PARTITIONS=1` AND a

@@ -1,7 +1,18 @@
 # enforcement/registry.yaml — declarative enforcement hook registry.
 #
-# Each entry is the single source of truth for one denial rule.
-# Fields:
+# Each entry is the single source of truth for one denial rule OR one hook registration.
+#
+# ENTRY KINDS — discriminator field: kind (default: denial when absent)
+#
+#   kind: denial       — compiler generates ENTIRE .sh/.ts file (header + body).
+#                        Requires match or match_all + message. generated: true means
+#                        the compiler owns the output file and make install OVERWRITES it.
+#   kind: registration — hook_registrations.py --emit-headers generates ONLY the
+#                        # HOOK-MANIFEST: header block and injects it into the existing
+#                        hand-written .sh script, leaving the body byte-identical.
+#                        No match/message required. body stays hand-authored.
+#
+# DENIAL ENTRY FIELDS (kind: denial or absent):
 #   id           — kebab-case slug; becomes the filename (no-cat-pipe → no-cat-pipe.sh / .ts)
 #   generated    — true means the compiler owns the output files; false means hand-authored
 #   event        — Claude Code hook event (PreToolUse, SubagentStop, Stop)
@@ -19,13 +30,35 @@
 #   harnesses    — which harnesses deploy this hook (all, claude, pi)
 #   canonicalize — path canonicalization (repo_relative); only used with source: FILE_PATH
 #   bypass_roles — optional list of launcher-mode values (from resolve_role / CLAUDE_ROLE /
-#                  PI_ROLE) that exit 0 before the role/match gate. Emits a _role.sh bypass
-#                  prelude in bash and a process.env env-read + includes() check in TS.
-#                  Placement: after parse_input, before AGENT_TYPE gate. Composes with all
-#                  body types (COMMAND+deny, COMMAND+allowlist, FILE_PATH+allowlist, match_all).
-#                  Valid values: debug, shape, ops (launcher mode values)
+#                  PI_ROLE) that exit 0 before the role/match gate.
 #
-# Pattern dialect rules:
+# REGISTRATION ENTRY FIELDS (kind: registration):
+#   id           — kebab-case slug matching the .sh filename (without extension)
+#   event        — Claude Code hook event (PreToolUse, SubagentStop, Stop, PostToolUseFailure)
+#   tool_guard   — tool name(s) in header matcher field (Bash, Write|Edit, etc.)
+#                  NOTE: tool_guard maps to the header field "matcher:" (token alias)
+#   surface      — hook surface (user_global, per_call_inspector, both)
+#   signal       — hook signal (none, AGENT_TYPE, CLAUDE_ROLE, CLAUDE_ROLE_FAMILY)
+#   role         — role scope (* = all; pipe-separated for multiple; glob e.g. developer-*)
+#   harnesses    — which harnesses deploy this hook (all, claude, pi)
+#                  NOTE: registry value "claude" maps to header token "claude_code"
+#   rationale    — optional human-readable explanation (single-line string or YAML block
+#                  scalar for multi-line; rendered as "# rationale: <first-line>" +
+#                  "#   <continuation-lines>" in the header)
+#
+# TOKEN CANONICALIZATION (registration entries only):
+#   Registry stores:  tool_guard  → header emits: matcher
+#   Registry stores:  harnesses: claude → header emits: harnesses: claude_code
+#   Registry stores:  harnesses: all    → header emits: harnesses: all
+#   Registry stores:  harnesses: pi     → header emits: harnesses: pi
+#
+# NOT-YET-MIGRATED: hooks with awkward schema fit deferred to a follow-up wave.
+#   Reason documented per hook. Use marker: not-yet-migrated: true
+#   Outliers in this repo:
+#     context-index-parity — role: unset (non-standard token, no CLAUDE_ROLE gating)
+#     subagent-read-discipline — multi-line rationale (round-trip ambiguity in first wave)
+#
+# Pattern dialect rules (denial entries only):
 #   Registry patterns use regex-neutral syntax:
 #     \s    — whitespace (NOT [[:space:]] — that is bash-ERE only)
 #     \b    — word boundary (supported in both bash ERE and JS)
@@ -122,3 +155,441 @@
   signal: AGENT_TYPE
   role: "reviewer-phoenix|reviewer-static"
   harnesses: pi
+
+# ── REGISTRATION ENTRIES (kind: registration) ────────────────────────────────
+# These entries drive ONLY the # HOOK-MANIFEST: header block in the named .sh file.
+# Script bodies remain hand-authored. Run `make install` or
+# `python3 templates/generator/hook_registrations.py --emit-headers --hooks-dir ... --registry ...`
+# to regenerate headers. Parity verified by `make hook-header-parity`.
+#
+# NOT-YET-MIGRATED outliers (deferred to follow-up wave):
+#   context-index-parity   — role: unset (non-standard token)
+#   subagent-read-discipline — multi-line rationale continuation (round-trip needs more testing)
+
+- kind: registration
+  id: build-no-success-before-commit
+  event: PreToolUse
+  tool_guard: Bash
+  surface: user_global
+  signal: none
+  role: "*"
+  harnesses: all
+
+- kind: registration
+  id: build-worker-cwd-guard
+  event: PreToolUse
+  tool_guard: "Bash|Write|Edit|MultiEdit|Read|Monitor"
+  surface: user_global
+  signal: AGENT_TYPE
+  role: "*"
+  harnesses: all
+
+- kind: registration
+  id: claude-debug-bash-guard
+  event: PreToolUse
+  tool_guard: Bash
+  surface: user_global
+  signal: CLAUDE_ROLE_FAMILY
+  role: "*"
+  harnesses: claude
+  rationale: CLAUDE_ROLE_FAMILY-keyed; Pi investigation sessions use load-gate not role flags
+
+- kind: registration
+  id: claude-inspector-bash-guard
+  event: PreToolUse
+  tool_guard: Bash
+  surface: per_call_inspector
+  signal: AGENT_TYPE
+  role: "inspector|inspector-phoenix"
+  harnesses: claude
+  rationale: Claude Code per-call inspector hook; Pi uses load-gate tool restriction
+
+- kind: registration
+  id: claude-inspector-read-guard
+  event: PreToolUse
+  tool_guard: Read
+  surface: per_call_inspector
+  signal: AGENT_TYPE
+  role: "inspector|inspector-phoenix"
+  harnesses: claude
+  rationale: Claude Code per-call inspector hook; Pi uses load-gate tool restriction
+
+- kind: registration
+  id: claude-inspector-write-guard
+  event: PreToolUse
+  tool_guard: "Write|Edit|MultiEdit|NotebookEdit"
+  surface: per_call_inspector
+  signal: AGENT_TYPE
+  role: "inspector|inspector-phoenix"
+  harnesses: claude
+  rationale: Claude Code per-call inspector hook; Pi uses load-gate tool restriction
+
+- kind: registration
+  id: committer-no-trailer-guard
+  event: PreToolUse
+  tool_guard: Bash
+  surface: user_global
+  signal: AGENT_TYPE
+  role: committer
+  harnesses: all
+
+- kind: registration
+  id: committer-single-line-guard
+  event: PreToolUse
+  tool_guard: Bash
+  surface: user_global
+  signal: AGENT_TYPE
+  role: committer
+  harnesses: all
+
+- kind: registration
+  id: committer-subject-length
+  event: PreToolUse
+  tool_guard: Bash
+  surface: user_global
+  signal: AGENT_TYPE
+  role: committer
+  harnesses: all
+
+- kind: registration
+  id: context-curator-guard
+  event: PreToolUse
+  tool_guard: "Edit|Write|MultiEdit"
+  surface: user_global
+  signal: AGENT_TYPE
+  role: context-curator
+  harnesses: all
+
+# NOT-YET-MIGRATED: role: unset is a non-standard token not in the schema enum.
+# Deferred until schema accepts or normalises the unset sentinel.
+# - kind: registration
+#   id: context-index-parity
+#   not-yet-migrated: true
+#   reason: role value "unset" is a non-standard token; deferred until schema accepts it
+
+- kind: registration
+  id: curator-before-committer
+  event: PreToolUse
+  tool_guard: Agent
+  surface: user_global
+  signal: none
+  role: "*"
+  harnesses: claude
+  rationale: Agent tool not present in Pi harness
+
+- kind: registration
+  id: dev-no-ci
+  event: PreToolUse
+  tool_guard: Bash
+  surface: user_global
+  signal: AGENT_TYPE
+  role: "developer-*"
+  harnesses: all
+
+- kind: registration
+  id: developer-no-self-gate-reset
+  event: SubagentStop
+  tool_guard: "developer-phoenix-backend|developer-phoenix-frontend|developer-html|developer-hugo|developer-vite"
+  surface: user_global
+  signal: AGENT_TYPE
+  role: "developer-*"
+  harnesses: all
+
+- kind: registration
+  id: developer-no-self-gate
+  event: PreToolUse
+  tool_guard: Bash
+  surface: user_global
+  signal: AGENT_TYPE
+  role: "developer-*"
+  harnesses: all
+
+- kind: registration
+  id: env-var-sample-consistency
+  event: PreToolUse
+  tool_guard: Bash
+  surface: user_global
+  signal: AGENT_TYPE
+  role: committer
+  harnesses: all
+
+- kind: registration
+  id: llm-pending-sweep
+  event: Stop
+  tool_guard: "*"
+  surface: user_global
+  signal: none
+  role: "*"
+  harnesses: all
+
+- kind: registration
+  id: llm-suite-guard
+  event: PreToolUse
+  tool_guard: Bash
+  surface: user_global
+  signal: AGENT_TYPE
+  role: "developer-*"
+  harnesses: all
+
+- kind: registration
+  id: llm-test-guard
+  event: PreToolUse
+  tool_guard: Bash
+  surface: user_global
+  signal: AGENT_TYPE
+  role: all
+  harnesses: all
+
+- kind: registration
+  id: operator-subagent-allowlist
+  event: PreToolUse
+  tool_guard: Agent
+  surface: user_global
+  signal: CLAUDE_ROLE_FAMILY
+  role: "*"
+  harnesses: claude
+  rationale: Agent tool not present in Pi harness
+
+- kind: registration
+  id: orchestrator-no-ci
+  event: PreToolUse
+  tool_guard: Bash
+  surface: user_global
+  signal: AGENT_TYPE
+  role: "*"
+  harnesses: all
+
+- kind: registration
+  id: orchestrator-no-source-edit
+  event: PreToolUse
+  tool_guard: "Write|Edit|MultiEdit|NotebookEdit"
+  surface: user_global
+  signal: CLAUDE_ROLE_FAMILY
+  role: "*"
+  harnesses: claude
+  rationale: CLAUDE_ROLE_FAMILY-keyed launcher mode guard, Pi has no equivalent launcher concept
+
+- kind: registration
+  id: orchestrator-read-discipline
+  event: PreToolUse
+  tool_guard: "Read|Bash"
+  surface: user_global
+  signal: AGENT_TYPE
+  role: "*"
+  harnesses: claude
+  rationale: CLAUDE_ROLE-keyed; gates orchestrator Read (path allowlist) and Bash (exploration-verb deny)
+
+- kind: registration
+  id: phoenix-backend-developer-guard
+  event: PreToolUse
+  tool_guard: "Edit|Write|MultiEdit"
+  surface: user_global
+  signal: AGENT_TYPE
+  role: developer-phoenix-backend
+  harnesses: all
+
+- kind: registration
+  id: phoenix-dev-gate
+  event: SubagentStop
+  tool_guard: "developer-phoenix-backend|developer-phoenix-frontend"
+  surface: user_global
+  signal: AGENT_TYPE
+  role: "developer-phoenix-backend|developer-phoenix-frontend"
+  harnesses: all
+
+- kind: registration
+  id: phoenix-frontend-developer-guard
+  event: PreToolUse
+  tool_guard: "Edit|Write|MultiEdit"
+  surface: user_global
+  signal: AGENT_TYPE
+  role: developer-phoenix-frontend
+  harnesses: all
+
+- kind: registration
+  id: pitch-format-validator
+  event: Stop
+  tool_guard: "*"
+  surface: user_global
+  signal: CLAUDE_ROLE_FAMILY
+  role: "shape|refactor|ops"
+  harnesses: all
+
+- kind: registration
+  id: pitch-shipped-before-stop
+  event: Stop
+  tool_guard: "*"
+  surface: user_global
+  signal: CLAUDE_ROLE_FAMILY
+  role: "*"
+  harnesses: claude
+
+- kind: registration
+  id: planner-guard
+  event: PreToolUse
+  tool_guard: "Bash|Write|Edit|MultiEdit|EnterPlanMode|ExitPlanMode|Read"
+  surface: user_global
+  signal: AGENT_TYPE
+  role: "planner-*"
+  harnesses: all
+
+- kind: registration
+  id: post-developer-format
+  event: SubagentStop
+  tool_guard: "developer-phoenix-backend|developer-phoenix-frontend|developer-html|developer-hugo|developer-vite"
+  surface: user_global
+  signal: AGENT_TYPE
+  role: "developer-phoenix-backend|developer-phoenix-frontend|developer-html|developer-hugo|developer-vite"
+  harnesses: all
+
+- kind: registration
+  id: pre-commit-guard
+  event: PreToolUse
+  tool_guard: Bash
+  surface: user_global
+  signal: AGENT_TYPE
+  role: "*"
+  harnesses: all
+
+- kind: registration
+  id: reviewer-guard
+  event: PreToolUse
+  tool_guard: "Bash|Write|Edit|MultiEdit|Monitor"
+  surface: user_global
+  signal: AGENT_TYPE
+  role: "reviewer-phoenix|reviewer-static"
+  harnesses: all
+
+- kind: registration
+  id: session-log-section-integrity
+  event: PreToolUse
+  tool_guard: "Edit|Write|MultiEdit"
+  surface: user_global
+  signal: AGENT_TYPE
+  role: "*"
+  harnesses: all
+
+- kind: registration
+  id: static-site-build-check
+  event: SubagentStop
+  tool_guard: "developer-html|developer-hugo|developer-vite"
+  surface: user_global
+  signal: AGENT_TYPE
+  role: "developer-html|developer-hugo|developer-vite"
+  harnesses: all
+
+- kind: registration
+  id: static-site-ex-guard
+  event: PreToolUse
+  tool_guard: "Write|Edit"
+  surface: user_global
+  signal: AGENT_TYPE
+  role: "developer-html|developer-hugo|developer-vite"
+  harnesses: all
+
+- kind: registration
+  id: step-log-completeness
+  event: Stop
+  tool_guard: "*"
+  surface: user_global
+  signal: none
+  role: "*"
+  harnesses: all
+
+- kind: registration
+  id: step-log-missing-guard
+  event: Stop
+  tool_guard: "*"
+  surface: user_global
+  signal: none
+  role: "*"
+  harnesses: all
+
+- kind: registration
+  id: step-log-section-before-spawn
+  event: PreToolUse
+  tool_guard: Agent
+  surface: user_global
+  signal: none
+  role: "*"
+  harnesses: claude
+  rationale: Agent tool not present in Pi harness
+
+- kind: registration
+  id: stop-cycle-guard
+  event: Stop
+  tool_guard: "*"
+  surface: user_global
+  signal: none
+  role: "*"
+  harnesses: all
+
+- kind: registration
+  id: stop-resume
+  event: Stop
+  tool_guard: "*"
+  surface: user_global
+  signal: none
+  role: "*"
+  harnesses: all
+
+- kind: registration
+  id: stop-spin-guard
+  event: SubagentStop
+  tool_guard: "developer-phoenix-backend|developer-phoenix-frontend|developer-html|developer-hugo|developer-vite"
+  surface: user_global
+  signal: AGENT_TYPE
+  role: "developer-*"
+  harnesses: claude
+
+- kind: registration
+  id: stop-verify-planner-gate
+  event: Stop
+  tool_guard: "*"
+  surface: user_global
+  signal: AGENT_TYPE
+  role: "planner-*"
+  harnesses: all
+
+# NOT-YET-MIGRATED: multi-line rationale continuation — round-trip byte-parity
+# needs additional testing before inclusion in the first wave.
+# - kind: registration
+#   id: subagent-read-discipline
+#   not-yet-migrated: true
+#   reason: multi-line rationale continuation lines; deferred until round-trip verified
+
+- kind: registration
+  id: subagent-retrospective-guard
+  event: SubagentStop
+  tool_guard: "developer-phoenix-backend|developer-phoenix-frontend|planner-phoenix|reviewer-phoenix"
+  surface: user_global
+  signal: AGENT_TYPE
+  role: "developer-phoenix-backend|developer-phoenix-frontend|planner-phoenix|reviewer-phoenix"
+  harnesses: all
+
+- kind: registration
+  id: track-subagent-edits
+  event: PreToolUse
+  tool_guard: "Edit|Write|MultiEdit|NotebookEdit"
+  surface: user_global
+  signal: AGENT_TYPE
+  role: "*"
+  harnesses: all
+
+- kind: registration
+  id: track-tool-failures
+  event: PostToolUseFailure
+  tool_guard: "*"
+  surface: user_global
+  signal: AGENT_TYPE
+  role: "*"
+  harnesses: all
+
+- kind: registration
+  id: usage-rules-grep-guard
+  event: PreToolUse
+  tool_guard: "Bash|Grep"
+  surface: user_global
+  signal: AGENT_TYPE
+  role: "*"
+  harnesses: all

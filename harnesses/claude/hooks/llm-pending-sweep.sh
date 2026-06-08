@@ -8,6 +8,7 @@
 # signal: none
 # role: *
 # harnesses: all
+# GENERATED FROM shared/enforcement/registry.yaml — DO NOT EDIT
 #
 # Sweeps stale LLM-pending flag files (older than 120 minutes) from the
 # codegen/llm-pending/ sidecar directory. Old flags are noise — the dev

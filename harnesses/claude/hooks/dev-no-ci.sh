@@ -8,6 +8,7 @@
 # signal: AGENT_TYPE
 # role: developer-*
 # harnesses: all
+# GENERATED FROM shared/enforcement/registry.yaml — DO NOT EDIT
 #
 # Blocks: make ci / ci-cover / predeploy / llm / llm-phoenix / llm-all
 #         bare `mix test` (no path argument)

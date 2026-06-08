@@ -9,6 +9,7 @@
 # role: inspector|inspector-phoenix
 # harnesses: claude_code
 # rationale: Claude Code per-call inspector hook; Pi uses load-gate tool restriction
+# GENERATED FROM shared/enforcement/registry.yaml — DO NOT EDIT
 #
 # Blocks all write/edit tools when invoked for any Inspector call.
 # Write, Edit, MultiEdit, and NotebookEdit are already denied via --disallowed-tools

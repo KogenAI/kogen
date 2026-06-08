@@ -8,6 +8,7 @@
 # signal: AGENT_TYPE
 # role: developer-*
 # harnesses: all
+# GENERATED FROM shared/enforcement/registry.yaml — DO NOT EDIT
 #
 # Counts CI/test invocations per session. Once the counter reaches 3,
 # denies further attempts and instructs the dev to hand off to the

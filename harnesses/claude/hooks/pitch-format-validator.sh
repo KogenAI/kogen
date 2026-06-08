@@ -9,6 +9,7 @@
 # signal: CLAUDE_ROLE_FAMILY
 # role: shape|refactor|ops
 # harnesses: all
+# GENERATED FROM shared/enforcement/registry.yaml — DO NOT EDIT
 #
 # Blocks Stop when the active pitch file (last Write/Edit/MultiEdit on
 # codegen/pitches/*.md in the session transcript) contains a malformed

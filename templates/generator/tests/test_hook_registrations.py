@@ -8,6 +8,7 @@ import os
 import sys
 import tempfile
 import unittest
+import unittest.mock
 from pathlib import Path
 from unittest.mock import patch
 
@@ -344,6 +345,325 @@ class TestBuildHookEntry(unittest.TestCase):
         self.assertIsInstance(result, dict)
         self.assertIn("type", result)
         self.assertIn("command", result)
+
+
+# ── TestRenderHeader ─────────────────────────────────────────────────────────
+
+class TestRenderHeader(unittest.TestCase):
+
+    def _base_entry(self, **overrides):
+        entry = {
+            "id": "my-hook",
+            "event": "PreToolUse",
+            "tool_guard": "Bash",
+            "surface": "user_global",
+            "signal": "none",
+            "role": "*",
+            "harnesses": "all",
+        }
+        entry.update(overrides)
+        return entry
+
+    def test_minimal_entry_renders_all_fields(self):
+        h = hr.render_header(self._base_entry())
+        self.assertIn("# HOOK-MANIFEST:", h)
+        self.assertIn("# event: PreToolUse", h)
+        self.assertIn("# matcher: Bash", h)
+        self.assertIn("# surface: user_global", h)
+        self.assertIn("# signal: none", h)
+        self.assertIn("# role: *", h)
+        self.assertIn("# harnesses: all", h)
+        self.assertIn("# GENERATED FROM shared/enforcement/registry.yaml", h)
+
+    def test_tool_guard_maps_to_matcher(self):
+        """Registry tool_guard → header matcher."""
+        h = hr.render_header(self._base_entry(tool_guard="Write|Edit"))
+        self.assertIn("# matcher: Write|Edit", h)
+        self.assertNotIn("tool_guard", h)
+
+    def test_registry_claude_maps_to_claude_code(self):
+        """Registry harnesses: claude → header harnesses: claude_code."""
+        h = hr.render_header(self._base_entry(harnesses="claude"))
+        self.assertIn("# harnesses: claude_code", h)
+        self.assertNotIn("# harnesses: claude\n", h)
+
+    def test_harnesses_all_passthrough(self):
+        h = hr.render_header(self._base_entry(harnesses="all"))
+        self.assertIn("# harnesses: all", h)
+
+    def test_harnesses_pi_passthrough(self):
+        h = hr.render_header(self._base_entry(harnesses="pi"))
+        self.assertIn("# harnesses: pi", h)
+
+    def test_single_line_rationale(self):
+        h = hr.render_header(self._base_entry(rationale="short reason"))
+        self.assertIn("# rationale: short reason", h)
+
+    def test_multi_line_rationale_first_line(self):
+        h = hr.render_header(self._base_entry(rationale="first line\ncontinuation"))
+        self.assertIn("# rationale: first line", h)
+
+    def test_multi_line_rationale_continuation_indented(self):
+        h = hr.render_header(self._base_entry(rationale="first line\ncontinuation"))
+        self.assertIn("#   continuation", h)
+
+    def test_no_rationale_no_rationale_line(self):
+        h = hr.render_header(self._base_entry())
+        self.assertNotIn("rationale", h)
+
+    def test_provenance_comment_present(self):
+        h = hr.render_header(self._base_entry())
+        self.assertIn("# GENERATED FROM shared/enforcement/registry.yaml — DO NOT EDIT", h)
+
+    def test_hook_manifest_is_first_line(self):
+        h = hr.render_header(self._base_entry())
+        self.assertTrue(h.startswith("# HOOK-MANIFEST:"))
+
+    def test_no_trailing_blank_comment(self):
+        """render_header must NOT include trailing '#' — inject_header preserves it from body."""
+        h = hr.render_header(self._base_entry())
+        # Last line must not be a bare "#"
+        last_line = h.splitlines()[-1].strip()
+        self.assertNotEqual(last_line, "#")
+
+    def test_glob_role_preserved(self):
+        h = hr.render_header(self._base_entry(role="developer-*"))
+        self.assertIn("# role: developer-*", h)
+
+    def test_pipe_role_preserved(self):
+        h = hr.render_header(self._base_entry(role="reviewer-phoenix|reviewer-static"))
+        self.assertIn("# role: reviewer-phoenix|reviewer-static", h)
+
+    def test_per_call_inspector_surface(self):
+        h = hr.render_header(self._base_entry(surface="per_call_inspector"))
+        self.assertIn("# surface: per_call_inspector", h)
+
+    def test_agent_type_signal(self):
+        h = hr.render_header(self._base_entry(signal="AGENT_TYPE"))
+        self.assertIn("# signal: AGENT_TYPE", h)
+
+    def test_claude_role_family_signal(self):
+        h = hr.render_header(self._base_entry(signal="CLAUDE_ROLE_FAMILY"))
+        self.assertIn("# signal: CLAUDE_ROLE_FAMILY", h)
+
+
+# ── TestInjectHeader ──────────────────────────────────────────────────────────
+
+class TestInjectHeader(unittest.TestCase):
+
+    _HOOK_TEMPLATE = """\
+#!/bin/bash
+# my-hook.sh — PreToolUse Bash hook.
+#
+# HOOK-MANIFEST:
+# event: PreToolUse
+# matcher: Bash
+# surface: user_global
+# signal: none
+# role: *
+# harnesses: all
+#
+# Body comment line 1.
+# Body comment line 2.
+
+set -u
+echo "hook body"
+exit 0
+"""
+
+    def _entry(self, **overrides):
+        e = {
+            "id": "my-hook",
+            "event": "PreToolUse",
+            "tool_guard": "Bash",
+            "surface": "user_global",
+            "signal": "none",
+            "role": "*",
+            "harnesses": "all",
+        }
+        e.update(overrides)
+        return e
+
+    def test_header_span_replaced(self):
+        with tempfile.TemporaryDirectory() as td:
+            p = Path(td) / "my-hook.sh"
+            p.write_text(self._HOOK_TEMPLATE)
+            entry = self._entry(signal="AGENT_TYPE")
+            header = hr.render_header(entry)
+            hr.inject_header(p, header)
+            result = p.read_text()
+        self.assertIn("# signal: AGENT_TYPE", result)
+        self.assertNotIn("# signal: none\n", result)
+
+    def test_body_byte_identical_after_inject(self):
+        with tempfile.TemporaryDirectory() as td:
+            p = Path(td) / "my-hook.sh"
+            p.write_text(self._HOOK_TEMPLATE)
+            original_body_start = self._HOOK_TEMPLATE.index("# Body comment line 1")
+            original_body = self._HOOK_TEMPLATE[original_body_start:]
+
+            entry = self._entry(signal="AGENT_TYPE")
+            header = hr.render_header(entry)
+            hr.inject_header(p, header)
+            result = p.read_text()
+
+            # Body starts after the terminator "#\n"
+            # Find the body in the result
+            self.assertIn("# Body comment line 1.", result)
+            self.assertIn("echo \"hook body\"", result)
+            # Extract body from result (after the blank "#" terminator)
+            result_body_start = result.index("# Body comment line 1")
+            result_body = result[result_body_start:]
+            self.assertEqual(result_body, original_body)
+
+    def test_idempotent_rerun_returns_false(self):
+        with tempfile.TemporaryDirectory() as td:
+            p = Path(td) / "my-hook.sh"
+            p.write_text(self._HOOK_TEMPLATE)
+            # First inject with identical content should be no-op
+            entry = self._entry()  # identical to existing header
+            header = hr.render_header(entry)
+            # inject once to get it to the state with GENERATED FROM line
+            hr.inject_header(p, header)
+            # Second inject — must be idempotent (no change)
+            updated = hr.inject_header(p, header)
+        self.assertFalse(updated)
+
+    def test_inject_returns_true_when_updated(self):
+        with tempfile.TemporaryDirectory() as td:
+            p = Path(td) / "my-hook.sh"
+            p.write_text(self._HOOK_TEMPLATE)
+            entry = self._entry(signal="AGENT_TYPE")  # different from existing "none"
+            header = hr.render_header(entry)
+            updated = hr.inject_header(p, header)
+        self.assertTrue(updated)
+
+    def test_no_manifest_line_exits_1(self):
+        with tempfile.TemporaryDirectory() as td:
+            p = Path(td) / "no-manifest.sh"
+            p.write_text("#!/bin/bash\n# no manifest here\necho hello\n")
+            entry = self._entry()
+            header = hr.render_header(entry)
+            with self.assertRaises(SystemExit) as ctx:
+                with unittest.mock.patch("sys.stderr", new_callable=io.StringIO):
+                    with unittest.mock.patch("sys.stdout", new_callable=io.StringIO):
+                        hr.inject_header(p, header)
+        self.assertEqual(ctx.exception.code, 1)
+
+
+# ── TestRegistrationKindDiscrimination ───────────────────────────────────────
+
+class TestRegistrationKindDiscrimination(unittest.TestCase):
+
+    def test_emit_headers_skips_denial_entries(self):
+        """emit_headers only processes kind:registration entries, not denial entries."""
+        with tempfile.TemporaryDirectory() as td:
+            # Create a registry with one denial and one registration entry
+            registry_content = """
+- id: denial-hook
+  generated: false
+  event: PreToolUse
+  tool_guard: Bash
+  match: "foo"
+  message: "deny foo"
+  surface: user_global
+  signal: none
+  role: "*"
+  harnesses: all
+
+- kind: registration
+  id: reg-hook
+  event: PreToolUse
+  tool_guard: Bash
+  surface: user_global
+  signal: none
+  role: "*"
+  harnesses: all
+"""
+            registry_path = Path(td) / "registry.yaml"
+            registry_path.write_text(registry_content)
+
+            # Create only reg-hook.sh (denial-hook.sh absent — should not be touched)
+            reg_sh = Path(td) / "reg-hook.sh"
+            reg_sh.write_text(
+                "#!/bin/bash\n# HOOK-MANIFEST:\n# event: PreToolUse\n# matcher: Bash\n"
+                "# surface: user_global\n# signal: none\n# role: *\n# harnesses: all\n#\necho body\n"
+            )
+
+            # emit_headers should succeed and process reg-hook only
+            with unittest.mock.patch("sys.stdout", new_callable=io.StringIO):
+                hr.emit_headers(registry_path, Path(td), check_only=False)
+            # denial-hook.sh was NOT created
+            self.assertFalse((Path(td) / "denial-hook.sh").exists())
+            # reg-hook.sh still exists
+            self.assertTrue(reg_sh.exists())
+
+    def test_check_headers_passes_when_all_match(self):
+        """emit_headers check_only=True passes when headers match."""
+        with tempfile.TemporaryDirectory() as td:
+            registry_content = """
+- kind: registration
+  id: clean-hook
+  event: Stop
+  tool_guard: "*"
+  surface: user_global
+  signal: none
+  role: "*"
+  harnesses: all
+"""
+            registry_path = Path(td) / "registry.yaml"
+            registry_path.write_text(registry_content)
+
+            # Pre-create hook with matching header
+            clean_sh = Path(td) / "clean-hook.sh"
+            entry = {
+                "id": "clean-hook",
+                "event": "Stop",
+                "tool_guard": "*",
+                "surface": "user_global",
+                "signal": "none",
+                "role": "*",
+                "harnesses": "all",
+            }
+            header = hr.render_header(entry)
+            clean_sh.write_text(
+                "#!/bin/bash\n"
+                + header
+                + "\n#\necho body\n"
+            )
+
+            # Should not raise
+            with unittest.mock.patch("sys.stdout", new_callable=io.StringIO):
+                hr.emit_headers(registry_path, Path(td), check_only=True)
+
+    def test_check_headers_fails_on_drift(self):
+        """emit_headers check_only=True exits 1 when header drifts from registry."""
+        with tempfile.TemporaryDirectory() as td:
+            registry_content = """
+- kind: registration
+  id: drift-hook
+  event: Stop
+  tool_guard: "*"
+  surface: user_global
+  signal: AGENT_TYPE
+  role: "*"
+  harnesses: all
+"""
+            registry_path = Path(td) / "registry.yaml"
+            registry_path.write_text(registry_content)
+
+            # Pre-create hook with DIFFERENT signal
+            drift_sh = Path(td) / "drift-hook.sh"
+            drift_sh.write_text(
+                "#!/bin/bash\n# HOOK-MANIFEST:\n# event: Stop\n# matcher: *\n"
+                "# surface: user_global\n# signal: none\n# role: *\n# harnesses: all\n#\necho body\n"
+            )
+
+            with self.assertRaises(SystemExit) as ctx:
+                with unittest.mock.patch("sys.stderr", new_callable=io.StringIO):
+                    with unittest.mock.patch("sys.stdout", new_callable=io.StringIO):
+                        hr.emit_headers(registry_path, Path(td), check_only=True)
+        self.assertEqual(ctx.exception.code, 1)
 
 
 if __name__ == "__main__":

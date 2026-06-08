@@ -9,6 +9,7 @@
 # signal: AGENT_TYPE
 # role: planner-*
 # harnesses: all
+# GENERATED FROM shared/enforcement/registry.yaml — DO NOT EDIT
 #
 # Blocks Stop when:
 #   AGENT_TYPE matches planner-* AND the active step log resolved from the

@@ -8,6 +8,7 @@
 # signal: AGENT_TYPE
 # role: committer
 # harnesses: all
+# GENERATED FROM shared/enforcement/registry.yaml — DO NOT EDIT
 #
 # Blocks git commit commands that lack a -m "..." flag.
 # Allows: git commit -m "...", git commit --amend -m "..."

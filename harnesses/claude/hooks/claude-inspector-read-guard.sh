@@ -9,6 +9,7 @@
 # role: inspector|inspector-phoenix
 # harnesses: claude_code
 # rationale: Claude Code per-call inspector hook; Pi uses load-gate tool restriction
+# GENERATED FROM shared/enforcement/registry.yaml — DO NOT EDIT
 #
 # Blocks Read calls where the requested file_path is outside the Inspector's
 # working directory ($CLAUDE_PROJECT_DIR, falling back to $PWD).

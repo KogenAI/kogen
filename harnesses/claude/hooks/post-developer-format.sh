@@ -8,6 +8,7 @@
 # signal: AGENT_TYPE
 # role: developer-phoenix-backend|developer-phoenix-frontend|developer-html|developer-hugo|developer-vite
 # harnesses: all
+# GENERATED FROM shared/enforcement/registry.yaml — DO NOT EDIT
 #
 # Purpose: when developer-phoenix-backend / developer-phoenix-frontend / developer-html | developer-hugo | developer-vite
 # reports done, auto-format their diff so the dev-gate.sh hook never sees a

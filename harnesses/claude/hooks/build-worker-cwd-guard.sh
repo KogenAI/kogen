@@ -9,6 +9,7 @@
 # signal: AGENT_TYPE
 # role: *
 # harnesses: all
+# GENERATED FROM shared/enforcement/registry.yaml — DO NOT EDIT
 #
 # Goal: enforce that the orchestrator (top-level claude --print invocation in
 # the user-app cwd) cannot Read/Write/Edit files outside the user app directory,

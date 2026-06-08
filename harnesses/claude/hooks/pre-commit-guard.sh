@@ -8,6 +8,7 @@
 # signal: AGENT_TYPE
 # role: *
 # harnesses: all
+# GENERATED FROM shared/enforcement/registry.yaml — DO NOT EDIT
 #
 # Blocks state-modifying git commands (commit, rebase, push --force,
 # reset --hard, cherry-pick, revert, merge) when the active agent is

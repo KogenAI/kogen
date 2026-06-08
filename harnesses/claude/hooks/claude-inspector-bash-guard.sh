@@ -9,6 +9,7 @@
 # role: inspector|inspector-phoenix
 # harnesses: claude_code
 # rationale: Claude Code per-call inspector hook; Pi uses load-gate tool restriction
+# GENERATED FROM shared/enforcement/registry.yaml — DO NOT EDIT
 #
 # Blocks Bash commands that mutate the filesystem or database, and commands
 # that reference absolute paths outside $CLAUDE_PROJECT_DIR.

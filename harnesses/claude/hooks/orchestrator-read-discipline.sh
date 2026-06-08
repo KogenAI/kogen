@@ -9,6 +9,7 @@
 # role: *
 # harnesses: claude_code
 # rationale: CLAUDE_ROLE-keyed; gates orchestrator Read (path allowlist) and Bash (exploration-verb deny)
+# GENERATED FROM shared/enforcement/registry.yaml — DO NOT EDIT
 #
 # Blocks the orchestrator from:
 #   1. Reading arbitrary codebase files (Read tool — path allowlist enforced)

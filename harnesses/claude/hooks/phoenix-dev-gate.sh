@@ -8,6 +8,7 @@
 # signal: AGENT_TYPE
 # role: developer-phoenix-backend|developer-phoenix-frontend
 # harnesses: all
+# GENERATED FROM shared/enforcement/registry.yaml — DO NOT EDIT
 #
 # Replaces the prior agent-based "decide and start the gate" step
 # with a deterministic decision tree (see lib/gate-select.sh) and a

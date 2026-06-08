@@ -8,6 +8,7 @@
 # signal: AGENT_TYPE
 # role: *
 # harnesses: all
+# GENERATED FROM shared/enforcement/registry.yaml — DO NOT EDIT
 #
 # When a subagent edits or writes a session log file (codegen/logging/*.md),
 # the new_string (Edit) or content (Write) must include

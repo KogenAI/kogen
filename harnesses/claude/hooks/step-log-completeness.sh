@@ -9,6 +9,7 @@
 # signal: none
 # role: *
 # harnesses: all
+# GENERATED FROM shared/enforcement/registry.yaml — DO NOT EDIT
 #
 # Blocks Stop when:
 #   (a) A developer-* Section AND a (phoenix-)?dev-gate Section with ALL CLEAR ✅

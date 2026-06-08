@@ -874,6 +874,11 @@ def main():
         if not eid:
             sys.exit("ERROR: registry entry missing 'id' field")
 
+        # Skip registration-only entries — they have no match/message and their
+        # header block is managed by hook_registrations.py --emit-headers, not here.
+        if entry.get("kind") == "registration":
+            continue
+
         # Validate match/match_all exclusivity.
         has_match = "match" in entry
         has_match_all = "match_all" in entry

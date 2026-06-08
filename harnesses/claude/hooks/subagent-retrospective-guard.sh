@@ -9,6 +9,7 @@
 # signal: AGENT_TYPE
 # role: developer-phoenix-backend|developer-phoenix-frontend|planner-phoenix|reviewer-phoenix
 # harnesses: all
+# GENERATED FROM shared/enforcement/registry.yaml — DO NOT EDIT
 #
 # Blocks SubagentStop when the returning agent's ## <role> Section in the
 # active step log does not contain a ### What I Learned This Step header

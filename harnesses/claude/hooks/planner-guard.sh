@@ -8,6 +8,7 @@
 # signal: AGENT_TYPE
 # role: planner-*
 # harnesses: all
+# GENERATED FROM shared/enforcement/registry.yaml — DO NOT EDIT
 #
 # Blocks file-creation, state-modifying shell commands, Edit calls on
 # non-session-log files, and reads of implementer-only rule files when

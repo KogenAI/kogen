@@ -8,6 +8,7 @@
 # signal: AGENT_TYPE
 # role: reviewer-phoenix|reviewer-static
 # harnesses: all
+# GENERATED FROM shared/enforcement/registry.yaml — DO NOT EDIT
 #
 # Blocks all mutating tools when the active agent is "reviewer-phoenix" or
 # "reviewer-static". Reviewers are read-only analysis roles: Read, Grep, Glob

@@ -9,6 +9,7 @@
 # signal: none
 # role: *
 # harnesses: all
+# GENERATED FROM shared/enforcement/registry.yaml — DO NOT EDIT
 
 set -u
 

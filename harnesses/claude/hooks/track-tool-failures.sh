@@ -8,6 +8,7 @@
 # signal: AGENT_TYPE
 # role: *
 # harnesses: all
+# GENERATED FROM shared/enforcement/registry.yaml — DO NOT EDIT
 #
 # Records every tool failure into a per-subagent JSONL ledger so the
 # orchestrator (or later analysis) can detect the "developer dropped a

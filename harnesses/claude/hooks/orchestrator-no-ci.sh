@@ -8,6 +8,7 @@
 # signal: AGENT_TYPE
 # role: *
 # harnesses: all
+# GENERATED FROM shared/enforcement/registry.yaml — DO NOT EDIT
 #
 # Only enforces when AGENT_TYPE is empty AND AGENT_ID is empty (orchestrator level).
 # Subagents (any non-empty AGENT_TYPE or AGENT_ID) pass through.

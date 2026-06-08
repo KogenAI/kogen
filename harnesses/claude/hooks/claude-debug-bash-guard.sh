@@ -10,6 +10,7 @@
 # role: *
 # harnesses: claude_code
 # rationale: CLAUDE_ROLE_FAMILY-keyed; Pi investigation sessions use load-gate not role flags
+# GENERATED FROM shared/enforcement/registry.yaml — DO NOT EDIT
 #
 # Active when the active role (via resolve_role) is `debug` or `shape`.
 # Responds to CLAUDE_ROLE (Claude Code) and PI_ROLE (PI harness) — precedence: CLAUDE_ROLE > PI_ROLE.

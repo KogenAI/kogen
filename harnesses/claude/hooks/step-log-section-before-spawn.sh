@@ -9,6 +9,7 @@
 # role: *
 # harnesses: claude_code
 # rationale: Agent tool not present in Pi harness
+# GENERATED FROM shared/enforcement/registry.yaml — DO NOT EDIT
 #
 # Blocks subagent spawn when (a) no step log has been written yet or
 # (b) the required section header for the spawned agent is absent from the log.

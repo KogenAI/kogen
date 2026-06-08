@@ -8,6 +8,7 @@
 # signal: AGENT_TYPE
 # role: developer-phoenix-frontend
 # harnesses: all
+# GENERATED FROM shared/enforcement/registry.yaml — DO NOT EDIT
 #
 # Blocks Edit/Write/MultiEdit on backend-owned paths so the frontend developer
 # cannot accidentally clobber Ecto schemas, migrations, contexts, services,

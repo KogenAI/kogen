@@ -8,6 +8,7 @@
 # signal: none
 # role: *
 # harnesses: all
+# GENERATED FROM shared/enforcement/registry.yaml — DO NOT EDIT
 #
 # Blocks any Bash command containing "BUILD_RESULT:" literal when the
 # COMBOBULATE_BUILD_START_TS env var is set but no commit has been made

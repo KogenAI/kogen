@@ -8,6 +8,7 @@
 # signal: AGENT_TYPE
 # role: *
 # harnesses: all
+# GENERATED FROM shared/enforcement/registry.yaml — DO NOT EDIT
 #
 # Blocks non-planner agents from grepping/scanning codegen/usage_rules/.
 # Only the planner may scan the full corpus — all other agents must read

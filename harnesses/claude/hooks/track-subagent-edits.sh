@@ -8,6 +8,7 @@
 # signal: AGENT_TYPE
 # role: *
 # harnesses: all
+# GENERATED FROM shared/enforcement/registry.yaml — DO NOT EDIT
 #
 # Records each file path written/edited by a subagent into a per-subagent
 # ledger so post-developer-format.sh can format ONLY that subagent's files.

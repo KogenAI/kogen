@@ -35,7 +35,9 @@ import argparse
 import json
 import os
 import re
+import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 
@@ -314,6 +316,248 @@ def collect_hooks(hooks_dir: Path) -> list:  # type: ignore[type-arg]
     return hooks
 
 
+def load_registry(registry_path: Path) -> list:  # type: ignore[type-arg]
+    """Load registry YAML via yq → JSON → Python list.
+
+    Mirrors enforcement_compiler.load_registry so no duplicate yq logic.
+    """
+    try:
+        result = subprocess.run(
+            ["yq", "-o=json", ".", str(registry_path)],
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+    except FileNotFoundError:
+        sys.exit("ERROR: yq not found on PATH. Install with: brew install yq")
+    except subprocess.CalledProcessError as e:
+        sys.exit(f"ERROR: yq failed: {e.stderr}")
+
+    try:
+        data = json.loads(result.stdout)
+    except json.JSONDecodeError as e:
+        sys.exit(f"ERROR: JSON parse failed: {e}")
+
+    if not isinstance(data, list):
+        sys.exit("ERROR: registry.yaml must be a YAML list")
+
+    return data
+
+
+def render_header(entry: dict) -> str:
+    """Render a canonical # HOOK-MANIFEST: block from a registration registry entry.
+
+    Token mapping:
+      registry tool_guard → header matcher
+      registry claude     → header claude_code
+
+    rationale field (optional):
+      Single-line: emitted as "# rationale: <text>"
+      Multi-line (newlines in value): first line on "# rationale:" line, subsequent
+        lines prefixed with "#   " (three spaces) to match the committed header style.
+
+    Returns the complete header block as a string (no trailing newline after final "#").
+    """
+    harnesses_raw = entry.get("harnesses", "all")
+    # Normalise registry enum 'claude' → header token 'claude_code'
+    if harnesses_raw == "claude":
+        harnesses_header = "claude_code"
+    elif harnesses_raw == "all":
+        harnesses_header = "all"
+    elif harnesses_raw == "pi":
+        harnesses_header = "pi"
+    else:
+        # Comma-separated list — map each token
+        tokens = [t.strip() for t in str(harnesses_raw).split(",")]
+        mapped = ["claude_code" if t == "claude" else t for t in tokens]
+        harnesses_header = ", ".join(mapped)
+
+    # registry tool_guard → header matcher
+    matcher = entry.get("tool_guard", "*")
+
+    lines = [
+        "# HOOK-MANIFEST:",
+        f"# event: {entry['event']}",
+        f"# matcher: {matcher}",
+        f"# surface: {entry['surface']}",
+        f"# signal: {entry['signal']}",
+        f"# role: {entry['role']}",
+        f"# harnesses: {harnesses_header}",
+    ]
+
+    rationale = entry.get("rationale")
+    if rationale:
+        rationale_lines = rationale.splitlines()
+        if len(rationale_lines) == 1:
+            lines.append(f"# rationale: {rationale_lines[0]}")
+        else:
+            lines.append(f"# rationale: {rationale_lines[0]}")
+            for cont in rationale_lines[1:]:
+                lines.append(f"#   {cont}")
+
+    lines.append("# GENERATED FROM shared/enforcement/registry.yaml — DO NOT EDIT")
+    # No trailing "#" — the blank comment terminator line is part of the body
+    # and is preserved by inject_header's terminator-detection logic.
+    return "\n".join(lines)
+
+
+def inject_header(script_path: Path, header: str) -> bool:
+    """Inject a rendered header into a .sh file, replacing the existing HOOK-MANIFEST block.
+
+    Replaces the span from the line containing "# HOOK-MANIFEST:" to the first
+    terminator line (blank comment "# " with nothing after, bare "#", empty line,
+    or non-comment line) — exactly mirroring parse_manifest's terminator logic.
+
+    The body (everything after the terminator) is left byte-identical.
+    Uses mktemp/cmp/mv for idempotency: no write if content unchanged.
+
+    Returns True if file was updated, False if already up to date.
+    """
+    content = script_path.read_text()
+    lines = content.splitlines(keepends=True)
+
+    # Locate the HOOK-MANIFEST line
+    manifest_start = None
+    for i, line in enumerate(lines):
+        if line.strip() == "# HOOK-MANIFEST:":
+            manifest_start = i
+            break
+
+    if manifest_start is None:
+        print(
+            f"ERROR: {script_path.name} has no # HOOK-MANIFEST: line — cannot inject",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
+    # Locate the terminator: scan from the line AFTER "# HOOK-MANIFEST:"
+    manifest_end = None
+    for i in range(manifest_start + 1, len(lines)):
+        stripped = lines[i].rstrip("\n").rstrip("\r")
+        # Terminator conditions matching parse_manifest lines 113-120:
+        #   blank comment line (#) or empty line or non-comment line
+        if stripped.rstrip() == "#" or stripped.strip() == "" or not stripped.startswith("#"):
+            manifest_end = i
+            break
+
+    if manifest_end is None:
+        # Manifest runs to end of file — replace everything after manifest_start
+        manifest_end = len(lines)
+
+    # Build new content: pre-manifest lines + rendered header + newline + terminator onward
+    pre = "".join(lines[:manifest_start])
+    post = "".join(lines[manifest_end:])
+    new_content = pre + header + "\n" + post
+
+    if new_content == content:
+        return False  # already up to date — idempotent
+
+    tmp = tempfile.NamedTemporaryFile(
+        mode="w",
+        suffix=".sh",
+        dir=script_path.parent,
+        delete=False,
+    )
+    try:
+        tmp.write(new_content)
+        tmp.flush()
+        tmp.close()
+        os.replace(tmp.name, script_path)
+    except Exception:
+        os.unlink(tmp.name)
+        raise
+
+    return True
+
+
+def emit_headers(registry_path: Path, hooks_dir: Path, check_only: bool = False) -> None:
+    """For every kind:registration entry in registry, inject/verify the header in its .sh.
+
+    check_only=True: report drift but do not write (parity check mode).
+    check_only=False: write updated headers (emit mode).
+    """
+    entries = load_registry(registry_path)
+    drift_count = 0
+    updated_count = 0
+
+    for entry in entries:
+        if entry.get("kind") != "registration":
+            continue
+
+        eid = entry.get("id")
+        if not eid:
+            print("ERROR: registration entry missing 'id'", file=sys.stderr)
+            sys.exit(1)
+
+        sh_path = hooks_dir / f"{eid}.sh"
+        if not sh_path.exists():
+            print(
+                f"ERROR: {eid}.sh not found in {hooks_dir} — "
+                "create the script before adding a registration entry",
+                file=sys.stderr,
+            )
+            sys.exit(1)
+
+        header = render_header(entry)
+
+        if check_only:
+            # Check what the header would become and compare
+            content = sh_path.read_text()
+            lines = content.splitlines(keepends=True)
+
+            manifest_start = None
+            for i, line in enumerate(lines):
+                if line.strip() == "# HOOK-MANIFEST:":
+                    manifest_start = i
+                    break
+
+            if manifest_start is None:
+                print(f"DRIFT: {eid}.sh has no HOOK-MANIFEST line", file=sys.stderr)
+                drift_count += 1
+                continue
+
+            manifest_end = None
+            for i in range(manifest_start + 1, len(lines)):
+                stripped = lines[i].rstrip("\n").rstrip("\r")
+                if stripped.rstrip() == "#" or stripped.strip() == "" or not stripped.startswith("#"):
+                    manifest_end = i
+                    break
+            if manifest_end is None:
+                manifest_end = len(lines)
+
+            committed_header = "".join(lines[manifest_start:manifest_end]).rstrip("\n").rstrip("\r")
+            if committed_header != header:
+                print(f"DRIFT: {eid}.sh header differs from registry")
+                # Show a simple diff via unified diff approach
+                import difflib
+                diff = list(difflib.unified_diff(
+                    committed_header.splitlines(keepends=True),
+                    header.splitlines(keepends=True),
+                    fromfile=f"{eid}.sh (committed)",
+                    tofile=f"{eid}.sh (registry)",
+                ))
+                for dl in diff:
+                    print(dl, end="")
+                drift_count += 1
+        else:
+            updated = inject_header(sh_path, header)
+            if updated:
+                print(f"updated header: {sh_path}")
+                updated_count += 1
+            else:
+                print(f"unchanged: {sh_path}")
+
+    if check_only:
+        if drift_count == 0:
+            print("hook-header-parity: PASS")
+        else:
+            print(f"hook-header-parity: FAIL ({drift_count} drift(s))", file=sys.stderr)
+            sys.exit(1)
+    else:
+        reg_count = sum(1 for e in entries if e.get("kind") == "registration")
+        print(f"emit-headers: {updated_count} updated, {reg_count - updated_count} unchanged")
+
+
 def parse_subagent_frontmatter(subagent_path: Path) -> dict:
     """Parse YAML frontmatter between `---` lines inside `{% if tool.yaml_frontmatter %}` block.
 
@@ -484,8 +728,7 @@ def main() -> None:
     )
     parser.add_argument(
         "--output-settings",
-        required=True,
-        help="Path to write regenerated claude-code-settings.json",
+        help="Path to write regenerated claude-code-settings.json (required unless --emit-headers or --check-headers)",
     )
     parser.add_argument(
         "--existing-settings",
@@ -495,11 +738,42 @@ def main() -> None:
         "--pi-extension-dir",
         help="Path to Pi extension package root (validates TS handler parity for Pi-targeted hooks)",
     )
+    parser.add_argument(
+        "--registry",
+        help="Path to shared/enforcement/registry.yaml (required for --emit-headers / --check-headers)",
+    )
+    parser.add_argument(
+        "--emit-headers",
+        action="store_true",
+        help="Inject/update HOOK-MANIFEST headers in .sh files from registry kind:registration entries",
+    )
+    parser.add_argument(
+        "--check-headers",
+        action="store_true",
+        help="Verify committed .sh headers match registry kind:registration entries (parity check, no writes)",
+    )
     args = parser.parse_args()
 
     hooks_dir = Path(args.hooks_dir)
     if not hooks_dir.is_dir():
         print(f"ERROR: --hooks-dir '{hooks_dir}' is not a directory", file=sys.stderr)
+        sys.exit(1)
+
+    # Header-only modes: emit or check, do not regenerate settings
+    if args.emit_headers or args.check_headers:
+        if not args.registry:
+            print("ERROR: --registry is required with --emit-headers / --check-headers", file=sys.stderr)
+            sys.exit(1)
+        registry_path = Path(args.registry)
+        if not registry_path.exists():
+            print(f"ERROR: registry not found: {registry_path}", file=sys.stderr)
+            sys.exit(1)
+        emit_headers(registry_path, hooks_dir, check_only=args.check_headers)
+        return
+
+    # Settings-regeneration mode (default)
+    if not args.output_settings:
+        print("ERROR: --output-settings is required when not using --emit-headers / --check-headers", file=sys.stderr)
         sys.exit(1)
 
     settings_path = Path(args.output_settings)

@@ -10,6 +10,7 @@
 # signal: none
 # role: *
 # harnesses: all
+# GENERATED FROM shared/enforcement/registry.yaml — DO NOT EDIT
 #
 # Blocks Stop when:
 #   A developer-* Agent call appears in the transcript AND no Write to a

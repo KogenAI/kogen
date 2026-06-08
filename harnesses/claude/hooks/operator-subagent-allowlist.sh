@@ -9,6 +9,7 @@
 # role: *
 # harnesses: claude_code
 # rationale: Agent tool not present in Pi harness
+# GENERATED FROM shared/enforcement/registry.yaml — DO NOT EDIT
 #
 # Enforces subagent spawn rules across all launcher modes:
 #

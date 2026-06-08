@@ -10,6 +10,7 @@
 # signal: AGENT_TYPE
 # role: developer-*
 # harnesses: claude_code
+# GENERATED FROM shared/enforcement/registry.yaml — DO NOT EDIT
 #
 # Spin definition: ≥3 consecutive same-role developer Agent spawns in the
 # transcript since the last non-developer Agent call (reviewer/curator/committer

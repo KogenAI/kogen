@@ -27,6 +27,16 @@ hook-parity:
 	@diff -u "$(SCRIPT_DIR)/harnesses/claude/claude-code-settings.json" /tmp/claude-code-settings-parity.json || exit 1
 	@echo "hook-parity: PASS"
 
+.PHONY: hook-header-parity
+hook-header-parity:
+	@out=$$(python3 "$(SCRIPT_DIR)/templates/generator/hook_registrations.py" \
+		--hooks-dir "$(SCRIPT_DIR)/harnesses/claude/hooks" \
+		--registry "$(SCRIPT_DIR)/shared/enforcement/registry.yaml" \
+		--check-headers 2>&1); \
+	rc=$$?; [ -n "$$VERBOSE" ] && printf '%s\n' "$$out"; \
+	[ $$rc -eq 0 ] || { [ -z "$$VERBOSE" ] && printf '%s\n' "$$out"; exit $$rc; }
+	@echo "hook-header-parity: PASS"
+
 install:
 	@if ! command -v python3 >/dev/null 2>&1; then \
 		echo "❌ python3 required but not found — install python3 first"; \
@@ -49,6 +59,10 @@ install:
 		--bash-out "$(SCRIPT_DIR)/harnesses/claude/hooks" \
 		--ts-out "$(SCRIPT_DIR)/harnesses/pi/pi-extensions/enforcement/src/hooks" \
 		--index "$(SCRIPT_DIR)/harnesses/pi/pi-extensions/enforcement/src/index.ts"
+	@python3 "$(SCRIPT_DIR)/templates/generator/hook_registrations.py" \
+		--hooks-dir "$(SCRIPT_DIR)/harnesses/claude/hooks" \
+		--registry "$(SCRIPT_DIR)/shared/enforcement/registry.yaml" \
+		--emit-headers
 	@$(MAKE) hook-parity
 	@bash "$(SCRIPT_DIR)/templates/generator/generate-pi-extension.sh" "$(PI_EXTENSION_DIR)"
 	@python3 "$(SCRIPT_DIR)/templates/generator/hook_registrations.py" \
@@ -129,7 +143,7 @@ harness-parity:
 # Job count caps at 8 to avoid thrashing on smaller machines.
 # Post-deps stages (hook-tests, phoenix scaffold, test_harness/install, npm) run
 # concurrently via & + wait to reduce wall time.
-test: hook-parity harness-parity test-generator enforce-registry-parity
+test: hook-parity hook-header-parity harness-parity test-generator enforce-registry-parity
 	@set -e; \
 	pids=(); labels=(); \
 	./harnesses/claude/hooks/run-tests.sh & pids+=($$!); labels+=(hooks); \

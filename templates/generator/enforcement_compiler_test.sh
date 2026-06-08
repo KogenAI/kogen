@@ -1,7 +1,7 @@
 #!/bin/bash
 # enforcement_compiler_test.sh — unit tests for enforcement_compiler.py.
 #
-# Tests (34):
+# Tests (35):
 #   1:  parse valid registry (6 entries: 5 bash+ts + 1 pi-only); 11 sections in dry-run
 #   2:  dialect translation bash: \\s → [[:space:]] in generated .sh
 #   3:  match_all AND logic: two grep -qE calls joined with &&
@@ -36,6 +36,7 @@
 #  32:  bypass_roles composes with COMMAND+allowlist: .sh has prelude + allowlist body
 #  33:  bypass_roles COMMAND+allowlist bash: bypass role exits (no deny)
 #  34:  bypass_roles COMMAND+allowlist bash: non-bypass role hits allowlist guard
+#  35:  kind:registration entry skipped by full-file generator (no .sh body overwrite)
 
 set -euo pipefail
 
@@ -509,6 +510,42 @@ assert_contains "bypass COMMAND+allowlist ts: .ts has env-read" \
     'process.env["CLAUDE_ROLE"]' "$bypass_allow_ts_content"
 assert_contains "bypass COMMAND+allowlist ts: .ts has includes check" \
     '.includes(_role)' "$bypass_allow_ts_content"
+
+# ── Test 35: kind:registration entry skipped by full-file generator ───────────
+
+cat >"$tmpdir/registry_registration.yaml" <<'YAML'
+- kind: registration
+  id: my-behavioral-hook
+  event: PreToolUse
+  tool_guard: Bash
+  surface: user_global
+  signal: none
+  role: "*"
+  harnesses: all
+YAML
+
+mkdir -p "$tmpdir/reg_bash" "$tmpdir/reg_ts"
+touch "$tmpdir/reg_index.ts"
+
+set +e
+python3 "$COMPILER" \
+    --registry "$tmpdir/registry_registration.yaml" \
+    --bash-out "$tmpdir/reg_bash" \
+    --ts-out "$tmpdir/reg_ts" \
+    --index "$tmpdir/reg_index.ts" \
+    --dry-run >"$tmpdir/reg_out.txt" 2>&1
+reg_rc=$?
+set -e
+
+# Must exit cleanly (kind:registration is skipped, no error)
+assert_eq "kind:registration: compiler exits 0" "0" "$reg_rc"
+
+# Must produce no output files (no sections in dry-run output)
+reg_section_count=$(
+    grep -c "^===" "$tmpdir/reg_out.txt" 2>/dev/null
+    true
+)
+assert_eq "kind:registration: no files emitted by full-file generator" "0" "$reg_section_count"
 
 # ── Summary ───────────────────────────────────────────────────────────────────
 

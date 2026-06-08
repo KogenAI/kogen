@@ -8,6 +8,7 @@
 # signal: AGENT_TYPE
 # role: developer-html|developer-hugo|developer-vite
 # harnesses: all
+# GENERATED FROM shared/enforcement/registry.yaml — DO NOT EDIT
 #
 # Blocks Write and Edit tool calls targeting Elixir/HEEX files when the active
 # agent is "developer-html | developer-hugo | developer-vite". All other agents pass through unconditionally.

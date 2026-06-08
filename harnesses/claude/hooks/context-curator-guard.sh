@@ -8,6 +8,7 @@
 # signal: AGENT_TYPE
 # role: context-curator
 # harnesses: all
+# GENERATED FROM shared/enforcement/registry.yaml — DO NOT EDIT
 #
 # Restricts Edit/Write/MultiEdit to the curator's allowed write surface:
 #   - project context/**: context/** relative to CWD
