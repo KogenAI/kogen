@@ -72,6 +72,25 @@ When Pi is invoked without a UI context (`ctx.hasUI === false`), the `askuserque
 
 The durable `## Questions` artifact is written by the **agent** (not the extension), via the `## Headless mode (non-interactive)` clause baked into each investigative mode's shared prompt body (`harnesses/shared/prompt-bodies/{shape,refactor,ops,debug}.txt`). The agent writes unresolved decisions as a `## Questions` block in the in-scope pitch file directly; the extension only prevents a blocking tool-call loop.
 
+## Test Isolation — Node 22+ Concurrent `describe()` Children
+
+Node 22+ runs `describe()` children (`it()` blocks) concurrently by default. When tests use `process.chdir()`, this pollutes the process-global working directory across concurrent siblings. Fix: add `{ concurrency: 1 }` option to `describe()` calls to serialize when process-global state (cwd, env vars, streams) is involved:
+
+```typescript
+describe("hook-name", { concurrency: 1 }, () => {
+  it("test 1", () => {
+    process.chdir(tmpDir);
+    // ...
+    process.chdir(originalCwd);
+  });
+  it("test 2", () => {
+    // will not run until test 1 completes
+  });
+});
+```
+
+Applies to enforcement hooks and any extension tests that manipulate `process.cwd()` or process environment. Restore cwd and env vars in both resolve and reject paths of test body to prevent leakage on assertion failure (per development.md TS isolation guidance).
+
 ## Pitfalls
 
 - **Each extension is an independent npm package** — `npm install` must be run per-extension, not at repo root

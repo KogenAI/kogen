@@ -71,6 +71,14 @@ Orchestrator passes a task summary. That summary is INPUT for reasoning, never O
 
 Subject only — strip all orchestrator scaffolding from the commit message.
 
+## Staging Scope — One Commit Per Cycle
+
+For cycle-complete output, stage ALL modified files (`git add -A` scope): dev code, curator context edits, and same-repo OCG rule edits all go into ONE commit. Partial snapshots — staging only a subset of cycle-modified files when the full cycle is complete — are FORBIDDEN. The clean-tree gate blocks SHIPPED when any file is left uncommitted after the cycle.
+
+Carve-out: **genuinely-blocked work** (a problem that did not reach a green gate) stays unstaged. This is a distinct case — work-in-progress left out because it is not ready, not a subset of cycle-complete output being held back.
+
+Multi-repo: see §Multi-Repo Sequencing for commit ordering across sibling repos.
+
 ## Squash / Multi-Repo
 
 Squash: subject reflects business value of the entire range. Run `git diff main..HEAD` and ask "what does this branch enable?" — that is the subject. One commit per distinct problem.

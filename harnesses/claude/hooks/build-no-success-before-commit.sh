@@ -65,5 +65,14 @@ if [ "$gate_verdict" != "clear" ]; then
     exit 0
 fi
 
-debug_log build-no-success-before-commit "allow: commit at $latest_commit_ts found after build start $COMBOBULATE_BUILD_START_TS and gate verdict=clear"
+# Require a clean working tree — no uncommitted or untracked files.
+dirty_files=$(git -C "$project_dir" status --porcelain 2>/dev/null)
+if [ -n "$dirty_files" ]; then
+    dirty_count=$(printf '%s\n' "$dirty_files" | grep -c .)
+    dirty_list=$(printf '%s\n' "$dirty_files" | sed 's/^[^ ]* //' | tr '\n' ' ' | sed 's/ $//')
+    deny "BLOCKED by build-no-success-before-commit: working tree not clean — ${dirty_count} file(s) uncommitted: ${dirty_list}. Commit all cycle output in one commit before signaling SHIPPED."
+    exit 0
+fi
+
+debug_log build-no-success-before-commit "allow: commit at $latest_commit_ts found after build start $COMBOBULATE_BUILD_START_TS, gate verdict=clear, and working tree is clean"
 exit 0

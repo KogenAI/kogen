@@ -134,10 +134,11 @@ Create PENDING files AND delegate fixes. Never "8 issues for next session".
 Context curator runs after reviewer, before committer. Reads all `### What I Learned This Step` blocks from the step log and routes edits:
 
 1. Curator runs and makes edits (local context files and/or OCG rules).
-2. **OCG rules edited** → orchestrator runs `make install` in the OCG repo root (the directory containing `shared/rules/`) after curator returns. Then two commits: OCG repo first (OCG rules updates → install-time regeneration (curator writes to codegen/shared/rules; subagents baked from same source)), current project repo second (dev code + project context edits).
-3. **Project-only edits** (no OCG rules touched) → single commit as normal.
+2. **OCG rules edited AND OCG repo == current project repo** (OCG root — the directory containing the real `shared/rules/` directory — equals `git rev-parse --show-toplevel`; downstream projects have `codegen/rules/` as an out-pointing symlink instead) → orchestrator runs `make install` in the project root, then ONE commit: curator edits to `shared/rules/` + `context/` join the cycle commit alongside the dev code fix. Stage ALL cycle output (`git add -A` scope).
+3. **OCG rules edited AND OCG repo is a distinct repo** (downstream project whose `codegen/rules/` symlink points out-of-tree to the OCG root) → orchestrator runs `make install` in the OCG repo root after curator returns. Then two commits: OCG repo first (OCG rules + install-time regeneration), current project repo second (dev code + project context edits).
+4. **Project-only edits** (no OCG rules touched) → single commit as normal.
 
-`make install` is blocking — wait for exit before committing.
+`make install` is blocking — wait for exit before committing. Orchestrator owns all delegation; curator is a leaf agent and does not initiate committer calls.
 
 ## Commit Discipline
 

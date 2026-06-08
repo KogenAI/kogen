@@ -117,5 +117,24 @@ out=$(make_input 'printf "BUILD_RESULT: %s\n" success' "$T6" | COMBOBULATE_BUILD
 assert_contains "BUILD_RESULT: in longer command → BLOCK (no commit)" '"permissionDecision"' "$out"
 rm -rf "$T6"
 
+# ── Test 7: commit after ts + gate clear + dirty tree → BLOCK ────────────────
+T7=$(make_project)
+ts7=$(date -u +%s)
+sleep 1
+(
+    cd "$T7"
+    echo change >README
+    git add README
+    git commit -qm "generated code"
+)
+mkdir -p "$T7/codegen/gate-pending"
+printf '{"verdict":"clear","gate":"make ci","exit_code":0}\n' >"$T7/codegen/gate-pending/gate-result.json"
+# Create a dirty (uncommitted) file AFTER the commit
+echo "dirty content" >"$T7/dirty.txt"
+out=$(make_input 'echo "BUILD_RESULT: success"' "$T7" | COMBOBULATE_BUILD_START_TS="$ts7" bash "$HOOK" 2>/dev/null || true)
+assert_contains "dirty tree after commit+gate → BLOCK (permissionDecision)" '"permissionDecision"' "$out"
+assert_contains "dirty tree block message mentions working tree" 'working tree not clean' "$out"
+rm -rf "$T7"
+
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

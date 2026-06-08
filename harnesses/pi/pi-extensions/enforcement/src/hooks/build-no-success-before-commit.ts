@@ -37,20 +37,43 @@ export function register(pi: ExtensionAPI): void {
     const startTs = parseInt(buildStartTs, 10);
     debugLog("build-no-success-before-commit", `build_start_ts=${startTs}`);
 
+    let commitFound = false;
     try {
       const lastCommitTs = execSync("git log -1 --format=%ct", {
         encoding: "utf8",
       }).trim();
 
       if (lastCommitTs && parseInt(lastCommitTs, 10) > startTs) {
-        return;
+        commitFound = true;
       }
     } catch {
       // No commits or not in a git repo
     }
 
-    return deny(
-      "BLOCKED by build-no-success-before-commit: cannot signal BUILD_RESULT: before a commit has been made. Commit your changes first.",
-    );
+    if (!commitFound) {
+      return deny(
+        "BLOCKED by build-no-success-before-commit: cannot signal BUILD_RESULT: before a commit has been made. Commit your changes first.",
+      );
+    }
+
+    // Require a clean working tree — no uncommitted or untracked files.
+    try {
+      const porcelain = execSync("git status --porcelain", {
+        encoding: "utf8",
+      }).trim();
+
+      if (porcelain) {
+        const lines = porcelain.split("\n").filter(Boolean);
+        const count = lines.length;
+        const fileList = lines.map((l) => l.replace(/^\S+\s+/, "")).join(", ");
+        return deny(
+          `BLOCKED by build-no-success-before-commit: working tree not clean — ${count} file(s) uncommitted: ${fileList}. Commit all cycle output in one commit before signaling SHIPPED.`,
+        );
+      }
+    } catch {
+      // Not in a git repo or git unavailable — skip clean-tree check
+    }
+
+    return;
   });
 }

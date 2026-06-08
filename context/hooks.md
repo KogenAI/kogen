@@ -49,7 +49,7 @@ Hook registration: **Two pipelines** — both write to `harnesses/claude/hooks/*
 | `harnesses/claude/hooks/pitch-shipped-before-stop.sh`           | Stop — blocks session end when committer-section present + pitch still in ready/; bypassed under CLAUDE_ROLE=dashboard-build or CODEGEN_NO_AUTOSHIP=1 |
 | `harnesses/claude/hooks/operator-subagent-allowlist.sh`         | PreToolUse — enforces agent delegation allowlist (role ∈ {debug, shape, refactor, ops}); gates slash commands that spawn subagents                    |
 | `harnesses/claude/hooks/build-worker-cwd-guard.sh`              | PreToolUse — guards build worker cwd discipline                                                                                                       |
-| `harnesses/claude/hooks/build-no-success-before-commit.sh`      | PreToolUse — blocks declaring success before commit completes                                                                                         |
+| `harnesses/claude/hooks/build-no-success-before-commit.sh`      | PreToolUse — blocks declaring success before commit completes; enforces clean working tree (no untracked/modified files) at SHIPPED signal          |
 | `harnesses/claude/hooks/committer-bash-allowlist.sh`            | PreToolUse — committer Bash allowlist: only git + safe shell utilities allowed (default-deny; GENERATED)                                              |
 | `harnesses/claude/hooks/committer-write-allowlist.sh`           | PreToolUse — committer Write/Edit allowlist: only canonical session logs (GENERATED)                                                                  |
 | `harnesses/claude/hooks/committer-no-trailer-guard.sh`          | PreToolUse — blocks commit trailers (Co-authored-by, etc.)                                                                                            |
@@ -276,6 +276,16 @@ Valid `permissionDecision` values:
 
 **Events codegen does not yet use** — for `PreCompact`, `PermissionRequest`, `PostCompact`, `SubagentStart`, and other unregistered events, verify the exact field shape against https://code.claude.com/docs/en/hooks before relying on them. Codegen has not exercised these events in production; the protocol above is confirmed only for the events in the registered subset.
 
+## Git Status Porcelain Parsing
+
+`git status --porcelain` output has two-character prefix (status code + space) followed by path. Parsing pitfall: `awk '{print $2}'` on renamed files (`R  old -> new`) extracts only `$2` (`old`), truncating the rename arrow and target. Idiomatic fix for full remainder (including spaces and arrow):
+
+```bash
+git status --porcelain | sed 's/^[^ ]* //'  # strips leading status code + one space
+```
+
+This pattern preserves full paths including multi-word filenames with spaces, arrows in renames, and all boundary characters. Used by `build-no-success-before-commit.sh` to enumerate uncommitted files in deny message.
+
 ## Gate Verdict Flow
 
 ```
@@ -385,6 +395,17 @@ Some guard logic is scoped exclusively to the orchestrator level — no named ro
 ## Shell Case Branching Pattern
 
 When designing shell case statements where one verdict variant should block and others allow (or vice versa), place **specific arms BEFORE wildcards**. Example: `INCONCLUSIVE:browser-not-installed)` → fail BEFORE `INCONCLUSIVE:*)` → allow. First-match semantics ensure the specific handler wins. In `static-site-build-check.sh` (lines 221–241), explicit `INCONCLUSIVE:browser-not-installed)` arm must appear before the `*)` no-verdict catch-all to ensure browser-absent blocks properly. This pattern prevents wildcard arms from inadvertently swallowing specialized cases.
+
+## Clean-Tree Gate at SHIPPED Signal
+
+`build-no-success-before-commit.sh` enforces a clean working tree as the final precondition before BUILD_RESULT: success. Runs **AFTER** commit-timestamp and gate-verdict checks pass. Gate flow:
+
+1. Commit found (commit-ts > start-ts) → proceed
+2. Gate verdict is clear → proceed
+3. `git status --porcelain` is **non-empty** → **DENY**: "BLOCKED by build-no-success-before-commit: working tree not clean — N file(s) uncommitted: <list>. Commit all cycle output in one commit before signaling SHIPPED."
+4. Empty porcelain → allow BUILD_RESULT success
+
+**Scope**: No allowlist of don't-care files; no gitignore escape hatch. Any dirty or untracked file blocks. User solution: add unwanted files to `.gitignore` before commit. This enforces the "one commit per cycle capturing ALL output" rule — partial snapshots are forbidden; the clean-tree gate is the backstop.
 
 ## Pitfalls
 

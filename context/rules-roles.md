@@ -34,6 +34,17 @@ shared/rules/roles/
 - **scaffold**: `AGENTS-phoenix.md.j2` and `AGENTS-static.md.j2` embed orchestrator rules for downstream apps — sync burden when orchestrator.md changes; see `context/scaffold.md`
 - **curator-routing**: context-curator's generic rule (`shared/rules/roles/context-curator.md`) defines the write surface and decision tree — see § Curator Write Surface below; `context/curator-routing.md` carries project-specific path targets; `codegen/rules/` is a symlink to `shared/rules/` — all curators edit via the symlink path `codegen/rules/**`, never via `shared/rules/` directly
 
+## Orchestrator Dual-Repo Commitment Pattern
+
+When curator edits touch `shared/rules/` (via symlink `codegen/rules/`), orchestrator disambiguates the commit scope:
+
+- **OCG repo == current project repo** — OCG root (the directory containing real `shared/rules/`, not a symlink) equals `git rev-parse --show-toplevel`. Curator edits to `shared/rules/` + `context/` join code + test changes in **ONE commit per cycle**.
+- **Distinct repos** — Downstream project has `codegen/rules/` as an out-pointing symlink. Curator edits (to `codegen/rules/`) and dev code (to local `lib/`, `test/`, etc.) require **TWO commits**: one in the consuming app repo (dev code + curator-symlink-target edits reflected in message); one in codegen repo (curator's real rule changes to `shared/rules/`).
+
+**Detection**: Compare `shared/rules` (resolve as real dir path) to `git rev-parse --show-toplevel`. If equal → same repo → one commit. If not (downstream symlink case) → two commits.
+
+Curator never initiates committer calls — curator is a leaf agent. Orchestrator owns all delegation.
+
 ## Curator Write Surface
 
 The guard `context-curator-guard.sh` enforces exactly three allowed path patterns (line numbers in the hook source):
@@ -82,6 +93,18 @@ Committer is a leaf agent with no independent decision-making power about when i
 2. **Spawn-time guard** — `curator-before-committer.sh` (Claude) and `.ts` mirror (Pi) block committer spawning when reviewer section is present in the active step log but curator section is absent. Provides hard enforcement at the moment delegation is attempted.
 
 **Fail-open principle**: both Claude and Pi spawn guards check the active session log (discovered via transcript analysis). If the log is missing, unreadable, or cannot be parsed, the guard exits successfully (allow the spawn). This is deliberate — missing evidence should not block action. The prompt guidance is the primary enforcer; the guard is a backstop to catch obvious out-of-order violations. If session logs are inaccessible, fall back to orchestrator prompt guidance.
+
+## Committer Staging Scope — One Commit Per Cycle
+
+Committer stages **ALL cycle output** in a single `git add -A` commit per cycle. Cycle-complete output includes:
+
+- Dev code edits (`lib/`, `test/`, `src/`, config files, migrations)
+- Curator context edits (`context/*.md`, `codegen/rules/**` in same-repo case)
+- Session logs (appended to `codegen/logging/*.md` during the cycle)
+
+**One commit per cycle is mandatory** — partial snapshots (staging only a subset of cycle-modified files) are forbidden. The clean-tree gate (`build-no-success-before-commit.sh`) blocks SHIPPED if any modified file remains unstaged.
+
+**Exception: partial-readiness carve-out** — when work is genuinely blocked and incomplete (e.g., reviewer denies certain changes that must be redone), that blocked work remains unstaged for the next cycle. This is a distinct case from a partial commit of cycle-complete output. Orchestrator decides whether to re-enter the developer or escalate based on reviewer guidance.
 
 ## Trigger Keywords
 
