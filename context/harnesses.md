@@ -123,13 +123,27 @@ Pi launchers load TypeScript extensions from `harnesses/pi/pi-extensions/` via c
 
 ## Headless Investigative Mode
 
-The three Claude investigative launchers (`claude-shape`, `claude-ops`, `claude-debug`) honor the `CLAUDE_NONINTERACTIVE` env var. When set to any non-empty value, each launcher builds a `NON_INTERACTIVE_FLAGS` array containing the full 7-flag build set (byte-identical to `dispatch.sh`):
+The three Claude investigative launchers (`claude-shape`, `claude-ops`, `claude-debug`) honor the `CLAUDE_NONINTERACTIVE` env var. When set to any non-empty value, each launcher builds a `NON_INTERACTIVE_FLAGS` array. **Important distinction**: investigative launchers deliberately restrict `--setting-sources` to `project` (no user-scope agents/hooks) because they export `CLAUDE_ROLE` and gate the Agent tool to project subagents only. Build dispatch (`codegen-build --non-interactive`) uses `user,project,local` to load the full agent set + user-level gating hooks.
+
+Investigative launcher flags (`project` scope):
 
 ```
 --print
 --verbose
 --output-format stream-json
 --setting-sources project
+--strict-mcp-config
+--no-session-persistence
+--disable-slash-commands
+```
+
+Build dispatch flags (`user,project,local` scope):
+
+```
+--print
+--verbose
+--output-format stream-json
+--setting-sources user,project,local
 --strict-mcp-config
 --no-session-persistence
 --disable-slash-commands

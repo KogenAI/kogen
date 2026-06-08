@@ -75,7 +75,7 @@ if [[ -n "$NON_INTERACTIVE" ]]; then
         --print
         --verbose
         --output-format stream-json
-        --setting-sources project
+        --setting-sources user,project,local
         --strict-mcp-config
         --no-session-persistence
         --disable-slash-commands

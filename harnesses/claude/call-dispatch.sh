@@ -36,7 +36,7 @@ COMMON_FLAGS=(
     --print
     --output-format stream-json
     --verbose
-    --setting-sources project
+    --setting-sources user,project,local
     --strict-mcp-config
     --no-session-persistence
     --disable-slash-commands

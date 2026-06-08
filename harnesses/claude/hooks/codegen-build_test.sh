@@ -178,6 +178,7 @@ if [[ -f "$ARGS_A" ]]; then
     assert_contains "(a) --dangerously-skip-permissions" "$ARGS_A_CONTENT" "--dangerously-skip-permissions"
     assert_contains "(a) prompt is forwarded" "$ARGS_A_CONTENT" "hello prompt"
     assert_contains "(a) --system-prompt present (non-interactive)" "$ARGS_A_CONTENT" "--system-prompt"
+    assert_contains "(a) --setting-sources user,project,local in non-interactive" "$ARGS_A_CONTENT" "user,project,local"
 else
     printf 'FAIL: (a) args file not created — claude stub not invoked (exit: %s)\n' "$actual_ec"
     fail=$((fail + 8))
@@ -343,6 +344,16 @@ if [[ -f "$ARGS_I_NI" && -f "$ARGS_I_INT" ]]; then
     assert_contains "(i) --no-session-persistence in non-interactive" "$ARGS_I_NI_CONTENT" "--no-session-persistence"
     assert_contains "(i) --disable-slash-commands in non-interactive" "$ARGS_I_NI_CONTENT" "--disable-slash-commands"
 
+    # setting-sources: user,project,local in non-interactive; absent in interactive
+    assert_contains "(i) --setting-sources user,project,local in non-interactive" "$ARGS_I_NI_CONTENT" "user,project,local"
+
+    if [[ "$ARGS_I_INT_CONTENT" != *"--setting-sources"* ]]; then
+        [ -n "${VERBOSE:-}" ] && printf 'PASS: (i) --setting-sources absent in interactive\n'
+        pass=$((pass + 1))
+    else
+        printf 'FAIL: (i) --setting-sources present in interactive\n  got: %s\n' "${ARGS_I_INT_CONTENT:0:300}"
+        fail=$((fail + 1))
+    fi
     if [[ "$ARGS_I_INT_CONTENT" != *"--print"* ]]; then
         [ -n "${VERBOSE:-}" ] && printf 'PASS: (i) --print absent in interactive\n'
         pass=$((pass + 1))
