@@ -59,6 +59,19 @@ The guard `context-curator-guard.sh` enforces exactly three allowed path pattern
 
 Cross-reference: full guard pattern analysis and path-nesting mechanics → `context/hooks.md` § context-curator-guard Write Surface; rule text → `shared/rules/roles/context-curator.md` § Write Surface.
 
+## Spawn Ritual (Atomic Header-Edit + Delegation)
+
+Orchestrator's critical hygiene rule: header-Edit + Agent() call MUST be same turn, never separated. Named "spawn ritual" to enforce atomicity in models—a single conceptual operation preventing treat-as-separable regressions.
+
+Pattern: For every subagent spawn (after first log creation), orchestrator:
+1. **Edit** step log to append `## <agent_type> Section` header (literal name from agent's YAML `name:`)
+2. **Agent()** call immediately after in same turn—no intervening chat
+
+Enforcement:
+- **Prompt**: lines 14–16 in `harnesses/{claude,pi}/tools-header/build.txt` (identical wording, both harnesses)
+- **Guard**: `step-log-section-before-spawn.sh` (Claude) + `.ts` mirror (Pi); PreToolUse hook denies Agent() when header absent
+- **Shared rule**: `shared/rules/roles/orchestrator.md` line 36 names pattern; `AGENTS-*.md.j2` downstream templates embed this
+
 ## Committer Spawn Timing
 
 Committer is a leaf agent with no independent decision-making power about when it runs. Ordering enforcement happens in two layers:

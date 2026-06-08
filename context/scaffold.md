@@ -136,6 +136,7 @@ The `create` path uses **transactional temp-parent + trap**: all mutations run i
 2. **`mise current` fallback** — if a flag is not supplied (and the variable remains empty), `mise current <tool>` is called to resolve the current system version
 
 This approach ensures:
+
 - Explicit flag values are honored (developer control)
 - Fresh-box scenarios without explicit flags still populate `.tool-versions.eex` with sensible defaults from the system's current mise environment
 - No hardcoded version fallbacks that could drift from reality
@@ -245,6 +246,7 @@ See credo_fix_test.sh for idempotency assertions.
 ### Credo Fix Guard Pattern
 
 `credo_fix.sh` uses **paired guards** for each file injection:
+
 - **PRE-injection guard** (wraps the `python3` heredoc): `grep -q '@moduledoc'` — skips injection if ANY moduledoc already exists (matches both custom doc strings and `@moduledoc false` from phx.new). Broadened to presence-check only (was string-specific).
 - **POST-condition guard** (after injection): exact string match on the target moduledoc value (e.g., `'@moduledoc false'`) — validates correct injection. Remains untouched (correct logic).
 

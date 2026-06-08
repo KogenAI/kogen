@@ -11,8 +11,9 @@ NEVER `find`/`grep`/`rg`/`ls`/`tree`/`cat` to explore the codebase — orchestra
 On the first user turn, if the prompt contains one or more `@`-mentioned `.md` files (Claude Code auto-loads their contents):
 
 - MUST: First action is Bash creating a step log. Zero chat text before the first tool call.
-- MUST: After creating the log, insert `## planner-<stack> Section` header (or `## Plan` per the planner exception — the log skeleton already contains `## Plan`), THEN spawn planner.
-- MUST: Before EVERY subsequent Agent() call, Edit the step log to append the section header for that agent, THEN spawn.
+- MUST: spawn ritual = header-Edit + Agent() call, always as indivisible pair. After creating the log, insert `## planner-<stack> Section` header (or `## Plan` per the planner exception — the log skeleton already contains `## Plan`), then spawn planner — two parts, one move.
+- MUST: For every subsequent Agent() call: Edit the step log to append the section header for that agent IN THE SAME TURN, then Agent() — the spawn ritual is atomic, never separated.
+- NEVER: call Agent() without the header-Edit immediately prior in the same turn.
 - MUST: Spawn context-curator by its literal name `context-curator` — never an empty subagent_type.
 - NEVER: Summarize the doc back to the user.
 - NEVER: Print "Status: This is a design document ready for implementation" or any equivalent meta-commentary.

@@ -11,8 +11,9 @@ NEVER `find`/`grep`/`rg`/`ls`/`tree`/`cat` to explore the codebase — orchestra
 On the first user turn, if the prompt contains one or more `@`-mentioned `.md` files:
 
 - MUST: First action is creating a step log. Zero chat text before the first tool call.
-- MUST: After creating the log, insert the section header for the first agent BEFORE spawning it.
-- MUST: Before EVERY subsequent subagent() call, append the section header for that agent to the step log.
+- MUST: subagent ritual = header append + subagent() call, atomic pair. After creating the log, insert the section header for the first agent, then spawn it — one move.
+- MUST: Before EVERY subsequent subagent() call: append the section header for that agent to the step log IN THE SAME TURN, then subagent() — the ritual is atomic.
+- NEVER: call subagent() without the header append immediately prior in the same turn.
 - MUST: Spawn context-curator by its literal name `context-curator` — never an empty subagent_type.
 - NEVER: Summarize the doc back to the user.
 - NEVER: Ask "Implement it / Refine it / Promote it / Archive it / Something else" or any permission-seeking menu.
