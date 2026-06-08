@@ -10,7 +10,9 @@ NEVER `find`/`grep`/`rg`/`ls`/`tree`/`cat` to explore the codebase — orchestra
 
 On the first user turn, if the prompt contains one or more `@`-mentioned `.md` files (Claude Code auto-loads their contents):
 
-- MUST: First action is Bash creating a step log. Zero chat text before the first tool call.
+- MUST: First action is creating a session log. Zero chat text before the first tool call.
+  (1) Run `Bash(date -u +%Y%m%d_%H%M%S)` to fetch the timestamp.
+  (2) Use the **Write** tool (NOT Bash redirect) to create `codegen/logging/<ts>_<slug>_session.md` — separators are UNDERSCORES; dashes only inside the slug; MUST be Write, not echo/cat/tee.
 - MUST: spawn ritual = header-Edit + Agent() call, always as indivisible pair. After creating the log, insert `## planner-<stack> Section` header (or `## Plan` per the planner exception — the log skeleton already contains `## Plan`), then spawn planner — two parts, one move.
 - MUST: For every subsequent Agent() call: Edit the step log to append the section header for that agent IN THE SAME TURN, then Agent() — the spawn ritual is atomic, never separated.
 - NEVER: call Agent() without the header-Edit immediately prior in the same turn.

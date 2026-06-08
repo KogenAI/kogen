@@ -10,7 +10,9 @@ NEVER `find`/`grep`/`rg`/`ls`/`tree`/`cat` to explore the codebase — orchestra
 
 On the first user turn, if the prompt contains one or more `@`-mentioned `.md` files:
 
-- MUST: First action is creating a step log. Zero chat text before the first tool call.
+- MUST: First action is creating a session log. Zero chat text before the first tool call.
+  (1) Run `Bash(date -u +%Y%m%d_%H%M%S)` to fetch the timestamp.
+  (2) Use the **Write** tool (NOT Bash redirect) to create `codegen/logging/<ts>_<slug>_session.md` — separators are UNDERSCORES; dashes only inside the slug; MUST be Write, not echo/cat/tee.
 - MUST: subagent ritual = header append + subagent() call, atomic pair. After creating the log, insert the section header for the first agent, then spawn it — one move.
 - MUST: Before EVERY subsequent subagent() call: append the section header for that agent to the step log IN THE SAME TURN, then subagent() — the ritual is atomic.
 - NEVER: call subagent() without the header append immediately prior in the same turn.
@@ -50,7 +52,7 @@ When the user prompt contains one or more `@`-mentions to `.md` files:
 3. Total step count across all `@`-mentioned files = queue length N. Report `queue length: N` once before starting.
 4. For each step in order (argv order across files, then step-number order within each file):
    a. Announce `--- step <i>/<N> (source: <basename> step <source_n>) ---`.
-   b. Create a step log at `codegen/logging/<date>_step<i>_<source-basename-without-ext>-<source_n>.md`.
+   b. Create a session log at `codegen/logging/<date>_step<i>_<source-basename-without-ext>-<source_n>.md`.
    c. Orchestrate: planner → dev → [gate] → reviewer → context-curator → committer. The planner's task description is the verbatim step body from §2.
    d. Commit lands → advance to next step.
 5. One cycle per step. Never bulk-plan across steps. Never skip. Never re-order.

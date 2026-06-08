@@ -351,6 +351,16 @@
   rationale: Agent tool not present in Pi harness
 
 - kind: registration
+  id: orchestrator-session-log-name-guard
+  event: PreToolUse
+  tool_guard: "Write|Edit"
+  surface: user_global
+  signal: AGENT_TYPE
+  role: "*"
+  harnesses: all
+  rationale: Denies non-canonical session-log filenames at Write/Edit time so orchestrators see the error immediately rather than at Stop
+
+- kind: registration
   id: orchestrator-no-ci
   event: PreToolUse
   tool_guard: Bash

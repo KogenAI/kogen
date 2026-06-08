@@ -35,6 +35,7 @@ Hook registration: **Two pipelines** — both write to `harnesses/claude/hooks/*
 | `harnesses/claude/hooks/orchestrator-no-source-edit.sh`      | PreToolUse — blocks orchestrator from editing source files                                                                                            |
 | `harnesses/claude/hooks/orchestrator-no-ci.sh`               | PreToolUse — blocks orchestrator from running CI/test commands                                                                                        |
 | `harnesses/claude/hooks/orchestrator-read-discipline.sh`     | PreToolUse — blocks orchestrator from reading files it shouldn't                                                                                      |
+| `harnesses/claude/hooks/orchestrator-session-log-name-guard.sh` | PreToolUse — validates session-log filename format at Write/Edit time; denies non-canonical names (registration-based, orchestrator-scoped)       |
 | `harnesses/claude/hooks/subagent-read-discipline.sh`         | PreToolUse — blocks subagents from reading context files they shouldn't                                                                               |
 | `harnesses/claude/hooks/pre-commit-guard.sh`                 | PreToolUse — blocks direct `git commit` outside committer role                                                                                        |
 | `harnesses/claude/hooks/dev-no-ci.sh`                        | PreToolUse — blocks developer from running CI gate commands                                                                                           |
@@ -363,6 +364,21 @@ If a file is committed with prettier multi-line formatting, the committed versio
 2. Reformatted by the compiler after generation (currently not done)
 
 Run `make install` after any enforcement rule change to regenerate the `.ts` files, then verify `make enforce-registry-parity` passes before commit.
+
+## Orchestrator-Scoped Guards (Registration-Based)
+
+Some guard logic is scoped exclusively to the orchestrator level — no named role value, empty `AGENT_TYPE` and `AGENT_ID`. Such guards use `kind: registration` entries in `shared/enforcement/registry.yaml` instead of the `generated: true` denial pipeline. Why: Orchestrator lacks a named role like "committer" or "reviewer"; a `role: "*"` all-roles pattern would double-cover committer/reviewer allowlists and violate the no-go for such patterns.
+
+**Example:** `orchestrator-session-log-name-guard` (added in session 20260608_085442) validates session-log filenames at Write/Edit time. It uses `kind: registration` (hand-authored body) scoped via empty `AGENT_TYPE`/`AGENT_ID` check, with a FILE_PATH pre-check (`^codegen/logging/`) to prevent wrongly denying legitimate non-logging orchestrator writes (e.g., `lib/foo.ex`).
+
+**Pattern:**
+1. Add `kind: registration` entry to `shared/enforcement/registry.yaml` with fields: `event`, `tool_guard`, `surface`, `signal`, `role: "*"`, `harnesses: all`, `rationale`.
+2. Hand-author `.sh` file with header + body (no compiler generation).
+3. Hand-author `_test.sh` test file (≥16 cases covering role boundaries, edge cases, pre-checks).
+4. Run `make install` to inject `# HOOK-MANIFEST:` header + register in `settings.json`.
+5. `enforcement_compiler.py:879` skips registration entries (no `.ts` emission).
+
+**Path normalization:** When a guard inherits `repo_relative()` output and matches against anchored regex (e.g., `^codegen/logging/`), strip leading `./` explicitly: `rel="${rel#./}"`. This ensures both bare (`codegen/logging/foo.md`) and dot-prefixed (`./codegen/logging/foo.md`) paths match the same allowlist.
 
 ## Pitfalls
 
