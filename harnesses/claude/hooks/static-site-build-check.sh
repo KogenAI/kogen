@@ -228,15 +228,19 @@ if [ -f package.json ] && jq -e '.scripts' package.json >/dev/null 2>&1; then
             debug_log static-site-build-check "render check FAIL: $reason"
             fail "render check failed: $reason"
             ;;
+        INCONCLUSIVE:browser-not-installed)
+            debug_log static-site-build-check "render check INCONCLUSIVE: browser not installed"
+            fail "Chromium browser not found. Run: npx playwright install chromium"
+            ;;
         INCONCLUSIVE:*)
             detail="${render_verdict#INCONCLUSIVE:}"
             render_summary="render: INCONCLUSIVE ($detail) — skipped"
             debug_log static-site-build-check "render check INCONCLUSIVE: $detail"
             ;;
         *)
-            render_verdict="INCONCLUSIVE:browser-not-installed"
-            render_summary="render: INCONCLUSIVE (browser-not-installed) — install chromium: npx playwright install chromium"
-            debug_log static-site-build-check "render check INCONCLUSIVE: browser not installed — install chromium via: npx playwright install chromium"
+            # render-check emitted no RENDER_VERDICT= line — crash or parse error
+            debug_log static-site-build-check "render check emitted no verdict (crash/parse error)"
+            fail "render-check did not emit verdict — check render-check.js for parse/runtime errors"
             ;;
         esac
     fi

@@ -326,30 +326,58 @@ fi
 rm -f "$STUB16"
 rm -rf "$T16"
 
-# ── Test 17: render INCONCLUSIVE browser-not-installed — non-fatal ───────────
+# ── Test 17: render INCONCLUSIVE browser-not-installed — BLOCKS (fail-closed) ─
+# Gate must block when Chromium is absent; install guarantees it on static boxes.
 T17=$(make_tmp_site)
-mkdir -p "$T17/public" "$T17/codegen/logging"
+mkdir -p "$T17/public"
 touch "$T17/public/app.css"
 printf '<html><head><link rel="stylesheet" href="app.css"></head><body><p>hi</p></body></html>\n' \
     >"$T17/public/index.html"
-LOG17="$T17/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_session.md"
-printf '# Session\n' >"$LOG17"
-make_transcript "$T17/transcript.jsonl" "$LOG17"
 STUB17=$(make_render_stub "INCONCLUSIVE:browser-not-installed")
-out17=$(printf '%s' "$(input_for "$T17" developer-html false "$T17/transcript.jsonl")" |
+out17=$(printf '%s' "$(input_for "$T17")" |
     RENDER_CHECK_CMD="$STUB17" CODEGEN_DIR="$SCRIPT_DIR" bash "$HOOK" 2>/dev/null || true)
 outcome17="allow"
 printf '%s' "$out17" | grep -q '"decision"[[:space:]]*:[[:space:]]*"block"' && outcome17="block"
-if [ "$outcome17" = "allow" ] && grep -q '## static-site-verifier Section' "$LOG17"; then
-    [ -n "${VERBOSE:-}" ] && printf 'PASS: %s\n' "render INCONCLUSIVE browser-not-installed non-fatal"
+if [ "$outcome17" = "block" ] && printf '%s' "$out17" | grep -qi 'chromium\|browser'; then
+    [ -n "${VERBOSE:-}" ] && printf 'PASS: %s\n' "render INCONCLUSIVE browser-not-installed blocks with browser message"
     pass=$((pass + 1))
 else
-    printf 'FAIL: render INCONCLUSIVE browser-not-installed non-fatal\n  outcome: %s\n  stdout: %s\n' \
+    printf 'FAIL: render INCONCLUSIVE browser-not-installed should block with browser message\n  outcome: %s\n  stdout: %s\n' \
         "$outcome17" "$out17"
     fail=$((fail + 1))
 fi
 rm -f "$STUB17"
 rm -rf "$T17"
+
+# ── Test 18: render-check emitted no verdict (crash/parse error) — BLOCKS ─────
+# When render-check.js crashes (e.g., SyntaxError, unhandled exception) it emits
+# no RENDER_VERDICT= line. The gate must block with a clear error, not silently pass.
+T18=$(make_tmp_site)
+mkdir -p "$T18/public"
+touch "$T18/public/app.css"
+printf '<html><head><link rel="stylesheet" href="app.css"></head><body><p>hi</p></body></html>\n' \
+    >"$T18/public/index.html"
+# Stub outputs garbage (no RENDER_VERDICT= line) — simulates render-check.js crash
+STUB18=$(mktemp)
+cat >"$STUB18" <<'STUB'
+#!/usr/bin/env bash
+printf 'SyntaxError: some garbage output from a crashed render-check\n'
+STUB
+chmod +x "$STUB18"
+out18=$(printf '%s' "$(input_for "$T18")" |
+    RENDER_CHECK_CMD="$STUB18" CODEGEN_DIR="$SCRIPT_DIR" bash "$HOOK" 2>/dev/null || true)
+outcome18="allow"
+printf '%s' "$out18" | grep -q '"decision"[[:space:]]*:[[:space:]]*"block"' && outcome18="block"
+if [ "$outcome18" = "block" ] && printf '%s' "$out18" | grep -q 'render-check did not emit verdict'; then
+    [ -n "${VERBOSE:-}" ] && printf 'PASS: %s\n' "render-check crash (no verdict) blocks"
+    pass=$((pass + 1))
+else
+    printf 'FAIL: render-check crash (no verdict) should block with no-verdict message\n  outcome: %s\n  stdout: %s\n' \
+        "$outcome18" "$out18"
+    fail=$((fail + 1))
+fi
+rm -f "$STUB18"
+rm -rf "$T18"
 
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

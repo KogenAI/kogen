@@ -70,6 +70,12 @@ For full make-target index including install/uninstall/CI targets, see `context/
 
 ## Testing Patterns
 
+### Render-Check Test Pattern
+
+New bash test files under `harnesses/claude/hooks/` are auto-discovered by `run-tests.sh` via `find *_test.sh` — no registration needed. When testing crash paths (e.g., render-check.js parse failures), use `make_render_stub` to create temp bash scripts for normal cases, but skip it for crash-path stubs: write garbage directly via `cat > stub <<'STUB' ... STUB` to produce output without `RENDER_VERDICT=` variable. Regression guard: `node --check` test in `render-check_test.sh` catches duplicate function definitions and parse errors early (cf. session 20260608_153448).
+
+### Fixture and Build Patterns
+
 - Tests scaffold a temp app, assert generated file contents, run `mix compile` or `npm run build` on output
 - `last_green.json` is checked in — diff against it to spot regressions before merging
 - Run a single test file: `mix test test/stacks/phoenix_test.exs` from `test_harness/`

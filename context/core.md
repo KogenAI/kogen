@@ -197,6 +197,10 @@ Note: if a root-level artifact's ownership is unclear, check `resource_manager.s
 - **scaffold**: `codegen-scaffold` delegates to `shared/scaffold/<stack>/scaffold.sh`
 - **test-harness**: ExUnit tests validate the rendered output and scaffold behaviour end-to-end
 
+## install.sh Shell Redirect Gotcha
+
+When gating install steps with a subshell in `install.sh`, the shell construct `if (subshell) 2>&1` places the `2>&1` redirect on the **outer `if` compound command, not inside the subshell.** The redirect is a no-op; subshell stderr still flows to the terminal. Example: `if (npx playwright install chromium) 2>&1` captures NO output from playwright — redirect is applied after the `if` statement completes, not during subshell execution. Pattern: move the redirect INTO the subshell: `if (npx playwright install chromium 2>&1)` or use a separate context: `( npx playwright install chromium 2>&1 )` at the call site. This pitfall commonly appears in conditional Chromium installation steps (cf. session 20260608_153448).
+
 ## Architectural Constraints
 
 **One-way knowledge boundary**: Codegen MUST NOT know about, name, or validate downstream consumer projects. Codegen installs artifacts into `~/.claude/` and `~/.pi/` only; if a consumer symlink is stale or if the consumer's own setup validation fails, that failure happens in the consumer's build (the right place). Codegen does not own consumer validation. This keeps codegen focused on generator mechanics and prevents coupling to downstream-specific paths or concerns. Any cross-consumer validation logic (e.g. drift-guard) violates this boundary and should be removed.

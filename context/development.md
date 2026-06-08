@@ -80,9 +80,12 @@ Screenshot capture for static-stack benchmark runs requires:
 
 - `node` — already required by vite stacks; must be on `PATH`
 - `playwright` npm devDependency — pinned at `^1.60.0` in root `package.json`; install via `npm install` at repo root
-- Chromium browser binary — one-time install: `npx playwright install chromium`
+- Chromium browser binary — `make install` guarantees this on static-capable boxes (those where `npm list playwright` succeeds); `make doctor` verifies the binary is present. Manual install: `npx playwright install chromium`
 
-Missing Playwright is **non-fatal**: `BenchArtifacts.capture_screenshot/4` detects the missing module, logs `playwright not installed — skipping screenshot capture`, and returns `:ok`. JSONL bench records are always written regardless of screenshot availability.
+**Two separate subsystems with different failure modes** (cf. session 20260608_153448):
+
+1. **Benchmark screenshots** — `BenchArtifacts.capture_screenshot/4` (ExUnit test phase). Missing Playwright is **non-fatal**: logs `playwright not installed — skipping screenshot capture` and returns `:ok`. JSONL bench records are always written regardless of screenshot availability.
+2. **Static-site render gate** — `static-site-build-check.sh` (SubagentStop hook). **Fail-closed**: if Chromium is absent on a static-capable box, the gate blocks the developer subagent with a clear error message. This is NOT the same as benchmark behavior — the gate requires Chromium, while benchmarks tolerate its absence. Conversely, both use Playwright/Chromium; the distinction is whether missing installation is permitted (benchmarks) or denied (gate).
 
 ## Common Pitfalls
 
@@ -90,12 +93,14 @@ Missing Playwright is **non-fatal**: `BenchArtifacts.capture_screenshot/4` detec
 - **`npm install` at codegen root required before hook use** — root `node_modules/` (ajv, playwright, prettier) must exist for schema-validate.js and render-check.js; install.sh now runs this automatically. If absent, verification hooks emit INCONCLUSIVE (cannot run, not passed).
 - **`make install` required after any rule/template change** — running agents see the old baked prompts otherwise
 - **Root node_modules absence is a trap** — hooks silently degrade (INCONCLUSIVE verdict) if ajv/playwright unresolvable. Run `npm install` at codegen root or rely on install.sh to do it.
+- **Chromium binary absence is fail-closed on static boxes** — `make install` installs Chromium when playwright is present; `make doctor` verifies it. Static-site build gate BLOCKS (not skips) when Chromium is missing on a static-capable install. Benchmark screenshot capture tolerates missing Chromium (non-fatal); the gate does not. Two separate paths with different constraints.
 - **`mise trust` runs unconditionally on install** — enforcement `.mise.toml` is now trusted without `OCG_NONINTERACTIVE` gate; interactive installs no longer hang on trust prompt.
 - **Do not run `npm install` at repo root for Pi extensions** — each extension has its own node_modules; run per-extension dir (only root install is managed by install.sh)
 - **Hook test failures are not ExUnit** — `make test` runs bash tests; `make test-stacks` runs ExUnit; they are separate suites
 - **`CODEGEN_DIR` must be absolute** — relative paths break symlink resolution in launchers
 - **Session log filename format must include `_HHMMSS`** — orchestrator creates logs with canonical `YYYYMMDD_HHMMSS_slug.md` naming; non-canonical forms (e.g., `YYYYMMDD-slug.md`) are blocked by reviewer-guard and dev-gate hooks at Edit time
 - **Makefile recipes run under `/bin/sh`, not bash** — process substitution (`< <(...)`) fails even on macOS where `/bin/sh` is bash-compat. Use pipeline patterns (`cat file | grep | tr | sed`) instead of bash-specific syntax in Makefile recipes and variable assignments.
+- **Makefile doctor pattern for binary presence** — when using `node -e` inline to check for a binary (e.g., Chromium), use `$$` for shell variable interpolation (Make variable) and `$(VAR)` for Make variables. Example: `node -e "const path = require('playwright').chromium.executablePath(); if(!require('fs').existsSync(path)) throw new Error()"` — note `executablePath()` returns a path even when the binary is NOT downloaded; must test `fs.existsSync()` to confirm download completion (cf. session 20260608_153448).
 - **Flaky tests often indicate state leakage, not async timing** — investigate persistent state first (counter files, temp dirs, session IDs) before blaming concurrency. Example: counter files from `runHook()` calls (e.g., `claude-autoship-guard-<sessionId>.count`) persist across test runs; add explicit cleanup in `afterEach` to prevent accumulation and retry-cap failures every ~3rd run.
 - **TypeScript test isolation: capture streams at test-body scope** — when tests capture stderr/stdout to verify error handling, move capture to the test-body scope rather than `beforeEach`/`afterEach` hooks. Ensures each test owns its capture window and avoids cross-test pollution under parallel runners. Restore streams in both resolve and reject paths to prevent leakage on assertion failure.
 

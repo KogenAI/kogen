@@ -168,15 +168,15 @@ If any step fails, the trap cleanup (activated at temp-parent assignment) wipes 
 
 ### New Templates (codegen 0.5+)
 
-| Template                     | Purpose                                                                                  |
-| ---------------------------- | ---------------------------------------------------------------------------------------- |
-| `.env.eex`                   | (NEW) Environment overrides: SECRET_KEY_BASE, DATABASE_URL, PHX_HOST, PORT               |
-| `.env.sample.eex`            | Populated with placeholder description (previously empty)                                |
-| `.env.prod.sample.eex`       | SECRET_KEY_BASE replaced with placeholder (was hardcoded)                                |
-| `.claude/gate-config.sh.eex` | (NEW) Per-app instance of gate-control wrapper (dev-port derivation)                     |
-| `.mcp.json.eex`              | (NEW) Claude MCP config for tidewave mcp-proxy (port from codegen templates)             |
+| Template                     | Purpose                                                                                                                            |
+| ---------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| `.env.eex`                   | (NEW) Environment overrides: SECRET_KEY_BASE, DATABASE_URL, PHX_HOST, PORT                                                         |
+| `.env.sample.eex`            | Populated with placeholder description (previously empty)                                                                          |
+| `.env.prod.sample.eex`       | SECRET_KEY_BASE replaced with placeholder (was hardcoded)                                                                          |
+| `.claude/gate-config.sh.eex` | (NEW) Per-app instance of gate-control wrapper (dev-port derivation)                                                               |
+| `.mcp.json.eex`              | (NEW) Claude MCP config for tidewave mcp-proxy (port from codegen templates)                                                       |
 | `coveralls.json.eex`         | Updated: minimum_coverage set to 30.0 (fresh phx.new boilerplate ~33.7%; no ratchet — downstream teams may regress and still pass) |
-| `Makefile.eex`               | Gate targets + delegating stubs: gate-status, gate-kill, gate-logs                       |
+| `Makefile.eex`               | Gate targets + delegating stubs: gate-status, gate-kill, gate-logs                                                                 |
 
 ### Machine-Global PLT Cache (B3 — Dormant until full `make ci`)
 

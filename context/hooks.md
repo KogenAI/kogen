@@ -77,7 +77,8 @@ Hook registration: **Two pipelines** — both write to `harnesses/claude/hooks/*
 | `harnesses/claude/hooks/lib/gate-select.sh`                     | Selects gate command from ```gate-json block (jq-parsed) or prose `**Gate**:`fallback; emits`gate=`, `mode=`, `timeout=` lines                        |
 | `harnesses/claude/hooks/lib/gate-result.sh`                     | Shared helper: `write_gate_result` writes structured `codegen/gate-pending/gate-result.json`; `gate_result_verdict` reads verdict                     |
 | `harnesses/claude/hooks/lib/gate-control.sh`                    | PID-liveness helper: `gate_control_status` checks in-flight gate; `gate_control_kill` terminates; used by stop-cycle-guard                            |
-| `harnesses/claude/hooks/lib/render-check.js`                    | Headless Chromium render verdict engine: DOM non-empty, styles applied, no JS errors                                                                  |
+| `harnesses/claude/hooks/lib/render-check.js`                    | Headless Chromium render verdict engine: DOM non-empty, styles applied, no JS errors. Parse guard: detects dup fn defs via `node --check`             |
+| `harnesses/claude/hooks/lib/render-check_test.sh`               | Regression guard: `node --check` on render-check.js + phoenix-server.js; tests SyntaxError paths for duplicate functions                              |
 | `harnesses/claude/hooks/run-tests.sh`                           | Runs all `*_test.sh` hook tests                                                                                                                       |
 
 ## Hook Event Types and Scripts
@@ -381,8 +382,13 @@ Some guard logic is scoped exclusively to the orchestrator level — no named ro
 
 **Path normalization:** When a guard inherits `repo_relative()` output and matches against anchored regex (e.g., `^codegen/logging/`), strip leading `./` explicitly: `rel="${rel#./}"`. This ensures both bare (`codegen/logging/foo.md`) and dot-prefixed (`./codegen/logging/foo.md`) paths match the same allowlist.
 
+## Shell Case Branching Pattern
+
+When designing shell case statements where one verdict variant should block and others allow (or vice versa), place **specific arms BEFORE wildcards**. Example: `INCONCLUSIVE:browser-not-installed)` → fail BEFORE `INCONCLUSIVE:*)` → allow. First-match semantics ensure the specific handler wins. In `static-site-build-check.sh` (lines 221–241), explicit `INCONCLUSIVE:browser-not-installed)` arm must appear before the `*)` no-verdict catch-all to ensure browser-absent blocks properly. This pattern prevents wildcard arms from inadvertently swallowing specialized cases.
+
 ## Pitfalls
 
+- **render-check.js parse crash (Jun 3 regression)** — Duplicate `allocFreePort` and `waitForHttp200` function definitions caused SyntaxError under strict mode, masking the whole file and producing no output. This crash was misdiagnosed as browser-absent because `static-site-build-check.sh` wildcard `*)` case arm conflated empty output with browser-not-installed. Guard: `render-check_test.sh` uses `node --check` to detect parse errors; static gate now splits no-verdict-crash and browser-absent into distinct fail-closed paths (cf. session 20260608_153448).
 - **Hook tests are bash, not ExUnit** — run via `run-tests.sh`, not `mix test`
 - **`session_log_from_transcript`** filters Write/Edit/MultiEdit tool_use in transcript JSONL; Bash redirects (`echo >`) are invisible to it → always use Write tool for step logs
 - **Session log filename format** — must be `YYYYMMDD_HHMMSS_slug.md` (with time component); non-canonical forms (e.g., `YYYYMMDD-slug.md` without `_HHMMSS`) block reviewer-guard and dev-gate Edit calls

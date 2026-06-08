@@ -204,6 +204,20 @@ if [ -f "$CODEGEN_DIR/package.json" ]; then
     fi
 fi
 
+# Install Chromium browser binary (required for static-site render verification).
+# Only run if playwright is present (dev-dep); skip gracefully on production installs.
+if command -v npm &>/dev/null && (cd "$CODEGEN_DIR" && npm list playwright >/dev/null 2>&1); then
+    echo "📦 Installing Chromium browser binary (playwright)..."
+    if (cd "$CODEGEN_DIR" && npx playwright install chromium) 2>&1; then
+        echo "   ✅ Chromium browser binary installed"
+    else
+        echo "❌ Failed to install Chromium. Static-site builds require Chromium." >&2
+        exit 1
+    fi
+else
+    echo "   ⚠️  Skipping Chromium install (playwright not present; non-static install)"
+fi
+
 # Generate templates for the selected harnesses via unified manifest-driven generator.
 # Source manifest helpers for launcher/completion iteration (used in harness install loop below).
 # Upfront yq gate: generate.sh and manifest-lib.sh consume yq; fail fast before sourcing.

@@ -126,10 +126,30 @@ export function register(pi: ExtensionAPI): void {
 
     debugLog("static-site-build-check", `render verdict: ${renderVerdict}`);
 
+    // Pi doesn't support decision:block in session_shutdown; this gate is advisory only (stderr).
+    // The claude harness has the fail-closed enforcement.
     if (renderVerdict.startsWith("FAIL:")) {
       const reason = renderVerdict.slice("FAIL:".length);
       process.stderr.write(
         `[pi-enforcement:static-site-build-check] render FAILED: ${reason}\n`,
+      );
+    } else if (renderVerdict === "INCONCLUSIVE:browser-not-installed") {
+      // Explicit browser-absent verdict from render-check.js
+      debugLog(
+        "static-site-build-check",
+        "render INCONCLUSIVE: browser not installed",
+      );
+      process.stderr.write(
+        `[pi-enforcement:static-site-build-check] render INCONCLUSIVE: Chromium browser not found — run: npx playwright install chromium\n`,
+      );
+    } else if (renderVerdict === "") {
+      // render-check.js crashed or emitted no RENDER_VERDICT= line
+      debugLog(
+        "static-site-build-check",
+        "render-check emitted no verdict — crash or parse error",
+      );
+      process.stderr.write(
+        `[pi-enforcement:static-site-build-check] render-check did not emit verdict — check render-check.js for parse/runtime errors\n`,
       );
     } else if (renderVerdict.startsWith("INCONCLUSIVE:")) {
       const detail = renderVerdict.slice("INCONCLUSIVE:".length);

@@ -23,7 +23,6 @@
 const path = require("path");
 const fs = require("fs");
 const http = require("http");
-const net = require("net");
 const {
   allocFreePort,
   startPhoenixServer,
@@ -66,20 +65,6 @@ function log(msg) {
   process.stderr.write(`[render-check] ${msg}\n`);
 }
 
-// ── Port allocation ──────────────────────────────────────────────────────────
-
-function allocFreePort() {
-  return new Promise((resolve, reject) => {
-    const server = net.createServer();
-    server.unref();
-    server.on("error", reject);
-    server.listen(0, "127.0.0.1", () => {
-      const { port } = server.address();
-      server.close(() => resolve(port));
-    });
-  });
-}
-
 // ── Static HTTP server ───────────────────────────────────────────────────────
 
 const MIME = {
@@ -119,49 +104,6 @@ function startServer(serveDir, port) {
     });
     server.on("error", reject);
     server.listen(port, "127.0.0.1", () => resolve(server));
-  });
-}
-
-// ── Phoenix HTTP readiness poll ──────────────────────────────────────────────
-
-function waitForHttp200(port, timeoutMs) {
-  return new Promise((resolve, reject) => {
-    const deadline = Date.now() + timeoutMs;
-
-    function attempt() {
-      let aborted = false;
-      const req = http.get(`http://localhost:${port}/`, (res) => {
-        if (res.statusCode >= 200 && res.statusCode < 400) {
-          res.resume();
-          resolve();
-        } else {
-          res.resume();
-          retry();
-        }
-      });
-      req.on("error", (err) => {
-        if (aborted || err.code === "ECONNREFUSED") {
-          retry();
-        } else {
-          reject(err);
-        }
-      });
-      req.setTimeout(1000, () => {
-        aborted = true;
-        req.destroy();
-        retry();
-      });
-    }
-
-    function retry() {
-      if (Date.now() >= deadline) {
-        reject(new Error(`server did not respond within ${timeoutMs}ms`));
-        return;
-      }
-      setTimeout(attempt, 300);
-    }
-
-    attempt();
   });
 }
 

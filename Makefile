@@ -487,6 +487,11 @@ doctor:
 	else \
 		echo "FAIL: ajv not in codegen node_modules (run: npm install in codegen root)"; fails=$$((fails + 1)); \
 	fi; \
+	if node -e "const pw = require('$(SCRIPT_DIR)/node_modules/playwright'); const p = pw.chromium.executablePath(); const fs = require('fs'); if (!fs.existsSync(p)) { process.exit(1); }" >/dev/null 2>&1; then \
+		echo "OK: Chromium binary present (playwright)"; \
+	else \
+		echo "FAIL: Chromium binary not found — run: cd $(SCRIPT_DIR) && npx playwright install chromium"; fails=$$((fails + 1)); \
+	fi; \
 	echo ""; \
 	if [ $$fails -eq 0 ]; then \
 		echo "✅ All checks passed"; \
