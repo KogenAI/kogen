@@ -33,13 +33,15 @@ defmodule CodegenTestHarness.Stacks.Phoenix.SeedTest do
     Fixtures.run_codegen_build(cwd, @first_prompt, test_name: "seed_phoenix_first_build")
 
     Assertions.assert_mix_compiles!(cwd)
-    commits_after_first = count_commits!(cwd)
+    Assertions.assert_generated_tests_pass!(cwd)
+    commits_after_first = Fixtures.count_commits!(cwd)
     assert commits_after_first >= 1, "First build must produce at least one commit"
 
     # Second build from committed state
     Fixtures.run_codegen_build(cwd, @second_prompt, test_name: "seed_phoenix_second_build")
 
     Assertions.assert_mix_compiles!(cwd)
+    Assertions.assert_generated_tests_pass!(cwd)
     Assertions.assert_new_commit_since!(cwd, commits_after_first)
     Assertions.assert_commit_well_formed!(cwd)
     Assertions.assert_not_revert_head!(cwd)
@@ -50,19 +52,14 @@ defmodule CodegenTestHarness.Stacks.Phoenix.SeedTest do
     fallback = Path.wildcard(Path.join(cwd, "lib/**/todo*.ex"))
     target_files = if todo_files == [], do: fallback, else: todo_files
 
-    if target_files != [] do
-      [todo_live_path | _] = target_files
-      Assertions.assert_file_matches!(todo_live_path, ~r/data-testid="app-footer"/)
-    end
+    assert target_files != [],
+           "no todo LiveView file found after second build — AI must create a TodoLive module"
+
+    [todo_live_path | _] = target_files
+    Assertions.assert_file_matches!(todo_live_path, ~r/data-testid="app-footer"/)
 
     Fixtures.bench_assertions_passed!("phoenix", "seed_phoenix_first_build")
     Fixtures.bench_assertions_passed!("phoenix", "seed_phoenix_second_build")
   end
 
-  defp count_commits!(cwd) do
-    {log, 0} =
-      System.cmd("git", ["log", "--oneline"], cd: cwd, stderr_to_stdout: true, env: [])
-
-    log |> String.split("\n", trim: true) |> length()
-  end
 end

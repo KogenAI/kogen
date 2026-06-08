@@ -66,6 +66,7 @@ defmodule CodegenTestHarness.Stacks.Phoenix.IterationTest do
     Assertions.assert_file_matches!(todo_live_path, ~r/handle_event\("search"/)
 
     Assertions.assert_mix_compiles!(cwd)
+    Assertions.assert_generated_tests_pass!(cwd)
     Assertions.assert_git_committed!(cwd)
     Assertions.assert_commit_well_formed!(cwd)
     Assertions.assert_commit_subject_length!(cwd)

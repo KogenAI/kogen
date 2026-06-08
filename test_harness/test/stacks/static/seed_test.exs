@@ -24,7 +24,7 @@ defmodule CodegenTestHarness.Stacks.Static.SeedTest.Html do
       test_name: "seed_static_html_first"
     )
 
-    commits_after_first = count_commits!(cwd)
+    commits_after_first = Fixtures.count_commits!(cwd)
     assert commits_after_first >= 1, "First html build must produce at least one commit"
 
     Fixtures.run_codegen_build(cwd, @html_change_prompt,
@@ -48,12 +48,6 @@ defmodule CodegenTestHarness.Stacks.Static.SeedTest.Html do
     Fixtures.bench_assertions_passed!("static", "seed_static_html_second")
   end
 
-  defp count_commits!(cwd) do
-    {log, 0} =
-      System.cmd("git", ["log", "--oneline"], cd: cwd, stderr_to_stdout: true, env: [])
-
-    log |> String.split("\n", trim: true) |> length()
-  end
 end
 
 defmodule CodegenTestHarness.Stacks.Static.SeedTest.Hugo do
@@ -82,7 +76,7 @@ defmodule CodegenTestHarness.Stacks.Static.SeedTest.Hugo do
       test_name: "seed_static_hugo_first"
     )
 
-    commits_after_first = count_commits!(cwd)
+    commits_after_first = Fixtures.count_commits!(cwd)
     assert commits_after_first >= 1, "First hugo build must produce at least one commit"
 
     Fixtures.run_codegen_build(cwd, @hugo_change_prompt,
@@ -104,12 +98,6 @@ defmodule CodegenTestHarness.Stacks.Static.SeedTest.Hugo do
     Fixtures.bench_assertions_passed!("static", "seed_static_hugo_second")
   end
 
-  defp count_commits!(cwd) do
-    {log, 0} =
-      System.cmd("git", ["log", "--oneline"], cd: cwd, stderr_to_stdout: true, env: [])
-
-    log |> String.split("\n", trim: true) |> length()
-  end
 end
 
 defmodule CodegenTestHarness.Stacks.Static.SeedTest.ViteReact do
@@ -138,7 +126,7 @@ defmodule CodegenTestHarness.Stacks.Static.SeedTest.ViteReact do
       test_name: "seed_static_react_first"
     )
 
-    commits_after_first = count_commits!(cwd)
+    commits_after_first = Fixtures.count_commits!(cwd)
     assert commits_after_first >= 1, "First vite-react build must produce at least one commit"
 
     Fixtures.run_codegen_build(cwd, @react_change_prompt,
@@ -160,12 +148,6 @@ defmodule CodegenTestHarness.Stacks.Static.SeedTest.ViteReact do
     Fixtures.bench_assertions_passed!("static", "seed_static_react_second")
   end
 
-  defp count_commits!(cwd) do
-    {log, 0} =
-      System.cmd("git", ["log", "--oneline"], cd: cwd, stderr_to_stdout: true, env: [])
-
-    log |> String.split("\n", trim: true) |> length()
-  end
 end
 
 defmodule CodegenTestHarness.Stacks.Static.SeedTest.ViteVue do
@@ -193,7 +175,7 @@ defmodule CodegenTestHarness.Stacks.Static.SeedTest.ViteVue do
       test_name: "seed_static_vue_first"
     )
 
-    commits_after_first = count_commits!(cwd)
+    commits_after_first = Fixtures.count_commits!(cwd)
     assert commits_after_first >= 1, "First vite-vue build must produce at least one commit"
 
     Fixtures.run_codegen_build(cwd, @vue_change_prompt,
@@ -215,12 +197,6 @@ defmodule CodegenTestHarness.Stacks.Static.SeedTest.ViteVue do
     Fixtures.bench_assertions_passed!("static", "seed_static_vue_second")
   end
 
-  defp count_commits!(cwd) do
-    {log, 0} =
-      System.cmd("git", ["log", "--oneline"], cd: cwd, stderr_to_stdout: true, env: [])
-
-    log |> String.split("\n", trim: true) |> length()
-  end
 end
 
 defmodule CodegenTestHarness.Stacks.Static.SeedTest.Multilingual do
@@ -249,7 +225,7 @@ defmodule CodegenTestHarness.Stacks.Static.SeedTest.Multilingual do
       test_name: "seed_static_multilingual_first"
     )
 
-    commits_after_first = count_commits!(cwd)
+    commits_after_first = Fixtures.count_commits!(cwd)
     assert commits_after_first >= 1, "First multilingual build must produce at least one commit"
 
     Fixtures.run_codegen_build(cwd, @multilingual_change_prompt,
@@ -272,10 +248,4 @@ defmodule CodegenTestHarness.Stacks.Static.SeedTest.Multilingual do
     Fixtures.bench_assertions_passed!("static", "seed_static_multilingual_second")
   end
 
-  defp count_commits!(cwd) do
-    {log, 0} =
-      System.cmd("git", ["log", "--oneline"], cd: cwd, stderr_to_stdout: true, env: [])
-
-    log |> String.split("\n", trim: true) |> length()
-  end
 end

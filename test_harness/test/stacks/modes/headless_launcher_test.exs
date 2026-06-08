@@ -11,6 +11,7 @@ defmodule CodegenTestHarness.Stacks.Modes.HeadlessLauncherTest do
   use ExUnit.Case, async: false
 
   @moduletag :headless
+  @moduletag :slow
 
   @codegen_dir Path.expand("../../../../", __DIR__)
 

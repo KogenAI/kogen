@@ -116,7 +116,7 @@ codegen/                          ← repo root
 | `pitches/`      | Codegen-on-codegen pitch documents used to drive AI build sessions on this repo.                                                                          | —                                                                                                  |
 | `shared/`       | Runtime artifacts installed/rendered into downstream agents: rules, recipes, subagents, scaffold, usage_rules.                                            | `shared/rules/`, `shared/recipes/`, `shared/subagents/`, `shared/scaffold/`, `shared/usage_rules/` |
 | `templates/`    | Generator pipeline + `.j2` sources for codegen infrastructure. Distinct from `shared/` (runtime).                                                         | `templates/generator/`, `templates/AGENTS-HYBRID.md.j2`                                            |
-| `test_harness/` | Elixir/ExUnit project for end-to-end scaffold validation. Slow; real LLM calls.                                                                           | `test_harness/test/stacks/`, `test_harness/last_green.json`                                        |
+| `test_harness/` | Elixir/ExUnit project for end-to-end scaffold validation. Slow (real LLM) + fast hermetic (deterministic). Mix path wire: `mix.exs:37` elixirc_paths(:test).                                                                           | `test_harness/test/stacks/`, `test_harness/test/codegen_test_harness/`, `test_harness/last_green.json`                                        |
 | `tmp/`          | Ephemeral scratch space. Gitignored.                                                                                                                      | —                                                                                                  |
 
 ### `harnesses/` key paths
@@ -185,7 +185,7 @@ codegen/                          ← repo root
 - **`templates/generator/`** — generator pipeline core. `generate.sh` + `process_template.py` + `hook_registrations.py`. Full domain: `context/core.md`.
 - **`harnesses/claude/hooks/`** — 47 hook scripts; each enforces one discipline rule, has a paired `_test.sh`. Full catalog: `context/hooks.md`.
 - **`shared/subagents/`** — `.md.j2` templates rendered into fully self-contained system prompts baked at install time via `{% include %}`. Full domain: `context/subagents.md`.
-- **`test_harness/`** — ExUnit end-to-end scaffold gate. Not fast. Real LLM calls. Full domain: `context/test-harness.md`.
+- **`test_harness/`** — ExUnit project with two test flavours: slow `make test-stacks` (real LLM, `--only slow`), fast hermetic `make test-hermetic` (deterministic guards, `--exclude slow`). New files in `test_harness/test/codegen_test_harness/` (render_check_test.exs, call_contract_test.exs) validate harness infrastructure without LLM. Full domain: `context/test-harness.md`.
 - **`index.html`** — test fixture for static-stack ExUnit tests. Not a project homepage; not served.
 - **`package.json`** (root) — declares `prettier` only; `"private": true`; no build/serve scripts.
 - **`ai-agents/`** — orphaned from earlier design. `install.sh` writes to `~/.claude/agents/`, not here.

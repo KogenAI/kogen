@@ -220,6 +220,23 @@ if [[ -n "$NO_ECTO" ]] && [[ -f "$HEALTH_CONTROLLER" ]]; then
 fi
 
 # ---------------------------------------------------------------------------
+# Phase 1b: remove default page controller files
+# phx.new generates a page_controller.ex + page_html.ex + page_controller_test.exs
+# that assert "Peace of mind from prototype to production" at GET /.
+# Our scaffold always uses a LiveView at /, so these files become stale and
+# fail mix test once the AI replaces the root route. Delete them unconditionally.
+# ---------------------------------------------------------------------------
+PAGE_CTRL="$TARGET_DIR/lib/${APP_NAME}_web/controllers/page_controller.ex"
+PAGE_HTML="$TARGET_DIR/lib/${APP_NAME}_web/controllers/page_html.ex"
+PAGE_HTML_DIR="$TARGET_DIR/lib/${APP_NAME}_web/controllers/page_html"
+PAGE_CTRL_TEST="$TARGET_DIR/test/${APP_NAME}_web/controllers/page_controller_test.exs"
+
+for f in "$PAGE_CTRL" "$PAGE_HTML" "$PAGE_CTRL_TEST"; do
+    [[ -f "$f" ]] && rm -f "$f" && echo "[scaffold.sh] removed $f"
+done
+[[ -d "$PAGE_HTML_DIR" ]] && rm -rf "$PAGE_HTML_DIR" && echo "[scaffold.sh] removed $PAGE_HTML_DIR"
+
+# ---------------------------------------------------------------------------
 # Phase 2: run mutation scripts in fixed order
 # ---------------------------------------------------------------------------
 echo "[scaffold.sh] running mutations..."

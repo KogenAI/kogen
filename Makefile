@@ -143,7 +143,7 @@ harness-parity:
 # Job count caps at 8 to avoid thrashing on smaller machines.
 # Post-deps stages (hook-tests, phoenix scaffold, test_harness/install, npm) run
 # concurrently via & + wait to reduce wall time.
-test: hook-parity hook-header-parity harness-parity test-generator enforce-registry-parity
+test: hook-parity hook-header-parity harness-parity test-generator enforce-registry-parity test-hermetic
 	@set -e; \
 	tmp_hooks=$$(mktemp); tmp_scaffold=$$(mktemp); tmp_install=$$(mktemp); \
 	tmp_npm=$$(mktemp); tmp_subagents=$$(mktemp); \
@@ -211,6 +211,16 @@ test: hook-parity hook-header-parity harness-parity test-generator enforce-regis
 	fi; \
 	rm -f "$$tmp_hooks" "$$tmp_scaffold" "$$tmp_install" "$$tmp_npm" "$$tmp_subagents"; \
 	exit "$$fail"
+
+# test-hermetic: fast, deterministic ExUnit tests — no LLM, no Playwright, no real server.
+# Runs only tests NOT tagged :slow (excludes LLM-dependent scaffold/gate/seed/iteration tests).
+.PHONY: test-hermetic
+test-hermetic:
+	@cd "$(SCRIPT_DIR)/test_harness" && \
+	out=$$(MIX_BUILD_PATH=_build/claude_test mix test --exclude slow 2>&1); rc=$$?; \
+	printf '%s\n' "$$out"; \
+	if [ $$rc -eq 0 ]; then echo "ALL CLEAR ✅ make test-hermetic"; else echo "FAILED ❌ make test-hermetic"; fi; \
+	exit $$rc
 
 .PHONY: test-generator test-generator-python
 test-generator: test-generator-python

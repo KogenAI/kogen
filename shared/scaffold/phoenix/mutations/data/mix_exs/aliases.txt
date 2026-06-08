@@ -9,8 +9,9 @@
         "ecto.reset": ["ecto.drop", "ecto.setup"],
         test: ["ecto.create --quiet", "ecto.migrate --quiet", "test"],
         "assets.setup": ["tailwind.install --if-missing", "esbuild.install --if-missing"],
-        "assets.build": ["tailwind <%= app_name %>", "esbuild <%= app_name %>"],
+        "assets.build": ["compile", "tailwind <%= app_name %>", "esbuild <%= app_name %>"],
         "assets.deploy": [
+          "compile",
           "tailwind <%= app_name %> --minify",
           "esbuild <%= app_name %> --minify",
           "phx.digest"

@@ -53,11 +53,37 @@ test_harness/
 
 | Target                    | Purpose                                                                  |
 | ------------------------- | ------------------------------------------------------------------------ |
-| `make test-stacks`        | Runs full ExUnit suite across all stacks (`mix test` in `test_harness/`) |
-| `make test-stacks-claude` | Runs ExUnit suite for Claude harness only                                |
-| `make test-stacks-pi`     | Runs ExUnit suite for Pi harness only                                    |
-| `make record-green`       | Stamps `last_green.json` with current commit SHA after clean suite pass  |
-| `make test`               | Runs bash hook tests (`run-tests.sh`) — separate from ExUnit suite       |
+| `make test-stacks`        | Runs full ExUnit suite across all stacks (`mix test --only slow`; real LLM) |
+| `make test-stacks-claude` | Runs ExUnit suite for Claude harness only (`mix test --only slow`)        |
+| `make test-stacks-pi`     | Runs ExUnit suite for Pi harness only (`mix test --only slow`)            |
+| `make test-hermetic`      | Fast, deterministic ExUnit only (`mix test --exclude slow`); no LLM      |
+| `make test`               | Bash hook tests + hermetic ExUnit (`test-hermetic`) — no LLM             |
+| `make record-green`       | Stamps `last_green.json` with current commit SHA after clean `test-stacks`|
+
+## Gate Invariant: `--only slow` / `--exclude slow`
+
+The ExUnit suite uses `@moduletag :slow` to partition LLM-driven tests from deterministic fast tests:
+
+- `make test-stacks-claude` / `make test-stacks-pi` → `mix test --only slow` — only runs LLM-dependent tests tagged `:slow`
+- `make test-hermetic` → `mix test --exclude slow` — only runs fast, deterministic tests
+
+**Critical**: tests added to the gate suite (e.g., `ops_test.exs`, `headless_launcher_test.exs`) MUST have `@moduletag :slow` to be included in `make test-stacks`. Omitting the `:slow` tag silently excludes them from the LLM gate via `test_helper.exs: exclude: [:slow]` — they will run under `test-hermetic` instead, defeating gate coverage.
+
+**Important caveat — `--only <tag>` matching empty tests**: When no tests match a tag filter (e.g., no `--only slow` tests), `mix test` exits with **exit code 1** (not 0). This is a safety mechanism — an empty partition cannot fake-green. However, the risk is NOT an empty match; it is silent exclusion of untagged tests. A module without explicit tags is excluded by `--only slow`, and if that module is the only build-path test for a critical feature, gate coverage has a hole.
+
+**Proof of G1 fix (session 20260608_174414)**: `ops_test.exs` and `headless_launcher_test.exs` were originally tagged `:ops` and `:headless` respectively but NOT `:slow`. After adding `@moduletag :slow` to both, the gate's reported test count rose by the sum of their case counts. These tests now execute in `make test-stacks` and remain visible to `test-hermetic` (both tags present) or are excluded only from hermetic if `:slow` alone is desired (edit: both tags kept for dual inclusion). The gate invariant holds: never regress to bare `mix test` (which would silently disable `exclude: [:slow]` and mask gate effectiveness).
+
+## Hermetic Regression Guards
+
+Two new test files in `test_harness/test/codegen_test_harness/` run under `make test-hermetic` (do NOT carry `@moduletag :slow`; only hermetic tests):
+
+- **`render_check_test.exs`** — Validates `harnesses/claude/hooks/lib/render-check.js` syntax correctness via `node --check` on both render-check.js and phoenix-server.js. Smoke-invokes `render-check.js` asserting a `RENDER_VERDICT=` line emits (catches silent parse failures). Skips-with-reason if `node` absent (browserless box allowed). Critical for catching render-check regressions without requiring a full LLM gate cycle.
+- **`call_contract_test.exs`** — Asserts the harness-name mapping: `Fixtures.codegen_call_harness/0` returns `"claude_code"` (codegen-call harness name), not `"claude"` (codegen-build harness name). Catches class-2 regressions where fixture feeds wrong harness ID to the call binary.
+
+**G1–G3 confidence gaps closed by this session (20260608_174414)**:
+- **G1**: `ops_test.exs` + `headless_launcher_test.exs` now tagged `:slow` (were previously `:ops`/`:headless` only). Gate test count rose by case count of both files.
+- **G2**: `assert_generated_tests_pass!/1` broadened to scaffold_test.exs + seed_test.exs + iteration_test.exs (now ≥4 call sites; previously gate_test.exs only). Validates generated app `mix test` pass on every build path.
+- **G3**: Removed silent-pass in seed_test.exs `if target_files != []` condition (L53–56 was removed, replaced with explicit `assert target_files != []` — never silently pass on empty wildcard).
 
 For full make-target index including install/uninstall/CI targets, see `context/development.md`.
 
@@ -180,7 +206,7 @@ Parser (`CodegenTestHarness.UsageParser`) trims each harness envelope to `{model
 - **`last_green.json` is not auto-updated** — run `make record-green` explicitly after a clean passing suite
 - **Hook tests are bash, not ExUnit** — do not run them via `mix test`; use `run-tests.sh`
 - **`mix assets.deploy` exits 0 silently if alias undefined** — guard optional pipeline assertions with filesystem + config checks (check both `assets/` dir presence + `"assets.deploy"` alias in `mix.exs`) rather than assuming silent success means success
-- **`count_commits!/1` duplicated across test modules** — candidate for promotion to public `Fixtures` fn to avoid copy-paste across `seed_test.exs` (static + phoenix)
+- **`count_commits!/1` duplicated across test modules** — FIXED in session 20260608_174414: promoted to public `Fixtures.count_commits!/1`; replaced 7 copy-paste instances (phoenix/seed_test.exs + static/seed_test.exs ×5)
 - **Multi-module ExUnit files** — private helpers cannot be shared across modules in same file; promote to public in support module or keep private per-module copy
 - **phx_new flags** — version 1.8.7+ does not support `--force` flag; scaffold via plain `mix phx.new . --app <name> --live`
 - **CLAUDE.md scaffold instructions** — `Fixtures.isolated_tmp_dir/1` writes a CLAUDE.md gated behind non-phoenix stacks; ensure any direct scaffold calls mirror the exact `mix phx.new . --app <name> --live` incantation for consistency with fixture setup

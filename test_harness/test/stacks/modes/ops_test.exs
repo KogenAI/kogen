@@ -13,6 +13,7 @@ defmodule CodegenTestHarness.Stacks.Modes.OpsTest do
   use ExUnit.Case, async: false
 
   @moduletag :ops
+  @moduletag :slow
 
   @codegen_dir Path.expand("../../../../", __DIR__)
   @ops_script Path.join([@codegen_dir, "harnesses", "claude", "claude-ops.sh"])
