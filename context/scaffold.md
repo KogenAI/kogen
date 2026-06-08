@@ -122,7 +122,9 @@ The `create` path uses **transactional temp-parent + trap**: all mutations run i
 | `--with-appsignal`          | Include AppSignal integration (prod-only)                | false   |
 | `--github-url=<full-url>`   | GitHub repository URL for source_url in mix.exs          | (none)  |
 
-`--no-ecto`: Drops DATABASE_URL from .env, excludes Ecto from deps, removes aliases (setup ecto, ci ecto.rollback, test ecto.setup), skips DataCase, removes ecto.rollback from Makefile ci target.
+`--no-ecto`: Drops DATABASE_URL from .env, excludes Ecto from deps, condionalizes aliases (setup/ecto elements removed; test: alias rewritten to ["test"] instead of deleted), skips DataCase, removes ecto.rollback from Makefile ci target.
+
+**Critical**: The `test:` alias is load-bearing for Ecto TEST DB bootstrap — it runs `ecto.create --quiet` + migrations before tests. Under `--no-ecto`, this alias MUST survive but rewritten to the empty form `["test"]` (single-element list). Deleting it loses the bootstrap for Ecto apps. See mix_exs.sh --no-ecto branch for implementation (Python transform, not blanket grep -v).
 
 `--with-appsignal`: Adds appsignal_phoenix dep (dev-only for telemetry testing); requires `APPSIGNAL_PUSH_API_KEY` env var at runtime (opt-in, not default).
 
@@ -150,23 +152,31 @@ After scaffold creates the directory tree, `scaffold.sh` automatically:
 1. Runs `mise trust` on the generated app's `.mise.toml` (mirrors guarded form in install.sh:595)
 2. Renders `.env` with generated `SECRET_KEY_BASE`, `DATABASE_URL` (unless `--no-ecto`), `PHX_HOST`, `PORT`
 3. Runs `mix deps.get && mix format` (bootstrap + formatting)
-4. Runs `mix setup && mix compile --warnings-as-errors` (self-validation; exits non-zero on compile warnings)
-5. Creates initial git commit (`git add -A && git commit -m "Initial commit"`) — commit rides atomic mv; failure aborts scaffold
-6. Prints readiness summary to stdout
+4. Runs `mix setup` (dependency install + aliases bootstrap)
+5. **Phase 7: Self-Check & Formatting**
+   - Runs `npx prettier --write .` on generated root files (must run AFTER mix setup — setup installs prettier plugin)
+   - Runs conditional `make ci` (Ecto apps only; skipped under `--no-ecto`) → full CI gate validates generated app structure
+   - If `make ci` fails, scaffold hard-fails (do not swallow); developer fixes scaffold templates/mutations and re-runs
+6. Creates initial git commit (`git add -A && git commit -m "Initial commit"`) — commit rides atomic mv; failure aborts scaffold
+7. Prints readiness summary to stdout
 
 If any step fails, the trap cleanup (activated at temp-parent assignment) wipes the partial directory and returns non-zero.
 
+**scaffold.sh self-clean EXIT trap**: `scaffold.sh` installs a `SCAFFOLD_OK`-guarded EXIT trap immediately after `mix phx.new` completes, BEFORE Phase 1. The trap removes `$TARGET_DIR` on any non-zero exit if `SCAFFOLD_OK` is still empty. `SCAFFOLD_OK` is set to `"1"` only after the Phase-8 git commit succeeds — any failure in Phase 1–8 triggers cleanup. This provides defense-in-depth for bare `scaffold.sh` invocations (no outer `codegen-scaffold` trap). On the normal `codegen-scaffold` path, both traps fire: scaffold.sh removes `$TEMP_PARENT/$SLUG`, then codegen-scaffold removes `$TEMP_PARENT`. SIGKILL is the only uncovered case (accepted). The trap is installed AFTER the pre-existing-dir guard so that guard's `exit 1` never deletes a pre-existing user directory.
+
+**Phase 7 ordering constraint**: prettier-write MUST execute after `mix setup` (setup installs the prettier plugin). The generated Makefile's `ci:` target runs `npx prettier -c .` — unformatted root files will fail the check. Prettier-write precedes `make ci` to ensure formatted output before the ci gate runs.
+
 ### New Templates (codegen 0.5+)
 
-| Template                     | Purpose                                                                      |
-| ---------------------------- | ---------------------------------------------------------------------------- |
-| `.env.eex`                   | (NEW) Environment overrides: SECRET_KEY_BASE, DATABASE_URL, PHX_HOST, PORT   |
-| `.env.sample.eex`            | Populated with placeholder description (previously empty)                    |
-| `.env.prod.sample.eex`       | SECRET_KEY_BASE replaced with placeholder (was hardcoded)                    |
-| `.claude/gate-config.sh.eex` | (NEW) Per-app instance of gate-control wrapper (dev-port derivation)         |
-| `.mcp.json.eex`              | (NEW) Claude MCP config for tidewave mcp-proxy (port from codegen templates) |
-| `coveralls.json.eex`         | Updated: minimum_coverage 0 → 35.1 (line 3)                                  |
-| `Makefile.eex`               | Gate targets + delegating stubs: gate-status, gate-kill, gate-logs           |
+| Template                     | Purpose                                                                                  |
+| ---------------------------- | ---------------------------------------------------------------------------------------- |
+| `.env.eex`                   | (NEW) Environment overrides: SECRET_KEY_BASE, DATABASE_URL, PHX_HOST, PORT               |
+| `.env.sample.eex`            | Populated with placeholder description (previously empty)                                |
+| `.env.prod.sample.eex`       | SECRET_KEY_BASE replaced with placeholder (was hardcoded)                                |
+| `.claude/gate-config.sh.eex` | (NEW) Per-app instance of gate-control wrapper (dev-port derivation)                     |
+| `.mcp.json.eex`              | (NEW) Claude MCP config for tidewave mcp-proxy (port from codegen templates)             |
+| `coveralls.json.eex`         | Updated: minimum_coverage set to 30.0 (fresh phx.new boilerplate ~33.7%; no ratchet — downstream teams may regress and still pass) |
+| `Makefile.eex`               | Gate targets + delegating stubs: gate-status, gate-kill, gate-logs                       |
 
 ### Machine-Global PLT Cache (B3 — Dormant until full `make ci`)
 
@@ -217,16 +227,35 @@ The fixture `test_harness/mutations/fixtures/phx_new_skeleton/` must stay in syn
 
 **Gate impact**: Fixture changes perturb `make test` (mutation unit tests run vs this fixture via Makefile:123). Highest gate risk if fixture drifts.
 
-## Credo Violations Cleanup (New)
+## Credo Violations Cleanup
 
-`shared/scaffold/phoenix/mutations/credo_fix.sh` patches FIX-bucket phx.new files to pass credo checks post-generation:
+`shared/scaffold/phoenix/mutations/credo_fix.sh` patches FIX-bucket phx.new files to pass credo checks post-generation.
+
+### Credo Strategy: Config-Relaxation for phx.new Boilerplate
+
+The scaffold-owned `.credo.exs` (rendered from `templates/.credo.exs.eex`) uses **file exclusions** to suppress inappropriate checks on phx.new framework-boilerplate files. This is the repo-idiomatic approach: `.credo.exs.eex` already excludes `endpoint/telemetry/application/release/data_case/conn_case/channel_case` from `Specs/AliasOrder/ImportOrder/UnusedVariableNames`; the six phx.new boilerplate files extend the same lists.
+
+**Why config-exclusion, not @spec injection**: phx.new macro functions (e.g. `<app>_web.ex` router/controller/live_view helpers) return `quote do ... end` — a meaningful spec would be `Macro.t()`, which is boilerplate. Controllers (error_html, error_json, page_controller) are phx.new-owned and change per Phoenix release. Injecting @spec is version-brittle; config exclusion is stable and declarative.
+
+**Excluded files per check** (defined in `templates/.credo.exs.eex`):
+
+| Check                                                 | Files excluded (phx.new boilerplate)                                                                  |
+| ----------------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
+| `Credo.Check.Readability.Specs`                       | `_web.ex`, `page_controller.ex`, `error_html.ex`, `error_json.ex`, `core_components.ex`, `layouts.ex` |
+| `Credo.Check.Readability.AliasOrder`                  | `_web.ex`                                                                                             |
+| `OptimumCredo.Check.Readability.ImportOrder`          | `_web.ex`                                                                                             |
+| `OptimumCredo.Check.Readability.ExtractableSpecTypes` | `page_controller.ex`, `error_html.ex`, `error_json.ex`                                                |
+| `Credo.Check.Consistency.UnusedVariableNames`         | `core_components.ex`                                                                                  |
+| `Credo.Check.Design.AliasUsage`                       | `_web.ex`, `core_components.ex`                                                                       |
+
+`~r"_web\.ex$"` matches only `lib/<app>_web.ex` (top-level), not `lib/<app>_web/...` subdirectory files. The existing `channel_case/conn_case/data_case` anchors in each check are preserved — `data_case.sh` mutation anchors on `~r"/channel_case\.ex$"` in `ImportOrder`.
 
 **Scope & Fixes**:
 
-- **FIX bucket** (mutation adds @moduledoc/@spec, fixes ordering; removes from .credo.exs exclusions):
-  - `core_components.ex`, `layouts.ex`: add @moduledoc + @spec
-  - `<app>_web.ex`: fix alias/import order
-  - `page_controller.ex`, `error_html.ex`, `error_json.ex`: add @moduledoc + @spec
+- **FIX bucket** (`credo_fix.sh` adds @moduledoc; `.credo.exs.eex` config-excludes inappropriate checks):
+  - `core_components.ex`, `layouts.ex`: add @moduledoc
+  - `<app>_web.ex`: add @moduledoc false
+  - `page_controller.ex`, `error_html.ex`, `error_json.ex`: add @moduledoc false
 - **EXCLUDE bucket** (keep in .credo.exs — irreducible framework one-liners):
   - `application.ex`, `endpoint.ex`, `release.ex`, `telemetry.ex`, `*_case.ex` family
   - Data violations (ImplTrue, Specs, ModuleDependencies) required by framework boilerplate

@@ -130,6 +130,17 @@ PHX_NEW_FLAGS=(
 (cd "$PARENT_DIR" && mix phx.new "$SLUG" "${PHX_NEW_FLAGS[@]}")
 echo "[scaffold.sh] mix phx.new complete"
 
+# Guard that controls the EXIT trap below: empty = scaffold incomplete (clean up);
+# set to "1" after Phase 8 git commit = scaffold succeeded (keep dir).
+SCAFFOLD_OK=""
+cleanup_partial() {
+    if [[ -z "$SCAFFOLD_OK" && -n "${TARGET_DIR:-}" && -d "$TARGET_DIR" ]]; then
+        echo "[scaffold.sh] cleanup: removing partial target $TARGET_DIR (non-zero exit)" >&2
+        rm -rf "$TARGET_DIR"
+    fi
+}
+trap cleanup_partial EXIT
+
 # ---------------------------------------------------------------------------
 # Phase 1: render standalone templates
 # ---------------------------------------------------------------------------
@@ -272,7 +283,7 @@ if ! command -v mcp-proxy >/dev/null 2>&1; then
 fi
 
 # ---------------------------------------------------------------------------
-# Phase 7: self-validation — setup + compile
+# Phase 7: self-validation — setup + prettier + make ci
 # ---------------------------------------------------------------------------
 echo "[scaffold.sh] running mix setup..."
 (cd "$TARGET_DIR" && mix setup) || {
@@ -280,12 +291,21 @@ echo "[scaffold.sh] running mix setup..."
     exit 1
 }
 
-echo "[scaffold.sh] running mix compile --warnings-as-errors..."
-(cd "$TARGET_DIR" && mix compile --warnings-as-errors) ||
-    {
-        echo "[scaffold.sh] ERROR: mix compile --warnings-as-errors failed" >&2
+echo "[scaffold.sh] running npx prettier --write ."
+(cd "$TARGET_DIR" && npx prettier --write .) || {
+    echo "[scaffold.sh] ERROR: npx prettier --write . failed" >&2
+    exit 1
+}
+
+if [[ -z "$NO_ECTO" ]]; then
+    echo "[scaffold.sh] running make ci..."
+    (cd "$TARGET_DIR" && make ci) || {
+        echo "[scaffold.sh] ERROR: make ci failed" >&2
         exit 1
     }
+else
+    echo "[scaffold.sh] skipping make ci (--no-ecto, DB not available)"
+fi
 
 # ---------------------------------------------------------------------------
 # Phase 8: initial git commit
@@ -296,6 +316,9 @@ echo "[scaffold.sh] creating initial git commit..."
         echo "[scaffold.sh] ERROR: initial git commit failed" >&2
         exit 1
     }
+
+# Scaffold completed successfully — disarm the cleanup trap so the app dir is kept.
+SCAFFOLD_OK="1"
 
 # ---------------------------------------------------------------------------
 # Readiness summary

@@ -280,3 +280,54 @@ return 0
 ```
 
 Scales across test files and is bash-3.2-compatible. Example: `if [ -n "${VERBOSE:-}" ]; then echo "Testing $file"; fi` emits only when `VERBOSE=1` is set, and does not flip the exit code.
+
+## Grep -v Footgun (Substring Patterns)
+
+**`grep -v "substring"` deletes ENTIRE lines containing the substring, not just dedicated keys/entries.** This is a footgun when the substring appears inside a larger data structure.
+
+Example: `grep -v '"ecto\.'` on a JSON/EEx aliases block deletes any line containing a string element with `"ecto.` in it, not just ecto alias definition lines:
+
+```bash
+# Input: mix.exs aliases block
+test: ["test", "ecto.create --quiet", "ecto.migrate", ...],
+ci: ["format", "cmd npx prettier -c ."],
+
+# WRONG: grep -v '"ecto\.' deletes the ENTIRE test: line
+grep -v '"ecto\.' file  # → ci: line survives; test: line is gone (contains "ecto.create")
+
+# CORRECT: explicit per-line transform
+# 1. Process the line that must survive in transformed form (test: → ["test"])
+# 2. Then drop remaining "ecto." lines
+python3 << 'EOF'
+import sys
+for line in sys.stdin:
+    if line.strip().startswith('test:'):
+        sys.stdout.write('        test: ["test"],\n')  # rewrite
+    elif '"ecto.' not in line:
+        sys.stdout.write(line)  # pass-through non-ecto lines
+EOF
+```
+
+**Key insight**: When a line must survive but in transformed form (rewrite), process it BEFORE the drop condition. When using Python transforms with two competing conditions on the same line, the first matching `continue` wins — order the conditions so rewrites execute before drops.
+
+## Grep / Eval Quoting Pitfall
+
+**`grep -qF` assertions inside `eval` strings lose quoting at shell boundary.** Inner double-quotes close the outer `eval` string, silently changing what is matched.
+
+Example: asserting `test: ["test"]` inside eval:
+
+```bash
+# WRONG: inner double-quotes close the outer string
+assert_condition='grep -qF "test: [\"test\"]"'
+eval "$assert_condition file"
+# → shell expands to: grep -qF test: [ (unquoted) file
+# → matches wrong pattern or fails to parse
+
+# CORRECT: single-quoted outer string + ERE-escaped pattern
+assert_condition='grep -q "test: \[\"test\"\]"'
+eval "$assert_condition file"
+# → shell expands to: grep -q "test: \[\"test\"\]" file
+# → grep receives literal brackets + quotes intact
+```
+
+**Rule of thumb**: When passing `grep` assertions through `eval`, use single quotes for the outer string and ERE-escape `[`, `]`, `"` characters. Verify by printing the eval statement before running it.

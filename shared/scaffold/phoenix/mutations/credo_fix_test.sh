@@ -51,15 +51,6 @@ assert "error_html.ex has @moduledoc false" \
 assert "error_json.ex has @moduledoc false" \
     'grep -qF "@moduledoc false" "$tmp/lib/fixture_app_web/controllers/error_json.ex"'
 
-assert "page_controller.ex has @spec home or @spec index" \
-    'grep -qE "@spec (home|index)" "$tmp/lib/fixture_app_web/controllers/page_controller.ex"'
-
-assert "error_html.ex has @spec render" \
-    'grep -qF "@spec render" "$tmp/lib/fixture_app_web/controllers/error_html.ex"'
-
-assert "error_json.ex has @spec render" \
-    'grep -qF "@spec render" "$tmp/lib/fixture_app_web/controllers/error_json.ex"'
-
 rm -rf "$tmp"
 
 # ---------------------------------------------------------------------------

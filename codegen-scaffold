@@ -164,6 +164,10 @@ done
 # Allows flag overrides to win; falls back to resolved versions on this machine.
 if [[ -z "$ELIXIR_VERSION" ]]; then
     ELIXIR_VERSION="$(mise current elixir 2>/dev/null || true)"
+    # Strip any trailing -otp-N suffix: mise returns e.g. "1.19.5-otp-28" but
+    # .tool-versions.eex appends "-otp-<otp_major_version>" itself. Keep only
+    # the bare semver so we don't produce "1.19.5-otp-28-otp-28".
+    ELIXIR_VERSION="${ELIXIR_VERSION%-otp-*}"
 fi
 if [[ -z "$OTP_VERSION" ]]; then
     OTP_VERSION="$(mise current erlang 2>/dev/null || true)"

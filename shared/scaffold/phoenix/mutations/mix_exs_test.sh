@@ -68,11 +68,15 @@ assert "mix_exs missing anchor exits 1" '[ "$missing_anchor_exit" -eq 1 ]'
 assert "mix_exs missing anchor emits ERROR message" 'echo "$missing_anchor_out" | grep -qi "ERROR\|post-condition"'
 rm -rf "$tmp"
 
-# Case 8: --no-ecto — ecto.setup absent, "ci": present, exits 0
+# Case 8: --no-ecto — ecto.setup absent, test: ["test"], no ecto tokens, ci:/setup: present, exits 0
 tmp="$(setup_tmp)"
 "$MUTATION" "$tmp" fixture_app FixtureApp --no-ecto >/dev/null
 assert "no-ecto: ecto.setup alias absent" '! grep -qF "\"ecto.setup\":" "$tmp/mix.exs"'
+assert "no-ecto: ecto.reset alias absent" '! grep -qF "\"ecto.reset\":" "$tmp/mix.exs"'
+assert "no-ecto: test alias is [\"test\"]" 'grep -qF "test: [\"test\"]" "$tmp/mix.exs"'
+assert "no-ecto: no ecto. alias steps remain" '! grep -qF "\"ecto." "$tmp/mix.exs"'
 assert "no-ecto: ci alias present" 'grep -qF "ci:" "$tmp/mix.exs"'
+assert "no-ecto: setup alias present" 'grep -qF "setup:" "$tmp/mix.exs"'
 rm -rf "$tmp"
 
 echo "$passed passed, $failed failed"

@@ -68,6 +68,28 @@ Flake (NON-DETERMINISM ONLY): test fails in the gate run but PASSES on isolated 
 
 Gate-coverage: verdict starts `Gate: <verbatim>\nRan: <gate string>`. `Ran` ⊂ `Gate` → `partial-gate`.
 
+## Binding Acceptance Gates — Orchestrator Independent Verification
+
+Acceptance gates that produce **real-world artifacts** (not just hermetic test passes) MUST be independently verified by the orchestrator. Do NOT trust a subagent's "passed" claim without running the binding gate yourself.
+
+**When to independently verify**:
+- Manual acceptance steps producing tangible output (e.g., `codegen-scaffold create` → running `make ci` on the generated app)
+- Subagent reports "all acceptance steps passed" but the summary is verbal only (not a recorded exit code or artifact proof)
+- Pitch objective depends on end-to-end real-world validation (not just hermetic tests)
+
+**How to verify**:
+1. Run the binding gate command yourself (same as the documented acceptance step)
+2. Capture the exit code and relevant output (e.g., `(cd $APP && make ci); echo "exit: $?"`)
+3. Compare against the pass criterion stated in the pitch/plan
+4. Do NOT rely on the developer's report alone — verify independently
+
+**Why**: Prior cycles have declared success while binding gates were red (e.g., false "shipped" with `make ci` exit 1). The developer may report "passed" from a partial check or misinterpret the results. Binding acceptance gates are the true arbiters — orchestrator owns verification.
+
+**Example (scaffold acceptance)**:
+- Pitch goal: "Newly scaffolded Phoenix app passes `make ci`"
+- Developer reports: "Scaffold complete, Phase 7 green"
+- Orchestrator action: Run `./codegen-scaffold create --stack=phoenix ... && (cd $APP && make ci); echo $?` → capture real exit 0 before declaring shipped
+
 ## Files Modified Scope
 
 CR scope = `## Files Modified`. Empty → CR verdict MUST be `QUALITY ISSUES FOUND ❌: developer did not record modified files`. Re-delegate dev to populate from `git status --short`.

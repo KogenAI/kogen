@@ -81,9 +81,23 @@ fi
 if ! grep -qF 'ci:' "$MIX_EXS"; then
     # Build aliases content with app_name substituted
     ALIASES_CONTENT="$(sed "s/<%= app_name %>/${APP_NAME}/g" "$DATA_DIR/aliases.txt")"
-    # If --no-ecto, strip ecto.* alias lines
+    # If --no-ecto, rewrite aliases: drop all ecto.* references, rewrite test: to ["test"]
     if [[ -n "$NO_ECTO" ]]; then
-        ALIASES_CONTENT="$(echo "$ALIASES_CONTENT" | grep -v '"ecto\.')"
+        ALIASES_CONTENT="$(echo "$ALIASES_CONTENT" | python3 -c '
+import sys
+lines = sys.stdin.read().split("\n")
+result = []
+for line in lines:
+    # Rewrite test: [...] to test: ["test"] (before ecto. check — test: line contains ecto refs)
+    if "test:" in line and "[" in line:
+        result.append("        test: [\"test\"],")
+        continue
+    # Drop any remaining line containing an ecto. reference (alias defs, body steps)
+    if "ecto." in line:
+        continue
+    result.append(line)
+print("\n".join(result), end="")
+')"
     fi
 
     # Use Python to do the multi-line replacement safely

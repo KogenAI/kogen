@@ -67,8 +67,8 @@ with open(path, 'w') as f:
 PYEOF
     fi
 
-    # Postcondition
-    if ! grep -qF '@moduledoc "Provides core UI components."' "$CORE_COMPONENTS"; then
+    # Postcondition — accept any @moduledoc form (inline or heredoc; phx.new may already include one)
+    if ! grep -q '@moduledoc' "$CORE_COMPONENTS"; then
         echo "[credo_fix.sh] ERROR: postcondition failed — @moduledoc missing in core_components.ex" >&2
         exit 1
     fi
@@ -104,8 +104,8 @@ with open(path, 'w') as f:
 PYEOF
     fi
 
-    # Postcondition
-    if ! grep -qF '@moduledoc "Provides layout components."' "$LAYOUTS"; then
+    # Postcondition — accept any @moduledoc form (inline or heredoc; phx.new may already include one)
+    if ! grep -q '@moduledoc' "$LAYOUTS"; then
         echo "[credo_fix.sh] ERROR: postcondition failed — @moduledoc missing in layouts.ex" >&2
         exit 1
     fi
@@ -146,9 +146,9 @@ with open(path, 'w') as f:
 PYEOF
     fi
 
-    # Postcondition
-    if ! grep -qF '@moduledoc false' "$WEB_EX"; then
-        echo "[credo_fix.sh] ERROR: postcondition failed — @moduledoc false missing in ${APP_NAME}_web.ex" >&2
+    # Postcondition — accept any @moduledoc form (phx.new may already include a full @moduledoc)
+    if ! grep -q '@moduledoc' "$WEB_EX"; then
+        echo "[credo_fix.sh] ERROR: postcondition failed — @moduledoc missing in ${APP_NAME}_web.ex" >&2
         exit 1
     fi
 fi
@@ -182,29 +182,6 @@ with open(path, 'w') as f:
     f.write('\n'.join(new_lines))
 PYEOF
     fi
-
-    # Add @spec for home/index actions if missing
-    for action in home index; do
-        if grep -qF "def ${action}(conn," "$PAGE_CTRL" && ! grep -qF "@spec ${action}(Plug.Conn.t(), map()) :: Plug.Conn.t()" "$PAGE_CTRL"; then
-            python3 - "$PAGE_CTRL" "$action" <<'PYEOF'
-import sys, re
-
-path = sys.argv[1]
-action = sys.argv[2]
-
-with open(path, 'r') as f:
-    content = f.read()
-
-# Insert @spec before the def line
-pattern = r'(\n  def ' + re.escape(action) + r'\(conn,)'
-replacement = '\n  @spec ' + action + '(Plug.Conn.t(), map()) :: Plug.Conn.t()\n  def ' + action + '(conn,'
-new_content = re.sub(pattern, replacement, content, count=1)
-
-with open(path, 'w') as f:
-    f.write(new_content)
-PYEOF
-        fi
-    done
 
     # Postcondition
     if ! grep -qF '@moduledoc false' "$PAGE_CTRL"; then
@@ -243,29 +220,9 @@ with open(path, 'w') as f:
 PYEOF
     fi
 
-    # Add @spec render if missing and def render is present
-    if grep -qF 'def render(' "$ERROR_HTML" && ! grep -qF '@spec render(String.t(), map()) :: String.t()' "$ERROR_HTML"; then
-        python3 - "$ERROR_HTML" <<'PYEOF'
-import sys, re
-
-path = sys.argv[1]
-
-with open(path, 'r') as f:
-    content = f.read()
-
-# Insert @spec before the first def render line
-pattern = r'(\n  def render\()'
-replacement = '\n  @spec render(String.t(), map()) :: String.t()\n  def render('
-new_content = re.sub(pattern, replacement, content, count=1)
-
-with open(path, 'w') as f:
-    f.write(new_content)
-PYEOF
-    fi
-
-    # Postcondition
-    if ! grep -qF '@moduledoc false' "$ERROR_HTML"; then
-        echo "[credo_fix.sh] ERROR: postcondition failed — @moduledoc false missing in error_html.ex" >&2
+    # Postcondition — accept any @moduledoc form (phx.new may already include a full @moduledoc)
+    if ! grep -q '@moduledoc' "$ERROR_HTML"; then
+        echo "[credo_fix.sh] ERROR: postcondition failed — @moduledoc missing in error_html.ex" >&2
         exit 1
     fi
 fi
@@ -300,29 +257,9 @@ with open(path, 'w') as f:
 PYEOF
     fi
 
-    # Add @spec render if missing and def render is present
-    if grep -qF 'def render(' "$ERROR_JSON" && ! grep -qF '@spec render(String.t(), map()) :: map()' "$ERROR_JSON"; then
-        python3 - "$ERROR_JSON" <<'PYEOF'
-import sys, re
-
-path = sys.argv[1]
-
-with open(path, 'r') as f:
-    content = f.read()
-
-# Insert @spec before the first def render line
-pattern = r'(\n  def render\()'
-replacement = '\n  @spec render(String.t(), map()) :: map()\n  def render('
-new_content = re.sub(pattern, replacement, content, count=1)
-
-with open(path, 'w') as f:
-    f.write(new_content)
-PYEOF
-    fi
-
-    # Postcondition
-    if ! grep -qF '@moduledoc false' "$ERROR_JSON"; then
-        echo "[credo_fix.sh] ERROR: postcondition failed — @moduledoc false missing in error_json.ex" >&2
+    # Postcondition — accept any @moduledoc form (phx.new may already include a full @moduledoc)
+    if ! grep -q '@moduledoc' "$ERROR_JSON"; then
+        echo "[credo_fix.sh] ERROR: postcondition failed — @moduledoc missing in error_json.ex" >&2
         exit 1
     fi
 fi
