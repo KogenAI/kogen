@@ -58,6 +58,17 @@ mk_agent_input() {
         '{"hook_event_name":"PreToolUse","tool_name":"Agent","tool_input":{"subagent_type":$s,"description":"x","prompt":"y"},"agent_id":"","agent_type":"","transcript_path":$t}'
 }
 
+mk_agent_input_with_cwd() {
+    local stype="$1"
+    local transcript_path="$2"
+    local cwd="$3"
+    jq -n \
+        --arg s "$stype" \
+        --arg t "$transcript_path" \
+        --arg c "$cwd" \
+        '{"hook_event_name":"PreToolUse","tool_name":"Agent","tool_input":{"subagent_type":$s,"description":"x","prompt":"y"},"agent_id":"","agent_type":"","cwd":$c,"transcript_path":$t}'
+}
+
 mk_non_agent_input() {
     local tool_name="$1"
     local transcript_path="$2"
@@ -251,6 +262,90 @@ make_transcript "$T15/transcript.jsonl" "$LOG15"
 out15=$(mk_agent_input "developer-vite" "$T15/transcript.jsonl" | bash "$HOOK" 2>/dev/null || true)
 assert_allow "allow: developer-vite — section header present" "$out15"
 rm -rf "$T15"
+
+# ── Test 16: filesystem fallback when transcript lags (managed build) ────────
+# Simulates a print-mode build where the transcript is flushed asynchronously:
+# the transcript has NO Write entry for the current step log, but the file
+# exists on disk with the required section header. OCG_APPS_ROOT is set and
+# CWD is under it, so the filesystem fallback should find the log and allow.
+T16_APPS=$(mktemp -d)
+T16="$T16_APPS/myapp"
+mkdir -p "$T16/codegen/logging"
+LOG16="$T16/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_step1_test.md"
+cat >"$LOG16" <<'MD'
+# Step 1 — test
+
+## Plan
+
+planner wrote here
+
+## developer-phoenix-backend Section
+
+MD
+# Transcript has only an unrelated older Write entry — simulating transcript lag
+FAKE_TRANSCRIPT16="$T16/transcript.jsonl"
+printf '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Write","input":{"file_path":"codegen/logging/20240101_000000_old_session.md"}}]}}\n' \
+    >"$FAKE_TRANSCRIPT16"
+export OCG_APPS_ROOT="$T16_APPS"
+out16=$(mk_agent_input_with_cwd "developer-phoenix-backend" "$FAKE_TRANSCRIPT16" "$T16" | bash "$HOOK" 2>/dev/null || true)
+unset OCG_APPS_ROOT
+assert_allow "allow: filesystem fallback when transcript lags in managed build" "$out16"
+rm -rf "$T16_APPS"
+
+# ── Test 17: no filesystem fallback outside managed build (no OCG_APPS_ROOT) ─
+# Same setup as T16 (log on disk, transcript lags) but OCG_APPS_ROOT is unset.
+# Should deny — strict transcript-bound resolution for interactive sessions.
+T17=$(make_project)
+LOG17="$T17/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_step1_test.md"
+cat >"$LOG17" <<'MD'
+# Step 1 — test
+
+## developer-phoenix-backend Section
+
+MD
+FAKE_TRANSCRIPT17="$T17/transcript.jsonl"
+printf '' >"$FAKE_TRANSCRIPT17"
+out17=$(
+    unset OCG_APPS_ROOT 2>/dev/null
+    mk_agent_input "developer-phoenix-backend" "$FAKE_TRANSCRIPT17" | bash "$HOOK" 2>/dev/null || true
+)
+assert_deny "deny: no fallback outside managed build (OCG_APPS_ROOT unset)" "$out17"
+rm -rf "$T17"
+
+# ── Test 18: filesystem fallback finds log but section header absent ──────────
+# Simulates a print-mode build (OCG_APPS_ROOT set, CWD under it) where the
+# transcript is completely empty (no Write entries for any log file, i.e. full
+# transcript lag). The filesystem fallback resolves the most-recent log on disk.
+# That log exists but lacks the required section header.
+# The hook should DENY with the "append header" message — NOT the "create log"
+# message — confirming the fallback resolved the log before checking the header.
+T18_APPS=$(mktemp -d)
+T18="$T18_APPS/myapp"
+mkdir -p "$T18/codegen/logging"
+LOG18="$T18/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_step1_test.md"
+cat >"$LOG18" <<'MD'
+# Step 1 — test
+
+## Plan
+
+planner wrote here
+MD
+# Transcript is empty — no Write entries at all — full transcript lag
+FAKE_TRANSCRIPT18="$T18/transcript.jsonl"
+printf '' >"$FAKE_TRANSCRIPT18"
+export OCG_APPS_ROOT="$T18_APPS"
+out18=$(mk_agent_input_with_cwd "developer-phoenix-backend" "$FAKE_TRANSCRIPT18" "$T18" | bash "$HOOK" 2>/dev/null || true)
+unset OCG_APPS_ROOT
+assert_deny "deny: filesystem fallback finds log but section header absent — append header (not create log)" "$out18"
+# Verify the deny message names the missing header (not the "create log" message)
+if printf '%s' "$out18" | grep -q "append"; then
+    [ -n "${VERBOSE:-}" ] && printf 'PASS: test 18 deny names "append" (correct message)\n'
+    pass=$((pass + 1))
+else
+    printf 'FAIL: test 18 deny should mention "append" but got: %s\n' "$out18"
+    fail=$((fail + 1))
+fi
+rm -rf "$T18_APPS"
 
 echo ""
 echo "Results: $pass passed, $fail failed"

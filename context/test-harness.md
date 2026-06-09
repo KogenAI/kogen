@@ -51,14 +51,14 @@ test_harness/
 
 ## Make Target Catalog
 
-| Target                    | Purpose                                                                  |
-| ------------------------- | ------------------------------------------------------------------------ |
+| Target                    | Purpose                                                                     |
+| ------------------------- | --------------------------------------------------------------------------- |
 | `make test-stacks`        | Runs full ExUnit suite across all stacks (`mix test --only slow`; real LLM) |
-| `make test-stacks-claude` | Runs ExUnit suite for Claude harness only (`mix test --only slow`)        |
-| `make test-stacks-pi`     | Runs ExUnit suite for Pi harness only (`mix test --only slow`)            |
-| `make test-hermetic`      | Fast, deterministic ExUnit only (`mix test --exclude slow`); no LLM      |
-| `make test`               | Bash hook tests + hermetic ExUnit (`test-hermetic`) — no LLM             |
-| `make record-green`       | Stamps `last_green.json` with current commit SHA after clean `test-stacks`|
+| `make test-stacks-claude` | Runs ExUnit suite for Claude harness only (`mix test --only slow`)          |
+| `make test-stacks-pi`     | Runs ExUnit suite for Pi harness only (`mix test --only slow`)              |
+| `make test-hermetic`      | Fast, deterministic ExUnit only (`mix test --exclude slow`); no LLM         |
+| `make test`               | Bash hook tests + hermetic ExUnit (`test-hermetic`) — no LLM                |
+| `make record-green`       | Stamps `last_green.json` with current commit SHA after clean `test-stacks`  |
 
 ## Gate Invariant: `--only slow` / `--exclude slow`
 
@@ -81,6 +81,7 @@ Two new test files in `test_harness/test/codegen_test_harness/` run under `make 
 - **`call_contract_test.exs`** — Asserts the harness-name mapping: `Fixtures.codegen_call_harness/0` returns `"claude_code"` (codegen-call harness name), not `"claude"` (codegen-build harness name). Catches class-2 regressions where fixture feeds wrong harness ID to the call binary.
 
 **G1–G3 confidence gaps closed by this session (20260608_174414)**:
+
 - **G1**: `ops_test.exs` + `headless_launcher_test.exs` now tagged `:slow` (were previously `:ops`/`:headless` only). Gate test count rose by case count of both files.
 - **G2**: `assert_generated_tests_pass!/1` broadened to scaffold_test.exs + seed_test.exs + iteration_test.exs (now ≥4 call sites; previously gate_test.exs only). Validates generated app `mix test` pass on every build path.
 - **G3**: Removed silent-pass in seed_test.exs `if target_files != []` condition (L53–56 was removed, replaced with explicit `assert target_files != []` — never silently pass on empty wildcard).

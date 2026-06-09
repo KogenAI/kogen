@@ -19,19 +19,19 @@ The codegen repo is a Bash + Python + TypeScript + Elixir toolchain. Primary dev
 
 One-liner per target — for test target semantics see `context/test-harness.md`; for hook-parity semantics see `context/hooks.md`.
 
-| Target                    | Purpose                                                                                                                                                                                  |
-| ------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `make install`            | Gate: verify python3 + node + yq-mikefarah; then generate agents + install claude harness (full cycle); npm install root node_modules                                                    |
-| `make test`               | Hook-parity + harness-parity + test-generator + enforce-registry-parity + bash hook tests (`run-tests.sh`) + `test-hermetic` (ExUnit `--exclude slow`) — no LLM, fast gate             |
-| `make test-hermetic`      | Fast ExUnit only (`mix test --exclude slow` in test_harness); deterministic guards (render-check, call-contract); no LLM, no browser; component of `make test`                             |
-| `make test-stacks`        | Full ExUnit suite (`mix test --only slow` in test_harness); slow gate with real LLM calls — see `context/test-harness.md` for semantics                                                |
-| `make test-stacks-claude` | ExUnit suite for Claude harness only (`mix test --only slow`); slow, real LLM                                                                                                           |
-| `make test-stacks-pi`     | ExUnit suite for Pi harness only (`mix test --only slow`); slow, real LLM                                                                                                               |
-| `make bench REASON=`      | Full benchmark run (both harnesses) + writes `summary.md` via `summarize.js`                                                                                                             |
-| `make record-green`       | Stamp `last_green.json` after clean passing `make test-stacks` suite                                                                                                                     |
-| `make uninstall`          | Remove installed claude harness artifacts                                                                                                                                                |
-| `make test-coverage`      | Run coverage per language → `coverage/<lang>/`                                                                                                                                           |
-| `make test-generator`     | Run Python unittest + bash unit tests for generator pipeline                                                                                                                             |
+| Target                    | Purpose                                                                                                                                                                    |
+| ------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `make install`            | Gate: verify python3 + node + yq-mikefarah; then generate agents + install claude harness (full cycle); npm install root node_modules                                      |
+| `make test`               | Hook-parity + harness-parity + test-generator + enforce-registry-parity + bash hook tests (`run-tests.sh`) + `test-hermetic` (ExUnit `--exclude slow`) — no LLM, fast gate |
+| `make test-hermetic`      | Fast ExUnit only (`mix test --exclude slow` in test_harness); deterministic guards (render-check, call-contract); no LLM, no browser; component of `make test`             |
+| `make test-stacks`        | Full ExUnit suite (`mix test --only slow` in test_harness); slow gate with real LLM calls — see `context/test-harness.md` for semantics                                    |
+| `make test-stacks-claude` | ExUnit suite for Claude harness only (`mix test --only slow`); slow, real LLM                                                                                              |
+| `make test-stacks-pi`     | ExUnit suite for Pi harness only (`mix test --only slow`); slow, real LLM                                                                                                  |
+| `make bench REASON=`      | Full benchmark run (both harnesses) + writes `summary.md` via `summarize.js`                                                                                               |
+| `make record-green`       | Stamp `last_green.json` after clean passing `make test-stacks` suite                                                                                                       |
+| `make uninstall`          | Remove installed claude harness artifacts                                                                                                                                  |
+| `make test-coverage`      | Run coverage per language → `coverage/<lang>/`                                                                                                                             |
+| `make test-generator`     | Run Python unittest + bash unit tests for generator pipeline                                                                                                               |
 
 ## Environment Configuration
 
@@ -102,6 +102,7 @@ Screenshot capture for static-stack benchmark runs requires:
 - **Phoenix-colocated esbuild requires compile-before-build chain** — `phoenix-colocated` import in `app.js` only exists after `mix compile`; `assets.build` + `assets.deploy` aliases must include `"compile"` prefix or esbuild fails to resolve the import (cf. session 20260608_174414)
 - **`CODEGEN_DIR` must be absolute** — relative paths break symlink resolution in launchers
 - **Session log filename format must include `_HHMMSS`** — orchestrator creates logs with canonical `YYYYMMDD_HHMMSS_slug.md` naming; non-canonical forms (e.g., `YYYYMMDD-slug.md`) are blocked by reviewer-guard and dev-gate hooks at Edit time
+- **Transcript lag in print-mode builds** — on-disk transcript JSONL in non-interactive builds may lag the live stream; hook discovery of session logs can return empty even though files exist on disk. `session_log_from_transcript()` implements a build-scoped fallback (filesystem search when transcript-bound jq returns nothing). See `context/hooks.md` § Transcript Lag & Discovery Pattern for full mechanics.
 - **Makefile recipes run under `/bin/sh`, not bash** — process substitution (`< <(...)`) fails even on macOS where `/bin/sh` is bash-compat. Use pipeline patterns (`cat file | grep | tr | sed`) instead of bash-specific syntax in Makefile recipes and variable assignments.
 - **Makefile doctor pattern for binary presence** — when using `node -e` inline to check for a binary (e.g., Chromium), use `$$` for shell variable interpolation (Make variable) and `$(VAR)` for Make variables. Example: `node -e "const path = require('playwright').chromium.executablePath(); if(!require('fs').existsSync(path)) throw new Error()"` — note `executablePath()` returns a path even when the binary is NOT downloaded; must test `fs.existsSync()` to confirm download completion (cf. session 20260608_153448).
 - **Flaky tests often indicate state leakage, not async timing** — investigate persistent state first (counter files, temp dirs, session IDs) before blaming concurrency. Example: counter files from `runHook()` calls (e.g., `claude-autoship-guard-<sessionId>.count`) persist across test runs; add explicit cleanup in `afterEach` to prevent accumulation and retry-cap failures every ~3rd run.

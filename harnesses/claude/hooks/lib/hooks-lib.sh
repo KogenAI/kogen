@@ -267,13 +267,31 @@ session_log_from_transcript() {
         printf ''
         return 0
     fi
-    jq -r '
+    local result
+    result=$(jq -r '
         .message.content[]?
         | select(.type == "tool_use"
             and (.name == "Write" or .name == "Edit" or .name == "MultiEdit"))
         | select(.input.file_path | test("codegen/logging/.*\\.md$"))
         | .input.file_path
-    ' "$TRANSCRIPT_PATH" 2>/dev/null | tail -n 1
+    ' "$TRANSCRIPT_PATH" 2>/dev/null | tail -n 1)
+    # Filesystem fallback for managed build sessions where the transcript file
+    # lags the live stream (print-mode builds flush the transcript asynchronously).
+    # Only applied when OCG_APPS_ROOT is set AND cwd is under it — i.e., a
+    # managed build worker. Interactive sessions keep strict transcript-bound
+    # resolution (result stays empty → deny if no transcript hit).
+    if [ -z "$result" ]; then
+        local apps_root="${OCG_APPS_ROOT:-}"
+        local cwd="${CWD:-$PWD}"
+        if [ -n "$apps_root" ]; then
+            case "$cwd" in
+            "${apps_root%/}"/*)
+                result=$(ls -t "$cwd/codegen/logging"/*.md 2>/dev/null | head -1)
+                ;;
+            esac
+        fi
+    fi
+    printf '%s' "$result"
 }
 
 # pitch_from_transcript — return the last codegen/pitches/*.md path written

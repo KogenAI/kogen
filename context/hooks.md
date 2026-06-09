@@ -73,7 +73,7 @@ Hook registration: **Two pipelines** — both write to `harnesses/claude/hooks/*
 | `harnesses/claude/hooks/claude-inspector-bash-guard.sh`         | PreToolUse — bash guards in claude-inspector mode                                                                                                     |
 | `harnesses/claude/hooks/claude-inspector-read-guard.sh`         | PreToolUse — read guards in claude-inspector mode                                                                                                     |
 | `harnesses/claude/hooks/claude-inspector-write-guard.sh`        | PreToolUse — write guards in claude-inspector mode                                                                                                    |
-| `harnesses/claude/hooks/lib/hooks-lib.sh`                       | Shared bash library: `session_log_from_transcript`, `pitch_from_transcript`, transcript JSONL parsing, path helpers                                   |
+| `harnesses/claude/hooks/lib/hooks-lib.sh`                       | Shared bash library: `session_log_from_transcript`, `pitch_from_transcript`, transcript JSONL parsing, path helpers. Implements build-scoped filesystem fallback for transcript lag in print-mode builds (see § Transcript Lag & Discovery Pattern below). |
 | `harnesses/claude/hooks/lib/gate-select.sh`                     | Selects gate command from ```gate-json block (jq-parsed) or prose `**Gate**:`fallback; emits`gate=`, `mode=`, `timeout=` lines                        |
 | `harnesses/claude/hooks/lib/gate-result.sh`                     | Shared helper: `write_gate_result` writes structured `codegen/gate-pending/gate-result.json`; `gate_result_verdict` reads verdict                     |
 | `harnesses/claude/hooks/lib/gate-control.sh`                    | PID-liveness helper: `gate_control_status` checks in-flight gate; `gate_control_kill` terminates; used by stop-cycle-guard                            |
@@ -407,10 +407,23 @@ When designing shell case statements where one verdict variant should block and 
 
 **Scope**: No allowlist of don't-care files; no gitignore escape hatch. Any dirty or untracked file blocks. User solution: add unwanted files to `.gitignore` before commit. This enforces the "one commit per cycle capturing ALL output" rule — partial snapshots are forbidden; the clean-tree gate is the backstop.
 
+## Transcript Lag & Discovery Pattern
+
+Hook scripts discover the active session/step log via `session_log_from_transcript()` in `hooks-lib.sh`. The function has two modes:
+
+**Interactive sessions** (CLAUDE_BUILD unset or print-mode disabled): strict transcript-bound discovery. Scans `$TRANSCRIPT_PATH` JSONL for the most recent Write/Edit/MultiEdit tool_use that targets `codegen/logging/*.md`. Returns empty if no such entry exists.
+
+**Managed build workers** (OCG_APPS_ROOT set AND cwd is under it): implements filesystem fallback. When jq discovery returns empty (transcript lags the live stream), it falls back to searching the local `$CWD/codegen/logging/` directory and returning the most recent `*.md` file by mtime. This accounts for print-mode (`claude --print --output-format stream-json`) builds where the on-disk transcript file may not flush immediately after a Write tool_use completes. The discriminator uses the same pattern as `build-worker-cwd-guard.sh`: checks OCG_APPS_ROOT + case-match on cwd to detect managed builds.
+
+**Portable mtime sorting**: Use `ls -t glob | head -1` for mtime-based filename sorting across macOS (BSD find) and Linux (GNU coreutils). The `find -printf` flag is not portable to BSD find and silently fails (no error, just empty output). Canonical reference: Pi extension `getActiveStepLog()` in `step-log-section-before-spawn.ts` uses direct `fs.readdirSync` + mtime object sort; Claude hooks now converge on the same reliable `ls -t` pattern.
+
+**11 production consumers**: all hook scripts calling `session_log_from_transcript()` inherit the fallback (10 production hooks + the spawn gate in `step-log-section-before-spawn.sh`).
+
 ## Pitfalls
 
 - **render-check.js parse crash (Jun 3 regression)** — Duplicate `allocFreePort` and `waitForHttp200` function definitions caused SyntaxError under strict mode, masking the whole file and producing no output. This crash was misdiagnosed as browser-absent because `static-site-build-check.sh` wildcard `*)` case arm conflated empty output with browser-not-installed. Guard: `render-check_test.sh` uses `node --check` to detect parse errors; static gate now splits no-verdict-crash and browser-absent into distinct fail-closed paths (cf. session 20260608_153448).
 - **Hook tests are bash, not ExUnit** — run via `run-tests.sh`, not `mix test`
+- **Transcript lag in print-mode builds** — on-disk transcript may lag live stream in managed builds (OCG_APPS_ROOT set); `session_log_from_transcript()` implements fallback filesystem discovery. See § Transcript Lag & Discovery Pattern.
 - **`session_log_from_transcript`** filters Write/Edit/MultiEdit tool_use in transcript JSONL; Bash redirects (`echo >`) are invisible to it → always use Write tool for step logs
 - **Session log filename format** — must be `YYYYMMDD_HHMMSS_slug.md` (with time component); non-canonical forms (e.g., `YYYYMMDD-slug.md` without `_HHMMSS`) block reviewer-guard and dev-gate Edit calls
 - **Gate-json awk scoping** — `gate-select.sh` awk pattern must require gate-json block to immediately follow `**Gate**:` line; use `after_gate=1` on line match, then enter block mode only if next non-blank line is ` ```gate-json `. Free-floating example blocks in plan body are otherwise misidentified as authoritative gates.
