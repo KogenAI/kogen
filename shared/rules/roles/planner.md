@@ -79,6 +79,24 @@ Gate: make ci  (from Plan's gate-json block "command" field)
 - Runtime state dep → `Runtime assumptions to verify first`. Dev verifies first.
 - New env vars → `.env.sample` AND `.env.prod.sample` in `Files to touch`.
 
+## Interaction-Audit (MANDATORY for gate/rule/flag changes)
+
+When the plan touches any gate (hook script), rule (`.md` rule file), or flag (env var / config key that alters behavior), the planner MUST enumerate sibling composition before the solution sketch:
+
+1. For every touched component, identify all OTHER hooks/rules that fire on the **same event + matcher + subject** under each mode (build/shape/debug/ops).
+2. Verify no ALLOWED action in the touched component has a precondition a sibling gate FORBIDS under the same mode.
+3. Emit an `Interaction Audit` table in `## References`:
+
+```
+| Subject | Slot (event/matcher) | Mode | Verdict |
+| ------- | -------------------- | ---- | ------- |
+| Agent spawn | PreToolUse / Agent | build | composes — operator-subagent-allowlist + step-log-section-before-spawn + curator-before-committer all allow project subagents |
+```
+
+Verdict options: `composes` (no conflict) or `contradiction: <sibling names>` (conflict must resolve before solution sketch finalizes).
+
+**FORBIDDEN**: writing a solution sketch for a gate/rule/flag change with no Interaction Audit table in `## References`.
+
 ## Self-Validation
 
 Re-read plan: consistency, framework fit, redundancy (grep), edge cases, integration points, test coverage, usage-rules ≤5, delegation prompt concrete, alternatives weighed (or convention cited), risks classified (severity + likelihood + mitigation), no "investigate further" deferrals. Summary on `Self-validation` line. Fix before finishing.

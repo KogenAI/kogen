@@ -7,6 +7,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CODEGEN_DIR="$(cd "$SCRIPT_DIR/../../.." && pwd)"
 
 SENTINEL="ASK-GATE: customer-facing forks only"
+SENTINEL2="INTERACTION-AUDIT: compose-check siblings"
 
 pass=0
 fail=0
@@ -36,7 +37,19 @@ assert_contains \
     "$CODEGEN_DIR/harnesses/pi/pi-shape-system-prompt.txt" \
     "$SENTINEL"
 
-# ── Test 3: sentinel present in ready.md.j2 source ────────────────────────────
+# ── Test 3: INTERACTION-AUDIT sentinel present in claude shape baked prompt ───
+assert_contains \
+    "INTERACTION-AUDIT sentinel in claude-shape-system-prompt.txt" \
+    "$CODEGEN_DIR/harnesses/claude/claude-shape-system-prompt.txt" \
+    "$SENTINEL2"
+
+# ── Test 4: INTERACTION-AUDIT sentinel present in pi shape baked prompt ───────
+assert_contains \
+    "INTERACTION-AUDIT sentinel in pi-shape-system-prompt.txt" \
+    "$CODEGEN_DIR/harnesses/pi/pi-shape-system-prompt.txt" \
+    "$SENTINEL2"
+
+# ── Test 5: sentinel present in ready.md.j2 source ────────────────────────────
 assert_contains \
     "ASK-GATE sentinel in ready.md.j2" \
     "$CODEGEN_DIR/harnesses/claude/commands/ready.md.j2" \

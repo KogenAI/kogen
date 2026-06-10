@@ -247,6 +247,22 @@ templates/generator/hook_registrations.py  ← generates settings.json entries
 - **rules**: hooks enforce rules at runtime (e.g. `no-python-json.sh` → `bash-discipline.md` rule). Hooks own verdict _generation_ (appending gate result to step log); for verdict _reaction_ logic (what orchestrator does after reading verdict), see `context/rules-roles.md` (orchestrator rules)
 - **test-harness**: hook tests (`*_test.sh`) are bash scripts; `run-tests.sh` runs them separately from ExUnit suite
 
+## Multi-Hook Composition Testing
+
+When multiple hooks register on the same event (e.g., three PreToolUse Agent-matcher hooks), a composition test verifies the **first-deny-wins** semantics: pipe the same input through each hook in registration order; composed verdict is `deny` if ANY hook denies, else `allow`. Name the first denying hook on mismatch.
+
+**Composed verdict engine pattern** (cf. `mode-matrix_test.sh`):
+
+1. **Parse settings.json** to enumerate registered hooks dynamically: `jq -r '.hooks.PreToolUse[] | select(.matcher | test("(^|\\|)Agent(\\||$)")) | .hooks[].command'` — filters by matcher and extracts hook paths
+2. **Strip install-path prefix** (`$HOME/.claude/hooks/`) to locate repo-source hooks: `$SCRIPT_DIR/<hook-basename>.sh`
+3. **Build test payload** via `jq -n` mirroring the real PreToolUse shape (copy structure from the hook being tested)
+4. **Run composition test**: for each registered hook in order, export the test env vars (e.g., `CLAUDE_ROLE`), invoke the hook subprocess with the payload on stdin, capture stdout. If output matches the deny pattern (grep for `"permissionDecision"[[:space:]]*:[[:space:]]*"deny"`), composed verdict = deny (record hook name). If no hook denies, composed verdict = allow.
+5. **Assert expectations** using `assert_eq` per test row
+
+**Clean fixtures required**: mktemp dirs per test, absolute paths in JSONL Write entries referencing real on-disk log files (with required section headers), per-test cleanup.
+
+Do NOT mock hook internals — invoke each hook as a real subprocess with controlled env to ensure composition test catches real interaction bugs (e.g., a third hook added later that re-introduces a deadlock via conflicting logic).
+
 ## Hooks-Lib Patterns
 
 ### `session_log_from_transcript` — Callers Must Guard Existence

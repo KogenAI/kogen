@@ -105,6 +105,10 @@ Hermetic bash tests (e.g., `*_test.sh` hook tests) should assert on **committed,
 
 New bash test files under `harnesses/claude/hooks/` are auto-discovered by `run-tests.sh` via `find *_test.sh` — no registration needed. When testing crash paths (e.g., render-check.js parse failures), use `make_render_stub` to create temp bash scripts for normal cases, but skip it for crash-path stubs: write garbage directly via `cat > stub <<'STUB' ... STUB` to produce output without `RENDER_VERDICT=` variable. Regression guard: `node --check` test in `render-check_test.sh` catches duplicate function definitions and parse errors early (cf. session 20260608_153448).
 
+### Bash Test Numbering Conventions
+
+Hermetic bash test files (e.g., `prompt-content-parity_test.sh`) that use sequential test case numbering via inline comments (e.g., `# Test 1`, `# Test 2`) should renumber ALL such labels when new tests are added, to avoid duplicate numbers. When a test file carries comment headers like `# Test N:` to label each `assert_contains` or `assert_eq` block, adding a new test in the middle requires incrementing all subsequent test numbers to maintain clarity. Use this pattern for test clarity, but accept the bookkeeping cost — the numeric labels are documentation, not code-critical.
+
 ### Fixture and Build Patterns
 
 - Tests scaffold a temp app, assert generated file contents, run `mix compile` or `npm run build` on output
