@@ -40,6 +40,29 @@ defmodule CodegenTestHarness.Stacks.Phoenix.ScaffoldTest do
     Assertions.assert_router_root_route_replaced!(router)
 
     Assertions.assert_git_committed!(cwd)
+
+    # codegen-scaffold produces these files for every phoenix app
+    assert File.exists?(Path.join(cwd, "PROJECT_CONTEXT.md")),
+           "expected PROJECT_CONTEXT.md in #{cwd}"
+
+    assert File.exists?(Path.join(cwd, "restart_server.sh")),
+           "expected restart_server.sh in #{cwd}"
+
+    assert File.exists?(Path.join(cwd, "codegen/usage_rules_INDEX.md")),
+           "expected codegen/usage_rules_INDEX.md in #{cwd}"
+
+    # working tree must be clean after codegen-scaffold commit
+    {porcelain, 0} =
+      System.cmd("git", ["status", "--porcelain"], cd: cwd, stderr_to_stdout: true, env: [])
+
+    untracked_committed =
+      porcelain
+      |> String.split("\n", trim: true)
+      |> Enum.reject(&String.starts_with?(&1, "??"))
+
+    assert untracked_committed == [],
+           "expected clean committed tree in #{cwd}, got:\n#{porcelain}"
+
     Assertions.assert_renders!(cwd, :phoenix)
     Fixtures.bench_assertions_passed!("phoenix", "scaffold_provisions_phoenix")
   end

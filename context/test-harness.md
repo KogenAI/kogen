@@ -60,7 +60,7 @@ test_harness/
 | `make test`               | Bash hook tests + hermetic ExUnit (`test-hermetic`) — no LLM                |
 | `make record-green`       | Stamps `last_green.json` with current commit SHA after clean `test-stacks`  |
 
-## Gate Invariant: `--only slow` / `--exclude slow`
+## Gate Invariant: `--only slow` / `--exclude slow` & Hermetic Assertions
 
 The ExUnit suite uses `@moduletag :slow` to partition LLM-driven tests from deterministic fast tests:
 
@@ -68,6 +68,15 @@ The ExUnit suite uses `@moduletag :slow` to partition LLM-driven tests from dete
 - `make test-hermetic` → `mix test --exclude slow` — only runs fast, deterministic tests
 
 **Critical**: tests added to the gate suite (e.g., `ops_test.exs`, `headless_launcher_test.exs`) MUST have `@moduletag :slow` to be included in `make test-stacks`. Omitting the `:slow` tag silently excludes them from the LLM gate via `test_helper.exs: exclude: [:slow]` — they will run under `test-hermetic` instead, defeating gate coverage.
+
+### Deterministic vs. LLM-Driven Assertions
+
+Scaffold tests split assertions by gate:
+
+- **Hermetic (`make test`)**: File presence (PROJECT_CONTEXT, restart_server.sh, usage_rules_INDEX), gitignore entries, idempotency (marker count), zero boundary violations (`grep -ri "combobulate"` = 0), git log non-empty (repo committed)
+- **Slow (`make test-stacks`)**: LLM-driven assertions (build completion, rendered content correctness), clean tree (`git status --porcelain` empty post-commit), all hermetic assertions above
+
+Boundary guard (grep for consumer name) runs in both: hermetic bash tests via `scaffold_test.sh`, slow ExUnit via file-present assertions. Misses can slip through if hermetic guard only scopes to a subset of files — expand grep target to include all files that could carry the consumer name.
 
 **Important caveat — `--only <tag>` matching empty tests**: When no tests match a tag filter (e.g., no `--only slow` tests), `mix test` exits with **exit code 1** (not 0). This is a safety mechanism — an empty partition cannot fake-green. However, the risk is NOT an empty match; it is silent exclusion of untagged tests. A module without explicit tags is excluded by `--only slow`, and if that module is the only build-path test for a critical feature, gate coverage has a hole.
 

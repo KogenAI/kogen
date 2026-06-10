@@ -98,6 +98,19 @@ When porting a guard/hook from Claude (Bash) to Pi (TypeScript), the runtime cap
 
 The goal is truthful hooks that accurately reflect capability limits, not feature parity claims that hide missing capabilities.
 
+## Scaffold File Rendering Order
+
+Integrate-stage renders (PROJECT_CONTEXT, restart_server.sh, usage_rules_INDEX) run BEFORE the git commit to ensure all new files are captured in a single atomic commit point (codegen-scaffold do_create):
+
+1. Stack-specific scaffold.sh completes file writes (phx.new for Phoenix, inline heredocs for static)
+2. `run_integrate_stage` renders cross-stack files from templates (eex_render.sh for both stacks, since static reuses phoenix's generic eex_render)
+3. Git commit runs after integrate-stage (single commit point for both stacks)
+4. Atomic mv from temp parent to final location
+
+This order eliminates the dirty-tree race: if integrate-stage files rendered AFTER the commit (old phoenix pattern), they would be uncommitted → `git status --porcelain` non-empty → build failure. Single commit in codegen-scaffold captures everything.
+
+Three-part writer absorption: (1) boundary neutralisation first (consumer-name removal from PROJECT_CONTEXT templates + scaffold.sh comments), (2) new templates second (restart_server.sh.eex, usage_rules_INDEX.md), (3) arg-parsing + renders third (codegen-scaffold --restart-rpc-cmd parsing, integrate-stage render calls).
+
 ## Common Pitfalls
 
 - **`make install` gated on python3, node, yq-mikefarah** — fresh-box installs fail loud if build-critical tools missing (not jq/rg, which install.sh installs). Verify `yq --version | grep -qi mikefarah`; `apt install yq` installs python-yq (incompatible, silently wrong manifest parsing) — use mikefarah/yq binary instead.

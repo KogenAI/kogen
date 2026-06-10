@@ -1,8 +1,7 @@
 #!/usr/bin/env bash
 # scaffold.sh — Static site scaffold entrypoint.
 #
-# Ports combobulate Apps.write_static_site_scaffold_files/2 + write_static_site_html/2
-# + write_static_site_package_json/2 + write_static_site_readme/2.
+# Writes static site scaffold files: html, package.json, readme, css.
 #
 # Usage: scaffold.sh <slug> <cwd> --app-name <name>
 #   slug      URL-safe app identifier (used in package.json "name")
@@ -113,7 +112,7 @@ EOF
 cat >"$CWD/README.md" <<EOF
 # ${APP_NAME}
 
-${APP_NAME} is a static website built with [Combobulate](https://combobulate.dev).
+${APP_NAME} is a static website.
 
 ## Development
 
@@ -134,6 +133,18 @@ Watch for changes and serve locally:
 \`\`\`bash
 npm run serve
 \`\`\`
+EOF
+
+# ── .gitignore: static-site non-marker entries ────────────────────────────────
+# Written unconditionally — codegen-scaffold's integrate stage adds the
+# machine-local symlink marker block on top of these entries (idempotent).
+cat >"$CWD/.gitignore" <<EOF
+/package-lock.json
+/node_modules/
+/public/
+current
+public-*
+.DS_Store
 EOF
 
 printf '[static/scaffold.sh] Scaffold complete for %s at %s\n' "$SLUG" "$CWD"

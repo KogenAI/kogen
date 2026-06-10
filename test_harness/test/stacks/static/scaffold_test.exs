@@ -29,6 +29,14 @@ defmodule CodegenTestHarness.Stacks.Static.ScaffoldTest.Hugo do
     Assertions.assert_hugo_builds!(cwd)
     Assertions.assert_built_html_non_blank!(cwd, "public/index.html")
     Assertions.assert_git_committed!(cwd)
+
+    # codegen-scaffold produces these files for every static app
+    assert File.exists?(Path.join(cwd, "PROJECT_CONTEXT.md")),
+           "expected PROJECT_CONTEXT.md in #{cwd}"
+
+    assert File.exists?(Path.join(cwd, "restart_server.sh")),
+           "expected restart_server.sh in #{cwd}"
+
     Assertions.assert_renders!(cwd, :static)
     Fixtures.bench_assertions_passed!("static", "scaffold_static_hugo")
   end
@@ -67,6 +75,13 @@ defmodule CodegenTestHarness.Stacks.Static.ScaffoldTest.ViteReact do
     Assertions.assert_npm_builds!(cwd)
     Assertions.assert_built_html_non_blank!(cwd, "dist/index.html")
     Assertions.assert_git_committed!(cwd)
+
+    assert File.exists?(Path.join(cwd, "PROJECT_CONTEXT.md")),
+           "expected PROJECT_CONTEXT.md in #{cwd}"
+
+    assert File.exists?(Path.join(cwd, "restart_server.sh")),
+           "expected restart_server.sh in #{cwd}"
+
     Assertions.assert_renders!(cwd, :static)
     Fixtures.bench_assertions_passed!("static", "scaffold_static_vite_react")
   end
@@ -103,6 +118,13 @@ defmodule CodegenTestHarness.Stacks.Static.ScaffoldTest.ViteVue do
     Assertions.assert_npm_builds!(cwd)
     Assertions.assert_built_html_non_blank!(cwd, "dist/index.html")
     Assertions.assert_git_committed!(cwd)
+
+    assert File.exists?(Path.join(cwd, "PROJECT_CONTEXT.md")),
+           "expected PROJECT_CONTEXT.md in #{cwd}"
+
+    assert File.exists?(Path.join(cwd, "restart_server.sh")),
+           "expected restart_server.sh in #{cwd}"
+
     Assertions.assert_renders!(cwd, :static)
     Fixtures.bench_assertions_passed!("static", "scaffold_static_vite_vue")
   end
@@ -139,6 +161,13 @@ defmodule CodegenTestHarness.Stacks.Static.ScaffoldTest.Multilingual do
            "no **/*.{html,md} files found under #{cwd}\n--- output ---\n#{output}"
 
     Assertions.assert_git_committed!(cwd)
+
+    assert File.exists?(Path.join(cwd, "PROJECT_CONTEXT.md")),
+           "expected PROJECT_CONTEXT.md in #{cwd}"
+
+    assert File.exists?(Path.join(cwd, "restart_server.sh")),
+           "expected restart_server.sh in #{cwd}"
+
     Assertions.assert_renders!(cwd, :static)
     Fixtures.bench_assertions_passed!("static", "scaffold_static_multilingual")
   end

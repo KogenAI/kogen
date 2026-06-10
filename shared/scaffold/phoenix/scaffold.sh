@@ -10,10 +10,10 @@
 #               PRE-CONDITION: <target_dir> must NOT exist — mix phx.new refuses to scaffold
 #               into an existing directory. Remove it first if re-running.
 #
-# Standalone shell usage (no combobulate):
+# Standalone shell usage:
 #   scaffold.sh my_app /tmp/my_app && cd /tmp/my_app && mix deps.get && mix phx.server
 #
-# Combobulate usage: combobulate calls this script once and lets it own the full scaffold.
+# Caller usage: the caller invokes this script once and lets it own the full scaffold.
 #   The caller must NOT pre-run mix phx.new — scaffold.sh owns that step.
 #
 # Flags:
@@ -131,7 +131,7 @@ PHX_NEW_FLAGS=(
 echo "[scaffold.sh] mix phx.new complete"
 
 # Guard that controls the EXIT trap below: empty = scaffold incomplete (clean up);
-# set to "1" after Phase 8 git commit = scaffold succeeded (keep dir).
+# set to "1" after Phase 8 (scaffold complete) = keep dir.
 SCAFFOLD_OK=""
 cleanup_partial() {
     if [[ -z "$SCAFFOLD_OK" && -n "${TARGET_DIR:-}" && -d "$TARGET_DIR" ]]; then
@@ -325,14 +325,11 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# Phase 8: initial git commit
+# Phase 8: git commit — owned by codegen-scaffold (runs after integrate stage)
 # ---------------------------------------------------------------------------
-echo "[scaffold.sh] creating initial git commit..."
-(cd "$TARGET_DIR" && git add -A && git commit -m "Initial commit") ||
-    {
-        echo "[scaffold.sh] ERROR: initial git commit failed" >&2
-        exit 1
-    }
+# Note: the initial git commit is now done in codegen-scaffold's do_create,
+# AFTER run_integrate_stage, so that PROJECT_CONTEXT.md, restart_server.sh,
+# and usage_rules_INDEX.md are all included in the initial commit.
 
 # Scaffold completed successfully — disarm the cleanup trap so the app dir is kept.
 SCAFFOLD_OK="1"

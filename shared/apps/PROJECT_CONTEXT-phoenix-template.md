@@ -4,7 +4,7 @@
 
 - **What**: [What this app does and its purpose]
 - **URL**: https://[domain]
-- **Location**: `/home/combobulate/apps/[slug]`
+- **Location**: `[app root]`
 
 ## Domain Context Files
 

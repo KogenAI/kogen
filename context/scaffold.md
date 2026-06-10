@@ -41,6 +41,8 @@ shared/scaffold/
   static/
     scaffold.sh
     scaffold_test.sh
+  restart_server.sh.eex  ← NEW: generic restart template
+  usage_rules_INDEX.md   ← NEW: phoenix-only dep index
 shared/apps/
   AGENTS-phoenix.md{,.j2}
   AGENTS-static.md{,.j2}
@@ -108,6 +110,19 @@ Fixed: **bare `HealthController`** (drop `${APP_NAME_MODULE}Web.` prefix) — th
 Both accept `--stack=<phoenix|static>` and `--cwd=<dir>`. `create` requires `--slug=<name>` and version pins; `integrate` auto-derives `--slug` from `--cwd` basename if not provided. Version pins (`--elixir-version`, `--node-version`, `--otp-version`) are stored in `codegen-scaffold` itself as single source of truth — not duplicated in mutation scripts.
 
 The `create` path uses **transactional temp-parent + trap**: all mutations run in a temp sibling dir; if any fails, cleanup is automatic; on success, move is atomic into final position. See `codegen/rules/_core/bash-discipline.md` § Transactional Multi-Step File Creation.
+
+### Git Ownership & Rendering Order (codegen 0.6+)
+
+Since `scaffold-codegen-side` pitch (`codegen/pitches/`), **single-commit pattern** for both stacks:
+
+1. Stack-specific scaffold.sh runs (phx.new for Phoenix; inline heredocs for static)
+2. `codegen-scaffold run_integrate_stage` renders cross-stack files (PROJECT_CONTEXT, restart_server.sh, usage_rules_INDEX)
+3. **Single `git add -A && git commit -m "Initial commit"`** in `codegen-scaffold do_create` AFTER integrate-stage, BEFORE atomic mv
+4. Static gets `git init` (first-time only); Phoenix phx.new pre-initializes
+
+Why this order: PROJECT_CONTEXT + restart + usage_rules_INDEX render in integrate-stage → must be committed by a single commit point that captures all integrate-stage writes for both stacks. Prior: Phoenix committed inside its scaffold.sh Phase 8 → dirty-tree race when integrate-stage files (PROJECT_CONTEXT) were written AFTER the phoenix commit. Single commit in codegen-scaffold eliminates the race and satisfies the clean-tree invariant.
+
+`--restart-rpc-cmd` flag threads through codegen-scaffold → run_integrate_stage → restart_server.sh.eex render. Absent → restart script has local-dev branch only (no platform branch).
 
 ## Flags & Capabilities
 

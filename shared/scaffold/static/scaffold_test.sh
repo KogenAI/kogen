@@ -236,6 +236,110 @@ check "gitignore idempotent: CLAUDE.md appears exactly once" "1" "$CLAUDE_COUNT"
 check "gitignore idempotent: /codegen/ appears exactly once" "1" "$CODEGEN_COUNT"
 check "gitignore idempotent: marker appears exactly once" "1" "$MARKER_COUNT"
 
+# ── New tests: Phase A–D assertions ──────────────────────────────────────────
+
+# (r) Static scaffold .gitignore has non-marker entries
+# Run scaffold into a fresh dir and check gitignore entries
+GITIGNORE_STATIC_CWD="$BASE_TMP/gitignore_static_test"
+mkdir -p "$GITIGNORE_STATIC_CWD"
+"$STATIC_SCAFFOLD" "$SLUG" "$GITIGNORE_STATIC_CWD" --app-name "$APP_NAME"
+STATIC_GI_CONTENT="$(cat "$GITIGNORE_STATIC_CWD/.gitignore")"
+assert_contains "static gitignore has /package-lock.json" "$STATIC_GI_CONTENT" "/package-lock.json"
+assert_contains "static gitignore has /node_modules/" "$STATIC_GI_CONTENT" "/node_modules/"
+assert_contains "static gitignore has /public/" "$STATIC_GI_CONTENT" "/public/"
+assert_contains "static gitignore has current" "$STATIC_GI_CONTENT" "current"
+assert_contains "static gitignore has public-*" "$STATIC_GI_CONTENT" "public-*"
+assert_contains "static gitignore has .DS_Store" "$STATIC_GI_CONTENT" ".DS_Store"
+
+# (s) Integrate adds machine-local marker on top of existing static gitignore (no duplicate)
+"$CODEGEN_SCAFFOLD" integrate --stack=static --cwd="$GITIGNORE_STATIC_CWD" --slug="$SLUG"
+AFTER_INTEGRATE_GI="$(cat "$GITIGNORE_STATIC_CWD/.gitignore")"
+assert_contains "after integrate: gitignore still has /package-lock.json" "$AFTER_INTEGRATE_GI" "/package-lock.json"
+assert_contains "after integrate: gitignore has machine-local marker" "$AFTER_INTEGRATE_GI" "# Codegen machine-local symlinks (do not commit)"
+AGENTS_COUNT_STATIC=$(grep -c '^AGENTS.md$' "$GITIGNORE_STATIC_CWD/.gitignore" || true)
+check "static gitignore AGENTS.md idempotency: exactly once" "1" "$AGENTS_COUNT_STATIC"
+
+# (t) Boundary guard: no 'combobulate' in PROJECT_CONTEXT templates or scaffold scripts
+BOUNDARY_MATCHES="$(grep -ri "combobulate" \
+    "$CODEGEN_ROOT/shared/scaffold/static/scaffold.sh" \
+    "$CODEGEN_ROOT/shared/scaffold/phoenix/scaffold.sh" \
+    "$CODEGEN_ROOT/shared/apps/PROJECT_CONTEXT-phoenix-template.md" \
+    "$CODEGEN_ROOT/shared/apps/PROJECT_CONTEXT-static-template.md" \
+    "$CODEGEN_ROOT/codegen-scaffold" 2>/dev/null || true)"
+check "boundary guard: no 'combobulate' in scaffold files" "" "$BOUNDARY_MATCHES"
+
+# (u) Integrate writes PROJECT_CONTEXT.md
+PROJECT_CONTEXT_CWD="$BASE_TMP/project_context_test"
+mkdir -p "$PROJECT_CONTEXT_CWD"
+"$CODEGEN_SCAFFOLD" integrate --stack=static --cwd="$PROJECT_CONTEXT_CWD" --slug=test-pc
+assert_file_exists "integrate writes PROJECT_CONTEXT.md" "$PROJECT_CONTEXT_CWD/PROJECT_CONTEXT.md"
+PC_CONTENT="$(cat "$PROJECT_CONTEXT_CWD/PROJECT_CONTEXT.md")"
+assert_contains "PROJECT_CONTEXT.md has location [app root]" "$PC_CONTENT" "[app root]"
+
+# (v) Integrate writes restart_server.sh (no rpc-cmd — local-dev only)
+RESTART_NO_RPC_CWD="$BASE_TMP/restart_no_rpc_test"
+mkdir -p "$RESTART_NO_RPC_CWD"
+"$CODEGEN_SCAFFOLD" integrate --stack=static --cwd="$RESTART_NO_RPC_CWD" --slug=test-restart-nopc
+assert_file_exists "integrate writes restart_server.sh (no rpc)" "$RESTART_NO_RPC_CWD/restart_server.sh"
+RESTART_NO_RPC_CONTENT="$(cat "$RESTART_NO_RPC_CWD/restart_server.sh")"
+assert_contains "restart_server.sh (no rpc) has local hint" "$RESTART_NO_RPC_CONTENT" "start your server manually"
+
+# (w) Integrate writes restart_server.sh (with --restart-rpc-cmd)
+RESTART_RPC_CWD="$BASE_TMP/restart_rpc_test"
+mkdir -p "$RESTART_RPC_CWD"
+"$CODEGEN_SCAFFOLD" integrate --stack=static --cwd="$RESTART_RPC_CWD" --slug=test-restart-rpc \
+    --restart-rpc-cmd="some_rpc_restart_call --app test"
+assert_file_exists "integrate writes restart_server.sh (with rpc)" "$RESTART_RPC_CWD/restart_server.sh"
+RESTART_RPC_CONTENT="$(cat "$RESTART_RPC_CWD/restart_server.sh")"
+assert_contains "restart_server.sh (with rpc) has rpc cmd" "$RESTART_RPC_CONTENT" "some_rpc_restart_call --app test"
+
+# (x) Static Makefile has ci: target after integrate
+STATIC_CI_CWD="$BASE_TMP/static_ci_test"
+mkdir -p "$STATIC_CI_CWD"
+"$CODEGEN_SCAFFOLD" integrate --stack=static --cwd="$STATIC_CI_CWD" --slug=test-ci
+CI_COUNT=$(grep -c '^ci:' "$STATIC_CI_CWD/Makefile" || true)
+check "static integrate creates ci: Makefile target" "1" "$CI_COUNT"
+
+# (y) Static ci: is idempotent (second integrate doesn't duplicate)
+"$CODEGEN_SCAFFOLD" integrate --stack=static --cwd="$STATIC_CI_CWD" --slug=test-ci
+CI_COUNT_AFTER=$(grep -c '^ci:' "$STATIC_CI_CWD/Makefile" || true)
+check "static ci: idempotent after re-run" "1" "$CI_COUNT_AFTER"
+
+# (z) Phoenix integrate writes usage_rules_INDEX.md
+USAGE_RULES_CWD="$BASE_TMP/usage_rules_test"
+mkdir -p "$USAGE_RULES_CWD/codegen"
+"$CODEGEN_SCAFFOLD" integrate --stack=phoenix --cwd="$USAGE_RULES_CWD" --slug=test-usage
+assert_file_exists "phoenix integrate writes codegen/usage_rules_INDEX.md" \
+    "$USAGE_RULES_CWD/codegen/usage_rules_INDEX.md"
+
+# (aa) Static integrate does NOT write usage_rules_INDEX.md
+STATIC_NO_USAGE_CWD="$BASE_TMP/static_no_usage_test"
+mkdir -p "$STATIC_NO_USAGE_CWD"
+"$CODEGEN_SCAFFOLD" integrate --stack=static --cwd="$STATIC_NO_USAGE_CWD" --slug=test-no-usage
+if [[ -f "$STATIC_NO_USAGE_CWD/codegen/usage_rules_INDEX.md" ]]; then
+    printf 'FAIL: static integrate must not write codegen/usage_rules_INDEX.md\n'
+    fail=$((fail + 1))
+else
+    [ -n "${VERBOSE:-}" ] && printf 'PASS: static integrate does not write usage_rules_INDEX.md\n'
+    pass=$((pass + 1))
+fi
+
+# (ab) PROJECT_CONTEXT.md does not contain combobulate
+PC_PHOENIX_CWD="$BASE_TMP/pc_phoenix_test"
+mkdir -p "$PC_PHOENIX_CWD"
+"$CODEGEN_SCAFFOLD" integrate --stack=phoenix --cwd="$PC_PHOENIX_CWD" --slug=test-pc-phoenix
+if [[ -f "$PC_PHOENIX_CWD/PROJECT_CONTEXT.md" ]]; then
+    PC_PHOENIX_CONTENT="$(cat "$PC_PHOENIX_CWD/PROJECT_CONTEXT.md")"
+    PC_COMBOBULATE="$(printf '%s' "$PC_PHOENIX_CONTENT" | grep -i "combobulate" || true)"
+    check "phoenix PROJECT_CONTEXT.md has no combobulate" "" "$PC_COMBOBULATE"
+fi
+
+# (ac) PROJECT_CONTEXT.md is idempotent (second integrate doesn't overwrite)
+FIRST_PC_CONTENT="$(cat "$PC_PHOENIX_CWD/PROJECT_CONTEXT.md")"
+"$CODEGEN_SCAFFOLD" integrate --stack=phoenix --cwd="$PC_PHOENIX_CWD" --slug=test-pc-phoenix
+SECOND_PC_CONTENT="$(cat "$PC_PHOENIX_CWD/PROJECT_CONTEXT.md")"
+check "PROJECT_CONTEXT.md idempotent after re-run" "$FIRST_PC_CONTENT" "$SECOND_PC_CONTENT"
+
 # ── Summary ───────────────────────────────────────────────────────────────────
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 
