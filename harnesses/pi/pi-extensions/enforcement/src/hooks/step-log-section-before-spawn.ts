@@ -61,6 +61,10 @@ export function register(pi: ExtensionAPI): void {
   pi.on("tool_call", async (event) => {
     if (event.toolName !== "subagent") return;
 
+    const role =
+      process.env["CLAUDE_ROLE"] || process.env["PI_ROLE"] || "";
+    if (["debug", "shape", "ops"].includes(role)) return;
+
     const subagentType: string =
       (event.input as { agent?: string; subagent_type?: string }).agent ??
       (event.input as { agent?: string; subagent_type?: string })

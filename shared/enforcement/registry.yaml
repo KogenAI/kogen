@@ -520,10 +520,10 @@
   event: PreToolUse
   tool_guard: Agent
   surface: user_global
-  signal: none
+  signal: CLAUDE_ROLE_FAMILY
   role: "*"
   harnesses: claude
-  rationale: Agent tool not present in Pi harness
+  rationale: Agent tool not present in Pi harness; resolve_role() used for investigative-mode bypass (debug/shape/ops sessions spawn Explore subagents without a step log)
 
 - kind: registration
   id: stop-cycle-guard

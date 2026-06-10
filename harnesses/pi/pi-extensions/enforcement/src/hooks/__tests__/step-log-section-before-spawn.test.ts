@@ -29,6 +29,8 @@ describe("step-log-section-before-spawn", () => {
   afterEach(() => {
     fs.rmSync(tmpDir, { recursive: true, force: true });
     delete process.env["CWD"];
+    delete process.env["CLAUDE_ROLE"];
+    delete process.env["PI_ROLE"];
   });
 
   function writeLog(filename: string, content: string): string {
@@ -188,6 +190,14 @@ describe("step-log-section-before-spawn", () => {
       toolCallId: "test-id",
       input: { command: "ls" },
     });
+    assert.ok(result == null || (result as { block?: boolean }).block !== true);
+  });
+
+  // ── Test 15: allow PI_ROLE=shape with empty log dir (investigative bypass) ──
+  it("allows spawn when PI_ROLE=shape regardless of missing log", async () => {
+    process.env["PI_ROLE"] = "shape";
+    // logging dir empty — would deny without bypass
+    const result = await runHook("planner-phoenix");
     assert.ok(result == null || (result as { block?: boolean }).block !== true);
   });
 });

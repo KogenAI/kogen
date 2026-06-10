@@ -6,12 +6,12 @@ Orchestrator-level hooks fire when `AGENT_TYPE` is empty (outer session). Three 
 
 ## Bypass Matrix
 
-| Hook                              | `build` (default)                                                      | `debug` / `shape` / `refactor`                                                 | `ops`                                                                           |
+| Hook                              | `build` (default)                                                      | `debug` / `shape`                                                              | `ops`                                                                           |
 | --------------------------------- | ---------------------------------------------------------------------- | ------------------------------------------------------------------------------ | ------------------------------------------------------------------------------- |
 | `orchestrator-read-discipline.sh` | **gated** — path allowlist + Bash exploration-verb deny                | **bypassed** — investigation and shaping sessions need full Read + Bash access | **bypassed** — ops runs on live boxes; full inspection needed                   |
-| `orchestrator-no-source-edit.sh`  | **gated** — blocks Write/Edit/MultiEdit on source files                | **scoped to `codegen/pitches/`** — shape/refactor can edit pitch drafts only   | **bypassed** — ops edits infra/ configs on live boxes                           |
-| `orchestrator-no-ci.sh`           | **gated** — blocks make ci/llm/mix test                                | **gated (intended)** — debug/shape/refactor do not run gate commands           | **bypassed** — ops needs make ci / mix test for live-box inspection             |
-| `pre-commit-guard.sh`             | **gated** — blocks state-modifying git ops for all non-committer roles | **gated** — debug/shape/refactor must not write git history                    | **bypassed** — full git surface, no restriction (interactive ops on live boxes) |
+| `orchestrator-no-source-edit.sh`  | **gated** — blocks Write/Edit/MultiEdit on source files                | **scoped to `codegen/pitches/`** — shape can edit pitch drafts only            | **bypassed** — ops edits infra/ configs on live boxes                           |
+| `orchestrator-no-ci.sh`           | **gated** — blocks make ci/llm/mix test                                | **gated (intended)** — debug/shape do not run gate commands                    | **bypassed** — ops needs make ci / mix test for live-box inspection             |
+| `pre-commit-guard.sh`             | **gated** — blocks state-modifying git ops for all non-committer roles | **gated** — debug/shape must not write git history                             | **bypassed** — full git surface, no restriction (interactive ops on live boxes) |
 
 ## How Bypasses Work
 
@@ -22,7 +22,7 @@ source "$(dirname "$0")/_role.sh"
 _role=$(resolve_role)
 [ "$_role" = "ops" ] && exit 0     # bypasses entire hook
 # … or …
-if [ "$_role" = "debug" ] || [ "$_role" = "shape" ] || [ "$_role" = "refactor" ] || [ "$_role" = "ops" ]; then
+if [ "$_role" = "debug" ] || [ "$_role" = "shape" ] || [ "$_role" = "ops" ]; then
     exit 0
 fi
 ```
@@ -50,22 +50,24 @@ Hooks registered on the `Agent` matcher fire on every subagent spawn. These are 
 | ------------------------------- | ------------------------------------------------------------------ | ------------------------------------------------ | ------------------------------------- |
 | `operator-subagent-allowlist`   | Any Agent spawn                                                    | Deny built-ins; gate Explore to debug            | No (deny empty type)                  |
 | `curator-before-committer`      | `committer` spawn attempted after reviewer ran but curator has not | Deny committer; prompt curator first             | Yes (no log → allow)                  |
-| `step-log-section-before-spawn` | Any Agent spawn                                                    | Deny if no log or section header absent          | Yes (unreadable transcript → allow)   |
+| `step-log-section-before-spawn` | Any Agent spawn (build mode; bypassed for debug/shape/ops)         | Deny if no log or section header absent          | Yes (unreadable transcript → allow)   |
 | `pitch-shipped-before-stop`     | Stop event, after committer-section present + pitch in ready/      | Block session end; instruct mv ready/ → shipped/ | Yes (no transcript / no pitch → skip) |
 
 `curator-before-committer` does not have a per-mode bypass — it fires in all launcher modes (`role: *`). The fail-open path (no step log) handles the edge case where the orchestrator spawns committer before any log is written.
 
-`step-log-section-before-spawn` fires in all launcher modes (`signal: none`, `role: *`). Fail-open when transcript is unreadable. Primary enforcement for step-0 log creation and per-agent header insertion; `step-log-missing-guard.sh` remains the Stop backstop (defense in depth). Bash version fail-opens on transcript unreadability; Pi version uses mtime-based file scan of `codegen/logging/` (architectural difference: Pi always has a project dir) — both patterns are correct per harness model.
+`step-log-section-before-spawn` uses `signal: CLAUDE_ROLE_FAMILY` and sources `_role.sh` to call `resolve_role()`. Bypassed for `debug`, `shape`, and `ops` modes (investigative sessions spawn Explore subagents without a step log). In build mode (empty role) the full step-log + section-header gate applies. Fail-open when transcript is unreadable. Primary enforcement for step-0 log creation and per-agent header insertion; `step-log-missing-guard.sh` remains the Stop backstop (defense in depth). Bash version fail-opens on transcript unreadability; Pi version uses mtime-based file scan of `codegen/logging/` (architectural difference: Pi always has a project dir) — both patterns are correct per harness model.
 
 `pitch-shipped-before-stop` uses a **dual-path bypass** pattern: bypassed under `CLAUDE_ROLE=dashboard-build` (dashboard manages the shipped/ move post-merge) **OR** `CODEGEN_NO_AUTOSHIP=1` (explicit operator suppression). Scoped to pitch-driven sessions (no pitch in transcript → skip). Uses `CLAUDE_ROLE_FAMILY` signal + `resolve_role()` for role-aware dispatch. Retry cap at 2 (counter file `/tmp/claude-autoship-guard-*.count`) prevents infinite block loops.
 
 ## Headless Investigative Mode
 
-The four investigative modes (debug, shape, refactor, ops) now have a headless variant activated by `CLAUDE_NONINTERACTIVE=1`. Headless mode passes the full 7-flag build set (`--print`, `--output-format stream-json`, `--no-session-persistence`, `--disable-slash-commands`, etc.) directly to `claude`. This does **not** change the hook bypass profile — all hooks that gate or bypass for a given role continue to fire identically in headless mode. In particular, `orchestrator-no-source-edit.sh` still scopes shape/refactor writes to `codegen/pitches/`; headless mode does NOT relax this gate. Write surface is unchanged.
+The three investigative modes (debug, shape, ops) now have a headless variant activated by `CLAUDE_NONINTERACTIVE=1`. Headless mode passes the full 7-flag build set (`--print`, `--output-format stream-json`, `--no-session-persistence`, `--disable-slash-commands`, etc.) directly to `claude`. This does **not** change the hook bypass profile — all hooks that gate or bypass for a given role continue to fire identically in headless mode. In particular, `orchestrator-no-source-edit.sh` still scopes shape writes to `codegen/pitches/`; headless mode does NOT relax this gate. Write surface is unchanged.
+
+**Note on test coverage**: Hook tests (bash `*_test.sh` and Pi vitest) should mirror role-case coverage across both harnesses. Example: a bash hook with role-based bypass tested via `CLAUDE_ROLE=shape bash "$HOOK"` should have a corresponding Pi test with `process.env["PI_ROLE"]="shape"` plus additional cases for `CLAUDE_ROLE` primary-role values (debug, ops) and unknown-role fail-closed behavior.
 
 ## Trigger Keywords
 
-new launcher mode, claude-ops, pi-ops, CLAUDE_ROLE bypass, PI_ROLE bypass, resolve_role, AGENT_TYPE gate, orchestrator hook leak, which hook gates, per-role bypass, ops bypass, ops mode, per-mode hook bypass, hook discipline, build orchestrator gate, debug bypass, shape bypass, refactor bypass, hook_registrations.py, signal field
+new launcher mode, claude-ops, pi-ops, CLAUDE_ROLE bypass, PI_ROLE bypass, resolve_role, AGENT_TYPE gate, orchestrator hook leak, which hook gates, per-role bypass, ops bypass, ops mode, per-mode hook bypass, hook discipline, build orchestrator gate, debug bypass, shape bypass, hook_registrations.py, signal field
 
 ## Update When Changing
 

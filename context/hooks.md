@@ -21,7 +21,7 @@ Hook registration: **Two pipelines** — both write to `harnesses/claude/hooks/*
 | --------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `harnesses/claude/hooks/phoenix-dev-gate.sh`                    | SubagentStop — runs Phoenix test suite + render check, appends gate verdict                                                                           |
 | `harnesses/claude/hooks/static-site-build-check.sh`             | SubagentStop — builds static site + render check, appends gate verdict                                                                                |
-| `harnesses/claude/hooks/pitch-format-validator.sh`              | Stop — validates ## Questions/## Answers/> Status: grammar in active pitch for shape/refactor/ops sessions                                            |
+| `harnesses/claude/hooks/pitch-format-validator.sh`              | Stop — validates ## Questions/## Answers/> Status: grammar in active pitch for shape/refactor/ops sessions. Note: `refactor` is a live role in this hook; other hooks may bypass narrower subsets (e.g., `step-log-section-before-spawn` bypasses debug/shape/ops only). |
 | `harnesses/claude/hooks/step-log-missing-guard.sh`              | Stop — blocks if dev ran but no step log Write found in transcript                                                                                    |
 | `harnesses/claude/hooks/stop-cycle-guard.sh`                    | Stop — blocks premature stop before full cycle completes                                                                                              |
 | `harnesses/claude/hooks/stop-resume.sh`                         | Stop — resumes orchestration if session was interrupted mid-cycle                                                                                     |
@@ -47,7 +47,7 @@ Hook registration: **Two pipelines** — both write to `harnesses/claude/hooks/*
 | `harnesses/claude/hooks/curator-before-committer.sh`            | PreToolUse — blocks committer spawn before context-curator has run                                                                                    |
 | `harnesses/claude/hooks/step-log-section-before-spawn.sh`       | PreToolUse/Agent — blocks any subagent spawn until step log exists AND the agent's section header is present in the log                               |
 | `harnesses/claude/hooks/pitch-shipped-before-stop.sh`           | Stop — blocks session end when committer-section present + pitch still in ready/; bypassed under CLAUDE_ROLE=dashboard-build or CODEGEN_NO_AUTOSHIP=1 |
-| `harnesses/claude/hooks/operator-subagent-allowlist.sh`         | PreToolUse — enforces agent delegation allowlist (role ∈ {debug, shape, refactor, ops}); gates slash commands that spawn subagents                    |
+| `harnesses/claude/hooks/operator-subagent-allowlist.sh`         | PreToolUse — enforces agent delegation allowlist (role ∈ {debug, shape, ops}); gates slash commands that spawn subagents                              |
 | `harnesses/claude/hooks/build-worker-cwd-guard.sh`              | PreToolUse — guards build worker cwd discipline                                                                                                       |
 | `harnesses/claude/hooks/build-no-success-before-commit.sh`      | PreToolUse — blocks declaring success before commit completes; enforces clean working tree (no untracked/modified files) at SHIPPED signal            |
 | `harnesses/claude/hooks/committer-bash-allowlist.sh`            | PreToolUse — committer Bash allowlist: only git + safe shell utilities allowed (default-deny; GENERATED)                                              |
@@ -102,10 +102,12 @@ Event → script mapping from `harnesses/claude/claude-code-settings.json`:
 
 - `orchestrator-no-source-edit.sh` — `signal: CLAUDE_ROLE_FAMILY` — sources `_role.sh`, calls `resolve_role()`. If `_role == "ops"`, bypass the hook (ops needs full write access on live boxes).
 - `pitch-shipped-before-stop.sh` — `signal: CLAUDE_ROLE_FAMILY` — checks `_role == "dashboard-build"` (dashboard CI manages the shipped/ move post-merge) OR `CODEGEN_NO_AUTOSHIP=1` env override (operator explicit suppression).
+- `step-log-section-before-spawn.sh` — `signal: CLAUDE_ROLE_FAMILY` — sources `_role.sh`, calls `resolve_role()`. Bypassed for `debug`, `shape`, and `ops` (investigative modes spawn Explore subagents without a step log). Enforces step-0 log creation and per-agent section headers in all other modes.
+
+**Static enforcement of signal/body coupling**: The generator validates signal-to-body consistency at `make test` / `make install` time via `validate_signal()` in `hook_registrations.py`. When a hook's HOOK-MANIFEST header declares `signal: CLAUDE_ROLE_FAMILY`, the validator greps the `.sh` body for a `resolve_role()` call — if absent, validation fails loud. Similarly, the registry entry must match the header: flipping the signal in `registry.yaml` without adding the call to the body, OR vice versa, causes validation to fail. This coupling ensures that signal declarations and in-body role branching stay synchronized; either both flip together or the generator detects the inconsistency.
 
 **Signal: none (role-blind)**: Hooks without a signal field fire unconditionally for all launcher modes. Examples:
 
-- `step-log-section-before-spawn.sh` — `signal: none` — enforces step-0 log creation and per-agent section headers in all modes (planner, dev, reviewer, curator, etc.), including orchestrator variants.
 - `stop-cycle-guard.sh` — `signal: none` — blocks premature stop in all modes.
 - `stop-spin-guard.sh` — `signal: AGENT_TYPE` — scoped to developer-\* roles; fires on every SubagentStop but exits 0 (allow) when AGENT_TYPE is not a developer role variant.
 

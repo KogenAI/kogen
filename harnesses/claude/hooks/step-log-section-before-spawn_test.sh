@@ -347,6 +347,38 @@ else
 fi
 rm -rf "$T18_APPS"
 
+# ── Test 19: allow shape role with no step log (investigative bypass) ─────────
+T16=$(make_project)
+FAKE_TRANSCRIPT16="$T16/transcript.jsonl"
+printf '' >"$FAKE_TRANSCRIPT16"
+out16=$(mk_agent_input "planner-phoenix" "$FAKE_TRANSCRIPT16" | CLAUDE_ROLE=shape bash "$HOOK" 2>/dev/null || true)
+assert_allow "allow: CLAUDE_ROLE=shape — investigative bypass regardless of missing log" "$out16"
+rm -rf "$T16"
+
+# ── Test 20: allow debug role with no step log (investigative bypass) ─────────
+T17=$(make_project)
+FAKE_TRANSCRIPT17="$T17/transcript.jsonl"
+printf '' >"$FAKE_TRANSCRIPT17"
+out17=$(mk_agent_input "planner-phoenix" "$FAKE_TRANSCRIPT17" | CLAUDE_ROLE=debug bash "$HOOK" 2>/dev/null || true)
+assert_allow "allow: CLAUDE_ROLE=debug — investigative bypass regardless of missing log" "$out17"
+rm -rf "$T17"
+
+# ── Test 21: allow ops role with no step log (investigative bypass) ───────────
+T18=$(make_project)
+FAKE_TRANSCRIPT18="$T18/transcript.jsonl"
+printf '' >"$FAKE_TRANSCRIPT18"
+out18=$(mk_agent_input "planner-phoenix" "$FAKE_TRANSCRIPT18" | CLAUDE_ROLE=ops bash "$HOOK" 2>/dev/null || true)
+assert_allow "allow: CLAUDE_ROLE=ops — investigative bypass regardless of missing log" "$out18"
+rm -rf "$T18"
+
+# ── Test 22: deny unknown role with no step log (fail-closed) ─────────────────
+T19=$(make_project)
+FAKE_TRANSCRIPT19="$T19/transcript.jsonl"
+printf '' >"$FAKE_TRANSCRIPT19"
+out19=$(mk_agent_input "planner-phoenix" "$FAKE_TRANSCRIPT19" | CLAUDE_ROLE=banana bash "$HOOK" 2>/dev/null || true)
+assert_deny "deny: CLAUDE_ROLE=banana — unknown role not bypassed, no log → deny" "$out19"
+rm -rf "$T19"
+
 echo ""
 echo "Results: $pass passed, $fail failed"
 

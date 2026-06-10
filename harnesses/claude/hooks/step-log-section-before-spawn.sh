@@ -5,10 +5,10 @@
 # event: PreToolUse
 # matcher: Agent
 # surface: user_global
-# signal: none
+# signal: CLAUDE_ROLE_FAMILY
 # role: *
 # harnesses: claude_code
-# rationale: Agent tool not present in Pi harness
+# rationale: Agent tool not present in Pi harness; resolve_role() used for investigative-mode bypass (debug/shape/ops sessions spawn Explore subagents without a step log)
 # GENERATED FROM shared/enforcement/registry.yaml — DO NOT EDIT
 #
 # Blocks subagent spawn when (a) no step log has been written yet or
@@ -16,6 +16,7 @@
 #
 # Logic:
 #   If TOOL_NAME != "Agent" → exit 0 (not our concern)
+#   Resolve launcher role via resolve_role(); bypass for debug/shape/ops.
 #   Read subagent_type from tool_input.
 #   Map subagent_type → expected header:
 #     planner-* → "## Plan"
@@ -31,10 +32,18 @@
 set -u
 
 source "$(dirname "$0")/lib/hooks-lib.sh"
+source "$(dirname "$0")/_role.sh"
 parse_input
 
 # Only guard the Agent tool (subagent spawn).
 if [ "$TOOL_NAME" != "Agent" ]; then
+    exit 0
+fi
+
+_role=$(resolve_role)
+debug_log step-log-section-before-spawn "role=$_role"
+if [ "$_role" = "debug" ] || [ "$_role" = "shape" ] || [ "$_role" = "ops" ]; then
+    debug_log step-log-section-before-spawn "investigative mode bypass: allowing Agent spawn"
     exit 0
 fi
 
