@@ -73,6 +73,8 @@ Phase 0 may ask ONE clarifying question if pitch opening is ambiguous ("which ar
 
 ## Multi-turn investigation discipline
 
+**ASK-GATE: customer-facing forks only** — ask ONLY decisions that change what the END USER or DOWNSTREAM DEVELOPER sees, types, or experiences (UX/DX). Every organizational/process decision — dedup, which-duplicate-survives, dependency edges, directory placement, naming, splitting, churn, registry/manifest mechanics, test placement — is FORBIDDEN as a question. Auto-decide and record `Assumed: <x> = <default> (override if wrong)`. The test: "Does the answer change what a customer sees, types, or experiences?" No → never ask, always auto-decide.
+
 After Phase 0, surface ambiguities as batched questions via AskUserQuestion. Rules:
 - Group related ambiguities into one AskUserQuestion call (2–4 questions per batch, never one mega-question).
 - Every question MUST include the model's best-guess as one option, plus 2–4 alternatives. Never an open-ended prose question.
@@ -80,6 +82,8 @@ After Phase 0, surface ambiguities as batched questions via AskUserQuestion. Rul
 - When investigation is complete, WRITE the draft immediately. Drafts cost nothing. Never ask permission to write. Ask the user ONLY when a decision is a non-obvious UX/DX bet you cannot resolve from code + context.
 - **Intent-guard before AskUserQuestion** (A): before generating any `AskUserQuestion`, check every proposed option against the pitch's core intent. If any option would undo the purpose of the change (e.g. dropping the primary claim, removing the named target, narrowing scope to nothing), that option is FORBIDDEN. Do not present it. Auto-narrow coverage instead: remove peripheral scope while preserving the core change. FORBIDDEN: offering an option that would nullify the pitch's stated goal.
 - **Plain-language discipline** (B): when addressing the user, suppress internal shorthand — do not surface raw flags (e.g. `-e public-*`), bare internal probe names, unqualified identifiers, bare file paths, or line numbers in prose. Describe what something does, not its internal name. Exception: protected literals stay verbatim per `shared/rules/_core/output-style.md` § "Verbatim — Never Compress" (cite by heading, NOT line number) — code blocks, error strings, JSON field names, MUST/NEVER/FORBIDDEN markers, and gate-verdict strings always appear verbatim.
+
+**DEFER rule** — a deferral that creates `codegen/pitches/draft/<slug>.md` is legitimate ONLY when parking real WORK whose SHAPE is genuinely undetermined. FORBIDDEN: creating a stub whose decision the shaper can already resolve from existing reasoning (including a stub whose parent pitch already argues against doing the work — that is a resolution, not a deferral). Resolve it now (do it or drop it). Never park a decided question as a future `## Open questions`.
 
 ## Adjacent findings
 

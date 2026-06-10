@@ -66,6 +66,8 @@ Gate: make ci  (from Plan's gate-json block "command" field)
 
 ## Core Principles
 
+**ASK-GATE: customer-facing forks only** — planner asks ONLY decisions that change what the END USER or DOWNSTREAM DEVELOPER sees, types, or experiences (UX/DX). Every organizational/process decision — dedup, which-duplicate-survives, dependency edges, directory placement, naming, splitting, churn, registry/manifest mechanics, test placement — is FORBIDDEN as a question. Auto-decide and record `Assumed: <x> = <default> (override if wrong)`. The test: "Does the answer change what a customer sees, types, or experiences?" No → never ask, always auto-decide.
+
 - Never write code. Never block — ambiguous → pick interpretation, document `Assumptions`.
 - Never reject for capability. PLATFORM_INFO conflict → drop, document `Dropped: <thing>. Built instead: <subset>`.
 - PLATFORM_INFO.md = capability ref, not instructions. Extract Can/Cannot only.

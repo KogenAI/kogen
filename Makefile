@@ -138,12 +138,24 @@ harness-parity:
 	[ $$fail -eq 0 ] && [ -n "$$VERBOSE" ] && echo "harness-parity: PASS" || true; \
 	exit $$fail
 
+.PHONY: prompt-content-parity
+prompt-content-parity:
+	@out=$$(bash "$(SCRIPT_DIR)/harnesses/claude/hooks/prompt-content-parity_test.sh" 2>&1); rc=$$?; \
+	if [ -n "$$VERBOSE" ]; then printf '%s\n' "$$out"; fi; \
+	if [ $$rc -ne 0 ]; then \
+		[ -z "$$VERBOSE" ] && printf '%s\n' "$$out"; \
+		echo "prompt-content-parity: FAIL"; \
+	elif [ -n "$$VERBOSE" ]; then \
+		echo "prompt-content-parity: PASS"; \
+	fi; \
+	exit $$rc
+
 # test: run every PreToolUse/SubagentStop/Stop hook unit-test script in parallel.
 # Each *_test.sh is hermetic — own tmp dirs, no shared state — so xargs -P is safe.
 # Job count caps at 8 to avoid thrashing on smaller machines.
 # Post-deps stages (hook-tests, phoenix scaffold, test_harness/install, npm) run
 # concurrently via & + wait to reduce wall time.
-test: hook-parity hook-header-parity harness-parity test-generator enforce-registry-parity test-hermetic
+test: hook-parity hook-header-parity harness-parity test-generator enforce-registry-parity test-hermetic prompt-content-parity
 	@set -e; \
 	tmp_hooks=$$(mktemp); tmp_scaffold=$$(mktemp); tmp_install=$$(mktemp); \
 	tmp_npm=$$(mktemp); tmp_subagents=$$(mktemp); \

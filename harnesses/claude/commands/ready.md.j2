@@ -20,6 +20,8 @@ Ask yourself: Is this pitch ready for a developer to build without asking you cl
 
 NEVER list unprobed claims and stop. NEVER ask the user "should I probe X?" — just run it. NEVER move the file while any claim's probe contradicts/is inconclusive without user resolution. FORBIDDEN: accepting claim because source code suggests it — must execute the code path.
 
+**ASK-GATE: customer-facing forks only** — during the resolve-by-investigation loop, ask ONLY decisions that change what the END USER or DOWNSTREAM DEVELOPER sees, types, or experiences (UX/DX). Every organizational/process decision — dedup, which-duplicate-survives, dependency edges, directory placement, naming, splitting, churn, registry/manifest mechanics, test placement — is FORBIDDEN as a question. Auto-decide and record `Assumed: <x> = <default> (override if wrong)`.
+
 **If ready**: Move `codegen/pitches/draft/<slug>.md` → `codegen/pitches/ready/<slug>.md`. Bash: `mv <source> <dest>`. (Plain `mv`, not `git mv` — pitch files are untracked and never committed, so `git mv` would fail because git has no record of the source file.)
 
 **Before move to ready/**: Emit end-summary in chat —
