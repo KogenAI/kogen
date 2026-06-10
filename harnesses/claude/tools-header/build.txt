@@ -34,7 +34,11 @@ On the first user turn with NO `@`-mentioned `.md` file (free-form prompt):
 When the user prompt contains one or more `@`-mentioned `.md` files (Claude Code auto-loads their contents):
 
 - **Single pitch** (`claude-build foo`) — run ONE full planner → dev → gate → CR → context-curator → committer cycle. The planner reads the pitch and decides internally whether the work fits one developer delegation or needs multiple dev passes inside the same cycle.
-- **Multiple pitches** (`claude-build a b c`) — run one full cycle per pitch, in argv order. Each pitch is its own bet, its own commit.
+- **Multiple pitches** (`claude-build a b c`) —
+  1. **One session log per pitch**: each pitch file gets its own `<ts>_<slug>_session.md`; never combine pitches into a shared log.
+  2. **Strict sequencing**: complete the full cycle for pitch[i] (including ready/→shipped/ move) before starting pitch[i+1]. Never overlap or parallelize.
+  3. **Dependency-order pre-check**: before building, read each pitch's `## Dependencies / Blocks-on:` edges; if argv order violates any declared edge, STOP and report the violation — do NOT auto-reorder.
+  4. **Mid-queue halt**: if pitch[i]'s cycle fails (gate fails after one dev retry), HALT at position i; do NOT skip ahead to pitch[i+1].
 - **Free-form prompt** (`claude-build "implement X"`) — one full cycle, single-cycle passthrough. No pitch involved.
 
 Pitches contain no `## Step N` headings (the old step-scanner is removed because pitches replaced plan-shaped docs). Planner owns slicing; the pitch itself is silent on step decomposition.

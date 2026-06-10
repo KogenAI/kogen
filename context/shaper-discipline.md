@@ -98,6 +98,8 @@ In any case: shaper SPLITS into N pitches. Does NOT ask the user "should I split
 
 **Grammar**: `## Dependencies` block body is zero-or-more lines of `Blocks-on: <slug>`. One slug per line. Matches the grammar shipped in `pitch-format-contract.md`. Back-compat: `Blocks-on:` is also accepted inside `## Related pitches`.
 
+**Multi-pitch orchestrator enforcement**: `Blocks-on:` edges are validated by the build orchestrator BEFORE any building starts. When the user invokes `claude-build a b c` or `pi-build a b c` with multiple pitches, the orchestrator reads each pitch's `## Dependencies` block and pre-checks argv order against the declared edges. If argv order violates a `Blocks-on:` edge (e.g., a pitch that must ship after another is listed first), the orchestrator STOPS and reports the violation — it does NOT auto-reorder and does NOT proceed. This is a hard failure at pre-flight time, not a silent mis-sequencing.
+
 ## Prompt Durability (Anchor Over Line Numbers)
 
 Prompt bodies that cite their own sections (e.g., "the escape-hatch rule", "the U1–U7 option template") should use section-name anchors rather than absolute line numbers. Line numbers become stale whenever an edit shifts positions.

@@ -444,7 +444,7 @@ for _harness in "${HARNESSES[@]}"; do
             done
         fi
 
-        printf '%s\n' "${CURRENT_AGENTS[@]}" >"$AGENTS_MANIFEST"
+        printf '%s\n' "${CURRENT_AGENTS[@]+"${CURRENT_AGENTS[@]}"}" >"$AGENTS_MANIFEST"
 
         # Install required dependencies (claude-specific)
         echo ""

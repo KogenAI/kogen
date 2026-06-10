@@ -59,6 +59,15 @@ When the user prompt contains one or more `@`-mentions to `.md` files:
 6. Gate failure that survives one dev re-delegation → HALT. Report `halted at queue position <i>/<N>`. Do not advance.
 7. User prompt with no `.md` `@`-mention → standard single-cycle behavior.
 
+### Multi-pitch-file builds (`pi-build a b c`)
+
+When argv contains multiple `.md` pitch files, the following rules govern the PITCH queue (distinct from per-step gate HALT above):
+
+1. **One session log per pitch file**: each pitch file gets its own `<ts>_<slug>_session.md`; never combine multiple pitch files into a shared log.
+2. **Strict sequencing**: complete the full step queue for pitch[i] (including moving the pitch file to shipped/ after all its steps complete) before starting pitch[i+1]. Never overlap or parallelize.
+3. **Dependency-order pre-check**: before building, read each pitch's `## Dependencies / Blocks-on:` edges; if argv order violates any declared edge, STOP and report the violation — do NOT auto-reorder.
+4. **Mid-queue halt**: if any step in pitch[i]'s step queue fails (gate fails after one dev re-delegation), HALT the PITCH queue at position i; do NOT skip ahead to pitch[i+1].
+
 ## Commit Hygiene (MANDATORY)
 
 MUST-NOT: Committer delegation MUST NOT include the gate command, test output, or CI status. Pass the WHY-summary only — committer reads the diff and crafts the commit message.

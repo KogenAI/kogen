@@ -87,6 +87,26 @@ tools-header/<mode>.txt   (per-harness: mode title + ## Tools + any pre-Tools co
 
 **Derive-and-write dependency edges rule** (Rule H in spine): When splitting a pitch, the shaper DERIVES the build-order dependencies (which pitch must ship before which — by reading what each consumes that another produces) and WRITES them as `Blocks-on: <slug>` lines into each pitch's `## Dependencies` block (one slug per line). The dashboard topo-sorts these declared edges but performs zero inference of its own — an omitted edge silently mis-orders the queue. The shaper does NOT ask the user "what depends on what?" — it reads the code and derives the ordering. A circular or ambiguous dependency the shaper genuinely cannot resolve from code IS a legitimate AskUserQuestion; a derivable ordering is not. The `## Dependencies` block grammar is already shipped in `pitch-format-contract.md` (back-compat: `Blocks-on:` is also accepted inside `## Related pitches`). Every split MUST leave correct, parseable `## Dependencies` blocks behind.
 
+## Multi-Pitch Protocol
+
+Per-harness tools-headers now contain complete multi-pitch sequencing rules for handling multiple pitches in a single build invocation (`claude-build a b c` or `pi-build a b c`).
+
+**Why per-harness**: Claude and Pi have different concurrency models (Claude cycles through planner/dev/gate/reviewer/curator/committer; Pi processes sequential step queues). The four-rule protocol is identical in INTENT but expressed in per-harness vocabularies to align with each harness's native concepts:
+
+- **Claude** (`harnesses/claude/tools-header/build.txt` lines 37–41) — uses "cycle" and "pitch" vocabulary; sequences via `Cycle Protocol` section
+- **Pi** (`harnesses/pi/tools-header/build.txt` lines 62–69) — uses "step queue" and "queue position" vocabulary; sequences via `Multi-pitch-file builds` subsection
+
+**The four rules** (identical intent, harness-specific vocabulary):
+
+1. **One session log per pitch** — each pitch file gets its own `<ts>_<slug>_session.md` log; never combine pitches.
+2. **Strict sequencing** — complete the full cycle/queue for pitch[i] (including ready/→shipped/ move) before starting pitch[i+1]; never overlap or parallelize.
+3. **Dependency-order pre-check** — before building starts, read each pitch's `## Dependencies / Blocks-on:` edges; if argv order violates any declared edge, STOP and report the violation; do NOT auto-reorder.
+4. **Mid-queue halt** — if pitch[i]'s cycle fails (gate fails after one dev retry), HALT at position i; do NOT skip ahead to pitch[i+1].
+
+**Pre-check semantics**: The multi-pitch orchestrator reads `Blocks-on:` edges BEFORE any building starts. If a pitch declares `Blocks-on: foo` but `foo` is not in argv, or if argv order places a blocking pitch after the dependent pitch, the build stops immediately with a violation report. This prevents silent mis-ordering that would break build semantics.
+
+**Example**: if argv is `claude-build b a` and pitch `b` contains `Blocks-on: a`, the orchestrator reports the violation and stops before invoking planner for either pitch.
+
 **Prompt durability**: Self-references within prompt bodies should use section-name anchors (e.g., "the escape-hatch rule (step c')", "the U1–U7 option template") rather than absolute line numbers. Absolute line-number citations become stale whenever edits shift positions, introducing silent prompt drift. Section-name anchors remain valid across edits that shift line numbers, preventing re-rot.
 
 **Pitch-format contract**: `shape.txt` and `ops.txt` both specify the EXACT grammar for `## Questions` / `## Answers` blocks in headless mode. The contract is machine-parseable and enforced at Stop time by the `pitch-format-validator.sh` Stop hook (fires for shape/ops roles). Grammar: each `### Q<n>:` heading must be followed by ≥2 `- **<letter>)**` option bullets; `## Answers` Q-bindings must reference matching Q headings in `## Questions`; `> Status:` (if present) must be SKELETON, SHAPING, or SHAPED. The `/document` slash command writes `> Status: SKELETON` as the first line of every new skeleton pitch. Shape sessions advance the status to SHAPING (mid-investigation) or SHAPED (fully designed).
