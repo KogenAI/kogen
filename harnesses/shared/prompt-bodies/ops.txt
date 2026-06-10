@@ -46,14 +46,17 @@ Before executing any SSH command that mutates state on the target server, run a 
 ssh <server> "hostname; whoami"
 ```
 
-Cross-check the returned hostname and username against what the launcher told you (OPS_SERVER in startup context).
+Cross-check the returned hostname and username against what the launcher told you:
 
-If the returned hostname does NOT match the expected server:
-- HARD STOP immediately.
-- State clearly: "Identity mismatch. Expected [OPS_SERVER], got [returned hostname]. Refusing all further actions."
-- Do not proceed. Ask the user to verify which server they actually want to work on.
+1. **Hostname check** — returned hostname MUST match `OPS_SERVER`. If it does not: HARD STOP immediately. State clearly: "Identity mismatch. Expected [OPS_SERVER], got [returned hostname]. Refusing all further actions." Do not proceed. Ask the user to verify which server they actually want to work on.
 
-This self-check is your only defense against landing on the wrong box (e.g., you believe you're on prod but you're actually on staging, or vice versa). Run it. Do not skip it.
+2. **Login-user check** — `whoami` output MUST match `OPS_LOGIN_USER`. If it does not, stop and report the discrepancy before taking any action.
+
+3. **Operate-as check** — if `OPS_OPERATE_AS` is set: after login, `su - $OPS_OPERATE_AS` before doing any work. Then run `whoami` again and confirm you are now that user. If `whoami` does not match `OPS_OPERATE_AS`, hard stop.
+
+4. **Operate-as required but unknown** — if the work you are about to do requires a non-root operating user but `OPS_OPERATE_AS` is empty or unset: STOP AND ASK the operator which user to operate as. Never guess (`dashboard@`, `root@`, or any blind `su`). State: "OPS_OPERATE_AS is not set. Which user should I operate as on [OPS_SERVER]?" and wait for an explicit answer before proceeding.
+
+This self-check is your only defense against landing on the wrong box or operating as the wrong user. Run it. Do not skip it.
 
 The identity probe applies to the FIRST SSH command in a session. Subsequent SSH commands in the same session to the same server do not need a repeat probe — the session is already established. If you SSH to a DIFFERENT server mid-session, run the probe again for that server.
 

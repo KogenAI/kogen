@@ -257,6 +257,34 @@ config :myapp, :notify_owner_on_tls_alert, true
 - Dialyzer: in non-prod `@notify_owner` is `false` → same `exact_compare` warning → use `@dialyzer {:nowarn_function, fn: arity}` above the function
 - Default `false` in `config.exs` so missing config is safe
 
+## Enum & Sigil Patterns
+
+**`~w()` sigil destroys multi-word phrase literals**: `~w(add back)` splits on whitespace and produces `["add", "back"]`, NOT `["add back"]`. For any literal phrase ≥2 words, use explicit list syntax: `["add back", "bring back", "put back"]`. Silent failure: tests may pass if a secondary gate (e.g., subject-token overlap in a matcher) compensates, masking the destructured phrase. Always use `~w()` ONLY for single-word atom lists.
+
+**`Enum.find_value/3` for first-match-wins with default**: Returns first truthy result from the block; nil continues iteration; default fires on exhaustion. Clean pattern for "find the first X that satisfies predicate, or return default":
+
+```elixir
+Enum.find_value(candidates, :no_match, fn candidate ->
+  if matches_criteria(candidate) do
+    {:match, candidate}
+  else
+    nil  # continue to next
+  end
+end)
+```
+
+**Chained `Enum.reject/2` → merge predicates**: Two separate rejects are a Credo `FilterIntoWith` efficiency warning. Merge into single reject with `or`:
+
+```elixir
+# ❌ Chained rejects
+rejects = candidates |> Enum.reject(&(&1 in stop_words)) |> Enum.reject(&(byte_size(&1) < 2))
+
+# ✅ Single reject with merged predicate
+rejects = Enum.reject(candidates, &(&1 in stop_words or byte_size(&1) < 2))
+```
+
+**Deterministic token-overlap for semantic matching** (e.g., verifying a request references a subject): normalize request text → check for explicit directive phrase (literal substring OR regex pattern) → strip directive words + articles → verify ≥1 remaining "content" token appears in the candidate subject's token list. Example: "add dark mode back" matches `Revert "Update dark mode"` because (a) contains "add back", (b) after stripping "add"/"back"/"the"/articles, "dark" and "mode" tokens exist in both request and subject. Plain "make the dark mode bigger" → no match (no "add back"/"bring back" directive).
+
 ## See Recipes
 
 UI: `phoenix-component-attribute-ordering`, `phoenix-dropdown-blur`, `phoenix-modal-js-animations`, `phoenix-file-upload-html-labels`, `phoenix-live-title-page-titles`, `phoenix-storybook-setup`.

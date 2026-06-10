@@ -13,6 +13,16 @@
 #   9:  prefix export — OPS_SERVER and OPS_ENV set correctly
 #   10: prefix export — DEBUG_SERVER and DEBUG_ENV set correctly
 #   11: non-interactive miss → exit 1
+#   T-new-1:  save_ssh_alias with login_user+operate_as → User + ops-operate-as lines
+#   T-new-2:  save_ssh_alias with login_user only → User present, no ops-operate-as
+#   T-new-3:  save_ssh_alias both empty → HostName-only (no User line)
+#   T-new-4:  backfill_ssh_user on HostName-only alias → adds User + ops-operate-as
+#   T-new-5:  backfill_ssh_user does NOT overwrite existing User line
+#   T-new-6:  backfill_ssh_user idempotent — twice → one User line
+#   T-new-7:  backfill_ssh_user leaves second Host block unmodified
+#   T-new-8:  resolve_ssh_target HIT with no User → backfill → exports LOGIN_USER
+#   T-new-9:  resolve_ssh_target MISS → exports LOGIN_USER and OPERATE_AS
+#   T-new-10: under SSH_TARGET_NON_INTERACTIVE=1 MISS → no prompts, HostName-only
 
 set -euo pipefail
 
@@ -82,7 +92,7 @@ rm -rf "$tmp"
 tmp=$(setup_home "")
 result=$(HOME="$tmp" bash -c "
     source '$HELPER'
-    save_ssh_alias 'myapp-prod' '10.0.0.5' 'claude-ops'
+    save_ssh_alias 'myapp-prod' '10.0.0.5' 'claude-ops' >/dev/null
     grep 'Host myapp-prod' ~/.ssh/config
 ")
 assert_eq "save_ssh_alias writes alias" "Host myapp-prod" "$result"
@@ -96,7 +106,7 @@ tmp=$(setup_home "Host myapp-prod
 ")
 result=$(HOME="$tmp" bash -c "
     source '$HELPER'
-    save_ssh_alias 'myapp-prod' '10.0.0.99' 'claude-ops' 2>&1 || true
+    save_ssh_alias 'myapp-prod' '10.0.0.99' 'claude-ops' >/dev/null 2>&1 || true
     # Should still have original HostName, not the new one
     grep 'HostName' ~/.ssh/config
 ")
@@ -126,8 +136,10 @@ rm -rf "$tmp"
 tmp=$(setup_home "Host testproject-prod
     HostName 10.0.0.1
 ")
-result=$(HOME="$tmp" bash -c "
+result=$(HOME="$tmp" SSH_TARGET_NON_INTERACTIVE=1 bash -c "
     source '$HELPER'
+    git() { echo '/fake/testproject'; }
+    export -f git
     # stub ssh -G to return a hostname
     ssh() { printf 'hostname 10.0.0.1\n'; }
     export -f ssh
@@ -143,8 +155,10 @@ rm -rf "$tmp"
 tmp=$(setup_home "Host testproject-stage
     HostName 10.0.0.2
 ")
-result=$(HOME="$tmp" bash -c "
+result=$(HOME="$tmp" SSH_TARGET_NON_INTERACTIVE=1 bash -c "
     source '$HELPER'
+    git() { echo '/fake/testproject'; }
+    export -f git
     ssh() { printf 'hostname 10.0.0.2\n'; }
     export -f ssh
     resolve_ssh_target 'stage' 'OPS' 'test-launcher'
@@ -159,8 +173,10 @@ rm -rf "$tmp"
 tmp=$(setup_home "Host testproject-worker
     HostName 10.0.0.3
 ")
-result=$(HOME="$tmp" bash -c "
+result=$(HOME="$tmp" SSH_TARGET_NON_INTERACTIVE=1 bash -c "
     source '$HELPER'
+    git() { echo '/fake/testproject'; }
+    export -f git
     ssh() { printf 'hostname 10.0.0.3\n'; }
     export -f ssh
     resolve_ssh_target 'worker' 'OPS' 'test-launcher'
@@ -175,8 +191,10 @@ rm -rf "$tmp"
 tmp=$(setup_home "Host testproject-prod
     HostName 10.0.0.10
 ")
-result=$(HOME="$tmp" bash -c "
+result=$(HOME="$tmp" SSH_TARGET_NON_INTERACTIVE=1 bash -c "
     source '$HELPER'
+    git() { echo '/fake/testproject'; }
+    export -f git
     ssh() { printf 'hostname 10.0.0.10\n'; }
     export -f ssh
     resolve_ssh_target 'prod' 'OPS' 'test-launcher'
@@ -191,8 +209,10 @@ rm -rf "$tmp"
 tmp=$(setup_home "Host testproject-stage
     HostName 10.0.0.20
 ")
-result=$(HOME="$tmp" bash -c "
+result=$(HOME="$tmp" SSH_TARGET_NON_INTERACTIVE=1 bash -c "
     source '$HELPER'
+    git() { echo '/fake/testproject'; }
+    export -f git
     ssh() { printf 'hostname 10.0.0.20\n'; }
     export -f ssh
     resolve_ssh_target 'stage' 'DEBUG' 'test-launcher'
@@ -210,9 +230,177 @@ tmp=$(setup_home "Host otherproject-prod
 exit_code=0
 HOME="$tmp" SSH_TARGET_NON_INTERACTIVE=1 bash -c "
     source '$HELPER'
+    git() { echo '/fake/testproject'; }
+    export -f git
     resolve_ssh_target 'prod' 'OPS' 'test-launcher' 2>/dev/null
 " || exit_code=$?
 assert_eq "non-interactive miss exits 1" "1" "$exit_code"
+rm -rf "$tmp"
+
+# ──────────────────────────────────────────────────────────────────
+# T-new-1: save_ssh_alias with login_user+operate_as → User + ops-operate-as
+# ──────────────────────────────────────────────────────────────────
+tmp=$(setup_home "")
+result=$(HOME="$tmp" bash -c "
+    source '$HELPER'
+    save_ssh_alias 'myapp-prod' '10.0.0.5' 'claude-ops' 'root' 'dashboard' >/dev/null
+    grep -c '    User root\|    # ops-operate-as: dashboard' ~/.ssh/config
+")
+assert_eq "save_ssh_alias login+operate_as writes both lines" "2" "$result"
+rm -rf "$tmp"
+
+# ──────────────────────────────────────────────────────────────────
+# T-new-2: save_ssh_alias with login_user only → User present, no ops-operate-as
+# ──────────────────────────────────────────────────────────────────
+tmp=$(setup_home "")
+result=$(HOME="$tmp" bash -c "
+    source '$HELPER'
+    save_ssh_alias 'myapp-prod' '10.0.0.5' 'claude-ops' 'root' '' >/dev/null
+    user_lines=\$(grep -c '    User root' ~/.ssh/config || true)
+    ops_lines=\$(grep -c 'ops-operate-as' ~/.ssh/config || true)
+    echo \"\${user_lines}|\${ops_lines}\"
+")
+assert_eq "save_ssh_alias login_user only: User present, no ops-operate-as" "1|0" "$result"
+rm -rf "$tmp"
+
+# ──────────────────────────────────────────────────────────────────
+# T-new-3: save_ssh_alias both empty → HostName-only (no User line)
+# ──────────────────────────────────────────────────────────────────
+tmp=$(setup_home "")
+result=$(HOME="$tmp" bash -c "
+    source '$HELPER'
+    save_ssh_alias 'myapp-prod' '10.0.0.5' 'claude-ops' '' '' >/dev/null
+    user_lines=\$(grep -c '    User ' ~/.ssh/config || true)
+    echo \"\${user_lines}\"
+")
+assert_eq "save_ssh_alias both empty: no User line" "0" "$result"
+rm -rf "$tmp"
+
+# ──────────────────────────────────────────────────────────────────
+# T-new-4: backfill_ssh_user on HostName-only alias → adds User + ops-operate-as
+# ──────────────────────────────────────────────────────────────────
+tmp=$(setup_home "Host myapp-prod
+    HostName 10.0.0.5
+")
+result=$(HOME="$tmp" bash -c "
+    source '$HELPER'
+    printf 'root\ndashboard\n' | backfill_ssh_user 'myapp-prod' ~/.ssh/config
+    user_line=\$(grep '    User root' ~/.ssh/config || true)
+    ops_line=\$(grep '    # ops-operate-as: dashboard' ~/.ssh/config || true)
+    hostname_line=\$(grep '    HostName 10.0.0.5' ~/.ssh/config || true)
+    echo \"\${user_line}|\${ops_line}|\${hostname_line}\"
+")
+assert_eq "backfill_ssh_user adds User + ops-operate-as, preserves HostName" \
+    "    User root|    # ops-operate-as: dashboard|    HostName 10.0.0.5" "$result"
+rm -rf "$tmp"
+
+# ──────────────────────────────────────────────────────────────────
+# T-new-5: backfill_ssh_user does NOT overwrite existing User line
+# ──────────────────────────────────────────────────────────────────
+tmp=$(setup_home "Host myapp-prod
+    HostName 10.0.0.5
+    User existinguser
+")
+result=$(HOME="$tmp" bash -c "
+    source '$HELPER'
+    printf 'newuser\n\n' | backfill_ssh_user 'myapp-prod' ~/.ssh/config
+    grep '    User ' ~/.ssh/config
+")
+assert_eq "backfill_ssh_user does not overwrite existing User" "    User existinguser" "$result"
+rm -rf "$tmp"
+
+# ──────────────────────────────────────────────────────────────────
+# T-new-6: backfill_ssh_user idempotent — running twice → one User line
+# ──────────────────────────────────────────────────────────────────
+tmp=$(setup_home "Host myapp-prod
+    HostName 10.0.0.5
+")
+result=$(HOME="$tmp" bash -c "
+    source '$HELPER'
+    printf 'root\n\n' | backfill_ssh_user 'myapp-prod' ~/.ssh/config
+    printf 'root\n\n' | backfill_ssh_user 'myapp-prod' ~/.ssh/config
+    grep -c '    User root' ~/.ssh/config
+")
+assert_eq "backfill_ssh_user idempotent: one User line after two runs" "1" "$result"
+rm -rf "$tmp"
+
+# ──────────────────────────────────────────────────────────────────
+# T-new-7: backfill_ssh_user leaves second Host block unmodified
+# ──────────────────────────────────────────────────────────────────
+tmp=$(setup_home "Host myapp-prod
+    HostName 10.0.0.5
+
+Host myapp-stage
+    HostName 10.0.0.6
+")
+result=$(HOME="$tmp" bash -c "
+    source '$HELPER'
+    printf 'root\n\n' | backfill_ssh_user 'myapp-prod' ~/.ssh/config
+    # stage block should have no User line
+    stage_user=\$(awk '/^Host myapp-stage/{f=1;next} f && /^Host /{f=0} f && /User /{print}' ~/.ssh/config || true)
+    echo \"[\${stage_user}]\"
+")
+assert_eq "backfill_ssh_user leaves second block unmodified" "[]" "$result"
+rm -rf "$tmp"
+
+# ──────────────────────────────────────────────────────────────────
+# T-new-8: resolve_ssh_target HIT with no User → backfill → config updated
+# ──────────────────────────────────────────────────────────────────
+# Pipe stdin for backfill prompts: login_user, operate_as
+tmp=$(setup_home "Host testproject-prod
+    HostName 10.0.0.1
+")
+result=$(HOME="$tmp" bash -c "
+    source '$HELPER'
+    git() { echo '/fake/testproject'; }
+    export -f git
+    ssh() { printf 'hostname 10.0.0.1\n'; }
+    export -f ssh
+    printf 'root\ndashboard\n' | resolve_ssh_target 'prod' 'OPS' 'test-launcher' >/dev/null 2>&1 || true
+    user_line=\$(grep '    User root' ~/.ssh/config || true)
+    ops_line=\$(grep '    # ops-operate-as: dashboard' ~/.ssh/config || true)
+    echo \"\${user_line}|\${ops_line}\"
+")
+assert_eq "resolve HIT no-User → backfill writes User + ops-operate-as to config" \
+    "    User root|    # ops-operate-as: dashboard" "$result"
+rm -rf "$tmp"
+
+# ──────────────────────────────────────────────────────────────────
+# T-new-9: resolve_ssh_target MISS → saves alias with User + ops-operate-as in config
+# ──────────────────────────────────────────────────────────────────
+# Pipe stdin: alias input (1.2.3.4), login user (root), operate-as (dashboard)
+# verify config was written with both User and ops-operate-as lines.
+tmp=$(setup_home "")
+result=$(HOME="$tmp" bash -c "
+    source '$HELPER'
+    ssh() { printf 'hostname 1.2.3.4\n'; }
+    export -f ssh
+    git() { echo '/fake/testproject'; }
+    export -f git
+    # stdin: alias, login_user, operate_as
+    printf '1.2.3.4\nroot\ndashboard\n' | resolve_ssh_target 'prod' 'OPS' 'test-launcher' >/dev/null 2>&1 || true
+    user_line=\$(grep '    User root' ~/.ssh/config || true)
+    ops_line=\$(grep '    # ops-operate-as: dashboard' ~/.ssh/config || true)
+    echo \"\${user_line}|\${ops_line}\"
+")
+assert_eq "resolve MISS → config has User + ops-operate-as" \
+    "    User root|    # ops-operate-as: dashboard" "$result"
+rm -rf "$tmp"
+
+# ──────────────────────────────────────────────────────────────────
+# T-new-10: SSH_TARGET_NON_INTERACTIVE MISS → HostName-only (no User in saved block)
+# ──────────────────────────────────────────────────────────────────
+# Non-interactive MISS exits 1 immediately — so we test the save path directly.
+# save_ssh_alias with no login_user/operate_as (non-interactive default) → HostName-only
+tmp=$(setup_home "")
+result=$(HOME="$tmp" bash -c "
+    source '$HELPER'
+    SSH_TARGET_NON_INTERACTIVE=1 save_ssh_alias 'myapp-prod' '10.0.0.5' 'claude-ops' >/dev/null
+    user_lines=\$(grep -c '    User ' ~/.ssh/config || true)
+    hostname_lines=\$(grep -c '    HostName ' ~/.ssh/config || true)
+    echo \"\${user_lines}|\${hostname_lines}\"
+")
+assert_eq "non-interactive save: HostName-only, no User line" "0|1" "$result"
 rm -rf "$tmp"
 
 # ──────────────────────────────────────────────────────────────────

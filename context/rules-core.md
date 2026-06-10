@@ -38,6 +38,10 @@ shared/rules/
 
 bash-discipline, output-style, session-log, cwd-discipline, STYLE_GUIDE, INDEX.md
 
+## POSIX Awk Patterns
+
+**Uninitialized variable defaults**: POSIX awk initializes unset scalar variables to 0 (numeric context) or empty string (string context). Safe pattern for block-scoped search functions: `exit !found` at END correctly exits 1 (not found) when no matching line was found, without requiring explicit `found=0` initialization at the top. This works in all awk implementations including mawk (Debian default).
+
 ## Pitfalls
 
 - **Rule changes are not live** — must `make install` to regenerate agent prompts; running agents see old baked rules
