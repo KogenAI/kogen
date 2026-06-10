@@ -15,7 +15,8 @@
 
 1. **OTP `handle_info` catch-all in GenServer** — OTP delivers system messages (`{:EXIT, ...}`, `{:nodedown, ...}`) unpredictably. A catch-all that logs and noreply is legitimate. Use `Logger.warning/2` (not `Logger.debug`) for unexpected messages; bare `:noreply` is still forbidden.
 2. **`File.Error` rescue + reraise** — I/O genuinely fails at runtime. Catch only `File.Error` (or the specific exception), re-raise with original stacktrace. See `_core.md` TOCTOU retry pattern for the one shape where a single retry before reraise is acceptable.
-3. **Boundary validation on external input** — params from HTTP requests, webhooks, or user-supplied data MAY be validated with a fallback (`||`, `Map.get/3` with default, changeset error). The boundary is the controller or plug layer; inside contexts and schemas, treat data as already validated.
+3. **`Phoenix.Token.verify/4` always returns tagged tuple** — `Phoenix.Token.verify/4` never raises on invalid token/salt/signature; all error cases return `{:error, reason}`. Wrapping it in `try/rescue` is defensive code and forbidden. Use bare `case` on the return value: `case Phoenix.Token.verify(key, token, salt) do {:ok, value} -> ...; {:error, _reason} -> ... end`.
+4. **Boundary validation on external input** — params from HTTP requests, webhooks, or user-supplied data MAY be validated with a fallback (`||`, `Map.get/3` with default, changeset error). The boundary is the controller or plug layer; inside contexts and schemas, treat data as already validated.
 
 ## Coverage Corollary
 

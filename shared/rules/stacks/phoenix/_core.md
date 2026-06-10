@@ -153,6 +153,8 @@ ExUnit **does NOT** inject `:async => false` into the tags map for `async: false
 
 **Credo module layout order** (StrictModuleLayout): default is `use` → `import` → `require` → `alias` → module attributes (`@moduletag`). Projects commonly override this order in `.credo.exs` — always check the project's config before flagging violations. `require Logger` must precede `@behaviour` declaration (both are module-level directives; `require` is structural, `@behaviour` is an attribute). Inserting `@moduletag` between `use` and `import`/`alias` triggers two separate violations. Always place module tags after ALL imports, requires, and aliases.
 
+**`require Logger` is NOT implied by `use GenServer`**: even in GenServer modules, `require Logger` must be explicitly added to use Logger macros (e.g., `Logger.info`, `Logger.warning`). The `use` directive does not transitively require Logger. Add `require Logger` in the require block, respecting the module layout order.
+
 Example pattern (channels_test.exs):
 
 ```elixir

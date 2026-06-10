@@ -45,6 +45,8 @@ Then targeted test file(s). Dead modules → Credo warnings → wire via `grep -
 - NEVER single-fn pipelines: `v |> Fn()` ❌ → `Fn(v)` ✅
 - `case` over nested `if`. `with` for 3+ chained failable ops.
 - Grep fn usage before modifying/removing. Removing features: remove ALL related code, imports, tests.
+- **Duplicate boolean logic → shared helper**: When two modules must use identical enable/disable logic (e.g., both static.ex and channel.ex check `enabled?`), extract to a shared `Utils` or named module helper — copy-paste logic in two files is a latent divergence bug. The shared computation becomes the single source of truth and prevents subtle inconsistencies when one caller later updates their copy.
+- **GenServer.call/3 timeout exit shape**: `GenServer.call/3` timeout exits as `{:timeout, {mod, fun, args}}`, never the bare atom `:timeout`. A `try/catch` arm like `catch :exit, :timeout` is always dead code. Use bare `case` on function return values or pattern-match on the full `{:timeout, ...}` tuple in exception handlers.
 
 ## Credo VariableReDeclaration
 

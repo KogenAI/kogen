@@ -68,6 +68,16 @@ Verification checklist per LiveView:
 
 Example: `DropLive.Index` template reads `@streams.drops`, `@drops_empty?`, `@end_of_timeline?`, `@loading_more`. On dead render, `handle_params/3` else branch sets all four; stream is initialized, booleans set to safe defaults. Connected branch loads data and overwrites the same keys. Dead render assignment is NOT redundant — it ensures the keys exist on WS connect before the async `load_more` fires.
 
+## Test Seams in Production Code — Forbidden
+
+❌ Injecting `Application.get_env` keys into `channel.ex`, `live_view.ex`, or other production code to signal test conditions (e.g., `Application.get_env(:app, :test_pid)` to `send` assertions to a test process). Test hooks in production are a **blocking review issue**.
+
+Symptom: production module reads `Application.get_env(:my_app, :test_callback)` and calls it if non-nil. This couples prod code to test infrastructure and complicates testing of the prod path itself.
+
+Solution: use observable signals already present in the LiveView protocol. Example: WS join reply includes `{:ok, %{"resume" => true}}` — tests assert on the join reply's `warm: true` or `resume: true` fields instead of reaching into application config. The observable signal documents the feature boundary and proves production code is exercising it.
+
+Pattern: test-assertion source of truth is the public protocol (join reply, rendered HTML, LiveView assigns visible in test), not private application env keys. Tests that work through the public surface automatically test the prod path.
+
 ## Per-File Targeting
 
 After editing LiveView: `mix test test/<app>_web/live/<file>_live_test.exs`. Never full suite.
