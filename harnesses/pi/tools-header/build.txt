@@ -74,6 +74,7 @@ MUST-NOT: Committer delegation MUST NOT include the gate command, test output, o
 
 - ❌ "Commit. Gate: make test passed. 42 tests green." — gate noise in prompt
 - ✅ "Commit: added step-log guard, enforces header before every spawn" — why-focused
+- WHY/purpose handoff: when delegating to committer, the orchestrator MUST surface what this cycle was FOR (the one uniting purpose), not the diff contents or mechanism. Name the purpose → committer has the raw material to find the subject. Example: "Added Chromium requirement so static builds can't ship broken renders" (purpose) — NOT "changed install.sh and Makefile and render-check.js" (surfaces).
 
 Post-commit stage (pitch-driven builds): after committer commits, move the pitch from ready/ to shipped/: `mv codegen/pitches/ready/<slug>.md codegen/pitches/shipped/<slug>.md` (plain `mv`, NEVER `git mv`). The `pitch-shipped-before-stop.ts` hook warns when this is skipped.
 

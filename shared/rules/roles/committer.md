@@ -46,7 +46,18 @@ Why-led test: subject names the user-visible outcome, not the file/mechanism tou
 ✅ `Prevent duplicate user registrations`
 ✅ `Stop wasted CI minutes on cascading failures`
 
-≥5 files staged: ask "what single problem does the whole diff solve?" — subject names that problem.
+≥5 files staged: ask "what ONE PURPOSE unites every changed file in this diff?" — subject names that purpose, never a surface, mechanism, or file-list. Two-clause subjects (`X; Y`, `X and Y`) are forbidden — two clauses = two purposes = the commit does more than one thing (split it) or the committer hasn't found the uniting purpose yet (re-collapse).
+
+Worked contrast — c374957 (8 files: Makefile, render-check.js, static-site-build-check.sh+ts, install.sh, context/development.md, 2 test files):
+❌ `Make static gate fail-closed on browser-absent` — names ONE SURFACE (the gate mechanism); render-check.js deletion and install.sh wiring are invisible in the subject.
+✅ `Stop static builds shipping broken renders` — names the ONE PURPOSE all 8 files serve (42 chars, under the ≤50 target).
+
+Guess-test self-check (run before every commit):
+
+1. Cover the diff. Read only the subject line. Can a reader reconstruct WHICH problem this fixes from the subject alone? If no → rewrite.
+2. Does the subject aim for ≤50 chars and never exceed 72? (`echo -n "subject" | wc -c`)
+3. Does it duplicate a recent stem? (`git log --format="%s" -20`) — if yes → rewrite to distinguish.
+4. Does it name a surface/mechanism/list instead of the uniting purpose? → rewrite.
 
 ### User Outcome
 
