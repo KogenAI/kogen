@@ -1,5 +1,5 @@
 /**
- * subagent-allowlist.ts — Pi enforcement: gate subagent spawns from pi-subagents extension.
+ * operator-subagent-allowlist.ts — Pi enforcement: gate subagent spawns from pi-subagents extension.
  *
  * Mirrors: templates/shared/hooks/operator-subagent-allowlist.sh
  * Event: tool_call (pi-subagents registers spawn as a tool_call named "subagent")
@@ -16,7 +16,7 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { deny, debugLog } from "../lib/hook-helpers";
 
 export const HANDLER_META = {
-  name: "subagent-allowlist",
+  name: "operator-subagent-allowlist",
   event: "tool_call",
   matcher: "subagent",
 } as const;
@@ -39,7 +39,7 @@ export function register(pi: ExtensionAPI): void {
     const role = resolveRole();
 
     debugLog(
-      "subagent-allowlist",
+      "operator-subagent-allowlist",
       `role=${role} subagent_type=${subagentType}`,
     );
 
@@ -50,14 +50,14 @@ export function register(pi: ExtensionAPI): void {
       subagentType === "statusline-setup"
     ) {
       return deny(
-        `BLOCKED by subagent-allowlist: built-in subagent ${subagentType} is denied in all launcher modes.`,
+        `BLOCKED by operator-subagent-allowlist: built-in subagent ${subagentType} is denied in all launcher modes.`,
       );
     }
 
     // Empty subagent_type — deny defensively (fail-closed).
     if (!subagentType) {
       return deny(
-        `BLOCKED by subagent-allowlist: subagent_type is empty — cannot determine safe subagent. Specify a named project subagent.`,
+        `BLOCKED by operator-subagent-allowlist: subagent_type is empty — cannot determine safe subagent. Specify a named project subagent.`,
       );
     }
 
@@ -67,7 +67,7 @@ export function register(pi: ExtensionAPI): void {
         return;
       }
       return deny(
-        `BLOCKED by subagent-allowlist: Explore subagent is only available under pi-debug or pi-shape launcher modes. Use planner-phoenix / planner-html / etc. instead for investigation within a standard build session.`,
+        `BLOCKED by operator-subagent-allowlist: Explore subagent is only available under pi-debug or pi-shape launcher modes. Use planner-phoenix / planner-html / etc. instead for investigation within a standard build session.`,
       );
     }
 
@@ -79,7 +79,7 @@ export function register(pi: ExtensionAPI): void {
         subagentType === "committer"
       ) {
         return deny(
-          `BLOCKED by subagent-allowlist: shaping modes are read-only — they investigate and write pitches; spawn a builder from build mode instead.`,
+          `BLOCKED by operator-subagent-allowlist: shaping modes are read-only — they investigate and write pitches; spawn a builder from build mode instead.`,
         );
       }
     }

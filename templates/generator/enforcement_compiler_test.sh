@@ -1,7 +1,7 @@
 #!/bin/bash
 # enforcement_compiler_test.sh — unit tests for enforcement_compiler.py.
 #
-# Tests (35):
+# Tests (40):
 #   1:  parse valid registry (6 entries: 5 bash+ts + 1 pi-only); 11 sections in dry-run
 #   2:  dialect translation bash: \\s → [[:space:]] in generated .sh
 #   3:  match_all AND logic: two grep -qE calls joined with &&
@@ -37,6 +37,11 @@
 #  33:  bypass_roles COMMAND+allowlist bash: bypass role exits (no deny)
 #  34:  bypass_roles COMMAND+allowlist bash: non-bypass role hits allowlist guard
 #  35:  kind:registration entry skipped by full-file generator (no .sh body overwrite)
+#  36:  registration-in-block: kind:registration harnesses:all id WITH .ts file IS in generated block
+#  37:  denial-still-in: existing denial hook id still appears in generated block
+#  38:  deferred-not-in: context-index-parity (NOT-YET-MIGRATED) is NOT in generated block
+#  39:  existence-guard: kind:registration harnesses:all id WITHOUT .ts file is NOT in generated block
+#  40:  symmetry: import line count == register call line count inside generated block
 
 set -euo pipefail
 
@@ -226,10 +231,13 @@ assert_eq "empty registry: no files emitted" "0" "$empty_count"
 mkdir -p "$tmpdir/real_bash" "$tmpdir/real_ts"
 cp "$SCRIPT_DIR/../../harnesses/pi/pi-extensions/enforcement/src/index.ts" "$tmpdir/real_index.ts" 2>/dev/null || touch "$tmpdir/real_index.ts"
 
+PI_HOOKS_DIR="$SCRIPT_DIR/../../harnesses/pi/pi-extensions/enforcement/src/hooks"
+
 python3 "$COMPILER" \
     --registry "$REGISTRY" \
     --bash-out "$tmpdir/real_bash" \
     --ts-out "$tmpdir/real_ts" \
+    --pi-hooks-dir "$PI_HOOKS_DIR" \
     --index "$tmpdir/real_index.ts" >/dev/null 2>&1
 
 syntax_ok=true
@@ -266,6 +274,7 @@ python3 "$COMPILER" \
     --registry "$REGISTRY" \
     --bash-out "$tmpdir/real_bash2" \
     --ts-out "$tmpdir/real_ts2" \
+    --pi-hooks-dir "$PI_HOOKS_DIR" \
     --index "$tmpdir/real_index.ts" >/dev/null 2>&1
 
 if diff -q "$tmpdir/real_index_orig.ts" "$tmpdir/real_index.ts" >/dev/null 2>&1; then
@@ -546,6 +555,95 @@ reg_section_count=$(
     true
 )
 assert_eq "kind:registration: no files emitted by full-file generator" "0" "$reg_section_count"
+
+# ── Tests 36-40: registration-in-block / deferred-not-in / existence-guard / symmetry ──
+
+# Use the real index.ts produced in tests 8-11 (tmpdir/real_index.ts).
+real_index_content=$(cat "$tmpdir/real_index.ts" 2>/dev/null || echo "")
+
+# Test 36: registration-in-block — a kind:registration harnesses:all id with
+# an existing .ts file IS emitted inside the generated block.
+# build-no-success-before-commit is kind:registration harnesses:all with a ts file.
+assert_contains \
+    "registration-in-block: build-no-success-before-commit import in block" \
+    'import { register as registerBuildNoSuccessBeforeCommit }' \
+    "$real_index_content"
+assert_contains \
+    "registration-in-block: build-no-success-before-commit register call in block" \
+    'registerBuildNoSuccessBeforeCommit(pi)' \
+    "$real_index_content"
+
+# Verify the import line appears BETWEEN the BEGIN/END markers (not outside).
+block_import=$(awk \
+    '/\/\/ BEGIN-GENERATED-ENFORCEMENT-BLOCK/,/\/\/ END-GENERATED-ENFORCEMENT-BLOCK/' \
+    "$tmpdir/real_index.ts" | grep -c 'registerBuildNoSuccessBeforeCommit' 2>/dev/null || true)
+assert_eq \
+    "registration-in-block: both import+call appear inside generated block" \
+    "2" "$block_import"
+
+# Test 37: denial-still-in — no-cat-pipe (denial hook, harnesses:all) still in block.
+assert_contains \
+    "denial-still-in: no-cat-pipe import in generated block" \
+    'import { register as registerNoCatPipe }' \
+    "$real_index_content"
+
+# Test 38: deferred-not-in — context-index-parity NOT-YET-MIGRATED is NOT inside the
+# generated block (it must remain as a hand-import outside the block).
+block_context=$(awk \
+    '/\/\/ BEGIN-GENERATED-ENFORCEMENT-BLOCK/,/\/\/ END-GENERATED-ENFORCEMENT-BLOCK/' \
+    "$tmpdir/real_index.ts" | grep -c 'context-index-parity' 2>/dev/null || true)
+assert_eq \
+    "deferred-not-in: context-index-parity absent from generated block" \
+    "0" "$block_context"
+
+# Test 39: existence-guard — a kind:registration harnesses:all id without a .ts file
+# is NOT emitted. Use a synthetic registry with a non-existent id.
+cat >"$tmpdir/registry_nonexistent.yaml" <<'YAML'
+- kind: registration
+  id: nonexistent-hook-xyz
+  event: PreToolUse
+  tool_guard: Bash
+  surface: user_global
+  signal: none
+  role: "*"
+  harnesses: all
+YAML
+
+# Seed the index file with empty blocks so markers are present.
+cat >"$tmpdir/nonexistent_index.ts" <<'TS'
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+// BEGIN-GENERATED-ENFORCEMENT-BLOCK
+// END-GENERATED-ENFORCEMENT-BLOCK
+export default function (pi: ExtensionAPI): void {
+  // BEGIN-GENERATED-ENFORCEMENT-BLOCK
+  // END-GENERATED-ENFORCEMENT-BLOCK
+}
+TS
+
+mkdir -p "$tmpdir/nonexistent_bash" "$tmpdir/nonexistent_ts"
+
+# Run without --pi-hooks-dir → defaults to ts-out ($tmpdir/nonexistent_ts) which is empty.
+python3 "$COMPILER" \
+    --registry "$tmpdir/registry_nonexistent.yaml" \
+    --bash-out "$tmpdir/nonexistent_bash" \
+    --ts-out "$tmpdir/nonexistent_ts" \
+    --index "$tmpdir/nonexistent_index.ts" >/dev/null 2>&1
+
+nonexistent_in_block=$(grep -c 'nonexistent-hook-xyz' "$tmpdir/nonexistent_index.ts" 2>/dev/null || true)
+assert_eq \
+    "existence-guard: id without .ts file not emitted in block" \
+    "0" "$nonexistent_in_block"
+
+# Test 40: symmetry — import line count (in import block) == register call count (in register block).
+# Count all import lines and all registerX(pi) calls within generated blocks.
+all_blocks=$(awk \
+    '/\/\/ BEGIN-GENERATED-ENFORCEMENT-BLOCK/,/\/\/ END-GENERATED-ENFORCEMENT-BLOCK/' \
+    "$tmpdir/real_index.ts")
+import_count=$(printf '%s' "$all_blocks" | grep -c '^import ' 2>/dev/null || true)
+register_count=$(printf '%s' "$all_blocks" | grep -cE '^\s+register[A-Z][^(]+\(pi\);' 2>/dev/null || true)
+assert_eq \
+    "symmetry: import line count equals register call count in block" \
+    "$import_count" "$register_count"
 
 # ── Summary ───────────────────────────────────────────────────────────────────
 

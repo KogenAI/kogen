@@ -1,12 +1,12 @@
 /**
- * Tests for subagent-allowlist hook.
+ * Tests for operator-subagent-allowlist hook.
  * Mirrors cases from operator-subagent-allowlist.sh.
  */
 
 import { describe, it, beforeEach } from "node:test";
 import assert from "node:assert/strict";
 
-describe("subagent-allowlist", () => {
+describe("operator-subagent-allowlist", () => {
   let _capturedHandler: (event: unknown) => Promise<unknown>;
 
   const mockPi = {
@@ -17,7 +17,7 @@ describe("subagent-allowlist", () => {
 
   async function runHook(subagentType: string, piRole = "") {
     process.env["PI_ROLE"] = piRole;
-    const { register } = await import("../subagent-allowlist");
+    const { register } = await import("../operator-subagent-allowlist");
     register(
       mockPi as unknown as import("@earendil-works/pi-coding-agent").ExtensionAPI,
     );
@@ -94,7 +94,7 @@ describe("subagent-allowlist", () => {
 
   it("passes through non-subagent tool calls", async () => {
     process.env["PI_ROLE"] = "build";
-    const { register } = await import("../subagent-allowlist");
+    const { register } = await import("../operator-subagent-allowlist");
     register(
       mockPi as unknown as import("@earendil-works/pi-coding-agent").ExtensionAPI,
     );

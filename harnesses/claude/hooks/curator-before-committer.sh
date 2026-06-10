@@ -7,8 +7,7 @@
 # surface: user_global
 # signal: none
 # role: *
-# harnesses: claude_code
-# rationale: Agent tool not present in Pi harness
+# harnesses: all
 # GENERATED FROM shared/enforcement/registry.yaml — DO NOT EDIT
 #
 # Blocks committer spawn when reviewer has run but context-curator has not.

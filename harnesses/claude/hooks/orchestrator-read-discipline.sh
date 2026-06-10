@@ -7,8 +7,7 @@
 # surface: user_global
 # signal: AGENT_TYPE
 # role: *
-# harnesses: claude_code
-# rationale: CLAUDE_ROLE-keyed; gates orchestrator Read (path allowlist) and Bash (exploration-verb deny)
+# harnesses: all
 # GENERATED FROM shared/enforcement/registry.yaml — DO NOT EDIT
 #
 # Blocks the orchestrator from:

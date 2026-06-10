@@ -58,6 +58,7 @@ install:
 		--registry "$(SCRIPT_DIR)/shared/enforcement/registry.yaml" \
 		--bash-out "$(SCRIPT_DIR)/harnesses/claude/hooks" \
 		--ts-out "$(SCRIPT_DIR)/harnesses/pi/pi-extensions/enforcement/src/hooks" \
+		--pi-hooks-dir "$(SCRIPT_DIR)/harnesses/pi/pi-extensions/enforcement/src/hooks" \
 		--index "$(SCRIPT_DIR)/harnesses/pi/pi-extensions/enforcement/src/index.ts"
 	@python3 "$(SCRIPT_DIR)/templates/generator/hook_registrations.py" \
 		--hooks-dir "$(SCRIPT_DIR)/harnesses/claude/hooks" \
@@ -82,6 +83,7 @@ enforce-registry-parity:
 		--registry "$(SCRIPT_DIR)/shared/enforcement/registry.yaml" \
 		--bash-out /tmp/enforce-parity-bash \
 		--ts-out /tmp/enforce-parity-ts \
+		--pi-hooks-dir "$(SCRIPT_DIR)/harnesses/pi/pi-extensions/enforcement/src/hooks" \
 		--index /tmp/enforce-parity-index.ts.tmp > /dev/null 2>&1
 	@fail=0; \
 	for f in /tmp/enforce-parity-bash/*.sh; do \

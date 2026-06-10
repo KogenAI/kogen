@@ -274,8 +274,7 @@
   surface: user_global
   signal: none
   role: "*"
-  harnesses: claude
-  rationale: Agent tool not present in Pi harness
+  harnesses: all
 
 - kind: registration
   id: dev-no-ci
@@ -347,8 +346,7 @@
   surface: user_global
   signal: CLAUDE_ROLE_FAMILY
   role: "*"
-  harnesses: claude
-  rationale: Agent tool not present in Pi harness
+  harnesses: all
 
 - kind: registration
   id: orchestrator-session-log-name-guard
@@ -386,8 +384,7 @@
   surface: user_global
   signal: AGENT_TYPE
   role: "*"
-  harnesses: claude
-  rationale: CLAUDE_ROLE-keyed; gates orchestrator Read (path allowlist) and Bash (exploration-verb deny)
+  harnesses: all
 
 - kind: registration
   id: phoenix-backend-developer-guard
@@ -432,7 +429,7 @@
   surface: user_global
   signal: CLAUDE_ROLE_FAMILY
   role: "*"
-  harnesses: claude
+  harnesses: all
 
 - kind: registration
   id: planner-guard
@@ -522,8 +519,7 @@
   surface: user_global
   signal: CLAUDE_ROLE_FAMILY
   role: "*"
-  harnesses: claude
-  rationale: Agent tool not present in Pi harness; resolve_role() used for investigative-mode bypass (debug/shape/ops sessions spawn Explore subagents without a step log)
+  harnesses: all
 
 - kind: registration
   id: stop-cycle-guard

@@ -7,8 +7,7 @@
 # surface: user_global
 # signal: CLAUDE_ROLE_FAMILY
 # role: *
-# harnesses: claude_code
-# rationale: Agent tool not present in Pi harness; resolve_role() used for investigative-mode bypass (debug/shape/ops sessions spawn Explore subagents without a step log)
+# harnesses: all
 # GENERATED FROM shared/enforcement/registry.yaml — DO NOT EDIT
 #
 # Blocks subagent spawn when (a) no step log has been written yet or

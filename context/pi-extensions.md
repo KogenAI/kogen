@@ -52,10 +52,10 @@ Adding a new extension:
 
 Pi has two event families with **asymmetric blocking capability**:
 
-| Event Type      | Example handlers                    | Can block?   | Return contract                                                    |
-| --------------- | ----------------------------------- | ------------ | ------------------------------------------------------------------ |
-| `tool_call`     | `curator-before-committer.ts` (3)   | **YES**      | Return `deny(reason)` to block; return `undefined` to allow        |
-| `session_shutdown` | `step-log-completeness.ts` (4)   | **NO**       | Observe-only; emit `process.stderr.write(...)`; return nothing     |
+| Event Type         | Example handlers                  | Can block? | Return contract                                                |
+| ------------------ | --------------------------------- | ---------- | -------------------------------------------------------------- |
+| `tool_call`        | `curator-before-committer.ts` (3) | **YES**    | Return `deny(reason)` to block; return `undefined` to allow    |
+| `session_shutdown` | `step-log-completeness.ts` (4)    | **NO**     | Observe-only; emit `process.stderr.write(...)`; return nothing |
 
 `tool_call` (PreToolUse equivalent) can block execution. `session_shutdown` covers both Claude Stop and SubagentStop events and is observe-only — `block()` result is ignored by the Pi runtime on shutdown. This asymmetry differs from Claude's per-event blocking capability. Established convention by existing twins: all 4 Stop/SubagentStop twins emit stderr warnings, NEVER `block()`.
 
@@ -85,11 +85,27 @@ The durable `## Questions` artifact is written by the **agent** (not the extensi
 
 ## Step Log Discovery — Disk Scan vs Transcript Scan
 
-Pi has **NO TRANSCRIPT_PATH** — there is no JSONL transcript available to inspection hooks. Discovery of active session logs or pitches relies entirely on **disk scan** — `readdirSync()` + `statSync()` to find the file with the most recent mtime in the `codegen/logging/` or `codegen/pitches/` directory. 
+Pi has **NO TRANSCRIPT_PATH** — there is no JSONL transcript available to inspection hooks. Discovery of active session logs or pitches relies entirely on **disk scan** — `readdirSync()` + `statSync()` to find the file with the most recent mtime in the `codegen/logging/` or `codegen/pitches/` directory.
 
 This approach is **structurally immune** to the transcript-scan bug in Claude Code's `session_log_from_transcript`: when a Write is DENIED, the disk scan sees no file created and returns undefined (no log found) → fail-open behavior. Claude Code's Bash transcript-scan, by contrast, extracts the path from the JSONL log and returns it even when creation was denied, requiring explicit `! -e` guards at call sites. Pi avoids this footprint entirely via disk-based discovery.
 
-**Consequence for porting Claude hooks to Pi**: Hooks that depend on transcript inspection (e.g., "developer-* Agent was called without a step log Write") cannot be ported with full fidelity. Pi twins degrade to reduced-fidelity observe-only heuristics — e.g., "logging dir exists and is recent, but contains zero canonical logs" — and MUST document the gap in a file header comment. The honest move is always: reduced-fidelity twin + explicit documentation, never a fake full-parity implementation.
+**Consequence for porting Claude hooks to Pi**: Hooks that depend on transcript inspection (e.g., "developer-\* Agent was called without a step log Write") cannot be ported with full fidelity. Pi twins degrade to reduced-fidelity observe-only heuristics — e.g., "logging dir exists and is recent, but contains zero canonical logs" — and MUST document the gap in a file header comment. The honest move is always: reduced-fidelity twin + explicit documentation, never a fake full-parity implementation.
+
+## Enforcement Hook Registration — Pi index.ts
+
+Pi enforcement hooks are registered in `harnesses/pi/pi-extensions/enforcement/src/index.ts` via an auto-generated block (marked with `// BEGIN-GENERATED-ENFORCEMENT-BLOCK` and `// END-GENERATED-ENFORCEMENT-BLOCK`). The compiler (`enforcement_compiler.py`) generates this block from the registry (`shared/enforcement/registry.yaml`).
+
+**Single-source-of-truth contract**:
+
+- Registry `id` MUST match the `.ts` filename (e.g., `curator-before-committer` → `curator-before-committer.ts`)
+- Compiler collects all `kind: registration` entries where `harnesses ∈ {all,pi}` AND the corresponding `.ts` file exists
+- Compiler also collects all `kind: denial` entries with `emit_ts: true`
+- Union of both lists → sorted id set → auto-generated import + register block in `index.ts`
+- **Existence guard**: only emit import for ids whose `.ts` file actually exists (prevents broken imports when `harnesses: all` is declared before pi twin is written)
+
+**Hand-maintained imports outside the block**: The one deferred hook (`context-index-parity`) is kept hand-written because its registry entry is deliberately commented out (NOT-YET-MIGRATED token). This hook must survive exactly once outside the generated block.
+
+**Idempotency and cleanup**: When widening the generated set (e.g., flipping registry `harnesses: claude` → `all` for 4 hooks, adding 7 new registrations), the marker-replace compiler branch only rewrites content BETWEEN markers — it does NOT auto-delete hand-written imports outside the markers. One-time manual cleanup is required after widening; thereafter re-running `make install` produces an idempotent block with zero diff.
 
 ## Agent Identity Detection
 
@@ -119,11 +135,22 @@ describe("hook-name", { concurrency: 1 }, () => {
 });
 ```
 
-Applies to enforcement hooks and any extension tests that manipulate `process.cwd()` or process environment. 
+Applies to enforcement hooks and any extension tests that manipulate `process.cwd()` or process environment.
 
 **Stream capture scope**: When tests capture stderr/stdout to verify error handling (e.g., warnings), move capture to test-body scope rather than `beforeEach`/`afterEach` hooks. This ensures each test owns its capture window and avoids cross-test pollution under parallel runners. Restore streams in both resolve and reject paths to prevent leakage on assertion failure.
 
 **macOS symlink path normalization**: `os.tmpdir()` returns `/var/folders/...` but `fs.realpathSync` resolves to `/private/var/folders/...` — this symlink mismatch breaks `repoRelative()` when test CWD is set to the non-canonical tmpDir. Workaround: use relative paths in file-path test stubs instead of absolute paths; relative paths are unaffected by the symlink resolution mismatch.
+
+## Harness Drift Patterns
+
+Registry entries claiming `harnesses: claude` are NOT automatically inspected for Pi twins. A hook with both Claude `.sh` and Pi `.ts` implementations but registry `harnesses: claude` is a drift bug: the pi code is never registered, remaining dead code. Conversely, a Pi `.ts` without a registry entry is unregistered (missing imports in `index.ts`).
+
+**Detection**: Audit bidirectionally when changing harness scope:
+
+- **Registry→Files**: which registry entries claim `all|pi` but have NO `.ts` file? Over-claimed (transient during development; prevent broken imports via existence guard).
+- **Files→Registry**: which `.ts` files exist but have registry `claude`? Under-claimed (stale registry; flip to match living code; update any stale rationale lines, e.g., "Agent tool not present in Pi harness" when a working twin exists).
+
+Examples of stale rationale: When a hook has registry `harnesses: claude` + `tool_guard: Agent` + rationale "Agent tool not present in Pi harness", but a pi `.ts` twin exists with matcher `tool_call`/`subagent`, the rationale is false. Flip the registry to `harnesses: all` and update the rationale to reflect the pi behavior (e.g., "Pi twin registers on tool_call/subagent").
 
 ## Pitfalls
 

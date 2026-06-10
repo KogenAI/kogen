@@ -744,7 +744,7 @@ def _camel(slug):
     return f"register{title}"
 
 
-def _update_index(index_path, generated_ids):
+def _update_index(index_path, generated_ids, registration_ids=None):
     """Insert or replace the generated enforcement block in index.ts.
 
     The block is bounded by:
@@ -757,13 +757,18 @@ def _update_index(index_path, generated_ids):
       2. No markers → find existing hand-written lines for generated IDs,
          remove them, and insert a marked block in their place.
 
-    generated_ids is used to locate existing lines; sorted alphabetically
-    so the block is deterministic.
+    generated_ids: denial hook ids whose .ts files are compiler-generated.
+    registration_ids: registration hook ids whose .ts files exist and should
+        also appear in the generated block (existence-guarded).
+    All ids are sorted alphabetically so the block is deterministic.
     """
     content = Path(index_path).read_text()
 
-    # Build import lines and register call lines for generated IDs (sorted).
-    sorted_ids = sorted(generated_ids)
+    # Combine denial ids + registration ids; sort for determinism.
+    all_ids = set(generated_ids)
+    if registration_ids:
+        all_ids.update(registration_ids)
+    sorted_ids = sorted(all_ids)
     import_lines = []
     register_lines = []
     for eid in sorted_ids:
@@ -851,6 +856,14 @@ def main():
     parser.add_argument("--bash-out", required=True, help="Directory for generated .sh files")
     parser.add_argument("--ts-out", required=True, help="Directory for generated .ts files")
     parser.add_argument("--index", required=True, help="Path to index.ts to update")
+    parser.add_argument(
+        "--pi-hooks-dir",
+        default=None,
+        help=(
+            "Directory containing hand-authored pi hook .ts files; used for "
+            "existence-guarding registration entries. Defaults to <ts-out>."
+        ),
+    )
     parser.add_argument("--dry-run", action="store_true", help="Print output, do not write files")
     args = parser.parse_args()
 
@@ -922,8 +935,29 @@ def main():
         if emit_ts:
             generated_ids.append(eid)
 
-    if not args.dry_run and generated_ids:
-        _update_index(index_path, generated_ids)
+    # Collect registration ids that have a .ts file in the pi hooks dir.
+    # Only include ids for entries with harnesses in {all, pi}.
+    # context-index-parity is NOT-YET-MIGRATED (commented out in registry) —
+    # it stays as a hand-import outside the generated block.
+    # Use --pi-hooks-dir if provided, otherwise default to --ts-out.
+    pi_hooks_dir = Path(args.pi_hooks_dir) if args.pi_hooks_dir else ts_out
+    registration_ids = []
+    for entry in entries:
+        if entry.get("kind") != "registration":
+            continue
+        eid = entry.get("id")
+        if not eid:
+            continue
+        harnesses_val = str(entry.get("harnesses", "all"))
+        if harnesses_val not in ("all", "pi"):
+            continue
+        # Existence guard: only include if the .ts file actually exists.
+        ts_file = pi_hooks_dir / f"{eid}.ts"
+        if ts_file.exists():
+            registration_ids.append(eid)
+
+    if not args.dry_run and (generated_ids or registration_ids):
+        _update_index(index_path, generated_ids, registration_ids)
         print(f"updated:   {index_path}")
 
 

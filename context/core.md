@@ -88,6 +88,10 @@ Both kinds coexist in `shared/enforcement/registry.yaml`. The compiler skips `ki
 - `signal: AGENT_TYPE` — gate-guard on `$CLAUDE_ROLE` or `$PI_ROLE`; check proceeds only for listed role(s)
 - `bypass_roles: [list]` — launcher-mode values (debug, shape, ops, …) that exit 0 immediately before role/match gates (from `resolve_role()` which folds `CLAUDE_ROLE > PI_ROLE`); emits prelude sourcing `_role.sh` (bash) or env-reading process.env (TS); placement: after `parse_input`, before AGENT_TYPE gate
 
+**Harness axis** — deployment target (Claude Code, Pi, or both):
+
+- `harnesses: claude` (or `pi` or `all`) — determines which harness(es) own the hook. Verified bidirectionally: registry `harnesses: all` with a working pi `.ts` file is a drift if the registry was hand-maintained before compiler widening. Always audit both directions (registry→files AND files→registry) when migrating hand-wired hooks to generated blocks.
+
 ### Template Forms
 
 | Source    | Mode      | Body Template                                                                                         | Role Gate                          |
@@ -100,24 +104,24 @@ All forms compose with `bypass_roles` prelude (if specified): the bypass exits e
 
 ### Registry Fields
 
-| Field          | Type   | Purpose                                                                                                                                 | Default  |
-| -------------- | ------ | --------------------------------------------------------------------------------------------------------------------------------------- | -------- |
-| `id`           | string | Hook filename slug (kebab-case)                                                                                                         | —        |
-| `kind`         | string | `denial` (full-file generation) or `registration` (header-only injection)                                                               | `denial` |
-| `generated`    | bool   | Compiler owns the output; `make install` regenerates it. Only valid for `kind: denial`                                                  | —        |
-| `event`        | string | Hook event (PreToolUse, SubagentStop, Stop)                                                                                             | —        |
-| `source`       | string | COMMAND or FILE_PATH                                                                                                                    | COMMAND  |
-| `mode`         | string | deny or allowlist                                                                                                                       | deny     |
-| `tool_guard`   | string | Canonical registry form; rendered to hook header as `matcher:`. Tool name (Bash, Write, Edit, …)                                        | —        |
-| `match`        | string | Single regex-neutral pattern (mutually exclusive with `match_all`). Only for `kind: denial`                                             | —        |
-| `match_all`    | list   | AND-logic pattern list (mutually exclusive with `match`). Only for `kind: denial`                                                       | —        |
-| `message`      | string | Denial reason shown to agent. Only for `kind: denial`                                                                                   | —        |
-| `signal`       | string | Hook signal (none, AGENT_TYPE, …)                                                                                                       | none     |
-| `role`         | string | Role scope: `*` (all) or pipe-separated (e.g., committer\|reviewer)                                                                     | `*`      |
-| `bypass_roles` | list   | Launcher-mode values (debug, shape, ops) that exit before gates                                                                         | —        |
-| `harnesses`    | string | Canonical form: `claude` or `pi` (registry enum). Rendered to hook header as `claude_code` or `pi`. Deployment target (all, claude, pi) | all      |
-| `rationale`    | string | Hook rationale text (optional, supports multi-line via YAML block scalar `\|`). For `kind: registration` only                           | —        |
-| `canonicalize` | string | Path canonicalization (repo_relative); FILE_PATH only                                                                                   | —        |
+| Field          | Type   | Purpose                                                                                                                                        | Default  |
+| -------------- | ------ | ---------------------------------------------------------------------------------------------------------------------------------------------- | -------- |
+| `id`           | string | Hook filename slug (kebab-case); MUST match both `.sh` (Claude) and `.ts` (Pi) filenames — compiler contract is `id == filename`, no overrides | —        |
+| `kind`         | string | `denial` (full-file generation) or `registration` (header-only injection)                                                                      | `denial` |
+| `generated`    | bool   | Compiler owns the output; `make install` regenerates it. Only valid for `kind: denial`                                                         | —        |
+| `event`        | string | Hook event (PreToolUse, SubagentStop, Stop)                                                                                                    | —        |
+| `source`       | string | COMMAND or FILE_PATH                                                                                                                           | COMMAND  |
+| `mode`         | string | deny or allowlist                                                                                                                              | deny     |
+| `tool_guard`   | string | Canonical registry form; rendered to hook header as `matcher:`. Tool name (Bash, Write, Edit, …)                                               | —        |
+| `match`        | string | Single regex-neutral pattern (mutually exclusive with `match_all`). Only for `kind: denial`                                                    | —        |
+| `match_all`    | list   | AND-logic pattern list (mutually exclusive with `match`). Only for `kind: denial`                                                              | —        |
+| `message`      | string | Denial reason shown to agent. Only for `kind: denial`                                                                                          | —        |
+| `signal`       | string | Hook signal (none, AGENT_TYPE, …)                                                                                                              | none     |
+| `role`         | string | Role scope: `*` (all) or pipe-separated (e.g., committer\|reviewer)                                                                            | `*`      |
+| `bypass_roles` | list   | Launcher-mode values (debug, shape, ops) that exit before gates                                                                                | —        |
+| `harnesses`    | string | Canonical form: `claude` or `pi` (registry enum). Rendered to hook header as `claude_code` or `pi`. Deployment target (all, claude, pi)        | all      |
+| `rationale`    | string | Hook rationale text (optional, supports multi-line via YAML block scalar `\|`). For `kind: registration` only                                  | —        |
+| `canonicalize` | string | Path canonicalization (repo_relative); FILE_PATH only                                                                                          | —        |
 
 ### Pattern Dialect
 
@@ -138,13 +142,23 @@ FORBIDDEN: backreferences (`\1`, `\2`), lookahead/lookbehind (`(?=...)`, `(?!...
 3. For each `kind: denial` entry with `generated: true`, emits:
    - Bash hook → `harnesses/claude/hooks/<id>.sh` (chmod +x)
    - TypeScript hook → `harnesses/pi/pi-extensions/enforcement/src/hooks/<id>.ts`
-4. Compiler invokes `_update_index()` to update Pi `index.ts` GENERATED block with new hook imports + registrations
+4. Compiler collects pi-registerable ids: union of `kind: denial` entries with `emit_ts: true` AND `kind: registration` entries where `harnesses ∈ {all,pi}` AND the corresponding `.ts` file exists at `pi-hooks-dir/<id>.ts`. Compiler invokes `_update_index(index_ts_path, register_ids)` to update Pi `index.ts` GENERATED block (BEGIN/END markers) with sorted hook imports + registrations.
+   - **Existence guard**: only emit `import`/`register` for an id whose `.ts` file actually exists. Prevents broken imports for `harnesses: all` entries whose pi twin hasn't been written yet (transient state during development).
+   - **`--pi-hooks-dir` argument**: passed to compiler explicitly (Makefile) so existence guard checks the REAL hooks directory. Without it, tests copying `index.ts` to `/tmp` would have `index_path.parent == /tmp`, causing the guard to check the wrong path and generate a smaller block. Both `make install` and `make enforce-registry-parity` must use the same `--pi-hooks-dir` path for idempotency.
+   - **Marker-replace branch**: if committed `index.ts` already contains `// BEGIN-GENERATED-ENFORCEMENT-BLOCK` and `// END-GENERATED-ENFORCEMENT-BLOCK` markers, the compiler replaces content BETWEEN markers only — it does NOT auto-remove hand-written import/register lines OUTSIDE the markers. One-time manual cleanup required after widening the generated set; thereafter file is idempotent.
 5. **`hook_registrations.py --emit-headers` reads `kind: registration` entries → injects `# HOOK-MANIFEST:` header into each hand-written `.sh` (body unchanged).** CRITICAL: `render_header()` must NOT include a trailing `#` terminator line — `inject_header()` preserves the terminator from the original file body. Header span is injected idempotently via mktemp/cmp/mv.
 6. `hook_registrations.py` rescans hook source dirs and rewrites `claude-code-settings.json` + pi manifest entries
 7. Committed generated files must be byte-identical to compiler output → `make enforce-registry-parity` gate (part of `make test`) verifies this
 8. Committed hook headers must match registry entries → `make hook-header-parity` gate (part of `make test`) verifies this
 
 **Order dependency**: emit-headers (step 5) MUST run before hook-parity (step 6) so the settings generated from hook headers reflect the freshly-injected headers. Reversed order → stale settings.
+
+**Widening the generated set**: when migrating hand-maintained hook registrations to generated blocks (e.g., pi `index.ts` registration imports), audit the change bidirectionally BEFORE widening the filter:
+
+- Registry→files: which entries have `harnesses: all|pi` but NO corresponding `.ts` file? (over-claimed entries; existence guard prevents broken imports)
+- Files→registry: which `.ts` files exist but have `harnesses: claude`? (under-claimed entries; flip to match living code)
+
+The generated set is rarely purely additive; drops are silent runtime breaks if undetected.
 
 ### Header Injection Implementation Details
 
@@ -196,6 +210,16 @@ Note: if a root-level artifact's ownership is unclear, check `resource_manager.s
 - **hooks**: `hook_registrations.py` reads `harnesses/<harness>/hooks/` and writes `settings.json` entries
 - **scaffold**: `codegen-scaffold` delegates to `shared/scaffold/<stack>/scaffold.sh`
 - **test-harness**: ExUnit tests validate the rendered output and scaffold behaviour end-to-end
+
+## Bidirectional Drift Auditing
+
+When migrating hand-maintained hook wiring (e.g., pi `index.ts` registrations) to generated blocks, the change is NOT purely additive. Always audit both directions before widening the compiler's filter:
+
+**Registry→Files**: which registry entries claim `harnesses: all|pi` but have NO corresponding `.ts` file? Over-claimed entries. The existence guard prevents broken imports, but the mismatch signals an incomplete migration (entry was declared before its pi twin was written). Normally transient; fix by writing the `.ts` or flipping harness back to `claude`.
+
+**Files→Registry**: which `.ts` files exist but have registry `harnesses: claude`? Under-claimed entries — stale registry state. The compiler will NOT wire a `claude`-claimed hook even if a working pi twin exists. Fix by flipping the registry to `harnesses: all` and updating any stale rationale lines (e.g., "Agent tool not present in Pi harness" when a subagent matcher already exists).
+
+Audit code can enumerate both directions with simple path/regex comparisons. Missing either direction → silent runtime breaks (unwired pi hooks or missing Claude hooks after filter widening).
 
 ## install.sh Shell Redirect Gotcha
 

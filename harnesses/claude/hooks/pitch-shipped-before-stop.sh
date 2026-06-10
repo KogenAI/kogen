@@ -7,7 +7,7 @@
 # surface: user_global
 # signal: CLAUDE_ROLE_FAMILY
 # role: *
-# harnesses: claude_code
+# harnesses: all
 # GENERATED FROM shared/enforcement/registry.yaml — DO NOT EDIT
 #
 # After the committer commits in a pitch-driven session, if the pitch is still
