@@ -247,6 +247,43 @@ templates/generator/hook_registrations.py  ← generates settings.json entries
 - **rules**: hooks enforce rules at runtime (e.g. `no-python-json.sh` → `bash-discipline.md` rule). Hooks own verdict _generation_ (appending gate result to step log); for verdict _reaction_ logic (what orchestrator does after reading verdict), see `context/rules-roles.md` (orchestrator rules)
 - **test-harness**: hook tests (`*_test.sh`) are bash scripts; `run-tests.sh` runs them separately from ExUnit suite
 
+## Hooks-Lib Patterns
+
+### `session_log_from_transcript` — Callers Must Guard Existence
+
+`session_log_from_transcript` (hooks-lib.sh:265-277) extracts the last `Write|Edit|MultiEdit` file_path matching `codegen/logging/.*\.md$` from the JSONL transcript. **Does NOT verify disk existence.** When a Write is DENIED (permission hook blocks it), the tool_use entry is still logged in the transcript with a path — `session_log_from_transcript` will return that path even though the file was never created. Callers must explicitly guard `! -e <path>` after calling this function to detect the fail-open case.
+
+### `deny()` Requires Explicit `exit 0`
+
+The `deny()` function in hooks-lib.sh emits JSON to stdout and **returns** — it does NOT exit. Every call site must follow with explicit `exit 0` immediately after:
+
+```bash
+if [ ! -e "$log_path" ]; then
+    deny "Log does not exist"
+    exit 0  # MANDATORY — without this, control falls through to next branch
+fi
+```
+
+Missing `exit 0` after deny causes fallthrough into subsequent branches, violating control flow intent. The deny JSON is still emitted before fallthrough occurs, but the hook's subsequent logic may run unintended side-effects or exit with the wrong code.
+
+### POSIX File-Test Ordering — `! -e` Before `! -r`
+
+On non-existent paths, both `[ ! -e <path> ]` and `[ ! -r <path> ]` evaluate true. When logic must distinguish absent vs exists-but-unreadable, test `! -e` FIRST:
+
+```bash
+if [ ! -e "$log_path" ]; then
+    # File absent → take action A
+    deny "Log file not found"
+    exit 0
+elif [ ! -r "$log_path" ]; then
+    # File exists but unreadable → take action B
+    # (e.g., fail-open and allow the action)
+    exit 0
+fi
+```
+
+Reversing the order (testing `! -r` before `! -e`) causes the absent-file branch to be unreachable, since the unreadable test is true for absent files too.
+
 ## Hook Output Protocol
 
 Hook scripts communicate decisions back to Claude Code via JSON on stdout. The shape varies by event type.

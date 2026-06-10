@@ -82,9 +82,14 @@ if [ -z "$log" ]; then
     exit 0
 fi
 
-# Log file exists in transcript but is not readable → fail-open.
+# Distinguish absent (denied/never-created) from exists-but-unreadable (transient).
+if [ ! -e "$log" ]; then
+    deny "BLOCKED: step log was referenced in the transcript but was never created — a denied or failed Write leaves no file on disk. Create the step log for real before spawning."
+    exit 0
+fi
+# Log exists but is momentarily unreadable (genuine transient) → fail-open.
 if [ ! -r "$log" ]; then
-    debug_log step-log-section-before-spawn "fail-open: log not readable at $log"
+    debug_log step-log-section-before-spawn "fail-open: log exists but not readable at $log"
     exit 0
 fi
 

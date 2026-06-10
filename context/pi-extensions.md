@@ -72,6 +72,10 @@ When Pi is invoked without a UI context (`ctx.hasUI === false`), the `askuserque
 
 The durable `## Questions` artifact is written by the **agent** (not the extension), via the `## Headless mode (non-interactive)` clause baked into each investigative mode's shared prompt body (`harnesses/shared/prompt-bodies/{shape,refactor,ops,debug}.txt`). The agent writes unresolved decisions as a `## Questions` block in the in-scope pitch file directly; the extension only prevents a blocking tool-call loop.
 
+## Step Log Discovery — Disk Scan vs Transcript Scan
+
+Pi's `getActiveStepLog` (in `step-log-section-before-spawn.ts`) discovers the active session log by **disk scan** — `readdirSync()` + `statSync()` to find the file with the most recent mtime in the `codegen/logging/` directory. This approach is **structurally immune** to the transcript-scan bug in Claude Code's `session_log_from_transcript`: when a Write is DENIED, the disk scan sees no file created and returns undefined (no log found) → fail-open behavior. Claude Code's Bash transcript-scan, by contrast, extracts the path from the JSONL log and returns it even when creation was denied, requiring explicit `! -e` guards at call sites. Pi avoids this footprint entirely via disk-based discovery.
+
 ## Test Isolation — Node 22+ Concurrent `describe()` Children
 
 Node 22+ runs `describe()` children (`it()` blocks) concurrently by default. When tests use `process.chdir()`, this pollutes the process-global working directory across concurrent siblings. Fix: add `{ concurrency: 1 }` option to `describe()` calls to serialize when process-global state (cwd, env vars, streams) is involved:

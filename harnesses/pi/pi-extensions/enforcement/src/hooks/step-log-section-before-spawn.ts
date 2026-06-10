@@ -28,7 +28,14 @@ export const HANDLER_META = {
   matcher: "subagent",
 } as const;
 
-/** Find the most recently modified step log in codegen/logging/. */
+/**
+ * Find the most recently modified step log in codegen/logging/.
+ *
+ * Resolves step log by disk mtime-scan, not transcript-scan — structurally
+ * immune to the denied-Write fail-open bug in the Claude bash hook. A denied
+ * Write never creates a file on disk, so readdirSync will never surface a
+ * phantom path; the logging dir simply appears empty and the hook denies.
+ */
 function getActiveStepLog(): string | null {
   const projectDir = process.env["CWD"] ?? process.cwd();
   const loggingDir = path.join(projectDir, "codegen", "logging");

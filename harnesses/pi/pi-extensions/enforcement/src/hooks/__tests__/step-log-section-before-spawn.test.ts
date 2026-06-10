@@ -193,7 +193,17 @@ describe("step-log-section-before-spawn", () => {
     assert.ok(result == null || (result as { block?: boolean }).block !== true);
   });
 
-  // ── Test 15: allow PI_ROLE=shape with empty log dir (investigative bypass) ──
+  // ── Test 15: deny when logging dir is empty (fail-closed-on-absent regression guard) ──
+  // Pi uses disk mtime-scan (getActiveStepLog), not transcript-scan. A denied
+  // Write never creates a file → loggingDir is empty → getActiveStepLog returns
+  // null → deny. This test locks in that the Pi path stays fail-closed-on-absent.
+  it("denies when logging dir is empty (no files on disk)", async () => {
+    // logging dir was created in beforeEach but has no .md files
+    const result = await runHook("planner-phoenix");
+    assert.ok((result as { block?: boolean }).block === true);
+  });
+
+  // ── Test 16: allow PI_ROLE=shape with empty log dir (investigative bypass) ──
   it("allows spawn when PI_ROLE=shape regardless of missing log", async () => {
     process.env["PI_ROLE"] = "shape";
     // logging dir empty — would deny without bypass

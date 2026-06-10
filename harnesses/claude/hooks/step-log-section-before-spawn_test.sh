@@ -379,6 +379,41 @@ out19=$(mk_agent_input "planner-phoenix" "$FAKE_TRANSCRIPT19" | CLAUDE_ROLE=bana
 assert_deny "deny: CLAUDE_ROLE=banana — unknown role not bypassed, no log → deny" "$out19"
 rm -rf "$T19"
 
+# ── Test 20 (bug fix): deny when log path in transcript but file never created ─
+# Transcript has a Write entry for a logging path, but the file does NOT exist.
+# This was the fail-open bug: ! -r is true on absent files → old code allowed.
+T20=$(make_project)
+FAKE_TRANSCRIPT20="$T20/transcript.jsonl"
+GHOST_LOG="$T20/codegen/logging/20260101_000000_test-session.md"
+# Build transcript referencing the ghost log (file not created on disk).
+printf '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Write","input":{"file_path":"%s"}}]}}\n' \
+    "$GHOST_LOG" >"$FAKE_TRANSCRIPT20"
+out20=$(mk_agent_input "planner-phoenix" "$FAKE_TRANSCRIPT20" | bash "$HOOK" 2>/dev/null || true)
+assert_deny "deny: log path in transcript but file never created on disk" "$out20"
+rm -rf "$T20"
+
+# ── Test 21 (fail-open preserved): log exists but chmod 000 (unreadable) ───────
+# Under root, chmod 000 is a no-op and the file remains readable. In that case
+# the hook proceeds to check headers (deny for absent header). Either outcome
+# (allow or deny) satisfies the invariant that the hook does NOT hard-deny on
+# an existing-but-unreadable file. We assert: NOT a "file never created" deny.
+T21=$(make_project)
+LOG21="$T21/codegen/logging/20260101_000000_chmod-test.md"
+printf '# Step\n' >"$LOG21"
+make_transcript "$T21/transcript.jsonl" "$LOG21"
+chmod 000 "$LOG21"
+out21=$(mk_agent_input "planner-phoenix" "$T21/transcript.jsonl" | bash "$HOOK" 2>/dev/null || true)
+# The file exists on disk — must NOT trigger the "never created" deny message.
+if printf '%s' "$out21" | grep -q 'never created'; then
+    printf 'FAIL: Test 21 — existing chmod-000 log triggered the "never created" deny (should be fail-open or header-absent deny)\n  stdout: %s\n' "$out21"
+    fail=$((fail + 1))
+else
+    [ -n "${VERBOSE:-}" ] && printf 'PASS: fail-open preserved: chmod-000 log does not trigger never-created deny\n'
+    pass=$((pass + 1))
+fi
+chmod 644 "$LOG21" 2>/dev/null || true
+rm -rf "$T21"
+
 echo ""
 echo "Results: $pass passed, $fail failed"
 
