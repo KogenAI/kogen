@@ -48,9 +48,20 @@ Adding a new extension:
 3. `npm install && npm run build` in extension dir
 4. Register in `harnesses/pi/manifest.yaml` install_steps if needed
 
+## Event Handler Architecture — Tool Call vs Session Shutdown
+
+Pi has two event families with **asymmetric blocking capability**:
+
+| Event Type      | Example handlers                    | Can block?   | Return contract                                                    |
+| --------------- | ----------------------------------- | ------------ | ------------------------------------------------------------------ |
+| `tool_call`     | `curator-before-committer.ts` (3)   | **YES**      | Return `deny(reason)` to block; return `undefined` to allow        |
+| `session_shutdown` | `step-log-completeness.ts` (4)   | **NO**       | Observe-only; emit `process.stderr.write(...)`; return nothing     |
+
+`tool_call` (PreToolUse equivalent) can block execution. `session_shutdown` covers both Claude Stop and SubagentStop events and is observe-only — `block()` result is ignored by the Pi runtime on shutdown. This asymmetry differs from Claude's per-event blocking capability. Established convention by existing twins: all 4 Stop/SubagentStop twins emit stderr warnings, NEVER `block()`.
+
 ## Tool Call Event Handler — Pi Tool Name Lowercasing
 
-Pi `tool_call` event handlers receive `event.toolName` as lowercase pipe-separated values (`"bash|write|edit"`), not CamelCase. A single `pi.on("tool_call", ...)` event handler branches on `event.toolName` to route to tool-specific logic. Do NOT register separate handlers per tool — use one handler with internal branching:
+Pi `tool_call` event handlers receive `event.toolName` as **lowercase pipe-separated** values (`"bash"`, `"write"`, `"edit"`, `"subagent"`), not CamelCase. A single `pi.on("tool_call", ...)` event handler branches on `event.toolName` to route to tool-specific logic. Do NOT register separate handlers per tool — use one handler with internal branching:
 
 ```typescript
 pi.on("tool_call", (event) => {
@@ -64,7 +75,7 @@ pi.on("tool_call", (event) => {
 });
 ```
 
-Example: `enforcement/src/hooks/curator-before-committer.ts` receives `event.toolName == "subagent"` (lowercase, singular) for subagent spawning.
+Example: `enforcement/src/hooks/curator-before-committer.ts` receives `event.toolName == "subagent"` (lowercase, singular) for subagent spawning. MultiEdit tool collapses to `edit` in event matchers (use `write|edit`, never `multiedit`).
 
 ## AskUserQuestion — Headless (`!ctx.hasUI`) Behaviour
 
@@ -74,7 +85,22 @@ The durable `## Questions` artifact is written by the **agent** (not the extensi
 
 ## Step Log Discovery — Disk Scan vs Transcript Scan
 
-Pi's `getActiveStepLog` (in `step-log-section-before-spawn.ts`) discovers the active session log by **disk scan** — `readdirSync()` + `statSync()` to find the file with the most recent mtime in the `codegen/logging/` directory. This approach is **structurally immune** to the transcript-scan bug in Claude Code's `session_log_from_transcript`: when a Write is DENIED, the disk scan sees no file created and returns undefined (no log found) → fail-open behavior. Claude Code's Bash transcript-scan, by contrast, extracts the path from the JSONL log and returns it even when creation was denied, requiring explicit `! -e` guards at call sites. Pi avoids this footprint entirely via disk-based discovery.
+Pi has **NO TRANSCRIPT_PATH** — there is no JSONL transcript available to inspection hooks. Discovery of active session logs or pitches relies entirely on **disk scan** — `readdirSync()` + `statSync()` to find the file with the most recent mtime in the `codegen/logging/` or `codegen/pitches/` directory. 
+
+This approach is **structurally immune** to the transcript-scan bug in Claude Code's `session_log_from_transcript`: when a Write is DENIED, the disk scan sees no file created and returns undefined (no log found) → fail-open behavior. Claude Code's Bash transcript-scan, by contrast, extracts the path from the JSONL log and returns it even when creation was denied, requiring explicit `! -e` guards at call sites. Pi avoids this footprint entirely via disk-based discovery.
+
+**Consequence for porting Claude hooks to Pi**: Hooks that depend on transcript inspection (e.g., "developer-* Agent was called without a step log Write") cannot be ported with full fidelity. Pi twins degrade to reduced-fidelity observe-only heuristics — e.g., "logging dir exists and is recent, but contains zero canonical logs" — and MUST document the gap in a file header comment. The honest move is always: reduced-fidelity twin + explicit documentation, never a fake full-parity implementation.
+
+## Agent Identity Detection
+
+Pi enforcement hooks detect agent roles via environment variables only:
+
+- **Role/type**: `process.env.AGENT_TYPE` (e.g., `"developer-phoenix-backend"`, `"reviewer-phoenix"`, empty for orchestrator)
+- **Agent ID**: `process.env.AGENT_ID` (populated for subagents; empty for orchestrator and top-level roles)
+- **Orchestrator-level gate**: `AGENT_TYPE` is empty **AND** `AGENT_ID` is empty (both conditions required)
+- **ops-mode bypass**: No `resolveRole()` helper exists in hook-helpers.ts. Inline the bypass by reading `process.env.PI_ROLE ?? process.env.CLAUDE_ROLE === "ops"` directly in the hook file (precedent: `pitch-shipped-before-stop.ts:91-93`).
+
+**Why no `resolveRole()` helper**: The helper lives in the shared lib, which is sibling-pitch territory for feature-only twins (file-only, no lib changes). Each hook inlines its own bypass pattern to avoid touching the shared library.
 
 ## Test Isolation — Node 22+ Concurrent `describe()` Children
 
@@ -93,7 +119,11 @@ describe("hook-name", { concurrency: 1 }, () => {
 });
 ```
 
-Applies to enforcement hooks and any extension tests that manipulate `process.cwd()` or process environment. Restore cwd and env vars in both resolve and reject paths of test body to prevent leakage on assertion failure (per development.md TS isolation guidance).
+Applies to enforcement hooks and any extension tests that manipulate `process.cwd()` or process environment. 
+
+**Stream capture scope**: When tests capture stderr/stdout to verify error handling (e.g., warnings), move capture to test-body scope rather than `beforeEach`/`afterEach` hooks. This ensures each test owns its capture window and avoids cross-test pollution under parallel runners. Restore streams in both resolve and reject paths to prevent leakage on assertion failure.
+
+**macOS symlink path normalization**: `os.tmpdir()` returns `/var/folders/...` but `fs.realpathSync` resolves to `/private/var/folders/...` — this symlink mismatch breaks `repoRelative()` when test CWD is set to the non-canonical tmpDir. Workaround: use relative paths in file-path test stubs instead of absolute paths; relative paths are unaffected by the symlink resolution mismatch.
 
 ## Pitfalls
 
@@ -102,3 +132,5 @@ Applies to enforcement hooks and any extension tests that manipulate `process.cw
 - **`package-lock.json` churn is normal** — `subagents/package-lock.json` and `web-utils/package-lock.json` may appear dirty when different npm versions resolve deps differently; do not panic-commit these changes without intentional npm updates
 - **TypeScript compile errors block Pi harness** — extension build failures prevent Pi from loading the tool
 - **Extension structure varies** — `enforcement` has no root-level `index.ts` (entry is under `src/`); all four extensions have a `src/` subdirectory; do not assume a uniform layout at root level across all four extensions
+- **`\z` anchor (PCRE) not supported in JS regex** — JavaScript regex treats `\z` as literal `z`. When porting regex from Bash/Ruby, replace end-of-string anchors with string-split patterns: `text.split(header)` + `slice` to find section boundary instead of `(?=\n###)` lookahead anchors. If the regex has a fallback pattern, the bug is masked in tests but creates a latent over-match edge case.
+- **Markdown section body extraction** — avoid `\z`-anchored regex for extracting markdown section bodies. Prefer string-split pattern: `split("## ")[N]` then slice to the next `\n## ` boundary. This avoids both regex limitations and makes intent explicit.

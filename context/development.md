@@ -55,7 +55,7 @@ See `.env.sample` and `.env.prod.sample` for full variable lists.
 - **Elixir module @moduledoc/@spec ordering**: credo's StrictModuleLayout requires `[:shortdoc, :moduledoc, :use, ...]` order — `@moduledoc` ALWAYS comes AFTER `defmodule ... do` and BEFORE `use`. Scaffold mutation credo_fix.sh enforces this when injecting @moduledoc into generated files.
 - **Bash module name derivation**: When converting slug to CamelCase module names, use `python3` one-liner (`python3 -c '...capitalize join...'`); pure-sed BRE is fragile across BSD/GNU + bash 3.2 case-fold gaps. Reference: `scaffold.sh` line 81.
 - **Python**: stdlib only in generator scripts — no third-party deps. One-liner scripts (e.g., module name derivation) can use python3 directly in Bash heredocs.
-- **TypeScript**: strict mode; each extension self-contained with own `package.json`. **Test isolation under parallel runners**: when tests capture stderr/stdout (e.g., to verify error handling), move capture to test-body scope rather than `beforeEach`/`afterEach` hooks — this ensures each test owns its capture window and avoids cross-test pollution under concurrent test runners. Restore streams in both resolve and reject paths to prevent leakage on assertion failure.
+- **TypeScript**: strict mode; each extension self-contained with own `package.json`. **Test isolation under parallel runners**: when tests capture stderr/stdout (e.g., to verify error handling), move capture to test-body scope rather than `beforeEach`/`afterEach` hooks — this ensures each test owns its capture window and avoids cross-test pollution under concurrent test runners. Restore streams in both resolve and reject paths to prevent leakage on assertion failure. **Regex anchors**: JavaScript does not support `\z` (PCRE end-of-string anchor); use string-split extraction instead. **Markdown parsing**: avoid regex for section body extraction; prefer `split("## ")` + slice pattern to find boundaries explicitly.
 - **Commit messages**: why-focused, delegated to committer subagent — never written directly by orchestrator
 
 ## Dev Scripts
@@ -88,6 +88,15 @@ Screenshot capture for static-stack benchmark runs requires:
 
 1. **Benchmark screenshots** — `BenchArtifacts.capture_screenshot/4` (ExUnit test phase). Missing Playwright is **non-fatal**: logs `playwright not installed — skipping screenshot capture` and returns `:ok`. JSONL bench records are always written regardless of screenshot availability.
 2. **Static-site render gate** — `static-site-build-check.sh` (SubagentStop hook). **Fail-closed**: if Chromium is absent on a static-capable box, the gate blocks the developer subagent with a clear error message. This is NOT the same as benchmark behavior — the gate requires Chromium, while benchmarks tolerate its absence. Conversely, both use Playwright/Chromium; the distinction is whether missing installation is permitted (benchmarks) or denied (gate).
+
+## Runtime Porting — Reduced Fidelity Across Harnesses
+
+When porting a guard/hook from Claude (Bash) to Pi (TypeScript), the runtime capabilities may differ:
+
+- **Transcript access**: Claude has JSONL transcript inspection via `jq` + `TRANSCRIPT_PATH`; Pi has no transcript. Guards depending on "Agent X called without Log Write" (transcript-based detection) cannot be ported with full fidelity. Honest approach: write a reduced-fidelity observe-only twin with disk-scan heuristics + explicit header comment documenting the gap. Never fake full parity with a guard that actually does something weaker; always document the capability difference.
+- **Event blocking asymmetry**: Claude's Stop event can block (enforces constraint); Pi's `session_shutdown` is observe-only (warns to stderr, cannot block). Ports of Stop guards to Pi are observational. Convention: all 4 Stop/SubagentStop twins emit stderr warnings, NEVER `block()` — the Pi runtime ignores blocking results on shutdown events.
+
+The goal is truthful hooks that accurately reflect capability limits, not feature parity claims that hide missing capabilities.
 
 ## Common Pitfalls
 
