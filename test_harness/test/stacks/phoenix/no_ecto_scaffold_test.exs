@@ -41,6 +41,9 @@ defmodule CodegenTestHarness.Stacks.Phoenix.NoEctoScaffoldTest do
     # app must compile cleanly
     Assertions.assert_mix_compiles!(app_dir)
 
+    # assets.deploy must succeed with compile-first ordering intact
+    Assertions.assert_assets_deploy!(app_dir)
+
     # generated health controller test must pass (DB-independent 200 check)
     {out, code} =
       System.cmd(

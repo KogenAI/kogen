@@ -60,6 +60,19 @@ codegen-scaffold
 - **test-harness**: ExUnit tests in `test_harness/test/stacks/` validate scaffold output — scaffold changes require test updates; see `context/test-harness.md`
 - **development**: `codegen-scaffold` is invoked via make targets — see `context/development.md` make-target index
 
+## Mix Aliases & Compile Ordering
+
+Mix aliases in `shared/scaffold/phoenix/templates/aliases.txt.eex` define the `setup`, `assets.build`, and `assets.deploy` targets. **Critical**: both `assets.build` and `assets.deploy` aliases MUST include `"compile"` as the first element:
+
+```elixir
+"assets.build": ["compile", "cmd npm run build --prefix assets"],
+"assets.deploy": ["compile", "cmd npm run deploy --prefix assets"],
+```
+
+**Why**: esbuild processes imports like `import { Phoenix } from 'phoenix_live_view'` — but the `phoenix-colocated` import in the generated app's `app.js` is not installed until `mix compile` runs. Without compile-first, esbuild fails to resolve the import. This is guarded by `assert_assets_deploy!/1` in the test harness (session 20260610\_\* wired it into `no_ecto_scaffold_test.exs`).
+
+The `--no-ecto` post-render strip (`scaffold.sh` lines 187-201) must NOT remove these aliases — it only removes `"ecto."` prefix lines and rewrites the `test:` alias to `["test"]` (single element, no Ecto prefix). `mix_exs.sh` enforces this with a Python transform, not blanket `grep -v`.
+
 ## `--no-ecto` Post-Render Strips
 
 After template rendering (Phase 1, before Phase 2 mutations), `scaffold.sh` strips lines that reference Ecto from generated files when `NO_ECTO` is set:

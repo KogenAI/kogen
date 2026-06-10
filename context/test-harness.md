@@ -82,6 +82,10 @@ Boundary guard (grep for consumer name) runs in both: hermetic bash tests via `s
 
 **Proof of G1 fix (session 20260608_174414)**: `ops_test.exs` and `headless_launcher_test.exs` were originally tagged `:ops` and `:headless` respectively but NOT `:slow`. After adding `@moduletag :slow` to both, the gate's reported test count rose by the sum of their case counts. These tests now execute in `make test-stacks` and remain visible to `test-hermetic` (both tags present) or are excluded only from hermetic if `:slow` alone is desired (edit: both tags kept for dual inclusion). The gate invariant holds: never regress to bare `mix test` (which would silently disable `exclude: [:slow]` and mask gate effectiveness).
 
+## Assertion Coverage Pattern
+
+Assertion helper functions defined in `CodegenTestHarness.Assertions` should be reused across multiple test cases when they guard important postconditions (e.g., `assert_assets_deploy!`, `assert_generated_tests_pass!`). When an assertion is defined but has zero call sites, it represents a regression-guard gap — identify where that assertion logically belongs and wire it into at least one test case. Example: `assert_assets_deploy!/1` validates compile-first alias ordering (lines 291–315 in assertions.ex); it was wired into `no_ecto_scaffold_test.exs:45` to ensure `mix assets.deploy` succeeds under `--no-ecto` scaffold, a key compile precondition. Scan newly defined assertions during review; if a helper has no callers, route it to the test file that should guard it.
+
 ## Hermetic Regression Guards
 
 Two new test files in `test_harness/test/codegen_test_harness/` run under `make test-hermetic` (do NOT carry `@moduletag :slow`; only hermetic tests):
