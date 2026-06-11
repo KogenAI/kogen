@@ -79,6 +79,8 @@ Pattern: For every subagent spawn (after first log creation), orchestrator:
 1. **Edit** step log to append `## <agent_type> Section` header (literal name from agent's YAML `name:`)
 2. **Agent()** call immediately after in same turn—no intervening chat
 
+**Stack-prefixed planner variant header stub**: When orchestrator spawns a stack-prefixed planner variant (e.g., `planner-phoenix`), the session-log Edit payload MUST include a literal `## planner-phoenix Section` header stub (or the concrete stack name) — not a bare `## planner Section`. The `session-log-section-integrity.sh` hook bypasses ONLY bare `planner`, not stack-prefixed variants. Stack-prefixed planners must satisfy the normal header-present rule like any other agent.
+
 Enforcement:
 
 - **Prompt**: lines 14–16 in `harnesses/{claude,pi}/tools-header/build.txt` (identical wording, both harnesses)

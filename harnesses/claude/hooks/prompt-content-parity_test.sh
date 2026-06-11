@@ -6,7 +6,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CODEGEN_DIR="$(cd "$SCRIPT_DIR/../../.." && pwd)"
 
-SENTINEL="ASK-GATE: customer-facing forks only"
+SENTINEL="ASK-GATE: product forks only"
 SENTINEL2="INTERACTION-AUDIT: compose-check siblings"
 
 pass=0
