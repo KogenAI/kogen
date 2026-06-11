@@ -77,13 +77,13 @@ debug_log step-log-section-before-spawn "log=$log"
 
 # No log found → orchestrator skipped step-0 log creation.
 if [ -z "$log" ]; then
-    deny "BLOCKED: no step log found in transcript. Create the step log FIRST before spawning ${subagent_type}. Step 0 is non-negotiable: Write the step log skeleton, THEN insert the ## ${subagent_type} Section header, THEN spawn."
+    deny "BLOCKED: no step log found in transcript. Create the step log FIRST before spawning ${subagent_type}. Step 0 is non-negotiable: Write the step log skeleton, THEN insert the ## ${subagent_type} Section header, THEN spawn. Do not investigate why this fired — do the above and retry."
     exit 0
 fi
 
 # Distinguish absent (denied/never-created) from exists-but-unreadable (transient).
 if [ ! -e "$log" ]; then
-    deny "BLOCKED: step log was referenced in the transcript but was never created — a denied or failed Write leaves no file on disk. Create the step log for real before spawning."
+    deny "BLOCKED: step log was referenced in the transcript but was never created — a denied or failed Write leaves no file on disk. Create the step log for real before spawning. Do not investigate why this fired — do the above and retry."
     exit 0
 fi
 # Log exists but is momentarily unreadable (genuine transient) → fail-open.
@@ -99,5 +99,5 @@ if grep -qF "$need" "$log" 2>/dev/null; then
 fi
 
 # Header absent → block and name the missing header.
-deny "BLOCKED: missing section header in step log before spawning ${subagent_type}. Edit the step log to append '${need}' immediately before this Agent() call, then retry."
+deny "BLOCKED: missing section header in step log before spawning ${subagent_type}. Edit the step log to append '${need}' immediately before this Agent() call, then retry. Do not investigate why this fired — do the above and retry."
 exit 0

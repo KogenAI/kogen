@@ -125,6 +125,24 @@ New bash hook tests (`*_test.sh`) are auto-discovered by `run-tests.sh` (line 33
 
 **Test authoring best practice**: Hermetic bash tests should assert on committed, in-repo source/artifact files rather than machine-dependent install paths (e.g., `~/.claude/`). Installation paths vary by machine (servers + Macs + CI boxes); CI environments may not have the install directory at all. Asserting on source files (e.g., `harnesses/claude/commands/ready.md.j2`) or baked in-repo artifacts (e.g., `harnesses/claude/claude-shape-system-prompt.txt`) ensures test hermeticity — the test passes or fails based on repository state alone, independent of installation. See also `context/test-harness.md` § Hermetic Bash Test Assertion Pattern.
 
+**Hook deny/block message testing — substring assertion pattern**: Hook `_test.sh` files often assert that specific text appears in a deny/block message via `grep -qF "substring"`. These substrings become **immutable constraints** — any later tightening of the message (rewording, restructuring) must preserve all asserted substrings or the test fails. Before editing any deny/block message, grep the paired `_test.sh` to enumerate all `assert_contains` / `grep -q` assertions and preserve them verbatim during the rewrite. This pattern ensures messages can be tightened for clarity without breaking test coverage.
+
+## Hand-Authored Hook Script Structure & Registration
+
+When editing a hand-authored hook script (e.g., `orchestrator-read-discipline.sh`, `step-log-section-before-spawn.sh`), understand the relationship between the `.sh` body and `registry.yaml`:
+
+**Two types of hook ownership**:
+1. **`kind: denial` (generated: true)** — the compiler `enforcement_compiler.py` OVERWRITES the entire `.sh` file at `make install`. Do NOT hand-edit these files.
+2. **`kind: registration` (or deferred)** — the hand-authored `.sh` body is the source of truth. The `HOOK-MANIFEST:` header block is generated from `registry.yaml` entries. The deny/block message text lives inline in the `.sh` body, NOT in the registry. Deny strings are editable without touching `registry.yaml`.
+
+**"GENERATED FROM registry.yaml — DO NOT EDIT" banner**: This banner on hand-authored scripts refers ONLY to the auto-generated `HOOK-MANIFEST:` header block. It does NOT forbid editing the script body. The header carries structured metadata (event, tool_guard, signal); the body (deny strings, logic) is hand-authored and editable. After editing the body, do NOT re-run hook_registrations.py `--emit-headers` — the header is already correct.
+
+**When to edit registry.yaml**: Change the header values (event, tool_guard, role, signal, harnesses). When you do, run `make install` with `--emit-headers` to propagate. Change body deny strings? Edit the `.sh` directly, no registry change needed.
+
+**Anchor patterns in deny messages — substring vs. leading-token**: When a guard uses `grep` to match command text, choose the anchor appropriately:
+- **Leading-anchor** (`^` or `^[[:space:]]*(verb1|verb2)`) — when the dangerous token is ALWAYS the leading verb (e.g., `cat file | grep`, `find . -path`, `git stash`). Examples: `no-cat-pipe.sh`, `no-git-stash.sh`.
+- **Substring-match** (no anchor, or `|` in middle of pattern) — when the dangerous token can appear anywhere (e.g., command redirect/append `echo ... >> $TRANSCRIPT_PATH`, file path reference `cp ... ~/.claude/projects/`). Example: `orchestrator-read-discipline.sh` transcript-forge guard uses substring for tokens like `TRANSCRIPT_PATH`, `.jsonl`, `.claude/projects/` because they appear in redirect destinations, not leading positions. If you use leading-anchor on a redirect/append command, you will miss the violation because the dangerous token is not leading.
+
 ## SubagentStop Hook Authoring Patterns
 
 New SubagentStop hooks follow standard contract: source `lib/hooks-lib.sh`, use `parse_input` to extract AGENT_TYPE and TRANSCRIPT_PATH, call `block "$reason"` to emit decision JSON. Key patterns:

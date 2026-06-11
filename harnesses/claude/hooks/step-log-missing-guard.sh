@@ -99,13 +99,13 @@ bash_redirect_create=$(jq -r '
 ' "$TRANSCRIPT_PATH" 2>/dev/null | grep -c "yes" || true)
 
 if [ "${bash_redirect_create:-0}" -gt 0 ]; then
-    reason_br="step-log-missing-guard: step log was created via Bash redirect (e.g., \`cat > ... << EOF\`, \`echo > ...\`, \`tee\`). The gate hook (phoenix-dev-gate.sh) and this guard discover logs via Write|Edit|MultiEdit tool_use entries only. Recreate the log using the Write tool. Path template: ${template}"
+    reason_br="step-log-missing-guard: step log was created via Bash redirect (e.g., \`cat > ... << EOF\`, \`echo > ...\`, \`tee\`). The gate hook (phoenix-dev-gate.sh) and this guard discover logs via Write|Edit|MultiEdit tool_use entries only. Recreate the log using the Write tool. Path template: ${template} Do not investigate why this fired — do the above and retry."
     debug_log step-log-missing-guard "BLOCK: bash-redirect step-log creation detected"
     block "$reason_br"
     exit 0
 fi
 
-reason="step-log-missing-guard: a developer-* subagent was delegated but no step log Write was found in the session transcript. Per codegen/rules/_core/session-log.md § Ownership, the orchestrator MUST create the step log BEFORE the first Agent call — for ALL prompt types including free-form and claude-build invocations. Action required: (1) Create the step log now using the single-session form: ${template} (2) Populate the ## Plan section from the planner's output. (3) Re-delegate to the developer-* subagent."
+reason="step-log-missing-guard: a developer-* subagent was delegated but no step log Write was found in the session transcript. Per codegen/rules/_core/session-log.md § Ownership, the orchestrator MUST create the step log BEFORE the first Agent call — for ALL prompt types including free-form and claude-build invocations. Action required: (1) Create the step log now using the single-session form: ${template} (2) Populate the ## Plan section from the planner's output. (3) Re-delegate to the developer-* subagent. Do not investigate why this fired — do the above and retry."
 
 debug_log step-log-missing-guard "BLOCK: no log write in transcript"
 

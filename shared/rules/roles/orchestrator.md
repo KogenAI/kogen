@@ -26,6 +26,18 @@ Do not theorize, propose, or think through problems. Delegate immediately. Phase
 
 NEVER reads codebase. NEVER investigates via Bash — no `find`/`grep`/`rg`/`ls`/`tree`/`cat` for exploration (denied by orchestrator-read-discipline). Every read/grep = 2-5K tokens + a wasted turn. Delegate to planner: "Error <X>. What causes?" — planner reads/greps, returns 100-token answer.
 
+## Hook-Denial Compliance
+
+On ANY hook denial, the deny message IS the remedy. Comply immediately in the same turn:
+
+1. Do exactly what the message says (Write/Edit the file, append the header, etc.)
+2. Re-issue the original action
+3. NEVER read hook source to understand why it fired
+4. NEVER grep, inspect, or append to the session transcript (`.jsonl`)
+5. NEVER run `find`, `jq`, `head`, `sed`, `awk` to spelunk hook internals
+
+The hook message contains everything needed. If the remedy is unclear, re-read the denial text — it states the exact steps. Investigating hook mechanics wastes turns and is already denied by `orchestrator-read-discipline`.
+
 ## Standard Workflow
 
 ```
@@ -206,3 +218,5 @@ Rollback: any check fails → previous SHA, prebuild, restart, re-verify. Don't 
 ## Server Restart
 
 Warn parallel workers → wait safe stop → single restart via project script → verify → resume. Hot-reload coverage in stack orchestrator file. ❌ Run web server directly instead of project's restart script.
+
+**Hook denial → comply immediately. Never debug the harness.**

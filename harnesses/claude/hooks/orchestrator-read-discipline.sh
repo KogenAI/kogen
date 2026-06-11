@@ -61,12 +61,20 @@ fi
 
 # Branch on tool name.
 if [ "$TOOL_NAME" = "Bash" ]; then
+    _cmd="${COMMAND:-}"
+
+    # Deny any Bash command that touches the session transcript — the orchestrator
+    # has no legitimate reason to read, write, or forge the .jsonl transcript.
+    # Forging JSONL to trick step-log guards is the demonstrated exploit.
+    if printf '%s' "$_cmd" | grep -qE '(\$TRANSCRIPT_PATH|\.jsonl|\.claude/projects/)'; then
+        deny "Orchestrator must not touch the session transcript via Bash. Delegate transcript-dependent work or comply with the hook denial instead."
+    fi
+
     # Deny when command leads with an exploration verb.
     # Anchor on leading token only — never substring — so git log --grep=, make gate-status, date, cp stay allowed.
-    _cmd="${COMMAND:-}"
     if printf '%s' "$_cmd" | grep -qE '^[[:space:]]*(find|grep|rg|ls|tree|cat)\b'; then
         # Extract the leading verb for the deny message.
-        _verb=$(printf '%s' "$_cmd" | grep -oE '(find|grep|rg|ls|tree|cat)' | head -1)
+        _verb=$(printf '%s' "$_cmd" | grep -oE '(find|grep|rg|ls|tree|cat)' | head -1 || true)
         deny "Orchestrator cannot investigate via Bash (\`${_verb}\`). Delegate to Explore subagent or planner.
 Example: delegate to planner with 'Find X in lib/...' — planner reads/greps codebase, returns 100-token answer instead of flooding orchestrator context."
     fi

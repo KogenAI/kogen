@@ -273,6 +273,32 @@ CLAUDE_ROLE=shape run_test "CLAUDE_ROLE=shape Bash find allows" "0" "$FIXTURE_BA
 FIXTURE_BASH_PI_DEBUG='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"grep foo"},"agent_id":"","agent_type":""}'
 PI_ROLE=debug run_test "PI_ROLE=debug Bash grep allows" "0" "$FIXTURE_BASH_PI_DEBUG"
 
+# ── Transcript-forge guard tests ─────────────────────────────────────────────
+
+# Test TF1: orchestrator Bash append to $TRANSCRIPT_PATH — DENY
+FIXTURE_BASH_TF1='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"printf '"'"'{\"type\":\"assistant\"}'"'"' >> $TRANSCRIPT_PATH"},"agent_id":"","agent_type":""}'
+run_test "orchestrator Bash transcript append via \$TRANSCRIPT_PATH denies" "2" "$FIXTURE_BASH_TF1"
+
+# Test TF2: orchestrator Bash append to .jsonl path — DENY
+FIXTURE_BASH_TF2='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"echo '"'"'{}'"'"' >> ~/.claude/projects/foo/session.jsonl"},"agent_id":"","agent_type":""}'
+run_test "orchestrator Bash append to .jsonl path denies" "2" "$FIXTURE_BASH_TF2"
+
+# Test TF3: orchestrator Bash jq on .claude/projects/ — DENY
+FIXTURE_BASH_TF3='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"jq '"'"'.[]'"'"' ~/.claude/projects/foo/bar.jsonl"},"agent_id":"","agent_type":""}'
+run_test "orchestrator Bash jq on .claude/projects/ denies" "2" "$FIXTURE_BASH_TF3"
+
+# Test TF4: subagent (non-empty AGENT_TYPE) .jsonl command — ALLOW (subagent bypass)
+FIXTURE_BASH_TF4='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"echo '"'"'{}'"'"' >> session.jsonl"},"agent_id":"","agent_type":"developer-phoenix-backend"}'
+run_test "subagent Bash .jsonl command allows (AGENT_TYPE bypass)" "0" "$FIXTURE_BASH_TF4"
+
+# Test TF5: CLAUDE_ROLE=debug .jsonl command — ALLOW (debug role bypass)
+FIXTURE_BASH_TF5='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"echo '"'"'{}'"'"' >> session.jsonl"},"agent_id":"","agent_type":""}'
+CLAUDE_ROLE=debug run_test "CLAUDE_ROLE=debug Bash .jsonl command allows" "0" "$FIXTURE_BASH_TF5"
+
+# Test TF6: orchestrator benign git command — ALLOW (no transcript tokens)
+FIXTURE_BASH_TF6='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"git log --oneline"},"agent_id":"","agent_type":""}'
+run_test "orchestrator Bash git log --oneline allows (no transcript tokens)" "0" "$FIXTURE_BASH_TF6"
+
 echo ""
 echo "Results: $pass passed, $fail failed"
 
