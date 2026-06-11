@@ -332,6 +332,24 @@ eval "$assert_condition file"
 
 **Rule of thumb**: When passing `grep` assertions through `eval`, use single quotes for the outer string and ERE-escape `[`, `]`, `"` characters. Verify by printing the eval statement before running it.
 
+## Renderer-Neutral Regex Tokens in enforcement_compiler.py
+
+**`enforcement_compiler.py` `_to_bash` does a literal `.replace(r"\s", "[[:space:]]")` — this fires inside character classes too, corrupting nested brackets.** When defining regex patterns in `shared/enforcement/registry.yaml` that will be compiled to both bash ERE and JavaScript regex, avoid `\s` inside char classes (`[^&\s]`, `[\s]`), as it will be transformed to `[^&[[:space:]]]` (broken nested bracket). The bash ERE and JS renders will diverge.
+
+**Pattern**: Use `\S` or `\S+` (negated char classes that round-trip identically):
+
+```bash
+# WRONG — \s inside char class corrupts bash render
+match: "[^&\s]+"  # → bash: [^&[[:space:]]]+ (broken); JS: /[^&\s]+/ (OK)
+
+# CORRECT — \S round-trips both renderers identically
+match: "[^&]*\\S+"  # → bash: [^&]*\S+; JS: /[^&]*\S+/
+```
+
+The token `\S` contains no literal `\s` substring and no `/`, so replacement logic does not fire on it in either renderer. This pattern ensures both generated `.sh` (bash ERE) and `.ts` (JavaScript regex) carry the same semantic intent without divergence from the compilation step.
+
+Verification: test both `_to_bash` and `_to_ts` renderers on the pattern; they should produce identical output (mod language-specific escaping of backslashes in string literals).
+
 ## Hook Discovery Fallback Gating in Managed Builds
 
 **Transcript-bound hooks with filesystem fallback must widen fallback gates to match any managed-build env var, not just platform-specific roots.** When a bash hook discovers resources (e.g., step-log files) via transcript JSONL parsing, the transcript may lag behind the live stream on slow-flushing Node runtimes (observed: Node 20 with flush delays). A fallback filesystem scan is essential, but **the fallback gate must match the actual managed-build condition** — not just `OCG_APPS_ROOT` (platform-specific root path) but also any build-mode flag that indicates a non-interactive managed execution.

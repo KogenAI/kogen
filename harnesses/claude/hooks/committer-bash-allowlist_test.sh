@@ -112,6 +112,20 @@ run_test "committer git pull DENIED" "2" \
 run_test "committer Write tool ALLOWED (not Bash, different hook)" "0" \
     "{\"hook_event_name\":\"PreToolUse\",\"tool_name\":\"Write\",\"tool_input\":{\"file_path\":\"lib/foo.ex\"},\"agent_type\":\"$COMMITTER\",\"agent_id\":\"abc\"}"
 
+# ── Cross-repo: cd-prefix and git -C forms ────────────────────────────────
+
+# cd-prefix + git commit → ALLOW
+run_test "committer cd /some/repo && git commit ALLOWED" "0" \
+    "{\"hook_event_name\":\"PreToolUse\",\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"cd /some/repo && git commit -m \\\"x\\\"\"},\"agent_type\":\"$COMMITTER\",\"agent_id\":\"abc\"}"
+
+# git -C <path> commit → ALLOW (previously denied)
+run_test "committer git -C /some/repo commit ALLOWED" "0" \
+    "{\"hook_event_name\":\"PreToolUse\",\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"git -C /some/repo commit -m \\\"x\\\"\"},\"agent_type\":\"$COMMITTER\",\"agent_id\":\"abc\"}"
+
+# cd-prefix with non-allowlisted post-&& command → DENY (no shell escape)
+run_test "committer cd /tmp && rm -rf / DENIED (cd-prefix not a shell escape)" "2" \
+    "{\"hook_event_name\":\"PreToolUse\",\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"cd /tmp && rm -rf /\"},\"agent_type\":\"$COMMITTER\",\"agent_id\":\"abc\"}"
+
 echo ""
 echo "Results: $pass passed, $fail failed"
 

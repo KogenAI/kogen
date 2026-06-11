@@ -19,6 +19,7 @@ Two SubagentStop blockers can coexist on the same event/matcher (e.g. `developer
 **Safety**: Breaker does NOT depend on the CURRENT stop's writes — it reads ALL prior accumulated state (e.g., `≥3 FAILED ❌` lines = at least 3 prior gate runs with repeated failure). Even if the gate's write races with breaker's read, the count from prior turns is stable and sufficient.
 
 **Counter file naming**: When multiple blockers use the same matcher, assign distinct counter filenames to prevent clobbering:
+
 - `stop-spin-guard.sh` → `/tmp/claude-spin-${SESSION_ID}.count`
 - `stop-gate-failure-breaker.sh` → `/tmp/claude-gate-breaker-${SESSION_ID}.count`
 

@@ -143,4 +143,21 @@ describe("committer-bash-allowlist", () => {
     const result = await runFileHook("write", "lib/foo.ex");
     assert.ok(result == null || (result as { block?: boolean }).block !== true);
   });
+
+  // ── Cross-repo: cd-prefix and git -C forms ────────────────────────────
+
+  it("allows cd /some/repo && git commit for committer", async () => {
+    const result = await runBashHook('cd /some/repo && git commit -m "x"');
+    assert.ok(result == null || (result as { block?: boolean }).block !== true);
+  });
+
+  it("allows git -C /some/repo commit for committer (previously denied)", async () => {
+    const result = await runBashHook('git -C /some/repo commit -m "x"');
+    assert.ok(result == null || (result as { block?: boolean }).block !== true);
+  });
+
+  it("blocks cd /tmp && rm -rf / for committer (cd-prefix not a shell escape)", async () => {
+    const result = await runBashHook("cd /tmp && rm -rf /");
+    assert.ok((result as { block?: boolean }).block === true);
+  });
 });
