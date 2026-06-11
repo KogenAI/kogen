@@ -331,3 +331,41 @@ eval "$assert_condition file"
 ```
 
 **Rule of thumb**: When passing `grep` assertions through `eval`, use single quotes for the outer string and ERE-escape `[`, `]`, `"` characters. Verify by printing the eval statement before running it.
+
+## Hook Discovery Fallback Gating in Managed Builds
+
+**Transcript-bound hooks with filesystem fallback must widen fallback gates to match any managed-build env var, not just platform-specific roots.** When a bash hook discovers resources (e.g., step-log files) via transcript JSONL parsing, the transcript may lag behind the live stream on slow-flushing Node runtimes (observed: Node 20 with flush delays). A fallback filesystem scan is essential, but **the fallback gate must match the actual managed-build condition** — not just `OCG_APPS_ROOT` (platform-specific root path) but also any build-mode flag that indicates a non-interactive managed execution.
+
+**Pattern**:
+
+```bash
+# Strict transcript-bound discovery (interactive sessions)
+result=$(jq -r '.[] | select(.type=="Write" and .path | test("codegen/logging")) | .path' "$TRANSCRIPT_PATH" | tail -1)
+
+# Fallback 1: OCG_APPS_ROOT (managed workers on platform)
+if [ -z "$result" ]; then
+    local apps_root="${OCG_APPS_ROOT:-}"
+    local cwd="${CWD:-$PWD}"
+    if [ -n "$apps_root" ]; then
+        case "$cwd" in
+        "${apps_root%/}"/*)
+            result=$(ls -t "$cwd/codegen/logging"/*.md 2>/dev/null | head -1)
+            ;;
+        esac
+    fi
+fi
+
+# Fallback 2: CODEGEN_BUILD_NON_INTERACTIVE (non-interactive managed builds)
+# This catches codegen self-builds and other non-interactive contexts where
+# dispatch.sh or similar entrypoint sets the flag. Scan cwd unconditionally
+# (cwd is already the app dir in managed builds); fail-closed if dir empty.
+if [ -z "$result" ] && [ -n "${CODEGEN_BUILD_NON_INTERACTIVE:-}" ]; then
+    result=$(ls -t "$cwd/codegen/logging"/*.md 2>/dev/null | head -1)
+fi
+```
+
+**Why two branches**: `OCG_APPS_ROOT` is a platform convention (managed workers on the dashboard box); `CODEGEN_BUILD_NON_INTERACTIVE` is a build-mode convention (set by dispatch.sh for non-interactive entrypoints). They are independent gates that cover different deployment patterns.
+
+**Mtime sorting portability**: Use `ls -t glob | head -1` across macOS (BSD find) and Linux (GNU coreutils). `find -printf` is not portable to BSD find and silently fails (no error, just empty output).
+
+**Fail-closed semantics**: An empty or absent logging directory yields empty `result` — the caller denies the action. Test both the success path (fallback fires, returns a valid path) and the fail-closed path (empty dir, returns empty) to prevent false-positive phantom paths.

@@ -221,6 +221,27 @@ result=$(TRANSCRIPT_PATH="$TMP_T7/transcript.jsonl" bash -c "source '$SCRIPT_DIR
 assert_eq "session_log_from_transcript: Edit tool_use matched" "$TMP_T7/codegen/logging/edit_session.md" "$result"
 rm -rf "$TMP_T7"
 
+# Case 8: Non-interactive fallback — CODEGEN_BUILD_NON_INTERACTIVE set, no
+# apps-root, empty transcript, real log on disk → returns disk path by mtime.
+TMP_T8=$(mktemp -d)
+mkdir -p "$TMP_T8/codegen/logging"
+: >"$TMP_T8/codegen/logging/20260611_000000_step1_demo.md"
+: >"$TMP_T8/transcript.jsonl"
+result=$(CODEGEN_BUILD_NON_INTERACTIVE=1 OCG_APPS_ROOT="" CWD="$TMP_T8" TRANSCRIPT_PATH="$TMP_T8/transcript.jsonl" \
+    bash -c "source '$SCRIPT_DIR/hooks-lib.sh'; session_log_from_transcript")
+assert_eq "session_log_from_transcript: non-interactive fallback → disk log" "$TMP_T8/codegen/logging/20260611_000000_step1_demo.md" "$result"
+rm -rf "$TMP_T8"
+
+# Case 9: Non-interactive fallback fail-closed — same env, empty logging dir
+# (no .md files) → returns empty (gate denies, no phantom path).
+TMP_T9=$(mktemp -d)
+mkdir -p "$TMP_T9/codegen/logging"
+: >"$TMP_T9/transcript.jsonl"
+result=$(CODEGEN_BUILD_NON_INTERACTIVE=1 OCG_APPS_ROOT="" CWD="$TMP_T9" TRANSCRIPT_PATH="$TMP_T9/transcript.jsonl" \
+    bash -c "source '$SCRIPT_DIR/hooks-lib.sh'; session_log_from_transcript")
+assert_eq "session_log_from_transcript: non-interactive fallback empty dir → empty" "" "$result"
+rm -rf "$TMP_T9"
+
 echo ""
 echo "Results: $pass passed, $fail failed"
 

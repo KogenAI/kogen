@@ -182,8 +182,12 @@ fi
 if [[ -z "$OTP_VERSION" ]]; then
     OTP_VERSION="$(mise current erlang 2>/dev/null || true)"
 fi
+# Floor Node at 24.14.0 — do NOT inherit `mise current node` here. A drifted
+# box default (e.g. Node 20) flushes the build transcript too slowly and
+# deadlocks the planner-spawn step-log gate; pin a known-good floor instead.
+# Flag override (--node-version) still wins (this block only fires when unset).
 if [[ -z "$NODE_VERSION" ]]; then
-    NODE_VERSION="$(mise current node 2>/dev/null || true)"
+    NODE_VERSION="24.14.0"
 fi
 
 # ── Validate common required args ─────────────────────────────────────────────

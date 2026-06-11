@@ -290,6 +290,18 @@ session_log_from_transcript() {
                 ;;
             esac
         fi
+        # Non-interactive managed builds (CODEGEN_BUILD_NON_INTERACTIVE, set by
+        # dispatch.sh) run with cwd already at the app dir but may sit outside
+        # OCG_APPS_ROOT (e.g. codegen self-build). Slow-flushing Node runtimes
+        # (Node 20 on a drifted box) let the hook fire before the step-log Write
+        # lands in the transcript, so the strict transcript scan above returns
+        # empty and the planner-spawn gate fails closed -> deadlock spiral.
+        # Scan the logging dir by mtime as a parity twin to the Pi handler
+        # (step-log-section-before-spawn.ts getActiveStepLog). Still fail-closed:
+        # an empty/absent logging dir yields empty result -> caller denies.
+        if [ -z "$result" ] && [ -n "${CODEGEN_BUILD_NON_INTERACTIVE:-}" ]; then
+            result=$(ls -t "$cwd/codegen/logging"/*.md 2>/dev/null | head -1)
+        fi
     fi
     printf '%s' "$result"
 }

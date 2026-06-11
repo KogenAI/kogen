@@ -487,7 +487,13 @@ Hook scripts discover the active session/step log via `session_log_from_transcri
 
 **Interactive sessions** (CLAUDE_BUILD unset or print-mode disabled): strict transcript-bound discovery. Scans `$TRANSCRIPT_PATH` JSONL for the most recent Write/Edit/MultiEdit tool_use that targets `codegen/logging/*.md`. Returns empty if no such entry exists.
 
-**Managed build workers** (OCG_APPS_ROOT set AND cwd is under it): implements filesystem fallback. When jq discovery returns empty (transcript lags the live stream), it falls back to searching the local `$CWD/codegen/logging/` directory and returning the most recent `*.md` file by mtime. This accounts for print-mode (`claude --print --output-format stream-json`) builds where the on-disk transcript file may not flush immediately after a Write tool_use completes. The discriminator uses the same pattern as `build-worker-cwd-guard.sh`: checks OCG_APPS_ROOT + case-match on cwd to detect managed builds.
+**Managed build workers** (two-branch fallback): When transcript discovery returns empty, implements two independent fallback branches:
+
+1. **OCG_APPS_ROOT branch** (platform-specific managed workers) — checks `OCG_APPS_ROOT` + case-match on cwd. When both are set, scans `$CWD/codegen/logging/` for the most recent `*.md` by mtime. Covers dashboard-box managed workers (integration tests, platform CI).
+
+2. **CODEGEN_BUILD_NON_INTERACTIVE branch** (non-interactive managed builds) — checks if the env var is set (indicator of non-interactive entrypoint, set by `dispatch.sh:69` and similar). When set, scans `$CWD/codegen/logging/` unconditionally (no apps-root check), returning the most recent `*.md` by mtime. Covers codegen self-builds and other non-interactive dispatch patterns that may run outside OCG_APPS_ROOT (e.g., codegen-on-codegen sessions, platform CI using `codegen-build --non-interactive`).
+
+Both branches are independent OR conditions; a transcript hit (step 1) prevents both fallbacks from running. This dual-gate design catches slow-Node transcript flush lag across deployment patterns — the transcript may lag on Node 20 where flush delays cause planner-spawn gate to fire before the step-log Write lands in the on-disk JSONL.
 
 **Portable mtime sorting**: Use `ls -t glob | head -1` for mtime-based filename sorting across macOS (BSD find) and Linux (GNU coreutils). The `find -printf` flag is not portable to BSD find and silently fails (no error, just empty output). Canonical reference: Pi extension `getActiveStepLog()` in `step-log-section-before-spawn.ts` uses direct `fs.readdirSync` + mtime object sort; Claude hooks now converge on the same reliable `ls -t` pattern.
 
