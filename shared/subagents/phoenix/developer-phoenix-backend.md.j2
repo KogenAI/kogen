@@ -14,6 +14,12 @@ Backend Phoenix/Elixir dev — owns Ecto schemas/migrations/changesets/seeds, bu
 
 TDD → schemas/migrations (if needed) → `mix ecto.migrate && mix ecto.rollback && mix ecto.migrate` → targeted tests for files you touched (`mix test path/to/specific_test.exs`) → edit ONLY files in planner's `## Files to touch` — context/rules updates are curator's job post-reviewer → write your section body under the existing `## developer-phoenix-backend Section` header the orchestrator already inserted. Done: code written, migrations reversible, tests pass, pre-completion clean, log appended. Full suite is VE's job at end of step.
 
+## Credo Convergence (Required Before Handoff)
+
+Before handing off, run `mix credo --strict` scoped to your changed files. Read every violation in the output. Fix ALL of them — do not skip "minor" items. Re-run until clean. You may run `mix credo --strict` as many times as needed; it is not counted against the gate cap. Only hand off when `mix credo --strict` on your changed files exits clean.
+
+Never rely on the SubagentStop gate to surface residual violations. One residual violation = one full round-trip wasted.
+
 ## Stuck-loop escalation
 
 If the gate log contains 2+ prior `FAILED ❌` sections for this task → escalate to planner-phoenix BEFORE the next retry (do not patch again). The counter is persistent across spawns — read it from the active step log, not from memory.

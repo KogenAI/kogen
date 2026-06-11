@@ -267,15 +267,15 @@ The scaffold-owned `.credo.exs` (rendered from `templates/.credo.exs.eex`) uses 
 
 **Excluded files per check** (defined in `templates/.credo.exs.eex`):
 
-| Check                                                 | Files excluded (phx.new boilerplate + LiveViews)                                                         |
-| ----------------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
+| Check                                                 | Files excluded (phx.new boilerplate + LiveViews)                                                                   |
+| ----------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
 | `Credo.Check.Readability.Specs`                       | `*_live.ex`, `_web.ex`, `page_controller.ex`, `error_html.ex`, `error_json.ex`, `core_components.ex`, `layouts.ex` |
-| `Credo.Check.Readability.AliasOrder`                  | `_web.ex`                                                                                               |
-| `OptimumCredo.Check.Readability.ImportOrder`          | `_web.ex`                                                                                               |
-| `OptimumCredo.Check.Readability.ExtractableSpecTypes` | `page_controller.ex`, `error_html.ex`, `error_json.ex`                                                 |
-| `Credo.Check.Consistency.UnusedVariableNames`         | `*_live.ex`, `core_components.ex`                                                                       |
-| `Credo.Check.Refactor.VariableRebinding`              | `*_live.ex`                                                                                             |
-| `Credo.Check.Design.AliasUsage`                       | `_web.ex`, `core_components.ex`                                                                         |
+| `Credo.Check.Readability.AliasOrder`                  | `_web.ex`                                                                                                          |
+| `OptimumCredo.Check.Readability.ImportOrder`          | `_web.ex`                                                                                                          |
+| `OptimumCredo.Check.Readability.ExtractableSpecTypes` | `page_controller.ex`, `error_html.ex`, `error_json.ex`                                                             |
+| `Credo.Check.Consistency.UnusedVariableNames`         | `*_live.ex`, `core_components.ex`                                                                                  |
+| `Credo.Check.Refactor.VariableRebinding`              | `*_live.ex`                                                                                                        |
+| `Credo.Check.Design.AliasUsage`                       | `_web.ex`, `core_components.ex`                                                                                    |
 
 **LiveView exclusion rationale** (lines 258-276 in `.credo.exs.eex`):
 

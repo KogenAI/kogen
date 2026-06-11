@@ -90,12 +90,27 @@ out=$(make_input "make ci" "developer-html" "$SID5" | bash "$HOOK" 2>/dev/null |
 assert_contains "make ci at count=3 BLOCKED" '"permissionDecision"' "$out"
 rm -f "/tmp/combobulate-self-gate-${SID5}.count"
 
-# ── Test 6: mix credo pattern matched ────────────────────────────────────────
+# ── Test 6: mix credo bypasses cap — ALWAYS ALLOWED ─────────────────────────
+# mix credo is cheap/required before handoff; cap does not apply.
 SID6="sid6-$$-$(date -u +%s)"
 printf '2' >"/tmp/combobulate-self-gate-${SID6}.count"
 out=$(make_input "mix credo --strict" "developer-phoenix-backend" "$SID6" | bash "$HOOK" 2>/dev/null || true)
-assert_contains "mix credo at count=3 BLOCKED" '"permissionDecision"' "$out"
+assert_not_contains "mix credo at count=3 STILL ALLOWED (bypasses cap)" '"permissionDecision"' "$out"
 rm -f "/tmp/combobulate-self-gate-${SID6}.count"
+
+# ── Test 6b: mix credo bypasses cap even at count=10 ────────────────────────
+SID6B="sid6b-$$-$(date -u +%s)"
+printf '10' >"/tmp/combobulate-self-gate-${SID6B}.count"
+out=$(make_input "mix credo --strict path/to/file.ex" "developer-phoenix-backend" "$SID6B" | bash "$HOOK" 2>/dev/null || true)
+assert_not_contains "mix credo scoped at count=10 STILL ALLOWED" '"permissionDecision"' "$out"
+rm -f "/tmp/combobulate-self-gate-${SID6B}.count"
+
+# ── Test 6c: make ci IS still blocked after 3 calls ─────────────────────────
+SID6C="sid6c-$$-$(date -u +%s)"
+printf '2' >"/tmp/combobulate-self-gate-${SID6C}.count"
+out=$(make_input "make ci" "developer-phoenix-backend" "$SID6C" | bash "$HOOK" 2>/dev/null || true)
+assert_contains "make ci at count=3 BLOCKED (cap still applies)" '"permissionDecision"' "$out"
+rm -f "/tmp/combobulate-self-gate-${SID6C}.count"
 
 # ── Test 7: developer-vite also gated ────────────────────────────────────────
 SID7="sid7-$$-$(date -u +%s)"

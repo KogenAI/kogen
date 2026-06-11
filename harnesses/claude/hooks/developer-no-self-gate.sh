@@ -42,6 +42,13 @@ if ! printf '%s' "$COMMAND" | grep -qE '\bmix[[:space:]]+(test|credo|format)\b|\
     exit 0
 fi
 
+# mix credo is cheap and required before handoff — bypass the cap entirely.
+# Only mix test / make ci / make test / mix format remain capped.
+if printf '%s' "$COMMAND" | grep -qE '\bmix[[:space:]]+credo\b' &&
+    ! printf '%s' "$COMMAND" | grep -qE '\bmake[[:space:]]+(ci|test)\b|\bmix[[:space:]]+test\b'; then
+    exit 0
+fi
+
 session_id="${SESSION_ID:-unknown}"
 counter_file="/tmp/combobulate-self-gate-${session_id}.count"
 

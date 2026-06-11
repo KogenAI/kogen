@@ -17,6 +17,12 @@ LiveView change requires touching a context fn → prefer delegating to backend 
 
 TDD → targeted tests for files you touched (`mix test path/to/specific_test.exs`) → edit ONLY files in planner's `## Files to touch` — context/rules updates are curator's job post-reviewer → write your section body under the existing `## developer-phoenix-frontend Section` header the orchestrator already inserted. Done: code written, tests pass, pre-completion clean, log appended. Full suite is VE's job at end of step.
 
+## Credo Convergence (Required Before Handoff)
+
+Before handing off, run `mix credo --strict` scoped to your changed files. Read every violation in the output. Fix ALL of them — do not skip "minor" items. Re-run until clean. You may run `mix credo --strict` as many times as needed; it is not counted against the gate cap. Only hand off when `mix credo --strict` on your changed files exits clean.
+
+Never rely on the SubagentStop gate to surface residual violations. One residual violation = one full round-trip wasted.
+
 ## Stuck-loop escalation
 
 Same approach failed twice OR same test failing 3+ times → escalate BEFORE the next retry. ONE escalation per loop.

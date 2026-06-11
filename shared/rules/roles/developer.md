@@ -38,6 +38,10 @@ Disallowed in build-runtime. Elsewhere ≤4 options per call.
 
 Dev MUST NOT run CI gate — gate fires on hand-off. Fix failures during impl. Wire new modules: grep new symbol across `lib/`/`test/`.
 
+**Credo convergence before handoff (REQUIRED):** Before handing off, run `mix credo --strict` scoped to your changed files. Read the COMPLETE violation list and fix EVERY item — no skipping "minor" violations. Re-run until the output is clean. Only then hand off. Do NOT rely on the gate to surface residual violations; that wastes a full round-trip per violation batch.
+
+`mix credo --strict` on your own changed files is NOT the CI gate — it is cheap (~10s), scoped, and required. What stays forbidden mid-impl: `make ci`, `mix test`, dialyzer. Those fire once on handoff.
+
 ## Tests With Every Change (MANDATORY)
 
 Pure fns → unit tests. New public fns → tests. Bug fix → regression test. No test = incomplete.
