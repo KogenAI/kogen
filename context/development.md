@@ -113,6 +113,7 @@ Three-part writer absorption: (1) boundary neutralisation first (consumer-name r
 
 ## Common Pitfalls
 
+- **`make install` registry/settings.json parity** — when adding a new hook registration (e.g., `kind: registration` entry in `shared/enforcement/registry.yaml`), BOTH the registry.yaml entry AND the committed `harnesses/claude/claude-code-settings.json` entry must be present before `make install` parity checks pass. The compiler regenerates settings.json from the registry, then diffs it against the committed version; divergence fails the `make hook-parity` check (part of `make test`). Workflow: (1) add registry.yaml entry, (2) add .sh file with HOOK-MANIFEST header, (3) run `make install` to regenerate settings.json, (4) commit both changed files together. Intermediate state (registry entry only, settings.json stale) will block `make test`.
 - **`make install` gated on python3, node, yq-mikefarah** — fresh-box installs fail loud if build-critical tools missing (not jq/rg, which install.sh installs). Verify `yq --version | grep -qi mikefarah`; `apt install yq` installs python-yq (incompatible, silently wrong manifest parsing) — use mikefarah/yq binary instead.
 - **`npm install` at codegen root required before hook use** — root `node_modules/` (ajv, playwright, prettier) must exist for schema-validate.js and render-check.js; install.sh now runs this automatically. If absent, verification hooks emit INCONCLUSIVE (cannot run, not passed).
 - **`make install` required after any rule/template change** — running agents see the old baked prompts otherwise

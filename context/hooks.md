@@ -123,6 +123,21 @@ See `context/launcher-hook-matrix.md` for a table of per-hook bypass and fail-op
 
 `developer-no-self-gate.sh` tracks developer CI invocations per session using a transient counter file (`/tmp/combobulate-self-gate-${session_id}.count`). Each Bash invocation matching `make *`, `mix test`, `mix credo`, or `mix format` increments the counter. Once the counter reaches the limit (currently 3), further attempts are denied with an instruction to hand off to the orchestrator via dev-gate.sh. Developers working on codegen should be aware that running `make test`, `make hook-parity`, etc. repeatedly burns down this budget — plan CI invocations strategically, especially during iterative development.
 
+## SubagentStop Fix-Up Hooks — Minimal Pattern & Parity
+
+For SubagentStop hooks that always exit 0 (fix-up, never block), the minimal pattern is:
+
+1. Parse stdin (JSON)
+2. STOP_HOOK_ACTIVE loop guard → exit 0 if already active (prevent re-entry)
+3. AGENT_TYPE case statement → exit 0 if matcher doesn't match
+4. cd CWD (fallback to CLAUDE_PROJECT_DIR/$PWD if empty)
+5. Conditional action (e.g., `grep -q '^format:' Makefile` → `make format`)
+6. exit 0
+
+Example: `curator-format.sh` (runs `make format` on markdown edits by context-curator). No ledger, no git-diff, no LLM-signal — single-purpose formatters use the whole tree (idempotent operation).
+
+**Pi mirror parity for SubagentStop target checks**: When a Bash hook checks for Makefile target presence (e.g., `grep -q '^format:'`), the Pi TypeScript mirror must also verify the target exists via regex match (`/^format:/m.test(readFileSync(...))`), not just `fs.existsSync(Makefile)` alone. File presence is weaker than target presence — a Makefile without the target causes `make` to fail with "No rule to make target", which a non-fatal catch swallows instead of short-circuiting cleanly. Guard both implementations with the target check.
+
 ## Hook Test Authoring Patterns
 
 New bash hook tests (`*_test.sh`) are auto-discovered by `run-tests.sh` (line 33: `find *_test.sh`) — they run automatically as part of `make test`'s `hooks` stage. When a hook test is also registered as a named Makefile target (e.g., `prompt-content-parity` target), the test runs **twice** per `make test` cycle: once via auto-discovery in the `hooks` stage, once via the explicit prerequisite. This dual-discovery pattern is idempotent and not a defect — the test runs the same assertions twice and both complete successfully (same inputs, same exit code).
