@@ -549,6 +549,16 @@
   harnesses: claude
 
 - kind: registration
+  id: stop-gate-failure-breaker
+  event: SubagentStop
+  tool_guard: "developer-phoenix-backend|developer-phoenix-frontend|developer-html|developer-hugo|developer-vite"
+  surface: user_global
+  signal: AGENT_TYPE
+  role: "developer-*"
+  harnesses: claude
+  rationale: Blocks and forces planner escalation when the dev-gate has logged ≥3 FAILED verdicts in the session — turns the advisory "route to planner" suffix into an enforced circuit-breaker.
+
+- kind: registration
   id: stop-verify-planner-gate
   event: Stop
   tool_guard: "*"
