@@ -132,6 +132,7 @@ New bash hook tests (`*_test.sh`) are auto-discovered by `run-tests.sh` (line 33
 When editing a hand-authored hook script (e.g., `orchestrator-read-discipline.sh`, `step-log-section-before-spawn.sh`), understand the relationship between the `.sh` body and `registry.yaml`:
 
 **Two types of hook ownership**:
+
 1. **`kind: denial` (generated: true)** — the compiler `enforcement_compiler.py` OVERWRITES the entire `.sh` file at `make install`. Do NOT hand-edit these files.
 2. **`kind: registration` (or deferred)** — the hand-authored `.sh` body is the source of truth. The `HOOK-MANIFEST:` header block is generated from `registry.yaml` entries. The deny/block message text lives inline in the `.sh` body, NOT in the registry. Deny strings are editable without touching `registry.yaml`.
 
@@ -140,6 +141,7 @@ When editing a hand-authored hook script (e.g., `orchestrator-read-discipline.sh
 **When to edit registry.yaml**: Change the header values (event, tool_guard, role, signal, harnesses). When you do, run `make install` with `--emit-headers` to propagate. Change body deny strings? Edit the `.sh` directly, no registry change needed.
 
 **Anchor patterns in deny messages — substring vs. leading-token**: When a guard uses `grep` to match command text, choose the anchor appropriately:
+
 - **Leading-anchor** (`^` or `^[[:space:]]*(verb1|verb2)`) — when the dangerous token is ALWAYS the leading verb (e.g., `cat file | grep`, `find . -path`, `git stash`). Examples: `no-cat-pipe.sh`, `no-git-stash.sh`.
 - **Substring-match** (no anchor, or `|` in middle of pattern) — when the dangerous token can appear anywhere (e.g., command redirect/append `echo ... >> $TRANSCRIPT_PATH`, file path reference `cp ... ~/.claude/projects/`). Example: `orchestrator-read-discipline.sh` transcript-forge guard uses substring for tokens like `TRANSCRIPT_PATH`, `.jsonl`, `.claude/projects/` because they appear in redirect destinations, not leading positions. If you use leading-anchor on a redirect/append command, you will miss the violation because the dangerous token is not leading.
 

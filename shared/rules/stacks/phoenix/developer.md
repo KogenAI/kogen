@@ -48,17 +48,17 @@ Then targeted test file(s). Dead modules → Credo warnings → wire via `grep -
 - **Duplicate boolean logic → shared helper**: When two modules must use identical enable/disable logic (e.g., both static.ex and channel.ex check `enabled?`), extract to a shared `Utils` or named module helper — copy-paste logic in two files is a latent divergence bug. The shared computation becomes the single source of truth and prevents subtle inconsistencies when one caller later updates their copy.
 - **GenServer.call/3 timeout exit shape**: `GenServer.call/3` timeout exits as `{:timeout, {mod, fun, args}}`, never the bare atom `:timeout`. A `try/catch` arm like `catch :exit, :timeout` is always dead code. Use bare `case` on function return values or pattern-match on the full `{:timeout, ...}` tuple in exception handlers.
 
-## Credo VariableReDeclaration
+## Credo VariableRebinding & LiveView Exclusion
 
-Credo fires `VariableReDeclaration` when the same variable is bound in two sequential `=` assignments within the same function clause, even if the second is a conditional:
+Credo's `Refactor.VariableRebinding` (formerly `VariableReDeclaration`) fires when the same variable is bound in two sequential `=` assignments within the same function clause, even if the second is a conditional:
 
 ```elixir
-# ❌ Credo violation: socket bound twice
+# ❌ Credo violation: socket bound twice (in a non-LiveView module)
 socket = socket |> assign(:foo, bar)
 socket = if connected?(socket) do ... else ... end
 ```
 
-Fix: merge both assignments into a single `|>` pipeline using `then/2`, renaming the inner anonymous parameter to avoid shadowing:
+**In regular (non-LiveView) modules**, fix by merging both assignments into a single `|>` pipeline using `then/2`, renaming the inner anonymous parameter to avoid shadowing:
 
 ```elixir
 # ✅ Single binding; then/2 for conditional branching
@@ -75,6 +75,18 @@ socket =
 ```
 
 This pattern is already idiomatic in the codebase and preserves full readability.
+
+**In LiveView modules** (`*_live.ex` files), socket rebinding is the idiomatic style and should not be refactored. LiveView handle callbacks naturally pipeline socket state across multiple steps, and forcing single-assignment via `then/2` produces unnecessarily verbose code. **The `.credo.exs` template automatically excludes all `*_live.ex` files from `Refactor.VariableRebinding`**, allowing natural LiveView code patterns without LLM↔reviewer churn. Do not override this exclusion or attempt to hand-rewrite LiveView socket chains into `then/2` form.
+
+## Three-Check LiveView Exclusion Loop
+
+Three Credo checks create a dev↔LLM-review churn cycle when LLMs generate LiveView code:
+
+1. **`Readability.Specs`** — Every public function needs `@spec`, but the rule forbids `@spec` on `@impl` fns and `defp` helpers. LiveView callbacks are all public and framework-generated, causing the LLM to oscillate between satisfying Specs and following the rules.
+2. **`Refactor.VariableRebinding`** — Flags socket rebinding across pipeline steps, which is idiomatic LiveView. The LLM alternates between natural socket-threading and verbose `then/2` refactors.
+3. **`Consistency.UnusedVariableNames`** — Flags `_`-prefixed bindings, which are framework-idiomatic in LiveView pattern matches (e.g., `{:ok, _}`). The LLM rewrites to avoid the underscore, then the reviewer rewrites back.
+
+**Solution**: The `.credo.exs` template (rendered at scaffold time) automatically excludes all `*_live.ex` files from these three checks. Do NOT attempt to hand-satisfy them in LiveView code — the exclusion is intentional and breaks the churn loop. The three checks remain active everywhere else (contexts, schemas, regular modules) where they provide genuine value.
 
 ## Cleanup
 
