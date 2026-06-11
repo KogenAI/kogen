@@ -33,7 +33,7 @@ export const HANDLER_META = {
 } as const;
 
 const CANONICAL_LOG_RE =
-  /^[0-9]{8}_[0-9]{6}(_[a-z0-9-]+)?_(session|step[0-9]+_[a-z0-9-]+)\.md$/;
+  /^[0-9]{8}_[0-9]{6}(_[a-z0-9_-]+)?_(session|step[0-9]+_[a-z0-9_-]+)\.md$/;
 
 const SIXTY_MIN_MS = 60 * 60 * 1000;
 

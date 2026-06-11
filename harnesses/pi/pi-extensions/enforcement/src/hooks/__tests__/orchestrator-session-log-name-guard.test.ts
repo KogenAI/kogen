@@ -146,6 +146,21 @@ describe("orchestrator-session-log-name-guard", { concurrency: false }, () => {
     assert.ok(result == null || (result as { block?: boolean }).block !== true);
   });
 
+  // Allow: underscore slugs in session and step forms
+  it("allows underscore slug in session form", async () => {
+    const result = await runHook(
+      "codegen/logging/20260609_062124_travel_website_session.md",
+    );
+    assert.ok(result == null || (result as { block?: boolean }).block !== true);
+  });
+
+  it("allows underscore slug in step form", async () => {
+    const result = await runHook(
+      "codegen/logging/20260609_062124_step2_travel_website.md",
+    );
+    assert.ok(result == null || (result as { block?: boolean }).block !== true);
+  });
+
   // Allow: non-write/edit tool
   it("allows non-write tool (bash) for orchestrator", async () => {
     const { register } = await import("../orchestrator-session-log-name-guard");

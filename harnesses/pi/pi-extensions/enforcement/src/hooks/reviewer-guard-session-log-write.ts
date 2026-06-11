@@ -28,7 +28,7 @@ export function register(pi: ExtensionAPI): void {
     debugLog("reviewer-guard-session-log-write", `file=${filePath}`);
 
     const rel = repoRelative(filePath);
-    if (/codegen\/logging\/[0-9]{8}_[0-9]{6}(_[a-z0-9-]+)?_(session|step[0-9]+_[a-z0-9-]+)\.md$/.test(rel)) {
+    if (/codegen\/logging\/[0-9]{8}_[0-9]{6}(_[a-z0-9_-]+)?_(session|step[0-9]+_[a-z0-9_-]+)\.md$/.test(rel)) {
       return;
     }
 

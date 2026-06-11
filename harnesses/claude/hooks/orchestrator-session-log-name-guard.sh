@@ -61,7 +61,7 @@ if ! printf '%s' "$rel" | grep -qE '^codegen/logging/'; then
 fi
 
 # Allowlist: canonical session-log name forms.
-if printf '%s' "$rel" | grep -qE '^codegen/logging/([0-9]{8}_[0-9]{6}(_[a-z0-9-]+)?_(session|step[0-9]+_[a-z0-9-]+)|[0-9]{8}_progress)\.md$'; then
+if printf '%s' "$rel" | grep -qE '^codegen/logging/([0-9]{8}_[0-9]{6}(_[a-z0-9_-]+)?_(session|step[0-9]+_[a-z0-9_-]+)|[0-9]{8}_progress)\.md$'; then
     debug_log orchestrator-session-log-name-guard "allow: canonical session log ($rel)"
     exit 0
 fi

@@ -133,7 +133,7 @@
   mode: allowlist
   canonicalize: repo_relative
   tool_guard: "Write|Edit"
-  match: 'codegen/logging/[0-9]{8}_[0-9]{6}(_[a-z0-9-]+)?_(session|step[0-9]+_[a-z0-9-]+)\.md$'
+  match: 'codegen/logging/[0-9]{8}_[0-9]{6}(_[a-z0-9_-]+)?_(session|step[0-9]+_[a-z0-9_-]+)\.md$'
   message: "BLOCKED by committer-write-allowlist: committer may only write to canonical session logs"
   surface: user_global
   signal: AGENT_TYPE
@@ -149,7 +149,7 @@
   mode: allowlist
   canonicalize: repo_relative
   tool_guard: "Write|Edit"
-  match: 'codegen/logging/[0-9]{8}_[0-9]{6}(_[a-z0-9-]+)?_(session|step[0-9]+_[a-z0-9-]+)\.md$'
+  match: 'codegen/logging/[0-9]{8}_[0-9]{6}(_[a-z0-9_-]+)?_(session|step[0-9]+_[a-z0-9_-]+)\.md$'
   message: "BLOCKED by reviewer-guard-session-log-write: reviewer may only write to canonical session logs"
   surface: user_global
   signal: AGENT_TYPE

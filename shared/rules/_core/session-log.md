@@ -5,7 +5,7 @@
 Canonical schema (single source of truth — hooks and guards match against this):
 
 ```
-codegen/logging/[0-9]{8}_[0-9]{6}(_[a-z0-9-]+)?_(session|step[0-9]+_[a-z0-9-]+)\.md$
+codegen/logging/[0-9]{8}_[0-9]{6}(_[a-z0-9_-]+)?_(session|step[0-9]+_[a-z0-9_-]+)\.md$
 ```
 
 - Single: `./codegen/logging/$(date -u +%Y%m%d_%H%M%S)[_<slug>]_session.md` (slug optional)

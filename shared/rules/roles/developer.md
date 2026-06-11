@@ -53,6 +53,7 @@ Pure fns → unit tests. New public fns → tests. Bug fix → regression test. 
 - Cleanup: removing test files → grep source first. Target specific files; never blast build dirs.
 - No unprompted backward compat. Pitch says replace → remove old, implement new. Legacy fallback branch when old format is gone = dead code = scope creep. ❌ `cond do: legacy -> ...; new -> ...` ✅ new format only.
 - **Re-read target file before editing** — when applying a fix from reviewer feedback or from a retrospective, re-read the exact current state of the file before using the Edit tool. Avoids stale-context edits that miss intervening changes from other steps.
+- **Scope completeness — grep for parallel occurrences** — planner's "files to change" list is a starting point, not exhaustive. When a pattern (regex, constant, schema) appears in multiple files (hand-authored hooks, registry-driven generated files, schema docs), grep the full pattern across `harnesses/`, `shared/enforcement/`, and `shared/rules/_core/` to catch all siblings. Example: session-log slug class lived in 9 places (4 hook bodies, 2 registry fields → 3 generated files, 1 schema doc); pitch listed 6 but grep found 9. After edit, re-run the grep to confirm zero stray hits in the old pattern.
 
 ## Rule K — Red-Green: Show the Test Failing First
 

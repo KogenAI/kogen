@@ -21,7 +21,9 @@
 #   17: committer Write non-canonical → allow (0) — not orchestrator
 #   18: subagent non-empty AGENT_ID empty AGENT_TYPE → allow (0) — not orchestrator
 #   19: orch Bash tool → allow (0) — wrong tool
-#   20: CLAUDE_ROLE=ops orch Write non-canonical → allow (0) — ops bypass
+#   20: orch Write underscore slug session → allow (0)
+#   21: orch Write underscore slug step → allow (0)
+#   22: CLAUDE_ROLE=ops orch Write non-canonical → allow (0) — ops bypass
 
 set -euo pipefail
 
@@ -135,7 +137,15 @@ run_test "subagent non-empty agent_id empty agent_type → allow (skip)" "0" \
 run_test "orch Bash tool → allow (wrong tool)" "0" \
     '{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"echo hi"},"agent_type":"","agent_id":""}'
 
-# Test 20: CLAUDE_ROLE=ops Write non-canonical → allow (ops bypass)
+# Test 20: underscore slug in session form → allow
+run_test "orch Write underscore slug session → allow" "0" \
+    '{"hook_event_name":"PreToolUse","tool_name":"Write","tool_input":{"file_path":"codegen/logging/20260609_062124_travel_website_session.md"},"agent_type":"","agent_id":""}'
+
+# Test 21: underscore slug in step form → allow
+run_test "orch Write underscore slug step → allow" "0" \
+    '{"hook_event_name":"PreToolUse","tool_name":"Write","tool_input":{"file_path":"codegen/logging/20260609_062124_step2_travel_website.md"},"agent_type":"","agent_id":""}'
+
+# Test 22: CLAUDE_ROLE=ops Write non-canonical → allow (ops bypass) [was 20]
 CLAUDE_ROLE=ops run_test "CLAUDE_ROLE=ops Write non-canonical → allow (ops bypass)" "0" \
     '{"hook_event_name":"PreToolUse","tool_name":"Write","tool_input":{"file_path":"codegen/logging/foo.md"},"agent_type":"","agent_id":""}'
 
