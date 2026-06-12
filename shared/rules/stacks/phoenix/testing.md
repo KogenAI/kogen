@@ -14,6 +14,16 @@
 
 New `lib/**/*.ex` → per-file coverage above threshold. `cover/excoveralls.json`: `source_files[].name`=path, `.coverage`=array (0=uncovered, null=irrelevant, N=hit). 0-indexed → line = index + 1.
 
+## Green-from-Birth Tests After Default-Arg Flips
+
+When a function's default arg changes (e.g., `create_app/3 \\ "phoenix_with_db"` → `\\ "static_site"`), tests using arity-2 calls (omitting the arg) now get the new default. If a test asserts equality on a DB-URL-like fn: `assert database_url(app) == database_url(app, :prod)`, both sides return nil for static apps → assertion `nil == nil` passes trivially, never testing the actual 1-arity delegation contract. Such tests are "green from birth" — they pass before the fix despite never exercising the intended code path.
+
+**Detection**: After default-arg flip, audit tests asserting `fn1(entity) == fn2(entity, mode)` on DB-URL / config-read / option-defaulting functions. If the entity's type determines both return values (static app → nil + nil, phoenix app → real URL + real URL), the test is green-from-birth.
+
+**Fix**: Pass the old default explicitly as the 3rd+ arg so the entity type matches the intended test scenario. Example: `Apps.create_app(user.id, "App Name", "phoenix_with_db")` → database_url now returns real URL → assertion tests the real delegation contract.
+
+**Pattern**: After default-arg flip, re-run tests and verify every equality assertion on type-sensitive fns. Coverage may pass (both branches visited in unrelated tests), but the equality itself is vacuous.
+
 ## TDD — Red-Green-Refactor
 
 1. RED: failing → confirm fails for right reason

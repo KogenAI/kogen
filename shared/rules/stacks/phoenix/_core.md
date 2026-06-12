@@ -239,6 +239,12 @@ end)
 
 Calling code that handles `:error` from the adapter will see `{:error, _}` as expected. This pattern is used in handler tests where the seam is at the `Channels.send/2` level (stubbing the adapter module).
 
+**Multiple `Req.Test.stub/2` calls with distinct plug owners**: When a single test (or module) requires stubs for multiple HTTP endpoints (e.g., an API call via `Bunny` and a separate edge-cache probe via `Deploy`), define separate `Req.Test.stub(PlugOwnerModule, fn conn -> ... end)` stubs keyed by the calling module. Each stub is process-local and independent — no interference between stubs with different `PlugOwnerModule` keys. Example: `Req.Test.stub(Combobulate.Hosting.Bunny, ...)` for purge API + `Req.Test.stub(Combobulate.Builds.Deploy, ...)` for verify probe coexist in the same test.
+
+**`capture_log` does NOT lower the global Logger level**: When test config sets `config :logger, level: :warning`, `ExUnit.CaptureLog.capture_log([level: :info], fn -> ... end)` changes the capture threshold but NOT the global Logger level. `Logger.info/1` remains a no-op at the application level and never emits, so `:info` messages do not appear in the captured log. Fix: test observable behavior (DB state changes, return values) rather than relying on log assertion for suppressed-level messages. Alternative: use `capture_log([level: :debug], ...)` to lower the capture threshold below the global level IF the global level is debug-or-higher in that test context.
+
+**`%Req.Response{}` pattern matching + Req 0.5+ headers format**: Match `%Req.Response{status: 200, headers: headers}` explicitly, not bare `%{status: 200, headers: headers}`. Req 0.5+ wraps headers in `%{"header-name" => ["value"]}` format (map with list-wrapped values, legacy_headers_as_lists: false). When reading headers, handle list-wrapped values: `[value | _rest]` in map clauses, NOT `{name, value}` tuple-list patterns from older Req versions.
+
 ## Compile-Time Config
 
 ❌ `@env Application.compile_env(:app, :env)` + `if @env == :prod` — env comparison leaks infrastructure concern into logic, triggers dialyzer `exact_compare` in non-prod builds.
@@ -259,6 +265,8 @@ config :myapp, :notify_owner_on_tls_alert, true
 - One flag per behavior — readable, testable, no env leakage
 - Dialyzer: in non-prod `@notify_owner` is `false` → same `exact_compare` warning → use `@dialyzer {:nowarn_function, fn: arity}` above the function
 - Default `false` in `config.exs` so missing config is safe
+
+**Dialyzer `pattern_match_cov` on header-reading functions**: When a function pattern-matches response headers from an HTTP library (e.g., Req 0.5+), the structure may be union-typed or depend on configuration flags. Functions handling headers with multiple clause patterns (e.g., tuple-list clauses + map clauses) may exhibit dead-code warnings (`pattern_match_cov`) if the effective runtime format is narrower than the union type. Fix: keep ONLY the clause matching the actual runtime format. Example: Req 0.5+ with `legacy_headers_as_lists: false` produces `%{"name" => ["value"]}` maps only — remove any tuple-list or bare-string header clauses; the map clause is the sole live path. Verify by running `mix dialyzer` after removing dead clauses.
 
 ## Enum & Sigil Patterns
 
