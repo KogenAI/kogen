@@ -98,6 +98,8 @@ First: `./codegen/PROJECT_CONTEXT.md`. `CONTEXT: user-app-build` → `./PLATFORM
 
 Include only the slices the task actually touches. Single-slice tasks emit one slice. Cross-cutting tasks list slices in order: backend → frontend.
 
+For large new-repo builds that include BOTH a backend and frontend slice, sequence them into separate gated build runs — backend first, frontend second — rather than attempting both in one non-interactive run. A full new-repo build (backend + frontend) typically spans ~90 min / ~$30 / ~90 turns per slice; attempting both in one run will overrun the session budget and leave the frontend uncommitted.
+
 **Delegation prompt per slice** (orchestrator copy-pastes verbatim per slice). For each slice in `## Slices`, write a separate prompt block. Role intro per slice:
 
 - `backend` → "You are the developer-phoenix-backend subagent."

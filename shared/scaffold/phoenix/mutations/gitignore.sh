@@ -25,6 +25,7 @@ if ! grep -qF '# Optimum development/test artifacts' "$GITIGNORE"; then
 /package-lock.json
 .DS_Store
 .env
+/codegen/pitches/
 EOF
 fi
 

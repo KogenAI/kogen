@@ -267,6 +267,15 @@ mkdir -p "$TARGET_DIR/priv/plts"
 touch "$TARGET_DIR/priv/plts/.keep"
 
 # ---------------------------------------------------------------------------
+# Phase 3b: ensure codegen/pitches lifecycle dirs exist
+# ---------------------------------------------------------------------------
+echo "[scaffold.sh] ensuring codegen/pitches/{draft,ready,shipped}/ dirs..."
+for _d in draft ready shipped; do
+    mkdir -p "$TARGET_DIR/codegen/pitches/$_d"
+    touch "$TARGET_DIR/codegen/pitches/$_d/.gitkeep"
+done
+
+# ---------------------------------------------------------------------------
 # Phase 4: mise trust
 # ---------------------------------------------------------------------------
 if command -v mise >/dev/null 2>&1; then

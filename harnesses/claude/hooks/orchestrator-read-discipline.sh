@@ -24,6 +24,7 @@
 #   - codegen/rules/INDEX.md, codegen/rules/STYLE_GUIDE.md
 #   - codegen/*.md (top-level design docs — NOT subdirs like recipes/, templates/, rules/)
 #   - codegen/pitches/** (pitch lifecycle dirs — draft/, ready/, shipped/; matches the write-hook surface so /document can read its own drafts)
+#   - codegen/gate-pending/* (gate verdict JSON — orchestrator reads gate result after gate runs)
 #
 # Bash — Denied when command LEADS with: find | grep | rg | ls | tree | cat
 #   Any other Bash (git status/diff, git log, make gate-status, date, cp, log redirects) → allowed.
@@ -75,7 +76,7 @@ if [ "$TOOL_NAME" = "Bash" ]; then
     if printf '%s' "$_cmd" | grep -qE '^[[:space:]]*(find|grep|rg|ls|tree|cat)\b'; then
         # Extract the leading verb for the deny message.
         _verb=$(printf '%s' "$_cmd" | grep -oE '(find|grep|rg|ls|tree|cat)' | head -1 || true)
-        deny "Orchestrator cannot investigate via Bash (\`${_verb}\`). Delegate to Explore subagent or planner.
+        deny "Orchestrator cannot investigate via Bash (\`${_verb}\`). For files you may read directly, use the Read tool; otherwise delegate to planner.
 Example: delegate to planner with 'Find X in lib/...' — planner reads/greps codebase, returns 100-token answer instead of flooding orchestrator context."
     fi
     exit 0
@@ -122,6 +123,11 @@ fi
 # Allowlist check 4: codegen/pitches/ (draft/ready/shipped) — matches the
 # write-hook surface so /document can re-read its own drafts from any session.
 if printf '%s' "$rel_path" | grep -qE '^codegen/pitches/'; then
+    exit 0
+fi
+
+# Allowlist check 5: codegen/gate-pending/ (orchestrator reads gate verdict JSON)
+if printf '%s' "$rel_path" | grep -qE '^codegen/gate-pending/'; then
     exit 0
 fi
 

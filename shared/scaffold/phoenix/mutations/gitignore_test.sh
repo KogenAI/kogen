@@ -42,6 +42,12 @@ sha_after_second="$(shasum "$tmp/.gitignore" | awk '{print $1}')"
 assert "gitignore.sh second invocation is a no-op" '[ "$sha_after_first" = "$sha_after_second" ]'
 rm -rf "$tmp"
 
+# Case 3: gitignore contains /codegen/pitches/ entry
+tmp="$(setup_tmp)"
+"$MUTATION" "$tmp" >/dev/null
+assert ".gitignore has /codegen/pitches/ entry" 'grep -qF "/codegen/pitches/" "$tmp/.gitignore"'
+rm -rf "$tmp"
+
 echo "$passed passed, $failed failed"
 if [ "$failed" -gt 0 ]; then
     printf '%s\n' "${fail_lines[@]}" >&2

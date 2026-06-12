@@ -176,6 +176,14 @@ log_file=$(session_log_from_transcript)
 log_pointer="${log_file:-(no session log written yet)}"
 debug_log claude-cycle-guard "log_pointer=$log_pointer"
 
+# Gate-clear + dirty-tree: block if gate passed but working tree is dirty.
+dt_verdict=$(gate_result_verdict "$project_dir")
+if [ "$dt_verdict" = "clear" ] && [ -n "$(git -C "$project_dir" status --porcelain 2>/dev/null)" ]; then
+    debug_log "stop-cycle-guard: gate=clear but tree dirty — blocking stop"
+    block "Gate passed but the working tree is dirty (uncommitted changes). You MUST NOT end your turn with an uncommitted tree — delegate to committer to commit this step's output before stopping."
+    exit 0
+fi
+
 # Increment counter and emit block.
 count=$((count + 1))
 printf '%s' "$count" >"$counter_file"

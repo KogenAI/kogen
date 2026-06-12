@@ -199,6 +199,17 @@ rm -rf "$TMP_CWD_PC"
 FIXTURE_DESIGN_REG='{"hook_event_name":"PreToolUse","tool_name":"Read","tool_input":{"file_path":"codegen/token-budget-design.md"},"agent_id":"","agent_type":""}'
 run_test "orchestrator Read on codegen/token-budget-design.md still allows (regression guard)" "0" "$FIXTURE_DESIGN_REG"
 
+# Test 36: orchestrator Read on codegen/gate-pending/gate-result.json — ALLOW
+FIXTURE_GATE_PENDING='{"hook_event_name":"PreToolUse","tool_name":"Read","tool_input":{"file_path":"codegen/gate-pending/gate-result.json"},"agent_id":"","agent_type":""}'
+run_test "orchestrator Read on codegen/gate-pending/gate-result.json allows" "0" "$FIXTURE_GATE_PENDING"
+
+# Test 37: orchestrator Read on absolute codegen/gate-pending/ path — ALLOW
+TMP_CWD_GP="$(mktemp -d)"
+ABS_GATE_PENDING="${TMP_CWD_GP}/codegen/gate-pending/gate-result.json"
+FIXTURE_ABS_GATE_PENDING='{"hook_event_name":"PreToolUse","tool_name":"Read","tool_input":{"file_path":"'"$ABS_GATE_PENDING"'"},"agent_id":"","agent_type":"","cwd":"'"$TMP_CWD_GP"'"}'
+run_test "orchestrator Read on absolute codegen/gate-pending/ path allows" "0" "$FIXTURE_ABS_GATE_PENDING"
+rm -rf "$TMP_CWD_GP"
+
 # ── Bash gate tests ──────────────────────────────────────────────────────────
 
 # Test B1: orchestrator Bash grep -rn — DENY

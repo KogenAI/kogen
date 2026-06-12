@@ -363,6 +363,67 @@ run_test "developer_gate_result_inconclusive: developer + gate-result=inconclusi
     "allow" "$INPUT19" "$AGENT_ENTRY_DEVELOPER"
 rm -rf "$tmp19"
 
+# --- Test 20: Gate=clear + dirty tree → BLOCK with "tree is dirty" reason ---
+rm -f "/tmp/claude-cycle-guard-test-sess-20.count"
+tmp20=$(mktemp -d)
+mkdir -p "$tmp20/codegen/logging" "$tmp20/codegen/gate-pending"
+printf '# Session Log\n## dev-gate Section\nALL CLEAR ✅\n' \
+    >"$tmp20/codegen/logging/test_session.md"
+printf '{"verdict":"clear","gate":"make test","mode":"short"}\n' \
+    >"$tmp20/codegen/gate-pending/gate-result.json"
+# Init a real git repo so git status --porcelain works.
+git -C "$tmp20" init -q 2>/dev/null
+# Add an untracked file to make the tree dirty.
+printf 'dirty\n' >"$tmp20/untracked-file.txt"
+{
+    printf '%s\n' "$AGENT_ENTRY_DEVELOPER"
+    printf '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Write","input":{"file_path":"%s/codegen/logging/test_session.md"}}]}}\n' "$tmp20"
+} >"$tmp20/transcript.jsonl"
+INPUT20=$(make_input "$tmp20/transcript.jsonl" "$tmp20" "false" "Done." "test-sess-20")
+stdout20=$(printf '%s' "$INPUT20" | bash "$GUARD" 2>/dev/null || true)
+if printf '%s' "$stdout20" | grep -q '"decision"[[:space:]]*:[[:space:]]*"block"' &&
+    printf '%s' "$stdout20" | grep -q 'tree is dirty'; then
+    [ -n "${VERBOSE:-}" ] && printf 'PASS: dirty_tree_gate_clear: gate=clear + dirty tree → block with dirty-tree reason\n'
+    pass=$((pass + 1))
+else
+    printf 'FAIL: dirty_tree_gate_clear: expected block with "tree is dirty" in reason\n  stdout: %s\n' "$stdout20"
+    fail=$((fail + 1))
+fi
+rm -rf "$tmp20"
+
+# --- Test 21: Gate=clear + clean tree → BLOCK for mid-cycle reason (NOT dirty-tree) ---
+rm -f "/tmp/claude-cycle-guard-test-sess-21.count"
+tmp21=$(mktemp -d)
+mkdir -p "$tmp21/codegen/logging" "$tmp21/codegen/gate-pending"
+printf '# Session Log\n## dev-gate Section\nALL CLEAR ✅\n' \
+    >"$tmp21/codegen/logging/test_session.md"
+printf '{"verdict":"clear","gate":"make test","mode":"short"}\n' \
+    >"$tmp21/codegen/gate-pending/gate-result.json"
+# Init a real git repo and commit all fixture files so the tree is clean.
+git -C "$tmp21" init -q 2>/dev/null
+git -C "$tmp21" config user.email "test@test.com" 2>/dev/null
+git -C "$tmp21" config user.name "Test" 2>/dev/null
+git -C "$tmp21" add -A 2>/dev/null
+git -C "$tmp21" commit -q -m "fixture" 2>/dev/null
+# Write transcript AFTER commit so it's a new untracked file — but then add+commit it too.
+{
+    printf '%s\n' "$AGENT_ENTRY_DEVELOPER"
+    printf '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Write","input":{"file_path":"%s/codegen/logging/test_session.md"}}]}}\n' "$tmp21"
+} >"$tmp21/transcript.jsonl"
+git -C "$tmp21" add -A 2>/dev/null
+git -C "$tmp21" commit -q -m "transcript" 2>/dev/null
+INPUT21=$(make_input "$tmp21/transcript.jsonl" "$tmp21" "false" "Done." "test-sess-21")
+stdout21=$(printf '%s' "$INPUT21" | bash "$GUARD" 2>/dev/null || true)
+if printf '%s' "$stdout21" | grep -q '"decision"[[:space:]]*:[[:space:]]*"block"' &&
+    ! printf '%s' "$stdout21" | grep -q 'tree is dirty'; then
+    [ -n "${VERBOSE:-}" ] && printf 'PASS: clean_tree_gate_clear: gate=clear + clean tree → block (mid-cycle), no dirty-tree reason\n'
+    pass=$((pass + 1))
+else
+    printf 'FAIL: clean_tree_gate_clear: expected block without "tree is dirty" in reason\n  stdout: %s\n' "$stdout21"
+    fail=$((fail + 1))
+fi
+rm -rf "$tmp21"
+
 echo ""
 echo "Results: $pass passed, $fail failed"
 
