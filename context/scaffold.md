@@ -259,31 +259,31 @@ The fixture `test_harness/mutations/fixtures/phx_new_skeleton/` must stay in syn
 
 `shared/scaffold/phoenix/mutations/credo_fix.sh` patches FIX-bucket phx.new files to pass credo checks post-generation.
 
-### Credo Strategy: Config-Relaxation for phx.new Boilerplate & LiveView
+### Credo Strategy: Config-Relaxation for phx.new Boilerplate
 
-The scaffold-owned `.credo.exs` (rendered from `templates/.credo.exs.eex`) uses **file exclusions** to suppress inappropriate checks on phx.new framework-boilerplate files and LLM-generated LiveViews. This is the repo-idiomatic approach: `.credo.exs.eex` already excludes `endpoint/telemetry/application/release/data_case/conn_case/channel_case` from `Specs/AliasOrder/ImportOrder/UnusedVariableNames`; the six phx.new boilerplate files extend the same lists. Additionally, **`*_live.ex` files (scaffolded LiveViews) are excluded from three specific checks** that create dev↔review cycles when LLMs generate LiveView callbacks.
+The scaffold-owned `.credo.exs` (rendered from `templates/.credo.exs.eex`) uses **file exclusions** to suppress inappropriate checks on phx.new framework-boilerplate files. This is the repo-idiomatic approach: `.credo.exs.eex` excludes `endpoint/telemetry/application/release/data_case/conn_case/channel_case` from `Specs/AliasOrder/ImportOrder/UnusedVariableNames`; the six phx.new boilerplate files extend the same lists.
 
-**Why config-exclusion, not @spec injection**: phx.new macro functions (e.g. `<app>_web.ex` router/controller/live_view helpers) return `quote do ... end` — a meaningful spec would be `Macro.t()`, which is boilerplate. Controllers (error_html, error_json, page_controller) are phx.new-owned and change per Phoenix release. Injecting @spec is version-brittle; config exclusion is stable and declarative. Similarly, LiveView callbacks are framework-generated; injecting @spec on public callbacks creates churn loops.
+**The three `_live.ex` exclusions have been removed.** LiveView modules are held to full strict Credo. The prior exclusion of `*_live.ex` from `Readability.Specs`, `Refactor.VariableRebinding`, and `Consistency.UnusedVariableNames` was a misdiagnosis:
+
+- **`Readability.Specs`** already exempts `@impl` callbacks by design — no `@spec` is expected on `mount/3`, `handle_event/3`, etc. The churn loop was phantom.
+- **`Refactor.VariableRebinding`** is satisfiable: use `then/2` pipeline pattern for socket rebinding in LiveView code, same as any other module.
+- **`Consistency.UnusedVariableNames`**: the real ambiguity was which mode (`meaningful` vs `with_value` vs `prefix_only`) to enforce. Resolved by pinning `force: :meaningful` — deterministic and matches the `_view/_html` idiom used in the codebase.
+
+With `force: :meaningful`, `UnusedVariableNames` is deterministic: variables that carry no semantic meaning (bare `_`) are allowed; variables prefixed with `_` that carry a name (e.g., `_socket`, `_params`) are treated as intentionally named. This matches the codebase idiom and avoids false-positive churn without LiveView-specific exclusions.
+
+**Why config-exclusion, not @spec injection**: phx.new macro functions (e.g. `<app>_web.ex` router/controller/live_view helpers) return `quote do ... end` — a meaningful spec would be `Macro.t()`, which is boilerplate. Controllers (error_html, error_json, page_controller) are phx.new-owned and change per Phoenix release. Injecting @spec is version-brittle; config exclusion is stable and declarative.
 
 **Excluded files per check** (defined in `templates/.credo.exs.eex`):
 
-| Check                                                 | Files excluded (phx.new boilerplate + LiveViews)                                                                   |
-| ----------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
-| `Credo.Check.Readability.Specs`                       | `*_live.ex`, `_web.ex`, `page_controller.ex`, `error_html.ex`, `error_json.ex`, `core_components.ex`, `layouts.ex` |
-| `Credo.Check.Readability.AliasOrder`                  | `_web.ex`                                                                                                          |
-| `OptimumCredo.Check.Readability.ImportOrder`          | `_web.ex`                                                                                                          |
-| `OptimumCredo.Check.Readability.ExtractableSpecTypes` | `page_controller.ex`, `error_html.ex`, `error_json.ex`                                                             |
-| `Credo.Check.Consistency.UnusedVariableNames`         | `*_live.ex`, `core_components.ex`                                                                                  |
-| `Credo.Check.Refactor.VariableRebinding`              | `*_live.ex`                                                                                                        |
-| `Credo.Check.Design.AliasUsage`                       | `_web.ex`, `core_components.ex`                                                                                    |
-
-**LiveView exclusion rationale** (lines 258-276 in `.credo.exs.eex`):
-
-- **`Readability.Specs`**: LiveView callbacks (mount/handle_event/handle_info/render) are all public and framework-generated. Demanding `@spec` on every callback creates dev↔LLM-review churn when the framework rules forbid @spec on `@impl` fns and `defp` helpers — the LLM oscillates between satisfying Specs and following the rules. Excluding `*_live.ex` breaks the cycle while preserving the check elsewhere.
-- **`Refactor.VariableRebinding`**: Idiomatic LiveView code rebinds `socket` across pipeline steps (e.g., `socket = socket |> assign(...); socket = if condition do ... else ... end`). The check flags this pattern as a violation, but it is the natural socket-threading style in LiveView. Converting to a single `then/2`-based pipeline is more verbose and less readable. Excluding `*_live.ex` preserves the check for contexts/schemas where variable rebinding is genuinely an issue.
-- **`Consistency.UnusedVariableNames`**: LiveView handle methods often use `_`-prefixed bindings (e.g., `{:ok, _}` in pattern matches) which are framework-idiomatic. Excluding `*_live.ex` avoids false-positive churn on intentionally-unused variables.
-
-All three exclusions use the **suffix-anchor pattern** `~r"_live\.ex$"` to match `lib/<app>_web/live/*.ex` (any file ending in `_live.ex`). This matches existing `.credo.exs` convention: all per-file exclusions use filename-suffix anchors (`~r"_web\.ex$"`, `~r"core_components\.ex$"`) rather than path anchors, ensuring portability if LiveViews live outside the default directory structure.
+| Check                                                 | Files excluded (phx.new boilerplate)                                                                  |
+| ----------------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
+| `Credo.Check.Readability.Specs`                       | `_web.ex`, `page_controller.ex`, `error_html.ex`, `error_json.ex`, `core_components.ex`, `layouts.ex` |
+| `Credo.Check.Readability.AliasOrder`                  | `_web.ex`                                                                                             |
+| `OptimumCredo.Check.Readability.ImportOrder`          | `_web.ex`                                                                                             |
+| `OptimumCredo.Check.Readability.ExtractableSpecTypes` | `page_controller.ex`, `error_html.ex`, `error_json.ex`                                                |
+| `Credo.Check.Consistency.UnusedVariableNames`         | `core_components.ex` (plus `force: :meaningful` for all files)                                        |
+| `Credo.Check.Refactor.VariableRebinding`              | (none — applies to all files including LiveViews)                                                     |
+| `Credo.Check.Design.AliasUsage`                       | `_web.ex`, `core_components.ex`                                                                       |
 
 `~r"_web\.ex$"` matches only `lib/<app>_web.ex` (top-level), not `lib/<app>_web/...` subdirectory files. The existing `channel_case/conn_case/data_case` anchors in each check are preserved — `data_case.sh` mutation anchors on `~r"/channel_case\.ex$"` in `ImportOrder`.
 

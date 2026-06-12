@@ -217,9 +217,9 @@
           #
           {Credo.Check.Consistency.MultiAliasImportRequireUse, []},
           {Credo.Check.Consistency.UnusedVariableNames, [
+            force: :meaningful,
             files: %{
               excluded: [
-                ~r"_live\.ex$",
                 ~r"/components/core_components\.ex$",
                 ~r"/release\.ex$",
                 ~r"/data_case\.ex$",
@@ -259,7 +259,6 @@
           {Credo.Check.Readability.Specs, [
             files: %{
               excluded: [
-                ~r"_live\.ex$",
                 ~r"_web\.ex$",
                 ~r"/controllers/page_controller\.ex$",
                 ~r"/controllers/error_html\.ex$",
@@ -303,7 +302,7 @@
           ]},
           {Credo.Check.Refactor.PipeChainStart, []},
           {Credo.Check.Refactor.RejectFilter, []},
-          {Credo.Check.Refactor.VariableRebinding, [files: %{excluded: [~r"_live\.ex$"]}]},
+          {Credo.Check.Refactor.VariableRebinding, []},
           {Credo.Check.Warning.LeakyEnvironment, []},
           {Credo.Check.Warning.MapGetUnsafePass, []},
           {Credo.Check.Warning.MixEnv, []},

@@ -76,18 +76,6 @@ socket =
 
 This pattern is already idiomatic in the codebase and preserves full readability.
 
-**In LiveView modules** (`*_live.ex` files), socket rebinding is the idiomatic style and should not be refactored. LiveView handle callbacks naturally pipeline socket state across multiple steps, and forcing single-assignment via `then/2` produces unnecessarily verbose code. **The `.credo.exs` template automatically excludes all `*_live.ex` files from `Refactor.VariableRebinding`**, allowing natural LiveView code patterns without LLM↔reviewer churn. Do not override this exclusion or attempt to hand-rewrite LiveView socket chains into `then/2` form.
-
-## Three-Check LiveView Exclusion Loop
-
-Three Credo checks create a dev↔LLM-review churn cycle when LLMs generate LiveView code:
-
-1. **`Readability.Specs`** — Every public function needs `@spec`, but the rule forbids `@spec` on `@impl` fns and `defp` helpers. LiveView callbacks are all public and framework-generated, causing the LLM to oscillate between satisfying Specs and following the rules.
-2. **`Refactor.VariableRebinding`** — Flags socket rebinding across pipeline steps, which is idiomatic LiveView. The LLM alternates between natural socket-threading and verbose `then/2` refactors.
-3. **`Consistency.UnusedVariableNames`** — Flags `_`-prefixed bindings, which are framework-idiomatic in LiveView pattern matches (e.g., `{:ok, _}`). The LLM rewrites to avoid the underscore, then the reviewer rewrites back.
-
-**Solution**: The `.credo.exs` template (rendered at scaffold time) automatically excludes all `*_live.ex` files from these three checks. Do NOT attempt to hand-satisfy them in LiveView code — the exclusion is intentional and breaks the churn loop. The three checks remain active everywhere else (contexts, schemas, regular modules) where they provide genuine value.
-
 ## Cleanup
 
 Remove generator file → check source first:

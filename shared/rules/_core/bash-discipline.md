@@ -312,7 +312,7 @@ EOF
 
 ## Grep / Eval Quoting Pitfall
 
-**`grep -qF` assertions inside `eval` strings lose quoting at shell boundary.** Inner double-quotes close the outer `eval` string, silently changing what is matched.
+**`grep` assertions inside `eval` strings double-collapse backslashes at the shell boundary, corrupting regex escapes.** Inner double-quotes close the outer `eval` string, silently changing what is matched. When the condition string uses `-q "pattern"` with backslash escapes (e.g., `\.` for a literal dot), the eval re-parses the string and collapses `\.` to `.`, breaking the regex.
 
 Example: asserting `test: ["test"]` inside eval:
 
@@ -323,14 +323,32 @@ eval "$assert_condition file"
 # → shell expands to: grep -qF test: [ (unquoted) file
 # → matches wrong pattern or fails to parse
 
-# CORRECT: single-quoted outer string + ERE-escaped pattern
+# WRONG: escape collapses under eval re-parse
+assert_condition='grep -q "pattern\\.ext"'
+eval "$assert_condition file"
+# → first shell parse: grep -q "pattern\.ext"
+# → eval re-parses: grep -q pattern.ext (no escape)
+# → matches "pattern<any-char>ext", not "pattern.ext"
+
+# CORRECT: single-quoted outer string + fixed-string grep -F
+assert_condition='grep -qF "literal_token_with_dots.ext"'
+eval "$assert_condition file"
+# → -F treats pattern as literal; eval boundary is single-quoted, no re-parse
+
+# ALSO CORRECT: single-quoted outer string + ERE-escaped pattern (for regex)
 assert_condition='grep -q "test: \[\"test\"\]"'
 eval "$assert_condition file"
 # → shell expands to: grep -q "test: \[\"test\"\]" file
 # → grep receives literal brackets + quotes intact
 ```
 
-**Rule of thumb**: When passing `grep` assertions through `eval`, use single quotes for the outer string and ERE-escape `[`, `]`, `"` characters. Verify by printing the eval statement before running it.
+**Rule of thumb**: When passing `grep` assertions through `eval`:
+
+1. Prefer `grep -F` (fixed-string) for literal token checks — avoids regex escaping confusion entirely.
+2. If regex is needed, use single quotes for the outer string and ERE-escape `[`, `]`, `"` characters.
+3. Verify by printing the eval statement before running it.
+
+Pattern discovered in test-script `assert` helpers (e.g., `credo_live_strict_test.sh`) where `grep -q "pattern\\.token"` inside eval collapses to non-matching regex. Switching to `grep -qF` for fixed-string assertions eliminates the pitfall.
 
 ## Renderer-Neutral Regex Tokens in enforcement_compiler.py
 
