@@ -8,6 +8,11 @@ Phoenix-specific checks layered onto reviewer 15-step process.
 - **9 Type/Spec Duplication**: type 2+ times in `@spec` → `@type`. Test modules explicit `async: true/false`.
 - **10 Cleanliness**: `assert.*!= nil` (use `assert .id`), `@spec` on `defp`
 - **11 Stack Patterns**: verified routes `~p"/path/#{id}"`. Component attrs alphabetical.
+- **11 LiveView Correctness** (changed `.heex` / `*_live.ex`):
+  1. **Form events** — `phx-change`, `phx-submit`, `phx-keyup`/`phx-keydown` INTENDED as form input: require a `<.form>`/`<form>` ancestor. Carve-out: bare `phx-keyup`+`phx-key` (deliberate keystroke binding outside a form) is LEGITIMATE — flag intent-mismatch, not mere ancestor absence.
+  2. **Child LiveView nesting** — `live_render` of a child LiveView without `layout: false` causes double-layout render; flag if absent.
+  3. **Autofocus** — keyboard-first overlay/modal input with no `phx-mounted={JS.focus()}` or `mounted()` hook; flag if absent.
+  4. **Cursor** — interactive element (`<.link>`, `phx-click` row, button-styled `<div>`) without `cursor-pointer` (Tailwind preflight resets to `cursor: default`); flag if absent.
 - **14 Deployment**: GitHub workflows edit `.github/github_workflows.ex` → `mix github_workflows.generate`. Never `.yml` directly.
 - **15 Translation**: empty `msgstr ""` in `en/*.po` is CORRECT (Gettext fallback). Flag only non-English locales.
 

@@ -71,6 +71,27 @@ assert_contains \
     "$CODEGEN_DIR/shared/rules/stacks/phoenix/_core.md" \
     "phx-mounted={JS.focus()}"
 
+# ── Tests 9-12: LiveView correctness checklist in phoenix reviewer.md ─────────
+assert_contains \
+    "LiveView correctness: form events" \
+    "$CODEGEN_DIR/shared/rules/stacks/phoenix/reviewer.md" \
+    "require a \`<.form>\`/\`<form>\` ancestor"
+
+assert_contains \
+    "LiveView correctness: double-layout render" \
+    "$CODEGEN_DIR/shared/rules/stacks/phoenix/reviewer.md" \
+    "causes double-layout render"
+
+assert_contains \
+    "LiveView correctness: autofocus" \
+    "$CODEGEN_DIR/shared/rules/stacks/phoenix/reviewer.md" \
+    "keyboard-first overlay/modal input"
+
+assert_contains \
+    "LiveView correctness: cursor" \
+    "$CODEGEN_DIR/shared/rules/stacks/phoenix/reviewer.md" \
+    "Tailwind preflight resets to"
+
 echo ""
 echo "Results: $pass passed, $fail failed"
 
