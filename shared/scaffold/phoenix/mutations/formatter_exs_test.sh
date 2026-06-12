@@ -53,6 +53,33 @@ assert "formatter_exs missing anchor exits 1" '[ "$missing_anchor_exit" -eq 1 ]'
 assert "formatter_exs missing anchor emits ERROR message" 'echo "$missing_anchor_out" | grep -qi "ERROR\|post-condition\|DoctestFormatter"'
 rm -rf "$tmp"
 
+# Case 4: --no-ecto strips :ecto and :ecto_sql from import_deps
+tmp="$(setup_tmp)"
+"$MUTATION" "$tmp" --no-ecto >/dev/null
+assert "--no-ecto: :ecto atom removed from import_deps" \
+    '! grep -qE ":(ecto|ecto_sql)" "$tmp/.formatter.exs"'
+assert "--no-ecto: :phoenix atom retained" \
+    'grep -qF ":phoenix" "$tmp/.formatter.exs"'
+assert "--no-ecto: DoctestFormatter still added" \
+    'grep -qF "DoctestFormatter" "$tmp/.formatter.exs"'
+rm -rf "$tmp"
+
+# Case 5: --no-ecto removes the migrations subdirectory line
+tmp="$(setup_tmp)"
+"$MUTATION" "$tmp" --no-ecto >/dev/null
+assert "--no-ecto: migrations subdirectory line removed" \
+    '! grep -q "subdirectories.*migrations" "$tmp/.formatter.exs"'
+rm -rf "$tmp"
+
+# Case 6: without --no-ecto, ecto atoms are retained
+tmp="$(setup_tmp)"
+"$MUTATION" "$tmp" >/dev/null
+assert "without --no-ecto: :ecto_sql retained" \
+    'grep -qF ":ecto_sql" "$tmp/.formatter.exs"'
+assert "without --no-ecto: migrations subdirectory retained" \
+    'grep -q "subdirectories.*migrations" "$tmp/.formatter.exs"'
+rm -rf "$tmp"
+
 echo "$passed passed, $failed failed"
 if [ "$failed" -gt 0 ]; then
     printf '%s\n' "${fail_lines[@]}" >&2

@@ -211,8 +211,7 @@ if command -v npm &>/dev/null && (cd "$CODEGEN_DIR" && npm list playwright >/dev
     if (cd "$CODEGEN_DIR" && npx playwright install chromium) 2>&1; then
         echo "   ✅ Chromium browser binary installed"
     else
-        echo "❌ Failed to install Chromium. Static-site builds require Chromium." >&2
-        exit 1
+        echo "   ⚠️  Chromium install failed — static-site render gate will warn until installed manually. Run: npx playwright install chromium" >&2
     fi
 else
     echo "   ⚠️  Skipping Chromium install (playwright not present; non-static install)"

@@ -13,6 +13,6 @@ defmodule FixtureAppWeb.Router do
   scope "/", FixtureAppWeb do
     pipe_through :browser
 
-    live "/", FixtureAppLive, :index
+    get "/", PageController, :home
   end
 end

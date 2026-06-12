@@ -15,6 +15,18 @@ The codegen repo is a Bash + Python + TypeScript + Elixir toolchain. Primary dev
 - **Mix/Elixir**: ExCoveralls in `test_harness/mix.exs` uses `cli/0 [preferred_envs: ...]` (Mix 1.19+), not deprecated `preferred_cli_env` in `project/0`.
 - **Pi launcher patterns**: Shape mode produces draft pitches (not committed changes per system-prompt contract). Mode launchers: `claude-shape` uses basename resolver in pwd (stub pitch must pre-exist); `pi-shape` accepts raw prompts. Extension loading: `--no-extensions` flag silences global extension version conflicts (use before explicit `--extension` paths).
 
+## Gate Terminology Clarification
+
+**`make ci`** in a codegen scaffold context is the DOWNSTREAM generated app's gate — not the codegen repo's own gate. `scaffold.sh` runs `make ci` on the generated app's output to validate the scaffold produced a compilable, testable structure.
+
+**THIS REPO's gate** is `make test` (codegen self-test: hook parity, generator tests, hermetic ExUnit). The codegen Makefile has no `make ci` target; CI validation is downstream-only.
+
+**`make test-stacks`** (slow, real LLM) validates full stack output including the downstream `make ci` gate. The distinction:
+
+- `make test` — codegen repo self-checks (fast, hermetic)
+- `make test-stacks` — full end-to-end with real LLM + downstream-app `make ci` validation (slow)
+- Downstream `make ci` — generated app's gate (called by scaffold.sh, not codegen repo itself)
+
 ## Make Targets (Index)
 
 One-liner per target — for test target semantics see `context/test-harness.md`; for hook-parity semantics see `context/hooks.md`.

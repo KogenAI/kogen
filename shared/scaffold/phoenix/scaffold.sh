@@ -249,7 +249,9 @@ EXTRA_FLAGS=()
 bash "$MUTATIONS_DIR/mix_exs.sh" "$TARGET_DIR" "$APP_NAME" "$APP_NAME_MODULE" "${EXTRA_FLAGS[@]+"${EXTRA_FLAGS[@]}"}"
 bash "$MUTATIONS_DIR/config_exs.sh" "$TARGET_DIR"
 bash "$MUTATIONS_DIR/prod_exs.sh" "$TARGET_DIR"
-bash "$MUTATIONS_DIR/formatter_exs.sh" "$TARGET_DIR"
+FORMATTER_FLAGS=()
+[[ -n "$NO_ECTO" ]] && FORMATTER_FLAGS+=(--no-ecto)
+bash "$MUTATIONS_DIR/formatter_exs.sh" "$TARGET_DIR" "${FORMATTER_FLAGS[@]+"${FORMATTER_FLAGS[@]}"}"
 bash "$MUTATIONS_DIR/gitignore.sh" "$TARGET_DIR"
 bash "$MUTATIONS_DIR/router.sh" "$TARGET_DIR" "$APP_NAME_MODULE"
 bash "$MUTATIONS_DIR/endpoint.sh" "$TARGET_DIR" "$APP_NAME"
@@ -290,6 +292,13 @@ echo "[scaffold.sh] running mix format (best-effort)..."
 echo "[scaffold.sh] generating releases..."
 (cd "$TARGET_DIR" && mix phx.gen.release) || echo "[scaffold.sh] WARN: mix phx.gen.release failed — skipping" >&2
 
+# Under --no-ecto, remove the migrate overlay that phx.gen.release emits unconditionally.
+# The overlay calls <App>.Release.migrate/0 which phx.new --no-ecto omits → broken release overlay.
+if [[ -n "$NO_ECTO" ]]; then
+    rm -f "$TARGET_DIR/rel/overlays/bin/migrate"
+    rm -f "$TARGET_DIR/rel/overlays/bin/migrate.bat"
+fi
+
 echo "[scaffold.sh] adding optimum_templates submodule..."
 (cd "$TARGET_DIR" && git submodule add https://github.com/optimumBA/optimum_templates priv/templates) ||
     echo "[scaffold.sh] WARN: optimum_templates submodule add failed — add manually" >&2
@@ -297,6 +306,13 @@ echo "[scaffold.sh] adding optimum_templates submodule..."
 # Check mcp-proxy availability
 if ! command -v mcp-proxy >/dev/null 2>&1; then
     echo "[scaffold.sh] WARN: mcp-proxy not found — Tidewave MCP disabled. Install: npm install -g mcp-proxy" >&2
+fi
+
+# Under --no-ecto, strip Ecto-family lock entries from mix.lock.
+# phx.new --no-ecto never adds ecto/ecto_sql/postgrex/phoenix_ecto/db_connection/decimal deps,
+# but mix phx.gen.release can leave residue. Strip is belt-and-suspenders + ensures clean lock.
+if [[ -n "$NO_ECTO" ]] && [[ -f "$TARGET_DIR/mix.lock" ]]; then
+    grep -vE '"(ecto|ecto_sql|postgrex|phoenix_ecto|db_connection|decimal)":' "$TARGET_DIR/mix.lock" >"$TARGET_DIR/mix.lock.tmp" && mv "$TARGET_DIR/mix.lock.tmp" "$TARGET_DIR/mix.lock"
 fi
 
 # ---------------------------------------------------------------------------
@@ -314,15 +330,11 @@ echo "[scaffold.sh] running npx prettier --write ."
     exit 1
 }
 
-if [[ -z "$NO_ECTO" ]]; then
-    echo "[scaffold.sh] running make ci..."
-    (cd "$TARGET_DIR" && make ci) || {
-        echo "[scaffold.sh] ERROR: make ci failed" >&2
-        exit 1
-    }
-else
-    echo "[scaffold.sh] skipping make ci (--no-ecto, DB not available)"
-fi
+echo "[scaffold.sh] running make ci..."
+(cd "$TARGET_DIR" && make ci) || {
+    echo "[scaffold.sh] ERROR: make ci failed" >&2
+    exit 1
+}
 
 # ---------------------------------------------------------------------------
 # Phase 8: git commit — owned by codegen-scaffold (runs after integrate stage)

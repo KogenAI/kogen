@@ -41,8 +41,14 @@ with open(router_path, 'r') as f:
 # Find the scope "/" block and insert health route before the closing `end`
 # Pattern: scope "/" block contains `pipe_through :browser`
 # Insert health_route before the `end` that closes the first scope block
+def strip_page_controller_routes(lines):
+    """Remove any line containing PageController (e.g. get "/", PageController, :home)."""
+    return [l for l in lines if 'PageController' not in l]
+
 def insert_health_route(content, health_route):
     lines = content.split('\n')
+    # Strip dangling PageController default route (phx.new default — controller deleted by scaffold)
+    lines = strip_page_controller_routes(lines)
     # Find the scope "/" line
     scope_idx = None
     for i, line in enumerate(lines):
@@ -91,6 +97,12 @@ fi
 # Post-condition: health route must be present
 if ! grep -qF 'HealthController' "$ROUTER"; then
     echo "[router.sh] FAILED: /health route not inserted" >&2
+    exit 1
+fi
+
+# Post-condition: no dangling PageController route remains (controller was deleted by scaffold)
+if grep -qF 'PageController' "$ROUTER"; then
+    echo "[router.sh] FAILED: PageController route remains after strip" >&2
     exit 1
 fi
 

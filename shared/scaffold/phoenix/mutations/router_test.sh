@@ -56,6 +56,26 @@ assert "fallback-find: HealthController route added when router at non-standard 
     'grep -qF "HealthController" "$tmp/lib/other_app_web/router.ex"'
 rm -rf "$tmp"
 
+# Case 4: PageController route stripped (phx.new default — controller deleted by scaffold)
+# Fixture already contains `get "/", PageController, :home`; verify it is removed after mutation
+tmp="$(setup_tmp)"
+"$MUTATION" "$tmp" FixtureApp >/dev/null
+assert "router.sh strips PageController route" \
+    '! grep -qF "PageController" "$tmp/lib/fixture_app_web/router.ex"'
+assert "router.sh retains HealthController after stripping PageController" \
+    'grep -qF "HealthController" "$tmp/lib/fixture_app_web/router.ex"'
+rm -rf "$tmp"
+
+# Case 5: idempotent when PageController already absent (second run does not error)
+tmp="$(setup_tmp)"
+"$MUTATION" "$tmp" FixtureApp >/dev/null
+sha_first="$(shasum "$tmp/lib/fixture_app_web/router.ex" | awk '{print $1}')"
+"$MUTATION" "$tmp" FixtureApp >/dev/null
+sha_second="$(shasum "$tmp/lib/fixture_app_web/router.ex" | awk '{print $1}')"
+assert "router.sh is idempotent when PageController already absent" \
+    '[ "$sha_first" = "$sha_second" ]'
+rm -rf "$tmp"
+
 echo "$passed passed, $failed failed"
 if [ "$failed" -gt 0 ]; then
     printf '%s\n' "${fail_lines[@]}" >&2

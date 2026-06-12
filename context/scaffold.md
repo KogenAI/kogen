@@ -255,6 +255,22 @@ The fixture `test_harness/mutations/fixtures/phx_new_skeleton/` must stay in syn
 
 **Gate impact**: Fixture changes perturb `make test` (mutation unit tests run vs this fixture via Makefile:123). Highest gate risk if fixture drifts.
 
+## Mutation Flag Discipline
+
+Mutation scripts are invoked from `scaffold.sh` Phase 2 with conditional flags. Each mutation MUST only accept the flags it understands:
+
+- `formatter_exs.sh` — accepts `--no-ecto` flag only. Passing broader `EXTRA_FLAGS` (e.g., `--with-appsignal`, `--github-url`) causes exit 1.
+- Pattern: use scoped flag variables (e.g., `FORMATTER_FLAGS`) rather than forwarding the full `EXTRA_FLAGS` array.
+- Wire at call site: `scaffold.sh:252` passes `formatter_exs.sh` with `--no-ecto` only when `NO_ECTO` is set, using the `FORMATTER_FLAGS[@]` idiom.
+
+This prevents mutations from failing when they encounter unrecognized flags intended for other scripts.
+
+## Guard Test Discovery
+
+Bash unit tests for mutations are auto-discovered by `shared/scaffold/phoenix/run-tests.sh`, which globs `mutations/*_test.sh` (plus `eex_render_test.sh`). A NEW guard test MUST land under `mutations/` to be picked up by the `make test` gate (`Makefile:166`, `scaffold-phoenix` parallel job).
+
+Inline `--no-ecto` cleanup blocks in `scaffold.sh` (mix.lock strip, migrate-overlay delete) are NOT bash-unit-testable because mix.lock + rel/overlays don't exist until AFTER Phase 6 phx.gen.release. Their coverage rides the slow `no_ecto_scaffold_test.exs` (`make test-stacks`), not the fast gate.
+
 ## Credo Violations Cleanup
 
 `shared/scaffold/phoenix/mutations/credo_fix.sh` patches FIX-bucket phx.new files to pass credo checks post-generation.
@@ -373,6 +389,28 @@ fi
 
 - Makefile `ecto.rollback` strip: scaffold.sh:187-189
 - Health controller Ecto imports strip: scaffold.sh:196-201
+
+## Router Mutation — PageController Route Stripping
+
+Phoenix's default `mix phx.new` (no `--no-html`) generates:
+
+- `lib/<app>_web/controllers/page_controller.ex`
+- `lib/<app>_web/components/page_html.ex`
+- `lib/<app>_web/router.ex` with route: `get "/", PageController, :home`
+
+The scaffold mutations delete the first two files unconditionally (`router.sh:223-237`). The dangling route referencing the deleted controller must also be stripped, or the compiled app fails dialyzer/typecheck on an undefined module reference.
+
+**Implementation**: `shared/scaffold/phoenix/mutations/router.sh` deletes any `get "/", PageController, :home` root route in the same block that inserts the `/health` endpoint (keeps one owner of router mutations). Post-condition: assert zero `PageController` route lines remain.
+
+This is order-independent (router.sh owns all scope-"/" surgery); idempotent (grep guard skips if already stripped).
+
+## Release Overlay Cleanup on `--no-ecto`
+
+`mix phx.gen.release` generates `rel/overlays/bin/migrate` and `rel/overlays/bin/migrate.bat` unconditionally, even when `mix phx.new --no-ecto` was used (which omits `Release.migrate/0` from `rel/releases.ex`).
+
+A DB-free release omits the `migrate/0` callback, making the overlay broken — invoking `/opt/app/bin/migrate` will fail at runtime. **Solution**: Delete both overlay files under `--no-ecto`. **Timing**: After Phase 6 phx.gen.release (scaffold.sh:291), inline block deletes `rel/overlays/bin/migrate*`.
+
+This is not unit-testable in bash (overlays only exist post-phx.gen.release); coverage rides the slow no-ecto scaffold test.
 
 ## Pitfalls
 
