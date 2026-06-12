@@ -194,7 +194,7 @@ show_workspace_summary() {
     echo "📝 Commands:"
     echo "   Terminal: docker exec -it ocg-${PROJECT_NAME}-${FEATURE_NAME} /bin/bash"
     echo "   Phoenix:  docker exec -it ocg-${PROJECT_NAME}-${FEATURE_NAME} mix phx.server"
-    echo "   Claude:   Run the Claude Code task in Cursor"
+    echo "   Claude:   Run the Claude Code task in your editor"
     echo ""
 }
 

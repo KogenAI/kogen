@@ -15,7 +15,7 @@ codegen/                          ← repo root
 ├── update_ai_tools.sh            ← post-install tool updater
 ├── config.sh                     ← shared env/path config (sourced by all scripts)
 ├── resource_manager.sh           ← installed-artifact tracker
-├── utils.sh                      ← shared bash utilities (OCG_CMD, open_cursor_workspace)
+├── utils.sh                      ← shared bash utilities (OCG_CMD)
 ├── bash_completion.sh            ← shell tab-completion for ocg commands
 ├── Makefile                      ← build surface (install, test, format, doctor…)
 ├── package.json                  ← root npm manifest (prettier only)
@@ -65,7 +65,7 @@ codegen/                          ← repo root
 | `update_ai_tools.sh`  | Updates Claude CLI binary and AI tool deps                                                                    | `make update` / `ocg update`   |
 | `config.sh`           | Defines `CODEGEN_DIR`, `SHARED_DIR`, harness paths, model defaults; sourced by every script                   | All scripts (sourced)          |
 | `resource_manager.sh` | Tracks installed-by-ocg vs pre-existing files; prevents orphaned artifacts on uninstall                       | `install.sh`, `uninstall.sh`   |
-| `utils.sh`            | `OCG_CMD`, `open_cursor_workspace`. Note: `content_stable_cp` lives in `install.sh`, not here.                | Harness launchers, scaffold    |
+| `utils.sh`            | `OCG_CMD`. Note: `content_stable_cp` lives in `install.sh`, not here.                                         | Harness launchers, scaffold    |
 | `bash_completion.sh`  | Tab-completion for `ocg` subcommands; installed into shell profile                                            | Shell (bash/zsh via profile)   |
 
 ---

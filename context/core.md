@@ -25,7 +25,7 @@ Data flow: `manifest.yaml` → `generate.sh` (renders via `process_template.py`)
 | `codegen-call`                                | One-shot structured LLM call binary: requires --harness, --role, --model, --effort, --system-prompt                                            |
 | `config.sh`                                   | Shared env/path config sourced by all scripts                                                                                                  |
 | `resource_manager.sh`                         | Manages port allocation across OCG projects system-wide via ~/.ocg/resources.json                                                              |
-| `utils.sh`                                    | Common bash utilities: OCG_CMD invocation, open_cursor_workspace                                                                               |
+| `utils.sh`                                    | Common bash utilities: OCG_CMD invocation                                                                                                      |
 | `update_ai_tools.sh`                          | Post-install: updates Claude CLI and AI tool deps                                                                                              |
 
 ## Key Paths

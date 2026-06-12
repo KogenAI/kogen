@@ -40,7 +40,7 @@ Three Makefile targets, increasing cost:
 
 - Docker Desktop installed and running (for container mode)
 - Git (`brew install git` / system package manager)
-- Cursor IDE (recommended) or VS Code
+- VS Code or any editor
 - Phoenix/Elixir project
 - mise — tool version manager (`curl https://mise.run | sh`)
 - python3 + pyyaml (`pip3 install --user pyyaml`) — required by generator pipeline
@@ -315,7 +315,7 @@ docker exec -it ocg-myapp-my-feature mix test
 
 ### Container Lifecycle
 
-- Containers start automatically when you open a workspace in Cursor
+- Containers start automatically when you open the workspace startup terminal
 - Containers stop when you close the startup terminal or press Ctrl+C
 - Each workspace has its own container and volumes
 
