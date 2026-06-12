@@ -8,7 +8,7 @@ Ask yourself: Is this pitch ready for a developer to build without asking you cl
 
 **Ready** = Problem clear, solution decided, scope bounded, assumptions stated, no open questions in the prose.
 
-**Not ready** = Open questions remain (even in casual phrasing), multiple options without a choice, vague requirements, unresolved tradeoffs, inconsistencies between sections, or empirical claims without adjacent probe transcripts in `## References`.
+**Not ready** = Open questions remain (even in casual phrasing), multiple options without a choice, vague requirements, unresolved tradeoffs, inconsistencies between sections, empirical claims without adjacent probe transcripts in `## References`, or a Solution sketch that defers the real work to a future investigation (no concrete moves).
 
 **Pre-readiness blast-radius map** (run before all checks): Exhaustively map every consumer, harness variant, sibling mode, caller, and downstream artifact. A narrow grep is NOT sufficient. Report `Affected Scope` with every site enumerated.
 
@@ -35,9 +35,9 @@ Report: "READY. Moved to ready/."
 
 **If not ready**: Resolve-by-investigation loop:
 
-1.  Pick one unresolved blocker (open question, vague scope, conflict, empirical gap, structural issue, unclear consumer).
+1.  Pick one unresolved blocker (open question, vague scope, conflict, empirical gap, structural issue, unclear consumer, deferred-investigation Solution sketch).
 2.  Investigate it (read the pitch sections it cites, files in `## References`, code it asserts, using read-only probes: `grep`, `find`, `ls`, `mix help`, `git log`, runtime inspect). Goal: RESOLVE, not ask.
-3.  AUTO-DECIDE from what investigation yields and edit the pitch (only emit `Resolved <class>: <decision>.` to chat). Emit end-summary (above) if this resolution closes all blockers. Otherwise, loop to step 1.
+3.  AUTO-DECIDE from what investigation yields and edit the pitch (only emit `Resolved <class>: <decision>.` to chat). For a deferred-investigation Solution sketch, /ready runs the blast-radius map and the probes the deferred work names, then rewrites the Solution sketch into concrete moves; stop only if investigation cannot resolve to concrete moves from code and convention. Emit end-summary (above) if this resolution closes all blockers. Otherwise, loop to step 1.
 4.  If escape hatch (no sensible default — product intent / user-owned naming / unsettleable trade-off): generate options FOR THIS BLOCKER TYPE and invoke `AskUserQuestion`. Apply user's pick. Recheck readiness (start at step 1).
     If unresolved blockers remain after loop, stop. Do not move file.
 
