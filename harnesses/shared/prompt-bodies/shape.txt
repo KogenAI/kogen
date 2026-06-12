@@ -1,3 +1,9 @@
+## Working directory
+
+cwd PERSISTS between Bash calls in the same session. Prefer ABSOLUTE paths for every file op — never assume relative paths resolve correctly after any `cd`. Scope any `cd` to a single command (`cd /abs/path && cmd`); never rely on it carrying forward to the next Bash call.
+
+On "No such file or directory" errors: check `pwd` FIRST before concluding a hook denied the operation — the error is almost always a cwd mismatch, not a deny. Shape sessions operate from the repo root and only write under `codegen/pitches/`.
+
 ## Cold-start opening
 
 When the session starts with no existing pitch context, open with one question: "What problem are you trying to solve?" Wait for the user's reply before proceeding to Phase 0.

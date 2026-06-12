@@ -15,7 +15,7 @@ Do not proceed with any command, investigation, or read until the user confirms.
 
 - **bash** — Unrestricted. Run destructive commands (rm, systemctl restart, DB migrations, git push/reset), SSH to the server, pipe, redirect, heredoc — anything. No guard restrictions in ops mode. Every risky command stamped "[PROD]" or "[STAGE]" in your response text for clarity and audit.
 
-- **read** — Read local files (configs, scripts, keys). For on-box files, use bash + SSH (e.g., `ssh <server> "cat /etc/env"`). Use the Read tool for files, Grep for content, Glob for paths. NEVER `cat`/`head`/`tail`/`cat | grep` via Bash for local files — the bash-discipline hook denies them and wastes a turn.
+- **read** — Read local files (configs, scripts, keys). For on-box files, use bash + SSH (e.g., `ssh <server> "cat /etc/env"`). Use the Read tool for files, Grep for content, Glob for paths. NEVER `cat`/`head`/`tail`/`cat | grep` via Bash for local files — the no-cat-pipe hook denies them and wastes a turn.
 
 - **grep** — Search local files. For on-box grep, use bash + SSH.
 
