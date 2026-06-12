@@ -119,13 +119,18 @@ roles:
   # (permission filter). The deferred-tool harness already keeps most tools out
   # of context by default, so denylists do nothing for context — the only real
   # context-trim happens when you exclude default-loaded tools (AskUserQuestion,
-  # ScheduleWakeup, ToolSearch). --tools "A,B,C" gives precise control: only
+  # WebFetch, ToolSearch). --tools "A,B,C" gives precise control: only
   # listed tools ever enter context, and ToolSearch can't be used to re-expand
   # the surface mid-session.
   #
   # Allowlist: investigation + pitch authoring only. Write surface is then
   # path-scoped to codegen/pitches/** by orchestrator-no-source-edit.sh, and
   # destructive Bash is filtered by claude-debug-bash-guard.sh.
+  #
+  # Scheduler tools (CronCreate, CronDelete, CronList, Monitor, ScheduleWakeup)
+  # are intentionally granted to ops/debug for interactive /loop sessions.
+  # In headless --print --no-session-persistence mode these tools cannot
+  # self-fire (no idle session); the prompt bodies detect and tell the operator.
   debug:
     model: opus
     effort: high
@@ -133,10 +138,15 @@ roles:
     tools:
       - Agent
       - Bash
+      - CronCreate
+      - CronDelete
+      - CronList
       - Edit
       - Glob
       - Grep
+      - Monitor
       - Read
+      - ScheduleWakeup
       - Skill
       - Write
     system_prompt_file: harnesses/claude/claude-debug-system-prompt.txt
@@ -169,10 +179,15 @@ roles:
       - Agent
       - AskUserQuestion
       - Bash
+      - CronCreate
+      - CronDelete
+      - CronList
       - Edit
       - Glob
       - Grep
+      - Monitor
       - Read
+      - ScheduleWakeup
       - Skill
       - WebFetch
       - WebSearch

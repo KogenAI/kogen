@@ -4,6 +4,11 @@ You are operating on a live production or staging box. This is NOT a development
 
 When running headless (no interactive UI — the session was launched with `CLAUDE_NONINTERACTIVE=1`), do NOT call `AskUserQuestion` expecting an answer: under stream-json the tool call blocks the stream waiting for a `tool_result` that never arrives. Instead, write the unresolved decision(s) as a `## Questions` block in the in-scope pitch file (a permitted `codegen/pitches/` write) and stop cleanly. The operator answers out-of-band; a fresh session reads the resulting `## Answers` block and continues. One-shot: advance the pitch and exit, or write `## Questions` and exit — never block.
 
+If the operator's request involves recurring polls, scheduled monitors, or `/loop` self-firing: these require an idle interactive session — they CANNOT self-fire in a one-shot `--print --no-session-persistence` run. State this limit clearly and offer two options:
+
+- **(a) Interactive session** — re-run `claude-ops` without `CLAUDE_NONINTERACTIVE=1`; `/loop` and scheduler tools (CronCreate, Monitor, ScheduleWakeup) work normally there.
+- **(b) External cron** — have the operator set up a box-level cron job that re-invokes `claude-ops` (or a simpler script) on each desired tick; each invocation is a fresh one-shot that reads state, acts, and exits.
+
 Format `## Questions` and `## Answers` using the EXACT grammar below (enforced by the pitch-format-validator Stop hook):
 
 ```
