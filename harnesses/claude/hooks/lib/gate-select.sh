@@ -18,7 +18,8 @@
 #   2. Otherwise, project-local config at `<project_dir>/.claude/gate-config.sh`,
 #      sourced for its variables. The config drives a project-specific tree
 #      based on `git diff --name-only origin/main..HEAD`.
-#   3. Otherwise (no config), fall back to `mode=short gate="make test"`.
+#   3. Otherwise (no config), stack-conditional fallback: Phoenix (mix.exs present)
+#      → `gate=make ci mode=short timeout=900`; other → `gate=make test mode=short timeout=0`.
 #
 # Project config contract (`<project_dir>/.claude/gate-config.sh`):
 #
@@ -294,8 +295,12 @@ gate_select_decide() {
     # 2. Project config drives the tree.
     local config="$project_dir/.claude/gate-config.sh"
     if [ ! -f "$config" ]; then
-        # 3. No config — generic fallback.
-        printf 'gate=make test\nmode=short\ntimeout=0\n'
+        # 3. No config — stack-conditional fallback.
+        if [ -f "$project_dir/mix.exs" ]; then
+            printf 'gate=make ci\nmode=short\ntimeout=900\n'
+        else
+            printf 'gate=make test\nmode=short\ntimeout=0\n'
+        fi
         return 0
     fi
 

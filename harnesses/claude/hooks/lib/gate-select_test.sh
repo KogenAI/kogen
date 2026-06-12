@@ -171,13 +171,22 @@ MD
 assert_eq "read_planner_gate: bare + hyphen separator" "make ci" "$(gate_select_read_planner_gate "$TMP")"
 rm -f "$TMP"
 
-# ── No-config fallback ──────────────────────────────────────────────────────
+# ── No-config fallback (non-Phoenix) ────────────────────────────────────────
 T_NOCFG=$(mktemp -d)
 out=$(gate_select_decide "$T_NOCFG")
 assert_eq "no-config fallback gate" "gate=make test" "$(printf '%s' "$out" | sed -n '1p')"
 assert_eq "no-config fallback mode" "mode=short" "$(printf '%s' "$out" | sed -n '2p')"
 assert_eq "no-config fallback timeout" "timeout=0" "$(printf '%s' "$out" | sed -n '3p')"
 rm -rf "$T_NOCFG"
+
+# ── No-config fallback (Phoenix — mix.exs present) ──────────────────────────
+T_NOCFG_PHX=$(mktemp -d)
+touch "$T_NOCFG_PHX/mix.exs"
+out=$(gate_select_decide "$T_NOCFG_PHX")
+assert_eq "no-config phoenix fallback gate" "gate=make ci" "$(printf '%s' "$out" | sed -n '1p')"
+assert_eq "no-config phoenix fallback mode" "mode=short" "$(printf '%s' "$out" | sed -n '2p')"
+assert_eq "no-config phoenix fallback timeout" "timeout=900" "$(printf '%s' "$out" | sed -n '3p')"
+rm -rf "$T_NOCFG_PHX"
 
 # ── Setup helpers ───────────────────────────────────────────────────────────
 make_project() {
