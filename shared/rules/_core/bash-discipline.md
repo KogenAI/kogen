@@ -56,12 +56,31 @@ COMMON_FLAGS=(--dangerously-skip-permissions)
 exec claude "${COMMON_FLAGS[@]+...}" "$MODE_SPECIFIC" ...
 ```
 
-**Empty-array-safe expansion** — under `set -u`, a bare `"${ARR[@]}"` fails if array is unset or empty. Use `"${ARR[@]+"${ARR[@]}"}"` for optional splicing — expands to the array contents if present, or nothing (without error) if empty:
+**Empty-array-safe expansion** — under `set -u`, distinguish two kinds of array operations:
+
+- `${#arr[@]}` (LENGTH) — always safe, returns 0 for empty/unset arrays, never triggers unbound-variable error
+- `"${arr[@]}"` (VALUE) — crashes with "unbound variable" when array is empty/unset under `set -u`
+
+Pattern: guard VALUE expansions with length checks, never use `${arr[@]+"${arr[@]}"}` (shfmt rejects it):
 
 ```bash
-set -u  # bare ${ARR[@]} would error if ARR is unset
-exec cmd "${ARR[@]+"${ARR[@]}"}" other_args  # safe even if ARR=() or unset
+# ✅ CORRECT — explicit length-guard, shfmt-compatible
+if [[ ${#arr[@]} -gt 0 ]]; then
+  for item in "${arr[@]}"; do ...
+fi
+
+# ✅ CORRECT for assignment
+if [[ ${#arr[@]} -gt 0 ]]; then
+  dest=("${arr[@]}")
+else
+  dest=()
+fi
+
+# ❌ WRONG — shfmt rejects "cannot combine multiple parameter expansion operators"
+exec cmd "${arr[@]+"${arr[@]}"}" other_args
 ```
+
+**Why this matters**: The `${arr[@]+"${arr[@]}"}` form looks clever but fails shfmt validation AND is less readable than explicit length-checks. Length-guards make the intent clear: "only iterate/assign if array is non-empty". Reference: `codegen-document` bug-fix commits d26fd54→e70d6d2→dc2adce→0644b49 discovered this pattern when recovering a deleted script.
 
 **`local` keyword in conditional blocks under `set -u`** — `local` in `if`/`elif` body (main script scope, not function) silently fails under `set -u` if the subsequent variable expansion is unbound — produces no output, no error, script continues. Remove `local` keyword; use bare assignment `VAR=value`. Function scope: `local` is safe.
 
@@ -180,6 +199,10 @@ For bash-native key-value accumulation on bash 3.2:
 3. Never rely on `declare -A` in cross-platform scripts.
 
 Reference: `post-developer-format.sh` uses this pattern to filter env vars safely on both macOS and Linux.
+
+**`wait -n` requires bash ≥4.3; macOS system bash is 3.2 and lacks it.** When adding parallelism to codegen scripts that must run on both macOS 3.2 and Linux/mise-managed bash ≥4.3, use `wait "$pid"` in a loop instead of `wait -n`. The `|| true` guard pattern on `wait -n` prevents hard failure (doesn't abort the script) but degrades throttle logic to "launch-all-no-wait" on 3.2 — not a crash, but a correctness gap. Guarantee mise-managed bash ≥4.3 at runtime if `wait -n` is needed, or use the portable loop pattern.
+
+Reference: `codegen-document` (session 20260612_172059) uses `wait -n` with `|| true` guard for max-5 parallelism across dependency doc generation; on macOS system bash 3.2, falls back to launching all jobs immediately without throttling.
 
 ## Post-Condition Assertions in Mutations
 

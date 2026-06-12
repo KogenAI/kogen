@@ -93,6 +93,14 @@ harness:
     pi: { model: openai-codex/gpt-5.5, effort: high }
 
 roles:
+  usage-rules:
+    model: haiku
+    effort: low
+    output_format: text
+    allowed_tools:
+      - Write
+      - WebFetch
+
   build:
     model: haiku
     effort: medium

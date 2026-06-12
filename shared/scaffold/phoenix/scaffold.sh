@@ -296,6 +296,16 @@ echo "[scaffold.sh] running mix format (best-effort)..."
 (cd "$TARGET_DIR" && mix format) || true
 
 # ---------------------------------------------------------------------------
+# Phase 5b: generate missing usage_rules docs (non-fatal)
+# ---------------------------------------------------------------------------
+if command -v codegen-document >/dev/null 2>&1; then
+    echo "[scaffold.sh] generating usage_rules docs for new app deps..."
+    (cd "$TARGET_DIR" && codegen-document) || echo "[scaffold.sh] WARN: codegen-document: doc generation failed (non-fatal)" >&2
+else
+    echo "[scaffold.sh] WARN: codegen-document not on PATH — skipping usage_rules generation" >&2
+fi
+
+# ---------------------------------------------------------------------------
 # Phase 6: releases + optimum_templates submodule
 # ---------------------------------------------------------------------------
 echo "[scaffold.sh] generating releases..."

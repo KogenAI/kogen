@@ -20,6 +20,7 @@ Then targeted test file(s). Dead modules → Credo warnings → wire via `grep -
 
 ## Elixir Codegen Rules
 
+- Add or update a dep → run `codegen-document <dep_name>` to (re)generate its usage_rules doc at the new locked version.
 - Only proper Elixir fns that exist
 - `@spec` on public fns ONLY — NEVER on `defp`
 - Struct type: `@type t :: %__MODULE__{}` — never include keys

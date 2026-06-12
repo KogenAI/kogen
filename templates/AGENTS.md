@@ -127,7 +127,7 @@ Files named `{library_name}-{version}.md`. Large frameworks split into topic fil
 Generate missing:
 
 ```bash
-ocg usage-rules
+codegen-document
 ```
 
 Not needed for: built-in Elixir/Erlang modules, libraries you know well, simple one-function utilities.

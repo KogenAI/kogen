@@ -208,9 +208,10 @@ Each workspace can run in an isolated Docker container with:
 
 ### Tools
 
-- `ocg usage-rules [options]` - Generate usage rules for Elixir dependencies from mix.exs
+- `codegen-document [dep_name]` - Generate usage rules for Elixir dependencies from mix.lock
+  - `dep_name` - Single dep mode: generate doc for one dep (version looked up from mix.lock)
+  - (no dep_name) - Whole-lock mode: generate docs for all deps in mix.lock
   - `--model, -m <model>` - AI model to use (haiku/sonnet/opus, default: haiku)
-  - `--agent, -a <name>` - AI agent to use (claude/pi, default: from config)
   - `--help` - Show usage information
 - `ocg remove-comments` - Remove comments from git diff changes
 - `ocg format` - Format all shell scripts and files
@@ -231,7 +232,7 @@ Each workspace can run in an isolated Docker container with:
 ### Recommended Planning-First Workflow
 
 1. **Initialize Project**: Run `ocg setup` once per repository
-2. **Generate Usage Rules**: Run `ocg usage-rules` to create AI-readable dependency documentation
+2. **Generate Usage Rules**: Run `codegen-document` to create AI-readable dependency documentation
 3. **Bird-Eye Planning**: Run `ocg bird-eye {feature}` for high-level planning
 4. **Detailed Planning**: Run `ocg plan {feature}` for technical planning
 5. **Create Workspace**: Run `ocg new {feature}` - automatically:
@@ -366,7 +367,7 @@ To optimize context window usage, maintain these target sizes:
 - **`bird-eye`**: opus (high-level planning requiring deep thinking)
 - **`plan`**: opus (detailed technical planning)
 - **`new`/`resume`**: sonnet (balanced for implementation work)
-- **`usage-rules`**: haiku (fast and cost-effective documentation extraction)
+- **`codegen-document`**: haiku (fast and cost-effective documentation extraction)
 - **`update-context`**: sonnet (routine context updates)
 - **`consolidate-context`**: opus (thorough consolidation for clarity)
 
@@ -406,10 +407,10 @@ To optimize context window usage, maintain these target sizes:
 ### Usage Rules
 
 - AI-readable documentation for Elixir dependencies generated from hexdocs
-- Usage rules are stored in `~/Areas/Optimum/context/usage_rules/`
-- Generated automatically by parsing mix.exs and fetching documentation
+- Usage rules are stored in codegen's `shared/usage_rules/`
+- Generated automatically by parsing mix.lock and fetching documentation
 - Provides practical examples, configuration, and best practices for each library
-- Run `ocg usage-rules` from any Elixir project to generate missing rules
+- Run `codegen-document` from any Elixir project to generate missing rules
 
 ### AI Integration
 
