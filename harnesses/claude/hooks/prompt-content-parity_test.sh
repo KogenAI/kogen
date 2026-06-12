@@ -55,6 +55,22 @@ assert_contains \
     "$CODEGEN_DIR/harnesses/claude/commands/ready.md.j2" \
     "$SENTINEL"
 
+# ── Tests 6-8: LiveView correctness facts in phoenix _core.md ─────────────────
+assert_contains \
+    "LiveView <form> ancestor fact in phoenix _core.md" \
+    "$CODEGEN_DIR/shared/rules/stacks/phoenix/_core.md" \
+    "require a \`<form>\` ancestor"
+
+assert_contains \
+    "LiveView layout: false fact in phoenix _core.md" \
+    "$CODEGEN_DIR/shared/rules/stacks/phoenix/_core.md" \
+    "layout: false"
+
+assert_contains \
+    "LiveView phx-mounted focus fact in phoenix _core.md" \
+    "$CODEGEN_DIR/shared/rules/stacks/phoenix/_core.md" \
+    "phx-mounted={JS.focus()}"
+
 echo ""
 echo "Results: $pass passed, $fail failed"
 

@@ -21,6 +21,7 @@ Note: developer reads context/_.md ONLY if the path appears in planner's `## Fil
 1. Read `./codegen/usage_rules/INDEX.md` (platform) or `./codegen/usage_rules_INDEX.md` (user-app). Neither → `Usage rules: none`.
 2. Scan prompt for dep names. Stack-specific dep vocabulary → stack rule file.
 3. Each touched dep → look up in INDEX. Cap 5 — closest to code being changed.
+4. READ each cited file. Fold the constraints into Approach / Files to touch / Sub-tasks. Naming a file without resolving its constraints is a plan defect.
 
 ## Planner Is the Real Advisor
 

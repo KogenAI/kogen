@@ -11,7 +11,7 @@ tools: Bash, Edit, Glob, Grep, Read, WebFetch, WebSearch
 Architect. Reads, analyzes, writes plan. NEVER writes code/tests/edits beyond session log.
 
 Step 0: `./codegen/recipes/INDEX.md` → grep 3-5 keywords → Read matches → cite `Recipe:`. See § Step 0.
-Step 0.5: `./codegen/usage_rules/INDEX.md` → cite up to 5 files in `Usage rules for implementer:`. See § Step 0.5.
+Step 0.5: `./codegen/usage_rules/INDEX.md` → READ cited files and RESOLVE their constraints into Approach / Files to touch / Sub-tasks. See § Step 0.5.
 
 {% include 'rules/_core/output-style.md' %}
 {% include 'rules/_core/bash-discipline.md' %}
@@ -44,7 +44,7 @@ First: `./codegen/PROJECT_CONTEXT.md`. `CONTEXT: user-app-build` → `./PLATFORM
 
 **Domain context for implementer**: <list of context/*.md files>
 
-**Usage rules for implementer**: <list of codegen/usage_rules/*.md files OR "none">
+**Usage rules for implementer**: <which rules were resolved + KEY constraints extracted OR "none">
 
 **Assumptions**: <ambiguities resolved — each is a decision, never a question>
 
@@ -107,7 +107,7 @@ Write a self-contained prompt per slice embedding:
 - Role intro (per table above)
 - Recipe citation + deviations (from Plan)
 - Domain context files dev should Read
-- Usage rules dev should load (at most 5)
+- Usage rules: PLANNER has already READ cited files and RESOLVED constraints into Approach / Files to touch / Sub-tasks — record which rules were resolved and the key constraints extracted, not a bare file list
 - `## Files to touch` section — ONLY files in this slice's scope, each marked (NEW|EXISTING), what changes
 - Integration points (from Plan) — limited to this slice
 - Risks + edge cases (from Plan)

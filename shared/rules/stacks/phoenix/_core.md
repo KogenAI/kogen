@@ -91,6 +91,9 @@ Regex: `\.\w+\.` matches the hash dot-sep-dot pattern; use as gate to fall throu
 - `cursor-pointer` on interactive; padding/bg on `<.link>` with `block`
 - Explicit helper fns — `Media.get_media_asset_url(@media_asset)`
 - npm: `cd assets` first
+- `phx-change`/`phx-keyup`/`phx-submit` require a `<form>` ancestor — inputs outside a `<form>` silently no-op with NO console error; wrap event-handling inputs in `<.form>` or a bare `<form>` tag
+- `live_render` of a child LiveView MUST set `layout: false` to avoid double-layout render; the routed root LiveView owns the layout
+- Autofocus-on-open: `<input phx-mounted={JS.focus()} />` — use for keyboard-first overlays/modals so the caret lands without a click
 
 ## Dead-Render Placeholders
 
