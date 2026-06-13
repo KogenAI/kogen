@@ -345,9 +345,10 @@ run_test "bare_blocked_keyword_blocks: Blocked keyword alone no longer escapes i
     "block" "$INPUT18" "$AGENT_ENTRY_DEVELOPER"
 rm -rf "$tmp18"
 
-# ── Test 19: developer + gate-result.json inconclusive → ALLOW ───────────────
-# gate-result.json says inconclusive → VE ran but was inconclusive (not "never ran") → allow.
+# ── Test 19: developer + gate-result.json inconclusive → BLOCK ───────────────
+# gate-result.json says inconclusive → gate did not confirm clear → BLOCK (not "never ran" carve-out).
 # gate_result_verdict reads from <project_dir>/codegen/gate-pending/gate-result.json
+rm -f "/tmp/claude-cycle-guard-test-sess-19.count"
 tmp19=$(mktemp -d)
 mkdir -p "$tmp19/codegen/logging" "$tmp19/codegen/gate-pending"
 printf '# Session Log\n## dev-gate Section\nDiagnosis: pool exhausted.\n' \
@@ -358,9 +359,9 @@ printf '{"verdict":"inconclusive","gate":"make test","mode":"short"}\n' \
     printf '%s\n' "$AGENT_ENTRY_DEVELOPER"
     printf '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Write","input":{"file_path":"%s/codegen/logging/test_session.md"}}]}}\n' "$tmp19"
 } >"$tmp19/transcript.jsonl"
-INPUT19=$(make_input "$tmp19/transcript.jsonl" "$tmp19" "false" "Done.")
-run_test "developer_gate_result_inconclusive: developer + gate-result=inconclusive → allow" \
-    "allow" "$INPUT19" "$AGENT_ENTRY_DEVELOPER"
+INPUT19=$(make_input "$tmp19/transcript.jsonl" "$tmp19" "false" "Done." "test-sess-19")
+run_test "developer_gate_result_inconclusive: developer + gate-result=inconclusive → BLOCK (gate did not confirm clear)" \
+    "block" "$INPUT19" "$AGENT_ENTRY_DEVELOPER"
 rm -rf "$tmp19"
 
 # --- Test 20: Gate=clear + dirty tree → BLOCK with "tree is dirty" reason ---
@@ -423,6 +424,24 @@ else
     fail=$((fail + 1))
 fi
 rm -rf "$tmp21"
+
+# ── Test 22: reviewer + gate-result.json inconclusive → BLOCK ────────────────
+# Inconclusive is no longer a permitted stop for ANY role — gate did not confirm clear.
+rm -f "/tmp/claude-cycle-guard-test-sess-22.count"
+tmp22=$(mktemp -d)
+mkdir -p "$tmp22/codegen/logging" "$tmp22/codegen/gate-pending"
+printf '# Session Log\n## reviewer-phoenix Section\nReview complete.\n' \
+    >"$tmp22/codegen/logging/test_session.md"
+printf '{"verdict":"inconclusive","gate":"make test","mode":"short"}\n' \
+    >"$tmp22/codegen/gate-pending/gate-result.json"
+{
+    printf '%s\n' "$AGENT_ENTRY_REVIEWER"
+    printf '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Write","input":{"file_path":"%s/codegen/logging/test_session.md"}}]}}\n' "$tmp22"
+} >"$tmp22/transcript.jsonl"
+INPUT22=$(make_input "$tmp22/transcript.jsonl" "$tmp22" "false" "Done." "test-sess-22")
+run_test "reviewer_gate_result_inconclusive: reviewer + gate-result=inconclusive → block" \
+    "block" "$INPUT22" "$AGENT_ENTRY_REVIEWER"
+rm -rf "$tmp22"
 
 echo ""
 echo "Results: $pass passed, $fail failed"

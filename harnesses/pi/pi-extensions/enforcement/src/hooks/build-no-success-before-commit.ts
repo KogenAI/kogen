@@ -10,6 +10,8 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { deny, debugLog } from "../lib/hook-helpers";
 import { execSync } from "node:child_process";
+import * as fs from "node:fs";
+import * as path from "node:path";
 
 export const HANDLER_META = {
   name: "build-no-success-before-commit",
@@ -53,6 +55,23 @@ export function register(pi: ExtensionAPI): void {
     if (!commitFound) {
       return deny(
         "BLOCKED by build-no-success-before-commit: cannot signal BUILD_RESULT: before a commit has been made. Commit your changes first.",
+      );
+    }
+
+    // Require structured gate-result.json with verdict=clear (parity with .sh backstop).
+    let gateVerdict = "";
+    try {
+      const raw = fs.readFileSync(
+        path.join(process.cwd(), "codegen/gate-pending/gate-result.json"),
+        "utf8",
+      );
+      gateVerdict = (JSON.parse(raw).verdict as string) ?? "";
+    } catch {
+      // No gate-result.json — treat as absent (non-clear)
+    }
+    if (gateVerdict !== "clear") {
+      return deny(
+        `BLOCKED by build-no-success-before-commit: gate-result.json does not show verdict=clear (current verdict: '${gateVerdict || "absent"}'). A gate must run and produce a clear verdict before signaling SHIPPED.`,
       );
     }
 

@@ -474,3 +474,26 @@ fi
 **Mtime sorting portability**: Use `ls -t glob | head -1` across macOS (BSD find) and Linux (GNU coreutils). `find -printf` is not portable to BSD find and silently fails (no error, just empty output).
 
 **Fail-closed semantics**: An empty or absent logging directory yields empty `result` — the caller denies the action. Test both the success path (fallback fires, returns a valid path) and the fail-closed path (empty dir, returns empty) to prevent false-positive phantom paths.
+
+## Planner Bash Constraints
+
+The `planner-guard.sh` hook (PreToolUse) blocks certain bash patterns in planner role only:
+
+**Bash redirects to session logs are FORBIDDEN**. This includes:
+
+- Shell heredocs: `bash -c "... <<EOF ... EOF"` appending to `codegen/logging/`
+- Simple redirects: `cmd > codegen/logging/file.md`
+- Append redirects: `cmd >> codegen/logging/file.md`
+- Brace-group redirects: `{ cmd1; cmd2; } >> codegen/logging/file.md`
+- **All forms defeat transcript-based path detection** — the Bash tool reports the entire heredoc/redirect as one tool_use entry without parsing internal paths. The hook cannot see the target path. **Workaround**: Use the Edit tool on session logs instead. The Edit tool is fully transparent to transcripts and hooks.
+
+**Read tool blocks on rule files** (developer.md, testing-liveview.md, testing.md, reviewer.md, committer.md).
+
+- **Why**: Token budget — reading a large rule file consumes tokens that should be reserved for the plan itself. The planner role should use Grep tool with `-B`/`-A` context to locate anchor text (function signatures, section headings, unique strings), then supply those exact anchors verbatim in the plan prose to the developer. Developer then uses those anchors with the Edit tool to make surgical changes.
+- **Grep still works**: `Grep` tool is allowed and yields line numbers + context — use this to find exact anchor text when Read is blocked.
+
+**Pattern when planning rule file edits blind** (without Read access):
+
+1. Use `Grep -B3 -A3 "anchor_phrase"` on the target rule file to locate exact content around the desired edit point.
+2. Supply the anchor text verbatim in the plan (e.g., "Find the line containing `NEVER emit ✅ QUALITY APPROVED` and insert before it").
+3. Developer uses Edit tool with that anchor as the old_string boundary.

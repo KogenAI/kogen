@@ -506,7 +506,7 @@ Orchestrator reads verdict before deciding next delegation.
 - **Path**: Always in `codegen/gate-pending/` subdirectory, not at `codegen/` root. Hooks that read gate result must use `$project_dir/codegen/gate-pending/gate-result.json`
 - Fields: `gate`, `mode`, `verdict` (clear|failed|inconclusive), `exit_code`, `execution_evidence`, `expected_segments`, `render_verdict`, `classification`, `started_at`, `ended_at`, `session_id`, `log`, `runner_found`
 - `build-no-success-before-commit.sh` reads `verdict` field — requires `clear` before allowing BUILD_RESULT signal
-- `stop-cycle-guard.sh` reads `verdict` field — cross-checks log emoji with structured verdict
+- `stop-cycle-guard.sh` reads `verdict` field — blocks if verdict ≠ clear (see § stop-cycle-guard Verdict Semantics)
 - `step-log-completeness.sh` reads `verdict` field — `clear` enables completion even without log ALL CLEAR marker
 
 **Gate JSON block format** (new — `gate-select.sh` parses gate-json fence in `## Plan`):
@@ -562,6 +562,24 @@ Gate execution has two distinct code paths:
 ## Gate Verdict Evidence Recognition
 
 `phoenix-dev-gate.sh` recognizes execution evidence in the appended verdict string — hook looks for command line strings (`make`, `mix`, etc.) OR gate status emoji markers (`ALL CLEAR ✅`, `FAILED ❌`, `INCONCLUSIVE ⚠️`). The emoji is valid evidence that the gate ran; a verdict entry containing only the emoji (without a command line) is still recognizable as gate output.
+
+## stop-cycle-guard Verdict Semantics
+
+`stop-cycle-guard.sh` — Stop hook that blocks premature session end when gate verdict is not confirmed `clear`. Implements Layer-1 verdict enforcement (no SHIPPED without clear verdict).
+
+**Three enforcement distinctions**:
+
+1. **No gate-result.json present** (file absent) — gate never ran. If AGENT_TYPE is developer and no gate-result exists, block is allowed (VE was blocked); if AGENT_TYPE is reviewer and no gate-result exists, block is allowed (VE was blocked). This is a legitimate recorded state and does NOT prevent stop.
+
+2. **gate-result.json present with `verdict=inconclusive`** (gate ran but not clear) — gate ran and explicitly did NOT confirm clear (classified as seed-missing, pool-exhaustion, etc.). ALL roles (developer, reviewer, other) are BLOCKED. The retry-cap counter (≥2 blocks) is the escape valve, forcing escalation after two attempts.
+
+3. **gate-result.json present with `verdict=failed`** (gate ran and failed) — gate ran and failed. ALL roles BLOCKED. Same retry-cap escape valve.
+
+**Layer-1 responsibility**: Block the stop itself before orchestrator ends the cycle mid-gate. This forces the live stop to surface the inconclusive/failed state rather than silently advancing to the next role. Upstream carve-outs (ScheduleWakeup in-flight, `?`-intent, in-flight gate, retry-cap release) fire BEFORE the verdict guard and take precedence.
+
+**Comment maintenance**: When removing executable allow-arms for `verdict=inconclusive`, update the adjacent comment block to distinguish the two states (absent gate-result = VE-blocked = allow; inconclusive gate-result = gate ran not clear = block). Both states have legitimate reasons for existence and must be named explicitly in the prose.
+
+**Interplay with Layer-2**: `build-no-success-before-commit.sh` (PreToolUse/BUILD_RESULT) requires `verdict=clear` at ship-time. Layer-1 blocks mid-cycle stop; Layer-2 blocks final SHIPPED signal. Both are defense-in-depth and non-redundant (different events, different enforcement points).
 
 ## Enforce-Registry-Parity — Compiler-Generated Files & Gate Ordering
 

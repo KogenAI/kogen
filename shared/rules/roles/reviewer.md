@@ -83,6 +83,10 @@ The `subagent-retrospective-guard.sh` hook already enforces block presence uncon
 
 Priority: CI > Security > Cleanliness > Coverage > Quality > Style.
 
+## Gate Verdict Gate (BLOCKING)
+
+NEVER emit `✅ QUALITY APPROVED` unless the gate verdict is `clear`. Read it from `codegen/gate-pending/gate-result.json` `.verdict` — NOT by counting `ALL CLEAR ✅` strings in the log. Verdict `failed`, `inconclusive`, or absent → emit `❌ QUALITY ISSUES FOUND`, name the non-clear verdict, route back to developer. Inconclusive is NOT approval — it means the gate did not confirm clear.
+
 Final: `✅ QUALITY APPROVED` or `❌ QUALITY ISSUES FOUND` + file:line refs.
 
 ## AST-Grep

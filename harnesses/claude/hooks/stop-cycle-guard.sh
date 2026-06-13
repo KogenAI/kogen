@@ -123,13 +123,14 @@ fi
 # Verdict guard — behaviour differs by role:
 #
 #   developer-* + no emoji verdict + no gate-result.json  → BLOCK (VE never ran)
-#   developer-* + gate-result.json verdict=inconclusive   → allow (explicit recorded state)
-#   reviewer-* + no emoji verdict                         → allow (VE blocked/inconclusive is ok)
-#   all roles   + gate-result.json non-clear              → allow (gate ran, result recorded)
+#   any role    + gate-result.json verdict=inconclusive   → BLOCK (gate did not confirm clear)
+#   reviewer-* + no emoji verdict + no gate-result.json   → allow (VE was blocked; no recorded verdict)
+#   all roles   + gate-result.json failed/inconclusive    → BLOCK (only verdict=clear permits stop)
 #
-# Rationale: "developer finished + no verdict + no gate-result" is exactly the
-# historical #1 bail — gate never executed at all. Distinguish from the
-# legitimate case where VE ran but produced INCONCLUSIVE (gate-result.json present).
+# Rationale: "developer finished + no verdict + no gate-result" is the historical
+# #1 bail — gate never executed at all. Reviewer with no verdict AND no gate-result
+# is a legitimate VE-blocked state (allow). Reviewer with gate-result=inconclusive
+# means the gate RAN but did not confirm clear — that must BLOCK like any other role.
 recent_log=$(session_log_from_transcript)
 if [ -n "$recent_log" ] && [ -r "$recent_log" ]; then
     if ! grep -qE 'ALL CLEAR ✅|FAILED ❌|INCONCLUSIVE ⚠️' "$recent_log" 2>/dev/null; then
@@ -146,16 +147,13 @@ if [ -n "$recent_log" ] && [ -r "$recent_log" ]; then
                 log_pointer="${log_file:-(no session log written yet)}"
                 block "Developer finished but the gate never produced a verdict (no emoji in session log, no gate-result.json). VE never ran. You MUST NOT stop here — continue the cycle: re-read $log_pointer and run the gate before handing off to reviewer."
                 exit 0
-            elif [ "$stored_verdict" = "inconclusive" ]; then
-                debug_log claude-cycle-guard "skip: developer ran, gate-result=inconclusive (explicit recorded state)"
-                exit 0
             fi
             # gate-result.json says failed/clear but log lacks emoji — log may be out of sync; fall through to block
             debug_log claude-cycle-guard "gate-result.json verdict=$stored_verdict but log has no emoji marker"
             ;;
         *)
             # reviewer-* or context-curator: no verdict is ok — VE may have been blocked
-            if [ -z "$stored_verdict" ] || [ "$stored_verdict" = "inconclusive" ]; then
+            if [ -z "$stored_verdict" ]; then
                 debug_log claude-cycle-guard "skip: no VE verdict in session log $recent_log (gate-result: ${stored_verdict:-absent})"
                 exit 0
             fi
@@ -163,10 +161,15 @@ if [ -n "$recent_log" ] && [ -r "$recent_log" ]; then
             ;;
         esac
     fi
-    # When gate-result.json says non-clear, don't treat stale log ALL CLEAR as satisfying
+    # When gate-result.json says non-clear, block — only verdict=clear permits stop.
     stored_verdict=$(gate_result_verdict "$project_dir")
     if [ -n "$stored_verdict" ] && [ "$stored_verdict" != "clear" ]; then
-        debug_log claude-cycle-guard "skip: gate-result.json verdict=$stored_verdict (non-clear)"
+        debug_log claude-cycle-guard "BLOCK: gate-result.json verdict=$stored_verdict (non-clear — only clear permits stop)"
+        count=$((count + 1))
+        printf '%s' "$count" >"$counter_file"
+        log_file=$(session_log_from_transcript)
+        log_pointer="${log_file:-(no session log written yet)}"
+        block "Gate did not confirm clear (verdict='$stored_verdict'). Only verdict=clear permits stop. Re-read $log_pointer and address the gate result before stopping."
         exit 0
     fi
 fi

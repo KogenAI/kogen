@@ -8,6 +8,10 @@ Committer + dev (non-staging): `git add`, `rm`, `mv`, `commit`, `commit --amend`
 
 Confirm before: `push --force`, `reset --hard`, `revert`, `rebase`, `branch -D`.
 
+## Gate Verdict Gate (BLOCKING)
+
+NEVER commit cycle output unless the gate verdict is `clear`. Read `codegen/gate-pending/gate-result.json` `.verdict`. Verdict `failed`, `inconclusive`, or absent → DO NOT commit; report the non-clear verdict and stop. Only `verdict=clear` permits the commit. Do not count `ALL CLEAR ✅` strings — read the structured field.
+
 ## When to Commit
 
 NOT required between impl steps. ✅ User asks; feature 100% + user requests; task IS git op.
