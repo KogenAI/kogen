@@ -1,6 +1,6 @@
 # Testing — LiveView / HEEx / Browser
 
-Frontend-specific. Shared rules → `stacks/phoenix/testing.md`.
+Frontend-specific. Shared testing rules appear earlier in this prompt.
 
 ## LiveView Testing
 

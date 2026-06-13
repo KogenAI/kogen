@@ -25,7 +25,7 @@ codegen/logging/[0-9]{8}_[0-9]{6}(_[a-z0-9_-]+)?_(session|step[0-9]+_[a-z0-9_-]+
      normalise FILE_PATH via repo_relative() before pattern matching, so
      both relative and abs-in-cwd forms pass guards correctly. -->
 
-Use relative paths OR absolute paths THAT START WITH the cwd you were given; see `cwd-discipline.md` for path-form authority. Absolute paths to unrelated directories are FORBIDDEN.
+Use relative paths OR absolute paths THAT START WITH the cwd you were given; see the path-form rule in this prompt. Absolute paths to unrelated directories are FORBIDDEN.
 
 ## Ownership
 

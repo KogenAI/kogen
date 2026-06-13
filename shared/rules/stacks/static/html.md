@@ -97,4 +97,4 @@ Correct:
 
 ## Cross-Refs
 
-Responsive + Tailwind → `tailwind.md`. Favicons/robots/og → `assets.md`. JS → `js.md`.
+See the Tailwind / assets / JS rules in this prompt.

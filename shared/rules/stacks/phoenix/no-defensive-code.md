@@ -14,12 +14,12 @@
 ## Allowed Carve-Outs
 
 1. **OTP `handle_info` catch-all in GenServer** — OTP delivers system messages (`{:EXIT, ...}`, `{:nodedown, ...}`) unpredictably. A catch-all that logs and noreply is legitimate. Use `Logger.warning/2` (not `Logger.debug`) for unexpected messages; bare `:noreply` is still forbidden.
-2. **`File.Error` rescue + reraise** — I/O genuinely fails at runtime. Catch only `File.Error` (or the specific exception), re-raise with original stacktrace. See `_core.md` TOCTOU retry pattern for the one shape where a single retry before reraise is acceptable.
+2. **`File.Error` rescue + reraise** — I/O genuinely fails at runtime. Catch only `File.Error` (or the specific exception), re-raise with original stacktrace. See the `write_with_retry!` TOCTOU retry pattern in this prompt for the one shape where a single retry before reraise is acceptable.
 3. **`Phoenix.Token.verify/4` always returns tagged tuple** — `Phoenix.Token.verify/4` never raises on invalid token/salt/signature; all error cases return `{:error, reason}`. Wrapping it in `try/rescue` is defensive code and forbidden. Use bare `case` on the return value: `case Phoenix.Token.verify(key, token, salt) do {:ok, value} -> ...; {:error, _reason} -> ... end`.
 4. **Boundary validation on external input** — params from HTTP requests, webhooks, or user-supplied data MAY be validated with a fallback (`||`, `Map.get/3` with default, changeset error). The boundary is the controller or plug layer; inside contexts and schemas, treat data as already validated.
 
 ## Coverage Corollary
 
-Uncovered branch → ask: "does this arm swallow an unexpected condition?" If yes, delete it — don't add a `coveralls-ignore`. Coverage gaps on defensive fallbacks are the symptom; the fix is removal. When a branch is genuinely unreachable-in-test (TOCTOU rescue, Erlang coverage artifact, OTP system message arm), apply `# coveralls-ignore-start/stop` per the "Coveralls Ignores in case Arms" section in `testing.md`. Do not apply coverage pragmas to arms that could be deleted.
+Uncovered branch → ask: "does this arm swallow an unexpected condition?" If yes, delete it — don't add a `coveralls-ignore`. Coverage gaps on defensive fallbacks are the symptom; the fix is removal. When a branch is genuinely unreachable-in-test (TOCTOU rescue, Erlang coverage artifact, OTP system message arm), apply `# coveralls-ignore-start/stop` per the Coveralls-ignore guidance in this prompt. Do not apply coverage pragmas to arms that could be deleted.
 
 _If you're adding a branch "just in case," it's defensive — delete it._

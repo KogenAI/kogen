@@ -13,7 +13,7 @@ Subprocess env isolation: `env -u SECRET_KEY_BASE -u CLAUDECODE exec subcmd` —
 ❌ `subcmd $arg`
 ✅ `env -u SECRET_KEY "subcmd" "$arg"`
 
-Agent Bash-command discipline (forbidden tokens, COMMON_FLAGS, ports) → `_core/bash-discipline.md`.
+Agent Bash-command discipline (forbidden tokens, COMMON_FLAGS, ports) — see the Bash-command discipline rules in this prompt.
 
 ## Derive Root, Never Hardcode
 
