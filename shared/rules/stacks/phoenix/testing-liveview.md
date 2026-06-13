@@ -22,6 +22,21 @@ html = view |> element("button#load-more") |> render_click()
 - `assert_redirect`, `assert_patch` for navigation
 - `render_async/1` to wait for `handle_info`
 
+**A LiveView Test Per Interactive Handler (MUST).**
+Every `phx-click`/`phx-submit`/`phx-change`/`phx-keyup`/`phx-window-keydown` handler MUST have a LiveView test that drives it through the REAL rendered element and asserts the observable outcome:
+
+```elixir
+{:ok, view, _html} = live(conn, "/")
+view |> element("#start-build") |> render_click()
+assert render(view) =~ "building"          # re-render shows the new state
+assert_received {:build_started, _slug}    # the side effect actually fired
+```
+
+Select the REAL element (`element("#id")` / `element("button", "Start")`), NOT `render_click(view, "event", %{})` with a hand-fed event name — the hand-fed form bypasses the rendered wiring, which is the exact thing being verified. For a side effect crossing a process boundary, assert via an observable signal (message to the test pid through the PUBLIC protocol, a file existing, a GenServer state query) — NEVER a test-pid injected into prod code (already forbidden here). A handler with no such test is a blocking review issue. **Browser tests are NOT required** — client-JS-only behavior (keyboard map, focus-on-open, hold-Space, backdrop click-through) gets a ONE-TIME manual browser smoke noted in the session log, not a Wallaby/Playwright suite.
+
+**phx-click Bubbling — Dismiss Only On The Intended Target.**
+A `phx-click` on an outer container fires for ALL descendant clicks (events bubble). Put close handlers on a backdrop-only element, gate on `e.target === e.currentTarget` in a hook, or stop propagation on the panel. Acceptance: clicking inside the panel keeps it open; clicking the backdrop closes it. LiveView-testable: a click on a panel element does NOT close; a click on the backdrop element DOES.
+
 ## Selector Discipline
 
 ✅ `#id`, `data-test="..."`, semantic roles. ❌ Tailwind class selectors. ❌ nth-child / structural.

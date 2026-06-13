@@ -77,6 +77,12 @@ socket =
 
 This pattern is already idiomatic in the codebase and preserves full readability.
 
+**Event Handlers Must WIRE The Action, Not Just Display It.**
+A handler (`handle_event`, `handle_call`, `handle_cast`, `handle_info`) that puts the system into a new VISIBLE state MUST also invoke the work that PRODUCES it. Anti-patterns: a reconcile/loader that fills a `queue` assign but never calls start-next; a `draft` handler that only `File.write`s and closes; a `build` handler that only `Logger.info`s. When the criterion is "X happens," grep the handler for the `start`/`spawn`/`run`/`enqueue` that MAKES X happen, not just the assign that SHOWS X. Pair every "shows state Y" with a test asserting the SIDE EFFECT (process started, file written, message sent), not just the rendered label. Applies to backend GenServers and frontend LiveViews alike.
+
+**File-Listing Scans — Filter By Extension.**
+A scan that treats every file in a directory as a domain object picks up strays (`.html` mock, `.DS_Store`, swapfile). Filter to the expected extension (`String.ends_with?(&1, ".md")` / `Path.extname/1`) and skip the rest silently.
+
 ## Cleanup
 
 Remove generator file → check source first:
