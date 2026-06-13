@@ -471,6 +471,80 @@ fi
 
 This pattern proves the script aborts at the correct stage (records in the shim that restart was not reached), not merely that it exited non-zero (which could happen at any stage). Apply to any gate that guards an irreversible operation (restart, database drop, production flag flip, etc.).
 
+## Operator-Config vs App-Runtime Config in Env Vars
+
+**Operator-facing toggles (e.g., `DEPLOY_AUTO=1`, `RELEASE_DAY_OVERRIDE=1`) belong in script usage headers and comments, NOT in `.env.sample` or `.env.prod.sample`.** The `.env` files are app runtime config, sourced and read by `runtime.exs` / application startup. Operator toggles are deploy-script or build-script parameters that control script behavior (confirm skipping, rollback gating, rebuild triggers), not application config.
+
+Distinguish by usage site:
+
+- **Script toggle**: controls orchestration (deploy, build, test harness behavior) → documented in script header comment only
+- **App runtime config**: controls application behavior at boot → `.env.sample` / `.env.prod.sample` with default, read by `Application.get_env` in `lib/` code
+
+Example (deploy script):
+
+```bash
+# In bin/deploy header/comments:
+# DEPLOY_AUTO=1 — skip operator confirm prompt (headless deployment)
+# DEPLOY_AUTO_ROLLBACK=1 — enable automatic rollback to prebuilt prior release (headless only)
+
+# NOT in .env.sample — these are not app config
+```
+
+## Advisory-Only Health Checks — Print Path Isolation
+
+When embedding an advisory-only output block (e.g., fatal-pattern journal scan, non-blocking warnings) in a larger health-check output blob, ensure zero code path from the advisory section to the verdict gate. The pattern:
+
+1. Embed the advisory output inside the same heredoc/bulk output (same SSH output or variable) — this localizes the section physically.
+2. Parse the verdict by reading ONLY the gate-specific labels (e.g., `^active$`, `HTTP 200`, NRestarts labels).
+3. Never read the advisory section in the `if [ ... ]` gate logic.
+
+```bash
+# CORRECT: advisory printed, parsed separately, never reaches VERIFY_PASSED
+VERIFY_OUT="$(ssh ... <<'EOF'
+systemctl is-active combobulate
+echo "--- fatal patterns (advisory) ---"
+journalctl ... | grep -iE 'drift|RuntimeError' || echo 'none'
+echo "--- http probe ---"
+curl http://localhost:4000/
+EOF
+)"
+
+# Parse only the gate-specific output
+VERIFY_PASSED=0
+grep -q "^active$" <<< "$VERIFY_OUT" && VERIFY_PASSED=1
+grep -q "HTTP 200" <<< "$VERIFY_OUT" && [ "$VERIFY_PASSED" -eq 1 ] || VERIFY_PASSED=0
+# ... more gate logic ...
+
+# The "--- fatal patterns ---" section is never read by the gate logic above
+```
+
+This isolation prevents accidental `if [ -n "$VAR" ]` re-introducing a veto on an advisory section. A separate variable for the advisory output risks logic drift; same-blob separation with label-based parsing is more robust.
+
+## Decouple Multi-Prompt Headless Gates with Independent Env Vars
+
+When a script has multiple interactive prompts (e.g., confirm + rollback decision) that need headless equivalents, use **one independent env var per prompt**. Never fold multiple prompts into a single gate var.
+
+```bash
+# WRONG: one var controls two independent prompts, recreates original bug
+if [ "${YES_ALL:-0}" = "1" ]; then
+  echo "Proceeding automatically..."
+  # This skips BOTH confirm AND rollback prompts — same as old `yes y` bug
+fi
+
+# CORRECT: independent gates per prompt
+if [ "${DEPLOY_AUTO:-0}" != "1" ]; then
+  read -r -p "Proceed with deploy? [y/N]" confirm
+fi
+
+# Rollback prompt is separate; gated by a different var
+if [ "${DEPLOY_AUTO:-0}" = "1" ] && [ "${DEPLOY_AUTO_ROLLBACK:-0}" != "1" ]; then
+  # Headless mode without auto-rollback: exit with "manual inspection required"
+  exit 1
+fi
+```
+
+Rationale: `DEPLOY_AUTO` answers "skip confirm", but `DEPLOY_AUTO_ROLLBACK` answers "skip rollback prompt". In headless mode, an operator may want to skip confirm (unattended deploy) but NOT auto-rollback (manual safety gate). One var answering both recreates the failure mode from the original incident (auto-rollback triggered by `yes y`, reverted codegen pin, crash-loop).
+
 ## Retention Prune — mtime Ordering Inconsistency with SHA Sentinel
 
 When retention logic uses `ls -t` (mtime-sorted) to determine "oldest prebuilt release", there is a design inconsistency with the SHA sentinel check elsewhere. The sentinel was redesigned from **mtime** (unreliable after `git reset --hard` — fresh mtime can be newer than old HEAD) to **SHA equality** (exact, content-based) specifically to distrust file timestamps post-reset.
