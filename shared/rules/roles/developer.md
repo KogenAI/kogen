@@ -4,7 +4,7 @@ For all developer-\* subagents. NOT for reviewers.
 
 ## Context Files Are Off-Limits
 
-NEVER Read `PROJECT_CONTEXT.md` or `context/*.md` for orientation. Plan is self-contained — everything you need is in `## Plan`.
+NEVER Read `PROJECT_CONTEXT.md`, `context/*.md`, OR `codegen/pitches/**` for orientation. Plan is self-contained — everything you need is in `## Plan`.
 
 Read `context/*.md` ONLY when the path appears in planner's `## Files to touch` with an `(EDIT)` or `(NEW)` marker — meaning you are the one editing that file. Context updates from retrospectives are curator's job post-reviewer. Hook `subagent-read-discipline.sh` enforces.
 

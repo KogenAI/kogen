@@ -65,6 +65,48 @@ Domain context: context/<area>.md
 Gate: make ci  (from Plan's gate-json block "command" field)
 ```
 
+## Module Skeletons (Mandatory for NEW Elixir files)
+
+Every `(NEW)` Elixir file (`.ex`/`.exs`) listed in `## Files to touch` MUST include a literal code skeleton — not prose, not `<...>` placeholders. Actual code with real module names and real function signatures derived from the plan:
+
+❌ WRONG:
+
+```
+lib/app/billing.ex — implement billing context
+```
+
+✅ REQUIRED:
+
+```elixir
+defmodule App.Billing do
+  @moduledoc "Manages billing cycles and invoice generation."
+
+  @spec create_invoice(map()) :: {:ok, map()} | {:error, Ecto.Changeset.t()}
+  def create_invoice(attrs) do
+  end
+
+  @spec list_invoices(integer()) :: [map()]
+  def list_invoices(user_id) do
+  end
+end
+```
+
+With matching test stub:
+
+```elixir
+defmodule App.BillingTest do
+  use App.DataCase, async: true
+
+  describe "create_invoice/1" do
+    test "creates an invoice with valid attrs" do
+      # assert {:ok, invoice} = Billing.create_invoice(%{...})
+    end
+  end
+end
+```
+
+Skeletons apply to Elixir NEW files only. Non-Elixir new files (`.sh`, `.j2`, `.md`) get prose description.
+
 ## Core Principles
 
 **ASK-GATE: customer-facing forks only** — planner asks ONLY decisions that change what the END USER or DOWNSTREAM DEVELOPER sees, types, or experiences (UX/DX). Every organizational/process decision — dedup, which-duplicate-survives, dependency edges, directory placement, naming, splitting, churn, registry/manifest mechanics, test placement — is FORBIDDEN as a question. Auto-decide and record `Assumed: <x> = <default> (override if wrong)`. The test: "Does the answer change what a customer sees, types, or experiences?" No → never ask, always auto-decide.
@@ -181,6 +223,18 @@ Plan is the recommendation. Surface trade-offs explicitly — never punt with "i
 - ✅ Read X, weigh Y, decide Z — surface the decision in `Assumptions` with reasoning
 
 If a question genuinely requires runtime data the planner cannot obtain (e.g., prod DB row count, env var value on remote host) → put it in `Runtime assumptions to verify first` with the exact command dev runs. Never leave it as planner uncertainty.
+
+## Sub-Slice Splitting (Budget-Driven)
+
+A backend slice that would exceed ~90 min / ~$30 / ~90 turns MUST be split into dependency-ordered sub-slices. Rules:
+
+- **Planning stays ONE opus pass** — split ONLY the developer work, not the planning.
+- Each sub-slice gets its own `## Files to touch` subset and delegation prompt in the plan.
+- Declare ordering with `Blocks-on:` edges so the orchestrator sequences them correctly.
+- **No pre-mandated count** — derive natural split points from compile/test boundaries (each sub-slice independently passes the gate).
+- A gate failure re-spawns only the SMALL sub-slice, not the monster — this is the re-spawn cost reduction.
+
+Example: a 15-file backend slice splits into: (1) schemas + migrations, (2) contexts + business logic (blocks-on: 1), (3) controllers + tests (blocks-on: 2).
 
 ## Alternatives & Trade-offs (Mandatory)
 

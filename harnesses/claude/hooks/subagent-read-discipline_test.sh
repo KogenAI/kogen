@@ -230,6 +230,24 @@ run_test "orchestrator (empty agent_type) passes through (handled by other hook)
 F22='{"hook_event_name":"PreToolUse","tool_name":"Write","tool_input":{"file_path":"context/builds.md"},"agent_id":"abc","agent_type":"developer-phoenix-backend"}'
 run_test "non-Read tool (Write) allows regardless of path" "0" "$F22"
 
+# ── Pitch deny (Move 1 — close pitch-read leak) ──────────────────────────────
+
+# Test 23: developer-phoenix-backend Read codegen/pitches/foo.md → DENY
+F23='{"hook_event_name":"PreToolUse","tool_name":"Read","tool_input":{"file_path":"codegen/pitches/foo.md"},"agent_id":"abc","agent_type":"developer-phoenix-backend"}'
+run_test "developer Read codegen/pitches/*.md denies" "2" "$F23"
+
+# Test 24: reviewer-phoenix Read codegen/pitches/foo.md → DENY
+F24='{"hook_event_name":"PreToolUse","tool_name":"Read","tool_input":{"file_path":"codegen/pitches/foo.md"},"agent_id":"abc","agent_type":"reviewer-phoenix"}'
+run_test "reviewer Read codegen/pitches/*.md denies" "2" "$F24"
+
+# Test 25: committer Read codegen/pitches/foo.md → DENY
+F25='{"hook_event_name":"PreToolUse","tool_name":"Read","tool_input":{"file_path":"codegen/pitches/foo.md"},"agent_id":"abc","agent_type":"committer"}'
+run_test "committer Read codegen/pitches/*.md denies" "2" "$F25"
+
+# Test 26: planner-phoenix Read codegen/pitches/foo.md → ALLOW
+F26='{"hook_event_name":"PreToolUse","tool_name":"Read","tool_input":{"file_path":"codegen/pitches/foo.md"},"agent_id":"abc","agent_type":"planner-phoenix"}'
+run_test "planner-phoenix Read codegen/pitches/*.md allows" "0" "$F26"
+
 echo ""
 echo "Results: $pass passed, $fail failed"
 

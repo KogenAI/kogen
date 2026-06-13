@@ -9,17 +9,20 @@
 # role: developer-*|reviewer-*|committer|context-curator
 # harnesses: claude_code
 # rationale: role-keyed read discipline — planner front-loads context, all
-#   other named subagents have restricted access to PROJECT_CONTEXT.md and
-#   context/*.md to enforce the single-sense-organ architecture.
+#   other named subagents have restricted access to PROJECT_CONTEXT.md,
+#   context/*.md, and codegen/pitches/** to enforce the single-sense-organ
+#   architecture.
 #
 # Rules:
-#   planner-*       → allow all (planner owns context reads)
+#   planner-*       → allow all (planner owns context reads AND pitch reads)
 #   context-curator → allow all (curator writes context post-reviewer)
-#   committer       → deny PROJECT_CONTEXT.md and context/*.md
-#   developer-*     → deny PROJECT_CONTEXT.md always;
+#   committer       → deny PROJECT_CONTEXT.md, context/*.md, codegen/pitches/**
+#   developer-*     → deny codegen/pitches/** always (plan is self-contained);
+#                     deny PROJECT_CONTEXT.md always;
 #                     context/*.md allowed ONLY if path is listed in active
 #                     step log's ## Plan block under "Files to touch:"
-#   reviewer-*      → deny PROJECT_CONTEXT.md always;
+#   reviewer-*      → deny codegen/pitches/** always;
+#                     deny PROJECT_CONTEXT.md always;
 #                     context/*.md allowed ONLY if path is listed in active
 #                     step log's ## Files Modified block
 #   (other / empty) → pass through (orchestrator handled by orchestrator-read-discipline.sh)
@@ -66,6 +69,7 @@ bn="${rel_path##*/}"
 # Determine whether the path is subject to discipline.
 is_project_context=0
 is_context_dir=0
+is_pitch=0
 
 if [ "$bn" = "PROJECT_CONTEXT.md" ]; then
     is_project_context=1
@@ -75,8 +79,12 @@ case "$rel_path" in
 context/*) is_context_dir=1 ;;
 esac
 
+case "$rel_path" in
+codegen/pitches/*) is_pitch=1 ;;
+esac
+
 # If neither trigger applies, allow immediately.
-if [ "$is_project_context" -eq 0 ] && [ "$is_context_dir" -eq 0 ]; then
+if [ "$is_project_context" -eq 0 ] && [ "$is_context_dir" -eq 0 ] && [ "$is_pitch" -eq 0 ]; then
     exit 0
 fi
 
@@ -94,7 +102,11 @@ context-curator)
     ;;
 
 committer)
-    # Committer derives commit msg from git diff; never needs context.
+    # Committer derives commit msg from git diff; never needs context or pitch.
+    if [ "$is_pitch" -eq 1 ]; then
+        deny "Committer cannot read the pitch — derive commit message from git diff only."
+        exit 0
+    fi
     if [ "$is_project_context" -eq 1 ]; then
         deny "Committer cannot read PROJECT_CONTEXT.md. Derive commit message from git diff only."
         exit 0
@@ -107,6 +119,12 @@ committer)
     ;;
 
 developer-*)
+    # Pitch: always denied — plan is self-contained.
+    if [ "$is_pitch" -eq 1 ]; then
+        deny "Developer cannot read the pitch — plan is self-contained, use ## Plan in the session log."
+        exit 0
+    fi
+
     # PROJECT_CONTEXT.md: always denied — plan is self-contained.
     if [ "$is_project_context" -eq 1 ]; then
         deny "Developer cannot read PROJECT_CONTEXT.md for orientation. Plan is self-contained — use ## Plan in active step log."
@@ -135,6 +153,12 @@ developer-*)
     ;;
 
 reviewer-*)
+    # Pitch: always denied — reviewer reviews against ## Plan and ## Files Modified.
+    if [ "$is_pitch" -eq 1 ]; then
+        deny "Reviewer cannot read the pitch — review against ## Plan and ## Files Modified in the active step log."
+        exit 0
+    fi
+
     # PROJECT_CONTEXT.md: always denied — reviewer reads ## Files Modified, not raw context.
     if [ "$is_project_context" -eq 1 ]; then
         deny "Reviewer cannot read PROJECT_CONTEXT.md. Check plan fulfillment via ## Plan Goal line in active step log."
