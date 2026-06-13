@@ -6,12 +6,13 @@
 #   2.  Hard failure (401 auth error) → no block (exit 0, no decision)
 #   3.  Rate limit (429) → no retry (hard classify: let user wait)
 #   4.  Normal stop (no error) → no block
-#   5.  Retry cap: 3 attempts → 4th returns exit 0 without block
+#   5.  Retry cap: 8 attempts → 9th returns exit 0 without block
 #   6.  STOP_HOOK_ACTIVE=true → exit 0 immediately (loop guard)
 #   7.  500 error → block (retryable)
 #   8.  connection reset → block (retryable)
 #   10. "File has been modified since read" → block (auto-resume)
-#   11. Cap-3 ceiling with "has been unexpectedly modified" → allow (no block)
+#   11. Cap-8 ceiling with "has been unexpectedly modified" → allow (no block)
+#   12. "socket connection was closed" → block (retryable)
 
 set -euo pipefail
 
@@ -33,6 +34,7 @@ cleanup() {
         /tmp/claude-resume-sess-t7.count \
         /tmp/claude-resume-sess-t8.count \
         /tmp/claude-resume-sess-t10.count \
+        /tmp/claude-resume-sess-t12.count \
         /tmp/claude-resume-sess-loop.count
 }
 trap cleanup EXIT
@@ -92,17 +94,17 @@ run_test "429 rate limit does not retry" "allow" \
 run_test "normal stop (no error) does not block" "allow" \
     "$(mk_stop 'Task complete.' 'sess-t4')"
 
-# Test 5: Retry cap — 4th attempt should NOT block (cap = 3)
+# Test 5: Retry cap — 9th attempt should NOT block (cap = 8)
 SESSION_CAP="sess-cap-$(date +%s%N)"
 COUNTER_FILE="/tmp/claude-resume-${SESSION_CAP}.count"
-printf '%s' "3" >"$COUNTER_FILE" # simulate already at cap
+printf '%s' "8" >"$COUNTER_FILE" # simulate already at cap
 RETRYABLE_MSG="$(mk_stop 'Stream idle timeout occurred' "$SESSION_CAP")"
 stdout_cap=$(printf '%s' "$RETRYABLE_MSG" | env STOP_HOOK_ACTIVE=false bash "$GUARD" 2>/dev/null || true)
 if printf '%s' "$stdout_cap" | grep -q '"decision"[[:space:]]*:[[:space:]]*"block"'; then
-    printf 'FAIL: retry cap — 4th attempt should NOT block\n  stdout: %s\n' "$stdout_cap"
+    printf 'FAIL: retry cap — 9th attempt should NOT block\n  stdout: %s\n' "$stdout_cap"
     fail=$((fail + 1))
 else
-    [ -n "${VERBOSE:-}" ] && printf 'PASS: retry cap — 4th attempt does not block\n'
+    [ -n "${VERBOSE:-}" ] && printf 'PASS: retry cap — 9th attempt does not block\n'
     pass=$((pass + 1))
 fi
 rm -f "$COUNTER_FILE"
@@ -131,20 +133,24 @@ run_test "connection reset triggers block" "block" \
 run_test "modified-since-read triggers block" "block" \
     "$(mk_stop 'File has been modified since read — edit conflict' 'sess-t10')"
 
-# Test 11: Cap-3 ceiling with new string → allow (no block)
+# Test 11: Cap-8 ceiling with new string → allow (no block)
 SESSION_MOD="sess-mod-$(date +%s%N)"
 COUNTER_MOD="/tmp/claude-resume-${SESSION_MOD}.count"
-printf '%s' "3" >"$COUNTER_MOD" # simulate already at cap
+printf '%s' "8" >"$COUNTER_MOD" # simulate already at cap
 MOD_MSG="$(mk_stop 'has been unexpectedly modified' "$SESSION_MOD")"
 stdout_mod=$(printf '%s' "$MOD_MSG" | env STOP_HOOK_ACTIVE=false bash "$GUARD" 2>/dev/null || true)
 if printf '%s' "$stdout_mod" | grep -q '"decision"[[:space:]]*:[[:space:]]*"block"'; then
-    printf 'FAIL: cap-3 with unexpected-modified — 4th attempt should NOT block\n  stdout: %s\n' "$stdout_mod"
+    printf 'FAIL: cap-8 with unexpected-modified — 9th attempt should NOT block\n  stdout: %s\n' "$stdout_mod"
     fail=$((fail + 1))
 else
-    [ -n "${VERBOSE:-}" ] && printf 'PASS: cap-3 with unexpected-modified does not block\n'
+    [ -n "${VERBOSE:-}" ] && printf 'PASS: cap-8 with unexpected-modified does not block\n'
     pass=$((pass + 1))
 fi
 rm -f "$COUNTER_MOD"
+
+# Test 12: "socket connection was closed" → block (retryable)
+run_test "socket connection was closed triggers block" "block" \
+    "$(mk_stop 'Error: socket connection was closed unexpectedly' 'sess-t12')"
 
 # Test 9: Retry count increments — first attempt sets count=1, second=2
 SESSION_INC="sess-inc-$(date +%s%N)"

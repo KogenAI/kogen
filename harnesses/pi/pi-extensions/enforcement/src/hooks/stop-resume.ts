@@ -28,6 +28,7 @@ const TRANSIENT_ERROR_PATTERNS = [
   /network.*error/i,
   /file has been modified since read/i,
   /has been unexpectedly modified/i,
+  /socket connection was closed/i,
 ];
 
 export function register(pi: ExtensionAPI): void {

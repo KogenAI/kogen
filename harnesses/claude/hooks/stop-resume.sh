@@ -50,7 +50,7 @@ if [ -n "$TRANSCRIPT_PATH" ] && [ -r "$TRANSCRIPT_PATH" ]; then
 fi
 
 # --- Classify ---------------------------------------------------------------
-retryable_regex='Stream idle timeout|Unable to connect|FailedToOpenSocket|ConnectionRefused|API Error: 529|API Error: 500|API Error: 502|API Error: 503|API Error: 504|overloaded_error|Internal server error|upstream connect error|connection reset|socket hang up|ETIMEDOUT|context deadline exceeded|File has been modified since read|has been unexpectedly modified'
+retryable_regex='Stream idle timeout|Unable to connect|FailedToOpenSocket|ConnectionRefused|API Error: 529|API Error: 500|API Error: 502|API Error: 503|API Error: 504|overloaded_error|Internal server error|upstream connect error|connection reset|socket hang up|ETIMEDOUT|context deadline exceeded|File has been modified since read|has been unexpectedly modified|socket connection was closed'
 rate_limit_regex='API Error: 429|rate_limit|rate limit'
 hard_fail_regex='API Error: 400|API Error: 401|API Error: 403|API Error: 404|Prompt is too long|invalid_api_key|authentication_error|permission_error'
 
@@ -79,7 +79,7 @@ case "$count" in
 '' | *[!0-9]*) count=0 ;;
 esac
 
-if [ "$count" -ge 3 ]; then
+if [ "$count" -ge 8 ]; then
     rm -f "$counter_file"
     exit 0
 fi
@@ -88,7 +88,7 @@ count=$((count + 1))
 printf '%s' "$count" >"$counter_file"
 
 # --- Emit block decision ----------------------------------------------------
-reason="Network/API error detected (stream idle timeout or transient API failure). Auto-resuming (attempt ${count}/3). Re-read the session log in codegen/logging/ and continue where you left off. Consider breaking the next action into smaller steps to avoid another timeout."
+reason="⏳ Transient network error (socket closed or API unavailable). Auto-resuming, attempt ${count}/8. Re-read the session log in codegen/logging/ and continue where you left off. Consider breaking the next action into smaller steps to avoid another timeout."
 
 block "$reason"
 exit 0
