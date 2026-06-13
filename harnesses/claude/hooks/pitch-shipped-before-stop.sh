@@ -20,9 +20,10 @@
 #   3. Role bypass: CLAUDE_ROLE=dashboard-build OR CODEGEN_NO_AUTOSHIP=1 → exit
 #   4. Intent-question regex → exit (orchestrator asking user something)
 #   5. Transcript unreadable → exit (fail-open)
-#   6. pitch_from_transcript → empty = free-form build → exit
-#   7. session_log_from_transcript; no ## committer Section → exit (committer hasn't run yet)
-#   8. pitch still in ready/ → block with move instruction
+#   6. session_log_from_transcript; extract slug from <ts>_<slug>_session.md filename
+#      → empty slug = not a pitch-driven log → exit
+#   7. No ## committer Section in log → exit (committer hasn't run yet)
+#   8. ready/<slug>.md still exists → block with move instruction
 #
 # Bypass paths:
 #   CLAUDE_ROLE=dashboard-build — dashboard manages shipped/ move itself post-merge
@@ -83,31 +84,30 @@ if [ -z "${TRANSCRIPT_PATH:-}" ] || [ ! -r "$TRANSCRIPT_PATH" ]; then
     exit 0
 fi
 
-# 6. Pitch from transcript — empty = free-form session, skip.
-pitch=$(pitch_from_transcript)
-if [ -z "$pitch" ]; then
-    debug_log pitch-shipped-before-stop "skip: no pitch in transcript (free-form session)"
-    exit 0
-fi
-
-debug_log pitch-shipped-before-stop "pitch=$pitch"
-
-# 7. Committer-section guard — only act after committer has committed.
+# 6. Active session log → extract slug from <ts>_<slug>_session.md filename.
 log=$(session_log_from_transcript)
 if [ -z "$log" ] || [ ! -r "$log" ]; then
     debug_log pitch-shipped-before-stop "skip: no step log"
     exit 0
 fi
 
+slug=$(basename "$log" | sed -E 's/^[0-9]{8}_[0-9]{6}_(.+)_session\.md$/\1/')
+if [ -z "$slug" ] || [ "$slug" = "$(basename "$log")" ]; then
+    debug_log pitch-shipped-before-stop "skip: no slug in log filename (free-form or multi-step log)"
+    exit 0
+fi
+
+debug_log pitch-shipped-before-stop "slug=$slug log=$(basename "$log")"
+
+# 7. Committer-section guard — only act after committer has committed.
 if ! grep -qF "## committer Section" "$log" 2>/dev/null; then
     debug_log pitch-shipped-before-stop "skip: committer section absent"
     exit 0
 fi
 
-# 8. Check if pitch is still in ready/.
+# 8. Check if this pitch (by slug) is still in ready/.
 project_dir="${CWD:-${CLAUDE_PROJECT_DIR:-$PWD}}"
-pitch_basename=$(basename "$pitch")
-ready_path="$project_dir/codegen/pitches/ready/$pitch_basename"
+ready_path="$project_dir/codegen/pitches/ready/${slug}.md"
 
 debug_log pitch-shipped-before-stop "ready_path=$ready_path"
 
@@ -120,5 +120,5 @@ fi
 count=$((count + 1))
 printf '%s' "$count" >"$counter_file"
 
-block "Pitch ${pitch_basename} was committed but is still in codegen/pitches/ready/. Move it to shipped/ before stopping: mv codegen/pitches/ready/${pitch_basename} codegen/pitches/shipped/${pitch_basename} (plain mv — pitch files are untracked, NEVER git mv). Then stop. (autoship-guard attempt ${count}/2)"
+block "Pitch ${slug}.md was committed but is still in codegen/pitches/ready/. Move it to shipped/ before stopping: mv codegen/pitches/ready/${slug}.md codegen/pitches/shipped/${slug}.md (plain mv — pitch files are untracked, NEVER git mv). Then stop. (autoship-guard attempt ${count}/2)"
 exit 0

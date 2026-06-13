@@ -48,7 +48,7 @@ Hook registration: **Two pipelines** — both write to `harnesses/claude/hooks/*
 | `harnesses/claude/hooks/context-index-parity.sh`                | PreToolUse — enforces context file + PROJECT_CONTEXT.md index parity                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
 | `harnesses/claude/hooks/curator-before-committer.sh`            | PreToolUse — blocks committer spawn before context-curator has run                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
 | `harnesses/claude/hooks/step-log-section-before-spawn.sh`       | PreToolUse/Agent — blocks any subagent spawn until step log exists AND the agent's section header is present in the log                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
-| `harnesses/claude/hooks/pitch-shipped-before-stop.sh`           | Stop — blocks session end when committer-section present + pitch still in ready/; bypassed under CLAUDE_ROLE=dashboard-build or CODEGEN_NO_AUTOSHIP=1                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| `harnesses/claude/hooks/pitch-shipped-before-stop.sh`           | Stop — blocks session end when committer-section present + pitch still in ready/; ships `ready/<slug>.md` → `shipped/` only if slug matches active session log; bypassed under CLAUDE_ROLE=dashboard-build or CODEGEN_NO_AUTOSHIP=1                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
 | `harnesses/claude/hooks/operator-subagent-allowlist.sh`         | PreToolUse — enforces agent delegation allowlist (role ∈ {debug, shape, ops}); gates slash commands that spawn subagents                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
 | `harnesses/claude/hooks/build-worker-cwd-guard.sh`              | PreToolUse — guards build worker cwd discipline                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
 | `harnesses/claude/hooks/build-no-success-before-commit.sh`      | PreToolUse — blocks declaring success before commit completes; enforces clean working tree (no untracked/modified files) at SHIPPED signal                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
@@ -303,6 +303,69 @@ This pattern is used by:
 The curator and committer section headers use literal names (no stack variant) because both roles are stack-agnostic and always named identically regardless of consuming app type.
 
 **Stack-prefixed planner variants** (e.g., `planner-phoenix`, `planner-html`) — when a subagent Edit targets the session log, the hook `session-log-section-integrity.sh` requires the literal stack-prefixed header (e.g., `## planner-phoenix Section`) to be present BEFORE the Edit is allowed. The hook bypass for bare `planner` (line 35) does NOT widen to stack variants — they must satisfy the normal header-present rule (lines 50–66). This ensures multi-harness codegen sessions with specialized planners (e.g., `planner-html`) maintain header parity in session logs.
+
+## Autoship Hook (`pitch-shipped-before-stop`)
+
+`harnesses/claude/hooks/pitch-shipped-before-stop.sh` — Stop hook that prevents unbuilt pitches from being shipped by binding the ship decision to the active session log's pitch slug.
+
+**What it does**: When a session ends (Stop event), the hook checks if:
+
+1. A `## committer Section` is present in the session log (indicates a completed cycle)
+2. A pitch in `ready/` directory matches the active session log's slug
+
+If both conditions are met, the hook ships only `ready/<slug>.md` → `shipped/`, guaranteeing that only pitches whose logs contain evidence of a full build cycle are shipped.
+
+**Slug-Based Binding**: The core innovation is slug-derived pitch selection — the session log filename (`<ts>_<slug>_session.md`) encodes the pitch slug. The hook extracts this slug via fixed-width regex and ships ONLY that slug's pitch. This prevents shipping unbuilt pitches that merely appear in `ready/` mid-queue (e.g., dropped by a parallel shaping session).
+
+**Session Log Forms**: Two naming forms exist:
+
+- **Pitch-driven**: `<ts>_<slug>_session.md` (one per pitch; autoship target)
+- **Free-form**: `<ts>_session.md` (no slug; not an autoship target)
+
+Free-form logs correctly yield no slug and are skipped by the hook.
+
+**Bypass conditions**: Hook is bypassed under:
+
+- `CLAUDE_ROLE=dashboard-build` (CI/platform manages shipping post-merge)
+- `CODEGEN_NO_AUTOSHIP=1` (operator explicit suppression)
+
+**Pi mirror**: `harnesses/pi/pi-extensions/enforcement/src/hooks/pitch-shipped-before-stop.ts` — same slug-binding logic, adapted for Pi's `session_shutdown` observe-only event (emit warnings, no block).
+
+### Slug Extraction Patterns
+
+When extracting a slug from a session log filename, use a **fixed-width regex anchored on timestamp and suffix**, not a pattern that splits on `_`. This handles slugs containing underscores (e.g., `stop_resume_auto`) without ambiguity.
+
+**Canonical pattern** (matches `orchestrator-session-log-name-guard.sh:64`):
+
+```bash
+slug=$(basename "$log" | sed -E 's/^[0-9]{8}_[0-9]{6}_(.+)_session\.md$/\1/')
+[ -z "$slug" ] && exit 0  # no match → free-form or multi-step log, skip
+```
+
+**Why fixed-width**: Splitting on the last `_` would incorrectly fragment `stop_resume_auto` into `resume_auto` (captures one-past-the-slug). Prefix/suffix anchoring on the 8-digit date and 6-digit time is unambiguous.
+
+**What it rejects**: Multi-step logs (`<ts>_step1_<slug>.md`) do not match the regex and are correctly skipped (step logs are not pitch-driven autoship targets).
+
+### Hook Testing — Vacuous-Pass Trap When Tightening Conditions
+
+**Pitfall**: When a hook's match condition narrows (e.g., from "any pitch in ready/" to "only ready/<slug>.md if slug matches the active log"), existing test fixtures that satisfied the OLD broad condition may silently no-longer-match the NEW narrow condition. Block-path tests then vacuously pass (because the hook never blocks when the new condition isn't met), masking implementation regressions.
+
+**Mandatory re-fixturing pattern**: When narrowing a hook condition:
+
+1. **Re-fixture ALL existing block-path tests** to satisfy the NEW condition (not just a subset)
+2. **Verify block-path tests still genuinely block** (not passing vacuously because condition is unmet)
+3. **Add new test cases** for previously-unhandled scenarios (free-form logs, multi-step logs, non-matching slugs)
+
+**Example from `pitch-shipped-before-stop`**: Old tests used non-`_session` log names that wouldn't yield a slug under the fix, so they vacuously passed-as-allow and would have hidden any implementation bugs. The fix re-fixtured all existing tests to use pitch-driven log names that extract a slug correctly.
+
+**Prevention strategy**: After narrowing a condition, run the test suite twice in isolation:
+
+- First run: all tests pass (baseline)
+- Introduce a deliberate bug in the hook body (e.g., comment out the block line)
+- Second run: verify tests FAIL (evidence that block-path tests are genuinely exercising the block logic, not passing vacuously)
+- Remove the deliberate bug and commit
+
+This double-run proves that the test suite is sensitive to the hook's actual behavior under the narrowed condition.
 
 ## Key Paths
 

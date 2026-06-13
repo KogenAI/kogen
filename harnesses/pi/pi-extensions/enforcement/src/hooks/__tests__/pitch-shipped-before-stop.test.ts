@@ -56,14 +56,28 @@ describe("pitch-shipped-before-stop", { concurrency: false }, () => {
     delete process.env["CODEGEN_NO_AUTOSHIP"];
   });
 
-  function writeLog(content: string): void {
+  /**
+   * Write a session log with the canonical <ts>_<slug>_session.md name.
+   * Default slug is "my-feature" to match writePitchReady("my-feature.md").
+   */
+  function writeLog(content: string, slug = "my-feature"): void {
     const logPath = path.join(
       tmpDir,
       "codegen",
       "logging",
-      "20260601_step1_test.md",
+      `20260601_123456_${slug}_session.md`,
     );
     fs.writeFileSync(logPath, content);
+  }
+
+  /**
+   * Write a log with a non-session filename (multi-step or free-form).
+   */
+  function writeNonSessionLog(filename: string, content: string): void {
+    fs.writeFileSync(
+      path.join(tmpDir, "codegen", "logging", filename),
+      content,
+    );
   }
 
   function writePitchReady(name: string): void {
@@ -268,13 +282,48 @@ describe("pitch-shipped-before-stop", { concurrency: false }, () => {
 
   // ── Test 13: warning message names the pitch basename ─────────────────────
   it("warning message includes pitch basename", async () => {
-    writeLog("## committer Section\n\nCommitted.\n");
+    writeLog("## committer Section\n\nCommitted.\n", "orchestrator-discipline");
     writePitchReady("orchestrator-discipline.md");
     const stderrOutput = await runHook(tmpDir, "name-check-sess-13");
     assert.ok(
       stderrOutput.includes("orchestrator-discipline.md"),
       "expected pitch basename in warning",
     );
+  });
+
+  // ── Test 15: slug-match + committer-section + warn contains slug filename ──
+  it("warning references slug filename when slug-match + committer + ready/", async () => {
+    writeLog("## committer Section\n\nCommitted.\n", "my-feature");
+    writePitchReady("my-feature.md");
+    const stderrOutput = await runHook(tmpDir, "slug-match-sess-15");
+    assert.ok(
+      stderrOutput.includes("pitch-shipped-before-stop"),
+      "expected warning on stderr",
+    );
+    assert.ok(
+      stderrOutput.includes("my-feature.md"),
+      "expected slug filename in warning",
+    );
+  });
+
+  // ── Test 16: slug pitch absent from ready/ → no warning ──────────────────
+  // Incident case: build session for pitch X; unrelated pitch Y in ready/.
+  // New logic: only ships the pitch matching THIS session's slug (X), not Y.
+  it("does not warn when slug pitch is absent from ready/ (unrelated pitch present)", async () => {
+    // Log slug is "foo"; ready/ only has "unrelated-pitch.md", not "foo.md"
+    writeLog("## committer Section\n\nCommitted.\n", "foo");
+    writePitchReady("unrelated-pitch.md");
+    const stderrOutput = await runHook(tmpDir, "slug-absent-sess-16");
+    assert.ok(!stderrOutput.includes("WARNING"), "expected no warning");
+  });
+
+  // ── Test 17: free-form log (no slug) → no warning ────────────────────────
+  it("does not warn when log has no slug (free-form session)", async () => {
+    // Log filename has no slug segment: <ts>_session.md
+    writeNonSessionLog("20260601_123456_session.md", "## committer Section\n\nCommitted.\n");
+    writePitchReady("anything.md");
+    const stderrOutput = await runHook(tmpDir, "free-form-sess-17");
+    assert.ok(!stderrOutput.includes("WARNING"), "expected no warning");
   });
 
   // ── Test 14: does not block (observe-only) ────────────────────────────────

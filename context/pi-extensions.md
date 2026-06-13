@@ -61,6 +61,22 @@ Pi has two event families with **asymmetric blocking capability**:
 
 **Transient error detection in session_shutdown twins**: When porting a Claude Stop hook that detects transient errors (e.g., `stop-resume.sh`), the Pi twin implements the **same error pattern matching** (regex alternations like "Stream idle timeout" OR "connection reset" OR "File has been modified since read") and logs warnings to stderr for operator visibility. However, the Pi twin cannot emit blocking decisions — it can only warn. Pattern example: `stop-resume.ts` registers the same alternations in `TRANSIENT_ERROR_PATTERNS` and emits `process.stderr.write('[pi-enforcement:stop-resume] Transient error detected: ...')` when a pattern matches. This ensures both harnesses detect the same transient conditions, even though only Claude can auto-resume via `block()`. The stderr warning is valuable for debugging — operators see which transient errors occurred during Pi sessions, supporting incident investigation.
 
+### Autoship Hook Twin — Slug-Based Pitch Shipping
+
+The Pi twin of `pitch-shipped-before-stop.sh` is `pitch-shipped-before-stop.ts`, registered on the `session_shutdown` event. Like its Bash counterpart, it validates that only pitches matching the active session log's slug are shipped from `ready/` → `shipped/`.
+
+**Design difference from Bash**: The Bash version uses transcript-based log discovery (`session_log_from_transcript`) + fixed-width regex slug extraction. The Pi version uses disk-based discovery (mtime-newest log in `codegen/logging/`) since Pi has no transcript. Both extract the slug via the same fixed-width regex and apply the same ship decision logic:
+
+1. Find the active session log (Bash via transcript, Pi via mtime-newest disk scan)
+2. Extract slug from log filename via regex `^[0-9]{8}_[0-9]{6}_(.+)_session\.md$`
+3. If slug is empty (free-form log, no slug) → exit 0 (no shipping)
+4. If slug exists → search `ready/` for pitch with matching slug
+5. If found → ship `ready/<slug>.md` → `shipped/`; if not found → log warning but do not block
+
+**Why this matters**: Both harnesses now enforce the same proof-of-build linkage — only pitches whose session logs contain a full build cycle (indicated by log filename slug presence) get shipped. This prevents unbuilt pitches from entering the shipped queue when multiple shaping sessions run in parallel.
+
+**Reduced-fidelity aspect**: The mtime-based log discovery is the Pi analogue of Bash's transcript-based discovery. Both primitives have the same semantic intent (find the active log) but different mechanisms. The mtime approach is sufficient when there is only one active session per working directory (typical Pi usage); under rapid session chaining, multiple logs with recent mtime could theoretically exist, but this is rare in operator workflows.
+
 ## Tool Call Event Handler — Pi Tool Name Lowercasing
 
 Pi `tool_call` event handlers receive `event.toolName` as **lowercase pipe-separated** values (`"bash"`, `"write"`, `"edit"`, `"subagent"`), not CamelCase. A single `pi.on("tool_call", ...)` event handler branches on `event.toolName` to route to tool-specific logic. Do NOT register separate handlers per tool — use one handler with internal branching:

@@ -42,26 +42,12 @@ function getActiveStepLog(projectDir: string): string | null {
   return path.join(loggingDir, logFiles[0].name);
 }
 
-/** Find the most recently modified pitch in codegen/pitches/. */
-function getActivePitch(projectDir: string): string | null {
-  const pitchesDir = path.join(projectDir, "codegen", "pitches");
-  if (!fs.existsSync(pitchesDir)) return null;
-
-  // Search ready/ and shipped/ for recently modified pitches
-  const allPitches: { fullPath: string; mtime: number }[] = [];
-  for (const sub of ["ready", "shipped", "draft"]) {
-    const subDir = path.join(pitchesDir, sub);
-    if (!fs.existsSync(subDir)) continue;
-    for (const f of fs.readdirSync(subDir)) {
-      if (!f.endsWith(".md")) continue;
-      const fullPath = path.join(subDir, f);
-      allPitches.push({ fullPath, mtime: fs.statSync(fullPath).mtimeMs });
-    }
-  }
-
-  if (allPitches.length === 0) return null;
-  allPitches.sort((a, b) => b.mtime - a.mtime);
-  return allPitches[0].fullPath;
+/** Extract pitch slug from a session log filename: <ts>_<slug>_session.md → slug. */
+function slugFromLogName(logPath: string): string | null {
+  const basename = path.basename(logPath);
+  const match = /^[0-9]{8}_[0-9]{6}_(.+)_session\.md$/.exec(basename);
+  if (!match) return null;
+  return match[1];
 }
 
 export function register(pi: ExtensionAPI): void {
@@ -109,6 +95,21 @@ export function register(pi: ExtensionAPI): void {
       return;
     }
 
+    // Extract slug from log filename: <ts>_<slug>_session.md → slug.
+    const slug = slugFromLogName(logPath);
+    if (!slug) {
+      debugLog(
+        "pitch-shipped-before-stop",
+        "skip: no slug in log filename (free-form or multi-step log)",
+      );
+      return;
+    }
+
+    debugLog(
+      "pitch-shipped-before-stop",
+      `slug=${slug} log=${path.basename(logPath)}`,
+    );
+
     let logContent: string;
     try {
       logContent = fs.readFileSync(logPath, "utf8");
@@ -123,35 +124,27 @@ export function register(pi: ExtensionAPI): void {
       return;
     }
 
-    // Check if any pitch is in ready/.
-    const readyDir = path.join(projectDir, "codegen", "pitches", "ready");
-    if (!fs.existsSync(readyDir)) {
-      debugLog("pitch-shipped-before-stop", "skip: no ready/ dir");
+    // Check if THIS session's pitch (by slug) is still in ready/.
+    const readyPath = path.join(
+      projectDir,
+      "codegen",
+      "pitches",
+      "ready",
+      `${slug}.md`,
+    );
+    if (!fs.existsSync(readyPath)) {
+      debugLog(
+        "pitch-shipped-before-stop",
+        `skip: ${slug}.md not in ready/ (already shipped or draft)`,
+      );
       return;
     }
-
-    const readyPitches = fs
-      .readdirSync(readyDir)
-      .filter((f) => f.endsWith(".md"));
-
-    if (readyPitches.length === 0) {
-      debugLog("pitch-shipped-before-stop", "skip: no pitches in ready/");
-      return;
-    }
-
-    // Use the most recently modified pitch in ready/ as the active one.
-    const activePitch = readyPitches
-      .map((f) => ({
-        name: f,
-        mtime: fs.statSync(path.join(readyDir, f)).mtimeMs,
-      }))
-      .sort((a, b) => b.mtime - a.mtime)[0].name;
 
     count += 1;
     fs.writeFileSync(counterFile, String(count));
 
     process.stderr.write(
-      `[pi-enforcement:pitch-shipped-before-stop] WARNING: Pitch ${activePitch} was committed but is still in codegen/pitches/ready/. Move it to shipped/: mv codegen/pitches/ready/${activePitch} codegen/pitches/shipped/${activePitch} (plain mv, NEVER git mv). Count: ${count}\n`,
+      `[pi-enforcement:pitch-shipped-before-stop] WARNING: Pitch ${slug}.md was committed but is still in codegen/pitches/ready/. Move it to shipped/: mv codegen/pitches/ready/${slug}.md codegen/pitches/shipped/${slug}.md (plain mv, NEVER git mv). Count: ${count}\n`,
     );
   });
 }
