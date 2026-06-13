@@ -2,7 +2,7 @@
 
 Structural map of the codegen repo: what each top-level file and directory contains, why it exists, and what creates or updates it. Use it to answer "where does X go?" or decide where a new file belongs. For functional detail, see cross-references at the bottom.
 
-**Key fact — AGENTS.md / CLAUDE.md at repo root**: Both are hand-authored plain files describing codegen's own session loop. NOT generated, NOT symlinked — edit directly. Both are committed. They carry identical content; the only difference is import syntax (`→ See` prose pointers in AGENTS.md vs `@context/...` auto-imports in CLAUDE.md). `templates/AGENTS-HYBRID.md.j2` generates a _downstream_ repo's docs (not these root files).
+**Key fact — AGENTS.md / CLAUDE.md at repo root**: Both are hand-authored plain files describing codegen's own session loop. NOT generated, NOT symlinked — edit directly. Both are committed. They carry identical content; the only difference is import syntax (`→ See` prose pointers in AGENTS.md vs `@context/...` auto-imports in CLAUDE.md). Downstream repo docs (`AGENTS.md`/`CLAUDE.md`) are rendered from `shared/apps/AGENTS-phoenix.md.j2` and `shared/apps/AGENTS-static.md.j2` via `install.sh` — not from these root files.
 
 ```
 codegen/                          ← repo root
@@ -72,20 +72,20 @@ codegen/                          ← repo root
 
 ## Make Targets
 
-| Target                | Purpose                                                                                |
-| --------------------- | -------------------------------------------------------------------------------------- |
-| `make install`        | Full install cycle: hook-parity → generate pi-extension → render settings → install.sh |
-| `make test`           | Bash hook unit tests (`run-tests.sh`) + pi-extension npm tests; fast, no LLM calls     |
-| `make test-stacks`    | ExUnit scaffold tests both harnesses; slow, real LLM calls; pre-deploy gate            |
-| `make test-all`       | `test` + `test-stacks` + `record-green`                                                |
-| `make hook-parity`    | Verify `claude-code-settings.json` hook entries match hook source dir                  |
-| `make rule-parity`    | Diff downstream AGENTS.md/CLAUDE.md against `templates/AGENTS-HYBRID.md.j2` render     |
-| `make harness-parity` | Verify `codegen-build` + `dispatch.sh` stubs are self-consistent                       |
-| `make format`         | Format shell scripts with `shfmt`, all other files with `prettier`                     |
-| `make doctor`         | Check required tools on PATH (claude, jq, rg, mise, pyyaml); exits non-zero on fail    |
-| `make record-green`   | Write `test_harness/last_green.json` with current commit SHA + tool versions           |
-| `make uninstall`      | Remove installed claude harness artifacts (ocg-only guarded)                           |
-| `make update`         | Update AI agents (ocg-only guarded)                                                    |
+| Target                | Purpose                                                                                 |
+| --------------------- | --------------------------------------------------------------------------------------- |
+| `make install`        | Full install cycle: hook-parity → generate pi-extension → render settings → install.sh  |
+| `make test`           | Bash hook unit tests (`run-tests.sh`) + pi-extension npm tests; fast, no LLM calls      |
+| `make test-stacks`    | ExUnit scaffold tests both harnesses; slow, real LLM calls; pre-deploy gate             |
+| `make test-all`       | `test` + `test-stacks` + `record-green`                                                 |
+| `make hook-parity`    | Verify `claude-code-settings.json` hook entries match hook source dir                   |
+| `make rule-parity`    | Grep baked agents (`~/.claude/agents`) for stale harness-relative paths; fails if found |
+| `make harness-parity` | Verify `codegen-build` + `dispatch.sh` stubs are self-consistent                        |
+| `make format`         | Format shell scripts with `shfmt`, all other files with `prettier`                      |
+| `make doctor`         | Check required tools on PATH (claude, jq, rg, mise, pyyaml); exits non-zero on fail     |
+| `make record-green`   | Write `test_harness/last_green.json` with current commit SHA + tool versions            |
+| `make uninstall`      | Remove installed claude harness artifacts (ocg-only guarded)                            |
+| `make update`         | Update AI agents (ocg-only guarded)                                                     |
 
 ---
 
@@ -115,7 +115,7 @@ codegen/                          ← repo root
 | `node_modules/` | Root prettier dep only. Gitignored. Pi extension packages have their own per-extension `node_modules/`.                                                      | Root only; `npm install` at repo root to regenerate                                                    |
 | `pitches/`      | Codegen-on-codegen pitch documents used to drive AI build sessions on this repo.                                                                             | —                                                                                                      |
 | `shared/`       | Runtime artifacts installed/rendered into downstream agents: rules, recipes, subagents, scaffold, usage_rules.                                               | `shared/rules/`, `shared/recipes/`, `shared/subagents/`, `shared/scaffold/`, `shared/usage_rules/`     |
-| `templates/`    | Generator pipeline + `.j2` sources for codegen infrastructure. Distinct from `shared/` (runtime).                                                            | `templates/generator/`, `templates/AGENTS-HYBRID.md.j2`                                                |
+| `templates/`    | Generator pipeline + `.j2` sources for codegen infrastructure. Distinct from `shared/` (runtime).                                                            | `templates/generator/`                                                                                 |
 | `test_harness/` | Elixir/ExUnit project for end-to-end scaffold validation. Slow (real LLM) + fast hermetic (deterministic). Mix path wire: `mix.exs:37` elixirc_paths(:test). | `test_harness/test/stacks/`, `test_harness/test/codegen_test_harness/`, `test_harness/last_green.json` |
 | `tmp/`          | Ephemeral scratch space. Gitignored.                                                                                                                         | —                                                                                                      |
 
@@ -181,7 +181,7 @@ codegen/                          ← repo root
 
 ## Notable Artifacts
 
-- **`templates/AGENTS-HYBRID.md.j2`** — source for the downstream consumer repo's `AGENTS.md`/`CLAUDE.md`. Verified by `make rule-parity`. Does NOT generate codegen's own root docs.
+- **`shared/apps/AGENTS-phoenix.md.j2` / `AGENTS-static.md.j2`** — sources for downstream consumer repos' `AGENTS.md`/`CLAUDE.md`. Rendered by `install.sh` into `~/.local/bin/shared/apps/`. `make rule-parity` greps baked agents for stale harness-relative paths — it does NOT render or diff these templates.
 - **`templates/generator/`** — generator pipeline core. `generate.sh` + `process_template.py` + `hook_registrations.py`. Full domain: `context/core.md`.
 - **`harnesses/claude/hooks/`** — 47 hook scripts; each enforces one discipline rule, has a paired `_test.sh`. Full catalog: `context/hooks.md`.
 - **`shared/subagents/`** — `.md.j2` templates rendered into fully self-contained system prompts baked at install time via `{% include %}`. Full domain: `context/subagents.md`.

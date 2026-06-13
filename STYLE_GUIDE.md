@@ -38,7 +38,7 @@ Same intent, different delivery mechanism. Don't collapse to one branch — pi a
 
 **Path caveat**: claude-branch `@`-paths sometimes use the `codegen/` symlink prefix (Claude resolves `@` against project root where the symlink lives, e.g. `@codegen/rules/foo.md`) while the else-branch uses the real path under `context/` or `rules/` (e.g. `→ See \`rules/foo.md\``). Both resolve to the same file via the symlink, but the prefix differs because `@` ingestion and explicit Read have different working-dir semantics.
 
-**Example** (`templates/AGENTS-HYBRID.md.j2:76-78`):
+**Example** (`shared/apps/AGENTS-phoenix.md.j2:86-88`):
 
 ```jinja
 {% if tool.name == 'claude' %}@context/repo-layout.md

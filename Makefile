@@ -552,7 +552,7 @@ help:
 	@echo "  make test-all       Full pre-deploy gate: test + test-stacks + record-green"
 	@echo "  make record-green   Write test_harness/last_green.json with current sha + versions"
 	@echo "  make hook-parity    Verify hook registrations match claude-code-settings.json"
-	@echo "  make rule-parity    Verify AGENTS.md / CLAUDE.md match template render"
+	@echo "  make rule-parity    Grep baked agents for stale harness-relative paths"
 	@echo "  make format         Format all shell scripts and files"
 	@echo "  make doctor         Check required tools and config"
 	@echo "  make uninstall      Remove global CLI installation (via ocg)"
