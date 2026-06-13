@@ -86,6 +86,34 @@ exec cmd "${arr[@]+"${arr[@]}"}" other_args
 
 **Unbound variable in default-value expansion** — `${VAR}` inside `${OTHER:-node "$VAR/path"}` still fails under `set -u` if `VAR` is unset, even though `OTHER` has a default. Use `${VAR:-}` to make unset safe within expansions.
 
+**Stale branch-locals across loop iterations** — `local var_name` declared inside an `if`/`elif` branch (within a loop body) persists across iterations and carries stale values from earlier branches. `${VAR:-}` guards an UNSET variable but does NOT clear an already-assigned value. Fix: reset all branch-locals at loop top with explicit `local var="" other_var=""`. Pattern:
+
+```bash
+# WRONG — repo_url declared inside if branch, stale on next iteration
+while IFS=: read -r dep version repo_url; do
+  if [ "$version" = "2.2.0" ]; then
+    local repo_url="$FORK_URL"  # set in this iteration
+  fi
+  # Next iteration: repo_url still contains FORK_URL from hex dep above
+  if [ -n "$repo_url" ]; then  # BUG: uses stale value
+    fetch_from_github "$repo_url"
+  fi
+done
+
+# CORRECT — reset at loop top
+while IFS=: read -r dep version repo_url; do
+  local repo_url="" tree_ref=""  # reset EACH iteration
+  if [ "$version" = "2.2.0" ]; then
+    repo_url="$FORK_URL"
+  fi
+  if [ -n "$repo_url" ]; then
+    fetch_from_github "$repo_url"
+  fi
+done
+```
+
+The `${VAR:-}` default-value guard only helps when VAR is unset; explicit reset ensures clean iteration state.
+
 ## IFS Multi-Character Join Pitfall
 
 **`IFS=', '; echo "${arr[*]}"` uses ONLY the first character of IFS as separator** — to join with `', '` (comma-space), use `printf '%s, ' "${arr[@]}"` then strip trailing comma:
@@ -99,6 +127,24 @@ printf '%s, ' "${arr[@]}" | sed 's/, $//'  # → "a, b, c"
 ```
 
 This is bash builtin behavior and applies across all platforms (bash 3.2+). Using `${arr[*]}` for multi-char separators is a silent failure pattern.
+
+## Pipe-Delimited Field Extraction with cut
+
+**`cut -d: -f2` on a record with pipe tail captures the entire tail** — when records use mixed delimiters (e.g., `dep_name:version|repo_url|tree_ref`), `cut -d:` sees the pipe as part of the field value, not a boundary. Chain `| cut -d'|' -f1` to strip the tail when only the main field is needed. Pattern:
+
+```bash
+# Input: dep:1.0.0|https://github.com/user/fork|abc123def
+# WRONG — cut -d: -f2 captures the whole |...| tail
+version=$(echo "$record" | cut -d: -f2)  # → "1.0.0|https://github.com/user/fork|abc123def"
+
+# CORRECT — chain cuts to extract just the version
+version=$(echo "$record" | cut -d: -f2 | cut -d'|' -f1)  # → "1.0.0"
+
+# Or extract repo_url (second field)
+repo_url=$(echo "$record" | cut -d: -f2 | cut -d'|' -f2)  # → "https://github.com/user/fork"
+```
+
+**Empty field behavior** — `cut -d'|' -fN` on a record without a pipe delimiter returns an empty string (the whole input is field 1, and field 2 is absent). This is safe for nil-guards: `[ -n "$repo_url" ]` distinguishes set from unset without explicit empty-string checks.
 
 ## Cache Mechanics
 

@@ -85,11 +85,14 @@ extract_dependencies() {
 
         is_builtin "$dep_name" && continue
 
-        local version=""
+        # Reset all branch-locals at top of each iteration
+        local version="" repo_url="" tree_ref=""
 
         # Check if it's a hex package
         if echo "$line" | grep -q ":hex,"; then
             version=$(echo "$line" | grep -oE '"[0-9]+\.[0-9]+(\.[0-9]+(-[a-z0-9.]+)?)?"' | head -1 | tr -d '"')
+            [ -z "$version" ] && version="~no_version~"
+            echo "${dep_name}:${version}"
         elif echo "$line" | grep -q ":git,"; then
             local tag
             tag=$(echo "$line" | grep -oE 'tag: "[^"]*"' | cut -d'"' -f2) || true
@@ -100,10 +103,15 @@ extract_dependencies() {
                 sha=$(echo "$line" | grep -oE '"[a-f0-9]{40}"' | head -1 | tr -d '"' | cut -c1-7) || true
                 [ -n "$sha" ] && version="git-$sha"
             fi
+            [ -z "$version" ] && version="~no_version~"
+            # Capture GitHub repo path (owner/repo) and full commit SHA
+            repo_url=$(echo "$line" | grep -oE 'github\.com/[^"]+\.git' | sed 's#github\.com/##; s#\.git##') || true
+            tree_ref=$(echo "$line" | grep -oE '"[a-f0-9]{40}"' | head -1 | tr -d '"') || true
+            echo "${dep_name}:${version}|${repo_url}|${tree_ref}"
+        else
+            version="~no_version~"
+            echo "${dep_name}:${version}"
         fi
-
-        [ -z "$version" ] && version="~no_version~"
-        echo "${dep_name}:${version}"
     done <"$lock_file" | sort -u
 }
 
@@ -118,9 +126,11 @@ usage_rule_needs_update() {
 }
 
 # Function to generate usage rule from hexdocs via LLM
+# $1 = dep_name, $2 = version, $3 = full record (dep_name:version|repo_url|tree_ref) — optional
 generate_usage_rule() {
     local dep_name="$1"
     local version="$2"
+    local record="${3:-}"
     local version_safe
     version_safe=$(echo "$version" | sed 's/[^a-zA-Z0-9.]/-/g')
     local output_file="$USAGE_RULES_DIR/${dep_name}-${version_safe}.md"
@@ -128,10 +138,23 @@ generate_usage_rule() {
     local version_display="$version"
     [ "$version" = "~no_version~" ] && version_display="latest"
 
-    if echo "$version" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]'; then
-        local hexdocs_url="https://hexdocs.pm/${dep_name}/${version}/"
+    # Parse git coords from record (pipe-delimited tail; absent for hex deps)
+    local repo_url="" tree_ref=""
+    if [ -n "$record" ]; then
+        repo_url=$(echo "$record" | cut -d'|' -f2)
+        tree_ref=$(echo "$record" | cut -d'|' -f3)
+    fi
+
+    local hexdocs_url
+    if [ -n "$repo_url" ] && [ -n "$tree_ref" ]; then
+        # git dep with captured repo — fetch from fork at locked commit
+        hexdocs_url="https://github.com/${repo_url}/tree/${tree_ref}"
+    elif echo "$version" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]'; then
+        # hex dep with real semver — versioned hexdocs
+        hexdocs_url="https://hexdocs.pm/${dep_name}/${version}/"
     else
-        local hexdocs_url="https://hexdocs.pm/${dep_name}/"
+        # fallback — unversioned hexdocs
+        hexdocs_url="https://hexdocs.pm/${dep_name}/"
     fi
 
     # Check if this is a framework that needs multi-file splitting
@@ -333,7 +356,7 @@ main() {
         [ -z "$dep_with_version" ] && continue
         local dep_name dep_version
         dep_name=$(echo "$dep_with_version" | cut -d: -f1)
-        dep_version=$(echo "$dep_with_version" | cut -d: -f2)
+        dep_version=$(echo "$dep_with_version" | cut -d: -f2 | cut -d'|' -f1)
 
         if usage_rule_needs_update "$dep_name" "$dep_version"; then
             deps_to_generate+=("$dep_with_version")
@@ -357,9 +380,9 @@ main() {
             local dep_with_version="${deps_to_generate[$current_index]}"
             local dep_name dep_version
             dep_name=$(echo "$dep_with_version" | cut -d: -f1)
-            dep_version=$(echo "$dep_with_version" | cut -d: -f2)
+            dep_version=$(echo "$dep_with_version" | cut -d: -f2 | cut -d'|' -f1)
             (
-                if generate_usage_rule "$dep_name" "$dep_version"; then
+                if generate_usage_rule "$dep_name" "$dep_version" "$dep_with_version"; then
                     echo "success" >"$temp_dir/${dep_name}.status"
                 else
                     echo "failed" >"$temp_dir/${dep_name}.status"
@@ -499,6 +522,8 @@ if [ -n "$POSITIONAL_DEP" ]; then
     fi
 
     dep_version=""
+    dep_repo_url=""
+    dep_tree_ref=""
     if echo "$dep_line" | grep -q ":hex,"; then
         dep_version=$(echo "$dep_line" | grep -oE '"[0-9]+\.[0-9]+(\.[0-9]+(-[a-z0-9.]+)?)?"' | head -1 | tr -d '"')
     elif echo "$dep_line" | grep -q ":git,"; then
@@ -509,10 +534,13 @@ if [ -n "$POSITIONAL_DEP" ]; then
             local_sha=$(echo "$dep_line" | grep -oE '"[a-f0-9]{40}"' | head -1 | tr -d '"' | cut -c1-7) || true
             [ -n "${local_sha:-}" ] && dep_version="git-${local_sha}"
         fi
+        dep_repo_url=$(echo "$dep_line" | grep -oE 'github\.com/[^"]+\.git' | sed 's#github\.com/##; s#\.git##') || true
+        dep_tree_ref=$(echo "$dep_line" | grep -oE '"[a-f0-9]{40}"' | head -1 | tr -d '"') || true
     fi
     [ -z "$dep_version" ] && dep_version="~no_version~"
 
-    generate_usage_rule "$dep_arg" "$dep_version"
+    dep_record="${dep_arg}:${dep_version}|${dep_repo_url}|${dep_tree_ref}"
+    generate_usage_rule "$dep_arg" "$dep_version" "$dep_record"
     exit $?
 fi
 
