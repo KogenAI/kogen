@@ -172,6 +172,34 @@ When editing a hand-authored hook script (e.g., `orchestrator-read-discipline.sh
 - **Leading-anchor** (`^` or `^[[:space:]]*(verb1|verb2)`) — when the dangerous token is ALWAYS the leading verb (e.g., `cat file | grep`, `find . -path`, `git stash`). Examples: `no-cat-pipe.sh`, `no-git-stash.sh`.
 - **Substring-match** (no anchor, or `|` in middle of pattern) — when the dangerous token can appear anywhere (e.g., command redirect/append `echo ... >> $TRANSCRIPT_PATH`, file path reference `cp ... ~/.claude/projects/`). Example: `orchestrator-read-discipline.sh` transcript-forge guard uses substring for tokens like `TRANSCRIPT_PATH`, `.jsonl`, `.claude/projects/` because they appear in redirect destinations, not leading positions. If you use leading-anchor on a redirect/append command, you will miss the violation because the dangerous token is not leading.
 
+## Stop Hook Authoring Patterns & Error Classification
+
+Stop hooks fire when the session ends. The primary pattern for Stop hooks that auto-recover from transient errors is **error classification** — examine error text and classify into three mutually-exclusive categories:
+
+1. **Hard failure** — unrecoverable errors (4xx, auth, invalid key). Do NOT retry.
+2. **Rate limit** — API throttle (429). Do NOT retry (let user wait).
+3. **Retryable** — self-healing transient errors (stream timeout, connection reset, API 5xx, socket errors, etc.). Emit `block` decision to auto-resume.
+
+**Transient error matching**: Use a regex pattern matching common error strings. The `stop-resume.sh` hook matches:
+
+- Stream/connection errors: `Stream idle timeout`, `Unable to connect`, `FailedToOpenSocket`, `ConnectionRefused`, `connection reset`, `socket hang up`, `ETIMEDOUT`, `context deadline exceeded`
+- API server errors: `API Error: 500`, `API Error: 502`, `API Error: 503`, `API Error: 504`, `overloaded_error`, `Internal server error`, `upstream connect error`
+- **Edit-conflict transient errors** (self-healing when subagent re-reads): `File has been modified since read`, `has been unexpectedly modified` — both forms occur in Claude Code issues #3513, #33856, #48390
+
+**Retry cap**: When classified as retryable, increment a session-scoped counter file (e.g., `/tmp/claude-resume-${session_id}.count`). Cap at 3 attempts — on the 4th occurrence, allow (exit 0, no block) to prevent infinite loops. Clean up the counter file on hard failure or rate limit (non-retryable paths).
+
+**Edit-conflict self-healing context**: The Edit tool may fail with "File has been modified since read" when the orchestrator Read → Edit → Block → resumption pattern races with subagent session log writes. Re-reading the file clears the conflict. Cap-3 ceiling prevents wedging when the conflict persists (known Claude Code bug on rare file lock contention).
+
+**Hook test cleanup**: Bash hook tests using session-scoped counter files MUST register filenames in a `cleanup()` trap that runs before each test suite. Without cleanup, counters persist across `make test` re-runs, causing the cap to start above reset and spuriously fail on test re-execution. Example from `stop-resume_test.sh`:
+
+```bash
+cleanup() {
+  rm -f /tmp/claude-resume-sess-t1.count /tmp/claude-resume-sess-t10.count /tmp/claude-resume-sess-t11.count
+}
+trap cleanup EXIT
+cleanup  # clean any leftovers from previous suite runs before tests start
+```
+
 ## SubagentStop Hook Authoring Patterns
 
 New SubagentStop hooks follow standard contract: source `lib/hooks-lib.sh`, use `parse_input` to extract AGENT_TYPE and TRANSCRIPT_PATH, call `block "$reason"` to emit decision JSON. Key patterns:

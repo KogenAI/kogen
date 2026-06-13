@@ -26,6 +26,8 @@ const TRANSIENT_ERROR_PATTERNS = [
   /ECONNRESET/i,
   /ETIMEDOUT/i,
   /network.*error/i,
+  /file has been modified since read/i,
+  /has been unexpectedly modified/i,
 ];
 
 export function register(pi: ExtensionAPI): void {

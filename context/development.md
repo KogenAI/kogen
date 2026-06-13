@@ -70,7 +70,27 @@ See `.env.sample` and `.env.prod.sample` for full variable lists.
 - **Parallel Read then parallel Edits for independent single-line insertions**: When making multiple independent single-line insertions into different files (e.g., adding three `{% include %}` lines to three separate `.md.j2` templates), Read all target files in parallel first to confirm anchor text presence and position, then execute all Edits in parallel. No ordering dependencies between edits means parallelization is safe and reduces round-trip latency. Verify anchors in reads before editing to catch typos or position drift.
 - **Scaffold.sh Phase pattern for new directories**: The canonical model for "ensure directory exists + placeholder file" additions is scaffold.sh Phase 3 (`priv/plts` + `.keep` file). New lifecycle directories follow this shape: Phase block with `mkdir -p` + `touch .gitkeep` + echo status message. Example: codegen/pitches dirs (draft, ready, shipped) added via Phase 3b loop over the three dirs. When adding new directory lifecycle, use the same Phase numbering + heredoc/echo pattern as existing phases (cf. session 20260612_115417 scaffold.sh Phase 3b implementation).
 - **Python**: stdlib only in generator scripts — no third-party deps. One-liner scripts (e.g., module name derivation) can use python3 directly in Bash heredocs.
-- **TypeScript**: strict mode; each extension self-contained with own `package.json`. **Test isolation under parallel runners**: when tests capture stderr/stdout (e.g., to verify error handling), move capture to test-body scope rather than `beforeEach`/`afterEach` hooks — this ensures each test owns its capture window and avoids cross-test pollution under concurrent test runners. Restore streams in both resolve and reject paths to prevent leakage on assertion failure. **Regex anchors**: JavaScript does not support `\z` (PCRE end-of-string anchor); use string-split extraction instead. **Markdown parsing**: avoid regex for section body extraction; prefer `split("## ")` + slice pattern to find boundaries explicitly.
+- **TypeScript**: strict mode; each extension self-contained with own `package.json`. **Test isolation under parallel runners**: when tests capture stderr/stdout (e.g., to verify error handling), move capture to test-body scope rather than `beforeEach`/`afterEach` hooks — this ensures each test owns its capture window and avoids cross-test pollution under concurrent test runners. Restore streams in both resolve and reject paths to prevent leakage on assertion failure. Pattern: capture inside test body, not in beforeEach; restore in finally block on both pass and throw paths. Example:
+  ```typescript
+  it("verifies error message on transient error", () => {
+    process.env.LAST_ASSISTANT_MESSAGE = "Stream idle timeout";
+    const originalStderr = process.stderr.write;
+    let stderrOutput = "";
+    process.stderr.write = (str: any) => {
+      stderrOutput += str;
+      return true;
+    };
+
+    try {
+      handler({ reason: "quit" } as any);
+      assert(stderrOutput.includes("[pi-enforcement]"));
+    } finally {
+      process.stderr.write = originalStderr;
+      delete process.env.LAST_ASSISTANT_MESSAGE;
+    }
+  });
+  ```
+  See `harnesses/pi/pi-extensions/enforcement/src/hooks/__tests__/stop-resume.test.ts` for working example. **Regex anchors**: JavaScript does not support `\z` (PCRE end-of-string anchor); use string-split extraction instead. **Markdown parsing**: avoid regex for section body extraction; prefer `split("## ")` + slice pattern to find boundaries explicitly.
 - **Commit messages**: why-focused, delegated to committer subagent — never written directly by orchestrator
 
 ## Dev Scripts

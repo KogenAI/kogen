@@ -94,4 +94,37 @@ describe("stop-resume", () => {
     assert.ok(result == null || (result as { block?: boolean }).block !== true);
     fs.rmSync(counterPath(sid), { force: true });
   });
+
+  it("warns on modified-since-read transient error", async () => {
+    process.env["LAST_ASSISTANT_MESSAGE"] =
+      "File has been modified since read — edit conflict";
+
+    const originalStderr = process.stderr.write.bind(process.stderr);
+    let stderrOutput = "";
+    process.stderr.write = (str: unknown) => {
+      stderrOutput += str;
+      return true;
+    };
+
+    try {
+      const { register } = await import("../stop-resume");
+      register(
+        mockPi as unknown as import("@earendil-works/pi-coding-agent").ExtensionAPI,
+      );
+      await _capturedHandler({ reason: "quit" } as unknown as Parameters<
+        typeof _capturedHandler
+      >[0]);
+      assert.ok(
+        stderrOutput.includes("[pi-enforcement:stop-resume]"),
+        `expected stop-resume warning in stderr, got: ${stderrOutput}`,
+      );
+      assert.ok(
+        stderrOutput.toLowerCase().includes("transient"),
+        `expected 'transient' in stderr warning, got: ${stderrOutput}`,
+      );
+    } finally {
+      process.stderr.write = originalStderr;
+      delete process.env["LAST_ASSISTANT_MESSAGE"];
+    }
+  });
 });

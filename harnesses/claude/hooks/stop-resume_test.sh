@@ -10,6 +10,8 @@
 #   6.  STOP_HOOK_ACTIVE=true → exit 0 immediately (loop guard)
 #   7.  500 error → block (retryable)
 #   8.  connection reset → block (retryable)
+#   10. "File has been modified since read" → block (auto-resume)
+#   11. Cap-3 ceiling with "has been unexpectedly modified" → allow (no block)
 
 set -euo pipefail
 
@@ -30,6 +32,7 @@ cleanup() {
         /tmp/claude-resume-sess-t4.count \
         /tmp/claude-resume-sess-t7.count \
         /tmp/claude-resume-sess-t8.count \
+        /tmp/claude-resume-sess-t10.count \
         /tmp/claude-resume-sess-loop.count
 }
 trap cleanup EXIT
@@ -123,6 +126,25 @@ run_test "API Error 500 triggers block" "block" \
 # Test 8: connection reset → block
 run_test "connection reset triggers block" "block" \
     "$(mk_stop 'Error: connection reset by peer' 'sess-t8')"
+
+# Test 10: "File has been modified since read" → block (self-healing transient)
+run_test "modified-since-read triggers block" "block" \
+    "$(mk_stop 'File has been modified since read — edit conflict' 'sess-t10')"
+
+# Test 11: Cap-3 ceiling with new string → allow (no block)
+SESSION_MOD="sess-mod-$(date +%s%N)"
+COUNTER_MOD="/tmp/claude-resume-${SESSION_MOD}.count"
+printf '%s' "3" >"$COUNTER_MOD" # simulate already at cap
+MOD_MSG="$(mk_stop 'has been unexpectedly modified' "$SESSION_MOD")"
+stdout_mod=$(printf '%s' "$MOD_MSG" | env STOP_HOOK_ACTIVE=false bash "$GUARD" 2>/dev/null || true)
+if printf '%s' "$stdout_mod" | grep -q '"decision"[[:space:]]*:[[:space:]]*"block"'; then
+    printf 'FAIL: cap-3 with unexpected-modified — 4th attempt should NOT block\n  stdout: %s\n' "$stdout_mod"
+    fail=$((fail + 1))
+else
+    [ -n "${VERBOSE:-}" ] && printf 'PASS: cap-3 with unexpected-modified does not block\n'
+    pass=$((pass + 1))
+fi
+rm -f "$COUNTER_MOD"
 
 # Test 9: Retry count increments — first attempt sets count=1, second=2
 SESSION_INC="sess-inc-$(date +%s%N)"

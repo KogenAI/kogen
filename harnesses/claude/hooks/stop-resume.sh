@@ -50,7 +50,7 @@ if [ -n "$TRANSCRIPT_PATH" ] && [ -r "$TRANSCRIPT_PATH" ]; then
 fi
 
 # --- Classify ---------------------------------------------------------------
-retryable_regex='Stream idle timeout|Unable to connect|FailedToOpenSocket|ConnectionRefused|API Error: 529|API Error: 500|API Error: 502|API Error: 503|API Error: 504|overloaded_error|Internal server error|upstream connect error|connection reset|socket hang up|ETIMEDOUT|context deadline exceeded'
+retryable_regex='Stream idle timeout|Unable to connect|FailedToOpenSocket|ConnectionRefused|API Error: 529|API Error: 500|API Error: 502|API Error: 503|API Error: 504|overloaded_error|Internal server error|upstream connect error|connection reset|socket hang up|ETIMEDOUT|context deadline exceeded|File has been modified since read|has been unexpectedly modified'
 rate_limit_regex='API Error: 429|rate_limit|rate limit'
 hard_fail_regex='API Error: 400|API Error: 401|API Error: 403|API Error: 404|Prompt is too long|invalid_api_key|authentication_error|permission_error'
 
