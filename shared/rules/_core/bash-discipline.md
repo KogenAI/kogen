@@ -225,6 +225,8 @@ fi
 
 This pattern is idempotent (cmp check ensures nothing changes if the output is identical) and works on both BSD and GNU sed. Use `install.sh` and `uninstall.sh` as canonical references. NEVER use `sed -i` without a fallback; always prefer the `mktemp/cmp/mv` pattern for maximum portability.
 
+**Alternative `sed -i.bak` pattern** — when a backup is semantically necessary (e.g., inline test mutations that must be rolled back), BSD `sed -i.bak` with `&& rm -f *.bak` cleanup works on both BSD and GNU sed, provided the backup extension is non-empty. Example: `sed -i.bak 's/old/new/g' file && rm -f *.bak` (NOT `sed -i.bak ''` — empty extension is invalid on GNU sed). This pattern avoids temp-file creation overhead when atomic replace is not required (transient edits in test harnesses). Portable across macOS and Linux; prefer `mktemp/cmp/mv` for production code where atomicity matters.
+
 ## Bash 3.2 Compatibility (macOS system bash)
 
 **`declare -A` associative arrays require bash ≥4.0; macOS system bash is 3.2 and lacks them.** Portable pattern for collecting unique keys:
@@ -351,6 +353,24 @@ return 0
 ```
 
 Scales across test files and is bash-3.2-compatible. Example: `if [ -n "${VERBOSE:-}" ]; then echo "Testing $file"; fi` emits only when `VERBOSE=1` is set, and does not flip the exit code.
+
+## Heredoc Expansion Rules (Quoted vs. Unquoted Delimiters)
+
+**Unquoted delimiter (`<<EOF`) expands variables; quoted delimiter (`<<'EOF'`) does not.** When a heredoc writes a multi-line payload to a file, choose the delimiter based on whether variable expansion is desired:
+
+```bash
+# ✅ UNQUOTED — ${payload} EXPANDS (vars already resolved at assembly time)
+cat > /tmp/script.sh <<EOF
+${payload}
+EOF
+
+# ✅ QUOTED — ${payload} does NOT expand (literal string written)
+cat > /tmp/literal.txt <<'EOF'
+${payload}
+EOF
+```
+
+**Critical for test scripts and payload assembly**: When a payload string (e.g., BUILD_CMD, ROLLBACK_CMD) has all its `$`-variables (APP_DIR, APP_NAME, etc.) resolved at assembly time (not at heredoc-write time), use the unquoted `<<EOF` form so `${payload}` expands to the resolved string. If any unresolved `$`-variables remain in the payload string at write time, using unquoted `<<EOF` will cause them to double-expand (first in the payload string construction, then in the heredoc expansion) — this is usually NOT the intent. Check whether `${payload}` contains any raw `$` characters; if it does, use quoted `<<'EOF'` to prevent re-expansion. This is especially important in test harnesses where placeholder variables are injected via `sed` post-write (use quoted delimiter, then post-write `sed` to replace placeholders).
 
 ## Grep -v Footgun (Substring Patterns)
 
