@@ -10,6 +10,7 @@
 #   ${VAR_PREFIX}_ENV          — ENV_LABEL (also exported)
 #   ${VAR_PREFIX}_LOGIN_USER   — ssh login user (also exported)
 #   ${VAR_PREFIX}_OPERATE_AS   — operate-as user (also exported; may be empty)
+#   ${VAR_PREFIX}_ALIAS        — connect alias SSH should use (alias when defined, else resolved IP; also exported)
 #   server_resolved            — same as ${VAR_PREFIX}_SERVER
 #   ENV_LABEL                  — PROD / STAGE / UNKNOWN (treated as PROD)
 #
@@ -167,6 +168,7 @@ backfill_ssh_user() {
 #   ${VAR_PREFIX}_ENV            — same as ENV_LABEL
 #   ${VAR_PREFIX}_LOGIN_USER     — ssh login user
 #   ${VAR_PREFIX}_OPERATE_AS     — operate-as user (may be empty)
+#   ${VAR_PREFIX}_ALIAS          — connect alias SSH should use (alias when defined, else resolved IP; also exported)
 resolve_ssh_target() {
     local server="$1"
     local prefix="$2"
@@ -176,9 +178,10 @@ resolve_ssh_target() {
     project_name=$(basename "$(git rev-parse --show-toplevel 2>/dev/null || pwd)")
     local candidate="${project_name}-${server}"
 
-    local login_user="" operate_as=""
+    local login_user="" operate_as="" connect_alias=""
 
     if host_defined "$candidate"; then
+        connect_alias="$candidate"
         server_resolved=$(ssh -G "$candidate" 2>/dev/null | awk '/^hostname /{print $2}' || echo)
 
         # Backfill User if absent (interactive only)
@@ -232,9 +235,11 @@ resolve_ssh_target() {
             operate_as=$(printf '%s' "$identity" | tail -1)
             login_user="${login_user:-root}"
 
+            connect_alias="$candidate"
             save_ssh_alias "$candidate" "$server_resolved" "$launcher_label" "$login_user" "$operate_as" || true
         else
             # Existing alias (resolved != input)
+            connect_alias="$user_alias"
             echo "Using existing ssh alias '$user_alias' ($server_resolved); not saving a duplicate."
 
             # Parse identity from the existing alias if present
@@ -259,6 +264,9 @@ resolve_ssh_target() {
         exit 1
     }
 
+    # Fallback: if no alias context was set, use the resolved IP/hostname
+    [[ -n "${connect_alias:-}" ]] || connect_alias="$server_resolved"
+
     # Derive ENV_LABEL from arg name (conservative — unknown treated as PROD)
     case "${server}" in
     prod | production) ENV_LABEL="PROD" ;;
@@ -271,4 +279,5 @@ resolve_ssh_target() {
     export "${prefix}_ENV=${ENV_LABEL}"
     export "${prefix}_LOGIN_USER=${login_user}"
     export "${prefix}_OPERATE_AS=${operate_as}"
+    export "${prefix}_ALIAS=${connect_alias}"
 }

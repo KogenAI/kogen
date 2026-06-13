@@ -26,9 +26,9 @@ load_role debug
 source "$CODEGEN_DIR/harnesses/claude/ssh-target.sh"
 resolve_ssh_target "$server" DEBUG claude-debug
 
-DEBUG_CONTEXT="Server: ${server_resolved} (resolved from '${server}'), Environment: ${ENV_LABEL}"
+DEBUG_CONTEXT="Server: ${DEBUG_ALIAS} (${server_resolved}), Login user: ${DEBUG_LOGIN_USER}, Operate-as: ${DEBUG_OPERATE_AS}, Environment: ${ENV_LABEL}"
 
-DEBUG_STARTUP_MSG=$'## DEBUG STARTUP CONTEXT\n'"${DEBUG_CONTEXT}"$'\n\n## SSH cold-start self-check\nBefore investigating, confirm connectivity:\n  ssh '"${server_resolved}"$' "uptime && whoami"\nIf connection fails, stop and report to user — do not proceed on guesswork.\nOnce connected: read logs and config; do NOT run mutations.'
+DEBUG_STARTUP_MSG=$'## DEBUG STARTUP CONTEXT\n'"${DEBUG_CONTEXT}"$'\n\n## SSH cold-start self-check\nBefore investigating, confirm connectivity:\n  ssh '"${DEBUG_ALIAS}"$' "uptime && whoami"\nIf connection fails, stop and report to user — do not proceed on guesswork.\nOnce connected: read logs and config; do NOT run mutations.'
 
 TOOL_FLAGS=()
 if [ -n "$ROLE_TOOLS" ]; then

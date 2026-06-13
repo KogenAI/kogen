@@ -23,6 +23,9 @@
 #   T-new-8:  resolve_ssh_target HIT with no User → backfill → exports LOGIN_USER
 #   T-new-9:  resolve_ssh_target MISS → exports LOGIN_USER and OPERATE_AS
 #   T-new-10: under SSH_TARGET_NON_INTERACTIVE=1 MISS → no prompts, HostName-only
+#   T-new-11: resolve_ssh_target HIT → exports OPS_ALIAS == candidate
+#   T-new-12: resolve_ssh_target MISS-save (bare IP) → exports OPS_ALIAS == candidate
+#   T-new-13: resolve_ssh_target MISS-existing (typed alias) → exports OPS_ALIAS == typed alias
 
 set -euo pipefail
 
@@ -401,6 +404,78 @@ result=$(HOME="$tmp" bash -c "
     echo \"\${user_lines}|\${hostname_lines}\"
 ")
 assert_eq "non-interactive save: HostName-only, no User line" "0|1" "$result"
+rm -rf "$tmp"
+
+# ──────────────────────────────────────────────────────────────────
+# T-new-11: resolve_ssh_target HIT → OPS_ALIAS == candidate
+# ──────────────────────────────────────────────────────────────────
+tmp=$(setup_home "Host testproject-prod
+    HostName 10.0.0.10
+")
+result=$(HOME="$tmp" SSH_TARGET_NON_INTERACTIVE=1 bash -c "
+    source '$HELPER'
+    git() { echo '/fake/testproject'; }
+    export -f git
+    ssh() { printf 'hostname 10.0.0.10\n'; }
+    export -f ssh
+    resolve_ssh_target 'prod' 'OPS' 'test-launcher'
+    echo \"\${OPS_ALIAS}\"
+")
+assert_eq "T-new-11: HIT exports OPS_ALIAS == candidate" "testproject-prod" "$result"
+rm -rf "$tmp"
+
+# ──────────────────────────────────────────────────────────────────
+# T-new-12: resolve_ssh_target MISS-save (bare IP) → OPS_ALIAS == candidate
+# ──────────────────────────────────────────────────────────────────
+# ssh -G on a bare IP echoes it back (server_resolved == user_alias) → save path.
+# stdin via file redirect (not pipe) so exports propagate to outer bash -c shell.
+tmp=$(setup_home "")
+result=$(HOME="$tmp" bash -c "
+    source '$HELPER'
+    git() { echo '/fake/testproject'; }
+    export -f git
+    ssh() {
+        # ssh -G <arg> → echo 'hostname <arg>' to simulate bare-IP echo-back
+        local arg=\"\$2\"
+        printf 'hostname %s\n' \"\$arg\"
+    }
+    export -f ssh
+    # stdin: alias input (1.2.3.4), login_user (root), operate-as (dashboard)
+    stdin_file=\$(mktemp)
+    printf '1.2.3.4\nroot\ndashboard\n' >\"\$stdin_file\"
+    resolve_ssh_target 'prod' 'OPS' 'test-launcher' <\"\$stdin_file\" >/dev/null 2>&1 || true
+    rm -f \"\$stdin_file\"
+    echo \"\${OPS_ALIAS}\"
+")
+assert_eq "T-new-12: MISS-save exports OPS_ALIAS == candidate (testproject-prod)" "testproject-prod" "$result"
+rm -rf "$tmp"
+
+# ──────────────────────────────────────────────────────────────────
+# T-new-13: resolve_ssh_target MISS-existing (typed alias) → OPS_ALIAS == user_alias
+# ──────────────────────────────────────────────────────────────────
+# Config has a different existing alias; candidate (testproject-prod) NOT in config.
+# ssh -G existing-box returns a distinct hostname (5.6.7.8) → MISS-existing branch.
+# stdin via file redirect (not pipe) so exports propagate.
+tmp=$(setup_home "Host existing-box
+    HostName 5.6.7.8
+")
+result=$(HOME="$tmp" bash -c "
+    source '$HELPER'
+    git() { echo '/fake/testproject'; }
+    export -f git
+    ssh() {
+        # ssh -G existing-box → returns 5.6.7.8 (different from input → MISS-existing)
+        printf 'hostname 5.6.7.8\n'
+    }
+    export -f ssh
+    # stdin: typed alias (existing-box)
+    stdin_file=\$(mktemp)
+    printf 'existing-box\n' >\"\$stdin_file\"
+    resolve_ssh_target 'prod' 'OPS' 'test-launcher' <\"\$stdin_file\" >/dev/null 2>&1 || true
+    rm -f \"\$stdin_file\"
+    echo \"\${OPS_ALIAS}\"
+")
+assert_eq "T-new-13: MISS-existing exports OPS_ALIAS == user_alias (existing-box)" "existing-box" "$result"
 rm -rf "$tmp"
 
 # ──────────────────────────────────────────────────────────────────

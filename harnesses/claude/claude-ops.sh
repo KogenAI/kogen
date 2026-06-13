@@ -25,7 +25,7 @@ load_role ops
 source "$CODEGEN_DIR/harnesses/claude/ssh-target.sh"
 resolve_ssh_target "$server" OPS claude-ops
 
-OPS_CONTEXT="Server: ${server_resolved} (resolved from '${server}'), Environment: ${ENV_LABEL}"
+OPS_CONTEXT="Server: ${OPS_ALIAS} (${server_resolved}), Login user: ${OPS_LOGIN_USER}, Operate-as: ${OPS_OPERATE_AS}, Environment: ${ENV_LABEL}"
 
 TOOL_FLAGS=()
 if [ -n "$ROLE_TOOLS" ]; then

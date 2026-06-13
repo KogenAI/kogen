@@ -47,7 +47,7 @@ source "$CODEGEN_DIR/harnesses/claude/ssh-target.sh"
 
 resolve_ssh_target "$server" OPS pi-ops
 
-OPS_CONTEXT="Server: ${server_resolved} (resolved from '${server}'), Environment: ${ENV_LABEL}"
+OPS_CONTEXT="Server: ${OPS_ALIAS} (${server_resolved}), Login user: ${OPS_LOGIN_USER}, Operate-as: ${OPS_OPERATE_AS}, Environment: ${ENV_LABEL}"
 
 # Append OPS_CONTEXT to system prompt (mirrors pi-shape.sh PROJECT_CONTEXT pattern)
 ROLE_SYSTEM_PROMPT="${ROLE_SYSTEM_PROMPT}
