@@ -421,6 +421,70 @@ eval "$assert_condition file"
 
 Pattern discovered in test-script `assert` helpers (e.g., `credo_live_strict_test.sh`) where `grep -q "pattern\\.token"` inside eval collapses to non-matching regex. Switching to `grep -qF` for fixed-string assertions eliminates the pitfall.
 
+## Grep BRE Metacharacter Footgun
+
+**BRE (Basic Regular Expression) `grep` without `-E` treats `\(` as a GROUP metacharacter, not a literal `(`. A pattern like `required_env\.\(~w(` does NOT match the literal text `required_env.(~w(` in BRE — the `\(` is parsed as "start group", causing the match to fail silently.**
+
+When matching fixed strings that contain parentheses (e.g., `~w()` Elixir sigil, function calls, math expressions), always use `grep -F` (fixed-string grep):
+
+```bash
+# WRONG: BRE treats \( as GROUP, fails to match the literal paren
+grep 'required_env\.\(~w(' file  # → no match on "required_env.(~w("
+
+# CORRECT: -F treats entire pattern as literal, no metachar interpretation
+grep -F 'required_env.(~w(' file  # → matches "required_env.(~w(" exactly
+
+# ALSO CORRECT: -E (ERE) requires double-escape for literal paren
+grep -E 'required_env\.\(~w\(' file  # → matches, but -F is simpler for fixed strings
+```
+
+**Decision tree**: If the target string contains punctuation or special chars AND you're matching a literal fixed string (not a regex pattern), use `grep -F`. Reserve `grep -E` for true regex matching where you need character classes or alternation.
+
+## Bash Test Harness — Fail-Closed Refute Pattern
+
+When testing fail-closed gates (e.g., deploy steps that should abort before an irreversible action), verify non-zero exit AND that the irreversible action was NOT executed. Use a shimmed subprocess marker:
+
+```bash
+# Example: test that a failed SSH step aborts BEFORE the restart
+run_test_fail "SSH step failure aborts before restart" || return $?
+
+# Stub systemctl to record if restart was invoked
+RESTART_CALLED=0
+systemctl() {
+  if [ "$1" = "restart" ]; then
+    RESTART_CALLED=1
+  fi
+  return 1  # SSH failure
+}
+export -f systemctl
+
+# Run the deploy script (will hit SSH failure, should NOT call restart)
+! bin/deploy 2>&1  # expect non-zero
+FAIL=$((FAIL + $?))
+
+# Assert restart was NOT called
+if [ "$RESTART_CALLED" -eq 1 ]; then
+  echo "FAIL: restart was called despite SSH failure"
+  FAIL=$((FAIL + 1))
+fi
+```
+
+This pattern proves the script aborts at the correct stage (records in the shim that restart was not reached), not merely that it exited non-zero (which could happen at any stage). Apply to any gate that guards an irreversible operation (restart, database drop, production flag flip, etc.).
+
+## Retention Prune — mtime Ordering Inconsistency with SHA Sentinel
+
+When retention logic uses `ls -t` (mtime-sorted) to determine "oldest prebuilt release", there is a design inconsistency with the SHA sentinel check elsewhere. The sentinel was redesigned from **mtime** (unreliable after `git reset --hard` — fresh mtime can be newer than old HEAD) to **SHA equality** (exact, content-based) specifically to distrust file timestamps post-reset.
+
+A `git reset --hard` + re-run of `prebuild.sh` on an old SHA would:
+
+1. Write a **fresh mtime** for that old SHA's retention slot (current time)
+2. Promote it to "newest" in the mtime-sorted list
+3. Potentially prune a genuinely newer slot instead
+
+**Verdict**: Low severity for rollback (current SHA is always skip-guarded), but a sequence counter or timestamp-file approach would be fully consistent with the SHA sentinel design rationale. For normal (non-reset) operation, mtime ordering is reliable; the risk surfaces only in recovery scenarios.
+
+Current mitigation: explicit guard `[ "$old_sha" = "$CURRENT_SHA" ]` prevents pruning the just-written SHA regardless of its mtime. Test case must assert only the _oldest_ (by mtime) non-current slot is removed, and current is never removed.
+
 ## Renderer-Neutral Regex Tokens in enforcement_compiler.py
 
 **`enforcement_compiler.py` `_to_bash` does a literal `.replace(r"\s", "[[:space:]]")` — this fires inside character classes too, corrupting nested brackets.** When defining regex patterns in `shared/enforcement/registry.yaml` that will be compiled to both bash ERE and JavaScript regex, avoid `\s` inside char classes (`[^&\s]`, `[\s]`), as it will be transformed to `[^&[[:space:]]]` (broken nested bracket). The bash ERE and JS renders will diverge.
