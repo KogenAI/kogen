@@ -48,6 +48,14 @@ tmp="$(setup_tmp)"
 assert ".gitignore has /codegen/pitches/ entry" 'grep -qF "/codegen/pitches/" "$tmp/.gitignore"'
 rm -rf "$tmp"
 
+# Case 4: digest-output globs appended
+tmp="$(setup_tmp)"
+"$MUTATION" "$tmp" >/dev/null
+assert ".gitignore has digest hashed-file glob" 'grep -qF "/priv/static/**/*-????????????????????????????????.*" "$tmp/.gitignore"'
+assert ".gitignore has .gz glob" 'grep -qF "/priv/static/**/*.gz" "$tmp/.gitignore"'
+assert ".gitignore has cache_manifest.json entry" 'grep -qF "/priv/static/cache_manifest.json" "$tmp/.gitignore"'
+rm -rf "$tmp"
+
 echo "$passed passed, $failed failed"
 if [ "$failed" -gt 0 ]; then
     printf '%s\n' "${fail_lines[@]}" >&2
