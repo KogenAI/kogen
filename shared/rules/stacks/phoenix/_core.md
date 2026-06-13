@@ -1,6 +1,6 @@
 # Phoenix / Elixir — Core
 
-Cross-role facts. Idioms, Ecto, contexts, LiveView UI.
+Cross-role facts. Idioms, Ecto, contexts.
 
 ## Slice Scope
 
@@ -77,49 +77,6 @@ Vite/esbuild configs must include asset hash markers in output filenames (e.g., 
 - ✅ Built shape: `<script src="/assets/index-a1b2c3d4.js"></script>` (hash present)
 
 Regex: `\.\w+\.` matches the hash dot-sep-dot pattern; use as gate to fall through to build step if absent.
-
-## LiveView UI
-
-- WHAT not THAT: ❌ `render_display_components` → ✅ `display_components`
-- Alphabetical attrs in `attr` AND HEEx
-- `:if` simple; `<%= if %>` multi-element-with-else
-- `Phoenix.Component.used_input?/1` for error display
-- `phx-debounce` on **fields**, not `<.form>`
-- JS hooks: import in `app.js`, alphabetical
-- `Phoenix.JS` for instant client-side
-- Search dropdowns: never mix Phoenix handlers with JS hooks; `tabindex="0"` on clickable items
-- `cursor-pointer` on interactive; padding/bg on `<.link>` with `block`
-- Explicit helper fns — `Media.get_media_asset_url(@media_asset)`
-- npm: `cd assets` first
-- `phx-change`/`phx-keyup`/`phx-submit` require a `<form>` ancestor — inputs outside a `<form>` silently no-op with NO console error; wrap event-handling inputs in `<.form>` or a bare `<form>` tag
-- `live_render` of a child LiveView MUST set `layout: false` to avoid double-layout render; the routed root LiveView owns the layout
-- Autofocus-on-open: `<input phx-mounted={JS.focus()} />` — use for keyboard-first overlays/modals so the caret lands without a click
-
-## Dead-Render Placeholders
-
-**Mount runs twice**: `mount/3` → `handle_params/3` run on dead render (`connected?==false`), then again on WS connect (`connected?==true`). Unguarded DB loads execute both times.
-
-Guard each load behind `connected?(socket)`. On dead render, assign placeholders (empty lists, zero counts, safe defaults) for all keys the template references. Stream placeholders MUST call `stream(socket, :key, [], reset: true)` even when skipping the load — LiveView raises `KeyError` on stream reference without `stream/3` init. Hooks (`on_mount`) count as setters: if `on_mount` initializes `:foo`, the LiveView's dead-render branch does NOT need to re-assign `:foo`.
-
-```elixir
-# ❌ Dead render will KeyError on @streams.comments (never initialized)
-def handle_params(_params, _uri, socket) do
-  if connected?(socket) do
-    {:noreply, assign_comments(socket, drop)}
-  else
-    {:noreply, socket}  # ← @streams.comments undefined
-  end
-end
-
-# ✅ Stream initialized on both paths, comments data guarded behind connected?
-def handle_params(_params, _uri, socket) do
-  if connected?(socket) do
-    {:noreply, assign_comments(socket, drop)}
-  else
-    {:noreply, socket |> stream(:comments, [], reset: true) |> assign(:comment_count, 0)}
-  end
-end
-```
 
 ## then/2 for Conditional Pipelines
 

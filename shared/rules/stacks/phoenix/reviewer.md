@@ -34,4 +34,4 @@ ast-grep --config /tmp/rule.yml test/ --update-all
 git diff --stat
 ```
 
-reviewer-phoenix identifies + provides rule. developer-phoenix-backend applies.
+reviewer-phoenix identifies + provides rule. Route fixes to the correct subagent: `lib/<app>_web/` (LiveView `*_live.ex`, HEEx, JS hooks) → developer-phoenix-frontend; `lib/<app>/` (contexts, schemas, workers) → developer-phoenix-backend.

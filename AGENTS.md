@@ -17,9 +17,9 @@ Codegen uses the standard multi-agent chain. Role routing for this repo:
 ```
 planner-phoenix
     ↓
-developer-phoenix-backend   ← ALL non-UI work in codegen
+developer-phoenix-backend   ← ALL non-UI work in codegen (schemas, contexts, controllers, hooks, rules, scripts)
     ↓ (if frontend slice)
-developer-phoenix-frontend  ← only if HEEx/LiveView/Tailwind changes needed
+developer-phoenix-frontend  ← only if HEEx/LiveView/Tailwind/JS changes needed
     ↓
 [dev-gate.sh hook]          ← fires automatically on agent stop
     ↓
@@ -29,7 +29,9 @@ committer
 ```
 
 **Codegen-specific gloss — `developer-phoenix-backend` scope:**
-In this repo "backend" means everything: Bash scripts, Python generator pipeline, TypeScript Pi extensions, Elixir/ExUnit test harness, `.md.j2` templates, rule files, hook scripts, scaffold files. There is no separate UI layer; `developer-phoenix-frontend` is only needed if a downstream-facing HEEx template or Tailwind class is being changed.
+In this repo "backend" means everything: Bash scripts, Python generator pipeline, TypeScript Pi extensions, Elixir/ExUnit test harness, `.md.j2` templates, rule files, hook scripts, scaffold files. There is no separate UI layer; `developer-phoenix-frontend` is only needed if a downstream-facing HEEx template, LiveView module, or Tailwind class is being changed.
+
+**Split discipline (downstream Phoenix apps):** `lib/<app>/` (contexts, schemas, workers, mailers) → backend. `lib/<app>_web/` LiveView modules (`*_live.ex`), HEEx templates, JS hooks, Tailwind → frontend. Reviewer routes feedback to the correct subagent based on which layer the fix lands in.
 
 ---
 

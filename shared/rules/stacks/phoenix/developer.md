@@ -49,7 +49,7 @@ Then targeted test file(s). Dead modules → Credo warnings → wire via `grep -
 - **Duplicate boolean logic → shared helper**: When two modules must use identical enable/disable logic (e.g., both static.ex and channel.ex check `enabled?`), extract to a shared `Utils` or named module helper — copy-paste logic in two files is a latent divergence bug. The shared computation becomes the single source of truth and prevents subtle inconsistencies when one caller later updates their copy.
 - **GenServer.call/3 timeout exit shape**: `GenServer.call/3` timeout exits as `{:timeout, {mod, fun, args}}`, never the bare atom `:timeout`. A `try/catch` arm like `catch :exit, :timeout` is always dead code. Use bare `case` on function return values or pattern-match on the full `{:timeout, ...}` tuple in exception handlers.
 
-## Credo VariableRebinding & LiveView Exclusion
+## Credo VariableRebinding — Double-Binding Fix Pattern
 
 Credo's `Refactor.VariableRebinding` (formerly `VariableReDeclaration`) fires when the same variable is bound in two sequential `=` assignments within the same function clause, even if the second is a conditional:
 
@@ -96,11 +96,3 @@ Never `rm -rf _build`. Target specific files.
 ## Hot Reload
 
 `.ex`, `.heex`, JS/CSS, migrations, test files — auto. Restart required: `config/*.exs`, Oban workers, GenServer/Supervisor, mix.exs.
-
-## Pitfall — LazyHTML
-
-First LiveView test using `render_change`/`render_click`/`element` → `Protocol.UndefinedError: protocol Enumerable not implemented for LazyHTML`. Fix:
-
-```bash
-MIX_ENV=test mix deps.compile --force lazy_html phoenix_live_view && MIX_ENV=test mix compile --force
-```

@@ -49,7 +49,7 @@ Bug fix → regression test. Scenario name: `test "does not crash when seed dir 
 
 ## Include / Exclude
 
-ALWAYS: Unit, Integration, LiveView, Edge Cases. NEVER: Performance, Accessibility, Browser Compat, Security, Documentation, Layout Component Tests.
+ALWAYS: Unit, Integration, Edge Cases. NEVER: Performance, Accessibility, Browser Compat, Security, Documentation, Layout Component Tests.
 
 ## Test Quality
 

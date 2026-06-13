@@ -96,3 +96,28 @@ Pattern: test-assertion source of truth is the public protocol (join reply, rend
 ## Per-File Targeting
 
 After editing LiveView: `mix test test/<app>_web/live/<file>_live_test.exs`. Never full suite.
+
+## LiveView UI
+
+- WHAT not THAT: ❌ `render_display_components` → ✅ `display_components`
+- Alphabetical attrs in `attr` AND HEEx
+- `:if` simple; `<%= if %>` multi-element-with-else
+- `Phoenix.Component.used_input?/1` for error display
+- `phx-debounce` on **fields**, not `<.form>`
+- JS hooks: import in `app.js`, alphabetical
+- `Phoenix.JS` for instant client-side
+- Search dropdowns: never mix Phoenix handlers with JS hooks; `tabindex="0"` on clickable items
+- `cursor-pointer` on interactive; padding/bg on `<.link>` with `block`
+- Explicit helper fns — `Media.get_media_asset_url(@media_asset)`
+- npm: `cd assets` first
+- `phx-change`/`phx-keyup`/`phx-submit` require a `<form>` ancestor — inputs outside a `<form>` silently no-op with NO console error; wrap event-handling inputs in `<.form>` or a bare `<form>` tag
+- `live_render` of a child LiveView MUST set `layout: false` to avoid double-layout render; the routed root LiveView owns the layout
+- Autofocus-on-open: `<input phx-mounted={JS.focus()} />` — use for keyboard-first overlays/modals so the caret lands without a click
+
+## Pitfall — LazyHTML
+
+First LiveView test using `render_change`/`render_click`/`element` → `Protocol.UndefinedError: protocol Enumerable not implemented for LazyHTML`. Fix:
+
+```bash
+MIX_ENV=test mix deps.compile --force lazy_html phoenix_live_view && MIX_ENV=test mix compile --force
+```
