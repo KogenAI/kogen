@@ -65,6 +65,14 @@ if [ "$gate_verdict" != "clear" ]; then
     exit 0
 fi
 
+# Require gate-result.json diff_sha matches current HEAD — stale gate result not accepted.
+gate_diff_sha=$(gate_result_diff_sha "$project_dir")
+head_sha=$(git -C "$project_dir" rev-parse --short HEAD 2>/dev/null || printf '')
+if [ -n "$gate_diff_sha" ] && [ "$gate_diff_sha" != "$head_sha" ]; then
+    deny "BLOCKED by build-no-success-before-commit: gate-result.json clear verdict from stale SHA ${gate_diff_sha}, not current HEAD ${head_sha}. Re-run full gate before signaling success."
+    exit 0
+fi
+
 # Require a clean working tree — no uncommitted or untracked files.
 dirty_files=$(git -C "$project_dir" status --porcelain 2>/dev/null)
 if [ -n "$dirty_files" ]; then

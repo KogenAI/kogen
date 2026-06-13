@@ -185,3 +185,15 @@ gate_result_verdict() {
     }
     jq -r '.verdict // ""' "$result_file" 2>/dev/null || printf ''
 }
+
+# gate_result_diff_sha <project_dir>
+# Reads diff_sha field from gate-result.json. Prints diff_sha or "" if absent.
+gate_result_diff_sha() {
+    local project_dir="$1"
+    local result_file="$project_dir/codegen/gate-pending/gate-result.json"
+    [ -f "$result_file" ] || {
+        printf ''
+        return 0
+    }
+    jq -r '.diff_sha // ""' "$result_file" 2>/dev/null || printf ''
+}

@@ -45,7 +45,10 @@ make_project() {
         git config user.name t
         git checkout -q -b main
         echo init >README
-        git add README
+        # Ignore gate-pending dir — mirrors real project .gitignore so gate-result.json
+        # does not pollute the dirty-tree check in tests that expect ALLOW.
+        printf 'codegen/gate-pending/\n' >.gitignore
+        git add README .gitignore
         git commit -qm init
     )
     printf '%s' "$dir"
@@ -81,7 +84,7 @@ assert_contains "BUILD_START_TS set, no new commit → BLOCK" '"permissionDecisi
 assert_contains "BLOCK reason mentions commit" 'git commit' "$out"
 rm -rf "$T3"
 
-# ── Test 4: BUILD_START_TS set, commit made after ts, gate-result clear → ALLOW ─
+# ── Test 4: BUILD_START_TS set, commit made after ts, gate-result clear + matching diff_sha → ALLOW ─
 T4=$(make_project)
 ts4=$(date -u +%s)
 # Small sleep to ensure commit is after ts4
@@ -92,11 +95,12 @@ sleep 1
     git add README
     git commit -qm "generated code"
 )
-# Write a gate-result.json with verdict=clear so the hook's gate check passes
+# Write a gate-result.json with verdict=clear and diff_sha matching current HEAD
+head4=$(git -C "$T4" rev-parse --short HEAD)
 mkdir -p "$T4/codegen/gate-pending"
-printf '{"verdict":"clear","gate":"make ci","exit_code":0}\n' >"$T4/codegen/gate-pending/gate-result.json"
+printf '{"verdict":"clear","diff_sha":"%s","gate":"make ci","exit_code":0}\n' "$head4" >"$T4/codegen/gate-pending/gate-result.json"
 out=$(make_input 'echo "BUILD_RESULT: success"' "$T4" | COMBOBULATE_BUILD_START_TS="$ts4" bash "$HOOK" 2>/dev/null || true)
-assert_not_contains "commit after BUILD_START_TS → ALLOW" '"permissionDecision"' "$out"
+assert_not_contains "commit after BUILD_START_TS + matching diff_sha → ALLOW" '"permissionDecision"' "$out"
 rm -rf "$T4"
 
 # ── Test 5: non-Bash tool → ALLOW ────────────────────────────────────────────
@@ -127,14 +131,51 @@ sleep 1
     git add README
     git commit -qm "generated code"
 )
+head7=$(git -C "$T7" rev-parse --short HEAD)
 mkdir -p "$T7/codegen/gate-pending"
-printf '{"verdict":"clear","gate":"make ci","exit_code":0}\n' >"$T7/codegen/gate-pending/gate-result.json"
+printf '{"verdict":"clear","diff_sha":"%s","gate":"make ci","exit_code":0}\n' "$head7" >"$T7/codegen/gate-pending/gate-result.json"
 # Create a dirty (uncommitted) file AFTER the commit
 echo "dirty content" >"$T7/dirty.txt"
 out=$(make_input 'echo "BUILD_RESULT: success"' "$T7" | COMBOBULATE_BUILD_START_TS="$ts7" bash "$HOOK" 2>/dev/null || true)
 assert_contains "dirty tree after commit+gate → BLOCK (permissionDecision)" '"permissionDecision"' "$out"
 assert_contains "dirty tree block message mentions working tree" 'working tree not clean' "$out"
 rm -rf "$T7"
+
+# ── Test 8: gate-result.json diff_sha does not match HEAD → BLOCK ────────────
+T8=$(make_project)
+ts8=$(date -u +%s)
+sleep 1
+(
+    cd "$T8"
+    echo change >README
+    git add README
+    git commit -qm "generated code"
+)
+mkdir -p "$T8/codegen/gate-pending"
+# Write gate-result.json with a stale (wrong) diff_sha
+printf '{"verdict":"clear","diff_sha":"abc1234","gate":"make ci","exit_code":0}\n' >"$T8/codegen/gate-pending/gate-result.json"
+out=$(make_input 'echo "BUILD_RESULT: success"' "$T8" | COMBOBULATE_BUILD_START_TS="$ts8" bash "$HOOK" 2>/dev/null || true)
+assert_contains "stale diff_sha → BLOCK (permissionDecision)" '"permissionDecision"' "$out"
+assert_contains "stale diff_sha block message mentions stale SHA" 'stale SHA' "$out"
+rm -rf "$T8"
+
+# ── Test 9: gate-result.json verdict=clear with no diff_sha field → ALLOW ────
+# (gate result written by older version without diff_sha — SHA check skipped gracefully)
+T9=$(make_project)
+ts9=$(date -u +%s)
+sleep 1
+(
+    cd "$T9"
+    echo change >README
+    git add README
+    git commit -qm "generated code"
+)
+mkdir -p "$T9/codegen/gate-pending"
+# Omit diff_sha entirely — older gate-result format
+printf '{"verdict":"clear","gate":"make ci","exit_code":0}\n' >"$T9/codegen/gate-pending/gate-result.json"
+out=$(make_input 'echo "BUILD_RESULT: success"' "$T9" | COMBOBULATE_BUILD_START_TS="$ts9" bash "$HOOK" 2>/dev/null || true)
+assert_not_contains "no diff_sha field → SHA check skipped → ALLOW" '"permissionDecision"' "$out"
+rm -rf "$T9"
 
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]
