@@ -64,12 +64,30 @@ tools-header/<mode>.txt   (per-harness: mode title + ## Tools + any pre-Tools co
 
 **Mode assembly map:**
 
-| Mode  | tools-header contains              | prompt_body list                                                     |
-| ----- | ---------------------------------- | -------------------------------------------------------------------- |
-| build | FIRST-TURN PROTOCOL + ## Tools     | [harnesses/shared/prompt-bodies/build.txt]                           |
-| debug | mode description + ## Tools        | [harnesses/shared/prompt-bodies/debug.txt]                           |
-| shape | mode title + ## Tools              | [shared/prompt-bodies/shape.txt, _probing.txt, _authoring-spine.txt] |
-| ops   | mode title + Cold-Start + ## Tools | [harnesses/shared/prompt-bodies/ops.txt]                             |
+| Mode  | tools-header contains (per-harness)                                                                                                                             | prompt_body list (shared)                                                                                                                |
+| ----- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| build | `## Tools` + harness-specific tool list + harness-specific FIRST-TURN bullets + `## Cycle Protocol` / `## Step Queue Protocol`                                  | [harnesses/shared/prompt-bodies/build.txt] — contains neutral tool-discipline lines, Commit Hygiene, shared FIRST-TURN bullets           |
+| debug | `## Tools` + harness-specific tool list + FORBIDDEN list + cross-repo grep allowance                                                                            | [harnesses/shared/prompt-bodies/debug.txt] — contains neutral no-cat-pipe line + Protocol + Forbidden + Refusal & Pivot                  |
+| shape | `## Tools` + harness-specific tool bullets (claude: Agent/Skill/AskUserQuestion/Write-Edit with hook paths; pi: askuserquestion/subagents/web-utils tool names) | [shared/prompt-bodies/shape.txt, _probing.txt, _authoring-spine.txt] — shape.txt contains mode-title sentence + neutral no-cat-pipe line |
+| ops   | `## Tools` + harness-specific per-tool bullets                                                                                                                  | [harnesses/shared/prompt-bodies/ops.txt] — starts with Cold-Start Opening block, followed by procedural ops rules                        |
+
+**Placement checklist** — when deciding whether content belongs in the per-harness header or the shared body:
+
+- **→ per-harness `tools-header/<mode>.txt`** (must differ between harnesses):
+  - Tool names that differ between harnesses (e.g., claude `Agent` vs pi `subagents`, claude `Skill` vs pi omitted, claude `Write/Edit` vs pi `edit/write`)
+  - Launcher flags and hook-capability differences (e.g., `orchestrator-no-source-edit.sh` claude hook path, `--tools` allowlist differences)
+  - Install paths specific to one harness (e.g., `~/.claude/hooks/`, `~/.claude/settings.json` as enforcement investigation targets in the Tools section)
+  - Per-harness protocol section names (`## Cycle Protocol` claude; `## Step Queue Protocol` pi)
+  - Harness-specific ritual wording (`Agent()` ritual claude; `subagent()` ritual pi)
+  - Harness-specific invocation sentence (`claude-build`/`pi-build`)
+  - Harness-specific post-commit hook name (`.sh` vs `.ts`)
+
+- **→ shared `harnesses/shared/prompt-bodies/<mode>.txt`** (identical across harnesses):
+  - Neutral tool-usage discipline (no-cat-pipe, no-explore rules)
+  - Orchestration discipline (session log creation bullets, context-curator naming rule)
+  - Commit Hygiene block and WHY-handoff rules
+  - Cold-start opening gates (ops: the `## Cold-Start Opening` confirm block)
+  - Protocol/behavior sections that are harness-agnostic (headless mode, output style, forbidden actions)
 
 **Fragment paths** in manifest are relative to `CODEGEN_DIR`. The `manifest_mode_get` function returns scalars; `prompt_body` uses `yq '.modes.<mode>.prompt_body[]'` to enumerate the list.
 
@@ -80,6 +98,12 @@ tools-header/<mode>.txt   (per-harness: mode title + ## Tools + any pre-Tools co
 **Shape investigative disciplines**: Shape mode includes the `_authoring-spine.txt` fragment, which encodes the readiness-loop gateway (Phase 0 context load → multi-turn investigation → readiness check). The spine enforces six core rules (A–F) — intent-guard, plain-language discipline, command-pairing auto-cover, duplication-detection, symptom-vs-target, context-drift auto-cover — and three deletion-safety blocker classes (un-investigated rabbit holes, untraced edit surface, dangling cross-reference). See `context/subagents.md` § Authoring Spine Rules for full details. The intent-guard rule (A) is additionally patched into the empirical-claim blocker template option-(b) in `shape.txt`, enforcing that no readiness-check option may nullify the pitch's core intent.
 
 **Shaper ask-vs-decide classifier** (hardened): The shaper asks the user ONLY when the answer changes what the user experiences or names something the user owns — UX copy/flow/behavior, product-intent forks (build feature A vs feature B), or naming/identity the user controls. The test the shaper applies to EVERY candidate question: "Does the answer change what the PRODUCT DOES for an end user or downstream developer — a genuine build-A-vs-build-B fork where the choice depends on intent the code cannot reveal?" If no → auto-decide. The never-ask set now explicitly enumerates: which tool/model/library, which machine/environment, how to transcribe/build/process input, what a pitch commits to, directory/file placement, how to split, naming. Two further behaviors are baked into the shape prompts: (1) **answered-question memory** — before composing any AskUserQuestion the shaper scans the conversation; a question already answered OR deflected ("who knows", "you decide", "why are you asking?") is a binding answer (auto-decide, never re-ask); (2) **cold-start raw-material handling** — when the user arrives with raw material implying many pitches (audio/notes/brain-dump), the shaper states a one-line plan, reads the material, splits into problem threads, and writes one SKELETON pitch per thread into `codegen/pitches/draft/` — tooling to get the material into readable text is the shaper's own engineering problem, never a user question. Engineering-completeness decisions are NOT user decisions: install-guarantee (always yes), fail-closed-when-guaranteed (always yes once guaranteed), internal naming convention (follow existing repo convention), how to split a large problem (shaper reads code and decides) → auto-decide and record as `Assumed: <dimension> = <default> (override if wrong)` in the end-summary. Escape-hatch rule (step c' in shape.txt readiness check) enforces this classifier at blocker-resolution time.
+
+**Per-harness header rewrite discipline (shape mode)**: Shape mode tools-headers were historically byte-identical clones for both harnesses, creating a "Claude-ism leak" in the Pi header. Pi shape-header rewrites must replace all Claude-specific vocabulary (tool names: `Agent`/`Skill`/`AskUserQuestion`/`Write`/`Edit`; hook paths like `~/.claude/hooks/`, `~/.claude/settings.json`; subagent references like `orchestrator-no-source-edit.sh`, `operator-subagent-allowlist.sh`, `launch Explore subagent`) with Pi-correct tool names and enforcement-extension references. Neutral lines (mode-title sentence, neutral tool-usage discipline) relocate to the shared `harnesses/shared/prompt-bodies/shape.txt`. If Pi has no functional equivalent for a clause line (e.g., `Skill` tool does not exist in Pi), omit it rather than copy Claude vocabulary. After rewrite, the two shape headers are no longer byte-identical, and neutral shared content appears once in the assembled prompt.
+
+**Shared body relocation pitfall** — when moving lines from per-harness headers into shared bodies, avoid introducing NEW section headings that were not present in the source headers. Even a sensible heading name causes a line-set diff false positive that post-relocation equality assertions catch. Keep section headings in headers (they are structural, not prose), and move only prose lines. Example: `## FIRST-TURN PROTOCOL` stays in headers; the shared FIRST-TURN prose bullets move to the body. The heading structure itself remains per-harness.
+
+**Fragment references in shared bodies** — `_authoring-spine.txt` legitimately references `~/.claude/settings.json` as a debugging target for enforcement-bug investigation (e.g., "if a hook file references `~/.claude/settings.json`..."). This is a SHARED investigative discipline (not Claude-specific), and is correct to appear in the Pi assembled prompt. The distinction: `~/.claude/hooks/` or `orchestrator-no-source-edit.sh` are Claude implementation details (remove from Pi header); `~/.claude/settings.json` as an inspection target is a cross-harness debugging pattern (keep in shared fragments).
 
 **Deferral-with-draft contract**: Every deferral (any "deferred", "future work", "phase 2", "out of scope", "accepted risk", "cut-1", or "deferred to implementation") MUST be backed by a real `codegen/pitches/draft/<slug>.md` file. The pitch must reference the draft (e.g., "deferred — see draft `<slug>`"). A prose-only deferral with no draft file is a blocker, not a resolution. Security/safety-relevant deferrals (auth, access control, secret handling, data deletion, anything widening exposure) must additionally state the exposure assumption in the draft's rationale (e.g., "safe to defer only while the box is unreachable"). This contract prevents the failure mode that shipped incomplete features (no auth, missing validation, unhandled error paths).
 
@@ -124,6 +148,16 @@ claude-build.sh → codegen-build → harnesses/<harness>/dispatch.sh → execs 
 ```
 
 For harness install contract details (agents_dir, hooks_dir, modes, launchers), see `harnesses/<harness>/manifest.yaml` documented in `context/core.md` Manifest Schema section.
+
+## Session Log Protocol
+
+The orchestrator MUST pre-create the canonical session log (with full `## <agent_type> Section` headers) BEFORE delegating to any subagent (planner, developer, reviewer, etc.). This ensures:
+
+1. All section headers exist when `subagent-retrospective-guard.sh` scans the log to confirm header presence before allowing Edit.
+2. The planner writes the `## Plan` section into the orchestrator-created log, not a fresh one.
+3. The retrospective-guard hook knows the correct `## Plan` block boundaries: the guard stops scanning for `### What I Learned This Step` blocks at the next `## ` H2 heading (which prevents it from false-matching retrospectives in subsequent agent sections).
+
+The retrospective blocks MUST sit inside the `## Plan` body before any sibling H2 heading (e.g., `## Slices`). The guard parses the transcript to find the active session log path, then scans ONLY the `## Plan` section, stopping at the first H2 heading it encounters after the Plan start. Retrospectives appearing in agent sections (e.g., `## developer-phoenix-backend Section`) are not routed to the curator.
 
 ## Integration Points
 

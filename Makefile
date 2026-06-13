@@ -152,12 +152,24 @@ prompt-content-parity:
 	fi; \
 	exit $$rc
 
+.PHONY: tools-header-no-dup
+tools-header-no-dup:
+	@out=$$(bash "$(SCRIPT_DIR)/harnesses/claude/hooks/tools-header-no-dup_test.sh" 2>&1); rc=$$?; \
+	if [ -n "$$VERBOSE" ]; then printf '%s\n' "$$out"; fi; \
+	if [ $$rc -ne 0 ]; then \
+		[ -z "$$VERBOSE" ] && printf '%s\n' "$$out"; \
+		echo "tools-header-no-dup: FAIL"; \
+	elif [ -n "$$VERBOSE" ]; then \
+		echo "tools-header-no-dup: PASS"; \
+	fi; \
+	exit $$rc
+
 # test: run every PreToolUse/SubagentStop/Stop hook unit-test script in parallel.
 # Each *_test.sh is hermetic — own tmp dirs, no shared state — so xargs -P is safe.
 # Job count caps at 8 to avoid thrashing on smaller machines.
 # Post-deps stages (hook-tests, phoenix scaffold, test_harness/install, npm) run
 # concurrently via & + wait to reduce wall time.
-test: hook-parity hook-header-parity harness-parity test-generator enforce-registry-parity test-hermetic prompt-content-parity
+test: hook-parity hook-header-parity harness-parity test-generator enforce-registry-parity test-hermetic prompt-content-parity tools-header-no-dup
 	@set -e; \
 	tmp_hooks=$$(mktemp); tmp_scaffold=$$(mktemp); tmp_install=$$(mktemp); \
 	tmp_npm=$$(mktemp); tmp_subagents=$$(mktemp); \

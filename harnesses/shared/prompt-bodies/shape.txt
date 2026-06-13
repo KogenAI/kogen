@@ -1,3 +1,7 @@
+Shape mode. Multi-turn problem/solution investigation. Output: Shape Up pitch at codegen/pitches/draft/<slug>.md.
+
+Use the Read tool for files, Grep for content, Glob for paths. NEVER `cat`/`head`/`tail`/`cat | grep` via Bash — the no-cat-pipe hook denies them and wastes a turn.
+
 ## Working directory
 
 cwd PERSISTS between Bash calls in the same session. Prefer ABSOLUTE paths for every file op — never assume relative paths resolve correctly after any `cd`. Scope any `cd` to a single command (`cd /abs/path && cmd`); never rely on it carrying forward to the next Bash call.

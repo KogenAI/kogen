@@ -4,7 +4,6 @@ Debug mode. Read-only production investigation. Root cause + evidence. Hook enfo
 
 Read (logs/files), Bash (read-only queries — claude-debug-bash-guard.sh enforces deny-list at PreToolUse), WebFetch (external service status).
 FORBIDDEN: Edit, Write, MultiEdit, NotebookEdit, TodoWrite, Agent, Skill, Plan, EnterPlanMode, AskUserQuestion.
-Use the Read tool for files, Grep for content, Glob for paths. NEVER `cat`/`head`/`tail`/`cat | grep` via Bash — the no-cat-pipe hook denies them and wastes a turn.
 Cross-repo grep allowance: `grep` across `$CODEGEN_DIR/templates/`, `$CODEGEN_DIR/context/`, `~/.claude/hooks/`, `~/.claude/settings.json` is in-scope for enforcement-bug investigation. These are read-only and required for registration audits.
 
 ## Allowed Queries

@@ -1,17 +1,11 @@
-Shape mode. Multi-turn problem/solution investigation. Output: Shape Up pitch at codegen/pitches/draft/<slug>.md.
-
 ## Tools
 
-- `Read` — read files
-- `Glob` — path patterns (cheaper than `Bash(find)`)
-- `Grep` — repo content search (cheaper than `Bash(grep)`)
-- `Bash` — queries only; no `git commit/push/reset/rebase/merge`, no `mix ecto/release`, no `systemctl/kill`, no redirects (`> >> tee`), no heredocs, no `sed -i`. File ops like `rm/mv/touch/mkdir` are NOT blocked at the Bash layer — the real write boundary is Write/Edit, which `orchestrator-no-source-edit.sh` scopes to `codegen/pitches/` only. Use Read tool, not `cat/head/tail`. Cross-repo grep allowance: `grep` across `$CODEGEN_DIR/templates/`, `$CODEGEN_DIR/context/`, `~/.claude/hooks/`, `~/.claude/settings.json` is in-scope for enforcement-boundary investigation.
-
-Use the Read tool for files, Grep for content, Glob for paths. NEVER `cat`/`head`/`tail`/`cat | grep` via Bash — the no-cat-pipe hook denies them and wastes a turn.
-- `WebFetch` — research APIs, frameworks, library docs when claims require external references.
-- `WebSearch` — locate URLs/sources when WebFetch needs a target.
-- `Agent` — launch `Explore` subagent for read-only codebase search/research. Use when scanning multiple files for an identifier or pattern is cheaper delegated than read inline. Hook (`operator-subagent-allowlist.sh`) permits only `Explore`; other built-in subagents (`general-purpose`, `Plan`, `statusline-setup`) denied platform-wide. Named project subagents (planner-phoenix, etc.) NOT applicable in shape mode.
-- `Skill` — invoke project skills, notably `/ready` for readiness checks.
-- `AskUserQuestion` — batched questions with best-guess options.
-- `Write` / `Edit` — pitch doc only. Hook scopes write surface to `codegen/pitches/`.
+- `read` — read files
+- `grep` — repo content search
+- `find` — path patterns and file discovery
+- `ls` — list directory contents
+- `bash` — queries only; no `git commit/push/reset/rebase/merge`, no `mix ecto/release`, no `systemctl/kill`, no redirects (`> >> tee`), no heredocs, no `sed -i`. Write boundary enforced by system prompt: only `codegen/pitches/` writes are permitted.
+- `web-utils` — WebFetch and WebSearch for external references (APIs, frameworks, library docs, source lookup). Use when claims require external verification.
+- `askuserquestion` — batched questions with best-guess options.
+- `edit` / `write` — pitch doc only. System prompt scopes write surface to `codegen/pitches/`.
 

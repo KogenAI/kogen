@@ -1,16 +1,5 @@
 Ops mode. Live-box operations on a remote server. Full tool access — no bash guard restrictions. Safety is procedural (model-driven), not hook-enforced.
 
-## Cold-Start Opening
-
-At the very beginning of this session, before taking any action, state the following and wait for user confirmation:
-
-"I'm about to work on [SERVER], environment [PROD/STAGE]. Before I proceed with any action, please confirm you're ready to work on [SERVER] in [PROD/STAGE] mode."
-
-Replace [SERVER] with the value of OPS_SERVER from your startup context (injected by launcher).
-Replace [PROD/STAGE] with the value of OPS_ENV from your startup context.
-
-Do not proceed with any command, investigation, or read until the user confirms.
-
 ## Tools
 
 - **Bash** — Unrestricted. You can run destructive commands (rm, systemctl restart, database migrations, git push/reset), SSH to the server, pipe, redirect, heredoc — anything. No bash-guard hook restrictions in ops mode. Every risky command should be stamped "[PROD]" or "[STAGE]" in your response text for clarity and audit. Use Bash for SSH commands to the target server.

@@ -2,32 +2,17 @@
 
 Full tool access. Read, Edit, Write, Bash (constrained by hooks), Agent/Task (delegation to planner/developer/reviewer/committer), Skill (slash commands).
 
-Use the Read tool for files, Grep for content, Glob for paths. NEVER `cat`/`head`/`tail`/`cat | grep` via Bash — the no-cat-pipe hook denies them and wastes a turn.
-
-NEVER `find`/`grep`/`rg`/`ls`/`tree`/`cat` to explore the codebase — orchestrator delegates ALL investigation to planner; orchestrator-read-discipline denies it.
-
 ## FIRST-TURN PROTOCOL
 
 On the first user turn, if the prompt contains one or more `@`-mentioned `.md` files (Claude Code auto-loads their contents):
 
-- MUST: First action is creating a session log. Zero chat text before the first tool call.
-  (1) Run `Bash(date -u +%Y%m%d_%H%M%S)` to fetch the timestamp.
-  (2) Use the **Write** tool (NOT Bash redirect) to create `codegen/logging/<ts>_<slug>_session.md` — separators are UNDERSCORES; dashes only inside the slug; MUST be Write, not echo/cat/tee.
 - MUST: spawn ritual = header-Edit + Agent() call, always as indivisible pair. After creating the log, insert `## planner-<stack> Section` header (or `## Plan` per the planner exception — the log skeleton already contains `## Plan`), then spawn planner — two parts, one move.
 - MUST: For every subsequent Agent() call: Edit the step log to append the section header for that agent IN THE SAME TURN, then Agent() — the spawn ritual is atomic, never separated.
 - NEVER: call Agent() without the header-Edit immediately prior in the same turn.
-- MUST: Spawn context-curator by its literal name `context-curator` — never an empty subagent_type.
-- NEVER: Summarize the doc back to the user.
 - NEVER: Print "Status: This is a design document ready for implementation" or any equivalent meta-commentary.
-- NEVER: Ask "Implement it / Refine it / Promote it / Archive it / Something else" or any permission-seeking menu.
-- NEVER: Ask "What would you like to do" or any variant.
 - NEVER: Restate what the doc says. The user wrote it (or read it); they know.
 
 The user invoked `claude-build` with the doc as argv. That IS the instruction to start orchestrating. Proceed to Cycle Protocol immediately.
-
-On the first user turn with NO `@`-mentioned `.md` file (free-form prompt):
-
-- Standard single-cycle orchestration (planner → dev → gate → reviewer → context-curator → committer). Same no-acknowledgment rule applies.
 
 ## Cycle Protocol
 
@@ -42,14 +27,6 @@ When the user prompt contains one or more `@`-mentioned `.md` files (Claude Code
 - **Free-form prompt** (`claude-build "implement X"`) — one full cycle, single-cycle passthrough. No pitch involved.
 
 Pitches contain no `## Step N` headings (the old step-scanner is removed because pitches replaced plan-shaped docs). Planner owns slicing; the pitch itself is silent on step decomposition.
-
-## Commit Hygiene (MANDATORY)
-
-MUST-NOT: Committer delegation MUST NOT include the gate command, test output, or CI status. Pass the WHY-summary only — committer reads the diff and crafts the commit message.
-
-- ❌ "Commit. Gate: make test passed. 42 tests green." — gate noise in prompt
-- ✅ "Commit: added step-log guard, enforces header before every spawn" — why-focused
-- WHY/purpose handoff: when delegating to committer, the orchestrator MUST surface what this cycle was FOR (the one uniting purpose), not the diff contents or mechanism. Name the purpose → committer has the raw material to find the subject. Example: "Added Chromium requirement so static builds can't ship broken renders" (purpose) — NOT "changed install.sh and Makefile and render-check.js" (surfaces).
 
 Post-commit stage (pitch-driven builds): after committer commits, move the pitch from ready/ to shipped/: `mv codegen/pitches/ready/<slug>.md codegen/pitches/shipped/<slug>.md` (plain `mv`, NEVER `git mv`). The `pitch-shipped-before-stop.sh` hook blocks the session from ending until this is done.
 

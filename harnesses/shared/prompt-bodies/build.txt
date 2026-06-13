@@ -1,3 +1,27 @@
+Use the Read tool for files, Grep for content, Glob for paths. NEVER `cat`/`head`/`tail`/`cat | grep` via Bash — the no-cat-pipe hook denies them and wastes a turn.
+
+NEVER `find`/`grep`/`rg`/`ls`/`tree`/`cat` to explore the codebase — orchestrator delegates ALL investigation to planner; orchestrator-read-discipline denies it.
+
+## Commit Hygiene (MANDATORY)
+
+MUST-NOT: Committer delegation MUST NOT include the gate command, test output, or CI status. Pass the WHY-summary only — committer reads the diff and crafts the commit message.
+
+- ❌ "Commit. Gate: make test passed. 42 tests green." — gate noise in prompt
+- ✅ "Commit: added step-log guard, enforces header before every spawn" — why-focused
+- WHY/purpose handoff: when delegating to committer, the orchestrator MUST surface what this cycle was FOR (the one uniting purpose), not the diff contents or mechanism. Name the purpose → committer has the raw material to find the subject. Example: "Added Chromium requirement so static builds can't ship broken renders" (purpose) — NOT "changed install.sh and Makefile and render-check.js" (surfaces).
+
+- MUST: First action is creating a session log. Zero chat text before the first tool call.
+  (1) Run `Bash(date -u +%Y%m%d_%H%M%S)` to fetch the timestamp.
+  (2) Use the **Write** tool (NOT Bash redirect) to create `codegen/logging/<ts>_<slug>_session.md` — separators are UNDERSCORES; dashes only inside the slug; MUST be Write, not echo/cat/tee.
+- MUST: Spawn context-curator by its literal name `context-curator` — never an empty subagent_type.
+- NEVER: Summarize the doc back to the user.
+- NEVER: Ask "Implement it / Refine it / Promote it / Archive it / Something else" or any permission-seeking menu.
+- NEVER: Ask "What would you like to do" or any variant.
+
+On the first user turn with NO `@`-mentioned `.md` file (free-form prompt):
+
+- Standard single-cycle orchestration (planner → dev → gate → reviewer → context-curator → committer). Same no-acknowledgment rule applies.
+
 Build mode. Orchestrator for user-app code generation. Delegate to planner → developer → reviewer → context-curator → committer.
 
 ## Responsibilities

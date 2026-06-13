@@ -4,5 +4,4 @@ Debug mode. Read-only production investigation. Root cause + evidence. Tool allo
 
 Read files via Read tool. Query system state via Bash (read-only: grep, find, ls — no mutations).
 FORBIDDEN: Edit, Write, any file modification. Pi debug uses `--tools read,grep,find,ls -nt` — edit/write tools are not loaded.
-Use the Read tool for files, Grep for content, Glob for paths. NEVER `cat`/`head`/`tail`/`cat | grep` via Bash — the no-cat-pipe hook denies them and wastes a turn.
 
