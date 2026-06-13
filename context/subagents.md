@@ -99,6 +99,23 @@ Shape mode gates pitch readiness by scanning for three deletion-safety blocker c
 
 Shape mode emits blockers with quoted context and remediation options before advancing to readiness-check verdict.
 
+## Session-Log Header Requirements for Stack-Variant Templates
+
+When a developer subagent template is stack-prefixed (e.g., `planner-phoenix`, `planner-html`, `developer-hugo`), any session-log Edit payload MUST include a stub `## <agent_type>-<stack> Section` header (e.g., `## planner-phoenix Section`). The `session-log-section-integrity.sh` hook bypass covers only the literal `AGENT_TYPE=planner` (non-stack), not variants. Stack-variant subagents must satisfy the normal header-present rule (hook lines 50–66): no bypasses apply.
+
+## Subagent Template Include Placement & Edit Uniqueness
+
+When editing subagent templates to add a new include line after an existing anchor (e.g., adding `{% include 'rules/shared/no-role-spawn.md' %}` after `output-style.md`), use a **two-line old_string** (anchor + the line immediately following it) to guarantee unique match per file. The anchor itself (`{% include 'rules/_core/output-style.md' %}`) appears identically across all 10 leaf-agent templates that include it — single-line matching would be ambiguous. Pairing anchor + context line disambiguates:
+
+- Phoenix developers + planners/reviewers, plus static reviewers: anchor followed by another `{% include %}` line (e.g., `bash-discipline`, `cwd-discipline`)
+- Static planners (html/hugo/vite): anchor followed by a **blank line**, then prose starting with "First: …" — pair anchor + blank line to avoid matching prose content
+
+Verified pattern: all 10 templates have `{% include 'rules/_core/output-style.md' %}` on a single line, followed by distinct next line (either another include or blank). Two-line pairing is sufficient for all files.
+
+## Retrospective Scan Scope in Session Logs
+
+The `subagent-retrospective-guard.sh` hook scans session-log `## Plan` blocks to extract `### What I Learned This Step` retrospective blocks for context-curator routing. **Scan stops at the first `^## ` H2 header** encountered after `## Plan` start. If the delegation prompt includes a fenced code block (e.g., `\`\`\`gate-json`, `\`\`\``) containing H2 markers like `## Files to touch`, those markers are treated as H2 boundaries and truncate the scan window. **Consequence**: retrospective blocks must precede ANY fenced `## `line, not just H2 headings outside fences. Move retrospective to the`## Plan` body proper (before the delegation-prompt fence).
+
 ## Pitfalls
 
 - **Rule changes don't auto-update running agents** — must run `make install` to regenerate and reinstall
@@ -108,3 +125,4 @@ Shape mode emits blockers with quoted context and remediation options before adv
 - **`dev-gate` is not a subagent template** — `dev-gate` refers to the orchestrator-invoked hook workflow (`phoenix-dev-gate.sh`), not an agent role with a `.md.j2` template; see `context/hooks.md` for gate mechanics
 - **Trigger keywords refer to template wiring** — subagents.md covers how roles are assembled and baked into prompts; for what each role must/must-not do at runtime, see `context/rules-roles.md`
 - **Role-def include gaps create invisible rule blindness** — audit of phoenix subagents (session 20260612_121603) revealed: `planner-phoenix.md.j2` does not include `generators.md` (phx.gen.live forbiddance rule invisible to planner); `reviewer-phoenix.md.j2` lacks `testing-liveview.md` (LiveView lifecycle checks missing); `manifest-external-resource.md` is included in zero role-defs (@external_resource cross-check invisible to all). When including stack rules in subagent templates, inventory all related rule files and verify each is explicitly included where relevant. A rule file in `shared/rules/stacks/phoenix/` not included in any role-def is a coverage gap. Fix requires: (1) edit the missing rule file (or move content), (2) add `{% include %}` to the role-def template, (3) run `make install` to regenerate + reinstall prompts.
+- **Static planners place `output-style.md` at end of include block** — html/hugo/vite planners include `output-style.md` as the LAST rule include before prose content, followed by a blank line. This is intentional (recency-bias placement for output constraints in planner decision-making). The adjacency rule "new rule lands immediately after `output-style.md`" is still satisfied; static planners are structured differently than phoenix planners, but they still honor the include-order contract.

@@ -42,8 +42,26 @@ bash-discipline, output-style, session-log, cwd-discipline, STYLE_GUIDE, INDEX.m
 
 **Uninitialized variable defaults**: POSIX awk initializes unset scalar variables to 0 (numeric context) or empty string (string context). Safe pattern for block-scoped search functions: `exit !found` at END correctly exits 1 (not found) when no matching line was found, without requiring explicit `found=0` initialization at the top. This works in all awk implementations including mawk (Debian default).
 
+## Shared Rule Prose — Harness-Neutral & Consumer-Agnostic Language
+
+Rules in `shared/rules/shared/` (and cross-referenced by downstream projects) must never name harness-specific binaries or codegen-internal dispatch mechanisms. These rules are baked into agent prompts executed in downstream projects where the named binaries may not exist.
+
+**Anti-patterns**:
+
+- ❌ `claude` / `pi` (harness binary names)
+- ❌ `codegen-call` (codegen-internal dispatcher)
+- ❌ `claude -p` / `pi -p` (harness-specific CLI flags)
+
+**Harness-neutral equivalents**:
+
+- ✅ "nested subprocess" (covers any role-spawning mechanism)
+- ✅ `--print` (flag name is neutral; flag semantics apply to all harnesses)
+
+The carve-out parenthetical is the most error-prone location for this slip — ensure any exception allowing subprocess invocation uses the neutral form. Example: "This does NOT forbid a print-mode subprocess (`--print`) your delegation prompt explicitly asks for — e.g. verifying a build, or testing a role you are editing."
+
 ## Pitfalls
 
 - **Rule changes are not live** — must `make install` to regenerate agent prompts; running agents see old baked rules
 - **INDEX.md must stay in sync** — adding a rule file without an INDEX row means orchestrators won't load it on demand
 - **`@apply` in rules is Tailwind-context only** — static site rules reference Tailwind `@apply`; don't confuse with CSS `@apply`
+- **Shared rules must be harness-agnostic** — no launcher/dispatcher binary names in files under `shared/rules/shared/` or symlink-included rules; these are baked into downstream agent prompts
