@@ -56,6 +56,8 @@ COMMON_FLAGS=(--dangerously-skip-permissions)
 exec claude "${COMMON_FLAGS[@]+...}" "$MODE_SPECIFIC" ...
 ```
 
+**Shared functions called from multiple code paths or harnesses** — when a function is invoked from BOTH harness-specific call sites (e.g., static gate + phoenix dev-gate + phoenix port-gate) and the function needs to emit harness-specific behavior (e.g., "fail on empty content region for phoenix, allow thin shell for static"), thread a `mode` parameter to gate the behavior on it. Do NOT emit harness-specific checks unconditionally; they will false-positive on unrelated harnesses. Example: `render-check.js` `runChecks(url, timeoutMs, mode)` is called by both static-site-build-check.sh and phoenix-dev-gate.sh; the content-region check gated on `if (mode === "phoenix")` prevents static-SPA false positives.
+
 **Empty-array-safe expansion** — under `set -u`, distinguish two kinds of array operations:
 
 - `${#arr[@]}` (LENGTH) — always safe, returns 0 for empty/unset arrays, never triggers unbound-variable error

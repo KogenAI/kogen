@@ -11,7 +11,7 @@
  *   RENDER_VERDICT=FAIL:<reason>
  *   RENDER_VERDICT=INCONCLUSIVE:<reason>
  *
- * FAIL reasons:    empty-dom | unstyled | js-error:<detail> | asset-404:<url>
+ * FAIL reasons:    empty-dom | empty-content-region | unstyled | js-error:<detail> | asset-404:<url>
  * INCONCLUSIVE:    browser-not-installed | server-unready | timeout | config-error | <other>
  *
  * Exit 0 always — verdict is communicated via the RENDER_VERDICT line.
@@ -109,7 +109,7 @@ function startServer(serveDir, port) {
 
 // ── Render checks via Playwright ─────────────────────────────────────────────
 
-async function runChecks(url, timeoutMs) {
+async function runChecks(url, timeoutMs, mode) {
   let chromium;
   try {
     // Resolve playwright from CODEGEN_DIR/node_modules if set, else local.
@@ -222,6 +222,36 @@ async function runChecks(url, timeoutMs) {
     if (domInfo.childCount === 0) {
       verdict(`FAIL:empty-dom`);
       return;
+    }
+
+    // ── Check 1b: non-empty content region (phoenix only) ────────────────────
+    // A rendered layout shell can hide a blank content area — tests that assert
+    // only shell fragments pass while the page renders empty. Probe the primary
+    // content region; fail if it is present but near-empty.
+    if (mode === "phoenix") {
+      const regionInfo = await page.evaluate(() => {
+        const selectors = ["[data-render-region]", "main", ".flex-1"];
+        for (const sel of selectors) {
+          const el = document.querySelector(sel);
+          if (el) {
+            return {
+              selector: sel,
+              textLen: (el.innerText || "").trim().length,
+              childCount: el.childElementCount,
+            };
+          }
+        }
+        return null;
+      });
+      if (regionInfo) {
+        log(
+          `content region: selector=${regionInfo.selector} textLen=${regionInfo.textLen} children=${regionInfo.childCount}`,
+        );
+        if (regionInfo.textLen < 50 && regionInfo.childCount < 2) {
+          verdict(`FAIL:empty-content-region`);
+          return;
+        }
+      }
     }
 
     // ── Check 2: styles applied ──────────────────────────────────────────────
@@ -337,7 +367,7 @@ async function main() {
     log(`static server on port ${port} serving ${outputDir}`);
 
     try {
-      await runChecks(`http://localhost:${port}/`, timeoutMs);
+      await runChecks(`http://localhost:${port}/`, timeoutMs, "static");
     } finally {
       server.close();
     }
@@ -362,7 +392,7 @@ async function main() {
           verdict("INCONCLUSIVE:server-unready");
           return;
         }
-        await runChecks(`http://localhost:${port}/`, timeoutMs);
+        await runChecks(`http://localhost:${port}/`, timeoutMs, "phoenix");
       } finally {
         await stopPhoenixServer(child);
       }
@@ -379,7 +409,7 @@ async function main() {
         return;
       }
 
-      await runChecks(`http://localhost:${port}/`, timeoutMs);
+      await runChecks(`http://localhost:${port}/`, timeoutMs, "phoenix");
     }
   } else {
     log(`unknown mode: ${args.mode}`);
