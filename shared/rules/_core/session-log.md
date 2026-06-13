@@ -35,7 +35,7 @@ Use relative paths OR absolute paths THAT START WITH the cwd you were given; see
   - Multi-step (`/split` or explicit step plan) → use `./codegen/logging/$(date -u +%Y%m%d_%H%M%S)_step<N>_<slug>.md`.
 - Orchestrator inserts `## <agent_type> Section` header into the session log via Edit BEFORE each `Agent()` call (delegation-time Edit, not Step-0).
 - Subagents write their section body under the existing header — never emit the header themselves. Hook `session-log-section-integrity.sh` lines 50–66 bypass: file already contains expected header → Edit allowed.
-- Planner exception: writes to `## Plan` (top-level skeleton header), not `## planner Section`. Hook line 35 bypasses `AGENT_TYPE=planner` literal only — stack-prefixed planner variants (`planner-phoenix`, `planner-html`, etc.) REQUIRE a stub `## planner-<stack> Section` header (literal stack name) in any Edit payload. The hook's bypass (line 35) does not widen to stack-prefixed variants; they must satisfy the normal `session-log-section-integrity.sh` header-present rule (lines 50–66).
+- Planner exception: ALL planner variants (`planner`, `planner-phoenix`, `planner-html`, etc.) write to `## Plan` (top-level skeleton header), not a `## planner-* Section` header. The integrity hook bypasses ALL `AGENT_TYPE` values matching `planner*`. Orchestrator inserts `## Plan` stub before spawning any planner variant — never `## planner-phoenix Section` or similar.
 - Multi-step → orchestrator maintains `./codegen/logging/$(date -u +%Y%m%d)_progress.md`.
 
 Session log creation MUST use the `Write` tool, NEVER a Bash heredoc/redirect (`cat > ... <<EOF`, `echo ... >`, `tee`). Reason: `phoenix-dev-gate.sh` and `step-log-missing-guard.sh` discover the active log via `session_log_from_transcript` (`harnesses/claude/hooks/lib/hooks-lib.sh`), which filters transcript JSONL for `Write|Edit|MultiEdit` tool_use entries on `codegen/logging/*.md`. Bash redirects appear as `Bash` tool_use entries → invisible to the discovery query → gate hook silently skips, no verdict appended.
@@ -119,7 +119,7 @@ Context curator reads all `### What I Learned This Step` blocks from a single cy
 
 Every Bash invocation → one row. Update continuously, no end-of-session batching.
 
-**Retrospective placement**: `### What I Learned This Step` blocks MUST sit inside the `## Plan` body (under `## Plan`, before any H2 headings like `## Slices`), NOT under the `## planner-<stack> Section` header. Hook `subagent-retrospective-guard.sh` scans the `## Plan` block to extract retrospectives for context-curator routing; it stops scanning at the next H2 heading.
+**Retrospective placement**: `### What I Learned This Step` blocks for planner variants MUST sit inside the `## Plan` body (under `## Plan`, before any H2 headings like `## Slices`). There is no `## planner-* Section` header. Hook `subagent-retrospective-guard.sh` scans the `## Plan` block to extract retrospectives for context-curator routing; it stops scanning at the next H2 heading.
 
 ## Citations
 

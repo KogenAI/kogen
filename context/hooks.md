@@ -670,6 +670,89 @@ Shape-mode and multi-mode `tools-header/*.txt` files document Bash mutation boun
 
 **Implication**: When tightening tool-header prose, verify claim against the actual hook registry (`shared/enforcement/registry.yaml`) and source hooks — do NOT trust prose alone. The tools-header files are **not code**; they are documentation rendered into agent prompts. False claims in docs cause misdiagnosis.
 
+## Hook Pattern Coverage — Sibling Condition Enforcement (Rule J)
+
+When a single hook file has TWO independent conditions that both affect the same logic path (e.g., `subagent-retrospective-guard.sh` has an in-script matcher `case` at line 37 AND a header-selection `[[ ]]` at line 57), they must be widened in lockstep. A mismatch (e.g., one arm uses `planner-*` excluding bare `planner`, while the other uses `planner*` including bare `planner`) will silently diverge at runtime — one family member may match the matcher but miss the selection, or vice versa.
+
+**Critical invariant**: After widening a glob in one condition, **immediately widen the sibling condition** in the same file. Test coverage must verify both paths with a non-phoenix family member (e.g., `planner-html` or `planner-hugo`) to catch the mismatch; a test using only `planner-phoenix` cannot distinguish whether both conditions are widened or just one.
+
+**Example from session 20260613_planner-header-churn**: `subagent-retrospective-guard.sh` widening the planner family matched three separate logic points:
+
+1. In-script matcher `case "$AGENT_TYPE"` (line 37) — must use `planner*` glob to match all family members
+2. Header-selection conditional `[[ ]]` (line 57) — must use the same `planner*` glob
+3. SubagentStop event registration in `registry.yaml` (not edited, forward-compat hardening only)
+
+A test that verifies `planner-html` under a test condition would pass even if only the conditional was widened but not the matcher — both would output "ALLOW" (one from skip, one from process-then-allow). To prove BOTH widened, pair an allow case with a BLOCK case: under OLD code, `planner-html` skips the matcher (exit 0, no block), under NEW code it processes and detects missing retrospective (block). The block-case test proves the matcher actually processed the family member.
+
+**Implementation pattern**:
+
+- (1) Identify all sibling conditions in the file that reference the same logic path
+- (2) Widen ALL of them to the same glob form (e.g., `planner*` including bare `planner`, not `planner-*` excluding it)
+- (3) Add test cases for a non-base family member (e.g., `planner-html`) in both ALLOW and BLOCK branches to lock the widen
+
+## Bypass Green-From-Birth Detection (Test Coverage Strategies for Hook Widening)
+
+When a bypass condition widens (e.g., literal `planner` → `planner*` glob), test coverage must distinguish between two outcomes:
+
+- **Old behavior**: condition fails → action skips (exits early, no output)
+- **New behavior**: condition succeeds → action processes (may allow or deny based on content)
+
+A test that asserts "allow" can pass under BOTH old (skip) and new (process-then-allow) paths — this is a "green-from-birth" trap. To lock the new behavior, pair the ALLOW case with a BLOCK case that exercises the same code path but detects missing input:
+
+**Pattern**:
+
+- ALLOW case: condition satisfied, required input present → allow
+- BLOCK case: condition satisfied, required input missing → block
+
+Under old code, both hit the skip path (both allow). Under new code, the BLOCK case processes the path and detects the missing input, emitting a deny/block decision. The BLOCK case failing under old code but passing under new code is proof that the bypass actually widened.
+
+**Example from session 20260613_planner-header-churn** (`subagent-retrospective-guard.sh` and `session-log-section-integrity.sh`):
+
+- Write case on planner-phoenix (Edit-case was green-from-birth) → ALLOW
+- Write case on planner-phoenix WITHOUT retrospective → BLOCK (proves processing, not skip)
+
+The Write case is load-bearing because it adds a NEW file and verifies the bypass allows it; the BLOCK case locks the matcher widen by proving the hook processes the new family member (not skipping it).
+
+## Retrospective Placement Constraint — Awk Section Extraction
+
+The `subagent-retrospective-guard.sh` hook uses `awk` to extract the retrospective section from the session log. **Critical constraint**: The retrospective block (e.g., `### What I Learned This Step`) CANNOT sit anywhere inside a `## Plan` body with nested `## ` literals — the awk extraction terminates at the first `## ` it encounters, even if that `##` is inside a fenced code block (heredoc, markdown fence, etc.).
+
+**Rule**: The retrospective block MUST sit at the TOP of `## Plan`, immediately after the header, BEFORE any other nested `## ` literals in the body (fenced or prose).
+
+**Why**: Awk's line-by-line processing and straightforward condition (`/^## / && NR > start_line { exit }`) cannot distinguish fence boundaries. A code-block example like:
+
+````bash
+## Plan
+
+```markdown
+## Example Header in Code
+...
+````
+
+### What I Learned This Step
+
+...
+
+````
+
+Would have the awk extraction terminate at `## Example Header` (even though it's inside a fence), never reaching the retrospective.
+
+**Solution**: Reorder the session-log template to place all fenced/formatted content AFTER the retrospective block, or ensure retrospectives are placed at the log-top (immediately after `## Plan`, before any code examples).
+
+## Hook Registration Mechanics — Registry-Driven Header Sync
+
+When editing a hook's HOOK-MANIFEST metadata field (e.g., widening `role:` from `planner-phoenix` to `planner*`, or changing `tool_guard:`), **BOTH the `.sh` file AND `shared/enforcement/registry.yaml` must be updated together**:
+
+1. **Source of truth**: `shared/enforcement/registry.yaml` holds the canonical values (event, tool_guard, role, signal, etc.)
+2. **Auto-generation**: `make install` runs `hook_registrations.py --emit-headers`, which reads the registry entry and injects/overwrites the `# HOOK-MANIFEST:` header block in the `.sh` file
+3. **Consistency check**: `make hook-parity` diffs the committed `harnesses/claude/claude-code-settings.json` against freshly-generated headers from all hook HOOK-MANIFEST blocks. If registry and `.sh` disagree, `settings.json` regenerates and diffs fail.
+
+**Workflow**:
+- Edit `registry.yaml` entry → edit `.sh` hand-authored HOOK-MANIFEST header to match (or let make install regenerate it) → run `make install` → commit both `.sh` + regenerated `settings.json`
+- Never manually edit just the `.sh` HOOK-MANIFEST and skip the registry update (or vice versa) — the consistency check will catch the divergence
+
+**Note on `kind: registration` vs `kind: denial`**: Hand-authored hooks use `kind: registration` entries and preserve their HOOK-MANIFEST headers across edits. Compiler-generated hooks (`kind: denial` entries, `generated: true`) have their ENTIRE `.sh` file regenerated at `make install` — do not hand-edit those files.
+
 ## Pitfalls
 
 - **render-check.js parse crash (Jun 3 regression)** — Duplicate `allocFreePort` and `waitForHttp200` function definitions caused SyntaxError under strict mode, masking the whole file and producing no output. This crash was misdiagnosed as browser-absent because `static-site-build-check.sh` wildcard `*)` case arm conflated empty output with browser-not-installed. Guard: `render-check_test.sh` uses `node --check` to detect parse errors; static gate now splits no-verdict-crash and browser-absent into distinct fail-closed paths (cf. session 20260608_153448).
@@ -688,3 +771,4 @@ Shape-mode and multi-mode `tools-header/*.txt` files document Bash mutation boun
 - **build.txt parity between harnesses** — Claude and Pi `tools-header/build.txt` Commit Hygiene blocks (and any other identical content) must stay byte-identical. No parity hook enforces this — drift is caught only by reviewer manual diff. When appending content to both build.txt files, verify after `make install` via grep or diff that both additions propagated identically (cf. session 20260610_082318_commit-message-quality-audit).
 - **Prompt-content parity sentinels for rule-file includes** — When `prompt-content-parity_test.sh` asserts rule prose is included in a subagent's baked prompt, it greps the SOURCE rule file (e.g., `shared/rules/stacks/phoenix/testing-liveview.md`) for short fixed-string sentinel phrases. Sentinels are file-path-scoped: Tests 6–8 for testing-liveview.md target only the bottom fact-list lines (113–115 in original, shifted when new rules inserted above). Edits to other parts of the file (lines 1–112) do NOT require sentinel sync — parity remains green because the sentinel STRINGS, not line numbers, are what grep checks. When new rule blocks are inserted before sentinels, the line numbers shift but the sentinel strings stay byte-identical, so parity tests pass automatically. Planner must verify which parity-test line-range covers a given rule file (via Grep of `prompt-content-parity_test.sh` for the file basename) before determining whether new content edits trigger sentinel sync.
 - **Generic FAIL:\* verdict routing in gate scripts** — When a hook like render-check.js emits a verdict string like `FAIL:empty-content-region`, gate scripts like `phoenix-dev-gate.sh` handle it via a generic `${rv#FAIL:}` strip operation — the gate script does NOT need to be edited to recognize new FAIL reason strings. New verdict types auto-surface in gate output. Only the JS file's own header comment needs updating to document the new reason string.
+````

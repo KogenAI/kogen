@@ -228,17 +228,49 @@ describe("subagent-retrospective-guard", { concurrency: false }, () => {
     assert.ok(stderr.includes("subagent-retrospective-guard"), "expected warning");
   });
 
-  // planner-hugo, planner-vite, planner-html in matcher set
-  it("enforces for planner-hugo", async () => {
+  // planner-hugo, planner-vite, planner-html in matcher set — all write under ## Plan
+  it("does not warn for planner-hugo with retrospective under ## Plan", async () => {
     const content = [
-      "## planner-hugo Section",
+      "## Plan",
       "",
-      "Plan here.",
+      "Plan content here.",
+      "",
+      "### What I Learned This Step",
+      "",
+      "- [local] hugo planner finding",
+      "",
+    ].join("\n");
+    writeLog(content);
+    const stderr = await runHook("planner-hugo");
+    assert.ok(!stderr.includes("WARNING"), "expected no warning");
+  });
+
+  it("warns for planner-hugo missing retrospective under ## Plan", async () => {
+    const content = [
+      "## Plan",
+      "",
+      "Plan content here, no retrospective.",
       "",
     ].join("\n");
     writeLog(content);
     const stderr = await runHook("planner-hugo");
     assert.ok(stderr.includes("subagent-retrospective-guard"), "expected warning");
+  });
+
+  it("does not warn for planner-html with retrospective under ## Plan", async () => {
+    const content = [
+      "## Plan",
+      "",
+      "Plan content here.",
+      "",
+      "### What I Learned This Step",
+      "",
+      "- nothing notable",
+      "",
+    ].join("\n");
+    writeLog(content);
+    const stderr = await runHook("planner-html");
+    assert.ok(!stderr.includes("WARNING"), "expected no warning");
   });
 
   // Never blocks

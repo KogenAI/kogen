@@ -4,10 +4,10 @@
 #
 # HOOK-MANIFEST:
 # event: SubagentStop
-# matcher: developer-phoenix-backend|developer-phoenix-frontend|planner-phoenix|reviewer-phoenix
+# matcher: developer-phoenix-backend|developer-phoenix-frontend|planner-phoenix|planner-html|planner-hugo|planner-vite|reviewer-phoenix|reviewer-static
 # surface: user_global
 # signal: AGENT_TYPE
-# role: developer-phoenix-backend|developer-phoenix-frontend|planner-phoenix|reviewer-phoenix
+# role: developer-phoenix-backend|developer-phoenix-frontend|planner-*|reviewer-phoenix|reviewer-static
 # harnesses: all
 # GENERATED FROM shared/enforcement/registry.yaml — DO NOT EDIT
 #
@@ -33,7 +33,8 @@ debug_log subagent-retrospective-guard "agent=$AGENT_TYPE"
 
 # Only gate the matched roles.
 case "$AGENT_TYPE" in
-developer-phoenix-backend | developer-phoenix-frontend | planner-phoenix | reviewer-phoenix) ;;
+developer-phoenix-backend | developer-phoenix-frontend | reviewer-phoenix | reviewer-static) ;;
+planner*) ;;
 *)
     debug_log subagent-retrospective-guard "skip: agent=$AGENT_TYPE not in matcher"
     exit 0
@@ -52,8 +53,8 @@ debug_log subagent-retrospective-guard "log=$log_file agent=$AGENT_TYPE"
 
 # Find the agent's ## <role> Section header in the log.
 # Extract lines from that header to the next ^## header (or EOF).
-# planner-phoenix writes its body under ## Plan (not ## planner-phoenix Section).
-if [[ "${AGENT_TYPE}" == "planner-phoenix" ]]; then
+# All planner variants write their body under ## Plan (not ## planner-* Section).
+if [[ "${AGENT_TYPE}" == planner* ]]; then
     section_header="## Plan"
 else
     section_header="## ${AGENT_TYPE} Section"

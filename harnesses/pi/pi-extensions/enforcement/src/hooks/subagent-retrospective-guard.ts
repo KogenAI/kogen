@@ -120,11 +120,10 @@ export function register(pi: ExtensionAPI): void {
       `log=${logPath} agent=${agentType}`,
     );
 
-    // planner-phoenix writes its body under ## Plan.
-    const sectionHeader =
-      agentType === "planner-phoenix"
-        ? "## Plan"
-        : `## ${agentType} Section`;
+    // All planner variants write their body under ## Plan.
+    const sectionHeader = agentType.startsWith("planner")
+      ? "## Plan"
+      : `## ${agentType} Section`;
 
     // Check the section header exists.
     if (!logContent.includes(sectionHeader)) {

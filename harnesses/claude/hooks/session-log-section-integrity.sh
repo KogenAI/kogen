@@ -32,10 +32,16 @@ Edit | Write | MultiEdit) ;;
 esac
 
 # No agent_type means orchestrator — not gated here (orchestrator creates files, not edits)
-# Planner writes to ## Plan section (not ## planner Section), so bypass the header gate.
-if [ -z "$AGENT_TYPE" ] || [ "$AGENT_TYPE" = "planner" ]; then
+# All planner variants (planner, planner-phoenix, planner-html, etc.) write to ## Plan
+# (not ## planner Section), so bypass the header gate for all planner* agent types.
+if [ -z "$AGENT_TYPE" ]; then
     exit 0
 fi
+case "$AGENT_TYPE" in
+planner*)
+    exit 0
+    ;;
+esac
 
 # Only gate session log files
 if ! printf '%s' "$FILE_PATH" | grep -qE 'codegen/logging/.*\.md$'; then

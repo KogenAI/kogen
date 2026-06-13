@@ -122,6 +122,20 @@ New bash test files under `harnesses/claude/hooks/` are auto-discovered by `run-
 
 Hermetic bash test files (e.g., `prompt-content-parity_test.sh`) that use sequential test case numbering via inline comments (e.g., `# Test 1`, `# Test 2`) should renumber ALL such labels when new tests are added, to avoid duplicate numbers. When a test file carries comment headers like `# Test N:` to label each `assert_contains` or `assert_eq` block, adding a new test in the middle requires incrementing all subsequent test numbers to maintain clarity. Use this pattern for test clarity, but accept the bookkeeping cost — the numeric labels are documentation, not code-critical.
 
+### Fixture Invalidation on Hook Logic Changes
+
+When a hook's conditional logic widens (e.g., `agentType === "planner-phoenix"` → `agentType.startsWith("planner")`), existing test fixtures that rely on the literal condition falling through to an `else` branch become INVALID post-widen. They must be **converted**, not kept as-is.
+
+**Example from session 20260613_planner-header-churn**: The Pi hook `subagent-retrospective-guard.ts` had a test fixture "enforces for planner-hugo" with header `## planner-hugo Section`. The fixture relied on the old literal `agentType === "planner-phoenix"` check to fall through to the `else` branch that looks for `## ${agentType} Section`. After widening to `agentType.startsWith("planner")`, planner-hugo no longer falls through — it matches the true branch and looks for `## Plan` instead. The old fixture's `## planner-hugo Section` header would never be found, causing the hook to skip (no warning). The assertion `stderr.includes("warning")` would fail.
+
+**Conversion pattern**:
+
+1. Identify existing fixtures that relied on the OLD narrow condition falling through
+2. Rewrite those fixtures to satisfy the NEW condition — same test name but NEW setup
+3. The conversion is not a new test; it is a required fix to prevent silent test breakage
+
+**Critical**: When narrowing/widening logic in a hook, grep the paired test file(s) for fixture setups that may be invalidated. A fixture using `## planner-hugo Section` with the old code is no longer valid after the widen — convert it before the change lands or the test suite will emit false-positive passes (the condition no longer matches, so the hook's intended path never runs, but the test passes because the deny/block never fires).
+
 ### Fixture and Build Patterns
 
 - Tests scaffold a temp app, assert generated file contents, run `mix compile` or `npm run build` on output
