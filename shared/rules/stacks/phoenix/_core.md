@@ -321,3 +321,22 @@ Elixir: `elixir-with-for-chained-failable-ops`, `elixir-module-organization-skel
 **Elixir heredoc syntax**: Closing `"""` MUST be on its own line, never inline with content. ❌ `"""content"""` (syntax error). ✅ `"""` / `content` / `"""`. Inline trailing `"""` terminates the heredoc immediately, breaking the parse.
 
 **Make variable escaping**: In Makefile recipes (lines after the target + `:` rule), a literal shell variable reference requires double-`$`. Example: `echo $${VAR:-default}` in a recipe emits `${VAR:-default}` to the shell, allowing shell parameter expansion. Single `$` is Make syntax (refers to Make variable). This is critical for `export OCG_CODEGEN_DIR=$${OCG_CODEGEN_DIR:-/path}` patterns that default env vars in CI/dev-independent shells.
+
+## Orphan-Family Deletions & Generic Dispatchers
+
+When a pitch lists "delete X's phoenix branch", distinguish between phoenix-SPECIFIC functions and generic app-type-parameterized dispatchers. Deleting a single ternary arm from a generic dispatcher (e.g., `Apps.reprovision_idempotent!/2` → `stack = if app_type == "static_site", do: "static", else: "phoenix"`) means churning one parameter for zero behavior change and high test cost. After a code path is retired, the dispatcher's unused branch becomes unreached but the fn is still generic and should be left intact. Examples:
+
+- `Apps.reprovision_idempotent!/2` — generic app-type dispatcher; leave the ternary unchanged even if the phoenix branch is unreachable post-retirement.
+- `BuildQuality.cohort_baseline/2` — generic parameterized query (`where r.app_type == ^app_type`); no phoenix-specific logic present.
+
+True phoenix-specific targets for deletion: functions that would NOT exist if the platform only served static sites (e.g., `Deploy.release_dir_for/1`, `Deploy.compile_release/1`, `Rollback.do_phoenix_rollback/6`). Leave generic dispatchers alone; delete only the phoenix-exclusive implementations.
+
+## Test Regression Patterns
+
+When a guard blocks a code path at the enqueue layer (e.g., `if phoenix_app?(app) then refuse else enqueue`), the regression test must prove the guard fires BEFORE the blocked path branches. Two patterns:
+
+1. **Guard-placement test** — prove the guard sits ABOVE the branching cond. Example: when guarding at `enqueue_build/4` top (above the `cond` that checks `rollback_intent?` first), the regression test for rollback interception must assert: (a) refusal reply sent, (b) NO Oban job enqueued, (c) rollback dispatcher NOT called (stub the internal `run_housekeeper` call + `refute_received` macro). Absence of an Oban job alone does NOT prove the guard fired before the rollback branch; the stub + refute-received confirms the dispatcher was not reached.
+
+2. **Credo VariableRebinding** — when building test setup with repeated bindings (e.g., `{:ok, app1} = ... ; {:ok, app2} = ...`), use distinct variable names (`base_app`, `ambiguous_app`) rather than re-binding the same name twice. Credo detects double-binding as a violation even within the same test; fix by renaming to clarify test intent (each case sets up a different app variant).
+
+Double-binding in tests is semantically allowed but signals test-code sloppiness; always use distinct names to improve readability and pass Credo `VariableRebinding` checks.
