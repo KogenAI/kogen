@@ -71,7 +71,18 @@ assert_contains \
     "$CODEGEN_DIR/shared/rules/stacks/phoenix/testing-liveview.md" \
     "phx-mounted={JS.focus()}"
 
-# ── Tests 9-12: LiveView correctness checklist in phoenix reviewer.md ─────────
+# ── Tests 9-10: mechanism-question sentinel in shape baked prompts ────────────
+assert_contains \
+    "mechanism-question sentinel in claude-shape-system-prompt.txt" \
+    "$CODEGEN_DIR/harnesses/claude/claude-shape-system-prompt.txt" \
+    "same observable behavior"
+
+assert_contains \
+    "mechanism-question sentinel in pi-shape-system-prompt.txt" \
+    "$CODEGEN_DIR/harnesses/pi/pi-shape-system-prompt.txt" \
+    "same observable behavior"
+
+# ── Tests 11-14: LiveView correctness checklist in phoenix reviewer.md ────────
 assert_contains \
     "LiveView correctness: form events" \
     "$CODEGEN_DIR/shared/rules/stacks/phoenix/reviewer.md" \
