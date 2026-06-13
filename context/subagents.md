@@ -54,6 +54,15 @@ Generated output lands in `templates/generated/<harness>/` then installed to `~/
 - **scaffold**: `shared/apps/AGENTS-phoenix.md.j2` and `AGENTS-static.md.j2` are downstream AGENTS.md templates (separate from subagent templates here)
 - **commands**: slash commands in `harnesses/claude/commands/` can spawn subagent swarms (e.g., `/poke-holes` spawns Explore agents to stress-test a pitch). Spawned subagents must satisfy role allowlist in `operator-subagent-allowlist.sh` (debug, shape, refactor, ops roles only).
 
+## Rule Propagation & Two-Common-Fragment Pattern
+
+**Developer rule consolidation via `_phoenix_developer_common.md.j2` and `_static_developer_common.md.j2`**: Both include `shared/rules/roles/developer.md` at line 5. This means a single edit to `developer.md` (e.g., adding a never-commit bullet) automatically propagates to all 5 developer variants — backend, frontend, HTML, Hugo, and Vite — without any additional template edits. The two common fragments fan out to all instances:
+
+- `_phoenix_developer_common.md.j2` → included by `developer-phoenix-backend.md.j2` and `developer-phoenix-frontend.md.j2`
+- `_static_developer_common.md.j2` → included by `developer-html.md.j2`, `developer-hugo.md.j2`, and `developer-vite.md.j2`
+
+**High-leverage pattern**: When a rule change must reach all developers (e.g., forbidding a commit mechanism), edit `shared/rules/roles/developer.md` once. When a rule must reach all agents in a stack (planners, devs, reviewers), edit `shared/rules/stacks/<stack>/_core.md` — it reaches via multiple include sites across multiple templates. One-source-of-truth holds across all baked variants: a rule file edit + `make install` propagates synchronously to all subagent prompts via the static include graph resolved at render time.
+
 ## Authoring Spine Rules (Shape/Refactor)
 
 The `shared/prompt-fragments/_authoring-spine.txt` is included in both `shape.txt` and `refactor.txt` mode bodies. It encodes the investigative readiness loop that gates pitch advancement (Phase 0 context load → multi-turn investigation → readiness check before writing). Twelve core rules govern this loop:
