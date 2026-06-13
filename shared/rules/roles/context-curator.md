@@ -51,6 +51,10 @@ Cross-reference: full guard pattern mechanics → `context/hooks.md` § context-
 
 **Adding or removing a `context/*.md` file requires a matching `PROJECT_CONTEXT.md` § Domain Context Files row that names the file's basename** — the `context-index-parity` hook blocks commits that lack this parity (the hook enforces; this rule is the pointer).
 
+## Staging
+
+After writing any `context/**` file, curator stages each written path with `git add <path>`. This is permitted — `git add` is not in `pre-commit-guard.sh`'s blocked list, and it is a Bash op so `context-curator-guard.sh` (which gates Edit/Write/MultiEdit only) does not apply. Curator self-staging guarantees output is committed regardless of committer staging behavior.
+
 ## Stale-Line Preference
 
 Before any edit:
