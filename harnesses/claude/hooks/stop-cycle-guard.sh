@@ -26,22 +26,34 @@ counter_file="/tmp/claude-cycle-guard-${session_id}.count"
 
 debug_log claude-cycle-guard "session=$session_id"
 
+# Resolve step log early — pure read, safe before any guard.
+step_log=$(session_log_from_transcript)
+
 # Loop guard — already fired this stop.
 if [ "$STOP_HOOK_ACTIVE" = "true" ]; then
     debug_log claude-cycle-guard "skip: stop_hook_active"
     exit 0
 fi
 
-# Retry cap.
+# Per-step retry counter: line 1 = step-log this counter is scoped to, line 2 = count.
+prev_step=""
 count=0
 if [ -r "$counter_file" ]; then
-    count=$(cat "$counter_file" 2>/dev/null || echo 0)
+    prev_step=$(sed -n '1p' "$counter_file" 2>/dev/null || printf '')
+    count=$(sed -n '2p' "$counter_file" 2>/dev/null || printf '0')
 fi
 case "$count" in
 '' | *[!0-9]*) count=0 ;;
 esac
+# Forward progress to a NEW step resets the budget. Empty resolver = keep
+# current step scope (do NOT collapse to global / do NOT reset).
+if [ -n "$step_log" ] && [ "$step_log" != "$prev_step" ]; then
+    count=0
+fi
+scope_step="${step_log:-$prev_step}"
 if [ "$count" -ge 2 ]; then
-    debug_log claude-cycle-guard "skip: retry-cap count=$count"
+    printf '[stop-cycle-guard] per-step retry cap reached for step %s (count=%s) — allowing stop\n' "${scope_step:-unknown}" "$count" >&2
+    debug_log claude-cycle-guard "skip: retry-cap count=$count step=$scope_step"
     rm -f "$counter_file"
     exit 0
 fi
@@ -131,7 +143,7 @@ fi
 # #1 bail — gate never executed at all. Reviewer with no verdict AND no gate-result
 # is a legitimate VE-blocked state (allow). Reviewer with gate-result=inconclusive
 # means the gate RAN but did not confirm clear — that must BLOCK like any other role.
-recent_log=$(session_log_from_transcript)
+recent_log="$step_log"
 if [ -n "$recent_log" ] && [ -r "$recent_log" ]; then
     if ! grep -qE 'ALL CLEAR ✅|FAILED ❌|INCONCLUSIVE ⚠️' "$recent_log" 2>/dev/null; then
         # No emoji verdict in log — check gate-result.json as secondary source
@@ -142,9 +154,8 @@ if [ -n "$recent_log" ] && [ -r "$recent_log" ]; then
                 # Developer ran but VE never produced any verdict — BLOCK.
                 debug_log claude-cycle-guard "BLOCK: developer ran but gate never produced a verdict (gate-result absent)"
                 count=$((count + 1))
-                printf '%s' "$count" >"$counter_file"
-                log_file=$(session_log_from_transcript)
-                log_pointer="${log_file:-(no session log written yet)}"
+                printf '%s\n%s\n' "$scope_step" "$count" >"$counter_file"
+                log_pointer="${recent_log:-(no session log written yet)}"
                 block "Developer finished but the gate never produced a verdict (no emoji in session log, no gate-result.json). VE never ran. You MUST NOT stop here — continue the cycle: re-read $log_pointer and run the gate before handing off to reviewer."
                 exit 0
             fi
@@ -166,16 +177,15 @@ if [ -n "$recent_log" ] && [ -r "$recent_log" ]; then
     if [ -n "$stored_verdict" ] && [ "$stored_verdict" != "clear" ]; then
         debug_log claude-cycle-guard "BLOCK: gate-result.json verdict=$stored_verdict (non-clear — only clear permits stop)"
         count=$((count + 1))
-        printf '%s' "$count" >"$counter_file"
-        log_file=$(session_log_from_transcript)
-        log_pointer="${log_file:-(no session log written yet)}"
+        printf '%s\n%s\n' "$scope_step" "$count" >"$counter_file"
+        log_pointer="${recent_log:-(no session log written yet)}"
         block "Gate did not confirm clear (verdict='$stored_verdict'). Only verdict=clear permits stop. Re-read $log_pointer and address the gate result before stopping."
         exit 0
     fi
 fi
 
 # Locate the current-session log path for the block reason text (transcript-bound).
-log_file=$(session_log_from_transcript)
+log_file="$step_log"
 log_pointer="${log_file:-(no session log written yet)}"
 debug_log claude-cycle-guard "log_pointer=$log_pointer"
 
@@ -189,7 +199,7 @@ fi
 
 # Increment counter and emit block.
 count=$((count + 1))
-printf '%s' "$count" >"$counter_file"
+printf '%s\n%s\n' "$scope_step" "$count" >"$counter_file"
 
 reason="Mid-cycle stop detected. Last Agent call in transcript: $last_agent. Per AGENTS.md \"ALWAYS RUN THE FULL CYCLE\", do not return control to the user until committer has run for this step. $next_role_hint Re-read the session log at $log_pointer and continue immediately. (cycle-guard attempt ${count}/2)"
 

@@ -32,15 +32,45 @@ export function register(pi: ExtensionAPI): void {
 
     debugLog("stop-cycle-guard", `session=${sessionId}`);
 
-    // Read counter
+    // Resolve active step log first (mtime-sorted) — mirrors bash hoist of
+    // session_log_from_transcript above the counter read.
+    const loggingDir = path.join(projectDir, "codegen", "logging");
+    let logFiles: { name: string; mtime: number }[] = [];
+    if (fs.existsSync(loggingDir)) {
+      logFiles = fs
+        .readdirSync(loggingDir)
+        .filter((f) => f.endsWith(".md") && !f.includes("progress"))
+        .map((f) => ({
+          name: f,
+          mtime: fs.statSync(path.join(loggingDir, f)).mtimeMs,
+        }))
+        .sort((a, b) => b.mtime - a.mtime);
+    }
+    // stepKey: basename of the most-recent log, or "" when loggingDir absent/empty.
+    // Empty stepKey = keep current scope (do NOT reset counter).
+    const stepKey = logFiles.length > 0 ? logFiles[0].name : "";
+
+    // Read per-step counter (self-describing: line 1 = step-log scope, line 2 = count).
+    let prevStep = "";
     let count = 0;
     try {
-      count = parseInt(fs.readFileSync(counterFile, "utf8").trim(), 10) || 0;
+      const raw = fs.readFileSync(counterFile, "utf8").split("\n");
+      prevStep = raw[0] ?? "";
+      count = parseInt((raw[1] ?? "").trim(), 10) || 0;
     } catch {
       count = 0;
     }
 
+    // Forward progress to a NEW step resets the budget. Empty stepKey = keep scope.
+    if (stepKey && stepKey !== prevStep) {
+      count = 0;
+    }
+    const scopeStep = stepKey || prevStep;
+
     if (count >= 2) {
+      process.stderr.write(
+        `[pi-enforcement:stop-cycle-guard] per-step retry cap reached for step ${scopeStep || "unknown"} (count=${count}) — allowing stop\n`,
+      );
       fs.rmSync(counterFile, { force: true });
       return;
     }
@@ -65,7 +95,7 @@ export function register(pi: ExtensionAPI): void {
             process.kill(pid, 0); // throws if dead
             // PID is alive — gate in flight
             count += 1;
-            fs.writeFileSync(counterFile, String(count));
+            fs.writeFileSync(counterFile, `${scopeStep}\n${count}\n`);
             process.stderr.write(
               `[pi-enforcement:stop-cycle-guard] WARNING: An in-flight gate (PID ${pid}, gate '${gateCmd}') has not produced a verdict. You MUST NOT end your turn while a gate runs. Count: ${count}\n`,
             );
@@ -84,19 +114,7 @@ export function register(pi: ExtensionAPI): void {
       }
     }
 
-    // Find active step log
-    const loggingDir = path.join(projectDir, "codegen", "logging");
-    if (!fs.existsSync(loggingDir)) return;
-
-    const logFiles = fs
-      .readdirSync(loggingDir)
-      .filter((f) => f.endsWith(".md") && !f.includes("progress"))
-      .map((f) => ({
-        name: f,
-        mtime: fs.statSync(path.join(loggingDir, f)).mtimeMs,
-      }))
-      .sort((a, b) => b.mtime - a.mtime);
-
+    // No active log — nothing to check (loggingDir absent or empty).
     if (logFiles.length === 0) return;
 
     // Check if cycle is incomplete (developer done but no committer)
@@ -122,7 +140,7 @@ export function register(pi: ExtensionAPI): void {
     const hasGateResult = fs.existsSync(gateResultPath);
     if (hasDeveloper && !hasVeVerdict && !hasGateResult && !hasReviewer) {
       count += 1;
-      fs.writeFileSync(counterFile, String(count));
+      fs.writeFileSync(counterFile, `${scopeStep}\n${count}\n`);
       process.stderr.write(
         `[pi-enforcement:stop-cycle-guard] WARNING: developer ran but gate never produced a verdict (no emoji in log, no gate-result.json). VE likely never ran. Count: ${count}\n`,
       );
@@ -135,7 +153,7 @@ export function register(pi: ExtensionAPI): void {
       (hasReviewer && hasCurator && !hasCommitter)
     ) {
       count += 1;
-      fs.writeFileSync(counterFile, String(count));
+      fs.writeFileSync(counterFile, `${scopeStep}\n${count}\n`);
       process.stderr.write(
         `[pi-enforcement:stop-cycle-guard] WARNING: mid-cycle stop detected — reviewer/context-curator/committer not yet run. Count: ${count}\n`,
       );

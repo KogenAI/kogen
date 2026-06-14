@@ -443,6 +443,51 @@ run_test "reviewer_gate_result_inconclusive: reviewer + gate-result=inconclusive
     "block" "$INPUT22" "$AGENT_ENTRY_REVIEWER"
 rm -rf "$tmp22"
 
+# ── Test 23: per-step cap — step-A exhausted, stop on step-B resets budget ───
+# Step-A counter is at cap (2). Guard fires with a transcript pointing to step-B.
+# Expected: step-B is a new step → count resets to 0 → BLOCK (first block on B).
+rm -f "/tmp/claude-cycle-guard-test-sess-23.count"
+tmp23A=$(mktemp -d)
+tmp23B=$(mktemp -d)
+mkdir -p "$tmp23A/codegen/logging" "$tmp23B/codegen/logging"
+LOG23A="$tmp23A/codegen/logging/A_session.md"
+LOG23B="$tmp23B/codegen/logging/B_session.md"
+printf '# Session A\n## dev-gate Section\nALL CLEAR ✅\n' >"$LOG23A"
+printf '# Session B\n## dev-gate Section\nALL CLEAR ✅\n' >"$LOG23B"
+# Pre-seed counter scoped to step-A at cap.
+printf '%s\n2\n' "$LOG23A" >"/tmp/claude-cycle-guard-test-sess-23.count"
+# Transcript for step-B session: developer agent + Write to B's log.
+{
+    printf '%s\n' "$AGENT_ENTRY_DEVELOPER"
+    printf '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Write","input":{"file_path":"%s"}}]}}\n' "$LOG23B"
+} >"$tmp23B/transcript.jsonl"
+INPUT23=$(make_input "$tmp23B/transcript.jsonl" "$tmp23B" "false" "Done." "test-sess-23")
+run_test "per_step_cap_step_b_after_a_exhausted: step-A at cap, stop on step-B resets budget → block" \
+    "block" "$INPUT23" "$AGENT_ENTRY_DEVELOPER"
+rm -rf "$tmp23A" "$tmp23B"
+rm -f "/tmp/claude-cycle-guard-test-sess-23.count"
+
+# ── Test 24: empty resolver keeps scope — in-progress count NOT reset ─────────
+# Counter is at count=1 for step-A. Transcript has developer agent but NO Write
+# to any codegen/logging/*.md (resolver returns empty). Expected: still BLOCK
+# (count=1 < cap; empty resolver did NOT collapse to global / did NOT reset).
+rm -f "/tmp/claude-cycle-guard-test-sess-24.count"
+tmp24=$(mktemp -d)
+LOG24="$tmp24/codegen/logging/cur_session.md"
+mkdir -p "$tmp24/codegen/logging"
+printf '# Session\n## dev-gate Section\nALL CLEAR ✅\n' >"$LOG24"
+# Pre-seed counter scoped to cur_session.md, count=1.
+printf '%s\n1\n' "$LOG24" >"/tmp/claude-cycle-guard-test-sess-24.count"
+# Transcript has developer agent but NO Write to codegen/logging → resolver returns empty.
+{
+    printf '%s\n' "$AGENT_ENTRY_DEVELOPER"
+} >"$tmp24/transcript.jsonl"
+INPUT24=$(make_input "$tmp24/transcript.jsonl" "$tmp24" "false" "Done." "test-sess-24")
+run_test "empty_resolver_keeps_scope: resolver empty, count=1 on step-A → still block (no reset)" \
+    "block" "$INPUT24" "$AGENT_ENTRY_DEVELOPER"
+rm -rf "$tmp24"
+rm -f "/tmp/claude-cycle-guard-test-sess-24.count"
+
 echo ""
 echo "Results: $pass passed, $fail failed"
 

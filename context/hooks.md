@@ -123,6 +123,12 @@ See `context/launcher-hook-matrix.md` for a table of per-hook bypass and fail-op
 
 `developer-no-self-gate.sh` tracks developer CI invocations per session using a transient counter file (`/tmp/combobulate-self-gate-${session_id}.count`). Each Bash invocation matching `make *`, `mix test`, `mix credo`, or `mix format` increments the counter. Once the counter reaches the limit (currently 3), further attempts are denied with an instruction to hand off to the orchestrator via dev-gate.sh. Developers working on codegen should be aware that running `make test`, `make hook-parity`, etc. repeatedly burns down this budget — plan CI invocations strategically, especially during iterative development.
 
+## Resolver Hoisting & Self-Describing Counter Pattern
+
+When a bash hook calls the same idempotent resolver multiple times (e.g., `session_log_from_transcript`), hoist the call to the top of the hook function and assign it to a single variable. This eliminates redundant subprocess forks and makes empty-resolver semantics (keep-current-scope vs collapse-to-global) easier to reason about — the value is fixed for the entire hook invocation. Example: `stop-cycle-guard.sh` hoists `step_log=$(session_log_from_transcript)` before the counter-read block, then uses the single `$step_log` variable in reset logic, cap-breadcrumb, and counter writes.
+
+**Self-describing counter files** are robust to empty-resolver lag (e.g., transcript JSONL flush delays in print-mode builds): instead of deriving the scope key at read-time from a potentially-empty resolver, store the scope key in the file itself (first line of a multi-line counter file). The hook can then reconstruct its last-known step scope even when the external resolver returns nothing. Example: `stop-cycle-guard.sh` uses a two-line counter format (line1 = step-log path scope, line2 = retry count). When the resolver returns empty (transcript lag), the hook reads the prev-step from line1 and keeps the counter in the current scope without resetting, matching bash semantics exactly.
+
 ## SubagentStop Fix-Up Hooks — Minimal Pattern & Parity
 
 For SubagentStop hooks that always exit 0 (fix-up, never block), the minimal pattern is:
