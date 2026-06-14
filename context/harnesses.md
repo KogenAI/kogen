@@ -141,6 +141,14 @@ Per-harness tools-headers now contain complete multi-pitch sequencing rules for 
 
 **Ready command source isolation**: `harnesses/claude/commands/ready.md.j2` includes ONLY `shared/prompt-fragments/_probing.txt` (inline Probe Discipline section), NOT `_authoring-spine.txt`. Any principle or content intended for the `/ready` command must be added directly to the `ready.md.j2` source file; edits to the spine fragment do not propagate to `/ready`. This isolation is intentional: the readiness gate is a focused, single-turn command distinct from the multi-turn shape investigative loop encoded in the spine.
 
+**Empirical-claim probe-list homes** — the allowed-probes enumeration for empirical claims (e.g., "must execute code path OR exercise external contract") is authored in THREE places, not one:
+
+1. **`shared/prompt-fragments/_probing.txt`** — canonical source; included by `/ready` command (ready.md.j2:46) and `/poke-holes` command (poke-holes.md.j2:33); also appended to shape body by manifest (claude:100-101, pi:79-80)
+2. **`harnesses/shared/prompt-bodies/shape.txt`** — inline copy of allowed-probes + FORBIDDEN bullets (line 73); NOT an includer of the fragment; shape body = tools-header + shape.txt + appended `_probing.txt` fragment via manifest concatenation
+3. **`harnesses/claude/commands/ready.md.j2`** — inline copy of empirical-claim check (line 15); includes `_probing.txt` (line 46) for `/ready` but retains its own prose for the prompt body
+
+When modifying the empirical-claim probe-list (e.g., adding a new allowed-probe technique like "execute `claude --print`"), edits must land in all three homes to ensure consistency across shape/ready/poke-holes. The pitch-scoping error is treating shape.txt + ready.md.j2 as sufficient — the fragment (`_probing.txt`) is equally authored and shipped in all four contexts (two harnesses' shape bodies, /ready, /poke-holes), so omitting it from edits leaves an inconsistent rule.
+
 ## Dispatcher Routing
 
 `codegen-build` (see `context/core.md`) routes via `harnesses/<harness>/dispatch.sh`, which reads mode config and invokes the harness launcher:
