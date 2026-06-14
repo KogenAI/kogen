@@ -722,6 +722,49 @@ printf '%s' "$result"
 
 This conversion transforms the guard from "return early when not met" to "skip transcript scan when not met, always reach fallback". Test both the skip-jq path (empty TRANSCRIPT_PATH) and the fallback path (managed env, disk log exists) to lock in the fix.
 
+**Transcript lag causing Stop hooks to fire with false blocks**: When a Stop hook fires claiming a required block is missing (e.g., "BUILD_RESULT: success signaled but no verdict=clear recorded"), but the file actually contains it, the cause is transcript lag — the hook read a JSONL snapshot predating the Edit that wrote the missing block. The hook's `session_log_from_transcript()` call may have returned the log path BEFORE the Edit was flushed to disk, or before the tool_use entry was written to the transcript. Re-running the same command forces a new Write/Edit transcript entry that the hook can see on the next Stop event. This is not a hook bug; it is a normal timing hazard in managed builds where JSONL flush delays can lag the live stream. Mitigation: Stop hooks reading transcript-discovered paths should also apply the fallback disk-scan logic when the transcript-bound resolver returns empty (cf. `step-log-section-before-spawn.ts` in Pi extension for the cross-harness pattern).
+
+## Bash Symlink Resolution Fail-Open Discipline
+
+When a bash hook resolves a symlink to test whether its target is a git repo (e.g., checking if `codegen/rules` symlink points to a dirty OCG repo), correct fail-open behavior requires THREE independent guards:
+
+1. **Symlink existence**: `[ -L "$link" ]` — tests whether the link itself exists; skips if absent.
+2. **Symlink resolution**: `[ -n "$resolved" ]` (after `readlink -f "$link" || true`) — tests whether readlink succeeded; skips if resolution failed (permission denied, circular symlink, etc.).
+3. **Git repo**: `[ -n "$git_root" ]` (after `git -C "$target" rev-parse --show-toplevel ... || true`) — tests whether target is a git repo; skips if not (target is missing, outside a repo, corrupted, etc.).
+
+Missing any single guard can cause a **false DENY** when the symlink is absent or unresolvable:
+
+- If guard (1) is missing: unguarded symlink path check may operate on empty/undefined variable
+- If guard (2) is missing: stale `$resolved` from a prior iteration (in a loop) can carry unintended content
+- If guard (3) is missing: attempted git-status on a non-git target throws an error not caught, causing the hook to exit non-zero
+
+**Anti-pattern**: Do NOT combine conditions into a single `&&` chain (the chain exits early on first falsehood, skipping downstream guards that should still be tested):
+
+```bash
+# WRONG — second and third guards are skipped if first is false
+if [ -L "$link" ] && readlink -f "$link" >/dev/null && git -C "$target" rev-parse --show-toplevel >/dev/null; then
+    # operate on symlink target
+fi
+```
+
+**Correct pattern**: Guard all three independently:
+
+```bash
+# CORRECT — all three guards execute regardless of prior results
+if [ ! -L "$link" ]; then
+    exit 0  # symlink absent, fail-open
+fi
+resolved=$(readlink -f "$link" || true)
+if [ -z "$resolved" ]; then
+    exit 0  # symlink unresolvable, fail-open
+fi
+git_root=$(git -C "$resolved" rev-parse --show-toplevel 2>/dev/null || true)
+if [ -z "$git_root" ]; then
+    exit 0  # target not a git repo, fail-open
+fi
+# All three guards passed; proceed with checks
+```
+
 ## Tool-Header Prose vs. Runtime Enforcement
 
 Shape-mode and multi-mode `tools-header/*.txt` files document Bash mutation boundaries in agent system prompts. Critical constraint: **documented deny-list claims must match enforced denials at runtime**. Prose claiming Bash denies `rm/mv/touch/mkdir` when the runtime only denies `cat | ...` (cat-pipes via `no-cat-pipe.sh`) breeds hook-denial misdiagnosis — agents attribute ENOENT errors to false hook blocks instead of investigating cwd slips or missing parent directories.

@@ -93,6 +93,25 @@ export function register(pi: ExtensionAPI): void {
       // Not in a git repo or git unavailable — skip clean-tree check
     }
 
+    // OCG-repo check
+    const rulesLink = path.join(process.cwd(), "codegen/rules");
+    try {
+      const stat = fs.lstatSync(rulesLink);
+      if (stat.isSymbolicLink()) {
+        const rulesTarget = fs.realpathSync(rulesLink);
+        const ocgRoot = execSync("git rev-parse --show-toplevel", { cwd: rulesTarget, encoding: "utf8" }).trim();
+        const projectRoot = execSync("git rev-parse --show-toplevel", { cwd: process.cwd(), encoding: "utf8" }).trim();
+        if (ocgRoot && ocgRoot !== projectRoot) {
+          const ocgDirty = execSync("git status --porcelain", { cwd: ocgRoot, encoding: "utf8" }).trim();
+          if (ocgDirty) {
+            return deny(`BUILD_RESULT: success blocked — OCG repo has uncommitted changes.\nOCG root: ${ocgRoot}\nDirty files:\n${ocgDirty}\n\nCommit the OCG repo first (per orchestrator §Curator & Dual-Repo Commit case 3), then re-emit BUILD_RESULT.`);
+          }
+        }
+      }
+    } catch {
+      // fail-open: symlink unresolvable or not a git repo
+    }
+
     return;
   });
 }

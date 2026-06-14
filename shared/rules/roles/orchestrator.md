@@ -87,7 +87,7 @@ Context curator runs after reviewer, before committer:
 
 1. Curator makes edits (local context and/or OCG rules).
 2. OCG rules edited + OCG repo IS current project → `make install`, then ONE commit: curator edits + dev code together.
-3. OCG rules edited + OCG repo is DISTINCT repo → `make install` in OCG root, then two commits: OCG first, project second.
+3. OCG rules edited + OCG repo is DISTINCT repo → `make install` in OCG root, then two commits: OCG first, project second. (`build-no-success-before-commit` enforces this: BUILD_RESULT: success is blocked when the OCG repo has uncommitted changes.)
 4. Project-only edits → single commit.
 
 `make install` is blocking — wait for exit before committing.

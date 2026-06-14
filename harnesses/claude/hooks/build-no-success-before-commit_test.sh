@@ -177,5 +177,136 @@ out=$(make_input 'echo "BUILD_RESULT: success"' "$T9" | COMBOBULATE_BUILD_START_
 assert_not_contains "no diff_sha field → SHA check skipped → ALLOW" '"permissionDecision"' "$out"
 rm -rf "$T9"
 
+# Helper: make a second git repo (simulates OCG repo)
+make_ocg_repo() {
+    local dir
+    dir=$(mktemp -d)
+    (
+        cd "$dir"
+        git init -q
+        git config user.email t@t
+        git config user.name t
+        git checkout -q -b main
+        echo ocg >README
+        git add README
+        git commit -qm "ocg-init"
+    )
+    printf '%s' "$dir"
+}
+
+# ── Test 10: distinct OCG repo with dirty file → BLOCK ───────────────────────
+T10_PROJECT=$(make_project)
+T10_OCG=$(make_ocg_repo)
+ts10=$(date -u +%s)
+sleep 1
+# Commit the symlink before the generated-code commit so the tree stays clean
+(
+    cd "$T10_PROJECT"
+    mkdir -p codegen
+    ln -s "$T10_OCG" codegen/rules
+    git add codegen/rules
+    git commit -qm "add rules symlink"
+    echo change >README
+    git add README
+    git commit -qm "generated code"
+)
+head10=$(git -C "$T10_PROJECT" rev-parse --short HEAD)
+mkdir -p "$T10_PROJECT/codegen/gate-pending"
+printf '{"verdict":"clear","diff_sha":"%s","gate":"make ci","exit_code":0}\n' "$head10" >"$T10_PROJECT/codegen/gate-pending/gate-result.json"
+# Make OCG repo dirty after project commits
+echo "dirty" >"$T10_OCG/dirty.txt"
+out=$(make_input 'echo "BUILD_RESULT: success"' "$T10_PROJECT" | COMBOBULATE_BUILD_START_TS="$ts10" bash "$HOOK" 2>/dev/null || true)
+assert_contains "distinct OCG repo with dirty file → BLOCK" '"permissionDecision"' "$out"
+assert_contains "BLOCK reason mentions OCG repo" 'OCG repo has uncommitted changes' "$out"
+rm -rf "$T10_PROJECT" "$T10_OCG"
+
+# ── Test 11: distinct OCG repo, clean → ALLOW ────────────────────────────────
+T11_PROJECT=$(make_project)
+T11_OCG=$(make_ocg_repo)
+ts11=$(date -u +%s)
+sleep 1
+(
+    cd "$T11_PROJECT"
+    mkdir -p codegen
+    ln -s "$T11_OCG" codegen/rules
+    git add codegen/rules
+    git commit -qm "add rules symlink"
+    echo change >README
+    git add README
+    git commit -qm "generated code"
+)
+head11=$(git -C "$T11_PROJECT" rev-parse --short HEAD)
+mkdir -p "$T11_PROJECT/codegen/gate-pending"
+printf '{"verdict":"clear","diff_sha":"%s","gate":"make ci","exit_code":0}\n' "$head11" >"$T11_PROJECT/codegen/gate-pending/gate-result.json"
+out=$(make_input 'echo "BUILD_RESULT: success"' "$T11_PROJECT" | COMBOBULATE_BUILD_START_TS="$ts11" bash "$HOOK" 2>/dev/null || true)
+assert_not_contains "distinct OCG repo clean → ALLOW" '"permissionDecision"' "$out"
+rm -rf "$T11_PROJECT" "$T11_OCG"
+
+# ── Test 12: OCG root == project root (codegen-on-codegen) → ALLOW ───────────
+T12=$(make_project)
+ts12=$(date -u +%s)
+sleep 1
+(
+    cd "$T12"
+    # Symlink inside the same repo; commit it so tree stays clean
+    mkdir -p shared/rules
+    ln -s "$T12/shared/rules" codegen/rules 2>/dev/null || ln -s shared/rules codegen/rules
+    git add codegen/rules
+    git commit -qm "add rules symlink (same repo)"
+    echo change >README
+    git add README
+    git commit -qm "generated code"
+)
+head12=$(git -C "$T12" rev-parse --short HEAD)
+mkdir -p "$T12/codegen/gate-pending"
+printf '{"verdict":"clear","diff_sha":"%s","gate":"make ci","exit_code":0}\n' "$head12" >"$T12/codegen/gate-pending/gate-result.json"
+out=$(make_input 'echo "BUILD_RESULT: success"' "$T12" | COMBOBULATE_BUILD_START_TS="$ts12" bash "$HOOK" 2>/dev/null || true)
+assert_not_contains "OCG root == project root → ALLOW (skip second check)" '"permissionDecision"' "$out"
+rm -rf "$T12"
+
+# ── Test 13: codegen/rules is not a symlink → ALLOW (fail-open) ──────────────
+T13=$(make_project)
+ts13=$(date -u +%s)
+sleep 1
+(
+    cd "$T13"
+    # Create codegen/rules as a plain directory (not a symlink); commit it
+    mkdir -p codegen/rules
+    touch codegen/rules/.keep
+    git add codegen/rules
+    git commit -qm "add rules dir (not symlink)"
+    echo change >README
+    git add README
+    git commit -qm "generated code"
+)
+head13=$(git -C "$T13" rev-parse --short HEAD)
+mkdir -p "$T13/codegen/gate-pending"
+printf '{"verdict":"clear","diff_sha":"%s","gate":"make ci","exit_code":0}\n' "$head13" >"$T13/codegen/gate-pending/gate-result.json"
+out=$(make_input 'echo "BUILD_RESULT: success"' "$T13" | COMBOBULATE_BUILD_START_TS="$ts13" bash "$HOOK" 2>/dev/null || true)
+assert_not_contains "codegen/rules not a symlink → ALLOW" '"permissionDecision"' "$out"
+rm -rf "$T13"
+
+# ── Test 14: symlink target is not a git repo → ALLOW (fail-open) ────────────
+T14_PROJECT=$(make_project)
+T14_NONGIT=$(mktemp -d)
+ts14=$(date -u +%s)
+sleep 1
+(
+    cd "$T14_PROJECT"
+    mkdir -p codegen
+    ln -s "$T14_NONGIT" codegen/rules
+    git add codegen/rules
+    git commit -qm "add rules symlink to non-git dir"
+    echo change >README
+    git add README
+    git commit -qm "generated code"
+)
+head14=$(git -C "$T14_PROJECT" rev-parse --short HEAD)
+mkdir -p "$T14_PROJECT/codegen/gate-pending"
+printf '{"verdict":"clear","diff_sha":"%s","gate":"make ci","exit_code":0}\n' "$head14" >"$T14_PROJECT/codegen/gate-pending/gate-result.json"
+out=$(make_input 'echo "BUILD_RESULT: success"' "$T14_PROJECT" | COMBOBULATE_BUILD_START_TS="$ts14" bash "$HOOK" 2>/dev/null || true)
+assert_not_contains "symlink target not a git repo → ALLOW" '"permissionDecision"' "$out"
+rm -rf "$T14_PROJECT" "$T14_NONGIT"
+
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

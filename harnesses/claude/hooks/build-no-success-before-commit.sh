@@ -82,5 +82,27 @@ if [ -n "$dirty_files" ]; then
     exit 0
 fi
 
+# OCG-repo check (distinct codegen repo reached via codegen/rules symlink)
+rules_link="${project_dir}/codegen/rules"
+if [ -L "$rules_link" ]; then
+    rules_target=$(readlink -f "$rules_link" 2>/dev/null || true)
+    if [ -n "$rules_target" ]; then
+        ocg_root=$(git -C "$rules_target" rev-parse --show-toplevel 2>/dev/null || true)
+        project_root=$(git -C "$project_dir" rev-parse --show-toplevel 2>/dev/null || true)
+        if [ -n "$ocg_root" ] && [ "$ocg_root" != "$project_root" ]; then
+            ocg_dirty=$(git -C "$ocg_root" status --porcelain 2>/dev/null || true)
+            if [ -n "$ocg_dirty" ]; then
+                deny "BUILD_RESULT: success blocked — OCG repo has uncommitted changes.
+OCG root: $ocg_root
+Dirty files:
+$ocg_dirty
+
+Commit the OCG repo first (per orchestrator §Curator & Dual-Repo Commit case 3), then re-emit BUILD_RESULT."
+                exit 0
+            fi
+        fi
+    fi
+fi
+
 debug_log build-no-success-before-commit "allow: commit at $latest_commit_ts found after build start $COMBOBULATE_BUILD_START_TS, gate verdict=clear, and working tree is clean"
 exit 0
