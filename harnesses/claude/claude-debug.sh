@@ -52,6 +52,7 @@ if [[ -n "${CLAUDE_NONINTERACTIVE:-}" ]]; then
 fi
 
 exec claude \
+    --settings '{"env":{"MAX_THINKING_TOKENS":"16000"}}' \
     "${NON_INTERACTIVE_FLAGS[@]+"${NON_INTERACTIVE_FLAGS[@]}"}" \
     --model "$ROLE_MODEL" \
     --effort "$ROLE_EFFORT" \

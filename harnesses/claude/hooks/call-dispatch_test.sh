@@ -244,13 +244,15 @@ assert_file_contains "$HARNESSES_DIR/dispatch.sh" "MAX_THINKING_TOKENS=0"
 # Test 4: claude-code-settings.json has installed-settings copy
 assert_file_contains "$HARNESSES_DIR/claude-code-settings.json" '"MAX_THINKING_TOKENS": "0"'
 
-# Test 5: claude-debug.sh (thinking-ON launcher) has NO MAX_THINKING_TOKENS
-assert_file_absent "$HARNESSES_DIR/claude-debug.sh" "MAX_THINKING_TOKENS"
+# Test 5: claude-debug.sh (thinking-ON launcher) has --settings overlay with MAX_THINKING_TOKENS
+assert_file_contains "$HARNESSES_DIR/claude-debug.sh" "--settings"
+assert_file_contains "$HARNESSES_DIR/claude-debug.sh" "MAX_THINKING_TOKENS"
 
-# Test 6: claude-shape.sh (thinking-ON launcher) has NO MAX_THINKING_TOKENS
-assert_file_absent "$HARNESSES_DIR/claude-shape.sh" "MAX_THINKING_TOKENS"
+# Test 6: claude-shape.sh (thinking-ON launcher) has --settings overlay with MAX_THINKING_TOKENS
+assert_file_contains "$HARNESSES_DIR/claude-shape.sh" "--settings"
+assert_file_contains "$HARNESSES_DIR/claude-shape.sh" "MAX_THINKING_TOKENS"
 
-# Test 7: claude-ops.sh (thinking-ON launcher) has NO MAX_THINKING_TOKENS
+# Test 7: claude-ops.sh (thinking-OFF launcher, inherits user-scope =0) has NO MAX_THINKING_TOKENS
 assert_file_absent "$HARNESSES_DIR/claude-ops.sh" "MAX_THINKING_TOKENS"
 
 # ─────────────────────────────────────────────────────────────────────────────

@@ -162,6 +162,26 @@ For harness install contract details (agents_dir, hooks_dir, modes, launchers), 
 
 **Consequence**: Planner discovery of uncommitted config.yaml changes (in working tree, not yet staged) must be verified against the actual working tree file — not trusted from pitch state alone.
 
+## Settings Overlay via `--settings` Flag
+
+Claude Code supports a `--settings` JSON flag that provides a command-line scope overlay for user-level settings. This is the ONLY way to override user-scope settings like `MAX_THINKING_TOKENS` in a launcher.
+
+**Settings precedence (highest to lowest)**:
+
+1. **Managed** — platform admin settings (not user-editable)
+2. **Command-line** (`--settings '<json>'`) — overrides all user settings
+3. **Local** — `~/.claude/settings.json.local` (project-local overrides)
+4. **Project** — `~/.claude/settings.json` in the consuming app repo (scaffolded)
+5. **User** — `~/.claude/settings.json` (user home, typically `MAX_THINKING_TOKENS=0`)
+
+**Key fact**: Claude reads settings from the JSON FILE, not process environment. `env -u MAX_THINKING_TOKENS` is inert — environment deletion does not affect the setting. Only a `--settings` overlay beats the user-scope file.
+
+**Use case — thinking tokens in investigative launchers**: Shape and debug modes benefit from extended thinking. User-scope typically pins `MAX_THINKING_TOKENS=0` (no thinking costs). Launchers override via: `--settings '{"env":{"MAX_THINKING_TOKENS":"16000"}}'` (or other token budget). Command-line scope precedence ensures the override takes effect regardless of user settings.
+
+**Implementation in launchers**: `harnesses/claude/claude-shape.sh` and `harnesses/claude/claude-debug.sh` both pass the overlay at exec time (lines 49, 55 in shape; line 55 in debug). The JSON is literal; changes to the token budget require launcher edits + `make install` to propagate.
+
+**Consequence for automation**: Build scripts or headless sessions that need custom thinking budgets should inject `--settings` as a known-safe escape hatch, not rely on `env` or `config.yaml` overrides.
+
 ## Session Log Protocol
 
 The orchestrator MUST pre-create the canonical session log (with full `## <agent_type> Section` headers) BEFORE delegating to any subagent (planner, developer, reviewer, etc.). This ensures:
@@ -257,6 +277,18 @@ See `context/launcher-hook-matrix.md` for which orchestrator-level hooks gate ea
 **Test-design constraint**: Pipe subshell exports are invisible to parent. Example: `printf ... | resolve_ssh_target` runs resolve in a subshell, so `export "${prefix}_LOGIN_USER=..."` inside is not visible to the parent test shell. Workaround: verify config file contents instead of exported vars in piped test contexts.
 
 **Integration**: Claude ops/debug and Pi ops launchers (`claude-ops.sh`, `claude-debug.sh`, `pi-ops.sh`) source `ssh-target.sh` + call `resolve_ssh_target`. New exports (`_LOGIN_USER`/`_OPERATE_AS`) are additive — no launcher edit required for gate. Ops rule body (`prompt-bodies/ops.txt`) is concatenated at generate-time (manifest-lib.sh `manifest_regenerate_prompts` L83-124, ordered tools-header → body) into baked `claude-ops/pi-ops-system-prompt.txt`. Editing ops.txt is inert until `make install`.
+
+## Launcher `.sh` Files: Runtime Scripts vs Baked Prompts
+
+**Critical distinction**: Launcher `.sh` files (`harnesses/claude/claude-shape.sh`, `claude-debug.sh`, etc.) are **runtime scripts copied by `make install`**, not baked into system prompts. Edits to launcher flags propagate via the **install process**, not via prompt-content-parity sentinel sync.
+
+**Key implications**:
+
+- Editing `claude-shape.sh` line 49 (`--settings '{"env":{"MAX_THINKING_TOKENS":"16000"}}'`) → `make install` copies the updated script to `~/.claude/claude-shape` → next invocation uses new budget. No sentinel-sync needed.
+- Launcher edits are runtime-effective; they do NOT participate in system-prompt baking or prompt-content-parity verification.
+- To verify a launcher flag change took effect: check `~/.claude/claude-<mode>` directly, or run the launcher with `--verbose` to see the exec'd command line.
+
+**Contrast**: System prompt bodies (`harnesses/shared/prompt-bodies/shape.txt`) ARE baked and DO require sentinel sync in `prompt-content-parity_test.sh`.
 
 ## Pitfalls
 
