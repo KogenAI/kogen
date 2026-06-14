@@ -115,6 +115,11 @@ debug_log dev-gate "fired cwd=$project_dir session=$session_id agent=$agent_type
 # ── Discover the active step log ────────────────────────────────────────────
 log_file=$(session_log_from_transcript)
 if [ -z "$log_file" ]; then
+    if [ -n "${CODEGEN_BUILD_NON_INTERACTIVE:-}" ]; then
+        debug_log dev-gate "block: managed build but no session log discoverable (transcript empty AND no log on disk)"
+        block "Managed build but no session log is discoverable (transcript empty AND no log on disk). The gate cannot run without a step log. Write the step log before the developer subagent stops."
+        exit 0
+    fi
     debug_log dev-gate "skip: no session log in transcript"
     exit 0
 fi

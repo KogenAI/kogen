@@ -212,6 +212,22 @@ New SubagentStop hooks follow standard contract: source `lib/hooks-lib.sh`, use 
 
 **Block decision**: SubagentStop blocks via identical `block "$reason"` helper as Stop hooks, emitting `{"decision":"block","reason":...}` on stdout. Same envelope across both event types.
 
+**Managed-build fail-closed pattern**: When a SubagentStop hook must enforce a hard constraint in managed builds but allow fail-open in interactive mode (e.g., "log is discoverable in managed but missing in interactive"), guard the block with an explicit `CODEGEN_BUILD_NON_INTERACTIVE` check. Pattern:
+
+```bash
+if [ -z "$log_file" ]; then
+    if [ -n "${CODEGEN_BUILD_NON_INTERACTIVE:-}" ]; then
+        debug_log "gate" "BLOCK: managed build but no session log"
+        block "Managed build but no session log is discoverable."
+        exit 0
+    fi
+    debug_log "gate" "skip: no log in transcript (interactive fail-open)"
+    exit 0
+fi
+```
+
+This preserves the interactive fail-open contract (silent allow when state unrecoverable) while enforcing fail-closed in managed builds where all required state should be preestablished. The `CODEGEN_BUILD_NON_INTERACTIVE` flag is set by `dispatch.sh` and similar non-interactive entrypoints; interactive mode never sets it, so the interactive branch always executes.
+
 **Stop hook placement relative to retry-counter logic**: When a Stop hook measures some condition (e.g., `gate_result_verdict == clear` + `git status --porcelain` is dirty) and wants to block, place the measurement+block BEFORE any existing retry-counter increment. Do NOT increment the counter in the new branch — let control flow exit via the new block. This design keeps the circuit-breaker's 2-strike livelock-cap unaffected: the new guard signals one clean "go commit" action per mid-cycle stop without consuming strikes. Example: stop-cycle-guard.sh's dirty-tree block (lines ~179–185) sits before the final Increment counter anchor; it exits before reaching the counter logic. All prior skip-guards have already exited, so reaching the new block implies the measurement is certain (cf. session 20260612_115417 assumptions A4–A6).
 
 ### Full Claude Code Event Catalog
@@ -658,6 +674,25 @@ Both branches are independent OR conditions; a transcript hit (step 1) prevents 
 **Portable mtime sorting**: Use `ls -t glob | head -1` for mtime-based filename sorting across macOS (BSD find) and Linux (GNU coreutils). The `find -printf` flag is not portable to BSD find and silently fails (no error, just empty output). Canonical reference: Pi extension `getActiveStepLog()` in `step-log-section-before-spawn.ts` uses direct `fs.readdirSync` + mtime object sort; Claude hooks now converge on the same reliable `ls -t` pattern.
 
 **11 production consumers**: all hook scripts calling `session_log_from_transcript()` inherit the fallback (10 production hooks + the spawn gate in `step-log-section-before-spawn.sh`).
+
+### Fallback-After-Early-Return Bug Pattern
+
+When a fallback mechanism sits behind an unconditional early-return guard, the fallback is unreachable even if the guard condition is intended to be narrow. **Common mistake**: A test fixture creates a readable-but-empty file (passes `[ ! -r ]` guard), then assumes it exercises the early-return code path. This is a false positive — the file is readable, so it passes the guard; the actual bug path (empty-STRING, nonexistent, or unreadable file) that would trigger the early-return is still untested.
+
+**Detection pattern**: When reviewing test coverage for fallback-reachability, verify that the test fixture's file satisfies the EARLY-RETURN condition (empty string, missing, unreadable), not just a related condition (readable). A test using `: >$file` creates a readable file and will not exercise the early-return branch.
+
+**Fix pattern** (applied to `session_log_from_transcript` in session 20260614): Replace the unconditional early-return guard (`if [ empty/unreadable ] return 0`) with a conditional that SKIPS ONLY the transcript scan but FALLS THROUGH unconditionally to the existing fallback block. Initialize fallback result upfront (e.g., `local result=""`), then guard only the transcript jq scan:
+
+```bash
+local result=""
+if [ -n "${TRANSCRIPT_PATH:-}" ] && [ -r "$TRANSCRIPT_PATH" ]; then
+    result=$(jq -r '...' "$TRANSCRIPT_PATH" 2>/dev/null | tail -n 1)
+fi
+# ... fallback block (lines 283–305) unchanged, executes regardless ...
+printf '%s' "$result"
+```
+
+This conversion transforms the guard from "return early when not met" to "skip transcript scan when not met, always reach fallback". Test both the skip-jq path (empty TRANSCRIPT_PATH) and the fallback path (managed env, disk log exists) to lock in the fix.
 
 ## Tool-Header Prose vs. Runtime Enforcement
 

@@ -263,18 +263,19 @@ repo_relative() {
 #   - No matching tool_use entries found
 # jq errors are swallowed via 2>/dev/null. No --slurp (streams line-by-line).
 session_log_from_transcript() {
-    if [ -z "${TRANSCRIPT_PATH:-}" ] || [ ! -r "$TRANSCRIPT_PATH" ]; then
-        printf ''
-        return 0
-    fi
-    local result
-    result=$(jq -r '
+    local result=""
+    # Run the transcript jq scan only when TRANSCRIPT_PATH is usable. When it is
+    # empty/unset/unreadable, skip the scan but FALL THROUGH to the disk fallback
+    # below (managed builds with a lagging or absent transcript still resolve).
+    if [ -n "${TRANSCRIPT_PATH:-}" ] && [ -r "$TRANSCRIPT_PATH" ]; then
+        result=$(jq -r '
         .message.content[]?
         | select(.type == "tool_use"
             and (.name == "Write" or .name == "Edit" or .name == "MultiEdit"))
         | select(.input.file_path | test("codegen/logging/.*\\.md$"))
         | .input.file_path
     ' "$TRANSCRIPT_PATH" 2>/dev/null | tail -n 1)
+    fi
     # Filesystem fallback for managed build sessions where the transcript file
     # lags the live stream (print-mode builds flush the transcript asynchronously).
     # Only applied when OCG_APPS_ROOT is set AND cwd is under it — i.e., a

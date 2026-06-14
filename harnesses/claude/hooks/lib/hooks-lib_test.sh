@@ -242,6 +242,26 @@ result=$(CODEGEN_BUILD_NON_INTERACTIVE=1 OCG_APPS_ROOT="" CWD="$TMP_T9" TRANSCRI
 assert_eq "session_log_from_transcript: non-interactive fallback empty dir → empty" "" "$result"
 rm -rf "$TMP_T9"
 
+# Case 10: TRANSCRIPT_PATH="" (empty string) with CODEGEN_BUILD_NON_INTERACTIVE set
+# and a real log on disk → disk fallback fires, returns disk path.
+TMP_T10=$(mktemp -d)
+mkdir -p "$TMP_T10/codegen/logging"
+: >"$TMP_T10/codegen/logging/20260614_000000_step1_demo.md"
+result=$(CODEGEN_BUILD_NON_INTERACTIVE=1 OCG_APPS_ROOT="" CWD="$TMP_T10" TRANSCRIPT_PATH="" \
+    bash -c "source '$SCRIPT_DIR/hooks-lib.sh'; session_log_from_transcript")
+assert_eq "session_log_from_transcript: empty TRANSCRIPT_PATH + managed build → disk log" "$TMP_T10/codegen/logging/20260614_000000_step1_demo.md" "$result"
+rm -rf "$TMP_T10"
+
+# Case 11: TRANSCRIPT_PATH set to a nonexistent path with CODEGEN_BUILD_NON_INTERACTIVE set
+# and a real log on disk → disk fallback fires, returns disk path.
+TMP_T11=$(mktemp -d)
+mkdir -p "$TMP_T11/codegen/logging"
+: >"$TMP_T11/codegen/logging/20260614_000000_step1_demo.md"
+result=$(CODEGEN_BUILD_NON_INTERACTIVE=1 OCG_APPS_ROOT="" CWD="$TMP_T11" TRANSCRIPT_PATH="/tmp/no-such-transcript-$(date -u +%s).jsonl" \
+    bash -c "source '$SCRIPT_DIR/hooks-lib.sh'; session_log_from_transcript")
+assert_eq "session_log_from_transcript: unreadable TRANSCRIPT_PATH + managed build → disk log" "$TMP_T11/codegen/logging/20260614_000000_step1_demo.md" "$result"
+rm -rf "$TMP_T11"
+
 echo ""
 echo "Results: $pass passed, $fail failed"
 
