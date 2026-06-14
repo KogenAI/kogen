@@ -9,12 +9,14 @@ All `[local]` blocks (project-specific knowledge about codegen's structure, mode
 - **Architecture & structure** → `context/repo-structure.md`
 - **Harness modes, dispatch, launchers** → `context/harnesses.md`
 - **Build pipeline, install flow, schema** → `context/core.md`
+- **Enforcement compiler, registry schema, pattern dialects** → `context/enforcement-compiler.md`
 - **Hooks, guard scripts, registrations** → `context/hooks.md`
 - **Subagents, roles, agents** → `context/subagents.md` or `context/roles.md`
 - **Development workflow, Make targets, testing** → `context/development.md`
 - **Token tuning, model config, roles** → `context/claude-token-tuning.md`
 - **Recipes, workloads** → `context/recipes.md`
 - **Scaffold behavior, output, symlinks** → `context/scaffold.md`
+- **Scaffold mutations, guard tests, credo cleanup** → `context/scaffold-mutations.md`
 - **Pi extensions, pi-specific paths** → `context/pi-extensions.md`
 - **Rules distribution, rule influence** → `context/rules-core.md`, `context/rules-roles.md`, `context/rules-stacks.md`
 - **Subagent DSL, template mechanics, influence stack** → `context/subagent-influence-stack.md`

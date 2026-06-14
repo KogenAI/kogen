@@ -1,0 +1,54 @@
+# Test Benchmarking — BENCH Mode, Artifacts, Viewer
+
+## Benchmarking mode (BENCH=1)
+
+Enable with `BENCH=1 REASON="<description>"` on `make test-stacks`. Requires `REASON` to be non-empty (bench-prepare.sh exits 2 otherwise).
+
+**Where files land**: `codegen/benchmarks/<YYYYMMDD_HHMMSS>/`
+
+```
+codegen/benchmarks/<UTC-ts>/
+  reason.txt                   ← verbatim REASON string
+  manifest.json                ← codegen SHA, harness versions, model_resolution
+  runs/
+    claude/
+      phoenix/<test_name>.jsonl
+      static/<test_name>.jsonl
+      modes/<test_name>.jsonl
+    pi/
+      phoenix/<test_name>.jsonl
+      static/<test_name>.jsonl
+      modes/<test_name>.jsonl
+```
+
+PNG screenshot per static-stack and Phoenix test: `<BENCH_RUN_DIR>/runs/<harness>/<stack>/<test_name>.png` (1280×720 full-page, captured by `BenchArtifacts.capture_screenshot/4` via `bench/screenshot.js`). Modes stack excluded — no website to render. Static stacks use a Node HTTP server; Phoenix stacks spawn `mix phx.server` on a dynamic port, poll for HTTP 200, capture the screenshot, then SIGTERM/SIGKILL the process group. Screenshot failure is non-fatal: test continues and JSONL is written regardless; missing Playwright logs a warning and returns `:ok`.
+
+**Port allocation + cleanup infrastructure**: `bench_artifacts.ex` allocates free ports via `net.Server` on port 0 (captures `address().port`), passes to `mix phx.server` via `PORT=<n>` env. Timeout handling uses `Port.open/2` + `kill_port/1` (not `System.cmd/3`), covering deps.get (60s) + compile (90s) + readiness wait (30s) + screenshot (15s) = 210s total. Process cleanup: `process.kill(-pgid, 'SIGTERM')` → 2s wait → `SIGKILL`; catches ESRCH on normal exit. Both Node `stopPhoenixServer` and Elixir `kill_port/1` target the process, but cleanup order is correct (Phoenix finally-block runs first, avoiding race). Note: Edit tool requires prior Read (20260528 session); when Edit blocked on context files, use `sed -i ''` for in-place updates.
+
+**Whiteness metric pitfall**: Light-themed SPAs with off-white backgrounds (e.g., `#f8f9fa`) register 99% white pixels in screenshots despite having content. Metric cannot distinguish blank from minimal UI. **Superseded** for gate-level emptiness detection by `harnesses/claude/hooks/lib/render-check.js`, which uses structural signals (DOM child count, author stylesheet rule count, UA-default body margin/font) instead of pixel colour. The PNG screenshots in bench runs remain visual references only — the render-check verdict is the authoritative gate signal.
+
+**Bundle-marker regex precision**: Pattern `[^"']*\.\w+\.(js|mjs)` matches any `.foo.js`, not just hashed bundles. More specific pattern: `\.[a-zA-Z0-9]{8,}\.` for hash-like segments (8+ alphanumeric chars) to distinguish `/assets/index-HASH.js` (built) from `/src/main.jsx` (source). Current impl in `screenshot.js` `hasBundledScript` uses both checks: bundle marker presence + no source imports.
+
+**Capture seam**: `Fixtures.run_codegen_build/3` pipes harness stdout to JSONL when `BENCH_RUN_DIR` env var is set. The seam reuses the same `maybe_write_diagnostics/2` mechanism that writes diagnostic reports in non-benchmark mode (line 184 of fixtures.ex).
+
+**Per-test JSONL shape**: raw stream-json lines from codegen-build (claude line-1 = `system/init` with resolved model ID; pi envelope shape varies but final line always contains usage). Final synthetic record appended by harness:
+
+```json
+{"type":"harness_summary","test_name":"...","exit_code":0,"assertion_passed":false,"parsed":{...}}
+```
+
+`assertion_passed` is write-pending `false` at build time (written before ExUnit assertions run). After all assertions pass, `Fixtures.bench_assertions_passed!(stack, test_name)` flips it to `true` in-place by rewriting the last `harness_summary` line in the JSONL file. Tests that fail ExUnit assertions leave `assertion_passed: false` in the record.
+
+**Modes tests bench records**: `run_mode_launcher/4` (4th `opts` arg, `test_name:` key; default `"<mode>_mode"`) now writes JSONL records under `runs/<harness>/modes/<test_name>.jsonl`. Records contain only a `harness_summary` line (no raw codegen stream-json prefix) with mostly `:unknown` parsed metrics — modes tests don't produce structured usage output. Finalize with `Fixtures.bench_assertions_passed!("modes", test_name)` after last assertion.
+
+Parser (`CodegenTestHarness.UsageParser`) trims each harness envelope to `{model_id, tokens_in, tokens_out, cost_api, duration_ms}`. Pi tokens may be missing → stored as `:unknown` atom (not 0, which would hide data loss). Claude shape consistently provides all fields.
+
+**Catalog module**: `CodegenTestHarness.BenchMetrics` — measurable metrics (pinned to values parsed above) + stub-with-gap entries (filled by viewer on comparison). No computed deltas at capture time; viewer calculates on load.
+
+**Viewer Mix tasks** (run from `test_harness/`):
+
+- `mix codegen.bench.list [root_dir]` — newest-first run listing with pass rate per (harness × stack)
+- `mix codegen.bench.view --run <path> [--compare <prev>] [--test <filter>] [--metric <id>]` — ASCII metrics table; auto-picks previous run if `--compare` absent
+- `node test_harness/bench/summarize.js <run-dir>` — reads every `runs/<harness>/<stack>/*.jsonl` `harness_summary` line, aggregates cost/tokens/duration/turns/pass-rate + screenshot counts, writes `<run-dir>/summary.md`; invoked automatically by `make bench`
+
+`last_green.json` coexists unchanged; benchmarking is orthogonal to the green baseline.

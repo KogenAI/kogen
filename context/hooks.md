@@ -146,17 +146,15 @@ Example: `curator-format.sh` (runs `make format` on markdown edits by context-cu
 
 ## Hook Test Authoring Patterns
 
-New bash hook tests (`*_test.sh`) are auto-discovered by `run-tests.sh` (line 33: `find *_test.sh`) — they run automatically as part of `make test`'s `hooks` stage. When a hook test is also registered as a named Makefile target (e.g., `prompt-content-parity` target), the test runs **twice** per `make test` cycle: once via auto-discovery in the `hooks` stage, once via the explicit prerequisite. This dual-discovery pattern is idempotent and not a defect — the test runs the same assertions twice and both complete successfully (same inputs, same exit code).
+New bash hook tests (`*_test.sh`) are auto-discovered by `run-tests.sh` — they run automatically as part of `make test`'s `hooks` stage. When a hook test is also registered as a named Makefile target (e.g., `prompt-content-parity`), the test runs **twice** per `make test` cycle (auto-discovery + explicit prerequisite) — idempotent, not a defect.
 
 ### Test Helper Functions — Assertion Patterns & BSD Compatibility
 
-When adding new assertion helpers to existing test files (e.g., grep-based `assert_file_contains` / `assert_file_absent`), follow these patterns:
+When adding assertion helpers (e.g., `assert_file_contains` / `assert_file_absent`):
 
-1. **Grep-based helpers must use `grep -qF -- "$pattern"`** to avoid BSD flag-parsing on strings starting with `--`. The double-dash `--` terminates option parsing on both BSD (macOS) and GNU (Linux), preventing CLI-flag-shaped patterns (e.g., `--setting-sources`, `--no-extensions`) from being misinterpreted as option flags by grep itself. This is **load-bearing** for any helper grepping for command-line flag strings.
-
-2. **Global counter integration**: Assertion helpers must update `pass_count` and `fail_count` variables so `run-tests.sh` summary parsing (`N passed, N failed`) works correctly. Helpers called within test blocks inherit the outer scope, so explicit increment statements in helper functions propagate to session totals.
-
-3. **Negative-assertion caveat** — helpers using grep to verify string NOT found (`grep -qF "..."` with expect-nonzero exit) false-pass silently if the target file is deleted (grep exits 1 on missing file = same as "string absent"). This is acceptable when target files are committed (e.g., launcher scripts in `harnesses/`), but document the limitation if the helper is ever reused in contexts where file presence is uncertain.
+1. **Use `grep -qF -- "$pattern"`** — `--` terminates option parsing on BSD + GNU; required for CLI-flag-shaped patterns (e.g., `--setting-sources`, `--no-extensions`).
+2. **Update `pass_count`/`fail_count`** — so `run-tests.sh` summary parsing (`N passed, N failed`) works; helpers in outer scope propagate totals automatically.
+3. **Negative-assertion caveat** — `grep -qF` exits 1 on missing file (same as "absent"), so false-pass silently when target is deleted. Acceptable for committed files (e.g., `harnesses/` launchers); document if reused elsewhere.
 
 **Example** (from `call-dispatch_test.sh`):
 
@@ -188,16 +186,14 @@ Count emoji lines as ground truth for verdict coverage, not branch count. Grep t
 
 ## Hand-Authored Hook Script Structure & Registration
 
-When editing a hand-authored hook script (e.g., `orchestrator-read-discipline.sh`, `step-log-section-before-spawn.sh`), understand the relationship between the `.sh` body and `registry.yaml`:
-
 **Two types of hook ownership**:
 
-1. **`kind: denial` (generated: true)** — the compiler `enforcement_compiler.py` OVERWRITES the entire `.sh` file at `make install`. Do NOT hand-edit these files.
-2. **`kind: registration` (or deferred)** — the hand-authored `.sh` body is the source of truth. The `HOOK-MANIFEST:` header block is generated from `registry.yaml` entries. The deny/block message text lives inline in the `.sh` body, NOT in the registry. Deny strings are editable without touching `registry.yaml`.
+1. **`kind: denial` (generated: true)** — `enforcement_compiler.py` OVERWRITES the entire `.sh` file at `make install`. Do NOT hand-edit these files.
+2. **`kind: registration` (or deferred)** — the hand-authored `.sh` body is source of truth. The `HOOK-MANIFEST:` header block is generated from `registry.yaml`; deny/block message text lives inline in the `.sh` body, NOT the registry.
 
-**"GENERATED FROM registry.yaml — DO NOT EDIT" banner**: This banner on hand-authored scripts refers ONLY to the auto-generated `HOOK-MANIFEST:` header block. It does NOT forbid editing the script body. The header carries structured metadata (event, tool_guard, signal); the body (deny strings, logic) is hand-authored and editable. After editing the body, do NOT re-run hook_registrations.py `--emit-headers` — the header is already correct. **Disambiguation**: if a hook's `registry.yaml` entry carries `kind: registration` only (no `kind: denial` or code-generation directive), the entire `.sh` body is hand-authored; the banner refers only to the manifest block. When in doubt, grep the hook name in `registry.yaml` — if you see only `kind: registration`, the body is source-of-truth and fully editable (e.g., `orchestrator-read-discipline.sh` carries the banner but its body allowlist checks + deny messages are fully editable).
+**"GENERATED FROM registry.yaml — DO NOT EDIT" banner**: Refers ONLY to the auto-generated `HOOK-MANIFEST:` header block — NOT the script body. The header carries structured metadata (event, tool_guard, signal); the body is hand-authored and editable. `kind: registration`-only hooks (grep the name in `registry.yaml` to confirm) are fully editable (e.g., `orchestrator-read-discipline.sh`).
 
-**When to edit registry.yaml**: Change the header values (event, tool_guard, role, signal, harnesses). When you do, run `make install` with `--emit-headers` to propagate. Change body deny strings? Edit the `.sh` directly, no registry change needed.
+**When to edit registry.yaml**: Change header values (event, tool_guard, role, signal, harnesses) → run `make install --emit-headers`. Change body deny strings → edit `.sh` directly, no registry change needed.
 
 **Trigger-flag patterns for role-keyed Multi-Condition Guards**: When a hand-authored hook must dispatch based on both AGENT_TYPE (role) AND a path-based condition (e.g., pitch vs context vs project-context), use the trigger-flag pattern: declare flags for each condition (e.g., `is_pitch=0 is_context_dir=0`) after initial variable extraction, populate flags via `case "$rel_path" in ... ;;` blocks, then use the flags in an early-allow gate (`if [ "$flag1" -eq 0 ] && [ "$flag2" -eq 0 ]; then return 0`). This centralizes the path-test logic, avoids duplication across role branches, and makes the structure consistent. Example: `subagent-read-discipline.sh` uses `is_pitch=0` + `is_context_dir=0` flags with a single early-allow gate; each role branch then tests `if [ "$is_pitch" -eq 1 ]; then deny ...; exit 0; fi` without duplicating the path-normalisation logic. Benefit: future additions of similar path conditions (e.g., a new `is_recipe_dir` flag) slot in with a new case block + one gate-width expansion, not a structural rewrite of all role branches.
 
@@ -240,13 +236,13 @@ cleanup  # clean any leftovers from previous suite runs before tests start
 
 Contract: source `lib/hooks-lib.sh`, use `parse_input` to extract AGENT_TYPE and TRANSCRIPT_PATH, call `block "$reason"` to emit `{"decision":"block","reason":...}` on stdout. Same envelope as Stop hooks.
 
-**Harness scoping**: `harnesses: all` (default) REQUIRES a matching `.ts` Pi handler or `make install` fails. Scope claude-only hooks with `harnesses: claude_code` to skip Pi parity check.
+**Harness scoping**: `harnesses: all` (default) REQUIRES a matching `.ts` Pi handler or `make install` fails. Use `harnesses: claude_code` to skip Pi parity check.
 
-**Role matching**: When manifest uses glob role like `developer-*`, the hook body MUST contain a matching case statement or grep pattern — `validate_role_match` in `hook_registrations.py` requires the glob to appear in the script body.
+**Role matching**: Manifest glob role (e.g., `developer-*`) → hook body MUST contain matching case/grep — `validate_role_match` in `hook_registrations.py` enforces this.
 
-**Transcript analysis**: Parse `$TRANSCRIPT_PATH` JSONL via jq to detect patterns across prior Agent calls (e.g., consecutive same-role developer spawns). Transcript is session-bound and self-cleaning.
+**Transcript analysis**: Parse `$TRANSCRIPT_PATH` JSONL via jq for cross-call patterns (e.g., consecutive same-role developer spawns). Transcript is session-bound and self-cleaning.
 
-**Managed-build fail-closed pattern**: When a SubagentStop hook must enforce a hard constraint in managed builds but allow fail-open in interactive mode (e.g., "log is discoverable in managed but missing in interactive"), guard the block with an explicit `CODEGEN_BUILD_NON_INTERACTIVE` check. Pattern:
+**Managed-build fail-closed pattern**: Guard hard constraints with `CODEGEN_BUILD_NON_INTERACTIVE` check — allow fail-open in interactive mode. Pattern:
 
 ```bash
 if [ -z "$log_file" ]; then
@@ -307,9 +303,9 @@ Cross-reference: curator decision tree → `context/rules-roles.md` § Curator W
 
 ## context-index-parity Guard
 
-`harnesses/claude/hooks/context-index-parity.sh` — commit-time enforcement ensuring `context/*.md` additions are reflected in `PROJECT_CONTEXT.md` Domain Context Files table. When a `context/*.md` file is staged, the hook checks that `PROJECT_CONTEXT.md` is also staged AND contains the file's basename.
+`harnesses/claude/hooks/context-index-parity.sh` — PreToolUse hook enforcing `context/*.md` additions are reflected in `PROJECT_CONTEXT.md` Domain Context Files table. Fires at `git commit` time (not during `make test`). When a `context/*.md` file is staged for commit, the hook checks that `PROJECT_CONTEXT.md` is also staged AND contains the file's basename.
 
-**Not a `make test` gate** — fires at `git add` (staging). Committer cannot commit if a new `context/*.md` lacks a corresponding index row.
+**Timing**: PreToolUse event → blocks `git commit` directly. Developers can stage changes and run `make test` (which passes); the parity check still blocks commit if index rows are missing.
 
 **How to satisfy**: Append a row to `PROJECT_CONTEXT.md` § Domain Context Files table; the basename string (e.g., `"deployment-topology"` for `context/deployment-topology.md`) must appear in the staged body.
 
@@ -402,11 +398,11 @@ Use mktemp dirs per test; absolute paths in JSONL Write entries. Do NOT mock hoo
 
 ### `session_log_from_transcript` — Callers Must Guard Existence
 
-`session_log_from_transcript` (hooks-lib.sh:265-277) extracts the last `Write|Edit|MultiEdit` file_path matching `codegen/logging/.*\.md$` from the JSONL transcript. **Does NOT verify disk existence.** When a Write is DENIED (permission hook blocks it), the tool_use entry is still logged in the transcript with a path — `session_log_from_transcript` will return that path even though the file was never created. Callers must explicitly guard `! -e <path>` after calling this function to detect the fail-open case.
+`session_log_from_transcript` extracts the last `Write|Edit|MultiEdit` file_path matching `codegen/logging/.*\.md$` from the JSONL transcript. **Does NOT verify disk existence.** When a Write is DENIED, the tool_use entry is still logged — the function returns that path even though the file was never created. Callers must guard `! -e <path>` after calling.
 
 ### Ad-Hoc Payload Field Reading via `RAW_INPUT`
 
-Hooks that need to read Edit/Write tool payload fields (e.g., `new_string`, `old_string`, `content`) do NOT get them from `parse_input` — the shared library deliberately does not export these fields to maintain separation of concerns. **Documented seam for payload inspection**: use ad-hoc `jq` on `$RAW_INPUT` (exported by `parse_input` for exactly this purpose):
+`parse_input` deliberately does not export Edit/Write payload fields (e.g., `new_string`, `old_string`, `content`). Use ad-hoc `jq` on `$RAW_INPUT` (exported by `parse_input`):
 
 ```bash
 new_string=$(jq -r '.tool_input.new_string // ""' <<< "$RAW_INPUT")
@@ -414,11 +410,11 @@ old_string=$(jq -r '.tool_input.old_string // ""' <<< "$RAW_INPUT")
 content=$(jq -r '.tool_input.content // ""' <<< "$RAW_INPUT")
 ```
 
-**Pi equivalent** (TypeScript hooks): read `new_string`, `old_string`, `content` from the `event.input` object directly (typed access — no jq needed). Reference: `session-log-section-integrity.ts` (lines 71–75) is the cross-harness precedent for payload field access. **Fail-open on unparseable payload**: jq errors or missing fields default to empty strings via `// ""` — guards that cannot parse the payload gracefully degrade to allowing the action.
+**Pi equivalent**: read from `event.input` directly (typed, no jq). Reference: `session-log-section-integrity.ts` lines 71–75. **Fail-open**: jq errors or missing fields default to `""` via `// ""`.
 
 ### `deny()` Requires Explicit `exit 0`
 
-The `deny()` function in hooks-lib.sh emits JSON to stdout and **returns** — it does NOT exit. Every call site must follow with explicit `exit 0` immediately after:
+`deny()` emits JSON to stdout and **returns** — does NOT exit. Every call site must follow with `exit 0`:
 
 ```bash
 if [ ! -e "$log_path" ]; then
@@ -427,29 +423,26 @@ if [ ! -e "$log_path" ]; then
 fi
 ```
 
-Missing `exit 0` after deny causes fallthrough into subsequent branches, violating control flow intent. The deny JSON is still emitted before fallthrough occurs, but the hook's subsequent logic may run unintended side-effects or exit with the wrong code.
+Missing `exit 0` → fallthrough; deny JSON is emitted but subsequent logic runs with unintended side-effects.
 
 ### POSIX File-Test Ordering — `! -e` Before `! -r`
 
-On non-existent paths, both `[ ! -e <path> ]` and `[ ! -r <path> ]` evaluate true. When logic must distinguish absent vs exists-but-unreadable, test `! -e` FIRST:
+Both `[ ! -e <path> ]` and `[ ! -r <path> ]` are true for non-existent paths. Test `! -e` FIRST to distinguish absent vs exists-but-unreadable:
 
 ```bash
 if [ ! -e "$log_path" ]; then
-    # File absent → take action A
     deny "Log file not found"
     exit 0
 elif [ ! -r "$log_path" ]; then
-    # File exists but unreadable → take action B
-    # (e.g., fail-open and allow the action)
-    exit 0
+    exit 0  # exists but unreadable → fail-open
 fi
 ```
 
-Reversing the order (testing `! -r` before `! -e`) causes the absent-file branch to be unreachable, since the unreadable test is true for absent files too.
+Reversing (testing `! -r` before `! -e`) makes the absent-file branch unreachable.
 
 ## Hook Output Protocol
 
-Hook scripts communicate decisions back to Claude Code via JSON on stdout. The shape varies by event type.
+Hook scripts communicate decisions via JSON on stdout. Shape varies by event type.
 
 **Decision field (top-level `decision`)** — applies to: `Stop`, `SubagentStop`, `PreCompact`, `UserPromptSubmit`, `PostToolUse`:
 
@@ -617,26 +610,24 @@ When designing shell case statements where one verdict variant should block and 
 
 ## Transcript Lag & Discovery Pattern
 
-Hook scripts discover the active session/step log via `session_log_from_transcript()` in `hooks-lib.sh`. The function has two modes:
+Hook scripts discover the active session/step log via `session_log_from_transcript()` in `hooks-lib.sh`. Two modes:
 
-**Interactive sessions**: strict transcript-bound discovery — scans `$TRANSCRIPT_PATH` JSONL for the most recent Write/Edit/MultiEdit targeting `codegen/logging/*.md`. Returns empty if absent.
+**Interactive sessions**: strict transcript-bound — scans `$TRANSCRIPT_PATH` JSONL for most recent Write/Edit/MultiEdit targeting `codegen/logging/*.md`. Returns empty if absent.
 
-**Managed build workers** — two independent fallback branches when transcript discovery returns empty:
+**Managed build workers** — two independent fallback branches when transcript returns empty:
 
 1. **OCG_APPS_ROOT**: scans `$CWD/codegen/logging/*.md` by mtime (dashboard-box managed workers)
-2. **CODEGEN_BUILD_NON_INTERACTIVE**: scans `$CWD/codegen/logging/` unconditionally when env var is set (codegen self-builds, non-interactive dispatch)
+2. **CODEGEN_BUILD_NON_INTERACTIVE**: scans `$CWD/codegen/logging/` unconditionally (non-interactive dispatch)
 
-A transcript hit skips both fallbacks. Dual-gate catches slow-Node transcript flush lag (observed: Node 20).
+Transcript hit skips both fallbacks. Dual-gate catches slow-Node transcript flush lag (observed: Node 20). **11 production consumers** inherit the fallback.
 
-**Portable mtime sorting**: `ls -t glob | head -1` — `find -printf` is NOT portable to BSD find (macOS).
-
-**11 production consumers**: all hook scripts calling `session_log_from_transcript()` inherit the fallback.
+**Portable mtime sorting**: `ls -t glob | head -1` — `find -printf` NOT portable to BSD find (macOS).
 
 ### Fallback-After-Early-Return Bug Pattern
 
-When a fallback mechanism sits behind an unconditional early-return guard, the fallback is unreachable. **Common mistake**: A test fixture creates a readable-but-empty file (passes `[ ! -r ]` guard) but the actual bug path (empty-string, nonexistent, or unreadable file) is still untested. Verify test fixtures satisfy the EARLY-RETURN condition, not just a related condition.
+Fallback behind unconditional early-return = unreachable fallback. Common mistake: test fixture creates readable-but-empty file (passes `[ ! -r ]` guard) — actual bug path (absent/empty/unreadable) still untested. Verify fixtures satisfy the EARLY-RETURN condition, not just a related one.
 
-**Fix pattern**: Replace the unconditional early-return guard (`if [ empty/unreadable ] return 0`) with a conditional that SKIPS ONLY the transcript scan but FALLS THROUGH unconditionally to the fallback block. Initialize fallback result upfront (e.g., `local result=""`), then guard only the transcript jq scan:
+**Fix pattern**: Replace unconditional early-return with a conditional that SKIPS ONLY the transcript scan but FALLS THROUGH to the fallback block. Initialize result upfront, guard only the jq scan:
 
 ```bash
 local result=""
@@ -647,13 +638,13 @@ fi
 printf '%s' "$result"
 ```
 
-This conversion transforms the guard from "return early when not met" to "skip transcript scan when not met, always reach fallback". Test both the skip-jq path (empty TRANSCRIPT_PATH) and the fallback path (managed env, disk log exists) to lock in the fix.
+Test both: skip-jq path (empty `TRANSCRIPT_PATH`) and fallback path (managed env, disk log exists).
 
-**Transcript lag causing false blocks**: When a Stop hook claims a block is missing but the file actually contains it, the cause is transcript lag — the hook read a JSONL snapshot predating the Edit. Re-running forces a new transcript entry visible on the next Stop event. Mitigation: Stop hooks should apply the fallback disk-scan logic when the transcript-bound resolver returns empty.
+**Transcript lag causing false blocks**: Hook read a JSONL snapshot predating the Edit → re-running forces new transcript entry. Mitigation: apply fallback disk-scan when transcript-bound resolver returns empty.
 
 ## Bash Symlink Resolution Fail-Open Discipline
 
-When a bash hook resolves a symlink to test whether its target is a git repo, use THREE independent guards (NOT a single `&&` chain — early exit skips downstream guards):
+Use THREE independent guards (NOT a single `&&` chain — early exit skips downstream guards):
 
 ```bash
 if [ ! -L "$link" ]; then exit 0; fi           # (1) symlink absent → fail-open
@@ -664,48 +655,44 @@ if [ -z "$git_root" ]; then exit 0; fi          # (3) not a git repo → fail-op
 # All three guards passed; proceed with checks
 ```
 
-Missing guard (1) → operates on empty variable; (2) → stale `$resolved` from prior loop iteration; (3) → unhandled git error causes non-zero exit.
+Missing (1) → operates on empty variable; (2) → stale `$resolved` from prior loop; (3) → unhandled git error non-zero exit.
 
 ## Tool-Header Prose vs. Runtime Enforcement
 
-Shape-mode and multi-mode `tools-header/*.txt` files document Bash mutation boundaries in agent system prompts. Critical constraint: **documented deny-list claims must match enforced denials at runtime**. Prose claiming Bash denies `rm/mv/touch/mkdir` when the runtime only denies `cat | ...` (cat-pipes via `no-cat-pipe.sh`) breeds hook-denial misdiagnosis — agents attribute ENOENT errors to false hook blocks instead of investigating cwd slips or missing parent directories.
+`tools-header/*.txt` files document Bash mutation boundaries in agent prompts. **Documented deny-list claims MUST match enforced denials at runtime.** Prose claiming Bash denies `rm/mv/touch/mkdir` when runtime only denies cat-pipes breeds hook-denial misdiagnosis.
 
 **Verified enforcement for shape mode:**
 
 - **Denied**: cat-pipes (`no-cat-pipe.sh`), git-history mutation (`no-git-stash` + git-ops allowlist)
-- **NOT denied** at Bash layer: file ops (`rm`, `mv`, `touch`, `mkdir`) — Write/Edit boundary is enforced at tool level by `orchestrator-no-source-edit.sh` (scoped to `codegen/pitches/`), not by a Bash-command hook
+- **NOT denied** at Bash layer: file ops (`rm`, `mv`, `touch`, `mkdir`) — Write/Edit boundary enforced at tool level by `orchestrator-no-source-edit.sh` (scoped to `codegen/pitches/`)
 
-**Implication**: When tightening tool-header prose, verify claim against the actual hook registry (`shared/enforcement/registry.yaml`) and source hooks — do NOT trust prose alone. The tools-header files are **not code**; they are documentation rendered into agent prompts. False claims in docs cause misdiagnosis.
+When tightening tool-header prose, verify against `shared/enforcement/registry.yaml` and source hooks — do NOT trust prose alone. Tools-header files are documentation, not code; false claims cause misdiagnosis.
 
 ## Hook Pattern Coverage — Sibling Condition Enforcement (Rule J)
 
-When a single hook file has TWO independent conditions that both affect the same logic path (e.g., `subagent-retrospective-guard.sh` has an in-script matcher `case` at line 37 AND a header-selection `[[ ]]` at line 57), they must be widened in lockstep. A mismatch (e.g., one arm uses `planner-*` excluding bare `planner`, while the other uses `planner*` including bare `planner`) will silently diverge at runtime — one family member may match the matcher but miss the selection, or vice versa.
+When a hook file has TWO independent conditions affecting the same logic path (e.g., `subagent-retrospective-guard.sh`: in-script `case` matcher AND header-selection `[[ ]]`), they must widen in lockstep. Mismatch silently diverges — one family member matches the matcher but misses the selection.
 
-**Critical invariant**: After widening a glob in one condition, **immediately widen the sibling condition** in the same file. Test coverage must verify both paths with a non-phoenix family member (e.g., `planner-html` or `planner-hugo`) to catch the mismatch; a test using only `planner-phoenix` cannot distinguish whether both conditions are widened or just one.
+**After widening a glob in one condition, immediately widen the sibling.** Test both paths with a non-phoenix family member (e.g., `planner-html`) — a `planner-phoenix`-only test cannot distinguish whether both conditions widened.
 
-**Example**: `subagent-retrospective-guard.sh` widening the planner family requires matching THREE separate logic points: (1) in-script matcher `case "$AGENT_TYPE"` — must use `planner*` glob; (2) header-selection conditional `[[ ]]` — same glob; (3) registry entry (usually forward-compat only). A `planner-html` test verifying "ALLOW" passes under both old (skip) and new (process-then-allow) paths — pair with a BLOCK case (missing retrospective) to prove both conditions widened.
+**Example**: `subagent-retrospective-guard.sh` planner family widen requires: (1) `case "$AGENT_TYPE"` → `planner*` glob; (2) header-selection `[[ ]]` → same glob; (3) registry entry (forward-compat). Pair a `planner-html` ALLOW test with a BLOCK test (missing retrospective) to prove both conditions widened.
 
-**Implementation pattern**:
-
-- (1) Identify all sibling conditions in the file that reference the same logic path
-- (2) Widen ALL of them to the same glob form (e.g., `planner*` including bare `planner`, not `planner-*` excluding it)
-- (3) Add test cases for a non-base family member (e.g., `planner-html`) in both ALLOW and BLOCK branches to lock the widen
+**Pattern**: identify sibling conditions → widen ALL to same glob form → add ALLOW + BLOCK tests for a non-base family member.
 
 ## Bypass Green-From-Birth Detection (Test Coverage Strategies for Hook Widening)
 
-When a bypass condition widens (e.g., literal `planner` → `planner*` glob), a test asserting "allow" can pass under BOTH old (skip) and new (process-then-allow) paths — this is a "green-from-birth" trap.
+When bypass widens (e.g., literal `planner` → `planner*`), an ALLOW test passes under both old (skip) and new (process-then-allow) paths — green-from-birth trap.
 
-**Pattern**: Pair the ALLOW case with a BLOCK case on the same code path but with missing input. Under old code, both hit the skip path (both allow). Under new code, the BLOCK case processes and emits deny. The BLOCK case failing under old code but passing under new code proves the bypass actually widened.
+**Pattern**: Pair ALLOW with a BLOCK case (same path, missing input). Old code: both skip (both allow). New code: BLOCK processes and emits deny. BLOCK failing under old but passing under new proves the bypass widened.
 
-**Example** (`subagent-retrospective-guard.sh`): Write case on planner-phoenix without retrospective → BLOCK (proves processing, not skip). Write case with retrospective present → ALLOW (proves bypass allows valid case).
+**Example** (`subagent-retrospective-guard.sh`): `planner-phoenix` without retrospective → BLOCK (proves processing); with retrospective → ALLOW (proves valid bypass).
 
 ## Retrospective Placement Constraint — Awk Section Extraction
 
-The `subagent-retrospective-guard.sh` hook uses `awk` to extract the retrospective section from the session log. **Critical constraint**: The retrospective block (e.g., `### What I Learned This Step`) CANNOT sit anywhere inside a `## Plan` body with nested `## ` literals — the awk extraction terminates at the first `## ` it encounters, even if that `##` is inside a fenced code block (heredoc, markdown fence, etc.).
+`subagent-retrospective-guard.sh` uses `awk` to extract the retrospective section. **Critical constraint**: `### What I Learned This Step` CANNOT appear anywhere inside a `## Plan` body that contains nested `## ` literals — awk terminates at the first `## ` encountered, even inside fenced code blocks.
 
-**Rule**: The retrospective block MUST sit at the TOP of `## Plan`, immediately after the header, BEFORE any other nested `## ` literals in the body (fenced or prose).
+**Rule**: Retrospective MUST sit at the TOP of `## Plan`, immediately after the header, BEFORE any nested `## ` literals (fenced or prose).
 
-**Why**: Awk's line-by-line processing and straightforward condition (`/^## / && NR > start_line { exit }`) cannot distinguish fence boundaries. A code-block example like:
+**Why**: Awk's `/^## / && NR > start_line { exit }` cannot distinguish fence boundaries. Example:
 
 ````bash
 ## Plan
@@ -721,23 +708,21 @@ The `subagent-retrospective-guard.sh` hook uses `awk` to extract the retrospecti
 
 ````
 
-Would have the awk extraction terminate at `## Example Header` (even though it's inside a fence), never reaching the retrospective.
+Awk terminates at `## Example Header` (inside the fence), never reaching the retrospective.
 
-**Solution**: Reorder the session-log template to place all fenced/formatted content AFTER the retrospective block, or ensure retrospectives are placed at the log-top (immediately after `## Plan`, before any code examples).
+**Solution**: Place all fenced/formatted content AFTER the retrospective block, or place retrospective immediately after `## Plan` before any code examples.
 
 ## Hook Registration Mechanics — Registry-Driven Header Sync
 
-When editing a hook's HOOK-MANIFEST metadata field (e.g., widening `role:` from `planner-phoenix` to `planner*`, or changing `tool_guard:`), **BOTH the `.sh` file AND `shared/enforcement/registry.yaml` must be updated together**:
+When editing a hook's HOOK-MANIFEST field (e.g., widening `role:`, changing `tool_guard:`), **BOTH `.sh` AND `shared/enforcement/registry.yaml` must update together**:
 
-1. **Source of truth**: `shared/enforcement/registry.yaml` holds the canonical values (event, tool_guard, role, signal, etc.)
-2. **Auto-generation**: `make install` runs `hook_registrations.py --emit-headers`, which reads the registry entry and injects/overwrites the `# HOOK-MANIFEST:` header block in the `.sh` file
-3. **Consistency check**: `make hook-parity` diffs the committed `harnesses/claude/claude-code-settings.json` against freshly-generated headers from all hook HOOK-MANIFEST blocks. If registry and `.sh` disagree, `settings.json` regenerates and diffs fail.
+1. **Source of truth**: `registry.yaml` holds canonical values (event, tool_guard, role, signal)
+2. **Auto-generation**: `make install` runs `hook_registrations.py --emit-headers` → injects/overwrites `# HOOK-MANIFEST:` header in `.sh`
+3. **Consistency check**: `make hook-parity` diffs committed `claude-code-settings.json` against freshly-generated headers; divergence fails
 
-**Workflow**:
-- Edit `registry.yaml` entry → edit `.sh` hand-authored HOOK-MANIFEST header to match (or let make install regenerate it) → run `make install` → commit both `.sh` + regenerated `settings.json`
-- Never manually edit just the `.sh` HOOK-MANIFEST and skip the registry update (or vice versa) — the consistency check will catch the divergence
+**Workflow**: Edit `registry.yaml` → edit `.sh` HOOK-MANIFEST to match (or let `make install` regenerate) → `make install` → commit both `.sh` + regenerated `settings.json`. Never update only one side.
 
-**Note on `kind: registration` vs `kind: denial`**: Hand-authored hooks use `kind: registration` entries and preserve their HOOK-MANIFEST headers across edits. Compiler-generated hooks (`kind: denial` entries, `generated: true`) have their ENTIRE `.sh` file regenerated at `make install` — do not hand-edit those files.
+`kind: registration` hooks preserve hand-authored bodies across edits. `kind: denial` (`generated: true`) hooks have ENTIRE `.sh` regenerated at `make install` — do not hand-edit.
 
 ## Pitfalls
 
