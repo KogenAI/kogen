@@ -51,6 +51,30 @@ assert_jq_truthy() {
     fi
 }
 
+assert_file_contains() {
+    local filepath="$1"
+    local needle="$2"
+    if grep -qF -- "$needle" "$filepath" 2>/dev/null; then
+        [ -n "${VERBOSE:-}" ] && printf 'PASS: %s contains %q\n' "$filepath" "$needle"
+        pass=$((pass + 1))
+    else
+        printf 'FAIL: %s does not contain %q\n' "$filepath" "$needle"
+        fail=$((fail + 1))
+    fi
+}
+
+assert_file_absent() {
+    local filepath="$1"
+    local needle="$2"
+    if grep -qF -- "$needle" "$filepath" 2>/dev/null; then
+        printf 'FAIL: %s contains unexpected %q\n' "$filepath" "$needle"
+        fail=$((fail + 1))
+    else
+        [ -n "${VERBOSE:-}" ] && printf 'PASS: %s absent %q\n' "$filepath" "$needle"
+        pass=$((pass + 1))
+    fi
+}
+
 # ── Setup ─────────────────────────────────────────────────────────────────────
 BASE_TMP="$(mktemp -d)"
 cleanup() { rm -rf "$BASE_TMP"; }
@@ -203,6 +227,31 @@ assert_jq_truthy \
     "(c) schema-validate FAIL: reason contains 'schema'" \
     "$SCHEMA_FAIL_ENVELOPE" \
     '(.result.reason // "") | test("schema")'
+
+# ── Static source-assertion: MAX_THINKING_TOKENS=0 regression guard ──────────
+HARNESSES_DIR="$(cd "$HOOKS_DIR/.." && pwd)"
+CODEGEN_DIR="$(cd "$HARNESSES_DIR/../.." && pwd)"
+
+# Test 1: call-dispatch.sh sets MAX_THINKING_TOKENS=0
+assert_file_contains "$HARNESSES_DIR/call-dispatch.sh" "MAX_THINKING_TOKENS=0"
+
+# Test 2: call-dispatch.sh uses --setting-sources project (guards thinking-off scope)
+assert_file_contains "$HARNESSES_DIR/call-dispatch.sh" "--setting-sources project"
+
+# Test 3: dispatch.sh sets MAX_THINKING_TOKENS=0
+assert_file_contains "$HARNESSES_DIR/dispatch.sh" "MAX_THINKING_TOKENS=0"
+
+# Test 4: claude-code-settings.json has installed-settings copy
+assert_file_contains "$HARNESSES_DIR/claude-code-settings.json" '"MAX_THINKING_TOKENS": "0"'
+
+# Test 5: claude-debug.sh (thinking-ON launcher) has NO MAX_THINKING_TOKENS
+assert_file_absent "$HARNESSES_DIR/claude-debug.sh" "MAX_THINKING_TOKENS"
+
+# Test 6: claude-shape.sh (thinking-ON launcher) has NO MAX_THINKING_TOKENS
+assert_file_absent "$HARNESSES_DIR/claude-shape.sh" "MAX_THINKING_TOKENS"
+
+# Test 7: claude-ops.sh (thinking-ON launcher) has NO MAX_THINKING_TOKENS
+assert_file_absent "$HARNESSES_DIR/claude-ops.sh" "MAX_THINKING_TOKENS"
 
 # ─────────────────────────────────────────────────────────────────────────────
 echo ""

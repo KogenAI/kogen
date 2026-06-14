@@ -148,6 +148,32 @@ Example: `curator-format.sh` (runs `make format` on markdown edits by context-cu
 
 New bash hook tests (`*_test.sh`) are auto-discovered by `run-tests.sh` (line 33: `find *_test.sh`) — they run automatically as part of `make test`'s `hooks` stage. When a hook test is also registered as a named Makefile target (e.g., `prompt-content-parity` target), the test runs **twice** per `make test` cycle: once via auto-discovery in the `hooks` stage, once via the explicit prerequisite. This dual-discovery pattern is idempotent and not a defect — the test runs the same assertions twice and both complete successfully (same inputs, same exit code).
 
+### Test Helper Functions — Assertion Patterns & BSD Compatibility
+
+When adding new assertion helpers to existing test files (e.g., grep-based `assert_file_contains` / `assert_file_absent`), follow these patterns:
+
+1. **Grep-based helpers must use `grep -qF -- "$pattern"`** to avoid BSD flag-parsing on strings starting with `--`. The double-dash `--` terminates option parsing on both BSD (macOS) and GNU (Linux), preventing CLI-flag-shaped patterns (e.g., `--setting-sources`, `--no-extensions`) from being misinterpreted as option flags by grep itself. This is **load-bearing** for any helper grepping for command-line flag strings.
+
+2. **Global counter integration**: Assertion helpers must update `pass_count` and `fail_count` variables so `run-tests.sh` summary parsing (`N passed, N failed`) works correctly. Helpers called within test blocks inherit the outer scope, so explicit increment statements in helper functions propagate to session totals.
+
+3. **Negative-assertion caveat** — helpers using grep to verify string NOT found (`grep -qF "..."` with expect-nonzero exit) false-pass silently if the target file is deleted (grep exits 1 on missing file = same as "string absent"). This is acceptable when target files are committed (e.g., launcher scripts in `harnesses/`), but document the limitation if the helper is ever reused in contexts where file presence is uncertain.
+
+**Example** (from `call-dispatch_test.sh`):
+
+```bash
+assert_file_contains() {
+  local file_path="$1" search_string="$2"
+  if grep -qF -- "$search_string" "$file_path"; then
+    pass_count=$((pass_count + 1))
+    return 0
+  else
+    fail_count=$((fail_count + 1))
+    printf "FAIL: '%s' not found in %s\n" "$search_string" "$file_path" >&2
+    return 1
+  fi
+}
+```
+
 ## Hook Coverage Verification — Emoji Verdict Lines as Ground Truth
 
 When verifying that a hook stamps or checks all verdicts (e.g., reviewing `_stamp_gated` coverage in `phoenix-dev-gate.sh`), **count the emoji lines as the ground truth, not the branch count**. The hook may have nested conditionals or shared final sections that make line-of-code counting fragile. Instead:
