@@ -27,6 +27,8 @@
 set -u
 
 source "$(dirname "$0")/lib/hooks-lib.sh"
+# shellcheck disable=SC1091
+source "$(dirname "$0")/lib/cycle-state.sh"
 parse_input
 
 debug_log subagent-retrospective-guard "agent=$AGENT_TYPE"
@@ -112,4 +114,13 @@ if [ "$has_content" -eq 0 ]; then
 fi
 
 debug_log subagent-retrospective-guard "PASS: retrospective block present and non-empty"
+
+# Stamp REVIEWED only for reviewer roles (not developer/planner which also fire this hook).
+case "$AGENT_TYPE" in
+reviewer-phoenix | reviewer-static)
+    write_cycle_state "REVIEWED" "${log_file:-}" "${SESSION_ID:-unknown}" "" "${CWD:-$PWD}"
+    debug_log subagent-retrospective-guard "stamped REVIEWED for $AGENT_TYPE"
+    ;;
+esac
+
 exit 0

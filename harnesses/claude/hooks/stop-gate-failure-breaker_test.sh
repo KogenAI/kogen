@@ -202,26 +202,26 @@ mkdir -p "$tmp11/codegen/logging"
 make_session_log "$log11" 5
 make_gate_result "$tmp11" "failed"
 make_transcript "$log11" "$tmp11/transcript.jsonl"
-printf '2' >"/tmp/claude-gate-breaker-test-breaker-sess-cap.count"
+printf '%s\n%s' "$log11" "2" >"/tmp/claude-gate-breaker-test-breaker-sess-cap.count"
 INPUT11=$(make_input "developer-phoenix-backend" "$tmp11/transcript.jsonl" "$tmp11" "test-breaker-sess-cap")
 run_test "cap_release: block_count=2 → cap reached → allow (cap cleared)" "allow" "$INPUT11"
 rm -rf "$tmp11"
 rm -f "/tmp/claude-gate-breaker-test-breaker-sess-cap.count"
 
-# --- Test 12: malformed counter ("bad") + 3 failures + verdict=failed → BLOCK (treated as 0) ---
+# --- Test 12: malformed counter (line2="bad") + 3 failures + verdict=failed → BLOCK (treated as 0) ---
 tmp12=$(mktemp -d)
 log12="$tmp12/codegen/logging/step_log.md"
 mkdir -p "$tmp12/codegen/logging"
 make_session_log "$log12" 3
 make_gate_result "$tmp12" "failed"
 make_transcript "$log12" "$tmp12/transcript.jsonl"
-printf 'bad-value' >"/tmp/claude-gate-breaker-test-breaker-sess-bad.count"
+printf '%s\n%s' "$log12" "bad-value" >"/tmp/claude-gate-breaker-test-breaker-sess-bad.count"
 INPUT12=$(make_input "developer-phoenix-backend" "$tmp12/transcript.jsonl" "$tmp12" "test-breaker-sess-bad")
 run_test "malformed_counter: bad counter → treated as 0 → applies threshold (block)" "block" "$INPUT12"
 rm -rf "$tmp12"
 rm -f "/tmp/claude-gate-breaker-test-breaker-sess-bad.count"
 
-# --- Test 13: block increments counter — 1st block writes "1" ---
+# --- Test 13: block increments counter — 1st block writes step_log\n1 (two-line) ---
 tmp13=$(mktemp -d)
 log13="$tmp13/codegen/logging/step_log.md"
 mkdir -p "$tmp13/codegen/logging"
@@ -231,16 +231,16 @@ make_transcript "$log13" "$tmp13/transcript.jsonl"
 rm -f "/tmp/claude-gate-breaker-test-breaker-sess-incr.count"
 INPUT13=$(make_input "developer-phoenix-backend" "$tmp13/transcript.jsonl" "$tmp13" "test-breaker-sess-incr")
 stdout13=$(printf '%s' "$INPUT13" | bash "$GUARD" 2>/dev/null || true)
-counter_val=""
+counter_line2=""
 if [ -r "/tmp/claude-gate-breaker-test-breaker-sess-incr.count" ]; then
-    counter_val=$(cat "/tmp/claude-gate-breaker-test-breaker-sess-incr.count" 2>/dev/null || echo "")
+    counter_line2=$(sed -n '2p' "/tmp/claude-gate-breaker-test-breaker-sess-incr.count" 2>/dev/null || echo "")
 fi
-if printf '%s' "$stdout13" | grep -q '"decision"[[:space:]]*:[[:space:]]*"block"' && [ "$counter_val" = "1" ]; then
-    [ -n "${VERBOSE:-}" ] && printf 'PASS: block_increments_counter: 1st block writes "1"\n'
+if printf '%s' "$stdout13" | grep -q '"decision"[[:space:]]*:[[:space:]]*"block"' && [ "$counter_line2" = "1" ]; then
+    [ -n "${VERBOSE:-}" ] && printf 'PASS: block_increments_counter: 1st block writes step_log\n1\n'
     pass=$((pass + 1))
 else
-    printf 'FAIL: block_increments_counter — expected block + counter=1, got stdout=%s counter=%s\n' \
-        "$stdout13" "$counter_val"
+    printf 'FAIL: block_increments_counter — expected block + counter_line2=1, got stdout=%s counter_line2=%s\n' \
+        "$stdout13" "$counter_line2"
     fail=$((fail + 1))
 fi
 rm -rf "$tmp13"

@@ -30,6 +30,8 @@ set -u
 source "$(dirname "$0")/lib/hooks-lib.sh"
 # shellcheck disable=SC1091
 source "$(dirname "$0")/lib/gate-result.sh"
+# shellcheck disable=SC1091
+source "$(dirname "$0")/lib/cycle-state.sh"
 parse_input
 
 session_id="${SESSION_ID:-unknown}"
@@ -72,6 +74,34 @@ debug_log step-log-completeness "log=$log_file"
 if grep -qE 'INCONCLUSIVE ⚠️' "$log_file" 2>/dev/null; then
     debug_log step-log-completeness "skip: INCONCLUSIVE in log"
     exit 0
+fi
+
+# ── Cycle-state fast-path ──────────────────────────────────────────────────
+# cycle-state.json is authoritative when present AND step_log matches active log.
+cs_step=$(cycle_state_step_log "$project_dir")
+cs_state=$(cycle_state_get "$project_dir")
+if [ -n "$cs_state" ] && [ "$cs_step" = "$log_file" ]; then
+    debug_log step-log-completeness "cycle-state=$cs_state step=$log_file (matched)"
+    case "$cs_state" in
+    COMMITTED)
+        # Full cycle done — committer ran; allow stop.
+        debug_log step-log-completeness "skip: cycle-state=COMMITTED"
+        exit 0
+        ;;
+    REVIEWED)
+        # Reviewer done, curator not yet → block (same as case b1 below, but faster)
+        debug_log step-log-completeness "BLOCK: cycle-state=REVIEWED — curator not yet run"
+        block "step-log-completeness: reviewer finished (cycle-state=REVIEWED) but context-curator has not run yet. Continue the cycle: delegate to context-curator, then committer. Step log: $log_file"
+        exit 0
+        ;;
+    CURATED)
+        # Curator done, committer not yet → block (same as case b2 below, but faster)
+        debug_log step-log-completeness "BLOCK: cycle-state=CURATED — committer not yet run"
+        block "step-log-completeness: context-curator finished (cycle-state=CURATED) but committer has not run yet. Continue the cycle: delegate to committer. Step log: $log_file"
+        exit 0
+        ;;
+    esac
+    # GATED or unknown state → fall through to existing grep checks
 fi
 
 # ── Check cycle completeness ─────────────────────────────────────────────────

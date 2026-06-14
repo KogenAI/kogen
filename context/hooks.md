@@ -148,6 +148,16 @@ Example: `curator-format.sh` (runs `make format` on markdown edits by context-cu
 
 New bash hook tests (`*_test.sh`) are auto-discovered by `run-tests.sh` (line 33: `find *_test.sh`) — they run automatically as part of `make test`'s `hooks` stage. When a hook test is also registered as a named Makefile target (e.g., `prompt-content-parity` target), the test runs **twice** per `make test` cycle: once via auto-discovery in the `hooks` stage, once via the explicit prerequisite. This dual-discovery pattern is idempotent and not a defect — the test runs the same assertions twice and both complete successfully (same inputs, same exit code).
 
+## Hook Coverage Verification — Emoji Verdict Lines as Ground Truth
+
+When verifying that a hook stamps or checks all verdicts (e.g., reviewing `_stamp_gated` coverage in `phoenix-dev-gate.sh`), **count the emoji lines as the ground truth, not the branch count**. The hook may have nested conditionals or shared final sections that make line-of-code counting fragile. Instead:
+
+1. Grep the hook for all `append_ve_section` or verdict-emission lines that EMIT the verdict output (those containing `ALL CLEAR ✅`, `FAILED ❌`, or `INCONCLUSIVE ⚠️` strings).
+2. Verify each emoji line is immediately preceded or followed by the action that should accompany it (e.g., `_stamp_gated clear` right before `append_ve_section "ALL CLEAR ✅"`).
+3. Count the emoji lines found — this is the authoritative verdict-point count for coverage.
+
+This approach is more reliable than counting branches because the emoji strings are the exact output that reaches the session log, making them the observable contract the reviewer can verify independently.
+
 **Test authoring best practice**: Hermetic bash tests should assert on committed, in-repo source/artifact files rather than machine-dependent install paths (e.g., `~/.claude/`). Installation paths vary by machine (servers + Macs + CI boxes); CI environments may not have the install directory at all. Asserting on source files (e.g., `harnesses/claude/commands/ready.md.j2`) or baked in-repo artifacts (e.g., `harnesses/claude/claude-shape-system-prompt.txt`) ensures test hermeticity — the test passes or fails based on repository state alone, independent of installation. See also `context/test-harness.md` § Hermetic Bash Test Assertion Pattern.
 
 **Hook deny/block message testing — substring assertion pattern**: Hook `_test.sh` files often assert that specific text appears in a deny/block message via `grep -qF "substring"`. These substrings become **immutable constraints** — any later tightening of the message (rewording, restructuring) must preserve all asserted substrings or the test fails. Before editing any deny/block message, grep the paired `_test.sh` to enumerate all `assert_contains` / `grep -q` assertions and preserve them verbatim during the rewrite. This pattern ensures messages can be tightened for clarity without breaking test coverage.

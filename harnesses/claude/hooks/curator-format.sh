@@ -21,6 +21,8 @@
 set -u
 
 source "$(dirname "$0")/lib/hooks-lib.sh"
+# shellcheck disable=SC1091
+source "$(dirname "$0")/lib/cycle-state.sh"
 parse_input
 
 agent_type="$AGENT_TYPE"
@@ -59,5 +61,10 @@ if grep -q '^format:' "$project_dir/Makefile" 2>/dev/null; then
 else
     debug_log curator-format "no make format target — skipping"
 fi
+
+# Stamp CURATED so downstream readers can detect the curation stage.
+log_file=$(session_log_from_transcript)
+write_cycle_state "CURATED" "${log_file:-}" "${SESSION_ID:-unknown}" "" "$project_dir"
+debug_log curator-format "stamped CURATED"
 
 exit 0

@@ -488,6 +488,56 @@ run_test "empty_resolver_keeps_scope: resolver empty, count=1 on step-A → stil
 rm -rf "$tmp24"
 rm -f "/tmp/claude-cycle-guard-test-sess-24.count"
 
+# ── Test 25: cycle-state=COMMITTED → allow (fast-path) ───────────────────────
+# cycle-state.json step_log matches active log + state=COMMITTED → allow immediately.
+tmp25=$(mktemp -d)
+mkdir -p "$tmp25/codegen/logging" "$tmp25/codegen/gate-pending"
+LOG25="$tmp25/codegen/logging/20260614_step1_feat.md"
+printf '# Session\n## committer Section\n\nCommitted.\n' >"$LOG25"
+jq -n \
+    --arg state "COMMITTED" \
+    --arg step_log "$LOG25" \
+    --arg session_id "test-sess-25" \
+    --arg verdict "" \
+    --arg updated_at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+    '{state:$state,step_log:$step_log,session_id:$session_id,verdict:$verdict,updated_at:$updated_at}' \
+    >"$tmp25/codegen/gate-pending/cycle-state.json"
+{
+    printf '%s\n' "$AGENT_ENTRY_DEVELOPER"
+    printf '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Write","input":{"file_path":"%s"}}]}}\n' "$LOG25"
+} >"$tmp25/transcript.jsonl"
+INPUT25=$(make_input "$tmp25/transcript.jsonl" "$tmp25" "false" "Done." "test-sess-25")
+run_test "cycle_state_committed_allows: cycle-state=COMMITTED + step_log match → allow" \
+    "allow" "$INPUT25" "$AGENT_ENTRY_DEVELOPER"
+rm -rf "$tmp25"
+
+# ── Test 26: cycle-state=COMMITTED but step_log mismatch → fall-through → block ─
+# cycle-state.json belongs to a different step log → authoritative, but mismatch → fall-through.
+rm -f "/tmp/claude-cycle-guard-test-sess-26.count"
+tmp26=$(mktemp -d)
+mkdir -p "$tmp26/codegen/logging" "$tmp26/codegen/gate-pending"
+LOG26_ACTIVE="$tmp26/codegen/logging/20260614_step1_feat.md"
+LOG26_OTHER="$tmp26/codegen/logging/20260614_step2_other.md"
+printf '# Session\n## dev-gate Section\nALL CLEAR ✅\n' >"$LOG26_ACTIVE"
+# cycle-state references a different log → mismatch → fall-through → standard logic blocks
+jq -n \
+    --arg state "COMMITTED" \
+    --arg step_log "$LOG26_OTHER" \
+    --arg session_id "test-sess-26" \
+    --arg verdict "" \
+    --arg updated_at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+    '{state:$state,step_log:$step_log,session_id:$session_id,verdict:$verdict,updated_at:$updated_at}' \
+    >"$tmp26/codegen/gate-pending/cycle-state.json"
+{
+    printf '%s\n' "$AGENT_ENTRY_DEVELOPER"
+    printf '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Write","input":{"file_path":"%s"}}]}}\n' "$LOG26_ACTIVE"
+} >"$tmp26/transcript.jsonl"
+INPUT26=$(make_input "$tmp26/transcript.jsonl" "$tmp26" "false" "Done." "test-sess-26")
+run_test "cycle_state_stale_step_log_falls_through: COMMITTED but step_log mismatch → fall-through → block" \
+    "block" "$INPUT26" "$AGENT_ENTRY_DEVELOPER"
+rm -rf "$tmp26"
+rm -f "/tmp/claude-cycle-guard-test-sess-26.count"
+
 echo ""
 echo "Results: $pass passed, $fail failed"
 

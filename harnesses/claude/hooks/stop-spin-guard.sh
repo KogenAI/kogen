@@ -48,14 +48,23 @@ block_counter_file="/tmp/claude-spin-${session_id}.count"
 
 debug_log stop-spin-guard "session=$session_id agent=$AGENT_TYPE"
 
-# Block count cap=2 — release to avoid wedging.
+# Resolve step log early for per-step counter scoping.
+step_log=$(session_log_from_transcript)
+
+# Block count cap=2 (two-line per-step counter: line1=step_log, line2=count).
+prev_step=""
 block_count=0
 if [ -r "$block_counter_file" ]; then
-    block_count=$(cat "$block_counter_file" 2>/dev/null || echo 0)
+    prev_step=$(sed -n '1p' "$block_counter_file" 2>/dev/null || printf '')
+    block_count=$(sed -n '2p' "$block_counter_file" 2>/dev/null || printf '0')
 fi
 case "$block_count" in
 '' | *[!0-9]*) block_count=0 ;;
 esac
+# Forward progress to a new step resets the block budget.
+if [ -n "$step_log" ] && [ "$step_log" != "$prev_step" ]; then
+    block_count=0
+fi
 if [ "$block_count" -ge 2 ]; then
     debug_log stop-spin-guard "skip: block cap=$block_count reached — releasing"
     rm -f "$block_counter_file"
@@ -102,7 +111,7 @@ fi
 
 # Consecutive same-developer spin detected — BLOCK and increment block counter.
 block_count=$((block_count + 1))
-printf '%s' "$block_count" >"$block_counter_file"
+printf '%s\n%s' "${step_log:-}" "$block_count" >"$block_counter_file"
 
 debug_log stop-spin-guard "BLOCK: consecutive_count=$consecutive_count block_count=$block_count agent=$AGENT_TYPE"
 

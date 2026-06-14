@@ -62,6 +62,8 @@ source "$(dirname "$0")/lib/hooks-lib.sh"
 source "$(dirname "$0")/lib/gate-select.sh"
 # shellcheck disable=SC1091
 source "$(dirname "$0")/lib/gate-result.sh"
+# shellcheck disable=SC1091
+source "$(dirname "$0")/lib/cycle-state.sh"
 parse_input
 
 # ── Stale-flag sweep helper ─────────────────────────────────────────────────
@@ -255,6 +257,11 @@ append_ve_section() {
     } >>"$log_file"
 }
 
+# _stamp_gated <verdict> — write cycle-state.json GATED with given verdict.
+_stamp_gated() {
+    write_cycle_state "GATED" "$log_file" "${session_id:-unknown}" "$1" "$project_dir"
+}
+
 failed_suffix() {
     local prior=0
     local n
@@ -286,6 +293,7 @@ mix | make)
             "$_started_at" "$(ts_now)" "$session_id" "" "$project_dir"
         append_ve_section "FAILED ❌ gate-runner-missing: $gate_runner not on PATH — gate did not execute" \
             "Gate runner '$gate_runner' is not installed or not on PATH. Gate '$gate' did not run."
+        _stamp_gated failed
         block "Gate runner '$gate_runner' not on PATH — gate did not execute. Install/activate mise (or the toolchain) so '$gate_runner' is available."
         exit 0
     fi
@@ -308,6 +316,7 @@ if [ "$mode" = "short" ]; then
             "true" "$rc" 0 1 "" "" \
             "$_started_at" "$(ts_now)" "$session_id" "$log_path" "$project_dir"
         append_ve_section "FAILED ❌ gate-runner-missing: exit=$rc — gate did not execute" "Log: $log_path"
+        _stamp_gated failed
         block "Gate '$gate' could not execute (exit $rc — command not found / not executable). Log: $log_path"
         exit 0
     fi
@@ -331,6 +340,7 @@ if [ "$mode" = "short" ]; then
                 "true" 0 "$actual_segs" "$expected_segs" "$render_verdict" "" \
                 "$(ts_now)" "$(ts_now)" "$session_id" "$log_path" "$project_dir"
             append_ve_section "FAILED ❌ no-op gate: gate produced 0 execution evidence (command='$gate' ran but no make/mix output found). Log: $log_path" ""
+            _stamp_gated failed
             block "Gate '$gate' appears to be a no-op (exit 0, no execution evidence). Log: $log_path"
             exit 0
         fi
@@ -343,6 +353,7 @@ if [ "$mode" = "short" ]; then
                 "true" 0 "$actual_segs" "$expected_segs" "$render_verdict" "" \
                 "$(ts_now)" "$(ts_now)" "$session_id" "$log_path" "$project_dir"
             append_ve_section "FAILED ❌ render check failed: $reason ($(failed_suffix))" "Log: $log_path"
+            _stamp_gated failed
             block "Render check failed after gate passed: $reason"
             ;;
         INCONCLUSIVE:*)
@@ -352,6 +363,7 @@ if [ "$mode" = "short" ]; then
                 "true" 0 "$actual_segs" "$expected_segs" "$render_verdict" "render-inconclusive" \
                 "$(ts_now)" "$(ts_now)" "$session_id" "$log_path" "$project_dir"
             append_ve_section "INCONCLUSIVE ⚠️ render-inconclusive: $inc_detail" "Log: $log_path"
+            _stamp_gated inconclusive
             append_render_detail "$render_verdict"
             ;;
         *)
@@ -359,6 +371,7 @@ if [ "$mode" = "short" ]; then
                 "true" 0 "$actual_segs" "$expected_segs" "$render_verdict" "" \
                 "$(ts_now)" "$(ts_now)" "$session_id" "$log_path" "$project_dir"
             append_ve_section "ALL CLEAR ✅" ""
+            _stamp_gated clear
             append_render_detail "$render_verdict"
             debug_log dev-gate "short-gate ALL CLEAR (render=${render_verdict:-skipped})"
             ;;
@@ -375,17 +388,20 @@ if [ "$mode" = "short" ]; then
             "true" "$rc" 0 1 "" "$short_seed" \
             "$(ts_now)" "$(ts_now)" "$session_id" "$log_path" "$project_dir"
         append_ve_section "INCONCLUSIVE ⚠️ $short_seed" "Log: $log_path"
+        _stamp_gated inconclusive
     elif [ -n "$short_pool" ]; then
         write_gate_result "$gate" "short" "$_diff_sha" "$_diff_count" \
             "true" "$rc" 0 1 "" "$short_pool" \
             "$(ts_now)" "$(ts_now)" "$session_id" "$log_path" "$project_dir"
         append_ve_section "INCONCLUSIVE ⚠️ $short_pool" "Log: $log_path"
+        _stamp_gated inconclusive
     else
         write_gate_result "$gate" "short" "$_diff_sha" "$_diff_count" \
             "true" "$rc" 0 1 "" "" \
             "$(ts_now)" "$(ts_now)" "$session_id" "$log_path" "$project_dir"
         block "Gate '$gate' failed (exit $rc). Log: $log_path. Tail:\n$tail_out"
         append_ve_section "FAILED ❌ exit=$rc ($(failed_suffix))" "Log: $log_path"
+        _stamp_gated failed
     fi
     exit 0
 fi
@@ -540,6 +556,7 @@ if [ ! -f "$exitcode_path" ]; then
     write_gate_result "$gate" "long" "$_diff_sha" "$_diff_count" \
         "true" "timeout" 0 1 "" "$classification" \
         "$started_at" "$long_ended_at" "$session_id" "$log_path" "$project_dir"
+    _stamp_gated inconclusive
     append_ve_section "INCONCLUSIVE ⚠️ $classification" \
         "Gate '$gate' did not complete within ${effective_timeout}s. Log: $log_path"
 
@@ -558,6 +575,7 @@ elif [ "$(cat "$exitcode_path")" = "0" ]; then
             "true" 0 "$long_actual_segs" "$long_expected_segs" "$long_render_verdict" "" \
             "$started_at" "$long_ended_at" "$session_id" "$log_path" "$project_dir"
         rm -f "$flag_dir/latest.flag"
+        _stamp_gated failed
         append_ve_section "FAILED ❌ no-op gate: gate produced 0 execution evidence. Log: $log_path" ""
         exit 0
     fi
@@ -570,6 +588,7 @@ elif [ "$(cat "$exitcode_path")" = "0" ]; then
             "true" 0 "$long_actual_segs" "$long_expected_segs" "$long_render_verdict" "" \
             "$started_at" "$long_ended_at" "$session_id" "$log_path" "$project_dir"
         rm -f "$flag_dir/latest.flag"
+        _stamp_gated failed
         append_ve_section "FAILED ❌ render check failed: $long_reason ($(failed_suffix))" \
             "Gate '$gate' passed but render check failed. Log: $log_path"
         block "Render check failed after gate passed: $long_reason"
@@ -581,6 +600,7 @@ elif [ "$(cat "$exitcode_path")" = "0" ]; then
             "true" 0 "$long_actual_segs" "$long_expected_segs" "$long_render_verdict" "render-inconclusive" \
             "$started_at" "$long_ended_at" "$session_id" "$log_path" "$project_dir"
         rm -f "$flag_dir/latest.flag"
+        _stamp_gated inconclusive
         append_ve_section "INCONCLUSIVE ⚠️ render-inconclusive: $long_inc_detail" "Gate '$gate' passed. Log: $log_path"
         append_render_detail "$long_render_verdict"
         ;;
@@ -589,6 +609,7 @@ elif [ "$(cat "$exitcode_path")" = "0" ]; then
             "true" 0 "$long_actual_segs" "$long_expected_segs" "$long_render_verdict" "" \
             "$started_at" "$long_ended_at" "$session_id" "$log_path" "$project_dir"
         rm -f "$flag_dir/latest.flag"
+        _stamp_gated clear
         append_ve_section "ALL CLEAR ✅" "Gate '$gate' passed. Log: $log_path"
         append_render_detail "$long_render_verdict"
         debug_log dev-gate "long-gate ALL CLEAR (render=${long_render_verdict:-skipped})"
@@ -603,6 +624,7 @@ else
             "true" "$rc" 0 1 "" "" \
             "$started_at" "$long_ended_at" "$session_id" "$log_path" "$project_dir"
         rm -f "$flag_dir/latest.flag"
+        _stamp_gated failed
         append_ve_section "FAILED ❌ gate-runner-missing: exit=$rc — gate did not execute" "Log: $log_path"
         block "Gate '$gate' could not execute (exit $rc). Log: $log_path"
         exit 0
@@ -624,6 +646,7 @@ else
             "true" "$rc" 0 1 "" "$long_class" \
             "$started_at" "$long_ended_at" "$session_id" "$log_path" "$project_dir"
         rm -f "$flag_dir/latest.flag"
+        _stamp_gated inconclusive
         append_ve_section "INCONCLUSIVE ⚠️ $long_class" \
             "$(printf 'Gate '"'"'%s'"'"' failed exit=%s (environmental). Log: %s\n\nTail:\n%s' "$gate" "$rc" "$log_path" "$tail_out")"
     else
@@ -632,6 +655,7 @@ else
             "true" "$rc" 0 1 "" "" \
             "$started_at" "$long_ended_at" "$session_id" "$log_path" "$project_dir"
         rm -f "$flag_dir/latest.flag"
+        _stamp_gated failed
         append_ve_section "FAILED ❌ exit=$rc ($(failed_suffix))" \
             "$(printf 'Gate '"'"'%s'"'"' failed. Log: %s\n\nTail:\n%s' "$gate" "$log_path" "$tail_out")"
     fi

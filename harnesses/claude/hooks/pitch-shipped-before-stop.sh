@@ -35,6 +35,8 @@ set -u
 
 source "$(dirname "$0")/lib/hooks-lib.sh"
 source "$(dirname "$0")/_role.sh"
+# shellcheck disable=SC1091
+source "$(dirname "$0")/lib/cycle-state.sh"
 parse_input
 
 session_id="${SESSION_ID:-unknown}"
@@ -48,19 +50,17 @@ if [ "${STOP_HOOK_ACTIVE:-false}" = "true" ]; then
     exit 0
 fi
 
-# 2. Retry cap.
+# 2. Retry cap (two-line per-step counter: line1=step_log, line2=count).
+prev_step=""
 count=0
 if [ -r "$counter_file" ]; then
-    count=$(cat "$counter_file" 2>/dev/null || echo 0)
+    prev_step=$(sed -n '1p' "$counter_file" 2>/dev/null || printf '')
+    count=$(sed -n '2p' "$counter_file" 2>/dev/null || printf '0')
 fi
 case "$count" in
 '' | *[!0-9]*) count=0 ;;
 esac
-if [ "$count" -ge 2 ]; then
-    debug_log pitch-shipped-before-stop "skip: retry-cap count=$count"
-    rm -f "$counter_file"
-    exit 0
-fi
+# Note: step-log-scoped reset happens after guard 6 discovers the active log.
 
 # 3. Role bypass — dashboard-build or explicit env suppression.
 _role=$(resolve_role)
@@ -91,6 +91,16 @@ if [ -z "$log" ] || [ ! -r "$log" ]; then
     exit 0
 fi
 
+# Step-scoped counter: reset when active log differs from prior counter scope.
+if [ -n "$log" ] && [ "$log" != "$prev_step" ]; then
+    count=0
+fi
+if [ "$count" -ge 2 ]; then
+    debug_log pitch-shipped-before-stop "skip: retry-cap count=$count step=$log"
+    rm -f "$counter_file"
+    exit 0
+fi
+
 slug=$(basename "$log" | sed -E 's/^[0-9]{8}_[0-9]{6}_(.+)_session\.md$/\1/')
 if [ -z "$slug" ] || [ "$slug" = "$(basename "$log")" ]; then
     debug_log pitch-shipped-before-stop "skip: no slug in log filename (free-form or multi-step log)"
@@ -100,13 +110,17 @@ fi
 debug_log pitch-shipped-before-stop "slug=$slug log=$(basename "$log")"
 
 # 7. Committer-section guard — only act after committer has committed.
+project_dir="${CWD:-${CLAUDE_PROJECT_DIR:-$PWD}}"
 if ! grep -qF "## committer Section" "$log" 2>/dev/null; then
     debug_log pitch-shipped-before-stop "skip: committer section absent"
     exit 0
 fi
 
+# Committer section detected → stamp COMMITTED so readers know the cycle is done.
+write_cycle_state "COMMITTED" "$log" "$session_id" "" "$project_dir"
+debug_log pitch-shipped-before-stop "stamped COMMITTED"
+
 # 8. Check if this pitch (by slug) is still in ready/.
-project_dir="${CWD:-${CLAUDE_PROJECT_DIR:-$PWD}}"
 ready_path="$project_dir/codegen/pitches/ready/${slug}.md"
 
 debug_log pitch-shipped-before-stop "ready_path=$ready_path"
@@ -118,7 +132,7 @@ fi
 
 # Pitch still in ready/ after commit → block and instruct.
 count=$((count + 1))
-printf '%s' "$count" >"$counter_file"
+printf '%s\n%s' "$log" "$count" >"$counter_file"
 
 block "Pitch ${slug}.md was committed but is still in codegen/pitches/ready/. Move it to shipped/ before stopping: mv codegen/pitches/ready/${slug}.md codegen/pitches/shipped/${slug}.md (plain mv — pitch files are untracked, NEVER git mv). Then stop. (autoship-guard attempt ${count}/2)"
 exit 0

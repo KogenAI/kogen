@@ -24,6 +24,9 @@ harnesses/pi/pi-extensions/*/coverage/
 codegen/benchmarks/
 
 
+# Cycle-state and gate-pending runtime files (written by hooks, never committed)
+codegen/gate-pending/
+
 # Temporary build artifacts
 tmp/
 test_harness/bench_run.log

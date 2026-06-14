@@ -53,24 +53,30 @@ project_dir="$CWD"
 
 debug_log stop-gate-failure-breaker "session=$session_id agent=$AGENT_TYPE project_dir=$project_dir"
 
-# Block count cap=2 — release to avoid wedging.
+# Require a discoverable session log (needed for step-scoped counter and failure count).
+log_file=$(session_log_from_transcript)
+if [ -z "$log_file" ]; then
+    debug_log stop-gate-failure-breaker "skip: no session log in transcript"
+    exit 0
+fi
+
+# Block count cap=2 (two-line per-step counter: line1=step_log, line2=count).
+prev_step=""
 block_count=0
 if [ -r "$block_counter_file" ]; then
-    block_count=$(cat "$block_counter_file" 2>/dev/null || echo 0)
+    prev_step=$(sed -n '1p' "$block_counter_file" 2>/dev/null || printf '')
+    block_count=$(sed -n '2p' "$block_counter_file" 2>/dev/null || printf '0')
 fi
 case "$block_count" in
 '' | *[!0-9]*) block_count=0 ;;
 esac
+# Forward progress to a new step resets the block budget.
+if [ -n "$log_file" ] && [ "$log_file" != "$prev_step" ]; then
+    block_count=0
+fi
 if [ "$block_count" -ge 2 ]; then
     debug_log stop-gate-failure-breaker "skip: block cap=$block_count reached — releasing"
     rm -f "$block_counter_file"
-    exit 0
-fi
-
-# Require a discoverable session log.
-log_file=$(session_log_from_transcript)
-if [ -z "$log_file" ]; then
-    debug_log stop-gate-failure-breaker "skip: no session log in transcript"
     exit 0
 fi
 
@@ -92,7 +98,7 @@ fi
 
 # Gate has failed ≥3 times with no progress — BLOCK and increment block counter.
 block_count=$((block_count + 1))
-printf '%s' "$block_count" >"$block_counter_file"
+printf '%s\n%s' "$log_file" "$block_count" >"$block_counter_file"
 
 debug_log stop-gate-failure-breaker "BLOCK: failed_count=$failed_count verdict=$verdict block_count=$block_count agent=$AGENT_TYPE"
 

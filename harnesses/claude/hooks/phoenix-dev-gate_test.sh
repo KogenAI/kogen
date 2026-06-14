@@ -235,5 +235,71 @@ assert_file_contains "render server-unready: INCONCLUSIVE note in log" "INCONCLU
 rm -f "$STUB6"
 rm -rf "$T6"
 
+# ── Test 7: GATED/clear stamp written on short-gate ALL CLEAR ────────────────
+T7=$(make_project)
+LOG7="$T7/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_step1.md"
+cat >"$LOG7" <<'MD'
+# Step
+
+## Plan
+
+**Gate**: `true`
+MD
+make_transcript "$T7/transcript.jsonl" "$LOG7"
+STUB7=$(make_render_stub "PASS")
+out7=$(printf '%s' "$(input_for "$T7" developer-phoenix-backend false sess1 "$T7/transcript.jsonl")" |
+    RENDER_CHECK_CMD="$STUB7" CODEGEN_DIR="$SCRIPT_DIR" bash "$HOOK" 2>/dev/null || true)
+cs_state7=""
+cs_file7="$T7/codegen/gate-pending/cycle-state.json"
+if [ -f "$cs_file7" ]; then
+    cs_state7=$(jq -r '.state // ""' "$cs_file7" 2>/dev/null || printf '')
+fi
+cs_verdict7=""
+if [ -f "$cs_file7" ]; then
+    cs_verdict7=$(jq -r '.verdict // ""' "$cs_file7" 2>/dev/null || printf '')
+fi
+if [ "$cs_state7" = "GATED" ] && [ "$cs_verdict7" = "clear" ]; then
+    [ -n "${VERBOSE:-}" ] && printf 'PASS: short-gate ALL CLEAR stamps GATED/clear in cycle-state.json\n'
+    pass=$((pass + 1))
+else
+    printf 'FAIL: short-gate ALL CLEAR — expected state=GATED verdict=clear, got state=%s verdict=%s\n' \
+        "$cs_state7" "$cs_verdict7"
+    fail=$((fail + 1))
+fi
+rm -f "$STUB7"
+rm -rf "$T7"
+
+# ── Test 8: GATED/inconclusive stamp written on short-gate INCONCLUSIVE ──────
+T8=$(make_project)
+LOG8="$T8/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_step1.md"
+cat >"$LOG8" <<'MD'
+# Step
+
+## Plan
+
+**Gate**: `true`
+MD
+make_transcript "$T8/transcript.jsonl" "$LOG8"
+STUB8=$(make_render_stub "INCONCLUSIVE:browser-not-installed")
+out8=$(printf '%s' "$(input_for "$T8" developer-phoenix-backend false sess1 "$T8/transcript.jsonl")" |
+    RENDER_CHECK_CMD="$STUB8" CODEGEN_DIR="$SCRIPT_DIR" bash "$HOOK" 2>/dev/null || true)
+cs_state8=""
+cs_verdict8=""
+cs_file8="$T8/codegen/gate-pending/cycle-state.json"
+if [ -f "$cs_file8" ]; then
+    cs_state8=$(jq -r '.state // ""' "$cs_file8" 2>/dev/null || printf '')
+    cs_verdict8=$(jq -r '.verdict // ""' "$cs_file8" 2>/dev/null || printf '')
+fi
+if [ "$cs_state8" = "GATED" ] && [ "$cs_verdict8" = "inconclusive" ]; then
+    [ -n "${VERBOSE:-}" ] && printf 'PASS: short-gate INCONCLUSIVE stamps GATED/inconclusive in cycle-state.json\n'
+    pass=$((pass + 1))
+else
+    printf 'FAIL: short-gate INCONCLUSIVE — expected state=GATED verdict=inconclusive, got state=%s verdict=%s\n' \
+        "$cs_state8" "$cs_verdict8"
+    fail=$((fail + 1))
+fi
+rm -f "$STUB8"
+rm -rf "$T8"
+
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

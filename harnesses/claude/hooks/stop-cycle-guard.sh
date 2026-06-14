@@ -18,6 +18,8 @@ source "$(dirname "$0")/lib/hooks-lib.sh"
 source "$(dirname "$0")/lib/gate-control.sh"
 # shellcheck disable=SC1091
 source "$(dirname "$0")/lib/gate-result.sh"
+# shellcheck disable=SC1091
+source "$(dirname "$0")/lib/cycle-state.sh"
 parse_input
 
 session_id="${SESSION_ID:-unknown}"
@@ -130,6 +132,31 @@ has_schedule_wakeup=$(jq -r '
 if [ -n "$has_schedule_wakeup" ]; then
     debug_log claude-cycle-guard "skip: ScheduleWakeup tool_use in transcript"
     exit 0
+fi
+
+# ── Cycle-state fast-path ──────────────────────────────────────────────────
+# cycle-state.json is authoritative when present AND step_log matches.
+# COMMITTED → cycle fully done (committer ran); allow stop immediately.
+# Other states → fall through to existing verdict/emoji/gate-result logic.
+cs_step=$(cycle_state_step_log "$project_dir")
+cs_state=$(cycle_state_get "$project_dir")
+if [ -n "$cs_state" ] && [ -n "$step_log" ] && [ "$cs_step" = "$step_log" ]; then
+    debug_log claude-cycle-guard "cycle-state=$cs_state step=$step_log (matched)"
+    if [ "$cs_state" = "COMMITTED" ]; then
+        debug_log claude-cycle-guard "skip: cycle-state=COMMITTED — full cycle done"
+        exit 0
+    fi
+    # GATED verdict=failed/inconclusive → still block (gate did not clear)
+    if [ "$cs_state" = "GATED" ]; then
+        cs_verdict=$(cycle_state_verdict "$project_dir")
+        if [ "$cs_verdict" = "clear" ]; then
+            # Gate cleared → fall through to dirty-tree check below
+            debug_log claude-cycle-guard "cycle-state=GATED/clear — continuing to dirty-tree check"
+        else
+            debug_log claude-cycle-guard "cycle-state=GATED verdict=$cs_verdict — gate did not clear"
+            # Fall through to standard verdict logic (will BLOCK below)
+        fi
+    fi
 fi
 
 # Verdict guard — behaviour differs by role:

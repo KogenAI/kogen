@@ -379,5 +379,53 @@ fi
 rm -f "$STUB18"
 rm -rf "$T18"
 
+# ── Test 19: GATED/clear stamp written when build passes (PASS render) ───────
+T19=$(make_tmp_site)
+mkdir -p "$T19/public"
+touch "$T19/public/app.css"
+printf '<html><head><link rel="stylesheet" href="app.css"></head><body><p>hi</p></body></html>\n' \
+    >"$T19/public/index.html"
+STUB19=$(mktemp)
+cat >"$STUB19" <<'STUB'
+#!/usr/bin/env bash
+printf 'RENDER_VERDICT=PASS\n'
+STUB
+chmod +x "$STUB19"
+printf '%s' "$(input_for "$T19")" |
+    RENDER_CHECK_CMD="$STUB19" CODEGEN_DIR="$SCRIPT_DIR" bash "$HOOK" 2>/dev/null || true
+cs_state19=""
+cs_verdict19=""
+cs_file19="$T19/codegen/gate-pending/cycle-state.json"
+if [ -f "$cs_file19" ]; then
+    cs_state19=$(jq -r '.state // ""' "$cs_file19" 2>/dev/null || printf '')
+    cs_verdict19=$(jq -r '.verdict // ""' "$cs_file19" 2>/dev/null || printf '')
+fi
+if [ "$cs_state19" = "GATED" ] && [ "$cs_verdict19" = "clear" ]; then
+    [ -n "${VERBOSE:-}" ] && printf 'PASS: build+render PASS stamps GATED/clear in cycle-state.json\n'
+    pass=$((pass + 1))
+else
+    printf 'FAIL: build+render PASS — expected state=GATED verdict=clear, got state=%s verdict=%s\n' \
+        "$cs_state19" "$cs_verdict19"
+    fail=$((fail + 1))
+fi
+rm -f "$STUB19"
+rm -rf "$T19"
+
+# ── Test 20: no cycle-state stamp when Hugo (no package.json) ────────────────
+T20=$(mktemp -d)
+# No package.json → Hugo case → _NPM_BUILD_SKIPPED=true → no stamp
+printf '%s' "$(input_for "$T20" developer-hugo)" |
+    CODEGEN_DIR="$SCRIPT_DIR" bash "$HOOK" 2>/dev/null || true
+cs_file20="$T20/codegen/gate-pending/cycle-state.json"
+if [ ! -f "$cs_file20" ]; then
+    [ -n "${VERBOSE:-}" ] && printf 'PASS: Hugo (no package.json) → no cycle-state stamp\n'
+    pass=$((pass + 1))
+else
+    cs_state20=$(jq -r '.state // ""' "$cs_file20" 2>/dev/null || printf '')
+    printf 'FAIL: Hugo should NOT stamp cycle-state.json, but found state=%s\n' "$cs_state20"
+    fail=$((fail + 1))
+fi
+rm -rf "$T20"
+
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

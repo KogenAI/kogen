@@ -35,6 +35,8 @@ set -u
 source "$(dirname "$0")/lib/hooks-lib.sh"
 # shellcheck disable=SC1091
 source "$(dirname "$0")/lib/gate-result.sh"
+# shellcheck disable=SC1091
+source "$(dirname "$0")/lib/cycle-state.sh"
 parse_input
 
 # Derive CODEGEN_DIR from script location when not inherited from environment.
@@ -269,6 +271,7 @@ if [ "$_runner_found" = "true" ]; then
         write_gate_result "$_gate_cmd" "short" "$_diff_sha" "$_diff_count" \
             "true" 0 1 1 "$render_verdict" "render-inconclusive" \
             "$_ts_now" "$_ts_now" "${session_id:-unknown}" "" "$project_dir"
+        write_cycle_state "GATED" "${log_file:-}" "${session_id:-unknown}" "inconclusive" "$project_dir"
         ;;
     FAIL:*)
         # fail() would have already exited; this branch is unreachable here
@@ -277,6 +280,7 @@ if [ "$_runner_found" = "true" ]; then
         write_gate_result "$_gate_cmd" "short" "$_diff_sha" "$_diff_count" \
             "true" 0 1 1 "$_render_for_result" "" \
             "$_ts_now" "$_ts_now" "${session_id:-unknown}" "" "$project_dir"
+        write_cycle_state "GATED" "${log_file:-}" "${session_id:-unknown}" "clear" "$project_dir"
         ;;
     esac
 fi

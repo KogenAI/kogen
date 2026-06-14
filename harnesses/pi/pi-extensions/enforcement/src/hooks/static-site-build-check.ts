@@ -162,6 +162,38 @@ export function register(pi: ExtensionAPI): void {
         `[pi-enforcement:static-site-build-check] render INCONCLUSIVE: ${detail} — gate is inconclusive, not ALL CLEAR\n`,
       );
     }
+    // Write cycle-state.json to record GATED verdict for this build.
+    // Absent when build already failed (early return above).
+    try {
+      const gateResultDir = path.join(projectDir, "codegen", "gate-pending");
+      fs.mkdirSync(gateResultDir, { recursive: true });
+      const cycleVerdict = renderVerdict.startsWith("INCONCLUSIVE:")
+        ? "inconclusive"
+        : renderVerdict.startsWith("FAIL:")
+          ? "failed"
+          : "clear";
+      const cycleState = {
+        state: "GATED",
+        step_log: "",
+        session_id:
+          process.env["SESSION_ID"] ?? process.env["CLAUDE_SESSION_ID"] ?? "",
+        verdict: cycleVerdict,
+        updated_at: new Date().toISOString(),
+      };
+      fs.writeFileSync(
+        path.join(gateResultDir, "cycle-state.json"),
+        JSON.stringify(cycleState, null, 2),
+      );
+      debugLog(
+        "static-site-build-check",
+        `wrote cycle-state.json state=GATED verdict=${cycleVerdict}`,
+      );
+    } catch (e) {
+      debugLog(
+        "static-site-build-check",
+        `failed to write cycle-state.json: ${String(e)}`,
+      );
+    }
     // PASS: no action needed (non-blocking success)
   });
 }

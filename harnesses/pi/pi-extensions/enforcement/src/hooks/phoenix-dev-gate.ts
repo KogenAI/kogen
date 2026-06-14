@@ -233,6 +233,23 @@ export function register(pi: ExtensionAPI): void {
         "phoenix-dev-gate",
         `wrote gate-result.json verdict=${structuredVerdict}`,
       );
+
+      // Write cycle-state.json alongside gate-result.json.
+      const cycleState = {
+        state: "GATED",
+        step_log: activeLog ?? "",
+        session_id: sessionId,
+        verdict: structuredVerdict,
+        updated_at: now,
+      };
+      fs.writeFileSync(
+        path.join(gateResultDir, "cycle-state.json"),
+        JSON.stringify(cycleState, null, 2),
+      );
+      debugLog(
+        "phoenix-dev-gate",
+        `wrote cycle-state.json state=GATED verdict=${structuredVerdict}`,
+      );
     } catch (e) {
       debugLog(
         "phoenix-dev-gate",

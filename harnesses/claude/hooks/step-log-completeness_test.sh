@@ -380,5 +380,102 @@ out=$(make_input "$T17" false "" "$T17/transcript.jsonl" | bash "$HOOK" 2>/dev/n
 assert_contains "gate-result.json clear enables ALL CLEAR detection → BLOCK" '"decision"' "$out"
 rm -rf "$T17"
 
+# ── Test 18: cycle-state=COMMITTED + step_log match → no block ───────────────
+T18=$(make_project)
+LOG18="$T18/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_step1_test.md"
+cat >"$LOG18" <<'MD'
+## developer-phoenix-backend Section
+
+## dev-gate Section
+
+ALL CLEAR ✅
+
+## reviewer-phoenix Section
+
+QUALITY APPROVED ✅
+MD
+mkdir -p "$T18/codegen/gate-pending"
+jq -n \
+    --arg state "COMMITTED" \
+    --arg step_log "$LOG18" \
+    --arg session_id "test-18" \
+    --arg verdict "" \
+    --arg updated_at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+    '{state:$state,step_log:$step_log,session_id:$session_id,verdict:$verdict,updated_at:$updated_at}' \
+    >"$T18/codegen/gate-pending/cycle-state.json"
+make_transcript "$T18/transcript.jsonl" "$LOG18"
+out=$(make_input "$T18" false "" "$T18/transcript.jsonl" | bash "$HOOK" 2>/dev/null || true)
+assert_not_contains "cycle-state=COMMITTED + step_log match → allow (fast-path)" '"decision"' "$out"
+rm -rf "$T18"
+
+# ── Test 19: cycle-state=REVIEWED + step_log match → BLOCK (curator not run) ─
+T19=$(make_project)
+LOG19="$T19/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_step1_test.md"
+cat >"$LOG19" <<'MD'
+## reviewer-phoenix Section
+
+QUALITY APPROVED ✅
+MD
+mkdir -p "$T19/codegen/gate-pending"
+jq -n \
+    --arg state "REVIEWED" \
+    --arg step_log "$LOG19" \
+    --arg session_id "test-19" \
+    --arg verdict "" \
+    --arg updated_at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+    '{state:$state,step_log:$step_log,session_id:$session_id,verdict:$verdict,updated_at:$updated_at}' \
+    >"$T19/codegen/gate-pending/cycle-state.json"
+make_transcript "$T19/transcript.jsonl" "$LOG19"
+out=$(make_input "$T19" false "" "$T19/transcript.jsonl" | bash "$HOOK" 2>/dev/null || true)
+assert_contains "cycle-state=REVIEWED + step_log match → BLOCK (curator not run)" '"decision"' "$out"
+rm -rf "$T19"
+
+# ── Test 20: cycle-state=CURATED + step_log match → BLOCK (committer not run) ─
+T20=$(make_project)
+LOG20="$T20/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_step1_test.md"
+cat >"$LOG20" <<'MD'
+## context-curator Section
+
+Done.
+MD
+mkdir -p "$T20/codegen/gate-pending"
+jq -n \
+    --arg state "CURATED" \
+    --arg step_log "$LOG20" \
+    --arg session_id "test-20" \
+    --arg verdict "" \
+    --arg updated_at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+    '{state:$state,step_log:$step_log,session_id:$session_id,verdict:$verdict,updated_at:$updated_at}' \
+    >"$T20/codegen/gate-pending/cycle-state.json"
+make_transcript "$T20/transcript.jsonl" "$LOG20"
+out=$(make_input "$T20" false "" "$T20/transcript.jsonl" | bash "$HOOK" 2>/dev/null || true)
+assert_contains "cycle-state=CURATED + step_log match → BLOCK (committer not run)" '"decision"' "$out"
+rm -rf "$T20"
+
+# ── Test 21: cycle-state=COMMITTED but step_log mismatch → fall-through (block from greps) ─
+T21=$(make_project)
+LOG21="$T21/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_step1_test.md"
+cat >"$LOG21" <<'MD'
+## developer-phoenix-backend Section
+
+## dev-gate Section
+
+ALL CLEAR ✅
+MD
+mkdir -p "$T21/codegen/gate-pending"
+jq -n \
+    --arg state "COMMITTED" \
+    --arg step_log "/some/other/log.md" \
+    --arg session_id "test-21" \
+    --arg verdict "" \
+    --arg updated_at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+    '{state:$state,step_log:$step_log,session_id:$session_id,verdict:$verdict,updated_at:$updated_at}' \
+    >"$T21/codegen/gate-pending/cycle-state.json"
+make_transcript "$T21/transcript.jsonl" "$LOG21"
+out=$(make_input "$T21" false "" "$T21/transcript.jsonl" | bash "$HOOK" 2>/dev/null || true)
+# Mismatch → fall-through → standard grep: dev+gate+no reviewer → BLOCK
+assert_contains "cycle-state stale step_log mismatch → fall-through → block from greps" '"decision"' "$out"
+rm -rf "$T21"
+
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

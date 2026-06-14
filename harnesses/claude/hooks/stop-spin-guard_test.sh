@@ -147,7 +147,7 @@ rm -rf "$tmp9"
 # Seed the counter file with 2 (cap) — guard must release and allow.
 tmp10=$(mktemp -d)
 n_agent_entries "developer-phoenix-backend" 5 >"$tmp10/transcript.jsonl"
-printf '2' >"/tmp/claude-spin-test-spin-sess-cap.count"
+printf '\n2' >"/tmp/claude-spin-test-spin-sess-cap.count"
 INPUT10=$(make_input "developer-phoenix-backend" "$tmp10/transcript.jsonl" "test-spin-sess-cap")
 run_test "cap_release: block_count=2 → cap reached → allow (cap cleared)" "allow" "$INPUT10"
 rm -rf "$tmp10"

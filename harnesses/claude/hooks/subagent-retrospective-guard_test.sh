@@ -249,5 +249,73 @@ out=$(make_input "planner-html" "$T13/transcript.jsonl" | bash "$HOOK" 2>/dev/nu
 assert_block "planner-html missing retrospective under ## Plan → block" "$out"
 rm -rf "$T13"
 
+# ── Test 14: reviewer-phoenix with retrospective → ALLOW + REVIEWED stamp written ─
+T14=$(make_project)
+LOG14="$T14/codegen/logging/step1_test.md"
+cat >"$LOG14" <<'MD'
+## reviewer-phoenix Section
+
+**Result**: QUALITY APPROVED ✅
+
+### What I Learned This Step
+
+- nothing notable
+MD
+make_transcript "$T14/transcript.jsonl" "$LOG14"
+# Pass cwd so cycle-state.sh can find project_dir
+INPUT14=$(jq -n \
+    --arg agent_type "reviewer-phoenix" \
+    --arg transcript_path "$T14/transcript.jsonl" \
+    --arg cwd "$T14" \
+    --arg session_id "test14" \
+    '{"hook_event_name":"SubagentStop","agent_type":$agent_type,"agent_id":"test","session_id":$session_id,"transcript_path":$transcript_path,"cwd":$cwd}')
+out=$(printf '%s' "$INPUT14" | bash "$HOOK" 2>/dev/null || true)
+assert_allow "reviewer-phoenix with retrospective → allow" "$out"
+cs_state=""
+cs_file="$T14/codegen/gate-pending/cycle-state.json"
+if [ -f "$cs_file" ]; then
+    cs_state=$(jq -r '.state // ""' "$cs_file" 2>/dev/null || printf '')
+fi
+if [ "$cs_state" = "REVIEWED" ]; then
+    [ -n "${VERBOSE:-}" ] && printf 'PASS: reviewer-phoenix stamps REVIEWED in cycle-state.json\n'
+    pass=$((pass + 1))
+else
+    printf 'FAIL: reviewer-phoenix should stamp REVIEWED, got state=%s\n' "$cs_state"
+    fail=$((fail + 1))
+fi
+rm -rf "$T14"
+
+# ── Test 15: developer-phoenix-backend with retrospective → ALLOW + NO stamp ─
+T15=$(make_project)
+LOG15="$T15/codegen/logging/step1_test.md"
+cat >"$LOG15" <<'MD'
+## developer-phoenix-backend Section
+
+**Result**: Done.
+
+### What I Learned This Step
+
+- nothing notable
+MD
+make_transcript "$T15/transcript.jsonl" "$LOG15"
+INPUT15=$(jq -n \
+    --arg agent_type "developer-phoenix-backend" \
+    --arg transcript_path "$T15/transcript.jsonl" \
+    --arg cwd "$T15" \
+    --arg session_id "test15" \
+    '{"hook_event_name":"SubagentStop","agent_type":$agent_type,"agent_id":"test","session_id":$session_id,"transcript_path":$transcript_path,"cwd":$cwd}')
+out=$(printf '%s' "$INPUT15" | bash "$HOOK" 2>/dev/null || true)
+assert_allow "developer-phoenix-backend with retrospective → allow (no stamp)" "$out"
+cs_file15="$T15/codegen/gate-pending/cycle-state.json"
+if [ ! -f "$cs_file15" ]; then
+    [ -n "${VERBOSE:-}" ] && printf 'PASS: developer-phoenix-backend does NOT stamp cycle-state.json\n'
+    pass=$((pass + 1))
+else
+    cs_state15=$(jq -r '.state // ""' "$cs_file15" 2>/dev/null || printf '')
+    printf 'FAIL: developer should NOT stamp cycle-state, but state=%s was written\n' "$cs_state15"
+    fail=$((fail + 1))
+fi
+rm -rf "$T15"
+
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

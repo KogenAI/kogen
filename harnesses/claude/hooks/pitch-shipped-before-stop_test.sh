@@ -194,7 +194,7 @@ Committed.
 MD
 make_transcript_with_log "$T9/transcript.jsonl" "$LOG9"
 COUNTER9="/tmp/claude-autoship-guard-sess9.count"
-printf '2' >"$COUNTER9"
+printf '%s\n2' "$LOG9" >"$COUNTER9"
 out9=$(mk_stop_input "sess9" "$T9/transcript.jsonl" "$T9" | bash "$HOOK" 2>/dev/null || true)
 assert_allow "allow: retry cap at 2 — hook exits without blocking" "$out9"
 rm -f "$COUNTER9"
@@ -220,12 +220,12 @@ make_transcript_with_log "$T11/transcript.jsonl" "$LOG11"
 COUNTER11="/tmp/claude-autoship-guard-sess11.count"
 rm -f "$COUNTER11"
 mk_stop_input "sess11" "$T11/transcript.jsonl" "$T11" | bash "$HOOK" >/dev/null 2>&1 || true
-cnt=$(cat "$COUNTER11" 2>/dev/null || echo 0)
+cnt=$(sed -n '2p' "$COUNTER11" 2>/dev/null || echo 0)
 if [ "$cnt" = "1" ]; then
-    [ -n "${VERBOSE:-}" ] && printf 'PASS: counter incremented to 1 on first block\n'
+    [ -n "${VERBOSE:-}" ] && printf 'PASS: counter incremented to 1 on first block (two-line format)\n'
     pass=$((pass + 1))
 else
-    printf 'FAIL: counter increment — expected 1, got %s\n' "$cnt"
+    printf 'FAIL: counter increment — expected line2=1, got %s\n' "$cnt"
     fail=$((fail + 1))
 fi
 rm -f "$COUNTER11"
@@ -361,6 +361,56 @@ else
     fail=$((fail + 1))
 fi
 rm -rf "$T19"
+
+# ── Test 20: COMMITTED stamp written when committer section present ───────────
+T20=$(make_project)
+PITCH20="$T20/codegen/pitches/shipped/my-feature.md" # pitch already shipped → allow stop
+printf '# My Feature\n' >"$PITCH20"
+LOG20="$T20/codegen/logging/20260601_123456_my-feature_session.md"
+cat >"$LOG20" <<'MD'
+## committer Section
+
+Committed sha abc123.
+MD
+make_transcript_with_log "$T20/transcript.jsonl" "$LOG20"
+out20=$(mk_stop_input "sess20" "$T20/transcript.jsonl" "$T20" | bash "$HOOK" 2>/dev/null || true)
+# Check cycle-state.json was written with state=COMMITTED
+cs_state20=""
+cs_file20="$T20/codegen/gate-pending/cycle-state.json"
+if [ -f "$cs_file20" ]; then
+    cs_state20=$(jq -r '.state // ""' "$cs_file20" 2>/dev/null || printf '')
+fi
+if [ "$cs_state20" = "COMMITTED" ]; then
+    [ -n "${VERBOSE:-}" ] && printf 'PASS: COMMITTED stamp written when committer section present\n'
+    pass=$((pass + 1))
+else
+    printf 'FAIL: COMMITTED stamp missing — expected state=COMMITTED, got: %s\n' "$cs_state20"
+    fail=$((fail + 1))
+fi
+rm -rf "$T20"
+
+# ── Test 21: no COMMITTED stamp when committer section absent ────────────────
+T21=$(make_project)
+PITCH21="$T21/codegen/pitches/ready/my-feature.md"
+printf '# My Feature\n' >"$PITCH21"
+LOG21="$T21/codegen/logging/20260601_123456_my-feature_session.md"
+cat >"$LOG21" <<'MD'
+## reviewer-phoenix Section
+
+Reviewed.
+MD
+make_transcript_with_log "$T21/transcript.jsonl" "$LOG21"
+out21=$(mk_stop_input "sess21" "$T21/transcript.jsonl" "$T21" | bash "$HOOK" 2>/dev/null || true)
+cs_file21="$T21/codegen/gate-pending/cycle-state.json"
+if [ ! -f "$cs_file21" ]; then
+    [ -n "${VERBOSE:-}" ] && printf 'PASS: no COMMITTED stamp when committer section absent\n'
+    pass=$((pass + 1))
+else
+    cs_state21=$(jq -r '.state // ""' "$cs_file21" 2>/dev/null || printf '')
+    printf 'FAIL: unexpected cycle-state.json written (state=%s) when committer absent\n' "$cs_state21"
+    fail=$((fail + 1))
+fi
+rm -rf "$T21"
 
 echo ""
 echo "Results: $pass passed, $fail failed"

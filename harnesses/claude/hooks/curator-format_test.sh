@@ -71,6 +71,34 @@ FIXTURE_NO_MAKE='{"hook_event_name":"SubagentStop","agent_type":"context-curator
 run_test "context-curator with no Makefile exits 0 silently" "0" "$FIXTURE_NO_MAKE"
 rm -rf "$NO_MAKE_DIR"
 
+# Test 5: context-curator stamps CURATED in cycle-state.json
+CURATOR_CS_DIR="$(mktemp -d)"
+mkdir -p "$CURATOR_CS_DIR/codegen/logging"
+LOG_CS="$CURATOR_CS_DIR/codegen/logging/20260614_120000_feat_session.md"
+printf '## context-curator Section\n\nDone.\n' >"$LOG_CS"
+# Build transcript with a Write to the log (so session_log_from_transcript resolves it)
+TRANSCRIPT_CS="$CURATOR_CS_DIR/transcript.jsonl"
+printf '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Write","input":{"file_path":"%s"}}]}}\n' \
+    "$LOG_CS" >"$TRANSCRIPT_CS"
+FIXTURE_CURATOR_CS=$(jq -n \
+    --arg cwd "$CURATOR_CS_DIR" \
+    --arg t "$TRANSCRIPT_CS" \
+    '{"hook_event_name":"SubagentStop","agent_type":"context-curator","agent_id":"abc","session_id":"test-cs","transcript_path":$t,"cwd":$cwd,"stop_hook_active":false}')
+printf '%s' "$FIXTURE_CURATOR_CS" | bash "$HOOK" 2>/dev/null || true
+cs_state=""
+cs_file="$CURATOR_CS_DIR/codegen/gate-pending/cycle-state.json"
+if [ -f "$cs_file" ]; then
+    cs_state=$(jq -r '.state // ""' "$cs_file" 2>/dev/null || printf '')
+fi
+if [ "$cs_state" = "CURATED" ]; then
+    [ -n "${VERBOSE:-}" ] && printf 'PASS: context-curator stamps CURATED in cycle-state.json\n'
+    pass=$((pass + 1))
+else
+    printf 'FAIL: context-curator should stamp CURATED, got state=%s\n' "$cs_state"
+    fail=$((fail + 1))
+fi
+rm -rf "$CURATOR_CS_DIR"
+
 echo ""
 echo "Results: $pass passed, $fail failed"
 

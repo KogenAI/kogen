@@ -86,6 +86,14 @@ Boundary guard (grep for consumer name) runs in both: hermetic bash tests via `s
 
 Assertion helper functions defined in `CodegenTestHarness.Assertions` should be reused across multiple test cases when they guard important postconditions (e.g., `assert_assets_deploy!`, `assert_generated_tests_pass!`). When an assertion is defined but has zero call sites, it represents a regression-guard gap — identify where that assertion logically belongs and wire it into at least one test case. Example: `assert_assets_deploy!/1` validates compile-first alias ordering (lines 291–315 in assertions.ex); it was wired into `no_ecto_scaffold_test.exs:45` to ensure `mix assets.deploy` succeeds under `--no-ecto` scaffold, a key compile precondition. Scan newly defined assertions during review; if a helper has no callers, route it to the test file that should guard it.
 
+## Bash Hook Test Debugging — Silent Crashes & Early Exits
+
+When bash hook tests show a pattern of ALL blocking tests failing while non-blocking tests pass, **suspect an early fatal crash (unbound variable under `set -u`, syntax error) rather than logic errors**. The hook exits non-zero BEFORE reaching the `block()` call, so the verdict JSON is never emitted and the output appears empty — this looks like "allow" to the test harness (no block JSON = PASSED).
+
+**Diagnostic pattern**: Run the hook in isolation with `set -x` to trace execution: `bash -x harnesses/claude/hooks/your-hook.sh 2>&1 | head -50`. Look for the line where execution stops (the last line printed before exit) — typically a variable reference before assignment (e.g., `write_cycle_state "..." "$project_dir" ...` when `project_dir` was assigned later in the script under `set -u`). Fix by **hoisting variable assignments before first use**, or by guarding with `${var:-}` if the variable is optional.
+
+**Test implication**: When a hook test suite suddenly goes from "all pass" to "all blocking tests fail", do NOT assume logic regression — check for unbound-variable crashes first. Run a single test case with `bash -x` to confirm the hook's execution trace reaches the intended block-decision point.
+
 ## Hermetic Regression Guards
 
 Two new test files in `test_harness/test/codegen_test_harness/` run under `make test-hermetic` (do NOT carry `@moduletag :slow`; only hermetic tests):
