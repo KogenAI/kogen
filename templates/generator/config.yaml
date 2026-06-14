@@ -175,6 +175,7 @@ roles:
       - Skill
       - WebFetch
       - WebSearch
+      - Workflow
       - Write
     system_prompt_file: harnesses/claude/claude-shape-system-prompt.txt
     append_project_context: true
