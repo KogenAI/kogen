@@ -243,6 +243,10 @@ Some generated system-prompt files may become stale and stay in the repo as lega
 
 **One-way knowledge boundary**: Codegen MUST NOT know about, name, or validate downstream consumer projects. Codegen installs artifacts into `~/.claude/` and `~/.pi/` only; if a consumer symlink is stale or if the consumer's own setup validation fails, that failure happens in the consumer's build (the right place). Codegen does not own consumer validation. This keeps codegen focused on generator mechanics and prevents coupling to downstream-specific paths or concerns. Any cross-consumer validation logic (e.g. drift-guard) violates this boundary and should be removed.
 
+## Enforcement Compiler — Renderer-Neutral Regex Tokens
+
+`enforcement_compiler.py` `_to_bash` does a literal `.replace(r"\s", "[[:space:]]")` — this fires inside character classes too, corrupting nested brackets. When defining regex patterns in `shared/enforcement/registry.yaml` that compile to both bash ERE and JavaScript regex, avoid `\s` inside char classes (`[^&\s]`, `[\s]`) — they become `[^&[[:space:]]]` (broken) in bash. Use `\S` instead (negated class that round-trips identically across both renderers): `match: "[^&]*\\S+"` → bash: `[^&]*\S+`; JS: `/[^&]*\S+/`. Verify by testing both `_to_bash` and `_to_ts` renderers on the pattern.
+
 ## Update When Changing
 
 Load this file when touching: `manifest.yaml`, `generate.sh`, `process_template.py`, `hook_registrations.py`, `enforcement_compiler.py`, `install.sh`, `uninstall.sh`, `codegen-build`, `codegen-scaffold`, `config.sh`, `resource_manager.sh`, `utils.sh`, or `shared/enforcement/registry.yaml`.
