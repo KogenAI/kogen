@@ -189,7 +189,7 @@ For every `harnesses/claude/hooks/<name>.sh` there is a paired `<name>_test.sh` 
 ### Section 11 — Summary
 
 - 17 ExUnit cases across 10 files cover the `build` mode for `claude` + `pi` harnesses against 2 stacks (phoenix scaffold/seed/gate/committer/iteration + static html_scaffold/iteration × 5 sub-stacks) plus 6 mode×harness launcher cells.
-- At HEAD: **52** bash hook test files run via `make test` — 50 in `harnesses/claude/hooks/` + 2 in `harnesses/claude/hooks/lib/` (`hooks-lib_test.sh` + `gate-select_test.sh`). `phoenix-dev-gate` is split into 3 files (`-short`, `-long`, `-concurrency`).
+- At HEAD: **74** bash hook test files run via `make test` — 68 in `harnesses/claude/hooks/` + 6 in `harnesses/claude/hooks/lib/`. `phoenix-dev-gate` is split into 3 files (`-short`, `-long`, `-concurrency`).
 - 6 mode×harness launcher cells now covered by `test_harness/test/stacks/modes/` (Stage 4): `claude-{debug,shape,refactor}` + `pi-{debug,shape,refactor}`.
 - After Stage 5: **9 phoenix mutations + `eex_render.sh`** have isolated unit tests (`*_test.sh` per script) wired into `make test` via `shared/scaffold/phoenix/run-tests.sh`. Two bash 3.2 bugs fixed: `router.sh` (`${@L}` → `tr`) and `eex_render.sh` (`declare -A` → direct loop).
 - After Stage 5: **all 4 pi-extensions** wired into `make test` via a for-loop. `web-utils` gained vitest + 1 test case. `subagents test:integration` guarded (no-op when `test/integration/` absent).

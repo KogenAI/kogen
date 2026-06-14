@@ -21,7 +21,7 @@ developer-phoenix-backend   ← ALL non-UI work in codegen (schemas, contexts, c
     ↓ (if frontend slice)
 developer-phoenix-frontend  ← only if HEEx/LiveView/Tailwind/JS changes needed
     ↓
-[dev-gate.sh hook]          ← fires automatically on agent stop
+[phoenix-dev-gate.sh hook]  ← fires automatically on agent stop
     ↓
 reviewer-phoenix
     ↓
@@ -48,9 +48,9 @@ In this repo "backend" means everything: Bash scripts, Python generator pipeline
 What the developer subagent runs after any change:
 
 1. Edit a `.md.j2` template, rule file, hook script, or scaffold script
-2. `make test` — hermetic bash hook unit tests + Pi extension npm tests; fast, no LLM calls
+2. `make test` — runs hook-parity, hook-header-parity, harness-parity, test-generator, enforce-registry-parity, test-hermetic (ExUnit), prompt-content-parity, tools-header-no-dup; also runs scaffold-phoenix render check + install round-trip + pi npm tests; fast, no LLM calls
 3. `make install` — regenerate agents, register hooks, render settings; propagates edits to `~/.claude/`
-4. Parity checks: `make rule-parity` / `make hook-parity` / `make harness-parity`
+4. Post-gate checks (optional): `make rule-parity` — `make test` already runs hook-parity and harness-parity; rule-parity is a standalone optional manual target
 5. `make test-stacks` — slow ExUnit scaffold suite; real LLM calls; run as pre-deploy gate
 
 **Gate command = `make test`** (fast, hermetic). `make test-stacks` is the pre-deploy gate (slow, real LLM calls). `make ci` does NOT exist in this repo — that is a Phoenix-only target. Planners: always emit `Gate: make test` for codegen tasks.
