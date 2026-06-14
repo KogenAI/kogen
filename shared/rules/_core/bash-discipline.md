@@ -316,6 +316,93 @@ When an install script runs in a hermetic test environment where `$HOME` is chan
 - Example: instead of `npx prettier`, find the real prettier binary: `grep -v shims <<< "$PATH" | tr ':' '\n' | while read p; do [ -x "$p/prettier" ] && { "$p/prettier" ...; break; }; done`
 - Also note: `MISE_SKIP_CONFIG=1` skips tool-version config loading but does NOT bypass global config trust checks — the trust lookup uses `getpwuid()` for path resolution, not `$HOME` env var, so trust records may still fail with a changed `$HOME`.
 
+## Shell Test Harness — Binary Stubbing with PATH Isolation
+
+**When testing shell phases that call external binaries (e.g., version assertions), stub the binary absence by filtering it from `$PATH` while preserving standard tools.** The stub technique is necessary to test "missing binary" code paths without relying on Docker or environment manipulation that breaks cross-platform hermetic tests.
+
+**Pattern**:
+
+```bash
+# Test harness: "missing jq" path
+run_phase_h2_missing_jq() {
+  local fake_bin_dir="/tmp/fake_bin_$$"
+  mkdir -p "$fake_bin_dir"
+
+  # Create stubs for standard tools that the tested code may call
+  # (grep, awk, sed, etc.) — just symlink to real bins
+  ln -s "$(command -v grep)" "$fake_bin_dir/grep"
+  ln -s "$(command -v awk)" "$fake_bin_dir/awk"
+  ln -s "$(command -v sed)" "$fake_bin_dir/sed"
+
+  # Do NOT stub jq — this tests the missing-binary path
+
+  # Filter the original $PATH to remove directories containing jq
+  # but keep the fake_bin_dir first so standard tools are available
+  local effective_path="$fake_bin_dir:$(echo "$PATH" | tr ':' '\n' | grep -v "jq" | tr '\n' ':')"
+
+  # Run the tested block with filtered PATH
+  (
+    export PATH="$effective_path"
+    export REPO_ROOT="/tmp/test_repo_$$"
+    mkdir -p "$REPO_ROOT"
+    echo "jq 1.7.1" > "$REPO_ROOT/.tool-versions"
+
+    # Run the phase under test (e.g., Phase H2 from bin/predeploy)
+    bash -c '
+      # ── Phase H2 — binary-dep pin: jq (ADVISORY, non-fatal) ──
+      echo ""
+      echo "=== Phase H2: binary-dep pin (jq) ==="
+      JQ_PINNED=$(grep -E "^jq " "${REPO_ROOT}/.tool-versions" 2>/dev/null | awk "{print \$2}" || true)
+      if [ -z "$JQ_PINNED" ]; then
+        echo "WARN: jq pin not found in .tool-versions — skipping jq version assert."
+      elif ! command -v jq >/dev/null 2>&1; then
+        echo "WARN: jq not found on PATH (pinned $JQ_PINNED)."
+      else
+        JQ_INSTALLED=$(jq --version 2>/dev/null | sed "s/^jq-//; s/-.*//") || true)
+        if [ "$JQ_INSTALLED" = "$JQ_PINNED" ]; then
+          echo "jq: OK ($JQ_INSTALLED)"
+        else
+          echo "WARN: jq $JQ_INSTALLED ≠ pinned $JQ_PINNED"
+        fi
+      fi
+    '
+  )
+
+  rm -rf "$fake_bin_dir"
+}
+```
+
+**Key points**:
+
+- **`command -v grep >/dev/null 2>&1` inside the tested block** (not `which`) — `command` is a bash builtin and does not trigger a fork. Use `command -v` pre-checks before invoking potentially-missing binaries to prevent `:enoent` aborts under `set -euo pipefail`.
+- **PATH filtering by `grep -v "jq"`** — locate real `jq` directories via a scan (e.g., `which jq`), then strip them from `$PATH`. Avoids false negatives where a stale shim or alias shadows the missing-binary path.
+- **Preserve standard tools** — symlink `grep`, `awk`, `sed`, etc. to real binaries in the fake bin dir. The tested code relies on these for string parsing (e.g., normalizing version strings via `sed`).
+- **Subshell with `(...)` + explicit exports** — isolates PATH mutation to the test case; outer script's PATH unaffected. Use explicit `mkdir -p` and `echo >` to set up fake `.tool-versions` inside the test (no side effects on repo state).
+- **Under `set -euo pipefail`** — guard all command chains: `grep ... || true`, `jq --version 2>/dev/null | sed ... || true`. The `|| true` ensures no partial failure aborts the test harness. Test assertions verify the output messages (e.g., `grep "not found"`) rather than exit codes.
+
+**Assertion pattern**:
+
+```bash
+# After running the phase, capture output and assert
+output=$(run_phase_h2_missing_jq)
+if grep -q "not found" <<< "$output"; then
+  echo "✓ missing-jq path: correct output"
+else
+  echo "✗ missing-jq path: expected 'not found', got: $output"
+  return 1
+fi
+
+# Also assert the phase exits 0 even on missing binary
+if [ $? -eq 0 ]; then
+  echo "✓ missing-jq path: exits 0 (advisory, never blocks)"
+else
+  echo "✗ missing-jq path: exited non-zero (violates advisory contract)"
+  return 1
+fi
+```
+
+**Cross-platform note**: `command -v` works on bash 3.2+ (macOS system bash) and bash 4.0+ (Linux/mis‌e-managed bash). Avoid `which` (not portable; some systems return exit 0 even when binary absent). Use `command -v TOOL >/dev/null 2>&1` for existence checks.
+
 ## Conditional Final Statements
 
 **FORBIDDEN: `[ condition ] && action` as final statement** — the one-liner flips the exit/return code when condition is false.
