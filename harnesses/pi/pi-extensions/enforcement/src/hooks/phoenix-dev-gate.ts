@@ -125,7 +125,76 @@ export function register(pi: ExtensionAPI): void {
       verdict = `FAILED ❌\n\n${output}\n${errOutput}`.trim();
     }
 
-    // ── Render verification (after gate passes) ────────────────────────────
+    // ── Wiring verification (static, before render) ────────────────────────
+    // Pi cannot block (session_shutdown is observe-only) — surface FAIL via stderr
+    // and downgrade verdict. This is the documented runtime-fidelity asymmetry.
+    let wiringSummary = "";
+    if (verdict === "ALL CLEAR ✅") {
+      const codegenDir = process.env["CODEGEN_DIR"] ?? "";
+      const wiringCheckScript = codegenDir
+        ? path.join(
+            codegenDir,
+            "harnesses",
+            "claude",
+            "hooks",
+            "lib",
+            "wiring-check.js",
+          )
+        : "";
+
+      if (wiringCheckScript && fs.existsSync(wiringCheckScript)) {
+        let wiringRaw = "";
+        try {
+          const opts: ExecSyncOptionsWithStringEncoding = {
+            cwd: codegenDir,
+            stdio: ["ignore", "pipe", "pipe"],
+            timeout: 10_000,
+            encoding: "utf8",
+          };
+          wiringRaw = execSync(
+            `node "${wiringCheckScript}" "${projectDir}"`,
+            opts,
+          ).toString();
+        } catch (err) {
+          wiringRaw =
+            (err as { stdout?: Buffer | string }).stdout?.toString() ?? "";
+        }
+
+        const wiringVerdictLine = wiringRaw
+          .split("\n")
+          .find((l) => l.startsWith("WIRING_VERDICT="));
+        const wiringVerdict = wiringVerdictLine
+          ? wiringVerdictLine.split("=")[1]
+          : "";
+
+        debugLog("phoenix-dev-gate", `wiring verdict: ${wiringVerdict}`);
+
+        if (wiringVerdict.startsWith("FAIL:")) {
+          const reason = wiringVerdict.slice("FAIL:".length);
+          process.stderr.write(
+            `[pi-enforcement:phoenix-dev-gate] wiring FAILED: ${reason}\n`,
+          );
+          verdict = `FAILED ❌ wiring check failed: ${reason}`;
+        } else if (wiringVerdict.startsWith("INCONCLUSIVE:")) {
+          const detail = wiringVerdict.slice("INCONCLUSIVE:".length);
+          debugLog(
+            "phoenix-dev-gate",
+            `wiring INCONCLUSIVE: ${detail} — non-fatal, ALL CLEAR kept`,
+          );
+          wiringSummary = `wiring: INCONCLUSIVE (${detail}) — skipped`;
+        } else if (wiringVerdict === "PASS") {
+          wiringSummary =
+            "wiring: PASS (all phx-* handlers have an element-driven side-effect test)";
+        }
+      } else {
+        debugLog(
+          "phoenix-dev-gate",
+          "wiring-check.js not found — skipping wiring check",
+        );
+      }
+    }
+
+    // ── Render verification (after gate passes and wiring OK) ──────────────
     let renderSummary = "";
     if (verdict === "ALL CLEAR ✅") {
       const codegenDir = process.env["CODEGEN_DIR"] ?? "";
@@ -268,6 +337,9 @@ export function register(pi: ExtensionAPI): void {
       verdict,
       "",
     ];
+    if (wiringSummary) {
+      verdictLines.push(wiringSummary, "");
+    }
     if (renderSummary) {
       verdictLines.push(renderSummary, "");
     }

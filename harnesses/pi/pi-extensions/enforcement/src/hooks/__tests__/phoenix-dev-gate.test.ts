@@ -77,6 +77,7 @@ describe("phoenix-dev-gate render-check integration", () => {
   async function runHookWithRenderStub(
     renderVerdictLine: string,
     gatePasses = true,
+    wiringVerdictLine = "WIRING_VERDICT=PASS",
   ) {
     const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "pdg-render-"));
     const stderrMessages: string[] = [];
@@ -96,7 +97,7 @@ describe("phoenix-dev-gate render-check integration", () => {
         `# Step\n\n## Plan\n\n**Gate**: \`${gatePasses ? "true" : "false"}\`\n`,
       );
 
-      // Set up fake render-check.js.
+      // Set up fake wiring-check.js and render-check.js.
       const fakeCodegenDir = tmpDir;
       const hooksLibDir = path.join(
         fakeCodegenDir,
@@ -106,6 +107,10 @@ describe("phoenix-dev-gate render-check integration", () => {
         "lib",
       );
       fs.mkdirSync(hooksLibDir, { recursive: true });
+      fs.writeFileSync(
+        path.join(hooksLibDir, "wiring-check.js"),
+        `process.stdout.write("${wiringVerdictLine}\\n");\n`,
+      );
       fs.writeFileSync(
         path.join(hooksLibDir, "render-check.js"),
         `process.stdout.write("${renderVerdictLine}\\n");\n`,
@@ -205,6 +210,145 @@ describe("phoenix-dev-gate render-check integration", () => {
     assert.ok(
       logContents.includes("ALL CLEAR"),
       `expected ALL CLEAR in log: ${logContents}`,
+    );
+  });
+});
+
+// ── Wiring-check stub tests ──────────────────────────────────────────────────
+// Verifies the Pi phoenix-dev-gate hook surfaces wiring FAIL to stderr and
+// downgrades the verdict; PASS adds a wiring: summary line to the log.
+
+describe("phoenix-dev-gate wiring-check integration", () => {
+  async function runHookWithWiringStub(wiringVerdictLine: string) {
+    // Use the runHookWithRenderStub helper with a PASS render verdict so the
+    // render step doesn't interfere with wiring assertions.
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "pdg-wiring-"));
+    const stderrMessages: string[] = [];
+    const origStderrWrite = process.stderr.write.bind(process.stderr);
+    process.stderr.write = (msg: string | Uint8Array) => {
+      stderrMessages.push(typeof msg === "string" ? msg : msg.toString());
+      return true;
+    };
+
+    try {
+      const loggingDir = path.join(tmpDir, "codegen", "logging");
+      fs.mkdirSync(loggingDir, { recursive: true });
+      const logPath = path.join(loggingDir, "20260101_000000_step1.md");
+      fs.writeFileSync(
+        logPath,
+        `# Step\n\n## Plan\n\n**Gate**: \`true\`\n`,
+      );
+
+      const fakeCodegenDir = tmpDir;
+      const hooksLibDir = path.join(
+        fakeCodegenDir,
+        "harnesses",
+        "claude",
+        "hooks",
+        "lib",
+      );
+      fs.mkdirSync(hooksLibDir, { recursive: true });
+      // wiring-check stub emits the requested verdict
+      fs.writeFileSync(
+        path.join(hooksLibDir, "wiring-check.js"),
+        `process.stdout.write("${wiringVerdictLine}\\n");\n`,
+      );
+      // render-check stub always passes (so it doesn't interfere)
+      fs.writeFileSync(
+        path.join(hooksLibDir, "render-check.js"),
+        `process.stdout.write("RENDER_VERDICT=PASS\\n");\n`,
+      );
+
+      process.env["AGENT_TYPE"] = "developer-phoenix-backend";
+      process.env["CODEGEN_DIR"] = fakeCodegenDir;
+      process.env["CWD"] = tmpDir;
+
+      const { register } = await import("../phoenix-dev-gate");
+      let capturedHandler: (event: unknown) => Promise<unknown>;
+      const mockPi = {
+        on: (_event: string, handler: (event: unknown) => Promise<unknown>) => {
+          capturedHandler = handler;
+        },
+      };
+      register(
+        mockPi as unknown as import("@earendil-works/pi-coding-agent").ExtensionAPI,
+      );
+      await capturedHandler!(
+        makeShutdownEvent("developer-phoenix-backend", tmpDir),
+      );
+
+      const logContents = fs.readFileSync(logPath, "utf8");
+      return { stderrMessages, logContents };
+    } finally {
+      process.stderr.write = origStderrWrite;
+      delete process.env["AGENT_TYPE"];
+      delete process.env["CODEGEN_DIR"];
+      delete process.env["CWD"];
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    }
+  }
+
+  it("wiring FAIL: surfaces to stderr and downgrades verdict", async () => {
+    const { stderrMessages, logContents } = await runHookWithWiringStub(
+      "WIRING_VERDICT=FAIL:phx-click@#submit-btn",
+    );
+    const hasWiringFail = stderrMessages.some(
+      (m) => m.includes("wiring FAILED") || m.includes("submit-btn"),
+    );
+    assert.ok(
+      hasWiringFail,
+      `expected wiring FAILED in stderr, got: ${stderrMessages.join("")}`,
+    );
+    // Verdict should be downgraded (not ALL CLEAR)
+    assert.ok(
+      !logContents.includes("ALL CLEAR"),
+      `expected verdict downgraded from ALL CLEAR, got: ${logContents}`,
+    );
+    assert.ok(
+      logContents.includes("FAILED") || logContents.includes("wiring check failed"),
+      `expected wiring failure note in log: ${logContents}`,
+    );
+  });
+
+  it("wiring PASS: adds wiring summary to log and ALL CLEAR kept", async () => {
+    const { stderrMessages, logContents } = await runHookWithWiringStub(
+      "WIRING_VERDICT=PASS",
+    );
+    const hasWiringFail = stderrMessages.some((m) =>
+      m.includes("wiring FAILED"),
+    );
+    assert.ok(
+      !hasWiringFail,
+      `unexpected wiring FAILED for PASS: ${stderrMessages.join("")}`,
+    );
+    assert.ok(
+      logContents.includes("ALL CLEAR"),
+      `expected ALL CLEAR in log: ${logContents}`,
+    );
+    assert.ok(
+      logContents.includes("wiring: PASS"),
+      `expected wiring: PASS summary in log: ${logContents}`,
+    );
+  });
+
+  it("wiring INCONCLUSIVE: non-fatal, ALL CLEAR kept, summary in log", async () => {
+    const { stderrMessages, logContents } = await runHookWithWiringStub(
+      "WIRING_VERDICT=INCONCLUSIVE:no-heex",
+    );
+    const hasWiringFail = stderrMessages.some((m) =>
+      m.includes("wiring FAILED"),
+    );
+    assert.ok(
+      !hasWiringFail,
+      `unexpected wiring FAILED for INCONCLUSIVE: ${stderrMessages.join("")}`,
+    );
+    assert.ok(
+      logContents.includes("ALL CLEAR"),
+      `expected ALL CLEAR in log: ${logContents}`,
+    );
+    assert.ok(
+      logContents.includes("wiring: INCONCLUSIVE"),
+      `expected wiring INCONCLUSIVE note in log: ${logContents}`,
     );
   });
 });

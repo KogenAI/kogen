@@ -153,6 +153,35 @@ run_phoenix_render_check() {
     printf '%s' "$raw" | grep '^RENDER_VERDICT=' | head -n 1 | cut -d= -f2-
 }
 
+# ── Wiring verification helper ──────────────────────────────────────────────
+# Invokes wiring-check.js against the project dir to statically verify that
+# every phx-* handler has an element-driven test with a side-effect assertion.
+# Returns the verdict string: PASS, FAIL:<detail>, INCONCLUSIVE:<reason>, or "".
+run_phoenix_wiring_check() {
+    local -a wiring_check_cmd_arr
+    read -ra wiring_check_cmd_arr <<<"${WIRING_CHECK_CMD:-node \"${CODEGEN_DIR:-}/harnesses/claude/hooks/lib/wiring-check.js\"}"
+    local raw
+    raw=$("${wiring_check_cmd_arr[@]}" "$project_dir" 2>/dev/null || true)
+    printf '%s' "$raw" | grep '^WIRING_VERDICT=' | head -n 1 | cut -d= -f2-
+}
+
+# Appends wiring verdict detail to the log file as a trailing line.
+# $1 = wiring verdict string (may be empty)
+append_wiring_detail() {
+    local wv="$1"
+    [ -z "$wv" ] && return 0
+    [ -n "$log_file" ] && [ -w "$log_file" ] || return 0
+    case "$wv" in
+    PASS)
+        printf 'wiring: PASS (all phx-* handlers have an element-driven side-effect test)\n' >>"$log_file"
+        ;;
+    INCONCLUSIVE:*)
+        local detail="${wv#INCONCLUSIVE:}"
+        printf 'wiring: INCONCLUSIVE (%s) — skipped\n' "$detail" >>"$log_file"
+        ;;
+    esac
+}
+
 # Appends render verdict detail to the log file as a trailing line.
 # $1 = render verdict string (may be empty)
 append_render_detail() {
@@ -329,21 +358,43 @@ if [ "$mode" = "short" ]; then
         expected_segs=$(printf '%s' "$gate" | tr '&' '\n' | awk '/^\s*(make|mix) /{n++} END{print n+0}')
         actual_segs=$(awk '/^(make|mix) |ALL CLEAR /{n++} END{print n+0}' "$log_path" 2>/dev/null || printf '0')
 
-        # Gate passed — run render verification before declaring ALL CLEAR.
-        render_verdict=$(run_phoenix_render_check)
-        debug_log dev-gate "short-gate exit=0; render_verdict=${render_verdict:-none} evidence=$actual_segs/$expected_segs"
-
         # Check execution evidence (no-op gate detection) — only when make/mix segs expected
         if [ "$expected_segs" -gt 0 ] && [ "$actual_segs" -lt "$expected_segs" ]; then
             debug_log dev-gate "short-gate no-op: evidence=$actual_segs < expected=$expected_segs"
             write_gate_result "$gate" "short" "$_diff_sha" "$_diff_count" \
-                "true" 0 "$actual_segs" "$expected_segs" "$render_verdict" "" \
+                "true" 0 "$actual_segs" "$expected_segs" "" "" \
                 "$(ts_now)" "$(ts_now)" "$session_id" "$log_path" "$project_dir"
             append_ve_section "FAILED ❌ no-op gate: gate produced 0 execution evidence (command='$gate' ran but no make/mix output found). Log: $log_path" ""
             _stamp_gated failed
             block "Gate '$gate' appears to be a no-op (exit 0, no execution evidence). Log: $log_path"
             exit 0
         fi
+
+        # Wiring check (static) — runs before render (runtime); fail-open only when
+        # checker can't run (INCONCLUSIVE), never on a found gap (FAIL blocks).
+        wiring_verdict=$(run_phoenix_wiring_check)
+        debug_log dev-gate "short-gate wiring_verdict=${wiring_verdict:-none}"
+
+        case "$wiring_verdict" in
+        FAIL:*)
+            wiring_reason="${wiring_verdict#FAIL:}"
+            debug_log dev-gate "wiring check FAIL: $wiring_reason"
+            write_gate_result "$gate" "short" "$_diff_sha" "$_diff_count" \
+                "true" 0 "$actual_segs" "$expected_segs" "" "" \
+                "$(ts_now)" "$(ts_now)" "$session_id" "$log_path" "$project_dir"
+            append_ve_section "FAILED ❌ wiring check failed: handlers without an element-driven side-effect test: $wiring_reason ($(failed_suffix))" "Log: $log_path"
+            _stamp_gated failed
+            block "Wiring check failed: $wiring_reason"
+            exit 0
+            ;;
+        *)
+            append_wiring_detail "$wiring_verdict"
+            ;;
+        esac
+
+        # Gate passed + wiring OK — run render verification before declaring ALL CLEAR.
+        render_verdict=$(run_phoenix_render_check)
+        debug_log dev-gate "short-gate exit=0; render_verdict=${render_verdict:-none} evidence=$actual_segs/$expected_segs"
 
         case "$render_verdict" in
         FAIL:*)
@@ -561,7 +612,7 @@ if [ ! -f "$exitcode_path" ]; then
         "Gate '$gate' did not complete within ${effective_timeout}s. Log: $log_path"
 
 elif [ "$(cat "$exitcode_path")" = "0" ]; then
-    # Gate passed — execution evidence check + render verification
+    # Gate passed — execution evidence check + wiring check + render verification
     long_expected_segs=$(printf '%s' "$gate" | tr '&' '\n' | awk '/^\s*(make|mix) /{n++} END{print n+0}')
     long_actual_segs=$(awk '/^(make|mix) |ALL CLEAR /{n++} END{print n+0}' "$log_path" 2>/dev/null || printf '0')
 
@@ -579,6 +630,30 @@ elif [ "$(cat "$exitcode_path")" = "0" ]; then
         append_ve_section "FAILED ❌ no-op gate: gate produced 0 execution evidence. Log: $log_path" ""
         exit 0
     fi
+
+    # Wiring check (static) — runs before render (runtime); fail-open only when
+    # checker can't run (INCONCLUSIVE), never on a found gap (FAIL blocks).
+    long_wiring_verdict=$(run_phoenix_wiring_check)
+    debug_log dev-gate "long-gate wiring_verdict=${long_wiring_verdict:-none}"
+
+    case "$long_wiring_verdict" in
+    FAIL:*)
+        long_wiring_reason="${long_wiring_verdict#FAIL:}"
+        debug_log dev-gate "wiring check FAIL: $long_wiring_reason"
+        write_gate_result "$gate" "long" "$_diff_sha" "$_diff_count" \
+            "true" 0 "$long_actual_segs" "$long_expected_segs" "" "" \
+            "$started_at" "$long_ended_at" "$session_id" "$log_path" "$project_dir"
+        rm -f "$flag_dir/latest.flag"
+        _stamp_gated failed
+        append_ve_section "FAILED ❌ wiring check failed: handlers without an element-driven side-effect test: $long_wiring_reason ($(failed_suffix))" \
+            "Gate '$gate' passed but wiring check failed. Log: $log_path"
+        block "Wiring check failed: $long_wiring_reason"
+        exit 0
+        ;;
+    *)
+        append_wiring_detail "$long_wiring_verdict"
+        ;;
+    esac
 
     case "$long_render_verdict" in
     FAIL:*)

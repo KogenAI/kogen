@@ -117,6 +117,19 @@ STUB
     printf '%s' "$stub_path"
 }
 
+# make_wiring_stub <verdict> — creates an executable script that emits a wiring verdict.
+make_wiring_stub() {
+    local verdict_to_emit="$1"
+    local stub_path
+    stub_path=$(mktemp)
+    cat >"$stub_path" <<STUB
+#!/usr/bin/env bash
+printf 'WIRING_VERDICT=%s\n' '$verdict_to_emit'
+STUB
+    chmod +x "$stub_path"
+    printf '%s' "$stub_path"
+}
+
 # ── Test 1: render PASS — short gate success + render PASS → ALL CLEAR ───────
 T1=$(make_project)
 LOG1="$T1/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_step1.md"
@@ -300,6 +313,111 @@ else
 fi
 rm -f "$STUB8"
 rm -rf "$T8"
+
+# ── Test 9: wiring FAIL — short gate blocks ───────────────────────────────────
+T9=$(make_project)
+LOG9="$T9/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_step1.md"
+cat >"$LOG9" <<'MD'
+# Step
+
+## Plan
+
+**Gate**: `true`
+MD
+make_transcript "$T9/transcript.jsonl" "$LOG9"
+WSTUB9=$(make_wiring_stub "FAIL:phx-click@#submit-btn")
+RSTUB9=$(make_render_stub "PASS")
+out9=$(printf '%s' "$(input_for "$T9" developer-phoenix-backend false sess1 "$T9/transcript.jsonl")" |
+    WIRING_CHECK_CMD="$WSTUB9" RENDER_CHECK_CMD="$RSTUB9" CODEGEN_DIR="$SCRIPT_DIR" bash "$HOOK" 2>/dev/null || true)
+assert_contains "wiring FAIL (short): block emitted" '"decision": "block"' "$out9"
+assert_file_contains "wiring FAIL (short): FAILED in log" "FAILED" "$LOG9"
+assert_file_contains "wiring FAIL (short): wiring detail in log" "wiring check failed" "$LOG9"
+assert_file_not_contains "wiring FAIL (short): no ALL CLEAR" "ALL CLEAR" "$LOG9"
+rm -f "$WSTUB9" "$RSTUB9"
+rm -rf "$T9"
+
+# ── Test 10: wiring PASS — short gate proceeds to render ─────────────────────
+T10=$(make_project)
+LOG10="$T10/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_step1.md"
+cat >"$LOG10" <<'MD'
+# Step
+
+## Plan
+
+**Gate**: `true`
+MD
+make_transcript "$T10/transcript.jsonl" "$LOG10"
+WSTUB10=$(make_wiring_stub "PASS")
+RSTUB10=$(make_render_stub "PASS")
+out10=$(printf '%s' "$(input_for "$T10" developer-phoenix-backend false sess1 "$T10/transcript.jsonl")" |
+    WIRING_CHECK_CMD="$WSTUB10" RENDER_CHECK_CMD="$RSTUB10" CODEGEN_DIR="$SCRIPT_DIR" bash "$HOOK" 2>/dev/null || true)
+assert_not_contains "wiring PASS (short): no block" '"decision": "block"' "$out10"
+assert_file_contains "wiring PASS (short): ALL CLEAR in log" "ALL CLEAR" "$LOG10"
+assert_file_contains "wiring PASS (short): wiring summary in log" "wiring: PASS" "$LOG10"
+rm -f "$WSTUB10" "$RSTUB10"
+rm -rf "$T10"
+
+# ── Test 11: wiring INCONCLUSIVE — short gate proceeds (fall through) ─────────
+T11=$(make_project)
+LOG11="$T11/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_step1.md"
+cat >"$LOG11" <<'MD'
+# Step
+
+## Plan
+
+**Gate**: `true`
+MD
+make_transcript "$T11/transcript.jsonl" "$LOG11"
+WSTUB11=$(make_wiring_stub "INCONCLUSIVE:no-heex")
+RSTUB11=$(make_render_stub "PASS")
+out11=$(printf '%s' "$(input_for "$T11" developer-phoenix-backend false sess1 "$T11/transcript.jsonl")" |
+    WIRING_CHECK_CMD="$WSTUB11" RENDER_CHECK_CMD="$RSTUB11" CODEGEN_DIR="$SCRIPT_DIR" bash "$HOOK" 2>/dev/null || true)
+assert_not_contains "wiring INCONCLUSIVE (short): no block" '"decision": "block"' "$out11"
+assert_file_contains "wiring INCONCLUSIVE (short): ALL CLEAR in log" "ALL CLEAR" "$LOG11"
+assert_file_contains "wiring INCONCLUSIVE (short): wiring INCONCLUSIVE note in log" "wiring: INCONCLUSIVE" "$LOG11"
+rm -f "$WSTUB11" "$RSTUB11"
+rm -rf "$T11"
+
+# ── Test 12: long-gate wiring FAIL — blocks, no render section ───────────────
+# Gate runs in long mode via gate-json block in the plan.
+# Stub WIRING_CHECK_CMD to return FAIL and assert:
+#   - decision: block in output
+#   - log contains "FAILED" and "wiring check failed"
+#   - log does NOT contain a render section (no fallthrough into render case)
+T12=$(make_project)
+LOG12="$T12/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_step1.md"
+# Create a stub gate script that exits 0 and emits execution evidence
+GATE12=$(mktemp)
+cat >"$GATE12" <<'GATESTUB'
+#!/usr/bin/env bash
+printf 'make test\nALL CLEAR\n'
+exit 0
+GATESTUB
+chmod +x "$GATE12"
+cat >"$LOG12" <<MD
+# Step
+
+## Plan
+
+**Gate**:
+
+\`\`\`gate-json
+{"command": "$GATE12", "mode": "long", "timeout": 30}
+\`\`\`
+MD
+make_transcript "$T12/transcript.jsonl" "$LOG12"
+WSTUB12=$(make_wiring_stub "FAIL:phx-click@#save")
+RSTUB12=$(make_render_stub "PASS")
+out12=$(printf '%s' "$(input_for "$T12" developer-phoenix-backend false sess1 "$T12/transcript.jsonl")" |
+    WIRING_CHECK_CMD="$WSTUB12" RENDER_CHECK_CMD="$RSTUB12" \
+        DEV_GATE_POLL_TIMEOUT_OVERRIDE=30 \
+        CODEGEN_DIR="$SCRIPT_DIR" bash "$HOOK" 2>/dev/null || true)
+assert_contains "long wiring FAIL: block emitted" '"decision": "block"' "$out12"
+assert_file_contains "long wiring FAIL: FAILED in log" "FAILED" "$LOG12"
+assert_file_contains "long wiring FAIL: wiring detail in log" "wiring check failed" "$LOG12"
+assert_file_not_contains "long wiring FAIL: no render section (no fallthrough)" "render check" "$LOG12"
+rm -f "$WSTUB12" "$RSTUB12" "$GATE12"
+rm -rf "$T12"
 
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]
