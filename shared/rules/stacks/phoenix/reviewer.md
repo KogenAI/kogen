@@ -13,6 +13,7 @@ Phoenix-specific checks layered onto reviewer 15-step process.
   2. **Child LiveView nesting** — `live_render` of a child LiveView without `layout: false` causes double-layout render; flag if absent.
   3. **Autofocus** — keyboard-first overlay/modal input with no `phx-mounted={JS.focus()}` or `mounted()` hook; flag if absent.
   4. **Cursor** — interactive element (`<.link>`, `phx-click` row, button-styled `<div>`) without `cursor-pointer` (Tailwind preflight resets to `cursor: default`); flag if absent.
+  5. **Handler wiring** — every `phx-click`/`phx-submit`/`phx-change`/`phx-keyup` handler has a LiveView test that drives the REAL rendered element (`element("#id") |> render_*`) and asserts a SIDE EFFECT (not just the rendered label); a handler with no such test, or a test that asserts only `render(view) =~ "…"`, is a blocking review issue.
 - **14 Deployment**: GitHub workflows edit `.github/github_workflows.ex` → `mix github_workflows.generate`. Never `.yml` directly.
 - **15 Translation**: empty `msgstr ""` in `en/*.po` is CORRECT (Gettext fallback). Flag only non-English locales.
 

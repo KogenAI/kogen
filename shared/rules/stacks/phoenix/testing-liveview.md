@@ -34,6 +34,8 @@ assert_received {:build_started, _slug}    # the side effect actually fired
 
 Select the REAL element (`element("#id")` / `element("button", "Start")`), NOT `render_click(view, "event", %{})` with a hand-fed event name — the hand-fed form bypasses the rendered wiring, which is the exact thing being verified. For a side effect crossing a process boundary, assert via an observable signal (message to the test pid through the PUBLIC protocol, a file existing, a GenServer state query) — NEVER a test-pid injected into prod code (already forbidden here). A handler with no such test is a blocking review issue. **Browser tests are NOT required** — client-JS-only behavior (keyboard map, focus-on-open, hold-Space, backdrop click-through) gets a ONE-TIME manual browser smoke noted in the session log, not a Wallaby/Playwright suite. A handler whose contract IS a state change MUST assert the REAL effect crossing a boundary (DB row, file, message to test pid via public protocol, GenServer state) — asserting ONLY `render(view) =~ "..."` for a state-change handler is a blocking review issue: the rendered string can lag, be hard-coded, or render into a blank shell.
 
+**Keyboard-driven flows: test the CHAIN, not just the keys.** A keyboard-first LiveView that lets the operator complete a multi-step flow without a mouse MUST have ONE chained test that drives the whole journey via `render_keydown` on the REAL elements (e.g. open → type → submit-via-Enter → navigate → trigger), asserting the terminal side effect — with NO `render_click` on a submit button anywhere in that test. Per-key tests do NOT substitute: each key can pass while the chain is dead (a swallowed Enter breaks the journey at step 2).
+
 **Render-Proof — Mount With Real Data (MUST).**
 Every routed LiveView MUST have a test that mounts WITH REPRESENTATIVE DATA PRESENT and asserts the PRIMARY content region (the routed view's main data area, NOT the layout shell, nav, or header) contains ≥1 expected data row. The fixture MUST supply real domain data. A test that mounts with an empty/nil data source and asserts only shell fragments (title, nav label, container `id`) is explicitly FORBIDDEN — it passes on a blank page. The empty-state ("no records yet") case is a SEPARATE test. Assert specific data text (`assert html =~ "Remote Developer"`), never just `assert html =~ "Jobs"`.
 
@@ -113,9 +115,6 @@ After editing LiveView: `mix test test/<app>_web/live/<file>_live_test.exs`. Nev
 - `cursor-pointer` on interactive; padding/bg on `<.link>` with `block`
 - Explicit helper fns — `Media.get_media_asset_url(@media_asset)`
 - npm: `cd assets` first
-- `phx-change`/`phx-keyup`/`phx-submit` require a `<form>` ancestor — inputs outside a `<form>` silently no-op with NO console error; wrap event-handling inputs in `<.form>` or a bare `<form>` tag
-- `live_render` of a child LiveView MUST set `layout: false` to avoid double-layout render; the routed root LiveView owns the layout
-- Autofocus-on-open: `<input phx-mounted={JS.focus()} />` — use for keyboard-first overlays/modals so the caret lands without a click
 
 ## Pitfall — LazyHTML
 

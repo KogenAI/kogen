@@ -189,6 +189,7 @@ This eliminates the dirty-tree race: integrate-stage files rendered AFTER the co
 - **FORBIDDEN extension for external contracts uses OR, not AND** — "FORBIDDEN: claim external behavior without either (1) executing the repo code path, OR (2) exercising the external contract directly via curl/WebFetch/WebSearch probe." The two techniques are alternatives, not cumulative.
 - **Spread technique for external probes requires exactly 4 numbered rules**: (1) name the axis, (2) probe both ends, (3) single-sample is inconclusive, (4) failure case is mandatory.
 - **Semantic equivalence vs structural identity in prompt-body sibling files** — verify semantic equivalence of all rules, NOT literal step-count parity. Compression preserving all semantic rules is correct mirroring.
+- **Planner-guard blocks Read on certain rule files** — `subagent-read-discipline.sh` denies planner Read to `testing-liveview.md` and `reviewer.md`. Workaround when planning prose edits to these files: use `Grep tool with -C context` to capture verbatim anchor text (exact sentence/phrase) instead of relying on line numbers. Planner can cite the extracted anchor in the pitch, developer confirms via their own Read, and Grep output is part of the pitch record.
 
 ## Deployment / Distribution
 

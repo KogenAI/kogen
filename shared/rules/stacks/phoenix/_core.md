@@ -30,6 +30,12 @@ end
 
 `/dev`: Storybook, LiveDashboard, mailbox. Public: landing/login. Authenticated, Admin: HTTP Basic. `Application.compile_env/2` for env-conditional (NOT `Mix.env()` — unavailable in releases). File extensions via binary pattern-matching plugs.
 
+## LiveView Correctness
+
+- `phx-change`/`phx-keyup`/`phx-submit` require a `<form>` ancestor — inputs outside a `<form>` silently no-op with NO console error; wrap event-handling inputs in `<.form>` or a bare `<form>` tag
+- `live_render` of a child LiveView MUST set `layout: false` to avoid double-layout render; the routed root LiveView owns the layout
+- Autofocus-on-open: `<input phx-mounted={JS.focus()} />` — use for keyboard-first overlays/modals so the caret lands without a click
+
 ## Code Organization
 
 - Cross-context schemas: alias context, prefix (`Accounts.User`). Verified routes: `~p"/images/logo.svg"`.
