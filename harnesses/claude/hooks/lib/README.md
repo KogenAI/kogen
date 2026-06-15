@@ -73,8 +73,8 @@ turn. Used by `stop-resume.sh` (network-error retry) and `stop-cycle-guard.sh`
 
 Writes a timestamped line to `/tmp/<slug>-debug.log` when either:
 
-- `COMBOBULATE_HOOKS_DEBUG` is set (turns on every hook's debug logging), or
-- `COMBOBULATE_<SLUG_UPPER>_DEBUG` is set (per-hook override; `slug` is
+- `CODEGEN_HOOKS_DEBUG` is set (turns on every hook's debug logging), or
+- `CODEGEN_<SLUG_UPPER>_DEBUG` is set (per-hook override; `slug` is
   uppercased and hyphens become underscores).
 
 Errors writing the log are silently ignored — this is diagnostic only.

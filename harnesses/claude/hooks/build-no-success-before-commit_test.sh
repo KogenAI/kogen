@@ -69,9 +69,9 @@ out=$(make_input "echo hello" "$T1" | bash "$HOOK" 2>/dev/null || true)
 assert_not_contains "no BUILD_RESULT: → ALLOW" '"permissionDecision"' "$out"
 rm -rf "$T1"
 
-# ── Test 2: COMBOBULATE_BUILD_START_TS unset → ALLOW ────────────────────────
+# ── Test 2: CODEGEN_BUILD_START_TS unset → ALLOW ────────────────────────
 T2=$(make_project)
-out=$(make_input 'echo "BUILD_RESULT: success"' "$T2" | env -u COMBOBULATE_BUILD_START_TS bash "$HOOK" 2>/dev/null || true)
+out=$(make_input 'echo "BUILD_RESULT: success"' "$T2" | env -u CODEGEN_BUILD_START_TS bash "$HOOK" 2>/dev/null || true)
 assert_not_contains "BUILD_START_TS unset → ALLOW" '"permissionDecision"' "$out"
 rm -rf "$T2"
 
@@ -79,7 +79,7 @@ rm -rf "$T2"
 T3=$(make_project)
 # Set timestamp to now (after the init commit)
 ts3=$(date -u +%s)
-out=$(make_input 'echo "BUILD_RESULT: success"' "$T3" | COMBOBULATE_BUILD_START_TS="$ts3" bash "$HOOK" 2>/dev/null || true)
+out=$(make_input 'echo "BUILD_RESULT: success"' "$T3" | CODEGEN_BUILD_START_TS="$ts3" bash "$HOOK" 2>/dev/null || true)
 assert_contains "BUILD_START_TS set, no new commit → BLOCK" '"permissionDecision"' "$out"
 assert_contains "BLOCK reason mentions commit" 'git commit' "$out"
 rm -rf "$T3"
@@ -99,7 +99,7 @@ sleep 1
 head4=$(git -C "$T4" rev-parse --short HEAD)
 mkdir -p "$T4/codegen/gate-pending"
 printf '{"verdict":"clear","diff_sha":"%s","gate":"make ci","exit_code":0}\n' "$head4" >"$T4/codegen/gate-pending/gate-result.json"
-out=$(make_input 'echo "BUILD_RESULT: success"' "$T4" | COMBOBULATE_BUILD_START_TS="$ts4" bash "$HOOK" 2>/dev/null || true)
+out=$(make_input 'echo "BUILD_RESULT: success"' "$T4" | CODEGEN_BUILD_START_TS="$ts4" bash "$HOOK" 2>/dev/null || true)
 assert_not_contains "commit after BUILD_START_TS + matching diff_sha → ALLOW" '"permissionDecision"' "$out"
 rm -rf "$T4"
 
@@ -110,14 +110,14 @@ input5=$(jq -n \
     --arg cmd 'BUILD_RESULT: foo' \
     --arg cwd "$T5" \
     '{"hook_event_name":"PreToolUse","tool_name":"Read","tool_input":{"file_path":"/tmp/foo"},"agent_type":"","agent_id":"abc","cwd":$cwd}')
-out=$(printf '%s' "$input5" | COMBOBULATE_BUILD_START_TS="$ts5" bash "$HOOK" 2>/dev/null || true)
+out=$(printf '%s' "$input5" | CODEGEN_BUILD_START_TS="$ts5" bash "$HOOK" 2>/dev/null || true)
 assert_not_contains "non-Bash tool → ALLOW" '"permissionDecision"' "$out"
 rm -rf "$T5"
 
 # ── Test 6: BUILD_RESULT: embedded in longer command → matched ───────────────
 T6=$(make_project)
 ts6=$(date -u +%s)
-out=$(make_input 'printf "BUILD_RESULT: %s\n" success' "$T6" | COMBOBULATE_BUILD_START_TS="$ts6" bash "$HOOK" 2>/dev/null || true)
+out=$(make_input 'printf "BUILD_RESULT: %s\n" success' "$T6" | CODEGEN_BUILD_START_TS="$ts6" bash "$HOOK" 2>/dev/null || true)
 assert_contains "BUILD_RESULT: in longer command → BLOCK (no commit)" '"permissionDecision"' "$out"
 rm -rf "$T6"
 
@@ -136,7 +136,7 @@ mkdir -p "$T7/codegen/gate-pending"
 printf '{"verdict":"clear","diff_sha":"%s","gate":"make ci","exit_code":0}\n' "$head7" >"$T7/codegen/gate-pending/gate-result.json"
 # Create a dirty (uncommitted) file AFTER the commit
 echo "dirty content" >"$T7/dirty.txt"
-out=$(make_input 'echo "BUILD_RESULT: success"' "$T7" | COMBOBULATE_BUILD_START_TS="$ts7" bash "$HOOK" 2>/dev/null || true)
+out=$(make_input 'echo "BUILD_RESULT: success"' "$T7" | CODEGEN_BUILD_START_TS="$ts7" bash "$HOOK" 2>/dev/null || true)
 assert_contains "dirty tree after commit+gate → BLOCK (permissionDecision)" '"permissionDecision"' "$out"
 assert_contains "dirty tree block message mentions working tree" 'working tree not clean' "$out"
 rm -rf "$T7"
@@ -154,7 +154,7 @@ sleep 1
 mkdir -p "$T8/codegen/gate-pending"
 # Write gate-result.json with a stale (wrong) diff_sha
 printf '{"verdict":"clear","diff_sha":"abc1234","gate":"make ci","exit_code":0}\n' >"$T8/codegen/gate-pending/gate-result.json"
-out=$(make_input 'echo "BUILD_RESULT: success"' "$T8" | COMBOBULATE_BUILD_START_TS="$ts8" bash "$HOOK" 2>/dev/null || true)
+out=$(make_input 'echo "BUILD_RESULT: success"' "$T8" | CODEGEN_BUILD_START_TS="$ts8" bash "$HOOK" 2>/dev/null || true)
 assert_contains "stale diff_sha → BLOCK (permissionDecision)" '"permissionDecision"' "$out"
 assert_contains "stale diff_sha block message mentions stale SHA" 'stale SHA' "$out"
 rm -rf "$T8"
@@ -173,7 +173,7 @@ sleep 1
 mkdir -p "$T9/codegen/gate-pending"
 # Omit diff_sha entirely — older gate-result format
 printf '{"verdict":"clear","gate":"make ci","exit_code":0}\n' >"$T9/codegen/gate-pending/gate-result.json"
-out=$(make_input 'echo "BUILD_RESULT: success"' "$T9" | COMBOBULATE_BUILD_START_TS="$ts9" bash "$HOOK" 2>/dev/null || true)
+out=$(make_input 'echo "BUILD_RESULT: success"' "$T9" | CODEGEN_BUILD_START_TS="$ts9" bash "$HOOK" 2>/dev/null || true)
 assert_not_contains "no diff_sha field → SHA check skipped → ALLOW" '"permissionDecision"' "$out"
 rm -rf "$T9"
 
@@ -215,7 +215,7 @@ mkdir -p "$T10_PROJECT/codegen/gate-pending"
 printf '{"verdict":"clear","diff_sha":"%s","gate":"make ci","exit_code":0}\n' "$head10" >"$T10_PROJECT/codegen/gate-pending/gate-result.json"
 # Make OCG repo dirty after project commits
 echo "dirty" >"$T10_OCG/dirty.txt"
-out=$(make_input 'echo "BUILD_RESULT: success"' "$T10_PROJECT" | COMBOBULATE_BUILD_START_TS="$ts10" bash "$HOOK" 2>/dev/null || true)
+out=$(make_input 'echo "BUILD_RESULT: success"' "$T10_PROJECT" | CODEGEN_BUILD_START_TS="$ts10" bash "$HOOK" 2>/dev/null || true)
 assert_contains "distinct OCG repo with dirty file → BLOCK" '"permissionDecision"' "$out"
 assert_contains "BLOCK reason mentions OCG repo" 'OCG repo has uncommitted changes' "$out"
 rm -rf "$T10_PROJECT" "$T10_OCG"
@@ -238,7 +238,7 @@ sleep 1
 head11=$(git -C "$T11_PROJECT" rev-parse --short HEAD)
 mkdir -p "$T11_PROJECT/codegen/gate-pending"
 printf '{"verdict":"clear","diff_sha":"%s","gate":"make ci","exit_code":0}\n' "$head11" >"$T11_PROJECT/codegen/gate-pending/gate-result.json"
-out=$(make_input 'echo "BUILD_RESULT: success"' "$T11_PROJECT" | COMBOBULATE_BUILD_START_TS="$ts11" bash "$HOOK" 2>/dev/null || true)
+out=$(make_input 'echo "BUILD_RESULT: success"' "$T11_PROJECT" | CODEGEN_BUILD_START_TS="$ts11" bash "$HOOK" 2>/dev/null || true)
 assert_not_contains "distinct OCG repo clean → ALLOW" '"permissionDecision"' "$out"
 rm -rf "$T11_PROJECT" "$T11_OCG"
 
@@ -260,7 +260,7 @@ sleep 1
 head12=$(git -C "$T12" rev-parse --short HEAD)
 mkdir -p "$T12/codegen/gate-pending"
 printf '{"verdict":"clear","diff_sha":"%s","gate":"make ci","exit_code":0}\n' "$head12" >"$T12/codegen/gate-pending/gate-result.json"
-out=$(make_input 'echo "BUILD_RESULT: success"' "$T12" | COMBOBULATE_BUILD_START_TS="$ts12" bash "$HOOK" 2>/dev/null || true)
+out=$(make_input 'echo "BUILD_RESULT: success"' "$T12" | CODEGEN_BUILD_START_TS="$ts12" bash "$HOOK" 2>/dev/null || true)
 assert_not_contains "OCG root == project root → ALLOW (skip second check)" '"permissionDecision"' "$out"
 rm -rf "$T12"
 
@@ -282,7 +282,7 @@ sleep 1
 head13=$(git -C "$T13" rev-parse --short HEAD)
 mkdir -p "$T13/codegen/gate-pending"
 printf '{"verdict":"clear","diff_sha":"%s","gate":"make ci","exit_code":0}\n' "$head13" >"$T13/codegen/gate-pending/gate-result.json"
-out=$(make_input 'echo "BUILD_RESULT: success"' "$T13" | COMBOBULATE_BUILD_START_TS="$ts13" bash "$HOOK" 2>/dev/null || true)
+out=$(make_input 'echo "BUILD_RESULT: success"' "$T13" | CODEGEN_BUILD_START_TS="$ts13" bash "$HOOK" 2>/dev/null || true)
 assert_not_contains "codegen/rules not a symlink → ALLOW" '"permissionDecision"' "$out"
 rm -rf "$T13"
 
@@ -304,7 +304,7 @@ sleep 1
 head14=$(git -C "$T14_PROJECT" rev-parse --short HEAD)
 mkdir -p "$T14_PROJECT/codegen/gate-pending"
 printf '{"verdict":"clear","diff_sha":"%s","gate":"make ci","exit_code":0}\n' "$head14" >"$T14_PROJECT/codegen/gate-pending/gate-result.json"
-out=$(make_input 'echo "BUILD_RESULT: success"' "$T14_PROJECT" | COMBOBULATE_BUILD_START_TS="$ts14" bash "$HOOK" 2>/dev/null || true)
+out=$(make_input 'echo "BUILD_RESULT: success"' "$T14_PROJECT" | CODEGEN_BUILD_START_TS="$ts14" bash "$HOOK" 2>/dev/null || true)
 assert_not_contains "symlink target not a git repo → ALLOW" '"permissionDecision"' "$out"
 rm -rf "$T14_PROJECT" "$T14_NONGIT"
 

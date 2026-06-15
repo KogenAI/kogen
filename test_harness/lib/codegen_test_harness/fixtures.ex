@@ -696,9 +696,9 @@ defmodule CodegenTestHarness.Fixtures do
       BenchManifest.record_resolution(
         bench_run_dir,
         harness_val,
-        # role defaults to "user_app_build" — all 12 test call sites use this role;
+        # role defaults to "app_build" — all 12 test call sites use this role;
         # update here and add a role: opt to run_codegen_build/3 if a new role is needed
-        "user_app_build",
+        "app_build",
         resolved_model
       )
     end

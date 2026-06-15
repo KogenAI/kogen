@@ -51,7 +51,7 @@ export function register(pi: ExtensionAPI): void {
       "unknown";
     const counterFile = path.join(
       os.tmpdir(),
-      `combobulate-self-gate-${sessionId}.count`,
+      `codegen-self-gate-${sessionId}.count`,
     );
 
     let count = 0;

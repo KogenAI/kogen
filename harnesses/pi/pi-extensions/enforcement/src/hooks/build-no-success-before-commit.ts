@@ -27,11 +27,11 @@ export function register(pi: ExtensionAPI): void {
 
     if (!command.includes("BUILD_RESULT:")) return;
 
-    const buildStartTs = process.env["COMBOBULATE_BUILD_START_TS"];
+    const buildStartTs = process.env["CODEGEN_BUILD_START_TS"];
     if (!buildStartTs) {
       debugLog(
         "build-no-success-before-commit",
-        "allow: COMBOBULATE_BUILD_START_TS unset",
+        "allow: CODEGEN_BUILD_START_TS unset",
       );
       return;
     }

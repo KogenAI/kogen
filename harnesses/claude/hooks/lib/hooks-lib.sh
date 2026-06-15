@@ -11,7 +11,7 @@
 #   block "<reason>"             — emit a Stop-event {"decision":"block","reason":...} JSON
 #                                  envelope to stdout. Caller should `exit 0` after.
 #   debug_log <slug> ...         — append a timestamped line to /tmp/<slug>-debug.log when
-#                                  COMBOBULATE_HOOKS_DEBUG or per-slug overrides are set
+#                                  CODEGEN_HOOKS_DEBUG or per-slug overrides are set
 #   hooks_realpath <path>        — pure-bash equivalent of `python3 os.path.realpath`,
 #                                  handling non-existent paths via parent-walk fallback
 #   session_log_from_transcript  — return the last codegen/logging/*.md path written by
@@ -99,7 +99,7 @@ block() {
 }
 
 # debug_log <slug> <fields...> — append a timestamped debug line.
-# Active when COMBOBULATE_HOOKS_DEBUG is set OR when COMBOBULATE_<SLUG>_DEBUG
+# Active when CODEGEN_HOOKS_DEBUG is set OR when CODEGEN_<SLUG>_DEBUG
 # is set (slug uppercased, hyphens → underscores). Output goes to
 # /tmp/<slug>-debug.log. Errors are silently ignored — this is a diagnostic.
 debug_log() {
@@ -107,8 +107,8 @@ debug_log() {
     shift
     local upper
     upper=$(printf '%s' "$slug" | tr 'a-z-' 'A-Z_')
-    local per_slug_var="COMBOBULATE_${upper}_DEBUG"
-    if [ -z "${COMBOBULATE_HOOKS_DEBUG:-}" ] && [ -z "${!per_slug_var:-}" ]; then
+    local per_slug_var="CODEGEN_${upper}_DEBUG"
+    if [ -z "${CODEGEN_HOOKS_DEBUG:-}" ] && [ -z "${!per_slug_var:-}" ]; then
         return 0
     fi
     printf '%s %s %s\n' \

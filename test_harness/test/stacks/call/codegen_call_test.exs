@@ -15,7 +15,7 @@ defmodule CodegenTestHarness.Stacks.Call.CodegenCallTest do
       Fixtures.run_codegen_call(
         "Classify this message: Hello, how do I set up the platform?",
         @schema,
-        role: "bouncer",
+        role: "inspector",
         system_prompt: "You classify messages; reply only with the structured fields."
       )
 
@@ -30,7 +30,7 @@ defmodule CodegenTestHarness.Stacks.Call.CodegenCallTest do
       Fixtures.run_codegen_call(
         "What do you need to know?",
         @schema,
-        role: "bouncer",
+        role: "inspector",
         system_prompt: "Reply only with the structured fields."
       )
 

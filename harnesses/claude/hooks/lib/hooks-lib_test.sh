@@ -101,10 +101,10 @@ else
     [ -n "${VERBOSE:-}" ] && printf 'PASS: debug_log silent without env\n'
 fi
 
-COMBOBULATE_HOOKS_DEBUG=1 debug_log hooks-lib-test-slug "with env: should log"
+CODEGEN_HOOKS_DEBUG=1 debug_log hooks-lib-test-slug "with env: should log"
 if grep -q "with env: should log" "$LOG" 2>/dev/null; then
     pass=$((pass + 1))
-    [ -n "${VERBOSE:-}" ] && printf 'PASS: debug_log writes when COMBOBULATE_HOOKS_DEBUG set\n'
+    [ -n "${VERBOSE:-}" ] && printf 'PASS: debug_log writes when CODEGEN_HOOKS_DEBUG set\n'
 else
     fail=$((fail + 1))
     printf 'FAIL: debug_log did not write to %s\n' "$LOG"

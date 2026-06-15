@@ -29,7 +29,7 @@ developer-phoenix-backend | developer-phoenix-frontend | developer-html | develo
 esac
 
 session_id="${SESSION_ID:-unknown}"
-counter_file="/tmp/combobulate-self-gate-${session_id}.count"
+counter_file="/tmp/codegen-self-gate-${session_id}.count"
 
 if [ -f "$counter_file" ]; then
     rm -f "$counter_file"

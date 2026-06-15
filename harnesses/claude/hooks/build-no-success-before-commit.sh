@@ -11,17 +11,16 @@
 # GENERATED FROM shared/enforcement/registry.yaml — DO NOT EDIT
 #
 # Blocks any Bash command containing "BUILD_RESULT:" literal when the
-# COMBOBULATE_BUILD_START_TS env var is set but no commit has been made
+# CODEGEN_BUILD_START_TS env var is set but no commit has been made
 # since that timestamp.
 #
-# Context: ClaudeBuildRunnerImpl.build_stream_cmd/4 prepends
-# "COMBOBULATE_BUILD_START_TS=$(date +%s) " to the shell command so it is
-# available to the subprocess. If the orchestrator tries to signal
-# BUILD_RESULT: before committing, this hook blocks it.
+# Context: dispatch.sh prepends CODEGEN_BUILD_START_TS=$(date +%s) to the
+# environment. If the orchestrator tries to signal BUILD_RESULT: before
+# committing, this hook blocks it.
 #
 # Allow conditions:
-#   - COMBOBULATE_BUILD_START_TS is unset or empty (not in a build context)
-#   - At least one commit exists since COMBOBULATE_BUILD_START_TS
+#   - CODEGEN_BUILD_START_TS unset or empty (not in a build context)
+#   - At least one commit exists since the resolved build start timestamp
 
 set -u
 
@@ -29,6 +28,8 @@ source "$(dirname "$0")/lib/hooks-lib.sh"
 # shellcheck disable=SC1091
 source "$(dirname "$0")/lib/gate-result.sh"
 parse_input
+
+build_start_ts="${CODEGEN_BUILD_START_TS:-}"
 
 debug_log build-no-success-before-commit "tool=$TOOL_NAME"
 
@@ -42,8 +43,8 @@ if ! printf '%s' "$COMMAND" | grep -qF 'BUILD_RESULT:'; then
 fi
 
 # Not in a build context — allow
-if [ -z "${COMBOBULATE_BUILD_START_TS:-}" ]; then
-    debug_log build-no-success-before-commit "allow: COMBOBULATE_BUILD_START_TS unset"
+if [ -z "$build_start_ts" ]; then
+    debug_log build-no-success-before-commit "allow: CODEGEN_BUILD_START_TS unset"
     exit 0
 fi
 
@@ -53,8 +54,8 @@ fi
 project_dir="${CWD:-$PWD}"
 latest_commit_ts=$(git -C "$project_dir" log -1 --format="%ct" 2>/dev/null)
 
-if [ -z "$latest_commit_ts" ] || [ "$latest_commit_ts" -le "$COMBOBULATE_BUILD_START_TS" ]; then
-    deny "BLOCKED by build-no-success-before-commit: BUILD_RESULT: found but no git commit has been made since build start (COMBOBULATE_BUILD_START_TS=$COMBOBULATE_BUILD_START_TS). Commit the generated code before signaling build success."
+if [ -z "$latest_commit_ts" ] || [ "$latest_commit_ts" -le "$build_start_ts" ]; then
+    deny "BLOCKED by build-no-success-before-commit: BUILD_RESULT: found but no git commit has been made since build start (build start ts=$build_start_ts). Commit the generated code before signaling build success."
     exit 0
 fi
 
@@ -104,5 +105,5 @@ Commit the OCG repo first (per orchestrator §Curator & Dual-Repo Commit case 3)
     fi
 fi
 
-debug_log build-no-success-before-commit "allow: commit at $latest_commit_ts found after build start $COMBOBULATE_BUILD_START_TS, gate verdict=clear, and working tree is clean"
+debug_log build-no-success-before-commit "allow: commit at $latest_commit_ts found after build start $build_start_ts, gate verdict=clear, and working tree is clean"
 exit 0

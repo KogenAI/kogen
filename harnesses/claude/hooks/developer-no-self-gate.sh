@@ -50,7 +50,7 @@ if printf '%s' "$COMMAND" | grep -qE '\bmix[[:space:]]+credo\b' &&
 fi
 
 session_id="${SESSION_ID:-unknown}"
-counter_file="/tmp/combobulate-self-gate-${session_id}.count"
+counter_file="/tmp/codegen-self-gate-${session_id}.count"
 
 # Read current count
 count=0

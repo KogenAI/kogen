@@ -106,7 +106,7 @@ exec env \
     ENABLE_PROMPT_CACHING_1H=1 \
     MAX_THINKING_TOKENS=0 \
     MCP_CONNECTION_NONBLOCKING=true \
-    COMBOBULATE_BUILD_START_TS="$(date +%s)" \
+    CODEGEN_BUILD_START_TS="$(date +%s)" \
     claude \
     "${NON_INTERACTIVE_FLAGS[@]+"${NON_INTERACTIVE_FLAGS[@]}"}" \
     "${COMMON_FLAGS[@]+"${COMMON_FLAGS[@]}"}" \

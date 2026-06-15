@@ -48,24 +48,24 @@ make_input() {
 
 # ── Test 1: non-developer agent → ALLOW ──────────────────────────────────────
 SID1="sid1-$$-$(date -u +%s)"
-rm -f "/tmp/combobulate-self-gate-${SID1}.count"
+rm -f "/tmp/codegen-self-gate-${SID1}.count"
 out=$(make_input "mix test test/foo_test.exs" "reviewer-phoenix" "$SID1" | bash "$HOOK" 2>/dev/null || true)
 assert_not_contains "non-developer ALLOWED" '"permissionDecision"' "$out"
-rm -f "/tmp/combobulate-self-gate-${SID1}.count"
+rm -f "/tmp/codegen-self-gate-${SID1}.count"
 
 # ── Test 2: non-CI command → ALLOW ───────────────────────────────────────────
 SID2="sid2-$$-$(date -u +%s)"
-rm -f "/tmp/combobulate-self-gate-${SID2}.count"
+rm -f "/tmp/codegen-self-gate-${SID2}.count"
 out=$(make_input "mix deps.get" "developer-phoenix-backend" "$SID2" | bash "$HOOK" 2>/dev/null || true)
 assert_not_contains "non-CI command ALLOWED" '"permissionDecision"' "$out"
-rm -f "/tmp/combobulate-self-gate-${SID2}.count"
+rm -f "/tmp/codegen-self-gate-${SID2}.count"
 
 # ── Test 3: 1st CI invocation → ALLOW (count=1) ──────────────────────────────
 SID3="sid3-$$-$(date -u +%s)"
-rm -f "/tmp/combobulate-self-gate-${SID3}.count"
+rm -f "/tmp/codegen-self-gate-${SID3}.count"
 out=$(make_input "mix test test/foo_test.exs" "developer-phoenix-backend" "$SID3" | bash "$HOOK" 2>/dev/null || true)
 assert_not_contains "1st CI invocation (count=1) ALLOWED" '"permissionDecision"' "$out"
-count=$(cat "/tmp/combobulate-self-gate-${SID3}.count" 2>/dev/null || echo 0)
+count=$(cat "/tmp/codegen-self-gate-${SID3}.count" 2>/dev/null || echo 0)
 [ "$count" = "1" ] && {
     [ -n "${VERBOSE:-}" ] && printf 'PASS: counter incremented to 1\n'
     pass=$((pass + 1))
@@ -73,58 +73,58 @@ count=$(cat "/tmp/combobulate-self-gate-${SID3}.count" 2>/dev/null || echo 0)
     printf 'FAIL: counter expected 1, got %s\n' "$count"
     fail=$((fail + 1))
 }
-rm -f "/tmp/combobulate-self-gate-${SID3}.count"
+rm -f "/tmp/codegen-self-gate-${SID3}.count"
 
 # ── Test 4: 3rd CI invocation → BLOCK ────────────────────────────────────────
 SID4="sid4-$$-$(date -u +%s)"
-printf '2' >"/tmp/combobulate-self-gate-${SID4}.count"
+printf '2' >"/tmp/codegen-self-gate-${SID4}.count"
 out=$(make_input "make ci" "developer-phoenix-frontend" "$SID4" | bash "$HOOK" 2>/dev/null || true)
 assert_contains "3rd CI invocation BLOCKED" '"permissionDecision"' "$out"
 assert_contains "3rd CI block mentions dev-gate handoff" 'dev-gate.sh handoff' "$out"
-rm -f "/tmp/combobulate-self-gate-${SID4}.count"
+rm -f "/tmp/codegen-self-gate-${SID4}.count"
 
 # ── Test 5: make ci pattern matched ──────────────────────────────────────────
 SID5="sid5-$$-$(date -u +%s)"
-printf '2' >"/tmp/combobulate-self-gate-${SID5}.count"
+printf '2' >"/tmp/codegen-self-gate-${SID5}.count"
 out=$(make_input "make ci" "developer-html" "$SID5" | bash "$HOOK" 2>/dev/null || true)
 assert_contains "make ci at count=3 BLOCKED" '"permissionDecision"' "$out"
-rm -f "/tmp/combobulate-self-gate-${SID5}.count"
+rm -f "/tmp/codegen-self-gate-${SID5}.count"
 
 # ── Test 6: mix credo bypasses cap — ALWAYS ALLOWED ─────────────────────────
 # mix credo is cheap/required before handoff; cap does not apply.
 SID6="sid6-$$-$(date -u +%s)"
-printf '2' >"/tmp/combobulate-self-gate-${SID6}.count"
+printf '2' >"/tmp/codegen-self-gate-${SID6}.count"
 out=$(make_input "mix credo --strict" "developer-phoenix-backend" "$SID6" | bash "$HOOK" 2>/dev/null || true)
 assert_not_contains "mix credo at count=3 STILL ALLOWED (bypasses cap)" '"permissionDecision"' "$out"
-rm -f "/tmp/combobulate-self-gate-${SID6}.count"
+rm -f "/tmp/codegen-self-gate-${SID6}.count"
 
 # ── Test 6b: mix credo bypasses cap even at count=10 ────────────────────────
 SID6B="sid6b-$$-$(date -u +%s)"
-printf '10' >"/tmp/combobulate-self-gate-${SID6B}.count"
+printf '10' >"/tmp/codegen-self-gate-${SID6B}.count"
 out=$(make_input "mix credo --strict path/to/file.ex" "developer-phoenix-backend" "$SID6B" | bash "$HOOK" 2>/dev/null || true)
 assert_not_contains "mix credo scoped at count=10 STILL ALLOWED" '"permissionDecision"' "$out"
-rm -f "/tmp/combobulate-self-gate-${SID6B}.count"
+rm -f "/tmp/codegen-self-gate-${SID6B}.count"
 
 # ── Test 6c: make ci IS still blocked after 3 calls ─────────────────────────
 SID6C="sid6c-$$-$(date -u +%s)"
-printf '2' >"/tmp/combobulate-self-gate-${SID6C}.count"
+printf '2' >"/tmp/codegen-self-gate-${SID6C}.count"
 out=$(make_input "make ci" "developer-phoenix-backend" "$SID6C" | bash "$HOOK" 2>/dev/null || true)
 assert_contains "make ci at count=3 BLOCKED (cap still applies)" '"permissionDecision"' "$out"
-rm -f "/tmp/combobulate-self-gate-${SID6C}.count"
+rm -f "/tmp/codegen-self-gate-${SID6C}.count"
 
 # ── Test 7: developer-vite also gated ────────────────────────────────────────
 SID7="sid7-$$-$(date -u +%s)"
-printf '2' >"/tmp/combobulate-self-gate-${SID7}.count"
+printf '2' >"/tmp/codegen-self-gate-${SID7}.count"
 out=$(make_input "make test" "developer-vite" "$SID7" | bash "$HOOK" 2>/dev/null || true)
 assert_contains "developer-vite at count=3 BLOCKED" '"permissionDecision"' "$out"
-rm -f "/tmp/combobulate-self-gate-${SID7}.count"
+rm -f "/tmp/codegen-self-gate-${SID7}.count"
 
 # ── Test 8: mix format matched ───────────────────────────────────────────────
 SID8="sid8-$$-$(date -u +%s)"
-printf '2' >"/tmp/combobulate-self-gate-${SID8}.count"
+printf '2' >"/tmp/codegen-self-gate-${SID8}.count"
 out=$(make_input "mix format --check-formatted" "developer-phoenix-backend" "$SID8" | bash "$HOOK" 2>/dev/null || true)
 assert_contains "mix format at count=3 BLOCKED" '"permissionDecision"' "$out"
-rm -f "/tmp/combobulate-self-gate-${SID8}.count"
+rm -f "/tmp/codegen-self-gate-${SID8}.count"
 
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

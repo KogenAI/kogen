@@ -65,23 +65,14 @@ harness:
   build:
     claude: { model: sonnet, effort: medium }
     pi: { model: openai-codex/gpt-5.4-mini, effort: medium }
-  bouncer:
-    claude: { model: haiku, effort: low }
-    pi: { model: openai-codex/gpt-5.4-mini, effort: low }
-  concierge:
-    claude: { model: haiku, effort: low }
-    pi: { model: openai-codex/gpt-5.4-mini, effort: low }
-  preference_extractor:
-    claude: { model: haiku, effort: low }
-    pi: { model: openai-codex/gpt-5.4-mini, effort: low }
-  user_app_build:
+  app_build:
     claude: { model: sonnet, effort: medium }
     pi: { model: openai-codex/gpt-5.3-codex, effort: medium }
   inspector:
     claude: { model: sonnet, effort: medium }
     pi: { model: openai-codex/gpt-5.3-codex, effort: medium }
   # debug = pi-debug launcher config; read by pi-debug.sh via yq .harness.debug.pi.model
-  # Distinct from harness.inspector (combobulate HarnessConfig.model_and_effort_for(:inspector,...))
+  # Distinct from harness.inspector (read-only inspector role).
   debug:
     claude: { model: sonnet, effort: medium }
     pi: { model: openai-codex/gpt-5.3-codex, effort: medium }
@@ -234,29 +225,11 @@ roles:
       Read files via Read tool. Query db/logs via Bash (SELECT, grep, tail — read-only).
       Do not mutate anything. Report: what you found, why it matters, recommended next steps.
 
-  bouncer:
-    model: haiku
-    effort: low
-    output_format: stream-json
-    json_schema: bouncer.json
-    system_prompt: ""
-  concierge:
-    model: haiku
-    effort: low
-    output_format: stream-json
-    json_schema: concierge.json
-    system_prompt: ""
-  preference_extractor:
-    model: haiku
-    effort: low
-    output_format: stream-json
-    json_schema: preference_extractor.json
-    system_prompt: ""
-  user_app_build:
+  app_build:
     model: sonnet
     effort: medium
     output_format: stream-json
-    json_schema: user_app_build.json
+    json_schema: app_build.json
     system_prompt: ""
 
 budgets:

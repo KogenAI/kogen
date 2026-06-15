@@ -46,7 +46,7 @@ describe("developer-no-self-gate", () => {
   }
 
   function counterPath(sessionId: string): string {
-    return path.join(os.tmpdir(), `combobulate-self-gate-${sessionId}.count`);
+    return path.join(os.tmpdir(), `codegen-self-gate-${sessionId}.count`);
   }
 
   beforeEach(() => {

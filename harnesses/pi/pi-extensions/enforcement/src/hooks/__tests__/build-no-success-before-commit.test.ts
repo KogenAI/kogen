@@ -36,7 +36,7 @@ describe("build-no-success-before-commit", { concurrency: 1 }, () => {
   }
 
   beforeEach(() => {
-    delete process.env["COMBOBULATE_BUILD_START_TS"];
+    delete process.env["CODEGEN_BUILD_START_TS"];
     delete process.env["AGENT_TYPE"];
   });
 
@@ -45,13 +45,13 @@ describe("build-no-success-before-commit", { concurrency: 1 }, () => {
     assert.ok(result == null || (result as { block?: boolean }).block !== true);
   });
 
-  it("passes through when COMBOBULATE_BUILD_START_TS unset", async () => {
+  it("passes through when CODEGEN_BUILD_START_TS unset", async () => {
     const result = await runHook('echo "BUILD_RESULT: success"');
     assert.ok(result == null || (result as { block?: boolean }).block !== true);
   });
 
   it("passes through for non-bash tool with BUILD_RESULT:", async () => {
-    process.env["COMBOBULATE_BUILD_START_TS"] = String(
+    process.env["CODEGEN_BUILD_START_TS"] = String(
       Math.floor(Date.now() / 1000),
     );
     const result = await runHook("BUILD_RESULT: foo", "read");
@@ -95,7 +95,7 @@ describe("build-no-success-before-commit", { concurrency: 1 }, () => {
       // Create a dirty (uncommitted) file
       fs.writeFileSync(path.join(tmpDir, "dirty.txt"), "dirty content\n");
 
-      process.env["COMBOBULATE_BUILD_START_TS"] = buildStartTs;
+      process.env["CODEGEN_BUILD_START_TS"] = buildStartTs;
       process.chdir(tmpDir);
 
       const result = await runHook('echo "BUILD_RESULT: success"');
@@ -110,7 +110,7 @@ describe("build-no-success-before-commit", { concurrency: 1 }, () => {
       );
     } finally {
       process.chdir(originalCwd);
-      delete process.env["COMBOBULATE_BUILD_START_TS"];
+      delete process.env["CODEGEN_BUILD_START_TS"];
       fs.rmSync(tmpDir, { recursive: true, force: true });
     }
   });
@@ -146,7 +146,7 @@ describe("build-no-success-before-commit", { concurrency: 1 }, () => {
         JSON.stringify({ verdict: "inconclusive", gate: "make test", mode: "short" }),
       );
 
-      process.env["COMBOBULATE_BUILD_START_TS"] = buildStartTs;
+      process.env["CODEGEN_BUILD_START_TS"] = buildStartTs;
       process.chdir(tmpDir);
 
       const result = await runHook('echo "BUILD_RESULT: success"');
@@ -161,7 +161,7 @@ describe("build-no-success-before-commit", { concurrency: 1 }, () => {
       );
     } finally {
       process.chdir(originalCwd);
-      delete process.env["COMBOBULATE_BUILD_START_TS"];
+      delete process.env["CODEGEN_BUILD_START_TS"];
       fs.rmSync(tmpDir, { recursive: true, force: true });
     }
   });
@@ -210,7 +210,7 @@ describe("build-no-success-before-commit", { concurrency: 1 }, () => {
       // Make OCG repo dirty AFTER project commits
       fs.writeFileSync(path.join(tmpOcg, "dirty.txt"), "dirty content\n");
 
-      process.env["COMBOBULATE_BUILD_START_TS"] = buildStartTs;
+      process.env["CODEGEN_BUILD_START_TS"] = buildStartTs;
       process.chdir(tmpProject);
 
       const result = await runHook('echo "BUILD_RESULT: success"');
@@ -225,7 +225,7 @@ describe("build-no-success-before-commit", { concurrency: 1 }, () => {
       );
     } finally {
       process.chdir(originalCwd);
-      delete process.env["COMBOBULATE_BUILD_START_TS"];
+      delete process.env["CODEGEN_BUILD_START_TS"];
       fs.rmSync(tmpProject, { recursive: true, force: true });
       fs.rmSync(tmpOcg, { recursive: true, force: true });
     }
@@ -272,7 +272,7 @@ describe("build-no-success-before-commit", { concurrency: 1 }, () => {
 
       // OCG repo remains clean
 
-      process.env["COMBOBULATE_BUILD_START_TS"] = buildStartTs;
+      process.env["CODEGEN_BUILD_START_TS"] = buildStartTs;
       process.chdir(tmpProject);
 
       const result = await runHook('echo "BUILD_RESULT: success"');
@@ -283,7 +283,7 @@ describe("build-no-success-before-commit", { concurrency: 1 }, () => {
       );
     } finally {
       process.chdir(originalCwd);
-      delete process.env["COMBOBULATE_BUILD_START_TS"];
+      delete process.env["CODEGEN_BUILD_START_TS"];
       fs.rmSync(tmpProject, { recursive: true, force: true });
       fs.rmSync(tmpOcg, { recursive: true, force: true });
     }
@@ -320,7 +320,7 @@ describe("build-no-success-before-commit", { concurrency: 1 }, () => {
       execSync("git add README", { cwd: tmpDir });
       execSync('git commit -qm "generated code"', { cwd: tmpDir });
 
-      process.env["COMBOBULATE_BUILD_START_TS"] = buildStartTs;
+      process.env["CODEGEN_BUILD_START_TS"] = buildStartTs;
       process.chdir(tmpDir);
 
       const result = await runHook('echo "BUILD_RESULT: success"');
@@ -331,7 +331,7 @@ describe("build-no-success-before-commit", { concurrency: 1 }, () => {
       );
     } finally {
       process.chdir(originalCwd);
-      delete process.env["COMBOBULATE_BUILD_START_TS"];
+      delete process.env["CODEGEN_BUILD_START_TS"];
       fs.rmSync(tmpDir, { recursive: true, force: true });
     }
   });
@@ -365,7 +365,7 @@ describe("build-no-success-before-commit", { concurrency: 1 }, () => {
       execSync("git add README", { cwd: tmpDir });
       execSync('git commit -qm "generated code"', { cwd: tmpDir });
 
-      process.env["COMBOBULATE_BUILD_START_TS"] = buildStartTs;
+      process.env["CODEGEN_BUILD_START_TS"] = buildStartTs;
       process.chdir(tmpDir);
 
       const result = await runHook('echo "BUILD_RESULT: success"');
@@ -376,7 +376,7 @@ describe("build-no-success-before-commit", { concurrency: 1 }, () => {
       );
     } finally {
       process.chdir(originalCwd);
-      delete process.env["COMBOBULATE_BUILD_START_TS"];
+      delete process.env["CODEGEN_BUILD_START_TS"];
       fs.rmSync(tmpDir, { recursive: true, force: true });
     }
   });
@@ -410,7 +410,7 @@ describe("build-no-success-before-commit", { concurrency: 1 }, () => {
       execSync("git add -A", { cwd: tmpDir });
       execSync('git commit -qm "generated code"', { cwd: tmpDir });
 
-      process.env["COMBOBULATE_BUILD_START_TS"] = buildStartTs;
+      process.env["CODEGEN_BUILD_START_TS"] = buildStartTs;
       process.chdir(tmpDir);
 
       const result = await runHook('echo "BUILD_RESULT: success"');
@@ -421,7 +421,7 @@ describe("build-no-success-before-commit", { concurrency: 1 }, () => {
       );
     } finally {
       process.chdir(originalCwd);
-      delete process.env["COMBOBULATE_BUILD_START_TS"];
+      delete process.env["CODEGEN_BUILD_START_TS"];
       fs.rmSync(tmpDir, { recursive: true, force: true });
     }
   });

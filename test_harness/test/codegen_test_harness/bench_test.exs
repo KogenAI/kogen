@@ -254,35 +254,35 @@ defmodule CodegenTestHarness.BenchTest do
 
     test "record_resolution/4 writes model id", %{run_dir: run_dir} do
       write_skeleton(run_dir)
-      BenchManifest.record_resolution(run_dir, "claude", "user_app_build", "claude-haiku")
+      BenchManifest.record_resolution(run_dir, "claude", "app_build", "claude-haiku")
       manifest = BenchManifest.load(run_dir)
-      assert manifest["model_resolution"]["claude/user_app_build"] == "claude-haiku"
+      assert manifest["model_resolution"]["claude/app_build"] == "claude-haiku"
     end
 
     test "record_resolution/4 is idempotent for same value", %{run_dir: run_dir} do
       write_skeleton(run_dir)
-      BenchManifest.record_resolution(run_dir, "claude", "user_app_build", "claude-haiku")
-      BenchManifest.record_resolution(run_dir, "claude", "user_app_build", "claude-haiku")
+      BenchManifest.record_resolution(run_dir, "claude", "app_build", "claude-haiku")
+      BenchManifest.record_resolution(run_dir, "claude", "app_build", "claude-haiku")
       manifest = BenchManifest.load(run_dir)
-      assert manifest["model_resolution"]["claude/user_app_build"] == "claude-haiku"
+      assert manifest["model_resolution"]["claude/app_build"] == "claude-haiku"
     end
 
     test "record_resolution/4 raises on conflict", %{run_dir: run_dir} do
       write_skeleton(run_dir)
-      BenchManifest.record_resolution(run_dir, "claude", "user_app_build", "claude-haiku")
+      BenchManifest.record_resolution(run_dir, "claude", "app_build", "claude-haiku")
 
       assert_raise RuntimeError, ~r/conflict/, fn ->
-        BenchManifest.record_resolution(run_dir, "claude", "user_app_build", "claude-sonnet")
+        BenchManifest.record_resolution(run_dir, "claude", "app_build", "claude-sonnet")
       end
     end
 
     test "record_resolution/4 supports multiple harness/role keys", %{run_dir: run_dir} do
       write_skeleton(run_dir)
-      BenchManifest.record_resolution(run_dir, "claude", "user_app_build", "claude-haiku")
-      BenchManifest.record_resolution(run_dir, "pi", "user_app_build", "gpt-5.4-mini")
+      BenchManifest.record_resolution(run_dir, "claude", "app_build", "claude-haiku")
+      BenchManifest.record_resolution(run_dir, "pi", "app_build", "gpt-5.4-mini")
       manifest = BenchManifest.load(run_dir)
-      assert manifest["model_resolution"]["claude/user_app_build"] == "claude-haiku"
-      assert manifest["model_resolution"]["pi/user_app_build"] == "gpt-5.4-mini"
+      assert manifest["model_resolution"]["claude/app_build"] == "claude-haiku"
+      assert manifest["model_resolution"]["pi/app_build"] == "gpt-5.4-mini"
     end
 
     test "load/1 decodes manifest json", %{run_dir: run_dir} do
