@@ -246,6 +246,28 @@ Upstream carve-outs (ScheduleWakeup in-flight, `?`-intent, retry-cap release) fi
 
 **Interplay with Layer-2**: `build-no-success-before-commit.sh` (PreToolUse/BUILD_RESULT) requires `verdict=clear` at ship-time. Both layers are defense-in-depth — different events, different enforcement points.
 
+## Cycle State Lookup Helpers
+
+Cycle state transitions (`GATED → REVIEWED → CURATED → COMMITTED`) are declared ONCE as a space-separated ordered list in `lib/cycle-state.sh`:
+
+```bash
+CYCLE_STATE_ORDER="GATED REVIEWED CURATED COMMITTED"
+```
+
+This single source of truth is consumed by two readers — `step-log-completeness.sh` and `stop-cycle-guard.sh` — via three lookup helpers:
+
+1. **`cycle_state_is_terminal <state>`** — returns true (exit 0) iff `<state>` equals the LAST element of `CYCLE_STATE_ORDER`. Derives terminal state by iterating the list (`for w in $CYCLE_STATE_ORDER; do last="$w"; done`) rather than hard-coding the name. Adding a new state after `COMMITTED` automatically shifts which state is terminal without touching the helper.
+
+2. **`cycle_state_next <state>`** — prints the state that follows `<state>` in the order list; prints empty string if `<state>` is terminal or unmatched. Enables readers to emit successor role names in block messages without duplicating the ordering table.
+
+3. **`cycle_state_role <state>`** — maps state name to human role token for operator-facing block messages: `REVIEWED → context-curator`, `CURATED → committer`. Unknown states return empty string. Reader uses this to interpolate role names while keeping verbatim message wording unchanged.
+
+**Garbage/unknown state behavior**: `cycle_state_is_terminal` returns false; `cycle_state_next` returns empty. Readers test these return values: not-terminal + non-empty-next → block; not-terminal + empty-next (or unknown) → fall through to legacy grep checks (fail-toward-block, never fail-open).
+
+**`set -u` safe patterns**: Helpers always `printf` output (empty string is valid); callers guard with `[ -n "$next" ]` before indexing or interpolating, never assume a variable is set.
+
+**Key design win**: By deriving terminal from the list's LAST element rather than hard-coding `= COMMITTED`, the single-source-of-truth property is preserved — inserting a new intermediate state automatically updates all dependent logic without code changes.
+
 ## Enforce-Registry-Parity — Compiler-Generated Files & Gate Ordering
 
 `enforce-registry-parity` compares committed generated files (TypeScript in `harnesses/pi/pi-extensions/enforcement/src/hooks/`, Bash in `harnesses/claude/hooks/committer-write-allowlist.sh` and `reviewer-guard-session-log-write.sh`) against output from `enforcement_compiler.py`. The hook test (`enforce-registry-parity` make target) diffs compiler output with HEAD:

@@ -142,8 +142,8 @@ cs_step=$(cycle_state_step_log "$project_dir")
 cs_state=$(cycle_state_get "$project_dir")
 if [ -n "$cs_state" ] && [ -n "$step_log" ] && [ "$cs_step" = "$step_log" ]; then
     debug_log claude-cycle-guard "cycle-state=$cs_state step=$step_log (matched)"
-    if [ "$cs_state" = "COMMITTED" ]; then
-        debug_log claude-cycle-guard "skip: cycle-state=COMMITTED — full cycle done"
+    if cycle_state_is_terminal "$cs_state"; then
+        debug_log claude-cycle-guard "skip: cycle-state=$cs_state terminal — full cycle done"
         exit 0
     fi
     # GATED verdict=failed/inconclusive → still block (gate did not clear)

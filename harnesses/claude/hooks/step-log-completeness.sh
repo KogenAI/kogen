@@ -82,25 +82,28 @@ cs_step=$(cycle_state_step_log "$project_dir")
 cs_state=$(cycle_state_get "$project_dir")
 if [ -n "$cs_state" ] && [ "$cs_step" = "$log_file" ]; then
     debug_log step-log-completeness "cycle-state=$cs_state step=$log_file (matched)"
-    case "$cs_state" in
-    COMMITTED)
+    if cycle_state_is_terminal "$cs_state"; then
         # Full cycle done — committer ran; allow stop.
-        debug_log step-log-completeness "skip: cycle-state=COMMITTED"
+        debug_log step-log-completeness "skip: cycle-state=$cs_state terminal — full cycle done"
         exit 0
-        ;;
-    REVIEWED)
-        # Reviewer done, curator not yet → block (same as case b1 below, but faster)
-        debug_log step-log-completeness "BLOCK: cycle-state=REVIEWED — curator not yet run"
-        block "step-log-completeness: reviewer finished (cycle-state=REVIEWED) but context-curator has not run yet. Continue the cycle: delegate to context-curator, then committer. Step log: $log_file"
+    fi
+    next=$(cycle_state_next "$cs_state")
+    if [ -n "$next" ]; then
+        role=$(cycle_state_role "$cs_state")
+        debug_log step-log-completeness "BLOCK: cycle-state=$cs_state — $role not yet run"
+        case "$cs_state" in
+        REVIEWED)
+            block "step-log-completeness: reviewer finished (cycle-state=REVIEWED) but context-curator has not run yet. Continue the cycle: delegate to context-curator, then committer. Step log: $log_file"
+            ;;
+        CURATED)
+            block "step-log-completeness: context-curator finished (cycle-state=CURATED) but committer has not run yet. Continue the cycle: delegate to committer. Step log: $log_file"
+            ;;
+        *)
+            block "step-log-completeness: cycle incomplete (cycle-state=$cs_state). Continue the cycle: delegate to $role. Step log: $log_file"
+            ;;
+        esac
         exit 0
-        ;;
-    CURATED)
-        # Curator done, committer not yet → block (same as case b2 below, but faster)
-        debug_log step-log-completeness "BLOCK: cycle-state=CURATED — committer not yet run"
-        block "step-log-completeness: context-curator finished (cycle-state=CURATED) but committer has not run yet. Continue the cycle: delegate to committer. Step log: $log_file"
-        exit 0
-        ;;
-    esac
+    fi
     # GATED or unknown state → fall through to existing grep checks
 fi
 

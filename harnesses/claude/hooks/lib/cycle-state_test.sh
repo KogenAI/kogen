@@ -153,5 +153,92 @@ else
 fi
 rm -rf "$T16"
 
+# ── Tests 17–31: cycle_state_is_terminal, cycle_state_next, cycle_state_role ──
+
+# Test 17: cycle_state_is_terminal COMMITTED → true (return 0)
+if cycle_state_is_terminal "COMMITTED"; then
+    pass=$((pass + 1))
+    [ -n "${VERBOSE:-}" ] && printf 'PASS: cycle_state_is_terminal COMMITTED → true\n'
+else
+    printf 'FAIL: cycle_state_is_terminal COMMITTED → expected true, got false\n'
+    fail=$((fail + 1))
+fi
+
+# Test 18: cycle_state_is_terminal GATED → false
+if cycle_state_is_terminal "GATED"; then
+    printf 'FAIL: cycle_state_is_terminal GATED → expected false, got true\n'
+    fail=$((fail + 1))
+else
+    pass=$((pass + 1))
+    [ -n "${VERBOSE:-}" ] && printf 'PASS: cycle_state_is_terminal GATED → false\n'
+fi
+
+# Test 19: cycle_state_is_terminal REVIEWED → false
+if cycle_state_is_terminal "REVIEWED"; then
+    printf 'FAIL: cycle_state_is_terminal REVIEWED → expected false, got true\n'
+    fail=$((fail + 1))
+else
+    pass=$((pass + 1))
+    [ -n "${VERBOSE:-}" ] && printf 'PASS: cycle_state_is_terminal REVIEWED → false\n'
+fi
+
+# Test 20: cycle_state_is_terminal CURATED → false
+if cycle_state_is_terminal "CURATED"; then
+    printf 'FAIL: cycle_state_is_terminal CURATED → expected false, got true\n'
+    fail=$((fail + 1))
+else
+    pass=$((pass + 1))
+    [ -n "${VERBOSE:-}" ] && printf 'PASS: cycle_state_is_terminal CURATED → false\n'
+fi
+
+# Test 21: cycle_state_is_terminal garbage → false
+if cycle_state_is_terminal "GARBAGE_STATE"; then
+    printf 'FAIL: cycle_state_is_terminal GARBAGE_STATE → expected false, got true\n'
+    fail=$((fail + 1))
+else
+    pass=$((pass + 1))
+    [ -n "${VERBOSE:-}" ] && printf 'PASS: cycle_state_is_terminal garbage → false\n'
+fi
+
+# Test 22: cycle_state_next GATED → REVIEWED
+got=$(cycle_state_next "GATED")
+assert_eq "cycle_state_next GATED → REVIEWED" "REVIEWED" "$got"
+
+# Test 23: cycle_state_next REVIEWED → CURATED
+got=$(cycle_state_next "REVIEWED")
+assert_eq "cycle_state_next REVIEWED → CURATED" "CURATED" "$got"
+
+# Test 24: cycle_state_next CURATED → COMMITTED
+got=$(cycle_state_next "CURATED")
+assert_eq "cycle_state_next CURATED → COMMITTED" "COMMITTED" "$got"
+
+# Test 25: cycle_state_next COMMITTED → "" (terminal, no successor)
+got=$(cycle_state_next "COMMITTED")
+assert_eq "cycle_state_next COMMITTED → empty" "" "$got"
+
+# Test 26: cycle_state_next garbage → "" (unknown, no successor)
+got=$(cycle_state_next "GARBAGE_STATE")
+assert_eq "cycle_state_next garbage → empty" "" "$got"
+
+# Test 27: cycle_state_role REVIEWED → context-curator
+got=$(cycle_state_role "REVIEWED")
+assert_eq "cycle_state_role REVIEWED → context-curator" "context-curator" "$got"
+
+# Test 28: cycle_state_role CURATED → committer
+got=$(cycle_state_role "CURATED")
+assert_eq "cycle_state_role CURATED → committer" "committer" "$got"
+
+# Test 29: cycle_state_role COMMITTED → "" (terminal, no next role)
+got=$(cycle_state_role "COMMITTED")
+assert_eq "cycle_state_role COMMITTED → empty" "" "$got"
+
+# Test 30: cycle_state_role GATED → "" (first state, no prior block role)
+got=$(cycle_state_role "GATED")
+assert_eq "cycle_state_role GATED → empty" "" "$got"
+
+# Test 31: cycle_state_role unknown → ""
+got=$(cycle_state_role "UNKNOWN_STATE")
+assert_eq "cycle_state_role unknown → empty" "" "$got"
+
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]
