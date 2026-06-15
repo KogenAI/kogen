@@ -203,6 +203,8 @@ After committer confirms the commit: if this is a pitch-driven build and the pit
 
 Update `codegen/PROJECT_CONTEXT.md` and relevant `context/*.md` domain files if structure or conventions changed.
 
+When updating context files, append `## context-curator Section` to the active session log and end it with a line `Files edited: <space-separated repo-relative paths>` or `Files edited: none`. This marker is consumed by the `curator-learning-committed` gate. If a `context/*.md` edit would push the file over 40,960 bytes, compress a stale bullet, relocate a verbose example, or split to a new context file — never drop the learning.
+
 ### STEP 3: Output build_result JSON
 
 ## Result Reporting (MANDATORY)

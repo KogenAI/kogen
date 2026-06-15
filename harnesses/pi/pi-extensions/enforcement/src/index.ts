@@ -31,6 +31,7 @@ import { register as registerCommitterWriteAllowlist } from "./hooks/committer-w
 import { register as registerContextCuratorGuard } from "./hooks/context-curator-guard";
 import { register as registerCuratorBeforeCommitter } from "./hooks/curator-before-committer";
 import { register as registerCuratorFormat } from "./hooks/curator-format";
+import { register as registerCuratorLearningCommitted } from "./hooks/curator-learning-committed";
 import { register as registerDevNoCi } from "./hooks/dev-no-ci";
 import { register as registerDeveloperNoSelfGate } from "./hooks/developer-no-self-gate";
 import { register as registerDeveloperNoSelfGateReset } from "./hooks/developer-no-self-gate-reset";
@@ -87,6 +88,7 @@ export default function (pi: ExtensionAPI): void {
   registerContextCuratorGuard(pi);
   registerCuratorBeforeCommitter(pi);
   registerCuratorFormat(pi);
+  registerCuratorLearningCommitted(pi);
   registerDevNoCi(pi);
   registerDeveloperNoSelfGate(pi);
   registerDeveloperNoSelfGateReset(pi);

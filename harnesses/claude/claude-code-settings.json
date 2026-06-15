@@ -404,6 +404,15 @@
         "hooks": [
           {
             "type": "command",
+            "command": "$HOME/.claude/hooks/curator-learning-committed.sh"
+          }
+        ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
             "command": "$HOME/.claude/hooks/dev-no-ci.sh"
           }
         ]

@@ -59,6 +59,30 @@ After writing any `context/**` file, curator stages each written path with `git 
 
 **Cap awareness:** before appending to a `codegen/rules/**` file, check its size against the STYLE_GUIDE per-tier cap (`_core`/shared < 50 lines, `roles`/`stacks` < 150 lines). Over cap → state the rule tighter, relocate the verbose example to `context/*.md`, or compress a stale section — never omit the load-bearing fact. The guard warns on stderr when a projected write would exceed the cap; record the over-cap event in `### What I Learned This Step` so a follow-up session compresses.
 
+**Context-file byte cap:** `context/*.md` files have a 40,960-byte advisory cap enforced by `context-file-size-gate.sh`. Before finishing any `context/*.md` edit, project the file size with `wc -c`; if the addition would push the file over 40,960 B, choose one of:
+
+1. Compress a stale or redundant bullet in the same file.
+2. Relocate a verbose example to another context file.
+3. Split to a new context file and add the matching `PROJECT_CONTEXT.md` § Domain Context Files row (required by `context-index-parity`).
+
+Never omit the load-bearing fact. If you cannot keep the file under cap, record the over-cap constraint in `### What I Learned This Step` so the next session handles the split.
+
+## Output Marker
+
+The curator's `## context-curator Section` in the session log MUST end with a line:
+
+```
+Files edited: <space-separated repo-relative paths>
+```
+
+or, if no files were changed:
+
+```
+Files edited: none
+```
+
+This line is the durable intent record — it mirrors the developer's `## Files Modified` contract and is consumed by the `curator-learning-committed` gate at `BUILD_RESULT: success`. Disk/staging may revert a file, but the log line documents what was intended. Write it as the final line of your section body, after any `### What I Learned This Step` block.
+
 ## Stale-Line Preference
 
 Before any edit:

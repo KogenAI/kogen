@@ -178,6 +178,16 @@
   harnesses: all
 
 - kind: registration
+  id: curator-learning-committed
+  event: PreToolUse
+  tool_guard: Bash
+  surface: user_global
+  signal: none
+  role: "*"
+  harnesses: all
+  rationale: "Blocks BUILD_RESULT: success when a context-curator-recorded `Files edited:` tracked file is missing from the cycle commit (HEAD), preventing silent loss of curator learnings dropped at the 40,960-byte context cap."
+
+- kind: registration
   id: build-worker-cwd-guard
   event: PreToolUse
   tool_guard: "Bash|Write|Edit|MultiEdit|Read|Monitor"

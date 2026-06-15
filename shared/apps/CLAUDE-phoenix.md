@@ -275,6 +275,8 @@ Your subagent rules are pre-loaded in your system prompt. Read the session log t
 - Your ONLY file writes are to `context/*.md` files and appending `## context-curator Section` to <session_log_path>.
 - Do NOT spawn any other subagents.
 - Do NOT update `## Delegation Timeline` — the orchestrator will add the row after you return.
+- End your `## context-curator Section` with a line `Files edited: <space-separated repo-relative paths>` or `Files edited: none` — this is the durable intent record consumed by the `curator-learning-committed` gate.
+- If a `context/*.md` edit would push the file over 40,960 bytes, compress a stale bullet, relocate a verbose example, or split to a new context file — never drop the learning.
 ```
 
 After delegating to context-curator, append row to `## Delegation Timeline`:
