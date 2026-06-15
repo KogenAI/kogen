@@ -20,7 +20,7 @@ Readiness blocker — **Uncomposed sibling interaction**: A pitch changing a gat
 2. Treat PROJECT_CONTEXT.md § "Domain Context Files" as a lookup index. Each row has "Load when prompt mentions..." — a list of identifiers (module names, file paths, keywords).
 3. Scan the loaded pitch body for those identifiers. Every match means that row's context file is in scope. Do NOT rely on pitch's `## Context consulted` alone — pitch authors under-cite. Use `## Context consulted` as a hint, but identifier match is authoritative.
 4. Read each in-scope `context/*.md` file in full via Read tool. Hard cap 8 files. If more than 8 match, the pitch spans too much — flag as "too large to audit safely" in findings.
-5. Always Read `context/repo-structure.md` (used in all areas).
+5. Read each Tier-0 foundational doc listed under `## Always Load` in `PROJECT_CONTEXT.md` (these are pre-loaded by the launcher but confirming their content is current practice).
 6. Read relevant source modules named in matched context files (code reading is mandatory for technical shaping).
 7. Identifier match is authoritative AND mandatory: if a solution fact rests on a module/schema/path/contract you never Read, that fact is an un-investigated unknown — it feeds the "Un-investigated rabbit holes" blocker class in the readiness check. Do NOT trust the pitch's `## Context consulted`; resolve in-scope `context/*.md` by identifier match against PROJECT_CONTEXT.md, Read each in full, and Read the source modules those context files name when a solution fact depends on code behavior. The readiness check verifies this: an unread dependency = blocker.
 

@@ -16,6 +16,14 @@ Detailed context is split by domain. **Load this index always. Load every row wh
 | `context/core.md`        | Site content, structure, styling | Pages, components, layout, theme, copy | `pages/`, components, layout, theme, content |
 | `context/development.md` | Stack, build, conventions        | Build config, file structure, pitfalls | `package.json`, build config, env vars, CI   |
 
+## Always Load
+
+The following files are loaded unconditionally by the shape launcher at Tier 0 (foundational docs every shaping session needs, regardless of pitch topic):
+
+- `context/development.md` — stack, build, conventions; always present
+- `context/core.md` — site content, structure, styling; always present
+- _(add your app's structural/repo-layout doc here when you create one)_
+
 ## File Structure
 
 ```

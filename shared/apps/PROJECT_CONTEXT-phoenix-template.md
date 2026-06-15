@@ -29,6 +29,13 @@ Examples of domain splits for larger apps:
 - **Fixing tests or CI**: `context/development.md`
 - **Cross-cutting change**: multiple domain files
 
+## Always Load
+
+The following files are loaded unconditionally by the shape launcher at Tier 0 (foundational docs every shaping session needs, regardless of pitch topic):
+
+- `context/development.md` — conventions, stack, pitfalls; always present
+- _(add your app's structural/repo-layout doc here when you create one)_
+
 ## Module Directory
 
 ### Core Modules

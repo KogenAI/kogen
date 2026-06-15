@@ -41,6 +41,13 @@ Load this index always. Load every row whose trigger matches the prompt. Files a
 | `context/deployment-topology.md`       | Deployment locations, path derivation, multi-location topology                      | deployment, server, prod, staging, dashboard box, Hetzner, CODEGEN_DIR, OCG_CODEGEN_DIR, hardcode, BASH_SOURCE, multi-location, install target vs source                                               | harnesses/, install.sh, context/deployment-topology.md (self)                                                                  |
 | `context/bench-prohibition.md`         | Benchmark capture + agent prohibition                                               | BENCH=1 constraint, REASON variable, screenshot capture, playwright                                                                                                                                    | benchmark-coverage, makefile-targets, bench-prereqs                                                                            |
 
+## Always Load
+
+Tier-0 foundational docs — the launcher loads these on every shape session regardless of pitch content. Basenames only; launcher resolves each to `context/<name>`. Keep this list short (foundational orientation only).
+
+- repo-structure.md
+- core.md
+
 ## Generator Pipeline
 
 | Module                                      | Purpose                                                                                                                                 |

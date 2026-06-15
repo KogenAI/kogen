@@ -84,6 +84,8 @@ Hook registration: **Two pipelines** — both write to `harnesses/claude/hooks/*
 | `harnesses/claude/hooks/lib/wiring-check_test.sh` | Verdict-logic + `node --check` parse guard for wiring-check.js; ≥14 fixture-driven cases (PASS, FAIL, INCONCLUSIVE, unresolvable-selector, ~H sigil, ancestor-id, text-selector, multi-handler partial-wired) |
 | `harnesses/claude/hooks/lib/render-check.js` | Headless Chromium render verdict engine: DOM non-empty, styles applied, no JS errors. Parse guard: detects dup fn defs via `node --check` |
 | `harnesses/claude/hooks/lib/render-check_test.sh` | Regression guard: `node --check` on render-check.js + phoenix-server.js; tests SyntaxError paths for duplicate functions |
+| `harnesses/claude/hooks/portable-launcher_test.sh` | Real launcher invocation tests (T0–T19 suite): tests CONTEXT_FLAGS/ROLE_SYSTEM_PROMPT append logic, SCRIPT_DIR/CODEGEN_DIR drift-block (byte-identical grep window L7-15 in claude-shape), pitch resolution, Tier-0/Tier-1 context loading (always-load, fail-open, pitch-matched, dedup, 6-row cap) |
+| `harnesses/claude/hooks/prompt-content-parity_test.sh` | Verifies baked shape prompts preserve fixed sentinel strings: `ASK-GATE: product forks only`, `INTERACTION-AUDIT: compose-check siblings`, `Never treat N prose...`; non-sentinel edits to spine or shape bodies do not require sentinel sync |
 | `harnesses/claude/hooks/run-tests.sh` | Runs all `*_test.sh` hook tests |
 
 ## Hook Event Types and Scripts

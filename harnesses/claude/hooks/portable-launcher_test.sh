@@ -519,6 +519,157 @@ else
     fail=$((fail + 1))
 fi
 
+# ── Test 16: Tier-0 loading — file in Always Load section gets appended ───────
+T16="$BASE_TMP/t16_tier0"
+mkdir -p "$T16/context"
+# Minimal PROJECT_CONTEXT.md with Always Load section
+cat >"$T16/PROJECT_CONTEXT.md" <<'EOF'
+## Domain Context Files
+
+| File | Domain | Load when prompt mentions... | Update when changing... |
+| --- | --- | --- | --- |
+
+## Always Load
+
+Tier-0 foundational docs — the launcher loads these on every shape session.
+
+- repo-structure.md
+- core.md
+
+## Next Section
+EOF
+printf 'REPO_STRUCTURE_CONTENT' >"$T16/context/repo-structure.md"
+printf 'CORE_CONTENT' >"$T16/context/core.md"
+
+BIN16="$BASE_TMP/t16_bin"
+mkdir -p "$BIN16"
+CAPTURE16="$BASE_TMP/t16_args.txt"
+# Stub claude: write all args joined to a file so we can inspect them
+make_stub "$BIN16/claude" "printf '%s\n' \"\$@\" > '$CAPTURE16'"
+if command -v yq >/dev/null 2>&1; then
+    ln -s "$(command -v yq)" "$BIN16/yq"
+fi
+# Copy launcher; point harnesses symlink to real codegen so load_role resolves
+cp "$CODEGEN_ROOT/harnesses/claude/claude-shape.sh" "$T16/claude-shape.sh"
+ln -s "$CODEGEN_ROOT/harnesses" "$T16/harnesses"
+
+actual_exit=0
+(cd "$T16" && PATH="$BIN16:$PATH" HOME="/tmp/nonexistent_xyz" bash claude-shape.sh 2>/dev/null) || actual_exit=$?
+captured16=""
+[ -f "$CAPTURE16" ] && captured16=$(cat "$CAPTURE16")
+assert_contains "(16) Tier-0 loading: repo-structure.md content in claude args" "REPO_STRUCTURE_CONTENT" "$captured16"
+assert_contains "(16) Tier-0 loading: core.md content in claude args" "CORE_CONTENT" "$captured16"
+
+# ── Test 17: Tier-0 fail-open — missing file does NOT abort ───────────────────
+T17="$BASE_TMP/t17_tier0_failopen"
+mkdir -p "$T17/context"
+cat >"$T17/PROJECT_CONTEXT.md" <<'EOF'
+## Always Load
+
+- nonexistent-file.md
+- repo-structure.md
+
+## Next
+EOF
+printf 'REPO_STRUCTURE_CONTENT' >"$T17/context/repo-structure.md"
+# nonexistent-file.md is deliberately absent
+
+BIN17="$BASE_TMP/t17_bin"
+mkdir -p "$BIN17"
+CAPTURE17="$BASE_TMP/t17_args.txt"
+make_stub "$BIN17/claude" "printf '%s\n' \"\$@\" > '$CAPTURE17'"
+if command -v yq >/dev/null 2>&1; then
+    ln -s "$(command -v yq)" "$BIN17/yq"
+fi
+cp "$CODEGEN_ROOT/harnesses/claude/claude-shape.sh" "$T17/claude-shape.sh"
+ln -s "$CODEGEN_ROOT/harnesses" "$T17/harnesses"
+
+actual_exit=0
+(cd "$T17" && PATH="$BIN17:$PATH" HOME="/tmp/nonexistent_xyz" bash claude-shape.sh 2>/dev/null) || actual_exit=$?
+assert_exit "(17) Tier-0 fail-open: launcher exits 0 despite missing Always Load file" "0" "$actual_exit"
+captured17=""
+[ -f "$CAPTURE17" ] && captured17=$(cat "$CAPTURE17")
+assert_contains "(17) Tier-0 fail-open: existing file still loaded" "REPO_STRUCTURE_CONTENT" "$captured17"
+
+# ── Test 18: Tier-1 loading — pitch identifier match appends context file ─────
+T18="$BASE_TMP/t18_tier1"
+mkdir -p "$T18/context" "$T18/codegen/pitches/draft"
+cat >"$T18/PROJECT_CONTEXT.md" <<'EOF'
+## Domain Context Files
+
+| File | Domain | Load when prompt mentions... | Update when changing... |
+| --- | --- | --- | --- |
+| `context/harnesses.md` | Harness specifics | claude-shape, dispatch.sh, launcher | harnesses/ |
+| `context/hooks.md` | Hook system | PreToolUse, SubagentStop, hook test | harnesses/*/hooks/ |
+
+## Always Load
+
+- repo-structure.md
+
+## Next
+EOF
+printf 'REPO_STRUCTURE_CONTENT' >"$T18/context/repo-structure.md"
+printf 'HARNESSES_CONTENT' >"$T18/context/harnesses.md"
+printf 'HOOKS_CONTENT' >"$T18/context/hooks.md"
+# Pitch that mentions "dispatch.sh" (matches harnesses.md row)
+printf '## Problem\nNeed to fix dispatch.sh routing logic.\n' >"$T18/codegen/pitches/draft/my-pitch.md"
+
+BIN18="$BASE_TMP/t18_bin"
+mkdir -p "$BIN18"
+CAPTURE18="$BASE_TMP/t18_args.txt"
+make_stub "$BIN18/claude" "printf '%s\n' \"\$@\" > '$CAPTURE18'"
+if command -v yq >/dev/null 2>&1; then
+    ln -s "$(command -v yq)" "$BIN18/yq"
+fi
+cp "$CODEGEN_ROOT/harnesses/claude/claude-shape.sh" "$T18/claude-shape.sh"
+ln -s "$CODEGEN_ROOT/harnesses" "$T18/harnesses"
+
+actual_exit=0
+(cd "$T18" && PATH="$BIN18:$PATH" HOME="/tmp/nonexistent_xyz" bash claude-shape.sh my-pitch 2>/dev/null) || actual_exit=$?
+captured18=""
+[ -f "$CAPTURE18" ] && captured18=$(cat "$CAPTURE18")
+# harnesses.md should be loaded (dispatch.sh matches), hooks.md should NOT (no match)
+assert_contains "(18) Tier-1 loading: matched context file content in args" "HARNESSES_CONTENT" "$captured18"
+assert_not_contains "(18) Tier-1 loading: unmatched context file not in args" "HOOKS_CONTENT" "$captured18"
+
+# ── Test 19: Tier-1 dedup — Tier-0 file not double-loaded in Tier-1 ───────────
+T19="$BASE_TMP/t19_tier1_dedup"
+mkdir -p "$T19/context" "$T19/codegen/pitches/draft"
+cat >"$T19/PROJECT_CONTEXT.md" <<'EOF'
+## Domain Context Files
+
+| File | Domain | Load when prompt mentions... | Update when changing... |
+| --- | --- | --- | --- |
+| `context/repo-structure.md` | Repo structure | repo-structure, directory, artifact | top-level scripts |
+
+## Always Load
+
+- repo-structure.md
+
+## Next
+EOF
+printf 'REPO_STRUCTURE_CONTENT' >"$T19/context/repo-structure.md"
+# Pitch that mentions "repo-structure" (would match Tier-1 row if not deduped)
+printf '## Problem\nNeed to update repo-structure and directory layout.\n' >"$T19/codegen/pitches/draft/dedup-pitch.md"
+
+BIN19="$BASE_TMP/t19_bin"
+mkdir -p "$BIN19"
+CAPTURE19="$BASE_TMP/t19_args.txt"
+make_stub "$BIN19/claude" "printf '%s\n' \"\$@\" > '$CAPTURE19'"
+if command -v yq >/dev/null 2>&1; then
+    ln -s "$(command -v yq)" "$BIN19/yq"
+fi
+cp "$CODEGEN_ROOT/harnesses/claude/claude-shape.sh" "$T19/claude-shape.sh"
+ln -s "$CODEGEN_ROOT/harnesses" "$T19/harnesses"
+
+actual_exit=0
+(cd "$T19" && PATH="$BIN19:$PATH" HOME="/tmp/nonexistent_xyz" bash claude-shape.sh dedup-pitch 2>/dev/null) || actual_exit=$?
+captured19=""
+[ -f "$CAPTURE19" ] && captured19=$(cat "$CAPTURE19")
+# Count occurrences of REPO_STRUCTURE_CONTENT — should be exactly 1 (Tier-0, not doubled)
+occurrences19=$(printf '%s' "$captured19" | grep -c "REPO_STRUCTURE_CONTENT" 2>/dev/null || true)
+assert_eq "(19) Tier-1 dedup: Tier-0 file loaded exactly once" "1" "$occurrences19"
+
 # ── Results ───────────────────────────────────────────────────────────────────
 printf '\nResults: %d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

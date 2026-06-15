@@ -37,8 +37,35 @@ source "$CODEGEN_DIR/harnesses/claude/load-role.sh"
 load_role shape
 
 CONTEXT_FLAGS=()
+TIER0_LOADED=""
 if [[ -f "./PROJECT_CONTEXT.md" ]]; then
     CONTEXT_FLAGS+=(--append-system-prompt "$(cat ./PROJECT_CONTEXT.md)")
+    # Tier 0: foundational docs listed under "## Always Load" in the index.
+    # Read each basename, append context/<name> if it exists. Fail-open.
+    _in_always=0
+    while IFS= read -r _line; do
+        case "$_line" in
+        "## Always Load")
+            _in_always=1
+            continue
+            ;;
+        "## "*) [[ $_in_always -eq 1 ]] && break ;;
+        esac
+        [[ $_in_always -eq 1 ]] || continue
+        case "$_line" in
+        "- "*)
+            _bn="${_line#- }"
+            _bn="${_bn%% *}"
+            [[ -n "$_bn" ]] || continue
+            if [[ -f "./context/$_bn" ]]; then
+                CONTEXT_FLAGS+=(--append-system-prompt "$(cat "./context/$_bn")")
+                TIER0_LOADED="${TIER0_LOADED} ${_bn}"
+            else
+                printf 'claude-shape: Tier-0 doc context/%s listed in Always Load but not found; skipping\n' "$_bn" >&2
+            fi
+            ;;
+        esac
+    done <./PROJECT_CONTEXT.md
 fi
 
 TOOL_FLAGS=()
@@ -118,6 +145,58 @@ done
 if [[ ${#RESOLVED_ARGS[@]} -eq 1 ]] && [[ "${RESOLVED_ARGS[0]}" == *"codegen/pitches/draft/"* ]]; then
     _pitch_basename="$(basename "${RESOLVED_ARGS[0]}" .md)"
     export CLAUDE_PITCH_PATH="$(cd "$PWD" && pwd)/codegen/pitches/draft/${_pitch_basename}.md"
+    # Tier 1: pitch-matched context files from § Domain Context Files table.
+    # Parse the index, grep each row's identifiers against the resolved pitch. Fail-open.
+    if [[ -f "$CLAUDE_PITCH_PATH" && -f "./PROJECT_CONTEXT.md" ]]; then
+        _tier1_count=0
+        _in_table=0
+        while IFS='|' read -r _pre _file _domain _ids _rest; do
+            # Detect table rows vs section headers
+            case "$_file" in
+            *"context/"*.md*)
+                [[ $_in_table -eq 0 ]] && _in_table=1
+                ;;
+            *"File"* | *"---"*)
+                continue
+                ;;
+            *)
+                continue
+                ;;
+            esac
+            # Strip backticks and whitespace from file path
+            _ctx_file="${_file//\`/}"
+            _ctx_file="${_ctx_file## }"
+            _ctx_file="${_ctx_file%% }"
+            # Extract just the basename
+            _ctx_bn="${_ctx_file##*/}"
+            # Skip if already Tier-0 loaded
+            case "$TIER0_LOADED" in
+            *" ${_ctx_bn}"*) continue ;;
+            esac
+            # Skip if file doesn't exist
+            [[ -f "./${_ctx_file}" ]] || continue
+            # Check if any identifier matches the pitch body (case-insensitive, fixed-string)
+            _matched=0
+            IFS=',' read -ra _id_arr <<<"$_ids"
+            for _id in "${_id_arr[@]}"; do
+                _id="${_id## }"
+                _id="${_id%% }"
+                [[ -z "$_id" ]] && continue
+                if grep -qiF "$_id" "$CLAUDE_PITCH_PATH" 2>/dev/null; then
+                    _matched=1
+                    break
+                fi
+            done
+            if [[ $_matched -eq 1 ]]; then
+                if [[ $_tier1_count -lt 6 ]]; then
+                    CONTEXT_FLAGS+=(--append-system-prompt "$(cat "./${_ctx_file}")")
+                    _tier1_count=$((_tier1_count + 1))
+                else
+                    printf 'claude-shape: Tier-1 cap (6) reached; skipping context/%s\n' "$_ctx_bn" >&2
+                fi
+            fi
+        done <./PROJECT_CONTEXT.md
+    fi
 fi
 
 exec claude \
