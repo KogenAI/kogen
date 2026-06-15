@@ -8,6 +8,7 @@ CODEGEN_DIR="$(cd "$SCRIPT_DIR/../../.." && pwd)"
 
 SENTINEL="ASK-GATE: product forks only"
 SENTINEL2="INTERACTION-AUDIT: compose-check siblings"
+SENTINEL3="Never treat N prose/image-named pitches as one combined task."
 
 pass=0
 fail=0
@@ -102,6 +103,17 @@ assert_contains \
     "LiveView correctness: cursor" \
     "$CODEGEN_DIR/shared/rules/stacks/phoenix/reviewer.md" \
     "Tailwind preflight resets to"
+
+# ── Tests 15-16: prose/image-named pitch trigger in baked build prompts ───────
+assert_contains \
+    "prose/image-named-pitch sentinel in claude-build-system-prompt.txt" \
+    "$CODEGEN_DIR/harnesses/claude/claude-build-system-prompt.txt" \
+    "$SENTINEL3"
+
+assert_contains \
+    "prose/image-named-pitch sentinel in pi-build-system-prompt.txt" \
+    "$CODEGEN_DIR/harnesses/pi/pi-build-system-prompt.txt" \
+    "$SENTINEL3"
 
 echo ""
 echo "Results: $pass passed, $fail failed"
