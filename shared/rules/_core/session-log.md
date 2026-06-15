@@ -15,6 +15,13 @@ codegen/logging/[0-9]{8}_[0-9]{6}(_[a-z0-9_-]+)?_(session|step[0-9]+_[a-z0-9_-]+
 
 ALL roles MUST use relative paths OR absolute paths starting with cwd for session logs, project files, and git operations.
 
+## Git Status
+
+Session logs live under `/codegen/` and are **gitignored** — in the codegen repo (`.gitignore`) and in every scaffolded downstream app (both stacks, appended by `codegen-scaffold` integrate). They are **ephemeral working artifacts — never committed, never durable**.
+
+- NEVER `git add` a session log or include one in a commit. `git add -A` already skips gitignored logs.
+- NEVER make a separate "record the log" commit — git refuses the ignored path (`exit 1`, "paths are ignored… Use -f") and the log never registers dirty under `git status --porcelain`, so nothing is missing.
+
 ## Ownership
 
 - Orchestrator creates log FIRST via **Write** tool (NOT Bash redirect) — BEFORE delegating to planner.

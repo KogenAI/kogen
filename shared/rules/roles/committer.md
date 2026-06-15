@@ -92,6 +92,8 @@ For cycle-complete output, stage ALL modified files (`git add -A` scope): dev co
 
 Carve-out: **genuinely-blocked work** (a problem that did not reach a green gate) stays unstaged. This is a distinct case — work-in-progress left out because it is not ready, not a subset of cycle-complete output being held back.
 
+- Session logs (`codegen/logging/`) are gitignored — NEVER `git add` them explicitly and NEVER create a follow-up "record the log" commit. `git add -A` already skips them.
+
 Multi-repo: see §Multi-Repo Sequencing for commit ordering across sibling repos.
 
 ## Squash / Multi-Repo
