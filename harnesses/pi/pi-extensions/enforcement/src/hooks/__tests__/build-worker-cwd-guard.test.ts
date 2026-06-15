@@ -11,6 +11,7 @@ import * as path from "node:path";
 // Synthetic apps root for test isolation — mirrors OCG_APPS_ROOT env var.
 const SYNTHETIC_APPS_ROOT = path.join(os.tmpdir(), "ocg-test-apps-root");
 const SYNTHETIC_PROJECT_DIR = path.join(SYNTHETIC_APPS_ROOT, "test-project");
+const SYNTHETIC_USER_FILES_DIR = path.join(os.tmpdir(), "ocg-test-user-files");
 
 describe("build-worker-cwd-guard", () => {
   let _capturedHandler: (event: unknown) => Promise<unknown>;
@@ -51,6 +52,7 @@ describe("build-worker-cwd-guard", () => {
 
   beforeEach(() => {
     delete process.env["AGENT_TYPE"];
+    delete process.env["OCG_USER_FILES_DIR"];
   });
 
   it("subagent Read of /etc/passwd allows (escape hatch)", async () => {
@@ -74,6 +76,22 @@ describe("build-worker-cwd-guard", () => {
       "developer-phoenix-backend",
     );
     assert.ok(result == null || (result as { block?: boolean }).block !== true);
+  });
+
+  it("allows Read inside OCG_USER_FILES_DIR (upload dir)", async () => {
+    process.env["OCG_USER_FILES_DIR"] = SYNTHETIC_USER_FILES_DIR;
+    try {
+      const result = await runHook("read", { file_path: path.join(SYNTHETIC_USER_FILES_DIR, "ref.png") }, "");
+      assert.ok(result == null || (result as { block?: boolean }).block !== true);
+    } finally {
+      delete process.env["OCG_USER_FILES_DIR"];
+    }
+  });
+
+  it("blocks Read inside upload dir when OCG_USER_FILES_DIR unset (control)", async () => {
+    delete process.env["OCG_USER_FILES_DIR"];
+    const result = await runHook("read", { file_path: path.join(SYNTHETIC_USER_FILES_DIR, "ref.png") }, "");
+    assert.ok((result as { block?: boolean }).block === true);
   });
 
   it("unset OCG_APPS_ROOT passes through (unknown boundary)", async () => {

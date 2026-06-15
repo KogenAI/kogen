@@ -104,6 +104,28 @@ fi
 FIXTURE_TRAVERSAL='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"cat ../../../etc/passwd"},"agent_id":"","agent_type":"","cwd":"'"$PROJECT_DIR"'"}'
 run_test "orchestrator Bash relative path traversal ../ blocks" "2" "$FIXTURE_TRAVERSAL"
 
+# Test 10: attachment Read with OCG_USER_FILES_DIR unset — BLOCK (control, no regression)
+USER_FILES_DIR="${BASE_TMP}/user_files"
+mkdir -p "$USER_FILES_DIR"
+ATTACHMENT="$USER_FILES_DIR/ref.png"
+touch "$ATTACHMENT"
+FIXTURE_ATTACHMENT='{"hook_event_name":"PreToolUse","tool_name":"Read","tool_input":{"file_path":"'"$ATTACHMENT"'"},"agent_id":"","agent_type":"","cwd":"'"$PROJECT_DIR"'"}'
+stdout_t10=$(printf '%s' "$FIXTURE_ATTACHMENT" | env -u OCG_USER_FILES_DIR bash "$GUARD" 2>/dev/null || true)
+outcome_t10="0"
+if printf '%s' "$stdout_t10" | grep -q '"permissionDecision"[[:space:]]*:[[:space:]]*"deny"'; then
+    outcome_t10="2"
+fi
+if [ "$outcome_t10" = "2" ]; then
+    [ -n "${VERBOSE:-}" ] && printf 'PASS: attachment Read with unset OCG_USER_FILES_DIR blocks (control)\n'
+    pass=$((pass + 1))
+else
+    printf 'FAIL: attachment Read with unset OCG_USER_FILES_DIR should block — expected 2, got %s\n  stdout: %s\n' "$outcome_t10" "$stdout_t10"
+    fail=$((fail + 1))
+fi
+# Test 11: Orchestrator Read inside OCG_USER_FILES_DIR — ALLOW (consumer upload dir)
+export OCG_USER_FILES_DIR="$USER_FILES_DIR"
+run_test "orchestrator Read inside OCG_USER_FILES_DIR allows (upload dir)" "0" "$FIXTURE_ATTACHMENT"
+
 echo ""
 echo "Results: $pass passed, $fail failed"
 

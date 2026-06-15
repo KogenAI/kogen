@@ -59,6 +59,8 @@ One-liner per target — for test target semantics see `context/test-harness.md`
 
 See `.env.sample` and `.env.prod.sample` for full variable lists.
 
+**OCG\_\* platform-injected variable convention**: Consumed-only variables (injected by build orchestrator, never set by codegen) follow naming pattern `OCG_<CATEGORY>_<PURPOSE>`. Placement in `.env.sample` and `.env.prod.sample` is consistent: group all `OCG_*` vars under a single comment block describing their purpose (e.g., "Consumer-supplied build-worker confinement roots"). When adding a new consumed OCG var, append it to the existing block, not in isolation — maintains operator discoverability and follows existing convention from `OCG_APPS_ROOT`, `OCG_PHOENIX_SEED_DIR`, and `OCG_USER_FILES_DIR`.
+
 ## Coding Conventions
 
 - **Bash**: `set -euo pipefail` in all scripts; `content_stable_cp` is defined in `install.sh` (not `utils.sh`) for idempotent file copies; `utils.sh` provides only `OCG_CMD`

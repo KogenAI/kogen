@@ -66,10 +66,12 @@ export function register(pi: ExtensionAPI): void {
         (event.input as { path?: string; file_path?: string }).path ??
         (event.input as { path?: string; file_path?: string }).file_path ??
         "";
+      const userFilesDir = process.env["OCG_USER_FILES_DIR"];
       if (
         filePath &&
         !filePath.startsWith(projectDir) &&
-        !filePath.startsWith("/tmp")
+        !filePath.startsWith("/tmp") &&
+        !(userFilesDir && filePath.startsWith(userFilesDir))
       ) {
         return deny(
           `BLOCKED by build-worker-cwd-guard: ${event.toolName} path outside workspace: ${filePath}`,

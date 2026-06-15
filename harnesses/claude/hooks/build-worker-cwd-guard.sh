@@ -59,6 +59,11 @@ seed_dir="${OCG_PHOENIX_SEED_DIR:-}"
 if [ -n "$seed_dir" ]; then
     whitelist+=("$seed_dir")
 fi
+# Add OCG_USER_FILES_DIR to whitelist only when set (consumer upload dir).
+user_files_dir="${OCG_USER_FILES_DIR:-}"
+if [ -n "$user_files_dir" ]; then
+    whitelist+=("$user_files_dir")
+fi
 
 is_allowed_path() {
     local p="$1"
