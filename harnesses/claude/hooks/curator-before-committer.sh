@@ -15,16 +15,17 @@
 #
 # Logic:
 #   If subagent_type == "committer"
-#     AND session log has a ## reviewer-* Section
-#     AND session log has NO ## context-curator Section
+#     AND cycle-state.json state == "REVIEWED"
 #   → deny with explanation
 #
-# Fail-open: if no session log found, allow (can't determine state).
+# Fail-open: if no cycle-state.json or state absent, allow (can't determine state).
 # All other subagent types: allow unconditionally.
 
 set -u
 
 source "$(dirname "$0")/lib/hooks-lib.sh"
+# shellcheck disable=SC1091
+source "$(dirname "$0")/lib/cycle-state.sh"
 parse_input
 
 # Only guard the Agent tool (subagent spawn).
@@ -51,23 +52,14 @@ fi
 
 debug_log curator-before-committer "log=$log_file"
 
-# Check if reviewer has run.
-has_reviewer=0
-if grep -qE '^## reviewer-.+ Section|^## reviewer-phoenix Section|^## reviewer-static Section' "$log_file" 2>/dev/null; then
-    has_reviewer=1
-fi
+project_dir="${CWD:-${CLAUDE_PROJECT_DIR:-$PWD}}"
+cs_state=$(cycle_state_get "$project_dir")
 
-# Check if context-curator has run.
-has_curator=0
-if grep -qE '^## context-curator Section' "$log_file" 2>/dev/null; then
-    has_curator=1
-fi
+debug_log curator-before-committer "cs_state=$cs_state"
 
-debug_log curator-before-committer "has_reviewer=$has_reviewer has_curator=$has_curator"
-
-# Block only when reviewer ran but curator did not.
-if [ "$has_reviewer" = "1" ] && [ "$has_curator" = "0" ]; then
-    deny "BLOCKED: context-curator must run before committer. Reviewer ran, curator has not. Delegate to context-curator first."
+# Block only when cycle-state is REVIEWED (reviewer ran, curator has not).
+if [ "$cs_state" = "REVIEWED" ]; then
+    deny "BLOCKED: context-curator must run before committer. Reviewer ran (cycle-state=REVIEWED), curator has not. Delegate to context-curator first."
     exit 0
 fi
 

@@ -28,7 +28,7 @@ Hook registration: **Two pipelines** — both write to `harnesses/claude/hooks/*
 | `harnesses/claude/hooks/stop-cycle-guard.sh` | Stop — blocks premature stop before full cycle completes |
 | `harnesses/claude/hooks/stop-resume.sh` | Stop — resumes orchestration if session was interrupted mid-cycle |
 | `harnesses/claude/hooks/stop-verify-planner-gate.sh` | Stop — verifies planner ran before dev delegation |
-| `harnesses/claude/hooks/step-log-completeness.sh` | Stop — checks step log completeness before session ends |
+| `harnesses/claude/hooks/step-log-completeness.sh` | Stop — blocks stop when cycle-state.json indicates cycle incomplete; GATED+clear blocks, GATED+failed allows (gate re-spawn handles it), absent/mismatched fails open |
 | `harnesses/claude/hooks/llm-pending-sweep.sh` | Stop — sweeps for pending LLM-generated artifacts before exit |
 | `harnesses/claude/hooks/session-log-section-integrity.sh` | PreToolUse — enforces section header presence before Edit |
 | `harnesses/claude/hooks/no-python-json.sh` | PreToolUse — blocks inline `python3 -c` JSON parsing |
@@ -105,13 +105,13 @@ Event → script mapping from `harnesses/claude/claude-code-settings.json`:
 
 ## curator-before-committer Guard
 
-`harnesses/claude/hooks/curator-before-committer.sh` — PreToolUse/Agent hook that blocks committer spawn until context-curator has run. Intercepts every `Agent` tool call; if `subagent_type == "committer"` and a `## reviewer-*` section is present but no `## context-curator Section`, the spawn is denied.
+`harnesses/claude/hooks/curator-before-committer.sh` — PreToolUse/Agent hook that blocks committer spawn when cycle-state.json records `REVIEWED` (reviewer ran, curator has not). Intercepts every `Agent` tool call; if `subagent_type == "committer"` and `cycle_state_get` returns `"REVIEWED"`, the spawn is denied.
 
-**Fail-open**: if no active step log is locatable, the hook exits 0 (allow). State cannot be determined → do not block.
+**Fail-open**: no cycle-state.json or absent state → exit 0 (allow).
 
-**Pi mirror**: `curator-before-committer.ts` — same logic via `tool_call` event on `"subagent"` tool name.
+**Pi mirror**: `curator-before-committer.ts` — same logic via `tool_call` event.
 
-**Orchestrator ordering**: Both harnesses' `build.txt` state the full sequence `reviewer → context-curator → committer`. The prompt alone is not enough — this hook enforces the ordering at spawn time.
+**Orchestrator ordering**: `build.txt` states `reviewer → context-curator → committer`; this hook enforces ordering at spawn time.
 
 ## context-curator-guard Write Surface
 
@@ -123,11 +123,9 @@ Cross-reference: curator decision tree → `context/rules-roles.md` § Curator W
 
 ## context-index-parity Guard
 
-`harnesses/claude/hooks/context-index-parity.sh` — PreToolUse hook enforcing `context/*.md` additions are reflected in `PROJECT_CONTEXT.md` Domain Context Files table. Fires at `git commit` time (not during `make test`). When a `context/*.md` file is staged for commit, the hook checks that `PROJECT_CONTEXT.md` is also staged AND contains the file's basename.
+`harnesses/claude/hooks/context-index-parity.sh` — PreToolUse hook: when a `context/*.md` file is staged for commit, verifies `PROJECT_CONTEXT.md` is also staged and contains the file's basename. Fires at `git commit` (not `make test`).
 
-**Timing**: PreToolUse event → blocks `git commit` directly. Developers can stage changes and run `make test` (which passes); the parity check still blocks commit if index rows are missing.
-
-**How to satisfy**: Append a row to `PROJECT_CONTEXT.md` § Domain Context Files table; the basename string (e.g., `"deployment-topology"` for `context/deployment-topology.md`) must appear in the staged body.
+**Satisfy**: Append a row to `PROJECT_CONTEXT.md` § Domain Context Files table with the basename (e.g., `"deployment-topology"` for `context/deployment-topology.md`).
 
 ## Session Log Section Detection
 
@@ -147,13 +145,11 @@ Hooks check session log state via `## <role>.*Section` patterns:
 
 ## Retrospective Placement Rule (subagent-retrospective-guard)
 
-`subagent-retrospective-guard.sh` — SubagentStop hook that validates correct placement of `### What I Learned This Step` blocks in the active session log. Specifically for planner variants: the block MUST sit BEFORE any `## ` sub-headers (e.g., `## Files Modified`, `## Next Steps`, `## Delegation Timeline`) within the `## Plan` body.
+`subagent-retrospective-guard.sh` — SubagentStop hook validating `### What I Learned This Step` placement. For planner variants: block MUST sit INSIDE `## Plan` body BEFORE any `## ` sub-headers — awk section scanning terminates at `## ` so a sub-header inside the block hides it from curation.
 
-**Why placement matters**: The hook uses awk section scanning (`/^## /` terminator) to extract retrospective blocks for curation routing. A `## ` header inside the block body terminates extraction and hides all subsequent blocks from the curator. Placing the retrospective block before any `## ` headers ensures extraction captures the intended content.
+**Placement chain**: planner prose → sub-tasks → `### What I Learned This Step` → then `## Delegation Prompt` etc.
 
-**Rule for planner variants**: `### What I Learned This Step` must be positioned INSIDE the `## Plan` section body, as the last prose element BEFORE any sub-headers or metadata tables. Placement chain: planner task prose → sub-tasks/deliverables (if any) → `### What I Learned This Step` → then any `## ` sub-headers like `## Delegation Prompt`.
-
-**Enforcement**: Hook exits non-zero if block is missing entirely (unconditional requirement for all subagents per `shared/rules/roles/developer.md` Rule O). No warning for positioning drift in other roles — planner is the primary focus due to the extraction order dependency.
+**Enforcement**: exits non-zero if block is missing (unconditional, all subagents). Positioning enforcement scoped to planner role.
 
 ## Autoship Hook (`pitch-shipped-before-stop`)
 
@@ -242,9 +238,9 @@ Two distinct code paths: (1) **Pre-flight**: verifies gate runner (`make`, `mix`
 | `verdict=inconclusive` | Gate ran, not clear — ALL roles BLOCKED; retry-cap (≥2) is escape valve |
 | `verdict=failed` | Gate ran and failed — ALL roles BLOCKED; same retry-cap escape valve |
 
-Upstream carve-outs (ScheduleWakeup in-flight, `?`-intent, retry-cap release) fire BEFORE the verdict guard and take precedence.
+Upstream carve-outs (ScheduleWakeup, `?`-intent, retry-cap release) fire before the verdict guard.
 
-**Interplay with Layer-2**: `build-no-success-before-commit.sh` (PreToolUse/BUILD_RESULT) requires `verdict=clear` at ship-time. Both layers are defense-in-depth — different events, different enforcement points.
+**Layer-2 interplay**: `build-no-success-before-commit.sh` requires `verdict=clear` at ship-time — defense-in-depth at a different event.
 
 ## Cycle State Lookup Helpers
 
@@ -254,17 +250,17 @@ Cycle state transitions (`GATED → REVIEWED → CURATED → COMMITTED`) are dec
 CYCLE_STATE_ORDER="GATED REVIEWED CURATED COMMITTED"
 ```
 
-This single source of truth is consumed by two readers — `step-log-completeness.sh` and `stop-cycle-guard.sh` — via three lookup helpers:
+This single source of truth is consumed by three readers — `step-log-completeness.sh`, `stop-cycle-guard.sh`, and `curator-before-committer.sh` — via three lookup helpers:
 
-1. **`cycle_state_is_terminal <state>`** — returns true (exit 0) iff `<state>` equals the LAST element of `CYCLE_STATE_ORDER`. Derives terminal state by iterating the list (`for w in $CYCLE_STATE_ORDER; do last="$w"; done`) rather than hard-coding the name. Adding a new state after `COMMITTED` automatically shifts which state is terminal without touching the helper.
+1. **`cycle_state_is_terminal <state>`** — returns true (exit 0) iff `<state>` equals the last element of `CYCLE_STATE_ORDER`; derived by iteration so adding a new terminal state requires no helper edit.
 
-2. **`cycle_state_next <state>`** — prints the state that follows `<state>` in the order list; prints empty string if `<state>` is terminal or unmatched. Enables readers to emit successor role names in block messages without duplicating the ordering table.
+2. **`cycle_state_next <state>`** — prints the successor state; prints empty string if terminal or unmatched.
 
-3. **`cycle_state_role <state>`** — maps state name to human role token for operator-facing block messages: `REVIEWED → context-curator`, `CURATED → committer`. Unknown states return empty string. Reader uses this to interpolate role names while keeping verbatim message wording unchanged.
+3. **`cycle_state_role <state>`** — maps state to role token for block messages: `REVIEWED → context-curator`, `CURATED → committer`; unknown → empty string.
 
-**Garbage/unknown state behavior**: `cycle_state_is_terminal` returns false; `cycle_state_next` returns empty. Readers test these return values: not-terminal + non-empty-next → block; not-terminal + empty-next (or unknown) → fall through to legacy grep checks (fail-toward-block, never fail-open).
+**Garbage/unknown state behavior**: `cycle_state_is_terminal` returns false; `cycle_state_next` returns empty. Readers test these return values: not-terminal + non-empty-next → block; not-terminal + empty-next (or unknown) → fail-open (no grep fallback).
 
-**`set -u` safe patterns**: Helpers always `printf` output (empty string is valid); callers guard with `[ -n "$next" ]` before indexing or interpolating, never assume a variable is set.
+**`set -u` safe**: Helpers always `printf` output; callers guard with `[ -n "$next" ]`.
 
 **Key design win**: By deriving terminal from the list's LAST element rather than hard-coding `= COMMITTED`, the single-source-of-truth property is preserved — inserting a new intermediate state automatically updates all dependent logic without code changes.
 

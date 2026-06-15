@@ -11,12 +11,13 @@
 # harnesses: all
 # GENERATED FROM shared/enforcement/registry.yaml — DO NOT EDIT
 #
-# Blocks Stop when:
-#   (a) A developer-* Section AND a (phoenix-)?dev-gate Section with ALL CLEAR ✅
-#       are present in the active step log, AND no reviewer-* Section is present.
-#       → Cycle incomplete: reviewer not yet run.
-#   (b) A reviewer-* Section is present AND no committer Section is present.
-#       → Cycle incomplete: committer not yet run.
+# Cycle-state.json is the sole authority. Fast-path behavior:
+#   COMMITTED (terminal)  → allow
+#   REVIEWED              → block (context-curator not yet run)
+#   CURATED               → block (committer not yet run)
+#   GATED + verdict=clear → block (reviewer not yet run)
+#   GATED + other verdict → allow (gate failure handled by phoenix-dev-gate re-spawn)
+#   absent/mismatched     → allow (fail-open)
 #
 # Skip when:
 #   - STOP_HOOK_ACTIVE=true (recursion guard)
@@ -28,8 +29,6 @@
 set -u
 
 source "$(dirname "$0")/lib/hooks-lib.sh"
-# shellcheck disable=SC1091
-source "$(dirname "$0")/lib/gate-result.sh"
 # shellcheck disable=SC1091
 source "$(dirname "$0")/lib/cycle-state.sh"
 parse_input
@@ -98,86 +97,21 @@ if [ -n "$cs_state" ] && [ "$cs_step" = "$log_file" ]; then
         CURATED)
             block "step-log-completeness: context-curator finished (cycle-state=CURATED) but committer has not run yet. Continue the cycle: delegate to committer. Step log: $log_file"
             ;;
+        GATED)
+            verdict=$(cycle_state_verdict "$project_dir")
+            if [ "$verdict" = "clear" ]; then
+                block "step-log-completeness: developer gate cleared (ALL CLEAR ✅) but reviewer has not run yet. Continue the cycle: delegate to reviewer-phoenix, then context-curator, then committer. Step log: $log_file"
+            else
+                debug_log step-log-completeness "skip: GATED verdict=$verdict — gate failure handled by phoenix-dev-gate re-spawn"
+                exit 0
+            fi
+            ;;
         *)
             block "step-log-completeness: cycle incomplete (cycle-state=$cs_state). Continue the cycle: delegate to $role. Step log: $log_file"
             ;;
         esac
         exit 0
     fi
-    # GATED or unknown state → fall through to existing grep checks
-fi
-
-# ── Check cycle completeness ─────────────────────────────────────────────────
-
-has_developer_section=0
-has_gate_all_clear=0
-has_reviewer_section=0
-has_curator_section=0
-has_committer_section=0
-
-# developer-* Section present?
-if grep -qE '^## developer-.+ Section' "$log_file" 2>/dev/null; then
-    has_developer_section=1
-fi
-
-# (phoenix-)?dev-gate Section with ALL CLEAR ✅ present?
-# Accept either "## dev-gate Section" or "## phoenix-dev-gate Section"
-# Also check gate-result.json verdict field as authoritative source.
-if grep -qE '^## (phoenix-)?dev-gate Section' "$log_file" 2>/dev/null; then
-    if grep -qF 'ALL CLEAR ✅' "$log_file" 2>/dev/null; then
-        # Cross-check with gate-result.json when present.
-        # If gate-result.json verdict is non-clear, don't count stale log as ALL CLEAR.
-        stored_verdict=$(gate_result_verdict "$project_dir")
-        if [ -z "$stored_verdict" ] || [ "$stored_verdict" = "clear" ]; then
-            has_gate_all_clear=1
-        else
-            debug_log step-log-completeness "gate-result.json verdict=$stored_verdict overrides log ALL CLEAR"
-        fi
-    fi
-fi
-
-# Also accept gate-result.json verdict=clear even without log ALL CLEAR marker
-if [ "$has_gate_all_clear" = "0" ] && grep -qE '^## (phoenix-)?dev-gate Section' "$log_file" 2>/dev/null; then
-    stored_verdict=$(gate_result_verdict "$project_dir")
-    if [ "$stored_verdict" = "clear" ]; then
-        has_gate_all_clear=1
-        debug_log step-log-completeness "gate-result.json verdict=clear (log marker absent)"
-    fi
-fi
-
-# reviewer-* Section present?
-if grep -qE '^## reviewer-.+ Section|^## reviewer-phoenix Section|^## reviewer-static Section' "$log_file" 2>/dev/null; then
-    has_reviewer_section=1
-fi
-
-# context-curator Section present?
-if grep -qE '^## context-curator Section' "$log_file" 2>/dev/null; then
-    has_curator_section=1
-fi
-
-# committer Section present?
-if grep -qE '^## committer Section' "$log_file" 2>/dev/null; then
-    has_committer_section=1
-fi
-
-debug_log step-log-completeness "dev=$has_developer_section gate_clear=$has_gate_all_clear reviewer=$has_reviewer_section curator=$has_curator_section committer=$has_committer_section"
-
-# Case (a): developer + gate ALL CLEAR present, reviewer absent → block
-if [ "$has_developer_section" = "1" ] && [ "$has_gate_all_clear" = "1" ] && [ "$has_reviewer_section" = "0" ]; then
-    block "step-log-completeness: developer gate cleared (ALL CLEAR ✅) but reviewer has not run yet. Continue the cycle: delegate to reviewer-phoenix, then context-curator, then committer. Step log: $log_file"
-    exit 0
-fi
-
-# Case (b1): reviewer present, curator absent → block (must run curator before committer)
-if [ "$has_reviewer_section" = "1" ] && [ "$has_curator_section" = "0" ]; then
-    block "step-log-completeness: reviewer-* Section found but context-curator has not run yet. Continue the cycle: delegate to context-curator, then committer. Step log: $log_file"
-    exit 0
-fi
-
-# Case (b2): reviewer + curator present, committer absent → block
-if [ "$has_reviewer_section" = "1" ] && [ "$has_curator_section" = "1" ] && [ "$has_committer_section" = "0" ]; then
-    block "step-log-completeness: reviewer-* and context-curator Sections found but committer has not run yet. Continue the cycle: delegate to committer. Step log: $log_file"
-    exit 0
 fi
 
 exit 0
