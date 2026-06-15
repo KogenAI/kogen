@@ -36,7 +36,7 @@
 #   GATE_PHOENIX_VALIDATE_THEN — gate when PHOENIX matches and validated marker
 #                              is missing (e.g. "make llm-phoenix-validate && make llm-phoenix")
 #   GATE_PHOENIX_REBUILD_THEN  — gate when PHOENIX matches and seed.bundle/seed.sql
-#                              are missing (e.g. "COMBOBULATE_VE_GATE=rebuild-seed-then make llm-phoenix")
+#                              are missing (e.g. "CODEGEN_VE_GATE=rebuild-seed-then make llm-phoenix")
 #   LLM_PATHS_REGEX          — extended regex matched against changed paths
 #   PHOENIX_PATHS_REGEX      — extended regex matched against changed paths
 #   SEED_BUNDLE_PATH         — absolute path to seed.bundle (existence check)

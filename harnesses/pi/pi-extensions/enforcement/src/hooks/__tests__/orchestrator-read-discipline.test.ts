@@ -79,7 +79,7 @@ describe("orchestrator-read-discipline", () => {
 
   it("blocks orchestrator Read on lib/ file", async () => {
     const result = await runHook("read", {
-      file_path: "lib/combobulate/apps.ex",
+      file_path: "lib/my_app/apps.ex",
     });
     assert.ok((result as { block?: boolean }).block === true);
   });
@@ -252,7 +252,7 @@ describe("orchestrator-read-discipline", () => {
   it("allows subagent (AGENT_TYPE=planner) Read on lib/ file", async () => {
     const result = await runHook(
       "read",
-      { file_path: "lib/combobulate/apps.ex" },
+      { file_path: "lib/my_app/apps.ex" },
       { AGENT_TYPE: "planner" },
     );
     assert.ok(result == null || (result as { block?: boolean }).block !== true);
@@ -261,7 +261,7 @@ describe("orchestrator-read-discipline", () => {
   it("allows PI_ROLE=debug Read on lib/ file", async () => {
     const result = await runHook(
       "read",
-      { file_path: "lib/combobulate/apps.ex" },
+      { file_path: "lib/my_app/apps.ex" },
       { PI_ROLE: "debug" },
     );
     assert.ok(result == null || (result as { block?: boolean }).block !== true);

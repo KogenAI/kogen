@@ -1,6 +1,6 @@
 # Phoenix Scaffold
 
-Standalone entrypoint to scaffold a combobulate-flavoured Phoenix app without combobulate.
+Standalone entrypoint to scaffold a Phoenix app without the build platform.
 
 ## Prerequisites
 
@@ -12,7 +12,7 @@ Standalone entrypoint to scaffold a combobulate-flavoured Phoenix app without co
 ## Usage
 
 ```bash
-# 1. Run phx.new first (combobulate does this before calling scaffold.sh)
+# 1. Run phx.new first (the platform does this before calling scaffold.sh)
 mix phx.new my_app --app my_app --module MyApp \
   --binary-id --no-mailer --no-dashboard --no-agents-md --no-version-check --install
 
@@ -41,7 +41,7 @@ All mutations are idempotent — re-running on an already-scaffolded dir is safe
 ## Byte-for-byte parity promise
 
 The output of `scaffold.sh` must be byte-identical to what `mix optimum.gen.infra` + 8
-combobulate patch fns produce, EXCEPT:
+platform patch fns produce, EXCEPT:
 
 - No AppSignal block in `config/config.exs`, `config/runtime.exs`, `config/prod.exs`
 - No `rel/overlays/bin/server` (phx.gen.release not run)
@@ -54,5 +54,5 @@ When upgrading Phoenix:
 2. Run `bash scaffold.sh smoke_app /tmp/smoke_app`
 3. Run `cd /tmp/smoke_app && mix deps.get && mix compile`
 4. Verify all checks pass
-5. Update `@elixir_version`/`@otp_version`/`@node_version` defaults in `scaffold.sh` and in `lib/combobulate/apps.ex`
+5. Update `@elixir_version`/`@otp_version`/`@node_version` defaults in `scaffold.sh` and in the platform's app module
 6. Commit both repos

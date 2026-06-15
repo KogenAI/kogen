@@ -234,7 +234,7 @@ source "$CODEGEN_DIR/templates/generator/manifest-lib.sh"
 bash "$CODEGEN_DIR/templates/generator/generate.sh" "${HARNESSES[@]}"
 
 # Render user-app orchestrator AGENTS templates (.j2 -> .md) back into context repo.
-# These .md files are symlinked into user-app workspaces by Combobulate.Apps.copy_agents_md/2
+# These .md files are symlinked into user-app workspaces (e.g. via a platform copy_agents_md step)
 # at provision time, so they must exist as regenerable artifacts beside their .j2 source.
 # Each template renders TWICE:
 #   pi render     → AGENTS-{variant}.md  (→ See pointers; consumed by Pi)

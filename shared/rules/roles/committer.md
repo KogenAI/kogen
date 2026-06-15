@@ -106,7 +106,7 @@ Orchestrator passes: task summary (why), git op (new/amend/squash), scope. Commi
 
 ## Deploy Docs Format
 
-SSH invocation not prose. `ssh root@HOST "su - combobulate -c 'cd ~/dir && cmd'"` for user, bare `ssh root@HOST 'cmd'` for root. Multi-repo order: context → codegen → platform.
+SSH invocation not prose. `ssh root@HOST "su - <deploy-user> -c 'cd ~/dir && cmd'"` for user, bare `ssh root@HOST 'cmd'` for root. Multi-repo order: context → codegen → platform.
 
 ## Multi-Repo Sequencing
 

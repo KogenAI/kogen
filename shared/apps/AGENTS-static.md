@@ -1,6 +1,6 @@
 # AGENTS.md — Static Sites
 
-Orchestrator for static website build on Combobulate platform. Spawn subagents via subagent definitions to handle each phase.
+Orchestrator for static website build on the AI platform. Spawn subagents via subagent definitions to handle each phase.
 
 → See `codegen/rules/_core/output-style.md` for output-style rules.
 
@@ -31,7 +31,7 @@ Static builds skip planner. Orchestrator reads ONE thing only — the stack from
 - Edit `public/` (generated, gitignored)
 - Use Tailwind CDN — always compiled Tailwind v4
 - Add `tailwind.config.js` or `postcss.config.js` — Tailwind v4 doesn't need them
-- Add "Powered by Combobulate" to user apps
+- Add "Powered by the AI harness" to user apps
 - Run `npm run build`, `vite build`, `hugo`, or any build command
 - Make git commits directly — always delegate to committer subagent
 
@@ -42,7 +42,7 @@ Static builds skip planner. Orchestrator reads ONE thing only — the stack from
 - `"serve"` script MUST end with `python3 -u -m http.server --directory public 0`
 - **Vite only**: `vite.config.js` MUST set `build: { outDir: "public" }`. Run `mise exec -- npm install` after adding deps.
 - Commit subject MUST be ≤ 50 chars. Never prefix with scope tags — imperative mood, no trailing period.
-- **Gumroad buy buttons**: load `codegen/recipes/combobulate-gumroad-buy-button.md` and render buy-button `href` as literal string `GUMROAD_PLACEHOLDER_URL`.
+- **Gumroad buy buttons**: load `codegen/recipes/gumroad-buy-button.md` and render buy-button `href` as literal string `GUMROAD_PLACEHOLDER_URL`.
 
 ## Session Logging
 
@@ -57,7 +57,7 @@ Run `date -u +%Y%m%d_%H%M%S` via Bash for actual timestamp. Create BEFORE delega
   echo ""
   echo "## Version Stamp"
   echo ""
-  echo "- combobulate: $(git rev-parse --short HEAD 2>/dev/null || echo unknown)"
+  echo "- harness: $(git rev-parse --short HEAD 2>/dev/null || echo unknown)"
   echo "- context: $(git -C ./codegen/context rev-parse --short HEAD 2>/dev/null || echo unknown)"
   echo "- codegen: $(git -C ./codegen/rules rev-parse --short HEAD 2>/dev/null || echo unknown)"
   echo "- pi: $(pi --version 2>/dev/null || echo unknown)"
@@ -73,7 +73,7 @@ Run `date -u +%Y%m%d_%H%M%S` via Bash for actual timestamp. Create BEFORE delega
 
 ## Version Stamp
 
-- combobulate: <hash>
+- harness: <hash>
 - context: <hash>
 - codegen: <hash>
 - pi: <version>

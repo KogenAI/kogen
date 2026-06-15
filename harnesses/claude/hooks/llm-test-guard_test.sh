@@ -58,7 +58,7 @@ run_test "mix test --only llm_integration PARTITION=3 PARTITIONS=10 blocked" "2"
 
 # Test 4: PARTITION=1 PARTITIONS=1 with .exs path → allow (make llm-single expansion)
 run_test "mix test --only llm_integration PARTITION=1 PARTITIONS=1 with path allowed" "0" \
-    '{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"MIX_TEST_PARTITION=1 MIX_TEST_PARTITIONS=1 mix test --only llm_integration test/combobulate/llm_integration/foo_test.exs"},"agent_type":"developer-phoenix-backend","agent_id":"abc123"}'
+    '{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"MIX_TEST_PARTITION=1 MIX_TEST_PARTITIONS=1 mix test --only llm_integration test/my_app/llm_integration/foo_test.exs"},"agent_type":"developer-phoenix-backend","agent_id":"abc123"}'
 
 # Test 5: make llm-single → allow (no mix test literal)
 run_test "make llm-single allowed" "0" \

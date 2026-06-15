@@ -30,7 +30,7 @@ assert_eq "gate_timeout_for(make ci && make llm) = 1800" "1800" "$(gate_timeout_
 assert_eq "gate_timeout_for(make ci) = 900 (short)" "900" "$(gate_timeout_for 'make ci')"
 assert_eq "gate_timeout_for(make llm-phoenix-validate) = 0 (short)" "0" "$(gate_timeout_for 'make llm-phoenix-validate')"
 assert_eq "gate_timeout_for(make llm-phoenix) = 1500 (llm)" "1500" "$(gate_timeout_for 'make llm-phoenix')"
-assert_eq "gate_timeout_for(rebuild-seed-then) = 1500" "1500" "$(gate_timeout_for 'COMBOBULATE_VE_GATE=rebuild-seed-then make llm-phoenix')"
+assert_eq "gate_timeout_for(rebuild-seed-then) = 1500" "1500" "$(gate_timeout_for 'CODEGEN_VE_GATE=rebuild-seed-then make llm-phoenix')"
 
 # ── gate_mode_for ───────────────────────────────────────────────────────────
 assert_eq "gate_mode_for(make ci) = short" "short" "$(gate_mode_for 'make ci')"
@@ -39,7 +39,7 @@ assert_eq "gate_mode_for(make llm) = long" "long" "$(gate_mode_for 'make llm')"
 assert_eq "gate_mode_for(make llm-phoenix) = long" "long" "$(gate_mode_for 'make llm-phoenix')"
 assert_eq "gate_mode_for(make ci && make llm) = long" "long" "$(gate_mode_for 'make ci && make llm')"
 assert_eq "gate_mode_for(make llm-phoenix-validate) = short" "short" "$(gate_mode_for 'make llm-phoenix-validate')"
-assert_eq "gate_mode_for(rebuild-seed-then) = long" "long" "$(gate_mode_for 'COMBOBULATE_VE_GATE=rebuild-seed-then make llm-phoenix')"
+assert_eq "gate_mode_for(rebuild-seed-then) = long" "long" "$(gate_mode_for 'CODEGEN_VE_GATE=rebuild-seed-then make llm-phoenix')"
 
 # ── gate_select_read_planner_gate ───────────────────────────────────────────
 
@@ -208,7 +208,7 @@ make_project() {
     printf '%s' "$dir"
 }
 
-write_combobulate_config() {
+write_gate_config() {
     local dir="$1"
     cat >"$dir/.claude/gate-config.sh" <<EOF
 GATE_SHORT_DEFAULT="make ci"
@@ -217,7 +217,7 @@ GATE_LLM="make ci && make llm"
 GATE_LLM_AND_PHOENIX="make ci && make llm && make llm-phoenix"
 GATE_PHOENIX="make llm-phoenix"
 GATE_PHOENIX_VALIDATE_THEN="make llm-phoenix-validate && make llm-phoenix"
-GATE_PHOENIX_REBUILD_THEN="COMBOBULATE_VE_GATE=rebuild-seed-then make llm-phoenix"
+GATE_PHOENIX_REBUILD_THEN="CODEGEN_VE_GATE=rebuild-seed-then make llm-phoenix"
 LLM_PATHS_REGEX="(claude_runner_impl|claude_build_runner_impl|bouncer\\.ex|system_prompts|CLAUDE\\.md|codegen/rules/|codegen/recipes/|\\.md\\.j2\$|PLATFORM_INFO\\.md|llm_integration.*\\.exs)"
 PHOENIX_PATHS_REGEX="(context/apps/CLAUDE-phoenix\\.md|codegen/recipes/.*phoenix)"
 SEED_BUNDLE_PATH="$2"
@@ -231,7 +231,7 @@ EOF
 T1=$(make_project)
 SEED_DIR=$(mktemp -d)
 touch "$SEED_DIR/seed.bundle" "$SEED_DIR/seed.sql" "$SEED_DIR/validated"
-write_combobulate_config "$T1" "$SEED_DIR/seed.bundle" "$SEED_DIR/seed.sql" "$SEED_DIR/validated"
+write_gate_config "$T1" "$SEED_DIR/seed.bundle" "$SEED_DIR/seed.sql" "$SEED_DIR/validated"
 echo "x" >"$T1/CLAUDE.md"
 out=$(gate_select_decide "$T1")
 assert_eq "llm-only branch gate" "gate=make ci && make llm" "$(printf '%s' "$out" | sed -n '1p')"
@@ -243,7 +243,7 @@ rm -rf "$T1" "$SEED_DIR"
 T2=$(make_project)
 SEED_DIR=$(mktemp -d)
 touch "$SEED_DIR/seed.bundle" "$SEED_DIR/seed.sql" "$SEED_DIR/validated"
-write_combobulate_config "$T2" "$SEED_DIR/seed.bundle" "$SEED_DIR/seed.sql" "$SEED_DIR/validated"
+write_gate_config "$T2" "$SEED_DIR/seed.bundle" "$SEED_DIR/seed.sql" "$SEED_DIR/validated"
 mkdir -p "$T2/context/apps"
 echo "x" >"$T2/context/apps/CLAUDE-phoenix.md"
 out=$(gate_select_decide "$T2")
@@ -254,7 +254,7 @@ rm -rf "$T2" "$SEED_DIR"
 T3=$(make_project)
 SEED_DIR=$(mktemp -d)
 touch "$SEED_DIR/seed.bundle" "$SEED_DIR/seed.sql"
-write_combobulate_config "$T3" "$SEED_DIR/seed.bundle" "$SEED_DIR/seed.sql" "$SEED_DIR/validated"
+write_gate_config "$T3" "$SEED_DIR/seed.bundle" "$SEED_DIR/seed.sql" "$SEED_DIR/validated"
 mkdir -p "$T3/context/apps"
 echo "x" >"$T3/context/apps/CLAUDE-phoenix.md"
 out=$(gate_select_decide "$T3")
@@ -265,18 +265,18 @@ rm -rf "$T3" "$SEED_DIR"
 T4=$(make_project)
 SEED_DIR=$(mktemp -d)
 touch "$SEED_DIR/seed.sql" "$SEED_DIR/validated"
-write_combobulate_config "$T4" "$SEED_DIR/seed.bundle" "$SEED_DIR/seed.sql" "$SEED_DIR/validated"
+write_gate_config "$T4" "$SEED_DIR/seed.bundle" "$SEED_DIR/seed.sql" "$SEED_DIR/validated"
 mkdir -p "$T4/context/apps"
 echo "x" >"$T4/context/apps/CLAUDE-phoenix.md"
 out=$(gate_select_decide "$T4")
-assert_eq "phoenix rebuild-seed gate" "gate=COMBOBULATE_VE_GATE=rebuild-seed-then make llm-phoenix" "$(printf '%s' "$out" | sed -n '1p')"
+assert_eq "phoenix rebuild-seed gate" "gate=CODEGEN_VE_GATE=rebuild-seed-then make llm-phoenix" "$(printf '%s' "$out" | sed -n '1p')"
 rm -rf "$T4" "$SEED_DIR"
 
 # ── Branch: both LLM and PHOENIX changed ───────────────────────────────────
 T5=$(make_project)
 SEED_DIR=$(mktemp -d)
 touch "$SEED_DIR/seed.bundle" "$SEED_DIR/seed.sql" "$SEED_DIR/validated"
-write_combobulate_config "$T5" "$SEED_DIR/seed.bundle" "$SEED_DIR/seed.sql" "$SEED_DIR/validated"
+write_gate_config "$T5" "$SEED_DIR/seed.bundle" "$SEED_DIR/seed.sql" "$SEED_DIR/validated"
 mkdir -p "$T5/context/apps"
 echo "x" >"$T5/CLAUDE.md"
 echo "y" >"$T5/context/apps/CLAUDE-phoenix.md"
@@ -288,7 +288,7 @@ rm -rf "$T5" "$SEED_DIR"
 T6=$(make_project)
 SEED_DIR=$(mktemp -d)
 touch "$SEED_DIR/seed.bundle" "$SEED_DIR/seed.sql" "$SEED_DIR/validated"
-write_combobulate_config "$T6" "$SEED_DIR/seed.bundle" "$SEED_DIR/seed.sql" "$SEED_DIR/validated"
+write_gate_config "$T6" "$SEED_DIR/seed.bundle" "$SEED_DIR/seed.sql" "$SEED_DIR/validated"
 mkdir -p "$T6/lib"
 echo "x" >"$T6/lib/foo.ex"
 out=$(gate_select_decide "$T6")
@@ -299,7 +299,7 @@ rm -rf "$T6" "$SEED_DIR"
 T7=$(make_project)
 SEED_DIR=$(mktemp -d)
 touch "$SEED_DIR/seed.bundle" "$SEED_DIR/seed.sql" "$SEED_DIR/validated"
-write_combobulate_config "$T7" "$SEED_DIR/seed.bundle" "$SEED_DIR/seed.sql" "$SEED_DIR/validated"
+write_gate_config "$T7" "$SEED_DIR/seed.bundle" "$SEED_DIR/seed.sql" "$SEED_DIR/validated"
 echo "x" >"$T7/CLAUDE.md"
 LOG="$T7/step.md"
 cat >"$LOG" <<'MD'
@@ -321,7 +321,7 @@ rm -rf "$T7" "$SEED_DIR"
 T9=$(make_project)
 SEED_DIR=$(mktemp -d)
 touch "$SEED_DIR/seed.bundle" "$SEED_DIR/seed.sql" "$SEED_DIR/validated"
-# Use exit-based detector (like combobulate's real gate-config.sh) instead of "true"
+# Use exit-based detector (like a real gate-config.sh) instead of "true"
 cat >"$T9/.claude/gate-config.sh" <<'EOF'
 GATE_SHORT_DEFAULT="make ci"
 GATE_SHORT_FINAL="make ci"
@@ -329,7 +329,7 @@ GATE_LLM="make ci && make llm"
 GATE_LLM_AND_PHOENIX="make ci && make llm && make llm-phoenix"
 GATE_PHOENIX="make llm-phoenix"
 GATE_PHOENIX_VALIDATE_THEN="make llm-phoenix-validate && make llm-phoenix"
-GATE_PHOENIX_REBUILD_THEN="COMBOBULATE_VE_GATE=rebuild-seed-then make llm-phoenix"
+GATE_PHOENIX_REBUILD_THEN="CODEGEN_VE_GATE=rebuild-seed-then make llm-phoenix"
 LLM_PATHS_REGEX="(claude_runner_impl|CLAUDE\.md|codegen/rules/)"
 PHOENIX_PATHS_REGEX="(context/apps/CLAUDE-phoenix\.md)"
 GATE_FINAL_STEP_DETECTOR='exit 0'
@@ -350,7 +350,7 @@ GATE_LLM="make ci && make llm"
 GATE_LLM_AND_PHOENIX="make ci && make llm && make llm-phoenix"
 GATE_PHOENIX="make llm-phoenix"
 GATE_PHOENIX_VALIDATE_THEN="make llm-phoenix-validate && make llm-phoenix"
-GATE_PHOENIX_REBUILD_THEN="COMBOBULATE_VE_GATE=rebuild-seed-then make llm-phoenix"
+GATE_PHOENIX_REBUILD_THEN="CODEGEN_VE_GATE=rebuild-seed-then make llm-phoenix"
 LLM_PATHS_REGEX="(claude_runner_impl|CLAUDE\.md|codegen/rules/)"
 PHOENIX_PATHS_REGEX="(context/apps/CLAUDE-phoenix\.md)"
 GATE_FINAL_STEP_DETECTOR='exit 1'

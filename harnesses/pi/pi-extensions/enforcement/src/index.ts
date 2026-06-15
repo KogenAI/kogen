@@ -1,5 +1,5 @@
 /**
- * index.ts — Combobulate Pi enforcement extension entry point.
+ * index.ts — Pi enforcement extension entry point.
  *
  * Registers Pi event handlers that mirror Claude Code hook enforcement.
  * Hooks are dispatched by tool name to per-hook modules.

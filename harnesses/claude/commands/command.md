@@ -10,7 +10,7 @@ Process:
 1. **Parse command name** — extract from argument (e.g., `/do-something` → `do-something`)
 2. **Ask for purpose** — what should command do and when would it be used
 3. **Determine save location** — analyze purpose/name and recommend ONE of three paths:
-   - **Project `./.claude/commands/{name}.md`** — if command depends on this project's context, codebase, or domain (e.g. `combobulate-debug`, `blog-post` tied to combobulate.dev, project-specific debugging). Confirm with user.
+   - **Project `./.claude/commands/{name}.md`** — if command depends on this project's context, codebase, or domain (e.g. `myproject-debug`, `blog-post` tied to example.com, project-specific debugging). Confirm with user.
    - **Shared `~/Areas/Optimum/codegen/harnesses/claude/commands/{name}.md`** — if command is generic and useful across all projects (e.g. `document`, `split`, `research`). Propagates via symlinks.
    - **User `~/.claude/commands/{name}.md`** — personal cross-project command that shouldn't propagate to teammates. Rare; only when user explicitly wants it.
      Heuristic signals:
@@ -37,6 +37,6 @@ Usage examples:
 
 - `/command /do-something` → analyze, recommend location, save to chosen path
 - `/command /analyze-performance` → likely shared (generic)
-- `/command /combobulate-debug` → likely project (name signals combobulate-specific)
+- `/command /myproject-debug` → likely project (name signals project-specific)
 
 Then ask user what functionality they want the new command to provide.

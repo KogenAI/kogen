@@ -33,7 +33,7 @@
 #   - Any command outside a git repo (no .git dir) or repo with no PROJECT_CONTEXT.md
 #
 # Repo layout detection (checked at repo root, in priority order):
-#   1. PROJECT_CONTEXT.md          — platform layout (e.g. combobulate)
+#   1. PROJECT_CONTEXT.md          — platform layout (e.g. the build platform)
 #   2. codegen/PROJECT_CONTEXT.md  — user-app layout (project using OCG)
 #   If neither exists → exit 0 (repo not in scope)
 #

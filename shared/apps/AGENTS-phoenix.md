@@ -1,6 +1,6 @@
 # AGENTS.md — Phoenix Apps
 
-Orchestrator for Phoenix app build on Combobulate platform. Spawn subagents via subagent definitions to handle each phase.
+Orchestrator for Phoenix app build on the AI platform. Spawn subagents via subagent definitions to handle each phase.
 
 → See `codegen/rules/_core/output-style.md` for output-style rules.
 
@@ -54,7 +54,7 @@ Each invocation creates NEW log file. Run `date -u +%Y%m%d_%H%M%S` via Bash for 
   echo ""
   echo "## Version Stamp"
   echo ""
-  echo "- combobulate: $(git rev-parse --short HEAD 2>/dev/null || echo unknown)"
+  echo "- harness: $(git rev-parse --short HEAD 2>/dev/null || echo unknown)"
   echo "- context: $(git -C ./codegen/context rev-parse --short HEAD 2>/dev/null || echo unknown)"
   echo "- codegen: $(git -C ./codegen/rules rev-parse --short HEAD 2>/dev/null || echo unknown)"
   echo "- pi: $(pi --version 2>/dev/null || echo unknown)"
@@ -71,7 +71,7 @@ Each invocation creates NEW log file. Run `date -u +%Y%m%d_%H%M%S` via Bash for 
 
 ## Version Stamp
 
-- combobulate: <hash>
+- harness: <hash>
 - context: <hash>
 - codegen: <hash>
 - pi: <version>

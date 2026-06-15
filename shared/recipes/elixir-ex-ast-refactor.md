@@ -14,7 +14,7 @@ ExAST does **not** ship as an escript or archive, so the Mix tasks (`mix ex_ast.
 
 ### A. One-off refactor inside a user app — `Mix.install` script (default)
 
-Use this for any refactor against a Combobulate user app where we don't want to pollute the user's `mix.exs`. Drop a script in the project root, run, delete:
+Use this for any refactor against a user app where we don't want to pollute the user's `mix.exs`. Drop a script in the project root, run, delete:
 
 ```elixir
 # refactor.exs (gitignored or deleted after use)
@@ -47,7 +47,7 @@ Then from anywhere:
 
 ```bash
 cd ~/tools/ex_ast_runner
-mix ex_ast.search 'IO.inspect(_)' /path/to/combobulate/lib/
+mix ex_ast.search 'IO.inspect(_)' /path/to/my_app/lib/
 mix ex_ast.replace --dry-run 'dbg(expr)' 'expr' /path/to/some/user-app/lib/
 ```
 
@@ -109,7 +109,7 @@ ExAST.search("lib/", selector)
 
 Relationship functions: `child/2`, `descendant/2`, `parent/1,2`, `ancestor/1,2`, `has_child/1,2`, `has_descendant/1,2`, `has/1,2`. CLI mirrors these with `--parent`, `--ancestor`, `--inside`/`--contains`, `--has`, plus `--not-*` negations and `--follows` / `--immediately-follows` / `--nth` for sibling position.
 
-## Where this fits in combobulate
+## Where this fits in the build platform
 
 1. **User-app codebase migrations**. When a Phoenix seed pattern changes, run `mix ex_ast.replace --dry-run` against the seed bundle to see exactly which files change before committing — much safer than `mix.format` + sed.
 2. **Structural audits as lint**. Encode invariants we currently grep for (e.g. "every Oban worker `perform/1` ends with explicit `:ok`", per `oban-worker-return-contract.md`) as a selector script in `scripts/audit_*.exs` and run it from `make ci`. The match list is precise; greps over-match.

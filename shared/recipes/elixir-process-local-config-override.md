@@ -8,12 +8,12 @@
 
 Read config from the process dictionary first with a `:__unset__` sentinel, fall back to `Application.get_env/2`. Tests override per-test with `Process.put/2` — ExUnit discards the process dict automatically when the test process exits.
 
-**Production code** (`lib/combobulate/whatsapp.ex`):
+**Production code** (`lib/my_app/whatsapp.ex`):
 
 ```elixir
 defp owner_number do
   case Process.get(:owner_whatsapp_number, :__unset__) do
-    :__unset__ -> Application.get_env(:combobulate, :owner_whatsapp_number)
+    :__unset__ -> Application.get_env(:my_app, :owner_whatsapp_number)
     value -> value
   end
 end
@@ -24,11 +24,11 @@ end
 ```elixir
 # config/runtime.exs (guard for optional env vars)
 if number = System.get_env("OWNER_WHATSAPP_NUMBER") do
-  config :combobulate, :owner_whatsapp_number, number
+  config :my_app, :owner_whatsapp_number, number
 end
 
 # config/test.exs — explicit nil default so Application.get_env doesn't raise
-config :combobulate, :owner_whatsapp_number, nil
+config :my_app, :owner_whatsapp_number, nil
 ```
 
 **Test** — no setup, no teardown, no `on_exit`:
@@ -65,9 +65,9 @@ Options when that happens:
 ```elixir
 # ❌ Global mutation + restore — still a race under async: true
 setup do
-  original = Application.get_env(:combobulate, :owner_whatsapp_number)
-  Application.put_env(:combobulate, :owner_whatsapp_number, "15559990000")
-  on_exit(fn -> Application.put_env(:combobulate, :owner_whatsapp_number, original) end)
+  original = Application.get_env(:my_app, :owner_whatsapp_number)
+  Application.put_env(:my_app, :owner_whatsapp_number, "15559990000")
+  on_exit(fn -> Application.put_env(:my_app, :owner_whatsapp_number, original) end)
   :ok
 end
 ```
@@ -76,8 +76,8 @@ Two concurrent tests running this setup overwrite each other's values mid-flight
 
 ## In-repo example
 
-- Production: `lib/combobulate/whatsapp.ex` — `send_to_owner/1` reads `owner_number/0`
-- Test: `test/combobulate/conversation/handlers/support_handler_test.exs` — `Process.put(:owner_whatsapp_number, ...)` per test
+- Production: `lib/my_app/whatsapp.ex` — `send_to_owner/1` reads `owner_number/0`
+- Test: `test/my_app/conversation/handlers/support_handler_test.exs` — `Process.put(:owner_whatsapp_number, ...)` per test
 
 ## Triggers
 

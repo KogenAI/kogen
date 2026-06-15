@@ -48,7 +48,7 @@ describe("llm-test-guard", () => {
 
   it("allows PARTITION=1 PARTITIONS=1 with .exs path", async () => {
     const result = await runHook(
-      "MIX_TEST_PARTITION=1 MIX_TEST_PARTITIONS=1 mix test --only llm_integration test/combobulate/llm_integration/foo_test.exs",
+      "MIX_TEST_PARTITION=1 MIX_TEST_PARTITIONS=1 mix test --only llm_integration test/my_app/llm_integration/foo_test.exs",
     );
     assert.ok(result == null || (result as { block?: boolean }).block !== true);
   });

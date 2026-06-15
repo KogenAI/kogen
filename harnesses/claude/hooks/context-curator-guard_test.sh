@@ -37,9 +37,9 @@ run_test() {
 CURATOR="context-curator"
 OTHER="developer-phoenix-backend"
 
-# 1. context/** (combobulate project) → ALLOW
+# 1. context/** (user app project) → ALLOW
 run_test "Edit on context/domain.md ALLOWED" "allow" \
-    "{\"hook_event_name\":\"PreToolUse\",\"tool_name\":\"Edit\",\"tool_input\":{\"file_path\":\"/Users/almirsarajcic/Projects/AppBuilder/combobulate/context/domain.md\"},\"agent_type\":\"$CURATOR\",\"agent_id\":\"abc\"}"
+    "{\"hook_event_name\":\"PreToolUse\",\"tool_name\":\"Edit\",\"tool_input\":{\"file_path\":\"/Users/almirsarajcic/Projects/AppBuilder/my_app/context/domain.md\"},\"agent_type\":\"$CURATOR\",\"agent_id\":\"abc\"}"
 
 # 2. shared/rules/** direct path → DENY (use symlink path only)
 run_test "Edit on codegen/shared/rules/some-rule.md DENIED (direct, use symlink)" "deny" \

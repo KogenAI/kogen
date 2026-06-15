@@ -39,12 +39,12 @@ run_test() {
     fi
 }
 
-# Test 1: orchestrator Edit on lib/combobulate/foo.ex — BLOCK
-FIXTURE_BLOCK='{"hook_event_name":"PreToolUse","tool_name":"Edit","tool_input":{"file_path":"lib/combobulate/foo.ex","old_string":"x","new_string":"y"},"agent_id":"","agent_type":""}'
+# Test 1: orchestrator Edit on lib/my_app/foo.ex — BLOCK
+FIXTURE_BLOCK='{"hook_event_name":"PreToolUse","tool_name":"Edit","tool_input":{"file_path":"lib/my_app/foo.ex","old_string":"x","new_string":"y"},"agent_id":"","agent_type":""}'
 run_test "orchestrator Edit on lib/ blocks" "2" "$FIXTURE_BLOCK"
 
 # Test 2: subagent (non-empty agent_id) Edit on lib/ — ALLOW
-FIXTURE_SUBAGENT='{"hook_event_name":"PreToolUse","tool_name":"Edit","tool_input":{"file_path":"lib/combobulate/foo.ex","old_string":"x","new_string":"y"},"agent_id":"abc123","agent_type":"developer-phoenix-backend"}'
+FIXTURE_SUBAGENT='{"hook_event_name":"PreToolUse","tool_name":"Edit","tool_input":{"file_path":"lib/my_app/foo.ex","old_string":"x","new_string":"y"},"agent_id":"abc123","agent_type":"developer-phoenix-backend"}'
 run_test "subagent Edit on lib/ allows" "0" "$FIXTURE_SUBAGENT"
 
 # Test 3: orchestrator Edit on codegen/logging/x.md — ALLOW
@@ -60,7 +60,7 @@ FIXTURE_TMP='{"hook_event_name":"PreToolUse","tool_name":"Edit","tool_input":{"f
 run_test "orchestrator Edit on relative tmp/ blocks" "2" "$FIXTURE_TMP"
 
 # Test 6: orchestrator Edit on absolute path inside codegen/logging/ — ALLOW
-# Simulates Claude Code passing file_path as an absolute path (e.g. /Users/.../combobulate/codegen/logging/foo.md)
+# Simulates Claude Code passing file_path as an absolute path (e.g. /Users/.../my_app/codegen/logging/foo.md)
 CWD_ABS="$(mktemp -d)"
 ABS_LOG_PATH="${CWD_ABS}/codegen/logging/session.md"
 FIXTURE_ABS_LOG='{"hook_event_name":"PreToolUse","tool_name":"Edit","tool_input":{"file_path":"'"$ABS_LOG_PATH"'","old_string":"x","new_string":"y"},"agent_id":"","agent_type":"","cwd":"'"$CWD_ABS"'"}'
@@ -74,23 +74,23 @@ FIXTURE_ABS_BLOCK='{"hook_event_name":"PreToolUse","tool_name":"Edit","tool_inpu
 run_test "orchestrator Edit on absolute lib/ path blocks" "2" "$FIXTURE_ABS_BLOCK"
 rm -rf "$CWD_ABS2"
 
-# Test 8: combobulate orchestrator + sibling OCG codegen path — BLOCK (must delegate)
-COMBO_CWD="/Users/almirsarajcic/Projects/AppBuilder/combobulate"
-FIXTURE_SIBLING_CODEGEN='{"hook_event_name":"PreToolUse","tool_name":"Edit","tool_input":{"file_path":"/Users/almirsarajcic/Areas/Optimum/codegen/harnesses/claude/hooks/foo.sh","old_string":"x","new_string":"y"},"agent_id":"","agent_type":"","cwd":"'"$COMBO_CWD"'"}'
-run_test "combobulate orchestrator on sibling codegen blocks (must delegate)" "2" "$FIXTURE_SIBLING_CODEGEN"
+# Test 8: user-app orchestrator + sibling OCG codegen path — BLOCK (must delegate)
+USERAPP_CWD="/Users/almirsarajcic/Projects/AppBuilder/my_app"
+FIXTURE_SIBLING_CODEGEN='{"hook_event_name":"PreToolUse","tool_name":"Edit","tool_input":{"file_path":"/Users/almirsarajcic/Areas/Optimum/codegen/harnesses/claude/hooks/foo.sh","old_string":"x","new_string":"y"},"agent_id":"","agent_type":"","cwd":"'"$USERAPP_CWD"'"}'
+run_test "user-app orchestrator on sibling codegen blocks (must delegate)" "2" "$FIXTURE_SIBLING_CODEGEN"
 
-# Test 9: combobulate orchestrator + sibling context path — BLOCK (must delegate)
-FIXTURE_SIBLING_CONTEXT='{"hook_event_name":"PreToolUse","tool_name":"Edit","tool_input":{"file_path":"/Users/almirsarajcic/Areas/Optimum/context/rules/foo.md","old_string":"x","new_string":"y"},"agent_id":"","agent_type":"","cwd":"'"$COMBO_CWD"'"}'
-run_test "combobulate orchestrator on sibling context blocks (must delegate)" "2" "$FIXTURE_SIBLING_CONTEXT"
+# Test 9: user-app orchestrator + sibling context path — BLOCK (must delegate)
+FIXTURE_SIBLING_CONTEXT='{"hook_event_name":"PreToolUse","tool_name":"Edit","tool_input":{"file_path":"/Users/almirsarajcic/Areas/Optimum/context/rules/foo.md","old_string":"x","new_string":"y"},"agent_id":"","agent_type":"","cwd":"'"$USERAPP_CWD"'"}'
+run_test "user-app orchestrator on sibling context blocks (must delegate)" "2" "$FIXTURE_SIBLING_CONTEXT"
 
-# Test 10: combobulate orchestrator + arbitrary outside path — BLOCK
-FIXTURE_ARBITRARY='{"hook_event_name":"PreToolUse","tool_name":"Edit","tool_input":{"file_path":"/Users/almirsarajcic/Other/foo.md","old_string":"x","new_string":"y"},"agent_id":"","agent_type":"","cwd":"'"$COMBO_CWD"'"}'
-run_test "combobulate orchestrator on arbitrary outside path blocks" "2" "$FIXTURE_ARBITRARY"
+# Test 10: user-app orchestrator + arbitrary outside path — BLOCK
+FIXTURE_ARBITRARY='{"hook_event_name":"PreToolUse","tool_name":"Edit","tool_input":{"file_path":"/Users/almirsarajcic/Other/foo.md","old_string":"x","new_string":"y"},"agent_id":"","agent_type":"","cwd":"'"$USERAPP_CWD"'"}'
+run_test "user-app orchestrator on arbitrary outside path blocks" "2" "$FIXTURE_ARBITRARY"
 
 # Test 11: DIFFERENT cwd (skeptic_bot) + sibling codegen path — BLOCK (safety guard)
 OTHER_CWD="/Users/almirsarajcic/Areas/Optimum/skeptic_bot"
 FIXTURE_OTHER_SIBLING='{"hook_event_name":"PreToolUse","tool_name":"Edit","tool_input":{"file_path":"/Users/almirsarajcic/Areas/Optimum/codegen/harnesses/claude/hooks/foo.sh","old_string":"x","new_string":"y"},"agent_id":"","agent_type":"","cwd":"'"$OTHER_CWD"'"}'
-run_test "non-combobulate orchestrator on sibling codegen blocks" "2" "$FIXTURE_OTHER_SIBLING"
+run_test "other-app orchestrator on sibling codegen blocks" "2" "$FIXTURE_OTHER_SIBLING"
 
 # Test 12: fake nested path /fake/codegen/logging/test.md — BLOCK (path injection guard)
 FIXTURE_FAKE_NESTED='{"hook_event_name":"PreToolUse","tool_name":"Write","tool_input":{"file_path":"/fake/codegen/logging/test.md","content":"x"},"agent_id":"","agent_type":""}'
@@ -122,7 +122,7 @@ run_test_role() {
 }
 
 # Test 13: CLAUDE_ROLE=debug + Edit on lib/ — BLOCK
-FIXTURE_DEBUG_LIB='{"hook_event_name":"PreToolUse","tool_name":"Edit","tool_input":{"file_path":"lib/combobulate/foo.ex","old_string":"x","new_string":"y"},"agent_id":"","agent_type":""}'
+FIXTURE_DEBUG_LIB='{"hook_event_name":"PreToolUse","tool_name":"Edit","tool_input":{"file_path":"lib/my_app/foo.ex","old_string":"x","new_string":"y"},"agent_id":"","agent_type":""}'
 run_test_role "debug mode Edit on lib/ blocks" "2" "debug" "$FIXTURE_DEBUG_LIB"
 
 # Test 14: CLAUDE_ROLE=debug + Edit on codegen/logging/ — BLOCK (debug only writes to pitches/)
@@ -142,7 +142,7 @@ FIXTURE_SHAPE_DRAFT='{"hook_event_name":"PreToolUse","tool_name":"Write","tool_i
 run_test_role "shape mode Write to pitches/draft/ allows" "0" "shape" "$FIXTURE_SHAPE_DRAFT"
 
 # Test 18: CLAUDE_ROLE=shape + Edit lib/ — BLOCK
-FIXTURE_SHAPE_LIB='{"hook_event_name":"PreToolUse","tool_name":"Edit","tool_input":{"file_path":"lib/combobulate/foo.ex","old_string":"x","new_string":"y"},"agent_id":"","agent_type":""}'
+FIXTURE_SHAPE_LIB='{"hook_event_name":"PreToolUse","tool_name":"Edit","tool_input":{"file_path":"lib/my_app/foo.ex","old_string":"x","new_string":"y"},"agent_id":"","agent_type":""}'
 run_test_role "shape mode Edit on lib/ blocks" "2" "shape" "$FIXTURE_SHAPE_LIB"
 
 # Test 18d: CLAUDE_ROLE=ops + Write arbitrary on-box path — ALLOW (full write surface)
@@ -150,11 +150,11 @@ FIXTURE_OPS_ONBOX='{"hook_event_name":"PreToolUse","tool_name":"Write","tool_inp
 run_test_role "ops mode Write to arbitrary on-box path allows" "0" "ops" "$FIXTURE_OPS_ONBOX"
 
 # Test 18e: CLAUDE_ROLE=ops + Edit lib/ — ALLOW (ops has full write surface)
-FIXTURE_OPS_LIB='{"hook_event_name":"PreToolUse","tool_name":"Edit","tool_input":{"file_path":"lib/combobulate/foo.ex","old_string":"x","new_string":"y"},"agent_id":"","agent_type":""}'
+FIXTURE_OPS_LIB='{"hook_event_name":"PreToolUse","tool_name":"Edit","tool_input":{"file_path":"lib/my_app/foo.ex","old_string":"x","new_string":"y"},"agent_id":"","agent_type":""}'
 run_test_role "ops mode Edit on lib/ allows" "0" "ops" "$FIXTURE_OPS_LIB"
 
 # Test 19: CLAUDE_ROLE=debug + subagent Edit on lib/ — BLOCK (subagent bypass disabled under debug/shape)
-FIXTURE_DEBUG_SUB_LIB='{"hook_event_name":"PreToolUse","tool_name":"Edit","tool_input":{"file_path":"lib/combobulate/foo.ex","old_string":"x","new_string":"y"},"agent_id":"abc123","agent_type":"general-purpose"}'
+FIXTURE_DEBUG_SUB_LIB='{"hook_event_name":"PreToolUse","tool_name":"Edit","tool_input":{"file_path":"lib/my_app/foo.ex","old_string":"x","new_string":"y"},"agent_id":"abc123","agent_type":"general-purpose"}'
 run_test_role "debug mode subagent Edit on lib/ blocks" "2" "debug" "$FIXTURE_DEBUG_SUB_LIB"
 
 # Test 20: CLAUDE_ROLE=debug + subagent Write to pitches/draft/ — ALLOW
@@ -225,7 +225,7 @@ run_test_parity() {
 # PI_ROLE parity tests
 
 # Test 27: PI_ROLE=debug + Edit on lib/ — BLOCK
-FIXTURE_PI_DEBUG_LIB='{"hook_event_name":"PreToolUse","tool_name":"Edit","tool_input":{"file_path":"lib/combobulate/foo.ex","old_string":"x","new_string":"y"},"agent_id":"","agent_type":""}'
+FIXTURE_PI_DEBUG_LIB='{"hook_event_name":"PreToolUse","tool_name":"Edit","tool_input":{"file_path":"lib/my_app/foo.ex","old_string":"x","new_string":"y"},"agent_id":"","agent_type":""}'
 run_test_parity "PI_ROLE=debug Edit on lib/ blocks" "2" "PI_ROLE" "debug" "$FIXTURE_PI_DEBUG_LIB"
 
 # Test 28: PI_ROLE=debug + Write to codegen/pitches/draft/ — ALLOW
@@ -233,7 +233,7 @@ FIXTURE_PI_DEBUG_DRAFT='{"hook_event_name":"PreToolUse","tool_name":"Write","too
 run_test_parity "PI_ROLE=debug Write to pitches/draft/ allows" "0" "PI_ROLE" "debug" "$FIXTURE_PI_DEBUG_DRAFT"
 
 # Test 29: PI_ROLE=shape + Edit lib/ — BLOCK
-FIXTURE_PI_SHAPE_LIB='{"hook_event_name":"PreToolUse","tool_name":"Edit","tool_input":{"file_path":"lib/combobulate/foo.ex","old_string":"x","new_string":"y"},"agent_id":"","agent_type":""}'
+FIXTURE_PI_SHAPE_LIB='{"hook_event_name":"PreToolUse","tool_name":"Edit","tool_input":{"file_path":"lib/my_app/foo.ex","old_string":"x","new_string":"y"},"agent_id":"","agent_type":""}'
 run_test_parity "PI_ROLE=shape Edit on lib/ blocks" "2" "PI_ROLE" "shape" "$FIXTURE_PI_SHAPE_LIB"
 
 # Test 30: PI_ROLE=shape + Write to codegen/pitches/draft/ — ALLOW

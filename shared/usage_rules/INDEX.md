@@ -1,8 +1,8 @@
-# Usage Rules Index — Combobulate Platform
+# Usage Rules Index — Build Platform
 
-This index is cache-scoped to the Combobulate platform and lists the usage-rules files
+This index is cache-scoped to the build platform and lists the usage-rules files
 relevant to its direct dependencies. The shared corpus contains 90+ files covering many
-more libraries; only the deps listed here are direct dependencies of Combobulate today.
+more libraries; only the deps listed here are direct dependencies of the platform today.
 Implementers should read only the files listed for the dep(s) relevant to their task —
 loading the entire corpus is wasteful and token-expensive.
 
@@ -134,7 +134,7 @@ Use when: running dependency security audits or understanding advisory output.
 
 ## mox
 
-Use when: declaring behaviour mocks (`Combobulate.Bouncer.ClaudeRunnerMock`, `BuildAdapterMock`, `Storage` test impl) or configuring Mox in test setup.
+Use when: declaring behaviour mocks (`App.LLM.RunnerMock`, `BuildAdapterMock`, `Storage` test impl) or configuring Mox in test setup.
 
 - `mox-1.2.0.md`
 

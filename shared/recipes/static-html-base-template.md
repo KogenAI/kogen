@@ -39,8 +39,8 @@ Starter `index.html` for plain HTML + Tailwind v4 stacks. Drop into `static/inde
       <p class="text-xl text-gray-600 mb-10">Supporting copy.</p>
     </section>
 
-    <!-- Contact form: action="https://app.combobulate.dev/api/forms/{slug}/contact" method="POST" -->
-    <!-- Replace {slug} with app slug. No "Powered by Combobulate" footer on user apps. -->
+    <!-- Contact form: action="https://app.example.com/api/forms/{slug}/contact" method="POST" -->
+    <!-- Replace {slug} with app slug. No platform branding footer on user apps. -->
 
     <footer
       class="py-8 px-6 border-t border-gray-100 text-center text-sm text-gray-500"

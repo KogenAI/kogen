@@ -68,7 +68,7 @@ Bad: `# async: false for safety`
 
 ## In-repo example
 
-`test/combobulate_web/controllers/webhook_controller_test.exs` — `WebhookControllerTest` (async: true) alongside `WebhookControllerSyncTest` (async: false) for POST handlers that spawn via the globally-named TaskSupervisor.
+`test/my_app_web/controllers/webhook_controller_test.exs` — `WebhookControllerTest` (async: true) alongside `WebhookControllerSyncTest` (async: false) for POST handlers that spawn via the globally-named TaskSupervisor.
 
 ## Triggers
 

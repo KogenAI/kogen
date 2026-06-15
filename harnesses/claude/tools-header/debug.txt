@@ -15,12 +15,12 @@ grep across `$CODEGEN_DIR/templates/`, `$CODEGEN_DIR/context/`, `~/.claude/hooks
 
 When bug class is enforcement (hooks, permissions, gating), follow this procedure in full before naming any root cause:
 
-- Step 1 — Map every registration site: check `~/.claude/settings.json` (user-global), `Combobulate.LLM.HarnessConfig.build/2` (per-call), and any project-local `.claude/settings.json`. Record: which sites register the hook, with which matcher, on which event.
+- Step 1 — Map every registration site: check `~/.claude/settings.json` (user-global), `App.LLM.HarnessConfig.build/2` (per-call), and any project-local `.claude/settings.json`. Record: which sites register the hook, with which matcher, on which event.
 - Step 2 — Read the hook script for self-gate intent: look for `AGENT_TYPE` allowlist, `CLAUDE_ROLE` check, or neither. Determine fire population = join of registration sites × self-gate.
 - Step 3 — Compare sibling hooks: diff self-gates across the hook family. Sibling drift = strong signal of missing shared convention.
 - Step 4 — Trace the role-signal contract: `AGENT_TYPE` set by Claude Code on subagent spawn; `CLAUDE_ROLE` set by launcher before `exec claude`. Valid `CLAUDE_ROLE` values: `debug`, `shape`, `refactor` (investigation/shaping modes). Hook reading `AGENT_TYPE` with no top-level allowlist → fires for outer session every time.
-- Step 5 — Resolve symlink trap: hooks using `realpath` see resolved paths. `combobulate/codegen/rules/` symlinks into `/Users/almirsarajcic/Areas/Optimum/context/` → hook confining to `$CLAUDE_PROJECT_DIR` rejects reads through symlink. Verify by resolving the path the hook actually saw.
-- Step 6 — Verify Elixir-spawned subprocess environment: read build-cmd assembly in `Combobulate.LLM.Backend.*`. If `CLAUDE_PROJECT_DIR` not explicitly set → hook falls back to `$PWD` = `System.tmp_dir!()`.
+- Step 5 — Resolve symlink trap: hooks using `realpath` see resolved paths. `app/codegen/rules/` symlinks into `/Users/operator/context/` → hook confining to `$CLAUDE_PROJECT_DIR` rejects reads through symlink. Verify by resolving the path the hook actually saw.
+- Step 6 — Verify Elixir-spawned subprocess environment: read build-cmd assembly in `App.LLM.Backend.*`. If `CLAUDE_PROJECT_DIR` not explicitly set → hook falls back to `$PWD` = `System.tmp_dir!()`.
 - Step 7 — Run `claude --print --verbose --output-format stream-json --tools "Read,Bash" "test"`. First line is `init`. Read `init.tools`, `init.agents`. Watch for `permission_denials` naming the hook.
 
 Enforcement bug report must include: registration map, self-gate inventory, fire population, intent mismatch, sibling drift (if any), recommended scope (`per_call_inspector` / `user_global` / `both`) + signal (`AGENT_TYPE` / `CLAUDE_ROLE`).

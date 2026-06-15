@@ -3,7 +3,7 @@
 ## Overview
 
 - **What**: Meta-tooling repo that generates and installs AI-agent harnesses (Claude Code, Pi) into developer machines. Produces launcher scripts, hook systems, subagent prompt files, and scaffold templates consumed by downstream Phoenix and static-site projects.
-- **Location**: codegen runs from different roots per machine/OS — Linux servers (combobulate prod/staging, Hetzner dashboard box `~/apps/codegen`) and operator Macs (`~/Areas/Optimum/codegen`). Root is never hardcoded; scripts derive it from `BASH_SOURCE`. Installed artifacts land in `~/.claude/`, `~/.pi/`, `/usr/local/bin/` (or `~/bin/`) — these are install targets, not source. See `context/deployment-topology.md`.
+- **Location**: codegen runs from different roots per machine/OS — Linux servers (production/staging, dashboard box `~/apps/codegen`) and operator Macs (`~/Areas/Optimum/codegen`). Root is never hardcoded; scripts derive it from `BASH_SOURCE`. Installed artifacts land in `~/.claude/`, `~/.pi/`, `/usr/local/bin/` (or `~/bin/`) — these are install targets, not source. See `context/deployment-topology.md`.
 - **Stack**: Bash + Python (generator pipeline), TypeScript (Pi extensions), Elixir/ExUnit (test harness), Jinja2-like template rendering via `process_template.py`
 - **Data flow**: `manifest.yaml` → `generate.sh` → rendered agent `.md` files → `install.sh` → `~/.claude/agents/`, hooks, launchers
 

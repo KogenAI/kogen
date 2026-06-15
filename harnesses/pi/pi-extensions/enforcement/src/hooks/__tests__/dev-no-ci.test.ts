@@ -57,7 +57,7 @@ describe("dev-no-ci", () => {
 
   it("allows mix test with specific file path", async () => {
     const result = await runHook(
-      "mix test test/combobulate/llm/backend/pi_test.exs",
+      "mix test test/my_app/llm/backend/pi_test.exs",
     );
     assert.ok(result == null || (result as { block?: boolean }).block !== true);
   });

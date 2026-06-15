@@ -80,7 +80,7 @@ Sum counts across all new files and confirm they match exactly. A mismatch means
 
 ## Concrete Example
 
-From Combobulate `build_worker_test.exs` (139 tests, 131s → ~35s):
+From a real-world `build_worker_test.exs` (139 tests, 131s → ~35s):
 
 ```
 Before: one module, 131s wall time

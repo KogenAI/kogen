@@ -9,12 +9,7 @@ Grep this file's trigger table with task keywords before writing a plan. Each re
 | browser-test organization domain journey test-structure feature-grouping scattered messy                                                             | browser-test-organization.md            | Organize browser tests by business domain rather than technology for complete user journeys.                      |
 | caddy dynamic-routing subdomain reverse-proxy admin-api tenant runtime-route idempotent tag                                                          | caddy-dynamic-routing.md                | Manage Caddy routes at runtime via Admin API for per-app subdomain reverse proxying.                              |
 | claude-cli subprocess build-engine oban-worker autonomous stream-json system-cmd env-isolation                                                       | claude-cli-subprocess.md                | Invoke claude --print from Elixir Oban workers with env isolation and JSON stream parsing.                        |
-| contact-form form-submission static-site email no-backend whatsapp-notification html hugo react                                                      | combobulate-contact-form.md             | Add a working contact form to any static site using the hosted Combobulate form endpoint.                         |
-| file-upload photo-upload s3 presigned-url static-site no-backend attachment whatsapp direct-upload                                                   | combobulate-file-upload.md              | Add file uploads to static sites — visitors upload directly to S3, owner gets WhatsApp link.                      |
-| gumroad buy-button digital-product ebook sell download purchase one-pager landing-page placeholder                                                   | combobulate-gumroad-buy-button.md       | Render GUMROAD_PLACEHOLDER_URL so the platform patches the real Gumroad URL after build.                          |
-| magic-link passwordless auth login jwt phoenix-auth no-password email-link token session                                                             | combobulate-magic-link-auth.md          | Add passwordless magic-link authentication to a Phoenix app via Combobulate platform tokens.                      |
-| stripe paywall checkout payment buy-button connect one-time-payment sell subscription                                                                | combobulate-stripe-paywall.md           | Accept one-time payments via Stripe Connect — platform handles checkout, no Stripe keys in app.                   |
-| transactional-email send-email no-smtp mailgun user-app platform-api welcome password-reset                                                          | combobulate-transactional-email.md      | Send transactional email from a Phoenix user app via Combobulate platform API, no mail credentials.               |
+| gumroad buy-button digital-product ebook sell download purchase one-pager landing-page placeholder                                                   | gumroad-buy-button.md                   | Render GUMROAD_PLACEHOLDER_URL so the platform patches the real Gumroad URL after build.                          |
 | preview-app sanitize production-data gdpr pii sensitive-data anonymize database-dump development                                                     | database-sanitization-preview.md        | Automated sanitization of production database copies for safe preview app and dev usage.                          |
 | timezone datetime-form utc browser-timezone date-time-split client-side merge validate datetime-local                                                | datetime-form-timezone.md               | Split datetime into date/time inputs, capture timezone client-side, merge and validate server-side.               |
 | docx pdf libreoffice template variable-substitution contract invoice document-generation personalized                                                | docx-to-pdf-generation.md               | DOCX template with variable substitution converted to PDF via LibreOffice for document generation.                |
@@ -99,41 +94,11 @@ Grep this file's trigger table with task keywords before writing a plan. Each re
 **What it gives you**: `System.cmd("sh", ["-c", cmd])` invocation pattern with env-u isolation, disallowed-tools, stream-json parsing via Python log parser written to /tmp.
 **Triggers**: claude-cli subprocess build-engine oban-worker autonomous stream-json system-cmd env-isolation
 
-### combobulate-contact-form.md
-
-**When**: A static site (HTML, Hugo, React, Vue) needs a working contact form without any backend code.
-**What it gives you**: Two patterns (inline fetch + redirect) calling `POST /api/forms/APP_ID/FORM_ID` with rate-limit info and a WhatsApp notification on submission.
-**Triggers**: contact-form form-submission static-site email no-backend whatsapp-notification html hugo react
-
-### combobulate-file-upload.md
-
-**When**: A static site needs file or photo uploads without backend code.
-**What it gives you**: Two-step presign+complete flow with direct S3 PUT, 25 MB limit, owner WhatsApp notification with 7-day download link.
-**Triggers**: file-upload photo-upload s3 presigned-url static-site no-backend attachment whatsapp direct-upload
-
-### combobulate-gumroad-buy-button.md
+### gumroad-buy-button.md
 
 **When**: A user's brief mentions selling a digital product (ebook, course, template) with a Gumroad link.
 **What it gives you**: Exact snippet using `GUMROAD_PLACEHOLDER_URL` so the platform can patch the real URL post-build — three variants (plain anchor, overlay button, custom button).
 **Triggers**: gumroad buy-button digital-product ebook sell download purchase one-pager landing-page placeholder
-
-### combobulate-magic-link-auth.md
-
-**When**: A Phoenix user app needs passwordless authentication without holding email or session credentials.
-**What it gives you**: Full scaffold using `mix phx.gen.auth` + `UserNotifier` replacement calling platform endpoint + `FetchCurrentUser` plug verifying JWTs with platform's public key.
-**Triggers**: magic-link passwordless auth login jwt phoenix-auth no-password email-link token session
-
-### combobulate-stripe-paywall.md
-
-**When**: A user app or static site needs to accept one-time payments without Stripe keys in the app.
-**What it gives you**: Buy button JS + webhook handler + Stripe Connect OAuth flow — platform manages keys, app owner links their Stripe account via WhatsApp.
-**Triggers**: stripe paywall checkout payment buy-button connect one-time-payment sell subscription
-
-### combobulate-transactional-email.md
-
-**When**: A Phoenix user app needs to send transactional emails (welcome, magic link, confirmation) without SMTP credentials.
-**What it gives you**: `UserNotifier` module using `Req.post!` to call `POST /api/email/APP_ID/send` — drop-in replacement for Swoosh.
-**Triggers**: transactional-email send-email no-smtp mailgun user-app platform-api welcome password-reset
 
 ### database-sanitization-preview.md
 
@@ -506,9 +471,3 @@ Grep this file's trigger table with task keywords before writing a plan. Each re
 **When**: Adding any library function, config key, or module usage you haven't used before, or when behaviour is unclear from types alone.
 **What it gives you**: Three-step verify-first flow (`get_docs` → `search_package_docs` → `project_eval`) with clear rules for when to use it and when to skip it.
 **Triggers**: tidewave mcp verify-first get_docs search_package_docs project_eval unknown-config hexdocs research
-
----
-
-## See Also
-
-- `COMBOBULATE_SERVICES.md` — conventions for embedding `APP_ID`, `API_KEY`, and service endpoints in user apps. Not a single-problem recipe — a conventions reference used across multiple recipes above.

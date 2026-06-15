@@ -58,7 +58,7 @@ Rule prompts ordered TOP (reference) → MIDDLE (situational) → BOTTOM (hard r
 
 Common files at `/Users/almirsarajcic/Areas/Optimum/context/subagents/_*_common.md.j2` set canonical order via `{% include %}` slots.
 
-See combobulate `context/rules-authoring.md` for full ordering law + bucket assignments + hooks-vs-rules separation + PROJECT_CONTEXT loader contract.
+See the platform's `context/rules-authoring.md` for full ordering law + bucket assignments + hooks-vs-rules separation + PROJECT_CONTEXT loader contract.
 
 ## Generators
 

@@ -1,5 +1,5 @@
 {
-  "name": "@combobulate/pi-enforcement",
+  "name": "pi-enforcement",
   "version": "0.1.0",
   "description": "Pi extension: enforcement hooks ported from Claude Code hook scripts",
   "main": "dist/index.js",

@@ -207,7 +207,7 @@ This eliminates the dirty-tree race: integrate-stage files rendered AFTER the co
 
 ## Deployment / Distribution
 
-Codegen runs on servers too — combobulate prod/staging and the Hetzner dashboard box all run codegen, in addition to operator Macs. Distribution = `make install` on each machine; each derives its root from `BASH_SOURCE`, never hardcoded. CI validates that scaffold output compiles and hook tests pass. PRs require both `make test` and `make test-stacks` green before merge. See `context/deployment-topology.md`.
+Codegen runs on servers too — production/staging Linux hosts and the Hetzner dashboard box all run codegen, in addition to operator Macs. Distribution = `make install` on each machine; each derives its root from `BASH_SOURCE`, never hardcoded. CI validates that scaffold output compiles and hook tests pass. PRs require both `make test` and `make test-stacks` green before merge. See `context/deployment-topology.md`.
 
 ## Bash Patterns & Pitfalls (Codegen-Infra)
 

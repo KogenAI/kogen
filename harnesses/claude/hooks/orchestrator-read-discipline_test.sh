@@ -54,8 +54,8 @@ run_test "orchestrator Read on AGENTS.md blocks" "2" "$FIXTURE_AGENTS"
 FIXTURE_CLAUDE='{"hook_event_name":"PreToolUse","tool_name":"Read","tool_input":{"file_path":"CLAUDE.md"},"agent_id":"","agent_type":""}'
 run_test "orchestrator Read on CLAUDE.md blocks" "2" "$FIXTURE_CLAUDE"
 
-# Test 5: orchestrator Read on lib/combobulate/apps.ex — BLOCK
-FIXTURE_LIB='{"hook_event_name":"PreToolUse","tool_name":"Read","tool_input":{"file_path":"lib/combobulate/apps.ex"},"agent_id":"","agent_type":""}'
+# Test 5: orchestrator Read on lib/my_app/apps.ex — BLOCK
+FIXTURE_LIB='{"hook_event_name":"PreToolUse","tool_name":"Read","tool_input":{"file_path":"lib/my_app/apps.ex"},"agent_id":"","agent_type":""}'
 run_test "orchestrator Read on lib/ blocks" "2" "$FIXTURE_LIB"
 
 # Test 6: orchestrator Read on config/runtime.exs — BLOCK
@@ -63,15 +63,15 @@ FIXTURE_CONFIG='{"hook_event_name":"PreToolUse","tool_name":"Read","tool_input":
 run_test "orchestrator Read on config/ blocks" "2" "$FIXTURE_CONFIG"
 
 # Test 7: subagent (non-empty agent_id) Read on lib/ — ALLOW
-FIXTURE_SUBAGENT='{"hook_event_name":"PreToolUse","tool_name":"Read","tool_input":{"file_path":"lib/combobulate/apps.ex"},"agent_id":"abc123","agent_type":"developer-phoenix-backend"}'
+FIXTURE_SUBAGENT='{"hook_event_name":"PreToolUse","tool_name":"Read","tool_input":{"file_path":"lib/my_app/apps.ex"},"agent_id":"abc123","agent_type":"developer-phoenix-backend"}'
 run_test "subagent Read on lib/ allows" "0" "$FIXTURE_SUBAGENT"
 
 # Test 8: named agent (planner) — ALLOW (AGENT_TYPE non-empty, not orchestrator)
-FIXTURE_PLANNER='{"hook_event_name":"PreToolUse","tool_name":"Read","tool_input":{"file_path":"lib/combobulate/apps.ex"},"agent_id":"","agent_type":"planner"}'
+FIXTURE_PLANNER='{"hook_event_name":"PreToolUse","tool_name":"Read","tool_input":{"file_path":"lib/my_app/apps.ex"},"agent_id":"","agent_type":"planner"}'
 run_test "planner Read on lib/ allows (not orchestrator)" "0" "$FIXTURE_PLANNER"
 
 # Test 9: non-Read tool — ALLOW
-FIXTURE_WRITE='{"hook_event_name":"PreToolUse","tool_name":"Write","tool_input":{"file_path":"lib/combobulate/foo.ex"},"agent_id":"","agent_type":""}'
+FIXTURE_WRITE='{"hook_event_name":"PreToolUse","tool_name":"Write","tool_input":{"file_path":"lib/my_app/foo.ex"},"agent_id":"","agent_type":""}'
 run_test "non-Read tool allowed" "0" "$FIXTURE_WRITE"
 
 # Test 10: orchestrator Read on absolute session log path — ALLOW
@@ -83,7 +83,7 @@ rm -rf "$TMP_CWD"
 
 # Test 11: orchestrator Read on absolute lib/ path — BLOCK
 TMP_CWD2="$(mktemp -d)"
-ABS_LIB="${TMP_CWD2}/lib/combobulate/foo.ex"
+ABS_LIB="${TMP_CWD2}/lib/my_app/foo.ex"
 FIXTURE_ABS_LIB='{"hook_event_name":"PreToolUse","tool_name":"Read","tool_input":{"file_path":"'"$ABS_LIB"'"},"agent_id":"","agent_type":"","cwd":"'"$TMP_CWD2"'"}'
 run_test "orchestrator Read on absolute lib/ path blocks" "2" "$FIXTURE_ABS_LIB"
 rm -rf "$TMP_CWD2"
@@ -155,29 +155,29 @@ run_test "orchestrator Read on absolute codegen/pitches/draft/ path allows" "0" 
 rm -rf "$TMP_CWD4"
 
 # Test 27: CLAUDE_ROLE=debug bypasses read discipline — investigation sessions need full access
-FIXTURE_DEBUG_BYPASS='{"hook_event_name":"PreToolUse","tool_name":"Read","tool_input":{"file_path":"lib/combobulate/apps.ex"},"agent_id":"","agent_type":""}'
+FIXTURE_DEBUG_BYPASS='{"hook_event_name":"PreToolUse","tool_name":"Read","tool_input":{"file_path":"lib/my_app/apps.ex"},"agent_id":"","agent_type":""}'
 CLAUDE_ROLE=debug run_test "CLAUDE_ROLE=debug bypasses read discipline" "0" "$FIXTURE_DEBUG_BYPASS"
 
 # Test 28: CLAUDE_ROLE=shape bypasses read discipline — shaping sessions need full access (Phase 0 preload)
-FIXTURE_SHAPE_BYPASS='{"hook_event_name":"PreToolUse","tool_name":"Read","tool_input":{"file_path":"lib/combobulate/apps.ex"},"agent_id":"","agent_type":""}'
+FIXTURE_SHAPE_BYPASS='{"hook_event_name":"PreToolUse","tool_name":"Read","tool_input":{"file_path":"lib/my_app/apps.ex"},"agent_id":"","agent_type":""}'
 CLAUDE_ROLE=shape run_test "CLAUDE_ROLE=shape bypasses read discipline" "0" "$FIXTURE_SHAPE_BYPASS"
 
 # PI_ROLE parity tests
 
 # Test 29: PI_ROLE=debug bypasses read discipline
-FIXTURE_PI_DEBUG_BYPASS='{"hook_event_name":"PreToolUse","tool_name":"Read","tool_input":{"file_path":"lib/combobulate/apps.ex"},"agent_id":"","agent_type":""}'
+FIXTURE_PI_DEBUG_BYPASS='{"hook_event_name":"PreToolUse","tool_name":"Read","tool_input":{"file_path":"lib/my_app/apps.ex"},"agent_id":"","agent_type":""}'
 PI_ROLE=debug run_test "PI_ROLE=debug bypasses read discipline" "0" "$FIXTURE_PI_DEBUG_BYPASS"
 
 # Test 30: PI_ROLE=shape bypasses read discipline
-FIXTURE_PI_SHAPE_BYPASS='{"hook_event_name":"PreToolUse","tool_name":"Read","tool_input":{"file_path":"lib/combobulate/apps.ex"},"agent_id":"","agent_type":""}'
+FIXTURE_PI_SHAPE_BYPASS='{"hook_event_name":"PreToolUse","tool_name":"Read","tool_input":{"file_path":"lib/my_app/apps.ex"},"agent_id":"","agent_type":""}'
 PI_ROLE=shape run_test "PI_ROLE=shape bypasses read discipline" "0" "$FIXTURE_PI_SHAPE_BYPASS"
 
 # Test 31: CLAUDE_ROLE=ops bypasses read discipline — ops runs on live boxes, full access needed
-FIXTURE_OPS_BYPASS='{"hook_event_name":"PreToolUse","tool_name":"Read","tool_input":{"file_path":"lib/combobulate/apps.ex"},"agent_id":"","agent_type":""}'
+FIXTURE_OPS_BYPASS='{"hook_event_name":"PreToolUse","tool_name":"Read","tool_input":{"file_path":"lib/my_app/apps.ex"},"agent_id":"","agent_type":""}'
 CLAUDE_ROLE=ops run_test "CLAUDE_ROLE=ops bypasses read discipline" "0" "$FIXTURE_OPS_BYPASS"
 
 # Test 32: PI_ROLE=ops bypasses read discipline
-FIXTURE_PI_OPS_BYPASS='{"hook_event_name":"PreToolUse","tool_name":"Read","tool_input":{"file_path":"lib/combobulate/apps.ex"},"agent_id":"","agent_type":""}'
+FIXTURE_PI_OPS_BYPASS='{"hook_event_name":"PreToolUse","tool_name":"Read","tool_input":{"file_path":"lib/my_app/apps.ex"},"agent_id":"","agent_type":""}'
 PI_ROLE=ops run_test "PI_ROLE=ops bypasses read discipline" "0" "$FIXTURE_PI_OPS_BYPASS"
 
 # Test B18b: CLAUDE_ROLE=ops Bash grep — ALLOW (ops needs full local inspection)

@@ -34,7 +34,7 @@ Three Makefile targets, increasing cost:
 
 `make test` is bash-only and runs without Elixir installed. `make test-stacks` requires Elixir 1.15+.
 
-`test_harness/last_green.json` records the codegen sha + harness versions + timestamp of the last green `make test-all` run. It is committed in this repo and consumed by downstream pin tooling (e.g., `mix combobulate.codegen.pin`).
+`test_harness/last_green.json` records the codegen sha + harness versions + timestamp of the last green `make test-all` run. It is committed in this repo and consumed by downstream pin tooling (e.g., `mix codegen.pin`).
 
 ## Prerequisites
 

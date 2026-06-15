@@ -196,7 +196,7 @@ if ! grep -qF 'plt_file: {:no_warn' "$MIX_EXS"; then
 
     # Handle source_url: inject --github-url value or drop the line
     if [[ -n "$GITHUB_URL" ]]; then
-        PROJECT_CONTENT="$(echo "$PROJECT_CONTENT" | sed "s|source_url: \"https://github.com/Combobulate-HQ/user-apps\"|source_url: \"${GITHUB_URL}\"|")"
+        PROJECT_CONTENT="$(echo "$PROJECT_CONTENT" | sed "s|source_url: \"https://github.com/YourOrg/user-apps\"|source_url: \"${GITHUB_URL}\"|")"
     else
         PROJECT_CONTENT="$(echo "$PROJECT_CONTENT" | grep -v 'source_url:')"
     fi

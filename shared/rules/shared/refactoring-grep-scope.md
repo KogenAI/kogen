@@ -14,4 +14,4 @@ When removing a field/function/constant, verify zero readers by scanning across 
 4. Read Oban worker boots (`BuildWorker.check_codegen_pin!/0`) — look for required fields
 5. Read test fixtures — ensure they're stale if the field is truly unused
 
-Example: removing `verified_at` from codegen lock. Grep finds only one writer (`Mix.Tasks.Combobulate.Codegen.Pin.write_lock/2`). Boot gate reads only `codegen_commit` + `harness_versions`. Deploy script jq-reads only `.codegen_commit` / `.harness_versions.codegen_call` / `.tests_last_green_at` — no `verified_at` consumer. Test fixtures already omit it. Safe to remove.
+Example: removing `verified_at` from codegen lock. Grep finds only one writer (`Mix.Tasks.Codegen.Pin.write_lock/2`). Boot gate reads only `codegen_commit` + `harness_versions`. Deploy script jq-reads only `.codegen_commit` / `.harness_versions.codegen_call` / `.tests_last_green_at` — no `verified_at` consumer. Test fixtures already omit it. Safe to remove.

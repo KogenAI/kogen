@@ -4,16 +4,16 @@ Where codegen runs, what the root path is per machine/OS, and the rules that fol
 
 ## Current Locations
 
-| Location                              | OS    | Codegen root                                        |
-| ------------------------------------- | ----- | --------------------------------------------------- |
-| combobulate prod                      | Linux | `<OPERATOR_FILL: combobulate prod codegen root>`    |
-| combobulate staging                   | Linux | `<OPERATOR_FILL: combobulate staging codegen root>` |
-| dashboard box (Hetzner CCX13, Ubuntu) | Linux | `~/apps/codegen`                                    |
-| operator Macs                         | macOS | `~/Areas/Optimum/codegen`                           |
+| Location                              | OS    | Codegen root                            |
+| ------------------------------------- | ----- | --------------------------------------- |
+| production host A                     | Linux | `<OPERATOR_FILL: prod codegen root>`    |
+| production host B                     | Linux | `<OPERATOR_FILL: staging codegen root>` |
+| dashboard box (Hetzner CCX13, Ubuntu) | Linux | `~/apps/codegen`                        |
+| operator Macs                         | macOS | `~/Areas/Optimum/codegen`               |
 
 ## Trajectory
 
-Narrowing to combobulate (prod + staging) and the Hetzner dashboard box as the primary production locations. Operator Macs remain for local development. Expect the Linux locations to dominate in CI/CD and automated operations.
+Narrowing to the primary production hosts and the Hetzner dashboard box as the primary production locations. Operator Macs remain for local development. Expect the Linux locations to dominate in CI/CD and automated operations.
 
 ## Cardinal Rule
 

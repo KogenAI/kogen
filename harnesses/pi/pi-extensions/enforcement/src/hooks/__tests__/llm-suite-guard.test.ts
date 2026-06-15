@@ -47,7 +47,7 @@ describe("llm-suite-guard", () => {
 
   it("allows make llm-single FILE=... for developer-*", async () => {
     const result = await runHook(
-      "make llm-single FILE=test/combobulate/llm_integration/foo_test.exs",
+      "make llm-single FILE=test/my_app/llm_integration/foo_test.exs",
     );
     assert.ok(result == null || (result as { block?: boolean }).block !== true);
   });

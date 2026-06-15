@@ -28,7 +28,7 @@ assert_received {[:my, :event], ^ref, measurements, metadata}
 handler_id = "test-rollup-telemetry"
 test_pid = self()
 
-:telemetry.attach(handler_id, [:combobulate, :llm, :rollup, :run], fn _event, m, _meta, _cfg ->
+:telemetry.attach(handler_id, [:my_app, :llm, :rollup, :run], fn _event, m, _meta, _cfg ->
   send(test_pid, {:telemetry, m})
 end, nil)
 on_exit(fn -> :telemetry.detach(handler_id) end)
@@ -41,12 +41,12 @@ assert_receive {:telemetry, %{rows_rolled: rows_rolled}}
 **After** (fully isolated):
 
 ```elixir
-ref = :telemetry_test.attach_event_handlers(self(), [[:combobulate, :llm, :rollup, :run]])
+ref = :telemetry_test.attach_event_handlers(self(), [[:my_app, :llm, :rollup, :run]])
 on_exit(fn -> :telemetry.detach(ref) end)
 
 RollupWorker.perform(%Oban.Job{args: %{}})
 
-assert_received {[:combobulate, :llm, :rollup, :run], ^ref, measurements, _metadata}
+assert_received {[:my_app, :llm, :rollup, :run], ^ref, measurements, _metadata}
 assert measurements.rows_rolled >= 1
 ```
 

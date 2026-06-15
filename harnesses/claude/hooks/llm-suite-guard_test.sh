@@ -52,7 +52,7 @@ run_test "make llm-phoenix blocked for developer-phoenix-backend" "2" \
 
 # Test 3: make llm-single FILE=... → allow for developer-*
 run_test "make llm-single allowed for developer-phoenix-backend" "0" \
-    '{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"make llm-single FILE=test/combobulate/llm_integration/foo_test.exs"},"agent_type":"developer-phoenix-backend","agent_id":"abc123"}'
+    '{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"make llm-single FILE=test/my_app/llm_integration/foo_test.exs"},"agent_type":"developer-phoenix-backend","agent_id":"abc123"}'
 
 # Test 4: make llm-phoenix-seed → allow for developer-*
 run_test "make llm-phoenix-seed allowed for developer-phoenix-backend" "0" \

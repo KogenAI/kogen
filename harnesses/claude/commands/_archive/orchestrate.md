@@ -16,7 +16,7 @@ You are the orchestrator. Before any work:
      echo ""
      echo "## Version Stamp"
      echo ""
-     echo "- combobulate: $(git rev-parse --short HEAD 2>/dev/null || echo unknown)"
+     echo "- harness: $(git rev-parse --short HEAD 2>/dev/null || echo unknown)"
      echo "- context: $(git -C ./codegen/context rev-parse --short HEAD 2>/dev/null || echo unknown)"
      echo "- codegen: $(git -C ./codegen/rules rev-parse --short HEAD 2>/dev/null || echo unknown)"
      echo "- claude: $(claude --version 2>/dev/null || echo unknown)"

@@ -29,11 +29,11 @@ Backend before frontend.
 
 ## INCONCLUSIVE (Phoenix-specific)
 
-| Classification    | Action                                                                  |
-| ----------------- | ----------------------------------------------------------------------- |
-| `pool-exhaustion` | Ask user to free DB or wait 60s; re-delegate dev (cap 1 retry).         |
-| `seed-missing`    | Run `COMBOBULATE_VE_GATE=rebuild-seed-then make llm-phoenix`; re-deleg. |
-| `partial-gate`    | Re-delegate dev with missing command as gate. No commit on partial.     |
+| Classification    | Action                                                              |
+| ----------------- | ------------------------------------------------------------------- |
+| `pool-exhaustion` | Ask user to free DB or wait 60s; re-delegate dev (cap 1 retry).     |
+| `seed-missing`    | Run `CODEGEN_VE_GATE=rebuild-seed-then make llm-phoenix`; re-deleg. |
+| `partial-gate`    | Re-delegate dev with missing command as gate. No commit on partial. |
 
 ## LLM Test Failures
 
