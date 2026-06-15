@@ -204,6 +204,7 @@ codegen/                          ← repo root
 - [ ] **`ai-agents/`** is orphaned — do not add files expecting them to be installed.
 - [ ] **`content_stable_cp`** lives in `install.sh`, not `utils.sh`.
 - [ ] **Rules are baked at install time** — subagents do not read rule files at runtime. Change a rule → `make install` to propagate.
+- [ ] **Domain context files (`context/*.md`) NOT mirrored to AGENTS/CLAUDE** — The root session-loop docs (`AGENTS.md` and `CLAUDE.md`) mirror only the codegen session-loop narrative and build rules, not individual domain context files. Edits to `context/harnesses.md`, `context/hooks.md`, etc., DO NOT propagate to AGENTS.md/CLAUDE.md via symlink or template include.
 - [ ] **Repo root differs per machine/OS** — Linux servers (`~/apps/codegen` on the dashboard box) vs operator Macs (`~/Areas/Optimum/codegen`). NOTHING hardcodes it; scripts derive `CODEGEN_DIR` from `BASH_SOURCE`. See `context/deployment-topology.md`.
 
 ---

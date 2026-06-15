@@ -191,6 +191,7 @@ This eliminates the dirty-tree race: integrate-stage files rendered AFTER the co
 - **Spread technique for external probes requires exactly 4 numbered rules**: (1) name the axis, (2) probe both ends, (3) single-sample is inconclusive, (4) failure case is mandatory.
 - **Semantic equivalence vs structural identity in prompt-body sibling files** — verify semantic equivalence of all rules, NOT literal step-count parity. Compression preserving all semantic rules is correct mirroring.
 - **Planner-guard blocks Read on certain rule files** — `subagent-read-discipline.sh` denies planner Read to `testing-liveview.md` and `reviewer.md`. Workaround when planning prose edits to these files: use `Grep tool with -C context` to capture verbatim anchor text (exact sentence/phrase) instead of relying on line numbers. Planner can cite the extracted anchor in the pitch, developer confirms via their own Read, and Grep output is part of the pitch record.
+- **Context files carry a 40 KB advisory cap** — `context/*.md` domain files have a ~40,960-byte (40 KB) advisory size limit. No enforced hook exists; constraint is advisory to guide curation load-balancing across the context-file suite. When a file approaches cap, compress redundancy or relocate verbose examples to another context file. The separate `context-file-size-gate` work item will harden this into an automated check.
 
 ## Deployment / Distribution
 
