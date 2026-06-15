@@ -145,6 +145,16 @@ Hooks check session log state via `## <role>.*Section` patterns:
 
 **Stack-prefixed planner variants** (`planner-phoenix`, `planner-html`): `session-log-section-integrity.sh` requires the literal stack-prefixed header (e.g., `## planner-phoenix Section`) before allowing the subagent's Edit. The bare-planner bypass does NOT widen to stack variants.
 
+## Retrospective Placement Rule (subagent-retrospective-guard)
+
+`subagent-retrospective-guard.sh` — SubagentStop hook that validates correct placement of `### What I Learned This Step` blocks in the active session log. Specifically for planner variants: the block MUST sit BEFORE any `## ` sub-headers (e.g., `## Files Modified`, `## Next Steps`, `## Delegation Timeline`) within the `## Plan` body.
+
+**Why placement matters**: The hook uses awk section scanning (`/^## /` terminator) to extract retrospective blocks for curation routing. A `## ` header inside the block body terminates extraction and hides all subsequent blocks from the curator. Placing the retrospective block before any `## ` headers ensures extraction captures the intended content.
+
+**Rule for planner variants**: `### What I Learned This Step` must be positioned INSIDE the `## Plan` section body, as the last prose element BEFORE any sub-headers or metadata tables. Placement chain: planner task prose → sub-tasks/deliverables (if any) → `### What I Learned This Step` → then any `## ` sub-headers like `## Delegation Prompt`.
+
+**Enforcement**: Hook exits non-zero if block is missing entirely (unconditional requirement for all subagents per `shared/rules/roles/developer.md` Rule O). No warning for positioning drift in other roles — planner is the primary focus due to the extraction order dependency.
+
 ## Autoship Hook (`pitch-shipped-before-stop`)
 
 `harnesses/claude/hooks/pitch-shipped-before-stop.sh` — Stop hook that ships `ready/<slug>.md` → `shipped/` when: (1) `## committer Section` is present in the session log (completed cycle) AND (2) a pitch in `ready/` matches the active session log's slug.

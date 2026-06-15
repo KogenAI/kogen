@@ -7,7 +7,7 @@ Read the draft pitch currently in scope. Understand the problem, proposed soluti
 **Fan out a swarm of Explore subagents** — use the `Agent` tool with `subagent_type: Explore` and `model: opus` for each spawn. Decide the count and the attack angles yourself based on the specific pitch; do not use a fixed number. Each agent attacks exactly one angle and reads deep. Candidate angles (pick whichever apply and add others if the pitch warrants them):
 
 - **Scope holes / missing blast-radius** — consumers, harness variants, sibling modes, callers, or downstream artifacts the pitch does not account for
-- **Unverified empirical claims** — "X does Y", "X never Y", "only Z triggers Y", config values, module/file paths, CI behavior asserted without a probe transcript
+- **Unverified empirical claims** — any statement whose falsity would break or change the solution is load-bearing (detect by consequence, not surface shape); the following shapes are non-exhaustive examples: "X does Y", "X never Y", "only Z triggers Y", config values, module/file paths, CI behavior, convention/design/placement claims — all asserted without a probe transcript
 - **Contract / test breakage** — changes that would silently break existing tests, hooks, or downstream consumers
 - **Consistency + injection** — internal contradictions between sections, or a change in one place that the pitch fails to propagate everywhere it must land
 
