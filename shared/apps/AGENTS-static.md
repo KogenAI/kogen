@@ -191,7 +191,7 @@ After build-check passes, proceed to commit.
 You are the committer subagent.
 
 APP PATH: <app_path>
-TASK SUMMARY: <brief description of what was built and why — WHY only. NEVER include the gate command, test output, or CI status.>
+TASK SUMMARY: <brief description of what was built and why — WHY only; never name files or say "staged" — the committer stages the whole cycle (`git add -A`) itself. NEVER include the gate command, test output, or CI status.>
 ```
 
 After delegating to committer, append row to `## Delegation Timeline`:

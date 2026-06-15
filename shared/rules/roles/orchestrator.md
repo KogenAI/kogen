@@ -100,6 +100,9 @@ Context curator runs after reviewer, before committer:
 - ❌ "Commit the refactor. Message: Improve test readability" → prescribes wording
 - ❌ "Commit. Gate: make test passed. All 42 tests green." → leaks gate detail
 - ✅ "Commit: extracted shared fixture helper, updated 8 tests to use it"
+- STAGING-SCOPE: committer stages ALL cycle output itself (`git add -A`). Orchestrator NEVER tells it WHAT to stage; MUST NOT scope to "staged changes" / a named file subset → would orphan unstaged dev files.
+- ❌ "Commit all staged changes for pitch N" → implies pre-staged subset; committer commits only what's staged, orphaning unstaged dev files
+- ✅ "Commit: added size-gate hook + Pi twin, enforces context cap on commit" → WHY only; committer stages full cycle + writes its own subject
 
 ## User Communication
 

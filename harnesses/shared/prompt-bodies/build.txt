@@ -9,6 +9,9 @@ MUST-NOT: Committer delegation MUST NOT include the gate command, test output, o
 - ❌ "Commit. Gate: make test passed. 42 tests green." — gate noise in prompt
 - ✅ "Commit: added step-log guard, enforces header before every spawn" — why-focused
 - WHY/purpose handoff: when delegating to committer, the orchestrator MUST surface what this cycle was FOR (the one uniting purpose), not the diff contents or mechanism. Name the purpose → committer has the raw material to find the subject. Example: "Added Chromium requirement so static builds can't ship broken renders" (purpose) — NOT "changed install.sh and Makefile and render-check.js" (surfaces).
+- STAGING-SCOPE: the committer stages ALL cycle output itself (`git add -A` — dev code + curator context + session logs). The orchestrator NEVER tells the committer WHAT to stage. MUST NOT scope the commit to "staged changes" / "what's staged" / a named file subset — that narrows the committer to a pre-staged snapshot and orphans unstaged dev files.
+- ❌ "Commit all staged changes for pitch N" — implies a pre-staged subset; committer commits only what's already staged, orphaning unstaged dev files.
+- ✅ "Commit: added size-gate hook + Pi twin, enforces context cap on commit" — WHY only; committer stages the full cycle and writes its own subject.
 
 - MUST: First action is creating a session log. Zero chat text before the first tool call.
   (1) Run `Bash(date -u +%Y%m%d_%H%M%S)` to fetch the timestamp.
