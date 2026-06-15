@@ -11,7 +11,7 @@ All `[local]` blocks (project-specific knowledge about codegen's structure, mode
 - **Build pipeline, install flow, schema** → `context/core.md`
 - **Enforcement compiler, registry schema, pattern dialects** → `context/enforcement-compiler.md`
 - **Hooks, guard scripts, registrations** → `context/hooks.md`
-- **Subagents, roles, agents** → `context/subagents.md` or `context/roles.md`
+- **Subagents, roles, agents** → `context/subagents.md`
 - **Development workflow, Make targets, testing** → `context/development.md`
 - **Token tuning, model config, roles** → `context/claude-token-tuning.md`
 - **Recipes, workloads** → `context/recipes.md`
@@ -25,27 +25,39 @@ All `[local]` blocks (project-specific knowledge about codegen's structure, mode
 - **Pitch writing conventions** → `context/pitch-writing-guide.md`
 - **Benchmarking prohibitions** → `context/bench-prohibition.md`
 - **Deployment locations, path derivation, server topology** → `context/deployment-topology.md`
+- **Document/usage-rules generation patterns** → `context/codegen-document-patterns.md`
+- **Launcher ↔ hook wiring matrix** → `context/launcher-hook-matrix.md`
+- **Shape-mode discipline, pitch shaping** → `context/shaper-discipline.md`
+- **Benchmark BENCH mode, artifacts, viewer** → `context/test-benchmarking.md`
+- **ExUnit stack test suite, test inventory** → `context/test-harness.md`
+- **Test monitoring, watch loops** → `context/test-monitoring.md`
 
 Add new `context/*.md` files and **register them in `PROJECT_CONTEXT.md`** Domain Context Files table to maintain context-index-parity.
 
 ## Shared Rules Routing
 
-All `[shared]` blocks (framework patterns, language idioms, style, cross-cutting concerns) route to `shared/rules/**` (on-disk source). Note: `codegen/rules/` is a symlink to `shared/rules/` created post-install — edits always land in `shared/rules/`.
+All `[shared]` blocks (framework patterns, language idioms, style, cross-cutting concerns) route via the `codegen/rules/**` symlink path (target is `shared/rules/`). **Never edit `shared/rules/**`directly — the guard`context-curator-guard.sh`denies raw`shared/rules/`paths; only`codegen/rules/**`and`context/**` are permitted.\*\*
 
-- **Style & code conventions** → `shared/rules/STYLE_GUIDE.md`
-- **Hook design, guard patterns, script structure** → `shared/rules/_core/hooks.md` or `shared/rules/_core/guards.md`
-- **Subagent DSL, template patterns** → `shared/rules/_core/subagent-dsl.md` or `shared/rules/_core/templates.md`
-- **Rules distribution, rule composition** → `shared/rules/_core/rules-distribution.md`
-- **Stack-specific patterns** (Phoenix, static-site) → `shared/rules/stacks/<stack>/`
-- **Role patterns** → `shared/rules/roles/`
-- **Token mechanics, caching, prompt tuning** → `shared/rules/_core/token-mechanics.md`
+Route in this order (matches the baked curator role rule's decision tree):
 
-Always edit `shared/rules/**` directly. `codegen/rules/` is a symlink to `shared/rules/` created by `make install` — do NOT edit through the symlink path as path-resolution varies; edit the `shared/rules/` source directly.
+1. Learning is about hooks, enforcement, generator, or framework mechanics (explained by agent-readable context data) → `context/*.md` first — sticks on commit, no regeneration needed.
+2. Learning is a universal cross-project pattern → `codegen/rules/**` (symlink path; applies to all downstream projects on next `make install`).
+3. Learning is project-specific → `context/*.md` (never `shared/rules/`).
+
+- **Style & code conventions** → `codegen/rules/STYLE_GUIDE.md`
+- **Hook design, guard patterns, script structure** → `codegen/rules/_core/hooks.md` or `codegen/rules/_core/guards.md`
+- **Subagent DSL, template patterns** → `codegen/rules/_core/subagent-dsl.md` or `codegen/rules/_core/templates.md`
+- **Rules distribution, rule composition** → `codegen/rules/_core/rules-distribution.md`
+- **Stack-specific patterns** (Phoenix, static-site) → `codegen/rules/stacks/<stack>/`
+- **Role patterns** → `codegen/rules/roles/`
+- **Token mechanics, caching, prompt tuning** → `codegen/rules/_core/token-mechanics.md`
+
+Always use `codegen/rules/**` (symlink path) — never `shared/rules/**` directly. The guard `context-curator-guard.sh` denies raw `shared/rules/` paths. `make install` propagates edits to all downstream consumers.
 
 ## Write Surface Constraints
 
 - ✅ `context/**` — project-local edits only
-- ✅ `shared/rules/**` — cross-project shared patterns
+- ✅ `codegen/rules/**` — cross-project shared patterns (symlink path; guard denies raw shared/rules/)
 - ❌ `lib/`, `priv/`, `assets/`, `test/`, `bin/` — dev territory
 - ❌ `harnesses/<harness>/hooks/` — generated/validated by `hook-registrations.py`
 - ❌ `templates/` — schema/templates, edited via process_template.py not hand-edits
@@ -60,4 +72,4 @@ If a block spans both local and shared:
 Example: "discovered that phoenix-dev-gate.sh hook behavior differs from static-site-build-check.sh in a way that should be documented":
 
 - `[local]` block → `context/hooks.md` (phoenix vs static differences)
-- `[shared]` block → `shared/rules/_core/hooks.md` (common hook design pattern)
+- `[shared]` block → `codegen/rules/_core/hooks.md` (common hook design pattern)
