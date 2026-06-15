@@ -212,6 +212,72 @@ run_test_env "PI_ROLE=debug + Explore allowed" "allow" "PI_ROLE" "debug" "$(mk_a
 # 21: PI_ROLE=shape + Explore allowed
 run_test_env "PI_ROLE=shape + Explore allowed" "allow" "PI_ROLE" "shape" "$(mk_agent 'Explore')"
 
+# ── Message-content tests: deny strings name the legal subagent set ──────────
+
+# 22a: build-mode (no CLAUDE_ROLE) + Plan → deny AND stdout names "planner"
+INPUT_22A=$(mk_agent 'Plan')
+stdout_22a=$(printf '%s' "$INPUT_22A" | bash "$GUARD" 2>/dev/null || true)
+if printf '%s' "$stdout_22a" | grep -q '"permissionDecision"[[:space:]]*:[[:space:]]*"deny"'; then
+    if printf '%s' "$stdout_22a" | grep -q 'planner'; then
+        [ -n "${VERBOSE:-}" ] && printf 'PASS: 22a build + Plan denied with "planner" in reason\n'
+        pass=$((pass + 1))
+    else
+        printf 'FAIL: 22a build + Plan denied but reason does not mention "planner"\n  stdout: %s\n' "$stdout_22a"
+        fail=$((fail + 1))
+    fi
+else
+    printf 'FAIL: 22a build + Plan should be denied — got allow\n  stdout: %s\n' "$stdout_22a"
+    fail=$((fail + 1))
+fi
+
+# 22b: build-mode (no CLAUDE_ROLE) + empty subagent_type → deny AND stdout names legal set
+INPUT_22B=$(mk_agent '')
+stdout_22b=$(printf '%s' "$INPUT_22B" | bash "$GUARD" 2>/dev/null || true)
+if printf '%s' "$stdout_22b" | grep -q '"permissionDecision"[[:space:]]*:[[:space:]]*"deny"'; then
+    if printf '%s' "$stdout_22b" | grep -q 'planner'; then
+        [ -n "${VERBOSE:-}" ] && printf 'PASS: 22b build + empty subagent_type denied with "planner" in reason\n'
+        pass=$((pass + 1))
+    else
+        printf 'FAIL: 22b build + empty subagent_type denied but reason does not mention "planner"\n  stdout: %s\n' "$stdout_22b"
+        fail=$((fail + 1))
+    fi
+else
+    printf 'FAIL: 22b build + empty subagent_type should be denied — got allow\n  stdout: %s\n' "$stdout_22b"
+    fail=$((fail + 1))
+fi
+
+# 22c: build-mode (no CLAUDE_ROLE) + general-purpose → deny AND stdout names legal set
+INPUT_22C=$(mk_agent 'general-purpose')
+stdout_22c=$(printf '%s' "$INPUT_22C" | bash "$GUARD" 2>/dev/null || true)
+if printf '%s' "$stdout_22c" | grep -q '"permissionDecision"[[:space:]]*:[[:space:]]*"deny"'; then
+    if printf '%s' "$stdout_22c" | grep -q 'planner'; then
+        [ -n "${VERBOSE:-}" ] && printf 'PASS: 22c build + general-purpose denied with "planner" in reason\n'
+        pass=$((pass + 1))
+    else
+        printf 'FAIL: 22c build + general-purpose denied but reason does not mention "planner"\n  stdout: %s\n' "$stdout_22c"
+        fail=$((fail + 1))
+    fi
+else
+    printf 'FAIL: 22c build + general-purpose should be denied — got allow\n  stdout: %s\n' "$stdout_22c"
+    fail=$((fail + 1))
+fi
+
+# 22d: shape + developer-phoenix-backend → deny AND stdout names shape-available set (planner / Explore)
+INPUT_22D=$(mk_agent 'developer-phoenix-backend')
+stdout_22d=$(printf '%s' "$INPUT_22D" | CLAUDE_ROLE=shape bash "$GUARD" 2>/dev/null || true)
+if printf '%s' "$stdout_22d" | grep -q '"permissionDecision"[[:space:]]*:[[:space:]]*"deny"'; then
+    if printf '%s' "$stdout_22d" | grep -q 'planner' && printf '%s' "$stdout_22d" | grep -q 'Explore'; then
+        [ -n "${VERBOSE:-}" ] && printf 'PASS: 22d shape + developer-phoenix-backend denied with "planner" and "Explore" in reason\n'
+        pass=$((pass + 1))
+    else
+        printf 'FAIL: 22d shape + developer-phoenix-backend denied but reason missing "planner" or "Explore"\n  stdout: %s\n' "$stdout_22d"
+        fail=$((fail + 1))
+    fi
+else
+    printf 'FAIL: 22d shape + developer-phoenix-backend should be denied — got allow\n  stdout: %s\n' "$stdout_22d"
+    fail=$((fail + 1))
+fi
+
 echo ""
 echo "Results: $pass passed, $fail failed"
 

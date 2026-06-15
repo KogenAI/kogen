@@ -50,6 +50,18 @@ subagent_type=$(printf '%s' "$RAW_INPUT" | jq -r '.tool_input.subagent_type // "
 
 debug_log step-log-section-before-spawn "subagent_type=$subagent_type"
 
+# Forbidden-type skip guard — defer to operator-subagent-allowlist for types it will deny.
+# These 5 cases exactly mirror the allowlist's build-mode forbidden set:
+#   Plan, general-purpose, statusline-setup — built-in types denied always
+#   "" (empty) — denied defensively by allowlist
+#   Explore — denied in build mode (only allowed under debug/shape/ops, already bypassed above)
+if [ "$subagent_type" = "Plan" ] || [ "$subagent_type" = "general-purpose" ] ||
+    [ "$subagent_type" = "statusline-setup" ] || [ -z "$subagent_type" ] ||
+    [ "$subagent_type" = "Explore" ]; then
+    debug_log step-log-section-before-spawn "forbidden type $subagent_type — deferring to operator-subagent-allowlist"
+    exit 0
+fi
+
 # Map subagent_type → expected header in step log.
 # planner-* → "## Plan" (session-log.md planner exception)
 # all others → "## <subagent_type> Section"

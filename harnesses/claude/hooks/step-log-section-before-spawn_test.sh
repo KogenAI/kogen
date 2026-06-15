@@ -414,6 +414,64 @@ fi
 chmod 644 "$LOG21" 2>/dev/null || true
 rm -rf "$T21"
 
+# ── Forbidden-type skip guard tests (e–j) ─────────────────────────────────────
+
+# Test 22e: build-mode (no CLAUDE_ROLE) + Plan, no step log → ALLOW (skip guard fires)
+T22=$(make_project)
+FAKE_TRANSCRIPT22="$T22/transcript.jsonl"
+printf '' >"$FAKE_TRANSCRIPT22"
+out22=$(mk_agent_input "Plan" "$FAKE_TRANSCRIPT22" | bash "$HOOK" 2>/dev/null || true)
+assert_allow "allow: build + Plan — skip guard defers to allowlist, no header demand" "$out22"
+rm -rf "$T22"
+
+# Test 22f: build-mode + empty subagent_type → ALLOW (skip guard fires)
+T23=$(make_project)
+FAKE_TRANSCRIPT23="$T23/transcript.jsonl"
+printf '' >"$FAKE_TRANSCRIPT23"
+out23=$(mk_agent_input "" "$FAKE_TRANSCRIPT23" | bash "$HOOK" 2>/dev/null || true)
+assert_allow "allow: build + empty subagent_type — skip guard defers to allowlist" "$out23"
+rm -rf "$T23"
+
+# Test 22g: build-mode + general-purpose → ALLOW (skip guard fires)
+T24=$(make_project)
+FAKE_TRANSCRIPT24="$T24/transcript.jsonl"
+printf '' >"$FAKE_TRANSCRIPT24"
+out24=$(mk_agent_input "general-purpose" "$FAKE_TRANSCRIPT24" | bash "$HOOK" 2>/dev/null || true)
+assert_allow "allow: build + general-purpose — skip guard defers to allowlist" "$out24"
+rm -rf "$T24"
+
+# Test 22h: build-mode + statusline-setup → ALLOW (skip guard fires)
+T25=$(make_project)
+FAKE_TRANSCRIPT25="$T25/transcript.jsonl"
+printf '' >"$FAKE_TRANSCRIPT25"
+out25=$(mk_agent_input "statusline-setup" "$FAKE_TRANSCRIPT25" | bash "$HOOK" 2>/dev/null || true)
+assert_allow "allow: build + statusline-setup — skip guard defers to allowlist" "$out25"
+rm -rf "$T25"
+
+# Test 22i: build-mode + Explore → ALLOW (skip guard fires — allowlist will deny)
+T26=$(make_project)
+FAKE_TRANSCRIPT26="$T26/transcript.jsonl"
+printf '' >"$FAKE_TRANSCRIPT26"
+out26=$(mk_agent_input "Explore" "$FAKE_TRANSCRIPT26" | bash "$HOOK" 2>/dev/null || true)
+assert_allow "allow: build + Explore — skip guard defers to allowlist" "$out26"
+rm -rf "$T26"
+
+# Test 22j: REGRESSION — build-mode + developer-phoenix-backend with log present but section header ABSENT
+# Must still DENY (skip guard must NOT over-skip legal types)
+T27=$(make_project)
+LOG27="$T27/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_step1_regression.md"
+cat >"$LOG27" <<'MD'
+# Step 1 — regression
+
+## Plan
+
+planner content only — no developer section header
+MD
+make_transcript "$T27/transcript.jsonl" "$LOG27"
+out27=$(mk_agent_input "developer-phoenix-backend" "$T27/transcript.jsonl" | bash "$HOOK" 2>/dev/null || true)
+assert_deny "deny: REGRESSION — build + developer-phoenix-backend, log present but section header absent" "$out27"
+rm -rf "$T27"
+
 echo ""
 echo "Results: $pass passed, $fail failed"
 
