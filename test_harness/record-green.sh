@@ -1,11 +1,22 @@
 #!/usr/bin/env bash
 # record-green.sh — write last_green.json with current codegen sha + harness versions.
 # Invoked by `make record-green` after `make test` and `make test-stacks` both pass.
+#
+# Optional flag: --auto-commit
+#   After writing last_green.json, perform a scoped git commit of that file only.
+#   Fail-soft: on dirty tree or missing credentials, logs a warning and exits 0.
 
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 OUTPUT="$SCRIPT_DIR/last_green.json"
+
+AUTO_COMMIT=0
+for arg in "$@"; do
+    if [ "$arg" = "--auto-commit" ]; then
+        AUTO_COMMIT=1
+    fi
+done
 
 SHA="$(git -C "$SCRIPT_DIR/.." rev-parse HEAD 2>/dev/null || echo unknown)"
 CLAUDE_V="$(claude --version 2>/dev/null || echo unknown)"
@@ -31,3 +42,9 @@ jq -n \
     >"$OUTPUT"
 
 echo "wrote $OUTPUT (codegen_sha=$SHA, ts=$TS)"
+
+if [ "$AUTO_COMMIT" = "1" ]; then
+    git -C "$SCRIPT_DIR/.." add "$OUTPUT" &&
+        git -C "$SCRIPT_DIR/.." commit -m "Refresh green baseline" -- "$OUTPUT" ||
+        { echo "record-green: auto-commit skipped (dirty tree / no creds)"; }
+fi

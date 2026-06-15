@@ -1,1 +1,1 @@
-ExUnit.start(exclude: [:slow])
+ExUnit.start(exclude: [:slow, :harness_parity])

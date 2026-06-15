@@ -338,9 +338,10 @@ test-coverage-summary:
 # Benchmarking mode: set BENCH=1 REASON="<reason>" to capture per-test
 # stream-json telemetry into codegen/benchmarks/<UTC-ts>/. BENCH unset
 # (default) is byte-identical to pre-bench behaviour.
-.PHONY: test-stacks test-stacks-claude test-stacks-pi test-stacks-claude-compile test-stacks-pi-compile test-all record-green
+.PHONY: test-stacks test-stacks-claude test-stacks-pi test-stacks-claude-compile test-stacks-pi-compile test-all record-green test-harness-parity test-harness-parity-compile check-green-staleness
 ifeq ($(BENCH),1)
 test-stacks:
+	$(MAKE) test-harness-parity
 	$(eval BENCH_RUN_DIR := $(shell BENCH=1 REASON="$(REASON)" "$(SCRIPT_DIR)/test_harness/bench-prepare.sh"))
 	$(MAKE) -j2 \
 		BENCH_RUN_DIR="$(BENCH_RUN_DIR)" \
@@ -348,8 +349,33 @@ test-stacks:
 		test-stacks-pi
 else
 test-stacks:
+	$(MAKE) test-harness-parity
 	$(MAKE) -j2 test-stacks-claude test-stacks-pi
 endif
+
+test-harness-parity-compile:
+	cd "$(SCRIPT_DIR)/test_harness" && \
+		MIX_BUILD_PATH=_build/parity_test mix compile
+
+test-harness-parity: test-harness-parity-compile
+	cd "$(SCRIPT_DIR)/test_harness" && \
+		MIX_BUILD_PATH=_build/parity_test mix test --no-compile --only harness_parity
+
+check-green-staleness:
+	@JSON="$(SCRIPT_DIR)/test_harness/last_green.json"; \
+	if [ ! -f "$$JSON" ]; then echo "check-green-staleness: last_green.json not found"; exit 1; fi; \
+	TS="$$(jq -r '.test_passed_at' "$$JSON")"; \
+	if [ -z "$$TS" ] || [ "$$TS" = "null" ]; then echo "check-green-staleness: test_passed_at missing in last_green.json"; exit 1; fi; \
+	NOW_S="$$(date -u +%s 2>/dev/null)"; \
+	THEN_S="$$(date -d "$$TS" +%s 2>/dev/null || date -j -f "%Y-%m-%dT%H:%M:%SZ" "$$TS" +%s 2>/dev/null || echo "")"; \
+	if [ -z "$$THEN_S" ]; then echo "check-green-staleness: could not parse timestamp $$TS"; exit 1; fi; \
+	AGE_DAYS="$$(( (NOW_S - THEN_S) / 86400 ))"; \
+	if [ "$$AGE_DAYS" -gt 7 ]; then \
+		echo "check-green-staleness: last green is $$AGE_DAYS days old (>7) — run make test-stacks && make record-green"; \
+		exit 1; \
+	else \
+		echo "check-green-staleness: OK — last green $$AGE_DAYS day(s) old ($$TS)"; \
+	fi
 
 test-stacks-claude: test-stacks-claude-compile
 	cd "$(SCRIPT_DIR)/test_harness" && \

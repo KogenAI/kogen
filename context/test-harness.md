@@ -4,20 +4,22 @@ The test harness is an Elixir/ExUnit project in `test_harness/` that validates s
 
 Tests live under `test_harness/test/stacks/` organized by stack (phoenix, static) and mode. The library code in `test_harness/lib/codegen_test_harness/` provides shared helpers.
 
-`test_harness/test/stacks/modes/` (added in Stage 4) contains one test file per non-build mode — `debug_test.exs`, `shape_test.exs`, `refactor_test.exs`. Each invokes the harness×mode launcher non-interactively (claude: `--print --output-format text`; pi: `-p --mode json --no-session`) and asserts the mode-appropriate artifact: debug → diagnostic report in stdout + no files written; shape/refactor → draft pitch under `codegen/pitches/draft/`. These tests are `@moduletag :slow` and run under both `HARNESS=claude` and `HARNESS=pi` via the existing partition strategy.
+`test_harness/test/stacks/modes/` (added in Stage 4) contains one test file per non-build mode — `debug_test.exs`, `shape_test.exs`. Each invokes the harness×mode launcher non-interactively (claude: `--print --output-format text`; pi: `-p --mode json --no-session`) and asserts the mode-appropriate artifact: debug → diagnostic report in stdout + no files written; shape → draft pitch under `codegen/pitches/draft/`. The `refactor` mode has been removed; the live mode launchers are shape, debug, and ops. These tests are `@moduletag :slow` and run under both `HARNESS=claude` and `HARNESS=pi` via the existing partition strategy.
 
 ## Components
 
-| File / Dir                                            | Purpose                                                     |
-| ----------------------------------------------------- | ----------------------------------------------------------- |
-| `test_harness/mix.exs`                                | Elixir project definition — deps, test paths                |
-| `test_harness/test/stacks/`                           | Stack-specific ExUnit test files (`*_test.exs`)             |
-| `test_harness/test/test_helper.exs`                   | ExUnit config, global setup                                 |
-| `test_harness/lib/codegen_test_harness/`              | Shared test helpers and assertion modules                   |
-| `test_harness/lib/codegen_test_harness/assertions.ex` | Shared assertion helpers used across stack tests            |
-| `test_harness/lib/codegen_test_harness/fixtures.ex`   | Fixture helpers for scaffold and generated output tests     |
-| `test_harness/record-green.sh`                        | Records current commit SHA + timestamp to `last_green.json` |
-| `test_harness/last_green.json`                        | Baseline: last commit SHA where full test suite passed      |
+| File / Dir                                             | Purpose                                                                                                               |
+| ------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------- |
+| `test_harness/mix.exs`                                 | Elixir project definition — deps, test paths                                                                          |
+| `test_harness/test/stacks/`                            | Stack-specific ExUnit test files (`*_test.exs`)                                                                       |
+| `test_harness/test/test_helper.exs`                    | ExUnit config, global setup                                                                                           |
+| `test_harness/lib/codegen_test_harness/`               | Shared test helpers and assertion modules                                                                             |
+| `test_harness/lib/codegen_test_harness/assertions.ex`  | Shared assertion helpers used across stack tests                                                                      |
+| `test_harness/lib/codegen_test_harness/fixtures.ex`    | Fixture helpers for scaffold and generated output tests                                                               |
+| `test_harness/record-green.sh`                         | Records current commit SHA + timestamp to `last_green.json`; accepts `--auto-commit` flag for scoped fail-soft commit |
+| `test_harness/last_green.json`                         | Baseline: last commit SHA where full test suite passed                                                                |
+| `test_harness/test/harness_parity/pi_parity_test.exs`  | Cross-harness build parity tests (claude vs pi); tagged `@moduletag :harness_parity`                                  |
+| `test_harness/test/harness_parity/known_divergent.exs` | Divergence allowlist — ships empty; add tuples `{scenario, harness, reason}` for legitimate divergences               |
 
 ## Key Paths
 
@@ -36,29 +38,31 @@ test_harness/
 
 ## ExUnit Test Modules
 
-| Module (filename)         | Purpose                                                                  | Stack / Mode           |
-| ------------------------- | ------------------------------------------------------------------------ | ---------------------- |
-| `committer_test.exs`      | Validates committer phase output and commit message format               | Phoenix                |
-| `gate_test.exs`           | Validates gate verdicts (ALL CLEAR / FAILED / INCONCLUSIVE)              | Phoenix                |
-| `iteration_test.exs`      | Multi-step iteration and cycle continuity                                | Phoenix                |
-| `scaffold_test.exs`       | Scaffold template rendering and output correctness                       | Phoenix                |
-| `seed_test.exs`           | Database seed lifecycle and reproducibility                              | Phoenix                |
-| `html_scaffold_test.exs`  | Static HTML scaffold template rendering                                  | Static                 |
-| `iteration_test.exs`      | Multi-step static site iteration                                         | Static                 |
-| `modes/debug_test.exs`    | Asserts debug launcher emits diagnostic report + writes no files         | Debug (claude + pi)    |
-| `modes/shape_test.exs`    | Asserts shape launcher produces/edits draft pitch with Shape Up sections | Shape (claude + pi)    |
-| `modes/refactor_test.exs` | Asserts refactor launcher produces draft pitch with refactor concern     | Refactor (claude + pi) |
+| Module (filename)                   | Purpose                                                                                                       | Stack / Mode            |
+| ----------------------------------- | ------------------------------------------------------------------------------------------------------------- | ----------------------- |
+| `committer_test.exs`                | Validates committer phase output and commit message format                                                    | Phoenix                 |
+| `gate_test.exs`                     | Validates gate verdicts (ALL CLEAR / FAILED / INCONCLUSIVE)                                                   | Phoenix                 |
+| `iteration_test.exs`                | Multi-step iteration and cycle continuity                                                                     | Phoenix                 |
+| `scaffold_test.exs`                 | Scaffold template rendering and output correctness                                                            | Phoenix                 |
+| `seed_test.exs`                     | Database seed lifecycle and reproducibility                                                                   | Phoenix                 |
+| `html_scaffold_test.exs`            | Static HTML scaffold template rendering                                                                       | Static                  |
+| `iteration_test.exs`                | Multi-step static site iteration                                                                              | Static                  |
+| `modes/debug_test.exs`              | Asserts debug launcher emits diagnostic report + writes no files                                              | Debug (claude + pi)     |
+| `modes/shape_test.exs`              | Asserts shape launcher produces/edits draft pitch with Shape Up sections                                      | Shape (claude + pi)     |
+| `harness_parity/pi_parity_test.exs` | Cross-harness parity: phoenix-minimal, static-minimal, hugo-minimal (claude vs pi). Tagged `:harness_parity`. | Parity (both harnesses) |
 
 ## Make Target Catalog
 
-| Target                    | Purpose                                                                     |
-| ------------------------- | --------------------------------------------------------------------------- |
-| `make test-stacks`        | Runs full ExUnit suite across all stacks (`mix test --only slow`; real LLM) |
-| `make test-stacks-claude` | Runs ExUnit suite for Claude harness only (`mix test --only slow`)          |
-| `make test-stacks-pi`     | Runs ExUnit suite for Pi harness only (`mix test --only slow`)              |
-| `make test-hermetic`      | Fast, deterministic ExUnit only (`mix test --exclude slow`); no LLM         |
-| `make test`               | Bash hook tests + hermetic ExUnit (`test-hermetic`) — no LLM                |
-| `make record-green`       | Stamps `last_green.json` with current commit SHA after clean `test-stacks`  |
+| Target                       | Purpose                                                                                                                     |
+| ---------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
+| `make test-stacks`           | Runs full ExUnit suite across all stacks (`mix test --only slow`; real LLM)                                                 |
+| `make test-stacks-claude`    | Runs ExUnit suite for Claude harness only (`mix test --only slow`)                                                          |
+| `make test-stacks-pi`        | Runs ExUnit suite for Pi harness only (`mix test --only slow`)                                                              |
+| `make test-hermetic`         | Fast, deterministic ExUnit only (`mix test --exclude slow`); no LLM                                                         |
+| `make test`                  | Bash hook tests + hermetic ExUnit (`test-hermetic`) — no LLM                                                                |
+| `make record-green`          | Stamps `last_green.json` with current commit SHA after clean `test-stacks`                                                  |
+| `make test-harness-parity`   | Runs cross-harness parity suite (`--only harness_parity`, distinct `_build/parity_test`); runs once as `test-stacks` prereq |
+| `make check-green-staleness` | Diagnostic: exits 1 if `last_green.json` is >7 days old; standalone, not a `test`/`test-stacks` prereq                      |
 
 ## Gate Invariant: `--only slow` / `--exclude slow` & Hermetic Assertions
 
@@ -68,6 +72,8 @@ The ExUnit suite uses `@moduletag :slow` to partition LLM-driven tests from dete
 - `make test-hermetic` → `mix test --exclude slow` — only runs fast, deterministic tests
 
 **Critical**: tests added to the gate suite (e.g., `ops_test.exs`, `headless_launcher_test.exs`) MUST have `@moduletag :slow` to be included in `make test-stacks`. Omitting the `:slow` tag silently excludes them from the LLM gate via `test_helper.exs: exclude: [:slow]` — they will run under `test-hermetic` instead, defeating gate coverage.
+
+**Multiple exclusion tags work correctly**: When `test_helper.exs` specifies `exclude: [:slow, :harness_parity]` and a test file uses `@moduletag :slow` + `@moduletag :harness_parity`, both tags are correctly excluded by `mix test --exclude slow`. No interaction issues; the exclude list is ANDed (all listed tags are excluded).
 
 ### Deterministic vs. LLM-Driven Assertions
 
@@ -125,6 +131,10 @@ Hermetic bash tests (e.g., `*_test.sh` hook tests) should assert on **committed,
 ### Render-Check Test Pattern
 
 New bash test files under `harnesses/claude/hooks/` are auto-discovered by `run-tests.sh` via `find *_test.sh` — no registration needed. When testing crash paths (e.g., render-check.js parse failures), use `make_render_stub` to create temp bash scripts for normal cases, but skip it for crash-path stubs: write garbage directly via `cat > stub <<'STUB' ... STUB` to produce output without `RENDER_VERDICT=` variable. Regression guard: `node --check` test in `render-check_test.sh` catches duplicate function definitions and parse errors early (cf. session 20260608_153448).
+
+### Module-Attribute Data Loading via Code.eval_file
+
+Data files can be loaded at **compile-time** (not test invocation) via `Code.eval_file/1` at module-attribute scope. Example: parity allowlist in `known_divergent.exs` ships as an empty Elixir list `[]`; loaded via `@allowlist Code.eval_file(Path.join(__DIR__, "known_divergent.exs")) |> elem(0)`. Evaluation happens once at module compilation, the result is bound to a compile-time constant `@allowlist`, and zero runtime I/O occurs on every test invocation. This pattern is appropriate for small, stable data files (e.g., divergence reasons, skip lists) that live alongside test modules.
 
 ### Bash Test Numbering Conventions
 
@@ -189,6 +199,8 @@ end
 
 **Environment isolation**: `System.cmd/3` with `env: []` clears the entire process environment — stripping PATH, HOME, MIX_HOME, HEX_HOME. Safe only for git (reads repo-local config). Mix commands need ambient environment (`env: :inherit` or omit `:env` option).
 
+**Parallel build-path isolation**: When running multiple independent test suites concurrently (e.g., `-j2` for `test-stacks-claude` and `test-stacks-pi`), each test harness must use a distinct `MIX_BUILD_PATH` to avoid BEAM artifact clobbering. Example: parity test uses `MIX_BUILD_PATH=_build/parity_test`, separate from the default `_build/claude_test` and `_build/pi_test` used by the per-harness stack suites. This ensures parallel `-j2` builds do NOT recompile over each other's artifacts.
+
 Benchmark mode (BENCH=1), artifact layout, screenshot capture, mix viewer tasks: → see `context/test-benchmarking.md`.
 
 ## Pitfalls
@@ -203,3 +215,4 @@ Benchmark mode (BENCH=1), artifact layout, screenshot capture, mix viewer tasks:
 - **Multi-module ExUnit files** — private helpers cannot be shared across modules in same file; promote to public in support module or keep private per-module copy
 - **phx_new flags** — version 1.8.7+ does not support `--force` flag; scaffold via plain `mix phx.new . --app <name> --live`
 - **CLAUDE.md scaffold instructions** — `Fixtures.isolated_tmp_dir/1` writes a CLAUDE.md gated behind non-phoenix stacks; ensure any direct scaffold calls mirror the exact `mix phx.new . --app <name> --live` incantation for consistency with fixture setup
+- **`run_with_timeout/4` return order is output-first** — `run_with_timeout(...)` returns `{IO.iodata_to_binary(...), exit_code}` — output first, exit code second. A new helper tail-calling `run_with_timeout` without re-tupling inverts the pair silently (e.g., binding `exit_code` to a binary string instead of an integer). Pattern: always materialize the result and re-tuple if the desired public contract differs. Example: `{output, exit_code} = run_with_timeout(...); {exit_code, output}`. Verify `@spec` declares the intended order; assertions comparing `exit_code == 0` must operate on an integer, never a binary.

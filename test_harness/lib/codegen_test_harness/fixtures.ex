@@ -41,6 +41,7 @@ defmodule CodegenTestHarness.Fixtures do
   @codegen_call Path.expand("../../../codegen-call", __DIR__)
   @codegen_scaffold Path.expand("../../../codegen-scaffold", __DIR__)
   @codegen_build_timeout_ms 5_400_000
+  @parity_build_timeout_ms 1_800_000
 
   @commit_contract_suffix """
 
@@ -383,6 +384,36 @@ defmodule CodegenTestHarness.Fixtures do
     end
 
     output
+  end
+
+  @doc """
+  Harness-parameterized, custom-timeout, non-raising twin of `run_codegen_build/3`.
+  Drives a single harness so the parity test can run BOTH in one test body and
+  compare observable contracts. Returns `{exit_code, output}` — does NOT raise on
+  non-zero exit (the parity test inspects exit codes itself).
+  """
+  @spec run_codegen_build_parity(String.t(), String.t(), String.t(), keyword()) ::
+          {non_neg_integer(), String.t()}
+  def run_codegen_build_parity(cwd, harness, prompt, opts \\ []) do
+    stack = Keyword.get(opts, :stack, "phoenix")
+    timeout_ms = Keyword.get(opts, :timeout_ms, @parity_build_timeout_ms)
+    prompt_with_contract = prompt <> @commit_contract_suffix
+
+    {output, exit_code} =
+      run_with_timeout(
+        codegen_build_path(),
+        [
+          "--harness=#{harness}",
+          "--stack=#{stack}",
+          "--non-interactive",
+          "--cwd=#{cwd}",
+          prompt_with_contract
+        ],
+        [],
+        timeout_ms
+      )
+
+    {exit_code, output}
   end
 
   @doc """
