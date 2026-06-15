@@ -10,6 +10,7 @@
 # signal: AGENT_TYPE
 # role: developer-*
 # harnesses: claude_code
+# rationale: developer-* SubagentStop spin circuit-breaker; no Pi equivalent (Pi Stop-control is observe-only, cannot block) — NOT-YET-PORTED.
 # GENERATED FROM shared/enforcement/registry.yaml — DO NOT EDIT
 #
 # Spin definition: ≥3 consecutive same-role developer Agent spawns in the

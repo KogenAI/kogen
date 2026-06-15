@@ -127,9 +127,9 @@ Stop hooks fire when the session ends. The primary pattern for Stop hooks that a
 - API server errors: `API Error: 500`, `API Error: 502`, `API Error: 503`, `API Error: 504`, `overloaded_error`, `Internal server error`, `upstream connect error`
 - **Edit-conflict transient errors** (self-healing when subagent re-reads): `File has been modified since read`, `has been unexpectedly modified` — both forms occur in Claude Code issues #3513, #33856, #48390
 
-**Retry cap**: When classified as retryable, increment a session-scoped counter file (e.g., `/tmp/claude-resume-${session_id}.count`). Cap at 3 attempts — on the 4th occurrence, allow (exit 0, no block) to prevent infinite loops. Clean up the counter file on hard failure or rate limit (non-retryable paths).
+**Retry cap**: When classified as retryable, increment a session-scoped counter file (e.g., `/tmp/claude-resume-${session_id}.count`). Cap at 8 attempts — on the 9th occurrence, allow (exit 0, no block) to prevent infinite loops. Clean up the counter file on hard failure or rate limit (non-retryable paths).
 
-**Edit-conflict self-healing**: "File has been modified since read" errors self-heal on re-read; cap-3 ceiling prevents wedging when conflict persists.
+**Edit-conflict self-healing**: "File has been modified since read" errors self-heal on re-read; cap-8 ceiling prevents wedging when conflict persists.
 
 **Hook test cleanup**: Counter files MUST be cleaned via `cleanup()` trap before each test suite — without cleanup, counters persist across `make test` re-runs. Example from `stop-resume_test.sh`:
 

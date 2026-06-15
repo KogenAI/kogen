@@ -18,15 +18,24 @@ export const HANDLER_META = {
   matcher: "*",
 } as const;
 
-const TRANSIENT_ERROR_PATTERNS = [
-  /stream idle/i,
-  /connection refused/i,
-  /502\s*bad gateway/i,
-  /529\s*overloaded/i,
-  /ECONNRESET/i,
+export const TRANSIENT_ERROR_PATTERNS = [
+  /Stream idle timeout/i,
+  /Unable to connect/i,
+  /FailedToOpenSocket/i,
+  /ConnectionRefused/i,
+  /API Error: 529/i,
+  /API Error: 500/i,
+  /API Error: 502/i,
+  /API Error: 503/i,
+  /API Error: 504/i,
+  /overloaded_error/i,
+  /Internal server error/i,
+  /upstream connect error/i,
+  /connection reset/i,
+  /socket hang up/i,
   /ETIMEDOUT/i,
-  /network.*error/i,
-  /file has been modified since read/i,
+  /context deadline exceeded/i,
+  /File has been modified since read/i,
   /has been unexpectedly modified/i,
   /socket connection was closed/i,
 ];

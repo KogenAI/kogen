@@ -1,0 +1,47 @@
+/**
+ * transient-parity.test.ts — Hermetic bidirectional parity test.
+ *
+ * Asserts that Pi TRANSIENT_ERROR_PATTERNS and Bash retryable_regex stay
+ * in sync: every Bash token is matched by a Pi pattern and vice versa.
+ * A count-equality assertion (19 <-> 19) prevents silent drift.
+ */
+
+import { describe, it } from "node:test";
+import assert from "node:assert/strict";
+import * as fs from "node:fs";
+import * as path from "node:path";
+import { TRANSIENT_ERROR_PATTERNS } from "../stop-resume";
+
+describe("transient-pattern parity (Bash retryable_regex <-> Pi)", () => {
+  const repoRoot = path.resolve(__dirname, "../../../../../../..");
+  const shPath = path.join(
+    repoRoot,
+    "harnesses/claude/hooks/stop-resume.sh",
+  );
+  const sh = fs.readFileSync(shPath, "utf8");
+  const m = sh.match(/retryable_regex='([^']*)'/);
+  if (!m) throw new Error("retryable_regex not found in stop-resume.sh");
+  const bashTokens = m[1].split("|");
+
+  it("every Bash transient token is recognized by a Pi pattern", () => {
+    for (const tok of bashTokens) {
+      assert.ok(
+        TRANSIENT_ERROR_PATTERNS.some((p) => p.test(tok)),
+        `Pi patterns miss Bash transient token: ${tok}`,
+      );
+    }
+  });
+
+  it("every Pi pattern matches at least one Bash transient token", () => {
+    for (const p of TRANSIENT_ERROR_PATTERNS) {
+      assert.ok(
+        bashTokens.some((tok) => p.test(tok)),
+        `Pi pattern matches no Bash token (drift): ${p}`,
+      );
+    }
+  });
+
+  it("token counts are equal (19 <-> 19)", () => {
+    assert.equal(bashTokens.length, TRANSIENT_ERROR_PATTERNS.length);
+  });
+});

@@ -585,6 +585,7 @@
   signal: AGENT_TYPE
   role: "developer-*"
   harnesses: claude
+  rationale: developer-* SubagentStop spin circuit-breaker; no Pi equivalent (Pi Stop-control is observe-only, cannot block) — NOT-YET-PORTED.
 
 - kind: registration
   id: stop-gate-failure-breaker

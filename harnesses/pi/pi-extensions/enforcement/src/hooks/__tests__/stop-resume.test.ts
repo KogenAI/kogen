@@ -84,7 +84,8 @@ describe("stop-resume", () => {
     fs.rmSync(counterPath(sid), { force: true });
   });
 
-  it("retry cap reached (count=3) — no retry on 4th attempt", async () => {
+  it("transient string yields non-block result (Pi has no counter)", async () => {
+    // Pi stop-resume carries no cap/counter; this exercises the transient path
     const sid = `sess-cap-${Date.now()}`;
     fs.writeFileSync(counterPath(sid), "3");
     const result = await runHook(
@@ -93,6 +94,76 @@ describe("stop-resume", () => {
     );
     assert.ok(result == null || (result as { block?: boolean }).block !== true);
     fs.rmSync(counterPath(sid), { force: true });
+  });
+
+  async function assertTransientWarns(message: string): Promise<void> {
+    process.env["LAST_ASSISTANT_MESSAGE"] = message;
+    const originalStderr = process.stderr.write.bind(process.stderr);
+    let stderrOutput = "";
+    process.stderr.write = (str: unknown) => {
+      stderrOutput += str;
+      return true;
+    };
+    try {
+      const { register } = await import("../stop-resume");
+      register(
+        mockPi as unknown as import("@earendil-works/pi-coding-agent").ExtensionAPI,
+      );
+      await _capturedHandler({ reason: "quit" } as unknown as Parameters<
+        typeof _capturedHandler
+      >[0]);
+      assert.ok(
+        stderrOutput.includes("[pi-enforcement:stop-resume]"),
+        `expected stop-resume warning in stderr for message "${message}", got: ${stderrOutput}`,
+      );
+      assert.ok(
+        stderrOutput.toLowerCase().includes("transient"),
+        `expected 'transient' in stderr warning for message "${message}", got: ${stderrOutput}`,
+      );
+    } finally {
+      process.stderr.write = originalStderr;
+      delete process.env["LAST_ASSISTANT_MESSAGE"];
+    }
+  }
+
+  it("warns on Unable to connect transient error", async () => {
+    await assertTransientWarns("Unable to connect to the server");
+  });
+
+  it("warns on FailedToOpenSocket transient error", async () => {
+    await assertTransientWarns("FailedToOpenSocket: connection refused");
+  });
+
+  it("warns on API Error 500 transient error", async () => {
+    await assertTransientWarns("API Error: 500 Internal Server Error");
+  });
+
+  it("warns on API Error 503 transient error", async () => {
+    await assertTransientWarns("API Error: 503 Service Unavailable");
+  });
+
+  it("warns on API Error 504 transient error", async () => {
+    await assertTransientWarns("API Error: 504 Gateway Timeout");
+  });
+
+  it("warns on overloaded_error transient error", async () => {
+    await assertTransientWarns("overloaded_error: model is overloaded");
+  });
+
+  it("warns on Internal server error transient error", async () => {
+    await assertTransientWarns("Internal server error occurred");
+  });
+
+  it("warns on upstream connect error transient error", async () => {
+    await assertTransientWarns("upstream connect error or disconnect/reset before headers");
+  });
+
+  it("warns on socket hang up transient error", async () => {
+    await assertTransientWarns("socket hang up during response");
+  });
+
+  it("warns on context deadline exceeded transient error", async () => {
+    await assertTransientWarns("context deadline exceeded");
   });
 
   it("warns on modified-since-read transient error", async () => {
