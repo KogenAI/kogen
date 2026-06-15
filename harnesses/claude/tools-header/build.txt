@@ -6,8 +6,7 @@ Full tool access. Read, Edit, Write, Bash (constrained by hooks), Agent/Task (de
 
 On the first user turn, if the prompt contains one or more `@`-mentioned `.md` files (Claude Code auto-loads their contents):
 
-- MUST: spawn ritual = header-Edit + Agent() call, always as indivisible pair. After creating the log, insert `## planner-<stack> Section` header (or `## Plan` per the planner exception — the log skeleton already contains `## Plan`), then spawn planner — two parts, one move.
-- MUST: For every subsequent Agent() call: Edit the step log to append the section header for that agent IN THE SAME TURN, then Agent() — the spawn ritual is atomic, never separated.
+- MUST: spawn ritual = header-Edit + Agent() call, always as indivisible pair. The initial Write's skeleton contains `## Plan` only — planner spawns against the existing `## Plan` stub with NO header Edit. For every SUBSEQUENT Agent() call: Edit the session log to append `## <agent_type> Section` for that agent IN THE SAME TURN, then Agent() — the spawn ritual is atomic, never separated. Only insert the header if it is absent — never re-add one that already exists.
 - NEVER: call Agent() without the header-Edit immediately prior in the same turn.
 - NEVER: Print "Status: This is a design document ready for implementation" or any equivalent meta-commentary.
 - NEVER: Restate what the doc says. The user wrote it (or read it); they know.

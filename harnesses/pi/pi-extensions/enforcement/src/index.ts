@@ -56,6 +56,7 @@ import { register as registerPostDeveloperFormat } from "./hooks/post-developer-
 import { register as registerPreCommitGuard } from "./hooks/pre-commit-guard";
 import { register as registerReviewerGuard } from "./hooks/reviewer-guard";
 import { register as registerReviewerGuardSessionLogWrite } from "./hooks/reviewer-guard-session-log-write";
+import { register as registerSessionLogNoDuplicateSection } from "./hooks/session-log-no-duplicate-section";
 import { register as registerSessionLogSectionIntegrity } from "./hooks/session-log-section-integrity";
 import { register as registerStaticSiteBuildCheck } from "./hooks/static-site-build-check";
 import { register as registerStaticSiteExGuard } from "./hooks/static-site-ex-guard";
@@ -113,6 +114,7 @@ export default function (pi: ExtensionAPI): void {
   registerPreCommitGuard(pi);
   registerReviewerGuard(pi);
   registerReviewerGuardSessionLogWrite(pi);
+  registerSessionLogNoDuplicateSection(pi);
   registerSessionLogSectionIntegrity(pi);
   registerStaticSiteBuildCheck(pi);
   registerStaticSiteExGuard(pi);

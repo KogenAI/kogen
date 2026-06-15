@@ -28,6 +28,7 @@ Session logs live under `/codegen/` and are **gitignored** — in the codegen re
 - Orchestrator inserts `## <agent_type> Section` header via Edit BEFORE each `Agent()` call (atomic move).
 - Planner exception: write to `## Plan`. Orchestrator inserts `## Plan` stub — never `## planner-* Section`.
 - Subagents write body under existing header — never emit the header themselves.
+- NEVER pre-seed role-section headers in the initial Write; each `## <role> Section` header is inserted exactly once, immediately before that role's spawn — NEVER create a duplicate `## <role> Section`.
 - Multi-step → orchestrator maintains `./codegen/logging/$(date -u +%Y%m%d)_progress.md`.
 
 ## Enforcement

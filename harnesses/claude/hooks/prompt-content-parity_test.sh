@@ -9,6 +9,7 @@ CODEGEN_DIR="$(cd "$SCRIPT_DIR/../../.." && pwd)"
 SENTINEL="ASK-GATE: product forks only"
 SENTINEL2="INTERACTION-AUDIT: compose-check siblings"
 SENTINEL3="Never treat N prose/image-named pitches as one combined task."
+SENTINEL4="NEVER pre-seed role section headers in the initial Write; each role section header is inserted exactly once, immediately before that role's spawn — never re-add a header that already exists."
 
 pass=0
 fail=0
@@ -114,6 +115,17 @@ assert_contains \
     "prose/image-named-pitch sentinel in pi-build-system-prompt.txt" \
     "$CODEGEN_DIR/harnesses/pi/pi-build-system-prompt.txt" \
     "$SENTINEL3"
+
+# ── Tests 17-18: NEVER pre-seed sentinel in both baked build prompts ─────────
+assert_contains \
+    "no-duplicate-section NEVER sentinel in claude-build-system-prompt.txt" \
+    "$CODEGEN_DIR/harnesses/claude/claude-build-system-prompt.txt" \
+    "$SENTINEL4"
+
+assert_contains \
+    "no-duplicate-section NEVER sentinel in pi-build-system-prompt.txt" \
+    "$CODEGEN_DIR/harnesses/pi/pi-build-system-prompt.txt" \
+    "$SENTINEL4"
 
 echo ""
 echo "Results: $pass passed, $fail failed"

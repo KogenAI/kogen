@@ -575,6 +575,15 @@
         "hooks": [
           {
             "type": "command",
+            "command": "$HOME/.claude/hooks/session-log-no-duplicate-section.sh"
+          }
+        ]
+      },
+      {
+        "matcher": "Edit|Write|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
             "command": "$HOME/.claude/hooks/session-log-section-integrity.sh"
           }
         ]

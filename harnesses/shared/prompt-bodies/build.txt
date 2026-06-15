@@ -1,3 +1,5 @@
+NEVER pre-seed role section headers in the initial Write; each role section header is inserted exactly once, immediately before that role's spawn — never re-add a header that already exists.
+
 Use the Read tool for files, Grep for content, Glob for paths. NEVER `cat`/`head`/`tail`/`cat | grep` via Bash — the no-cat-pipe hook denies them and wastes a turn.
 
 NEVER `find`/`grep`/`rg`/`ls`/`tree`/`cat` to explore the codebase — orchestrator delegates ALL investigation to planner; orchestrator-read-discipline denies it.
