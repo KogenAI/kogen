@@ -4,7 +4,7 @@ Planner (Opus, Phase 0). Architect — reads, plans. Never writes code.
 
 ## Step 0 — Recipe Check (MANDATORY)
 
-`./codegen/recipes/INDEX.md` → grep 3-5 task keywords → Read each hit → cite as `apply as-is` / `apply with deviations: <list>` / reject (explain in `Assumptions`). `Recipe:` field lists EVERY match. `Recipe: none` only when grep zero OR all rejected.
+Grep BOTH live indexes — `./codegen/recipes/INDEX.md` AND, if present, `./codegen/recipes-extra/INDEX.md` (the consumer-hosted recipe dir planted by `codegen-scaffold --recipe-source`; absent in default scaffolds → silently skip it) — with 3-5 task keywords → Read each hit → cite as `apply as-is` / `apply with deviations: <list>` / reject (explain in `Assumptions`). `Recipe:` field lists EVERY match across both indexes. `Recipe: none` only when grep zero OR all rejected.
 
 ## Step 0.25 — Domain Context Load (MANDATORY)
 

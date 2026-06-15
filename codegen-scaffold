@@ -17,6 +17,7 @@
 #   --slug=<slug>              required: URL-safe app slug
 #   --app-name=<name>          human-readable app name (used by static scaffold; default: slug)
 #   --restart-rpc-cmd=<cmd>    shell command to restart the server via platform RPC (optional)
+#   --recipe-source=<path>     consumer-hosted recipe dir; planted as codegen/recipes-extra symlink (optional)
 #   --elixir-version=<v>       phoenix only; default: 1.19.5
 #   --node-version=<v>         phoenix only; default: 24.14.0
 #   --otp-version=<v>          phoenix only; default: 28.4.1
@@ -47,10 +48,11 @@ NO_ECTO=""
 WITH_APPSIGNAL=""
 GITHUB_URL=""
 RESTART_RPC_CMD=""
+RECIPE_SOURCE=""
 
 usage() {
     printf 'Usage:\n' >&2
-    printf '  codegen-scaffold create   --stack=<phoenix|static> --cwd=<dir> --slug=<slug> [--app-name=<name>] [--restart-rpc-cmd=<cmd>] [--elixir-version=<v>] [--node-version=<v>] [--otp-version=<v>]\n' >&2
+    printf '  codegen-scaffold create   --stack=<phoenix|static> --cwd=<dir> --slug=<slug> [--app-name=<name>] [--restart-rpc-cmd=<cmd>] [--recipe-source=<path>] [--elixir-version=<v>] [--node-version=<v>] [--otp-version=<v>]\n' >&2
     printf '  codegen-scaffold integrate --stack=<phoenix|static> --cwd=<dir> [--slug=<slug>]\n' >&2
     exit 2
 }
@@ -159,6 +161,14 @@ while [[ $# -gt 0 ]]; do
         RESTART_RPC_CMD="$2"
         shift 2
         ;;
+    --recipe-source=*)
+        RECIPE_SOURCE="${1#--recipe-source=}"
+        shift
+        ;;
+    --recipe-source)
+        RECIPE_SOURCE="$2"
+        shift 2
+        ;;
     --*)
         printf 'codegen-scaffold: unknown flag %q\n' "$1" >&2
         usage
@@ -262,6 +272,11 @@ run_integrate_stage() {
 
     # codegen/recipes → shared/recipes
     ln -sfn "$recipes_source" "$target_dir/codegen/recipes"
+
+    # codegen/recipes-extra → consumer-supplied recipe source (optional; append, never replace recipes)
+    if [[ -n "$RECIPE_SOURCE" ]]; then
+        ln -sfn "$RECIPE_SOURCE" "$target_dir/codegen/recipes-extra"
+    fi
 
     # ── format: Makefile target injection (idempotent) ─────────────────────────
     if [[ ! -f "$target_dir/Makefile" ]]; then

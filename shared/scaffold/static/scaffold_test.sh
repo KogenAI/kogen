@@ -20,6 +20,8 @@
 #  (o) integrate appends AGENTS.md, CLAUDE.md, /codegen/ to .gitignore
 #  (p) integrate on a dir with no .gitignore creates one with the markers
 #  (q) integrate is idempotent for gitignore (re-running doesn't duplicate lines)
+#  (ad) --recipe-source plants codegen/recipes-extra symlink, keeps generic codegen/recipes
+#  (ae) no --recipe-source → recipes-extra absent (default unchanged)
 
 set -euo pipefail
 
@@ -339,6 +341,43 @@ FIRST_PC_CONTENT="$(cat "$PC_PHOENIX_CWD/PROJECT_CONTEXT.md")"
 "$CODEGEN_SCAFFOLD" integrate --stack=phoenix --cwd="$PC_PHOENIX_CWD" --slug=test-pc-phoenix
 SECOND_PC_CONTENT="$(cat "$PC_PHOENIX_CWD/PROJECT_CONTEXT.md")"
 check "PROJECT_CONTEXT.md idempotent after re-run" "$FIRST_PC_CONTENT" "$SECOND_PC_CONTENT"
+
+# (ad) --recipe-source plants codegen/recipes-extra symlink AND keeps generic codegen/recipes
+RECIPE_SOURCE_CWD="$BASE_TMP/recipe_source_test"
+RECIPE_SOURCE_DIR="$BASE_TMP/external_recipes"
+mkdir -p "$RECIPE_SOURCE_CWD" "$RECIPE_SOURCE_DIR"
+printf '# Extra recipes\n' >"$RECIPE_SOURCE_DIR/INDEX.md"
+"$CODEGEN_SCAFFOLD" integrate --stack=static --cwd="$RECIPE_SOURCE_CWD" --slug=test-recipe-src \
+    --recipe-source="$RECIPE_SOURCE_DIR"
+if [[ -L "$RECIPE_SOURCE_CWD/codegen/recipes-extra" ]]; then
+    [ -n "${VERBOSE:-}" ] && printf 'PASS: codegen/recipes-extra is a symlink\n'
+    pass=$((pass + 1))
+else
+    printf 'FAIL: codegen/recipes-extra is not a symlink\n'
+    fail=$((fail + 1))
+fi
+assert_file_exists "recipes-extra/INDEX.md resolves via symlink" "$RECIPE_SOURCE_CWD/codegen/recipes-extra/INDEX.md"
+# generic recipes symlink STILL present (append, not replace)
+if [[ -L "$RECIPE_SOURCE_CWD/codegen/recipes" ]]; then
+    [ -n "${VERBOSE:-}" ] && printf 'PASS: generic codegen/recipes still present\n'
+    pass=$((pass + 1))
+else
+    printf 'FAIL: generic codegen/recipes missing after --recipe-source\n'
+    fail=$((fail + 1))
+fi
+assert_file_exists "generic recipes/INDEX.md still resolves" "$RECIPE_SOURCE_CWD/codegen/recipes/INDEX.md"
+
+# (ae) no --recipe-source → recipes-extra absent (default behavior unchanged)
+NO_RECIPE_SOURCE_CWD="$BASE_TMP/no_recipe_source_test"
+mkdir -p "$NO_RECIPE_SOURCE_CWD"
+"$CODEGEN_SCAFFOLD" integrate --stack=static --cwd="$NO_RECIPE_SOURCE_CWD" --slug=test-no-recipe-src
+if [[ -e "$NO_RECIPE_SOURCE_CWD/codegen/recipes-extra" ]]; then
+    printf 'FAIL: recipes-extra created without --recipe-source flag\n'
+    fail=$((fail + 1))
+else
+    [ -n "${VERBOSE:-}" ] && printf 'PASS: no recipes-extra without flag\n'
+    pass=$((pass + 1))
+fi
 
 # ── Summary ───────────────────────────────────────────────────────────────────
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
