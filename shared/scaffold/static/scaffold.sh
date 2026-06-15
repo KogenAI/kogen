@@ -147,4 +147,10 @@ public-*
 .DS_Store
 EOF
 
+# ── codegen/pitches lifecycle dirs ────────────────────────────────────────────
+for _d in draft ready shipped; do
+    mkdir -p "$CWD/codegen/pitches/$_d"
+    touch "$CWD/codegen/pitches/$_d/.gitkeep"
+done
+
 printf '[static/scaffold.sh] Scaffold complete for %s at %s\n' "$SLUG" "$CWD"

@@ -73,6 +73,12 @@ Mix aliases in `shared/scaffold/phoenix/templates/aliases.txt.eex` define the `s
 
 The `--no-ecto` post-render strip (`scaffold.sh` lines 187-201) must NOT remove these aliases — it only removes `"ecto."` prefix lines and rewrites the `test:` alias to `["test"]` (single element, no Ecto prefix). `mix_exs.sh` enforces this with a Python transform, not blanket `grep -v`.
 
+## Stack-Specific Implementation Details
+
+**Phoenix vs Static variable naming**: Phoenix `scaffold.sh` uses `$TARGET_DIR` throughout (the final app directory); Static `scaffold.sh` uses `$CWD` (the current working directory). When authoring loops or directory operations for static scaffold, use loop-variable names like `_d` to avoid collision with globally-expected names (phoenix's `TARGET_DIR` pattern). Both approaches work; the distinction reflects historical stack porting and must be preserved for stack consistency — do not unify to one pattern across both stacks in a single commit without explicit stack-parity acceptance.
+
+**Gitkeep vs keep files**: Both `.gitkeep` and `.keep` are valid gitignore-boundary markers in lifecycle directories (`codegen/pitches/{draft,ready,shipped}`). Existing asset dirs use `.keep`; newly-added lifecycle dirs use `.gitkeep` for clarity of purpose. No need to homogenize across the project — either is acceptable.
+
 ## `--no-ecto` Post-Render Strips
 
 After template rendering (Phase 1, before Phase 2 mutations), `scaffold.sh` strips lines that reference Ecto from generated files when `NO_ECTO` is set:

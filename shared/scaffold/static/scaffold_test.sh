@@ -125,6 +125,11 @@ assert_contains "README.md contains npm run serve" "$README_CONTENT" "npm run se
 assert_file_exists "static/images/ directory exists" "$TMPDIR/static/images"
 assert_file_exists "static/js/ directory exists" "$TMPDIR/static/js"
 
+# codegen/pitches lifecycle dirs
+assert_file_exists "codegen/pitches/draft/.gitkeep exists" "$TMPDIR/codegen/pitches/draft/.gitkeep"
+assert_file_exists "codegen/pitches/ready/.gitkeep exists" "$TMPDIR/codegen/pitches/ready/.gitkeep"
+assert_file_exists "codegen/pitches/shipped/.gitkeep exists" "$TMPDIR/codegen/pitches/shipped/.gitkeep"
+
 # ── codegen-scaffold smoke tests ──────────────────────────────────────────────
 
 # (g) bad --stack=x exits 2
