@@ -10,7 +10,8 @@ All `[local]` blocks (project-specific knowledge about codegen's structure, mode
 - **Harness modes, dispatch, launchers** → `context/harnesses.md`
 - **Build pipeline, install flow, schema** → `context/core.md`
 - **Enforcement compiler, registry schema, pattern dialects** → `context/enforcement-compiler.md`
-- **Hooks, guard scripts, registrations** → `context/hooks.md`
+- **Hook inventory (which hooks exist, per-guard behavior, registrations)** → `context/hooks.md`
+- **Hook authoring patterns (how to write/test a hook, output protocol, gate flow)** → `context/hook-authoring-patterns.md`
 - **Subagents, roles, agents** → `context/subagents.md`
 - **Development workflow, Make targets, testing** → `context/development.md`
 - **Token tuning, model config, roles** → `context/claude-token-tuning.md`

@@ -2,3 +2,8 @@
 # Reformatting breaks enforce-registry-parity (make test).
 harnesses/pi/pi-extensions/enforcement/src/hooks/
 harnesses/pi/pi-extensions/enforcement/src/index.ts
+
+# Context files with wide-cell tables that exceed the 40,960 B context-window cap when prettier-re-padded.
+# De-padded form is the stable intended format for these files.
+context/hooks.md
+context/hook-authoring-patterns.md
