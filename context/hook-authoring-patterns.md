@@ -171,26 +171,7 @@ This preserves the interactive fail-open contract (silent allow when state unrec
 
 ### Full Claude Code Event Catalog
 
-Claude Code exposes the following lifecycle events. Codegen registers only the subset listed in the table above; events not in that table are unused by codegen today.
-
-| Event                 | Notes                                                  |
-| --------------------- | ------------------------------------------------------ |
-| `SessionStart`        | Fires when a new session begins                        |
-| `Setup`               | Environment setup phase before first turn              |
-| `UserPromptSubmit`    | Fires when user submits a prompt                       |
-| `UserPromptExpansion` | Fires when a prompt is expanded (e.g. slash command)   |
-| `PreToolUse`          | **Registered by codegen** — fires before any tool call |
-| `PermissionRequest`   | Fires when a tool requests permission                  |
-| `PermissionDenied`    | Fires when a permission request is denied              |
-| `PostToolUse`         | **Registered by codegen** (selectively) — after tool   |
-| `PostToolUseFailure`  | **Registered by codegen** — fires on tool failure      |
-| `PreCompact`          | Fires before context compaction                        |
-| `PostCompact`         | Fires after context compaction completes               |
-| `SubagentStart`       | Fires when a subagent Task spawns                      |
-| `SubagentStop`        | **Registered by codegen** — fires when subagent stops  |
-| `Stop`                | **Registered by codegen** — fires when session stops   |
-| `Notification`        | General notification event                             |
-| `SessionEnd`          | **Registered by codegen** (inline) — session teardown  |
+Codegen registers `PreToolUse`, `PostToolUse`, `PostToolUseFailure`, `SubagentStop`, `Stop`, and `SessionEnd` (inline). All other events (`SessionStart`, `Setup`, `UserPromptSubmit`, `UserPromptExpansion`, `PermissionRequest`, `PermissionDenied`, `PreCompact`, `PostCompact`, `SubagentStart`, `Notification`) are unused. Full event schema: https://code.claude.com/docs/en/hooks
 
 ## Multi-Hook Composition Testing
 
