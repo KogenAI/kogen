@@ -188,6 +188,14 @@ rm -rf "$CWD_PITCHES"
 FIXTURE_FAKE_PITCHES='{"hook_event_name":"PreToolUse","tool_name":"Write","tool_input":{"file_path":"/fake/codegen/pitches/foo.md","content":"x"},"agent_id":"","agent_type":""}'
 run_test "orchestrator Write on /fake/codegen/pitches/ blocks" "2" "$FIXTURE_FAKE_PITCHES"
 
+# Test 27: shape pitch write with cwd at recovered pitch root allows
+# Locks the contract: after launcher cd-normalises cwd to pitch root, a write
+# to <cwd>/codegen/pitches/draft/<file>.md is allowed by the guard.
+CWD_ROOT="$(mktemp -d)"
+FIXTURE_SHAPE_RECOVERED='{"hook_event_name":"PreToolUse","tool_name":"Write","tool_input":{"file_path":"'"${CWD_ROOT}/codegen/pitches/draft/x.md"'","content":"x"},"agent_id":"","agent_type":"","cwd":"'"$CWD_ROOT"'"}'
+run_test "shape pitch write with cwd at recovered pitch root allows" "0" "$FIXTURE_SHAPE_RECOVERED"
+rm -rf "$CWD_ROOT"
+
 run_test_parity() {
     local desc="$1"
     local expected="$2"

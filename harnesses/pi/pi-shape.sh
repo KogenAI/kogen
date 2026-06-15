@@ -28,6 +28,25 @@ else
 fi
 export CODEGEN_DIR
 
+# Normalise launch cwd to the nearest legal pitch root so the resolver, the
+# CLAUDE_PITCH_PATH export, and the session cwd inherited by claude all key off
+# a dir whose ./codegen/pitches/draft is the intended target. A nested $PWD
+# (e.g. inside codegen/pitches) otherwise mis-resolves and the write-scope
+# guard denies the legitimate pitch write. claude has no --cwd flag — cd + exec
+# is the only reliable way (mirrors dispatch.sh).
+resolve_pitch_root() {
+    case "$1" in
+    */codegen/pitches/*) printf '%s' "${1%%/codegen/pitches/*}" ;;
+    */codegen/pitches) printf '%s' "${1%/codegen/pitches}" ;;
+    *) printf '%s' "$1" ;;
+    esac
+}
+PITCH_ROOT="$(resolve_pitch_root "$PWD")"
+if [[ "$PITCH_ROOT" != "$PWD" ]]; then
+    printf 'pi-shape: launched inside codegen/pitches; using repo root %s\n' "$PITCH_ROOT" >&2
+    cd "$PITCH_ROOT"
+fi
+
 SYSTEM_PROMPT_FILE="$CODEGEN_DIR/harnesses/pi/pi-shape-system-prompt.txt"
 if [ ! -f "$SYSTEM_PROMPT_FILE" ]; then
     echo "ERROR: pi-shape-system-prompt.txt not found at $SYSTEM_PROMPT_FILE" >&2
