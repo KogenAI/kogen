@@ -9,6 +9,7 @@
 # signal: none
 # role: *
 # harnesses: all
+# rationale: Claude blocks (stop-cycle-guard.sh block calls); Pi session_shutdown is observe-only and cannot block, so the Pi twin only debugLogs — documented divergence, not a bug.
 # GENERATED FROM shared/enforcement/registry.yaml — DO NOT EDIT
 
 set -u

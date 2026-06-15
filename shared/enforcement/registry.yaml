@@ -57,7 +57,6 @@
 #   Outliers in this repo:
 #     context-file-size-gate — role: unset (non-standard token, no CLAUDE_ROLE gating)
 #     context-index-parity — role: unset (non-standard token, no CLAUDE_ROLE gating)
-#     subagent-read-discipline — multi-line rationale (round-trip ambiguity in first wave)
 #
 # Pattern dialect rules (denial entries only):
 #   Registry patterns use regex-neutral syntax:
@@ -166,7 +165,6 @@
 # NOT-YET-MIGRATED outliers (deferred to follow-up wave):
 #   context-file-size-gate  — role: unset (non-standard token)
 #   context-index-parity   — role: unset (non-standard token)
-#   subagent-read-discipline — multi-line rationale continuation (round-trip needs more testing)
 
 - kind: registration
   id: build-no-success-before-commit
@@ -567,6 +565,7 @@
   signal: none
   role: "*"
   harnesses: all
+  rationale: Claude blocks (stop-cycle-guard.sh block calls); Pi session_shutdown is observe-only and cannot block, so the Pi twin only debugLogs — documented divergence, not a bug.
 
 - kind: registration
   id: stop-resume
@@ -606,12 +605,15 @@
   role: "planner-*"
   harnesses: all
 
-# NOT-YET-MIGRATED: multi-line rationale continuation — round-trip byte-parity
-# needs additional testing before inclusion in the first wave.
-# - kind: registration
-#   id: subagent-read-discipline
-#   not-yet-migrated: true
-#   reason: multi-line rationale continuation lines; deferred until round-trip verified
+- kind: registration
+  id: subagent-read-discipline
+  event: PreToolUse
+  tool_guard: Read
+  surface: user_global
+  signal: AGENT_TYPE
+  role: "developer-*|reviewer-*|committer|context-curator"
+  harnesses: claude
+  rationale: Claude Code per-call Read inspector; Pi uses load-gate tool restriction
 
 - kind: registration
   id: subagent-retrospective-guard

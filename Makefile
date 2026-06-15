@@ -122,6 +122,18 @@ enforce-registry-parity:
 	if [ $$fail -eq 0 ] && [ -n "$$VERBOSE" ]; then echo "enforce-registry-parity: PASS"; fi; \
 	exit $$fail
 
+.PHONY: enforce-hook-rationale
+enforce-hook-rationale:
+	@out=$$(bash "$(SCRIPT_DIR)/templates/generator/enforce-hook-rationale.sh" 2>&1); rc=$$?; \
+	if [ -n "$$VERBOSE" ]; then printf '%s\n' "$$out"; fi; \
+	if [ $$rc -ne 0 ]; then \
+		[ -z "$$VERBOSE" ] && printf '%s\n' "$$out"; \
+		echo "enforce-hook-rationale: FAIL"; \
+	elif [ -n "$$VERBOSE" ]; then \
+		echo "enforce-hook-rationale: PASS"; \
+	fi; \
+	exit $$rc
+
 .PHONY: harness-parity
 harness-parity:
 	@fail=0; \
@@ -169,7 +181,7 @@ tools-header-no-dup:
 # Job count caps at 8 to avoid thrashing on smaller machines.
 # Post-deps stages (hook-tests, phoenix scaffold, test_harness/install, npm) run
 # concurrently via & + wait to reduce wall time.
-test: hook-parity hook-header-parity harness-parity test-generator enforce-registry-parity test-hermetic prompt-content-parity tools-header-no-dup
+test: hook-parity hook-header-parity harness-parity test-generator enforce-registry-parity enforce-hook-rationale test-hermetic prompt-content-parity tools-header-no-dup
 	@set -e; \
 	tmp_hooks=$$(mktemp); tmp_scaffold=$$(mktemp); tmp_install=$$(mktemp); \
 	tmp_npm=$$(mktemp); tmp_subagents=$$(mktemp); \

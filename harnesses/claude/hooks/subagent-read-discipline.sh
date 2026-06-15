@@ -8,10 +8,8 @@
 # signal: AGENT_TYPE
 # role: developer-*|reviewer-*|committer|context-curator
 # harnesses: claude_code
-# rationale: role-keyed read discipline — planner front-loads context, all
-#   other named subagents have restricted access to PROJECT_CONTEXT.md,
-#   context/*.md, and codegen/pitches/** to enforce the single-sense-organ
-#   architecture.
+# rationale: Claude Code per-call Read inspector; Pi uses load-gate tool restriction
+# GENERATED FROM shared/enforcement/registry.yaml — DO NOT EDIT
 #
 # Rules:
 #   planner-*       → allow all (planner owns context reads AND pitch reads)
