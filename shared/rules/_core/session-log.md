@@ -73,6 +73,8 @@ ALL roles MUST use relative paths OR absolute paths starting with cwd for sessio
 - nothing notable
 ```
 
+**Critical ordering**: `### What I Learned This Step` MUST appear BEFORE any `## ` sub-header (e.g., `## Files Modified`, `## Next Steps`). Hooks extract retrospectives via awk section scanning; a `## ` header inside the section body terminates extraction and prevents subsequent `### What I Learned ...` blocks from being read. Violations silently hide learnings from curation. Pattern: result summary → retrospective block → then any `## ` sub-headers (if needed).
+
 Tags: `[local]` = project-specific. `[shared]` = framework idioms, cross-cutting patterns.
 
 Retrospective placement: `### What I Learned This Step` for planner variants MUST sit inside `## Plan` body.

@@ -161,7 +161,7 @@ roles:
     append_project_context: true
 
   shape:
-    model: claude-fable-5
+    model: opus
     effort: high
     output_format: text
     tools:
