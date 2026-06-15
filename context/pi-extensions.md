@@ -120,6 +120,7 @@ Pi enforcement hooks are registered in `harnesses/pi/pi-extensions/enforcement/s
 - Compiler also collects all `kind: denial` entries with `emit_ts: true`
 - Union of both lists → sorted id set → auto-generated import + register block in `index.ts`
 - **Existence guard**: only emit import for ids whose `.ts` file actually exists (prevents broken imports when `harnesses: all` is declared before pi twin is written)
+- **MANDATORY Pi twin for `harnesses: all`**: When a hook's registry entry declares `harnesses: all` (or `pi`), `validate_pi_ts_handlers()` runs at `make install` and requires the matching `.ts` file to exist. Install **FAILS** (hard stop, not a warning) if the Pi handler is missing. This is not optional — every `harnesses: all` hook MUST have both `.sh` and `.ts` implementations before installation completes. If you are authoring a new `harnesses: all` hook, write the `.ts` twin BEFORE running `make install` or the build will abort with a missing-handler error.
 
 **Hand-maintained imports outside the block**: The one deferred hook (`context-index-parity`) is kept hand-written because its registry entry is deliberately commented out (NOT-YET-MIGRATED token). This hook must survive exactly once outside the generated block.
 
