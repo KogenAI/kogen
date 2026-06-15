@@ -21,7 +21,7 @@ Hook registration: **Two pipelines** — both write to `harnesses/claude/hooks/*
 
 | File | Purpose |
 | - | - |
-| `harnesses/claude/hooks/phoenix-dev-gate.sh` | SubagentStop — runs Phoenix test suite + render check, appends gate verdict; on retry (dev loops), appends both failed and success verdict sections; LAST section in session log is the authoritative verdict |
+| `harnesses/claude/hooks/phoenix-dev-gate.sh` | SubagentStop — runs Phoenix test suite + render check, appends gate verdict; on retry (dev loops), appends both failed and success verdict sections; LAST section in session log is the authoritative verdict. **Body behavior**: step-log discovery via `session_log_from_transcript` (session-bound, tail -n 1); managed builds fallback to mtime scan (ls -t \| head -1) when OCG_APPS_ROOT contains cwd OR CODEGEN_BUILD_NON_INTERACTIVE set; fail-closed. Body docstring is hand-authored (only HOOK-MANIFEST header regenerated from registry). |
 | `harnesses/claude/hooks/static-site-build-check.sh` | SubagentStop — builds static site + render check, appends gate verdict |
 | `harnesses/claude/hooks/pitch-format-validator.sh` | Stop — validates ## Questions/## Answers/> Status: grammar in active pitch for shape/refactor/ops sessions. Note: `refactor` is a live role in this hook; other hooks may bypass narrower subsets (e.g., `step-log-section-before-spawn` bypasses debug/shape/ops only). |
 | `harnesses/claude/hooks/step-log-missing-guard.sh` | Stop — blocks if dev ran but no step log Write found in transcript |
