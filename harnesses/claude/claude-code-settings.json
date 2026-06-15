@@ -377,6 +377,15 @@
         "hooks": [
           {
             "type": "command",
+            "command": "$HOME/.claude/hooks/context-file-size-gate.sh"
+          }
+        ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
             "command": "$HOME/.claude/hooks/context-index-parity.sh"
           }
         ]

@@ -16,6 +16,9 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 // NOT-YET-MIGRATED: context-index-parity has role: unset (non-standard token);
 // deferred until schema accepts or normalises the unset sentinel.
 import { register as registerContextIndexParity } from "./hooks/context-index-parity";
+// NOT-YET-MIGRATED: context-file-size-gate has role: unset (non-standard token);
+// deferred until schema accepts or normalises the unset sentinel.
+import { register as registerContextFileSizeGate } from "./hooks/context-file-size-gate";
 
 // BEGIN-GENERATED-ENFORCEMENT-BLOCK
 import { register as registerBuildNoSuccessBeforeCommit } from "./hooks/build-no-success-before-commit";
@@ -70,6 +73,8 @@ import { register as registerUsageRulesGrepGuard } from "./hooks/usage-rules-gre
 export default function (pi: ExtensionAPI): void {
   // NOT-YET-MIGRATED: context-index-parity — hand-wired outside generated block.
   registerContextIndexParity(pi);
+  // NOT-YET-MIGRATED: context-file-size-gate — hand-wired outside generated block.
+  registerContextFileSizeGate(pi);
 
   // BEGIN-GENERATED-ENFORCEMENT-BLOCK
   registerBuildNoSuccessBeforeCommit(pi);
