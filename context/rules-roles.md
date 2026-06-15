@@ -68,6 +68,12 @@ The guard `context-curator-guard.sh` enforces exactly three allowed path pattern
    - Codegen-on-codegen → edit `codegen/rules/<path>` via symlink path (guard allows it); note `make install` required before agents see the change. Rule edits should be deferred to framework-focused sessions, not routine curation cycles.
 3. Learning is project-specific (module names, file paths, business logic) → skip; out of curator scope.
 
+**Clarification — Rule-prose changes vs baked-prompt changes**:
+
+- **Rule-prose edits to auto-loaded files** (e.g., `shared/rules/roles/orchestrator.md` imported via `@`-include in `AGENTS-phoenix.md.j2` or read at session start by Pi) take effect at the **next agent session without `make install`** — the rule is consumed at runtime, not baked into the prompt.
+- **Baked-prompt edits** (`{% include %}` pull rule content into `.md.j2` templates and subagent prompts) require **`make install` to re-render** before agents see the change. The pitfall "rule changes are not live" refers to baked-prompt rules only.
+- When planning rule/flag changes, confirm whether the rule is auto-loaded (runtime read, no regen needed) or baked (prompt-embedded, regen required). Check the template for `{% include %}` references and the harness launcher for `@`-imports or explicit Read calls.
+
 **Harmonization pattern for layered rules** — When adding a new convention, mode, or constraint to an existing rule set, prefer authoring it as a positive counterpart that complements existing negatives rather than re-stating them. Example: existing rule states "Existence ≠ contract" (negative: what does NOT suffice) + "reading source is NOT execution" (negative); new convention-claim mode = "doc-citation PLUS confirming grep IS exercising the contract" (positive: what DOES suffice). The affirmative form documents the complementary truth that makes the negatives coherent — a single principle with both denial and affirmation sides. Outcome: no verbatim duplication, the rule set is more maintainable, and the positive gate is explicit for developers writing probes.
 
 Cross-reference: full guard pattern analysis and path-nesting mechanics → `context/hooks.md` § context-curator-guard Write Surface; rule text → `shared/rules/roles/context-curator.md` § Write Surface.
@@ -122,6 +128,22 @@ orchestrator rules, planner rules, developer rules, reviewer rules, committer ru
 - **Role identity at runtime** — hooks use two discriminators: `AGENT_TYPE` (per-subagent identity, set per-spawn) and `CLAUDE_ROLE_FAMILY` (per-launcher mode, set by outer session harness). `AGENT_TYPE` is used for per-role guards on subagents; `CLAUDE_ROLE_FAMILY` is used for `claude-debug`/`claude-shape` session-level guards. Not all hooks use both — check each hook's discriminator before assuming universal `$AGENT_TYPE` behavior
 - **Session logs are authoritative for commit examples** — when rules cite a real commit hash as a worked example (e.g., c374957), reviewer can verify the commit subject against session logs (developer committer section records the hash + subject) rather than running `git show` — session logs are the durable reference that survives force-push or repo resets (cf. session 20260610_082318_commit-message-quality-audit line 184)
 - **Include-list-only diffs require simplified review** — when diffs touch only `.md.j2` template include lines (no rule-file body changes, no logic), the review scope narrows to three checks: (1) glob each included rule file exists, (2) grep the new token across all subagent templates for duplicate-within-file issues, (3) confirm semantic alignment between the rule's concern and the role's responsibility (e.g., `generators.md` forbidding phx.gen belongs in planner, not developer). No code logic, no prose-wording scrutiny — only path resolution, deduplication, and role fit. This pattern applies to template-only changes (e.g., adding a missing {% include %} to planner-phoenix.md.j2)
+
+## Planning Rule/Flag Changes — Mandatory Audit Pattern
+
+When a pitch modifies rules, enforcement registry entries, or hook dispatch flags, the plan MUST include an **Interaction Audit** table that cross-checks three dimensions:
+
+| Subject            | Slot (event/matcher)                              | Mode                     | Verdict                                             |
+| ------------------ | ------------------------------------------------- | ------------------------ | --------------------------------------------------- |
+| (target file/hook) | (which lifecycle event / gate / matcher reads it) | (text, enforce, measure) | (does it compose / regress / require sentinel sync) |
+
+Purpose: confirm the change does not break sibling systems:
+
+- Text directives (rule prose, agent-readable context) → no regeneration needed; composition is semantic (prose correct, no contradictions).
+- Enforcement hooks (registry entry, denial rules) → verify hook runs, matches the condition, and integrates with surrounding gate logic.
+- Measurement hooks (parity tests, sentinel-based assertions) → confirm zero sentinels target the edited rule (so no sentinel sync is missed), or explicitly identify required sentinel updates.
+
+Example: editing `shared/rules/roles/orchestrator.md` prose checks: (1) auto-load wiring in `AGENTS-phoenix.md.j2`, (2) no `{% include %}` bake (claims confirmed via grep), (3) `prompt-content-parity_test.sh` sentinels referencing this rule (zero hits = no sentinel sync needed). A silent sentinel miss is a gate blocker — pre-completion grep of the parity test is mandatory.
 
 ## Discipline Gaps & Mechanical Backstops — Prove-and-Run
 

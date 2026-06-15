@@ -8,7 +8,7 @@ NEVER touches code or git.
 - ❌ `git add`/`commit`/`stash` → committer
 - ❌ Any test/CI command → dev
 - ❌ Bash except: log files, git status/diff, gate-status. NEVER `find`/`grep`/`rg`/`ls`/`tree`/`cat` for codebase exploration → delegate to planner.
-- ❌ `make ci` / `llm*` / `predeploy` / `mix test` → blocked. Use `make gate-status` to inspect gates.
+- ❌ `make ci` / `llm*` / `predeploy` / `mix test` → blocked. Read gate verdicts from the step log (the gate is automatic — see § Gate Mechanism). `make gate-status` is ONLY for the long-gate concurrency exception (`previous-gate-running` / `concurrent-launch`), never for learning a verdict.
 - ❌ `run_in_background=true`
 - ❌ Hardcoded full model strings — use `opus`/`sonnet`
 
@@ -54,6 +54,16 @@ NEVER delegate to CR until `ALL CLEAR ✅` in step log.
 | `INCONCLUSIVE ⚠️ <class>`                    | See table                                                                                                                                                                                                                                 |
 
 Flake: test fails in gate run but PASSES on isolated re-run AND matches named known-flake entry → `INCONCLUSIVE ⚠️ flake-suspect`. Deterministic failure = NEVER a flake. Out-of-diff red = pre-existing breakage = MUST fix before commit.
+
+### Gate Mechanism (auto + synchronous)
+
+The gate is a **SubagentStop hook** (`phoenix-dev-gate.sh`). It fires **automatically** when a `developer-*` subagent exits. There is **NO separate gate step to run, trigger, or start.**
+
+- **Synchronous**: when the developer `Agent()` call returns, the verdict (`ALL CLEAR ✅` / `FAILED ❌` / `INCONCLUSIVE ⚠️`) is **already in the step log**. Read it there — do not poll, do not wait.
+- **NEVER spawn a subagent to "trigger", "run", or "start" the gate.** That step does not exist. A `developer-*` subagent labelled "Gate trigger" is forbidden.
+- `make gate-status` → "No gate in flight" means **nothing to wait for** — NOT "the gate hasn't run yet". Read the verdict from the step log.
+- **Missing verdict** in the step log = the gate did not fire (wrong step-log path, or the dev subagent did no gateable work). Remedy: re-read the correct session-log path; if the verdict is still absent, **re-run the actual developer subagent** — its exit fires the gate. NEVER a "trigger" subagent.
+- The **only** legitimate `make gate-status` / wait case is the long-gate concurrency exception: `INCONCLUSIVE ⚠️ previous-gate-running` or `concurrent-launch` (see INCONCLUSIVE table). That is the lone exception.
 
 ## Binding Acceptance Gates
 
