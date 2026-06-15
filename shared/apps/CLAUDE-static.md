@@ -2,9 +2,7 @@
 
 Orchestrator for static website build on Combobulate platform. Spawn subagents via Agent tool to handle each phase.
 
-
-@codegen/rules/_core/output-style.md
-
+@codegen/rules/\_core/output-style.md
 
 ## MANDATORY: Load Rules FIRST
 
@@ -48,8 +46,7 @@ Static builds skip planner. Orchestrator reads ONE thing only — the stack from
 
 ## Session Logging
 
-@codegen/rules/_core/session-log.md
-
+@codegen/rules/\_core/session-log.md
 
 **WHERE**: `codegen/logging/$(date -u +%Y%m%d_%H%M%S)_session.md`
 
@@ -105,7 +102,6 @@ Run `date -u +%Y%m%d_%H%M%S` via Bash for actual timestamp. Create BEFORE delega
 ## Phase 1 — developer-html/developer-hugo/developer-vite (stack-matched)
 
 Static site builds skip planner and reviewer-static — flow is developer-html/developer-hugo/developer-vite → committer. A deterministic SubagentStop hook (`static-site-build-check.sh`) runs between developer and committer and blocks cycle on build/invariant failure.
-
 
 **Before delegating**, orchestrator MUST pick the stack and pass it explicitly.
 
@@ -174,7 +170,6 @@ After delegating, append row to `## Delegation Timeline`:
 
 No Phase 2 delegation. After developer-html/developer-hugo/developer-vite reports done, the `static-site-build-check.sh` SubagentStop hook fires automatically and runs four deterministic checks:
 
-
 1. `mise exec -- npm run build` (skipped when no `package.json` — Hugo case).
 2. `package.json` invariants — `scripts.build` and `scripts.serve` present, `scripts.serve` ends with `python3 -u -m http.server --directory public 0`.
 3. Tailwind v4 config absence — neither `tailwind.config.js` nor `postcss.config.js` may exist at app root.
@@ -183,7 +178,6 @@ No Phase 2 delegation. After developer-html/developer-hugo/developer-vite report
 On failure hook emits `decision: block` — Claude Code re-spawns developer with failure reason. Iterate until dev reports done with no block envelope.
 
 On success hook appends synthetic `## static-site-verifier Section` to active step log.
-
 
 ## Phase 3 — committer
 
@@ -214,7 +208,6 @@ Update `codegen/PROJECT_CONTEXT.md` and relevant `context/*.md` domain files if 
 ## Result Reporting (MANDATORY)
 
 @codegen/rules/build-runtime/result-json.md
-
 
 Final message MUST contain exactly one fenced JSON block with build result and NOTHING after it:
 
