@@ -10,7 +10,7 @@ rules/
   _core/                    ← loaded by every subagent
     output-style.md         caveman ultra
     bash-discipline.md      Bash + Read + token budget + ports
-    session-log.md          file naming, skeleton, citations
+    session-log.md          naming, git-status, ownership/lifecycle, enforcement pointer, skeleton, citations
   shared/                   ← cross-role primitives
     git-readonly.md              read-only git ops, workspace, credentials
     config-single-source.md      shell launcher + Elixir runner read same config keys

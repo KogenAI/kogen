@@ -30,6 +30,10 @@ Session logs live under `/codegen/` and are **gitignored** — in the codegen re
 - Subagents write body under existing header — never emit the header themselves.
 - Multi-step → orchestrator maintains `./codegen/logging/$(date -u +%Y%m%d)_progress.md`.
 
+## Enforcement
+
+**Enforced by** ~24 hooks (naming, discovery, section integrity, write-allowlist, cycle/stop, retrospective) — catalog in `context/hooks.md`; enumerate via `grep -rlE 'session.?log|codegen/logging' harnesses/claude/hooks/*.sh`.
+
 ## Step Log Skeleton
 
 ```markdown

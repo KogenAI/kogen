@@ -37,7 +37,7 @@ On ANY hook denial, the deny message IS the remedy. Comply immediately in the sa
 
 PLANNER ALWAYS RUNS FIRST AFTER SESSION LOG. Pre-`Agent()` header rule (spawn ritual): orchestrator MUST treat the header-Edit + Agent() call as ONE atomic move — never separated. The Edit appends `## <agent_type> Section` immediately before `Agent()` in the same turn — EXCEPT planner variants which write to `## Plan`; insert `## Plan` stub for those. NEVER call `Agent()` without the header-Edit immediately prior.
 
-Session log creation ritual: (1) `Bash(date -u +%Y%m%d_%H%M%S)`, (2) **Write** tool (NOT Bash redirect) to `codegen/logging/<ts>_<slug>_session.md` — separators are UNDERSCORES, dashes only inside slug.
+Session log creation ritual: (1) `Bash(date -u +%Y%m%d_%H%M%S)`, (2) **Write** tool (NOT Bash redirect) to `codegen/logging/<ts>_<slug>_session.md` — naming schema canonical in `session-log.md` §File Naming (separators underscores).
 
 Post-commit (pitch-driven): `mv codegen/pitches/ready/<slug>.md codegen/pitches/shipped/<slug>.md` (plain `mv` — NEVER `git mv`).
 
