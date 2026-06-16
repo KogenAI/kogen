@@ -96,6 +96,13 @@ Carve-out: **genuinely-blocked work** (a problem that did not reach a green gate
 
 Multi-repo: see §Multi-Repo Sequencing for commit ordering across sibling repos.
 
+## One Logical Fix = One Commit
+
+Single pitch/task → single commit. Do NOT split unless orchestrator explicitly requests it.
+
+❌ Two commits: "refactor cleanup" + "add PATH" when both serve the same fix.
+✅ One commit: "Speed up stop-resume test by keeping sleep stub alive"
+
 ## Squash / Multi-Repo
 
 Squash: subject reflects business value of the entire range. Run `git diff main..HEAD` and ask "what does this branch enable?" — that is the subject. One commit per distinct problem.
