@@ -216,7 +216,7 @@ Pi harness supports two operational modes via `dispatch.sh` SP_FILE selection:
 - **Interactive mode** (`pi-build.sh` manual launcher): Full orchestrator workflow (5-role chain), consumes `pi-build-system-prompt.txt`
 - **Non-interactive mode** (`codegen-build --harness=pi --non-interactive`): Direct-build single-process agent, consumes `pi-build-system-prompt-direct-phoenix.txt` or `pi-build-system-prompt-direct-static.txt` (stack-gated)
 
-Mode selection gated by `$NON_INTERACTIVE` env var (wired in `dispatch.sh:26`). Direct-build prompt forbids `mix phx.new` and orchestration vocabulary; app must be pre-scaffolded (fixture responsibility). Non-interactive mode removes subagents extension — skips the 5-role chain to fit within small-model token budget and internal timeout constraints. Test suite assertions only check compile + route + commit format — zero assertions on multi-agent artifacts.
+Mode selection gated by `$NON_INTERACTIVE` env var. Direct-build prompt forbids `mix phx.new` and orchestration vocabulary; app must be pre-scaffolded. Non-interactive mode removes subagents extension — skips the 5-role chain to fit small-model token budget. Test suite asserts compile + route + commit format only.
 
 ## Pi Extensions
 
@@ -262,7 +262,7 @@ These flags are spliced as the **first positional** after `exec claude` (before 
 | Headless one-shot ops/debug (`CLAUDE_NONINTERACTIVE=1`) | Yes (tools in context)                                          | No — `--no-session-persistence` + `--print` exit on completion; no idle session for scheduler to re-enter | Prompt bodies detect recurring-poll requests and tell operator: use interactive session or set up external box-cron |
 | shape                                                   | No (scheduler tools not in `roles.shape.tools`)                 | No                                                                                                        | shape is authoring-only; no polling use case                                                                        |
 
-**SSH launchers (ops, debug)**: before calling `resolve_ssh_target`, the launcher exports `SSH_TARGET_NON_INTERACTIVE=1` when `CLAUDE_NONINTERACTIVE` is set. `ssh-target.sh` reads this flag and exits 1 on alias miss instead of prompting — ensuring no interactive hang in headless mode.
+**SSH launchers (ops, debug)**: export `SSH_TARGET_NON_INTERACTIVE=1` when `CLAUDE_NONINTERACTIVE` is set; `ssh-target.sh` exits 1 on alias miss instead of prompting (no interactive hang in headless mode).
 
 ## See Also
 
@@ -280,13 +280,13 @@ See `context/launcher-hook-matrix.md` for which orchestrator-level hooks gate ea
 
 **Two-identity model**: `ssh-target.sh` persists two user identities in `~/.ssh/config` alias blocks — (1) login user (`User <login>` line), (2) operate-as user (`# ops-operate-as: <user>` comment). Resolver exports `${PREFIX}_LOGIN_USER` and `${PREFIX}_OPERATE_AS` alongside `_SERVER`/`_ENV`.
 
-**Backfill logic**: Existing alias with `HostName`-only (no `User` line) triggers one-time interactive prompt (interactive mode only) → collects login user (default `root`) + operate-as (optional) → awk block-scoped rewrite via temp-file/mv pattern. Guard: backfill runs ONLY when User line absent. Re-run is idempotent (User present → skip).
+**Backfill logic**: Alias with `HostName`-only triggers one-time interactive prompt → collects login user (default `root`) + operate-as (optional) → awk block-scoped rewrite via temp-file/mv. Guard: runs only when `User` line absent; idempotent on re-run.
 
-**EOF-safe read pattern for interactive prompts**: When a function may be called from test/non-interactive contexts, use `read -rp "prompt [default]: " var || true; var="${var:-default}"` to handle EOF gracefully. This pattern allows stdin-less test invocations to proceed without blocking. Under `SSH_TARGET_NON_INTERACTIVE=1`, all user prompts are skipped entirely.
+**EOF-safe reads**: use `read -rp "..." var || true; var="${var:-default}"`. Under `SSH_TARGET_NON_INTERACTIVE=1`, all prompts skipped.
 
-**Test-design constraint**: Pipe subshell exports are invisible to parent. Example: `printf ... | resolve_ssh_target` runs resolve in a subshell, so `export "${prefix}_LOGIN_USER=..."` inside is not visible to the parent test shell. Workaround: verify config file contents instead of exported vars in piped test contexts.
+**Test-design constraint**: Pipe subshell exports invisible to parent — verify config file contents, not exported vars.
 
-**Integration**: Claude ops/debug and Pi ops launchers (`claude-ops.sh`, `claude-debug.sh`, `pi-ops.sh`) source `ssh-target.sh` + call `resolve_ssh_target`. New exports (`_LOGIN_USER`/`_OPERATE_AS`) are additive — no launcher edit required for gate. Ops rule body (`prompt-bodies/ops.txt`) is concatenated at generate-time (manifest-lib.sh `manifest_regenerate_prompts` L83-124, ordered tools-header → body) into baked `claude-ops/pi-ops-system-prompt.txt`. Editing ops.txt is inert until `make install`.
+**Integration**: Ops/debug launchers source `ssh-target.sh`. Ops rule body (`prompt-bodies/ops.txt`) concatenated at generate-time into baked system-prompt; inert until `make install`.
 
 ## Launcher `.sh` Files: Runtime Scripts vs Baked Prompts
 
@@ -305,8 +305,8 @@ See `context/launcher-hook-matrix.md` for which orchestrator-level hooks gate ea
 - **Never hand-edit `*-system-prompt.txt`** — generated by `manifest_regenerate_prompts()`; edits are overwritten on next `make install`
 - **Mode tools lists** are canonical in `config.yaml` (not in manifest `modes` — manifest is documentation-of-record only)
 - **`dispatch.sh` uses `COMMON_FLAGS` array** — under `set -u`, use `"${ARR[@]+"${ARR[@]}"}"` for empty-safe splicing
-- **SP_FILE selection** — dispatch.sh must check `$NON_INTERACTIVE` before constructing prompt path; order matters (env var read must precede SP_FILE block)
-- **Direct-build prompts are stack-gated** — pi-build-system-prompt-direct-phoenix.txt for Phoenix, -static.txt for static-site; dispatch.sh reads `$STACK` to select the correct file
+- **SP_FILE is required** — `claude-build-system-prompt.txt` must exist before exec; dispatch.sh exits 2 if absent (mirrors TOOLS_FILE guard). Pi selects stack-gated direct-build prompts (-phoenix/-static) via `$STACK`.
+- **Build dispatch is hermetic + fail-loud** — dispatch.sh guards yq/config-parse with named exit-2 errors, and unsets `OPENAI_API_KEY`/`ANTHROPIC_API_KEY` before exec (provider-key parity with pi). Paired test: `harnesses/claude/hooks/dispatch_test.sh`.
 - **prompt_body is a YAML sequence** — manifest's `prompt_body` is an ordered list, not a scalar; `manifest_regenerate_prompts()` iterates it; missing entries → non-zero exit (no partial prompt written)
 - **Fragment paths** are relative to `CODEGEN_DIR` — `shared/prompt-fragments/_probing.txt` NOT `harnesses/shared/...`; process_template.py resolves `{% include %}` under `$CODEGEN_DIR/shared/`
 - **ready.md.j2 is a template** — `harnesses/claude/commands/ready.md.j2` is rendered by `generate.sh` to `templates/generated/claude-code/commands/ready.md`; `install.sh` installs from generated dir; never install from source `.j2` directly

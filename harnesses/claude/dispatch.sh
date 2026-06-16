@@ -11,9 +11,11 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 SP_FILE="$SCRIPT_DIR/claude-build-system-prompt.txt"
 
 COMMON_FLAGS=(--dangerously-skip-permissions)
-if [[ -f "$SP_FILE" ]]; then
-    COMMON_FLAGS+=(--system-prompt "$(cat "$SP_FILE")")
+if [[ ! -f "$SP_FILE" ]]; then
+    printf 'claude dispatch: system prompt file not found at %s\n' "$SP_FILE" >&2
+    exit 2
 fi
+COMMON_FLAGS+=(--system-prompt "$(cat "$SP_FILE")")
 
 # Read tools list from build-tools.txt (one per line, strip blanks/comments)
 TOOLS_FILE="$SCRIPT_DIR/build-tools.txt"
@@ -33,8 +35,22 @@ if [[ -z "$MODEL" || -z "$EFFORT" ]]; then
     CODEGEN_DIR="${OCG_CODEGEN_DIR:-$(cd "$SCRIPT_DIR/../.." && pwd -P)}"
     cfg="$CODEGEN_DIR/templates/generator/config.yaml"
     if [[ -f "$cfg" ]]; then
-        [[ -z "$MODEL" ]] && MODEL=$(yq -r ".harness.build.claude.model" "$cfg")
-        [[ -z "$EFFORT" ]] && EFFORT=$(yq -r ".harness.build.claude.effort" "$cfg")
+        if ! command -v yq >/dev/null 2>&1; then
+            printf 'claude dispatch: yq not found on PATH (required to read %s)\n' "$cfg" >&2
+            exit 2
+        fi
+        if [[ -z "$MODEL" ]]; then
+            if ! MODEL=$(yq -r ".harness.build.claude.model" "$cfg"); then
+                printf 'claude dispatch: failed to parse config.yaml at %s\n' "$cfg" >&2
+                exit 2
+            fi
+        fi
+        if [[ -z "$EFFORT" ]]; then
+            if ! EFFORT=$(yq -r ".harness.build.claude.effort" "$cfg"); then
+                printf 'claude dispatch: failed to parse config.yaml at %s\n' "$cfg" >&2
+                exit 2
+            fi
+        fi
     else
         printf 'claude dispatch: config.yaml not found at %s\n' "$cfg" >&2
         exit 1
@@ -96,8 +112,10 @@ if [[ -d "$HOME/.local/share/mise/shims" ]]; then
 fi
 
 exec env \
+    -u ANTHROPIC_API_KEY \
     -u CLAUDECODE \
     -u CLAUDE_CODE_SSE_PORT \
+    -u OPENAI_API_KEY \
     -u CLAUDE_CODE_ENTRYPOINT \
     -u CLAUDE_CODE_SESSION_ID \
     -u CLAUDE_CODE_EXECPATH \
