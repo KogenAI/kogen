@@ -37,6 +37,8 @@ On ANY hook denial, the deny message IS the remedy. Comply immediately in the sa
 
 PLANNER ALWAYS RUNS FIRST AFTER SESSION LOG. Pre-`Agent()` header rule (spawn ritual): orchestrator MUST treat the header-Edit + Agent() call as ONE atomic move — never separated. The Edit appends `## <agent_type> Section` immediately before `Agent()` in the same turn — EXCEPT planner variants which write to `## Plan`; insert `## Plan` stub for those. NEVER call `Agent()` without the header-Edit immediately prior.
 
+Re-spawn convention: if a role's `## <role> Section` header ALREADY exists in the log (role being re-run in this cycle), append `## <role> Section (pass N)` instead — N = (count of existing `## <role> Section` headers for that role) + 1, starting at `(pass 2)` for the first re-spawn. For planner re-spawns, use `## Plan (pass N)` the same way. The retrospective guard validates the LAST matching block, so the re-spawned pass's retrospective is the one checked. If `session-log-no-duplicate-section` fires on a re-spawn, the remedy is to switch the header to `## <role> Section (pass N)` — never reuse the bare header.
+
 Session log creation ritual: (1) `Bash(date -u +%Y%m%d_%H%M%S)`, (2) **Write** tool (NOT Bash redirect) to `codegen/logging/<ts>_<slug>_session.md` — naming schema canonical in `session-log.md` §File Naming (separators underscores).
 
 Post-commit (pitch-driven): `mv codegen/pitches/ready/<slug>.md codegen/pitches/shipped/<slug>.md` (plain `mv` — NEVER `git mv`).

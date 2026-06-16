@@ -273,6 +273,53 @@ describe("subagent-retrospective-guard", { concurrency: false }, () => {
     assert.ok(!stderr.includes("WARNING"), "expected no warning");
   });
 
+  // Last-block-wins: re-spawn (pass N) tests
+  it("does not warn when last pass block has retrospective (pass1 missing, pass2 has retro)", async () => {
+    const content = [
+      "## reviewer-phoenix Section",
+      "",
+      "**Result**: no retrospective in pass 1.",
+      "",
+      "## reviewer-phoenix Section (pass 2)",
+      "",
+      "**Result**: Done.",
+      "",
+      "### What I Learned This Step",
+      "",
+      "- nothing notable",
+      "",
+      "## Files Modified",
+      "",
+      "- nothing",
+    ].join("\n");
+    writeLog(content);
+    const stderr = await runHook("reviewer-phoenix");
+    assert.ok(!stderr.includes("WARNING"), "expected no warning — last pass has retro");
+  });
+
+  it("warns when last pass block missing retrospective despite first block having it", async () => {
+    const content = [
+      "## reviewer-phoenix Section",
+      "",
+      "**Result**: Done.",
+      "",
+      "### What I Learned This Step",
+      "",
+      "- nothing notable",
+      "",
+      "## reviewer-phoenix Section (pass 2)",
+      "",
+      "**Result**: Done again, forgot retro.",
+      "",
+    ].join("\n");
+    writeLog(content);
+    const stderr = await runHook("reviewer-phoenix");
+    assert.ok(
+      stderr.includes("subagent-retrospective-guard"),
+      "expected warning — last pass missing retro",
+    );
+  });
+
   // Never blocks
   it("never returns block result (observe-only)", async () => {
     const content = [

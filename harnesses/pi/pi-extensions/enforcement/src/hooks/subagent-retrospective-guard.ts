@@ -63,20 +63,25 @@ function getActiveStepLog(projectDir: string): string | null {
 }
 
 /**
- * Extract the body of a section from heading to next ## heading or EOF.
+ * Extract the body of the LAST matching section block (heading to next ## heading or EOF).
+ * Re-spawned passes log under "## <role> Section (pass N)" which prefix-matches the same
+ * header via startsWith — reset accumulator on each match to keep only the final block.
  */
 function extractSectionBody(content: string, header: string): string {
   const lines = content.split("\n");
-  const result: string[] = [];
+  let result: string[] = [];
   let inSection = false;
 
   for (const line of lines) {
     if (line.startsWith(header)) {
+      // New matching block (incl. "(pass N)") — reset to keep only the last.
       inSection = true;
+      result = [];
       continue;
     }
     if (inSection && /^## /.test(line)) {
-      break;
+      inSection = false;
+      continue;
     }
     if (inSection) {
       result.push(line);

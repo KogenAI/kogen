@@ -81,13 +81,13 @@ assert_file_contains() {
 
 Count emoji lines as ground truth for verdict coverage, not branch count. Grep the hook for all lines containing `ALL CLEAR ✅`, `FAILED ❌`, or `INCONCLUSIVE ⚠️` — each is a verdict-emission point. Verify each emoji line is accompanied by the matching gate action (e.g., `_stamp_gated clear` before `append_ve_section "ALL CLEAR ✅"`). The emoji strings are the observable contract the reviewer can verify independently.
 
-**Test authoring best practice**: Hermetic bash tests should assert on committed, in-repo source/artifact files rather than machine-dependent install paths (e.g., `~/.claude/`). Installation paths vary by machine (servers + Macs + CI boxes); CI environments may not have the install directory at all. Asserting on source files (e.g., `harnesses/claude/commands/ready.md.j2`) or baked in-repo artifacts (e.g., `harnesses/claude/claude-shape-system-prompt.txt`) ensures test hermeticity — the test passes or fails based on repository state alone, independent of installation. See also `context/test-harness.md` § Hermetic Bash Test Assertion Pattern.
+**Test authoring best practice**: Assert on in-repo source/artifact files (e.g., `harnesses/claude/commands/ready.md.j2`), NOT install paths (e.g., `~/.claude/`). Ensures hermeticity — test depends on repo state alone. See `context/test-harness.md` § Hermetic Bash Test Assertion Pattern.
 
-**Hook deny/block message testing — substring assertion pattern**: Hook `_test.sh` files often assert that specific text appears in a deny/block message via `grep -qF "substring"`. These substrings become **immutable constraints** — any later tightening of the message (rewording, restructuring) must preserve all asserted substrings or the test fails. Before editing any deny/block message, grep the paired `_test.sh` to enumerate all `assert_contains` / `grep -q` assertions and preserve them verbatim during the rewrite. This pattern ensures messages can be tightened for clarity without breaking test coverage.
+**Hook deny/block message testing**: Substrings in deny messages become **immutable constraints** — any tightening must preserve asserted substrings or tests fail. Before editing messages, grep paired `_test.sh` for all `assert_contains` / `grep -q` assertions and preserve them.
 
-**prompt-content-parity test scope and discovery**: The `prompt-content-parity_test.sh` hook asserts **only the shape mode sentinels** (`ASK-GATE: product forks only`, `INTERACTION-AUDIT`) in baked `claude-shape-system-prompt.txt`. Edits to `ops.txt` / `debug.txt` / other prompt-body files that introduce **no sentinel** cannot break this test — useful to confirm before assuming a prompt-body edit needs a parity-test update. If a prompt-body edit introduces new sentinel text (e.g., "ASK-GATE: another constraint"), the test sentinel in `harnesses/claude/hooks/prompt-content-parity_test.sh` must be updated to assert it. **Discovery**: `prompt-content-parity` is a **standalone Makefile target** (not a `.sh` file auto-discovered by `run-tests.sh` glob); it runs as a direct prerequisite of `make test` (Makefile:160), independent of the hook-test auto-discovery phase. This is why it can assert on source files like `shared/rules/stacks/phoenix/_core.md` that are NOT baked into `.txt` prompts — the target focuses on committed rule-text parity, not installed prompt parity.
+**prompt-content-parity test scope**: Asserts only shape-mode sentinels (`ASK-GATE: product forks only`, `INTERACTION-AUDIT`) in baked `claude-shape-system-prompt.txt`. Edits to other prompts without sentinels don't break this test. New sentinel → update `harnesses/claude/hooks/prompt-content-parity_test.sh`. Standalone Makefile target (not auto-discovered); focuses on committed rule-text parity.
 
-**Subagent-included rule files (source-vs-baked parity distinction)**: When a rule file is included via `{% include 'rules/stacks/<name>.md' %}` in a `.md.j2` subagent template, parity assertions must target the SOURCE rule file (e.g., `shared/rules/stacks/phoenix/reviewer.md`), NOT the baked agent prompt at install-time user-home paths (e.g., `~/.claude/agents/reviewer-phoenix.md`). Baked prompts live outside the repo and are install-destination-specific (servers + Macs + CI boxes have different paths or no install directory at all), so source-file assertions ensure test hermeticity. Test rules: (1) assert on in-repo source files only; (2) use `grep -qF` (fixed-string grep) for sentinel matching; (3) when the sentinel contains backticks or slashes, they must appear EXACTLY as in the source (no regex escaping, but shell quoting must escape backticks via `\``). Example: asserting `phx-mounted={JS.focus()}`from`reviewer.md`requires the call`assert_contains "$CODEGEN_DIR/shared/rules/stacks/phoenix/reviewer.md" "phx-mounted={JS.focus()}"`where backticks are kept literal. See context/development.md § prompt-content-parity_test.sh sentinel-sync for drift prevention. **Hand-authored prompts without parity sentinels** (e.g.,`usage-rules-system-prompt.txt`) are not covered by `prompt-content-parity_test.sh`— parity checking is shape-mode focused and optional for other prompt-body files. If a hand-authored system prompt like`usage-rules-system-prompt.txt`is rewarded (e.g., to change URL-fetch fallback logic or add version-pinning instructions), the reword carries no parity-test assertion. Confirm absence via`grep -c "usage-rules-system-prompt" prompt-content-parity_test.sh` (expect 0) before assuming sentinel sync is needed. Safe to edit without parity ceremony.
+**Subagent-included rule files**: Assert on SOURCE files (e.g., `shared/rules/stacks/phoenix/reviewer.md`), NOT baked paths. Use `grep -qF` for sentinels; backticks kept literal (shell-escape with `\``). Hermetic test requires in-repo source only. **Hand-authored prompts** (e.g., `usage-rules-system-prompt.txt`) without parity sentinels are not covered — confirm via `grep -c "filename" prompt-content-parity_test.sh` before assuming sync needed.
 
 ## Hand-Authored Hook Script Structure & Registration
 
@@ -144,6 +144,62 @@ cleanup  # clean any leftovers from previous suite runs before tests start
 ## SubagentStop Hook Authoring Patterns
 
 Contract: source `lib/hooks-lib.sh`, use `parse_input` to extract AGENT_TYPE and TRANSCRIPT_PATH, call `block "$reason"` to emit `{"decision":"block","reason":...}` on stdout. Same envelope as Stop hooks.
+
+### Last-Match Pattern — Re-Spawned Section Body Extraction
+
+When a role is re-spawned in the same cycle, the session log appends `## <role> Section (pass N)` headers instead of reusing the bare header. Hooks that validate section bodies (e.g., `subagent-retrospective-guard.sh`) must extract and validate the LAST matching block, not the first.
+
+**Bash awk implementation — single-pass reset-on-match**:
+
+```bash
+section_body=$(awk "
+    /^## /{
+        if (match(\$0, \"^${section_header//\//\\/}\")) {
+            in_section = 1
+            body = \"\"
+            next
+        }
+        if (in_section) { in_section = 0 }
+    }
+    in_section {
+        body = body \$0 \"\\n\"
+    }
+    END { printf \"%s\", body }
+" "$log_file" 2>/dev/null)
+```
+
+Key: On every matching header (including `(pass N)` suffix), RESET `body = ""` to discard the prior block. Non-matching `^## ` headers close the current section but do NOT open a new one. Single `/^## /` rule with inner `match()` collapses the two-rule form (separate enter/exit rules) into one pass. Existing single-block logs return the block unchanged; re-spawned multi-block logs return only the last.
+
+**TypeScript implementation — reset-on-match accumulator**:
+
+```typescript
+function extractSectionBody(content: string, header: string): string {
+  const lines = content.split("\n");
+  let result: string[] = [];
+  let inSection = false;
+
+  for (const line of lines) {
+    if (line.startsWith(header)) {
+      // New matching block (incl. "(pass N)") — reset to keep only the last.
+      inSection = true;
+      result = [];
+      continue;
+    }
+    if (inSection && /^## /.test(line)) {
+      inSection = false;
+      continue;
+    }
+    if (inSection) {
+      result.push(line);
+    }
+  }
+  return result.join("\n");
+}
+```
+
+Key: `line.startsWith(header)` is a prefix test, so `"## developer-phoenix-backend Section (pass 2)".startsWith("## developer-phoenix-backend Section")` returns true. On each match, reset `result = []` to discard prior blocks. Return the last-accumulated body. TS `startsWith` and awk prefix-match (no trailing `$` anchor) both handle `(pass N)` variants without regex changes — only the accumulator-reset logic changes from "first-wins" to "last-wins".
+
+**Interaction with other guards**: Sibling hooks (e.g., `session-log-no-duplicate-section.sh`) use end-anchored patterns like `^## .+ Section$` to detect duplicate bare headers — the `$` anchor exempts `(pass N)` suffixes from denial, so re-spawning does not trigger false duplicates.
 
 **Harness scoping**: `harnesses: all` (default) REQUIRES a matching `.ts` Pi handler or `make install` fails. Use `harnesses: claude_code` to skip Pi parity check.
 

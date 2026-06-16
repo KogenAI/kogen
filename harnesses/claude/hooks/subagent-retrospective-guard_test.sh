@@ -317,5 +317,56 @@ else
 fi
 rm -rf "$T15"
 
+# ── Test 16: Two section blocks — pass1 missing retro, pass2 has retro → ALLOW ─
+# Last-block-wins: guard validates the LAST matching section; pass2 has the retro.
+T16=$(make_project)
+LOG16="$T16/codegen/logging/step1_test.md"
+cat >"$LOG16" <<'MD'
+## reviewer-phoenix Section
+
+**Commands executed**: none
+
+**Result**: no retrospective in pass 1.
+
+## reviewer-phoenix Section (pass 2)
+
+**Result**: Done.
+
+### What I Learned This Step
+
+- nothing notable
+
+## Files Modified
+
+- nothing
+MD
+make_transcript "$T16/transcript.jsonl" "$LOG16"
+out=$(make_input "reviewer-phoenix" "$T16/transcript.jsonl" | bash "$HOOK" 2>/dev/null || true)
+assert_allow "two blocks: pass1 no retro, pass2 has retro → last wins → allow" "$out"
+rm -rf "$T16"
+
+# ── Test 17: Two section blocks — pass1 has retro, pass2 missing retro → BLOCK ─
+# Last-block-wins: first block's retro must NOT satisfy; guard validates pass2 only.
+T17=$(make_project)
+LOG17="$T17/codegen/logging/step1_test.md"
+cat >"$LOG17" <<'MD'
+## reviewer-phoenix Section
+
+**Result**: Done.
+
+### What I Learned This Step
+
+- nothing notable
+
+## reviewer-phoenix Section (pass 2)
+
+**Result**: Done again, but forgot retrospective.
+
+MD
+make_transcript "$T17/transcript.jsonl" "$LOG17"
+out=$(make_input "reviewer-phoenix" "$T17/transcript.jsonl" | bash "$HOOK" 2>/dev/null || true)
+assert_block "two blocks: pass1 has retro, pass2 missing retro → last wins → block" "$out"
+rm -rf "$T17"
+
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

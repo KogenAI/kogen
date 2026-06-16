@@ -68,17 +68,22 @@ if ! grep -qF "$section_header" "$log_file" 2>/dev/null; then
     exit 0
 fi
 
-# Extract the section body: from the section header to the next ^## (exclusive) or EOF.
-# We use awk for this — portable, no temp files needed.
+# Extract the LAST matching section block's body. A re-spawned pass logs under
+# "## <role> Section (pass N)" which prefix-matches the same header regex.
+# Reset the buffer on every matching header so only the final block survives.
 section_body=$(awk "
     /^## /{
-        if (in_section) { exit }
+        if (match(\$0, \"^${section_header//\//\\/}\")) {
+            in_section = 1
+            body = \"\"
+            next
+        }
+        if (in_section) { in_section = 0 }
     }
-    /^${section_header//\//\\/}/{
-        in_section = 1
-        next
+    in_section {
+        body = body \$0 \"\\n\"
     }
-    in_section { print }
+    END { printf \"%s\", body }
 " "$log_file" 2>/dev/null)
 
 debug_log subagent-retrospective-guard "section_body_lines=$(printf '%s' "$section_body" | wc -l | tr -d ' ')"
