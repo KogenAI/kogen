@@ -602,7 +602,7 @@ help:
 	@echo "  make update         Update all AI agents (via ocg)"
 	@echo "  make help           Show this help"
 
-.PHONY: diagnose-pi-all diagnose-pi-phoenix-scaffold diagnose-pi-phoenix-gate diagnose-pi-phoenix-committer diagnose-pi-phoenix-iteration diagnose-pi-phoenix-seed diagnose-pi-static-html diagnose-pi-static-iteration-html diagnose-pi-static-iteration-hugo diagnose-pi-static-iteration-react diagnose-pi-static-iteration-vue diagnose-pi-static-iteration-multilingual
+.PHONY: diagnose-pi-all diagnose-pi-phoenix-scaffold diagnose-pi-phoenix-gate diagnose-pi-phoenix-committer diagnose-pi-phoenix-iteration diagnose-pi-phoenix-seed diagnose-pi-static-iteration-vanilla diagnose-pi-static-iteration-react diagnose-pi-static-iteration-vue diagnose-pi-static-iteration-multilingual
 
 diagnose-pi-phoenix-scaffold:
 	mkdir -p test_harness/_diagnostics
@@ -639,49 +639,35 @@ diagnose-pi-phoenix-seed:
 	  DIAGNOSTICS_FILE="$(SCRIPT_DIR)/test_harness/_diagnostics/phoenix-seed-pi-{N}.jsonl" \
 	  mix test test/stacks/phoenix/seed_test.exs --only slow || true
 
-diagnose-pi-static-html:
+diagnose-pi-static-iteration-vanilla:
 	mkdir -p test_harness/_diagnostics
 	cd test_harness && \
 	  HARNESS=pi KEEP_TMP=1 \
-	  DIAGNOSTICS_FILE="$(SCRIPT_DIR)/test_harness/_diagnostics/static-html-pi-{N}.jsonl" \
-	  mix test test/stacks/static/html_scaffold_test.exs --only slow || true
-
-diagnose-pi-static-iteration-html:
-	mkdir -p test_harness/_diagnostics
-	cd test_harness && \
-	  HARNESS=pi KEEP_TMP=1 \
-	  DIAGNOSTICS_FILE="$(SCRIPT_DIR)/test_harness/_diagnostics/static-iteration-html-pi-{N}.jsonl" \
-	  mix test test/stacks/static/iteration_test.exs:32 --only slow || true
-
-diagnose-pi-static-iteration-hugo:
-	mkdir -p test_harness/_diagnostics
-	cd test_harness && \
-	  HARNESS=pi KEEP_TMP=1 \
-	  DIAGNOSTICS_FILE="$(SCRIPT_DIR)/test_harness/_diagnostics/static-iteration-hugo-pi-{N}.jsonl" \
-	  mix test test/stacks/static/iteration_test.exs:65 --only slow || true
+	  DIAGNOSTICS_FILE="$(SCRIPT_DIR)/test_harness/_diagnostics/static-iteration-vanilla-pi-{N}.jsonl" \
+	  mix test test/stacks/static/iteration_test.exs --only slow || true
 
 diagnose-pi-static-iteration-react:
 	mkdir -p test_harness/_diagnostics
 	cd test_harness && \
 	  HARNESS=pi KEEP_TMP=1 \
 	  DIAGNOSTICS_FILE="$(SCRIPT_DIR)/test_harness/_diagnostics/static-iteration-react-pi-{N}.jsonl" \
-	  mix test test/stacks/static/iteration_test.exs:100 --only slow || true
+	  mix test test/stacks/static/iteration_test.exs --only slow || true
 
 diagnose-pi-static-iteration-vue:
 	mkdir -p test_harness/_diagnostics
 	cd test_harness && \
 	  HARNESS=pi KEEP_TMP=1 \
 	  DIAGNOSTICS_FILE="$(SCRIPT_DIR)/test_harness/_diagnostics/static-iteration-vue-pi-{N}.jsonl" \
-	  mix test test/stacks/static/iteration_test.exs:134 --only slow || true
+	  mix test test/stacks/static/iteration_test.exs --only slow || true
 
 diagnose-pi-static-iteration-multilingual:
 	mkdir -p test_harness/_diagnostics
 	cd test_harness && \
 	  HARNESS=pi KEEP_TMP=1 \
 	  DIAGNOSTICS_FILE="$(SCRIPT_DIR)/test_harness/_diagnostics/static-iteration-multilingual-pi-{N}.jsonl" \
-	  mix test test/stacks/static/iteration_test.exs:169 --only slow || true
+	  mix test test/stacks/static/iteration_test.exs --only slow || true
 
-diagnose-pi-all: diagnose-pi-phoenix-scaffold diagnose-pi-phoenix-gate diagnose-pi-phoenix-committer diagnose-pi-phoenix-iteration diagnose-pi-phoenix-seed diagnose-pi-static-html diagnose-pi-static-iteration-html diagnose-pi-static-iteration-hugo diagnose-pi-static-iteration-react diagnose-pi-static-iteration-vue diagnose-pi-static-iteration-multilingual
+diagnose-pi-all: diagnose-pi-phoenix-scaffold diagnose-pi-phoenix-gate diagnose-pi-phoenix-committer diagnose-pi-phoenix-iteration diagnose-pi-phoenix-seed diagnose-pi-static-iteration-vanilla diagnose-pi-static-iteration-react diagnose-pi-static-iteration-vue diagnose-pi-static-iteration-multilingual
 
 # Default target shows help
 .DEFAULT_GOAL := help

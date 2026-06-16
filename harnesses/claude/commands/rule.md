@@ -57,9 +57,9 @@ Signs of leakage into shared rules: project names, repo paths, app-specific modu
    - Role-specific → `stacks/phoenix/<role>.md`
    - Testing → `stacks/phoenix/testing.md` (LiveView/browser → `testing-liveview.md`)
 4. **Static**:
-   - Role-specific (universal across substacks) → `stacks/static/<role>.md`
-   - Substack-specific (HTML/Hugo/Vite) → `stacks/static/<substack>.md` (or `hugo-deep.md` for advanced Hugo)
-   - Cross-substack (Tailwind/assets/JS) → `stacks/static/{tailwind,assets,js}.md`
+   - Role-specific (universal) → `stacks/static/<role>.md`
+   - Vite-specific → `stacks/static/vite.md`
+   - Cross-cutting (Tailwind/assets/JS) → `stacks/static/{tailwind,assets,js}.md`
 5. **Cross-role primitive** (git read-only, etc.) → `shared/<concept>.md`
 6. **Universal subagent rule** (output, bash, log) → `_core/<concept>.md`
 7. **Build runtime** (result JSON) → `build-runtime/<concept>.md`
@@ -132,10 +132,7 @@ Check `codegen/rules/INDEX.md` first to understand file boundaries.
 | `static/planner.md`           | Substack detection, tailwind detect                              |
 | `static/developer.md`         | Output dir, build pipeline, npm, Tailwind v4 invariants          |
 | `static/reviewer.md`          | Selector/a11y/asset/JS checks                                    |
-| `static/html.md`              | Plain HTML stack                                                 |
-| `static/hugo.md`              | Hugo quickref                                                    |
-| `static/hugo-deep.md`         | Hugo deep (lazy load)                                            |
-| `static/vite.md`              | Vite + React                                                     |
+| `static/vite.md`              | Vite: vanilla + framework                                        |
 | `static/tailwind.md`          | Tailwind v4                                                      |
 | `static/assets.md`            | Favicons, robots, og                                             |
 | `static/js.md`                | Static-site JS                                                   |

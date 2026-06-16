@@ -6,13 +6,7 @@
  *   node screenshot.js --cwd <dir> --stack <stack> --out <out.png>
  *
  * Stack-to-serve-dir mapping:
- *   static       → auto-detected: public/ (hugo), dist/ (vite), or cwd (plain html)
- *                  Detection order: dist/index.html → root/index.html → public/index.html → cwd
- *                  If no built output found, detects from config files and builds.
- *   hugo         → public/  (run `hugo --quiet` if missing)
- *   vite_react   → dist/    (run `npm install && npm run build` if missing)
- *   vite_vue     → dist/    (same as vite_react)
- *   multilingual → public/ if present, else cwd
+ *   static → builds (if needed) and serves public/
  *
  * Exit 0 on success, 1 on failure.
  */
@@ -102,29 +96,6 @@ function runBuild(cmd, args, cwd) {
   }
 }
 
-function detectSubStack(cwd) {
-  // Hugo: has hugo.toml, config.toml, hugo.yaml, or hugo.json at root
-  const hugoConfigs = [
-    "hugo.toml",
-    "config.toml",
-    "hugo.yaml",
-    "hugo.yml",
-    "hugo.json",
-  ];
-  const isHugo = hugoConfigs.some((f) => fs.existsSync(path.join(cwd, f)));
-
-  // Vite: has package.json with a "build" script and vite.config.*
-  const packageJsonPath = path.join(cwd, "package.json");
-  const hasPackageJson = fs.existsSync(packageJsonPath);
-  const viteConfigs = ["vite.config.js", "vite.config.ts", "vite.config.mjs"];
-  const isVite =
-    hasPackageJson && viteConfigs.some((f) => fs.existsSync(path.join(cwd, f)));
-
-  if (isHugo) return "hugo";
-  if (isVite) return "vite";
-  return "html";
-}
-
 function resolveServeDir(cwd, stack) {
   process.stderr.write(
     `[screenshot] resolveServeDir: cwd=${cwd} stack=${stack}\n`,
@@ -132,221 +103,33 @@ function resolveServeDir(cwd, stack) {
 
   switch (stack) {
     case "static": {
-      // Detect sub-stack FIRST — Vite convention puts index.html at cwd root
-      // (untranspiled source), so we must check for Vite before the cwd fallback.
       const publicDir = path.join(cwd, "public");
-      const distDir = path.join(cwd, "dist");
-      const subStack = detectSubStack(cwd);
-      process.stderr.write(
-        `[screenshot] static → detected sub-stack: ${subStack}\n`,
-      );
 
-      // Already-built outputs take priority — no build needed.
-      // EXCEPTION: if the HTML exists but lacks a bundled-script reference AND
-      // sub-stack is Vite, the file was written by an agent in source-shape
-      // (no <script src="/assets/index-HASH.js">) and must be rebuilt.
-      //
-      // Check order: dist/ first (Vite default outDir), then root index.html
-      // (modern Vite dev entry), then public/ (legacy or Hugo output).
-      if (fs.existsSync(path.join(distDir, "index.html"))) {
-        const distHtml = fs
-          .readFileSync(path.join(distDir, "index.html"), "utf-8")
-          .slice(0, 4096);
-        if (!hasBundledScript(distHtml) && subStack === "vite") {
-          process.stderr.write(
-            `[screenshot] dist/index.html lacks bundle marker, forcing Vite rebuild\n`,
-          );
-          // Fall through to Vite build branch below
-        } else {
-          process.stderr.write(
-            `[screenshot] static → found dist/index.html, serving dist/\n`,
-          );
-          return distDir;
-        }
-      }
-      // Root-level index.html is the modern Vite dev entry point (source-shape).
-      // Must rebuild before serving — it references /src/main.jsx, not bundled assets.
-      if (fs.existsSync(path.join(cwd, "index.html")) && subStack === "vite") {
-        const rootHtml = fs
-          .readFileSync(path.join(cwd, "index.html"), "utf-8")
-          .slice(0, 4096);
-        if (!hasBundledScript(rootHtml)) {
-          process.stderr.write(
-            `[screenshot] root/index.html lacks bundle marker, forcing Vite rebuild\n`,
-          );
-          // Fall through to Vite build branch below
-        } else {
-          // root index.html has bundled scripts — serve from cwd (unusual but valid)
-          process.stderr.write(
-            `[screenshot] static → root/index.html has bundle marker, serving cwd\n`,
-          );
-          return cwd;
-        }
-      }
+      // Already-built: public/index.html with a bundled script → serve directly.
       if (fs.existsSync(path.join(publicDir, "index.html"))) {
         const publicHtml = fs
           .readFileSync(path.join(publicDir, "index.html"), "utf-8")
           .slice(0, 4096);
-        if (!hasBundledScript(publicHtml) && subStack === "vite") {
+        if (hasBundledScript(publicHtml)) {
           process.stderr.write(
-            `[screenshot] public/index.html lacks bundle marker, forcing Vite rebuild\n`,
-          );
-          // Fall through to Vite build branch below — build will overwrite dist/
-        } else {
-          process.stderr.write(
-            `[screenshot] static → found public/index.html, serving public/\n`,
+            `[screenshot] static → found public/index.html with bundle marker, serving public/\n`,
           );
           return publicDir;
         }
       }
 
-      // Vite source dir (index.html at root, vite.config.* present) — must build
-      // before serving, otherwise browser gets untranspiled ESM that fails to load.
-      if (subStack === "vite") {
-        process.stderr.write(
-          `[screenshot] static/vite → dist/ missing, running npm install + build\n`,
-        );
-        runBuild(
-          "npm",
-          ["install", "--silent", "--no-audit", "--no-fund"],
-          cwd,
-        );
-        runBuild("npm", ["run", "build"], cwd);
-        if (fs.existsSync(path.join(distDir, "index.html"))) {
-          return distDir;
-        }
-        // Some Vite projects output to public/ or a custom dir — fall back
-        if (fs.existsSync(path.join(publicDir, "index.html"))) {
-          return publicDir;
-        }
-        throw new Error(
-          `Vite build ran but dist/index.html not found in ${cwd}`,
-        );
-      }
-
-      if (subStack === "hugo") {
-        process.stderr.write(`[screenshot] static/hugo → running hugo build\n`);
-        runBuild("hugo", ["--quiet"], cwd);
-        if (!fs.existsSync(path.join(publicDir, "index.html"))) {
-          throw new Error(
-            `Hugo build ran but public/index.html not found in ${cwd}`,
-          );
-        }
-        return publicDir;
-      }
-
-      // Plain HTML — cwd fallback (only reached when subStack === "html")
-      if (fs.existsSync(path.join(cwd, "index.html"))) {
-        process.stderr.write(
-          `[screenshot] static/html → found index.html at root, serving cwd\n`,
-        );
-        return cwd;
-      }
-
-      // Scan for any .html file if index.html is missing
-      const htmlFiles = fs.readdirSync(cwd).filter((f) => f.endsWith(".html"));
-      if (htmlFiles.length > 0) {
-        process.stderr.write(
-          `[screenshot] static/html → no index.html but found ${htmlFiles[0]}, serving cwd\n`,
-        );
-        // Return cwd; caller will fail on missing index.html — that's correct
-      }
+      // Build needed — public/ absent or stale (no bundle marker).
       process.stderr.write(
-        `[screenshot] static/html → serving cwd (no build needed)\n`,
+        `[screenshot] static → running npm install + build\n`,
       );
-      return cwd;
-    }
-
-    case "hugo": {
-      const publicDir = path.join(cwd, "public");
-      process.stderr.write(`[screenshot] hugo → checking ${publicDir}\n`);
-      if (!fs.existsSync(publicDir)) {
-        process.stderr.write(
-          `[screenshot] hugo → public/ missing, running hugo build\n`,
-        );
-        runBuild("hugo", ["--quiet"], cwd);
-      }
-      process.stderr.write(`[screenshot] hugo → returning ${publicDir}\n`);
-      return publicDir;
-    }
-
-    case "vite_react":
-    case "vite_vue": {
-      const distDir = path.join(cwd, "dist");
-      process.stderr.write(`[screenshot] ${stack} → checking ${distDir}\n`);
-      if (!fs.existsSync(distDir)) {
-        process.stderr.write(
-          `[screenshot] ${stack} → dist/ missing, running npm install + build\n`,
-        );
-        runBuild(
-          "npm",
-          ["install", "--silent", "--no-audit", "--no-fund"],
-          cwd,
-        );
-        runBuild("npm", ["run", "build"], cwd);
-      }
-      process.stderr.write(`[screenshot] ${stack} → returning ${distDir}\n`);
-      return distDir;
-    }
-
-    case "multilingual": {
-      const publicDir = path.join(cwd, "public");
-      const distDir = path.join(cwd, "dist");
-      const staticDir = path.join(cwd, "static");
-
-      // 1. Already-built Hugo public/
+      runBuild("npm", ["install", "--silent", "--no-audit", "--no-fund"], cwd);
+      runBuild("npm", ["run", "build"], cwd);
       if (fs.existsSync(path.join(publicDir, "index.html"))) {
-        process.stderr.write(
-          `[screenshot] multilingual → found public/index.html, serving public/\n`,
-        );
         return publicDir;
       }
-
-      // 2. Already-built Vite dist/
-      if (fs.existsSync(path.join(distDir, "index.html"))) {
-        process.stderr.write(
-          `[screenshot] multilingual → found dist/index.html, serving dist/\n`,
-        );
-        return distDir;
-      }
-
-      // 3. Hugo source without built output — detect and build
-      const hugoConfigs = [
-        "hugo.toml",
-        "config.toml",
-        "hugo.yaml",
-        "hugo.yml",
-        "hugo.json",
-      ];
-      const hasHugoConfig = hugoConfigs.some((f) =>
-        fs.existsSync(path.join(cwd, f)),
+      throw new Error(
+        `Vite build ran but public/index.html not found in ${cwd}`,
       );
-      if (hasHugoConfig) {
-        process.stderr.write(
-          `[screenshot] multilingual → hugo config found, running hugo build\n`,
-        );
-        runBuild("hugo", ["--quiet"], cwd);
-        if (fs.existsSync(path.join(publicDir, "index.html"))) {
-          return publicDir;
-        }
-        process.stderr.write(
-          `[screenshot] multilingual → hugo build ran but public/index.html not found, continuing fallback\n`,
-        );
-      }
-
-      // 4. Static source dir (Hugo-like layout without hugo config, e.g. plain multi-page)
-      if (fs.existsSync(path.join(staticDir, "index.html"))) {
-        process.stderr.write(
-          `[screenshot] multilingual → found static/index.html, serving static/\n`,
-        );
-        return staticDir;
-      }
-
-      // 5. Fallback: cwd
-      process.stderr.write(
-        `[screenshot] multilingual → no built output found, falling back to cwd\n`,
-      );
-      return cwd;
     }
 
     default: {

@@ -1,5 +1,5 @@
-defmodule CodegenTestHarness.Stacks.Static.SeedTest.Html do
-  @moduledoc "html: second build from committed state produces fresh commit"
+defmodule CodegenTestHarness.Stacks.Static.SeedTest.Vanilla do
+  @moduledoc "vanilla: second build from committed state produces fresh commit"
   use ExUnit.Case, async: true
 
   alias CodegenTestHarness.Assertions
@@ -18,18 +18,18 @@ defmodule CodegenTestHarness.Stacks.Static.SeedTest.Html do
   @html_change_prompt "Add a <section id=\"faq\"> with three <details> elements, " <>
                         "each containing a <summary> (the question) and a <p> (the answer)."
 
-  test "html: second build from committed state produces fresh commit", %{cwd: cwd} do
+  test "vanilla: second build from committed state produces fresh commit", %{cwd: cwd} do
     Fixtures.run_codegen_build(cwd, @html_first_prompt,
       stack: "static",
-      test_name: "seed_static_html_first"
+      test_name: "seed_static_vanilla_first"
     )
 
     commits_after_first = Fixtures.count_commits!(cwd)
-    assert commits_after_first >= 1, "First html build must produce at least one commit"
+    assert commits_after_first >= 1, "First vanilla build must produce at least one commit"
 
     Fixtures.run_codegen_build(cwd, @html_change_prompt,
       stack: "static",
-      test_name: "seed_static_html_second"
+      test_name: "seed_static_vanilla_second"
     )
 
     Assertions.assert_new_commit_since!(cwd, commits_after_first)
@@ -44,58 +44,8 @@ defmodule CodegenTestHarness.Stacks.Static.SeedTest.Html do
     end)
     assert faq_found, "expected id=\"faq\" and <details in at least one HTML file after second build"
 
-    Fixtures.bench_assertions_passed!("static", "seed_static_html_first")
-    Fixtures.bench_assertions_passed!("static", "seed_static_html_second")
-  end
-
-end
-
-defmodule CodegenTestHarness.Stacks.Static.SeedTest.Hugo do
-  @moduledoc "hugo: second build from committed state produces fresh commit"
-  use ExUnit.Case, async: true
-
-  alias CodegenTestHarness.Assertions
-  alias CodegenTestHarness.Fixtures
-
-  @moduletag :slow
-  @moduletag timeout: 1_800_000
-
-  setup do
-    {:ok, cwd: Fixtures.isolated_tmp_dir()}
-  end
-
-  @hugo_first_prompt ~s(Create a Hugo blog with three sample posts about gardening. ) <>
-                       ~s(Each post must have a title and at least 50 words of body content.)
-
-  @hugo_change_prompt ~s(Add a new blog post titled 'Spring Garden Tips' ) <>
-                        ~s(with at least 100 words of body content about planting vegetables.)
-
-  test "hugo: second build from committed state produces fresh commit", %{cwd: cwd} do
-    Fixtures.run_codegen_build(cwd, @hugo_first_prompt,
-      stack: "static",
-      test_name: "seed_static_hugo_first"
-    )
-
-    commits_after_first = Fixtures.count_commits!(cwd)
-    assert commits_after_first >= 1, "First hugo build must produce at least one commit"
-
-    Fixtures.run_codegen_build(cwd, @hugo_change_prompt,
-      stack: "static",
-      test_name: "seed_static_hugo_second"
-    )
-
-    Assertions.assert_new_commit_since!(cwd, commits_after_first)
-    Assertions.assert_hugo_builds!(cwd)
-    Assertions.assert_commit_well_formed!(cwd)
-    Assertions.assert_not_revert_head!(cwd)
-
-    # Verify 2nd-prompt marker (Spring Garden Tips) survived the second build
-    all_files = [Path.join(cwd, "**/*.md"), Path.join(cwd, "**/*.html")] |> Enum.flat_map(&Path.wildcard/1)
-    spring_found = Enum.any?(all_files, fn path -> File.read!(path) =~ ~r/spring garden tips/i end)
-    assert spring_found, "expected 'Spring Garden Tips' in at least one file after second build"
-
-    Fixtures.bench_assertions_passed!("static", "seed_static_hugo_first")
-    Fixtures.bench_assertions_passed!("static", "seed_static_hugo_second")
+    Fixtures.bench_assertions_passed!("static", "seed_static_vanilla_first")
+    Fixtures.bench_assertions_passed!("static", "seed_static_vanilla_second")
   end
 
 end

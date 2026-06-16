@@ -239,7 +239,7 @@ out13=$(mk_agent_input "developer-phoenix-backend" "/nonexistent/transcript.json
 assert_allow "allow: transcript unreadable — fail-open" "$out13"
 rm -rf "$T13"
 
-# ── Test 14: allow developer-static (alias for former developer-hugo) ─────────
+# ── Test 14: allow developer-static (unified static stack) ────────────────────
 T14=$(make_project)
 LOG14="$T14/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_step1_test.md"
 cat >"$LOG14" <<'MD'
@@ -251,7 +251,7 @@ out14=$(mk_agent_input "developer-static" "$T14/transcript.jsonl" | bash "$HOOK"
 assert_allow "allow: developer-static (test 14) — section header present" "$out14"
 rm -rf "$T14"
 
-# ── Test 15: allow developer-static (alias for former developer-vite) ─────────
+# ── Test 15: allow developer-static (unified static stack) ────────────────────
 T15=$(make_project)
 LOG15="$T15/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_step1_test.md"
 cat >"$LOG15" <<'MD'

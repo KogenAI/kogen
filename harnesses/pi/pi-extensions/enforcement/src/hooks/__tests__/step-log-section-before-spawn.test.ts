@@ -157,7 +157,7 @@ describe("step-log-section-before-spawn", () => {
     assert.ok(result == null || (result as { block?: boolean }).block !== true);
   });
 
-  // ── Test 12: allow developer-static (alias for former developer-hugo) ────────
+  // ── Test 12: allow developer-static (unified static stack) ────────────────────
   it("allows developer-static (test 12) with section header present", async () => {
     writeLog(
       "20260601_step1_test.md",
@@ -167,7 +167,7 @@ describe("step-log-section-before-spawn", () => {
     assert.ok(result == null || (result as { block?: boolean }).block !== true);
   });
 
-  // ── Test 13: allow developer-static (alias for former developer-vite) ────────
+  // ── Test 13: allow developer-static (unified static stack) ────────────────────
   it("allows developer-static (test 13) with section header present", async () => {
     writeLog(
       "20260601_step1_test.md",

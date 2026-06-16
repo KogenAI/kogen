@@ -141,7 +141,7 @@ codegen/                          ← repo root
 | `shared/rules/`        | Discipline rules baked into subagent prompts via `{% include %}` at generate time           |
 | `shared/rules/_core/`  | Universal rules: bash discipline, cwd, output style, session log                            |
 | `shared/rules/roles/`  | Per-role rules: committer, context-curator, developer, orchestrator, planner, reviewer      |
-| `shared/rules/stacks/` | Stack rules: `phoenix/` (Elixir/LiveView), `static/` (Tailwind v4, Hugo, Vite)              |
+| `shared/rules/stacks/` | Stack rules: `phoenix/` (Elixir/LiveView), `static/` (Tailwind v4, Vite)                    |
 | `shared/enforcement/`  | Declarative enforcement registry (`registry.yaml`) + schema docs; compiler generates hooks  |
 | `shared/scaffold/`     | `scaffold.sh` + `mutations/` + `.eex` templates used by `codegen-scaffold`                  |
 | `shared/subagents/`    | `.md.j2` templates rendered into per-harness agent prompts installed to `~/.claude/agents/` |

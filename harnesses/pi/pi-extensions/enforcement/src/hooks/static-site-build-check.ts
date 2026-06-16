@@ -57,9 +57,7 @@ export function register(pi: ExtensionAPI): void {
 
     // ── Render verification ────────────────────────────────────────────────
     // Determine output dir (public/ or dist/).
-    const outputDir = fs.existsSync(path.join(projectDir, "dist"))
-      ? path.join(projectDir, "dist")
-      : path.join(projectDir, "public");
+    const outputDir = path.join(projectDir, "public");
 
     if (!fs.existsSync(outputDir)) {
       debugLog(

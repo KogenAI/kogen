@@ -46,10 +46,7 @@ rules/
       planner.md            substack detection, tailwind detect
       developer.md          output dir, build pipeline, npm, Tailwind v4 invariants
       reviewer.md           selector/a11y/asset/JS/responsive checks
-      html.md               plain HTML stack
-      hugo.md               Hugo quickref
-      hugo-deep.md          Hugo deep (lazy-load, planner names on demand)
-      vite.md               Vite + React
+      vite.md               Vite: vanilla + framework
       tailwind.md           Tailwind v4
       assets.md             favicons, robots, og
       js.md                 inline-handler + overlay gotchas

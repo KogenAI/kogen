@@ -10,7 +10,7 @@ All static sites use the **Vite** stack (`developer-static`). Planner decides **
 | Visitors WRITE data (accounts, comments, bookings, e-commerce)                  | NOT static → Phoenix                         |
 | Everything else (landing page, portfolio, multi-page informational, blog-style) | Vanilla Vite                                 |
 
-Multi-page vanilla → use Vite `build.rollupOptions.input` — never Hugo. Multi-page React → Vite + React Router.
+Multi-page vanilla → use Vite `build.rollupOptions.input`. Multi-page React → Vite + React Router.
 
 ## Tailwind Mandatory (All Static Sites)
 

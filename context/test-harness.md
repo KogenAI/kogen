@@ -38,18 +38,17 @@ test_harness/
 
 ## ExUnit Test Modules
 
-| Module (filename)                   | Purpose                                                                                                       | Stack / Mode            |
-| ----------------------------------- | ------------------------------------------------------------------------------------------------------------- | ----------------------- |
-| `committer_test.exs`                | Validates committer phase output and commit message format                                                    | Phoenix                 |
-| `gate_test.exs`                     | Validates gate verdicts (ALL CLEAR / FAILED / INCONCLUSIVE)                                                   | Phoenix                 |
-| `iteration_test.exs`                | Multi-step iteration and cycle continuity                                                                     | Phoenix                 |
-| `scaffold_test.exs`                 | Scaffold template rendering and output correctness                                                            | Phoenix                 |
-| `seed_test.exs`                     | Database seed lifecycle and reproducibility                                                                   | Phoenix                 |
-| `html_scaffold_test.exs`            | Static HTML scaffold template rendering                                                                       | Static                  |
-| `iteration_test.exs`                | Multi-step static site iteration                                                                              | Static                  |
-| `modes/debug_test.exs`              | Asserts debug launcher emits diagnostic report + writes no files                                              | Debug (claude + pi)     |
-| `modes/shape_test.exs`              | Asserts shape launcher produces/edits draft pitch with Shape Up sections                                      | Shape (claude + pi)     |
-| `harness_parity/pi_parity_test.exs` | Cross-harness parity: phoenix-minimal, static-minimal, hugo-minimal (claude vs pi). Tagged `:harness_parity`. | Parity (both harnesses) |
+| Module (filename)                   | Purpose                                                                                         | Stack / Mode            |
+| ----------------------------------- | ----------------------------------------------------------------------------------------------- | ----------------------- |
+| `committer_test.exs`                | Validates committer phase output and commit message format                                      | Phoenix                 |
+| `gate_test.exs`                     | Validates gate verdicts (ALL CLEAR / FAILED / INCONCLUSIVE)                                     | Phoenix                 |
+| `iteration_test.exs`                | Multi-step iteration and cycle continuity                                                       | Phoenix                 |
+| `scaffold_test.exs`                 | Scaffold template rendering and output correctness                                              | Phoenix                 |
+| `seed_test.exs`                     | Database seed lifecycle and reproducibility                                                     | Phoenix                 |
+| `iteration_test.exs`                | Multi-step static site iteration                                                                | Static                  |
+| `modes/debug_test.exs`              | Asserts debug launcher emits diagnostic report + writes no files                                | Debug (claude + pi)     |
+| `modes/shape_test.exs`              | Asserts shape launcher produces/edits draft pitch with Shape Up sections                        | Shape (claude + pi)     |
+| `harness_parity/pi_parity_test.exs` | Cross-harness parity: phoenix-minimal, static-minimal (claude vs pi). Tagged `:harness_parity`. | Parity (both harnesses) |
 
 ## Make Target Catalog
 
@@ -93,6 +92,8 @@ Boundary guard (grep for consumer name) runs in both: hermetic bash tests via `s
 ## Assertion Coverage Pattern
 
 Assertion helper functions defined in `CodegenTestHarness.Assertions` should be reused across multiple test cases when they guard important postconditions (e.g., `assert_assets_deploy!`, `assert_generated_tests_pass!`). When an assertion is defined but has zero call sites, it represents a regression-guard gap — identify where that assertion logically belongs and wire it into at least one test case. Example: `assert_assets_deploy!/1` validates compile-first alias ordering (lines 291–315 in assertions.ex); it was wired into `no_ecto_scaffold_test.exs:45` to ensure `mix assets.deploy` succeeds under `--no-ecto` scaffold, a key compile precondition. Scan newly defined assertions during review; if a helper has no callers, route it to the test file that should guard it.
+
+**Static scaffold outDir configuration**: The Vite static scaffold explicitly sets `outDir: "public"` (not the Vite default `dist/`). Any test assertion, hook, or tooling checking for built output must use `public/` as the expected output directory, not `dist/`. Path-string mismatches (e.g., assertions expecting `dist/index.html` when the scaffold writes to `public/index.html`) are NOT caught by hermetic `make test` (string literals compile fine) — only real LLM builds via `make test-stacks` would surface the mismatch. Audit all output-path expectations (assertions.ex, fixtures.ex, hook scripts, bench verifiers) for `dist/` references when touching static stack output paths.
 
 ## Bash Hook Test Debugging — Silent Crashes & Early Exits
 

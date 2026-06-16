@@ -15,7 +15,7 @@
 #   (b) Dangling   — fetch-pointer target does not exist under shared/rules/
 #
 # Allowlist — targets exempt from both checks (recipes, downstream files,
-# example placeholders, Hugo content, etc.):
+# example placeholders, recipe names, etc.):
 #
 # Usage: bash rule-self-ref-no-fetch_test.sh
 # Exit 0 → all pass. Exit 1 → one or more failures.
@@ -41,11 +41,9 @@ ALLOWLIST=(
     "PROJECT_CONTEXT.md"
     "STYLE_GUIDE.md"
     "style-caveman-ultra.md"
-    "hugo-deep.md"
     "git-commit-flow.md"
     "_index.md"
     "content/_index.md"
-    "static-html-base-template.md"
     "static-vite-scaffold.md"
 )
 

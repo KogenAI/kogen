@@ -1,47 +1,3 @@
-defmodule CodegenTestHarness.Stacks.Static.ScaffoldTest.Hugo do
-  @moduledoc "codegen-build provisions hugo blog from empty dir"
-  use ExUnit.Case, async: true
-
-  alias CodegenTestHarness.Assertions
-  alias CodegenTestHarness.Fixtures
-
-  @moduletag :slow
-  @moduletag timeout: 6_600_000
-
-  setup do
-    {:ok, cwd: Fixtures.isolated_tmp_dir()}
-  end
-
-  test "codegen-build provisions hugo blog from empty dir", %{cwd: cwd} do
-    output =
-      Fixtures.run_codegen_build(
-        cwd,
-        "Create a Hugo blog with three sample posts about gardening. Each post must have a title and at least 50 words of body content.",
-        stack: "static",
-        test_name: "scaffold_static_hugo"
-      )
-
-    md_files = Path.wildcard(Path.join(cwd, "content/**/*.md"))
-
-    assert md_files != [],
-           "no content/**/*.md files found under #{cwd}\n--- output ---\n#{output}"
-
-    Assertions.assert_hugo_builds!(cwd)
-    Assertions.assert_built_html_non_blank!(cwd, "public/index.html")
-    Assertions.assert_git_committed!(cwd)
-
-    # codegen-scaffold produces these files for every static app
-    assert File.exists?(Path.join(cwd, "PROJECT_CONTEXT.md")),
-           "expected PROJECT_CONTEXT.md in #{cwd}"
-
-    assert File.exists?(Path.join(cwd, "restart_server.sh")),
-           "expected restart_server.sh in #{cwd}"
-
-    Assertions.assert_renders!(cwd, :static)
-    Fixtures.bench_assertions_passed!("static", "scaffold_static_hugo")
-  end
-end
-
 defmodule CodegenTestHarness.Stacks.Static.ScaffoldTest.ViteReact do
   @moduledoc "codegen-build provisions vite-react app from empty dir"
   use ExUnit.Case, async: true
@@ -73,7 +29,7 @@ defmodule CodegenTestHarness.Stacks.Static.ScaffoldTest.ViteReact do
            "no src/**/*.{jsx,tsx} files found under #{cwd}\n--- output ---\n#{output}"
 
     Assertions.assert_npm_builds!(cwd)
-    Assertions.assert_built_html_non_blank!(cwd, "dist/index.html")
+    Assertions.assert_built_html_non_blank!(cwd, "public/index.html")
     Assertions.assert_git_committed!(cwd)
 
     assert File.exists?(Path.join(cwd, "PROJECT_CONTEXT.md")),
@@ -116,7 +72,7 @@ defmodule CodegenTestHarness.Stacks.Static.ScaffoldTest.ViteVue do
            "no src/**/*.vue files found under #{cwd}\n--- output ---\n#{output}"
 
     Assertions.assert_npm_builds!(cwd)
-    Assertions.assert_built_html_non_blank!(cwd, "dist/index.html")
+    Assertions.assert_built_html_non_blank!(cwd, "public/index.html")
     Assertions.assert_git_committed!(cwd)
 
     assert File.exists?(Path.join(cwd, "PROJECT_CONTEXT.md")),

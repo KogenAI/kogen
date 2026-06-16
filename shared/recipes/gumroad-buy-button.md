@@ -32,24 +32,7 @@ Use in any static HTML page with buy or purchase call-to-action.
 
 ---
 
-## Snippet 2 — Hugo partial (`layouts/partials/buy-button.html`)
-
-```html
-{{- $url := "GUMROAD_PLACEHOLDER_URL" -}}
-<a href="{{ $url }}" class="buy-button" target="_blank" rel="noopener">
-  {{ .ButtonText | default "Get It Now" }}
-</a>
-```
-
-Call from layout or page template:
-
-```html
-{{ partial "buy-button.html" (dict "ButtonText" "Buy the Ebook") }}
-```
-
----
-
-## Snippet 3 — Landing page section (full hero + CTA)
+## Snippet 2 — Landing page section (full hero + CTA)
 
 ```html
 <section class="hero">

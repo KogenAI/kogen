@@ -5,7 +5,7 @@
 - **What**: [What this site is and its purpose]
 - **URL**: https://[domain]
 - **Location**: `[app root]`
-- **Stack**: [Plain HTML + Tailwind v4 | Hugo + Tailwind v4 | Vite + React + Tailwind v4]
+- **Stack**: [Vite (vanilla or framework) + Tailwind v4]
 
 ## Domain Context Files
 

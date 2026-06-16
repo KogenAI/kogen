@@ -25,7 +25,7 @@ defmodule CodegenTestHarness.Fixtures do
   the captured stdout as JSONL to
   `<BENCH_RUN_DIR>/runs/<harness>/<stack>/<test_name>.jsonl` and appends a
   synthetic `harness_summary` record as the last line. For static stacks
-  (`:static`, `:hugo`, `:vite_react`, `:vite_vue`, `:multilingual`), a
+  (`:static`), a
   full-page PNG screenshot is also captured to
   `<BENCH_RUN_DIR>/runs/<harness>/<stack>/<test_name>.png` via
   `BenchArtifacts.capture_screenshot/4`. Screenshot failures are non-fatal.
@@ -302,7 +302,6 @@ defmodule CodegenTestHarness.Fixtures do
         :static ->
           built_dir =
             cond do
-              File.exists?(Path.join(cwd, "dist/index.html")) -> Path.join(cwd, "dist")
               File.exists?(Path.join(cwd, "public/index.html")) -> Path.join(cwd, "public")
               true -> cwd
             end
@@ -558,33 +557,6 @@ defmodule CodegenTestHarness.Fixtures do
   end
 
   # ── Private helpers ───────────────────────────────────────────────────────────
-  @doc """
-  Returns the static stack specs used by parametrized iteration tests.
-
-  Each entry is `{stack_atom, change_request_prompt, [contracted_markers]}`.
-  The `stack_atom` is passed as `stack:` opt to `run_codegen_build/3`.
-  """
-  @type stack_spec() :: {atom(), String.t(), [String.t()]}
-  @spec static_stacks() :: [stack_spec()]
-  def static_stacks do
-    [
-      {:static,
-       "Add a <section id=\"faq\"> with three <details> elements containing <summary> and <p> children.",
-       [~s(id="faq"), "<details", "<summary"]},
-      {:hugo,
-       "Add a new blog post titled 'Spring Garden Tips' with at least 100 words of body content.",
-       ["Spring Garden Tips"]},
-      {:vite_react,
-       "Add a <input data-testid=\"step\" type=\"number\"> to the counter. Each increment click MUST add the step value (default 1).",
-       [~s(data-testid="step")]},
-      {:vite_vue, "Add a <button data-testid=\"reset\"> that resets the hex output to #000000.",
-       [~s(data-testid="reset")]},
-      {:multilingual,
-       "Add an <a href=\"/en\"> English link and <a href=\"/hr\"> Croatian link to the nav.",
-       [~s(href="/en"), ~s(href="/hr")]}
-    ]
-  end
-
   @doc """
   Writes `output` to the file named by `DIAGNOSTICS_FILE` env var, if set.
 

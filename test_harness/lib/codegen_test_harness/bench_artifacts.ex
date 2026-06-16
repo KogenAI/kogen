@@ -6,8 +6,7 @@ defmodule CodegenTestHarness.BenchArtifacts do
   with a deterministic 1280×720 viewport. Screenshots are written to
   `<run_dir>/runs/<harness>/<stack>/<test_name>.png` alongside JSONL records.
 
-  **Scope**: static stacks (`:static`, `:hugo`, `:vite_react`, `:vite_vue`,
-  `:multilingual`) and the `:phoenix` stack. Modes stacks are no-ops — no
+  **Scope**: the `:static` and `:phoenix` stacks. Modes stacks are no-ops — no
   website to render. Phoenix stacks spawn `mix phx.server` on a dynamic port,
   poll for HTTP 200, capture the screenshot, then SIGTERM/SIGKILL the process
   group.

@@ -49,7 +49,7 @@ Add React/Vue/Svelte ONLY when the plan explicitly calls for it:
 
 - React: add `react`, `react-dom`, `@vitejs/plugin-react`; entry is `src/main.jsx`; import React in JSX files
 - Vue: add `vue`, `@vitejs/plugin-vue`; entry is `src/main.js`; components in `src/components/*.vue`
-- Multi-page with routing: React Router (`react-router-dom`) — never Hugo for React apps
+- Multi-page with routing: React Router (`react-router-dom`)
 
 ## Multi-Page (vanilla)
 

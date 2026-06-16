@@ -33,7 +33,7 @@ defmodule CodegenTestHarness.Stacks.Static.GateTest do
            "expected package.json in #{cwd}\n--- output ---\n#{output}"
 
     Assertions.assert_npm_builds!(cwd)
-    Assertions.assert_built_html_non_blank!(cwd, "dist/index.html")
+    Assertions.assert_built_html_non_blank!(cwd, "public/index.html")
     Assertions.assert_git_committed!(cwd)
     Assertions.assert_renders!(cwd, :static)
 

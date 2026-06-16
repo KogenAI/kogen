@@ -1,5 +1,5 @@
-defmodule CodegenTestHarness.Stacks.Static.IterationTest.HtmlChangeRequest do
-  @moduledoc "html change-request: new commit with faq markers"
+defmodule CodegenTestHarness.Stacks.Static.IterationTest.VanillaChangeRequest do
+  @moduledoc "vanilla change-request: new commit with faq markers"
   use ExUnit.Case, async: true
 
   alias CodegenTestHarness.Assertions
@@ -12,21 +12,21 @@ defmodule CodegenTestHarness.Stacks.Static.IterationTest.HtmlChangeRequest do
     {:ok, cwd: Fixtures.isolated_tmp_dir()}
   end
 
-  @html_first_prompt ~s(Build a single-page landing site for a coffee shop called Brew & Co. ) <>
-                       ~s(Include a <section id="hours"> with opening hours.)
+  @vanilla_first_prompt ~s(Build a single-page landing site for a coffee shop called Brew & Co. ) <>
+                          ~s(Include a <section id="hours"> with opening hours.)
 
-  @html_change_prompt "Add a <section id=\"faq\"> with three <details> elements, " <>
-                        "each containing a <summary> (the question) and a <p> (the answer)."
+  @vanilla_change_prompt "Add a <section id=\"faq\"> with three <details> elements, " <>
+                           "each containing a <summary> (the question) and a <p> (the answer)."
 
-  test "html change-request lands new commit with faq markers", %{cwd: cwd} do
+  test "vanilla change-request lands new commit with faq markers", %{cwd: cwd} do
     {commits_before, commits_after} =
-      Fixtures.change_request(cwd, @html_first_prompt, @html_change_prompt,
+      Fixtures.change_request(cwd, @vanilla_first_prompt, @vanilla_change_prompt,
         stack: "static",
-        test_name: "iteration_static_html_faq"
+        test_name: "iteration_static_vanilla_faq"
       )
 
     assert commits_after > commits_before,
-           "html change request must produce a new commit. Before: #{commits_before}, after: #{commits_after}"
+           "vanilla change request must produce a new commit. Before: #{commits_before}, after: #{commits_after}"
 
     html_files = Path.wildcard(Path.join(cwd, "**/*.html"))
 
@@ -46,62 +46,8 @@ defmodule CodegenTestHarness.Stacks.Static.IterationTest.HtmlChangeRequest do
     Assertions.assert_commit_subject_length!(cwd)
     Assertions.assert_not_revert_head!(cwd)
     Assertions.assert_renders!(cwd, :static)
-    Fixtures.bench_assertions_passed!("static", "iteration_static_html_faq_scaffold")
-    Fixtures.bench_assertions_passed!("static", "iteration_static_html_faq_change")
-  end
-end
-
-defmodule CodegenTestHarness.Stacks.Static.IterationTest.HugoChangeRequest do
-  @moduledoc "hugo change-request: new commit with new post"
-  use ExUnit.Case, async: true
-
-  alias CodegenTestHarness.Assertions
-  alias CodegenTestHarness.Fixtures
-
-  @moduletag :slow
-  @moduletag timeout: 1_800_000
-
-  setup do
-    {:ok, cwd: Fixtures.isolated_tmp_dir()}
-  end
-
-  @hugo_first_prompt ~s(Create a Hugo blog with three sample posts about gardening. ) <>
-                       ~s(Each post must have a title and at least 50 words of body content.)
-
-  @hugo_change_prompt ~s(Add a new blog post titled 'Spring Garden Tips' ) <>
-                        ~s(with at least 100 words of body content about planting vegetables.)
-
-  test "hugo change-request lands new commit with new post", %{cwd: cwd} do
-    {commits_before, commits_after} =
-      Fixtures.change_request(cwd, @hugo_first_prompt, @hugo_change_prompt,
-        stack: "static",
-        test_name: "iteration_static_hugo_spring"
-      )
-
-    assert commits_after > commits_before,
-           "hugo change request must produce a new commit. Before: #{commits_before}, after: #{commits_after}"
-
-    all_files =
-      [Path.join(cwd, "**/*.md"), Path.join(cwd, "**/*.html")]
-      |> Enum.flat_map(&Path.wildcard/1)
-
-    found =
-      Enum.any?(all_files, fn path ->
-        File.read!(path) =~ ~r/spring garden tips/i
-      end)
-
-    assert found,
-           "Expected 'Spring Garden Tips' in at least one file under #{cwd}. " <>
-             "Files searched: #{length(all_files)}"
-
-    Assertions.assert_hugo_builds!(cwd)
-    Assertions.assert_git_committed!(cwd)
-    Assertions.assert_commit_well_formed!(cwd)
-    Assertions.assert_commit_subject_length!(cwd)
-    Assertions.assert_not_revert_head!(cwd)
-    Assertions.assert_renders!(cwd, :static)
-    Fixtures.bench_assertions_passed!("static", "iteration_static_hugo_spring_scaffold")
-    Fixtures.bench_assertions_passed!("static", "iteration_static_hugo_spring_change")
+    Fixtures.bench_assertions_passed!("static", "iteration_static_vanilla_faq_scaffold")
+    Fixtures.bench_assertions_passed!("static", "iteration_static_vanilla_faq_change")
   end
 end
 

@@ -182,22 +182,6 @@ defmodule CodegenTestHarness.Assertions do
     :ok
   end
 
-  @spec assert_hugo_builds!(String.t()) :: :ok
-  def assert_hugo_builds!(cwd) do
-    case System.find_executable("hugo") do
-      nil ->
-        IO.warn("hugo not on PATH — skipping assert_hugo_builds! in #{cwd}")
-        :ok
-
-      _hugo ->
-        {output, exit_code} =
-          System.cmd("hugo", ["--quiet"], cd: cwd, stderr_to_stdout: true, env: [])
-
-        assert exit_code == 0, "hugo --quiet failed in #{cwd}:\n#{output}"
-        :ok
-    end
-  end
-
   @doc """
   Runs `mix test --max-failures 1` in `cwd` and asserts exit code is 0.
 
@@ -233,7 +217,7 @@ defmodule CodegenTestHarness.Assertions do
   Returns `:ok`.
   """
   @spec assert_built_html_non_blank!(String.t(), String.t()) :: :ok
-  def assert_built_html_non_blank!(cwd, rel \\ "dist/index.html") do
+  def assert_built_html_non_blank!(cwd, rel \\ "public/index.html") do
     path = Path.join(cwd, rel)
     assert File.exists?(path), "expected #{rel} after build"
     html = File.read!(path)
@@ -243,8 +227,8 @@ defmodule CodegenTestHarness.Assertions do
 
   @doc """
   Asserts that rendering the app at `cwd` produces PASS or INCONCLUSIVE.
-  INCONCLUSIVE is tolerated — browser or server may be absent in CI (mirrors
-  `assert_hugo_builds!` semantics). FAIL causes a flunk.
+  INCONCLUSIVE is tolerated — browser or server may be absent in CI.
+  FAIL causes a flunk.
 
   `mode` is `:phoenix` or `:static`.
 

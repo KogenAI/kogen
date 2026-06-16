@@ -160,12 +160,11 @@ check_css_output() {
     # No scripts object → tooling-only; skip.
     jq -e '.scripts' package.json >/dev/null 2>&1 || return 0
 
-    if [ ! -d "public" ] && [ ! -d "dist" ]; then
-        fail "No output directory (public/ or dist/) — build may have failed"
+    if [ ! -d "public" ]; then
+        fail "No output directory (public/) — build may have failed"
     fi
 
     output_dir="public"
-    [ -d "dist" ] && output_dir="dist"
 
     if ! find "$output_dir" -name "*.css" -type f | head -1 | grep -q .; then
         fail "No .css file found in $output_dir — Tailwind compilation failed or missing"
@@ -180,7 +179,6 @@ check_html_stylesheet_link() {
     jq -e '.scripts' package.json >/dev/null 2>&1 || return 0
 
     output_dir="public"
-    [ -d "dist" ] && output_dir="dist"
 
     built_html="$output_dir/index.html"
     if [ -f "$built_html" ]; then
@@ -213,7 +211,6 @@ run_render_check() {
 # Determine output dir — same logic as check_css_output/check_html_stylesheet_link.
 if [ "$_NPM_BUILD_SKIPPED" = "false" ] && [ -f package.json ] && jq -e '.scripts' package.json >/dev/null 2>&1; then
     _output_dir="public"
-    [ -d "dist" ] && _output_dir="dist"
 
     if [ -d "$_output_dir" ]; then
         run_render_check "$_output_dir"

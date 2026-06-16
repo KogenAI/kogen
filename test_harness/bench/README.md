@@ -64,26 +64,18 @@ Sub-stack is detected first (before any directory existence check) to avoid the 
 
 Detection order:
 
-1. `public/index.html` exists **and** passes bundle-marker check → serve `public/` (already built — Hugo or Vite output)
-2. `dist/index.html` exists **and** passes bundle-marker check → serve `dist/` (already built — Vite output)
-3. `vite.config.*` + `package.json` detected (or bundle-marker check failed above) → run `npm install && npm run build`, then serve `dist/` (or `public/` if build outputs there)
-4. Hugo config (`hugo.toml` / `config.toml` / `hugo.yaml` / `hugo.json`) detected → run `hugo --quiet`, serve `public/`
-5. `index.html` at cwd root (plain HTML) → serve cwd
-6. Any `.html` file at cwd root → serve cwd
+1. `dist/index.html` exists **and** passes bundle-marker check → serve `dist/` (already built — Vite output)
+2. `vite.config.*` + `package.json` detected (or bundle-marker check failed above) → run `npm install && npm run build`, then serve `dist/` (or `public/` if build outputs there)
+3. `index.html` at cwd root (plain HTML) → serve cwd
+4. Any `.html` file at cwd root → serve cwd
 
 ### `multilingual`
 
 Detection order:
 
-1. `public/index.html` exists → serve `public/` (already built Hugo output)
-2. `dist/index.html` exists → serve `dist/` (Vite multilingual build)
-3. Hugo config found → run `hugo --quiet`, serve `public/` if produced
-4. `static/index.html` exists → serve `static/` (plain multi-page layout without Hugo)
-5. Fallback: serve cwd
-
-### `hugo`
-
-Checks `public/`. If missing, runs `hugo --quiet` and serves `public/`.
+1. `dist/index.html` exists → serve `dist/` (Vite multilingual build)
+2. `static/index.html` exists → serve `static/` (plain multi-page layout)
+3. Fallback: serve cwd
 
 ### `vite_react` / `vite_vue`
 
