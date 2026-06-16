@@ -50,7 +50,7 @@ export function register(pi: ExtensionAPI): void {
     }
 
     try {
-      execSync("mise exec -- npm run build", {
+      execSync("make ci", {
         cwd: projectDir,
         stdio: "pipe",
       });

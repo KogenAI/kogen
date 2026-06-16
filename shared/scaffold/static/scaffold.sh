@@ -75,17 +75,17 @@ touch "$CWD/static/js/.keep"
 
 # ── static/index.html ─────────────────────────────────────────────────────────
 cat >"$CWD/static/index.html" <<EOF
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>${APP_NAME}</title>
-  <link rel="stylesheet" href="/css/app.css" />
-</head>
-<body>
-  <h1>${APP_NAME}</h1>
-</body>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>${APP_NAME}</title>
+    <link rel="stylesheet" href="/css/app.css" />
+  </head>
+  <body>
+    <h1>${APP_NAME}</h1>
+  </body>
 </html>
 EOF
 

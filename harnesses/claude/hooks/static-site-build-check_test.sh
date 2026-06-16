@@ -48,6 +48,7 @@ make_tmp_site() {
   }
 }
 JSON
+        printf 'ci:\n\t@true\n' >Makefile
     )
     printf '%s' "$d"
 }
@@ -96,6 +97,7 @@ cat >"$T4/package.json" <<'JSON'
   }
 }
 JSON
+printf 'ci:\n\texit 1\n' >"$T4/Makefile"
 run_test "npm run build failure blocks" "block" "$(input_for "$T4")"
 rm -rf "$T4"
 
@@ -132,6 +134,7 @@ cat >"$T6/package.json" <<'JSON'
   }
 }
 JSON
+printf 'ci:\n\t@true\n' >"$T6/Makefile"
 run_test "missing scripts.serve blocks" "block" "$(input_for "$T6")"
 rm -rf "$T6"
 
@@ -145,6 +148,7 @@ cat >"$T7/package.json" <<'JSON'
   }
 }
 JSON
+printf 'ci:\n\t@true\n' >"$T7/Makefile"
 run_test "scripts.serve wrong tail blocks" "block" "$(input_for "$T7")"
 rm -rf "$T7"
 

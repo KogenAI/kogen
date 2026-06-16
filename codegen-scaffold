@@ -317,7 +317,7 @@ run_integrate_stage() {
     # ── ci: Makefile target injection (static only, idempotent) ───────────────
     if [[ "$STACK" == "static" ]]; then
         if ! grep -q '^ci:' "$target_dir/Makefile" 2>/dev/null; then
-            printf '\nci:\n\tnpm run build\n' >>"$target_dir/Makefile"
+            printf '\nci:\n\tnpm run build\n\tnpx prettier --check .\n' >>"$target_dir/Makefile"
         fi
     fi
 

@@ -18,7 +18,7 @@
 # the orchestrator's chain detector still sees the role marker.
 #
 # Checks (deterministic order, first failure short-circuits):
-#   1. `mise exec -- npm run build` — skip if no package.json (Hugo case).
+#   1. `make ci` — skip if no package.json (Hugo case).
 #   2. package.json invariants — scripts.build present, scripts.serve present,
 #      scripts.serve ends with `python3 -u -m http.server --directory public 0`.
 #   3. Tailwind v4 config absence — neither tailwind.config.js nor postcss.config.js
@@ -104,10 +104,10 @@ check_npm_build() {
     fi
 
     local out
-    if ! out=$(mise exec -- npm run build 2>&1); then
+    if ! out=$(make ci 2>&1); then
         local tail_out
         tail_out=$(printf '%s' "$out" | awk '{lines[NR]=$0} END{start=(NR>30)?(NR-29):1; for(i=start;i<=NR;i++) print lines[i]}')
-        fail "npm run build failed: $tail_out"
+        fail "make ci failed: $tail_out"
     fi
 }
 
@@ -252,7 +252,7 @@ fi
 log_file=$(session_log_from_transcript)
 
 # Determine final verdict based on render check result and build mode
-_gate_cmd="mise exec -- npm run build"
+_gate_cmd="make ci"
 _diff_sha=$(git -C "$project_dir" rev-parse --short HEAD 2>/dev/null || printf 'unknown')
 _diff_count=$(git -C "$project_dir" diff --name-only origin/main...HEAD 2>/dev/null | wc -l | tr -d ' ' || printf '0')
 _ts_now=$(date -u +%Y-%m-%dT%H:%M:%SZ)
@@ -312,7 +312,7 @@ elif [ -w "$log_file" ]; then
         printf '**Commands executed**:\n\n'
         printf '| Time (HH:MM:SS UTC) | Command | Exit | Notes |\n'
         printf '| ------------------- | ------- | ---- | ----- |\n'
-        printf '| %s | mise exec -- npm run build | 0 | (skipped if no package.json) |\n' "$ts"
+        printf '| %s | make ci | 0 | (skipped if no package.json) |\n' "$ts"
         printf '| %s | jq .scripts.build/.scripts.serve | 0 | package.json invariants |\n' "$ts"
         printf '| %s | test -f tailwind.config.js / postcss.config.js | 1 | Tailwind v4 config absence |\n' "$ts"
         printf '| %s | grep -rE @tailwind --include=*.css . | 1 | Tailwind v4 directive check |\n' "$ts"

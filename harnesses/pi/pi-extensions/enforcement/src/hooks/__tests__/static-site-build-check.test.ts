@@ -104,6 +104,8 @@ describe("static-site-build-check render-check integration", () => {
           },
         }),
       );
+      // Makefile with ci: target so make ci succeeds in the fixture.
+      fs.writeFileSync(path.join(tmpDir, "Makefile"), "ci:\n\t@true\n");
       // Create output dir so render check is attempted.
       fs.mkdirSync(path.join(tmpDir, "public"), { recursive: true });
       fs.writeFileSync(
@@ -190,6 +192,8 @@ describe("static-site-build-check render-check integration", () => {
           },
         }),
       );
+      // Makefile with ci: target so make ci succeeds in the fixture.
+      fs.writeFileSync(path.join(tmpDir, "Makefile"), "ci:\n\t@true\n");
       fs.mkdirSync(path.join(tmpDir, "public"), { recursive: true });
       fs.writeFileSync(
         path.join(tmpDir, "public", "index.html"),

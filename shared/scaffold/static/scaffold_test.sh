@@ -306,11 +306,16 @@ mkdir -p "$STATIC_CI_CWD"
 "$CODEGEN_SCAFFOLD" integrate --stack=static --cwd="$STATIC_CI_CWD" --slug=test-ci
 CI_COUNT=$(grep -c '^ci:' "$STATIC_CI_CWD/Makefile" || true)
 check "static integrate creates ci: Makefile target" "1" "$CI_COUNT"
+CI_BODY="$(cat "$STATIC_CI_CWD/Makefile")"
+assert_contains "static ci: target runs npm run build" "$CI_BODY" "npm run build"
+assert_contains "static ci: target runs prettier check" "$CI_BODY" "npx prettier --check ."
 
 # (y) Static ci: is idempotent (second integrate doesn't duplicate)
 "$CODEGEN_SCAFFOLD" integrate --stack=static --cwd="$STATIC_CI_CWD" --slug=test-ci
 CI_COUNT_AFTER=$(grep -c '^ci:' "$STATIC_CI_CWD/Makefile" || true)
 check "static ci: idempotent after re-run" "1" "$CI_COUNT_AFTER"
+PRETTIER_COUNT=$(grep -c 'npx prettier --check .' "$STATIC_CI_CWD/Makefile" || true)
+check "static ci: prettier line not duplicated" "1" "$PRETTIER_COUNT"
 
 # (z) Phoenix integrate writes usage_rules_INDEX.md
 USAGE_RULES_CWD="$BASE_TMP/usage_rules_test"
