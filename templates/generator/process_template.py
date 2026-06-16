@@ -76,6 +76,11 @@ def process_includes_recursively(content, depth=0):
 
 def _strip_template_blocks(content, tool_name, yaml_frontmatter):
     """Strip Jinja-style {% %} blocks based on tool/frontmatter selectors."""
+    # Resolve includes FIRST so that {% if %} blocks inside fragments are
+    # inlined before per-tool stripping — otherwise fragment conditionals
+    # survive un-stripped and the final blanket-cleanup concatenates both branches.
+    content = process_includes_recursively(content)
+
     # Process YAML frontmatter blocks
     if yaml_frontmatter:
         def replace_frontmatter(match):
@@ -125,9 +130,6 @@ def _strip_template_blocks(content, tool_name, yaml_frontmatter):
             content,
             flags=re.DOTALL,
         )
-
-    # Resolve {% include 'path' %} directives recursively (handles nested includes).
-    content = process_includes_recursively(content)
 
     # Replace simple variables.
     content = content.replace('{{ tool.name }}', tool_name)

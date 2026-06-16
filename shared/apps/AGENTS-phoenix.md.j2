@@ -20,12 +20,7 @@ Do NOT read PROJECT_CONTEXT.md, domain context files, or recipes — planner doe
 
 ## Behavioral Rules
 
-- **Surgical changes**: Make only changes required to fulfil request. Do not refactor, rename, or reformat code the request did not mention.
-
-- **Goal-driven verification**: After implementing, verify the specific goal is satisfied — not just that code compiles and CI is green. Run targeted test exercising requested behavior; if no such test exists, write one.
-
-- **Multiple interpretations**: If request has two or more plausible interpretations leading to materially different code changes, stop and return clarification request via result JSON rather than guessing.
-
+{% include 'apps/_orch-behavioral.md.j2' %}
 ## What You Never Do
 
 - Put `PORT`, `DATABASE_URL`, `PHX_HOST`, `SECRET_KEY_BASE`, or `PHX_SERVER` in `.env` — ProcessManager injects these
@@ -47,67 +42,7 @@ Orchestrator reads `## Slices` from planner's plan. Delegates per slice in order
 
 Backend runs before frontend by default.
 
-## Session Logging
-
-{% if tool.name == 'claude' %}@codegen/rules/_core/session-log.md
-{% else %}→ See `codegen/rules/_core/session-log.md` for format.
-{% endif %}
-
-**WHERE**: `codegen/logging/$(date -u +%Y%m%d_%H%M%S)_session.md`
-
-Each invocation creates NEW log file. Run `date -u +%Y%m%d_%H%M%S` via Bash for timestamp. Create BEFORE delegating to planner. After writing file, immediately stamp it:
-
-```bash
-{
-  echo ""
-  echo "## Version Stamp"
-  echo ""
-  echo "- harness: $(git rev-parse --short HEAD 2>/dev/null || echo unknown)"
-  echo "- context: $(git -C ./codegen/context rev-parse --short HEAD 2>/dev/null || echo unknown)"
-  echo "- codegen: $(git -C ./codegen/rules rev-parse --short HEAD 2>/dev/null || echo unknown)"
-  {% if tool.name == 'claude' %}echo "- claude: $(claude --version 2>/dev/null || echo unknown)"
-  {% else %}echo "- pi: $(pi --version 2>/dev/null || echo unknown)"
-  {% endif %}
-  echo "- stamped_at: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
-} >> <SESSION_LOG>
-```
-
-```markdown
-# Session Log
-
-**Started**: $(date -u)
-**Task**: [What you're doing]
-
-## Version Stamp
-
-- harness: <hash>
-- context: <hash>
-- codegen: <hash>
-{% if tool.name == 'claude' %}- claude: <version>
-{% else %}- pi: <version>
-{% endif %}
-- stamped_at: <iso timestamp>
-
-## Rules Loaded
-
-- [x] codegen/PROJECT_CONTEXT.md
-- [x] codegen/rules/roles/orchestrator.md
-
-## Plan
-
-⛔ ORCHESTRATOR: Do NOT write anything here. This section is filled in by the planner subagent ONLY.
-Spawn the planner now. Do not write a plan. Do not write bullet points. Do not write phases. Spawn the planner.
-
-## Delegation Timeline
-
-| Time | Agent | Task | Result |
-| ---- | ----- | ---- | ------ |
-
-## Files Modified
-
-- [ ] [list files as subagents modify them]
-```
-
+{% include 'apps/_orch-session-log.md.j2' %}
 ## Phase 0 — planner
 
 **DO NOT write the plan yourself. ALWAYS spawn the planner subagent — no exceptions for user-app builds.**
@@ -298,52 +233,12 @@ After delegating to context-curator, append row to `## Delegation Timeline`:
 
 After context-curator completes: **spawn committer.**
 
-```
-
-You are the committer subagent.
-
-APP PATH: <app_path>
-TASK SUMMARY: <brief description of what was built and why — WHY only; never name files or say "staged" — the committer stages the whole cycle (`git add -A`) itself. NEVER include the gate command, test output, or CI status.>
-
-```
-
-After delegating to committer, append row to `## Delegation Timeline`:
-`| <time> | committer | Commit changes | <result> |`
-
-After committer confirms the commit: if this is a pitch-driven build and the pitch file is still in `codegen/pitches/ready/`, move it: `mv codegen/pitches/ready/<slug>.md codegen/pitches/shipped/<slug>.md` (plain `mv` — pitch files are untracked, NEVER `git mv`).
-
+{% include 'apps/_orch-committer.md.j2' %}
 ## Update PROJECT_CONTEXT.md Before Reporting Done
 
 Cross-reference modified files against `codegen/PROJECT_CONTEXT.md` § Domain Context Files Update column. Update every matched row before reporting done. If structural changes added new modules or files that no row covers, add a new row to § Domain Context Files with concrete Load-when and Update-when targets.
 
-## Result Reporting (MANDATORY)
-
-{% if tool.name == 'claude' %}@codegen/rules/build-runtime/result-json.md
-{% else %}→ See `codegen/rules/build-runtime/result-json.md` for build result JSON contract.
-{% endif %}
-
-Final message MUST contain exactly one fenced JSON block with build result and NOTHING after it:
-
-```json
-{ "status": "success" }
-```
-
-or, on failure:
-
-```json
-{ "status": "failed", "reason": "<short reason>" }
-```
-
-Rules:
-
-- Block MUST be in a ``json fenced code block (lowercase `json` after the opening ``).
-- Block MUST be the last thing in final message — no prose, no commit hashes, no farewells after closing ```.
-- `status` is exactly `"success"` or `"failed"` (lowercase string).
-- For failures, `reason` is single short sentence (under 200 chars).
-- Emit at most ONE such JSON block. A second one anywhere in final message → build recorded as failed.
-
-This block is parsed programmatically. If you omit it, emit invalid JSON, or include extra text after it, build is recorded as failed even if all work succeeded. Do NOT output it before committing.
-
+{% include 'apps/_orch-result-json.md.j2' %}
 `{"status":"success"}` requires ALL of:
 
 1. Session log exists with all subagent sections

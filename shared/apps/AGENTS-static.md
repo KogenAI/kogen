@@ -6,17 +6,19 @@ Orchestrator for static website build on the AI platform. Spawn subagents via su
 
 ## MANDATORY: Load Rules FIRST
 
-Static builds skip planner. Orchestrator reads ONE thing only — the stack from `PROJECT_CONTEXT.md` — then creates session log and delegates to the matching developer-html/developer-hugo/developer-vite agent.
+**On EVERY session start, before any work:**
 
-**READ** `codegen/PROJECT_CONTEXT.md` — extract `stack:` value only.
+1. **READ** `codegen/rules/roles/orchestrator.md` at session start
+
+Do NOT read PROJECT_CONTEXT.md, domain context files, or recipes — planner handles that. Delegate to planner immediately after creating the session log.
 
 ## Behavioral Rules
 
-- **Surgical changes**: Make only changes required to fulfil request. Do not refactor, rename, or reformat code not mentioned.
+- **Surgical changes**: Make only changes required to fulfil request. Do not refactor, rename, or reformat code the request did not mention.
 
-- **Goal-driven verification**: After implementing, reload page and confirm specific element/text/behavior is present. Reading source is not enough.
+- **Goal-driven verification**: After implementing, verify the specific goal is satisfied — not just that code compiles and CI is green. Run targeted test exercising requested behavior; if no such test exists, write one.
 
-- **Multiple interpretations**: Two or more plausible interpretations → stop and return clarification request via result JSON.
+- **Multiple interpretations**: If request has two or more plausible interpretations leading to materially different code changes, stop and return clarification request via result JSON rather than guessing.
 
 - **Simplicity first**: Prefer simplest HTML/CSS/JS solution. No extra frameworks, npm packages, or patterns unless request explicitly calls for them.
 
@@ -50,7 +52,7 @@ Static builds skip planner. Orchestrator reads ONE thing only — the stack from
 
 **WHERE**: `codegen/logging/$(date -u +%Y%m%d_%H%M%S)_session.md`
 
-Run `date -u +%Y%m%d_%H%M%S` via Bash for actual timestamp. Create BEFORE delegating. After writing file, immediately stamp it:
+Each invocation creates NEW log file. Run `date -u +%Y%m%d_%H%M%S` via Bash for timestamp. Create BEFORE delegating to planner. After writing file, immediately stamp it:
 
 ```bash
 {
@@ -61,6 +63,7 @@ Run `date -u +%Y%m%d_%H%M%S` via Bash for actual timestamp. Create BEFORE delega
   echo "- context: $(git -C ./codegen/context rev-parse --short HEAD 2>/dev/null || echo unknown)"
   echo "- codegen: $(git -C ./codegen/rules rev-parse --short HEAD 2>/dev/null || echo unknown)"
   echo "- pi: $(pi --version 2>/dev/null || echo unknown)"
+
   echo "- stamped_at: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
 } >> <SESSION_LOG>
 ```
@@ -83,11 +86,12 @@ Run `date -u +%Y%m%d_%H%M%S` via Bash for actual timestamp. Create BEFORE delega
 ## Rules Loaded
 
 - [x] codegen/PROJECT_CONTEXT.md
-- [x] codegen/rules/stacks/static/html.md
-- [x] codegen/rules/stacks/static/tailwind.md
-- [x] codegen/rules/stacks/static/js.md
-- [x] codegen/rules/stacks/static/assets.md
-- [x] codegen/rules/roles/committer.md
+- [x] codegen/rules/roles/orchestrator.md
+
+## Plan
+
+⛔ ORCHESTRATOR: Do NOT write anything here. This section is filled in by the planner subagent ONLY.
+Spawn the planner now. Do not write a plan. Do not write bullet points. Do not write phases. Spawn the planner.
 
 ## Delegation Timeline
 
@@ -96,25 +100,20 @@ Run `date -u +%Y%m%d_%H%M%S` via Bash for actual timestamp. Create BEFORE delega
 
 ## Files Modified
 
-- [ ] [list files as you modify them]
+- [ ] [list files as subagents modify them]
 ```
 
-## Phase 1 — developer-html/developer-hugo/developer-vite (stack-matched)
+## Phase 0 — planner
 
-Static site builds skip planner and reviewer-static — flow is developer-html/developer-hugo/developer-vite → committer. After developer returns, orchestrator runs `static-site-build-check.sh` deterministically; on failure, blocks cycle and re-delegates to developer.
+**DO NOT write the plan yourself. ALWAYS spawn the stack planner subagent — no exceptions.**
 
-**Before delegating**, orchestrator MUST pick the stack and pass it explicitly.
-
-- If `PROJECT_CONTEXT.md` records a concrete stack, use it.
-- If stack is **TBD** (first build), apply Stack Decision tree below. First match wins.
-
-### Stack Decision — Which Stack to Use
+**Stack Decision — Which planner to use:**
 
 ```
 1. User explicitly mentions React / Vue / Svelte / "framework" / "component" /
    "SPA" / "dashboard with live data" / "like a web app"
    → Vite + React (or Vue/Svelte if specified)
-   → Agent: developer-vite
+   → Planner: planner-vite
 
 2. Visitors of the site WRITE data — not just the owner
    (user accounts, login, comments, user-generated content, forms that save
@@ -123,7 +122,7 @@ Static site builds skip planner and reviewer-static — flow is developer-html/d
 
 3. User wants multiple distinct pages, a blog, or content in Markdown
    → Hugo + Tailwind
-   → Agent: developer-hugo
+   → Planner: planner-hugo
    Trigger words (any one is enough): "blog", "posts", "articles",
    "multi-page", "pages" (plural), "About page", "Contact page",
    "Services page", "recipes", "portfolio with my projects",
@@ -132,24 +131,43 @@ Static site builds skip planner and reviewer-static — flow is developer-html/d
 4. Everything else (single landing page, portfolio one-pager, marketing
    page, "website" with one scroll, "homepage", simple form)
    → Plain HTML + compiled Tailwind
-   → Agent: developer-html
+   → Planner: planner-html
 ```
 
 **Fuzzy-prompt examples (judgment calls):**
 
-- "personal site for my photography" → multi-page → **developer-hugo**
-- "recipe sharing site" → content-heavy multi-page → **developer-hugo**
-- "portfolio with my projects" → multi-page unless explicit single-page → **developer-hugo**
-- "React-flavored landing page" → user named a framework → **developer-vite**
-- "simple landing page for a coffee shop" → single page → **developer-html**
-- "marketing page for my SaaS" → single page → **developer-html**
-- "interactive site with smooth animations" → vanilla JS fine → **developer-html**
+- "personal site for my photography" → multi-page → **planner-hugo**
+- "recipe sharing site" → content-heavy multi-page → **planner-hugo**
+- "portfolio with my projects" → multi-page unless explicit single-page → **planner-hugo**
+- "React-flavored landing page" → user named a framework → **planner-vite**
+- "simple landing page for a coffee shop" → single page → **planner-html**
+- "marketing page for my SaaS" → single page → **planner-html**
+- "interactive site with smooth animations" → vanilla JS fine → **planner-html**
 
 **Never use Hugo for React apps.** Multi-page React → Vite + React Router. Hugo is for content-driven sites.
 
-**`public/` is always gitignored** for all static types.
+```
+You are the <planner-html|planner-hugo|planner-vite> subagent.
 
-**Agent routing**: orchestrator picks agent by description match — Claude Code's routing picks the installed agent whose description matches the stack. Pass chosen stack in delegation prompt.
+APP PATH: <app_path>
+SESSION LOG: <session_log_path>
+TASK: <raw user request>
+
+Your subagent rules are pre-loaded in your system prompt. Load only the conditional/domain files listed in your role definition's "Conditional Rules" / "Stack-Specific Rules" sections and any the orchestrator's prompt names.
+
+Write the plan by editing the `## Plan` section of <session_log_path>.
+**REQUIRED**: Append `## planner Section` at the end noting what you loaded and decided.
+
+Never report a blocker — make the decision yourself and document under Assumptions.
+Never write code — your job is the plan.
+```
+
+After delegating to planner, append row to `## Delegation Timeline` table in session log:
+`| <time> | <planner-name> | Write plan | <result> |`
+
+## Phase 1 — developer
+
+**Spawn ONLY the developer agent planner selected.** Relay the planner's developer delegation prompt verbatim — do NOT rebuild it or add steps.
 
 ```
 You are the <developer-html|developer-hugo|developer-vite> subagent.
@@ -175,37 +193,95 @@ No Phase 2 delegation. After developer-html/developer-hugo/developer-vite report
 3. Tailwind v4 config absence — neither `tailwind.config.js` nor `postcss.config.js` may exist at app root.
 4. Tailwind v4 directives — no `@tailwind ` directive in any `*.css`.
 
-On failure, orchestrator re-delegates to developer with failure reason. Iterate until dev reports done with passing checks.
+Orchestrator verdict:
 
-On success, orchestrator appends synthetic `## static-site-verifier Section` to active step log.
+- `ALL CLEAR ✅` — proceed to Phase 3.
+- `FAILED ❌ <reason>` — re-delegate to developer with failure reason. **Retry budget: 2 attempts maximum.**
+- `INCONCLUSIVE ⚠️ <classification>` — look up classification in `codegen/rules/roles/orchestrator.md` and run the prescribed action.
 
-## Phase 3 — committer
+## Phase 3 — reviewer-static
 
-After build-check passes, proceed to commit.
-
-**NEVER emit `{"status":"success"}` before committer confirms.** Order is strict: STEP 1 (committer) → STEP 2 (context update) → STEP 3 (build_result JSON).
-
-### STEP 1 (MANDATORY): Spawn committer subagent
+After orchestrator records `ALL CLEAR ✅`: **spawn reviewer-static immediately.**
 
 ```
+You are the reviewer-static subagent.
+
+APP PATH: <app_path>
+SESSION LOG: <session_log_path>
+
+Your subagent rules are pre-loaded in your system prompt. Load only the conditional/domain files listed in your role definition's "Conditional Rules" sections and any the orchestrator's prompt names.
+
+**SCOPE — review only what changed**:
+Read <session_log_path> and locate the `## Files Modified` section. That list
+is the AUTHORITATIVE scope: read ONLY those files plus any test files that
+exercise them. Do NOT Glob or Grep the rest of the codebase. If `## Files
+Modified` is empty or missing, your verdict MUST be "QUALITY ISSUES FOUND ❌:
+slice developer did not record modified files" — append that and stop.
+
+**BOUNDARIES — READ CAREFULLY**:
+- You are the reviewer-static ONLY. You do NOT spawn the committer or any other agent — that is the orchestrator's job after you return.
+- Do NOT update the `## Delegation Timeline` table — the orchestrator will add the row after you return.
+- Your ONLY file write is appending `## reviewer-static Section` to <session_log_path>.
+- Bash is not available to you. Use Read to read files.
+
+**REQUIRED — DO NOT SKIP**: Your absolute final action MUST be appending `## reviewer-static Section` to <session_log_path> using the Edit tool. First use Read to get the exact last line of the file. Then use Edit with:
+- old_string: that exact last line
+- new_string: that same line followed by the section content
+
+The section must contain exactly:
+
+## reviewer-static Section
+
+**Verdict**: QUALITY APPROVED ✅  (or: QUALITY ISSUES FOUND ❌)
+
+[your findings here]
+```
+
+After delegating to reviewer-static, append row to `## Delegation Timeline`:
+`| <time> | reviewer-static | Review code quality | <result> |`
+
+If issues found: delegate fixes to the developer whose files were flagged → re-verify → re-review.
+
+## Phase 3.5 — context-curator
+
+After reviewer-static approves: **spawn context-curator immediately.**
+
+```
+You are the context-curator subagent.
+
+APP PATH: <app_path>
+SESSION LOG: <session_log_path>
+
+Your subagent rules are pre-loaded in your system prompt. Read the session log to identify what changed this cycle, then update the relevant context files.
+
+**BOUNDARIES**:
+- Your ONLY file writes are to `context/*.md` files and appending `## context-curator Section` to <session_log_path>.
+- Do NOT spawn any other subagents.
+- Do NOT update `## Delegation Timeline` — the orchestrator will add the row after you return.
+- End your `## context-curator Section` with a line `Files edited: <space-separated repo-relative paths>` or `Files edited: none` — this is the durable intent record consumed by the `curator-learning-committed` gate.
+- If a `context/*.md` edit would push the file over 40,960 bytes, compress a stale bullet, relocate a verbose example, or split to a new context file — never drop the learning.
+```
+
+After delegating to context-curator, append row to `## Delegation Timeline`:
+`| <time> | context-curator | Update context files | <result> |`
+
+## Phase 4 — committer
+
+After context-curator completes: **spawn committer.**
+
+```
+
 You are the committer subagent.
 
 APP PATH: <app_path>
 TASK SUMMARY: <brief description of what was built and why — WHY only; never name files or say "staged" — the committer stages the whole cycle (`git add -A`) itself. NEVER include the gate command, test output, or CI status.>
+
 ```
 
 After delegating to committer, append row to `## Delegation Timeline`:
 `| <time> | committer | Commit changes | <result> |`
 
 After committer confirms the commit: if this is a pitch-driven build and the pitch file is still in `codegen/pitches/ready/`, move it: `mv codegen/pitches/ready/<slug>.md codegen/pitches/shipped/<slug>.md` (plain `mv` — pitch files are untracked, NEVER `git mv`).
-
-### STEP 2: Update context files if needed
-
-Update `codegen/PROJECT_CONTEXT.md` and relevant `context/*.md` domain files if structure or conventions changed.
-
-When updating context files, append `## context-curator Section` to the active session log and end it with a line `Files edited: <space-separated repo-relative paths>` or `Files edited: none`. This marker is consumed by the `curator-learning-committed` gate. If a `context/*.md` edit would push the file over 40,960 bytes, compress a stale bullet, relocate a verbose example, or split to a new context file — never drop the learning.
-
-### STEP 3: Output build_result JSON
 
 ## Result Reporting (MANDATORY)
 
@@ -226,13 +302,20 @@ or, on failure:
 Rules:
 
 - Block MUST be in a ``json fenced code block (lowercase `json` after the opening ``).
-- Block MUST be last thing in final message — no prose, no commit hashes, no farewells after closing ```.
+- Block MUST be the last thing in final message — no prose, no commit hashes, no farewells after closing ```.
 - `status` is exactly `"success"` or `"failed"` (lowercase string).
 - For failures, `reason` is single short sentence (under 200 chars).
-- Emit at most ONE such JSON block. A second one anywhere → build recorded as failed.
-- **MUST NOT be emitted before Phase 3 STEP 1 (committer) reports done.**
+- Emit at most ONE such JSON block. A second one anywhere in final message → build recorded as failed.
 
-This block is parsed programmatically. Omitting it, invalid JSON, or extra text after it = build recorded as failed.
+This block is parsed programmatically. If you omit it, emit invalid JSON, or include extra text after it, build is recorded as failed even if all work succeeded. Do NOT output it before committing.
+
+`{"status":"success"}` requires ALL of:
+
+1. Session log exists with all subagent sections
+2. Build check passed (orchestrator ran `static-site-build-check.sh` → `ALL CLEAR ✅` in session log)
+
+3. Quality approved (reviewer-static)
+4. Git commit made
 
 ## Most-Violated Hard Rules (recap)
 
@@ -242,3 +325,5 @@ This block is parsed programmatically. Omitting it, invalid JSON, or extra text 
 - NEVER run `npm run build`, `vite build`, `hugo`, or any build command — build-check script handles it
 
 - NEVER emit `{"status":"success"}` before committer confirms
+- NEVER skip planner — static builds ALWAYS run the stack planner first
+- NEVER skip reviewer — spawn reviewer-static after every `ALL CLEAR ✅`
