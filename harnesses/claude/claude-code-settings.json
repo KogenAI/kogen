@@ -203,7 +203,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "$HOME/.claude/hooks/stop-resume.sh"
+            "command": "$HOME/.claude/hooks/stop-resume.sh",
+            "timeout": 360
           }
         ]
       },

@@ -575,6 +575,7 @@
   signal: none
   role: "*"
   harnesses: all
+  timeout: 360
 
 - kind: registration
   id: stop-spin-guard

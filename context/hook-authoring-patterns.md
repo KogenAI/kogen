@@ -98,7 +98,7 @@ Count emoji lines as ground truth for verdict coverage, not branch count. Grep t
 
 **Settings.json is auto-generated from HOOK-MANIFEST headers**: `hook_registrations.py:collect_hooks()` globs `harnesses/claude/hooks/*.sh`, parses the `# HOOK-MANIFEST:` header block, and `regenerate_settings()` writes `harnesses/claude/claude-code-settings.json` entries sorted **alphabetically by filename within each event**. Settings entries are NOT hand-edited; they are generated at `make install` and committed as the single source of truth for hook registration. Workflow: (1) write/edit `.sh` with correct HOOK-MANIFEST header, (2) run `make install` to regenerate settings.json, (3) commit both the `.sh` AND the regenerated settings.json together. `make hook-parity` compares committed settings.json against freshly-generated; divergence fails the gate. Hand-editing settings.json breaks parity checks.
 
-**"GENERATED FROM registry.yaml — DO NOT EDIT" banner**: Refers ONLY to the auto-generated `HOOK-MANIFEST:` header block — NOT the script body. The header carries structured metadata (event, tool_guard, signal); the body is hand-authored and editable. `kind: registration`-only hooks (grep the name in `registry.yaml` to confirm) are fully editable (e.g., `orchestrator-read-discipline.sh`).
+**"GENERATED FROM registry.yaml — DO NOT EDIT" banner**: Refers ONLY to the auto-generated `HOOK-MANIFEST:` header block (lines up to the `# ---` terminator) — NOT the script body below it. The header carries structured metadata (event, tool_guard, signal, timeout); the body is hand-authored and editable. `kind: registration`-only hooks (grep the name in `registry.yaml` to confirm) are fully editable (e.g., `orchestrator-read-discipline.sh`, `stop-resume.sh`). **Header preservation**: `inject_header()` in `hook_registrations.py` rewrites ONLY the header span from registry and leaves the body byte-identical across `make install` cycles — safe to edit the body directly.
 
 **When to edit registry.yaml**: Change header values (event, tool_guard, role, signal, harnesses) → run `make install --emit-headers`. Change body deny strings → edit `.sh` directly, no registry change needed.
 
@@ -403,6 +403,10 @@ When a hook file has TWO independent conditions affecting the same logic path (e
 
 **Pattern**: identify sibling conditions → widen ALL to same glob form → add ALLOW + BLOCK tests for a non-base family member.
 
+## Testing External Binary Calls — PATH Stub Pattern
+
+Stub binaries (e.g., `sleep`, `curl`): write fake in temp, prepend PATH. Stub records args to marker; tests assert invocation. Clean via trap.
+
 ## Bypass Green-From-Birth Detection (Test Coverage Strategies for Hook Widening)
 
 When bypass widens (e.g., literal `planner` → `planner*`), an ALLOW test passes under both old (skip) and new (process-then-allow) paths — green-from-birth trap.
@@ -439,13 +443,15 @@ Awk terminates at `## Example Header` (inside the fence), never reaching the ret
 
 ## Hook Registration Mechanics — Registry-Driven Header Sync
 
-When editing a hook's HOOK-MANIFEST field (e.g., widening `role:`, changing `tool_guard:`), **BOTH `.sh` AND `shared/enforcement/registry.yaml` must update together**:
+HOOK-MANIFEST edits require BOTH `.sh` AND `registry.yaml` to update:
 
-1. **Source of truth**: `registry.yaml` holds canonical values (event, tool_guard, role, signal)
-2. **Auto-generation**: `make install` runs `hook_registrations.py --emit-headers` → injects/overwrites `# HOOK-MANIFEST:` header in `.sh`
-3. **Consistency check**: `make hook-parity` diffs committed `claude-code-settings.json` against freshly-generated headers; divergence fails
+1. **Source of truth**: `registry.yaml` holds canonical values (event, tool_guard, role, signal, timeout)
+2. **Auto-generation**: `make install` → injects header from registry, generates settings.json from headers
+3. **Consistency check**: `make hook-parity` diffs committed settings.json vs. freshly-generated; divergence fails
 
-**Workflow**: Edit `registry.yaml` → edit `.sh` HOOK-MANIFEST to match (or let `make install` regenerate) → `make install` → commit both `.sh` + regenerated `settings.json`. Never update only one side.
+**Workflow**: Edit `registry.yaml` → `make install` (regenerates header + settings.json) → commit both. Never hand-edit settings.json — `regenerate_settings()` rebuilds from manifest, wiping stray keys.
+
+**Threading new fields (e.g., `timeout`)**: Register in `registry.yaml` → `render_header()` emits to header (when set) → `parse_manifest()` reads (conditional) → `build_hook_entry()` adds to JSON (conditional only). Prevents spurious keys in sibling hooks, keeps parity green.
 
 `kind: registration` hooks preserve hand-authored bodies across edits. `kind: denial` (`generated: true`) hooks have ENTIRE `.sh` regenerated at `make install` — do not hand-edit.
 ```

@@ -7,6 +7,12 @@
  *
  * Note: Pi extensions cannot auto-resume sessions. This module logs
  * a warning to stderr suggesting manual resume when transient errors detected.
+ *
+ * Reduced-fidelity twin: the Claude twin (stop-resume.sh) now applies
+ * exponential inter-attempt backoff (0s / 60s / 300s-capped) before each
+ * auto-resume block to avoid stampeding an overloaded API. The Pi twin
+ * remains observe-only — session_shutdown cannot block or auto-resume — so
+ * no backoff logic is implemented here. This is documented divergence, not a bug.
  */
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";

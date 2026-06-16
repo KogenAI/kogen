@@ -9,6 +9,7 @@
 # signal: none
 # role: *
 # harnesses: all
+# timeout: 360
 # GENERATED FROM shared/enforcement/registry.yaml — DO NOT EDIT
 
 set -u
@@ -86,6 +87,20 @@ fi
 
 count=$((count + 1))
 printf '%s' "$count" >"$counter_file"
+
+# --- Inter-attempt backoff (space out retries; do not stampede an overloaded API) -------
+# Schedule keyed on attempt count (1..8). Immediate first retry preserves prior behavior;
+# subsequent waits grow then cap at 5 min. Hook `timeout` (360s) in the registration must
+# be >= the max delay (set in shared/enforcement/registry.yaml id: stop-resume).
+case "$count" in
+1) delay=0 ;;   # first retry: immediate
+2) delay=60 ;;  # 1 min
+3) delay=300 ;; # 5 min
+*) delay=300 ;; # cap subsequent waits at 5 min
+esac
+if [ "$delay" -gt 0 ]; then
+    sleep "$delay"
+fi
 
 # --- Emit block decision ----------------------------------------------------
 reason="⏳ Transient network error (socket closed or API unavailable). Auto-resuming, attempt ${count}/8. Re-read the session log in codegen/logging/ and continue where you left off. Consider breaking the next action into smaller steps to avoid another timeout."

@@ -111,6 +111,8 @@ def parse_manifest(script_path: Path) -> dict:
                     fields[key] = val
                 elif key == "harnesses":
                     fields["harnesses"] = val
+                elif key == "timeout":
+                    fields["timeout"] = val
                 # Continue scanning for optional fields (harnesses may follow required).
             elif stripped == "#" or stripped == "":
                 # Blank comment line or empty line → end of manifest key-value block.
@@ -142,6 +144,18 @@ def parse_manifest(script_path: Path) -> dict:
             file=sys.stderr,
         )
         sys.exit(1)
+
+    # Coerce optional timeout field to int.
+    if "timeout" in fields:
+        raw_timeout = fields["timeout"]
+        try:
+            fields["timeout"] = int(raw_timeout)
+        except ValueError:
+            print(
+                f"ERROR: {script_path.name} has non-integer timeout '{raw_timeout}'",
+                file=sys.stderr,
+            )
+            sys.exit(1)
 
     # Parse and validate optional harnesses field.
     # "all" or absent → None (ships everywhere, default).
@@ -385,6 +399,10 @@ def render_header(entry: dict) -> str:
         f"# harnesses: {harnesses_header}",
     ]
 
+    timeout_val = entry.get("timeout")
+    if timeout_val is not None:
+        lines.append(f"# timeout: {timeout_val}")
+
     rationale = entry.get("rationale")
     if rationale:
         rationale_lines = rationale.splitlines()
@@ -603,10 +621,13 @@ def parse_subagent_frontmatter(subagent_path: Path) -> dict:
 
 def build_hook_entry(manifest: dict) -> dict:
     """Build a Claude Code settings.json hook entry."""
-    return {
+    entry = {
         "type": "command",
         "command": f"$HOME/.claude/hooks/{manifest['filename']}",
     }
+    if manifest.get("timeout") is not None:
+        entry["timeout"] = manifest["timeout"]
+    return entry
 
 
 def load_existing_settings(settings_path: Path, existing_settings_path=None) -> dict:

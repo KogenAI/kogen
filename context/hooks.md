@@ -266,7 +266,7 @@ This single source of truth is consumed by three readers — `step-log-completen
 
 ## Enforce-Registry-Parity — Compiler-Generated Files & Gate Ordering
 
-`enforce-registry-parity` compares committed generated files (TypeScript in `harnesses/pi/pi-extensions/enforcement/src/hooks/`, Bash in `harnesses/claude/hooks/committer-write-allowlist.sh` and `reviewer-guard-session-log-write.sh`) against output from `enforcement_compiler.py`. The hook test (`enforce-registry-parity` make target) diffs compiler output with HEAD:
+`enforce-registry-parity` compares **only** `kind: denial` compiler-generated files (TypeScript in `harnesses/pi/pi-extensions/enforcement/src/hooks/`, Bash in `harnesses/claude/hooks/committer-write-allowlist.sh` and `reviewer-guard-session-log-write.sh`) against output from `enforcement_compiler.py`. **Hand-authored `kind: registration` hooks are NOT checked by this gate** — registry edits to registration entries flow through `hook-header-parity` (HOOK-MANIFEST header) and `hook-parity` (settings.json) instead. The hook test (`enforce-registry-parity` make target) diffs compiler output with HEAD:
 
 - **Compiler format**: Single-line, compact (no multi-line conditionals)
 - **Prettier format**: Multi-line, human-readable (applied at commit time)

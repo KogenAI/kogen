@@ -37,6 +37,14 @@ cleanup() {
         /tmp/claude-resume-sess-t12.count \
         /tmp/claude-resume-sess-loop.count
 }
+
+# Create a fake sleep binary in TMP_DIR that records its arg and exits 0.
+# Tests that verify backoff behaviour prepend TMP_DIR to PATH so real sleep
+# is never invoked (keeps the test suite fast even when delay=300).
+SLEEP_STUB="$TMP_DIR/sleep"
+SLEEP_CALLS="$TMP_DIR/sleep-calls"
+printf '#!/usr/bin/env bash\nprintf "%%s\\n" "$1" >> "%s"\n' "$SLEEP_CALLS" >"$SLEEP_STUB"
+chmod +x "$SLEEP_STUB"
 trap cleanup EXIT
 cleanup # clean any leftovers from previous suite runs before tests start
 
@@ -169,6 +177,85 @@ else
     fail=$((fail + 1))
 fi
 rm -f "$COUNTER_INC"
+
+# ── Backoff tests (sleep PATH-stub) ─────────────────────────────────────────
+# These tests verify the exponential-backoff schedule in stop-resume.sh.
+# The fake sleep binary (SLEEP_STUB) records arg to SLEEP_CALLS without sleeping.
+
+# Test A: attempt 1 → delay=0 → sleep NOT invoked
+rm -f "$SLEEP_CALLS"
+SESSION_BA="sess-ba-$(date +%s%N)"
+BA_INPUT="$(mk_stop 'Stream idle timeout occurred' "$SESSION_BA")"
+printf '%s' "$BA_INPUT" | env STOP_HOOK_ACTIVE=false PATH="$TMP_DIR:$PATH" bash "$GUARD" 2>/dev/null || true
+if [ ! -f "$SLEEP_CALLS" ] || [ ! -s "$SLEEP_CALLS" ]; then
+    [ -n "${VERBOSE:-}" ] && printf 'PASS: attempt 1 — no sleep invoked (delay=0)\n'
+    pass=$((pass + 1))
+else
+    printf 'FAIL: attempt 1 — expected no sleep, sleep-calls: %s\n' "$(cat "$SLEEP_CALLS")"
+    fail=$((fail + 1))
+fi
+rm -f "/tmp/claude-resume-${SESSION_BA}.count"
+
+# Test B: attempt 2 → delay=60 → sleep 60 invoked
+rm -f "$SLEEP_CALLS"
+SESSION_BB="sess-bb-$(date +%s%N)"
+COUNTER_BB="/tmp/claude-resume-${SESSION_BB}.count"
+printf '%s' "1" >"$COUNTER_BB"
+BB_INPUT="$(mk_stop 'Stream idle timeout occurred' "$SESSION_BB")"
+printf '%s' "$BB_INPUT" | env STOP_HOOK_ACTIVE=false PATH="$TMP_DIR:$PATH" bash "$GUARD" 2>/dev/null || true
+if [ -f "$SLEEP_CALLS" ] && grep -qx "60" "$SLEEP_CALLS"; then
+    [ -n "${VERBOSE:-}" ] && printf 'PASS: attempt 2 — sleep 60 invoked\n'
+    pass=$((pass + 1))
+else
+    printf 'FAIL: attempt 2 — expected sleep 60, sleep-calls: %s\n' "$(cat "$SLEEP_CALLS" 2>/dev/null || echo "(absent)")"
+    fail=$((fail + 1))
+fi
+rm -f "$COUNTER_BB"
+
+# Test C: attempt 4 → delay=300 (cap) → sleep 300 invoked
+rm -f "$SLEEP_CALLS"
+SESSION_BC="sess-bc-$(date +%s%N)"
+COUNTER_BC="/tmp/claude-resume-${SESSION_BC}.count"
+printf '%s' "3" >"$COUNTER_BC"
+BC_INPUT="$(mk_stop 'Stream idle timeout occurred' "$SESSION_BC")"
+printf '%s' "$BC_INPUT" | env STOP_HOOK_ACTIVE=false PATH="$TMP_DIR:$PATH" bash "$GUARD" 2>/dev/null || true
+if [ -f "$SLEEP_CALLS" ] && grep -qx "300" "$SLEEP_CALLS"; then
+    [ -n "${VERBOSE:-}" ] && printf 'PASS: attempt 4 — sleep 300 invoked (cap)\n'
+    pass=$((pass + 1))
+else
+    printf 'FAIL: attempt 4 — expected sleep 300, sleep-calls: %s\n' "$(cat "$SLEEP_CALLS" 2>/dev/null || echo "(absent)")"
+    fail=$((fail + 1))
+fi
+rm -f "$COUNTER_BC"
+
+# Test D: non-retryable (401) → no sleep invoked
+rm -f "$SLEEP_CALLS"
+SESSION_BD="sess-bd-$(date +%s%N)"
+BD_INPUT="$(mk_stop 'API Error: 401 Unauthorized' "$SESSION_BD")"
+printf '%s' "$BD_INPUT" | env STOP_HOOK_ACTIVE=false PATH="$TMP_DIR:$PATH" bash "$GUARD" 2>/dev/null || true
+if [ ! -f "$SLEEP_CALLS" ] || [ ! -s "$SLEEP_CALLS" ]; then
+    [ -n "${VERBOSE:-}" ] && printf 'PASS: non-retryable (401) — no sleep invoked\n'
+    pass=$((pass + 1))
+else
+    printf 'FAIL: non-retryable (401) — expected no sleep, sleep-calls: %s\n' "$(cat "$SLEEP_CALLS")"
+    fail=$((fail + 1))
+fi
+
+# Test E: cap-8 retryable → exits without block → no sleep invoked
+rm -f "$SLEEP_CALLS"
+SESSION_BE="sess-be-$(date +%s%N)"
+COUNTER_BE="/tmp/claude-resume-${SESSION_BE}.count"
+printf '%s' "8" >"$COUNTER_BE"
+BE_INPUT="$(mk_stop 'Stream idle timeout occurred' "$SESSION_BE")"
+printf '%s' "$BE_INPUT" | env STOP_HOOK_ACTIVE=false PATH="$TMP_DIR:$PATH" bash "$GUARD" 2>/dev/null || true
+if [ ! -f "$SLEEP_CALLS" ] || [ ! -s "$SLEEP_CALLS" ]; then
+    [ -n "${VERBOSE:-}" ] && printf 'PASS: cap-8 — exits before sleep (no sleep invoked)\n'
+    pass=$((pass + 1))
+else
+    printf 'FAIL: cap-8 — expected no sleep, sleep-calls: %s\n' "$(cat "$SLEEP_CALLS")"
+    fail=$((fail + 1))
+fi
+rm -f "$COUNTER_BE"
 
 echo ""
 echo "Results: $pass passed, $fail failed"

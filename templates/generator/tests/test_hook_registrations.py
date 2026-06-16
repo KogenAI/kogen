@@ -123,6 +123,38 @@ class TestParseManifest(unittest.TestCase):
                     hr.parse_manifest(p)
         self.assertEqual(ctx.exception.code, 1)
 
+    def test_timeout_field_parsed_as_int(self):
+        """parse_manifest coerces # timeout: 360 to int 360."""
+        content = MINIMAL_MANIFEST.replace(
+            "#   role: developer-phoenix-backend",
+            "#   role: developer-phoenix-backend\n#   timeout: 360",
+        )
+        with tempfile.TemporaryDirectory() as tmpdir:
+            p = _write_sh(tmpdir, "h.sh", content)
+            result = hr.parse_manifest(p)
+        self.assertEqual(result["timeout"], 360)
+        self.assertIsInstance(result["timeout"], int)
+
+    def test_non_integer_timeout_exits_1(self):
+        """parse_manifest exits 1 when # timeout: is not a valid integer."""
+        content = MINIMAL_MANIFEST.replace(
+            "#   role: developer-phoenix-backend",
+            "#   role: developer-phoenix-backend\n#   timeout: abc",
+        )
+        with tempfile.TemporaryDirectory() as tmpdir:
+            p = _write_sh(tmpdir, "h.sh", content)
+            with self.assertRaises(SystemExit) as ctx:
+                with patch("sys.stderr", new_callable=io.StringIO):
+                    hr.parse_manifest(p)
+        self.assertEqual(ctx.exception.code, 1)
+
+    def test_timeout_absent_means_no_key(self):
+        """parse_manifest must not inject a timeout key when header has none."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            p = _write_sh(tmpdir, "h.sh", MINIMAL_MANIFEST)
+            result = hr.parse_manifest(p)
+        self.assertNotIn("timeout", result)
+
 
 # ── TestValidateSignal ───────────────────────────────────────────────────────
 
@@ -346,6 +378,18 @@ class TestBuildHookEntry(unittest.TestCase):
         self.assertIn("type", result)
         self.assertIn("command", result)
 
+    def test_timeout_emitted_when_present(self):
+        """build_hook_entry includes timeout key when manifest carries it."""
+        manifest = {"filename": "stop-resume.sh", "timeout": 360}
+        result = hr.build_hook_entry(manifest)
+        self.assertEqual(result["timeout"], 360)
+
+    def test_timeout_absent_when_not_in_manifest(self):
+        """build_hook_entry must NOT emit timeout for hooks without it (regression guard)."""
+        manifest = {"filename": "other-hook.sh"}
+        result = hr.build_hook_entry(manifest)
+        self.assertNotIn("timeout", result)
+
 
 # ── TestRenderHeader ─────────────────────────────────────────────────────────
 
@@ -425,6 +469,23 @@ class TestRenderHeader(unittest.TestCase):
         # Last line must not be a bare "#"
         last_line = h.splitlines()[-1].strip()
         self.assertNotEqual(last_line, "#")
+
+    def test_timeout_line_emitted_when_set(self):
+        """render_header emits # timeout: N when entry carries a timeout."""
+        h = hr.render_header(self._base_entry(timeout=360))
+        self.assertIn("# timeout: 360", h)
+
+    def test_timeout_line_before_generated_comment(self):
+        """# timeout: line appears before the GENERATED FROM provenance comment."""
+        h = hr.render_header(self._base_entry(timeout=360))
+        timeout_pos = h.index("# timeout: 360")
+        generated_pos = h.index("# GENERATED FROM")
+        self.assertLess(timeout_pos, generated_pos)
+
+    def test_no_timeout_line_when_absent(self):
+        """render_header must NOT emit a timeout line when entry has no timeout."""
+        h = hr.render_header(self._base_entry())
+        self.assertNotIn("timeout", h)
 
     def test_glob_role_preserved(self):
         h = hr.render_header(self._base_entry(role="developer-*"))
