@@ -194,6 +194,9 @@ test: hook-parity hook-header-parity harness-parity test-generator enforce-regis
 		for ext in enforcement askuserquestion subagents web-utils; do \
 			ext_dir="$(SCRIPT_DIR)/harnesses/pi/pi-extensions/$$ext"; \
 			if [ -f "$$ext_dir/package.json" ] && grep -q '"test"[[:space:]]*:' "$$ext_dir/package.json"; then \
+				if grep -q '"build"[[:space:]]*:' "$$ext_dir/package.json"; then \
+					(cd "$$ext_dir" && mise exec -- npm run build) || fail=1; \
+				fi; \
 				if [ -n "$$VERBOSE" ]; then \
 					echo "▶ Test: $$ext"; \
 					(cd "$$ext_dir" && mise exec -- npm test) || fail=1; \
@@ -279,17 +282,19 @@ test-coverage-elixir:
 
 test-coverage-typescript:
 	@mkdir -p "$(SCRIPT_DIR)/coverage/typescript"
-	@for ext in enforcement subagents askuserquestion; do \
+	@fail=0; \
+	for ext in enforcement subagents askuserquestion web-utils; do \
 		ext_dir="$(SCRIPT_DIR)/harnesses/pi/pi-extensions/$$ext"; \
 		if [ -f "$$ext_dir/package.json" ] && grep -q '"test:coverage"' "$$ext_dir/package.json"; then \
 			echo "▶ Coverage: $$ext"; \
-			(cd "$$ext_dir" && mise exec -- npm run test:coverage) || echo "⚠  $$ext: test:coverage exited $$? (no test files or error — continuing)"; \
+			(cd "$$ext_dir" && mise exec -- npm run test:coverage) || { echo "⚠  $$ext: test:coverage failed"; fail=1; }; \
 			mkdir -p "$(SCRIPT_DIR)/coverage/typescript/$$ext"; \
 			[ -d "$$ext_dir/coverage" ] && cp -R "$$ext_dir/coverage/." "$(SCRIPT_DIR)/coverage/typescript/$$ext/"; \
 		else \
 			echo "⏭  Skip $$ext (no test:coverage script)"; \
-		fi \
-	done
+		fi; \
+	done; \
+	exit "$$fail"
 
 test-coverage-shell:
 	@{ command -v kcov >/dev/null 2>&1 || { echo "⚠  kcov not installed — shell coverage skipped (brew install kcov)"; exit 0; }; } && \
@@ -314,7 +319,7 @@ test-coverage-summary:
 		pct=$$(jq -r '([.source_files[] | .coverage[] | select(. != null)] | length) as $$all | ([.source_files[] | .coverage[] | select(. != null and . > 0)] | length) as $$hit | if $$all > 0 then (($$hit * 100 / $$all) | floor | tostring) else "0" end' "$(SCRIPT_DIR)/coverage/elixir/excoveralls.json" 2>/dev/null || echo "—"); \
 		echo "Elixir:     $$pct%"; \
 	else echo "Elixir:     (no data)"; fi
-	@for ext in enforcement subagents askuserquestion; do \
+	@for ext in enforcement subagents askuserquestion web-utils; do \
 		f="$(SCRIPT_DIR)/coverage/typescript/$$ext/coverage-summary.json"; \
 		if [ -f "$$f" ]; then \
 			pct=$$(jq -r '.total.lines.pct' "$$f" 2>/dev/null || echo "—"); \

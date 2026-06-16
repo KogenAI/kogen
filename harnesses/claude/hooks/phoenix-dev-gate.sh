@@ -152,9 +152,20 @@ ts_now() { date -u +%Y-%m-%dT%H:%M:%SZ; }
 run_phoenix_render_check() {
     local -a render_check_cmd_arr
     read -ra render_check_cmd_arr <<<"${RENDER_CHECK_CMD:-node \"${CODEGEN_DIR:-}/harnesses/claude/hooks/lib/render-check.js\"}"
-    local raw
-    raw=$("${render_check_cmd_arr[@]}" --mode phoenix --port "${PHOENIX_DEV_PORT:-4000}" --timeout 30000 2>/dev/null || true)
-    printf '%s' "$raw" | grep '^RENDER_VERDICT=' | head -n 1 | cut -d= -f2-
+    if ! command -v "${render_check_cmd_arr[0]}" >/dev/null 2>&1; then
+        printf 'INCONCLUSIVE:render-check-cmd-missing'
+        return 0
+    fi
+    local raw rc
+    raw=$("${render_check_cmd_arr[@]}" --mode phoenix --port "${PHOENIX_DEV_PORT:-4000}" --timeout 30000 2>/dev/null) || rc=$?
+    rc=${rc:-0}
+    local verdict
+    verdict=$(printf '%s' "$raw" | grep '^RENDER_VERDICT=' | head -n 1 | cut -d= -f2-)
+    if [ -n "$verdict" ]; then
+        printf '%s' "$verdict"
+    elif [ "$rc" -ne 0 ]; then
+        printf 'INCONCLUSIVE:render-check-cmd-failed'
+    fi
 }
 
 # ── Wiring verification helper ──────────────────────────────────────────────

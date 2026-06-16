@@ -419,5 +419,49 @@ assert_file_not_contains "long wiring FAIL: no render section (no fallthrough)" 
 rm -f "$WSTUB12" "$RSTUB12" "$GATE12"
 rm -rf "$T12"
 
+# ── Test 13: RENDER_CHECK_CMD points at a nonexistent binary → INCONCLUSIVE ──
+T13=$(make_project)
+LOG13="$T13/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_step1.md"
+cat >"$LOG13" <<'MD'
+# Step
+
+## Plan
+
+**Gate**: `true`
+MD
+make_transcript "$T13/transcript.jsonl" "$LOG13"
+out13=$(printf '%s' "$(input_for "$T13" developer-phoenix-backend false sess1 "$T13/transcript.jsonl")" |
+    RENDER_CHECK_CMD="/nonexistent/render-bin" CODEGEN_DIR="$SCRIPT_DIR" bash "$HOOK" 2>/dev/null || true)
+assert_not_contains "render missing-binary: no block" '"decision": "block"' "$out13"
+assert_file_not_contains "render missing-binary: no ALL CLEAR in log" "ALL CLEAR" "$LOG13"
+assert_file_contains "render missing-binary: INCONCLUSIVE in log" "INCONCLUSIVE" "$LOG13"
+rm -rf "$T13"
+
+# ── Test 14: RENDER_CHECK_CMD stub exits non-zero with no verdict line → INCONCLUSIVE ──
+T14=$(make_project)
+LOG14="$T14/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_step1.md"
+cat >"$LOG14" <<'MD'
+# Step
+
+## Plan
+
+**Gate**: `true`
+MD
+make_transcript "$T14/transcript.jsonl" "$LOG14"
+STUB14=$(mktemp)
+cat >"$STUB14" <<'STUB'
+#!/usr/bin/env bash
+printf 'render check crashed\n'
+exit 1
+STUB
+chmod +x "$STUB14"
+out14=$(printf '%s' "$(input_for "$T14" developer-phoenix-backend false sess1 "$T14/transcript.jsonl")" |
+    RENDER_CHECK_CMD="$STUB14" CODEGEN_DIR="$SCRIPT_DIR" bash "$HOOK" 2>/dev/null || true)
+assert_not_contains "render cmd-failed: no block" '"decision": "block"' "$out14"
+assert_file_not_contains "render cmd-failed: no ALL CLEAR in log" "ALL CLEAR" "$LOG14"
+assert_file_contains "render cmd-failed: INCONCLUSIVE in log" "INCONCLUSIVE" "$LOG14"
+rm -f "$STUB14"
+rm -rf "$T14"
+
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

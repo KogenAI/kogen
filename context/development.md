@@ -195,7 +195,9 @@ This eliminates the dirty-tree race: integrate-stage files rendered AFTER the co
 - **Spread technique for external probes requires exactly 4 numbered rules**: (1) name the axis, (2) probe both ends, (3) single-sample is inconclusive, (4) failure case is mandatory.
 - **Semantic equivalence vs structural identity in prompt-body sibling files** — verify semantic equivalence of all rules, NOT literal step-count parity. Compression preserving all semantic rules is correct mirroring.
 - **Planner-guard blocks Read on certain rule files** — planner cannot Read `testing-liveview.md` + `reviewer.md`. Workaround: use `Grep -C` to capture anchors instead of line numbers, cite anchors in pitch, developer confirms via own Read.
-- **Context files carry a 40 KB advisory cap** — `context/*.md` files have a ~40,960-byte advisory limit. When a file approaches cap, compress redundancy or relocate examples. Current exceedances: `harnesses.md` (939 B over). Near-cap: `test-coverage.md`, `hook-authoring-patterns.md` — small additions trigger gate blocks. Plan trim/split for future changes.
+- **Context files carry a 40 KB advisory cap** — `context/*.md` files have ~40,960-byte limit. Compress or split when near cap. Current: `harnesses.md` (939 B over).
+- **Exit-code capture under `set -u`** — `local rc; raw=$(cmd) || rc=$?; rc=${rc:-0}`. `rc` unset on success. Distinguishes broken-cmd (empty) from `INCONCLUSIVE:*` verdicts.
+- **Makefile `@for` recipes are POSIX-only** — Accumulator: `fail=0; ... || fail=1; exit "$$fail"`.
 - **Pitch byte targets grow stale** — Planner re-measures `wc -c` at plan time, not pitch time; stale budgets cause gate failures.
 - **Heredoc piping with `>` redirects trips planner-guard** — `>` inside heredoc body detected as suspicious. Workaround: write script to temp file then run it with redirect outside.
 - **Prettier 3.8 re-pads wide-cell markdown tables** — long cell values in tables are re-padded by prettier. Guard byte-capped context files via `.prettierignore`: add files BEFORE `make format`.

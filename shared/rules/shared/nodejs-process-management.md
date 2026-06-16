@@ -46,3 +46,22 @@ try {
   if (e.code !== "ESRCH") throw e; // ESRCH = already exited, OK
 }
 ```
+
+## Pre-Build Guard for Test Runs
+
+When a Makefile loop must run tests against compiled TypeScript output (`dist/`), guard the build step conditionally based on the presence of a `"build"` script:
+
+```makefile
+for ext in enforcement subagents; do
+  if grep -q '"build"[[:space:]]*:' "$$ext_dir/package.json"; then
+    (cd "$$ext_dir" && npm run build) || fail=1
+  fi
+  npm test || fail=1
+done
+```
+
+✅ Keeps the loop self-selecting — vitest-only extensions (no `dist/` dependency) skip the build step.
+✅ Single check point (Makefile recipe) visible to operators.
+❌ Hardcoding which extensions build (drifts from package.json reality).
+
+Pattern works in both bash and POSIX `/bin/sh` recipes.
