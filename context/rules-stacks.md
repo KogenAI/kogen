@@ -61,3 +61,4 @@ phoenix rules, static rules, git-readonly, config-single-source, hook-layering, 
 - **`shared/rules/shared/`** is cross-stack — not phoenix-specific despite living alongside phoenix rules; applies to both harnesses
 - **INCONCLUSIVE table** — `stacks/phoenix/orchestrator.md` contains the classification table; generic orchestrator rules are in `roles/orchestrator.md`
 - **Rule changes are not live** — must `make install` to propagate to running agents
+- **`og:image` MUST mandate needs asset-availability gap** — static-site rules mandating `og:image` on every page create an implicit gap for asset-free new sites (no images added yet). Developer agents may invent a placeholder URL or silently omit. Tighten guidance to: "emit `og:image` only when a real image is available in the site's assets; omit rather than fabricate a placeholder." Forces graceful degradation over fabrication.

@@ -59,6 +59,19 @@ For vanilla multi-page sites, create additional HTML files at project root and a
 
 `index.html` (shell, title, meta), `src/main.js` (entry), `src/style.css`, `vite.config.js`. ❌ `public/`.
 
+`index.html` `<head>` is the single Vite injection point for all discoverability markup: JSON-LD `<script type="application/ld+json">`, OG tags (`og:title`, `og:description`, `og:type`, `og:image`), `<meta name="description">`, and `<link rel="canonical">` all inject here. When a framework is opted in (React/Vue), framework head-management libraries write into this same shell. See `assets.md` §§ Complete Meta and Structured Data (JSON-LD) for required fields.
+
+## Answer-First Headings
+
+When a page already states a fact, the heading and first sentence MUST lead with the answer — not bury it.
+
+- ❌ `## Our Approach to Data Security` → body eventually says "We encrypt everything at rest and in transit."
+- ✅ `## Everything Encrypted — At Rest and In Transit` → body elaborates.
+
+This is a structural discipline applied to copy the user already authored. It is NOT writing new copy, adding new sections, or expanding content. Scan existing headings and opening sentences; restructure those that withhold the answer until later in the paragraph.
+
+Cross-reference: complete meta and JSON-LD in `assets.md` §§ Complete Meta and Structured Data (JSON-LD) are the complementary invisible-layer disciplines applied alongside answer-first headings.
+
 ## Common Mistakes
 
 - `index.html` inside `src/` — must be at root

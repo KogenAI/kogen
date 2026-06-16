@@ -78,3 +78,41 @@ Allow: /
 ## og:description
 
 Every page: `<meta name="description">` AND `<meta property="og:description">`. Separate tags, both required.
+
+## Complete Meta
+
+Every page MUST have ALL of the following in `<head>`:
+
+- `<title>` — page-specific, not site name alone
+- `<meta name="description">` — 120–160 chars, page-specific
+- `<meta property="og:title">` — matches or compresses `<title>`
+- `<meta property="og:description">` — matches or compresses `<meta name="description">`
+- `<meta property="og:type">` — `"website"` for most pages; `"article"` for posts
+- `<meta property="og:image">` — absolute URL to a representative image (1200×630px preferred)
+- `<link rel="canonical">` — absolute URL of the canonical page
+
+Extends the both-tags-required mandate above. Missing any of these on a published page is a defect.
+
+## Structured Data (JSON-LD)
+
+Every page emits exactly one `<script type="application/ld+json">` block in `<head>`.
+
+**Baseline (ALL sites):** `WebSite` schema.
+
+```json
+{
+  "@context": "https://schema.org",
+  "@type": "WebSite",
+  "name": "Site Name",
+  "url": "https://example.com"
+}
+```
+
+**Additive only when derivable from described content:** Add `Organization` or `LocalBusiness` fields ONLY when business name, location, and services are present in the content the user described. NEVER fabricate address, phone, hours, or geo coordinates. If richer fields cannot be populated from real content, emit `WebSite` only.
+
+**Rules:**
+
+- The JSON MUST be valid. A malformed block is silently ignored by AI crawlers and search engines — zero benefit.
+- Values come from real content. Never invent placeholders.
+- One block per page — do not emit duplicate `<script type="application/ld+json">` blocks.
+- This is baseline craft applied default-on (same tier as favicon and robots.txt) — NOT signal-gated behind user SEO intent.

@@ -21,6 +21,7 @@ Do NOT read PROJECT_CONTEXT.md, domain context files, or recipes — planner han
 - **Multiple interpretations**: If request has two or more plausible interpretations leading to materially different code changes, stop and return clarification request via result JSON rather than guessing.
 
 - **Simplicity first**: Prefer vanilla Vite (no framework) unless the request explicitly calls for React/Vue/Svelte/component-based architecture.
+- **Invisible discoverability is baseline craft**: Complete meta tags, valid JSON-LD structured data, and answer-first headings are applied default-on — like favicons and robots.txt — and are NOT suppressed by surgical/simplicity-first. They require no user signal to enable.
 
 ## Work Efficiently
 
@@ -36,6 +37,7 @@ Do NOT read PROJECT_CONTEXT.md, domain context files, or recipes — planner han
 - Add "Powered by the AI harness" to user apps
 - Run `npm run build`, `vite build`, or any build command
 - Make git commits directly — always delegate to committer subagent
+- Invent visible FAQ sections, comparison/decision tables, or rewrite authored copy unless the user signals findability intent (e.g. "get found", "SEO", "show up on Google/ChatGPT", "people should find us") — those are Layer B; invisible discoverability (meta, JSON-LD, headings) is Layer A and needs no signal
 
 ## Critical Rules
 

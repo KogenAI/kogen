@@ -76,6 +76,8 @@ The guard `context-curator-guard.sh` enforces exactly three allowed path pattern
 
 **Harmonization pattern for layered rules** — When adding a new convention, mode, or constraint to an existing rule set, prefer authoring it as a positive counterpart that complements existing negatives rather than re-stating them. Example: existing rule states "Existence ≠ contract" (negative: what does NOT suffice) + "reading source is NOT execution" (negative); new convention-claim mode = "doc-citation PLUS confirming grep IS exercising the contract" (positive: what DOES suffice). The affirmative form documents the complementary truth that makes the negatives coherent — a single principle with both denial and affirmation sides. Outcome: no verbatim duplication, the rule set is more maintainable, and the positive gate is explicit for developers writing probes.
 
+**Inline Layer-A/Layer-B contrast pattern** — When establishing two distinct classes of behavior (e.g., invisible structural discoverability vs. visible editorial content), embed the contrast INSIDE the "What You Never Do" prohibition that governs Layer B. Rather than stating the prohibition in isolation ("do NOT invent FAQ sections"), append an inline clarification naming both layers: "do NOT invent visible FAQ sections or comparison blocks (Layer B: editorial choice gates) unless the user signals intent; invisible structural discoverability (Layer A: JSON-LD, meta tags, heading discipline) is baseline craft applied default-on." This pattern prevents misreading the prohibition as blocking ALL behavior in that domain, not just the visible-layer subclass. The embedded contrast makes layer semantics concrete and disambiguates when rules interact with simplicity-first or surgical-changes constraints.
+
 Cross-reference: full guard pattern analysis and path-nesting mechanics → `context/hooks.md` § context-curator-guard Write Surface; rule text → `shared/rules/roles/context-curator.md` § Write Surface.
 
 ## Spawn Ritual (Atomic Header-Edit + Delegation)
@@ -88,6 +90,8 @@ Pattern: For every subagent spawn (after first log creation), orchestrator:
 2. **Agent()** call immediately after in same turn—no intervening chat
 
 **Stack-prefixed planner variant header stub**: When orchestrator spawns a stack-prefixed planner variant (e.g., `planner-phoenix`), the session-log Edit payload MUST include a literal `## planner-phoenix Section` header stub (or the concrete stack name) — not a bare `## planner Section`. The `session-log-section-integrity.sh` hook bypasses ONLY bare `planner`, not stack-prefixed variants. Stack-prefixed planners must satisfy the normal header-present rule like any other agent.
+
+**Anchoring edits after Jinja includes**: When adding bullet or prose blocks immediately after an `{% include %}` directive in a `.md.j2` template, anchor the Edit to the NEXT SIBLING content (the first prose line after the include), NOT to the include directive itself. Example: adding a bullet after `{% include 'apps/_orch-behavioral.md.j2' %}` anchors to the prose line that follows (e.g., "Simplicity first" bullet), never to the include line itself. This ensures the insertion lands in the correct document position and avoids disrupting the include mechanism.
 
 Enforcement:
 

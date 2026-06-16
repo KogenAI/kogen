@@ -159,6 +159,7 @@ This eliminates the dirty-tree race: integrate-stage files rendered AFTER the co
 - **yq binary must be mikefarah, not python-yq** — wrong binary causes silent manifest parsing errors.
 - **`npm install` at codegen root required** — absent → hooks emit INCONCLUSIVE.
 - **`make install` required after rule/template change** — regenerates baked prompts.
+- **Cross-stack guard after adjacent-include edits** — When editing rule files or `.md.j2` templates adjacent to shared-fragment `{% include %}` directives, verify zero drift in the shared fragment itself. Pattern: `git diff --name-only | grep _orch-behavioral` confirms `shared/apps/_orch-behavioral.md.j2` untouched (applies to all shared cross-stack includes). Run after every adjacent edit to catch accidental cross-stack pollution.
 - **Chromium binary absence is fail-closed on static boxes** — gate BLOCKS when missing.
 - **`mise trust` runs unconditionally on install** — no interactive prompt.
 - **Do not run `npm install` at repo root for Pi extensions** — each extension has its own node_modules; only root install is managed by install.sh
