@@ -16,11 +16,7 @@ export const HANDLER_META = {
   matcher: "write|edit",
 } as const;
 
-const STATIC_DEV_AGENTS = new Set([
-  "developer-html",
-  "developer-hugo",
-  "developer-vite",
-]);
+const STATIC_DEV_AGENTS = new Set(["developer-static"]);
 
 export function register(pi: ExtensionAPI): void {
   pi.on("tool_call", async (event) => {

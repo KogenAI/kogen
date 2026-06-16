@@ -92,7 +92,7 @@ if [ -z "$last_agent" ]; then
 fi
 
 case "$last_agent" in
-developer-phoenix-backend | developer-phoenix-frontend | developer-html | developer-hugo | developer-vite | reviewer-phoenix | reviewer-static)
+developer-phoenix-backend | developer-phoenix-frontend | developer-static | reviewer-phoenix | reviewer-static)
     next_role_hint="$last_agent just finished — continue the cycle (review → context-curator → committer, or back to developer if issues found)."
     ;;
 context-curator)
@@ -177,7 +177,7 @@ if [ -n "$recent_log" ] && [ -r "$recent_log" ]; then
         # No emoji verdict in log — check gate-result.json as secondary source
         stored_verdict=$(gate_result_verdict "$project_dir")
         case "$last_agent" in
-        developer-phoenix-backend | developer-phoenix-frontend | developer-html | developer-hugo | developer-vite)
+        developer-phoenix-backend | developer-phoenix-frontend | developer-static)
             if [ -z "$stored_verdict" ]; then
                 # Developer ran but VE never produced any verdict — BLOCK.
                 debug_log claude-cycle-guard "BLOCK: developer ran but gate never produced a verdict (gate-result absent)"

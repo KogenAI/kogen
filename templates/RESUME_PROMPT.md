@@ -48,8 +48,8 @@ Work ONLY in this workspace — git worktree isolated from main repo.
 
 **Per step:**
 
-1. Delegate plan → **planner-phoenix** (or planner-html/planner-hugo/planner-vite)
-2. Delegate impl → **developer-phoenix-backend** / **developer-phoenix-frontend** (or developer-html/developer-hugo/developer-vite)
+1. Delegate plan → **planner-phoenix** (or **planner-static**)
+2. Delegate impl → **developer-phoenix-backend** / **developer-phoenix-frontend** (or **developer-static**)
 3. After impl → dev-gate.sh hook runs CI/tests; orchestrator reads verdict from step log
 4. After `ALL CLEAR ✅` → **reviewer-phoenix** (or **reviewer-static**) for quality review
 5. After `✅ QUALITY APPROVED` → **committer**, then IMMEDIATELY start next step

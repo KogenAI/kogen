@@ -1,12 +1,10 @@
 # Reviewer — Static Sites
 
-Stack-specific rules: read `## Stack` in session log, load matching files on demand.
+Stack-specific rules: load the static stack rule file.
 
-| Stack  | Read                                                                                           |
-| ------ | ---------------------------------------------------------------------------------------------- |
-| `html` | `stacks/static/html.md`, `stacks/static/tailwind.md`                                           |
-| `hugo` | `stacks/static/hugo.md`, `stacks/static/tailwind.md`                                           |
-| `vite` | `stacks/static/vite.md` + `stacks/static/tailwind.md` only if `package.json` has `tailwindcss` |
+| Stack    | Read                                                                                           |
+| -------- | ---------------------------------------------------------------------------------------------- |
+| `static` | `stacks/static/vite.md` + `stacks/static/tailwind.md` only if `package.json` has `tailwindcss` |
 
 ## Static-Specific Checks
 

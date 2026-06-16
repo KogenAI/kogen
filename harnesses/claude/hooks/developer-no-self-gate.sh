@@ -27,7 +27,7 @@ debug_log developer-no-self-gate "tool=$TOOL_NAME agent=$AGENT_TYPE"
 
 # Only gate developer-* variants
 case "$AGENT_TYPE" in
-developer-phoenix-backend | developer-phoenix-frontend | developer-html | developer-hugo | developer-vite) ;;
+developer-phoenix-backend | developer-phoenix-frontend | developer-static) ;;
 *)
     exit 0
     ;;

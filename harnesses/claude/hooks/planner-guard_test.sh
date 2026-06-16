@@ -51,17 +51,17 @@ run_test "Write blocked for planner-phoenix" "2" "$FIXTURE_BLOCK"
 FIXTURE_ALLOW='{"hook_event_name":"PreToolUse","tool_name":"Write","tool_input":{"file_path":"/tmp/foo.ex","content":"x"},"agent_type":"developer-phoenix-backend","agent_id":"abc123"}'
 run_test "Write passes for developer-phoenix-backend" "0" "$FIXTURE_ALLOW"
 
-# Test 3: planner-html Bash with `2>&1 | head` should NOT be wrongly blocked as a redirect
-FIXTURE_STDERR='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"grep foo lib/bar.ex 2>&1 | head"},"agent_type":"planner-html","agent_id":"abc123"}'
-run_test "planner-html Bash with 2>&1 pipe allows" "0" "$FIXTURE_STDERR"
+# Test 3: planner-static Bash with `2>&1 | head` should NOT be wrongly blocked as a redirect
+FIXTURE_STDERR='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"grep foo lib/bar.ex 2>&1 | head"},"agent_type":"planner-static","agent_id":"abc123"}'
+run_test "planner-static Bash with 2>&1 pipe allows" "0" "$FIXTURE_STDERR"
 
-# Test 4: planner-vite make ci — BLOCK
-FIXTURE_CI_FAST='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"make ci"},"agent_type":"planner-vite","agent_id":"abc123"}'
-run_test "planner-vite make ci blocks" "2" "$FIXTURE_CI_FAST"
+# Test 4: planner-static make ci — BLOCK
+FIXTURE_CI_FAST='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"make ci"},"agent_type":"planner-static","agent_id":"abc123"}'
+run_test "planner-static make ci blocks" "2" "$FIXTURE_CI_FAST"
 
-# Test 5: planner-hugo make llm-summary — BLOCK
-FIXTURE_LLM_SUMMARY='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"make llm-summary"},"agent_type":"planner-hugo","agent_id":"abc123"}'
-run_test "planner-hugo make llm-summary blocks" "2" "$FIXTURE_LLM_SUMMARY"
+# Test 5: planner-static make llm-summary — BLOCK
+FIXTURE_LLM_SUMMARY='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"make llm-summary"},"agent_type":"planner-static","agent_id":"abc123"}'
+run_test "planner-static make llm-summary blocks" "2" "$FIXTURE_LLM_SUMMARY"
 
 # Test 6: planner-phoenix make llm-kill — BLOCK
 FIXTURE_LLM_KILL='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"make llm-kill"},"agent_type":"planner-phoenix","agent_id":"abc123"}'
@@ -84,16 +84,16 @@ FIXTURE_EDIT_LOG='{"hook_event_name":"PreToolUse","tool_name":"Edit","tool_input
 run_test "planner-phoenix Edit on codegen/logging/ allows" "0" "$FIXTURE_EDIT_LOG"
 
 # Test 11: Edit on deep/fake/codegen/logging/forged.md — BLOCK (not a direct child)
-FIXTURE_EDIT_FAKE='{"hook_event_name":"PreToolUse","tool_name":"Edit","tool_input":{"file_path":"deep/fake/codegen/logging/forged.md","old_string":"x","new_string":"y"},"agent_type":"planner-html","agent_id":"abc123"}'
-run_test "planner-html Edit on deep/fake/codegen/logging/ blocks" "2" "$FIXTURE_EDIT_FAKE"
+FIXTURE_EDIT_FAKE='{"hook_event_name":"PreToolUse","tool_name":"Edit","tool_input":{"file_path":"deep/fake/codegen/logging/forged.md","old_string":"x","new_string":"y"},"agent_type":"planner-static","agent_id":"abc123"}'
+run_test "planner-static Edit on deep/fake/codegen/logging/ blocks" "2" "$FIXTURE_EDIT_FAKE"
 
 # Test 12: planner-phoenix make llm-phoenix-seed — BLOCK
 FIXTURE_SEED='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"make llm-phoenix-seed"},"agent_type":"planner-phoenix","agent_id":"abc123"}'
 run_test "planner-phoenix make llm-phoenix-seed blocks" "2" "$FIXTURE_SEED"
 
-# Test 13: planner-vite Bash with ../ path traversal — BLOCK
-FIXTURE_TRAVERSAL='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"cat ../../../etc/passwd"},"agent_type":"planner-vite","agent_id":"abc123"}'
-run_test "planner-vite path traversal ../ blocks" "2" "$FIXTURE_TRAVERSAL"
+# Test 13: planner-static Bash with ../ path traversal — BLOCK
+FIXTURE_TRAVERSAL='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"cat ../../../etc/passwd"},"agent_type":"planner-static","agent_id":"abc123"}'
+run_test "planner-static path traversal ../ blocks" "2" "$FIXTURE_TRAVERSAL"
 
 # Test 14: non-planner Bash with ../ path traversal — ALLOW (guard only applies to planner-*)
 FIXTURE_TRAVERSAL_OTHER='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"cat ../../../etc/passwd"},"agent_type":"developer-phoenix-backend","agent_id":"abc123"}'
@@ -105,21 +105,21 @@ run_test "non-planner path traversal ../ not blocked by planner-guard" "0" "$FIX
 FIXTURE_READ_TEST='{"hook_event_name":"PreToolUse","tool_name":"Read","tool_input":{"file_path":"./codegen/rules/stacks/phoenix/testing.md"},"agent_type":"planner-phoenix","agent_id":"abc"}'
 run_test "planner-phoenix Read stacks/phoenix/testing.md blocks" "2" "$FIXTURE_READ_TEST"
 
-# Test 16: planner-html Read on phoenix/_core.md — ALLOW (not in forbidden list)
-FIXTURE_READ_CORE='{"hook_event_name":"PreToolUse","tool_name":"Read","tool_input":{"file_path":"./codegen/rules/stacks/phoenix/_core.md"},"agent_type":"planner-html","agent_id":"abc"}'
-run_test "planner-html Read stacks/phoenix/_core.md allows" "0" "$FIXTURE_READ_CORE"
+# Test 16: planner-static Read on phoenix/_core.md — ALLOW (not in forbidden list)
+FIXTURE_READ_CORE='{"hook_event_name":"PreToolUse","tool_name":"Read","tool_input":{"file_path":"./codegen/rules/stacks/phoenix/_core.md"},"agent_type":"planner-static","agent_id":"abc"}'
+run_test "planner-static Read stacks/phoenix/_core.md allows" "0" "$FIXTURE_READ_CORE"
 
-# Test 17: planner-vite Read on roles/reviewer.md — BLOCK (impl-only)
-FIXTURE_READ_REVIEWER='{"hook_event_name":"PreToolUse","tool_name":"Read","tool_input":{"file_path":"./codegen/rules/roles/reviewer.md"},"agent_type":"planner-vite","agent_id":"abc"}'
-run_test "planner-vite Read reviewer.md blocks (impl-only)" "2" "$FIXTURE_READ_REVIEWER"
+# Test 17: planner-static Read on roles/reviewer.md — BLOCK (impl-only)
+FIXTURE_READ_REVIEWER='{"hook_event_name":"PreToolUse","tool_name":"Read","tool_input":{"file_path":"./codegen/rules/roles/reviewer.md"},"agent_type":"planner-static","agent_id":"abc"}'
+run_test "planner-static Read reviewer.md blocks (impl-only)" "2" "$FIXTURE_READ_REVIEWER"
 
 # Test 18: developer-phoenix-backend Read on testing.md — ALLOW (not planner)
 FIXTURE_READ_DEV='{"hook_event_name":"PreToolUse","tool_name":"Read","tool_input":{"file_path":"./codegen/rules/stacks/phoenix/testing.md"},"agent_type":"developer-phoenix-backend","agent_id":"abc"}'
 run_test "developer-phoenix-backend Read stacks/phoenix/testing.md allows (not planner)" "0" "$FIXTURE_READ_DEV"
 
-# Test 19: planner-hugo Read on roles/developer.md — BLOCK (impl-only)
-FIXTURE_READ_DEV2='{"hook_event_name":"PreToolUse","tool_name":"Read","tool_input":{"file_path":"./codegen/rules/roles/developer.md"},"agent_type":"planner-hugo","agent_id":"abc"}'
-run_test "planner-hugo Read developer.md blocks (impl-only)" "2" "$FIXTURE_READ_DEV2"
+# Test 19: planner-static Read on roles/developer.md — BLOCK (impl-only)
+FIXTURE_READ_DEV2='{"hook_event_name":"PreToolUse","tool_name":"Read","tool_input":{"file_path":"./codegen/rules/roles/developer.md"},"agent_type":"planner-static","agent_id":"abc"}'
+run_test "planner-static Read developer.md blocks (impl-only)" "2" "$FIXTURE_READ_DEV2"
 
 # Test 20: planner-phoenix Read on a session log — ALLOW (not a forbidden implementer file)
 FIXTURE_READ_LOG='{"hook_event_name":"PreToolUse","tool_name":"Read","tool_input":{"file_path":"codegen/logging/20260517_step1_session.md"},"agent_type":"planner-phoenix","agent_id":"abc"}'

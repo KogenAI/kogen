@@ -2,7 +2,7 @@
 
 ## Build Pipeline
 
-Platform runs build after commit. **Never run yourself.** ❌ `npm run build`, `vite build`, `hugo`.
+Platform runs build after commit. **Never run yourself.** ❌ `npm run build`, `vite build`.
 
 ## Output Dir
 
@@ -17,7 +17,7 @@ After writing `package.json`: `mise exec -- npm install`. Platform needs deps in
 The following packages MUST appear in `devDependencies` in every `package.json` you write or modify:
 
 - `tailwindcss` — omitting this causes `Cannot find module 'tailwindcss'` at build time
-- `@tailwindcss/cli` — omitting this causes `vite build` / `npm run build` to fail with a missing bin error
+- `@tailwindcss/vite` — omitting this causes `vite build` / `npm run build` to fail with a missing plugin error
 
 Do NOT remove these when adding or updating other deps. Run `mise exec -- npm install` after EVERY `package.json` write.
 

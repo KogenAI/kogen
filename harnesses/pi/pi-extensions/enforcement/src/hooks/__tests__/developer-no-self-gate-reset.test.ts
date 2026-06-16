@@ -61,10 +61,10 @@ describe("developer-no-self-gate-reset", () => {
     assert.ok(!fs.existsSync(counterPath(sid)));
   });
 
-  it("developer-html removes counter file", async () => {
+  it("developer-static removes counter file", async () => {
     const sid = `reset-test-3-${Date.now()}`;
     fs.writeFileSync(counterPath(sid), "3");
-    await runHook("developer-html", sid);
+    await runHook("developer-static", sid);
     assert.ok(!fs.existsSync(counterPath(sid)));
   });
 
@@ -83,14 +83,14 @@ describe("developer-no-self-gate-reset", () => {
     const sid = `reset-test-5-${Date.now()}`;
     fs.rmSync(counterPath(sid), { force: true });
     // should not throw
-    await runHook("developer-vite", sid);
+    await runHook("developer-static", sid);
     assert.ok(true);
   });
 
-  it("developer-hugo removes counter file", async () => {
+  it("developer-static (test 6) removes counter file", async () => {
     const sid = `reset-test-6-${Date.now()}`;
     fs.writeFileSync(counterPath(sid), "1");
-    await runHook("developer-hugo", sid);
+    await runHook("developer-static", sid);
     assert.ok(!fs.existsSync(counterPath(sid)));
   });
 });

@@ -229,7 +229,7 @@
         ]
       },
       {
-        "matcher": "developer-phoenix-backend|developer-phoenix-frontend|developer-html|developer-hugo|developer-vite",
+        "matcher": "developer-phoenix-backend|developer-phoenix-frontend|developer-static",
         "hooks": [
           {
             "type": "command",
@@ -247,7 +247,7 @@
         ]
       },
       {
-        "matcher": "developer-phoenix-backend|developer-phoenix-frontend|developer-html|developer-hugo|developer-vite",
+        "matcher": "developer-phoenix-backend|developer-phoenix-frontend|developer-static",
         "hooks": [
           {
             "type": "command",
@@ -256,7 +256,7 @@
         ]
       },
       {
-        "matcher": "developer-html|developer-hugo|developer-vite",
+        "matcher": "developer-static",
         "hooks": [
           {
             "type": "command",
@@ -265,7 +265,7 @@
         ]
       },
       {
-        "matcher": "developer-phoenix-backend|developer-phoenix-frontend|developer-html|developer-hugo|developer-vite",
+        "matcher": "developer-phoenix-backend|developer-phoenix-frontend|developer-static",
         "hooks": [
           {
             "type": "command",
@@ -274,7 +274,7 @@
         ]
       },
       {
-        "matcher": "developer-phoenix-backend|developer-phoenix-frontend|developer-html|developer-hugo|developer-vite",
+        "matcher": "developer-phoenix-backend|developer-phoenix-frontend|developer-static",
         "hooks": [
           {
             "type": "command",
@@ -283,7 +283,7 @@
         ]
       },
       {
-        "matcher": "developer-phoenix-backend|developer-phoenix-frontend|planner-phoenix|planner-html|planner-hugo|planner-vite|reviewer-phoenix|reviewer-static",
+        "matcher": "developer-phoenix-backend|developer-phoenix-frontend|planner-phoenix|planner-static|reviewer-phoenix|reviewer-static",
         "hooks": [
           {
             "type": "command",

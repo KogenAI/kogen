@@ -22,9 +22,7 @@ export const HANDLER_META = {
 const DEV_AGENTS = new Set([
   "developer-phoenix-backend",
   "developer-phoenix-frontend",
-  "developer-html",
-  "developer-hugo",
-  "developer-vite",
+  "developer-static",
 ]);
 
 export function register(pi: ExtensionAPI): void {

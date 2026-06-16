@@ -1,24 +1,25 @@
 # Planner — Static Sites
 
-## Substack Detection
+## Stack Decision
 
-| User signals                                                      | Stack | Agent                |
-| ----------------------------------------------------------------- | ----- | -------------------- |
-| React/Vue/Svelte/framework/component/SPA/dashboard-with-live-data | Vite  | `developer-vite`     |
-| Visitors WRITE data (accounts, comments, bookings, e-commerce)    | —     | NOT static → Phoenix |
-| Multiple pages, blog, posts, Markdown content, content-heavy      | Hugo  | `developer-hugo`     |
-| Single landing/portfolio/marketing/homepage one-pager             | HTML  | `developer-html`     |
+All static sites use the **Vite** stack (`developer-static`). Planner decides **vanilla vs framework within Vite**:
 
-First match wins. Multi-page React → Vite + React Router, never Hugo.
+| Signal                                                                          | Decision                                     |
+| ------------------------------------------------------------------------------- | -------------------------------------------- |
+| React/Vue/Svelte/component/SPA/dashboard-with-live-data                         | Vite + framework (name it: React/Vue/Svelte) |
+| Visitors WRITE data (accounts, comments, bookings, e-commerce)                  | NOT static → Phoenix                         |
+| Everything else (landing page, portfolio, multi-page informational, blog-style) | Vanilla Vite                                 |
 
-## Tailwind Mandatory (All Stacks)
+Multi-page vanilla → use Vite `build.rollupOptions.input` — never Hugo. Multi-page React → Vite + React Router.
 
-All static sites — HTML, Hugo, Vite — MUST ship compiled Tailwind v4. Planner ALWAYS names `stacks/static/tailwind.md` in dev delegation prompt. No `package.json` detection. No opt-out.
+## Tailwind Mandatory (All Static Sites)
+
+All static sites MUST ship compiled Tailwind v4. Planner ALWAYS names `stacks/static/tailwind.md` in dev delegation prompt. No `package.json` detection. No opt-out.
 
 First-build Vite plans MUST include in `Files to touch`:
 
-- `src/index.css` (NEW) — `@import "tailwindcss";` + `@theme` tokens
-- `src/main.jsx` (NEW|EXISTING) — `import "./index.css";` at top
+- `src/style.css` (NEW) — `@import "tailwindcss";`
+- `src/main.js` (NEW|EXISTING) — `import "./style.css";` at top
 - `vite.config.js` (NEW) — `tailwindcss()` plugin from `@tailwindcss/vite`
 - `package.json` (NEW) — `tailwindcss` + `@tailwindcss/vite` in devDependencies
 

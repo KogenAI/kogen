@@ -141,7 +141,7 @@ Hooks check session log state via `## <role>.*Section` patterns:
 
 `committer` and `context-curator` are stack-agnostic — always literal, no stack suffix.
 
-**Stack-prefixed planner variants** (`planner-phoenix`, `planner-html`): `session-log-section-integrity.sh` requires the literal stack-prefixed header (e.g., `## planner-phoenix Section`) before allowing the subagent's Edit. The bare-planner bypass does NOT widen to stack variants.
+**Stack-prefixed planner variants** (`planner-phoenix`, `planner-static`): `session-log-section-integrity.sh` requires the literal stack-prefixed header (e.g., `## planner-phoenix Section`) before allowing the subagent's Edit. The bare-planner bypass does NOT widen to stack variants.
 
 ## Retrospective Placement Rule (subagent-retrospective-guard)
 

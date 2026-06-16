@@ -453,9 +453,9 @@ When tightening tool-header prose, verify against `shared/enforcement/registry.y
 
 When a hook file has TWO independent conditions affecting the same logic path (e.g., `subagent-retrospective-guard.sh`: in-script `case` matcher AND header-selection `[[ ]]`), they must widen in lockstep. Mismatch silently diverges — one family member matches the matcher but misses the selection.
 
-**After widening a glob in one condition, immediately widen the sibling.** Test both paths with a non-phoenix family member (e.g., `planner-html`) — a `planner-phoenix`-only test cannot distinguish whether both conditions widened.
+**After widening a glob in one condition, immediately widen the sibling.** Test both paths with a non-phoenix family member (e.g., `planner-static`) — a `planner-phoenix`-only test cannot distinguish whether both conditions widened.
 
-**Example**: `subagent-retrospective-guard.sh` planner family widen requires: (1) `case "$AGENT_TYPE"` → `planner*` glob; (2) header-selection `[[ ]]` → same glob; (3) registry entry (forward-compat). Pair a `planner-html` ALLOW test with a BLOCK test (missing retrospective) to prove both conditions widened.
+**Example**: `subagent-retrospective-guard.sh` planner family widen requires: (1) `case "$AGENT_TYPE"` → `planner*` glob; (2) header-selection `[[ ]]` → same glob; (3) registry entry (forward-compat). Pair a `planner-static` ALLOW test with a BLOCK test (missing retrospective) to prove both conditions widened.
 
 **Pattern**: identify sibling conditions → widen ALL to same glob form → add ALLOW + BLOCK tests for a non-base family member.
 

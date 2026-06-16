@@ -202,7 +202,7 @@ out=$(make_input "developer-phoenix-backend" "$T10/transcript.jsonl" | bash "$HO
 assert_block "only whitespace after retrospective header → block" "$out"
 rm -rf "$T10"
 
-# ── Test 11: planner-html with retrospective under ## Plan → ALLOW ────────────
+# ── Test 11: planner-static with retrospective under ## Plan → ALLOW ────────────
 T11=$(make_project)
 LOG11="$T11/codegen/logging/step1_test.md"
 cat >"$LOG11" <<'MD'
@@ -215,8 +215,8 @@ Plan content for html stack.
 - [local] HTML planner finding.
 MD
 make_transcript "$T11/transcript.jsonl" "$LOG11"
-out=$(make_input "planner-html" "$T11/transcript.jsonl" | bash "$HOOK" 2>/dev/null || true)
-assert_allow "planner-html with retrospective under ## Plan → allow" "$out"
+out=$(make_input "planner-static" "$T11/transcript.jsonl" | bash "$HOOK" 2>/dev/null || true)
+assert_allow "planner-static with retrospective under ## Plan → allow" "$out"
 rm -rf "$T11"
 
 # ── Test 12: planner-phoenix with retrospective under ## Plan → ALLOW ─────────
@@ -236,7 +236,7 @@ out=$(make_input "planner-phoenix" "$T12/transcript.jsonl" | bash "$HOOK" 2>/dev
 assert_allow "planner-phoenix with retrospective under ## Plan → allow" "$out"
 rm -rf "$T12"
 
-# ── Test 13: planner-html missing retrospective under ## Plan → BLOCK ─────────
+# ── Test 13: planner-static missing retrospective under ## Plan → BLOCK ─────────
 T13=$(make_project)
 LOG13="$T13/codegen/logging/step1_test.md"
 cat >"$LOG13" <<'MD'
@@ -245,8 +245,8 @@ cat >"$LOG13" <<'MD'
 Plan content here, no retrospective.
 MD
 make_transcript "$T13/transcript.jsonl" "$LOG13"
-out=$(make_input "planner-html" "$T13/transcript.jsonl" | bash "$HOOK" 2>/dev/null || true)
-assert_block "planner-html missing retrospective under ## Plan → block" "$out"
+out=$(make_input "planner-static" "$T13/transcript.jsonl" | bash "$HOOK" 2>/dev/null || true)
+assert_block "planner-static missing retrospective under ## Plan → block" "$out"
 rm -rf "$T13"
 
 # ── Test 14: reviewer-phoenix with retrospective → ALLOW + REVIEWED stamp written ─

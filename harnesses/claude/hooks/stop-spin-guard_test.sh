@@ -154,18 +154,18 @@ rm -rf "$tmp10"
 rm -f "/tmp/claude-spin-test-spin-sess-cap.count"
 
 # --- Test 11: different developer role interleaved — run resets → ALLOW ---
-# developer-phoenix-backend × 2 → developer-html × 1 → developer-phoenix-backend × 1
+# developer-phoenix-backend × 2 → developer-static × 1 → developer-phoenix-backend × 1
 # trailing run of developer-phoenix-backend = 1 → allow.
 tmp11=$(mktemp -d)
 {
     n_agent_entries "developer-phoenix-backend" 2
-    agent_entry "developer-html"
+    agent_entry "developer-static"
     printf '\n'
     agent_entry "developer-phoenix-backend"
     printf '\n'
 } >"$tmp11/transcript.jsonl"
 INPUT11=$(make_input "developer-phoenix-backend" "$tmp11/transcript.jsonl" "test-spin-sess-diff")
-run_test "different_dev_role_resets_run: backend×2 + html + backend×1 → allow" "allow" "$INPUT11"
+run_test "different_dev_role_resets_run: backend×2 + static + backend×1 → allow" "allow" "$INPUT11"
 rm -rf "$tmp11"
 
 # --- Test 12: malformed block counter → treated as 0 → applies threshold ---
@@ -193,10 +193,10 @@ rm -rf "$tmp13"
 # --- Test 14: 4 consecutive same developer → BLOCK ---
 # Threshold is ≥3; 4 should still block.
 tmp14=$(mktemp -d)
-n_agent_entries "developer-vite" 4 >"$tmp14/transcript.jsonl"
-INPUT14=$(make_input "developer-vite" "$tmp14/transcript.jsonl" "test-spin-sess-vite4")
+n_agent_entries "developer-static" 4 >"$tmp14/transcript.jsonl"
+INPUT14=$(make_input "developer-static" "$tmp14/transcript.jsonl" "test-spin-sess-vite4")
 rm -f "/tmp/claude-spin-test-spin-sess-vite4.count"
-run_test "4_consecutive_dev_vite: 4 spawns of developer-vite → block" "block" "$INPUT14"
+run_test "4_consecutive_dev_static: 4 spawns of developer-static → block" "block" "$INPUT14"
 rm -rf "$tmp14"
 rm -f "/tmp/claude-spin-test-spin-sess-vite4.count"
 

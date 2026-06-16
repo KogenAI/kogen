@@ -25,13 +25,7 @@ harness:
   planner-phoenix:
     claude: { model: opus, effort: high }
     pi: { model: openai-codex/gpt-5.5, effort: high }
-  planner-html:
-    claude: { model: opus, effort: high }
-    pi: { model: openai-codex/gpt-5.5, effort: high }
-  planner-hugo:
-    claude: { model: opus, effort: high }
-    pi: { model: openai-codex/gpt-5.5, effort: high }
-  planner-vite:
+  planner-static:
     claude: { model: opus, effort: high }
     pi: { model: openai-codex/gpt-5.5, effort: high }
   developer-phoenix-backend:
@@ -40,13 +34,7 @@ harness:
   developer-phoenix-frontend:
     claude: { model: sonnet, effort: medium }
     pi: { model: openai-codex/gpt-5.3-codex, effort: medium }
-  developer-html:
-    claude: { model: sonnet, effort: high }
-    pi: { model: openai-codex/gpt-5.3-codex, effort: medium }
-  developer-hugo:
-    claude: { model: sonnet, effort: high }
-    pi: { model: openai-codex/gpt-5.3-codex, effort: medium }
-  developer-vite:
+  developer-static:
     claude: { model: sonnet, effort: high }
     pi: { model: openai-codex/gpt-5.3-codex, effort: medium }
   reviewer-phoenix:

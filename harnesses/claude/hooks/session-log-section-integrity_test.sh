@@ -113,14 +113,14 @@ FIXTURE_PLANNER_PHOENIX_EDIT=$(jq -n \
     '{"hook_event_name":"PreToolUse","tool_name":"Edit","tool_input":{"file_path":$fp,"old_string":"","new_string":$ns},"agent_type":"planner-phoenix","agent_id":"abc"}')
 run_test "planner-phoenix Edit without section header allows" "0" "$FIXTURE_PLANNER_PHOENIX_EDIT"
 
-# Test 11: planner-html Edit without "## planner-html Section" — ALLOW (all planner variants bypass)
-PLANNER_HTML_LOG="$TMP_DIR/codegen/logging/planner-html-session.md"
+# Test 11: planner-static Edit without "## planner-static Section" — ALLOW (all planner variants bypass)
+PLANNER_HTML_LOG="$TMP_DIR/codegen/logging/planner-static-session.md"
 touch "$PLANNER_HTML_LOG"
 FIXTURE_PLANNER_HTML_EDIT=$(jq -n \
     --arg fp "$PLANNER_HTML_LOG" \
     --arg ns "## Plan\n\nHTML plan step" \
-    '{"hook_event_name":"PreToolUse","tool_name":"Edit","tool_input":{"file_path":$fp,"old_string":"","new_string":$ns},"agent_type":"planner-html","agent_id":"abc"}')
-run_test "planner-html Edit without section header allows" "0" "$FIXTURE_PLANNER_HTML_EDIT"
+    '{"hook_event_name":"PreToolUse","tool_name":"Edit","tool_input":{"file_path":$fp,"old_string":"","new_string":$ns},"agent_type":"planner-static","agent_id":"abc"}')
+run_test "planner-static Edit without section header allows" "0" "$FIXTURE_PLANNER_HTML_EDIT"
 
 # Test 8: MultiEdit on session log with section header in one edit's new_string — ALLOW
 MULTI_EDIT_LOG="$TMP_DIR/codegen/logging/multi.md"

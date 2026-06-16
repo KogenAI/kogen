@@ -15,7 +15,7 @@ describe("static-site-ex-guard", () => {
     },
   };
 
-  async function runHook(filePath: string, agentType = "developer-html") {
+  async function runHook(filePath: string, agentType = "developer-static") {
     process.env["AGENT_TYPE"] = agentType;
     const { register } = await import("../static-site-ex-guard");
     register(
@@ -32,17 +32,17 @@ describe("static-site-ex-guard", () => {
     delete process.env["AGENT_TYPE"];
   });
 
-  it("blocks .ex file write for developer-html", async () => {
+  it("blocks .ex file write for developer-static", async () => {
     const result = await runHook("/app/lib/my_app/context.ex");
     assert.ok((result as { block?: boolean }).block === true);
   });
 
-  it("allows .js file write for developer-html", async () => {
+  it("allows .js file write for developer-static", async () => {
     const result = await runHook("/app/assets/app.js");
     assert.ok(result == null || (result as { block?: boolean }).block !== true);
   });
 
-  it("blocks .exs file write for developer-html", async () => {
+  it("blocks .exs file write for developer-static", async () => {
     const result = await runHook("/app/priv/repo/migrations/foo.exs");
     assert.ok((result as { block?: boolean }).block === true);
   });

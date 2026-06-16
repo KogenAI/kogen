@@ -86,7 +86,7 @@ rm -f "/tmp/codegen-self-gate-${SID4}.count"
 # ── Test 5: make ci pattern matched ──────────────────────────────────────────
 SID5="sid5-$$-$(date -u +%s)"
 printf '2' >"/tmp/codegen-self-gate-${SID5}.count"
-out=$(make_input "make ci" "developer-html" "$SID5" | bash "$HOOK" 2>/dev/null || true)
+out=$(make_input "make ci" "developer-static" "$SID5" | bash "$HOOK" 2>/dev/null || true)
 assert_contains "make ci at count=3 BLOCKED" '"permissionDecision"' "$out"
 rm -f "/tmp/codegen-self-gate-${SID5}.count"
 
@@ -112,11 +112,11 @@ out=$(make_input "make ci" "developer-phoenix-backend" "$SID6C" | bash "$HOOK" 2
 assert_contains "make ci at count=3 BLOCKED (cap still applies)" '"permissionDecision"' "$out"
 rm -f "/tmp/codegen-self-gate-${SID6C}.count"
 
-# ── Test 7: developer-vite also gated ────────────────────────────────────────
+# ── Test 7: developer-static also gated ──────────────────────────────────────
 SID7="sid7-$$-$(date -u +%s)"
 printf '2' >"/tmp/codegen-self-gate-${SID7}.count"
-out=$(make_input "make test" "developer-vite" "$SID7" | bash "$HOOK" 2>/dev/null || true)
-assert_contains "developer-vite at count=3 BLOCKED" '"permissionDecision"' "$out"
+out=$(make_input "make test" "developer-static" "$SID7" | bash "$HOOK" 2>/dev/null || true)
+assert_contains "developer-static at count=3 BLOCKED" '"permissionDecision"' "$out"
 rm -f "/tmp/codegen-self-gate-${SID7}.count"
 
 # ── Test 8: mix format matched ───────────────────────────────────────────────

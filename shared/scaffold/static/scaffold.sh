@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # scaffold.sh — Static site scaffold entrypoint.
 #
-# Writes static site scaffold files: html, package.json, readme, css.
+# Writes vanilla Vite static site scaffold files.
 #
 # Usage: scaffold.sh <slug> <cwd> --app-name <name>
 #   slug      URL-safe app identifier (used in package.json "name")
@@ -9,12 +9,14 @@
 #   --app-name  human-readable app name (used in <title>, <h1>, README heading)
 #
 # Writes:
-#   assets/css/app.css
-#   static/images/.keep
-#   static/js/.keep
-#   static/index.html
-#   package.json
+#   index.html            ← Vite entry (root)
+#   vite.config.js        ← Vite config with @tailwindcss/vite plugin
+#   package.json          ← scripts: build/serve/dev; devDeps: vite, @tailwindcss/vite, tailwindcss
+#   src/main.js           ← app entry
+#   src/style.css         ← @import "tailwindcss"
 #   README.md
+#   .gitignore
+#   codegen/pitches/{draft,ready,shipped}/.gitkeep
 #
 # Does NOT: run npm install, touch git, Caddy, or any database.
 
@@ -58,61 +60,76 @@ if [[ -z "$SLUG" || -z "$CWD" ]]; then
 fi
 
 if [[ -z "$APP_NAME" ]]; then
-    # Fall back to slug if app-name not provided
     APP_NAME="$SLUG"
 fi
 
-# ── assets/css/app.css ────────────────────────────────────────────────────────
-mkdir -p "$CWD/assets/css"
-printf '@import "tailwindcss";\n' >"$CWD/assets/css/app.css"
-
-# ── static/images/.keep and static/js/.keep ───────────────────────────────────
-mkdir -p "$CWD/static/images"
-touch "$CWD/static/images/.keep"
-
-mkdir -p "$CWD/static/js"
-touch "$CWD/static/js/.keep"
-
-# ── static/index.html ─────────────────────────────────────────────────────────
-cat >"$CWD/static/index.html" <<EOF
+# ── index.html ────────────────────────────────────────────────────────────────
+cat >"$CWD/index.html" <<EOF
 <!doctype html>
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>${APP_NAME}</title>
-    <link rel="stylesheet" href="/css/app.css" />
   </head>
   <body>
-    <h1>${APP_NAME}</h1>
+    <div id="app"></div>
+    <script type="module" src="/src/main.js"></script>
   </body>
 </html>
+EOF
+
+# ── vite.config.js ────────────────────────────────────────────────────────────
+cat >"$CWD/vite.config.js" <<'EOF'
+import { defineConfig } from "vite";
+import tailwindcss from "@tailwindcss/vite";
+
+export default defineConfig({
+  plugins: [tailwindcss()],
+  build: {
+    outDir: "public",
+  },
+});
 EOF
 
 # ── package.json ──────────────────────────────────────────────────────────────
 cat >"$CWD/package.json" <<EOF
 {
   "name": "${SLUG}",
+  "type": "module",
   "scripts": {
-    "build": "npx @tailwindcss/cli -i ./assets/css/app.css -o ./public/css/app.css --minify && cp -r static/. public/",
-    "watch:css": "npx @tailwindcss/cli -i ./assets/css/app.css -o ./public/css/app.css --watch",
-    "watch:static": "npx nodemon --watch static --ext html,js,svg,png,jpg --exec 'cp -r static/. public/'",
-    "serve": "npm run build && concurrently \"npm run watch:css\" \"npm run watch:static\" \"python3 -u -m http.server --directory public 0\""
+    "build": "vite build",
+    "dev": "vite",
+    "serve": "vite build && python3 -u -m http.server --directory public 0"
   },
   "devDependencies": {
-    "@tailwindcss/cli": "^4.0.0",
-    "concurrently": "^9.0.0",
-    "nodemon": "^3.0.0",
-    "tailwindcss": "^4.0.0"
+    "@tailwindcss/vite": "^4.0.0",
+    "tailwindcss": "^4.0.0",
+    "vite": "^6.0.0"
   }
 }
+EOF
+
+# ── src/main.js ───────────────────────────────────────────────────────────────
+mkdir -p "$CWD/src"
+cat >"$CWD/src/main.js" <<EOF
+import "./style.css";
+
+document.querySelector("#app").innerHTML = \`
+  <h1 class="text-3xl font-bold text-center mt-16">${APP_NAME}</h1>
+\`;
+EOF
+
+# ── src/style.css ─────────────────────────────────────────────────────────────
+cat >"$CWD/src/style.css" <<'EOF'
+@import "tailwindcss";
 EOF
 
 # ── README.md ─────────────────────────────────────────────────────────────────
 cat >"$CWD/README.md" <<EOF
 # ${APP_NAME}
 
-${APP_NAME} is a static website.
+${APP_NAME} is a static website built with Vite and Tailwind CSS v4.
 
 ## Development
 
@@ -138,10 +155,10 @@ EOF
 # ── .gitignore: static-site non-marker entries ────────────────────────────────
 # Written unconditionally — codegen-scaffold's integrate stage adds the
 # machine-local symlink marker block on top of these entries (idempotent).
-cat >"$CWD/.gitignore" <<EOF
-/package-lock.json
+cat >"$CWD/.gitignore" <<'EOF'
 /node_modules/
 /public/
+/package-lock.json
 current
 public-*
 .DS_Store

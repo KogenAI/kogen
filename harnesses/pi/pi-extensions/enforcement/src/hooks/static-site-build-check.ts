@@ -18,14 +18,10 @@ import * as path from "node:path";
 export const HANDLER_META = {
   name: "static-site-build-check",
   event: "session_shutdown",
-  matcher: "developer-html|developer-hugo|developer-vite",
+  matcher: "developer-static",
 } as const;
 
-const STATIC_DEV_AGENTS = new Set([
-  "developer-html",
-  "developer-hugo",
-  "developer-vite",
-]);
+const STATIC_DEV_AGENTS = new Set(["developer-static"]);
 
 export function register(pi: ExtensionAPI): void {
   pi.on("session_shutdown", async (event) => {
@@ -39,15 +35,6 @@ export function register(pi: ExtensionAPI): void {
 
     const projectDir = ev?.input?.cwd ?? process.env["CWD"] ?? process.cwd();
     debugLog("static-site-build-check", `agent=${agentType} cwd=${projectDir}`);
-
-    // No package.json → Hugo case; runner not applicable, skip ALL CLEAR (not a build project)
-    if (!fs.existsSync(path.join(projectDir, "package.json"))) {
-      debugLog(
-        "static-site-build-check",
-        "no package.json — Hugo/static site, skipping npm build check",
-      );
-      return;
-    }
 
     try {
       execSync("make ci", {

@@ -178,15 +178,9 @@ describe("stop-verify-planner-gate", { concurrency: false }, () => {
   });
 
   // Planner variants
-  it("enforces for planner-hugo", async () => {
+  it("enforces for planner-static", async () => {
     writeLog("## Plan\n\nNo gate here.\n");
-    const stderr = await runHook("planner-hugo");
-    assert.ok(stderr.includes("stop-verify-planner-gate"), "expected warning");
-  });
-
-  it("enforces for planner-vite", async () => {
-    writeLog("## Plan\n\nNo gate here.\n");
-    const stderr = await runHook("planner-vite");
+    const stderr = await runHook("planner-static");
     assert.ok(stderr.includes("stop-verify-planner-gate"), "expected warning");
   });
 

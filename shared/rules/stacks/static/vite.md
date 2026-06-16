@@ -1,8 +1,8 @@
-# Vite + React Stack
+# Static Stack — Vite (vanilla by default)
 
-Component-based via Vite + React (default). Use when user requests React/Vue/Svelte.
+Static sites are Vite projects. Vanilla (no framework) by default; add React/Vue/Svelte ONLY when the plan calls for it.
 
-Refs: https://vitejs.dev/guide/ | https://react.dev/
+Refs: https://vitejs.dev/guide/
 
 ## File Structure
 
@@ -11,56 +11,61 @@ index.html              ← Vite entry — MUST be at project root
 vite.config.js          ← MUST be at project root
 package.json
 src/
-  main.jsx              ← app entry
-  App.jsx
-  components/
-  assets/
+  main.js               ← app entry (main.jsx for React, main.ts for Vue+TS)
+  style.css
 public/                 ← build output (gitignored)
-.gitignore              ← node_modules/, public/, dist/
+.gitignore              ← node_modules/, public/, current, public-*
 ```
 
-**Modern Vite (v5+) defaults**: Entry point at project root (`index.html`), not `public/`. Build output goes to `dist/` by default, but this stack overrides to `public/` in vite.config.js. When detecting built artifacts: check `dist/` first (default), then root `index.html`, then `public/`. If custom `outDir` is set, the detection order respects it, but verify empirically.
+**Modern Vite (v6+) defaults**: Entry point at project root (`index.html`), not `public/`. Build output goes to `dist/` by default, but this stack overrides to `public/` in vite.config.js. When detecting built artifacts: check `public/` (custom outDir), then `dist/` (default).
 
 ## Mandatory Files
 
 - `index.html` at project root. Missing → `Could not resolve entry module "index.html"`.
-- `vite.config.js` at project root with `build: { outDir: "public" }`.
-- `src/main.jsx` referenced from `index.html` via `<script type="module" src="/src/main.jsx"></script>`.
+- `vite.config.js` at project root with `build: { outDir: "public" }` and `@tailwindcss/vite` plugin.
+- `src/main.js` (or `src/main.jsx` for React) referenced from `index.html` via `<script type="module" src="/src/main.js"></script>`.
+- `src/style.css` with `@import "tailwindcss";` imported in `src/main.js`.
 
-Scaffold recipe: `static-vite-scaffold.md`.
+Scaffold reference: `static-vite-scaffold.md` (framework add-on reference for adding React/Vue on top of vanilla base).
 
 ## Styling
 
 Tailwind v4 mandatory via `@tailwindcss/vite` plugin. Component-local CSS modules allowed for one-off cases ONLY when Tailwind cannot express the pattern. Inline `style={{}}` for truly dynamic values only.
 
-Wiring:
+Wiring (vanilla):
 
 1. `package.json` devDependencies: `tailwindcss`, `@tailwindcss/vite`
-2. `vite.config.js`: `import tailwindcss from "@tailwindcss/vite"` → `plugins: [react(), tailwindcss()]`
-3. `src/index.css`: `@import "tailwindcss";` + `@theme` for brand tokens
-4. `src/main.jsx`: `import "./index.css";` BEFORE component imports
+2. `vite.config.js`: `import tailwindcss from "@tailwindcss/vite"` → `plugins: [tailwindcss()]`
+3. `src/style.css`: `@import "tailwindcss";`
+4. `src/main.js`: `import "./style.css";` BEFORE any other imports
+
+For React add: `import react from "@vitejs/plugin-react"` → `plugins: [react(), tailwindcss()]`
 
 Omit any of these → built HTML has no stylesheet link → unstyled page → failure.
 
-## Multi-Page
+## Framework Opt-In
 
-React Router — don't switch to Hugo.
+Add React/Vue/Svelte ONLY when the plan explicitly calls for it:
 
-```json
-"dependencies": { "react": "^18", "react-dom": "^18", "react-router-dom": "^6" }
-```
+- React: add `react`, `react-dom`, `@vitejs/plugin-react`; entry is `src/main.jsx`; import React in JSX files
+- Vue: add `vue`, `@vitejs/plugin-vue`; entry is `src/main.js`; components in `src/components/*.vue`
+- Multi-page with routing: React Router (`react-router-dom`) — never Hugo for React apps
+
+## Multi-Page (vanilla)
+
+For vanilla multi-page sites, create additional HTML files at project root and add them to `vite.config.js` `build.rollupOptions.input`.
 
 ## What You Edit
 
-`index.html` (shell, title, meta), `src/App.jsx` (root, routing), `src/components/`, `src/assets/`, `vite.config.js`. ❌ `public/`.
+`index.html` (shell, title, meta), `src/main.js` (entry), `src/style.css`, `vite.config.js`. ❌ `public/`.
 
 ## Common Mistakes
 
 - `index.html` inside `src/` — must be at root
 - `outDir: "dist"` — platform serves `public/`. Always `outDir: "public"`
 - `require()` in `vite.config.js` — ESM only. Use `import`
-- No `"type": "module"` — required for ESM imports
-- `npm create vite` in non-empty directory hangs on interactive prompt when stdin is `/dev/null`. Fix: use `echo "Overwrite" | npm create vite` or add `--force` flag to scaffold non-interactively.
+- No `"type": "module"` in `package.json` — required for ESM imports
+- `npm create vite` in non-empty directory hangs on interactive prompt when stdin is `/dev/null`. Fix: write Vite project files directly (heredoc/printf), never `npm create vite`.
 
 ## Reactive Initial Values
 

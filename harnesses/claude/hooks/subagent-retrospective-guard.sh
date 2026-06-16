@@ -4,7 +4,7 @@
 #
 # HOOK-MANIFEST:
 # event: SubagentStop
-# matcher: developer-phoenix-backend|developer-phoenix-frontend|planner-phoenix|planner-html|planner-hugo|planner-vite|reviewer-phoenix|reviewer-static
+# matcher: developer-phoenix-backend|developer-phoenix-frontend|planner-phoenix|planner-static|reviewer-phoenix|reviewer-static
 # surface: user_global
 # signal: AGENT_TYPE
 # role: developer-phoenix-backend|developer-phoenix-frontend|planner-*|reviewer-phoenix|reviewer-static

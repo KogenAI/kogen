@@ -228,8 +228,8 @@ describe("subagent-retrospective-guard", { concurrency: false }, () => {
     assert.ok(stderr.includes("subagent-retrospective-guard"), "expected warning");
   });
 
-  // planner-hugo, planner-vite, planner-html in matcher set — all write under ## Plan
-  it("does not warn for planner-hugo with retrospective under ## Plan", async () => {
+  // planner-static in matcher set — writes under ## Plan
+  it("does not warn for planner-static with retrospective under ## Plan", async () => {
     const content = [
       "## Plan",
       "",
@@ -237,15 +237,15 @@ describe("subagent-retrospective-guard", { concurrency: false }, () => {
       "",
       "### What I Learned This Step",
       "",
-      "- [local] hugo planner finding",
+      "- [local] static planner finding",
       "",
     ].join("\n");
     writeLog(content);
-    const stderr = await runHook("planner-hugo");
+    const stderr = await runHook("planner-static");
     assert.ok(!stderr.includes("WARNING"), "expected no warning");
   });
 
-  it("warns for planner-hugo missing retrospective under ## Plan", async () => {
+  it("warns for planner-static missing retrospective under ## Plan", async () => {
     const content = [
       "## Plan",
       "",
@@ -253,11 +253,11 @@ describe("subagent-retrospective-guard", { concurrency: false }, () => {
       "",
     ].join("\n");
     writeLog(content);
-    const stderr = await runHook("planner-hugo");
+    const stderr = await runHook("planner-static");
     assert.ok(stderr.includes("subagent-retrospective-guard"), "expected warning");
   });
 
-  it("does not warn for planner-html with retrospective under ## Plan", async () => {
+  it("does not warn for planner-static with retrospective under ## Plan", async () => {
     const content = [
       "## Plan",
       "",
@@ -269,7 +269,7 @@ describe("subagent-retrospective-guard", { concurrency: false }, () => {
       "",
     ].join("\n");
     writeLog(content);
-    const stderr = await runHook("planner-html");
+    const stderr = await runHook("planner-static");
     assert.ok(!stderr.includes("WARNING"), "expected no warning");
   });
 

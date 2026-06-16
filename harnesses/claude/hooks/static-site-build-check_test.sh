@@ -64,7 +64,7 @@ make_transcript() {
 
 input_for() {
     local cwd="$1"
-    local agent_type="${2:-developer-html}"
+    local agent_type="${2:-developer-static}"
     local stop_active="${3:-false}"
     local transcript_path="${4:-}"
     cat <<JSON
@@ -72,9 +72,21 @@ input_for() {
 JSON
 }
 
+make_render_stub() {
+    local verdict_to_emit="$1"
+    local stub_path
+    stub_path=$(mktemp)
+    cat >"$stub_path" <<STUB
+#!/usr/bin/env bash
+printf 'RENDER_VERDICT=%s\n' '$verdict_to_emit'
+STUB
+    chmod +x "$stub_path"
+    printf '%s' "$stub_path"
+}
+
 # ── Test 1: stop_hook_active=true short-circuits ────────────────────────────
 T1=$(make_tmp_site)
-run_test "stop_hook_active=true short-circuits" "allow" "$(input_for "$T1" developer-html true)"
+run_test "stop_hook_active=true short-circuits" "allow" "$(input_for "$T1" developer-static true)"
 rm -rf "$T1"
 
 # ── Test 2: non-static-site agent_type exits 0 ──────────────────────────────
@@ -82,9 +94,9 @@ T2=$(make_tmp_site)
 run_test "non-static-site agent_type is no-op" "allow" "$(input_for "$T2" developer-phoenix-backend)"
 rm -rf "$T2"
 
-# ── Test 3: missing package.json (Hugo case) passes ─────────────────────────
+# ── Test 3: missing package.json blocks (Vite always requires package.json) ──
 T3=$(mktemp -d)
-run_test "missing package.json (Hugo case) passes" "allow" "$(input_for "$T3")"
+run_test "missing package.json blocks (Vite requires it)" "block" "$(input_for "$T3")"
 rm -rf "$T3"
 
 # ── Test 4: npm run build non-zero blocks ───────────────────────────────────
@@ -174,7 +186,9 @@ rm -rf "$T10"
 # ── Test 11: all checks pass — appends SSV section ──────────────────────────
 T11=$(make_tmp_site)
 mkdir -p "$T11/public" "$T11/codegen/logging"
-touch "$T11/public/app.css"
+printf 'body { font-family: sans-serif; }\n' >"$T11/public/app.css"
+printf '<html><head><link rel="stylesheet" href="app.css"></head><body><p>hi</p></body></html>\n' \
+    >"$T11/public/index.html"
 LOG="$T11/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_session.md"
 cat >"$LOG" <<'MD'
 # Session Log
@@ -185,7 +199,10 @@ cat >"$LOG" <<'MD'
 | ---- | ----- | ---- | ------ |
 MD
 make_transcript "$T11/transcript.jsonl" "$LOG"
-out=$(printf '%s' "$(input_for "$T11" developer-html false "$T11/transcript.jsonl")" | bash "$HOOK" 2>/dev/null || true)
+STUB11=$(make_render_stub "PASS")
+out=$(printf '%s' "$(input_for "$T11" developer-static false "$T11/transcript.jsonl")" |
+    RENDER_CHECK_CMD="$STUB11" CODEGEN_DIR="$SCRIPT_DIR" bash "$HOOK" 2>/dev/null || true)
+rm -f "$STUB11"
 if [ -z "$out" ] && grep -q '## static-site-verifier Section' "$LOG"; then
     [ -n "${VERBOSE:-}" ] && printf 'PASS: %s\n' "all checks pass — SSV section appended"
     pass=$((pass + 1))
@@ -201,7 +218,9 @@ rm -rf "$T11"
 T12A=$(make_tmp_site)
 T12B=$(make_tmp_site)
 mkdir -p "$T12A/public" "$T12A/codegen/logging" "$T12B/codegen/logging"
-touch "$T12A/public/app.css"
+printf 'body { font-family: sans-serif; }\n' >"$T12A/public/app.css"
+printf '<html><head><link rel="stylesheet" href="app.css"></head><body><p>hi</p></body></html>\n' \
+    >"$T12A/public/index.html"
 LOG_A="$T12A/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_session_A.md"
 cat >"$LOG_A" <<'MD'
 # Session A
@@ -213,7 +232,10 @@ cat >"$LOG_B" <<'MD'
 MD
 # A's transcript only records A's log.
 make_transcript "$T12A/transcript.jsonl" "$LOG_A"
-out=$(printf '%s' "$(input_for "$T12A" developer-html false "$T12A/transcript.jsonl")" | bash "$HOOK" 2>/dev/null || true)
+STUB12=$(make_render_stub "PASS")
+out=$(printf '%s' "$(input_for "$T12A" developer-static false "$T12A/transcript.jsonl")" |
+    RENDER_CHECK_CMD="$STUB12" CODEGEN_DIR="$SCRIPT_DIR" bash "$HOOK" 2>/dev/null || true)
+rm -f "$STUB12"
 if grep -q '## static-site-verifier Section' "$LOG_A" && ! grep -q '## static-site-verifier Section' "$LOG_B"; then
     [ -n "${VERBOSE:-}" ] && printf 'PASS: A+B regression: SSV appended to A only\n'
     pass=$((pass + 1))
@@ -226,18 +248,7 @@ rm -rf "$T12A" "$T12B"
 # ── Render-check stub tests ──────────────────────────────────────────────────
 # Override RENDER_CHECK_CMD with a stub that emits a controlled verdict.
 # This avoids needing a real browser or running playwright in bash tests.
-
-make_render_stub() {
-    local verdict_to_emit="$1"
-    local stub_path
-    stub_path=$(mktemp)
-    cat >"$stub_path" <<STUB
-#!/usr/bin/env bash
-printf 'RENDER_VERDICT=%s\n' '$verdict_to_emit'
-STUB
-    chmod +x "$stub_path"
-    printf '%s' "$stub_path"
-}
+# (make_render_stub defined with helper functions above)
 
 # ── Test 13: render PASS — all checks pass + render PASS appends SSV ────────
 T13=$(make_tmp_site)
@@ -251,7 +262,7 @@ cat >"$LOG13" <<'MD'
 MD
 make_transcript "$T13/transcript.jsonl" "$LOG13"
 STUB13=$(make_render_stub "PASS")
-out13=$(printf '%s' "$(input_for "$T13" developer-html false "$T13/transcript.jsonl")" |
+out13=$(printf '%s' "$(input_for "$T13" developer-static false "$T13/transcript.jsonl")" |
     RENDER_CHECK_CMD="$STUB13" CODEGEN_DIR="$SCRIPT_DIR" bash "$HOOK" 2>/dev/null || true)
 if [ -z "$out13" ] && grep -q 'DOM non-empty' "$LOG13"; then
     [ -n "${VERBOSE:-}" ] && printf 'PASS: %s\n' "render PASS — SSV section includes render summary"
@@ -415,18 +426,18 @@ fi
 rm -f "$STUB19"
 rm -rf "$T19"
 
-# ── Test 20: no cycle-state stamp when Hugo (no package.json) ────────────────
+# ── Test 20: no cycle-state stamp on block (missing package.json) ─────────────
 T20=$(mktemp -d)
-# No package.json → Hugo case → _NPM_BUILD_SKIPPED=true → no stamp
-printf '%s' "$(input_for "$T20" developer-hugo)" |
+# No package.json → block (not stamp); cycle-state.json should not be written
+printf '%s' "$(input_for "$T20" developer-static)" |
     CODEGEN_DIR="$SCRIPT_DIR" bash "$HOOK" 2>/dev/null || true
 cs_file20="$T20/codegen/gate-pending/cycle-state.json"
 if [ ! -f "$cs_file20" ]; then
-    [ -n "${VERBOSE:-}" ] && printf 'PASS: Hugo (no package.json) → no cycle-state stamp\n'
+    [ -n "${VERBOSE:-}" ] && printf 'PASS: block (no package.json) → no cycle-state stamp\n'
     pass=$((pass + 1))
 else
     cs_state20=$(jq -r '.state // ""' "$cs_file20" 2>/dev/null || printf '')
-    printf 'FAIL: Hugo should NOT stamp cycle-state.json, but found state=%s\n' "$cs_state20"
+    printf 'FAIL: block path should NOT stamp cycle-state.json, but found state=%s\n' "$cs_state20"
     fail=$((fail + 1))
 fi
 rm -rf "$T20"

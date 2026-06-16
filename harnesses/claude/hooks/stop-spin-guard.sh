@@ -5,7 +5,7 @@
 #
 # HOOK-MANIFEST:
 # event: SubagentStop
-# matcher: developer-phoenix-backend|developer-phoenix-frontend|developer-html|developer-hugo|developer-vite
+# matcher: developer-phoenix-backend|developer-phoenix-frontend|developer-static
 # surface: user_global
 # signal: AGENT_TYPE
 # role: developer-*
@@ -31,7 +31,7 @@ parse_input
 
 # Only act on developer-* variants.
 case "$AGENT_TYPE" in
-developer-phoenix-backend | developer-phoenix-frontend | developer-html | developer-hugo | developer-vite) ;;
+developer-phoenix-backend | developer-phoenix-frontend | developer-static) ;;
 *)
     debug_log stop-spin-guard "skip: agent_type=$AGENT_TYPE is not developer-*"
     exit 0

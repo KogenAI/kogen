@@ -12,7 +12,7 @@ Before reporting done, verify:
 
 If any checkbox fails: fix it before reporting done.
 
-In your `## <agent-name> Section` (literally `## developer-html Section`, `## developer-hugo Section`, or `## developer-vite Section` matching this file's YAML name:), report:
+In your `## developer-static Section`, report:
 
 - Which rules you received (from system prompt Jinja includes)
 - How you applied Tailwind (which utilities, which components)

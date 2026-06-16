@@ -163,16 +163,16 @@ out6=$(mk_agent_input "developer-phoenix-frontend" "$T6/transcript.jsonl" | bash
 assert_allow "allow: developer-phoenix-frontend — section header present" "$out6"
 rm -rf "$T6"
 
-# ── Test 7: allow developer-html with header present ─────────────────────────
+# ── Test 7: allow developer-static with header present ───────────────────────
 T7=$(make_project)
 LOG7="$T7/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_step1_test.md"
 cat >"$LOG7" <<'MD'
-## developer-html Section
+## developer-static Section
 
 MD
 make_transcript "$T7/transcript.jsonl" "$LOG7"
-out7=$(mk_agent_input "developer-html" "$T7/transcript.jsonl" | bash "$HOOK" 2>/dev/null || true)
-assert_allow "allow: developer-html — section header present" "$out7"
+out7=$(mk_agent_input "developer-static" "$T7/transcript.jsonl" | bash "$HOOK" 2>/dev/null || true)
+assert_allow "allow: developer-static — section header present" "$out7"
 rm -rf "$T7"
 
 # ── Test 8: allow reviewer-phoenix with header present ───────────────────────
@@ -239,28 +239,28 @@ out13=$(mk_agent_input "developer-phoenix-backend" "/nonexistent/transcript.json
 assert_allow "allow: transcript unreadable — fail-open" "$out13"
 rm -rf "$T13"
 
-# ── Test 14: allow developer-hugo with header present ────────────────────────
+# ── Test 14: allow developer-static (alias for former developer-hugo) ─────────
 T14=$(make_project)
 LOG14="$T14/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_step1_test.md"
 cat >"$LOG14" <<'MD'
-## developer-hugo Section
+## developer-static Section
 
 MD
 make_transcript "$T14/transcript.jsonl" "$LOG14"
-out14=$(mk_agent_input "developer-hugo" "$T14/transcript.jsonl" | bash "$HOOK" 2>/dev/null || true)
-assert_allow "allow: developer-hugo — section header present" "$out14"
+out14=$(mk_agent_input "developer-static" "$T14/transcript.jsonl" | bash "$HOOK" 2>/dev/null || true)
+assert_allow "allow: developer-static (test 14) — section header present" "$out14"
 rm -rf "$T14"
 
-# ── Test 15: allow developer-vite with header present ────────────────────────
+# ── Test 15: allow developer-static (alias for former developer-vite) ─────────
 T15=$(make_project)
 LOG15="$T15/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_step1_test.md"
 cat >"$LOG15" <<'MD'
-## developer-vite Section
+## developer-static Section
 
 MD
 make_transcript "$T15/transcript.jsonl" "$LOG15"
-out15=$(mk_agent_input "developer-vite" "$T15/transcript.jsonl" | bash "$HOOK" 2>/dev/null || true)
-assert_allow "allow: developer-vite — section header present" "$out15"
+out15=$(mk_agent_input "developer-static" "$T15/transcript.jsonl" | bash "$HOOK" 2>/dev/null || true)
+assert_allow "allow: developer-static (test 15) — section header present" "$out15"
 rm -rf "$T15"
 
 # ── Test 16: filesystem fallback when transcript lags (managed build) ────────

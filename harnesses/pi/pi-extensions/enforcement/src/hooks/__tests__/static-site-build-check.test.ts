@@ -44,7 +44,7 @@ describe("static-site-build-check", () => {
   it("stop_hook_active=true short-circuits (no block)", async () => {
     const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "ssbc-test-"));
     try {
-      const result = await runHook("developer-html", tmpDir, true);
+      const result = await runHook("developer-static", tmpDir, true);
       assert.ok(
         result == null || (result as { block?: boolean }).block !== true,
       );
@@ -65,10 +65,10 @@ describe("static-site-build-check", () => {
     }
   });
 
-  it("missing package.json (Hugo case) passes", async () => {
-    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "ssbc-hugo-"));
+  it("missing package.json is non-fatal (Pi observe-only)", async () => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "ssbc-nopkg-"));
     try {
-      const result = await runHook("developer-html", tmpDir);
+      const result = await runHook("developer-static", tmpDir);
       assert.ok(
         result == null || (result as { block?: boolean }).block !== true,
       );
@@ -135,7 +135,7 @@ describe("static-site-build-check render-check integration", () => {
         path.join(hooksLibDir, "render-check.js"),
       );
 
-      process.env["AGENT_TYPE"] = "developer-html";
+      process.env["AGENT_TYPE"] = "developer-static";
       process.env["CODEGEN_DIR"] = fakeCodegenDir;
 
       // Import fresh module — clear module cache for re-import.
@@ -153,7 +153,7 @@ describe("static-site-build-check render-check integration", () => {
         toolName: "session_shutdown",
         toolCallId: "test",
         input: { cwd: tmpDir },
-        agentType: "developer-html",
+        agentType: "developer-static",
       });
 
       const hasFail = stderrMessages.some(
@@ -214,7 +214,7 @@ describe("static-site-build-check render-check integration", () => {
         `process.stdout.write("RENDER_VERDICT=INCONCLUSIVE:browser-not-installed\\n");\n`,
       );
 
-      process.env["AGENT_TYPE"] = "developer-html";
+      process.env["AGENT_TYPE"] = "developer-static";
       process.env["CODEGEN_DIR"] = fakeCodegenDir;
 
       const { register } = await import("../static-site-build-check");
@@ -231,7 +231,7 @@ describe("static-site-build-check render-check integration", () => {
         toolName: "session_shutdown",
         toolCallId: "test",
         input: { cwd: tmpDir },
-        agentType: "developer-html",
+        agentType: "developer-static",
       });
 
       const hasFail = stderrMessages.some((m) => m.includes("render FAILED"));

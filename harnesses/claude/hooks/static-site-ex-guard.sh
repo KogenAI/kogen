@@ -1,17 +1,17 @@
 #!/bin/bash
-# static-site-ex-guard.sh — PreToolUse hook for developer-html | developer-hugo | developer-vite
+# static-site-ex-guard.sh — PreToolUse hook for developer-static
 #
 # HOOK-MANIFEST:
 # event: PreToolUse
 # matcher: Write|Edit
 # surface: user_global
 # signal: AGENT_TYPE
-# role: developer-html|developer-hugo|developer-vite
+# role: developer-static
 # harnesses: all
 # GENERATED FROM shared/enforcement/registry.yaml — DO NOT EDIT
 #
 # Blocks Write and Edit tool calls targeting Elixir/HEEX files when the active
-# agent is "developer-html | developer-hugo | developer-vite". All other agents pass through unconditionally.
+# agent is "developer-static". All other agents pass through unconditionally.
 
 set -u
 
@@ -22,7 +22,7 @@ debug_log static-site-ex-guard "tool=$TOOL_NAME agent=$AGENT_TYPE file=$FILE_PAT
 
 # Only gate static-site developers; allow all other agents unconditionally
 case "$AGENT_TYPE" in
-developer-html | developer-hugo | developer-vite) ;;
+developer-static) ;;
 *) exit 0 ;;
 esac
 

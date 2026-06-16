@@ -79,6 +79,21 @@ The `--no-ecto` post-render strip (`scaffold.sh` lines 187-201) must NOT remove 
 
 **Gitkeep vs keep files**: Both `.gitkeep` and `.keep` are valid gitignore-boundary markers in lifecycle directories (`codegen/pitches/{draft,ready,shipped}`). Existing asset dirs use `.keep`; newly-added lifecycle dirs use `.gitkeep` for clarity of purpose. No need to homogenize across the project — either is acceptable.
 
+## Static Stack — Vite Scaffold
+
+**Vanilla Vite by default**: The static stack scaffold emits a minimal Vite project without any framework. Framework opt-in (React/Vue/Svelte) is added only when the planner explicitly calls for it (documented in `shared/recipes/static-vite-scaffold.md` as an add-on). Scaffold logic is deterministic: files written directly via `cat >` / `printf` (never `npm create vite` — interactive hang). Output must be prettier-clean (2-space JSON indent, LF line endings) to pass `npm run build && npx prettier --check .` in the downstream `make ci` gate.
+
+**Key files and config**:
+
+- `vite.config.js`: sets `build: { outDir: "public" }` + `@tailwindcss/vite` plugin (Tailwind v4)
+- `package.json`: scripts `build: "vite build"`, `serve: "vite build && python3 -u -m http.server --directory public 0"`, `dev: "vite"` + `"type": "module"` + devDeps `vite`, `@tailwindcss/vite`, `tailwindcss`
+- `src/main.js`: ES module entry that imports `./style.css`
+- `src/style.css`: `@import "tailwindcss";` (Tailwind v4 directive)
+- `index.html` (root): `<script type="module" src="/src/main.js">` + app name + `<div id="app">` container
+- `run_integrate_stage` appends to `.gitignore`: `/node_modules/`, `/public/`, marker blocks for `current`, `public-*`, `.DS_Store`, `/package-lock.json`
+
+**Serve invariant**: The `static-site-build-check.sh` hook expects the `serve` script to end with the literal regex `python3 -u -m http\.server --directory public 0$` (exact tail match). Any deviation breaks the downstream gate.
+
 ## `--no-ecto` Post-Render Strips
 
 After template rendering (Phase 1, before Phase 2 mutations), `scaffold.sh` strips lines that reference Ecto from generated files when `NO_ECTO` is set:

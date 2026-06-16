@@ -176,9 +176,9 @@ F14='{"hook_event_name":"PreToolUse","tool_name":"Read","tool_input":{"file_path
 run_test "developer-phoenix-frontend Read context/builds.md not in plan denies" "2" "$F14"
 rm -rf "$TMP14"
 
-# Test 15: developer-html Read PROJECT_CONTEXT.md → DENY (static stack coverage)
-F15='{"hook_event_name":"PreToolUse","tool_name":"Read","tool_input":{"file_path":"PROJECT_CONTEXT.md"},"agent_id":"abc","agent_type":"developer-html"}'
-run_test "developer-html Read PROJECT_CONTEXT.md denies (static stack)" "2" "$F15"
+# Test 15: developer-static Read PROJECT_CONTEXT.md → DENY (static stack coverage)
+F15='{"hook_event_name":"PreToolUse","tool_name":"Read","tool_input":{"file_path":"PROJECT_CONTEXT.md"},"agent_id":"abc","agent_type":"developer-static"}'
+run_test "developer-static Read PROJECT_CONTEXT.md denies (static stack)" "2" "$F15"
 
 # ── Developer: fail-open on missing transcript ──────────────────────────────
 

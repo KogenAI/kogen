@@ -3,14 +3,14 @@
 #
 # HOOK-MANIFEST:
 # event: SubagentStop
-# matcher: developer-phoenix-backend|developer-phoenix-frontend|developer-html|developer-hugo|developer-vite
+# matcher: developer-phoenix-backend|developer-phoenix-frontend|developer-static
 # surface: user_global
 # signal: AGENT_TYPE
-# role: developer-phoenix-backend|developer-phoenix-frontend|developer-html|developer-hugo|developer-vite
+# role: developer-phoenix-backend|developer-phoenix-frontend|developer-static
 # harnesses: all
 # GENERATED FROM shared/enforcement/registry.yaml — DO NOT EDIT
 #
-# Purpose: when developer-phoenix-backend / developer-phoenix-frontend / developer-html | developer-hugo | developer-vite
+# Purpose: when developer-phoenix-backend / developer-phoenix-frontend / developer-static
 # reports done, auto-format their diff so the dev-gate.sh hook never sees a
 # prettier-only or mix-format-only failure. Also surface any LLM-test signal.
 #
@@ -22,7 +22,7 @@
 #   - developer-phoenix-backend / developer-phoenix-frontend:
 #       * mix format on changed .ex/.exs/.heex files
 #       * npx prettier --write on changed prettier-relevant files
-#   - developer-html | developer-hugo | developer-vite:
+#   - developer-static:
 #       * npx prettier --write on changed files
 #   - All developers: detect LLM-affecting paths in the diff and write a
 #     pending-flag file the orchestrator can check.
@@ -68,7 +68,7 @@ log() {
 log "fired cwd=$project_dir"
 
 case "$agent_type" in
-developer-phoenix-backend | developer-phoenix-frontend | developer-html | developer-hugo | developer-vite) ;;
+developer-phoenix-backend | developer-phoenix-frontend | developer-static) ;;
 *)
     log "skip (not a developer agent_type)"
     exit 0

@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# static-site-build-check.sh — SubagentStop hook for developer-html | developer-hugo | developer-vite.
+# static-site-build-check.sh — SubagentStop hook for developer-static.
 #
 # HOOK-MANIFEST:
 # event: SubagentStop
-# matcher: developer-html|developer-hugo|developer-vite
+# matcher: developer-static
 # surface: user_global
 # signal: AGENT_TYPE
-# role: developer-html|developer-hugo|developer-vite
+# role: developer-static
 # harnesses: all
 # GENERATED FROM shared/enforcement/registry.yaml — DO NOT EDIT
 #
@@ -18,7 +18,7 @@
 # the orchestrator's chain detector still sees the role marker.
 #
 # Checks (deterministic order, first failure short-circuits):
-#   1. `make ci` — skip if no package.json (Hugo case).
+#   1. `make ci` — skip if no package.json (tooling-only case).
 #   2. package.json invariants — scripts.build present, scripts.serve present,
 #      scripts.serve ends with `python3 -u -m http.server --directory public 0`.
 #   3. Tailwind v4 config absence — neither tailwind.config.js nor postcss.config.js
@@ -55,7 +55,7 @@ fi
 
 # Only fire for static-site developers.
 case "$agent_type" in
-developer-html | developer-hugo | developer-vite) ;;
+developer-static) ;;
 *)
     debug_log static-site-build-check "skip: agent_type=$agent_type"
     exit 0
@@ -82,14 +82,12 @@ fail() {
 }
 
 # ── Check 1: npm run build ──────────────────────────────────────────────────
-# Sets _NPM_BUILD_SKIPPED=true when package.json is absent (Hugo case).
+# Sets _NPM_BUILD_SKIPPED=true when package.json has no scripts (tooling-only).
 _NPM_BUILD_SKIPPED=false
 
 check_npm_build() {
     if [ ! -f package.json ]; then
-        _NPM_BUILD_SKIPPED=true
-        debug_log static-site-build-check "no package.json (Hugo/no-JS site) — npm build + render not verified; INCONCLUSIVE"
-        return 0
+        fail "package.json not found — Vite static sites must have a package.json"
     fi
 
     # No scripts object at all → tooling-only package.json (e.g. prettier).
@@ -213,7 +211,7 @@ run_render_check() {
 }
 
 # Determine output dir — same logic as check_css_output/check_html_stylesheet_link.
-if [ -f package.json ] && jq -e '.scripts' package.json >/dev/null 2>&1; then
+if [ "$_NPM_BUILD_SKIPPED" = "false" ] && [ -f package.json ] && jq -e '.scripts' package.json >/dev/null 2>&1; then
     _output_dir="public"
     [ -d "dist" ] && _output_dir="dist"
 
@@ -256,16 +254,9 @@ _gate_cmd="make ci"
 _diff_sha=$(git -C "$project_dir" rev-parse --short HEAD 2>/dev/null || printf 'unknown')
 _diff_count=$(git -C "$project_dir" diff --name-only origin/main...HEAD 2>/dev/null | wc -l | tr -d ' ' || printf '0')
 _ts_now=$(date -u +%Y-%m-%dT%H:%M:%SZ)
-_runner_found="true"
 _render_for_result="$render_verdict"
 
-if [ "$_NPM_BUILD_SKIPPED" = "true" ]; then
-    # No package.json (Hugo case) — runner not applicable, skip gate-result write
-    _runner_found="false"
-    _render_for_result=""
-fi
-
-if [ "$_runner_found" = "true" ]; then
+if [ "$_NPM_BUILD_SKIPPED" = "false" ]; then
     case "$render_verdict" in
     INCONCLUSIVE:*)
         write_gate_result "$_gate_cmd" "short" "$_diff_sha" "$_diff_count" \
@@ -290,21 +281,17 @@ if [ -z "$log_file" ]; then
 elif [ -w "$log_file" ]; then
     ts="$_ts_now"
 
-    # Choose result line based on render verdict and build mode
+    # Choose result line based on render verdict
     result_line=""
-    if [ "$_NPM_BUILD_SKIPPED" = "true" ]; then
-        result_line="INCONCLUSIVE ⚠️ no-package-json: static build check not applicable (Hugo/no-JS site) — npm build + render not verified"
-    else
-        case "$render_verdict" in
-        INCONCLUSIVE:*)
-            inc_detail="${render_verdict#INCONCLUSIVE:}"
-            result_line="INCONCLUSIVE ⚠️ render-inconclusive: $inc_detail"
-            ;;
-        *)
-            result_line="ALL CLEAR ✅"
-            ;;
-        esac
-    fi
+    case "$render_verdict" in
+    INCONCLUSIVE:*)
+        inc_detail="${render_verdict#INCONCLUSIVE:}"
+        result_line="INCONCLUSIVE ⚠️ render-inconclusive: $inc_detail"
+        ;;
+    *)
+        result_line="ALL CLEAR ✅"
+        ;;
+    esac
 
     {
         printf '\n## static-site-verifier Section\n\n'
@@ -312,7 +299,7 @@ elif [ -w "$log_file" ]; then
         printf '**Commands executed**:\n\n'
         printf '| Time (HH:MM:SS UTC) | Command | Exit | Notes |\n'
         printf '| ------------------- | ------- | ---- | ----- |\n'
-        printf '| %s | make ci | 0 | (skipped if no package.json) |\n' "$ts"
+        printf '| %s | make ci | 0 | build verification |\n' "$ts"
         printf '| %s | jq .scripts.build/.scripts.serve | 0 | package.json invariants |\n' "$ts"
         printf '| %s | test -f tailwind.config.js / postcss.config.js | 1 | Tailwind v4 config absence |\n' "$ts"
         printf '| %s | grep -rE @tailwind --include=*.css . | 1 | Tailwind v4 directive check |\n' "$ts"

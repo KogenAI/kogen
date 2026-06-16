@@ -305,7 +305,7 @@
 - kind: registration
   id: developer-no-self-gate-reset
   event: SubagentStop
-  tool_guard: "developer-phoenix-backend|developer-phoenix-frontend|developer-html|developer-hugo|developer-vite"
+  tool_guard: "developer-phoenix-backend|developer-phoenix-frontend|developer-static"
   surface: user_global
   signal: AGENT_TYPE
   role: "developer-*"
@@ -460,10 +460,10 @@
 - kind: registration
   id: post-developer-format
   event: SubagentStop
-  tool_guard: "developer-phoenix-backend|developer-phoenix-frontend|developer-html|developer-hugo|developer-vite"
+  tool_guard: "developer-phoenix-backend|developer-phoenix-frontend|developer-static"
   surface: user_global
   signal: AGENT_TYPE
-  role: "developer-phoenix-backend|developer-phoenix-frontend|developer-html|developer-hugo|developer-vite"
+  role: "developer-phoenix-backend|developer-phoenix-frontend|developer-static"
   harnesses: all
 
 - kind: registration
@@ -515,10 +515,10 @@
 - kind: registration
   id: static-site-build-check
   event: SubagentStop
-  tool_guard: "developer-html|developer-hugo|developer-vite"
+  tool_guard: "developer-static"
   surface: user_global
   signal: AGENT_TYPE
-  role: "developer-html|developer-hugo|developer-vite"
+  role: "developer-static"
   harnesses: all
 
 - kind: registration
@@ -527,7 +527,7 @@
   tool_guard: "Write|Edit"
   surface: user_global
   signal: AGENT_TYPE
-  role: "developer-html|developer-hugo|developer-vite"
+  role: "developer-static"
   harnesses: all
 
 - kind: registration
@@ -580,7 +580,7 @@
 - kind: registration
   id: stop-spin-guard
   event: SubagentStop
-  tool_guard: "developer-phoenix-backend|developer-phoenix-frontend|developer-html|developer-hugo|developer-vite"
+  tool_guard: "developer-phoenix-backend|developer-phoenix-frontend|developer-static"
   surface: user_global
   signal: AGENT_TYPE
   role: "developer-*"
@@ -590,7 +590,7 @@
 - kind: registration
   id: stop-gate-failure-breaker
   event: SubagentStop
-  tool_guard: "developer-phoenix-backend|developer-phoenix-frontend|developer-html|developer-hugo|developer-vite"
+  tool_guard: "developer-phoenix-backend|developer-phoenix-frontend|developer-static"
   surface: user_global
   signal: AGENT_TYPE
   role: "developer-*"
@@ -619,7 +619,7 @@
 - kind: registration
   id: subagent-retrospective-guard
   event: SubagentStop
-  tool_guard: "developer-phoenix-backend|developer-phoenix-frontend|planner-phoenix|planner-html|planner-hugo|planner-vite|reviewer-phoenix|reviewer-static"
+  tool_guard: "developer-phoenix-backend|developer-phoenix-frontend|planner-phoenix|planner-static|reviewer-phoenix|reviewer-static"
   surface: user_global
   signal: AGENT_TYPE
   role: "developer-phoenix-backend|developer-phoenix-frontend|planner-*|reviewer-phoenix|reviewer-static"

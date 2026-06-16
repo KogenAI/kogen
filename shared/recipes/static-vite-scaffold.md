@@ -1,6 +1,8 @@
-# Vite + React Static Site Scaffold
+# Add a Framework to the Vite Static Site
 
-Starter files for Vite + React static apps. Copy into project root and customize.
+**Add-a-framework reference**: Use this when adding React or Vue on top of the vanilla Vite base scaffold. The vanilla scaffold is emitted by `shared/scaffold/static/scaffold.sh`; this recipe documents the framework additions only. Apply with deviations — the vanilla base already provides `index.html`, `vite.config.js`, `package.json`, `src/style.css`.
+
+Starter files for Vite + React static apps. Merge/override into the vanilla base and customize.
 
 ## package.json
 

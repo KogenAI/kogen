@@ -6,23 +6,19 @@ Two common fragments (`_phoenix_developer_common.md.j2`, `_static_developer_comm
 
 ## Components
 
-| File                                                        | Purpose                                                                         |
-| ----------------------------------------------------------- | ------------------------------------------------------------------------------- |
-| `shared/subagents/phoenix/planner-phoenix.md.j2`            | Phoenix planner — reads codebase, writes structured plan                        |
-| `shared/subagents/phoenix/developer-phoenix-backend.md.j2`  | Backend developer — schemas, contexts, migrations, Oban                         |
-| `shared/subagents/phoenix/developer-phoenix-frontend.md.j2` | Frontend developer — LiveView, HEEx, JS hooks, Tailwind                         |
-| `shared/subagents/phoenix/reviewer-phoenix.md.j2`           | Phoenix reviewer — quality, patterns, architecture                              |
-| `shared/subagents/static/developer-html.md.j2`              | Plain HTML + Tailwind v4 developer                                              |
-| `shared/subagents/static/developer-hugo.md.j2`              | Hugo static site developer                                                      |
-| `shared/subagents/static/developer-vite.md.j2`              | Vite static site developer — covers React, Vue, and Svelte component-based apps |
-| `shared/subagents/static/planner-html.md.j2`                | HTML stack planner                                                              |
-| `shared/subagents/static/planner-hugo.md.j2`                | Hugo stack planner                                                              |
-| `shared/subagents/static/planner-vite.md.j2`                | Vite stack planner                                                              |
-| `shared/subagents/static/reviewer-static.md.j2`             | Static site reviewer                                                            |
-| `shared/subagents/shared/committer.md.j2`                   | Committer — analyzes diff, crafts why-focused commit message                    |
-| `shared/subagents/shared/context-curator.md.j2`             | Context curator — updates domain context files post-reviewer                    |
-| `shared/subagents/_phoenix_developer_common.md.j2`          | Shared rules fragment included by backend + frontend templates                  |
-| `shared/subagents/_static_developer_common.md.j2`           | Shared rules fragment included by all static developer templates                |
+| File                                                        | Purpose                                                             |
+| ----------------------------------------------------------- | ------------------------------------------------------------------- |
+| `shared/subagents/phoenix/planner-phoenix.md.j2`            | Phoenix planner — reads codebase, writes structured plan            |
+| `shared/subagents/phoenix/developer-phoenix-backend.md.j2`  | Backend developer — schemas, contexts, migrations, Oban             |
+| `shared/subagents/phoenix/developer-phoenix-frontend.md.j2` | Frontend developer — LiveView, HEEx, JS hooks, Tailwind             |
+| `shared/subagents/phoenix/reviewer-phoenix.md.j2`           | Phoenix reviewer — quality, patterns, architecture                  |
+| `shared/subagents/static/developer-static.md.j2`            | Static (Vite) site developer — vanilla by default, framework opt-in |
+| `shared/subagents/static/planner-static.md.j2`              | Static (Vite) site planner — vanilla vs framework decision          |
+| `shared/subagents/static/reviewer-static.md.j2`             | Static site reviewer                                                |
+| `shared/subagents/shared/committer.md.j2`                   | Committer — analyzes diff, crafts why-focused commit message        |
+| `shared/subagents/shared/context-curator.md.j2`             | Context curator — updates domain context files post-reviewer        |
+| `shared/subagents/_phoenix_developer_common.md.j2`          | Shared rules fragment included by backend + frontend templates      |
+| `shared/subagents/_static_developer_common.md.j2`           | Shared rules fragment included by all static developer templates    |
 
 ## Key Paths
 
@@ -36,8 +32,8 @@ shared/subagents/
     developer-phoenix-frontend.md.j2
     reviewer-phoenix.md.j2
   static/
-    developer-html.md.j2, developer-hugo.md.j2, developer-vite.md.j2  ← React/Vue/Svelte
-    planner-html.md.j2, planner-hugo.md.j2, planner-vite.md.j2
+    developer-static.md.j2  ← vanilla Vite by default, framework opt-in
+    planner-static.md.j2
     reviewer-static.md.j2
   shared/
     committer.md.j2
@@ -56,12 +52,12 @@ Generated output lands in `templates/generated/<harness>/` then installed to `~/
 
 ## Rule Propagation & Two-Common-Fragment Pattern
 
-**Developer rule consolidation via `_phoenix_developer_common.md.j2` and `_static_developer_common.md.j2`**: Both include `shared/rules/roles/developer.md` at line 5. This means a single edit to `developer.md` (e.g., adding a never-commit bullet) automatically propagates to all 5 developer variants — backend, frontend, HTML, Hugo, and Vite — without any additional template edits. The two common fragments fan out to all instances:
+**Developer rule consolidation via `_phoenix_developer_common.md.j2` and `_static_developer_common.md.j2`**: Both include `shared/rules/roles/developer.md` at line 5. This means a single edit to `developer.md` (e.g., adding a never-commit bullet) automatically propagates to all 3 developer variants — backend, frontend, and static — without any additional template edits. The two common fragments fan out to all instances:
 
 - `_phoenix_developer_common.md.j2` → included by `developer-phoenix-backend.md.j2` and `developer-phoenix-frontend.md.j2`
-- `_static_developer_common.md.j2` → included by `developer-html.md.j2`, `developer-hugo.md.j2`, and `developer-vite.md.j2`
+- `_static_developer_common.md.j2` → included by `developer-static.md.j2`
 
-**High-leverage pattern**: When a rule change must reach all developers (e.g., forbidding a commit mechanism), edit `shared/rules/roles/developer.md` once. When a rule must reach all agents in a stack (planners, devs, reviewers), edit `shared/rules/stacks/<stack>/_core.md` — it reaches via multiple include sites across multiple templates. One-source-of-truth holds across all baked variants: a rule file edit + `make install` propagates synchronously to all subagent prompts via the static include graph resolved at render time. **Parallel planner templates** — the 4 static-stack planner templates (`planner-html.md.j2`, `planner-hugo.md.j2`, `planner-vite.md.j2`) are kept byte-identical at key lines (e.g., line 13 terse Step 0 pointer) alongside `planner-phoenix.md.j2`. When a planner rule or terse description changes, apply the SAME replacement verbatim to all 4 + 1 = 5 templates. No symlink or include mechanism de-dupes these — they are intentionally parallel for clarity. Audit with `diff` post-edit to confirm all 5 got the update.
+**High-leverage pattern**: When a rule change must reach all developers (e.g., forbidding a commit mechanism), edit `shared/rules/roles/developer.md` once. When a rule must reach all agents in a stack (planners, devs, reviewers), edit `shared/rules/stacks/<stack>/_core.md` — it reaches via multiple include sites across multiple templates. One-source-of-truth holds across all baked variants: a rule file edit + `make install` propagates synchronously to all subagent prompts via the static include graph resolved at render time. **Planner templates** — `planner-static.md.j2` and `planner-phoenix.md.j2` are kept parallel at key structural lines (e.g., line 13 terse Step 0 pointer). When a planner rule changes, apply the SAME replacement to both templates. Audit with `diff` post-edit to confirm both got the update.
 
 ## Authoring Spine Rules (Shape/Refactor)
 
@@ -101,14 +97,14 @@ Shape mode emits blockers with quoted context and remediation options before adv
 
 ## Session-Log Header Requirements for Stack-Variant Templates
 
-When a developer subagent template is stack-prefixed (e.g., `planner-phoenix`, `planner-html`, `developer-hugo`), any session-log Edit payload MUST include a stub `## <agent_type>-<stack> Section` header (e.g., `## planner-phoenix Section`). The `session-log-section-integrity.sh` hook bypass covers only the literal `AGENT_TYPE=planner` (non-stack), not variants. Stack-variant subagents must satisfy the normal header-present rule (hook lines 50–66): no bypasses apply.
+When a developer subagent template is stack-prefixed (e.g., `planner-phoenix`, `planner-static`, `developer-static`), any session-log Edit payload MUST include a stub `## <agent_type>-<stack> Section` header (e.g., `## planner-phoenix Section`). The `session-log-section-integrity.sh` hook bypass covers only the literal `AGENT_TYPE=planner` (non-stack), not variants. Stack-variant subagents must satisfy the normal header-present rule (hook lines 50–66): no bypasses apply.
 
 ## Subagent Template Include Placement & Edit Uniqueness
 
 When editing subagent templates to add a new include line after an existing anchor (e.g., adding `{% include 'rules/shared/no-role-spawn.md' %}` after `output-style.md`), use a **two-line old_string** (anchor + the line immediately following it) to guarantee unique match per file. The anchor itself (`{% include 'rules/_core/output-style.md' %}`) appears identically across all 10 leaf-agent templates that include it — single-line matching would be ambiguous. Pairing anchor + context line disambiguates:
 
 - Phoenix developers + planners/reviewers, plus static reviewers: anchor followed by another `{% include %}` line (e.g., `bash-discipline`, `cwd-discipline`)
-- Static planners (html/hugo/vite): anchor followed by a **blank line**, then prose starting with "First: …" — pair anchor + blank line to avoid matching prose content
+- Static planner (`planner-static.md.j2`): anchor followed by a **blank line**, then prose starting with "First: …" — pair anchor + blank line to avoid matching prose content
 
 Verified pattern: all 10 templates have `{% include 'rules/_core/output-style.md' %}` on a single line, followed by distinct next line (either another include or blank). Two-line pairing is sufficient for all files.
 
@@ -125,4 +121,4 @@ The `subagent-retrospective-guard.sh` hook scans session-log `## Plan` blocks to
 - **`dev-gate` is not a subagent template** — `dev-gate` refers to the orchestrator-invoked hook workflow (`phoenix-dev-gate.sh`), not an agent role with a `.md.j2` template; see `context/hooks.md` for gate mechanics
 - **Trigger keywords refer to template wiring** — subagents.md covers how roles are assembled and baked into prompts; for what each role must/must-not do at runtime, see `context/rules-roles.md`
 - **Role-def include gaps create invisible rule blindness** — audit of phoenix subagents (session 20260612_121603) revealed: `planner-phoenix.md.j2` does not include `generators.md` (phx.gen.live forbiddance rule invisible to planner); `reviewer-phoenix.md.j2` lacks `testing-liveview.md` (LiveView lifecycle checks missing); `manifest-external-resource.md` is included in zero role-defs (@external_resource cross-check invisible to all). When including stack rules in subagent templates, inventory all related rule files and verify each is explicitly included where relevant. A rule file in `shared/rules/stacks/phoenix/` not included in any role-def is a coverage gap. Fix requires: (1) edit the missing rule file (or move content), (2) add `{% include %}` to the role-def template, (3) run `make install` to regenerate + reinstall prompts.
-- **Static planners place `output-style.md` at end of include block** — html/hugo/vite planners include `output-style.md` as the LAST rule include before prose content, followed by a blank line. This is intentional (recency-bias placement for output constraints in planner decision-making). The adjacency rule "new rule lands immediately after `output-style.md`" is still satisfied; static planners are structured differently than phoenix planners, but they still honor the include-order contract.
+- **Static planner places `output-style.md` at end of include block** — `planner-static.md.j2` includes `output-style.md` as the LAST rule include before prose content, followed by a blank line. This is intentional (recency-bias placement for output constraints in planner decision-making). The adjacency rule "new rule lands immediately after `output-style.md`" is still satisfied; static planners are structured differently than phoenix planners, but they still honor the include-order contract.

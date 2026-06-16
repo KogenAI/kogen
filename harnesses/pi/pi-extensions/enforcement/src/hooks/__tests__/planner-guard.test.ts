@@ -54,29 +54,29 @@ describe("planner-guard", () => {
     assert.ok(result == null || (result as { block?: boolean }).block !== true);
   });
 
-  it("allows planner-html bash with 2>&1 pipe", async () => {
+  it("allows planner-static bash with 2>&1 pipe", async () => {
     const result = await runHook(
       "bash",
       { command: "grep foo lib/bar.ex 2>&1 | head" },
-      "planner-html",
+      "planner-static",
     );
     assert.ok(result == null || (result as { block?: boolean }).block !== true);
   });
 
-  it("blocks planner-vite make ci-fast", async () => {
+  it("blocks planner-static make ci-fast", async () => {
     const result = await runHook(
       "bash",
       { command: "make ci-fast" },
-      "planner-vite",
+      "planner-static",
     );
     assert.ok((result as { block?: boolean }).block === true);
   });
 
-  it("blocks planner-hugo make llm-summary", async () => {
+  it("blocks planner-static make llm-summary", async () => {
     const result = await runHook(
       "bash",
       { command: "make llm-summary" },
-      "planner-hugo",
+      "planner-static",
     );
     assert.ok((result as { block?: boolean }).block === true);
   });

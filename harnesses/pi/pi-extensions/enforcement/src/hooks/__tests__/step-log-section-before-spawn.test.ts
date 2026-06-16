@@ -110,13 +110,13 @@ describe("step-log-section-before-spawn", () => {
     assert.ok(result == null || (result as { block?: boolean }).block !== true);
   });
 
-  // ── Test 7: allow developer-html with header present ──────────────────────
-  it("allows developer-html with section header present", async () => {
+  // ── Test 7: allow developer-static with header present ────────────────────
+  it("allows developer-static with section header present", async () => {
     writeLog(
       "20260601_step1_test.md",
-      ["## developer-html Section", ""].join("\n"),
+      ["## developer-static Section", ""].join("\n"),
     );
-    const result = await runHook("developer-html");
+    const result = await runHook("developer-static");
     assert.ok(result == null || (result as { block?: boolean }).block !== true);
   });
 
@@ -157,23 +157,23 @@ describe("step-log-section-before-spawn", () => {
     assert.ok(result == null || (result as { block?: boolean }).block !== true);
   });
 
-  // ── Test 12: allow developer-hugo with header present ─────────────────────
-  it("allows developer-hugo with section header present", async () => {
+  // ── Test 12: allow developer-static (alias for former developer-hugo) ────────
+  it("allows developer-static (test 12) with section header present", async () => {
     writeLog(
       "20260601_step1_test.md",
-      ["## developer-hugo Section", ""].join("\n"),
+      ["## developer-static Section", ""].join("\n"),
     );
-    const result = await runHook("developer-hugo");
+    const result = await runHook("developer-static");
     assert.ok(result == null || (result as { block?: boolean }).block !== true);
   });
 
-  // ── Test 13: allow developer-vite with header present ─────────────────────
-  it("allows developer-vite with section header present", async () => {
+  // ── Test 13: allow developer-static (alias for former developer-vite) ────────
+  it("allows developer-static (test 13) with section header present", async () => {
     writeLog(
       "20260601_step1_test.md",
-      ["## developer-vite Section", ""].join("\n"),
+      ["## developer-static Section", ""].join("\n"),
     );
-    const result = await runHook("developer-vite");
+    const result = await runHook("developer-static");
     assert.ok(result == null || (result as { block?: boolean }).block !== true);
   });
 

@@ -2,8 +2,8 @@
 # static-site-ex-guard_test.sh — unit tests for static-site-ex-guard.sh
 #
 # Tests:
-#   1. Writing a .ex file is BLOCKED for developer-html (exit 2)
-#   2. Writing a .js file PASSES for developer-html (exit 0)
+#   1. Writing a .ex file is BLOCKED for developer-static (exit 2)
+#   2. Writing a .js file PASSES for developer-static (exit 0)
 
 set -euo pipefail
 
@@ -43,13 +43,13 @@ run_test() {
     fi
 }
 
-# Test 1: Writing a .ex file is BLOCKED for developer-html
-FIXTURE_BLOCK='{"hook_event_name":"PreToolUse","tool_name":"Write","tool_input":{"file_path":"/app/lib/my_app/context.ex","content":"x"},"agent_type":"developer-html","agent_id":"abc123"}'
-run_test ".ex file write blocked for developer-html" "2" "$FIXTURE_BLOCK"
+# Test 1: Writing a .ex file is BLOCKED for developer-static
+FIXTURE_BLOCK='{"hook_event_name":"PreToolUse","tool_name":"Write","tool_input":{"file_path":"/app/lib/my_app/context.ex","content":"x"},"agent_type":"developer-static","agent_id":"abc123"}'
+run_test ".ex file write blocked for developer-static" "2" "$FIXTURE_BLOCK"
 
-# Test 2: Writing a .js file PASSES for developer-html
-FIXTURE_ALLOW='{"hook_event_name":"PreToolUse","tool_name":"Write","tool_input":{"file_path":"/app/assets/app.js","content":"x"},"agent_type":"developer-html","agent_id":"abc123"}'
-run_test ".js file write passes for developer-html" "0" "$FIXTURE_ALLOW"
+# Test 2: Writing a .js file PASSES for developer-static
+FIXTURE_ALLOW='{"hook_event_name":"PreToolUse","tool_name":"Write","tool_input":{"file_path":"/app/assets/app.js","content":"x"},"agent_type":"developer-static","agent_id":"abc123"}'
+run_test ".js file write passes for developer-static" "0" "$FIXTURE_ALLOW"
 
 echo ""
 echo "Results: $pass passed, $fail failed"

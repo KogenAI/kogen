@@ -246,7 +246,7 @@ fi
 rm -rf "$tmp13"
 rm -f "/tmp/claude-gate-breaker-test-breaker-sess-incr.count"
 
-# --- Test 14: developer-vite + 3 FAILED + verdict=failed → BLOCK (broad matcher) ---
+# --- Test 14: developer-static + 3 FAILED + verdict=failed → BLOCK (broad matcher) ---
 tmp14=$(mktemp -d)
 log14="$tmp14/codegen/logging/step_log.md"
 mkdir -p "$tmp14/codegen/logging"
@@ -254,8 +254,8 @@ make_session_log "$log14" 3
 make_gate_result "$tmp14" "failed"
 make_transcript "$log14" "$tmp14/transcript.jsonl"
 rm -f "/tmp/claude-gate-breaker-test-breaker-sess-vite.count"
-INPUT14=$(make_input "developer-vite" "$tmp14/transcript.jsonl" "$tmp14" "test-breaker-sess-vite")
-run_test "developer_vite_broad_matcher: developer-vite + 3 failures + verdict=failed → block" "block" "$INPUT14"
+INPUT14=$(make_input "developer-static" "$tmp14/transcript.jsonl" "$tmp14" "test-breaker-sess-vite")
+run_test "developer_static_broad_matcher: developer-static + 3 failures + verdict=failed → block" "block" "$INPUT14"
 rm -rf "$tmp14"
 rm -f "/tmp/claude-gate-breaker-test-breaker-sess-vite.count"
 

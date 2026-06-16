@@ -156,11 +156,11 @@ This eliminates the dirty-tree race: integrate-stage files rendered AFTER the co
 
 - **Split extraction: verify load-bearing, not meta** — Extractors pull EOF by default. Stop boundary BEFORE trailing meta (e.g., `## Update When Changing`). Verify last H2 is terminal cluster, not footer. Use grep `^## ` to detect boundaries.
 - **`make install` registry/settings.json parity** — add registry.yaml entry, add .sh file, run `hook_registrations.py --output-settings` BEFORE `make install` to regenerate settings.json. Running `make install` first causes hook-parity diff to fail (generator creates fresh settings.json that differs from committed version).
-- **`make install` gated on python3, node, yq-mikefarah** — `apt install yq` installs python-yq (incompatible, silently wrong manifest parsing) — use mikefarah/yq binary instead.
-- **`npm install` at codegen root required** — root `node_modules/` (ajv, playwright, prettier) must exist for schema-validate.js/render-check.js; absent → hooks emit INCONCLUSIVE. install.sh runs automatically.
-- **`make install` required after rule/template change** — agents see old baked prompts otherwise.
-- **Chromium binary absence is fail-closed on static boxes** — Static-site build gate BLOCKS (not skips) when Chromium missing. Benchmark screenshot capture tolerates missing Chromium; the gate does not.
-- **`mise trust` runs unconditionally on install** — enforcement `.mise.toml` is now trusted without `OCG_NONINTERACTIVE` gate; interactive installs no longer hang on trust prompt.
+- **yq binary must be mikefarah, not python-yq** — wrong binary causes silent manifest parsing errors.
+- **`npm install` at codegen root required** — absent → hooks emit INCONCLUSIVE.
+- **`make install` required after rule/template change** — regenerates baked prompts.
+- **Chromium binary absence is fail-closed on static boxes** — gate BLOCKS when missing.
+- **`mise trust` runs unconditionally on install** — no interactive prompt.
 - **Do not run `npm install` at repo root for Pi extensions** — each extension has its own node_modules; only root install is managed by install.sh
 - **Hook test failures are not ExUnit** — `make test` runs bash tests + hermetic ExUnit; they are separate suites
 - **Hook test runner summary mismatch — `run-tests.sh` blind spot** — `run_one` checks `grep -qE "failed [1-9]"` but format is `"<digit> failed"`. Pattern never matches. Failures still trigger at execution time; exit code correct. Not a gate blocker.

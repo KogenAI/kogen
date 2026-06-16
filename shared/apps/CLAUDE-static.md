@@ -20,7 +20,7 @@ Do NOT read PROJECT_CONTEXT.md, domain context files, or recipes — planner han
 
 - **Multiple interpretations**: If request has two or more plausible interpretations leading to materially different code changes, stop and return clarification request via result JSON rather than guessing.
 
-- **Simplicity first**: Prefer simplest HTML/CSS/JS solution. No extra frameworks, npm packages, or patterns unless request explicitly calls for them.
+- **Simplicity first**: Prefer vanilla Vite (no framework) unless the request explicitly calls for React/Vue/Svelte/component-based architecture.
 
 ## Work Efficiently
 
@@ -34,7 +34,7 @@ Do NOT read PROJECT_CONTEXT.md, domain context files, or recipes — planner han
 - Use Tailwind CDN — always compiled Tailwind v4
 - Add `tailwind.config.js` or `postcss.config.js` — Tailwind v4 doesn't need them
 - Add "Powered by the AI harness" to user apps
-- Run `npm run build`, `vite build`, `hugo`, or any build command
+- Run `npm run build`, `vite build`, or any build command
 - Make git commits directly — always delegate to committer subagent
 
 ## Critical Rules
@@ -42,7 +42,7 @@ Do NOT read PROJECT_CONTEXT.md, domain context files, or recipes — planner han
 - `public/` is ALWAYS gitignored
 - package.json MUST have both `"build"` and `"serve"` scripts
 - `"serve"` script MUST end with `python3 -u -m http.server --directory public 0`
-- **Vite only**: `vite.config.js` MUST set `build: { outDir: "public" }`. Run `mise exec -- npm install` after adding deps.
+- `vite.config.js` MUST set `build: { outDir: "public" }`. Run `mise exec -- npm install` after adding deps.
 - Commit subject MUST be ≤ 50 chars. Never prefix with scope tags — imperative mood, no trailing period.
 - **Gumroad buy buttons**: load `codegen/recipes/gumroad-buy-button.md` and render buy-button `href` as literal string `GUMROAD_PLACEHOLDER_URL`.
 
@@ -107,47 +107,10 @@ Spawn the planner now. Do not write a plan. Do not write bullet points. Do not w
 
 **DO NOT write the plan yourself. ALWAYS spawn the stack planner subagent — no exceptions.**
 
-**Stack Decision — Which planner to use:**
+Always spawn `planner-static`. The planner decides vanilla vs framework within Vite (vanilla by default; React/Vue/Svelte only when the plan calls for it).
 
 ```
-1. User explicitly mentions React / Vue / Svelte / "framework" / "component" /
-   "SPA" / "dashboard with live data" / "like a web app"
-   → Vite + React (or Vue/Svelte if specified)
-   → Planner: planner-vite
-
-2. Visitors of the site WRITE data — not just the owner
-   (user accounts, login, comments, user-generated content, forms that save
-   data, bookings, e-commerce, dashboards with real data)
-   → Phoenix — NOT a static site. Escalate or clarify, do not proceed.
-
-3. User wants multiple distinct pages, a blog, or content in Markdown
-   → Hugo + Tailwind
-   → Planner: planner-hugo
-   Trigger words (any one is enough): "blog", "posts", "articles",
-   "multi-page", "pages" (plural), "About page", "Contact page",
-   "Services page", "recipes", "portfolio with my projects",
-   any combination of two or more named pages, "content in Markdown".
-
-4. Everything else (single landing page, portfolio one-pager, marketing
-   page, "website" with one scroll, "homepage", simple form)
-   → Plain HTML + compiled Tailwind
-   → Planner: planner-html
-```
-
-**Fuzzy-prompt examples (judgment calls):**
-
-- "personal site for my photography" → multi-page → **planner-hugo**
-- "recipe sharing site" → content-heavy multi-page → **planner-hugo**
-- "portfolio with my projects" → multi-page unless explicit single-page → **planner-hugo**
-- "React-flavored landing page" → user named a framework → **planner-vite**
-- "simple landing page for a coffee shop" → single page → **planner-html**
-- "marketing page for my SaaS" → single page → **planner-html**
-- "interactive site with smooth animations" → vanilla JS fine → **planner-html**
-
-**Never use Hugo for React apps.** Multi-page React → Vite + React Router. Hugo is for content-driven sites.
-
-```
-You are the <planner-html|planner-hugo|planner-vite> subagent.
+You are the planner-static subagent.
 
 APP PATH: <app_path>
 SESSION LOG: <session_log_path>
@@ -167,10 +130,10 @@ After delegating to planner, append row to `## Delegation Timeline` table in ses
 
 ## Phase 1 — developer
 
-**Spawn ONLY the developer agent planner selected.** Relay the planner's developer delegation prompt verbatim — do NOT rebuild it or add steps.
+**Spawn developer-static.** Relay the planner's developer delegation prompt verbatim — do NOT rebuild it or add steps.
 
 ```
-You are the <developer-html|developer-hugo|developer-vite> subagent.
+You are the developer-static subagent.
 
 APP PATH: <app_path>
 SESSION LOG: <session_log_path>
@@ -186,9 +149,9 @@ After delegating, append row to `## Delegation Timeline`:
 
 ## Phase 2 — automatic build check
 
-No Phase 2 delegation. After developer-html/developer-hugo/developer-vite reports done, the `static-site-build-check.sh` SubagentStop hook fires automatically and runs four deterministic checks:
+No Phase 2 delegation. After developer-static reports done, the `static-site-build-check.sh` SubagentStop hook fires automatically and runs four deterministic checks:
 
-1. `mise exec -- npm run build` (skipped when no `package.json` — Hugo case).
+1. `mise exec -- npm run build` — Vite always ships package.json.
 2. `package.json` invariants — `scripts.build` and `scripts.serve` present, `scripts.serve` ends with `python3 -u -m http.server --directory public 0`.
 3. Tailwind v4 config absence — neither `tailwind.config.js` nor `postcss.config.js` may exist at app root.
 4. Tailwind v4 directives — no `@tailwind ` directive in any `*.css`.
@@ -322,7 +285,7 @@ This block is parsed programmatically. If you omit it, emit invalid JSON, or inc
 - NEVER `git commit` directly — always delegate to committer subagent
 - NEVER edit `public/` — it is generated and gitignored
 - NEVER use Tailwind CDN or add `tailwind.config.js` / `postcss.config.js` — Tailwind v4
-- NEVER run `npm run build`, `vite build`, `hugo`, or any build command — hook handles it
+- NEVER run `npm run build`, `vite build`, or any build command — hook handles it
 
 - NEVER emit `{"status":"success"}` before committer confirms
 - NEVER skip planner — static builds ALWAYS run the stack planner first

@@ -122,7 +122,7 @@ describe("developer-no-self-gate", () => {
     const sid = `sid5-${Date.now()}`;
     fs.writeFileSync(counterPath(sid), "2");
     try {
-      const result = await runHook("make ci-fast", "developer-html", sid);
+      const result = await runHook("make ci-fast", "developer-static", sid);
       assert.ok((result as { block?: boolean }).block === true);
     } finally {
       fs.rmSync(counterPath(sid), { force: true });
@@ -144,11 +144,11 @@ describe("developer-no-self-gate", () => {
     }
   });
 
-  it("blocks developer-vite at count=3", async () => {
+  it("blocks developer-static at count=3", async () => {
     const sid = `sid7-${Date.now()}`;
     fs.writeFileSync(counterPath(sid), "2");
     try {
-      const result = await runHook("make test", "developer-vite", sid);
+      const result = await runHook("make test", "developer-static", sid);
       assert.ok((result as { block?: boolean }).block === true);
     } finally {
       fs.rmSync(counterPath(sid), { force: true });

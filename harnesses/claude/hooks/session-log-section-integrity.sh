@@ -32,7 +32,7 @@ Edit | Write | MultiEdit) ;;
 esac
 
 # No agent_type means orchestrator — not gated here (orchestrator creates files, not edits)
-# All planner variants (planner, planner-phoenix, planner-html, etc.) write to ## Plan
+# All planner variants (planner, planner-phoenix, planner-static, etc.) write to ## Plan
 # (not ## planner Section), so bypass the header gate for all planner* agent types.
 if [ -z "$AGENT_TYPE" ]; then
     exit 0

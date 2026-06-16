@@ -9,7 +9,7 @@
  * Gate (agent type): only enforces for:
  *   developer-phoenix-backend, developer-phoenix-frontend,
  *   reviewer-phoenix, reviewer-static,
- *   planner-phoenix, planner-hugo, planner-vite, planner-html
+ *   planner-phoenix, planner-static
  *
  * Logic:
  *   Disk-scan for active step log → find ## <role> Section (or ## Plan for
@@ -39,9 +39,7 @@ const MATCHED_AGENTS = new Set([
   "reviewer-phoenix",
   "reviewer-static",
   "planner-phoenix",
-  "planner-hugo",
-  "planner-vite",
-  "planner-html",
+  "planner-static",
 ]);
 
 /** Find the most recently modified step log in codegen/logging/. */

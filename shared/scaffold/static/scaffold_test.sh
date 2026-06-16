@@ -2,12 +2,13 @@
 # scaffold_test.sh — hermetic tests for static/scaffold.sh + codegen-scaffold.
 #
 # Asserts:
-#  (a) assets/css/app.css contains "tailwindcss"
+#  (a) src/style.css contains "@import \"tailwindcss\""
 #  (b) package.json name == slug
-#  (c) package.json has "serve" and "build" scripts
-#  (d) static/index.html contains app-name
+#  (c) package.json has "serve" and "build" scripts with "vite"
+#  (d) root index.html contains app-name and src/main.js script tag
 #  (e) README.md contains app-name + "npm install" + "npm run build" + "npm run serve"
-#  (f) static/images/ and static/js/ directories exist
+#  (f) vite.config.js exists with outDir "public" and @tailwindcss/vite; src/main.js and src/style.css exist
+#  (prettier) scaffold output is prettier-clean (npx prettier --check .)
 #  codegen-scaffold smoke:
 #  (g) bad --stack=x exits 2
 #  (h) missing --slug for create exits 2
@@ -98,21 +99,24 @@ APP_NAME="My Test App"
 # ── Run static/scaffold.sh ────────────────────────────────────────────────────
 "$STATIC_SCAFFOLD" "$SLUG" "$TMPDIR" --app-name "$APP_NAME"
 
-# (a) assets/css/app.css contains "tailwindcss"
-CSS_CONTENT="$(<"$TMPDIR/assets/css/app.css")"
-assert_contains "assets/css/app.css contains tailwindcss" "$CSS_CONTENT" "tailwindcss"
+# (a) src/style.css contains "@import "tailwindcss""
+CSS_CONTENT="$(<"$TMPDIR/src/style.css")"
+assert_contains "src/style.css contains @import tailwindcss" "$CSS_CONTENT" '@import "tailwindcss"'
 
 # (b) package.json name == slug
 PKG_CONTENT="$(<"$TMPDIR/package.json")"
 assert_contains "package.json name field is slug" "$PKG_CONTENT" "\"name\": \"$SLUG\""
 
-# (c) package.json has "serve" and "build" scripts
+# (c) package.json has "serve" and "build" scripts with "vite"
 assert_contains "package.json has serve script" "$PKG_CONTENT" "\"serve\""
 assert_contains "package.json has build script" "$PKG_CONTENT" "\"build\""
+assert_contains "package.json has vite in devDependencies" "$PKG_CONTENT" "\"vite\""
+assert_contains "package.json has serve ending with http.server" "$PKG_CONTENT" "python3 -u -m http.server --directory public 0"
 
-# (d) static/index.html contains app-name
-INDEX_CONTENT="$(<"$TMPDIR/static/index.html")"
-assert_contains "static/index.html contains app-name" "$INDEX_CONTENT" "$APP_NAME"
+# (d) root index.html contains app-name and src/main.js script tag
+INDEX_CONTENT="$(<"$TMPDIR/index.html")"
+assert_contains "index.html contains app-name" "$INDEX_CONTENT" "$APP_NAME"
+assert_contains "index.html has src/main.js module script" "$INDEX_CONTENT" "src/main.js"
 
 # (e) README.md contains app-name + npm commands
 README_CONTENT="$(<"$TMPDIR/README.md")"
@@ -121,9 +125,20 @@ assert_contains "README.md contains npm install" "$README_CONTENT" "npm install"
 assert_contains "README.md contains npm run build" "$README_CONTENT" "npm run build"
 assert_contains "README.md contains npm run serve" "$README_CONTENT" "npm run serve"
 
-# (f) static/images/ and static/js/ exist
-assert_file_exists "static/images/ directory exists" "$TMPDIR/static/images"
-assert_file_exists "static/js/ directory exists" "$TMPDIR/static/js"
+# (f) vite.config.js and src/main.js and src/style.css exist; vite.config.js has outDir
+assert_file_exists "vite.config.js exists" "$TMPDIR/vite.config.js"
+assert_file_exists "src/main.js exists" "$TMPDIR/src/main.js"
+assert_file_exists "src/style.css exists" "$TMPDIR/src/style.css"
+VITE_CONTENT="$(<"$TMPDIR/vite.config.js")"
+assert_contains "vite.config.js has outDir public" "$VITE_CONTENT" '"public"'
+assert_contains "vite.config.js has @tailwindcss/vite" "$VITE_CONTENT" "@tailwindcss/vite"
+
+# (prettier) scaffold output is prettier-clean
+if command -v npx >/dev/null 2>&1; then
+    PRETTIER_EXIT=0
+    (cd "$TMPDIR" && npx --no-install prettier --check . 2>/dev/null) || PRETTIER_EXIT=$?
+    assert_exit "scaffold output is prettier-clean" "0" "$PRETTIER_EXIT"
+fi
 
 # codegen/pitches lifecycle dirs
 assert_file_exists "codegen/pitches/draft/.gitkeep exists" "$TMPDIR/codegen/pitches/draft/.gitkeep"
@@ -251,9 +266,9 @@ GITIGNORE_STATIC_CWD="$BASE_TMP/gitignore_static_test"
 mkdir -p "$GITIGNORE_STATIC_CWD"
 "$STATIC_SCAFFOLD" "$SLUG" "$GITIGNORE_STATIC_CWD" --app-name "$APP_NAME"
 STATIC_GI_CONTENT="$(cat "$GITIGNORE_STATIC_CWD/.gitignore")"
-assert_contains "static gitignore has /package-lock.json" "$STATIC_GI_CONTENT" "/package-lock.json"
 assert_contains "static gitignore has /node_modules/" "$STATIC_GI_CONTENT" "/node_modules/"
 assert_contains "static gitignore has /public/" "$STATIC_GI_CONTENT" "/public/"
+assert_contains "static gitignore has /package-lock.json" "$STATIC_GI_CONTENT" "/package-lock.json"
 assert_contains "static gitignore has current" "$STATIC_GI_CONTENT" "current"
 assert_contains "static gitignore has public-*" "$STATIC_GI_CONTENT" "public-*"
 assert_contains "static gitignore has .DS_Store" "$STATIC_GI_CONTENT" ".DS_Store"

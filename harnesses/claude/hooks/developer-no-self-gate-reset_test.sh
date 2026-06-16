@@ -46,16 +46,16 @@ else
 fi
 rm -f "$COUNTER2"
 
-# ── Test 3: developer-html removes counter file ──────────────────────────────
+# ── Test 3: developer-static removes counter file ────────────────────────────
 SID3="reset-test-3-$$"
 COUNTER3="/tmp/codegen-self-gate-${SID3}.count"
 printf '3' >"$COUNTER3"
-make_input "developer-html" "$SID3" | bash "$HOOK" 2>/dev/null || true
+make_input "developer-static" "$SID3" | bash "$HOOK" 2>/dev/null || true
 if [ ! -f "$COUNTER3" ]; then
-    [ -n "${VERBOSE:-}" ] && printf 'PASS: developer-html counter file removed\n'
+    [ -n "${VERBOSE:-}" ] && printf 'PASS: developer-static counter file removed\n'
     pass=$((pass + 1))
 else
-    printf 'FAIL: developer-html counter file NOT removed\n'
+    printf 'FAIL: developer-static counter file NOT removed\n'
     fail=$((fail + 1))
 fi
 rm -f "$COUNTER3"
@@ -78,7 +78,7 @@ rm -f "$COUNTER4"
 SID5="reset-test-5-$$"
 COUNTER5="/tmp/codegen-self-gate-${SID5}.count"
 rm -f "$COUNTER5"
-make_input "developer-vite" "$SID5" | bash "$HOOK" 2>/dev/null
+make_input "developer-static" "$SID5" | bash "$HOOK" 2>/dev/null
 rc=$?
 if [ "$rc" = "0" ]; then
     [ -n "${VERBOSE:-}" ] && printf 'PASS: no counter file → exits cleanly (rc=0)\n'
@@ -88,16 +88,16 @@ else
     fail=$((fail + 1))
 fi
 
-# ── Test 6: developer-hugo removes counter file ──────────────────────────────
+# ── Test 6: developer-static (second variant) removes counter file ────────────
 SID6="reset-test-6-$$"
 COUNTER6="/tmp/codegen-self-gate-${SID6}.count"
 printf '1' >"$COUNTER6"
-make_input "developer-hugo" "$SID6" | bash "$HOOK" 2>/dev/null || true
+make_input "developer-static" "$SID6" | bash "$HOOK" 2>/dev/null || true
 if [ ! -f "$COUNTER6" ]; then
-    [ -n "${VERBOSE:-}" ] && printf 'PASS: developer-hugo counter file removed\n'
+    [ -n "${VERBOSE:-}" ] && printf 'PASS: developer-static counter file removed (test 6)\n'
     pass=$((pass + 1))
 else
-    printf 'FAIL: developer-hugo counter file NOT removed\n'
+    printf 'FAIL: developer-static counter file NOT removed (test 6)\n'
     fail=$((fail + 1))
 fi
 rm -f "$COUNTER6"

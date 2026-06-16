@@ -67,7 +67,7 @@ export function register(pi: ExtensionAPI): void {
         return;
       }
       return deny(
-        `BLOCKED by operator-subagent-allowlist: Explore subagent is only available under pi-debug or pi-shape launcher modes. Use planner-phoenix / planner-html / etc. instead for investigation within a standard build session.`,
+        `BLOCKED by operator-subagent-allowlist: Explore subagent is only available under pi-debug or pi-shape launcher modes. Use planner-phoenix / planner-static / etc. instead for investigation within a standard build session.`,
       );
     }
 

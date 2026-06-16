@@ -25,14 +25,10 @@ Full mapping from `templates/generator/config.yaml` (Claude harness):
 | Role                       | Model  | Effort |
 | -------------------------- | ------ | ------ |
 | planner-phoenix            | opus   | high   |
-| planner-html               | opus   | high   |
-| planner-hugo               | opus   | high   |
-| planner-vite               | opus   | high   |
+| planner-static             | opus   | high   |
 | developer-phoenix-backend  | sonnet | medium |
 | developer-phoenix-frontend | sonnet | medium |
-| developer-html             | sonnet | high   |
-| developer-hugo             | sonnet | high   |
-| developer-vite             | sonnet | high   |
+| developer-static           | sonnet | high   |
 | reviewer-phoenix           | sonnet | medium |
 | reviewer-static            | sonnet | medium |
 | committer                  | haiku  | low    |

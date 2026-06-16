@@ -16,15 +16,13 @@ export const HANDLER_META = {
   name: "post-developer-format",
   event: "session_shutdown",
   matcher:
-    "developer-phoenix-backend|developer-phoenix-frontend|developer-html|developer-hugo|developer-vite",
+    "developer-phoenix-backend|developer-phoenix-frontend|developer-static",
 } as const;
 
 const DEV_AGENTS = new Set([
   "developer-phoenix-backend",
   "developer-phoenix-frontend",
-  "developer-html",
-  "developer-hugo",
-  "developer-vite",
+  "developer-static",
 ]);
 
 export function register(pi: ExtensionAPI): void {

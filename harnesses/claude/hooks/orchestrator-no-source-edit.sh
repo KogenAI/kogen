@@ -73,5 +73,5 @@ if printf '%s' "$rel_path" | grep -qE '^codegen/pitches/'; then
     exit 0
 fi
 
-deny "BLOCKED by orchestrator-no-source-edit: ${role:-orchestrator} may only write to codegen/logging/, codegen/pitches/, or absolute /tmp/ ($FILE_PATH). Delegate source edits to developer-phoenix-backend / developer-phoenix-frontend / developer-html | developer-hugo | developer-vite."
+deny "BLOCKED by orchestrator-no-source-edit: ${role:-orchestrator} may only write to codegen/logging/, codegen/pitches/, or absolute /tmp/ ($FILE_PATH). Delegate source edits to developer-phoenix-backend / developer-phoenix-frontend / developer-static."
 exit 0
