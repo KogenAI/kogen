@@ -63,6 +63,8 @@ if [[ -z "$APP_NAME" ]]; then
     APP_NAME="$SLUG"
 fi
 
+mkdir -p "$CWD"
+
 # ── index.html ────────────────────────────────────────────────────────────────
 cat >"$CWD/index.html" <<EOF
 <!doctype html>
