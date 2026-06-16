@@ -23,8 +23,7 @@ pass=0
 fail=0
 
 TMP_DIR="$(mktemp -d)"
-cleanup() {
-    rm -rf "$TMP_DIR"
+reset_counters() {
     # Counter files persist across runs and would push the static-session tests
     # past the retry cap → spurious "got allow" failures on the 4th+ run.
     rm -f /tmp/claude-resume-sess-t1.count \
@@ -38,6 +37,10 @@ cleanup() {
         /tmp/claude-resume-sess-loop.count
 }
 
+teardown() {
+    rm -rf "$TMP_DIR"
+}
+
 # Create a fake sleep binary in TMP_DIR that records its arg and exits 0.
 # Tests that verify backoff behaviour prepend TMP_DIR to PATH so real sleep
 # is never invoked (keeps the test suite fast even when delay=300).
@@ -45,8 +48,8 @@ SLEEP_STUB="$TMP_DIR/sleep"
 SLEEP_CALLS="$TMP_DIR/sleep-calls"
 printf '#!/usr/bin/env bash\nprintf "%%s\\n" "$1" >> "%s"\n' "$SLEEP_CALLS" >"$SLEEP_STUB"
 chmod +x "$SLEEP_STUB"
-trap cleanup EXIT
-cleanup # clean any leftovers from previous suite runs before tests start
+trap teardown EXIT
+reset_counters # clean any leftovers from previous suite runs before tests start
 
 run_test() {
     local desc="$1"
@@ -57,6 +60,7 @@ run_test() {
     local stdout
     stdout=$(printf '%s' "$input" | env \
         STOP_HOOK_ACTIVE=false \
+        PATH="$TMP_DIR:$PATH" \
         $extra_env \
         bash "$GUARD" 2>/dev/null || true)
 
@@ -107,7 +111,7 @@ SESSION_CAP="sess-cap-$(date +%s%N)"
 COUNTER_FILE="/tmp/claude-resume-${SESSION_CAP}.count"
 printf '%s' "8" >"$COUNTER_FILE" # simulate already at cap
 RETRYABLE_MSG="$(mk_stop 'Stream idle timeout occurred' "$SESSION_CAP")"
-stdout_cap=$(printf '%s' "$RETRYABLE_MSG" | env STOP_HOOK_ACTIVE=false bash "$GUARD" 2>/dev/null || true)
+stdout_cap=$(printf '%s' "$RETRYABLE_MSG" | env STOP_HOOK_ACTIVE=false PATH="$TMP_DIR:$PATH" bash "$GUARD" 2>/dev/null || true)
 if printf '%s' "$stdout_cap" | grep -q '"decision"[[:space:]]*:[[:space:]]*"block"'; then
     printf 'FAIL: retry cap — 9th attempt should NOT block\n  stdout: %s\n' "$stdout_cap"
     fail=$((fail + 1))
@@ -120,7 +124,7 @@ rm -f "$COUNTER_FILE"
 # Test 6: STOP_HOOK_ACTIVE=true → exit 0 immediately (loop guard)
 LOOP_INPUT=$(jq -n \
     '{"hook_event_name":"Stop","last_assistant_message":"Stream idle timeout","session_id":"sess-loop","stop_hook_active":true}')
-stdout_loop=$(printf '%s' "$LOOP_INPUT" | env STOP_HOOK_ACTIVE=true bash "$GUARD" 2>/dev/null || true)
+stdout_loop=$(printf '%s' "$LOOP_INPUT" | env STOP_HOOK_ACTIVE=true PATH="$TMP_DIR:$PATH" bash "$GUARD" 2>/dev/null || true)
 if printf '%s' "$stdout_loop" | grep -q '"decision"[[:space:]]*:[[:space:]]*"block"'; then
     printf 'FAIL: STOP_HOOK_ACTIVE=true should skip block\n  stdout: %s\n' "$stdout_loop"
     fail=$((fail + 1))
@@ -146,7 +150,7 @@ SESSION_MOD="sess-mod-$(date +%s%N)"
 COUNTER_MOD="/tmp/claude-resume-${SESSION_MOD}.count"
 printf '%s' "8" >"$COUNTER_MOD" # simulate already at cap
 MOD_MSG="$(mk_stop 'has been unexpectedly modified' "$SESSION_MOD")"
-stdout_mod=$(printf '%s' "$MOD_MSG" | env STOP_HOOK_ACTIVE=false bash "$GUARD" 2>/dev/null || true)
+stdout_mod=$(printf '%s' "$MOD_MSG" | env STOP_HOOK_ACTIVE=false PATH="$TMP_DIR:$PATH" bash "$GUARD" 2>/dev/null || true)
 if printf '%s' "$stdout_mod" | grep -q '"decision"[[:space:]]*:[[:space:]]*"block"'; then
     printf 'FAIL: cap-8 with unexpected-modified — 9th attempt should NOT block\n  stdout: %s\n' "$stdout_mod"
     fail=$((fail + 1))
@@ -165,9 +169,9 @@ SESSION_INC="sess-inc-$(date +%s%N)"
 COUNTER_INC="/tmp/claude-resume-${SESSION_INC}.count"
 rm -f "$COUNTER_INC"
 INC_MSG="$(mk_stop 'Stream idle timeout occurred' "$SESSION_INC")"
-printf '%s' "$INC_MSG" | env STOP_HOOK_ACTIVE=false bash "$GUARD" 2>/dev/null || true
+printf '%s' "$INC_MSG" | env STOP_HOOK_ACTIVE=false PATH="$TMP_DIR:$PATH" bash "$GUARD" 2>/dev/null || true
 count_after_1=$(cat "$COUNTER_INC" 2>/dev/null || echo "0")
-printf '%s' "$INC_MSG" | env STOP_HOOK_ACTIVE=false bash "$GUARD" 2>/dev/null || true
+printf '%s' "$INC_MSG" | env STOP_HOOK_ACTIVE=false PATH="$TMP_DIR:$PATH" bash "$GUARD" 2>/dev/null || true
 count_after_2=$(cat "$COUNTER_INC" 2>/dev/null || echo "0")
 if [ "$count_after_1" = "1" ] && [ "$count_after_2" = "2" ]; then
     [ -n "${VERBOSE:-}" ] && printf 'PASS: retry counter increments correctly (1 then 2)\n'
