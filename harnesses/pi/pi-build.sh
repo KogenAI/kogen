@@ -11,6 +11,26 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 BUILD_BIN="${OCG_CODEGEN_DIR:+$OCG_CODEGEN_DIR/codegen-build}"
 BUILD_BIN="${BUILD_BIN:-$SCRIPT_DIR/codegen-build}"
 
+# Normalise launch cwd to the nearest legal pitch root so the basename
+# resolver, the mention, and the cwd inherited by codegen-build/dispatch
+# all key off a dir whose ./codegen/pitches/ready is the intended target.
+# A nested $PWD (e.g. inside codegen/pitches) otherwise mis-resolves and the
+# basename silently falls through to the literal-prompt branch. codegen-build
+# defaults --cwd to $PWD — cd + exec is the only reliable fix (mirrors
+# dispatch.sh and claude-shape.sh).
+resolve_pitch_root() {
+    case "$1" in
+    */codegen/pitches/*) printf '%s' "${1%%/codegen/pitches/*}" ;;
+    */codegen/pitches) printf '%s' "${1%/codegen/pitches}" ;;
+    *) printf '%s' "$1" ;;
+    esac
+}
+PITCH_ROOT="$(resolve_pitch_root "$PWD")"
+if [[ "$PITCH_ROOT" != "$PWD" ]]; then
+    printf 'pi-build: launched inside codegen/pitches; using repo root %s\n' "$PITCH_ROOT" >&2
+    cd "$PITCH_ROOT"
+fi
+
 PROMPT_PARTS=()
 READY_DIR="$PWD/codegen/pitches/ready"
 for arg in "$@"; do

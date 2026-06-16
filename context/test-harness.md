@@ -73,6 +73,8 @@ The ExUnit suite uses `@moduletag :slow` to partition LLM-driven tests from dete
 
 **Critical**: tests added to the gate suite (e.g., `ops_test.exs`, `headless_launcher_test.exs`) MUST have `@moduletag :slow` to be included in `make test-stacks`. Omitting the `:slow` tag silently excludes them from the LLM gate via `test_helper.exs: exclude: [:slow]` — they will run under `test-hermetic` instead, defeating gate coverage.
 
+**Deterministic vs. slow test placement**: When adding a new test that does NOT call the actual agent binary (stubs via `System.cmd` with mocked binaries), the test MUST NOT carry `@moduletag :slow` — it runs under `make test` hermetic ExUnit. Example: `build_test.exs` stubs the codegen-build binary (`codegen-build`) and runs from a nested `codegen/pitches/` cwd, verifying launcher path normalization; deterministic assertions (exit 0, arg capture, mention prefix correctness) mean no `@moduletag :slow` — runs at `make test` time, not `make test-stacks`. This avoids cold-compile costs for every full suite invocation while ensuring the contract is tested.
+
 **Multiple exclusion tags work correctly**: When `test_helper.exs` specifies `exclude: [:slow, :harness_parity]` and a test file uses `@moduletag :slow` + `@moduletag :harness_parity`, both tags are correctly excluded by `mix test --exclude slow`. No interaction issues; the exclude list is ANDed (all listed tags are excluded).
 
 ### Deterministic vs. LLM-Driven Assertions
@@ -131,6 +133,10 @@ Hermetic bash tests (e.g., `*_test.sh` hook tests) should assert on **committed,
 ### Render-Check Test Pattern
 
 New bash test files under `harnesses/claude/hooks/` are auto-discovered by `run-tests.sh` via `find *_test.sh` — no registration needed. When testing crash paths (e.g., render-check.js parse failures), use `make_render_stub` to create temp bash scripts for normal cases, but skip it for crash-path stubs: write garbage directly via `cat > stub <<'STUB' ... STUB` to produce output without `RENDER_VERDICT=` variable. Regression guard: `node --check` test in `render-check_test.sh` catches duplicate function definitions and parse errors early (cf. session 20260608_153448).
+
+### Stub-Binary Test Pattern for Launchers
+
+When testing launcher logic (e.g., cwd normalization in build launchers `claude-build.sh` / `pi-build.sh`), the test MUST stub the underlying binary that the launcher execs, NOT the agent binary (claude/pi). Build launchers exec `BUILD_BIN` (codegen-build), which is resolved via `OCG_CODEGEN_DIR` and `SCRIPT_DIR` — cwd-independent. Stub placement: create a temp directory with the binary named exactly `codegen-build` (the basename the launcher expects) and set `OCG_CODEGEN_DIR=stub_dir` to route `BUILD_BIN="${OCG_CODEGEN_DIR:+$OCG_CODEGEN_DIR/codegen-build}"` to the stub. Stub captures invocation args (write to file, exit 0) and assertions verify the launcher passed the correct args — e.g., the harness-appropriate pitch mention string (`@codegen/pitches/ready/<slug>.md` for claude, `codegen/pitches/ready/<slug>.md` for pi) — proving the launcher resolved paths correctly BEFORE exec. This pattern isolates launcher path logic from the full agent binary and keeps the test deterministic, enabling hermetic ExUnit execution without `@moduletag :slow`.
 
 ### Module-Attribute Data Loading via Code.eval_file
 
