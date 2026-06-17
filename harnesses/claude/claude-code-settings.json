@@ -151,6 +151,26 @@
         ]
       }
     ],
+    "WorktreeCreate": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "$HOME/.claude/hooks/worktree-create-phoenix.sh"
+          }
+        ]
+      }
+    ],
+    "WorktreeRemove": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "$HOME/.claude/hooks/worktree-remove-phoenix.sh"
+          }
+        ]
+      }
+    ],
     "Stop": [
       {
         "hooks": [

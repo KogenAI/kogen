@@ -176,21 +176,11 @@ For harness install contract details (agents_dir, hooks_dir, modes, launchers), 
 
 Claude Code supports a `--settings` JSON flag that provides a command-line scope overlay for user-level settings. This is the ONLY way to override user-scope settings like `MAX_THINKING_TOKENS` in a launcher.
 
-**Settings precedence (highest to lowest)**:
-
-1. **Managed** — platform admin settings (not user-editable)
-2. **Command-line** (`--settings '<json>'`) — overrides all user settings
-3. **Local** — `~/.claude/settings.json.local` (project-local overrides)
-4. **Project** — `~/.claude/settings.json` in the consuming app repo (scaffolded)
-5. **User** — `~/.claude/settings.json` (user home, typically `MAX_THINKING_TOKENS=0`)
+**Settings precedence (highest to lowest)**: (1) Managed (admin), (2) Command-line `--settings '<json>'`, (3) Local `~/.claude/settings.json.local`, (4) Project `~/.claude/settings.json`, (5) User `~/.claude/settings.json`.
 
 **Key fact**: Claude reads settings from the JSON FILE, not process environment. `env -u MAX_THINKING_TOKENS` is inert — environment deletion does not affect the setting. Only a `--settings` overlay beats the user-scope file.
 
-**Use case — thinking tokens in investigative launchers**: Shape and debug modes benefit from extended thinking. User-scope typically pins `MAX_THINKING_TOKENS=0` (no thinking costs). Launchers override via: `--settings '{"env":{"MAX_THINKING_TOKENS":"16000"}}'` (or other token budget). Command-line scope precedence ensures the override takes effect regardless of user settings.
-
-**Implementation in launchers**: `harnesses/claude/claude-shape.sh` and `harnesses/claude/claude-debug.sh` both pass the overlay at exec time (lines 49, 55 in shape; line 55 in debug). The JSON is literal; changes to the token budget require launcher edits + `make install` to propagate.
-
-**Consequence for automation**: Build scripts or headless sessions that need custom thinking budgets should inject `--settings` as a known-safe escape hatch, not rely on `env` or `config.yaml` overrides.
+**Use case — thinking tokens**: Shape/debug override via `--settings '{"env":{"MAX_THINKING_TOKENS":"16000"}}'` in `claude-shape.sh`/`claude-debug.sh`. Changes need `make install`. Build scripts needing custom budgets use `--settings`, not `env` or config.yaml overrides.
 
 ## Session Log Protocol
 
@@ -201,6 +191,10 @@ The orchestrator MUST pre-create the canonical session log (with full `## <agent
 3. The retrospective-guard hook knows the correct `## Plan` block boundaries: the guard stops scanning for `### What I Learned This Step` blocks at the next `## ` H2 heading (which prevents it from false-matching retrospectives in subsequent agent sections).
 
 The retrospective blocks MUST sit inside the `## Plan` body before any sibling H2 heading (e.g., `## Slices`). The guard parses the transcript to find the active session log path, then scans ONLY the `## Plan` section, stopping at the first H2 heading it encounters after the Plan start. Retrospectives appearing in agent sections (e.g., `## developer-phoenix-backend Section`) are not routed to the curator.
+
+## Worktree Isolation (Native `--worktree`)
+
+`claude --worktree <name>` / `-w` creates `.claude/worktrees/<name>/` on branch `worktree-<name>`. A `WorktreeCreate` hook fully replaces git logic (`.worktreeinclude` disabled). `worktree-create-phoenix.sh` seeds `deps` (symlink) + `_build` (copy, same-commit guard) + allocates a port via `resource_manager.sh`. `worktree-remove-phoenix.sh` releases the port (observe-only). Both events are in `PRESERVED_EVENTS` to survive `make install`.
 
 ## Integration Points
 

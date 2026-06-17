@@ -171,6 +171,10 @@ Registry entries claiming `harnesses: claude` are NOT automatically inspected fo
 
 Examples of stale rationale: When a hook has registry `harnesses: claude` + `tool_guard: Agent` + rationale "Agent tool not present in Pi harness", but a pi `.ts` twin exists with matcher `tool_call`/`subagent`, the rationale is false. Flip the registry to `harnesses: all` and update the rationale to reflect the pi behavior (e.g., "Pi twin registers on tool_call/subagent").
 
+## Worktree Isolation — Reduced-Fidelity Pi Twin
+
+Pi's `seedPhoenixBuild()` in `subagents/src/runs/shared/worktree.ts` seeds Phoenix dependencies (`deps` symlink + `_build` copy under same-commit guard) for worktree isolation. The Pi implementation is **reduced-fidelity**: it seeding only and does NOT allocate a fresh port per worktree. Port allocation in Claude is handled via `WorktreeCreate` hook's call to `allocate_phoenix_port()` from `resource_manager.sh`, which maintains a project-scoped registry of in-use ports. Pi's `seedPhoenixBuild()` registers seeded paths as `syntheticPaths` (returned by `createSingleWorktree`'s setup hook), but has **no port-allocation registry backend**. The Pi harness manages ports externally (outside hook scope). When porting Claude's `WorktreeCreate` hook logic to Pi, seed the `_build` + `deps` internally in `createSingleWorktree` and document the port gap in a header comment.
+
 ## Pitfalls
 
 - **Each extension is an independent npm package** — `npm install` must be run per-extension, not at repo root

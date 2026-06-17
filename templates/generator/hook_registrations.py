@@ -71,7 +71,10 @@ VALID_HARNESSES = {"claude_code", "pi"}
 MANIFEST_DRIVEN_EVENTS = {"PreToolUse", "SubagentStop", "Stop", "PostToolUseFailure"}
 
 # Hook events with inline commands — preserved verbatim from existing settings.json.
-PRESERVED_EVENTS = {"PostToolUse", "UserPromptSubmit", "SessionStart", "SessionEnd"}
+# WorktreeCreate/WorktreeRemove are preserved here because they use inline script
+# paths (same as SessionStart/End) rather than HOOK-MANIFEST-driven generation.
+PRESERVED_EVENTS = {"PostToolUse", "UserPromptSubmit", "SessionStart", "SessionEnd",
+                    "WorktreeCreate", "WorktreeRemove"}
 
 # Canonical event ordering in output settings.json.
 EVENT_ORDER = [
@@ -80,6 +83,8 @@ EVENT_ORDER = [
     "UserPromptSubmit",
     "SessionStart",
     "SessionEnd",
+    "WorktreeCreate",
+    "WorktreeRemove",
     "Stop",
     "SubagentStop",
     "PreToolUse",

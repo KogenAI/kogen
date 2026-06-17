@@ -1,6 +1,6 @@
 # Working Directory Discipline
 
-You start in a specific cwd. The launcher (`codegen-build` / `claude-build` / plain `claude`) `cd`s into the project root before exec'ing you. All file outputs MUST land relative to that cwd.
+You start in a specific cwd. The launcher (`codegen-build` / `claude-build` / plain `claude`) `cd`s into the project root before exec'ing you. All file outputs MUST land relative to that cwd. When running in a worktree, the cwd is a git worktree directory under `.claude/worktrees/<name>/` rather than the main checkout.
 
 ## Hard Rules
 

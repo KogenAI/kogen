@@ -26,7 +26,7 @@ export function register(pi: ExtensionAPI): void {
   pi.on("tool_call", async (event) => {
     if (event.toolName !== "bash") return;
     const command: string = (event.input as { command?: string }).command ?? "";
-    if (!/\bgit\s+commit\b/.test(command)) return;
+    if (!/(^|[\s;&|])git\s+commit\b/.test(command)) return;
     debugLog("context-file-size-gate", `cmd=${command}`);
     try {
       const statusLines = execSync("git diff --cached --name-status", {

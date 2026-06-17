@@ -305,6 +305,71 @@ function parseWorktreeSetupHookOutput(
   return parsed as WorktreeSetupHookOutput;
 }
 
+/**
+ * Seed Phoenix _build and deps from the toplevel checkout into the new worktree.
+ *
+ * Reduced-fidelity Pi twin: port allocation is NOT performed here — port allocation
+ * requires Claude Code's WorktreeCreate hook infrastructure (resource_manager.sh).
+ * This function only seeds compilation artifacts for faster incremental builds.
+ *
+ * Returns an array of relative synthetic paths (gitignored artifacts) to register
+ * so the worktree cleanup step removes them before diffing.
+ */
+function seedPhoenixBuild(toplevel: string, worktreePath: string): string[] {
+  const mixExs = path.join(toplevel, "mix.exs");
+  if (!fs.existsSync(mixExs)) {
+    return []; // Not a Phoenix project — skip seeding.
+  }
+
+  const synthetic: string[] = [];
+
+  // Symlink deps (shared read-only source; safe during compilation).
+  const toplevelDeps = path.join(toplevel, "deps");
+  const worktreeDeps = path.join(worktreePath, "deps");
+  if (fs.existsSync(toplevelDeps) && !fs.existsSync(worktreeDeps)) {
+    try {
+      fs.symlinkSync(toplevelDeps, worktreeDeps);
+      synthetic.push("deps");
+    } catch {
+      // Symlink failure is non-fatal; incremental build will still work without it.
+    }
+  }
+
+  // Copy _build only when toplevel HEAD matches the worktree base commit
+  // (same-commit guard prevents stale beam files from a different compilation).
+  const toplevelBuild = path.join(toplevel, "_build");
+  const worktreeBuild = path.join(worktreePath, "_build");
+  if (fs.existsSync(toplevelBuild) && !fs.existsSync(worktreeBuild)) {
+    try {
+      const parentResult = spawnSync("git", ["rev-parse", "HEAD"], {
+        cwd: toplevel,
+        encoding: "utf-8",
+      });
+      const worktreeResult = spawnSync("git", ["rev-parse", "HEAD"], {
+        cwd: worktreePath,
+        encoding: "utf-8",
+      });
+      const parentSha = parentResult.stdout.trim();
+      const worktreeSha = worktreeResult.stdout.trim();
+      if (
+        parentResult.status === 0 &&
+        worktreeResult.status === 0 &&
+        parentSha === worktreeSha &&
+        parentSha.length > 0
+      ) {
+        spawnSync("cp", ["-a", toplevelBuild, worktreeBuild], {
+          cwd: toplevel,
+        });
+        synthetic.push("_build");
+      }
+    } catch {
+      // Best-effort — cold compile is the fallback.
+    }
+  }
+
+  return synthetic;
+}
+
 function runWorktreeSetupHook(
   hook: ResolvedWorktreeSetupHook,
   input: WorktreeSetupHookInput,
@@ -396,6 +461,10 @@ function createSingleWorktree(
   try {
     const nodeModulesLinked = linkNodeModulesIfPresent(toplevel, worktreePath);
     const syntheticPaths = nodeModulesLinked ? ["node_modules"] : [];
+
+    // Seed Phoenix _build/deps for faster incremental builds in worktrees.
+    const phoenixSynthetic = seedPhoenixBuild(toplevel, worktreePath);
+    syntheticPaths.push(...phoenixSynthetic);
 
     if (setupHook) {
       const hookSyntheticPaths = runWorktreeSetupHook(setupHook, {
