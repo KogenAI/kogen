@@ -223,3 +223,24 @@ Benchmark mode (BENCH=1), artifact layout, screenshot capture, mix viewer tasks:
 - **phx_new flags** — version 1.8.7+ does not support `--force` flag; scaffold via plain `mix phx.new . --app <name> --live`
 - **CLAUDE.md scaffold instructions** — `Fixtures.isolated_tmp_dir/1` writes a CLAUDE.md gated behind non-phoenix stacks; ensure any direct scaffold calls mirror the exact `mix phx.new . --app <name> --live` incantation for consistency with fixture setup
 - **`run_with_timeout/4` return order is output-first** — `run_with_timeout(...)` returns `{IO.iodata_to_binary(...), exit_code}` — output first, exit code second. A new helper tail-calling `run_with_timeout` without re-tupling inverts the pair silently (e.g., binding `exit_code` to a binary string instead of an integer). Pattern: always materialize the result and re-tuple if the desired public contract differs. Example: `{output, exit_code} = run_with_timeout(...); {exit_code, output}`. Verify `@spec` declares the intended order; assertions comparing `exit_code == 0` must operate on an integer, never a binary.
+- **`assert_assets_deploy!` requires `MIX_ENV=dev`** — tailwind config lives in `config/dev.exs` only (Phoenix 1.8.7). When `assert_assets_deploy!` runs under `MIX_ENV=test` (inherited from ExUnit), tailwind finds no config → silent no-op → `app.css` absent at exit 0. Always pass `env: [{"MIX_ENV", "dev"}]` in the `System.cmd` call for `mix assets.deploy`. This scoping is safe: compile + test phases retain `MIX_ENV=test`; only the assets.deploy call passes `MIX_ENV=dev`.
+- **`codegen-call` requires `--model`, `--effort`, and `@<abs-path>` for system-prompt/schema** — `codegen-call` exit 2 with `--model is required` means the fixture is calling it with the old API (pre-`bfc6de1`). Elixir fixtures must resolve model/effort from `templates/generator/config.yaml` via `yq -r ".harness.<role>.<harness_short>.model"`, write system-prompt and schema text to temp files, and pass `@/tmp/...` format. Map `"claude_code"` → `"claude"` for the config key lookup. Use `try/after File.rm/1` for cleanup (tagged tuples return OK/ERROR patterns; discarding the return is intentional for temp cleanup).
+- **`bench_artifacts_test.exs` acceptable-error token list must track screenshot.js evolution** — pre-Vite used playwright/node/MODULE_NOT_FOUND; Vite-era adds `"resolveServeDir"` (when `npm install + npm run build` fails on missing `package.json`). Update the token list when screenshot.js changes, especially after stack migrations.
+
+### Flake Triage Protocol
+
+Apply to EVERY `make test-stacks` failure before touching source. Reference: `shared/recipes/flaky-test-fix.md` for pattern details.
+
+**4 buckets:**
+
+1. **Deterministic source bug** — same failure across 2+ runs with identical message; root cause is in source (scaffold script, fixture, assertion logic). Fix source; run `make test` (fast gate) + targeted `mix test <file> --only slow` to confirm.
+2. **Deterministic test-vs-impl conflict** — assertion was written against old API/behavior; impl changed, test didn't. Fix the stale side (whichever drifted); re-run that file.
+3. **Genuine LLM flake** — LLM non-determinism: PROJECT_CONTEXT.md absent, content markers missing, empty HTML body, generated code compile error. Confirm by re-running `HARNESS=<h> MIX_BUILD_PATH=_build/<h>_test mix test test/stacks/<path> --only slow` up to 3×. If all 3 pass → accept as flake. Do NOT add retry infra. Do NOT widen assertions.
+4. **Operational** — tool missing, API credentials wrong, quota exceeded. Fix the precondition (tool/env), not the test. Pi `debug_test.exs` failing with `gpt-5.3-codex-spark not supported` = Codex API account required, not a flake.
+
+**Rules:**
+
+- `--only slow` reporting "0 tests, exit 1" → tag/config problem (operational), not a flake.
+- A flake with a deterministic root cause (race, stale assertion, nil guard) is bucket 1/2, not bucket 3 — fix it.
+- NEVER mask a genuine flake with assertion widening or retry infra.
+- Record confirmed flakes in session log: file:line, failure message, number of passes in re-runs.

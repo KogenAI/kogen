@@ -40,6 +40,7 @@ defmodule CodegenTestHarness.Fixtures do
   @codegen_build Path.expand("../../../codegen-build", __DIR__)
   @codegen_call Path.expand("../../../codegen-call", __DIR__)
   @codegen_scaffold Path.expand("../../../codegen-scaffold", __DIR__)
+  @config_yaml Path.expand("../../../templates/generator/config.yaml", __DIR__)
   @codegen_build_timeout_ms 5_400_000
   @parity_build_timeout_ms 1_800_000
 
@@ -243,6 +244,9 @@ defmodule CodegenTestHarness.Fixtures do
   - `:role` — string role name (required)
   - `:system_prompt` — string system prompt (required)
 
+  Model and effort are resolved from `templates/generator/config.yaml` using
+  the harness-specific key (`.harness.<role>.<harness_short>.model`).
+
   Raises on non-zero exit from codegen-call.
   """
   @spec run_codegen_call(String.t(), String.t(), keyword()) :: map()
@@ -252,24 +256,61 @@ defmodule CodegenTestHarness.Fixtures do
     role = Keyword.fetch!(opts, :role)
     system_prompt = Keyword.fetch!(opts, :system_prompt)
 
-    {output, exit_code} =
-      System.cmd(
-        codegen_call_path(),
-        [
-          "--harness=#{harness_val}",
-          "--role=#{role}",
-          "--system-prompt=#{system_prompt}",
-          "--json-schema=#{schema}",
-          prompt
-        ],
-        stderr_to_stdout: true
-      )
+    # Map harness_val back to config.yaml key ("claude_code" → "claude").
+    config_harness = if harness_val == "claude_code", do: "claude", else: harness_val
 
-    if exit_code != 0 do
-      raise "codegen-call failed (exit=#{exit_code}):\n#{output}"
+    model = config_yaml_read!(".harness.#{role}.#{config_harness}.model")
+    effort = config_yaml_read!(".harness.#{role}.#{config_harness}.effort")
+
+    # codegen-call requires @<abs-path> for system-prompt and json-schema.
+    sp_path = write_tmp_file!(system_prompt, ".txt")
+    schema_path = write_tmp_file!(schema, ".json")
+
+    try do
+      {output, exit_code} =
+        System.cmd(
+          codegen_call_path(),
+          [
+            "--harness=#{harness_val}",
+            "--role=#{role}",
+            "--model=#{model}",
+            "--effort=#{effort}",
+            "--system-prompt=@#{sp_path}",
+            "--json-schema=@#{schema_path}",
+            prompt
+          ],
+          stderr_to_stdout: true
+        )
+
+      if exit_code != 0 do
+        raise "codegen-call failed (exit=#{exit_code}):\n#{output}"
+      end
+
+      Jason.decode!(output)
+    after
+      File.rm(sp_path)
+      File.rm(schema_path)
+    end
+  end
+
+  # Reads a scalar value from templates/generator/config.yaml using yq.
+  # Raises if yq is not on PATH or if the key is missing/empty.
+  defp config_yaml_read!(key) do
+    {value, code} = System.cmd("yq", ["-r", key, @config_yaml], stderr_to_stdout: true)
+    value = String.trim(value)
+
+    if code != 0 or value == "" or value == "null" do
+      raise "config.yaml key #{key} missing or unreadable (exit=#{code}, value=#{inspect(value)})"
     end
 
-    Jason.decode!(output)
+    value
+  end
+
+  # Writes content to a temp file with the given suffix and returns its path.
+  defp write_tmp_file!(content, suffix) do
+    path = Path.join(System.tmp_dir!(), "codegen_call_#{:erlang.unique_integer([:positive])}#{suffix}")
+    File.write!(path, content)
+    path
   end
 
   @doc """

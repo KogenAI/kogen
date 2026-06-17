@@ -280,7 +280,7 @@ defmodule CodegenTestHarness.Assertions do
 
     if has_assets_dir and has_alias do
       {output, exit_code} =
-        System.cmd("mix", ["assets.deploy"], cd: cwd, stderr_to_stdout: true)
+        System.cmd("mix", ["assets.deploy"], cd: cwd, stderr_to_stdout: true, env: [{"MIX_ENV", "dev"}])
 
       assert exit_code == 0, "mix assets.deploy failed in #{cwd}:\n#{output}"
 

@@ -214,6 +214,7 @@ This eliminates the dirty-tree race: integrate-stage files rendered AFTER the co
 - **`process_template.py` include/if ordering** — `process_includes_recursively` runs AFTER if-stripping → `{% if tool %}` blocks inside fragments survive un-stripped → both branches concatenate (BROKEN). Fix: move include call to TOP of `_strip_template_blocks`, before if-stripping. Verify via `make test-generator` + `make test`.
 - **Fragment whitespace and byte-identity** — `resolve_include` appends `\n` only when absent. Template whitespace around `{% include %}` (not fragment's internal `\n`) determines output blank lines. Byte-identity requires exact trailing-newline match when extracting.
 - **Non-contiguous shared regions need separate fragments** — Verify regions are contiguous in BOTH templates BEFORE design. Non-contiguous regions → separate fragments (one per region with own `{% include %}`), not single-file-multiple-includes (→ duplication).
+- **`make test-stacks` pre-gate checklist** — Run `make doctor` (Chromium + ajv), verify `ANTHROPIC_API_KEY` set, verify `command -v pi`. Bucket every failure via 4-bucket protocol before source edits → `context/test-harness.md § Flake Triage Protocol`.
 
 ## Deployment / Distribution
 
