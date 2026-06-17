@@ -227,7 +227,7 @@ if [ "$_NPM_BUILD_SKIPPED" = "false" ] && [ -f package.json ] && jq -e '.scripts
             ;;
         INCONCLUSIVE:browser-not-installed)
             debug_log static-site-build-check "render check INCONCLUSIVE: browser not installed"
-            fail "Chromium browser not found. Run: npx playwright install chromium"
+            fail "Chromium missing on this box — run: npx playwright install chromium. Infra condition, not a code/hook defect."
             ;;
         INCONCLUSIVE:*)
             detail="${render_verdict#INCONCLUSIVE:}"

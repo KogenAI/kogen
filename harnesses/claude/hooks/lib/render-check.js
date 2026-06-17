@@ -112,15 +112,41 @@ function startServer(serveDir, port) {
 async function runChecks(url, timeoutMs, mode) {
   let chromium;
   try {
-    // Resolve playwright from CODEGEN_DIR/node_modules if set, else local.
+    // Resolve playwright from an ordered list of boundary-clean candidates:
+    // (1) CODEGEN_DIR/node_modules, (2) repo root derived from __dirname
+    // (render-check.js lives at harnesses/claude/hooks/lib/ → four dirs up
+    // is the repo root), (3) node's default resolution. First hit wins.
+    const candidates = [];
     const codegenDir = process.env["CODEGEN_DIR"];
-    let playwrightPath;
     if (codegenDir) {
-      playwrightPath = path.join(codegenDir, "node_modules", "playwright");
-    } else {
-      playwrightPath = "playwright";
+      candidates.push(path.join(codegenDir, "node_modules", "playwright"));
     }
-    ({ chromium } = require(playwrightPath));
+    candidates.push(
+      path.join(
+        __dirname,
+        "..",
+        "..",
+        "..",
+        "..",
+        "node_modules",
+        "playwright",
+      ),
+    );
+    candidates.push("playwright");
+
+    let resolved = false;
+    for (const candidate of candidates) {
+      try {
+        ({ chromium } = require(candidate));
+        resolved = true;
+        break;
+      } catch (_e) {
+        // try next candidate
+      }
+    }
+    if (!resolved) {
+      throw new Error("playwright not resolvable from any candidate path");
+    }
   } catch (_e) {
     log("playwright not resolvable — browser-not-installed");
     verdict("INCONCLUSIVE:browser-not-installed");
