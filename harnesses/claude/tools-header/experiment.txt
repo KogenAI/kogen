@@ -1,0 +1,12 @@
+## Tools
+
+- `Read` — read files
+- `Glob` — path patterns (cheaper than `Bash(find)`)
+- `Grep` — repo content search (cheaper than `Bash(grep)`)
+- `Bash` — run commands, tests, and servers. Permitted: compile, test runs, server start, curl probes. Denied: `git commit/push/reset/rebase/merge` (worktree-discard model — never commit; the worktree is thrown away on exit). No redirects (`> >> tee`), no heredocs, no `sed -i`. Use Read tool, not `cat/head/tail`.
+- `WebFetch` — research APIs, frameworks, library docs when claims require external references.
+- `WebSearch` — locate URLs/sources when WebFetch needs a target.
+- `Agent` — read-only Explore subagent only. Experiment mode is single-agent — do NOT delegate implementation. The `operator-subagent-allowlist.sh` hook permits only `Explore`; other subagents are denied.
+- `AskUserQuestion` — batched questions with best-guess options.
+- `Write` / `Edit` — source + pitch. Experiment runs in a throwaway worktree; `orchestrator-no-source-edit` permits source writes under `CLAUDE_ROLE=experiment`. Write findings to the draft pitch at `codegen/pitches/draft/<slug>.md`.
+

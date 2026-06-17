@@ -273,6 +273,24 @@ else
     fail=$((fail + 1))
 fi
 
+# Experiment mode tests — source-writable; all paths should ALLOW
+
+# Test 39: CLAUDE_ROLE=experiment + Edit on lib/ — ALLOW
+FIXTURE_EXP_LIB='{"hook_event_name":"PreToolUse","tool_name":"Edit","tool_input":{"file_path":"lib/my_app/foo.ex","old_string":"x","new_string":"y"},"agent_id":"","agent_type":""}'
+run_test_role "experiment mode Edit on lib/ allows" "0" "experiment" "$FIXTURE_EXP_LIB"
+
+# Test 40: CLAUDE_ROLE=experiment + Write to codegen/pitches/draft/ — ALLOW
+FIXTURE_EXP_DRAFT='{"hook_event_name":"PreToolUse","tool_name":"Write","tool_input":{"file_path":"codegen/pitches/draft/x.md","content":"x"},"agent_id":"","agent_type":""}'
+run_test_role "experiment mode Write to pitches/draft/ allows" "0" "experiment" "$FIXTURE_EXP_DRAFT"
+
+# Test 41: CLAUDE_ROLE=experiment + Edit on arbitrary on-box path — ALLOW
+FIXTURE_EXP_SRV='{"hook_event_name":"PreToolUse","tool_name":"Edit","tool_input":{"file_path":"/srv/app.ex","old_string":"x","new_string":"y"},"agent_id":"","agent_type":""}'
+run_test_role "experiment mode Edit on arbitrary on-box path allows" "0" "experiment" "$FIXTURE_EXP_SRV"
+
+# Test 42: PI_ROLE=experiment + Edit on lib/ — ALLOW
+FIXTURE_PI_EXP_LIB='{"hook_event_name":"PreToolUse","tool_name":"Edit","tool_input":{"file_path":"lib/my_app/foo.ex","old_string":"x","new_string":"y"},"agent_id":"","agent_type":""}'
+run_test_parity "PI_ROLE=experiment Edit on lib/ allows" "0" "PI_ROLE" "experiment" "$FIXTURE_PI_EXP_LIB"
+
 echo ""
 echo "Results: $pass passed, $fail failed"
 

@@ -33,22 +33,22 @@ Hook registration: **Two pipelines** — both write to `harnesses/claude/hooks/*
 | `harnesses/claude/hooks/session-log-section-integrity.sh` | PreToolUse — enforces section header presence before Edit |
 | `harnesses/claude/hooks/no-python-json.sh` | PreToolUse — blocks inline `python3 -c` JSON parsing |
 | `harnesses/claude/hooks/no-cat-pipe.sh` | PreToolUse — blocks `cat file \| ...` and `head`/`tail` pipe patterns |
-| `harnesses/claude/hooks/no-git-stash.sh` | PreToolUse — blocks `git stash` usage |
-| `harnesses/claude/hooks/orchestrator-no-source-edit.sh` | PreToolUse — blocks orchestrator from editing source files |
+| `harnesses/claude/hooks/no-git-stash.sh` | PreToolUse — blocks `git stash` |
+| `harnesses/claude/hooks/orchestrator-no-source-edit.sh` | PreToolUse — blocks orchestrator from editing source files; `experiment` role: exits 0 (confinement via launcher `--worktree`, not path restriction); distinct from `debug`/`shape` read-only arm |
 | `harnesses/claude/hooks/orchestrator-no-ci.sh` | PreToolUse — blocks orchestrator from running CI/test commands |
 | `harnesses/claude/hooks/orchestrator-read-discipline.sh` | PreToolUse — blocks orchestrator from reading files it shouldn't |
-| `harnesses/claude/hooks/orchestrator-session-log-name-guard.sh` | PreToolUse — validates session-log filename format at Write/Edit time; denies non-canonical names (registration-based, orchestrator-scoped) |
+| `harnesses/claude/hooks/orchestrator-session-log-name-guard.sh` | PreToolUse — validates session-log filename format; denies non-canonical names |
 | `harnesses/claude/hooks/subagent-read-discipline.sh` | PreToolUse — blocks subagents from reading context files they shouldn't |
 | `harnesses/claude/hooks/pre-commit-guard.sh` | PreToolUse — blocks direct `git commit` outside committer role |
-| `harnesses/claude/hooks/dev-no-ci.sh` | PreToolUse — blocks developer from running CI gate commands |
-| `harnesses/claude/hooks/developer-no-self-gate.sh` | PreToolUse — blocks developer from running its own gate check |
-| `harnesses/claude/hooks/planner-guard.sh` | PreToolUse — enforces planner constraints (no writes, no bash exec); blocks: (1) Bash redirects to `codegen/logging/*.md` including shell heredocs, `>>` appends, and brace-group redirect forms (all defeat transcript-based path detection); requires exact `codegen/logging/` or `/tmp/` path in redirect target (no `./codegen/logging/` prefix); (2) Read on implementer rule files (`developer.md`, `testing-liveview.md`, `testing.md`, `reviewer.md`, `committer.md`) to prevent token waste and over-specification; (3) `rm`/`rmdir` outside `/tmp/`; (4) `git` state-modify and state-inspection commands. **Implication**: session log writes must use Edit tool, NOT bash redirect patterns of ANY form; edits to rule files must be planned blind (verbatim content + text anchors supplied to developer subagent). **Planning rule edits blind**: when a pitch specifies a rule file edit, planner cannot Read the file to confirm anchor text — use Grep tool to locate exact line numbers and content anchors, then supply them verbatim in the plan prose. Developer will use those anchors with the Edit tool. |
-| `harnesses/claude/hooks/reviewer-guard.sh` | PreToolUse — enforces reviewer constraints |
+| `harnesses/claude/hooks/dev-no-ci.sh` | PreToolUse — blocks developer from running CI commands |
+| `harnesses/claude/hooks/developer-no-self-gate.sh` | PreToolUse — blocks developer gate invocation |
+| `harnesses/claude/hooks/planner-guard.sh` | PreToolUse — enforces planner constraints (no writes, no bash exec); blocks: (1) Bash redirects to `codegen/logging/*.md` including shell heredocs, `>>` appends, and brace-group redirect forms (all defeat transcript-based path detection); requires exact `codegen/logging/` or `/tmp/` path in redirect target (no `./codegen/logging/` prefix); (2) Read on implementer rule files (`developer.md`, `testing-liveview.md`, `testing.md`, `reviewer.md`, `committer.md`) to prevent token waste and over-specification; (3) `rm`/`rmdir` outside `/tmp/`; (4) `git` state-modify and state-inspection commands. **Implication**: session log writes must use Edit tool, NOT bash redirect patterns of ANY form; edits to rule files must be planned blind (verbatim content + text anchors supplied to developer subagent). **Planning rule edits blind**: planner cannot Read rule files — use Grep tool to locate anchors, supply verbatim in pitch; developer uses those anchors with Edit tool. |
+| `harnesses/claude/hooks/reviewer-guard.sh` | PreToolUse — reviewer constraint enforcement |
 | `harnesses/claude/hooks/context-curator-guard.sh` | PreToolUse — guards context file edits to curator role only |
-| `harnesses/claude/hooks/context-index-parity.sh` | PreToolUse — enforces context file + PROJECT_CONTEXT.md index parity |
-| `harnesses/claude/hooks/curator-before-committer.sh` | PreToolUse — blocks committer spawn before context-curator has run |
-| `harnesses/claude/hooks/step-log-section-before-spawn.sh` | PreToolUse/Agent — blocks any subagent spawn until step log exists AND the agent's section header is present in the log |
-| `harnesses/claude/hooks/pitch-shipped-before-stop.sh` | Stop — blocks session end when committer-section present + pitch still in ready/; ships `ready/<slug>.md` → `shipped/` only if slug matches active session log; bypassed under CLAUDE_ROLE=dashboard-build or CODEGEN_NO_AUTOSHIP=1 |
+| `harnesses/claude/hooks/context-index-parity.sh` | PreToolUse — enforces context + PROJECT_CONTEXT.md parity |
+| `harnesses/claude/hooks/curator-before-committer.sh` | PreToolUse — curator must run before committer |
+| `harnesses/claude/hooks/step-log-section-before-spawn.sh` | PreToolUse/Agent — blocks subagent spawn until section header present |
+| `harnesses/claude/hooks/pitch-shipped-before-stop.sh` | Stop — ships `ready/<slug>.md` → `shipped/` if slug matches; bypassed under CLAUDE_ROLE=dashboard-build or CODEGEN_NO_AUTOSHIP=1 |
 | `harnesses/claude/hooks/operator-subagent-allowlist.sh` | PreToolUse — enforces agent delegation allowlist (role ∈ {debug, shape, ops}); gates slash commands that spawn subagents |
 | `harnesses/claude/hooks/build-worker-cwd-guard.sh` | PreToolUse — guards build worker cwd discipline; whitelist honors optional `OCG_PHOENIX_SEED_DIR` and `OCG_USER_FILES_DIR` (consumer upload dir for user attachments) when set |
 | `harnesses/claude/hooks/build-no-success-before-commit.sh` | PreToolUse — blocks declaring success before commit completes; enforces clean working tree (no untracked/modified files) at SHIPPED signal |

@@ -38,6 +38,14 @@ if [ "$role" = "ops" ]; then
     exit 0
 fi
 
+# Experiment mode — source-writable for the role. Confinement is the native
+# claude --worktree the launcher runs in (the hook has no worktree awareness),
+# NOT a path restriction. Discard-at-exit is the guardrail. Distinct from the
+# debug/shape read-only arm below.
+if [ "$role" = "experiment" ]; then
+    exit 0
+fi
+
 # Debug/shape operators (read-only investigation + pitch authoring).
 # Writes scoped to codegen/pitches/ — applies to subagents too,
 # so Agent-spawned helpers can't slip writes past the role's boundary.

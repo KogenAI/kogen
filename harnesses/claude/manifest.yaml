@@ -34,6 +34,8 @@ launchers:
     src: harnesses/claude/claude-debug.sh
   - name: claude-shape
     src: harnesses/claude/claude-shape.sh
+  - name: claude-experiment
+    src: harnesses/claude/claude-experiment.sh
   - name: claude-ops
     src: harnesses/claude/claude-ops.sh
   - name: codegen-document
@@ -43,6 +45,7 @@ launchers:
 completions:
   - _claude-build
   - _claude-debug
+  - _claude-experiment
   - _claude-ops
   - _claude-shape
 
@@ -101,6 +104,29 @@ modes:
       - shared/prompt-fragments/_probing.txt
       - shared/prompt-fragments/_authoring-spine.txt
 
+  experiment:
+    model: opus
+    effort: high
+    output_format: text
+    tools:
+      [
+        Agent,
+        AskUserQuestion,
+        Bash,
+        Edit,
+        Glob,
+        Grep,
+        Read,
+        Skill,
+        WebFetch,
+        WebSearch,
+        Write,
+      ]
+    system_prompt_file: harnesses/claude/claude-experiment-system-prompt.txt
+    tools_header: harnesses/claude/tools-header/experiment.txt
+    prompt_body:
+      - harnesses/shared/prompt-bodies/experiment.txt
+
   ops:
     model: opus
     effort: high
@@ -140,5 +166,5 @@ uninstall_steps:
   - remove_agents # rm agents_dir/*.md from installed-by-ocg manifest
   - remove_commands # rm commands_dir/*.md from installed-by-ocg manifest
   - remove_hooks # rm hooks_dir/*.sh
-  - remove_launchers # rm INSTALL_DIR/{codegen-build,codegen-call,codegen-scaffold,codegen-document,claude-build,claude-debug,claude-shape,claude-ops}
-  - remove_completions # rm ZSH_COMPLETION_DST/{_claude-build,_claude-debug,_claude-shape}
+  - remove_launchers # rm INSTALL_DIR/{codegen-build,codegen-call,codegen-scaffold,codegen-document,claude-build,claude-debug,claude-experiment,claude-shape,claude-ops}
+  - remove_completions # rm ZSH_COMPLETION_DST/{_claude-build,_claude-debug,_claude-experiment,_claude-shape}

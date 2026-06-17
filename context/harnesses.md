@@ -6,51 +6,62 @@ System prompt assembly: `tools-header/<mode>.txt` + each entry in `prompt_body[]
 
 ## Components
 
-| File / Dir                                        | Purpose                                                                                                                                                                    |
-| ------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `harnesses/claude/claude-build.sh`                | Launcher for build mode — sets model/effort, invokes `claude`                                                                                                              |
-| `harnesses/claude/claude-debug.sh`                | Launcher for debug mode (Opus, high effort)                                                                                                                                |
-| `harnesses/claude/claude-shape.sh`                | Launcher for shape mode (Opus, high effort, web tools enabled)                                                                                                             |
-| `harnesses/claude/claude-ops.sh`                  | Launcher for ops mode (Opus, high effort)                                                                                                                                  |
-| `harnesses/claude/dispatch.sh`                    | Mode dispatcher — reads manifest, sets flags, execs claude                                                                                                                 |
-| `harnesses/claude/load-role.sh`                   | Reads `config.yaml` at runtime (not baked) to resolve model/effort/tools for a given role; used by shape/ops/debug modes; not used by build mode (which uses baked prompt) |
-| `harnesses/claude/tools-header/`                  | Per-mode system prompt header fragments (build, debug, shape, ops)                                                                                                         |
-| `harnesses/claude/claude-code-settings.json`      | Source Claude Code settings (hooks, permissions, env)                                                                                                                      |
-| `harnesses/claude/claude-build-system-prompt.txt` | Generated (do not hand-edit) — concat of tools-header + prompt-body                                                                                                        |
-| `harnesses/claude/commands/`                      | Slash commands installed to `~/.claude/commands/`                                                                                                                          |
-| `harnesses/pi/pi-build.sh`                        | Pi build mode launcher                                                                                                                                                     |
-| `harnesses/pi/pi-debug.sh`                        | Pi debug mode launcher                                                                                                                                                     |
-| `harnesses/pi/pi-shape.sh`                        | Pi shape mode launcher                                                                                                                                                     |
-| `harnesses/pi/pi-ops.sh`                          | Pi ops mode launcher                                                                                                                                                       |
-| `harnesses/pi/dispatch.sh`                        | Pi mode dispatcher                                                                                                                                                         |
-| `harnesses/pi/pi-prompts/`                        | Pi-specific prompt fragments                                                                                                                                               |
-| `harnesses/shared/prompt-bodies/`                 | Shared harness-agnostic body text (build, debug, shape, ops) — consumed by both harnesses                                                                                  |
-| `shared/prompt-fragments/`                        | Reusable prompt fragments included via `{% include %}` — `_probing.txt`, `_authoring-spine.txt`                                                                            |
-| `harnesses/claude/commands/`                      | Slash commands (`.md.j2` templates) installed to `~/.claude/commands/` at install time                                                                                     |
+| File / Dir                                        | Purpose                                                                                                                       |
+| ------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| `harnesses/claude/claude-build.sh`                | Launcher for build mode — sets model/effort, invokes `claude`                                                                 |
+| `harnesses/claude/claude-debug.sh`                | Launcher for debug mode (Opus, high effort)                                                                                   |
+| `harnesses/claude/claude-experiment.sh`           | Launcher for experiment mode (Opus, high, source-writable, `--worktree exp-<slug>`)                                           |
+| `harnesses/claude/claude-shape.sh`                | Launcher for shape mode (Opus, high effort, web tools enabled)                                                                |
+| `harnesses/claude/claude-ops.sh`                  | Launcher for ops mode (Opus, high effort)                                                                                     |
+| `harnesses/claude/dispatch.sh`                    | Mode dispatcher — reads manifest, sets flags, execs claude                                                                    |
+| `harnesses/claude/load-role.sh`                   | Reads `config.yaml` at runtime to resolve model/effort/tools for shape/ops/debug/experiment; not used by build (baked prompt) |
+| `harnesses/claude/tools-header/`                  | Per-mode system prompt header fragments (build, debug, experiment, shape, ops)                                                |
+| `harnesses/claude/claude-code-settings.json`      | Source Claude Code settings (hooks, permissions, env)                                                                         |
+| `harnesses/claude/claude-build-system-prompt.txt` | Generated (do not hand-edit) — concat of tools-header + prompt-body                                                           |
+| `harnesses/claude/commands/`                      | Slash commands installed to `~/.claude/commands/`                                                                             |
+| `harnesses/pi/pi-build.sh`                        | Pi build mode launcher                                                                                                        |
+| `harnesses/pi/pi-debug.sh`                        | Pi debug mode launcher                                                                                                        |
+| `harnesses/pi/pi-experiment.sh`                   | Pi experiment mode launcher (no worktree; confinement = tool-allowlist + system prompt)                                       |
+| `harnesses/pi/pi-shape.sh`                        | Pi shape mode launcher                                                                                                        |
+| `harnesses/pi/pi-ops.sh`                          | Pi ops mode launcher                                                                                                          |
+| `harnesses/pi/dispatch.sh`                        | Pi mode dispatcher                                                                                                            |
+| `harnesses/pi/pi-prompts/`                        | Pi-specific prompt fragments                                                                                                  |
+| `harnesses/shared/prompt-bodies/`                 | Shared harness-agnostic body text (build, debug, experiment, shape, ops) — consumed by both harnesses                         |
+| `shared/prompt-fragments/`                        | Reusable prompt fragments included via `{% include %}` — `_probing.txt`, `_authoring-spine.txt`                               |
+| `harnesses/claude/commands/`                      | Slash commands (`.md.j2` templates) installed to `~/.claude/commands/`                                                        |
 
 ## Key Paths
 
 ```
 harnesses/claude/
-  claude-build.sh, claude-debug.sh, claude-shape.sh, claude-ops.sh
+  claude-build.sh, claude-debug.sh, claude-experiment.sh, claude-shape.sh, claude-ops.sh
   dispatch.sh, load-role.sh
-  tools-header/{build,debug,shape,ops}.txt  ← disk path uses hyphen
+  tools-header/{build,debug,experiment,shape,ops}.txt  ← disk path uses hyphen
   claude-code-settings.json
   claude-build-system-prompt.txt   ← generated
   commands/
 harnesses/pi/
-  pi-build.sh, pi-debug.sh, pi-shape.sh, pi-ops.sh
+  pi-build.sh, pi-debug.sh, pi-experiment.sh, pi-shape.sh, pi-ops.sh
   dispatch.sh
   pi-prompts/
 harnesses/shared/prompt-bodies/
-  build.txt   ← Cycle Protocol + FIRST-TURN PROTOCOL body (shared between claude/pi)
-  debug.txt   ← Protocol + Allowed Queries + Forbidden + Refusal & Pivot (shared between claude/pi)
-  shape.txt   ← Cold-start + Pitch Readiness Check (shared between claude/pi)
-  ops.txt     ← Rule 1-5 procedural ops rules (shared between claude/pi)
+  build.txt      ← Cycle Protocol + FIRST-TURN PROTOCOL body (shared between claude/pi)
+  debug.txt      ← Protocol + Allowed Queries + Forbidden + Refusal & Pivot (shared)
+  experiment.txt ← single-agent, source-writable, worktree investigation (shared)
+  shape.txt      ← Cold-start + Pitch Readiness Check (shared between claude/pi)
+  ops.txt        ← Rule 1-5 procedural ops rules (shared between claude/pi)
 shared/prompt-fragments/
   _probing.txt         ← Inline Probe Discipline section (included in shape + /ready)
   _authoring-spine.txt ← Phase 0 (9-step), Multi-turn, Adjacent, Output Contract, Rules, Anti-patterns
 ```
+
+## Mode Launcher Cloning Pattern
+
+Clone existing launcher: swap role name, log prefixes, mode-specific flags (e.g., `--worktree`). Two config blocks REQUIRED when Claude/Pi read different paths: `roles.<mode>` (load-role.sh) + `harness.<mode>.pi` (yq). NOT redundant — both committed. Update both manifests' `modes.<mode>` + launcher/completion registration + tools_header/prompt_body refs. All `.txt` files must pre-exist; `manifest_regenerate_prompts()` exits non-zero if missing.
+
+## Completions Installation Path
+
+Zsh completions (e.g., `_claude-experiment`) install from `harnesses/<harness>/_<name>` via manifest-driven loop (install.sh:696); fully manifest-controlled, no separate dir. Naming: underscore prefix required (`_claude-experiment`); `#compdef` names the context.
 
 ## Prompt Assembly Layers
 
@@ -64,12 +75,12 @@ tools-header/<mode>.txt   (per-harness: mode title + ## Tools + any pre-Tools co
 
 **Mode assembly map:**
 
-| Mode  | tools-header contains (per-harness)                                                                                                                             | prompt_body list (shared)                                                                                                                |
-| ----- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
-| build | `## Tools` + harness-specific tool list + harness-specific FIRST-TURN bullets + `## Cycle Protocol` / `## Step Queue Protocol`                                  | [harnesses/shared/prompt-bodies/build.txt] — contains neutral tool-discipline lines, Commit Hygiene, shared FIRST-TURN bullets           |
-| debug | `## Tools` + harness-specific tool list + FORBIDDEN list + cross-repo grep allowance                                                                            | [harnesses/shared/prompt-bodies/debug.txt] — contains neutral no-cat-pipe line + Protocol + Forbidden + Refusal & Pivot                  |
-| shape | `## Tools` + harness-specific tool bullets (claude: Agent/Skill/AskUserQuestion/Write-Edit with hook paths; pi: askuserquestion/subagents/web-utils tool names) | [shared/prompt-bodies/shape.txt, _probing.txt, _authoring-spine.txt] — shape.txt contains mode-title sentence + neutral no-cat-pipe line |
-| ops   | `## Tools` + harness-specific per-tool bullets                                                                                                                  | [harnesses/shared/prompt-bodies/ops.txt] — starts with Cold-Start Opening block, followed by procedural ops rules                        |
+| Mode  | tools-header contains (per-harness)                                                                                                        | prompt_body list (shared)                                                                                             |
+| ----- | ------------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------- |
+| build | `## Tools` + harness-specific tool list + FIRST-TURN bullets + `## Cycle Protocol` / `## Step Queue Protocol`                              | [harnesses/shared/prompt-bodies/build.txt] — neutral tool-discipline lines, Commit Hygiene, shared FIRST-TURN bullets |
+| debug | `## Tools` + harness-specific tool list + FORBIDDEN list + cross-repo grep allowance                                                       | [harnesses/shared/prompt-bodies/debug.txt] — no-cat-pipe line + Protocol + Forbidden + Refusal & Pivot                |
+| shape | `## Tools` + harness-specific tool bullets (claude: Agent/Skill/AskUserQuestion/Write-Edit; pi: askuserquestion/subagents/web-utils names) | [shared/prompt-bodies/shape.txt, _probing.txt, _authoring-spine.txt] — mode-title + no-cat-pipe line                  |
+| ops   | `## Tools` + harness-specific per-tool bullets                                                                                             | [harnesses/shared/prompt-bodies/ops.txt] — starts with Cold-Start Opening block, followed by procedural ops rules     |
 
 **Placement checklist** — when deciding whether content belongs in the per-harness header or the shared body:
 
@@ -91,9 +102,9 @@ tools-header/<mode>.txt   (per-harness: mode title + ## Tools + any pre-Tools co
 
 **Fragment paths** in manifest are relative to `CODEGEN_DIR`. The `manifest_mode_get` function returns scalars; `prompt_body` uses `yq '.modes.<mode>.prompt_body[]'` to enumerate the list.
 
-**Per-harness vs shared bodies**: All modes (build, debug, ops, shape) use shared bodies from `harnesses/shared/prompt-bodies/`. Per-harness body directories no longer exist. shape additionally appends shared fragments (`_probing.txt`, `_authoring-spine.txt`). ssh cold-start context for debug/ops is launcher-injected via `--append-system-prompt`, not baked into the shared body.
+**Per-harness vs shared bodies**: All modes use shared bodies from `harnesses/shared/prompt-bodies/`. Per-harness body directories no longer exist. shape additionally appends shared fragments (`_probing.txt`, `_authoring-spine.txt`). ssh cold-start context for debug/ops is launcher-injected via `--append-system-prompt`, not baked into the shared body.
 
-**Sentinel and content propagation**: A sentinel or principle added to any file in the `prompt_body[]` list (e.g., `prompt-bodies/shape.txt`) OR to an appended fragment (e.g., `_authoring-spine.txt`) automatically propagates to the assembled baked prompt. Shape mode includes two sources that feed the baked prompt (`shape.txt` and `_authoring-spine.txt`); a sentinel in either reaches the final artifact. This enables distributed editing: a principle can be stated in the primary body (shape.txt) for readability + in the spine for multi-turn/cross-reference context, and both occurrences will be present in the baked prompt (harmless duplication for a presence test).
+**Sentinel and content propagation**: A sentinel added to any `prompt_body[]` file or appended fragment automatically propagates to the assembled baked prompt. Shape mode feeds two sources (`shape.txt` and `_authoring-spine.txt`); a sentinel in either reaches the final artifact. Distributed editing is safe: both occurrences land in the baked prompt (harmless duplication for a presence test).
 
 **Shape investigative disciplines**: Shape mode includes the `_authoring-spine.txt` fragment, which encodes the readiness-loop gateway (Phase 0 context load → multi-turn investigation → readiness check). The spine enforces six core rules (A–F) — intent-guard, plain-language discipline, command-pairing auto-cover, duplication-detection, symptom-vs-target, context-drift auto-cover — and three deletion-safety blocker classes (un-investigated rabbit holes, untraced edit surface, dangling cross-reference). See `context/subagents.md` § Authoring Spine Rules for full details. The intent-guard rule (A) is additionally patched into the empirical-claim blocker template option-(b) in `shape.txt`, enforcing that no readiness-check option may nullify the pitch's core intent.
 

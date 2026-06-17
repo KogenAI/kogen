@@ -1,0 +1,96 @@
+Experiment mode. Single-agent, source-writable, long-running investigation. Output: buildable pitch at codegen/pitches/draft/<slug>.md.
+
+Use the Read tool for files, Grep for content, Glob for paths. NEVER `cat`/`head`/`tail`/`cat | grep` via Bash — the no-cat-pipe hook denies them and wastes a turn.
+
+## Working directory
+
+cwd PERSISTS between Bash calls in the same session. Prefer ABSOLUTE paths for every file op — never assume relative paths resolve correctly after any `cd`. Scope any `cd` to a single command (`cd /abs/path && cmd`); never rely on it carrying forward to the next Bash call.
+
+You are running inside a git worktree the launcher created (`claude --worktree exp-<slug>`). The worktree path is your cwd. All source edits happen here. Main checkout is safe — discard-at-exit is the guardrail.
+
+## Single-agent rule
+
+NEVER spawn subagents. Experiment mode is single-agent by design — subagents would defeat context isolation. The `Agent` tool is available only for read-only Explore tasks if strictly needed; never delegate implementation to a subagent.
+
+## Running lab notebook
+
+Narrate findings continuously into the draft pitch `codegen/pitches/draft/<slug>.md`. This IS your running lab notebook. Append:
+- What you tried
+- What worked
+- What did not work
+- Current best theory
+
+When the context window fills, the session ends. A fresh session reads this file and continues from where you left off. Write as if briefing your next self.
+
+## Targeted verification only
+
+Compile the touched file, run the single most-relevant test, hit the running server. That is it.
+- NO `make` gate, no full build, no `make ci`.
+- Single file compile: `mix compile lib/my_app/foo.ex 2>&1`
+- Single test: `mix test test/my_app/foo_test.exs 2>&1`
+- Server check: `curl -s http://localhost:$PORT/health`
+
+## Cold server fallback
+
+If no server is running in the worktree, start one yourself on a free port:
+```
+mix phx.server &   # or: npm run dev -- --port <port>
+```
+A failed boot is a finding to fix, not an abort. Record the error in the pitch. Keep trying.
+
+## Headless mode (non-interactive)
+
+When running headless (no interactive UI — the session was launched with `CLAUDE_NONINTERACTIVE=1`), do NOT call `AskUserQuestion` expecting an answer: under stream-json the tool call blocks the stream waiting for a `tool_result` that never arrives. Instead, write the unresolved decision(s) as a `## Questions` block in the in-scope pitch file (a permitted `codegen/pitches/` write) and stop cleanly. The operator answers out-of-band; a fresh session reads the resulting `## Answers` block and continues. One-shot: advance the pitch and exit, or write `## Questions` and exit — never block.
+
+Format `## Questions` and `## Answers` using the EXACT grammar below (enforced by the pitch-format-validator Stop hook):
+
+```
+## Questions
+
+### Q1: <question title>
+
+- **a)** <option text — include trade-off>
+- **b)** <option text — include trade-off>
+[- **c)** optional third option]
+[- **d)** optional fourth option]
+
+### Q2: <question title>
+
+- **a)** <option text>
+- **b)** <option text>
+
+## Answers
+
+### Q1: <letter>
+
+<brief rationale>
+
+### Q2: <letter>
+
+<brief rationale>
+```
+
+Rules:
+- Each `### Q<n>:` heading MUST have ≥2 `- **<letter>)**` option bullets before the next heading.
+- `## Answers` bindings use `### Q<n>:` headings; each bound Q<n> must match a heading in `## Questions`.
+- Orphan `## Answers` (with no `## Questions`) is allowed — it means questions were resolved and the headings deleted.
+- Answer the operator's choices by writing `## Answers` entries and removing resolved `### Q<n>:` blocks from `## Questions` (delete answered questions, keep unanswered ones).
+
+## Status stamping
+
+The in-scope pitch begins with a `> Status:` line (enum: SKELETON | SHAPING | SHAPED). Keep it current as you work:
+
+- **On first advance** — the first time you edit a loaded SKELETON pitch to advance it, set the first line to `> Status: SHAPING`. Also write `> Status: SHAPING` when running headless and you exit after writing a `## Questions` block.
+- **On completion** — when the compaction step is done and the pitch is buildable, set the first line to `> Status: SHAPED`.
+
+If the pitch has no `> Status:` line, add it as the first line. Only one `> Status:` line per file.
+
+## Compaction before handoff
+
+Before ending the session (context limit approaching, investigation concluded, or operator requests handoff), compact the pitch:
+
+1. **`## Solution sketch`** — winning approach only; concrete moves (files to edit, commands to run, expected outcomes). No alternatives.
+2. **`## Rabbit holes`** — each dead end as "tried X — failed because Y". One line each. No prose.
+3. **`## References`** — evidence: probe transcripts, test output snippets, relevant file excerpts. Fenced blocks.
+
+The file is a growing lab notebook during the run and a clean buildable pitch at the end. Compact aggressively — a reviewer or build agent must be able to execute from the pitch alone.

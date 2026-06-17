@@ -134,6 +134,7 @@ This eliminates the dirty-tree race: integrate-stage files rendered AFTER the co
 
 - **Split extraction: verify load-bearing, not meta** — Extractors pull EOF by default. Stop boundary BEFORE trailing meta (e.g., `## Update When Changing`). Verify last H2 is terminal cluster, not footer. Use grep `^## ` to detect boundaries.
 - **`make install` registry/settings.json parity** — add registry.yaml entry, add .sh file, run `hook_registrations.py --output-settings` BEFORE `make install` to regenerate settings.json. Running `make install` first causes hook-parity diff to fail (generator creates fresh settings.json that differs from committed version).
+- **`manifest_regenerate_prompts` file existence check** — `manifest_regenerate_prompts()` (manifest-lib.sh:83-110) returns non-zero exit code if any `tools_header` or `prompt_body` file referenced in the manifest is missing. When adding a new mode, all NEW prompt-source `.txt` files (tools-header, prompt bodies) MUST exist and be committed BEFORE running `make install`; otherwise the install fails silently with a regeneration error. The gate's install round-trip via `make test` catches these misses.
 - **yq binary must be mikefarah, not python-yq** — wrong binary causes silent manifest parsing errors.
 - **`npm install` at codegen root required** — absent → hooks emit INCONCLUSIVE.
 - **`make install` required after rule/template change** — regenerates baked prompts.

@@ -23,6 +23,8 @@ launchers:
     src: harnesses/pi/pi-debug.sh
   - name: pi-shape
     src: harnesses/pi/pi-shape.sh
+  - name: pi-experiment
+    src: harnesses/pi/pi-experiment.sh
   - name: pi-ops
     src: harnesses/pi/pi-ops.sh
 
@@ -30,6 +32,7 @@ launchers:
 completions:
   - _pi-build
   - _pi-debug
+  - _pi-experiment
   - _pi-ops
   - _pi-shape
 
@@ -80,6 +83,19 @@ modes:
       - shared/prompt-fragments/_probing.txt
       - shared/prompt-fragments/_authoring-spine.txt
 
+  experiment:
+    model: openai-codex/gpt-5.5 # from config.yaml harness.experiment.pi
+    effort: high
+    tools: read,grep,find,ls,edit,write,bash
+    extensions:
+      - askuserquestion
+      - subagents
+      - web-utils
+    system_prompt_file: harnesses/pi/pi-experiment-system-prompt.txt
+    tools_header: harnesses/pi/tools-header/experiment.txt
+    prompt_body:
+      - harnesses/shared/prompt-bodies/experiment.txt
+
   ops:
     model: openai-codex/gpt-5.5 # from config.yaml harness.ops.pi
     effort: high
@@ -105,5 +121,5 @@ install_steps:
 uninstall_steps:
   - remove_agents # rm agents_dir/*.md from installed manifest
   - remove_prompts # rm prompts_dir/document.md
-  - remove_launchers # rm INSTALL_DIR/{pi-build,pi-debug,pi-shape,pi-ops}
-  - remove_completions # rm ZSH_COMPLETION_DST/{_pi-build,_pi-debug,_pi-shape}
+  - remove_launchers # rm INSTALL_DIR/{pi-build,pi-debug,pi-experiment,pi-shape,pi-ops}
+  - remove_completions # rm ZSH_COMPLETION_DST/{_pi-build,_pi-debug,_pi-experiment,_pi-shape}
