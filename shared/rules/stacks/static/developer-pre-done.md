@@ -7,7 +7,15 @@ you report done. Running `npm run build` / `npm run serve` yourself wastes
 minutes and risks port/state conflicts with the hook. **Never invoke the
 render hook manually.**
 
-Before reporting done, verify only what you can confirm WITHOUT building:
+**Do NOT inspect built output to "verify" your change.** The `public/` (or
+`dist/`) directory is produced by the hook's build, not yours — grepping
+`public/index.html`, `ls public/`, `[ -f public/... ]`, or otherwise probing
+built artifacts before reporting done is wasted work and often reads STALE
+output from a previous build. Verify against the **source** you edited, never
+the build product. The hook owns build correctness; you own source correctness.
+
+Before reporting done, verify only what you can confirm WITHOUT building
+(against SOURCE files, never `public/`/`dist/`):
 
 - ☐ Source `index.html` links the stylesheet via `<link rel="stylesheet">` or `<style>` (Vite injects on build, but verify the entry wiring)
 - ☐ All visible text/buttons/containers have Tailwind utility classes (spacing, colors, typography, layout)
