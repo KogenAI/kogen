@@ -13,6 +13,15 @@
  * auto-resume block to avoid stampeding an overloaded API. The Pi twin
  * remains observe-only — session_shutdown cannot block or auto-resume — so
  * no backoff logic is implemented here. This is documented divergence, not a bug.
+ *
+ * Classification-source divergence: the Claude twin now classifies ONLY from
+ * transcript records the harness stamped as errors (isApiErrorMessage == true,
+ * or type:"system"/subtype:"api_error") — it no longer scans free prose, so a
+ * session that merely quotes an error name does not false-fire. Pi has no
+ * transcript and reads only LAST_ASSISTANT_MESSAGE (prose), so it cannot apply
+ * the structural filter and may still false-positive. This is harmless here:
+ * Pi is observe-only and only writes a stderr resume *suggestion*, never a block
+ * or auto-resume. Documented divergence per the runtime-porting convention.
  */
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";

@@ -27,27 +27,24 @@ if [ "$STOP_HOOK_ACTIVE" = "true" ]; then
 fi
 
 # --- Gather candidate error text -------------------------------------------
-haystack="$LAST_ASSISTANT_MESSAGE"
+# Classify ONLY from transcript records the harness itself stamped as errors:
+#   isApiErrorMessage == true            (synthetic terminal-error message)
+#   type == "system" and subtype == "api_error"  (SDK transient-fault events)
+# Free prose (LAST_ASSISTANT_MESSAGE) and tool_result text are NOT trustworthy
+# error signals — a session that merely quotes/reads an error name must NOT
+# trip the classifier. See pitch stop-resume-classify-from-error-records-only.
+haystack=""
 
 if [ -n "$TRANSCRIPT_PATH" ] && [ -r "$TRANSCRIPT_PATH" ]; then
-    transcript_errors=$(tail -n 10 "$TRANSCRIPT_PATH" 2>/dev/null |
+    haystack=$(tail -n 10 "$TRANSCRIPT_PATH" 2>/dev/null |
         jq -r '
-        (select(.isApiErrorMessage == true)
-          | (.message.content // [] | map(select(.type == "text") | .text) | join(" "))),
-        (select(.type == "user")
-          | (.message.content // []
-              | map(select(.type == "tool_result")
-                  | (.content // []
-                      | if type == "array"
-                        then map(select(.type == "text") | .text) | join(" ")
-                        else tostring
-                        end))
-              | join(" ")))
+        select(.isApiErrorMessage == true
+               or (.type == "system" and .subtype == "api_error"))
+        | (.message.content // [] | map(select(.type == "text") | .text) | join(" ")),
+          (.error.message // empty),
+          (.error.connection.message // empty)
       ' 2>/dev/null |
         tr '\n' ' ')
-    if [ -n "$transcript_errors" ]; then
-        haystack="$haystack $transcript_errors"
-    fi
 fi
 
 # --- Classify ---------------------------------------------------------------

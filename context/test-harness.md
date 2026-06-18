@@ -103,6 +103,10 @@ When bash hook tests show a pattern of ALL blocking tests failing while non-bloc
 
 **Test implication**: When a hook test suite suddenly goes from "all pass" to "all blocking tests fail", do NOT assume logic regression — check for unbound-variable crashes first. Run a single test case with `bash -x` to confirm the hook's execution trace reaches the intended block-decision point.
 
+## npm Extension Parallel-Race Flake
+
+When running `make test` (which includes TypeScript Pi extensions in parallel), occasional transient race-condition failures may occur in the extension test suites. The failure does NOT indicate code defects — the same tests pass when run individually via `cd harnesses/pi/pi-extensions/extension-name && npm run build && npm test`. Remedy: re-run `make test`. This is a known environmental race, not a gate blocker. If a single extension test passes in isolation but fails under `make test`, verify the extension has no shared state leakage (file handles, global variables, console stream restores in `finally` blocks on both success and error paths).
+
 ## Hermetic Regression Guards
 
 Two new test files in `test_harness/test/codegen_test_harness/` run under `make test-hermetic` (do NOT carry `@moduletag :slow`; only hermetic tests):
