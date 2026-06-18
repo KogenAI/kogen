@@ -13,23 +13,24 @@ Hook-enforced — Read/Grep/Glob only, plus Edit on session log.
 
 ## Review Steps
 
-| #   | Check                                                                                        | Blocking?        |
-| --- | -------------------------------------------------------------------------------------------- | ---------------- |
-| 1   | Change Analysis — Glob/Grep, exclude `*.log`/`_build/`/`cover/`/secrets                      | —                |
-| 2   | Plan fulfillment — diff delivers the `**Goal**:` line from active step log's `## Plan` block | yes (goal unmet) |
-| 3   | Test Coverage — every functional change + new public fn; Rule L (changed-branch test)        | yes              |
-| 4   | Skipped Tests (only if linter flags)                                                         | yes              |
-| 5   | Redundant Files — similar names, stubs <10 lines, unused fixtures                            | yes              |
-| 6   | Duplication — get/find/fetch, DB-first caching, duplicate validation                         | —                |
-| 7   | Module Aliasing — long names aliased                                                         | —                |
-| 8   | Code Organization → stack file                                                               | —                |
-| 9   | Type/Spec Duplication → stack file                                                           | —                |
-| 10  | Cleanliness — empty fns, debug prints, commented code                                        | —                |
-| 11  | Stack Patterns → stack file                                                                  | —                |
-| 12  | Coverage — new source without tests                                                          | yes              |
-| 13  | Security — broad rescue, secrets, input sanitization                                         | yes              |
-| 14  | Deployment → stack file                                                                      | —                |
-| 15  | Translation Completeness → stack file                                                        | —                |
+| #   | Check                                                                                                                                  | Blocking?        |
+| --- | -------------------------------------------------------------------------------------------------------------------------------------- | ---------------- |
+| 1   | Change Analysis — Glob/Grep, exclude `*.log`/`_build/`/`cover/`/secrets                                                                | —                |
+| 2   | Plan fulfillment — diff delivers the `**Goal**:` line from active step log's `## Plan` block (see row 16 for per-deliverable manifest) | yes (goal unmet) |
+| 3   | Test Coverage — every functional change + new public fn; Rule L (changed-branch test)                                                  | yes              |
+| 4   | Skipped Tests (only if linter flags)                                                                                                   | yes              |
+| 5   | Redundant Files — similar names, stubs <10 lines, unused fixtures                                                                      | yes              |
+| 6   | Duplication — get/find/fetch, DB-first caching, duplicate validation                                                                   | —                |
+| 7   | Module Aliasing — long names aliased                                                                                                   | —                |
+| 8   | Code Organization → stack file                                                                                                         | —                |
+| 9   | Type/Spec Duplication → stack file                                                                                                     | —                |
+| 10  | Cleanliness — empty fns, debug prints, commented code                                                                                  | —                |
+| 11  | Stack Patterns → stack file                                                                                                            | —                |
+| 12  | Coverage — new source without tests                                                                                                    | yes              |
+| 13  | Security — broad rescue, secrets, input sanitization                                                                                   | yes              |
+| 14  | Deployment → stack file                                                                                                                | —                |
+| 15  | Translation Completeness → stack file                                                                                                  | —                |
+| 16  | Manifest Completeness — if `## Plan` has `### Deliverable Manifest`, diff satisfies EVERY item                                         | yes (item unmet) |
 
 ## Rule L — Test Must Exercise the CHANGED Branch, Not a Bypass
 
@@ -73,9 +74,13 @@ Format:
 
 The `subagent-retrospective-guard.sh` hook already enforces block presence unconditionally. Rule O adds the specific near-miss trigger.
 
+## Manifest Completeness (BLOCKING)
+
+If the active step log's `## Plan` block contains a `### Deliverable Manifest` subsection, walk EVERY listed item and confirm the cycle diff satisfies its success criterion (Glob/Grep over changed files). A single unmet item → BLOCKING finding routed back to the developer; do NOT spot-check a subset. If there is NO `### Deliverable Manifest` subsection (free-form pitch), this step passes vacuously — never raise a manifest finding when no manifest exists.
+
 ## Report
 
-1. **Plan Fulfillment**: ✅ ACCOMPLISHED / ❌ MISSING (cite `**Goal**:` line from active step log's `## Plan`)
+1. **Plan Fulfillment**: ✅ ACCOMPLISHED / ❌ MISSING (cite `**Goal**:` line from active step log's `## Plan`); if `### Deliverable Manifest` present, report ✅/❌ per item (BLOCKING on any ❌)
 2. **Skipped Tests** (BLOCKING)
 3. **Public Fn Tests** (BLOCKING)
 4. **Type/Spec Duplication**
