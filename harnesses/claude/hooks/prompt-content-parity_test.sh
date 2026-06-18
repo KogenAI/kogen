@@ -10,6 +10,7 @@ SENTINEL="ASK-GATE: product forks only"
 SENTINEL2="INTERACTION-AUDIT: compose-check siblings"
 SENTINEL3="Never treat N prose/image-named pitches as one combined task."
 SENTINEL4="NEVER pre-seed role section headers in the initial Write; each role section header is inserted exactly once, immediately before that role's spawn — never re-add a header that already exists."
+SENTINEL5="SWEEP-CLASS COMPLETENESS:"
 
 pass=0
 fail=0
@@ -126,6 +127,22 @@ assert_contains \
     "no-duplicate-section NEVER sentinel in pi-build-system-prompt.txt" \
     "$CODEGEN_DIR/harnesses/pi/pi-build-system-prompt.txt" \
     "$SENTINEL4"
+
+# ── Tests 19-21: SWEEP-CLASS COMPLETENESS sentinel in shape prompts + ready ───
+assert_contains \
+    "SWEEP-CLASS COMPLETENESS sentinel in claude-shape-system-prompt.txt" \
+    "$CODEGEN_DIR/harnesses/claude/claude-shape-system-prompt.txt" \
+    "$SENTINEL5"
+
+assert_contains \
+    "SWEEP-CLASS COMPLETENESS sentinel in pi-shape-system-prompt.txt" \
+    "$CODEGEN_DIR/harnesses/pi/pi-shape-system-prompt.txt" \
+    "$SENTINEL5"
+
+assert_contains \
+    "SWEEP-CLASS COMPLETENESS sentinel in ready.md.j2" \
+    "$CODEGEN_DIR/harnesses/claude/commands/ready.md.j2" \
+    "$SENTINEL5"
 
 echo ""
 echo "Results: $pass passed, $fail failed"

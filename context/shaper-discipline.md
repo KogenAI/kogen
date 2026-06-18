@@ -170,15 +170,29 @@ Editing any of these three files automatically covers both harnesses via `make i
 
 **Never hand-edit** the `.txt` generated system-prompt files. They are regenerated on every `make install`.
 
+## Completeness Contract for Sweep-Class Pitches
+
+When a pitch's primary intent is a **purge, sweep, audit, collapse, rename, or remove** operation, two additional completeness checks are REQUIRED before the pitch may be SHAPED:
+
+1. **Full-vocabulary sweep transcript**: every occurrence of the removed/renamed identifier must be enumerated across the entire codebase. The sweep MUST run against the current COMMITTED state (`git show HEAD:<path>` or a clean checkout), never against the dirty working tree. Evidence: a `## References` probe block with full `grep -rn` output showing zero un-addressed sites.
+
+2. **Producer/verifier reconciliation**: when the removed/renamed artifact is PRODUCED or READ by another tool, role, or automated process, the pitch MUST show that all producers and consumers have been reconciled — either both updated in the same build, or the un-addressed side extracted to a tracked draft.
+
+**Blocker trigger**: either requirement missing → blocker. Use the `Sweep-class completeness` option template in `shape.txt` (`## Option templates by blocker type`).
+
+**`/ready` enforcement**: `/ready` scans `## References` structurally for the sweep transcript and the producer/verifier reconciliation. A sweep-class pitch whose `## References` lacks either → NOT ready.
+
 ## Integration with `/ready` Command
 
 The `/ready` skill is a sibling investigation aid that gates a pitch's readiness-check loop. It carries a near-verbatim copy of the soft ask-vs-decide classifier and the deferral-with-draft contract rules. When the shape.txt rules change significantly, `/ready` may need parallel tightening to keep both tools in sync.
 
 This is a SEPARATE pitch and change, not folded into shape-mode tightening. The two surfaces drift independently; version-matching is not automatic.
 
+- **Sweep-class enforcement**: `/ready` blocks promotion when a sweep/purge/audit/collapse/rename/remove pitch is missing a full-vocabulary sweep transcript OR a producer/verifier reconciliation in `## References`. This enforcement is baked into the `/ready` skill body (not just context docs) via the `ready.md.j2` source.
+
 ## Trigger Keywords
 
-shaper rules, ask-vs-decide, deferral-with-draft, decompose-then-split, derive-and-write edges, Rule G, Rule H, Rule I, Rule J, shape mode discipline, prompt durability, section-name anchors
+shaper rules, ask-vs-decide, deferral-with-draft, decompose-then-split, derive-and-write edges, Rule G, Rule H, Rule I, Rule J, shape mode discipline, prompt durability, section-name anchors, sweep-class, completeness contract, full-vocabulary sweep, producer/verifier reconciliation
 
 ## See Also
 
