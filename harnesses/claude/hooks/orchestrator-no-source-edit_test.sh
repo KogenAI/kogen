@@ -196,6 +196,21 @@ FIXTURE_SHAPE_RECOVERED='{"hook_event_name":"PreToolUse","tool_name":"Write","to
 run_test "shape pitch write with cwd at recovered pitch root allows" "0" "$FIXTURE_SHAPE_RECOVERED"
 rm -rf "$CWD_ROOT"
 
+# Test 27b: real git repo — write to pitch path from a SIBLING cwd subdir — ALLOW
+# Proves cwd-independence: pre-fix this BLOCKED while cwd != repo root.
+GITREPO="$(mktemp -d /tmp/ogr.XXXXXX)"
+git -C "$GITREPO" init -q
+mkdir -p "$GITREPO/codegen/pitches/draft" "$GITREPO/test_harness"
+FIXTURE_GIT_PITCH='{"hook_event_name":"PreToolUse","tool_name":"Write","tool_input":{"file_path":"'"$GITREPO/codegen/pitches/draft/x.md"'","content":"x"},"agent_id":"","agent_type":"","cwd":"'"$GITREPO/test_harness"'"}'
+run_test "git-toplevel pitch write from sibling cwd allows (cwd-independent)" "0" "$FIXTURE_GIT_PITCH"
+rm -rf "$GITREPO"
+
+# Test 27d: NON-repo /tmp path with matching cwd — ALLOW via launch-cwd fallback
+NOREPO="$(mktemp -d /tmp/onr.XXXXXX)"
+FIXTURE_NOREPO_PITCH='{"hook_event_name":"PreToolUse","tool_name":"Write","tool_input":{"file_path":"'"$NOREPO/codegen/pitches/draft/x.md"'","content":"x"},"agent_id":"","agent_type":"","cwd":"'"$NOREPO"'"}'
+run_test "non-repo pitch write via launch-cwd fallback allows" "0" "$FIXTURE_NOREPO_PITCH"
+rm -rf "$NOREPO"
+
 run_test_parity() {
     local desc="$1"
     local expected="$2"

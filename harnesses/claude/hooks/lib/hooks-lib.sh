@@ -215,16 +215,17 @@ hooks_realpath() {
 
 # repo_relative — convert a path to a repo-relative form.
 #
-# Given an absolute or relative path, returns the path relative to the project
-# root (CWD / CLAUDE_PROJECT_DIR / $PWD). If the canonicalised path does not
-# start with the cwd prefix it is returned as-is (absolute).
+# Given an absolute or relative path, returns the path relative to the repo root.
+# The root is resolved as the git toplevel of the file's own containing directory
+# (cwd-independent, via `git -C`). When git is unavailable or the path is not
+# inside a git repo, falls back to stripping the launch cwd
+# (CWD / CLAUDE_PROJECT_DIR / $PWD). If neither prefix matches, the canonicalised
+# path is returned as-is (absolute).
 #
 # Usage: rel=$(repo_relative "$FILE_PATH")
 repo_relative() {
     local path="$1"
     # Relative paths are already repo-relative — pass through unchanged.
-    # Only absolute paths need cwd-prefix stripping (with symlink resolution
-    # so /tmp → /private/tmp works on macOS).
     case "$path" in
     /*) ;;
     *)
@@ -234,16 +235,46 @@ repo_relative() {
     esac
     local canonical
     canonical=$(hooks_realpath "$path") || return 1
+
+    # Prefer the git toplevel of the file's own directory — cwd-independent.
+    # Walk up to the first EXISTING ancestor (the file itself may not exist yet
+    # on a fresh Write), then ask git from there with -C.
+    local probe_dir
+    probe_dir=$(dirname "$canonical")
+    while [ -n "$probe_dir" ] && [ ! -d "$probe_dir" ]; do
+        local parent
+        parent=$(dirname "$probe_dir")
+        [ "$parent" = "$probe_dir" ] && break
+        probe_dir="$parent"
+    done
+    if [ -d "$probe_dir" ]; then
+        local toplevel
+        toplevel=$(git -C "$probe_dir" rev-parse --show-toplevel 2>/dev/null) || toplevel=""
+        if [ -n "$toplevel" ]; then
+            toplevel=$(hooks_realpath "$toplevel") || toplevel=""
+        fi
+        if [ -n "$toplevel" ]; then
+            case "$toplevel" in
+            */) ;;
+            *) toplevel="${toplevel}/" ;;
+            esac
+            case "$canonical" in
+            "${toplevel}"*)
+                printf '%s\n' "${canonical#"$toplevel"}"
+                return 0
+                ;;
+            esac
+        fi
+    fi
+
+    # Fallback: strip the launch cwd (preserves every case that works today).
     local raw_cwd="${CWD:-${CLAUDE_PROJECT_DIR:-$PWD}}"
-    # Canonicalise cwd too — on macOS /tmp is a symlink to /private/tmp.
     local cwd_prefix
     cwd_prefix=$(hooks_realpath "$raw_cwd") || cwd_prefix="$raw_cwd"
-    # Ensure cwd_prefix ends with /
     case "$cwd_prefix" in
     */) ;;
     *) cwd_prefix="${cwd_prefix}/" ;;
     esac
-    # Strip prefix if canonical path starts with cwd_prefix
     case "$canonical" in
     "${cwd_prefix}"*) printf '%s\n' "${canonical#"$cwd_prefix"}" ;;
     *) printf '%s\n' "$canonical" ;;

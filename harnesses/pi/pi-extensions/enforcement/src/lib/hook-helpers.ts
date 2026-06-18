@@ -5,6 +5,7 @@
  * for use in TypeScript Pi extension hook modules.
  */
 
+import { execFileSync } from "node:child_process";
 import * as fs from "fs";
 import * as path from "path";
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
@@ -96,23 +97,53 @@ export function resolveRealPath(filePath: string): string {
 /**
  * repoRelative() — Convert a path to a repo-relative form.
  *
- * Given an absolute or relative path, returns the path relative to the project
- * root (CWD / CLAUDE_PROJECT_DIR / process.cwd()). If the canonicalised path
- * does not start with the cwd prefix it is returned as-is (absolute).
+ * Given an absolute or relative path, returns the path relative to the repo root.
+ * The root is resolved as the git toplevel of the file's own containing directory
+ * (cwd-independent, via `git -C`). When git is unavailable or the path is not
+ * inside a git repo, falls back to stripping the launch cwd
+ * (CWD / CLAUDE_PROJECT_DIR / process.cwd()). If neither prefix matches, the
+ * canonicalised path is returned as-is (absolute).
  *
  * Mirrors repo_relative() in hooks-lib.sh — bash↔TS parity is critical.
  */
 export function repoRelative(filePath: string): string {
   // Relative paths are already repo-relative — pass through unchanged.
-  // Only absolute paths need cwd-prefix stripping (with symlink resolution
-  // so /tmp → /private/tmp works on macOS).
   if (!path.isAbsolute(filePath)) {
     return filePath;
   }
   const canonical = resolveRealPath(filePath);
+
+  // Prefer the git toplevel of the file's own directory — cwd-independent.
+  // Walk up to the first existing ancestor (file may not exist yet on a
+  // fresh write), then ask git from there with -C.
+  let probeDir = path.dirname(canonical);
+  while (probeDir && !fs.existsSync(probeDir)) {
+    const parent = path.dirname(probeDir);
+    if (parent === probeDir) break;
+    probeDir = parent;
+  }
+  if (fs.existsSync(probeDir)) {
+    try {
+      const out = execFileSync(
+        "git",
+        ["-C", probeDir, "rev-parse", "--show-toplevel"],
+        { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] },
+      ).trim();
+      if (out) {
+        const top = resolveRealPath(out);
+        const topWithSlash = top.endsWith("/") ? top : top + "/";
+        if (canonical.startsWith(topWithSlash)) {
+          return canonical.slice(topWithSlash.length);
+        }
+      }
+    } catch {
+      // git absent or path not in a repo — fall through to launch-cwd strip.
+    }
+  }
+
+  // Fallback: strip the launch cwd (preserves every case that works today).
   const rawCwd =
     process.env["CWD"] ?? process.env["CLAUDE_PROJECT_DIR"] ?? process.cwd();
-  // Canonicalise cwd too — on macOS /tmp is a symlink to /private/tmp.
   const canonicalCwd = resolveRealPath(rawCwd);
   const cwdWithSlash = canonicalCwd.endsWith("/")
     ? canonicalCwd

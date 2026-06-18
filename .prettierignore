@@ -7,3 +7,4 @@ harnesses/pi/pi-extensions/enforcement/src/index.ts
 # De-padded form is the stable intended format for these files.
 context/hooks.md
 context/hook-authoring-patterns.md
+context/development.md
