@@ -345,6 +345,15 @@
         "hooks": [
           {
             "type": "command",
+            "command": "$HOME/.claude/hooks/clean-tree-before-ship.sh"
+          }
+        ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
             "command": "$HOME/.claude/hooks/committer-bash-allowlist.sh"
           }
         ]
