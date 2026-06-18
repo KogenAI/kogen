@@ -54,6 +54,28 @@ def _check_forbidden(pattern, entry_id):
 
 
 # ---------------------------------------------------------------------------
+# Harnesses token guard
+# ---------------------------------------------------------------------------
+
+_VALID_HARNESSES = ("all", "claude", "pi")
+
+
+def _validate_harnesses(eid, harnesses_val):
+    """Fail-loud if an entry's harnesses token is outside the live contract.
+
+    Mirrors the match/match_all exclusivity guard form: sys.exit with
+    "ERROR: entry '<id>': ...". A typo (claude_code, both, pi,claude) would
+    otherwise make emit_bash AND emit_ts both false -> the rule silently
+    vanishes from BOTH harnesses. This makes that a loud compile abort.
+    """
+    if harnesses_val not in _VALID_HARNESSES:
+        sys.exit(
+            f"ERROR: entry '{eid}': harnesses '{harnesses_val}' "
+            f"not in (all, claude, pi)"
+        )
+
+
+# ---------------------------------------------------------------------------
 # Dialect translation
 # ---------------------------------------------------------------------------
 
@@ -1055,6 +1077,7 @@ def main():
         # Determine which outputs to emit based on harnesses field.
         # "all" / "claude" → emit bash; "all" / "pi" → emit ts
         harnesses_val = str(entry.get("harnesses", "all"))
+        _validate_harnesses(eid, harnesses_val)
         emit_bash = harnesses_val in ("all", "claude")
         emit_ts = harnesses_val in ("all", "pi")
 
@@ -1101,6 +1124,7 @@ def main():
         if not eid:
             continue
         harnesses_val = str(entry.get("harnesses", "all"))
+        _validate_harnesses(eid, harnesses_val)
         if harnesses_val not in ("all", "pi"):
             continue
         # Existence guard: only include if the .ts file actually exists.

@@ -226,5 +226,26 @@ class TestFilePathDenyNoCrossContamination(unittest.TestCase):
         self.assertIn("exit 0\nfi\n\ndeny ", bash)
 
 
+class TestValidateHarnesses(unittest.TestCase):
+    """_validate_harnesses — token-set guard (seam b)."""
+
+    def test_all_passes(self):
+        ec._validate_harnesses("some-id", "all")  # no raise
+
+    def test_claude_passes(self):
+        ec._validate_harnesses("some-id", "claude")
+
+    def test_pi_passes(self):
+        ec._validate_harnesses("some-id", "pi")
+
+    def test_bogus_token_exits(self):
+        with self.assertRaises(SystemExit) as cm:
+            ec._validate_harnesses("my-id", "claude_code")
+        msg = str(cm.exception)
+        self.assertIn("my-id", msg)
+        self.assertIn("claude_code", msg)
+        self.assertIn("not in (all, claude, pi)", msg)
+
+
 if __name__ == "__main__":
     unittest.main()

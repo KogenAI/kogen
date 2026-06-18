@@ -1,8 +1,8 @@
 #!/bin/bash
 # enforcement_compiler_test.sh — unit tests for enforcement_compiler.py.
 #
-# Tests (40):
-#   1:  parse valid registry (6 entries: 5 bash+ts + 1 pi-only); 11 sections in dry-run
+# Tests (42):
+#   1:  parse valid registry (8 entries: 7 bash+ts + 1 pi-only); 15 sections in dry-run
 #   2:  dialect translation bash: \\s → [[:space:]] in generated .sh
 #   3:  match_all AND logic: two grep -qE calls joined with &&
 #   4:  generated:false entry skipped (no file emitted)
@@ -42,6 +42,8 @@
 #  38:  deferred-not-in: context-index-parity (NOT-YET-MIGRATED) is NOT in generated block
 #  39:  existence-guard: kind:registration harnesses:all id WITHOUT .ts file is NOT in generated block
 #  40:  symmetry: import line count == register call line count inside generated block
+#  41:  harnesses typo aborts compiler with token-set message (seam b)
+#  42:  orphan-hook-check reports ORPHAN on stale marked file; PASS on real tree (seam a)
 
 set -euo pipefail
 
@@ -107,7 +109,7 @@ count=$(
     grep -c "^===" "$tmpdir/dry_run.txt" 2>/dev/null
     true
 )
-assert_eq "parse valid registry: 11 sections (5 bash+ts pairs + 1 pi-only ts)" "11" "$count"
+assert_eq "parse valid registry: 15 sections (7 bash+ts pairs + 1 pi-only ts)" "15" "$count"
 
 # ── Test 2: dialect translation bash: \s → [[:space:]] ───────────────────────
 
@@ -644,6 +646,60 @@ register_count=$(printf '%s' "$all_blocks" | grep -cE '^\s+register[A-Z][^(]+\(p
 assert_eq \
     "symmetry: import line count equals register call count in block" \
     "$import_count" "$register_count"
+
+# ── Test 41: harnesses typo aborts compiler (seam b) ─────────────────────────
+
+cat >"$tmpdir/registry_bad_harness.yaml" <<'YAML'
+- id: bad-harness
+  generated: true
+  event: PreToolUse
+  tool_guard: Bash
+  match: "foo"
+  message: "test"
+  surface: user_global
+  signal: none
+  role: "*"
+  harnesses: claude_code
+YAML
+set +e
+bad_out=$(python3 "$COMPILER" \
+    --registry "$tmpdir/registry_bad_harness.yaml" \
+    --bash-out "$tmpdir/bad_harness_bash" \
+    --ts-out "$tmpdir/bad_harness_ts" \
+    --index "$tmpdir/bad_harness_index.ts" \
+    --dry-run 2>&1)
+bad_rc=$?
+set -e
+assert_eq "harnesses typo: non-zero exit" "1" "$((bad_rc != 0 ? 1 : 0))"
+assert_contains "harnesses typo: token-set message" "not in (all, claude, pi)" "$bad_out"
+
+# ── Test 42: orphan-hook-check reverse pass (seam a) ─────────────────────────
+
+ORPHAN_CHECK="$SCRIPT_DIR/orphan-hook-check.sh"
+mkdir -p "$tmpdir/orphan_hooks"
+# Copy a real fully-generated hook (carries discriminator), rename to an id
+# absent from the registry.
+cp "$SCRIPT_DIR/../../harnesses/claude/hooks/no-cat-pipe.sh" \
+    "$tmpdir/orphan_hooks/orphan-xyz.sh"
+set +e
+orphan_out=$(bash "$ORPHAN_CHECK" \
+    --hooks-dir "$tmpdir/orphan_hooks" \
+    --registry "$REGISTRY" 2>&1)
+orphan_rc=$?
+set -e
+assert_eq "orphan-check: non-zero exit on orphan" "1" "$((orphan_rc != 0 ? 1 : 0))"
+assert_contains "orphan-check: ORPHAN line emitted" "ORPHAN" "$orphan_out"
+assert_contains "orphan-check: names the orphan id" "orphan-xyz" "$orphan_out"
+
+# Real committed tree has NO orphans today → exit 0.
+set +e
+real_out=$(bash "$ORPHAN_CHECK" \
+    --hooks-dir "$SCRIPT_DIR/../../harnesses/claude/hooks" \
+    --ts-dir "$SCRIPT_DIR/../../harnesses/pi/pi-extensions/enforcement/src/hooks" \
+    --registry "$REGISTRY" 2>&1)
+real_rc=$?
+set -e
+assert_eq "orphan-check: clean tree exits 0" "0" "$real_rc"
 
 # ── Summary ───────────────────────────────────────────────────────────────────
 

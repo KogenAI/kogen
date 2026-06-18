@@ -45,3 +45,19 @@ All git commands use relative paths (workspace root is cwd). NEVER hardcode `/Us
 **Bash redirects to session logs are FORBIDDEN** (all forms: heredocs, `>`, `>>`, brace-group redirects to `codegen/logging/`). Bash tool_use entries are invisible to transcript-based hook discovery. **Workaround**: Use the Edit tool on session logs instead.
 
 **Read tool blocks on rule files** (developer.md, testing-liveview.md, testing.md, reviewer.md, committer.md). Use Grep tool with `-B`/`-A` context to locate anchor text instead; supply verbatim anchors in plan prose.
+
+## Newline-List Membership Testing
+
+POSIX-safe membership check on newline-separated values (e.g., `yq` output):
+
+```bash
+LIVE_IDS=$(yq '.[] | select(.generated == true) | .id' registry.yaml)
+
+is_live() {
+    printf '%s\n' "$LIVE_IDS" | grep -qxF "$1"
+}
+```
+
+- `grep -qxF` = quiet + exact-line match + fixed-string (no regex). Avoids substring false-matches (e.g., `no-cat-pipe` vs `no-cat-pipe-x`).
+- `printf` preserves newlines when iterating the string literal. `set -u`-safe; empty `LIVE_IDS` returns 1 (not found).
+- Preferred over Bash 4+ arrays (`declare -A`) for macOS 3.2 compatibility.

@@ -119,6 +119,10 @@ enforce-registry-parity:
 		diff -u "$$committed_index" /tmp/enforce-parity-index.ts.tmp || true; \
 		fail=1; \
 	fi; \
+	bash "$(SCRIPT_DIR)/templates/generator/orphan-hook-check.sh" \
+		--hooks-dir "$(SCRIPT_DIR)/harnesses/claude/hooks" \
+		--ts-dir "$(SCRIPT_DIR)/harnesses/pi/pi-extensions/enforcement/src/hooks" \
+		--registry "$(SCRIPT_DIR)/shared/enforcement/registry.yaml" || fail=1; \
 	if [ $$fail -eq 0 ] && [ -n "$$VERBOSE" ]; then echo "enforce-registry-parity: PASS"; fi; \
 	exit $$fail
 
