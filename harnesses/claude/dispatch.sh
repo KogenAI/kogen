@@ -8,6 +8,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
+CODEGEN_DIR="${OCG_CODEGEN_DIR:-$(cd "$SCRIPT_DIR/../.." && pwd -P)}"
 SP_FILE="$SCRIPT_DIR/claude-build-system-prompt.txt"
 
 COMMON_FLAGS=(--dangerously-skip-permissions)
@@ -32,7 +33,6 @@ EFFORT="${CODEGEN_BUILD_EFFORT:-}"
 
 # Fall back to config.yaml values if not set
 if [[ -z "$MODEL" || -z "$EFFORT" ]]; then
-    CODEGEN_DIR="${OCG_CODEGEN_DIR:-$(cd "$SCRIPT_DIR/../.." && pwd -P)}"
     cfg="$CODEGEN_DIR/templates/generator/config.yaml"
     if [[ -f "$cfg" ]]; then
         if ! command -v yq >/dev/null 2>&1; then
@@ -120,6 +120,7 @@ exec env \
     -u CLAUDE_CODE_SESSION_ID \
     -u CLAUDE_CODE_EXECPATH \
     -u AI_AGENT \
+    CODEGEN_DIR="$CODEGEN_DIR" \
     PATH="$GATE_PATH" \
     ENABLE_PROMPT_CACHING_1H=1 \
     MAX_THINKING_TOKENS=0 \

@@ -214,6 +214,110 @@ describe("phoenix-dev-gate render-check integration", () => {
   });
 });
 
+// ── Checker-missing tests ────────────────────────────────────────────────────
+// Verifies that when CODEGEN_DIR is set but the checker script is absent,
+// the hook surfaces INCONCLUSIVE (checker-missing) in the log rather than
+// silently emitting ALL CLEAR. Also verifies that CODEGEN_DIR="" (opt-out)
+// keeps the silent-skip behaviour.
+
+describe("phoenix-dev-gate checker-missing", () => {
+  async function runHookWithMissingChecker(
+    codegenDirSet: boolean,
+    missingScript: "render" | "wiring" | "both",
+  ) {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "pdg-missing-"));
+
+    try {
+      const loggingDir = path.join(tmpDir, "codegen", "logging");
+      fs.mkdirSync(loggingDir, { recursive: true });
+      const logPath = path.join(loggingDir, "20260101_000000_step1.md");
+      fs.writeFileSync(logPath, `# Step\n\n## Plan\n\n**Gate**: \`true\`\n`);
+
+      const fakeCodegenDir = tmpDir;
+      const hooksLibDir = path.join(
+        fakeCodegenDir,
+        "harnesses",
+        "claude",
+        "hooks",
+        "lib",
+      );
+      fs.mkdirSync(hooksLibDir, { recursive: true });
+
+      // Only write scripts that are NOT supposed to be missing.
+      if (missingScript !== "wiring" && missingScript !== "both") {
+        fs.writeFileSync(
+          path.join(hooksLibDir, "wiring-check.js"),
+          `process.stdout.write("WIRING_VERDICT=PASS\\n");\n`,
+        );
+      }
+      if (missingScript !== "render" && missingScript !== "both") {
+        fs.writeFileSync(
+          path.join(hooksLibDir, "render-check.js"),
+          `process.stdout.write("RENDER_VERDICT=PASS\\n");\n`,
+        );
+      }
+
+      process.env["AGENT_TYPE"] = "developer-phoenix-backend";
+      process.env["CWD"] = tmpDir;
+      if (codegenDirSet) {
+        process.env["CODEGEN_DIR"] = fakeCodegenDir;
+      } else {
+        delete process.env["CODEGEN_DIR"];
+      }
+
+      const { register } = await import("../phoenix-dev-gate");
+      let capturedHandler: (event: unknown) => Promise<unknown>;
+      const mockPi = {
+        on: (_event: string, handler: (event: unknown) => Promise<unknown>) => {
+          capturedHandler = handler;
+        },
+      };
+      register(
+        mockPi as unknown as import("@earendil-works/pi-coding-agent").ExtensionAPI,
+      );
+      await capturedHandler!(
+        makeShutdownEvent("developer-phoenix-backend", tmpDir),
+      );
+
+      const logContents = fs.readFileSync(logPath, "utf8");
+      return { logContents };
+    } finally {
+      delete process.env["AGENT_TYPE"];
+      delete process.env["CODEGEN_DIR"];
+      delete process.env["CWD"];
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    }
+  }
+
+  it("render-check.js absent + CODEGEN_DIR set → INCONCLUSIVE (checker-missing) in log", async () => {
+    const { logContents } = await runHookWithMissingChecker(true, "render");
+    assert.ok(
+      logContents.includes("INCONCLUSIVE") && logContents.includes("checker-missing"),
+      `expected INCONCLUSIVE checker-missing in log, got: ${logContents}`,
+    );
+  });
+
+  it("wiring-check.js absent + CODEGEN_DIR set → INCONCLUSIVE (checker-missing) in log", async () => {
+    const { logContents } = await runHookWithMissingChecker(true, "wiring");
+    assert.ok(
+      logContents.includes("INCONCLUSIVE") && logContents.includes("checker-missing"),
+      `expected INCONCLUSIVE checker-missing in log, got: ${logContents}`,
+    );
+  });
+
+  it("CODEGEN_DIR empty (opt-out) → silent skip, ALL CLEAR kept", async () => {
+    const { logContents } = await runHookWithMissingChecker(false, "both");
+    assert.ok(
+      logContents.includes("ALL CLEAR"),
+      `expected ALL CLEAR in log for opt-out, got: ${logContents}`,
+    );
+    assert.ok(
+      !logContents.includes("INCONCLUSIVE"),
+      `unexpected INCONCLUSIVE for opt-out: ${logContents}`,
+    );
+  });
+});
+
 // ── Wiring-check stub tests ──────────────────────────────────────────────────
 // Verifies the Pi phoenix-dev-gate hook surfaces wiring FAIL to stderr and
 // downgrades the verdict; PASS adds a wiring: summary line to the log.

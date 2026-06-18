@@ -186,10 +186,18 @@ export function register(pi: ExtensionAPI): void {
           wiringSummary =
             "wiring: PASS (all phx-* handlers have an element-driven side-effect test)";
         }
-      } else {
+      } else if (codegenDir) {
+        // codegenDir is set but script path is absent — checker not installed.
         debugLog(
           "phoenix-dev-gate",
-          "wiring-check.js not found — skipping wiring check",
+          "wiring-check.js not found — INCONCLUSIVE (checker-missing)",
+        );
+        wiringSummary = "wiring: INCONCLUSIVE (checker-missing) — skipped";
+      } else {
+        // codegenDir empty → operator opt-out; silent skip (Pi observe-only).
+        debugLog(
+          "phoenix-dev-gate",
+          "CODEGEN_DIR not set — skipping wiring check (opt-out)",
         );
       }
     }
@@ -252,10 +260,18 @@ export function register(pi: ExtensionAPI): void {
         } else if (renderVerdict === "PASS") {
           renderSummary = "render: DOM non-empty, styles applied, 0 JS errors";
         }
-      } else {
+      } else if (codegenDir) {
+        // codegenDir is set but script path is absent — checker not installed.
         debugLog(
           "phoenix-dev-gate",
-          "render-check.js not found — skipping render check",
+          "render-check.js not found — INCONCLUSIVE (checker-missing)",
+        );
+        renderSummary = "render: INCONCLUSIVE (checker-missing) — skipped";
+      } else {
+        // codegenDir empty → operator opt-out; silent skip (Pi observe-only).
+        debugLog(
+          "phoenix-dev-gate",
+          "CODEGEN_DIR not set — skipping render check (opt-out)",
         );
       }
     }

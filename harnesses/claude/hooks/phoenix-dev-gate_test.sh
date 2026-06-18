@@ -463,5 +463,103 @@ assert_file_contains "render cmd-failed: INCONCLUSIVE in log" "INCONCLUSIVE" "$L
 rm -f "$STUB14"
 rm -rf "$T14"
 
+# ── Test 15: CODEGEN_DIR unset + no override → INCONCLUSIVE (not clear) ──────
+# When CODEGEN_DIR is unset and no RENDER/WIRING override is given, the default
+# command expands to a path that does not exist on disk. The hook must emit
+# INCONCLUSIVE (render-checker-missing or wiring-checker-missing) and NOT
+# emit ALL CLEAR.
+T15=$(make_project)
+LOG15="$T15/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_step1.md"
+cat >"$LOG15" <<'MD'
+# Step
+
+## Plan
+
+**Gate**: `true`
+MD
+make_transcript "$T15/transcript.jsonl" "$LOG15"
+out15=$(printf '%s' "$(input_for "$T15" developer-phoenix-backend false sess1 "$T15/transcript.jsonl")" |
+    env -u RENDER_CHECK_CMD -u WIRING_CHECK_CMD -u CODEGEN_DIR bash "$HOOK" 2>/dev/null || true)
+assert_not_contains "CODEGEN_DIR unset: no block" '"decision": "block"' "$out15"
+assert_file_not_contains "CODEGEN_DIR unset: no ALL CLEAR" "ALL CLEAR" "$LOG15"
+assert_file_contains "CODEGEN_DIR unset: INCONCLUSIVE in log" "INCONCLUSIVE" "$LOG15"
+rm -rf "$T15"
+
+# ── Test 16: explicit RENDER_CHECK_CMD="" opt-out → no INCONCLUSIVE ───────────
+# Setting RENDER_CHECK_CMD to empty string is deliberate opt-out (not could-not-run).
+# The render step must be silently skipped; the log must show ALL CLEAR from
+# the PASS wiring stub.
+T16=$(make_project)
+LOG16="$T16/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_step1.md"
+cat >"$LOG16" <<'MD'
+# Step
+
+## Plan
+
+**Gate**: `true`
+MD
+make_transcript "$T16/transcript.jsonl" "$LOG16"
+WSTUB16=$(make_wiring_stub "PASS")
+out16=$(printf '%s' "$(input_for "$T16" developer-phoenix-backend false sess1 "$T16/transcript.jsonl")" |
+    RENDER_CHECK_CMD="" WIRING_CHECK_CMD="$WSTUB16" CODEGEN_DIR="$SCRIPT_DIR" bash "$HOOK" 2>/dev/null || true)
+assert_not_contains "render opt-out: no block" '"decision": "block"' "$out16"
+assert_file_contains "render opt-out: ALL CLEAR in log" "ALL CLEAR" "$LOG16"
+assert_file_not_contains "render opt-out: no render INCONCLUSIVE" "render: INCONCLUSIVE" "$LOG16"
+rm -f "$WSTUB16"
+rm -rf "$T16"
+
+# ── Test 17: explicit WIRING_CHECK_CMD="" opt-out → no INCONCLUSIVE ──────────
+# Setting WIRING_CHECK_CMD to empty string is deliberate opt-out. The wiring
+# step is silently skipped; gate proceeds to render (which passes) → ALL CLEAR.
+T17=$(make_project)
+LOG17="$T17/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_step1.md"
+cat >"$LOG17" <<'MD'
+# Step
+
+## Plan
+
+**Gate**: `true`
+MD
+make_transcript "$T17/transcript.jsonl" "$LOG17"
+RSTUB17=$(make_render_stub "PASS")
+out17=$(printf '%s' "$(input_for "$T17" developer-phoenix-backend false sess1 "$T17/transcript.jsonl")" |
+    WIRING_CHECK_CMD="" RENDER_CHECK_CMD="$RSTUB17" CODEGEN_DIR="$SCRIPT_DIR" bash "$HOOK" 2>/dev/null || true)
+assert_not_contains "wiring opt-out: no block" '"decision": "block"' "$out17"
+assert_file_contains "wiring opt-out: ALL CLEAR in log" "ALL CLEAR" "$LOG17"
+assert_file_not_contains "wiring opt-out: no wiring INCONCLUSIVE" "wiring: INCONCLUSIVE" "$LOG17"
+rm -f "$RSTUB17"
+rm -rf "$T17"
+
+# ── Test 18: wiring cmd exits non-zero with no verdict line → INCONCLUSIVE ───
+# Today's || true swallows the crash and falls through to ALL CLEAR — this test
+# was red before the rc-capture fix and is green after.
+T18=$(make_project)
+LOG18="$T18/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_step1.md"
+cat >"$LOG18" <<'MD'
+# Step
+
+## Plan
+
+**Gate**: `true`
+MD
+make_transcript "$T18/transcript.jsonl" "$LOG18"
+WCRASH18=$(mktemp)
+cat >"$WCRASH18" <<'STUB'
+#!/usr/bin/env bash
+printf 'wiring crashed\n'
+exit 1
+STUB
+chmod +x "$WCRASH18"
+RSTUB18=$(make_render_stub "PASS")
+out18=$(printf '%s' "$(input_for "$T18" developer-phoenix-backend false sess1 "$T18/transcript.jsonl")" |
+    WIRING_CHECK_CMD="$WCRASH18" RENDER_CHECK_CMD="$RSTUB18" CODEGEN_DIR="$SCRIPT_DIR" bash "$HOOK" 2>/dev/null || true)
+# Wiring INCONCLUSIVE is fail-open: no block, ALL CLEAR still emitted (with an INCONCLUSIVE note).
+# Before the rc-capture fix, the crash was fully masked (|| true) → no INCONCLUSIVE note at all.
+# After fix: INCONCLUSIVE note appears — crash is no longer silently swallowed.
+assert_not_contains "wiring crash: no block" '"decision": "block"' "$out18"
+assert_file_contains "wiring crash: INCONCLUSIVE note in log" "wiring: INCONCLUSIVE" "$LOG18"
+rm -f "$WCRASH18" "$RSTUB18"
+rm -rf "$T18"
+
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]
