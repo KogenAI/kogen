@@ -156,6 +156,36 @@
   role: "reviewer-phoenix|reviewer-static"
   harnesses: pi
 
+# SCHEMA: rules-stacks.md — developer-static may not run static build/verify commands manually
+- id: developer-static-no-manual-build
+  generated: true
+  description: "developer-static may not run static build/verify commands manually (gate owns verification)"
+  event: PreToolUse
+  source: COMMAND
+  tool_guard: Bash
+  match: "(render|wiring)-check\\.js|npm\\s+(run\\s+)?(build|serve)|vite\\s+build|playwright"
+  message: "BLOCKED by developer-static-no-manual-build: do not run build/render/wiring-check/serve/playwright manually. The static-site-build-check gate runs verification automatically on SubagentStop. Manual runs cause thrash."
+  surface: user_global
+  signal: AGENT_TYPE
+  role: developer-static
+  harnesses: all
+
+# SCHEMA: rules-stacks.md — developer-static may not read/grep/glob build-output dirs
+- id: developer-static-no-build-output-probe
+  generated: true
+  description: "developer-static may not probe build-output dirs (public/, dist/) via Read/Grep/Glob"
+  event: PreToolUse
+  source: FILE_PATH
+  mode: deny
+  canonicalize: repo_relative
+  tool_guard: "Read|Grep|Glob"
+  match: "(^|/)public/|(^|/)dist/"
+  message: "BLOCKED by developer-static-no-build-output-probe: do not read/grep/glob generated build output (public/, dist/). Inspect SOURCE files; the gate verifies build output automatically."
+  surface: user_global
+  signal: AGENT_TYPE
+  role: developer-static
+  harnesses: all
+
 # ── REGISTRATION ENTRIES (kind: registration) ────────────────────────────────
 # These entries drive ONLY the # HOOK-MANIFEST: header block in the named .sh file.
 # Script bodies remain hand-authored. Run `make install` or

@@ -139,10 +139,49 @@ debug_log {id} "tool=$TOOL_NAME agent=$AGENT_TYPE cmd=$COMMAND"
 if [ "$TOOL_NAME" != "{tool_guard}" ]; then
     exit 0
 fi
-{bypass_roles_prelude}
+{bypass_roles_prelude}{agent_type_guard}
 # Deny: pattern match.
 if printf '%s' "$COMMAND" | grep -qE '{match_bash}'; then
     deny "{message}"
+    exit 0
+fi
+
+exit 0
+"""
+
+# Template for FILE_PATH source, deny mode (deny when pattern DOES match).
+# Multi-tool guard uses a case statement.
+_BASH_TEMPLATE_FILEPATH_DENY = """\
+#!/bin/bash
+# {id}.sh — PreToolUse hook: {description}.
+#
+# HOOK-MANIFEST:
+# event: {event}
+# matcher: {tool_guard}
+# surface: {surface}
+# signal: {signal}
+# role: {role}
+# harnesses: {harnesses}
+#
+# GENERATED FROM shared/enforcement/registry.yaml — DO NOT EDIT
+# Edit registry.yaml and run `make install` to regenerate.
+
+set -u
+
+source "$(dirname "$0")/lib/hooks-lib.sh"
+parse_input
+
+debug_log {id} "tool=$TOOL_NAME agent=$AGENT_TYPE file=$FILE_PATH"
+
+# Only guard {tool_guard} tool(s).
+case "$TOOL_NAME" in
+{tool_guard_case_arms}
+*) exit 0 ;;
+esac
+{agent_type_guard}
+# Deny: normalise to repo-relative path, then check pattern.
+{canonicalize_prelude}if printf '%s' "$rel" | grep -qE '{match_bash}'; then
+    deny "{message}: $FILE_PATH"
     exit 0
 fi
 
@@ -322,6 +361,38 @@ def _render_bash(entry):
     mode = entry.get("mode", "deny")
     canonicalize = entry.get("canonicalize", "")
 
+    if source == "FILE_PATH" and mode == "deny":
+        pattern = entry["match"]
+        _check_forbidden(pattern, eid)
+        match_bash = _to_bash(pattern)
+
+        # Build multi-tool case arms (e.g. "Read|Grep|Glob" → "Read) ;;\nGrep) ;;\nGlob) ;;")
+        arms = "\n".join(f"{t}) ;;" for t in tool_guard.split("|"))
+
+        # Canonicalize prelude
+        if canonicalize == "repo_relative":
+            canon_prelude = 'rel=$(repo_relative "$FILE_PATH")\n'
+        else:
+            canon_prelude = 'rel="$FILE_PATH"\n'
+
+        agent_guard = _bash_agent_guard(role)
+
+        return _BASH_TEMPLATE_FILEPATH_DENY.format(
+            id=eid,
+            description=description,
+            event=event,
+            tool_guard=tool_guard,
+            tool_guard_case_arms=arms,
+            surface=surface,
+            signal=signal,
+            role=role,
+            harnesses=harnesses,
+            message=message,
+            match_bash=match_bash,
+            canonicalize_prelude=canon_prelude,
+            agent_type_guard=agent_guard,
+        )
+
     if source == "FILE_PATH" and mode == "allowlist":
         pattern = entry["match"]
         _check_forbidden(pattern, eid)
@@ -431,6 +502,7 @@ def _render_bash(entry):
         pattern = entry["match"]
         _check_forbidden(pattern, eid)
         match_bash = _to_bash(pattern)
+        agent_guard = _bash_agent_guard(role)
         return _BASH_TEMPLATE_SINGLE.format(
             id=eid,
             description=description,
@@ -444,6 +516,7 @@ def _render_bash(entry):
             match_bash=match_bash,
             role_source_prelude=role_source_prelude,
             bypass_roles_prelude=bypass_prelude,
+            agent_type_guard=agent_guard,
         )
 
 
@@ -474,7 +547,7 @@ export const HANDLER_META = {{
 export function register(pi: ExtensionAPI): void {{
   pi.on("tool_call", async (event) => {{
     if (event.toolName !== "bash") return;
-{bypass_roles_prelude}
+{bypass_roles_prelude}{agent_type_guard}
     const command: string = (event.input as {{ command?: string }}).command ?? "";
     debugLog("{id}", `cmd=${{command}}`);
 
@@ -524,6 +597,47 @@ export function register(pi: ExtensionAPI): void {{
     return deny(
       "{message}: " + filePath,
     );
+  }});
+}}
+"""
+
+# Template for FILE_PATH source, deny mode (deny when pattern DOES match) — TS/Pi version.
+# Handles multi-tool guards as an array of toolName checks.
+# Reads both file_path and path fields to support Read (file_path) and Grep/Glob (path).
+_TS_TEMPLATE_FILEPATH_DENY = """\
+/**
+ * {id}.ts — Pi enforcement: {description}.
+ *
+ * Event: tool_call (PreToolUse equivalent)
+ * Matcher: {tool_guard}
+ *
+ * GENERATED FROM shared/enforcement/registry.yaml — DO NOT EDIT
+ * Edit registry.yaml and run `make install` to regenerate.
+ */
+
+import type {{ ExtensionAPI }} from "@earendil-works/pi-coding-agent";
+import {{ deny, debugLog, repoRelative }} from "../lib/hook-helpers";
+
+export const HANDLER_META = {{
+  name: "{id}",
+  event: "tool_call",
+  matcher: "{tool_guard_lower}",
+}} as const;
+
+export function register(pi: ExtensionAPI): void {{
+  pi.on("tool_call", async (event) => {{
+    if (!{tool_guard_ts_check}) return;
+{agent_type_guard}
+    const input = event.input as {{ file_path?: string; path?: string }};
+    const filePath: string = input.file_path ?? input.path ?? "";
+    debugLog("{id}", `file=${{filePath}}`);
+
+    const rel = {canonicalize_ts_prelude}(filePath);
+    if (/{match_ts}/.test(rel)) {{
+      return deny(
+        "{message}: " + filePath,
+      );
+    }}
   }});
 }}
 """
@@ -619,6 +733,41 @@ def _render_ts(entry):
     mode = entry.get("mode", "deny")
     canonicalize = entry.get("canonicalize", "")
     tool_guard = entry["tool_guard"]
+
+    if source == "FILE_PATH" and mode == "deny":
+        pattern = entry["match"]
+        _check_forbidden(pattern, eid)
+        match_ts = _to_ts(pattern)
+
+        # Build multi-tool check: "Read|Grep|Glob" → array of toolName checks
+        tools = tool_guard.split("|")
+        if len(tools) == 1:
+            ts_check = f'event.toolName === "{tools[0].lower()}"'
+        else:
+            checks = " || ".join(f'event.toolName === "{t.lower()}"' for t in tools)
+            ts_check = f"({checks})"
+
+        # Canonicalize prelude function call
+        if canonicalize == "repo_relative":
+            canon_fn = "repoRelative"
+        else:
+            canon_fn = "(x: string) => x"
+
+        # Agent-type guard for role-scoped entries (non-wildcard role)
+        role = entry.get("role", "*")
+        agent_type_guard = _ts_agent_guard(role)
+
+        return _TS_TEMPLATE_FILEPATH_DENY.format(
+            id=eid,
+            description=description,
+            message=message,
+            tool_guard=tool_guard,
+            tool_guard_lower=tool_guard.lower(),
+            tool_guard_ts_check=ts_check,
+            match_ts=match_ts,
+            canonicalize_ts_prelude=canon_fn,
+            agent_type_guard=agent_type_guard,
+        )
 
     if source == "FILE_PATH" and mode == "allowlist":
         pattern = entry["match"]
@@ -717,12 +866,15 @@ def _render_ts(entry):
         pattern = entry["match"]
         _check_forbidden(pattern, eid)
         match_ts = _to_ts(pattern)
+        role = entry.get("role", "*")
+        agent_type_guard = _ts_agent_guard(role)
         return _TS_TEMPLATE_SINGLE.format(
             id=eid,
             description=description,
             message=message,
             match_ts=match_ts,
             bypass_roles_prelude=bypass_prelude_ts,
+            agent_type_guard=agent_type_guard,
         )
 
 

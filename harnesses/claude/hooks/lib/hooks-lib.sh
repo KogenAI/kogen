@@ -28,7 +28,7 @@
 #   AGENT_TYPE             — .agent_type (PreToolUse / SubagentStart / SubagentStop)
 #   AGENT_ID               — .agent_id   (PreToolUse / SubagentStop)
 #   COMMAND                — .tool_input.command (Bash)
-#   FILE_PATH              — .tool_input.file_path // .tool_input.notebook_path
+#   FILE_PATH              — .tool_input.file_path // .tool_input.notebook_path // .tool_input.path
 #   CWD                    — .cwd        (PreToolUse / SubagentStop / Stop)
 #   SESSION_ID             — .session_id (Stop / SubagentStop)
 #   STOP_HOOK_ACTIVE       — .stop_hook_active // false
@@ -63,7 +63,7 @@ parse_input() {
     AGENT_TYPE=$(printf '%s' "$RAW_INPUT" | jq -r '.agent_type // ""' 2>/dev/null)
     AGENT_ID=$(printf '%s' "$RAW_INPUT" | jq -r '.agent_id // ""' 2>/dev/null)
     COMMAND=$(printf '%s' "$RAW_INPUT" | jq -r '.tool_input.command // ""' 2>/dev/null)
-    FILE_PATH=$(printf '%s' "$RAW_INPUT" | jq -r '.tool_input.file_path // .tool_input.notebook_path // ""' 2>/dev/null)
+    FILE_PATH=$(printf '%s' "$RAW_INPUT" | jq -r '.tool_input.file_path // .tool_input.notebook_path // .tool_input.path // ""' 2>/dev/null)
     CWD=$(printf '%s' "$RAW_INPUT" | jq -r '.cwd // ""' 2>/dev/null)
     SESSION_ID=$(printf '%s' "$RAW_INPUT" | jq -r '.session_id // ""' 2>/dev/null)
     STOP_HOOK_ACTIVE=$(printf '%s' "$RAW_INPUT" | jq -r '.stop_hook_active // false | tostring' 2>/dev/null)

@@ -36,6 +36,8 @@ import { register as registerCuratorLearningCommitted } from "./hooks/curator-le
 import { register as registerDevNoCi } from "./hooks/dev-no-ci";
 import { register as registerDeveloperNoSelfGate } from "./hooks/developer-no-self-gate";
 import { register as registerDeveloperNoSelfGateReset } from "./hooks/developer-no-self-gate-reset";
+import { register as registerDeveloperStaticNoBuildOutputProbe } from "./hooks/developer-static-no-build-output-probe";
+import { register as registerDeveloperStaticNoManualBuild } from "./hooks/developer-static-no-manual-build";
 import { register as registerEnvVarSampleConsistency } from "./hooks/env-var-sample-consistency";
 import { register as registerLlmPendingSweep } from "./hooks/llm-pending-sweep";
 import { register as registerLlmSuiteGuard } from "./hooks/llm-suite-guard";
@@ -95,6 +97,8 @@ export default function (pi: ExtensionAPI): void {
   registerDevNoCi(pi);
   registerDeveloperNoSelfGate(pi);
   registerDeveloperNoSelfGateReset(pi);
+  registerDeveloperStaticNoBuildOutputProbe(pi);
+  registerDeveloperStaticNoManualBuild(pi);
   registerEnvVarSampleConsistency(pi);
   registerLlmPendingSweep(pi);
   registerLlmSuiteGuard(pi);
