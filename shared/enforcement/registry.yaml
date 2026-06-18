@@ -235,6 +235,16 @@
   rationale: Claude Code per-call inspector hook; Pi uses load-gate tool restriction
 
 - kind: registration
+  id: committer-no-revert-prior-commit
+  event: PreToolUse
+  tool_guard: Bash
+  surface: user_global
+  signal: AGENT_TYPE
+  role: committer
+  harnesses: all
+  rationale: Blocks git commit when staged content would byte-identically match a file state that a prior session commit already superseded, preventing silent backward rolls within the same build session.
+
+- kind: registration
   id: committer-no-trailer-guard
   event: PreToolUse
   tool_guard: Bash
