@@ -386,6 +386,122 @@ else
 fi
 
 # ─────────────────────────────────────────────────────────────────────────────
+# Test (j): --resumable opt-in gates --no-session-persistence / --no-session;
+#           --resume-id adds --resume (claude) / --session (pi); guard + parity
+# ─────────────────────────────────────────────────────────────────────────────
+CB_J="$(make_cb_root cb_j)"
+make_claude_harness "$CB_J" >/dev/null
+CLAUDE_J_DIR="$BASE_TMP/bin_j"
+mkdir -p "$CLAUDE_J_DIR"
+make_stub "$CLAUDE_J_DIR/claude" 'printf '"'"'%s\n'"'"' "$@" > "${TARGET_ARGS_FILE:-/dev/null}"'
+
+run_claude_j() { # $1=args-file  $2..=extra codegen-build flags before prompt
+    local out="$1"
+    shift
+    TARGET_ARGS_FILE="$out" \
+        PATH="$CLAUDE_J_DIR:$PATH" \
+        OCG_CODEGEN_DIR="$CODEGEN_ROOT" \
+        CODEGEN_BUILD_MODEL="" CODEGEN_BUILD_EFFORT="" \
+        "$CB_J/codegen-build" --harness=claude --stack=phoenix "$@" \
+        "j prompt" 2>/dev/null || true
+}
+
+# (j1) default headless STILL has --no-session-persistence
+J1="$BASE_TMP/args_j1.txt"
+run_claude_j "$J1" --non-interactive
+assert_contains "(j1) default headless keeps --no-session-persistence" "$(cat "$J1")" "--no-session-persistence"
+
+# (j2) --resumable headless OMITS --no-session-persistence
+J2="$BASE_TMP/args_j2.txt"
+run_claude_j "$J2" --non-interactive --resumable
+J2C="$(cat "$J2")"
+if [[ "$J2C" != *"--no-session-persistence"* ]]; then
+    [ -n "${VERBOSE:-}" ] && printf 'PASS: (j2) --resumable drops --no-session-persistence\n'
+    pass=$((pass + 1))
+else
+    printf 'FAIL: (j2) --resumable still has --no-session-persistence\n  got: %s\n' "${J2C:0:300}"
+    fail=$((fail + 1))
+fi
+
+# (j3) --resumable --resume-id=SID123 adds --resume SID123
+J3="$BASE_TMP/args_j3.txt"
+run_claude_j "$J3" --non-interactive --resumable --resume-id=SID123
+J3C="$(cat "$J3")"
+assert_contains "(j3) --resume flag present" "$J3C" "--resume"
+assert_contains "(j3) resume id forwarded" "$J3C" "SID123"
+
+# (j4) --resumable WITHOUT id → no --resume, no --no-session-persistence
+J4="$BASE_TMP/args_j4.txt"
+run_claude_j "$J4" --non-interactive --resumable
+J4C="$(cat "$J4")"
+if [[ "$J4C" != *"--resume"* ]]; then
+    [ -n "${VERBOSE:-}" ] && printf 'PASS: (j4) no --resume when id absent\n'
+    pass=$((pass + 1))
+else
+    printf 'FAIL: (j4) --resume present without id\n  got: %s\n' "${J4C:0:300}"
+    fail=$((fail + 1))
+fi
+
+# (j5) interactive + --resumable → no --resume, no --no-session-persistence
+J5="$BASE_TMP/args_j5.txt"
+CODEGEN_BUILD_NON_INTERACTIVE="" TARGET_ARGS_FILE="$J5" \
+    PATH="$CLAUDE_J_DIR:$PATH" OCG_CODEGEN_DIR="$CODEGEN_ROOT" \
+    CODEGEN_BUILD_MODEL="" CODEGEN_BUILD_EFFORT="" \
+    "$CB_J/codegen-build" --harness=claude --stack=phoenix --resumable "j prompt" 2>/dev/null || true
+J5C="$(cat "$J5")"
+if [[ "$J5C" != *"--resume"* && "$J5C" != *"--no-session-persistence"* ]]; then
+    [ -n "${VERBOSE:-}" ] && printf 'PASS: (j5) interactive omits resume + persistence flags\n'
+    pass=$((pass + 1))
+else
+    printf 'FAIL: (j5) interactive leaked a non-interactive flag\n  got: %s\n' "${J5C:0:300}"
+    fail=$((fail + 1))
+fi
+
+# (j6) --resume-id WITHOUT --resumable → exit 2 (usage guard)
+actual_ec=0
+"$CB_J/codegen-build" --harness=claude --stack=phoenix --non-interactive --resume-id=SID "j prompt" 2>/dev/null || actual_ec=$?
+check "(j6) --resume-id without --resumable exits 2" "2" "$actual_ec"
+
+# ── Pi parity ──
+CB_JP="$(make_cb_root cb_jp)"
+make_pi_harness "$CB_JP" >/dev/null
+PI_J_DIR="$BASE_TMP/bin_jp"
+mkdir -p "$PI_J_DIR"
+make_stub "$PI_J_DIR/pi" 'printf '"'"'%s\n'"'"' "$@" > "${TARGET_ARGS_FILE:-/dev/null}"'
+
+run_pi_j() {
+    local out="$1"
+    shift
+    TARGET_ARGS_FILE="$out" PATH="$PI_J_DIR:$PATH" OCG_CODEGEN_DIR="$CODEGEN_ROOT" \
+        CODEGEN_BUILD_MODEL="" CODEGEN_BUILD_EFFORT="" \
+        "$CB_JP/codegen-build" --harness=pi --stack=phoenix "$@" "jp prompt" 2>/dev/null || true
+}
+
+# (j7) Pi default headless STILL has --no-session
+J7="$BASE_TMP/args_j7.txt"
+run_pi_j "$J7" --non-interactive
+assert_contains "(j7) pi default headless keeps --no-session" "$(cat "$J7")" "--no-session"
+
+# (j8) Pi --resumable OMITS --no-session
+J8="$BASE_TMP/args_j8.txt"
+run_pi_j "$J8" --non-interactive --resumable
+J8C="$(cat "$J8")"
+if [[ "$J8C" != *"--no-session"* ]]; then
+    [ -n "${VERBOSE:-}" ] && printf 'PASS: (j8) pi --resumable drops --no-session\n'
+    pass=$((pass + 1))
+else
+    printf 'FAIL: (j8) pi --resumable still has --no-session\n  got: %s\n' "${J8C:0:300}"
+    fail=$((fail + 1))
+fi
+
+# (j9) Pi --resumable --resume-id=PID9 adds --session PID9
+J9="$BASE_TMP/args_j9.txt"
+run_pi_j "$J9" --non-interactive --resumable --resume-id=PID9
+J9C="$(cat "$J9")"
+assert_contains "(j9) pi --session flag present" "$J9C" "--session"
+assert_contains "(j9) pi resume id forwarded" "$J9C" "PID9"
+
+# ─────────────────────────────────────────────────────────────────────────────
 echo ""
 echo "Results: $pass passed, $fail failed"
 

@@ -83,9 +83,12 @@ else
 fi
 
 NON_INTERACTIVE="${CODEGEN_BUILD_NON_INTERACTIVE:-}"
+RESUMABLE="${CODEGEN_BUILD_RESUMABLE:-}"
+RESUME_ID="${CODEGEN_BUILD_RESUME_ID:-}"
 
 # Non-interactive: pass all non-interactive flags. Interactive: omit (claude handles tty detection).
 NON_INTERACTIVE_FLAGS=()
+RESUME_FLAGS=()
 if [[ -n "$NON_INTERACTIVE" ]]; then
     NON_INTERACTIVE_FLAGS+=(
         --print
@@ -93,9 +96,16 @@ if [[ -n "$NON_INTERACTIVE" ]]; then
         --output-format stream-json
         --setting-sources user,project,local
         --strict-mcp-config
-        --no-session-persistence
         --disable-slash-commands
     )
+    # Default headless: persistence OFF (--no-session-persistence). Resumable
+    # opt-in: omit it so the session persists and --resume can re-attach.
+    if [[ -z "$RESUMABLE" ]]; then
+        NON_INTERACTIVE_FLAGS+=(--no-session-persistence)
+    elif [[ -n "$RESUME_ID" ]]; then
+        # Re-attach to a persisted session by id (never valueless → no interactive pick).
+        RESUME_FLAGS+=(--resume "$RESUME_ID")
+    fi
 fi
 
 # Change into the target working directory before exec so that:
@@ -128,6 +138,7 @@ exec env \
     CODEGEN_BUILD_START_TS="$(date +%s)" \
     claude \
     "${NON_INTERACTIVE_FLAGS[@]+"${NON_INTERACTIVE_FLAGS[@]}"}" \
+    "${RESUME_FLAGS[@]+"${RESUME_FLAGS[@]}"}" \
     "${COMMON_FLAGS[@]+"${COMMON_FLAGS[@]}"}" \
     --model "$MODEL" \
     --effort "$EFFORT" \

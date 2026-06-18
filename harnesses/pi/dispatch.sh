@@ -32,6 +32,8 @@ fi
 MODEL="${CODEGEN_BUILD_MODEL:-}"
 EFFORT="${CODEGEN_BUILD_EFFORT:-}"
 NON_INTERACTIVE="${CODEGEN_BUILD_NON_INTERACTIVE:-}"
+RESUMABLE="${CODEGEN_BUILD_RESUMABLE:-}"
+RESUME_ID="${CODEGEN_BUILD_RESUME_ID:-}"
 
 # Fall back to config.yaml values if not set
 if [[ -z "$MODEL" || -z "$EFFORT" ]]; then
@@ -81,8 +83,16 @@ fi
 
 # Non-interactive: pass JSON output flags. Interactive: omit (pi handles tty detection).
 NON_INTERACTIVE_FLAGS=()
+RESUME_FLAGS=()
 if [[ -n "$NON_INTERACTIVE" ]]; then
-    NON_INTERACTIVE_FLAGS+=(-p --mode json --no-session)
+    NON_INTERACTIVE_FLAGS+=(-p --mode json)
+    # Default headless: persistence OFF (--no-session). Resumable opt-in: omit it
+    # so the session persists and --session can re-attach.
+    if [[ -z "$RESUMABLE" ]]; then
+        NON_INTERACTIVE_FLAGS+=(--no-session)
+    elif [[ -n "$RESUME_ID" ]]; then
+        RESUME_FLAGS+=(--session "$RESUME_ID")
+    fi
 fi
 
 # Consume CWD env var set by codegen-build
@@ -98,6 +108,7 @@ exec env \
     pi \
     "${SYSTEM_PROMPT_FLAG[@]+"${SYSTEM_PROMPT_FLAG[@]}"}" \
     "${NON_INTERACTIVE_FLAGS[@]+"${NON_INTERACTIVE_FLAGS[@]}"}" \
+    "${RESUME_FLAGS[@]+"${RESUME_FLAGS[@]}"}" \
     --no-context-files \
     "${EXTENSION_ARG[@]+"${EXTENSION_ARG[@]}"}" \
     --provider openai-codex \
