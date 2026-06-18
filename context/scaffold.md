@@ -111,6 +111,10 @@ The `shared/scaffold/phoenix/mutations/router.sh` mutation wires the health chec
 
 Fixed: **bare `HealthController`** (drop `${APP_NAME_MODULE}Web.` prefix) — the router scope already provides the alias, so the full path is redundant. The idempotency guard (`grep -qF 'HealthController'`) still matches the bare form.
 
+## Idempotency Testing Pattern
+
+When extending scaffold injection (e.g., adding new recipe lines to a Makefile target), idempotency tests use `grep -c` to count key substrings. **Safe injection**: new lines must NOT contain any substring that existing count-asserts are monitoring. Example: `scaffold_test.sh` block (y) idempotency test counts occurrences of `npm run build` and `npx prettier --check .` via `grep -c`. A new guard line `@[ -d node_modules ] || mise exec -- npm install` is safe because it carries neither substring, so existing count assertions stay green (both return 1). New test assertions covering the added line are added to block (x) without disturbing block (y) counts.
+
 ## Update When Changing
 
 - `shared/scaffold/` — mutation scripts, eex_render.sh, scaffold.sh entry points

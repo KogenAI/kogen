@@ -324,6 +324,7 @@ check "static integrate creates ci: Makefile target" "1" "$CI_COUNT"
 CI_BODY="$(cat "$STATIC_CI_CWD/Makefile")"
 assert_contains "static ci: target runs npm run build" "$CI_BODY" "npm run build"
 assert_contains "static ci: target runs prettier check" "$CI_BODY" "npx prettier --check ."
+assert_contains "static ci: target guards npm install on missing node_modules" "$CI_BODY" "[ -d node_modules ] || mise exec -- npm install"
 
 # (y) Static ci: is idempotent (second integrate doesn't duplicate)
 "$CODEGEN_SCAFFOLD" integrate --stack=static --cwd="$STATIC_CI_CWD" --slug=test-ci
