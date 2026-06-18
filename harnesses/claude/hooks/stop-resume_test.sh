@@ -16,6 +16,12 @@
 #   F.  FLAGGED isApiErrorMessage record with retryable string → block
 #   G.  FLAGGED system/api_error record (error.message) with retryable string → block
 #   H.  QUOTED-ONLY — retryable string only in prose + tool_result, NO flagged record → allow
+#   I.  No TRANSCRIPT_PATH, prose-only retryable string → haystack empty → allow
+#   J.  FLAGGED record with hard-fail (401) string → allow (hard-fail beats retryable)
+#   K.  FLAGGED record with rate-limit (429) string → allow (rate-limit beats retryable)
+#   L.  PRECEDENCE — flagged record with retryable+hard-fail mix → hard-fail wins → allow
+#   M.  Non-numeric counter file → reset to 0, still blocks, counter rewritten to "1"
+#   N.  Transport-fault "socket connection was closed" via system/api_error record → block
 
 set -euo pipefail
 
@@ -40,7 +46,11 @@ reset_counters() {
         /tmp/claude-resume-sess-loop.count \
         /tmp/claude-resume-sess-tf.count \
         /tmp/claude-resume-sess-tg.count \
-        /tmp/claude-resume-sess-th.count
+        /tmp/claude-resume-sess-th.count \
+        /tmp/claude-resume-sess-ti.count \
+        /tmp/claude-resume-sess-tj.count \
+        /tmp/claude-resume-sess-tk.count \
+        /tmp/claude-resume-sess-tl.count
 }
 
 teardown() {
@@ -312,6 +322,57 @@ run_test "flagged system/api_error (529) triggers block" "block" \
 run_test "quoted-only error string (no flagged record) does not block" "allow" \
     "$(mk_stop_transcript 'sess-th' 'discussing Stream idle timeout in analysis' \
         '{"type":"user","message":{"content":[{"type":"tool_result","content":[{"type":"text","text":"Stream idle timeout occurred"}]}]}}')"
+
+# Test I: retryable string present in PROSE only, NO transcript_path → haystack
+# empty (hook lines 38-48 skip the jq scan) → allow. Proves transcript-absent
+# turns never auto-resume even when last_assistant_message quotes a transient error.
+run_test "no transcript_path, prose-only retryable → allow" "allow" \
+    "$(mk_stop 'API Error: socket connection was closed unexpectedly' 'sess-ti')"
+
+# Test J: FLAGGED record carrying a HARD-FAIL string → hard_fail beats any
+# retryable token (hook lines 57-58, evaluated first) → allow. Covers hard-fail
+# via a real flagged record, not just prose (Test 2).
+run_test "flagged record with hard-fail (401) → allow" "allow" \
+    "$(mk_stop_transcript 'sess-tj' '' \
+        '{"type":"system","subtype":"api_error","error":{"message":"API Error: 401 invalid_api_key"}}')"
+
+# Test K: FLAGGED record carrying a RATE-LIMIT (429) string → rate_limit beats
+# retryable (hook lines 59-60) → allow. Covers 429 via a real flagged record.
+run_test "flagged record with rate-limit (429) → allow" "allow" \
+    "$(mk_stop_transcript 'sess-tk' '' \
+        '{"type":"system","subtype":"api_error","error":{"message":"API Error: 429 rate_limit exceeded"}}')"
+
+# Test L: PRECEDENCE — flagged record with BOTH a retryable (500) AND a hard-fail
+# (400) token → hard_fail regex checked first (hook line 57) → allow. Locks the
+# branch ORDER, not just individual matches.
+run_test "flagged record with retryable+hard-fail mix → hard-fail wins → allow" "allow" \
+    "$(mk_stop_transcript 'sess-tl' '' \
+        '{"isApiErrorMessage":true,"message":{"content":[{"type":"text","text":"API Error: 500 Internal server error; also API Error: 400 bad request"}]}}')"
+
+# Test M: NON-NUMERIC counter file → reset to 0 (hook lines 76-78) → still blocks,
+# counter rewritten to "1". Covers the corrupt-counter recovery branch.
+SESSION_NAN="sess-tm"
+COUNTER_NAN="/tmp/claude-resume-${SESSION_NAN}.count"
+printf '%s' "garbage" >"$COUNTER_NAN"
+NAN_MSG="$(mk_stop_transcript "$SESSION_NAN" '' \
+    '{"isApiErrorMessage":true,"message":{"content":[{"type":"text","text":"Stream idle timeout occurred"}]}}')"
+stdout_nan=$(printf '%s' "$NAN_MSG" | env STOP_HOOK_ACTIVE=false PATH="$TMP_DIR:$PATH" bash "$GUARD" 2>/dev/null || true)
+count_nan=$(cat "$COUNTER_NAN" 2>/dev/null || echo "X")
+if printf '%s' "$stdout_nan" | grep -q '"decision"[[:space:]]*:[[:space:]]*"block"' && [ "$count_nan" = "1" ]; then
+    [ -n "${VERBOSE:-}" ] && printf 'PASS: non-numeric counter resets to 0 then blocks (count=1)\n'
+    pass=$((pass + 1))
+else
+    printf 'FAIL: non-numeric counter — expected block + count=1, got count=%s\n  stdout: %s\n' "$count_nan" "$stdout_nan"
+    fail=$((fail + 1))
+fi
+rm -f "$COUNTER_NAN"
+
+# Test N: transport-fault taxonomy THIS PITCH motivates — "socket connection was
+# closed unexpectedly" via a system/api_error record (Test 12 used isApiErrorMessage;
+# this asserts the same string through the SDK-event surface) → block.
+run_test "system/api_error socket-closed (abort taxonomy) → block" "block" \
+    "$(mk_stop_transcript 'sess-tn' '' \
+        '{"type":"system","subtype":"api_error","error":{"message":"API Error: The socket connection was closed unexpectedly"}}')"
 
 echo ""
 echo "Results: $pass passed, $fail failed"

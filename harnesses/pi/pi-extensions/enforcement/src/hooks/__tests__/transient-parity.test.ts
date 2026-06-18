@@ -4,6 +4,9 @@
  * Asserts that Pi TRANSIENT_ERROR_PATTERNS and Bash retryable_regex stay
  * in sync: every Bash token is matched by a Pi pattern and vice versa.
  * A count-equality assertion (19 <-> 19) prevents silent drift.
+ *
+ * Bash source: harnesses/shared/retryable-errors.sh (single source of truth
+ * for all harnesses; sourced by claude stop-resume.sh + future dispatch loops).
  */
 
 import { describe, it } from "node:test";
@@ -16,11 +19,11 @@ describe("transient-pattern parity (Bash retryable_regex <-> Pi)", () => {
   const repoRoot = path.resolve(__dirname, "../../../../../../..");
   const shPath = path.join(
     repoRoot,
-    "harnesses/claude/hooks/stop-resume.sh",
+    "harnesses/shared/retryable-errors.sh",
   );
   const sh = fs.readFileSync(shPath, "utf8");
   const m = sh.match(/retryable_regex='([^']*)'/);
-  if (!m) throw new Error("retryable_regex not found in stop-resume.sh");
+  if (!m) throw new Error("retryable_regex not found in retryable-errors.sh");
   const bashTokens = m[1].split("|");
 
   it("every Bash transient token is recognized by a Pi pattern", () => {
