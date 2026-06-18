@@ -228,6 +228,10 @@ if ! yq --version 2>&1 | grep -qi mikefarah; then
     echo "❌ installed yq is not mikefarah/yq (apt python-yq is incompatible) — install from https://github.com/mikefarah/yq"
     exit 1
 fi
+if [[ ! -f "$CODEGEN_DIR/templates/generator/manifest-lib.sh" ]]; then
+    echo "❌ manifest-lib.sh not found at $CODEGEN_DIR/templates/generator/manifest-lib.sh — corrupt or incomplete checkout" >&2
+    exit 1
+fi
 source "$CODEGEN_DIR/templates/generator/manifest-lib.sh"
 
 # Pass all selected harnesses to generate.sh in one call.
@@ -617,7 +621,12 @@ for _harness in "${HARNESSES[@]}"; do
             if [ -d "$_ext_dir" ] && [ -f "$_ext_dir/package.json" ]; then
                 _ext_name=$(basename "$_ext_dir")
                 echo "   Installing deps for pi-extension: $_ext_name..."
-                (cd "$_ext_dir" && mise exec -- npm install --prefer-offline 2>&1 | sed 's/^/      /')
+                _pi_ext_install_failed=0
+                (cd "$_ext_dir" && mise exec -- npm install --prefer-offline) 2>&1 || _pi_ext_install_failed=1
+                if [ "$_pi_ext_install_failed" -eq 1 ]; then
+                    echo "❌ pi-extension npm install failed: $_ext_name — extension ships broken" >&2
+                    exit 1
+                fi
                 echo "   ✅ pi-extension deps installed: $_ext_name"
             fi
         done
@@ -793,7 +802,12 @@ if [ -d "$CODEGEN_DIR/shared" ]; then
             _real_node="$(command -v node 2>/dev/null || true)"
         fi
         if [ -n "$_real_node" ] && [ -x "$_real_node" ]; then
-            "$_real_node" "$_prettier_cjs" -w --log-level error "$CODEGEN_DIR/shared" 2>/dev/null || true
+            _prettier_err="$(mktemp)"
+            if ! "$_real_node" "$_prettier_cjs" -w --log-level error "$CODEGEN_DIR/shared" 2>"$_prettier_err"; then
+                echo "⚠️  prettier failed to format shared/ (non-fatal) — output below:" >&2
+                cat "$_prettier_err" >&2
+            fi
+            rm -f "$_prettier_err"
         fi
     fi
 fi

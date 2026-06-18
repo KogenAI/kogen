@@ -404,6 +404,39 @@ else
     pass=$((pass + 1))
 fi
 
+# (af) integrate symlinks are RELATIVE (survive codegen relocation), not absolute
+REL_CWD="$BASE_TMP/relative_symlinks_test"
+mkdir -p "$REL_CWD/codegen"
+"$CODEGEN_SCAFFOLD" integrate --stack=phoenix --cwd="$REL_CWD" --slug=test-rel
+AGENTS_TARGET="$(readlink "$REL_CWD/AGENTS.md")"
+RULES_TARGET="$(readlink "$REL_CWD/codegen/rules")"
+case "$AGENTS_TARGET" in
+/*)
+    printf 'FAIL: AGENTS.md symlink is absolute: %s\n' "$AGENTS_TARGET"
+    fail=$((fail + 1))
+    ;;
+*)
+    [ -n "${VERBOSE:-}" ] && printf 'PASS: AGENTS.md symlink is relative\n'
+    pass=$((pass + 1))
+    ;;
+esac
+case "$RULES_TARGET" in
+/*)
+    printf 'FAIL: codegen/rules symlink is absolute: %s\n' "$RULES_TARGET"
+    fail=$((fail + 1))
+    ;;
+*)
+    [ -n "${VERBOSE:-}" ] && printf 'PASS: codegen/rules symlink is relative\n'
+    pass=$((pass + 1))
+    ;;
+esac
+assert_contains "AGENTS.md relative target points at shared/apps" "$AGENTS_TARGET" "shared/apps"
+assert_contains "codegen/rules relative target points at shared/rules" "$RULES_TARGET" "shared/rules"
+
+# (ag) relative symlinks still RESOLVE (target is correct, not merely relative)
+assert_file_exists "AGENTS.md relative link resolves" "$REL_CWD/AGENTS.md"
+assert_file_exists "codegen/recipes/INDEX.md resolves through relative dir link" "$REL_CWD/codegen/recipes/INDEX.md"
+
 # ── Summary ───────────────────────────────────────────────────────────────────
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 

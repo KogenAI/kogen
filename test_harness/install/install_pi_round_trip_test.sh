@@ -35,12 +35,19 @@ trap 'rm -rf "$tmp_home"' EXIT
 mkdir -p "$tmp_home/.zsh/completions"
 touch "$tmp_home/.zshrc" "$tmp_home/.bashrc"
 
-# Capture real MISE_DATA_DIR before HOME is changed, so mise shims can find trust records.
-# Without this, mise derives data dir from $HOME (now tmp) and can't find trusted configs.
+# Capture real MISE_DATA_DIR and MISE_STATE_DIR before HOME is changed, so mise shims
+# can find trust records and trusted-configs (trust records live in state dir, not data dir).
+# Without this, mise derives both dirs from $HOME (now tmp) and can't find trusted configs.
 if [ -z "${MISE_DATA_DIR:-}" ]; then
     _real_mise_data_dir="${HOME}/.local/share/mise"
     if command -v mise >/dev/null 2>&1 && [ -d "$_real_mise_data_dir" ]; then
         export MISE_DATA_DIR="$_real_mise_data_dir"
+    fi
+fi
+if [ -z "${MISE_STATE_DIR:-}" ]; then
+    _real_mise_state_dir="${HOME}/.local/state/mise"
+    if command -v mise >/dev/null 2>&1 && [ -d "$_real_mise_state_dir" ]; then
+        export MISE_STATE_DIR="$_real_mise_state_dir"
     fi
 fi
 

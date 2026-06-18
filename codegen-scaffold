@@ -239,6 +239,13 @@ fi
 # Argument: $1 = target dir (the app root to wire)
 run_integrate_stage() {
     local target_dir="$1"
+    # link_base_dir = the FINAL location the links will live at (create-path builds in a
+    # temp dir then mv's; relpath MUST be computed against the final dir, not the temp dir).
+    local link_base_dir="${2:-$target_dir}"
+
+    # Portable relative-path helper (macOS lacks GNU realpath --relative-to).
+    # python3 is a hard codegen dep (generator pipeline). $1=target, $2=start dir.
+    _relpath() { python3 -c 'import os,sys; t=os.path.realpath(sys.argv[1]); s=os.path.realpath(sys.argv[2]); print(os.path.relpath(t, s))' "$1" "$2"; }
 
     # Determine per-stack agent files
     local agents_source claude_source
@@ -257,21 +264,21 @@ run_integrate_stage() {
     local usage_rules_source="$SCRIPT_DIR/shared/usage_rules"
     local recipes_source="$SCRIPT_DIR/shared/recipes"
 
-    # AGENTS.md → <target>/AGENTS.md
-    ln -sf "$agents_source" "$target_dir/AGENTS.md"
+    # AGENTS.md → relative(shared/apps/AGENTS-*.md) from app root
+    ln -sf "$(_relpath "$agents_source" "$link_base_dir")" "$target_dir/AGENTS.md"
 
-    # CLAUDE.md → <target>/CLAUDE.md
-    ln -sf "$claude_source" "$target_dir/CLAUDE.md"
+    # CLAUDE.md → relative(shared/apps/CLAUDE-*.md) from app root
+    ln -sf "$(_relpath "$claude_source" "$link_base_dir")" "$target_dir/CLAUDE.md"
 
-    # codegen/rules → shared/rules  (mkdir -p first)
+    # codegen/rules → relative(shared/rules) from <app>/codegen  (mkdir -p first)
     mkdir -p "$target_dir/codegen"
-    ln -sfn "$rules_source" "$target_dir/codegen/rules"
+    ln -sfn "$(_relpath "$rules_source" "$link_base_dir/codegen")" "$target_dir/codegen/rules"
 
-    # codegen/usage_rules → shared/usage_rules
-    ln -sfn "$usage_rules_source" "$target_dir/codegen/usage_rules"
+    # codegen/usage_rules → relative(shared/usage_rules) from <app>/codegen
+    ln -sfn "$(_relpath "$usage_rules_source" "$link_base_dir/codegen")" "$target_dir/codegen/usage_rules"
 
-    # codegen/recipes → shared/recipes
-    ln -sfn "$recipes_source" "$target_dir/codegen/recipes"
+    # codegen/recipes → relative(shared/recipes) from <app>/codegen
+    ln -sfn "$(_relpath "$recipes_source" "$link_base_dir/codegen")" "$target_dir/codegen/recipes"
 
     # codegen/recipes-extra → consumer-supplied recipe source (optional; append, never replace recipes)
     if [[ -n "$RECIPE_SOURCE" ]]; then
@@ -434,7 +441,7 @@ do_create() {
     fi
 
     # Run integrate stage against the temp app dir
-    run_integrate_stage "$TEMP_PARENT/$SLUG"
+    run_integrate_stage "$TEMP_PARENT/$SLUG" "$target_dir"
 
     # ── Initial commit (both stacks) ─────────────────────────────────────────
     # Phoenix: git init was done by phx.new; Phase-8 commit removed from scaffold.sh.
