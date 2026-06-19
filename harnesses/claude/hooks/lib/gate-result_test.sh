@@ -221,5 +221,54 @@ assert_eq "history file NOT created when sentinel absent" \
     "false" "$([ -f "$DIR_NO_HIST/codegen/logging/gate-verdicts.jsonl" ] && echo true || echo false)"
 rm -rf "$DIR_NO_HIST"
 
+# ── extract_witness ───────────────────────────────────────────────────────────
+
+WIT_EXUNIT=$(mktemp)
+printf '  1) test foo (FooTest)\n     test/foo_test.exs:42\n     ** (RuntimeError) boom\n' >"$WIT_EXUNIT"
+assert_eq "extract_witness ExUnit → located file:line present" \
+    "true" "$(extract_witness "$WIT_EXUNIT" | grep -qF 'test/foo_test.exs:42' && echo true || echo false)"
+rm -f "$WIT_EXUNIT"
+
+WIT_CREDO=$(mktemp)
+printf '┃ [W] ↗ lib/bar.ex:12:7 Pipe chain should...\n' >"$WIT_CREDO"
+assert_eq "extract_witness credo → located file:line present" \
+    "true" "$(extract_witness "$WIT_CREDO" | grep -qF 'lib/bar.ex:12' && echo true || echo false)"
+rm -f "$WIT_CREDO"
+
+WIT_DIAL=$(mktemp)
+printf 'lib/baz.ex:88:no_return Function loop/0 has no local return.\n' >"$WIT_DIAL"
+assert_eq "extract_witness dialyzer → located file:line present" \
+    "true" "$(extract_witness "$WIT_DIAL" | grep -qF 'lib/baz.ex:88' && echo true || echo false)"
+rm -f "$WIT_DIAL"
+
+WIT_NONE=$(mktemp)
+printf 'just some unparseable noise with no location at all\n' >"$WIT_NONE"
+assert_eq "extract_witness unparseable → empty string" "" "$(extract_witness "$WIT_NONE")"
+rm -f "$WIT_NONE"
+
+assert_eq "extract_witness missing file → empty + exit 0" \
+    "ok" "$(extract_witness /nonexistent/log.txt >/dev/null 2>&1 && echo ok || echo err)"
+
+# write_gate_result with witness (16th positional) → .witness present + equal
+DIR_WIT=$(mktemp -d)
+write_gate_result "make test" "short" "abc1234" 3 \
+    "true" 1 2 2 "" "" \
+    "2026-06-07T12:00:00Z" "2026-06-07T12:03:00Z" \
+    "sessw" "/tmp/gate.log" "$DIR_WIT" "test/foo_test.exs:42 — boom"
+assert_eq "write_gate_result .witness field equals arg" \
+    "test/foo_test.exs:42 — boom" \
+    "$(jq -r '.witness' "$DIR_WIT/codegen/gate-pending/gate-result.json")"
+rm -rf "$DIR_WIT"
+
+# Legacy 15-arg caller (no witness) → .witness present and empty (default)
+DIR_LEG=$(mktemp -d)
+write_gate_result "make test" "short" "abc1234" 3 \
+    "true" 0 2 2 "PASS" "" \
+    "2026-06-07T12:00:00Z" "2026-06-07T12:03:00Z" \
+    "sessl" "/tmp/gate.log" "$DIR_LEG"
+assert_eq "write_gate_result 15-arg legacy → .witness empty (default)" \
+    "" "$(jq -r '.witness' "$DIR_LEG/codegen/gate-pending/gate-result.json")"
+rm -rf "$DIR_LEG"
+
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

@@ -377,7 +377,7 @@ mix | make)
         debug_log dev-gate "gate runner '$gate_runner' not on PATH"
         write_gate_result "$gate" "$mode" "$_diff_sha" "$_diff_count" \
             "false" 0 0 1 "" "runner-missing" \
-            "$_started_at" "$(ts_now)" "$session_id" "" "$project_dir"
+            "$_started_at" "$(ts_now)" "$session_id" "" "$project_dir" "runner-missing: $gate_runner not on PATH"
         append_ve_section "FAILED ❌ gate-runner-missing: $gate_runner not on PATH — gate did not execute" \
             "Gate runner '$gate_runner' is not installed or not on PATH. Gate '$gate' did not run."
         _stamp_gated failed
@@ -401,7 +401,7 @@ if [ "$mode" = "short" ]; then
         debug_log dev-gate "short-gate could-not-execute exit=$rc"
         write_gate_result "$gate" "short" "$_diff_sha" "$_diff_count" \
             "true" "$rc" 0 1 "" "" \
-            "$_started_at" "$(ts_now)" "$session_id" "$log_path" "$project_dir"
+            "$_started_at" "$(ts_now)" "$session_id" "$log_path" "$project_dir" "gate-runner-missing: exit=$rc"
         append_ve_section "FAILED ❌ gate-runner-missing: exit=$rc — gate did not execute" "Log: $log_path"
         _stamp_gated failed
         block "Gate '$gate' could not execute (exit $rc — command not found / not executable). Log: $log_path"
@@ -421,7 +421,7 @@ if [ "$mode" = "short" ]; then
             debug_log dev-gate "short-gate no-op: evidence=$actual_segs < expected=$expected_segs"
             write_gate_result "$gate" "short" "$_diff_sha" "$_diff_count" \
                 "true" 0 "$actual_segs" "$expected_segs" "" "" \
-                "$(ts_now)" "$(ts_now)" "$session_id" "$log_path" "$project_dir"
+                "$(ts_now)" "$(ts_now)" "$session_id" "$log_path" "$project_dir" "no-op gate: 0 execution evidence"
             append_ve_section "FAILED ❌ no-op gate: gate produced 0 execution evidence (command='$gate' ran but no make/mix output found). Log: $log_path" ""
             _stamp_gated failed
             block "Gate '$gate' appears to be a no-op (exit 0, no execution evidence). Log: $log_path"
@@ -439,7 +439,7 @@ if [ "$mode" = "short" ]; then
             debug_log dev-gate "wiring check FAIL: $wiring_reason"
             write_gate_result "$gate" "short" "$_diff_sha" "$_diff_count" \
                 "true" 0 "$actual_segs" "$expected_segs" "" "" \
-                "$(ts_now)" "$(ts_now)" "$session_id" "$log_path" "$project_dir"
+                "$(ts_now)" "$(ts_now)" "$session_id" "$log_path" "$project_dir" "$wiring_reason"
             append_ve_section "FAILED ❌ wiring check failed: handlers without an element-driven side-effect test: $wiring_reason ($(failed_suffix))" "Log: $log_path"
             _stamp_gated failed
             block "Wiring check failed: $wiring_reason"
@@ -460,7 +460,7 @@ if [ "$mode" = "short" ]; then
             debug_log dev-gate "render check FAIL: $reason"
             write_gate_result "$gate" "short" "$_diff_sha" "$_diff_count" \
                 "true" 0 "$actual_segs" "$expected_segs" "$render_verdict" "" \
-                "$(ts_now)" "$(ts_now)" "$session_id" "$log_path" "$project_dir"
+                "$(ts_now)" "$(ts_now)" "$session_id" "$log_path" "$project_dir" "$reason"
             append_ve_section "FAILED ❌ render check failed: $reason ($(failed_suffix))" "Log: $log_path"
             _stamp_gated failed
             block "Render check failed after gate passed: $reason"
@@ -470,7 +470,7 @@ if [ "$mode" = "short" ]; then
             debug_log dev-gate "render check INCONCLUSIVE: $inc_detail — downgrade to INCONCLUSIVE"
             write_gate_result "$gate" "short" "$_diff_sha" "$_diff_count" \
                 "true" 0 "$actual_segs" "$expected_segs" "$render_verdict" "render-inconclusive" \
-                "$(ts_now)" "$(ts_now)" "$session_id" "$log_path" "$project_dir"
+                "$(ts_now)" "$(ts_now)" "$session_id" "$log_path" "$project_dir" ""
             append_ve_section "INCONCLUSIVE ⚠️ render-inconclusive: $inc_detail" "Log: $log_path"
             _stamp_gated inconclusive
             append_render_detail "$render_verdict"
@@ -478,7 +478,7 @@ if [ "$mode" = "short" ]; then
         *)
             write_gate_result "$gate" "short" "$_diff_sha" "$_diff_count" \
                 "true" 0 "$actual_segs" "$expected_segs" "$render_verdict" "" \
-                "$(ts_now)" "$(ts_now)" "$session_id" "$log_path" "$project_dir"
+                "$(ts_now)" "$(ts_now)" "$session_id" "$log_path" "$project_dir" ""
             append_ve_section "ALL CLEAR ✅" ""
             _stamp_gated clear
             append_render_detail "$render_verdict"
@@ -495,20 +495,25 @@ if [ "$mode" = "short" ]; then
     if [ -n "$short_seed" ]; then
         write_gate_result "$gate" "short" "$_diff_sha" "$_diff_count" \
             "true" "$rc" 0 1 "" "$short_seed" \
-            "$(ts_now)" "$(ts_now)" "$session_id" "$log_path" "$project_dir"
+            "$(ts_now)" "$(ts_now)" "$session_id" "$log_path" "$project_dir" ""
         append_ve_section "INCONCLUSIVE ⚠️ $short_seed" "Log: $log_path"
         _stamp_gated inconclusive
     elif [ -n "$short_pool" ]; then
         write_gate_result "$gate" "short" "$_diff_sha" "$_diff_count" \
             "true" "$rc" 0 1 "" "$short_pool" \
-            "$(ts_now)" "$(ts_now)" "$session_id" "$log_path" "$project_dir"
+            "$(ts_now)" "$(ts_now)" "$session_id" "$log_path" "$project_dir" ""
         append_ve_section "INCONCLUSIVE ⚠️ $short_pool" "Log: $log_path"
         _stamp_gated inconclusive
     else
+        _witness=$(extract_witness "$log_path")
         write_gate_result "$gate" "short" "$_diff_sha" "$_diff_count" \
             "true" "$rc" 0 1 "" "" \
-            "$(ts_now)" "$(ts_now)" "$session_id" "$log_path" "$project_dir"
-        block "Gate '$gate' failed (exit $rc). Log: $log_path. Tail:\n$tail_out"
+            "$(ts_now)" "$(ts_now)" "$session_id" "$log_path" "$project_dir" "$_witness"
+        if [ -n "$_witness" ]; then
+            block "Witness: $_witness. Gate '$gate' failed (exit $rc). Log: $log_path. Tail:\n$tail_out"
+        else
+            block "Gate '$gate' failed (exit $rc). Log: $log_path. Tail:\n$tail_out"
+        fi
         append_ve_section "FAILED ❌ exit=$rc ($(failed_suffix))" "Log: $log_path"
         _stamp_gated failed
     fi
@@ -664,7 +669,7 @@ if [ ! -f "$exitcode_path" ]; then
 
     write_gate_result "$gate" "long" "$_diff_sha" "$_diff_count" \
         "true" "timeout" 0 1 "" "$classification" \
-        "$started_at" "$long_ended_at" "$session_id" "$log_path" "$project_dir"
+        "$started_at" "$long_ended_at" "$session_id" "$log_path" "$project_dir" ""
     _stamp_gated inconclusive
     append_ve_section "INCONCLUSIVE ⚠️ $classification" \
         "Gate '$gate' did not complete within ${effective_timeout}s. Log: $log_path"
@@ -682,7 +687,7 @@ elif [ "$(cat "$exitcode_path")" = "0" ]; then
         debug_log dev-gate "long-gate no-op: evidence=$long_actual_segs < expected=$long_expected_segs"
         write_gate_result "$gate" "long" "$_diff_sha" "$_diff_count" \
             "true" 0 "$long_actual_segs" "$long_expected_segs" "$long_render_verdict" "" \
-            "$started_at" "$long_ended_at" "$session_id" "$log_path" "$project_dir"
+            "$started_at" "$long_ended_at" "$session_id" "$log_path" "$project_dir" "no-op gate: 0 execution evidence"
         rm -f "$flag_dir/latest.flag"
         _stamp_gated failed
         append_ve_section "FAILED ❌ no-op gate: gate produced 0 execution evidence. Log: $log_path" ""
@@ -700,7 +705,7 @@ elif [ "$(cat "$exitcode_path")" = "0" ]; then
         debug_log dev-gate "wiring check FAIL: $long_wiring_reason"
         write_gate_result "$gate" "long" "$_diff_sha" "$_diff_count" \
             "true" 0 "$long_actual_segs" "$long_expected_segs" "" "" \
-            "$started_at" "$long_ended_at" "$session_id" "$log_path" "$project_dir"
+            "$started_at" "$long_ended_at" "$session_id" "$log_path" "$project_dir" "$long_wiring_reason"
         rm -f "$flag_dir/latest.flag"
         _stamp_gated failed
         append_ve_section "FAILED ❌ wiring check failed: handlers without an element-driven side-effect test: $long_wiring_reason ($(failed_suffix))" \
@@ -719,7 +724,7 @@ elif [ "$(cat "$exitcode_path")" = "0" ]; then
         debug_log dev-gate "render check FAIL: $long_reason"
         write_gate_result "$gate" "long" "$_diff_sha" "$_diff_count" \
             "true" 0 "$long_actual_segs" "$long_expected_segs" "$long_render_verdict" "" \
-            "$started_at" "$long_ended_at" "$session_id" "$log_path" "$project_dir"
+            "$started_at" "$long_ended_at" "$session_id" "$log_path" "$project_dir" "$long_reason"
         rm -f "$flag_dir/latest.flag"
         _stamp_gated failed
         append_ve_section "FAILED ❌ render check failed: $long_reason ($(failed_suffix))" \
@@ -731,7 +736,7 @@ elif [ "$(cat "$exitcode_path")" = "0" ]; then
         debug_log dev-gate "render check INCONCLUSIVE: $long_inc_detail — downgrade to INCONCLUSIVE"
         write_gate_result "$gate" "long" "$_diff_sha" "$_diff_count" \
             "true" 0 "$long_actual_segs" "$long_expected_segs" "$long_render_verdict" "render-inconclusive" \
-            "$started_at" "$long_ended_at" "$session_id" "$log_path" "$project_dir"
+            "$started_at" "$long_ended_at" "$session_id" "$log_path" "$project_dir" ""
         rm -f "$flag_dir/latest.flag"
         _stamp_gated inconclusive
         append_ve_section "INCONCLUSIVE ⚠️ render-inconclusive: $long_inc_detail" "Gate '$gate' passed. Log: $log_path"
@@ -740,7 +745,7 @@ elif [ "$(cat "$exitcode_path")" = "0" ]; then
     *)
         write_gate_result "$gate" "long" "$_diff_sha" "$_diff_count" \
             "true" 0 "$long_actual_segs" "$long_expected_segs" "$long_render_verdict" "" \
-            "$started_at" "$long_ended_at" "$session_id" "$log_path" "$project_dir"
+            "$started_at" "$long_ended_at" "$session_id" "$log_path" "$project_dir" ""
         rm -f "$flag_dir/latest.flag"
         _stamp_gated clear
         append_ve_section "ALL CLEAR ✅" "Gate '$gate' passed. Log: $log_path"
@@ -755,7 +760,7 @@ else
         debug_log dev-gate "long-gate could-not-execute exit=$rc"
         write_gate_result "$gate" "long" "$_diff_sha" "$_diff_count" \
             "true" "$rc" 0 1 "" "" \
-            "$started_at" "$long_ended_at" "$session_id" "$log_path" "$project_dir"
+            "$started_at" "$long_ended_at" "$session_id" "$log_path" "$project_dir" "gate-runner-missing: exit=$rc"
         rm -f "$flag_dir/latest.flag"
         _stamp_gated failed
         append_ve_section "FAILED ❌ gate-runner-missing: exit=$rc — gate did not execute" "Log: $log_path"
@@ -777,20 +782,26 @@ else
         debug_log dev-gate "long-gate exit=$rc classified as $long_class"
         write_gate_result "$gate" "long" "$_diff_sha" "$_diff_count" \
             "true" "$rc" 0 1 "" "$long_class" \
-            "$started_at" "$long_ended_at" "$session_id" "$log_path" "$project_dir"
+            "$started_at" "$long_ended_at" "$session_id" "$log_path" "$project_dir" ""
         rm -f "$flag_dir/latest.flag"
         _stamp_gated inconclusive
         append_ve_section "INCONCLUSIVE ⚠️ $long_class" \
             "$(printf 'Gate '"'"'%s'"'"' failed exit=%s (environmental). Log: %s\n\nTail:\n%s' "$gate" "$rc" "$log_path" "$tail_out")"
     else
         debug_log dev-gate "long-gate exit=$rc; appended FAILED"
+        _witness=$(extract_witness "$log_path")
         write_gate_result "$gate" "long" "$_diff_sha" "$_diff_count" \
             "true" "$rc" 0 1 "" "" \
-            "$started_at" "$long_ended_at" "$session_id" "$log_path" "$project_dir"
+            "$started_at" "$long_ended_at" "$session_id" "$log_path" "$project_dir" "$_witness"
         rm -f "$flag_dir/latest.flag"
         _stamp_gated failed
-        append_ve_section "FAILED ❌ exit=$rc ($(failed_suffix))" \
-            "$(printf 'Gate '"'"'%s'"'"' failed. Log: %s\n\nTail:\n%s' "$gate" "$log_path" "$tail_out")"
+        if [ -n "$_witness" ]; then
+            append_ve_section "FAILED ❌ Witness: $_witness ($(failed_suffix))" \
+                "$(printf 'Gate '"'"'%s'"'"' failed. Log: %s\n\nTail:\n%s' "$gate" "$log_path" "$tail_out")"
+        else
+            append_ve_section "FAILED ❌ exit=$rc ($(failed_suffix))" \
+                "$(printf 'Gate '"'"'%s'"'"' failed. Log: %s\n\nTail:\n%s' "$gate" "$log_path" "$tail_out")"
+        fi
     fi
 fi
 

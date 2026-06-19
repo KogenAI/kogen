@@ -6,7 +6,7 @@
 #   write_gate_result <gate> <mode> <diff_sha> <diff_files_count> \
 #       <runner_found> <exit_code> <execution_evidence> <expected_segments> \
 #       <render_verdict> <classification> <started> <ended> \
-#       <session_id> <log> <project_dir>
+#       <session_id> <log> <project_dir> [<witness>]
 #
 # Writes codegen/gate-pending/gate-result.json under <project_dir>.
 # Verdict derivation is fully deterministic — see table below.
@@ -92,10 +92,44 @@ _derive_verdict() {
     printf 'verdict=clear\nverdict_marker=ALL CLEAR ✅\n'
 }
 
+# extract_witness <log_path>
+# Best-effort: prints "file:line — <verbatim matched line>" for the first
+# parseable failure location found in the gate log (ExUnit / credo / dialyzer).
+# Fall-open-empty contract: prints "" and returns 0 when log absent or no match.
+# NEVER errors — a missing witness must never break the gate.
+extract_witness() {
+    local log_path="${1:-}"
+    [ -n "$log_path" ] && [ -f "$log_path" ] || {
+        printf ''
+        return 0
+    }
+    local line=""
+    # ExUnit failure stacktrace location: "  test/foo_test.exs:42: ..." or
+    # "  (myapp 1.0) lib/foo.ex:12: ..." → capture path:line.
+    line=$(grep -oE '[A-Za-z0-9_./-]+\.(exs?|heex):[0-9]+' "$log_path" 2>/dev/null | head -n 1 || true)
+    if [ -z "$line" ]; then
+        # credo / dialyzer location: "lib/foo.ex:12:7:" (col optional).
+        line=$(grep -oE '[A-Za-z0-9_./-]+\.exs?:[0-9]+(:[0-9]+)?' "$log_path" 2>/dev/null | head -n 1 || true)
+    fi
+    [ -n "$line" ] || {
+        printf ''
+        return 0
+    }
+    # Pull the first full log line containing that location for verbatim context.
+    local verbatim
+    verbatim=$(grep -m1 -F "$line" "$log_path" 2>/dev/null | sed 's/^[[:space:]]*//' || true)
+    if [ -n "$verbatim" ]; then
+        printf '%s — %s' "$line" "$verbatim"
+    else
+        printf '%s' "$line"
+    fi
+    return 0
+}
+
 # write_gate_result <gate> <mode> <diff_sha> <diff_files_count>
 #     <runner_found> <exit_code> <execution_evidence> <expected_segments>
 #     <render_verdict> <classification> <started> <ended>
-#     <session_id> <log> <project_dir>
+#     <session_id> <log> <project_dir> [<witness>]
 write_gate_result() {
     local gate="$1"
     local mode="$2"
@@ -112,6 +146,7 @@ write_gate_result() {
     local session_id="${13}"
     local log="${14}"
     local project_dir="${15}"
+    local witness="${16:-}"
 
     # Derive verdict
     local verdict_out
@@ -154,6 +189,7 @@ write_gate_result() {
         --arg ended "$ended" \
         --arg session_id "$session_id" \
         --arg log "$log" \
+        --arg witness "$witness" \
         '{
             gate: $gate,
             mode: $mode,
@@ -170,7 +206,8 @@ write_gate_result() {
             started: $started,
             ended: $ended,
             session_id: $session_id,
-            log: $log
+            log: $log,
+            witness: $witness
         }' >"$result_file"
 
     # Durable codegen-local verdict history (no overwrite, append-only).

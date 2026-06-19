@@ -85,7 +85,7 @@ Session logs live under `/codegen/` and are **gitignored** — in the codegen re
 - nothing notable
 ```
 
-**Critical ordering**: `### What I Learned This Step` MUST appear BEFORE any `## ` sub-header (e.g., `## Files Modified`, `## Next Steps`). Hooks extract retrospectives via awk section scanning; a `## ` header inside the section body terminates extraction and prevents subsequent `### What I Learned ...` blocks from being read. Violations silently hide learnings from curation. Pattern: result summary → retrospective block → then any `## ` sub-headers (if needed).
+**Critical ordering**: `### What I Learned This Step` MUST appear BEFORE any `## ` sub-header (e.g., `## Files Modified`, `## Next Steps`). Hooks extract retrospectives via awk section scanning; a `## ` header inside the section body terminates extraction and prevents subsequent `### What I Learned ...` blocks from being read. Violations silently hide learnings from curation. Pattern: result summary → retrospective block → then any `## ` sub-headers (if needed). **Note**: The retrospective-guard awk scan does NOT fence-skip — literal `## ` headers inside fenced code blocks (e.g., `json ... ##... `) are treated as section terminators. Place `### What I Learned This Step` as the **FIRST block** under `## Plan` (before any code/prose with `## ` lines inside) to prevent early termination of the extraction.
 
 Tags: `[local]` = project-specific. `[shared]` = framework idioms, cross-cutting patterns.
 

@@ -561,5 +561,41 @@ assert_file_contains "wiring crash: INCONCLUSIVE note in log" "wiring: INCONCLUS
 rm -f "$WCRASH18" "$RSTUB18"
 rm -rf "$T18"
 
+# ── Test 19: Witness present — parseable ExUnit location in block envelope ────
+TW=$(make_project)
+LOGW="$TW/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_step1.md"
+cat >"$LOGW" <<'MD'
+# Step
+
+## Plan
+
+**Gate**: `printf '  1) test boom\n     test/foo_test.exs:42\n** (RuntimeError) boom\n'; exit 1`
+MD
+make_transcript "$TW/transcript.jsonl" "$LOGW"
+outw=$(printf '%s' "$(input_for "$TW" developer-phoenix-backend false sess1 "$TW/transcript.jsonl")" |
+    CODEGEN_DIR="$SCRIPT_DIR" bash "$HOOK" 2>/dev/null || true)
+assert_contains "witness parseable: block carries Witness prefix" "Witness: test/foo_test.exs:42" "$outw"
+assert_contains "witness parseable: tail still present in block" "Tail:" "$outw"
+assert_file_contains "witness parseable: gate-result.json has witness field" "test/foo_test.exs:42" \
+    "$TW/codegen/gate-pending/gate-result.json"
+rm -rf "$TW"
+
+# ── Test 20: Witness absent — unparseable log, no Witness prefix in block ─────
+TU=$(make_project)
+LOGU="$TU/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_step1.md"
+cat >"$LOGU" <<'MD'
+# Step
+
+## Plan
+
+**Gate**: `printf 'opaque noise no location\n'; exit 1`
+MD
+make_transcript "$TU/transcript.jsonl" "$LOGU"
+outu=$(printf '%s' "$(input_for "$TU" developer-phoenix-backend false sess1 "$TU/transcript.jsonl")" |
+    CODEGEN_DIR="$SCRIPT_DIR" bash "$HOOK" 2>/dev/null || true)
+assert_not_contains "witness unparseable: no Witness prefix" "Witness:" "$outu"
+assert_contains "witness unparseable: tail still present" "Tail:" "$outu"
+rm -rf "$TU"
+
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

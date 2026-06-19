@@ -309,6 +309,7 @@ export function register(pi: ExtensionAPI): void {
         ended: now,
         session_id: sessionId,
         log: "",
+        witness: "",
       };
       fs.writeFileSync(
         path.join(gateResultDir, "gate-result.json"),

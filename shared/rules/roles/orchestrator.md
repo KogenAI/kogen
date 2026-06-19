@@ -55,6 +55,8 @@ NEVER delegate to CR until `ALL CLEAR ✅` in step log.
 | `FAILED ❌ coverage`                         | Stack-specific — see stack orchestrator                                                                                                                                                                                                                       |
 | `INCONCLUSIVE ⚠️ <class>`                    | See table                                                                                                                                                                                                                                                     |
 
+- Witness discipline (`_core/witness-discipline.md`): a FAILED routed onward MUST carry its `Witness:` (file:line + cause). Pass it verbatim to the next agent; never reduce to a bare "gate failed".
+
 Flake: test fails in gate run but PASSES on isolated re-run AND matches named known-flake entry → `INCONCLUSIVE ⚠️ flake-suspect`. Deterministic failure = NEVER a flake. Out-of-diff red = pre-existing breakage = MUST fix before commit.
 
 ### Gate Mechanism (auto + synchronous)
