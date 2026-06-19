@@ -10,6 +10,9 @@
 #   (3) schema set + valid JSON → status=success, result.value is object
 #   (4) schema set + reply ends "?" (asymmetry guard) → status NOT clarifying_question
 #   (5) schema-validate FAIL: JSON omits required field → status=failed, reason~schema
+#   (6) pi exits non-zero + no agent_end → status=failed, reason~"pi exited non-zero"
+#   (7) pi exits 0 + no agent_end → status=failed, reason~"no agent_end"
+#   (8) schema set + non-JSON reply → status=failed, reason~"non-JSON reply"
 
 set -euo pipefail
 
@@ -77,8 +80,9 @@ STUB_DIR="$BASE_TMP/stub_bin"
 mkdir -p "$STUB_DIR"
 cat >"$STUB_DIR/pi" <<'STUB_EOF'
 #!/usr/bin/env bash
-# Stub pi: ignore all args, emit fixture JSONL to stdout, exit 0
-exec cat "$FIXTURE_PATH"
+# Stub pi: ignore all args, emit fixture JSONL to stdout, exit ${STUB_EXIT:-0}
+cat "$FIXTURE_PATH"
+exit "${STUB_EXIT:-0}"
 STUB_EOF
 chmod +x "$STUB_DIR/pi"
 
@@ -180,6 +184,66 @@ assert_jq_truthy \
     "(5) schema-validate FAIL: reason contains 'schema'" \
     "$ENVELOPE5" \
     '(.result.reason // "") | test("schema")'
+
+# ── Case (6): pi exits non-zero + no agent_end → failed, reason~"pi exited non-zero" ─
+ENVELOPE6="$(run_dispatch "$FIXTURES_DIR/pi_no_agent_end_nonzero.jsonl" "STUB_EXIT=3")"
+
+assert_jq \
+    "(6) pi non-zero exit: result.status == failed" \
+    "$ENVELOPE6" \
+    ".result.status" \
+    "failed"
+
+assert_jq_truthy \
+    "(6) pi non-zero exit: reason contains 'pi exited non-zero'" \
+    "$ENVELOPE6" \
+    '(.result.reason // "") | test("pi exited non-zero")'
+
+assert_jq \
+    "(6) pi non-zero exit: harness=pi" \
+    "$ENVELOPE6" \
+    ".harness" \
+    "pi"
+
+# ── Case (7): pi exits 0 + no agent_end → failed, reason~"no agent_end" ──────
+ENVELOPE7="$(run_dispatch "$FIXTURES_DIR/pi_no_agent_end.jsonl")"
+
+assert_jq \
+    "(7) exit-0 no agent_end: result.status == failed" \
+    "$ENVELOPE7" \
+    ".result.status" \
+    "failed"
+
+assert_jq_truthy \
+    "(7) exit-0 no agent_end: reason contains 'no agent_end'" \
+    "$ENVELOPE7" \
+    '(.result.reason // "") | test("no agent_end")'
+
+assert_jq \
+    "(7) exit-0 no agent_end: harness=pi" \
+    "$ENVELOPE7" \
+    ".harness" \
+    "pi"
+
+# ── Case (8): schema set + non-JSON reply → failed, reason~"non-JSON reply" ──
+ENVELOPE8="$(run_dispatch "$FIXTURES_DIR/pi_schema_nonjson_reply.jsonl" "CODEGEN_CALL_JSON_SCHEMA=$SCHEMA")"
+
+assert_jq \
+    "(8) non-JSON under schema: result.status == failed" \
+    "$ENVELOPE8" \
+    ".result.status" \
+    "failed"
+
+assert_jq_truthy \
+    "(8) non-JSON under schema: reason contains 'non-JSON reply'" \
+    "$ENVELOPE8" \
+    '(.result.reason // "") | test("non-JSON reply")'
+
+assert_jq \
+    "(8) non-JSON under schema: harness=pi" \
+    "$ENVELOPE8" \
+    ".harness" \
+    "pi"
 
 # ─────────────────────────────────────────────────────────────────────────────
 echo ""

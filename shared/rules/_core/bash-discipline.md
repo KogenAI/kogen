@@ -157,3 +157,7 @@ Extending multi-caller bash functions with new optional parameters: use trailing
 Pattern: `local witness="${16:-}"` in function body (defaults to empty string when arg 16 is missing). Append `""` to pre-existing calls on INCONCLUSIVE/CLEAR branches (already-known-cause paths) → single-line change per call site. Opaque-FAILED branches call a new helper to compute the value and pass it explicitly.
 
 **Benefit**: 19 pre-existing callers + 3 test helpers all work unchanged; only 2 new call sites (opaque-FAILED branches) need conditional logic to compute + pass the argument. Preferred over re-numbering positional args (which would require editing every caller).
+
+## Stub-Heredoc Exit-Code Control
+
+When a test stub uses a heredoc (e.g., heredoc-based mock pi binary emitting JSONL fixture bytes), the stub's trailing statements are reachable only if the heredoc is NOT wrapped in `exec`. Pattern: `exec cat "$FIXTURE_PATH"` replaces the shell process, making a subsequent `exit $N` unreachable — stub always exits with the exit code of `cat`, not the forced code. **Fix**: drop `exec`, then append the exit statement on a new line: `cat "$FIXTURE_PATH"` newline `exit "${STUB_EXIT:-0}"`. This allows the stub to emit fixture bytes AND force a non-zero exit code for failure-path testing. The stub's exit code becomes configurable via env var passed through the test harness (e.g., `STUB_EXIT=3 run_dispatch ...`), enabling single-stub-script multi-case testing without per-case stub duplication.
