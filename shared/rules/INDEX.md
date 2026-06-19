@@ -11,6 +11,7 @@ rules/
     output-style.md         caveman ultra
     bash-discipline.md      Bash + Read + token budget + ports
     session-log.md          naming, git-status, ownership/lifecycle, enforcement pointer, skeleton, citations
+    fail-fast-required-values.md  3-part masking-default test, grep tells, judgment question, 3 fix mechanisms
   shared/                   ← cross-role primitives
     git-readonly.md              read-only git ops, workspace, credentials
     config-single-source.md      shell launcher + Elixir runner read same config keys

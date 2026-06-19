@@ -94,6 +94,8 @@ Before any edit:
 
 Never duplicate. If the file already says it, skip.
 
+**Content-anchor edits over line-number anchors**: When targeting doc fixes, match by exact content string, NOT line numbers. Line numbers drift across edits; content anchors are durable. Example: if a pitch cites `billing.md:73` but the actual false claim is at line 87, grep the content to find the truth-source. This is especially critical for docs covering multi-file sibling claims (e.g., phantom-table references in both `billing.md` AND `stripe_events.ex` moduledoc) — sweep for ALL instances of the false claim by content, not just pitch-named line numbers.
+
 ## Tool Interactions
 
 **Edit-tool pre-read blocking**: The Edit tool requires a Read of the target file BEFORE an edit is allowed. However, `subagent-read-discipline.sh` may block Read of certain files (e.g., `PROJECT_CONTEXT.md` to non-planner roles). If Read is blocked but you need to edit the file:

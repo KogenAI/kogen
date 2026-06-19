@@ -32,3 +32,33 @@ When a helper function generates verdict strings and feeds a `case "$verdict"` b
 ❌ Edit each downstream case consumer.
 
 Example: `run_phoenix_render_check` returns `INCONCLUSIVE:render-check-cmd-missing` or `INCONCLUSIVE:render-check-cmd-failed`. The calling case block at `phoenix-dev-gate.sh:414` and `:675` already has `INCONCLUSIVE:*)` arms routing all INCONCLUSIVE variants correctly — no case edits needed when new reasons are added.
+
+## Heredoc Inside Command Substitution — Quote Parsing
+
+When a heredoc is nested inside `$()` or backticks, the **outer shell still parses the heredoc body for quote tokens** to ensure balancing. This means constructs like `case` with single-quoted patterns inside a `$(...)` heredoc cause syntax errors in the outer shell:
+
+❌ `eval "$(grep '^export ' build.sh || cat <<'SCRIPT'
+	case "$_line" in
+	'')	_skip=true ;;  # outer shell sees unmatched single quote
+	esac
+SCRIPT
+)"`
+
+✅ Replace `case` with `[ -z "$_line" ]` test forms:
+```bash
+eval "$(grep '^export ' build.sh || cat <<'SCRIPT'
+	[ -z "$_line" ] && _skip=true
+SCRIPT
+)"`
+```
+
+Workaround: avoid single-quoted patterns in heredoc bodies when the heredoc is fed to `$()`. Test forms like `[ -z ]` and `[ "$var" != "..." ]` are quote-neutral and parse cleanly in nested heredocs.
+
+## POSIX Portable String-Prefix Check
+
+In a script with `set -euo pipefail`, checking if a variable starts with a specific prefix (e.g., `#` for comments) without triggering a subshell overhead:
+
+❌ `echo "$_line" | grep -q '^#'` ← subshell overhead, fragile in pipefail
+✅ `[ "${_line#\#}" != "$_line" ]` ← parameter expansion, no subshell, portable POSIX
+
+The pattern `${_line#\#}` strips a leading `#` from `$_line`. If the result differs from the original, the line started with `#`. This works in bash, sh, dash, and all POSIX shells within `set -euo pipefail` without subshell side-effects or external commands.

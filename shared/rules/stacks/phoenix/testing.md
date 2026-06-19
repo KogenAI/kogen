@@ -57,6 +57,29 @@ ALWAYS: Unit, Integration, Edge Cases. NEVER: Performance, Accessibility, Browse
 - `assert drop.id` not `assert drop.id != nil`
 - `assert is_binary(result)` — no type+nil combos
 - `describe "get_media_asset_url/1"` not `"... (Bug Fix)"`
+- Integration test guards must assert ALL struct list fields including newly-added ones — prevents silent regressions when new fields are added to a struct
+
+## ExUnit.CaptureLog Cross-Test Bleed in async: true Modules
+
+`ExUnit.CaptureLog` is process-global: it installs a logger handler that captures log lines from ALL concurrent processes, not just the calling test. In `async: true` modules, a `capture_log` in one test can receive log lines emitted by other concurrently-running tests.
+
+**Anti-pattern** (flaky):
+```elixir
+test "specific warning" do
+  log = capture_log(fn -> some_operation() end)
+  refute log =~ "unexpected response"  # ❌ flaky if another concurrent test also logs "unexpected response"
+end
+```
+
+**Fix** (scoped assertions):
+```elixir
+test "specific warning" do
+  log = capture_log(fn -> audit_tls_automation_ca() end)
+  refute log =~ "audit_tls_automation_ca unexpected response"  # ✅ scoped to function-qualified string
+end
+```
+
+Only use scoped warning strings (e.g., `"function_name unexpected response"`) that can ONLY be emitted by the function under test. This prevents concurrent test logs from matching the assertion and causing intermittent failures.
 
 ## Rules
 

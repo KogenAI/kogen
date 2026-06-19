@@ -456,3 +456,227 @@ describe("phoenix-dev-gate wiring-check integration", () => {
     );
   });
 });
+
+// ── Long-gate verdict tests ──────────────────────────────────────────────────
+// Verifies that pi phoenix-dev-gate writes a defined INCONCLUSIVE gate-result.json
+// for long gates (mode=long) instead of early-returning with nothing written.
+// This breaks the commit-guard deadlock on pi-routed Phoenix builds.
+
+describe("phoenix-dev-gate long-gate verdict", () => {
+  async function runHookWithGateJsonBlock(
+    gateJsonBlock: string,
+    tmpDir: string,
+  ) {
+    const loggingDir = path.join(tmpDir, "codegen", "logging");
+    fs.mkdirSync(loggingDir, { recursive: true });
+    const logPath = path.join(loggingDir, "20260101_000000_step1.md");
+    fs.writeFileSync(
+      logPath,
+      `# Step\n\n## Plan\n\n\`\`\`gate-json\n${gateJsonBlock}\n\`\`\`\n`,
+    );
+    return logPath;
+  }
+
+  it("long gate writes inconclusive gate-result.json with long-gate-unsupported-on-pi classification", async () => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "pdg-long-"));
+    try {
+      const logPath = await runHookWithGateJsonBlock(
+        JSON.stringify({ command: "make ci", mode: "long", timeout: 900 }),
+        tmpDir,
+      );
+
+      process.env["AGENT_TYPE"] = "developer-phoenix-backend";
+      process.env["CWD"] = tmpDir;
+      delete process.env["CODEGEN_DIR"];
+
+      const { register } = await import("../phoenix-dev-gate");
+      let capturedHandler: (event: unknown) => Promise<unknown>;
+      const mockPi = {
+        on: (_event: string, handler: (event: unknown) => Promise<unknown>) => {
+          capturedHandler = handler;
+        },
+      };
+      register(
+        mockPi as unknown as import("@earendil-works/pi-coding-agent").ExtensionAPI,
+      );
+      await capturedHandler!(
+        makeShutdownEvent("developer-phoenix-backend", tmpDir),
+      );
+
+      const gateResultPath = path.join(
+        tmpDir,
+        "codegen",
+        "gate-pending",
+        "gate-result.json",
+      );
+      assert.ok(
+        fs.existsSync(gateResultPath),
+        `gate-result.json must exist at ${gateResultPath}`,
+      );
+      const gateResult = JSON.parse(
+        fs.readFileSync(gateResultPath, "utf8"),
+      ) as {
+        verdict: string;
+        classification: string;
+        mode: string;
+      };
+      assert.strictEqual(
+        gateResult.verdict,
+        "inconclusive",
+        `expected verdict=inconclusive, got ${gateResult.verdict}`,
+      );
+      assert.strictEqual(
+        gateResult.classification,
+        "long-gate-unsupported-on-pi",
+        `expected classification=long-gate-unsupported-on-pi, got ${gateResult.classification}`,
+      );
+      assert.strictEqual(
+        gateResult.mode,
+        "long",
+        `expected mode=long, got ${gateResult.mode}`,
+      );
+
+      const logContents = fs.readFileSync(logPath, "utf8");
+      assert.ok(
+        logContents.includes("INCONCLUSIVE"),
+        `expected INCONCLUSIVE in step log, got: ${logContents}`,
+      );
+      assert.ok(
+        !logContents.includes("ALL CLEAR"),
+        `expected no ALL CLEAR in step log for long gate, got: ${logContents}`,
+      );
+    } finally {
+      delete process.env["AGENT_TYPE"];
+      delete process.env["CWD"];
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    }
+  });
+
+  it("long gate does NOT run the gate command", async () => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "pdg-long-norun-"));
+    const markerFile = path.join(tmpDir, "pdg-ran-marker");
+    try {
+      await runHookWithGateJsonBlock(
+        JSON.stringify({
+          command: `touch ${markerFile}`,
+          mode: "long",
+          timeout: 900,
+        }),
+        tmpDir,
+      );
+
+      process.env["AGENT_TYPE"] = "developer-phoenix-backend";
+      process.env["CWD"] = tmpDir;
+      delete process.env["CODEGEN_DIR"];
+
+      const { register } = await import("../phoenix-dev-gate");
+      let capturedHandler: (event: unknown) => Promise<unknown>;
+      const mockPi = {
+        on: (_event: string, handler: (event: unknown) => Promise<unknown>) => {
+          capturedHandler = handler;
+        },
+      };
+      register(
+        mockPi as unknown as import("@earendil-works/pi-coding-agent").ExtensionAPI,
+      );
+      await capturedHandler!(
+        makeShutdownEvent("developer-phoenix-backend", tmpDir),
+      );
+
+      assert.ok(
+        !fs.existsSync(markerFile),
+        `gate command must NOT have run for long gate (marker file found: ${markerFile})`,
+      );
+    } finally {
+      delete process.env["AGENT_TYPE"];
+      delete process.env["CWD"];
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    }
+  });
+
+  it("short gate still writes clear gate-result.json", async () => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "pdg-short-reg-"));
+    try {
+      // Set up fake wiring-check.js and render-check.js (PASS) so the full
+      // path executes without erroring on missing scripts.
+      const hooksLibDir = path.join(
+        tmpDir,
+        "harnesses",
+        "claude",
+        "hooks",
+        "lib",
+      );
+      fs.mkdirSync(hooksLibDir, { recursive: true });
+      fs.writeFileSync(
+        path.join(hooksLibDir, "wiring-check.js"),
+        `process.stdout.write("WIRING_VERDICT=PASS\\n");\n`,
+      );
+      fs.writeFileSync(
+        path.join(hooksLibDir, "render-check.js"),
+        `process.stdout.write("RENDER_VERDICT=PASS\\n");\n`,
+      );
+
+      const logPath = await runHookWithGateJsonBlock(
+        // mode absent → short gate; command `true` always exits 0
+        JSON.stringify({ command: "true", mode: "short" }),
+        tmpDir,
+      );
+
+      process.env["AGENT_TYPE"] = "developer-phoenix-backend";
+      process.env["CWD"] = tmpDir;
+      process.env["CODEGEN_DIR"] = tmpDir;
+
+      const { register } = await import("../phoenix-dev-gate");
+      let capturedHandler: (event: unknown) => Promise<unknown>;
+      const mockPi = {
+        on: (_event: string, handler: (event: unknown) => Promise<unknown>) => {
+          capturedHandler = handler;
+        },
+      };
+      register(
+        mockPi as unknown as import("@earendil-works/pi-coding-agent").ExtensionAPI,
+      );
+      await capturedHandler!(
+        makeShutdownEvent("developer-phoenix-backend", tmpDir),
+      );
+
+      const gateResultPath = path.join(
+        tmpDir,
+        "codegen",
+        "gate-pending",
+        "gate-result.json",
+      );
+      assert.ok(
+        fs.existsSync(gateResultPath),
+        `gate-result.json must exist for short gate at ${gateResultPath}`,
+      );
+      const gateResult = JSON.parse(
+        fs.readFileSync(gateResultPath, "utf8"),
+      ) as {
+        verdict: string;
+        mode: string;
+      };
+      assert.strictEqual(
+        gateResult.verdict,
+        "clear",
+        `expected verdict=clear for short gate, got ${gateResult.verdict}`,
+      );
+      assert.strictEqual(
+        gateResult.mode,
+        "short",
+        `expected mode=short, got ${gateResult.mode}`,
+      );
+
+      const logContents = fs.readFileSync(logPath, "utf8");
+      assert.ok(
+        logContents.includes("ALL CLEAR"),
+        `expected ALL CLEAR in step log for short gate, got: ${logContents}`,
+      );
+    } finally {
+      delete process.env["AGENT_TYPE"];
+      delete process.env["CWD"];
+      delete process.env["CODEGEN_DIR"];
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    }
+  });
+});

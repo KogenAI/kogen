@@ -107,22 +107,30 @@ export function register(pi: ExtensionAPI): void {
     if (!gateCmd) return;
     debugLog("phoenix-dev-gate", `gate=${gateCmd}`);
 
-    if (isLongGate) {
-      debugLog("phoenix-dev-gate", "long gate — skipping inline run");
-      return;
-    }
-
-    // Run short gate
+    // Classify long gates immediately — pi shutdown cannot run long gates inline.
+    // Set the INCONCLUSIVE sentinel so the existing verdict-derivation and
+    // gate-result.json write block (below) handle it, skipping the short-gate
+    // execSync and the ALL-CLEAR-guarded wiring/render checks automatically.
     let verdict: string;
-    try {
-      execSync(gateCmd, { cwd: projectDir, stdio: "pipe" });
-      verdict = "ALL CLEAR ✅";
-    } catch (err) {
-      const output =
-        (err as { stdout?: Buffer; stderr?: Buffer }).stdout?.toString() ?? "";
-      const errOutput =
-        (err as { stdout?: Buffer; stderr?: Buffer }).stderr?.toString() ?? "";
-      verdict = `FAILED ❌\n\n${output}\n${errOutput}`.trim();
+    if (isLongGate) {
+      debugLog(
+        "phoenix-dev-gate",
+        "long gate — writing inconclusive verdict (pi cannot run long gates inline)",
+      );
+      verdict = "INCONCLUSIVE ⚠️ long-gate-unsupported-on-pi";
+    } else {
+      // Run short gate
+      try {
+        execSync(gateCmd, { cwd: projectDir, stdio: "pipe" });
+        verdict = "ALL CLEAR ✅";
+      } catch (err) {
+        const output =
+          (err as { stdout?: Buffer; stderr?: Buffer }).stdout?.toString() ??
+          "";
+        const errOutput =
+          (err as { stdout?: Buffer; stderr?: Buffer }).stderr?.toString() ?? "";
+        verdict = `FAILED ❌\n\n${output}\n${errOutput}`.trim();
+      }
     }
 
     // ── Wiring verification (static, before render) ────────────────────────
@@ -288,6 +296,9 @@ export function register(pi: ExtensionAPI): void {
     }
 
     // Write gate-result.json
+    const longGateClassification = isLongGate
+      ? "long-gate-unsupported-on-pi"
+      : "";
     const gateResultDir = path.join(projectDir, "codegen", "gate-pending");
     try {
       fs.mkdirSync(gateResultDir, { recursive: true });
@@ -304,7 +315,7 @@ export function register(pi: ExtensionAPI): void {
         render_verdict: renderSummary,
         verdict: structuredVerdict,
         verdict_marker: structuredMarker,
-        classification: "",
+        classification: longGateClassification,
         started: now,
         ended: now,
         session_id: sessionId,
