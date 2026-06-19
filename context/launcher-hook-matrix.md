@@ -59,6 +59,20 @@ Hooks registered on the `Agent` matcher fire on every subagent spawn. These are 
 
 `pitch-shipped-before-stop` uses a **dual-path bypass** pattern: bypassed under `CLAUDE_ROLE=dashboard-build` (dashboard manages the shipped/ move post-merge) **OR** `CODEGEN_NO_AUTOSHIP=1` (explicit operator suppression). Scoped to pitch-driven sessions (no pitch in transcript → skip). Uses `CLAUDE_ROLE_FAMILY` signal + `resolve_role()` for role-aware dispatch. Retry cap at 2 (counter file `/tmp/claude-autoship-guard-*.count`) prevents infinite block loops.
 
+## Recurring-Poll Capability: `/loop` vs Claude Scheduler Tools
+
+Cross-harness comparison for recurring-poll and self-firing monitor stories:
+
+| Feature                    | Claude (`claude-ops`, `claude-debug`)                            | Pi (`pi-ops`, `pi-debug`)                                                                                     | Gap                                                                             |
+| -------------------------- | ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------- |
+| Interactive recurring poll | `/loop` + `CronCreate`/`Monitor`/`ScheduleWakeup` built-in tools | `/loop` slash command (subagents extension — in-session `setInterval` + `pi.sendMessage({triggerTurn:true})`) | Claude has cron/cross-session persistence; Pi is in-session only                |
+| Headless recurring poll    | Cannot self-fire in `--print`; explicit limitation message       | Cannot self-fire; detect-and-tell message emitted; no interval armed                                          | Same limitation; both direct operator to external cron                          |
+| Monitor line-streaming     | `Monitor` tool streams stdout lines back to the agent            | Not supported                                                                                                 | Pi has no `Monitor` equivalent; interval-prompt covers dashboard-watch use case |
+| Cross-session persistence  | `CronCreate` schedules a new session per tick                    | Not supported                                                                                                 | Pi interval dies with the session                                               |
+| `/loop stop` / cancel      | Session-level stop via slash command                             | Esc key or `/loop stop` clears `state.loopTimers`                                                             | Equivalent for interactive use                                                  |
+
+Pi's `/loop` is an honest reduced-fidelity twin: it covers the interactive dashboard-watch use case but does not claim `Monitor` parity or cross-session scheduling.
+
 ## Headless Investigative Mode
 
 The three investigative modes (debug, shape, ops) now have a headless variant activated by `CLAUDE_NONINTERACTIVE=1`. Headless mode passes the full 7-flag build set (`--print`, `--output-format stream-json`, `--no-session-persistence`, `--disable-slash-commands`, etc.) directly to `claude`. This does **not** change the hook bypass profile — all hooks that gate or bypass for a given role continue to fire identically in headless mode. In particular, `orchestrator-no-source-edit.sh` still scopes shape writes to `codegen/pitches/`; headless mode does NOT relax this gate. Write surface is unchanged.

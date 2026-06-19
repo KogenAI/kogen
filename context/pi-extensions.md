@@ -175,6 +175,22 @@ Examples of stale rationale: When a hook has registry `harnesses: claude` + `too
 
 Pi's `seedPhoenixBuild()` in `subagents/src/runs/shared/worktree.ts` seeds Phoenix dependencies (`deps` symlink + `_build` copy under same-commit guard) for worktree isolation. The Pi implementation is **reduced-fidelity**: it seeding only and does NOT allocate a fresh port per worktree. Port allocation in Claude is handled via `WorktreeCreate` hook's call to `allocate_phoenix_port()` from `resource_manager.sh`, which maintains a project-scoped registry of in-use ports. Pi's `seedPhoenixBuild()` registers seeded paths as `syntheticPaths` (returned by `createSingleWorktree`'s setup hook), but has **no port-allocation registry backend**. The Pi harness manages ports externally (outside hook scope). When porting Claude's `WorktreeCreate` hook logic to Pi, seed the `_build` + `deps` internally in `createSingleWorktree` and document the port gap in a header comment.
 
+## Subagents Extension — `/loop` Slash Command
+
+The `subagents` extension ships a `/loop` slash command (`src/slash/loop-command.ts`) that provides an interactive self-firing recurring-poll story for `pi-ops` and `pi-debug`.
+
+| Aspect                    | Detail                                                                                                                                                                               |
+| ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Command syntax            | `/loop [5m\|30s] <prompt>` or `/loop stop`                                                                                                                                           |
+| Interval grammar          | Optional leading `\d+(s\|m)` token (e.g., `30s`, `5m`); default 5 minutes                                                                                                            |
+| Headless (`!ctx.hasUI`)   | Emits a detect-and-tell message; arms NO interval (explicit limitation, not a silent fallback)                                                                                       |
+| Interactive (`ctx.hasUI`) | Confirms cadence via notify, fires first tick immediately via `pi.sendMessage({triggerTurn:true})`, arms `setInterval` stored in `state.loopTimers`                                  |
+| Cancel                    | `/loop stop` or Esc key — both call `clearInterval` and remove from `state.loopTimers`                                                                                               |
+| Session cleanup           | `session_shutdown` clears all `loopTimers` (observe-only; non-blocking)                                                                                                              |
+| Fidelity note             | In-session interval only — no cron, no cross-session persistence, no `Monitor` line-stream parity (honest reduced-fidelity twin vs Claude's `CronCreate`/`Monitor`/`ScheduleWakeup`) |
+
+Timer deps are injected via a `LoopDeps` interface (`{setInterval, clearInterval}`) for hermetic unit testing without real timers. Tests live in `test/unit/loop-command.test.ts` (runs on TS source directly via `node --experimental-strip-types --test`; no build step needed).
+
 ## Pitfalls
 
 - **Each extension is an independent npm package** — `npm install` must be run per-extension, not at repo root

@@ -310,6 +310,7 @@ export default function registerSubagentExtension(pi: ExtensionAPI): void {
     lastForegroundControlId: null,
     pendingForegroundControlNotices: new Map(),
     cleanupTimers: new Map(),
+    loopTimers: new Map(),
     lastUiContext: null,
     poller: null,
     completionSeen: new Map(),
@@ -671,6 +672,10 @@ DIAGNOSTICS:
       clearTimeout(timer);
     }
     state.cleanupTimers.clear();
+    for (const t of state.loopTimers.values()) {
+      clearInterval(t);
+    }
+    state.loopTimers.clear();
     state.asyncJobs.clear();
     clearSlashSnapshots();
     slashBridge.cancelAll();

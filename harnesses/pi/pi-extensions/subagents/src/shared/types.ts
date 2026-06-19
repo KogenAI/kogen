@@ -571,6 +571,7 @@ export interface SubagentState {
   lastForegroundControlId: string | null;
   pendingForegroundControlNotices?: Map<string, ReturnType<typeof setTimeout>>;
   cleanupTimers: Map<string, ReturnType<typeof setTimeout>>;
+  loopTimers: Map<string, ReturnType<typeof setInterval>>;
   lastUiContext: ExtensionContext | null;
   poller: NodeJS.Timeout | null;
   completionSeen: Map<string, number>;

@@ -17,6 +17,7 @@ import type {
   SlashSubagentResponse,
   SlashSubagentUpdate,
 } from "./slash-bridge.ts";
+import { registerLoopCommand } from "./loop-command.ts";
 import {
   applySlashUpdate,
   buildSlashInitialResult,
@@ -685,4 +686,6 @@ export function registerSlashCommands(
       await runSlashSubagent(pi, ctx, { action: "doctor" });
     },
   });
+
+  registerLoopCommand(pi, state);
 }
