@@ -205,6 +205,9 @@ end
 - `isolated_tmp_dir(stack: :phoenix)` — creates and pre-scaffolds a Phoenix app via `scaffold_phoenix_app!/1` before invoking harness
 - `scaffold_phoenix_app!/1` runs `mix phx.new`, `mix deps.get`, and `git commit` in fixture setup, ensuring harness works on a real, git-tracked project
 - Non-Phoenix stacks pass no `:stack` opt → directory is created empty (no scaffold pre-run)
+- Both phoenix and non-phoenix variants initialize git (`git init` + initial commit) — fixtures are suitable for driving hooks directly via `System.cmd` that read git state or write gate-result.json
+
+**Gate verdict parity**: Both phoenix and static stacks write `codegen/gate-pending/gate-result.json` (via `write_gate_result` function in their respective gate hooks — `phoenix-dev-gate.sh` and `static-site-build-check.sh`). Test assertions mirroring the gate-result.json schema are valid across stacks.
 
 **Build path isolation**: Tests using `mix` with non-default `MIX_BUILD_PATH=_build/pi_test` (pi tests) require recompilation of fixture-modified files under BOTH the default and custom build paths. A stale `_build/pi_test` still serves old BEAM bytecode after fixture changes until that tree is recompiled. Solution: run `mix compile` after fixture code edits without the env var, then again with the env var set.
 
@@ -223,6 +226,7 @@ Benchmark mode (BENCH=1), artifact layout, screenshot capture, mix viewer tasks:
 - **`mix test` must be scoped** — bare `mix test` runs all ExUnit tests; always scope to file or tag (`--only phoenix`)
 - **`last_green.json` is not auto-updated** — run `make record-green` explicitly after a clean passing suite
 - **Hook tests are bash, not ExUnit** — do not run them via `mix test`; use `run-tests.sh`
+- **Gate-failure-path ExUnit tests are `:slow`** — Failure-path twins (e.g., gate_test.exs tests that assert `verdict != "clear"`) are integration tests requiring real hook invocation; tagged `@moduletag :slow` and run only under `make test-stacks`, NOT `make test`. Happy-path tests (e.g., `verdict == "clear"`) are fast and run under `make test` (hermetic ExUnit).
 - **`mix assets.deploy` exits 0 silently if alias undefined** — guard optional pipeline assertions with filesystem + config checks (check both `assets/` dir presence + `"assets.deploy"` alias in `mix.exs`) rather than assuming silent success means success
 - **`count_commits!/1` duplicated across test modules** — FIXED in session 20260608_174414: promoted to public `Fixtures.count_commits!/1`; replaced 7 copy-paste instances (phoenix/seed_test.exs + static/seed_test.exs ×5)
 - **Multi-module ExUnit files** — private helpers cannot be shared across modules in same file; promote to public in support module or keep private per-module copy

@@ -31,6 +31,7 @@ defmodule CodegenTestHarness.Stacks.Phoenix.ScaffoldTest do
            "expected mix.exs in #{cwd}\n--- output ---\n#{output}"
 
     Assertions.assert_mix_compiles!(cwd)
+    Assertions.assert_assets_deploy!(cwd)
     Assertions.assert_generated_tests_pass!(cwd)
 
     router_files = Path.wildcard(Path.join(cwd, "lib/*_web/router.ex"))

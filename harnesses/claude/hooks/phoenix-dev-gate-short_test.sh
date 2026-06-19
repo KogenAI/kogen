@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # phoenix-dev-gate-short_test.sh — gate-validation tests (short gate, no long-running stub).
 #
-# Tests: 1-4, 6, 7, 15, 18
+# Tests: 1-4, 6, 7, 15, 18, 19, 20, 21
 # Covers: stop_hook_active short-circuit, non-developer no-op, short-gate success/failure,
 # planner-gate-wins, no-step-log graceful exit, pre-seeded terminal flag sweep,
-# A+B transcript-vs-mtime regression.
+# A+B transcript-vs-mtime regression, attempt labeling, no-op gate detection.
 
 set -u
 
@@ -288,6 +288,27 @@ make_transcript "$T20/transcript.jsonl" "$LOG20"
 out=$(printf '%s' "$(input_for "$T20" developer-phoenix-backend false sess20 "$T20/transcript.jsonl")" | bash "$HOOK" 2>/dev/null || true)
 assert_file_contains "T20: second failure labels as ROOT-CAUSE: route to planner" "ROOT-CAUSE: route to planner" "$LOG20"
 rm -rf "$T20"
+
+# ── Test 21: no-op gate detection — make -v redirected, exit 0, no evidence ──
+# Gate: `make -v >/dev/null 2>&1`
+#   gate_runner=make (on PATH → passes :374-388 runner check)
+#   expected_segs=1 (awk at :416 counts one `make ` segment)
+#   output fully redirected → actual_segs=0 < 1 → no-op branch fires (:416-428)
+#   make -v exits 0 → rc=0 path exercised deterministically
+T21=$(make_project)
+LOG21="$T21/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_step1_noop.md"
+cat >"$LOG21" <<'MD'
+# Step
+
+## Plan
+
+**Gate**: `make -v >/dev/null 2>&1`
+MD
+make_transcript "$T21/transcript.jsonl" "$LOG21"
+out=$(printf '%s' "$(input_for "$T21" developer-phoenix-backend false sess21 "$T21/transcript.jsonl")" | bash "$HOOK" 2>/dev/null || true)
+assert_file_contains "T21: no-op gate detected in step log" "FAILED ❌ no-op gate" "$LOG21"
+assert_contains "T21: no-op gate emits block envelope" '"decision": "block"' "$out"
+rm -rf "$T21"
 
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]
