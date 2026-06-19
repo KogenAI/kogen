@@ -40,6 +40,8 @@ launchers:
     src: harnesses/claude/claude-ops.sh
   - name: codegen-document
     src: codegen-document
+  - name: codegen-analyze
+    src: codegen-analyze
 
 # ─── Zsh completions ──────────────────────────────────────────────────────────
 completions:
@@ -166,5 +168,5 @@ uninstall_steps:
   - remove_agents # rm agents_dir/*.md from installed-by-ocg manifest
   - remove_commands # rm commands_dir/*.md from installed-by-ocg manifest
   - remove_hooks # rm hooks_dir/*.sh
-  - remove_launchers # rm INSTALL_DIR/{codegen-build,codegen-call,codegen-scaffold,codegen-document,claude-build,claude-debug,claude-experiment,claude-shape,claude-ops}
+  - remove_launchers # rm INSTALL_DIR/{codegen-build,codegen-call,codegen-scaffold,codegen-document,codegen-analyze,claude-build,claude-debug,claude-experiment,claude-shape,claude-ops}
   - remove_completions # rm ZSH_COMPLETION_DST/{_claude-build,_claude-debug,_claude-experiment,_claude-shape}

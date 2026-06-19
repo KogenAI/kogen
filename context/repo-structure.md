@@ -10,6 +10,7 @@ codegen/                          ← repo root
 ├── codegen-build                 ← harness API entrypoint
 ├── codegen-call                  ← one-shot structured LLM call binary
 ├── codegen-scaffold              ← one-time downstream app provisioning
+├── codegen-analyze               ← read-only turn-waste analyzer; scans Claude transcripts; prints ranked report
 ├── install.sh                    ← manifest-driven harness installer
 ├── uninstall.sh                  ← manifest-driven harness uninstaller
 ├── update_ai_tools.sh            ← post-install tool updater
@@ -26,6 +27,7 @@ codegen/                          ← repo root
 ├── PROJECT_CONTEXT.md            ← codegen project context for AI agents
 ├── README.md                     ← user quickstart guide
 ├── STYLE_GUIDE.md                ← cross-cutting style reference
+├── analysis/                     ← stdlib-Python turn-waste analysis package (counters, loader, report writer)
 ├── ai-agents/                    ← orphaned placeholder (do not add files here)
 ├── bin/                          ← single dev-utility script (test-llm-hooks.sh)
 ├── codegen/                      ← self-meta directory (THIS repo's session logs)
@@ -51,6 +53,7 @@ codegen/                          ← repo root
 | `codegen-build`    | Harness API — `--harness`, `--stack`, `--cwd`, `--model`, `--effort`; delegates to `harnesses/<harness>/dispatch.sh`                        | Platform, CI, downstream Makefiles                 |
 | `codegen-scaffold` | App provisioning — subcommands `create` (full scaffold) and `integrate` (symlinks only); delegates to `shared/scaffold/<stack>/scaffold.sh` | Platform setup, `ocg setup`                        |
 | `codegen-call`     | One-shot LLM call — `--harness`, `--role`, `--system-prompt`, optional `--json-schema`; single-response                                     | Consuming platform for non-build single-role calls |
+| `codegen-analyze`  | Turn-waste analyzer — `--since`, `--json`, `--window`, `--threshold-reread`, `--project-dir`; read-only; execs `python3 -m analysis`        | Operators, CI, manual inspection                   |
 
 `ocg` = user-facing (menu, doctor, install). `codegen-build` = machine API for downstream Makefiles. Never conflate them.
 
@@ -105,6 +108,7 @@ codegen/                          ← repo root
 
 | Directory       | Purpose                                                                                                                                                      | Key paths                                                                                              |
 | --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------ |
+| `analysis/`     | Stdlib-Python turn-waste analysis package — counters, session loader, report writer, tests. Run via `codegen-analyze` launcher.                              | `analysis/counters/`, `analysis/tests/`, `analysis/tests/fixtures/`                                    |
 | `ai-agents/`    | Orphaned placeholder — `install.sh` writes to `~/.claude/agents/`, not here. Do not add files.                                                               | `ai-agents/claude/commands/` (empty)                                                                   |
 | `bin/`          | Dev utility scripts not in the build pipeline. Not binaries on `$PATH`.                                                                                      | `bin/test-llm-hooks.sh` (manual LLM hook test; no Makefile target)                                     |
 | `codegen/`      | Self-meta session logs for codegen-on-codegen dev. Separate from downstream project `codegen/` dirs.                                                         | `codegen/logging/*.md` (active session logs)                                                           |

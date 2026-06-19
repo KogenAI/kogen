@@ -271,7 +271,10 @@ test-hermetic:
 test-generator: test-generator-python
 	@bash "$(SCRIPT_DIR)/templates/generator/run-tests.sh"
 test-generator-python:
-	@cd "$(SCRIPT_DIR)/templates/generator" && out=$$(python3 -m unittest discover -s tests 2>&1); rc=$$?; [ $$rc -eq 0 ] || printf '%s\n' "$$out"; exit $$rc
+	@fail=0; \
+	out=$$(cd "$(SCRIPT_DIR)/templates/generator" && python3 -m unittest discover -s tests 2>&1); rc=$$?; [ $$rc -eq 0 ] || { printf '%s\n' "$$out"; fail=1; }; \
+	out=$$(cd "$(SCRIPT_DIR)" && python3 -m unittest discover -s analysis/tests 2>&1); rc=$$?; [ $$rc -eq 0 ] || { printf '%s\n' "$$out"; fail=1; }; \
+	exit $$fail
 
 .PHONY: test-coverage test-coverage-elixir test-coverage-typescript test-coverage-shell test-coverage-python test-coverage-summary
 
@@ -617,6 +620,9 @@ help:
 	@echo "  make uninstall      Remove global CLI installation (via ocg)"
 	@echo "  make update         Update all AI agents (via ocg)"
 	@echo "  make help           Show this help"
+	@echo ""
+	@echo "PATH binaries (no make target):"
+	@echo "  codegen-analyze     Scan Claude sessions for agent turn-waste; ranked report (--since, --json, --window, --threshold-reread, --project-dir)"
 
 .PHONY: diagnose-pi-all diagnose-pi-phoenix-scaffold diagnose-pi-phoenix-gate diagnose-pi-phoenix-committer diagnose-pi-phoenix-iteration diagnose-pi-phoenix-seed diagnose-pi-static-iteration-vanilla diagnose-pi-static-iteration-react diagnose-pi-static-iteration-vue diagnose-pi-static-iteration-multilingual
 

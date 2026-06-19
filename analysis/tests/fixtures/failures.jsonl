@@ -1,0 +1,3 @@
+{"tool": "Bash", "error": "cat pipe forbidden", "ts": "2026-06-19T10:00:01Z", "role": "developer-phoenix-backend"}
+{"tool": "Read", "error": "file not found", "ts": "2026-06-19T10:00:05Z", "role": "developer-phoenix-backend"}
+{"tool": "Bash", "error": "git stash forbidden", "ts": "2026-06-19T10:00:10Z", "role": "committer"}
