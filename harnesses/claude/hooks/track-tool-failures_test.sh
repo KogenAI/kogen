@@ -150,6 +150,40 @@ EMPTY_ERROR_INPUT=$(jq -n \
     '{"hook_event_name":"PostToolUseFailure","tool_name":"Write","agent_type":"developer-phoenix-backend","agent_id":"agent-006","session_id":"sess-t6"}')
 run_test "empty error field handled gracefully (no crash)" "0" "$EMPTY_ERROR_INPUT"
 
+# Test 7: sentinel present → local failures/<session>.jsonl written with agent field
+CWD_T7="$TMP_DIR/cwd-t7"
+mkdir -p "$CWD_T7/shared/enforcement"
+touch "$CWD_T7/shared/enforcement/registry.yaml"
+T7_INPUT=$(jq -n \
+    --arg cwd "$CWD_T7" \
+    '{"hook_event_name":"PostToolUseFailure","tool_name":"Bash","tool_response":{"error":"cmd failed"},"agent_type":"developer-phoenix-backend","agent_id":"agent-007","session_id":"sess-t7","cwd":$cwd}')
+printf '%s' "$T7_INPUT" | bash "$GUARD" 2>/dev/null || true
+LOCAL_LEDGER_T7="$CWD_T7/codegen/logging/failures/sess-t7.jsonl"
+assert_jsonl_field "local ledger created when sentinel present" "$LOCAL_LEDGER_T7" "tool" "Bash"
+assert_jsonl_field "local ledger has agent field" "$LOCAL_LEDGER_T7" "agent" "agent-007"
+assert_jsonl_field "local ledger has error field" "$LOCAL_LEDGER_T7" "error" "cmd failed"
+assert_jsonl_valid "local ledger is valid JSONL" "$LOCAL_LEDGER_T7"
+
+# Test 8: sentinel absent → local file NOT created; global ledger still written
+CWD_T8="$TMP_DIR/cwd-t8"
+mkdir -p "$CWD_T8"
+# No shared/enforcement/registry.yaml in CWD_T8
+T8_INPUT=$(jq -n \
+    --arg cwd "$CWD_T8" \
+    '{"hook_event_name":"PostToolUseFailure","tool_name":"Read","tool_response":{"error":"not found"},"agent_type":"developer-phoenix-backend","agent_id":"agent-008","session_id":"sess-t8","cwd":$cwd}')
+printf '%s' "$T8_INPUT" | bash "$GUARD" 2>/dev/null || true
+LOCAL_LEDGER_T8="$CWD_T8/codegen/logging/failures/sess-t8.jsonl"
+if [ ! -f "$LOCAL_LEDGER_T8" ]; then
+    [ -n "${VERBOSE:-}" ] && printf 'PASS: local ledger NOT created when sentinel absent\n'
+    pass=$((pass + 1))
+else
+    printf 'FAIL: local ledger should NOT exist when sentinel absent, but found: %s\n' "$LOCAL_LEDGER_T8"
+    fail=$((fail + 1))
+fi
+# Global ledger must still be written
+GLOBAL_LEDGER_T8="$TMP_DIR/.claude/tool-failures/sess-t8_agent-008.jsonl"
+assert_jsonl_field "global ledger still written when sentinel absent" "$GLOBAL_LEDGER_T8" "tool" "Read"
+
 echo ""
 echo "Results: $pass passed, $fail failed"
 

@@ -26,6 +26,8 @@ codegen/benchmarks/
 
 # Cycle-state and gate-pending runtime files (written by hooks, never committed)
 codegen/gate-pending/
+codegen/logging/failures/
+codegen/logging/gate-verdicts.jsonl
 
 # Temporary build artifacts
 tmp/

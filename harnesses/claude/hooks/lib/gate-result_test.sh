@@ -180,5 +180,46 @@ printf 'not json at all' >"$DIR_VER4/codegen/gate-pending/gate-result.json"
 assert_eq "gate_result_verdict malformed JSON → empty" "" "$(gate_result_verdict "$DIR_VER4" 2>/dev/null)"
 rm -rf "$DIR_VER4"
 
+# ── Durable gate-verdict history ─────────────────────────────────────────────
+
+# Helper: invoke write_gate_result with sentinel present → history file appended
+write_and_history() {
+    local gate="$1" mode="$2" runner_found="$3" exit_code="$4"
+    local execution_evidence="$5" expected_segments="$6"
+    local render_verdict="$7" classification="${8:-}"
+    local dir
+    dir=$(mktemp -d)
+    mkdir -p "$dir/shared/enforcement"
+    touch "$dir/shared/enforcement/registry.yaml"
+    write_gate_result "$gate" "$mode" "abc1234" 3 \
+        "$runner_found" "$exit_code" "$execution_evidence" "$expected_segments" \
+        "$render_verdict" "$classification" \
+        "2026-06-07T12:00:00Z" "2026-06-07T12:03:00Z" \
+        "sessabc" "/tmp/gate.log" "$dir"
+    printf '%s' "$dir"
+}
+
+# sentinel present → gate-verdicts.jsonl created and has correct fields
+DIR_HIST=$(write_and_history 'make test' short true 0 2 2 'PASS' '')
+HIST_FILE="$DIR_HIST/codegen/logging/gate-verdicts.jsonl"
+assert_eq "history file created when sentinel present" \
+    "true" "$([ -f "$HIST_FILE" ] && echo true || echo false)"
+assert_eq "history file .verdict=clear" \
+    "clear" "$(jq -r '.verdict' "$HIST_FILE" 2>/dev/null)"
+assert_eq "history file .gate=make test" \
+    "make test" "$(jq -r '.gate' "$HIST_FILE" 2>/dev/null)"
+rm -rf "$DIR_HIST"
+
+# sentinel absent → gate-verdicts.jsonl NOT created
+DIR_NO_HIST=$(mktemp -d)
+write_gate_result 'make ci' short "abc1234" 3 \
+    true 0 2 2 \
+    '' '' \
+    "2026-06-07T12:00:00Z" "2026-06-07T12:03:00Z" \
+    "sessxyz" "/tmp/gate.log" "$DIR_NO_HIST"
+assert_eq "history file NOT created when sentinel absent" \
+    "false" "$([ -f "$DIR_NO_HIST/codegen/logging/gate-verdicts.jsonl" ] && echo true || echo false)"
+rm -rf "$DIR_NO_HIST"
+
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

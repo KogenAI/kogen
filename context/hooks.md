@@ -67,7 +67,7 @@ Hook registration: **Two pipelines** — both write to `harnesses/claude/hooks/*
 | `harnesses/claude/hooks/stop-spin-guard.sh` | SubagentStop — blocks escalate-to-planner when ≥3 consecutive same-developer spawns detected from transcript |
 | `harnesses/claude/hooks/stop-gate-failure-breaker.sh` | SubagentStop — circuit-breaker: blocks and forces planner-phoenix escalation when dev-gate has logged ≥3 FAILED ❌ verdicts in the session log (cross-checked against gate_result_verdict; cap=2 to prevent wedging) |
 | `harnesses/claude/hooks/track-subagent-edits.sh` | PreToolUse — tracks files edited per subagent for session log |
-| `harnesses/claude/hooks/track-tool-failures.sh` | PostToolUseFailure — logs tool failures for diagnostics |
+| `harnesses/claude/hooks/track-tool-failures.sh` | PostToolUseFailure — logs tool failures to global `~/.claude/tool-failures/<session>_<agent>.jsonl`; also appends `{ts,tool,error,agent}` to `codegen/logging/failures/<session>.jsonl` when `shared/enforcement/registry.yaml` sentinel present (codegen-repo only). Reader: `read_tool_failures` in hooks-lib.sh; surface: `make show-failures`. |
 | `harnesses/claude/hooks/usage-rules-grep-guard.sh` | PreToolUse — enforces grep usage rules (no bare grep on files) |
 | `harnesses/claude/hooks/env-var-sample-consistency.sh` | PreToolUse — checks env var sample file consistency |
 | `harnesses/claude/hooks/llm-suite-guard.sh` | PreToolUse — guards LLM test suite invocations |
@@ -76,9 +76,9 @@ Hook registration: **Two pipelines** — both write to `harnesses/claude/hooks/*
 | `harnesses/claude/hooks/claude-inspector-bash-guard.sh` | PreToolUse — bash guards in claude-inspector mode |
 | `harnesses/claude/hooks/claude-inspector-read-guard.sh` | PreToolUse — read guards in claude-inspector mode |
 | `harnesses/claude/hooks/claude-inspector-write-guard.sh` | PreToolUse — write guards in claude-inspector mode |
-| `harnesses/claude/hooks/lib/hooks-lib.sh` | Shared bash library: `session_log_from_transcript`, `pitch_from_transcript`, transcript JSONL parsing, path helpers. Implements build-scoped filesystem fallback for transcript lag in print-mode builds (see `context/hook-authoring-patterns.md` § Transcript Lag & Discovery Pattern). |
+| `harnesses/claude/hooks/lib/hooks-lib.sh` | Shared bash library: `session_log_from_transcript`, `pitch_from_transcript`, `read_tool_failures`, `read_gate_verdicts`, transcript JSONL parsing, path helpers. Build-scoped filesystem fallback for transcript lag in print-mode builds (see `context/hook-authoring-patterns.md` § Transcript Lag). |
 | `harnesses/claude/hooks/lib/gate-select.sh` | Selects gate command from ```gate-json block (jq-parsed) or prose `**Gate**:` fallback; emits `gate=`, `mode=`, `timeout=` lines |
-| `harnesses/claude/hooks/lib/gate-result.sh` | Shared helper: `write_gate_result` writes structured `codegen/gate-pending/gate-result.json`; `gate_result_verdict` reads verdict from `.verdict` field (returns "" if file absent). **Note**: `gate_result_verdict` lives HERE, not in hooks-lib.sh — hooks must `source "$(dirname "$0")/lib/gate-result.sh"` explicitly after hooks-lib. |
+| `harnesses/claude/hooks/lib/gate-result.sh` | Shared helper: `write_gate_result` writes `codegen/gate-pending/gate-result.json`; also appends the canonical record to `codegen/logging/gate-verdicts.jsonl` when sentinel present. `gate_result_verdict` reads `.verdict` (returns "" if absent). **Note**: lives HERE, not in hooks-lib.sh — source explicitly. Reader: `read_gate_verdicts` in hooks-lib.sh; surface: `make show-verdicts`. |
 | `harnesses/claude/hooks/lib/gate-control.sh` | PID-liveness helper: `gate_control_status` checks in-flight gate; `gate_control_kill` terminates; used by stop-cycle-guard |
 | `harnesses/claude/hooks/lib/wiring-check.js` | Static Phoenix handler-wiring verdict engine: every `phx-*` handler must have an element-driven side-effect test; FAIL blocks the gate. No browser, no server — pure string scan of `lib/**/*.heex` + `~H"""` sigils + `test/**/*_test.exs`. Emits `WIRING_VERDICT=PASS\|FAIL:<detail>\|INCONCLUSIVE:<reason>` |
 | `harnesses/claude/hooks/lib/wiring-check_test.sh` | Verdict-logic + `node --check` parse guard for wiring-check.js; ≥14 fixture-driven cases (PASS, FAIL, INCONCLUSIVE, unresolvable-selector, ~H sigil, ancestor-id, text-selector, multi-handler partial-wired) |
@@ -246,25 +246,13 @@ Upstream carve-outs (ScheduleWakeup, `?`-intent, retry-cap release) fire before 
 
 ## Cycle State Lookup Helpers
 
-Cycle state transitions (`GATED → REVIEWED → CURATED → COMMITTED`) are declared ONCE as a space-separated ordered list in `lib/cycle-state.sh`:
+`CYCLE_STATE_ORDER="GATED REVIEWED CURATED COMMITTED"` in `lib/cycle-state.sh` — single source of truth consumed by `step-log-completeness.sh`, `stop-cycle-guard.sh`, `curator-before-committer.sh` via helpers:
 
-```bash
-CYCLE_STATE_ORDER="GATED REVIEWED CURATED COMMITTED"
-```
+- **`cycle_state_is_terminal <state>`** — true iff `<state>` is the LAST element (derived by iteration; no hardcoding).
+- **`cycle_state_next <state>`** — successor state; empty if terminal/unmatched.
+- **`cycle_state_role <state>`** — role token for block messages (`REVIEWED → context-curator`, `CURATED → committer`).
 
-This single source of truth is consumed by three readers — `step-log-completeness.sh`, `stop-cycle-guard.sh`, and `curator-before-committer.sh` — via three lookup helpers:
-
-1. **`cycle_state_is_terminal <state>`** — returns true (exit 0) iff `<state>` equals the last element of `CYCLE_STATE_ORDER`; derived by iteration so adding a new terminal state requires no helper edit.
-
-2. **`cycle_state_next <state>`** — prints the successor state; prints empty string if terminal or unmatched.
-
-3. **`cycle_state_role <state>`** — maps state to role token for block messages: `REVIEWED → context-curator`, `CURATED → committer`; unknown → empty string.
-
-**Garbage/unknown state behavior**: `cycle_state_is_terminal` returns false; `cycle_state_next` returns empty. Readers test these return values: not-terminal + non-empty-next → block; not-terminal + empty-next (or unknown) → fail-open (no grep fallback).
-
-**`set -u` safe**: Helpers always `printf` output; callers guard with `[ -n "$next" ]`.
-
-**Key design win**: By deriving terminal from the list's LAST element rather than hard-coding `= COMMITTED`, the single-source-of-truth property is preserved — inserting a new intermediate state automatically updates all dependent logic without code changes.
+Unknown state: `is_terminal` → false, `next` → empty → fail-open. `set -u` safe — always `printf`.
 
 ## Enforce-Registry-Parity — Compiler-Generated Files & Gate Ordering
 
@@ -275,14 +263,7 @@ This single source of truth is consumed by three readers — `step-log-completen
 
 If a file is committed with prettier multi-line formatting, the committed version will drift from the compiler's compact single-line output → parity fails.
 
-**Critical gate ordering**: When you edit `shared/enforcement/registry.yaml` (any `match:` field), **MUST run `make install` BEFORE `make test`**. Why: `make test` (line 160 in Makefile) includes `enforce-registry-parity`, which diffs COMMITTED generated files against freshly-compiled from the registry. If you widen a regex in the registry but committed generated files still hold the old regex, `enforce-registry-parity` FAILS on DRIFT. So `make install` regenerates the committed files from your registry edits, then `make test` sees no diff. Reversed order (test first) → guaranteed parity failure.
-
-**Fix**: Never run prettier on compiler-generated files. Compiler output is the single source of truth. If a `.ts` file must be human-formatted, ensure it is either:
-
-1. Not generated by the compiler, or
-2. Reformatted by the compiler after generation (currently not done)
-
-Workflow: Edit registry → `make install` (regenerates all 3 generated files) → `make test` (enforce-registry-parity passes).
+**Critical gate ordering**: Edit registry → `make install` FIRST (regenerates committed generated files) → `make test`. Reversed order causes `enforce-registry-parity` drift failure. Never run prettier on compiler-generated files.
 
 ## Orchestrator-Scoped Guards (Registration-Based)
 

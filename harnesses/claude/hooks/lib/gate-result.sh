@@ -172,6 +172,15 @@ write_gate_result() {
             session_id: $session_id,
             log: $log
         }' >"$result_file"
+
+    # Durable codegen-local verdict history (no overwrite, append-only).
+    # Only when project_dir is the codegen repo (sentinel present). || true:
+    # never block a gate on observability.
+    if [ -f "$project_dir/shared/enforcement/registry.yaml" ]; then
+        local history_file="$project_dir/codegen/logging/gate-verdicts.jsonl"
+        mkdir -p "$project_dir/codegen/logging" 2>/dev/null || true
+        jq -c '.' "$result_file" >>"$history_file" 2>/dev/null || true
+    fi
 }
 
 # gate_result_verdict <project_dir>

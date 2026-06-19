@@ -457,6 +457,16 @@ rule-parity:
 		exit 1; \
 	fi
 
+# show-failures: pretty-print the durable agent tool-failure store.
+.PHONY: show-failures
+show-failures:
+	@bash -c 'source "$(SCRIPT_DIR)/harnesses/claude/hooks/lib/hooks-lib.sh"; read_tool_failures "$(SCRIPT_DIR)"'
+
+# show-verdicts: pretty-print the durable gate-verdict history.
+.PHONY: show-verdicts
+show-verdicts:
+	@bash -c 'source "$(SCRIPT_DIR)/harnesses/claude/hooks/lib/hooks-lib.sh"; read_gate_verdicts "$(SCRIPT_DIR)"'
+
 uninstall:
 	$(call check_ocg_only,uninstall)
 	@./uninstall.sh
@@ -600,6 +610,8 @@ help:
 	@echo "  make record-green   Write test_harness/last_green.json with current sha + versions"
 	@echo "  make hook-parity    Verify hook registrations match claude-code-settings.json"
 	@echo "  make rule-parity    Grep baked agents for stale harness-relative paths"
+	@echo "  make show-failures  Pretty-print durable agent tool-failure store"
+	@echo "  make show-verdicts  Pretty-print durable gate-verdict history"
 	@echo "  make format         Format all shell scripts and files"
 	@echo "  make doctor         Check required tools and config"
 	@echo "  make uninstall      Remove global CLI installation (via ocg)"

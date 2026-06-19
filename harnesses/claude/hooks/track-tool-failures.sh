@@ -59,4 +59,20 @@ jq -nc \
 
 debug_log track-tool-failures "appended ledger=$ledger"
 
+# Durable codegen-local copy (no GC). Only when CWD is the codegen repo
+# (sentinel: shared/enforcement/registry.yaml present). Downstream apps
+# lack this sentinel → no local write, no dirtied tree. || true: never block.
+if [ -n "${CWD:-}" ] && [ -f "$CWD/shared/enforcement/registry.yaml" ]; then
+    local_dir="$CWD/codegen/logging/failures"
+    mkdir -p "$local_dir" 2>/dev/null || true
+    jq -nc \
+        --arg ts "$ts" \
+        --arg tool "$TOOL_NAME" \
+        --arg error "$ERROR_MSG" \
+        --arg agent "$agent_slug" \
+        '{ts: $ts, tool: $tool, error: $error, agent: $agent}' \
+        >>"$local_dir/${session_slug}.jsonl" 2>/dev/null || true
+    debug_log track-tool-failures "appended local=$local_dir/${session_slug}.jsonl"
+fi
+
 exit 0

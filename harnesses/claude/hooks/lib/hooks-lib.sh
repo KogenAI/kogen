@@ -20,6 +20,10 @@
 #                                  this session, from $TRANSCRIPT_PATH. Empty if none.
 #                                  Exact mirror of session_log_from_transcript but matches
 #                                  the codegen/pitches/.*\.md$ pattern.
+#   read_tool_failures <dir>     — pretty-print durable tool-failure store under
+#                                  <dir>/codegen/logging/failures/*.jsonl. Groups by tool.
+#   read_gate_verdicts <dir>     — pretty-print durable gate-verdict history at
+#                                  <dir>/codegen/logging/gate-verdicts.jsonl. Groups by verdict.
 #
 # Input contract (PreToolUse + SubagentStop + Stop fields, parse_input fills any
 # field present on stdin and leaves the rest empty):
@@ -386,4 +390,52 @@ is_subagent() {
 # Inverse of is_subagent; explicit name for readability.
 is_outer_session() {
     [ -z "${AGENT_TYPE:-}" ]
+}
+
+# read_tool_failures <project_dir> — pretty-print the durable tool-failure
+# store under <project_dir>/codegen/logging/failures/*.jsonl.
+# Aggregates tool × count with the latest error + session. Newest-first.
+# Empty/absent store → prints "no tool failures recorded" and returns 0.
+# Malformed JSONL lines are skipped (jq fromjson? // empty).
+read_tool_failures() {
+    local project_dir="$1"
+    local dir="$project_dir/codegen/logging/failures"
+    if ! ls "$dir"/*.jsonl >/dev/null 2>&1; then
+        printf 'no tool failures recorded\n'
+        return 0
+    fi
+    cat "$dir"/*.jsonl 2>/dev/null |
+        jq -rR 'fromjson? // empty' 2>/dev/null |
+        jq -rs '
+            group_by(.tool)
+            | map({tool: .[0].tool, count: length,
+                   latest_error: (sort_by(.ts) | last | .error),
+                   latest_ts: (map(.ts) | max)})
+            | sort_by(.latest_ts) | reverse
+            | (["TOOL","COUNT","LATEST_ERROR"] | @tsv),
+              (.[] | [.tool, (.count|tostring),
+                      (.latest_error | .[0:60])] | @tsv)
+        ' 2>/dev/null
+}
+
+# read_gate_verdicts <project_dir> — pretty-print the durable gate-verdict
+# history under <project_dir>/codegen/logging/gate-verdicts.jsonl.
+# Aggregates verdict × count (clear/failed/inconclusive). Newest-first by ts.
+# Empty/absent store → prints "no gate verdicts recorded" and returns 0.
+read_gate_verdicts() {
+    local project_dir="$1"
+    local file="$project_dir/codegen/logging/gate-verdicts.jsonl"
+    if [ ! -f "$file" ]; then
+        printf 'no gate verdicts recorded\n'
+        return 0
+    fi
+    jq -rR 'fromjson? // empty' "$file" 2>/dev/null |
+        jq -rs '
+            group_by(.verdict)
+            | map({verdict: .[0].verdict, count: length,
+                   latest_ts: (map(.ended) | max)})
+            | sort_by(.latest_ts) | reverse
+            | (["VERDICT","COUNT","LATEST"] | @tsv),
+              (.[] | [.verdict, (.count|tostring), .latest_ts] | @tsv)
+        ' 2>/dev/null
 }

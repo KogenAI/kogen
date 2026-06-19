@@ -262,6 +262,87 @@ result=$(CODEGEN_BUILD_NON_INTERACTIVE=1 OCG_APPS_ROOT="" CWD="$TMP_T11" TRANSCR
 assert_eq "session_log_from_transcript: unreadable TRANSCRIPT_PATH + managed build → disk log" "$TMP_T11/codegen/logging/20260614_000000_step1_demo.md" "$result"
 rm -rf "$TMP_T11"
 
+# ── read_tool_failures ───────────────────────────────────────────────────────
+
+# Case 1 (empty-state): no failures dir → "no tool failures recorded"
+TMP_RF1=$(mktemp -d)
+result=$(read_tool_failures "$TMP_RF1")
+if printf '%s' "$result" | grep -q "no tool failures recorded"; then
+    [ -n "${VERBOSE:-}" ] && printf 'PASS: read_tool_failures empty-state\n'
+    pass=$((pass + 1))
+else
+    printf 'FAIL: read_tool_failures empty-state — got: %s\n' "$result"
+    fail=$((fail + 1))
+fi
+rm -rf "$TMP_RF1"
+
+# Case 2 (populated): two lines same tool + one other → groups with count 2
+TMP_RF2=$(mktemp -d)
+mkdir -p "$TMP_RF2/codegen/logging/failures"
+printf '{"ts":"2026-06-01T10:00:00Z","tool":"Bash","error":"err1","agent":"a1"}\n' \
+    >>"$TMP_RF2/codegen/logging/failures/sess1.jsonl"
+printf '{"ts":"2026-06-01T10:01:00Z","tool":"Bash","error":"err2","agent":"a1"}\n' \
+    >>"$TMP_RF2/codegen/logging/failures/sess1.jsonl"
+printf '{"ts":"2026-06-01T10:02:00Z","tool":"Edit","error":"err3","agent":"a1"}\n' \
+    >>"$TMP_RF2/codegen/logging/failures/sess1.jsonl"
+result=$(read_tool_failures "$TMP_RF2")
+if printf '%s' "$result" | grep -q "Bash" && printf '%s' "$result" | grep -q "2"; then
+    [ -n "${VERBOSE:-}" ] && printf 'PASS: read_tool_failures groups Bash with count 2\n'
+    pass=$((pass + 1))
+else
+    printf 'FAIL: read_tool_failures aggregation — got: %s\n' "$result"
+    fail=$((fail + 1))
+fi
+rm -rf "$TMP_RF2"
+
+# Case 3 (malformed-line): malformed line skipped, valid lines still aggregated
+TMP_RF3=$(mktemp -d)
+mkdir -p "$TMP_RF3/codegen/logging/failures"
+printf '{"ts":"2026-06-01T11:00:00Z","tool":"Read","error":"nope","agent":"a2"}\n' \
+    >>"$TMP_RF3/codegen/logging/failures/sess2.jsonl"
+printf 'not valid json\n' \
+    >>"$TMP_RF3/codegen/logging/failures/sess2.jsonl"
+result=$(read_tool_failures "$TMP_RF3")
+if printf '%s' "$result" | grep -q "Read"; then
+    [ -n "${VERBOSE:-}" ] && printf 'PASS: read_tool_failures skips malformed line\n'
+    pass=$((pass + 1))
+else
+    printf 'FAIL: read_tool_failures malformed-line — got: %s\n' "$result"
+    fail=$((fail + 1))
+fi
+rm -rf "$TMP_RF3"
+
+# ── read_gate_verdicts ───────────────────────────────────────────────────────
+
+# Case 4 (empty-state): no file → "no gate verdicts recorded"
+TMP_GV1=$(mktemp -d)
+result=$(read_gate_verdicts "$TMP_GV1")
+if printf '%s' "$result" | grep -q "no gate verdicts recorded"; then
+    [ -n "${VERBOSE:-}" ] && printf 'PASS: read_gate_verdicts empty-state\n'
+    pass=$((pass + 1))
+else
+    printf 'FAIL: read_gate_verdicts empty-state — got: %s\n' "$result"
+    fail=$((fail + 1))
+fi
+rm -rf "$TMP_GV1"
+
+# Case 5 (populated): failed ×2 + clear ×1 → verdict×count table shows failed 2
+TMP_GV2=$(mktemp -d)
+mkdir -p "$TMP_GV2/codegen/logging"
+HIST_FILE_GV="$TMP_GV2/codegen/logging/gate-verdicts.jsonl"
+printf '{"verdict":"failed","gate":"make test","ended":"2026-06-01T10:00:00Z"}\n' >>"$HIST_FILE_GV"
+printf '{"verdict":"failed","gate":"make test","ended":"2026-06-01T10:01:00Z"}\n' >>"$HIST_FILE_GV"
+printf '{"verdict":"clear","gate":"make test","ended":"2026-06-01T10:02:00Z"}\n' >>"$HIST_FILE_GV"
+result=$(read_gate_verdicts "$TMP_GV2")
+if printf '%s' "$result" | grep -q "failed" && printf '%s' "$result" | grep -q "2"; then
+    [ -n "${VERBOSE:-}" ] && printf 'PASS: read_gate_verdicts shows failed count 2\n'
+    pass=$((pass + 1))
+else
+    printf 'FAIL: read_gate_verdicts verdict×count — got: %s\n' "$result"
+    fail=$((fail + 1))
+fi
+rm -rf "$TMP_GV2"
+
 echo ""
 echo "Results: $pass passed, $fail failed"
 
