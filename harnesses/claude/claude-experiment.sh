@@ -15,6 +15,17 @@ else
 fi
 export CODEGEN_DIR
 
+# --done <slug>: tear down a finished experiment and exit before launch.
+if [[ "${1:-}" == "--done" ]]; then
+    if [[ -z "${2:-}" ]]; then
+        printf 'claude-experiment: --done requires a <slug>\n' >&2
+        exit 2
+    fi
+    source "$CODEGEN_DIR/harnesses/shared/experiment-prune.sh"
+    experiment_prune "$2"
+    exit $?
+fi
+
 # Normalise launch cwd to the nearest legal pitch root so the resolver, the
 # CLAUDE_PITCH_PATH export, and the session cwd inherited by claude all key off
 # a dir whose ./codegen/pitches/draft is the intended target. A nested $PWD

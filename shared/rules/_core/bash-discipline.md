@@ -107,6 +107,29 @@ export MISE_STATE_DIR="$HOME/.local/state/mise"
 
 Pre-existing test fixture gap: when pi-extension npm install errors are surfaced (not masked by `| sed`), a test running in a temp HOME will hit `mise exec` → trust lookup failure → exit 1 (real error, not a false negative). Capturing real MISE_STATE_DIR before HOME override prevents spurious failures and surfaces real build issues.
 
+## Sourced Helpers — No Inherited `-e` Flag
+
+Bash helpers sourced into a `set -e` launcher must use `set -uo pipefail` (omit `-e`) at file scope. Each sourced file has its own `set` context, so `-e` is not inherited. However, when a helper is sourced into a `set -e` launcher, a bare non-zero command in the helper will still trigger the caller's `-e` and abort. **Fix**: every fail-open step must end with `|| true`. The only intentional non-zero is a deliberate `return 1` on a not-found error (allowed because `return` is the final simple command before `exit $?`, not subject to `-e`).
+
+```bash
+#!/usr/bin/env bash
+set -uo pipefail   # NO -e
+
+helper_fn() {
+    cmd1 2>/dev/null || true     # Fail-open
+    cmd2 || true                 # Fail-open
+    [ -d "$path" ] || return 1   # Intentional error
+}
+```
+
+## Test Discovery & Harness Parity Wiring
+
+**Auto-discovery scopes**: `run-tests.sh:33` discovers `*_test.sh` files ONLY under `harnesses/claude/hooks/`. Files in `harnesses/shared/` or extension subdirs are NOT auto-discovered. A test outside hooks/ must be explicitly wired into the Makefile `harness-parity` target's `for t in` list (lines 144–147). Example: `harnesses/shared/experiment-prune_test.sh` is registered via `"$(SCRIPT_DIR)/harnesses/shared/experiment-prune_test.sh"` in the list.
+
+## Bash Module Organization
+
+Non-hook bash helpers belong in `harnesses/shared/` (alongside `retryable-errors.sh`). NEVER place a helper in `harnesses/claude/hooks/` unless it carries a `# HOOK-MANIFEST:` header. Reason: `hook_registrations.py:329` requires every non-`_`, non-`_test.sh` `.sh` file in hooks/ to have a HOOK-MANIFEST registry entry. A helper there triggers hook-parity failure.
+
 ## Launcher Flag Parsing: Pre-Process Before Resolver Loops
 
 When a launcher dispatcher accepts optional flags (e.g., `--new`) that must NOT be passed to downstream arg-parsing logic (e.g., draft-resolver loops that `exit 1` on unmatched positionals), strip the flag BEFORE the resolver loop runs:
