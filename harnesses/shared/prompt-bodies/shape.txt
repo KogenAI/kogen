@@ -350,3 +350,55 @@ emit(end_summary(pitch))
 emit("Ready.")
 ```
 
+## Pitch-workflow vocabulary
+
+The operator types these verbs as plain language in the shape-session chat. They are conversational verbs, not slash commands (`ready` already has `/ready`; no `/summarize`, `/expand`, `/reorganize`, `/order`). Each verb takes an optional **scope** argument.
+
+**Scope grammar**: a folder keyword (`draft` | `ready` | `shipped` | `all`), a filter phrase (theme or exclusion like "non-dashboard"), or a list of pitch slugs. Omitted scope defaults to `draft/`, EXCEPT `order` which defaults to `ready/`.
+
+---
+
+**`summarize <scope>`** — Read every pitch in scope (read-only, fan-out Explore), return ONE sentence each on what it accomplishes, grouped by theme, in chat. Writes nothing.
+
+> Disambiguation: this is a corpus-level operator verb. It is distinct from the readiness-check's internal step-1 "Summarize" (shape.txt ~line 70), which states ONE pitch in 1–2 sentences as part of the SHAPED gate — never conflate the two.
+
+---
+
+**`expand <named…>`** — For each named pitch, ≤3 sentences (mechanism + why it matters + what's uncertain), in chat. Read-only; writes nothing.
+
+---
+
+**`reorganize <scope>`** — Read all pitches in scope, map their relationships, then act:
+- Same problem/root-cause **+ same-or-similar solution** → **join** into one pitch (merge content; absorbed file moves to `codegen/pitches/archive/`, created via `mkdir -p` on first use).
+- Same problem/root-cause **+ contradicting solutions** → auto-decide when the choice is engineering-means (per ASK-GATE); surface exactly one `AskUserQuestion` only when the fork is flow/UX/DX.
+- A pitch spanning multiple independent bets → **split** into children + write `Blocks-on:` edges.
+- A pitch that should be removed → `mv` to `codegen/pitches/archive/` — never hard-delete (pitch files are untracked; hard-delete is unrecoverable).
+
+Writes files. Reports a one-block change summary (`joined X+Y → X`, `split Z → Z-a, Z-b`, `archived W`). Autonomy: ASK-GATE: product forks only — see the rule at the anchor text "ASK-GATE: product forks only" in this file.
+
+---
+
+**`order <scope>`** — Read every pitch in scope (default `ready/`; fan-out read-only Explore), derive a build sequence, return a **plain numbered list** (one slug per line, no prose, no rationale) — exactly the format to paste into `claude-build`. Derivation: topologically sort declared `## Dependencies` / `Blocks-on:` edges; edge-free pitches ordered foundational-first (lowest-level infra / widest-blast-radius first). Before sorting, reconcile each `Blocks-on:` tag against the dependency's ACTUAL folder (`draft/`/`ready/`/`shipped/`) — a blocker that already shipped is not a live edge. If a cycle exists in the edges, report the cycle; no total order possible. Writes nothing. The foundational-first ranking of edge-free pitches is the shaper's judgment — say so rather than presenting it as authoritative dependency order.
+
+---
+
+**`shape <named…>`** — Run the full readiness loop on each named pitch and write it. Per-pitch result: `SHAPED` or `SHAPING` + end-summary.
+
+---
+
+**`skip <named…>`** — Leave each named pitch in `draft/`, untouched, not shaped this session, not removed. Use with `shape` to scope a session: `shape: a, b / skip: c`.
+
+---
+
+**`ready <named…>`** — Run the `/ready` gate (re-probe claims vs current HEAD, structural scan) then `mv draft/ → ready/`. Per-pitch result: "promoted" or "blocked: <reason>".
+
+---
+
+### Error paths
+
+- Unknown verb or typo → not hijacked; treat the input as an ordinary prompt (vocabulary is additive, not a parser that swallows arbitrary text).
+- Empty scope / no pitches match → "no pitches in `<scope>`" and stop.
+- `reorganize` finds no relationships → "no joins/splits/removals needed" (read-only outcome, nothing written).
+- `summarize` / `expand` / `shape` / `ready` / `order` naming a missing slug → report which slug wasn't found; proceed with the rest.
+- `order` finds a cycle → report the cycle; no total order possible (nothing written).
+- `reorganize` contradicting-solution fork that IS flow/UX/DX → surface via `AskUserQuestion`; everything else auto-decided per ASK-GATE.
