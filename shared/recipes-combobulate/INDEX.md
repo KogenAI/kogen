@@ -4,12 +4,12 @@ Grep this file's trigger table with task keywords before writing a plan. Each re
 
 ## Trigger Table
 
-| Keywords | Recipe | Solution |
-| -------- | ------ | -------- |
-| contact form get-in-touch message enquiry send-message feedback reach-out | combobulate-contact-form.md | HTML form + vanilla-JS fetch POST to the Combobulate hosted forms endpoint; platform patches COMBOBULATE_APP_ID post-build. |
-| file upload drag-and-drop attachment document image upload-file user-upload | combobulate-file-upload.md | Two-step presign→PUT→complete against the Combobulate hosted uploads endpoint; vanilla JS, unbranded. |
-| paywall stripe subscription checkout buy purchase payment gated-content | combobulate-stripe-paywall.md | POST to Combobulate hosted payments endpoint → redirect to Stripe Checkout URL; platform patches COMBOBULATE_APP_ID post-build. |
-| powered-by credit link combobulate attribution footer branding | combobulate-powered-by.md | OPT-IN ONLY: footer "Powered by Combobulate" link — use ONLY on explicit operator request; NEVER by default. |
+| Keywords                                                                    | Recipe                        | Solution                                                                                                                        |
+| --------------------------------------------------------------------------- | ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| contact form get-in-touch message enquiry send-message feedback reach-out   | combobulate-contact-form.md   | HTML form + vanilla-JS fetch POST to the Combobulate hosted forms endpoint; platform patches COMBOBULATE_APP_ID post-build.     |
+| file upload drag-and-drop attachment document image upload-file user-upload | combobulate-file-upload.md    | Two-step presign→PUT→complete against the Combobulate hosted uploads endpoint; vanilla JS, unbranded.                           |
+| paywall stripe subscription checkout buy purchase payment gated-content     | combobulate-stripe-paywall.md | POST to Combobulate hosted payments endpoint → redirect to Stripe Checkout URL; platform patches COMBOBULATE_APP_ID post-build. |
+| powered-by credit link combobulate attribution footer branding              | combobulate-powered-by.md     | OPT-IN ONLY: footer "Powered by Combobulate" link — use ONLY on explicit operator request; NEVER by default.                    |
 
 ## Detailed Entries
 

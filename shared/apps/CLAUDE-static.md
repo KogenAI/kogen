@@ -2,13 +2,16 @@
 
 Orchestrator for static website build on the AI platform. Spawn subagents via Agent tool to handle each phase.
 
-@codegen/rules/\_core/output-style.md
+
+@codegen/rules/_core/output-style.md
+
 
 ## MANDATORY: Load Rules FIRST
 
 **On EVERY session start, before any work:**
 
 1. **AUTO-LOADED** `@codegen/rules/roles/orchestrator.md` — review at session start
+
 
 Do NOT read PROJECT_CONTEXT.md, domain context files, or recipes — planner handles that. Delegate to planner immediately after creating the session log.
 
@@ -47,11 +50,11 @@ Do NOT read PROJECT_CONTEXT.md, domain context files, or recipes — planner han
 - `vite.config.js` MUST set `build: { outDir: "public" }`. Run `mise exec -- npm install` after adding deps.
 - Commit subject MUST be ≤ 50 chars. Never prefix with scope tags — imperative mood, no trailing period.
 - **Gumroad buy buttons**: load `codegen/recipes/gumroad-buy-button.md` and render buy-button `href` as literal string `GUMROAD_PLACEHOLDER_URL`.
-- **Combobulate service recipes**: when a build request mentions a contact form, file upload, or paywall/subscription, grep `codegen/recipes-extra/INDEX.md` and apply the matching `combobulate-*` recipe — wire the feature to the hosted endpoint while rendering ORDINARY, UNBRANDED UI. Apply `combobulate-powered-by` ONLY on an explicit operator request; NEVER add combobulate branding by default.
 
 ## Session Logging
 
-@codegen/rules/\_core/session-log.md
+@codegen/rules/_core/session-log.md
+
 
 **WHERE**: `codegen/logging/$(date -u +%Y%m%d_%H%M%S)_session.md`
 
@@ -66,7 +69,7 @@ Each invocation creates NEW log file. Run `date -u +%Y%m%d_%H%M%S` via Bash for 
   echo "- context: $(git -C ./codegen/context rev-parse --short HEAD 2>/dev/null || echo unknown)"
   echo "- codegen: $(git -C ./codegen/rules rev-parse --short HEAD 2>/dev/null || echo unknown)"
   echo "- claude: $(claude --version 2>/dev/null || echo unknown)"
-
+  
   echo "- stamped_at: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
 } >> <SESSION_LOG>
 ```
@@ -154,6 +157,7 @@ After delegating, append row to `## Delegation Timeline`:
 
 No Phase 2 delegation. After developer-static reports done, the `static-site-build-check.sh` SubagentStop hook fires automatically and runs four deterministic checks:
 
+
 1. `mise exec -- npm run build` — Vite always ships package.json.
 2. `package.json` invariants — `scripts.build` and `scripts.serve` present, `scripts.serve` ends with `python3 -u -m http.server --directory public 0`.
 3. Tailwind v4 config absence — neither `tailwind.config.js` nor `postcss.config.js` may exist at app root.
@@ -164,6 +168,7 @@ Hook verdict:
 - `ALL CLEAR ✅` — proceed to Phase 3.
 - `FAILED ❌ <reason>` — delegate fix to developer; re-spawn. **Retry budget: 2 attempts maximum.** Still fails → emit `{"status":"failed","reason":"Build check failed after 2 fix attempts: <one-sentence summary>"}` and stop.
 - `INCONCLUSIVE ⚠️ <classification>` — look up classification in `codegen/rules/roles/orchestrator.md` and run the prescribed action.
+
 
 ## Phase 3 — reviewer-static
 
@@ -252,6 +257,7 @@ After committer confirms the commit: if this is a pitch-driven build and the pit
 ## Result Reporting (MANDATORY)
 
 @codegen/rules/build-runtime/result-json.md
+
 
 Final message MUST contain exactly one fenced JSON block with build result and NOTHING after it:
 

@@ -44,7 +44,6 @@ assert usage_count == 68
 
 Detection: any count test where the assertion's RHS is algebraically equivalent to the LHS (e.g., sums/differences cancel). These tests pass before and after changes, hiding bugs. Always source the expected value from a constant or independent fn, not derived arithmetic on the same source list.
 
-
 ## TDD — Red-Green-Refactor
 
 1. RED: failing → confirm fails for right reason
@@ -85,6 +84,7 @@ ALWAYS: Unit, Integration, Edge Cases. NEVER: Performance, Accessibility, Browse
 `ExUnit.CaptureLog` is process-global: it installs a logger handler that captures log lines from ALL concurrent processes, not just the calling test. In `async: true` modules, a `capture_log` in one test can receive log lines emitted by other concurrently-running tests.
 
 **Anti-pattern** (flaky):
+
 ```elixir
 test "specific warning" do
   log = capture_log(fn -> some_operation() end)
@@ -93,6 +93,7 @@ end
 ```
 
 **Fix** (scoped assertions):
+
 ```elixir
 test "specific warning" do
   log = capture_log(fn -> audit_tls_automation_ca() end)

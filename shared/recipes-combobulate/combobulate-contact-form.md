@@ -44,7 +44,13 @@ Emit this verbatim (substitute `contact` with your chosen `form_id` slug):
   </div>
   <div>
     <label for="cf-email">Email</label>
-    <input id="cf-email" name="email" type="email" required autocomplete="email" />
+    <input
+      id="cf-email"
+      name="email"
+      type="email"
+      required
+      autocomplete="email"
+    />
   </div>
   <div>
     <label for="cf-message">Message</label>
@@ -76,7 +82,7 @@ Emit this verbatim (substitute `contact` with your chosen `form_id` slug):
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(data),
-        }
+        },
       )
         .then(function (res) {
           return res.ok
@@ -90,7 +96,8 @@ Emit this verbatim (substitute `contact` with your chosen `form_id` slug):
           form.reset();
         })
         .catch(function (err) {
-          status.textContent = err.message || "Something went wrong. Please try again.";
+          status.textContent =
+            err.message || "Something went wrong. Please try again.";
         });
     });
   })();

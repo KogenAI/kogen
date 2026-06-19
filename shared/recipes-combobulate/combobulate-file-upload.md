@@ -63,7 +63,8 @@ Response 200:
     var fileInput = document.getElementById("upload-file");
     var btn = document.getElementById("upload-btn");
     var status = document.getElementById("upload-status");
-    var BASE = "https://app.combobulate.dev/api/uploads/COMBOBULATE_APP_ID/documents";
+    var BASE =
+      "https://app.combobulate.dev/api/uploads/COMBOBULATE_APP_ID/documents";
 
     fileInput.addEventListener("change", function () {
       btn.disabled = !fileInput.files.length;
@@ -105,7 +106,9 @@ Response 200:
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ upload_id: uploadId }),
           }).then(function (r) {
-            return r.ok ? r.json() : Promise.reject(new Error("Complete failed"));
+            return r.ok
+              ? r.json()
+              : Promise.reject(new Error("Complete failed"));
           });
         })
         .then(function () {
@@ -114,7 +117,8 @@ Response 200:
           btn.disabled = true;
         })
         .catch(function (err) {
-          status.textContent = err.message || "Upload failed. Please try again.";
+          status.textContent =
+            err.message || "Upload failed. Please try again.";
           btn.disabled = false;
         });
     });

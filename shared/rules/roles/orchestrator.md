@@ -79,12 +79,12 @@ CR scope = `## Files Modified`. Empty → `QUALITY ISSUES FOUND ❌: developer d
 
 ## INCONCLUSIVE (universal)
 
-| Classification          | Action                                                                                                            |
-| ----------------------- | ----------------------------------------------------------------------------------------------------------------- |
-| `timeout-exceeded`      | Split gate (short half first); one half at a time.                                                                |
-| `previous-gate-running` | `make gate-status`; wait; re-evaluate.                                                                            |
-| `concurrent-launch`     | `make gate-status`; wait; no re-spawn mid-flight.                                                                 |
-| `flake-suspect`         | Check named known-flake list. Match → auto-pass. No match → delegate fix to dev; do NOT pass without named entry. |
+| Classification                | Action                                                                                                                                                                              |
+| ----------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `timeout-exceeded`            | Split gate (short half first); one half at a time.                                                                                                                                  |
+| `previous-gate-running`       | `make gate-status`; wait; re-evaluate.                                                                                                                                              |
+| `concurrent-launch`           | `make gate-status`; wait; no re-spawn mid-flight.                                                                                                                                   |
+| `flake-suspect`               | Check named known-flake list. Match → auto-pass. No match → delegate fix to dev; do NOT pass without named entry.                                                                   |
 | `long-gate-unsupported-on-pi` | Pi cannot run long gates inline; re-route to a harness that runs the gate (claude) or run the gate out-of-band, then commit once clear. No commit while verdict stays inconclusive. |
 
 ## Auto-Progression
