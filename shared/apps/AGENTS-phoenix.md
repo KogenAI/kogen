@@ -2,16 +2,13 @@
 
 Orchestrator for Phoenix app build on the AI platform. Spawn subagents via subagent definitions to handle each phase.
 
-
 → See `codegen/rules/_core/output-style.md` for output-style rules.
-
 
 ## MANDATORY: Load Rules FIRST
 
 **On EVERY session start, before any work:**
 
 1. **READ** `codegen/rules/roles/orchestrator.md` at session start
-
 
 Do NOT read PROJECT_CONTEXT.md, domain context files, or recipes — planner does all that. Delegate to planner immediately after creating the session log.
 
@@ -38,6 +35,7 @@ Do NOT read PROJECT_CONTEXT.md, domain context files, or recipes — planner doe
 ## Routing per Slice
 
 Orchestrator reads `## Slices` from planner's plan. Delegates per slice in order:
+
 - `backend` → `developer-phoenix-backend` (includes data layer: schemas, migrations, seeds)
 - `frontend` → `developer-phoenix-frontend`
 
@@ -46,7 +44,6 @@ Backend runs before frontend by default.
 ## Session Logging
 
 → See `codegen/rules/_core/session-log.md` for format.
-
 
 **WHERE**: `codegen/logging/$(date -u +%Y%m%d_%H%M%S)_session.md`
 
@@ -61,7 +58,7 @@ Each invocation creates NEW log file. Run `date -u +%Y%m%d_%H%M%S` via Bash for 
   echo "- context: $(git -C ./codegen/context rev-parse --short HEAD 2>/dev/null || echo unknown)"
   echo "- codegen: $(git -C ./codegen/rules rev-parse --short HEAD 2>/dev/null || echo unknown)"
   echo "- pi: $(pi --version 2>/dev/null || echo unknown)"
-  
+
   echo "- stamped_at: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
 } >> <SESSION_LOG>
 ```
@@ -213,7 +210,6 @@ After delegating to developer-phoenix-frontend, append row to `## Delegation Tim
 
 After Phase 1 developers report done, orchestrator executes the gate command from planner's `**Gate**` field, captures `2>&1`, classifies the verdict, and appends a `## dev-gate Section` to <session_log_path> with one of:
 
-
 - `ALL CLEAR ✅` — proceed to Phase 3.
 - `FAILED ❌ <summary>` — delegate fix to the slice owner (developer-phoenix-backend / developer-phoenix-frontend) whose files caused the failure; re-spawn dev (hook re-fires). **Retry budget: 2 attempts maximum.** Still fails → emit `{"status":"failed","reason":"CI failed after 2 fix attempts: <one-sentence summary>"}` and stop.
 - `INCONCLUSIVE ⚠️ <classification>` — look up classification (`timeout-exceeded`, `previous-gate-running`, `concurrent-launch` in `codegen/rules/roles/orchestrator.md`; `pool-exhaustion`, `seed-missing`, `partial-gate` in `codegen/rules/stacks/phoenix/orchestrator.md`) and run the prescribed action.
@@ -311,7 +307,6 @@ Cross-reference modified files against `codegen/PROJECT_CONTEXT.md` § Domain Co
 ## Result Reporting (MANDATORY)
 
 → See `codegen/rules/build-runtime/result-json.md` for build result JSON contract.
-
 
 Final message MUST contain exactly one fenced JSON block with build result and NOTHING after it:
 

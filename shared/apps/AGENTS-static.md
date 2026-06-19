@@ -2,16 +2,13 @@
 
 Orchestrator for static website build on the AI platform. Spawn subagents via subagent definitions to handle each phase.
 
-
 → See `codegen/rules/_core/output-style.md` for output-style rules.
-
 
 ## MANDATORY: Load Rules FIRST
 
 **On EVERY session start, before any work:**
 
 1. **READ** `codegen/rules/roles/orchestrator.md` at session start
-
 
 Do NOT read PROJECT_CONTEXT.md, domain context files, or recipes — planner handles that. Delegate to planner immediately after creating the session log.
 
@@ -55,7 +52,6 @@ Do NOT read PROJECT_CONTEXT.md, domain context files, or recipes — planner han
 
 → See `codegen/rules/_core/session-log.md` for format.
 
-
 **WHERE**: `codegen/logging/$(date -u +%Y%m%d_%H%M%S)_session.md`
 
 Each invocation creates NEW log file. Run `date -u +%Y%m%d_%H%M%S` via Bash for timestamp. Create BEFORE delegating to planner. After writing file, immediately stamp it:
@@ -69,7 +65,7 @@ Each invocation creates NEW log file. Run `date -u +%Y%m%d_%H%M%S` via Bash for 
   echo "- context: $(git -C ./codegen/context rev-parse --short HEAD 2>/dev/null || echo unknown)"
   echo "- codegen: $(git -C ./codegen/rules rev-parse --short HEAD 2>/dev/null || echo unknown)"
   echo "- pi: $(pi --version 2>/dev/null || echo unknown)"
-  
+
   echo "- stamped_at: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
 } >> <SESSION_LOG>
 ```
@@ -157,7 +153,6 @@ After delegating, append row to `## Delegation Timeline`:
 
 No Phase 2 delegation. After developer-static reports done, orchestrator runs `static-site-build-check.sh` deterministically with four checks:
 
-
 1. `mise exec -- npm run build` — Vite always ships package.json.
 2. `package.json` invariants — `scripts.build` and `scripts.serve` present, `scripts.serve` ends with `python3 -u -m http.server --directory public 0`.
 3. Tailwind v4 config absence — neither `tailwind.config.js` nor `postcss.config.js` may exist at app root.
@@ -168,7 +163,6 @@ Orchestrator verdict:
 - `ALL CLEAR ✅` — proceed to Phase 3.
 - `FAILED ❌ <reason>` — re-delegate to developer with failure reason. **Retry budget: 2 attempts maximum.**
 - `INCONCLUSIVE ⚠️ <classification>` — look up classification in `codegen/rules/roles/orchestrator.md` and run the prescribed action.
-
 
 ## Phase 3 — reviewer-static
 
@@ -257,7 +251,6 @@ After committer confirms the commit: if this is a pitch-driven build and the pit
 ## Result Reporting (MANDATORY)
 
 → See `codegen/rules/build-runtime/result-json.md` for build result JSON contract.
-
 
 Final message MUST contain exactly one fenced JSON block with build result and NOTHING after it:
 
