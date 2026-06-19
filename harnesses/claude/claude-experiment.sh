@@ -90,6 +90,20 @@ if [[ -n "${CLAUDE_NONINTERACTIVE:-}" ]]; then
     )
 fi
 
+# Parse --new BEFORE the draft-resolver loop. The resolver treats any
+# non-path/non-.md/non-space arg as a pitch basename and exits 1 on no match,
+# so --new must be stripped from "$@" first.
+FORCE_NEW=0
+_filtered_args=()
+for _a in "$@"; do
+    if [[ "$_a" == "--new" ]]; then
+        FORCE_NEW=1
+    else
+        _filtered_args+=("$_a")
+    fi
+done
+set -- "${_filtered_args[@]+"${_filtered_args[@]}"}"
+
 # Basename resolver (strict) against $PWD/codegen/pitches/draft/
 # 1. Contains / or ends in .md or contains space → pass through unchanged.
 # 2. codegen/pitches/draft/<arg>.md exists → @-mention it.
@@ -140,6 +154,14 @@ elif [[ $# -gt 0 ]]; then
     [[ -z "$EXP_SLUG" ]] && EXP_SLUG="session"
 else
     EXP_SLUG="session"
+fi
+
+# --new: force a fresh worktree by tearing down any existing one first.
+# Both removals are best-effort — a missing/partial worktree must not abort.
+if [[ "$FORCE_NEW" -eq 1 ]]; then
+    printf 'claude-experiment: --new → tearing down existing worktree exp-%s\n' "$EXP_SLUG" >&2
+    git worktree remove --force ".claude/worktrees/exp-$EXP_SLUG" 2>/dev/null || true
+    git branch -D "worktree-exp-$EXP_SLUG" 2>/dev/null || true
 fi
 
 # Export CLAUDE_PITCH_PATH when exactly one pitch was resolved from draft/

@@ -81,6 +81,17 @@ _relpath() { python3 -c 'import os,sys; print(os.path.relpath(os.path.realpath(s
 
 Relevant context: codegen-scaffold `run_integrate_stage` uses relpath to emit relative symlinks for AGENTS.md/CLAUDE.md and codegen/\* targets. Compute against the FINAL link-base dir (not temp build dir), else the relpath carries extra `../` levels and dangles after the `mv`.
 
+## Bash Path Canonicalization: Symlink Resolution in Tests
+
+On macOS, `mktemp -d` may return paths under `/var/folders/...` (symlinked to `/private/var/folders/...`). Any test constructing paths from `$TMP_ROOT` and asserting the paths against hook output (which canonicalizes via `pwd -P`) must canonicalize `TMP_ROOT` before use:
+
+```bash
+TMP_ROOT="$(mktemp -d)"
+TMP_ROOT="$(cd "$TMP_ROOT" && pwd -P)"  # Resolve symlinks to canonical form
+```
+
+This ensures that relative-path construction (e.g., `$TMP_ROOT/.claude/worktrees/$name`) produces the same canonical path that hook code would compute via `cwd_real="$(cd "$cwd" && pwd -P)"`. Omitting canonicalization causes `grep -qxF "worktree $worktree_path"` matches to fail when testing against porcelain output (which emits absolute paths).
+
 ## Scaffold Makefile-Injection Printf: Hard Tabs via `\t` Escapes
 
 When scaffolding injects multi-line Makefile targets via `printf`, recipe lines MUST use hard tabs (not spaces). Use `\t` escape sequences inside single-quoted printf format strings — printf interprets them as hard tabs in the rendered file. **Pattern**: `printf 'ci:\n\t@cmd1\n\tcmd2\n' >> Makefile`. Do NOT hand-type literal tab or space characters; the escape sequence guarantees portability across macOS and Linux. Existing scaffold mutations use this idiom throughout (`shared/scaffold/<stack>/scaffold.sh`); new Makefile injections reuse the same approach. Validate via `make <target>` run (Makefile parser rejects spaces in recipe indentation with a clear error).
@@ -95,6 +106,26 @@ export MISE_STATE_DIR="$HOME/.local/state/mise"
 ```
 
 Pre-existing test fixture gap: when pi-extension npm install errors are surfaced (not masked by `| sed`), a test running in a temp HOME will hit `mise exec` → trust lookup failure → exit 1 (real error, not a false negative). Capturing real MISE_STATE_DIR before HOME override prevents spurious failures and surfaces real build issues.
+
+## Launcher Flag Parsing: Pre-Process Before Resolver Loops
+
+When a launcher dispatcher accepts optional flags (e.g., `--new`) that must NOT be passed to downstream arg-parsing logic (e.g., draft-resolver loops that `exit 1` on unmatched positionals), strip the flag BEFORE the resolver loop runs:
+
+```bash
+# Parse --new BEFORE the resolver loop that exit 1's on unmatched args
+FORCE_NEW=0
+_filtered_args=()
+for _a in "$@"; do
+    if [[ "$_a" == "--new" ]]; then
+        FORCE_NEW=1
+    else
+        _filtered_args+=("$_a")
+    fi
+done
+set -- "${_filtered_args[@]+"${_filtered_args[@]}"}"
+```
+
+The `set -- "${arr[@]+"${arr[@]}"}` pattern rebuilds positionals from the filtered array, preserving `$#` and `$1` for the resolver loop. Failure to pre-process flags causes the resolver to misread the flag as a positional argument and exit 1 on no match.
 
 ## Trailing+Defaulted Positional Arguments (Extensible Functions)
 

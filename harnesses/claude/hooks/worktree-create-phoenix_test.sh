@@ -24,6 +24,8 @@ assert_eq() {
 
 # ── Temp workspace ────────────────────────────────────────────────────────────
 TMP_ROOT=$(mktemp -d)
+# Canonicalize: macOS /var is a symlink to /private/var; pwd -P in hook resolves it.
+TMP_ROOT="$(cd "$TMP_ROOT" && pwd -P)"
 trap 'rm -rf "$TMP_ROOT"' EXIT
 
 BIN_DIR="$TMP_ROOT/bin"
@@ -80,6 +82,8 @@ cat >"$FAKE_GIT_T1" <<FAKEGIT
 #!/bin/bash
 # git -C <cwd> worktree add -b <branch> <path> <ref>  OR
 # git -C <cwd> rev-parse <ref>
+if [[ "\$*" == *"worktree list"* ]]; then exit 0; fi
+if [[ "\$*" == *"show-ref"* ]]; then exit 1; fi
 if [[ "\$*" == *"worktree add"* ]]; then
     mkdir -p "$T1_WT"
     exit 0
@@ -135,6 +139,8 @@ mkdir -p "$T2_CWD"
 FAKE_GIT_T2="$TMP_ROOT/git_t2"
 cat >"$FAKE_GIT_T2" <<FAKEGIT2
 #!/bin/bash
+if [[ "\$*" == *"worktree list"* ]]; then exit 0; fi
+if [[ "\$*" == *"show-ref"* ]]; then exit 1; fi
 if [[ "\$*" == *"worktree add"* ]]; then
     mkdir -p "$T2_WT"
     exit 0
@@ -179,6 +185,8 @@ touch "$T3_CWD/mix.exs"
 FAKE_GIT_T3="$TMP_ROOT/git_t3"
 cat >"$FAKE_GIT_T3" <<FAKEGIT3
 #!/bin/bash
+if [[ "\$*" == *"worktree list"* ]]; then exit 0; fi
+if [[ "\$*" == *"show-ref"* ]]; then exit 1; fi
 if [[ "\$*" == *"worktree add"* ]]; then
     mkdir -p "$T3_WT"
     exit 0
@@ -222,6 +230,8 @@ printf 'DB_URL=postgres://localhost/myapp\nPORT=4000\nPORT_TEST=5000\nMIX_DEV_PA
 FAKE_GIT_T4="$TMP_ROOT/git_t4"
 cat >"$FAKE_GIT_T4" <<FAKEGIT4
 #!/bin/bash
+if [[ "\$*" == *"worktree list"* ]]; then exit 0; fi
+if [[ "\$*" == *"show-ref"* ]]; then exit 1; fi
 if [[ "\$*" == *"worktree add"* ]]; then
     mkdir -p "$T4_WT"
     exit 0
@@ -274,6 +284,8 @@ mkdir -p "$T5_CWD"
 FAKE_GIT_T5="$TMP_ROOT/git_t5"
 cat >"$FAKE_GIT_T5" <<FAKEGIT5
 #!/bin/bash
+if [[ "\$*" == *"worktree list"* ]]; then exit 0; fi
+if [[ "\$*" == *"show-ref"* ]]; then exit 1; fi
 if [[ "\$*" == *"worktree add"* ]]; then
     mkdir -p "$T5_WT"
     exit 0
@@ -301,6 +313,8 @@ mkdir -p "$T6_CWD"
 FAKE_GIT_T6="$TMP_ROOT/git_t6"
 cat >"$FAKE_GIT_T6" <<'FAKEGIT6'
 #!/bin/bash
+if [[ "$*" == *"worktree list"* ]]; then exit 0; fi
+if [[ "$*" == *"show-ref"* ]]; then exit 1; fi
 if [[ "$*" == *"worktree add"* ]]; then
     echo "fatal: bad ref" >&2
     exit 128
@@ -333,6 +347,8 @@ mkdir -p "$T7_CWD"
 FAKE_GIT_T7="$TMP_ROOT/git_t7"
 cat >"$FAKE_GIT_T7" <<FAKEGIT7
 #!/bin/bash
+if [[ "\$*" == *"worktree list"* ]]; then exit 0; fi
+if [[ "\$*" == *"show-ref"* ]]; then exit 1; fi
 if [[ "\$*" == *"worktree add"* ]]; then
     # Extract the worktree path arg (4th positional after -C <cwd> worktree add -b <branch>)
     # Just create it wherever git would
@@ -400,6 +416,8 @@ BRANCH_USED_FILE="$TMP_ROOT/branch_used"
 FAKE_GIT_T9="$TMP_ROOT/git_t9"
 cat >"$FAKE_GIT_T9" <<FAKEGIT9
 #!/bin/bash
+if [[ "\$*" == *"worktree list"* ]]; then exit 0; fi
+if [[ "\$*" == *"show-ref"* ]]; then exit 1; fi
 if [[ "\$*" == *"worktree add"* ]]; then
     # Capture the branch arg (-b <branch>)
     for i in "\$@"; do
@@ -427,6 +445,124 @@ if [ -f "$BRANCH_USED_FILE" ]; then
     assert_eq "T9: branch is worktree-<name>" "worktree-exp-slug" "$T9_BRANCH"
 else
     printf 'FAIL: T9: git worktree add was not called (branch not captured)\n'
+    fail=$((fail + 1))
+fi
+
+# ── Test 10: Reuse — pre-registered worktree → skip add, fresh PORT ──────────
+T10_CWD="$TMP_ROOT/t10_cwd"
+T10_WT="$T10_CWD/.claude/worktrees/exp-resume"
+mkdir -p "$T10_CWD" "$T10_WT"
+touch "$T10_CWD/mix.exs"
+# Pre-existing .env in the worktree with a stale port
+printf 'PORT=4000\nSECRET=keepme\n' >"$T10_WT/.env"
+
+ADD_CALLED="$TMP_ROOT/t10_add_called"
+
+FAKE_GIT_T10="$TMP_ROOT/git_t10"
+cat >"$FAKE_GIT_T10" <<FAKEGIT10
+#!/bin/bash
+if [[ "\$*" == *"worktree list"* ]]; then
+    # Return the worktree as already registered (absolute path)
+    printf 'worktree %s\nbranch refs/heads/worktree-exp-resume\n\n' "$T10_WT"
+    exit 0
+fi
+if [[ "\$*" == *"show-ref"* ]]; then exit 1; fi
+if [[ "\$*" == *"worktree add"* ]]; then
+    touch "$ADD_CALLED"
+    mkdir -p "$T10_WT"
+    exit 0
+fi
+echo "sha10"
+FAKEGIT10
+chmod +x "$FAKE_GIT_T10"
+
+T10_INPUT=$(printf '{"name":"exp-resume","cwd":"%s","session_id":"sess-10","hook_event_name":"WorktreeCreate"}' "$T10_CWD")
+T10_EXIT=0
+T10_OUT=$(printf '%s' "$T10_INPUT" |
+    PATH="$BIN_DIR:$PATH" \
+        bash -c "PATH=\"$BIN_DIR:$PATH\"; export PATH; . \"$STUB_RM\"; \
+        git() { bash \"$FAKE_GIT_T10\" \"\$@\"; }; export -f git; \
+        CODEGEN_DIR=\"$TMP_ROOT\" bash \"$HOOK\"" 2>/dev/null) || T10_EXIT=$?
+
+assert_eq "T10: exit 0 on reuse" "0" "$T10_EXIT"
+assert_eq "T10: stdout is worktree_path on reuse" "$T10_WT" "$T10_OUT"
+
+if [ ! -f "$ADD_CALLED" ]; then
+    [ -n "${VERBOSE:-}" ] && printf 'PASS: T10: git worktree add skipped on reuse\n'
+    pass=$((pass + 1))
+else
+    printf 'FAIL: T10: git worktree add was called on reuse (should be skipped)\n'
+    fail=$((fail + 1))
+fi
+
+if [ -f "$T10_WT/.env" ] && grep -q '^PORT=' "$T10_WT/.env"; then
+    [ -n "${VERBOSE:-}" ] && printf 'PASS: T10: PORT written to .env on reuse\n'
+    pass=$((pass + 1))
+else
+    printf 'FAIL: T10: PORT not in .env on reuse\n'
+    fail=$((fail + 1))
+fi
+
+# ── Test 11: Orphaned branch — branch exists, no worktree → add WITHOUT -b ───
+T11_CWD="$TMP_ROOT/t11_cwd"
+T11_WT="$T11_CWD/.claude/worktrees/exp-orphan"
+mkdir -p "$T11_CWD"
+# Non-phoenix (no mix.exs) to keep the test minimal
+
+ADD_ARGS_FILE="$TMP_ROOT/t11_add_args"
+
+FAKE_GIT_T11="$TMP_ROOT/git_t11"
+cat >"$FAKE_GIT_T11" <<FAKEGIT11
+#!/bin/bash
+if [[ "\$*" == *"worktree list"* ]]; then exit 0; fi
+if [[ "\$*" == *"show-ref"* ]]; then
+    # Branch exists (orphaned)
+    exit 0
+fi
+if [[ "\$*" == *"worktree add"* ]]; then
+    # Record full args for assertion
+    printf '%s' "\$*" >"$ADD_ARGS_FILE"
+    mkdir -p "$T11_WT"
+    exit 0
+fi
+echo "sha11"
+FAKEGIT11
+chmod +x "$FAKE_GIT_T11"
+
+T11_INPUT=$(printf '{"name":"exp-orphan","cwd":"%s","session_id":"sess-11","hook_event_name":"WorktreeCreate"}' "$T11_CWD")
+T11_EXIT=0
+T11_OUT=$(printf '%s' "$T11_INPUT" |
+    PATH="$BIN_DIR:$PATH" \
+        bash -c "PATH=\"$BIN_DIR:$PATH\"; export PATH; \
+        git() { bash \"$FAKE_GIT_T11\" \"\$@\"; }; export -f git; \
+        CODEGEN_DIR=\"$TMP_ROOT\" bash \"$HOOK\"" 2>/dev/null) || T11_EXIT=$?
+
+assert_eq "T11: exit 0 on orphaned branch attach" "0" "$T11_EXIT"
+assert_eq "T11: stdout is worktree_path on orphaned attach" "$T11_WT" "$T11_OUT"
+
+if [ -f "$ADD_ARGS_FILE" ]; then
+    T11_ADD_ARGS=$(cat "$ADD_ARGS_FILE")
+    # Must contain "worktree add"
+    if printf '%s' "$T11_ADD_ARGS" | grep -q "worktree add"; then
+        [ -n "${VERBOSE:-}" ] && printf 'PASS: T11: git worktree add called for orphaned branch\n'
+        pass=$((pass + 1))
+    else
+        printf 'FAIL: T11: git worktree add not called for orphaned branch\n'
+        fail=$((fail + 1))
+    fi
+    # Must NOT contain " -b "
+    case "$T11_ADD_ARGS" in
+    *" -b "*)
+        printf 'FAIL: T11: git worktree add used -b flag for orphaned branch (should not)\n'
+        fail=$((fail + 1))
+        ;;
+    *)
+        [ -n "${VERBOSE:-}" ] && printf 'PASS: T11: git worktree add did not use -b for orphaned branch\n'
+        pass=$((pass + 1))
+        ;;
+    esac
+else
+    printf 'FAIL: T11: git worktree add was not called for orphaned branch\n'
     fail=$((fail + 1))
 fi
 

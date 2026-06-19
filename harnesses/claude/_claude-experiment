@@ -3,12 +3,14 @@
 # Completes basenames (without .md) from $PWD/codegen/pitches/draft/
 
 _claude_experiment() {
+    local -a opts
+    opts=('--new:force a fresh worktree (tear down existing)')
     local draft_dir="$PWD/codegen/pitches/draft"
-    if [[ ! -d "$draft_dir" ]]; then
-        return 0
-    fi
     local -a pitches
-    pitches=("${draft_dir}"/*.md(N:t:r))
+    if [[ -d "$draft_dir" ]]; then
+        pitches=("${draft_dir}"/*.md(N:t:r))
+    fi
+    _describe 'option' opts
     if [[ ${#pitches[@]} -gt 0 ]]; then
         _describe 'draft pitch' pitches
     fi
