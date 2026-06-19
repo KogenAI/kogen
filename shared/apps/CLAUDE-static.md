@@ -47,6 +47,7 @@ Do NOT read PROJECT_CONTEXT.md, domain context files, or recipes — planner han
 - `vite.config.js` MUST set `build: { outDir: "public" }`. Run `mise exec -- npm install` after adding deps.
 - Commit subject MUST be ≤ 50 chars. Never prefix with scope tags — imperative mood, no trailing period.
 - **Gumroad buy buttons**: load `codegen/recipes/gumroad-buy-button.md` and render buy-button `href` as literal string `GUMROAD_PLACEHOLDER_URL`.
+- **Combobulate service recipes**: when a build request mentions a contact form, file upload, or paywall/subscription, grep `codegen/recipes-extra/INDEX.md` and apply the matching `combobulate-*` recipe — wire the feature to the hosted endpoint while rendering ORDINARY, UNBRANDED UI. Apply `combobulate-powered-by` ONLY on an explicit operator request; NEVER add combobulate branding by default.
 
 ## Session Logging
 

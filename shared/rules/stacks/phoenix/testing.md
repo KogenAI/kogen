@@ -24,6 +24,27 @@ When a function's default arg changes (e.g., `create_app/3 \\ "phoenix_with_db"`
 
 **Pattern**: After default-arg flip, re-run tests and verify every equality assertion on type-sensitive fns. Coverage may pass (both branches visited in unrelated tests), but the equality itself is vacuous.
 
+## Tautological Count Assertions
+
+Count assertions using derived values from the same source list are vacuous and pass regardless of the actual fn output. Example:
+
+```elixir
+# ❌ tautological: always true
+external_count = length(relpaths) - usage_count
+assert length(relpaths) == external_count + usage_count  # reduces to: x == (x - y) + y
+```
+
+**Fix**: Assert against a literal constant (a known fixed value, not a computed variable):
+
+```elixir
+# ✅ asserts spec
+assert external_count == 12  # the real @external_absolute_files count
+assert usage_count == 68
+```
+
+Detection: any count test where the assertion's RHS is algebraically equivalent to the LHS (e.g., sums/differences cancel). These tests pass before and after changes, hiding bugs. Always source the expected value from a constant or independent fn, not derived arithmetic on the same source list.
+
+
 ## TDD — Red-Green-Refactor
 
 1. RED: failing → confirm fails for right reason
@@ -128,6 +149,7 @@ New `test/support/*.ex` at 0% → `coveralls.json` `skip_files` or write tests. 
 - `File.cd!/2` + `async: true` → ParallelCompiler race. Fix: accept path args.
 - `@on_load` must return `:ok`. Wrap `:erlang.load_nif` in `case`.
 - `runtime.exs` overwrites `config/test.exs` mocks. Fix: `if config_env() != :test do … end`.
+- `System.put_env` / `Application.put_env` → process-global mutation. Fix: define env-mutating tests in an `async: false` sibling `defmodule` in the same `.exs` file, with `on_exit` restore. Primary module (with other tests) stays `async: true`. Isolation: sibling modules in one file each run serially without blocking each other's async-true peers.
 
 ## BDD — Cucumber
 
