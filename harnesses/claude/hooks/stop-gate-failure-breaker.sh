@@ -10,7 +10,7 @@
 # surface: user_global
 # signal: AGENT_TYPE
 # role: developer-*
-# harnesses: claude_code
+# harnesses: all
 # rationale: Blocks and forces planner escalation when the dev-gate has logged ≥3 FAILED verdicts in the session — turns the advisory "route to planner" suffix into an enforced circuit-breaker.
 # GENERATED FROM shared/enforcement/registry.yaml — DO NOT EDIT
 #

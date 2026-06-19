@@ -68,6 +68,7 @@ import { register as registerStepLogCompleteness } from "./hooks/step-log-comple
 import { register as registerStepLogMissingGuard } from "./hooks/step-log-missing-guard";
 import { register as registerStepLogSectionBeforeSpawn } from "./hooks/step-log-section-before-spawn";
 import { register as registerStopCycleGuard } from "./hooks/stop-cycle-guard";
+import { register as registerStopGateFailureBreaker } from "./hooks/stop-gate-failure-breaker";
 import { register as registerStopResume } from "./hooks/stop-resume";
 import { register as registerStopVerifyPlannerGate } from "./hooks/stop-verify-planner-gate";
 import { register as registerSubagentRetrospectiveGuard } from "./hooks/subagent-retrospective-guard";
@@ -130,6 +131,7 @@ export default function (pi: ExtensionAPI): void {
   registerStepLogMissingGuard(pi);
   registerStepLogSectionBeforeSpawn(pi);
   registerStopCycleGuard(pi);
+  registerStopGateFailureBreaker(pi);
   registerStopResume(pi);
   registerStopVerifyPlannerGate(pi);
   registerSubagentRetrospectiveGuard(pi);
