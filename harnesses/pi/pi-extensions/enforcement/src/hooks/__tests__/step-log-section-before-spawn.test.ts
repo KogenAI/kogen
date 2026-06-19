@@ -24,6 +24,9 @@ describe("step-log-section-before-spawn", () => {
       path.join(os.tmpdir(), "step-log-section-before-spawn-test-"),
     );
     fs.mkdirSync(path.join(tmpDir, "codegen", "logging"), { recursive: true });
+    delete process.env["CLAUDE_ROLE"];
+    delete process.env["PI_ROLE"];
+    delete process.env["CWD"];
   });
 
   afterEach(() => {
