@@ -30,6 +30,7 @@ Then targeted test file(s). Dead modules → Credo warnings → wire via `grep -
 - Type 2+ times in `@spec` → extract `@type` at module top
 - NEVER `any()` — research types in `deps/`
 - Return-type change or new branches → update `@spec`, run `mix dialyzer`
+- **Multi-clause default-arg compile error fix**: When a function needs default args across multiple clauses (e.g., pattern-matching on atom tags), use a SINGLE function head carrying the default plus bare delegating clauses. Example: `def parse_per_role(output, harness, opts \\ [])` head, followed by `def parse_per_role(_output, :pi, _opts), do: %{}` and `def parse_per_role(output, :claude, opts) do ... end`. Elixir requires the default `\\` on only the FIRST clause; placing it on multiple clauses is a compile error. The single-head + delegate form avoids it.
 
 ## Code Patterns
 
@@ -45,6 +46,7 @@ Then targeted test file(s). Dead modules → Credo warnings → wire via `grep -
 - Each `|>` own line, raw value start
 - NEVER single-fn pipelines: `v |> Fn()` ❌ → `Fn(v)` ✅
 - `case` over nested `if`. `with` for 3+ chained failable ops.
+- **`with [head | _] <- list` for graceful-fail patterns**: Use destructuring in `with` guards to handle both empty lists and non-binary values uniformly via a single `else _ -> %{}` clause. Example: `with [subagents_dir | _] <- locate_subagents_dir(...) do ... else _ -> %{} end` returns `%{}` whether the list is empty (no `[head | _]` match) or `locate_subagents_dir` returns a non-list (also no match). This is cleaner than separate guards and consolidates all failure paths.
 - Grep fn usage before modifying/removing. Removing features: remove ALL related code, imports, tests.
 - **Duplicate boolean logic → shared helper**: When two modules must use identical enable/disable logic (e.g., both static.ex and channel.ex check `enabled?`), extract to a shared `Utils` or named module helper — copy-paste logic in two files is a latent divergence bug. The shared computation becomes the single source of truth and prevents subtle inconsistencies when one caller later updates their copy.
 - **GenServer.call/3 timeout exit shape**: `GenServer.call/3` timeout exits as `{:timeout, {mod, fun, args}}`, never the bare atom `:timeout`. A `try/catch` arm like `catch :exit, :timeout` is always dead code. Use bare `case` on function return values or pattern-match on the full `{:timeout, ...}` tuple in exception handlers.

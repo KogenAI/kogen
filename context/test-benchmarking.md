@@ -34,10 +34,12 @@ PNG screenshot per static-stack and Phoenix test: `<BENCH_RUN_DIR>/runs/<harness
 **Per-test JSONL shape**: raw stream-json lines from codegen-build (claude line-1 = `system/init` with resolved model ID; pi envelope shape varies but final line always contains usage). Final synthetic record appended by harness:
 
 ```json
-{"type":"harness_summary","test_name":"...","exit_code":0,"assertion_passed":false,"parsed":{...}}
+{"type":"harness_summary","test_name":"...","exit_code":0,"assertion_passed":false,"parsed":{...},"per_role":{...}}
 ```
 
 `assertion_passed` is write-pending `false` at build time (written before ExUnit assertions run). After all assertions pass, `Fixtures.bench_assertions_passed!(stack, test_name)` flips it to `true` in-place by rewriting the last `harness_summary` line in the JSONL file. Tests that fail ExUnit assertions leave `assertion_passed: false` in the record.
+
+**`per_role` map values are always integers**: The `per_role` key in `harness_summary` contains per-subagent token attribution (e.g., `{"planner-phoenix": {input_tokens: 100, output_tokens: 50, ...}, "orchestrator": {...}}`). Map values are accumulated token sums with default 0 per field — never `:unknown` atoms. Unlike the top-level `parsed` map (which carries `:unknown` atoms for missing Pi metrics), per-role sums are always concrete integers because aggregation only runs for roles that produced ≥1 assistant turn. The empty map `%{}` is the sole graceful-failure sentinel (Pi harness, pre-change JSONL, missing session_id). No `:unknown`-atom serialization pass is needed — the per_role map is JSON-encodable as-is (string keys, integer values).
 
 **Modes tests bench records**: `run_mode_launcher/4` (4th `opts` arg, `test_name:` key; default `"<mode>_mode"`) now writes JSONL records under `runs/<harness>/modes/<test_name>.jsonl`. Records contain only a `harness_summary` line (no raw codegen stream-json prefix) with mostly `:unknown` parsed metrics — modes tests don't produce structured usage output. Finalize with `Fixtures.bench_assertions_passed!("modes", test_name)` after last assertion.
 

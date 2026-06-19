@@ -126,6 +126,13 @@ defmodule CodegenTestHarness.BenchMetrics do
       source: "LLM judge",
       aggregator: :sum,
       gap: "not measured — separate design"
+    },
+    %{
+      id: :cache_read_tokens_by_role,
+      unit: "count",
+      source: "UsageParser.parse_per_role/3 per-subagent transcript sums",
+      aggregator: :sum,
+      gap: "separate shape — %{role => %{...}}, not a flat scalar"
     }
   ]
 

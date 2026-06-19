@@ -68,10 +68,18 @@ defmodule CodegenTestHarness.BenchTest do
     end
 
     test "stub metrics have gap strings" do
-      for id <- [:judge_pass_rate, :lighthouse_score, :judge_coherence_score] do
+      for id <- [:judge_pass_rate, :lighthouse_score, :judge_coherence_score, :cache_read_tokens_by_role] do
         metric = BenchMetrics.metric_for(id)
         assert is_binary(metric.gap), "expected gap string for #{id}"
       end
+    end
+
+    test "cache_read_tokens_by_role is a gap stub not in measurable" do
+      metric = BenchMetrics.metric_for(:cache_read_tokens_by_role)
+      assert metric != nil
+      assert is_binary(metric.gap)
+      assert metric in BenchMetrics.gaps()
+      refute metric in BenchMetrics.measurable()
     end
 
     test "measurable metrics include all expected token fields" do
@@ -227,6 +235,187 @@ defmodule CodegenTestHarness.BenchTest do
       assert parsed.input_tokens == 50
       assert parsed.output_tokens == 5
       assert parsed.cost_usd == :unknown
+    end
+  end
+
+  # ── UsageParser — parse_per_role/3 ───────────────────────────────────────────
+
+  describe "UsageParser.parse_per_role/3" do
+    # Builds a tmp ~/.claude/projects-shaped fixture dir.
+    # Returns {projects_root, sid, subagents_dir}
+    defp build_per_role_fixture(base) do
+      sid = "test-session-#{:erlang.unique_integer([:positive])}"
+      proj = "proj-#{:erlang.unique_integer([:positive])}"
+      subagents_dir = Path.join([base, proj, sid, "subagents"])
+      File.mkdir_p!(subagents_dir)
+      {base, sid, subagents_dir, proj}
+    end
+
+    defp write_agent_jsonl(dir, name, meta_type, turns) do
+      jsonl_path = Path.join(dir, "#{name}.jsonl")
+      meta_path = Path.join(dir, "#{name}.meta.json")
+
+      lines =
+        Enum.map(turns, fn {input, output, cache_read, cache_creation} ->
+          Jason.encode!(%{
+            "type" => "assistant",
+            "message" => %{
+              "usage" => %{
+                "input_tokens" => input,
+                "output_tokens" => output,
+                "cache_read_input_tokens" => cache_read,
+                "cache_creation_input_tokens" => cache_creation
+              }
+            }
+          })
+        end)
+
+      File.write!(jsonl_path, Enum.join(lines, "\n") <> "\n")
+      if meta_type != nil, do: File.write!(meta_path, Jason.encode!(%{"agentType" => meta_type}))
+      jsonl_path
+    end
+
+    defp write_main_jsonl(base, proj, sid, turns) do
+      proj_dir = Path.join(base, proj)
+      File.mkdir_p!(proj_dir)
+      main_path = Path.join(proj_dir, "#{sid}.jsonl")
+
+      lines =
+        Enum.map(turns, fn {input, output, cache_read, cache_creation} ->
+          Jason.encode!(%{
+            "type" => "assistant",
+            "message" => %{
+              "usage" => %{
+                "input_tokens" => input,
+                "output_tokens" => output,
+                "cache_read_input_tokens" => cache_read,
+                "cache_creation_input_tokens" => cache_creation
+              }
+            }
+          })
+        end)
+
+      File.write!(main_path, Enum.join(lines, "\n") <> "\n")
+    end
+
+    defp stream_output_with_sid(sid) do
+      Jason.encode!(%{"type" => "system", "subtype" => "init", "session_id" => sid}) <> "\n"
+    end
+
+    test "Pi always returns empty map" do
+      assert UsageParser.parse_per_role("anything", :pi, []) == %{}
+    end
+
+    test "returns empty map when output has no session_id" do
+      tmp = Path.join(System.tmp_dir!(), "pr_test_#{:erlang.unique_integer([:positive])}")
+      File.mkdir_p!(tmp)
+      on_exit(fn -> File.rm_rf!(tmp) end)
+
+      output = ~s({"type":"result","subtype":"success"}\n)
+      assert UsageParser.parse_per_role(output, :claude, projects_root: tmp) == %{}
+    end
+
+    test "returns empty map when projects_root dir not found" do
+      sid = "test-sid-#{:erlang.unique_integer([:positive])}"
+      output = stream_output_with_sid(sid)
+      missing_root = Path.join(System.tmp_dir!(), "nonexistent_#{:erlang.unique_integer([:positive])}")
+
+      assert UsageParser.parse_per_role(output, :claude, projects_root: missing_root) == %{}
+    end
+
+    test "Claude happy path: returns per-role token sums with orchestrator bucket" do
+      tmp = Path.join(System.tmp_dir!(), "pr_test_#{:erlang.unique_integer([:positive])}")
+      File.mkdir_p!(tmp)
+      on_exit(fn -> File.rm_rf!(tmp) end)
+
+      {_base, sid, subagents_dir, proj} = build_per_role_fixture(tmp)
+
+      # planner: 2 turns
+      write_agent_jsonl(subagents_dir, "agent-1", "planner-phoenix", [
+        {100, 20, 500, 10},
+        {50, 10, 200, 5}
+      ])
+
+      # developer: 1 turn
+      write_agent_jsonl(subagents_dir, "agent-2", "developer-phoenix-backend", [
+        {200, 40, 1000, 20}
+      ])
+
+      # orchestrator main transcript: 1 turn
+      write_main_jsonl(tmp, proj, sid, [{80, 15, 300, 8}])
+
+      output = stream_output_with_sid(sid)
+      result = UsageParser.parse_per_role(output, :claude, projects_root: tmp)
+
+      assert Map.has_key?(result, "planner-phoenix")
+      assert Map.has_key?(result, "developer-phoenix-backend")
+      assert Map.has_key?(result, "orchestrator")
+
+      planner = result["planner-phoenix"]
+      assert planner.input_tokens == 150
+      assert planner.output_tokens == 30
+      assert planner.cache_read_tokens == 700
+      assert planner.cache_creation_tokens == 15
+
+      dev = result["developer-phoenix-backend"]
+      assert dev.input_tokens == 200
+      assert dev.output_tokens == 40
+      assert dev.cache_read_tokens == 1000
+      assert dev.cache_creation_tokens == 20
+
+      orch = result["orchestrator"]
+      assert orch.input_tokens == 80
+      assert orch.output_tokens == 15
+      assert orch.cache_read_tokens == 300
+      assert orch.cache_creation_tokens == 8
+    end
+
+    test "missing meta.json buckets under 'unattributed'" do
+      tmp = Path.join(System.tmp_dir!(), "pr_test_#{:erlang.unique_integer([:positive])}")
+      File.mkdir_p!(tmp)
+      on_exit(fn -> File.rm_rf!(tmp) end)
+
+      {_base, sid, subagents_dir, _proj} = build_per_role_fixture(tmp)
+
+      # no meta.json written (nil passed)
+      write_agent_jsonl(subagents_dir, "agent-3", nil, [{50, 10, 100, 5}])
+
+      output = stream_output_with_sid(sid)
+      result = UsageParser.parse_per_role(output, :claude, projects_root: tmp)
+
+      assert Map.has_key?(result, "unattributed")
+      assert result["unattributed"].cache_read_tokens == 100
+    end
+
+    test "reconciliation: per-role cache_read sum matches manual total" do
+      tmp = Path.join(System.tmp_dir!(), "pr_test_#{:erlang.unique_integer([:positive])}")
+      File.mkdir_p!(tmp)
+      on_exit(fn -> File.rm_rf!(tmp) end)
+
+      {_base, sid, subagents_dir, proj} = build_per_role_fixture(tmp)
+
+      write_agent_jsonl(subagents_dir, "agent-1", "planner-phoenix", [
+        {100, 20, 500, 10},
+        {50, 10, 200, 5}
+      ])
+
+      write_agent_jsonl(subagents_dir, "agent-2", "developer-phoenix-backend", [
+        {200, 40, 1000, 20}
+      ])
+
+      write_main_jsonl(tmp, proj, sid, [{80, 15, 300, 8}])
+
+      output = stream_output_with_sid(sid)
+      result = UsageParser.parse_per_role(output, :claude, projects_root: tmp)
+
+      total_cache_read =
+        result
+        |> Map.values()
+        |> Enum.map(& &1.cache_read_tokens)
+        |> Enum.sum()
+
+      # 500 + 200 (planner) + 1000 (developer) + 300 (orchestrator) = 2000
+      assert total_cache_read == 2000
     end
   end
 

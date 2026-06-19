@@ -18,6 +18,14 @@ defmodule CodegenTestHarness.UsageParser do
   or `total_cost_usd` fields.
 
   All missing fields return `:unknown`.
+
+  ## Per-role attribution (`parse_per_role/3`)
+
+  Claude only — reads per-subagent transcript files from
+  `~/.claude/projects/<proj>/<session_id>/subagents/agent-*.jsonl` and adds
+  the main transcript as an `"orchestrator"` bucket.
+
+  Pi returns `%{}` — Pi has no `~/.claude` subagent transcripts.
   """
 
   @type parsed :: %{
@@ -102,6 +110,44 @@ defmodule CodegenTestHarness.UsageParser do
     end
   end
 
+  @type per_role_usage :: %{
+          input_tokens: non_neg_integer(),
+          output_tokens: non_neg_integer(),
+          cache_read_tokens: non_neg_integer(),
+          cache_creation_tokens: non_neg_integer()
+        }
+
+  @doc """
+  Parses per-role token usage from Claude's per-subagent transcript files.
+
+  Returns `%{role => per_role_usage}` keyed by subagent `agentType` plus an
+  `"orchestrator"` bucket from the main transcript. Returns `%{}` on any
+  failure (no session_id, dir not found, Pi harness) — graceful, never raises.
+
+  `opts[:projects_root]` overrides the default `~/.claude/projects` base
+  (used for hermetic tests).
+
+  Pi returns `%{}` — Pi has no `~/.claude` subagent transcripts.
+  """
+  @spec parse_per_role(String.t(), :claude | :pi, keyword()) :: %{
+          optional(String.t()) => per_role_usage()
+        }
+  def parse_per_role(output, harness, opts \\ [])
+  def parse_per_role(_output, :pi, _opts), do: %{}
+
+  def parse_per_role(output, :claude, opts) do
+    projects_root = Keyword.get(opts, :projects_root, Path.expand("~/.claude/projects"))
+
+    with sid when is_binary(sid) <- extract_session_id(output),
+         [subagents_dir | _] <- locate_subagents_dir(projects_root, sid) do
+      subagents_dir
+      |> per_role_from_subagents()
+      |> Map.merge(orchestrator_bucket(projects_root, sid))
+    else
+      _ -> %{}
+    end
+  end
+
   # ── Shared helpers ─────────────────────────────────────────────────────────
 
   defp decode_lines(raw_stdout) do
@@ -114,6 +160,107 @@ defmodule CodegenTestHarness.UsageParser do
       end
     end)
     |> Enum.reject(&is_nil/1)
+  end
+
+  # ── Per-role helpers ───────────────────────────────────────────────────────
+
+  defp extract_session_id(output) do
+    output
+    |> decode_lines()
+    |> Enum.find_value(fn
+      %{"session_id" => sid} when is_binary(sid) -> sid
+      _ -> nil
+    end)
+  end
+
+  defp locate_subagents_dir(projects_root, sid) do
+    Path.wildcard(Path.join([projects_root, "*", sid, "subagents"]))
+    |> Enum.filter(&File.dir?/1)
+  end
+
+  defp per_role_from_subagents(subagents_dir) do
+    subagents_dir
+    |> Path.join("agent-*.jsonl")
+    |> Path.wildcard()
+    |> Enum.reduce(%{}, fn jsonl_path, acc ->
+      role = role_for_agent_file(jsonl_path)
+      usage = sum_assistant_usage(File.read(jsonl_path))
+      Map.update(acc, role, usage, &merge_usage(&1, usage))
+    end)
+  end
+
+  defp orchestrator_bucket(projects_root, sid) do
+    case Path.wildcard(Path.join([projects_root, "*", "#{sid}.jsonl"])) do
+      [main | _] -> %{"orchestrator" => sum_assistant_usage(File.read(main))}
+      [] -> %{}
+    end
+  end
+
+  defp role_for_agent_file(jsonl_path) do
+    meta_path = String.replace_suffix(jsonl_path, ".jsonl", ".meta.json")
+
+    with {:ok, content} <- File.read(meta_path),
+         {:ok, %{"agentType" => type}} when is_binary(type) <- Jason.decode(content) do
+      type
+    else
+      _ -> "unattributed"
+    end
+  end
+
+  defp sum_assistant_usage({:error, _}), do: zero_usage()
+
+  defp sum_assistant_usage({:ok, content}) do
+    content
+    |> String.split("\n", trim: true)
+    |> Enum.map(fn line ->
+      case Jason.decode(line) do
+        {:ok, map} -> map
+        _ -> nil
+      end
+    end)
+    |> Enum.reject(&is_nil/1)
+    |> Enum.filter(fn
+      %{"type" => "assistant"} -> true
+      _ -> false
+    end)
+    |> Enum.reduce(zero_usage(), fn turn, acc ->
+      usage = get_in(turn, ["message", "usage"]) || %{}
+
+      turn_usage = %{
+        input_tokens: int_usage(usage, "input_tokens"),
+        output_tokens: int_usage(usage, "output_tokens"),
+        cache_read_tokens: int_usage(usage, "cache_read_input_tokens"),
+        cache_creation_tokens: int_usage(usage, "cache_creation_input_tokens")
+      }
+
+      merge_usage(acc, turn_usage)
+    end)
+  end
+
+  defp zero_usage do
+    %{
+      input_tokens: 0,
+      output_tokens: 0,
+      cache_read_tokens: 0,
+      cache_creation_tokens: 0
+    }
+  end
+
+  defp int_usage(map, key) do
+    case Map.get(map, key) do
+      v when is_integer(v) -> v
+      v when is_float(v) -> round(v)
+      _ -> 0
+    end
+  end
+
+  defp merge_usage(a, b) do
+    %{
+      input_tokens: a.input_tokens + b.input_tokens,
+      output_tokens: a.output_tokens + b.output_tokens,
+      cache_read_tokens: a.cache_read_tokens + b.cache_read_tokens,
+      cache_creation_tokens: a.cache_creation_tokens + b.cache_creation_tokens
+    }
   end
 
   # ── Claude helpers ─────────────────────────────────────────────────────────

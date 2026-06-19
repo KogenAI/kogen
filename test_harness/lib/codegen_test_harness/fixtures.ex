@@ -698,6 +698,8 @@ defmodule CodegenTestHarness.Fixtures do
         |> UsageParser.parse(harness_atom)
         |> Map.put(:build_duration_ms, build_duration_ms)
 
+      per_role = UsageParser.parse_per_role(output, harness_atom)
+
       jsonl_dir = Path.join([bench_run_dir, "runs", harness_val, stack])
       File.mkdir_p!(jsonl_dir)
       jsonl_path = bench_jsonl_path(bench_run_dir, harness_val, stack, test_name)
@@ -724,7 +726,8 @@ defmodule CodegenTestHarness.Fixtures do
         "test_name" => test_name,
         "exit_code" => exit_code,
         "assertion_passed" => false,
-        "parsed" => parsed_serializable
+        "parsed" => parsed_serializable,
+        "per_role" => per_role
       }
 
       summary_line = Jason.encode!(summary)

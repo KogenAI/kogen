@@ -172,6 +172,7 @@ function collectRecords() {
             exitCode: summaryLine.exit_code ?? -1,
             pass: summaryLine.assertion_passed === true,
             parsed: summaryLine.parsed || {},
+            perRole: summaryLine.per_role || {},
           });
         } else {
           records.push({
@@ -181,6 +182,7 @@ function collectRecords() {
             exitCode: -1,
             pass: false,
             parsed: {},
+            perRole: {},
           });
         }
       }
@@ -311,6 +313,42 @@ function renderTokensTable(records) {
     "",
     "| Harness | Input | Output |",
     "| --- | --- | --- |",
+    ...rows,
+  ].join("\n");
+}
+
+function renderTokensByRole(records) {
+  // Aggregate per-role token sums across all records
+  const byRole = {};
+  for (const r of records) {
+    for (const [role, usage] of Object.entries(r.perRole || {})) {
+      if (!byRole[role]) {
+        byRole[role] = { cacheRead: 0, input: 0, output: 0 };
+      }
+      const cacheRead = num(usage.cache_read_tokens);
+      const input = num(usage.input_tokens);
+      const output = num(usage.output_tokens);
+      if (cacheRead !== null) byRole[role].cacheRead += cacheRead;
+      if (input !== null) byRole[role].input += input;
+      if (output !== null) byRole[role].output += output;
+    }
+  }
+
+  const roles = Object.keys(byRole).sort();
+
+  const rows =
+    roles.length === 0
+      ? ["| — (no per-role data; Pi or pre-change run) | — | — | — |"]
+      : roles.map((role) => {
+          const { cacheRead, input, output } = byRole[role];
+          return `| ${role} | ${fmtInt(cacheRead)} | ${fmtInt(input)} | ${fmtInt(output)} |`;
+        });
+
+  return [
+    "## Tokens by Role",
+    "",
+    "| Role | Cache Read | Input | Output |",
+    "| --- | --- | --- | --- |",
     ...rows,
   ].join("\n");
 }
@@ -598,6 +636,8 @@ if (records.length === 0) {
     renderCostTable(records),
     "",
     renderTokensTable(records),
+    "",
+    renderTokensByRole(records),
     "",
     renderDurationTurns(records),
     "",
