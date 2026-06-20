@@ -13,10 +13,15 @@
 # rationale: developer-* SubagentStop spin circuit-breaker; no Pi equivalent (Pi Stop-control is observe-only, cannot block) — NOT-YET-PORTED.
 # GENERATED FROM shared/enforcement/registry.yaml — DO NOT EDIT
 #
-# Spin definition: ≥3 consecutive same-role developer Agent spawns in the
-# transcript since the last non-developer Agent call (reviewer/curator/committer
-# /planner resets the run). Consecutive = same AGENT_TYPE with no intervening
-# non-developer Agent call.
+# Spin definition: trips when EITHER of these conditions is met:
+#   1. ≥3 consecutive same-role developer Agent spawns in the transcript since
+#      the last non-developer Agent call (reviewer/curator/committer/planner
+#      resets the run). Consecutive = same AGENT_TYPE with no intervening
+#      non-developer Agent call.
+#   2. ≥3 total same-role developer Agent spawns across the entire current-step
+#      transcript (committer/reviewer interleaving does NOT reset this counter).
+#      Catches loops where committer/reviewer failures cause repeated dev spawns
+#      that never make forward progress.
 #
 # Cap: after 2 blocks the counter file is cleared to prevent wedging a
 # genuinely stuck session. Mirrors the cap=2 pattern in stop-cycle-guard.sh.
@@ -78,15 +83,17 @@ if [ -z "${TRANSCRIPT_PATH:-}" ] || [ ! -r "$TRANSCRIPT_PATH" ]; then
     exit 0
 fi
 
-# Count consecutive same-developer-role Agent spawns from transcript.
-# Strategy: extract subagent_type from all Agent tool_use entries in order,
-# then count the trailing run of the current AGENT_TYPE using awk.
-consecutive_count=$(jq -r '
+# Count consecutive and total same-developer-role Agent spawns from transcript.
+# Strategy: extract subagent_type from all Agent tool_use entries once into a
+# variable, then derive both counts with separate awk passes.
+roles=$(jq -r '
     select(.message.content)
     | (.message.content[]?
         | select(.type == "tool_use" and .name == "Agent")
         | .input.subagent_type)
-' "$TRANSCRIPT_PATH" 2>/dev/null | awk -v role="$AGENT_TYPE" '
+' "$TRANSCRIPT_PATH" 2>/dev/null)
+
+consecutive_count=$(printf '%s\n' "$roles" | awk -v role="$AGENT_TYPE" '
 BEGIN { run = 0 }
 {
     if ($0 == role) {
@@ -98,23 +105,36 @@ BEGIN { run = 0 }
 END { print run }
 ')
 
-# Sanitise — must be a non-negative integer.
+total_count=$(printf '%s\n' "$roles" | awk -v role="$AGENT_TYPE" '
+BEGIN { c = 0 }
+{ if ($0 == role) c++ }
+END { print c }
+')
+
+# Sanitise — must be non-negative integers.
 case "$consecutive_count" in
 '' | *[!0-9]*) consecutive_count=0 ;;
 esac
+case "$total_count" in
+'' | *[!0-9]*) total_count=0 ;;
+esac
 
-debug_log stop-spin-guard "consecutive_count=$consecutive_count agent=$AGENT_TYPE"
+debug_log stop-spin-guard "consecutive_count=$consecutive_count total_count=$total_count agent=$AGENT_TYPE"
 
-if [ "$consecutive_count" -lt 3 ]; then
-    debug_log stop-spin-guard "allow: consecutive_count=$consecutive_count < 3"
+if [ "$consecutive_count" -lt 3 ] && [ "$total_count" -lt 3 ]; then
+    debug_log stop-spin-guard "allow: consecutive_count=$consecutive_count total_count=$total_count < 3"
     exit 0
 fi
 
-# Consecutive same-developer spin detected — BLOCK and increment block counter.
+# Spin detected — BLOCK and increment block counter.
 block_count=$((block_count + 1))
 printf '%s\n%s' "${step_log:-}" "$block_count" >"$block_counter_file"
 
-debug_log stop-spin-guard "BLOCK: consecutive_count=$consecutive_count block_count=$block_count agent=$AGENT_TYPE"
+debug_log stop-spin-guard "BLOCK: consecutive_count=$consecutive_count total_count=$total_count block_count=$block_count agent=$AGENT_TYPE"
 
-block "Spin detected: $AGENT_TYPE has been spawned $consecutive_count consecutive times without a reviewer/curator/committer interleaved. This is a stuck-loop — do NOT spawn the same developer again. Escalate to planner-phoenix immediately: run \`claude --agent planner-phoenix --print --output-format text \"STUCK-ESCALATION: <problem> + <what was tried> + <current failure>. One recommendation.\"\` and apply the planner's recommendation before re-spawning the developer. (spin-guard block ${block_count}/2)"
+if [ "$consecutive_count" -ge 3 ]; then
+    block "Spin detected: $AGENT_TYPE has been spawned $consecutive_count consecutive times without a reviewer/curator/committer interleaved. This is a stuck-loop — do NOT spawn the same developer again. Escalate to planner-phoenix immediately: run \`claude --agent planner-phoenix --print --output-format text \"STUCK-ESCALATION: <problem> + <what was tried> + <current failure>. One recommendation.\"\` and apply the planner's recommendation before re-spawning the developer. (spin-guard block ${block_count}/2)"
+else
+    block "Spin detected: $AGENT_TYPE has been spawned $total_count total times in this step (with committer/reviewer interleaved) — no forward progress. This is a stuck-loop — do NOT spawn the same developer again. Escalate to planner-phoenix immediately: run \`claude --agent planner-phoenix --print --output-format text \"STUCK-ESCALATION: <problem> + <what was tried> + <current failure>. One recommendation.\"\` and apply the planner's recommendation before re-spawning the developer. (spin-guard block ${block_count}/2)"
+fi
 exit 0
