@@ -146,4 +146,172 @@ describe("clean-tree-before-ship", { concurrency: 1 }, () => {
       fs.rmSync(tmpDir, { recursive: true, force: true });
     }
   });
+
+  // Case 7: read-only co-mention (ls both paths) on dirty tree → pass-through
+  it("passes through for ls co-mention of both paths on dirty tree", async () => {
+    const tmpDir = fs.mkdtempSync(
+      path.join(os.tmpdir(), "clean-tree-ship-ls-dirty-"),
+    );
+    const originalCwd = process.cwd();
+    try {
+      execSync("git init -q", { cwd: tmpDir });
+      execSync("git config user.email t@t", { cwd: tmpDir });
+      execSync("git config user.name t", { cwd: tmpDir });
+      execSync("git checkout -q -b main", { cwd: tmpDir });
+      fs.writeFileSync(path.join(tmpDir, "README"), "init");
+      execSync("git add README", { cwd: tmpDir });
+      execSync("git commit -qm init", { cwd: tmpDir });
+      fs.writeFileSync(path.join(tmpDir, "dirty.txt"), "dirty\n");
+
+      process.chdir(tmpDir);
+
+      const result = await runHook(
+        "ls codegen/pitches/ready/ codegen/pitches/shipped/",
+      );
+      const asObj = result as { block?: boolean } | null;
+      assert.ok(
+        asObj == null || asObj.block !== true,
+        `expected pass-through for ls but got: ${JSON.stringify(result)}`,
+      );
+    } finally {
+      process.chdir(originalCwd);
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    }
+  });
+
+  // Case 8: grep co-mention on dirty tree → pass-through
+  it("passes through for grep co-mention of both paths on dirty tree", async () => {
+    const tmpDir = fs.mkdtempSync(
+      path.join(os.tmpdir(), "clean-tree-ship-grep-dirty-"),
+    );
+    const originalCwd = process.cwd();
+    try {
+      execSync("git init -q", { cwd: tmpDir });
+      execSync("git config user.email t@t", { cwd: tmpDir });
+      execSync("git config user.name t", { cwd: tmpDir });
+      execSync("git checkout -q -b main", { cwd: tmpDir });
+      fs.writeFileSync(path.join(tmpDir, "README"), "init");
+      execSync("git add README", { cwd: tmpDir });
+      execSync("git commit -qm init", { cwd: tmpDir });
+      fs.writeFileSync(path.join(tmpDir, "dirty.txt"), "dirty\n");
+
+      process.chdir(tmpDir);
+
+      const result = await runHook(
+        "grep -r foo codegen/pitches/ready/ codegen/pitches/shipped/",
+      );
+      const asObj = result as { block?: boolean } | null;
+      assert.ok(
+        asObj == null || asObj.block !== true,
+        `expected pass-through for grep but got: ${JSON.stringify(result)}`,
+      );
+    } finally {
+      process.chdir(originalCwd);
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    }
+  });
+
+  // Case 9: git mv ship-mv on dirty tree → block
+  it("blocks git mv ship-mv on dirty tree", async () => {
+    const tmpDir = fs.mkdtempSync(
+      path.join(os.tmpdir(), "clean-tree-ship-gitmv-dirty-"),
+    );
+    const originalCwd = process.cwd();
+    try {
+      execSync("git init -q", { cwd: tmpDir });
+      execSync("git config user.email t@t", { cwd: tmpDir });
+      execSync("git config user.name t", { cwd: tmpDir });
+      execSync("git checkout -q -b main", { cwd: tmpDir });
+      fs.writeFileSync(path.join(tmpDir, "README"), "init");
+      execSync("git add README", { cwd: tmpDir });
+      execSync("git commit -qm init", { cwd: tmpDir });
+      fs.writeFileSync(path.join(tmpDir, "dirty.txt"), "dirty\n");
+
+      process.chdir(tmpDir);
+
+      const result = await runHook(
+        "git mv codegen/pitches/ready/slug.md codegen/pitches/shipped/slug.md",
+      );
+      const asObj = result as { block?: boolean; reason?: string } | null;
+      assert.ok(
+        asObj != null && asObj.block === true,
+        `expected block for git mv but got: ${JSON.stringify(result)}`,
+      );
+      assert.ok(
+        asObj.reason?.includes("working tree not clean"),
+        `expected "working tree not clean" in reason but got: ${asObj.reason}`,
+      );
+    } finally {
+      process.chdir(originalCwd);
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    }
+  });
+
+  // Case 10: chained mv on dirty tree → block
+  it("blocks chained mv ship-mv on dirty tree", async () => {
+    const tmpDir = fs.mkdtempSync(
+      path.join(os.tmpdir(), "clean-tree-ship-chain-dirty-"),
+    );
+    const originalCwd = process.cwd();
+    try {
+      execSync("git init -q", { cwd: tmpDir });
+      execSync("git config user.email t@t", { cwd: tmpDir });
+      execSync("git config user.name t", { cwd: tmpDir });
+      execSync("git checkout -q -b main", { cwd: tmpDir });
+      fs.writeFileSync(path.join(tmpDir, "README"), "init");
+      execSync("git add README", { cwd: tmpDir });
+      execSync("git commit -qm init", { cwd: tmpDir });
+      fs.writeFileSync(path.join(tmpDir, "dirty.txt"), "dirty\n");
+
+      process.chdir(tmpDir);
+
+      const result = await runHook(
+        "mv codegen/pitches/ready/slug.md codegen/pitches/shipped/slug.md && date",
+      );
+      const asObj = result as { block?: boolean; reason?: string } | null;
+      assert.ok(
+        asObj != null && asObj.block === true,
+        `expected block for chained mv but got: ${JSON.stringify(result)}`,
+      );
+      assert.ok(
+        asObj.reason?.includes("working tree not clean"),
+        `expected "working tree not clean" in reason but got: ${asObj.reason}`,
+      );
+    } finally {
+      process.chdir(originalCwd);
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    }
+  });
+
+  // Case 11: echo with both paths on dirty tree → pass-through
+  it("passes through for echo word co-mention of both paths on dirty tree", async () => {
+    const tmpDir = fs.mkdtempSync(
+      path.join(os.tmpdir(), "clean-tree-ship-echo-dirty-"),
+    );
+    const originalCwd = process.cwd();
+    try {
+      execSync("git init -q", { cwd: tmpDir });
+      execSync("git config user.email t@t", { cwd: tmpDir });
+      execSync("git config user.name t", { cwd: tmpDir });
+      execSync("git checkout -q -b main", { cwd: tmpDir });
+      fs.writeFileSync(path.join(tmpDir, "README"), "init");
+      execSync("git add README", { cwd: tmpDir });
+      execSync("git commit -qm init", { cwd: tmpDir });
+      fs.writeFileSync(path.join(tmpDir, "dirty.txt"), "dirty\n");
+
+      process.chdir(tmpDir);
+
+      const result = await runHook(
+        "echo remove codegen/pitches/ready/x.md codegen/pitches/shipped/y.md",
+      );
+      const asObj = result as { block?: boolean } | null;
+      assert.ok(
+        asObj == null || asObj.block !== true,
+        `expected pass-through for echo but got: ${JSON.stringify(result)}`,
+      );
+    } finally {
+      process.chdir(originalCwd);
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    }
+  });
 });

@@ -28,6 +28,11 @@ export function register(pi: ExtensionAPI): void {
     if (!command.includes("codegen/pitches/ready/")) return;
     if (!command.includes("codegen/pitches/shipped/")) return;
 
+    // Gate only an actual move verb (mv / git mv) — not mere co-mention of both
+    // pitch paths. Anchor mv at start-of-string or after a command separator.
+    const MOVE_VERB = /(^|[;&|(\s])\s*(git\s+)?mv\s/;
+    if (!MOVE_VERB.test(command)) return;
+
     debugLog("clean-tree-before-ship", "ship mv detected");
 
     // Fail-open: not a git repo / git unavailable.

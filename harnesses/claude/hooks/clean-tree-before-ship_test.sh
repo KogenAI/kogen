@@ -115,5 +115,42 @@ out=$(make_input "mv codegen/pitches/shipped/a.md codegen/pitches/shipped/b.md" 
 assert_not_contains "shipped-only mv (no ready/) → ALLOW" '"permissionDecision"' "$out"
 rm -rf "$T8"
 
+# ── Test 9: read-only co-mention (ls both dirs) on DIRTY tree → ALLOW ────────
+T9=$(make_project)
+echo "stray" >"$T9/stray.txt"
+out=$(make_input "ls codegen/pitches/ready/ codegen/pitches/shipped/" "$T9" | bash "$HOOK" 2>/dev/null || true)
+assert_not_contains "readonly ls co-mention dirty → ALLOW" '"permissionDecision"' "$out"
+rm -rf "$T9"
+
+# ── Test 10: grep co-mention on DIRTY tree → ALLOW ───────────────────────────
+T10=$(make_project)
+echo "stray" >"$T10/stray.txt"
+out=$(make_input "grep -r foo codegen/pitches/ready/ codegen/pitches/shipped/" "$T10" | bash "$HOOK" 2>/dev/null || true)
+assert_not_contains "grep co-mention dirty → ALLOW" '"permissionDecision"' "$out"
+rm -rf "$T10"
+
+# ── Test 11: git mv ship-mv on DIRTY tree → BLOCK ────────────────────────────
+T11=$(make_project)
+echo "stray" >"$T11/stray.txt"
+out=$(make_input "git mv codegen/pitches/ready/slug.md codegen/pitches/shipped/slug.md" "$T11" | bash "$HOOK" 2>/dev/null || true)
+assert_contains "git mv ship dirty → BLOCK" '"permissionDecision"' "$out"
+assert_contains "git mv ship dirty block reason" 'working tree not clean' "$out"
+rm -rf "$T11"
+
+# ── Test 12: chained mv on DIRTY tree → BLOCK ────────────────────────────────
+T12=$(make_project)
+echo "stray" >"$T12/stray.txt"
+out=$(make_input "mv codegen/pitches/ready/slug.md codegen/pitches/shipped/slug.md && date" "$T12" | bash "$HOOK" 2>/dev/null || true)
+assert_contains "chained mv dirty → BLOCK" '"permissionDecision"' "$out"
+assert_contains "chained mv dirty block reason" 'working tree not clean' "$out"
+rm -rf "$T12"
+
+# ── Test 13: echo with both paths on DIRTY tree → ALLOW ──────────────────────
+T13=$(make_project)
+echo "stray" >"$T13/stray.txt"
+out=$(make_input "echo remove codegen/pitches/ready/x.md codegen/pitches/shipped/y.md" "$T13" | bash "$HOOK" 2>/dev/null || true)
+assert_not_contains "echo word co-mention dirty → ALLOW" '"permissionDecision"' "$out"
+rm -rf "$T13"
+
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

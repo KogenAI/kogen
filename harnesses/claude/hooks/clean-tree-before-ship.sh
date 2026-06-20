@@ -40,6 +40,14 @@ if ! printf '%s' "$COMMAND" | grep -qF 'codegen/pitches/shipped/'; then
     exit 0
 fi
 
+# Gate only an actual move verb (mv / git mv) — not mere co-mention of both
+# pitch paths. Anchor mv at start-of-string or after a command separator
+# (; && || | ( whitespace) so it is a command token, not a word substring.
+# Absent -> allow (read-only / non-ship command).
+if ! printf '%s' "$COMMAND" | grep -qE '(^|[;&|(]|[[:space:]])[[:space:]]*(git[[:space:]]+)?mv[[:space:]]'; then
+    exit 0
+fi
+
 project_dir="${CWD:-$PWD}"
 
 # Fail-open: not a git repo / git unavailable.
