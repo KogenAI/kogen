@@ -597,5 +597,36 @@ assert_not_contains "witness unparseable: no Witness prefix" "Witness:" "$outu"
 assert_contains "witness unparseable: tail still present" "Tail:" "$outu"
 rm -rf "$TU"
 
+# ── Test 21: default render-check branch with spaced CODEGEN_DIR ─────────────
+# Exercises the array-literal fix: if CODEGEN_DIR contains a space, the old
+# read -ra approach would split the path, causing MODULE_NOT_FOUND. With the
+# fix, render_check_cmd_arr=("node" "...") is always safe.
+T21_BASE=$(mktemp -d)
+T21_CODEGEN="$T21_BASE/codegen dir with spaces"
+mkdir -p "$T21_CODEGEN/harnesses/claude/hooks/lib"
+cat >"$T21_CODEGEN/harnesses/claude/hooks/lib/render-check.js" <<'JS'
+process.stdout.write('RENDER_VERDICT=PASS\n');
+JS
+cat >"$T21_CODEGEN/harnesses/claude/hooks/lib/wiring-check.js" <<'JS'
+process.stdout.write('WIRING_VERDICT=PASS\n');
+JS
+T21=$(make_project)
+LOG21="$T21/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_step1.md"
+cat >"$LOG21" <<'MD'
+# Step
+
+## Plan
+
+**Gate**: `true`
+MD
+make_transcript "$T21/transcript.jsonl" "$LOG21"
+out21=$(printf '%s' "$(input_for "$T21" developer-phoenix-backend false sess1 "$T21/transcript.jsonl")" |
+    env -u RENDER_CHECK_CMD -u WIRING_CHECK_CMD CODEGEN_DIR="$T21_CODEGEN" bash "$HOOK" 2>/dev/null || true)
+# No RENDER_CHECK_CMD/WIRING_CHECK_CMD set — exercises the default array-literal branch.
+# Expect: no block, ALL CLEAR in log.
+assert_not_contains "default render-check spaced CODEGEN_DIR: no block" '"decision": "block"' "$out21"
+assert_file_contains "default render-check spaced CODEGEN_DIR: ALL CLEAR in log" "ALL CLEAR" "$LOG21"
+rm -rf "$T21_BASE" "$T21"
+
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

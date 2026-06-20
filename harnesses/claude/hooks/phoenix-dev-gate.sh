@@ -154,7 +154,7 @@ run_phoenix_render_check() {
     local _render_check_default=0
     if [ -z "${RENDER_CHECK_CMD+x}" ]; then
         _render_check_default=1
-        read -ra render_check_cmd_arr <<<"node \"${CODEGEN_DIR:-}/harnesses/claude/hooks/lib/render-check.js\""
+        render_check_cmd_arr=("node" "${CODEGEN_DIR:-}/harnesses/claude/hooks/lib/render-check.js")
     else
         read -ra render_check_cmd_arr <<<"${RENDER_CHECK_CMD}"
     fi
@@ -195,7 +195,7 @@ run_phoenix_wiring_check() {
     local _wiring_check_default=0
     if [ -z "${WIRING_CHECK_CMD+x}" ]; then
         _wiring_check_default=1
-        read -ra wiring_check_cmd_arr <<<"node \"${CODEGEN_DIR:-}/harnesses/claude/hooks/lib/wiring-check.js\""
+        wiring_check_cmd_arr=("node" "${CODEGEN_DIR:-}/harnesses/claude/hooks/lib/wiring-check.js")
     else
         read -ra wiring_check_cmd_arr <<<"${WIRING_CHECK_CMD}"
     fi

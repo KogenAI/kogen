@@ -442,5 +442,48 @@ else
 fi
 rm -rf "$T20"
 
+# ── Test 21: default render-check branch with spaced CODEGEN_DIR ─────────────
+# Exercises the array-literal fix: if CODEGEN_DIR contains a space, the old
+# read -ra approach would split the path into two tokens, breaking node invocation.
+# With the fix, render_check_cmd_arr=("node" "...") is always safe.
+T21_BASE=$(mktemp -d)
+T21_CODEGEN="$T21_BASE/codegen dir with spaces"
+mkdir -p "$T21_CODEGEN/harnesses/claude/hooks/lib"
+# Plant a minimal render-check.js stub that emits RENDER_VERDICT=PASS
+cat >"$T21_CODEGEN/harnesses/claude/hooks/lib/render-check.js" <<'JS'
+process.stdout.write('RENDER_VERDICT=PASS\n');
+JS
+T21=$(make_tmp_site)
+mkdir -p "$T21/public" "$T21/codegen/logging"
+touch "$T21/public/app.css"
+printf '<html><head><link rel="stylesheet" href="app.css"></head><body><p>hi</p></body></html>\n' \
+    >"$T21/public/index.html"
+LOG21="$T21/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_session.md"
+cat >"$LOG21" <<'MD'
+# Session Log
+
+## Delegation Timeline
+
+| Time | Agent | Task | Result |
+| ---- | ----- | ---- | ------ |
+MD
+make_transcript "$T21/transcript.jsonl" "$LOG21"
+out21=$(printf '%s' "$(input_for "$T21" developer-static false "$T21/transcript.jsonl")" |
+    env -u RENDER_CHECK_CMD CODEGEN_DIR="$T21_CODEGEN" bash "$HOOK" 2>/dev/null || true)
+# No RENDER_CHECK_CMD set (explicitly unset to isolate from env leakage) —
+# exercises the default branch with spaced CODEGEN_DIR.
+# Expect: no block, log does NOT contain the no-verdict error message.
+outcome21="allow"
+printf '%s' "$out21" | grep -q '"decision"[[:space:]]*:[[:space:]]*"block"' && outcome21="block"
+if [ "$outcome21" = "allow" ] && ! grep -q 'render-check did not emit verdict' "$LOG21" 2>/dev/null; then
+    [ -n "${VERBOSE:-}" ] && printf 'PASS: %s\n' "default render-check with spaced CODEGEN_DIR allows"
+    pass=$((pass + 1))
+else
+    printf 'FAIL: default render-check with spaced CODEGEN_DIR — expected allow, got %s\n  stdout: %s\n  log: %s\n' \
+        "$outcome21" "$out21" "$(cat "$LOG21" 2>/dev/null || echo '(no log)')"
+    fail=$((fail + 1))
+fi
+rm -rf "$T21_BASE" "$T21"
+
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

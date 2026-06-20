@@ -202,7 +202,11 @@ render_summary="render: skipped (no output dir)"
 run_render_check() {
     local out_dir="$1"
     local -a render_check_cmd_arr
-    read -ra render_check_cmd_arr <<<"${RENDER_CHECK_CMD:-node \"${CODEGEN_DIR:-}/harnesses/claude/hooks/lib/render-check.js\"}"
+    if [ -z "${RENDER_CHECK_CMD+x}" ]; then
+        render_check_cmd_arr=("node" "${CODEGEN_DIR:-}/harnesses/claude/hooks/lib/render-check.js")
+    else
+        read -ra render_check_cmd_arr <<<"${RENDER_CHECK_CMD}"
+    fi
     local raw
     raw=$("${render_check_cmd_arr[@]}" --mode static --timeout 30000 "$out_dir" 2>/dev/null || true)
     render_verdict=$(printf '%s' "$raw" | grep '^RENDER_VERDICT=' | head -n 1 | cut -d= -f2-)
