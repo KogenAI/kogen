@@ -31,6 +31,7 @@ Codegen-infra pitfalls and bash gotchas — split from `context/development.md` 
 - **Example blocks in references carry routing targets** — when bulk-repathing, check inline examples too; all old paths must be repathed or inside warnings.
 - **Phoenix-colocated esbuild** — `phoenix-colocated` import requires `mix compile` first; include `"compile"` in `assets.build`/`assets.deploy` aliases.
 - **`CODEGEN_DIR` must be absolute** — relative paths break symlink resolution in launchers
+- **Bash fallback chains and set-but-empty variables** — `${CWD:-$PWD}` skips intermediate fallbacks when `CWD` is set to empty string (`""`). In hooks writing cycle-state or other artifacts, always use the full three-level chain: `${CWD:-${CLAUDE_PROJECT_DIR:-$PWD}}`. Test JSON with `"cwd":""` (empty string, not absent) provides isolation; the full chain is required to respect it.
 - **Session log filename format must include `_HHMMSS`** — non-canonical forms (e.g., `YYYYMMDD-slug.md`) are blocked by reviewer-guard and dev-gate hooks at Edit time
 - **Transcript lag** — on-disk JSONL may lag stream; `session_log_from_transcript()` implements fallback (see `context/hook-authoring-patterns.md`).
 - **Makefile recipes run under `/bin/sh`, not bash** — process substitution fails. Use pipeline patterns instead of bash-specific syntax.

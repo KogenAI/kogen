@@ -123,7 +123,7 @@ debug_log subagent-retrospective-guard "PASS: retrospective block present and no
 # Stamp REVIEWED only for reviewer roles (not developer/planner which also fire this hook).
 case "$AGENT_TYPE" in
 reviewer-phoenix | reviewer-static)
-    write_cycle_state "REVIEWED" "${log_file:-}" "${SESSION_ID:-unknown}" "" "${CWD:-$PWD}"
+    write_cycle_state "REVIEWED" "${log_file:-}" "${SESSION_ID:-unknown}" "" "${CWD:-${CLAUDE_PROJECT_DIR:-$PWD}}"
     debug_log subagent-retrospective-guard "stamped REVIEWED for $AGENT_TYPE"
     ;;
 esac

@@ -7,6 +7,14 @@
 
 set -u
 
+# Isolate test suite from the live cycle-state file.
+# Production hooks resolve project_dir="${CWD:-${CLAUDE_PROJECT_DIR:-$PWD}}".
+# Tests that set an explicit cwd override this; hooks without an explicit cwd
+# fall through to this temp dir instead of the real repo root.
+_test_project_dir=$(mktemp -d)
+export CLAUDE_PROJECT_DIR="$_test_project_dir"
+trap 'rm -rf "$_test_project_dir"' EXIT
+
 HOOKS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 JOBS="${JOBS:-8}"
 
@@ -32,3 +40,11 @@ export -f run_one
 
 find "$HOOKS_DIR" -name '*_test.sh' -type f -print0 |
     xargs -0 -n1 -P"$JOBS" -I{} bash -c 'run_one "$@"' _ {}
+
+# Backstop: fail loudly if the live cycle-state was written during the run.
+_live_cs="${BASH_SOURCE[0]%/harnesses/*}/codegen/gate-pending/cycle-state.json"
+if [ -f "$_live_cs" ]; then
+    printf 'FAIL: live cycle-state.json was written during make test — isolation leak!\n' >&2
+    printf '  File: %s\n' "$_live_cs" >&2
+    exit 1
+fi
