@@ -8,6 +8,8 @@ Guidance for AI agents working in the codegen repository.
 
 → See `context/development.md` for Make targets, tech stack details, and coding conventions.
 
+→ See `context/pitfalls.md` for codegen-infra pitfalls and bash gotchas.
+
 ---
 
 ## Agent Roles

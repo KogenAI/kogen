@@ -1,0 +1,128 @@
+# Codegen Pitfalls & Bash Gotchas
+
+Codegen-infra pitfalls and bash gotchas — split from `context/development.md` at the 40,960-byte cap. Append new pitfall/gotcha/bash-pattern learnings HERE, not to development.md.
+
+## Common Pitfalls
+
+- **Split extraction: verify load-bearing, not meta** — Extractors pull EOF by default. Stop boundary BEFORE trailing meta (e.g., `## Update When Changing`). Verify last H2 is terminal cluster, not footer. Use grep `^## ` to detect boundaries.
+- **`make install` registry/settings.json parity** — add registry.yaml entry, add .sh file, run `hook_registrations.py --output-settings` BEFORE `make install` to regenerate settings.json. Running `make install` first causes hook-parity diff to fail (generator creates fresh settings.json that differs from committed version).
+- **Bash JSON: use `jq -n --arg`** — `printf` + single quotes produces invalid `"`; use jq for safe assembly.
+- **Bash heredoc keeps loop state** — `while <<EOF` not `|` pipe (subshells lose vars).
+- **TS `execFileSync` args: array not string** — `execFileSync('git', ['commit', '-m', 'msg'])`.
+- **TS `.trim()` loses trailing-newline** — split `git()`: `gitLog()` (trim), `gitBlob()` (no trim, null on error).
+- **TS exec error sentinel** — use null for non-zero, "" for zero-exit-empty.
+- **TS `mkdtempSync` unused** — remove if memory-only comparison.
+- **Bash set-never-read** — remove on refactor.
+- **`manifest_regenerate_prompts` file check** — new prompt-source `.txt` files must exist before `make install` (tools-header, prompt bodies). Gate's install round-trip catches missing files.
+- **yq binary must be mikefarah, not python-yq** — wrong binary causes silent manifest parsing errors.
+- **`npm install` at codegen root required** — absent → hooks emit INCONCLUSIVE.
+- **`make install` required after rule/template change** — regenerates baked prompts.
+- **Cross-stack guard after adjacent-include edits** — When editing rule files or `.md.j2` templates adjacent to `{% include %}` directives, verify shared fragment untouched via `git diff --name-only | grep _orch-behavioral`. Catch accidental pollution.
+- **Chromium binary absence is fail-closed on static boxes** — gate BLOCKS when missing.
+- **`mise trust` runs unconditionally on install** — no interactive prompt.
+- **Do not run `npm install` at repo root for Pi extensions** — each extension has its own node_modules; only root install is managed by install.sh
+- **Hook test failures are not ExUnit** — `make test` runs bash tests + hermetic ExUnit; they are separate suites
+- **Hook test runner summary mismatch — `run-tests.sh` blind spot** — Pattern `grep -qE "failed [1-9]"` doesn't match `"<digit> failed"`. Not a blocker; failures exit correctly.
+- **`make test-stacks` must never regress to bare `mix test`** — gate uses `mix test --only slow`; bare `mix test` silently runs ZERO stack tests and exits 0 (fake-green). Always tag LLM-driven tests with `:slow`.
+- **Test source change requires migrating ALL dependent cases (Rule J)** — When a fixture's input source changes, all test cases using the old path must migrate; leaving them asserts the OLD spec (dead code). Non-retryable/allow-only cases producing the same verdict regardless can stay.
+- **`shared/scaffold/static/scaffold_test.sh` is wired into `make test`** — new bash test cases run automatically (Makefile line 131 includes). No Makefile edits needed; test summary updates via inline helpers.
+- **config.yaml anchoring** — Multiple blocks may share leaf values; `old_string` MUST include surrounding context to avoid wrong block. Verify via `yq` post-change.
+- **Pitch line numbers are estimates** — always Read the file to locate exact anchor text; pitch approximations drift over time.
+- **Example blocks in references carry routing targets** — when bulk-repathing, check inline examples too; all old paths must be repathed or inside warnings.
+- **Phoenix-colocated esbuild** — `phoenix-colocated` import requires `mix compile` first; include `"compile"` in `assets.build`/`assets.deploy` aliases.
+- **`CODEGEN_DIR` must be absolute** — relative paths break symlink resolution in launchers
+- **Session log filename format must include `_HHMMSS`** — non-canonical forms (e.g., `YYYYMMDD-slug.md`) are blocked by reviewer-guard and dev-gate hooks at Edit time
+- **Transcript lag** — on-disk JSONL may lag stream; `session_log_from_transcript()` implements fallback (see `context/hook-authoring-patterns.md`).
+- **Makefile recipes run under `/bin/sh`, not bash** — process substitution fails. Use pipeline patterns instead of bash-specific syntax.
+- **Makefile doctor binary presence** — `executablePath()` may return a path even if binary missing; test `fs.existsSync()` to confirm.
+- **Build vs shape/ops/debug modes** — Build bakes `build-tools.txt` at install time; shape/ops/debug read `config.yaml` at runtime via `load-role.sh`. Verify config.yaml pitch claims against working tree before trust.
+- **Flaky tests often indicate state leakage, not async timing** — investigate persistent state first (counter files, temp dirs). Cleanup in `afterEach` required for counter files (e.g., `claude-autoship-guard-<sessionId>.count`).
+- **Test isolation scoping** — TS: capture streams at test-body; restore both paths. Env cleanup in BOTH `beforeEach`/`afterEach`. Bash: trap-clean temps; PATH stubs per-line. Layering: clean→symlink→dirty.
+- **Pi test essentials** — Create real temps at test paths. `npm run build` before test (runs on `dist/`). Grep for `fail 0` to verify; "FAIL:" in names is description, not failure.
+- **`make test` npm-ext transient race** — Extensions run in parallel; enforcement tsc writes `dist/` while tests import from it. Slow machines see transient "module not found". Re-run passes; not durable.
+- **SENTINEL content parity check via `grep -c`** — When editing prompt-source `.txt` files (e.g., tools-header blocks), verify SENTINELs are present in both source files before running `make install`. Use `grep -c "SENTINEL_TEXT" file1 file2` for fast pre-gate confirmation. Saves a gate slot when baked content is ambiguous.
+- **Gate verdict authoritative from JSON, not prose** — Gate hook verdict is authoritative from `gate-result.json` `.verdict` field (values: `"passed"` or `"failed"`), NOT from prose like "ALL CLEAR ✅" in the log body. Log strings reflect developer's intended state; JSON reflects actual gate return code. Always read `.verdict` when evaluating gate outcome.
+- **Codegen pitch path resolution: `codegen/pitches/ready/<slug>.md`** — Pitch files live in nested self-meta dir under codegen root, NOT under a bare `pitches/` at repo root. Resolution: `${CODEGEN_DIR}/codegen/pitches/ready/<slug>.md`. Read-only; never HALT on denied Bash `ls/find/grep` due to `orchestrator-read-discipline.sh` allow-list.
+- **`templates/generator/install_test.sh` not auto-discovered** — Only `test_harness/install/*_test.sh` auto-discovered. Tests in both dirs must reconcile sentinels when editing install.sh. Conflicts surface on full `make test` when both hooks auto-run.
+- **Session-log-no-duplicate-section hook blocks Edit if old/new contains `## <role> Section`** — Hook denies Edits with this pattern in old/new strings (even for body edits under existing headers). Cannot distinguish duplicate-removal from nearby body edits. Workaround: use Write tool.
+- **Gate hook command switch requires all build-exercising fixtures to match** — When a gate hook's build invocation changes (e.g., `mise exec -- npm run build` → `make ci`), every fixture reaching the build step must be updated; fixtures short-circuiting before (Hugo skip, missing package.json) need no change. Add a hermetic `Makefile` with `ci:` recipe (`@true`/`exit 1`) per fixture. Makefile recipe lines MUST use hard tabs — `printf 'ci:\n\t@true\n'` works; spaces silently break `make`.
+- **`chmod 000` is no-op under root** — Cannot test file unreadability via `chmod 000` when running as root.
+- **Clean-tree gate enforces one-commit-per-cycle rule** — `build-no-success-before-commit.sh` blocks BUILD_RESULT: success if `git status --porcelain` non-empty. All dirty/untracked files must be gitignored or committed.
+- **Rule-file includes are static at install time, not runtime** — fix requires THREE steps: (1) edit the rule file, (2) add `{% include %}` directive to the role-def template, (3) run `make install`. Plan discovery without implementation produces a dry audit — no live change.
+- **`make test` does NOT run `make install`** — rule-prose / template edits are baked at install time. Workflow: edit → `make install` → `make test`. Skipping install leaves baked prompts stale.
+- **Shape prompt two-layer architecture: inline-probe vs readiness-check** — (1) inline-probe (`_probing.txt`): discipline checks at claim-intro (sweeps target committed state, findings unverified until re-probed). (2) readiness-check (`shape.txt`): structural-scan/completeness (vocab coverage, producer/verifier reconciliation). Place rules by gate-phase to avoid duplication. `/ready` inherits `_probing.txt` automatically; only `shape.txt`-only rules need explicit edits.
+- **`make install` re-pads rule-file markdown tables** — table column widths auto-align via prettier; separate `make format` optional.
+- **When a plan specifies dynamic-enumeration engine, verify implementation does it** — Hard-coding paths contradicts the design guarantee. Always inspect the implementation; description alone is not evidence of execution.
+- **prompt-content-parity_test.sh sentinel sync** — Load-bearing text changes → sentinels MUST match exactly (`grep -qF`). Sentinels target SOURCE files, not baked paths. Runner calls `make install` automatically. Dual sources: one SENTINEL var, assert in both baked prompts via separate `assert_contains` calls. Pre-validation: grep `prompt-content-parity_test.sh` for source-file names; zero hits → no sync needed. Retargeting: when content moves verbatim, retarget file-path arg only — sentinel strings stay unchanged.
+- **`PROJECT_CONTEXT.md` blocks the Read tool** — `subagent-read-discipline.sh` gate denies Read to non-planner roles. Edit via Bash with the mktemp/cmp/mv pattern.
+- **Scoped removal of multi-category tokens** — tokens may appear in multiple independent categories; removal pitches must scope to one.
+- **`git status --porcelain` on fresh fixtures requires explicit commit** — `git init` + untracked files = dirty. Run `git init` + `git add -A` + `git commit` to establish a clean-tree baseline, then create stray files for the dirty case.
+- **Pi test fixtures for gate-result checks must commit gate-result.json** — JSON file must be committed or its directory must be in .gitignore. Otherwise dirty-tree check fires before the intended new check.
+- **`dev-no-self-gate` blocks after 3 invocations per session** — developer role can invoke own gate at most 3 times. Run targeted tests (bash script directly, or npm test in extension dir) rather than full gate to verify before triggering gate slots.
+- **Recovering deleted scripts** — strip dead deps first, repoint callsites to current primitives (`codegen-call`, `$CODEGEN_DIR` from `BASH_SOURCE`).
+- **Single variable binding propagates to multiple interpolation sites** — when a Bash function assigns a versioned URL at a single point, that binding threads into all later interpolation sites. Pinning the variable at the assignment site updates all interpolations with no further edits.
+- **External contract: OR not AND** — code path OR direct test; alternatives, not cumulative.
+- **External probe spread: 4 rules** — name axis, probe both ends, failure mandatory.
+- **Semantic equivalence vs structural identity in prompt-body sibling files** — verify semantic equivalence of all rules, NOT literal step-count parity. Compression preserving all semantic rules is correct mirroring.
+- **Planner-guard blocks Read on rule files** — use `Grep -C` for anchors; cite in pitch, developer confirms via Read.
+- **Context files carry a 40 KB advisory cap** — `context/*.md` files have 40,960-byte limit. Compress or split when near cap.
+- **Exit-code capture under `set -u`** — `local rc; raw=$(cmd) || rc=$?; rc=${rc:-0}`. `rc` unset on success. Distinguishes broken-cmd (empty) from `INCONCLUSIVE:*` verdicts.
+- **Makefile `@for` recipes are POSIX-only** — Accumulator: `fail=0; ... || fail=1; exit "$$fail"`.
+- **Pitch byte targets grow stale** — Re-measured at plan time; stale budgets fail gates.
+- **Heredoc piping with `>` redirects trips planner-guard** — Write to temp, redirect outside.
+- **Prettier 3.8 re-pads wide-cell markdown tables** — long cell values in tables are re-padded by prettier. Guard byte-capped context files via `.prettierignore`: add files BEFORE `make format`.
+- **Dual-read unset tests** — `env -u NEW -u OLD bash "$HOOK"` (single unset leaves fallback).
+- **`replace_all` composite keys** — `replace_all: true` on `"user_app_build"` does NOT match `"claude/user_app_build"`; use separate passes.
+- **Removing a config.yaml role breaks slow ExUnit tests** — `@moduletag :slow` tests excluded from `make test` (`--exclude slow`) but run in `make test-stacks` (`--only slow`). Deleting a role → silently passes `make test`, fails `make test-stacks` with `ERROR: roles.<role>.model missing/empty`. Survey both gates; update all `:slow` tests to valid roles before commit.
+- **Curator byte cap enforcement** — curator-edited `context/*.md` exceeding 40,960 B gets reverted. Before finishing, check `wc -c`; if over, compress bullets or split to new file.
+- **Grep recipe glob depth** — `harnesses/claude/hooks/*.sh` misses subdirs. Use `**/*.sh` or recursive for complete enumeration.
+- **Enforcement subsection placement in rule files** — when adding a new subsection to a rule file with existing structure (e.g., `## Ownership`), place it as a new H2 section at the same level rather than embedding mid-section. Cleaner structure, avoids disrupting prose flow. Accompanied by a pointer-only reference in dependent docs (no duplication).
+- **Rule-file line caps are STYLE_GUIDE advisory only** — `_core/` rule files have a <50-line advisory in STYLE_GUIDE; `roles/` and `stacks/` have <150-line advisory. No hook enforces rule-file line count. Only `context/*.md` byte cap (40,960 B) is hook-enforced via `context-file-size-gate.sh`. Rule-file overage is acceptable if unavoidable; byte-cap overage blocks commit.
+- **`process_template.py` include/if ordering** — `process_includes_recursively` runs AFTER if-stripping → `{% if tool %}` blocks inside fragments survive un-stripped → both branches concatenate (BROKEN). Fix: move include call to TOP of `_strip_template_blocks`, before if-stripping. Verify via `make test-generator` + `make test`.
+- **Fragment whitespace and byte-identity** — `resolve_include` appends `\n` only when absent. Template whitespace around `{% include %}` (not fragment's internal `\n`) determines output blank lines. Byte-identity requires exact trailing-newline match when extracting.
+- **Non-contiguous shared regions need separate fragments** — Verify regions are contiguous in BOTH templates BEFORE design. Non-contiguous regions → separate fragments (one per region with own `{% include %}`), not single-file-multiple-includes (→ duplication).
+- **`make test-stacks` pre-gate checklist** — Run `make doctor` (Chromium + ajv), verify `ANTHROPIC_API_KEY` set, verify `command -v pi`. Bucket every failure via 4-bucket protocol before source edits → `context/test-harness.md § Flake Triage Protocol`.
+- **`make test` auto-discovers `test_harness/install/` tests** — New `*_test.sh` files run via `run-tests.sh` (greps `N passed, N failed`). No Makefile edits. Footer format critical for runner match.
+- **install.sh fatal-exit composition** — New guards compose with existing fail-fast chains (root-npm install :196, yq gate :223, manifest-lib guard :231–235). All fatal exits extend the linear fail-chain without reordering. Non-fatal stderr dumps (e.g., prettier formatting errors) are observed-only; don't affect `✅ Installation complete`.
+- **Structural grep sentinels with literal quotes** — Anchor to stable substrings (variable names like `_pi_ext_install_failed`, icons like `❌`, unique ops like `cat "$_prettier_err"`), not full source lines. For sentinels with double-quotes, use `grep -F` (fixed-string mode). Single-quote shell condition strings: `'! grep -qF "pattern with \"quotes\"" file'` prevents shell interpretation.
+- **Relative symlinks survive relocation only if computed against FINAL location** — In a create-flow that builds in temp dir then `mv`s to final, relative symlinks MUST be computed against the final dir. A relpath against the temp path carries one extra `../` and dangles post-mv. Solution: thread `link_base_dir` to `run_integrate_stage()` from create callsite, passing final `$target_dir`. Integrate-path defaults `link_base_dir` to `$CWD`. Test: `readlink` returns relative (no `/` prefix) and `[ -e ]` dereferences correctly.
+- **Masked pipe errors reveal fixture gaps** — When a pipe with `| sed` or similar filtering masks real errors in subprocess output (e.g., `npm install 2>&1 | sed 's/^/      /'`), removing the mask surfaces hidden failures. A pre-existing test fixture (e.g., missing `MISE_STATE_DIR` in HOME override) may be the root cause. Investigate and fix the fixture, don't ignore the newly-visible error. This is a feature, not a regression.
+- **BSD sed `\a` (append-after-match) is GNU-only** — Use Python for in-place line-insertion when sed portability matters (macOS). Pattern: `path.read_text()` → `splitlines(keepends=True)` → insert after match → `path.write_text("".join(out))`. Applies to table row inserts and similar append-after-anchor operations.
+- **PROJECT_CONTEXT.md Domain Context Files table requires 4 cells per row** — Rows must have all 4 cells: `| file | description | keywords | sources |`. Missing sources column produces a ragged table that markdown renders but reviewers should flag. Always verify column count when adding rows to `PROJECT_CONTEXT.md` tables.
+
+## Deployment / Distribution
+
+Codegen runs on servers too — production/staging Linux hosts and the Hetzner dashboard box all run codegen, in addition to operator Macs. Distribution = `make install` on each machine; each derives its root from `BASH_SOURCE`, never hardcoded. CI validates that scaffold output compiles and hook tests pass. PRs require both `make test` and `make test-stacks` green before merge. See `context/deployment-topology.md`.
+
+## Bash Patterns & Pitfalls (Codegen-Infra)
+
+- **Scaffold global-read convention** — `run_integrate_stage()` reads scaffold parameters as GLOBALS (`STACK`, `SLUG`, `RESTART_RPC_CMD`, etc.), not function parameters. New flags assigned in the shared arg-parse loop; NO parameter threading. One arg-parse pass; dual callsites (create + integrate) both see the globals.
+- **COMMON_FLAGS array** — dispatch scripts use a shared flags array for mode-invariant vs mode-specific flags. Build array once, splice into both exec paths. Under `set -u`, guard VALUE expansions with `if [[ ${#arr[@]} -gt 0 ]]; then` — `${arr[@]+"${arr[@]}"}` is rejected by shfmt; use explicit length-guards.
+- **Shared fns called from multiple harnesses** — thread a `mode` parameter to gate harness-specific behavior. Example: `render-check.js` `runChecks(url, timeoutMs, mode)` gates content-region check on `if (mode === "phoenix")`.
+- **`local` keyword under `set -u`** — fails in `if/elif` at script scope. Use bare assignment. Function scope OK. Reset loop-branch locals at top: `local repo_url="" tree_ref=""`.
+- **Portable sed** — `sed -i ''` (macOS BSD) NOT portable to GNU sed (Linux). Use temp-file rewrite or `sed -i.bak 's/old/new/' file && rm -f *.bak` (non-empty extension works on both).
+- **Bash 3.2 compatibility** — No `declare -A`, no `wait -n`. Walk `git -C` to ancestor; use `hooks_realpath` for symlinks.
+- **IFS multi-char join** — `IFS=', '; echo "${arr[*]}"` uses only first char. Use `printf '%s, ' "${arr[@]}" | sed 's/, $//'` instead.
+- **`cut` mixed delimiters** — `cut -d: -f2` captures tail. Chain delimiters: `cut -d: -f2 | cut -d'|' -f1`.
+- **Heredoc expansion** — Unquoted `<<EOF` expands; `<<'EOF'` doesn't. Match stub convention: single-quoted uses bare `$*`; unquoted needs `\$*`.
+- **Grep footguns** — `-v` deletes lines; process BEFORE drop. BRE `\(` = GROUP; use `-F` for literals. Avoid backslash collapse; use `-qF`.
+- **Shell test binary stubbing** — Symlink tools, omit target, filter `$PATH`. Use `command -v` (builtin). `export -f` doesn't propagate to subprocesses; use PATH-stub pattern instead. Pattern: `PATH="$BIN_DIR:$PATH" bash "$HOOK"`.
+- **Hook stub isolation for sourced files** — Pre-sourcing a stub doesn't work — hook's own source call overrides it. Instead: create per-test `CODEGEN_DIR` subdir, write stub there, invoke with `CODEGEN_DIR="$TMP_ROOT/resource_manager_tN" bash "$HOOK"`. Each test needs its own isolated dir.
+- **jq null extraction in hook payloads** — `jq -r '.field'` on JSON null emits `"null"` (not empty). Always use `jq -r '.field // empty'` for optional fields; bare `.field` causes git/mkdir to treat `"null"` as a literal path argument.
+- **Conditional final statements** — `&&` as last statement flips exit code. Use `if/then/fi` instead.
+- **VERBOSE gating** — `if/fi` doesn't flip exit code; `&&` one-liner does.
+- **Post-condition assertions in mutations** — validate preconditions (file exists, anchor present) and postconditions (expected lines added, placeholders resolved). `eex_render.sh` should fail on unresolved `<%= ... %>` placeholders.
+- **Cleanup wrappers & exit code propagation** — `bash -c "cmd; rm -rf $TMP"` loses the inner exit code if cleanup succeeds. Pattern: `RESULT=0; inner_cmd || RESULT=$?; cleanup_code; exit $RESULT`.
+- **Fail-closed refute in tests** — to prove a script aborts BEFORE an irreversible action, use a shimmed subprocess marker: stub the irreversible command to record if called, then `refute` the marker was set.
+- **Advisory health checks** — embed advisory output in same SSH output blob; parse verdict gate by reading ONLY gate-specific labels. Never include advisory section in `if [ ... ]` gate logic.
+- **Multi-prompt headless gates** — one independent env var per interactive prompt. Example: `DEPLOY_AUTO=1` skips confirm; `DEPLOY_AUTO_ROLLBACK=1` (separate) skips rollback prompt.
+- **Operator toggles vs app runtime config** — `DEPLOY_AUTO=1`, `RELEASE_DAY_OVERRIDE=1`, `codegen-scaffold --recipe-source=<path>` are operator toggles → NOT in `.env.sample`. Toggles go in script header comments; app env vars go in `.env.sample`. Toggles control harness/build; env vars control app runtime.
+- **Deriving state properties from ordered lists** — Derive computed property (e.g., "terminal") from the list's LAST element: `for w in $CYCLE_STATE_ORDER; do last="$w"; done; [ "$1" = "$last" ]` — not hard-coded. Adding a new terminal state shifts the property automatically. Callers test returned values (`[ -n "$result" ]`); helpers return empty string on unmatched input (`set -u`-safe).
+
+## Update When Changing
+
+- a codegen-infra pitfall or bash gotcha is discovered/resolved
+
+## Trigger Keywords
+
+pitfall, gotcha, bash pattern, sed portability, jq null, heredoc, flaky test, state leakage, byte cap, subshell, grep footgun, exit code

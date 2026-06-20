@@ -14,6 +14,7 @@ All `[local]` blocks (project-specific knowledge about codegen's structure, mode
 - **Hook authoring patterns (how to write/test a hook, output protocol, gate flow)** → `context/hook-authoring-patterns.md`
 - **Subagents, roles, agents** → `context/subagents.md`
 - **Development workflow, Make targets, testing** → `context/development.md`
+- **Pitfalls, bash gotchas, state-leakage, sed/jq/heredoc patterns** → `context/pitfalls.md`
 - **Token tuning, model config, roles** → `context/claude-token-tuning.md`
 - **Recipes, workloads** → `context/recipes.md`
 - **Scaffold behavior, output, symlinks** → `context/scaffold.md`
