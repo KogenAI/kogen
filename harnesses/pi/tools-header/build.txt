@@ -45,6 +45,12 @@ When the user prompt contains one or more `@`-mentions to `.md` files:
 
 ### Multi-pitch-file builds (`pi-build a b c` or prose/image list with named slugs)
 
+**When the operator names NO slugs** (e.g. "build all ready pitches", "run everything in ready"):
+1. Enumerate `codegen/pitches/ready/*.md` using the native `find`/`ls` **tool** (NOT Bash — use the tool's built-in file-listing capability).
+2. If enumeration returns zero files, report "no ready pitches found" and stop.
+3. If enumeration returns one or more files, extract the slug from each filename (strip directory prefix and `.md` suffix). These slugs are the full pitch set — skip slug resolution entirely (files are already confirmed to exist).
+4. Apply the **"When NO order is given"** path below: read each pitch's `## Dependencies / Blocks-on:` edges, derive execution order by topological sort, then run the full Execution rules (one session log per pitch, strict sequencing, mid-queue halt).
+
 **Slug resolution (applies to all multi-pitch paths)**:
 Resolve each named slug to `codegen/pitches/ready/<slug>.md` using the Read tool — never `ls`, `find`, or Bash to enumerate. If any slug has no `ready/<slug>.md`, report the unresolved slug(s) plus the resolved ones and HALT before building any pitch.
 
