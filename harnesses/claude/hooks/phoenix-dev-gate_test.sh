@@ -208,7 +208,7 @@ assert_file_contains "render FAIL js-error: FAILED in log" "FAILED" "$LOG4"
 rm -f "$STUB4"
 rm -rf "$T4"
 
-# ── Test 5: render INCONCLUSIVE browser-not-installed — non-fatal ────────────
+# ── Test 5: render INCONCLUSIVE chromium-launch-failed — non-fatal ───────────
 T5=$(make_project)
 LOG5="$T5/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_step1.md"
 cat >"$LOG5" <<'MD'
@@ -219,12 +219,12 @@ cat >"$LOG5" <<'MD'
 **Gate**: `true`
 MD
 make_transcript "$T5/transcript.jsonl" "$LOG5"
-STUB5=$(make_render_stub "INCONCLUSIVE:browser-not-installed")
+STUB5=$(make_render_stub "INCONCLUSIVE:chromium-launch-failed")
 out5=$(printf '%s' "$(input_for "$T5" developer-phoenix-backend false sess1 "$T5/transcript.jsonl")" |
     RENDER_CHECK_CMD="$STUB5" CODEGEN_DIR="$SCRIPT_DIR" bash "$HOOK" 2>/dev/null || true)
-assert_not_contains "render INCONCLUSIVE: no block" '"decision": "block"' "$out5"
-assert_file_not_contains "render INCONCLUSIVE: no ALL CLEAR in log (downgraded to INCONCLUSIVE)" "ALL CLEAR" "$LOG5"
-assert_file_contains "render INCONCLUSIVE: INCONCLUSIVE note in log" "INCONCLUSIVE" "$LOG5"
+assert_not_contains "render chromium-launch-failed: no block" '"decision": "block"' "$out5"
+assert_file_not_contains "render chromium-launch-failed: no ALL CLEAR in log (downgraded to INCONCLUSIVE)" "ALL CLEAR" "$LOG5"
+assert_file_contains "render chromium-launch-failed: INCONCLUSIVE note in log" "INCONCLUSIVE" "$LOG5"
 rm -f "$STUB5"
 rm -rf "$T5"
 
@@ -293,7 +293,7 @@ cat >"$LOG8" <<'MD'
 **Gate**: `true`
 MD
 make_transcript "$T8/transcript.jsonl" "$LOG8"
-STUB8=$(make_render_stub "INCONCLUSIVE:browser-not-installed")
+STUB8=$(make_render_stub "INCONCLUSIVE:chromium-launch-failed")
 out8=$(printf '%s' "$(input_for "$T8" developer-phoenix-backend false sess1 "$T8/transcript.jsonl")" |
     RENDER_CHECK_CMD="$STUB8" CODEGEN_DIR="$SCRIPT_DIR" bash "$HOOK" 2>/dev/null || true)
 cs_state8=""
@@ -658,6 +658,64 @@ assert_not_contains "flat-layout absent render-check.js: no block" '"decision": 
 assert_file_not_contains "flat-layout absent render-check.js: no ALL CLEAR" "ALL CLEAR" "$LOG22"
 assert_file_contains "flat-layout absent render-check.js: INCONCLUSIVE in log" "INCONCLUSIVE" "$LOG22"
 rm -rf "$T22_FLAT" "$T22"
+
+# ── Test 23: render-check cmd exits nonzero with stderr → INCONCLUSIVE carries marker ──
+# A stub that emits a stderr marker and exits 1 (no RENDER_VERDICT= line).
+# The INCONCLUSIVE verdict surfaced in the log must contain the marker.
+T23=$(make_project)
+LOG23="$T23/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_step1.md"
+cat >"$LOG23" <<'MD'
+# Step
+
+## Plan
+
+**Gate**: `true`
+MD
+make_transcript "$T23/transcript.jsonl" "$LOG23"
+RSTUB23=$(mktemp)
+cat >"$RSTUB23" <<'STUB'
+#!/usr/bin/env bash
+printf '__RENDER_STDERR_MARKER__\n' >&2
+exit 1
+STUB
+chmod +x "$RSTUB23"
+WSTUB23=$(make_wiring_stub "PASS")
+out23=$(printf '%s' "$(input_for "$T23" developer-phoenix-backend false sess1 "$T23/transcript.jsonl")" |
+    RENDER_CHECK_CMD="$RSTUB23" WIRING_CHECK_CMD="$WSTUB23" CODEGEN_DIR="$SCRIPT_DIR" bash "$HOOK" 2>/dev/null || true)
+assert_not_contains "render-check stderr: no block" '"decision": "block"' "$out23"
+assert_file_contains "render-check stderr: INCONCLUSIVE in log" "INCONCLUSIVE" "$LOG23"
+assert_file_contains "render-check stderr: marker in INCONCLUSIVE detail" "__RENDER_STDERR_MARKER__" "$LOG23"
+rm -f "$RSTUB23" "$WSTUB23"
+rm -rf "$T23"
+
+# ── Test 24: wiring-check cmd exits nonzero with stderr → INCONCLUSIVE carries marker ──
+# A stub that emits a stderr marker and exits 1 (no WIRING_VERDICT= line).
+# The INCONCLUSIVE verdict surfaced in the log must contain the marker.
+T24=$(make_project)
+LOG24="$T24/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_step1.md"
+cat >"$LOG24" <<'MD'
+# Step
+
+## Plan
+
+**Gate**: `true`
+MD
+make_transcript "$T24/transcript.jsonl" "$LOG24"
+WCRASH24=$(mktemp)
+cat >"$WCRASH24" <<'STUB'
+#!/usr/bin/env bash
+printf '__WIRING_STDERR_MARKER__\n' >&2
+exit 1
+STUB
+chmod +x "$WCRASH24"
+RSTUB24=$(make_render_stub "PASS")
+out24=$(printf '%s' "$(input_for "$T24" developer-phoenix-backend false sess1 "$T24/transcript.jsonl")" |
+    WIRING_CHECK_CMD="$WCRASH24" RENDER_CHECK_CMD="$RSTUB24" CODEGEN_DIR="$SCRIPT_DIR" bash "$HOOK" 2>/dev/null || true)
+assert_not_contains "wiring-check stderr: no block" '"decision": "block"' "$out24"
+assert_file_contains "wiring-check stderr: INCONCLUSIVE in log" "wiring: INCONCLUSIVE" "$LOG24"
+assert_file_contains "wiring-check stderr: marker in INCONCLUSIVE detail" "__WIRING_STDERR_MARKER__" "$LOG24"
+rm -f "$WCRASH24" "$RSTUB24"
+rm -rf "$T24"
 
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

@@ -79,5 +79,22 @@ else
 fi
 rm -rf "$_t4_root"
 
+# ── Test 5: chromium-launch-failed rename — source grep ─────────────────────
+# Asserts render-check.js uses the new verdict name and not the old one.
+if ! grep -qF 'browser-not-installed' "$SCRIPT_DIR/render-check.js"; then
+    [ -n "${VERBOSE:-}" ] && printf 'PASS: render-check.js does not contain browser-not-installed\n'
+    pass=$((pass + 1))
+else
+    printf 'FAIL: render-check.js still contains browser-not-installed — rename to chromium-launch-failed\n'
+    fail=$((fail + 1))
+fi
+if grep -qF 'chromium-launch-failed' "$SCRIPT_DIR/render-check.js"; then
+    [ -n "${VERBOSE:-}" ] && printf 'PASS: render-check.js contains chromium-launch-failed\n'
+    pass=$((pass + 1))
+else
+    printf 'FAIL: render-check.js does not contain chromium-launch-failed\n'
+    fail=$((fail + 1))
+fi
+
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

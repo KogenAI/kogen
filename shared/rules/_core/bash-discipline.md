@@ -122,6 +122,40 @@ helper_fn() {
 }
 ```
 
+## Module-Scope Variables Accessible at Function Scope in Case Blocks
+
+In Bash, when a function runs a `case` statement that references a variable outside the function body, declare that variable at **module scope** (not `local`) to ensure case-arm blocks can access it. The `case` statement body executes in the same shell context as the case construct itself, not in a subshell; a `local` variable declared in an outer function scope is visible WITHIN that function, but when a case block (even inside the function) needs to read or update the variable for use by LATER code at module scope, declare it as a module-scoped global. Example:
+
+```bash
+# render_stderr is MODULE SCOPE — not local to any function
+render_stderr=""
+
+run_render_check() {
+    local raw rc
+    # ... capture stderr to temp file ...
+    render_stderr=$(cat "$err")    # Updates module scope
+    rm -f "$err"
+
+    case "$render_verdict" in
+        INCONCLUSIVE:*)
+            # Later code (outside this function) references $render_stderr
+            # — case block must read module-scoped variable, not a local copy
+            inc_detail="${render_verdict#INCONCLUSIVE:}"
+            ;;
+    esac
+}
+
+# Caller at module scope:
+case "$render_verdict" in
+    INCONCLUSIVE:*)
+        # This block accesses $render_stderr populated by run_render_check
+        append_ve_section "INCONCLUSIVE: $inc_detail — $render_stderr"
+        ;;
+esac
+```
+
+The case-arm body in `run_render_check` runs in the function's context but assigns to the module-scope `render_stderr` variable. Without module-scope declaration, code AFTER the function call cannot access the value. Do NOT use `local render_stderr=""` at function scope if a case-arm block (or subsequent code) needs to read/update it for downstream use.
+
 ## Test Discovery & Harness Parity Wiring
 
 **Auto-discovery scopes**: `run-tests.sh:33` discovers `*_test.sh` files ONLY under `harnesses/claude/hooks/`. Files in `harnesses/shared/` or extension subdirs are NOT auto-discovered. A test outside hooks/ must be explicitly wired into the Makefile `harness-parity` target's `for t in` list (lines 144–147). Example: `harnesses/shared/experiment-prune_test.sh` is registered via `"$(SCRIPT_DIR)/harnesses/shared/experiment-prune_test.sh"` in the list.

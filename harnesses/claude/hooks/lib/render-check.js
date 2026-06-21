@@ -12,7 +12,7 @@
  *   RENDER_VERDICT=INCONCLUSIVE:<reason>
  *
  * FAIL reasons:    empty-dom | empty-content-region | unstyled | js-error:<detail> | asset-404:<url>
- * INCONCLUSIVE:    browser-not-installed | playwright-module-unresolvable | server-unready | timeout | config-error | <other>
+ * INCONCLUSIVE:    chromium-launch-failed | playwright-module-unresolvable | server-unready | timeout | config-error | <other>
  *
  * Exit 0 always — verdict is communicated via the RENDER_VERDICT line.
  * Diagnostic messages go to stderr.
@@ -173,7 +173,7 @@ async function runChecks(url, timeoutMs, mode) {
     browser = await chromium.launch({ headless: true });
   } catch (e) {
     log(`chromium launch failed: ${e.message}`);
-    verdict("INCONCLUSIVE:browser-not-installed");
+    verdict("INCONCLUSIVE:chromium-launch-failed");
     return;
   }
 

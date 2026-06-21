@@ -341,23 +341,23 @@ fi
 rm -f "$STUB16"
 rm -rf "$T16"
 
-# ── Test 17: render INCONCLUSIVE browser-not-installed — BLOCKS (fail-closed) ─
+# ── Test 17: render INCONCLUSIVE chromium-launch-failed — BLOCKS (fail-closed) ─
 # Gate must block when Chromium is absent; install guarantees it on static boxes.
 T17=$(make_tmp_site)
 mkdir -p "$T17/public"
 touch "$T17/public/app.css"
 printf '<html><head><link rel="stylesheet" href="app.css"></head><body><p>hi</p></body></html>\n' \
     >"$T17/public/index.html"
-STUB17=$(make_render_stub "INCONCLUSIVE:browser-not-installed")
+STUB17=$(make_render_stub "INCONCLUSIVE:chromium-launch-failed")
 out17=$(printf '%s' "$(input_for "$T17")" |
     RENDER_CHECK_CMD="$STUB17" CODEGEN_DIR="$SCRIPT_DIR" bash "$HOOK" 2>/dev/null || true)
 outcome17="allow"
 printf '%s' "$out17" | grep -q '"decision"[[:space:]]*:[[:space:]]*"block"' && outcome17="block"
 if [ "$outcome17" = "block" ] && printf '%s' "$out17" | grep -qi 'chromium\|browser'; then
-    [ -n "${VERBOSE:-}" ] && printf 'PASS: %s\n' "render INCONCLUSIVE browser-not-installed blocks with browser message"
+    [ -n "${VERBOSE:-}" ] && printf 'PASS: %s\n' "render INCONCLUSIVE chromium-launch-failed blocks with browser message"
     pass=$((pass + 1))
 else
-    printf 'FAIL: render INCONCLUSIVE browser-not-installed should block with browser message\n  outcome: %s\n  stdout: %s\n' \
+    printf 'FAIL: render INCONCLUSIVE chromium-launch-failed should block with browser message\n  outcome: %s\n  stdout: %s\n' \
         "$outcome17" "$out17"
     fail=$((fail + 1))
 fi
@@ -538,6 +538,36 @@ else
 fi
 rm -f "$STUB23"
 rm -rf "$T23"
+
+# ── Test 24: render-check stderr surfaced in block message ────────────────────
+# A stub that prints to stderr and exits 1 (no RENDER_VERDICT= line).
+# The gate must block AND the block message must contain the stderr marker.
+T24=$(make_tmp_site)
+mkdir -p "$T24/public"
+touch "$T24/public/app.css"
+printf '<html><head><link rel="stylesheet" href="app.css"></head><body><p>hi</p></body></html>\n' \
+    >"$T24/public/index.html"
+STUB24=$(mktemp)
+cat >"$STUB24" <<'STUB'
+#!/usr/bin/env bash
+printf '__RC_STDERR_MARKER__\n' >&2
+exit 1
+STUB
+chmod +x "$STUB24"
+out24=$(printf '%s' "$(input_for "$T24")" |
+    RENDER_CHECK_CMD="$STUB24" CODEGEN_DIR="$SCRIPT_DIR" bash "$HOOK" 2>/dev/null || true)
+outcome24="allow"
+printf '%s' "$out24" | grep -q '"decision"[[:space:]]*:[[:space:]]*"block"' && outcome24="block"
+if [ "$outcome24" = "block" ] && printf '%s' "$out24" | grep -q '__RC_STDERR_MARKER__'; then
+    [ -n "${VERBOSE:-}" ] && printf 'PASS: %s\n' "render-check stderr surfaced in block message"
+    pass=$((pass + 1))
+else
+    printf 'FAIL: render-check stderr must appear in block message\n  outcome: %s\n  stdout: %s\n' \
+        "$outcome24" "$out24"
+    fail=$((fail + 1))
+fi
+rm -f "$STUB24"
+rm -rf "$T24"
 
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

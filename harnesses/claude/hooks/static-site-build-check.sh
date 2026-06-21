@@ -197,6 +197,7 @@ check_html_stylesheet_link
 # styles applied, no JS errors. Non-fatal if browser not installed on host.
 
 render_verdict=""
+render_stderr=""
 render_summary="render: skipped (no output dir)"
 
 run_render_check() {
@@ -212,8 +213,14 @@ run_render_check() {
     else
         read -ra render_check_cmd_arr <<<"${RENDER_CHECK_CMD}"
     fi
+    local _rc_err
+    _rc_err=$(mktemp)
+    render_stderr=""
     local raw
-    raw=$("${render_check_cmd_arr[@]}" --mode static --timeout 30000 "$out_dir" 2>/dev/null || true)
+    raw=$("${render_check_cmd_arr[@]}" --mode static --timeout 30000 "$out_dir" 2>"$_rc_err") || true
+    local _rc=$?
+    render_stderr=$(cat "$_rc_err")
+    rm -f "$_rc_err"
     render_verdict=$(printf '%s' "$raw" | grep '^RENDER_VERDICT=' | head -n 1 | cut -d= -f2-)
 }
 
@@ -234,8 +241,8 @@ if [ "$_NPM_BUILD_SKIPPED" = "false" ] && [ -f package.json ] && jq -e '.scripts
             debug_log static-site-build-check "render check FAIL: $reason"
             fail "render check failed: $reason"
             ;;
-        INCONCLUSIVE:browser-not-installed)
-            debug_log static-site-build-check "render check INCONCLUSIVE: browser not installed"
+        INCONCLUSIVE:chromium-launch-failed)
+            debug_log static-site-build-check "render check INCONCLUSIVE: chromium launch failed"
             fail "Chromium missing on this box — run: npx playwright install chromium. Infra condition, not a code/hook defect."
             ;;
         INCONCLUSIVE:playwright-module-unresolvable)
@@ -250,7 +257,7 @@ if [ "$_NPM_BUILD_SKIPPED" = "false" ] && [ -f package.json ] && jq -e '.scripts
         *)
             # render-check emitted no RENDER_VERDICT= line — crash or parse error
             debug_log static-site-build-check "render check emitted no verdict (crash/parse error)"
-            fail "render-check did not emit verdict — check render-check.js for parse/runtime errors"
+            fail "render-check did not emit verdict — check render-check.js for parse/runtime errors. stderr: ${render_stderr}"
             ;;
         esac
     fi

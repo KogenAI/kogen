@@ -176,15 +176,22 @@ run_phoenix_render_check() {
         printf 'INCONCLUSIVE:render-check-cmd-missing'
         return 0
     fi
+    local _rc_err_r
+    _rc_err_r=$(mktemp)
     local raw rc
-    raw=$("${render_check_cmd_arr[@]}" --mode phoenix --port "${PHOENIX_DEV_PORT:-4000}" --timeout 30000 2>/dev/null) || rc=$?
+    raw=$("${render_check_cmd_arr[@]}" --mode phoenix --port "${PHOENIX_DEV_PORT:-4000}" --timeout 30000 2>"$_rc_err_r") || rc=$?
     rc=${rc:-0}
+    local _rc_stderr_r
+    _rc_stderr_r=$(cat "$_rc_err_r")
+    rm -f "$_rc_err_r"
     local verdict
     verdict=$(printf '%s' "$raw" | grep '^RENDER_VERDICT=' | head -n 1 | cut -d= -f2-)
     if [ -n "$verdict" ]; then
         printf '%s' "$verdict"
     elif [ "$rc" -ne 0 ]; then
-        printf 'INCONCLUSIVE:render-check-cmd-failed'
+        local _tail_r
+        _tail_r=$(printf '%s' "$_rc_stderr_r" | tr '\n' ' ' | cut -c1-150)
+        printf 'INCONCLUSIVE:render-check-cmd-failed:%s' "$_tail_r"
     fi
 }
 
@@ -215,15 +222,22 @@ run_phoenix_wiring_check() {
             return 0
         fi
     fi
+    local _rc_err_w
+    _rc_err_w=$(mktemp)
     local raw rc
-    raw=$("${wiring_check_cmd_arr[@]}" "$project_dir" 2>/dev/null) || rc=$?
+    raw=$("${wiring_check_cmd_arr[@]}" "$project_dir" 2>"$_rc_err_w") || rc=$?
     rc=${rc:-0}
+    local _rc_stderr_w
+    _rc_stderr_w=$(cat "$_rc_err_w")
+    rm -f "$_rc_err_w"
     local verdict
     verdict=$(printf '%s' "$raw" | grep '^WIRING_VERDICT=' | head -n 1 | cut -d= -f2-)
     if [ -n "$verdict" ]; then
         printf '%s' "$verdict"
     elif [ "$rc" -ne 0 ]; then
-        printf 'INCONCLUSIVE:wiring-check-cmd-failed'
+        local _tail_w
+        _tail_w=$(printf '%s' "$_rc_stderr_w" | tr '\n' ' ' | cut -c1-150)
+        printf 'INCONCLUSIVE:wiring-check-cmd-failed:%s' "$_tail_w"
     fi
 }
 
