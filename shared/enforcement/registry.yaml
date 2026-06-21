@@ -563,6 +563,16 @@
   harnesses: all
 
 - kind: registration
+  id: session-log-structure
+  event: PreToolUse
+  tool_guard: "Edit|Write|MultiEdit"
+  surface: user_global
+  signal: AGENT_TYPE
+  role: "*"
+  harnesses: all
+  rationale: Enforces canonical session-log section ORDER (non-decreasing phase rank) and NO-CLOBBER (an Edit/Write must not remove any existing `## ` header), preventing scramble and the full-file-Write data-loss that drops Plan/Delegation content.
+
+- kind: registration
   id: static-site-build-check
   event: SubagentStop
   tool_guard: "developer-static"

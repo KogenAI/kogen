@@ -25,11 +25,29 @@ Session logs live under `/codegen/` and are **gitignored** — in the codegen re
 ## Ownership
 
 - Orchestrator creates log FIRST via **Write** tool (NOT Bash redirect) — BEFORE delegating to planner.
-- Orchestrator inserts `## <agent_type> Section` header via Edit BEFORE each `Agent()` call (atomic move).
 - Planner exception: write to `## Plan`. Orchestrator inserts `## Plan` stub — never `## planner-* Section`.
 - Subagents write body under existing header — never emit the header themselves.
-- NEVER pre-seed role-section headers in the initial Write; each `## <role> Section` header is inserted exactly once, immediately before that role's spawn — NEVER create a duplicate `## <role> Section`.
+- **Additive-insertion protocol**: after planner fills `## Plan`, orchestrator appends ALL planned role headers in ONE Edit at the end of `## Files Modified` as empty placeholders in canonical order (see `## Canonical Section Order` below). Subagents fill bodies in place. NEVER use a full-file Write to add a header — that risks clobbering existing content (Plan, Delegation Timeline, etc.).
+- NEVER pre-seed role-section headers in the initial Write; headers are inserted once in the post-planner additive-insertion step — NEVER create a duplicate `## <role> Section`.
 - Multi-step → orchestrator maintains `./codegen/logging/$(date -u +%Y%m%d)_progress.md`.
+
+## Canonical Section Order
+
+Session log sections MUST appear in this non-decreasing phase order (rank):
+
+| Rank | Header pattern               |
+| ---- | ---------------------------- |
+| 1    | `## Version Stamp`           |
+| 2    | `## Rules Loaded` (optional) |
+| 3    | `## Plan` / `## Slices`      |
+| 4    | `## Delegation Timeline`     |
+| 5    | `## Files Modified`          |
+| 6    | `## developer-* Section`     |
+| 8    | `## reviewer-* Section`      |
+| 9    | `## context-curator Section` |
+| 10   | `## committer Section`       |
+
+Only `## ` (H2) headers participate in the order check. H1 title lines (`# Step N`) and sub-headers (`### `) are ignored to avoid false-positives from code-block comment lines. Unknown/freeform `## ` headers are also ignored. Recognized `## ` headers must appear in non-decreasing rank order — a `## reviewer-* Section` before `## developer-* Section` is forbidden. The `session-log-structure` hook enforces this at Edit/Write time.
 
 ## Enforcement
 

@@ -62,6 +62,7 @@ import { register as registerReviewerGuard } from "./hooks/reviewer-guard";
 import { register as registerReviewerGuardSessionLogWrite } from "./hooks/reviewer-guard-session-log-write";
 import { register as registerSessionLogNoDuplicateSection } from "./hooks/session-log-no-duplicate-section";
 import { register as registerSessionLogSectionIntegrity } from "./hooks/session-log-section-integrity";
+import { register as registerSessionLogStructure } from "./hooks/session-log-structure";
 import { register as registerStaticSiteBuildCheck } from "./hooks/static-site-build-check";
 import { register as registerStaticSiteExGuard } from "./hooks/static-site-ex-guard";
 import { register as registerStepLogCompleteness } from "./hooks/step-log-completeness";
@@ -125,6 +126,7 @@ export default function (pi: ExtensionAPI): void {
   registerReviewerGuardSessionLogWrite(pi);
   registerSessionLogNoDuplicateSection(pi);
   registerSessionLogSectionIntegrity(pi);
+  registerSessionLogStructure(pi);
   registerStaticSiteBuildCheck(pi);
   registerStaticSiteExGuard(pi);
   registerStepLogCompleteness(pi);

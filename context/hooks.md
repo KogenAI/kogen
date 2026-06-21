@@ -281,6 +281,18 @@ When designing shell case statements where one verdict variant should block and 
 
 `awk '{print $2}'` on renamed files (`R  old -> new`) extracts only `$2`, truncating the arrow and target. Use `sed 's/^[^ ]* //'` instead — strips leading status code + one space, preserving full paths including renames and spaces. Used by `build-no-success-before-commit.sh` to enumerate uncommitted files in deny message.
 
+## Session-Log Editing Patterns
+
+Multiple session-log hooks (`session-log-no-duplicate-section`, `session-log-section-integrity`, `session-log-structure`) fire on Edit/Write/MultiEdit. When adding body content under a pre-seeded section header stub, the `session-log-no-duplicate-section` hook blocks edits containing `^## <role> Section` lines in BOTH old_string and new_string (cannot distinguish duplicate-removal from body edits).
+
+**Workaround**: Anchor old_string on the SUFFIX of the header line (content after the header marker), not on the header itself. This ensures the header line does NOT appear in old_string, so the no-duplication check passes even though new_string has header content.
+
+Example: To append body under a pre-seeded `## developer-phoenix-backend Section` stub:
+- ❌ WRONG: `old_string = "## developer-phoenix-backend Section\n\n"` → denies (header in old_string)
+- ✅ RIGHT: `old_string = "<section-intro-text>\n\nResults: ..."` → allows (header not in old_string; new_string has intro + results without header re-insertion)
+
+The header stays on disk untouched; the body-anchor approach lets all orthogonal session-log hooks compose without false denials.
+
 ## Pitfalls
 
 - **Gate-verdict flow for Phoenix gates**: (1) **wiring-check** — scans templates + test files; blocks FAIL, open INCONCLUSIVE. (2) **render-check** — headless Chromium; runs only if wiring passes. Static checks before runtime.
