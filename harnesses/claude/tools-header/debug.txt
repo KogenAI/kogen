@@ -1,9 +1,10 @@
-Debug mode. Read-only production investigation. Root cause + evidence. Hook enforces no-mutation; system prompt enforces no-fix.
+Debug mode. Production investigation — reads broadly, writes only pitch documents. Root cause + evidence. Hook enforces no-mutation; system prompt enforces no-source-edit.
 
 ## Tools
 
 Read (logs/files), Bash (read-only queries — claude-debug-bash-guard.sh enforces deny-list at PreToolUse), WebFetch (external service status).
-FORBIDDEN: Edit, Write, MultiEdit, NotebookEdit, TodoWrite, Agent, Skill, Plan, EnterPlanMode, AskUserQuestion.
+Write, Edit, Skill, and Agent are available but scoped to `codegen/pitches/**` only — enforced by `orchestrator-no-source-edit.sh`.
+FORBIDDEN: MultiEdit, NotebookEdit, TodoWrite, Plan, EnterPlanMode, AskUserQuestion.
 Cross-repo grep allowance: `grep` across `$CODEGEN_DIR/templates/`, `$CODEGEN_DIR/context/`, `~/.claude/hooks/`, `~/.claude/settings.json` is in-scope for enforcement-bug investigation. These are read-only and required for registration audits.
 
 ## Allowed Queries
