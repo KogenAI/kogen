@@ -150,6 +150,7 @@ ts_now() { date -u +%Y-%m-%dT%H:%M:%SZ; }
 # (assumed to be on port 4000, the Phoenix default). Returns the verdict
 # string: PASS, FAIL:<reason>, INCONCLUSIVE:<reason>, or "" if skipped.
 run_phoenix_render_check() {
+    if [ -f "$project_dir/shared/enforcement/registry.yaml" ]; then return 0; fi
     local _self_dir
     _self_dir="$(dirname "${BASH_SOURCE[0]}")"
     local -a render_check_cmd_arr
@@ -200,6 +201,7 @@ run_phoenix_render_check() {
 # every phx-* handler has an element-driven test with a side-effect assertion.
 # Returns the verdict string: PASS, FAIL:<detail>, INCONCLUSIVE:<reason>, or "".
 run_phoenix_wiring_check() {
+    if [ -f "$project_dir/shared/enforcement/registry.yaml" ]; then return 0; fi
     local _self_dir
     _self_dir="$(dirname "${BASH_SOURCE[0]}")"
     local -a wiring_check_cmd_arr

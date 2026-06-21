@@ -717,5 +717,29 @@ assert_file_contains "wiring-check stderr: marker in INCONCLUSIVE detail" "__WIR
 rm -f "$WCRASH24" "$RSTUB24"
 rm -rf "$T24"
 
+# ── Test 25: codegen self-build sentinel — render/wiring skipped, ALL CLEAR ───
+# When registry.yaml sentinel exists at project_dir/shared/enforcement/registry.yaml,
+# both render and wiring checks must be bypassed even when stubs would emit INCONCLUSIVE.
+T25=$(make_project)
+mkdir -p "$T25/shared/enforcement"
+touch "$T25/shared/enforcement/registry.yaml"
+LOG25="$T25/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_step1.md"
+cat >"$LOG25" <<'MD'
+# Step
+
+## Plan
+
+**Gate**: `true`
+MD
+make_transcript "$T25/transcript.jsonl" "$LOG25"
+STUB25=$(make_render_stub "INCONCLUSIVE:server-unready")
+out25=$(printf '%s' "$(input_for "$T25" developer-phoenix-backend false sess1 "$T25/transcript.jsonl")" |
+    RENDER_CHECK_CMD="$STUB25" CODEGEN_DIR="$SCRIPT_DIR" bash "$HOOK" 2>/dev/null || true)
+assert_not_contains "codegen sentinel: no block" '"decision": "block"' "$out25"
+assert_file_not_contains "codegen sentinel: no INCONCLUSIVE in log" "INCONCLUSIVE" "$LOG25"
+assert_file_contains "codegen sentinel: ALL CLEAR in log" "ALL CLEAR" "$LOG25"
+rm -f "$STUB25"
+rm -rf "$T25"
+
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

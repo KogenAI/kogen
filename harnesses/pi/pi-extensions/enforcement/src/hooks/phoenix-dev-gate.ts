@@ -38,6 +38,9 @@ export function register(pi: ExtensionAPI): void {
     if (!PHOENIX_DEV_AGENTS.has(agentType)) return;
 
     const projectDir = process.env["CWD"] ?? process.cwd();
+    const isCodegenSelfBuild = fs.existsSync(
+      path.join(projectDir, "shared", "enforcement", "registry.yaml"),
+    );
     const sessionId = process.env["SESSION_ID"] ?? "unknown";
     debugLog(
       "phoenix-dev-gate",
@@ -137,7 +140,7 @@ export function register(pi: ExtensionAPI): void {
     // Pi cannot block (session_shutdown is observe-only) — surface FAIL via stderr
     // and downgrade verdict. This is the documented runtime-fidelity asymmetry.
     let wiringSummary = "";
-    if (verdict === "ALL CLEAR ✅") {
+    if (verdict === "ALL CLEAR ✅" && !isCodegenSelfBuild) {
       const codegenDir = process.env["CODEGEN_DIR"] ?? "";
       const wiringCheckScript = codegenDir
         ? path.join(
@@ -212,7 +215,7 @@ export function register(pi: ExtensionAPI): void {
 
     // ── Render verification (after gate passes and wiring OK) ──────────────
     let renderSummary = "";
-    if (verdict === "ALL CLEAR ✅") {
+    if (verdict === "ALL CLEAR ✅" && !isCodegenSelfBuild) {
       const codegenDir = process.env["CODEGEN_DIR"] ?? "";
       const renderCheckScript = codegenDir
         ? path.join(

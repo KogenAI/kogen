@@ -188,6 +188,10 @@ tools-header-no-dup:
 # concurrently via & + wait to reduce wall time.
 test: hook-parity hook-header-parity harness-parity test-generator enforce-registry-parity enforce-hook-rationale test-hermetic prompt-content-parity tools-header-no-dup
 	@set -e; \
+	subagents_ext_dir="$(SCRIPT_DIR)/harnesses/pi/pi-extensions/subagents"; \
+	if [ -f "$$subagents_ext_dir/package.json" ] && grep -q '"build"[[:space:]]*:' "$$subagents_ext_dir/package.json"; then \
+		(cd "$$subagents_ext_dir" && mise exec -- npm run build) || { echo "subagents pre-build failed"; exit 1; }; \
+	fi; \
 	tmp_hooks=$$(mktemp); tmp_scaffold=$$(mktemp); tmp_install=$$(mktemp); \
 	tmp_npm=$$(mktemp); tmp_subagents=$$(mktemp); \
 	pids=(); labels=(); tmps=(); \
@@ -199,7 +203,7 @@ test: hook-parity hook-header-parity harness-parity test-generator enforce-regis
 		for ext in enforcement askuserquestion subagents web-utils; do \
 			ext_dir="$(SCRIPT_DIR)/harnesses/pi/pi-extensions/$$ext"; \
 			if [ -f "$$ext_dir/package.json" ] && grep -q '"test"[[:space:]]*:' "$$ext_dir/package.json"; then \
-				if grep -q '"build"[[:space:]]*:' "$$ext_dir/package.json"; then \
+				if [ "$$ext" != "subagents" ] && grep -q '"build"[[:space:]]*:' "$$ext_dir/package.json"; then \
 					(cd "$$ext_dir" && mise exec -- npm run build) || fail=1; \
 				fi; \
 				if [ -n "$$VERBOSE" ]; then \
