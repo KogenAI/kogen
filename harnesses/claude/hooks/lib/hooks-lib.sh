@@ -313,10 +313,14 @@ session_log_from_transcript() {
     fi
     # Filesystem fallback for managed build sessions where the transcript file
     # lags the live stream (print-mode builds flush the transcript asynchronously).
-    # Only applied when OCG_APPS_ROOT is set AND cwd is under it — i.e., a
-    # managed build worker. Interactive sessions keep strict transcript-bound
-    # resolution (result stays empty → deny if no transcript hit).
-    if [ -z "$result" ]; then
+    # Also fires when the transcript yields a path that no longer exists on disk
+    # (stale/lagging transcript pointing at an old log). In both cases, consult
+    # the disk under managed-build conditions.
+    # Interactive sessions keep strict transcript-bound resolution — if neither
+    # inner branch assigns, result stays empty/stale → caller denies.
+    if [ -z "$result" ] || [ ! -e "$result" ]; then
+        # A stale (non-existent) transcript path must not block the disk scan.
+        [ -n "$result" ] && [ ! -e "$result" ] && result=""
         local apps_root="${OCG_APPS_ROOT:-}"
         local cwd="${CWD:-$PWD}"
         if [ -n "$apps_root" ]; then

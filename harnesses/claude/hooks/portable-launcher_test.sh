@@ -265,6 +265,7 @@ T6="$BASE_TMP/t6_dispatch"
 mkdir -p "$T6/harnesses/claude"
 cp "$CODEGEN_ROOT/harnesses/claude/dispatch.sh" "$T6/harnesses/claude/dispatch.sh"
 cp "$CODEGEN_ROOT/harnesses/claude/build-tools.txt" "$T6/harnesses/claude/build-tools.txt"
+cp "$CODEGEN_ROOT/harnesses/claude/claude-build-system-prompt.txt" "$T6/harnesses/claude/claude-build-system-prompt.txt"
 # No config.yaml — use a fake empty OCG dir
 FAKE_OCG6="$BASE_TMP/t6_ocg_empty"
 mkdir -p "$FAKE_OCG6/templates/generator"
@@ -288,6 +289,7 @@ T7="$BASE_TMP/t7_dispatch"
 mkdir -p "$T7/harnesses/claude"
 cp "$CODEGEN_ROOT/harnesses/claude/dispatch.sh" "$T7/harnesses/claude/dispatch.sh"
 cp "$CODEGEN_ROOT/harnesses/claude/build-tools.txt" "$T7/harnesses/claude/build-tools.txt"
+cp "$CODEGEN_ROOT/harnesses/claude/claude-build-system-prompt.txt" "$T7/harnesses/claude/claude-build-system-prompt.txt"
 # config.yaml present but model key is empty/null
 FAKE_OCG7="$BASE_TMP/t7_ocg"
 mkdir -p "$FAKE_OCG7/templates/generator"
@@ -454,7 +456,8 @@ make_transcript "$T12/transcript.jsonl" "$LOG12"
 
 actual_exit=0
 out12=$(
-    bash "$SCRIPT_DIR/phoenix-dev-gate.sh" 2>/dev/null \
+    RENDER_CHECK_CMD="" WIRING_CHECK_CMD="" \
+        bash "$SCRIPT_DIR/phoenix-dev-gate.sh" 2>/dev/null \
         <<<"$(gate_input "$T12" developer-phoenix-backend sess12 "$T12/transcript.jsonl")"
 ) || actual_exit=$?
 

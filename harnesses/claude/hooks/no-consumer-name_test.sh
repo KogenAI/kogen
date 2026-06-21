@@ -71,6 +71,8 @@ scan() {
         --exclude-dir=dist \
         --exclude-dir=coverage \
         --exclude-dir=tmp \
+        --exclude-dir=recipes-combobulate \
+        --exclude-dir=.claude \
         2>/dev/null |
         grep -v 'test_harness/deps\|test_harness/_build\|codegen/pitches' |
         grep -v 'no-consumer-name_test\.sh' |

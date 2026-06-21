@@ -26,7 +26,7 @@ See `context/launcher-hook-matrix.md` for a table of per-hook bypass and fail-op
 
 ## Developer Self-Gate Counter Behavior
 
-`developer-no-self-gate.sh` tracks developer CI invocations per session via counter file (`/tmp/combobulate-self-gate-${session_id}.count`). Each Bash invocation matching `make *`, `mix test`, `mix credo`, or `mix format` increments the counter. At limit (3), further attempts are denied — hand off to orchestrator. Plan CI invocations strategically; running `make test` or `make hook-parity` repeatedly burns the budget.
+`developer-no-self-gate.sh` tracks developer CI invocations per session via counter file (`/tmp/<sentinel>-self-gate-${session_id}.count`). Each Bash invocation matching `make *`, `mix test`, `mix credo`, or `mix format` increments the counter. At limit (3), further attempts are denied — hand off to orchestrator. Plan CI invocations strategically; running `make test` or `make hook-parity` repeatedly burns the budget.
 
 ## Resolver Hoisting & Self-Describing Counter Pattern
 

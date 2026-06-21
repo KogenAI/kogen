@@ -14,7 +14,7 @@ Phoenix-specific checks layered onto reviewer 15-step process.
   3. **Autofocus** — keyboard-first overlay/modal input with no `phx-mounted={JS.focus()}` or `mounted()` hook; flag if absent.
   4. **Cursor** — interactive element (`<.link>`, `phx-click` row, button-styled `<div>`) without `cursor-pointer` (Tailwind preflight resets to `cursor: default`); flag if absent.
   5. **Handler wiring** — every `phx-click`/`phx-submit`/`phx-change`/`phx-keyup` handler has a LiveView test that drives the REAL rendered element (`element("#id") |> render_*`) and asserts a SIDE EFFECT (not just the rendered label); a handler with no such test, or a test that asserts only `render(view) =~ "…"`, is a blocking review issue.
-- **13 Masking Defaults**: Flag masking defaults (required value + sentinel fallback) per `_core/fail-fast-required-values.md`. Apply the 3-part test: required? sentinel papers over absence? proceeds wrong silently? All three → blocking issue. See `stacks/phoenix/no-defensive-code.md` for the related error-swallowing rule.
+- **13 Masking Defaults**: Flag masking defaults (required value + sentinel fallback) per `_core/fail-fast-required-values.md`. Apply the 3-part test: required? sentinel papers over absence? proceeds wrong silently? All three → blocking issue. The related error-swallowing rule is the no-defensive-code discipline (also loaded for this role).
 - **14 Deployment**: GitHub workflows edit `.github/github_workflows.ex` → `mix github_workflows.generate`. Never `.yml` directly.
 - **15 Translation**: empty `msgstr ""` in `en/*.po` is CORRECT (Gettext fallback). Flag only non-English locales.
 
