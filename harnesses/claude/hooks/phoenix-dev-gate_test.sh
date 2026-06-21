@@ -597,17 +597,20 @@ assert_not_contains "witness unparseable: no Witness prefix" "Witness:" "$outu"
 assert_contains "witness unparseable: tail still present" "Tail:" "$outu"
 rm -rf "$TU"
 
-# ── Test 21: default render-check branch with spaced CODEGEN_DIR ─────────────
-# Exercises the array-literal fix: if CODEGEN_DIR contains a space, the old
-# read -ra approach would split the path, causing MODULE_NOT_FOUND. With the
-# fix, render_check_cmd_arr=("node" "...") is always safe.
-T21_BASE=$(mktemp -d)
-T21_CODEGEN="$T21_BASE/codegen dir with spaces"
-mkdir -p "$T21_CODEGEN/harnesses/claude/hooks/lib"
-cat >"$T21_CODEGEN/harnesses/claude/hooks/lib/render-check.js" <<'JS'
+# ── Test 21: flat-layout — sibling render-check.js + wiring-check.js PASS ─────
+# Proves the hook resolves render-check.js and wiring-check.js sibling-relative
+# (BASH_SOURCE[0]) without CODEGEN_DIR. Copy hook + all lib/* into a temp dir so
+# <tmp>/phoenix-dev-gate.sh and <tmp>/lib/... are siblings; plant PASS stubs at
+# <tmp>/lib/render-check.js and <tmp>/lib/wiring-check.js.
+T21_FLAT=$(mktemp -d)
+mkdir -p "$T21_FLAT/lib"
+cp "$HOOK" "$T21_FLAT/"
+cp "$SCRIPT_DIR"/lib/*.sh "$T21_FLAT/lib/"
+# Plant PASS stubs as sibling .js files
+cat >"$T21_FLAT/lib/render-check.js" <<'JS'
 process.stdout.write('RENDER_VERDICT=PASS\n');
 JS
-cat >"$T21_CODEGEN/harnesses/claude/hooks/lib/wiring-check.js" <<'JS'
+cat >"$T21_FLAT/lib/wiring-check.js" <<'JS'
 process.stdout.write('WIRING_VERDICT=PASS\n');
 JS
 T21=$(make_project)
@@ -621,12 +624,40 @@ cat >"$LOG21" <<'MD'
 MD
 make_transcript "$T21/transcript.jsonl" "$LOG21"
 out21=$(printf '%s' "$(input_for "$T21" developer-phoenix-backend false sess1 "$T21/transcript.jsonl")" |
-    env -u RENDER_CHECK_CMD -u WIRING_CHECK_CMD CODEGEN_DIR="$T21_CODEGEN" bash "$HOOK" 2>/dev/null || true)
-# No RENDER_CHECK_CMD/WIRING_CHECK_CMD set — exercises the default array-literal branch.
-# Expect: no block, ALL CLEAR in log.
-assert_not_contains "default render-check spaced CODEGEN_DIR: no block" '"decision": "block"' "$out21"
-assert_file_contains "default render-check spaced CODEGEN_DIR: ALL CLEAR in log" "ALL CLEAR" "$LOG21"
-rm -rf "$T21_BASE" "$T21"
+    env -u RENDER_CHECK_CMD -u WIRING_CHECK_CMD -u CODEGEN_DIR bash "$T21_FLAT/phoenix-dev-gate.sh" 2>/dev/null || true)
+# Sibling stubs both emit PASS — expect no block + ALL CLEAR in log.
+assert_not_contains "flat-layout sibling PASS stubs: no block" '"decision": "block"' "$out21"
+assert_file_contains "flat-layout sibling PASS stubs: ALL CLEAR in log" "ALL CLEAR" "$LOG21"
+rm -rf "$T21_FLAT" "$T21"
+
+# ── Test 22: flat-layout — sibling render-check.js ABSENT → INCONCLUSIVE ──────
+# When render-check.js is missing from the sibling lib/ dir, the preflight check
+# must emit INCONCLUSIVE (render-checker-missing) and NOT emit ALL CLEAR.
+T22_FLAT=$(mktemp -d)
+mkdir -p "$T22_FLAT/lib"
+cp "$HOOK" "$T22_FLAT/"
+cp "$SCRIPT_DIR"/lib/*.sh "$T22_FLAT/lib/"
+# Plant wiring-check.js stub but NOT render-check.js
+cat >"$T22_FLAT/lib/wiring-check.js" <<'JS'
+process.stdout.write('WIRING_VERDICT=PASS\n');
+JS
+T22=$(make_project)
+LOG22="$T22/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_step1.md"
+cat >"$LOG22" <<'MD'
+# Step
+
+## Plan
+
+**Gate**: `true`
+MD
+make_transcript "$T22/transcript.jsonl" "$LOG22"
+out22=$(printf '%s' "$(input_for "$T22" developer-phoenix-backend false sess1 "$T22/transcript.jsonl")" |
+    env -u RENDER_CHECK_CMD -u WIRING_CHECK_CMD -u CODEGEN_DIR bash "$T22_FLAT/phoenix-dev-gate.sh" 2>/dev/null || true)
+# render-checker-missing → INCONCLUSIVE, non-fatal, no ALL CLEAR.
+assert_not_contains "flat-layout absent render-check.js: no block" '"decision": "block"' "$out22"
+assert_file_not_contains "flat-layout absent render-check.js: no ALL CLEAR" "ALL CLEAR" "$LOG22"
+assert_file_contains "flat-layout absent render-check.js: INCONCLUSIVE in log" "INCONCLUSIVE" "$LOG22"
+rm -rf "$T22_FLAT" "$T22"
 
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

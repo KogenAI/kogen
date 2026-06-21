@@ -150,11 +150,13 @@ ts_now() { date -u +%Y-%m-%dT%H:%M:%SZ; }
 # (assumed to be on port 4000, the Phoenix default). Returns the verdict
 # string: PASS, FAIL:<reason>, INCONCLUSIVE:<reason>, or "" if skipped.
 run_phoenix_render_check() {
+    local _self_dir
+    _self_dir="$(dirname "${BASH_SOURCE[0]}")"
     local -a render_check_cmd_arr
     local _render_check_default=0
     if [ -z "${RENDER_CHECK_CMD+x}" ]; then
         _render_check_default=1
-        render_check_cmd_arr=("node" "${CODEGEN_DIR:-}/harnesses/claude/hooks/lib/render-check.js")
+        render_check_cmd_arr=("node" "$_self_dir/lib/render-check.js")
     else
         read -ra render_check_cmd_arr <<<"${RENDER_CHECK_CMD}"
     fi
@@ -164,7 +166,7 @@ run_phoenix_render_check() {
     fi
     # When using the DEFAULT command, preflight the resolved .js path + node.
     if [ "$_render_check_default" -eq 1 ]; then
-        local _js_path="${CODEGEN_DIR:-}/harnesses/claude/hooks/lib/render-check.js"
+        local _js_path="$_self_dir/lib/render-check.js"
         if ! [ -f "$_js_path" ] || ! command -v node >/dev/null 2>&1; then
             printf 'INCONCLUSIVE:render-checker-missing'
             return 0
@@ -191,11 +193,13 @@ run_phoenix_render_check() {
 # every phx-* handler has an element-driven test with a side-effect assertion.
 # Returns the verdict string: PASS, FAIL:<detail>, INCONCLUSIVE:<reason>, or "".
 run_phoenix_wiring_check() {
+    local _self_dir
+    _self_dir="$(dirname "${BASH_SOURCE[0]}")"
     local -a wiring_check_cmd_arr
     local _wiring_check_default=0
     if [ -z "${WIRING_CHECK_CMD+x}" ]; then
         _wiring_check_default=1
-        wiring_check_cmd_arr=("node" "${CODEGEN_DIR:-}/harnesses/claude/hooks/lib/wiring-check.js")
+        wiring_check_cmd_arr=("node" "$_self_dir/lib/wiring-check.js")
     else
         read -ra wiring_check_cmd_arr <<<"${WIRING_CHECK_CMD}"
     fi
@@ -205,7 +209,7 @@ run_phoenix_wiring_check() {
     fi
     # When using the DEFAULT command, preflight the resolved .js path + node.
     if [ "$_wiring_check_default" -eq 1 ]; then
-        local _js_path="${CODEGEN_DIR:-}/harnesses/claude/hooks/lib/wiring-check.js"
+        local _js_path="$_self_dir/lib/wiring-check.js"
         if ! [ -f "$_js_path" ] || ! command -v node >/dev/null 2>&1; then
             printf 'INCONCLUSIVE:wiring-checker-missing'
             return 0

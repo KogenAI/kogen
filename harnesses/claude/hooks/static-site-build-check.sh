@@ -201,9 +201,14 @@ render_summary="render: skipped (no output dir)"
 
 run_render_check() {
     local out_dir="$1"
+    local _self_dir
+    _self_dir="$(dirname "${BASH_SOURCE[0]}")"
     local -a render_check_cmd_arr
     if [ -z "${RENDER_CHECK_CMD+x}" ]; then
-        render_check_cmd_arr=("node" "${CODEGEN_DIR:-}/harnesses/claude/hooks/lib/render-check.js")
+        if [ ! -f "$_self_dir/lib/render-check.js" ]; then
+            fail "render-check.js not found at $_self_dir/lib/render-check.js — check flat install layout"
+        fi
+        render_check_cmd_arr=("node" "$_self_dir/lib/render-check.js")
     else
         read -ra render_check_cmd_arr <<<"${RENDER_CHECK_CMD}"
     fi
@@ -232,6 +237,10 @@ if [ "$_NPM_BUILD_SKIPPED" = "false" ] && [ -f package.json ] && jq -e '.scripts
         INCONCLUSIVE:browser-not-installed)
             debug_log static-site-build-check "render check INCONCLUSIVE: browser not installed"
             fail "Chromium missing on this box — run: npx playwright install chromium. Infra condition, not a code/hook defect."
+            ;;
+        INCONCLUSIVE:playwright-module-unresolvable)
+            debug_log static-site-build-check "render check INCONCLUSIVE: playwright module unresolvable"
+            fail "render-check.js could not require the playwright module from any candidate path — codegen install/path fault, not a missing browser. Verify lib/render-check.js sits beside the hook and node_modules/playwright is resolvable."
             ;;
         INCONCLUSIVE:*)
             detail="${render_verdict#INCONCLUSIVE:}"

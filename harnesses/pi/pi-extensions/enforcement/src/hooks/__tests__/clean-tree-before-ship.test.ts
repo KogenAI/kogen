@@ -47,6 +47,7 @@ describe("clean-tree-before-ship", { concurrency: 1 }, () => {
       execSync("git init -q", { cwd: tmpDir });
       execSync("git config user.email t@t", { cwd: tmpDir });
       execSync("git config user.name t", { cwd: tmpDir });
+      execSync("git config commit.gpgsign false", { cwd: tmpDir });
       execSync("git checkout -q -b main", { cwd: tmpDir });
       fs.writeFileSync(path.join(tmpDir, "README"), "init");
       execSync("git add README", { cwd: tmpDir });
@@ -78,6 +79,7 @@ describe("clean-tree-before-ship", { concurrency: 1 }, () => {
       execSync("git init -q", { cwd: tmpDir });
       execSync("git config user.email t@t", { cwd: tmpDir });
       execSync("git config user.name t", { cwd: tmpDir });
+      execSync("git config commit.gpgsign false", { cwd: tmpDir });
       execSync("git checkout -q -b main", { cwd: tmpDir });
       fs.writeFileSync(path.join(tmpDir, "README"), "init");
       execSync("git add README", { cwd: tmpDir });
@@ -157,6 +159,7 @@ describe("clean-tree-before-ship", { concurrency: 1 }, () => {
       execSync("git init -q", { cwd: tmpDir });
       execSync("git config user.email t@t", { cwd: tmpDir });
       execSync("git config user.name t", { cwd: tmpDir });
+      execSync("git config commit.gpgsign false", { cwd: tmpDir });
       execSync("git checkout -q -b main", { cwd: tmpDir });
       fs.writeFileSync(path.join(tmpDir, "README"), "init");
       execSync("git add README", { cwd: tmpDir });
@@ -189,6 +192,7 @@ describe("clean-tree-before-ship", { concurrency: 1 }, () => {
       execSync("git init -q", { cwd: tmpDir });
       execSync("git config user.email t@t", { cwd: tmpDir });
       execSync("git config user.name t", { cwd: tmpDir });
+      execSync("git config commit.gpgsign false", { cwd: tmpDir });
       execSync("git checkout -q -b main", { cwd: tmpDir });
       fs.writeFileSync(path.join(tmpDir, "README"), "init");
       execSync("git add README", { cwd: tmpDir });
@@ -221,6 +225,7 @@ describe("clean-tree-before-ship", { concurrency: 1 }, () => {
       execSync("git init -q", { cwd: tmpDir });
       execSync("git config user.email t@t", { cwd: tmpDir });
       execSync("git config user.name t", { cwd: tmpDir });
+      execSync("git config commit.gpgsign false", { cwd: tmpDir });
       execSync("git checkout -q -b main", { cwd: tmpDir });
       fs.writeFileSync(path.join(tmpDir, "README"), "init");
       execSync("git add README", { cwd: tmpDir });
@@ -257,6 +262,7 @@ describe("clean-tree-before-ship", { concurrency: 1 }, () => {
       execSync("git init -q", { cwd: tmpDir });
       execSync("git config user.email t@t", { cwd: tmpDir });
       execSync("git config user.name t", { cwd: tmpDir });
+      execSync("git config commit.gpgsign false", { cwd: tmpDir });
       execSync("git checkout -q -b main", { cwd: tmpDir });
       fs.writeFileSync(path.join(tmpDir, "README"), "init");
       execSync("git add README", { cwd: tmpDir });
@@ -293,6 +299,7 @@ describe("clean-tree-before-ship", { concurrency: 1 }, () => {
       execSync("git init -q", { cwd: tmpDir });
       execSync("git config user.email t@t", { cwd: tmpDir });
       execSync("git config user.name t", { cwd: tmpDir });
+      execSync("git config commit.gpgsign false", { cwd: tmpDir });
       execSync("git checkout -q -b main", { cwd: tmpDir });
       fs.writeFileSync(path.join(tmpDir, "README"), "init");
       execSync("git add README", { cwd: tmpDir });

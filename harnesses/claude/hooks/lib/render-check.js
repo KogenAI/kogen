@@ -12,7 +12,7 @@
  *   RENDER_VERDICT=INCONCLUSIVE:<reason>
  *
  * FAIL reasons:    empty-dom | empty-content-region | unstyled | js-error:<detail> | asset-404:<url>
- * INCONCLUSIVE:    browser-not-installed | server-unready | timeout | config-error | <other>
+ * INCONCLUSIVE:    browser-not-installed | playwright-module-unresolvable | server-unready | timeout | config-error | <other>
  *
  * Exit 0 always — verdict is communicated via the RENDER_VERDICT line.
  * Diagnostic messages go to stderr.
@@ -148,8 +148,23 @@ async function runChecks(url, timeoutMs, mode) {
       throw new Error("playwright not resolvable from any candidate path");
     }
   } catch (_e) {
-    log("playwright not resolvable — browser-not-installed");
-    verdict("INCONCLUSIVE:browser-not-installed");
+    const codegenDir = process.env["CODEGEN_DIR"] || "(unset)";
+    const fourUp = path.join(
+      __dirname,
+      "..",
+      "..",
+      "..",
+      "..",
+      "node_modules",
+      "playwright",
+    );
+    log(
+      `playwright module unresolvable — path/env fault, not a missing browser binary. ` +
+        `Candidates tried: CODEGEN_DIR=${codegenDir}/node_modules/playwright, ` +
+        `four-up=${fourUp}, node-default=playwright. ` +
+        `Verify lib/render-check.js sits beside the hook and node_modules/playwright is resolvable.`,
+    );
+    verdict("INCONCLUSIVE:playwright-module-unresolvable");
     return;
   }
 

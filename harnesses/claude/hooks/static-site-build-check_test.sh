@@ -442,15 +442,19 @@ else
 fi
 rm -rf "$T20"
 
-# ── Test 21: default render-check branch with spaced CODEGEN_DIR ─────────────
-# Exercises the array-literal fix: if CODEGEN_DIR contains a space, the old
-# read -ra approach would split the path into two tokens, breaking node invocation.
-# With the fix, render_check_cmd_arr=("node" "...") is always safe.
-T21_BASE=$(mktemp -d)
-T21_CODEGEN="$T21_BASE/codegen dir with spaces"
-mkdir -p "$T21_CODEGEN/harnesses/claude/hooks/lib"
-# Plant a minimal render-check.js stub that emits RENDER_VERDICT=PASS
-cat >"$T21_CODEGEN/harnesses/claude/hooks/lib/render-check.js" <<'JS'
+# ── Test 21: flat-layout — sibling render-check.js PASS stub ─────────────────
+# Proves that the hook resolves render-check.js sibling-relative (BASH_SOURCE[0])
+# WITHOUT needing CODEGEN_DIR at all. Copy hook + all lib/* into a temp dir so
+# <tmp>/static-site-build-check.sh and <tmp>/lib/... are siblings, plant a
+# PASS stub at <tmp>/lib/render-check.js, run the copied hook with CODEGEN_DIR
+# unset and no RENDER_CHECK_CMD — should allow with no verdict error.
+T21_FLAT=$(mktemp -d)
+mkdir -p "$T21_FLAT/lib"
+cp "$HOOK" "$T21_FLAT/"
+cp "$SCRIPT_DIR"/lib/*.sh "$T21_FLAT/lib/"
+cp "$SCRIPT_DIR/lib/gate-result.sh" "$T21_FLAT/lib/"
+# Plant PASS stub as the sibling render-check.js
+cat >"$T21_FLAT/lib/render-check.js" <<'JS'
 process.stdout.write('RENDER_VERDICT=PASS\n');
 JS
 T21=$(make_tmp_site)
@@ -469,21 +473,71 @@ cat >"$LOG21" <<'MD'
 MD
 make_transcript "$T21/transcript.jsonl" "$LOG21"
 out21=$(printf '%s' "$(input_for "$T21" developer-static false "$T21/transcript.jsonl")" |
-    env -u RENDER_CHECK_CMD CODEGEN_DIR="$T21_CODEGEN" bash "$HOOK" 2>/dev/null || true)
-# No RENDER_CHECK_CMD set (explicitly unset to isolate from env leakage) —
-# exercises the default branch with spaced CODEGEN_DIR.
-# Expect: no block, log does NOT contain the no-verdict error message.
+    env -u RENDER_CHECK_CMD -u CODEGEN_DIR bash "$T21_FLAT/static-site-build-check.sh" 2>/dev/null || true)
+# Sibling lib/render-check.js is the PASS stub → should allow, no verdict error.
 outcome21="allow"
 printf '%s' "$out21" | grep -q '"decision"[[:space:]]*:[[:space:]]*"block"' && outcome21="block"
 if [ "$outcome21" = "allow" ] && ! grep -q 'render-check did not emit verdict' "$LOG21" 2>/dev/null; then
-    [ -n "${VERBOSE:-}" ] && printf 'PASS: %s\n' "default render-check with spaced CODEGEN_DIR allows"
+    [ -n "${VERBOSE:-}" ] && printf 'PASS: %s\n' "flat-layout sibling render-check.js PASS allows"
     pass=$((pass + 1))
 else
-    printf 'FAIL: default render-check with spaced CODEGEN_DIR — expected allow, got %s\n  stdout: %s\n  log: %s\n' \
+    printf 'FAIL: flat-layout sibling render-check.js PASS — expected allow, got %s\n  stdout: %s\n  log: %s\n' \
         "$outcome21" "$out21" "$(cat "$LOG21" 2>/dev/null || echo '(no log)')"
     fail=$((fail + 1))
 fi
-rm -rf "$T21_BASE" "$T21"
+rm -rf "$T21_FLAT" "$T21"
+
+# ── Test 22: flat-layout — sibling render-check.js ABSENT → fail-loud ─────────
+# When the hook runs outside the repo and lib/render-check.js is missing from the
+# sibling lib/ dir, the preflight check must block with a clear path/install error.
+T22_FLAT=$(mktemp -d)
+mkdir -p "$T22_FLAT/lib"
+cp "$HOOK" "$T22_FLAT/"
+cp "$SCRIPT_DIR"/lib/*.sh "$T22_FLAT/lib/"
+# Do NOT plant render-check.js — sibling is absent
+T22=$(make_tmp_site)
+mkdir -p "$T22/public"
+touch "$T22/public/app.css"
+printf '<html><head><link rel="stylesheet" href="app.css"></head><body><p>hi</p></body></html>\n' \
+    >"$T22/public/index.html"
+out22=$(printf '%s' "$(input_for "$T22" developer-static false)" |
+    env -u RENDER_CHECK_CMD -u CODEGEN_DIR bash "$T22_FLAT/static-site-build-check.sh" 2>/dev/null || true)
+outcome22="allow"
+printf '%s' "$out22" | grep -q '"decision"[[:space:]]*:[[:space:]]*"block"' && outcome22="block"
+if [ "$outcome22" = "block" ] && printf '%s' "$out22" | grep -q 'render-check.js not found'; then
+    [ -n "${VERBOSE:-}" ] && printf 'PASS: %s\n' "flat-layout absent sibling render-check.js blocks with path error"
+    pass=$((pass + 1))
+else
+    printf 'FAIL: flat-layout absent sibling render-check.js — expected block with path error, got %s\n  stdout: %s\n' \
+        "$outcome22" "$out22"
+    fail=$((fail + 1))
+fi
+rm -rf "$T22_FLAT" "$T22"
+
+# ── Test 23: RENDER_CHECK_CMD emits playwright-module-unresolvable → BLOCKS ────
+# When render-check.js cannot require playwright from any candidate, it emits
+# INCONCLUSIVE:playwright-module-unresolvable. The static gate must BLOCK with a
+# distinct loud message naming the path/env fault (not a browser message).
+T23=$(make_tmp_site)
+mkdir -p "$T23/public"
+touch "$T23/public/app.css"
+printf '<html><head><link rel="stylesheet" href="app.css"></head><body><p>hi</p></body></html>\n' \
+    >"$T23/public/index.html"
+STUB23=$(make_render_stub "INCONCLUSIVE:playwright-module-unresolvable")
+out23=$(printf '%s' "$(input_for "$T23")" |
+    RENDER_CHECK_CMD="$STUB23" CODEGEN_DIR="$SCRIPT_DIR" bash "$HOOK" 2>/dev/null || true)
+outcome23="allow"
+printf '%s' "$out23" | grep -q '"decision"[[:space:]]*:[[:space:]]*"block"' && outcome23="block"
+if [ "$outcome23" = "block" ] && printf '%s' "$out23" | grep -qi 'playwright'; then
+    [ -n "${VERBOSE:-}" ] && printf 'PASS: %s\n' "render INCONCLUSIVE playwright-module-unresolvable blocks with playwright message"
+    pass=$((pass + 1))
+else
+    printf 'FAIL: render INCONCLUSIVE playwright-module-unresolvable should block with playwright message\n  outcome: %s\n  stdout: %s\n' \
+        "$outcome23" "$out23"
+    fail=$((fail + 1))
+fi
+rm -f "$STUB23"
+rm -rf "$T23"
 
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]
