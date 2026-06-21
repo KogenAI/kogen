@@ -34,6 +34,11 @@ if [ "$TOOL_NAME" != "Agent" ]; then
 fi
 
 subagent_type=$(printf '%s' "$RAW_INPUT" | jq -r '.tool_input.subagent_type // ""' 2>/dev/null)
+isolation=$(printf '%s' "$RAW_INPUT" | jq -r '.tool_input.isolation // ""' 2>/dev/null || true)
+if [ "$isolation" = "worktree" ]; then
+    deny 'BLOCKED by operator-subagent-allowlist: Agent-tool isolation:"worktree" is never valid for a codegen subagent — builds operate on the shared checkout. For an isolated worktree, use the native launcher flow (claude --worktree <name>), not the Agent isolation parameter.'
+    exit 0
+fi
 _role=$(resolve_role)
 
 debug_log operator-subagent-allowlist "role=${_role} subagent_type=$subagent_type"

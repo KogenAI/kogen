@@ -278,6 +278,21 @@ else
     fail=$((fail + 1))
 fi
 
+# 23a: isolation:"worktree" denied — fires before subagent_type allow/deny logic
+INPUT_23A='{"hook_event_name":"PreToolUse","tool_name":"Agent","tool_input":{"subagent_type":"developer-phoenix-backend","isolation":"worktree"},"agent_id":"","agent_type":""}'
+stdout_23a=$(printf '%s' "$INPUT_23A" | bash "$GUARD" 2>/dev/null || true)
+if printf '%s' "$stdout_23a" | grep -q '"permissionDecision"[[:space:]]*:[[:space:]]*"deny"'; then
+    [ -n "${VERBOSE:-}" ] && printf 'PASS: 23a isolation:worktree denied\n'
+    pass=$((pass + 1))
+else
+    printf 'FAIL: 23a isolation:worktree should be denied — got allow\n  stdout: %s\n' "$stdout_23a"
+    fail=$((fail + 1))
+fi
+
+# 23b: no isolation param — allowed (project subagent, build mode)
+run_test "23b no isolation param allowed" "allow" "" \
+    '{"hook_event_name":"PreToolUse","tool_name":"Agent","tool_input":{"subagent_type":"developer-phoenix-backend"},"agent_id":"","agent_type":""}'
+
 echo ""
 echo "Results: $pass passed, $fail failed"
 
