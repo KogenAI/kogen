@@ -18,6 +18,13 @@ trap 'rm -rf "$_test_project_dir"' EXIT
 HOOKS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 JOBS="${JOBS:-8}"
 
+# Snapshot the live cycle-state file BEFORE the run so the backstop can detect
+# a WRITE during the run (not mere presence — a real committed cycle leaves the
+# file on disk legitimately).
+_cs_sig() { if [ -f "$1" ]; then cksum <"$1"; else printf 'absent'; fi; }
+_live_cs="${BASH_SOURCE[0]%/harnesses/*}/codegen/gate-pending/cycle-state.json"
+_live_cs_before=$(_cs_sig "$_live_cs")
+
 run_one() {
     local t="$1"
     local name
@@ -41,10 +48,13 @@ export -f run_one
 find "$HOOKS_DIR" -name '*_test.sh' -type f -print0 |
     xargs -0 -n1 -P"$JOBS" -I{} bash -c 'run_one "$@"' _ {}
 
-# Backstop: fail loudly if the live cycle-state was written during the run.
-_live_cs="${BASH_SOURCE[0]%/harnesses/*}/codegen/gate-pending/cycle-state.json"
-if [ -f "$_live_cs" ]; then
-    printf 'FAIL: live cycle-state.json was written during make test — isolation leak!\n' >&2
-    printf '  File: %s\n' "$_live_cs" >&2
+# Backstop: fail loudly only if the live cycle-state was MODIFIED during the run.
+# A pre-existing committed cycle-state.json is legitimate (before == after);
+# only a write during the run indicates isolation leakage.
+_live_cs_after=$(_cs_sig "$_live_cs")
+if [ "$_live_cs_before" != "$_live_cs_after" ]; then
+    printf 'FAIL: live cycle-state.json was modified during make test — isolation leak!\n' >&2
+    printf '  before: %s\n' "$_live_cs_before" >&2
+    printf '  after:  %s\n' "$_live_cs_after" >&2
     exit 1
 fi
