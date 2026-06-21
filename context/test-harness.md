@@ -114,6 +114,10 @@ Two new test files in `test_harness/test/codegen_test_harness/` run under `make 
 - **`render_check_test.exs`** — Validates `harnesses/claude/hooks/lib/render-check.js` syntax correctness via `node --check` on both render-check.js and phoenix-server.js. Smoke-invokes `render-check.js` asserting a `RENDER_VERDICT=` line emits (catches silent parse failures). Skips-with-reason if `node` absent (browserless box allowed). Critical for catching render-check regressions without requiring a full LLM gate cycle.
 - **`call_contract_test.exs`** — Asserts the harness-name mapping: `Fixtures.codegen_call_harness/0` returns `"claude_code"` (codegen-call harness name), not `"claude"` (codegen-build harness name). Catches class-2 regressions where fixture feeds wrong harness ID to the call binary.
 
+### Hermetic Role-Absent Testing Pattern for codegen-call
+
+`Fixtures.run_codegen_call/3` derives `--model` and `--effort` flags from `config.yaml` by role → a **real role string is required**. This helper cannot serve as a test vehicle for role-absent cases. Instead, hermetic role-absent tests trigger via a **different missing argument** (e.g., `--harness`) that causes exit 2 with usage text, then assert the usage message is emitted. Pattern: `System.cmd("codegen-call", [missing args that trigger exit 2], ...)` and `assert {_, 2} = result`, then inspect stdout for usage text mentioning `--harness`. This approach validates the role-optional behavior without requiring dispatch through the role-resolution path.
+
 **G1–G3 confidence gaps closed by this session (20260608_174414)**:
 
 - **G1**: `ops_test.exs` + `headless_launcher_test.exs` now tagged `:slow` (were previously `:ops`/`:headless` only). Gate test count rose by case count of both files.

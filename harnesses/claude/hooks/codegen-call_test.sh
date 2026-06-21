@@ -5,7 +5,7 @@
 #
 # (a) --version prints version and exits 0
 # (b) missing --harness exits 2 with usage on stderr
-# (c) missing --role / --model / --effort / --system-prompt / PROMPT each exits 2
+# (c) missing --model / --effort / --system-prompt / PROMPT each exits 2; --role is optional
 # (d) invalid --harness=foo exits 2
 # (e) missing @<path> for --system-prompt exits 2
 # (f) claude_code success fixture: result.status==success, harness==claude_code, usage.input_tokens>0
@@ -163,12 +163,6 @@ CC_C="$(make_cc_root cc_c)"
 # Make a valid dispatch stub to ensure failures are from arg parsing, not dispatch
 mkdir -p "$CC_C/harnesses/claude"
 make_stub "$CC_C/harnesses/claude/call-dispatch.sh" 'printf '"'"'{"result":{"status":"success","value":"ok","reason":null,"clarifying_question":null,"retry_meta":null},"usage":{"input_tokens":1,"output_tokens":1,"cache_read_input_tokens":0,"cache_creation_input_tokens":0,"cost_usd":0,"latency_ms":100,"model":"haiku","num_turns":1},"error":null,"harness":"claude_code"}'"'"''
-
-# missing --role
-actual_exit=0
-"$CC_C/codegen-call" --harness=claude_code --model=haiku --effort=low \
-    --system-prompt "@$SP_FILE" "prompt" 2>/dev/null || actual_exit=$?
-check "(c) missing --role exits 2" "2" "$actual_exit"
 
 # missing --model
 actual_exit=0
@@ -387,6 +381,29 @@ assert_jq_truthy "(m) .usage.input_tokens is number" "$OUT_M" '(.usage.input_tok
 assert_jq_truthy "(m) .usage.output_tokens is number" "$OUT_M" '(.usage.output_tokens | type) == "number"'
 assert_jq_truthy "(m) .usage.latency_ms is number" "$OUT_M" '(.usage.latency_ms | type) == "number"'
 assert_jq_truthy "(m) .harness is string" "$OUT_M" '(.harness | type) == "string"'
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Test (n): --role is optional — omitting it succeeds and CODEGEN_CALL_ROLE is empty
+# ─────────────────────────────────────────────────────────────────────────────
+NO_ROLE_ENVELOPE='{"result":{"status":"success","value":"no role","reason":null,"clarifying_question":null,"retry_meta":null},"usage":{"input_tokens":1,"output_tokens":1,"cache_read_input_tokens":0,"cache_creation_input_tokens":0,"cost_usd":0,"latency_ms":100,"model":"haiku","num_turns":1},"error":null,"harness":"claude_code"}'
+
+CC_N="$(make_cc_root cc_n)"
+# Dispatch stub echoes the envelope AND captures CODEGEN_CALL_ROLE to a file
+make_claude_dispatch_stub "$CC_N" "printf '%s' \"\${CODEGEN_CALL_ROLE:-}\" > \"$BASE_TMP/n_role.txt\"; printf '%s\n' '${NO_ROLE_ENVELOPE}'"
+
+actual_exit=0
+OUT_N="$("$CC_N/codegen-call" \
+    --harness=claude_code --model=haiku --effort=low \
+    --system-prompt "@$SP_FILE" "no role prompt" 2>/dev/null)" || actual_exit=$?
+
+check "(n) missing --role exits 0" "0" "$actual_exit"
+assert_jq "(n) result.status == success without --role" "$OUT_N" ".result.status" "success"
+N_ROLE="$(cat "$BASE_TMP/n_role.txt" 2>/dev/null || printf 'READ_FAILED')"
+check "(n) CODEGEN_CALL_ROLE is empty when --role omitted" "" "$N_ROLE"
+
+# Also verify usage text shows --role as optional (bracket notation)
+USAGE_N="$("$CC_N/codegen-call" 2>&1 || true)"
+assert_contains "(n) usage shows --role as optional" "$USAGE_N" "[--role="
 
 # ─────────────────────────────────────────────────────────────────────────────
 echo ""

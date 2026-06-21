@@ -13,6 +13,20 @@ defmodule CodegenTestHarness.CallContractTest do
 
   alias CodegenTestHarness.Fixtures
 
+  @codegen_call Path.expand("../../../codegen-call", __DIR__)
+
+  describe "codegen-call --role optional contract" do
+    test "usage text lists --role as optional (bracket notation)" do
+      codegen_call = @codegen_call
+
+      {output, exit_code} = System.cmd(codegen_call, [], stderr_to_stdout: true, env: [])
+
+      assert exit_code == 2, "expected exit 2 on missing args, got #{exit_code}"
+      assert output =~ ~r/\[--role=/,
+             "expected usage to show --role as optional with bracket notation, got:\n#{output}"
+    end
+  end
+
   describe "codegen_call_harness/0" do
     test "maps \"claude\" to \"claude_code\" when HARNESS env is unset" do
       # Ensure HARNESS env is unset (default path)

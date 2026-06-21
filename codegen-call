@@ -2,7 +2,7 @@
 # codegen-call — one-shot structured LLM call binary.
 #
 # Usage:
-#   codegen-call --harness=<claude_code|pi> --role=<string> \
+#   codegen-call --harness=<claude_code|pi> [--role=<label>] \
 #     --model=<m> --effort=<e> \
 #     --system-prompt @<abs-path> \
 #     [--json-schema @<abs-path>] \
@@ -14,7 +14,7 @@
 # Flags:
 #   --version             print "codegen-call 0.1.0" and exit 0
 #   --harness=<h>         REQUIRED: claude_code | pi
-#   --role=<string>       REQUIRED: role name (e.g. bouncer, concierge)
+#   --role=<label>        OPTIONAL: telemetry label (e.g. bouncer, concierge)
 #   --model=<m>           REQUIRED: model string
 #   --effort=<e>          REQUIRED: effort string (low/medium/high/…)
 #   --system-prompt @<p>  REQUIRED: @<abs-path> to system prompt file
@@ -57,7 +57,7 @@ EXTENSION_PATH=""
 PROMPT=""
 
 usage() {
-    printf 'Usage: codegen-call --harness=<claude_code|pi> --role=<r> --model=<m> --effort=<e> --system-prompt @<path> [--json-schema @<path>] [--allowed-tools=<list>] [--settings @<path>] [--extension @<path>] PROMPT\n' >&2
+    printf 'Usage: codegen-call --harness=<claude_code|pi> [--role=<label>] --model=<m> --effort=<e> --system-prompt @<path> [--json-schema @<path>] [--allowed-tools=<list>] [--settings @<path>] [--extension @<path>] PROMPT\n' >&2
     exit 2
 }
 
@@ -175,11 +175,6 @@ fi
 
 if [[ "$HARNESS" != "claude_code" && "$HARNESS" != "pi" ]]; then
     printf 'codegen-call: --harness must be "claude_code" or "pi", got %q\n' "$HARNESS" >&2
-    usage
-fi
-
-if [[ -z "$ROLE" ]]; then
-    printf 'codegen-call: --role is required\n' >&2
     usage
 fi
 
