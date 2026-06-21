@@ -21,6 +21,7 @@ import { register as registerContextIndexParity } from "./hooks/context-index-pa
 import { register as registerContextFileSizeGate } from "./hooks/context-file-size-gate";
 
 // BEGIN-GENERATED-ENFORCEMENT-BLOCK
+import { register as registerBuildAgentAppConfinement } from "./hooks/build-agent-app-confinement";
 import { register as registerBuildNoSuccessBeforeCommit } from "./hooks/build-no-success-before-commit";
 import { register as registerBuildWorkerCwdGuard } from "./hooks/build-worker-cwd-guard";
 import { register as registerCleanTreeBeforeShip } from "./hooks/clean-tree-before-ship";
@@ -85,6 +86,7 @@ export default function (pi: ExtensionAPI): void {
   registerContextFileSizeGate(pi);
 
   // BEGIN-GENERATED-ENFORCEMENT-BLOCK
+  registerBuildAgentAppConfinement(pi);
   registerBuildNoSuccessBeforeCommit(pi);
   registerBuildWorkerCwdGuard(pi);
   registerCleanTreeBeforeShip(pi);

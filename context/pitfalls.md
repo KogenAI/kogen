@@ -121,6 +121,7 @@ Codegen runs on servers too — production/staging Linux hosts and the Hetzner d
 - **`local` keyword under `set -u`** — fails in `if/elif` at script scope. Use bare assignment. Function scope OK. Reset loop-branch locals at top: `local repo_url="" tree_ref=""`.
 - **Portable sed** — `sed -i ''` (macOS BSD) NOT portable to GNU sed (Linux). Use temp-file rewrite or `sed -i.bak 's/old/new/' file && rm -f *.bak` (non-empty extension works on both).
 - **Bash 3.2 compatibility** — No `declare -A`, no `wait -n`. Walk `git -C` to ancestor; use `hooks_realpath` for symlinks.
+- **Path canonicalization for prefix-compare across harnesses** — `hooks_realpath` (bash) and `resolveRealPath` (TS) both handle macOS `/var`→`/private/var` symlinks and non-existent paths (bash parent-walk fallback prepends $PWD; TS `fs.realpathSync` falls back to `path.resolve` on missing path). Always canonicalize BOTH sides of a path prefix-compare to avoid symlink-caused false-denies (e.g., detect if `FILE_PATH` is inside `CODEGEN_BUILD_CWD`). Allows trailing `/` guard on canonicalized cwd to prevent sibling-dir false-allow (`/apps/app` must not match `/apps/app2`).
 - **IFS multi-char join** — `IFS=', '; echo "${arr[*]}"` uses only first char. Use `printf '%s, ' "${arr[@]}" | sed 's/, $//'` instead.
 - **`cut` mixed delimiters** — `cut -d: -f2` captures tail. Chain delimiters: `cut -d: -f2 | cut -d'|' -f1`.
 - **Heredoc expansion** — Unquoted `<<EOF` expands; `<<'EOF'` doesn't. Match stub convention: single-quoted uses bare `$*`; unquoted needs `\$*`.

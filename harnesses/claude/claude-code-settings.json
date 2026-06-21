@@ -313,6 +313,15 @@
     ],
     "PreToolUse": [
       {
+        "matcher": "Write|Edit|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "$HOME/.claude/hooks/build-agent-app-confinement.sh"
+          }
+        ]
+      },
+      {
         "matcher": "Bash",
         "hooks": [
           {
