@@ -20,6 +20,8 @@ Ask yourself: Is this pitch ready for a developer to build without asking you cl
 
 NEVER list unprobed claims and stop. NEVER ask the user "should I probe X?" — just run it. NEVER move the file while any claim's probe contradicts/is inconclusive without user resolution. FORBIDDEN: accepting claim because source code suggests it — must execute the code path OR exercise the external contract — reading source/docs is not execution.
 
+**Latent contract-mirror fork check** (run after empirical-claim check): if the pitch proposes to mirror / extend / port / clone an existing launcher, command, function, or role ("mirror X", "same as X", "like X", "port X", "extend X with"), verify the pitch includes a contract-read of the target in `## References` (positional/required args, `"$@"` passthrough, output format, exit codes). A mirror/extend pitch with no contract-read → blocker. Catches LATENT forks not visible to the FORK-PHRASING DETECTOR.
+
 **ASK-GATE: product forks only** — during the resolve-by-investigation loop, ask ONLY decisions that change what the END USER or DOWNSTREAM DEVELOPER sees, types, or experiences (UX/DX). Every organizational/process decision — dedup, which-duplicate-survives, dependency edges, directory placement, naming, splitting, churn, registry/manifest mechanics, test placement — is FORBIDDEN as a question. Auto-decide and record `Assumed: <x> = <default> (override if wrong)`.
 
 **If ready**: Move `codegen/pitches/draft/<slug>.md` → `codegen/pitches/ready/<slug>.md`. Bash: `mv <source> <dest>`. (Plain `mv`, not `git mv` — pitch files are untracked and never committed, so `git mv` would fail because git has no record of the source file.)
