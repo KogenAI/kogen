@@ -7,6 +7,14 @@
 
 set -u
 
+# Neutralize the ambient role inherited from the launching session.
+# resolve_role() returns empty when CLAUDE_ROLE/PI_ROLE are unset, so hooks
+# take their non-investigative (build-like) path and deny-case tests assert
+# correctly. Tests that need a specific role set it per-invocation
+# (CLAUDE_ROLE=X bash "$HOOK"), which overrides this unset for that child only.
+# unset is safe under set -u (only reads of missing vars error, not unset).
+unset CLAUDE_ROLE PI_ROLE
+
 # Isolate test suite from the live cycle-state file.
 # Production hooks resolve project_dir="${CWD:-${CLAUDE_PROJECT_DIR:-$PWD}}".
 # Tests that set an explicit cwd override this; hooks without an explicit cwd
@@ -44,6 +52,15 @@ run_one() {
 }
 
 export -f run_one
+
+# Backstop: assert the runner is role-clean before any test body starts.
+# Converts a future mid-runner role re-leak (someone exporting a role above
+# this point) into an attributable failure instead of a silent wall of red.
+if [ -n "${CLAUDE_ROLE:-}" ] || [ -n "${PI_ROLE:-}" ]; then
+    printf 'FAIL: ambient role leaked into make test runner — not hermetic!\n' >&2
+    printf '  CLAUDE_ROLE=%s PI_ROLE=%s\n' "${CLAUDE_ROLE:-}" "${PI_ROLE:-}" >&2
+    exit 1
+fi
 
 find "$HOOKS_DIR" -name '*_test.sh' -type f -print0 |
     xargs -0 -n1 -P"$JOBS" -I{} bash -c 'run_one "$@"' _ {}
