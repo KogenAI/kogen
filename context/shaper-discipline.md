@@ -158,6 +158,14 @@ When the prompt text DOES name the step or section (e.g., "step c'", "the U-temp
 - The pitch text itself says "correct to line N" (rare)
 - A number is genuinely clearer than a section name (uncommon)
 
+## Readiness Blockers with AUTO-RESOLVE Semantics
+
+When adding a readiness blocker that carries AUTO-RESOLVE semantics (automatic classification + resolution without user question), the blocker description MUST inline the complete classify-and-act logic inline. Pointer-only references to external rules are insufficient because baked `shape.txt` (where the blocker lives) is included in the system prompt WITHOUT `_authoring-spine.txt` — references must be self-contained.
+
+**Pattern**: A blocker scans for a trigger condition (e.g., "Undeclared sibling relationship" checks for shared edit-surface + ordering language without a `## Dependencies` declaration), then inlines the full classify-and-act tree (e.g., cases a/b/c/d outcomes with act-on instructions), then emits a resolution line.
+
+**Constraint**: Rule-prose (e.g., Rule H in `_authoring-spine.txt`) and blocker-class definition (e.g., "Undeclared sibling relationship" in `shape.txt`) are producer/verifier of the same contract — both must be present and aligned or the rule is unenforced. If Rule H generalizes, the blocker's classify-and-act cases must mirror that generalization; if a new blocker is added, the corresponding rule prose (if any) must exist and agree.
+
 ## Cross-Harness Coverage (Both Claude + Pi)
 
 Shape mode is part of both Claude Code (`claude-shape.sh`) and Pi (`pi-shape.sh`). The shape system prompts for both harnesses assemble from the same shared bodies:
@@ -169,6 +177,8 @@ Shape mode is part of both Claude Code (`claude-shape.sh`) and Pi (`pi-shape.sh`
 Editing any of these three files automatically covers both harnesses via `make install` → `generate.sh` → concatenation into `harnesses/claude/claude-shape-system-prompt.txt` and `harnesses/pi/pi-shape-system-prompt.txt`.
 
 **Never hand-edit** the `.txt` generated system-prompt files. They are regenerated on every `make install`.
+
+**Prompt-source edit gate**: Edits to any of the three bodies above require `make install` between test runs to rebake the system prompts. Running `make test` before install will execute against stale baked prompts. Workflow: edit → `make install` → `make test`. Some bodies (e.g., tools-header, prompt bodies) register SENTINELs in `prompt-content-parity_test.sh` for load-bearing text-change detection; new prose-only edits that are not registered need no sentinel sync.
 
 ## Completeness Contract for Sweep-Class Pitches
 
