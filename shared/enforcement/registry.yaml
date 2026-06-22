@@ -55,6 +55,7 @@
 # NOT-YET-MIGRATED: hooks with awkward schema fit deferred to a follow-up wave.
 #   Reason documented per hook. Use marker: not-yet-migrated: true
 #   Outliers in this repo:
+#     context-factcheck-guard — role: unset (non-standard token, no CLAUDE_ROLE gating)
 #     context-file-size-gate — role: unset (non-standard token, no CLAUDE_ROLE gating)
 #     context-index-parity — role: unset (non-standard token, no CLAUDE_ROLE gating)
 #
@@ -193,6 +194,7 @@
 # to regenerate headers. Parity verified by `make hook-header-parity`.
 #
 # NOT-YET-MIGRATED outliers (deferred to follow-up wave):
+#   context-factcheck-guard — role: unset (non-standard token)
 #   context-file-size-gate  — role: unset (non-standard token)
 #   context-index-parity   — role: unset (non-standard token)
 
@@ -329,6 +331,13 @@
   signal: AGENT_TYPE
   role: context-curator
   harnesses: all
+
+# NOT-YET-MIGRATED: role: unset is a non-standard token not in the schema enum.
+# Deferred until schema accepts or normalises the unset sentinel.
+# - kind: registration
+#   id: context-factcheck-guard
+#   not-yet-migrated: true
+#   reason: role value "unset" is a non-standard token; deferred until schema accepts it
 
 # NOT-YET-MIGRATED: role: unset is a non-standard token not in the schema enum.
 # Deferred until schema accepts or normalises the unset sentinel.

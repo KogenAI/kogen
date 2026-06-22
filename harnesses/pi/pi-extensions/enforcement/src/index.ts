@@ -13,6 +13,9 @@
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
+// NOT-YET-MIGRATED: context-factcheck-guard has role: unset (non-standard token);
+// deferred until schema accepts or normalises the unset sentinel.
+import { register as registerContextFactcheckGuard } from "./hooks/context-factcheck-guard";
 // NOT-YET-MIGRATED: context-index-parity has role: unset (non-standard token);
 // deferred until schema accepts or normalises the unset sentinel.
 import { register as registerContextIndexParity } from "./hooks/context-index-parity";
@@ -80,6 +83,8 @@ import { register as registerUsageRulesGrepGuard } from "./hooks/usage-rules-gre
 // END-GENERATED-ENFORCEMENT-BLOCK
 
 export default function (pi: ExtensionAPI): void {
+  // NOT-YET-MIGRATED: context-factcheck-guard — hand-wired outside generated block.
+  registerContextFactcheckGuard(pi);
   // NOT-YET-MIGRATED: context-index-parity — hand-wired outside generated block.
   registerContextIndexParity(pi);
   // NOT-YET-MIGRATED: context-file-size-gate — hand-wired outside generated block.

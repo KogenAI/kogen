@@ -425,6 +425,15 @@
         "hooks": [
           {
             "type": "command",
+            "command": "$HOME/.claude/hooks/context-factcheck-guard.sh"
+          }
+        ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
             "command": "$HOME/.claude/hooks/context-file-size-gate.sh"
           }
         ]
