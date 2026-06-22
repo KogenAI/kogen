@@ -4,12 +4,28 @@
 # Usage: build-queue.sh --harness=<claude|pi> [--stack=<S>]
 # Filesystem IS the state: re-scan ready/ each iteration (refillable + resumable).
 # Success = child exit 0 AND shipped/<slug>.md present AND ready/<slug>.md gone.
-# Halt on first failure; leave the rest in ready/.
+# Non-ship outcome: retry SAME slug if transient (transport fault / interrupted /
+# crashed-no-result) up to CODEGEN_BUILD_QUEUE_MAX_RETRIES (default 3) with
+# CODEGEN_BUILD_QUEUE_RETRY_DELAYS backoff (default "30 120 300" sec); otherwise
+# halt (echo child result + exit 1), leaving the rest in ready/.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 CODEGEN_DIR="${OCG_CODEGEN_DIR:-$(cd "$SCRIPT_DIR/../.." && pwd -P)}"
 BUILD_BIN="$CODEGEN_DIR/codegen-build"
+
+# Transient-error taxonomy (retryable_regex, hard_fail_regex) — single source of
+# truth shared with stop-resume.sh + dispatch retry loops.
+# shellcheck source=harnesses/shared/retryable-errors.sh
+if [ -r "$SCRIPT_DIR/retryable-errors.sh" ]; then
+    source "$SCRIPT_DIR/retryable-errors.sh"
+fi
+
+# Operator toggles (build-time; NOT app runtime — do not add to .env samples):
+#   CODEGEN_BUILD_QUEUE_MAX_RETRIES   max consecutive transient retries per slug (default 3)
+#   CODEGEN_BUILD_QUEUE_RETRY_DELAYS  space-separated backoff seconds per attempt (default "30 120 300")
+MAX_RETRIES="${CODEGEN_BUILD_QUEUE_MAX_RETRIES:-3}"
+RETRY_DELAYS="${CODEGEN_BUILD_QUEUE_RETRY_DELAYS:-30 120 300}"
 
 HARNESS=""
 STACK="${STACK:-phoenix}"
@@ -130,9 +146,44 @@ SLUGS
     printf '%s\n' "$ordered"
 }
 
+# --- is_transient: classify a child's tee'd JSONL as a retryable infra blip ---
+# Args: $1=jsonl_file. Returns 0 (transient) iff:
+#   (a) a line matches retryable_regex (transport faults: socket closed, 5xx, etc.)
+#   (b) OR (claude only) the literal "Request interrupted by user for tool use" appears
+#   (c) OR there is NO type:result record (child crashed/killed mid-flight)
+# Returns 1 (deterministic failure) otherwise.
+is_transient() {
+    local jsonl="$1"
+    [ -r "$jsonl" ] || return 0 # missing capture == crashed == transient
+    if [ -n "${retryable_regex:-}" ] && grep -qE "$retryable_regex" "$jsonl"; then
+        return 0
+    fi
+    if [ "$HARNESS" = "claude" ] &&
+        grep -qF 'Request interrupted by user for tool use' "$jsonl"; then
+        return 0
+    fi
+    if ! grep -q '"type":"result"' "$jsonl"; then
+        return 0
+    fi
+    return 1
+}
+
+# --- pick_delay: backoff seconds for attempt N (1-based); cap at last element ---
+pick_delay() {
+    local attempt="$1" i=1 chosen=0
+    for d in $RETRY_DELAYS; do
+        chosen="$d"
+        [ "$i" -ge "$attempt" ] && break
+        i=$((i + 1))
+    done
+    printf '%s' "$chosen"
+}
+
 # --- main loop ---
 TOTAL=0
 SHIPPED_COUNT=0
+last_slug=""
+retry_count=0
 
 while true; do
     # Re-scan ready/ each iteration (refillable + resumable)
@@ -204,6 +255,28 @@ SLUGS
         SHIPPED_COUNT=$((SHIPPED_COUNT + 1))
         printf '[%d/%d] %s ... shipped\n' "$idx" "$TOTAL" "$slug"
     else
+        # Reset per-slug retry counter when the slug changes.
+        if [ "$slug" != "$last_slug" ]; then
+            retry_count=0
+            last_slug="$slug"
+        fi
+
+        if is_transient "$JSONL" && [ "$retry_count" -lt "$MAX_RETRIES" ]; then
+            retry_count=$((retry_count + 1))
+            delay="$(pick_delay "$retry_count")"
+            printf '[%d/%d] %s ... infra blip (transient) — retry %d/%d after %ss\n' \
+                "$idx" "$TOTAL" "$slug" "$retry_count" "$MAX_RETRIES" "$delay" >&2
+            if [ "$delay" -gt 0 ]; then
+                sleep "$delay"
+            fi
+            continue # re-scan ready/ → same slug re-runs in a fresh child
+        fi
+
+        # Deterministic failure OR retries exhausted: surface child's final result.
+        result_text="$(jq -r 'select(.type=="result") | .result // empty' "$JSONL" 2>/dev/null | tail -1)"
+        session_id="$(jq -r 'select(.type=="result") | .session_id // empty' "$JSONL" 2>/dev/null | tail -1)"
+        [ -n "$result_text" ] && printf '%s\n' "$result_text" >&2
+        [ -n "$session_id" ] && printf 'session_id: %s\n' "$session_id" >&2
         printf '[%d/%d] %s ... FAILED (exit %s)\n' "$idx" "$TOTAL" "$slug" "$child_rc" >&2
         exit 1
     fi

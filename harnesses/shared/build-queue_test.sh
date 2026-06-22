@@ -74,6 +74,22 @@ make_stub() {
 CALL_LOG="${STUB_CALL_LOG:-/dev/null}"
 printf '%s\n' "$*" >>"$CALL_LOG"
 
+# Per-attempt counter so retries can emit DIFFERENT bodies / ship on a later attempt.
+attempt=1
+if [ -n "${STUB_ATTEMPT_FILE:-}" ]; then
+    if [ -r "$STUB_ATTEMPT_FILE" ]; then
+        attempt="$(cat "$STUB_ATTEMPT_FILE" 2>/dev/null || printf '1')"
+    fi
+    printf '%s' "$((attempt + 1))" >"$STUB_ATTEMPT_FILE"
+fi
+
+# Emit JSONL body to stdout so build-queue's `tee "$JSONL"` captures it.
+# STUB_JSONL_BODY_<N> takes precedence for attempt N; else STUB_JSONL_BODY.
+eval "body=\"\${STUB_JSONL_BODY_${attempt}:-\${STUB_JSONL_BODY:-}}\""
+if [ -n "${body:-}" ]; then
+    printf '%s\n' "$body"
+fi
+
 # Parse the pitch path from args (last arg after --)
 pitch_path=""
 found_sep=0
@@ -88,7 +104,8 @@ done
 # Strip leading @ if present (claude mention prefix)
 pitch_path="${pitch_path#@}"
 
-if [ "${STUB_SHIP:-1}" = "1" ] && [ -n "$pitch_path" ]; then
+eval "ship_flag=\"\${STUB_SHIP_${attempt}:-\${STUB_SHIP:-1}}\""
+if [ "${ship_flag:-1}" = "1" ] && [ -n "$pitch_path" ]; then
     slug="$(basename "$pitch_path" .md)"
     ready_path="$PWD/$pitch_path"
     shipped_dir="$PWD/codegen/pitches/shipped"
@@ -108,7 +125,8 @@ if [ -n "${STUB_EXTRA_READY:-}" ] && [ -n "${STUB_EXTRA_SENTINEL:-}" ]; then
     fi
 fi
 
-exit "${STUB_EXIT:-0}"
+eval "exit_code=\"\${STUB_EXIT_${attempt}:-\${STUB_EXIT:-0}}\""
+exit "${exit_code}"
 STUB
     chmod +x "$fake_dir/codegen-build"
 }
@@ -167,10 +185,12 @@ T3_CALL_LOG="$T3_ROOT/calls.log"
 T3_EXIT=0
 T3_OUT=$(
     cd "$T3_ROOT"
-    # aaa fails, bbb and ccc should not be attempted
+    # aaa fails, bbb and ccc should not be attempted.
+    # Emit a deterministic result record so is_transient returns false (no retry).
     STUB_CALL_LOG="$T3_CALL_LOG" \
         STUB_EXIT=1 \
         STUB_SHIP=0 \
+        STUB_JSONL_BODY='{"type":"result","result":"compile error: missing module","session_id":"sT3"}' \
         OCG_CODEGEN_DIR="$T3_ROOT/fake-codegen-bin" \
         bash "$HELPER" --harness=claude 2>&1
 ) || T3_EXIT=$?
@@ -191,8 +211,11 @@ printf 'Pitch: gamma\n' >"$T4_ROOT/codegen/pitches/ready/gamma.md"
 T4_EXIT=0
 (
     cd "$T4_ROOT"
+    # Emit a result record so is_transient returns false — exit 0 not-shipped is
+    # a deterministic failure (no retry expected).
     STUB_EXIT=0 \
         STUB_SHIP=0 \
+        STUB_JSONL_BODY='{"type":"result","result":"finished but not shipped","session_id":"sT4"}' \
         OCG_CODEGEN_DIR="$T4_ROOT/fake-codegen-bin" \
         bash "$HELPER" --harness=claude >/dev/null 2>&1
 ) || T4_EXIT=$?
@@ -338,6 +361,131 @@ T9B_STDERR=$(
 
 assert_eq "T9B: --queue with extra slug arg exits 2" "2" "$T9B_EXIT"
 assert_contains "T9B: error message mentions extra arg" "some-extra-slug" "$T9B_STDERR"
+
+# ── Test T10: transient error → retry, then ship ─────────────────────────────
+T10_ROOT="$TMP_ROOT/t10"
+make_workspace "$T10_ROOT"
+printf 'Pitch: alpha\n' >"$T10_ROOT/codegen/pitches/ready/alpha.md"
+
+T10_CALL_LOG="$T10_ROOT/calls.log"
+T10_ATTEMPT_FILE="$T10_ROOT/attempt"
+T10_TRANSIENT='{"type":"system","subtype":"api_error","error":{"message":"socket connection was closed"}}'
+T10_RESULT='{"type":"result","result":"shipped ok","session_id":"s2"}'
+
+T10_EXIT=0
+T10_OUT=$(
+    cd "$T10_ROOT"
+    STUB_CALL_LOG="$T10_CALL_LOG" \
+        STUB_ATTEMPT_FILE="$T10_ATTEMPT_FILE" \
+        STUB_JSONL_BODY_1="$T10_TRANSIENT" \
+        STUB_EXIT_1=1 \
+        STUB_SHIP_1=0 \
+        STUB_JSONL_BODY_2="$T10_RESULT" \
+        STUB_SHIP_2=1 \
+        STUB_EXIT_2=0 \
+        CODEGEN_BUILD_QUEUE_MAX_RETRIES=3 \
+        CODEGEN_BUILD_QUEUE_RETRY_DELAYS="0 0 0" \
+        OCG_CODEGEN_DIR="$T10_ROOT/fake-codegen-bin" \
+        bash "$HELPER" --harness=claude 2>&1
+) || T10_EXIT=$?
+
+assert_eq "T10: transient retry exits 0" "0" "$T10_EXIT"
+assert_eq "T10: slug shipped after retry" "1" \
+    "$([ -f "$T10_ROOT/codegen/pitches/shipped/alpha.md" ] && printf '1' || printf '0')"
+T10_CALLS="$(grep -c '.' "$T10_CALL_LOG" 2>/dev/null || printf '0')"
+[ "$T10_CALLS" -ge 2 ] &&
+    pass=$((pass + 1)) ||
+    {
+        printf 'FAIL: T10 expected >=2 calls got %s\n' "$T10_CALLS"
+        fail=$((fail + 1))
+    }
+
+# ── Test T11: no result record (crashed) → retry, then ship ──────────────────
+T11_ROOT="$TMP_ROOT/t11"
+make_workspace "$T11_ROOT"
+printf 'Pitch: alpha\n' >"$T11_ROOT/codegen/pitches/ready/alpha.md"
+
+T11_CALL_LOG="$T11_ROOT/calls.log"
+T11_ATTEMPT_FILE="$T11_ROOT/attempt"
+T11_NO_RESULT='{"type":"system","subtype":"init","session_id":"s0"}'
+T11_RESULT='{"type":"result","result":"ok","session_id":"s2"}'
+
+T11_EXIT=0
+(
+    cd "$T11_ROOT"
+    STUB_CALL_LOG="$T11_CALL_LOG" \
+        STUB_ATTEMPT_FILE="$T11_ATTEMPT_FILE" \
+        STUB_JSONL_BODY_1="$T11_NO_RESULT" \
+        STUB_EXIT_1=1 \
+        STUB_SHIP_1=0 \
+        STUB_JSONL_BODY_2="$T11_RESULT" \
+        STUB_SHIP_2=1 \
+        STUB_EXIT_2=0 \
+        CODEGEN_BUILD_QUEUE_MAX_RETRIES=3 \
+        CODEGEN_BUILD_QUEUE_RETRY_DELAYS="0 0 0" \
+        OCG_CODEGEN_DIR="$T11_ROOT/fake-codegen-bin" \
+        bash "$HELPER" --harness=claude >/dev/null 2>&1
+) || T11_EXIT=$?
+
+assert_eq "T11: no-result retry exits 0" "0" "$T11_EXIT"
+assert_eq "T11: slug shipped after no-result retry" "1" \
+    "$([ -f "$T11_ROOT/codegen/pitches/shipped/alpha.md" ] && printf '1' || printf '0')"
+
+# ── Test T12: deterministic failure → fast-fail, no retry, exit 1 ────────────
+T12_ROOT="$TMP_ROOT/t12"
+make_workspace "$T12_ROOT"
+printf 'Pitch: alpha\n' >"$T12_ROOT/codegen/pitches/ready/alpha.md"
+
+T12_CALL_LOG="$T12_ROOT/calls.log"
+T12_DET='{"type":"result","result":"compile error: undefined fn","session_id":"sX"}'
+
+T12_EXIT=0
+T12_OUT=$(
+    cd "$T12_ROOT"
+    STUB_CALL_LOG="$T12_CALL_LOG" \
+        STUB_JSONL_BODY="$T12_DET" \
+        STUB_EXIT=1 \
+        STUB_SHIP=0 \
+        CODEGEN_BUILD_QUEUE_MAX_RETRIES=3 \
+        CODEGEN_BUILD_QUEUE_RETRY_DELAYS="0 0 0" \
+        OCG_CODEGEN_DIR="$T12_ROOT/fake-codegen-bin" \
+        bash "$HELPER" --harness=claude 2>&1
+) || T12_EXIT=$?
+
+assert_eq "T12: deterministic failure exits 1" "1" "$T12_EXIT"
+T12_CALLS="$(grep -c '.' "$T12_CALL_LOG" 2>/dev/null || printf '0')"
+assert_eq "T12: exactly 1 call (no retry)" "1" "$T12_CALLS"
+assert_eq "T12: result text in stderr output" "1" \
+    "$(printf '%s' "$T12_OUT" | grep -qF 'compile error' && printf '1' || printf '0')"
+assert_eq "T12: slug still in ready (not shipped)" "1" \
+    "$([ -f "$T12_ROOT/codegen/pitches/ready/alpha.md" ] && printf '1' || printf '0')"
+
+# ── Test T13: retries exhausted → exit 1 after MAX+1 total attempts ───────────
+T13_ROOT="$TMP_ROOT/t13"
+make_workspace "$T13_ROOT"
+printf 'Pitch: alpha\n' >"$T13_ROOT/codegen/pitches/ready/alpha.md"
+
+T13_CALL_LOG="$T13_ROOT/calls.log"
+T13_TRANSIENT='{"type":"system","subtype":"api_error","error":{"message":"socket connection was closed"}}'
+
+T13_EXIT=0
+(
+    cd "$T13_ROOT"
+    STUB_CALL_LOG="$T13_CALL_LOG" \
+        STUB_JSONL_BODY="$T13_TRANSIENT" \
+        STUB_EXIT=1 \
+        STUB_SHIP=0 \
+        CODEGEN_BUILD_QUEUE_MAX_RETRIES=2 \
+        CODEGEN_BUILD_QUEUE_RETRY_DELAYS="0 0 0" \
+        OCG_CODEGEN_DIR="$T13_ROOT/fake-codegen-bin" \
+        bash "$HELPER" --harness=claude >/dev/null 2>&1
+) || T13_EXIT=$?
+
+assert_eq "T13: retries exhausted exits 1" "1" "$T13_EXIT"
+T13_CALLS="$(grep -c '.' "$T13_CALL_LOG" 2>/dev/null || printf '0')"
+assert_eq "T13: total calls = 3 (1 initial + 2 retries)" "3" "$T13_CALLS"
+assert_eq "T13: slug still in ready after exhaustion" "1" \
+    "$([ -f "$T13_ROOT/codegen/pitches/ready/alpha.md" ] && printf '1' || printf '0')"
 
 # ── Summary ───────────────────────────────────────────────────────────────────
 printf '\nResults: %d passed, %d failed\n' "$pass" "$fail"
