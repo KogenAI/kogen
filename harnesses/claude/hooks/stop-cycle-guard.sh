@@ -62,11 +62,18 @@ if [ "$count" -ge 2 ]; then
 fi
 
 # Intent guard: orchestrator is asking the user something — let it stop.
+# Only honor this escape in INTERACTIVE sessions. In headless builds
+# (CODEGEN_BUILD_NON_INTERACTIVE set) there is no user to answer, so fall
+# through to the normal block logic and keep the cycle moving.
 trimmed=$(printf '%s' "$LAST_ASSISTANT_MESSAGE" | sed -E 's/[[:space:]]+$//')
 last_char="${trimmed: -1}"
-if [ "$last_char" = "?" ]; then
-    debug_log claude-cycle-guard "skip: intent — last_char=$last_char"
-    exit 0
+if [ -z "${CODEGEN_BUILD_NON_INTERACTIVE:-}" ]; then
+    if [ "$last_char" = "?" ]; then
+        debug_log claude-cycle-guard "skip: intent — last_char=$last_char"
+        exit 0
+    fi
+else
+    debug_log claude-cycle-guard "headless: intent escape suppressed (CODEGEN_BUILD_NON_INTERACTIVE set) — falling through to block logic"
 fi
 
 # Cycle state from transcript — session-bound, authoritative.

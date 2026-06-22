@@ -194,7 +194,7 @@ cat >"$LOG7" <<'MD'
 ALL CLEAR ✅
 MD
 make_transcript "$T7/transcript.jsonl" "$LOG7"
-out=$(make_input "$T7" false "Should I proceed with the next step?" "$T7/transcript.jsonl" | bash "$HOOK" 2>/dev/null || true)
+out=$(make_input "$T7" false "Should I proceed with the next step?" "$T7/transcript.jsonl" | env -u CODEGEN_BUILD_NON_INTERACTIVE bash "$HOOK" 2>/dev/null || true)
 assert_not_contains "intent question → no block" '"decision"' "$out"
 rm -rf "$T7"
 
@@ -526,6 +526,38 @@ out=$(make_input "$T22" false "" "$T22/transcript.jsonl" | bash "$HOOK" 2>/dev/n
 assert_contains "REGRESSION: committer header present but cs_state=REVIEWED → BLOCK (cycle-state wins)" '"decision"' "$out"
 assert_contains "regression: block reason mentions context-curator" 'context-curator' "$out"
 rm -rf "$T22"
+
+# ── Test 23: CODEGEN_BUILD_NON_INTERACTIVE suppresses intent escape → BLOCK ───
+T23=$(make_project)
+LOG23="$T23/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_step1_test.md"
+cat >"$LOG23" <<'MD'
+## developer-phoenix-backend Section
+
+## dev-gate Section
+
+ALL CLEAR ✅
+MD
+write_cycle_state_fixture "$T23" "GATED" "$LOG23" "clear"
+make_transcript "$T23/transcript.jsonl" "$LOG23"
+out=$(make_input "$T23" false "Should I proceed?" "$T23/transcript.jsonl" | CODEGEN_BUILD_NON_INTERACTIVE=1 bash "$HOOK" 2>/dev/null || true)
+assert_contains "headless CODEGEN_BUILD_NON_INTERACTIVE: intent escape suppressed → BLOCK" '"decision"' "$out"
+rm -rf "$T23"
+
+# ── Test 24: interactive intent question still allows (regression guard) ──────
+T24=$(make_project)
+LOG24="$T24/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_step1_test.md"
+cat >"$LOG24" <<'MD'
+## developer-phoenix-backend Section
+
+## dev-gate Section
+
+ALL CLEAR ✅
+MD
+write_cycle_state_fixture "$T24" "GATED" "$LOG24" "clear"
+make_transcript "$T24/transcript.jsonl" "$LOG24"
+out=$(make_input "$T24" false "Should I proceed?" "$T24/transcript.jsonl" | env -u CODEGEN_BUILD_NON_INTERACTIVE bash "$HOOK" 2>/dev/null || true)
+assert_not_contains "interactive intent question still allows (no CODEGEN_BUILD_NON_INTERACTIVE)" '"decision"' "$out"
+rm -rf "$T24"
 
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

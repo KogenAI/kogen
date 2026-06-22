@@ -163,7 +163,7 @@ cat >"$LOG7" <<'MD'
 Committed.
 MD
 make_transcript_with_log "$T7/transcript.jsonl" "$LOG7"
-out7=$(mk_stop_input "sess7" "$T7/transcript.jsonl" "$T7" "Should I proceed?" | bash "$HOOK" 2>/dev/null || true)
+out7=$(mk_stop_input "sess7" "$T7/transcript.jsonl" "$T7" "Should I proceed?" | env -u CODEGEN_BUILD_NON_INTERACTIVE bash "$HOOK" 2>/dev/null || true)
 assert_allow "allow: intent question (last message ends with ?)" "$out7"
 rm -rf "$T7"
 
@@ -242,7 +242,7 @@ cat >"$LOG12" <<'MD'
 Committed.
 MD
 make_transcript_with_log "$T12/transcript.jsonl" "$LOG12"
-out12=$(mk_stop_input "sess12" "$T12/transcript.jsonl" "$T12" "Blocked waiting for user input." | bash "$HOOK" 2>/dev/null || true)
+out12=$(mk_stop_input "sess12" "$T12/transcript.jsonl" "$T12" "Blocked waiting for user input." | env -u CODEGEN_BUILD_NON_INTERACTIVE bash "$HOOK" 2>/dev/null || true)
 assert_allow "allow: intent regex match (Blocked in message)" "$out12"
 rm -rf "$T12"
 
@@ -411,6 +411,36 @@ else
     fail=$((fail + 1))
 fi
 rm -rf "$T21"
+
+# ── Test 22: CODEGEN_BUILD_NON_INTERACTIVE suppresses intent escape → block ───
+T22=$(make_project)
+PITCH22="$T22/codegen/pitches/ready/my-feature.md"
+printf '# My Feature\n' >"$PITCH22"
+LOG22="$T22/codegen/logging/20260601_123456_my-feature_session.md"
+cat >"$LOG22" <<'MD'
+## committer Section
+
+Committed.
+MD
+make_transcript_with_log "$T22/transcript.jsonl" "$LOG22"
+out22=$(mk_stop_input "sess22" "$T22/transcript.jsonl" "$T22" "Should I continue?" | CODEGEN_BUILD_NON_INTERACTIVE=1 bash "$HOOK" 2>/dev/null || true)
+assert_block "block: CODEGEN_BUILD_NON_INTERACTIVE=1 suppresses intent escape (headless)" "$out22"
+rm -rf "$T22"
+
+# ── Test 23: interactive still allows intent question (regression guard) ──────
+T23=$(make_project)
+PITCH23="$T23/codegen/pitches/ready/my-feature.md"
+printf '# My Feature\n' >"$PITCH23"
+LOG23="$T23/codegen/logging/20260601_123456_my-feature_session.md"
+cat >"$LOG23" <<'MD'
+## committer Section
+
+Committed.
+MD
+make_transcript_with_log "$T23/transcript.jsonl" "$LOG23"
+out23=$(mk_stop_input "sess23" "$T23/transcript.jsonl" "$T23" "Should I continue?" | env -u CODEGEN_BUILD_NON_INTERACTIVE bash "$HOOK" 2>/dev/null || true)
+assert_allow "allow: no CODEGEN_BUILD_NON_INTERACTIVE → intent escape still works (interactive)" "$out23"
+rm -rf "$T23"
 
 echo ""
 echo "Results: $pass passed, $fail failed"

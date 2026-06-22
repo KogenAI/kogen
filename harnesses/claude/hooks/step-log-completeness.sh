@@ -45,12 +45,17 @@ if [ "$STOP_HOOK_ACTIVE" = "true" ]; then
 fi
 
 # Intent guard: orchestrator is asking the user something — let it stop.
+# Only honor in INTERACTIVE sessions; headless builds fall through to block.
 trimmed=$(printf '%s' "$LAST_ASSISTANT_MESSAGE" | sed -E 's/[[:space:]]+$//')
 last_char="${trimmed: -1}"
 intent_regex='[Ss]hould I|[Nn]eed clarification|[Bb]locked|[Ss]tuck|[Ww]aiting for|[Pp]lease confirm|[Ww]ant me to|[Cc]onfirm before'
-if [ "$last_char" = "?" ] || printf '%s' "$LAST_ASSISTANT_MESSAGE" | grep -qE "$intent_regex"; then
-    debug_log step-log-completeness "skip: intent question detected"
-    exit 0
+if [ -z "${CODEGEN_BUILD_NON_INTERACTIVE:-}" ]; then
+    if [ "$last_char" = "?" ] || printf '%s' "$LAST_ASSISTANT_MESSAGE" | grep -qE "$intent_regex"; then
+        debug_log step-log-completeness "skip: intent question detected"
+        exit 0
+    fi
+else
+    debug_log step-log-completeness "headless: intent escape suppressed (CODEGEN_BUILD_NON_INTERACTIVE set) — falling through to block logic"
 fi
 
 # Async-wait guard: orchestrator is yielding for a background event.

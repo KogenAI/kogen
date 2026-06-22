@@ -145,7 +145,7 @@ rm -rf "$Tf"
 Tg=$(make_project)
 TRANSCRIPT_Tg="$Tg/transcript.jsonl"
 make_transcript_with_agent "$TRANSCRIPT_Tg" "developer-phoenix-backend"
-out=$(make_input "$Tg" false "Should I proceed with the next step?" "$TRANSCRIPT_Tg" | bash "$HOOK" 2>/dev/null || true)
+out=$(make_input "$Tg" false "Should I proceed with the next step?" "$TRANSCRIPT_Tg" | env -u CODEGEN_BUILD_NON_INTERACTIVE bash "$HOOK" 2>/dev/null || true)
 assert_not_contains "intent question in last message → no block" '"decision"' "$out"
 rm -rf "$Tg"
 
@@ -186,6 +186,22 @@ out=$(make_input "$Tj" false "" "$TRANSCRIPT_Tj" | bash "$HOOK" 2>/dev/null || t
 assert_contains "ls/grep on logging path → still BLOCK (no Write)" '"decision"' "$out"
 assert_not_contains "ls/grep block reason must NOT cite Bash redirect" 'Bash redirect' "$out"
 rm -rf "$Tj"
+
+# ── Test (k): CODEGEN_BUILD_NON_INTERACTIVE suppresses intent escape → BLOCK ──
+Tk=$(make_project)
+TRANSCRIPT_Tk="$Tk/transcript.jsonl"
+make_transcript_with_agent "$TRANSCRIPT_Tk" "developer-phoenix-backend"
+out=$(make_input "$Tk" false "Should I continue?" "$TRANSCRIPT_Tk" | CODEGEN_BUILD_NON_INTERACTIVE=1 bash "$HOOK" 2>/dev/null || true)
+assert_contains "headless CODEGEN_BUILD_NON_INTERACTIVE: intent escape suppressed → BLOCK" '"decision"' "$out"
+rm -rf "$Tk"
+
+# ── Test (l): interactive intent question still allows (regression guard) ─────
+Tl=$(make_project)
+TRANSCRIPT_Tl="$Tl/transcript.jsonl"
+make_transcript_with_agent "$TRANSCRIPT_Tl" "developer-phoenix-backend"
+out=$(make_input "$Tl" false "Should I continue?" "$TRANSCRIPT_Tl" | env -u CODEGEN_BUILD_NON_INTERACTIVE bash "$HOOK" 2>/dev/null || true)
+assert_not_contains "interactive intent question still allows (no CODEGEN_BUILD_NON_INTERACTIVE)" '"decision"' "$out"
+rm -rf "$Tl"
 
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

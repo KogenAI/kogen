@@ -129,11 +129,18 @@ run_test "empty_transcript_path: no transcript path → allow (safe fallback)" \
 
 # --- Test 6: Intent guard wins ---
 # Transcript ending in developer-phoenix-backend + message ends in "?" → MUST allow.
+# Use env -u to simulate interactive context (unset headless env if present).
 tmp6=$(mktemp -d)
 printf '%s\n' "$AGENT_ENTRY_DEVELOPER" >"$tmp6/transcript.jsonl"
 INPUT6=$(make_input "$tmp6/transcript.jsonl" "$tmp6" "false" "Should I continue?")
-run_test "intent_guard_wins: question mark in last message → allow" \
-    "allow" "$INPUT6" "$AGENT_ENTRY_DEVELOPER"
+stdout6=$(printf '%s' "$INPUT6" | env -u CODEGEN_BUILD_NON_INTERACTIVE bash "$GUARD" 2>/dev/null || true)
+if ! printf '%s' "$stdout6" | grep -q '"decision"[[:space:]]*:[[:space:]]*"block"'; then
+    [ -n "${VERBOSE:-}" ] && printf 'PASS: intent_guard_wins: question mark in last message → allow\n'
+    pass=$((pass + 1))
+else
+    printf 'FAIL: intent_guard_wins: question mark in last message → allow — expected allow, got block\n  stdout: %s\n' "$stdout6"
+    fail=$((fail + 1))
+fi
 
 # --- Test 7: STOP_HOOK_ACTIVE wins ---
 # stop_hook_active: true + mid-cycle transcript → MUST allow.
@@ -537,6 +544,40 @@ run_test "cycle_state_stale_step_log_falls_through: COMMITTED but step_log misma
     "block" "$INPUT26" "$AGENT_ENTRY_DEVELOPER"
 rm -rf "$tmp26"
 rm -f "/tmp/claude-cycle-guard-test-sess-26.count"
+
+# ── Test 27: CODEGEN_BUILD_NON_INTERACTIVE suppresses intent escape → BLOCK ───
+# Headless build: transcript ends in developer-phoenix-backend + last message "?"
+# → intent escape must NOT fire → guard blocks.
+rm -f "/tmp/claude-cycle-guard-test-sess-headless-scg.count"
+tmp27=$(mktemp -d)
+printf '%s\n' "$AGENT_ENTRY_DEVELOPER" >"$tmp27/transcript.jsonl"
+INPUT27=$(make_input "$tmp27/transcript.jsonl" "$tmp27" "false" "Should I continue?" "test-sess-headless-scg")
+stdout27=$(printf '%s' "$INPUT27" | CODEGEN_BUILD_NON_INTERACTIVE=1 bash "$GUARD" 2>/dev/null || true)
+if printf '%s' "$stdout27" | grep -q '"decision"'; then
+    [ -n "${VERBOSE:-}" ] && printf 'PASS: headless_suppresses_intent_escape: CODEGEN_BUILD_NON_INTERACTIVE=1 → block\n'
+    pass=$((pass + 1))
+else
+    printf 'FAIL: headless_suppresses_intent_escape: expected block, got allow\n  stdout: %s\n' "$stdout27"
+    fail=$((fail + 1))
+fi
+rm -rf "$tmp27"
+rm -f "/tmp/claude-cycle-guard-test-sess-headless-scg.count"
+
+# ── Test 28: interactive still allows intent question (regression guard) ──────
+rm -f "/tmp/claude-cycle-guard-test-sess-28.count"
+tmp28=$(mktemp -d)
+printf '%s\n' "$AGENT_ENTRY_DEVELOPER" >"$tmp28/transcript.jsonl"
+INPUT28=$(make_input "$tmp28/transcript.jsonl" "$tmp28" "false" "Should I continue?" "test-sess-28")
+stdout28=$(printf '%s' "$INPUT28" | env -u CODEGEN_BUILD_NON_INTERACTIVE bash "$GUARD" 2>/dev/null || true)
+if ! printf '%s' "$stdout28" | grep -q '"decision"'; then
+    [ -n "${VERBOSE:-}" ] && printf 'PASS: interactive_intent_still_allows: no CODEGEN_BUILD_NON_INTERACTIVE → allow\n'
+    pass=$((pass + 1))
+else
+    printf 'FAIL: interactive_intent_still_allows: expected allow, got block\n  stdout: %s\n' "$stdout28"
+    fail=$((fail + 1))
+fi
+rm -rf "$tmp28"
+rm -f "/tmp/claude-cycle-guard-test-sess-28.count"
 
 echo ""
 echo "Results: $pass passed, $fail failed"
