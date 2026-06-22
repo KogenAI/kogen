@@ -77,10 +77,10 @@ Tier-0 foundational docs — the launcher loads these on every shape session reg
 
 ## Environment Variables
 
-| Variable             | Purpose                                      | Notes                   |
-| -------------------- | -------------------------------------------- | ----------------------- |
-| `CODEGEN_DIR`        | Absolute path to this repo                   | Set by launchers        |
-| `INSTALL_DIR`        | Where launchers land (`/usr/local/bin` etc.) | Default: `~/bin`        |
-| `ZSH_COMPLETION_DST` | Zsh completions install path                 | Set in `config.sh`      |
-| `ANTHROPIC_API_KEY`  | Claude API key                               | Required for pi harness |
-| `CLAUDE_MODEL`       | Override default model per mode              | Optional                |
+| Variable             | Purpose                                      | Notes                                                                                                                     |
+| -------------------- | -------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| `CODEGEN_DIR`        | Absolute path to this repo                   | Set by launchers                                                                                                          |
+| `INSTALL_DIR`        | Where launchers land (`/usr/local/bin` etc.) | Default: `~/bin`                                                                                                          |
+| `ZSH_COMPLETION_DST` | Zsh completions install path                 | Set in `config.sh`                                                                                                        |
+| `ANTHROPIC_API_KEY`  | Claude API key                               | Not required — Claude Code and Pi authenticate via CLI OAuth (`~/.claude.json`); dispatchers unset it for hermetic builds |
+| `CLAUDE_MODEL`       | Override default model per mode              | Optional                                                                                                                  |
