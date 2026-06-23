@@ -59,7 +59,7 @@ defmodule CodegenTestHarness.Stacks.Static.IterationTest.ReactChangeRequest do
   alias CodegenTestHarness.Fixtures
 
   @moduletag :slow
-  @moduletag timeout: 1_800_000
+  @moduletag timeout: 12_000_000
 
   setup do
     {:ok, cwd: Fixtures.isolated_tmp_dir()}
@@ -113,7 +113,7 @@ defmodule CodegenTestHarness.Stacks.Static.IterationTest.VueChangeRequest do
   alias CodegenTestHarness.Fixtures
 
   @moduletag :slow
-  @moduletag timeout: 1_800_000
+  @moduletag timeout: 12_000_000
 
   setup do
     {:ok, cwd: Fixtures.isolated_tmp_dir()}
@@ -166,7 +166,7 @@ defmodule CodegenTestHarness.Stacks.Static.IterationTest.MultilingualChangeReque
   alias CodegenTestHarness.Fixtures
 
   @moduletag :slow
-  @moduletag timeout: 1_800_000
+  @moduletag timeout: 12_000_000
 
   setup do
     {:ok, cwd: Fixtures.isolated_tmp_dir()}

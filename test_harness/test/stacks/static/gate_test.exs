@@ -55,7 +55,7 @@ defmodule CodegenTestHarness.Stacks.Static.GateTest do
   end
 
   test "static gate failure writes non-clear verdict", %{cwd: cwd} do
-    hook = Path.join(File.cwd!(), "../../harnesses/claude/hooks/phoenix-dev-gate.sh")
+    hook = Path.join(File.cwd!(), "../harnesses/claude/hooks/phoenix-dev-gate.sh")
     hook = Path.expand(hook)
 
     # Scaffold a minimal committed static app so the hook has a real project_dir

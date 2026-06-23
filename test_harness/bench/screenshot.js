@@ -16,7 +16,7 @@
 const path = require("path");
 const fs = require("fs");
 const http = require("http");
-const { execSync } = require("child_process");
+const { execSync, execFileSync } = require("child_process");
 const { chromium } = require("playwright");
 
 const {
@@ -79,7 +79,7 @@ function runBuild(cmd, args, cwd) {
     `[screenshot] running: ${cmd} ${args.join(" ")} in ${cwd}\n`,
   );
   try {
-    const result = execSync(`${cmd} ${args.join(" ")}`, {
+    const result = execFileSync(cmd, args, {
       cwd,
       timeout: TIMEOUT_MS,
       stdio: ["ignore", "pipe", "pipe"],

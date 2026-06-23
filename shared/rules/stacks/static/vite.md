@@ -80,6 +80,26 @@ Complete meta and JSON-LD (the Complete Meta and Structured Data disciplines, co
 - No `"type": "module"` in `package.json` — required for ESM imports
 - `npm create vite` in non-empty directory hangs on interactive prompt when stdin is `/dev/null`. Fix: write Vite project files directly (heredoc/printf), never `npm create vite`.
 
+## SPA Shell Structure & Built Output Validation
+
+Single-page applications using a root element (e.g., `<div id="app"></div>` for Vue/React) contain a **bare HTML shell** at build time: the app element is empty until JavaScript hydrates on first paint. This means:
+
+- Visible text content (from tag-stripping) is ~0 before JS runs → assertions like `assert_text_length > 50` are structurally impossible for SPA shells
+- Rendering proof requires a **headless browser** (Chromium via `assert_renders!/2`) that executes JS and inspects the rendered DOM
+- A **structural proof of built output** (before rendering) is the presence of a built/hashed bundle script
+
+For test assertions validating SPA build completion without waiting for Chromium rendering, check that the built `public/index.html` **references a bundle script** with a hash or asset-directory prefix:
+
+```elixir
+html = File.read!("public/index.html")
+# Arm 1: hashed filenames (Vite default for production builds)
+assert html =~ ~r/<script[^>]+src=["'][^"']*\.\w+\.(js|mjs)["']/i or
+       # Arm 2: asset-directory canonical form
+       html =~ ~r/<script[^>]+src=["']\/assets\/[^"']+["']/i
+```
+
+This proves Vite produced real output (hashed bundle written to disk) without needing JS execution. Rendering (with actual visible content) is the separate concern of `assert_renders!/2`.
+
 ## Reactive Initial Values
 
 Every reactive value bound to a user-visible element MUST have a representative non-empty initial value. An empty string / zero / null produces a broken-looking first paint and forces the user to wait for an async fetch before any content renders.

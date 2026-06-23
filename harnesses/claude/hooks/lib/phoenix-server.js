@@ -37,6 +37,28 @@ function allocFreePort() {
  * a `[phx]` prefix so logs are visible during debugging.
  */
 function startPhoenixServer(cwd, port) {
+  // Pre-build assets (non-watch) so the first HTTP request finds compiled
+  // /assets/css/app.css and /assets/js/app.js on disk. mix phx.server's dev
+  // watchers build assets AFTER boot; without this, waitForHttp200 resolves on
+  // the first HTML 200 before the watcher's first asset build finishes →
+  // Chromium hits a 404 on the bundle → render-check FAIL:asset-404.
+  try {
+    require("child_process").execFileSync("mix", ["assets.build"], {
+      cwd,
+      env: { ...process.env, MIX_ENV: "dev" },
+      stdio: ["ignore", "pipe", "pipe"],
+      timeout: 120_000,
+    });
+  } catch (err) {
+    // Non-fatal: if assets.build is absent or fails, fall through to spawn.
+    // The dev watcher will still build assets; this only removes the cold-start race.
+    process.stderr.write(
+      "[phx] assets.build pre-build skipped/failed (non-fatal): " +
+        (err.message || String(err)) +
+        "\n",
+    );
+  }
+
   const child = spawn("mix", ["phx.server"], {
     cwd,
     detached: true,

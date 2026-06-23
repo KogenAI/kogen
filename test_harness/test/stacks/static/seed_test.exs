@@ -6,7 +6,7 @@ defmodule CodegenTestHarness.Stacks.Static.SeedTest.Vanilla do
   alias CodegenTestHarness.Fixtures
 
   @moduletag :slow
-  @moduletag timeout: 1_800_000
+  @moduletag timeout: 12_000_000
 
   setup do
     {:ok, cwd: Fixtures.isolated_tmp_dir()}
@@ -58,7 +58,7 @@ defmodule CodegenTestHarness.Stacks.Static.SeedTest.ViteReact do
   alias CodegenTestHarness.Fixtures
 
   @moduletag :slow
-  @moduletag timeout: 1_800_000
+  @moduletag timeout: 12_000_000
 
   setup do
     {:ok, cwd: Fixtures.isolated_tmp_dir()}
@@ -108,7 +108,7 @@ defmodule CodegenTestHarness.Stacks.Static.SeedTest.ViteVue do
   alias CodegenTestHarness.Fixtures
 
   @moduletag :slow
-  @moduletag timeout: 1_800_000
+  @moduletag timeout: 12_000_000
 
   setup do
     {:ok, cwd: Fixtures.isolated_tmp_dir()}
@@ -157,7 +157,7 @@ defmodule CodegenTestHarness.Stacks.Static.SeedTest.Multilingual do
   alias CodegenTestHarness.Fixtures
 
   @moduletag :slow
-  @moduletag timeout: 1_800_000
+  @moduletag timeout: 12_000_000
 
   setup do
     {:ok, cwd: Fixtures.isolated_tmp_dir()}

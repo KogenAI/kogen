@@ -58,7 +58,7 @@ modes:
       - harnesses/shared/prompt-bodies/build.txt
 
   debug:
-    model: openai-codex/gpt-5.3-codex # from config.yaml harness.debug.pi
+    model: openai-codex/gpt-5.4 # from config.yaml harness.debug.pi
     effort: medium
     tools: read,grep,find,ls # debug: no edit/write/bash mutations
     extensions:

@@ -10,6 +10,47 @@
 
 `--trace` sets `--max-cases 1`, disables timeouts. Dev MUST NOT run `make ci`, bare `mix test`, `--cover`/`coveralls`. Zero Credo warnings, zero failures.
 
+## Asset Paths in Phoenix 1.8.x — Nested Directories
+
+Phoenix 1.8.7 (phx_new default) configures esbuild and tailwind to output to **nested subdirectories**:
+
+- esbuild: `--outdir=../priv/static/assets/js` → writes to `priv/static/assets/js/app.js`
+- tailwind: `--output=priv/static/assets/css/app.css` → writes to `priv/static/assets/css/app.css`
+
+Any assertion checking for flat asset paths (`priv/static/assets/app.js` or `priv/static/assets/app.css`) will silently fail to detect built output. Test assertions and CI gates must use nested paths.
+
+Verification: run `mix phx.new <tempdir> --no-ecto && grep -n "outdir\|--output" config/config.exs` to confirm paths before trusting fixture assertions.
+
+## Asset Build Race — Pre-Build Before Server Boot
+
+`mix phx.server` (dev mode) builds assets via esbuild/tailwind **watchers AFTER the HTTP server boots**. A test framework waiting for HTTP 200 on `/` resolves before the first asset build completes. When the test's browser (Chromium) requests `/assets/css/app.css` or `/assets/js/app.js`, it encounters a 404.
+
+**Symptom**: `FAIL:asset-404` in render-check output; flaky or deterministic failures depending on machine speed.
+
+**Fix**: Pre-build assets (non-watch) inside `startPhoenixServer()` BEFORE spawning the dev server:
+
+```js
+// Pre-build assets (non-watch) so the first HTTP request finds compiled files
+// on disk. mix phx.server's dev watchers build AFTER boot; this pre-build
+// removes the cold-start race.
+try {
+    execFileSync("mix", ["assets.build"], {
+        cwd,
+        env: { ...process.env, MIX_ENV: "dev" },
+        stdio: ["ignore", "pipe", "pipe"],
+        timeout: 120_000,
+    });
+} catch (err) {
+    // Non-fatal: if assets.build is absent or fails, the dev watcher still
+    // builds assets. This only removes the race.
+    process.stderr.write("[phx] assets.build pre-build skipped: " + err.message + "\n");
+}
+// NOW spawn the server with pre-built assets on disk
+spawn("mix", ["phx.server"], {...});
+```
+
+Use `assets.build` (not `assets.deploy`): dev-mode, no `phx.digest` fingerprinting needed for localhost testing.
+
 ## Coverage — Per-File
 
 New `lib/**/*.ex` → per-file coverage above threshold. `cover/excoveralls.json`: `source_files[].name`=path, `.coverage`=array (0=uncovered, null=irrelevant, N=hit). 0-indexed → line = index + 1.

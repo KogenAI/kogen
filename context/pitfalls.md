@@ -69,6 +69,7 @@ Codegen-infra pitfalls and bash gotchas — split from `context/development.md` 
 - **External probe spread: 4 rules** — name axis, probe both ends, failure mandatory.
 - **Semantic equivalence vs structural identity in prompt-body sibling files** — verify semantic equivalence of all rules, NOT literal step-count parity. Compression preserving all semantic rules is correct mirroring.
 - **Planner-guard blocks Read on rule files** — use `Grep -C` for anchors; cite in pitch, developer confirms via Read.
+- **Planner-guard blocks Bash file writes outside `/tmp/`** — the `orchestrator-read-discipline.sh` guard blocks planner role from running Bash commands that redirect to files outside literal `/tmp/` (e.g., redirecting to `$VAR`-expanded paths, files under `mktemp -d` dirs that land under `/var/folders`). Workaround: when a planner-launched task needs to write empirical probes, use literal `/tmp/...` paths in the heredoc/redirect, or rely on already-read source files to avoid the write.
 - **Context files carry a 40 KB advisory cap** — `context/*.md` files have 40,960-byte limit. Compress or split when near cap.
 - **Exit-code capture under `set -u`** — `local rc; raw=$(cmd) || rc=$?; rc=${rc:-0}`. `rc` unset on success. Distinguishes broken-cmd (empty) from `INCONCLUSIVE:*` verdicts.
 - **Makefile `@for` recipes are POSIX-only** — Accumulator: `fail=0; ... || fail=1; exit "$$fail"`.

@@ -189,6 +189,14 @@ defmodule CodegenTestHarness.Assertions do
   """
   @spec assert_generated_tests_pass!(String.t()) :: :ok
   def assert_generated_tests_pass!(cwd) do
+    # Remove stale _build artifacts before running tests: the LLM agent may have
+    # compiled the app in dev mode (baking compile_env values like code_reloader:
+    # true). Running mix test with MIX_ENV=test after a dev compile triggers
+    # "different value set during runtime compared to compile time" from Phoenix
+    # Application.compile_env checks. Deleting _build forces a clean test-env
+    # compile, eliminating the dev/test cross-contamination.
+    File.rm_rf!(Path.join(cwd, "_build"))
+
     {out, code} = System.cmd("mix", ["test", "--max-failures", "1"],
                              cd: cwd, stderr_to_stdout: true, env: [{"MIX_ENV", "test"}])
     assert code == 0, "generated app's own tests failed in #{cwd}:\n#{out}"
@@ -211,8 +219,10 @@ defmodule CodegenTestHarness.Assertions do
   end
 
   @doc """
-  Asserts that a built HTML file at `Path.join(cwd, rel)` exists and contains
-  more than 50 visible characters (stripped of HTML tags).
+  Asserts the built HTML at `Path.join(cwd, rel)` exists and references a built
+  bundle script (hashed `/assets/*.js` or similar) — proving Vite produced real
+  output rather than an unbuilt shell. Visible-content rendering is proven
+  separately by `assert_renders!/2` (headless Chromium).
 
   Returns `:ok`.
   """
@@ -221,8 +231,12 @@ defmodule CodegenTestHarness.Assertions do
     path = Path.join(cwd, rel)
     assert File.exists?(path), "expected #{rel} after build"
     html = File.read!(path)
-    body = Regex.replace(~r/<[^>]+>/, html, "") |> String.trim()
-    assert String.length(body) > 50, "#{rel} body is blank (#{String.length(body)} visible chars) — site built but renders empty"
+
+    assert html =~ ~r/<script[^>]+src=["'][^"']*\.\w+\.(js|mjs)["']/i or
+             html =~ ~r/<script[^>]+src=["']\/assets\/[^"']+["']/i,
+           "#{rel} has no built bundle script — Vite did not produce hashed output (unbuilt shell?)"
+
+    :ok
   end
 
   @doc """
@@ -284,11 +298,11 @@ defmodule CodegenTestHarness.Assertions do
 
       assert exit_code == 0, "mix assets.deploy failed in #{cwd}:\n#{output}"
 
-      css = Path.join([cwd, "priv", "static", "assets", "app.css"])
+      css = Path.join([cwd, "priv", "static", "assets", "css", "app.css"])
       assert File.exists?(css), "expected #{css} after mix assets.deploy"
       assert File.stat!(css).size > 0, "expected #{css} non-empty"
 
-      js = Path.join([cwd, "priv", "static", "assets", "app.js"])
+      js = Path.join([cwd, "priv", "static", "assets", "js", "app.js"])
 
       if File.exists?(js) do
         assert File.stat!(js).size > 0, "expected #{js} non-empty"
