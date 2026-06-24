@@ -26,6 +26,7 @@ import { register as registerContextFileSizeGate } from "./hooks/context-file-si
 // BEGIN-GENERATED-ENFORCEMENT-BLOCK
 import { register as registerBuildAgentAppConfinement } from "./hooks/build-agent-app-confinement";
 import { register as registerBuildNoSuccessBeforeCommit } from "./hooks/build-no-success-before-commit";
+import { register as registerBuildQueueContinuity } from "./hooks/build-queue-continuity";
 import { register as registerBuildWorkerCwdGuard } from "./hooks/build-worker-cwd-guard";
 import { register as registerCleanTreeBeforeShip } from "./hooks/clean-tree-before-ship";
 import { register as registerCommitterBashAllowlist } from "./hooks/committer-bash-allowlist";
@@ -93,6 +94,7 @@ export default function (pi: ExtensionAPI): void {
   // BEGIN-GENERATED-ENFORCEMENT-BLOCK
   registerBuildAgentAppConfinement(pi);
   registerBuildNoSuccessBeforeCommit(pi);
+  registerBuildQueueContinuity(pi);
   registerBuildWorkerCwdGuard(pi);
   registerCleanTreeBeforeShip(pi);
   registerCommitterBashAllowlist(pi);

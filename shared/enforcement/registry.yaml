@@ -518,6 +518,16 @@
   harnesses: all
 
 - kind: registration
+  id: build-queue-continuity
+  event: Stop
+  tool_guard: "*"
+  surface: user_global
+  signal: none
+  role: "*"
+  harnesses: all
+  rationale: Deterministic Stop-hook backstop for build-queue-no-permission-asks — blocks ending a session while the build-queue manifest shows remaining pitches and the current pitch's gate did not fail.
+
+- kind: registration
   id: planner-guard
   event: PreToolUse
   tool_guard: "Bash|Write|Edit|MultiEdit|EnterPlanMode|ExitPlanMode|Read"

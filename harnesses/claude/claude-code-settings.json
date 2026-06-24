@@ -175,6 +175,14 @@
         "hooks": [
           {
             "type": "command",
+            "command": "$HOME/.claude/hooks/build-queue-continuity.sh"
+          }
+        ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
             "command": "$HOME/.claude/hooks/llm-pending-sweep.sh"
           }
         ]
