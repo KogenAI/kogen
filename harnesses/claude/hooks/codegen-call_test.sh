@@ -5,7 +5,7 @@
 #
 # (a) --version prints version and exits 0
 # (b) missing --harness exits 2 with usage on stderr
-# (c) missing --model / --effort / --system-prompt / PROMPT each exits 2; --role is optional
+# (c) missing --model / --effort / --system-prompt / PROMPT each exits 2
 # (d) invalid --harness=foo exits 2
 # (e) missing @<path> for --system-prompt exits 2
 # (f) claude_code success fixture: result.status==success, harness==claude_code, usage.input_tokens>0
@@ -145,12 +145,12 @@ assert_contains "(a) --version contains 0.1.0" "$VERSION_OUT" "0.1.0"
 CC_B="$(make_cc_root cc_b)"
 actual_exit=0
 STDERR_B="$("$CC_B/codegen-call" \
-    --role=test --model=haiku --effort=low \
+    --model=haiku --effort=low \
     --system-prompt "@$SP_FILE" \
     "some prompt" 2>&1 || true)" || true
 actual_exit=0
 "$CC_B/codegen-call" \
-    --role=test --model=haiku --effort=low \
+    --model=haiku --effort=low \
     --system-prompt "@$SP_FILE" \
     "some prompt" 2>/dev/null || actual_exit=$?
 check "(b) missing --harness exits 2" "2" "$actual_exit"
@@ -166,25 +166,25 @@ make_stub "$CC_C/harnesses/claude/call-dispatch.sh" 'printf '"'"'{"result":{"sta
 
 # missing --model
 actual_exit=0
-"$CC_C/codegen-call" --harness=claude_code --role=test --effort=low \
+"$CC_C/codegen-call" --harness=claude_code --effort=low \
     --system-prompt "@$SP_FILE" "prompt" 2>/dev/null || actual_exit=$?
 check "(c) missing --model exits 2" "2" "$actual_exit"
 
 # missing --effort
 actual_exit=0
-"$CC_C/codegen-call" --harness=claude_code --role=test --model=haiku \
+"$CC_C/codegen-call" --harness=claude_code --model=haiku \
     --system-prompt "@$SP_FILE" "prompt" 2>/dev/null || actual_exit=$?
 check "(c) missing --effort exits 2" "2" "$actual_exit"
 
 # missing --system-prompt
 actual_exit=0
-"$CC_C/codegen-call" --harness=claude_code --role=test --model=haiku --effort=low \
+"$CC_C/codegen-call" --harness=claude_code --model=haiku --effort=low \
     "prompt" 2>/dev/null || actual_exit=$?
 check "(c) missing --system-prompt exits 2" "2" "$actual_exit"
 
 # missing PROMPT
 actual_exit=0
-"$CC_C/codegen-call" --harness=claude_code --role=test --model=haiku --effort=low \
+"$CC_C/codegen-call" --harness=claude_code --model=haiku --effort=low \
     --system-prompt "@$SP_FILE" 2>/dev/null || actual_exit=$?
 check "(c) missing PROMPT exits 2" "2" "$actual_exit"
 
@@ -193,7 +193,7 @@ check "(c) missing PROMPT exits 2" "2" "$actual_exit"
 # ─────────────────────────────────────────────────────────────────────────────
 CC_D="$(make_cc_root cc_d)"
 actual_exit=0
-"$CC_D/codegen-call" --harness=foo --role=test --model=haiku --effort=low \
+"$CC_D/codegen-call" --harness=foo --model=haiku --effort=low \
     --system-prompt "@$SP_FILE" "prompt" 2>/dev/null || actual_exit=$?
 check "(d) invalid --harness exits 2" "2" "$actual_exit"
 
@@ -202,7 +202,7 @@ check "(d) invalid --harness exits 2" "2" "$actual_exit"
 # ─────────────────────────────────────────────────────────────────────────────
 CC_E="$(make_cc_root cc_e)"
 actual_exit=0
-"$CC_E/codegen-call" --harness=claude_code --role=test --model=haiku --effort=low \
+"$CC_E/codegen-call" --harness=claude_code --model=haiku --effort=low \
     --system-prompt "@/nonexistent/path/system_prompt.txt" "prompt" 2>/dev/null || actual_exit=$?
 check "(e) missing @path for --system-prompt exits 2" "2" "$actual_exit"
 
@@ -216,7 +216,7 @@ make_claude_dispatch_stub "$CC_F" "printf '%s\n' '${SUCCESS_ENVELOPE}'"
 
 actual_exit=0
 OUT_F="$("$CC_F/codegen-call" \
-    --harness=claude_code --role=test --model=haiku --effort=low \
+    --harness=claude_code --model=haiku --effort=low \
     --system-prompt "@$SP_FILE" "hello" 2>/dev/null)" || actual_exit=$?
 
 check "(f) claude_code success exits 0" "0" "$actual_exit"
@@ -234,7 +234,7 @@ make_claude_dispatch_stub "$CC_G" "printf '%s\n' '${RETRY_ENVELOPE}'"
 
 actual_exit=0
 OUT_G="$("$CC_G/codegen-call" \
-    --harness=claude_code --role=test --model=haiku --effort=low \
+    --harness=claude_code --model=haiku --effort=low \
     --system-prompt "@$SP_FILE" "schema test" 2>/dev/null)" || actual_exit=$?
 
 check "(g) schema_retry_exhausted exits 0" "0" "$actual_exit"
@@ -255,7 +255,7 @@ make_claude_dispatch_stub "$CC_H" "printf '%s\n' '${STRUCT_ENVELOPE}'"
 
 actual_exit=0
 OUT_H="$("$CC_H/codegen-call" \
-    --harness=claude_code --role=test --model=haiku --effort=low \
+    --harness=claude_code --model=haiku --effort=low \
     --system-prompt "@$SP_FILE" \
     --json-schema "@$SCHEMA_FILE" \
     "structured test" 2>/dev/null)" || actual_exit=$?
@@ -274,7 +274,7 @@ make_pi_dispatch_stub "$CC_I" "printf '%s\n' '${PI_SUCCESS_ENVELOPE}'"
 
 actual_exit=0
 OUT_I="$("$CC_I/codegen-call" \
-    --harness=pi --role=test --model=gpt-5 --effort=high \
+    --harness=pi --model=gpt-5 --effort=high \
     --system-prompt "@$SP_FILE" "pi test" 2>/dev/null)" || actual_exit=$?
 
 check "(i) pi success exits 0" "0" "$actual_exit"
@@ -291,7 +291,7 @@ make_pi_dispatch_stub "$CC_J" "printf '%s\n' '${PI_EMPTY_ENVELOPE}'"
 
 actual_exit=0
 OUT_J="$("$CC_J/codegen-call" \
-    --harness=pi --role=test --model=gpt-5 --effort=high \
+    --harness=pi --model=gpt-5 --effort=high \
     --system-prompt "@$SP_FILE" "pi empty test" 2>/dev/null)" || actual_exit=$?
 
 check "(j) pi empty reply exits 0" "0" "$actual_exit"
@@ -307,7 +307,7 @@ make_claude_dispatch_stub "$CC_K" "printf '%s\n' '${CQ_ENVELOPE}'"
 
 actual_exit=0
 OUT_K="$("$CC_K/codegen-call" \
-    --harness=claude_code --role=test --model=haiku --effort=low \
+    --harness=claude_code --model=haiku --effort=low \
     --system-prompt "@$SP_FILE" "ambiguous prompt" 2>/dev/null)" || actual_exit=$?
 
 check "(k) clarifying_question exits 0" "0" "$actual_exit"
@@ -323,7 +323,7 @@ CC_L0="$(make_cc_root cc_l0)"
 make_claude_dispatch_stub "$CC_L0" "printf '%s\n' '${SUCCESS_ENVELOPE}'; exit 0"
 actual_exit=0
 "$CC_L0/codegen-call" \
-    --harness=claude_code --role=test --model=haiku --effort=low \
+    --harness=claude_code --model=haiku --effort=low \
     --system-prompt "@$SP_FILE" "test" 2>/dev/null || actual_exit=$?
 check "(l) dispatch exit 0 → codegen-call exits 0" "0" "$actual_exit"
 
@@ -333,10 +333,10 @@ CC_L1="$(make_cc_root cc_l1)"
 make_claude_dispatch_stub "$CC_L1" "printf '%s\n' '${ERROR_ENVELOPE}'; exit 1"
 actual_exit=0
 OUT_L1="$("$CC_L1/codegen-call" \
-    --harness=claude_code --role=test --model=haiku --effort=low \
+    --harness=claude_code --model=haiku --effort=low \
     --system-prompt "@$SP_FILE" "test" 2>/dev/null || true)"
 "$CC_L1/codegen-call" \
-    --harness=claude_code --role=test --model=haiku --effort=low \
+    --harness=claude_code --model=haiku --effort=low \
     --system-prompt "@$SP_FILE" "test" 2>/dev/null || actual_exit=$?
 check "(l) dispatch exit 1 → codegen-call exits 1" "1" "$actual_exit"
 # Error envelope should still appear on stdout
@@ -349,7 +349,7 @@ CC_M="$(make_cc_root cc_m)"
 make_claude_dispatch_stub "$CC_M" "printf '%s\n' '${SUCCESS_ENVELOPE}'"
 
 OUT_M="$("$CC_M/codegen-call" \
-    --harness=claude_code --role=test --model=haiku --effort=low \
+    --harness=claude_code --model=haiku --effort=low \
     --system-prompt "@$SP_FILE" "validate" 2>/dev/null)"
 
 # Validate top-level keys
@@ -383,27 +383,19 @@ assert_jq_truthy "(m) .usage.latency_ms is number" "$OUT_M" '(.usage.latency_ms 
 assert_jq_truthy "(m) .harness is string" "$OUT_M" '(.harness | type) == "string"'
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Test (n): --role is optional — omitting it succeeds and CODEGEN_CALL_ROLE is empty
+# Test (n): --role is unknown flag — passing --role=x exits 2
 # ─────────────────────────────────────────────────────────────────────────────
-NO_ROLE_ENVELOPE='{"result":{"status":"success","value":"no role","reason":null,"clarifying_question":null,"retry_meta":null},"usage":{"input_tokens":1,"output_tokens":1,"cache_read_input_tokens":0,"cache_creation_input_tokens":0,"cost_usd":0,"latency_ms":100,"model":"haiku","num_turns":1},"error":null,"harness":"claude_code"}'
-
 CC_N="$(make_cc_root cc_n)"
-# Dispatch stub echoes the envelope AND captures CODEGEN_CALL_ROLE to a file
-make_claude_dispatch_stub "$CC_N" "printf '%s' \"\${CODEGEN_CALL_ROLE:-}\" > \"$BASE_TMP/n_role.txt\"; printf '%s\n' '${NO_ROLE_ENVELOPE}'"
-
 actual_exit=0
-OUT_N="$("$CC_N/codegen-call" \
-    --harness=claude_code --model=haiku --effort=low \
-    --system-prompt "@$SP_FILE" "no role prompt" 2>/dev/null)" || actual_exit=$?
+"$CC_N/codegen-call" --harness=claude_code --role=x --model=haiku --effort=low \
+    --system-prompt "@$SP_FILE" "prompt" 2>/dev/null || actual_exit=$?
+check "(n) --role=x exits 2 as unknown flag" "2" "$actual_exit"
 
-check "(n) missing --role exits 0" "0" "$actual_exit"
-assert_jq "(n) result.status == success without --role" "$OUT_N" ".result.status" "success"
-N_ROLE="$(cat "$BASE_TMP/n_role.txt" 2>/dev/null || printf 'READ_FAILED')"
-check "(n) CODEGEN_CALL_ROLE is empty when --role omitted" "" "$N_ROLE"
-
-# Also verify usage text shows --role as optional (bracket notation)
+# Also verify usage text does not mention --role
 USAGE_N="$("$CC_N/codegen-call" 2>&1 || true)"
-assert_contains "(n) usage shows --role as optional" "$USAGE_N" "[--role="
+ROLE_IN_USAGE=0
+[[ "$USAGE_N" == *"--role"* ]] && ROLE_IN_USAGE=1
+check "(n) usage does not mention --role" "0" "$ROLE_IN_USAGE"
 
 # ─────────────────────────────────────────────────────────────────────────────
 echo ""

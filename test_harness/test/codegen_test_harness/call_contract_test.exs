@@ -15,15 +15,30 @@ defmodule CodegenTestHarness.CallContractTest do
 
   @codegen_call Path.expand("../../../codegen-call", __DIR__)
 
-  describe "codegen-call --role optional contract" do
-    test "usage text lists --role as optional (bracket notation)" do
+  describe "codegen-call --role removed contract" do
+    test "usage text does not mention --role" do
       codegen_call = @codegen_call
 
       {output, exit_code} = System.cmd(codegen_call, [], stderr_to_stdout: true, env: [])
 
       assert exit_code == 2, "expected exit 2 on missing args, got #{exit_code}"
-      assert output =~ ~r/\[--role=/,
-             "expected usage to show --role as optional with bracket notation, got:\n#{output}"
+      refute output =~ ~r/--role/,
+             "expected usage to NOT mention --role (it is dead code), got:\n#{output}"
+    end
+
+    test "--role=x exits 2 as unknown flag" do
+      codegen_call = @codegen_call
+
+      {_output, exit_code} =
+        System.cmd(
+          codegen_call,
+          ["--harness=claude_code", "--role=x", "--model=haiku", "--effort=low",
+           "--system-prompt", "@/nonexistent", "prompt"],
+          stderr_to_stdout: true,
+          env: []
+        )
+
+      assert exit_code == 2, "expected exit 2 for unknown flag --role, got #{exit_code}"
     end
   end
 

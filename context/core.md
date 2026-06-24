@@ -6,27 +6,27 @@ Data flow: `manifest.yaml` → `generate.sh` (renders via `process_template.py`)
 
 ## Key Modules
 
-| Module                                        | Purpose                                                                                                                                                              |
-| --------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `templates/generator/generate.sh`             | Entry — renders `.md.j2` templates for a named harness                                                                                                               |
-| `templates/generator/process_template.py`     | Jinja-style `{% include %}` processor; inlines rule/recipe files                                                                                                     |
-| `templates/generator/hook_registrations.py`   | Generates `settings.json` hook entries from hook source dir                                                                                                          |
-| `templates/generator/enforcement_compiler.py` | Generates enforcement hook scripts (bash + TS) from `shared/enforcement/registry.yaml`                                                                               |
-| `templates/generator/manifest-lib.sh`         | Bash lib wrapping `yq` for manifest field extraction                                                                                                                 |
-| `templates/generator/config.yaml`             | Role → model/effort/tools mapping; read by `load-role.sh`                                                                                                            |
-| `templates/generator/test_dual_render.sh`     | Self-test: renders both harnesses and diffs output for regressions                                                                                                   |
-| `templates/generator/test_fixtures/`          | Fixture `.md.j2` templates used by generator self-tests                                                                                                              |
-| `harnesses/claude/manifest.yaml`              | Claude harness install contract (agents, hooks, launchers, modes)                                                                                                    |
-| `harnesses/pi/manifest.yaml`                  | Pi harness install contract                                                                                                                                          |
-| `install.sh`                                  | Hardcoded per-harness install via case statement (line 260); reads manifest for step names                                                                           |
-| `uninstall.sh`                                | Removes artifacts listed in manifest uninstall_steps                                                                                                                 |
-| `codegen-build`                               | Top-level launcher: requires --harness flag; delegates to harnesses/<harness>/dispatch.sh, which execs claude/pi with model/effort/tools flags                       |
-| `codegen-scaffold`                            | Downstream app scaffolder: renders `shared/scaffold/` templates into a new project dir                                                                               |
-| `codegen-call`                                | One-shot structured LLM call binary: requires --harness (exits 2 if missing); --role optional; exports `CODEGEN_CALL_ROLE` for telemetry only (read nowhere in-repo) |
-| `config.sh`                                   | Shared env/path config sourced by all scripts                                                                                                                        |
-| `resource_manager.sh`                         | Manages port allocation across OCG projects system-wide via ~/.ocg/resources.json                                                                                    |
-| `utils.sh`                                    | Common bash utilities: OCG_CMD invocation                                                                                                                            |
-| `update_ai_tools.sh`                          | Post-install: updates Claude CLI and AI tool deps                                                                                                                    |
+| Module                                        | Purpose                                                                                                                                        |
+| --------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| `templates/generator/generate.sh`             | Entry — renders `.md.j2` templates for a named harness                                                                                         |
+| `templates/generator/process_template.py`     | Jinja-style `{% include %}` processor; inlines rule/recipe files                                                                               |
+| `templates/generator/hook_registrations.py`   | Generates `settings.json` hook entries from hook source dir                                                                                    |
+| `templates/generator/enforcement_compiler.py` | Generates enforcement hook scripts (bash + TS) from `shared/enforcement/registry.yaml`                                                         |
+| `templates/generator/manifest-lib.sh`         | Bash lib wrapping `yq` for manifest field extraction                                                                                           |
+| `templates/generator/config.yaml`             | Role → model/effort/tools mapping; read by `load-role.sh`                                                                                      |
+| `templates/generator/test_dual_render.sh`     | Self-test: renders both harnesses and diffs output for regressions                                                                             |
+| `templates/generator/test_fixtures/`          | Fixture `.md.j2` templates used by generator self-tests                                                                                        |
+| `harnesses/claude/manifest.yaml`              | Claude harness install contract (agents, hooks, launchers, modes)                                                                              |
+| `harnesses/pi/manifest.yaml`                  | Pi harness install contract                                                                                                                    |
+| `install.sh`                                  | Hardcoded per-harness install via case statement (line 260); reads manifest for step names                                                     |
+| `uninstall.sh`                                | Removes artifacts listed in manifest uninstall_steps                                                                                           |
+| `codegen-build`                               | Top-level launcher: requires --harness flag; delegates to harnesses/<harness>/dispatch.sh, which execs claude/pi with model/effort/tools flags |
+| `codegen-scaffold`                            | Downstream app scaffolder: renders `shared/scaffold/` templates into a new project dir                                                         |
+| `codegen-call`                                | One-shot structured LLM call binary: requires --harness (exits 2 if missing); unknown flags exit 2 (fail-loud); no --role flag                 |
+| `config.sh`                                   | Shared env/path config sourced by all scripts                                                                                                  |
+| `resource_manager.sh`                         | Manages port allocation across OCG projects system-wide via ~/.ocg/resources.json                                                              |
+| `utils.sh`                                    | Common bash utilities: OCG_CMD invocation                                                                                                      |
+| `update_ai_tools.sh`                          | Post-install: updates Claude CLI and AI tool deps                                                                                              |
 
 ## Key Paths
 
@@ -58,7 +58,7 @@ Three entry-point scripts at repo root — each serves a distinct invocation con
 | ------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `codegen-build`    | Default agent build launcher — requires `--harness` flag (exits 2 if absent); delegates to `harnesses/<harness>/dispatch.sh`, which execs `claude` or `pi` directly with model/effort/tools flags           |
 | `codegen-scaffold` | Downstream app scaffolder — two subcommands: `codegen-scaffold create --stack=... --cwd=... --slug=...` (full scaffold) and `codegen-scaffold integrate --stack=... --cwd=... [--slug=...]` (symlinks only) |
-| `codegen-call`     | One-shot structured LLM call binary — requires `--harness` (exits 2 if missing); `--role`, `--model`, `--effort`, `--system-prompt @<path>` optional; exports `CODEGEN_CALL_ROLE` for telemetry only        |
+| `codegen-call`     | One-shot structured LLM call binary — requires `--harness` (exits 2 if missing); unknown flags exit 2 (fail-loud); requires `--model`, `--effort`, `--system-prompt @<path>`; no --role flag                |
 
 Routing flow: `codegen-build` → `harnesses/<harness>/dispatch.sh` → reads `config.yaml` directly via `yq` (NOT via `load-role.sh`) → execs launcher with model/effort/tools flags. `load-role.sh` is used only by debug/shape/refactor/ops launchers, not build dispatch.
 

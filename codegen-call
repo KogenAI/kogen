@@ -2,7 +2,7 @@
 # codegen-call — one-shot structured LLM call binary.
 #
 # Usage:
-#   codegen-call --harness=<claude_code|pi> [--role=<label>] \
+#   codegen-call --harness=<claude_code|pi> \
 #     --model=<m> --effort=<e> \
 #     --system-prompt @<abs-path> \
 #     [--json-schema @<abs-path>] \
@@ -14,7 +14,6 @@
 # Flags:
 #   --version             print "codegen-call 0.1.0" and exit 0
 #   --harness=<h>         REQUIRED: claude_code | pi
-#   --role=<label>        OPTIONAL: telemetry label (e.g. bouncer, concierge)
 #   --model=<m>           REQUIRED: model string
 #   --effort=<e>          REQUIRED: effort string (low/medium/high/…)
 #   --system-prompt @<p>  REQUIRED: @<abs-path> to system prompt file
@@ -45,7 +44,6 @@ fi
 
 SHOW_VERSION=""
 HARNESS=""
-ROLE=""
 MODEL=""
 EFFORT=""
 SYSTEM_PROMPT_PATH=""
@@ -57,7 +55,7 @@ EXTENSION_PATH=""
 PROMPT=""
 
 usage() {
-    printf 'Usage: codegen-call --harness=<claude_code|pi> [--role=<label>] --model=<m> --effort=<e> --system-prompt @<path> [--json-schema @<path>] [--allowed-tools=<list>] [--settings @<path>] [--extension @<path>] PROMPT\n' >&2
+    printf 'Usage: codegen-call --harness=<claude_code|pi> --model=<m> --effort=<e> --system-prompt @<path> [--json-schema @<path>] [--allowed-tools=<list>] [--settings @<path>] [--extension @<path>] PROMPT\n' >&2
     exit 2
 }
 
@@ -73,14 +71,6 @@ while [[ $# -gt 0 ]]; do
         ;;
     --harness)
         HARNESS="$2"
-        shift 2
-        ;;
-    --role=*)
-        ROLE="${1#--role=}"
-        shift
-        ;;
-    --role)
-        ROLE="$2"
         shift 2
         ;;
     --model=*)
@@ -248,7 +238,6 @@ fi
 
 # Export env vars for dispatch script
 export CODEGEN_CALL_HARNESS="$HARNESS"
-export CODEGEN_CALL_ROLE="$ROLE"
 export CODEGEN_CALL_MODEL="$MODEL"
 export CODEGEN_CALL_EFFORT="$EFFORT"
 export CODEGEN_CALL_SYSTEM_PROMPT="$SYSTEM_PROMPT_CONTENT"
