@@ -397,6 +397,15 @@
         "hooks": [
           {
             "type": "command",
+            "command": "$HOME/.claude/hooks/committer-single-commit-per-cycle.sh"
+          }
+        ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
             "command": "$HOME/.claude/hooks/committer-single-line-guard.sh"
           }
         ]

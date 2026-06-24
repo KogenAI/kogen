@@ -56,6 +56,7 @@ Hook registration: **Two pipelines** — both write to `harnesses/claude/hooks/*
 | `harnesses/claude/hooks/committer-bash-allowlist.sh` | PreToolUse — committer Bash allowlist: only git + safe shell utilities allowed (default-deny; GENERATED) |
 | `harnesses/claude/hooks/committer-write-allowlist.sh` | PreToolUse — committer Write/Edit allowlist: only canonical session logs (GENERATED) |
 | `harnesses/claude/hooks/committer-no-trailer-guard.sh` | PreToolUse — blocks commit trailers (Co-authored-by, etc.) |
+| `harnesses/claude/hooks/committer-single-commit-per-cycle.sh` | PreToolUse — denies second non-amend git commit per build cycle (escape hatch: COMMITTER_ALLOW_MULTI=1) |
 | `harnesses/claude/hooks/committer-single-line-guard.sh` | PreToolUse — enforces single-line commit subject |
 | `harnesses/claude/hooks/committer-subject-length.sh` | PreToolUse — enforces commit subject line length limit |
 | `harnesses/claude/hooks/phoenix-backend-developer-guard.sh` | PreToolUse — guards backend developer file scope |

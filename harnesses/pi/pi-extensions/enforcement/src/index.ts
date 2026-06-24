@@ -32,6 +32,7 @@ import { register as registerCleanTreeBeforeShip } from "./hooks/clean-tree-befo
 import { register as registerCommitterBashAllowlist } from "./hooks/committer-bash-allowlist";
 import { register as registerCommitterNoRevertPriorCommit } from "./hooks/committer-no-revert-prior-commit";
 import { register as registerCommitterNoTrailerGuard } from "./hooks/committer-no-trailer-guard";
+import { register as registerCommitterSingleCommitPerCycle } from "./hooks/committer-single-commit-per-cycle";
 import { register as registerCommitterSingleLineGuard } from "./hooks/committer-single-line-guard";
 import { register as registerCommitterSubjectLength } from "./hooks/committer-subject-length";
 import { register as registerCommitterWriteAllowlist } from "./hooks/committer-write-allowlist";
@@ -100,6 +101,7 @@ export default function (pi: ExtensionAPI): void {
   registerCommitterBashAllowlist(pi);
   registerCommitterNoRevertPriorCommit(pi);
   registerCommitterNoTrailerGuard(pi);
+  registerCommitterSingleCommitPerCycle(pi);
   registerCommitterSingleLineGuard(pi);
   registerCommitterSubjectLength(pi);
   registerCommitterWriteAllowlist(pi);

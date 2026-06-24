@@ -297,6 +297,16 @@
   rationale: Blocks git commit when staged content would byte-identically match a file state that a prior session commit already superseded, preventing silent backward rolls within the same build session.
 
 - kind: registration
+  id: committer-single-commit-per-cycle
+  event: PreToolUse
+  tool_guard: Bash
+  surface: user_global
+  signal: AGENT_TYPE
+  role: committer
+  harnesses: all
+  rationale: Denies a second non-amend git commit from the committer agent within the same build cycle, enforcing one commit per cycle and preventing accidental double-commits.
+
+- kind: registration
   id: committer-no-trailer-guard
   event: PreToolUse
   tool_guard: Bash
