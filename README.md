@@ -469,3 +469,19 @@ The same codegen tools work with any git repository:
 - **Dependencies missing**: Run `ocg prepare` (native) or `ocg prepare --container` from main branch
 - **Old workspace won't start**: Remove and recreate with `ocg rm` then `ocg new`
 - **Permission denied errors**: Ensure Docker Desktop is running before removing workspaces
+
+## Codegen integration
+
+This project is managed by [codegen](https://github.com/optimum/codegen).
+
+Run AI-assisted development from this project root:
+
+```bash
+# Full build cycle (plan → dev → review → commit)
+codegen-build
+
+# Single agent call
+codegen-call "your task here"
+```
+
+No project-local config needed — `codegen-scaffold integrate` wires agent files and rules automatically.
