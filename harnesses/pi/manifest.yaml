@@ -56,6 +56,7 @@ modes:
     tools_header: harnesses/pi/tools-header/build.txt
     prompt_body:
       - harnesses/shared/prompt-bodies/build.txt
+      - harnesses/shared/prompt-bodies/build-multi-pitch-queue.txt
 
   debug:
     model: openai-codex/gpt-5.4 # from config.yaml harness.debug.pi

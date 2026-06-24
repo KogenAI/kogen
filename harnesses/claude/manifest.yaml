@@ -70,6 +70,7 @@ modes:
     tools_header: harnesses/claude/tools-header/build.txt
     prompt_body:
       - harnesses/shared/prompt-bodies/build.txt
+      - harnesses/shared/prompt-bodies/build-multi-pitch-queue.txt
 
   debug:
     model: opus

@@ -394,6 +394,85 @@ trap 'rm -rf "$TMP_DIR"' EXIT
     fi
 }
 
+# ── Test 15: multi-pitch markers ABSENT from claude tools-header/build.txt ────
+{
+    CLAUDE_BUILD_HEADER="$CODEGEN_DIR/harnesses/claude/tools-header/build.txt"
+    markers=("Slug resolution" "When the operator names NO slugs" "topological sort" "one session log per pitch")
+    t15_fail=0
+    for marker in "${markers[@]}"; do
+        if grep -qF "$marker" "$CLAUDE_BUILD_HEADER" 2>/dev/null; then
+            printf 'FAIL: Test 15 — marker "%s" still present in harnesses/claude/tools-header/build.txt (should have been extracted to shared fragment)\n' "$marker"
+            t15_fail=$((t15_fail + 1))
+            fail=$((fail + 1))
+        fi
+    done
+    if [ "$t15_fail" -eq 0 ]; then
+        [ -n "${VERBOSE:-}" ] && printf 'PASS: Test 15 — multi-pitch markers absent from claude tools-header/build.txt\n'
+        pass=$((pass + 1))
+    fi
+}
+
+# ── Test 16: multi-pitch markers ABSENT from pi tools-header/build.txt ────────
+{
+    PI_BUILD_HEADER="$CODEGEN_DIR/harnesses/pi/tools-header/build.txt"
+    markers=("Slug resolution" "When the operator names NO slugs" "topological sort" "one session log per pitch")
+    t16_fail=0
+    for marker in "${markers[@]}"; do
+        if grep -qF "$marker" "$PI_BUILD_HEADER" 2>/dev/null; then
+            printf 'FAIL: Test 16 — marker "%s" still present in harnesses/pi/tools-header/build.txt (should have been extracted to shared fragment)\n' "$marker"
+            t16_fail=$((t16_fail + 1))
+            fail=$((fail + 1))
+        fi
+    done
+    if [ "$t16_fail" -eq 0 ]; then
+        [ -n "${VERBOSE:-}" ] && printf 'PASS: Test 16 — multi-pitch markers absent from pi tools-header/build.txt\n'
+        pass=$((pass + 1))
+    fi
+}
+
+# ── Test 17: multi-pitch markers PRESENT in shared fragment ───────────────────
+{
+    SHARED_FRAGMENT="$CODEGEN_DIR/harnesses/shared/prompt-bodies/build-multi-pitch-queue.txt"
+    markers=("Slug resolution" "When the operator names NO slugs" "topological sort" "one session log per pitch")
+    t17_fail=0
+    if [ ! -f "$SHARED_FRAGMENT" ]; then
+        printf 'FAIL: Test 17 — shared fragment missing: %s\n' "$SHARED_FRAGMENT"
+        t17_fail=$((t17_fail + 1))
+        fail=$((fail + 1))
+    else
+        for marker in "${markers[@]}"; do
+            if ! grep -qF "$marker" "$SHARED_FRAGMENT" 2>/dev/null; then
+                printf 'FAIL: Test 17 — marker "%s" not found in shared fragment %s\n' "$marker" "$SHARED_FRAGMENT"
+                t17_fail=$((t17_fail + 1))
+                fail=$((fail + 1))
+            fi
+        done
+    fi
+    if [ "$t17_fail" -eq 0 ]; then
+        [ -n "${VERBOSE:-}" ] && printf 'PASS: Test 17 — all multi-pitch markers present in shared fragment\n'
+        pass=$((pass + 1))
+    fi
+}
+
+# ── Test 18: shared fragment wired as prompt_body[1] in both manifests ─────────
+{
+    CLAUDE_MANIFEST="$CODEGEN_DIR/harnesses/claude/manifest.yaml"
+    PI_MANIFEST="$CODEGEN_DIR/harnesses/pi/manifest.yaml"
+    FRAGMENT_PATH="harnesses/shared/prompt-bodies/build-multi-pitch-queue.txt"
+    t18_fail=0
+    for manifest in "$CLAUDE_MANIFEST" "$PI_MANIFEST"; do
+        if ! grep -qF "$FRAGMENT_PATH" "$manifest" 2>/dev/null; then
+            printf 'FAIL: Test 18 — shared fragment not wired in %s\n' "$manifest"
+            t18_fail=$((t18_fail + 1))
+            fail=$((fail + 1))
+        fi
+    done
+    if [ "$t18_fail" -eq 0 ]; then
+        [ -n "${VERBOSE:-}" ] && printf 'PASS: Test 18 — shared fragment wired in both manifests\n'
+        pass=$((pass + 1))
+    fi
+}
+
 # ── Summary ───────────────────────────────────────────────────────────────────
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 

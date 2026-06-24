@@ -42,36 +42,3 @@ When the user prompt contains one or more `@`-mentions to `.md` files:
 5. One cycle per step. Never bulk-plan across steps. Never skip. Never re-order.
 6. Gate failure that survives one dev re-delegation → HALT. Report `halted at queue position <i>/<N>`. Do not advance.
 7. User prompt with no `.md` `@`-mention → standard single-cycle behavior.
-
-### Multi-pitch-file builds (`pi-build a b c` or prose/image list with named slugs)
-
-**When the operator names NO slugs** (e.g. "build all ready pitches", "run everything in ready"):
-1. Enumerate `codegen/pitches/ready/*.md` using the native `find`/`ls` **tool** (NOT Bash — use the tool's built-in file-listing capability).
-2. If enumeration returns zero files, report "no ready pitches found" and stop.
-3. If enumeration returns one or more files, extract the slug from each filename (strip directory prefix and `.md` suffix). These slugs are the full pitch set — skip slug resolution entirely (files are already confirmed to exist).
-4. Apply the **"When NO order is given"** path below: read each pitch's `## Dependencies / Blocks-on:` edges, derive execution order by topological sort, then run the full Execution rules (one session log per pitch, strict sequencing, mid-queue halt).
-
-**Slug resolution (applies to all multi-pitch paths)**:
-Resolve each named slug to `codegen/pitches/ready/<slug>.md` using the Read tool — never `ls`, `find`, or Bash to enumerate. If any slug has no `ready/<slug>.md`, report the unresolved slug(s) plus the resolved ones and HALT before building any pitch.
-
-**When the caller provides a build order** (argv sequence `a b c`, or an explicit ordered list in prose/image):
-1. Treat that order as authoritative — never auto-reorder.
-2. Read each pitch's `## Dependencies / Blocks-on:` edges and validate against the provided order. If any declared edge contradicts the provided order, STOP and report the contradiction — do NOT silently reorder.
-3. Proceed with the validated order.
-
-**When NO order is given** (multiple slugs named without a specified sequence):
-1. Read each pitch's `## Dependencies / Blocks-on:` edges.
-2. Derive execution order by topological sort directly from those edges — no planner or subagent delegation to determine order.
-3. If edges are cyclic or ambiguous, report the conflict and HALT.
-
-**Execution rules for the PITCH queue (distinct from per-step gate HALT above)**:
-1. **One session log per pitch file**: each pitch file gets its own `<ts>_<slug>_session.md`; never combine multiple pitch files into a shared `build-queue_session.md` or any combined log.
-2. **Strict sequencing**: complete the full step queue for pitch[i] (including moving the pitch file to shipped/ after all its steps complete) before starting pitch[i+1]. Never overlap or parallelize.
-3. **Mid-queue halt**: if any step in pitch[i]'s step queue fails (gate fails after one dev re-delegation), HALT the PITCH queue at position i; do NOT skip ahead to pitch[i+1].
-4. **Queue continuity is autonomous**: after pitch[i] ships, immediately start the next pitch's cycle — emit zero chat text, ask zero questions. NEVER ask the user permission to continue ("Should I proceed?", "Should I continue?", "are you stopping these builds intentionally?"). The ONLY legitimate stop is rule 3 (Mid-queue halt).
-5. **Queue manifest (multi-pitch only)**: when the pitch queue starts, write `codegen/gate-pending/build-queue.json` containing `{"slugs":[...ordered slugs...],"position":0,"started_at":"<ISO timestamp>"}`. Bump `position` by one after moving each pitch file to shipped/. Remove the manifest once `position` equals the slug count. Single-pitch and free-form runs create no manifest. The Pi `build-queue-continuity.ts` twin reads this manifest and warns (observe-only) if the session ends with pitches still queued.
-
-- **Prose/image-named pitches** — When the first-turn prompt names two or more pitch slugs in free-form prose or in an attached image, WITHOUT `@`-mentioning them as files and WITHOUT them arriving as discrete argv `.md` tokens — resolve each named slug to `codegen/pitches/ready/<slug>.md` via Read tool (never Bash), then apply the rules above. A single named pitch → one cycle. Never treat N prose/image-named pitches as one combined task. Error paths: a named slug with no `ready/<slug>.md` → report the unresolved slug plus the resolved ones and HALT before building any; cannot read an attached image → report it and ask the user to name the slugs in prose or pass them as `.md` files, never guess or proceed.
-
-Post-commit stage (pitch-driven builds): after committer commits, move the pitch from ready/ to shipped/: `mv codegen/pitches/ready/<slug>.md codegen/pitches/shipped/<slug>.md` (plain `mv`, NEVER `git mv`). The `pitch-shipped-before-stop.ts` hook warns when this is skipped.
-
