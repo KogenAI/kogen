@@ -141,12 +141,13 @@ Per-harness tools-headers now contain complete multi-pitch sequencing rules for 
 - **Claude** (`harnesses/claude/tools-header/build.txt` lines 37–41) — uses "cycle" and "pitch" vocabulary; sequences via `Cycle Protocol` section
 - **Pi** (`harnesses/pi/tools-header/build.txt` lines 62–69) — uses "step queue" and "queue position" vocabulary; sequences via `Multi-pitch-file builds` subsection
 
-**The four rules** (identical intent, harness-specific vocabulary):
+**The five rules** (identical intent, harness-specific vocabulary):
 
 1. **One session log per pitch** — each pitch file gets its own `<ts>_<slug>_session.md` log; never combine pitches.
 2. **Strict sequencing** — complete the full cycle/queue for pitch[i] (including ready/→shipped/ move) before starting pitch[i+1]; never overlap or parallelize.
 3. **Dependency-order pre-check** — before building starts, read each pitch's `## Dependencies / Blocks-on:` edges; if argv order violates any declared edge, STOP and report the violation; do NOT auto-reorder.
 4. **Mid-queue halt** — if pitch[i]'s cycle fails (gate fails after one dev retry), HALT at position i; do NOT skip ahead to pitch[i+1].
+5. **Queue continuity is autonomous** — after pitch[i] ships, immediately begin pitch[i+1]'s cycle with zero interruption: emit no chat text, ask zero questions. NEVER solicit user permission to continue ("Should I proceed with pitch #2?", "Should I continue?", "are you stopping these builds intentionally?"). The ONLY legitimate stop is rule 4 (Mid-queue halt on gate failure).
 
 **Pre-check semantics**: The multi-pitch orchestrator reads `Blocks-on:` edges BEFORE any building starts. If a pitch declares `Blocks-on: foo` but `foo` is not in argv, or if argv order places a blocking pitch after the dependent pitch, the build stops immediately with a violation report. This prevents silent mis-ordering that would break build semantics.
 
@@ -324,5 +325,5 @@ See `context/launcher-hook-matrix.md` for which orchestrator-level hooks gate ea
 - **Build dispatch is hermetic + fail-loud** — dispatch.sh guards yq/config-parse with named exit-2 errors, and unsets `OPENAI_API_KEY`/`ANTHROPIC_API_KEY` before exec (provider-key parity with pi). Paired test: `harnesses/claude/hooks/dispatch_test.sh`.
 - **prompt_body is a YAML sequence** — manifest's `prompt_body` is an ordered list, not a scalar; `manifest_regenerate_prompts()` iterates it; missing entries → non-zero exit (no partial prompt written)
 - **Fragment paths** are relative to `CODEGEN_DIR` — `shared/prompt-fragments/_probing.txt` NOT `harnesses/shared/...`; process_template.py resolves `{% include %}` under `$CODEGEN_DIR/shared/`
-- **ready.md.j2 is a template** — `harnesses/claude/commands/ready.md.j2` is rendered by `generate.sh` to `templates/generated/claude-code/commands/ready.md`; `install.sh` installs from generated dir; never install from source `.j2` directly
+- **ready.md.j2 is a template** — `harnesses/claude/commands/ready.md.j2` is rendered by `generate.sh` to templates/generated/claude-code/commands/ready.md (generated, not committed); `install.sh` installs from generated dir; never install from source `.j2` directly
 - **Spawn ritual wording** — identical in both harnesses (claude/pi `tools-header/build.txt` L14–16) because downstream agents inherit from both harnesses; edits to one must verify parity in the other. Second-to-land edits confirm by text match.

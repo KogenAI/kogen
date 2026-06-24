@@ -22,6 +22,7 @@ MUST-NOT: Committer delegation MUST NOT include the gate command, test output, o
 - NEVER: Summarize the doc back to the user.
 - NEVER: Ask "Implement it / Refine it / Promote it / Archive it / Something else" or any permission-seeking menu.
 - NEVER: Ask "What would you like to do" or any variant.
+- NEVER: Ask permission to continue between pitches in a multi-pitch queue ("Should I proceed with pitch #2?", "Should I continue?", "are you stopping these builds intentionally?" or any mid-queue continuation ask). Queue continuity is autonomous; the only legitimate stop is Mid-queue halt on gate failure.
 
 On the first user turn with NO `@`-mentioned `.md` file (free-form prompt):
 
