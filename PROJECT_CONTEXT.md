@@ -62,7 +62,7 @@ Tier-0 foundational docs — the launcher loads these on every shape session reg
 | `uninstall.sh`                              | Removes installed artifacts listed in manifest                                                                                          |
 | `codegen-build`                             | Top-level launcher: requires `--harness` flag; delegates to `harnesses/<harness>/dispatch.sh`                                           |
 | `codegen-scaffold`                          | Scaffolds a new downstream app from `shared/scaffold/` templates — subcommands `create` (full scaffold) and `integrate` (symlinks only) |
-| `codegen-call`                              | One-shot structured LLM call binary: requires `--harness`, `--role`, `--model`, `--effort`, `--system-prompt`                           |
+| `codegen-call`                              | One-shot structured LLM call binary: requires `--harness`, `--model`, `--effort`, `--system-prompt`                                     |
 | `config.sh`                                 | Shared env/path config sourced by all scripts                                                                                           |
 | `resource_manager.sh`                       | Tracks installed-by-ocg manifest to avoid orphaned artifacts                                                                            |
 | `utils.sh`                                  | Common bash utilities: `OCG_CMD` only; `content_stable_cp` is in `install.sh`                                                           |

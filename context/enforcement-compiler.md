@@ -106,7 +106,7 @@ The generated set is rarely purely additive; drops are silent runtime breaks if 
 - `inject_header(script_path, header_text)` — rewrites ONLY the header span (from `# HOOK-MANIFEST:` to the original terminator) in an existing hook script, leaving body bytes identical. Uses mktemp/cmp/mv for idempotency (re-running with unchanged input → no file touch).
 - `--emit-headers` — injects freshly-rendered headers into all migrated hooks. Must run before `hook_registrations.py` default mode (step 6) to ensure settings are derived from the new headers.
 - `--check-headers` — regenerates headers to /tmp and diffs vs committed `.sh` files. Used by `make hook-header-parity` gate to verify headers match the registry.
-- Token mapping: registry stores `claude` (enum), but header field is `claude_code` (hook script format). Renderer maps `claude` → `claude_code` when emitting. Parser already accepts both via `VALID_HARNESSES = {"claude_code","pi"}` (line 66).
+- Token mapping: registry stores `claude` (enum), but header field is `claude_code` (hook script format). Renderer maps `claude` → `claude_code` when emitting. Parser already accepts both via `_VALID_HARNESSES` (currently `{"claude_code", "pi"}` — see `hook_registrations.py`).
 - Multi-line `rationale`: stored in registry as YAML block scalar (`|`); renderer emits `# rationale:` first line + `#   ` (indent) continuation lines. Parity diff catches any byte drift on round-trip.
 
 ## Enforcement Compiler — Renderer-Neutral Regex Tokens

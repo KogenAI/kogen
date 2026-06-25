@@ -151,7 +151,7 @@ This is order-independent (router.sh owns all scope-"/" surgery); idempotent (gr
 
 ## Release Overlay Cleanup on `--no-ecto`
 
-`mix phx.gen.release` generates `rel/overlays/bin/migrate` and `rel/overlays/bin/migrate.bat` unconditionally, even when `mix phx.new --no-ecto` was used (which omits `Release.migrate/0` from `rel/releases.ex`).
+`mix phx.gen.release` generates `rel/overlays/bin/migrate` and `rel/overlays/bin/migrate.bat` unconditionally, even when `mix phx.new --no-ecto` was used (which omits `Release.migrate/0` from the generated releases module).
 
 A DB-free release omits the `migrate/0` callback, making the overlay broken — invoking `/opt/app/bin/migrate` will fail at runtime. **Solution**: Delete both overlay files under `--no-ecto`. **Timing**: After Phase 6 phx.gen.release (scaffold.sh:291), inline block deletes `rel/overlays/bin/migrate*`.
 

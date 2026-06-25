@@ -23,11 +23,11 @@ Curator MAY ONLY edit:
 
 ❌ `lib/`, `priv/`, `assets/`, `test/`, config files, migrations — those are dev territory.
 
-**Guard reality** (`context-curator-guard.sh` lines 46, 51, 56): the hook allows the three patterns above:
+**Guard reality** (`context-curator-guard.sh` allow-pattern greps): the hook allows the three patterns above:
 
-- `context/` anywhere in the path (line 46) → works in any repo
-- `codegen/rules(/|$)` anywhere in the path (line 51) → matches `codegen/rules/**` symlink path; hook receives raw symlink path (not resolved target)
-- `codegen/logging/` anywhere in the path (line 56) → matches codegen-on-codegen session logs
+- `context/` anywhere in the path (`grep -qE '(^|/)context/'`) → works in any repo
+- `codegen/rules(/|$)` anywhere in the path (`grep -qE '(^|/)codegen/rules(/|$)'`) → matches `codegen/rules/**` symlink path; hook receives raw symlink path (not resolved target)
+- `codegen/logging/` anywhere in the path (`grep -qE '(^|/)codegen/logging/'`) → matches codegen-on-codegen session logs
 
 **Path-nesting distinction:**
 

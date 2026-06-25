@@ -38,17 +38,17 @@ test_harness/
 
 ## ExUnit Test Modules
 
-| Module (filename)                   | Purpose                                                                                         | Stack / Mode            |
-| ----------------------------------- | ----------------------------------------------------------------------------------------------- | ----------------------- |
-| `committer_test.exs`                | Validates committer phase output and commit message format                                      | Phoenix                 |
-| `gate_test.exs`                     | Validates gate verdicts (ALL CLEAR / FAILED / INCONCLUSIVE)                                     | Phoenix                 |
-| `iteration_test.exs`                | Multi-step iteration and cycle continuity                                                       | Phoenix                 |
-| `scaffold_test.exs`                 | Scaffold template rendering and output correctness                                              | Phoenix                 |
-| `seed_test.exs`                     | Database seed lifecycle and reproducibility                                                     | Phoenix                 |
-| `iteration_test.exs`                | Multi-step static site iteration                                                                | Static                  |
-| `modes/debug_test.exs`              | Asserts debug launcher emits diagnostic report + writes no files                                | Debug (claude + pi)     |
-| `modes/shape_test.exs`              | Asserts shape launcher produces/edits draft pitch with Shape Up sections                        | Shape (claude + pi)     |
-| `harness_parity/pi_parity_test.exs` | Cross-harness parity: phoenix-minimal, static-minimal (claude vs pi). Tagged `:harness_parity`. | Parity (both harnesses) |
+| Module (filename)                                     | Purpose                                                                                         | Stack / Mode            |
+| ----------------------------------------------------- | ----------------------------------------------------------------------------------------------- | ----------------------- |
+| `committer_test.exs`                                  | Validates committer phase output and commit message format                                      | Phoenix                 |
+| `gate_test.exs`                                       | Validates gate verdicts (ALL CLEAR / FAILED / INCONCLUSIVE)                                     | Phoenix                 |
+| `iteration_test.exs`                                  | Multi-step iteration and cycle continuity                                                       | Phoenix                 |
+| `scaffold_test.exs`                                   | Scaffold template rendering and output correctness                                              | Phoenix                 |
+| `seed_test.exs`                                       | Database seed lifecycle and reproducibility                                                     | Phoenix                 |
+| `iteration_test.exs`                                  | Multi-step static site iteration                                                                | Static                  |
+| `test_harness/test/stacks/modes/debug_test.exs`       | Asserts debug launcher emits diagnostic report + writes no files                                | Debug (claude + pi)     |
+| `test_harness/test/stacks/modes/shape_test.exs`       | Asserts shape launcher produces/edits draft pitch with Shape Up sections                        | Shape (claude + pi)     |
+| `test_harness/test/harness_parity/pi_parity_test.exs` | Cross-harness parity: phoenix-minimal, static-minimal (claude vs pi). Tagged `:harness_parity`. | Parity (both harnesses) |
 
 ## Make Target Catalog
 
@@ -175,7 +175,7 @@ When a hook's conditional logic widens (e.g., `agentType === "planner-phoenix"` 
 - `last_green.json` is checked in — diff against it to spot regressions before merging
 - Run a single test file: `mix test test/stacks/phoenix_test.exs` from `test_harness/`
 - Async: most stack tests are synchronous (file system I/O)
-- **ExUnit concurrency**: `max_cases` (default `System.schedulers_online() * 2`) governs how many test _modules_ run in parallel. Tests within a single module always run serially, regardless of `async: true`. To maximize concurrency, split fat modules into multiple `defmodule` blocks per file (each becomes an independent async unit). `test_harness/test/test_helper.exs` omits `:max_cases` override — the default is sufficient. Partition infrastructure (`--partitions 4`) was dropped in commit 9b09dc8 after splitting `static/iteration_test.exs`, `static/seed_test.exs`, `static/scaffold_test.exs` into 14 modules; single `mix test` per harness now scales naturally.
+- **ExUnit concurrency**: `max_cases` (default `System.schedulers_online() * 2`) governs how many test _modules_ run in parallel. Tests within a single module always run serially, regardless of `async: true`. To maximize concurrency, split fat modules into multiple `defmodule` blocks per file (each becomes an independent async unit). `test_harness/test/test_helper.exs` omits `:max_cases` override — the default is sufficient. Partition infrastructure (`--partitions 4`) was dropped in commit 9b09dc8 after splitting `test_harness/test/stacks/static/iteration_test.exs`, `test_harness/test/stacks/static/seed_test.exs`, `test_harness/test/stacks/static/scaffold_test.exs` into 14 modules; single `mix test` per harness now scales naturally.
 
 ## Deterministic Scaffold Testing vs. LLM-Driven Build Testing
 
@@ -237,7 +237,7 @@ Benchmark mode (BENCH=1), artifact layout, screenshot capture, mix viewer tasks:
 - **phx_new flags** — version 1.8.7+ does not support `--force` flag; scaffold via plain `mix phx.new . --app <name> --live`
 - **CLAUDE.md scaffold instructions** — `Fixtures.isolated_tmp_dir/1` writes a CLAUDE.md gated behind non-phoenix stacks; ensure any direct scaffold calls mirror the exact `mix phx.new . --app <name> --live` incantation for consistency with fixture setup
 - **`run_with_timeout/4` return order is output-first** — `run_with_timeout(...)` returns `{IO.iodata_to_binary(...), exit_code}` — output first, exit code second. A new helper tail-calling `run_with_timeout` without re-tupling inverts the pair silently (e.g., binding `exit_code` to a binary string instead of an integer). Pattern: always materialize the result and re-tuple if the desired public contract differs. Example: `{output, exit_code} = run_with_timeout(...); {exit_code, output}`. Verify `@spec` declares the intended order; assertions comparing `exit_code == 0` must operate on an integer, never a binary.
-- **`assert_assets_deploy!` requires `MIX_ENV=dev`** — tailwind config lives in `config/dev.exs` only (Phoenix 1.8.7). When `assert_assets_deploy!` runs under `MIX_ENV=test` (inherited from ExUnit), tailwind finds no config → silent no-op → `app.css` absent at exit 0. Always pass `env: [{"MIX_ENV", "dev"}]` in the `System.cmd` call for `mix assets.deploy`. This scoping is safe: compile + test phases retain `MIX_ENV=test`; only the assets.deploy call passes `MIX_ENV=dev`.
+- **`assert_assets_deploy!` requires `MIX_ENV=dev`** — tailwind config lives in the generated app's dev config only (Phoenix 1.8.7). When `assert_assets_deploy!` runs under `MIX_ENV=test` (inherited from ExUnit), tailwind finds no config → silent no-op → `app.css` absent at exit 0. Always pass `env: [{"MIX_ENV", "dev"}]` in the `System.cmd` call for `mix assets.deploy`. This scoping is safe: compile + test phases retain `MIX_ENV=test`; only the assets.deploy call passes `MIX_ENV=dev`.
 - **`codegen-call` requires `--model`, `--effort`, and `@<abs-path>` for system-prompt/schema** — `codegen-call` exit 2 with `--model is required` means the fixture is calling it with the old API (pre-`bfc6de1`). Elixir fixtures must resolve model/effort from `templates/generator/config.yaml` via `yq -r ".harness.<role>.<harness_short>.model"`, write system-prompt and schema text to temp files, and pass `@/tmp/...` format. Map `"claude_code"` → `"claude"` for the config key lookup. Use `try/after File.rm/1` for cleanup (tagged tuples return OK/ERROR patterns; discarding the return is intentional for temp cleanup).
 - **Bash fixtures for no-agent_end edge cases** — When writing bash hook test fixtures that intentionally omit an expected event type (e.g., pi fixtures lacking `{"type":"agent_end",...}` lines), verify fixture integrity with `jq 'select(.type=="agent_end")' <fixture>` returning empty before assertion. The jq select is the correct integrity check and proves the branch condition is reached. Fixture lines are JSONL and opaque-looking; verification prevents silent test failures when a fixture accidentally contains the event despite intent to omit it.
 - **`bench_artifacts_test.exs` acceptable-error token list must track screenshot.js evolution** — pre-Vite used playwright/node/MODULE_NOT_FOUND; Vite-era adds `"resolveServeDir"` (when `npm install + npm run build` fails on missing `package.json`). Update the token list when screenshot.js changes, especially after stack migrations.

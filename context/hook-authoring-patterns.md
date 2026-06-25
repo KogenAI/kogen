@@ -143,7 +143,7 @@ cleanup  # clean any leftovers from previous suite runs before tests start
 
 ## SubagentStop Hook Authoring Patterns
 
-Contract: source `lib/hooks-lib.sh`, use `parse_input` to extract AGENT_TYPE and TRANSCRIPT_PATH, call `block "$reason"` to emit `{"decision":"block","reason":...}` on stdout. Same envelope as Stop hooks.
+Contract: source `harnesses/claude/hooks/lib/hooks-lib.sh`, use `parse_input` to extract AGENT_TYPE and TRANSCRIPT_PATH, call `block "$reason"` to emit `{"decision":"block","reason":...}` on stdout. Same envelope as Stop hooks.
 
 ### Last-Match Pattern — Re-Spawned Section Body Extraction
 
@@ -333,7 +333,7 @@ Orchestrator reads verdict before deciding next delegation.
 
 **Structured result file** (`<project>/codegen/gate-pending/gate-result.json`):
 
-- Written by `write_gate_result` (from `lib/gate-result.sh`) on every gate branch to `<project>/codegen/gate-pending/gate-result.json` (created at session start by gate-select.sh)
+- Written by `write_gate_result` (from `harnesses/claude/hooks/lib/gate-result.sh`) on every gate branch to `<project>/codegen/gate-pending/gate-result.json` (created at session start by gate-select.sh)
 - **Path**: Always in `codegen/gate-pending/` subdirectory, not at `codegen/` root. Hooks that read gate result must use `$project_dir/codegen/gate-pending/gate-result.json`
 - Fields: `gate`, `mode`, `verdict` (clear|failed|inconclusive), `exit_code`, `execution_evidence`, `expected_segments`, `render_verdict`, `classification`, `started_at`, `ended_at`, `session_id`, `log`, `runner_found`
 - `build-no-success-before-commit.sh` reads `verdict` field — requires `clear` before allowing BUILD_RESULT signal

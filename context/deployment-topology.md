@@ -23,7 +23,7 @@ Root differs per machine AND OS — NOTHING hardcodes it. Every script that need
 CODEGEN_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ```
 
-See `install.sh`, `uninstall.sh`, `update_ai_tools.sh` — all use this idiom at line 1. Launcher scripts installed to `~/bin/` or `/usr/local/bin/` are no longer physically adjacent to the repo root and use one of two derivation strategies depending on launcher type.
+See `install.sh`, `uninstall.sh`, `update_ai_tools.sh` — all use this idiom in their shebang/`set` preamble (top of file). Launcher scripts installed to `~/bin/` or `/usr/local/bin/` are no longer physically adjacent to the repo root and use one of two derivation strategies depending on launcher type.
 
 ## Symlink Resolution Mechanics (Critical for `harnesses/` symlink traversal)
 

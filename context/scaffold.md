@@ -87,7 +87,7 @@ The `--no-ecto` post-render strip (`scaffold.sh` lines 187-201) must NOT remove 
 
 - `vite.config.js`: sets `build: { outDir: "public" }` + `@tailwindcss/vite` plugin (Tailwind v4)
 - `package.json`: scripts `build: "vite build"`, `serve: "vite build && python3 -u -m http.server --directory public 0"`, `dev: "vite"` + `"type": "module"` + devDeps `vite`, `@tailwindcss/vite`, `tailwindcss`
-- `src/main.js`: ES module entry that imports `./style.css`
+- src/main.js: ES module entry that imports ./style.css
 - `src/style.css`: `@import "tailwindcss";` (Tailwind v4 directive)
 - `index.html` (root): `<script type="module" src="/src/main.js">` + app name + `<div id="app">` container
 - `run_integrate_stage` appends to `.gitignore`: `/node_modules/`, `/public/`, marker blocks for `current`, `public-*`, `.DS_Store`, `/package-lock.json`
@@ -273,7 +273,7 @@ Patch `rel/overlays/bin/server` to set `APP_REVISION` env var (reads from `git d
 The fixture `test_harness/mutations/fixtures/phx_new_skeleton/` must stay in sync with live `mix phx.new` output. B4 regeneration:
 
 1. Run `mix phx.new fixture_app --binary-id --no-mailer --no-dashboard --no-agents-md --no-version-check` in a temp directory
-2. Prune to only files the fixture needs: `mix.exs`, `.formatter.exs`, `config/config.exs`, `lib/*_web/{router,endpoint,telemetry}.ex`
+2. Prune to only files the fixture needs: `mix.exs`, `.formatter.exs`, config/config.exs, `lib/*_web/{router,endpoint,telemetry}.ex`
 3. Re-verify every mutation anchor (grep patterns) against regenerated content
 4. Delete dead mutation scripts (config_exs.sh, prod_exs.sh, mix_exs Step 1) — grep-confirmed guarded no-ops
 5. Run `shared/scaffold/phoenix/run-tests.sh` to completion (all mutation tests pass against new fixture)

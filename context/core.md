@@ -18,7 +18,7 @@ Data flow: `manifest.yaml` → `generate.sh` (renders via `process_template.py`)
 | `templates/generator/test_fixtures/`          | Fixture `.md.j2` templates used by generator self-tests                                                                                        |
 | `harnesses/claude/manifest.yaml`              | Claude harness install contract (agents, hooks, launchers, modes)                                                                              |
 | `harnesses/pi/manifest.yaml`                  | Pi harness install contract                                                                                                                    |
-| `install.sh`                                  | Hardcoded per-harness install via case statement (line 260); reads manifest for step names                                                     |
+| `install.sh`                                  | Per-harness install via `for _harness in "${HARNESSES[@]}"` loop with `case "$_harness" in` dispatch; reads manifest for step names            |
 | `uninstall.sh`                                | Removes artifacts listed in manifest uninstall_steps                                                                                           |
 | `codegen-build`                               | Top-level launcher: requires --harness flag; delegates to harnesses/<harness>/dispatch.sh, which execs claude/pi with model/effort/tools flags |
 | `codegen-scaffold`                            | Downstream app scaffolder: renders `shared/scaffold/` templates into a new project dir                                                         |

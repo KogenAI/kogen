@@ -80,7 +80,7 @@ Hook registration: **Two pipelines** — both write to `harnesses/claude/hooks/*
 | `harnesses/claude/hooks/claude-inspector-write-guard.sh` | PreToolUse — write guards in claude-inspector mode |
 | `harnesses/claude/hooks/lib/hooks-lib.sh` | Shared bash library: `session_log_from_transcript`, `pitch_from_transcript`, `read_tool_failures`, `read_gate_verdicts`, transcript JSONL parsing, path helpers. Build-scoped filesystem fallback for transcript lag in print-mode builds (see `context/hook-authoring-patterns.md` § Transcript Lag). **`session_log_from_transcript` stale-path fix**: fallback must fire when transcript yielded a path that no longer exists on disk (e.g., lagging transcript pointing to an old log while current step log was written separately). Guard condition: `if [ -z "$result" ] || [ ! -e "$result" ]; then` catches both empty result AND non-existent path, then reset stale result to `""` before inner managed-build branches. |
 | `harnesses/claude/hooks/lib/gate-select.sh` | Selects gate command from ```gate-json block (jq-parsed) or prose `**Gate**:` fallback; emits `gate=`, `mode=`, `timeout=` lines |
-| `harnesses/claude/hooks/lib/gate-result.sh` | Shared helper: `write_gate_result` writes `codegen/gate-pending/gate-result.json`; also appends the canonical record to `codegen/logging/gate-verdicts.jsonl` when sentinel present. `gate_result_verdict` reads `.verdict` (returns "" if absent). `write_gate_result` also emits a `witness` field (file:line + verbatim cause for FAILED gates) via `extract_witness <log_path>` — fall-open-empty contract (empty when log absent/unparseable; never errors). **Note**: lives HERE, not in hooks-lib.sh — source explicitly. Reader: `read_gate_verdicts` in hooks-lib.sh; surface: `make show-verdicts`. |
+| `harnesses/claude/hooks/lib/gate-result.sh` | Shared helper: `write_gate_result` writes `codegen/gate-pending/gate-result.json`; also appends the canonical record to `codegen/logging/gate-verdicts.jsonl` when sentinel present. `gate_result_verdict` reads `.verdict` (returns "" if absent). `write_gate_result` also emits a `witness` field (file:line + verbatim cause for FAILED gates) via `extract_witness <log_path>` — fall-open-empty contract (empty when log absent/unparseable; never errors). **Note**: lives HERE, not in `harnesses/claude/hooks/lib/hooks-lib.sh` — source explicitly. Reader: `read_gate_verdicts` in hooks-lib.sh; surface: `make show-verdicts`. |
 | `harnesses/claude/hooks/lib/gate-control.sh` | PID-liveness helper: `gate_control_status` checks in-flight gate; `gate_control_kill` terminates; used by stop-cycle-guard |
 | `harnesses/claude/hooks/lib/wiring-check.js` | Static Phoenix handler-wiring verdict engine: every `phx-*` handler must have an element-driven side-effect test; FAIL blocks the gate. No browser, no server — pure string scan of `lib/**/*.heex` + `~H"""` sigils + `test/**/*_test.exs`. Emits `WIRING_VERDICT=PASS\|FAIL:<detail>\|INCONCLUSIVE:<reason>` |
 | `harnesses/claude/hooks/lib/wiring-check_test.sh` | Verdict-logic + `node --check` parse guard for wiring-check.js; ≥14 fixture-driven cases (PASS, FAIL, INCONCLUSIVE, unresolvable-selector, ~H sigil, ancestor-id, text-selector, multi-handler partial-wired) |
@@ -252,7 +252,7 @@ Upstream carve-outs (ScheduleWakeup, `?`-intent, retry-cap release) fire before 
 
 ## Cycle State Lookup Helpers
 
-`CYCLE_STATE_ORDER="GATED REVIEWED CURATED COMMITTED"` in `lib/cycle-state.sh` — single source of truth consumed by `step-log-completeness.sh`, `stop-cycle-guard.sh`, `curator-before-committer.sh` via helpers:
+`CYCLE_STATE_ORDER="GATED REVIEWED CURATED COMMITTED"` in `harnesses/claude/hooks/lib/cycle-state.sh` — single source of truth consumed by `step-log-completeness.sh`, `stop-cycle-guard.sh`, `curator-before-committer.sh` via helpers:
 
 - **`cycle_state_is_terminal <state>`** — true iff `<state>` is the LAST element (derived by iteration; no hardcoding).
 - **`cycle_state_next <state>`** — successor state; empty if terminal/unmatched.
@@ -277,7 +277,7 @@ Guards scoped to the orchestrator (empty `AGENT_TYPE`/`AGENT_ID`) use `kind: reg
 
 **Pattern**: (1) `kind: registration` entry in `registry.yaml` with `role: "*"`, `harnesses: all`; (2) hand-authored `.sh` file with pre-check on `^codegen/logging/` to avoid wrongly denying non-logging writes; (3) `_test.sh` with ≥16 cases; (4) `make install` injects `HOOK-MANIFEST` header + registers in `settings.json`.
 
-**Path normalization**: Strip leading `./` explicitly (`rel="${rel#./}"`) so both `codegen/logging/foo.md` and `./codegen/logging/foo.md` match the allowlist.
+**Path normalization**: Strip leading `./` explicitly (`rel="${rel#./}"`) so both a session-log file and its `./`-prefixed form match the allowlist.
 
 ## Shell Case Branching Pattern
 

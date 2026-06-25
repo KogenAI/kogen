@@ -2,7 +2,7 @@
 
 Structural map of the codegen repo: what each top-level file and directory contains, why it exists, and what creates or updates it. Use it to answer "where does X go?" or decide where a new file belongs. For functional detail, see cross-references at the bottom.
 
-**Key fact — AGENTS.md / CLAUDE.md at repo root**: Both are hand-authored plain files describing codegen's own session loop. NOT generated, NOT symlinked — edit directly. Both are committed. They carry identical content and identical `→ See` prose pointers — no `@`-import syntax in either file. Downstream repo docs (`AGENTS.md`/`CLAUDE.md`) are rendered from `shared/apps/AGENTS-phoenix.md.j2` and `shared/apps/AGENTS-static.md.j2` via `install.sh` — not from these root files.
+**Key fact — AGENTS.md / CLAUDE.md at repo root**: Both are committed symlinks (git mode 120000) pointing at generated `shared/apps/CLAUDE-phoenix.md` and `shared/apps/AGENTS-phoenix.md`, which are rendered from the corresponding `.j2` templates by `install.sh`. The rendered `.md` targets are gitignored. To change content, edit the `.j2` template — not the symlink and not the rendered `.md`. Downstream repo docs (`AGENTS.md`/`CLAUDE.md`) are rendered from `shared/apps/AGENTS-phoenix.md.j2` and `shared/apps/AGENTS-static.md.j2` via `install.sh` — not from these root files.
 
 ```
 codegen/                          ← repo root
@@ -22,8 +22,8 @@ codegen/                          ← repo root
 ├── package.json                  ← root npm manifest (prettier only)
 ├── package-lock.json             ← lockfile for root prettier dep
 ├── index.html                    ← static-site test fixture (NOT a site page)
-├── AGENTS.md                     ← codegen session loop docs (hand-authored plain file, pi render)
-├── CLAUDE.md                     ← codegen session loop docs (committed; hand-authored sibling to AGENTS.md, same content and prose pointers)
+├── AGENTS.md                     ← codegen session loop docs (committed symlink → generated shared/apps/AGENTS-phoenix.md)
+├── CLAUDE.md                     ← codegen session loop docs (committed symlink → generated shared/apps/CLAUDE-phoenix.md)
 ├── PROJECT_CONTEXT.md            ← codegen project context for AI agents
 ├── README.md                     ← user quickstart guide
 ├── STYLE_GUIDE.md                ← cross-cutting style reference
@@ -94,13 +94,13 @@ codegen/                          ← repo root
 
 ## Root Documentation Files
 
-| File                 | Audience                       | Content                                                     | Status                   |
-| -------------------- | ------------------------------ | ----------------------------------------------------------- | ------------------------ |
-| `AGENTS.md`          | AI sessions (pi render)        | Codegen session loop: what it is, dev loop, workspace rules | Committed; hand-authored |
-| `CLAUDE.md`          | AI sessions (claude render)    | Same content as AGENTS.md; `→ See` prose pointers           | Committed; hand-authored |
-| `PROJECT_CONTEXT.md` | AI orchestrators               | Session analyzer command, gate commands, key paths          | Committed                |
-| `README.md`          | New users / contributors       | Installation steps, prerequisites, quick-start              | Committed                |
-| `STYLE_GUIDE.md`     | All contributors and AI agents | Naming conventions, formatting rules, review checklist      | Committed                |
+| File                 | Audience                       | Content                                                     | Status                                                                    |
+| -------------------- | ------------------------------ | ----------------------------------------------------------- | ------------------------------------------------------------------------- |
+| `AGENTS.md`          | AI sessions (pi render)        | Codegen session loop: what it is, dev loop, workspace rules | Committed symlink (mode 120000) → generated shared/apps/AGENTS-phoenix.md |
+| `CLAUDE.md`          | AI sessions (claude render)    | Same content as AGENTS.md; rendered from .j2 template       | Committed symlink (mode 120000) → generated shared/apps/CLAUDE-phoenix.md |
+| `PROJECT_CONTEXT.md` | AI orchestrators               | Session analyzer command, gate commands, key paths          | Committed                                                                 |
+| `README.md`          | New users / contributors       | Installation steps, prerequisites, quick-start              | Committed                                                                 |
+| `STYLE_GUIDE.md`     | All contributors and AI agents | Naming conventions, formatting rules, review checklist      | Committed                                                                 |
 
 ---
 
@@ -165,21 +165,21 @@ codegen/                          ← repo root
 
 ## Artifact Ownership and Update Triggers
 
-| Artifact                                          | Owner                     | Updated by                                       | Trigger                                    |
-| ------------------------------------------------- | ------------------------- | ------------------------------------------------ | ------------------------------------------ |
-| `harnesses/claude/claude-code-settings.json`      | Generator                 | `hook_registrations.py`                          | `make install` or `make hook-parity`       |
-| `harnesses/claude/claude-build-system-prompt.txt` | Generator                 | `generate.sh`                                    | `make install`                             |
-| `AGENTS.md` (repo root)                           | Hand-authored plain file  | Manual edit by developer                         | When codegen session loop docs change      |
-| `CLAUDE.md` (repo root)                           | Hand-authored plain file  | Manual edit by developer                         | When codegen session loop docs change      |
-| `shared/` (all subdirs)                           | Contributors / curator    | Manual edit or context-curator subagent          | Feature development, learning accumulation |
-| `context/*.md`                                    | Context curator           | `context-curator.md.j2` subagent + manual        | Post-reviewer in each dev cycle            |
-| `codegen/logging/*.md`                            | Orchestrator + subagents  | Session log write/edit during dev sessions       | Every dev cycle on THIS repo               |
-| `test_harness/last_green.json`                    | CI / `record-green.sh`    | `make record-green` after `make test-all` passes | Pre-deploy gate                            |
-| `harnesses/pi/pi-extensions/*/node_modules/`      | npm                       | `npm install` in extension dir                   | After any `package.json` change            |
-| Root `node_modules/`                              | npm                       | `npm install` at repo root                       | After `package.json` changes               |
-| `shared/enforcement/registry.yaml`                | Contributors / curator    | Manual edit; compiler reads at `make install`    | When adding/changing denial rules          |
-| `harnesses/claude/hooks/no-*.sh` (generated)      | `enforcement_compiler.py` | `make install` (compiler step)                   | When `registry.yaml` changes               |
-| `harnesses/pi/.../hooks/no-*.ts` (generated)      | `enforcement_compiler.py` | `make install` (compiler step)                   | When `registry.yaml` changes               |
+| Artifact                                          | Owner                                                                     | Updated by                                       | Trigger                                    |
+| ------------------------------------------------- | ------------------------------------------------------------------------- | ------------------------------------------------ | ------------------------------------------ |
+| `harnesses/claude/claude-code-settings.json`      | Generator                                                                 | `hook_registrations.py`                          | `make install` or `make hook-parity`       |
+| `harnesses/claude/claude-build-system-prompt.txt` | Generator                                                                 | `generate.sh`                                    | `make install`                             |
+| `AGENTS.md` (repo root)                           | Committed symlink (mode 120000) → generated shared/apps/AGENTS-phoenix.md | Edit `.j2` template → `make install` re-renders  | When codegen session loop docs change      |
+| `CLAUDE.md` (repo root)                           | Committed symlink (mode 120000) → generated shared/apps/CLAUDE-phoenix.md | Edit `.j2` template → `make install` re-renders  | When codegen session loop docs change      |
+| `shared/` (all subdirs)                           | Contributors / curator                                                    | Manual edit or context-curator subagent          | Feature development, learning accumulation |
+| `context/*.md`                                    | Context curator                                                           | `context-curator.md.j2` subagent + manual        | Post-reviewer in each dev cycle            |
+| `codegen/logging/*.md`                            | Orchestrator + subagents                                                  | Session log write/edit during dev sessions       | Every dev cycle on THIS repo               |
+| `test_harness/last_green.json`                    | CI / `record-green.sh`                                                    | `make record-green` after `make test-all` passes | Pre-deploy gate                            |
+| `harnesses/pi/pi-extensions/*/node_modules/`      | npm                                                                       | `npm install` in extension dir                   | After any `package.json` change            |
+| Root `node_modules/`                              | npm                                                                       | `npm install` at repo root                       | After `package.json` changes               |
+| `shared/enforcement/registry.yaml`                | Contributors / curator                                                    | Manual edit; compiler reads at `make install`    | When adding/changing denial rules          |
+| `harnesses/claude/hooks/no-*.sh` (generated)      | `enforcement_compiler.py`                                                 | `make install` (compiler step)                   | When `registry.yaml` changes               |
+| `harnesses/pi/.../hooks/no-*.ts` (generated)      | `enforcement_compiler.py`                                                 | `make install` (compiler step)                   | When `registry.yaml` changes               |
 
 ---
 
@@ -201,8 +201,8 @@ codegen/                          ← repo root
 ## Critical Constraints
 
 - [ ] **One-way knowledge boundary**: Codegen docs MUST NOT name any downstream consumer. Use "the consuming app" / "downstream projects". `grep -ri "<consumer-name>" context/ AGENTS.md CLAUDE.md` must return zero hits. Consumer-specific VALUES arrive as scaffold ARGs (`--slug`, `--restart-rpc-cmd`), never hardcoded in codegen source. Multi-file boundary fixes require guard test coverage of EVERY file in the intended grep target, not a curated subset — narrow guards silently miss future violations.
-- [ ] **CLAUDE.md and AGENTS.md are both hand-authored siblings and BOTH committed** — identical content and identical `→ See` prose pointers; no `@`-import syntax.
-- [ ] **AGENTS.md and CLAUDE.md at root are hand-authored** — do not regenerate; edit directly.
+- [ ] **CLAUDE.md and AGENTS.md are both committed symlinks (mode 120000)** — they point at generated `shared/apps/CLAUDE-phoenix.md` and `shared/apps/AGENTS-phoenix.md` respectively; the rendered `.md` targets are gitignored. To change content, edit the `.j2` template and run `make install`.
+- [ ] **AGENTS.md and CLAUDE.md at root are committed symlinks** — do not edit the rendered `.md` targets or the symlinks directly; edit the `.j2` templates.
 - [ ] **Generated `*-system-prompt.txt` files** — never hand-edit; regenerated by `make install`.
 - [ ] **`codegen/` at repo root** is THIS repo's own session log storage — entirely separate from downstream project `codegen/` dirs.
 - [ ] **`ai-agents/`** is orphaned — do not add files expecting them to be installed.

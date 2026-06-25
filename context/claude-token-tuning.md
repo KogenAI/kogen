@@ -33,20 +33,17 @@ Full mapping from `templates/generator/config.yaml` (Claude harness):
 | reviewer-static            | sonnet | medium |
 | committer                  | haiku  | low    |
 | context-curator            | haiku  | low    |
-| build (orchestrator)       | haiku  | medium |
-| bouncer                    | haiku  | low    |
-| concierge                  | haiku  | low    |
-| preference_extractor       | haiku  | low    |
-| user_app_build             | sonnet | medium |
+| build (orchestrator)       | sonnet | medium |
 | inspector                  | sonnet | medium |
 | debug                      | sonnet | medium |
+| app_build                  | sonnet | medium |
 | shape                      | opus   | high   |
 | ops                        | opus   | high   |
-| refactor                   | opus   | high   |
+| experiment                 | opus   | high   |
 
 ## Investigation Modes Are Pinned By Design
 
-`shape`, `refactor`, and `ops` are pinned to opus/high because they drive architectural decisions and complex multi-file analysis — the cost premium is justified. `debug` = sonnet/medium is also intentional (diagnostic, not creative). Cost sweeps **MUST NOT** propose downgrading these roles. Any proposal to move investigation modes to sonnet or reduce effort is out of scope and should be rejected without further analysis.
+`shape`, `experiment`, and `ops` are pinned to opus/high because they drive architectural decisions and complex multi-file analysis — the cost premium is justified. `debug` = sonnet/medium is also intentional (diagnostic, not creative). Cost sweeps **MUST NOT** propose downgrading these roles. Any proposal to move investigation modes to sonnet or reduce effort is out of scope and should be rejected without further analysis.
 
 ## Why Shared-Prefix Rule Extraction Is A False Economy
 

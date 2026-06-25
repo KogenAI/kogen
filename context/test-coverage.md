@@ -2,7 +2,7 @@
 
 Enumerates every executable surface in the codegen repo and names the test that exercises it. Empty `Test` cells are work items for later pitch stages.
 
-Source of truth for the test-coverage-everything pitch (`codegen/pitches/ready/test-coverage-everything.md`). Updated by context curator as tests are added.
+Source of truth for the test-coverage-everything pitch (the ready-pitch file for test-coverage-everything). Updated by context curator as tests are added.
 
 Columns:
 
@@ -25,7 +25,7 @@ Columns:
 | claude dispatch        | launcher | `harnesses/claude/dispatch.sh`      | `harnesses/claude/hooks/codegen-build_test.sh` (via `make harness-parity`)                                                                   | Stubs validated; runtime path indirect via ExUnit                              |
 | pi dispatch            | launcher | `harnesses/pi/dispatch.sh`          | `harnesses/claude/hooks/codegen-build_test.sh` (via `make harness-parity`)                                                                   | Same as above                                                                  |
 | codegen-build entry    | launcher | `codegen-build` (repo root)         | `harnesses/claude/hooks/codegen-build_test.sh` (via `make harness-parity`); 11 ExUnit cases                                                  | Top-level harness API                                                          |
-| codegen-scaffold entry | launcher | `codegen-scaffold` (repo root)      | Exercised by `static/scaffold_test.sh` (via `make test`)                                                                                     | No dedicated test                                                              |
+| codegen-scaffold entry | launcher | `codegen-scaffold` (repo root)      | Exercised by `shared/scaffold/static/scaffold_test.sh` (via `make test`)                                                                     | No dedicated test                                                              |
 | codegen-call entry     | launcher | `codegen-call` (repo root)          | `harnesses/claude/hooks/codegen-call_test.sh` (via `make test`)                                                                              | One-shot structured LLM call binary                                            |
 | call-dispatch          | launcher | `harnesses/claude/call-dispatch.sh` | `harnesses/claude/hooks/call-dispatch_test.sh` (via `make test`)                                                                             | Dispatcher for codegen-call invocations                                        |
 
@@ -68,12 +68,12 @@ Columns:
 
 ### Section 5 — Pi Extensions
 
-| Surface         | Type      | File/Path                                     | Test that exercises it                                                                                                      | Notes                                                                                     |
-| --------------- | --------- | --------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
-| enforcement     | extension | `harnesses/pi/pi-extensions/enforcement/`     | `npm test` via `make test` for-loop (Makefile)                                                                              | `npm run test:coverage` (c8) wired by Stage 2; invoked by `make test-coverage-typescript` |
-| askuserquestion | extension | `harnesses/pi/pi-extensions/askuserquestion/` | `npm test` via `make test` for-loop (Makefile)                                                                              | `npm run test:coverage` (vitest+istanbul) wired by Stage 2                                |
-| subagents       | extension | `harnesses/pi/pi-extensions/subagents/`       | `npm test` (= `test:unit`) via `make test` for-loop; `test:integration` guarded — runs only when `test/integration/` exists | `npm run test:coverage` (c8) wired by Stage 2; test/integration/ absent on this machine   |
-| web-utils       | extension | `harnesses/pi/pi-extensions/web-utils/`       | `npm test` (vitest run) via `make test` for-loop; `test/utils/formatters.test.ts` (1 case)                                  | vitest + `@vitest/coverage-istanbul` devDeps added Stage 5; `test:coverage` wired         |
+| Surface         | Type      | File/Path                                     | Test that exercises it                                                                                                          | Notes                                                                                     |
+| --------------- | --------- | --------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
+| enforcement     | extension | `harnesses/pi/pi-extensions/enforcement/`     | `npm test` via `make test` for-loop (Makefile)                                                                                  | `npm run test:coverage` (c8) wired by Stage 2; invoked by `make test-coverage-typescript` |
+| askuserquestion | extension | `harnesses/pi/pi-extensions/askuserquestion/` | `npm test` via `make test` for-loop (Makefile)                                                                                  | `npm run test:coverage` (vitest+istanbul) wired by Stage 2                                |
+| subagents       | extension | `harnesses/pi/pi-extensions/subagents/`       | `npm test` (= `test:unit`) via `make test` for-loop; `test:integration` guarded — runs only when `test/integration/` exists     | `npm run test:coverage` (c8) wired by Stage 2; test/integration/ absent on this machine   |
+| web-utils       | extension | `harnesses/pi/pi-extensions/web-utils/`       | `npm test` (vitest run) via `make test` for-loop; `harnesses/pi/pi-extensions/web-utils/test/utils/formatters.test.ts` (1 case) | vitest + `@vitest/coverage-istanbul` devDeps added Stage 5; `test:coverage` wired         |
 
 ### Section 6 — Scaffold Mutations
 
@@ -168,21 +168,21 @@ For every `harnesses/claude/hooks/<name>.sh` there is a paired `<name>_test.sh` 
 
 ### Section 10 — Make Targets (executable surfaces)
 
-| Surface             | Type        | File/Path         | Test that exercises it                                      | Notes                                                                                    |
-| ------------------- | ----------- | ----------------- | ----------------------------------------------------------- | ---------------------------------------------------------------------------------------- |
-| make install        | make-target | `Makefile:51-60`  | —                                                           | Manual; round-trip in Stage 5                                                            |
-| make uninstall      | make-target | `Makefile:197+`   | —                                                           | Manual; round-trip in Stage 5                                                            |
-| make test           | make-target | `Makefile:73-88`  | self-referential                                            | runs hook tests + mutation tests + install round-trips + all 4 pi extensions (for-loop)  |
-| make test-stacks    | make-target | `Makefile:80-145` | self-referential                                            | runs ExUnit                                                                              |
-| make test-all       | make-target | `Makefile:148`    | self-referential                                            |                                                                                          |
-| make hook-parity    | make-target | `Makefile:30-49`  | Round-trip diff (no unit test)                              |                                                                                          |
-| make harness-parity | make-target | `Makefile:65-68`  | Invokes `codegen-build_test.sh` + `static/scaffold_test.sh` |                                                                                          |
-| make rule-parity    | make-target | `Makefile:155+`   | Round-trip diff                                             |                                                                                          |
-| make doctor         | make-target | `Makefile:226+`   | —                                                           | Diagnostic only                                                                          |
-| make format         | make-target | `Makefile:205+`   | —                                                           | Formatter                                                                                |
-| make record-green   | make-target | `Makefile:150`    | —                                                           | Baseline-stamper                                                                         |
-| make test-coverage  | make-target | `Makefile:77+`    | `make test-coverage && make test` (Stage 2 gate)            | Chains elixir/typescript/shell/python/summary sub-targets; outputs to `coverage/<lang>/` |
-| make test-generator | make-target | `Makefile`        | self-referential                                            | runs Python unittest + bash `*_test.sh` for generator pipeline                           |
+| Surface             | Type        | File/Path         | Test that exercises it                                                      | Notes                                                                                    |
+| ------------------- | ----------- | ----------------- | --------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------- |
+| make install        | make-target | `Makefile:51-60`  | —                                                                           | Manual; round-trip in Stage 5                                                            |
+| make uninstall      | make-target | `Makefile:197+`   | —                                                                           | Manual; round-trip in Stage 5                                                            |
+| make test           | make-target | `Makefile:73-88`  | self-referential                                                            | runs hook tests + mutation tests + install round-trips + all 4 pi extensions (for-loop)  |
+| make test-stacks    | make-target | `Makefile:80-145` | self-referential                                                            | runs ExUnit                                                                              |
+| make test-all       | make-target | `Makefile:148`    | self-referential                                                            |                                                                                          |
+| make hook-parity    | make-target | `Makefile:30-49`  | Round-trip diff (no unit test)                                              |                                                                                          |
+| make harness-parity | make-target | `Makefile:65-68`  | Invokes `codegen-build_test.sh` + `shared/scaffold/static/scaffold_test.sh` |                                                                                          |
+| make rule-parity    | make-target | `Makefile:155+`   | Round-trip diff                                                             |                                                                                          |
+| make doctor         | make-target | `Makefile:226+`   | —                                                                           | Diagnostic only                                                                          |
+| make format         | make-target | `Makefile:205+`   | —                                                                           | Formatter                                                                                |
+| make record-green   | make-target | `Makefile:150`    | —                                                                           | Baseline-stamper                                                                         |
+| make test-coverage  | make-target | `Makefile:77+`    | `make test-coverage && make test` (Stage 2 gate)                            | Chains elixir/typescript/shell/python/summary sub-targets; outputs to `coverage/<lang>/` |
+| make test-generator | make-target | `Makefile`        | self-referential                                                            | runs Python unittest + bash `*_test.sh` for generator pipeline                           |
 
 ### Section 11 — Summary
 
