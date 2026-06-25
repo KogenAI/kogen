@@ -86,4 +86,45 @@ describe("pre-commit-guard", () => {
     const result = await runHook("bash", "git commit -m 'fix'", "");
     assert.ok((result as { block?: boolean }).block === true);
   });
+
+  it("blocks git add -A for developer agent", async () => {
+    const result = await runHook(
+      "bash",
+      "git add -A",
+      "developer-phoenix-backend",
+    );
+    assert.ok((result as { block?: boolean }).block === true);
+  });
+
+  it("allows git add -A for committer", async () => {
+    const result = await runHook("bash", "git add -A", "committer");
+    assert.ok(result == null || (result as { block?: boolean }).block !== true);
+  });
+
+  it("blocks git stash for non-committer", async () => {
+    const result = await runHook(
+      "bash",
+      "git stash",
+      "developer-phoenix-backend",
+    );
+    assert.ok((result as { block?: boolean }).block === true);
+  });
+
+  it("allows git restore foo (no --staged) for non-committer", async () => {
+    const result = await runHook(
+      "bash",
+      "git restore foo",
+      "developer-phoenix-backend",
+    );
+    assert.ok(result == null || (result as { block?: boolean }).block !== true);
+  });
+
+  it("blocks git restore --staged foo for non-committer", async () => {
+    const result = await runHook(
+      "bash",
+      "git restore --staged foo",
+      "developer-phoenix-backend",
+    );
+    assert.ok((result as { block?: boolean }).block === true);
+  });
 });

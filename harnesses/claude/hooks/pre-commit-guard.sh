@@ -41,9 +41,34 @@ if [ "$AGENT_TYPE" = "committer" ]; then
     exit 0
 fi
 
-# State-modifying git subcommands. Notably NOT blocked: add, status, diff,
+# State-modifying git subcommands. Notably NOT blocked: status, diff,
 # log, show, blame, ls-files — these are routinely used for inspection by
 # every subagent.
+if printf '%s' "$COMMAND" | grep -qE '\bgit[[:space:]]+add\b'; then
+    deny "BLOCKED by pre-commit-guard: git add is forbidden for agent \"$AGENT_TYPE\" — committer owns all git staging (delegate to committer)"
+    exit 0
+fi
+
+if printf '%s' "$COMMAND" | grep -qE '\bgit[[:space:]]+rm\b'; then
+    deny "BLOCKED by pre-commit-guard: git rm is forbidden for agent \"$AGENT_TYPE\" — committer owns all git staging (delegate to committer)"
+    exit 0
+fi
+
+if printf '%s' "$COMMAND" | grep -qE '\bgit[[:space:]]+mv\b'; then
+    deny "BLOCKED by pre-commit-guard: git mv is forbidden for agent \"$AGENT_TYPE\" — committer owns all git staging (delegate to committer)"
+    exit 0
+fi
+
+if printf '%s' "$COMMAND" | grep -qE '\bgit[[:space:]]+restore\b.*--staged\b'; then
+    deny "BLOCKED by pre-commit-guard: git restore --staged is forbidden for agent \"$AGENT_TYPE\" — committer owns all git staging (delegate to committer)"
+    exit 0
+fi
+
+if printf '%s' "$COMMAND" | grep -qE '\bgit[[:space:]]+stash\b'; then
+    deny "BLOCKED by pre-commit-guard: git stash is forbidden for agent \"$AGENT_TYPE\" — committer owns all git staging (delegate to committer)"
+    exit 0
+fi
+
 if printf '%s' "$COMMAND" | grep -qE '\bgit[[:space:]]+commit\b'; then
     deny "BLOCKED by pre-commit-guard: git commit forbidden for agent \"$AGENT_TYPE\" — committer owns commit creation (see CLAUDE.md \"NEVER Commit Directly\")"
     exit 0

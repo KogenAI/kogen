@@ -4,6 +4,7 @@ For orchestrator, planner, reviewers, devs (non-staging).
 
 - ❌ `git push`, `pull`, `fetch`
 - ❌ `git stash` — hides changes → breaks reproduction
+- ❌ `git add`, `git rm`, `git mv`, `git restore --staged` — staging/index writes → delegate to committer
 - Branch behind/ahead → stop, report
 - Allowed: `git status`, `log`, `diff`, `show`, `branch` (list), `remote -v`
 - Need write → wrong role → delegate to committer

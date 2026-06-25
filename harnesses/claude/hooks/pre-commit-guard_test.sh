@@ -134,6 +134,38 @@ run_test_env "ops role + git push --force allowed" "0" "$FIXTURE_OPS_PUSH" "CLAU
 FIXTURE_PI_OPS_COMMIT='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"git commit -m \"pi-ops hotfix\""},"agent_type":"","agent_id":"a"}'
 run_test_env "PI_ROLE=ops + git commit allowed" "0" "$FIXTURE_PI_OPS_COMMIT" "PI_ROLE=ops"
 
+# Test 15: git add -A for non-committer — MUST DENY
+FIXTURE_ADD_BLOCKED='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"git add -A"},"agent_type":"developer-phoenix-backend","agent_id":"a"}'
+run_test "git add -A blocked for non-committer" "2" "$FIXTURE_ADD_BLOCKED"
+
+# Test 16: git add -A for committer — MUST ALLOW
+FIXTURE_ADD_COMMITTER='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"git add -A"},"agent_type":"committer","agent_id":"a"}'
+run_test "git add -A passes for committer" "0" "$FIXTURE_ADD_COMMITTER"
+
+# Test 17: git add -A in ops mode — MUST ALLOW
+FIXTURE_ADD_OPS='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"git add -A"},"agent_type":"","agent_id":"a"}'
+run_test_env "git add -A allowed in ops mode" "0" "$FIXTURE_ADD_OPS" "CLAUDE_ROLE=ops"
+
+# Test 18: git stash for non-committer — MUST DENY
+FIXTURE_STASH_BLOCKED='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"git stash"},"agent_type":"developer-phoenix-backend","agent_id":"a"}'
+run_test "git stash blocked for non-committer" "2" "$FIXTURE_STASH_BLOCKED"
+
+# Test 19: git rm --cached foo for non-committer — MUST DENY
+FIXTURE_RM_BLOCKED='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"git rm --cached foo"},"agent_type":"developer-phoenix-backend","agent_id":"a"}'
+run_test "git rm --cached blocked for non-committer" "2" "$FIXTURE_RM_BLOCKED"
+
+# Test 20: git mv a b for non-committer — MUST DENY
+FIXTURE_MV_BLOCKED='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"git mv a b"},"agent_type":"developer-phoenix-backend","agent_id":"a"}'
+run_test "git mv blocked for non-committer" "2" "$FIXTURE_MV_BLOCKED"
+
+# Test 21: git restore --staged foo for non-committer — MUST DENY
+FIXTURE_RESTORE_STAGED_BLOCKED='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"git restore --staged foo"},"agent_type":"developer-phoenix-backend","agent_id":"a"}'
+run_test "git restore --staged blocked for non-committer" "2" "$FIXTURE_RESTORE_STAGED_BLOCKED"
+
+# Test 22: git restore foo (NO --staged) for non-committer — MUST ALLOW
+FIXTURE_RESTORE_ALLOWED='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"git restore foo"},"agent_type":"developer-phoenix-backend","agent_id":"a"}'
+run_test "git restore (no --staged) allowed for non-committer" "0" "$FIXTURE_RESTORE_ALLOWED"
+
 echo ""
 echo "Results: $pass passed, $fail failed"
 

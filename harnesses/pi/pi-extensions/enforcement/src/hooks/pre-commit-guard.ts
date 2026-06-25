@@ -26,6 +26,31 @@ export function register(pi: ExtensionAPI): void {
     const command: string = (event.input as { command?: string }).command ?? "";
     debugLog("pre-commit-guard", `agent=${agentType} cmd=${command}`);
 
+    if (/\bgit\s+add\b/.test(command)) {
+      return deny(
+        `BLOCKED by pre-commit-guard: git add is forbidden for agent "${agentType}" — committer owns all git staging (delegate to committer)`,
+      );
+    }
+    if (/\bgit\s+rm\b/.test(command)) {
+      return deny(
+        `BLOCKED by pre-commit-guard: git rm is forbidden for agent "${agentType}" — committer owns all git staging (delegate to committer)`,
+      );
+    }
+    if (/\bgit\s+mv\b/.test(command)) {
+      return deny(
+        `BLOCKED by pre-commit-guard: git mv is forbidden for agent "${agentType}" — committer owns all git staging (delegate to committer)`,
+      );
+    }
+    if (/\bgit\s+restore\b.*--staged\b/.test(command)) {
+      return deny(
+        `BLOCKED by pre-commit-guard: git restore --staged is forbidden for agent "${agentType}" — committer owns all git staging (delegate to committer)`,
+      );
+    }
+    if (/\bgit\s+stash\b/.test(command)) {
+      return deny(
+        `BLOCKED by pre-commit-guard: git stash is forbidden for agent "${agentType}" — committer owns all git staging (delegate to committer)`,
+      );
+    }
     if (/\bgit\s+commit\b/.test(command)) {
       return deny(
         `BLOCKED by pre-commit-guard: git commit forbidden for agent "${agentType}" — committer owns commit creation (see CLAUDE.md "NEVER Commit Directly")`,
