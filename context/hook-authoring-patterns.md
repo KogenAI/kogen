@@ -471,6 +471,20 @@ When bypass widens (e.g., literal `planner` → `planner*`), an ALLOW test passe
 
 **Example** (`subagent-retrospective-guard.sh`): `planner-phoenix` without retrospective → BLOCK (proves processing); with retrospective → ALLOW (proves valid bypass).
 
+## Three-Class Fetch-Pointer Guard Architecture
+
+The `rule-self-ref-no-fetch_test.sh` guard detects three error classes for fetch-pointer references (`[nav-word] \`path/to/rule.md\`` in subagent templates):
+
+1. **Self-ref (class a)** — fetch pointer target is co-inlined in SAME template; redundant include.
+2. **Dangling (class b)** — fetch pointer target does NOT exist under `shared/rules/`.
+3. **Unloadable (class c)** — fetch pointer target EXISTS under `shared/rules/` but is NOT co-inlined in that template (unreachable at runtime).
+
+**Guard logic**: Both `check_template` and `run_fixture_check` must stay in sync — when a candidate file exists (passes class b check), test whether it is in the `included_basenames[]` array. If NOT found, flag class (c) failure. Header comment documents all three classes; verbose PASS message updates to "no self-ref, dangling, or unloadable fetch pointers".
+
+**Test authoring**: When guard logic tightens to catch a new class, existing test expectations may flip. Test F4 (existing non-co-inlined ref) was PASS under class (a)+(b); becomes FAIL under class (a)+(b)+(c). Invert assertion from `eq 0` (no failures) to `gt 0` (failures detected). Add a positive companion test (F7) for a non-nav-word delegation reference to confirm the guard does NOT flag references that lack a nav-word prefix (navigation-word greedy-match is not triggered).
+
+**Nav-word anchoring pitfall**: The nav-word set (see/read/per/check/via/apply/from/at/in/→) triggers fetch-pointer detection when they precede a backtick reference. Removing a nav-word from prose before a backtick reference prevents false-positive class (c) flags. Example: `Check \`rule.md\`` flags rule.md; `If \`rule.md\` detected` does not (no nav-word before the backtick).
+
 ## Retrospective Placement Constraint — Awk Section Extraction
 
 `subagent-retrospective-guard.sh` uses `awk` to extract the retrospective section. **Critical constraint**: `### What I Learned This Step` CANNOT appear anywhere inside a `## Plan` body that contains nested `## ` literals — awk terminates at the first `## ` encountered, even inside fenced code blocks.

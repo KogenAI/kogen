@@ -10,9 +10,11 @@
 # Bare filepath mentions (e.g., "new section in `bash-discipline.md`")
 # are NOT fetch pointers and are not flagged.
 #
-# Two error classes detected:
-#   (a) Self-ref   — fetch-pointer target is co-inlined in the same role
-#   (b) Dangling   — fetch-pointer target does not exist under shared/rules/
+# Three error classes detected:
+#   (a) Self-ref    — fetch-pointer target is co-inlined in the same role
+#   (b) Dangling    — fetch-pointer target does not exist under shared/rules/
+#   (c) Unloadable  — fetch-pointer target exists under shared/rules/ but is NOT
+#                    co-inlined in that role's template include set
 #
 # Allowlist — targets exempt from both checks (recipes, downstream files,
 # example placeholders, recipe names, etc.):
@@ -211,13 +213,29 @@ check_template() {
                     "$label" "$pointer"
                 template_fail=$((template_fail + 1))
                 fail=$((fail + 1))
+            else
+                # (c) Unloadable — exists under shared/rules/ but not co-inlined
+                local is_co_inlined=false
+                local inc_file
+                for inc_file in "${included_basenames[@]}"; do
+                    if [ "$inc_file" = "$bn_pointer" ]; then
+                        is_co_inlined=true
+                        break
+                    fi
+                done
+                if [ "$is_co_inlined" = false ]; then
+                    printf 'FAIL: %s — unloadable fetch pointer `%s`: exists under shared/rules/ but not co-inlined\n' \
+                        "$label" "$pointer"
+                    template_fail=$((template_fail + 1))
+                    fail=$((fail + 1))
+                fi
             fi
 
         done < <(extract_md_pointers "$pfile")
     done
 
     if [ "$template_fail" -eq 0 ]; then
-        [ -n "${VERBOSE:-}" ] && printf 'PASS: %s — no self-ref or dangling fetch pointers\n' "$label"
+        [ -n "${VERBOSE:-}" ] && printf 'PASS: %s — no self-ref, dangling, or unloadable fetch pointers\n' "$label"
         pass=$((pass + 1))
     fi
 }
@@ -314,6 +332,19 @@ run_fixture_check() {
 
             if [ -z "$candidate" ] || [ ! -f "$candidate" ]; then
                 count=$((count + 1))
+            else
+                # (c) Unloadable — exists under rules/ but not co-inlined
+                local is_co_inlined=false
+                local inc_file
+                for inc_file in "${included_basenames[@]}"; do
+                    if [ "$inc_file" = "$bn_pointer" ]; then
+                        is_co_inlined=true
+                        break
+                    fi
+                done
+                if [ "$is_co_inlined" = false ]; then
+                    count=$((count + 1))
+                fi
             fi
         done < <(extract_md_pointers "$pfile")
     done
@@ -392,9 +423,9 @@ run_fixture_check() {
     fi
 }
 
-# ── Test F4: Existing non-co-inlined rule ref as fetch pointer → also PASS ───
+# ── Test F4: Existing non-co-inlined rule ref as fetch pointer → FAIL (class c unloadable) ───
 # `other-rule.md` exists under rules/ but is NOT co-inlined.
-# A fetch pointer to it is NOT a self-ref and NOT dangling — should PASS.
+# A fetch pointer to it is an unloadable pointer — should FAIL.
 {
     f4_rules="$TMP_DIR/f4/rules/stacks/phoenix"
     mkdir -p "$f4_rules"
@@ -409,11 +440,11 @@ run_fixture_check() {
     f4_out=$(run_fixture_check "$f4_tmpl" "$TMP_DIR/f4/rules")
     f4_count="${f4_out#FAIL_COUNT:}"
 
-    if [ "$f4_count" -eq 0 ]; then
-        [ -n "${VERBOSE:-}" ] && printf 'PASS: Test F4 — existing non-co-inlined pointer is not flagged\n'
+    if [ "$f4_count" -gt 0 ]; then
+        [ -n "${VERBOSE:-}" ] && printf 'PASS: Test F4 — unloadable fetch pointer correctly detected\n'
         pass=$((pass + 1))
     else
-        printf 'FAIL: Test F4 — valid external pointer incorrectly flagged (%d)\n' "$f4_count"
+        printf 'FAIL: Test F4 — unloadable fetch pointer was NOT detected\n'
         fail=$((fail + 1))
     fi
 }
@@ -471,6 +502,30 @@ run_fixture_check() {
         pass=$((pass + 1))
     else
         printf 'FAIL: Test F6 — arrow fetch pointer self-ref was NOT detected\n'
+        fail=$((fail + 1))
+    fi
+}
+
+# ── Test F7: Delegation naming without nav-word → PASS ────────────────────────
+# `other-rule.md` exists under rules/ but is NOT co-inlined.
+# "follows" is not a nav-word — should NOT be flagged as unloadable.
+{
+    f7_rules="$TMP_DIR/f7/rules/stacks/phoenix"
+    mkdir -p "$f7_rules"
+    printf '# Other Rule\nSome content.\n' >"$f7_rules/other-rule.md"
+    printf '# Developer\nThis role follows `other-rule.md` conventions.\n' >"$f7_rules/developer.md"
+
+    f7_tmpl="$TMP_DIR/f7/template.md.j2"
+    printf "{%% include 'rules/stacks/phoenix/developer.md' %%}\n" >"$f7_tmpl"
+
+    f7_out=$(run_fixture_check "$f7_tmpl" "$TMP_DIR/f7/rules")
+    f7_count="${f7_out#FAIL_COUNT:}"
+
+    if [ "$f7_count" -eq 0 ]; then
+        [ -n "${VERBOSE:-}" ] && printf 'PASS: Test F7 — delegation naming without nav-word is not flagged\n'
+        pass=$((pass + 1))
+    else
+        printf 'FAIL: Test F7 — delegation naming incorrectly flagged as unloadable (%d)\n' "$f7_count"
         fail=$((fail + 1))
     fi
 }
