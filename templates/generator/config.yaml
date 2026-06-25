@@ -140,7 +140,7 @@ roles:
       - Skill
       - Write
     system_prompt_file: harnesses/claude/claude-debug-system-prompt.txt
-    append_project_context: true
+    append_project_context: false
 
   shape:
     model: opus
@@ -203,7 +203,7 @@ roles:
       - WebSearch
       - Write
     system_prompt_file: harnesses/claude/claude-ops-system-prompt.txt
-    append_project_context: true
+    append_project_context: false
 
   housekeeper:
     model: haiku

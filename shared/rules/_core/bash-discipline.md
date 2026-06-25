@@ -166,9 +166,17 @@ The case-arm body in `run_render_check` runs in the function's context but assig
 
 When a bash test compares two sets of file paths (e.g., "files on disk" vs. "files listed in INDEX"), use **relative paths** for the comparison, NOT basenames. Basenames create collision risks:
 
-**Collision risk**: If the codebase has files with the same basename in different folders (e.g., `roles/developer.md`, `phoenix/developer.md`, `static/developer.md`), a basename-set comparison silently passes when one of two same-named files is deleted. The set `{developer.md}` appears unchanged even though `roles/developer.md` has been removed from disk — the basename matcher sees `developer.md` still present in `phoenix/developer.md`.
+**Collision risk**: The codebase has files with the same basename spread across different folders — for example:
 
-**Fix**: Reconstruct each file's relative path (e.g., `roles/developer.md`, `phoenix/developer.md`) and compare the relative-path sets via `comm`. Use a bidirectional comparison (`comm -23` for add-parity, `comm -13` for delete-parity) to detect files missing from INDEX and rows in INDEX with no file on disk.
+```
+roles/developer.md
+stacks/phoenix/developer.md
+stacks/static/developer.md
+```
+
+A basename-set comparison silently passes when one of two same-named files is deleted. The set `{developer.md}` appears unchanged even though `roles/developer.md` was deleted — the basename matcher still finds a `developer.md` match under a sibling stack folder.
+
+**Fix**: Reconstruct each file's relative path (e.g., `roles/developer.md` or `stacks/phoenix/developer.md`) and compare the relative-path sets via `comm`. Use a bidirectional comparison (`comm -23` for add-parity, `comm -13` for delete-parity) to detect files missing from INDEX and rows in INDEX with no file on disk.
 
 **Example**: When asserting INDEX↔filesystem parity (cf. session 20260625_022858), reconstruct each INDEX-listed path from indented tree structure (2 spaces per nesting level) into a sorted set, then compare against disk via `find ... | sed ... | sort`. A basename-only comparison would incorrectly pass when multiple same-named files exist in different folders.
 

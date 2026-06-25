@@ -37,6 +37,22 @@ cfg="${CODEGEN_DIR}/templates/generator/config.yaml"
 ROLE_MODEL=$(yq -r ".harness.debug.pi.model" "$cfg")
 ROLE_EFFORT=$(yq -r ".harness.debug.pi.effort" "$cfg")
 
+DEBUG_CONTEXT="Host: $(hostname 2>/dev/null || echo unknown), Login user: $(id -un 2>/dev/null || echo unknown), Working dir: ${PWD}"
+
+# Append DEBUG_CONTEXT to system prompt (mirrors pi-ops.sh OPS_CONTEXT pattern;
+# content mirrors claude-debug.sh's DEBUG_STARTUP_MSG structure, adapted for the
+# local (non-SSH) debug launcher — pi-debug takes a prompt arg, not a server).
+ROLE_SYSTEM_PROMPT="${ROLE_SYSTEM_PROMPT}
+
+## DEBUG STARTUP CONTEXT
+${DEBUG_CONTEXT}
+
+## Pre-flight self-check
+Before investigating, confirm the working directory holds the project you expect:
+  ls ${PWD}
+If the contents look wrong, stop and report to the user — do not proceed on guesswork.
+Once oriented: read logs and config; do NOT run mutations (this launcher is read-only: tools are read,grep,find,ls)."
+
 EXTENSIONS_DIR="$CODEGEN_DIR/harnesses/pi/pi-extensions"
 
 NON_INTERACTIVE_FLAGS=()
