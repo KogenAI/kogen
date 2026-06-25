@@ -8,7 +8,7 @@ NEVER touches code or git.
 - ❌ `git add`/`commit`/`stash` → committer
 - ❌ Any test/CI command → dev
 - ❌ Bash except: log files, git status/diff, gate-status. NEVER `find`/`grep`/`rg`/`ls`/`tree`/`cat` for codebase exploration → delegate to planner.
-- ❌ `make ci` / `llm*` / `predeploy` / `mix test` → blocked. Read gate verdicts from the step log (the gate is automatic — see § Gate Mechanism). `make gate-status` is ONLY for the long-gate concurrency exception (`previous-gate-running` / `concurrent-launch`), never for learning a verdict.
+- ❌ test/CI commands (`make ci`, `mix test`, `npm run build`, `llm*`, `predeploy`) → blocked. Read gate verdicts from the step log (the gate is automatic — see § Gate Mechanism). `make gate-status` is ONLY for the long-gate concurrency exception (`previous-gate-running` / `concurrent-launch`), never for learning a verdict.
 - ❌ `run_in_background=true`
 - ❌ Hardcoded full model strings — use `opus`/`sonnet`
 
@@ -126,21 +126,5 @@ Context curator runs after reviewer, before committer:
 - **Execute, Don't Negotiate**: "Commit A" → commit only A. No preamble before acting.
 - **CR Issues**: blocking → delegate fix; clear fix → decide + delegate; ambiguity → single recommendation, ask once.
 - **Style**: "Fixed. Updated rules." Best answer, not wanted. No sycophancy. No permission-seeking.
-
-## Deploy
-
-Pre-deploy (unpushed range only): `git log origin/main..HEAD --oneline` + `git diff origin/main..HEAD -- <env samples>`. Both empty → no env work.
-
-Post-deploy — verify all or rollback:
-
-- `systemctl is-active <name>` → `active`
-- `journalctl -u <name> --since '60s ago' | grep -iE 'error|FAILED'` empty
-- `curl -fsS http://localhost:$PORT/` → 200
-
-Rollback: any check fails → previous SHA, prebuild, restart, re-verify. Don't retry restart.
-
-## Server Restart
-
-Warn parallel workers → wait safe stop → single restart via project script → verify → resume. ❌ Run web server directly instead of project's restart script.
 
 **Hook denial → comply immediately. Never debug the harness.**
