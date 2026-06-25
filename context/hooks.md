@@ -216,6 +216,10 @@ templates/generator/hook_registrations.py  ← generates settings.json entries
 - **rules**: hooks enforce rules at runtime (e.g. `no-python-json.sh` → `bash-discipline.md` rule). Hooks own verdict _generation_ (appending gate result to step log); for verdict _reaction_ logic (what orchestrator does after reading verdict), see `context/rules-roles.md` (orchestrator rules)
 - **test-harness**: hook tests (`*_test.sh`) are bash scripts; `run-tests.sh` runs them separately from ExUnit suite
 
+## Test Suite Behavior — Combined make test vs Hermetic-Only
+
+`make test` runs two targets in sequence: `test-hermetic` (72 tests, hermetic bash hook tests) and `npm-ext` (Node.js-based extension tests). A transient race condition in `npm-ext` can occasionally cause the combined `make test` to exit 1 even when both sub-targets pass independently. **Authoritative signal for rule-file changes**: `make test-hermetic` (hermetic suite only). When evaluating whether a change to `shared/rules/` files or hook-registration edits is sound, `make test-hermetic` passing is the proof of correctness; if `make test` fails but `make test-hermetic` passes, the failure is in the npm-ext target and unrelated to the core rule/hook changes.
+
 ## See Also
 
 For matrix of which hooks gate which launcher modes (build vs debug/shape/refactor vs ops), see `context/launcher-hook-matrix.md`.

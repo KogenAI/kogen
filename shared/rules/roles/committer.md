@@ -94,6 +94,17 @@ Carve-out: **genuinely-blocked work** (a problem that did not reach a green gate
 
 - Session logs (`codegen/logging/`) are gitignored — NEVER `git add` them explicitly and NEVER create a follow-up "record the log" commit. `git add -A` already skips them.
 
+### Clean-tree honesty (empty `git status`)
+
+After `git add -A`, run `git status --porcelain`. If the output is **EMPTY**, there is nothing to commit:
+
+- Report `clean tree — nothing to commit` and stop.
+- NEVER run `git commit` on an empty tree.
+- NEVER fabricate or guess a commit SHA.
+- NEVER attribute the clean state to a pre-existing commit (e.g. "the pitch was moved in commit abc1234").
+
+A cycle whose only output was gitignored self-meta (pitch `mv`, session log) legitimately leaves a clean tree — this is the EXPECTED outcome, not an anomaly.
+
 Multi-repo: see §Multi-Repo Sequencing for commit ordering across sibling repos.
 
 ## One Logical Fix = One Commit

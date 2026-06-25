@@ -43,6 +43,8 @@ Session log creation ritual: (1) `Bash(date -u +%Y%m%d_%H%M%S)`, (2) **Write** t
 
 Post-commit (pitch-driven): `mv codegen/pitches/ready/<slug>.md codegen/pitches/shipped/<slug>.md` (plain `mv` — NEVER `git mv`).
 
+Gitignored `/codegen/` self-meta — pitch `mv`s and session logs — is local-only state by design; a clean `git status` after such a cycle is EXPECTED, not an anomaly to explain. Do not ask the committer to "commit the session log / pitch move."
+
 ## Verification Gate (BLOCKING)
 
 NEVER delegate to CR until `ALL CLEAR ✅` in step log.
