@@ -13,6 +13,9 @@ rules/
     session-log.md          naming, git-status, ownership/lifecycle, enforcement pointer, skeleton, citations
     fail-fast-required-values.md  3-part masking-default test, grep tells, judgment question, 3 fix mechanisms
     fail-loud.md              universal fail-loud: never-swallow/silent-default/fail-open/green-on-red + hook fail-open carve-out
+    cwd-discipline.md         working-directory discipline: always use absolute paths, never rely on shell cwd
+    ecto-multi-oban-integration.md  Ecto.Multi + Oban integration patterns and ordering rules
+    witness-discipline.md     witness pattern: ran:/read:/verified: evidence tags for empirical claims
   shared/                   ← cross-role primitives
     git-readonly.md              read-only git ops, workspace, credentials
     config-single-source.md      shell launcher + Elixir runner read same config keys
@@ -25,6 +28,8 @@ rules/
     shell-script-discipline.md   shebang, set -euo pipefail, quoting, trap, exit codes, path derivation
     rule-file-organization.md    line caps, INDEX update, make install rebake contract
     no-role-spawn.md             leaf agent never spawns/delegates another role
+    posix-symlinks-caddy-routing.md  POSIX symlinks and Caddy routing conventions
+    refactoring-grep-scope.md    grep scope discipline for safe refactoring sweeps
   roles/                    ← universal role rules
     orchestrator.md         delegation/gates/commit timing/user comms/deploy
     planner.md              recipe/usage rules/plan structure
@@ -44,6 +49,7 @@ rules/
       testing.md            CI authority, TDD, coverage, BDD, LLM partitions, backend
       testing-liveview.md   LiveView/HEEx/browser/SPA testing
       generators.md         force phx.gen.schema/auth; never hand-write schemas or migrations
+      manifest-external-resource.md  external resource manifest: tracking third-party deps and APIs
     static/
       planner.md            substack detection, tailwind detect
       developer.md          output dir, build pipeline, npm, Tailwind v4 invariants
@@ -52,6 +58,7 @@ rules/
       tailwind.md           Tailwind v4
       assets.md             favicons, robots, og
       js.md                 inline-handler + overlay gotchas
+      developer-pre-done.md  static developer pre-done checklist and acceptance criteria
   build-runtime/
     result-json.md          final JSON contract
 ```

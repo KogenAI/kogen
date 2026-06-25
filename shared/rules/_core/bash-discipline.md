@@ -160,6 +160,18 @@ The case-arm body in `run_render_check` runs in the function's context but assig
 
 **Auto-discovery scopes**: `run-tests.sh:33` discovers `*_test.sh` files ONLY under `harnesses/claude/hooks/`. Files in `harnesses/shared/` or extension subdirs are NOT auto-discovered. A test outside hooks/ must be explicitly wired into the Makefile `harness-parity` target's `for t in` list (lines 144–147). Example: `harnesses/shared/experiment-prune_test.sh` is registered via `"$(SCRIPT_DIR)/harnesses/shared/experiment-prune_test.sh"` in the list.
 
+**Manifest exemption for `_test.sh` files**: `hook_registrations.py:329` excludes files matching `*_test.sh` from HOOK-MANIFEST parity checks via the `--exclude-pattern=_test.sh` flag (Makefile:316). A bash hook test does NOT require a `# HOOK-MANIFEST:` header block (unlike non-test hooks). Test files are auto-discovered and run as unit tests; they do not define hooks and are not registered in `settings.json`.
+
+## Bash Test Set Parity — Use Relative Paths, Not Basenames
+
+When a bash test compares two sets of file paths (e.g., "files on disk" vs. "files listed in INDEX"), use **relative paths** for the comparison, NOT basenames. Basenames create collision risks:
+
+**Collision risk**: If the codebase has files with the same basename in different folders (e.g., `roles/developer.md`, `phoenix/developer.md`, `static/developer.md`), a basename-set comparison silently passes when one of two same-named files is deleted. The set `{developer.md}` appears unchanged even though `roles/developer.md` has been removed from disk — the basename matcher sees `developer.md` still present in `phoenix/developer.md`.
+
+**Fix**: Reconstruct each file's relative path (e.g., `roles/developer.md`, `phoenix/developer.md`) and compare the relative-path sets via `comm`. Use a bidirectional comparison (`comm -23` for add-parity, `comm -13` for delete-parity) to detect files missing from INDEX and rows in INDEX with no file on disk.
+
+**Example**: When asserting INDEX↔filesystem parity (cf. session 20260625_022858), reconstruct each INDEX-listed path from indented tree structure (2 spaces per nesting level) into a sorted set, then compare against disk via `find ... | sed ... | sort`. A basename-only comparison would incorrectly pass when multiple same-named files exist in different folders.
+
 ## Bash Module Organization
 
 Non-hook bash helpers belong in `harnesses/shared/` (alongside `retryable-errors.sh`). NEVER place a helper in `harnesses/claude/hooks/` unless it carries a `# HOOK-MANIFEST:` header. Reason: `hook_registrations.py:329` requires every non-`_`, non-`_test.sh` `.sh` file in hooks/ to have a HOOK-MANIFEST registry entry. A helper there triggers hook-parity failure.
