@@ -28,7 +28,6 @@ rules/
     shell-script-discipline.md   shebang, set -euo pipefail, quoting, trap, exit codes, path derivation
     rule-file-organization.md    line caps, INDEX update, make install rebake contract
     no-role-spawn.md             leaf agent never spawns/delegates another role
-    posix-symlinks-caddy-routing.md  POSIX symlinks and Caddy routing conventions
     refactoring-grep-scope.md    grep scope discipline for safe refactoring sweeps
   roles/                    ← universal role rules
     orchestrator.md         delegation/gates/commit timing/user comms/deploy
