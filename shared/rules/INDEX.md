@@ -98,6 +98,16 @@ Include order in `_*_developer_common.md.j2`: references first, situational midd
 4. Update INDEX.md only for new file/category
 5. Follow STYLE_GUIDE.md
 
+## Intentionally NOT Subagent-Baked
+
+These rule files are loaded by mechanisms OTHER than Jinja include into a subagent .md.j2. An orphan-rule-file audit MUST NOT flag them as dead — they are wired, just not via subagent bake:
+
+| File                             | Wired via                                                                                        | Why not subagent-baked                                                                                                   |
+| -------------------------------- | ------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------ |
+| `build-runtime/result-json.md`   | Downstream `@import` in orchestrator `AGENTS.md` (`@codegen/rules/build-runtime/result-json.md`) | Final-JSON contract is the orchestrator's responsibility, loaded at the top-level agent, not inside any subagent prompt. |
+| `roles/orchestrator.md`          | Orchestrator on-demand (auto-loaded by top-level `AGENTS.md`/`CLAUDE.md`)                        | The orchestrator is not a subagent; its rules load at session start, never via subagent `.md.j2` include.                |
+| `stacks/phoenix/orchestrator.md` | Orchestrator on-demand (read when classifying INCONCLUSIVE gates)                                | Stack-specific orchestrator guidance read by the top-level agent on demand, not baked into a subagent.                   |
+
 ## Project-Specific Content Check
 
 "Would this rule make sense word-for-word in a different project?" Yes → shared rule file. No → `PROJECT_CONTEXT.md`/`CLAUDE.md` only.

@@ -13,6 +13,7 @@ SENTINEL4="NEVER pre-seed role section headers in the initial Write; each role s
 SENTINEL5="SWEEP-CLASS COMPLETENESS:"
 SENTINEL6="Latent contract-mirror fork"
 SENTINEL7="NEVER fail open by default"
+SENTINEL8="Lowercase letters/digits/hyphens only. No colons"
 
 pass=0
 fail=0
@@ -172,6 +173,17 @@ assert_contains \
     "fail-loud include wired into _phoenix_developer_common.md.j2" \
     "$CODEGEN_DIR/shared/subagents/_phoenix_developer_common.md.j2" \
     "{% include 'rules/_core/fail-loud.md' %}"
+
+# Tests 27-28: tailwind.md deep-dive rule wired into developer-static + source carries sentinel
+assert_contains \
+    "tailwind.md include wired into developer-static.md.j2" \
+    "$CODEGEN_DIR/shared/subagents/static/developer-static.md.j2" \
+    "{% include 'rules/stacks/static/tailwind.md' %}"
+
+assert_contains \
+    "tailwind.md deep-dive sentinel present in stacks/static/tailwind.md source rule" \
+    "$CODEGEN_DIR/shared/rules/stacks/static/tailwind.md" \
+    "$SENTINEL8"
 
 echo ""
 echo "Results: $pass passed, $fail failed"
