@@ -12,6 +12,7 @@ SENTINEL3="Never treat N prose/image-named pitches as one combined task."
 SENTINEL4="NEVER pre-seed role section headers in the initial Write; each role section header is inserted exactly once, immediately before that role's spawn — never re-add a header that already exists."
 SENTINEL5="SWEEP-CLASS COMPLETENESS:"
 SENTINEL6="Latent contract-mirror fork"
+SENTINEL7="NEVER fail open by default"
 
 pass=0
 fail=0
@@ -160,6 +161,17 @@ assert_contains \
     "Latent contract-mirror fork sentinel in ready.md.j2" \
     "$CODEGEN_DIR/harnesses/claude/commands/ready.md.j2" \
     "$SENTINEL6"
+
+# ── Tests 25-26: fail-loud sentinel in source rule + wired into a template ─────
+assert_contains \
+    "fail-loud sentinel in _core/fail-loud.md source rule" \
+    "$CODEGEN_DIR/shared/rules/_core/fail-loud.md" \
+    "$SENTINEL7"
+
+assert_contains \
+    "fail-loud include wired into _phoenix_developer_common.md.j2" \
+    "$CODEGEN_DIR/shared/subagents/_phoenix_developer_common.md.j2" \
+    "{% include 'rules/_core/fail-loud.md' %}"
 
 echo ""
 echo "Results: $pass passed, $fail failed"

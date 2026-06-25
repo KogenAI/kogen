@@ -29,4 +29,4 @@ Wrong → masking. Right → keep. Grep finds candidates; this question decides.
 ---
 
 **developer**: MUST NOT write a masking default.
-**reviewer**: MUST flag masking defaults using the 3-part test above. See also `stacks/phoenix/no-defensive-code.md` for the related error-swallowing rule (distinct concept — defaults vs swallows).
+**reviewer**: MUST flag masking defaults using the 3-part test above. The related error-swallowing discipline (no-defensive-code) is a distinct concept — defaults vs swallows.
