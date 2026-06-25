@@ -168,21 +168,21 @@ For every `harnesses/claude/hooks/<name>.sh` there is a paired `<name>_test.sh` 
 
 ### Section 10 — Make Targets (executable surfaces)
 
-| Surface             | Type        | File/Path         | Test that exercises it                                                      | Notes                                                                                    |
-| ------------------- | ----------- | ----------------- | --------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------- |
-| make install        | make-target | `Makefile:51-60`  | —                                                                           | Manual; round-trip in Stage 5                                                            |
-| make uninstall      | make-target | `Makefile:197+`   | —                                                                           | Manual; round-trip in Stage 5                                                            |
-| make test           | make-target | `Makefile:73-88`  | self-referential                                                            | runs hook tests + mutation tests + install round-trips + all 4 pi extensions (for-loop)  |
-| make test-stacks    | make-target | `Makefile:80-145` | self-referential                                                            | runs ExUnit                                                                              |
-| make test-all       | make-target | `Makefile:148`    | self-referential                                                            |                                                                                          |
-| make hook-parity    | make-target | `Makefile:30-49`  | Round-trip diff (no unit test)                                              |                                                                                          |
-| make harness-parity | make-target | `Makefile:65-68`  | Invokes `codegen-build_test.sh` + `shared/scaffold/static/scaffold_test.sh` |                                                                                          |
-| make rule-parity    | make-target | `Makefile:155+`   | Round-trip diff                                                             |                                                                                          |
-| make doctor         | make-target | `Makefile:226+`   | —                                                                           | Diagnostic only                                                                          |
-| make format         | make-target | `Makefile:205+`   | —                                                                           | Formatter                                                                                |
-| make record-green   | make-target | `Makefile:150`    | —                                                                           | Baseline-stamper                                                                         |
-| make test-coverage  | make-target | `Makefile:77+`    | `make test-coverage && make test` (Stage 2 gate)                            | Chains elixir/typescript/shell/python/summary sub-targets; outputs to `coverage/<lang>/` |
-| make test-generator | make-target | `Makefile`        | self-referential                                                            | runs Python unittest + bash `*_test.sh` for generator pipeline                           |
+| Surface             | Type        | File/Path                            | Test that exercises it                                                      | Notes                                                                                    |
+| ------------------- | ----------- | ------------------------------------ | --------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------- |
+| make install        | make-target | `Makefile` (`install` target)        | —                                                                           | Manual; round-trip in Stage 5                                                            |
+| make uninstall      | make-target | `Makefile` (`uninstall` target)      | —                                                                           | Manual; round-trip in Stage 5                                                            |
+| make test           | make-target | `Makefile` (`test` target)           | self-referential                                                            | runs hook tests + mutation tests + install round-trips + all 4 pi extensions (for-loop)  |
+| make test-stacks    | make-target | `Makefile` (`test-stacks` target)    | self-referential                                                            | runs ExUnit                                                                              |
+| make test-all       | make-target | `Makefile` (`test-all` target)       | self-referential                                                            |                                                                                          |
+| make hook-parity    | make-target | `Makefile` (`hook-parity` target)    | Round-trip diff (no unit test)                                              |                                                                                          |
+| make harness-parity | make-target | `Makefile` (`harness-parity` target) | Invokes `codegen-build_test.sh` + `shared/scaffold/static/scaffold_test.sh` |                                                                                          |
+| make rule-parity    | make-target | `Makefile:155+`                      | Round-trip diff                                                             |                                                                                          |
+| make doctor         | make-target | `Makefile:226+`                      | —                                                                           | Diagnostic only                                                                          |
+| make format         | make-target | `Makefile:205+`                      | —                                                                           | Formatter                                                                                |
+| make record-green   | make-target | `Makefile:150`                       | —                                                                           | Baseline-stamper                                                                         |
+| make test-coverage  | make-target | `Makefile:77+`                       | `make test-coverage && make test` (Stage 2 gate)                            | Chains elixir/typescript/shell/python/summary sub-targets; outputs to `coverage/<lang>/` |
+| make test-generator | make-target | `Makefile`                           | self-referential                                                            | runs Python unittest + bash `*_test.sh` for generator pipeline                           |
 
 ### Section 11 — Summary
 

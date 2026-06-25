@@ -6,7 +6,7 @@ Mutation scripts are invoked from `scaffold.sh` Phase 2 with conditional flags. 
 
 - `formatter_exs.sh` — accepts `--no-ecto` flag only. Passing broader `EXTRA_FLAGS` (e.g., `--with-appsignal`, `--github-url`) causes exit 1.
 - Pattern: use scoped flag variables (e.g., `FORMATTER_FLAGS`) rather than forwarding the full `EXTRA_FLAGS` array.
-- Wire at call site: `scaffold.sh:252` passes `formatter_exs.sh` with `--no-ecto` only when `NO_ECTO` is set, using the `FORMATTER_FLAGS[@]` idiom.
+- Wire at call site: the `formatter_exs.sh` invocation in `scaffold.sh` (search `FORMATTER_FLAGS`) passes `--no-ecto` only when `NO_ECTO` is set, using the `FORMATTER_FLAGS[@]` idiom.
 
 This prevents mutations from failing when they encounter unrecognized flags intended for other scripts.
 
@@ -132,8 +132,8 @@ fi
 
 **Reference implementations**:
 
-- Makefile `ecto.rollback` strip: scaffold.sh:187-189
-- Health controller Ecto imports strip: scaffold.sh:196-201
+- Makefile `ecto.rollback` strip: the `ecto.rollback` removal block in `scaffold.sh` (search `ecto.rollback`)
+- Health controller Ecto imports strip: the Ecto-imports removal block in `scaffold.sh` (search `health_controller` imports)
 
 ## Router Mutation — PageController Route Stripping
 
@@ -143,7 +143,7 @@ Phoenix's default `mix phx.new` (no `--no-html`) generates:
 - `lib/<app>_web/components/page_html.ex`
 - `lib/<app>_web/router.ex` with route: `get "/", PageController, :home`
 
-The scaffold mutations delete the first two files unconditionally (`router.sh:223-237`). The dangling route referencing the deleted controller must also be stripped, or the compiled app fails dialyzer/typecheck on an undefined module reference.
+The scaffold mutations delete the first two files unconditionally (the `PageController` deletion block in `router.sh`, search `page_controller`). The dangling route referencing the deleted controller must also be stripped, or the compiled app fails dialyzer/typecheck on an undefined module reference.
 
 **Implementation**: `shared/scaffold/phoenix/mutations/router.sh` deletes any `get "/", PageController, :home` root route in the same block that inserts the `/health` endpoint (keeps one owner of router mutations). Post-condition: assert zero `PageController` route lines remain.
 
@@ -153,7 +153,7 @@ This is order-independent (router.sh owns all scope-"/" surgery); idempotent (gr
 
 `mix phx.gen.release` generates `rel/overlays/bin/migrate` and `rel/overlays/bin/migrate.bat` unconditionally, even when `mix phx.new --no-ecto` was used (which omits `Release.migrate/0` from the generated releases module).
 
-A DB-free release omits the `migrate/0` callback, making the overlay broken — invoking `/opt/app/bin/migrate` will fail at runtime. **Solution**: Delete both overlay files under `--no-ecto`. **Timing**: After Phase 6 phx.gen.release (scaffold.sh:291), inline block deletes `rel/overlays/bin/migrate*`.
+A DB-free release omits the `migrate/0` callback, making the overlay broken — invoking `/opt/app/bin/migrate` will fail at runtime. **Solution**: Delete both overlay files under `--no-ecto`. **Timing**: After Phase 6 phx.gen.release, an inline block in `scaffold.sh` (search `rel/overlays/bin/migrate`) deletes `rel/overlays/bin/migrate*`.
 
 This is not unit-testable in bash (overlays only exist post-phx.gen.release); coverage rides the slow no-ecto scaffold test.
 

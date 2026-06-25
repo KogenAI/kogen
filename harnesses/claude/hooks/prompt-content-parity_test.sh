@@ -14,6 +14,8 @@ SENTINEL5="SWEEP-CLASS COMPLETENESS:"
 SENTINEL6="Latent contract-mirror fork"
 SENTINEL7="NEVER fail open by default"
 SENTINEL8="Lowercase letters/digits/hyphens only. No colons"
+SENTINEL9="context files are hints, probes are evidence"
+SENTINEL9_PLANNER="only \`ran:\` against git/fs counts"
 
 pass=0
 fail=0
@@ -184,6 +186,27 @@ assert_contains \
     "tailwind.md deep-dive sentinel present in stacks/static/tailwind.md source rule" \
     "$CODEGEN_DIR/shared/rules/stacks/static/tailwind.md" \
     "$SENTINEL8"
+
+# ── Tests 29-32: context-claim ≠ provenance proof sentinel in shape prompts + sources ──
+assert_contains \
+    "context-claim≠proof sentinel in claude-shape-system-prompt.txt" \
+    "$CODEGEN_DIR/harnesses/claude/claude-shape-system-prompt.txt" \
+    "$SENTINEL9"
+
+assert_contains \
+    "context-claim≠proof sentinel in pi-shape-system-prompt.txt" \
+    "$CODEGEN_DIR/harnesses/pi/pi-shape-system-prompt.txt" \
+    "$SENTINEL9"
+
+assert_contains \
+    "context-claim≠proof sentinel in shape.txt source" \
+    "$CODEGEN_DIR/harnesses/shared/prompt-bodies/shape.txt" \
+    "$SENTINEL9"
+
+assert_contains \
+    "edit-target provenance FORBIDDEN in planner.md source" \
+    "$CODEGEN_DIR/shared/rules/roles/planner.md" \
+    "$SENTINEL9_PLANNER"
 
 echo ""
 echo "Results: $pass passed, $fail failed"

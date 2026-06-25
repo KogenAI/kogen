@@ -29,7 +29,7 @@ PNG screenshot per static-stack and Phoenix test: `<BENCH_RUN_DIR>/runs/<harness
 
 **Bundle-marker regex precision**: Pattern `[^"']*\.\w+\.(js|mjs)` matches any `.foo.js`, not just hashed bundles. More specific pattern: `\.[a-zA-Z0-9]{8,}\.` for hash-like segments (8+ alphanumeric chars) to distinguish `/assets/index-HASH.js` (built) from `/src/main.jsx` (source). Current impl in `screenshot.js` `hasBundledScript` uses both checks: bundle marker presence + no source imports.
 
-**Capture seam**: `Fixtures.run_codegen_build/3` pipes harness stdout to JSONL when `BENCH_RUN_DIR` env var is set. The seam reuses the same `maybe_write_diagnostics/2` mechanism that writes diagnostic reports in non-benchmark mode (line 184 of fixtures.ex).
+**Capture seam**: `Fixtures.run_codegen_build/3` pipes harness stdout to JSONL when `BENCH_RUN_DIR` env var is set. The seam reuses the same `maybe_write_diagnostics/2` mechanism that writes diagnostic reports in non-benchmark mode (the `maybe_write_diagnostics/2` clause in `fixtures.ex`).
 
 **Per-test JSONL shape**: raw stream-json lines from codegen-build (claude line-1 = `system/init` with resolved model ID; pi envelope shape varies but final line always contains usage). Final synthetic record appended by harness:
 

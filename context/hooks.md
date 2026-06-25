@@ -88,7 +88,7 @@ Hook registration: **Two pipelines** — both write to `harnesses/claude/hooks/*
 | `harnesses/claude/hooks/lib/render-check_test.sh` | Regression guard: `node --check` on render-check.js + phoenix-server.js; tests SyntaxError paths for duplicate functions |
 | `harnesses/claude/hooks/portable-launcher_test.sh` | Real launcher invocation tests (T0–T19 suite): tests CONTEXT_FLAGS/ROLE_SYSTEM_PROMPT append logic, SCRIPT_DIR/CODEGEN_DIR drift-block (byte-identical grep window L7-15 in claude-shape), pitch resolution, Tier-0/Tier-1 context loading (always-load, fail-open, pitch-matched, dedup, 6-row cap) |
 | `harnesses/claude/hooks/prompt-content-parity_test.sh` | Verifies baked shape prompts preserve fixed sentinel strings: `ASK-GATE: product forks only`, `INTERACTION-AUDIT: compose-check siblings`, `Never treat N prose...`; non-sentinel edits to spine or shape bodies do not require sentinel sync |
-| `harnesses/claude/hooks/run-tests.sh` | Runs all `*_test.sh` hook tests |
+| `harnesses/claude/hooks/run-tests.sh` | Auto-discovers and runs all `*_test.sh` hook tests via `find "$HOOKS_DIR" -name '*_test.sh'` (line 95). Combined with manifest exemption (`--exclude-pattern=_test.sh` in hook_registrations.py), new CI-lint guards in `harnesses/claude/hooks/` need ZERO Makefile wiring or registry entries — file presence + exec bit is sufficient for auto-discovery. Test can be hand-authored (no HOOK-MANIFEST header required). |
 
 ## Hook Event Types and Scripts
 
@@ -169,7 +169,7 @@ Hooks check session log state via `## <role>.*Section` patterns:
 
 When extracting a slug from a session log filename, use a **fixed-width regex anchored on timestamp and suffix**, not a pattern that splits on `_`. This handles slugs containing underscores (e.g., `stop_resume_auto`) without ambiguity.
 
-**Canonical pattern** (matches `orchestrator-session-log-name-guard.sh:64`):
+**Canonical pattern** (matches the slug-extraction block in `orchestrator-session-log-name-guard.sh`):
 
 ```bash
 slug=$(basename "$log" | sed -E 's/^[0-9]{8}_[0-9]{6}_(.+)_session\.md$/\1/')
@@ -310,6 +310,20 @@ When a role's guard blocks Write to a file (e.g., `reviewer-guard.sh` blocks Wri
 **Escape hatch**: Use Edit tool with `old_string` anchored on a line BEFORE the header (e.g., `old_string = "reviewer-static Section"` — the header suffix without the `## ` prefix). The Edit tool pre-reads the file and validates the match. Structure hooks only flag `^## ` patterns in old_string, so the suffix anchor avoids triggering header-removal denial. Duplicate-section hook only flags `^## .+ Section$` patterns in new_string, so re-seeding the header in new_string still triggers the block. **Correct pattern**: match the header-suffix in old_string, then in new_string re-emit the header + body. Structure hook sees `## ` in neither old nor new (old is suffix, new is new header+body), duplicate hook sees `## ...Section` in new but not in old (safe — new addition, not a duplicate removal). This is the only technique that satisfies all three hook constraints when a role guard blocks Write.
 
 See orchestrator.md section "Session Log Appends Under Role Guards" for full orchestrator implications.
+
+### session-log-structure Order-Checking Bug
+
+`session-log-structure.sh` performs section-order validation by checking the concatenation of disk content + new_string. If new_string begins with a recognized `## ` header that ranks LOWER (higher rank number) than the disk file's last header, the concatenation produces a false out-of-order violation and the Edit is denied.
+
+**Symptom**: Edit rejected with an order-checking error even though the section headers are logically in correct order.
+
+**Root cause**: The hook compares ranks of H2 headers in the concatenated string; if new_string opens with a `## <role> Section` header ranked lower than disk's final header, the violation fires.
+
+**Fix**: Anchor the Edit's `old_string` on a NON-header line inside the section body (e.g., a prose line, bullet, or code fence). Ensure new_string contains NO new `## ` headers at the start — re-emit the section's header only if you are re-seeding a stub that was removed from old_string. When both old_string and new_string avoid opening with `## ` headers, the order check passes because the concatenation does not introduce new header-rank transitions.
+
+**Example**: Appending findings to an existing `## developer Section` stub:
+- ❌ WRONG: `new_string = "## developer Section\n\n**Findings**:..."` → hook sees new lower-ranked header at end of disk + concatenation, denies.
+- ✅ RIGHT: `old_string = "<any-non-header prose from the section body>"`, `new_string = "<body prose including findings without re-emitting the ## header>"` → hook concatenates and finds no new header-rank transitions, allows.
 
 ## Pitfalls
 

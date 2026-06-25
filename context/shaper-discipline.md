@@ -141,8 +141,8 @@ Prompt bodies that cite their own sections (e.g., "the escape-hatch rule", "the 
 **Anti-pattern**:
 
 ```
-Line 70 says: "See the template at line 102 for options."
-→ Someone edits, lines shift. Line 102 is now something else. Silent drift.
+# BAD: "See the template at the options block (currently near the middle of the file)."
+→ Someone edits, positions shift. That position is now something else. Silent drift.
 ```
 
 **Pattern**:

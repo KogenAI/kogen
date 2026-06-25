@@ -202,7 +202,7 @@ Flow: dispatcher version vars → `scaffold.sh` `render` args (L159-161) → `.t
 
 After scaffold creates the directory tree, `scaffold.sh` automatically:
 
-1. Runs `mise trust` on the generated app's `.mise.toml` (mirrors guarded form in install.sh:595)
+1. Runs `mise trust` on the generated app's `.mise.toml` (mirrors the guarded `mise trust` block in `install.sh`, search `mise trust`)
 2. Renders `.env` with generated `SECRET_KEY_BASE`, `DATABASE_URL` (unless `--no-ecto`), `PHX_HOST`, `PORT`
 3. Runs `mix deps.get && mix format` (bootstrap + formatting)
 4. Runs `mix setup` (dependency install + aliases bootstrap)

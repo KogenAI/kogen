@@ -116,6 +116,8 @@ Sibling sites in the same family receive the SAME investigation and SAME fix —
 
 **FORBIDDEN**: `assumed:` for path derivation, env-var resolution, config-key presence, fallback-default behavior, or version-dependent behavior. These MUST be `ran:` or `read:`.
 
+**FORBIDDEN for edit-target provenance**: `assumed:` AND `read:`-of-a-context-doc are BOTH forbidden when the claim is about an edit target's provenance (generated vs hand-authored, symlink vs file, what renders it). A context doc is a hint, not evidence — only `ran:` against git/fs counts (`git ls-files --stage <path>` for mode 120000=symlink / `readlink` / a grep of the generator-build wiring).
+
 ## Version Stamp Bash
 
 ```bash

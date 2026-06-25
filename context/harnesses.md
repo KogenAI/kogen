@@ -69,7 +69,7 @@ Clone existing launcher: swap role name, log prefixes, mode-specific flags (e.g.
 
 ## Completions Installation Path
 
-Zsh completions (e.g., `_claude-experiment`) install from `harnesses/<harness>/_<name>` via manifest-driven loop (install.sh:696); fully manifest-controlled, no separate dir. Naming: underscore prefix required (`_claude-experiment`); `#compdef` names the context.
+Zsh completions (e.g., `_claude-experiment`) install from `harnesses/<harness>/_<name>` via manifest-driven loop in `install.sh` (the `install_completions` block); fully manifest-controlled, no separate dir. Naming: underscore prefix required (`_claude-experiment`); `#compdef` names the context.
 
 ## Prompt Assembly Layers
 
@@ -307,7 +307,7 @@ See `context/launcher-hook-matrix.md` for which orchestrator-level hooks gate ea
 
 **Key implications**:
 
-- Editing `claude-shape.sh` line 49 (`--settings '{"env":{"MAX_THINKING_TOKENS":"16000"}}'`) → `make install` copies the updated script to `~/.claude/claude-shape` → next invocation uses new budget. No sentinel-sync needed.
+- Editing the `--settings` flag in `claude-shape.sh` (the `MAX_THINKING_TOKENS` line) → `make install` copies the updated script to `~/.claude/claude-shape` → next invocation uses new budget. No sentinel-sync needed.
 - Launcher edits are runtime-effective; they do NOT participate in system-prompt baking or prompt-content-parity verification.
 - To verify a launcher flag change took effect: check `~/.claude/claude-<mode>` directly, or run the launcher with `--verbose` to see the exec'd command line.
 
