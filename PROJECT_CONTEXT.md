@@ -9,7 +9,7 @@
 
 ## Domain Context Files
 
-Load this index always. Load every row whose trigger matches the prompt. Files are small — loading 2–3 is cheap. Cost of a wrong-area read is one row; cost of a missing read is a stale plan. Hard cap: 6 rows.
+Load this index always. Load every row whose trigger matches the prompt. Files are small — loading 2–3 is cheap. Cost of a wrong-area read is one row; cost of a missing read is a stale plan. Hard cap: 8 rows.
 
 | File                                   | Domain                                                                              | Load when prompt mentions...                                                                                                                                                                           | Update when changing...                                                                                                        |
 | -------------------------------------- | ----------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------ |

@@ -50,7 +50,9 @@ reset_counters() {
         /tmp/claude-resume-sess-ti.count \
         /tmp/claude-resume-sess-tj.count \
         /tmp/claude-resume-sess-tk.count \
-        /tmp/claude-resume-sess-tl.count
+        /tmp/claude-resume-sess-tl.count \
+        /tmp/claude-resume-sess-tm.count \
+        /tmp/claude-resume-sess-tn.count
 }
 
 teardown() {
