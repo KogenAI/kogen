@@ -15,7 +15,7 @@ import argparse
 def resolve_include(path):
     """Resolve an include path relative to codegen/shared/ (previously OCG_CONTEXT_DIR)."""
     # Primary: use CODEGEN_DIR/shared/ — the new canonical location after two-repo merge.
-    # Fallback: OCG_CONTEXT_DIR for backwards compatibility during transition.
+    # Fallback: auto-detect CODEGEN_DIR from this script's location (OCG_CONTEXT_DIR is no longer consulted).
     codegen_dir = os.environ.get('CODEGEN_DIR')
     if codegen_dir:
         shared_dir = os.path.join(codegen_dir, 'shared')
