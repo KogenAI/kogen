@@ -66,6 +66,46 @@ export function register(pi: ExtensionAPI): void {
           `BLOCKED by context-index-parity: context/*.md added/deleted but ${indexFile} is not staged. Update the index file.`,
         );
       }
+
+      // Existence pass: when PROJECT_CONTEXT.md is staged, check all
+      // context/<name>.md tokens in its staged body against disk.
+      if (stagedFiles.includes(indexFile)) {
+        let stagedBody = "";
+        try {
+          stagedBody = execSync(`git show :${indexFile}`, {
+            encoding: "utf8",
+          });
+        } catch {
+          // Cannot read staged blob — skip existence check
+        }
+
+        if (stagedBody) {
+          const repoRoot = execSync("git rev-parse --show-toplevel", {
+            encoding: "utf8",
+          }).trim();
+
+          const refs = [
+            ...new Set(
+              [...stagedBody.matchAll(/context\/[a-z0-9_-]+\.md/g)].map(
+                (m) => m[0],
+              ),
+            ),
+          ];
+
+          const phantoms: string[] = [];
+          for (const ref of refs) {
+            if (!fs.existsSync(path.join(repoRoot, ref))) {
+              phantoms.push(
+                `context-index-parity: ${indexFile} row references ${ref} which does not exist. Add the file or remove the row.`,
+              );
+            }
+          }
+
+          if (phantoms.length > 0) {
+            return deny(phantoms.join("\n"));
+          }
+        }
+      }
     } catch {
       // Not in a git repo — pass through
     }

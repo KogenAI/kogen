@@ -391,6 +391,41 @@ else
     fail=$((fail + 1))
 fi
 
+# ---------------------------------------------------------------------------
+# Test 20: phantom row in staged index (references context/ghost.md, file absent) → DENY
+# PROJECT_CONTEXT.md is staged but references a context file that does not exist on disk.
+# ---------------------------------------------------------------------------
+dir20=$(make_fixture 20)
+# Stage PROJECT_CONTEXT.md with a phantom row for context/ghost.md (file not created).
+printf '# PROJECT_CONTEXT.md\n## Domain Context Files\n- context/ghost.md\n' >"$dir20/PROJECT_CONTEXT.md"
+git -C "$dir20" add "PROJECT_CONTEXT.md"
+
+stdout20=$(printf '%s' \
+    "{\"hook_event_name\":\"PreToolUse\",\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"git commit -m \\\"add phantom\\\"\"},\"agent_type\":\"committer\",\"agent_id\":\"a\",\"cwd\":\"$dir20\"}" |
+    bash "$GUARD" 2>/dev/null || true)
+
+if printf '%s' "$stdout20" | grep -q '"permissionDecision"[[:space:]]*:[[:space:]]*"deny"' &&
+    printf '%s' "$stdout20" | grep -q "ghost"; then
+    [ -n "${VERBOSE:-}" ] && printf 'PASS: phantom row (context/ghost.md absent) staged in index → DENY naming ghost\n'
+    pass=$((pass + 1))
+else
+    printf 'FAIL: phantom row staged in index — expected DENY naming ghost\n  stdout: %s\n' "$stdout20"
+    fail=$((fail + 1))
+fi
+
+# ---------------------------------------------------------------------------
+# Test 21: staged index references context/real.md, file exists on disk → ALLOW
+# PROJECT_CONTEXT.md is staged with a row for context/real.md; the file exists.
+# ---------------------------------------------------------------------------
+dir21=$(make_fixture 21)
+printf 'content\n' >"$dir21/context/real.md"
+git -C "$dir21" add "context/real.md"
+printf '# PROJECT_CONTEXT.md\n## Domain Context Files\n- context/real.md\n' >"$dir21/PROJECT_CONTEXT.md"
+git -C "$dir21" add "PROJECT_CONTEXT.md"
+
+run_test "staged index references context/real.md, file exists → ALLOW" "0" \
+    "{\"hook_event_name\":\"PreToolUse\",\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"git commit -m \\\"add real\\\"\"},\"agent_type\":\"committer\",\"agent_id\":\"a\",\"cwd\":\"$dir21\"}"
+
 echo ""
 echo "Results: $pass passed, $fail failed"
 

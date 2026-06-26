@@ -90,13 +90,13 @@ orphan_files=$(git -C "$repo_root" diff --cached --name-status 2>/dev/null |
     awk '{print $2}' ||
     true)
 
-# No orphan adds/deletes → allow.
-if [ -z "$orphan_files" ]; then
-    exit 0
-fi
-
 # Determine whether the index file is staged (boolean: non-empty → staged).
 index_staged=$(git -C "$repo_root" diff --cached --name-only -- "$index_path" 2>/dev/null || true)
+
+# No orphan adds/deletes AND index not staged → nothing to check.
+if [ -z "$orphan_files" ] && [ -z "$index_staged" ]; then
+    exit 0
+fi
 
 # Resolve index body for each direction (lazily, with error guard).
 # ADD direction: staged blob (the commit captures the staged version).
@@ -152,6 +152,26 @@ violations=""
 [ -n "$add_missing" ] && violations="$add_missing"
 if [ -n "$delete_stale" ]; then
     violations="${violations}${violations:+$'\n\n'}${delete_stale}"
+fi
+
+# Existence pass: scan the staged (or HEAD) index body for all context/<name>.md
+# references and deny if any referenced file does not exist on disk.
+# Trigger: only when the index file is staged (PROJECT_CONTEXT.md is being updated).
+phantom_refs=""
+if [ -n "$index_staged" ] && [ -n "$staged_body" ]; then
+    ref_names=$(printf '%s' "$staged_body" | grep -oE 'context/[a-z0-9_-]+\.md' | sort -u || true)
+    while IFS= read -r ref; do
+        [ -z "$ref" ] && continue
+        if [ ! -f "$repo_root/$ref" ]; then
+            phantom_refs="${phantom_refs}${phantom_refs:+$'\n'}context-index-parity: $index_path row references $ref which does not exist. Add the file or remove the row."
+        fi
+    done <<EOF2
+$ref_names
+EOF2
+fi
+
+if [ -n "$phantom_refs" ]; then
+    violations="${violations}${violations:+$'\n\n'}${phantom_refs}"
 fi
 
 if [ -n "$violations" ]; then
