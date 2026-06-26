@@ -47,21 +47,7 @@ Backend runs before frontend by default.
 
 **WHERE**: `codegen/logging/$(date -u +%Y%m%d_%H%M%S)_session.md`
 
-Each invocation creates NEW log file. Run `date -u +%Y%m%d_%H%M%S` via Bash for timestamp. Create BEFORE delegating to planner. After writing file, immediately stamp it:
-
-```bash
-{
-  echo ""
-  echo "## Version Stamp"
-  echo ""
-  echo "- harness: $(git rev-parse --short HEAD 2>/dev/null || echo unknown)"
-  echo "- context: $(git -C ./codegen/context rev-parse --short HEAD 2>/dev/null || echo unknown)"
-  echo "- codegen: $(git -C ./codegen/rules rev-parse --short HEAD 2>/dev/null || echo unknown)"
-  echo "- pi: $(pi --version 2>/dev/null || echo unknown)"
-
-  echo "- stamped_at: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
-} >> <SESSION_LOG>
-```
+Each invocation creates NEW log file. Run `date -u +%Y%m%d_%H%M%S` via Bash for timestamp. Create BEFORE delegating to planner. Compute the stamp values inline and include them in the SAME Write tool call that creates the log — do NOT append the stamp in a separate step.
 
 ```markdown
 # Session Log
@@ -71,12 +57,10 @@ Each invocation creates NEW log file. Run `date -u +%Y%m%d_%H%M%S` via Bash for 
 
 ## Version Stamp
 
-- harness: <hash>
-- context: <hash>
-- codegen: <hash>
-- pi: <version>
-
-- stamped_at: <iso timestamp>
+- harness: $(git rev-parse --short HEAD 2>/dev/null || echo unknown)
+- codegen: $(git -C ./codegen/rules rev-parse --short HEAD 2>/dev/null || echo unknown)
+- pi: $(pi --version 2>/dev/null || echo unknown)
+- stamped_at: $(date -u +%Y-%m-%dT%H:%M:%SZ)
 
 ## Rules Loaded
 

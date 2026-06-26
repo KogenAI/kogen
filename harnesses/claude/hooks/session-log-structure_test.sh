@@ -202,6 +202,51 @@ NS=$(printf '## reviewer-phoenix Section\n\n**Verdict**: QUALITY APPROVED\n\nFin
 FIXTURE=$(make_edit_fixture "$LOG_FILE" "$OS" "$NS" "reviewer-phoenix")
 run_test "Reviewer re-states section header when replacing placeholder — ALLOW (naive-merge regression)" "0" "$FIXTURE"
 
+# ── Test 21: Born-malformed 1,3,4,5,1 disk + in-place ## Plan edit → DENY ──
+# Regression for bash-3.2 planner DoS: the orchestrator's version-stamp EOF-append
+# produced a log born with ## Version Stamp AFTER ## Files Modified (rank 1 after 5).
+# A guard using ${var/$pat/repl} on a ##-leading old_string NO-OPs on bash 3.2 →
+# simulated remains the malformed disk → check_order never fires → ALLOW (wrong).
+# splice_first correctly replaces the ## Plan section → simulated still has trailing
+# ## Version Stamp out-of-order → check_order fires → DENY (correct).
+printf '## Version Stamp\n\n- hash\n\n## Plan\n\nold plan\n\n## Delegation Timeline\n\n| T | A |\n\n## Files Modified\n\nfoo\n\n## Version Stamp\n\n- harness: abc\n' >"$LOG_FILE"
+OS=$(printf '## Plan\n\nold plan')
+NS=$(printf '## Plan\n\nupdated plan')
+FIXTURE=$(make_edit_fixture "$LOG_FILE" "$OS" "$NS" "orchestrator")
+run_test "Born-malformed 1,3,4,5,1 disk + in-place ## Plan edit — DENY (bash-3.2 splice regression)" "2" "$FIXTURE"
+
+# ── Test 22: ##-leading old_string → splice applied: out-of-order new_string → DENY ──
+# Red/green differentiator for bash-3.2 ${var/$pat/repl} NO-OP bug.
+# Disk is in-order. Edit's old_string begins with "## Plan" (##-leading).
+# new_string contains only a developer section (rank 6) WITHOUT the Plan header —
+# which would put a developer section in place of a Plan section, violating order.
+# OLD code (bash 3.2): ${simulated/## Plan\n\nold plan/...} → SILENT NO-OP →
+#   simulated = unchanged in-order disk → check_order ALLOW (wrong — missed violation).
+# NEW code (splice_first): replaces correctly → simulated lacks ## Plan but has
+#   ## developer section where Plan was, then ## Delegation Timeline → out-of-order
+#   no — actually check_order only checks recognized headers; the new_string for
+#   this test must inject an out-of-order violation detectable by check_order.
+# Simpler: new_string INSERTS a ## committer Section (rank 10) BEFORE ## Plan (rank 3)
+# by replacing the Plan body with committer + Plan restated at end.
+# With splice: simulated = ... ## committer Section ... ## Plan ... ## Delegation ...
+# → committer (10) before Plan (3) → check_order fires → DENY.
+# Without splice (no-op): simulated = original in-order disk → check_order ALLOW (missed).
+printf '## Version Stamp\n\n- hash\n\n## Plan\n\nold plan\n\n## Delegation Timeline\n\n| T | A |\n' >"$LOG_FILE"
+OS=$(printf '## Plan\n\nold plan')
+NS=$(printf '## committer Section\n\ncommit\n\n## Plan\n\nold plan')
+FIXTURE=$(make_edit_fixture "$LOG_FILE" "$OS" "$NS" "orchestrator")
+run_test "##-leading old_string applied: injected out-of-order committer before Plan — DENY (bash-3.2 regression)" "2" "$FIXTURE"
+
+# ── Test 23: No-match edit (old_string absent from disk) → ALLOW, simulated == disk ──
+# Regression for splice no-match duplication: an unguarded %% / # splice on a
+# non-matching $old emits $var$new$var (doubles the disk). splice_first's
+# containment guard returns $var unchanged → simulated == disk → ALLOW.
+printf '## Version Stamp\n\n- hash\n\n## Plan\n\nsome plan\n\n## Delegation Timeline\n\n| T | A |\n' >"$LOG_FILE"
+OS=$(printf '## Plan\n\nthis text is NOT in the file')
+NS=$(printf '## Plan\n\nreplaced')
+FIXTURE=$(make_edit_fixture "$LOG_FILE" "$OS" "$NS" "orchestrator")
+run_test "No-match edit (old_string absent from disk) — ALLOW, simulated unchanged (no duplication)" "0" "$FIXTURE"
+
 echo ""
 echo "Results: $pass passed, $fail failed"
 

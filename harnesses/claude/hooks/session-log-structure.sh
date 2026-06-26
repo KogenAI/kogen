@@ -97,6 +97,20 @@ read_h2_headers() {
     grep -E '^## ' "$1" 2>/dev/null || true
 }
 
+# splice_first <var> <old> <new> — literal first-occurrence replace of $old with
+# $new in $var. bash-3.2-safe: uses %% / # strip operators with a QUOTED pattern
+# (no ${var/$pat/repl}, which misparses a #-leading $pat on bash 3.2.57 and
+# silently no-ops). Containment-guarded so a NON-MATCHING $old leaves $var
+# unchanged (an unguarded splice would duplicate $var on no-match). Caller MUST
+# handle empty $old separately (append), never pass "" here.
+splice_first() {
+    local v="$1" o="$2" n="$3"
+    case "$v" in
+    *"$o"*) printf '%s' "${v%%"$o"*}$n${v#*"$o"}" ;;
+    *) printf '%s' "$v" ;;
+    esac
+}
+
 case "$TOOL_NAME" in
 Write)
     content=$(printf '%s' "$RAW_INPUT" | jq -r '.tool_input.content // ""')
@@ -155,7 +169,7 @@ EOF
             if [ -z "$old" ]; then
                 simulated="${simulated}${new}"
             else
-                simulated="${simulated/$old/$new}"
+                simulated=$(splice_first "$simulated" "$old" "$new")
             fi
         else
             # MultiEdit: fold edits in array order.
@@ -167,7 +181,7 @@ EOF
                 if [ -z "$e_old" ]; then
                     simulated="${simulated}${e_new}"
                 else
-                    simulated="${simulated/$e_old/$e_new}"
+                    simulated=$(splice_first "$simulated" "$e_old" "$e_new")
                 fi
                 i=$((i + 1))
             done

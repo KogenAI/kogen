@@ -200,6 +200,37 @@ FIXTURE=$(jq -n --arg fp "$LOG_FILE" \
     '{"hook_event_name":"PreToolUse","tool_name":"MultiEdit","tool_input":{"file_path":$fp,"edits":[{"old_string":"<body-placeholder>","new_string":"Real body content"},{"old_string":"## planner Section","new_string":"## planner Section\n\nReal body content"}]},"agent_type":"planner"}')
 run_test "MultiEdit ordered follow-up — net-zero — ALLOW" "0" "$FIXTURE"
 
+# ── Test 21: ##-leading old_string IS in disk + new_string restates header → ALLOW ──
+# Regression for bash-3.2 splice: on bash 3.2, ${var/$pat/repl} with a ##-leading
+# $pat silently no-ops → simulated unchanged (still has old header line) AND
+# new_string also carries the same header → 2 copies in simulated → false DENY.
+# splice_first correctly replaces → old occurrence removed, new_string restates it
+# → net 1 copy → ALLOW (correct).
+printf '## developer-phoenix-backend Section\n\n<placeholder>\n' >"$LOG_FILE"
+OS=$(printf '## developer-phoenix-backend Section\n\n<placeholder>')
+NS=$(printf '## developer-phoenix-backend Section\n\nReal implementation notes.')
+FIXTURE=$(make_edit_fixture "$LOG_FILE" "$OS" "$NS" "developer-phoenix-backend")
+run_test "##-leading old_string match + new_string restates header — ALLOW (bash-3.2 false-DENY regression)" "0" "$FIXTURE"
+
+# ── Test 22: Genuine 2nd copy after correct splice → DENY ──
+# Disk has exactly one ## developer-phoenix-backend Section.
+# Edit's old_string is body text (no header) — splice replaces body → simulated
+# keeps the existing header. new_string adds the same header AGAIN → 2 copies → DENY.
+printf '# Step\n\n## developer-phoenix-backend Section\n\noriginal body\n' >"$LOG_FILE"
+NS=$(printf '## developer-phoenix-backend Section\n\nreplaced body')
+FIXTURE=$(make_edit_fixture "$LOG_FILE" "original body" "$NS" "developer-phoenix-backend")
+run_test "Genuine 2nd-copy after body splice — DENY" "2" "$FIXTURE"
+
+# ── Test 23: No-match edit → ALLOW, simulated == disk (no duplication) ──
+# Regression for unguarded splice: ${v%%"$o"*}$n${v#*"$o"} on non-matching $o
+# emits $v$n$v (doubles disk content). splice_first's containment guard leaves
+# simulated unchanged when $o absent. new_string has no role-section header →
+# result: 1 existing header copy in simulated → ALLOW.
+printf '# Step\n\n## developer-phoenix-backend Section\n\noriginal body\n' >"$LOG_FILE"
+NS=$(printf 'just some body text, no section header')
+FIXTURE=$(make_edit_fixture "$LOG_FILE" "this text is NOT in the file" "$NS" "developer-phoenix-backend")
+run_test "No-match edit — ALLOW, simulated unchanged (no duplication)" "0" "$FIXTURE"
+
 echo ""
 echo "Results: $pass passed, $fail failed"
 
