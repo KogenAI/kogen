@@ -715,6 +715,36 @@ def regenerate_settings(
     print(f"Wrote {settings_path}")
 
 
+def write_inspector_settings(per_call_hooks: list, out_path: Path) -> None:
+    """Write the per-call inspector settings fragment {"hooks": {...}}.
+
+    Groups per_call_hooks by event (only PreToolUse in practice) and emits
+    one {"matcher", "hooks":[entry]} per hook, matching the settings.json
+    PreToolUse entry shape. Parent dir is created if absent (the generated
+    output tree is gitignored and may not exist).
+    """
+    by_event = group_by_event(per_call_hooks)
+    hooks_section: dict = {}
+    for evt in EVENT_ORDER:
+        if evt not in by_event:
+            continue
+        entries = []
+        for h in by_event[evt]:
+            entries.append({"matcher": h["matcher"], "hooks": [build_hook_entry(h)]})
+        hooks_section[evt] = entries
+    # Append any events not in EVENT_ORDER (defensive; per-call hooks are PreToolUse).
+    for evt in by_event:
+        if evt not in hooks_section:
+            entries = [
+                {"matcher": h["matcher"], "hooks": [build_hook_entry(h)]}
+                for h in by_event[evt]
+            ]
+            hooks_section[evt] = entries
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    out_path.write_text(dumps_compact({"hooks": hooks_section}) + "\n")
+    print(f"Wrote {out_path}")
+
+
 def validate_pi_ts_handlers(pi_hooks: list, pi_extension_dir: Path) -> None:
     """Verify every Pi-targeted hook has a matching TypeScript handler.
 
@@ -815,6 +845,10 @@ def main() -> None:
     print(
         f"Found {len(all_hooks)} hooks: {len(user_global_hooks)} user_global, {len(per_call_hooks)} per_call_inspector"
     )
+
+    # Emit per-call inspector settings fragment (separate from user_global settings.json).
+    inspector_out = Path(__file__).parent.parent / "generated" / "claude-code" / "inspector-settings.json"
+    write_inspector_settings(per_call_hooks, inspector_out)
 
     # Regenerate settings.json
     existing = load_existing_settings(settings_path, existing_settings_path)

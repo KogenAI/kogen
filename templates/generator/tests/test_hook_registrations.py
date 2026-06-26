@@ -727,5 +727,132 @@ class TestRegistrationKindDiscrimination(unittest.TestCase):
         self.assertEqual(ctx.exception.code, 1)
 
 
+# ── TestInspectorSettingsFragment ────────────────────────────────────────────
+
+_INSPECTOR_BASH_MANIFEST = """\
+#!/usr/bin/env bash
+# HOOK-MANIFEST:
+#   event: PreToolUse
+#   matcher: Bash
+#   surface: per_call_inspector
+#   signal: AGENT_TYPE
+#   role: inspector|inspector-phoenix
+#   harnesses: claude_code
+require_inspector_agent_type
+"""
+
+_INSPECTOR_READ_MANIFEST = """\
+#!/usr/bin/env bash
+# HOOK-MANIFEST:
+#   event: PreToolUse
+#   matcher: Read
+#   surface: per_call_inspector
+#   signal: AGENT_TYPE
+#   role: inspector|inspector-phoenix
+#   harnesses: claude_code
+require_inspector_agent_type
+"""
+
+_INSPECTOR_WRITE_MANIFEST = """\
+#!/usr/bin/env bash
+# HOOK-MANIFEST:
+#   event: PreToolUse
+#   matcher: Write|Edit|MultiEdit|NotebookEdit
+#   surface: per_call_inspector
+#   signal: AGENT_TYPE
+#   role: inspector|inspector-phoenix
+#   harnesses: claude_code
+require_inspector_agent_type
+"""
+
+_USER_GLOBAL_MANIFEST = """\
+#!/usr/bin/env bash
+# HOOK-MANIFEST:
+#   event: PreToolUse
+#   matcher: Bash
+#   surface: user_global
+#   signal: AGENT_TYPE
+#   role: developer-phoenix-backend
+[ "$AGENT_TYPE" = "developer-phoenix-backend" ] || exit 0
+"""
+
+
+def _write_inspector_fixtures(tmpdir: str):
+    """Write 3 inspector hooks + 1 user_global hook into tmpdir."""
+    _write_sh(tmpdir, "claude-inspector-bash-guard.sh", _INSPECTOR_BASH_MANIFEST)
+    _write_sh(tmpdir, "claude-inspector-read-guard.sh", _INSPECTOR_READ_MANIFEST)
+    _write_sh(tmpdir, "claude-inspector-write-guard.sh", _INSPECTOR_WRITE_MANIFEST)
+    _write_sh(tmpdir, "some-developer-hook.sh", _USER_GLOBAL_MANIFEST)
+
+
+class TestInspectorSettingsFragment(unittest.TestCase):
+
+    def test_inspector_fragment_contains_three_inspector_hooks(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            _write_inspector_fixtures(tmpdir)
+            all_hooks = hr.collect_hooks(Path(tmpdir))
+            per_call_hooks = [
+                h for h in all_hooks if h["surface"] in ("per_call_inspector", "both")
+            ]
+            out_path = Path(tmpdir) / "generated" / "claude-code" / "inspector-settings.json"
+            # Parent dir does not exist yet — exercises mkdir logic
+            self.assertFalse(out_path.parent.exists())
+            hr.write_inspector_settings(per_call_hooks, out_path)
+            data = json.loads(out_path.read_text())
+
+        # Shape: only "hooks" at top level
+        self.assertEqual(set(data.keys()), {"hooks"})
+
+        # Exactly 3 PreToolUse entries
+        pre_tool_use = data["hooks"]["PreToolUse"]
+        self.assertEqual(len(pre_tool_use), 3)
+
+        # Command basenames match the 3 inspector hook filenames
+        basenames = set()
+        for entry in pre_tool_use:
+            for hook_cmd in entry["hooks"]:
+                basenames.add(hook_cmd["command"].split("/")[-1])
+        self.assertEqual(
+            basenames,
+            {
+                "claude-inspector-bash-guard.sh",
+                "claude-inspector-read-guard.sh",
+                "claude-inspector-write-guard.sh",
+            },
+        )
+
+        # Matchers per hook are correct
+        matcher_map = {
+            entry["hooks"][0]["command"].split("/")[-1]: entry["matcher"]
+            for entry in pre_tool_use
+        }
+        self.assertEqual(matcher_map["claude-inspector-bash-guard.sh"], "Bash")
+        self.assertEqual(matcher_map["claude-inspector-read-guard.sh"], "Read")
+        self.assertEqual(
+            matcher_map["claude-inspector-write-guard.sh"],
+            "Write|Edit|MultiEdit|NotebookEdit",
+        )
+
+    def test_main_settings_has_zero_inspector_hooks(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            _write_inspector_fixtures(tmpdir)
+            all_hooks = hr.collect_hooks(Path(tmpdir))
+            user_global_hooks = [
+                h for h in all_hooks if h["surface"] in ("user_global", "both")
+            ]
+            settings_path = Path(tmpdir) / "claude-code-settings.json"
+            hr.regenerate_settings({}, user_global_hooks, settings_path)
+            data = json.loads(settings_path.read_text())
+            raw = settings_path.read_text()
+
+        # No inspector hook names anywhere in the serialized settings
+        self.assertNotIn("claude-inspector", raw)
+
+        # No PreToolUse entry command references inspector
+        for entry in data.get("hooks", {}).get("PreToolUse", []):
+            for hook_cmd in entry.get("hooks", []):
+                self.assertNotIn("inspector", hook_cmd.get("command", ""))
+
+
 if __name__ == "__main__":
     unittest.main()
