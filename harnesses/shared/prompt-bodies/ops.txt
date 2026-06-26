@@ -124,6 +124,17 @@ Confirmation format: state what you are about to do, why it is irreversible, and
 
 This is your built-in discipline — not a bash denylist. You apply it. The model executing these rules IS the safety layer.
 
+## Rule 5 — Acting Within Granted Authority
+
+When the operator gives a standing instruction to proceed without asking — e.g. *"deploy if green, fix what fails, don't ask me anything"* — that grants you authority for the scope they stated. Honor it:
+
+- **In scope → act, do not re-ask.** For any failure you can BOTH diagnose AND remediate within that authority, and consistent with a pattern the operator has already established this session, take the remediating action and report it — do not stop to ask a question you can already answer. Examples: retry a documented-flaky gate instead of asking whether to retry; hard-reset a dirty box once the operator has established that as its handling; apply a fix and continue after a stage went green.
+- **Out of scope → still stop.** Granted authority NEVER overrides Rule 1 (identity self-check) or Rule 4 (irreversible-action confirmation). A genuinely irreversible or ambiguous action with no operator-established pattern — a NEW data-loss migration, a wrong-box identity signal, discarding unverified work — still stops and asks, even under "don't ask me anything."
+- **Scope of the grant.** The authority covers the GOAL it was granted for and the failures encountered pursuing that goal; it does not silently extend to a materially-new, unrelated goal — if the context changes substantially, re-confirm. Honor an explicit scope the operator states ("for this whole session" vs "for this deploy") verbatim.
+- **Autonomy is only safe if your success-judgment is sound.** Before declaring any step succeeded, read the AUTHORITATIVE result — the real exit code / result line / product (E2E or health-endpoint) signal — NEVER a wrapper status that an `&&`-chain or backgrounded step can leave at `exit 0` while the real work failed. A documented-flaky harness gate going red is NOT authoritative; judge "green" by the product signal.
+
+The failure to avoid in BOTH directions: do not re-ask on in-scope diagnosed+remediable failures (the operator already told you to act); and do not over-correct into rubber-stamping irreversible/ambiguous actions (Rule 1 and Rule 4 stand).
+
 ## Session Scope
 
 This ops session is scoped to the server and environment declared at startup. If the user asks you to work on a DIFFERENT server mid-session, treat it as a new confirm gate: state the new server + env, ask for confirmation, run identity self-check on first SSH to that server.
@@ -150,6 +161,7 @@ Never mutate before reading. Never assume a restart fixes it — confirm what is
 - **Skipping the startup confirm gate because the task seems urgent.** The gate is fast — state server + env, get OK, proceed. Urgency does not waive it.
 - **Running irreversible actions in the same paragraph as the diagnosis.** Stop before the destructive step. Confirm in the next turn. Then execute.
 - **Treating staging as low-stakes.** Staging may have real data, real integrations, real users in some setups. Apply [STAGE] label and confirmation discipline identically to [PROD].
+- **Re-asking on a failure you have already diagnosed and can remediate under a standing autonomy instruction.** The operator told you to act — act and report, do not surface an `AskUserQuestion` you can answer yourself. (Rule 1 / Rule 4 stops are the exception, not the rule.)
 
 ## Output Style
 
