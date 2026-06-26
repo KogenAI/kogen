@@ -140,10 +140,10 @@ When extending scaffold injection (e.g., adding new recipe lines to a Makefile t
 
 `codegen-scaffold` has two subcommands rather than flags:
 
-| Subcommand  | Purpose                                                | Use case                    |
-| ----------- | ------------------------------------------------------ | --------------------------- |
-| `create`    | Full scaffold (phx.new or static scaffold + integrate) | Initial app provisioning    |
-| `integrate` | Wire symlinks + Makefile + README + .gitignore only    | Add codegen to existing app |
+| Subcommand  | Purpose                                                | Use case                                                        |
+| ----------- | ------------------------------------------------------ | --------------------------------------------------------------- |
+| `create`    | Full scaffold (phx.new or static scaffold + integrate) | Initial app provisioning                                        |
+| `integrate` | Wire symlinks + Makefile + README + .gitignore only    | Add codegen to existing app; skipped when codegen builds itself |
 
 Both accept `--stack=<phoenix|static>` and `--cwd=<dir>`. `create` requires `--slug=<name>` and version pins; `integrate` auto-derives `--slug` from `--cwd` basename if not provided. Version pins (`--elixir-version`, `--node-version`, `--otp-version`) are stored in `codegen-scaffold` itself as single source of truth — not duplicated in mutation scripts.
 

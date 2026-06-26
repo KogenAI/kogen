@@ -41,6 +41,4 @@ unknown.flag
 erl_crash.dump
 
 # Codegen machine-local symlinks (do not commit)
-AGENTS.md
-CLAUDE.md
 /codegen/

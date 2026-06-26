@@ -190,10 +190,19 @@ fi
 # The LLM then commits these along with the app code.
 SCAFFOLD_CMD="$SCRIPT_DIR/codegen-scaffold"
 if [[ -x "$SCAFFOLD_CMD" ]]; then
-    STACK_FOR_INTEGRATE="${STACK:-phoenix}"
-    _integrate_out=$("$SCAFFOLD_CMD" integrate --stack="$STACK_FOR_INTEGRATE" --cwd="$CWD" 2>&1) || {
-        printf 'codegen-build: codegen-scaffold integrate failed (non-fatal; continuing):\n%s\n' "$_integrate_out" >&2
-    }
+    # Self-build guard: when codegen builds itself, $CWD resolves to the
+    # codegen repo root ($SCRIPT_DIR). Running integrate here would re-symlink
+    # AGENTS.md/CLAUDE.md over the real (de-symlinked) files and re-append
+    # .gitignore entries. Skip integrate on a self-build.
+    _cwd_real="$(cd "$CWD" 2>/dev/null && pwd -P)"
+    if [[ "$_cwd_real" == "$SCRIPT_DIR" ]]; then
+        printf 'codegen-build: self-build detected (cwd == codegen root); skipping integrate pre-step\n' >&2
+    else
+        STACK_FOR_INTEGRATE="${STACK:-phoenix}"
+        _integrate_out=$("$SCAFFOLD_CMD" integrate --stack="$STACK_FOR_INTEGRATE" --cwd="$CWD" 2>&1) || {
+            printf 'codegen-build: codegen-scaffold integrate failed (non-fatal; continuing):\n%s\n' "$_integrate_out" >&2
+        }
+    fi
 fi
 
 # Export parsed values for dispatch.sh
