@@ -189,6 +189,7 @@ tools-header-no-dup:
 # concurrently via & + wait to reduce wall time.
 test: hook-parity hook-header-parity harness-parity test-generator enforce-registry-parity enforce-hook-rationale test-hermetic prompt-content-parity tools-header-no-dup
 	@set -e; \
+	export GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=commit.gpgsign GIT_CONFIG_VALUE_0=false; \
 	subagents_ext_dir="$(SCRIPT_DIR)/harnesses/pi/pi-extensions/subagents"; \
 	if [ -f "$$subagents_ext_dir/package.json" ] && grep -q '"build"[[:space:]]*:' "$$subagents_ext_dir/package.json"; then \
 		(cd "$$subagents_ext_dir" && mise exec -- npm run build) || { echo "subagents pre-build failed"; exit 1; }; \
