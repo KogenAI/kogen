@@ -33,9 +33,6 @@ JOBS="${JOBS:-8}"
 # Membership tested via `grep -qxF` (exact-line, fixed-string).
 QUARANTINE='build-no-success-before-commit_test.sh
 hooks-lib_test.sh
-orchestrator-no-ci_test.sh
-orchestrator-no-source-edit_test.sh
-orchestrator-read-discipline_test.sh
 phoenix-dev-gate-long_test.sh
 phoenix-dev-gate-short_test.sh
 phoenix-dev-gate_test.sh
