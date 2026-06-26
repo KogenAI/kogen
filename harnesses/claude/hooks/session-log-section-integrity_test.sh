@@ -43,6 +43,8 @@ run_test() {
     fi
 }
 
+# IMPORTANT: ALL fixture paths MUST stay under $TMP_DIR/codegen/logging/ so that
+# integrity.sh:58 disk-reads never touch a real session log in the repo.
 LOG_FILE="$TMP_DIR/codegen/logging/foo.md"
 mkdir -p "$(dirname "$LOG_FILE")"
 touch "$LOG_FILE"

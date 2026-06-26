@@ -344,5 +344,41 @@ describe(
       const result = await _capturedHandler(writeEvent(logFile, content));
       assert.ok(denied(result), `Expected DENY, got: ${JSON.stringify(result)}`);
     });
+
+    // ── Test 19: In-place ## Plan edit with downstream sections on disk → ALLOW ──
+    // Regression: naive merge appended new_string after disk, causing ## Delegation Timeline
+    // on disk to appear after the re-stated ## Plan in new_string → false denial.
+    it("In-place ## Plan edit with downstream sections on disk — ALLOW (naive-merge regression)", async () => {
+      const logFile = path.join(logDir, "inplace_plan.md");
+      fs.writeFileSync(
+        logFile,
+        "## Plan\n\nold plan\n\n## Delegation Timeline\n\n| T | A |\n\n## Files Modified\n\nfoo\n",
+      );
+      await loadHook();
+      const result = await _capturedHandler(
+        editEvent(logFile, "## Plan\n\nold plan", "## Plan\n\nupdated plan"),
+      );
+      assert.ok(allowed(result), `Expected ALLOW, got: ${JSON.stringify(result)}`);
+    });
+
+    // ── Test 20: Reviewer re-states ## reviewer-phoenix Section header at EOF → ALLOW ──
+    // Regression: naive merge appended new_string (with reviewer header) after disk content
+    // that already had reviewer header → false denial. Result-simulation replaces correctly.
+    it("Reviewer re-states section header when replacing placeholder — ALLOW (naive-merge regression)", async () => {
+      const logFile = path.join(logDir, "reviewer_restate.md");
+      fs.writeFileSync(
+        logFile,
+        "## Plan\n\nplan\n\n## Files Modified\n\nfoo\n\n## developer-phoenix-backend Section\n\nbody\n\n## reviewer-phoenix Section\n\n<placeholder>\n",
+      );
+      await loadHook();
+      const result = await _capturedHandler(
+        editEvent(
+          logFile,
+          "## reviewer-phoenix Section\n\n<placeholder>",
+          "## reviewer-phoenix Section\n\n**Verdict**: QUALITY APPROVED\n\nFindings.",
+        ),
+      );
+      assert.ok(allowed(result), `Expected ALLOW, got: ${JSON.stringify(result)}`);
+    });
   },
 );

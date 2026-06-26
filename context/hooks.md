@@ -289,41 +289,37 @@ When designing shell case statements where one verdict variant should block and 
 
 ## Session-Log Editing Patterns
 
-Multiple session-log hooks (`session-log-no-duplicate-section`, `session-log-section-integrity`, `session-log-structure`) fire on Edit/Write/MultiEdit. When adding body content under a pre-seeded section header stub, the `session-log-no-duplicate-section` hook blocks edits containing `^## <role> Section` lines in BOTH old_string and new_string (cannot distinguish duplicate-removal from body edits).
+Multiple session-log hooks (`session-log-no-duplicate-section`, `session-log-section-integrity`, `session-log-structure`) fire on Edit/Write/MultiEdit. Both `session-log-structure` (bash + TypeScript) and `session-log-no-duplicate-section` (bash + TypeScript) now use result-simulation: they apply `old_string` → `new_string` to disk content before validation (as of 2026-06-26 fixes in `harnesses/claude/hooks/` and `harnesses/pi/pi-extensions/enforcement/src/hooks/`).
 
-**Workaround**: Anchor old_string on the SUFFIX of the header line (content after the header marker), not on the header itself. This ensures the header line does NOT appear in old_string, so the no-duplication check passes even though new_string has header content.
+**Safe edit patterns** (enforced by result-aware validation):
+- Re-state a section header in `old_string` and `new_string` when replacing the body. The duplicate-check simulates the result — no duplicate flag if the header appears only once post-edit.
+- Edit section bodies anchored on any line (header or prose). The order check simulates the result — only the final section header ranks matter.
+- MultiEdit folds edits in array order, simulating each change before checking constraints.
 
-Example: To append body under a pre-seeded `## developer-phoenix-backend Section` stub:
-- ❌ WRONG: `old_string = "## developer-phoenix-backend Section\n\n"` → denies (header in old_string)
-- ✅ RIGHT: `old_string = "<section-intro-text>\n\nResults: ..."` → allows (header not in old_string; new_string has intro + results without header re-insertion)
+Example: To replace body under a pre-seeded `## developer-phoenix-backend Section`:
+- ✅ `old_string = "## developer-phoenix-backend Section\n\nbody..."`, `new_string = "## developer-phoenix-backend Section\n\nupdated body..."` → allowed (result has header once; structure order correct after substitution).
 
-The header stays on disk untouched; the body-anchor approach lets all orthogonal session-log hooks compose without false denials.
+The result-simulation approach means agents no longer need workarounds like "anchor old_string on prose only" — the hooks validate against the simulated final state, not intermediate concatenations.
 
 ### Role-Guard Deadlock When Appending Section Body
 
-When a role's guard blocks Write to a file (e.g., `reviewer-guard.sh` blocks Write to `reviewer-static` template), appending body content to a pre-seeded session-log section can deadlock:
+When a role's guard blocks Write to a file (e.g., `reviewer-guard.sh` blocks Write to `reviewer-static` template), appending body content to a pre-seeded session-log section requires Edit tool with careful anchoring to avoid guard conflicts. However, the session-log guard hooks themselves (`session-log-no-duplicate-section`, `session-log-structure`) no longer block such edits because they validate against the simulated post-edit state, not static patterns.
 
-- `session-log-no-duplicate-section` hook blocks Edit if new_string contains an existing `^## <role> Section` header line (because the header already exists on disk).
-- `session-log-section-integrity` + `session-log-structure` block Edit if old_string removes a required section header.
-- Role guard blocks Write entirely.
+**Safe pattern (works with result-simulation)**: Match `old_string` on the section header or any section body content, and re-emit the header in `new_string` if needed. The duplicate-check simulates the result — it allows the header if it appears only once in the final simulated content. The structure order check applies `old → new` before checking ranks, so re-stating a section header in context is safe.
 
-**Escape hatch**: Use Edit tool with `old_string` anchored on a line BEFORE the header (e.g., `old_string = "reviewer-static Section"` — the header suffix without the `## ` prefix). The Edit tool pre-reads the file and validates the match. Structure hooks only flag `^## ` patterns in old_string, so the suffix anchor avoids triggering header-removal denial. Duplicate-section hook only flags `^## .+ Section$` patterns in new_string, so re-seeding the header in new_string still triggers the block. **Correct pattern**: match the header-suffix in old_string, then in new_string re-emit the header + body. Structure hook sees `## ` in neither old nor new (old is suffix, new is new header+body), duplicate hook sees `## ...Section` in new but not in old (safe — new addition, not a duplicate removal). This is the only technique that satisfies all three hook constraints when a role guard blocks Write.
+See orchestrator.md section "Session Log Appends Under Role Guards" for full orchestrator implications (role-guard interactions still apply; session-log guards no longer create false deadlocks).
 
-See orchestrator.md section "Session Log Appends Under Role Guards" for full orchestrator implications.
+### session-log-structure Order-Checking (FIXED)
 
-### session-log-structure Order-Checking Bug
+**Status (2026-06-26)**: Bug FIXED. The hook now uses result-simulation (applies `old_string` → `new_string` substitution to disk content before validation) instead of naive concatenation. See `harnesses/claude/hooks/session-log-structure.sh` (bash) and `harnesses/pi/pi-extensions/enforcement/src/hooks/session-log-structure.ts` (TypeScript).
 
-`session-log-structure.sh` performs section-order validation by checking the concatenation of disk content + new_string. If new_string begins with a recognized `## ` header that ranks LOWER (higher rank number) than the disk file's last header, the concatenation produces a false out-of-order violation and the Edit is denied.
+**Previous bug** (now resolved): The hook was checking `diskContent + newString` which produced false out-of-order violations when `newString` began with a lower-ranked header than disk's final header.
 
-**Symptom**: Edit rejected with an order-checking error even though the section headers are logically in correct order.
+**Previous workaround** (no longer needed): Anchoring `old_string` on non-header body prose was a necessary escape hatch. With the fix in place, agents may now:
+- Re-state a section header in `new_string` (including re-seeding a stub) without triggering false denials.
+- Edit section bodies with `old_string` matching any line (header or prose) and the simulated result will be checked for correct rank order.
 
-**Root cause**: The hook compares ranks of H2 headers in the concatenated string; if new_string opens with a `## <role> Section` header ranked lower than disk's final header, the violation fires.
-
-**Fix**: Anchor the Edit's `old_string` on a NON-header line inside the section body (e.g., a prose line, bullet, or code fence). Ensure new_string contains NO new `## ` headers at the start — re-emit the section's header only if you are re-seeding a stub that was removed from old_string. When both old_string and new_string avoid opening with `## ` headers, the order check passes because the concatenation does not introduce new header-rank transitions.
-
-**Example**: Appending findings to an existing `## developer Section` stub:
-- ❌ WRONG: `new_string = "## developer Section\n\n**Findings**:..."` → hook sees new lower-ranked header at end of disk + concatenation, denies.
-- ✅ RIGHT: `old_string = "<any-non-header prose from the section body>"`, `new_string = "<body prose including findings without re-emitting the ## header>"` → hook concatenates and finds no new header-rank transitions, allows.
+The order check is now **result-aware**: it simulates the actual post-edit file by applying `old_string → new_string` before checking header order.
 
 ## Pitfalls
 

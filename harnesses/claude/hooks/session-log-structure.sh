@@ -143,15 +143,36 @@ Edit | MultiEdit)
 $(printf '%s' "$old" | grep -E '^## ' || true)
 EOF
 
-    # Order check: merge disk content + new_string and verify order.
+    # Order check: simulate the post-edit file and verify order.
     disk_content=""
     if [ -f "$FILE_PATH" ] && [ -r "$FILE_PATH" ]; then
         disk_content=$(cat "$FILE_PATH")
     fi
     # File absent → fail open (allow); only check if disk readable.
     if [ -n "$disk_content" ] || [ -f "$FILE_PATH" ]; then
-        merged=$(printf '%s\n%s' "$disk_content" "$new")
-        offender=$(check_order "$merged")
+        simulated="$disk_content"
+        if [ "$TOOL_NAME" = "Edit" ]; then
+            if [ -z "$old" ]; then
+                simulated="${simulated}${new}"
+            else
+                simulated="${simulated/$old/$new}"
+            fi
+        else
+            # MultiEdit: fold edits in array order.
+            edit_count=$(printf '%s' "$RAW_INPUT" | jq '.tool_input.edits | length')
+            i=0
+            while [ "$i" -lt "$edit_count" ]; do
+                e_old=$(printf '%s' "$RAW_INPUT" | jq -r ".tool_input.edits[$i].old_string // \"\"")
+                e_new=$(printf '%s' "$RAW_INPUT" | jq -r ".tool_input.edits[$i].new_string // \"\"")
+                if [ -z "$e_old" ]; then
+                    simulated="${simulated}${e_new}"
+                else
+                    simulated="${simulated/$e_old/$e_new}"
+                fi
+                i=$((i + 1))
+            done
+        fi
+        offender=$(check_order "$simulated")
         if [ -n "$offender" ]; then
             deny "BLOCKED by session-log-structure: header \"$offender\" appears out of canonical phase order — see session-log.md § Canonical Section Order."
             exit 0

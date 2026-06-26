@@ -23,7 +23,7 @@ run_test() {
     if [ -n "$extra_env" ]; then
         stdout=$(printf '%s' "$input" | env $extra_env bash "$GUARD" 2>/dev/null || true)
     else
-        stdout=$(printf '%s' "$input" | bash "$GUARD" 2>/dev/null || true)
+        stdout=$(printf '%s' "$input" | env -u CLAUDE_ROLE -u PI_ROLE bash "$GUARD" 2>/dev/null || true)
     fi
 
     local outcome
@@ -183,6 +183,24 @@ printf '# Step 1\n\n## Plan\n\nplan\n\n## developer-phoenix-backend Section\n\nb
 CONTENT=$(printf '# Step 1\n\n## developer-phoenix-backend Section\n\nbody\n\n## Plan\n\nplan')
 FIXTURE=$(make_write_fixture "$LOG_FILE" "$CONTENT")
 run_test "Write to existing log, headers preserved but reordered (developer before Plan) — DENY" "2" "$FIXTURE"
+
+# ── Test 19: In-place ## Plan edit with downstream sections on disk → ALLOW ──
+# Regression: naive merge appended new_string after disk, causing ## Delegation Timeline
+# on disk to appear after the re-stated ## Plan in new_string → false denial.
+printf '## Plan\n\nold plan\n\n## Delegation Timeline\n\n| T | A |\n\n## Files Modified\n\nfoo\n' >"$LOG_FILE"
+OS=$(printf '## Plan\n\nold plan')
+NS=$(printf '## Plan\n\nupdated plan')
+FIXTURE=$(make_edit_fixture "$LOG_FILE" "$OS" "$NS" "orchestrator")
+run_test "In-place ## Plan edit with downstream sections on disk — ALLOW (naive-merge regression)" "0" "$FIXTURE"
+
+# ── Test 20: Reviewer re-states ## reviewer-phoenix Section header at EOF → ALLOW ──
+# Regression: naive merge appended new_string (with reviewer header) after disk content
+# that already had reviewer header → false denial. Result-simulation replaces correctly.
+printf '## Plan\n\nplan\n\n## Files Modified\n\nfoo\n\n## developer-phoenix-backend Section\n\nbody\n\n## reviewer-phoenix Section\n\n<placeholder>\n' >"$LOG_FILE"
+OS=$(printf '## reviewer-phoenix Section\n\n<placeholder>')
+NS=$(printf '## reviewer-phoenix Section\n\n**Verdict**: QUALITY APPROVED\n\nFindings.')
+FIXTURE=$(make_edit_fixture "$LOG_FILE" "$OS" "$NS" "reviewer-phoenix")
+run_test "Reviewer re-states section header when replacing placeholder — ALLOW (naive-merge regression)" "0" "$FIXTURE"
 
 echo ""
 echo "Results: $pass passed, $fail failed"

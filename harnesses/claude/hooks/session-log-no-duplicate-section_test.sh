@@ -23,7 +23,7 @@ run_test() {
     if [ -n "$extra_env" ]; then
         stdout=$(printf '%s' "$input" | env $extra_env bash "$GUARD" 2>/dev/null || true)
     else
-        stdout=$(printf '%s' "$input" | bash "$GUARD" 2>/dev/null || true)
+        stdout=$(printf '%s' "$input" | env -u CLAUDE_ROLE -u PI_ROLE bash "$GUARD" 2>/dev/null || true)
     fi
 
     local outcome
@@ -56,11 +56,11 @@ make_write_fixture() {
         '{"hook_event_name":"PreToolUse","tool_name":"Write","tool_input":{"file_path":$fp,"content":$c},"agent_type":""}'
 }
 
-# Helper: build an Edit fixture. Args: file_path new_string agent_type
+# Helper: build an Edit fixture. Args: file_path old_string new_string agent_type
 make_edit_fixture() {
-    local fp="$1" ns="$2" at="$3"
-    jq -n --arg fp "$fp" --arg ns "$ns" --arg at "$at" \
-        '{"hook_event_name":"PreToolUse","tool_name":"Edit","tool_input":{"file_path":$fp,"old_string":"","new_string":$ns},"agent_type":$at}'
+    local fp="$1" os="$2" ns="$3" at="$4"
+    jq -n --arg fp "$fp" --arg os "$os" --arg ns "$ns" --arg at "$at" \
+        '{"hook_event_name":"PreToolUse","tool_name":"Edit","tool_input":{"file_path":$fp,"old_string":$os,"new_string":$ns},"agent_type":$at}'
 }
 
 # ── Test 1: Write with duplicated "## developer-phoenix-backend Section" → DENY ──
@@ -78,35 +78,40 @@ CONTENT_TWO=$(printf '## planner-phoenix Section\n\nplan\n\n## developer-phoenix
 FIXTURE=$(make_write_fixture "$LOG_FILE" "$CONTENT_TWO")
 run_test "Write with two different role headers once each — ALLOW" "0" "$FIXTURE"
 
-# ── Test 4: Edit new_string adds header already on disk → DENY ──
+# ── Test 4: Edit REPLACES the on-disk header line → net-zero → ALLOW ──
+# (Additive-insertion follow-up: the header is the OLD string being replaced,
+# so the result still has exactly one copy.)
 printf '## developer-phoenix-backend Section\n\nExisting content\n' >"$LOG_FILE"
+OLD_HDR=$(printf '## developer-phoenix-backend Section')
 NS=$(printf '## developer-phoenix-backend Section\n\nmore content')
-FIXTURE=$(make_edit_fixture "$LOG_FILE" "$NS" "developer-phoenix-backend")
-run_test "Edit re-adding header already on disk — DENY" "2" "$FIXTURE"
+FIXTURE=$(make_edit_fixture "$LOG_FILE" "$OLD_HDR" "$NS" "developer-phoenix-backend")
+run_test "Edit replacing the on-disk header line — net-zero — ALLOW" "0" "$FIXTURE"
 
 # ── Test 5: Edit new_string adds header NOT yet on disk → ALLOW (first insertion) ──
 printf '# Step\n\n## Plan\n\nplan text\n' >"$LOG_FILE"
 NS=$(printf '## developer-phoenix-backend Section\n\nbody')
-FIXTURE=$(make_edit_fixture "$LOG_FILE" "$NS" "developer-phoenix-backend")
+FIXTURE=$(make_edit_fixture "$LOG_FILE" "" "$NS" "developer-phoenix-backend")
 run_test "Edit adding header not yet on disk — ALLOW" "0" "$FIXTURE"
 
 # ── Test 6: Edit new_string body with no header → ALLOW ──
 printf '# Step\n\n## developer-phoenix-backend Section\n\nbody\n' >"$LOG_FILE"
-FIXTURE=$(make_edit_fixture "$LOG_FILE" "Additional content without any header" "developer-phoenix-backend")
+FIXTURE=$(make_edit_fixture "$LOG_FILE" "body" "Additional content without any header" "developer-phoenix-backend")
 run_test "Edit new_string with no header — ALLOW" "0" "$FIXTURE"
 
 # ── Test 7: Edit new_string containing the same header twice → DENY (self-dup) ──
 printf '# Step\n\n## Plan\n\nplan\n' >"$LOG_FILE"
 NS=$(printf '## developer-phoenix-backend Section\n\nbody\n\n## developer-phoenix-backend Section\n\ndup')
-FIXTURE=$(make_edit_fixture "$LOG_FILE" "$NS" "developer-phoenix-backend")
+FIXTURE=$(make_edit_fixture "$LOG_FILE" "" "$NS" "developer-phoenix-backend")
 run_test "Edit new_string with same header 2x in payload — DENY (self-dup)" "2" "$FIXTURE"
 
-# ── Test 8: MultiEdit combined new_strings add header already on disk → DENY ──
+# ── Test 8: MultiEdit REPLACES the on-disk header line → net-zero → ALLOW ──
+# (Additive-insertion follow-up via MultiEdit: old_string is the header itself.)
 printf '## developer-phoenix-backend Section\n\nbody\n' >"$LOG_FILE"
+OLD_HDR=$(printf '## developer-phoenix-backend Section')
 NS=$(printf '## developer-phoenix-backend Section\n\nmore')
-FIXTURE=$(jq -n --arg fp "$LOG_FILE" --arg ns "$NS" \
-    '{"hook_event_name":"PreToolUse","tool_name":"MultiEdit","tool_input":{"file_path":$fp,"edits":[{"old_string":"body","new_string":$ns}]},"agent_type":"developer-phoenix-backend"}')
-run_test "MultiEdit adding header already on disk — DENY" "2" "$FIXTURE"
+FIXTURE=$(jq -n --arg fp "$LOG_FILE" --arg os "$OLD_HDR" --arg ns "$NS" \
+    '{"hook_event_name":"PreToolUse","tool_name":"MultiEdit","tool_input":{"file_path":$fp,"edits":[{"old_string":$os,"new_string":$ns}]},"agent_type":"developer-phoenix-backend"}')
+run_test "MultiEdit replacing on-disk header line — net-zero — ALLOW" "0" "$FIXTURE"
 
 # ── Test 9: MultiEdit adding two DIFFERENT headers, none on disk → ALLOW ──
 printf '# Step\n\n## Plan\n\nplan\n' >"$LOG_FILE"
@@ -128,13 +133,13 @@ OTHER_FILE="$TMP_DIR/lib/foo.ex"
 mkdir -p "$(dirname "$OTHER_FILE")"
 touch "$OTHER_FILE"
 NS=$(printf '## developer-phoenix-backend Section\n\n## developer-phoenix-backend Section\n\n')
-FIXTURE=$(make_edit_fixture "$OTHER_FILE" "$NS" "developer-phoenix-backend")
+FIXTURE=$(make_edit_fixture "$OTHER_FILE" "" "$NS" "developer-phoenix-backend")
 run_test "Edit on non-logging path with dup header — ALLOW" "0" "$FIXTURE"
 
 # ── Test 12: Bypass: CLAUDE_ROLE=debug Edit duplicating a header → ALLOW ──
 printf '## developer-phoenix-backend Section\n\nbody\n' >"$LOG_FILE"
 NS=$(printf '## developer-phoenix-backend Section\n\ndup')
-FIXTURE=$(make_edit_fixture "$LOG_FILE" "$NS" "developer-phoenix-backend")
+FIXTURE=$(make_edit_fixture "$LOG_FILE" "" "$NS" "developer-phoenix-backend")
 run_test "CLAUDE_ROLE=debug bypasses guard — ALLOW" "0" "$FIXTURE" "CLAUDE_ROLE=debug"
 
 # ── Test 13: Bypass: CLAUDE_ROLE=shape Write with dup header → ALLOW ──
@@ -145,13 +150,13 @@ run_test "CLAUDE_ROLE=shape bypasses guard — ALLOW" "0" "$FIXTURE" "CLAUDE_ROL
 # ── Test 14: Bypass: CLAUDE_ROLE=ops Edit re-adding existing header → ALLOW ──
 printf '## developer-phoenix-backend Section\n\nbody\n' >"$LOG_FILE"
 NS=$(printf '## developer-phoenix-backend Section\n\nops dup')
-FIXTURE=$(make_edit_fixture "$LOG_FILE" "$NS" "developer-phoenix-backend")
+FIXTURE=$(make_edit_fixture "$LOG_FILE" "" "$NS" "developer-phoenix-backend")
 run_test "CLAUDE_ROLE=ops bypasses guard — ALLOW" "0" "$FIXTURE" "CLAUDE_ROLE=ops"
 
 # ── Test 15: Edit on non-existent / unreadable log file → ALLOW (fail-open) ──
 NONEXISTENT="$LOG_DIR/does-not-exist.md"
 NS=$(printf '## developer-phoenix-backend Section\n\nbody')
-FIXTURE=$(make_edit_fixture "$NONEXISTENT" "$NS" "developer-phoenix-backend")
+FIXTURE=$(make_edit_fixture "$NONEXISTENT" "" "$NS" "developer-phoenix-backend")
 run_test "Edit on non-existent log file — ALLOW (fail-open)" "0" "$FIXTURE"
 
 # ── Test 16: Non-guarded tool (Bash) → ALLOW (tool gate) ──
@@ -159,6 +164,41 @@ printf '## developer-phoenix-backend Section\n\nbody\n' >"$LOG_FILE"
 FIXTURE=$(jq -n --arg fp "$LOG_FILE" \
     '{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"echo hi"},"agent_type":"developer-phoenix-backend"}')
 run_test "Bash tool not guarded — ALLOW" "0" "$FIXTURE"
+
+# ── Test 17: Canonical reviewer follow-up ALLOW ──
+# Disk has: ## reviewer-phoenix Section + placeholder block.
+# Edit replaces the whole header+placeholder block with header+real body.
+# old_string carries the header, so the result still has exactly one copy → ALLOW.
+printf '## reviewer-phoenix Section\n\n<placeholder>\n' >"$LOG_FILE"
+OLD_BLOCK=$(printf '## reviewer-phoenix Section\n\n<placeholder>')
+NS=$(printf '## reviewer-phoenix Section\n\n**Verdict**: QUALITY APPROVED\n\nFindings here.')
+FIXTURE=$(make_edit_fixture "$LOG_FILE" "$OLD_BLOCK" "$NS" "reviewer-phoenix")
+run_test "Canonical reviewer follow-up (replace header+placeholder block, re-emit header) — ALLOW" "0" "$FIXTURE"
+
+# ── Test 18: Genuine 2nd-copy DENY ──
+# old_string does NOT carry the header, but new_string adds a header that
+# already exists elsewhere on disk → result has 2 copies → DENY.
+printf '# Step\n\n## developer-phoenix-backend Section\n\noriginal body\n\nsome other line\n' >"$LOG_FILE"
+NS=$(printf '## developer-phoenix-backend Section\n\nsecond copy')
+FIXTURE=$(make_edit_fixture "$LOG_FILE" "some other line" "$NS" "developer-phoenix-backend")
+run_test "Genuine 2nd-copy: new_string adds header already on disk — DENY" "2" "$FIXTURE"
+
+# ── Test 19: Empty old_string append case → ALLOW (no dup) ──
+# On disk: no role-section header. Edit with empty old_string appends a new header.
+printf '# Step\n\n## Plan\n\nplan text\n' >"$LOG_FILE"
+NS=$(printf '## context-curator Section\n\nCuration notes.')
+FIXTURE=$(make_edit_fixture "$LOG_FILE" "" "$NS" "context-curator")
+run_test "Empty old_string append — header not on disk — ALLOW" "0" "$FIXTURE"
+
+# ── Test 20: MultiEdit ordered follow-up ALLOW ──
+# Disk has: ## planner Section placeholder. MultiEdit:
+#   edit[0]: replaces a non-header body line with body text (no new header).
+#   edit[1]: replaces the placeholder line with same header + body (net-zero).
+# Result has exactly one copy → ALLOW.
+printf '## planner Section\n\n<body-placeholder>\n' >"$LOG_FILE"
+FIXTURE=$(jq -n --arg fp "$LOG_FILE" \
+    '{"hook_event_name":"PreToolUse","tool_name":"MultiEdit","tool_input":{"file_path":$fp,"edits":[{"old_string":"<body-placeholder>","new_string":"Real body content"},{"old_string":"## planner Section","new_string":"## planner Section\n\nReal body content"}]},"agent_type":"planner"}')
+run_test "MultiEdit ordered follow-up — net-zero — ALLOW" "0" "$FIXTURE"
 
 echo ""
 echo "Results: $pass passed, $fail failed"

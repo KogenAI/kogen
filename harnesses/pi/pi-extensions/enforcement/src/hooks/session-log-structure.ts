@@ -142,12 +142,14 @@ export function register(pi: ExtensionAPI): void {
       }
     }
 
-    // Order check: merge disk content + new_string and verify order.
+    // Order check: simulate the post-edit file and verify order.
     try {
       if (fs.existsSync(filePath)) {
         const diskContent = fs.readFileSync(filePath, "utf8");
-        const merged = diskContent + "\n" + newString;
-        const offender = checkOrder(merged);
+        const simulated = oldString === ""
+          ? diskContent + newString
+          : diskContent.replace(oldString, newString);
+        const offender = checkOrder(simulated);
         if (offender) {
           return deny(
             `BLOCKED by session-log-structure: header "${offender}" appears out of canonical phase order — see session-log.md § Canonical Section Order.`,

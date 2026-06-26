@@ -91,19 +91,23 @@ export function register(pi: ExtensionAPI): void {
       );
     }
 
-    // Header in payload that already exists on disk → would duplicate.
+    // Result-simulation: apply old→new to disk content, then check for duplicates.
+    const oldString: string =
+      (event.input as { old_string?: string }).old_string ?? "";
+
     if (payloadHeaders.length === 0) return;
 
     try {
       if (fs.existsSync(filePath)) {
         const diskContent = fs.readFileSync(filePath, "utf8");
-        const diskLines = new Set(diskContent.split("\n"));
-        for (const hdr of payloadHeaders) {
-          if (diskLines.has(hdr)) {
-            return deny(
-              `BLOCKED by session-log-no-duplicate-section: "${hdr}" already exists in this log — do NOT re-add it; skip the header Edit and proceed to spawn (the presence guard is already satisfied).`,
-            );
-          }
+        const simulated = oldString === ""
+          ? diskContent + newString
+          : diskContent.replace(oldString, newString);
+        const dup = firstDuplicate(sectionHeaders(simulated));
+        if (dup) {
+          return deny(
+            `BLOCKED by session-log-no-duplicate-section: "${dup}" already exists in this log — do NOT re-add it; skip the header Edit and proceed to spawn (the presence guard is already satisfied). Switch to \`(pass N)\` if intentional re-spawn.`
+          );
         }
       }
       // File absent → fail open (allow).

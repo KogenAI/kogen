@@ -14,6 +14,12 @@
 # Denies any Edit/Write/MultiEdit to codegen/logging/*.md that would yield a
 # SECOND copy of any "## <X> Section" header. Fires for orchestrator and
 # subagents alike. Bypasses debug/shape/ops. Fails open on unreadable log.
+#
+# For Edit/MultiEdit: RESULT SIMULATION — applies old_string→new_string to a
+# copy of the on-disk content (FIRST occurrence only; empty old_string →
+# append new_string) and denies iff any role-section header appears 2+ times
+# in the simulated result. A follow-up that re-states a pre-placed placeholder
+# header nets zero new copies and is ALLOWED. MultiEdit folds edits in order.
 
 set -u
 
@@ -51,29 +57,52 @@ Write)
     fi
     ;;
 Edit | MultiEdit)
-    # Collect new_string(s).
+    # Fast-path: self-duplicate within the payload (applies even if disk unreadable).
     if [ "$TOOL_NAME" = "Edit" ]; then
         new=$(printf '%s' "$RAW_INPUT" | jq -r '.tool_input.new_string // ""')
     else
         new=$(printf '%s' "$RAW_INPUT" | jq -r '[.tool_input.edits[]?.new_string // ""] | join("\n")')
     fi
-    # Self-duplicate within the payload.
     selfdup=$(section_headers "$new" | sort | uniq -d | head -n 1)
     if [ -n "$selfdup" ]; then
         deny "BLOCKED by session-log-no-duplicate-section: this Edit adds the header \"$selfdup\" more than once. Insert each \`## <role> Section\` exactly once."
         exit 0
     fi
-    # Header in payload that already exists on disk → would duplicate.
+
+    # Result simulation: apply old→new to on-disk content, then check for dups.
+    # Fail open (allow) when file is unreadable/absent.
     if [ -f "$FILE_PATH" ] && [ -r "$FILE_PATH" ]; then
-        while IFS= read -r hdr; do
-            [ -z "$hdr" ] && continue
-            if grep -qxF "$hdr" "$FILE_PATH" 2>/dev/null; then
-                deny "BLOCKED by session-log-no-duplicate-section: \"$hdr\" already exists in this log — do NOT re-add it; skip the header Edit and proceed to spawn (the presence guard is already satisfied)."
-                exit 0
+        disk=$(cat "$FILE_PATH")
+        simulated="$disk"
+        if [ "$TOOL_NAME" = "Edit" ]; then
+            old=$(printf '%s' "$RAW_INPUT" | jq -r '.tool_input.old_string // ""')
+            if [ -z "$old" ]; then
+                # Empty old_string → append new_string.
+                simulated="${simulated}${new}"
+            else
+                # Replace FIRST occurrence only (bash ${var/pat/rep} replaces first).
+                simulated="${simulated/$old/$new}"
             fi
-        done <<EOF
-$(section_headers "$new")
-EOF
+        else
+            # MultiEdit: fold edits sequentially in array order.
+            edit_count=$(printf '%s' "$RAW_INPUT" | jq '.tool_input.edits | length')
+            i=0
+            while [ "$i" -lt "$edit_count" ]; do
+                e_old=$(printf '%s' "$RAW_INPUT" | jq -r ".tool_input.edits[$i].old_string // \"\"")
+                e_new=$(printf '%s' "$RAW_INPUT" | jq -r ".tool_input.edits[$i].new_string // \"\"")
+                if [ -z "$e_old" ]; then
+                    simulated="${simulated}${e_new}"
+                else
+                    simulated="${simulated/$e_old/$e_new}"
+                fi
+                i=$((i + 1))
+            done
+        fi
+        dup=$(section_headers "$simulated" | sort | uniq -d | head -n 1)
+        if [ -n "$dup" ]; then
+            deny "BLOCKED by session-log-no-duplicate-section: \"$dup\" already exists in this log — do NOT re-add it; skip the header Edit and proceed to spawn (the presence guard is already satisfied). Switch to \`(pass N)\` if intentional re-spawn."
+            exit 0
+        fi
     fi
     # File unreadable/absent → fail open (allow).
     ;;

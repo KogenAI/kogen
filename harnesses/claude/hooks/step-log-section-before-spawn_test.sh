@@ -83,7 +83,7 @@ T1=$(make_project)
 # Transcript references no log file
 FAKE_TRANSCRIPT="$T1/transcript.jsonl"
 printf '' >"$FAKE_TRANSCRIPT"
-out1=$(mk_agent_input "planner-phoenix" "$FAKE_TRANSCRIPT" | bash "$HOOK" 2>/dev/null || true)
+out1=$(mk_agent_input "planner-phoenix" "$FAKE_TRANSCRIPT" | env -u CLAUDE_ROLE -u PI_ROLE bash "$HOOK" 2>/dev/null || true)
 assert_deny "deny: no step log in transcript (planner-phoenix)" "$out1"
 rm -rf "$T1"
 
@@ -100,7 +100,7 @@ cat >"$LOG2" <<'MD'
 - context: abc
 MD
 make_transcript "$T2/transcript.jsonl" "$LOG2"
-out2=$(mk_agent_input "planner-phoenix" "$T2/transcript.jsonl" | bash "$HOOK" 2>/dev/null || true)
+out2=$(mk_agent_input "planner-phoenix" "$T2/transcript.jsonl" | env -u CLAUDE_ROLE -u PI_ROLE bash "$HOOK" 2>/dev/null || true)
 assert_deny "deny: planner-phoenix — ## Plan header absent" "$out2"
 rm -rf "$T2"
 
@@ -115,7 +115,7 @@ cat >"$LOG3" <<'MD'
 planner wrote here
 MD
 make_transcript "$T3/transcript.jsonl" "$LOG3"
-out3=$(mk_agent_input "developer-phoenix-backend" "$T3/transcript.jsonl" | bash "$HOOK" 2>/dev/null || true)
+out3=$(mk_agent_input "developer-phoenix-backend" "$T3/transcript.jsonl" | env -u CLAUDE_ROLE -u PI_ROLE bash "$HOOK" 2>/dev/null || true)
 assert_deny "deny: developer-phoenix-backend — section header absent" "$out3"
 rm -rf "$T3"
 
@@ -129,7 +129,7 @@ cat >"$LOG4" <<'MD'
 
 MD
 make_transcript "$T4/transcript.jsonl" "$LOG4"
-out4=$(mk_agent_input "planner-phoenix" "$T4/transcript.jsonl" | bash "$HOOK" 2>/dev/null || true)
+out4=$(mk_agent_input "planner-phoenix" "$T4/transcript.jsonl" | env -u CLAUDE_ROLE -u PI_ROLE bash "$HOOK" 2>/dev/null || true)
 assert_allow "allow: planner-phoenix — ## Plan header present (empty body)" "$out4"
 rm -rf "$T4"
 
@@ -147,7 +147,7 @@ planner wrote here
 
 MD
 make_transcript "$T5/transcript.jsonl" "$LOG5"
-out5=$(mk_agent_input "developer-phoenix-backend" "$T5/transcript.jsonl" | bash "$HOOK" 2>/dev/null || true)
+out5=$(mk_agent_input "developer-phoenix-backend" "$T5/transcript.jsonl" | env -u CLAUDE_ROLE -u PI_ROLE bash "$HOOK" 2>/dev/null || true)
 assert_allow "allow: developer-phoenix-backend — section header present" "$out5"
 rm -rf "$T5"
 
@@ -159,7 +159,7 @@ cat >"$LOG6" <<'MD'
 
 MD
 make_transcript "$T6/transcript.jsonl" "$LOG6"
-out6=$(mk_agent_input "developer-phoenix-frontend" "$T6/transcript.jsonl" | bash "$HOOK" 2>/dev/null || true)
+out6=$(mk_agent_input "developer-phoenix-frontend" "$T6/transcript.jsonl" | env -u CLAUDE_ROLE -u PI_ROLE bash "$HOOK" 2>/dev/null || true)
 assert_allow "allow: developer-phoenix-frontend — section header present" "$out6"
 rm -rf "$T6"
 
@@ -171,7 +171,7 @@ cat >"$LOG7" <<'MD'
 
 MD
 make_transcript "$T7/transcript.jsonl" "$LOG7"
-out7=$(mk_agent_input "developer-static" "$T7/transcript.jsonl" | bash "$HOOK" 2>/dev/null || true)
+out7=$(mk_agent_input "developer-static" "$T7/transcript.jsonl" | env -u CLAUDE_ROLE -u PI_ROLE bash "$HOOK" 2>/dev/null || true)
 assert_allow "allow: developer-static — section header present" "$out7"
 rm -rf "$T7"
 
@@ -183,7 +183,7 @@ cat >"$LOG8" <<'MD'
 
 MD
 make_transcript "$T8/transcript.jsonl" "$LOG8"
-out8=$(mk_agent_input "reviewer-phoenix" "$T8/transcript.jsonl" | bash "$HOOK" 2>/dev/null || true)
+out8=$(mk_agent_input "reviewer-phoenix" "$T8/transcript.jsonl" | env -u CLAUDE_ROLE -u PI_ROLE bash "$HOOK" 2>/dev/null || true)
 assert_allow "allow: reviewer-phoenix — section header present" "$out8"
 rm -rf "$T8"
 
@@ -195,7 +195,7 @@ cat >"$LOG9" <<'MD'
 
 MD
 make_transcript "$T9/transcript.jsonl" "$LOG9"
-out9=$(mk_agent_input "reviewer-static" "$T9/transcript.jsonl" | bash "$HOOK" 2>/dev/null || true)
+out9=$(mk_agent_input "reviewer-static" "$T9/transcript.jsonl" | env -u CLAUDE_ROLE -u PI_ROLE bash "$HOOK" 2>/dev/null || true)
 assert_allow "allow: reviewer-static — section header present" "$out9"
 rm -rf "$T9"
 
@@ -207,7 +207,7 @@ cat >"$LOG10" <<'MD'
 
 MD
 make_transcript "$T10/transcript.jsonl" "$LOG10"
-out10=$(mk_agent_input "context-curator" "$T10/transcript.jsonl" | bash "$HOOK" 2>/dev/null || true)
+out10=$(mk_agent_input "context-curator" "$T10/transcript.jsonl" | env -u CLAUDE_ROLE -u PI_ROLE bash "$HOOK" 2>/dev/null || true)
 assert_allow "allow: context-curator — section header present" "$out10"
 rm -rf "$T10"
 
@@ -219,7 +219,7 @@ cat >"$LOG11" <<'MD'
 
 MD
 make_transcript "$T11/transcript.jsonl" "$LOG11"
-out11=$(mk_agent_input "committer" "$T11/transcript.jsonl" | bash "$HOOK" 2>/dev/null || true)
+out11=$(mk_agent_input "committer" "$T11/transcript.jsonl" | env -u CLAUDE_ROLE -u PI_ROLE bash "$HOOK" 2>/dev/null || true)
 assert_allow "allow: committer — section header present" "$out11"
 rm -rf "$T11"
 
@@ -228,14 +228,14 @@ T12=$(make_project)
 # Empty transcript — no log. But tool is Bash, not Agent.
 FAKE_TRANSCRIPT12="$T12/transcript.jsonl"
 printf '' >"$FAKE_TRANSCRIPT12"
-out12=$(mk_non_agent_input "Bash" "$FAKE_TRANSCRIPT12" | bash "$HOOK" 2>/dev/null || true)
+out12=$(mk_non_agent_input "Bash" "$FAKE_TRANSCRIPT12" | env -u CLAUDE_ROLE -u PI_ROLE bash "$HOOK" 2>/dev/null || true)
 assert_allow "allow: non-Agent tool (Bash) — hook exits 0 unconditionally" "$out12"
 rm -rf "$T12"
 
 # ── Test 13: fail-open when transcript unreadable ────────────────────────────
 T13=$(make_project)
 # Pass a transcript path that does not exist.
-out13=$(mk_agent_input "developer-phoenix-backend" "/nonexistent/transcript.jsonl" | bash "$HOOK" 2>/dev/null || true)
+out13=$(mk_agent_input "developer-phoenix-backend" "/nonexistent/transcript.jsonl" | env -u CLAUDE_ROLE -u PI_ROLE bash "$HOOK" 2>/dev/null || true)
 assert_allow "allow: transcript unreadable — fail-open" "$out13"
 rm -rf "$T13"
 
@@ -247,7 +247,7 @@ cat >"$LOG14" <<'MD'
 
 MD
 make_transcript "$T14/transcript.jsonl" "$LOG14"
-out14=$(mk_agent_input "developer-static" "$T14/transcript.jsonl" | bash "$HOOK" 2>/dev/null || true)
+out14=$(mk_agent_input "developer-static" "$T14/transcript.jsonl" | env -u CLAUDE_ROLE -u PI_ROLE bash "$HOOK" 2>/dev/null || true)
 assert_allow "allow: developer-static (test 14) — section header present" "$out14"
 rm -rf "$T14"
 
@@ -259,7 +259,7 @@ cat >"$LOG15" <<'MD'
 
 MD
 make_transcript "$T15/transcript.jsonl" "$LOG15"
-out15=$(mk_agent_input "developer-static" "$T15/transcript.jsonl" | bash "$HOOK" 2>/dev/null || true)
+out15=$(mk_agent_input "developer-static" "$T15/transcript.jsonl" | env -u CLAUDE_ROLE -u PI_ROLE bash "$HOOK" 2>/dev/null || true)
 assert_allow "allow: developer-static (test 15) — section header present" "$out15"
 rm -rf "$T15"
 
@@ -287,7 +287,7 @@ FAKE_TRANSCRIPT16="$T16/transcript.jsonl"
 printf '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Write","input":{"file_path":"codegen/logging/20240101_000000_old_session.md"}}]}}\n' \
     >"$FAKE_TRANSCRIPT16"
 export OCG_APPS_ROOT="$T16_APPS"
-out16=$(mk_agent_input_with_cwd "developer-phoenix-backend" "$FAKE_TRANSCRIPT16" "$T16" | bash "$HOOK" 2>/dev/null || true)
+out16=$(mk_agent_input_with_cwd "developer-phoenix-backend" "$FAKE_TRANSCRIPT16" "$T16" | env -u CLAUDE_ROLE -u PI_ROLE bash "$HOOK" 2>/dev/null || true)
 unset OCG_APPS_ROOT
 assert_allow "allow: filesystem fallback when transcript lags in managed build" "$out16"
 rm -rf "$T16_APPS"
@@ -334,7 +334,7 @@ MD
 FAKE_TRANSCRIPT18="$T18/transcript.jsonl"
 printf '' >"$FAKE_TRANSCRIPT18"
 export OCG_APPS_ROOT="$T18_APPS"
-out18=$(mk_agent_input_with_cwd "developer-phoenix-backend" "$FAKE_TRANSCRIPT18" "$T18" | bash "$HOOK" 2>/dev/null || true)
+out18=$(mk_agent_input_with_cwd "developer-phoenix-backend" "$FAKE_TRANSCRIPT18" "$T18" | env -u CLAUDE_ROLE -u PI_ROLE bash "$HOOK" 2>/dev/null || true)
 unset OCG_APPS_ROOT
 assert_deny "deny: filesystem fallback finds log but section header absent — append header (not create log)" "$out18"
 # Verify the deny message names the missing header (not the "create log" message)
@@ -388,7 +388,7 @@ GHOST_LOG="$T20/codegen/logging/20260101_000000_test-session.md"
 # Build transcript referencing the ghost log (file not created on disk).
 printf '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Write","input":{"file_path":"%s"}}]}}\n' \
     "$GHOST_LOG" >"$FAKE_TRANSCRIPT20"
-out20=$(mk_agent_input "planner-phoenix" "$FAKE_TRANSCRIPT20" | bash "$HOOK" 2>/dev/null || true)
+out20=$(mk_agent_input "planner-phoenix" "$FAKE_TRANSCRIPT20" | env -u CLAUDE_ROLE -u PI_ROLE bash "$HOOK" 2>/dev/null || true)
 assert_deny "deny: log path in transcript but file never created on disk" "$out20"
 rm -rf "$T20"
 
@@ -402,7 +402,7 @@ LOG21="$T21/codegen/logging/20260101_000000_chmod-test.md"
 printf '# Step\n' >"$LOG21"
 make_transcript "$T21/transcript.jsonl" "$LOG21"
 chmod 000 "$LOG21"
-out21=$(mk_agent_input "planner-phoenix" "$T21/transcript.jsonl" | bash "$HOOK" 2>/dev/null || true)
+out21=$(mk_agent_input "planner-phoenix" "$T21/transcript.jsonl" | env -u CLAUDE_ROLE -u PI_ROLE bash "$HOOK" 2>/dev/null || true)
 # The file exists on disk — must NOT trigger the "never created" deny message.
 if printf '%s' "$out21" | grep -q 'never created'; then
     printf 'FAIL: Test 21 — existing chmod-000 log triggered the "never created" deny (should be fail-open or header-absent deny)\n  stdout: %s\n' "$out21"
@@ -420,7 +420,7 @@ rm -rf "$T21"
 T22=$(make_project)
 FAKE_TRANSCRIPT22="$T22/transcript.jsonl"
 printf '' >"$FAKE_TRANSCRIPT22"
-out22=$(mk_agent_input "Plan" "$FAKE_TRANSCRIPT22" | bash "$HOOK" 2>/dev/null || true)
+out22=$(mk_agent_input "Plan" "$FAKE_TRANSCRIPT22" | env -u CLAUDE_ROLE -u PI_ROLE bash "$HOOK" 2>/dev/null || true)
 assert_allow "allow: build + Plan — skip guard defers to allowlist, no header demand" "$out22"
 rm -rf "$T22"
 
@@ -428,7 +428,7 @@ rm -rf "$T22"
 T23=$(make_project)
 FAKE_TRANSCRIPT23="$T23/transcript.jsonl"
 printf '' >"$FAKE_TRANSCRIPT23"
-out23=$(mk_agent_input "" "$FAKE_TRANSCRIPT23" | bash "$HOOK" 2>/dev/null || true)
+out23=$(mk_agent_input "" "$FAKE_TRANSCRIPT23" | env -u CLAUDE_ROLE -u PI_ROLE bash "$HOOK" 2>/dev/null || true)
 assert_allow "allow: build + empty subagent_type — skip guard defers to allowlist" "$out23"
 rm -rf "$T23"
 
@@ -436,7 +436,7 @@ rm -rf "$T23"
 T24=$(make_project)
 FAKE_TRANSCRIPT24="$T24/transcript.jsonl"
 printf '' >"$FAKE_TRANSCRIPT24"
-out24=$(mk_agent_input "general-purpose" "$FAKE_TRANSCRIPT24" | bash "$HOOK" 2>/dev/null || true)
+out24=$(mk_agent_input "general-purpose" "$FAKE_TRANSCRIPT24" | env -u CLAUDE_ROLE -u PI_ROLE bash "$HOOK" 2>/dev/null || true)
 assert_allow "allow: build + general-purpose — skip guard defers to allowlist" "$out24"
 rm -rf "$T24"
 
@@ -444,7 +444,7 @@ rm -rf "$T24"
 T25=$(make_project)
 FAKE_TRANSCRIPT25="$T25/transcript.jsonl"
 printf '' >"$FAKE_TRANSCRIPT25"
-out25=$(mk_agent_input "statusline-setup" "$FAKE_TRANSCRIPT25" | bash "$HOOK" 2>/dev/null || true)
+out25=$(mk_agent_input "statusline-setup" "$FAKE_TRANSCRIPT25" | env -u CLAUDE_ROLE -u PI_ROLE bash "$HOOK" 2>/dev/null || true)
 assert_allow "allow: build + statusline-setup — skip guard defers to allowlist" "$out25"
 rm -rf "$T25"
 
@@ -452,7 +452,7 @@ rm -rf "$T25"
 T26=$(make_project)
 FAKE_TRANSCRIPT26="$T26/transcript.jsonl"
 printf '' >"$FAKE_TRANSCRIPT26"
-out26=$(mk_agent_input "Explore" "$FAKE_TRANSCRIPT26" | bash "$HOOK" 2>/dev/null || true)
+out26=$(mk_agent_input "Explore" "$FAKE_TRANSCRIPT26" | env -u CLAUDE_ROLE -u PI_ROLE bash "$HOOK" 2>/dev/null || true)
 assert_allow "allow: build + Explore — skip guard defers to allowlist" "$out26"
 rm -rf "$T26"
 
@@ -468,7 +468,7 @@ cat >"$LOG27" <<'MD'
 planner content only — no developer section header
 MD
 make_transcript "$T27/transcript.jsonl" "$LOG27"
-out27=$(mk_agent_input "developer-phoenix-backend" "$T27/transcript.jsonl" | bash "$HOOK" 2>/dev/null || true)
+out27=$(mk_agent_input "developer-phoenix-backend" "$T27/transcript.jsonl" | env -u CLAUDE_ROLE -u PI_ROLE bash "$HOOK" 2>/dev/null || true)
 assert_deny "deny: REGRESSION — build + developer-phoenix-backend, log present but section header absent" "$out27"
 rm -rf "$T27"
 

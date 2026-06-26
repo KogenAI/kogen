@@ -36,8 +36,6 @@ hooks-lib_test.sh
 phoenix-dev-gate-long_test.sh
 phoenix-dev-gate-short_test.sh
 phoenix-dev-gate_test.sh
-session-log-no-duplicate-section_test.sh
-session-log-structure_test.sh
 step-log-section-before-spawn_test.sh
 subagent-read-discipline_test.sh
 subagent-retrospective-guard_test.sh'
