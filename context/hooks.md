@@ -277,7 +277,7 @@ Guards scoped to the orchestrator (empty `AGENT_TYPE`/`AGENT_ID`) use `kind: reg
 
 **Pattern**: (1) `kind: registration` entry in `registry.yaml` with `role: "*"`, `harnesses: all`; (2) hand-authored `.sh` file with pre-check on `^codegen/logging/` to avoid wrongly denying non-logging writes; (3) `_test.sh` with ≥16 cases; (4) `make install` injects `HOOK-MANIFEST` header + registers in `settings.json`.
 
-**orchestrator-read-discipline hand-authorship**: The `.sh` + `.ts` bodies of `orchestrator-read-discipline` are fully hand-authored (not generated) — the `kind: registration` flag only SKIPS body generation; the `# HOOK-MANIFEST:` header is auto-injected but the body strings are edited directly in both files. When fixing deny-message text, ensure ALL four deny strings are updated in lockstep: `.sh` line 18 comment, `.sh` line 134 Read-deny, `.ts` line 97 Bash-deny, `.ts` line 113 Read-deny. Omitting any drift-branch causes misdirection in one harness and violates Rule J (parallel hand-authored twins must stay synchronized).
+**orchestrator-read-discipline hand-authorship**: The `.sh` + `.ts` bodies of `orchestrator-read-discipline` are fully hand-authored (not generated) — the `kind: registration` flag only SKIPS body generation; the `# HOOK-MANIFEST:` header is auto-injected but the body strings are edited directly in both files. When fixing deny-message text, ensure ALL four deny strings are updated in lockstep: the `.sh` top-comment block (deny-message description near `# rationale:`), the `.sh` Read-deny arm (inside the `Read` handler), the `.ts` Bash-deny arm, and the `.ts` Read-deny arm. Omitting any drift-branch causes misdirection in one harness and violates Rule J (parallel hand-authored twins must stay synchronized).
 
 **Path normalization**: Strip leading `./` explicitly (`rel="${rel#./}"`) so both a session-log file and its `./`-prefixed form match the allowlist.
 
@@ -333,4 +333,11 @@ The order check is now **result-aware**: it simulates the actual post-edit file 
 
 ## Pitfalls
 
-- **Gate-verdict flow for Phoenix gates**: (1) **wiring-check** — scans templates + test files; blocks FAIL, open INCONCLUSIVE. (2) **render-check** — headless Chromium; runs only if wiring passes. Static checks before runtime.
+- **Phoenix gates**: wiring-check (scans templates/tests, blocks FAIL, open INCONCLUSIVE) → render-check (headless Chromium, only if wiring passes) → static then runtime.
+
+## Testing & Verdict Patterns
+
+- **Bash isolation**: `sed -n '/<fn>/,/<close>/p' | eval` avoids argparse `exit` when testing helpers.
+- **Timestamps**: `YYYYMMDD_HHMMSS` sorts lexically ≡ chronologically. Use `[ "$ts1" \< "$ts2" ]` for portable compare.
+- **Bash patterns**: `#` and `[]` are glob-special in `${var%%pattern}` expansions. Hook simulation may fail; test literal code.
+- **Gate verdict**: `gate-result.json` `.verdict` is authoritative, never session-log prose. Manual re-runs don't update JSON.

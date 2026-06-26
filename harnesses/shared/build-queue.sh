@@ -168,6 +168,28 @@ is_transient() {
     return 1
 }
 
+# --- is_gate_green: gate passed but build never shipped (commit pending) ---
+# Args: $1=slug, $2=start_ts (YYYYMMDD_HHMMSS captured before child spawned).
+# Returns 0 iff the NEWEST per-slug session log whose filename ts >= start_ts
+# contains "ALL CLEAR" (gate-green marker). Returns 1 otherwise.
+is_gate_green() {
+    local slug="$1" start_ts="$2"
+    local newest="" newest_ts="" f base fts
+    for f in "$LOG_DIR"/*_"${slug}"_session.md; do
+        [ -f "$f" ] || continue
+        base="$(basename "$f")"
+        fts="${base%%_"${slug}"_session.md}" # leading YYYYMMDD_HHMMSS
+        # keep only logs written during/after this child's start
+        [ "$fts" \< "$start_ts" ] && continue
+        if [ -z "$newest_ts" ] || [ "$fts" \> "$newest_ts" ]; then
+            newest_ts="$fts"
+            newest="$f"
+        fi
+    done
+    [ -n "$newest" ] || return 1
+    grep -qF 'ALL CLEAR' "$newest"
+}
+
 # --- pick_delay: backoff seconds for attempt N (1-based); cap at last element ---
 pick_delay() {
     local attempt="$1" i=1 chosen=0
@@ -261,11 +283,19 @@ SLUGS
             last_slug="$slug"
         fi
 
-        if is_transient "$JSONL" && [ "$retry_count" -lt "$MAX_RETRIES" ]; then
+        gate_green=0
+        if is_gate_green "$slug" "$ts"; then gate_green=1; fi
+
+        if { is_transient "$JSONL" || [ "$gate_green" = "1" ]; } && [ "$retry_count" -lt "$MAX_RETRIES" ]; then
             retry_count=$((retry_count + 1))
             delay="$(pick_delay "$retry_count")"
-            printf '[%d/%d] %s ... infra blip (transient) — retry %d/%d after %ss\n' \
-                "$idx" "$TOTAL" "$slug" "$retry_count" "$MAX_RETRIES" "$delay" >&2
+            if [ "$gate_green" = "1" ]; then
+                printf '[%d/%d] %s ... gate green, commit pending — retry %d/%d after %ss\n' \
+                    "$idx" "$TOTAL" "$slug" "$retry_count" "$MAX_RETRIES" "$delay" >&2
+            else
+                printf '[%d/%d] %s ... infra blip (transient) — retry %d/%d after %ss\n' \
+                    "$idx" "$TOTAL" "$slug" "$retry_count" "$MAX_RETRIES" "$delay" >&2
+            fi
             if [ "$delay" -gt 0 ]; then
                 sleep "$delay"
             fi

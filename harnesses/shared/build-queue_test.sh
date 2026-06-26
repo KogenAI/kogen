@@ -487,6 +487,203 @@ assert_eq "T13: total calls = 3 (1 initial + 2 retries)" "3" "$T13_CALLS"
 assert_eq "T13: slug still in ready after exhaustion" "1" \
     "$([ -f "$T13_ROOT/codegen/pitches/ready/alpha.md" ] && printf '1' || printf '0')"
 
+# ── Test T14: is_gate_green unit tests ───────────────────────────────────────
+# Source the helper with stubs so is_gate_green is callable directly.
+# We override LOG_DIR to a temp directory for isolation.
+T14_ROOT="$TMP_ROOT/t14"
+mkdir -p "$T14_ROOT/codegen/logging"
+
+# Source the helper (we need is_gate_green; most of the script is safe to load
+# since no main loop runs without a --harness flag causing exit 2, but we skip
+# that by sourcing and testing the function directly).
+T14_LOG_DIR="$T14_ROOT/codegen/logging"
+
+# Extract and evaluate just is_gate_green so we don't pull in the arg-parser
+# which exits 2 without a --harness flag.
+eval "$(sed -n '/^is_gate_green()/,/^}/p' "$HELPER")"
+
+# Override LOG_DIR for these unit tests.
+LOG_DIR="$T14_LOG_DIR"
+
+START_TS="20260601_120000"
+SLUG="my-pitch"
+
+# T14-A: qualifying log with ALL CLEAR → returns 0
+T14A_LOG="$T14_LOG_DIR/${START_TS}_${SLUG}_session.md"
+printf 'Some content\nALL CLEAR ✅\nMore content\n' >"$T14A_LOG"
+T14A_RC=0
+is_gate_green "$SLUG" "$START_TS" || T14A_RC=$?
+assert_eq "T14-A: ALL CLEAR + ts>=start → 0" "0" "$T14A_RC"
+
+# T14-B: stale log (ts < start_ts) with ALL CLEAR → returns 1
+STALE_TS="20260601_115959"
+T14B_LOG="$T14_LOG_DIR/${STALE_TS}_${SLUG}_session.md"
+printf 'ALL CLEAR ✅\n' >"$T14B_LOG"
+rm -f "$T14A_LOG"
+T14B_RC=0
+is_gate_green "$SLUG" "$START_TS" || T14B_RC=$?
+assert_eq "T14-B: ALL CLEAR but ts<start (stale) → 1" "1" "$T14B_RC"
+
+# T14-C: qualifying log exists but NO ALL CLEAR → returns 1
+T14C_LOG="$T14_LOG_DIR/${START_TS}_${SLUG}_session.md"
+printf 'FAILED ❌\nNo gate green here\n' >"$T14C_LOG"
+rm -f "$T14B_LOG"
+T14C_RC=0
+is_gate_green "$SLUG" "$START_TS" || T14C_RC=$?
+assert_eq "T14-C: ts>=start but no ALL CLEAR → 1" "1" "$T14C_RC"
+
+# T14-D: no matching log at all → returns 1
+rm -f "$T14C_LOG"
+T14D_RC=0
+is_gate_green "$SLUG" "$START_TS" || T14D_RC=$?
+assert_eq "T14-D: no matching log → 1" "1" "$T14D_RC"
+
+# T14-E: two logs, newest has ALL CLEAR → 0; oldest also has ALL CLEAR
+OLDER_TS="20260601_120001"
+NEWER_TS="20260601_130000"
+T14E_OLD="$T14_LOG_DIR/${OLDER_TS}_${SLUG}_session.md"
+T14E_NEW="$T14_LOG_DIR/${NEWER_TS}_${SLUG}_session.md"
+printf 'ALL CLEAR ✅\n' >"$T14E_OLD"
+printf 'ALL CLEAR ✅\n' >"$T14E_NEW"
+T14E_RC=0
+is_gate_green "$SLUG" "$START_TS" || T14E_RC=$?
+assert_eq "T14-E: two logs, newest (ts-greatest) has ALL CLEAR → 0" "0" "$T14E_RC"
+
+# T14-F: two logs, newest lacks ALL CLEAR though older has it → 1 (newest wins)
+printf 'FAILED ❌\n' >"$T14E_NEW"
+T14F_RC=0
+is_gate_green "$SLUG" "$START_TS" || T14F_RC=$?
+assert_eq "T14-F: newest lacks ALL CLEAR though older has it → 1" "1" "$T14F_RC"
+rm -f "$T14E_OLD" "$T14E_NEW"
+
+# T14-G: slug-suffix isolation — log for "bar-my-pitch" does NOT match "my-pitch"
+SUFFIX_SLUG="bar-${SLUG}"
+T14G_LOG="$T14_LOG_DIR/${START_TS}_${SUFFIX_SLUG}_session.md"
+printf 'ALL CLEAR ✅\n' >"$T14G_LOG"
+T14G_RC=0
+is_gate_green "$SLUG" "$START_TS" || T14G_RC=$?
+assert_eq "T14-G: bar-my-pitch log does not satisfy is_gate_green my-pitch → 1" "1" "$T14G_RC"
+rm -f "$T14G_LOG"
+
+# ── Test T15: gate-green / commit-pending retry integration ───────────────────
+# Child fails non-transient (has result record) but a session log with ALL CLEAR
+# appears in logging/ with ts >= child-start ts → queue retries instead of halt.
+# On second attempt the stub ships the pitch.
+T15_ROOT="$TMP_ROOT/t15"
+make_workspace "$T15_ROOT"
+printf 'Pitch: beta\n' >"$T15_ROOT/codegen/pitches/ready/beta.md"
+
+T15_CALL_LOG="$T15_ROOT/calls.log"
+T15_ATTEMPT_FILE="$T15_ROOT/attempt"
+T15_DET='{"type":"result","result":"committed but not shipped","session_id":"sT15"}'
+
+# Stub that writes an ALL CLEAR session log on attempt 1 then ships on attempt 2.
+cat >"$T15_ROOT/fake-codegen-bin/codegen-build" <<'STUB15'
+#!/usr/bin/env bash
+CALL_LOG="${STUB_CALL_LOG:-/dev/null}"
+printf '%s\n' "$*" >>"$CALL_LOG"
+
+attempt=1
+if [ -n "${STUB_ATTEMPT_FILE:-}" ]; then
+    if [ -r "$STUB_ATTEMPT_FILE" ]; then
+        attempt="$(cat "$STUB_ATTEMPT_FILE" 2>/dev/null || printf '1')"
+    fi
+    printf '%s' "$((attempt + 1))" >"$STUB_ATTEMPT_FILE"
+fi
+
+# Parse pitch path from args
+pitch_path=""
+found_sep=0
+for a in "$@"; do
+    [ "$found_sep" = "1" ] && { pitch_path="$a"; break; }
+    [ "$a" = "--" ] && found_sep=1
+done
+pitch_path="${pitch_path#@}"
+slug="$(basename "$pitch_path" .md)"
+
+if [ "$attempt" = "1" ]; then
+    # Emit deterministic result (so is_transient returns 1 / not transient).
+    printf '{"type":"result","result":"gate passed but not shipped","session_id":"sT15"}\n'
+    # Write a session log with ALL CLEAR for this slug, using a ts >= child's ts.
+    log_ts="$(date -u +%Y%m%d_%H%M%S)"
+    mkdir -p "$PWD/codegen/logging"
+    printf 'ALL CLEAR ✅\n' >"$PWD/codegen/logging/${log_ts}_${slug}_session.md"
+    exit 1
+fi
+
+# Attempt 2: ship normally.
+if [ -n "$pitch_path" ]; then
+    shipped_dir="$PWD/codegen/pitches/shipped"
+    mkdir -p "$shipped_dir"
+    ready_path="$PWD/$pitch_path"
+    [ -f "$ready_path" ] && mv "$ready_path" "$shipped_dir/$slug.md"
+fi
+exit 0
+STUB15
+chmod +x "$T15_ROOT/fake-codegen-bin/codegen-build"
+
+T15_EXIT=0
+T15_OUT=$(
+    cd "$T15_ROOT"
+    STUB_CALL_LOG="$T15_CALL_LOG" \
+        STUB_ATTEMPT_FILE="$T15_ATTEMPT_FILE" \
+        CODEGEN_BUILD_QUEUE_MAX_RETRIES=3 \
+        CODEGEN_BUILD_QUEUE_RETRY_DELAYS="0 0 0" \
+        OCG_CODEGEN_DIR="$T15_ROOT/fake-codegen-bin" \
+        bash "$HELPER" --harness=claude 2>&1
+) || T15_EXIT=$?
+
+assert_eq "T15: gate-green/commit-pending retries and eventually ships → 0" "0" "$T15_EXIT"
+assert_eq "T15: slug shipped after gate-green retry" "1" \
+    "$([ -f "$T15_ROOT/codegen/pitches/shipped/beta.md" ] && printf '1' || printf '0')"
+T15_CALLS="$(grep -c '.' "$T15_CALL_LOG" 2>/dev/null || printf '0')"
+assert_eq "T15: exactly 2 calls (attempt 1 + 1 retry)" "2" "$T15_CALLS"
+assert_contains "T15: gate-green log line emitted" "gate green, commit pending" "$T15_OUT"
+
+# T15-B: gate-green exhausts MAX_RETRIES → exit 1 (bounded by budget)
+T15B_ROOT="$TMP_ROOT/t15b"
+make_workspace "$T15B_ROOT"
+printf 'Pitch: gamma\n' >"$T15B_ROOT/codegen/pitches/ready/gamma.md"
+
+T15B_CALL_LOG="$T15B_ROOT/calls.log"
+
+# Stub: always emits ALL CLEAR session log but never ships.
+cat >"$T15B_ROOT/fake-codegen-bin/codegen-build" <<'STUB15B'
+#!/usr/bin/env bash
+CALL_LOG="${STUB_CALL_LOG:-/dev/null}"
+printf '%s\n' "$*" >>"$CALL_LOG"
+
+pitch_path=""
+found_sep=0
+for a in "$@"; do
+    [ "$found_sep" = "1" ] && { pitch_path="$a"; break; }
+    [ "$a" = "--" ] && found_sep=1
+done
+pitch_path="${pitch_path#@}"
+slug="$(basename "$pitch_path" .md)"
+
+printf '{"type":"result","result":"deterministic failure","session_id":"sT15B"}\n'
+log_ts="$(date -u +%Y%m%d_%H%M%S)"
+mkdir -p "$PWD/codegen/logging"
+printf 'ALL CLEAR ✅\n' >"$PWD/codegen/logging/${log_ts}_${slug}_session.md"
+exit 1
+STUB15B
+chmod +x "$T15B_ROOT/fake-codegen-bin/codegen-build"
+
+T15B_EXIT=0
+(
+    cd "$T15B_ROOT"
+    STUB_CALL_LOG="$T15B_CALL_LOG" \
+        CODEGEN_BUILD_QUEUE_MAX_RETRIES=2 \
+        CODEGEN_BUILD_QUEUE_RETRY_DELAYS="0 0 0" \
+        OCG_CODEGEN_DIR="$T15B_ROOT/fake-codegen-bin" \
+        bash "$HELPER" --harness=claude >/dev/null 2>&1
+) || T15B_EXIT=$?
+
+assert_eq "T15-B: gate-green exhausts MAX_RETRIES → exit 1" "1" "$T15B_EXIT"
+T15B_CALLS="$(grep -c '.' "$T15B_CALL_LOG" 2>/dev/null || printf '0')"
+assert_eq "T15-B: total calls = 3 (1 initial + 2 retries = MAX_RETRIES)" "3" "$T15B_CALLS"
+
 # ── Summary ───────────────────────────────────────────────────────────────────
 printf '\nResults: %d passed, %d failed\n' "$pass" "$fail"
 
