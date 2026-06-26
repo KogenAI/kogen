@@ -41,8 +41,27 @@ export function register(pi: ExtensionAPI): void {
 
     if (!/\bgit\s+commit\b/.test(command)) return;
 
+    const projectDir =
+      process.env["CLAUDE_PROJECT_DIR"] ??
+      process.env["CWD"] ??
+      process.cwd();
+
     if (/--amend/.test(command)) {
-      debugLog("committer-single-commit-per-cycle", "allow: --amend present");
+      const buildStartTs = process.env["CODEGEN_BUILD_START_TS"] ?? "";
+      if (buildStartTs) {
+        const buildStartNum = parseInt(buildStartTs, 10);
+        const headCtStr = gitLog(projectDir, ["log", "-1", "--format=%ct"]);
+        const headCt = headCtStr ? parseInt(headCtStr, 10) : NaN;
+        if (!isNaN(headCt) && !isNaN(buildStartNum) && headCt < buildStartNum) {
+          return deny(
+            `BLOCKED by committer-single-commit-per-cycle: --amend would rewrite a commit from BEFORE this build cycle (HEAD commit time ${headCt} < cycle start ${buildStartNum}). That commit belongs to a prior cycle and is immutable to this one. To allow (emergency only): set COMMITTER_ALLOW_MULTI=1`,
+          );
+        }
+      }
+      debugLog(
+        "committer-single-commit-per-cycle",
+        "allow: --amend present (HEAD time ok or start ts unset)",
+      );
       return;
     }
 
@@ -63,11 +82,6 @@ export function register(pi: ExtensionAPI): void {
       return;
     }
     const buildStartNum = parseInt(buildStartTs, 10);
-
-    const projectDir =
-      process.env["CLAUDE_PROJECT_DIR"] ??
-      process.env["CWD"] ??
-      process.cwd();
 
     // Collect session commits: SHAs committed strictly after build start timestamp
     const logOutput = gitLog(projectDir, ["log", "--format=%H %ct"]);

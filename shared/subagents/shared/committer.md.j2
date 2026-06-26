@@ -33,7 +33,7 @@ Receive task summary from orchestrator. Use it + diff for one perfect message.
 6. Stage → commit: all in task → `git add -A`. Some unrelated → stage by name only. Default path: `git commit -m "subject"`. If body is warranted: `git commit -m "subject" -m "body paragraph"` (git inserts blank line). Avoid HEREDOC unless body has multiple paragraphs. NEVER add Co-Authored-By trailer.
 7. Write your section body under the existing `## committer Section` header the orchestrator already inserted in the active session log (path passed by orchestrator in the task). One line under the header is sufficient (section/ownership lifecycle defined in `session-log.md` §Ownership).
 
-Nothing to commit → `git commit --amend -m "message"`.
+Nothing to commit → emit `COMMIT_FAILED: nothing to commit (work already committed?)`. NEVER amend a clean tree — amend would rewrite a prior cycle's commit. Amend is permitted ONLY to fix the commit THIS cycle already made (its commit time ≥ this cycle's start).
 
 **Good**: "Prevent duplicate user registrations" / "Fix checkout failures on mobile" / "Prevent port conflicts between projects" / "Add user avatar uploads" / "Enable job contract negotiation"
 

@@ -183,5 +183,15 @@ describe("committer-single-commit-per-cycle", { concurrency: 1 }, () => {
       });
       assert.ok((result as { block?: boolean }).block === true);
     });
+
+    it("denies --amend when HEAD predates cycle start (foreign amend)", async () => {
+      // Set cycle start 1 hour in the future so HEAD commit time < cycle start
+      const futureStartTs = String(Math.floor(Date.now() / 1000) + 3600);
+      const result = await runHook("git commit --amend -m test", "committer", {
+        CODEGEN_BUILD_START_TS: futureStartTs,
+        CLAUDE_PROJECT_DIR: tmpDir,
+      });
+      assert.ok((result as { block?: boolean }).block === true);
+    });
   });
 });

@@ -6,9 +6,10 @@
 #   2. COMMITTER_ALLOW_MULTI=1 → allow (escape hatch)
 #   3. CODEGEN_BUILD_START_TS unset → allow (not a build context)
 #   4. Tool call is not git commit (e.g., git status) → allow
-#   5. --amend → allow (even with a session commit present)
+#   5. --amend → allow (even with a session commit present, when HEAD time ≥ start)
 #   6. First commit, no session commits in build window (future build_start) → allow
 #   7. Second non-amend commit (session commit already exists) → deny
+#   8. --amend on a repo whose HEAD commit time < CODEGEN_BUILD_START_TS → deny
 
 set -euo pipefail
 
@@ -158,6 +159,15 @@ run_test "first commit (no session commits in build window) → allow" "0" \
 run_test "second non-amend commit (session commit exists) → deny" "2" \
     "$(commit_fixture "committer" "$TMP")" \
     "CODEGEN_BUILD_START_TS=0" "CLAUDE_PROJECT_DIR=$TMP"
+
+# --- Test 8: --amend on repo whose HEAD commit time < CODEGEN_BUILD_START_TS → deny ---
+# The session commit in $TMP was made recently; set START_TS to HEAD_CT + 3600
+# (1 hour in the future) so HEAD predates the "cycle start" — foreign amend denied.
+HEAD_CT_FOR_T8="$(git -C "$TMP" log -1 --format="%ct")"
+FUTURE_START_TS_FOR_T8=$((HEAD_CT_FOR_T8 + 3600))
+run_test "--amend when HEAD predates cycle start → deny (foreign amend)" "2" \
+    "$(amend_fixture "committer" "$TMP")" \
+    "CODEGEN_BUILD_START_TS=$FUTURE_START_TS_FOR_T8" "CLAUDE_PROJECT_DIR=$TMP"
 
 printf '\nResults: %s passed, %s failed\n' "$pass" "$fail"
 

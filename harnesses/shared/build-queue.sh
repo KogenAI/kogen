@@ -264,6 +264,7 @@ SLUGS
     printf '[%d/%d] %s ... building\n' "$idx" "$TOTAL" "$slug"
 
     ts="$(date -u +%Y%m%d_%H%M%S)"
+    head_before="$(git rev-parse HEAD 2>/dev/null || true)"
     JSONL="$LOG_DIR/${ts}_${slug}_build.jsonl"
 
     # Spawn child; capture exit code through tee pipeline
@@ -285,6 +286,16 @@ SLUGS
 
         gate_green=0
         if is_gate_green "$slug" "$ts"; then gate_green=1; fi
+
+        # Gate passed and child already committed (HEAD moved) but did not ship:
+        # complete the ship here without re-spawning.
+        head_now="$(git rev-parse HEAD 2>/dev/null || true)"
+        if [ "$gate_green" = "1" ] && [ -n "$head_before" ] && [ "$head_now" != "$head_before" ] && [ ! -f "$SHIPPED_DIR/$slug.md" ]; then
+            mv "$READY_DIR/$slug.md" "$SHIPPED_DIR/$slug.md"
+            SHIPPED_COUNT=$((SHIPPED_COUNT + 1))
+            printf '[%d/%d] %s ... gate green, already committed — shipping\n' "$idx" "$TOTAL" "$slug"
+            continue
+        fi
 
         if { is_transient "$JSONL" || [ "$gate_green" = "1" ]; } && [ "$retry_count" -lt "$MAX_RETRIES" ]; then
             retry_count=$((retry_count + 1))

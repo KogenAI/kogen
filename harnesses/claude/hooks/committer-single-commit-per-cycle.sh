@@ -45,8 +45,18 @@ if ! printf '%s' "$COMMAND" | grep -qE '\bgit[[:space:]]+commit\b'; then
     exit 0
 fi
 
+project_dir="${CLAUDE_PROJECT_DIR:-${CWD:-$PWD}}"
+
 if printf '%s' "$COMMAND" | grep -qE -- '--amend'; then
-    debug_log committer-single-commit-per-cycle "allow: --amend present"
+    build_start_ts="${CODEGEN_BUILD_START_TS:-}"
+    if [ -n "$build_start_ts" ]; then
+        head_ct="$(git -C "$project_dir" log -1 --format=%ct 2>/dev/null || true)"
+        if [ -n "$head_ct" ] && [ "$head_ct" -lt "$build_start_ts" ] 2>/dev/null; then
+            deny "BLOCKED by committer-single-commit-per-cycle: --amend would rewrite a commit from BEFORE this build cycle (HEAD commit time ${head_ct} < cycle start ${build_start_ts}). That commit belongs to a prior cycle and is immutable to this one. To allow (emergency only): set COMMITTER_ALLOW_MULTI=1"
+            exit 0
+        fi
+    fi
+    debug_log committer-single-commit-per-cycle "allow: --amend present (HEAD time ok or start ts unset)"
     exit 0
 fi
 
@@ -60,8 +70,6 @@ if [ -z "$build_start_ts" ]; then
     debug_log committer-single-commit-per-cycle "allow: CODEGEN_BUILD_START_TS unset"
     exit 0
 fi
-
-project_dir="${CLAUDE_PROJECT_DIR:-${CWD:-$PWD}}"
 
 session_commits=$(git -C "$project_dir" log --format="%H %ct" 2>/dev/null |
     while IFS=' ' read -r sha ct; do

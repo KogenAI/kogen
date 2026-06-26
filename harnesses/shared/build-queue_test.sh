@@ -684,6 +684,82 @@ assert_eq "T15-B: gate-green exhausts MAX_RETRIES → exit 1" "1" "$T15B_EXIT"
 T15B_CALLS="$(grep -c '.' "$T15B_CALL_LOG" 2>/dev/null || printf '0')"
 assert_eq "T15-B: total calls = 3 (1 initial + 2 retries = MAX_RETRIES)" "3" "$T15B_CALLS"
 
+# ── Test T16: gate green + HEAD changed but ship-marker absent → ship, no re-spawn ─
+# Simulates: child's gate passes (ALL CLEAR), child made a git commit (HEAD moved)
+# but did NOT move the pitch file to shipped/. build-queue should detect the
+# HEAD-changed case and complete shipping without re-spawning the child.
+T16_ROOT="$TMP_ROOT/t16"
+make_workspace "$T16_ROOT"
+printf 'Pitch: kappa\n' >"$T16_ROOT/codegen/pitches/ready/kappa.md"
+
+# T16 requires a real git repo so HEAD tracking works.
+(
+    cd "$T16_ROOT"
+    git init -q
+    git config user.email "test@example.com"
+    git config user.name "Test"
+    git config commit.gpgsign false
+    printf 'baseline\n' >baseline.txt
+    git add baseline.txt
+    git -c core.hooksPath=/dev/null commit -q -m "baseline"
+)
+
+T16_CALL_LOG="$T16_ROOT/calls.log"
+
+# Custom stub: emits ALL CLEAR session log + makes a real git commit in $PWD
+# but does NOT move the pitch to shipped/.
+cat >"$T16_ROOT/fake-codegen-bin/codegen-build" <<'STUB16'
+#!/usr/bin/env bash
+CALL_LOG="${STUB_CALL_LOG:-/dev/null}"
+printf '%s\n' "$*" >>"$CALL_LOG"
+
+# Parse pitch path from args
+pitch_path=""
+found_sep=0
+for a in "$@"; do
+    [ "$found_sep" = "1" ] && { pitch_path="$a"; break; }
+    [ "$a" = "--" ] && found_sep=1
+done
+pitch_path="${pitch_path#@}"
+slug="$(basename "$pitch_path" .md)"
+
+# Emit a deterministic result record (not transient).
+printf '{"type":"result","result":"gate passed, committed but not shipped","session_id":"sT16"}\n'
+
+# Write ALL CLEAR session log so is_gate_green returns 0.
+log_ts="$(date -u +%Y%m%d_%H%M%S)"
+mkdir -p "$PWD/codegen/logging"
+printf 'ALL CLEAR ✅\n' >"$PWD/codegen/logging/${log_ts}_${slug}_session.md"
+
+# Make a real git commit so HEAD changes (simulates committer sub-agent having committed).
+printf 'child change\n' >child-change.txt
+git add child-change.txt
+git -c core.hooksPath=/dev/null commit -q -m "committer: implement $slug"
+
+# Do NOT move pitch to shipped/ — build-queue must detect HEAD-change and ship.
+exit 1
+STUB16
+chmod +x "$T16_ROOT/fake-codegen-bin/codegen-build"
+
+T16_EXIT=0
+T16_OUT=$(
+    cd "$T16_ROOT"
+    STUB_CALL_LOG="$T16_CALL_LOG" \
+        CODEGEN_BUILD_QUEUE_MAX_RETRIES=3 \
+        CODEGEN_BUILD_QUEUE_RETRY_DELAYS="0 0 0" \
+        OCG_CODEGEN_DIR="$T16_ROOT/fake-codegen-bin" \
+        bash "$HELPER" --harness=claude 2>&1
+) || T16_EXIT=$?
+
+assert_eq "T16: gate-green + HEAD-changed + no-ship → exits 0" "0" "$T16_EXIT"
+assert_eq "T16: pitch moved to shipped/" "1" \
+    "$([ -f "$T16_ROOT/codegen/pitches/shipped/kappa.md" ] && printf '1' || printf '0')"
+assert_eq "T16: pitch removed from ready/" "0" \
+    "$([ -f "$T16_ROOT/codegen/pitches/ready/kappa.md" ] && printf '1' || printf '0')"
+T16_CALLS="$(grep -c '.' "$T16_CALL_LOG" 2>/dev/null || printf '0')"
+assert_eq "T16: exactly 1 child call (no re-spawn)" "1" "$T16_CALLS"
+assert_contains "T16: stdout contains shipping message" "gate green, already committed — shipping" "$T16_OUT"
+
 # ── Summary ───────────────────────────────────────────────────────────────────
 printf '\nResults: %d passed, %d failed\n' "$pass" "$fail"
 
