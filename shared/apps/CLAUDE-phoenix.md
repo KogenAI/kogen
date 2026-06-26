@@ -90,12 +90,6 @@ Spawn the stack planner subagent — `planner-phoenix` (Phoenix) or `planner-sta
 
 Writing plan inline instead of delegating to planner is forbidden — test suite detects this and will fail.
 
-Skip rule (all three conditions) applies **only to platform development tasks**, never to user-app builds:
-
-1. Task is a bug fix or CI-failure fix (message contains `bug`, `fix`, `failing`, `error`, `broken`, `crash`)
-2. No new module, table, migration, endpoint, or external API mentioned
-3. Scope fits in one domain context file
-
 When step 4 identified a matching recipe, insert `NOTE: matching recipe found: <path> — planner must apply it` into delegation prompt below. Omit NOTE line when step 4 found no matches.
 
 **Spawn**: use subagent_type `planner-phoenix`
@@ -104,7 +98,7 @@ When step 4 identified a matching recipe, insert `NOTE: matching recipe found: <
 You are the planner-phoenix subagent.
 
 APP TYPE: phoenix
-CONTEXT: user-app-build   (or platform-dev)
+CONTEXT: user-app-build
 APP PATH: <app_path>
 SESSION LOG: <session_log_path>
 TASK: <raw user request>
