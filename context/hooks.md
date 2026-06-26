@@ -309,6 +309,14 @@ When a role's guard blocks Write to a file (e.g., `reviewer-guard.sh` blocks Wri
 
 See orchestrator.md section "Session Log Appends Under Role Guards" for full orchestrator implications (role-guard interactions still apply; session-log guards no longer create false deadlocks).
 
+### Section Header & Body Atomicity Requirement
+
+When a subagent edits a pre-seeded session-log section (e.g., `## developer-static Section` stub already present), updating both the `## Files Modified` list and the section body REQUIRES atomicity: both updates must occur in the SAME Edit call. Splitting across two sequential Edits causes the `session-log-section-integrity.sh` hook to detect a temporarily-missing header and deny the first Edit, blocking the second.
+
+**Correct pattern**: In a SINGLE Edit call, match `old_string` on a line from the section body (or the header itself) and `new_string` contains both updated content (Files Modified and section body together). This ensures the header never disappears between edits — the hook validates the final state after all substitutions.
+
+**Do NOT**: Attempt two sequential edits (update Files Modified list first, append section body second) — the intermediate state between edits will fail the integrity check.
+
 ### session-log-structure Order-Checking (FIXED)
 
 **Status (2026-06-26)**: Bug FIXED. The hook now uses result-simulation (applies `old_string` → `new_string` substitution to disk content before validation) instead of naive concatenation. See `harnesses/claude/hooks/session-log-structure.sh` (bash) and `harnesses/pi/pi-extensions/enforcement/src/hooks/session-log-structure.ts` (TypeScript).

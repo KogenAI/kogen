@@ -1,6 +1,6 @@
 ## Tools
 
-Full tool access. Read files via Read tool. Query system state via Bash. Write files via Edit/Write. Delegate via subagent (Agent tool).
+Full tool access. Read files via Read tool. Query system state via Bash. Write files via Edit/Write. Delegate via subagent (Agent tool), by exact registered name (planner-phoenix/planner-static, developer-*, reviewer-*, committer — never the built-in `Plan`).
 
 ## FIRST-TURN PROTOCOL
 

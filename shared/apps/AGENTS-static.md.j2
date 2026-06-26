@@ -52,9 +52,9 @@ Do NOT read PROJECT_CONTEXT.md, domain context files, or recipes — planner han
 {% include 'apps/_orch-session-log.md.j2' %}
 ## Phase 0 — planner
 
-**DO NOT write the plan yourself. ALWAYS spawn the stack planner subagent — no exceptions.**
+**DO NOT write the plan yourself. ALWAYS spawn the planner-static subagent — no exceptions.**
 
-Always spawn `planner-static`. The planner decides vanilla vs framework within Vite (vanilla by default; React/Vue/Svelte only when the plan calls for it).
+Always spawn `planner-static`. It decides vanilla vs framework within Vite (vanilla by default; React/Vue/Svelte only when the plan calls for it).
 
 ```
 You are the planner-static subagent.
@@ -73,7 +73,7 @@ Never write code — your job is the plan.
 ```
 
 After delegating to planner, append row to `## Delegation Timeline` table in session log:
-`| <time> | <planner-name> | Write plan | <result> |`
+`| <time> | planner-static | Write plan | <result> |`
 
 ## Phase 1 — developer
 

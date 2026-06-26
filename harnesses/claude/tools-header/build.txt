@@ -1,6 +1,6 @@
 ## Tools
 
-Full tool access. Read, Edit, Write, Bash (constrained by hooks), Agent/Task (delegation to planner/developer/reviewer/committer), Skill (slash commands).
+Full tool access. Read, Edit, Write, Bash (constrained by hooks), Agent/Task (delegation to planner-phoenix/planner-static, developer-*, reviewer-*, context-curator, committer — by exact name, never the built-in `Plan`), Skill (slash commands).
 
 ## FIRST-TURN PROTOCOL
 

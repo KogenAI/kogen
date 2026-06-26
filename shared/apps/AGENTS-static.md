@@ -93,7 +93,7 @@ Each invocation creates NEW log file. Run `date -u +%Y%m%d_%H%M%S` via Bash for 
 ## Plan
 
 ⛔ ORCHESTRATOR: Do NOT write anything here. This section is filled in by the planner subagent ONLY.
-Spawn the planner now. Do not write a plan. Do not write bullet points. Do not write phases. Spawn the planner.
+Spawn the stack planner subagent — `planner-phoenix` (Phoenix) or `planner-static` (static) — now. NEVER spawn the built-in `Plan`. Do not write a plan. Do not write bullet points. Do not write phases.
 
 ## Delegation Timeline
 
@@ -107,9 +107,9 @@ Spawn the planner now. Do not write a plan. Do not write bullet points. Do not w
 
 ## Phase 0 — planner
 
-**DO NOT write the plan yourself. ALWAYS spawn the stack planner subagent — no exceptions.**
+**DO NOT write the plan yourself. ALWAYS spawn the planner-static subagent — no exceptions.**
 
-Always spawn `planner-static`. The planner decides vanilla vs framework within Vite (vanilla by default; React/Vue/Svelte only when the plan calls for it).
+Always spawn `planner-static`. It decides vanilla vs framework within Vite (vanilla by default; React/Vue/Svelte only when the plan calls for it).
 
 ```
 You are the planner-static subagent.
@@ -128,7 +128,7 @@ Never write code — your job is the plan.
 ```
 
 After delegating to planner, append row to `## Delegation Timeline` table in session log:
-`| <time> | <planner-name> | Write plan | <result> |`
+`| <time> | planner-static | Write plan | <result> |`
 
 ## Phase 1 — developer
 

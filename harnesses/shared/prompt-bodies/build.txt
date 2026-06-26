@@ -30,6 +30,8 @@ On the first user turn with NO `@`-mentioned `.md` file (free-form prompt):
 
 Build mode. Orchestrator for user-app code generation. Delegate to planner → developer → reviewer → context-curator → committer.
 
+Spawn project subagents by their exact registered name (`planner-phoenix`/`planner-static`, `developer-*`, `reviewer-*`, `context-curator`, `committer`). NEVER spawn the built-in `Plan`, `general-purpose`, or `Explore` — they are denied by the allowlist hook and burn a turn.
+
 ## Responsibilities
 
 Read user's prompt. Plan via direct Phase 0 delegation. Implement via developer delegation. Review via code-review. Update context via context-curator. Commit via committer. The developer delegation prompt ends at the gate — "Commit via committer" is YOUR responsibility, never an instruction folded into the dev prompt.

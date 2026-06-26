@@ -86,7 +86,7 @@ Each invocation creates NEW log file. Run `date -u +%Y%m%d_%H%M%S` via Bash for 
 ## Plan
 
 ⛔ ORCHESTRATOR: Do NOT write anything here. This section is filled in by the planner subagent ONLY.
-Spawn the planner now. Do not write a plan. Do not write bullet points. Do not write phases. Spawn the planner.
+Spawn the stack planner subagent — `planner-phoenix` (Phoenix) or `planner-static` (static) — now. NEVER spawn the built-in `Plan`. Do not write a plan. Do not write bullet points. Do not write phases.
 
 ## Delegation Timeline
 
@@ -100,7 +100,7 @@ Spawn the planner now. Do not write a plan. Do not write bullet points. Do not w
 
 ## Phase 0 — planner
 
-**DO NOT write the plan yourself. ALWAYS spawn the planner subagent — no exceptions for user-app builds.**
+**DO NOT write the plan yourself. ALWAYS spawn the planner-phoenix subagent — no exceptions for user-app builds.**
 
 **For ALL user-app builds (first build, feature add, change request, any new capability): planner ALWAYS runs. There is no skip rule for user-app builds.**
 
@@ -115,7 +115,7 @@ Skip rule (all three conditions) applies **only to platform development tasks**,
 When step 4 identified a matching recipe, insert `NOTE: matching recipe found: <path> — planner must apply it` into delegation prompt below. Omit NOTE line when step 4 found no matches.
 
 ```
-You are the planner subagent.
+You are the planner-phoenix subagent.
 
 APP TYPE: phoenix
 CONTEXT: user-app-build   (or platform-dev)
@@ -134,7 +134,7 @@ Never write code — your job is the plan.
 ```
 
 After delegating to planner, append row to `## Delegation Timeline` table in session log:
-`| <time> | planner | Write plan | <result> |`
+`| <time> | planner-phoenix | Write plan | <result> |`
 
 ## Phase 1a — developer-phoenix-backend (conditional)
 
