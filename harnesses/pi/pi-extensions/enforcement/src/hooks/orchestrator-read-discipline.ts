@@ -94,7 +94,7 @@ export function register(pi: ExtensionAPI): void {
         const verbMatch = command.match(/^\s*(find|grep|rg|ls|tree|cat)\b/);
         const verb = verbMatch ? verbMatch[1] : "exploration-verb";
         return deny(
-          `Orchestrator cannot investigate via Bash (\`${verb}\`). Delegate to Explore subagent or planner.\nExample: delegate to planner with 'Find X in lib/...' — planner reads/greps codebase, returns 100-token answer instead of flooding orchestrator context.`,
+          `Orchestrator cannot investigate via Bash (\`${verb}\`). Delegate to the planner subagent (planner-phoenix / planner-static).\nExample: delegate to planner with 'Find X in lib/...' — planner reads/greps codebase, returns 100-token answer instead of flooding orchestrator context.`,
         );
       }
       return; // allowed Bash (git/make/date/cp/etc.)
@@ -110,7 +110,7 @@ export function register(pi: ExtensionAPI): void {
       if (isAllowedReadPath(filePath)) return;
 
       return deny(
-        `Orchestrator cannot read ${filePath}. Delegate to Explore subagent or planner.\nExample: delegate to planner with 'Find X in lib/...' — planner reads codebase, returns 100-token answer instead of flooding orchestrator context.`,
+        `Orchestrator cannot read ${filePath}. Delegate to the planner subagent (planner-phoenix / planner-static).\nExample: delegate to planner with 'Find X in lib/...' — planner reads codebase, returns 100-token answer instead of flooding orchestrator context.`,
       );
     }
   });

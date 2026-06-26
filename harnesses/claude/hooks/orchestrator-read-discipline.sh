@@ -15,7 +15,7 @@
 #   2. Investigating via Bash with exploration verbs: find, grep, rg, ls, tree, cat
 #      (denial anchored on LEADING token only so git/make/date/cp pass through)
 #
-# Orchestrator should delegate exploration to planner or Explore subagent.
+# Orchestrator should delegate exploration to the planner subagent (planner-phoenix / planner-static).
 #
 # Read — Allowed paths:
 #   - codegen/logging/* (session logs only)
@@ -131,6 +131,6 @@ if printf '%s' "$rel_path" | grep -qE '^codegen/gate-pending/'; then
     exit 0
 fi
 
-deny "Orchestrator cannot read $FILE_PATH. Delegate to Explore subagent or planner.
+deny "Orchestrator cannot read $FILE_PATH. Delegate to the planner subagent (planner-phoenix / planner-static).
 Example: delegate to planner with 'Find X in lib/...' — planner reads codebase, returns 100-token answer instead of flooding orchestrator context."
 exit 0

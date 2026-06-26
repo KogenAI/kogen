@@ -301,6 +301,14 @@ See `context/launcher-hook-matrix.md` for which orchestrator-level hooks gate ea
 
 **Integration**: Ops/debug launchers source `ssh-target.sh`. Ops rule body (`prompt-bodies/ops.txt`) concatenated at generate-time into baked system-prompt; inert until `make install`.
 
+## Platform Repo Makefile Targets
+
+The platform (codegen) repo uses `make test` as the gate command, NOT `make ci` (no ci target). Downstream app repos (Phoenix/static) may differ — always verify the Makefile target exists before specifying gate commands in a `## Plan` gate-json block. The `gate_select_read_planner_json` hook reads gate commands ONLY from the `## Plan` section (awk exits on next `## ` header); gate-json in developer/reviewer sections is invisible to the gate hook.
+
+## Gate-JSON Section Visibility
+
+The gate-selection hook (`harnesses/claude/hooks/lib/gate-select.sh`) reads ```gate-json blocks from the `## Plan`section ONLY. A gate-json block appearing in any other section (e.g.,`## developer-phoenix-backend Section`) is not parsed and the gate command is never triggered. Always place gate-json inside `## Plan` above any sibling H2 headings (`## Slices`, etc.). If gate-json is moved or edited in a non-Plan section during development, the gate hook will fail to find it and fall back to prose-based `**Gate**:`fallback (less reliable). Verify gate-json is in`## Plan` before closing the planning phase.
+
 ## Launcher `.sh` Files: Runtime Scripts vs Baked Prompts
 
 **Critical distinction**: Launcher `.sh` files (`harnesses/claude/claude-shape.sh`, `claude-debug.sh`, etc.) are **runtime scripts copied by `make install`**, not baked into system prompts. Edits to launcher flags propagate via the **install process**, not via prompt-content-parity sentinel sync.

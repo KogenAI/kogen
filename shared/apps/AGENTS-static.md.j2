@@ -56,6 +56,8 @@ Do NOT read PROJECT_CONTEXT.md, domain context files, or recipes — planner han
 
 Always spawn `planner-static`. It decides vanilla vs framework within Vite (vanilla by default; React/Vue/Svelte only when the plan calls for it).
 
+**Spawn**: use subagent_type `planner-static`
+
 ```
 You are the planner-static subagent.
 
@@ -78,6 +80,8 @@ After delegating to planner, append row to `## Delegation Timeline` table in ses
 ## Phase 1 — developer
 
 **Spawn developer-static.** Relay the planner's developer delegation prompt verbatim — do NOT rebuild it or add steps.
+
+**Spawn**: use subagent_type `developer-static`
 
 ```
 You are the developer-static subagent.
@@ -121,6 +125,8 @@ After delegating, append row to `## Delegation Timeline`:
 
 After {% if tool.name == 'claude' %}hook appends{% else %}orchestrator records{% endif %} `ALL CLEAR ✅`: **spawn reviewer-static immediately.**
 
+**Spawn**: use subagent_type `reviewer-static`
+
 ```
 You are the reviewer-static subagent.
 
@@ -163,6 +169,8 @@ If issues found: delegate fixes to the developer whose files were flagged → re
 ## Phase 3.5 — context-curator
 
 After reviewer-static approves: **spawn context-curator immediately.**
+
+**Spawn**: use subagent_type `context-curator`
 
 ```
 You are the context-curator subagent.

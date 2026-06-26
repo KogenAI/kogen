@@ -114,6 +114,8 @@ Skip rule (all three conditions) applies **only to platform development tasks**,
 
 When step 4 identified a matching recipe, insert `NOTE: matching recipe found: <path> — planner must apply it` into delegation prompt below. Omit NOTE line when step 4 found no matches.
 
+**Spawn**: use subagent_type `planner-phoenix`
+
 ```
 You are the planner-phoenix subagent.
 
@@ -139,6 +141,8 @@ After delegating to planner, append row to `## Delegation Timeline` table in ses
 ## Phase 1a — developer-phoenix-backend (conditional)
 
 **Spawn ONLY when plan's `## Slices` lists `backend`.**
+
+**Spawn**: use subagent_type `developer-phoenix-backend`
 
 ```
 You are the developer-phoenix-backend subagent.
@@ -175,6 +179,8 @@ After delegating to developer-phoenix-backend, append row to `## Delegation Time
 **Spawn ONLY when plan's `## Slices` lists `frontend`.** Spawn after Phase 1a if it ran, else spawn directly.
 
 **If Phase 1a ran**: treat its `## developer-phoenix-backend Section` files as constraints — do NOT modify schemas, migrations, seeds, context fns, Oban workers, or mailers.
+
+**Spawn**: use subagent_type `developer-phoenix-frontend`
 
 ```
 You are the developer-phoenix-frontend subagent.
@@ -220,6 +226,8 @@ No `verification-engineer` agent delegation. Hook owns classification.
 
 After orchestrator records `ALL CLEAR ✅`: **spawn reviewer-phoenix immediately. Do NOT re-read session log first — you already have the ALL CLEAR. Act now.**
 
+**Spawn**: use subagent_type `reviewer-phoenix`
+
 ```
 You are the reviewer-phoenix subagent.
 
@@ -263,6 +271,8 @@ If issues found: delegate fixes to the slice owner (developer-phoenix-backend / 
 
 After reviewer-phoenix approves: **spawn context-curator immediately.**
 
+**Spawn**: use subagent_type `context-curator`
+
 ```
 You are the context-curator subagent.
 
@@ -285,6 +295,8 @@ After delegating to context-curator, append row to `## Delegation Timeline`:
 ## Phase 4 — committer
 
 After context-curator completes: **spawn committer.**
+
+**Spawn**: use subagent_type `committer`
 
 ```
 

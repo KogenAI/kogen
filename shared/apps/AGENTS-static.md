@@ -111,6 +111,8 @@ Spawn the stack planner subagent — `planner-phoenix` (Phoenix) or `planner-sta
 
 Always spawn `planner-static`. It decides vanilla vs framework within Vite (vanilla by default; React/Vue/Svelte only when the plan calls for it).
 
+**Spawn**: use subagent_type `planner-static`
+
 ```
 You are the planner-static subagent.
 
@@ -133,6 +135,8 @@ After delegating to planner, append row to `## Delegation Timeline` table in ses
 ## Phase 1 — developer
 
 **Spawn developer-static.** Relay the planner's developer delegation prompt verbatim — do NOT rebuild it or add steps.
+
+**Spawn**: use subagent_type `developer-static`
 
 ```
 You are the developer-static subagent.
@@ -167,6 +171,8 @@ Orchestrator verdict:
 ## Phase 3 — reviewer-static
 
 After orchestrator records `ALL CLEAR ✅`: **spawn reviewer-static immediately.**
+
+**Spawn**: use subagent_type `reviewer-static`
 
 ```
 You are the reviewer-static subagent.
@@ -211,6 +217,8 @@ If issues found: delegate fixes to the developer whose files were flagged → re
 
 After reviewer-static approves: **spawn context-curator immediately.**
 
+**Spawn**: use subagent_type `context-curator`
+
 ```
 You are the context-curator subagent.
 
@@ -233,6 +241,8 @@ After delegating to context-curator, append row to `## Delegation Timeline`:
 ## Phase 4 — committer
 
 After context-curator completes: **spawn committer.**
+
+**Spawn**: use subagent_type `committer`
 
 ```
 

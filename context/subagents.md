@@ -108,6 +108,14 @@ When editing subagent templates to add a new include line after an existing anch
 
 Verified pattern: all 10 templates have `{% include 'rules/_core/output-style.md' %}` on a single line, followed by distinct next line (either another include or blank). Two-line pairing is sufficient for all files.
 
+## Explicit Subagent Spawn Directives
+
+Every spawn-prompt code fence in `shared/apps/AGENTS-{phoenix,static}.md.j2` must be preceded by a directive line naming the subagent type. Pattern: a line `**Spawn**: use subagent_type \`<token>\``immediately above the fenced delegation prompt, on its own line, OUTSIDE any Jinja conditional. This allows the orchestrator to declare`subagent_type`parameter to the Agent tool, preventing fallback-guessing from prompt-text heuristics. The directive satisfies`operator-subagent-allowlist.sh` gate (allowlisted tokens pass on first spawn; preventing churn from denied built-in agents).
+
+**Committer spawn location**: The committer delegation prompt lives in `shared/apps/_orch-committer.md.j2` (a shared include consumed by both Phoenix and static orchestrator templates). One `**Spawn**: use subagent_type \`committer\`` directive edit covers BOTH stacks' Phase 4 — no duplicate edit needed in per-stack files.
+
+**Spawn directive placement**: The line is placed immediately ABOVE the opening `\`\`\`` fence of the delegation prompt, on its own line. It is NOT wrapped in Jinja conditionals (`{% if tool.name == 'claude' %}...{% endif %}`), so it renders identically in both pi and claude harness variants.
+
 ## Retrospective Scan Scope in Session Logs
 
 The `subagent-retrospective-guard.sh` hook scans session-log `## Plan` blocks to extract `### What I Learned This Step` retrospective blocks for context-curator routing. **Scan stops at the first `^## ` H2 header** encountered after `## Plan` start. If the delegation prompt includes a fenced code block (e.g., `\`\`\`gate-json`, `\`\`\``) containing H2 markers like `## Files to touch`, those markers are treated as H2 boundaries and truncate the scan window. **Consequence**: retrospective blocks must precede ANY fenced `## `line, not just H2 headings outside fences. Move retrospective to the`## Plan` body proper (before the delegation-prompt fence).
