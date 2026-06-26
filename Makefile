@@ -182,6 +182,9 @@ tools-header-no-dup:
 	fi; \
 	exit $$rc
 
+.PHONY: ci
+ci: test
+
 # test: run every PreToolUse/SubagentStop/Stop hook unit-test script in parallel.
 # Each *_test.sh is hermetic — own tmp dirs, no shared state — so xargs -P is safe.
 # Job count caps at 8 to avoid thrashing on smaller machines.
