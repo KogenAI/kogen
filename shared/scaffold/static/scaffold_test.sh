@@ -8,7 +8,7 @@
 #  (d) root index.html contains app-name and src/main.js script tag
 #  (e) README.md contains app-name + "npm install" + "npm run build" + "npm run serve"
 #  (f) vite.config.js exists with outDir "public" and @tailwindcss/vite; src/main.js and src/style.css exist
-#  (prettier) scaffold output is prettier-clean (npx prettier --check .)
+#  (prettier) scaffold output is prettier-clean (prettier --check)
 #  codegen-scaffold smoke:
 #  (g) bad --stack=x exits 2
 #  (h) missing --slug for create exits 2
@@ -133,12 +133,12 @@ VITE_CONTENT="$(<"$TMPDIR/vite.config.js")"
 assert_contains "vite.config.js has outDir public" "$VITE_CONTENT" '"public"'
 assert_contains "vite.config.js has @tailwindcss/vite" "$VITE_CONTENT" "@tailwindcss/vite"
 
-# (prettier) scaffold output is prettier-clean
-if command -v npx >/dev/null 2>&1; then
-    PRETTIER_EXIT=0
-    (cd "$TMPDIR" && npx --no-install prettier --check . 2>/dev/null) || PRETTIER_EXIT=$?
-    assert_exit "scaffold output is prettier-clean" "0" "$PRETTIER_EXIT"
-fi
+# (prettier) scaffold output is prettier-clean (repo-pinned binary; absence = broken toolchain → FAIL)
+PRETTIER_BIN="$CODEGEN_ROOT/node_modules/.bin/prettier"
+assert_file_exists "repo-pinned prettier binary present" "$PRETTIER_BIN"
+PRETTIER_EXIT=0
+"$PRETTIER_BIN" --no-config --check "$TMPDIR" >/dev/null 2>&1 || PRETTIER_EXIT=$?
+assert_exit "scaffold output is prettier-clean" "0" "$PRETTIER_EXIT"
 
 # codegen/pitches lifecycle dirs
 assert_file_exists "codegen/pitches/draft/.gitkeep exists" "$TMPDIR/codegen/pitches/draft/.gitkeep"

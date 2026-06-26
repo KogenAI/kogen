@@ -7,14 +7,28 @@ Every guard → ≥14 cases: both DENY and ALLOW paths. Silent failures (grep pa
 
 ## Guard Optional Pipeline Assertions
 
-Pattern: guard optional pipeline assertions (e.g., `mix assets.deploy`, `npm run build`) with filesystem + config checks rather than assuming silent success means the operation succeeded. Silent-success commands (exit 0 but no output) can mask misconfiguration.
+Two distinct cases — both FORBID bare skip:
 
-Example: `mix assets.deploy` exits 0 silently if the alias isn't defined in `mix.exs`. Assertion guard must check:
+**(a) Guaranteed dependency** — anything `make doctor`/`make install` provisions (node, prettier, yq, etc.):
+
+- Never guard presence as "optional". Absence = broken toolchain → FAIL.
+- Assert presence explicitly (`assert_file_exists`, `assert_binary_present`) and let test fail loud.
+- ❌ `if command -v node >/dev/null 2>&1; then ... fi` (no else = fake-green when node absent)
+- ✅ `assert_file_exists "node binary present" "$(command -v node)"` then run unconditionally
+
+**(b) Genuinely-optional feature** — e.g., a downstream app may legitimately omit `assets.deploy` alias:
+
+- Assert the ABSENCE-PATH behavior: verify the fallback fires or the no-op is correct.
+- Check filesystem + config preconditions first; if preconditions fail, assert the absence behavior.
+- ❌ `if config_precondition?(); then assert_output ...; fi` (no else = bare skip, asserts nothing)
+- ✅ Check precondition; if absent, assert the expected fallback/no-op; if present, assert the full output.
+
+Pattern for genuinely-optional: `mix assets.deploy` exits 0 silently if alias isn't defined in `mix.exs`. Assertion guard must check:
 
 1. Filesystem precondition (e.g., `assets/` dir exists)
 2. Config precondition (e.g., `"assets.deploy"` alias defined in `mix.exs`)
 
-Only assert the output if both preconditions pass. Otherwise skip the assertion (test still passes; optional feature not available).
+If preconditions fail → assert the absence behavior (skip message emitted, no-op confirmed). If preconditions pass → assert the full output.
 
 ## Hermeticity Baseline for Hook Tests
 
