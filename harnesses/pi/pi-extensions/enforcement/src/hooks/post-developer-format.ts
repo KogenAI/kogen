@@ -104,7 +104,7 @@ export function register(pi: ExtensionAPI): void {
 
     // LLM-test signal detection
     const llmPattern =
-      /context\/llm\.md|.*\.md\.j2|codegen\/rules\/|codegen\/recipes\/|context\/apps\/CLAUDE-.*\.md|PLATFORM_INFO\.md/;
+      /context\/llm\.md|.*\.md\.j2|codegen\/rules\/|codegen\/recipes\/|context\/apps\/CLAUDE-.*\.md/;
     const llmFiles = changedFiles.filter((f) => llmPattern.test(f));
 
     if (llmFiles.length > 0) {

@@ -16,7 +16,7 @@ Cache reads dominate. Hit ratio should be 0.85+. A 30k-token system prompt at 0.
 
 ## BuildWorker (Haiku, medium effort)
 
-**Cache is the budget.** Anything that touches the stable prefix mid-build (tool definitions, system prompt, agent JSON, settings JSON, `PLATFORM_INFO.md`) is effectively a deploy event: measure before/after via your platform's agent-measurement script and verify `total_cache_hit_ratio` in the project's daily stats table the next day. (Example: a platform provides an agent-measurement script + a daily-stats table.)
+**Cache is the budget.** Anything that touches the stable prefix mid-build (tool definitions, system prompt, agent JSON, settings JSON, any consumer-injected system-prompt file) is effectively a deploy event: measure before/after via your platform's agent-measurement script and verify `total_cache_hit_ratio` in the project's daily stats table the next day. (Example: a platform provides an agent-measurement script + a daily-stats table.)
 
 ## Role → Model/Effort Reference
 

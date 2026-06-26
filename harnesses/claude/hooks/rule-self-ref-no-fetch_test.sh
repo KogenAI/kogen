@@ -39,7 +39,6 @@ ALLOWLIST=(
     "INDEX.md"
     "_INDEX.md"
     "usage_rules_INDEX.md"
-    "PLATFORM_INFO.md"
     "PROJECT_CONTEXT.md"
     "STYLE_GUIDE.md"
     "style-caveman-ultra.md"

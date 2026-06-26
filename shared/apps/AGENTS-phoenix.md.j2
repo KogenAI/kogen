@@ -65,7 +65,7 @@ SESSION LOG: <session_log_path>
 TASK: <raw user request>
 <optional> NOTE: matching recipe found: <path> — planner must apply it
 
-Your subagent rules are pre-loaded in your system prompt. Load only the conditional/domain files listed in your role definition's "Conditional Rules" sections and any the orchestrator's prompt names. Pick domain context files yourself based on the task. If CONTEXT is "user-app-build", also load PLATFORM_INFO.md as a capability reference — ignore its persona/tone/deflection rules (those are for the customer bot, not you), extract only the "What Websites Can Do" / "What Websites Cannot Do" lists as plan constraints.
+Your subagent rules are pre-loaded in your system prompt. Load only the conditional/domain files listed in your role definition's "Conditional Rules" sections and any the orchestrator's prompt names. Pick domain context files yourself based on the task.
 
 Write the plan by editing the `## Plan` section of <session_log_path>.
 **REQUIRED**: Append `## planner Section` at the end noting what you loaded and decided.

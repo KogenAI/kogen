@@ -234,7 +234,7 @@ fi
 
 # ── LLM-test signal detection (across all repos) ─────────────────────────────
 all_relative=$(printf '%s' "$all_relative" | awk 'NF')
-llm_pattern='context/llm\.md|.*\.md\.j2|codegen/rules/|codegen/recipes/|context/apps/CLAUDE-.*\.md|PLATFORM_INFO\.md'
+llm_pattern='context/llm\.md|.*\.md\.j2|codegen/rules/|codegen/recipes/|context/apps/CLAUDE-.*\.md'
 if printf '%s\n' "$all_relative" | grep -qE "$llm_pattern"; then
     flag_dir="${project_dir}/codegen/llm-pending"
     mkdir -p "$flag_dir" 2>/dev/null || true

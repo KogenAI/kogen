@@ -54,7 +54,7 @@ Prompt structure:
 Modifying `tools` invalidates `system` and `messages` too. What busts cache:
 
 - Editing agent files → `make install` regenerates `~/.claude/agents/*.md` → new `mtimes_hash` → in-memory cache miss → cache re-bake on next spawn.
-- `PLATFORM_INFO.md` edit → platform-info hash flips → system prompt changes → all active caches pay the write tax once.
+- A consumer-injected system-prompt file edit → its content hash flips → system prompt changes → all active caches pay the write tax once.
 - `CLAUDE.md` or `AGENTS.md` edit → same cascade as agent file edits.
 - Settings or agents JSON key change → bundle-key mismatch → re-bake.
 
