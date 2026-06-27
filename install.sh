@@ -698,6 +698,15 @@ for _harness in "${HARNESSES[@]}"; do
         done
     fi
 
+    # Remove orphaned legacy codex-* launchers (removed from source; never in any
+    # manifest). Hardcoded known names.
+    for _codex in codex-build codex-inspector codex-refactor codex-shape; do
+        if [ -f "$INSTALL_DIR/$_codex" ]; then
+            rm -f "$INSTALL_DIR/$_codex"
+            echo "   🗑️  Removed orphaned legacy launcher: $_codex"
+        fi
+    done
+
     echo ""
     echo "🚀 Installing $_harness zsh completions..."
     if [ -n "$ZSH_COMPLETION_DST" ]; then

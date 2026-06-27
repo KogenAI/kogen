@@ -90,6 +90,12 @@ assert "codegen/subagents platform symlink resolves" '[ -e "$CODEGEN_DIR/codegen
 # Assert non-interactive run with OCG_DEFAULT_AGENT exits 0
 # config.json already written by first run — delete it so the second run hits the selection path
 rm -f "$tmp_home/.ocg/config.json"
+# Plant orphaned legacy codex-* stubs so second install.sh prunes them
+mkdir -p "$tmp_home/.local/bin"
+for _codex in codex-build codex-inspector codex-refactor codex-shape; do
+    printf '#!/bin/sh\n' >"$tmp_home/.local/bin/$_codex"
+    chmod +x "$tmp_home/.local/bin/$_codex"
+done
 if ! OCG_DEFAULT_AGENT=claude OCG_NONINTERACTIVE=1 "$CODEGEN_DIR/install.sh" --harness=claude </dev/null >"$tmp_home/install2.log" 2>&1; then
     failed=$((failed + 1))
     fail_lines+=("FAIL: non-interactive install.sh exited non-zero")
@@ -97,6 +103,17 @@ if ! OCG_DEFAULT_AGENT=claude OCG_NONINTERACTIVE=1 "$CODEGEN_DIR/install.sh" --h
 fi
 assert "non-interactive run sets default_agent=claude" \
     '[ "$(jq -r .default_agent "$tmp_home/.ocg/config.json" 2>/dev/null)" = "claude" ]'
+# Assert codex stubs pruned by install
+for _codex in codex-build codex-inspector codex-refactor codex-shape; do
+    assert "install pruned orphaned legacy launcher '$_codex'" \
+        '[ ! -f "$tmp_home/.local/bin/$_codex" ]'
+done
+
+# Plant orphaned legacy codex-* stubs again so uninstall.sh prunes them
+for _codex in codex-build codex-inspector codex-refactor codex-shape; do
+    printf '#!/bin/sh\n' >"$tmp_home/.local/bin/$_codex"
+    chmod +x "$tmp_home/.local/bin/$_codex"
+done
 
 # Run uninstall (answer N to both prompts → keep claude data tree)
 printf 'N\nN\n' | SHELL=/bin/bash "$CODEGEN_DIR/uninstall.sh" >"$tmp_home/uninstall.log" 2>&1 || {
@@ -106,6 +123,12 @@ printf 'N\nN\n' | SHELL=/bin/bash "$CODEGEN_DIR/uninstall.sh" >"$tmp_home/uninst
 
 # Assert removals — ocg symlink removed (uninstall.sh always removes it)
 assert "ocg symlink removed" '[ ! -e "$tmp_home/.local/bin/ocg" ]'
+
+# Assert codex stubs pruned by uninstall
+for _codex in codex-build codex-inspector codex-refactor codex-shape; do
+    assert "uninstall pruned orphaned legacy launcher '$_codex'" \
+        '[ ! -f "$tmp_home/.local/bin/$_codex" ]'
+done
 
 # Note: claude-specific launchers (claude-build, etc.) are NOT removed by uninstall.sh
 # (only the ocg symlink and pi launchers are removed). This is current behavior.

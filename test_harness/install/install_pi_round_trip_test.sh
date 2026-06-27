@@ -82,6 +82,13 @@ else
     assert "install.sh exited 0" 'true'
 fi
 
+# Plant orphaned legacy codex-* stubs so uninstall.sh prunes them
+mkdir -p "$tmp_home/.local/bin"
+for _codex in codex-build codex-inspector codex-refactor codex-shape; do
+    printf '#!/bin/sh\n' >"$tmp_home/.local/bin/$_codex"
+    chmod +x "$tmp_home/.local/bin/$_codex"
+done
+
 # Run uninstall
 printf 'N\nN\n' | SHELL=/bin/bash "$CODEGEN_DIR/uninstall.sh" >"$tmp_home/uninstall.log" 2>&1 || {
     failed=$((failed + 1))
@@ -94,6 +101,12 @@ if [ -f "$CODEGEN_DIR/harnesses/pi/manifest.yaml" ] && command -v yq >/dev/null 
         assert "pi launcher '$name' removed after uninstall" '[ ! -f "$tmp_home/.local/bin/$name" ]'
     done < <(yq e '.launchers[] | [.src, .name] | join("\t")' "$CODEGEN_DIR/harnesses/pi/manifest.yaml" 2>/dev/null)
 fi
+
+# Assert codex stubs pruned by uninstall
+for _codex in codex-build codex-inspector codex-refactor codex-shape; do
+    assert "uninstall pruned orphaned legacy launcher '$_codex'" \
+        '[ ! -f "$tmp_home/.local/bin/$_codex" ]'
+done
 
 # Pi agents .md files removed unconditionally (no prompt in uninstall.sh)
 # uninstall.sh removes the .md files but may leave the empty dir
