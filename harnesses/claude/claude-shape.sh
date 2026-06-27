@@ -36,6 +36,85 @@ fi
 source "$CODEGEN_DIR/harnesses/claude/load-role.sh"
 load_role shape
 
+# --draft <path> "text" — capture-append mode: swaps system prompt, skips
+# shaping/readiness loop, Tier-0/Tier-1 context loads, and basename resolver.
+# Pre-scan and strip BEFORE the cold-start block and resolver so --draft is
+# never misread as a pitch basename.
+DRAFT_PATH=""
+DRAFT_TEXT=""
+_FILTERED_ARGS=()
+_i=0
+_args=("$@")
+while [[ $_i -lt ${#_args[@]} ]]; do
+    _arg="${_args[$_i]}"
+    if [[ "$_arg" == "--draft" ]]; then
+        _next=$((_i + 1))
+        _after=$((_i + 2))
+        if [[ $_next -ge ${#_args[@]} ]]; then
+            printf 'claude-shape: --draft requires <path> "text"\n' >&2
+            exit 2
+        fi
+        DRAFT_PATH="${_args[$_next]}"
+        if [[ $_after -lt ${#_args[@]} ]]; then
+            DRAFT_TEXT="${_args[$_after]}"
+            _i=$((_after + 1))
+        else
+            _i=$((_next + 1))
+        fi
+    else
+        _FILTERED_ARGS+=("$_arg")
+        _i=$((_i + 1))
+    fi
+done
+
+if [[ -n "$DRAFT_PATH" ]]; then
+    if [[ ! -f "$DRAFT_PATH" ]]; then
+        printf 'claude-shape: --draft path not found: %s\n' "$DRAFT_PATH" >&2
+        exit 1
+    fi
+    if [[ -z "$DRAFT_TEXT" ]]; then
+        printf 'claude-shape: --draft requires text argument: --draft <path> "text"\n' >&2
+        exit 2
+    fi
+    ROLE_SYSTEM_PROMPT="$(cat "$CODEGEN_DIR/harnesses/shared/prompt-bodies/shape-draft.txt")
+
+---
+TARGET PATH: $DRAFT_PATH
+TEXT TO APPEND:
+$DRAFT_TEXT"
+
+    TOOL_FLAGS=()
+    if [ -n "$ROLE_TOOLS" ]; then
+        TOOL_FLAGS+=(--tools "$ROLE_TOOLS")
+    elif [ -n "$ROLE_DISALLOWED" ]; then
+        TOOL_FLAGS+=(--disallowed-tools "$ROLE_DISALLOWED")
+    fi
+
+    NON_INTERACTIVE_FLAGS=()
+    if [[ -n "${CLAUDE_NONINTERACTIVE:-}" ]]; then
+        NON_INTERACTIVE_FLAGS+=(
+            --print
+            --verbose
+            --output-format stream-json
+            --setting-sources project
+            --strict-mcp-config
+            --no-session-persistence
+            --disable-slash-commands
+        )
+    fi
+
+    exec claude \
+        --settings '{"env":{"MAX_THINKING_TOKENS":"16000"}}' \
+        "${NON_INTERACTIVE_FLAGS[@]+"${NON_INTERACTIVE_FLAGS[@]}"}" \
+        --model "$ROLE_MODEL" \
+        --effort "$ROLE_EFFORT" \
+        --dangerously-skip-permissions \
+        "${TOOL_FLAGS[@]+"${TOOL_FLAGS[@]}"}" \
+        --system-prompt "$ROLE_SYSTEM_PROMPT"
+fi
+
+set -- "${_FILTERED_ARGS[@]+"${_FILTERED_ARGS[@]}"}"
+
 CONTEXT_FLAGS=()
 TIER0_LOADED=""
 if [[ -f "./PROJECT_CONTEXT.md" ]]; then

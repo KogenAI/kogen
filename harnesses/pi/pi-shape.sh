@@ -28,6 +28,79 @@ else
 fi
 export CODEGEN_DIR
 
+# --draft <path> "text" — capture-append mode: swaps system prompt, skips
+# shaping/readiness loop, Tier-0/Tier-1 context loads, and pitch resolver.
+# Pre-scan and strip BEFORE anything else so --draft is never misread as a pitch arg.
+DRAFT_PATH=""
+DRAFT_TEXT=""
+_FILTERED_ARGS=()
+_i=0
+_args=("$@")
+while [[ $_i -lt ${#_args[@]} ]]; do
+    _arg="${_args[$_i]}"
+    if [[ "$_arg" == "--draft" ]]; then
+        _next=$((_i + 1))
+        _after=$((_i + 2))
+        if [[ $_next -ge ${#_args[@]} ]]; then
+            printf 'pi-shape: --draft requires <path> "text"\n' >&2
+            exit 2
+        fi
+        DRAFT_PATH="${_args[$_next]}"
+        if [[ $_after -lt ${#_args[@]} ]]; then
+            DRAFT_TEXT="${_args[$_after]}"
+            _i=$((_after + 1))
+        else
+            _i=$((_next + 1))
+        fi
+    else
+        _FILTERED_ARGS+=("$_arg")
+        _i=$((_i + 1))
+    fi
+done
+
+if [[ -n "$DRAFT_PATH" ]]; then
+    if [[ ! -f "$DRAFT_PATH" ]]; then
+        printf 'pi-shape: --draft path not found: %s\n' "$DRAFT_PATH" >&2
+        exit 1
+    fi
+    if [[ -z "$DRAFT_TEXT" ]]; then
+        printf 'pi-shape: --draft requires text argument: --draft <path> "text"\n' >&2
+        exit 2
+    fi
+
+    cfg="${CODEGEN_DIR}/templates/generator/config.yaml"
+    ROLE_MODEL=$(yq -r ".harness.shape.pi.model" "$cfg")
+    ROLE_EFFORT=$(yq -r ".harness.shape.pi.effort" "$cfg")
+
+    ROLE_SYSTEM_PROMPT="$(cat "$CODEGEN_DIR/harnesses/shared/prompt-bodies/shape-draft.txt")
+
+---
+TARGET PATH: $DRAFT_PATH
+TEXT TO APPEND:
+$DRAFT_TEXT"
+
+    EXTENSIONS_DIR="$CODEGEN_DIR/harnesses/pi/pi-extensions"
+
+    NON_INTERACTIVE_FLAGS=()
+    if [[ -n "${PI_NON_INTERACTIVE:-}" ]]; then
+        NON_INTERACTIVE_FLAGS+=(-p --mode text --no-session)
+    fi
+
+    exec pi \
+        "${NON_INTERACTIVE_FLAGS[@]+"${NON_INTERACTIVE_FLAGS[@]}"}" \
+        --provider openai-codex \
+        --model "$ROLE_MODEL" \
+        --thinking "$ROLE_EFFORT" \
+        --tools read,grep,find,ls,edit,write,bash \
+        --no-extensions \
+        --extension "$EXTENSIONS_DIR/askuserquestion" \
+        --extension "$EXTENSIONS_DIR/subagents" \
+        --extension "$EXTENSIONS_DIR/web-utils" \
+        --system-prompt "$ROLE_SYSTEM_PROMPT"
+fi
+
+set -- "${_FILTERED_ARGS[@]+"${_FILTERED_ARGS[@]}"}"
+
 # Normalise launch cwd to the nearest legal pitch root so the resolver, the
 # CLAUDE_PITCH_PATH export, and the session cwd inherited by claude all key off
 # a dir whose ./codegen/pitches/draft is the intended target. A nested $PWD

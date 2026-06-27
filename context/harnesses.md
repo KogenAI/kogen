@@ -57,6 +57,7 @@ harnesses/shared/prompt-bodies/
   debug.txt      ← Protocol + Allowed Queries + Forbidden + Refusal & Pivot (shared)
   experiment.txt ← single-agent, source-writable, worktree investigation (shared)
   shape.txt      ← Cold-start + Pitch Readiness Check (shared between claude/pi)
+  shape-draft.txt ← Capture-append mode prompt (NOT baked via manifest; read directly by launchers for --draft flag)
   ops.txt        ← Rule 1-5 procedural ops rules (shared between claude/pi)
 shared/prompt-fragments/
   _probing.txt         ← Inline Probe Discipline section (included in shape + /ready)
@@ -320,6 +321,19 @@ The gate-selection hook (`harnesses/claude/hooks/lib/gate-select.sh`) reads ```g
 - To verify a launcher flag change took effect: check `~/.claude/claude-<mode>` directly, or run the launcher with `--verbose` to see the exec'd command line.
 
 **Contrast**: System prompt bodies (`harnesses/shared/prompt-bodies/shape.txt`) ARE baked and DO require sentinel sync in `prompt-content-parity_test.sh`.
+
+## Shape Launcher `--draft` Flag
+
+Both shape launchers (`claude-shape.sh`, `pi-shape.sh`) accept a `--draft <path> "text"` flag that activates **capture-append mode**:
+
+- Swaps the system prompt to `shape-draft.txt` (read directly via `cat`; NOT baked via manifest pipeline).
+- Injects the target path and text to append into the prompt.
+- Skips Tier-0/Tier-1 context loads, the pitch basename resolver, and the shaping/readiness loop.
+- The LLM agent performs the append (Edit/Write on `<path>`); the launcher does NOT append directly.
+- `orchestrator-no-source-edit.sh` write-scope guard (already scopes shape role to `codegen/pitches/`) is inherited — no new guard needed.
+
+**Validation**: path missing on disk → stderr + exit 1; text absent → stderr usage + exit 2.
+**`shape-draft.txt`** is NOT registered in any `manifest.yaml` `modes.shape.prompt_body[]` — only read at runtime by the launcher via `cat` (direct file read). No manifest/generator wiring; no sentinel sync required in `prompt-content-parity_test.sh` for this launcher-direct-read file (the test targets baked system-prompt content, not runtime launcher reads).
 
 ## Pitfalls
 
