@@ -208,6 +208,16 @@ assert_contains \
     "$CODEGEN_DIR/shared/rules/roles/planner.md" \
     "$SENTINEL9_PLANNER"
 
+SENTINEL10="Runtime-path fidelity"
+assert_contains \
+    "Runtime-path fidelity sentinel in claude-shape-system-prompt.txt" \
+    "$CODEGEN_DIR/harnesses/claude/claude-shape-system-prompt.txt" \
+    "$SENTINEL10"
+assert_contains \
+    "Runtime-path fidelity sentinel in pi-shape-system-prompt.txt" \
+    "$CODEGEN_DIR/harnesses/pi/pi-shape-system-prompt.txt" \
+    "$SENTINEL10"
+
 echo ""
 echo "Results: $pass passed, $fail failed"
 
