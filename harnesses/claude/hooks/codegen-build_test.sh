@@ -87,6 +87,8 @@ make_pi_harness() {
     local harness_dir="$cb_root/harnesses/pi"
     mkdir -p "$harness_dir"
     cp "$REAL_PI_HARNESS/dispatch.sh" "$harness_dir/dispatch.sh"
+    # pi-build-system-prompt.txt is read by dispatch.sh for headless builds; stub it so the test has a valid harness dir
+    printf 'stub system prompt\n' >"$harness_dir/pi-build-system-prompt.txt"
     echo "$harness_dir"
 }
 

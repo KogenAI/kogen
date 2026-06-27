@@ -20,6 +20,13 @@
 
 set -u
 
+# NOTE: This per-Edit gate only checks HEADER PRESENCE, not body content.
+# The header-then-body two-edit flow is legitimate: the orchestrator writes the
+# section header in Edit N and fills the body in Edit N+1. Rejecting a
+# header-only payload here would produce false denials. Content-floor
+# (empty/stub section = dead subagent) is enforced at Stop by
+# step-log-completeness.sh and pre-spawn by step-log-section-before-spawn.sh.
+
 source "$(dirname "$0")/lib/hooks-lib.sh"
 parse_input
 

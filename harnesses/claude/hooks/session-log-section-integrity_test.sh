@@ -138,6 +138,17 @@ FIXTURE_MULTIEDIT_BLOCK=$(jq -n \
     '{"hook_event_name":"PreToolUse","tool_name":"MultiEdit","tool_input":{"file_path":$fp,"edits":[{"old_string":"x","new_string":"no header here"}]},"agent_type":"developer-phoenix-backend","agent_id":"abc"}')
 run_test "developer-phoenix-backend MultiEdit without section header blocks" "2" "$FIXTURE_MULTIEDIT_BLOCK"
 
+# Test 12: header-only Edit (body arrives in later edit) — still ALLOW
+# Regression lock: integrity.sh intentionally does NOT reject header-only stubs.
+# Content-floor enforcement is the job of step-log-completeness.sh (Stop hook).
+HEADER_ONLY_LOG="$TMP_DIR/codegen/logging/header-only-session.md"
+touch "$HEADER_ONLY_LOG"
+FIXTURE_HEADER_ONLY=$(jq -n \
+    --arg fp "$HEADER_ONLY_LOG" \
+    --arg ns "$(printf '## developer-phoenix-backend Section\n')" \
+    '{"hook_event_name":"PreToolUse","tool_name":"Edit","tool_input":{"file_path":$fp,"old_string":"","new_string":$ns},"agent_type":"developer-phoenix-backend","agent_id":"abc"}')
+run_test "header-only Edit still allowed (body arrives in later edit)" "0" "$FIXTURE_HEADER_ONLY"
+
 echo ""
 echo "Results: $pass passed, $fail failed"
 

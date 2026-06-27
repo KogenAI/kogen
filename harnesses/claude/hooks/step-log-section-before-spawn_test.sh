@@ -83,7 +83,7 @@ T1=$(make_project)
 # Transcript references no log file
 FAKE_TRANSCRIPT="$T1/transcript.jsonl"
 printf '' >"$FAKE_TRANSCRIPT"
-out1=$(mk_agent_input "planner-phoenix" "$FAKE_TRANSCRIPT" | env -u CLAUDE_ROLE -u PI_ROLE bash "$HOOK" 2>/dev/null || true)
+out1=$(mk_agent_input "planner-phoenix" "$FAKE_TRANSCRIPT" | env -u CLAUDE_ROLE -u PI_ROLE CODEGEN_BUILD_NON_INTERACTIVE="" bash "$HOOK" 2>/dev/null || true)
 assert_deny "deny: no step log in transcript (planner-phoenix)" "$out1"
 rm -rf "$T1"
 

@@ -205,16 +205,16 @@ rm -rf "$TMP_T3"
 # Case 4: Zero tool_use writes to logging path → empty.
 TMP_T4=$(mktemp -d)
 printf '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Write","input":{"file_path":"/tmp/other/not-logging.md"}}]}}\n' >"$TMP_T4/transcript.jsonl"
-result=$(TRANSCRIPT_PATH="$TMP_T4/transcript.jsonl" bash -c "source '$SCRIPT_DIR/hooks-lib.sh'; session_log_from_transcript")
+result=$(TRANSCRIPT_PATH="$TMP_T4/transcript.jsonl" CODEGEN_BUILD_NON_INTERACTIVE="" bash -c "source '$SCRIPT_DIR/hooks-lib.sh'; session_log_from_transcript")
 assert_eq "session_log_from_transcript: no logging writes → empty" "" "$result"
 rm -rf "$TMP_T4"
 
 # Case 5: TRANSCRIPT_PATH="" → empty.
-result=$(TRANSCRIPT_PATH="" bash -c "source '$SCRIPT_DIR/hooks-lib.sh'; session_log_from_transcript")
+result=$(TRANSCRIPT_PATH="" CODEGEN_BUILD_NON_INTERACTIVE="" bash -c "source '$SCRIPT_DIR/hooks-lib.sh'; session_log_from_transcript")
 assert_eq "session_log_from_transcript: empty TRANSCRIPT_PATH → empty" "" "$result"
 
 # Case 6: TRANSCRIPT_PATH set to non-existent file → empty.
-result=$(TRANSCRIPT_PATH="/tmp/no-such-transcript-$(date -u +%s).jsonl" bash -c "source '$SCRIPT_DIR/hooks-lib.sh'; session_log_from_transcript")
+result=$(TRANSCRIPT_PATH="/tmp/no-such-transcript-$(date -u +%s).jsonl" CODEGEN_BUILD_NON_INTERACTIVE="" bash -c "source '$SCRIPT_DIR/hooks-lib.sh'; session_log_from_transcript")
 assert_eq "session_log_from_transcript: missing file → empty" "" "$result"
 
 # Case 7: Edit tool_use also matched.

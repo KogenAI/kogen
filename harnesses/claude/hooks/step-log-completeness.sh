@@ -80,12 +80,42 @@ if grep -qE 'INCONCLUSIVE ⚠️' "$log_file" 2>/dev/null; then
     exit 0
 fi
 
+# Skip when a death marker is present — orchestrator is mid-recovery.
+if grep -qF '### INTERRUPTED ⚠️' "$log_file" 2>/dev/null || grep -qF '### ABORTED 💀' "$log_file" 2>/dev/null; then
+    debug_log step-log-completeness "skip: death marker in log (in recovery)"
+    exit 0
+fi
+
+# _section_body_floor <log_file> <section_header>
+# Extracts the body of the named section, skipping blank lines and ### retro blocks.
+# Blocks if body is empty OR a single line shorter than 40 chars (suspected death).
+_section_body_floor() {
+    local _lf="$1"
+    local _hdr="$2"
+    if ! grep -qF "$_hdr" "$_lf" 2>/dev/null; then
+        return 0
+    fi
+    local _body
+    _body=$(awk -v header="$_hdr" '
+        found && /^## / { exit }
+        found && /^### What I Learned/ { skip_retro=1 }
+        found && skip_retro && /^### / && !/^### What I Learned/ { skip_retro=0 }
+        found && !skip_retro && !/^###/ { print }
+        $0 == header { found=1 }
+    ' "$_lf" 2>/dev/null | grep -v '^[[:space:]]*$')
+    if [ -z "$_body" ]; then
+        block "step-log-completeness: '$_hdr' has no real body — the role appears to have died mid-response (empty or status-line-only section). Recover: write the INTERRUPTED/ABORTED death stamp and re-spawn the dead role, OR mark the stage ABORTED 💀 and halt. Do not advance the cycle past a dead stage. Step log: $_lf"
+        exit 0
+    fi
+}
+
 # ── Cycle-state fast-path ──────────────────────────────────────────────────
 # cycle-state.json is authoritative when present AND step_log matches active log.
 cs_step=$(cycle_state_step_log "$project_dir")
 cs_state=$(cycle_state_get "$project_dir")
 if [ -n "$cs_state" ] && [ "$cs_step" = "$log_file" ]; then
     debug_log step-log-completeness "cycle-state=$cs_state step=$log_file (matched)"
+
     if cycle_state_is_terminal "$cs_state"; then
         # Full cycle done — committer ran; allow stop.
         debug_log step-log-completeness "skip: cycle-state=$cs_state terminal — full cycle done"
@@ -97,14 +127,26 @@ if [ -n "$cs_state" ] && [ "$cs_step" = "$log_file" ]; then
         debug_log step-log-completeness "BLOCK: cycle-state=$cs_state — $role not yet run"
         case "$cs_state" in
         REVIEWED)
+            # Content-floor: reviewer section must have a real body.
+            _floor_hdr=$(grep -m1 '^## reviewer-' "$log_file" 2>/dev/null || true)
+            if [ -n "$_floor_hdr" ]; then
+                _section_body_floor "$log_file" "$_floor_hdr"
+            fi
             block "step-log-completeness: reviewer finished (cycle-state=REVIEWED) but context-curator has not run yet. Continue the cycle: delegate to context-curator, then committer. Step log: $log_file"
             ;;
         CURATED)
+            # Content-floor: context-curator section must have a real body.
+            _section_body_floor "$log_file" "## context-curator Section"
             block "step-log-completeness: context-curator finished (cycle-state=CURATED) but committer has not run yet. Continue the cycle: delegate to committer. Step log: $log_file"
             ;;
         GATED)
             verdict=$(cycle_state_verdict "$project_dir")
             if [ "$verdict" = "clear" ]; then
+                # Content-floor: developer section must have a real body when gate cleared.
+                _floor_hdr=$(grep -m1 '^## developer-' "$log_file" 2>/dev/null || true)
+                if [ -n "$_floor_hdr" ]; then
+                    _section_body_floor "$log_file" "$_floor_hdr"
+                fi
                 block "step-log-completeness: developer gate cleared (ALL CLEAR ✅) but reviewer has not run yet. Continue the cycle: delegate to reviewer-phoenix, then context-curator, then committer. Step log: $log_file"
             else
                 debug_log step-log-completeness "skip: GATED verdict=$verdict — gate failure handled by phoenix-dev-gate re-spawn"

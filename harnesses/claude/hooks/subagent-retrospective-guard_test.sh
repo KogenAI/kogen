@@ -135,7 +135,12 @@ cat >"$LOG5" <<'MD'
 - [shared] Always check Credo before delegating to committer.
 MD
 make_transcript "$T5/transcript.jsonl" "$LOG5"
-out=$(make_input "reviewer-phoenix" "$T5/transcript.jsonl" | bash "$HOOK" 2>/dev/null || true)
+INPUT5=$(jq -n \
+    --arg agent_type "reviewer-phoenix" \
+    --arg transcript_path "$T5/transcript.jsonl" \
+    --arg cwd "$T5" \
+    '{"hook_event_name":"SubagentStop","agent_type":$agent_type,"agent_id":"test","session_id":"test5","transcript_path":$transcript_path,"cwd":$cwd}')
+out=$(printf '%s' "$INPUT5" | bash "$HOOK" 2>/dev/null || true)
 assert_allow "[shared] bullet → allow" "$out"
 rm -rf "$T5"
 
@@ -341,7 +346,12 @@ cat >"$LOG16" <<'MD'
 - nothing
 MD
 make_transcript "$T16/transcript.jsonl" "$LOG16"
-out=$(make_input "reviewer-phoenix" "$T16/transcript.jsonl" | bash "$HOOK" 2>/dev/null || true)
+INPUT16=$(jq -n \
+    --arg agent_type "reviewer-phoenix" \
+    --arg transcript_path "$T16/transcript.jsonl" \
+    --arg cwd "$T16" \
+    '{"hook_event_name":"SubagentStop","agent_type":$agent_type,"agent_id":"test","session_id":"test16","transcript_path":$transcript_path,"cwd":$cwd}')
+out=$(printf '%s' "$INPUT16" | bash "$HOOK" 2>/dev/null || true)
 assert_allow "two blocks: pass1 no retro, pass2 has retro → last wins → allow" "$out"
 rm -rf "$T16"
 

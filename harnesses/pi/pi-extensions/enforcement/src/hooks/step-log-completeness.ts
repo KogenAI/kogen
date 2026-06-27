@@ -6,6 +6,12 @@
  * Event: session_shutdown (Stop equivalent)
  *
  * Note: In Pi, session_shutdown cannot block. This logs a warning to stderr.
+ *
+ * REDUCED-FIDELITY: Pi's session_shutdown is observe-only; this twin cannot block.
+ * Content-floor is enforced by the Claude Stop hook (step-log-completeness.sh).
+ * This warning is for operator visibility only. Pi also lacks transcript access,
+ * so the "active" log is the most-recently-modified file, which may differ from
+ * the true session log.
  */
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
@@ -47,6 +53,19 @@ export function register(pi: ExtensionAPI): void {
     const logContent = fs.readFileSync(activeLog, "utf8");
 
     if (logContent.includes("INCONCLUSIVE ⚠️")) return;
+
+    // Skip when a death marker is present — orchestrator is mid-recovery.
+    // Mirrors the death-marker skip in step-log-completeness.sh.
+    if (
+      logContent.includes("### INTERRUPTED ⚠️") ||
+      logContent.includes("### ABORTED 💀")
+    ) {
+      debugLog(
+        "step-log-completeness",
+        "skip: death marker in log (in recovery)",
+      );
+      return;
+    }
 
     const hasDeveloper = /## developer.*Section/i.test(logContent);
     let hasAllClear = /ALL CLEAR ✅/.test(logContent);
@@ -91,6 +110,61 @@ export function register(pi: ExtensionAPI): void {
       process.stderr.write(
         "[pi-enforcement:step-log-completeness] WARNING: reviewer and context-curator sections present but committer section absent — cycle incomplete.\n",
       );
+    }
+
+    // REDUCED-FIDELITY observe-only content-floor: warn when the most-recently-
+    // completed section appears to have no real body (suspected subagent death).
+    // The Claude Stop hook (step-log-completeness.sh) enforces this with a block;
+    // here we can only warn.
+    const _extractSectionBody = (header: RegExp): string => {
+      const lines = logContent.split("\n");
+      let found = false;
+      let skipRetro = false;
+      const body: string[] = [];
+      for (const line of lines) {
+        if (found) {
+          if (/^## /.test(line)) break;
+          if (/^### What I Learned/.test(line)) {
+            skipRetro = true;
+            continue;
+          }
+          if (skipRetro && /^### /.test(line) && !/^### What I Learned/.test(line)) {
+            skipRetro = false;
+            continue;
+          }
+          if (!skipRetro && !/^###/.test(line) && line.trim() !== "") {
+            body.push(line);
+          }
+        } else if (header.test(line)) {
+          found = true;
+        }
+      }
+      return body.join("\n").trim();
+    };
+
+    // Check the most-recently-completed section for empty/near-empty body.
+    let _suspectHeader: RegExp | null = null;
+    let _suspectName = "";
+    if (hasReviewer && hasCurator && hasCommitter) {
+      // Full cycle — no floor check needed
+    } else if (hasReviewer && hasCurator) {
+      _suspectHeader = /^## context-curator.*Section/i;
+      _suspectName = "context-curator";
+    } else if (hasReviewer) {
+      _suspectHeader = /^## reviewer.*Section/i;
+      _suspectName = "reviewer";
+    } else if (hasDeveloper) {
+      _suspectHeader = /^## developer.*Section/i;
+      _suspectName = "developer";
+    }
+
+    if (_suspectHeader !== null) {
+      const _body = _extractSectionBody(_suspectHeader);
+      if (_body === "") {
+        process.stderr.write(
+          `[pi-enforcement:step-log-completeness] OBSERVE-ONLY: '## ${_suspectName} Section' has no real body — the role may have died mid-response. Claude Stop hook will block if applicable. Step log: ${activeLog}\n`,
+        );
+      }
     }
   });
 }

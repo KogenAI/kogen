@@ -31,6 +31,16 @@ Session logs live under `/codegen/` and are **gitignored** — in the codegen re
 - NEVER pre-seed role-section headers in the initial Write; headers are inserted once in the post-planner additive-insertion step — NEVER create a duplicate `## <role> Section`.
 - Multi-step → orchestrator maintains `./codegen/logging/$(date -u +%Y%m%d)_progress.md`.
 
+## Death Stamps
+
+When a subagent drops mid-response, the orchestrator records it INSIDE the dead role's section as an H3 marker (H3 so it never participates in the H2 canonical-order check):
+
+- `### INTERRUPTED ⚠️ — <role> dropped (<cause>); re-spawning (attempt N/2)` — written when the drop tool_result is observed.
+- `### RESUMED` — written when the re-spawn produces real output.
+- `### ABORTED 💀 — <role> dropped twice; stage failed.` — written on re-spawn exhaustion, then the stage halts.
+
+A section carrying `### INTERRUPTED ⚠️` or `### ABORTED 💀` is in-recovery: the `step-log-completeness` Stop hook skips its empty-body floor for that section (mirrors the existing `INCONCLUSIVE ⚠️` skip).
+
 ## Canonical Section Order
 
 Session log sections MUST appear in this non-decreasing phase order (rank):

@@ -559,5 +559,98 @@ out=$(make_input "$T24" false "Should I proceed?" "$T24/transcript.jsonl" | env 
 assert_not_contains "interactive intent question still allows (no CODEGEN_BUILD_NON_INTERACTIVE)" '"decision"' "$out"
 rm -rf "$T24"
 
+# ── Test 25: empty developer section body, cycle-state=GATED+clear → BLOCK (floor) ─
+# Developer section is LAST in log (EOF coverage). No reviewer section present.
+T25=$(make_project)
+LOG25="$T25/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_step1_test.md"
+cat >"$LOG25" <<'MD'
+## developer-phoenix-backend Section
+
+MD
+write_cycle_state_fixture "$T25" "GATED" "$LOG25" "clear"
+make_transcript "$T25/transcript.jsonl" "$LOG25"
+out=$(make_input "$T25" false "" "$T25/transcript.jsonl" | bash "$HOOK" 2>/dev/null || true)
+assert_contains "Test 25: empty developer body, GATED+clear → BLOCK (floor)" '"decision"' "$out"
+assert_contains "Test 25: block reason mentions 'no real body'" 'no real body' "$out"
+rm -rf "$T25"
+
+# ── Test 26: status-line-only short body (non-empty), cycle-state=REVIEWED → BLOCK (cycle) ──
+# A non-empty short body passes the floor; cycle-state block fires instead (curator not run).
+T26=$(make_project)
+LOG26="$T26/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_step1_test.md"
+cat >"$LOG26" <<'MD'
+## reviewer-phoenix Section
+
+Done
+
+MD
+write_cycle_state_fixture "$T26" "REVIEWED" "$LOG26" ""
+make_transcript "$T26/transcript.jsonl" "$LOG26"
+out=$(make_input "$T26" false "" "$T26/transcript.jsonl" | bash "$HOOK" 2>/dev/null || true)
+assert_contains "Test 26: short reviewer body passes floor; cycle-state blocks (curator not run)" '"decision"' "$out"
+assert_contains "Test 26: cycle-state block reason mentions context-curator" 'context-curator' "$out"
+rm -rf "$T26"
+
+# ── Test 27: real multi-line developer body, cycle-state=GATED+clear → no floor block ──
+# Floor passes (real content); cycle-state block fires (reviewer not run).
+# Assert decision present BUT reason does NOT contain 'no real body'.
+T27=$(make_project)
+LOG27="$T27/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_step1_test.md"
+cat >"$LOG27" <<'MD'
+## developer-phoenix-backend Section
+
+**Rules loaded**: [x] developer.md
+
+**Commands executed**:
+| Time | Command | Exit | Notes |
+| ---- | ------- | ---- | ----- |
+| 10:00:00 UTC | mix test path/to/test.exs | 0 | all green |
+
+**Files written/updated**: lib/app/foo.ex, test/app/foo_test.exs
+
+**Result**: Implemented feature, all tests pass.
+
+### What I Learned This Step
+
+- nothing notable
+
+MD
+write_cycle_state_fixture "$T27" "GATED" "$LOG27" "clear"
+make_transcript "$T27/transcript.jsonl" "$LOG27"
+out=$(make_input "$T27" false "" "$T27/transcript.jsonl" | bash "$HOOK" 2>/dev/null || true)
+assert_contains "Test 27: real body — cycle block fires (reviewer not run)" '"decision"' "$out"
+assert_not_contains "Test 27: real body — floor does not fire (no floor reason in output)" 'no real body' "$out"
+rm -rf "$T27"
+
+# ── Test 28: empty body + ### INTERRUPTED ⚠️ marker → skip (no block) ────────
+T28=$(make_project)
+LOG28="$T28/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_step1_test.md"
+cat >"$LOG28" <<'MD'
+## developer-phoenix-backend Section
+
+### INTERRUPTED ⚠️ — developer-phoenix-backend dropped (Connection closed mid-response); re-spawning (attempt 1/2)
+
+MD
+write_cycle_state_fixture "$T28" "GATED" "$LOG28" "clear"
+make_transcript "$T28/transcript.jsonl" "$LOG28"
+out=$(make_input "$T28" false "" "$T28/transcript.jsonl" | bash "$HOOK" 2>/dev/null || true)
+assert_not_contains "Test 28: INTERRUPTED marker present → death-marker skip (no block)" '"decision"' "$out"
+rm -rf "$T28"
+
+# ── Test 29: empty body + ### ABORTED 💀 marker → skip (no block) ────────────
+T29=$(make_project)
+LOG29="$T29/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_step1_test.md"
+cat >"$LOG29" <<'MD'
+## developer-phoenix-backend Section
+
+### ABORTED 💀 — developer-phoenix-backend dropped twice; stage failed.
+
+MD
+write_cycle_state_fixture "$T29" "GATED" "$LOG29" "clear"
+make_transcript "$T29/transcript.jsonl" "$LOG29"
+out=$(make_input "$T29" false "" "$T29/transcript.jsonl" | bash "$HOOK" 2>/dev/null || true)
+assert_not_contains "Test 29: ABORTED marker present → death-marker skip (no block)" '"decision"' "$out"
+rm -rf "$T29"
+
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]
