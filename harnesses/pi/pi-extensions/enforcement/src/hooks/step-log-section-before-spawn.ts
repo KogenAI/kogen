@@ -110,6 +110,34 @@ export function register(pi: ExtensionAPI): void {
     debugLog("step-log-section-before-spawn", `log=${logPath}`);
 
     if (logContent.includes(need)) {
+      // REDUCED FIDELITY: Pi has no transcript access so we cannot determine
+      // the authoritative step log from transcript context. We read the most
+      // recently modified log, which may differ from the active session log.
+      // Full blocking enforcement lives in the Claude hook
+      // (step-log-section-before-spawn.sh). Here we only emit a warning.
+      //
+      // Observe-only empty-body check: warn when the section exists but
+      // contains no real content beyond blank lines and retrospective blocks.
+      if (need !== "## Plan") {
+        const lines = logContent.split("\n");
+        const headerIdx = lines.findIndex((l) => l === need);
+        if (headerIdx !== -1) {
+          const bodyLines = [];
+          for (let i = headerIdx + 1; i < lines.length; i++) {
+            const line = lines[i];
+            if (line.startsWith("## ")) break;
+            if (line.trim() === "") continue;
+            if (line.startsWith("### What I Learned")) continue;
+            bodyLines.push(line);
+          }
+          if (bodyLines.length === 0) {
+            process.stderr.write(
+              `[step-log-section-before-spawn] WARNING (observe-only): '${need}' exists but body is empty — prior stage may have died without producing real content. Full block enforced by Claude hook.\n`,
+            );
+          }
+        }
+      }
+
       debugLog("step-log-section-before-spawn", "allow: header present");
       return;
     }

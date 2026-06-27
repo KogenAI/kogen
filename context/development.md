@@ -61,7 +61,7 @@ See `.env.sample` and `.env.prod.sample` for full variable lists.
 
 **OCG\_\* platform-injected variable convention**: `OCG_<CATEGORY>_<PURPOSE>` naming; consumed-only (injected by orchestrator, never set by codegen). Group all `OCG_*` vars under a single comment block in `.env.sample` + `.env.prod.sample`; append new vars to that block. Existing examples: `OCG_APPS_ROOT`, `OCG_PHOENIX_SEED_DIR`, `OCG_USER_FILES_DIR`.
 
-**`CODEGEN_BUILD_*` operator-toggle convention**: Build-time flags exported as `export CODEGEN_BUILD_<FLAG>="${<FLAG>:-}"`, read by `dispatch.sh` via `${CODEGEN_BUILD_<FLAG>:-}`. Honor-empty: explicit empty string passes through. Use `"${VAR:-}"` for `set -u`-safe export/import. Example: `export CODEGEN_BUILD_RESUMABLE="${RESUMABLE:-}"`, read back as `RESUMABLE="${CODEGEN_BUILD_RESUMABLE:-}"`.
+**`CODEGEN_BUILD_*` operator-toggle convention**: Build-time flags exported as `export CODEGEN_BUILD_<FLAG>="${<FLAG>:-}"`, read by `dispatch.sh` via `${CODEGEN_BUILD_<FLAG>:-}`. Honor-empty: explicit empty string passes through. Use `"${VAR:-}"` for `set -u`-safe export/import. Example: `export CODEGEN_BUILD_RESUMABLE="${RESUMABLE:-}"`, read back as `RESUMABLE="${CODEGEN_BUILD_RESUMABLE:-}"`. **Important**: `build-queue.sh` runs OUTSIDE the dispatch.sh exec-env (launched directly by `claude-build.sh`/`pi-build.sh` queue launchers), so it reads `CODEGEN_BUILD_QUEUE_PITCH_BUDGET_SECS` from the ambient operator environment, not from dispatch.sh exports. Dispatch is a distinct consumer for in-agent env vars; do not duplicate queue-specific toggles as dispatch exports (dead config with no consumer).
 
 ## Coding Conventions
 

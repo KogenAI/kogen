@@ -760,6 +760,106 @@ T16_CALLS="$(grep -c '.' "$T16_CALL_LOG" 2>/dev/null || printf '0')"
 assert_eq "T16: exactly 1 child call (no re-spawn)" "1" "$T16_CALLS"
 assert_contains "T16: stdout contains shipping message" "gate green, already committed — shipping" "$T16_OUT"
 
+# ── T17: per-pitch timeout — slug stays in ready/, queue advances ─────────────
+T17_ROOT="$(mktemp -d)"
+T17_ROOT="$(cd "$T17_ROOT" && pwd -P)"
+mkdir -p "$T17_ROOT/codegen/pitches/ready"
+mkdir -p "$T17_ROOT/codegen/pitches/shipped"
+mkdir -p "$T17_ROOT/codegen/logging"
+mkdir -p "$T17_ROOT/fake-codegen-bin"
+printf 'lambda pitch\n' >"$T17_ROOT/codegen/pitches/ready/lambda.md"
+(
+    cd "$T17_ROOT"
+    git init -q
+    git config user.email "test@test.com"
+    git config user.name "Test"
+    git config commit.gpgsign false
+    printf 'baseline\n' >baseline.txt
+    git add baseline.txt
+    git -c core.hooksPath=/dev/null commit -q -m "baseline"
+)
+
+# Stub: hangs longer than the budget (simulates a hung child). Bounded at 30s
+# (NOT 9999) so a future watchdog-reaping regression fails this test in seconds
+# instead of wedging `make test` for hours. Budget is 2s below, so the watchdog
+# must reap this well before 30s — a green T17 proves the reap happened.
+cat >"$T17_ROOT/fake-codegen-bin/codegen-build" <<'STUB17'
+#!/usr/bin/env bash
+sleep 30
+STUB17
+chmod +x "$T17_ROOT/fake-codegen-bin/codegen-build"
+
+T17_EXIT=0
+T17_OUT=$(
+    cd "$T17_ROOT"
+    CODEGEN_BUILD_QUEUE_PITCH_BUDGET_SECS=2 \
+        CODEGEN_BUILD_QUEUE_MAX_RETRIES=0 \
+        CODEGEN_BUILD_QUEUE_RETRY_DELAYS="0 0 0" \
+        OCG_CODEGEN_DIR="$T17_ROOT/fake-codegen-bin" \
+        bash "$HELPER" --harness=claude 2>&1
+) || T17_EXIT=$?
+
+assert_eq "T17: timeout — queue exits 0 (not a hard failure)" "0" "$T17_EXIT"
+assert_eq "T17: timed-out slug stays in ready/" "1" \
+    "$([ -f "$T17_ROOT/codegen/pitches/ready/lambda.md" ] && printf '1' || printf '0')"
+assert_eq "T17: timed-out slug NOT in shipped/" "0" \
+    "$([ -f "$T17_ROOT/codegen/pitches/shipped/lambda.md" ] && printf '1' || printf '0')"
+assert_contains "T17: output contains TIMED OUT" "TIMED OUT" "$T17_OUT"
+assert_contains "T17: output contains budget seconds" "budget 2s" "$T17_OUT"
+rm -rf "$T17_ROOT"
+
+# ── T18: invalid budget env var falls back to 1800 (no crash) ─────────────────
+T18_ROOT="$(mktemp -d)"
+T18_ROOT="$(cd "$T18_ROOT" && pwd -P)"
+mkdir -p "$T18_ROOT/codegen/pitches/ready"
+mkdir -p "$T18_ROOT/codegen/pitches/shipped"
+mkdir -p "$T18_ROOT/codegen/logging"
+mkdir -p "$T18_ROOT/fake-codegen-bin"
+printf 'mu pitch\n' >"$T18_ROOT/codegen/pitches/ready/mu.md"
+(
+    cd "$T18_ROOT"
+    git init -q
+    git config user.email "test@test.com"
+    git config user.name "Test"
+    git config commit.gpgsign false
+    printf 'baseline\n' >baseline.txt
+    git add baseline.txt
+    git -c core.hooksPath=/dev/null commit -q -m "baseline"
+)
+
+# Stub: exits 0 and ships immediately
+cat >"$T18_ROOT/fake-codegen-bin/codegen-build" <<'STUB18'
+#!/usr/bin/env bash
+pitch_path=""
+found_sep=0
+for a in "$@"; do
+    [ "$found_sep" = "1" ] && { pitch_path="$a"; break; }
+    [ "$a" = "--" ] && found_sep=1
+done
+pitch_path="${pitch_path#@}"
+slug="$(basename "$pitch_path" .md)"
+mkdir -p "codegen/pitches/shipped"
+cp "codegen/pitches/ready/${slug}.md" "codegen/pitches/shipped/${slug}.md" 2>/dev/null || true
+rm -f "codegen/pitches/ready/${slug}.md"
+printf '{"type":"result","result":"ok","session_id":"sT18"}\n'
+exit 0
+STUB18
+chmod +x "$T18_ROOT/fake-codegen-bin/codegen-build"
+
+T18_EXIT=0
+T18_OUT=$(
+    cd "$T18_ROOT"
+    CODEGEN_BUILD_QUEUE_PITCH_BUDGET_SECS=abc \
+        CODEGEN_BUILD_QUEUE_MAX_RETRIES=0 \
+        CODEGEN_BUILD_QUEUE_RETRY_DELAYS="0 0 0" \
+        OCG_CODEGEN_DIR="$T18_ROOT/fake-codegen-bin" \
+        bash "$HELPER" --harness=claude 2>&1
+) || T18_EXIT=$?
+
+assert_eq "T18: invalid budget (abc) — no crash, queue exits 0" "0" "$T18_EXIT"
+assert_not_contains "T18: no unbound variable error" "unbound variable" "$T18_OUT"
+rm -rf "$T18_ROOT"
+
 # ── Summary ───────────────────────────────────────────────────────────────────
 printf '\nResults: %d passed, %d failed\n' "$pass" "$fail"
 

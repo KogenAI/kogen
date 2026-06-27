@@ -472,6 +472,73 @@ out27=$(mk_agent_input "developer-phoenix-backend" "$T27/transcript.jsonl" | env
 assert_deny "deny: REGRESSION — build + developer-phoenix-backend, log present but section header absent" "$out27"
 rm -rf "$T27"
 
+# ── T28: prior stage (## Plan) present but body empty → DENY when spawning developer
+# Scenario: planner subagent died; orchestrator skips ahead to spawn developer.
+T28=$(make_project)
+LOG28="$T28/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_step1_empty-plan.md"
+cat >"$LOG28" <<'MD'
+# Step 1 — empty plan test
+
+## Plan
+
+## developer-phoenix-backend Section
+
+MD
+make_transcript "$T28/transcript.jsonl" "$LOG28"
+out28=$(mk_agent_input "developer-phoenix-backend" "$T28/transcript.jsonl" | env -u CLAUDE_ROLE -u PI_ROLE bash "$HOOK" 2>/dev/null || true)
+assert_deny "T28: deny — ## Plan present but empty, spawning developer blocked" "$out28"
+# Verify the deny message mentions "body is empty"
+if printf '%s' "$out28" | grep -q 'body is empty'; then
+    [ -n "${VERBOSE:-}" ] && printf 'PASS: T28 deny message mentions body is empty\n'
+    pass=$((pass + 1))
+else
+    printf 'FAIL: T28 deny message does not mention "body is empty"\n  stdout: %s\n' "$out28"
+    fail=$((fail + 1))
+fi
+rm -rf "$T28"
+
+# ── T29: ## Plan has only retrospective block → DENY when spawning developer ──
+# Scenario: planner section body is only a retrospective stub — no real plan.
+T29=$(make_project)
+LOG29="$T29/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_step1_plan-retro-only.md"
+cat >"$LOG29" <<'MD'
+# Step 1 — plan with only retrospective
+
+## Plan
+
+### What I Learned This Step
+
+- nothing notable
+
+## developer-phoenix-backend Section
+
+MD
+make_transcript "$T29/transcript.jsonl" "$LOG29"
+out29=$(mk_agent_input "developer-phoenix-backend" "$T29/transcript.jsonl" | env -u CLAUDE_ROLE -u PI_ROLE bash "$HOOK" 2>/dev/null || true)
+assert_deny "T29: deny — ## Plan has only retrospective (no real plan content), developer spawn blocked" "$out29"
+rm -rf "$T29"
+
+# ── T30: prior stage has real content → ALLOW (regression guard) ─────────────
+# Scenario: planner wrote real content in ## Plan; developer spawn allowed.
+T30=$(make_project)
+LOG30="$T30/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_step1_real-plan.md"
+cat >"$LOG30" <<'MD'
+# Step 1 — real plan content
+
+## Plan
+
+Files to touch:
+- lib/foo.ex (NEW)
+- test/foo_test.exs (NEW)
+
+## developer-phoenix-backend Section
+
+MD
+make_transcript "$T30/transcript.jsonl" "$LOG30"
+out30=$(mk_agent_input "developer-phoenix-backend" "$T30/transcript.jsonl" | env -u CLAUDE_ROLE -u PI_ROLE bash "$HOOK" 2>/dev/null || true)
+assert_allow "T30: allow — ## Plan has real content, developer spawn permitted" "$out30"
+rm -rf "$T30"
+
 echo ""
 echo "Results: $pass passed, $fail failed"
 

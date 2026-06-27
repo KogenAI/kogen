@@ -206,6 +206,8 @@ TOTAL=0
 SHIPPED_COUNT=0
 last_slug=""
 retry_count=0
+# Slugs timed out in this run — left in ready/ but skipped for remaining iterations.
+TIMED_OUT_SLUGS=""
 
 while true; do
     # Re-scan ready/ each iteration (refillable + resumable)
@@ -213,6 +215,10 @@ while true; do
     for f in "$READY_DIR"/*.md; do
         [ -f "$f" ] || continue
         slug="$(basename "$f" .md)"
+        # Skip slugs that timed out earlier in this run.
+        if [ -n "$TIMED_OUT_SLUGS" ] && printf '%s\n' "$TIMED_OUT_SLUGS" | grep -qxF "$slug"; then
+            continue
+        fi
         slugs="${slugs:+$slugs
 }$slug"
     done
@@ -267,12 +273,79 @@ SLUGS
     head_before="$(git rev-parse HEAD 2>/dev/null || true)"
     JSONL="$LOG_DIR/${ts}_${slug}_build.jsonl"
 
-    # Spawn child; capture exit code through tee pipeline
+    # Per-pitch wall-clock budget (default 1800s; sentinel 124 = GNU timeout convention).
+    budget="${CODEGEN_BUILD_QUEUE_PITCH_BUDGET_SECS:-1800}"
+    case "$budget" in
+    '' | *[!0-9]* | 0) budget=1800 ;;
+    esac
+
+    TIMED_OUT=0
     set +e
+
+    # Run child in its own process group so the watchdog can kill the whole
+    # tree (child + any grandchildren it spawns). set -m enables job control
+    # which gives the child PGID == child PID; set +m restores immediately.
+    child_out_tmp="$(mktemp)"
+    set -m
     "$BUILD_BIN" --harness="$HARNESS" --non-interactive --stack="$STACK" \
-        -- "${MENTION_PREFIX}codegen/pitches/ready/${slug}.md" 2>&1 | tee "$JSONL"
-    child_rc="${PIPESTATUS[0]}"
+        -- "${MENTION_PREFIX}codegen/pitches/ready/${slug}.md" >"$child_out_tmp" 2>&1 &
+    child_pid=$!
+    set +m
+
+    # Watchdog: fires after budget; leaves sentinel file so we can detect it.
+    # Kills the WHOLE process group (child_pid == PGID when set -m is used).
+    # Sentinel written BEFORE the kill-9 grace sleep so the parent can detect
+    # the timeout even if the watchdog itself is killed during the grace period.
+    #
+    # CRITICAL: redirect the watchdog's own stdout+stderr to /dev/null. When the
+    # queue runs inside command-substitution `$( ... 2>&1)` (as the test gate and
+    # any captured invocation do), a backgrounded subshell INHERITS the capture
+    # pipe on fd 1 and 2. Its `sleep "$budget"` would then hold that pipe open,
+    # so `$(...)` cannot return until the sleep ends — blocking the caller for the
+    # full budget (default 1800s) even after the child finished instantly. The
+    # watchdog only ever writes to the sentinel FILE, never stdout/stderr, so
+    # detaching its std streams is safe and is what unblocks the capture.
+    (
+        sleep "$budget"
+        if kill -0 "$child_pid" 2>/dev/null; then
+            printf 'WATCHDOG_FIRED\n' >"${child_out_tmp}.watchdog"
+            kill -- -"$child_pid" 2>/dev/null || true
+            sleep 2
+            kill -9 -- -"$child_pid" 2>/dev/null || true
+        fi
+    ) </dev/null >/dev/null 2>&1 &
+    watchdog_pid=$!
+
+    wait "$child_pid"
+    child_rc=$?
+    # Cancel watchdog since child finished (or was killed by it). Reap the
+    # `sleep` grandchild FIRST (while the subshell is still its parent) so it is
+    # not orphaned to init and left lingering for the rest of the budget.
+    pkill -P "$watchdog_pid" 2>/dev/null || true
+    kill "$watchdog_pid" 2>/dev/null || true
+    wait "$watchdog_pid" 2>/dev/null || true
+
+    # Stream output through tee so JSONL is populated.
+    tee "$JSONL" <"$child_out_tmp"
+    rm -f "$child_out_tmp"
     set -e
+
+    # Check if watchdog fired — sentinel file present means timeout.
+    if [ -f "${child_out_tmp}.watchdog" ]; then
+        rm -f "${child_out_tmp}.watchdog"
+        TIMED_OUT=1
+    fi
+
+    # Timeout: leave slug in ready/, skip for remainder of this run.
+    if [ "$TIMED_OUT" = "1" ]; then
+        printf '[%d/%d] %s ... TIMED OUT (budget %ss) — left in ready/, advancing\n' \
+            "$idx" "$TOTAL" "$slug" "$budget" >&2
+        TIMED_OUT_SLUGS="${TIMED_OUT_SLUGS:+$TIMED_OUT_SLUGS
+}$slug"
+        retry_count=0
+        last_slug=""
+        continue
+    fi
 
     if [ "$child_rc" = "0" ] && [ -f "$SHIPPED_DIR/$slug.md" ] && [ ! -f "$READY_DIR/$slug.md" ]; then
         SHIPPED_COUNT=$((SHIPPED_COUNT + 1))

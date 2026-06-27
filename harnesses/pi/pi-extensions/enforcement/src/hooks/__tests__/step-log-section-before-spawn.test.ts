@@ -213,4 +213,56 @@ describe("step-log-section-before-spawn", () => {
     const result = await runHook("planner-phoenix");
     assert.ok(result == null || (result as { block?: boolean }).block !== true);
   });
+
+  // ── Test 17: observe-only warning when section header present but body empty ──
+  // Pi hook is reduced-fidelity (no transcript). When '## <type> Section' exists
+  // with empty body, it emits a stderr warning but does NOT block (observe-only).
+  // Full block enforcement lives in the Bash Claude hook.
+  it("emits observe-only warning (not block) when section header present but body empty", async () => {
+    const ts = "20260601_120000";
+    // Section exists but body is truly empty: only blank lines remain
+    // after stripping the retrospective header. The "- nothing notable"
+    // content under ### What I Learned is NOT skipped by the scanner —
+    // only the ### header line itself is skipped. So use a bare empty body.
+    writeLog(
+      `${ts}_step1_test.md`,
+      [
+        "# Step 1",
+        "",
+        "## Plan",
+        "",
+        "planner wrote a real plan here",
+        "",
+        "## developer-phoenix-backend Section",
+        "",
+      ].join("\n"),
+    );
+
+    let stderrOutput = "";
+    const origStderrWrite = process.stderr.write.bind(process.stderr);
+    // Capture stderr at test-body scope; restore in finally on both paths
+    process.stderr.write = (chunk: string | Uint8Array): boolean => {
+      stderrOutput += chunk.toString();
+      return true;
+    };
+
+    let result: unknown;
+    try {
+      result = await runHook("developer-phoenix-backend");
+    } finally {
+      process.stderr.write = origStderrWrite;
+    }
+
+    // Must NOT block (observe-only)
+    assert.ok(
+      result == null || (result as { block?: boolean }).block !== true,
+      "hook must not block on empty-body section (observe-only)",
+    );
+    // Must emit warning mentioning observe-only or body is empty
+    assert.match(
+      stderrOutput,
+      /observe-only|body is empty/,
+      "expected observe-only warning in stderr",
+    );
+  });
 });

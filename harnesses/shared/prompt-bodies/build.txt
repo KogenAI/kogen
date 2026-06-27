@@ -47,3 +47,11 @@ Follow /document for design-only outputs (no implementation). Delegate ALL inves
 ## Time discipline
 
 Treat the build as time-boxed: ship a working, committed core first and defer polish. When a deadline or budget is in force, prioritize a correct committed core over exhaustive coverage.
+
+## Stage-skip prohibition
+
+A subagent dying is NOT that stage completing. When a subagent dies (connection drop, timeout, or any non-clean stop):
+- NEVER advance to the next role. A dead planner is not a complete planner.
+- NEVER substitute "the pitch is already probed" or "context is available" for a missing plan.
+- MUST either: (a) re-spawn the dead role with context to retry, or (b) explicitly fail the stage and halt.
+- The hook enforces this mechanically: spawning role N+1 is blocked when role N's section header exists in the step log but its body is empty — no real content means the prior stage produced nothing (subagent died).

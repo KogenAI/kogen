@@ -106,7 +106,49 @@ fi
 
 # Check that the expected header is present.
 if grep -qF "$need" "$log" 2>/dev/null; then
-    debug_log step-log-section-before-spawn "allow: header present"
+    # Header present — additionally verify that the PRIOR stage's section has
+    # real body content (not a stub with no output). This catches the case where
+    # a subagent died before producing output and the orchestrator skips ahead.
+    #
+    # Role ordering: developer-* requires ## Plan, reviewer-* requires a
+    # developer section, context-curator requires a reviewer section,
+    # committer requires context-curator section. planner-* has no prior.
+    prior_header=""
+    case "$subagent_type" in
+    developer-*)
+        prior_header="## Plan"
+        ;;
+    reviewer-*)
+        # Find any developer-* section header in the log.
+        prior_header="$(grep -m1 '^## developer-' "$log" 2>/dev/null || true)"
+        ;;
+    context-curator)
+        prior_header="$(grep -m1 '^## reviewer-' "$log" 2>/dev/null || true)"
+        ;;
+    committer)
+        prior_header="## context-curator Section"
+        ;;
+    *)
+        prior_header=""
+        ;;
+    esac
+
+    if [ -n "$prior_header" ] && grep -qF "$prior_header" "$log" 2>/dev/null; then
+        section_body=$(awk -v header="$prior_header" '
+            found && /^## / { exit }
+            found && /^### What I Learned/ { skip_retro=1 }
+            found && skip_retro && /^### / && !/^### What I Learned/ { skip_retro=0 }
+            found && !skip_retro && !/^###/ { print }
+            $0 == header { found=1 }
+        ' "$log" 2>/dev/null | grep -v '^[[:space:]]*$' | head -5)
+
+        if [ -z "$section_body" ]; then
+            deny "BLOCKED: '${prior_header}' exists in the step log but its body is empty — the prior stage produced no real content (subagent likely died). Recover: re-spawn the dead stage, produce real output, then retry. Do not skip a stage because the subagent died."
+            exit 0
+        fi
+    fi
+
+    debug_log step-log-section-before-spawn "allow: header present with body content"
     exit 0
 fi
 
