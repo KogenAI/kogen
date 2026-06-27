@@ -159,11 +159,4 @@ Codegen runs on servers too — production/staging Linux hosts and the Hetzner d
 - **Test 5 edge case (START_TS=0 allowance) validates START_TS semantics** — [local] When setting `CODEGEN_BUILD_START_TS=0` for a test, the condition `head_ct < build_start_ts` is never true for any real commit whose `%ct` is >= 0 — the test stays green regardless. This is not a false negative; it correctly demonstrates that START_TS=0 (unset/no-cycle context) permits any commit time. Verify this behavior when running tests after logic changes.
 - **Escape-hatch ordering verification in guards** — [local] When a guard has an early escape hatch (e.g., `COMMITTER_ALLOW_MULTI=1`), verify its placement relative to downstream branch exits via line numbers, NOT by reading isolated code sections. An escape checked AFTER a denial branch does NOT bypass that branch — it only affects later code paths. Always audit the full linear flow: read escape check, then all branches it can affect, then verify the escape placement relative to each branch's exit. Pattern: escape at TOP before amend branch, amend branch deny exits at line N, then line N+offset checks escape (escape does NOT bypass deny).
 - **Pi TS test gpg config in beforeEach** — [shared] Pi extension tests that run `git commit` in a `beforeEach` tmpDir setup must call `execSync("git config commit.gpgsign false", { cwd: tmpDir })` AFTER the `user.name` config, before any commit operations. Under parallel `npm test` load, a global `commit.gpgsign=true` config causes GPG to fail with "Cannot allocate memory" when multiple processes compete for GPG resources. The per-tmpDir override is required to isolate test commits from the global config. Pattern: add the config call on a separate line immediately after user.name setup.
-
-## Update When Changing
-
-- a codegen-infra pitfall or bash gotcha is discovered/resolved
-
-## Trigger Keywords
-
-pitfall, gotcha, bash pattern, sed portability, jq null, heredoc, flaky test, state leakage, byte cap, subshell, grep footgun, exit code
+- **`$CWD` in launchers is local, not env var** — [shared] `codegen-build` and `codegen-scaffold` declare `CWD` local (shadowing env var). Environment injection (`CWD=... cmd`) is ignored. Use `--cwd=` flag, not `CWD=... codegen-build`.
