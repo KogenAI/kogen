@@ -190,7 +190,7 @@ ci: test
 # Job count caps at 8 to avoid thrashing on smaller machines.
 # Post-deps stages (hook-tests, phoenix scaffold, test_harness/install, npm) run
 # concurrently via & + wait to reduce wall time.
-test: hook-parity hook-header-parity harness-parity test-generator enforce-registry-parity enforce-hook-rationale test-hermetic prompt-content-parity tools-header-no-dup
+test: hook-parity hook-header-parity harness-parity test-generator enforce-registry-parity enforce-hook-rationale test-hermetic prompt-content-parity tools-header-no-dup rule-render-freshness
 	@set -e; \
 	export GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=commit.gpgsign GIT_CONFIG_VALUE_0=false; \
 	subagents_ext_dir="$(SCRIPT_DIR)/harnesses/pi/pi-extensions/subagents"; \
@@ -470,6 +470,30 @@ rule-parity:
 		exit 1; \
 	fi
 
+# rule-render-freshness: verify committed shared/apps/*.md match a fresh render.
+# Catches the case where a rule file or template was edited without re-running make install.
+.PHONY: rule-render-freshness
+rule-render-freshness:
+	@echo "--- rule-render-freshness: checking committed apps docs match fresh render ---"; \
+	tmp=$$(mktemp -d); \
+	trap 'rm -rf "$$tmp"' EXIT; \
+	cp -R shared "$$tmp/shared"; \
+	for base in AGENTS-phoenix AGENTS-static; do \
+		variant=$${base#AGENTS-}; \
+		CODEGEN_DIR="$$PWD" python3 templates/generator/process_template.py "shared/apps/$$base.md.j2" pi false > "$$tmp/shared/apps/$$base.md"; \
+		CODEGEN_DIR="$$PWD" python3 templates/generator/process_template.py "shared/apps/$$base.md.j2" claude false > "$$tmp/shared/apps/CLAUDE-$$variant.md"; \
+	done; \
+	node node_modules/prettier/bin/prettier.cjs -w --log-level error "$$tmp/shared"; \
+	fail=0; \
+	for f in CLAUDE-phoenix CLAUDE-static AGENTS-phoenix AGENTS-static; do \
+		if ! diff -q "$$tmp/shared/apps/$$f.md" "shared/apps/$$f.md" >/dev/null 2>&1; then \
+			echo "rule-render-freshness: STALE — shared/apps/$$f.md does not match a fresh render. A rule or template changed without re-render. Run 'make install' and commit the regenerated shared/apps/*.md."; \
+			fail=1; \
+		fi; \
+	done; \
+	if [ "$$fail" = "0" ]; then echo "rule-render-freshness: OK — all apps docs match fresh render"; fi; \
+	exit "$$fail"
+
 # show-failures: pretty-print the durable agent tool-failure store.
 .PHONY: show-failures
 show-failures:
@@ -622,7 +646,8 @@ help:
 	@echo "  make test-all       Full pre-deploy gate: test + test-stacks + record-green"
 	@echo "  make record-green   Write test_harness/last_green.json with current sha + versions"
 	@echo "  make hook-parity    Verify hook registrations match claude-code-settings.json"
-	@echo "  make rule-parity    Grep baked agents for stale harness-relative paths"
+	@echo "  make rule-parity            Grep baked agents for stale harness-relative paths"
+	@echo "  make rule-render-freshness  Verify committed apps docs match a fresh render"
 	@echo "  make show-failures  Pretty-print durable agent tool-failure store"
 	@echo "  make show-verdicts  Pretty-print durable gate-verdict history"
 	@echo "  make format         Format all shell scripts and files"
