@@ -155,7 +155,7 @@ cat >"$LOG11" <<'MD'
 MD
 make_transcript "$T11/transcript.jsonl" "$LOG11"
 out=$(printf '%s' "$(input_for "$T11" developer-phoenix-backend false sess11 "$T11/transcript.jsonl")" |
-    DEV_GATE_POLL_TIMEOUT_OVERRIDE=10 PATH="$stub_bin11:$PATH" bash "$HOOK" 2>/dev/null || true)
+    DEV_GATE_POLL_TIMEOUT_OVERRIDE=10 PATH="$stub_bin11:$PATH" RENDER_CHECK_CMD="" bash "$HOOK" 2>/dev/null || true)
 assert_file_contains "long-gate exit-0: ALL CLEAR appended" "ALL CLEAR" "$LOG11"
 rm -rf "$T11" "$stub_bin11"
 
@@ -232,7 +232,7 @@ cat >"$LOG14" <<'MD'
 MD
 make_transcript "$T14/transcript.jsonl" "$LOG14"
 out=$(printf '%s' "$(input_for "$T14" developer-phoenix-backend false sess14 "$T14/transcript.jsonl")" |
-    DEV_GATE_POLL_TIMEOUT_OVERRIDE=10 PATH="$stub_bin14:$PATH" bash "$HOOK" 2>/dev/null || true)
+    DEV_GATE_POLL_TIMEOUT_OVERRIDE=10 PATH="$stub_bin14:$PATH" RENDER_CHECK_CMD="" bash "$HOOK" 2>/dev/null || true)
 assert_file_contains "T14: long-gate ALL CLEAR appended" "ALL CLEAR" "$LOG14"
 [ ! -e "$T14/codegen/gate-pending/latest.flag" ] && {
     [ -n "${VERBOSE:-}" ] && printf 'PASS: T14: latest.flag removed after long-gate completion\n'

@@ -3,7 +3,7 @@
  *
  * Asserts that Pi TRANSIENT_ERROR_PATTERNS and Bash retryable_regex stay
  * in sync: every Bash token is matched by a Pi pattern and vice versa.
- * A count-equality assertion (19 <-> 19) prevents silent drift.
+ * A count-equality assertion (20 <-> 20) prevents silent drift.
  *
  * Bash source: harnesses/shared/retryable-errors.sh (single source of truth
  * for all harnesses; sourced by claude stop-resume.sh + future dispatch loops).
@@ -44,7 +44,18 @@ describe("transient-pattern parity (Bash retryable_regex <-> Pi)", () => {
     }
   });
 
-  it("token counts are equal (19 <-> 19)", () => {
+  it("token counts are equal (20 <-> 20)", () => {
     assert.equal(bashTokens.length, TRANSIENT_ERROR_PATTERNS.length);
+  });
+
+  it("new drop token present in Bash and recognized by Pi", () => {
+    assert.ok(
+      bashTokens.includes("Connection closed mid-response"),
+      "Bash retryable_regex missing 'Connection closed mid-response'",
+    );
+    assert.ok(
+      TRANSIENT_ERROR_PATTERNS.some((p) => p.test("Connection closed mid-response")),
+      "Pi patterns miss 'Connection closed mid-response'",
+    );
   });
 });

@@ -178,6 +178,7 @@ make_edit_line() {
 # Case 1: A's log only → returns A's path.
 TMP_T1=$(mktemp -d)
 make_write_line "$TMP_T1/codegen/logging/A_session.md" >"$TMP_T1/transcript.jsonl"
+mkdir -p "$TMP_T1/codegen/logging" && : >"$TMP_T1/codegen/logging/A_session.md"
 result=$(TRANSCRIPT_PATH="$TMP_T1/transcript.jsonl" bash -c "source '$SCRIPT_DIR/hooks-lib.sh'; session_log_from_transcript")
 assert_eq "session_log_from_transcript: A only → A path" "$TMP_T1/codegen/logging/A_session.md" "$result"
 rm -rf "$TMP_T1"
@@ -185,6 +186,7 @@ rm -rf "$TMP_T1"
 # Case 2: B's log only → returns B's path.
 TMP_T2=$(mktemp -d)
 make_write_line "$TMP_T2/codegen/logging/B_session.md" >"$TMP_T2/transcript.jsonl"
+mkdir -p "$TMP_T2/codegen/logging" && : >"$TMP_T2/codegen/logging/B_session.md"
 result=$(TRANSCRIPT_PATH="$TMP_T2/transcript.jsonl" bash -c "source '$SCRIPT_DIR/hooks-lib.sh'; session_log_from_transcript")
 assert_eq "session_log_from_transcript: B only → B path" "$TMP_T2/codegen/logging/B_session.md" "$result"
 rm -rf "$TMP_T2"
@@ -195,6 +197,7 @@ TMP_T3=$(mktemp -d)
     make_write_line "$TMP_T3/codegen/logging/A_session.md"
     make_write_line "$TMP_T3/codegen/logging/B_session.md"
 } >"$TMP_T3/transcript.jsonl"
+mkdir -p "$TMP_T3/codegen/logging" && : >"$TMP_T3/codegen/logging/A_session.md" && : >"$TMP_T3/codegen/logging/B_session.md"
 result=$(TRANSCRIPT_PATH="$TMP_T3/transcript.jsonl" bash -c "source '$SCRIPT_DIR/hooks-lib.sh'; session_log_from_transcript")
 assert_eq "session_log_from_transcript: interleaved A+B → last (B)" "$TMP_T3/codegen/logging/B_session.md" "$result"
 rm -rf "$TMP_T3"
@@ -217,6 +220,7 @@ assert_eq "session_log_from_transcript: missing file → empty" "" "$result"
 # Case 7: Edit tool_use also matched.
 TMP_T7=$(mktemp -d)
 make_edit_line "$TMP_T7/codegen/logging/edit_session.md" >"$TMP_T7/transcript.jsonl"
+mkdir -p "$TMP_T7/codegen/logging" && : >"$TMP_T7/codegen/logging/edit_session.md"
 result=$(TRANSCRIPT_PATH="$TMP_T7/transcript.jsonl" bash -c "source '$SCRIPT_DIR/hooks-lib.sh'; session_log_from_transcript")
 assert_eq "session_log_from_transcript: Edit tool_use matched" "$TMP_T7/codegen/logging/edit_session.md" "$result"
 rm -rf "$TMP_T7"

@@ -116,7 +116,7 @@ cat >"$LOG" <<'MD'
 stuff
 MD
 make_transcript "$T3/transcript.jsonl" "$LOG"
-out=$(printf '%s' "$(input_for "$T3" developer-phoenix-backend false sess1 "$T3/transcript.jsonl")" | bash "$HOOK" 2>/dev/null || true)
+out=$(printf '%s' "$(input_for "$T3" developer-phoenix-backend false sess1 "$T3/transcript.jsonl")" | RENDER_CHECK_CMD="" bash "$HOOK" 2>/dev/null || true)
 assert_not_contains "short-gate success no block" '"decision":"block"' "$out"
 assert_file_contains "short-gate success appends ALL CLEAR" "ALL CLEAR" "$LOG"
 rm -rf "$T3"
@@ -208,7 +208,7 @@ session_id=oldsession
 mode=long
 EOF
 make_transcript "$T15/transcript.jsonl" "$LOG15"
-out=$(printf '%s' "$(input_for "$T15" developer-phoenix-backend false sess15 "$T15/transcript.jsonl")" | bash "$HOOK" 2>/dev/null || true)
+out=$(printf '%s' "$(input_for "$T15" developer-phoenix-backend false sess15 "$T15/transcript.jsonl")" | RENDER_CHECK_CMD="" bash "$HOOK" 2>/dev/null || true)
 [ ! -e "$T15/codegen/gate-pending/latest.flag" ] && {
     [ -n "${VERBOSE:-}" ] && printf 'PASS: T15: pre-seeded terminal latest.flag swept by hook entry\n'
     pass=$((pass + 1))
@@ -244,7 +244,7 @@ cat >"$LOG_B" <<'MD'
 MD
 # A's transcript only records A's log write.
 make_transcript "$T18A/transcript.jsonl" "$LOG_A"
-out=$(printf '%s' "$(input_for "$T18A" developer-phoenix-backend false sess18 "$T18A/transcript.jsonl")" | bash "$HOOK" 2>/dev/null || true)
+out=$(printf '%s' "$(input_for "$T18A" developer-phoenix-backend false sess18 "$T18A/transcript.jsonl")" | RENDER_CHECK_CMD="" bash "$HOOK" 2>/dev/null || true)
 # A's log must have ALL CLEAR; B's log must NOT.
 if grep -qF "ALL CLEAR" "$LOG_A" && ! grep -qF "ALL CLEAR" "$LOG_B"; then
     [ -n "${VERBOSE:-}" ] && printf 'PASS: A+B regression: verdict appended to A only\n'

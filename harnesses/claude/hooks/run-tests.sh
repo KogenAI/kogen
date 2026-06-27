@@ -26,21 +26,6 @@ trap 'rm -rf "$_test_project_dir"' EXIT
 HOOKS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 JOBS="${JOBS:-8}"
 
-# QUARANTINE — known-red tests that must NOT fail the gate yet.
-# A quarantined test that fails prints `QUARANTINED-RED: <name> — <summary>` to
-# stderr and returns 0; a non-quarantined failure prints `FAIL:` and returns 1.
-# Newline-delimited basenames (bash 3.2-safe — no declare -A on macOS).
-# Membership tested via `grep -qxF` (exact-line, fixed-string).
-QUARANTINE='build-no-success-before-commit_test.sh
-hooks-lib_test.sh
-phoenix-dev-gate-long_test.sh
-phoenix-dev-gate-short_test.sh
-phoenix-dev-gate_test.sh
-step-log-section-before-spawn_test.sh
-subagent-read-discipline_test.sh
-subagent-retrospective-guard_test.sh'
-export QUARANTINE
-
 # Snapshot the live cycle-state file BEFORE the run so the backstop can detect
 # a WRITE during the run (not mere presence — a real committed cycle leaves the
 # file on disk legitimately).
@@ -59,10 +44,6 @@ run_one() {
     summary=$(printf '%s' "$out" | grep -E "passed, [0-9]+ failed" | tail -1)
     [ -n "$summary" ] || summary="exit=$rc"
     if [ "$rc" -ne 0 ]; then
-        if printf '%s\n' "$QUARANTINE" | grep -qxF "$name"; then
-            printf 'QUARANTINED-RED: %s — %s\n' "$name" "$summary" >&2
-            return 0
-        fi
         printf 'FAIL: %s — %s\n%s\n' "$name" "$summary" "$out"
         return 1
     fi
@@ -83,6 +64,11 @@ if [ -n "${CLAUDE_ROLE:-}" ] || [ -n "${PI_ROLE:-}" ]; then
     exit 1
 fi
 
+# Strip managed-build env vars so hook tests run in a hermetic interactive-mode
+# environment. CODEGEN_BUILD_NON_INTERACTIVE (set by dispatch.sh in managed
+# builds) activates non-interactive code paths that break interactive-mode tests.
+unset CODEGEN_BUILD_NON_INTERACTIVE
+
 set +e
 find "$HOOKS_DIR" -name '*_test.sh' -type f -print0 |
     xargs -0 -n1 -P"$JOBS" -I{} bash -c 'run_one "$@"' _ {}
@@ -101,10 +87,9 @@ if [ "$_live_cs_before" != "$_live_cs_after" ]; then
 fi
 
 # Propagate aggregate test failure. xargs exits 123 when any -I{} invocation
-# returned non-zero (i.e. a non-quarantined test FAILed — quarantined failures
-# return 0 inside run_one, so they do not reach here). Any non-zero xargs exit
-# means at least one real failure → fail the gate.
+# returned non-zero. Any non-zero xargs exit means at least one real failure
+# → fail the gate. The runner fails-closed: no allowlists, no suppression.
 if [ "$_xargs_rc" -ne 0 ]; then
-    printf 'FAIL: one or more non-quarantined hook tests failed (xargs rc=%s)\n' "$_xargs_rc" >&2
+    printf 'FAIL: one or more hook tests failed (xargs rc=%s)\n' "$_xargs_rc" >&2
     exit 1
 fi

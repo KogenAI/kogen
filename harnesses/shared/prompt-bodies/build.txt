@@ -55,3 +55,15 @@ A subagent dying is NOT that stage completing. When a subagent dies (connection 
 - NEVER substitute "the pitch is already probed" or "context is available" for a missing plan.
 - MUST either: (a) re-spawn the dead role with context to retry, or (b) explicitly fail the stage and halt.
 - The hook enforces this mechanically: spawning role N+1 is blocked when role N's section header exists in the step log but its body is empty — no real content means the prior stage produced nothing (subagent died).
+
+## Subagent drop recovery (bounded re-spawn with context)
+
+When a delegated subagent returns a connection-drop result — `Connection closed mid-response`, `[Request interrupted by user for tool use]`, or any transient transport fault tool_result — the orchestrator MUST recover by re-spawning the SAME role, never by working around the dead agent:
+
+- MUST re-spawn the SAME role (same `subagent_type`), with an explicit `RESUMING:` continuation context naming (a) the partial work already on disk for that role, and (b) that role's session-log section to continue under.
+- Bounded to 2 re-spawns per stage. On the 2nd re-spawn also dropping, FAIL the stage cleanly and halt — report the stage as failed.
+- NEVER skip the stage or advance to role N+1 (a dropped subagent is NOT a completed stage).
+- NEVER address or send a message to the dropped agent — it is gone; spawn a fresh instance of the same role.
+- NEVER silently split the dropped role's work across other roles or do it yourself.
+
+Example RESUMING context: "RESUMING: developer-phoenix-backend dropped mid-task. Partial work on disk: lib/app/foo.ex (partial), test/app/foo_test.exs (started). Continue under the existing `## developer-phoenix-backend Section` in the session log; do not re-create the header. Finish the remaining sub-tasks and run the gate."

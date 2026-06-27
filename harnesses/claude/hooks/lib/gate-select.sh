@@ -233,18 +233,20 @@ gate_select_read_planner_gate() {
             # Match **Gate**: or Gate:
             if (match(line, /^\*\*Gate\*\*:[[:space:]]*/) || match(line, /^Gate:[[:space:]]*/)) {
                 rest = substr(line, RSTART + RLENGTH)
-                # Strip leading/trailing backticks and whitespace
-                gsub(/^`+|`+$/, "", rest)
-                gsub(/^[[:space:]]+|[[:space:]]+$/, "", rest)
-                # If backticks present, truncate at first backtick (closing fence)
-                if (match(rest, /`/)) {
-                    rest = substr(rest, 1, RSTART - 1)
+                # Decide backtick-wrapping on the RAW rest BEFORE stripping.
+                gsub(/^[[:space:]]+/, "", rest)
+                if (substr(rest, 1, 1) == "`") {
+                    # Wrapped gate: take content between the first opening and
+                    # next closing backtick verbatim. No prose truncation.
+                    inner = substr(rest, 2)
+                    if (match(inner, /`/)) { inner = substr(inner, 1, RSTART - 1) }
+                    rest = inner
                     gsub(/[[:space:]]+$/, "", rest)
-                }
-                # If no backticks, truncate at prose separators: ` (`, ` —`, ` - `
-                else {
-                    if (match(rest, / *\(/))     { rest = substr(rest, 1, RSTART - 1) }
-                    else if (match(rest, / *—/)) { rest = substr(rest, 1, RSTART - 1) }
+                } else {
+                    # Bare gate: trim, then truncate at prose separators.
+                    gsub(/[[:space:]]+$/, "", rest)
+                    if (match(rest, / *\(/))       { rest = substr(rest, 1, RSTART - 1) }
+                    else if (match(rest, / *—/))   { rest = substr(rest, 1, RSTART - 1) }
                     else if (match(rest, / +-+ /)) { rest = substr(rest, 1, RSTART - 1) }
                     gsub(/[[:space:]]+$/, "", rest)
                 }

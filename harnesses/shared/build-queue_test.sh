@@ -860,6 +860,44 @@ assert_eq "T18: invalid budget (abc) — no crash, queue exits 0" "0" "$T18_EXIT
 assert_not_contains "T18: no unbound variable error" "unbound variable" "$T18_OUT"
 rm -rf "$T18_ROOT"
 
+# ── Test T19: "Connection closed mid-response" → transient retry, then ship ───
+T19_ROOT="$TMP_ROOT/t19"
+make_workspace "$T19_ROOT"
+printf 'Pitch: delta\n' >"$T19_ROOT/codegen/pitches/ready/delta.md"
+
+T19_CALL_LOG="$T19_ROOT/calls.log"
+T19_ATTEMPT_FILE="$T19_ROOT/attempt"
+T19_DROP='{"type":"system","subtype":"api_error","error":{"message":"Connection closed mid-response"}}'
+T19_RESULT='{"type":"result","result":"shipped ok","session_id":"sT19"}'
+
+T19_EXIT=0
+T19_OUT=$(
+    cd "$T19_ROOT"
+    STUB_CALL_LOG="$T19_CALL_LOG" \
+        STUB_ATTEMPT_FILE="$T19_ATTEMPT_FILE" \
+        STUB_JSONL_BODY_1="$T19_DROP" \
+        STUB_EXIT_1=1 \
+        STUB_SHIP_1=0 \
+        STUB_JSONL_BODY_2="$T19_RESULT" \
+        STUB_SHIP_2=1 \
+        STUB_EXIT_2=0 \
+        CODEGEN_BUILD_QUEUE_MAX_RETRIES=3 \
+        CODEGEN_BUILD_QUEUE_RETRY_DELAYS="0 0 0" \
+        OCG_CODEGEN_DIR="$T19_ROOT/fake-codegen-bin" \
+        bash "$HELPER" --harness=claude 2>&1
+) || T19_EXIT=$?
+
+assert_eq "T19: connection-drop retry exits 0" "0" "$T19_EXIT"
+assert_eq "T19: slug shipped after connection-drop retry" "1" \
+    "$([ -f "$T19_ROOT/codegen/pitches/shipped/delta.md" ] && printf '1' || printf '0')"
+T19_CALLS="$(grep -c '.' "$T19_CALL_LOG" 2>/dev/null || printf '0')"
+[ "$T19_CALLS" -ge 2 ] &&
+    pass=$((pass + 1)) ||
+    {
+        printf 'FAIL: T19 expected >=2 calls got %s\n' "$T19_CALLS"
+        fail=$((fail + 1))
+    }
+
 # ── Summary ───────────────────────────────────────────────────────────────────
 printf '\nResults: %d passed, %d failed\n' "$pass" "$fail"
 

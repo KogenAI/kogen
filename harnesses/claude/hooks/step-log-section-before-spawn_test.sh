@@ -307,7 +307,7 @@ FAKE_TRANSCRIPT17="$T17/transcript.jsonl"
 printf '' >"$FAKE_TRANSCRIPT17"
 out17=$(
     unset OCG_APPS_ROOT 2>/dev/null
-    mk_agent_input "developer-phoenix-backend" "$FAKE_TRANSCRIPT17" | bash "$HOOK" 2>/dev/null || true
+    mk_agent_input "developer-phoenix-backend" "$FAKE_TRANSCRIPT17" | env -u CLAUDE_ROLE -u PI_ROLE bash "$HOOK" 2>/dev/null || true
 )
 assert_deny "deny: no fallback outside managed build (OCG_APPS_ROOT unset)" "$out17"
 rm -rf "$T17"
