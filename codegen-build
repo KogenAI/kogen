@@ -190,13 +190,14 @@ fi
 # The LLM then commits these along with the app code.
 SCAFFOLD_CMD="$SCRIPT_DIR/codegen-scaffold"
 if [[ -x "$SCAFFOLD_CMD" ]]; then
-    # Self-build guard: when codegen builds itself, $CWD resolves to the
-    # codegen repo root ($SCRIPT_DIR). Running integrate here would re-symlink
-    # AGENTS.md/CLAUDE.md over the real (de-symlinked) files and re-append
-    # .gitignore entries. Skip integrate on a self-build.
-    _cwd_real="$(cd "$CWD" 2>/dev/null && pwd -P)"
-    if [[ "$_cwd_real" == "$SCRIPT_DIR" ]]; then
-        printf 'codegen-build: self-build detected (cwd == codegen root); skipping integrate pre-step\n' >&2
+    # Self-build guard (content-marker, location-independent): when codegen
+    # builds itself, $CWD is the codegen repo root. Running integrate would
+    # re-symlink AGENTS.md/CLAUDE.md over the committed symlinks and re-append
+    # .gitignore entries. $SCRIPT_DIR is unreliable here (the installed launcher
+    # lives in ~/.local/bin), so detect the codegen root by the presence of
+    # BOTH generator artifacts — never present in a downstream scaffolded app.
+    if [[ -f "$CWD/harnesses/claude/manifest.yaml" && -f "$CWD/templates/generator/generate.sh" ]]; then
+        printf 'codegen-build: self-build detected (codegen repo markers present in cwd); skipping integrate pre-step\n' >&2
     else
         STACK_FOR_INTEGRATE="${STACK:-phoenix}"
         _integrate_out=$("$SCAFFOLD_CMD" integrate --stack="$STACK_FOR_INTEGRATE" --cwd="$CWD" 2>&1) || {

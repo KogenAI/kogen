@@ -473,6 +473,15 @@ do_integrate() {
         printf 'codegen-scaffold: --cwd directory does not exist: %s\n' "$CWD" >&2
         exit 1
     fi
+    # Self-build guard (content-marker, location-independent): when integrating
+    # the codegen repo itself, re-symlinking would clobber the committed
+    # AGENTS.md/CLAUDE.md symlinks and re-append .gitignore entries. Detect the
+    # codegen root by the presence of BOTH generator artifacts (never present in
+    # a downstream scaffolded app), regardless of where this launcher lives.
+    if [[ -f "$CWD/harnesses/claude/manifest.yaml" && -f "$CWD/templates/generator/generate.sh" ]]; then
+        printf 'codegen-scaffold: self-build detected (codegen repo markers present in --cwd); skipping integrate (clean no-op)\n' >&2
+        exit 0
+    fi
     run_integrate_stage "$CWD"
 }
 

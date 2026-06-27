@@ -502,6 +502,46 @@ assert_contains "(j9) pi --session flag present" "$J9C" "--session"
 assert_contains "(j9) pi resume id forwarded" "$J9C" "PID9"
 
 # ─────────────────────────────────────────────────────────────────────────────
+# Test (k): install-launcher self-build — $SCRIPT_DIR (cb_root) ≠ $CWD, but $CWD
+# carries the codegen repo markers ⇒ integrate pre-step MUST be skipped.
+# This is the case the location-based guard ($CWD == $SCRIPT_DIR) missed.
+# ─────────────────────────────────────────────────────────────────────────────
+CB_K="$(make_cb_root cb_k)"
+make_claude_harness "$CB_K" >/dev/null
+# Copy real codegen-scaffold so SCAFFOLD_CMD is executable and the integrate
+# pre-step block actually runs (otherwise the guard is never reached).
+cp "$CODEGEN_ROOT/codegen-scaffold" "$CB_K/codegen-scaffold"
+chmod +x "$CB_K/codegen-scaffold"
+
+# Marker-bearing $CWD distinct from cb_root (= $SCRIPT_DIR). Simulates running
+# the INSTALLED launcher against the codegen repo root.
+MARKER_CWD="$BASE_TMP/marker_cwd"
+mkdir -p "$MARKER_CWD/harnesses/claude" "$MARKER_CWD/templates/generator"
+touch "$MARKER_CWD/harnesses/claude/manifest.yaml" "$MARKER_CWD/templates/generator/generate.sh"
+
+# Dispatch stub exits 0 so the build short-circuits right after the integrate pre-step.
+make_stub "$CB_K/harnesses/claude/dispatch.sh" 'exit 0'
+
+STDERR_K="$BASE_TMP/stderr_k.txt"
+actual_ec=0
+OCG_CODEGEN_DIR="$CODEGEN_ROOT" \
+    CODEGEN_BUILD_MODEL="" CODEGEN_BUILD_EFFORT="" \
+    "$CB_K/codegen-build" --harness=claude --stack=phoenix --non-interactive \
+    --cwd="$MARKER_CWD" "k prompt" 2>"$STDERR_K" >/dev/null || actual_ec=$?
+
+STDERR_K_CONTENT="$(cat "$STDERR_K")"
+assert_contains "(k) self-build skip message emitted for install-launcher cwd" "$STDERR_K_CONTENT" "self-build detected"
+
+# Integrate must NOT have run → no AGENTS.md symlink written into marker cwd.
+if [[ ! -e "$MARKER_CWD/AGENTS.md" ]]; then
+    [ -n "${VERBOSE:-}" ] && printf 'PASS: (k) integrate skipped — no AGENTS.md written into marker cwd\n'
+    pass=$((pass + 1))
+else
+    printf 'FAIL: (k) integrate ran — AGENTS.md written into marker cwd despite markers present\n'
+    fail=$((fail + 1))
+fi
+
+# ─────────────────────────────────────────────────────────────────────────────
 echo ""
 echo "Results: $pass passed, $fail failed"
 

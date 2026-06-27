@@ -4,7 +4,6 @@
 # Optimum Codegen
 /.vscode/
 /codegen/
-/AGENTS.md
 .mcp.json
 *.code-workspace
 .env
