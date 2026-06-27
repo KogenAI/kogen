@@ -28,6 +28,7 @@ describe("build-queue-continuity", { concurrency: false }, () => {
   afterEach(() => {
     fs.rmSync(tmpDir, { recursive: true, force: true });
     delete process.env["CWD"];
+    delete process.env["PI_ROLE"];
   });
 
   function writeManifest(data: object): void {
@@ -174,6 +175,22 @@ describe("build-queue-continuity", { concurrency: false }, () => {
     assert.ok(
       stderrOutput.includes("WARNING"),
       "expected warning when no gate-result.json and pitches remain",
+    );
+  });
+
+  // ── Test 8: no warning when PI_ROLE=shape (investigative mode) ───────────────
+  it("does not warn when PI_ROLE=shape (investigative mode — build-runtime gate skipped)", async () => {
+    writeManifest({
+      slugs: ["a", "b", "c"],
+      position: 1,
+      started_at: "2026-01-01T00:00:00Z",
+    });
+    writeGateResult("clear");
+    process.env["PI_ROLE"] = "shape";
+    const stderrOutput = await runHook(tmpDir);
+    assert.ok(
+      !stderrOutput.includes("WARNING"),
+      "expected no warning when PI_ROLE=shape (investigative mode)",
     );
   });
 });

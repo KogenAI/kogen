@@ -4,7 +4,7 @@
  * Note: Pi session_shutdown event — cannot block. Hook warns via stderr only.
  */
 
-import { describe, it, before, after } from "node:test";
+import { describe, it, before, after, afterEach } from "node:test";
 import assert from "node:assert/strict";
 import * as fs from "node:fs";
 import * as path from "node:path";
@@ -18,6 +18,10 @@ describe("step-log-completeness", () => {
       _capturedHandler = handler;
     },
   };
+
+  afterEach(() => {
+    delete process.env["PI_ROLE"];
+  });
 
   async function runHook(stop_hook_active = false, cwd = "/tmp") {
     const { register } = await import("../step-log-completeness");
@@ -44,6 +48,40 @@ describe("step-log-completeness", () => {
   it("normal shutdown does not crash", async () => {
     const result = await runHook(false, "/tmp");
     assert.ok(result == null || (result as { block?: boolean }).block !== true);
+  });
+
+  it("does not warn when PI_ROLE=shape (investigative mode — build-runtime gate skipped)", async () => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "step-log-completeness-role-test-"));
+    const loggingDir = path.join(tmpDir, "codegen", "logging");
+    fs.mkdirSync(loggingDir, { recursive: true });
+    const logFile = path.join(loggingDir, "20260101_120000_step1_test.md");
+    fs.writeFileSync(
+      logFile,
+      "## developer-phoenix-backend Section\n\nSome content\n\n## dev-gate Section\n\nALL CLEAR ✅\n",
+      "utf8",
+    );
+    const now = Date.now();
+    fs.utimesSync(logFile, new Date(now), new Date(now));
+
+    process.env["PI_ROLE"] = "shape";
+
+    let stderrOutput = "";
+    const origWrite = process.stderr.write.bind(process.stderr);
+    process.stderr.write = (s: string) => {
+      stderrOutput += s;
+      return true;
+    };
+    try {
+      await runHook(false, tmpDir);
+    } finally {
+      process.stderr.write = origWrite;
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    }
+
+    assert.ok(
+      !stderrOutput.includes("WARNING"),
+      "expected no WARNING when PI_ROLE=shape (investigative mode)",
+    );
   });
 
   describe("empty-body content-floor (observe-only)", () => {

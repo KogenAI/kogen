@@ -37,8 +37,18 @@ const CANONICAL_LOG_RE =
 
 const SIXTY_MIN_MS = 60 * 60 * 1000;
 
+/** Resolve the active Pi role (PI_ROLE primary). Empty = build mode. */
+function resolveRole(): string {
+  return process.env["PI_ROLE"] ?? process.env["CLAUDE_ROLE"] ?? "";
+}
+
 export function register(pi: ExtensionAPI): void {
   pi.on("session_shutdown", async () => {
+    // Investigative-mode skip: observe-only Stop twin enforces only in build mode
+    // (empty role). Silent early-return on any non-empty role — no warning (mirrors
+    // signal: CLAUDE_ROLE_FAMILY; misfire warning in investigative mode is noise).
+    if (resolveRole() !== "") return;
+
     const projectDir = process.env["CWD"] ?? process.cwd();
     debugLog("step-log-missing-guard", `cwd=${projectDir}`);
 

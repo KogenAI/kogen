@@ -532,7 +532,7 @@
   event: Stop
   tool_guard: "*"
   surface: user_global
-  signal: none
+  signal: CLAUDE_ROLE_FAMILY
   role: "*"
   harnesses: all
   rationale: Deterministic Stop-hook backstop for build-queue-no-permission-asks — blocks ending a session while the build-queue manifest shows remaining pitches and the current pitch's gate did not fail.
@@ -634,7 +634,7 @@
   event: Stop
   tool_guard: "*"
   surface: user_global
-  signal: none
+  signal: CLAUDE_ROLE_FAMILY
   role: "*"
   harnesses: all
 
@@ -643,7 +643,7 @@
   event: Stop
   tool_guard: "*"
   surface: user_global
-  signal: none
+  signal: CLAUDE_ROLE_FAMILY
   role: "*"
   harnesses: all
 
@@ -661,7 +661,7 @@
   event: Stop
   tool_guard: "*"
   surface: user_global
-  signal: none
+  signal: CLAUDE_ROLE_FAMILY
   role: "*"
   harnesses: all
   rationale: Claude blocks (stop-cycle-guard.sh block calls); Pi session_shutdown is observe-only and cannot block, so the Pi twin only debugLogs — documented divergence, not a bug.

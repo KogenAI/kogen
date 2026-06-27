@@ -6,7 +6,7 @@
 # event: Stop
 # matcher: *
 # surface: user_global
-# signal: none
+# signal: CLAUDE_ROLE_FAMILY
 # role: *
 # harnesses: all
 # GENERATED FROM shared/enforcement/registry.yaml — DO NOT EDIT
@@ -41,6 +41,16 @@ debug_log step-log-completeness "session=$session_id"
 # Loop guard
 if [ "$STOP_HOOK_ACTIVE" = "true" ]; then
     debug_log step-log-completeness "skip: stop_hook_active"
+    exit 0
+fi
+
+# Investigative-mode skip: this build-runtime gate enforces ONLY in build mode
+# (empty role). Skip (exit 0) for any non-empty investigative role (shape/debug/
+# ops/experiment) — mirrors signal: CLAUDE_ROLE_FAMILY. Inverse of pitch-format-validator.
+source "$(dirname "$0")/_role.sh"
+role=$(resolve_role)
+if [ -n "$role" ]; then
+    debug_log step-log-completeness "skip: investigative role=$role"
     exit 0
 fi
 

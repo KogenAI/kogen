@@ -23,6 +23,7 @@ describe("step-log-missing-guard", { concurrency: false }, () => {
   afterEach(() => {
     fs.rmSync(tmpDir, { recursive: true, force: true });
     delete process.env["CWD"];
+    delete process.env["PI_ROLE"];
   });
 
   async function runHook(): Promise<string> {
@@ -145,6 +146,21 @@ describe("step-log-missing-guard", { concurrency: false }, () => {
     assert.ok(
       result == null || (result as { block?: boolean }).block !== true,
       "Pi session_shutdown must not block",
+    );
+  });
+
+  it("does not warn when PI_ROLE=shape (investigative mode — build-runtime gate skipped)", async () => {
+    const loggingDir = path.join(tmpDir, "codegen", "logging");
+    fs.mkdirSync(loggingDir, { recursive: true });
+    // Non-canonical file that would normally trigger warning
+    fs.writeFileSync(path.join(loggingDir, "random-notes.md"), "notes\n");
+
+    process.env["PI_ROLE"] = "shape";
+
+    const stderr = await runHook();
+    assert.ok(
+      !stderr.includes("WARNING"),
+      "expected no WARNING when PI_ROLE=shape (investigative mode)",
     );
   });
 });

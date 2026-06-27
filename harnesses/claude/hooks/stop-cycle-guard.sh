@@ -6,7 +6,7 @@
 # event: Stop
 # matcher: *
 # surface: user_global
-# signal: none
+# signal: CLAUDE_ROLE_FAMILY
 # role: *
 # harnesses: all
 # rationale: Claude blocks (stop-cycle-guard.sh block calls); Pi session_shutdown is observe-only and cannot block, so the Pi twin only debugLogs — documented divergence, not a bug.
@@ -35,6 +35,16 @@ step_log=$(session_log_from_transcript)
 # Loop guard — already fired this stop.
 if [ "$STOP_HOOK_ACTIVE" = "true" ]; then
     debug_log claude-cycle-guard "skip: stop_hook_active"
+    exit 0
+fi
+
+# Investigative-mode skip: this build-runtime gate enforces ONLY in build mode
+# (empty role). Skip (exit 0) for any non-empty investigative role (shape/debug/
+# ops/experiment) — mirrors signal: CLAUDE_ROLE_FAMILY. Inverse of pitch-format-validator.
+source "$(dirname "$0")/_role.sh"
+role=$(resolve_role)
+if [ -n "$role" ]; then
+    debug_log claude-cycle-guard "skip: investigative role=$role"
     exit 0
 fi
 

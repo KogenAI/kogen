@@ -579,6 +579,38 @@ fi
 rm -rf "$tmp28"
 rm -f "/tmp/claude-cycle-guard-test-sess-28.count"
 
+# ── Test 29: skip when CLAUDE_ROLE=shape (investigative mode) ────────────────
+rm -f "/tmp/claude-cycle-guard-test-sess-29.count"
+tmp29=$(mktemp -d)
+printf '%s\n' "$AGENT_ENTRY_DEVELOPER" >"$tmp29/transcript.jsonl"
+INPUT29=$(make_input "$tmp29/transcript.jsonl" "$tmp29" "false" "Done." "test-sess-29")
+stdout29=$(printf '%s' "$INPUT29" | CLAUDE_ROLE=shape bash "$GUARD" 2>/dev/null || true)
+if ! printf '%s' "$stdout29" | grep -q '"decision"[[:space:]]*:[[:space:]]*"block"'; then
+    [ -n "${VERBOSE:-}" ] && printf 'PASS: investigative_skip: CLAUDE_ROLE=shape → allow (would block in build mode)\n'
+    pass=$((pass + 1))
+else
+    printf 'FAIL: investigative_skip: expected allow for CLAUDE_ROLE=shape, got block\n  stdout: %s\n' "$stdout29"
+    fail=$((fail + 1))
+fi
+rm -rf "$tmp29"
+rm -f "/tmp/claude-cycle-guard-test-sess-29.count"
+
+# ── Test 30: build mode (role unset) still blocks — behavior unchanged ────────
+rm -f "/tmp/claude-cycle-guard-test-sess-30.count"
+tmp30=$(mktemp -d)
+printf '%s\n' "$AGENT_ENTRY_DEVELOPER" >"$tmp30/transcript.jsonl"
+INPUT30=$(make_input "$tmp30/transcript.jsonl" "$tmp30" "false" "Done." "test-sess-30")
+stdout30=$(printf '%s' "$INPUT30" | env -u CLAUDE_ROLE -u PI_ROLE bash "$GUARD" 2>/dev/null || true)
+if printf '%s' "$stdout30" | grep -q '"decision"[[:space:]]*:[[:space:]]*"block"'; then
+    [ -n "${VERBOSE:-}" ] && printf 'PASS: build_mode_blocks: role unset → block (gate unchanged)\n'
+    pass=$((pass + 1))
+else
+    printf 'FAIL: build_mode_blocks: expected block when role unset (build mode)\n  stdout: %s\n' "$stdout30"
+    fail=$((fail + 1))
+fi
+rm -rf "$tmp30"
+rm -f "/tmp/claude-cycle-guard-test-sess-30.count"
+
 echo ""
 echo "Results: $pass passed, $fail failed"
 

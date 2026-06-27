@@ -203,5 +203,21 @@ out=$(make_input "$Tl" false "Should I continue?" "$TRANSCRIPT_Tl" | env -u CODE
 assert_not_contains "interactive intent question still allows (no CODEGEN_BUILD_NON_INTERACTIVE)" '"decision"' "$out"
 rm -rf "$Tl"
 
+# ── Test (m): skip when CLAUDE_ROLE=shape (investigative mode) ────────────────
+Tm=$(make_project)
+TRANSCRIPT_Tm="$Tm/transcript.jsonl"
+make_transcript_with_agent "$TRANSCRIPT_Tm" "developer-phoenix-backend"
+out=$(make_input "$Tm" false "" "$TRANSCRIPT_Tm" | CLAUDE_ROLE=shape bash "$HOOK" 2>/dev/null || true)
+assert_not_contains "CLAUDE_ROLE=shape — investigative skip (would block in build mode)" '"decision"' "$out"
+rm -rf "$Tm"
+
+# ── Test (n): build mode (role unset) still blocks — behavior unchanged ────────
+Tn=$(make_project)
+TRANSCRIPT_Tn="$Tn/transcript.jsonl"
+make_transcript_with_agent "$TRANSCRIPT_Tn" "developer-phoenix-backend"
+out=$(make_input "$Tn" false "" "$TRANSCRIPT_Tn" | env -u CLAUDE_ROLE -u PI_ROLE bash "$HOOK" 2>/dev/null || true)
+assert_contains "role unset (build mode) — gate unchanged (still blocks)" '"decision"' "$out"
+rm -rf "$Tn"
+
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

@@ -652,5 +652,43 @@ out=$(make_input "$T29" false "" "$T29/transcript.jsonl" | bash "$HOOK" 2>/dev/n
 assert_not_contains "Test 29: ABORTED marker present → death-marker skip (no block)" '"decision"' "$out"
 rm -rf "$T29"
 
+# ── Test 30: skip when CLAUDE_ROLE=shape (investigative mode) ─────────────────
+T30=$(make_project)
+LOG30="$T30/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_step1_test.md"
+cat >"$LOG30" <<'MD'
+## developer-phoenix-backend Section
+
+Some content
+
+## dev-gate Section
+
+Gate: make ci
+ALL CLEAR ✅
+MD
+write_cycle_state_fixture "$T30" "GATED" "$LOG30" "clear"
+make_transcript "$T30/transcript.jsonl" "$LOG30"
+out=$(make_input "$T30" false "" "$T30/transcript.jsonl" | CLAUDE_ROLE=shape bash "$HOOK" 2>/dev/null || true)
+assert_not_contains "Test 30: CLAUDE_ROLE=shape — investigative skip (would block in build mode)" '"decision"' "$out"
+rm -rf "$T30"
+
+# ── Test 31: build mode (role unset) still blocks — behavior unchanged ─────────
+T31=$(make_project)
+LOG31="$T31/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_step1_test.md"
+cat >"$LOG31" <<'MD'
+## developer-phoenix-backend Section
+
+Some content
+
+## dev-gate Section
+
+Gate: make ci
+ALL CLEAR ✅
+MD
+write_cycle_state_fixture "$T31" "GATED" "$LOG31" "clear"
+make_transcript "$T31/transcript.jsonl" "$LOG31"
+out=$(make_input "$T31" false "" "$T31/transcript.jsonl" | env -u CLAUDE_ROLE -u PI_ROLE bash "$HOOK" 2>/dev/null || true)
+assert_contains "Test 31: role unset (build mode) — gate unchanged (still blocks)" '"decision"' "$out"
+rm -rf "$T31"
+
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

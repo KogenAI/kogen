@@ -7,7 +7,7 @@
 # event: Stop
 # matcher: *
 # surface: user_global
-# signal: none
+# signal: CLAUDE_ROLE_FAMILY
 # role: *
 # harnesses: all
 # rationale: Deterministic Stop-hook backstop for build-queue-no-permission-asks — blocks ending a session while the build-queue manifest shows remaining pitches and the current pitch's gate did not fail.
@@ -34,6 +34,16 @@ debug_log build-queue-continuity "project_dir=$project_dir"
 # 1. Loop guard.
 if [ "${STOP_HOOK_ACTIVE:-false}" = "true" ]; then
     debug_log build-queue-continuity "skip: stop_hook_active"
+    exit 0
+fi
+
+# Investigative-mode skip: this build-runtime gate enforces ONLY in build mode
+# (empty role). Skip (exit 0) for any non-empty investigative role (shape/debug/
+# ops/experiment) — mirrors signal: CLAUDE_ROLE_FAMILY. Inverse of pitch-format-validator.
+source "$(dirname "$0")/_role.sh"
+role=$(resolve_role)
+if [ -n "$role" ]; then
+    debug_log build-queue-continuity "skip: investigative role=$role"
     exit 0
 fi
 

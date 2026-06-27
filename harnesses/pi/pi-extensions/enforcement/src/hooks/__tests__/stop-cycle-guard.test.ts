@@ -169,4 +169,51 @@ describe("stop-cycle-guard", { concurrency: 1 }, () => {
       fs.rmSync(tmpDir, { recursive: true, force: true });
     }
   });
+
+  it("does not warn when PI_ROLE=shape (investigative mode — build-runtime gate skipped)", async () => {
+    // Fixture: developer ran, session log present with developer but no VE verdict
+    // — this would normally trigger a WARNING in build mode. With PI_ROLE=shape, silent skip.
+    const sessionId = "pi-test-inv-skip";
+    const counterFile = path.join(
+      os.tmpdir(),
+      `claude-cycle-guard-${sessionId}.count`,
+    );
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "pi-scg-inv-test-"));
+    const loggingDir = path.join(tmpDir, "codegen", "logging");
+    fs.mkdirSync(loggingDir, { recursive: true });
+
+    // Log with developer section but no VE verdict — triggers warn path in build mode.
+    const stepFile = "20260614_120000_step1_session.md";
+    fs.writeFileSync(
+      path.join(loggingDir, stepFile),
+      "# Step 1\n## developer-phoenix-backend Section\nDone.\n",
+    );
+
+    process.env["SESSION_ID"] = sessionId;
+    process.env["CWD"] = tmpDir;
+    process.env["PI_ROLE"] = "shape";
+
+    let stderrOutput = "";
+    const origWrite = process.stderr.write.bind(process.stderr);
+    process.stderr.write = (s: string) => {
+      stderrOutput += s;
+      return true;
+    };
+
+    try {
+      await runHook("developer-phoenix-backend", false, tmpDir);
+      assert.ok(
+        !stderrOutput.includes("WARNING"),
+        `expected no WARNING when PI_ROLE=shape, got: ${stderrOutput}`,
+      );
+    } finally {
+      process.stderr.write = origWrite as typeof process.stderr.write;
+      delete process.env["SESSION_ID"];
+      delete process.env["CWD"];
+      delete process.env["AGENT_TYPE"];
+      delete process.env["PI_ROLE"];
+      fs.rmSync(counterFile, { force: true });
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    }
+  });
 });

@@ -130,6 +130,22 @@ out9=$(mk_stop_input "$T9" true | bash "$HOOK" 2>/dev/null || true)
 assert_allow "allow: STOP_HOOK_ACTIVE=true (loop guard)" "$out9"
 rm -rf "$T9"
 
+# ── Test 10: skip when CLAUDE_ROLE=shape (investigative mode) ──────────────────
+T10=$(make_project)
+mk_manifest "$T10" '{"slugs":["a","b","c"],"position":1,"started_at":"2026-01-01T00:00:00Z"}'
+mk_gate_result "$T10" "clear"
+out10=$(mk_stop_input "$T10" | CLAUDE_ROLE=shape bash "$HOOK" 2>/dev/null || true)
+assert_allow "allow: CLAUDE_ROLE=shape — investigative skip (would block in build mode)" "$out10"
+rm -rf "$T10"
+
+# ── Test 11: build mode (role unset) still blocks — behavior unchanged ─────────
+T11=$(make_project)
+mk_manifest "$T11" '{"slugs":["a","b","c"],"position":1,"started_at":"2026-01-01T00:00:00Z"}'
+mk_gate_result "$T11" "clear"
+out11=$(mk_stop_input "$T11" | env -u CLAUDE_ROLE -u PI_ROLE bash "$HOOK" 2>/dev/null || true)
+assert_block "block: role unset (build mode) — gate unchanged" "$out11"
+rm -rf "$T11"
+
 echo ""
 echo "Results: $pass passed, $fail failed"
 
