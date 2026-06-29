@@ -333,7 +333,7 @@ The order check is now **result-aware**: it simulates the actual post-edit file 
 
 ## Pitfalls
 
-- **Phoenix gates**: wiring-check (scans templates/tests, blocks FAIL, open INCONCLUSIVE) → render-check (headless Chromium, only if wiring passes) → static then runtime.
+- **Phoenix gates**: wiring-check → render-check → runtime. [local] **T17 watchdog signal**: exit 0 + slug-ready + NOT-shipped (timeout-only); not messages (racy).
 
 ## Testing & Verdict Patterns
 

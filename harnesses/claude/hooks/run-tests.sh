@@ -32,6 +32,12 @@ JOBS="${JOBS:-8}"
 _cs_sig() { if [ -f "$1" ]; then cksum <"$1"; else printf 'absent'; fi; }
 _live_cs="${BASH_SOURCE[0]%/harnesses/*}/codegen/gate-pending/cycle-state.json"
 _live_cs_before=$(_cs_sig "$_live_cs")
+# Source the cycle-state lib so the backstop can read the writer's session_id
+# and distinguish a concurrent live self-build (legitimate external write,
+# carries a real session_id) from a genuine in-suite isolation leak.
+. "$(dirname "${BASH_SOURCE[0]}")/lib/cycle-state.sh"
+_live_root="${BASH_SOURCE[0]%/harnesses/*}"
+_live_cs_sid_before=$(cycle_state_session_id "$_live_root")
 
 run_one() {
     local t="$1"
@@ -80,10 +86,21 @@ set -e
 # only a write during the run indicates isolation leakage.
 _live_cs_after=$(_cs_sig "$_live_cs")
 if [ "$_live_cs_before" != "$_live_cs_after" ]; then
-    printf 'FAIL: live cycle-state.json was modified during make test — isolation leak!\n' >&2
-    printf '  before: %s\n' "$_live_cs_before" >&2
-    printf '  after:  %s\n' "$_live_cs_after" >&2
-    exit 1
+    _live_cs_sid_after=$(cycle_state_session_id "$_live_root")
+    if [ -n "$_live_cs_sid_after" ] && [ "$_live_cs_sid_after" != "$_live_cs_sid_before" ]; then
+        # A concurrent live self-build advanced its own cycle-state during the
+        # run. It carries a real session_id distinct from the pre-run value (no
+        # hook test ever writes a session_id to the REAL repo-root path — every
+        # test uses its own temp dir). Tolerate it: warn, do not fail.
+        printf 'WARN: live cycle-state.json advanced during make test (external self-build session=%s) — tolerated, not an isolation leak\n' "$_live_cs_sid_after" >&2
+    else
+        # Empty/unchanged session_id with a content delta on the real path is
+        # attributable to the suite — a genuine isolation leak. Fail loud.
+        printf 'FAIL: live cycle-state.json was modified during make test — isolation leak!\n' >&2
+        printf '  before: %s\n' "$_live_cs_before" >&2
+        printf '  after:  %s\n' "$_live_cs_after" >&2
+        exit 1
+    fi
 fi
 
 # Propagate aggregate test failure. xargs exits 123 when any -I{} invocation

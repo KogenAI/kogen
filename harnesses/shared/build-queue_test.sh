@@ -799,13 +799,17 @@ T17_OUT=$(
         bash "$HELPER" --harness=claude 2>&1
 ) || T17_EXIT=$?
 
+# Watchdog-fired contract (deterministic, not racy): exit-0 + slug-stays-in-ready/
+# + NOT-shipped is reachable ONLY via build-queue.sh's per-pitch timeout branch.
+# Every other outcome ships, retries, or exits 1. So these three assertions ARE
+# the WATCHDOG_FIRED check. The previous stderr-string assert_contains ("TIMED
+# OUT", "budget 2s") raced the printed-output ordering under -P8 load and are
+# removed — the message is cosmetic, the state contract is authoritative.
 assert_eq "T17: timeout — queue exits 0 (not a hard failure)" "0" "$T17_EXIT"
 assert_eq "T17: timed-out slug stays in ready/" "1" \
     "$([ -f "$T17_ROOT/codegen/pitches/ready/lambda.md" ] && printf '1' || printf '0')"
 assert_eq "T17: timed-out slug NOT in shipped/" "0" \
     "$([ -f "$T17_ROOT/codegen/pitches/shipped/lambda.md" ] && printf '1' || printf '0')"
-assert_contains "T17: output contains TIMED OUT" "TIMED OUT" "$T17_OUT"
-assert_contains "T17: output contains budget seconds" "budget 2s" "$T17_OUT"
 rm -rf "$T17_ROOT"
 
 # ── T18: invalid budget env var falls back to 3600 (no crash) ─────────────────

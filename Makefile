@@ -197,6 +197,10 @@ test: hook-parity hook-header-parity harness-parity test-generator enforce-regis
 	if [ -f "$$subagents_ext_dir/package.json" ] && grep -q '"build"[[:space:]]*:' "$$subagents_ext_dir/package.json"; then \
 		(cd "$$subagents_ext_dir" && mise exec -- npm run build) || { echo "subagents pre-build failed"; exit 1; }; \
 	fi; \
+	enforcement_ext_dir="$(SCRIPT_DIR)/harnesses/pi/pi-extensions/enforcement"; \
+	if [ -f "$$enforcement_ext_dir/package.json" ] && grep -q '"build"[[:space:]]*:' "$$enforcement_ext_dir/package.json"; then \
+		(cd "$$enforcement_ext_dir" && mise exec -- npm run build) || { echo "enforcement pre-build failed"; exit 1; }; \
+	fi; \
 	tmp_hooks=$$(mktemp); tmp_scaffold=$$(mktemp); tmp_install=$$(mktemp); \
 	tmp_npm=$$(mktemp); tmp_subagents=$$(mktemp); \
 	pids=(); labels=(); tmps=(); \
@@ -208,7 +212,7 @@ test: hook-parity hook-header-parity harness-parity test-generator enforce-regis
 		for ext in enforcement askuserquestion subagents web-utils; do \
 			ext_dir="$(SCRIPT_DIR)/harnesses/pi/pi-extensions/$$ext"; \
 			if [ -f "$$ext_dir/package.json" ] && grep -q '"test"[[:space:]]*:' "$$ext_dir/package.json"; then \
-				if [ "$$ext" != "subagents" ] && grep -q '"build"[[:space:]]*:' "$$ext_dir/package.json"; then \
+				if [ "$$ext" != "subagents" ] && [ "$$ext" != "enforcement" ] && grep -q '"build"[[:space:]]*:' "$$ext_dir/package.json"; then \
 					(cd "$$ext_dir" && mise exec -- npm run build) || fail=1; \
 				fi; \
 				if [ -n "$$VERBOSE" ]; then \
