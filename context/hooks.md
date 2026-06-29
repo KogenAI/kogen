@@ -340,4 +340,4 @@ The order check is now **result-aware**: it simulates the actual post-edit file 
 - **Bash isolation**: `sed -n '/<fn>/,/<close>/p' | eval` avoids argparse `exit` when testing helpers.
 - **Timestamps**: `YYYYMMDD_HHMMSS` sorts lexically ≡ chronologically. Use `[ "$ts1" \< "$ts2" ]` for portable compare.
 - **Bash patterns**: `#` and `[]` are glob-special in `${var%%pattern}` expansions. Hook simulation may fail; test literal code.
-- **Gate verdict**: `gate-result.json` `.verdict` is authoritative, never session-log prose. Manual re-runs don't update JSON.
+- **Gate verdict**: `gate-result.json` `.verdict` is authoritative, never session-log prose. Manual re-runs don't update JSON. Pi build now fails closed on `codegen-build` if the post-dispatch verdict is absent or not `clear`.

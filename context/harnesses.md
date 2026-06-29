@@ -223,14 +223,17 @@ The create hook is idempotent: a re-run re-attaches an already-registered worktr
 - **hooks**: `claude-code-settings.json` is source for hook registration; `hook_registrations.py` writes the installed version; see `context/hooks.md`
 - **pi-extensions**: Pi launchers invoke compiled TypeScript extensions from `harnesses/pi/pi-extensions/`
 
-## Direct-Build Mode (Pi-Specific)
+## Orchestrated Build Mode (Pi-Specific)
 
-Pi harness supports two operational modes via `dispatch.sh` SP_FILE selection:
+Pi build now uses the same orchestrated contract in both launcher paths:
 
-- **Interactive mode** (`pi-build.sh` manual launcher): Full orchestrator workflow (5-role chain), consumes `pi-build-system-prompt.txt`
-- **Non-interactive mode** (`codegen-build --harness=pi --non-interactive`): Direct-build single-process agent, consumes `pi-build-system-prompt-direct-phoenix.txt` or `pi-build-system-prompt-direct-static.txt` (stack-gated)
+- `pi-build.sh` / `codegen-build --harness=pi` consume `pi-build-system-prompt.txt`
+- `harnesses/pi/dispatch.sh` loads the build extensions declared in `harnesses/pi/manifest.yaml` (`askuserquestion`, `subagents`, `enforcement`)
+- caller-supplied `--extension` flags remain additive
+- the legacy `pi-build-system-prompt-direct-*.txt` files remain tracked, but build dispatch no longer consumes them
+- `codegen-build` fails closed unless Pi returns a clear `codegen/gate-pending/gate-result.json`
 
-Mode selection gated by `$NON_INTERACTIVE` env var. Direct-build prompt forbids `mix phx.new` and orchestration vocabulary; app must be pre-scaffolded. Non-interactive mode removes subagents extension — skips the 5-role chain to fit small-model token budget. Test suite asserts compile + route + commit format only.
+Mode selection still honors the build launcher’s non-interactive env, but the prompt body is no longer direct-build-only. The build path is orchestrated; the parent wrapper decides success from the structured gate result.
 
 ## Pi Extensions
 

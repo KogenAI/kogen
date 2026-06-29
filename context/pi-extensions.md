@@ -2,7 +2,7 @@
 
 The pi-extensions domain covers the TypeScript npm packages that extend the Pi harness with custom tool implementations. Each extension is an independent npm package under `harnesses/pi/pi-extensions/<name>/` with its own `package.json`, `src/`, and compiled output. `generate-pi-extension.sh` scaffolds new extensions from a template in `templates/shared/pi-extensions/`.
 
-Current extensions: `askuserquestion` (interactive user prompts), `enforcement` (rule enforcement at runtime), `subagents` (agent delegation bridge), `web-utils` (HTTP/web helpers).
+Current extensions: `askuserquestion` (interactive user prompts), `enforcement` (rule enforcement at runtime), `subagents` (agent delegation bridge), `web-utils` (HTTP/web helpers). Pi build mode now also loads `askuserquestion`, `subagents`, and `enforcement` by default; `codegen-build --harness=pi` treats the written gate result as the success gate.
 
 ## Components
 
@@ -57,7 +57,7 @@ Pi has two event families with **asymmetric blocking capability**:
 | `tool_call`        | `curator-before-committer.ts` (3) | **YES**    | Return `deny(reason)` to block; return `undefined` to allow    |
 | `session_shutdown` | `step-log-completeness.ts` (4)    | **NO**     | Observe-only; emit `process.stderr.write(...)`; return nothing |
 
-`tool_call` (PreToolUse equivalent) can block execution. `session_shutdown` covers both Claude Stop and SubagentStop events and is observe-only — `block()` result is ignored by the Pi runtime on shutdown. This asymmetry differs from Claude's per-event blocking capability. Established convention by existing twins: all 4 Stop/SubagentStop twins emit stderr warnings, NEVER `block()`.
+`tool_call` (PreToolUse equivalent) can block execution. `session_shutdown` covers both Claude Stop and SubagentStop events and is observe-only — `block()` result is ignored by the Pi runtime on shutdown. This asymmetry differs from Claude's per-event blocking capability. Established convention by existing twins: all 4 Stop/SubagentStop twins emit stderr warnings, NEVER `block()`. Build success is still fail-closed at the wrapper: `codegen-build` reads `codegen/gate-pending/gate-result.json` after Pi exits.
 
 **Transient error detection in session_shutdown twins**: When porting a Claude Stop hook that detects transient errors (e.g., `stop-resume.sh`), the Pi twin implements the **same error pattern matching** (regex alternations like "Stream idle timeout" OR "connection reset" OR "File has been modified since read") and logs warnings to stderr for operator visibility. However, the Pi twin cannot emit blocking decisions — it can only warn. Pattern example: `stop-resume.ts` registers the same alternations in `TRANSIENT_ERROR_PATTERNS` and emits `process.stderr.write('[pi-enforcement:stop-resume] Transient error detected: ...')` when a pattern matches. This ensures both harnesses detect the same transient conditions, even though only Claude can auto-resume via `block()`. The stderr warning is valuable for debugging — operators see which transient errors occurred during Pi sessions, supporting incident investigation.
 

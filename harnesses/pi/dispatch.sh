@@ -14,19 +14,34 @@ if ! command -v pi >/dev/null 2>&1; then
 fi
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
-# Direct-build prompt (no subagents; pi builds the app itself).
-# Note: pi-build-system-prompt.txt is regenerated from tools-header/build.txt
-# on `make install` and is dormant for build mode — only the *-direct.txt file
-# is consumed by dispatch.
-STACK="${CODEGEN_BUILD_STACK:-phoenix}"
-SP_FILE="$SCRIPT_DIR/pi-build-system-prompt-direct-${STACK}.txt"
+CODEGEN_DIR="${OCG_CODEGEN_DIR:-$(cd "$SCRIPT_DIR/../.." && pwd -P)}"
+
+SP_FILE="$SCRIPT_DIR/pi-build-system-prompt.txt"
 if [[ ! -f "$SP_FILE" ]]; then
-    SP_FILE="$SCRIPT_DIR/pi-build-system-prompt-direct-phoenix.txt"
+    printf 'pi dispatch: system prompt file not found at %s\n' "$SP_FILE" >&2
+    exit 2
 fi
-SYSTEM_PROMPT_FLAG=()
-if [[ -f "$SP_FILE" ]]; then
-    SYSTEM_PROMPT_FLAG+=(--system-prompt "$(cat "$SP_FILE")")
+SYSTEM_PROMPT_FLAG=(--system-prompt "$(cat "$SP_FILE")")
+
+MANIFEST="$SCRIPT_DIR/manifest.yaml"
+if [[ ! -f "$MANIFEST" ]]; then
+    printf 'pi dispatch: manifest not found at %s\n' "$MANIFEST" >&2
+    exit 1
 fi
+if ! command -v yq >/dev/null 2>&1; then
+    printf 'pi dispatch: yq not found on PATH (required to read %s)\n' "$MANIFEST" >&2
+    exit 2
+fi
+DEFAULT_EXTENSION_ARG=()
+while IFS= read -r _ext_name; do
+    [[ -z "$_ext_name" || "$_ext_name" == "null" ]] && continue
+    _ext_path="$CODEGEN_DIR/harnesses/pi/pi-extensions/$_ext_name"
+    if [[ ! -d "$_ext_path" ]]; then
+        printf 'pi dispatch: extension path not found at %s\n' "$_ext_path" >&2
+        exit 1
+    fi
+    DEFAULT_EXTENSION_ARG+=(--extension "$_ext_path")
+done < <(yq -r '.modes.build.extensions[]' "$MANIFEST")
 
 # Consume env vars set by codegen-build
 MODEL="${CODEGEN_BUILD_MODEL:-}"
@@ -110,6 +125,7 @@ exec env \
     "${NON_INTERACTIVE_FLAGS[@]+"${NON_INTERACTIVE_FLAGS[@]}"}" \
     "${RESUME_FLAGS[@]+"${RESUME_FLAGS[@]}"}" \
     --no-context-files \
+    "${DEFAULT_EXTENSION_ARG[@]+"${DEFAULT_EXTENSION_ARG[@]}"}" \
     "${EXTENSION_ARG[@]+"${EXTENSION_ARG[@]}"}" \
     --provider openai-codex \
     --model "$MODEL" \

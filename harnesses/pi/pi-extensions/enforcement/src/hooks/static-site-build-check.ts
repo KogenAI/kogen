@@ -15,6 +15,8 @@ import {
 import * as fs from "node:fs";
 import * as path from "node:path";
 
+type GateVerdict = "clear" | "failed" | "inconclusive";
+
 export const HANDLER_META = {
   name: "static-site-build-check",
   event: "session_shutdown",
@@ -22,6 +24,66 @@ export const HANDLER_META = {
 } as const;
 
 const STATIC_DEV_AGENTS = new Set(["developer-static"]);
+
+function writeGateArtifacts(params: {
+  projectDir: string;
+  gate: string;
+  mode: "short" | "long";
+  verdict: GateVerdict;
+  marker: string;
+  renderVerdict: string;
+  classification: string;
+  exitCode: number;
+  sessionId: string;
+}): void {
+  const gateResultDir = path.join(params.projectDir, "codegen", "gate-pending");
+  fs.mkdirSync(gateResultDir, { recursive: true });
+
+  const now = new Date().toISOString();
+  const gateResult = {
+    gate: params.gate,
+    mode: params.mode,
+    diff_sha: "unknown",
+    diff_files_count: 0,
+    runner_found: true,
+    exit: params.exitCode,
+    execution_evidence: 1,
+    expected_segments: 1,
+    render_verdict: params.renderVerdict,
+    verdict: params.verdict,
+    verdict_marker: params.marker,
+    classification: params.classification,
+    started: now,
+    ended: now,
+    session_id: params.sessionId,
+    log: "",
+    witness: "",
+  };
+  fs.writeFileSync(
+    path.join(gateResultDir, "gate-result.json"),
+    JSON.stringify(gateResult, null, 2),
+  );
+  debugLog(
+    "static-site-build-check",
+    `wrote gate-result.json verdict=${params.verdict}`,
+  );
+
+  const cycleState = {
+    state: "GATED",
+    step_log: "",
+    session_id: params.sessionId,
+    verdict: params.verdict,
+    updated_at: now,
+  };
+  fs.writeFileSync(
+    path.join(gateResultDir, "cycle-state.json"),
+    JSON.stringify(cycleState, null, 2),
+  );
+  debugLog(
+    "static-site-build-check",
+    `wrote cycle-state.json state=GATED verdict=${params.verdict}`,
+  );
+}
 
 export function register(pi: ExtensionAPI): void {
   pi.on("session_shutdown", async (event) => {
@@ -36,6 +98,13 @@ export function register(pi: ExtensionAPI): void {
     const projectDir = ev?.input?.cwd ?? process.env["CWD"] ?? process.cwd();
     debugLog("static-site-build-check", `agent=${agentType} cwd=${projectDir}`);
 
+    let renderVerdict = "";
+    let verdict: GateVerdict = "inconclusive";
+    let marker = "INCONCLUSIVE ⚠️";
+    let classification = "";
+    let exitCode = 0;
+    let renderSummary = "";
+
     try {
       execSync("make ci", {
         cwd: projectDir,
@@ -48,10 +117,25 @@ export function register(pi: ExtensionAPI): void {
       const errOutput =
         (err as { stdout?: Buffer; stderr?: Buffer }).stderr?.toString() ?? "";
       debugLog("static-site-build-check", `build FAILED: ${errOutput}`);
-      // Log to stderr for orchestrator visibility (Pi doesn't support decision:block in session_shutdown)
       process.stderr.write(
         `[pi-enforcement:static-site-build-check] build FAILED:\n${output}\n${errOutput}\n`,
       );
+      verdict = "failed";
+      marker = "FAILED ❌";
+      classification = "build-failed";
+      exitCode = 1;
+      writeGateArtifacts({
+        projectDir,
+        gate: "make ci",
+        mode: "short",
+        verdict,
+        marker,
+        renderVerdict,
+        classification,
+        exitCode,
+        sessionId:
+          process.env["SESSION_ID"] ?? process.env["CLAUDE_SESSION_ID"] ?? "",
+      });
       return;
     }
 
@@ -62,8 +146,24 @@ export function register(pi: ExtensionAPI): void {
     if (!fs.existsSync(outputDir)) {
       debugLog(
         "static-site-build-check",
-        "no output dir — skipping render check",
+        "no output dir — render verdict inconclusive",
       );
+      renderSummary = "render: INCONCLUSIVE (output-dir-missing) — skipped";
+      renderVerdict = "INCONCLUSIVE:output-dir-missing";
+      verdict = "inconclusive";
+      marker = "INCONCLUSIVE ⚠️";
+      writeGateArtifacts({
+        projectDir,
+        gate: "make ci",
+        mode: "short",
+        verdict,
+        marker,
+        renderVerdict,
+        classification,
+        exitCode,
+        sessionId:
+          process.env["SESSION_ID"] ?? process.env["CLAUDE_SESSION_ID"] ?? "",
+      });
       return;
     }
 
@@ -82,8 +182,24 @@ export function register(pi: ExtensionAPI): void {
     if (!renderCheckScript || !fs.existsSync(renderCheckScript)) {
       debugLog(
         "static-site-build-check",
-        "render-check.js not found — skipping",
+        "render-check.js not found — render verdict inconclusive",
       );
+      renderSummary = "render: INCONCLUSIVE (checker-missing) — skipped";
+      renderVerdict = "INCONCLUSIVE:checker-missing";
+      verdict = "inconclusive";
+      marker = "INCONCLUSIVE ⚠️";
+      writeGateArtifacts({
+        projectDir,
+        gate: "make ci",
+        mode: "short",
+        verdict,
+        marker,
+        renderVerdict,
+        classification,
+        exitCode,
+        sessionId:
+          process.env["SESSION_ID"] ?? process.env["CLAUDE_SESSION_ID"] ?? "",
+      });
       return;
     }
 
@@ -107,7 +223,7 @@ export function register(pi: ExtensionAPI): void {
     const verdictLine = renderRaw
       .split("\n")
       .find((l) => l.startsWith("RENDER_VERDICT="));
-    const renderVerdict = verdictLine ? verdictLine.split("=")[1] : "";
+    renderVerdict = verdictLine ? verdictLine.split("=")[1] : "";
 
     debugLog("static-site-build-check", `render verdict: ${renderVerdict}`);
 
@@ -118,8 +234,10 @@ export function register(pi: ExtensionAPI): void {
       process.stderr.write(
         `[pi-enforcement:static-site-build-check] render FAILED: ${reason}\n`,
       );
+      verdict = "failed";
+      marker = "FAILED ❌";
+      classification = "render-failed";
     } else if (renderVerdict === "INCONCLUSIVE:browser-not-installed") {
-      // Explicit browser-absent verdict from render-check.js
       debugLog(
         "static-site-build-check",
         "render INCONCLUSIVE: browser not installed",
@@ -127,8 +245,11 @@ export function register(pi: ExtensionAPI): void {
       process.stderr.write(
         `[pi-enforcement:static-site-build-check] render INCONCLUSIVE: Chromium browser not found — run: npx playwright install chromium\n`,
       );
+      verdict = "inconclusive";
+      marker = "INCONCLUSIVE ⚠️";
+      classification = "render-inconclusive-browser-missing";
+      renderSummary = "render: INCONCLUSIVE (browser-not-installed) — skipped";
     } else if (renderVerdict === "") {
-      // render-check.js crashed or emitted no RENDER_VERDICT= line
       debugLog(
         "static-site-build-check",
         "render-check emitted no verdict — crash or parse error",
@@ -136,49 +257,43 @@ export function register(pi: ExtensionAPI): void {
       process.stderr.write(
         `[pi-enforcement:static-site-build-check] render-check did not emit verdict — check render-check.js for parse/runtime errors\n`,
       );
+      verdict = "inconclusive";
+      marker = "INCONCLUSIVE ⚠️";
+      classification = "render-inconclusive-empty";
+      renderVerdict = "INCONCLUSIVE:empty-verdict";
+      renderSummary = "render: INCONCLUSIVE (empty-verdict) — skipped";
     } else if (renderVerdict.startsWith("INCONCLUSIVE:")) {
       const detail = renderVerdict.slice("INCONCLUSIVE:".length);
       debugLog(
         "static-site-build-check",
         `render INCONCLUSIVE: ${detail} — downgrade to INCONCLUSIVE (not ALL CLEAR)`,
       );
-      // Render INCONCLUSIVE → surface as INCONCLUSIVE warning, not silent pass
       process.stderr.write(
         `[pi-enforcement:static-site-build-check] render INCONCLUSIVE: ${detail} — gate is inconclusive, not ALL CLEAR\n`,
       );
+      verdict = "inconclusive";
+      marker = "INCONCLUSIVE ⚠️";
+      classification = `render-inconclusive-${detail}`;
+      renderSummary = `render: INCONCLUSIVE (${detail}) — skipped`;
+    } else {
+      verdict = "clear";
+      marker = "ALL CLEAR ✅";
+      classification = "render-pass";
+      renderSummary = "render: DOM non-empty, styles applied, 0 JS errors";
     }
-    // Write cycle-state.json to record GATED verdict for this build.
-    // Absent when build already failed (early return above).
-    try {
-      const gateResultDir = path.join(projectDir, "codegen", "gate-pending");
-      fs.mkdirSync(gateResultDir, { recursive: true });
-      const cycleVerdict = renderVerdict.startsWith("INCONCLUSIVE:")
-        ? "inconclusive"
-        : renderVerdict.startsWith("FAIL:")
-          ? "failed"
-          : "clear";
-      const cycleState = {
-        state: "GATED",
-        step_log: "",
-        session_id:
-          process.env["SESSION_ID"] ?? process.env["CLAUDE_SESSION_ID"] ?? "",
-        verdict: cycleVerdict,
-        updated_at: new Date().toISOString(),
-      };
-      fs.writeFileSync(
-        path.join(gateResultDir, "cycle-state.json"),
-        JSON.stringify(cycleState, null, 2),
-      );
-      debugLog(
-        "static-site-build-check",
-        `wrote cycle-state.json state=GATED verdict=${cycleVerdict}`,
-      );
-    } catch (e) {
-      debugLog(
-        "static-site-build-check",
-        `failed to write cycle-state.json: ${String(e)}`,
-      );
-    }
+
+    writeGateArtifacts({
+      projectDir,
+      gate: "make ci",
+      mode: "short",
+      verdict,
+      marker,
+      renderVerdict: renderSummary || renderVerdict,
+      classification,
+      exitCode,
+      sessionId:
+        process.env["SESSION_ID"] ?? process.env["CLAUDE_SESSION_ID"] ?? "",
+    });
     // PASS: no action needed (non-blocking success)
   });
 }

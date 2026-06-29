@@ -87,6 +87,7 @@ make_pi_harness() {
     local harness_dir="$cb_root/harnesses/pi"
     mkdir -p "$harness_dir"
     cp "$REAL_PI_HARNESS/dispatch.sh" "$harness_dir/dispatch.sh"
+    cp "$REAL_PI_HARNESS/manifest.yaml" "$harness_dir/manifest.yaml"
     # pi-build-system-prompt.txt is read by dispatch.sh for headless builds; stub it so the test has a valid harness dir
     printf 'stub system prompt\n' >"$harness_dir/pi-build-system-prompt.txt"
     echo "$harness_dir"
@@ -212,11 +213,53 @@ if [[ -f "$ARGS_B" ]]; then
     assert_contains "(b) --no-session" "$ARGS_B_CONTENT" "--no-session"
     assert_contains "(b) --provider openai-codex" "$ARGS_B_CONTENT" "openai-codex"
     assert_contains "(b) -p flag (non-interactive)" "$ARGS_B_CONTENT" "-p"
+    assert_contains "(b) system prompt flag present" "$ARGS_B_CONTENT" "--system-prompt"
+    assert_contains "(b) default askuserquestion extension present" "$ARGS_B_CONTENT" "$CODEGEN_ROOT/harnesses/pi/pi-extensions/askuserquestion"
+    assert_contains "(b) default subagents extension present" "$ARGS_B_CONTENT" "$CODEGEN_ROOT/harnesses/pi/pi-extensions/subagents"
+    assert_contains "(b) default enforcement extension present" "$ARGS_B_CONTENT" "$CODEGEN_ROOT/harnesses/pi/pi-extensions/enforcement"
     assert_contains "(b) prompt forwarded" "$ARGS_B_CONTENT" "pi prompt"
 else
     printf 'FAIL: (b) args file not created — pi stub not invoked (exit: %s)\n' "$actual_ec"
-    fail=$((fail + 6))
+    fail=$((fail + 9))
 fi
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Test (b2): --harness=pi exits non-zero when dispatch succeeds but gate verdict is missing
+# ─────────────────────────────────────────────────────────────────────────────
+CB_B2="$(make_cb_root cb_b2)"
+mkdir -p "$CB_B2/harnesses/pi"
+make_stub "$CB_B2/harnesses/pi/dispatch.sh" 'exit 0'
+
+actual_ec=0
+(
+    cd "$CB_B2"
+    ./codegen-build --harness=pi --stack=phoenix --non-interactive "pi prompt" 2>"$BASE_TMP/stderr_b2"
+) || actual_ec=$?
+
+stderr_b2="$(cat "$BASE_TMP/stderr_b2")"
+check "(b2) missing gate result exits non-zero" "1" "$actual_ec"
+assert_contains "(b2) stderr mentions missing gate-result.json" "$stderr_b2" "gate-result.json"
+assert_contains "(b2) stderr is fail-closed" "$stderr_b2" "missing"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Test (b3): --harness=pi succeeds when dispatch writes a clear gate result
+# ─────────────────────────────────────────────────────────────────────────────
+CB_B3="$(make_cb_root cb_b3)"
+mkdir -p "$CB_B3/harnesses/pi"
+make_stub "$CB_B3/harnesses/pi/dispatch.sh" '
+mkdir -p codegen/gate-pending
+cat > codegen/gate-pending/gate-result.json <<"JSON"
+{"verdict":"clear"}
+JSON
+exit 0
+'
+
+actual_ec=0
+(
+    cd "$CB_B3"
+    ./codegen-build --harness=pi --stack=phoenix --non-interactive "pi prompt" >/dev/null 2>&1
+) || actual_ec=$?
+check "(b3) clear gate result exits 0" "0" "$actual_ec"
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Test (f): stdout byte-identical pass-through

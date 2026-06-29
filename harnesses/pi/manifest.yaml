@@ -17,6 +17,16 @@ prompts_install: all # install.sh installs all *.md from prompts_source with pru
 
 # ─── Launchers ────────────────────────────────────────────────────────────────
 launchers:
+  - name: codegen-build
+    src: codegen-build
+  - name: codegen-call
+    src: codegen-call
+  - name: codegen-scaffold
+    src: codegen-scaffold
+  - name: codegen-document
+    src: codegen-document
+  - name: codegen-analyze
+    src: codegen-analyze
   - name: pi-build
     src: harnesses/pi/pi-build.sh
   - name: pi-debug
@@ -51,7 +61,10 @@ modes:
     model: openai-codex/gpt-5.4-mini # from config.yaml harness.build.pi
     effort: medium
     tools: read,grep,find,ls,edit,write,bash
-    extensions: [] # direct build mode — pi implements the app itself, no subagent delegation
+    extensions:
+      - askuserquestion
+      - subagents
+      - enforcement
     system_prompt_file: harnesses/pi/pi-build-system-prompt.txt
     tools_header: harnesses/pi/tools-header/build.txt
     prompt_body:
@@ -122,5 +135,5 @@ install_steps:
 uninstall_steps:
   - remove_agents # rm agents_dir/*.md from installed manifest
   - remove_prompts # rm prompts_dir/document.md
-  - remove_launchers # rm INSTALL_DIR/{pi-build,pi-debug,pi-experiment,pi-shape,pi-ops}
+  - remove_launchers # rm INSTALL_DIR/{codegen-build,codegen-call,codegen-scaffold,codegen-document,codegen-analyze,pi-build,pi-debug,pi-experiment,pi-shape,pi-ops}
   - remove_completions # rm ZSH_COMPLETION_DST/{_pi-build,_pi-debug,_pi-experiment,_pi-shape}

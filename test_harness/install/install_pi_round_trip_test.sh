@@ -66,7 +66,7 @@ fi
 assert ".ocg/config.json exists" '[ -f "$tmp_home/.ocg/config.json" ]'
 assert "no claude hooks dir" '[ ! -d "$tmp_home/.claude/hooks" ]'
 
-# Pi-specific launchers from manifest
+# Pi launchers from manifest (now includes shared root launchers)
 if [ -f "$CODEGEN_DIR/harnesses/pi/manifest.yaml" ] && command -v yq >/dev/null 2>&1; then
     while IFS=$'\t' read -r _src name; do
         assert "launcher '$name' exists" '[ -f "$tmp_home/.local/bin/$name" ]'
