@@ -24,6 +24,7 @@ fi
 # Operator toggles (build-time; NOT app runtime — do not add to .env samples):
 #   CODEGEN_BUILD_QUEUE_MAX_RETRIES   max consecutive transient retries per slug (default 3)
 #   CODEGEN_BUILD_QUEUE_RETRY_DELAYS  space-separated backoff seconds per attempt (default "30 120 300")
+#   CODEGEN_BUILD_QUEUE_PITCH_BUDGET_SECS  per-pitch wall-clock budget seconds (default 3600)
 MAX_RETRIES="${CODEGEN_BUILD_QUEUE_MAX_RETRIES:-3}"
 RETRY_DELAYS="${CODEGEN_BUILD_QUEUE_RETRY_DELAYS:-30 120 300}"
 
@@ -273,10 +274,10 @@ SLUGS
     head_before="$(git rev-parse HEAD 2>/dev/null || true)"
     JSONL="$LOG_DIR/${ts}_${slug}_build.jsonl"
 
-    # Per-pitch wall-clock budget (default 1800s; sentinel 124 = GNU timeout convention).
-    budget="${CODEGEN_BUILD_QUEUE_PITCH_BUDGET_SECS:-1800}"
+    # Per-pitch wall-clock budget (default 3600s; sentinel 124 = GNU timeout convention).
+    budget="${CODEGEN_BUILD_QUEUE_PITCH_BUDGET_SECS:-3600}"
     case "$budget" in
-    '' | *[!0-9]* | 0) budget=1800 ;;
+    '' | *[!0-9]* | 0) budget=3600 ;;
     esac
 
     TIMED_OUT=0
@@ -302,7 +303,7 @@ SLUGS
     # any captured invocation do), a backgrounded subshell INHERITS the capture
     # pipe on fd 1 and 2. Its `sleep "$budget"` would then hold that pipe open,
     # so `$(...)` cannot return until the sleep ends — blocking the caller for the
-    # full budget (default 1800s) even after the child finished instantly. The
+    # full budget (default 3600s) even after the child finished instantly. The
     # watchdog only ever writes to the sentinel FILE, never stdout/stderr, so
     # detaching its std streams is safe and is what unblocks the capture.
     (

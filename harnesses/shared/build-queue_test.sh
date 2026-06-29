@@ -808,7 +808,7 @@ assert_contains "T17: output contains TIMED OUT" "TIMED OUT" "$T17_OUT"
 assert_contains "T17: output contains budget seconds" "budget 2s" "$T17_OUT"
 rm -rf "$T17_ROOT"
 
-# ── T18: invalid budget env var falls back to 1800 (no crash) ─────────────────
+# ── T18: invalid budget env var falls back to 3600 (no crash) ─────────────────
 T18_ROOT="$(mktemp -d)"
 T18_ROOT="$(cd "$T18_ROOT" && pwd -P)"
 mkdir -p "$T18_ROOT/codegen/pitches/ready"
