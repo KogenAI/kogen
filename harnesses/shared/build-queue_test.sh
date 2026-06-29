@@ -73,6 +73,9 @@ make_stub() {
 # Fake codegen-build for build-queue tests
 CALL_LOG="${STUB_CALL_LOG:-/dev/null}"
 printf '%s\n' "$*" >>"$CALL_LOG"
+if [ -n "${STUB_RECORD_STALL_ENV:-}" ]; then
+    printf 'STALL_ENV=%s\n' "${CLAUDE_ASYNC_AGENT_STALL_TIMEOUT_MS:-unset}" >>"$CALL_LOG"
+fi
 
 # Per-attempt counter so retries can emit DIFFERENT bodies / ship on a later attempt.
 attempt=1
@@ -333,6 +336,65 @@ assert_contains "T8: pi passes --harness=pi" "--harness=pi" "$T8_PI_ARGS"
 # pi uses bare path (no @ prefix)
 assert_not_contains "T8: pi does not use @-mention" "@codegen/" "$T8_PI_ARGS"
 assert_contains "T8: pi uses bare path" "codegen/pitches/ready/pitch-x.md" "$T8_PI_ARGS"
+
+# ── Test T8B: child receives stall timeout override from build-queue ─────────
+T8B_ROOT="$TMP_ROOT/t8b"
+make_workspace "$T8B_ROOT"
+printf 'Pitch: env-check\n' >"$T8B_ROOT/codegen/pitches/ready/env-check.md"
+
+T8B_CALL_LOG="$T8B_ROOT/calls.log"
+T8B_EXIT=0
+T8B_OUT=$(
+    cd "$T8B_ROOT"
+    STUB_CALL_LOG="$T8B_CALL_LOG" \
+        STUB_RECORD_STALL_ENV=1 \
+        OCG_CODEGEN_DIR="$T8B_ROOT/fake-codegen-bin" \
+        bash "$HELPER" --harness=claude 2>&1
+) || T8B_EXIT=$?
+
+assert_eq "T8B: stall-env check exits 0" "0" "$T8B_EXIT"
+assert_contains "T8B: child saw stall timeout override" "STALL_ENV=0" "$(cat "$T8B_CALL_LOG" 2>/dev/null || true)"
+
+# ── Test T8C: live same-slug lock refuses a second queue ──────────────────────
+T8C_ROOT="$TMP_ROOT/t8c"
+make_workspace "$T8C_ROOT"
+printf 'Pitch: locked\n' >"$T8C_ROOT/codegen/pitches/ready/locked.md"
+
+sleep 60 &
+T8C_LOCK_PID=$!
+printf '%s locked\n' "$T8C_LOCK_PID" >"$T8C_ROOT/codegen/gate-pending/queue.lock"
+
+T8C_EXIT=0
+T8C_OUT=$(
+    cd "$T8C_ROOT"
+    OCG_CODEGEN_DIR="$T8C_ROOT/fake-codegen-bin" \
+        bash "$HELPER" --harness=claude 2>&1
+) || T8C_EXIT=$?
+
+kill "$T8C_LOCK_PID" 2>/dev/null || true
+wait "$T8C_LOCK_PID" 2>/dev/null || true
+
+assert_eq "T8C: live lock exits 1" "1" "$T8C_EXIT"
+assert_contains "T8C: refusal message mentions same slug" "already running" "$T8C_OUT"
+assert_eq "T8C: locked pitch remains in ready" "1" "$([ -f "$T8C_ROOT/codegen/pitches/ready/locked.md" ] && printf '1' || printf '0')"
+
+# ── Test T8D: stale same-slug lock is reclaimed and build proceeds ───────────
+T8D_ROOT="$TMP_ROOT/t8d"
+make_workspace "$T8D_ROOT"
+printf 'Pitch: stale-lock\n' >"$T8D_ROOT/codegen/pitches/ready/stale-lock.md"
+printf '999999 stale-lock\n' >"$T8D_ROOT/codegen/gate-pending/queue.lock"
+
+T8D_EXIT=0
+T8D_OUT=$(
+    cd "$T8D_ROOT"
+    STUB_CALL_LOG="$T8D_ROOT/calls.log" \
+        OCG_CODEGEN_DIR="$T8D_ROOT/fake-codegen-bin" \
+        bash "$HELPER" --harness=claude 2>&1
+) || T8D_EXIT=$?
+
+assert_eq "T8D: stale lock exits 0" "0" "$T8D_EXIT"
+assert_contains "T8D: stale lock reclaimed without refusal" "shipped" "$T8D_OUT"
+assert_eq "T8D: pitch moved to shipped" "1" "$([ -f "$T8D_ROOT/codegen/pitches/shipped/stale-lock.md" ] && printf '1' || printf '0')"
 
 # ── Test T9 (part A): refill — new pitch appears mid-run and gets picked up ───
 T9_ROOT="$TMP_ROOT/t9"

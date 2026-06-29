@@ -59,7 +59,58 @@ esac
 READY_DIR="$PWD/codegen/pitches/ready"
 SHIPPED_DIR="$PWD/codegen/pitches/shipped"
 LOG_DIR="$PWD/codegen/logging"
-mkdir -p "$SHIPPED_DIR" "$LOG_DIR"
+mkdir -p "$PWD/codegen/gate-pending" "$SHIPPED_DIR" "$LOG_DIR"
+
+QUEUE_LOCK="$PWD/codegen/gate-pending/queue.lock"
+LOCK_HELD=0
+child_pid=""
+watchdog_pid=""
+child_out_tmp=""
+
+cleanup_queue_lock() {
+    if [ -f "$QUEUE_LOCK" ]; then
+        lock_pid=""
+        read -r lock_pid _ <"$QUEUE_LOCK" 2>/dev/null || true
+        if [ "$lock_pid" = "$$" ]; then
+            rm -f "$QUEUE_LOCK"
+        fi
+    fi
+    LOCK_HELD=0
+}
+
+teardown_child() {
+    set +e
+    if [ -n "$child_out_tmp" ]; then
+        rm -f "$child_out_tmp" "${child_out_tmp}.watchdog"
+    fi
+    if [ -n "$watchdog_pid" ]; then
+        pkill -P "$watchdog_pid" 2>/dev/null || true
+        kill "$watchdog_pid" 2>/dev/null || true
+        wait "$watchdog_pid" 2>/dev/null || true
+    fi
+    if [ -n "$child_pid" ] && kill -0 "$child_pid" 2>/dev/null; then
+        kill -- -"$child_pid" 2>/dev/null || true
+        sleep 2
+        kill -9 -- -"$child_pid" 2>/dev/null || true
+    fi
+    cleanup_queue_lock
+}
+
+acquire_queue_lock() {
+    local slug="$1" lock_pid lock_slug
+    if [ -f "$QUEUE_LOCK" ]; then
+        read -r lock_pid lock_slug <"$QUEUE_LOCK" 2>/dev/null || true
+        if [ -n "$lock_pid" ] && [ -n "$lock_slug" ] && [ "$lock_slug" = "$slug" ] && [ "$lock_pid" != "$$" ] && kill -0 "$lock_pid" 2>/dev/null; then
+            printf 'build-queue: a build of %s is already running (pid %s) — refusing to start a second.\n' "$slug" "$lock_pid" >&2
+            exit 1
+        fi
+    fi
+    printf '%s %s\n' "$$" "$slug" >"$QUEUE_LOCK"
+    LOCK_HELD=1
+}
+
+trap 'cleanup_queue_lock' EXIT
+trap 'teardown_child; exit 130' INT TERM
 
 # --- parse_edges: extract dependency edges from a pitch file ---
 # Emits "SLUG DEP" lines where SLUG depends on (blocks on) DEP.
@@ -309,6 +360,14 @@ SLUGS
 
     TIMED_OUT=0
     set +e
+
+    export CLAUDE_ASYNC_AGENT_STALL_TIMEOUT_MS=0
+    export CLAUDE_CODE_PRINT_BG_WAIT_CEILING_MS=0
+    export CLAUDE_STREAM_IDLE_TIMEOUT_MS=0
+
+    if [ "$LOCK_HELD" = "0" ]; then
+        acquire_queue_lock "$slug"
+    fi
 
     # Run child in its own process group so the watchdog can kill the whole
     # tree (child + any grandchildren it spawns). set -m enables job control
