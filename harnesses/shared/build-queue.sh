@@ -65,7 +65,8 @@ QUEUE_LOCK="$PWD/codegen/gate-pending/queue.lock"
 LOCK_HELD=0
 child_pid=""
 watchdog_pid=""
-child_out_tmp=""
+paths_pid=""
+paths_file=""
 
 cleanup_queue_lock() {
     if [ -f "$QUEUE_LOCK" ]; then
@@ -80,8 +81,13 @@ cleanup_queue_lock() {
 
 teardown_child() {
     set +e
-    if [ -n "$child_out_tmp" ]; then
-        rm -f "$child_out_tmp" "${child_out_tmp}.watchdog"
+    if [ -n "$paths_pid" ]; then
+        pkill -P "$paths_pid" 2>/dev/null || true
+        kill "$paths_pid" 2>/dev/null || true
+        wait "$paths_pid" 2>/dev/null || true
+    fi
+    if [ -n "$paths_file" ]; then
+        rm -f "$paths_file"
     fi
     if [ -n "$watchdog_pid" ]; then
         pkill -P "$watchdog_pid" 2>/dev/null || true
@@ -244,6 +250,19 @@ is_gate_green() {
     grep -qF 'ALL CLEAR' "$newest"
 }
 
+# --- latest_session_log: newest qualifying *_<slug>_session.md at/after start_ts ---
+latest_session_log() {
+    local slug="$1" start_ts="$2" newest="" newest_ts="" f base fts
+    for f in "$LOG_DIR"/*_"${slug}"_session.md; do
+        [ -f "$f" ] || continue
+        base="$(basename "$f")"; fts="${base%%_"${slug}"_session.md}"
+        [ "$fts" \< "$start_ts" ] && continue
+        if [ -z "$newest_ts" ] || [ "$fts" \> "$newest_ts" ]; then newest_ts="$fts"; newest="$f"; fi
+    done
+    [ -n "$newest" ] || return 1
+    printf '%s\n' "$newest"
+}
+
 # --- pick_delay: backoff seconds for attempt N (1-based); cap at last element ---
 pick_delay() {
     local attempt="$1" i=1 chosen=0
@@ -372,12 +391,31 @@ SLUGS
     # Run child in its own process group so the watchdog can kill the whole
     # tree (child + any grandchildren it spawns). set -m enables job control
     # which gives the child PGID == child PID; set +m restores immediately.
-    child_out_tmp="$(mktemp)"
     set -m
     "$BUILD_BIN" --harness="$HARNESS" --non-interactive --stack="$STACK" \
-        -- "${MENTION_PREFIX}codegen/pitches/ready/${slug}.md" >"$child_out_tmp" 2>&1 &
+        -- "${MENTION_PREFIX}codegen/pitches/ready/${slug}.md" >"$JSONL" 2>&1 &
     child_pid=$!
     set +m
+
+    # Surface the session-log path as soon as the child writes it.
+    paths_file="${JSONL}.paths"
+    (
+        i=0
+        while [ "$i" -lt 30 ]; do
+            if session_log="$(latest_session_log "$slug" "$ts" 2>/dev/null || true)"; then
+                if [ -n "$session_log" ]; then
+                    { printf '  %s\n' "$session_log"; printf '  %s\n' "$JSONL"; } >"$paths_file"
+                    if [ -t 1 ]; then
+                        sed -n 'p' "$paths_file"
+                    fi
+                    exit 0
+                fi
+            fi
+            i=$((i + 1))
+            sleep 1
+        done
+    ) &
+    paths_pid=$!
 
     # Watchdog: fires after budget; leaves sentinel file so we can detect it.
     # Kills the WHOLE process group (child_pid == PGID when set -m is used).
@@ -395,7 +433,7 @@ SLUGS
     (
         sleep "$budget"
         if kill -0 "$child_pid" 2>/dev/null; then
-            printf 'WATCHDOG_FIRED\n' >"${child_out_tmp}.watchdog"
+            printf 'WATCHDOG_FIRED\n' >"${JSONL}.watchdog"
             kill -- -"$child_pid" 2>/dev/null || true
             sleep 2
             kill -9 -- -"$child_pid" 2>/dev/null || true
@@ -405,22 +443,36 @@ SLUGS
 
     wait "$child_pid"
     child_rc=$?
-    # Cancel watchdog since child finished (or was killed by it). Reap the
-    # `sleep` grandchild FIRST (while the subshell is still its parent) so it is
-    # not orphaned to init and left lingering for the rest of the budget.
+    # Cancel helper subshells now that the child finished (or was killed by it).
+    pkill -P "$paths_pid" 2>/dev/null || true
+    kill "$paths_pid" 2>/dev/null || true
+    wait "$paths_pid" 2>/dev/null || true
     pkill -P "$watchdog_pid" 2>/dev/null || true
     kill "$watchdog_pid" 2>/dev/null || true
     wait "$watchdog_pid" 2>/dev/null || true
-
-    # Stream output through tee so JSONL is populated.
-    tee "$JSONL" <"$child_out_tmp"
-    rm -f "$child_out_tmp"
     set -e
 
     # Check if watchdog fired — sentinel file present means timeout.
-    if [ -f "${child_out_tmp}.watchdog" ]; then
-        rm -f "${child_out_tmp}.watchdog"
+    if [ -f "${JSONL}.watchdog" ]; then
+        rm -f "${JSONL}.watchdog"
         TIMED_OUT=1
+    fi
+
+    # Deliver the session-log path if it appeared. In non-TTY capture mode,
+    # the watcher stores the formatted paths in a sidecar file and the parent
+    # prints them after the child finishes so tests don't inherit a live pipe.
+    if [ -f "$paths_file" ]; then
+        if [ ! -t 1 ]; then
+            sed -n 'p' "$paths_file"
+        fi
+        rm -f "$paths_file"
+    else
+        if session_log="$(latest_session_log "$slug" "$ts" 2>/dev/null || true)"; then
+            printf '  %s\n' "$session_log"
+            printf '  %s\n' "$JSONL"
+        else
+            printf '  %s\n' "$JSONL"
+        fi
     fi
 
     # Timeout: leave slug in ready/, skip for remainder of this run.

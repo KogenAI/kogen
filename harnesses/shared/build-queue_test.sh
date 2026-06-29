@@ -106,10 +106,19 @@ done
 
 # Strip leading @ if present (claude mention prefix)
 pitch_path="${pitch_path#@}"
+slug=""
+if [ -n "$pitch_path" ]; then
+    slug="$(basename "$pitch_path" .md)"
+fi
+
+if [ -n "${STUB_SESSION_LOG:-}" ] && [ -n "$slug" ]; then
+    log_ts="$(date -u +%Y%m%d_%H%M%S)"
+    mkdir -p "$PWD/codegen/logging"
+    printf 'ALL CLEAR ✅\n' >"$PWD/codegen/logging/${log_ts}_${slug}_session.md"
+fi
 
 eval "ship_flag=\"\${STUB_SHIP_${attempt}:-\${STUB_SHIP:-1}}\""
 if [ "${ship_flag:-1}" = "1" ] && [ -n "$pitch_path" ]; then
-    slug="$(basename "$pitch_path" .md)"
     ready_path="$PWD/$pitch_path"
     shipped_dir="$PWD/codegen/pitches/shipped"
     mkdir -p "$shipped_dir"
@@ -129,6 +138,9 @@ if [ -n "${STUB_EXTRA_READY:-}" ] && [ -n "${STUB_EXTRA_SENTINEL:-}" ]; then
 fi
 
 eval "exit_code=\"\${STUB_EXIT_${attempt}:-\${STUB_EXIT:-0}}\""
+if [ -n "${STUB_HOLD_SECS:-}" ] && [ "${STUB_HOLD_SECS}" -gt 0 ] 2>/dev/null; then
+    sleep "${STUB_HOLD_SECS}"
+fi
 exit "${exit_code}"
 STUB
     chmod +x "$fake_dir/codegen-build"
@@ -176,12 +188,22 @@ T2_EXIT=0
 T2_OUT=$(
     cd "$T2_ROOT"
     STUB_CALL_LOG="$T2_CALL_LOG" \
+        STUB_SESSION_LOG=1 \
+        STUB_JSONL_BODY='{"type":"result","result":"build body should stay in jsonl","session_id":"sT2"}' \
         OCG_CODEGEN_DIR="$T2_ROOT/fake-codegen-bin" \
         bash "$HELPER" --harness=claude 2>&1
 ) || T2_EXIT=$?
 
+T2_SESSION_PATH="$(printf '%s\n' "$T2_ROOT/codegen/logging"/*_alpha_session.md 2>/dev/null | sed -n '1p')"
+T2_JSONL_PATH="$(printf '%s\n' "$T2_ROOT/codegen/logging"/*_alpha_build.jsonl 2>/dev/null | sed -n '1p')"
+
 assert_eq "T2: single pitch exits 0" "0" "$T2_EXIT"
+assert_eq "T2: session path discovered" "1" "$([ -n "$T2_SESSION_PATH" ] && printf '1' || printf '0')"
+assert_eq "T2: jsonl path discovered" "1" "$([ -n "$T2_JSONL_PATH" ] && printf '1' || printf '0')"
 assert_contains "T2: shipped message" "shipped" "$T2_OUT"
+assert_contains "T2: session log path surfaced" "$T2_SESSION_PATH" "$T2_OUT"
+assert_contains "T2: jsonl path surfaced" "$T2_JSONL_PATH" "$T2_OUT"
+assert_not_contains "T2: raw JSON body not dumped to terminal" "build body should stay in jsonl" "$T2_OUT"
 assert_eq "T2: pitch moved to shipped" "1" "$([ -f "$T2_ROOT/codegen/pitches/shipped/alpha.md" ] && printf '1' || printf '0')"
 assert_eq "T2: pitch removed from ready" "0" "$([ -f "$T2_ROOT/codegen/pitches/ready/alpha.md" ] && printf '1' || printf '0')"
 
@@ -1034,6 +1056,73 @@ assert_eq "T20: tree clean after timeout stash" "" \
 assert_eq "T20: queue-timeout stash entry exists" "1" \
     "$(cd "$T20_ROOT" && git stash list | grep -c "queue-timeout:sigma")"
 rm -rf "$T20_ROOT"
+
+# ── T21: live JSONL + path surfacing — file fills before child exits ─────────
+T21_ROOT="$(mktemp -d)"
+T21_ROOT="$(cd "$T21_ROOT" && pwd -P)"
+mkdir -p "$T21_ROOT/codegen/pitches/ready"
+mkdir -p "$T21_ROOT/codegen/pitches/shipped"
+mkdir -p "$T21_ROOT/codegen/logging"
+mkdir -p "$T21_ROOT/fake-codegen-bin"
+printf 'live pitch\n' >"$T21_ROOT/codegen/pitches/ready/live.md"
+
+cat >"$T21_ROOT/fake-codegen-bin/codegen-build" <<'STUB21'
+#!/usr/bin/env bash
+pitch_path=""
+found_sep=0
+for a in "$@"; do
+    [ "$found_sep" = "1" ] && { pitch_path="$a"; break; }
+    [ "$a" = "--" ] && found_sep=1
+done
+pitch_path="${pitch_path#@}"
+slug="$(basename "$pitch_path" .md)"
+log_ts="$(date -u +%Y%m%d_%H%M%S)"
+mkdir -p "$PWD/codegen/logging"
+printf 'ALL CLEAR ✅\n' >"$PWD/codegen/logging/${log_ts}_${slug}_session.md"
+printf '{"type":"result","result":"live body should stay in jsonl","session_id":"sT21"}\n'
+sleep 2
+shipped_dir="$PWD/codegen/pitches/shipped"
+mkdir -p "$shipped_dir"
+[ -f "$PWD/codegen/pitches/ready/${slug}.md" ] && mv "$PWD/codegen/pitches/ready/${slug}.md" "$shipped_dir/${slug}.md"
+exit 0
+STUB21
+chmod +x "$T21_ROOT/fake-codegen-bin/codegen-build"
+
+T21_OUT_LOG="$T21_ROOT/out.log"
+T21_EXIT=0
+(
+    cd "$T21_ROOT"
+    OCG_CODEGEN_DIR="$T21_ROOT/fake-codegen-bin" \
+        bash "$HELPER" --harness=claude >"$T21_OUT_LOG" 2>&1
+) &
+T21_PID=$!
+
+T21_JSONL_PATH=""
+for _ in 1 2 3 4 5 6 7 8 9 10; do
+    for f in "$T21_ROOT"/codegen/logging/*_live_build.jsonl; do
+        [ -f "$f" ] || continue
+        T21_JSONL_PATH="$f"
+        if grep -qF 'live body should stay in jsonl' "$T21_JSONL_PATH"; then
+            break 2
+        fi
+    done
+    sleep 1
+done
+
+wait "$T21_PID" || T21_EXIT=$?
+T21_OUT="$(<"$T21_OUT_LOG")"
+T21_SESSION_PATH="$(printf '%s\n' "$T21_ROOT/codegen/logging"/*_live_session.md 2>/dev/null | sed -n '1p')"
+T21_JSONL_CONTENT="$(<"$T21_JSONL_PATH")"
+
+assert_eq "T21: live build exits 0" "0" "$T21_EXIT"
+assert_eq "T21: jsonl file appeared before child exit" "1" "$([ -n "$T21_JSONL_PATH" ] && printf '1' || printf '0')"
+assert_eq "T21: session path discovered" "1" "$([ -n "$T21_SESSION_PATH" ] && printf '1' || printf '0')"
+assert_contains "T21: jsonl filled live" "live body should stay in jsonl" "$T21_JSONL_CONTENT"
+assert_contains "T21: session path surfaced" "$T21_SESSION_PATH" "$T21_OUT"
+assert_contains "T21: jsonl path surfaced" "${T21_JSONL_PATH}" "$T21_OUT"
+assert_not_contains "T21: terminal does not dump raw JSON body" "live body should stay in jsonl" "$T21_OUT"
+assert_eq "T21: pitch moved to shipped" "1" "$([ -f "$T21_ROOT/codegen/pitches/shipped/live.md" ] && printf '1' || printf '0')"
+rm -rf "$T21_ROOT"
 
 # ── Summary ───────────────────────────────────────────────────────────────────
 printf '\nResults: %d passed, %d failed\n' "$pass" "$fail"
