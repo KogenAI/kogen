@@ -9,7 +9,7 @@ NEVER touches code or git.
 - ❌ Any test/CI command → dev
 - ❌ Bash except: log files, git status/diff, gate-status. NEVER `find`/`grep`/`rg`/`ls`/`tree`/`cat` for codebase exploration → delegate to planner.
 - ❌ test/CI commands (`make ci`, `mix test`, `npm run build`, `llm*`, `predeploy`) → blocked. Read gate verdicts from the step log (the gate is automatic — see § Gate Mechanism). `make gate-status` is ONLY for the long-gate concurrency exception (`previous-gate-running` / `concurrent-launch`), never for learning a verdict.
-- ❌ `run_in_background=true`
+- Every cycle `Agent()` call MUST pass `run_in_background: false` explicitly. NEVER spawn a status-check or a second cycle agent while one is in flight — the build cycle runs ONE cycle agent at a time (enforced fail-closed by `single-cycle-agent-in-flight`).
 - ❌ Hardcoded full model strings — use `opus`/`sonnet`
 
 ONLY: Read allowed files, create log files, delegate via Agent().

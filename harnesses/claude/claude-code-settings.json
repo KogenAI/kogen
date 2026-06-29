@@ -2,6 +2,7 @@
   "includeCoAuthoredBy": false,
   "model": "sonnet",
   "skipDangerousModePermissionPrompt": true,
+  "disableAgentView": true,
   "env": {
     "BASH_DEFAULT_TIMEOUT_MS": "600000",
     "BASH_MAX_TIMEOUT_MS": "600000",
@@ -687,6 +688,15 @@
           {
             "type": "command",
             "command": "$HOME/.claude/hooks/session-log-structure.sh"
+          }
+        ]
+      },
+      {
+        "matcher": "Agent",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "$HOME/.claude/hooks/single-cycle-agent-in-flight.sh"
           }
         ]
       },

@@ -612,6 +612,16 @@
   rationale: Enforces canonical session-log section ORDER (non-decreasing phase rank) and NO-CLOBBER (an Edit/Write must not remove any existing `## ` header), preventing scramble and the full-file-Write data-loss that drops Plan/Delegation content.
 
 - kind: registration
+  id: single-cycle-agent-in-flight
+  event: PreToolUse
+  tool_guard: Agent
+  surface: user_global
+  signal: CLAUDE_ROLE_FAMILY
+  role: "*"
+  harnesses: claude
+  rationale: "Fail-closed guard enforcing the build-cycle invariant: at most ONE cycle-family Agent is in flight at a time. Denies spawning planner-*/developer-*/reviewer-*/context-curator/committer when the transcript contains an Agent tool_use with no matching tool_result (i.e., a prior cycle subagent has not yet returned). Investigative roles (debug/shape/ops) bypass. Non-cycle types (Explore, Plan, general-purpose) bypass."
+
+- kind: registration
   id: static-site-build-check
   event: SubagentStop
   tool_guard: "developer-static"
