@@ -69,9 +69,10 @@ defmodule CodegenTestHarness.Stacks.Modes.ShapeTest do
 
   # Deterministic test — stubs the underlying launcher binary so no LLM call is
   # made. Verifies that launching from inside codegen/pitches/ normalises cwd
-  # back to the repo root and the stub pitch is still reachable.
+  # back to the repo root and resolves a draft basename into the harness-specific
+  # prompt contract.
   @tag timeout: 30_000
-  test "shape launcher launched from nested codegen/pitches/ cwd recovers to repo root" do
+  test "shape launcher launched from nested codegen/pitches/ cwd resolves draft basename" do
     cwd = Fixtures.isolated_tmp_dir()
     _stub = Fixtures.write_stub_pitch!(cwd, @slug)
 
@@ -93,10 +94,10 @@ defmodule CodegenTestHarness.Stacks.Modes.ShapeTest do
     stub_dir = Path.join(cwd, "stub_bin")
     File.mkdir_p!(stub_dir)
 
-    {binary_name, env_key} =
+    {binary_name, env_key, expected_prompt} =
       case harness_val do
-        "claude" -> {"claude", "CLAUDE_NONINTERACTIVE"}
-        _ -> {"pi", "PI_NON_INTERACTIVE"}
+        "claude" -> {"claude", "CLAUDE_NONINTERACTIVE", "@codegen/pitches/draft/#{@slug}.md"}
+        _ -> {"pi", "PI_NON_INTERACTIVE", "shape codegen/pitches/draft/#{@slug}.md"}
       end
 
     capture_file = Path.join(cwd, "args.txt")
@@ -106,7 +107,7 @@ defmodule CodegenTestHarness.Stacks.Modes.ShapeTest do
     File.write!(stub_bin, """
     #!/usr/bin/env bash
     for arg in "$@"; do
-      printf '%s\\n' "$arg" >> "#{capture_file}"
+      printf '%s\n' "$arg" >> "#{capture_file}"
     done
     exit 0
     """)
@@ -124,10 +125,21 @@ defmodule CodegenTestHarness.Stacks.Modes.ShapeTest do
 
     # Launch from nested cwd — launcher must cd back to cwd (repo root)
     {output, exit_code} =
-      System.cmd("bash", [script], cd: nested_cwd, env: env, stderr_to_stdout: true)
+      System.cmd("bash", [script, @slug], cd: nested_cwd, env: env, stderr_to_stdout: true)
 
     assert exit_code == 0,
            "#{harness_val}-shape exited #{exit_code} when launched from nested cwd:\n#{output}"
+
+    captured_args =
+      capture_file
+      |> File.read!()
+      |> String.split("\n", trim: true)
+
+    assert expected_prompt in captured_args,
+           "expected prompt #{inspect(expected_prompt)} not found in argv: #{inspect(captured_args)}"
+
+    refute @slug in captured_args,
+           "bare slug #{inspect(@slug)} should not be passed to #{harness_val}-shape: #{inspect(captured_args)}"
 
     # Stub pitch must still be readable from the recovered root — this is the
     # load-bearing assertion: if cwd normalisation failed the draft_dir would

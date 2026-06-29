@@ -163,20 +163,56 @@ $(cat "./context/$_bn")"
 fi
 
 # Tier 1: pitch-matched context files from § Domain Context Files table.
-# Detect if a single pitch path was passed (mirrors claude-shape.sh logic). Fail-open.
-PI_PITCH_PATH=""
-if [[ $# -eq 1 ]]; then
-    _arg="$1"
-    # Resolve bare basename (no / and no .md extension)
-    if [[ "$_arg" != */* ]] && [[ "$_arg" != *.md ]] && [[ "$_arg" != *" "* ]]; then
-        _draft_dir="$PWD/codegen/pitches/draft"
-        if [[ -f "$_draft_dir/${_arg}.md" ]]; then
-            PI_PITCH_PATH="$_draft_dir/${_arg}.md"
-        fi
-    elif [[ -f "$_arg" ]]; then
-        PI_PITCH_PATH="$_arg"
+# Resolve draft basenames against $PWD/codegen/pitches/draft/ first so the
+# context preload keys off the on-disk pitch path instead of the raw launcher arg.
+RESOLVED_ARGS=()
+PASSTHROUGH_ARGS=()
+DRAFT_DIR="$PWD/codegen/pitches/draft"
+for arg in "$@"; do
+    if [[ "$arg" == */* ]] || [[ "$arg" == *.md ]] || [[ "$arg" == *" "* ]]; then
+        PASSTHROUGH_ARGS+=("$arg")
+        continue
     fi
+    if [[ -f "$DRAFT_DIR/${arg}.md" ]]; then
+        RESOLVED_ARGS+=("codegen/pitches/draft/${arg}.md")
+        continue
+    fi
+    matches=()
+    if [[ -d "$DRAFT_DIR" ]]; then
+        while IFS= read -r -d '' f; do
+            bn="$(basename "$f" .md)"
+            if [[ "$bn" == "${arg}"* ]]; then
+                matches+=("$bn")
+            fi
+        done < <(find "$DRAFT_DIR" -maxdepth 1 -name "*.md" -print0 2>/dev/null)
+    fi
+    if [[ ${#matches[@]} -eq 1 ]]; then
+        RESOLVED_ARGS+=("codegen/pitches/draft/${matches[0]}.md")
+    elif [[ ${#matches[@]} -gt 1 ]]; then
+        printf 'pi-shape: ambiguous basename %q; matches:\n' "$arg" >&2
+        for m in "${matches[@]}"; do printf '  %s\n' "$m" >&2; done
+        exit 1
+    else
+        printf 'pi-shape: no draft matching %q in codegen/pitches/draft/\n' "$arg" >&2
+        exit 1
+    fi
+done
+
+PI_PITCH_PATH=""
+if [[ ${#RESOLVED_ARGS[@]} -gt 0 ]]; then
+    PI_PITCH_PATH="$PWD/${RESOLVED_ARGS[0]}"
 fi
+
+PI_PROMPT_ARGS=()
+if [[ ${#RESOLVED_ARGS[@]} -gt 0 ]]; then
+    PI_PROMPT_ARGS=("shape ${RESOLVED_ARGS[*]}")
+    if [[ ${#PASSTHROUGH_ARGS[@]} -gt 0 ]]; then
+        PI_PROMPT_ARGS[0]+=" ${PASSTHROUGH_ARGS[*]}"
+    fi
+else
+    PI_PROMPT_ARGS=("${PASSTHROUGH_ARGS[@]}")
+fi
+
 if [[ -n "$PI_PITCH_PATH" && -f "./PROJECT_CONTEXT.md" ]]; then
     _tier1_count=0
     _in_table=0
@@ -245,4 +281,4 @@ exec pi \
     --extension "$EXTENSIONS_DIR/subagents" \
     --extension "$EXTENSIONS_DIR/web-utils" \
     --system-prompt "$ROLE_SYSTEM_PROMPT" \
-    "$@"
+    "${PI_PROMPT_ARGS[@]+"${PI_PROMPT_ARGS[@]}"}"
