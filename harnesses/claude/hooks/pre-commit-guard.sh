@@ -94,11 +94,23 @@ if printf '%s' "$COMMAND" | grep -qE '\bgit[[:space:]]+merge\b'; then
     exit 0
 fi
 
-# git reset --hard / --keep (destructive). Soft/mixed reset stays allowed
-# for subagents that may unstage files as a read-side operation.
+# git reset --hard / --keep (destructive).
 if printf '%s' "$COMMAND" | grep -qE '\bgit[[:space:]]+reset\b.*--hard\b'; then
     deny "BLOCKED by pre-commit-guard: git reset --hard forbidden for agent \"$AGENT_TYPE\" — destructive (use stash or committer)"
     exit 0
+fi
+
+# Soft/mixed reset is only allowed when it stays within this cycle's own HEAD.
+if printf '%s' "$COMMAND" | grep -qE '\bgit[[:space:]]+reset\b' && ! printf '%s' "$COMMAND" | grep -qE '\bgit[[:space:]]+reset\b.*--hard\b'; then
+    build_start_ts="${CODEGEN_BUILD_START_TS:-}"
+    if [ -n "$build_start_ts" ]; then
+        project_dir="${CLAUDE_PROJECT_DIR:-${CWD:-$PWD}}"
+        head_ct="$(git -C "$project_dir" log -1 --format=%ct 2>/dev/null || true)"
+        if [ -n "$head_ct" ] && [ "$head_ct" -lt "$build_start_ts" ] 2>/dev/null; then
+            deny "BLOCKED by pre-commit-guard: git reset would rewrite a commit from BEFORE this build cycle (HEAD commit time ${head_ct} < cycle start ${build_start_ts}). That commit belongs to a prior cycle and is immutable to this one. To allow (emergency only): set COMMITTER_ALLOW_MULTI=1"
+            exit 0
+        fi
+    fi
 fi
 
 # git push --force / --force-with-lease / -f

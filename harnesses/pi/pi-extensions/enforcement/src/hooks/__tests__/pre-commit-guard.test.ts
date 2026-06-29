@@ -3,15 +3,40 @@
  * Mirrors cases from pre-commit-guard_test.sh.
  */
 
-import { describe, it, beforeEach } from "node:test";
+import { describe, it, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
+import * as fs from "node:fs";
+import * as os from "node:os";
+import * as path from "node:path";
+import { execSync } from "node:child_process";
 
 function makeToolCallEvent(toolName: string, command: string) {
   return { toolName, toolCallId: "test-id", input: { command } };
 }
 
+function makeRepoWithCommit(commitTs: number): string {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "pre-commit-guard-test-"));
+  tmpRepos.push(tmpDir);
+  execSync("git init -q", { cwd: tmpDir });
+  execSync("git config user.email test@example.com", { cwd: tmpDir });
+  execSync("git config user.name Test", { cwd: tmpDir });
+  fs.writeFileSync(path.join(tmpDir, "baseline.txt"), "baseline\n");
+  execSync("git add baseline.txt", { cwd: tmpDir });
+  const iso = new Date(commitTs * 1000).toISOString();
+  execSync("git -c core.hooksPath=/dev/null commit -q -m baseline", {
+    cwd: tmpDir,
+    env: {
+      ...process.env,
+      GIT_AUTHOR_DATE: iso,
+      GIT_COMMITTER_DATE: iso,
+    },
+  });
+  return tmpDir;
+}
+
 describe("pre-commit-guard", () => {
   let _capturedHandler: (event: unknown) => Promise<unknown>;
+  const tmpRepos: string[] = [];
 
   const mockPi = {
     on: (_event: string, handler: (event: unknown) => Promise<unknown>) => {
@@ -30,6 +55,14 @@ describe("pre-commit-guard", () => {
 
   beforeEach(() => {
     delete process.env["AGENT_TYPE"];
+    delete process.env["CWD"];
+    delete process.env["CODEGEN_BUILD_START_TS"];
+  });
+
+  afterEach(() => {
+    for (const repo of tmpRepos.splice(0)) {
+      fs.rmSync(repo, { recursive: true, force: true });
+    }
   });
 
   it("blocks git commit for developer agent", async () => {
@@ -80,6 +113,30 @@ describe("pre-commit-guard", () => {
       "developer-phoenix-backend",
     );
     assert.ok((result as { block?: boolean }).block === true);
+  });
+
+  it("blocks git reset for a prior-cycle commit", async () => {
+    const repo = makeRepoWithCommit(1700000000);
+    process.env["CWD"] = repo;
+    process.env["CODEGEN_BUILD_START_TS"] = "1700000100";
+    const result = await runHook(
+      "bash",
+      "git reset HEAD~1",
+      "developer-phoenix-backend",
+    );
+    assert.ok((result as { block?: boolean }).block === true);
+  });
+
+  it("allows git reset for this-cycle commit", async () => {
+    const repo = makeRepoWithCommit(1700000200);
+    process.env["CWD"] = repo;
+    process.env["CODEGEN_BUILD_START_TS"] = "1700000100";
+    const result = await runHook(
+      "bash",
+      "git reset HEAD~1",
+      "developer-phoenix-backend",
+    );
+    assert.ok(result == null || (result as { block?: boolean }).block !== true);
   });
 
   it("blocks for orchestrator (empty agent_type)", async () => {

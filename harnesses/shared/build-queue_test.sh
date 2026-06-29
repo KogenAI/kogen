@@ -136,9 +136,17 @@ make_workspace() {
     local root="$1"
     mkdir -p "$root/codegen/pitches/ready"
     mkdir -p "$root/codegen/pitches/shipped"
+    mkdir -p "$root/codegen/gate-pending"
     mkdir -p "$root/codegen/logging"
     mkdir -p "$root/fake-codegen-bin"
     make_stub "$root/fake-codegen-bin"
+}
+
+write_manifest() {
+    local root="$1"
+    local json="$2"
+    mkdir -p "$root/codegen/gate-pending"
+    printf '%s' "$json" >"$root/codegen/gate-pending/build-queue.json"
 }
 
 # ── Test T1: empty ready/ → exit 0, "no ready pitches" message ────────────────
@@ -759,6 +767,23 @@ assert_eq "T16: pitch removed from ready/" "0" \
 T16_CALLS="$(grep -c '.' "$T16_CALL_LOG" 2>/dev/null || printf '0')"
 assert_eq "T16: exactly 1 child call (no re-spawn)" "1" "$T16_CALLS"
 assert_contains "T16: stdout contains shipping message" "gate green, already committed — shipping" "$T16_OUT"
+
+# ── T16-B: manifest advances + cycle-state stamps COMMITTED on ship ───────────
+T16B_ROOT="$TMP_ROOT/t16b"
+make_workspace "$T16B_ROOT"
+printf 'Pitch: omega\n' >"$T16B_ROOT/codegen/pitches/ready/omega.md"
+write_manifest "$T16B_ROOT" '{"slugs":["omega"],"position":0,"started_at":"2026-01-01T00:00:00Z"}'
+printf '{"state":"GATED","step_log":"old","session_id":"s-old","verdict":"clear","updated_at":"2026-01-01T00:00:00Z"}' >"$T16B_ROOT/codegen/gate-pending/cycle-state.json"
+T16B_EXIT=0
+(
+    cd "$T16B_ROOT"
+    OCG_CODEGEN_DIR="$T16B_ROOT/fake-codegen-bin" \
+        bash "$HELPER" --harness=claude >/dev/null 2>&1
+) || T16B_EXIT=$?
+assert_eq "T16-B: build queue exits 0" "0" "$T16B_EXIT"
+assert_eq "T16-B: manifest position advanced" "1" "$(jq -r '.position' "$T16B_ROOT/codegen/gate-pending/build-queue.json")"
+assert_eq "T16-B: cycle-state COMMITTED" "COMMITTED" "$(jq -r '.state' "$T16B_ROOT/codegen/gate-pending/cycle-state.json")"
+assert_eq "T16-B: pitch moved to shipped" "1" "$([ -f "$T16B_ROOT/codegen/pitches/shipped/omega.md" ] && printf '1' || printf '0')"
 
 # ── T17: per-pitch timeout — slug stays in ready/, queue advances ─────────────
 T17_ROOT="$(mktemp -d)"

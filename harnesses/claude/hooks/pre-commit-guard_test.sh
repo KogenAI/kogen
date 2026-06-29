@@ -10,6 +10,19 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 GUARD="$SCRIPT_DIR/pre-commit-guard.sh"
+REAL_GIT="$(command -v git)"
+FAKE_GIT_DIR="$(mktemp -d)"
+trap 'rm -rf "$FAKE_GIT_DIR"' EXIT
+
+cat >"$FAKE_GIT_DIR/git" <<STUB
+#!/usr/bin/env bash
+if [ "\$1" = "-C" ] && [ "\${3:-}" = "log" ] && [ "\${4:-}" = "-1" ] && [ "\${5:-}" = "--format=%ct" ]; then
+    printf '%s\n' "\${FAKE_GIT_HEAD_CT:-}"
+    exit 0
+fi
+exec "$REAL_GIT" "\$@"
+STUB
+chmod +x "$FAKE_GIT_DIR/git"
 
 pass=0
 fail=0
@@ -117,6 +130,20 @@ run_test "git reset --hard denied for non-committer" "2" "$FIXTURE_RESET_HARD"
 # Test 10: git reset (soft) for non-committer — MUST ALLOW
 FIXTURE_RESET_SOFT='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"git reset HEAD~1"},"agent_type":"developer-phoenix-backend","agent_id":"a"}'
 run_test "git reset soft allowed for non-committer" "0" "$FIXTURE_RESET_SOFT"
+
+# Test 11: git reset (soft) for non-committer — MUST DENY when HEAD predates cycle start
+FIXTURE_RESET_FOREIGN='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"git reset HEAD~1"},"agent_type":"developer-phoenix-backend","agent_id":"a"}'
+run_test_env "git reset soft denied for foreign commit" "2" "$FIXTURE_RESET_FOREIGN" \
+    "PATH=$FAKE_GIT_DIR:$PATH" \
+    "FAKE_GIT_HEAD_CT=1700000000" \
+    "CODEGEN_BUILD_START_TS=1700000100"
+
+# Test 12: git reset (soft) for non-committer — MUST ALLOW for this cycle's own HEAD
+FIXTURE_RESET_OWN='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"git reset HEAD~1"},"agent_type":"developer-phoenix-backend","agent_id":"a"}'
+run_test_env "git reset soft allowed for current-cycle commit" "0" "$FIXTURE_RESET_OWN" \
+    "PATH=$FAKE_GIT_DIR:$PATH" \
+    "FAKE_GIT_HEAD_CT=1700000200" \
+    "CODEGEN_BUILD_START_TS=1700000100"
 
 # Test 11: ops role + git commit — MUST ALLOW (ops bypasses pre-commit-guard entirely)
 FIXTURE_OPS_COMMIT='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"git commit -m \"hotfix: patch config\""},"agent_type":"","agent_id":"a"}'

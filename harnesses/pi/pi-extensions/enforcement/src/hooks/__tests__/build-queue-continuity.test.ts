@@ -17,6 +17,9 @@ describe("build-queue-continuity", { concurrency: false }, () => {
   let tmpDir: string;
 
   beforeEach(() => {
+    delete process.env["CWD"];
+    delete process.env["PI_ROLE"];
+    delete process.env["CLAUDE_ROLE"];
     tmpDir = fs.mkdtempSync(
       path.join(os.tmpdir(), "build-queue-continuity-test-"),
     );
@@ -29,6 +32,7 @@ describe("build-queue-continuity", { concurrency: false }, () => {
     fs.rmSync(tmpDir, { recursive: true, force: true });
     delete process.env["CWD"];
     delete process.env["PI_ROLE"];
+    delete process.env["CLAUDE_ROLE"];
   });
 
   function writeManifest(data: object): void {
@@ -78,7 +82,6 @@ describe("build-queue-continuity", { concurrency: false }, () => {
     return stderrOutput;
   }
 
-  // ── Test 1: warns when manifest has remaining pitches + gate=clear ──────────
   it("warns when manifest has remaining pitches and gate is clear", async () => {
     writeManifest({
       slugs: ["a", "b", "c"],
@@ -87,21 +90,30 @@ describe("build-queue-continuity", { concurrency: false }, () => {
     });
     writeGateResult("clear");
     const stderrOutput = await runHook(tmpDir);
-    assert.ok(
-      stderrOutput.includes("build-queue-continuity"),
-      "expected warning on stderr",
-    );
-    assert.ok(
-      stderrOutput.includes("WARNING"),
-      "expected WARNING in stderr output",
-    );
-    assert.ok(
-      stderrOutput.includes("b"),
-      "expected next slug in warning message",
-    );
+    assert.ok(stderrOutput.includes("WARNING"), "expected WARNING in stderr output");
+    assert.ok(stderrOutput.includes("b"), "expected next slug in warning message");
   });
 
-  // ── Test 2: no warning when queue exhausted ──────────────────────────────────
+  it("skips shipped slug at manifest position in favor of next live slug", async () => {
+    writeManifest({
+      slugs: ["a", "b", "c"],
+      position: 1,
+      started_at: "2026-01-01T00:00:00Z",
+    });
+    writeGateResult("clear");
+    fs.mkdirSync(path.join(tmpDir, "codegen", "pitches", "shipped"), {
+      recursive: true,
+    });
+    fs.writeFileSync(
+      path.join(tmpDir, "codegen", "pitches", "shipped", "b.md"),
+      "Pitch: b\n",
+    );
+    const stderrOutput = await runHook(tmpDir);
+    assert.ok(stderrOutput.includes("WARNING"), "expected WARNING in stderr output");
+    assert.ok(!stderrOutput.includes("next: b"), "expected shipped slug to be skipped");
+    assert.ok(stderrOutput.includes("next: c"), "expected next live slug to be nominated");
+  });
+
   it("does not warn when queue is exhausted (position >= len)", async () => {
     writeManifest({
       slugs: ["a", "b"],

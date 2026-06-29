@@ -20,6 +20,8 @@ BUILD_BIN="$CODEGEN_DIR/codegen-build"
 if [ -r "$SCRIPT_DIR/retryable-errors.sh" ]; then
     source "$SCRIPT_DIR/retryable-errors.sh"
 fi
+# shellcheck disable=SC1091
+source "$SCRIPT_DIR/../claude/hooks/lib/cycle-state.sh"
 
 # Operator toggles (build-time; NOT app runtime — do not add to .env samples):
 #   CODEGEN_BUILD_QUEUE_MAX_RETRIES   max consecutive transient retries per slug (default 3)
@@ -202,6 +204,31 @@ pick_delay() {
     printf '%s' "$chosen"
 }
 
+# --- mark_ship_progress: advance gate-pending state after a successful ship ---
+mark_ship_progress() {
+    local slug="$1"
+    local manifest="$PWD/codegen/gate-pending/build-queue.json"
+    local state_dir="$PWD/codegen/gate-pending"
+    [ -f "$manifest" ] || return 0
+
+    local current_position slug_index next_position tmp_manifest
+    current_position="$(jq -r 'if (.position|type)=="number" then .position else empty end' "$manifest" 2>/dev/null || true)"
+    slug_index="$(jq -r --arg slug "$slug" '(.slugs | to_entries | map(select(.value==$slug)) | .[0].key) // empty' "$manifest" 2>/dev/null || true)"
+    if [ -n "$slug_index" ]; then
+        next_position=$((slug_index + 1))
+        if [ -z "$current_position" ] || [ "$next_position" -gt "$current_position" ]; then
+            tmp_manifest="$(mktemp "$state_dir/build-queue.json.XXXXXX")"
+            if jq --argjson pos "$next_position" '.position = $pos' "$manifest" >"$tmp_manifest"; then
+                mv "$tmp_manifest" "$manifest"
+            else
+                rm -f "$tmp_manifest"
+            fi
+        fi
+    fi
+
+    write_cycle_state "COMMITTED" "" "" "" "$PWD"
+}
+
 # --- main loop ---
 TOTAL=0
 SHIPPED_COUNT=0
@@ -364,6 +391,7 @@ SLUGS
     fi
 
     if [ "$child_rc" = "0" ] && [ -f "$SHIPPED_DIR/$slug.md" ] && [ ! -f "$READY_DIR/$slug.md" ]; then
+        mark_ship_progress "$slug"
         SHIPPED_COUNT=$((SHIPPED_COUNT + 1))
         printf '[%d/%d] %s ... shipped\n' "$idx" "$TOTAL" "$slug"
     else
@@ -381,6 +409,7 @@ SLUGS
         head_now="$(git rev-parse HEAD 2>/dev/null || true)"
         if [ "$gate_green" = "1" ] && [ -n "$head_before" ] && [ "$head_now" != "$head_before" ] && [ ! -f "$SHIPPED_DIR/$slug.md" ]; then
             mv "$READY_DIR/$slug.md" "$SHIPPED_DIR/$slug.md"
+            mark_ship_progress "$slug"
             SHIPPED_COUNT=$((SHIPPED_COUNT + 1))
             printf '[%d/%d] %s ... gate green, already committed — shipping\n' "$idx" "$TOTAL" "$slug"
             continue

@@ -75,9 +75,33 @@ if [ "$verdict" = "failed" ] || [ "$verdict" = "inconclusive" ]; then
     exit 0
 fi
 
-# 6. Remaining pitches + gate not failed -> block.
-remaining=$((slugs_len - position))
-next_slug=$(jq -r --argjson p "$position" '.slugs[$p] // "unknown"' "$manifest" 2>/dev/null)
+# 6. Remaining pitches + gate not failed -> block, but skip any slug already
+# shipped so stale queue state can never nominate finished work.
+remaining=0
+next_slug=""
+idx="$position"
+while [ "$idx" -lt "$slugs_len" ]; do
+    slug=$(jq -r --argjson p "$idx" '.slugs[$p] // empty' "$manifest" 2>/dev/null)
+    if [ -z "$slug" ]; then
+        break
+    fi
+    if [ -f "$project_dir/codegen/pitches/shipped/$slug.md" ]; then
+        debug_log build-queue-continuity "skip shipped slug=$slug at position=$idx"
+        idx=$((idx + 1))
+        continue
+    fi
+    if [ -z "$next_slug" ]; then
+        next_slug="$slug"
+    fi
+    remaining=$((remaining + 1))
+    idx=$((idx + 1))
+done
+
+if [ -z "$next_slug" ]; then
+    debug_log build-queue-continuity "skip: remaining manifest entries already shipped"
+    exit 0
+fi
+
 debug_log build-queue-continuity "BLOCK: next=$next_slug remaining=$remaining"
 block "build-queue-continuity: ${remaining} queued pitch(es) remain (next: ${next_slug}). Build-queue continuity is autonomous — do NOT stop and do NOT ask permission. Create the next pitch's session log and begin its cycle now. (The only legitimate mid-queue stop is a gate failure, which this hook already allows.)"
 exit 0

@@ -93,8 +93,31 @@ export function register(pi: ExtensionAPI): void {
       }
     }
 
-    const remaining = slugs.length - position;
-    const nextSlug = slugs[position] ?? "unknown";
+    let remaining = 0;
+    let nextSlug = "";
+    for (let i = position; i < slugs.length; i += 1) {
+      const slug = slugs[i] ?? "";
+      if (!slug) continue;
+      const shippedPath = path.join(
+        projectDir,
+        "codegen",
+        "pitches",
+        "shipped",
+        `${slug}.md`,
+      );
+      if (fs.existsSync(shippedPath)) {
+        debugLog("build-queue-continuity", `skip shipped slug=${slug} at position=${i}`);
+        continue;
+      }
+      if (!nextSlug) nextSlug = slug;
+      remaining += 1;
+    }
+
+    if (!nextSlug) {
+      debugLog("build-queue-continuity", "skip: remaining manifest entries already shipped");
+      return;
+    }
+
     process.stderr.write(
       `[pi-enforcement:build-queue-continuity] WARNING: ${remaining} queued pitch(es) remain (next: ${nextSlug}). Build-queue continuity is autonomous — do not stop or ask permission; begin the next pitch's cycle.\n`,
     );

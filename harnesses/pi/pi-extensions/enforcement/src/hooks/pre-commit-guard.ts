@@ -8,6 +8,7 @@
  */
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { execSync } from "node:child_process";
 import { deny, parseAgentType, debugLog } from "../lib/hook-helpers";
 
 export const HANDLER_META = {
@@ -80,6 +81,25 @@ export function register(pi: ExtensionAPI): void {
       return deny(
         `BLOCKED by pre-commit-guard: git reset --hard forbidden for agent "${agentType}" — destructive (use stash or committer)`,
       );
+    }
+
+    if (/\bgit\s+reset\b/.test(command) && !/\bgit\s+reset\b.*--hard\b/.test(command)) {
+      const buildStartTs = process.env["CODEGEN_BUILD_START_TS"] ?? "";
+      if (buildStartTs) {
+        const projectDir = process.env["CWD"] ?? process.cwd();
+        try {
+          const headCt = execSync("git -C \"" + projectDir + "\" log -1 --format=%ct", {
+            encoding: "utf8",
+          }).trim();
+          if (headCt && Number(headCt) < Number(buildStartTs)) {
+            return deny(
+              `BLOCKED by pre-commit-guard: git reset would rewrite a commit from BEFORE this build cycle (HEAD commit time ${headCt} < cycle start ${buildStartTs}). That commit belongs to a prior cycle and is immutable to this one. To allow (emergency only): set COMMITTER_ALLOW_MULTI=1`,
+            );
+          }
+        } catch {
+          // Fail open: if HEAD time cannot be read, preserve the existing allow.
+        }
+      }
     }
     if (/\bgit\s+push\b.*(--force(-with-lease)?|\s-f(\s|$))/.test(command)) {
       return deny(
