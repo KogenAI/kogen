@@ -341,6 +341,21 @@ SLUGS
     if [ "$TIMED_OUT" = "1" ]; then
         printf '[%d/%d] %s ... TIMED OUT (budget %ss) — left in ready/, advancing\n' \
             "$idx" "$TOTAL" "$slug" "$budget" >&2
+        # Stash the dead child's uncommitted tree so the next pitch starts clean.
+        # Fail-open: not-a-repo / git-missing / stash-error → warn, advance anyway.
+        # Filter: only fire on staged/modified tracked changes (grep -v '^??').
+        # Untracked-only (e.g. pitch files in a repo without a .gitignore) → skip.
+        if git -C "$PWD" rev-parse --git-dir >/dev/null 2>&1 &&
+            [ -n "$(git -C "$PWD" status --porcelain 2>/dev/null | grep -v '^??')" ]; then
+            stash_msg="queue-timeout:${slug}:$(date +%s)"
+            if git -C "$PWD" stash push -u -m "$stash_msg" >/dev/null 2>&1; then
+                printf 'build-queue: stashed timed-out tree as "%s" — recover with: git stash list / git stash apply\n' \
+                    "$stash_msg" >&2
+            else
+                printf 'build-queue: WARNING could not stash timed-out tree for %s — advancing with dirty tree\n' \
+                    "$slug" >&2
+            fi
+        fi
         TIMED_OUT_SLUGS="${TIMED_OUT_SLUGS:+$TIMED_OUT_SLUGS
 }$slug"
         retry_count=0

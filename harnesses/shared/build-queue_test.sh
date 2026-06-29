@@ -902,6 +902,52 @@ T19_CALLS="$(grep -c '.' "$T19_CALL_LOG" 2>/dev/null || printf '0')"
         fail=$((fail + 1))
     }
 
+# ── T20: timeout stashes dirty tree, next pitch starts clean ──────────────────
+T20_ROOT="$(mktemp -d)"
+T20_ROOT="$(cd "$T20_ROOT" && pwd -P)"
+mkdir -p "$T20_ROOT/codegen/pitches/ready"
+mkdir -p "$T20_ROOT/codegen/pitches/shipped"
+mkdir -p "$T20_ROOT/codegen/logging"
+mkdir -p "$T20_ROOT/fake-codegen-bin"
+printf 'sigma pitch\n' >"$T20_ROOT/codegen/pitches/ready/sigma.md"
+(
+    cd "$T20_ROOT"
+    git init -q
+    git config user.email "test@test.com"
+    git config user.name "Test"
+    git config commit.gpgsign false
+    printf 'baseline\n' >baseline.txt
+    git add baseline.txt
+    git -c core.hooksPath=/dev/null commit -q -m baseline
+)
+
+# Stub: writes + stages a tracked file then sleeps past budget.
+# Bounded at 30s (NOT 9999) so a reaping regression fails in seconds.
+cat >"$T20_ROOT/fake-codegen-bin/codegen-build" <<'STUB20'
+#!/usr/bin/env bash
+printf 'dirty from dead child\n' >tracked_dirt.txt
+git add tracked_dirt.txt
+sleep 30
+STUB20
+chmod +x "$T20_ROOT/fake-codegen-bin/codegen-build"
+
+T20_EXIT=0
+T20_OUT=$(
+    cd "$T20_ROOT"
+    CODEGEN_BUILD_QUEUE_PITCH_BUDGET_SECS=2 \
+        CODEGEN_BUILD_QUEUE_MAX_RETRIES=0 \
+        CODEGEN_BUILD_QUEUE_RETRY_DELAYS="0 0 0" \
+        OCG_CODEGEN_DIR="$T20_ROOT/fake-codegen-bin" \
+        bash "$HELPER" --harness=claude 2>&1
+) || T20_EXIT=$?
+
+assert_eq "T20: timeout with dirty tree — queue exits 0" "0" "$T20_EXIT"
+assert_eq "T20: tree clean after timeout stash" "" \
+    "$(cd "$T20_ROOT" && git status --porcelain)"
+assert_eq "T20: queue-timeout stash entry exists" "1" \
+    "$(cd "$T20_ROOT" && git stash list | grep -c "queue-timeout:sigma")"
+rm -rf "$T20_ROOT"
+
 # ── Summary ───────────────────────────────────────────────────────────────────
 printf '\nResults: %d passed, %d failed\n' "$pass" "$fail"
 
