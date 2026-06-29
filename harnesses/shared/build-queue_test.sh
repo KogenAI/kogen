@@ -869,6 +869,28 @@ assert_eq "T16-B: manifest position advanced" "1" "$(jq -r '.position' "$T16B_RO
 assert_eq "T16-B: cycle-state COMMITTED" "COMMITTED" "$(jq -r '.state' "$T16B_ROOT/codegen/gate-pending/cycle-state.json")"
 assert_eq "T16-B: pitch moved to shipped" "1" "$([ -f "$T16B_ROOT/codegen/pitches/shipped/omega.md" ] && printf '1' || printf '0')"
 
+# ── T16-C: resumed manifest uses persisted position/counts ───────────────────
+T16C_ROOT="$TMP_ROOT/t16c"
+make_workspace "$T16C_ROOT"
+printf 'Pitch: c\n' >"$T16C_ROOT/codegen/pitches/ready/c.md"
+printf 'Pitch: d\n' >"$T16C_ROOT/codegen/pitches/ready/d.md"
+printf 'Pitch: e\n' >"$T16C_ROOT/codegen/pitches/ready/e.md"
+write_manifest "$T16C_ROOT" '{"slugs":["a","b","c","d","e"],"position":2,"started_at":"2026-01-01T00:00:00Z"}'
+
+T16C_EXIT=0
+T16C_OUT=$(
+    cd "$T16C_ROOT"
+    OCG_CODEGEN_DIR="$T16C_ROOT/fake-codegen-bin" \
+        bash "$HELPER" --harness=claude 2>&1
+) || T16C_EXIT=$?
+
+assert_eq "T16-C: resumed manifest queue exits 0" "0" "$T16C_EXIT"
+assert_contains "T16-C: first resumed build shows manifest position" "[3/5] c ... building" "$T16C_OUT"
+assert_contains "T16-C: second resumed build advances from persisted total" "[4/5] d ... building" "$T16C_OUT"
+assert_not_contains "T16-C: no reset to current ready-count display" "[1/3] c ... building" "$T16C_OUT"
+assert_eq "T16-C: manifest position advanced through shipped pitches" "5" "$(jq -r '.position' "$T16C_ROOT/codegen/gate-pending/build-queue.json")"
+assert_eq "T16-C: pitch moved to shipped" "1" "$([ -f "$T16C_ROOT/codegen/pitches/shipped/c.md" ] && printf '1' || printf '0')"
+
 # ── T17: per-pitch timeout — slug stays in ready/, queue advances ─────────────
 T17_ROOT="$(mktemp -d)"
 T17_ROOT="$(cd "$T17_ROOT" && pwd -P)"

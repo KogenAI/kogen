@@ -307,6 +307,24 @@ retry_count=0
 # Slugs timed out in this run — left in ready/ but skipped for remaining iterations.
 TIMED_OUT_SLUGS=""
 
+init_display_counters_from_manifest() {
+    local manifest="$PWD/codegen/gate-pending/build-queue.json"
+    local manifest_total manifest_position
+    [ -f "$manifest" ] || return 0
+
+    manifest_total="$(jq -r 'if (.slugs|type)=="array" and (.slugs|length)>0 then (.slugs|length) else empty end' "$manifest" 2>/dev/null || true)"
+    manifest_position="$(jq -r 'if (.position|type)=="number" then .position else empty end' "$manifest" 2>/dev/null || true)"
+    if [ -n "$manifest_total" ] && [ -n "$manifest_position" ]; then
+        TOTAL="$manifest_total"
+        SHIPPED_COUNT="$manifest_position"
+        return 0
+    fi
+
+    printf 'build-queue: WARNING resumed without manifest continuity; using current ready/ count\n' >&2
+}
+
+init_display_counters_from_manifest
+
 while true; do
     # Re-scan ready/ each iteration (refillable + resumable)
     slugs=""
