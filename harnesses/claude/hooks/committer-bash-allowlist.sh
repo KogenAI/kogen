@@ -31,7 +31,7 @@ committer) ;;
 esac
 
 # Allowlist: allow matching commands; deny everything else.
-if printf '%s' "$COMMAND" | grep -qE '^[[:space:]]*(cd[[:space:]]+\S+[[:space:]]+&&[[:space:]]+)?(git[[:space:]]+(-C[[:space:]]+\S+[[:space:]]+)?(diff|status|log|show|commit|add|rm|mv|tag|checkout|switch|branch|restore|reset)\b|echo\b|wc\b|cat\b|ls\b|true\b|:)'; then
+if printf '%s' "$COMMAND" | grep -qE '^[[:space:]]*(cd[[:space:]]+\S+[[:space:]]+&&[[:space:]]+)?(git[[:space:]]+(-C[[:space:]]+\S+[[:space:]]+)?(diff|status|log|show|commit|add|rm|mv|tag|checkout|switch|branch|restore|reset)\b|codegen-log\b|echo\b|wc\b|cat\b|ls\b|true\b|:)'; then
     exit 0
 fi
 

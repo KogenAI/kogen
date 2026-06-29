@@ -6,7 +6,7 @@
 
 **WHERE**: `codegen/logging/$(date -u +%Y%m%d_%H%M%S)_session.md`
 
-Each invocation creates NEW log file. Run `date -u +%Y%m%d_%H%M%S` via Bash for timestamp. Create BEFORE delegating to planner. Compute the stamp values inline and include them in the SAME Write tool call that creates the log — do NOT append the stamp in a separate step.
+Each invocation creates NEW log file. Create it with `codegen-log init --slug <slug>` BEFORE delegating to planner. The writer stamps the Version Stamp inline and does not pre-seed role headers.
 
 ```markdown
 # Session Log

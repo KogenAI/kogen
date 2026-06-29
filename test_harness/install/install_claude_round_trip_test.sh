@@ -64,6 +64,7 @@ assert "hooks dir populated" '[ "$(ls "$tmp_home/.claude/hooks" 2>/dev/null | wc
 assert "hooks/lib dir populated" '[ "$(ls "$tmp_home/.claude/hooks/lib" 2>/dev/null | wc -l | tr -d " ")" -gt 0 ]'
 assert "agents dir populated" '[ "$(ls "$tmp_home/.claude/agents" 2>/dev/null | wc -l | tr -d " ")" -gt 0 ]'
 assert "no pi launchers present" '[ ! -f "$tmp_home/.local/bin/pi-build" ]'
+assert "codegen-log launcher exists" '[ -f "$tmp_home/.local/bin/codegen-log" ]'
 
 # Claude-specific launcher(s) from manifest
 if [ -f "$CODEGEN_DIR/harnesses/claude/manifest.yaml" ] && command -v yq >/dev/null 2>&1; then
@@ -123,6 +124,7 @@ printf 'N\nN\n' | SHELL=/bin/bash "$CODEGEN_DIR/uninstall.sh" >"$tmp_home/uninst
 
 # Assert removals — ocg symlink removed (uninstall.sh always removes it)
 assert "ocg symlink removed" '[ ! -e "$tmp_home/.local/bin/ocg" ]'
+assert "codegen-log launcher removed" '[ ! -e "$tmp_home/.local/bin/codegen-log" ]'
 
 # Assert codex stubs pruned by uninstall
 for _codex in codex-build codex-inspector codex-refactor codex-shape; do

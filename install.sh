@@ -89,6 +89,7 @@ content_stable_cp() {
 CODEGEN_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 INSTALL_DIR="$HOME/.local/bin"
 SYMLINK_NAME="ocg"
+CODEGEN_LOG_NAME="codegen-log"
 
 echo "🚀 Installing Optimum Codegen CLI..."
 echo "   📁 Codegen directory: $CODEGEN_DIR"
@@ -109,6 +110,16 @@ fi
 
 echo "   🔗 Creating symlink: $SYMLINK_PATH -> $CODEGEN_DIR/ocg"
 ln -s "$CODEGEN_DIR/ocg" "$SYMLINK_PATH"
+
+# Create symlink for codegen-log
+CODEGEN_LOG_PATH="$INSTALL_DIR/$CODEGEN_LOG_NAME"
+if [ -L "$CODEGEN_LOG_PATH" ] || [ -f "$CODEGEN_LOG_PATH" ]; then
+    echo "   🔄 Removing existing $CODEGEN_LOG_NAME command"
+    rm -f "$CODEGEN_LOG_PATH"
+fi
+
+echo "   🔗 Creating symlink: $CODEGEN_LOG_PATH -> $CODEGEN_DIR/codegen-log"
+ln -s "$CODEGEN_DIR/codegen-log" "$CODEGEN_LOG_PATH"
 
 # Wire dispatch path: codegen-call resolves $SCRIPT_DIR/harnesses at runtime.
 # A sibling harnesses/ symlink in INSTALL_DIR makes tier-1 dispatch resolve without env-var fallback.

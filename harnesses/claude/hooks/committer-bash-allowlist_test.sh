@@ -72,6 +72,10 @@ run_test "committer git show ALLOWED" "0" \
 run_test "committer echo | wc -c ALLOWED" "0" \
     "{\"hook_event_name\":\"PreToolUse\",\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"echo -n \\\"subject line\\\" | wc -c\"},\"agent_type\":\"$COMMITTER\",\"agent_id\":\"abc\"}"
 
+# 8b. codegen-log init → ALLOW
+run_test "committer codegen-log init ALLOWED" "0" \
+    "{\"hook_event_name\":\"PreToolUse\",\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"codegen-log init --slug demo\"},\"agent_type\":\"$COMMITTER\",\"agent_id\":\"abc\"}"
+
 # ── Bash: DENY (build/test/package-manager commands) ──────────────────────
 
 # 9. make test → DENY

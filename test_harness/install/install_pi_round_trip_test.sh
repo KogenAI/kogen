@@ -72,6 +72,7 @@ if [ -f "$CODEGEN_DIR/harnesses/pi/manifest.yaml" ] && command -v yq >/dev/null 
         assert "launcher '$name' exists" '[ -f "$tmp_home/.local/bin/$name" ]'
     done < <(yq e '.launchers[] | [.src, .name] | join("\t")' "$CODEGEN_DIR/harnesses/pi/manifest.yaml" 2>/dev/null)
 fi
+assert "codegen-log launcher exists" '[ -f "$tmp_home/.local/bin/codegen-log" ]'
 
 # Pi agents populated (templates/generated/pi/agent/*.md)
 if [ -d "$tmp_home/.pi/agent/agents" ]; then
@@ -101,6 +102,7 @@ if [ -f "$CODEGEN_DIR/harnesses/pi/manifest.yaml" ] && command -v yq >/dev/null 
         assert "pi launcher '$name' removed after uninstall" '[ ! -f "$tmp_home/.local/bin/$name" ]'
     done < <(yq e '.launchers[] | [.src, .name] | join("\t")' "$CODEGEN_DIR/harnesses/pi/manifest.yaml" 2>/dev/null)
 fi
+assert "codegen-log launcher removed" '[ ! -e "$tmp_home/.local/bin/codegen-log" ]'
 
 # Assert codex stubs pruned by uninstall
 for _codex in codex-build codex-inspector codex-refactor codex-shape; do

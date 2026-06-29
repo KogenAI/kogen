@@ -6,6 +6,7 @@
 CODEGEN_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 INSTALL_DIR="$HOME/.local/bin"
 SYMLINK_NAME="ocg"
+CODEGEN_LOG_NAME="codegen-log"
 
 # Source manifest-lib for manifest_launchers / manifest_completions
 # shellcheck source=templates/generator/manifest-lib.sh
@@ -20,6 +21,15 @@ if [ -L "$SYMLINK_PATH" ] || [ -f "$SYMLINK_PATH" ]; then
     rm -f "$SYMLINK_PATH"
 else
     echo "   ℹ️  $SYMLINK_NAME command not found"
+fi
+
+# Remove codegen-log symlink
+CODEGEN_LOG_PATH="$INSTALL_DIR/$CODEGEN_LOG_NAME"
+if [ -L "$CODEGEN_LOG_PATH" ] || [ -f "$CODEGEN_LOG_PATH" ]; then
+    echo "   🔗 Removing $CODEGEN_LOG_NAME command"
+    rm -f "$CODEGEN_LOG_PATH"
+else
+    echo "   ℹ️  $CODEGEN_LOG_NAME command not found"
 fi
 
 # Remove autocompletion from shell configuration

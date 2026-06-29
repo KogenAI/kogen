@@ -1,0 +1,285 @@
+#!/usr/bin/env bash
+# codegen-log — canonical session-log writer.
+#
+# Usage:
+#   codegen-log init --slug <slug>
+#   codegen-log section --body @-
+#
+# init: create a new codegen/logging/<ts>_<slug>_session.md with only the
+#       Version Stamp block.
+# section: atomically insert/replace the active role section at canonical rank.
+
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
+if [[ ! -d "$SCRIPT_DIR/codegen" && -n "${OCG_CODEGEN_DIR:-}" ]]; then
+    SCRIPT_DIR="$OCG_CODEGEN_DIR"
+fi
+
+SUBCOMMAND=""
+SLUG=""
+BODY_SOURCE=""
+
+usage() {
+    printf 'Usage:\n' >&2
+    printf '  codegen-log init --slug <slug>\n' >&2
+    printf '  codegen-log section --body @-\n' >&2
+    exit 2
+}
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+    init|section)
+        if [[ -n "$SUBCOMMAND" ]]; then
+            printf 'codegen-log: only one subcommand is allowed\n' >&2
+            usage
+        fi
+        SUBCOMMAND="$1"
+        shift
+        ;;
+    --slug=*)
+        SLUG="${1#--slug=}"
+        shift
+        ;;
+    --slug)
+        SLUG="$2"
+        shift 2
+        ;;
+    --body=*)
+        BODY_SOURCE="${1#--body=}"
+        shift
+        ;;
+    --body)
+        BODY_SOURCE="$2"
+        shift 2
+        ;;
+    --help|-h)
+        usage
+        ;;
+    --*)
+        printf 'codegen-log: unknown flag %q\n' "$1" >&2
+        usage
+        ;;
+    *)
+        printf 'codegen-log: unexpected argument %q\n' "$1" >&2
+        usage
+        ;;
+    esac
+done
+
+if [[ -z "$SUBCOMMAND" ]]; then
+    usage
+fi
+
+repo_root() {
+    printf '%s' "$SCRIPT_DIR"
+}
+
+latest_session_log() {
+    local root latest candidate
+    root="$(repo_root)"
+    latest=""
+    for candidate in "$root"/codegen/logging/*_session.md; do
+        [[ -e "$candidate" ]] || continue
+        latest="$candidate"
+    done
+    printf '%s' "$latest"
+}
+
+version_stamp() {
+    local root project_hash context_hash codegen_hash claude_version stamped_at
+    root="$(repo_root)"
+    project_hash="$(git -C "$root" rev-parse --short HEAD 2>/dev/null || printf 'unknown')"
+    context_hash="$(git -C "$root/codegen/rules" rev-parse --short HEAD 2>/dev/null || printf 'unknown')"
+    codegen_hash="$(git -C "$root" rev-parse --short HEAD 2>/dev/null || printf 'unknown')"
+    if command -v claude >/dev/null 2>&1; then
+        claude_version="$(claude --version 2>/dev/null || printf 'unknown')"
+    elif command -v pi >/dev/null 2>&1; then
+        claude_version="$(pi --version 2>/dev/null || printf 'unknown')"
+    else
+        claude_version="unknown"
+    fi
+    stamped_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    cat <<EOF
+## Version Stamp
+
+- project: $project_hash
+- context: $context_hash
+- codegen: $codegen_hash
+- claude: $claude_version
+- stamped_at: $stamped_at
+EOF
+}
+
+section_header_for_agent() {
+    case "${AGENT_TYPE:-${CLAUDE_ROLE:-}}" in
+    planner* ) printf '## Plan' ;;
+    developer-* ) printf '## %s Section' "${AGENT_TYPE:-${CLAUDE_ROLE:-}}" ;;
+    reviewer-* ) printf '## %s Section' "${AGENT_TYPE:-${CLAUDE_ROLE:-}}" ;;
+    context-curator) printf '## context-curator Section' ;;
+    committer) printf '## committer Section' ;;
+    *)
+        printf 'codegen-log: unsupported role %q\n' "${AGENT_TYPE:-${CLAUDE_ROLE:-unknown}}" >&2
+        exit 2
+        ;;
+    esac
+}
+
+rank_of() {
+    case "$1" in
+    '## Version Stamp') printf '1' ;;
+    '## Rules Loaded'*) printf '2' ;;
+    '## Plan'*) printf '3' ;;
+    '## Slices'*) printf '3' ;;
+    '## Delegation Timeline') printf '4' ;;
+    '## Files Modified') printf '5' ;;
+    '## developer-'*' Section'*) printf '6' ;;
+    '## reviewer-'*' Section'*) printf '8' ;;
+    '## context-curator Section') printf '9' ;;
+    '## committer Section') printf '10' ;;
+    *) printf '999' ;;
+    esac
+}
+
+render_section() {
+    local header="$1"
+    local body="$2"
+    printf '%s\n\n%s' "$header" "$body"
+    if [[ -z "$body" || "${body: -1}" != $'\n' ]]; then
+        printf '\n'
+    fi
+}
+
+write_atomic() {
+    local path="$1"
+    local content="$2"
+    mkdir -p "$(dirname "$path")"
+    local tmp
+    tmp="$(mktemp "${path}.XXXXXX")"
+    printf '%s' "$content" >"$tmp"
+    mv "$tmp" "$path"
+}
+
+case "$SUBCOMMAND" in
+init)
+    if [[ -z "$SLUG" ]]; then
+        printf 'codegen-log init: --slug is required\n' >&2
+        usage
+    fi
+    if [[ ! "$SLUG" =~ ^[a-z0-9_-]+$ ]]; then
+        printf 'codegen-log init: --slug must match [a-z0-9_-]+ (got %q)\n' "$SLUG" >&2
+        exit 2
+    fi
+    timestamp="$(date -u +%Y%m%d_%H%M%S)"
+    path="$(repo_root)/codegen/logging/${timestamp}_${SLUG}_session.md"
+    write_atomic "$path" "$(version_stamp)"
+    printf '%s\n' "$path"
+    ;;
+section)
+    if [[ "$BODY_SOURCE" != @* ]]; then
+        printf 'codegen-log section: --body must start with @ (got %q)\n' "$BODY_SOURCE" >&2
+        exit 2
+    fi
+    if [[ "$BODY_SOURCE" != @- ]]; then
+        body_path="${BODY_SOURCE#@}"
+        if [[ ! -f "$body_path" ]]; then
+            printf 'codegen-log section: body file not found: %s\n' "$body_path" >&2
+            exit 2
+        fi
+        body="$(cat "$body_path")"
+    else
+        body="$(cat)"
+    fi
+
+    body_file="$(mktemp "${SCRIPT_DIR}/.codegen-log-body.XXXXXX")"
+    printf '%s' "$body" >"$body_file"
+
+    log_file="${CODEGEN_LOG_PATH:-$(latest_session_log)}"
+    if [[ -z "$log_file" || ! -f "$log_file" ]]; then
+        printf 'codegen-log section: no session log found (set CODEGEN_LOG_PATH or create one first)\n' >&2
+        exit 2
+    fi
+
+    target_header="$(section_header_for_agent)"
+    case "$body" in
+    "$target_header"$'\n'*)
+        body="${body#"$target_header"}"
+        while [[ "$body" == $'\n'* ]]; do
+            body="${body#$'\n'}"
+        done
+        ;;
+    esac
+    printf '%s' "$body" >"$body_file"
+
+    target_rank="$(rank_of "$target_header")"
+    tmp="$(mktemp "${log_file}.XXXXXX")"
+
+    awk -v target="$target_header" -v body_file="$body_file" -v target_rank="$target_rank" '
+    function rank_of(h) {
+        if (h == "## Version Stamp") return 1
+        if (h ~ /^## Rules Loaded/) return 2
+        if (h ~ /^## Plan/) return 3
+        if (h ~ /^## Slices/) return 3
+        if (h == "## Delegation Timeline") return 4
+        if (h == "## Files Modified") return 5
+        if (h ~ /^## developer-.* Section( \(pass [0-9]+\))?$/) return 6
+        if (h ~ /^## reviewer-.* Section( \(pass [0-9]+\))?$/) return 8
+        if (h == "## context-curator Section") return 9
+        if (h == "## committer Section") return 10
+        return 999
+    }
+    function is_target(h) {
+        return h == target || (index(h, target " (pass ") == 1)
+    }
+    function emit_section(hdr, txt) {
+        print hdr
+        print ""
+        printf "%s", txt
+        if (txt == "" || substr(txt, length(txt), 1) != "\n") {
+            printf "\n"
+        }
+    }
+    BEGIN {
+        inserted = 0
+        skipping = 0
+        body = ""
+        while ((getline line < body_file) > 0) {
+            body = body line "\n"
+        }
+        close(body_file)
+    }
+    {
+        if ($0 ~ /^## /) {
+            if (!inserted && rank_of($0) > target_rank) {
+                emit_section(target, body)
+                inserted = 1
+            }
+            if (is_target($0)) {
+                emit_section(target, body)
+                inserted = 1
+                skipping = 1
+                next
+            }
+            if (skipping) {
+                skipping = 0
+            }
+            print $0
+            next
+        }
+        if (skipping) {
+            next
+        }
+        print $0
+    }
+    END {
+        if (!inserted) {
+            emit_section(target, body)
+        }
+    }
+    ' "$log_file" >"$tmp"
+
+    rm -f "$body_file"
+    mv "$tmp" "$log_file"
+    printf '%s\n' "$log_file"
+    ;;
+esac

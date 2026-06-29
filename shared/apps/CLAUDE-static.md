@@ -54,7 +54,7 @@ Do NOT read PROJECT_CONTEXT.md, domain context files, or recipes — planner han
 
 **WHERE**: `codegen/logging/$(date -u +%Y%m%d_%H%M%S)_session.md`
 
-Each invocation creates NEW log file. Run `date -u +%Y%m%d_%H%M%S` via Bash for timestamp. Create BEFORE delegating to planner. Compute the stamp values inline and include them in the SAME Write tool call that creates the log — do NOT append the stamp in a separate step.
+Each invocation creates NEW log file. Create it with `codegen-log init --slug <slug>` BEFORE delegating to planner. The writer stamps the Version Stamp inline and does not pre-seed role headers.
 
 ```markdown
 # Session Log
@@ -107,7 +107,7 @@ TASK: <raw user request>
 Your subagent rules are pre-loaded in your system prompt. Load only the conditional/domain files listed in your role definition's "Conditional Rules" / "Stack-Specific Rules" sections and any the orchestrator's prompt names.
 
 Write the plan by editing the `## Plan` section of <session_log_path>.
-**REQUIRED**: Append `## planner Section` at the end noting what you loaded and decided.
+**REQUIRED**: Call `codegen-log section --body @-` when done; the writer will place the section at canonical rank.
 
 Never report a blocker — make the decision yourself and document under Assumptions.
 Never write code — your job is the plan.
@@ -131,7 +131,7 @@ TASK: <raw user request>
 
 Your subagent rules are pre-loaded in your system prompt. Load only the conditional/domain files listed in your role definition's "Conditional Rules" / "Stack-Specific Rules" sections and any the orchestrator's prompt names. Implement the task.
 
-**REQUIRED**: Append `## <agent-name> Section` to <session_log_path> when done.
+**REQUIRED**: Call `codegen-log section --body @-` when done; the writer will place the section at canonical rank.
 ```
 
 After delegating, append row to `## Delegation Timeline`:

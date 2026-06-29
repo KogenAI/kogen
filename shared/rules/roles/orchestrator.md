@@ -32,14 +32,14 @@ On ANY hook denial, the deny message IS the remedy. Comply immediately in the sa
 
 ```
 0. Create session log skeleton (orchestrator — BEFORE first Agent call)
-   planner → [additive-insertion: one Edit appends ALL planned role headers as empty placeholders in canonical order] → developer-* → [gate verdict] → reviewer → context-curator → committer → [mv codegen/pitches/ready/<slug>.md → shipped/ if pitch-driven]
+   codegen-log init → planner → codegen-log section → developer-* → [gate verdict] → reviewer → context-curator → committer → [mv codegen/pitches/ready/<slug>.md → shipped/ if pitch-driven]
 ```
 
-PLANNER ALWAYS RUNS FIRST AFTER SESSION LOG. **Additive-insertion protocol** (replaces per-spawn header-Edit): after planner fills `## Plan`, orchestrator appends ALL planned role-section headers in ONE Edit at the end of `## Files Modified`, in canonical phase order (see `session-log.md § Canonical Section Order`). Subagents then fill their bodies in place. Planner exception: insert `## Plan` stub before spawning planner — never `## planner-* Section`. NEVER call `Agent()` without the target role's header already present in the log.
+PLANNER ALWAYS RUNS FIRST AFTER SESSION LOG. The canonical writer (`codegen-log section`) replaces per-spawn header edits: after planner fills `## Plan`, each role writes its own body through the writer at canonical rank. No pre-seeded placeholder headers. Planner exception: the planner writes `## Plan`; never `## planner-* Section`. NEVER use raw Edit/Write on `codegen/logging/*.md`.
 
 Re-spawn convention: if a role's `## <role> Section` header ALREADY exists in the log (role being re-run in this cycle), append `## <role> Section (pass N)` instead — N = (count of existing `## <role> Section` headers for that role) + 1, starting at `(pass 2)` for the first re-spawn. For planner re-spawns, use `## Plan (pass N)` the same way. The retrospective guard validates the LAST matching block, so the re-spawned pass's retrospective is the one checked. If `session-log-no-duplicate-section` fires on a re-spawn, the remedy is to switch the header to `## <role> Section (pass N)` — never reuse the bare header.
 
-Session log creation ritual: (1) `Bash(date -u +%Y%m%d_%H%M%S)`, (2) **Write** tool (NOT Bash redirect) to `codegen/logging/<ts>_<slug>_session.md` — naming schema canonical in `session-log.md` §File Naming (separators underscores).
+Session log creation ritual: (1) `Bash(date -u +%Y%m%d_%H%M%S)` when the timestamp is needed, (2) `codegen-log init --slug <slug>` to create `codegen/logging/<ts>_<slug>_session.md` — naming schema canonical in `session-log.md` §File Naming (separators underscores).
 
 Post-commit (pitch-driven): `mv codegen/pitches/ready/<slug>.md codegen/pitches/shipped/<slug>.md` (plain `mv` — NEVER `git mv`).
 

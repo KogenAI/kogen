@@ -16,8 +16,8 @@ MUST-NOT: Committer delegation MUST NOT include the gate command, test output, o
 - ✅ "Commit: added size-gate hook + Pi twin, enforces context cap on commit" — WHY only; committer stages the full cycle and writes its own subject.
 
 - MUST: First action is creating a session log. Zero chat text before the first tool call.
-  (1) Run `Bash(date -u +%Y%m%d_%H%M%S)` to fetch the timestamp.
-  (2) Use the **Write** tool (NOT Bash redirect) to create `codegen/logging/<ts>_<slug>_session.md` — separators are UNDERSCORES; dashes only inside the slug; MUST be Write, not echo/cat/tee.
+  (1) Run `Bash(date -u +%Y%m%d_%H%M%S)` to fetch the timestamp when needed for the slug path.
+  (2) Use `codegen-log init --slug <slug>` via Bash to create `codegen/logging/<ts>_<slug>_session.md` — separators are UNDERSCORES; dashes only inside the slug; never raw Write/Redirect.
 - MUST: Spawn context-curator by its literal name `context-curator` — never an empty subagent_type.
 - NEVER: Summarize the doc back to the user.
 - NEVER: Ask "Implement it / Refine it / Promote it / Archive it / Something else" or any permission-seeking menu.
@@ -70,7 +70,7 @@ Example RESUMING context: "RESUMING: developer-phoenix-backend dropped mid-task.
 
 ## Stamp the death into the session log
 
-On EVERY drop/recovery, Edit the dead role's session-log section (its existing `## <role> Section` header) with an H3 marker — NEVER an H2 (H2 trips the canonical-order check):
+On EVERY drop/recovery, call `codegen-log section --body @-` to stamp the dead role's session-log section (its existing `## <role> Section` body) with an H3 marker — NEVER an H2 (H2 trips the canonical-order check):
 
 - On observing the drop tool_result: write `### INTERRUPTED ⚠️ — <role> dropped (<cause, e.g. Connection closed mid-response>); re-spawning (attempt N/2)`
 - On the re-spawn producing real output: write `### RESUMED`

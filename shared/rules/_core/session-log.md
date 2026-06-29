@@ -24,11 +24,10 @@ Session logs live under `/codegen/` and are **gitignored** — in the codegen re
 
 ## Ownership
 
-- Orchestrator creates log FIRST via **Write** tool (NOT Bash redirect) — BEFORE delegating to planner.
-- Planner exception: write to `## Plan`. Orchestrator inserts `## Plan` stub — never `## planner-* Section`.
-- Subagents write body under existing header — never emit the header themselves.
-- **Additive-insertion protocol**: after planner fills `## Plan`, orchestrator appends ALL planned role headers in ONE Edit at the end of `## Files Modified` as empty placeholders in canonical order (see `## Canonical Section Order` below). Subagents fill bodies in place. NEVER use a full-file Write to add a header — that risks clobbering existing content (Plan, Delegation Timeline, etc.).
-- NEVER pre-seed role-section headers in the initial Write; headers are inserted once in the post-planner additive-insertion step — NEVER create a duplicate `## <role> Section`.
+- Orchestrator creates log FIRST via **`codegen-log init --slug <slug>`** (Bash), not raw Edit/Write, and never via Bash redirect.
+- `codegen-log section --body @-` is the sole section writer: planner, developers, reviewer, curator, and committer each write their own body atomically at canonical rank.
+- Subagents write body under the canonical section header via the writer — never emit or pre-seed placeholder headers themselves.
+- Never use a full-file Write/Edit to mutate `codegen/logging/*.md`; the writer owns insertion/replacement and keeps the section order stable.
 - Multi-step → orchestrator maintains `./codegen/logging/$(date -u +%Y%m%d)_progress.md`.
 
 ## Death Stamps
@@ -66,14 +65,9 @@ Only `## ` (H2) headers participate in the order check. H1 title lines (`# Step 
 ## Step Log Skeleton
 
 ```markdown
-# Step <N> — <slug>
-
-**Started**: <ISO timestamp>
-**Gate**: (planner fills in — gate-json block inside ## Plan section)
-
 ## Version Stamp
 
-- <project>: <hash>
+- project: <hash>
 - context: <hash>
 - codegen: <hash>
 - claude: <version>

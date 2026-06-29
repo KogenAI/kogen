@@ -68,7 +68,7 @@ TASK: <raw user request>
 Your subagent rules are pre-loaded in your system prompt. Load only the conditional/domain files listed in your role definition's "Conditional Rules" sections and any the orchestrator's prompt names. Pick domain context files yourself based on the task.
 
 Write the plan by editing the `## Plan` section of <session_log_path>.
-**REQUIRED**: Append `## planner Section` at the end noting what you loaded and decided.
+**REQUIRED**: Call `codegen-log section --body @-` when done; the writer will place the section at canonical rank.
 
 Never report a blocker — make the decision yourself and document under Assumptions.
 Never write code — your job is the plan.
@@ -97,12 +97,11 @@ developer-phoenix-frontend slice. Load domain context files listed in the plan. 
 any "Runtime assumptions to verify first" BEFORE implementing.
 
 Your subagent rules are pre-loaded in your system prompt. Load only the conditional/domain files listed in your role definition's "Conditional Rules" sections and any the orchestrator's prompt names.
-**REQUIRED**: Append `## developer-phoenix-backend Section` to <session_log_path> when done.
+**REQUIRED**: Call `codegen-log section --body @-` when done; the writer will place the section at canonical rank.
 If migrations were added, ensure they are reversible (`mix ecto.migrate && mix ecto.rollback && mix ecto.migrate`).
-Cross-reference `## Files Modified` against `codegen/PROJECT_CONTEXT.md` § Domain Context Files Update column; update every matched row in the same commit. If a row's Update target is placeholder, leave the row alone and document what the row should say under `## developer-phoenix-backend Section`.
+Cross-reference `## Files Modified` against `codegen/PROJECT_CONTEXT.md` § Domain Context Files Update column; update every matched row in the same commit. If a row's Update target is placeholder, leave the row alone and document what the row should say in the body you pass to `codegen-log section`.
 
-Before appending `## developer-phoenix-backend Section`, fill in the `## Files Modified`
-section of the session log with a bullet list of every file you wrote or edited.
+Before calling the writer, fill in `## Files Modified` in the section body with a bullet list of every file you wrote or edited.
 Run `git status --short` to get the list; strip the status prefix so each line is
 `- <relative/path>`. This list is the reviewer-phoenix's authoritative scope.
 
@@ -136,11 +135,10 @@ in the plan. Verify any "Runtime assumptions to verify first" BEFORE
 implementing.
 
 Your subagent rules are pre-loaded in your system prompt. Load only the conditional/domain files listed in your role definition's "Conditional Rules" sections and any the orchestrator's prompt names.
-**REQUIRED**: Append `## developer-phoenix-frontend Section` to <session_log_path> when done.
-Cross-reference `## Files Modified` against `codegen/PROJECT_CONTEXT.md` § Domain Context Files Update column; update every matched row in the same commit. If a row's Update target is placeholder, leave the row alone and document what the row should say under `## developer-phoenix-frontend Section`.
+**REQUIRED**: Call `codegen-log section --body @-` when done; the writer will place the section at canonical rank.
+Cross-reference `## Files Modified` against `codegen/PROJECT_CONTEXT.md` § Domain Context Files Update column; update every matched row in the same commit. If a row's Update target is placeholder, leave the row alone and document what the row should say in the body you pass to `codegen-log section`.
 
-Before appending `## developer-phoenix-frontend Section`, fill in the `## Files Modified`
-section of the session log with a bullet list of every file you wrote or edited.
+Before calling the writer, fill in `## Files Modified` in the section body with a bullet list of every file you wrote or edited.
 Run `git status --short` to get the list; strip the status prefix so each line is
 `- <relative/path>`. This list is the reviewer-phoenix's authoritative scope.
 
