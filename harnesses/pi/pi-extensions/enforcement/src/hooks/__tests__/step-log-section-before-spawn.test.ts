@@ -63,11 +63,11 @@ describe("step-log-section-before-spawn", () => {
     assert.ok((result as { block?: boolean }).block === true);
   });
 
-  // ── Test 2: deny planner-phoenix when ## Plan header absent ───────────────
-  it("denies planner-phoenix when ## Plan header absent", async () => {
+  // ── Test 2: deny planner-phoenix when ## Plan header is empty ─────────────
+  it("denies planner-phoenix when ## Plan body is empty", async () => {
     writeLog(
       "20260601_step1_test.md",
-      ["# Step 1", "", "## Version Stamp", "", "context: abc"].join("\n"),
+      ["# Step 1", "", "## Version Stamp", "", "context: abc", "", "## Plan", ""].join("\n"),
     );
     const result = await runHook("planner-phoenix");
     assert.ok((result as { block?: boolean }).block === true);
@@ -83,98 +83,98 @@ describe("step-log-section-before-spawn", () => {
     assert.ok((result as { block?: boolean }).block === true);
   });
 
-  // ── Test 4: allow planner-phoenix when ## Plan header present ─────────────
-  it("allows planner-phoenix when ## Plan header present (even empty)", async () => {
+  // ── Test 4: allow planner-phoenix when ## Plan has body content ───────────
+  it("allows planner-phoenix when ## Plan has body content", async () => {
     writeLog(
       "20260601_step1_test.md",
-      ["# Step 1", "", "## Plan", ""].join("\n"),
+      ["# Step 1", "", "## Plan", "", "planner wrote here"].join("\n"),
     );
     const result = await runHook("planner-phoenix");
     assert.ok(result == null || (result as { block?: boolean }).block !== true);
   });
 
-  // ── Test 5: allow developer-phoenix-backend with header present ────────────
-  it("allows developer-phoenix-backend with section header present", async () => {
+  // ── Test 5: deny developer-phoenix-backend when header has no body ────────
+  it("denies developer-phoenix-backend when section body is empty", async () => {
     writeLog(
       "20260601_step1_test.md",
-      ["## Plan", "", "## developer-phoenix-backend Section", ""].join("\n"),
+      ["## Plan", "", "planner wrote here", "", "## developer-phoenix-backend Section", ""].join("\n"),
+    );
+    const result = await runHook("developer-phoenix-backend");
+    assert.ok((result as { block?: boolean }).block === true);
+  });
+
+  // ── Test 6: allow developer-phoenix-backend with body present ──────────────
+  it("allows developer-phoenix-backend with section body present", async () => {
+    writeLog(
+      "20260601_step1_test.md",
+      ["## Plan", "", "planner wrote here", "", "## developer-phoenix-backend Section", "", "real developer body"].join("\n"),
     );
     const result = await runHook("developer-phoenix-backend");
     assert.ok(result == null || (result as { block?: boolean }).block !== true);
   });
 
-  // ── Test 6: allow developer-phoenix-frontend with header present ───────────
-  it("allows developer-phoenix-frontend with section header present", async () => {
+  // ── Test 7: allow developer-static with body present ─────────────────────
+  it("allows developer-static with section body present", async () => {
     writeLog(
       "20260601_step1_test.md",
-      ["## developer-phoenix-frontend Section", ""].join("\n"),
-    );
-    const result = await runHook("developer-phoenix-frontend");
-    assert.ok(result == null || (result as { block?: boolean }).block !== true);
-  });
-
-  // ── Test 7: allow developer-static with header present ────────────────────
-  it("allows developer-static with section header present", async () => {
-    writeLog(
-      "20260601_step1_test.md",
-      ["## developer-static Section", ""].join("\n"),
+      ["## developer-static Section", "", "body"].join("\n"),
     );
     const result = await runHook("developer-static");
     assert.ok(result == null || (result as { block?: boolean }).block !== true);
   });
 
-  // ── Test 8: allow reviewer-phoenix with header present ────────────────────
-  it("allows reviewer-phoenix with section header present", async () => {
+  // ── Test 8: allow reviewer-phoenix with body present ─────────────────────
+  it("allows reviewer-phoenix with section body present", async () => {
     writeLog(
       "20260601_step1_test.md",
-      ["## reviewer-phoenix Section", ""].join("\n"),
+      ["## reviewer-phoenix Section", "", "review"].join("\n"),
     );
     const result = await runHook("reviewer-phoenix");
     assert.ok(result == null || (result as { block?: boolean }).block !== true);
   });
 
-  // ── Test 9: allow reviewer-static with header present ─────────────────────
-  it("allows reviewer-static with section header present", async () => {
+  // ── Test 9: allow reviewer-static with body present ───────────────────────
+  it("allows reviewer-static with section body present", async () => {
     writeLog(
       "20260601_step1_test.md",
-      ["## reviewer-static Section", ""].join("\n"),
+      ["## reviewer-static Section", "", "review"].join("\n"),
     );
     const result = await runHook("reviewer-static");
     assert.ok(result == null || (result as { block?: boolean }).block !== true);
   });
 
-  // ── Test 10: allow context-curator with header present ────────────────────
-  it("allows context-curator with section header present", async () => {
+  // ── Test 10: allow context-curator with body present ──────────────────────
+  it("allows context-curator with section body present", async () => {
     writeLog(
       "20260601_step1_test.md",
-      ["## context-curator Section", ""].join("\n"),
+      ["## context-curator Section", "", "context"].join("\n"),
     );
     const result = await runHook("context-curator");
     assert.ok(result == null || (result as { block?: boolean }).block !== true);
   });
 
-  // ── Test 11: allow committer with header present ───────────────────────────
-  it("allows committer with section header present", async () => {
-    writeLog("20260601_step1_test.md", ["## committer Section", ""].join("\n"));
+  // ── Test 11: allow committer with body present ─────────────────────────────
+  it("allows committer with section body present", async () => {
+    writeLog("20260601_step1_test.md", ["## committer Section", "", "commit"].join("\n"));
     const result = await runHook("committer");
     assert.ok(result == null || (result as { block?: boolean }).block !== true);
   });
 
-  // ── Test 12: allow developer-static (unified static stack) ────────────────────
-  it("allows developer-static (test 12) with section header present", async () => {
+  // ── Test 12: allow developer-static with body present ─────────────────────
+  it("allows developer-static (test 12) with section body present", async () => {
     writeLog(
       "20260601_step1_test.md",
-      ["## developer-static Section", ""].join("\n"),
+      ["## developer-static Section", "", "body"].join("\n"),
     );
     const result = await runHook("developer-static");
     assert.ok(result == null || (result as { block?: boolean }).block !== true);
   });
 
-  // ── Test 13: allow developer-static (unified static stack) ────────────────────
-  it("allows developer-static (test 13) with section header present", async () => {
+  // ── Test 13: allow developer-static with body present ─────────────────────
+  it("allows developer-static (test 13) with section body present", async () => {
     writeLog(
       "20260601_step1_test.md",
-      ["## developer-static Section", ""].join("\n"),
+      ["## developer-static Section", "", "body"].join("\n"),
     );
     const result = await runHook("developer-static");
     assert.ok(result == null || (result as { block?: boolean }).block !== true);
@@ -214,16 +214,9 @@ describe("step-log-section-before-spawn", () => {
     assert.ok(result == null || (result as { block?: boolean }).block !== true);
   });
 
-  // ── Test 17: observe-only warning when section header present but body empty ──
-  // Pi hook is reduced-fidelity (no transcript). When '## <type> Section' exists
-  // with empty body, it emits a stderr warning but does NOT block (observe-only).
-  // Full block enforcement lives in the Bash Claude hook.
-  it("emits observe-only warning (not block) when section header present but body empty", async () => {
+  // ── Test 17: deny when section header present but body empty ──────────────
+  it("denies when section header is present but body is empty", async () => {
     const ts = "20260601_120000";
-    // Section exists but body is truly empty: only blank lines remain
-    // after stripping the retrospective header. The "- nothing notable"
-    // content under ### What I Learned is NOT skipped by the scanner —
-    // only the ### header line itself is skipped. So use a bare empty body.
     writeLog(
       `${ts}_step1_test.md`,
       [
@@ -238,31 +231,7 @@ describe("step-log-section-before-spawn", () => {
       ].join("\n"),
     );
 
-    let stderrOutput = "";
-    const origStderrWrite = process.stderr.write.bind(process.stderr);
-    // Capture stderr at test-body scope; restore in finally on both paths
-    process.stderr.write = (chunk: string | Uint8Array): boolean => {
-      stderrOutput += chunk.toString();
-      return true;
-    };
-
-    let result: unknown;
-    try {
-      result = await runHook("developer-phoenix-backend");
-    } finally {
-      process.stderr.write = origStderrWrite;
-    }
-
-    // Must NOT block (observe-only)
-    assert.ok(
-      result == null || (result as { block?: boolean }).block !== true,
-      "hook must not block on empty-body section (observe-only)",
-    );
-    // Must emit warning mentioning observe-only or body is empty
-    assert.match(
-      stderrOutput,
-      /observe-only|body is empty/,
-      "expected observe-only warning in stderr",
-    );
+    const result = await runHook("developer-phoenix-backend");
+    assert.ok((result as { block?: boolean }).block === true);
   });
 });

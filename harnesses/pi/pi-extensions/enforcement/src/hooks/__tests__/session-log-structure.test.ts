@@ -161,6 +161,22 @@ describe(
       assert.ok(allowed(result), `Expected ALLOW, got: ${JSON.stringify(result)}`);
     });
 
+    // ── Test 4b: Write header-only section → DENY ──
+    it("Write header-only recognized section — DENY", async () => {
+      const logFile = path.join(logDir, "header_only.md");
+      await loadHook();
+      const content = [
+        "# Step 1",
+        "",
+        "## Plan",
+        "",
+        "## developer-phoenix-backend Section",
+        "",
+      ].join("\n");
+      const result = await _capturedHandler(writeEvent(logFile, content));
+      assert.ok(denied(result), `Expected DENY, got: ${JSON.stringify(result)}`);
+    });
+
     // ── Test 5: Edit appending ## developer Section at EOF → ALLOW ──
     it("Edit appending developer Section at EOF — ALLOW", async () => {
       const logFile = path.join(logDir, "append.md");
@@ -359,6 +375,17 @@ describe(
         editEvent(logFile, "## Plan\n\nold plan", "## Plan\n\nupdated plan"),
       );
       assert.ok(allowed(result), `Expected ALLOW, got: ${JSON.stringify(result)}`);
+    });
+
+    // ── Test 19b: Edit header-only section → DENY ──
+    it("Edit header-only recognized section — DENY", async () => {
+      const logFile = path.join(logDir, "edit_header_only.md");
+      fs.writeFileSync(logFile, "## Plan\n\nold plan\n");
+      await loadHook();
+      const result = await _capturedHandler(
+        editEvent(logFile, "## Plan\n\nold plan", "## Plan\n\n"),
+      );
+      assert.ok(denied(result), `Expected DENY, got: ${JSON.stringify(result)}`);
     });
 
     // ── Test 20: Reviewer re-states ## reviewer-phoenix Section header at EOF → ALLOW ──

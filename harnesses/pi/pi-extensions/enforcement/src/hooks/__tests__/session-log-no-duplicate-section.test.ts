@@ -91,6 +91,15 @@ describe(
       assert.ok(allowed(result), `Expected ALLOW, got: ${JSON.stringify(result)}`);
     });
 
+    // ── Test 2b: Write header-only section → DENY ──
+    it("Write header-only recognized section — DENY", async () => {
+      const logFile = path.join(logDir, "header_only_write.md");
+      await loadHook();
+      const content = "# Step\n\n## Plan\n\n## developer-phoenix-backend Section\n\nbody";
+      const result = await _capturedHandler(writeEvent(logFile, content));
+      assert.ok(denied(result), `Expected DENY, got: ${JSON.stringify(result)}`);
+    });
+
     // ── Test 3: Edit replacing the on-disk header line — net-zero → ALLOW ──
     // (Canonical reviewer follow-up: old_string carries the header, so the
     // result still has exactly one copy.)
@@ -150,6 +159,17 @@ describe(
           "some other line",
           "## developer-phoenix-backend Section\n\nsecond copy",
         ),
+      );
+      assert.ok(denied(result), `Expected DENY, got: ${JSON.stringify(result)}`);
+    });
+
+    // ── Test 6b: Edit header-only section → DENY ──
+    it("Edit header-only recognized section — DENY", async () => {
+      const logFile = path.join(logDir, "header_only_edit.md");
+      fs.writeFileSync(logFile, "# Step\n\n## Plan\n\nplan text\n");
+      await loadHook();
+      const result = await _capturedHandler(
+        editEvent(logFile, "plan text", ""),
       );
       assert.ok(denied(result), `Expected DENY, got: ${JSON.stringify(result)}`);
     });

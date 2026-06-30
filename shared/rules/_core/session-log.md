@@ -27,6 +27,7 @@ Session logs live under `/codegen/` and are **gitignored** — in the codegen re
 - Orchestrator creates log FIRST via **`codegen-log init --slug <slug>`** (Bash), not raw Edit/Write, and never via Bash redirect.
 - `codegen-log section --body @-` is the sole section writer: planner, developers, reviewer, curator, and committer each write their own body atomically at canonical rank.
 - Subagents write body under the canonical section header via the writer — never emit or pre-seed placeholder headers themselves.
+- Header-only sections are invalid: every required section must contain non-heading body content before the next role may spawn or the build may ship.
 - Never use a full-file Write/Edit to mutate `codegen/logging/*.md`; the writer owns insertion/replacement and keeps the section order stable.
 - Multi-step → orchestrator maintains `./codegen/logging/$(date -u +%Y%m%d)_progress.md`.
 

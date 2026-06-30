@@ -64,6 +64,25 @@ function expectedHeader(subagentType: string): string {
   return `## ${subagentType} Section`;
 }
 
+/**
+ * Return true when the named section has at least one non-heading body line.
+ */
+function sectionHasBody(logContent: string, header: string): boolean {
+  const lines = logContent.split("\n");
+  const headerIdx = lines.findIndex((l) => l === header);
+  if (headerIdx === -1) return false;
+
+  for (let i = headerIdx + 1; i < lines.length; i++) {
+    const line = lines[i];
+    if (line.startsWith("## ")) break;
+    if (line.trim() === "") continue;
+    if (line.startsWith("#")) continue;
+    return true;
+  }
+
+  return false;
+}
+
 export function register(pi: ExtensionAPI): void {
   pi.on("tool_call", async (event) => {
     if (event.toolName !== "subagent") return;
@@ -110,32 +129,16 @@ export function register(pi: ExtensionAPI): void {
     debugLog("step-log-section-before-spawn", `log=${logPath}`);
 
     if (logContent.includes(need)) {
-      // REDUCED FIDELITY: Pi has no transcript access so we cannot determine
-      // the authoritative step log from transcript context. We read the most
-      // recently modified log, which may differ from the active session log.
-      // Full blocking enforcement lives in the Claude hook
-      // (step-log-section-before-spawn.sh). Here we only emit a warning.
+      // Pi has no transcript access so we cannot determine the authoritative
+      // step log from transcript context. We read the most recently modified
+      // log, which may differ from the active session log.
       //
-      // Observe-only empty-body check: warn when the section exists but
-      // contains no real content beyond blank lines and retrospective blocks.
-      if (need !== "## Plan") {
-        const lines = logContent.split("\n");
-        const headerIdx = lines.findIndex((l) => l === need);
-        if (headerIdx !== -1) {
-          const bodyLines = [];
-          for (let i = headerIdx + 1; i < lines.length; i++) {
-            const line = lines[i];
-            if (line.startsWith("## ")) break;
-            if (line.trim() === "") continue;
-            if (line.startsWith("### What I Learned")) continue;
-            bodyLines.push(line);
-          }
-          if (bodyLines.length === 0) {
-            process.stderr.write(
-              `[step-log-section-before-spawn] WARNING (observe-only): '${need}' exists but body is empty — prior stage may have died without producing real content. Full block enforced by Claude hook.\n`,
-            );
-          }
-        }
+      // Fail closed on header-only sections: the next role may not spawn until
+      // the prior required section contains at least one non-heading body line.
+      if (!sectionHasBody(logContent, need)) {
+        return deny(
+          `BLOCKED: '${need}' exists but has no non-heading body content. Populate the section before spawning ${subagentType}.`,
+        );
       }
 
       debugLog("step-log-section-before-spawn", "allow: header present");

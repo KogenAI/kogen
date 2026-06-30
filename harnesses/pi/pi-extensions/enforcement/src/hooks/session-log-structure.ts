@@ -70,6 +70,33 @@ function h2Headers(text: string): string[] {
   return text.split("\n").filter((l) => l.startsWith("## "));
 }
 
+/**
+ * Return the first recognized section header whose body has no non-heading
+ * content, or null if every recognized section has real body text.
+ */
+function firstEmptyRecognizedSection(blob: string): string | null {
+  const lines = blob.split("\n");
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    if (!line.startsWith("## ")) continue;
+    if (rankOf(line) === null) continue;
+
+    let hasBody = false;
+    for (let j = i + 1; j < lines.length; j++) {
+      const next = lines[j];
+      if (next.startsWith("## ")) break;
+      if (next.trim() === "") continue;
+      if (next.startsWith("#")) continue;
+      hasBody = true;
+      break;
+    }
+
+    if (!hasBody) return line;
+  }
+
+  return null;
+}
+
 export function register(pi: ExtensionAPI): void {
   pi.on("tool_call", async (event) => {
     if (event.toolName !== "write" && event.toolName !== "edit") return;
@@ -123,6 +150,13 @@ export function register(pi: ExtensionAPI): void {
           `BLOCKED by session-log-structure: header "${offender}" appears out of canonical phase order — see session-log.md § Canonical Section Order.`,
         );
       }
+
+      const emptySection = firstEmptyRecognizedSection(content);
+      if (emptySection) {
+        return deny(
+          `BLOCKED by session-log-structure: section "${emptySection}" has no non-heading body content — fill the section before writing the session log.`,
+        );
+      }
       return;
     }
 
@@ -153,6 +187,13 @@ export function register(pi: ExtensionAPI): void {
         if (offender) {
           return deny(
             `BLOCKED by session-log-structure: header "${offender}" appears out of canonical phase order — see session-log.md § Canonical Section Order.`,
+          );
+        }
+
+        const emptySection = firstEmptyRecognizedSection(simulated);
+        if (emptySection) {
+          return deny(
+            `BLOCKED by session-log-structure: section "${emptySection}" has no non-heading body content — fill the section before editing the session log.`,
           );
         }
       }

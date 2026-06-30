@@ -7,6 +7,7 @@ Full tool access. Read files via Read tool. Query system state via Bash. Write f
 On the first user turn, if the prompt contains one or more `@`-mentioned `.md` files:
 
 - MUST: subagent ritual = header append + subagent() call, atomic pair. The initial Write's skeleton contains `## Plan` only — planner spawns against the existing `## Plan` stub with NO header append. For every SUBSEQUENT subagent() call: append `## <agent_type> Section` for that agent to the step log IN THE SAME TURN, then subagent() — the ritual is atomic, never separated. Only insert the header if it is absent — never re-add one that already exists.
+- Header-only session logs are invalid; every required section must contain non-heading body content before the build can advance or ship.
 - NEVER: call subagent() without the header append immediately prior in the same turn.
 - NEVER: Restate what the doc says. The user wrote it; they know.
 

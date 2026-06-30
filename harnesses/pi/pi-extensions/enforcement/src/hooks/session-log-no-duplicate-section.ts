@@ -40,6 +40,32 @@ function firstDuplicate(items: string[]): string | null {
   return null;
 }
 
+/**
+ * Return the first recognized section header whose body has no non-heading
+ * content, or null if every recognized section has real body text.
+ */
+function firstEmptyRecognizedSection(blob: string): string | null {
+  const lines = blob.split("\n");
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    if (!/^## .+ Section$/.test(line) && line !== "## Plan") continue;
+
+    let hasBody = false;
+    for (let j = i + 1; j < lines.length; j++) {
+      const next = lines[j];
+      if (next.startsWith("## ")) break;
+      if (next.trim() === "") continue;
+      if (next.startsWith("#")) continue;
+      hasBody = true;
+      break;
+    }
+
+    if (!hasBody) return line;
+  }
+
+  return null;
+}
+
 export function register(pi: ExtensionAPI): void {
   pi.on("tool_call", async (event) => {
     if (event.toolName !== "write" && event.toolName !== "edit") return;
@@ -75,6 +101,13 @@ export function register(pi: ExtensionAPI): void {
           `BLOCKED by session-log-no-duplicate-section: Write content contains a duplicate header "${dup}". Each \`## <role> Section\` must appear exactly once — remove the extra copy and rewrite.`,
         );
       }
+
+      const emptySection = firstEmptyRecognizedSection(content);
+      if (emptySection) {
+        return deny(
+          `BLOCKED by session-log-no-duplicate-section: section "${emptySection}" has no non-heading body content — fill the section before writing the session log.`,
+        );
+      }
       return;
     }
 
@@ -95,8 +128,6 @@ export function register(pi: ExtensionAPI): void {
     const oldString: string =
       (event.input as { old_string?: string }).old_string ?? "";
 
-    if (payloadHeaders.length === 0) return;
-
     try {
       if (fs.existsSync(filePath)) {
         const diskContent = fs.readFileSync(filePath, "utf8");
@@ -107,6 +138,13 @@ export function register(pi: ExtensionAPI): void {
         if (dup) {
           return deny(
             `BLOCKED by session-log-no-duplicate-section: "${dup}" already exists in this log — do NOT re-add it; skip the header Edit and proceed to spawn (the presence guard is already satisfied). Switch to \`(pass N)\` if intentional re-spawn.`
+          );
+        }
+
+        const emptySection = firstEmptyRecognizedSection(simulated);
+        if (emptySection) {
+          return deny(
+            `BLOCKED by session-log-no-duplicate-section: section "${emptySection}" has no non-heading body content — fill the section before editing the session log.`,
           );
         }
       }

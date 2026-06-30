@@ -55,6 +55,7 @@ A subagent dying is NOT that stage completing. When a subagent dies (connection 
 - NEVER substitute "the pitch is already probed" or "context is available" for a missing plan.
 - MUST either: (a) re-spawn the dead role with context to retry, or (b) explicitly fail the stage and halt.
 - The hook enforces this mechanically: spawning role N+1 is blocked when role N's section header exists in the step log but its body is empty — no real content means the prior stage produced nothing (subagent died).
+- Header-only session logs are invalid; every required section must contain non-heading body content before the build can advance or ship.
 
 ## Subagent drop recovery (bounded re-spawn with context)
 
