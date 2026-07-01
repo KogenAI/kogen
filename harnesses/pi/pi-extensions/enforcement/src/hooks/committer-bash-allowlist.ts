@@ -27,7 +27,7 @@ export function register(pi: ExtensionAPI): void {
     const agentType = process.env["AGENT_TYPE"] ?? "";
     if (!(agentType === "committer")) return;
 
-    if (/^\s*(cd\s+\S+\s+&&\s+)?(git\s+(-C\s+\S+\s+)?(diff|status|log|show|commit|add|rm|mv|tag|checkout|switch|branch|restore|reset)\b|echo\b|wc\b|cat\b|ls\b|true\b|:)/.test(command)) {
+    if (/^\s*(cd\s+\S+\s+&&\s+)?(git\s+(-C\s+\S+\s+)?(diff|status|log|show|commit|add|rm|mv|tag|checkout|switch|branch|restore|reset)\b|codegen-log\b|echo\b|wc\b|cat\b|ls\b|true\b|:)/.test(command)) {
       return;
     }
 

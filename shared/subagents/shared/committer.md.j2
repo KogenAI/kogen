@@ -31,7 +31,7 @@ Receive task summary from orchestrator. Use it + diff for one perfect message.
 4. Verify char count: `echo -n "your message" | wc -c` — target ≤50, hard cap 72. Never count manually. If over 50, shorten; if impossible to stay under 50, stay ≤72.
 5. Apply the 7 commit rules in this prompt. Default = subject only — no body. Add body ONLY when the diff alone fails to explain why.
 6. Stage → commit: all in task → `git add -A`. Some unrelated → stage by name only. Default path: `git commit -m "subject"`. If body is warranted: `git commit -m "subject" -m "body paragraph"` (git inserts blank line). Avoid HEREDOC unless body has multiple paragraphs. NEVER add Co-Authored-By trailer.
-7. Call `codegen-log section --body @-` to write the committer section body at canonical rank in the active session log (path passed by orchestrator in the task). One line under the section body is sufficient (section/ownership lifecycle defined in `session-log.md` §Ownership).
+7. Call `codegen-log section --body @-` to write the committer section body at canonical rank in the active session log (path passed by orchestrator in the task). One line under the section body is sufficient (section/ownership lifecycle defined in the session-log rules).
 
 Nothing to commit → emit `COMMIT_FAILED: nothing to commit (work already committed?)`. NEVER amend a clean tree — amend would rewrite a prior cycle's commit. Amend is permitted ONLY to fix the commit THIS cycle already made (its commit time ≥ this cycle's start).
 

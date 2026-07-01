@@ -14,29 +14,30 @@ function makeToolCallEvent(toolName: string, command: string) {
   return { toolName, toolCallId: "test-id", input: { command } };
 }
 
-function makeRepoWithCommit(commitTs: number): string {
-  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "pre-commit-guard-test-"));
-  tmpRepos.push(tmpDir);
-  execSync("git init -q", { cwd: tmpDir });
-  execSync("git config user.email test@example.com", { cwd: tmpDir });
-  execSync("git config user.name Test", { cwd: tmpDir });
-  fs.writeFileSync(path.join(tmpDir, "baseline.txt"), "baseline\n");
-  execSync("git add baseline.txt", { cwd: tmpDir });
-  const iso = new Date(commitTs * 1000).toISOString();
-  execSync("git -c core.hooksPath=/dev/null commit -q -m baseline", {
-    cwd: tmpDir,
-    env: {
-      ...process.env,
-      GIT_AUTHOR_DATE: iso,
-      GIT_COMMITTER_DATE: iso,
-    },
-  });
-  return tmpDir;
-}
-
 describe("pre-commit-guard", () => {
   let _capturedHandler: (event: unknown) => Promise<unknown>;
   const tmpRepos: string[] = [];
+
+  function makeRepoWithCommit(commitTs: number): string {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "pre-commit-guard-test-"));
+    tmpRepos.push(tmpDir);
+    execSync("git init -q", { cwd: tmpDir });
+    execSync("git config user.email test@example.com", { cwd: tmpDir });
+    execSync("git config user.name Test", { cwd: tmpDir });
+    fs.writeFileSync(path.join(tmpDir, "baseline.txt"), "baseline\n");
+    execSync("git add baseline.txt", { cwd: tmpDir });
+    const iso = new Date(commitTs * 1000).toISOString();
+    execSync("git -c core.hooksPath=/dev/null commit -q -m baseline", {
+      cwd: tmpDir,
+      env: {
+        ...process.env,
+        GIT_AUTHOR_DATE: iso,
+        GIT_COMMITTER_DATE: iso,
+      },
+    });
+    return tmpDir;
+  }
+
 
   const mockPi = {
     on: (_event: string, handler: (event: unknown) => Promise<unknown>) => {

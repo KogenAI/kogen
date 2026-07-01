@@ -91,6 +91,8 @@ describe("stop-cycle-guard", { concurrency: 1 }, () => {
 
     process.env["SESSION_ID"] = sessionId;
     process.env["CWD"] = tmpDir;
+    process.env["PI_ROLE"] = "";
+    process.env["CLAUDE_ROLE"] = "";
 
     try {
       process.stderr.write = (str: string | Uint8Array) => {
@@ -118,6 +120,8 @@ describe("stop-cycle-guard", { concurrency: 1 }, () => {
       delete process.env["SESSION_ID"];
       delete process.env["CWD"];
       delete process.env["AGENT_TYPE"];
+      delete process.env["PI_ROLE"];
+      delete process.env["CLAUDE_ROLE"];
       fs.rmSync(counterFile, { force: true });
       fs.rmSync(tmpDir, { recursive: true, force: true });
     }

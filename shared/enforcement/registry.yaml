@@ -118,7 +118,7 @@
   source: COMMAND
   mode: allowlist
   tool_guard: Bash
-  match: "^\\s*(cd\\s+\\S+\\s+&&\\s+)?(git\\s+(-C\\s+\\S+\\s+)?(diff|status|log|show|commit|add|rm|mv|tag|checkout|switch|branch|restore|reset)\\b|echo\\b|wc\\b|cat\\b|ls\\b|true\\b|:)"
+  match: "^\\s*(cd\\s+\\S+\\s+&&\\s+)?(git\\s+(-C\\s+\\S+\\s+)?(diff|status|log|show|commit|add|rm|mv|tag|checkout|switch|branch|restore|reset)\\b|codegen-log\\b|echo\\b|wc\\b|cat\\b|ls\\b|true\\b|:)"
   message: "BLOCKED by committer-bash-allowlist: only git read/write commands and safe shell utilities allowed for committer"
   surface: user_global
   signal: AGENT_TYPE
