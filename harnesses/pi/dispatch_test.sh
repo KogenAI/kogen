@@ -63,13 +63,13 @@ mkdir -p "$TMP_ROOT/project"
 ARGS_FILE="$TMP_ROOT/args-1.txt"
 rc=0
 TARGET_ARGS_FILE="$ARGS_FILE" \
-PATH="$FAKE_BIN:$PATH" \
-OCG_CODEGEN_DIR="$CODEGEN_ROOT" \
-CODEGEN_BUILD_MODEL="test-model" \
-CODEGEN_BUILD_EFFORT="low" \
-CODEGEN_BUILD_NON_INTERACTIVE=1 \
-CODEGEN_BUILD_CWD="$TMP_ROOT/project" \
-"$TEST1_HARNESS/dispatch.sh" --extension "$TMP_ROOT/custom-extension" "hello prompt" \
+    PATH="$FAKE_BIN:$PATH" \
+    OCG_CODEGEN_DIR="$CODEGEN_ROOT" \
+    CODEGEN_BUILD_MODEL="test-model" \
+    CODEGEN_BUILD_EFFORT="low" \
+    CODEGEN_BUILD_NON_INTERACTIVE=1 \
+    CODEGEN_BUILD_CWD="$TMP_ROOT/project" \
+    "$TEST1_HARNESS/dispatch.sh" --extension "$TMP_ROOT/custom-extension" "hello prompt" \
     >/dev/null 2>&1 || rc=$?
 
 assert_eq "generated prompt + default extensions exit 0" "0" "$rc"
@@ -95,12 +95,12 @@ mkdir -p "$TMP_ROOT/missing-prompt/project"
 stderr_file="$TMP_ROOT/stderr-2.txt"
 rc=0
 PATH="$FAKE_BIN:$PATH" \
-OCG_CODEGEN_DIR="$CODEGEN_ROOT" \
-CODEGEN_BUILD_MODEL="test-model" \
-CODEGEN_BUILD_EFFORT="low" \
-CODEGEN_BUILD_NON_INTERACTIVE=1 \
-CODEGEN_BUILD_CWD="$TMP_ROOT/missing-prompt/project" \
-"$TEST2_HARNESS/dispatch.sh" "hello prompt" >"$stderr_file" 2>&1 || rc=$?
+    OCG_CODEGEN_DIR="$CODEGEN_ROOT" \
+    CODEGEN_BUILD_MODEL="test-model" \
+    CODEGEN_BUILD_EFFORT="low" \
+    CODEGEN_BUILD_NON_INTERACTIVE=1 \
+    CODEGEN_BUILD_CWD="$TMP_ROOT/missing-prompt/project" \
+    "$TEST2_HARNESS/dispatch.sh" "hello prompt" >"$stderr_file" 2>&1 || rc=$?
 
 assert_eq "missing prompt exits 2" "2" "$rc"
 stderr_content="$(cat "$stderr_file")"

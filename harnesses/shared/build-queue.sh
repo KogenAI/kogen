@@ -255,9 +255,13 @@ latest_session_log() {
     local slug="$1" start_ts="$2" newest="" newest_ts="" f base fts
     for f in "$LOG_DIR"/*_"${slug}"_session.md; do
         [ -f "$f" ] || continue
-        base="$(basename "$f")"; fts="${base%%_"${slug}"_session.md}"
+        base="$(basename "$f")"
+        fts="${base%%_"${slug}"_session.md}"
         [ "$fts" \< "$start_ts" ] && continue
-        if [ -z "$newest_ts" ] || [ "$fts" \> "$newest_ts" ]; then newest_ts="$fts"; newest="$f"; fi
+        if [ -z "$newest_ts" ] || [ "$fts" \> "$newest_ts" ]; then
+            newest_ts="$fts"
+            newest="$f"
+        fi
     done
     [ -n "$newest" ] || return 1
     printf '%s\n' "$newest"
@@ -422,7 +426,10 @@ SLUGS
         while [ "$i" -lt 30 ]; do
             if session_log="$(latest_session_log "$slug" "$ts" 2>/dev/null || true)"; then
                 if [ -n "$session_log" ]; then
-                    { printf '  %s\n' "$session_log"; printf '  %s\n' "$JSONL"; } >"$paths_file"
+                    {
+                        printf '  %s\n' "$session_log"
+                        printf '  %s\n' "$JSONL"
+                    } >"$paths_file"
                     if [ -t 1 ]; then
                         sed -n 'p' "$paths_file"
                     fi

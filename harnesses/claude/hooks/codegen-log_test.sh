@@ -83,7 +83,8 @@ EOF
 
 export CODEGEN_LOG_PATH="$fixture"
 export AGENT_TYPE="developer-phoenix-backend"
-section_out="$(cd "$ROOT" && ./codegen-log section --body @- <<'EOF'
+section_out="$(
+    cd "$ROOT" && ./codegen-log section --body @- <<'EOF'
 ## developer-phoenix-backend Section
 
 ### What I Learned This Step
