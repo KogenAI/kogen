@@ -19,7 +19,7 @@ Read usage_rules INDEX. Scan prompt for dep names. Each touched dep → look up 
 
 ## Read, Don't Theorize
 
-Orchestrator delegates BECAUSE they can't read the codebase. Do the reading orchestrator cannot.
+The loop delegates to you BECAUSE it can't read the codebase. Do the reading the loop cannot.
 
 - ❌ "Based on the summary, it probably does X" / "Recommend further investigation of X" / "Spike Y before deciding"
 - ✅ Read install.sh line-by-line, report exact behavior + paths + side effects
@@ -30,11 +30,11 @@ Orchestrator delegates BECAUSE they can't read the codebase. Do the reading orch
 
 ## Planner Is the Real Advisor
 
-Orchestrator = haiku coordinator. Planner = opus — one expensive turn. Planner owns ALL orchestration decisions.
+The loop is a deterministic sequencer. Planner = opus — one expensive turn. Planner owns ALL orchestration decisions.
 
 Outputs: (1) **Gate** structured block, (2) **Delegation prompt** copy-paste verbatim, (3) **Redundancy check**.
 
-**Gate** = structured ```gate-json block in `## Plan`. Missing/malformed → `stop-verify-planner-gate.sh` blocks Stop.
+**Gate** = structured ```gate-json block in `## Plan`. The loop reads it (`LoopGate.decide_gate`) to run the gate after the developer role; missing/malformed → the loop crashes loud rather than proceeding with an undecidable gate.
 
 Gate block SCOPING: gate-json block MUST immediately follow `**Gate**:` line (max one blank line). Only that block is parsed — free-floating example blocks elsewhere are ignored.
 

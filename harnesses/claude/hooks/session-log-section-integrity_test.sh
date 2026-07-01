@@ -140,7 +140,7 @@ run_test "developer-phoenix-backend MultiEdit without section header blocks" "2"
 
 # Test 12: header-only Edit (body arrives in later edit) — still ALLOW
 # Regression lock: integrity.sh intentionally does NOT reject header-only stubs.
-# Content-floor enforcement is the job of step-log-completeness.sh (Stop hook).
+# Content-floor enforcement is owned by the loop for non-interactive builds.
 HEADER_ONLY_LOG="$TMP_DIR/codegen/logging/header-only-session.md"
 touch "$HEADER_ONLY_LOG"
 FIXTURE_HEADER_ONLY=$(jq -n \

@@ -8,3 +8,4 @@ harnesses/pi/pi-extensions/enforcement/src/index.ts
 context/hooks.md
 context/hook-authoring-patterns.md
 context/development.md
+context/test-harness.md

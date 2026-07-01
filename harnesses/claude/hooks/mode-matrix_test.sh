@@ -23,7 +23,7 @@ discover_agent_hooks() {
         "$settings" |
         while IFS= read -r cmd; do
             local name
-            name="${cmd##*/}" # strip path prefix → basename (e.g. curator-before-committer.sh)
+            name="${cmd##*/}" # strip path prefix → basename (e.g. operator-subagent-allowlist.sh)
             printf '%s/%s\n' "$SCRIPT_DIR" "$name"
         done
 }
@@ -125,7 +125,7 @@ make_transcript "$TRANSCRIPT5" "$LOG5_PATH"
 
 # ── Expectation Table ──────────────────────────────────────────────────────────
 # Hooks are discovered dynamically from claude-code-settings.json (discover_agent_hooks).
-# Currently: curator-before-committer, operator-subagent-allowlist, step-log-section-before-spawn
+# Currently: operator-subagent-allowlist
 #
 # | row | CLAUDE_ROLE           | subagent_type             | transcript     | expected |
 # |-----|-----------------------|---------------------------|----------------|----------|
@@ -147,7 +147,7 @@ assert_allow "row2: debug + Explore + no-log → allow" "$out2"
 out3=$(composed_verdict "ops" "Explore" "$EMPTY_TRANSCRIPT")
 assert_allow "row3: ops + Explore + no-log → allow" "$out3"
 
-# Row 4: no role, Explore, no log → deny (operator-subagent-allowlist blocks Explore without role)
+# Row 4: no role, Explore, no log → deny (operator-subagent-allowlist blocks built-in Explore without role)
 out4=$(composed_verdict "" "Explore" "$EMPTY_TRANSCRIPT")
 assert_deny "row4: no-role + Explore + no-log → deny" "$out4"
 

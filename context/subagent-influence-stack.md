@@ -27,7 +27,7 @@ File: `~/.claude/agents/<role>.md`. Generated from `<role>.md.j2` template. Cont
 
 To inspect what a subagent actually has: Read tool on `~/.claude/agents/<role>.md` (Example: `~/.claude/agents/developer-phoenix-backend.md`).
 
-**Orchestrator prompt assembly** — Special case: the build orchestrator prompt is assembled from `harnesses/<harness>/tools-header/build.txt` ONLY. The `tools-header/build.txt` file contains all cycle statements (reviewer → curator → committer sequencing) and the step-0 session-log ritual (fetch-then-Write with canonical name `YYYYMMDD_HHMMSS_slug_session.md`). Edits to `shared/rules/roles/orchestrator.md` do NOT propagate to orchestrator invocations; `build.txt` is the canonical source. Edits to `build.txt` are NOT templated (unlike other agent prompts) — they are inlined directly by `codegen-build` at launch. After editing `build.txt`, run `make install` to validate syntax, then re-invoke `codegen-build`. The step-0 ritual is enforced at Layer 5 (Write-time allowlist guard `orchestrator-session-log-name-guard`) so ritual violations are impossible.
+**Build-mode prompt assembly (interactive-session fallback only)** — Special case: the interactive/resumable-session fallback's build prompt is assembled from `harnesses/<harness>/tools-header/build.txt` ONLY. The `tools-header/build.txt` file contains cycle statements and the step-0 session-log ritual (fetch-then-Write with canonical name `YYYYMMDD_HHMMSS_slug_session.md`). Edits to `build.txt` are NOT templated (unlike other agent prompts) — they are inlined directly by `codegen-build` at launch. After editing `build.txt`, run `make install` to validate syntax, then re-invoke `codegen-build`. The step-0 ritual is enforced at Layer 5 (Write-time allowlist guard `orchestrator-session-log-name-guard`) so ritual violations are impossible. Non-interactive builds bypass this prompt entirely — the Elixir orchestration loop drives per-role invocations directly without a self-orchestrating session.
 
 ## Layer 3 — Project Context Files
 
@@ -58,7 +58,7 @@ Two discriminators:
 
 Hooks can't read LLM output content — only tool calls and subagent identity. `SubagentStart` CANNOT block (inject context only). All subagent gating uses `PreToolUse` on `Agent` matched by `tool_input.subagent_type`.
 
-Key enforcement hooks (Examples): stack-specific dev-gate (`phoenix-dev-gate.sh`), `orchestrator-no-source-edit.sh` (write surface), `dev-no-ci.sh` (blocks gate commands + bare test runners), `pre-commit-guard.sh` (blocks git commit for non-committer), `operator-subagent-allowlist.sh` (blocks `Plan`/`general-purpose` built-ins).
+Key enforcement hooks (Examples): `orchestrator-no-source-edit.sh` (write surface), `dev-no-ci.sh` (blocks gate commands + bare test runners), `pre-commit-guard.sh` (blocks git commit for non-committer), `operator-subagent-allowlist.sh` (blocks `Plan`/`general-purpose` built-ins). For non-interactive builds, the gate is owned by the Elixir loop's `LoopGate`, not a SubagentStop hook.
 
 ## Layer 6 — Recipes
 
@@ -93,6 +93,6 @@ Work top-down when subagent does wrong thing:
 
 `PROJECT_CONTEXT.md` maps trigger keywords → context files. Planner loads matching files on demand. Add a row there when adding a new `./context/*.md` file.
 
-Examples: trigger `"LLM"` → `context/llm.md`; trigger `"hooks"` → `context/hooks.md`; trigger `"provisioning"` → `context/provisioning.md`.
+Examples: trigger `"LLM"` → context/llm.md; trigger `"hooks"` → `context/hooks.md`; trigger `"provisioning"` → context/provisioning.md.
 
 Recipes: same on-demand model — planner reads recipe when task matches the pattern name. No trigger table needed; names are self-describing.

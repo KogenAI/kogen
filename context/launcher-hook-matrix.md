@@ -46,31 +46,11 @@ The three canonical orchestrator-bypass guards (`orchestrator-read-discipline`, 
 
 Hooks registered on the `Agent` matcher fire on every subagent spawn. These are distinct from the orchestrator-level hooks in the bypass matrix above, which fire on Bash/Read/Write tools at the outer session level.
 
-| Hook                            | Fires when                                                         | Action                                           | Fail-open?                            |
-| ------------------------------- | ------------------------------------------------------------------ | ------------------------------------------------ | ------------------------------------- |
-| `operator-subagent-allowlist`   | Any Agent spawn                                                    | Deny built-ins; gate Explore to debug            | No (deny empty type)                  |
-| `curator-before-committer`      | `committer` spawn attempted after reviewer ran but curator has not | Deny committer; prompt curator first             | Yes (no log → allow)                  |
-| `step-log-section-before-spawn` | Any Agent spawn (build mode; bypassed for debug/shape/ops)         | Deny if no log or section header absent          | Yes (unreadable transcript → allow)   |
-| `pitch-shipped-before-stop`     | Stop event, after committer-section present + pitch in ready/      | Block session end; instruct mv ready/ → shipped/ | Yes (no transcript / no pitch → skip) |
+| Hook                          | Fires when      | Action                                | Fail-open?           |
+| ------------------------------ | ---------------- | -------------------------------------- | ---------------------- |
+| `operator-subagent-allowlist` | Any Agent spawn  | Deny built-ins; gate Explore to debug  | No (deny empty type)  |
 
-`curator-before-committer` does not have a per-mode bypass — it fires in all launcher modes (`role: *`). The fail-open path (no step log) handles the edge case where the orchestrator spawns committer before any log is written.
-
-`step-log-section-before-spawn` uses `signal: CLAUDE_ROLE_FAMILY` and sources `_role.sh` to call `resolve_role()`. Bypassed for `debug`, `shape`, and `ops` modes (investigative sessions spawn Explore subagents without a step log). In build mode (empty role) the full step-log + section-header gate applies. Fail-open when transcript is unreadable. Primary enforcement for step-0 log creation and per-agent header insertion; `step-log-missing-guard.sh` remains the Stop backstop (defense in depth). Bash version fail-opens on transcript unreadability; Pi version uses mtime-based file scan of `codegen/logging/` (architectural difference: Pi always has a project dir) — both patterns are correct per harness model.
-
-`pitch-shipped-before-stop` uses a **dual-path bypass** pattern: bypassed under `CLAUDE_ROLE=dashboard-build` (dashboard manages the shipped/ move post-merge) **OR** `CODEGEN_NO_AUTOSHIP=1` (explicit operator suppression). Scoped to pitch-driven sessions (no pitch in transcript → skip). Uses `CLAUDE_ROLE_FAMILY` signal + `resolve_role()` for role-aware dispatch. Retry cap at 2 (counter file `/tmp/claude-autoship-guard-*.count`) prevents infinite block loops.
-
-## Stop-event Build-Runtime Hooks (inverse gate)
-
-Four Stop-event hooks back the build-runtime delegation cycle. They enforce ONLY in build mode (empty role) and SKIP for any investigative role (shape, debug, ops, experiment) — the INVERSE of `pitch-format-validator` (which enforces only when role is investigative). Disjoint role domains: these fire when `resolve_role()` is empty; pitch-format-validator fires when it is non-empty. They never contradict.
-
-| Hook                     | `build` (empty role)                                  | investigative (shape/debug/ops/experiment) |
-| ------------------------ | ----------------------------------------------------- | ------------------------------------------ |
-| `build-queue-continuity` | **gated** — block stop while queue has remaining work | **skipped** (exit 0, no block)             |
-| `step-log-completeness`  | **gated** — block stop on incomplete cycle            | **skipped**                                |
-| `step-log-missing-guard` | **gated** — block stop when step log never created    | **skipped**                                |
-| `stop-cycle-guard`       | **gated** — block mid-cycle stop                      | **skipped**                                |
-
-All four use `signal: CLAUDE_ROLE_FAMILY` + `role: "*"`. Bash bodies source `_role.sh`, call `resolve_role()` after the `stop_hook_active` skip, and `exit 0` when role is non-empty. Pi twins (observe-only) silently `return` on non-empty role — no stderr warning (a misfire warning in investigative mode would be noise). Rationale: shape/debug/ops/experiment sessions are not build-runtime delegation cycles, so build-queue continuity, step-log completeness/presence, and mid-cycle blocking do not apply.
+**Non-interactive builds are driven by the deterministic Elixir orchestration loop** (`mix codegen.loop`), not a self-orchestrating main-agent session — the loop invokes each role as a separate `codegen-call`, so no `Agent`-matcher spawn hook fires for role sequencing in that path. The loop enforces role sequencing (`OrchestrationLoop.run/1`), cycle-state advancement (`advance_cycle_state_step/3`), and pitch-shipped autoship deterministically in Elixir instead of via Stop/SubagentStop hooks. `operator-subagent-allowlist` remains live because it fires on every `Agent`-tool spawn regardless of driver, including within the surviving interactive/resumable-session fallback and debug/shape/ops/experiment modes.
 
 ## Recurring-Poll Capability: `/loop` vs Claude Scheduler Tools
 
@@ -103,4 +83,3 @@ new launcher mode, claude-ops, pi-ops, CLAUDE_ROLE bypass, PI_ROLE bypass, resol
 - `harnesses/claude/hooks/_role.sh` `resolve_role()` branches change (new role value) → verify matrix rows
 - New `Agent`-matcher hook added → add row to PreToolUse/Agent Hooks table
 - `context/launcher-hook-matrix.md` (self) — when matrix content changes
-- `harnesses/claude/hooks/{build-queue-continuity,step-log-completeness,step-log-missing-guard,stop-cycle-guard}.sh` role-gate changed → update the Stop-event Build-Runtime Hooks table

@@ -2,12 +2,16 @@
 # codegen-build_test.sh — unit tests for codegen-build, dispatch.sh (claude + pi).
 #
 # Tests:
-#  (a) --harness=claude exec's claude dispatch with correct argv including tools
-#  (b) --harness=pi exec's pi dispatch with correct argv
+#  (a) --harness=claude non-interactive → dispatch.sh execs `mix codegen.loop
+#      --harness=claude_code ...` (the unconditional build-mode loop path)
+#  (b) --harness=pi non-interactive → dispatch.sh execs `mix codegen.loop
+#      --harness=pi ...`
 #  (c) missing --harness exits 2 with usage on stderr
 #  (d) missing prompt exits 2
 #  (e) exit codes 0/1/2/130 propagate from stub
-#  (f) stdout passes through fixture stream-json byte-identical
+#  (f) stdout passes through fixture stream-json byte-identical (interactive
+#      mode only — the loop path's stdout is `mix`'s own output, not a
+#      byte-transparent claude stream-json passthrough; see test (f) below)
 
 set -euo pipefail
 
@@ -100,6 +104,18 @@ make_stub() {
     chmod +x "$path"
 }
 
+# make_mix_stub <dir> <target-args-file-env-var-default>
+# Build-mode non-interactive/no-resume dispatch always execs
+# `mix codegen.loop ...` (unconditional loop path, no CODEGEN_BUILD_USE_LOOP
+# flag). Stub `mix` so these hermetic tests never invoke a real LLM/ExUnit
+# round-trip; captures argv to the file named by $TARGET_ARGS_FILE (or
+# /dev/null if unset).
+make_mix_stub() {
+    local dir="$1"
+    mkdir -p "$dir"
+    make_stub "$dir/mix" 'printf '"'"'%s\n'"'"' "$@" > "${TARGET_ARGS_FILE:-/dev/null}"'
+}
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Test (c): missing --harness → exit 2 + usage on stderr
 # ─────────────────────────────────────────────────────────────────────────────
@@ -152,19 +168,19 @@ for ec in 0 1 130; do
 done
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Test (a): --harness=claude → dispatch.sh with correct argv (--tools from build-tools.txt)
+# Test (a): --harness=claude non-interactive → dispatch.sh execs
+# `mix codegen.loop --harness=claude_code ...` (unconditional loop path)
 # ─────────────────────────────────────────────────────────────────────────────
 CB_A="$(make_cb_root cb_a)"
 make_claude_harness "$CB_A" >/dev/null
 
 ARGS_A="$BASE_TMP/args_a.txt"
-CLAUDE_A_DIR="$BASE_TMP/bin_a"
-mkdir -p "$CLAUDE_A_DIR"
-
-make_stub "$CLAUDE_A_DIR/claude" "printf '%s\n' \"\$@\" > '$ARGS_A'; printf '{\"type\":\"result\"}\n'"
+MIX_A_DIR="$BASE_TMP/bin_a"
+make_mix_stub "$MIX_A_DIR"
 
 actual_ec=0
-PATH="$CLAUDE_A_DIR:$PATH" \
+TARGET_ARGS_FILE="$ARGS_A" \
+    PATH="$MIX_A_DIR:$PATH" \
     OCG_CODEGEN_DIR="$CODEGEN_ROOT" \
     CODEGEN_BUILD_MODEL="" CODEGEN_BUILD_EFFORT="" \
     "$CB_A/codegen-build" --harness=claude --stack=phoenix --non-interactive \
@@ -173,33 +189,30 @@ PATH="$CLAUDE_A_DIR:$PATH" \
 
 if [[ -f "$ARGS_A" ]]; then
     ARGS_A_CONTENT="$(cat "$ARGS_A")"
-    assert_contains "(a) --tools flag present" "$ARGS_A_CONTENT" "--tools"
-    assert_contains "(a) tools list contains Agent" "$ARGS_A_CONTENT" "Agent"
-    assert_contains "(a) --print flag present (non-interactive)" "$ARGS_A_CONTENT" "--print"
-    assert_contains "(a) --model present" "$ARGS_A_CONTENT" "--model"
-    assert_contains "(a) --output-format stream-json" "$ARGS_A_CONTENT" "stream-json"
-    assert_contains "(a) --dangerously-skip-permissions" "$ARGS_A_CONTENT" "--dangerously-skip-permissions"
+    assert_contains "(a) mix codegen.loop invoked" "$ARGS_A_CONTENT" "codegen.loop"
+    assert_contains "(a) --harness=claude_code passed" "$ARGS_A_CONTENT" "--harness=claude_code"
+    assert_contains "(a) --stack passed" "$ARGS_A_CONTENT" "--stack="
+    assert_contains "(a) --cwd passed" "$ARGS_A_CONTENT" "--cwd="
     assert_contains "(a) prompt is forwarded" "$ARGS_A_CONTENT" "hello prompt"
-    assert_contains "(a) --system-prompt present (non-interactive)" "$ARGS_A_CONTENT" "--system-prompt"
-    assert_contains "(a) --setting-sources user,project,local in non-interactive" "$ARGS_A_CONTENT" "user,project,local"
 else
-    printf 'FAIL: (a) args file not created — claude stub not invoked (exit: %s)\n' "$actual_ec"
-    fail=$((fail + 8))
+    printf 'FAIL: (a) args file not created — mix stub not invoked (exit: %s)\n' "$actual_ec"
+    fail=$((fail + 5))
 fi
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Test (b): --harness=pi → dispatch.sh with correct argv
+# Test (b): --harness=pi non-interactive → dispatch.sh execs
+# `mix codegen.loop --harness=pi ...` (unconditional loop path)
 # ─────────────────────────────────────────────────────────────────────────────
 CB_B="$(make_cb_root cb_b)"
 make_pi_harness "$CB_B" >/dev/null
 
 ARGS_B="$BASE_TMP/args_b.txt"
-PI_B_DIR="$BASE_TMP/bin_b"
-mkdir -p "$PI_B_DIR"
-make_stub "$PI_B_DIR/pi" "printf '%s\n' \"\$@\" > '$ARGS_B'"
+MIX_B_DIR="$BASE_TMP/bin_b"
+make_mix_stub "$MIX_B_DIR"
 
 actual_ec=0
-PATH="$PI_B_DIR:$PATH" \
+TARGET_ARGS_FILE="$ARGS_B" \
+    PATH="$MIX_B_DIR:$PATH" \
     OCG_CODEGEN_DIR="$CODEGEN_ROOT" \
     CODEGEN_BUILD_MODEL="" CODEGEN_BUILD_EFFORT="" \
     "$CB_B/codegen-build" --harness=pi --stack=phoenix --non-interactive \
@@ -208,19 +221,14 @@ PATH="$PI_B_DIR:$PATH" \
 
 if [[ -f "$ARGS_B" ]]; then
     ARGS_B_CONTENT="$(cat "$ARGS_B")"
-    assert_contains "(b) --mode" "$ARGS_B_CONTENT" "--mode"
-    assert_contains "(b) json" "$ARGS_B_CONTENT" "json"
-    assert_contains "(b) --no-session" "$ARGS_B_CONTENT" "--no-session"
-    assert_contains "(b) --provider openai-codex" "$ARGS_B_CONTENT" "openai-codex"
-    assert_contains "(b) -p flag (non-interactive)" "$ARGS_B_CONTENT" "-p"
-    assert_contains "(b) system prompt flag present" "$ARGS_B_CONTENT" "--system-prompt"
-    assert_contains "(b) default askuserquestion extension present" "$ARGS_B_CONTENT" "$CODEGEN_ROOT/harnesses/pi/pi-extensions/askuserquestion"
-    assert_contains "(b) default subagents extension present" "$ARGS_B_CONTENT" "$CODEGEN_ROOT/harnesses/pi/pi-extensions/subagents"
-    assert_contains "(b) default enforcement extension present" "$ARGS_B_CONTENT" "$CODEGEN_ROOT/harnesses/pi/pi-extensions/enforcement"
+    assert_contains "(b) mix codegen.loop invoked" "$ARGS_B_CONTENT" "codegen.loop"
+    assert_contains "(b) --harness=pi passed" "$ARGS_B_CONTENT" "--harness=pi"
+    assert_contains "(b) --stack passed" "$ARGS_B_CONTENT" "--stack="
+    assert_contains "(b) --cwd passed" "$ARGS_B_CONTENT" "--cwd="
     assert_contains "(b) prompt forwarded" "$ARGS_B_CONTENT" "pi prompt"
 else
-    printf 'FAIL: (b) args file not created — pi stub not invoked (exit: %s)\n' "$actual_ec"
-    fail=$((fail + 9))
+    printf 'FAIL: (b) args file not created — mix stub not invoked (exit: %s)\n' "$actual_ec"
+    fail=$((fail + 5))
 fi
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -262,18 +270,21 @@ actual_ec=0
 check "(b3) clear gate result exits 0" "0" "$actual_ec"
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Test (f): stdout byte-identical pass-through
+# Test (f): stdout byte-identical pass-through — codegen-build → dispatch.sh
+# → exec mix codegen.loop must not buffer/transform the child's stdout.
+# Non-interactive/no-resume always execs the loop now; the fixture stubs
+# `mix` itself (rather than `claude`) since that's the real exec target.
 # ─────────────────────────────────────────────────────────────────────────────
 FIXTURE_LINE='{"type":"result","is_error":false,"usage":{"input_tokens":42,"output_tokens":7}}'
 
 CB_F="$(make_cb_root cb_f)"
 make_claude_harness "$CB_F" >/dev/null
 
-CLAUDE_F_DIR="$BASE_TMP/bin_f"
-mkdir -p "$CLAUDE_F_DIR"
-make_stub "$CLAUDE_F_DIR/claude" "printf '%s\n' '${FIXTURE_LINE}'"
+MIX_F_DIR="$BASE_TMP/bin_f"
+mkdir -p "$MIX_F_DIR"
+make_stub "$MIX_F_DIR/mix" "printf '%s\n' '${FIXTURE_LINE}'"
 
-ACTUAL_F_OUT=$(PATH="$CLAUDE_F_DIR:$PATH" \
+ACTUAL_F_OUT=$(PATH="$MIX_F_DIR:$PATH" \
     OCG_CODEGEN_DIR="$CODEGEN_ROOT" \
     CODEGEN_BUILD_MODEL="" CODEGEN_BUILD_EFFORT="" \
     "$CB_F/codegen-build" --harness=claude --stack=phoenix --non-interactive \
@@ -337,31 +348,35 @@ else
 fi
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Test (i): --system-prompt and --dangerously-skip-permissions in BOTH modes;
-#           print-family flags in non-interactive only
+# Test (i): non-interactive → mix codegen.loop invoked (unconditional loop
+#           path, argv carries --harness=claude_code/--stack/--cwd, not the
+#           claude print-family flags — those now live inside the loop's own
+#           per-role codegen-call, not dispatch.sh's direct exec argv).
+#           Interactive mode is unaffected — --system-prompt and
+#           --dangerously-skip-permissions present, print-family flags absent.
 # ─────────────────────────────────────────────────────────────────────────────
 CB_I="$(make_cb_root cb_i)"
 make_claude_harness "$CB_I" >/dev/null
 
 ARGS_I_NI="$BASE_TMP/args_i_ni.txt"
 ARGS_I_INT="$BASE_TMP/args_i_int.txt"
-CLAUDE_I_DIR="$BASE_TMP/bin_i"
+MIX_I_DIR="$BASE_TMP/bin_i"
+make_mix_stub "$MIX_I_DIR"
+CLAUDE_I_DIR="$BASE_TMP/bin_i_claude"
 mkdir -p "$CLAUDE_I_DIR"
-
-# Stub writes its args to a file passed via env var TARGET_ARGS_FILE
 make_stub "$CLAUDE_I_DIR/claude" 'printf '"'"'%s\n'"'"' "$@" > "${TARGET_ARGS_FILE:-/dev/null}"'
 
-# Non-interactive run
+# Non-interactive run (loop path — mix stub)
 actual_ec=0
 TARGET_ARGS_FILE="$ARGS_I_NI" \
-    PATH="$CLAUDE_I_DIR:$PATH" \
+    PATH="$MIX_I_DIR:$PATH" \
     OCG_CODEGEN_DIR="$CODEGEN_ROOT" \
     CODEGEN_BUILD_MODEL="" CODEGEN_BUILD_EFFORT="" \
     "$CB_I/codegen-build" --harness=claude --stack=phoenix --non-interactive \
     "test prompt i" 2>/dev/null ||
     actual_ec=$?
 
-# Interactive run
+# Interactive run (unaffected — claude stub, direct exec)
 actual_ec=0
 TARGET_ARGS_FILE="$ARGS_I_INT" \
     CODEGEN_BUILD_NON_INTERACTIVE="" \
@@ -376,22 +391,16 @@ if [[ -f "$ARGS_I_NI" && -f "$ARGS_I_INT" ]]; then
     ARGS_I_NI_CONTENT="$(cat "$ARGS_I_NI")"
     ARGS_I_INT_CONTENT="$(cat "$ARGS_I_INT")"
 
-    # Both modes: --system-prompt present
-    assert_contains "(i) --system-prompt in non-interactive" "$ARGS_I_NI_CONTENT" "--system-prompt"
-    assert_contains "(i) --system-prompt in interactive" "$ARGS_I_INT_CONTENT" "--system-prompt"
+    # Non-interactive: mix codegen.loop invoked with the loop's own argv
+    assert_contains "(i) mix codegen.loop invoked in non-interactive" "$ARGS_I_NI_CONTENT" "codegen.loop"
+    assert_contains "(i) --harness=claude_code in non-interactive loop argv" "$ARGS_I_NI_CONTENT" "--harness=claude_code"
+    assert_contains "(i) prompt forwarded in non-interactive loop argv" "$ARGS_I_NI_CONTENT" "test prompt i"
 
-    # Both modes: --dangerously-skip-permissions present
-    assert_contains "(i) --dangerously-skip-permissions in non-interactive" "$ARGS_I_NI_CONTENT" "--dangerously-skip-permissions"
+    # Interactive: --system-prompt and --dangerously-skip-permissions present
+    assert_contains "(i) --system-prompt in interactive" "$ARGS_I_INT_CONTENT" "--system-prompt"
     assert_contains "(i) --dangerously-skip-permissions in interactive" "$ARGS_I_INT_CONTENT" "--dangerously-skip-permissions"
 
-    # Print-family: present in non-interactive, absent in interactive
-    assert_contains "(i) --print in non-interactive" "$ARGS_I_NI_CONTENT" "--print"
-    assert_contains "(i) --no-session-persistence in non-interactive" "$ARGS_I_NI_CONTENT" "--no-session-persistence"
-    assert_contains "(i) --disable-slash-commands in non-interactive" "$ARGS_I_NI_CONTENT" "--disable-slash-commands"
-
-    # setting-sources: user,project,local in non-interactive; absent in interactive
-    assert_contains "(i) --setting-sources user,project,local in non-interactive" "$ARGS_I_NI_CONTENT" "user,project,local"
-
+    # Interactive: print-family flags absent (unaffected by the loop cutover)
     if [[ "$ARGS_I_INT_CONTENT" != *"--setting-sources"* ]]; then
         [ -n "${VERBOSE:-}" ] && printf 'PASS: (i) --setting-sources absent in interactive\n'
         pass=$((pass + 1))
@@ -427,18 +436,27 @@ else
     if [[ ! -f "$ARGS_I_INT" ]]; then
         printf 'FAIL: (i) interactive args file not created\n'
     fi
-    fail=$((fail + 10))
+    fail=$((fail + 7))
 fi
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Test (j): --resumable opt-in gates --no-session-persistence / --no-session;
-#           --resume-id adds --resume (claude) / --session (pi); guard + parity
+# Test (j): --resumable/--resume-id gate which exec target dispatch.sh uses.
+#           No resume-id (j1/j2/j4/j7/j8): loop condition (-z "$RESUME_ID")
+#           holds → dispatch execs `mix codegen.loop` regardless of
+#           --resumable (the loop's own per-role codegen-call handles
+#           persistence, not dispatch.sh's direct exec argv). With a
+#           resume-id (j3/j9): RESUME_ID is non-empty → loop condition is
+#           false → dispatch falls through to the OLD direct claude/pi exec
+#           (unaffected by the cutover) so --resume/--session still forward
+#           correctly. j5 (interactive) and j6 (usage guard) are unaffected.
 # ─────────────────────────────────────────────────────────────────────────────
 CB_J="$(make_cb_root cb_j)"
 make_claude_harness "$CB_J" >/dev/null
 CLAUDE_J_DIR="$BASE_TMP/bin_j"
 mkdir -p "$CLAUDE_J_DIR"
 make_stub "$CLAUDE_J_DIR/claude" 'printf '"'"'%s\n'"'"' "$@" > "${TARGET_ARGS_FILE:-/dev/null}"'
+MIX_J_DIR="$BASE_TMP/bin_j_mix"
+make_mix_stub "$MIX_J_DIR"
 
 run_claude_j() { # $1=args-file  $2..=extra codegen-build flags before prompt
     local out="$1"
@@ -451,43 +469,45 @@ run_claude_j() { # $1=args-file  $2..=extra codegen-build flags before prompt
         "j prompt" 2>/dev/null || true
 }
 
-# (j1) default headless STILL has --no-session-persistence
+# run_mix_j: same as run_claude_j but PATHs the mix stub first (loop path cases)
+run_mix_j() {
+    local out="$1"
+    shift
+    TARGET_ARGS_FILE="$out" \
+        PATH="$MIX_J_DIR:$CLAUDE_J_DIR:$PATH" \
+        OCG_CODEGEN_DIR="$CODEGEN_ROOT" \
+        CODEGEN_BUILD_MODEL="" CODEGEN_BUILD_EFFORT="" \
+        "$CB_J/codegen-build" --harness=claude --stack=phoenix "$@" \
+        "j prompt" 2>/dev/null || true
+}
+
+# (j1) no resume-id, non-interactive → loop path (mix codegen.loop invoked)
 J1="$BASE_TMP/args_j1.txt"
-run_claude_j "$J1" --non-interactive
-assert_contains "(j1) default headless keeps --no-session-persistence" "$(cat "$J1")" "--no-session-persistence"
+run_mix_j "$J1" --non-interactive
+assert_contains "(j1) no resume-id: mix codegen.loop invoked" "$(cat "$J1")" "codegen.loop"
 
-# (j2) --resumable headless OMITS --no-session-persistence
+# (j2) --resumable, no resume-id, non-interactive → STILL loop path
+# (--resumable alone does not set RESUME_ID; the loop condition only checks
+# RESUME_ID emptiness, so this is identical dispatch behavior to j1)
 J2="$BASE_TMP/args_j2.txt"
-run_claude_j "$J2" --non-interactive --resumable
-J2C="$(cat "$J2")"
-if [[ "$J2C" != *"--no-session-persistence"* ]]; then
-    [ -n "${VERBOSE:-}" ] && printf 'PASS: (j2) --resumable drops --no-session-persistence\n'
-    pass=$((pass + 1))
-else
-    printf 'FAIL: (j2) --resumable still has --no-session-persistence\n  got: %s\n' "${J2C:0:300}"
-    fail=$((fail + 1))
-fi
+run_mix_j "$J2" --non-interactive --resumable
+assert_contains "(j2) --resumable without resume-id: mix codegen.loop invoked" "$(cat "$J2")" "codegen.loop"
 
-# (j3) --resumable --resume-id=SID123 adds --resume SID123
+# (j3) --resumable --resume-id=SID123 → RESUME_ID set → loop condition false
+# → falls through to the OLD direct claude exec path (unaffected by cutover)
 J3="$BASE_TMP/args_j3.txt"
 run_claude_j "$J3" --non-interactive --resumable --resume-id=SID123
 J3C="$(cat "$J3")"
 assert_contains "(j3) --resume flag present" "$J3C" "--resume"
 assert_contains "(j3) resume id forwarded" "$J3C" "SID123"
 
-# (j4) --resumable WITHOUT id → no --resume, no --no-session-persistence
+# (j4) --resumable WITHOUT id, non-interactive → loop path (same as j1/j2)
 J4="$BASE_TMP/args_j4.txt"
-run_claude_j "$J4" --non-interactive --resumable
-J4C="$(cat "$J4")"
-if [[ "$J4C" != *"--resume"* ]]; then
-    [ -n "${VERBOSE:-}" ] && printf 'PASS: (j4) no --resume when id absent\n'
-    pass=$((pass + 1))
-else
-    printf 'FAIL: (j4) --resume present without id\n  got: %s\n' "${J4C:0:300}"
-    fail=$((fail + 1))
-fi
+run_mix_j "$J4" --non-interactive --resumable
+assert_contains "(j4) --resumable without id: mix codegen.loop invoked" "$(cat "$J4")" "codegen.loop"
 
-# (j5) interactive + --resumable → no --resume, no --no-session-persistence
+# (j5) interactive + --resumable → NON_INTERACTIVE unset → loop condition
+# false regardless of RESUME_ID → falls through to old direct claude exec
 J5="$BASE_TMP/args_j5.txt"
 CODEGEN_BUILD_NON_INTERACTIVE="" TARGET_ARGS_FILE="$J5" \
     PATH="$CLAUDE_J_DIR:$PATH" OCG_CODEGEN_DIR="$CODEGEN_ROOT" \
@@ -513,6 +533,8 @@ make_pi_harness "$CB_JP" >/dev/null
 PI_J_DIR="$BASE_TMP/bin_jp"
 mkdir -p "$PI_J_DIR"
 make_stub "$PI_J_DIR/pi" 'printf '"'"'%s\n'"'"' "$@" > "${TARGET_ARGS_FILE:-/dev/null}"'
+MIX_JP_DIR="$BASE_TMP/bin_jp_mix"
+make_mix_stub "$MIX_JP_DIR"
 
 run_pi_j() {
     local out="$1"
@@ -522,14 +544,23 @@ run_pi_j() {
         "$CB_JP/codegen-build" --harness=pi --stack=phoenix "$@" "jp prompt" 2>/dev/null || true
 }
 
-# (j7) Pi default headless STILL has --no-session
-J7="$BASE_TMP/args_j7.txt"
-run_pi_j "$J7" --non-interactive
-assert_contains "(j7) pi default headless keeps --no-session" "$(cat "$J7")" "--no-session"
+# run_mix_pi_j: same as run_pi_j but PATHs the mix stub first (loop path cases)
+run_mix_pi_j() {
+    local out="$1"
+    shift
+    TARGET_ARGS_FILE="$out" PATH="$MIX_JP_DIR:$PI_J_DIR:$PATH" OCG_CODEGEN_DIR="$CODEGEN_ROOT" \
+        CODEGEN_BUILD_MODEL="" CODEGEN_BUILD_EFFORT="" \
+        "$CB_JP/codegen-build" --harness=pi --stack=phoenix "$@" "jp prompt" 2>/dev/null || true
+}
 
-# (j8) Pi --resumable OMITS --no-session
+# (j7) Pi, no resume-id, non-interactive → loop path (mix codegen.loop invoked)
+J7="$BASE_TMP/args_j7.txt"
+run_mix_pi_j "$J7" --non-interactive
+assert_contains "(j7) pi no resume-id: mix codegen.loop invoked" "$(cat "$J7")" "codegen.loop"
+
+# (j8) Pi --resumable, no resume-id, non-interactive → STILL loop path
 J8="$BASE_TMP/args_j8.txt"
-run_pi_j "$J8" --non-interactive --resumable
+run_mix_pi_j "$J8" --non-interactive --resumable
 J8C="$(cat "$J8")"
 if [[ "$J8C" != *"--no-session"* ]]; then
     [ -n "${VERBOSE:-}" ] && printf 'PASS: (j8) pi --resumable drops --no-session\n'

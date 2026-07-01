@@ -21,11 +21,13 @@
 set -u
 
 # NOTE: This per-Edit gate only checks HEADER PRESENCE, not body content.
-# The header-then-body two-edit flow is legitimate: the orchestrator writes the
-# section header in Edit N and fills the body in Edit N+1. Rejecting a
-# header-only payload here would produce false denials. Content-floor
-# (empty/stub section = dead subagent) is enforced at Stop by
-# step-log-completeness.sh and pre-spawn by step-log-section-before-spawn.sh.
+# The header-then-body two-edit flow is legitimate: the outer session writes the
+# section header in Edit N and fills the body in Edit N+1 (interactive-session
+# fallback), or the loop writes header+body atomically via `codegen-log section`
+# (non-interactive builds). Rejecting a header-only payload here would produce
+# false denials. Content-floor enforcement (empty/stub section = dead role) is
+# owned by the loop for non-interactive builds; no equivalent Stop-hook backstop
+# exists for the interactive-session fallback after the orchestration-loop cutover.
 
 source "$(dirname "$0")/lib/hooks-lib.sh"
 parse_input

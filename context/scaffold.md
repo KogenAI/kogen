@@ -56,7 +56,7 @@ codegen-scaffold
 
 - **core**: `codegen-scaffold` is a core launcher with two subcommands: `codegen-scaffold create --stack=<stack> --cwd=<dir> --slug=<name>` (full scaffold) and `codegen-scaffold integrate --stack=<stack> --cwd=<dir> [--slug=<name>]` (wire symlinks only); see `context/core.md`
 - **subagents**: `AGENTS-phoenix.md.j2` references subagent roles by name; changes to agent roles may require updating this template
-- **rules**: `AGENTS-phoenix.md` encodes orchestrator rules for downstream apps; kept in sync with `shared/rules/roles/orchestrator.md` — see `context/rules-roles.md`
+- **rules**: `AGENTS-phoenix.md` encodes the downstream-app session loop (self-orchestration fallback for interactive/resumable sessions only; non-interactive builds use the deterministic `OrchestrationLoop`) — see `context/rules-roles.md` and `context/test-harness.md`
 - **test-harness**: ExUnit tests in `test_harness/test/stacks/` validate scaffold output — scaffold changes require test updates; see `context/test-harness.md`
 - **development**: `codegen-scaffold` is invoked via make targets — see `context/development.md` make-target index
 

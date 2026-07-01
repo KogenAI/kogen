@@ -231,9 +231,18 @@ Pi build now uses the same orchestrated contract in both launcher paths:
 - `harnesses/pi/dispatch.sh` loads the build extensions declared in `harnesses/pi/manifest.yaml` (`askuserquestion`, `subagents`, `enforcement`)
 - caller-supplied `--extension` flags remain additive
 - the legacy `pi-build-system-prompt-direct-*.txt` files remain tracked, but build dispatch no longer consumes them
-- `codegen-build` fails closed unless Pi returns a clear `codegen/gate-pending/gate-result.json`
+- `codegen-build` fails closed unless Pi returns a clear verdict in the gate-result JSON written to `codegen/gate-pending/`
 
 Mode selection still honors the build launcher’s non-interactive env, but the prompt body is no longer direct-build-only. The build path is orchestrated; the parent wrapper decides success from the structured gate result.
+
+## EXEC-MECHANICS vs SYSTEM-PROMPT-CONTENT: Orthogonal Concerns in Harness Design
+
+When refactoring orchestration (e.g., self-orchestrating prompts → deterministic Elixir loop), separate two layers:
+
+1. **EXEC-MECHANICS** — how agents run: session persistence, re-attach, resumable builds, TTY interaction, launch order. Owned by the outer dispatcher (`dispatch.sh`, the loop). Keep exec blocks serving legitimate use cases (interactive `--resume-id`, TTY) — they are transport, not orchestration.
+2. **SYSTEM-PROMPT-CONTENT** — what the prompt tells the agent to do: self-orchestrating narrative, phase instructions, role responsibilities. Delete when the loop now handles sequencing.
+
+**Common mistake**: conflating layers — a "delete self-orchestration" pitch targeting only prompt narrative may wrongly prescribe deleting exec blocks still load-bearing for interactive/resumable fallback. Verify via control-flow grep which exec paths are truly unreachable before deleting.
 
 ## Pi Extensions
 
@@ -289,7 +298,7 @@ See `context/launcher-hook-matrix.md` for which orchestrator-level hooks gate ea
 
 **Ordering problem**: Models treat multi-step instructions (Edit → Agent) as separable; regression cause is treating them as alternatives (pick one).
 
-**Solution**: Name the pair "spawn ritual" and phrase as ONE atomic operation in the prompt. Same wording appears in both `harnesses/{claude,pi}/tools-header/build.txt` (the `"spawn ritual = header-Edit + Agent() call, always as indivisible pair"` line in FIRST-TURN PROTOCOL) → models treat header-Edit + delegation as indivisible. Hard enforcement via `step-log-section-before-spawn.sh` (PreToolUse guard denies subagent spawn if header absent).
+**Solution**: Name the pair "spawn ritual" and phrase as ONE atomic operation in the prompt. Same wording appears in both `harnesses/{claude,pi}/tools-header/build.txt` (the `"spawn ritual = header-Edit + Agent() call, always as indivisible pair"` line in FIRST-TURN PROTOCOL) → models treat header-Edit + delegation as indivisible. This applies to the surviving interactive/resumable-session fallback only — the Elixir orchestration loop drives non-interactive builds without a spawn ritual (each role is invoked directly, and the loop writes each role's session-log section itself).
 
 **Reusable pattern for similar regressions**: When a prompt should enforce a strictly-ordered multi-step sequence, give it a memorable name (ritual, ceremony, protocol) and describe it as ONE conceptual operation. The name prevents decomposition into pick-one choices.
 

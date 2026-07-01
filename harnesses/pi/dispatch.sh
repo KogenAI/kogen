@@ -116,6 +116,31 @@ if [[ -n "$CWD" ]]; then
     cd "$CWD"
 fi
 
+# Build mode (non-interactive, no --session resume): the deterministic
+# Elixir orchestration loop drives the whole cycle (planner/developer-first
+# per stack → gate → reviewer → curator → committer) via per-role
+# codegen-call invocations, instead of a single self-orchestrating pi
+# session. Interactive and resumable sessions are untouched — only the
+# one-shot build path uses the loop. Unconditional — no coexistence flag;
+# the loop and the legacy in-harness self-orchestration surface cannot run
+# side by side.
+if [[ -n "$NON_INTERACTIVE" && -z "$RESUME_ID" ]]; then
+    STACK="${CODEGEN_BUILD_STACK:-phoenix}"
+    LOOP_DIR="$CODEGEN_DIR/test_harness"
+
+    if [[ ! -d "$LOOP_DIR" ]]; then
+        printf 'pi dispatch: orchestration loop dir not found at %s\n' "$LOOP_DIR" >&2
+        exit 2
+    fi
+
+    exec env \
+        -u OPENAI_API_KEY \
+        -u ANTHROPIC_API_KEY \
+        -u CURSOR_API_KEY \
+        bash -c 'cd "$1" && exec mix codegen.loop --harness=pi "--stack=$2" "--cwd=$3" -- "$4"' \
+        _ "$LOOP_DIR" "$STACK" "$CWD" "$PROMPT"
+fi
+
 exec env \
     -u OPENAI_API_KEY \
     -u ANTHROPIC_API_KEY \

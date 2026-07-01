@@ -77,7 +77,7 @@ Typical firing order for common roles:
 - **`planner-guard`** — Restricts planner to read-only bash, Edit on `codegen/logging/*.md` only, no `Write`/`MultiEdit`. Both src AND dest must be in allowed dirs for `mv`.
 - **`planner-load-discipline`** — Blocks planner from loading usage_rules files directly (recipes are loaded on demand via recipes/; rules are baked into subagents).
 - **`committer-subject-length`** — Blocks `git commit -m "subject"` where subject exceeds 50 bytes. Heredoc form denied (can't extract subject).
-- **`dev-no-ci`** — Blocks developers from running `make ci`, `make llm`, `make llm-phoenix`. Gate commands run via `dev-gate.sh` SubagentStop hook.
+- **`dev-no-ci`** — Blocks developers from running `make ci`, `make llm`, `make llm-phoenix`. Gate commands run via the loop's `LoopGate` (non-interactive builds) or a SubagentStop hook (interactive-session fallback).
 - **`claude-debug-bash-guard`** — In debug sessions (`CLAUDE_ROLE=debug`), blocks: recursive rm, DB migrations, git writes, mix deps.get, seeds, destructive SQL, curl mutations (POST/PUT/PATCH/DELETE), docker mutations, systemctl/launchctl mutations, kill/pkill, package installs.
 - **`session-log-section-integrity`** — Requires `## <agent_type> Section` header in `Edit`/`Write`/`MultiEdit` payloads on session log files. Exceptions: orchestrator (creates files), planner (writes `## Plan`).
 - **`frontend-developer-guard`** — Blocks frontend developer from editing backend files.
@@ -85,15 +85,12 @@ Typical firing order for common roles:
 
 ### Observability hooks (never block)
 
-- **`track-subagent-edits`** — Records every file edited by a subagent to `~/.claude/post-format/<session>_<agent>.txt` for post-format targeting.
+- **`track-subagent-edits`** — Records every file edited by a subagent to `~/.claude/post-format/<session>_<agent>.txt` for post-format targeting (interactive-session fallback).
 - **`track-tool-failures`** — Records every `PostToolUseFailure` event to `~/.claude/tool-failures/<session>_<agent>.jsonl`.
-- **`post-developer-format`** — Runs `mix format` on files edited by the subagent after `SubagentStop`.
 
-### Resume / cycle guards
+### Non-interactive build gate (the loop)
 
-- **`stop-resume`** — Auto-resumes on transient network errors (stream idle timeout, 5xx). Capped at 3 attempts. Hard failures (401, 400, 429) are not retried.
-- **`stop-cycle-guard`** — Detects runaway restart loops.
-- **`dev-gate`** — SubagentStop hook that fires the CI/LLM gate for developer subagents.
+Non-interactive builds are driven by the deterministic Elixir orchestration loop (`mix codegen.loop`), not SubagentStop/Stop hooks. The loop's `LoopGate` (`test_harness/lib/codegen_test_harness/loop_gate.ex`) runs the gate, and `OrchestrationLoop.run_format_step/2` runs `mix format`/`make format` explicitly after the developer and context-curator roles — these are Elixir functions, not hooks. The surviving interactive/resumable-session fallback still self-orchestrates via the outer session's prompt.
 
 ---
 

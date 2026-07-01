@@ -52,30 +52,12 @@ Adding a new extension:
 
 Pi has two event families with **asymmetric blocking capability**:
 
-| Event Type         | Example handlers                  | Can block? | Return contract                                                |
-| ------------------ | --------------------------------- | ---------- | -------------------------------------------------------------- |
-| `tool_call`        | `curator-before-committer.ts` (3) | **YES**    | Return `deny(reason)` to block; return `undefined` to allow    |
-| `session_shutdown` | `step-log-completeness.ts` (4)    | **NO**     | Observe-only; emit `process.stderr.write(...)`; return nothing |
+| Event Type         | Can block? | Return contract                                                |
+| ------------------ | ---------- | -------------------------------------------------------------- |
+| `tool_call`        | **YES**    | Return `deny(reason)` to block; return `undefined` to allow    |
+| `session_shutdown` | **NO**     | Observe-only; emit `process.stderr.write(...)`; return nothing |
 
-`tool_call` (PreToolUse equivalent) can block execution. `session_shutdown` covers both Claude Stop and SubagentStop events and is observe-only — `block()` result is ignored by the Pi runtime on shutdown. This asymmetry differs from Claude's per-event blocking capability. Established convention by existing twins: all 4 Stop/SubagentStop twins emit stderr warnings, NEVER `block()`. Build success is still fail-closed at the wrapper: `codegen-build` reads `codegen/gate-pending/gate-result.json` after Pi exits.
-
-**Transient error detection in session_shutdown twins**: When porting a Claude Stop hook that detects transient errors (e.g., `stop-resume.sh`), the Pi twin implements the **same error pattern matching** (regex alternations like "Stream idle timeout" OR "connection reset" OR "File has been modified since read") and logs warnings to stderr for operator visibility. However, the Pi twin cannot emit blocking decisions — it can only warn. Pattern example: `stop-resume.ts` registers the same alternations in `TRANSIENT_ERROR_PATTERNS` and emits `process.stderr.write('[pi-enforcement:stop-resume] Transient error detected: ...')` when a pattern matches. This ensures both harnesses detect the same transient conditions, even though only Claude can auto-resume via `block()`. The stderr warning is valuable for debugging — operators see which transient errors occurred during Pi sessions, supporting incident investigation.
-
-### Autoship Hook Twin — Slug-Based Pitch Shipping
-
-The Pi twin of `pitch-shipped-before-stop.sh` is `pitch-shipped-before-stop.ts`, registered on the `session_shutdown` event. Like its Bash counterpart, it validates that only pitches matching the active session log's slug are shipped from `ready/` → `shipped/`.
-
-**Design difference from Bash**: The Bash version uses transcript-based log discovery (`session_log_from_transcript`) + fixed-width regex slug extraction. The Pi version uses disk-based discovery (mtime-newest log in `codegen/logging/`) since Pi has no transcript. Both extract the slug via the same fixed-width regex and apply the same ship decision logic:
-
-1. Find the active session log (Bash via transcript, Pi via mtime-newest disk scan)
-2. Extract slug from log filename via regex `^[0-9]{8}_[0-9]{6}_(.+)_session\.md$`
-3. If slug is empty (free-form log, no slug) → exit 0 (no shipping)
-4. If slug exists → search `ready/` for pitch with matching slug
-5. If found → ship `ready/<slug>.md` → `shipped/`; if not found → log warning but do not block
-
-**Why this matters**: Both harnesses now enforce the same proof-of-build linkage — only pitches whose session logs contain a full build cycle (indicated by log filename slug presence) get shipped. This prevents unbuilt pitches from entering the shipped queue when multiple shaping sessions run in parallel.
-
-**Reduced-fidelity aspect**: The mtime-based log discovery is the Pi analogue of Bash's transcript-based discovery. Both primitives have the same semantic intent (find the active log) but different mechanisms. The mtime approach is sufficient when there is only one active session per working directory (typical Pi usage); under rapid session chaining, multiple logs with recent mtime could theoretically exist, but this is rare in operator workflows.
+`tool_call` (PreToolUse equivalent) can block execution. `session_shutdown` covers both Claude Stop and SubagentStop events and is observe-only — `block()` result is ignored by the Pi runtime on shutdown. This asymmetry differs from Claude's per-event blocking capability. Established convention by existing twins: `session_shutdown` twins emit stderr warnings, NEVER `block()`. Build success is still fail-closed at the wrapper: `codegen-build` reads the gate-result JSON written into `codegen/gate-pending/` after Pi exits. Under the deterministic Elixir orchestration loop (non-interactive builds), each role runs as a separate main-agent invocation, so `session_shutdown` twins matched to a specific role/subagent-completion condition are dead in that path — they remain live only for the surviving interactive/resumable-session fallback.
 
 ## Tool Call Event Handler — Pi Tool Name Lowercasing
 
@@ -93,7 +75,7 @@ pi.on("tool_call", (event) => {
 });
 ```
 
-Example: `enforcement/src/hooks/curator-before-committer.ts` receives `event.toolName == "subagent"` (lowercase, singular) for subagent spawning. MultiEdit tool collapses to `edit` in event matchers (use `write|edit`, never `multiedit`).
+A `tool_call` handler matching subagent spawns receives `event.toolName == "subagent"` (lowercase, singular). MultiEdit tool collapses to `edit` in event matchers (use `write|edit`, never `multiedit`).
 
 ## AskUserQuestion — Headless (`!ctx.hasUI`) Behaviour
 
@@ -115,7 +97,7 @@ Pi enforcement hooks are registered in `harnesses/pi/pi-extensions/enforcement/s
 
 **Single-source-of-truth contract**:
 
-- Registry `id` MUST match the `.ts` filename (e.g., `curator-before-committer` → `curator-before-committer.ts`)
+- Registry `id` MUST match the `.ts` filename (e.g., `pitch-format-validator` → `pitch-format-validator.ts`)
 - Compiler collects all `kind: registration` entries where `harnesses ∈ {all,pi}` AND the corresponding `.ts` file exists
 - Compiler also collects all `kind: denial` entries with `emit_ts: true`
 - Union of both lists → sorted id set → auto-generated import + register block in `index.ts`
@@ -133,7 +115,7 @@ Pi enforcement hooks detect agent roles via environment variables only:
 - **Role/type**: `process.env.AGENT_TYPE` (e.g., `"developer-phoenix-backend"`, `"reviewer-phoenix"`, empty for orchestrator)
 - **Agent ID**: `process.env.AGENT_ID` (populated for subagents; empty for orchestrator and top-level roles)
 - **Orchestrator-level gate**: `AGENT_TYPE` is empty **AND** `AGENT_ID` is empty (both conditions required)
-- **ops-mode bypass**: No `resolveRole()` helper exists in hook-helpers.ts. Inline the bypass by reading `process.env.PI_ROLE ?? process.env.CLAUDE_ROLE === "ops"` directly in the hook file (precedent: the ops-mode bypass block in `pitch-shipped-before-stop.ts`).
+- **ops-mode bypass**: No `resolveRole()` helper exists in hook-helpers.ts. Inline the bypass by reading `process.env.PI_ROLE ?? process.env.CLAUDE_ROLE === "ops"` directly in the hook file.
 
 **Why no `resolveRole()` helper**: The helper lives in the shared lib, which is sibling-pitch territory for feature-only twins (file-only, no lib changes). Each hook inlines its own bypass pattern to avoid touching the shared library.
 
@@ -173,11 +155,11 @@ Examples of stale rationale: When a hook has registry `harnesses: claude` + `too
 
 ## Worktree Isolation — Reduced-Fidelity Pi Twin
 
-Pi's `seedPhoenixBuild()` in `subagents/src/runs/shared/worktree.ts` seeds Phoenix dependencies (`deps` symlink + `_build` copy under same-commit guard) for worktree isolation. The Pi implementation is **reduced-fidelity**: it seeding only and does NOT allocate a fresh port per worktree. Port allocation in Claude is handled via `WorktreeCreate` hook's call to `allocate_phoenix_port()` from `resource_manager.sh`, which maintains a project-scoped registry of in-use ports. Pi's `seedPhoenixBuild()` registers seeded paths as `syntheticPaths` (returned by `createSingleWorktree`'s setup hook), but has **no port-allocation registry backend**. The Pi harness manages ports externally (outside hook scope). When porting Claude's `WorktreeCreate` hook logic to Pi, seed the `_build` + `deps` internally in `createSingleWorktree` and document the port gap in a header comment.
+Pi's `seedPhoenixBuild()` in subagents/src/runs/shared/worktree.ts seeds Phoenix dependencies (`deps` symlink + `_build` copy under same-commit guard) for worktree isolation. The Pi implementation is **reduced-fidelity**: it seeding only and does NOT allocate a fresh port per worktree. Port allocation in Claude is handled via `WorktreeCreate` hook's call to `allocate_phoenix_port()` from `resource_manager.sh`, which maintains a project-scoped registry of in-use ports. Pi's `seedPhoenixBuild()` registers seeded paths as `syntheticPaths` (returned by `createSingleWorktree`'s setup hook), but has **no port-allocation registry backend**. The Pi harness manages ports externally (outside hook scope). When porting Claude's `WorktreeCreate` hook logic to Pi, seed the `_build` + `deps` internally in `createSingleWorktree` and document the port gap in a header comment.
 
 ## Subagents Extension — `/loop` Slash Command
 
-The `subagents` extension ships a `/loop` slash command (`src/slash/loop-command.ts`) that provides an interactive self-firing recurring-poll story for `pi-ops` and `pi-debug`.
+The `subagents` extension ships a `/loop` slash command (src/slash/loop-command.ts) that provides an interactive self-firing recurring-poll story for `pi-ops` and `pi-debug`.
 
 | Aspect                    | Detail                                                                                                                                                                               |
 | ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
@@ -189,13 +171,13 @@ The `subagents` extension ships a `/loop` slash command (`src/slash/loop-command
 | Session cleanup           | `session_shutdown` clears all `loopTimers` (observe-only; non-blocking)                                                                                                              |
 | Fidelity note             | In-session interval only — no cron, no cross-session persistence, no `Monitor` line-stream parity (honest reduced-fidelity twin vs Claude's `CronCreate`/`Monitor`/`ScheduleWakeup`) |
 
-Timer deps are injected via a `LoopDeps` interface (`{setInterval, clearInterval}`) for hermetic unit testing without real timers. Tests live in `test/unit/loop-command.test.ts` (runs on TS source directly via `node --experimental-strip-types --test`; no build step needed).
+Timer deps are injected via a `LoopDeps` interface (`{setInterval, clearInterval}`) for hermetic unit testing without real timers. Tests live in test/unit/loop-command.test.ts (runs on TS source directly via `node --experimental-strip-types --test`; no build step needed).
 
 ## Pitfalls
 
 - **Each extension is an independent npm package** — `npm install` must be run per-extension, not at repo root
 - **`package-lock.json` files are per-extension** — commit them; they are the reproducibility guarantee
-- **`package-lock.json` churn is normal** — `subagents/package-lock.json` and `web-utils/package-lock.json` may appear dirty when different npm versions resolve deps differently; do not panic-commit these changes without intentional npm updates
+- **`package-lock.json` churn is normal** — subagents/package-lock.json and web-utils/package-lock.json may appear dirty when different npm versions resolve deps differently; do not panic-commit these changes without intentional npm updates
 - **TypeScript compile errors block Pi harness** — extension build failures prevent Pi from loading the tool
 - **Extension structure varies** — `enforcement` has no root-level `index.ts` (entry is under `src/`); all four extensions have a `src/` subdirectory; do not assume a uniform layout at root level across all four extensions
 - **`\z` anchor (PCRE) not supported in JS regex** — JavaScript regex treats `\z` as literal `z`. When porting regex from Bash/Ruby, replace end-of-string anchors with string-split patterns: `text.split(header)` + `slice` to find section boundary instead of `(?=\n###)` lookahead anchors. If the regex has a fallback pattern, the bug is masked in tests but creates a latent over-match edge case.

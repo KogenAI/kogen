@@ -24,8 +24,9 @@
 # Allows (early-return before block regex):
 #   make gate-status / gate-logs / gate-kill
 #
-# Gate commands run via the SubagentStop hook (phoenix-dev-gate.sh) after
-# developer-* completes. Orchestrator MUST NOT run them directly.
+# Gate commands run via the Elixir orchestration loop's LoopGate (non-interactive
+# builds) or a SubagentStop hook (interactive-session fallback) after developer-*
+# completes. The main-agent session MUST NOT run gate commands directly.
 
 set -u
 
@@ -51,7 +52,7 @@ if [ "$TOOL_NAME" != "Bash" ]; then
 fi
 
 _deny_gate() {
-    deny "orchestrator-no-ci: orchestrator MUST NOT run gate commands directly. Gate runs via the SubagentStop hook (phoenix-dev-gate.sh) after developer-* completes. To inspect a running gate, use \`make gate-status\`. To trigger a gate, delegate to a developer-* subagent."
+    deny "orchestrator-no-ci: the main-agent session MUST NOT run gate commands directly. Gate runs via the loop (non-interactive builds) or a SubagentStop hook (interactive-session fallback) after developer-* completes. To inspect a running gate, use \`make gate-status\`. To trigger a gate, delegate to a developer-* subagent."
     exit 0
 }
 

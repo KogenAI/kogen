@@ -90,7 +90,7 @@ Priority: CI > Security > Cleanliness > Coverage > Quality > Style.
 
 ## Gate Verdict Gate (BLOCKING)
 
-NEVER emit `✅ QUALITY APPROVED` unless the gate verdict is `clear`. Read it from `codegen/gate-pending/gate-result.json` `.verdict` directly — NOT by counting `ALL CLEAR ✅` strings in the session log body. Strings like `ALL CLEAR ✅` in the log are cosmetic status labels; they do NOT indicate gate approval. Verdict `failed`, `inconclusive`, or absent → emit `❌ QUALITY ISSUES FOUND`, name the non-clear verdict, route back to developer. Inconclusive is NOT approval — it means the gate did not confirm clear (e.g., `render-check-cmd-failed` when `CODEGEN_DIR` is unset). Always read the `.verdict` field from the JSON file.
+NEVER emit `✅ QUALITY APPROVED` unless the gate verdict is `clear`. Read it from the `.verdict` field of the gate-result JSON written into `codegen/gate-pending/` directly — NOT by counting `ALL CLEAR ✅` strings in the session log body. Strings like `ALL CLEAR ✅` in the log are cosmetic status labels; they do NOT indicate gate approval. Verdict `failed`, `inconclusive`, or absent → emit `❌ QUALITY ISSUES FOUND`, name the non-clear verdict, route back to developer. Inconclusive is NOT approval — it means the gate did not confirm clear (e.g., `render-check-cmd-failed` when `CODEGEN_DIR` is unset). Always read the `.verdict` field from the JSON file.
 
 Final: `✅ QUALITY APPROVED` or `❌ QUALITY ISSUES FOUND` + file:line refs.
 

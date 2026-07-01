@@ -10,7 +10,7 @@ Read `context/*.md` ONLY when the path appears in planner's `## Files to touch` 
 
 ## Recipes
 
-Orchestrator provides refs → use. Don't search yourself.
+Delegation prompt provides refs → use. Don't search yourself.
 
 ## Session Log Command Table
 
@@ -51,10 +51,10 @@ Pure fns → unit tests. New public fns → tests. Bug fix → regression test. 
 - Fix root cause — file that owns broken value. Never patch around.
 - Minimal fix. Red flags: "infrastructure" for simple tasks, multiple abstraction layers, hypothetical scenarios.
 - 100% complete. Never stop after "should work now". Stuck → report specific blocker, never "technical debt" punt.
-- **You NEVER create commits.** Not via `git commit`, not via a nested `claude`/`pi`/`codegen-call`, not via `claude --agent committer`. When your implementation is complete, STOP and return control — the orchestrator delegates the commit to the committer subagent. If a delegation prompt tells you to commit, treat it as "finish the implementation and stop": committing is structurally not your job and not in your tool surface.
+- **You NEVER create commits.** Not via `git commit`, not via a nested `claude`/`pi`/`codegen-call`, not via `claude --agent committer`. When your implementation is complete, STOP and return control — the loop delegates the commit to the committer subagent next. If a delegation prompt tells you to commit, treat it as "finish the implementation and stop": committing is structurally not your job and not in your tool surface.
 - Update step context. Report "Work complete" + evidence. Never declare tests done without running.
 - Smallest test scope. Read background output — don't re-run.
-- Server: ASSUME running. NEVER restart — report to orchestrator.
+- Server: ASSUME running. NEVER restart — report the blocker instead.
 - Cleanup: removing test files → grep source first. Target specific files; never blast build dirs.
 - No unprompted backward compat. Pitch says replace → remove old, implement new. Legacy fallback branch when old format is gone = dead code = scope creep. ❌ `cond do: legacy -> ...; new -> ...` ✅ new format only.
 - **Re-read target file before editing** — when applying a fix from reviewer feedback or from a retrospective, re-read the exact current state of the file before using the Edit tool. Avoids stale-context edits that miss intervening changes from other steps.

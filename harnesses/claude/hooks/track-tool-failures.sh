@@ -26,7 +26,7 @@
 #   - Exits 0 in all cases — observability only, never blocks.
 #   - Orchestrator failures (empty agent_id) tracked under "_orchestrator".
 #   - Ledger dir created on first write.
-#   - Stale ledgers (>7 days) GC'd at start, mirroring post-developer-format.sh.
+#   - Stale ledgers (>7 days) GC'd at start.
 
 set -u
 
@@ -42,7 +42,7 @@ debug_log track-tool-failures "tool=$TOOL_NAME agent_id=$AGENT_ID session=$SESSI
 ledger_dir="$HOME/.claude/tool-failures"
 mkdir -p "$ledger_dir"
 
-# GC stale ledgers older than 7 days (mirror post-developer-format.sh pattern).
+# GC stale ledgers older than 7 days.
 find "$ledger_dir" -maxdepth 1 -name "*.jsonl" -mtime +7 -delete 2>/dev/null || true
 
 agent_slug="${AGENT_ID:-_orchestrator}"

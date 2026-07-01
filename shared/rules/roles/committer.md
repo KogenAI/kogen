@@ -1,6 +1,6 @@
 # Git Commit Flow
 
-Codifies [7 rules](https://cbea.ms/git-commit/). For committer (primary), orchestrator + dev (reference).
+Codifies [7 rules](https://cbea.ms/git-commit/). For committer (primary), the loop + dev (reference).
 
 ## Allowed Write Ops
 
@@ -10,7 +10,7 @@ Confirm before: `push --force`, `reset --hard`, `revert`, `rebase`, `branch -D`.
 
 ## Gate Verdict Gate (BLOCKING)
 
-NEVER commit cycle output unless the gate verdict is `clear`. Read `codegen/gate-pending/gate-result.json` `.verdict`. Verdict `failed`, `inconclusive`, or absent → DO NOT commit; report the non-clear verdict and stop. Only `verdict=clear` permits the commit. Do not count `ALL CLEAR ✅` strings — read the structured field.
+NEVER commit cycle output unless the gate verdict is `clear`. Read the `.verdict` field from the gate-result JSON written into `codegen/gate-pending/`. Verdict `failed`, `inconclusive`, or absent → DO NOT commit; report the non-clear verdict and stop. Only `verdict=clear` permits the commit. Do not count `ALL CLEAR ✅` strings — read the structured field.
 
 ## When to Commit
 
@@ -18,7 +18,7 @@ NOT required between impl steps. ✅ User asks; feature 100% + user requests; ta
 
 ## Committing
 
-Subject only — default and preferred. Orchestrator delegates via Agent (never direct). Committer runs `git commit` directly. Amending: re-verify subject ≤50 BEFORE `--amend`. Most amends drop body. Never include a body. Subject only, always.
+Subject only — default and preferred. The loop delegates via a per-role `codegen-call` invocation (never direct). Committer runs `git commit` directly. Amending: re-verify subject ≤50 BEFORE `--amend`. Most amends drop body. Never include a body. Subject only, always.
 
 ### Subject
 
@@ -78,13 +78,13 @@ Subject only. No body, ever. The diff shows what changed; the subject names why.
 
 ## Delegation Input vs Commit Output
 
-Orchestrator passes a task summary. That summary is INPUT for reasoning, never OUTPUT in the message.
+The loop's delegation prompt passes a task summary. That summary is INPUT for reasoning, never OUTPUT in the message.
 
 - Input: "Commit fixture refactor. Summary: extracted helper, updated 8 tests, Makefile target renamed."
 - ❌ Output body lists those bullets.
 - ✅ Output body states one sentence on why the refactor was worth doing.
 
-Subject only — strip all orchestrator scaffolding from the commit message.
+Subject only — strip all delegation-prompt scaffolding from the commit message.
 
 ## Staging Scope — One Commit Per Cycle
 
@@ -109,7 +109,7 @@ Multi-repo: see §Multi-Repo Sequencing for commit ordering across sibling repos
 
 ## One Logical Fix = One Commit
 
-Single pitch/task → single commit. Do NOT split unless orchestrator explicitly requests it.
+Single pitch/task → single commit. Do NOT split unless the delegation prompt explicitly requests it.
 
 ❌ Two commits: "refactor cleanup" + "add PATH" when both serve the same fix.
 ✅ One commit: "Speed up stop-resume test by keeping sleep stub alive"
@@ -122,7 +122,7 @@ Multi-repo: one commit per repo, never reuse a subject across siblings. Run `git
 
 ## Handoff Contract
 
-Orchestrator passes: task summary (why), git op (new/amend/squash), scope. Committer reads diff, writes message, commits. No back-and-forth.
+The loop's delegation prompt passes: task summary (why), git op (new/amend/squash), scope. Committer reads diff, writes message, commits. No back-and-forth.
 
 ## Deploy Docs Format
 

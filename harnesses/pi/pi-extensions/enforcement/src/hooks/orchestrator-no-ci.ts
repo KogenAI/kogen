@@ -64,7 +64,7 @@ export function register(pi: ExtensionAPI): void {
     debugLog("orchestrator-no-ci", `cmd=${command}`);
 
     const denyMsg =
-      "orchestrator-no-ci: orchestrator MUST NOT run gate commands directly. Gate runs via the SubagentStop hook (phoenix-dev-gate.sh) after developer-* completes. To inspect a running gate, use `make gate-status`. To trigger a gate, delegate to a developer-* subagent.";
+      "orchestrator-no-ci: the main-agent session MUST NOT run gate commands directly. Gate runs via the loop (non-interactive builds) or a SubagentStop hook (interactive-session fallback) after developer-* completes. To inspect a running gate, use `make gate-status`. To trigger a gate, delegate to a developer-* subagent.";
 
     // Allowlist: gate-status / gate-logs / gate-kill — early return before block.
     if (/^\s*make\s+(gate-status|gate-logs|gate-kill)(\s|$)/.test(command)) {

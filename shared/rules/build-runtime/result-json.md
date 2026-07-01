@@ -1,6 +1,6 @@
 # Result Reporting (MANDATORY)
 
-For user-app build runtime orchestrators.
+For user-app build runtime sessions (interactive fallback) and any role invocation whose final message reports build status.
 
 Final message MUST contain exactly one fenced JSON block + NOTHING after:
 

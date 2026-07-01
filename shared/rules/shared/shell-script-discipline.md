@@ -31,7 +31,7 @@ When a helper function generates verdict strings and feeds a `case "$verdict"` b
 ✅ Reclassify at the source (where verdict is generated).
 ❌ Edit each downstream case consumer.
 
-Example: `run_phoenix_render_check` returns `INCONCLUSIVE:render-check-cmd-missing` or `INCONCLUSIVE:render-check-cmd-failed`. The calling case block at `phoenix-dev-gate.sh:414` and `:675` already has `INCONCLUSIVE:*)` arms routing all INCONCLUSIVE variants correctly — no case edits needed when new reasons are added.
+Example: `run_phoenix_render_check` returns `INCONCLUSIVE:render-check-cmd-missing` or `INCONCLUSIVE:render-check-cmd-failed`. The Elixir loop's `LoopGate.decide_gate/2` already has an `INCONCLUSIVE:*` clause routing all INCONCLUSIVE variants correctly — no case edits needed when new reasons are added.
 
 ## Heredoc Inside Command Substitution — Quote Parsing
 

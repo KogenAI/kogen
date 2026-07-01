@@ -31,30 +31,6 @@ if [[ "$PITCH_ROOT" != "$PWD" ]]; then
     cd "$PITCH_ROOT"
 fi
 
-# --queue: drain ready/ one pitch per fresh isolated codegen-build process
-_queue_mode=0
-for _arg in "$@"; do
-    case "$_arg" in --queue) _queue_mode=1 ;; esac
-done
-if [ "$_queue_mode" = "1" ]; then
-    for _arg in "$@"; do
-        case "$_arg" in
-        --queue) continue ;;
-        *)
-            printf 'pi-build: --queue takes no slug arguments — got: %s\n' "$_arg" >&2
-            exit 2
-            ;;
-        esac
-    done
-    QUEUE_BIN="${OCG_CODEGEN_DIR:+$OCG_CODEGEN_DIR/harnesses/shared/build-queue.sh}"
-    QUEUE_BIN="${QUEUE_BIN:-$SCRIPT_DIR/../shared/build-queue.sh}"
-    # Installed copy: $SCRIPT_DIR/../shared/ doesn't exist; fall back via harnesses/ symlink.
-    if [ ! -f "$QUEUE_BIN" ] && [ -f "$SCRIPT_DIR/harnesses/shared/build-queue.sh" ]; then
-        QUEUE_BIN="$SCRIPT_DIR/harnesses/shared/build-queue.sh"
-    fi
-    exec "$QUEUE_BIN" --harness=pi
-fi
-
 PROMPT_PARTS=()
 READY_DIR="$PWD/codegen/pitches/ready"
 for arg in "$@"; do

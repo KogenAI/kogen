@@ -176,14 +176,6 @@
         "hooks": [
           {
             "type": "command",
-            "command": "$HOME/.claude/hooks/build-queue-continuity.sh"
-          }
-        ]
-      },
-      {
-        "hooks": [
-          {
-            "type": "command",
             "command": "$HOME/.claude/hooks/llm-pending-sweep.sh"
           }
         ]
@@ -195,67 +187,9 @@
             "command": "$HOME/.claude/hooks/pitch-format-validator.sh"
           }
         ]
-      },
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "$HOME/.claude/hooks/pitch-shipped-before-stop.sh"
-          }
-        ]
-      },
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "$HOME/.claude/hooks/step-log-completeness.sh"
-          }
-        ]
-      },
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "$HOME/.claude/hooks/step-log-missing-guard.sh"
-          }
-        ]
-      },
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "$HOME/.claude/hooks/stop-cycle-guard.sh"
-          }
-        ]
-      },
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "$HOME/.claude/hooks/stop-resume.sh",
-            "timeout": 360
-          }
-        ]
-      },
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "$HOME/.claude/hooks/stop-verify-planner-gate.sh"
-          }
-        ]
       }
     ],
     "SubagentStop": [
-      {
-        "matcher": "context-curator",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "$HOME/.claude/hooks/curator-format.sh"
-          }
-        ]
-      },
       {
         "matcher": "developer-phoenix-backend|developer-phoenix-frontend|developer-static",
         "hooks": [
@@ -266,47 +200,11 @@
         ]
       },
       {
-        "matcher": "developer-phoenix-backend|developer-phoenix-frontend",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "$HOME/.claude/hooks/phoenix-dev-gate.sh"
-          }
-        ]
-      },
-      {
-        "matcher": "developer-phoenix-backend|developer-phoenix-frontend|developer-static",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "$HOME/.claude/hooks/post-developer-format.sh"
-          }
-        ]
-      },
-      {
         "matcher": "developer-static",
         "hooks": [
           {
             "type": "command",
             "command": "$HOME/.claude/hooks/static-site-build-check.sh"
-          }
-        ]
-      },
-      {
-        "matcher": "developer-phoenix-backend|developer-phoenix-frontend|developer-static",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "$HOME/.claude/hooks/stop-gate-failure-breaker.sh"
-          }
-        ]
-      },
-      {
-        "matcher": "developer-phoenix-backend|developer-phoenix-frontend|developer-static",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "$HOME/.claude/hooks/stop-spin-guard.sh"
           }
         ]
       },
@@ -462,15 +360,6 @@
           {
             "type": "command",
             "command": "$HOME/.claude/hooks/context-index-parity.sh"
-          }
-        ]
-      },
-      {
-        "matcher": "Agent",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "$HOME/.claude/hooks/curator-before-committer.sh"
           }
         ]
       },
@@ -691,29 +580,11 @@
         ]
       },
       {
-        "matcher": "Agent",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "$HOME/.claude/hooks/single-cycle-agent-in-flight.sh"
-          }
-        ]
-      },
-      {
         "matcher": "Write|Edit",
         "hooks": [
           {
             "type": "command",
             "command": "$HOME/.claude/hooks/static-site-ex-guard.sh"
-          }
-        ]
-      },
-      {
-        "matcher": "Agent",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "$HOME/.claude/hooks/step-log-section-before-spawn.sh"
           }
         ]
       },

@@ -24,22 +24,19 @@ Session logs live under `/codegen/` and are **gitignored** — in the codegen re
 
 ## Ownership
 
-- Orchestrator creates log FIRST via **`codegen-log init --slug <slug>`** (Bash), not raw Edit/Write, and never via Bash redirect.
+- The loop creates the log FIRST via **`codegen-log init --slug <slug>`** (Bash), not raw Edit/Write, and never via Bash redirect.
 - `codegen-log section --body @-` is the sole section writer: planner, developers, reviewer, curator, and committer each write their own body atomically at canonical rank.
 - Subagents write body under the canonical section header via the writer — never emit or pre-seed placeholder headers themselves.
 - Header-only sections are invalid: every required section must contain non-heading body content before the next role may spawn or the build may ship.
 - Never use a full-file Write/Edit to mutate `codegen/logging/*.md`; the writer owns insertion/replacement and keeps the section order stable.
-- Multi-step → orchestrator maintains `./codegen/logging/$(date -u +%Y%m%d)_progress.md`.
 
 ## Death Stamps
 
-When a subagent drops mid-response, the orchestrator records it INSIDE the dead role's section as an H3 marker (H3 so it never participates in the H2 canonical-order check):
+When a role's per-role invocation drops mid-response, the loop records it INSIDE the dead role's section as an H3 marker (H3 so it never participates in the H2 canonical-order check):
 
-- `### INTERRUPTED ⚠️ — <role> dropped (<cause>); re-spawning (attempt N/2)` — written when the drop tool_result is observed.
+- `### INTERRUPTED ⚠️ — <role> dropped (<cause>); re-spawning (attempt N/2)` — written when the drop is observed.
 - `### RESUMED` — written when the re-spawn produces real output.
 - `### ABORTED 💀 — <role> dropped twice; stage failed.` — written on re-spawn exhaustion, then the stage halts.
-
-A section carrying `### INTERRUPTED ⚠️` or `### ABORTED 💀` is in-recovery: the `step-log-completeness` Stop hook skips its empty-body floor for that section (mirrors the existing `INCONCLUSIVE ⚠️` skip).
 
 ## Canonical Section Order
 
@@ -116,7 +113,7 @@ Retrospective placement: `### What I Learned This Step` for planner variants MUS
 
 ## Gate Verdict Authority
 
-Gate hooks write `gate-result.json` with a `.verdict` field (`"passed"` or `"failed"`). **The `.verdict` JSON field is the authoritative gate result — never cosmetic log strings.** When a reviewer or orchestrator evaluates a gate hook's outcome, read `.verdict` from `gate-result.json`, not prose like "ALL CLEAR ✅" in the session log body. Log strings may reflect developer's intended state; JSON reflects the actual gate return code. Example: developer logs claim "ALL CLEAR ✅ on retry" but `gate-result.json` shows `.verdict: "failed"` — the JSON is authoritative and the gate truly failed.
+Gate hooks write `gate-result.json` with a `.verdict` field (`"passed"` or `"failed"`). **The `.verdict` JSON field is the authoritative gate result — never cosmetic log strings.** When a reviewer or the loop evaluates a gate's outcome, read `.verdict` from `gate-result.json`, not prose like "ALL CLEAR ✅" in the session log body. Log strings may reflect developer's intended state; JSON reflects the actual gate return code. Example: developer logs claim "ALL CLEAR ✅ on retry" but `gate-result.json` shows `.verdict: "failed"` — the JSON is authoritative and the gate truly failed.
 
 ## Citations
 

@@ -66,8 +66,10 @@ Emits the Stop / SubagentStop block JSON:
 ```
 
 This injects a synthetic user turn carrying `<reason>` into the next assistant
-turn. Used by `stop-resume.sh` (network-error retry) and `stop-cycle-guard.sh`
-(orchestrator mid-cycle stop) — **not** by PreToolUse blockers.
+turn. Used by Stop-event hooks in the interactive-session fallback — **not** by
+PreToolUse blockers. Non-interactive builds handle retry/mid-cycle-stop concerns
+in the Elixir loop instead (`OrchestrationLoop.invoke_with_retry`), not via this
+envelope.
 
 ## `debug_log <slug> <fields…>`
 

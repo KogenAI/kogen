@@ -380,7 +380,7 @@ class TestBuildHookEntry(unittest.TestCase):
 
     def test_timeout_emitted_when_present(self):
         """build_hook_entry includes timeout key when manifest carries it."""
-        manifest = {"filename": "stop-resume.sh", "timeout": 360}
+        manifest = {"filename": "example-hook.sh", "timeout": 360}
         result = hr.build_hook_entry(manifest)
         self.assertEqual(result["timeout"], 360)
 

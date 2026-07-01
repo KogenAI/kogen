@@ -6,7 +6,6 @@ Role-specific rules that define what each agent role MUST and MUST NOT do. These
 
 | File                                    | Purpose                                                                                                                                                                                                       |
 | --------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `shared/rules/roles/orchestrator.md`    | Orchestrator-only rules — delegation, never-implement, full-cycle, INCONCLUSIVE table                                                                                                                         |
 | `shared/rules/roles/planner.md`         | Planner rules — plan structure, slice definitions, gate-json block format, `__GATE_PARSE_ERROR__` sentinel                                                                                                    |
 | `shared/rules/roles/developer.md`       | Universal developer rules — verify-not-declare, fix-root-cause, test with every change; **NOTE**: codegen/pitches/\*\* Read prohibition documented here; reviewer.md lacks parallel text (hook authoritative) |
 | `shared/rules/roles/reviewer.md`        | Reviewer rules — what to check, how to report, block/pass criteria                                                                                                                                            |
@@ -18,7 +17,6 @@ Role-specific rules that define what each agent role MUST and MUST NOT do. These
 
 ```
 shared/rules/roles/
-  orchestrator.md
   planner.md
   developer.md
   reviewer.md
@@ -29,21 +27,20 @@ shared/rules/roles/
 ## Integration Points
 
 - **subagents**: each `.md.j2` template `{% include %}`s its role's rule file — changes require `make install`
-- **hooks**: several hooks enforce role rules at runtime — e.g. `orchestrator-no-source-edit.sh` enforces orchestrator's never-implement rule; `pre-commit-guard.sh` enforces committer-only commits; `curator-before-committer.sh` enforces reviewer → curator → committer sequencing — see `context/hooks.md`
+- **hooks**: several hooks enforce role rules at runtime — e.g. `pre-commit-guard.sh` enforces committer-only commits — see `context/hooks.md`
 - **rules-core**: role rules are layered on top of core discipline rules (`context/rules-core.md`); both must be satisfied
-- **scaffold**: `AGENTS-phoenix.md.j2` and `AGENTS-static.md.j2` embed orchestrator rules for downstream apps — sync burden when orchestrator.md changes; see `context/scaffold.md`
 - **curator-routing**: context-curator's generic rule (`shared/rules/roles/context-curator.md`) defines the write surface and decision tree — see § Curator Write Surface below; `context/curator-routing.md` carries project-specific path targets; `codegen/rules/` is a symlink to `shared/rules/` — all curators edit via the symlink path `codegen/rules/**`, never via `shared/rules/` directly
 
-## Orchestrator Dual-Repo Commitment Pattern
+## Loop Dual-Repo Commitment Pattern
 
-When curator edits touch `shared/rules/` (via symlink `codegen/rules/`), orchestrator disambiguates the commit scope:
+Non-interactive builds are driven by the deterministic Elixir orchestration loop, not a self-orchestrating agent session. When curator edits touch `shared/rules/` (via symlink `codegen/rules/`), the loop's committer role disambiguates the commit scope:
 
 - **OCG repo == current project repo** — OCG root (the directory containing real `shared/rules/`, not a symlink) equals `git rev-parse --show-toplevel`. Curator edits to `shared/rules/` + `context/` join code + test changes in **ONE commit per cycle**.
 - **Distinct repos** — Downstream project has `codegen/rules/` as an out-pointing symlink. Curator edits (to `codegen/rules/`) and dev code (to local `lib/`, `test/`, etc.) require **TWO commits**: one in the consuming app repo (dev code + curator-symlink-target edits reflected in message); one in codegen repo (curator's real rule changes to `shared/rules/`).
 
 **Detection**: Compare `shared/rules` (resolve as real dir path) to `git rev-parse --show-toplevel`. If equal → same repo → one commit. If not (downstream symlink case) → two commits.
 
-Curator never initiates committer calls — curator is a leaf agent. Orchestrator owns all delegation.
+Curator never initiates committer calls — curator is a leaf agent. The loop owns all role sequencing.
 
 ## Curator Write Surface
 
@@ -70,7 +67,7 @@ The guard `context-curator-guard.sh` enforces exactly three allowed path pattern
 
 **Clarification — Rule-prose changes vs baked-prompt changes**:
 
-- **Rule-prose edits to auto-loaded files** (e.g., `shared/rules/roles/orchestrator.md` imported via `@`-include in `AGENTS-phoenix.md.j2` or read at session start by Pi) take effect at the **next agent session without `make install`** — the rule is consumed at runtime, not baked into the prompt.
+- **Rule-prose edits to auto-loaded files** (e.g., a rule imported via `@`-include in `AGENTS-phoenix.md.j2` or read at session start by Pi) take effect at the **next agent session without `make install`** — the rule is consumed at runtime, not baked into the prompt.
 - **Baked-prompt edits** (`{% include %}` pull rule content into `.md.j2` templates and subagent prompts) require **`make install` to re-render** before agents see the change. The pitfall "rule changes are not live" refers to baked-prompt rules only.
 - When planning rule/flag changes, confirm whether the rule is auto-loaded (runtime read, no regen needed) or baked (prompt-embedded, regen required). Check the template for `{% include %}` references and the harness launcher for `@`-imports or explicit Read calls.
 
@@ -82,33 +79,26 @@ The guard `context-curator-guard.sh` enforces exactly three allowed path pattern
 
 Cross-reference: full guard pattern analysis and path-nesting mechanics → `context/hooks.md` § context-curator-guard Write Surface; rule text → `shared/rules/roles/context-curator.md` § Write Surface.
 
-## Spawn Ritual (Atomic Header-Edit + Delegation)
+## Spawn Ritual (Atomic Header-Edit + Delegation) — Interactive-Session Fallback Only
 
-Orchestrator's critical hygiene rule: header-Edit + Agent() call MUST be same turn, never separated. Named "spawn ritual" to enforce atomicity in models—a single conceptual operation preventing treat-as-separable regressions.
+For interactive/resumable-session builds (the surviving fallback path when the Elixir loop doesn't drive the cycle), the outer session's critical hygiene rule is: header-Edit + Agent() call MUST be same turn, never separated. Named "spawn ritual" to enforce atomicity in models — a single conceptual operation preventing treat-as-separable regressions.
 
-Pattern: For every subagent spawn (after first log creation), orchestrator:
+Pattern: For every subagent spawn (after first log creation), the outer session:
 
 1. **Edit** step log to append `## <agent_type> Section` header (literal name from agent's YAML `name:`)
 2. **Agent()** call immediately after in same turn—no intervening chat
 
-**Stack-prefixed planner variant header stub**: When orchestrator spawns a stack-prefixed planner variant (e.g., `planner-phoenix`), the session-log Edit payload MUST include a literal `## planner-phoenix Section` header stub (or the concrete stack name) — not a bare `## planner Section`. The `session-log-section-integrity.sh` hook bypasses ONLY bare `planner`, not stack-prefixed variants. Stack-prefixed planners must satisfy the normal header-present rule like any other agent.
-
-**Anchoring edits after Jinja includes**: When adding bullet or prose blocks immediately after an `{% include %}` directive in a `.md.j2` template, anchor the Edit to the NEXT SIBLING content (the first prose line after the include), NOT to the include directive itself. Example: adding a bullet after `{% include 'apps/_orch-behavioral.md.j2' %}` anchors to the prose line that follows (e.g., "Simplicity first" bullet), never to the include line itself. This ensures the insertion lands in the correct document position and avoids disrupting the include mechanism.
+**Stack-prefixed planner variant header stub**: When the outer session spawns a stack-prefixed planner variant (e.g., `planner-phoenix`), the session-log Edit payload MUST include a literal `## planner-phoenix Section` header stub (or the concrete stack name) — not a bare `## planner Section`. The `session-log-section-integrity.sh` hook bypasses ONLY bare `planner`, not stack-prefixed variants. Stack-prefixed planners must satisfy the normal header-present rule like any other agent.
 
 Enforcement:
 
 - **Prompt**: the `"spawn ritual = header-Edit + Agent() call, always as indivisible pair"` line in FIRST-TURN PROTOCOL in `harnesses/{claude,pi}/tools-header/build.txt` (identical wording, both harnesses)
-- **Guard**: `step-log-section-before-spawn.sh` (Claude) + `.ts` mirror (Pi); PreToolUse hook denies Agent() when header absent
-- **Shared rule**: `shared/rules/roles/orchestrator.md` § Standard Workflow names pattern; `AGENTS-*.md.j2` downstream templates embed this
+
+**Under the loop** (non-interactive builds): the loop writes each role's session-log section body directly via `codegen-log section --body @-` after each `codegen-call` invocation completes — there is no separate spawn-time header-Edit step, and no `Agent()` matcher hook fires (each role is a main-agent invocation, not a subagent spawn).
 
 ## Committer Spawn Timing
 
-Committer is a leaf agent with no independent decision-making power about when it runs. Ordering enforcement happens in two layers:
-
-1. **Orchestrator prompt** — all four cycle statements in `harnesses/<harness>/tools-header/build.txt` name the full sequence: `reviewer → context-curator → committer`. This is the primary guidance.
-2. **Spawn-time guard** — `curator-before-committer.sh` (Claude) and `.ts` mirror (Pi) block committer spawning when reviewer section is present in the active step log but curator section is absent. Provides hard enforcement at the moment delegation is attempted.
-
-**Fail-open principle**: both Claude and Pi spawn guards check the active session log (discovered via transcript analysis). If the log is missing, unreadable, or cannot be parsed, the guard exits successfully (allow the spawn). This is deliberate — missing evidence should not block action. The prompt guidance is the primary enforcer; the guard is a backstop to catch obvious out-of-order violations. If session logs are inaccessible, fall back to orchestrator prompt guidance.
+Committer is a leaf agent with no independent decision-making power about when it runs. Under the loop, the Elixir sequencer (`OrchestrationLoop.run/1`) invokes committer only after context-curator completes — ordering is enforced structurally by the sequencer's role list, not by a spawn-time guard. In the interactive-session fallback, ordering guidance comes from the outer session's prompt, which names the full sequence `reviewer → context-curator → committer`.
 
 ## Committer Staging Scope — One Commit Per Cycle
 
@@ -120,7 +110,7 @@ Committer stages **ALL cycle output** in a single `git add -A` commit per cycle.
 
 **One commit per cycle is mandatory** — partial snapshots (staging only a subset of cycle-modified files) are forbidden. The clean-tree gate (`build-no-success-before-commit.sh`) blocks SHIPPED if any modified file remains unstaged.
 
-**Exception: partial-readiness carve-out** — when work is genuinely blocked and incomplete (e.g., reviewer denies certain changes that must be redone), that blocked work remains unstaged for the next cycle. This is a distinct case from a partial commit of cycle-complete output. Orchestrator decides whether to re-enter the developer or escalate based on reviewer guidance.
+**Exception: partial-readiness carve-out** — when work is genuinely blocked and incomplete (e.g., reviewer denies certain changes that must be redone), that blocked work remains unstaged for the next cycle. This is a distinct case from a partial commit of cycle-complete output. The loop re-invokes the developer role or fails the cycle based on reviewer guidance.
 
 ## Trigger Keywords
 
@@ -129,12 +119,12 @@ orchestrator rules, planner rules, developer rules, reviewer rules, committer ru
 ## Pitfalls
 
 - **Rule changes are not live** — must `make install` to regenerate agent prompts
-- **`AGENTS-*.md.j2` embeds orchestrator rules** — downstream app templates in `shared/apps/` carry a copy of orchestrator rules; when `orchestrator.md` changes, update those templates too
-- **Dev prompt boundary** — the developer delegation prompt ends at the gate. Orchestrator must NEVER fold "Commit via committer" / `make install` / deploy into the dev prompt; commit is a separate post-reviewer+curator cycle stage the orchestrator owns. Root cause of past drift: orchestrator misread the `tools-header/build.txt` responsibilities line ("Commit via committer") as a step to relay to the dev. Sync sites carrying this rule: `shared/rules/roles/orchestrator.md` (canonical), `harnesses/{claude,pi}/tools-header/build.txt` (responsibilities one-liner), `shared/apps/AGENTS-{phoenix,static}.md.j2`.
+- **Dev prompt boundary** — the developer delegation prompt ends at the gate. Never fold "Commit via committer" / `make install` / deploy into the dev prompt; commit is a separate post-reviewer+curator cycle stage. Sync sites carrying this rule: `harnesses/{claude,pi}/tools-header/build.txt` (responsibilities one-liner), `shared/apps/AGENTS-{phoenix,static}.md.j2`.
 - **Role identity at runtime** — hooks use two discriminators: `AGENT_TYPE` (per-subagent identity, set per-spawn) and `CLAUDE_ROLE_FAMILY` (per-launcher mode, set by outer session harness). `AGENT_TYPE` is used for per-role guards on subagents; `CLAUDE_ROLE_FAMILY` is used for `claude-debug`/`claude-shape` session-level guards. Not all hooks use both — check each hook's discriminator before assuming universal `$AGENT_TYPE` behavior
 - **Session logs are authoritative for commit examples** — when rules cite a real commit hash as a worked example (e.g., c374957), reviewer can verify the commit subject against session logs (developer committer section records the hash + subject) rather than running `git show` — session logs are the durable reference that survives force-push or repo resets (cf. session `20260610_082318_commit-message-quality-audit`, the `## developer Section`)
 - **Include-list-only diffs require simplified review** — when diffs touch only `.md.j2` template include lines (no rule-file body changes, no logic), the review scope narrows to three checks: (1) glob each included rule file exists, (2) grep the new token across all subagent templates for duplicate-within-file issues, (3) confirm semantic alignment between the rule's concern and the role's responsibility (e.g., `generators.md` forbidding phx.gen belongs in planner, not developer). No code logic, no prose-wording scrutiny — only path resolution, deduplication, and role fit. This pattern applies to template-only changes (e.g., adding a missing {% include %} to planner-phoenix.md.j2)
-- **Comment-only edits to hook bodies require gate** — developer hand-edits to Bash hook docstrings (e.g., correcting stale commentary in `phoenix-dev-gate.sh` Behaviour block) require `make test` gate (hook-parity + prompt-content-parity run inside) but need no NEW test changes and no sentinel sync when zero `*_test.sh` or `prompt-content-parity_test.sh` assertions reference the edited docstring text. Pre-gate: grep parity test for any hardcoded references to the text being changed to confirm zero sentinel coupling.
+- **Developer `make test` invocation cap exhaustion via verification runs** — The `dev-no-self-gate.sh` hook limits developer to 3 `make test`/`make ci`/`mix test` invocations per session. This budget can be exhausted by pure verification re-runs (no code changes) when a prior developer pass hit the cap before completing a clean end-to-end gate run. Plan the LAST developer pass in a cycle to END with the gate `make test` as its final action, not as a follow-up re-spawn — avoid burning an extra developer turn on pure verification of already-confirmed-green results. If cap is hit mid-cycle, escalate to planner for grid-control rather than spawning another developer re-run.
+- **Reviewer verification: test obligations named in plan must have direct test proof** — A plan's delegation prompt can name a specific test obligation (e.g., "assert via a captured-args seam") that the developer satisfies only partially — testing an adjacent pure helper instead of the actual integration point that calls it. Reviewers must re-check the exact function named in the plan's test-strategy line against the actual test file, not just confirm "a test exists for this general area." Template: plan says `default_codegen_call/6`, verify test file contains direct `default_codegen_call` invocation or a `:cmd_fn` seam that captures its args — not just a test of the helper function it calls.
 
 ## Planning Rule/Flag Changes — Mandatory Audit Pattern
 
@@ -150,7 +140,7 @@ Purpose: confirm the change does not break sibling systems:
 - Enforcement hooks (registry entry, denial rules) → verify hook runs, matches the condition, and integrates with surrounding gate logic.
 - Measurement hooks (parity tests, sentinel-based assertions) → confirm zero sentinels target the edited rule (so no sentinel sync is missed), or explicitly identify required sentinel updates.
 
-Example: editing `shared/rules/roles/orchestrator.md` prose checks: (1) auto-load wiring in `AGENTS-phoenix.md.j2`, (2) no `{% include %}` bake (claims confirmed via grep), (3) `prompt-content-parity_test.sh` sentinels referencing this rule (zero hits = no sentinel sync needed). A silent sentinel miss is a gate blocker — pre-completion grep of the parity test is mandatory.
+Example: editing a role rule file (e.g., `shared/rules/roles/planner.md`) prose checks: (1) `{% include %}` wiring in subagent templates that consume it, (2) `prompt-content-parity_test.sh` sentinels referencing this rule (zero hits = no sentinel sync needed). A silent sentinel miss is a gate blocker — pre-completion grep of the parity test is mandatory.
 
 ## Discipline Gaps & Mechanical Backstops — Prove-and-Run
 

@@ -26,7 +26,7 @@ assert_contains() {
     local desc="$1"
     local needle="$2"
     local haystack="$3"
-    if printf '%s' "$haystack" | grep -qF "$needle"; then
+    if printf '%s' "$haystack" | grep -qF -- "$needle"; then
         [ -n "${VERBOSE:-}" ] && printf 'PASS: %s\n' "$desc"
         pass=$((pass + 1))
     else
@@ -39,7 +39,7 @@ assert_not_contains() {
     local desc="$1"
     local needle="$2"
     local haystack="$3"
-    if printf '%s' "$haystack" | grep -qF "$needle"; then
+    if printf '%s' "$haystack" | grep -qF -- "$needle"; then
         printf 'FAIL: %s\n  unexpected: %s\n  haystack:  %s\n' "$desc" "$needle" "$haystack"
         fail=$((fail + 1))
     else
@@ -104,12 +104,56 @@ assert_contains "missing SP_FILE: stderr mentions 'system prompt file not found'
     "system prompt file not found" "$out"
 assert_eq "missing SP_FILE: exit code 2" "2" "$rc"
 
-# ── Test 2: valid SP_FILE + config + claude stub → exit 0 (ALLOW path) ───────
+# ── Test 2: valid SP_FILE + config + no test_harness/ dir → exit 2 ──────────
+# Build mode is unconditional now (no CODEGEN_BUILD_USE_LOOP flag) — the
+# non-interactive/no-resume path always execs `mix codegen.loop`, which
+# requires $CODEGEN_DIR/test_harness to exist. FAKE_CODEGEN has no
+# test_harness/ dir, so dispatch must fail loud rather than silently fall
+# through to the old claude stub path.
 printf 'fake system prompt\n' >"$FAKE_HARNESS/claude-build-system-prompt.txt"
 rc=0
 out=$(run_dispatch "CODEGEN_BUILD_MODEL=test-model CODEGEN_BUILD_EFFORT=low" "dummy-prompt") || rc=$?
-assert_eq "valid SP_FILE+config+claude stub: exit 0" "0" "$rc"
-assert_contains "valid path: claude stub ran (PATH present in env)" "PATH=" "$out"
+assert_eq "missing test_harness/ dir: exit code 2" "2" "$rc"
+assert_contains "missing test_harness/ dir: stderr mentions 'orchestration loop dir not found'" \
+    "orchestration loop dir not found" "$out"
+
+# ── Test 2b: valid SP_FILE + config + fake mix + test_harness/ dir → loop execs ──
+FAKE_BIN_MIX="$TMP_ROOT/bin-mix"
+mkdir -p "$FAKE_BIN_MIX"
+cp "$FAKE_BIN/claude" "$FAKE_BIN_MIX/claude"
+MIX_ARGS_FILE="$TMP_ROOT/mix-args.txt"
+cat >"$FAKE_BIN_MIX/mix" <<STUB
+#!/usr/bin/env bash
+printf '%s\n' "\$@" >"$MIX_ARGS_FILE"
+env >>"$MIX_ARGS_FILE"
+exit 0
+STUB
+chmod +x "$FAKE_BIN_MIX/mix"
+mkdir -p "$FAKE_CODEGEN/test_harness"
+rc=0
+out=$(
+    env -i \
+        HOME="${HOME:-/tmp}" \
+        PATH="$FAKE_BIN_MIX:$PATH" \
+        OCG_CODEGEN_DIR="$FAKE_CODEGEN" \
+        CODEGEN_BUILD_MODEL=test-model \
+        CODEGEN_BUILD_EFFORT=low \
+        CODEGEN_BUILD_NON_INTERACTIVE=1 \
+        bash "$FAKE_HARNESS/dispatch.sh" "dummy-prompt" \
+        2>&1
+) || rc=$?
+assert_eq "loop path: exit 0 (mix stub)" "0" "$rc"
+if [[ -f "$MIX_ARGS_FILE" ]]; then
+    MIX_ARGS_CONTENT="$(cat "$MIX_ARGS_FILE")"
+    assert_contains "loop path: mix codegen.loop invoked" "codegen.loop" "$MIX_ARGS_CONTENT"
+    assert_contains "loop path: --harness=claude_code passed" "--harness=claude_code" "$MIX_ARGS_CONTENT"
+    assert_contains "loop path: --stack passed" "--stack=" "$MIX_ARGS_CONTENT"
+    assert_contains "loop path: --cwd passed" "--cwd=" "$MIX_ARGS_CONTENT"
+    assert_contains "loop path: prompt forwarded" "dummy-prompt" "$MIX_ARGS_CONTENT"
+else
+    printf 'FAIL: loop path — mix args file missing\n'
+    fail=$((fail + 1))
+fi
 
 # ── Test 3: yq absent from PATH → exit 2 + "yq not found" ───────────────────
 # Build a fake bin with claude but WITHOUT yq; unset MODEL+EFFORT so config path is taken
@@ -171,14 +215,16 @@ assert_contains "missing model key: stderr mentions 'model missing/empty'" \
     "model missing/empty" "$out"
 assert_eq "missing model key: exit code should be 1" "1" "$rc"
 
-# ── Test 6: env-isolation — provider keys stripped before exec ────────────────
-# Caller passes OPENAI_API_KEY + ANTHROPIC_API_KEY; claude stub prints env.
-# Assertions: keys NOT in captured env; CODEGEN_BUILD_START_TS IS (positive control).
+# ── Test 6: env-isolation — provider keys stripped before exec (loop path) ────
+# Caller passes OPENAI_API_KEY + ANTHROPIC_API_KEY; mix stub prints env.
+# Assertions: keys NOT in captured env; CODEGEN_DIR IS (positive control —
+# proves the loop's own exec env, not the old exec block, ran).
+rm -f "$MIX_ARGS_FILE"
 rc=0
 out=$(
     env -i \
         HOME="${HOME:-/tmp}" \
-        PATH="$FAKE_BIN:$PATH" \
+        PATH="$FAKE_BIN_MIX:$PATH" \
         OCG_CODEGEN_DIR="$FAKE_CODEGEN" \
         CODEGEN_BUILD_MODEL=test-model \
         CODEGEN_BUILD_EFFORT=low \
@@ -188,12 +234,19 @@ out=$(
         bash "$FAKE_HARNESS/dispatch.sh" "dummy-prompt" \
         2>&1
 ) || rc=$?
-assert_not_contains "env-isolation: OPENAI_API_KEY not in claude env" \
-    "OPENAI_API_KEY" "$out"
-assert_not_contains "env-isolation: ANTHROPIC_API_KEY not in claude env" \
-    "ANTHROPIC_API_KEY" "$out"
-assert_contains "env-isolation: CODEGEN_BUILD_START_TS present (positive control — stub ran)" \
-    "CODEGEN_BUILD_START_TS=" "$out"
+assert_eq "env-isolation: loop path exit 0" "0" "$rc"
+if [[ -f "$MIX_ARGS_FILE" ]]; then
+    ENV_OUT="$(cat "$MIX_ARGS_FILE")"
+    assert_not_contains "env-isolation: OPENAI_API_KEY not in loop exec env" \
+        "OPENAI_API_KEY" "$ENV_OUT"
+    assert_not_contains "env-isolation: ANTHROPIC_API_KEY not in loop exec env" \
+        "ANTHROPIC_API_KEY" "$ENV_OUT"
+    assert_contains "env-isolation: CODEGEN_DIR present (positive control — mix stub ran)" \
+        "CODEGEN_DIR=" "$ENV_OUT"
+else
+    printf 'FAIL: env-isolation — mix args file missing\n'
+    fail=$((fail + 1))
+fi
 
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

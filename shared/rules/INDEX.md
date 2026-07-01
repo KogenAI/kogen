@@ -30,7 +30,6 @@ rules/
     no-role-spawn.md             leaf agent never spawns/delegates another role
     refactoring-grep-scope.md    grep scope discipline for safe refactoring sweeps
   roles/                    ← universal role rules
-    orchestrator.md         delegation/gates/commit timing/user comms/deploy
     planner.md              recipe/usage rules/plan structure
     developer.md            workflow, completion, pre-completion
     reviewer.md             15-step process + ast-grep
@@ -40,7 +39,6 @@ rules/
     phoenix/
       _core.md              idioms, Ecto, contexts, LiveView UI
       no-defensive-code.md  discriminating test: defensive swallow (forbidden) vs boundary validation / OTP carve-outs (allowed)
-      orchestrator.md       gate commands, INCONCLUSIVE, ext→agent, slice routing
       planner.md            dep scan, OTP convention
       developer.md          pre-completion greps, mix workflow, hot reload, cleanup, codegen
       reviewer.md           @spec/@type/~p/Gettext/github_workflows
@@ -64,18 +62,17 @@ rules/
 
 ## Role Ownership
 
-| Mistake                           | Role            | File                                                 |
-| --------------------------------- | --------------- | ---------------------------------------------------- |
-| Orchestrator delegated wrong time | Orchestrator    | `roles/orchestrator.md`                              |
-| Committer wrote wrong message     | Committer       | `roles/committer.md`                                 |
-| Developer wrote wrong code        | Developer       | `roles/developer.md`                                 |
-| Curator edited wrong path         | Context Curator | `roles/context-curator.md`                           |
-| Gate misclassified                | Hook author     | `codegen/harnesses/claude/hooks/phoenix-dev-gate.sh` |
-| CR missed issues                  | CR              | `roles/reviewer.md`                                  |
-| Elixir style broken               | Developer       | `stacks/phoenix/developer.md`                        |
-| CI broken                         | Developer       | `stacks/phoenix/testing.md`                          |
+| Mistake                       | Role            | File                                                            |
+| ----------------------------- | --------------- | --------------------------------------------------------------- |
+| Committer wrote wrong message | Committer       | `roles/committer.md`                                            |
+| Developer wrote wrong code    | Developer       | `roles/developer.md`                                            |
+| Curator edited wrong path     | Context Curator | `roles/context-curator.md`                                      |
+| Gate misclassified            | Hook author     | `test_harness/lib/codegen_test_harness/loop_gate.ex` (the loop) |
+| CR missed issues              | CR              | `roles/reviewer.md`                                             |
+| Elixir style broken           | Developer       | `stacks/phoenix/developer.md`                                   |
+| CI broken                     | Developer       | `stacks/phoenix/testing.md`                                     |
 
-**Key principle**: if orchestrator made wrong call, rule goes on orchestrator — even if subagent executed action.
+**Key principle**: if the loop's sequencing made a wrong call, that's an Elixir bug in `test_harness/`, not a rule-prose fix — rule files govern per-role behavior only.
 
 ## Recency-Bias Placement
 
@@ -101,11 +98,9 @@ Include order in `_*_developer_common.md.j2`: references first, situational midd
 
 These rule files are loaded by mechanisms OTHER than Jinja include into a subagent .md.j2. An orphan-rule-file audit MUST NOT flag them as dead — they are wired, just not via subagent bake:
 
-| File                             | Wired via                                                                                        | Why not subagent-baked                                                                                                   |
-| -------------------------------- | ------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------ |
-| `build-runtime/result-json.md`   | Downstream `@import` in orchestrator `AGENTS.md` (`@codegen/rules/build-runtime/result-json.md`) | Final-JSON contract is the orchestrator's responsibility, loaded at the top-level agent, not inside any subagent prompt. |
-| `roles/orchestrator.md`          | Orchestrator on-demand (auto-loaded by top-level `AGENTS.md`/`CLAUDE.md`)                        | The orchestrator is not a subagent; its rules load at session start, never via subagent `.md.j2` include.                |
-| `stacks/phoenix/orchestrator.md` | Orchestrator on-demand (read when classifying INCONCLUSIVE gates)                                | Stack-specific orchestrator guidance read by the top-level agent on demand, not baked into a subagent.                   |
+| File                           | Wired via                                                                                                            | Why not subagent-baked                                                                                                       |
+| ------------------------------ | -------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| `build-runtime/result-json.md` | Downstream `@import` in the interactive-session-fallback `AGENTS.md` (`@codegen/rules/build-runtime/result-json.md`) | Final-JSON contract is reported by the top-level agent (interactive/resumable fallback), not baked into any subagent prompt. |
 
 ## Project-Specific Content Check
 

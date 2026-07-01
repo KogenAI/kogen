@@ -11,11 +11,11 @@
 # GENERATED FROM shared/enforcement/registry.yaml — DO NOT EDIT
 #
 # Records each file path written/edited by a subagent into a per-subagent
-# ledger so post-developer-format.sh can format ONLY that subagent's files.
+# ledger — the interactive-session fallback's post-dev format step reads
+# this ledger to format ONLY that subagent's files.
 #
-# Solves the parallel-dev collision in post-developer-format.sh: the old
-# `git diff` approach was per-repo, not per-subagent. Parallel devs would
-# trip each other's in-flight edits.
+# Solves the parallel-dev collision: a bare `git diff` approach is per-repo,
+# not per-subagent. Parallel devs would trip each other's in-flight edits.
 #
 # Ledger location: ~/.claude/post-format/<session_id>_<agent_id>.txt
 # Each line: one absolute file path.

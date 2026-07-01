@@ -95,8 +95,8 @@ deny() {
 }
 
 # block <reason> — emit Stop-event {"decision":"block","reason":...} JSON.
-# Used by stop-resume.sh and stop-cycle-guard.sh to inject a synthetic
-# user turn after the orchestrator/subagent stops. Caller should `exit 0`.
+# Used by interactive-session-fallback Stop hooks to inject a synthetic
+# user turn after the main-agent session stops. Caller should `exit 0`.
 block() {
     local reason="$1"
     jq -n --arg reason "$reason" '{decision: "block", reason: $reason}'

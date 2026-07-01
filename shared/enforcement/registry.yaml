@@ -364,15 +364,6 @@
 #   reason: role value "unset" is a non-standard token; deferred until schema accepts it
 
 - kind: registration
-  id: curator-before-committer
-  event: PreToolUse
-  tool_guard: Agent
-  surface: user_global
-  signal: none
-  role: "*"
-  harnesses: all
-
-- kind: registration
   id: dev-no-ci
   event: PreToolUse
   tool_guard: Bash
@@ -492,15 +483,6 @@
   harnesses: all
 
 - kind: registration
-  id: phoenix-dev-gate
-  event: SubagentStop
-  tool_guard: "developer-phoenix-backend|developer-phoenix-frontend"
-  surface: user_global
-  signal: AGENT_TYPE
-  role: "developer-phoenix-backend|developer-phoenix-frontend"
-  harnesses: all
-
-- kind: registration
   id: phoenix-frontend-developer-guard
   event: PreToolUse
   tool_guard: "Edit|Write|MultiEdit"
@@ -519,49 +501,12 @@
   harnesses: all
 
 - kind: registration
-  id: pitch-shipped-before-stop
-  event: Stop
-  tool_guard: "*"
-  surface: user_global
-  signal: CLAUDE_ROLE_FAMILY
-  role: "*"
-  harnesses: all
-
-- kind: registration
-  id: build-queue-continuity
-  event: Stop
-  tool_guard: "*"
-  surface: user_global
-  signal: CLAUDE_ROLE_FAMILY
-  role: "*"
-  harnesses: all
-  rationale: Deterministic Stop-hook backstop for build-queue-no-permission-asks — blocks ending a session while the build-queue manifest shows remaining pitches and the current pitch's gate did not fail.
-
-- kind: registration
   id: planner-guard
   event: PreToolUse
   tool_guard: "Bash|Write|Edit|MultiEdit|EnterPlanMode|ExitPlanMode|Read"
   surface: user_global
   signal: AGENT_TYPE
   role: "planner-*"
-  harnesses: all
-
-- kind: registration
-  id: post-developer-format
-  event: SubagentStop
-  tool_guard: "developer-phoenix-backend|developer-phoenix-frontend|developer-static"
-  surface: user_global
-  signal: AGENT_TYPE
-  role: "developer-phoenix-backend|developer-phoenix-frontend|developer-static"
-  harnesses: all
-
-- kind: registration
-  id: curator-format
-  event: SubagentStop
-  tool_guard: "context-curator"
-  surface: user_global
-  signal: AGENT_TYPE
-  role: "context-curator"
   harnesses: all
 
 - kind: registration
@@ -612,16 +557,6 @@
   rationale: Enforces canonical session-log section ORDER (non-decreasing phase rank) and NO-CLOBBER (an Edit/Write must not remove any existing `## ` header), preventing scramble and the full-file-Write data-loss that drops Plan/Delegation content.
 
 - kind: registration
-  id: single-cycle-agent-in-flight
-  event: PreToolUse
-  tool_guard: Agent
-  surface: user_global
-  signal: CLAUDE_ROLE_FAMILY
-  role: "*"
-  harnesses: claude
-  rationale: "Fail-closed guard enforcing the build-cycle invariant: at most ONE cycle-family Agent is in flight at a time. Denies spawning planner-*/developer-*/reviewer-*/context-curator/committer when the transcript contains an Agent tool_use with no matching tool_result (i.e., a prior cycle subagent has not yet returned). Investigative roles (debug/shape/ops) bypass. Non-cycle types (Explore, Plan, general-purpose) bypass."
-
-- kind: registration
   id: static-site-build-check
   event: SubagentStop
   tool_guard: "developer-static"
@@ -637,82 +572,6 @@
   surface: user_global
   signal: AGENT_TYPE
   role: "developer-static"
-  harnesses: all
-
-- kind: registration
-  id: step-log-completeness
-  event: Stop
-  tool_guard: "*"
-  surface: user_global
-  signal: CLAUDE_ROLE_FAMILY
-  role: "*"
-  harnesses: all
-
-- kind: registration
-  id: step-log-missing-guard
-  event: Stop
-  tool_guard: "*"
-  surface: user_global
-  signal: CLAUDE_ROLE_FAMILY
-  role: "*"
-  harnesses: all
-
-- kind: registration
-  id: step-log-section-before-spawn
-  event: PreToolUse
-  tool_guard: Agent
-  surface: user_global
-  signal: CLAUDE_ROLE_FAMILY
-  role: "*"
-  harnesses: all
-
-- kind: registration
-  id: stop-cycle-guard
-  event: Stop
-  tool_guard: "*"
-  surface: user_global
-  signal: CLAUDE_ROLE_FAMILY
-  role: "*"
-  harnesses: all
-  rationale: Claude blocks (stop-cycle-guard.sh block calls); Pi session_shutdown is observe-only and cannot block, so the Pi twin only debugLogs — documented divergence, not a bug.
-
-- kind: registration
-  id: stop-resume
-  event: Stop
-  tool_guard: "*"
-  surface: user_global
-  signal: none
-  role: "*"
-  harnesses: all
-  timeout: 360
-
-- kind: registration
-  id: stop-spin-guard
-  event: SubagentStop
-  tool_guard: "developer-phoenix-backend|developer-phoenix-frontend|developer-static"
-  surface: user_global
-  signal: AGENT_TYPE
-  role: "developer-*"
-  harnesses: claude
-  rationale: developer-* SubagentStop spin circuit-breaker; no Pi equivalent (Pi Stop-control is observe-only, cannot block) — NOT-YET-PORTED.
-
-- kind: registration
-  id: stop-gate-failure-breaker
-  event: SubagentStop
-  tool_guard: "developer-phoenix-backend|developer-phoenix-frontend|developer-static"
-  surface: user_global
-  signal: AGENT_TYPE
-  role: "developer-*"
-  harnesses: all
-  rationale: Blocks and forces planner escalation when the dev-gate has logged ≥3 FAILED verdicts in the session — turns the advisory "route to planner" suffix into an enforced circuit-breaker.
-
-- kind: registration
-  id: stop-verify-planner-gate
-  event: Stop
-  tool_guard: "*"
-  surface: user_global
-  signal: AGENT_TYPE
-  role: "planner-*"
   harnesses: all
 
 - kind: registration

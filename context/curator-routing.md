@@ -47,12 +47,12 @@ Route in this order (matches the baked curator role rule's decision tree):
 3. Learning is project-specific → `context/*.md` (never `shared/rules/`).
 
 - **Style & code conventions** → `codegen/rules/STYLE_GUIDE.md`
-- **Hook design, guard patterns, script structure** → `codegen/rules/_core/hooks.md` or `codegen/rules/_core/guards.md`
-- **Subagent DSL, template patterns** → `codegen/rules/_core/subagent-dsl.md` or `codegen/rules/_core/templates.md`
-- **Rules distribution, rule composition** → `codegen/rules/_core/rules-distribution.md`
+- **Hook design, guard layering patterns** → `codegen/rules/shared/hook-layering.md`
+- **Shell script structure/discipline** → `codegen/rules/shared/shell-script-discipline.md`
+- **Rule file organization, rules distribution/composition** → `codegen/rules/shared/rule-file-organization.md`
 - **Stack-specific patterns** (Phoenix, static-site) → `codegen/rules/stacks/<stack>/`
 - **Role patterns** → `codegen/rules/roles/`
-- **Token mechanics, caching, prompt tuning** → `codegen/rules/_core/token-mechanics.md`
+- **Token mechanics, caching, prompt tuning** → `context/claude-token-mechanics.md` (project-local; no cross-project `_core` file exists for this topic)
 
 Always use `codegen/rules/**` (symlink path) — never `shared/rules/**` directly. The guard `context-curator-guard.sh` denies raw `shared/rules/` paths. `make install` propagates edits to all downstream consumers.
 
@@ -71,7 +71,7 @@ If a block spans both local and shared:
 1. Split the block — one for local routing, one for shared.
 2. Reference the pair in curator self-retrospective.
 
-Example: "discovered that phoenix-dev-gate.sh hook behavior differs from static-site-build-check.sh in a way that should be documented":
+Example: "discovered that the Phoenix loop gate behavior differs from static-site-build-check.sh in a way that should be documented":
 
 - `[local]` block → `context/hooks.md` (phoenix vs static differences)
-- `[shared]` block → `codegen/rules/_core/hooks.md` (common hook design pattern)
+- `[shared]` block → `codegen/rules/shared/hook-layering.md` (common hook design pattern)

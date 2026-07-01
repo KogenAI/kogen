@@ -116,6 +116,40 @@ if [[ -n "$CWD" ]]; then
     cd "$CWD"
 fi
 
+# Build mode (non-interactive, no --resume): the deterministic Elixir
+# orchestration loop drives the whole cycle (planner→developer→gate→
+# reviewer→curator→committer) via per-role codegen-call invocations,
+# instead of a single self-orchestrating claude session. Interactive and
+# resumable sessions are untouched — only the one-shot build path uses
+# the loop. Unconditional — no coexistence flag; the loop and the legacy
+# in-harness self-orchestration surface cannot run side by side.
+#
+# PATH: inherit ambient PATH as-is (no mise-shims prepend) — that prepend
+# is claude-binary-specific (below) and would shadow a test's stubbed
+# `mix` on PATH. `mix` itself must resolve through normal PATH resolution.
+if [[ -n "$NON_INTERACTIVE" && -z "$RESUME_ID" ]]; then
+    STACK="${CODEGEN_BUILD_STACK:-phoenix}"
+    LOOP_DIR="$CODEGEN_DIR/test_harness"
+
+    if [[ ! -d "$LOOP_DIR" ]]; then
+        printf 'claude dispatch: orchestration loop dir not found at %s\n' "$LOOP_DIR" >&2
+        exit 2
+    fi
+
+    exec env \
+        -u ANTHROPIC_API_KEY \
+        -u CLAUDECODE \
+        -u CLAUDE_CODE_SSE_PORT \
+        -u OPENAI_API_KEY \
+        -u CLAUDE_CODE_ENTRYPOINT \
+        -u CLAUDE_CODE_SESSION_ID \
+        -u CLAUDE_CODE_EXECPATH \
+        -u AI_AGENT \
+        CODEGEN_DIR="$CODEGEN_DIR" \
+        bash -c 'cd "$1" && exec mix codegen.loop --harness=claude_code "--stack=$2" "--cwd=$3" -- "$4"' \
+        _ "$LOOP_DIR" "$STACK" "$CWD" "$PROMPT"
+fi
+
 GATE_PATH="$PATH"
 if [[ -d "$HOME/.local/share/mise/shims" ]]; then
     GATE_PATH="$HOME/.local/share/mise/shims:$PATH"

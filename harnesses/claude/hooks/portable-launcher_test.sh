@@ -10,12 +10,12 @@
 #  6. dispatch.sh (claude) missing config → exit 1 + "config.yaml not found" in stderr
 #  7. dispatch.sh (claude) empty model block → exit 1 (no silent haiku fallback)
 #  8. load-role.sh model fail-loud on missing model
-#  9. gate: mix absent → FAILED gate-runner-missing + "mix not on PATH"
-# 10. gate: make absent → FAILED gate-runner-missing
-# 11. gate: exit 127 from runner on PATH but command exits 127 → FAILED not ALL CLEAR
-# 12. gate: happy-path exit 0 → ALL CLEAR preserved (regression guard)
-# 13. post-developer-format.sh bash-3.2 two-repo run → no crash, exit 0
-# 14. Static grep: no Areas/Optimum/codegen literal in launchers/dispatch/load-role/orchestrator.md
+#  9-12. (removed — phoenix-dev-gate.sh deleted under the orchestration-loop
+#         cutover; gate-runner-missing/happy-path coverage now lives in
+#         loop_gate_test.exs)
+# 13. (removed — post-developer-format.sh deleted under the orchestration-loop
+#      cutover; the loop runs an explicit format step instead)
+# 14. Static grep: no Areas/Optimum/codegen literal in launchers/dispatch/load-role
 # 15. Drift loop: SCRIPT_DIR + CODEGEN_DIR derivation block byte-identical across all non-build launchers
 
 set -u
@@ -350,148 +350,16 @@ stderr8=$(
 assert_exit "(8) load-role.sh missing model exits 1" "1" "$actual_exit"
 assert_contains "(8) load-role.sh stderr mentions missing model" "missing/empty" "$stderr8"
 
-# ── Test 9: gate: mix absent → FAILED gate-runner-missing ─────────────────────
-T9=$(make_project)
-LOG9="$T9/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_step1_gate9.md"
-cat >"$LOG9" <<'MD'
-# Step
+# Tests 9-12 (phoenix-dev-gate.sh gate-runner-missing/happy-path assertions)
+# removed: phoenix-dev-gate.sh was deleted as part of the orchestration-loop
+# cutover (Pass 1) — the deterministic Elixir loop (loop_gate.ex) now drives
+# the gate, not a SubagentStop hook. Their coverage (runner-missing fail-loud,
+# happy-path ALL CLEAR) is superseded by loop_gate_test.exs.
 
-## Plan
-
-**Gate**: `mix test`
-MD
-make_transcript "$T9/transcript.jsonl" "$LOG9"
-
-# PATH without mix — use minimal system PATH that has jq/awk/bash but not mix
-# mix is typically in a version manager shim dir, not /usr/bin
-SYSPATH9="/usr/bin:/bin:/usr/sbin:/sbin"
-# Also need jq on this PATH
-JQ_PATH=$(command -v jq 2>/dev/null || true)
-if [[ -n "$JQ_PATH" ]]; then
-    JQ_DIR="$(dirname "$JQ_PATH")"
-    SYSPATH9="$JQ_DIR:$SYSPATH9"
-fi
-
-actual_exit=0
-out9=$(
-    PATH="$SYSPATH9" bash "$SCRIPT_DIR/phoenix-dev-gate.sh" 2>/dev/null \
-        <<<"$(gate_input "$T9" developer-phoenix-backend sess9 "$T9/transcript.jsonl")"
-) || actual_exit=$?
-
-assert_not_contains "(9) mix absent: no ALL CLEAR" "ALL CLEAR" "$(cat "$LOG9" 2>/dev/null)"
-assert_contains "(9) mix absent: FAILED gate-runner-missing in log" "FAILED" "$(cat "$LOG9" 2>/dev/null)"
-assert_contains "(9) mix absent: gate-runner-missing label in log" "gate-runner-missing" "$(cat "$LOG9" 2>/dev/null)"
-rm -rf "$T9"
-
-# ── Test 10: gate: make exits 127 → FAILED gate-runner-missing ───────────────
-# make is in /usr/bin so we can't easily remove it; instead stub it to exit 127
-# and verify the 126/127 short-circuit fires with FAILED gate-runner-missing.
-T10=$(make_project)
-LOG10="$T10/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_step1_gate10.md"
-cat >"$LOG10" <<'MD'
-# Step
-
-## Plan
-
-**Gate**: `make test`
-MD
-make_transcript "$T10/transcript.jsonl" "$LOG10"
-
-BIN10="$BASE_TMP/t10_bin"
-mkdir -p "$BIN10"
-make_stub "$BIN10/make" 'exit 127'
-
-actual_exit=0
-out10=$(
-    PATH="$BIN10:$PATH" bash "$SCRIPT_DIR/phoenix-dev-gate.sh" 2>/dev/null \
-        <<<"$(gate_input "$T10" developer-phoenix-backend sess10 "$T10/transcript.jsonl")"
-) || actual_exit=$?
-
-assert_contains "(10) make exit-127: FAILED gate-runner-missing in log" "gate-runner-missing" "$(cat "$LOG10" 2>/dev/null)"
-assert_not_contains "(10) make exit-127: no ALL CLEAR" "ALL CLEAR" "$(cat "$LOG10" 2>/dev/null)"
-rm -rf "$T10"
-
-# ── Test 11: gate: exit 127 from runner on PATH but command exits 127 → FAILED ─
-# Runner (mix) is on PATH as a stub that exits 127, simulating "command not found"
-# inside the gate script itself.
-T11=$(make_project)
-LOG11="$T11/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_step1_gate11.md"
-cat >"$LOG11" <<'MD'
-# Step
-
-## Plan
-
-**Gate**: `mix test`
-MD
-make_transcript "$T11/transcript.jsonl" "$LOG11"
-
-BIN11="$BASE_TMP/t11_bin"
-mkdir -p "$BIN11"
-# mix is present but exits 127 (simulates "elixir not installed" scenario)
-make_stub "$BIN11/mix" 'exit 127'
-# Keep system PATH so jq/awk/etc remain available; shadow mix with stub
-
-actual_exit=0
-out11=$(
-    PATH="$BIN11:$PATH" bash "$SCRIPT_DIR/phoenix-dev-gate.sh" 2>/dev/null \
-        <<<"$(gate_input "$T11" developer-phoenix-backend sess11 "$T11/transcript.jsonl")"
-) || actual_exit=$?
-
-log11_content="$(cat "$LOG11" 2>/dev/null)"
-assert_contains "(11) exit-127 runner: FAILED in log" "FAILED" "$log11_content"
-assert_not_contains "(11) exit-127 runner: no ALL CLEAR" "ALL CLEAR" "$log11_content"
-rm -rf "$T11"
-
-# ── Test 12: gate: happy-path exit 0 → ALL CLEAR ─────────────────────────────
-T12=$(make_project)
-LOG12="$T12/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_step1_gate12.md"
-cat >"$LOG12" <<'MD'
-# Step
-
-## Plan
-
-**Gate**: `true`
-MD
-make_transcript "$T12/transcript.jsonl" "$LOG12"
-
-actual_exit=0
-out12=$(
-    RENDER_CHECK_CMD="" WIRING_CHECK_CMD="" \
-        bash "$SCRIPT_DIR/phoenix-dev-gate.sh" 2>/dev/null \
-        <<<"$(gate_input "$T12" developer-phoenix-backend sess12 "$T12/transcript.jsonl")"
-) || actual_exit=$?
-
-assert_contains "(12) happy-path: ALL CLEAR in log" "ALL CLEAR" "$(cat "$LOG12" 2>/dev/null)"
-assert_not_contains "(12) happy-path: no FAILED in log" "FAILED" "$(cat "$LOG12" 2>/dev/null)"
-rm -rf "$T12"
-
-# ── Test 13: post-developer-format.sh bash-3.2 two-repo run → no crash ────────
-T13A=$(make_project)
-T13B=$(make_project)
-# Create a changed file in each repo
-mkdir -p "$T13A/lib" && echo "content" >"$T13A/lib/foo.ex"
-mkdir -p "$T13B/lib" && echo "content" >"$T13B/lib/bar.ex"
-
-# Build a ledger at expected path: $HOME/.claude/post-format/<SESSION_ID>_<AGENT_ID>.txt
-T13_HOME="$BASE_TMP/t13_home"
-mkdir -p "$T13_HOME/.claude/post-format"
-LEDGER13="$T13_HOME/.claude/post-format/t13sess_agentabc.txt"
-printf '%s\n%s\n' "$T13A/lib/foo.ex" "$T13B/lib/bar.ex" >"$LEDGER13"
-
-FORMAT_HOOK="$SCRIPT_DIR/post-developer-format.sh"
-actual_exit=0
-# Run hook with ledger pointing to two-repo files; suppress actual formatting errors
-HOME="$T13_HOME" \
-    AGENT_TYPE="developer-phoenix-backend" \
-    AGENT_ID="agentabc" \
-    CWD="$T13A" \
-    SESSION_ID="t13sess" \
-    STOP_HOOK_ACTIVE="false" \
-    bash "$FORMAT_HOOK" </dev/null 2>/dev/null || actual_exit=$?
-
-# Just verify it doesn't crash (declare -A would crash on bash < 4.0 or exit non-zero)
-assert_exit "(13) post-developer-format.sh two-repo run exits 0" "0" "$actual_exit"
-rm -rf "$T13A" "$T13B" "$T13_HOME"
+# Test 13 (post-developer-format.sh bash-3.2 two-repo run) removed:
+# post-developer-format.sh was deleted as part of the orchestration-loop
+# cutover — the loop runs an explicit format step (OrchestrationLoop.run_format_step/2)
+# after the developer role instead of a SubagentStop fix-up hook.
 
 # ── Test 14: static grep — no hardcoded Areas/Optimum/codegen in source files ──
 FILES_TO_CHECK=(
@@ -506,7 +374,6 @@ FILES_TO_CHECK=(
     "$CODEGEN_ROOT/harnesses/claude/dispatch.sh"
     "$CODEGEN_ROOT/harnesses/pi/dispatch.sh"
     "$CODEGEN_ROOT/harnesses/claude/load-role.sh"
-    "$CODEGEN_ROOT/shared/rules/roles/orchestrator.md"
 )
 found_literal=""
 for f in "${FILES_TO_CHECK[@]}"; do
@@ -515,7 +382,7 @@ for f in "${FILES_TO_CHECK[@]}"; do
     fi
 done
 if [[ -z "$found_literal" ]]; then
-    [ -n "${VERBOSE:-}" ] && printf 'PASS: (14) no hardcoded Areas/Optimum/codegen in launchers/dispatch/load-role/orchestrator.md\n'
+    [ -n "${VERBOSE:-}" ] && printf 'PASS: (14) no hardcoded Areas/Optimum/codegen in launchers/dispatch/load-role\n'
     pass=$((pass + 1))
 else
     printf 'FAIL: (14) hardcoded Areas/Optimum/codegen found in:%s\n' "$found_literal"
