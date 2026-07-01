@@ -16,6 +16,7 @@ Tests live under `test_harness/test/stacks/` organized by stack (phoenix, static
 | `test_harness/lib/codegen_test_harness/`               | Shared test helpers and assertion modules                                                                             |
 | `test_harness/lib/codegen_test_harness/assertions.ex`  | Shared assertion helpers used across stack tests                                                                      |
 | `test_harness/lib/codegen_test_harness/fixtures.ex`    | Fixture helpers for scaffold and generated output tests                                                               |
+| `test_harness/lib/codegen_test_harness/role_resolver.ex` | Resolves `{role, harness}` → `{system_prompt_path, model, effort, allowed_tools}` via `config.yaml` + agent `.md`. Hermetic tests in `role_resolver_test.exs`. |
 | `test_harness/record-green.sh`                         | Records current commit SHA + timestamp to `last_green.json`; accepts `--auto-commit` flag for scoped fail-soft commit |
 | `test_harness/last_green.json`                         | Baseline: last commit SHA where full test suite passed                                                                |
 | `test_harness/test/harness_parity/pi_parity_test.exs`  | Cross-harness build parity tests (claude vs pi); tagged `@moduletag :harness_parity`                                  |
