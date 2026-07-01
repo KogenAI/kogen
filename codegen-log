@@ -16,6 +16,9 @@ if [[ ! -d "$SCRIPT_DIR/codegen" && -n "${OCG_CODEGEN_DIR:-}" ]]; then
     SCRIPT_DIR="$OCG_CODEGEN_DIR"
 fi
 
+CODEGEN_ROOT="$SCRIPT_DIR"
+LOG_ROOT="${CODEGEN_BUILD_CWD:-${CLAUDE_PROJECT_DIR:-$PWD}}"
+
 SUBCOMMAND=""
 SLUG=""
 BODY_SOURCE=""
@@ -72,7 +75,7 @@ if [[ -z "$SUBCOMMAND" ]]; then
 fi
 
 repo_root() {
-    printf '%s' "$SCRIPT_DIR"
+    printf '%s' "$LOG_ROOT"
 }
 
 latest_session_log() {
@@ -87,11 +90,10 @@ latest_session_log() {
 }
 
 version_stamp() {
-    local root project_hash context_hash codegen_hash claude_version stamped_at
-    root="$(repo_root)"
-    project_hash="$(git -C "$root" rev-parse --short HEAD 2>/dev/null || printf 'unknown')"
-    context_hash="$(git -C "$root/codegen/rules" rev-parse --short HEAD 2>/dev/null || printf 'unknown')"
-    codegen_hash="$(git -C "$root" rev-parse --short HEAD 2>/dev/null || printf 'unknown')"
+    local project_hash context_hash codegen_hash claude_version stamped_at
+    project_hash="$(git -C "$LOG_ROOT" rev-parse --short HEAD 2>/dev/null || printf 'unknown')"
+    context_hash="$(git -C "$CODEGEN_ROOT/codegen/rules" rev-parse --short HEAD 2>/dev/null || printf 'unknown')"
+    codegen_hash="$(git -C "$CODEGEN_ROOT" rev-parse --short HEAD 2>/dev/null || printf 'unknown')"
     if command -v claude >/dev/null 2>&1; then
         claude_version="$(claude --version 2>/dev/null || printf 'unknown')"
     elif command -v pi >/dev/null 2>&1; then
@@ -191,7 +193,7 @@ section)
         body="$(cat)"
     fi
 
-    body_file="$(mktemp "${SCRIPT_DIR}/.codegen-log-body.XXXXXX")"
+    body_file="$(mktemp "${TMPDIR:-/tmp}/.codegen-log-body.XXXXXX")"
     printf '%s' "$body" >"$body_file"
 
     log_file="${CODEGEN_LOG_PATH:-$(latest_session_log)}"
