@@ -218,6 +218,20 @@ assert_contains \
     "$CODEGEN_DIR/harnesses/pi/pi-shape-system-prompt.txt" \
     "$SENTINEL10"
 
+SENTINEL11="User-facing surface removal/change without operator sign-off"
+assert_contains \
+    "operator-surface sentinel in claude-shape-system-prompt.txt" \
+    "$CODEGEN_DIR/harnesses/claude/claude-shape-system-prompt.txt" \
+    "$SENTINEL11"
+assert_contains \
+    "operator-surface sentinel in pi-shape-system-prompt.txt" \
+    "$CODEGEN_DIR/harnesses/pi/pi-shape-system-prompt.txt" \
+    "$SENTINEL11"
+assert_contains \
+    "operator-surface sentinel in ready.md.j2" \
+    "$CODEGEN_DIR/harnesses/claude/commands/ready.md.j2" \
+    "$SENTINEL11"
+
 echo ""
 echo "Results: $pass passed, $fail failed"
 

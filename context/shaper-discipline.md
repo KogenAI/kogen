@@ -54,6 +54,20 @@ The classifier narrowed significantly in the `shape-ask-only-ux-questions` harde
 
 If 1 or 2 is yes AND 3 is no → ask. Otherwise → auto-decide and record the assumption.
 
+**Standing always-ask carve-out**: user-facing surface removal/change is the single class that is ALWAYS a product fork — see § Operator-Owned Surface Changes.
+
+## Operator-Owned Surface Changes
+
+Removing or changing an operator-typed/seen surface — a CLI flag, subcommand, command name, prompt/output contract, or workflow step — is the operator's decision, surfaced via `AskUserQuestion`, NEVER auto-decided as "internal wiring" even when a new implementation makes the old wiring redundant. This generalizes the `--queue` incident, where the shaper auto-decided a user-facing flag removal as "internal wiring the new code replaces" without asking.
+
+**Detector**: any DELETE/replace move naming a launcher/command file (`*-build.sh`, `ocg`, `codegen-*`, a slash-command `.md.j2`) OR a flag/subcommand token (`--<flag>`, a positional subcommand) → the `## What stays the same (external contract)` section MUST enumerate that surface's disposition.
+
+**External-contract completeness sub-rule**: the external-contract section MUST enumerate EVERY operator-facing surface the affected launcher/command exposes (every flag, subcommand, output contract), not just the primary ones. A touched-but-omitted surface is treated as an unreviewed UX change → blocker.
+
+**Resolution**: BLOCKED from SHAPED/ready unless (a) the surface is guaranteed re-wired to the new implementation and enumerated in the external-contract section, OR (b) an `AskUserQuestion` keep-vs-remove fork is resolved by the operator. The shaper may NEVER auto-decide the removal as "internal wiring the new code replaces."
+
+**Coverage**: this rule is enforced at three points — the shape-mode readiness-check scan list (`harnesses/shared/prompt-bodies/shape.txt`, self-contained since shape.txt is baked without `_authoring-spine.txt`), the inline claim-introduction probe (`shared/prompt-fragments/_probing.txt`), and the `/ready` promotion gate (`harnesses/claude/commands/ready.md.j2`). All three carry the byte-identical sentinel title `User-facing surface removal/change without operator sign-off`, asserted by `harnesses/claude/hooks/prompt-content-parity_test.sh`.
+
 ## Answered-Question Memory
 
 Before composing ANY AskUserQuestion, the shaper scans the conversation history for whether the user already answered — or DEFLECTED — this question or an equivalent one.
@@ -202,7 +216,7 @@ This is a SEPARATE pitch and change, not folded into shape-mode tightening. The 
 
 ## Trigger Keywords
 
-shaper rules, ask-vs-decide, deferral-with-draft, decompose-then-split, derive-and-write edges, Rule G, Rule H, Rule I, Rule J, shape mode discipline, prompt durability, section-name anchors, sweep-class, completeness contract, full-vocabulary sweep, producer/verifier reconciliation
+shaper rules, ask-vs-decide, deferral-with-draft, decompose-then-split, derive-and-write edges, Rule G, Rule H, Rule I, Rule J, shape mode discipline, prompt durability, section-name anchors, sweep-class, completeness contract, full-vocabulary sweep, producer/verifier reconciliation, operator-owned surface, user-facing surface removal, surface preservation, keep-vs-remove fork
 
 ## See Also
 
