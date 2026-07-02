@@ -32,14 +32,14 @@ describe("reviewer-guard", () => {
     delete process.env["AGENT_TYPE"];
   });
 
-  it("blocks Bash for reviewer-phoenix", async () => {
+  it("allows Bash for reviewer-phoenix (reviewer-guard no longer gates Bash — see reviewer-bash-allowlist)", async () => {
     const result = await runHook("mix test", "reviewer-phoenix");
-    assert.ok((result as { block?: boolean }).block === true);
+    assert.ok(result == null || (result as { block?: boolean }).block !== true);
   });
 
-  it("blocks Bash for reviewer-static", async () => {
+  it("allows Bash for reviewer-static (reviewer-guard no longer gates Bash — see reviewer-bash-allowlist)", async () => {
     const result = await runHook("npm run build", "reviewer-static");
-    assert.ok((result as { block?: boolean }).block === true);
+    assert.ok(result == null || (result as { block?: boolean }).block !== true);
   });
 
   it("allows Bash for developer-phoenix-backend", async () => {

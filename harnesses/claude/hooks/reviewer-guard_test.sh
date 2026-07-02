@@ -2,8 +2,9 @@
 # reviewer-guard_test.sh — unit tests for reviewer-guard.sh
 #
 # Tests:
-#   1. Bash tool is BLOCKED for reviewer-phoenix (deny envelope)
-#   2. Bash tool is BLOCKED for reviewer-static  (deny envelope)
+#   1. Bash tool PASSES for reviewer-phoenix (reviewer-guard no longer gates
+#      Bash — reviewer-bash-allowlist.sh governs it; see that hook's tests)
+#   2. Bash tool PASSES for reviewer-static  (same as above)
 #   3. Bash tool PASSES for developer-phoenix-backend (allow)
 #   4. Edit on canonical single-session log ALLOWS (full %H%M%S form)
 #   5. Edit on canonical multi-step log ALLOWS (full %H%M%S step form)
@@ -46,13 +47,16 @@ run_test() {
 }
 
 FIXTURE_PHOENIX='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"mix test"},"agent_type":"reviewer-phoenix","agent_id":"abc123"}'
-run_test "Bash blocked for reviewer-phoenix" "2" "$FIXTURE_PHOENIX"
+run_test "Bash passes for reviewer-phoenix (reviewer-guard no longer gates Bash)" "0" "$FIXTURE_PHOENIX"
 
 FIXTURE_STATIC='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"npm run build"},"agent_type":"reviewer-static","agent_id":"abc123"}'
-run_test "Bash blocked for reviewer-static" "2" "$FIXTURE_STATIC"
+run_test "Bash passes for reviewer-static (reviewer-guard no longer gates Bash)" "0" "$FIXTURE_STATIC"
 
 FIXTURE_ALLOW='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"mix test"},"agent_type":"developer-phoenix-backend","agent_id":"abc123"}'
 run_test "Bash passes for developer-phoenix-backend" "0" "$FIXTURE_ALLOW"
+
+FIXTURE_CODEGEN_LOG='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"printf %s \"body\" | codegen-log section --body @-"},"agent_type":"reviewer-phoenix","agent_id":"abc123"}'
+run_test "Bash codegen-log invocation passes for reviewer-phoenix" "0" "$FIXTURE_CODEGEN_LOG"
 
 # Test 4: Edit on canonical single-session log (full %H%M%S) — ALLOW
 FIXTURE_EDIT_SESSION='{"hook_event_name":"PreToolUse","tool_name":"Edit","tool_input":{"file_path":"codegen/logging/20260602_201515_session.md","old_string":"x","new_string":"y"},"agent_type":"reviewer-phoenix","agent_id":"abc123"}'

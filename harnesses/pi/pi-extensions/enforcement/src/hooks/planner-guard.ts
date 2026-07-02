@@ -56,6 +56,17 @@ export function register(pi: ExtensionAPI): void {
       const command: string =
         (event.input as { command?: string }).command ?? "";
 
+      // codegen-log carve-out (mirrors session-log-writer-only.ts): the plan
+      // body is written via a piped `codegen-log section --body @-` call, so
+      // the piped body is arbitrary plan prose that may legitimately contain
+      // gate tokens, git verbs, redirect chars, or ../ traversal sequences.
+      // Exit-allow BEFORE the broad scans below so codegen-log invocations
+      // are never denied by prose in their own piped body. The body is DATA
+      // to codegen-log, never executed.
+      if (/(^|[\s/])codegen-log\b/.test(command)) {
+        return;
+      }
+
       // Path traversal
       if (/\.\.\//.test(command)) {
         return deny(

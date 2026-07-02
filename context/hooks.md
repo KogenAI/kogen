@@ -26,20 +26,20 @@ Hook registration: **Two pipelines** — both write to `harnesses/claude/hooks/*
 | `harnesses/claude/hooks/static-site-build-check.sh` | SubagentStop (interactive-session fallback only) — builds static site + render check, appends gate verdict. Under the loop, the static stack's gate step invokes the same render check directly via `LoopGate.run_gate`. |
 | `harnesses/claude/hooks/pitch-format-validator.sh` | Stop — validates ## Questions/## Answers/> Status: grammar in active pitch for shape/refactor/ops sessions. |
 | `harnesses/claude/hooks/llm-pending-sweep.sh` | Stop — sweeps for pending LLM-generated artifacts before exit |
-| `harnesses/claude/hooks/session-log-section-integrity.sh` | PreToolUse — enforces section header presence before Edit |
+| `harnesses/claude/hooks/session-log-writer-only.sh` | PreToolUse — `codegen-log` is the SOLE writer of session logs; denies raw Edit/Write/MultiEdit and raw Bash writes into `codegen/logging/*.md` |
 | `harnesses/claude/hooks/no-python-json.sh` | PreToolUse — blocks inline `python3 -c` JSON parsing |
 | `harnesses/claude/hooks/no-cat-pipe.sh` | PreToolUse — blocks `cat file \| ...` and `head`/`tail` pipe patterns |
 | `harnesses/claude/hooks/no-git-stash.sh` | PreToolUse — blocks `git stash` |
 | `harnesses/claude/hooks/orchestrator-no-source-edit.sh` | PreToolUse — blocks the main-agent session from editing source files; `experiment` role: exits 0 (confinement via launcher `--worktree`, not path restriction); distinct from `debug`/`shape` read-only arm |
 | `harnesses/claude/hooks/orchestrator-no-ci.sh` | PreToolUse — blocks the main-agent session from running CI/test commands |
 | `harnesses/claude/hooks/orchestrator-read-discipline.sh` | PreToolUse — blocks the main-agent session from reading files it shouldn't |
-| `harnesses/claude/hooks/orchestrator-session-log-name-guard.sh` | PreToolUse — validates session-log filename format; denies non-canonical names |
 | `harnesses/claude/hooks/subagent-read-discipline.sh` | PreToolUse — blocks subagents from reading context files they shouldn't |
-| `harnesses/claude/hooks/pre-commit-guard.sh` | PreToolUse — blocks direct `git commit` outside committer role |
+| `harnesses/claude/hooks/pre-commit-guard.sh` | PreToolUse — blocks direct `git commit` outside committer role; early codegen-log carve-out (mirrors session-log-writer-only's own pattern) exits allow BEFORE the git-verb scans when the command invokes codegen-log, so role-authored prose piped into a session-log section body is never denied by containing a git-verb token — bare history-mutating git commands remain denied |
 | `harnesses/claude/hooks/dev-no-ci.sh` | PreToolUse — blocks developer from running CI commands |
 | `harnesses/claude/hooks/developer-no-self-gate.sh` | PreToolUse — blocks developer gate invocation |
-| `harnesses/claude/hooks/planner-guard.sh` | PreToolUse — enforces planner constraints (no writes, no bash exec); blocks: (1) Bash redirects to `codegen/logging/*.md` including shell heredocs, `>>` appends, and brace-group redirect forms (all defeat transcript-based path detection); requires exact `codegen/logging/` or `/tmp/` path in redirect target (no `./codegen/logging/` prefix); (2) Read on implementer rule files (`developer.md`, `testing-liveview.md`, `testing.md`, `reviewer.md`, `committer.md`) to prevent token waste and over-specification; (3) `rm`/`rmdir` outside `/tmp/`; (4) `git` state-modify and state-inspection commands. **Implication**: session log writes must use Edit tool, NOT bash redirect patterns of ANY form; edits to rule files must be planned blind (verbatim content + text anchors supplied to developer subagent). **Planning rule edits blind**: planner cannot Read rule files — use Grep tool to locate anchors, supply verbatim in pitch; developer uses those anchors with Edit tool. |
-| `harnesses/claude/hooks/reviewer-guard.sh` | PreToolUse — reviewer constraint enforcement |
+| `harnesses/claude/hooks/planner-guard.sh` | PreToolUse — enforces planner constraints (no writes, no bash exec); an early codegen-log carve-out (top of the Bash block, mirrors session-log-writer-only's own pattern) exits allow BEFORE the scans below when the command invokes codegen-log, so the plan's session-log section body (piped prose) is never denied by containing a gate token, git verb, redirect char, or `../` sequence; blocks (non-codegen-log commands): (1) Bash redirects to `codegen/logging/*.md` including shell heredocs, `>>` appends, and brace-group redirect forms (all defeat transcript-based path detection); requires exact `codegen/logging/` or `/tmp/` path in redirect target (no `./codegen/logging/` prefix); (2) Read on implementer rule files (`developer.md`, `testing-liveview.md`, `testing.md`, `reviewer.md`, `committer.md`) to prevent token waste and over-specification; (3) `rm`/`rmdir` outside `/tmp/`; (4) `git` state-modify and state-inspection commands. **Implication**: session-log section body writes route through `codegen-log section --body @-` (piped), NOT bash redirect patterns of ANY form; edits to rule files must be planned blind (verbatim content + text anchors supplied to developer subagent). **Planning rule edits blind**: planner cannot Read rule files — use Grep tool to locate anchors, supply verbatim in pitch; developer uses those anchors with Edit tool. |
+| `harnesses/claude/hooks/reviewer-guard.sh` | PreToolUse — reviewer constraint enforcement (Write/Edit/MultiEdit/Monitor deny; Bash no longer gated here — see reviewer-bash-allowlist.sh) |
+| `harnesses/claude/hooks/reviewer-bash-allowlist.sh` | PreToolUse — reviewer Bash allowlist (GENERATED): default-deny; permits only `codegen-log` invocations (any position — typically piped, e.g. `printf '%s' "$body" \| codegen-log section --body @-`) plus safe read-only utilities (`git diff/status/log/show`, `echo`, `wc`, `cat`, `ls`, `true`, `:`). No history-mutating git verbs. Fills the Bash gap left when reviewer-guard.sh's Bash hard-deny arm was removed, so reviewers can write their session-log section via codegen-log. |
 | `harnesses/claude/hooks/context-curator-guard.sh` | PreToolUse — guards context file edits to curator role only |
 | `harnesses/claude/hooks/context-index-parity.sh` | PreToolUse — enforces context + PROJECT_CONTEXT.md parity |
 | `harnesses/claude/hooks/operator-subagent-allowlist.sh` | PreToolUse — enforces agent delegation allowlist (role ∈ {debug, shape, ops}); gates slash commands that spawn subagents |
@@ -85,7 +85,7 @@ Event → script mapping from `harnesses/claude/claude-code-settings.json`:
 
 | Event | Hook Scripts (key ones) | Purpose |
 | - | - | - |
-| `PreToolUse` | no-cat-pipe, no-python-json, no-git-stash, orchestrator-no-source-edit, orchestrator-no-ci, orchestrator-read-discipline, subagent-read-discipline, pre-commit-guard, dev-no-ci, developer-no-self-gate, planner-guard, reviewer-guard, context-curator-guard, context-index-parity, operator-subagent-allowlist, build-worker-cwd-guard, build-no-success-before-commit, committer-bash-allowlist (GENERATED), committer-write-allowlist (GENERATED), committer-no-trailer-guard, committer-single-line-guard, committer-subject-length, phoenix-backend-developer-guard, phoenix-frontend-developer-guard, static-site-ex-guard, session-log-section-integrity, track-subagent-edits, usage-rules-grep-guard, env-var-sample-consistency, llm-suite-guard, llm-test-guard, claude-debug-bash-guard, claude-inspector-\* | Discipline enforcement before tool runs |
+| `PreToolUse` | no-cat-pipe, no-python-json, no-git-stash, orchestrator-no-source-edit, orchestrator-no-ci, orchestrator-read-discipline, subagent-read-discipline, pre-commit-guard, dev-no-ci, developer-no-self-gate, planner-guard, reviewer-guard, reviewer-bash-allowlist (GENERATED), context-curator-guard, context-index-parity, operator-subagent-allowlist, build-worker-cwd-guard, build-no-success-before-commit, committer-bash-allowlist (GENERATED), committer-write-allowlist (GENERATED), committer-no-trailer-guard, committer-single-line-guard, committer-subject-length, phoenix-backend-developer-guard, phoenix-frontend-developer-guard, static-site-ex-guard, session-log-writer-only, track-subagent-edits, usage-rules-grep-guard, env-var-sample-consistency, llm-suite-guard, llm-test-guard, claude-debug-bash-guard, claude-inspector-\* | Discipline enforcement before tool runs |
 | `PostToolUse` | (autovalidate inline script for `make llm-phoenix`) | Post-tool validation |
 | `PostToolUseFailure` | track-tool-failures | Logs tool failures for diagnostics |
 | `SubagentStop` | developer-no-self-gate-reset, static-site-build-check, subagent-retrospective-guard | Interactive-session-fallback-only: gate verdicts + retrospective validation. Dead under the loop (no SubagentStop fires for per-role `codegen-call` invocations) — the loop covers gate execution (`LoopGate`), formatting (`run_format_step`), and cycle-state advancement explicitly as loop steps. |
@@ -124,7 +124,7 @@ Hooks check session log state via `## <role>.*Section` patterns:
 
 `committer` and `context-curator` are stack-agnostic — always literal, no stack suffix.
 
-**Stack-prefixed planner variants** (`planner-phoenix`, `planner-static`): `session-log-section-integrity.sh` requires the literal stack-prefixed header (e.g., `## planner-phoenix Section`) before allowing the subagent's Edit. The bare-planner bypass does NOT widen to stack variants.
+**Stack-prefixed planner variants** (`planner-phoenix`, `planner-static`): `codegen-log`'s `section_header_for_agent` derives the literal stack-prefixed header (e.g., `## planner-phoenix Section`) from `AGENT_TYPE`/`CLAUDE_ROLE` (or the `--role` override). The bare-planner case does NOT widen to stack variants.
 
 ## Retrospective Placement Rule (subagent-retrospective-guard)
 
@@ -138,7 +138,7 @@ Hooks check session log state via `## <role>.*Section` patterns:
 
 When extracting a slug from a session log filename, use a **fixed-width regex anchored on timestamp and suffix**, not a pattern that splits on `_`. This handles slugs containing underscores without ambiguity.
 
-**Canonical pattern** (matches the slug-extraction block in `orchestrator-session-log-name-guard.sh`):
+**Canonical pattern** (matches the slug-extraction block in `codegen-log`'s `init` subcommand):
 
 ```bash
 slug=$(basename "$log" | sed -E 's/^[0-9]{8}_[0-9]{6}_(.+)_session\.md$/\1/')
@@ -194,6 +194,8 @@ If a file is committed with prettier multi-line formatting, the committed versio
 
 **Critical gate ordering**: Edit registry → `make install` FIRST (regenerates committed generated files) → `make test`. Reversed order causes `enforce-registry-parity` drift failure. Never run prettier on compiler-generated files.
 
+**Multi-value `role:` compiler case-arm join**: `enforcement_compiler.py`'s `_bash_agent_guard` joins multi-value `role: "a|b"` tokens with `" | "` (space-padded), not a bare `|`, when emitting the bash `case "$AGENT_TYPE" in a | b) ;; ...` guard. `hook_registrations.py`'s role-parity checker (`validate_role_body`) requires EACH token to independently satisfy either `<token>)` (last token) or `<token> |` (space before the pipe, earlier tokens) as a literal substring in the generated body — a bare `a|b)` join leaves every non-last token unmatched, failing `make hook-parity` with "declares role: X but body does not contain...". `reviewer-bash-allowlist` (first generated denial entry with a multi-value role) surfaced this; POSIX `case` syntax accepts space around `|` in patterns, so the fix is compiler-side and applies to all future multi-role generated hooks.
+
 ## Main-Agent-Scoped Guards (Registration-Based)
 
 Guards scoped to the main-agent session (empty `AGENT_TYPE`/`AGENT_ID`) use `kind: registration` entries — not the `generated: true` denial pipeline. The main-agent session lacks a named role; `role: "*"` would double-cover committer/reviewer allowlists.
@@ -212,33 +214,15 @@ When designing shell case statements where one verdict variant should block and 
 
 `awk '{print $2}'` on renamed files (`R  old -> new`) extracts only `$2`, truncating the arrow and target. Use `sed 's/^[^ ]* //'` instead — strips leading status code + one space, preserving full paths including renames and spaces. Used by `build-no-success-before-commit.sh` to enumerate uncommitted files in deny message.
 
-## Session-Log Editing Patterns
+## Session-Log Writing (codegen-log Sole-Writer Model)
 
-Multiple session-log hooks (`session-log-no-duplicate-section`, `session-log-section-integrity`, `session-log-structure`) fire on Edit/Write/MultiEdit. Both `session-log-structure` (bash + TypeScript) and `session-log-no-duplicate-section` (bash + TypeScript) use result-simulation: they apply `old_string` → `new_string` to disk content before validation.
+`codegen-log` is the SOLE writer of session logs — raw Edit/Write/MultiEdit on `codegen/logging/*.md`, and raw Bash writes (redirect/tee/in-place-stream-edit/move-into) into that path, are denied by the `session-log-writer-only` hook (Claude + Pi twins). There is no result-simulation or Edit-anchoring concern anymore: all section insertion, replacement, and append operations are performed by `codegen-log`'s own rank-ordered awk logic, which is correct by construction (no duplicate headers, no order violations, no atomicity gaps between a section-header and its body).
 
-**Safe edit patterns** (enforced by result-aware validation):
-- Re-state a section header in `old_string` and `new_string` when replacing the body. The duplicate-check simulates the result — no duplicate flag if the header appears only once post-edit.
-- Edit section bodies anchored on any line (header or prose). The order check simulates the result — only the final section header ranks matter.
-- MultiEdit folds edits in array order, simulating each change before checking constraints.
+- `codegen-log section --body @-` replaces a section's body at canonical rank (creates the header if absent).
+- `codegen-log section --role <role> --body @-` overrides the AGENT_TYPE/CLAUDE_ROLE-derived header — used by the loop to pre-open a role's section before spawn.
+- `codegen-log append --role <role> --body @-` inserts the piped body at the END of an EXISTING section's body, preserving the prior body — used for death-stamp H3 markers. Exits 2 if the target section does not exist (append never creates).
 
-Example: To replace body under a pre-seeded `## developer-phoenix-backend Section`:
-- ✅ `old_string = "## developer-phoenix-backend Section\n\nbody..."`, `new_string = "## developer-phoenix-backend Section\n\nupdated body..."` → allowed (result has header once; structure order correct after substitution).
-
-The result-simulation approach means agents no longer need workarounds like "anchor old_string on prose only" — the hooks validate against the simulated final state, not intermediate concatenations.
-
-### Role-Guard Deadlock When Appending Section Body
-
-When a role's guard blocks Write to a file (e.g., `reviewer-guard.sh` blocks Write to `reviewer-static` template), appending body content to a pre-seeded session-log section requires Edit tool with careful anchoring to avoid guard conflicts. However, the session-log guard hooks themselves (`session-log-no-duplicate-section`, `session-log-structure`) no longer block such edits because they validate against the simulated post-edit state, not static patterns.
-
-**Safe pattern (works with result-simulation)**: Match `old_string` on the section header or any section body content, and re-emit the header in `new_string` if needed. The duplicate-check simulates the result — it allows the header if it appears only once in the final simulated content. The structure order check applies `old → new` before checking ranks, so re-stating a section header in context is safe.
-
-### Section Header & Body Atomicity Requirement
-
-When a subagent edits a pre-seeded session-log section (e.g., `## developer-static Section` stub already present), updating both the `## Files Modified` list and the section body REQUIRES atomicity: both updates must occur in the SAME Edit call. Splitting across two sequential Edits causes the `session-log-section-integrity.sh` hook to detect a temporarily-missing header and deny the first Edit, blocking the second.
-
-**Correct pattern**: In a SINGLE Edit call, match `old_string` on a line from the section body (or the header itself) and `new_string` contains both updated content (Files Modified and section body together). This ensures the header never disappears between edits — the hook validates the final state after all substitutions.
-
-**Do NOT**: Attempt two sequential edits (update Files Modified list first, append section body second) — the intermediate state between edits will fail the integrity check.
+See `shared/rules/_core/session-log.md` § Ownership for the full contract.
 
 ## Pitfalls
 

@@ -3,7 +3,11 @@
  *
  * Mirrors: templates/shared/hooks/reviewer-guard.sh
  * Event: tool_call (PreToolUse equivalent)
- * Matcher: bash, write, edit
+ * Matcher: write, edit
+ *
+ * Bash is gated separately by reviewer-bash-allowlist.ts (codegen-log plus
+ * safe read-only utilities only) so reviewers can write their session-log
+ * section body via codegen-log.
  */
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
@@ -12,7 +16,7 @@ import { deny, parseAgentType, debugLog } from "../lib/hook-helpers";
 export const HANDLER_META = {
   name: "reviewer-guard",
   event: "tool_call",
-  matcher: "bash|write|edit",
+  matcher: "write|edit",
 } as const;
 
 const REVIEWER_AGENTS = new Set(["reviewer-phoenix", "reviewer-static"]);
@@ -27,12 +31,6 @@ export function register(pi: ExtensionAPI): void {
     if (event.toolName === "write" || event.toolName === "edit") {
       return deny(
         `BLOCKED by reviewer-guard: reviewer "${agentType}" is read-only — no Edit/Write allowed.`,
-      );
-    }
-
-    if (event.toolName === "bash") {
-      return deny(
-        `BLOCKED by reviewer-guard: reviewer "${agentType}" may not run Bash — read-only investigation only.`,
       );
     }
   });

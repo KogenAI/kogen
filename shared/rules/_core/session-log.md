@@ -24,11 +24,14 @@ Session logs live under `/codegen/` and are **gitignored** — in the codegen re
 
 ## Ownership
 
-- The loop creates the log FIRST via **`codegen-log init --slug <slug>`** (Bash), not raw Edit/Write, and never via Bash redirect.
-- `codegen-log section --body @-` is the sole section writer: planner, developers, reviewer, curator, and committer each write their own body atomically at canonical rank.
+**`codegen-log` is the SOLE writer of session logs.** Raw Edit/Write/MultiEdit on `codegen/logging/*.md`, and raw Bash writes (redirect, tee, in-place stream-edit, move/copy into the path) are DENIED by the `session-log-writer-only` hook.
+
+- The loop creates the log FIRST via **`codegen-log init --slug <slug>`** (Bash).
+- The loop opens each role's section BEFORE spawn via **`codegen-log section --role <role>`** with an empty body — this inserts the header ONCE at canonical rank; never re-open a header that already exists.
+- **`codegen-log section --body @-`** is the sole section-body writer: planner, developers, reviewer, curator, and committer each write their own body atomically at canonical rank.
+- The loop stamps death markers via **`codegen-log append --role <role> --body @-`**, which preserves the existing section body and inserts the piped body (an H3 marker) at the end of that section.
 - Subagents write body under the canonical section header via the writer — never emit or pre-seed placeholder headers themselves.
 - Header-only sections are invalid: every required section must contain non-heading body content before the next role may spawn or the build may ship.
-- Never use a full-file Write/Edit to mutate `codegen/logging/*.md`; the writer owns insertion/replacement and keeps the section order stable.
 
 ## Death Stamps
 
@@ -54,11 +57,11 @@ Session log sections MUST appear in this non-decreasing phase order (rank):
 | 9    | `## context-curator Section` |
 | 10   | `## committer Section`       |
 
-Only `## ` (H2) headers participate in the order check. H1 title lines (`# Step N`) and sub-headers (`### `) are ignored to avoid false-positives from code-block comment lines. Unknown/freeform `## ` headers are also ignored. Recognized `## ` headers must appear in non-decreasing rank order — a `## reviewer-* Section` before `## developer-* Section` is forbidden. The `session-log-structure` hook enforces this at Edit/Write time.
+Only `## ` (H2) headers participate in the order check. H1 title lines (`# Step N`) and sub-headers (`### `) are ignored to avoid false-positives from code-block comment lines. Unknown/freeform `## ` headers are also ignored. Recognized `## ` headers must appear in non-decreasing rank order — a `## reviewer-* Section` before `## developer-* Section` is forbidden. This rank table is enforced by construction: `codegen-log`'s own `rank_of`/awk insert-at-rank logic is the only path that can add a section, so out-of-order insertion is structurally impossible.
 
 ## Enforcement
 
-**Enforced by** ~24 hooks (naming, discovery, section integrity, write-allowlist, cycle/stop, retrospective) — catalog in `context/hooks.md`; enumerate via `grep -rlE 'session.?log|codegen/logging' harnesses/claude/hooks/*.sh`.
+**Enforced by** the `session-log-writer-only` hard-deny hook (Claude + Pi twins) plus `codegen-log`'s own rank-ordered insert logic — catalog in `context/hooks.md`; enumerate via `grep -rlE 'session.?log|codegen/logging' harnesses/claude/hooks/*.sh`.
 
 ## Step Log Skeleton
 

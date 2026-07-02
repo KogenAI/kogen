@@ -157,6 +157,21 @@
   role: "reviewer-phoenix|reviewer-static"
   harnesses: pi
 
+# SCHEMA: session-log.md — reviewer Bash allowlist (default-deny; codegen-log plus safe read-only utilities only)
+- id: reviewer-bash-allowlist
+  generated: true
+  description: "reviewer may only run codegen-log and safe read-only shell utilities (allowlist)"
+  event: PreToolUse
+  source: COMMAND
+  mode: allowlist
+  tool_guard: Bash
+  match: "(^|\\s|/)codegen-log\\b|^\\s*(cd\\s+\\S+\\s+&&\\s+)?(git\\s+(-C\\s+\\S+\\s+)?(diff|status|log|show)\\b|echo\\b|wc\\b|cat\\b|ls\\b|true\\b|:)"
+  message: "BLOCKED by reviewer-bash-allowlist: only codegen-log and safe read-only shell utilities (git diff/status/log/show, echo, wc, cat, ls, true, :) allowed for reviewer"
+  surface: user_global
+  signal: AGENT_TYPE
+  role: "reviewer-phoenix|reviewer-static"
+  harnesses: all
+
 # SCHEMA: rules-stacks.md — developer-static may not run static build/verify commands manually
 - id: developer-static-no-manual-build
   generated: true
@@ -436,16 +451,6 @@
   harnesses: all
 
 - kind: registration
-  id: orchestrator-session-log-name-guard
-  event: PreToolUse
-  tool_guard: "Write|Edit"
-  surface: user_global
-  signal: AGENT_TYPE
-  role: "*"
-  harnesses: all
-  rationale: Denies non-canonical session-log filenames at Write/Edit time so orchestrators see the error immediately rather than at Stop
-
-- kind: registration
   id: orchestrator-no-ci
   event: PreToolUse
   tool_guard: Bash
@@ -521,40 +526,21 @@
 - kind: registration
   id: reviewer-guard
   event: PreToolUse
-  tool_guard: "Bash|Write|Edit|MultiEdit|Monitor"
+  tool_guard: "Write|Edit|MultiEdit|Monitor"
   surface: user_global
   signal: AGENT_TYPE
   role: "reviewer-phoenix|reviewer-static"
   harnesses: all
 
 - kind: registration
-  id: session-log-no-duplicate-section
+  id: session-log-writer-only
   event: PreToolUse
-  tool_guard: "Edit|Write|MultiEdit"
+  tool_guard: "Bash|Edit|Write|MultiEdit"
   surface: user_global
   signal: AGENT_TYPE
   role: "*"
   harnesses: all
-  rationale: Denies session-log Edit/Write payloads that would create a duplicate `## <role> Section` header, preventing the mid-cycle `replace_all is false` stall
-
-- kind: registration
-  id: session-log-section-integrity
-  event: PreToolUse
-  tool_guard: "Edit|Write|MultiEdit"
-  surface: user_global
-  signal: AGENT_TYPE
-  role: "*"
-  harnesses: all
-
-- kind: registration
-  id: session-log-structure
-  event: PreToolUse
-  tool_guard: "Edit|Write|MultiEdit"
-  surface: user_global
-  signal: AGENT_TYPE
-  role: "*"
-  harnesses: all
-  rationale: Enforces canonical session-log section ORDER (non-decreasing phase rank) and NO-CLOBBER (an Edit/Write must not remove any existing `## ` header), preventing scramble and the full-file-Write data-loss that drops Plan/Delegation content.
+  rationale: codegen-log is the SOLE writer of session logs — raw Edit/Write/MultiEdit on codegen/logging/*.md, and raw Bash writes (redirect/tee/in-place-stream-edit/move-into) into that path, are denied. All log mutation must route through codegen-log init / section --body @- / section --role <role> / append --role <role>.
 
 - kind: registration
   id: static-site-build-check

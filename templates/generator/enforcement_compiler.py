@@ -341,7 +341,12 @@ def _bash_escape_message(message):
 def _bash_agent_guard(role):
     """Return bash AGENT_TYPE case-guard snippet, or '' for wildcard role."""
     if role and role != "*":
-        role_case = "|".join(role.split("|"))
+        # Space-pad the pipe join (not bare "|") so each token individually
+        # satisfies hook_registrations.py's multi-value role-parity check,
+        # which looks for "<token>)" (last token) or "<token> |" (earlier
+        # tokens) in the body. A bare "|" join leaves earlier tokens with
+        # neither substring present.
+        role_case = " | ".join(role.split("|"))
         return (
             f'\n# Only apply to role(s): {role}\n'
             f'case "$AGENT_TYPE" in\n'

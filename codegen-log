@@ -3,11 +3,16 @@
 #
 # Usage:
 #   codegen-log init --slug <slug>
-#   codegen-log section --body @-
+#   codegen-log section --body @- [--role <role>]
+#   codegen-log append --role <role> --body @-
 #
 # init: create a new codegen/logging/<ts>_<slug>_session.md with only the
 #       Version Stamp block.
 # section: atomically insert/replace the active role section at canonical rank.
+#          --role overrides AGENT_TYPE/CLAUDE_ROLE-derived header when present.
+# append: insert the piped body at the END of an EXISTING section's body
+#         (before the next "## " header or EOF), preserving the prior body.
+#         Never creates a section — exits 2 if the target section is missing.
 
 set -euo pipefail
 
@@ -22,17 +27,19 @@ LOG_ROOT="${CODEGEN_BUILD_CWD:-${CLAUDE_PROJECT_DIR:-$PWD}}"
 SUBCOMMAND=""
 SLUG=""
 BODY_SOURCE=""
+ROLE_OVERRIDE=""
 
 usage() {
     printf 'Usage:\n' >&2
     printf '  codegen-log init --slug <slug>\n' >&2
-    printf '  codegen-log section --body @-\n' >&2
+    printf '  codegen-log section --body @- [--role <role>]\n' >&2
+    printf '  codegen-log append --role <role> --body @-\n' >&2
     exit 2
 }
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
-    init | section)
+    init | section | append)
         if [[ -n "$SUBCOMMAND" ]]; then
             printf 'codegen-log: only one subcommand is allowed\n' >&2
             usage
@@ -54,6 +61,14 @@ while [[ $# -gt 0 ]]; do
         ;;
     --body)
         BODY_SOURCE="$2"
+        shift 2
+        ;;
+    --role=*)
+        ROLE_OVERRIDE="${1#--role=}"
+        shift
+        ;;
+    --role)
+        ROLE_OVERRIDE="$2"
         shift 2
         ;;
     --help | -h)
@@ -114,14 +129,15 @@ EOF
 }
 
 section_header_for_agent() {
-    case "${AGENT_TYPE:-${CLAUDE_ROLE:-}}" in
+    local role="${ROLE_OVERRIDE:-${AGENT_TYPE:-${CLAUDE_ROLE:-}}}"
+    case "$role" in
     planner*) printf '## Plan' ;;
-    developer-*) printf '## %s Section' "${AGENT_TYPE:-${CLAUDE_ROLE:-}}" ;;
-    reviewer-*) printf '## %s Section' "${AGENT_TYPE:-${CLAUDE_ROLE:-}}" ;;
+    developer-*) printf '## %s Section' "$role" ;;
+    reviewer-*) printf '## %s Section' "$role" ;;
     context-curator) printf '## context-curator Section' ;;
     committer) printf '## committer Section' ;;
     *)
-        printf 'codegen-log: unsupported role %q\n' "${AGENT_TYPE:-${CLAUDE_ROLE:-unknown}}" >&2
+        printf 'codegen-log: unsupported role %q\n' "${role:-unknown}" >&2
         exit 2
         ;;
     esac
@@ -243,6 +259,7 @@ section)
     }
     BEGIN {
         inserted = 0
+        replaced_target = 0
         skipping = 0
         body = ""
         while ((getline line < body_file) > 0) {
@@ -257,8 +274,11 @@ section)
                 inserted = 1
             }
             if (is_target($0)) {
-                emit_section(target, body)
-                inserted = 1
+                if (!replaced_target) {
+                    emit_section(target, body)
+                    inserted = 1
+                    replaced_target = 1
+                }
                 skipping = 1
                 next
             }
@@ -279,6 +299,89 @@ section)
         }
     }
     ' "$log_file" >"$tmp"
+
+    rm -f "$body_file"
+    mv "$tmp" "$log_file"
+    printf '%s\n' "$log_file"
+    ;;
+append)
+    if [[ -z "$ROLE_OVERRIDE" ]]; then
+        printf 'codegen-log append: --role is required\n' >&2
+        usage
+    fi
+    if [[ "$BODY_SOURCE" != @* ]]; then
+        printf 'codegen-log append: --body must start with @ (got %q)\n' "$BODY_SOURCE" >&2
+        exit 2
+    fi
+    if [[ "$BODY_SOURCE" != @- ]]; then
+        body_path="${BODY_SOURCE#@}"
+        if [[ ! -f "$body_path" ]]; then
+            printf 'codegen-log append: body file not found: %s\n' "$body_path" >&2
+            exit 2
+        fi
+        body="$(cat "$body_path")"
+    else
+        body="$(cat)"
+    fi
+
+    body_file="$(mktemp "${TMPDIR:-/tmp}/.codegen-log-append-body.XXXXXX")"
+    printf '%s' "$body" >"$body_file"
+
+    log_file="${CODEGEN_LOG_PATH:-$(latest_session_log)}"
+    if [[ -z "$log_file" || ! -f "$log_file" ]]; then
+        printf 'codegen-log append: no session log found (set CODEGEN_LOG_PATH or create one first)\n' >&2
+        exit 2
+    fi
+
+    target_header="$(section_header_for_agent)"
+    tmp="$(mktemp "${log_file}.XXXXXX")"
+
+    awk -v target="$target_header" -v body_file="$body_file" '
+    function is_target(h) {
+        return h == target || (index(h, target " (pass ") == 1)
+    }
+    BEGIN {
+        found = 0
+        in_target = 0
+        appended = 0
+        body = ""
+        while ((getline line < body_file) > 0) {
+            body = body line "\n"
+        }
+        close(body_file)
+    }
+    {
+        if ($0 ~ /^## /) {
+            if (in_target && !appended) {
+                printf "%s", body
+                appended = 1
+            }
+            in_target = is_target($0)
+            if (in_target) {
+                found = 1
+            }
+            print $0
+            next
+        }
+        print $0
+    }
+    END {
+        if (in_target && !appended) {
+            printf "%s", body
+            appended = 1
+        }
+        if (!found) {
+            exit 3
+        }
+    }
+    ' "$log_file" >"$tmp" || awk_rc=$?
+    awk_rc="${awk_rc:-0}"
+
+    if [[ "$awk_rc" -eq 3 ]]; then
+        rm -f "$body_file" "$tmp"
+        printf 'codegen-log append: section not found: %s\n' "$target_header" >&2
+        exit 2
+    fi
 
     rm -f "$body_file"
     mv "$tmp" "$log_file"

@@ -129,4 +129,48 @@ describe("planner-guard", () => {
     );
     assert.ok(result == null || (result as { block?: boolean }).block !== true);
   });
+
+  // ── codegen-log carve-out: piped body prose containing trigger tokens ──
+  // The plan body is written via `printf '%s' "$body" | codegen-log section
+  // --body @-`. The piped body is arbitrary plan prose that may legitimately
+  // contain gate tokens, git verbs, or redirect chars. These must ALLOW
+  // because the codegen-log carve-out exits before the broad scans run.
+
+  it("allows planner-phoenix codegen-log body with 'make ci' prose (carve-out)", async () => {
+    const result = await runHook(
+      "bash",
+      { command: 'printf %s "Gate: make ci passed after fix" | codegen-log section --body @-' },
+      "planner-phoenix",
+    );
+    assert.ok(result == null || (result as { block?: boolean }).block !== true);
+  });
+
+  it("allows planner-static codegen-log body with 'git commit' prose (carve-out)", async () => {
+    const result = await runHook(
+      "bash",
+      {
+        command:
+          'printf %s "Plan: git commit -m done after review" | codegen-log section --body @-',
+      },
+      "planner-static",
+    );
+    assert.ok(result == null || (result as { block?: boolean }).block !== true);
+  });
+
+  it("allows planner-phoenix codegen-log body with redirect char prose (carve-out)", async () => {
+    const result = await runHook(
+      "bash",
+      {
+        command:
+          'printf %s "cmd > /etc/output for reference" | codegen-log section --body @-',
+      },
+      "planner-phoenix",
+    );
+    assert.ok(result == null || (result as { block?: boolean }).block !== true);
+  });
+
+  it("blocks planner-phoenix bare make ci (no codegen-log)", async () => {
+    const result = await runHook("bash", { command: "make ci" }, "planner-phoenix");
+    assert.ok((result as { block?: boolean }).block === true);
+  });
 });

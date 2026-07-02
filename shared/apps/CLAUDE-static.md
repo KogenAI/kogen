@@ -51,6 +51,8 @@ An interactive (non-headless) session in this app directory is NOT driven by the
 
 Each build creates a new log file under `codegen/logging/`. The loop creates it via `codegen-log init --slug <slug>` before delegating to the planner.
 
+All section writes go through codegen-log (section --body @-, section --role <role>, append); raw Edit/Write on codegen/logging/\*.md is denied.
+
 ## Gate
 
 Gate command for this site: `static-site-build-check.sh` (four deterministic checks — `mise exec -- npm run build`, `package.json` script invariants, Tailwind v4 config absence, no `@tailwind ` directives). The loop runs it after the developer role and interprets `ALL CLEAR ✅` / `FAILED ❌` / `INCONCLUSIVE ⚠️` from `gate-result.json`.

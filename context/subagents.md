@@ -97,7 +97,7 @@ Shape mode emits blockers with quoted context and remediation options before adv
 
 ## Session-Log Header Requirements for Stack-Variant Templates
 
-When a developer subagent template is stack-prefixed (e.g., `planner-phoenix`, `planner-static`, `developer-static`), any session-log Edit payload MUST include a stub `## <agent_type>-<stack> Section` header (e.g., `## planner-phoenix Section`). The `session-log-section-integrity.sh` hook bypass covers only the literal `AGENT_TYPE=planner` (non-stack), not variants. Stack-variant subagents must satisfy the normal header-present rule (the `expected_header="## ${AGENT_TYPE} Section"` check in `session-log-section-integrity.sh`): no bypasses apply.
+When a developer subagent template is stack-prefixed (e.g., `planner-phoenix`, `planner-static`, `developer-static`), it writes its session-log section via `codegen-log section --body @-`, which derives `## <agent_type>-<stack> Section` (e.g., `## planner-phoenix Section`) from `AGENT_TYPE`/`CLAUDE_ROLE`. `codegen-log` is the sole writer — no raw Edit path exists, so there is no bypass/no-bypass distinction to track per stack variant.
 
 ## Subagent Template Include Placement & Edit Uniqueness
 

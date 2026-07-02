@@ -193,6 +193,23 @@ run_test "git restore --staged blocked for non-committer" "2" "$FIXTURE_RESTORE_
 FIXTURE_RESTORE_ALLOWED='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"git restore foo"},"agent_type":"developer-phoenix-backend","agent_id":"a"}'
 run_test "git restore (no --staged) allowed for non-committer" "0" "$FIXTURE_RESTORE_ALLOWED"
 
+# ── codegen-log carve-out: piped body prose containing git-verb tokens ─────
+# Every role's session-log section body is written via `printf '%s' "$body" |
+# codegen-log section --body @-`. The piped body is arbitrary role-authored
+# prose that may legitimately describe a git operation (e.g. "verified git
+# commit -m done"). This must ALLOW for a non-committer role because the
+# codegen-log carve-out exits before the git-verb scans run — the body is
+# DATA to codegen-log, never executed. Bare history-mutating git commands
+# (not routed through codegen-log) remain denied.
+
+# Test 23: non-committer codegen-log body with "git commit" prose — MUST ALLOW
+FIXTURE_LOG_GIT_VERB='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"printf %s \"Verified git commit -m done\" | codegen-log section --body @-"},"agent_type":"reviewer-phoenix","agent_id":"a"}'
+run_test "non-committer codegen-log body with 'git commit' prose allowed (carve-out)" "0" "$FIXTURE_LOG_GIT_VERB"
+
+# Test 24: non-committer bare "git commit" (NOT via codegen-log) — MUST DENY
+FIXTURE_BARE_COMMIT='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"git commit -m \"x\""},"agent_type":"reviewer-phoenix","agent_id":"a"}'
+run_test "non-committer bare git commit (no codegen-log) still denied" "2" "$FIXTURE_BARE_COMMIT"
+
 echo ""
 echo "Results: $pass passed, $fail failed"
 

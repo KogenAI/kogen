@@ -27,6 +27,14 @@ export function register(pi: ExtensionAPI): void {
     const command: string = (event.input as { command?: string }).command ?? "";
     debugLog("pre-commit-guard", `agent=${agentType} cmd=${command}`);
 
+    // codegen-log carve-out (mirrors session-log-writer-only.ts): every
+    // role's session-log section body is piped into codegen-log, so the
+    // piped body is arbitrary role-authored prose that may legitimately
+    // contain git verb tokens. Exit-allow BEFORE the git-verb scans below so
+    // codegen-log invocations are never denied by prose in their own piped
+    // body. Bare history-mutating git commands remain denied below.
+    if (/(^|[\s/])codegen-log\b/.test(command)) return;
+
     if (/\bgit\s+add\b/.test(command)) {
       return deny(
         `BLOCKED by pre-commit-guard: git add is forbidden for agent "${agentType}" — committer owns all git staging (delegate to committer)`,

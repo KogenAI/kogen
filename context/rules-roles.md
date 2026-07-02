@@ -9,6 +9,7 @@ Role-specific rules that define what each agent role MUST and MUST NOT do. These
 | `shared/rules/roles/planner.md`         | Planner rules — plan structure, slice definitions, gate-json block format, `__GATE_PARSE_ERROR__` sentinel                                                                                                    |
 | `shared/rules/roles/developer.md`       | Universal developer rules — verify-not-declare, fix-root-cause, test with every change; **NOTE**: codegen/pitches/\*\* Read prohibition documented here; reviewer.md lacks parallel text (hook authoritative) |
 | `shared/rules/roles/reviewer.md`        | Reviewer rules — what to check, how to report, block/pass criteria                                                                                                                                            |
+| `shared/subagents/{phoenix,static}/reviewer-{phoenix,static}.md.j2` (frontmatter `tools:`) | Reviewer tool grant — `Bash, Edit, Glob, Grep, Read`. Bash was added so reviewers can write their own session-log section body via `codegen-log section --body @-` (`codegen-log` is the sole writer of session logs — see `session-log-writer-only` in `context/hooks.md`). Bash is default-deny gated by `reviewer-bash-allowlist` (GENERATED): codegen-log plus a narrow set of safe read-only utilities only — no history-mutating git verbs, no build/test/package-manager commands. `reviewer-guard.sh` no longer denies Bash (that hard-deny was removed — it would otherwise shadow the allowlist, since a hard-deny and an allowlist cannot both govern the same tool for the same role); reviewer-guard still denies Write/MultiEdit/Monitor and gates Edit to canonical session-log paths only. |
 | `shared/rules/roles/committer.md`       | Committer rules — commit message format, never amend, why-focused                                                                                                                                             |
 | `shared/rules/roles/context-curator.md` | Context curator rules — what to update, when, retrospective routing                                                                                                                                           |
 | `context/curator-routing.md`            | Project routing targets for context-curator — where [local]/[shared] learnings land in THIS repo                                                                                                              |
@@ -79,20 +80,21 @@ The guard `context-curator-guard.sh` enforces exactly three allowed path pattern
 
 Cross-reference: full guard pattern analysis and path-nesting mechanics → `context/hooks.md` § context-curator-guard Write Surface; rule text → `shared/rules/roles/context-curator.md` § Write Surface.
 
-## Spawn Ritual (Atomic Header-Edit + Delegation) — Interactive-Session Fallback Only
+## Spawn Ritual (Atomic codegen-log Open + Delegation) — Interactive-Session Fallback Only
 
-For interactive/resumable-session builds (the surviving fallback path when the Elixir loop doesn't drive the cycle), the outer session's critical hygiene rule is: header-Edit + Agent() call MUST be same turn, never separated. Named "spawn ritual" to enforce atomicity in models — a single conceptual operation preventing treat-as-separable regressions.
+For interactive/resumable-session builds (the surviving fallback path when the Elixir loop doesn't drive the cycle), the outer session's critical hygiene rule is: `codegen-log section --role <role> --body @-` (empty stdin, opening the section) + Agent() call MUST be same turn, never separated. Named "spawn ritual" to enforce atomicity in models — a single conceptual operation preventing treat-as-separable regressions.
 
 Pattern: For every subagent spawn (after first log creation), the outer session:
 
-1. **Edit** step log to append `## <agent_type> Section` header (literal name from agent's YAML `name:`)
+1. **Bash**: `codegen-log section --role <agent_type> --body @-` with empty stdin to open `## <agent_type> Section` header (literal name from agent's YAML `name:`) — never a raw Edit/Write.
 2. **Agent()** call immediately after in same turn—no intervening chat
 
-**Stack-prefixed planner variant header stub**: When the outer session spawns a stack-prefixed planner variant (e.g., `planner-phoenix`), the session-log Edit payload MUST include a literal `## planner-phoenix Section` header stub (or the concrete stack name) — not a bare `## planner Section`. The `session-log-section-integrity.sh` hook bypasses ONLY bare `planner`, not stack-prefixed variants. Stack-prefixed planners must satisfy the normal header-present rule like any other agent.
+**Stack-prefixed planner variant header stub**: When the outer session spawns a stack-prefixed planner variant (e.g., `planner-phoenix`), `codegen-log section --role planner-phoenix` opens a literal `## planner-phoenix Section` header — not a bare `## planner Section`. `codegen-log`'s `section_header_for_agent` derives the stack-prefixed header from the `--role` value for any `planner-*`/`developer-*`/`reviewer-*` role; the bare-`planner` case only applies when the role literal is exactly `planner`.
 
 Enforcement:
 
-- **Prompt**: the `"spawn ritual = header-Edit + Agent() call, always as indivisible pair"` line in FIRST-TURN PROTOCOL in `harnesses/{claude,pi}/tools-header/build.txt` (identical wording, both harnesses)
+- **Prompt**: the `"subagent ritual = codegen-log section --role <role> --body @- (empty stdin) + subagent() call, atomic pair"` line in FIRST-TURN PROTOCOL in `harnesses/{claude,pi}/tools-header/build.txt` (equivalent wording, both harnesses)
+- **Hook**: `session-log-writer-only` denies any raw Edit/Write/MultiEdit or raw Bash write on `codegen/logging/*.md` — `codegen-log` is structurally the only path that can open or fill a section.
 
 **Under the loop** (non-interactive builds): the loop writes each role's session-log section body directly via `codegen-log section --body @-` after each `codegen-call` invocation completes — there is no separate spawn-time header-Edit step, and no `Agent()` matcher hook fires (each role is a main-agent invocation, not a subagent spawn).
 

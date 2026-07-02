@@ -13,8 +13,11 @@
 # Blocks file-creation, state-modifying shell commands, Edit calls on
 # non-session-log files, and reads of implementer-only rule files when
 # the active agent is any planner-* variant.
-# The planner's only permitted write action is editing the session log
-# under codegen/logging/. All other agents pass through unconditionally.
+# Session-log writes route through codegen-log (the sole writer — see
+# session-log-writer-only.sh), which also denies raw Edit on logging paths
+# globally. The Edit-path-shape arm below is now redundant for logs but
+# still correctly denies non-log Edit attempts. All other agents pass
+# through unconditionally.
 
 set -u
 
@@ -78,6 +81,17 @@ fi
 # ── Bash-pattern blocks ───────────────────────────────────────────────────────
 
 if [ "$TOOL_NAME" = "Bash" ]; then
+
+    # codegen-log carve-out (mirrors session-log-writer-only.sh): the plan body
+    # is written via `printf '%s' "$body" | codegen-log section --body @-`, so
+    # the piped body is arbitrary plan prose that may legitimately contain gate
+    # tokens, git verbs, redirect chars, or ../ traversal sequences. Exit-allow
+    # BEFORE the broad scans below so codegen-log invocations are never denied
+    # by prose in their own piped body. The body is DATA to codegen-log, never
+    # executed — codegen-log only writes logs.
+    if printf '%s' "$COMMAND" | grep -qE '(^|[[:space:]/])codegen-log\b'; then
+        exit 0
+    fi
 
     # Deny any command containing relative path traversal (../).
     if printf '%s' "$COMMAND" | grep -qE '\.\./'; then

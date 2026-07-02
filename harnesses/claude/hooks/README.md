@@ -10,18 +10,18 @@ Typical firing order for common roles:
 
 ### Orchestrator (top-level, no `agent_id`)
 
-| Event          | Hooks that fire                                                                                           |
-| -------------- | --------------------------------------------------------------------------------------------------------- |
-| `Bash`         | `orchestrator-read-discipline`, `no-cat-pipe`, `no-git-stash`, `no-python-json`, `build-worker-cwd-guard` |
-| `Edit`/`Write` | `orchestrator-no-source-edit`, `session-log-section-integrity`, `build-worker-cwd-guard`                  |
+| Event          | Hooks that fire                                                                                                                      |
+| -------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| `Bash`         | `orchestrator-read-discipline`, `no-cat-pipe`, `no-git-stash`, `no-python-json`, `build-worker-cwd-guard`, `session-log-writer-only` |
+| `Edit`/`Write` | `orchestrator-no-source-edit`, `session-log-writer-only`, `build-worker-cwd-guard`                                                   |
 
 ### Developer (`agent_type=developer-phoenix-backend` / `developer-phoenix-frontend`)
 
-| Event                      | Hooks that fire                                                                       |
-| -------------------------- | ------------------------------------------------------------------------------------- |
-| `Bash`                     | `dev-no-ci`, `no-cat-pipe`, `no-python-json`, `no-git-stash`                          |
-| `Edit`/`Write`/`MultiEdit` | `session-log-section-integrity`, `track-subagent-edits`, `env-var-sample-consistency` |
-| `PostToolUse` (failure)    | `track-tool-failures`                                                                 |
+| Event                      | Hooks that fire                                                                         |
+| -------------------------- | --------------------------------------------------------------------------------------- |
+| `Bash`                     | `dev-no-ci`, `no-cat-pipe`, `no-python-json`, `no-git-stash`, `session-log-writer-only` |
+| `Edit`/`Write`/`MultiEdit` | `session-log-writer-only`, `track-subagent-edits`, `env-var-sample-consistency`         |
+| `PostToolUse` (failure)    | `track-tool-failures`                                                                   |
 
 ### Planner (`agent_type=planner`)
 
@@ -79,7 +79,7 @@ Typical firing order for common roles:
 - **`committer-subject-length`** — Blocks `git commit -m "subject"` where subject exceeds 50 bytes. Heredoc form denied (can't extract subject).
 - **`dev-no-ci`** — Blocks developers from running `make ci`, `make llm`, `make llm-phoenix`. Gate commands run via the loop's `LoopGate` (non-interactive builds) or a SubagentStop hook (interactive-session fallback).
 - **`claude-debug-bash-guard`** — In debug sessions (`CLAUDE_ROLE=debug`), blocks: recursive rm, DB migrations, git writes, mix deps.get, seeds, destructive SQL, curl mutations (POST/PUT/PATCH/DELETE), docker mutations, systemctl/launchctl mutations, kill/pkill, package installs.
-- **`session-log-section-integrity`** — Requires `## <agent_type> Section` header in `Edit`/`Write`/`MultiEdit` payloads on session log files. Exceptions: orchestrator (creates files), planner (writes `## Plan`).
+- **`session-log-writer-only`** — `codegen-log` is the SOLE writer of session logs. Denies raw `Edit`/`Write`/`MultiEdit` on `codegen/logging/*.md`, and raw Bash writes (redirect/tee/in-place-stream-edit/move-into) into that path. All log mutation routes through `codegen-log init` / `section --body @-` / `section --role <role>` / `append --role <role>`.
 - **`frontend-developer-guard`** — Blocks frontend developer from editing backend files.
 - **`reviewer-guard`** — Blocks reviewer from editing any files (review-only role).
 
@@ -120,7 +120,7 @@ bash claude-inspector-bash-guard_test.sh
 bash claude-debug-bash-guard_test.sh
 bash planner-guard_test.sh
 bash committer-subject-length_test.sh
-bash session-log-section-integrity_test.sh
+bash session-log-writer-only_test.sh
 bash track-subagent-edits_test.sh
 bash track-tool-failures_test.sh
 bash stop-resume_test.sh

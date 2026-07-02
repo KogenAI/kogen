@@ -24,6 +24,7 @@ describe("pre-commit-guard", () => {
     execSync("git init -q", { cwd: tmpDir });
     execSync("git config user.email test@example.com", { cwd: tmpDir });
     execSync("git config user.name Test", { cwd: tmpDir });
+    execSync("git config commit.gpgsign false", { cwd: tmpDir });
     fs.writeFileSync(path.join(tmpDir, "baseline.txt"), "baseline\n");
     execSync("git add baseline.txt", { cwd: tmpDir });
     const iso = new Date(commitTs * 1000).toISOString();
@@ -182,6 +183,31 @@ describe("pre-commit-guard", () => {
       "bash",
       "git restore --staged foo",
       "developer-phoenix-backend",
+    );
+    assert.ok((result as { block?: boolean }).block === true);
+  });
+
+  // ── codegen-log carve-out: piped body prose containing git-verb tokens ──
+  // Every role's session-log section body is piped into codegen-log. The
+  // piped body is arbitrary role-authored prose that may legitimately
+  // describe a git operation. This must ALLOW for a non-committer role
+  // because the codegen-log carve-out exits before the git-verb scans run.
+  // Bare history-mutating git commands remain denied.
+
+  it("allows non-committer codegen-log body with 'git commit' prose (carve-out)", async () => {
+    const result = await runHook(
+      "bash",
+      'printf %s "Verified git commit -m done" | codegen-log section --body @-',
+      "reviewer-phoenix",
+    );
+    assert.ok(result == null || (result as { block?: boolean }).block !== true);
+  });
+
+  it("blocks non-committer bare git commit (no codegen-log)", async () => {
+    const result = await runHook(
+      "bash",
+      'git commit -m "x"',
+      "reviewer-phoenix",
     );
     assert.ok((result as { block?: boolean }).block === true);
   });

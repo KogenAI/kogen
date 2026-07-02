@@ -9,7 +9,7 @@ CODEGEN_DIR="$(cd "$SCRIPT_DIR/../../.." && pwd)"
 SENTINEL="ASK-GATE: product forks only"
 SENTINEL2="INTERACTION-AUDIT: compose-check siblings"
 SENTINEL3="Never treat N prose/image-named pitches as one combined task."
-SENTINEL4="NEVER pre-seed role section headers in the initial Write; each role section header is inserted exactly once, immediately before that role's spawn — never re-add a header that already exists."
+SENTINEL4="Before each role's spawn, open its section by running \`codegen-log section --role <role> --body @-\` with an EMPTY stdin body — this inserts the header ONCE, immediately before that role's spawn; never re-open a header that already exists."
 SENTINEL5="SWEEP-CLASS COMPLETENESS:"
 SENTINEL6="Latent contract-mirror fork"
 SENTINEL7="NEVER fail open by default"
@@ -122,14 +122,14 @@ assert_contains \
     "$CODEGEN_DIR/harnesses/pi/pi-build-system-prompt.txt" \
     "$SENTINEL3"
 
-# ── Tests 17-18: NEVER pre-seed sentinel in both baked build prompts ─────────
+# ── Tests 17-18: codegen-log section --role open-before-spawn sentinel ───────
 assert_contains \
-    "no-duplicate-section NEVER sentinel in claude-build-system-prompt.txt" \
+    "codegen-log section --role open-before-spawn sentinel in claude-build-system-prompt.txt" \
     "$CODEGEN_DIR/harnesses/claude/claude-build-system-prompt.txt" \
     "$SENTINEL4"
 
 assert_contains \
-    "no-duplicate-section NEVER sentinel in pi-build-system-prompt.txt" \
+    "codegen-log section --role open-before-spawn sentinel in pi-build-system-prompt.txt" \
     "$CODEGEN_DIR/harnesses/pi/pi-build-system-prompt.txt" \
     "$SENTINEL4"
 

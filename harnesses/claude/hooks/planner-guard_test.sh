@@ -129,6 +129,33 @@ run_test "planner-phoenix Read session log allows" "0" "$FIXTURE_READ_LOG"
 FIXTURE_READ_COMMITTER='{"hook_event_name":"PreToolUse","tool_name":"Read","tool_input":{"file_path":"./codegen/rules/roles/committer.md"},"agent_type":"planner-phoenix","agent_id":"abc"}'
 run_test "planner-phoenix Read committer.md blocks (impl-only)" "2" "$FIXTURE_READ_COMMITTER"
 
+# ── codegen-log carve-out: piped body prose containing trigger tokens ──────
+# The plan body is written via `printf '%s' "$body" | codegen-log section
+# --body @-`. The piped body is arbitrary plan prose that may legitimately
+# contain gate tokens, git verbs, redirect chars, or ../ traversal sequences.
+# These must ALLOW because the codegen-log carve-out exits before the broad
+# scans run — the body is DATA to codegen-log, never executed.
+
+# Test 22: codegen-log body containing a gate token (make ci) — ALLOW
+FIXTURE_LOG_GATE_TOKEN='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"printf %s \"Gate: make ci passed after fix\" | codegen-log section --body @-"},"agent_type":"planner-phoenix","agent_id":"abc"}'
+run_test "planner-phoenix codegen-log body with 'make ci' prose allows (carve-out)" "0" "$FIXTURE_LOG_GATE_TOKEN"
+
+# Test 23: codegen-log body containing a history-mutating git verb — ALLOW
+FIXTURE_LOG_GIT_VERB='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"printf %s \"Plan: git commit -m done after review\" | codegen-log section --body @-"},"agent_type":"planner-static","agent_id":"abc"}'
+run_test "planner-static codegen-log body with 'git commit' prose allows (carve-out)" "0" "$FIXTURE_LOG_GIT_VERB"
+
+# Test 24: codegen-log body containing a redirect char — ALLOW
+FIXTURE_LOG_REDIRECT='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"printf %s \"cmd > /etc/output for reference\" | codegen-log section --body @-"},"agent_type":"planner-phoenix","agent_id":"abc"}'
+run_test "planner-phoenix codegen-log body with redirect char prose allows (carve-out)" "0" "$FIXTURE_LOG_REDIRECT"
+
+# Test 25: codegen-log body containing a ../ traversal sequence — ALLOW
+FIXTURE_LOG_TRAVERSAL='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"printf %s \"Investigated ../../../etc/passwd path\" | codegen-log section --body @-"},"agent_type":"planner-static","agent_id":"abc"}'
+run_test "planner-static codegen-log body with ../ traversal prose allows (carve-out)" "0" "$FIXTURE_LOG_TRAVERSAL"
+
+# Test 26: bare (non-codegen-log) command with same trigger token still BLOCKS
+FIXTURE_BARE_GATE='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"make ci"},"agent_type":"planner-phoenix","agent_id":"abc"}'
+run_test "planner-phoenix bare make ci (no codegen-log) still blocks" "2" "$FIXTURE_BARE_GATE"
+
 echo ""
 echo "Results: $pass passed, $fail failed"
 

@@ -41,6 +41,19 @@ if [ "$AGENT_TYPE" = "committer" ]; then
     exit 0
 fi
 
+# codegen-log carve-out (mirrors session-log-writer-only.sh): every role's
+# session-log section body is written via
+# `printf '%s' "$body" | codegen-log section --body @-`, so the piped body is
+# arbitrary role-authored prose that may legitimately contain git verb tokens
+# (e.g. describing a commit or a git operation the role observed). Exit-allow
+# BEFORE the git-verb scans below so codegen-log invocations are never denied
+# by prose in their own piped body. The body is DATA to codegen-log, never
+# executed — codegen-log only writes logs. Bare history-mutating git commands
+# (not routed through codegen-log) remain denied below.
+if printf '%s' "$COMMAND" | grep -qE '(^|[[:space:]/])codegen-log\b'; then
+    exit 0
+fi
+
 # State-modifying git subcommands. Notably NOT blocked: status, diff,
 # log, show, blame, ls-files — these are routinely used for inspection by
 # every subagent.

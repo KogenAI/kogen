@@ -72,8 +72,12 @@ fi
 
 # Strip managed-build env vars so hook tests run in a hermetic interactive-mode
 # environment. CODEGEN_BUILD_NON_INTERACTIVE (set by dispatch.sh in managed
-# builds) activates non-interactive code paths that break interactive-mode tests.
-unset CODEGEN_BUILD_NON_INTERACTIVE
+# builds) activates non-interactive code paths that break interactive-mode
+# tests. CODEGEN_BUILD_START_TS (set by dispatch.sh for the live cycle) leaks
+# into pre-commit-guard's git-reset-foreign-commit check, causing
+# default-env tests (no explicit CODEGEN_BUILD_START_TS override) to
+# spuriously deny against the real repo's HEAD commit time.
+unset CODEGEN_BUILD_NON_INTERACTIVE CODEGEN_BUILD_START_TS
 
 set +e
 find "$HOOKS_DIR" -name '*_test.sh' -type f -print0 |
