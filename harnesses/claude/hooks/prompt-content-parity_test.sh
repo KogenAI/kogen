@@ -232,6 +232,16 @@ assert_contains \
     "$CODEGEN_DIR/harnesses/claude/commands/ready.md.j2" \
     "$SENTINEL11"
 
+SENTINEL12="New-producer / existing-convention reconciliation"
+assert_contains \
+    "new-producer reconciliation sentinel in claude-shape-system-prompt.txt" \
+    "$CODEGEN_DIR/harnesses/claude/claude-shape-system-prompt.txt" \
+    "$SENTINEL12"
+assert_contains \
+    "new-producer reconciliation sentinel in pi-shape-system-prompt.txt" \
+    "$CODEGEN_DIR/harnesses/pi/pi-shape-system-prompt.txt" \
+    "$SENTINEL12"
+
 echo ""
 echo "Results: $pass passed, $fail failed"
 
