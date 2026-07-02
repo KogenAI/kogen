@@ -297,8 +297,21 @@ repo_relative() {
 #   - TRANSCRIPT_PATH does not exist or is not readable
 #   - No matching tool_use entries found
 # jq errors are swallowed via 2>/dev/null. No --slurp (streams line-by-line).
+#
+# codegen-log is the SOLE legitimate writer of session logs (see
+# session-log-writer-only.sh) — raw Write/Edit/MultiEdit on codegen/logging/*.md
+# are hard-denied. When the Write/Edit/MultiEdit scan above finds nothing, this
+# fn also scans for a Bash tool_use whose .input.command invokes a codegen-log
+# writer subcommand (init|section|append). That is treated as equivalent
+# creation evidence, and — UNCONDITIONALLY, not gated on OCG_APPS_ROOT or
+# CODEGEN_BUILD_NON_INTERACTIVE — falls through to a disk mtime-scan of
+# codegen/logging/*.md under $cwd (same heuristic the Pi TS twins already use).
+# This closes the deadlock where an interactive/self-build session's transcript
+# never contains a Write/Edit/MultiEdit event for the log (because codegen-log
+# is a Bash invocation), so the strict scan always returns empty.
 session_log_from_transcript() {
     local result=""
+    local codegen_log_evidence=""
     # Run the transcript jq scan only when TRANSCRIPT_PATH is usable. When it is
     # empty/unset/unreadable, skip the scan but FALL THROUGH to the disk fallback
     # below (managed builds with a lagging or absent transcript still resolve).
@@ -310,6 +323,20 @@ session_log_from_transcript() {
         | select(.input.file_path | test("codegen/logging/.*\\.md$"))
         | .input.file_path
     ' "$TRANSCRIPT_PATH" 2>/dev/null | tail -n 1)
+        if [ -z "$result" ]; then
+            codegen_log_evidence=$(jq -r '
+            .message.content[]?
+            | select(.type == "tool_use" and .name == "Bash")
+            | select(.input.command | test("codegen-log[[:space:]]+(init|section|append)"))
+            | "1"
+        ' "$TRANSCRIPT_PATH" 2>/dev/null | tail -n 1)
+        fi
+    fi
+    # codegen-log-writer evidence found but no Write/Edit/MultiEdit path resolved:
+    # resolve via disk mtime-scan unconditionally (not gated on managed-build env).
+    if [ -z "$result" ] && [ -n "$codegen_log_evidence" ]; then
+        local cwd="${CWD:-$PWD}"
+        result=$(ls -t "$cwd/codegen/logging"/*.md 2>/dev/null | head -1)
     fi
     # Filesystem fallback for managed build sessions where the transcript file
     # lags the live stream (print-mode builds flush the transcript asynchronously).

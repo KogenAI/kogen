@@ -47,8 +47,8 @@ The three canonical orchestrator-bypass guards (`orchestrator-read-discipline`, 
 Hooks registered on the `Agent` matcher fire on every subagent spawn. These are distinct from the orchestrator-level hooks in the bypass matrix above, which fire on Bash/Read/Write tools at the outer session level.
 
 | Hook                          | Fires when      | Action                                | Fail-open?           |
-| ------------------------------ | ---------------- | -------------------------------------- | ---------------------- |
-| `operator-subagent-allowlist` | Any Agent spawn  | Deny built-ins; gate Explore to debug  | No (deny empty type)  |
+| ----------------------------- | --------------- | ------------------------------------- | -------------------- |
+| `operator-subagent-allowlist` | Any Agent spawn | Deny built-ins; gate Explore to debug | No (deny empty type) |
 
 **Non-interactive builds are driven by the deterministic Elixir orchestration loop** (`mix codegen.loop`), not a self-orchestrating main-agent session — the loop invokes each role as a separate `codegen-call`, so no `Agent`-matcher spawn hook fires for role sequencing in that path. The loop enforces role sequencing (`OrchestrationLoop.run/1`), cycle-state advancement (`advance_cycle_state_step/3`), and pitch-shipped autoship deterministically in Elixir instead of via Stop/SubagentStop hooks. `operator-subagent-allowlist` remains live because it fires on every `Agent`-tool spawn regardless of driver, including within the surviving interactive/resumable-session fallback and debug/shape/ops/experiment modes.
 

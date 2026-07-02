@@ -264,6 +264,15 @@
   rationale: "Blocks BUILD_RESULT: success when a context-curator-recorded `Files edited:` tracked file is missing from the cycle commit (HEAD), preventing silent loss of curator learnings dropped at the 40,960-byte context cap."
 
 - kind: registration
+  id: build-queue-continuity
+  event: Stop
+  tool_guard: "*"
+  surface: user_global
+  signal: CLAUDE_ROLE_FAMILY
+  role: "*"
+  harnesses: all
+
+- kind: registration
   id: build-worker-cwd-guard
   event: PreToolUse
   tool_guard: "Bash|Write|Edit|MultiEdit|Read|Monitor"
@@ -311,6 +320,15 @@
   role: "inspector|inspector-phoenix"
   harnesses: claude
   rationale: Claude Code per-call inspector hook; Pi uses load-gate tool restriction
+
+- kind: registration
+  id: curator-before-committer
+  event: PreToolUse
+  tool_guard: Agent
+  surface: user_global
+  signal: none
+  role: "*"
+  harnesses: all
 
 - kind: registration
   id: committer-no-revert-prior-commit
@@ -388,6 +406,15 @@
 #   id: context-file-size-gate
 #   not-yet-migrated: true
 #   reason: role value "unset" is a non-standard token; deferred until schema accepts it
+
+- kind: registration
+  id: curator-format
+  event: SubagentStop
+  tool_guard: "context-curator"
+  surface: user_global
+  signal: AGENT_TYPE
+  role: "context-curator"
+  harnesses: all
 
 - kind: registration
   id: dev-no-ci
@@ -499,12 +526,39 @@
   harnesses: all
 
 - kind: registration
+  id: phoenix-dev-gate
+  event: SubagentStop
+  tool_guard: "developer-phoenix-backend|developer-phoenix-frontend"
+  surface: user_global
+  signal: AGENT_TYPE
+  role: "developer-phoenix-backend|developer-phoenix-frontend"
+  harnesses: all
+
+- kind: registration
   id: phoenix-frontend-developer-guard
   event: PreToolUse
   tool_guard: "Edit|Write|MultiEdit"
   surface: user_global
   signal: AGENT_TYPE
   role: developer-phoenix-frontend
+  harnesses: all
+
+- kind: registration
+  id: pitch-shipped-before-stop
+  event: Stop
+  tool_guard: "*"
+  surface: user_global
+  signal: CLAUDE_ROLE_FAMILY
+  role: "*"
+  harnesses: all
+
+- kind: registration
+  id: post-developer-format
+  event: SubagentStop
+  tool_guard: "developer-phoenix-backend|developer-phoenix-frontend|developer-static"
+  surface: user_global
+  signal: AGENT_TYPE
+  role: "developer-phoenix-backend|developer-phoenix-frontend|developer-static"
   harnesses: all
 
 - kind: registration
@@ -554,6 +608,16 @@
   rationale: codegen-log is the SOLE writer of session logs — raw Edit/Write/MultiEdit on codegen/logging/*.md, and raw Bash writes (redirect/tee/in-place-stream-edit/move-into) into that path, are denied. All log mutation must route through codegen-log init / section --body @- / section --role <role> / append --role <role>.
 
 - kind: registration
+  id: single-cycle-agent-in-flight
+  event: PreToolUse
+  tool_guard: Agent
+  surface: user_global
+  signal: CLAUDE_ROLE_FAMILY
+  role: "*"
+  harnesses: claude
+  rationale: Claude Code Task-tool in-flight tracking has no Pi equivalent; Pi lacks a comparable Agent-spawn PreToolUse hook point for this check
+
+- kind: registration
   id: static-site-build-check
   event: SubagentStop
   tool_guard: "developer-static"
@@ -569,6 +633,80 @@
   surface: user_global
   signal: AGENT_TYPE
   role: "developer-static"
+  harnesses: all
+
+- kind: registration
+  id: step-log-completeness
+  event: Stop
+  tool_guard: "*"
+  surface: user_global
+  signal: CLAUDE_ROLE_FAMILY
+  role: "*"
+  harnesses: all
+
+- kind: registration
+  id: step-log-missing-guard
+  event: Stop
+  tool_guard: "*"
+  surface: user_global
+  signal: CLAUDE_ROLE_FAMILY
+  role: "*"
+  harnesses: all
+
+- kind: registration
+  id: step-log-section-before-spawn
+  event: PreToolUse
+  tool_guard: Agent
+  surface: user_global
+  signal: CLAUDE_ROLE_FAMILY
+  role: "*"
+  harnesses: all
+
+- kind: registration
+  id: stop-cycle-guard
+  event: Stop
+  tool_guard: "*"
+  surface: user_global
+  signal: CLAUDE_ROLE_FAMILY
+  role: "*"
+  harnesses: all
+  rationale: Claude blocks (stop-cycle-guard.sh block calls); Pi session_shutdown is observe-only and cannot block, so the Pi twin only debugLogs — documented divergence, not a bug.
+
+- kind: registration
+  id: stop-gate-failure-breaker
+  event: SubagentStop
+  tool_guard: "developer-phoenix-backend|developer-phoenix-frontend|developer-static"
+  surface: user_global
+  signal: AGENT_TYPE
+  role: "developer-*"
+  harnesses: all
+
+- kind: registration
+  id: stop-resume
+  event: Stop
+  tool_guard: "*"
+  surface: user_global
+  signal: none
+  role: "*"
+  harnesses: all
+
+- kind: registration
+  id: stop-spin-guard
+  event: SubagentStop
+  tool_guard: "developer-phoenix-backend|developer-phoenix-frontend|developer-static"
+  surface: user_global
+  signal: AGENT_TYPE
+  role: "developer-*"
+  harnesses: claude
+  rationale: Claude SubagentStop can block a spinning developer subagent; Pi's session_shutdown-equivalent has no comparable block-capable SubagentStop event for this check
+
+- kind: registration
+  id: stop-verify-planner-gate
+  event: Stop
+  tool_guard: "*"
+  surface: user_global
+  signal: AGENT_TYPE
+  role: "planner-*"
   harnesses: all
 
 - kind: registration

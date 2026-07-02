@@ -391,37 +391,20 @@ Pattern applies to any widely-encoded schema (e.g., session-log slug class encod
 
 ## Transcript Lag & Discovery Pattern
 
-Hook scripts discover the active session/step log via `session_log_from_transcript()` in `hooks-lib.sh`. Two modes:
+`session_log_from_transcript()` in `hooks-lib.sh` discovers logs via: (1) Write/Edit/MultiEdit file_path match, (2) Bash `codegen-log` commands, (3) Managed-build disk fallback. Interactive sessions rely on transcript evidence.
 
-**Interactive sessions**: strict transcript-bound — scans `$TRANSCRIPT_PATH` JSONL for most recent Write/Edit/MultiEdit targeting `codegen/logging/*.md`. Returns empty if absent.
-
-**Managed build workers** — two independent fallback branches when transcript returns empty:
-
-1. **OCG_APPS_ROOT**: scans `$CWD/codegen/logging/*.md` by mtime (dashboard-box managed workers)
-2. **CODEGEN_BUILD_NON_INTERACTIVE**: scans `$CWD/codegen/logging/` unconditionally (non-interactive dispatch)
-
-Transcript hit skips both fallbacks. Dual-gate catches slow-Node transcript flush lag (observed: Node 20). **11 production consumers** inherit the fallback.
-
-**Portable mtime sorting**: `ls -t glob | head -1` — `find -printf` NOT portable to BSD find (macOS).
-
-### Fallback-After-Early-Return Bug Pattern
-
-Fallback behind unconditional early-return = unreachable fallback. Common mistake: test fixture creates readable-but-empty file (passes `[ ! -r ]` guard) — actual bug path (absent/empty/unreadable) still untested. Verify fixtures satisfy the EARLY-RETURN condition, not just a related one.
-
-**Fix pattern**: Replace unconditional early-return with a conditional that SKIPS ONLY the transcript scan but FALLS THROUGH to the fallback block. Initialize result upfront, guard only the jq scan:
-
+**Fallback-After-Early-Return Bug**: Unconditional early-return hides fallback code. Fix: initialize `result=""` upfront; guard only the jq scan to allow fallback execution:
 ```bash
 local result=""
 if [ -n "${TRANSCRIPT_PATH:-}" ] && [ -r "$TRANSCRIPT_PATH" ]; then
     result=$(jq -r '...' "$TRANSCRIPT_PATH" 2>/dev/null | tail -n 1)
 fi
-# ... fallback block (lines 283–305) unchanged, executes regardless ...
+# fallback block executes regardless; returns result
 printf '%s' "$result"
 ```
+Test both jq path (readable JSONL) and fallback path (empty/unreadable).
 
-Test both: skip-jq path (empty `TRANSCRIPT_PATH`) and fallback path (managed env, disk log exists).
-
-**Transcript lag causing false blocks**: Hook read a JSONL snapshot predating the Edit → re-running forces new transcript entry. Mitigation: apply fallback disk-scan when transcript-bound resolver returns empty.
+**Transcript flush lag**: Hook reads pre-Edit JSONL snapshot → missing session-log entry. Mitigation: when transcript-resolver returns empty, apply fallback disk-scan.
 
 ## Bash Symlink Resolution Fail-Open Discipline
 
@@ -440,36 +423,19 @@ Missing (1) → operates on empty variable; (2) → stale `$resolved` from prior
 
 ## Tool-Header Prose vs. Runtime Enforcement
 
-`tools-header/*.txt` files document Bash mutation boundaries in agent prompts. **Documented deny-list claims MUST match enforced denials at runtime.** Prose claiming Bash denies `rm/mv/touch/mkdir` when runtime only denies cat-pipes breeds hook-denial misdiagnosis.
-
-**Verified enforcement for shape mode:**
-
-- **Denied**: cat-pipes (`no-cat-pipe.sh`), git-history mutation (`no-git-stash` + git-ops allowlist)
-- **NOT denied** at Bash layer: file ops (`rm`, `mv`, `touch`, `mkdir`) — Write/Edit boundary enforced at tool level by `orchestrator-no-source-edit.sh` (scoped to `codegen/pitches/`)
-
-When tightening tool-header prose, verify against `shared/enforcement/registry.yaml` and source hooks — do NOT trust prose alone. Tools-header files are documentation, not code; false claims cause misdiagnosis.
+`tools-header/*.txt` document boundaries; **claims MUST match runtime denials**. Mismatch (e.g., prose denies `rm/mv` but runtime doesn't) breeds misdiagnosis. Verify against `registry.yaml` + hooks before editing prose; docs are not code.
 
 ## Hook Pattern Coverage — Sibling Condition Enforcement (Rule J)
 
-When a hook file has TWO independent conditions affecting the same logic path (e.g., `subagent-retrospective-guard.sh`: in-script `case` matcher AND header-selection `[[ ]]`), they must widen in lockstep. Mismatch silently diverges — one family member matches the matcher but misses the selection.
-
-**After widening a glob in one condition, immediately widen the sibling.** Test both paths with a non-phoenix family member (e.g., `planner-static`) — a `planner-phoenix`-only test cannot distinguish whether both conditions widened.
-
-**Example**: `subagent-retrospective-guard.sh` planner family widen requires: (1) `case "$AGENT_TYPE"` → `planner*` glob; (2) header-selection `[[ ]]` → same glob; (3) registry entry (forward-compat). Pair a `planner-static` ALLOW test with a BLOCK test (missing retrospective) to prove both conditions widened.
-
-**Pattern**: identify sibling conditions → widen ALL to same glob form → add ALLOW + BLOCK tests for a non-base family member.
+Hooks with two independent conditions (`case` + `[[ ]]`) must widen together. Mismatch = silent divergence. After widening one condition, widen the sibling. Test with a non-base family member (e.g., `planner-static` ALLOW + BLOCK) to prove both widened.
 
 ## Testing External Binary Calls — PATH Stub Pattern
 
-Stub binaries (e.g., `sleep`, `curl`): write fake in temp, prepend PATH. Stub records args to marker; tests assert invocation. Clean via trap.
+Write fake binary to temp dir, prepend PATH. Stub records args to marker file; tests assert invocation. Clean via trap.
 
 ## Bypass Green-From-Birth Detection (Test Coverage Strategies for Hook Widening)
 
-When bypass widens (e.g., literal `planner` → `planner*`), an ALLOW test passes under both old (skip) and new (process-then-allow) paths — green-from-birth trap.
-
-**Pattern**: Pair ALLOW with a BLOCK case (same path, missing input). Old code: both skip (both allow). New code: BLOCK processes and emits deny. BLOCK failing under old but passing under new proves the bypass widened.
-
-**Example** (`subagent-retrospective-guard.sh`): `planner-phoenix` without retrospective → BLOCK (proves processing); with retrospective → ALLOW (proves valid bypass).
+ALLOW test passes under both old (skip) and new (process-then-allow) paths — green-from-birth trap. Pair ALLOW with BLOCK (same path, missing input). BLOCK fails under old, passes under new → proves bypass widened.
 
 ## Three-Class Fetch-Pointer Guard Architecture
 

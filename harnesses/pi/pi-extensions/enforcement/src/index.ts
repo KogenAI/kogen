@@ -26,6 +26,7 @@ import { register as registerContextFileSizeGate } from "./hooks/context-file-si
 // BEGIN-GENERATED-ENFORCEMENT-BLOCK
 import { register as registerBuildAgentAppConfinement } from "./hooks/build-agent-app-confinement";
 import { register as registerBuildNoSuccessBeforeCommit } from "./hooks/build-no-success-before-commit";
+import { register as registerBuildQueueContinuity } from "./hooks/build-queue-continuity";
 import { register as registerBuildWorkerCwdGuard } from "./hooks/build-worker-cwd-guard";
 import { register as registerCleanTreeBeforeShip } from "./hooks/clean-tree-before-ship";
 import { register as registerCommitterBashAllowlist } from "./hooks/committer-bash-allowlist";
@@ -36,6 +37,8 @@ import { register as registerCommitterSingleLineGuard } from "./hooks/committer-
 import { register as registerCommitterSubjectLength } from "./hooks/committer-subject-length";
 import { register as registerCommitterWriteAllowlist } from "./hooks/committer-write-allowlist";
 import { register as registerContextCuratorGuard } from "./hooks/context-curator-guard";
+import { register as registerCuratorBeforeCommitter } from "./hooks/curator-before-committer";
+import { register as registerCuratorFormat } from "./hooks/curator-format";
 import { register as registerCuratorLearningCommitted } from "./hooks/curator-learning-committed";
 import { register as registerDevNoCi } from "./hooks/dev-no-ci";
 import { register as registerDeveloperNoSelfGate } from "./hooks/developer-no-self-gate";
@@ -53,9 +56,12 @@ import { register as registerOperatorSubagentAllowlist } from "./hooks/operator-
 import { register as registerOrchestratorNoCi } from "./hooks/orchestrator-no-ci";
 import { register as registerOrchestratorReadDiscipline } from "./hooks/orchestrator-read-discipline";
 import { register as registerPhoenixBackendDeveloperGuard } from "./hooks/phoenix-backend-developer-guard";
+import { register as registerPhoenixDevGate } from "./hooks/phoenix-dev-gate";
 import { register as registerPhoenixFrontendDeveloperGuard } from "./hooks/phoenix-frontend-developer-guard";
 import { register as registerPitchFormatValidator } from "./hooks/pitch-format-validator";
+import { register as registerPitchShippedBeforeStop } from "./hooks/pitch-shipped-before-stop";
 import { register as registerPlannerGuard } from "./hooks/planner-guard";
+import { register as registerPostDeveloperFormat } from "./hooks/post-developer-format";
 import { register as registerPreCommitGuard } from "./hooks/pre-commit-guard";
 import { register as registerReviewerBashAllowlist } from "./hooks/reviewer-bash-allowlist";
 import { register as registerReviewerGuard } from "./hooks/reviewer-guard";
@@ -63,6 +69,13 @@ import { register as registerReviewerGuardSessionLogWrite } from "./hooks/review
 import { register as registerSessionLogWriterOnly } from "./hooks/session-log-writer-only";
 import { register as registerStaticSiteBuildCheck } from "./hooks/static-site-build-check";
 import { register as registerStaticSiteExGuard } from "./hooks/static-site-ex-guard";
+import { register as registerStepLogCompleteness } from "./hooks/step-log-completeness";
+import { register as registerStepLogMissingGuard } from "./hooks/step-log-missing-guard";
+import { register as registerStepLogSectionBeforeSpawn } from "./hooks/step-log-section-before-spawn";
+import { register as registerStopCycleGuard } from "./hooks/stop-cycle-guard";
+import { register as registerStopGateFailureBreaker } from "./hooks/stop-gate-failure-breaker";
+import { register as registerStopResume } from "./hooks/stop-resume";
+import { register as registerStopVerifyPlannerGate } from "./hooks/stop-verify-planner-gate";
 import { register as registerSubagentRetrospectiveGuard } from "./hooks/subagent-retrospective-guard";
 import { register as registerTrackSubagentEdits } from "./hooks/track-subagent-edits";
 import { register as registerTrackToolFailures } from "./hooks/track-tool-failures";
@@ -80,6 +93,7 @@ export default function (pi: ExtensionAPI): void {
   // BEGIN-GENERATED-ENFORCEMENT-BLOCK
   registerBuildAgentAppConfinement(pi);
   registerBuildNoSuccessBeforeCommit(pi);
+  registerBuildQueueContinuity(pi);
   registerBuildWorkerCwdGuard(pi);
   registerCleanTreeBeforeShip(pi);
   registerCommitterBashAllowlist(pi);
@@ -90,6 +104,8 @@ export default function (pi: ExtensionAPI): void {
   registerCommitterSubjectLength(pi);
   registerCommitterWriteAllowlist(pi);
   registerContextCuratorGuard(pi);
+  registerCuratorBeforeCommitter(pi);
+  registerCuratorFormat(pi);
   registerCuratorLearningCommitted(pi);
   registerDevNoCi(pi);
   registerDeveloperNoSelfGate(pi);
@@ -107,9 +123,12 @@ export default function (pi: ExtensionAPI): void {
   registerOrchestratorNoCi(pi);
   registerOrchestratorReadDiscipline(pi);
   registerPhoenixBackendDeveloperGuard(pi);
+  registerPhoenixDevGate(pi);
   registerPhoenixFrontendDeveloperGuard(pi);
   registerPitchFormatValidator(pi);
+  registerPitchShippedBeforeStop(pi);
   registerPlannerGuard(pi);
+  registerPostDeveloperFormat(pi);
   registerPreCommitGuard(pi);
   registerReviewerBashAllowlist(pi);
   registerReviewerGuard(pi);
@@ -117,6 +136,13 @@ export default function (pi: ExtensionAPI): void {
   registerSessionLogWriterOnly(pi);
   registerStaticSiteBuildCheck(pi);
   registerStaticSiteExGuard(pi);
+  registerStepLogCompleteness(pi);
+  registerStepLogMissingGuard(pi);
+  registerStepLogSectionBeforeSpawn(pi);
+  registerStopCycleGuard(pi);
+  registerStopGateFailureBreaker(pi);
+  registerStopResume(pi);
+  registerStopVerifyPlannerGate(pi);
   registerSubagentRetrospectiveGuard(pi);
   registerTrackSubagentEdits(pi);
   registerTrackToolFailures(pi);

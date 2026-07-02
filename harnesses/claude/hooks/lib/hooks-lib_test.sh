@@ -266,6 +266,56 @@ result=$(CODEGEN_BUILD_NON_INTERACTIVE=1 OCG_APPS_ROOT="" CWD="$TMP_T11" TRANSCR
 assert_eq "session_log_from_transcript: unreadable TRANSCRIPT_PATH + managed build → disk log" "$TMP_T11/codegen/logging/20260614_000000_step1_demo.md" "$result"
 rm -rf "$TMP_T11"
 
+# Helper: build one JSONL line with a Bash tool_use for the given command.
+make_bash_line() {
+    local cmd="$1"
+    printf '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Bash","input":{"command":"%s"}}]}}\n' "$cmd"
+}
+
+# Case 12: codegen-log init (no Write event) + disk log present + neither
+# OCG_APPS_ROOT nor CODEGEN_BUILD_NON_INTERACTIVE set → resolves disk log
+# unconditionally. This is the interactive/self-build deadlock repro.
+TMP_T12=$(mktemp -d)
+mkdir -p "$TMP_T12/codegen/logging"
+: >"$TMP_T12/codegen/logging/20260702_000000_step1_demo.md"
+make_bash_line "codegen-log init --slug demo" >"$TMP_T12/transcript.jsonl"
+result=$(TRANSCRIPT_PATH="$TMP_T12/transcript.jsonl" OCG_APPS_ROOT="" CODEGEN_BUILD_NON_INTERACTIVE="" CWD="$TMP_T12" \
+    bash -c "source '$SCRIPT_DIR/hooks-lib.sh'; session_log_from_transcript")
+assert_eq "session_log_from_transcript: codegen-log init evidence only → disk log" "$TMP_T12/codegen/logging/20260702_000000_step1_demo.md" "$result"
+rm -rf "$TMP_T12"
+
+# Case 13: codegen-log section --body @- (no Write event) → resolves disk log.
+TMP_T13=$(mktemp -d)
+mkdir -p "$TMP_T13/codegen/logging"
+: >"$TMP_T13/codegen/logging/20260702_000000_step1_demo.md"
+make_bash_line "codegen-log section --body @-" >"$TMP_T13/transcript.jsonl"
+result=$(TRANSCRIPT_PATH="$TMP_T13/transcript.jsonl" OCG_APPS_ROOT="" CODEGEN_BUILD_NON_INTERACTIVE="" CWD="$TMP_T13" \
+    bash -c "source '$SCRIPT_DIR/hooks-lib.sh'; session_log_from_transcript")
+assert_eq "session_log_from_transcript: codegen-log section evidence only → disk log" "$TMP_T13/codegen/logging/20260702_000000_step1_demo.md" "$result"
+rm -rf "$TMP_T13"
+
+# Case 14: codegen-log append --role committer --body @- (no Write event) →
+# resolves disk log.
+TMP_T14=$(mktemp -d)
+mkdir -p "$TMP_T14/codegen/logging"
+: >"$TMP_T14/codegen/logging/20260702_000000_step1_demo.md"
+make_bash_line "codegen-log append --role committer --body @-" >"$TMP_T14/transcript.jsonl"
+result=$(TRANSCRIPT_PATH="$TMP_T14/transcript.jsonl" OCG_APPS_ROOT="" CODEGEN_BUILD_NON_INTERACTIVE="" CWD="$TMP_T14" \
+    bash -c "source '$SCRIPT_DIR/hooks-lib.sh'; session_log_from_transcript")
+assert_eq "session_log_from_transcript: codegen-log append evidence only → disk log" "$TMP_T14/codegen/logging/20260702_000000_step1_demo.md" "$result"
+rm -rf "$TMP_T14"
+
+# Case 15: non-writer Bash command only (e.g. ls codegen/logging/), no Write,
+# empty env → empty. Evidence predicate must NOT over-match.
+TMP_T15=$(mktemp -d)
+mkdir -p "$TMP_T15/codegen/logging"
+: >"$TMP_T15/codegen/logging/20260702_000000_step1_demo.md"
+make_bash_line "ls codegen/logging/" >"$TMP_T15/transcript.jsonl"
+result=$(TRANSCRIPT_PATH="$TMP_T15/transcript.jsonl" OCG_APPS_ROOT="" CODEGEN_BUILD_NON_INTERACTIVE="" CWD="$TMP_T15" \
+    bash -c "source '$SCRIPT_DIR/hooks-lib.sh'; session_log_from_transcript")
+assert_eq "session_log_from_transcript: non-writer bash command → empty" "" "$result"
+rm -rf "$TMP_T15"
+
 # ── read_tool_failures ───────────────────────────────────────────────────────
 
 # Case 1 (empty-state): no failures dir → "no tool failures recorded"
