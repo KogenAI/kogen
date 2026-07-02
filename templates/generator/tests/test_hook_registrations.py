@@ -854,5 +854,171 @@ class TestInspectorSettingsFragment(unittest.TestCase):
                 self.assertNotIn("inspector", hook_cmd.get("command", ""))
 
 
+# ── TestEmitLoopSettings ──────────────────────────────────────────────────────
+
+_LOOP_NO_CAT_PIPE_MANIFEST = """\
+#!/usr/bin/env bash
+# HOOK-MANIFEST:
+#   event: PreToolUse
+#   matcher: Bash
+#   surface: user_global
+#   signal: none
+#   role: "*"
+#   harnesses: all
+deny_cat_pipe
+"""
+
+_LOOP_NO_GIT_STASH_MANIFEST = """\
+#!/usr/bin/env bash
+# HOOK-MANIFEST:
+#   event: PreToolUse
+#   matcher: Bash
+#   surface: user_global
+#   signal: none
+#   role: "*"
+#   harnesses: all
+deny_git_stash
+"""
+
+_NON_LOOP_USER_GLOBAL_MANIFEST = """\
+#!/usr/bin/env bash
+# HOOK-MANIFEST:
+#   event: PreToolUse
+#   matcher: Bash
+#   surface: user_global
+#   signal: AGENT_TYPE
+#   role: committer
+#   harnesses: all
+[ "$AGENT_TYPE" = "committer" ] || exit 0
+"""
+
+
+def _write_loop_fixtures(tmpdir: str, include_all_ids: bool = True):
+    """Write 2 loop-bundle hooks + 1 non-loop user_global hook into tmpdir.
+
+    Only 2 of the 8 LOOP_BUNDLE_IDS are represented (no-cat-pipe, no-git-stash) —
+    tests scope assertions to membership/exclusion, not full 8-hook completeness.
+    When include_all_ids is False, only no-cat-pipe is written (used to exercise
+    the fail-loud-on-missing-ID path against the REAL LOOP_BUNDLE_IDS constant).
+    """
+    _write_sh(tmpdir, "no-cat-pipe.sh", _LOOP_NO_CAT_PIPE_MANIFEST)
+    if include_all_ids:
+        _write_sh(tmpdir, "no-git-stash.sh", _LOOP_NO_GIT_STASH_MANIFEST)
+    _write_sh(tmpdir, "committer-only-hook.sh", _NON_LOOP_USER_GLOBAL_MANIFEST)
+
+
+class TestEmitLoopSettings(unittest.TestCase):
+
+    def test_only_loop_hooks_emitted_from_mixed_list(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            _write_loop_fixtures(tmpdir)
+            all_hooks = hr.collect_hooks(Path(tmpdir))
+            user_global_hooks = [
+                h for h in all_hooks if h["surface"] in ("user_global", "both")
+            ]
+            loop_hooks = [
+                h for h in user_global_hooks
+                if h["filename"][:-3] in {"no-cat-pipe", "no-git-stash"}
+            ]
+            out_path = Path(tmpdir) / "claude-code-loop-settings.json"
+            hr.emit_loop_settings(loop_hooks, out_path)
+            data = json.loads(out_path.read_text())
+
+        pre_tool_use = data["hooks"]["PreToolUse"]
+        self.assertEqual(len(pre_tool_use), 2)
+        basenames = {
+            hook_cmd["command"].split("/")[-1]
+            for entry in pre_tool_use
+            for hook_cmd in entry["hooks"]
+        }
+        self.assertEqual(basenames, {"no-cat-pipe.sh", "no-git-stash.sh"})
+
+    def test_non_loop_user_global_hook_excluded(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            _write_loop_fixtures(tmpdir)
+            all_hooks = hr.collect_hooks(Path(tmpdir))
+            user_global_hooks = [
+                h for h in all_hooks if h["surface"] in ("user_global", "both")
+            ]
+            loop_hooks = [
+                h for h in user_global_hooks
+                if h["filename"][:-3] in {"no-cat-pipe", "no-git-stash"}
+            ]
+            out_path = Path(tmpdir) / "claude-code-loop-settings.json"
+            hr.emit_loop_settings(loop_hooks, out_path)
+            raw = out_path.read_text()
+
+        self.assertNotIn("committer-only-hook", raw)
+
+    def test_written_file_shape_is_valid(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            _write_loop_fixtures(tmpdir)
+            all_hooks = hr.collect_hooks(Path(tmpdir))
+            user_global_hooks = [
+                h for h in all_hooks if h["surface"] in ("user_global", "both")
+            ]
+            loop_hooks = [
+                h for h in user_global_hooks
+                if h["filename"][:-3] in {"no-cat-pipe", "no-git-stash"}
+            ]
+            out_path = Path(tmpdir) / "sub" / "claude-code-loop-settings.json"
+            self.assertFalse(out_path.parent.exists())
+            hr.emit_loop_settings(loop_hooks, out_path)
+            data = json.loads(out_path.read_text())
+
+        self.assertEqual(set(data.keys()), {"hooks"})
+        pre_tool_use = data["hooks"]["PreToolUse"]
+        for entry in pre_tool_use:
+            self.assertIn("matcher", entry)
+            self.assertIn("hooks", entry)
+            self.assertEqual(len(entry["hooks"]), 1)
+            hook_cmd = entry["hooks"][0]
+            self.assertEqual(hook_cmd["type"], "command")
+            self.assertTrue(
+                hook_cmd["command"].startswith("$HOME/.claude/hooks/")
+            )
+
+    def test_missing_loop_id_fails_loud_via_main_completeness_check(self):
+        """Mirrors main()'s fail-loud guard: len(loop_hooks) != len(LOOP_BUNDLE_IDS)
+        must exit non-zero rather than silently emitting a partial bundle."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            # Only 1 of the 8 real LOOP_BUNDLE_IDS present on disk.
+            _write_loop_fixtures(tmpdir, include_all_ids=False)
+            all_hooks = hr.collect_hooks(Path(tmpdir))
+            user_global_hooks = [
+                h for h in all_hooks if h["surface"] in ("user_global", "both")
+            ]
+            loop_hooks = [
+                h for h in user_global_hooks
+                if h["filename"][:-3] in hr.LOOP_BUNDLE_IDS
+            ]
+
+            def _completeness_check():
+                if len(loop_hooks) != len(hr.LOOP_BUNDLE_IDS):
+                    sys.exit(1)
+
+            with self.assertRaises(SystemExit) as ctx:
+                _completeness_check()
+        self.assertEqual(ctx.exception.code, 1)
+
+    def test_main_exits_1_when_loop_bundle_id_missing_from_hooks_dir(self):
+        """End-to-end: main() itself exits 1 when --hooks-dir is missing a
+        LOOP_BUNDLE_IDS member (only no-cat-pipe present, not the other 7)."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            _write_sh(tmpdir, "no-cat-pipe.sh", _LOOP_NO_CAT_PIPE_MANIFEST)
+            out_settings = Path(tmpdir) / "out" / "claude-code-settings.json"
+            argv = [
+                "hook_registrations.py",
+                "--hooks-dir", tmpdir,
+                "--output-settings", str(out_settings),
+            ]
+            with unittest.mock.patch("sys.argv", argv):
+                with self.assertRaises(SystemExit) as ctx:
+                    with unittest.mock.patch("sys.stderr", new_callable=io.StringIO):
+                        with unittest.mock.patch("sys.stdout", new_callable=io.StringIO):
+                            hr.main()
+        self.assertEqual(ctx.exception.code, 1)
+
+
 if __name__ == "__main__":
     unittest.main()

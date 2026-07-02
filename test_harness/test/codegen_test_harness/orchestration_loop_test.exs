@@ -372,10 +372,10 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
     end
 
     test "real installed claude settings bundle resolves without override (positive control)" do
-      # No override — proves the real default path (harnesses/claude/claude-code-settings.json)
-      # exists in this checkout, so a live loop run would NOT raise.
+      # No override — proves the real default path (harnesses/claude/claude-code-loop-settings.json,
+      # the minimal per-role loop bundle) exists in this checkout, so a live loop run would NOT raise.
       assert ["--settings=@" <> path] = OrchestrationLoop.guard_bundle_flag!("claude_code")
-      assert String.ends_with?(path, "claude-code-settings.json")
+      assert String.ends_with?(path, "claude-code-loop-settings.json")
     end
 
     test "real pi enforcement extension resolves without override (positive control)" do

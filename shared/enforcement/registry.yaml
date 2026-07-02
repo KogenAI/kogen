@@ -212,6 +212,17 @@
 #   context-factcheck-guard — role: unset (non-standard token)
 #   context-file-size-gate  — role: unset (non-standard token)
 #   context-index-parity   — role: unset (non-standard token)
+#
+# LOOP SETTINGS BUNDLE (doc-only note — no field changes below):
+#   The Elixir OrchestrationLoop (guard_bundle_flag!("claude_code")) does NOT load the
+#   full claude-code-settings.json for per-role codegen-call invocations. It loads a
+#   minimal 8-hook allowlist committed at harnesses/claude/claude-code-loop-settings.json.
+#   The machine-read source of truth for membership is LOOP_BUNDLE_IDS in
+#   templates/generator/hook_registrations.py (NOT a field on these entries). The 8
+#   loop-bundle IDs (all signal:none, role:"*", generic denial hooks — safe with no role
+#   identity set): build-agent-app-confinement, build-no-success-before-commit,
+#   build-worker-cwd-guard, clean-tree-before-ship, curator-learning-committed,
+#   no-cat-pipe, no-git-stash, no-python-json. See context/core.md § Loop Settings Bundle.
 
 - kind: registration
   id: build-agent-app-confinement

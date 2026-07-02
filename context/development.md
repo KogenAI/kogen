@@ -94,6 +94,8 @@ See `.env.sample` and `.env.prod.sample` for full variable lists.
 | `templates/generator/generate.sh <harness>` | Render agent prompts for harness                                    |
 | `update_ai_tools.sh`                        | Update Claude CLI and AI tool deps                                  |
 
+**New-generated-output bootstrap gotcha**: When adding a NEW committed output file to `hook_registrations.py` (e.g., `claude-code-loop-settings.json`), the `hook-parity` target runs BEFORE the output-settings step that creates the file for the first time. On a truly first-ever run, `hook-parity` fails with "No such file or directory" because the committed file doesn't exist yet. Workaround: run `hook_registrations.py` directly once with `--output-settings <path>` (outside the install cycle) to bootstrap the committed file, then the install cycle proceeds normally on all subsequent runs. The derivation pattern `settings_path.parent / "new-file.json"` ensures the file lands in the repo on install and in `/tmp` on parity-check with zero branching logic.
+
 ## Benchmark Viewer (Mix Tasks)
 
 Run from `test_harness/`:

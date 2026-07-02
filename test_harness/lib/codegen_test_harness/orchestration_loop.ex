@@ -249,7 +249,7 @@ defmodule CodegenTestHarness.OrchestrationLoop do
   @codegen_call_bin Path.expand("../../../codegen-call", __DIR__)
   @codegen_dir Path.expand("../../..", __DIR__)
   @claude_settings_path Path.expand(
-                          "../../../harnesses/claude/claude-code-settings.json",
+                          "../../../harnesses/claude/claude-code-loop-settings.json",
                           __DIR__
                         )
   @pi_enforcement_ext_path Path.expand(
@@ -260,8 +260,18 @@ defmodule CodegenTestHarness.OrchestrationLoop do
   @doc """
   Resolves the B-bucket in-agent guard bundle flag for `harness`:
 
-  - `"claude_code"` → `["--settings=@<settings.json>"]`
+  - `"claude_code"` → `["--settings=@<claude-code-loop-settings.json>"]`
   - `"pi"` → `["--extension=@<enforcement extension dir>"]`
+
+  The `"claude_code"` bundle is the MINIMAL per-role loop hook set (8 generic,
+  signal:none, role:"*" denial hooks — see LOOP_BUNDLE_IDS in
+  templates/generator/hook_registrations.py and context/core.md § Loop Settings
+  Bundle), not the full installed settings.json. Every loop-invoked codegen-call
+  runs WITHOUT role identity set, so AGENT_TYPE-gated role guards and
+  orchestrator-* guards would either be dead weight or over-apply (e.g.
+  orchestrator-no-source-edit would deny a loop `developer` editing lib/foo.ex).
+  The legacy (non-loop) path is unaffected — it loads the full
+  `~/.claude/settings.json` directly and does not call this function.
 
   RAISES (crash loud) if the resolved bundle path is absent — every role
   invocation MUST carry its guard bundle; a silently-unguarded run (e.g.
@@ -269,8 +279,8 @@ defmodule CodegenTestHarness.OrchestrationLoop do
   llm-suite-guard) is exactly the failure mode this guards against.
 
   `opts`:
-  - `:claude_settings_path` — override for testing (default: the installed
-    `harnesses/claude/claude-code-settings.json`)
+  - `:claude_settings_path` — override for testing (default: the committed
+    `harnesses/claude/claude-code-loop-settings.json` minimal loop bundle)
   - `:pi_enforcement_ext_path` — override for testing (default: the built
     `harnesses/pi/pi-extensions/enforcement` directory)
   """
