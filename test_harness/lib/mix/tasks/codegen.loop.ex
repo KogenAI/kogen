@@ -42,7 +42,7 @@ defmodule Mix.Tasks.Codegen.Loop do
 
     pitch =
       case positional do
-        [pitch_arg | _] -> resolve_pitch(pitch_arg)
+        [pitch_arg | _] -> resolve_pitch(pitch_arg, cwd)
         [] -> missing_flag!("<pitch>")
       end
 
@@ -56,16 +56,28 @@ defmodule Mix.Tasks.Codegen.Loop do
     end
   end
 
-  defp resolve_pitch("@" <> path) do
-    unless File.exists?(path) do
-      Mix.shell().error("codegen.loop: pitch file not found at #{path}")
+  @doc false
+  @spec resolve_pitch(String.t(), String.t()) :: String.t()
+  def resolve_pitch("@" <> path, cwd) do
+    abs = Path.expand(path, cwd)
+
+    unless File.exists?(abs) do
+      Mix.shell().error("codegen.loop: pitch file not found at #{abs}")
       exit({:shutdown, 2})
     end
 
-    File.read!(path)
+    File.read!(abs)
   end
 
-  defp resolve_pitch(literal), do: literal
+  def resolve_pitch(literal, cwd) do
+    abs = Path.expand(literal, cwd)
+
+    if File.exists?(abs) do
+      File.read!(abs)
+    else
+      literal
+    end
+  end
 
   defp missing_flag!(name) do
     Mix.shell().error("codegen.loop: #{name} is required")

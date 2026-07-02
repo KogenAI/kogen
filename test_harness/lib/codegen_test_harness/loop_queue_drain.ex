@@ -311,6 +311,12 @@ defmodule CodegenTestHarness.LoopQueueDrain do
   def mention_prefix("pi"), do: ""
   def mention_prefix(other), do: raise("LoopQueueDrain: unknown harness #{inspect(other)}")
 
+  @doc false
+  @spec pitch_arg_for(String.t(), String.t(), String.t()) :: String.t()
+  def pitch_arg_for(slug, harness, cwd) do
+    mention_prefix(harness) <> Path.join(cwd, "codegen/pitches/ready/#{slug}.md")
+  end
+
   # ── Real spawn_fn: fresh codegen-build child, budget-bounded, JSONL capture ──
 
   @doc false
@@ -321,8 +327,7 @@ defmodule CodegenTestHarness.LoopQueueDrain do
       raise "LoopQueueDrain: codegen-build not found at #{@codegen_build_bin}"
     end
 
-    mention = mention_prefix(harness)
-    pitch_arg = "#{mention}codegen/pitches/ready/#{slug}.md"
+    pitch_arg = pitch_arg_for(slug, harness, cwd)
 
     args = [
       "--harness=#{harness}",

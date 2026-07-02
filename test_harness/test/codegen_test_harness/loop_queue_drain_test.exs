@@ -381,6 +381,18 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
     end
   end
 
+  describe "pitch_arg_for/3" do
+    test "claude -> @-prefixed absolute path" do
+      assert LoopQueueDrain.pitch_arg_for("x", "claude", "/repo") ==
+               "@/repo/codegen/pitches/ready/x.md"
+    end
+
+    test "pi -> bare absolute path" do
+      assert LoopQueueDrain.pitch_arg_for("x", "pi", "/repo") ==
+               "/repo/codegen/pitches/ready/x.md"
+    end
+  end
+
   # ── Env-mutating tests above use System.put_env/delete_env (process-global) —
   # keep this module async: true (no shared queue.lock/ready state), but note
   # a sibling async: false module would be required if these env mutations
