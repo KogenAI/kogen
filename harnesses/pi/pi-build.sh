@@ -11,6 +11,28 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 BUILD_BIN="${OCG_CODEGEN_DIR:+$OCG_CODEGEN_DIR/codegen-build}"
 BUILD_BIN="${BUILD_BIN:-$SCRIPT_DIR/codegen-build}"
 
+# --queue: drain codegen/pitches/ready/ via the Elixir multi-pitch drain
+# (mix codegen.loop.queue) instead of building a single pitch. Takes no
+# slug arguments — any other arg alongside --queue is a usage error.
+_has_queue_flag=0
+for _qarg in "$@"; do
+    if [[ "$_qarg" == "--queue" ]]; then
+        _has_queue_flag=1
+    fi
+done
+if [[ "$_has_queue_flag" -eq 1 ]]; then
+    for _qarg in "$@"; do
+        if [[ "$_qarg" != "--queue" ]]; then
+            printf 'pi-build: --queue takes no slug arguments — got: %s\n' "$_qarg" >&2
+            exit 1
+        fi
+    done
+    _QUEUE_CWD="$PWD"
+    CODEGEN_DIR="${OCG_CODEGEN_DIR:-$(cd "$SCRIPT_DIR/../.." && pwd -P)}"
+    cd "$CODEGEN_DIR/test_harness"
+    exec mix codegen.loop.queue --harness=pi --stack="${STACK:-phoenix}" --cwd="$_QUEUE_CWD"
+fi
+
 # Normalise launch cwd to the nearest legal pitch root so the basename
 # resolver, the mention, and the cwd inherited by codegen-build/dispatch
 # all key off a dir whose ./codegen/pitches/ready is the intended target.
