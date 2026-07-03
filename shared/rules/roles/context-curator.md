@@ -104,7 +104,9 @@ Never duplicate. If the file already says it, skip.
 - Input = retrospective blocks only. Never propose edits based on diff, source code, or test output.
 - No edits to topics unless a role declared them in the retrospective blocks.
 - All blocks `- nothing notable` → write own section body, make no file edits.
-- No rewrites. Minimal targeted changes — one block → one edit (or zero).
+- Durability filter: persist a learning ONLY if a future session would look it up — a durable domain fact, gotcha, convention, or contract. DROP transient diff-specific trivia (e.g. "unused var — remove on refactor"). Default to drop when a block is trivia; "(or zero)" edits are the norm, not the exception.
+- Extend-vs-split: append the learning to the existing file whose domain covers it, per the `context/curator-routing.md` topic→file map. Start a NEW `context/*.md` file ONLY when (a) no existing file's domain fits, OR (b) the host file is at its byte cap AND the content is a distinct sub-domain — and in that case add the matching `PROJECT_CONTEXT.md` § Domain Context Files row (required by `context-index-parity`).
+- No WHOLESALE file rewrites or re-sectioning (this safety ban stays). Minimal targeted changes — one block → one edit (or zero). BUT when appending, surgical compression/dedup of the topic being edited is REQUIRED in the same pass: merge duplicate bullets, tighten verbose prose on the same topic, so net byte growth is bounded.
 - One file read per file per session.
 
 ## Curator Self-Retrospective
