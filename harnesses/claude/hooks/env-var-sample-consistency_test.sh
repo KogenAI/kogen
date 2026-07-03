@@ -97,6 +97,20 @@ run_test "committer with env-var diff and both samples allows" "0" "$FIXTURE_WIT
 # Clean up staged changes
 (cd "$TMP_DIR" && git reset HEAD 2>/dev/null || true)
 
+# Test 5: codegen-log write narrating env-var commit without samples staged — ALLOW
+(
+    cd "$TMP_DIR"
+    printf 'config :app, key: System.get_env("NEW_VAR")\n' >runtime.exs
+    git add runtime.exs
+)
+FIXTURE_LOG_WRITE=$(jq -n \
+    '{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"codegen-log section --slug test --body @- <<EOF\n## committer Section\nRan git commit -m \"Add env var\" — denied as expected (missing samples).\nEOF"},"agent_type":"committer","agent_id":"abc"}')
+run_test "codegen-log write narrating missing-samples commit ALLOWED" "0" "$FIXTURE_LOG_WRITE" "$TMP_DIR"
+
+# Test 6: real standalone commit with same staged diff still BLOCKED unchanged
+run_test "real env-var commit without samples still blocks (unchanged)" "2" "$FIXTURE_NO_SAMPLE" "$TMP_DIR"
+(cd "$TMP_DIR" && git reset HEAD 2>/dev/null || true)
+
 echo ""
 echo "Results: $pass passed, $fail failed"
 

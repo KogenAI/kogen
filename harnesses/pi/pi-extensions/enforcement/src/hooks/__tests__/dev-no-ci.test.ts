@@ -81,4 +81,16 @@ describe("dev-no-ci", () => {
     const result = await runHook("mix test --cover");
     assert.ok((result as { block?: boolean }).block === true);
   });
+
+  it("allows codegen-log write narrating gated phrase", async () => {
+    const result = await runHook(
+      'codegen-log section --slug test --body @- <<EOF\n## developer-phoenix-backend Section\nRan make ci, all green.\nEOF',
+    );
+    assert.ok(result == null || (result as { block?: boolean }).block !== true);
+  });
+
+  it("still blocks real standalone make ci (unchanged)", async () => {
+    const result = await runHook("make ci");
+    assert.ok((result as { block?: boolean }).block === true);
+  });
 });

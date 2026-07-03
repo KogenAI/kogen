@@ -24,6 +24,12 @@ if [ "$TOOL_NAME" != "Bash" ]; then
     exit 0
 fi
 
+# A codegen-log write narrates gated phrases in its heredoc body; it is never
+# the gated action itself. Bypass before any phrase match or counter increment.
+if is_codegen_log_write; then
+    exit 0
+fi
+
 # Deny: pattern match.
 if printf '%s' "$COMMAND" | grep -qE '\bgit[[:space:]]+stash\b'; then
     deny "git stash forbidden. Commit WIP to a scratch branch or use worktrees. Stash hides work from orchestrator + reviewer."

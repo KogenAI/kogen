@@ -62,4 +62,18 @@ describe("committer-subject-length", () => {
     const result = await runHook("git status");
     assert.ok(result == null || (result as { block?: boolean }).block !== true);
   });
+
+  it("allows codegen-log write narrating a long subject", async () => {
+    const longSubject = "A".repeat(51);
+    const result = await runHook(
+      `codegen-log section --slug test --body @- <<EOF\n## committer Section\nRan git commit -m "${longSubject}" — denied as expected (subject too long).\nEOF`,
+    );
+    assert.ok(result == null || (result as { block?: boolean }).block !== true);
+  });
+
+  it("still blocks real subject > 50 bytes unchanged", async () => {
+    const longSubject = "A".repeat(51);
+    const result = await runHook(`git commit -m "${longSubject}"`);
+    assert.ok((result as { block?: boolean }).block === true);
+  });
 });

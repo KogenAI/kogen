@@ -51,6 +51,12 @@ if [ "$TOOL_NAME" != "Bash" ]; then
     exit 0
 fi
 
+# A codegen-log write narrates gated phrases in its heredoc body; it is never
+# the gated action itself. Bypass before any phrase match or counter increment.
+if is_codegen_log_write; then
+    exit 0
+fi
+
 _deny_gate() {
     deny "orchestrator-no-ci: the main-agent session MUST NOT run gate commands directly. Gate runs via the loop (non-interactive builds) or a SubagentStop hook (interactive-session fallback) after developer-* completes. To inspect a running gate, use \`make gate-status\`. To trigger a gate, delegate to a developer-* subagent."
     exit 0

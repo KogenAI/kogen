@@ -193,5 +193,27 @@ describe("committer-single-commit-per-cycle", { concurrency: 1 }, () => {
       });
       assert.ok((result as { block?: boolean }).block === true);
     });
+
+    it("allows codegen-log write narrating git commit even with session commit present", async () => {
+      const result = await runHook(
+        'codegen-log section --slug test --body @- <<EOF\n## committer Section\nRan git commit -m "msg" successfully.\nEOF',
+        "committer",
+        {
+          CODEGEN_BUILD_START_TS: "0",
+          CLAUDE_PROJECT_DIR: tmpDir,
+        },
+      );
+      assert.ok(
+        result == null || (result as { block?: boolean }).block !== true,
+      );
+    });
+
+    it("still denies real standalone second commit unchanged", async () => {
+      const result = await runHook("git commit -m second", "committer", {
+        CODEGEN_BUILD_START_TS: "0",
+        CLAUDE_PROJECT_DIR: tmpDir,
+      });
+      assert.ok((result as { block?: boolean }).block === true);
+    });
   });
 });

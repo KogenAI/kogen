@@ -71,4 +71,16 @@ describe("committer-no-trailer-guard", () => {
     const result = await runHook("git commit -m 'Add thing'");
     assert.ok(result == null || (result as { block?: boolean }).block !== true);
   });
+
+  it("allows codegen-log write narrating bare git commit", async () => {
+    const result = await runHook(
+      'codegen-log section --slug test --body @- <<EOF\n## committer Section\nRan bare git commit — denied by trailer guard, as expected.\nEOF',
+    );
+    assert.ok(result == null || (result as { block?: boolean }).block !== true);
+  });
+
+  it("still blocks real bare git commit unchanged", async () => {
+    const result = await runHook("git commit");
+    assert.ok((result as { block?: boolean }).block === true);
+  });
 });

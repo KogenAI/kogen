@@ -65,6 +65,18 @@ MSG_50="Add user auth feature with JWT tokens (50b)"
 FIXTURE_50='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"git commit -m \"'"$MSG_50"'\""},"agent_type":"committer","agent_id":"abc"}'
 run_test "committer with exactly 50-byte message allows" "0" "$FIXTURE_50"
 
+# codegen-log write narrating a >50-byte subject in heredoc body — ALLOW
+FIXTURE_LOG_WRITE=$(jq -n \
+    --arg cmd 'codegen-log section --slug test --body @- <<EOF
+## committer Section
+Ran git commit -m "'"$MSG_51"'" — denied as expected (subject too long).
+EOF' \
+    '{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":$cmd},"agent_type":"committer","agent_id":"abc"}')
+run_test "codegen-log write narrating long subject ALLOWED" "0" "$FIXTURE_LOG_WRITE"
+
+# real standalone 51-byte message still BLOCKED unchanged
+run_test "real 51-byte message still blocks (unchanged)" "2" "$FIXTURE_BLOCK"
+
 echo ""
 echo "Results: $pass passed, $fail failed"
 

@@ -119,6 +119,14 @@ run_test "developer-static npm install ALLOWED" "0" \
 run_test "developer-static mise exec npm run build DENIED" "2" \
     "{\"hook_event_name\":\"PreToolUse\",\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"mise exec -- npm run build\"},\"agent_type\":\"$DEV_STATIC\",\"agent_id\":\"abc\"}"
 
+# 19. codegen-log write narrating "npm run build" in heredoc body → ALLOW
+run_test "developer-static codegen-log write narrating npm run build ALLOWED" "0" \
+    "{\"hook_event_name\":\"PreToolUse\",\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"codegen-log section --slug test --body @- <<EOF\\n## developer-static Section\\nDid NOT run npm run build manually — gate runs it on SubagentStop.\\nEOF\"},\"agent_type\":\"$DEV_STATIC\",\"agent_id\":\"abc\"}"
+
+# 20. real standalone npm run build still blocked unchanged
+run_test "developer-static real npm run build still DENIED (unchanged)" "2" \
+    "{\"hook_event_name\":\"PreToolUse\",\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"npm run build\"},\"agent_type\":\"$DEV_STATIC\",\"agent_id\":\"abc\"}"
+
 echo ""
 echo "Results: $pass passed, $fail failed"
 

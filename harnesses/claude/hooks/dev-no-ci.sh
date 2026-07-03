@@ -39,6 +39,12 @@ if [ "$TOOL_NAME" != "Bash" ]; then
     exit 0
 fi
 
+# A codegen-log write narrates gated phrases in its heredoc body; it is never
+# the gated action itself. Bypass before any phrase match or counter increment.
+if is_codegen_log_write; then
+    exit 0
+fi
+
 # Deny: make ci / make ci-cover / make predeploy / make llm / make llm-phoenix / make llm-all
 if printf '%s' "$COMMAND" | grep -qE '^[[:space:]]*make[[:space:]]+(ci|ci-cover|predeploy|llm|llm-phoenix|llm-all)([[:space:]]|$)'; then
     deny "Dev MUST NOT run gate commands. The dev-gate.sh SubagentStop hook runs the gate after you exit. Specific test files are OK: \`mix test test/path/file.exs\`."

@@ -76,6 +76,14 @@ run_test "cat multi-file no pipe allowed" "0" \
 run_test "non-Bash tool allowed" "0" \
     '{"hook_event_name":"PreToolUse","tool_name":"Read","tool_input":{"command":"cat foo | head"},"agent_type":"developer-phoenix-backend","agent_id":"a"}'
 
+# Test 11: codegen-log write narrating "cat foo | head" in heredoc body → allow
+run_test "codegen-log write narrating cat pipe allowed" "0" \
+    '{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"codegen-log section --slug test --body @- <<EOF\n## developer-phoenix-backend Section\nUsed Read tool instead of cat foo.txt | head -50 — no truncation.\nEOF"},"agent_type":"developer-phoenix-backend","agent_id":"a"}'
+
+# Test 12: real standalone cat pipe still blocked unchanged
+run_test "real cat pipe still blocked (unchanged)" "2" \
+    '{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"cat foo.txt | head -50"},"agent_type":"developer-phoenix-backend","agent_id":"a"}'
+
 echo ""
 echo "Results: $pass passed, $fail failed"
 

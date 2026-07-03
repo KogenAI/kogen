@@ -9,7 +9,7 @@
  */
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { deny, debugLog } from "../lib/hook-helpers";
+import { deny, debugLog, isCodegenLogWrite } from "../lib/hook-helpers";
 
 export const HANDLER_META = {
   name: "no-git-stash",
@@ -23,6 +23,11 @@ export function register(pi: ExtensionAPI): void {
 
     const command: string = (event.input as { command?: string }).command ?? "";
     debugLog("no-git-stash", `cmd=${command}`);
+
+    // A codegen-log write narrates gated phrases in its heredoc body; it is
+    // never the gated action itself. Bypass before any phrase match or
+    // counter increment.
+    if (isCodegenLogWrite(command)) return;
 
     if (/\bgit\s+stash\b/.test(command)) {
       return deny(

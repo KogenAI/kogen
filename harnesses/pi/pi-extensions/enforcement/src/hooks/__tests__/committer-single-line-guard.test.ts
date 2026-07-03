@@ -84,4 +84,16 @@ describe("committer-single-line-guard", () => {
     const result = await runHook("git status");
     assert.ok(result == null || (result as { block?: boolean }).block !== true);
   });
+
+  it("allows codegen-log write narrating literal-backslash-n commit", async () => {
+    const result = await runHook(
+      'codegen-log section --slug test --body @- <<EOF\n## committer Section\nRan git commit -m "Add feature\\ndetails" — denied as expected.\nEOF',
+    );
+    assert.ok(result == null || (result as { block?: boolean }).block !== true);
+  });
+
+  it("still blocks real -m with literal backslash-n unchanged", async () => {
+    const result = await runHook('git commit -m "Add feature\\ndetails"');
+    assert.ok((result as { block?: boolean }).block === true);
+  });
 });

@@ -37,6 +37,12 @@ if [ "$TOOL_NAME" != "Bash" ]; then
     exit 0
 fi
 
+# A codegen-log write narrates gated phrases in its heredoc body; it is never
+# the gated action itself. Bypass before any phrase match or counter increment.
+if is_codegen_log_write; then
+    exit 0
+fi
+
 # Check if command matches a self-gate pattern
 if ! printf '%s' "$COMMAND" | grep -qE '\bmix[[:space:]]+(test|credo|format)\b|\bmake[[:space:]]+(ci|test)\b'; then
     exit 0

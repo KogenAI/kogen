@@ -24,6 +24,12 @@ if [ "$TOOL_NAME" != "Bash" ]; then
     exit 0
 fi
 
+# A codegen-log write narrates gated phrases in its heredoc body; it is never
+# the gated action itself. Bypass before any phrase match or counter increment.
+if is_codegen_log_write; then
+    exit 0
+fi
+
 # Deny: pattern match.
 if printf '%s' "$COMMAND" | grep -qE 'cat[[:space:]]+[^|]*\|[[:space:]]*(head|tail|grep|less|more)\b'; then
     deny "Use Read tool with offset/limit instead of \`cat | head/tail\`. Use Grep tool instead of \`cat | grep\`. Truncation hides relevant lines."

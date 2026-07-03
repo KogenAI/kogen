@@ -69,6 +69,14 @@ run_test "committer non-git-commit bash allowed" "0" \
 run_test "git commit -m single-quoted msg ALLOWED" "0" \
     "{\"hook_event_name\":\"PreToolUse\",\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"git commit -m 'Add thing'\"},\"agent_type\":\"$COMMITTER\",\"agent_id\":\"abc\"}"
 
+# 9. codegen-log write narrating bare "git commit" (no -m) in heredoc body → ALLOW
+run_test "codegen-log write narrating bare git commit ALLOWED" "0" \
+    "$(jq -n --arg at "$COMMITTER" '{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"codegen-log section --slug test --body @- <<EOF\n## committer Section\nRan bare git commit — denied by trailer guard, as expected.\nEOF"},"agent_type":$at,"agent_id":"abc"}')"
+
+# 10. real standalone bare git commit still BLOCKED unchanged
+run_test "bare git commit still BLOCKED unchanged" "2" \
+    "{\"hook_event_name\":\"PreToolUse\",\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"git commit\"},\"agent_type\":\"$COMMITTER\",\"agent_id\":\"abc\"}"
+
 echo ""
 echo "Results: $pass passed, $fail failed"
 

@@ -142,6 +142,14 @@ run_test "mix test --trace with path allowed" "0" \
 run_test "bare mix test --cover (no path) blocked for developer" "2" \
     '{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"mix test --cover"},"agent_type":"developer-phoenix-backend","agent_id":"abc123"}'
 
+# Test 22: codegen-log write narrating "make ci" in heredoc body → allow
+run_test "codegen-log write narrating gated phrase allowed" "0" \
+    '{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"codegen-log section --slug test --body @- <<EOF\n## developer-phoenix-backend Section\nRan make ci, all green.\nEOF"},"agent_type":"developer-phoenix-backend","agent_id":"abc123"}'
+
+# Test 23: real standalone make ci still denied unchanged
+run_test "real make ci still blocked (unchanged)" "2" \
+    '{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"make ci"},"agent_type":"developer-phoenix-backend","agent_id":"abc123"}'
+
 echo ""
 echo "Results: $pass passed, $fail failed"
 

@@ -8,7 +8,12 @@
  */
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { deny, parseAgentType, debugLog } from "../lib/hook-helpers";
+import {
+  deny,
+  parseAgentType,
+  debugLog,
+  isCodegenLogWrite,
+} from "../lib/hook-helpers";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
@@ -34,6 +39,11 @@ export function register(pi: ExtensionAPI): void {
 
     const command: string = (event.input as { command?: string }).command ?? "";
     debugLog("developer-no-self-gate", `agent=${agentType} cmd=${command}`);
+
+    // A codegen-log write narrates gated phrases in its heredoc body; it is
+    // never the gated action itself. Bypass before any phrase match or
+    // counter increment.
+    if (isCodegenLogWrite(command)) return;
 
     if (
       !/\bmix\s+(test|credo|format)\b|\bmake\s+(ci|ci-fast|test)\b/.test(

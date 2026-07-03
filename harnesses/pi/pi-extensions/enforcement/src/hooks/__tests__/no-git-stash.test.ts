@@ -73,4 +73,17 @@ describe("no-git-stash", () => {
     const result = await runHook("read", "git stash");
     assert.ok(result == null || (result as { block?: boolean }).block !== true);
   });
+
+  it("allows codegen-log write narrating git stash", async () => {
+    const result = await runHook(
+      "bash",
+      'codegen-log section --slug test --body @- <<EOF\n## developer-phoenix-backend Section\nDid NOT run git stash — used a scratch branch instead.\nEOF',
+    );
+    assert.ok(result == null || (result as { block?: boolean }).block !== true);
+  });
+
+  it("still blocks real git stash unchanged", async () => {
+    const result = await runHook("bash", "git stash");
+    assert.ok((result as { block: boolean }).block === true);
+  });
 });

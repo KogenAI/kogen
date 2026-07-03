@@ -9,7 +9,7 @@
  */
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { deny, debugLog } from "../lib/hook-helpers";
+import { deny, debugLog, isCodegenLogWrite } from "../lib/hook-helpers";
 
 export const HANDLER_META = {
   name: "no-cat-pipe",
@@ -23,6 +23,11 @@ export function register(pi: ExtensionAPI): void {
 
     const command: string = (event.input as { command?: string }).command ?? "";
     debugLog("no-cat-pipe", `cmd=${command}`);
+
+    // A codegen-log write narrates gated phrases in its heredoc body; it is
+    // never the gated action itself. Bypass before any phrase match or
+    // counter increment.
+    if (isCodegenLogWrite(command)) return;
 
     if (/cat\s+[^|]*\|\s*(head|tail|grep|less|more)\b/.test(command)) {
       return deny(

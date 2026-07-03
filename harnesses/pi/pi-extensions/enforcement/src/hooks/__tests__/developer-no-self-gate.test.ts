@@ -154,4 +154,36 @@ describe("developer-no-self-gate", () => {
       fs.rmSync(counterPath(sid), { force: true });
     }
   });
+
+  it("allows codegen-log write narrating gated phrase without bumping counter", async () => {
+    const sid = `sid8-${Date.now()}`;
+    fs.rmSync(counterPath(sid), { force: true });
+    try {
+      const result = await runHook(
+        'codegen-log section --slug test --body @- <<EOF\n## developer-phoenix-backend Section\nRan make ci and mix test three times, all green.\nEOF',
+        "developer-phoenix-backend",
+        sid,
+      );
+      assert.ok(
+        result == null || (result as { block?: boolean }).block !== true,
+      );
+      assert.ok(
+        !fs.existsSync(counterPath(sid)),
+        "codegen-log write must NOT create/increment counter file",
+      );
+    } finally {
+      fs.rmSync(counterPath(sid), { force: true });
+    }
+  });
+
+  it("still blocks real standalone make ci at count=3 (unchanged)", async () => {
+    const sid = `sid9-${Date.now()}`;
+    fs.writeFileSync(counterPath(sid), "2");
+    try {
+      const result = await runHook("make ci", "developer-phoenix-backend", sid);
+      assert.ok((result as { block?: boolean }).block === true);
+    } finally {
+      fs.rmSync(counterPath(sid), { force: true });
+    }
+  });
 });

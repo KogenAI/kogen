@@ -71,6 +71,14 @@ run_test "git log --stash allowed" "0" \
 run_test "Read tool with git stash payload allowed" "0" \
     '{"hook_event_name":"PreToolUse","tool_name":"Read","tool_input":{"command":"git stash"},"agent_type":"developer-phoenix-backend","agent_id":"a"}'
 
+# Test 8: codegen-log write narrating "git stash" in heredoc body → allow
+run_test "codegen-log write narrating git stash allowed" "0" \
+    '{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"codegen-log section --slug test --body @- <<EOF\n## developer-phoenix-backend Section\nDid NOT run git stash — used a scratch branch instead.\nEOF"},"agent_type":"developer-phoenix-backend","agent_id":"a"}'
+
+# Test 9: real standalone git stash still blocked unchanged
+run_test "real git stash still blocked (unchanged)" "2" \
+    '{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"git stash"},"agent_type":"developer-phoenix-backend","agent_id":"a"}'
+
 echo ""
 echo "Results: $pass passed, $fail failed"
 

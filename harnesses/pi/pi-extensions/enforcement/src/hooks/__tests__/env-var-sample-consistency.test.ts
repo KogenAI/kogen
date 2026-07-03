@@ -60,4 +60,14 @@ describe("env-var-sample-consistency", () => {
     });
     assert.ok(result == null || (result as { block?: boolean }).block !== true);
   });
+
+  it("allows codegen-log write narrating a git commit for committer", async () => {
+    // A codegen-log write is never a git commit itself — bypassed before the
+    // `git commit` phrase match, regardless of what its heredoc body narrates.
+    const result = await runHook(
+      'codegen-log section --slug test --body @- <<EOF\n## committer Section\nRan git commit -m "Add env var" — denied as expected (missing samples).\nEOF',
+      "committer",
+    );
+    assert.ok(result == null || (result as { block?: boolean }).block !== true);
+  });
 });

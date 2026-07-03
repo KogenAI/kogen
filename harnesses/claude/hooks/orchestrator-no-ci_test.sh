@@ -108,6 +108,14 @@ CLAUDE_ROLE=ops run_test "CLAUDE_ROLE=ops make ci → allow (ops bypass)" "0" \
 PI_ROLE=ops run_test "PI_ROLE=ops make ci → allow (ops bypass)" "0" \
     '{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"make ci"},"agent_type":"","agent_id":""}'
 
+# Test 15: codegen-log write narrating "make ci" in heredoc body → allow
+run_test "codegen-log write narrating gated phrase allowed" "0" \
+    '{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"codegen-log section --slug test --body @- <<EOF\n## orchestrator Section\nDelegated to developer; make ci ran green in the gate.\nEOF"},"agent_type":"","agent_id":""}'
+
+# Test 16: real standalone make ci still denied unchanged
+run_test "orchestrator real make ci still denied (unchanged)" "2" \
+    '{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"make ci"},"agent_type":"","agent_id":""}'
+
 echo ""
 echo "Results: $pass passed, $fail failed"
 

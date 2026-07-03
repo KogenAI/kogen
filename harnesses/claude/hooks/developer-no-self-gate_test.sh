@@ -126,5 +126,30 @@ out=$(make_input "mix format --check-formatted" "developer-phoenix-backend" "$SI
 assert_contains "mix format at count=3 BLOCKED" '"permissionDecision"' "$out"
 rm -f "/tmp/codegen-self-gate-${SID8}.count"
 
+# ── Test 9: codegen-log write narrating "make ci" in heredoc body → ALLOW, no counter bump ──
+SID9="sid9-$$-$(date -u +%s)"
+rm -f "/tmp/codegen-self-gate-${SID9}.count"
+LOG_CMD='codegen-log section --slug test --body @- <<'"'"'EOF'"'"'
+## developer-phoenix-backend Section
+Ran make ci and mix test three times, all green.
+EOF'
+out=$(make_input "$LOG_CMD" "developer-phoenix-backend" "$SID9" | bash "$HOOK" 2>/dev/null || true)
+assert_not_contains "codegen-log write narrating gated phrase ALLOWED" '"permissionDecision"' "$out"
+if [ -f "/tmp/codegen-self-gate-${SID9}.count" ]; then
+    printf 'FAIL: codegen-log write must NOT create/increment counter file\n'
+    fail=$((fail + 1))
+else
+    [ -n "${VERBOSE:-}" ] && printf 'PASS: codegen-log write did not touch counter file\n'
+    pass=$((pass + 1))
+fi
+rm -f "/tmp/codegen-self-gate-${SID9}.count"
+
+# ── Test 10: real standalone make ci still denies/counts unchanged at count=3 ──
+SID10="sid10-$$-$(date -u +%s)"
+printf '2' >"/tmp/codegen-self-gate-${SID10}.count"
+out=$(make_input "make ci" "developer-phoenix-backend" "$SID10" | bash "$HOOK" 2>/dev/null || true)
+assert_contains "real make ci at count=3 STILL BLOCKED" '"permissionDecision"' "$out"
+rm -f "/tmp/codegen-self-gate-${SID10}.count"
+
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

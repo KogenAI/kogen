@@ -423,6 +423,15 @@ is_outer_session() {
     [ -z "${AGENT_TYPE:-}" ]
 }
 
+# is_codegen_log_write — true when $COMMAND invokes the codegen-log CLI (the
+# SOLE legitimate session-log writer). A codegen-log heredoc body can
+# legitimately contain any gated phrase; command-scanning guards must treat
+# such a call as a log WRITE, never the gated action it narrates. Mirrors the
+# bypass in session-log-writer-only.sh.
+is_codegen_log_write() {
+    printf '%s' "${COMMAND:-}" | grep -qE '(^|[[:space:]/])codegen-log\b'
+}
+
 # read_tool_failures <project_dir> — pretty-print the durable tool-failure
 # store under <project_dir>/codegen/logging/failures/*.jsonl.
 # Aggregates tool × count with the latest error + session. Newest-first.

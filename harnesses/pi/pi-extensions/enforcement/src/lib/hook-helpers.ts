@@ -154,6 +154,17 @@ export function repoRelative(filePath: string): string {
   return canonical;
 }
 
+/**
+ * isCodegenLogWrite() — True when the bash command invokes the codegen-log
+ * CLI (the SOLE legitimate session-log writer). A codegen-log heredoc body
+ * can legitimately contain any gated phrase; command-scanning guards must
+ * treat such a call as a log WRITE, never the gated action it narrates.
+ * Mirrors session-log-writer-only.ts.
+ */
+export function isCodegenLogWrite(command: string): boolean {
+  return /(^|[\s/])codegen-log\b/.test(command);
+}
+
 /** Unused ctx parameter helper — avoids lint warnings in hook modules that don't use ctx. */
 export function voidCtx(_ctx: ExtensionContext): void {
   // intentionally unused

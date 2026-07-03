@@ -56,4 +56,17 @@ describe("no-cat-pipe", () => {
     const result = await runHook("read", "cat file.txt | head");
     assert.ok(result == null || (result as { block?: boolean }).block !== true);
   });
+
+  it("allows codegen-log write narrating cat pipe", async () => {
+    const result = await runHook(
+      "bash",
+      "codegen-log section --slug test --body @- <<EOF\n## developer-phoenix-backend Section\nUsed Read tool instead of cat foo.txt | head -50 — no truncation.\nEOF",
+    );
+    assert.ok(result == null || (result as { block?: boolean }).block !== true);
+  });
+
+  it("still blocks real cat pipe unchanged", async () => {
+    const result = await runHook("bash", "cat file.txt | head -20");
+    assert.ok((result as { block?: boolean }).block === true);
+  });
 });

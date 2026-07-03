@@ -69,6 +69,14 @@ run_test "--amend -m single-line ALLOWED" "0" \
 run_test "git status ALLOWED (not a commit)" "0" \
     "{\"hook_event_name\":\"PreToolUse\",\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"git status\"},\"agent_type\":\"$COMMITTER\",\"agent_id\":\"abc\"}"
 
+# 9. codegen-log write narrating "-m payload with literal \n" in heredoc body → ALLOW
+run_test "codegen-log write narrating literal-backslash-n commit ALLOWED" "0" \
+    "$(jq -n --arg at "$COMMITTER" '{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"codegen-log section --slug test --body @- <<EOF\n## committer Section\nRan git commit -m \"Add feature\\ndetails\" — denied as expected (multi-line).\nEOF"},"agent_type":$at,"agent_id":"abc"}')"
+
+# 10. real standalone -m with literal \n still BLOCKED unchanged
+run_test "-m with literal backslash-n still BLOCKED unchanged" "2" \
+    "{\"hook_event_name\":\"PreToolUse\",\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"git commit -m \\\"Add feature\\\\ndetails\\\"\"},\"agent_type\":\"$COMMITTER\",\"agent_id\":\"abc\"}"
+
 echo ""
 echo "Results: $pass passed, $fail failed"
 

@@ -141,6 +141,25 @@ run_test "staged content is forward progress → allow" "0" \
     "$(commit_fixture "committer" "$TMP")" \
     "CODEGEN_BUILD_START_TS=0" "CLAUDE_PROJECT_DIR=$TMP"
 
+# --- Test 8: codegen-log write narrating "git commit" in heredoc body → allow ---
+# Backward-roll content is still staged from Test 6; a real commit would be
+# denied (see Test 6), but a codegen-log write narrating it must be allowed.
+log_write_fixture() {
+    jq -n \
+        '{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"codegen-log section --slug test --body @- <<EOF\n## committer Section\nRan git commit -m \"msg\" successfully.\nEOF"},"agent_type":"committer","agent_id":"abc"}'
+}
+git checkout -- file.txt # restore to "updated content" (HEAD)
+echo "original content" >file.txt
+git add file.txt
+run_test "codegen-log write narrating git commit → allow" "0" \
+    "$(log_write_fixture)" \
+    "CODEGEN_BUILD_START_TS=0" "CLAUDE_PROJECT_DIR=$TMP"
+
+# --- Test 9: real staged backward-roll commit still denied unchanged ---
+run_test "real backward-roll commit still denied unchanged" "2" \
+    "$(commit_fixture "committer" "$TMP")" \
+    "CODEGEN_BUILD_START_TS=0" "CLAUDE_PROJECT_DIR=$TMP"
+
 printf '\nResults: %s passed, %s failed\n' "$pass" "$fail"
 
 if [ "$fail" -gt 0 ]; then

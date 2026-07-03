@@ -169,6 +169,22 @@ run_test "--amend when HEAD predates cycle start → deny (foreign amend)" "2" \
     "$(amend_fixture "committer" "$TMP")" \
     "CODEGEN_BUILD_START_TS=$FUTURE_START_TS_FOR_T8" "CLAUDE_PROJECT_DIR=$TMP"
 
+# --- Test 9: codegen-log write narrating "git commit" in heredoc body → allow ---
+# Session commit already exists in $TMP; a real git commit would be denied
+# (see Test 7), but a codegen-log write narrating it must be allowed.
+log_write_fixture() {
+    jq -n \
+        '{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"codegen-log section --slug test --body @- <<EOF\n## committer Section\nRan git commit -m \"msg\" successfully.\nEOF"},"agent_type":"committer","agent_id":"abc"}'
+}
+run_test "codegen-log write narrating git commit → allow" "0" \
+    "$(log_write_fixture)" \
+    "CODEGEN_BUILD_START_TS=0" "CLAUDE_PROJECT_DIR=$TMP"
+
+# --- Test 10: real standalone git commit still denied unchanged (session commit exists) ---
+run_test "real git commit still denied unchanged" "2" \
+    "$(commit_fixture "committer" "$TMP")" \
+    "CODEGEN_BUILD_START_TS=0" "CLAUDE_PROJECT_DIR=$TMP"
+
 printf '\nResults: %s passed, %s failed\n' "$pass" "$fail"
 
 if [ "$fail" -gt 0 ]; then

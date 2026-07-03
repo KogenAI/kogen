@@ -30,6 +30,12 @@ developer-static) ;;
 *) exit 0 ;;
 esac
 
+# A codegen-log write narrates gated phrases in its heredoc body; it is never
+# the gated action itself. Bypass before any phrase match or counter increment.
+if is_codegen_log_write; then
+    exit 0
+fi
+
 # Deny: pattern match.
 if printf '%s' "$COMMAND" | grep -qE '(render|wiring)-check\.js|npm[[:space:]]+(run[[:space:]]+)?(build|serve)|vite[[:space:]]+build|playwright'; then
     deny "BLOCKED by developer-static-no-manual-build: do not run build/render/wiring-check/serve/playwright manually. The static-site-build-check gate runs verification automatically on SubagentStop. Manual runs cause thrash."

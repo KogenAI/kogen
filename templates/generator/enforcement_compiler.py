@@ -162,6 +162,12 @@ if [ "$TOOL_NAME" != "{tool_guard}" ]; then
     exit 0
 fi
 {bypass_roles_prelude}{agent_type_guard}
+# A codegen-log write narrates gated phrases in its heredoc body; it is never
+# the gated action itself. Bypass before any phrase match or counter increment.
+if is_codegen_log_write; then
+    exit 0
+fi
+
 # Deny: pattern match.
 if printf '%s' "$COMMAND" | grep -qE '{match_bash}'; then
     deny "{message}"
@@ -563,7 +569,7 @@ _TS_TEMPLATE_SINGLE = """\
  */
 
 import type {{ ExtensionAPI }} from "@earendil-works/pi-coding-agent";
-import {{ deny, debugLog }} from "../lib/hook-helpers";
+import {{ deny, debugLog, isCodegenLogWrite }} from "../lib/hook-helpers";
 
 export const HANDLER_META = {{
   name: "{id}",
@@ -577,6 +583,11 @@ export function register(pi: ExtensionAPI): void {{
 {bypass_roles_prelude}{agent_type_guard}
     const command: string = (event.input as {{ command?: string }}).command ?? "";
     debugLog("{id}", `cmd=${{command}}`);
+
+    // A codegen-log write narrates gated phrases in its heredoc body; it is
+    // never the gated action itself. Bypass before any phrase match or
+    // counter increment.
+    if (isCodegenLogWrite(command)) return;
 
     if (/{match_ts}/.test(command)) {{
       return deny(

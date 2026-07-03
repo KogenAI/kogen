@@ -186,5 +186,34 @@ describe("committer-no-revert-prior-commit", { concurrency: 1 }, () => {
       });
       assert.ok(result == null || (result as { block?: boolean }).block !== true);
     });
+
+    it("allows codegen-log write narrating git commit even with backward-roll content staged", async () => {
+      // Stage the original (pre-session-commit) content — would be a backward roll
+      fs.writeFileSync(path.join(tmpDir, "file.txt"), "original content");
+      gitCmd(tmpDir, ["add", "file.txt"]);
+
+      const result = await runHook(
+        'codegen-log section --slug test --body @- <<EOF\n## committer Section\nRan git commit -m "msg" successfully.\nEOF',
+        "committer",
+        {
+          CODEGEN_BUILD_START_TS: "0",
+          CLAUDE_PROJECT_DIR: tmpDir,
+        },
+      );
+      assert.ok(
+        result == null || (result as { block?: boolean }).block !== true,
+      );
+    });
+
+    it("still denies real staged backward-roll commit unchanged", async () => {
+      fs.writeFileSync(path.join(tmpDir, "file.txt"), "original content");
+      gitCmd(tmpDir, ["add", "file.txt"]);
+
+      const result = await runHook("git commit -m revert", "committer", {
+        CODEGEN_BUILD_START_TS: "0",
+        CLAUDE_PROJECT_DIR: tmpDir,
+      });
+      assert.ok((result as { block?: boolean }).block === true);
+    });
   });
 });

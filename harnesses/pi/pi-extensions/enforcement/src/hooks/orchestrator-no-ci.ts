@@ -21,7 +21,7 @@
  */
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { deny, debugLog } from "../lib/hook-helpers";
+import { deny, debugLog, isCodegenLogWrite } from "../lib/hook-helpers";
 
 export const HANDLER_META = {
   name: "orchestrator-no-ci",
@@ -62,6 +62,11 @@ export function register(pi: ExtensionAPI): void {
       (event.input as { command?: string }).command ?? "";
 
     debugLog("orchestrator-no-ci", `cmd=${command}`);
+
+    // A codegen-log write narrates gated phrases in its heredoc body; it is
+    // never the gated action itself. Bypass before any phrase match or
+    // counter increment.
+    if (isCodegenLogWrite(command)) return;
 
     const denyMsg =
       "orchestrator-no-ci: the main-agent session MUST NOT run gate commands directly. Gate runs via the loop (non-interactive builds) or a SubagentStop hook (interactive-session fallback) after developer-* completes. To inspect a running gate, use `make gate-status`. To trigger a gate, delegate to a developer-* subagent.";
