@@ -143,3 +143,7 @@ This eliminates the dirty-tree race: integrate-stage files rendered AFTER the co
 ## Pitfalls & Bash Gotchas
 
 → See `context/pitfalls.md` for codegen-infra pitfalls and bash gotchas.
+
+## Trigger Keywords
+
+make install, make test, make test-stacks, CI/CD, Makefile, contribution, README, env vars, harness-parity, launcher tests, Makefile for t in list, dev loop, tech stack, coding conventions

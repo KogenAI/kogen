@@ -188,3 +188,7 @@ For every `harnesses/claude/hooks/<name>.sh` there is a paired `<name>_test.sh` 
 - After Stage 5: **install.sh + uninstall.sh** covered by hermetic round-trip tests (`test_harness/install/`) with `HOME` override + `ZSH_COMPLETION_DIRS` env-toggle. Tests for both `--harness=claude` (15 cases) and `--harness=pi` (13 cases) wired into `make test` via `test_harness/install/run-tests.sh`.
 - Generator pipeline now has 4 unit test files (Python unittest + bash) wired into `make test`; `test_dual_render.sh` integrated into the runner via `templates/generator/run-tests.sh`.
 - Coverage entry-points wired: ExCoveralls (Elixir), c8 (enforcement+subagents), vitest+istanbul (askuserquestion+web-utils), kcov (shell), coverage.py declared (Python — Stage 3).
+
+## Trigger Keywords
+
+test coverage, coverage gaps, what tests exercise X, untested paths, test inventory, ExCoveralls, c8, vitest, istanbul, kcov, coverage.py

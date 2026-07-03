@@ -148,3 +148,7 @@ ORDER BY day DESC, role;
 ```
 
 Resident token cost per agent role at spawn — project provides a measurement script. (Example: `bin/measure-agents.sh --label pre-deploy-$(date +%Y%m%d)`.)
+
+## Trigger Keywords
+
+token mechanics, context window, prompt caching, billing, Read cost, auto-compact, /context load, transcript JSONL, resident token cost, cache hit rate, token budget thresholds

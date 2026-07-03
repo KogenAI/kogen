@@ -75,3 +75,7 @@ Example: "discovered that the Phoenix loop gate behavior differs from static-sit
 
 - `[local]` block → `context/hooks.md` (phoenix vs static differences)
 - `[shared]` block → `codegen/rules/shared/hook-layering.md` (common hook design pattern)
+
+## Trigger Keywords
+
+curator routing, context-curator targets, where learnings go, [local] vs [shared], retrospective routing, shared vs local learning, hook-layering routing

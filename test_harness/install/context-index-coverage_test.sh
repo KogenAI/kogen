@@ -3,6 +3,7 @@
 # the full context/ tree and that context/ holds no non-.md clutter.
 #   (a) every context/*.md basename appears in the PROJECT_CONTEXT.md Domain table
 #   (b) context/ contains no non-.md files (.bak, .DS_Store, swapfiles, etc.)
+#   (c) every context/*.md contains a `## Trigger Keywords` section
 # Pure filesystem + grep — hermetic, no install run.
 set -euo pipefail
 
@@ -24,12 +25,19 @@ PC="$CODEGEN_DIR/PROJECT_CONTEXT.md"
 listed="$(grep -oE '`context/[a-z0-9_-]+\.md`' "$PC" | sed 's|`context/||; s|`||' | sort -u)"
 
 # (a) coverage: every on-disk context/*.md is listed
+# (c) every on-disk context/*.md has a ## Trigger Keywords section
 while IFS= read -r f; do
     base="$(basename "$f")"
     if printf '%s\n' "$listed" | grep -qxF "$base"; then
         pass
     else
         fail "context/$base missing from PROJECT_CONTEXT.md Domain table"
+    fi
+
+    if grep -qE '^## Trigger Keywords$' "$f"; then
+        pass
+    else
+        fail "context/$base missing ## Trigger Keywords section"
     fi
 done < <(find "$CTX_DIR" -maxdepth 1 -name '*.md' -type f)
 

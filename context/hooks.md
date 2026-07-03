@@ -243,3 +243,7 @@ See `shared/rules/_core/session-log.md` § Ownership for the full contract.
 - **Timestamps**: `YYYYMMDD_HHMMSS` sorts lexically ≡ chronologically. Use `[ "$ts1" \< "$ts2" ]` for portable compare.
 - **Bash patterns**: `#` and `[]` are glob-special in `${var%%pattern}` expansions. Hook simulation may fail; test literal code.
 - **Gate verdict**: the runtime-written gate-result JSON's `.verdict` field is authoritative, never session-log prose. Manual re-runs don't update JSON. Pi build now fails closed on `codegen-build` if the post-dispatch verdict is absent or not `clear`.
+
+## Trigger Keywords
+
+PreToolUse, SubagentStop, Stop hook, Elixir orchestration loop, LoopGate, hook test, run-tests.sh, gate verdict, hook registration, orchestrator hook bypass, resolve_role, ops bypass, per-role gate, AGENT_TYPE gate, gate-result.json verdict

@@ -50,3 +50,7 @@ Full mapping from `templates/generator/config.yaml` (Claude harness):
 Baked role prompts (subagent system prompts) are cached at 0.1× per spawn after the first write. Same-workspace sessions share the cache entry — meaning the large static prefix pays the write tax once and is re-read cheaply for every subsequent spawn in that workspace.
 
 Therefore, "move `_core` rules to a shared prefix to save tokens" is a false economy: the tokens are already cached at 0.1× and the architectural cost (split rendering, cross-harness coordination, new install logic) is not recovered. This approach was evaluated and rejected; it is recorded here so no future cost sweep re-raises it.
+
+## Trigger Keywords
+
+token tuning, budget optimization, cost per role, Opus vs Haiku, Read discipline vs Bash grep, split rendering cost, cross-harness coordination cost, rejected optimization

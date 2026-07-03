@@ -112,3 +112,7 @@ The generated set is rarely purely additive; drops are silent runtime breaks if 
 ## Enforcement Compiler — Renderer-Neutral Regex Tokens
 
 `enforcement_compiler.py` `_to_bash` does a literal `.replace(r"\s", "[[:space:]]")` — this fires inside character classes too, corrupting nested brackets. When defining regex patterns in `shared/enforcement/registry.yaml` that compile to both bash ERE and JavaScript regex, avoid `\s` inside char classes (`[^&\s]`, `[\s]`) — they become `[^&[[:space:]]]` (broken) in bash. Use `\S` instead (negated class that round-trips identically across both renderers): `match: "[^&]*\\S+"` → bash: `[^&]*\S+`; JS: `/[^&]*\S+/`. Verify by testing both `_to_bash` and `_to_ts` renderers on the pattern.
+
+## Trigger Keywords
+
+enforcement_compiler.py, registry.yaml, kind: denial, kind: registration, renderer-neutral regex tokens, pattern dialect, COMMAND/FILE_PATH source, hook generation, negated class, bash vs TS renderer parity

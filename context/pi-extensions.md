@@ -182,3 +182,7 @@ Timer deps are injected via a `LoopDeps` interface (`{setInterval, clearInterval
 - **Extension structure varies** — `enforcement` has no root-level `index.ts` (entry is under `src/`); all four extensions have a `src/` subdirectory; do not assume a uniform layout at root level across all four extensions
 - **`\z` anchor (PCRE) not supported in JS regex** — JavaScript regex treats `\z` as literal `z`. When porting regex from Bash/Ruby, replace end-of-string anchors with string-split patterns: `text.split(header)` + `slice` to find section boundary instead of `(?=\n###)` lookahead anchors. If the regex has a fallback pattern, the bug is masked in tests but creates a latent over-match edge case.
 - **Markdown section body extraction** — avoid `\z`-anchored regex for extracting markdown section bodies. Prefer string-split pattern: `split("## ")[N]` then slice to the next `\n## ` boundary. This avoids both regex limitations and makes intent explicit.
+
+## Trigger Keywords
+
+pi-extension, askuserquestion, enforcement, web-utils, subagents extension, npm, TypeScript, generate-pi-extension.sh, markdown section split, string-split pattern

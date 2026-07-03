@@ -96,3 +96,7 @@ Work top-down when subagent does wrong thing:
 Examples: trigger `"LLM"` → context/llm.md; trigger `"hooks"` → `context/hooks.md`; trigger `"provisioning"` → context/provisioning.md.
 
 Recipes: same on-demand model — planner reads recipe when task matches the pattern name. No trigger table needed; names are self-describing.
+
+## Trigger Keywords
+
+subagent wrong behavior, influence stack, rule violation, system prompt, Jinja includes, rules baking, delegation prompt, trigger table, recipe on-demand model

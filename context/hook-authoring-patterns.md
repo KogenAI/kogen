@@ -491,3 +491,7 @@ HOOK-MANIFEST edits require BOTH `.sh` AND `registry.yaml` to update:
 
 `kind: registration` hooks preserve hand-authored bodies across edits. `kind: denial` (`generated: true`) hooks have ENTIRE `.sh` regenerated at `make install` — do not hand-edit.
 ```
+
+## Trigger Keywords
+
+how to write a hook, SubagentStop fix-up, Stop hook authoring, hook test authoring, hooks-lib, output protocol, gate verdict flow, hook registration mechanics, transcript lag, kind: registration vs kind: denial

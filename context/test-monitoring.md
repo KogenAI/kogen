@@ -149,3 +149,7 @@ make test-stacks 2>&1 | tail -100 > /tmp/test-stacks-$(date +%s).log &
 - `context/development.md` — Make targets, tech stack
 - `context/test-harness.md` — Test suite structure, interpreting results
 - `CLAUDE.md` — Full dev cycle and orchestrator rules
+
+## Trigger Keywords
+
+test monitoring, make test-stacks progress, background test, pgrep poll, tail -f log, non-blocking test run, watch test output

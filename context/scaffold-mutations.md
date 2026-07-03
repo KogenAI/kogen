@@ -168,3 +168,7 @@ This is not unit-testable in bash (overlays only exist post-phx.gen.release); co
 - **Idempotent .gitignore updates use section markers** — repeated `integrate` runs do not duplicate codegen symlink entries in .gitignore; marker comment detects already-present section
 - **Post-condition anchor drift** — after B4 fixture regeneration, re-verify every mutation's `grep -qF` anchor; mutations with drifted anchors will silently skip during tests (idempotency guard matches but post-condition fails). Always pair idempotency guard + post-condition on the same anchor.
 - **Fixture regeneration breaks make test** — B4 fixture regen is gate-affecting; fixture file changes → mutation unit tests run against new content. Re-run `shared/scaffold/phoenix/run-tests.sh` after any regen to catch anchor drift or mutation failures.
+
+## Trigger Keywords
+
+scaffold mutations, guard test discovery, credo cleanup, portable sed, eex_render postcondition, mutation flag discipline, PageController route strip, mutation unit tests

@@ -162,3 +162,7 @@ A third partition exists alongside `user_global_hooks`/`per_call_hooks`: the **l
 - **Generation**: `main()`'s settings-regeneration path computes `loop_hooks` from `user_global_hooks`, fails loud (`sys.exit(1)`) if any `LOOP_BUNDLE_IDS` member is missing, then calls `emit_loop_settings(loop_hooks, settings_path.parent / "claude-code-loop-settings.json")` — structurally identical to `write_inspector_settings`. Deriving the output path from `settings_path.parent` means the `make hook-parity` run (`--output-settings /tmp/...`) emits to `/tmp/claude-code-loop-settings.json`, and the real install run emits the committed sibling of `claude-code-settings.json`.
 - **Artifact ownership**: UNLIKE the per-call inspector fragment, this file IS committed (`harnesses/claude/claude-code-loop-settings.json`) — it is read directly by `OrchestrationLoop.guard_bundle_flag!("claude_code")` at loop runtime, not copied into `~/.claude/`. `make hook-parity` diffs it against a freshly regenerated `/tmp` copy on every run.
 - **Legacy path unaffected**: the legacy (non-loop) interactive path loads the full `~/.claude/settings.json` directly and has no caller of `guard_bundle_flag!/2` — it is untouched by this partition.
+
+## Trigger Keywords
+
+manifest.yaml, generate.sh, harness install, install.sh, hook_registrations.py, codegen-build, codegen-scaffold, codegen-call, generator pipeline, manifest schema, guard_bundle_flag, legacy interactive path

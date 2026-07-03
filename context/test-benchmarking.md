@@ -21,7 +21,7 @@ codegen/benchmarks/<UTC-ts>/
       modes/<test_name>.jsonl
 ```
 
-PNG screenshot per static-stack and Phoenix test: `<BENCH_RUN_DIR>/runs/<harness>/<stack>/<test_name>.png` (1280×720 full-page, captured by `BenchArtifacts.capture_screenshot/4` via `bench/screenshot.js`). Modes stack excluded — no website to render. Static stacks use a Node HTTP server; Phoenix stacks spawn `mix phx.server` on a dynamic port, poll for HTTP 200, capture the screenshot, then SIGTERM/SIGKILL the process group. Screenshot failure is non-fatal: test continues and JSONL is written regardless; missing Playwright logs a warning and returns `:ok`.
+PNG screenshot per static-stack and Phoenix test: `<BENCH_RUN_DIR>/runs/<harness>/<stack>/<test_name>.png` (1280×720 full-page, captured by `BenchArtifacts.capture_screenshot/4` via `test_harness/bench/screenshot.js`). Modes stack excluded — no website to render. Static stacks use a Node HTTP server; Phoenix stacks spawn `mix phx.server` on a dynamic port, poll for HTTP 200, capture the screenshot, then SIGTERM/SIGKILL the process group. Screenshot failure is non-fatal: test continues and JSONL is written regardless; missing Playwright logs a warning and returns `:ok`.
 
 **Port allocation + cleanup infrastructure**: `bench_artifacts.ex` allocates free ports via `net.Server` on port 0 (captures `address().port`), passes to `mix phx.server` via `PORT=<n>` env. Timeout handling uses `Port.open/2` + `kill_port/1` (not `System.cmd/3`), covering deps.get (60s) + compile (90s) + readiness wait (30s) + screenshot (15s) = 210s total. Process cleanup: `process.kill(-pgid, 'SIGTERM')` → 2s wait → `SIGKILL`; catches ESRCH on normal exit. Both Node `stopPhoenixServer` and Elixir `kill_port/1` target the process, but cleanup order is correct (Phoenix finally-block runs first, avoiding race). Note: Edit tool requires prior Read (20260528 session); when Edit blocked on context files, use `sed -i ''` for in-place updates.
 
@@ -54,3 +54,7 @@ Parser (`CodegenTestHarness.UsageParser`) trims each harness envelope to `{model
 - `node test_harness/bench/summarize.js <run-dir>` — reads every `runs/<harness>/<stack>/*.jsonl` `harness_summary` line, aggregates cost/tokens/duration/turns/pass-rate + screenshot counts, writes `<run-dir>/summary.md`; invoked automatically by `make bench`
 
 `last_green.json` coexists unchanged; benchmarking is orthogonal to the green baseline.
+
+## Trigger Keywords
+
+BENCH=1, REASON, benchmark capture, screenshot, bench artifacts, mix codegen.bench, summarize.js, JSONL harness_summary, last_green.json coexistence

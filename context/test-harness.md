@@ -258,7 +258,6 @@ Benchmark mode (BENCH=1), artifact layout, screenshot capture, mix viewer tasks:
 - **`run_with_timeout/4` return order is output-first** — returns `{IO.iodata_to_binary(...), exit_code}`. A tail-calling helper that skips re-tupling inverts the pair silently (binds `exit_code` to a binary). Always re-tuple explicitly if the public contract differs; assertions on `exit_code == 0` must operate on an integer.
 - **`assert_assets_deploy!` requires `MIX_ENV=dev`** — tailwind config lives in the generated app's dev config only (Phoenix 1.8.7). When `assert_assets_deploy!` runs under `MIX_ENV=test` (inherited from ExUnit), tailwind finds no config → silent no-op → `app.css` absent at exit 0. Always pass `env: [{"MIX_ENV", "dev"}]` in the `System.cmd` call for `mix assets.deploy`. This scoping is safe: compile + test phases retain `MIX_ENV=test`; only the assets.deploy call passes `MIX_ENV=dev`.
 - **`codegen-call` requires `--model`, `--effort`, and `@<abs-path>` for system-prompt/schema** — exit 2 `--model is required` means the fixture uses the old pre-`bfc6de1` API. Elixir fixtures resolve model/effort from `templates/generator/config.yaml` (`yq -r ".harness.<role>.<harness_short>.model"`), write system-prompt/schema to temp files, pass `@/tmp/...`. Map `"claude_code"` → `"claude"` for the config key. Use `try/after File.rm/1` cleanup.
-- **Bash fixtures for no-agent_end edge cases** — When a fixture intentionally omits an expected event type (e.g., pi fixtures lacking `{"type":"agent_end",...}` lines), verify with `jq 'select(.type=="agent_end")' <fixture>` returning empty before asserting — prevents silent failures when a fixture accidentally contains the event despite intent to omit it.
 - **`bench_artifacts_test.exs` acceptable-error token list must track screenshot.js evolution** — pre-Vite used playwright/node/MODULE_NOT_FOUND; Vite-era adds `"resolveServeDir"` (when `npm install + npm run build` fails on missing `package.json`). Update the token list when screenshot.js changes, especially after stack migrations.
 
 ### Flake Triage Protocol
@@ -278,3 +277,7 @@ Apply to EVERY `make test-stacks` failure before touching source. Reference: `sh
 - A flake with a deterministic root cause (race, stale assertion, nil guard) is bucket 1/2, not bucket 3 — fix it.
 - NEVER mask a genuine flake with assertion widening or retry infra.
 - Record confirmed flakes in session log: file:line, failure message, number of passes in re-runs.
+
+## Trigger Keywords
+
+test_harness, test-stacks, last_green, record-green.sh, stack scaffold test, ExUnit assertions, role resolver, orchestration loop, mix codegen.loop, mix codegen.loop.queue, LoopGate, LoopQueue, LoopQueueDrain, claude-build --queue, pi-build --queue, flake triage, hermetic regression guards
