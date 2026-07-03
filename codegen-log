@@ -192,7 +192,7 @@ section_header_for_agent() {
     context-curator) printf '## context-curator Section' ;;
     committer) printf '## committer Section' ;;
     *)
-        printf 'codegen-log: unsupported role %q\n' "${role:-unknown}" >&2
+        printf 'codegen-log: could not resolve role (got %q). Pass --role <planner*|developer-*|reviewer-*|context-curator|committer>; env fallback ($AGENT_TYPE/$CLAUDE_ROLE) is unset in build subagents.\n' "${role:-unknown}" >&2
         exit 2
         ;;
     esac

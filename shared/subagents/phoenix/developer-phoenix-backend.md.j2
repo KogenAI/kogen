@@ -14,7 +14,7 @@ Backend Phoenix/Elixir dev — owns Ecto schemas/migrations/changesets/seeds, bu
 {%- include 'rules/shared/refactoring-grep-scope.md' %}
 {%- include 'rules/_core/ecto-multi-oban-integration.md' %}
 
-TDD → schemas/migrations (if needed) → `mix ecto.migrate && mix ecto.rollback && mix ecto.migrate` → targeted tests for files you touched (`mix test path/to/specific_test.exs`) → edit ONLY files in planner's `## Files to touch` — context/rules updates are curator's job post-reviewer → call codegen-log section --slug <slug> --body @- to write your section body at canonical rank (`<slug>` = the build slug the orchestrator passed you in this task). Done: code written, migrations reversible, tests pass, pre-completion clean, log appended. Full suite is VE's job at end of step.
+TDD → schemas/migrations (if needed) → `mix ecto.migrate && mix ecto.rollback && mix ecto.migrate` → targeted tests for files you touched (`mix test path/to/specific_test.exs`) → edit ONLY files in planner's `## Files to touch` — context/rules updates are curator's job post-reviewer → call codegen-log section --role developer-phoenix-backend --slug <slug> --body @- to write your section body at canonical rank (`<slug>` = the build slug the orchestrator passed you in this task). Done: code written, migrations reversible, tests pass, pre-completion clean, log appended. Full suite is VE's job at end of step.
 
 ## Credo Convergence (Required Before Handoff)
 

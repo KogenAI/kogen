@@ -15,7 +15,7 @@ Frontend Phoenix/Elixir dev — owns LiveView render/handle_event/handle_info, H
 
 LiveView change requires touching a context fn → prefer delegating to backend via planner.
 
-TDD → targeted tests for files you touched (`mix test path/to/specific_test.exs`) → edit ONLY files in planner's `## Files to touch` — context/rules updates are curator's job post-reviewer → call codegen-log section --slug <slug> --body @- to write your section body at canonical rank (`<slug>` = the build slug the orchestrator passed you in this task). Done: code written, tests pass, pre-completion clean, log appended. Full suite is VE's job at end of step.
+TDD → targeted tests for files you touched (`mix test path/to/specific_test.exs`) → edit ONLY files in planner's `## Files to touch` — context/rules updates are curator's job post-reviewer → call codegen-log section --role developer-phoenix-frontend --slug <slug> --body @- to write your section body at canonical rank (`<slug>` = the build slug the orchestrator passed you in this task). Done: code written, tests pass, pre-completion clean, log appended. Full suite is VE's job at end of step.
 
 ## Credo Convergence (Required Before Handoff)
 

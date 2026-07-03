@@ -59,6 +59,10 @@ Rules in `shared/rules/shared/` (and cross-referenced by downstream projects) mu
 
 The carve-out parenthetical is the most error-prone location for this slip — ensure any exception allowing subprocess invocation uses the neutral form. Example: "This does NOT forbid a print-mode subprocess (`--print`) your delegation prompt explicitly asks for — e.g. verifying a build, or testing a role you are editing."
 
+## `codegen-log` Role Resolution
+
+The `codegen-log` binary resolves role via precedence chain: `ROLE_OVERRIDE` env var (test-only) > `AGENT_TYPE` env var (shape/ops/debug launchers) > `CLAUDE_ROLE` env var (legacy, shape-mode only) > `--role <literal>` flag. The env-var fallback is kept (valid for non-build launchers), but **build subagents spawned via `codegen-build` Task export NO role env vars** — they must use `--role <literal>` explicitly in their `codegen-log section`/`append` instructions. Teaching every subagent prompt to emit the literal ensures correct role resolution across all contexts (build + shape + debug).
+
 ## Pitfalls
 
 - **Rule changes are not live** — must `make install` to regenerate agent prompts; running agents see old baked rules

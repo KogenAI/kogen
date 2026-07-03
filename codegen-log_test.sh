@@ -6,7 +6,7 @@
 # (b) empty-body `section --role <role>` opens a placeholder header
 # (c) `append --role <role>` preserves prior body and adds the new body in order
 # (d) `append` on a missing section exits 2
-# (e) unsupported `--role foo` exits 2
+# (e) unsupported `--role foo` exits 2, error names --role remedy
 # (g) `init` is idempotent: re-init on an existing slug prints the same path;
 #     a distinct slug forks a new log
 # (h) `--slug` resolves to the matching log among multiple logs in one workspace
@@ -132,6 +132,7 @@ ERR_E=$(printf 'x\n' | env -u AGENT_TYPE -u CLAUDE_ROLE \
 RC_E=$?
 set -e
 check "(e) unsupported --role foo exits 2" "2" "$RC_E"
+assert_contains "(e) unsupported-role error names --role remedy" "$ERR_E" "--role"
 
 # ─────────────────────────────────────────────────────────────────────────────
 # (f) regression: a target header appearing twice on disk (e.g. a real section
