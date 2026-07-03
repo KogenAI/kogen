@@ -7,13 +7,16 @@
  * OBSERVE-ONLY — Pi session_shutdown cannot block; warns to stderr.
  *
  * REDUCED FIDELITY NOTE:
- * The claude original detects "developer-* Agent called but no Write to
- * codegen/logging/*.md in the session transcript" — a transcript-inspection
- * that Pi cannot perform (Pi has no TRANSCRIPT_PATH). This twin implements a
- * weaker heuristic: if the logging directory exists, was recently active
- * (<60 minutes), and contains zero canonical session log files, warn.
- * This catches the "no log ever created" case but cannot detect the
- * "developer ran but log was missing from transcript" nuance.
+ * The claude original now uses POSITION-CORRELATION: it blocks only when the
+ * LAST developer-* Agent tool_use has no step-log creation (Write/Edit/MultiEdit
+ * to codegen/logging/*.md OR a Bash codegen-log init|section|append) AFTER it in
+ * transcript order — so a resolved-and-logged delegation from an earlier cycle
+ * stops arming the guard. Pi has no TRANSCRIPT_PATH and cannot inspect
+ * transcript order, so this twin implements a weaker disk heuristic: if the
+ * logging directory exists, was recently active (<60 minutes), and contains zero
+ * canonical session log files, warn. This catches the "no log ever created"
+ * case but cannot detect the position-correlation nuance (delegated-then-logged
+ * vs. delegated-never-logged).
  *
  * Skip when:
  *   - codegen/logging/ directory does not exist

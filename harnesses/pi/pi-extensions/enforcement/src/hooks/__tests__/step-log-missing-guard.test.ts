@@ -163,4 +163,50 @@ describe("step-log-missing-guard", { concurrency: false }, () => {
       "expected no WARNING when PI_ROLE=shape (investigative mode)",
     );
   });
+
+  it("stays observe-only under position-correlation source change (warns, never blocks)", async () => {
+    // The Claude source moved to transcript position-correlation; Pi has no
+    // transcript and keeps its disk heuristic. This test locks in that the twin
+    // still WARNS on a recently-active logging dir with no canonical log, and
+    // never returns a block result.
+    const loggingDir = path.join(tmpDir, "codegen", "logging");
+    fs.mkdirSync(loggingDir, { recursive: true });
+    fs.writeFileSync(path.join(loggingDir, "random-notes.md"), "notes\n");
+
+    let capturedHandler: (event: unknown) => Promise<unknown>;
+    const localMockPi = {
+      on: (_event: string, handler: (event: unknown) => Promise<unknown>) => {
+        capturedHandler = handler;
+      },
+    };
+    const mod = await import("../step-log-missing-guard");
+    mod.register(
+      localMockPi as unknown as import("@earendil-works/pi-coding-agent").ExtensionAPI,
+    );
+
+    let stderrOutput = "";
+    const origWrite = process.stderr.write.bind(process.stderr);
+    process.stderr.write = (s: string) => {
+      stderrOutput += s;
+      return true;
+    };
+    let result: unknown;
+    try {
+      result = await capturedHandler!({
+        toolName: "session_shutdown",
+        toolCallId: "test-id",
+        input: {},
+      });
+    } finally {
+      process.stderr.write = origWrite;
+    }
+    assert.ok(
+      stderrOutput.includes("step-log-missing-guard"),
+      "expected warning on non-canonical-only logging dir",
+    );
+    assert.ok(
+      result == null || (result as { block?: boolean }).block !== true,
+      "Pi session_shutdown must not block",
+    );
+  });
 });

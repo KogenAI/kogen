@@ -219,5 +219,36 @@ out=$(make_input "$Tn" false "" "$TRANSCRIPT_Tn" | env -u CLAUDE_ROLE -u PI_ROLE
 assert_contains "role unset (build mode) — gate unchanged (still blocks)" '"decision"' "$out"
 rm -rf "$Tn"
 
+# ── Test (o): stale-replay — dev delegated, log created AFTER via codegen-log,
+#              later non-dev turns → ALLOW (no stale block) ────────────────────
+To=$(make_project)
+TRANSCRIPT_To="$To/transcript.jsonl"
+printf '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Agent","input":{"subagent_type":"developer-phoenix-backend"}}]}}\n' \
+    >"$TRANSCRIPT_To"
+printf '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Bash","input":{"command":"codegen-log section --role planner-phoenix --slug foo --body @-"}}]}}\n' \
+    >>"$TRANSCRIPT_To"
+printf '{"type":"assistant","message":{"content":[{"type":"text","text":"cycle complete; later turn with no new delegation"}]}}\n' \
+    >>"$TRANSCRIPT_To"
+out=$(make_input "$To" false "" "$TRANSCRIPT_To" | env -u CLAUDE_ROLE -u PI_ROLE bash "$HOOK" 2>/dev/null || true)
+assert_not_contains "stale-replay: dev logged via codegen-log, later turn no new dev → ALLOW" '"decision"' "$out"
+rm -rf "$To"
+
+# ── Test (p): genuine block — a prior log Write, then a LATER dev delegation
+#              with no log after it → BLOCK ───────────────────────────────────
+Tp=$(make_project)
+TRANSCRIPT_Tp="$Tp/transcript.jsonl"
+LOG_Tp="$Tp/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_session.md"
+touch "$LOG_Tp"
+printf '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Write","input":{"file_path":"%s"}}]}}\n' \
+    "$LOG_Tp" >"$TRANSCRIPT_Tp"
+printf '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Agent","input":{"subagent_type":"developer-phoenix-backend"}}]}}\n' \
+    >>"$TRANSCRIPT_Tp"
+out=$(make_input "$Tp" false "" "$TRANSCRIPT_Tp" | env -u CLAUDE_ROLE -u PI_ROLE bash "$HOOK" 2>/dev/null || true)
+assert_contains "genuine block: log precedes a later un-logged dev delegation → BLOCK" '"decision"' "$out"
+assert_contains "genuine block cites codegen/logging/ path" 'codegen/logging/' "$out"
+assert_not_contains "diagnostic message: no blind 'Do not investigate' phrasing" 'Do not investigate' "$out"
+assert_contains "diagnostic message: names stale-trigger guidance" 'stale' "$out"
+rm -rf "$Tp"
+
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]
