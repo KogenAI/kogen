@@ -89,6 +89,7 @@ run_dispatch() {
         PATH="$FAKE_BIN:$PATH" \
         OCG_CODEGEN_DIR="$FAKE_CODEGEN" \
         CODEGEN_BUILD_NON_INTERACTIVE=1 \
+        CODEGEN_BUILD_ELIXIR=1 \
         $env_str \
         bash "$FAKE_HARNESS/dispatch.sh" \
         "${extra_args[@]+"${extra_args[@]}"}" \
@@ -105,11 +106,11 @@ assert_contains "missing SP_FILE: stderr mentions 'system prompt file not found'
 assert_eq "missing SP_FILE: exit code 2" "2" "$rc"
 
 # ── Test 2: valid SP_FILE + config + no test_harness/ dir → exit 2 ──────────
-# Build mode is unconditional now (no CODEGEN_BUILD_USE_LOOP flag) — the
-# non-interactive/no-resume path always execs `mix codegen.loop`, which
-# requires $CODEGEN_DIR/test_harness to exist. FAKE_CODEGEN has no
-# test_harness/ dir, so dispatch must fail loud rather than silently fall
-# through to the old claude stub path.
+# Engine selected by CODEGEN_BUILD_ELIXIR (via run_dispatch helper) — the
+# --elixir/no-resume path execs `mix codegen.loop`, which requires
+# $CODEGEN_DIR/test_harness to exist. FAKE_CODEGEN has no test_harness/ dir,
+# so dispatch must fail loud rather than silently fall through to the
+# legacy claude stub path.
 printf 'fake system prompt\n' >"$FAKE_HARNESS/claude-build-system-prompt.txt"
 rc=0
 out=$(run_dispatch "CODEGEN_BUILD_MODEL=test-model CODEGEN_BUILD_EFFORT=low" "dummy-prompt") || rc=$?
@@ -139,6 +140,7 @@ out=$(
         CODEGEN_BUILD_MODEL=test-model \
         CODEGEN_BUILD_EFFORT=low \
         CODEGEN_BUILD_NON_INTERACTIVE=1 \
+        CODEGEN_BUILD_ELIXIR=1 \
         bash "$FAKE_HARNESS/dispatch.sh" "dummy-prompt" \
         2>&1
 ) || rc=$?
@@ -229,6 +231,7 @@ out=$(
         CODEGEN_BUILD_MODEL=test-model \
         CODEGEN_BUILD_EFFORT=low \
         CODEGEN_BUILD_NON_INTERACTIVE=1 \
+        CODEGEN_BUILD_ELIXIR=1 \
         OPENAI_API_KEY=leak1 \
         ANTHROPIC_API_KEY=leak2 \
         bash "$FAKE_HARNESS/dispatch.sh" "dummy-prompt" \
@@ -247,6 +250,46 @@ else
     printf 'FAIL: env-isolation — mix args file missing\n'
     fail=$((fail + 1))
 fi
+
+# ── Test 7: engine=elixir banner — CODEGEN_BUILD_ELIXIR=1 selects loop, mix stub runs ──
+rm -f "$MIX_ARGS_FILE"
+rc=0
+out=$(
+    env -i \
+        HOME="${HOME:-/tmp}" \
+        PATH="$FAKE_BIN_MIX:$PATH" \
+        OCG_CODEGEN_DIR="$FAKE_CODEGEN" \
+        CODEGEN_BUILD_MODEL=test-model \
+        CODEGEN_BUILD_EFFORT=low \
+        CODEGEN_BUILD_ELIXIR=1 \
+        bash "$FAKE_HARNESS/dispatch.sh" "dummy-prompt" \
+        2>&1
+) || rc=$?
+assert_eq "engine=elixir: exit 0 (mix stub)" "0" "$rc"
+assert_contains "engine=elixir: banner present" "claude dispatch: engine=elixir" "$out"
+if [[ -f "$MIX_ARGS_FILE" ]]; then
+    assert_contains "engine=elixir: mix codegen.loop invoked" "codegen.loop" "$(cat "$MIX_ARGS_FILE")"
+else
+    printf 'FAIL: engine=elixir — mix args file missing\n'
+    fail=$((fail + 1))
+fi
+
+# ── Test 8: engine=legacy banner — CODEGEN_BUILD_ELIXIR unset, NON_INTERACTIVE=1 → claude runs, mix does NOT ──
+rc=0
+out=$(
+    env -i \
+        HOME="${HOME:-/tmp}" \
+        PATH="$FAKE_BIN_MIX:$PATH" \
+        OCG_CODEGEN_DIR="$FAKE_CODEGEN" \
+        CODEGEN_BUILD_MODEL=test-model \
+        CODEGEN_BUILD_EFFORT=low \
+        CODEGEN_BUILD_NON_INTERACTIVE=1 \
+        bash "$FAKE_HARNESS/dispatch.sh" "dummy-prompt" \
+        2>&1
+) || rc=$?
+assert_eq "engine=legacy: exit 0 (claude stub)" "0" "$rc"
+assert_contains "engine=legacy: banner present" "claude dispatch: engine=legacy" "$out"
+assert_not_contains "engine=legacy: engine=elixir banner absent" "claude dispatch: engine=elixir" "$out"
 
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

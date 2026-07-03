@@ -8,7 +8,14 @@
 #   --harness=<claude|pi>     required: which harness to use
 #   --stack=<phoenix|static>  required: project stack
 #   --cwd=<dir>               working directory (default: $PWD)
-#   --non-interactive         force non-interactive mode (default: auto via [ -t 1 ])
+#   --elixir                  engine selector: run the deterministic Elixir
+#                             orchestration loop (mix codegen.loop) instead of
+#                             the legacy self-orchestrating harness session.
+#                             Absent (default) selects the legacy engine. The
+#                             loop is not resumable — cannot combine with
+#                             --resume-id/--resumable.
+#   --non-interactive         legacy-engine I/O mode only (stream-json/headless
+#                             vs interactive UI); decoupled from engine choice
 #   --resumable               opt-in: persist session so --resume can re-attach a dead process (build path only)
 #   --resume-id=<id>          re-attach to a persisted session by id (requires --resumable)
 #   --model=<m>               model override
@@ -25,6 +32,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 HARNESS=""
 STACK=""
 CWD="$PWD"
+ELIXIR=""
 NON_INTERACTIVE=""
 RESUMABLE=""
 RESUME_ID=""
@@ -34,7 +42,7 @@ EXTRA_FLAGS=()
 PROMPT=""
 
 usage() {
-    printf 'Usage: codegen-build --harness=<claude|pi> --stack=<phoenix|static> [--cwd=<dir>] [--non-interactive] [--resumable] [--resume-id=<id>] [--model=<m>] [--effort=<e>] PROMPT\n' >&2
+    printf 'Usage: codegen-build --harness=<claude|pi> --stack=<phoenix|static> [--cwd=<dir>] [--elixir] [--non-interactive] [--resumable] [--resume-id=<id>] [--model=<m>] [--effort=<e>] PROMPT\n' >&2
     exit 2
 }
 
@@ -63,6 +71,10 @@ while [[ $# -gt 0 ]]; do
     --cwd)
         CWD="$2"
         shift 2
+        ;;
+    --elixir)
+        ELIXIR="1"
+        shift
         ;;
     --non-interactive)
         NON_INTERACTIVE="1"
@@ -165,22 +177,17 @@ if [[ -n "$STACK" && "$STACK" != "phoenix" && "$STACK" != "static" ]]; then
     usage
 fi
 
-# Auto-detect non-interactive only when caller did not set it via
-# --non-interactive flag OR CODEGEN_BUILD_NON_INTERACTIVE env var.
-# The env var (even when empty) is an explicit caller decision — honour it.
-# ${VAR+set} is "set" iff the variable was assigned, even to empty string.
-if [[ -z "$NON_INTERACTIVE" && -z "${CODEGEN_BUILD_NON_INTERACTIVE+set}" ]]; then
-    if [ -t 1 ]; then
-        NON_INTERACTIVE=""
-    else
-        NON_INTERACTIVE="1"
-    fi
-fi
-
 # --resume-id without --resumable would persist nothing → resume hits
 # "No conversation found". Reject the contradictory combination.
 if [[ -n "$RESUME_ID" && -z "$RESUMABLE" ]]; then
     printf 'codegen-build: --resume-id requires --resumable\n' >&2
+    usage
+fi
+
+# The Elixir loop is not resumable — reject rather than silently dropping
+# --resume-id/--resumable when --elixir is also present.
+if [[ -n "$ELIXIR" && (-n "$RESUME_ID" || -n "$RESUMABLE") ]]; then
+    printf 'codegen-build: --elixir cannot be combined with --resume-id/--resumable (the Elixir loop is not resumable)\n' >&2
     usage
 fi
 
@@ -210,6 +217,7 @@ fi
 export CODEGEN_BUILD_HARNESS="$HARNESS"
 export CODEGEN_BUILD_STACK="${STACK:-phoenix}"
 export CODEGEN_BUILD_CWD="$CWD"
+export CODEGEN_BUILD_ELIXIR="${ELIXIR:-}"
 export CODEGEN_BUILD_NON_INTERACTIVE="${NON_INTERACTIVE:-}"
 export CODEGEN_BUILD_RESUMABLE="${RESUMABLE:-}"
 export CODEGEN_BUILD_RESUME_ID="${RESUME_ID:-}"

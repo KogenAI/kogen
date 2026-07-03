@@ -14,8 +14,11 @@ defmodule CodegenTestHarness.Fixtures do
   to OCG `main`.
 
   `run_codegen_build/3` centralises the `System.cmd` invocation: builds
-  with `--harness`, `--stack`, `--non-interactive`, `--cwd`, and the given
-  prompt; asserts exit 0; returns the output string.
+  with `--harness`, `--stack`, `--elixir`, `--non-interactive`, `--cwd`, and
+  the given prompt; asserts exit 0; returns the output string. `--elixir`
+  selects the deterministic Elixir orchestration loop (the engine these
+  stack tests exercise) rather than the legacy self-orchestrating harness
+  session, which is now the codegen-build default when `--elixir` is absent.
 
   `change_request/4` runs two sequential `codegen-build` calls in `cwd`:
   the first scaffolds the app, the second applies the change request.
@@ -401,6 +404,7 @@ defmodule CodegenTestHarness.Fixtures do
         [
           "--harness=#{harness_val}",
           "--stack=#{stack}",
+          "--elixir",
           "--non-interactive",
           "--cwd=#{cwd}",
           prompt_with_contract
@@ -430,7 +434,8 @@ defmodule CodegenTestHarness.Fixtures do
   Harness-parameterized, custom-timeout, non-raising twin of `run_codegen_build/3`.
   Drives a single harness so the parity test can run BOTH in one test body and
   compare observable contracts. Returns `{exit_code, output}` — does NOT raise on
-  non-zero exit (the parity test inspects exit codes itself).
+  non-zero exit (the parity test inspects exit codes itself). Passes `--elixir`
+  same as `run_codegen_build/3` so parity tests keep exercising the loop.
   """
   @spec run_codegen_build_parity(String.t(), String.t(), String.t(), keyword()) ::
           {non_neg_integer(), String.t()}
@@ -445,6 +450,7 @@ defmodule CodegenTestHarness.Fixtures do
         [
           "--harness=#{harness}",
           "--stack=#{stack}",
+          "--elixir",
           "--non-interactive",
           "--cwd=#{cwd}",
           prompt_with_contract

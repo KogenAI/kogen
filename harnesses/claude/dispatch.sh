@@ -85,6 +85,7 @@ fi
 NON_INTERACTIVE="${CODEGEN_BUILD_NON_INTERACTIVE:-}"
 RESUMABLE="${CODEGEN_BUILD_RESUMABLE:-}"
 RESUME_ID="${CODEGEN_BUILD_RESUME_ID:-}"
+ELIXIR_ENGINE="${CODEGEN_BUILD_ELIXIR:-}"
 
 # Non-interactive: pass all non-interactive flags. Interactive: omit (claude handles tty detection).
 NON_INTERACTIVE_FLAGS=()
@@ -116,18 +117,19 @@ if [[ -n "$CWD" ]]; then
     cd "$CWD"
 fi
 
-# Build mode (non-interactive, no --resume): the deterministic Elixir
+# Build mode (--elixir, no --resume): the deterministic Elixir
 # orchestration loop drives the whole cycle (planner→developer→gate→
 # reviewer→curator→committer) via per-role codegen-call invocations,
 # instead of a single self-orchestrating claude session. Interactive and
 # resumable sessions are untouched — only the one-shot build path uses
-# the loop. Unconditional — no coexistence flag; the loop and the legacy
-# in-harness self-orchestration surface cannot run side by side.
+# the loop. Engine selected by --elixir; coexists with legacy (default when
+# --elixir absent).
 #
 # PATH: inherit ambient PATH as-is (no mise-shims prepend) — that prepend
 # is claude-binary-specific (below) and would shadow a test's stubbed
 # `mix` on PATH. `mix` itself must resolve through normal PATH resolution.
-if [[ -n "$NON_INTERACTIVE" && -z "$RESUME_ID" ]]; then
+if [[ -n "$ELIXIR_ENGINE" && -z "$RESUME_ID" ]]; then
+    printf 'claude dispatch: engine=elixir\n' >&2
     STACK="${CODEGEN_BUILD_STACK:-phoenix}"
     LOOP_DIR="$CODEGEN_DIR/test_harness"
 
@@ -149,6 +151,8 @@ if [[ -n "$NON_INTERACTIVE" && -z "$RESUME_ID" ]]; then
         bash -c 'cd "$1" && exec mix codegen.loop --harness=claude_code "--stack=$2" "--cwd=$3" -- "$4"' \
         _ "$LOOP_DIR" "$STACK" "$CWD" "$PROMPT"
 fi
+
+printf 'claude dispatch: engine=legacy\n' >&2
 
 GATE_PATH="$PATH"
 if [[ -d "$HOME/.local/share/mise/shims" ]]; then

@@ -59,7 +59,7 @@ test_harness/
 
 ## Orchestration Loop (`OrchestrationLoop`/`LoopGate`/`LoopQueue`/`LoopQueueDrain`)
 
-Deterministic Elixir replacement; `dispatch.sh` execs `mix codegen.loop` unconditionally (non-interactive build path). Interactive/resumable sessions unchanged.
+Deterministic Elixir replacement; selected by `--elixir` on `codegen-build` (exports `CODEGEN_BUILD_ELIXIR`, no TTY auto-detect). Present → `dispatch.sh` execs `mix codegen.loop`; absent (default) → legacy self-orchestrating session. Rejects `--elixir` + `--resume-id`/`--resumable` (loop not resumable). Shared ExUnit helpers (`run_codegen_build/3`, `run_codegen_build_parity/4` in `fixtures.ex`) pass `--elixir`.
 
 - `OrchestrationLoop.role_sequence/1` — Phoenix plan-first; static developer-first.
 - `OrchestrationLoop.run/1` — sequences roles via `invoke_role/4` (real `RoleResolver.resolve_role/2` → `codegen-call`), interleaves `LoopGate.run_gate/2` after the developer role. `codegen-call` envelope `result.status` branches: `"success"` advances, `"failed"`/`"clarifying_question"` retries the SAME role once (folding the reason into the retry prompt) then `{:error, reason}`; any other shape RAISES (crash loud, never silently continues). Gate `:failed`/`:inconclusive` re-runs the developer role up to `:max_gate_retries` (default 1) before giving up.
@@ -68,8 +68,8 @@ Deterministic Elixir replacement; `dispatch.sh` execs `mix codegen.loop` uncondi
 - `LoopGate.run_gate/2` shells `gate-select.sh`/`gate-result.sh` — reuses the `codegen/gate-pending/` gate-result JSON schema unchanged.
 - `LoopQueue` mirrors `retryable_regex` transient classification and Kahn topo-sort. `LoopQueueDrain.drain/1` is its live caller: `claude-build --queue`/`pi-build --queue` exec `mix codegen.loop.queue`. Re-scans `ready/` (raises on cycle), spawns fresh `codegen-build` per pitch (budget `CODEGEN_BUILD_QUEUE_PITCH_BUDGET_SECS`), timeout→stash (separate from transient path), lock at `queue.lock`. Hermetic tests in `loop_queue_drain_test.exs`.
 - State advancement (GATED→REVIEWED→CURATED→COMMITTED) shells `cycle-state.sh` via `OrchestrationLoop.advance_cycle_state_step/3`.
-- **Cutover complete**: in-harness self-orchestration (SubagentStop/Stop role-sequencing, `build-queue.sh`, orchestrator rules, curator-format.sh, etc.) is DELETED. Loop is the sole non-interactive driver. Build-mode prompt-body files RETAINED for interactive/resumable fallback in `dispatch.sh`.
-- **Pitch-path resolution contract** — `dispatch.sh` runs `cd "$LOOP_DIR"` (where `$LOOP_DIR` = `<repo>/test_harness/`) before execing `mix codegen.loop`. Any mix task (`codegen.loop`, `codegen.loop.queue`) that resolves a relative file path (pitch arg, draft slug) MUST join it against the explicit `--cwd` flag (the real project root), never rely on the process cwd. Pattern: `Path.expand(relative_path, cwd)` where `cwd` is the `--cwd` flag value, not `File.cwd!()`. The same footgun applies to any future mix task in `test_harness/lib/mix/tasks/` that accepts a file-path argument — always thread the `--cwd` parameter through to path resolution to maintain portability across different invoker cwd contexts.
+- **Cutover complete**: in-harness self-orchestration (SubagentStop/Stop role-sequencing, `build-queue.sh`, orchestrator rules, curator-format.sh, etc.) is DELETED. Loop and legacy engine coexist, selected by `--elixir` (legacy is default). Build-mode prompt-body files RETAINED for the legacy engine in `dispatch.sh`.
+- **Pitch-path resolution contract** — `dispatch.sh` runs `cd "$LOOP_DIR"` (`$LOOP_DIR` = `<repo>/test_harness/`) before execing `mix codegen.loop`. Any mix task resolving a relative file path (pitch arg, draft slug) MUST join it against the explicit `--cwd` flag (the real project root), never `File.cwd!()`. Pattern: `Path.expand(relative_path, cwd)`. Applies to any future mix task accepting a file-path arg.
 
 ## Make Target Catalog
 

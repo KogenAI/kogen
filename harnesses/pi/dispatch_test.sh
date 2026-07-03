@@ -58,10 +58,10 @@ exit 0
 STUB
 chmod +x "$FAKE_BIN/pi"
 
-# Fake mix stub: build mode is unconditional now (no CODEGEN_BUILD_USE_LOOP
-# flag) — the non-interactive/no-resume path always execs
-# `mix codegen.loop`. Stub it so these hermetic tests never invoke a real
-# LLM/ExUnit round-trip; capture argv + env for assertions.
+# Fake mix stub: engine selected by CODEGEN_BUILD_ELIXIR — the
+# --elixir/no-resume path execs `mix codegen.loop`. Stub it so these
+# hermetic tests never invoke a real LLM/ExUnit round-trip; capture argv +
+# env for assertions.
 cat >"$FAKE_BIN/mix" <<'STUB'
 #!/usr/bin/env bash
 printf '%s\n' "$@" > "${TARGET_MIX_ARGS_FILE:-/dev/null}"
@@ -78,13 +78,14 @@ make_temp_dispatch() {
     chmod +x "$root/dispatch.sh"
 }
 
-# ── Test 1: build mode is unconditional → execs mix codegen.loop (not pi) ─────
+# ── Test 1: --elixir selects the loop → execs mix codegen.loop (not pi) ───────
 # Historically this test asserted the pi stub ran directly with
-# --extension/--system-prompt flags forwarded. Under the unconditional loop
-# cutover, the non-interactive/no-resume build path always execs
-# `mix codegen.loop --harness=pi ...` instead — the pi stub only runs when
-# the loop's `RoleResolver`/`codegen-call` round-trip later invokes pi
-# per-role (out of scope for this hermetic dispatch-level test).
+# --extension/--system-prompt flags forwarded. With CODEGEN_BUILD_ELIXIR=1,
+# the --elixir/no-resume build path execs `mix codegen.loop --harness=pi
+# ...` instead — the pi stub only runs when the loop's
+# `RoleResolver`/`codegen-call` round-trip later invokes pi per-role (out of
+# scope for this hermetic dispatch-level test), or when --elixir is absent
+# (legacy engine, the new default).
 TEST1_HARNESS="$TMP_ROOT/harnesses/pi"
 make_temp_dispatch "$TEST1_HARNESS"
 printf 'generated build prompt sentinel\n' >"$TEST1_HARNESS/pi-build-system-prompt.txt"
@@ -98,6 +99,7 @@ TARGET_MIX_ARGS_FILE="$MIX_ARGS_FILE_1" \
     CODEGEN_BUILD_MODEL="test-model" \
     CODEGEN_BUILD_EFFORT="low" \
     CODEGEN_BUILD_NON_INTERACTIVE=1 \
+    CODEGEN_BUILD_ELIXIR=1 \
     CODEGEN_BUILD_CWD="$TMP_ROOT/project" \
     "$TEST1_HARNESS/dispatch.sh" --extension "$TMP_ROOT/custom-extension" "hello prompt" \
     >/dev/null 2>&1 || rc=$?
@@ -135,6 +137,7 @@ out=$(
         CODEGEN_BUILD_MODEL="test-model" \
         CODEGEN_BUILD_EFFORT="low" \
         CODEGEN_BUILD_NON_INTERACTIVE=1 \
+        CODEGEN_BUILD_ELIXIR=1 \
         CODEGEN_BUILD_CWD="$TMP_ROOT/no-loop-dir/project" \
         "$FAKE_CODEGEN_NO_LOOP/harnesses/pi/dispatch.sh" "hello prompt" \
         2>&1
@@ -155,6 +158,7 @@ PATH="$FAKE_BIN:$PATH" \
     CODEGEN_BUILD_MODEL="test-model" \
     CODEGEN_BUILD_EFFORT="low" \
     CODEGEN_BUILD_NON_INTERACTIVE=1 \
+    CODEGEN_BUILD_ELIXIR=1 \
     CODEGEN_BUILD_CWD="$TMP_ROOT/missing-prompt/project" \
     "$TEST2_HARNESS/dispatch.sh" "hello prompt" >"$stderr_file" 2>&1 || rc=$?
 
@@ -171,6 +175,7 @@ TARGET_MIX_ARGS_FILE="$MIX_ARGS_FILE_3" \
     CODEGEN_BUILD_MODEL="test-model" \
     CODEGEN_BUILD_EFFORT="low" \
     CODEGEN_BUILD_NON_INTERACTIVE=1 \
+    CODEGEN_BUILD_ELIXIR=1 \
     CODEGEN_BUILD_CWD="$TMP_ROOT/project" \
     OPENAI_API_KEY=leak1 \
     ANTHROPIC_API_KEY=leak2 \
@@ -188,6 +193,39 @@ else
     printf 'FAIL: env-isolation — mix args file missing\n'
     fail=$((fail + 1))
 fi
+
+# ── Test 4: engine=elixir banner ──────────────────────────────────────────────
+rc=0
+out=$(
+    PATH="$FAKE_BIN:$PATH" \
+        OCG_CODEGEN_DIR="$CODEGEN_ROOT" \
+        CODEGEN_BUILD_MODEL="test-model" \
+        CODEGEN_BUILD_EFFORT="low" \
+        CODEGEN_BUILD_ELIXIR=1 \
+        CODEGEN_BUILD_CWD="$TMP_ROOT/project" \
+        "$TEST1_HARNESS/dispatch.sh" "hello prompt" \
+        2>&1 >/dev/null
+) || rc=$?
+assert_eq "engine=elixir: exit 0 (mix stub)" "0" "$rc"
+assert_contains "engine=elixir: banner present" "$out" "pi dispatch: engine=elixir"
+
+# ── Test 5: engine=legacy banner — CODEGEN_BUILD_ELIXIR unset → pi stub runs ──
+ARGS_LEGACY="$TMP_ROOT/args-legacy.txt"
+rc=0
+out=$(
+    TARGET_ARGS_FILE="$ARGS_LEGACY" \
+        PATH="$FAKE_BIN:$PATH" \
+        OCG_CODEGEN_DIR="$CODEGEN_ROOT" \
+        CODEGEN_BUILD_MODEL="test-model" \
+        CODEGEN_BUILD_EFFORT="low" \
+        CODEGEN_BUILD_NON_INTERACTIVE=1 \
+        CODEGEN_BUILD_CWD="$TMP_ROOT/project" \
+        "$TEST1_HARNESS/dispatch.sh" "hello prompt" \
+        2>&1 >/dev/null
+) || rc=$?
+assert_eq "engine=legacy: exit 0 (pi stub)" "0" "$rc"
+assert_contains "engine=legacy: banner present" "$out" "pi dispatch: engine=legacy"
+assert_not_contains "engine=legacy: engine=elixir banner absent" "$out" "pi dispatch: engine=elixir"
 
 printf '%s passed, %s failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

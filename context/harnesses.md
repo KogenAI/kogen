@@ -233,7 +233,7 @@ Pi build now uses the same orchestrated contract in both launcher paths:
 - the legacy `pi-build-system-prompt-direct-*.txt` files remain tracked, but build dispatch no longer consumes them
 - `codegen-build` fails closed unless Pi returns a clear verdict in the gate-result JSON written to `codegen/gate-pending/`
 
-Mode selection still honors the build launcher’s non-interactive env, but the prompt body is no longer direct-build-only. The build path is orchestrated; the parent wrapper decides success from the structured gate result.
+Engine is chosen by the explicit `--elixir` boolean flag on `codegen-build` (exported as `CODEGEN_BUILD_ELIXIR`) — no TTY auto-detection. `--elixir` present → `dispatch.sh` execs `mix codegen.loop` (the deterministic orchestration loop); absent → the legacy self-orchestrating harness session runs (the default). The two engines coexist; `--non-interactive` (I/O mode: headless stream-json vs interactive UI) is fully decoupled from engine choice and only affects the legacy exec's flags. The build path is orchestrated when `--elixir` is used; the parent wrapper decides success from the structured gate result either way.
 
 ## EXEC-MECHANICS vs SYSTEM-PROMPT-CONTENT: Orthogonal Concerns in Harness Design
 

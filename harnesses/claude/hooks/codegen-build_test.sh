@@ -1,17 +1,28 @@
 #!/usr/bin/env bash
 # codegen-build_test.sh — unit tests for codegen-build, dispatch.sh (claude + pi).
 #
+# Engine selection: --elixir is a boolean engine selector — present ⇒ the
+# deterministic Elixir orchestration loop (mix codegen.loop); absent ⇒ the
+# legacy self-orchestrating harness session (the default). --non-interactive
+# is now legacy-engine-I/O-mode-only (headless stream-json vs interactive UI)
+# and is fully decoupled from engine choice.
+#
 # Tests:
-#  (a) --harness=claude non-interactive → dispatch.sh execs `mix codegen.loop
-#      --harness=claude_code ...` (the unconditional build-mode loop path)
-#  (b) --harness=pi non-interactive → dispatch.sh execs `mix codegen.loop
-#      --harness=pi ...`
+#  (a) --harness=claude --elixir non-interactive → dispatch.sh execs `mix
+#      codegen.loop --harness=claude_code ...` (loop path)
+#  (b) --harness=pi --elixir non-interactive → dispatch.sh execs `mix
+#      codegen.loop --harness=pi ...`
 #  (c) missing --harness exits 2 with usage on stderr
 #  (d) missing prompt exits 2
 #  (e) exit codes 0/1/2/130 propagate from stub
 #  (f) stdout passes through fixture stream-json byte-identical (interactive
 #      mode only — the loop path's stdout is `mix`'s own output, not a
 #      byte-transparent claude stream-json passthrough; see test (f) below)
+#  (m) --elixir + --resume-id/--resumable → usage error exit 2 (loop is not
+#      resumable)
+#  (n) --elixir --non-interactive <prompt> → mix codegen.loop invoked
+#  (o) --non-interactive WITHOUT --elixir → legacy claude stub invoked, mix
+#      NOT invoked (new default: legacy engine)
 
 set -euo pipefail
 
@@ -168,8 +179,8 @@ for ec in 0 1 130; do
 done
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Test (a): --harness=claude non-interactive → dispatch.sh execs
-# `mix codegen.loop --harness=claude_code ...` (unconditional loop path)
+# Test (a): --harness=claude --elixir non-interactive → dispatch.sh execs
+# `mix codegen.loop --harness=claude_code ...` (loop path)
 # ─────────────────────────────────────────────────────────────────────────────
 CB_A="$(make_cb_root cb_a)"
 make_claude_harness "$CB_A" >/dev/null
@@ -183,7 +194,7 @@ TARGET_ARGS_FILE="$ARGS_A" \
     PATH="$MIX_A_DIR:$PATH" \
     OCG_CODEGEN_DIR="$CODEGEN_ROOT" \
     CODEGEN_BUILD_MODEL="" CODEGEN_BUILD_EFFORT="" \
-    "$CB_A/codegen-build" --harness=claude --stack=phoenix --non-interactive \
+    "$CB_A/codegen-build" --harness=claude --stack=phoenix --elixir --non-interactive \
     "hello prompt" 2>/dev/null ||
     actual_ec=$?
 
@@ -200,8 +211,8 @@ else
 fi
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Test (b): --harness=pi non-interactive → dispatch.sh execs
-# `mix codegen.loop --harness=pi ...` (unconditional loop path)
+# Test (b): --harness=pi --elixir non-interactive → dispatch.sh execs
+# `mix codegen.loop --harness=pi ...` (loop path)
 # ─────────────────────────────────────────────────────────────────────────────
 CB_B="$(make_cb_root cb_b)"
 make_pi_harness "$CB_B" >/dev/null
@@ -215,7 +226,7 @@ TARGET_ARGS_FILE="$ARGS_B" \
     PATH="$MIX_B_DIR:$PATH" \
     OCG_CODEGEN_DIR="$CODEGEN_ROOT" \
     CODEGEN_BUILD_MODEL="" CODEGEN_BUILD_EFFORT="" \
-    "$CB_B/codegen-build" --harness=pi --stack=phoenix --non-interactive \
+    "$CB_B/codegen-build" --harness=pi --stack=phoenix --elixir --non-interactive \
     "pi prompt" 2>/dev/null ||
     actual_ec=$?
 
@@ -272,7 +283,7 @@ check "(b3) clear gate result exits 0" "0" "$actual_ec"
 # ─────────────────────────────────────────────────────────────────────────────
 # Test (f): stdout byte-identical pass-through — codegen-build → dispatch.sh
 # → exec mix codegen.loop must not buffer/transform the child's stdout.
-# Non-interactive/no-resume always execs the loop now; the fixture stubs
+# --elixir non-interactive/no-resume execs the loop; the fixture stubs
 # `mix` itself (rather than `claude`) since that's the real exec target.
 # ─────────────────────────────────────────────────────────────────────────────
 FIXTURE_LINE='{"type":"result","is_error":false,"usage":{"input_tokens":42,"output_tokens":7}}'
@@ -287,7 +298,7 @@ make_stub "$MIX_F_DIR/mix" "printf '%s\n' '${FIXTURE_LINE}'"
 ACTUAL_F_OUT=$(PATH="$MIX_F_DIR:$PATH" \
     OCG_CODEGEN_DIR="$CODEGEN_ROOT" \
     CODEGEN_BUILD_MODEL="" CODEGEN_BUILD_EFFORT="" \
-    "$CB_F/codegen-build" --harness=claude --stack=phoenix --non-interactive \
+    "$CB_F/codegen-build" --harness=claude --stack=phoenix --elixir --non-interactive \
     "fixture prompt" 2>/dev/null ||
     true)
 
@@ -348,8 +359,8 @@ else
 fi
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Test (i): non-interactive → mix codegen.loop invoked (unconditional loop
-#           path, argv carries --harness=claude_code/--stack/--cwd, not the
+# Test (i): --elixir non-interactive → mix codegen.loop invoked (loop path,
+#           argv carries --harness=claude_code/--stack/--cwd, not the
 #           claude print-family flags — those now live inside the loop's own
 #           per-role codegen-call, not dispatch.sh's direct exec argv).
 #           Interactive mode is unaffected — --system-prompt and
@@ -372,7 +383,7 @@ TARGET_ARGS_FILE="$ARGS_I_NI" \
     PATH="$MIX_I_DIR:$PATH" \
     OCG_CODEGEN_DIR="$CODEGEN_ROOT" \
     CODEGEN_BUILD_MODEL="" CODEGEN_BUILD_EFFORT="" \
-    "$CB_I/codegen-build" --harness=claude --stack=phoenix --non-interactive \
+    "$CB_I/codegen-build" --harness=claude --stack=phoenix --elixir --non-interactive \
     "test prompt i" 2>/dev/null ||
     actual_ec=$?
 
@@ -441,14 +452,14 @@ fi
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Test (j): --resumable/--resume-id gate which exec target dispatch.sh uses.
-#           No resume-id (j1/j2/j4/j7/j8): loop condition (-z "$RESUME_ID")
-#           holds → dispatch execs `mix codegen.loop` regardless of
-#           --resumable (the loop's own per-role codegen-call handles
-#           persistence, not dispatch.sh's direct exec argv). With a
-#           resume-id (j3/j9): RESUME_ID is non-empty → loop condition is
-#           false → dispatch falls through to the OLD direct claude/pi exec
-#           (unaffected by the cutover) so --resume/--session still forward
-#           correctly. j5 (interactive) and j6 (usage guard) are unaffected.
+#           j1/j2/j4/j7/j8 pass --elixir (loop path): loop condition
+#           (-n "$ELIXIR_ENGINE" && -z "$RESUME_ID") holds → dispatch execs
+#           `mix codegen.loop` regardless of --resumable (the loop's own
+#           per-role codegen-call handles persistence, not dispatch.sh's
+#           direct exec argv). j3/j9 do NOT pass --elixir and carry a
+#           resume-id → dispatch falls through to the direct claude/pi exec
+#           so --resume/--session still forward correctly. j5 (interactive)
+#           and j6 (usage guard) are unaffected.
 # ─────────────────────────────────────────────────────────────────────────────
 CB_J="$(make_cb_root cb_j)"
 make_claude_harness "$CB_J" >/dev/null
@@ -481,17 +492,17 @@ run_mix_j() {
         "j prompt" 2>/dev/null || true
 }
 
-# (j1) no resume-id, non-interactive → loop path (mix codegen.loop invoked)
+# (j1) --elixir, no resume-id, non-interactive → loop path (mix codegen.loop invoked)
 J1="$BASE_TMP/args_j1.txt"
-run_mix_j "$J1" --non-interactive
+run_mix_j "$J1" --elixir --non-interactive
 assert_contains "(j1) no resume-id: mix codegen.loop invoked" "$(cat "$J1")" "codegen.loop"
 
-# (j2) --resumable, no resume-id, non-interactive → STILL loop path
-# (--resumable alone does not set RESUME_ID; the loop condition only checks
-# RESUME_ID emptiness, so this is identical dispatch behavior to j1)
+# (j2) --elixir, non-interactive, no --resumable/--resume-id → loop path
+# (kept as a second confirming case alongside j1; --elixir + --resumable is
+# rejected outright — see test (m)).
 J2="$BASE_TMP/args_j2.txt"
-run_mix_j "$J2" --non-interactive --resumable
-assert_contains "(j2) --resumable without resume-id: mix codegen.loop invoked" "$(cat "$J2")" "codegen.loop"
+run_mix_j "$J2" --elixir --non-interactive
+assert_contains "(j2) --elixir non-interactive: mix codegen.loop invoked" "$(cat "$J2")" "codegen.loop"
 
 # (j3) --resumable --resume-id=SID123 → RESUME_ID set → loop condition false
 # → falls through to the OLD direct claude exec path (unaffected by cutover)
@@ -501,10 +512,11 @@ J3C="$(cat "$J3")"
 assert_contains "(j3) --resume flag present" "$J3C" "--resume"
 assert_contains "(j3) resume id forwarded" "$J3C" "SID123"
 
-# (j4) --resumable WITHOUT id, non-interactive → loop path (same as j1/j2)
+# (j4) --elixir, no resume-id, non-interactive → loop path (dup of j1/j2,
+# kept for numbering continuity)
 J4="$BASE_TMP/args_j4.txt"
-run_mix_j "$J4" --non-interactive --resumable
-assert_contains "(j4) --resumable without id: mix codegen.loop invoked" "$(cat "$J4")" "codegen.loop"
+run_mix_j "$J4" --elixir --non-interactive
+assert_contains "(j4) --elixir non-interactive: mix codegen.loop invoked" "$(cat "$J4")" "codegen.loop"
 
 # (j5) interactive + --resumable → NON_INTERACTIVE unset → loop condition
 # false regardless of RESUME_ID → falls through to old direct claude exec
@@ -553,14 +565,15 @@ run_mix_pi_j() {
         "$CB_JP/codegen-build" --harness=pi --stack=phoenix "$@" "jp prompt" 2>/dev/null || true
 }
 
-# (j7) Pi, no resume-id, non-interactive → loop path (mix codegen.loop invoked)
+# (j7) Pi --elixir, no resume-id, non-interactive → loop path (mix codegen.loop invoked)
 J7="$BASE_TMP/args_j7.txt"
-run_mix_pi_j "$J7" --non-interactive
+run_mix_pi_j "$J7" --elixir --non-interactive
 assert_contains "(j7) pi no resume-id: mix codegen.loop invoked" "$(cat "$J7")" "codegen.loop"
 
-# (j8) Pi --resumable, no resume-id, non-interactive → STILL loop path
+# (j8) Pi --resumable WITHOUT --elixir, no resume-id, non-interactive →
+# legacy exec path (pi stub); --resumable set → --no-session dropped
 J8="$BASE_TMP/args_j8.txt"
-run_mix_pi_j "$J8" --non-interactive --resumable
+run_pi_j "$J8" --non-interactive --resumable
 J8C="$(cat "$J8")"
 if [[ "$J8C" != *"--no-session"* ]]; then
     [ -n "${VERBOSE:-}" ] && printf 'PASS: (j8) pi --resumable drops --no-session\n'
@@ -615,6 +628,89 @@ if [[ ! -e "$MARKER_CWD/AGENTS.md" ]]; then
 else
     printf 'FAIL: (k) integrate ran — AGENTS.md written into marker cwd despite markers present\n'
     fail=$((fail + 1))
+fi
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Test (m): --elixir + --resumable/--resume-id → usage error exit 2 (the
+# Elixir loop is not resumable).
+# ─────────────────────────────────────────────────────────────────────────────
+CB_M="$(make_cb_root cb_m)"
+make_claude_harness "$CB_M" >/dev/null
+
+actual_ec=0
+stderr_m1=$("$CB_M/codegen-build" --harness=claude --stack=phoenix --elixir \
+    --resumable --resume-id=X "m prompt" 2>&1 >/dev/null) || actual_ec=$?
+check "(m) --elixir + --resumable + --resume-id exits 2" "2" "$actual_ec"
+assert_contains "(m) stderr mentions not resumable" "$stderr_m1" "not resumable"
+
+actual_ec=0
+stderr_m2=$("$CB_M/codegen-build" --harness=claude --stack=phoenix --elixir \
+    --resumable "m prompt" 2>&1 >/dev/null) || actual_ec=$?
+check "(m) --elixir + --resumable (no id) exits 2" "2" "$actual_ec"
+assert_contains "(m) stderr mentions not resumable (resumable-only)" "$stderr_m2" "not resumable"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Test (n): --elixir --non-interactive <prompt> → mix codegen.loop invoked.
+# ─────────────────────────────────────────────────────────────────────────────
+CB_N="$(make_cb_root cb_n)"
+make_claude_harness "$CB_N" >/dev/null
+
+ARGS_N="$BASE_TMP/args_n.txt"
+MIX_N_DIR="$BASE_TMP/bin_n"
+make_mix_stub "$MIX_N_DIR"
+
+actual_ec=0
+TARGET_ARGS_FILE="$ARGS_N" \
+    PATH="$MIX_N_DIR:$PATH" \
+    OCG_CODEGEN_DIR="$CODEGEN_ROOT" \
+    CODEGEN_BUILD_MODEL="" CODEGEN_BUILD_EFFORT="" \
+    "$CB_N/codegen-build" --harness=claude --stack=phoenix --elixir --non-interactive \
+    "n prompt" 2>/dev/null ||
+    actual_ec=$?
+
+if [[ -f "$ARGS_N" ]]; then
+    assert_contains "(n) --elixir non-interactive invokes mix codegen.loop" "$(cat "$ARGS_N")" "codegen.loop"
+else
+    printf 'FAIL: (n) args file not created — mix stub not invoked (exit: %s)\n' "$actual_ec"
+    fail=$((fail + 1))
+fi
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Test (o): --non-interactive WITHOUT --elixir → legacy claude stub invoked
+# (new default engine), mix NOT invoked.
+# ─────────────────────────────────────────────────────────────────────────────
+CB_O="$(make_cb_root cb_o)"
+make_claude_harness "$CB_O" >/dev/null
+
+ARGS_O="$BASE_TMP/args_o.txt"
+MIX_O_DIR="$BASE_TMP/bin_o_mix"
+make_mix_stub "$MIX_O_DIR"
+CLAUDE_O_DIR="$BASE_TMP/bin_o_claude"
+mkdir -p "$CLAUDE_O_DIR"
+make_stub "$CLAUDE_O_DIR/claude" 'printf '"'"'%s\n'"'"' "$@" > "${TARGET_ARGS_FILE:-/dev/null}"'
+
+actual_ec=0
+TARGET_ARGS_FILE="$ARGS_O" \
+    PATH="$CLAUDE_O_DIR:$MIX_O_DIR:$PATH" \
+    OCG_CODEGEN_DIR="$CODEGEN_ROOT" \
+    CODEGEN_BUILD_MODEL="" CODEGEN_BUILD_EFFORT="" \
+    "$CB_O/codegen-build" --harness=claude --stack=phoenix --non-interactive \
+    "o prompt" 2>/dev/null ||
+    actual_ec=$?
+
+if [[ -f "$ARGS_O" ]]; then
+    ARGS_O_CONTENT="$(cat "$ARGS_O")"
+    assert_contains "(o) legacy claude stub invoked (no --elixir)" "$ARGS_O_CONTENT" "--print"
+    if [[ "$ARGS_O_CONTENT" != *"codegen.loop"* ]]; then
+        [ -n "${VERBOSE:-}" ] && printf 'PASS: (o) mix codegen.loop NOT invoked\n'
+        pass=$((pass + 1))
+    else
+        printf 'FAIL: (o) mix codegen.loop invoked despite --elixir absent\n  got: %s\n' "${ARGS_O_CONTENT:0:300}"
+        fail=$((fail + 1))
+    fi
+else
+    printf 'FAIL: (o) args file not created — claude stub not invoked (exit: %s)\n' "$actual_ec"
+    fail=$((fail + 2))
 fi
 
 # ─────────────────────────────────────────────────────────────────────────────

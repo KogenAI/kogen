@@ -53,22 +53,22 @@ Tier-0 foundational docs — the launcher loads these on every shape session reg
 
 ## Generator Pipeline
 
-| Module                                      | Purpose                                                                                                                                 |
-| ------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
-| `templates/generator/generate.sh`           | Entry point — renders `.md.j2` templates for a given harness                                                                            |
-| `templates/generator/process_template.py`   | Jinja-style `{% include %}` processor — inlines rule files into agent prompts                                                           |
-| `templates/generator/hook_registrations.py` | Writes `settings.json` hook entries from hook source dir                                                                                |
-| `templates/generator/manifest-lib.sh`       | Bash lib for parsing manifest YAML fields (wraps `yq`)                                                                                  |
-| `templates/generator/config.yaml`           | Role/model/effort/tools mapping; read by `load-role.sh` (debug/shape/ops) and directly via `yq` by build dispatch                       |
-| `install.sh`                                | Manifest-driven install loop — reads manifest, runs install_steps; defines `content_stable_cp`                                          |
-| `uninstall.sh`                              | Removes installed artifacts listed in manifest                                                                                          |
-| `codegen-build`                             | Top-level launcher: requires `--harness` flag; delegates to `harnesses/<harness>/dispatch.sh`                                           |
-| `codegen-scaffold`                          | Scaffolds a new downstream app from `shared/scaffold/` templates — subcommands `create` (full scaffold) and `integrate` (symlinks only) |
-| `codegen-call`                              | One-shot structured LLM call binary: requires `--harness`, `--model`, `--effort`, `--system-prompt`                                     |
-| `config.sh`                                 | Shared env/path config sourced by all scripts                                                                                           |
-| `resource_manager.sh`                       | Tracks installed-by-ocg manifest to avoid orphaned artifacts                                                                            |
-| `utils.sh`                                  | Common bash utilities: `OCG_CMD` only; `content_stable_cp` is in `install.sh`                                                           |
-| `update_ai_tools.sh`                        | Updates Claude CLI and other AI tool deps after install                                                                                 |
+| Module                                      | Purpose                                                                                                                                                                                 |
+| ------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `templates/generator/generate.sh`           | Entry point — renders `.md.j2` templates for a given harness                                                                                                                            |
+| `templates/generator/process_template.py`   | Jinja-style `{% include %}` processor — inlines rule files into agent prompts                                                                                                           |
+| `templates/generator/hook_registrations.py` | Writes `settings.json` hook entries from hook source dir                                                                                                                                |
+| `templates/generator/manifest-lib.sh`       | Bash lib for parsing manifest YAML fields (wraps `yq`)                                                                                                                                  |
+| `templates/generator/config.yaml`           | Role/model/effort/tools mapping; read by `load-role.sh` (debug/shape/ops) and directly via `yq` by build dispatch                                                                       |
+| `install.sh`                                | Manifest-driven install loop — reads manifest, runs install_steps; defines `content_stable_cp`                                                                                          |
+| `uninstall.sh`                              | Removes installed artifacts listed in manifest                                                                                                                                          |
+| `codegen-build`                             | Top-level launcher: requires `--harness` flag; `--elixir` selects the Elixir orchestration loop (absent selects legacy engine, default); delegates to `harnesses/<harness>/dispatch.sh` |
+| `codegen-scaffold`                          | Scaffolds a new downstream app from `shared/scaffold/` templates — subcommands `create` (full scaffold) and `integrate` (symlinks only)                                                 |
+| `codegen-call`                              | One-shot structured LLM call binary: requires `--harness`, `--model`, `--effort`, `--system-prompt`                                                                                     |
+| `config.sh`                                 | Shared env/path config sourced by all scripts                                                                                                                                           |
+| `resource_manager.sh`                       | Tracks installed-by-ocg manifest to avoid orphaned artifacts                                                                                                                            |
+| `utils.sh`                                  | Common bash utilities: `OCG_CMD` only; `content_stable_cp` is in `install.sh`                                                                                                           |
+| `update_ai_tools.sh`                        | Updates Claude CLI and other AI tool deps after install                                                                                                                                 |
 
 ## Integration Points
 

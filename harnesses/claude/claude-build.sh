@@ -6,9 +6,25 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 BUILD_BIN="${OCG_CODEGEN_DIR:+$OCG_CODEGEN_DIR/codegen-build}"
 BUILD_BIN="${BUILD_BIN:-$SCRIPT_DIR/codegen-build}"
 
+# --elixir: engine selector, passed through to codegen-build. Strip it out
+# BEFORE the basename resolver loop below (it starts with -- so the resolver
+# would otherwise drop it into the literal-prompt branch and pollute
+# PROMPT_PARTS); re-add explicitly on the final exec.
+_ELIXIR_FLAG=0
+_FILTERED_ARGS=()
+for _farg in "$@"; do
+    if [[ "$_farg" == "--elixir" ]]; then
+        _ELIXIR_FLAG=1
+    else
+        _FILTERED_ARGS+=("$_farg")
+    fi
+done
+set -- "${_FILTERED_ARGS[@]+"${_FILTERED_ARGS[@]}"}"
+
 # --queue: drain codegen/pitches/ready/ via the Elixir multi-pitch drain
 # (mix codegen.loop.queue) instead of building a single pitch. Takes no
-# slug arguments — any other arg alongside --queue is a usage error.
+# slug arguments (--elixir is allowed alongside --queue, already stripped
+# above) — any other arg alongside --queue is a usage error.
 _has_queue_flag=0
 for _qarg in "$@"; do
     if [[ "$_qarg" == "--queue" ]]; then
@@ -24,6 +40,10 @@ if [[ "$_has_queue_flag" -eq 1 ]]; then
     done
     _QUEUE_CWD="$PWD"
     CODEGEN_DIR="${OCG_CODEGEN_DIR:-$(cd "$SCRIPT_DIR/../.." && pwd -P)}"
+    if [[ ! -d "$CODEGEN_DIR/test_harness" ]]; then
+        printf 'claude-build: test_harness/ not found at %s — set OCG_CODEGEN_DIR to the codegen repo root\n' "$CODEGEN_DIR" >&2
+        exit 2
+    fi
     cd "$CODEGEN_DIR/test_harness"
     exec mix codegen.loop.queue --harness=claude --stack="${STACK:-phoenix}" --cwd="$_QUEUE_CWD"
 fi
@@ -86,7 +106,13 @@ for arg in "$@"; do
     fi
 done
 
+ELIXIR_FLAGS=()
+if [[ "$_ELIXIR_FLAG" -eq 1 ]]; then
+    ELIXIR_FLAGS+=(--elixir)
+fi
+
 exec "$BUILD_BIN" \
     --harness=claude \
     --stack="${STACK:-phoenix}" \
+    "${ELIXIR_FLAGS[@]+"${ELIXIR_FLAGS[@]}"}" \
     "${PROMPT_PARTS[@]+"${PROMPT_PARTS[@]}"}"

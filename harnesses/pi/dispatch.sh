@@ -49,6 +49,7 @@ EFFORT="${CODEGEN_BUILD_EFFORT:-}"
 NON_INTERACTIVE="${CODEGEN_BUILD_NON_INTERACTIVE:-}"
 RESUMABLE="${CODEGEN_BUILD_RESUMABLE:-}"
 RESUME_ID="${CODEGEN_BUILD_RESUME_ID:-}"
+ELIXIR_ENGINE="${CODEGEN_BUILD_ELIXIR:-}"
 
 # Fall back to config.yaml values if not set
 if [[ -z "$MODEL" || -z "$EFFORT" ]]; then
@@ -116,15 +117,15 @@ if [[ -n "$CWD" ]]; then
     cd "$CWD"
 fi
 
-# Build mode (non-interactive, no --session resume): the deterministic
+# Build mode (--elixir, no --session resume): the deterministic
 # Elixir orchestration loop drives the whole cycle (planner/developer-first
 # per stack → gate → reviewer → curator → committer) via per-role
 # codegen-call invocations, instead of a single self-orchestrating pi
 # session. Interactive and resumable sessions are untouched — only the
-# one-shot build path uses the loop. Unconditional — no coexistence flag;
-# the loop and the legacy in-harness self-orchestration surface cannot run
-# side by side.
-if [[ -n "$NON_INTERACTIVE" && -z "$RESUME_ID" ]]; then
+# one-shot build path uses the loop. Engine selected by --elixir; coexists
+# with legacy (default when --elixir absent).
+if [[ -n "$ELIXIR_ENGINE" && -z "$RESUME_ID" ]]; then
+    printf 'pi dispatch: engine=elixir\n' >&2
     STACK="${CODEGEN_BUILD_STACK:-phoenix}"
     LOOP_DIR="$CODEGEN_DIR/test_harness"
 
@@ -140,6 +141,8 @@ if [[ -n "$NON_INTERACTIVE" && -z "$RESUME_ID" ]]; then
         bash -c 'cd "$1" && exec mix codegen.loop --harness=pi "--stack=$2" "--cwd=$3" -- "$4"' \
         _ "$LOOP_DIR" "$STACK" "$CWD" "$PROMPT"
 fi
+
+printf 'pi dispatch: engine=legacy\n' >&2
 
 exec env \
     -u OPENAI_API_KEY \

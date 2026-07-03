@@ -1,8 +1,13 @@
 #compdef claude-build
 # _claude-build — zsh completion for claude-build
-# Completes basenames (without .md) from $PWD/codegen/pitches/ready/
+# Completes basenames (without .md) from $PWD/codegen/pitches/ready/, plus
+# the --elixir (engine selector) and --non-interactive flags.
 
 _claude_build() {
+    local -a flags
+    flags=('--elixir' '--non-interactive')
+    _describe 'flag' flags
+
     local ready_dir="$PWD/codegen/pitches/ready"
     if [[ ! -d "$ready_dir" ]]; then
         return 0
