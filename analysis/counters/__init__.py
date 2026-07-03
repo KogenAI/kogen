@@ -27,3 +27,9 @@ ALL_COUNTERS: List[str] = [
     "delegation_churn",
     "tool_failure",
 ]
+
+# Repo-level counters run ONCE after the per-session loop (not per session).
+# Their modules expose run_repo(config) -> List[Finding].
+ALL_REPO_COUNTERS: List[str] = [
+    "subagent_interruption",
+]

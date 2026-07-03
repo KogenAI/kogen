@@ -7,7 +7,7 @@ from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Tuple
 
 from analysis.config import Config
-from analysis.counters import ALL_COUNTERS, Finding
+from analysis.counters import ALL_COUNTERS, ALL_REPO_COUNTERS, Finding
 from analysis.session_loader import iter_sessions
 
 
@@ -46,6 +46,11 @@ def run(config: Config) -> Report:
             mod = importlib.import_module(f"analysis.counters.{counter_name}")
             findings = mod.run(session, config)
             all_findings.extend(findings)
+
+    # Repo-level pass: counters that scan repo artifacts (session logs) once.
+    for counter_name in ALL_REPO_COUNTERS:
+        mod = importlib.import_module(f"analysis.counters.{counter_name}")
+        all_findings.extend(mod.run_repo(config))
 
     clusters = _cluster(all_findings)
     ranked = _rank(clusters)
