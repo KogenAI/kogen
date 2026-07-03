@@ -21,10 +21,11 @@ for _farg in "$@"; do
 done
 set -- "${_FILTERED_ARGS[@]+"${_FILTERED_ARGS[@]}"}"
 
-# --queue: drain codegen/pitches/ready/ via the Elixir multi-pitch drain
-# (mix codegen.loop.queue) instead of building a single pitch. Takes no
-# slug arguments (--elixir is allowed alongside --queue, already stripped
-# above) — any other arg alongside --queue is a usage error.
+# --queue: drain codegen/pitches/ready/ one pitch at a time instead of
+# building a single pitch. Branches on --elixir (already stripped above):
+# absent (default) → legacy harnesses/shared/build-queue.sh drainer;
+# present → the Elixir multi-pitch drain (mix codegen.loop.queue). Takes
+# no slug arguments — any other arg alongside --queue is a usage error.
 _has_queue_flag=0
 for _qarg in "$@"; do
     if [[ "$_qarg" == "--queue" ]]; then
@@ -50,12 +51,23 @@ if [[ "$_has_queue_flag" -eq 1 ]]; then
     else
         CODEGEN_DIR="$(cd "$SCRIPT_DIR/../.." && pwd -P)"
     fi
-    if [[ ! -d "$CODEGEN_DIR/test_harness" ]]; then
-        printf 'claude-build: test_harness/ not found at %s — set OCG_CODEGEN_DIR to the codegen repo root\n' "$CODEGEN_DIR" >&2
-        exit 2
+    if [[ "$_ELIXIR_FLAG" -eq 1 ]]; then
+        printf 'claude-build: engine=elixir\n' >&2
+        if [[ ! -d "$CODEGEN_DIR/test_harness" ]]; then
+            printf 'claude-build: test_harness/ not found at %s — set OCG_CODEGEN_DIR to the codegen repo root\n' "$CODEGEN_DIR" >&2
+            exit 2
+        fi
+        cd "$CODEGEN_DIR/test_harness"
+        exec mix codegen.loop.queue --harness=claude --stack="${STACK:-phoenix}" --cwd="$_QUEUE_CWD"
+    else
+        printf 'claude-build: engine=legacy\n' >&2
+        if [[ ! -f "$CODEGEN_DIR/harnesses/shared/build-queue.sh" ]]; then
+            printf 'claude-build: build-queue.sh not found at %s — set OCG_CODEGEN_DIR to the codegen repo root\n' "$CODEGEN_DIR/harnesses/shared/build-queue.sh" >&2
+            exit 2
+        fi
+        cd "$_QUEUE_CWD"
+        exec bash "$CODEGEN_DIR/harnesses/shared/build-queue.sh" --harness=claude --stack="${STACK:-phoenix}"
     fi
-    cd "$CODEGEN_DIR/test_harness"
-    exec mix codegen.loop.queue --harness=claude --stack="${STACK:-phoenix}" --cwd="$_QUEUE_CWD"
 fi
 
 # Normalise launch cwd to the nearest legal pitch root so the basename
