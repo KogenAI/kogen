@@ -256,6 +256,16 @@ assert_contains \
     "$CODEGEN_DIR/harnesses/claude/commands/ready.md.j2" \
     "$SENTINEL13"
 
+SENTINEL_DEADCODE="Dead-code retention / soft-deprecation"
+assert_contains \
+    "dead-code-retention sentinel in claude-shape-system-prompt.txt" \
+    "$CODEGEN_DIR/harnesses/claude/claude-shape-system-prompt.txt" \
+    "$SENTINEL_DEADCODE"
+assert_contains \
+    "dead-code-retention sentinel in pi-shape-system-prompt.txt" \
+    "$CODEGEN_DIR/harnesses/pi/pi-shape-system-prompt.txt" \
+    "$SENTINEL_DEADCODE"
+
 SENTINEL_PUSHBACK="Concede in ≤1 sentence"
 
 # ── Test: Under Pushback / When Wrong sentinel in all 5 claude modes ──────────
