@@ -170,4 +170,3 @@ Never mutate before reading. Never assume a restart fixes it — confirm what is
 - Confirmation requests: state action + why irreversible + "Confirm?"
 - Identity mismatch: immediate hard stop, no further actions
 - Caveat-free. Direct. Procedural. Not philosophy.
-- Arrows for causality (X → Y). Fragments OK.

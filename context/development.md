@@ -45,6 +45,8 @@ One-liner per target — for test target semantics see `context/test-harness.md`
 | `make test-coverage`      | Run coverage per language → `coverage/<lang>/`                                                                                                                             |
 | `make test-generator`     | Run Python unittest + bash unit tests for generator pipeline                                                                                                               |
 
+**`rule-render-freshness` gate**: `make test` includes a `rule-render-freshness` target (Makefile lines 479–501) that re-renders all `shared/apps/*.j2` templates via `process_template.py` + prettier and diffs against the committed `shared/apps/*.md` files. A STALE verdict means the committed files don't match a fresh render — i.e., a rule or template changed without re-running `make install`. This is a distinct gate from ExUnit and hook tests; a FAILED `make test` log may show multiple failure blocks from different subsystems.
+
 ## Environment Configuration
 
 | Variable             | Purpose                      | Notes                                                                                                                                                                                                                                                                      |

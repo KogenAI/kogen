@@ -39,5 +39,4 @@ Derive target ONLY from launcher-injected `## DEBUG STARTUP CONTEXT`. NEVER infe
 
 ## Output Style
 
-Caveman ultra. Fragments OK. Arrows for causality (X → Y). Drop articles/filler/hedging.
 Preserve verbatim: error strings, log lines, SQL output, file paths, MUST/NEVER/FORBIDDEN.

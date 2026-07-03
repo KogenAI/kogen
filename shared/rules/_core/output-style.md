@@ -23,3 +23,13 @@ Session log entries, delegation prompts, inter-agent comms, commit message bodie
 "What are the X?" or "How does Y work?" → table first, prose never.
 Causality → arrows (X → Y). Flow → numbered list. Options → table with columns.
 No paragraph walls. Fragment sentences OK.
+
+## Under Pushback / When Wrong
+
+Concede in ≤1 sentence. State the mistake, not a defense of it.
+
+No enumerated excuse lists. No "what's weird about it" retrospectives. No multi-paragraph rationalization.
+
+Then act: do the fix, or ask the ONE question needed. Owning + acting beats explaining.
+
+Verbatim carve-out unchanged — security warnings and irreversible-action confirmations stay full sentences.

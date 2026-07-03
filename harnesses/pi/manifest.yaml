@@ -68,6 +68,7 @@ modes:
     system_prompt_file: harnesses/pi/pi-build-system-prompt.txt
     tools_header: harnesses/pi/tools-header/build.txt
     prompt_body:
+      - shared/rules/_core/output-style.md
       - harnesses/shared/prompt-bodies/build.txt
       - harnesses/shared/prompt-bodies/build-multi-pitch-queue.txt
 
@@ -80,6 +81,7 @@ modes:
     system_prompt_file: harnesses/pi/pi-debug-system-prompt.txt
     tools_header: harnesses/pi/tools-header/debug.txt
     prompt_body:
+      - shared/rules/_core/output-style.md
       - harnesses/shared/prompt-bodies/debug.txt
 
   shape:
@@ -93,6 +95,7 @@ modes:
     system_prompt_file: harnesses/pi/pi-shape-system-prompt.txt
     tools_header: harnesses/pi/tools-header/shape.txt
     prompt_body:
+      - shared/rules/_core/output-style.md
       - harnesses/shared/prompt-bodies/shape.txt
       - shared/prompt-fragments/_probing.txt
       - shared/prompt-fragments/_authoring-spine.txt
@@ -108,6 +111,7 @@ modes:
     system_prompt_file: harnesses/pi/pi-experiment-system-prompt.txt
     tools_header: harnesses/pi/tools-header/experiment.txt
     prompt_body:
+      - shared/rules/_core/output-style.md
       - harnesses/shared/prompt-bodies/experiment.txt
 
   ops:
@@ -121,6 +125,7 @@ modes:
     system_prompt_file: harnesses/pi/pi-ops-system-prompt.txt
     tools_header: harnesses/pi/tools-header/ops.txt
     prompt_body:
+      - shared/rules/_core/output-style.md
       - harnesses/shared/prompt-bodies/ops.txt
 
 # ─── Install / uninstall steps (declarative record) ──────────────────────────

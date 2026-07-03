@@ -256,6 +256,24 @@ assert_contains \
     "$CODEGEN_DIR/harnesses/claude/commands/ready.md.j2" \
     "$SENTINEL13"
 
+SENTINEL_PUSHBACK="Concede in ≤1 sentence"
+
+# ── Test: Under Pushback / When Wrong sentinel in all 5 claude modes ──────────
+for mode in build debug shape experiment ops; do
+    assert_contains \
+        "pushback sentinel in claude-${mode}-system-prompt.txt" \
+        "$CODEGEN_DIR/harnesses/claude/claude-${mode}-system-prompt.txt" \
+        "$SENTINEL_PUSHBACK"
+done
+
+# ── Test: Under Pushback / When Wrong sentinel in all 5 pi modes ──────────────
+for mode in build debug shape experiment ops; do
+    assert_contains \
+        "pushback sentinel in pi-${mode}-system-prompt.txt" \
+        "$CODEGEN_DIR/harnesses/pi/pi-${mode}-system-prompt.txt" \
+        "$SENTINEL_PUSHBACK"
+done
+
 echo ""
 echo "Results: $pass passed, $fail failed"
 
