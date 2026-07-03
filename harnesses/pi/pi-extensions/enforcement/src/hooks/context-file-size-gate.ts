@@ -1,6 +1,10 @@
 /**
  * context-file-size-gate.ts — Pi enforcement: block git commits when any staged
- * context/*.md blob exceeds the 40,960-byte (40k) advisory cap.
+ * context/*.md blob exceeds the 40,960-byte (40k) cap. This is a commit-time
+ * BACKSTOP — the primary enforcement is curator-context-size-gate.ts, which
+ * denies the over-cap write/edit in the context-curator's own turn. The
+ * committer cannot Read or edit context/*.md, so this backstop's deny message
+ * routes the orchestrator to re-spawn the context-curator, never the committer.
  *
  * Mirrors: harnesses/claude/hooks/context-file-size-gate.sh
  * Event: tool_call (PreToolUse equivalent)
@@ -46,7 +50,7 @@ export function register(pi: ExtensionAPI): void {
         const bytes = Buffer.byteLength(blob);
         if (bytes > CAP) {
           over.push(
-            `context-file-size-gate: ${fpath} is ${bytes} bytes, over the ${CAP}-byte (40k) cap. Compress it or split it.`,
+            `context-file-size-gate (backstop): staged context file ${fpath} is ${bytes} bytes, over the ${CAP}-byte (40k) cap. The committer cannot Read or edit context/*.md — do NOT trim it here. Orchestrator: re-spawn the context-curator to compress or split ${fpath} under 40960 bytes, then re-run the cycle.`,
           );
         }
       }

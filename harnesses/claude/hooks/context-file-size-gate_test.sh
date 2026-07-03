@@ -18,6 +18,7 @@
 #  14: two staged adds: one 50000 (over) + one 100 (under) → DENY naming only over-cap file
 #  15: committer subagent (agent_type=committer) with over-cap staged ADD → DENY
 #  16: deny message contains exact byte count and "40960-byte (40k) cap" substring
+#  17: deny message names "context-curator" + "re-spawn"/"re-run the cycle", NOT committer-trim instruction
 
 set -euo pipefail
 
@@ -270,6 +271,38 @@ if printf '%s' "$stdout16" | grep -q '"permissionDecision"[[:space:]]*:[[:space:
     pass=$((pass + 1))
 else
     printf 'FAIL: deny message missing byte count or cap substring\n  stdout: %s\n' "$stdout16"
+    fail=$((fail + 1))
+fi
+
+# ---------------------------------------------------------------------------
+# Test 17: deny message names "context-curator" + "re-spawn"/"re-run the cycle",
+# and does NOT instruct the committer to trim the file itself.
+# ---------------------------------------------------------------------------
+dir17=$(make_fixture 17)
+head -c 50000 /dev/zero | tr '\0' 'x' >"$dir17/context/big.md"
+git -C "$dir17" add "context/big.md"
+
+stdout17=$(printf '%s' \
+    "{\"hook_event_name\":\"PreToolUse\",\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"git commit -m \\\"x\\\"\"},\"agent_type\":\"committer\",\"agent_id\":\"a\",\"cwd\":\"$dir17\"}" |
+    bash "$GUARD" 2>/dev/null || true)
+
+# Negative check: the message must not tell the COMMITTER to trim/compress/split
+# directly — i.e. no "committer" token followed (within the sentence) by an
+# instruction verb like compress/split/trim aimed AT the committer. The
+# backstop wording says the committer "cannot" do this, which does not match.
+committer_told_to_trim=0
+if printf '%s' "$stdout17" | grep -qiE "committer[^.]*\b(compress|split|trim) it"; then
+    committer_told_to_trim=1
+fi
+
+if printf '%s' "$stdout17" | grep -q '"permissionDecision"[[:space:]]*:[[:space:]]*"deny"' &&
+    printf '%s' "$stdout17" | grep -qi "context-curator" &&
+    { printf '%s' "$stdout17" | grep -qi "re-spawn" || printf '%s' "$stdout17" | grep -qi "re-run the cycle"; } &&
+    [ "$committer_told_to_trim" -eq 0 ]; then
+    [ -n "${VERBOSE:-}" ] && printf 'PASS: deny message names context-curator + re-spawn, no committer-trim instruction\n'
+    pass=$((pass + 1))
+else
+    printf 'FAIL: deny message missing context-curator/re-spawn, or wrongly instructs committer to trim\n  stdout: %s\n' "$stdout17"
     fail=$((fail + 1))
 fi
 

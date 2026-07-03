@@ -386,6 +386,16 @@
   role: context-curator
   harnesses: all
 
+- kind: registration
+  id: curator-context-size-gate
+  event: PreToolUse
+  tool_guard: "Edit|Write|MultiEdit"
+  surface: user_global
+  signal: AGENT_TYPE
+  role: context-curator
+  harnesses: all
+  rationale: "Denies a context-curator Edit/Write/MultiEdit to context/<file>.md when the projected post-write byte size exceeds the 40,960-byte cap, so the over-cap file is fixed in the curator's own turn (the only role that can Read+edit context/*.md) instead of failing later at commit on the committer, which cannot repair it. Composes with context-curator-guard (path surface) and the commit-time context-file-size-gate backstop."
+
 # NOT-YET-MIGRATED: role: unset is a non-standard token not in the schema enum.
 # Deferred until schema accepts or normalises the unset sentinel.
 # - kind: registration

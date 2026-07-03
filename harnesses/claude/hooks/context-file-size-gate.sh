@@ -1,6 +1,10 @@
 #!/bin/bash
 # context-file-size-gate.sh — PreToolUse hook: deny `git commit` when any staged
-# context/*.md blob exceeds the 40,960-byte (40k) advisory cap.
+# context/*.md blob exceeds the 40,960-byte (40k) cap. This is a commit-time
+# BACKSTOP — the primary enforcement is curator-context-size-gate.sh, which
+# denies the over-cap Edit/Write in the context-curator's own turn. The
+# committer cannot Read or edit context/*.md, so this backstop's deny message
+# routes the orchestrator to re-spawn the context-curator, never the committer.
 #
 # HOOK-MANIFEST:
 # event: PreToolUse
@@ -45,7 +49,7 @@ while IFS= read -r fpath; do
     bytes=$(git -C "$repo_root" show :"$fpath" 2>/dev/null | wc -c | tr -d ' ')
     [ -z "$bytes" ] && continue
     if [ "$bytes" -gt "$CAP" ]; then
-        violations="${violations}${violations:+$'\n'}context-file-size-gate: ${fpath} is ${bytes} bytes, over the ${CAP}-byte (40k) cap. Compress it or split it."
+        violations="${violations}${violations:+$'\n'}context-file-size-gate (backstop): staged context file ${fpath} is ${bytes} bytes, over the ${CAP}-byte (40k) cap. The committer cannot Read or edit context/*.md — do NOT trim it here. Orchestrator: re-spawn the context-curator to compress or split ${fpath} under 40960 bytes, then re-run the cycle."
     fi
 done <<EOF
 $staged

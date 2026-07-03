@@ -38,6 +38,7 @@ import { register as registerCommitterSubjectLength } from "./hooks/committer-su
 import { register as registerCommitterWriteAllowlist } from "./hooks/committer-write-allowlist";
 import { register as registerContextCuratorGuard } from "./hooks/context-curator-guard";
 import { register as registerCuratorBeforeCommitter } from "./hooks/curator-before-committer";
+import { register as registerCuratorContextSizeGate } from "./hooks/curator-context-size-gate";
 import { register as registerCuratorFormat } from "./hooks/curator-format";
 import { register as registerCuratorLearningCommitted } from "./hooks/curator-learning-committed";
 import { register as registerDevNoCi } from "./hooks/dev-no-ci";
@@ -105,6 +106,7 @@ export default function (pi: ExtensionAPI): void {
   registerCommitterWriteAllowlist(pi);
   registerContextCuratorGuard(pi);
   registerCuratorBeforeCommitter(pi);
+  registerCuratorContextSizeGate(pi);
   registerCuratorFormat(pi);
   registerCuratorLearningCommitted(pi);
   registerDevNoCi(pi);

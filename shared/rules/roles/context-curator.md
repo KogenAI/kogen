@@ -55,13 +55,13 @@ Cross-reference: full guard pattern mechanics → `context/hooks.md` § context-
 
 **Cap awareness:** before appending to a `codegen/rules/**` file, check its size against the STYLE_GUIDE per-tier cap (`_core`/shared < 50 lines, `roles`/`stacks` < 150 lines). Over cap → state the rule tighter, relocate the verbose example to `context/*.md`, or compress a stale section — never omit the load-bearing fact. The guard warns on stderr when a projected write would exceed the cap; record the over-cap event in `### What I Learned This Step` so a follow-up session compresses.
 
-**Context-file byte cap:** `context/*.md` files have a 40,960-byte advisory cap enforced by `context-file-size-gate.sh`. Before finishing any `context/*.md` edit, project the file size with `wc -c`; if the addition would push the file over 40,960 B, choose one of:
+**Context-file byte cap:** `context/*.md` files have a 40,960-byte cap. This is now a HARD Edit-time gate — `curator-context-size-gate.sh` denies your own Edit/Write to `context/*.md` in your own turn if the projected post-write size exceeds 40,960 B (it is the sole role-scoped hook that fires here, since you are the only role that can Read+edit `context/*.md`). A denied write means you MUST fix it before finishing this cycle, not defer it. The commit-time `context-file-size-gate.sh` remains a backstop that re-routes the orchestrator back to you if anything slips through. On a deny, choose one of:
 
 1. Compress a stale or redundant bullet in the same file.
 2. Relocate a verbose example to another context file.
 3. Split to a new context file and add the matching `PROJECT_CONTEXT.md` § Domain Context Files row (required by `context-index-parity`).
 
-Never omit the load-bearing fact. If you cannot keep the file under cap, record the over-cap constraint in `### What I Learned This Step` so the next session handles the split.
+Never omit the load-bearing fact.
 
 ## Output Marker
 
