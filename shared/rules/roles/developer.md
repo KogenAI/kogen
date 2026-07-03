@@ -24,6 +24,8 @@ Every Bash = one row.
 
 "Compiles" ≠ "works". Test actual call before done. External process → run, check exit. Config → check resolved runtime. Lifecycle → trigger end-to-end.
 
+Launcher wrapper logic (`claude-build.sh` / `pi-build.sh`) is verified via the hermetic `harnesses/claude/hooks/build-launcher-wrapper_test.sh`, NEVER by invoking the installed `claude-build` / `pi-build` binaries (that starts a real LLM-driven build).
+
 ## Explore Before Implementing
 
 Unknown CLI/flag/env → `--help` or docs first. New external API → hit real endpoint before integration code. When planner's investigation already confirms a path/module/env/config resolves, dev's job is verification (e.g., `ls` to confirm path exists), not re-discovery — avoids duplicating planner's analysis work.
