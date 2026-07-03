@@ -242,6 +242,20 @@ assert_contains \
     "$CODEGEN_DIR/harnesses/pi/pi-shape-system-prompt.txt" \
     "$SENTINEL12"
 
+SENTINEL13="CONTRACT-DECLARATION-SITE COMPLETENESS:"
+assert_contains \
+    "contract-declaration-site sentinel in claude-shape-system-prompt.txt" \
+    "$CODEGEN_DIR/harnesses/claude/claude-shape-system-prompt.txt" \
+    "$SENTINEL13"
+assert_contains \
+    "contract-declaration-site sentinel in pi-shape-system-prompt.txt" \
+    "$CODEGEN_DIR/harnesses/pi/pi-shape-system-prompt.txt" \
+    "$SENTINEL13"
+assert_contains \
+    "contract-declaration-site sentinel in ready.md.j2" \
+    "$CODEGEN_DIR/harnesses/claude/commands/ready.md.j2" \
+    "$SENTINEL13"
+
 echo ""
 echo "Results: $pass passed, $fail failed"
 

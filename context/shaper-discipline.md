@@ -206,6 +206,21 @@ When a pitch's primary intent is a **purge, sweep, audit, collapse, rename, or r
 
 **`/ready` enforcement**: `/ready` scans `## References` structurally for the sweep transcript and the producer/verifier reconciliation. A sweep-class pitch whose `## References` lacks either → NOT ready.
 
+## Completeness Contract for Contract-Establishing Pitches
+
+When a pitch **establishes or strengthens a cross-cutting contract or invariant** — a write-path mandate, a commit discipline, a gate-verdict authority rule, a naming rule — the shaper MUST grep every site that DECLARES or TEACHES that contract (rule prose, prompt-bodies, `shared/apps/*.j2` downstream docs, enforcement) and fold every hit into `## Scope`, for consistency, even when that site is not broken by the change.
+
+**Causal test is insufficient here**: the same-change auto-cover causal test ("the change causes it or the change cannot be complete without it") does NOT catch this class. A doc that merely under-states a now-strengthened contract is neither caused-by nor required-by the change, but still must be aligned — otherwise the codebase ships one strengthened source of truth alongside stale sibling docs that still teach the weaker version.
+
+**Bound**: the test is DECLARES/INSTRUCTS — a reader would follow the text as an instruction to act — NOT mentions-in-passing. A file that references the contract in an example or footnote is out of scope; a file that teaches the contract as a rule the reader must follow is in scope.
+
+**Producer/verifier layout**:
+
+- Producers: `shared/prompt-fragments/_authoring-spine.txt` (Phase-0 auto-cover rule) + `harnesses/shared/prompt-bodies/shape.txt` (readiness blocker + option template).
+- Verifiers: `harnesses/claude/commands/ready.md.j2` (promotion-gate scan) + the `prompt-content-parity_test.sh` sentinel (`CONTRACT-DECLARATION-SITE COMPLETENESS:`) asserting the baked prompts and `/ready` all carry the rule.
+
+**Motivating incident**: the `session-log-uniform-across-surfaces` pitch reached READY status with `shared/apps/AGENTS-phoenix.md.j2` and `shared/apps/AGENTS-static.md.j2` `## Session Logging` sections left out of scope — both files declared the pre-strengthening session-log contract and were never updated, leaving downstream consumer docs teaching a stale rule.
+
 ## Integration with `/ready` Command
 
 The `/ready` skill is a sibling investigation aid that gates a pitch's readiness-check loop. It carries a near-verbatim copy of the soft ask-vs-decide classifier and the deferral-with-draft contract rules. When the shape.txt rules change significantly, `/ready` may need parallel tightening to keep both tools in sync.
@@ -216,7 +231,7 @@ This is a SEPARATE pitch and change, not folded into shape-mode tightening. The 
 
 ## Trigger Keywords
 
-shaper rules, ask-vs-decide, deferral-with-draft, decompose-then-split, derive-and-write edges, Rule G, Rule H, Rule I, Rule J, shape mode discipline, prompt durability, section-name anchors, sweep-class, completeness contract, full-vocabulary sweep, producer/verifier reconciliation, operator-owned surface, user-facing surface removal, surface preservation, keep-vs-remove fork
+shaper rules, ask-vs-decide, deferral-with-draft, decompose-then-split, derive-and-write edges, Rule G, Rule H, Rule I, Rule J, shape mode discipline, prompt durability, section-name anchors, sweep-class, completeness contract, full-vocabulary sweep, producer/verifier reconciliation, operator-owned surface, user-facing surface removal, surface preservation, keep-vs-remove fork, contract-declaration-site completeness, declaration-site sweep, contract establishment, cross-cutting contract, declares-teaches bound
 
 ## See Also
 

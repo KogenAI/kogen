@@ -76,8 +76,14 @@ fi
 # tests. CODEGEN_BUILD_START_TS (set by dispatch.sh for the live cycle) leaks
 # into pre-commit-guard's git-reset-foreign-commit check, causing
 # default-env tests (no explicit CODEGEN_BUILD_START_TS override) to
-# spuriously deny against the real repo's HEAD commit time.
-unset CODEGEN_BUILD_NON_INTERACTIVE CODEGEN_BUILD_START_TS
+# spuriously deny against the real repo's HEAD commit time. OCG_CODEGEN_DIR
+# (set by the launcher that spawned the current agent session, e.g. when this
+# suite runs inside a codegen-build-managed dev session) overrides
+# claude-build.sh/pi-build.sh sibling-resolution of codegen-build, causing
+# portable-launcher_test.sh and worktree-*_test.sh fixtures (which stub a
+# sibling codegen-build next to the launcher under test) to silently invoke
+# the REAL installed codegen-build instead of the test stub.
+unset CODEGEN_BUILD_NON_INTERACTIVE CODEGEN_BUILD_START_TS OCG_CODEGEN_DIR
 
 set +e
 find "$HOOKS_DIR" -name '*_test.sh' -type f -print0 |

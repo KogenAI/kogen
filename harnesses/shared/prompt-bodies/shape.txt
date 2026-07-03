@@ -94,6 +94,7 @@ When pitch is loaded, run Phase 0 first (see below), then this loop:
      1. **Full-vocabulary sweep transcript**: the pitch MUST enumerate EVERY occurrence of the removed/renamed identifier (function, config key, env var, file, token) across the entire codebase — not just the obvious hits. The sweep MUST be run against the current committed state (`git show HEAD:<path>` or a clean checkout), never against the dirty working tree. A sweep that lists only the sites the shaper already suspected is NOT complete. Evidence: a `## References` probe block showing the full `grep -rn` output (zero-surprise remainder). Missing → blocker.
      2. **Producer/verifier reconciliation**: when the pitch involves deleting or renaming something that another tool, role, or automated process PRODUCES or READS, the pitch MUST show that the producer and all consumers have been reconciled — either both updated in the same build, or the producer side explicitly carved out with a tracked draft. Missing → blocker.
      → `AskUserQuestion` with options: run the full-vocabulary sweep now (embed transcript) / run the producer/verifier reconciliation now (embed trace) / narrow scope to exclude the incomplete leg.
+   - **Contract-declaration-site completeness** — CONTRACT-DECLARATION-SITE COMPLETENESS: when a pitch ESTABLISHES or STRENGTHENS a cross-cutting contract or invariant (a write-path mandate, a commit discipline, a gate-verdict authority rule, a naming rule), two conditions trigger this blocker: the pitch's `## References` lacks a grep enumerating every DECLARE/TEACH site for that contract (rule prose, prompt-bodies, `shared/apps/*.j2` downstream docs, enforcement), OR the pitch's `## Scope` omits one of those sites. AUTO-RESOLVE: run the declaration-site grep now, add every missing site to `## Scope`, embed the grep transcript in `## References`. Bound: the test is DECLARES/INSTRUCTS — a reader would follow the text as an instruction — NOT mentions-in-passing. → `AskUserQuestion` only on a genuine customer-facing product fork; otherwise auto-resolve without asking.
    - **New-producer / existing-convention reconciliation** — when a pitch introduces a NEW producer (writer, generator, CLI, emitter) of an artifact that already has consumers OR an established resolution/format/path/schema convention, Phase-0 MUST probe that the producer's output contract (dir resolution, filename format, schema) MATCHES what the existing consumers/validators expect. This generalizes the sweep-class *Producer/verifier reconciliation* check above to ALL new-producer pitches, not only purge/sweep pitches. A claim that the convention is "unchanged" / "reused" / "same as before" with no probe asserting *producer-resolves-what-consumer-expects* → blocker. If no existing consumer/convention is found, the blocker does not apply (genuinely new artifact) — note in `## References` that this was checked, not skipped. → probe both sides now; on mismatch, AUTO-DECIDE the producer to the consumer's convention and edit the pitch.
    - **Dangling cross-reference** — every `## Related pitches` entry and every inline "see separate pitch X" MUST reference a file that exists on disk in `codegen/pitches/{draft,ready,shipped}/`. For each named basename, the pitch (or your probe) must confirm a matching file. Any reference with no file on disk → blocker. → `AskUserQuestion` with options: draft a stub / remove the reference. No phantom bets.
    - **Undeclared sibling relationship** — a sibling overlap exists AND the pitch has NO matching `## Dependencies` declaration. Sibling overlap triggers when EITHER: (1) the pitch names an edit-surface file that another draft/ready pitch also names as an edit target (shared edit-surface file), OR (2) the pitch's `## Related pitches` contains ordering/staleness language ("before", "after", "reconcile", "stales", "blocks", "must land"). No matching declaration means the pitch carries neither a `Blocks-on:` line nor an explicit independence statement (`## Dependencies: (none — independent. ...)`) for that sibling. AUTO-RESOLVE: run the classify-and-act scan from rule (H) — write the `Blocks-on:` edge (case b/d), the explicit independence statement (case a), or the archive `mv` + note (case c) per the four outcomes. Emit one chat line: `Resolved sibling-relationship: <slug> = <independent|blocks-on|obsoletes|stales>.` Only the (c)-vs-(d) ambiguity ("is sibling B still wanted?") reaches `AskUserQuestion`; outcomes (a) and (b) are mechanical and are NEVER user-escalated.
@@ -331,6 +332,26 @@ Options:
   1) Run full-vocabulary sweep now: embed transcript above; update Solution sketch to cover all sites.
   2) Run producer/verifier reconciliation now: embed producer-consumer trace above; update Solution sketch to cover both sides (or extract the un-addressed side to a tracked draft).
   3) Narrow scope: remove the operation that requires the missing sweep/reconciliation. Tighter pitch.
+
+Reply with the number.
+```
+
+**Contract-declaration-site completeness** (a pitch establishing/strengthening a cross-cutting contract missing a declaration-site sweep in `## References` or `## Scope`):
+```
+CONTRACT-DECLARATION-SITE COMPLETENESS: Blocker at <section>: this pitch establishes/strengthens the contract "<contract name>" but `## References`/`## Scope` is missing a declaration-site sweep.
+
+Declaration-site sweep run: `$ grep -rln "<contract token>" shared/rules/ harnesses/shared/prompt-bodies/ shared/apps/ shared/enforcement/`
+```
+<output>
+<3–10 lines verbatim showing all declaration sites>
+</output>
+```
+Result: <N> declaration sites found; pitch's `## Scope` covers <M>. <N-M> unaddressed.
+
+Options:
+  1) Run the grep now, add all sites to `## Scope`, embed transcript in `## References`.
+  2) Confirm every site already in `## Scope`; embed the grep as evidence.
+  3) Narrow scope so the contract change stops strengthening the un-covered sites.
 
 Reply with the number.
 ```
