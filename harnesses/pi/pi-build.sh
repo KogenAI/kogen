@@ -44,7 +44,17 @@ if [[ "$_has_queue_flag" -eq 1 ]]; then
         fi
     done
     _QUEUE_CWD="$PWD"
-    CODEGEN_DIR="${OCG_CODEGEN_DIR:-$(cd "$SCRIPT_DIR/../.." && pwd -P)}"
+    # Portable derivation (matches claude-shape.sh/claude-debug.sh): prefer the
+    # override, then the harnesses symlink (installed-flat layout, where this
+    # script is copied to ~/.local/bin and SCRIPT_DIR/../.. no longer lands on
+    # the repo root), then the in-repo-checkout fallback.
+    if [[ -n "${OCG_CODEGEN_DIR:-}" ]]; then
+        CODEGEN_DIR="$OCG_CODEGEN_DIR"
+    elif [[ -L "$SCRIPT_DIR/harnesses" || -d "$SCRIPT_DIR/harnesses" ]]; then
+        CODEGEN_DIR="$(cd -P "$SCRIPT_DIR/harnesses" && cd .. && pwd)"
+    else
+        CODEGEN_DIR="$(cd "$SCRIPT_DIR/../.." && pwd -P)"
+    fi
     if [[ ! -d "$CODEGEN_DIR/test_harness" ]]; then
         printf 'pi-build: test_harness/ not found at %s — set OCG_CODEGEN_DIR to the codegen repo root\n' "$CODEGEN_DIR" >&2
         exit 2

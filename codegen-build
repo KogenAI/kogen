@@ -136,6 +136,10 @@ while [[ $# -gt 0 ]]; do
         printf '%s\n' "$SCRIPT_DIR"
         exit 0
         ;;
+    -h | --help)
+        printf 'Usage: codegen-build --harness=<claude|pi> --stack=<phoenix|static> [--cwd=<dir>] [--elixir] [--non-interactive] [--resumable] [--resume-id=<id>] [--model=<m>] [--effort=<e>] PROMPT\n'
+        exit 0
+        ;;
     --)
         shift
         PROMPT="$*"
