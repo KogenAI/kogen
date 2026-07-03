@@ -29,7 +29,7 @@ The codegen repo is a Bash + Python + TypeScript + Elixir toolchain. Primary dev
 
 ## Make Targets (Index)
 
-One-liner per target — for test target semantics see `context/test-harness.md`; for hook-parity semantics see `context/hooks.md`.
+One-liner per target — for test target semantics see `context/test-harness.md`; for hook-parity semantics see `context/hooks.md`. **Launcher-test discovery**: `harnesses/claude/hooks/*_test.sh` files are auto-discovered by `run-tests.sh` (grep footer `N passed, N failed`); launcher helper tests in `harnesses/shared/*_test.sh` are NOT auto-discovered — they run via the `harness-parity` target's explicit `for t in` list (Makefile ~L145-152). New launcher test → add a list entry; `harness-parity` checks each test's EXIT CODE (rc -ne 0 → FAIL).
 
 | Target                    | Purpose                                                                                                                                                                    |
 | ------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -69,7 +69,7 @@ See `.env.sample` and `.env.prod.sample` for full variable lists.
 
 ## Coding Conventions
 
-- **Bash**: `set -euo pipefail` in all scripts; `content_stable_cp` defined in `install.sh` (not `utils.sh`) for idempotent file copies; `utils.sh` provides only `OCG_CMD`.
+- **Bash**: `set -euo pipefail` in all scripts; `content_stable_cp` defined in `install.sh` (not `utils.sh`) for idempotent file copies; `utils.sh` provides only `OCG_CMD`. **`Edit replace_all: true` on indentation-sensitive duplicate lines**: When lines with identical text but DIFFERENT indentation exist (e.g., 8 spaces vs 4 spaces), a single `replace_all: true` edit may match only one — success messaging is unreliable. Always verify via post-edit `grep -c` or `grep -n` to confirm BOTH sites changed; catch partial edits early.
 - **Bash sed portability**: `sed -i ''` (BSD macOS) not portable to GNU sed (Linux). Use temp-file rewrite: `sed 'EXPR' file >"${file}.tmp" && mv "${file}.tmp" file`. Canonical: `install.sh` lines 474–483 (mktemp/cmp/mv pattern). Mutation scripts in `shared/scaffold/` use this idiom throughout.
 - **Multi-line block composition**: `printf "%b"` interprets `\n` in format+args, BUT `$()` strips trailing newlines. String concatenation + `%b` is fragile. Prefer `{ printf ...; printf ...; } >> file` for block writes.
 - **Bash subshell export isolation**: Pipe subshells (`printf ... | fn`) execute in a subshell — exports + variable mutations invisible to outer process. Fix: use file redirect (`while ... done < file` or `fn < "$stdin_file"`) instead of pipe. Redirect keeps the loop/process in the current shell so `CONTEXT_FLAGS`, `ROLE_SYSTEM_PROMPT`, `TIER0_LOADED`, and similar mutations persist. Write input to temp file if needed, never pipe data through a loop.

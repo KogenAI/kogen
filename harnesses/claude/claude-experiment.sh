@@ -237,7 +237,7 @@ fi
 # Cold-start: no args → open conversation directly
 if [[ $# -eq 0 ]]; then
     exec claude \
-        --settings '{"env":{"MAX_THINKING_TOKENS":"16000"}}' \
+        --settings '{"env":{"MAX_THINKING_TOKENS":"16000","API_FORCE_IDLE_TIMEOUT":"1"}}' \
         "${NON_INTERACTIVE_FLAGS[@]+"${NON_INTERACTIVE_FLAGS[@]}"}" \
         --model "$ROLE_MODEL" \
         --effort "$ROLE_EFFORT" \
@@ -249,7 +249,7 @@ if [[ $# -eq 0 ]]; then
 fi
 
 exec claude \
-    --settings '{"env":{"MAX_THINKING_TOKENS":"16000"}}' \
+    --settings '{"env":{"MAX_THINKING_TOKENS":"16000","API_FORCE_IDLE_TIMEOUT":"1"}}' \
     "${NON_INTERACTIVE_FLAGS[@]+"${NON_INTERACTIVE_FLAGS[@]}"}" \
     --model "$ROLE_MODEL" \
     --effort "$ROLE_EFFORT" \

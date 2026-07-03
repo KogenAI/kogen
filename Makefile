@@ -149,6 +149,7 @@ harness-parity:
 		"$(SCRIPT_DIR)/shared/scaffold/static/scaffold_test.sh" \
 		"$(SCRIPT_DIR)/harnesses/shared/experiment-prune_test.sh" \
 		"$(SCRIPT_DIR)/harnesses/shared/build-queue-launcher_test.sh" \
+		"$(SCRIPT_DIR)/harnesses/shared/claude-experiment-settings_test.sh" \
 		"$(SCRIPT_DIR)/codegen-log_test.sh"; do \
 		out=$$(bash "$$t" 2>&1); rc=$$?; \
 		if [ -n "$$VERBOSE" ]; then printf '%s\n' "$$out"; fi; \
