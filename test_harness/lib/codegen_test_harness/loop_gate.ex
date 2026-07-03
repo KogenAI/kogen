@@ -9,20 +9,28 @@ defmodule CodegenTestHarness.LoopGate do
   already depend on stays byte-identical.
   """
 
-  @type verdict :: :clear | :failed | :inconclusive
+  @type verdict :: :clear | :failed
 
   @gate_select_lib Path.expand(
                      "../../../harnesses/claude/hooks/lib/gate-select.sh",
                      __DIR__
                    )
   @gate_result_lib Path.expand(
-                      "../../../harnesses/claude/hooks/lib/gate-result.sh",
-                      __DIR__
-                    )
+                     "../../../harnesses/claude/hooks/lib/gate-result.sh",
+                     __DIR__
+                   )
   @render_check_js Path.expand(
-                      "../../../harnesses/claude/hooks/lib/render-check.js",
-                      __DIR__
-                    )
+                     "../../../harnesses/claude/hooks/lib/render-check.js",
+                     __DIR__
+                   )
+  @codegen_root Path.expand("../../../..", Path.dirname(@render_check_js))
+
+  @doc false
+  # Test-only introspection: exposes the compile-time-derived codegen root
+  # so tests can assert it resolves to the actual repo root (containing
+  # node_modules/ and harnesses/) rather than re-deriving the same logic.
+  @spec codegen_root() :: String.t()
+  def codegen_root, do: @codegen_root
 
   @doc """
   Decides the gate command for `project_dir` (optionally scoped by
@@ -78,10 +86,16 @@ defmodule CodegenTestHarness.LoopGate do
     invocation.
   - `:render_check_fn` — test seam: `(project_dir -> {verdict_line, exit_code})`,
     defaults to a real `render-check.js` invocation against `project_dir/public`.
+  - `:preflight_fn` — test seam: `(project_dir -> :ok)`, defaults to
+    `&static_render_deps_preflight!/1`. Runs BEFORE the gate command, only
+    when `:stack` is `"static"`. RAISES (crash loud, infra abort — not a
+    gate verdict) naming the first missing render-check dependency
+    (node, render-check.js, chromium).
 
   Never raises on a failing gate command or a failing render check — a
-  `:failed`/`:inconclusive` verdict is a legitimate return value, not an
-  error.
+  `:failed` verdict is a legitimate return value, not an error. Missing
+  render-check *dependencies* (as opposed to a failing check) are an infra
+  abort and DO raise, via `:preflight_fn`.
   """
   @spec run_gate(String.t(), keyword()) :: {verdict(), String.t()}
   def run_gate(project_dir, opts \\ []) do
@@ -89,6 +103,9 @@ defmodule CodegenTestHarness.LoopGate do
     step_log = Keyword.get(opts, :step_log)
     session_id = Keyword.get(opts, :session_id, "")
     run_fn = Keyword.get(opts, :run_fn, &default_run_fn/2)
+    preflight_fn = Keyword.get(opts, :preflight_fn, &static_render_deps_preflight!/1)
+
+    if stack == "static", do: preflight_fn.(project_dir)
 
     {gate, mode, _timeout} = decide_gate(project_dir, step_log)
 
@@ -162,7 +179,9 @@ defmodule CodegenTestHarness.LoopGate do
 
         node ->
           {output, _exit} =
-            System.cmd(node, [@render_check_js, "--mode", "static", "--timeout", "30000", out_dir],
+            System.cmd(
+              node,
+              [@render_check_js, "--mode", "static", "--timeout", "30000", out_dir],
               stderr_to_stdout: true
             )
 
@@ -175,6 +194,11 @@ defmodule CodegenTestHarness.LoopGate do
   Reads the verdict field from `<project_dir>/codegen/gate-pending/gate-result.json`
   via `gate_result_verdict`. Raises if the field is absent or unrecognized —
   the loop must never silently treat a missing/malformed verdict as clear.
+
+  The legacy bash contract's `"inconclusive"` value collapses fail-closed to
+  `:failed` here — the loop's verdict is binary (`:clear | :failed`); an
+  inconclusive render-check result must never let a cycle proceed as if it
+  were clear.
   """
   @spec read_verdict(String.t()) :: verdict()
   def read_verdict(project_dir) do
@@ -182,15 +206,76 @@ defmodule CodegenTestHarness.LoopGate do
       raise "LoopGate: gate-result.sh not found at #{@gate_result_lib}"
     end
 
-    script = "source #{shell_quote(@gate_result_lib)} && gate_result_verdict #{shell_quote(project_dir)}"
+    script =
+      "source #{shell_quote(@gate_result_lib)} && gate_result_verdict #{shell_quote(project_dir)}"
+
     {output, 0} = System.cmd("bash", ["-c", script], stderr_to_stdout: true)
 
     case String.trim(output) do
       "clear" -> :clear
       "failed" -> :failed
-      "inconclusive" -> :inconclusive
+      "inconclusive" -> :failed
       other -> raise "LoopGate: unrecognized/missing verdict #{inspect(other)} for #{project_dir}"
     end
+  end
+
+  # Static-stack render-check dependency preflight. Runs BEFORE the gate
+  # command when `:stack` is `"static"`. RAISES (crash loud) naming the
+  # FIRST missing dependency — this is an infra abort, not a gate verdict:
+  # a missing dep is a box-provisioning problem, not something a developer
+  # re-run can fix.
+  #
+  # Mirrors render-check.js's exact playwright/chromium resolution
+  # (harnesses/claude/hooks/lib/render-check.js:119-135) so the preflight
+  # can never false-abort (dep present but preflight looked in the wrong
+  # place) or false-pass (preflight happy but the real check still fails).
+  @spec static_render_deps_preflight!(String.t()) :: :ok
+  defp static_render_deps_preflight!(_project_dir) do
+    unless System.find_executable("node") do
+      raise "LoopGate: render-check dependency missing — node not on PATH"
+    end
+
+    unless File.exists?(@render_check_js) do
+      raise "LoopGate: render-check.js not found at #{@render_check_js}"
+    end
+
+    probe_script = """
+    const path = require("path");
+    const fs = require("fs");
+    const candidates = [];
+    const codegenDir = process.env["CODEGEN_DIR"];
+    if (codegenDir) {
+      candidates.push(path.join(codegenDir, "node_modules", "playwright"));
+    }
+    candidates.push(path.join(#{inspect(@codegen_root)}, "node_modules", "playwright"));
+    candidates.push("playwright");
+    let chromium;
+    let resolved = false;
+    for (const candidate of candidates) {
+      try {
+        ({ chromium } = require(candidate));
+        resolved = true;
+        break;
+      } catch (_e) {
+        // try next candidate
+      }
+    }
+    if (!resolved) {
+      process.exit(1);
+    }
+    if (!fs.existsSync(chromium.executablePath())) {
+      process.exit(1);
+    }
+    process.exit(0);
+    """
+
+    {_output, exit_code} = System.cmd("node", ["-e", probe_script], stderr_to_stdout: true)
+
+    unless exit_code == 0 do
+      raise "LoopGate: chromium binary not found — run: npx playwright install chromium"
+    end
+
+    :ok
   end
 
   defp default_run_fn(gate_command, project_dir) do

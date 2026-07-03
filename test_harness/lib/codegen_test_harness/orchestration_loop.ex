@@ -24,9 +24,9 @@ defmodule CodegenTestHarness.OrchestrationLoop do
   @static_roles ~w(developer-static reviewer-static context-curator committer)
 
   @cycle_state_lib Path.expand(
-                      "../../../harnesses/claude/hooks/lib/cycle-state.sh",
-                      __DIR__
-                    )
+                     "../../../harnesses/claude/hooks/lib/cycle-state.sh",
+                     __DIR__
+                   )
 
   @doc """
   Returns the ordered role sequence for `stack` (`"phoenix"` or
@@ -122,7 +122,7 @@ defmodule CodegenTestHarness.OrchestrationLoop do
         advance_cycle_state_step("GATED", ctx, opts)
         run_roles(rest, harness, ctx, opts)
 
-      {verdict, _gate_cmd} when verdict in [:failed, :inconclusive] ->
+      {:failed, _gate_cmd} ->
         if attempt < max_retries do
           with {:ok, result} <- invoke_with_retry(dev_role, harness, ctx, opts) do
             ctx = put_in(ctx, [:artifacts, dev_role], result)
@@ -130,8 +130,11 @@ defmodule CodegenTestHarness.OrchestrationLoop do
             do_gate_loop(dev_role, rest, harness, ctx, opts, gate_fn, max_retries, attempt + 1)
           end
         else
-          {:error, "gate verdict=#{verdict} after #{attempt + 1} developer attempt(s)"}
+          {:error, "gate verdict=failed after #{attempt + 1} developer attempt(s)"}
         end
+
+      {other, _gate_cmd} ->
+        raise "OrchestrationLoop: unexpected gate verdict #{inspect(other)}"
     end
   end
 
@@ -208,7 +211,8 @@ defmodule CodegenTestHarness.OrchestrationLoop do
     interactively; surfaced as a failure)
   - anything else → raises (crash loud — unexpected envelope shape)
   """
-  @spec invoke_role(String.t(), harness(), map(), run_opts()) :: {:ok, map()} | {:error, String.t()}
+  @spec invoke_role(String.t(), harness(), map(), run_opts()) ::
+          {:ok, map()} | {:error, String.t()}
   def invoke_role(role, harness, ctx, opts) do
     resolve_fn = Keyword.get(opts, :resolve_fn, &RoleResolver.resolve_role/2)
     codegen_call_fn = Keyword.get(opts, :codegen_call_fn, &default_codegen_call/6)
@@ -240,7 +244,8 @@ defmodule CodegenTestHarness.OrchestrationLoop do
     base = ctx[:pitch] || ""
 
     if reason do
-      base <> "\n\nPrevious attempt at role #{role} failed with: #{reason}. Please address this and retry."
+      base <>
+        "\n\nPrevious attempt at role #{role} failed with: #{reason}. Please address this and retry."
     else
       base
     end

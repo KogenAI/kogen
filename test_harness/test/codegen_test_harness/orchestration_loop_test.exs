@@ -200,22 +200,21 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
       assert reason =~ "gate verdict=failed"
     end
 
-    test "gate verdict=inconclusive is treated the same as failed (retried, then error)", %{
+    test "stray gate verdict crashes loud (defensive)", %{
       calls_agent: calls_agent
     } do
-      gate_fn = fn _cwd, _opts -> {:inconclusive, "make test"} end
+      gate_fn = fn _cwd, _opts -> {:bogus, "make test"} end
 
-      assert {:error, reason} =
-               OrchestrationLoop.run(
-                 harness: "claude_code",
-                 stack: "static",
-                 cwd: "/tmp/irrelevant",
-                 pitch: "do the thing",
-                 invoke_fn: always_ok_invoke_fn(calls_agent),
-                 gate_fn: gate_fn
-               )
-
-      assert reason =~ "gate verdict=inconclusive"
+      assert_raise RuntimeError, ~r/unexpected gate verdict/, fn ->
+        OrchestrationLoop.run(
+          harness: "claude_code",
+          stack: "static",
+          cwd: "/tmp/irrelevant",
+          pitch: "do the thing",
+          invoke_fn: always_ok_invoke_fn(calls_agent),
+          gate_fn: gate_fn
+        )
+      end
     end
   end
 
@@ -325,7 +324,9 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
 
   describe "guard_bundle_flag!/2 — B-bucket guard bundle wiring" do
     setup do
-      dir = Path.join(System.tmp_dir!(), "guard_bundle_test_#{:erlang.unique_integer([:positive])}")
+      dir =
+        Path.join(System.tmp_dir!(), "guard_bundle_test_#{:erlang.unique_integer([:positive])}")
+
       File.mkdir_p!(dir)
       on_exit(fn -> File.rm_rf!(dir) end)
       {:ok, dir: dir}
@@ -335,7 +336,9 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
       settings_path = Path.join(dir, "claude-code-settings.json")
       File.write!(settings_path, "{}")
 
-      assert OrchestrationLoop.guard_bundle_flag!("claude_code", claude_settings_path: settings_path) ==
+      assert OrchestrationLoop.guard_bundle_flag!("claude_code",
+               claude_settings_path: settings_path
+             ) ==
                ["--settings=@#{settings_path}"]
     end
 
@@ -344,9 +347,13 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
     } do
       missing_path = Path.join(dir, "nope-settings.json")
 
-      assert_raise RuntimeError, ~r/claude settings bundle not found.*refusing to run a role unguarded/, fn ->
-        OrchestrationLoop.guard_bundle_flag!("claude_code", claude_settings_path: missing_path)
-      end
+      assert_raise RuntimeError,
+                   ~r/claude settings bundle not found.*refusing to run a role unguarded/,
+                   fn ->
+                     OrchestrationLoop.guard_bundle_flag!("claude_code",
+                       claude_settings_path: missing_path
+                     )
+                   end
     end
 
     test "pi returns --extension=@<path> when the extension dir exists", %{dir: dir} do
@@ -360,9 +367,13 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
     test "pi raises when the extension dir is absent (refuse to run unguarded)", %{dir: dir} do
       missing_dir = Path.join(dir, "nope-enforcement")
 
-      assert_raise RuntimeError, ~r/pi enforcement extension not found.*refusing to run a role unguarded/, fn ->
-        OrchestrationLoop.guard_bundle_flag!("pi", pi_enforcement_ext_path: missing_dir)
-      end
+      assert_raise RuntimeError,
+                   ~r/pi enforcement extension not found.*refusing to run a role unguarded/,
+                   fn ->
+                     OrchestrationLoop.guard_bundle_flag!("pi",
+                       pi_enforcement_ext_path: missing_dir
+                     )
+                   end
     end
 
     test "unknown harness raises" do
