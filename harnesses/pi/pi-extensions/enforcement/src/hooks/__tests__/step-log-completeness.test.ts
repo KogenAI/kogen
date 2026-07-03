@@ -21,9 +21,13 @@ describe("step-log-completeness", () => {
 
   afterEach(() => {
     delete process.env["PI_ROLE"];
+    delete process.env["CWD"];
   });
 
   async function runHook(stop_hook_active = false, cwd = "/tmp") {
+    // The hook reads process.env["CWD"], not the event payload's cwd field —
+    // set it explicitly so tests actually exercise the intended tmpDir scan.
+    process.env["CWD"] = cwd;
     const { register } = await import("../step-log-completeness");
     register(
       mockPi as unknown as import("@earendil-works/pi-coding-agent").ExtensionAPI,
@@ -127,6 +131,80 @@ describe("step-log-completeness", () => {
 
       const result = await runHook(false, tmpDir);
       assert.ok(result == null || (result as { block?: boolean }).block !== true);
+    });
+
+    it("retro-first reviewer body then trailing prose — no OBSERVE-ONLY warning", async () => {
+      const loggingDir = path.join(tmpDir, "codegen", "logging");
+      const logFile = path.join(loggingDir, "20260101_140000_step3_test.md");
+      fs.writeFileSync(
+        logFile,
+        [
+          "## reviewer-phoenix Section",
+          "",
+          "### What I Learned This Step",
+          "",
+          "- nothing notable",
+          "",
+          "Verdict: APPROVED — ready for curator.",
+          "",
+        ].join("\n"),
+        "utf8",
+      );
+      // Explicit future mtime (well past any prior test's mtime in this shared
+      // tmpDir) so the disk-scan's most-recently-modified sort deterministically
+      // picks THIS file, regardless of Date.now() ms-resolution ties.
+      const mtime = new Date(Date.now() + 10_000);
+      fs.utimesSync(logFile, mtime, mtime);
+
+      let stderrOutput = "";
+      const origWrite = process.stderr.write.bind(process.stderr);
+      process.stderr.write = (s: string) => {
+        stderrOutput += s;
+        return true;
+      };
+      try {
+        await runHook(false, tmpDir);
+      } finally {
+        process.stderr.write = origWrite;
+      }
+
+      assert.ok(
+        !stderrOutput.includes("OBSERVE-ONLY"),
+        "expected no OBSERVE-ONLY warning for retro-first-then-prose body",
+      );
+    });
+
+    it("truly-empty reviewer section body — OBSERVE-ONLY warning still fires", async () => {
+      const loggingDir = path.join(tmpDir, "codegen", "logging");
+      const logFile = path.join(loggingDir, "20260101_150000_step4_test.md");
+      fs.writeFileSync(
+        logFile,
+        ["## reviewer-phoenix Section", "", "### What I Learned This Step", "", "- nothing notable", ""].join(
+          "\n",
+        ),
+        "utf8",
+      );
+      // Explicit future mtime, later than the sibling test's +10s offset, so
+      // this file deterministically wins the most-recently-modified disk scan.
+      const mtime = new Date(Date.now() + 20_000);
+      fs.utimesSync(logFile, mtime, mtime);
+
+      let stderrOutput = "";
+      const origWrite = process.stderr.write.bind(process.stderr);
+      process.stderr.write = (s: string) => {
+        stderrOutput += s;
+        return true;
+      };
+      try {
+        await runHook(false, tmpDir);
+      } finally {
+        process.stderr.write = origWrite;
+      }
+
+      assert.ok(
+        stderrOutput.includes("OBSERVE-ONLY"),
+        "expected OBSERVE-ONLY warning for truly-empty retro-only body",
+      );
     });
   });
 });

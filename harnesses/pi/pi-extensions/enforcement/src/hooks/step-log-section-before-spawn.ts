@@ -75,20 +75,18 @@ function sectionHasBody(logContent: string, header: string): boolean {
   const headerIdx = lines.findIndex((l) => l === header);
   if (headerIdx === -1) return false;
 
-  let skipRetro = false;
+  let inRetro = false;
   for (let i = headerIdx + 1; i < lines.length; i++) {
     const line = lines[i];
     if (line.startsWith("## ")) break;
-    if (line.trim() === "") continue;
     if (line.startsWith("### What I Learned")) {
-      skipRetro = true;
+      inRetro = true;
       continue;
     }
-    if (line.startsWith("### ")) {
-      skipRetro = false;
-      return true;
-    }
-    if (skipRetro) continue;
+    if (inRetro && line.trim() === "") continue;
+    if (inRetro && /^\s*[-*]/.test(line)) continue;
+    if (inRetro) inRetro = false;
+    if (line.trim() === "") continue;
     return true;
   }
 

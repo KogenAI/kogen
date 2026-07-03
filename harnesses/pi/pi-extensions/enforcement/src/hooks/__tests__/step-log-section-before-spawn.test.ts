@@ -311,4 +311,26 @@ describe("step-log-section-before-spawn", () => {
     const result = await runHook("developer-phoenix-backend");
     assert.ok((result as { block?: boolean }).block === true);
   });
+
+  // ── Test 21: allow when retro block appears first, then trailing prose ────
+  it("allows when developer section has retro-first then trailing prose", async () => {
+    writeLog(
+      "20260703_step1_retro-first-prose.md",
+      [
+        "## Plan",
+        "",
+        "planner wrote here",
+        "",
+        "## developer-phoenix-backend Section",
+        "",
+        "### What I Learned This Step",
+        "",
+        "- nothing notable",
+        "",
+        "Implemented feature X.",
+      ].join("\n"),
+    );
+    const result = await runHook("developer-phoenix-backend");
+    assert.ok(result == null || (result as { block?: boolean }).block !== true);
+  });
 });

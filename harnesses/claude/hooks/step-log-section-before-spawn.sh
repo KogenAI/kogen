@@ -136,9 +136,11 @@ if grep -qF "$need" "$log" 2>/dev/null; then
     if [ -n "$prior_header" ] && grep -qF "$prior_header" "$log" 2>/dev/null; then
         section_body=$(awk -v header="$prior_header" '
             found && /^## / { exit }
-            found && /^### What I Learned/ { skip_retro=1 }
-            found && skip_retro && /^### / && !/^### What I Learned/ { skip_retro=0 }
-            found && !skip_retro { print }
+            found && /^### What I Learned/ { in_retro=1; next }
+            in_retro && /^[[:space:]]*$/ { next }
+            in_retro && /^[[:space:]]*[-*]/ { next }
+            in_retro { in_retro=0 }
+            found { print }
             $0 == header { found=1 }
         ' "$log" 2>/dev/null | grep -v '^[[:space:]]*$' | head -5)
 

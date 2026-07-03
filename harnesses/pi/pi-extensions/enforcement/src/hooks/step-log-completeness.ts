@@ -129,20 +129,19 @@ export function register(pi: ExtensionAPI): void {
     const _extractSectionBody = (header: RegExp): string => {
       const lines = logContent.split("\n");
       let found = false;
-      let skipRetro = false;
+      let inRetro = false;
       const body: string[] = [];
       for (const line of lines) {
         if (found) {
           if (/^## /.test(line)) break;
           if (/^### What I Learned/.test(line)) {
-            skipRetro = true;
+            inRetro = true;
             continue;
           }
-          if (skipRetro && /^### /.test(line) && !/^### What I Learned/.test(line)) {
-            skipRetro = false;
-            continue;
-          }
-          if (!skipRetro && !/^###/.test(line) && line.trim() !== "") {
+          if (inRetro && line.trim() === "") continue;
+          if (inRetro && /^\s*[-*]/.test(line)) continue;
+          if (inRetro) inRetro = false;
+          if (!/^###/.test(line) && line.trim() !== "") {
             body.push(line);
           }
         } else if (header.test(line)) {

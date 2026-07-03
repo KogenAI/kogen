@@ -690,5 +690,29 @@ out=$(make_input "$T31" false "" "$T31/transcript.jsonl" | env -u CLAUDE_ROLE -u
 assert_contains "Test 31: role unset (build mode) — gate unchanged (still blocks)" '"decision"' "$out"
 rm -rf "$T31"
 
+# ── Test 32: retro-first reviewer body then trailing prose → floor passes ──
+# Regression guard: retrospective block appears BEFORE the trailing verdict
+# prose (not after). The floor must bound the retro to its heading + blank/
+# bullet lines only, so the trailing "Verdict: APPROVED" line still counts
+# as real body and the floor does not fire "no real body".
+T32=$(make_project)
+LOG32="$T32/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_step1_test.md"
+cat >"$LOG32" <<'MD'
+## reviewer-phoenix Section
+
+### What I Learned This Step
+
+- nothing notable
+
+Verdict: APPROVED — ready for curator.
+
+MD
+write_cycle_state_fixture "$T32" "REVIEWED" "$LOG32" ""
+make_transcript "$T32/transcript.jsonl" "$LOG32"
+out=$(make_input "$T32" false "" "$T32/transcript.jsonl" | bash "$HOOK" 2>/dev/null || true)
+assert_contains "Test 32: retro-first reviewer body — cycle block fires (curator not run)" '"decision"' "$out"
+assert_not_contains "Test 32: retro-first-with-prose body passes floor (no 'no real body')" 'no real body' "$out"
+rm -rf "$T32"
+
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

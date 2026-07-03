@@ -108,9 +108,11 @@ _section_body_floor() {
     local _body
     _body=$(awk -v header="$_hdr" '
         found && /^## / { exit }
-        found && /^### What I Learned/ { skip_retro=1 }
-        found && skip_retro && /^### / && !/^### What I Learned/ { skip_retro=0 }
-        found && !skip_retro && !/^###/ { print }
+        found && /^### What I Learned/ { in_retro=1; next }
+        in_retro && /^[[:space:]]*$/ { next }
+        in_retro && /^[[:space:]]*[-*]/ { next }
+        in_retro { in_retro=0 }
+        found && !/^###/ { print }
         $0 == header { found=1 }
     ' "$_lf" 2>/dev/null | grep -v '^[[:space:]]*$')
     if [ -z "$_body" ]; then

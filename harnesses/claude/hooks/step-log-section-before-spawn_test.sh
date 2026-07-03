@@ -595,6 +595,31 @@ out32=$(mk_agent_input "context-curator" "$T32/transcript.jsonl" | env -u CLAUDE
 assert_allow "T32: allow — reviewer section body is only an H3 verdict line, context-curator spawn permitted" "$out32"
 rm -rf "$T32"
 
+# ── T33: ## Plan is retro-first then trailing prose → ALLOW (regression guard) ──
+# Scenario: retrospective block appears BEFORE the trailing plan prose (not
+# after). The extractor must bound the retro to its heading + blank/bullet
+# lines only, so the trailing prose still counts as real plan content.
+T33=$(make_project)
+LOG33="$T33/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_step1_plan-retro-first.md"
+cat >"$LOG33" <<'MD'
+# Step 1 — plan retro-first then trailing prose
+
+## Plan
+
+### What I Learned This Step
+
+- nothing notable
+
+The real plan: implement feature X in lib/foo.ex.
+
+## developer-phoenix-backend Section
+
+MD
+make_transcript "$T33/transcript.jsonl" "$LOG33"
+out33=$(mk_agent_input "developer-phoenix-backend" "$T33/transcript.jsonl" | env -u CLAUDE_ROLE -u PI_ROLE bash "$HOOK" 2>/dev/null || true)
+assert_allow "T33: allow — ## Plan retro-first then trailing prose reads as real body, developer spawn permitted" "$out33"
+rm -rf "$T33"
+
 echo ""
 echo "Results: $pass passed, $fail failed"
 
