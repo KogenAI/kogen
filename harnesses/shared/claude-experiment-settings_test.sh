@@ -1,7 +1,10 @@
 #!/usr/bin/env bash
 # claude-experiment-settings_test.sh — static grep-sentinel test verifying
 # both `claude` exec sites in claude-experiment.sh carry API_FORCE_IDLE_TIMEOUT
-# in their inline --settings env, forcing Claude Code's 5-min idle-stream abort.
+# via the shared SETTINGS_JSON var, forcing Claude Code's 5-min idle-stream
+# abort. SETTINGS_JSON is assigned once (both branches of the interactive/
+# non-interactive if) and referenced via `--settings "$SETTINGS_JSON"` at both
+# exec sites, so co-location is var-level, not literal-line-level.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -29,20 +32,21 @@ if [[ ! -f "$LAUNCHER" ]]; then
     exit 1
 fi
 
-# (1) Exactly 2 lines total carry API_FORCE_IDLE_TIMEOUT (one per exec site).
-total_cnt=$(grep -c 'API_FORCE_IDLE_TIMEOUT' "$LAUNCHER")
-check "(1) API_FORCE_IDLE_TIMEOUT appears exactly twice" "2" "$total_cnt"
+# (1) Exactly 2 lines assign SETTINGS_JSON carrying API_FORCE_IDLE_TIMEOUT (one
+# per if/else branch of the interactive-detection block).
+assign_cnt=$(grep -c 'SETTINGS_JSON=.*API_FORCE_IDLE_TIMEOUT' "$LAUNCHER")
+check "(1) SETTINGS_JSON assigned with API_FORCE_IDLE_TIMEOUT exactly twice" "2" "$assign_cnt"
 
-# (2) Co-location: every --settings line must carry the key, and the count of
-# such co-located lines must also be 2 — proves the key sits INSIDE the
-# --settings env blob at both exec sites, not a stray unrelated hit elsewhere.
-settings_with_key_cnt=$(grep -c -- '--settings.*API_FORCE_IDLE_TIMEOUT' "$LAUNCHER")
-check "(2) both --settings lines carry the key (co-located)" "2" "$settings_with_key_cnt"
+# (2) Every --settings exec-site line must reference the SETTINGS_JSON var
+# (not a literal inline blob), and there must be exactly 2 such sites — one
+# per `claude` exec (cold-start + normal).
+settings_var_cnt=$(grep -c -- '--settings "\$SETTINGS_JSON"' "$LAUNCHER")
+check "(2) both --settings exec sites reference \$SETTINGS_JSON" "2" "$settings_var_cnt"
 
-# (3) Every --settings line (regardless of key) must be one of the co-located
-# ones — i.e. no --settings line lacks the key.
+# (3) Every --settings line (regardless of form) must be one of the
+# var-referencing ones — i.e. no --settings line uses a literal inline blob.
 settings_total_cnt=$(grep -c -- '--settings' "$LAUNCHER")
-check "(3) no --settings line is missing the key" "$settings_total_cnt" "$settings_with_key_cnt"
+check "(3) no --settings line uses a literal inline blob" "$settings_total_cnt" "$settings_var_cnt"
 
 printf '\nResults: %d passed, %d failed\n' "$pass" "$fail"
 

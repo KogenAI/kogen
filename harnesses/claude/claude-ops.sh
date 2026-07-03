@@ -36,6 +36,7 @@ fi
 
 # Non-interactive: pass all non-interactive flags. Interactive: omit (claude handles tty detection).
 NON_INTERACTIVE_FLAGS=()
+SETTINGS_FLAGS=()
 if [[ -n "${CLAUDE_NONINTERACTIVE:-}" ]]; then
     NON_INTERACTIVE_FLAGS+=(
         --print
@@ -46,6 +47,8 @@ if [[ -n "${CLAUDE_NONINTERACTIVE:-}" ]]; then
         --no-session-persistence
         --disable-slash-commands
     )
+else
+    SETTINGS_FLAGS=(--settings '{"env":{"CLAUDE_AFK_TIMEOUT_MS":"86400000"}}')
 fi
 
 OPS_STARTUP_MSG=$'## OPS STARTUP CONTEXT\n'"${OPS_CONTEXT}"$'\n\nConfirm before proceeding.'
@@ -55,6 +58,7 @@ CONTEXT_FLAGS=(
 )
 
 exec claude \
+    "${SETTINGS_FLAGS[@]+"${SETTINGS_FLAGS[@]}"}" \
     "${NON_INTERACTIVE_FLAGS[@]+"${NON_INTERACTIVE_FLAGS[@]}"}" \
     --model "$ROLE_MODEL" \
     --effort "$ROLE_EFFORT" \

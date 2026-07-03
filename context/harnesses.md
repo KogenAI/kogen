@@ -202,6 +202,8 @@ Claude Code supports a `--settings` JSON flag that provides a command-line scope
 
 **Use case — thinking tokens**: Shape/debug override via `--settings '{"env":{"MAX_THINKING_TOKENS":"16000"}}'` in `claude-shape.sh`/`claude-debug.sh`. Changes need `make install`. Build scripts needing custom budgets use `--settings`, not `env` or config.yaml overrides.
 
+**Use case — AFK timeout**: Interactive-only launchers (shape/debug/experiment/ops) gate `CLAUDE_AFK_TIMEOUT_MS=86400000` on `[[ -z "${CLAUDE_NONINTERACTIVE:-}" ]]` to keep AskUserQuestion dialogs open 24h instead of auto-continuing at 60s. Each launcher computes `SETTINGS_JSON` or `SETTINGS_FLAGS` after the NON_INTERACTIVE_FLAGS block: interactive branch adds the AFK key; headless branch omits it or uses the unchanged object. `--settings` merges key-by-key with `~/.claude/settings.json` (probe #3 in async validation). Headless/build paths keep the 60s Claude Code default — setting must NOT appear in global `~/.claude/settings.json` (no-go constraint: unattended AskUserQuestion would hang 24h).
+
 ## Session Log Protocol
 
 The orchestrator MUST pre-create the canonical session log (with full `## <agent_type> Section` headers) BEFORE delegating to any subagent (planner, developer, reviewer, etc.). This ensures:
@@ -253,6 +255,8 @@ Pi launchers load TypeScript extensions from `harnesses/pi/pi-extensions/` via c
 ## Headless Investigative Mode
 
 The three Claude investigative launchers (`claude-shape`, `claude-ops`, `claude-debug`) honor the `CLAUDE_NONINTERACTIVE` env var. When set to any non-empty value, each launcher builds a `NON_INTERACTIVE_FLAGS` array. **Important distinction**: investigative launchers deliberately restrict `--setting-sources` to `project` (no user-scope agents/hooks) because they export `CLAUDE_ROLE` and gate the Agent tool to project subagents only. Build dispatch (`codegen-build --non-interactive`) uses `user,project,local` to load the full agent set + user-level gating hooks.
+
+**`CLAUDE_NONINTERACTIVE` branch signal**: The same condition `[[ -n "${CLAUDE_NONINTERACTIVE:-}" ]]` that gates `NON_INTERACTIVE_FLAGS` array building also gates interactive-vs-headless `--settings` JSON/array construction in shape/debug/experiment/ops launchers. When the condition is true (headless), `SETTINGS_JSON` or `SETTINGS_FLAGS` use the unchanged object (no AFK-timeout key); when false (interactive, env empty or unset), the object adds `CLAUDE_AFK_TIMEOUT_MS`. This co-location ensures the two branches stay synchronized and prevents accidental 24h hangs on headless builds.
 
 Investigative launcher flags (`project` scope):
 

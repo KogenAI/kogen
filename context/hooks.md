@@ -177,6 +177,8 @@ templates/generator/hook_registrations.py  ← generates settings.json entries
 
 `make test` runs multiple targets in sequence including `test-hermetic` (hermetic bash hook tests + hermetic ExUnit) and `npm-ext` (Node.js-based extension tests). A transient race condition in `npm-ext` can occasionally cause the combined `make test` to exit 1 even when both sub-targets pass independently. **Authoritative signal for rule-file changes**: `make test-hermetic` (hermetic suite only). When evaluating whether a change to `shared/rules/` files or hook-registration edits is sound, `make test-hermetic` passing is the proof of correctness; if `make test` fails but `make test-hermetic` passes, the failure is in the npm-ext target and unrelated to the core rule/hook changes.
 
+**Static sentinel co-location tests**: Pre-existing bash tests that assert a specific sentinel on a specific line (e.g., `grep -c 'SETTINGS_JSON=.*API_FORCE_IDLE_TIMEOUT'` on the same line) break when the implementation refactors to use variable indirection (`SETTINGS_JSON` assigned separately, referenced via var on exec line). When fixing such tests, migrate to co-location assertions at the variable level (two separate patterns: one for the assignment line, one for the reference line) instead of literal same-line blob matching. This pattern is more robust to future indirection refactorings and better captures the load-bearing invariant (key present in both branches, not co-located with specific other text).
+
 ## See Also
 
 For matrix of which hooks gate which launcher modes (build vs debug/shape/refactor vs ops), see `context/launcher-hook-matrix.md`.
@@ -225,6 +227,10 @@ When designing shell case statements where one verdict variant should block and 
 - `codegen-log append --role <role> --body @-` inserts the piped body at the END of an EXISTING section's body, preserving the prior body — used for death-stamp H3 markers. Exits 2 if the target section does not exist (append never creates).
 
 See `shared/rules/_core/session-log.md` § Ownership for the full contract.
+
+## Test Assertion Discrimination Patterns
+
+**Presence-only vs co-location asserts**: Bash static source guards using `assert_file_contains` (presence-only) do not prove per-branch correctness for boolean env-injection features. For example, checking `CLAUDE_AFK_TIMEOUT_MS` exists in a file is weak — if the key leaked into BOTH interactive and headless branches, presence-only assertion passes silently. **Stronger pattern**: co-location/var-level assertions (e.g., `grep -c 'SETTINGS_JSON=.*API_FORCE_IDLE_TIMEOUT.*NONINTERACTIVE'` to verify the assignment co-locates with the branch test). When a launcher-settings area undergoes refactoring, upgrade presence-only tests to co-location style to catch inter-branch leakage — the extra specificity is not overconstrained, it's necessary for correctness.
 
 ## Pitfalls
 

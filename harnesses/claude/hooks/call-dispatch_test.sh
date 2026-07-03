@@ -255,6 +255,18 @@ assert_file_contains "$HARNESSES_DIR/claude-shape.sh" "MAX_THINKING_TOKENS"
 # Test 7: claude-ops.sh (thinking-OFF launcher, inherits user-scope =0) has NO MAX_THINKING_TOKENS
 assert_file_absent "$HARNESSES_DIR/claude-ops.sh" "MAX_THINKING_TOKENS"
 
+# Test 8-11: interactive launchers carry CLAUDE_AFK_TIMEOUT_MS
+assert_file_contains "$HARNESSES_DIR/claude-shape.sh" "CLAUDE_AFK_TIMEOUT_MS"
+assert_file_contains "$HARNESSES_DIR/claude-debug.sh" "CLAUDE_AFK_TIMEOUT_MS"
+assert_file_contains "$HARNESSES_DIR/claude-experiment.sh" "CLAUDE_AFK_TIMEOUT_MS"
+assert_file_contains "$HARNESSES_DIR/claude-ops.sh" "CLAUDE_AFK_TIMEOUT_MS"
+
+# Test 12: ops now passes --settings (AFK-only interactive overlay)
+assert_file_contains "$HARNESSES_DIR/claude-ops.sh" "--settings"
+
+# Test 13: experiment preserves API_FORCE_IDLE_TIMEOUT (regression guard)
+assert_file_contains "$HARNESSES_DIR/claude-experiment.sh" "API_FORCE_IDLE_TIMEOUT"
+
 # ─────────────────────────────────────────────────────────────────────────────
 echo ""
 echo "Results: $pass passed, $fail failed"

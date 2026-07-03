@@ -101,10 +101,13 @@ $DRAFT_TEXT"
             --no-session-persistence
             --disable-slash-commands
         )
+        SETTINGS_JSON='{"env":{"MAX_THINKING_TOKENS":"16000"}}'
+    else
+        SETTINGS_JSON='{"env":{"MAX_THINKING_TOKENS":"16000","CLAUDE_AFK_TIMEOUT_MS":"86400000"}}'
     fi
 
     exec claude \
-        --settings '{"env":{"MAX_THINKING_TOKENS":"16000"}}' \
+        --settings "$SETTINGS_JSON" \
         "${NON_INTERACTIVE_FLAGS[@]+"${NON_INTERACTIVE_FLAGS[@]}"}" \
         --model "$ROLE_MODEL" \
         --effort "$ROLE_EFFORT" \
@@ -166,12 +169,15 @@ if [[ -n "${CLAUDE_NONINTERACTIVE:-}" ]]; then
         --no-session-persistence
         --disable-slash-commands
     )
+    SETTINGS_JSON='{"env":{"MAX_THINKING_TOKENS":"16000"}}'
+else
+    SETTINGS_JSON='{"env":{"MAX_THINKING_TOKENS":"16000","CLAUDE_AFK_TIMEOUT_MS":"86400000"}}'
 fi
 
 # Cold-start: no args → open conversation directly, model asks "What problem are you trying to solve?"
 if [[ $# -eq 0 ]]; then
     exec claude \
-        --settings '{"env":{"MAX_THINKING_TOKENS":"16000"}}' \
+        --settings "$SETTINGS_JSON" \
         "${NON_INTERACTIVE_FLAGS[@]+"${NON_INTERACTIVE_FLAGS[@]}"}" \
         --model "$ROLE_MODEL" \
         --effort "$ROLE_EFFORT" \
@@ -279,7 +285,7 @@ if [[ ${#RESOLVED_ARGS[@]} -eq 1 ]] && [[ "${RESOLVED_ARGS[0]}" == *"codegen/pit
 fi
 
 exec claude \
-    --settings '{"env":{"MAX_THINKING_TOKENS":"16000"}}' \
+    --settings "$SETTINGS_JSON" \
     "${NON_INTERACTIVE_FLAGS[@]+"${NON_INTERACTIVE_FLAGS[@]}"}" \
     --model "$ROLE_MODEL" \
     --effort "$ROLE_EFFORT" \

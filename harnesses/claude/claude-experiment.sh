@@ -99,6 +99,9 @@ if [[ -n "${CLAUDE_NONINTERACTIVE:-}" ]]; then
         --no-session-persistence
         --disable-slash-commands
     )
+    SETTINGS_JSON='{"env":{"MAX_THINKING_TOKENS":"16000","API_FORCE_IDLE_TIMEOUT":"1"}}'
+else
+    SETTINGS_JSON='{"env":{"MAX_THINKING_TOKENS":"16000","API_FORCE_IDLE_TIMEOUT":"1","CLAUDE_AFK_TIMEOUT_MS":"86400000"}}'
 fi
 
 # Parse --new BEFORE the draft-resolver loop. The resolver treats any
@@ -237,7 +240,7 @@ fi
 # Cold-start: no args → open conversation directly
 if [[ $# -eq 0 ]]; then
     exec claude \
-        --settings '{"env":{"MAX_THINKING_TOKENS":"16000","API_FORCE_IDLE_TIMEOUT":"1"}}' \
+        --settings "$SETTINGS_JSON" \
         "${NON_INTERACTIVE_FLAGS[@]+"${NON_INTERACTIVE_FLAGS[@]}"}" \
         --model "$ROLE_MODEL" \
         --effort "$ROLE_EFFORT" \
@@ -249,7 +252,7 @@ if [[ $# -eq 0 ]]; then
 fi
 
 exec claude \
-    --settings '{"env":{"MAX_THINKING_TOKENS":"16000","API_FORCE_IDLE_TIMEOUT":"1"}}' \
+    --settings "$SETTINGS_JSON" \
     "${NON_INTERACTIVE_FLAGS[@]+"${NON_INTERACTIVE_FLAGS[@]}"}" \
     --model "$ROLE_MODEL" \
     --effort "$ROLE_EFFORT" \
