@@ -7,6 +7,12 @@
 # (c) `append --role <role>` preserves prior body and adds the new body in order
 # (d) `append` on a missing section exits 2
 # (e) unsupported `--role foo` exits 2
+# (g) `init` is idempotent: re-init on an existing slug prints the same path;
+#     a distinct slug forks a new log
+# (h) `--slug` resolves to the matching log among multiple logs in one workspace
+# (i) `--slug` with zero matches exits 2 with "no session log matches slug"
+# (j) `--slug` with multiple matches exits 2 with "ambiguous slug"
+# (k) append-missing error names the fix command
 
 set -euo pipefail
 
@@ -151,6 +157,73 @@ assert_contains "(f) surviving occurrence has the new body" "$(cat "$LOG_F")" "s
 STALE_PRESENT=0
 grep -q "stale prose body" "$LOG_F" && STALE_PRESENT=1
 check "(f) stale second-occurrence body is dropped, not re-emitted" "0" "$STALE_PRESENT"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# (g) init is idempotent: re-init on an existing slug prints the same path;
+# a distinct slug forks a NEW path.
+WS_G="$(new_workspace)"
+LOG_G1="$(init_log "$WS_G" test-idempotent)"
+LOG_G2="$(init_log "$WS_G" test-idempotent)"
+check "(g) idempotent init returns the same path on re-init" "$LOG_G1" "$LOG_G2"
+LOG_G3="$(init_log "$WS_G" test-idempotent-other)"
+IDEMPOTENT_DISTINCT=1
+[ "$LOG_G1" = "$LOG_G3" ] && IDEMPOTENT_DISTINCT=0
+check "(g) a distinct slug forks a new log" "1" "$IDEMPOTENT_DISTINCT"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# (h) --slug resolves to the matching log among multiple logs in one workspace
+WS_H="$(new_workspace)"
+LOG_H1="$(init_log "$WS_H" slug-one)"
+LOG_H2="$(init_log "$WS_H" slug-two)"
+printf 'body for slug one\n' | env -u AGENT_TYPE -u CLAUDE_ROLE -u CODEGEN_LOG_PATH \
+    OCG_CODEGEN_DIR="$CODEGEN_ROOT" CODEGEN_BUILD_CWD="$WS_H" \
+    "$CODEGEN_LOG" section --role committer --slug slug-one --body @- >/dev/null
+CONTENT_H1="$(cat "$LOG_H1")"
+CONTENT_H2="$(cat "$LOG_H2")"
+assert_contains "(h) --slug section writes into the matching log" "$CONTENT_H1" "body for slug one"
+NOT_IN_H2=1
+[[ "$CONTENT_H2" == *"body for slug one"* ]] && NOT_IN_H2=0
+check "(h) --slug section does NOT write into the non-matching log" "1" "$NOT_IN_H2"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# (i) --slug with zero matches exits 2 with "no session log matches slug"
+WS_I="$(new_workspace)"
+init_log "$WS_I" some-other-slug >/dev/null
+set +e
+ERR_I=$(printf 'x\n' | env -u AGENT_TYPE -u CLAUDE_ROLE -u CODEGEN_LOG_PATH \
+    OCG_CODEGEN_DIR="$CODEGEN_ROOT" CODEGEN_BUILD_CWD="$WS_I" \
+    "$CODEGEN_LOG" section --role committer --slug missing-slug --body @- 2>&1)
+RC_I=$?
+set -e
+check "(i) --slug zero-match exits 2" "2" "$RC_I"
+assert_contains "(i) --slug zero-match error message" "$ERR_I" "no session log matches slug"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# (j) --slug with multiple matches exits 2 with "ambiguous slug"
+WS_J="$(new_workspace)"
+touch "$WS_J/codegen/logging/20260101_000001_dup_session.md"
+touch "$WS_J/codegen/logging/20260101_000002_dup_session.md"
+set +e
+ERR_J=$(printf 'x\n' | env -u AGENT_TYPE -u CLAUDE_ROLE -u CODEGEN_LOG_PATH \
+    OCG_CODEGEN_DIR="$CODEGEN_ROOT" CODEGEN_BUILD_CWD="$WS_J" \
+    "$CODEGEN_LOG" section --role committer --slug dup --body @- 2>&1)
+RC_J=$?
+set -e
+check "(j) --slug many-match exits 2" "2" "$RC_J"
+assert_contains "(j) --slug many-match error message" "$ERR_J" "ambiguous slug"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# (k) append-missing error names the fix command
+WS_K="$(new_workspace)"
+init_log "$WS_K" test-append-missing-fix >/dev/null
+set +e
+ERR_K=$(printf 'x\n' | env -u AGENT_TYPE -u CLAUDE_ROLE \
+    OCG_CODEGEN_DIR="$CODEGEN_ROOT" CODEGEN_BUILD_CWD="$WS_K" \
+    "$CODEGEN_LOG" append --role committer --body @- 2>&1)
+RC_K=$?
+set -e
+check "(k) append-missing exits 2" "2" "$RC_K"
+assert_contains "(k) append-missing error names the fix command" "$ERR_K" "codegen-log section --role"
 
 # ─────────────────────────────────────────────────────────────────────────────
 echo ""

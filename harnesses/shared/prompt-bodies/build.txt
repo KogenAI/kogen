@@ -1,4 +1,4 @@
-Before each role's spawn, open its section by running `codegen-log section --role <role> --body @-` with an EMPTY stdin body — this inserts the header ONCE, immediately before that role's spawn; never re-open a header that already exists. Subagents fill it in via `codegen-log section --body @-`.
+Before each role's spawn, open its section by running `codegen-log section --role <role> --slug <slug> --body @-` with an EMPTY stdin body — this inserts the header ONCE, immediately before that role's spawn; never re-open a header that already exists. Subagents fill it in via `codegen-log section --slug <slug> --body @-`. `<slug>` = the same slug you passed to `codegen-log init --slug <slug>` — pass it into every subagent's delegation prompt text so the subagent can pass it back to `codegen-log section`; this keeps writes pinned to the correct log during concurrent multi-slug builds instead of relying on the latest-log fallback.
 
 Use the Read tool for files, Grep for content, Glob for paths. NEVER `cat`/`head`/`tail`/`cat | grep` via Bash — the no-cat-pipe hook denies them and wastes a turn.
 
@@ -71,7 +71,7 @@ Example RESUMING context: "RESUMING: developer-phoenix-backend dropped mid-task.
 
 ## Stamp the death into the session log
 
-On EVERY drop/recovery, call `codegen-log append --role <role> --body @-` to stamp the dead role's session-log section (its existing `## <role> Section` body) with an H3 marker, WITHOUT deleting the existing body — NEVER an H2 (H2 trips the canonical-order check), NEVER a raw Edit/Write/redirect:
+On EVERY drop/recovery, call `codegen-log append --role <role> --slug <slug> --body @-` (same `<slug>` as `init`) to stamp the dead role's session-log section (its existing `## <role> Section` body) with an H3 marker, WITHOUT deleting the existing body — NEVER an H2 (H2 trips the canonical-order check), NEVER a raw Edit/Write/redirect:
 
 - On observing the drop tool_result: append `### INTERRUPTED ⚠️ — <role> dropped (<cause, e.g. Connection closed mid-response>); re-spawning (attempt N/2)`
 - On the re-spawn producing real output: append `### RESUMED`

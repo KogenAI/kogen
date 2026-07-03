@@ -138,7 +138,7 @@ if grep -qF "$need" "$log" 2>/dev/null; then
             found && /^## / { exit }
             found && /^### What I Learned/ { skip_retro=1 }
             found && skip_retro && /^### / && !/^### What I Learned/ { skip_retro=0 }
-            found && !skip_retro && !/^###/ { print }
+            found && !skip_retro { print }
             $0 == header { found=1 }
         ' "$log" 2>/dev/null | grep -v '^[[:space:]]*$' | head -5)
 

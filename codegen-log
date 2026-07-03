@@ -3,16 +3,28 @@
 #
 # Usage:
 #   codegen-log init --slug <slug>
-#   codegen-log section --body @- [--role <role>]
-#   codegen-log append --role <role> --body @-
+#   codegen-log section --body @- [--role <role>] [--slug <slug>]
+#   codegen-log append --role <role> --body @- [--slug <slug>]
 #
 # init: create a new codegen/logging/<ts>_<slug>_session.md with only the
-#       Version Stamp block.
+#       Version Stamp block. Idempotent: re-running init with a slug that
+#       already has a matching log prints that log's path and exits 0
+#       WITHOUT creating a second log; more than one match is ambiguous
+#       and exits 2.
 # section: atomically insert/replace the active role section at canonical rank.
 #          --role overrides AGENT_TYPE/CLAUDE_ROLE-derived header when present.
+#          REPLACES the whole section body (first/only write for the section).
 # append: insert the piped body at the END of an EXISTING section's body
-#         (before the next "## " header or EOF), preserving the prior body.
+#         (before the next "## " header or EOF), PRESERVING the prior body.
 #         Never creates a section — exits 2 if the target section is missing.
+#         Use for a SECOND write to the same section this cycle (re-run,
+#         death marker) — never use `section` for that, it would overwrite.
+#
+# Target-log resolution (section/append), in precedence order:
+#   1. CODEGEN_LOG_PATH env var, if set.
+#   2. --slug <slug>, if given — resolves to the single log on disk matching
+#      *_<slug>_session.md; zero or multiple matches exit 2.
+#   3. Otherwise, the most recently modified *_session.md (latest_session_log).
 
 set -euo pipefail
 
@@ -32,8 +44,10 @@ ROLE_OVERRIDE=""
 usage() {
     printf 'Usage:\n' >&2
     printf '  codegen-log init --slug <slug>\n' >&2
-    printf '  codegen-log section --body @- [--role <role>]\n' >&2
-    printf '  codegen-log append --role <role> --body @-\n' >&2
+    printf '  codegen-log section --body @- [--role <role>] [--slug <slug>]\n' >&2
+    printf '  codegen-log append --role <role> --body @- [--slug <slug>]\n' >&2
+    printf '\n' >&2
+    printf "section REPLACES the whole section body (first/only write); append PRESERVES it and adds to the end (re-run, second write, death marker).\n" >&2
     exit 2
 }
 
@@ -102,6 +116,47 @@ latest_session_log() {
         latest="$candidate"
     done
     printf '%s' "$latest"
+}
+
+validate_slug() {
+    local slug="$1"
+    if [[ ! "$slug" =~ ^[a-z0-9_-]+$ ]]; then
+        printf 'codegen-log: --slug must match [a-z0-9_-]+ (got %q)\n' "$slug" >&2
+        exit 2
+    fi
+}
+
+resolve_by_slug() {
+    local slug="$1"
+    local root matches=() candidate
+    root="$(repo_root)"
+    for candidate in "$root"/codegen/logging/*_"${slug}"_session.md; do
+        [[ -e "$candidate" ]] || continue
+        matches+=("$candidate")
+    done
+    if [[ "${#matches[@]}" -eq 0 ]]; then
+        printf 'codegen-log: no session log matches slug %s\n' "$slug" >&2
+        exit 2
+    fi
+    if [[ "${#matches[@]}" -gt 1 ]]; then
+        printf 'codegen-log: ambiguous slug %s: %d logs match\n' "$slug" "${#matches[@]}" >&2
+        printf '%s\n' "${matches[@]}" >&2
+        exit 2
+    fi
+    printf '%s' "${matches[0]}"
+}
+
+resolve_log_file() {
+    if [[ -n "${CODEGEN_LOG_PATH:-}" ]]; then
+        printf '%s' "$CODEGEN_LOG_PATH"
+        return
+    fi
+    if [[ -n "$SLUG" ]]; then
+        validate_slug "$SLUG"
+        resolve_by_slug "$SLUG"
+        return
+    fi
+    latest_session_log
 }
 
 version_stamp() {
@@ -188,8 +243,23 @@ init)
         printf 'codegen-log init: --slug must match [a-z0-9_-]+ (got %q)\n' "$SLUG" >&2
         exit 2
     fi
+    root="$(repo_root)"
+    existing=()
+    for candidate in "$root"/codegen/logging/*_"${SLUG}"_session.md; do
+        [[ -e "$candidate" ]] || continue
+        existing+=("$candidate")
+    done
+    if [[ "${#existing[@]}" -eq 1 ]]; then
+        printf '%s\n' "${existing[0]}"
+        exit 0
+    fi
+    if [[ "${#existing[@]}" -gt 1 ]]; then
+        printf 'codegen-log init: ambiguous slug %s: %d logs match\n' "$SLUG" "${#existing[@]}" >&2
+        printf '%s\n' "${existing[@]}" >&2
+        exit 2
+    fi
     timestamp="$(date -u +%Y%m%d_%H%M%S)"
-    path="$(repo_root)/codegen/logging/${timestamp}_${SLUG}_session.md"
+    path="$root/codegen/logging/${timestamp}_${SLUG}_session.md"
     write_atomic "$path" "$(version_stamp)"
     printf '%s\n' "$path"
     ;;
@@ -212,7 +282,7 @@ section)
     body_file="$(mktemp "${TMPDIR:-/tmp}/.codegen-log-body.XXXXXX")"
     printf '%s' "$body" >"$body_file"
 
-    log_file="${CODEGEN_LOG_PATH:-$(latest_session_log)}"
+    log_file="$(resolve_log_file)"
     if [[ -z "$log_file" || ! -f "$log_file" ]]; then
         printf 'codegen-log section: no session log found (set CODEGEN_LOG_PATH or create one first)\n' >&2
         exit 2
@@ -327,7 +397,7 @@ append)
     body_file="$(mktemp "${TMPDIR:-/tmp}/.codegen-log-append-body.XXXXXX")"
     printf '%s' "$body" >"$body_file"
 
-    log_file="${CODEGEN_LOG_PATH:-$(latest_session_log)}"
+    log_file="$(resolve_log_file)"
     if [[ -z "$log_file" || ! -f "$log_file" ]]; then
         printf 'codegen-log append: no session log found (set CODEGEN_LOG_PATH or create one first)\n' >&2
         exit 2
@@ -379,7 +449,7 @@ append)
 
     if [[ "$awk_rc" -eq 3 ]]; then
         rm -f "$body_file" "$tmp"
-        printf 'codegen-log append: section not found: %s\n' "$target_header" >&2
+        printf 'codegen-log append: section not found: %s — run '"'"'codegen-log section --role <role> --body @-'"'"' to create the section first\n' "$target_header" >&2
         exit 2
     fi
 

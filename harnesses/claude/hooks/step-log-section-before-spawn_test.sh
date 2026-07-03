@@ -572,6 +572,29 @@ out31=$(
 assert_allow "T31: allow — codegen-log-only evidence resolves disk log unconditionally (no OCG_APPS_ROOT, no CODEGEN_BUILD_NON_INTERACTIVE)" "$out31"
 rm -rf "$T31"
 
+# ── T32: prior stage section body is ONLY an H3 verdict line (no bare prose) ──
+# Scenario: reviewer-phoenix section body is exactly "### FINAL VERDICT —
+# APPROVED" with no other prose. This is real content, not a retrospective
+# stub — spawning context-curator must be ALLOWED. Regression guard for the
+# awk fix that previously excluded ALL "###"-prefixed lines from the body
+# scan, not just the "### What I Learned" retrospective block.
+T32=$(make_project)
+LOG32="$T32/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_step1_verdict-only.md"
+cat >"$LOG32" <<'MD'
+# Step 1 — verdict-only reviewer section
+
+## reviewer-phoenix Section
+
+### FINAL VERDICT — APPROVED
+
+## context-curator Section
+
+MD
+make_transcript "$T32/transcript.jsonl" "$LOG32"
+out32=$(mk_agent_input "context-curator" "$T32/transcript.jsonl" | env -u CLAUDE_ROLE -u PI_ROLE bash "$HOOK" 2>/dev/null || true)
+assert_allow "T32: allow — reviewer section body is only an H3 verdict line, context-curator spawn permitted" "$out32"
+rm -rf "$T32"
+
 echo ""
 echo "Results: $pass passed, $fail failed"
 

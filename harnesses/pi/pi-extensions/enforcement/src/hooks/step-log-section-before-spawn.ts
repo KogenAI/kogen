@@ -65,18 +65,30 @@ function expectedHeader(subagentType: string): string {
 }
 
 /**
- * Return true when the named section has at least one non-heading body line.
+ * Return true when the named section has at least one non-heading body line,
+ * excluding the "### What I Learned This Step" retrospective block (which is
+ * not real content on its own). Any other "### " line (e.g. a verdict
+ * marker like "### FINAL VERDICT — APPROVED") counts as body content.
  */
 function sectionHasBody(logContent: string, header: string): boolean {
   const lines = logContent.split("\n");
   const headerIdx = lines.findIndex((l) => l === header);
   if (headerIdx === -1) return false;
 
+  let skipRetro = false;
   for (let i = headerIdx + 1; i < lines.length; i++) {
     const line = lines[i];
     if (line.startsWith("## ")) break;
     if (line.trim() === "") continue;
-    if (line.startsWith("#")) continue;
+    if (line.startsWith("### What I Learned")) {
+      skipRetro = true;
+      continue;
+    }
+    if (line.startsWith("### ")) {
+      skipRetro = false;
+      return true;
+    }
+    if (skipRetro) continue;
     return true;
   }
 

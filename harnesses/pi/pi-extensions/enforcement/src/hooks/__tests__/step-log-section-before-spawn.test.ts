@@ -269,4 +269,46 @@ describe("step-log-section-before-spawn", () => {
     const result = await runHook("developer-phoenix-backend");
     assert.ok((result as { block?: boolean }).block === true);
   });
+
+  // ── Test 19: allow when prior section body is only an H3 verdict line ─────
+  // Regression guard: a section body that is exactly "### FINAL VERDICT —
+  // APPROVED" (no other prose) is real content, not a retrospective stub.
+  // sectionHasBody must NOT blanket-exclude all "### "-prefixed lines — only
+  // the "### What I Learned This Step" retrospective block.
+  it("allows when developer section body is only an H3 verdict line", async () => {
+    writeLog(
+      "20260703_step1_verdict-only.md",
+      [
+        "## Plan",
+        "",
+        "planner wrote here",
+        "",
+        "## developer-phoenix-backend Section",
+        "",
+        "### FINAL VERDICT — APPROVED",
+      ].join("\n"),
+    );
+    const result = await runHook("developer-phoenix-backend");
+    assert.ok(result == null || (result as { block?: boolean }).block !== true);
+  });
+
+  // ── Test 20: deny when prior section body is only the retrospective block ─
+  it("denies when developer section body is only the retrospective block", async () => {
+    writeLog(
+      "20260703_step1_retro-only.md",
+      [
+        "## Plan",
+        "",
+        "planner wrote here",
+        "",
+        "## developer-phoenix-backend Section",
+        "",
+        "### What I Learned This Step",
+        "",
+        "- nothing notable",
+      ].join("\n"),
+    );
+    const result = await runHook("developer-phoenix-backend");
+    assert.ok((result as { block?: boolean }).block === true);
+  });
 });

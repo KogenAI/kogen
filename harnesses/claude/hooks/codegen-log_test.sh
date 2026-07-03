@@ -161,6 +161,58 @@ assert "rerun updated body" "0" "$([ "$(grep -c '^- updated body$' "$fixture")" 
 stray_count="$(find "$CODEGEN" -maxdepth 2 -name '.codegen-log-body.*' 2>/dev/null | wc -l | tr -d ' ')"
 assert "no stray body temp file under CODEGEN" "0" "$stray_count"
 
+# Test 5: --slug targets a specific log by slug, not the most-recently-
+# modified one. Two logs exist under PROJECT/codegen/logging; the OLDER one
+# carries the target slug but is touched (mtime bumped) AFTER the newer one,
+# so a naive latest-mtime fallback would pick the wrong file. --slug must
+# still resolve to the slug-matching log.
+unset CODEGEN_LOG_PATH
+unset AGENT_TYPE
+older_log="$PROJECT/codegen/logging/20260101_000000_older-slug_session.md"
+newer_log="$PROJECT/codegen/logging/20260101_000100_newer-slug_session.md"
+cat >"$older_log" <<'EOF'
+## Version Stamp
+
+- project: proj123
+- context: ctxabc
+- codegen: cgn456
+- claude: claude 1.2.3
+- stamped_at: 2026-01-01T00:00:00Z
+
+## Plan
+
+older plan
+EOF
+cat >"$newer_log" <<'EOF'
+## Version Stamp
+
+- project: proj123
+- context: ctxabc
+- codegen: cgn456
+- claude: claude 1.2.3
+- stamped_at: 2026-01-01T00:01:00Z
+
+## Plan
+
+newer plan
+EOF
+# Bump older_log's mtime AFTER newer_log's so a latest-mtime fallback would
+# wrongly select older_log if --slug resolution were not honored.
+touch "$older_log"
+
+slug_section_out="$(
+    cd "$PROJECT" && env -u CODEGEN_BUILD_CWD -u CLAUDE_PROJECT_DIR "$CODEGEN/codegen-log" section --role developer-phoenix-backend --slug newer-slug --body @- <<'EOF'
+## developer-phoenix-backend Section
+
+### What I Learned This Step
+- targeted by slug, not by mtime
+EOF
+)"
+slug_section_path="$(printf '%s' "$slug_section_out" | tail -n 1)"
+assert "--slug wrote to the slug-matching log, not the most-recently-touched one" "0" "$([ "$slug_section_path" = "$newer_log" ] && printf 0 || printf 1)"
+assert "--slug-targeted log got the developer section" "0" "$([ "$(grep -c '^## developer-phoenix-backend Section$' "$newer_log")" -eq 1 ] && printf 0 || printf 1)"
+assert "--slug did not divert the write into the older (more-recently-touched) log" "0" "$([ "$(grep -c '^## developer-phoenix-backend Section$' "$older_log")" -eq 0 ] && printf 0 || printf 1)"
+
 echo ""
 echo "Results: $pass passed, $fail failed"
 

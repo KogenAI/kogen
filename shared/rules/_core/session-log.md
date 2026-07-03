@@ -26,12 +26,13 @@ Session logs live under `/codegen/` and are **gitignored** — in the codegen re
 
 **`codegen-log` is the SOLE writer of session logs.** Raw Edit/Write/MultiEdit on `codegen/logging/*.md`, and raw Bash writes (redirect, tee, in-place stream-edit, move/copy into the path) are DENIED by the `session-log-writer-only` hook.
 
-- The loop creates the log FIRST via **`codegen-log init --slug <slug>`** (Bash).
-- The loop opens each role's section BEFORE spawn via **`codegen-log section --role <role>`** with an empty body — this inserts the header ONCE at canonical rank; never re-open a header that already exists.
-- **`codegen-log section --body @-`** is the sole section-body writer: planner, developers, reviewer, curator, and committer each write their own body atomically at canonical rank.
-- The loop stamps death markers via **`codegen-log append --role <role> --body @-`**, which preserves the existing section body and inserts the piped body (an H3 marker) at the end of that section.
+- The loop creates the log FIRST via **`codegen-log init --slug <slug>`** (Bash). `init` is idempotent: re-`init` on an existing slug prints the existing log's path and exits 0 without creating a second log; more than one log matching the slug is ambiguous and exits 2.
+- The loop opens each role's section BEFORE spawn via **`codegen-log section --role <role> --slug <slug>`** with an empty body — this inserts the header ONCE at canonical rank; never re-open a header that already exists.
+- **`codegen-log section --slug <slug> --body @-`** is the sole section-body writer: planner, developers, reviewer, curator, and committer each write their own body atomically at canonical rank. `section` REPLACES the whole section body — it is the first/only write for that section.
+- The loop stamps death markers via **`codegen-log append --role <role> --slug <slug> --body @-`**, which PRESERVES the existing section body and inserts the piped body (an H3 marker) at the end of that section. `append` is for a SECOND write to an already-written section this cycle (re-run, death marker) — never use `section` for that, it would overwrite the prior body. `append` never creates a section — it exits 2 if the target section is missing.
 - Subagents write body under the canonical section header via the writer — never emit or pre-seed placeholder headers themselves.
 - Header-only sections are invalid: every required section must contain non-heading body content before the next role may spawn or the build may ship.
+- **`--slug <slug>` is the recommended/default form** — pass it whenever the slug is known: the orchestrator always knows it after `codegen-log init --slug <slug>`, and MUST pass the same `<slug>` into every subagent's delegation prompt text so the subagent can pass it back to `codegen-log section`/`append`. This pins writes to the correct log in concurrent multi-slug builds. Omit `--slug` only when the slug genuinely isn't known at call time (manual/human CLI use). Resolution precedence when `codegen-log section`/`append` run: `CODEGEN_LOG_PATH` env var (if set) > `--slug` (resolves to the single on-disk log matching `*_<slug>_session.md`; zero or multiple matches exit 2) > the most recently modified `*_session.md` — this fallback stays in place as the safety net for calls that omit `--slug`.
 
 ## Death Stamps
 
