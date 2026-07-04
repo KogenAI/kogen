@@ -71,7 +71,7 @@ harness:
     claude: { model: opus, effort: high }
     pi: { model: openai-codex/gpt-5.5, effort: high }
   ops:
-    claude: { model: opus, effort: high }
+    claude: { model: sonnet, effort: high }
     pi: { model: openai-codex/gpt-5.5, effort: high }
 
 roles:

@@ -38,12 +38,12 @@ Full mapping from `templates/generator/config.yaml` (Claude harness):
 | debug                      | sonnet | medium |
 | app_build                  | sonnet | medium |
 | shape                      | opus   | high   |
-| ops                        | opus   | high   |
+| ops                        | sonnet | high   |
 | experiment                 | opus   | high   |
 
 ## Investigation Modes Are Pinned By Design
 
-`shape`, `experiment`, and `ops` are pinned to opus/high because they drive architectural decisions and complex multi-file analysis — the cost premium is justified. `debug` = sonnet/medium is also intentional (diagnostic, not creative). Cost sweeps **MUST NOT** propose downgrading these roles. Any proposal to move investigation modes to sonnet or reduce effort is out of scope and should be rejected without further analysis.
+`shape` and `experiment` are pinned to opus/high because they drive architectural decisions and complex multi-file analysis — the cost premium is justified. `debug` = sonnet/medium is also intentional (diagnostic, not creative). Cost sweeps **MUST NOT** propose downgrading these roles. Any proposal to move investigation modes to sonnet or reduce effort is out of scope and should be rejected without further analysis.
 
 ## Why Shared-Prefix Rule Extraction Is A False Economy
 
