@@ -11,9 +11,13 @@ defmodule CodegenTestHarness.LoopQueueDrain do
   raise-on-cycle) and `LoopQueue.transient?/1` (JSONL classify) live — both
   were previously unreachable from any runtime caller.
 
-  Old `build-queue.sh` `is_gate_green`/`mark_ship_progress`/
-  `build-queue.json` position-manifest concerns are superseded by the
-  child's exit code (0 = shipped, non-zero = not shipped) — not ported.
+  Old `build-queue.sh` `build-queue.json` position-manifest concerns are
+  superseded by the child's exit code (0 = shipped, non-zero = not shipped).
+  `is_gate_green`/committed-but-nonzero recovery (legacy `build-queue.sh`
+  lines 529, 546-551, 554) IS ported — see `git_head_fn`/`gate_verdict_fn`
+  below: a committer-post-commit hiccup (child exits non-zero after HEAD
+  already moved and the gate verdict is `"clear"`) ships or counts the
+  pitch as shipped instead of halting the whole queue.
 
   Timeout is handled SEPARATELY from transient-retry classification: a
   watchdog timeout always stashes + retries-once + skips-on-second, and is
@@ -63,6 +67,10 @@ defmodule CodegenTestHarness.LoopQueueDrain do
     * `:transient_fn` — `(jsonl_path -> boolean)`, default `LoopQueue.transient?/1`
     * `:pid_alive_fn` — `(pid -> boolean)`, default checks `/proc`-independent
       via `System.cmd("kill", ["-0", pid])` exit status
+    * `:git_head_fn` — `(cwd -> String.t() | nil)`, default reads
+      `git rev-parse HEAD`; `nil` when not a git repo (fail-open)
+    * `:gate_verdict_fn` — `(cwd -> String.t())`, default reads
+      `codegen/gate-pending/gate-result.json` `.verdict`; `""` when absent
   """
   @spec drain(drain_opts()) :: {:ok, non_neg_integer()} | {:error, String.t()}
   def drain(opts) do
@@ -102,6 +110,8 @@ defmodule CodegenTestHarness.LoopQueueDrain do
             now_fn: Keyword.get(opts, :now_fn, &default_now_fn/0),
             ordered_fn: Keyword.get(opts, :ordered_fn, &LoopQueue.ordered_slugs/1),
             transient_fn: Keyword.get(opts, :transient_fn, &LoopQueue.transient?/1),
+            git_head_fn: Keyword.get(opts, :git_head_fn, &default_git_head_fn/1),
+            gate_verdict_fn: Keyword.get(opts, :gate_verdict_fn, &default_gate_verdict_fn/1),
             timed_out_slugs: MapSet.new(),
             retry_count: 0,
             last_slug: nil
@@ -185,6 +195,8 @@ defmodule CodegenTestHarness.LoopQueueDrain do
     jsonl = Path.join([state.cwd, "codegen", "logging", "#{ts}_#{slug}_build.jsonl"])
     File.mkdir_p!(Path.dirname(jsonl))
 
+    head_before = state.git_head_fn.(state.cwd)
+
     case state.spawn_fn.(slug, state.harness, state.stack, state.cwd, jsonl) do
       {:exit_code, 0} ->
         ship(state.ready_dir, state.shipped_dir, slug)
@@ -192,7 +204,7 @@ defmodule CodegenTestHarness.LoopQueueDrain do
         run_loop(state, shipped_count + 1)
 
       {:exit_code, _n} ->
-        handle_nonzero_exit(state, slug, jsonl, shipped_count)
+        handle_nonzero_exit(state, slug, jsonl, head_before, shipped_count)
 
       :timeout ->
         handle_timeout(state, slug, shipped_count)
@@ -206,19 +218,49 @@ defmodule CodegenTestHarness.LoopQueueDrain do
     :ok
   end
 
-  defp handle_nonzero_exit(state, slug, jsonl, shipped_count) do
+  defp handle_nonzero_exit(state, slug, jsonl, head_before, shipped_count) do
+    committed? =
+      head_before != nil and head_before != "" and
+        state.git_head_fn.(state.cwd) != head_before
+
+    gate_clear? = state.gate_verdict_fn.(state.cwd) == "clear"
+
+    cond do
+      committed? and gate_clear? and
+          File.exists?(Path.join(state.shipped_dir, "#{slug}.md")) ->
+        # committer-post-commit hiccup: agent already shipped the pitch
+        # (moved ready/<slug>.md -> shipped/<slug>.md) before the non-zero
+        # exit. Count it shipped, do not call ship/3 again (src is gone).
+        state = %{state | retry_count: 0, last_slug: nil}
+        run_loop(state, shipped_count + 1)
+
+      committed? and gate_clear? and File.exists?(Path.join(state.ready_dir, "#{slug}.md")) ->
+        # committer-post-commit hiccup: commit landed, gate is clear, but the
+        # pitch file is still sitting in ready/ (ship step never ran). Finish
+        # the ship ourselves rather than halting the whole queue.
+        ship(state.ready_dir, state.shipped_dir, slug)
+        state = %{state | retry_count: 0, last_slug: nil}
+        run_loop(state, shipped_count + 1)
+
+      retry_eligible?(state, slug, jsonl, committed?, gate_clear?) ->
+        retry_count = if state.last_slug == slug, do: state.retry_count, else: 0
+        attempt = retry_count + 1
+        delay = pick_delay(state.retry_delays, attempt)
+        if delay > 0, do: state.sleep_fn.(delay)
+
+        state = %{state | retry_count: attempt, last_slug: slug}
+        run_slug(state, slug, shipped_count)
+
+      true ->
+        {:error, "queue: #{slug} failed (deterministic or retries exhausted)"}
+    end
+  end
+
+  defp retry_eligible?(state, slug, jsonl, committed?, gate_clear?) do
     retry_count = if state.last_slug == slug, do: state.retry_count, else: 0
 
-    if state.transient_fn.(jsonl) and retry_count < state.max_retries do
-      attempt = retry_count + 1
-      delay = pick_delay(state.retry_delays, attempt)
-      if delay > 0, do: state.sleep_fn.(delay)
-
-      state = %{state | retry_count: attempt, last_slug: slug}
-      run_slug(state, slug, shipped_count)
-    else
-      {:error, "queue: #{slug} failed (deterministic or retries exhausted)"}
-    end
+    (state.transient_fn.(jsonl) or (gate_clear? and not committed?)) and
+      retry_count < state.max_retries
   end
 
   defp handle_timeout(state, slug, shipped_count) do
@@ -407,6 +449,33 @@ defmodule CodegenTestHarness.LoopQueueDrain do
       end
     else
       {out, _code} -> {:error, "not a git repo or git status failed: #{out}"}
+    end
+  end
+
+  # ── Real git_head_fn: fail-open (mirrors `git rev-parse HEAD 2>/dev/null || true`) ──
+
+  @doc false
+  @spec default_git_head_fn(String.t()) :: String.t() | nil
+  def default_git_head_fn(cwd) do
+    case System.cmd("git", ["-C", cwd, "rev-parse", "HEAD"], stderr_to_stdout: true) do
+      {out, 0} -> String.trim(out)
+      {_out, _code} -> nil
+    end
+  end
+
+  # ── Real gate_verdict_fn: reads codegen/gate-pending/gate-result.json ──────
+
+  @doc false
+  @spec default_gate_verdict_fn(String.t()) :: String.t()
+  def default_gate_verdict_fn(cwd) do
+    path = Path.join([cwd, "codegen", "gate-pending", "gate-result.json"])
+
+    with {:ok, content} <- File.read(path),
+         {:ok, %{"verdict" => verdict}} <- Jason.decode(content),
+         true <- is_binary(verdict) do
+      verdict
+    else
+      _ -> ""
     end
   end
 end

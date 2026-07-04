@@ -32,7 +32,9 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
       sleep_fn: fn _secs -> :ok end,
       git_stash_fn: fn _cwd, _slug -> :ok end,
       now_fn: fn -> 1_700_000_000 end,
-      pid_alive_fn: fn _pid -> false end
+      pid_alive_fn: fn _pid -> false end,
+      git_head_fn: fn _cwd -> nil end,
+      gate_verdict_fn: fn _cwd -> "" end
     ]
 
     Keyword.merge(defaults, extra)
@@ -160,6 +162,192 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
 
     assert File.exists?(Path.join(ctx.ready_dir, "a.md"))
     assert File.exists?(Path.join(ctx.ready_dir, "b.md"))
+  end
+
+  # ── 6r. Committer-post-commit-hiccup recovery ───────────────────────────
+
+  test "6r1: committed + gate-clear + already-in-shipped counts shipped, no re-ship", ctx do
+    write_pitch(ctx.ready_dir, "solo")
+
+    head_calls = start_agent([])
+
+    git_head_fn = fn cwd ->
+      n = Agent.get_and_update(head_calls, fn calls -> {length(calls), calls ++ [cwd]} end)
+      if n == 0, do: "aaa", else: "bbb"
+    end
+
+    spawn_fn = fn slug, _h, _s, cwd, _jsonl ->
+      # simulate the agent's own committer having already shipped the pitch
+      # (ready/<slug>.md -> shipped/<slug>.md) before the post-commit hiccup
+      File.rename!(Path.join(ctx.ready_dir, "#{slug}.md"), Path.join(ctx.shipped_dir, "#{slug}.md"))
+      _ = cwd
+      {:exit_code, 1}
+    end
+
+    gate_verdict_fn = fn _cwd -> "clear" end
+
+    assert {:ok, 1} =
+             LoopQueueDrain.drain(
+               base_opts(ctx,
+                 spawn_fn: spawn_fn,
+                 git_head_fn: git_head_fn,
+                 gate_verdict_fn: gate_verdict_fn
+               )
+             )
+
+    assert Agent.get(head_calls, & &1) == [ctx.dir, ctx.dir]
+    assert File.exists?(Path.join(ctx.shipped_dir, "solo.md"))
+  end
+
+  test "6r2: committed + gate-clear + still-in-ready finishes the ship", ctx do
+    write_pitch(ctx.ready_dir, "solo")
+
+    head_calls = start_agent(0)
+
+    git_head_fn = fn _cwd ->
+      n = Agent.get_and_update(head_calls, fn n -> {n, n + 1} end)
+      if n == 0, do: "aaa", else: "bbb"
+    end
+
+    spawn_fn = fn _slug, _h, _s, _cwd, _jsonl -> {:exit_code, 1} end
+    gate_verdict_fn = fn _cwd -> "clear" end
+
+    assert {:ok, 1} =
+             LoopQueueDrain.drain(
+               base_opts(ctx,
+                 spawn_fn: spawn_fn,
+                 git_head_fn: git_head_fn,
+                 gate_verdict_fn: gate_verdict_fn
+               )
+             )
+
+    refute File.exists?(Path.join(ctx.ready_dir, "solo.md"))
+    assert File.exists?(Path.join(ctx.shipped_dir, "solo.md"))
+  end
+
+  test "6r3: gate-clear + HEAD-unmoved retries, ships on 2nd spawn", ctx do
+    write_pitch(ctx.ready_dir, "solo")
+
+    attempts = start_agent(0)
+    sleeps = start_agent([])
+
+    spawn_fn = fn _slug, _h, _s, _cwd, jsonl ->
+      n = Agent.get_and_update(attempts, fn n -> {n, n + 1} end)
+
+      if n == 0 do
+        File.write!(jsonl, "no result record here")
+        {:exit_code, 1}
+      else
+        {:exit_code, 0}
+      end
+    end
+
+    # HEAD never moves -> committed? stays false every call
+    git_head_fn = fn _cwd -> "aaa" end
+    gate_verdict_fn = fn _cwd -> "clear" end
+    transient_fn = fn _jsonl -> false end
+    sleep_fn = fn secs -> Agent.update(sleeps, &(&1 ++ [secs])) end
+
+    assert {:ok, 1} =
+             LoopQueueDrain.drain(
+               base_opts(ctx,
+                 spawn_fn: spawn_fn,
+                 git_head_fn: git_head_fn,
+                 gate_verdict_fn: gate_verdict_fn,
+                 transient_fn: transient_fn,
+                 sleep_fn: sleep_fn
+               )
+             )
+
+    assert Agent.get(attempts, & &1) == 2
+    assert File.exists?(Path.join(ctx.shipped_dir, "solo.md"))
+  end
+
+  test "6r4: gate-failed + nonzero + HEAD-moved halts loud, stays in ready/", ctx do
+    write_pitch(ctx.ready_dir, "solo")
+
+    head_calls = start_agent(0)
+
+    git_head_fn = fn _cwd ->
+      n = Agent.get_and_update(head_calls, fn n -> {n, n + 1} end)
+      if n == 0, do: "aaa", else: "bbb"
+    end
+
+    spawn_fn = fn _slug, _h, _s, _cwd, _jsonl -> {:exit_code, 1} end
+    gate_verdict_fn = fn _cwd -> "failed" end
+    transient_fn = fn _jsonl -> false end
+
+    assert {:error, _reason} =
+             LoopQueueDrain.drain(
+               base_opts(ctx,
+                 spawn_fn: spawn_fn,
+                 git_head_fn: git_head_fn,
+                 gate_verdict_fn: gate_verdict_fn,
+                 transient_fn: transient_fn
+               )
+             )
+
+    assert File.exists?(Path.join(ctx.ready_dir, "solo.md"))
+  end
+
+  test "6r5: not-a-repo (nil head) + nonzero + non-transient halts loud (unchanged)", ctx do
+    write_pitch(ctx.ready_dir, "solo")
+
+    spawn_fn = fn _slug, _h, _s, _cwd, _jsonl -> {:exit_code, 1} end
+    transient_fn = fn _jsonl -> false end
+
+    assert {:error, _reason} =
+             LoopQueueDrain.drain(
+               base_opts(ctx,
+                 spawn_fn: spawn_fn,
+                 transient_fn: transient_fn,
+                 git_head_fn: fn _cwd -> nil end,
+                 gate_verdict_fn: fn _cwd -> "" end
+               )
+             )
+
+    assert File.exists?(Path.join(ctx.ready_dir, "solo.md"))
+  end
+
+  test "6r6: transient nonzero (no commit, gate empty) retries unchanged, recovery seams do not fire",
+       ctx do
+    write_pitch(ctx.ready_dir, "solo")
+
+    attempts = start_agent(0)
+    head_calls = start_agent([])
+
+    spawn_fn = fn _slug, _h, _s, _cwd, jsonl ->
+      n = Agent.get_and_update(attempts, fn n -> {n, n + 1} end)
+
+      if n == 0 do
+        File.write!(jsonl, "no result record here")
+        {:exit_code, 1}
+      else
+        {:exit_code, 0}
+      end
+    end
+
+    git_head_fn = fn cwd ->
+      Agent.update(head_calls, &(&1 ++ [cwd]))
+      nil
+    end
+
+    transient_fn = fn _jsonl -> true end
+
+    assert {:ok, 1} =
+             LoopQueueDrain.drain(
+               base_opts(ctx,
+                 spawn_fn: spawn_fn,
+                 git_head_fn: git_head_fn,
+                 transient_fn: transient_fn
+               )
+             )
+
+    assert Agent.get(attempts, & &1) == 2
+    # git_head_fn called once per run_slug invocation (pre-spawn), never used
+    # for a recovery decision since it's always nil here
+    assert Agent.get(head_calls, & &1) == [ctx.dir, ctx.dir]
+    assert File.exists?(Path.join(ctx.shipped_dir, "solo.md"))
   end
 
   # ── 7. Timeout -> stash -> retry once -> ship ───────────────────────────
