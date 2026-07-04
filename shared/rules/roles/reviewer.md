@@ -1,5 +1,12 @@
 # Code Review
 
+## Your Boundaries
+
+State this upfront, as methodology — not "the hook will deny you":
+
+- **Read**: you may Read files listed in `## Files Modified` only. You cannot Read the pitch, `PROJECT_CONTEXT.md`, or any file outside `## Files Modified`. `context/*.md` files are readable ONLY when their path appears in `## Files Modified`.
+- **Bash**: you MAY run `codegen-log`, `git diff`, `git status`, `git log`, `git show`, and safe read-only utilities `echo`, `wc`, `cat`, `ls`. Nothing else — `make`, `mix`, `grep`, `python3` are all out of scope for this role. Verify a gate result via the `gate-result.json` `.verdict` field, never a live re-run.
+
 ## Read-Only
 
 Hook-enforced — Read/Grep/Glob only, plus Edit on session log.

@@ -13,7 +13,6 @@ Codegen-infra pitfalls and bash gotchas — split from `context/development.md` 
 - **yq binary must be mikefarah, not python-yq** — wrong binary causes silent manifest parsing errors.
 - **`npm install` at codegen root required** — absent → hooks emit INCONCLUSIVE.
 - **`make install` required after rule/template change** — regenerates baked prompts. Workflow: edit → `make install` BEFORE `make test`; parity gates do not catch stale bakes. Mandatory rule.
-- **Transient taxonomy: Bash + Elixir (no parity test)** — `retryable_regex` in `harnesses/shared/retryable-errors.sh` + `loop_queue.ex` `@retryable_regex`. Add token to BOTH files (Pi TS half deleted). No active sync test.
 - **`mise trust` runs unconditionally on install** — no interactive prompt.
 - **Do not run `npm install` at repo root for Pi extensions** — each extension has its own node_modules; only root install is managed by install.sh
 - **Hook test failures are not ExUnit** — `make test` runs bash tests + hermetic ExUnit; they are separate suites
@@ -72,9 +71,7 @@ Codegen-infra pitfalls and bash gotchas — split from `context/development.md` 
 - **Pitch byte targets grow stale** — Stale budgets fail gates.
 - **Heredoc piping: write to temp, redirect outside** — Avoids planner-guard trip.
 - **Prettier re-pads markdown tables** — Column widths auto-align. Guard byte-capped files: list in `.prettierignore` to preserve alignment.
-- **Dual-read unset tests** — `env -u NEW -u OLD bash "$HOOK"` (single unset leaves fallback).
-- **Override var leakage in tests** — Prior `make test` runs may leave override env vars set. Tests exercising the DEFAULT branch must use `env -u RENDER_CHECK_CMD -u WIRING_CHECK_CMD` to isolate, else override branch silently activates.
-- **Managed-build env var pollution in tests** — `CODEGEN_BUILD_NON_INTERACTIVE=1` persists in test shell. Interactive-allow cases must use `env -u CODEGEN_BUILD_NON_INTERACTIVE bash` to isolate.
+- **Env var leakage in tests** — Prior runs leave env vars set; tests exercising DEFAULT branches must `env -u VAR bash` to isolate (e.g., `env -u RENDER_CHECK_CMD -u WIRING_CHECK_CMD bash "$HOOK"`). Single `env -u` leaves fallback. Applies to tool overrides and build toggles (`CODEGEN_BUILD_NON_INTERACTIVE=1`).
 - **codegen-log positional role shipped** — `codegen-log section <role>` is the taught form; `--role <role>` kept as an accepted alias for existing callers. Bare `codegen-log section` (no positional or flag) always exits 2 — role must be explicit. This fix eliminates the dead env-role fallback that caused "unsupported role unknown" errors in build subagents [FIXED, Phases 2-6].
 - **codegen-log marker flags shipped** — `--learned`, `--died interrupted|aborted`, `--verdict clear|failed|inconclusive` emit byte-exact canonical blocks; readers (retrospective-guard, completeness, stop-cycle-guard) grep the exact emitted strings [FIXED, Phase 2].
 - **`.active` sentinel shipped** — `codegen-log init` writes `codegen/logging/.active` pointing at the resolved log path; resolution precedence is `CODEGEN_LOG_PATH` > `--slug` > `.active` > mtime. `relocate` renames the log and rewrites the sentinel [FIXED, Phase 3].
@@ -127,7 +124,8 @@ Codegen-infra pitfalls and bash gotchas — split from `context/development.md` 
 - **COMMON_FLAGS array** — dispatch scripts use a shared flags array for mode-invariant vs mode-specific flags. Build array once, splice into both exec paths. Under `set -u`, guard VALUE expansions with `if [[ ${#arr[@]} -gt 0 ]]; then` — `${arr[@]+"${arr[@]}"}` is rejected by shfmt; use explicit length-guards.
 - **Shared fns called from multiple harnesses** — thread a `mode` parameter to gate harness-specific behavior. Example: `render-check.js` `runChecks(url, timeoutMs, mode)` gates content-region check on `if (mode === "phoenix")`.
 - **`local` keyword under `set -u`** — fails in `if/elif` at script scope. Use bare assignment. Function scope OK. Reset loop-branch locals at top: `local repo_url="" tree_ref=""`.
-- **Portable sed** — `sed -i ''` (macOS BSD) NOT portable to GNU sed (Linux). Use temp-file rewrite or `sed -i.bak 's/old/new/' file && rm -f *.bak` (non-empty extension works on both).
+- **Portable sed** — `sed -i ''` (macOS BSD) NOT portable to GNU sed. Use temp-file or `sed -i.bak 's/old/new/' && rm *.bak`. BSD `sed` lacks `\b` word-boundary — silently no-ops; use Python for portability.
+- **Bash grep `\b` false-positive on hyphens** — `grep -E '\blog\b'` falsely matches `codegen-log` (hyphen is non-word). Use `(^|[^a-zA-Z0-9-])token([^a-zA-Z0-9-]|$)` to exclude hyphen-adjacency.
 - **Bash 3.2 compatibility** — No `declare -A`, no `wait -n`. Walk `git -C` to ancestor; use `hooks_realpath` for symlinks.
 - **Path canonicalization for prefix-compare across harnesses** — `hooks_realpath` (bash) and `resolveRealPath` (TS) both handle macOS `/var`→`/private/var` symlinks and non-existent paths (bash parent-walk fallback prepends $PWD; TS `fs.realpathSync` falls back to `path.resolve` on missing path). Always canonicalize BOTH sides of a path prefix-compare to avoid symlink-caused false-denies (e.g., detect if `FILE_PATH` is inside `CODEGEN_BUILD_CWD`). Allows trailing `/` guard on canonicalized cwd to prevent sibling-dir false-allow (`/apps/app` must not match `/apps/app2`).
 - **IFS multi-char join** — `IFS=', '; echo "${arr[*]}"` uses only first char. Use `printf '%s, ' "${arr[@]}" | sed 's/, $//'` instead.

@@ -8,6 +8,13 @@ Committer + dev (non-staging): `git add`, `rm`, `mv`, `commit`, `commit --amend`
 
 Confirm before: `push --force`, `reset --hard`, `revert`, `rebase`, `branch -D`.
 
+## Your Boundaries
+
+State this upfront, as methodology — not "the hook will deny you":
+
+- **Read**: you cannot Read the pitch, `PROJECT_CONTEXT.md`, or `context/*.md`. Derive the commit message from `git diff`/`git status`/`git log`/`git show` only.
+- **Bash**: you MAY run `git diff`, `status`, `log`, `show`, `commit`, `add`, `rm`, `mv`, `tag`, `checkout`, `switch`, `branch`, `restore`, `reset`, plus `codegen-log` and safe utilities `echo`, `wc`, `cat`, `ls`. Do NOT run `grep`, `make`, or `python3` — those are out of scope for this role.
+
 ## Gate Verdict Gate (BLOCKING)
 
 NEVER commit cycle output unless the gate verdict is `clear`. Read the `.verdict` field from the gate-result JSON written into `codegen/gate-pending/`. Verdict `failed`, `inconclusive`, or absent → DO NOT commit; report the non-clear verdict and stop. Only `verdict=clear` permits the commit. Do not count `ALL CLEAR ✅` strings — read the structured field.

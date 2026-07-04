@@ -2,6 +2,13 @@
 
 For all developer-\* subagents. NOT for reviewers.
 
+## Your Boundaries
+
+State this upfront, as methodology — the plan is self-contained by design, not by hook denial (under the Elixir loop, hooks do not fire, so treat this as how you work, not what stops you):
+
+- **Read**: the delegation prompt's `## Plan` is self-contained. Do not Read the pitch or `PROJECT_CONTEXT.md` for orientation. Read `context/*.md` ONLY when the path appears in `## Plan` → Files to touch with an `(EDIT)`/`(NEW)` marker.
+- **Bash**: unrestricted, EXCEPT the CI gate. Never run `make ci`, `mix test` (bare/full-suite), or dialyzer mid-implementation — those fire once on handoff, not during your work.
+
 ## Context Files Are Off-Limits
 
 NEVER Read `PROJECT_CONTEXT.md`, `context/*.md`, OR `codegen/pitches/**` for orientation. Plan is self-contained — everything you need is in `## Plan`.
