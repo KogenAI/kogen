@@ -66,6 +66,35 @@ Reload page, confirm element/text/behavior present. Reading source is not enough
 
 Check `static/images/` for leftover placeholders (Phoenix `logo.svg`, wrong-brand favicons). Delete + replace.
 
+## Multi-Page Sites (vanilla Vite)
+
+When transitioning from single-page to multi-page (e.g., adding an `/about.html` page), register all HTML entries in `vite.config.js` via `build.rollupOptions.input`. Without this, Vite drops the second (and subsequent) page(s) from the build.
+
+Pattern (ESM-safe):
+
+```js
+import { defineConfig } from "vite";
+import { fileURLToPath } from "url";
+import tailwindcss from "@tailwindcss/vite";
+
+export default defineConfig({
+  plugins: [tailwindcss()],
+  build: {
+    outDir: "public",
+    rollupOptions: {
+      input: {
+        main: fileURLToPath(new URL("./index.html", import.meta.url)),
+        about: fileURLToPath(new URL("./about.html", import.meta.url)),
+      },
+    },
+  },
+});
+```
+
+Omitting `rollupOptions.input` → Vite defaults to single entry (`index.html`) and silently excludes `about.html` from the build. The second page then 404s at deploy. Always verify both pages appear under `public/` after `npm run build`.
+
+Links between pages: use absolute paths (`/about.html`, `/index.html`) — no pretty routes, as the static server has no URL rewrites. (Router-based frameworks can use pretty routes; vanilla Vite serves files by name.)
+
 ## Recovering Deleted Images
 
 ```bash

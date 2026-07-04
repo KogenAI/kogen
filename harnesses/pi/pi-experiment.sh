@@ -58,6 +58,14 @@ if [[ "$PITCH_ROOT" != "$PWD" ]]; then
     cd "$PITCH_ROOT"
 fi
 
+# Durable main-repo root for pitch writes — the anchor the shared experiment
+# prompt-body + /document read. Pi has no native --worktree (the agent self-adds
+# one), so cwd stays the main root here, but exporting the same var keeps the
+# shared prompt-body's $CODEGEN_PITCH_ROOT reference resolvable across both
+# harnesses. dirname of --git-common-dir is the main checkout from anywhere;
+# fallback to $PWD if git resolution fails.
+export CODEGEN_PITCH_ROOT="$(cd "$(dirname "$(git rev-parse --git-common-dir 2>/dev/null)")" 2>/dev/null && pwd || printf '%s' "$PWD")"
+
 SYSTEM_PROMPT_FILE="$CODEGEN_DIR/harnesses/pi/pi-experiment-system-prompt.txt"
 if [ ! -f "$SYSTEM_PROMPT_FILE" ]; then
     echo "ERROR: pi-experiment-system-prompt.txt not found at $SYSTEM_PROMPT_FILE" >&2

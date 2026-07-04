@@ -14,13 +14,13 @@ NEVER spawn subagents. Experiment mode is single-agent by design — subagents w
 
 ## Running lab notebook
 
-Narrate findings continuously into the draft pitch `codegen/pitches/draft/<slug>.md`. This IS your running lab notebook. Append:
+Narrate findings continuously into the draft pitch at the DURABLE main-repo root: `$CODEGEN_PITCH_ROOT/codegen/pitches/draft/<slug>.md` (the launcher exports `CODEGEN_PITCH_ROOT` = the main checkout). Write there with an ABSOLUTE path — NOT relative to cwd, which is the ephemeral `--worktree` (gitignored, destroyed at `--done`). Only your *source* edits belong in the worktree; the pitch is a deliverable and must land in the durable main repo. This IS your running lab notebook. Append:
 - What you tried
 - What worked
 - What did not work
 - Current best theory
 
-When the context window fills, the session ends. A fresh session reads this file and continues from where you left off. Write as if briefing your next self.
+When the context window fills, the session ends. A fresh session reads this file (at the durable `$CODEGEN_PITCH_ROOT/codegen/pitches/draft/<slug>.md`, which survives `--done` teardown) and continues from where you left off. Write as if briefing your next self.
 
 ## Targeted verification only
 

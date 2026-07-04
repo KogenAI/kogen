@@ -45,6 +45,16 @@ if [[ "$PITCH_ROOT" != "$PWD" ]]; then
     cd "$PITCH_ROOT"
 fi
 
+# Durable main-repo root for pitch writes. Computed at launch, BEFORE --worktree
+# re-roots the session cwd into the ephemeral (gitignored, discard-at-exit)
+# worktree. dirname of --git-common-dir is the main checkout from anywhere
+# (a worktree yields .../<repo>/.git; the main checkout yields .git → parent .).
+# The session inherits this env var; the experiment prompt + /document + /ready
+# write pitches to $CODEGEN_PITCH_ROOT/codegen/pitches/... so a captured pitch
+# survives --done teardown. Fallback to $PWD (the normalized main root at launch)
+# if git resolution fails — degrades to legacy behavior, never crashes.
+export CODEGEN_PITCH_ROOT="$(cd "$(dirname "$(git rev-parse --git-common-dir 2>/dev/null)")" 2>/dev/null && pwd || printf '%s' "$PWD")"
+
 source "$CODEGEN_DIR/harnesses/claude/load-role.sh"
 load_role experiment
 

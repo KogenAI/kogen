@@ -187,9 +187,9 @@ Codegen-infra pitfalls and bash gotchas — split from `context/development.md` 
 - **[local, dev] Capturing return value + stderr with `capture_io`** — `capture_io(:stderr, fn -> result end)` swallows the block's return. Recovery: `send(self(), {:result, <call>})` inside, then `receive do {:result, r} -> r end` outside to recover both output AND value.
 - **[local, reviewer] Direct function calls bypass seam overrides** — Tests calling a function directly invoke the real default even if the caller has overridden the seam in its opts. Example: `default_discover_session_log/3` with `max_polls: 0` override only works through the seam; direct calls ignore it. Fix: expose poll limit as public parameter with production-safe default (`max_polls \\ @discover_max_polls`), so direct tests can override. Arity-N seam still works (Elixir auto-generates lower-arity clause).
 - **[local] Test comment drift** — Test 15 comment claimed checker-missing, but `_self_dir` resolves via `BASH_SOURCE[0]` regardless of `CODEGEN_DIR`. Exercises runtime server-unready on boxes with node. Discovered via red-green (flip failed for different reason). Verify comments against code paths.
-- **[shared] is_allowed_path empty-loop vs file-tool** — `[ -z "$p" ] && return 0` reached via Bash token loop (skip), NOT file-tool anomaly. Distinct from empty FILE_PATH denial.
-- **[local] git status pollution in test** — Inherits `CODEGEN_BUILD_*` vars; use `env -u` isolation in ad-hoc runs.
-- **[shared] git mv blocked for developer by pre-commit-guard** — `plain mv` relocates tracked files; git status shows old path as D, new as ??. Committer handles both.
+- **[shared] Worktree-cwd is ephemeral** — Launcher `--worktree` cwd destroyed at teardown. Exports like `CODEGEN_PITCH_ROOT` resolve durable main-repo root via `cd "$(dirname "$(git rev-parse --git-common-dir 2>/dev/null)")" && pwd || printf '%s' "$PWD"` BEFORE worktree re-root. This resolver yields `.` from main, `…/<repo>` from worktree. Always-on exports (not gated) ensure all paths inherit durable root; skills write deliverables there.
+- **[local] git status pollution** — Test inherits `CODEGEN_BUILD_*` vars; isolate via `env -u`.
+- **[shared] git mv blocked for developer** — `plain mv` relocates tracked files (D + ?? in status). Committer handles both.
 
 ## Trigger Keywords
 
