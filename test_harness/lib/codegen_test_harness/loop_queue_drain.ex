@@ -246,7 +246,16 @@ defmodule CodegenTestHarness.LoopQueueDrain do
   defp ship(ready_dir, shipped_dir, slug) do
     src = Path.join(ready_dir, "#{slug}.md")
     dst = Path.join(shipped_dir, "#{slug}.md")
-    File.rename!(src, dst)
+
+    cond do
+      # agent did not ship (non-compliant) -> drain ships as fallback
+      File.exists?(src) -> File.rename!(src, dst)
+      # agent already shipped (normal exit-0 path) -> no-op
+      File.exists?(dst) -> :ok
+      # genuine anomaly: pitch in neither dir -> fail loud, name the slug
+      true -> raise "LoopQueueDrain.ship: #{slug} in neither ready/ nor shipped/"
+    end
+
     :ok
   end
 

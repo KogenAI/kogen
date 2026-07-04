@@ -268,6 +268,54 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
     assert File.exists?(Path.join(ctx.shipped_dir, "solo.md"))
   end
 
+  # ── 3i. ship/3 idempotency (agent already shipped) ──────────────────────
+
+  describe "ship/3 idempotency" do
+    test "normal exit-0: agent already shipped -> ship/3 no-ops, no RenameError", ctx do
+      write_pitch(ctx.ready_dir, "solo")
+
+      # simulate the real build agent: it moves ready/<slug>.md -> shipped/
+      # itself (per build system prompt) before returning exit 0.
+      spawn_fn = fn slug, _h, _s, _cwd, _jsonl ->
+        File.rename!(
+          Path.join(ctx.ready_dir, "#{slug}.md"),
+          Path.join(ctx.shipped_dir, "#{slug}.md")
+        )
+
+        {:exit_code, 0}
+      end
+
+      assert {:ok, 1} = LoopQueueDrain.drain(base_opts(ctx, spawn_fn: spawn_fn))
+      refute File.exists?(Path.join(ctx.ready_dir, "solo.md"))
+      assert File.exists?(Path.join(ctx.shipped_dir, "solo.md"))
+    end
+
+    test "fallback: agent left pitch in ready/ -> drain moves it", ctx do
+      write_pitch(ctx.ready_dir, "solo")
+
+      # non-compliant agent: exits 0 but never ships (leaves ready/<slug>.md).
+      spawn_fn = fn _slug, _h, _s, _cwd, _jsonl -> {:exit_code, 0} end
+
+      assert {:ok, 1} = LoopQueueDrain.drain(base_opts(ctx, spawn_fn: spawn_fn))
+      refute File.exists?(Path.join(ctx.ready_dir, "solo.md"))
+      assert File.exists?(Path.join(ctx.shipped_dir, "solo.md"))
+    end
+
+    test "anomaly: pitch in neither ready/ nor shipped/ raises naming the slug", ctx do
+      write_pitch(ctx.ready_dir, "solo")
+
+      # pathological agent: removes the pitch from ready/ without shipping it.
+      spawn_fn = fn slug, _h, _s, _cwd, _jsonl ->
+        File.rm!(Path.join(ctx.ready_dir, "#{slug}.md"))
+        {:exit_code, 0}
+      end
+
+      assert_raise RuntimeError, ~r/solo in neither ready.*nor shipped/, fn ->
+        LoopQueueDrain.drain(base_opts(ctx, spawn_fn: spawn_fn))
+      end
+    end
+  end
+
   # ── 4. Transient failure -> retry -> ship ───────────────────────────────
 
   test "4: transient failure retries once with backoff then ships", ctx do
