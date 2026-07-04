@@ -378,8 +378,10 @@ defmodule CodegenTestHarness.LoopQueueDrain do
   @spec default_spawn_fn(String.t(), String.t(), String.t(), String.t(), String.t()) ::
           {:exit_code, integer()} | :timeout
   def default_spawn_fn(slug, harness, stack, cwd, jsonl_path) do
-    unless File.exists?(@codegen_build_bin) do
-      raise "LoopQueueDrain: codegen-build not found at #{@codegen_build_bin}"
+    build_bin = Process.get(:__queue_drain_build_bin__, @codegen_build_bin)
+
+    unless File.exists?(build_bin) do
+      raise "LoopQueueDrain: codegen-build not found at #{build_bin}"
     end
 
     pitch_arg = pitch_arg_for(slug, harness, cwd)
@@ -394,27 +396,64 @@ defmodule CodegenTestHarness.LoopQueueDrain do
     ]
 
     env = [
-      {"PATH", System.get_env("PATH") || ""},
-      {"CLAUDE_ASYNC_AGENT_STALL_TIMEOUT_MS", "0"},
-      {"CLAUDE_CODE_PRINT_BG_WAIT_CEILING_MS", "0"},
-      {"CLAUDE_STREAM_IDLE_TIMEOUT_MS", "0"}
+      {~c"PATH", String.to_charlist(System.get_env("PATH") || "")},
+      {~c"CLAUDE_ASYNC_AGENT_STALL_TIMEOUT_MS", ~c"0"},
+      {~c"CLAUDE_CODE_PRINT_BG_WAIT_CEILING_MS", ~c"0"},
+      {~c"CLAUDE_STREAM_IDLE_TIMEOUT_MS", ~c"0"}
     ]
 
     budget_secs = pitch_budget_from_env()
 
-    task =
-      Task.async(fn ->
-        System.cmd(@codegen_build_bin, args, cd: cwd, env: env, stderr_to_stdout: true)
-      end)
+    port =
+      Port.open({:spawn_executable, build_bin}, [
+        :binary,
+        :exit_status,
+        :stderr_to_stdout,
+        {:args, args},
+        {:cd, cwd},
+        {:env, env}
+      ])
 
-    case Task.yield(task, budget_secs * 1000) do
-      {:ok, {output, exit_code}} ->
-        File.write!(jsonl_path, output)
-        {:exit_code, exit_code}
+    collect_spawn_output(port, [], budget_secs * 1000, jsonl_path)
+  end
 
-      nil ->
-        Task.shutdown(task, :brutal_kill)
-        :timeout
+  defp collect_spawn_output(port, acc, budget_ms, jsonl_path) do
+    receive do
+      {^port, {:data, chunk}} ->
+        collect_spawn_output(port, [chunk | acc], budget_ms, jsonl_path)
+
+      {^port, {:exit_status, code}} ->
+        File.write!(jsonl_path, IO.iodata_to_binary(Enum.reverse(acc)))
+        {:exit_code, code}
+    after
+      budget_ms ->
+        do_spawn_timeout(port, acc, jsonl_path)
+    end
+  end
+
+  defp do_spawn_timeout(port, acc, jsonl_path) do
+    kill_fn = Process.get(:__queue_drain_kill_fn__, &default_kill_tree/1)
+    kill_fn.(port)
+
+    File.write!(jsonl_path, IO.iodata_to_binary(Enum.reverse(acc)))
+
+    try do
+      Port.close(port)
+    rescue
+      ArgumentError -> :already_closed
+    end
+
+    :timeout
+  end
+
+  defp default_kill_tree(port) do
+    case Port.info(port, :os_pid) do
+      {:os_pid, os_pid} ->
+        System.cmd("kill", ["-9", "-#{os_pid}"], stderr_to_stdout: true)
+        System.cmd("pkill", ["-9", "-P", "#{os_pid}"], stderr_to_stdout: true)
+
+      _ ->
+        :ok
     end
   end
 

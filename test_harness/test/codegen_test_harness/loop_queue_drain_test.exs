@@ -645,4 +645,79 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
   # ever raced with a concurrently-running test reading the same keys. None
   # of the drain/1 filesystem tests read these env vars (opts override them),
   # so no race exists today.
+
+  describe "default_spawn_fn/5 timeout + normal exit" do
+    defp write_script(dir, name, body) do
+      path = Path.join(dir, name)
+      File.write!(path, body)
+      File.chmod!(path, 0o755)
+      path
+    end
+
+    test "timeout kills the child process tree via the kill_fn seam", ctx do
+      sleeper =
+        write_script(ctx.dir, "sleeper.sh", """
+        #!/usr/bin/env bash
+        echo starting
+        sleep 30
+        echo should-not-print
+        """)
+
+      calls = start_agent([])
+
+      kill_fn = fn port ->
+        os_pid =
+          case Port.info(port, :os_pid) do
+            {:os_pid, pid} -> pid
+            _ -> nil
+          end
+
+        Agent.update(calls, &(&1 ++ [os_pid]))
+      end
+
+      jsonl = Path.join(ctx.dir, "out.jsonl")
+
+      Process.put(:__queue_drain_build_bin__, sleeper)
+      Process.put(:__queue_drain_kill_fn__, kill_fn)
+
+      on_exit(fn ->
+        Process.delete(:__queue_drain_build_bin__)
+        Process.delete(:__queue_drain_kill_fn__)
+      end)
+
+      System.put_env("CODEGEN_BUILD_QUEUE_PITCH_BUDGET_SECS", "1")
+      on_exit(fn -> System.delete_env("CODEGEN_BUILD_QUEUE_PITCH_BUDGET_SECS") end)
+
+      result = LoopQueueDrain.default_spawn_fn("slug", "claude", "phoenix", ctx.dir, jsonl)
+
+      assert result == :timeout
+      assert File.exists?(jsonl)
+      recorded = Agent.get(calls, & &1)
+      assert length(recorded) == 1
+      assert [os_pid] = recorded
+      assert is_integer(os_pid)
+    end
+
+    test "normal exit writes merged stdout+stderr and returns exit code", ctx do
+      jsonl = Path.join(ctx.dir, "out.jsonl")
+
+      script =
+        write_script(ctx.dir, "echoer.sh", """
+        #!/usr/bin/env bash
+        printf 'OUT'
+        printf 'ERR' >&2
+        exit 0
+        """)
+
+      Process.put(:__queue_drain_build_bin__, script)
+      on_exit(fn -> Process.delete(:__queue_drain_build_bin__) end)
+
+      result = LoopQueueDrain.default_spawn_fn("slug", "claude", "phoenix", ctx.dir, jsonl)
+
+      assert result == {:exit_code, 0}
+      contents = File.read!(jsonl)
+      assert contents =~ "OUT"
+      assert contents =~ "ERR"
+    end
+  end
 end

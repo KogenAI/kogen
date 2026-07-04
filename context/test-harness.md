@@ -262,6 +262,7 @@ Benchmark mode (BENCH=1), artifact layout, screenshot capture, mix viewer tasks:
 - **`run_with_timeout/4` return order** — returns `{output, exit_code}` (output-first); re-tuple explicitly if contract differs.
 - **`assert_assets_deploy!` needs `MIX_ENV=dev`** — tailwind config is dev-only; pass `env: [{"MIX_ENV", "dev"}]` in System.cmd call.
 - **`codegen-call` requires `--model`, `--effort`, `@<abs-path>`** — old API used exit 2; fixtures resolve from config.yaml, write temps, pass @/tmp/...
+- **`default_spawn_fn/5` timeout kills the whole child tree** — `Port.open({:spawn_executable, ...})` + receive-loop (mirrors `fixtures.ex` `do_timeout/3`/`bench_artifacts.ex` `kill_port/1`), not `Task.shutdown(:brutal_kill)` (orphaned grandchildren). Test seams: `Process.put(:__queue_drain_build_bin__, ...)`, `:__queue_drain_kill_fn__`.
 - **`bench_artifacts_test.exs` token list tracks screenshot.js changes** — pre-Vite: playwright/node errors; Vite: resolveServeDir; update on js migration.
 
 ### Flake Triage Protocol
