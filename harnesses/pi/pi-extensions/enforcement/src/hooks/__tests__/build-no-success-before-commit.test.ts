@@ -115,6 +115,62 @@ describe("build-no-success-before-commit", { concurrency: 1 }, () => {
     }
   });
 
+  it("blocks when 'git status --porcelain' fails unexpectedly after commit-timestamp check succeeded", async () => {
+    const tmpDir = fs.mkdtempSync(
+      path.join(os.tmpdir(), "build-no-success-status-throw-"),
+    );
+    const originalCwd = process.cwd();
+    try {
+      execSync("git init -q", { cwd: tmpDir });
+      execSync("git config user.email t@t", { cwd: tmpDir });
+      execSync("git config user.name t", { cwd: tmpDir });
+      execSync("git checkout -q -b main", { cwd: tmpDir });
+      fs.writeFileSync(path.join(tmpDir, "README"), "init");
+      fs.mkdirSync(path.join(tmpDir, "codegen/gate-pending"), {
+        recursive: true,
+      });
+      fs.writeFileSync(
+        path.join(tmpDir, "codegen/gate-pending/gate-result.json"),
+        JSON.stringify({ verdict: "clear", gate: "make test", mode: "short" }),
+      );
+      execSync("git add -A", { cwd: tmpDir });
+      execSync("git commit -qm init", { cwd: tmpDir });
+
+      const buildStartTs = String(Math.floor(Date.now() / 1000));
+      await new Promise((r) => setTimeout(r, 1100));
+
+      // Commit AFTER build start so the commit-timestamp check (proves repo
+      // presence) succeeds and passes the gate-result verdict check.
+      fs.writeFileSync(path.join(tmpDir, "README"), "change");
+      execSync("git add README", { cwd: tmpDir });
+      execSync('git commit -qm "generated code"', { cwd: tmpDir });
+
+      // Corrupt the index so 'git status --porcelain' throws unexpectedly —
+      // repo presence was already proven by the commit-timestamp check above,
+      // so this is an anomaly, not repo-absence. Must deny, not fail-open.
+      fs.rmSync(path.join(tmpDir, ".git", "index"));
+      fs.mkdirSync(path.join(tmpDir, ".git", "index"));
+
+      process.env["CODEGEN_BUILD_START_TS"] = buildStartTs;
+      process.chdir(tmpDir);
+
+      const result = await runHook('echo "BUILD_RESULT: success"');
+      const asObj = result as { block?: boolean; reason?: string } | null;
+      assert.ok(
+        asObj != null && asObj.block === true,
+        `expected block but got: ${JSON.stringify(result)}`,
+      );
+      assert.ok(
+        asObj.reason?.includes("failed unexpectedly"),
+        `expected "failed unexpectedly" in reason but got: ${asObj.reason}`,
+      );
+    } finally {
+      process.chdir(originalCwd);
+      delete process.env["CODEGEN_BUILD_START_TS"];
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    }
+  });
+
   it("blocks when gate-result verdict is not clear (inconclusive)", async () => {
     const tmpDir = fs.mkdtempSync(
       path.join(os.tmpdir(), "build-no-success-verdict-"),

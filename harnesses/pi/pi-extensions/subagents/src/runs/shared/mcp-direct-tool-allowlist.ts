@@ -107,7 +107,13 @@ export function resolveMcpDirectToolNames(
       getToolPrefix(config.settings?.toolPrefix),
       mcpDirectTools,
     );
-  } catch {
+  } catch (e) {
+    // Fail-closed/safe already (returns [] — no direct tools allowlisted on
+    // malformed config), but a silent [] gives no signal that every
+    // configured direct tool was just dropped. Surface the cause.
+    console.error(
+      `[mcp-direct-tool-allowlist] failed to resolve MCP direct tool names (falling back to []): ${(e as Error).message}`,
+    );
     return [];
   }
 }

@@ -14,7 +14,9 @@
  *   If log exists but expected header absent → deny (naming the missing header)
  *   Else → allow
  *
- * Fail-open: if log dir is missing or unreadable, allow.
+ * Fail-open: only when no log path resolves at all (log dir/file absent).
+ * A log path that resolves but throws on read (present-but-unreadable) denies —
+ * an unreadable log cannot prove the required header exists.
  */
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
@@ -100,12 +102,14 @@ export function register(pi: ExtensionAPI): void {
     let logContent: string;
     try {
       logContent = fs.readFileSync(logPath, "utf8");
-    } catch {
+    } catch (e) {
       debugLog(
         "step-log-section-before-spawn",
-        "fail-open: could not read log",
+        `deny: log path resolved but unreadable: ${(e as Error).message}`,
       );
-      return;
+      return deny(
+        `BLOCKED: step log ${logPath} was located but could not be read (${(e as Error).message}). Cannot verify the '${need}' header before spawning ${subagentType} — fix the log read error first.`,
+      );
     }
 
     debugLog("step-log-section-before-spawn", `log=${logPath}`);

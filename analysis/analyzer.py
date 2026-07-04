@@ -65,14 +65,18 @@ def run(config: Config) -> Report:
 
 
 def _substrate_present(config: Config) -> bool:
-    """Check if any substrate files are present."""
-    try:
-        from analysis.counters import hook_intervention as hi
-        from analysis.counters import tool_failure as tf
+    """Check if any substrate files are present.
 
-        return hi.substrate_present(config) or tf.failures_present(config)
-    except Exception:
-        return False
+    hook_intervention.substrate_present and tool_failure.failures_present are
+    both plain Path.exists() probes on well-formed path strings — they do not
+    raise for normal args. No try/except here: a real bug in either probe
+    (or in the imports themselves) must surface, not be reported as a clean
+    "no substrate" result.
+    """
+    from analysis.counters import hook_intervention as hi
+    from analysis.counters import tool_failure as tf
+
+    return hi.substrate_present(config) or tf.failures_present(config)
 
 
 def _cluster(findings: List[Finding]) -> List[Cluster]:

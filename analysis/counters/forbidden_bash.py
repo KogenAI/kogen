@@ -30,6 +30,11 @@ def _parse_registry(registry_path: Path) -> List[Tuple[str, List[str]]]:
       - role: "*"
       - kind absent OR not 'allowlist'
       - mode absent OR not 'allowlist'
+
+    Patterns are compiled here (up front) rather than lazily at match time —
+    a malformed regex in registry.yaml raises immediately, naming the
+    offending counter id and pattern, instead of silently disabling that
+    counter inside the per-line matching loop.
     """
     if not registry_path.exists():
         return []
@@ -131,19 +136,30 @@ def _parse_registry(registry_path: Path) -> List[Tuple[str, List[str]]]:
             patterns = match_all
 
         if patterns:
+            # Compile up front — a malformed pattern raises now, naming both
+            # the counter id and the offending pattern, rather than silently
+            # disabling this counter later at match time.
+            for pat in patterns:
+                try:
+                    re.compile(pat)
+                except re.error as exc:
+                    raise ValueError(
+                        f"forbidden_bash: invalid regex in registry.yaml for counter "
+                        f"'{entry_id}': pattern {pat!r} failed to compile: {exc}"
+                    ) from exc
             results.append((entry_id, patterns))
 
     return results
 
 
 def _matches_denial(command: str, patterns: List[str]) -> bool:
-    """Return True if command matches ALL patterns in the list (AND logic for match_all)."""
+    """Return True if command matches ALL patterns in the list (AND logic for match_all).
+
+    Patterns are validated at parse time (_parse_registry) — re.search here is
+    never expected to raise re.error for registry-sourced patterns.
+    """
     for pat in patterns:
-        # Registry uses \s (Python-native); compile directly
-        try:
-            if not re.search(pat, command):
-                return False
-        except re.error:
+        if not re.search(pat, command):
             return False
     return True
 

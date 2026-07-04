@@ -460,5 +460,12 @@ async function main() {
 
 main().catch((e) => {
   log(`unhandled error: ${e.message}`);
-  verdict("INCONCLUSIVE:timeout");
+  // A crash reaching this top-level handler is a checker bug (unhandled
+  // rejection/exception), not a real navigation timeout — mislabeling it
+  // INCONCLUSIVE:timeout hides checker defects behind flaky-looking output.
+  // Exit non-zero so the crash is distinguishable from the normal exit-0
+  // verdict path (callers already parse stdout and ignore exit code via
+  // `|| true`, so this does not change existing gate wiring).
+  process.stdout.write("RENDER_VERDICT=INCONCLUSIVE:checker-error\n");
+  process.exitCode = 1;
 });

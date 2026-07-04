@@ -88,6 +88,91 @@ describe("step-log-completeness", () => {
     );
   });
 
+  it("active log path resolves but read throws — INCONCLUSIVE warning, no crash", async () => {
+    // A directory named *.md passes readdirSync's endsWith(".md") filter and
+    // statSync succeeds on it, but fs.readFileSync throws EISDIR — the
+    // present-but-unreadable anomaly path (observe-only: warn, don't crash).
+    const tmpDir = fs.mkdtempSync(
+      path.join(os.tmpdir(), "step-log-completeness-unreadable-"),
+    );
+    const loggingDir = path.join(tmpDir, "codegen", "logging");
+    fs.mkdirSync(loggingDir, { recursive: true });
+    const logDirAsFile = path.join(loggingDir, "20260101_120000_step1_test.md");
+    fs.mkdirSync(logDirAsFile, { recursive: true });
+
+    let stderrOutput = "";
+    const origWrite = process.stderr.write.bind(process.stderr);
+    process.stderr.write = (s: string) => {
+      stderrOutput += s;
+      return true;
+    };
+    try {
+      const result = await runHook(false, tmpDir);
+      assert.ok(
+        result == null || (result as { block?: boolean }).block !== true,
+        `expected no throw/no block but got: ${JSON.stringify(result)}`,
+      );
+    } finally {
+      process.stderr.write = origWrite;
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    }
+
+    assert.ok(
+      stderrOutput.includes("INCONCLUSIVE") &&
+        stderrOutput.includes("could not be read"),
+      `expected INCONCLUSIVE could-not-be-read warning but got: ${stderrOutput}`,
+    );
+  });
+
+  it("gate-result.json path resolves but read throws — INCONCLUSIVE warning, falls back to log marker", async () => {
+    const tmpDir = fs.mkdtempSync(
+      path.join(os.tmpdir(), "step-log-completeness-gate-unreadable-"),
+    );
+    const loggingDir = path.join(tmpDir, "codegen", "logging");
+    fs.mkdirSync(loggingDir, { recursive: true });
+    const logFile = path.join(loggingDir, "20260101_120000_step1_test.md");
+    fs.writeFileSync(
+      logFile,
+      "## developer-phoenix-backend Section\n\nSome content\n\nALL CLEAR ✅\n",
+      "utf8",
+    );
+    const now = Date.now();
+    fs.utimesSync(logFile, new Date(now), new Date(now));
+
+    // gate-result.json exists (existsSync true) but is a directory —
+    // readFileSync throws. Proven-present, not absent.
+    const gateResultDirAsFile = path.join(
+      tmpDir,
+      "codegen",
+      "gate-pending",
+      "gate-result.json",
+    );
+    fs.mkdirSync(gateResultDirAsFile, { recursive: true });
+
+    let stderrOutput = "";
+    const origWrite = process.stderr.write.bind(process.stderr);
+    process.stderr.write = (s: string) => {
+      stderrOutput += s;
+      return true;
+    };
+    try {
+      const result = await runHook(false, tmpDir);
+      assert.ok(
+        result == null || (result as { block?: boolean }).block !== true,
+        `expected no throw/no block but got: ${JSON.stringify(result)}`,
+      );
+    } finally {
+      process.stderr.write = origWrite;
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    }
+
+    assert.ok(
+      stderrOutput.includes("INCONCLUSIVE") &&
+        stderrOutput.includes("gate-result.json"),
+      `expected INCONCLUSIVE gate-result.json warning but got: ${stderrOutput}`,
+    );
+  });
+
   describe("empty-body content-floor (observe-only)", () => {
     let tmpDir: string;
 

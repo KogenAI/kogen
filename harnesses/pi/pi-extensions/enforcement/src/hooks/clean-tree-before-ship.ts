@@ -43,6 +43,8 @@ export function register(pi: ExtensionAPI): void {
       return;
     }
 
+    // Repo presence was already proven above (rev-parse succeeded), so a throw
+    // here is an unexpected git failure, not repo-absence — deny.
     try {
       const porcelain = execSync("git status --porcelain", {
         encoding: "utf8",
@@ -55,9 +57,10 @@ export function register(pi: ExtensionAPI): void {
           `BLOCKED by clean-tree-before-ship: working tree not clean — ${count} file(s) uncommitted: ${fileList}. Commit all cycle output before shipping the pitch (mv ready/ → shipped/).`,
         );
       }
-    } catch {
-      // git unavailable — fail-open
-      return;
+    } catch (e) {
+      return deny(
+        `BLOCKED by clean-tree-before-ship: 'git status --porcelain' failed unexpectedly (${(e as Error).message}). Cannot verify clean working tree — resolve the git error before shipping the pitch.`,
+      );
     }
 
     return;

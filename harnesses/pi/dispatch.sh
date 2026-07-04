@@ -126,7 +126,11 @@ fi
 # with legacy (default when --elixir absent).
 if [[ -n "$ELIXIR_ENGINE" && -z "$RESUME_ID" ]]; then
     printf 'pi dispatch: engine=elixir\n' >&2
-    STACK="${CODEGEN_BUILD_STACK:-phoenix}"
+    STACK="${CODEGEN_BUILD_STACK:-}"
+    if [[ -z "$STACK" ]]; then
+        printf 'pi dispatch: CODEGEN_BUILD_STACK is required but empty/unset\n' >&2
+        exit 2
+    fi
     LOOP_DIR="$CODEGEN_DIR/test_harness"
 
     if [[ ! -d "$LOOP_DIR" ]]; then

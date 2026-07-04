@@ -7,6 +7,10 @@
 
 import { describe, it, beforeEach } from "node:test";
 import assert from "node:assert/strict";
+import * as fs from "node:fs";
+import * as os from "node:os";
+import * as path from "node:path";
+import { execSync } from "node:child_process";
 
 function makeCommitEvent(
   command: string,
@@ -65,5 +69,56 @@ describe("context-file-size-gate", () => {
     // Either passes through (no staged context files in this repo) or throws
     // internally and passes through via catch. Either way: no block.
     assert.ok(result == null || (result as { block?: boolean }).block !== true);
+  });
+
+  it("blocks when 'git show' fails unexpectedly for a staged context/*.md file", async () => {
+    // Repo-absence was already proven not-the-case (name-status succeeded
+    // below); deleting the staged blob's loose object forces 'git show' to
+    // throw for a proven-staged path — an anomaly, not repo-absence.
+    const tmpDir = fs.mkdtempSync(
+      path.join(os.tmpdir(), "context-file-size-gate-show-throw-"),
+    );
+    const originalCwd = process.cwd();
+    try {
+      execSync("git init -q", { cwd: tmpDir });
+      execSync("git config user.email t@t", { cwd: tmpDir });
+      execSync("git config user.name t", { cwd: tmpDir });
+      execSync("git checkout -q -b main", { cwd: tmpDir });
+      fs.mkdirSync(path.join(tmpDir, "context"));
+      fs.writeFileSync(
+        path.join(tmpDir, "context", "foo.md"),
+        "hello world\n",
+      );
+      execSync("git add context/foo.md", { cwd: tmpDir });
+
+      const lsFiles = execSync("git ls-files -s context/foo.md", {
+        cwd: tmpDir,
+        encoding: "utf8",
+      });
+      const hash = lsFiles.split(/\s+/)[1];
+      const objPath = path.join(
+        tmpDir,
+        ".git",
+        "objects",
+        hash.slice(0, 2),
+        hash.slice(2),
+      );
+      fs.rmSync(objPath);
+
+      process.chdir(tmpDir);
+      const result = await runHook('git commit -m "x"', "committer");
+      const asObj = result as { block?: boolean; reason?: string } | null;
+      assert.ok(
+        asObj != null && asObj.block === true,
+        `expected block but got: ${JSON.stringify(result)}`,
+      );
+      assert.ok(
+        asObj.reason?.includes("could not read staged blob"),
+        `expected "could not read staged blob" in reason but got: ${asObj.reason}`,
+      );
+    } finally {
+      process.chdir(originalCwd);
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    }
   });
 });

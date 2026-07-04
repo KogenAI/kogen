@@ -12,7 +12,10 @@
  *     AND session log has NO ## context-curator Section
  *   → deny with explanation
  *
- * Fail-open: if no session log found, allow.
+ * Fail-open: if no session log found (path absent), allow. If the log path
+ * resolves but the read throws (present-but-unreadable), deny — an unreadable
+ * log cannot verify the curator ran, so allowing here would silently skip
+ * the gate.
  * All other subagent types: allow unconditionally.
  */
 
@@ -52,9 +55,14 @@ export function register(pi: ExtensionAPI): void {
     let logContent: string;
     try {
       logContent = fs.readFileSync(logPath, "utf8");
-    } catch {
-      debugLog("curator-before-committer", "fail-open: could not read log");
-      return;
+    } catch (e) {
+      debugLog(
+        "curator-before-committer",
+        `deny: log path resolved but unreadable: ${(e as Error).message}`,
+      );
+      return deny(
+        `BLOCKED by curator-before-committer: step log at ${logPath} was located but could not be read (${(e as Error).message}). Cannot verify context-curator ran before committer — fix the log read error first.`,
+      );
     }
 
     const hasReviewer =

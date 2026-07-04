@@ -76,6 +76,8 @@ export function register(pi: ExtensionAPI): void {
     }
 
     // Require a clean working tree — no uncommitted or untracked files.
+    // Repo presence was already proven above (commit-timestamp check succeeded),
+    // so a throw here is an unexpected git failure, not repo-absence — deny.
     try {
       const porcelain = execSync("git status --porcelain", {
         encoding: "utf8",
@@ -89,8 +91,10 @@ export function register(pi: ExtensionAPI): void {
           `BLOCKED by build-no-success-before-commit: working tree not clean — ${count} file(s) uncommitted: ${fileList}. Commit all cycle output in one commit before signaling SHIPPED.`,
         );
       }
-    } catch {
-      // Not in a git repo or git unavailable — skip clean-tree check
+    } catch (e) {
+      return deny(
+        `BLOCKED by build-no-success-before-commit: 'git status --porcelain' failed unexpectedly (${(e as Error).message}). Cannot verify clean working tree — resolve the git error before signaling SHIPPED.`,
+      );
     }
 
     // OCG-repo check

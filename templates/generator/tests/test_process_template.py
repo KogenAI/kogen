@@ -223,8 +223,8 @@ class TestProcessTemplate(unittest.TestCase):
             # pi mode: model: sonnet left as-is (no config rewrite)
             self.assertIn("model: sonnet", output)
 
-    def test_role_absent_from_config_no_op(self):
-        """Role missing from harness in config → silent no-op (model unchanged)."""
+    def test_role_absent_from_config_raises(self):
+        """Role missing from harness in config, but template has a model: line → fail loud."""
         config_yaml = textwrap.dedent("""\
             harness:
               other-role:
@@ -233,11 +233,44 @@ class TestProcessTemplate(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmpdir:
             template = self._make_template(tmpdir, "planner-phoenix.md.j2", self.TEMPLATE_CONTENT)
             config = self._make_config(tmpdir, config_yaml)
-            with patch("sys.stdout", new_callable=StringIO) as mock_out:
+            with self.assertRaises(SystemExit) as ctx:
                 pt.process_template(template, "claude", False, config)
+            self.assertIn("planner-phoenix", str(ctx.exception))
+
+    def test_role_cfg_missing_model_or_effort_raises(self):
+        """Role present but claude cfg missing model/effort → fail loud."""
+        config_yaml = textwrap.dedent("""\
+            harness:
+              planner-phoenix:
+                claude: { model: opus }
+        """)
+        with tempfile.TemporaryDirectory() as tmpdir:
+            template = self._make_template(tmpdir, "planner-phoenix.md.j2", self.TEMPLATE_CONTENT)
+            config = self._make_config(tmpdir, config_yaml)
+            with self.assertRaises(SystemExit) as ctx:
+                pt.process_template(template, "claude", False, config)
+            self.assertIn("model/effort", str(ctx.exception))
+
+    def test_no_model_line_template_skips_role_requirement(self):
+        """Template with no model: frontmatter line (e.g. a slash command) is not a role — no-op passthrough."""
+        command_content = textwrap.dedent("""\
+            ---
+            description: some command
+            ---
+            Body text here.
+        """)
+        config_yaml = textwrap.dedent("""\
+            harness:
+              other-role:
+                claude: { model: opus, effort: high }
+        """)
+        with tempfile.TemporaryDirectory() as tmpdir:
+            template = self._make_template(tmpdir, "poke-holes.md.j2", command_content)
+            config = self._make_config(tmpdir, config_yaml)
+            with patch("sys.stdout", new_callable=StringIO) as mock_out:
+                pt.process_template(template, "claude", True, config)
                 output = mock_out.getvalue()
-            # role absent → no rewrite → original model stays
-            self.assertIn("model: sonnet", output)
+            self.assertIn("description: some command", output)
 
     def test_missing_yaml_module_raises(self):
         """yaml import failure → SystemExit with install hint (fail-loud)."""

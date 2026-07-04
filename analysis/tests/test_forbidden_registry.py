@@ -1,4 +1,5 @@
 """Tests for the stdlib registry parser against the real shared/enforcement/registry.yaml."""
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -77,6 +78,32 @@ class TestForbiddenRegistry(unittest.TestCase):
             f"Expected 3 universal Bash denials, got {len(self.denials)}: "
             f"{sorted(self.denial_ids)}",
         )
+
+
+class TestForbiddenRegistryMalformedPattern(unittest.TestCase):
+    """A malformed regex in registry.yaml must raise immediately at parse time
+    (fail loud), naming the offending counter id and pattern — never silently
+    disable that counter later inside the per-line matching loop.
+    """
+
+    BAD_REGISTRY_YAML = """\
+- id: bad-pattern-counter
+  tool_guard: Bash
+  role: "*"
+  match: "unclosed_paren("
+"""
+
+    def test_malformed_pattern_raises_with_id_and_pattern(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            registry_path = Path(tmpdir) / "registry.yaml"
+            registry_path.write_text(self.BAD_REGISTRY_YAML)
+
+            with self.assertRaises(ValueError) as ctx:
+                _parse_registry(registry_path)
+
+            msg = str(ctx.exception)
+            self.assertIn("bad-pattern-counter", msg)
+            self.assertIn("unclosed_paren(", msg)
 
 
 if __name__ == "__main__":

@@ -60,7 +60,19 @@ export function register(pi: ExtensionAPI): void {
     const SIXTY_MIN_MS = 60 * 60 * 1000;
     if (Date.now() - logFiles[0].mtime > SIXTY_MIN_MS) return;
 
-    const logContent = fs.readFileSync(activeLog, "utf8");
+    let logContent: string;
+    try {
+      logContent = fs.readFileSync(activeLog, "utf8");
+    } catch (e) {
+      // activeLog was proven present via readdirSync/statSync above — a read
+      // throw here is an unexpected fs failure, not absence. This hook is
+      // observe-only (session_shutdown cannot block), so surface loudly
+      // rather than silently skipping the completeness check.
+      process.stderr.write(
+        `[pi-enforcement:step-log-completeness] INCONCLUSIVE: active log ${activeLog} was located but could not be read (${(e as Error).message}). Completeness check skipped.\n`,
+      );
+      return;
+    }
 
     if (logContent.includes("INCONCLUSIVE ⚠️")) return;
 
@@ -91,20 +103,32 @@ export function register(pi: ExtensionAPI): void {
       "gate-result.json",
     );
     if (fs.existsSync(gateResultPath)) {
+      // gateResultPath was proven present via existsSync above — separate the
+      // read from the parse so an unreadable-but-present file surfaces its own
+      // diagnostic distinct from malformed-JSON (a legitimate "present but
+      // garbled" case that falls back to the log marker).
+      let gateResultRaw: string | undefined;
       try {
-        const gateResult = JSON.parse(
-          fs.readFileSync(gateResultPath, "utf8"),
-        ) as { verdict?: string };
-        if (gateResult.verdict === "clear") {
-          hasAllClear = true; // gate-result.json authoritative clear
-        } else if (
-          gateResult.verdict === "failed" ||
-          gateResult.verdict === "inconclusive"
-        ) {
-          hasAllClear = false; // gate-result.json overrides stale log marker
+        gateResultRaw = fs.readFileSync(gateResultPath, "utf8");
+      } catch (e) {
+        process.stderr.write(
+          `[pi-enforcement:step-log-completeness] INCONCLUSIVE: gate-result.json at ${gateResultPath} was located but could not be read (${(e as Error).message}). Falling back to log marker for ALL CLEAR.\n`,
+        );
+      }
+      if (gateResultRaw !== undefined) {
+        try {
+          const gateResult = JSON.parse(gateResultRaw) as { verdict?: string };
+          if (gateResult.verdict === "clear") {
+            hasAllClear = true; // gate-result.json authoritative clear
+          } else if (
+            gateResult.verdict === "failed" ||
+            gateResult.verdict === "inconclusive"
+          ) {
+            hasAllClear = false; // gate-result.json overrides stale log marker
+          }
+        } catch {
+          // malformed gate-result.json — use log marker only
         }
-      } catch {
-        // malformed gate-result.json — use log marker only
       }
     }
 

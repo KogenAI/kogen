@@ -8,11 +8,21 @@ WORK_DIR="${ORIGINAL_WORKING_DIR:-$(pwd)}"
 _SAVED_PWD="$(pwd)"
 
 # Change to the working directory to get the git repository root
-cd "$WORK_DIR"
-export TARGET_REPO_PATH="$(git rev-parse --show-toplevel)"
+cd "$WORK_DIR" || {
+    echo "❌ Error: cannot cd to WORK_DIR: $WORK_DIR" >&2
+    exit 1
+}
+if ! TARGET_REPO_PATH="$(git rev-parse --show-toplevel)"; then
+    echo "❌ Error: git rev-parse --show-toplevel failed in $WORK_DIR (not a git repository?)" >&2
+    exit 1
+fi
+export TARGET_REPO_PATH
 
 # Restore original directory
-cd "$_SAVED_PWD"
+cd "$_SAVED_PWD" || {
+    echo "❌ Error: cannot cd back to original directory: $_SAVED_PWD" >&2
+    exit 1
+}
 
 # Database name prefix based on repository name
 REPO_NAME="$(basename "$TARGET_REPO_PATH")"

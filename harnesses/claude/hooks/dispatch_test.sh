@@ -113,7 +113,7 @@ assert_eq "missing SP_FILE: exit code 2" "2" "$rc"
 # legacy claude stub path.
 printf 'fake system prompt\n' >"$FAKE_HARNESS/claude-build-system-prompt.txt"
 rc=0
-out=$(run_dispatch "CODEGEN_BUILD_MODEL=test-model CODEGEN_BUILD_EFFORT=low" "dummy-prompt") || rc=$?
+out=$(run_dispatch "CODEGEN_BUILD_MODEL=test-model CODEGEN_BUILD_EFFORT=low CODEGEN_BUILD_STACK=phoenix" "dummy-prompt") || rc=$?
 assert_eq "missing test_harness/ dir: exit code 2" "2" "$rc"
 assert_contains "missing test_harness/ dir: stderr mentions 'orchestration loop dir not found'" \
     "orchestration loop dir not found" "$out"
@@ -141,6 +141,7 @@ out=$(
         CODEGEN_BUILD_EFFORT=low \
         CODEGEN_BUILD_NON_INTERACTIVE=1 \
         CODEGEN_BUILD_ELIXIR=1 \
+        CODEGEN_BUILD_STACK=phoenix \
         bash "$FAKE_HARNESS/dispatch.sh" "dummy-prompt" \
         2>&1
 ) || rc=$?
@@ -232,6 +233,7 @@ out=$(
         CODEGEN_BUILD_EFFORT=low \
         CODEGEN_BUILD_NON_INTERACTIVE=1 \
         CODEGEN_BUILD_ELIXIR=1 \
+        CODEGEN_BUILD_STACK=phoenix \
         OPENAI_API_KEY=leak1 \
         ANTHROPIC_API_KEY=leak2 \
         bash "$FAKE_HARNESS/dispatch.sh" "dummy-prompt" \
@@ -262,6 +264,7 @@ out=$(
         CODEGEN_BUILD_MODEL=test-model \
         CODEGEN_BUILD_EFFORT=low \
         CODEGEN_BUILD_ELIXIR=1 \
+        CODEGEN_BUILD_STACK=phoenix \
         bash "$FAKE_HARNESS/dispatch.sh" "dummy-prompt" \
         2>&1
 ) || rc=$?
@@ -290,6 +293,34 @@ out=$(
 assert_eq "engine=legacy: exit 0 (claude stub)" "0" "$rc"
 assert_contains "engine=legacy: banner present" "claude dispatch: engine=legacy" "$out"
 assert_not_contains "engine=legacy: engine=elixir banner absent" "claude dispatch: engine=elixir" "$out"
+
+# ── Test 9: CODEGEN_BUILD_STACK unset/empty in --elixir path → exit 2 + clear message ──
+# Regression lock: dispatch.sh must NOT silently coerce an empty/unset stack
+# to "phoenix" — it must fail loud naming CODEGEN_BUILD_STACK.
+rm -f "$MIX_ARGS_FILE"
+rc=0
+out=$(
+    env -i \
+        HOME="${HOME:-/tmp}" \
+        PATH="$FAKE_BIN_MIX:$PATH" \
+        OCG_CODEGEN_DIR="$FAKE_CODEGEN" \
+        CODEGEN_BUILD_MODEL=test-model \
+        CODEGEN_BUILD_EFFORT=low \
+        CODEGEN_BUILD_NON_INTERACTIVE=1 \
+        CODEGEN_BUILD_ELIXIR=1 \
+        bash "$FAKE_HARNESS/dispatch.sh" "dummy-prompt" \
+        2>&1
+) || rc=$?
+assert_eq "missing CODEGEN_BUILD_STACK: exit code 2" "2" "$rc"
+assert_contains "missing CODEGEN_BUILD_STACK: stderr names CODEGEN_BUILD_STACK" \
+    "CODEGEN_BUILD_STACK is required but empty/unset" "$out"
+if [[ -f "$MIX_ARGS_FILE" ]]; then
+    printf 'FAIL: missing CODEGEN_BUILD_STACK — mix must NOT have been invoked\n'
+    fail=$((fail + 1))
+else
+    [ -n "${VERBOSE:-}" ] && printf 'PASS: missing CODEGEN_BUILD_STACK — mix not invoked\n'
+    pass=$((pass + 1))
+fi
 
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

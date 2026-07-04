@@ -133,6 +133,6 @@ fi
 
 exec "$BUILD_BIN" \
     --harness=pi \
-    --stack="${STACK:-phoenix}" \
+    "${STACK:+--stack=$STACK}" \
     "${ELIXIR_FLAGS[@]+"${ELIXIR_FLAGS[@]}"}" \
     "${PROMPT_PARTS[@]+"${PROMPT_PARTS[@]}"}"

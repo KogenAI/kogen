@@ -145,8 +145,12 @@ def process_template(template_file, tool_name, yaml_frontmatter, config_yaml=Non
     When tool_name == 'claude' and config_yaml is provided, the YAML frontmatter
     model: line is rewritten using harness[role][claude].model and an effort: line
     is injected immediately after it.  Role name is derived from the template
-    basename (e.g. planner.md.j2 -> planner).  Silent no-op when role is absent
-    from harness or config_yaml is unset.
+    basename (e.g. planner.md.j2 -> planner).
+
+    Only templates carrying a `model:` frontmatter line are treated as agent-role
+    templates and are REQUIRED to resolve a role_cfg (fail loud if absent/incomplete).
+    Templates with no `model:` line (e.g. slash commands) are not roles and are
+    passed through unchanged — this is the only legitimate no-op path.
     """
     with open(template_file, 'r') as f:
         content = f.read()
@@ -166,30 +170,52 @@ def process_template(template_file, tool_name, yaml_frontmatter, config_yaml=Non
         harness = config.get('harness', {})
         # Strip both extensions: planner.md.j2 -> planner.md -> planner
         role_name = os.path.splitext(os.path.splitext(os.path.basename(template_file))[0])[0]
-        role_cfg = harness.get(role_name, {}).get('claude')
-        if role_cfg:
+
+        # Only agent-role templates carry a model: line in their frontmatter.
+        # Slash-command templates (e.g. poke-holes.md.j2) have no model: line
+        # and are not roles — skip the role_cfg requirement entirely for them.
+        has_model_line = re.search(r'^---\n.*?^model:[ \t]*.+$.*?^---', content, flags=re.MULTILINE | re.DOTALL)
+
+        if has_model_line:
+            role_cfg = harness.get(role_name, {}).get('claude')
+            if not role_cfg:
+                raise SystemExit(
+                    f"process_template.py: role '{role_name}' missing from config.yaml harness map"
+                    f" (template {template_file} has a model: line and must resolve a claude role_cfg)"
+                )
             model_val = role_cfg.get('model')
             effort_val = role_cfg.get('effort')
-            if model_val and effort_val:
-                # Rewrite the model: line inside the first frontmatter block
-                # (between the first pair of --- delimiters) and inject effort:.
-                def rewrite_frontmatter(m):
-                    fm = m.group(1)
-                    fm = re.sub(
-                        r'^model:[ \t]*.+$',
-                        f'model: {model_val}\neffort: {effort_val}',
-                        fm,
-                        flags=re.MULTILINE,
-                    )
-                    return f'---\n{fm}\n---'
-
-                content = re.sub(
-                    r'^---\n(.*?)\n---',
-                    rewrite_frontmatter,
-                    content,
-                    count=1,
-                    flags=re.DOTALL,
+            if not model_val or not effort_val:
+                raise SystemExit(
+                    f"process_template.py: role '{role_name}' claude config missing model/effort"
+                    f" (harness.{role_name}.claude = {role_cfg!r})"
                 )
+
+            # Rewrite the model: line inside the first frontmatter block
+            # (between the first pair of --- delimiters) and inject effort:.
+            def rewrite_frontmatter(m):
+                fm = m.group(1)
+                fm, n = re.subn(
+                    r'^model:[ \t]*.+$',
+                    f'model: {model_val}\neffort: {effort_val}',
+                    fm,
+                    count=1,
+                    flags=re.MULTILINE,
+                )
+                if n != 1:
+                    raise SystemExit(
+                        f"process_template.py: expected exactly one model: line in frontmatter"
+                        f" of {template_file}, found {n}"
+                    )
+                return f'---\n{fm}\n---'
+
+            content = re.sub(
+                r'^---\n(.*?)\n---',
+                rewrite_frontmatter,
+                content,
+                count=1,
+                flags=re.DOTALL,
+            )
 
     print(content, end='')
 

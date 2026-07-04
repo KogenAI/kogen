@@ -363,11 +363,13 @@ for entry in "${LAUNCHERS[@]}"; do
         fi
     fi
 
-    # ── Case 14: harness/stack flags ──
+    # ── Case 14: harness/stack flags — STACK unset → launcher omits --stack
+    # entirely (no silent default); codegen-build itself hard-requires --stack. ──
     WS14="$(make_ws "${HARNESS}_c14")"
     ec=0
     (
         cd "$WS14"
+        unset STACK
         OCG_CODEGEN_DIR="$WS14" "$LAUNCHER" "flag check prompt"
     ) >/dev/null 2>/dev/null || ec=$?
     check "(14:$HARNESS) default flags run exits 0" "0" "$ec"
@@ -375,7 +377,7 @@ for entry in "${LAUNCHERS[@]}"; do
     if [[ -f "$WS14/cb_capture.txt" ]]; then
         CB14C="$(cat "$WS14/cb_capture.txt")"
         assert_contains "(14:$HARNESS) --harness=$HARNESS passed" "$CB14C" "--harness=$HARNESS"
-        assert_contains "(14:$HARNESS) --stack=phoenix default" "$CB14C" "--stack=phoenix"
+        assert_not_contains "(14:$HARNESS) no silent --stack=phoenix default when STACK unset" "$CB14C" "--stack="
     fi
 
     WS14B="$(make_ws "${HARNESS}_c14b")"

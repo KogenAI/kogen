@@ -63,6 +63,31 @@ describe("step-log-section-before-spawn", () => {
     assert.ok((result as { block?: boolean }).block === true);
   });
 
+  // ── Test 1b: deny when log path resolves but read throws (present-but-unreadable) ──
+  it("denies when step log path resolves but read throws (present-but-unreadable)", async () => {
+    // A directory named *.md matches getActiveStepLog's readdirSync filter
+    // (endsWith(".md")) and existsSync, but fs.readFileSync throws EISDIR on
+    // it — this is the present-but-unreadable anomaly path, not absence.
+    const logDirAsFile = path.join(
+      tmpDir,
+      "codegen",
+      "logging",
+      "20260601_step1_test.md",
+    );
+    fs.mkdirSync(logDirAsFile, { recursive: true });
+
+    const result = await runHook("planner-phoenix");
+    const asObj = result as { block?: boolean; reason?: string } | null;
+    assert.ok(
+      asObj != null && asObj.block === true,
+      `expected block but got: ${JSON.stringify(result)}`,
+    );
+    assert.ok(
+      asObj.reason?.includes("could not be read"),
+      `expected "could not be read" in reason but got: ${asObj.reason}`,
+    );
+  });
+
   // ── Test 2: deny planner-phoenix when ## Plan header is empty ─────────────
   it("denies planner-phoenix when ## Plan body is empty", async () => {
     writeLog(

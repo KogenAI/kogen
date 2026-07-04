@@ -32,31 +32,45 @@ export function register(pi: ExtensionAPI): void {
     const command: string = (event.input as { command?: string }).command ?? "";
     if (!/(^|[\s;&|])git\s+commit\b/.test(command)) return;
     debugLog("context-file-size-gate", `cmd=${command}`);
+    let statusLines: string[];
     try {
-      const statusLines = execSync("git diff --cached --name-status", {
+      statusLines = execSync("git diff --cached --name-status", {
         encoding: "utf8",
       })
         .split("\n")
         .filter(Boolean);
-      const staged = statusLines
-        .filter((l) => /^[AM]\s+context\/[^/]+\.md$/.test(l))
-        .map((l) => l.split(/\s+/)[1]);
-      if (staged.length === 0) return;
-      const over: string[] = [];
-      for (const fpath of staged) {
-        const blob = execSync(`git show :${JSON.stringify(fpath)}`, {
+    } catch {
+      // Not in a git repo — pass through.
+      return;
+    }
+
+    const staged = statusLines
+      .filter((l) => /^[AM]\s+context\/[^/]+\.md$/.test(l))
+      .map((l) => l.split(/\s+/)[1]);
+    if (staged.length === 0) return;
+
+    // Run OUTSIDE the repo-absence catch: a git-show failure here means the
+    // blob genuinely could not be read for a staged path, not repo-absence.
+    // Deny rather than silently skip size-checking that file.
+    const over: string[] = [];
+    for (const fpath of staged) {
+      let blob: Buffer;
+      try {
+        blob = execSync(`git show :${JSON.stringify(fpath)}`, {
           encoding: "buffer",
         });
-        const bytes = Buffer.byteLength(blob);
-        if (bytes > CAP) {
-          over.push(
-            `context-file-size-gate (backstop): staged context file ${fpath} is ${bytes} bytes, over the ${CAP}-byte (40k) cap. The committer cannot Read or edit context/*.md — do NOT trim it here. Orchestrator: re-spawn the context-curator to compress or split ${fpath} under 40960 bytes, then re-run the cycle.`,
-          );
-        }
+      } catch (e) {
+        return deny(
+          `context-file-size-gate (backstop): could not read staged blob for ${fpath} via 'git show' (${(e as Error).message}). Cannot verify the 40,960-byte (40k) cap was not exceeded — resolve the git error before committing.`,
+        );
       }
-      if (over.length > 0) return deny(over.join("\n"));
-    } catch {
-      // Not in a git repo / blob unreadable — pass through.
+      const bytes = Buffer.byteLength(blob);
+      if (bytes > CAP) {
+        over.push(
+          `context-file-size-gate (backstop): staged context file ${fpath} is ${bytes} bytes, over the ${CAP}-byte (40k) cap. The committer cannot Read or edit context/*.md — do NOT trim it here. Orchestrator: re-spawn the context-curator to compress or split ${fpath} under 40960 bytes, then re-run the cycle.`,
+        );
+      }
     }
+    if (over.length > 0) return deny(over.join("\n"));
   });
 }

@@ -108,6 +108,48 @@ describe("clean-tree-before-ship", { concurrency: 1 }, () => {
     }
   });
 
+  // Case 3b: ship mv + git-status throws unexpectedly (repo presence already
+  // proven via rev-parse) → block (anomaly, not repo-absence)
+  it("blocks when 'git status --porcelain' fails unexpectedly after repo presence proven", async () => {
+    const tmpDir = fs.mkdtempSync(
+      path.join(os.tmpdir(), "clean-tree-ship-status-throw-"),
+    );
+    const originalCwd = process.cwd();
+    try {
+      execSync("git init -q", { cwd: tmpDir });
+      execSync("git config user.email t@t", { cwd: tmpDir });
+      execSync("git config user.name t", { cwd: tmpDir });
+      execSync("git config commit.gpgsign false", { cwd: tmpDir });
+      execSync("git checkout -q -b main", { cwd: tmpDir });
+      fs.writeFileSync(path.join(tmpDir, "README"), "init");
+      execSync("git add README", { cwd: tmpDir });
+      execSync("git commit -qm init", { cwd: tmpDir });
+
+      // Corrupt the index so 'git status --porcelain' throws unexpectedly —
+      // 'git rev-parse --show-toplevel' already proved repo presence above.
+      fs.rmSync(path.join(tmpDir, ".git", "index"));
+      fs.mkdirSync(path.join(tmpDir, ".git", "index"));
+
+      process.chdir(tmpDir);
+
+      const result = await runHook(
+        "mv codegen/pitches/ready/my-slug.md codegen/pitches/shipped/my-slug.md",
+      );
+      const asObj = result as { block?: boolean; reason?: string } | null;
+      assert.ok(
+        asObj != null && asObj.block === true,
+        `expected block but got: ${JSON.stringify(result)}`,
+      );
+      assert.ok(
+        asObj.reason?.includes("failed unexpectedly"),
+        `expected "failed unexpectedly" in reason but got: ${asObj.reason}`,
+      );
+    } finally {
+      process.chdir(originalCwd);
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    }
+  });
+
   // Case 4: non-bash tool → pass-through
   it("passes through for non-bash tool", async () => {
     const result = await runHook(

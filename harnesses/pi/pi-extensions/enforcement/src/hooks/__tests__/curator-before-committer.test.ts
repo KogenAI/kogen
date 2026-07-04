@@ -138,6 +138,30 @@ describe("curator-before-committer", () => {
     assert.ok(result == null || (result as { block?: boolean }).block !== true);
   });
 
+  it("blocks committer when log path resolves but read throws (present-but-unreadable)", async () => {
+    // A directory named *.md matches getActiveStepLog's readdirSync filter
+    // (endsWith(".md")) and existsSync, but fs.readFileSync throws EISDIR on
+    // it — this is the present-but-unreadable anomaly path, not absence.
+    const logDirAsFile = path.join(
+      tmpDir,
+      "codegen",
+      "logging",
+      "20260601_step1_test.md",
+    );
+    fs.mkdirSync(logDirAsFile, { recursive: true });
+
+    const result = await runHook("committer");
+    const asObj = result as { block?: boolean; reason?: string } | null;
+    assert.ok(
+      asObj != null && asObj.block === true,
+      `expected block but got: ${JSON.stringify(result)}`,
+    );
+    assert.ok(
+      asObj.reason?.includes("could not be read"),
+      `expected "could not be read" in reason but got: ${asObj.reason}`,
+    );
+  });
+
   it("allows committer when no log file exists (fail-open)", async () => {
     // No log files written — logging dir is empty
     process.env["CWD"] = tmpDir;

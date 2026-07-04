@@ -310,6 +310,23 @@ CLAUDE_ROLE=debug run_test "CLAUDE_ROLE=debug Bash .jsonl command allows" "0" "$
 FIXTURE_BASH_TF6='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"git log --oneline"},"agent_id":"","agent_type":""}'
 run_test "orchestrator Bash git log --oneline allows (no transcript tokens)" "0" "$FIXTURE_BASH_TF6"
 
+# Test TF7: command matches BOTH the transcript-forge pattern AND the leading
+# exploration-verb pattern (cat ...jsonl) — must emit exactly ONE deny JSON
+# object, not two concatenated blobs (regression: missing exit 0 after the
+# transcript-forge deny used to let this fall through into the verb-deny too).
+FIXTURE_BASH_TF7='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"cat ~/.claude/projects/foo/session.jsonl"},"agent_id":"","agent_type":""}'
+STDOUT_TF7=$(printf '%s' "$FIXTURE_BASH_TF7" | bash "$GUARD" 2>/dev/null || true)
+JSON_OBJ_COUNT_TF7=$(printf '%s' "$STDOUT_TF7" | grep -oE '"permissionDecision"' | wc -l | tr -d '[:space:]')
+if [ "$JSON_OBJ_COUNT_TF7" = "1" ]; then
+    [ -n "${VERBOSE:-}" ] && printf 'PASS: %s\n' "transcript-forge + verb overlap emits exactly one deny JSON"
+    pass=$((pass + 1))
+else
+    printf 'FAIL: %s — expected exactly 1 permissionDecision, got %s\n  stdout: %s\n' \
+        "transcript-forge + verb overlap emits exactly one deny JSON" "$JSON_OBJ_COUNT_TF7" "$STDOUT_TF7"
+    fail=$((fail + 1))
+fi
+run_test "orchestrator Bash cat on .jsonl (transcript+verb overlap) denies" "2" "$FIXTURE_BASH_TF7"
+
 echo ""
 echo "Results: $pass passed, $fail failed"
 

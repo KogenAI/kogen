@@ -100,6 +100,7 @@ TARGET_MIX_ARGS_FILE="$MIX_ARGS_FILE_1" \
     CODEGEN_BUILD_EFFORT="low" \
     CODEGEN_BUILD_NON_INTERACTIVE=1 \
     CODEGEN_BUILD_ELIXIR=1 \
+    CODEGEN_BUILD_STACK=phoenix \
     CODEGEN_BUILD_CWD="$TMP_ROOT/project" \
     "$TEST1_HARNESS/dispatch.sh" --extension "$TMP_ROOT/custom-extension" "hello prompt" \
     >/dev/null 2>&1 || rc=$?
@@ -138,6 +139,7 @@ out=$(
         CODEGEN_BUILD_EFFORT="low" \
         CODEGEN_BUILD_NON_INTERACTIVE=1 \
         CODEGEN_BUILD_ELIXIR=1 \
+        CODEGEN_BUILD_STACK=phoenix \
         CODEGEN_BUILD_CWD="$TMP_ROOT/no-loop-dir/project" \
         "$FAKE_CODEGEN_NO_LOOP/harnesses/pi/dispatch.sh" "hello prompt" \
         2>&1
@@ -176,6 +178,7 @@ TARGET_MIX_ARGS_FILE="$MIX_ARGS_FILE_3" \
     CODEGEN_BUILD_EFFORT="low" \
     CODEGEN_BUILD_NON_INTERACTIVE=1 \
     CODEGEN_BUILD_ELIXIR=1 \
+    CODEGEN_BUILD_STACK=phoenix \
     CODEGEN_BUILD_CWD="$TMP_ROOT/project" \
     OPENAI_API_KEY=leak1 \
     ANTHROPIC_API_KEY=leak2 \
@@ -202,6 +205,7 @@ out=$(
         CODEGEN_BUILD_MODEL="test-model" \
         CODEGEN_BUILD_EFFORT="low" \
         CODEGEN_BUILD_ELIXIR=1 \
+        CODEGEN_BUILD_STACK=phoenix \
         CODEGEN_BUILD_CWD="$TMP_ROOT/project" \
         "$TEST1_HARNESS/dispatch.sh" "hello prompt" \
         2>&1 >/dev/null
@@ -226,6 +230,38 @@ out=$(
 assert_eq "engine=legacy: exit 0 (pi stub)" "0" "$rc"
 assert_contains "engine=legacy: banner present" "$out" "pi dispatch: engine=legacy"
 assert_not_contains "engine=legacy: engine=elixir banner absent" "$out" "pi dispatch: engine=elixir"
+
+# ── Test 6: CODEGEN_BUILD_STACK unset/empty in --elixir path → exit 2 ────────
+# Regression lock: dispatch.sh must NOT silently coerce an empty/unset stack
+# to "phoenix" — it must fail loud naming CODEGEN_BUILD_STACK.
+# env -i (not just omitting the var) — guarantees CODEGEN_BUILD_STACK is truly
+# absent regardless of the CALLER's ambient environment (a prior make-test
+# fixture or manual export in the same shell can otherwise leak it through).
+MIX_ARGS_FILE_6="$TMP_ROOT/mix-args-6.txt"
+rc=0
+out=$(
+    env -i \
+        HOME="${HOME:-/tmp}" \
+        TARGET_MIX_ARGS_FILE="$MIX_ARGS_FILE_6" \
+        PATH="$FAKE_BIN:$PATH" \
+        OCG_CODEGEN_DIR="$CODEGEN_ROOT" \
+        CODEGEN_BUILD_MODEL="test-model" \
+        CODEGEN_BUILD_EFFORT="low" \
+        CODEGEN_BUILD_NON_INTERACTIVE=1 \
+        CODEGEN_BUILD_ELIXIR=1 \
+        CODEGEN_BUILD_CWD="$TMP_ROOT/project" \
+        "$TEST1_HARNESS/dispatch.sh" "hello prompt" \
+        2>&1
+) || rc=$?
+assert_eq "missing CODEGEN_BUILD_STACK: exit code 2" "2" "$rc"
+assert_contains "missing CODEGEN_BUILD_STACK: stderr names CODEGEN_BUILD_STACK" \
+    "$out" "CODEGEN_BUILD_STACK is required but empty/unset"
+if [[ -f "$MIX_ARGS_FILE_6" ]]; then
+    printf 'FAIL: missing CODEGEN_BUILD_STACK — mix must NOT have been invoked\n'
+    fail=$((fail + 1))
+else
+    pass=$((pass + 1))
+fi
 
 printf '%s passed, %s failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

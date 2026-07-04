@@ -168,7 +168,14 @@ render() {
     # Generate SECRET_KEY_BASE if rendering .env
     local secret_key_base=""
     if [[ "$template_rel" == ".env.eex" ]]; then
-        secret_key_base="$(mix phx.gen.secret 2>/dev/null || echo "REPLACE_with_mix_phx.gen.secret_output")"
+        local secret_stderr_file
+        secret_stderr_file="$(mktemp)"
+        if ! secret_key_base="$(mix phx.gen.secret 2>"$secret_stderr_file")"; then
+            echo "[scaffold.sh] WARN: mix phx.gen.secret failed — using placeholder; real stderr:" >&2
+            cat "$secret_stderr_file" >&2
+            secret_key_base="REPLACE_with_mix_phx.gen.secret_output"
+        fi
+        rm -f "$secret_stderr_file"
     fi
 
     "$RENDER_SH" \
@@ -205,7 +212,17 @@ render ".mcp.json.eex"
 
 # If --no-ecto, remove ecto.rollback line from Makefile
 if [[ -n "$NO_ECTO" ]] && [[ -f "$TARGET_DIR/Makefile" ]]; then
-    grep -v 'ecto.rollback' "$TARGET_DIR/Makefile" >"$TARGET_DIR/Makefile.tmp" && mv "$TARGET_DIR/Makefile.tmp" "$TARGET_DIR/Makefile"
+    # grep -v exits 1 when no lines match (impossible here — file always has other
+    # lines), but splitting grep and mv avoids the `&&` short-circuit that would
+    # abort under set -e before mv runs, leaving an empty .tmp in place of the
+    # original. Unconditional mv is safe.
+    grep -v 'ecto.rollback' "$TARGET_DIR/Makefile" >"$TARGET_DIR/Makefile.tmp"
+    mv "$TARGET_DIR/Makefile.tmp" "$TARGET_DIR/Makefile"
+    # Post-condition: the ecto.rollback line must actually be gone
+    if grep -q 'ecto.rollback' "$TARGET_DIR/Makefile"; then
+        echo "[scaffold.sh] ERROR: --no-ecto strip failed — ecto.rollback line remains in Makefile" >&2
+        exit 1
+    fi
 fi
 
 # If --no-ecto, strip the two Ecto lines from the health controller
@@ -345,7 +362,16 @@ fi
 # Phase 6: releases + optimum_templates submodule
 # ---------------------------------------------------------------------------
 echo "[scaffold.sh] generating releases..."
-(cd "$TARGET_DIR" && mix phx.gen.release) || echo "[scaffold.sh] WARN: mix phx.gen.release failed — skipping" >&2
+(cd "$TARGET_DIR" && mix phx.gen.release) || {
+    echo "[scaffold.sh] ERROR: mix phx.gen.release failed" >&2
+    exit 1
+}
+
+# Post-condition: rel/ must exist after a successful phx.gen.release
+if [[ ! -d "$TARGET_DIR/rel" ]]; then
+    echo "[scaffold.sh] ERROR: mix phx.gen.release reported success but rel/ is missing" >&2
+    exit 1
+fi
 
 # Under --no-ecto, remove the migrate overlay that phx.gen.release emits unconditionally.
 # The overlay calls <App>.Release.migrate/0 which phx.new --no-ecto omits → broken release overlay.
@@ -355,8 +381,16 @@ if [[ -n "$NO_ECTO" ]]; then
 fi
 
 echo "[scaffold.sh] adding optimum_templates submodule..."
-(cd "$TARGET_DIR" && git submodule add https://github.com/optimumBA/optimum_templates priv/templates) ||
-    echo "[scaffold.sh] WARN: optimum_templates submodule add failed — add manually" >&2
+(cd "$TARGET_DIR" && git submodule add https://github.com/optimumBA/optimum_templates priv/templates) || {
+    echo "[scaffold.sh] ERROR: optimum_templates submodule add failed" >&2
+    exit 1
+}
+
+# Post-condition: priv/templates must exist and be non-empty after a successful submodule add
+if [[ ! -d "$TARGET_DIR/priv/templates" ]] || [[ -z "$(ls -A "$TARGET_DIR/priv/templates" 2>/dev/null)" ]]; then
+    echo "[scaffold.sh] ERROR: optimum_templates submodule add reported success but priv/templates is missing/empty" >&2
+    exit 1
+fi
 
 # Check mcp-proxy availability
 if ! command -v mcp-proxy >/dev/null 2>&1; then
