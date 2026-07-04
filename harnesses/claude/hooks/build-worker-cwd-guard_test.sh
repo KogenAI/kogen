@@ -126,6 +126,15 @@ fi
 export OCG_USER_FILES_DIR="$USER_FILES_DIR"
 run_test "orchestrator Read inside OCG_USER_FILES_DIR allows (upload dir)" "0" "$FIXTURE_ATTACHMENT"
 
+# Test 12: Orchestrator Write with empty FILE_PATH (under OCG_APPS_ROOT) — DENY (fail-closed)
+# The Read|Write|Edit|MultiEdit|NotebookEdit file-tool arm denies on empty
+# FILE_PATH — a file-bearing tool with no path is anomalous, not a
+# legitimate skip. Distinct from the Bash abs-path-token loop's own empty
+# check (is_allowed_path), which stays a legitimate skip (tested separately
+# via the Bash fixtures above — an empty token from command splitting).
+FIXTURE_EMPTY_FILE_PATH='{"hook_event_name":"PreToolUse","tool_name":"Write","tool_input":{"file_path":""},"agent_id":"","agent_type":"","cwd":"'"$PROJECT_DIR"'"}'
+run_test "orchestrator Write empty FILE_PATH (managed worker) denies (fail-closed)" "2" "$FIXTURE_EMPTY_FILE_PATH"
+
 echo ""
 echo "Results: $pass passed, $fail failed"
 

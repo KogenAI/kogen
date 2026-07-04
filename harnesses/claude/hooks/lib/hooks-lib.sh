@@ -77,6 +77,17 @@ parse_input() {
     RAW_INPUT=$(cat)
     export RAW_INPUT
 
+    # fail-loud: non-JSON stdin is an anomaly (Claude Code always sends JSON
+    # for these events); hard-fail rather than silently produce all-empty
+    # vars that let a hook fall through its normal-looking-but-wrong logic.
+    # Guarded on non-empty RAW_INPUT: some hooks are invoked with no stdin at
+    # all (a legitimate, tolerated shape), so an empty read must NOT trip
+    # this assert.
+    if [ -n "$RAW_INPUT" ] && ! printf '%s' "$RAW_INPUT" | jq -e . >/dev/null 2>&1; then
+        echo "parse_input: stdin is not valid JSON" >&2
+        exit 2
+    fi
+
     # Single jq invocation that prints each field on a line. Use @sh to
     # protect newlines and special chars; we then read line by line.
     # NOTE: we rely on `jq -r` — fields containing literal newlines will
@@ -86,17 +97,22 @@ parse_input() {
     # Per-field jq calls — slightly more expensive than a single multi-output
     # call, but preserves embedded newlines in fields like PROMPT,
     # LAST_ASSISTANT_MESSAGE, and tool_input.command (heredocs).
-    TOOL_NAME=$(printf '%s' "$RAW_INPUT" | jq -r '.tool_name // ""' 2>/dev/null)
-    AGENT_TYPE=$(printf '%s' "$RAW_INPUT" | jq -r '.agent_type // ""' 2>/dev/null)
-    AGENT_ID=$(printf '%s' "$RAW_INPUT" | jq -r '.agent_id // ""' 2>/dev/null)
-    COMMAND=$(printf '%s' "$RAW_INPUT" | jq -r '.tool_input.command // ""' 2>/dev/null)
-    FILE_PATH=$(printf '%s' "$RAW_INPUT" | jq -r '.tool_input.file_path // .tool_input.notebook_path // .tool_input.path // ""' 2>/dev/null)
-    CWD=$(printf '%s' "$RAW_INPUT" | jq -r '.cwd // ""' 2>/dev/null)
-    SESSION_ID=$(printf '%s' "$RAW_INPUT" | jq -r '.session_id // ""' 2>/dev/null)
-    STOP_HOOK_ACTIVE=$(printf '%s' "$RAW_INPUT" | jq -r '.stop_hook_active // false | tostring' 2>/dev/null)
-    LAST_ASSISTANT_MESSAGE=$(printf '%s' "$RAW_INPUT" | jq -r '.last_assistant_message // ""' 2>/dev/null)
-    TRANSCRIPT_PATH=$(printf '%s' "$RAW_INPUT" | jq -r '.transcript_path // ""' 2>/dev/null)
-    PROMPT=$(printf '%s' "$RAW_INPUT" | jq -r '.prompt // ""' 2>/dev/null)
+    # The `// ""` / `// false` fallbacks are legitimate optional-field
+    # defaults (a field absent on a given event type, e.g. COMMAND on a
+    # Write event) — NOT error-swallowing. The jq-validity assert above
+    # already guarantees RAW_INPUT is well-formed JSON by this point, so a
+    # per-field `2>/dev/null` here would only mask a genuine jq bug.
+    TOOL_NAME=$(printf '%s' "$RAW_INPUT" | jq -r '.tool_name // ""')
+    AGENT_TYPE=$(printf '%s' "$RAW_INPUT" | jq -r '.agent_type // ""')
+    AGENT_ID=$(printf '%s' "$RAW_INPUT" | jq -r '.agent_id // ""')
+    COMMAND=$(printf '%s' "$RAW_INPUT" | jq -r '.tool_input.command // ""')
+    FILE_PATH=$(printf '%s' "$RAW_INPUT" | jq -r '.tool_input.file_path // .tool_input.notebook_path // .tool_input.path // ""')
+    CWD=$(printf '%s' "$RAW_INPUT" | jq -r '.cwd // ""')
+    SESSION_ID=$(printf '%s' "$RAW_INPUT" | jq -r '.session_id // ""')
+    STOP_HOOK_ACTIVE=$(printf '%s' "$RAW_INPUT" | jq -r '.stop_hook_active // false | tostring')
+    LAST_ASSISTANT_MESSAGE=$(printf '%s' "$RAW_INPUT" | jq -r '.last_assistant_message // ""')
+    TRANSCRIPT_PATH=$(printf '%s' "$RAW_INPUT" | jq -r '.transcript_path // ""')
+    PROMPT=$(printf '%s' "$RAW_INPUT" | jq -r '.prompt // ""')
 
     export TOOL_NAME AGENT_TYPE AGENT_ID COMMAND FILE_PATH CWD \
         SESSION_ID STOP_HOOK_ACTIVE LAST_ASSISTANT_MESSAGE TRANSCRIPT_PATH PROMPT

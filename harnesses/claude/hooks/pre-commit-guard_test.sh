@@ -145,21 +145,40 @@ run_test_env "git reset soft allowed for current-cycle commit" "0" "$FIXTURE_RES
     "FAKE_GIT_HEAD_CT=1700000200" \
     "CODEGEN_BUILD_START_TS=1700000100"
 
-# Test 11: ops role + git commit — MUST ALLOW (ops bypasses pre-commit-guard entirely)
+# Ops role alone no longer unlocks destructive git — a two-signal gate now
+# requires CODEGEN_OPS_GIT_UNLOCK=1 ALSO set, per the fail-closed-everywhere
+# ruling (role alone was a single-signal bypass that fail-open'd on a typo'd
+# or stray CLAUDE_ROLE=ops in the environment).
+
+# Test 11: ops role + git commit + CODEGEN_OPS_GIT_UNLOCK=1 — MUST ALLOW (two-signal gate satisfied)
 FIXTURE_OPS_COMMIT='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"git commit -m \"hotfix: patch config\""},"agent_type":"","agent_id":"a"}'
-run_test_env "ops role + git commit allowed" "0" "$FIXTURE_OPS_COMMIT" "CLAUDE_ROLE=ops"
+run_test_env "ops role + unlock + git commit allowed" "0" "$FIXTURE_OPS_COMMIT" "CLAUDE_ROLE=ops" "CODEGEN_OPS_GIT_UNLOCK=1"
 
-# Test 12: ops role + git reset --hard — MUST ALLOW
+# Test 12: ops role + git reset --hard + CODEGEN_OPS_GIT_UNLOCK=1 — MUST ALLOW
 FIXTURE_OPS_RESET='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"git reset --hard HEAD~1"},"agent_type":"","agent_id":"a"}'
-run_test_env "ops role + git reset --hard allowed" "0" "$FIXTURE_OPS_RESET" "CLAUDE_ROLE=ops"
+run_test_env "ops role + unlock + git reset --hard allowed" "0" "$FIXTURE_OPS_RESET" "CLAUDE_ROLE=ops" "CODEGEN_OPS_GIT_UNLOCK=1"
 
-# Test 13: ops role + git push --force — MUST ALLOW
+# Test 13: ops role + git push --force + CODEGEN_OPS_GIT_UNLOCK=1 — MUST ALLOW
 FIXTURE_OPS_PUSH='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"git push --force origin main"},"agent_type":"","agent_id":"a"}'
-run_test_env "ops role + git push --force allowed" "0" "$FIXTURE_OPS_PUSH" "CLAUDE_ROLE=ops"
+run_test_env "ops role + unlock + git push --force allowed" "0" "$FIXTURE_OPS_PUSH" "CLAUDE_ROLE=ops" "CODEGEN_OPS_GIT_UNLOCK=1"
 
-# Test 14: PI_ROLE=ops + git commit — MUST ALLOW (parity with CLAUDE_ROLE=ops)
+# Test 14: PI_ROLE=ops + CODEGEN_OPS_GIT_UNLOCK=1 + git commit — MUST ALLOW (parity with CLAUDE_ROLE=ops)
 FIXTURE_PI_OPS_COMMIT='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"git commit -m \"pi-ops hotfix\""},"agent_type":"","agent_id":"a"}'
-run_test_env "PI_ROLE=ops + git commit allowed" "0" "$FIXTURE_PI_OPS_COMMIT" "PI_ROLE=ops"
+run_test_env "PI_ROLE=ops + unlock + git commit allowed" "0" "$FIXTURE_PI_OPS_COMMIT" "PI_ROLE=ops" "CODEGEN_OPS_GIT_UNLOCK=1"
+
+# Test 14b: ops role WITHOUT CODEGEN_OPS_GIT_UNLOCK — MUST DENY (two-signal gate: role alone insufficient)
+FIXTURE_OPS_ALONE_COMMIT='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"git commit -m \"hotfix\""},"agent_type":"","agent_id":"a"}'
+run_test_env "ops role alone (no unlock) + git commit denied" "2" "$FIXTURE_OPS_ALONE_COMMIT" "CLAUDE_ROLE=ops"
+
+FIXTURE_OPS_ALONE_RESET='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"git reset --hard HEAD~1"},"agent_type":"","agent_id":"a"}'
+run_test_env "ops role alone (no unlock) + git reset --hard denied" "2" "$FIXTURE_OPS_ALONE_RESET" "CLAUDE_ROLE=ops"
+
+FIXTURE_OPS_ALONE_PUSH='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"git push --force origin main"},"agent_type":"","agent_id":"a"}'
+run_test_env "ops role alone (no unlock) + git push --force denied" "2" "$FIXTURE_OPS_ALONE_PUSH" "CLAUDE_ROLE=ops"
+
+# Test 14c: PI_ROLE=ops + CODEGEN_OPS_GIT_UNLOCK=1 — MUST ALLOW (parity, two-signal satisfied)
+FIXTURE_PI_OPS_UNLOCK='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"git commit -m \"pi-ops unlock\""},"agent_type":"","agent_id":"a"}'
+run_test_env "PI_ROLE=ops + CODEGEN_OPS_GIT_UNLOCK=1 allowed (parity)" "0" "$FIXTURE_PI_OPS_UNLOCK" "PI_ROLE=ops" "CODEGEN_OPS_GIT_UNLOCK=1"
 
 # Test 15: git add -A for non-committer — MUST DENY
 FIXTURE_ADD_BLOCKED='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"git add -A"},"agent_type":"developer-phoenix-backend","agent_id":"a"}'
@@ -169,9 +188,13 @@ run_test "git add -A blocked for non-committer" "2" "$FIXTURE_ADD_BLOCKED"
 FIXTURE_ADD_COMMITTER='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"git add -A"},"agent_type":"committer","agent_id":"a"}'
 run_test "git add -A passes for committer" "0" "$FIXTURE_ADD_COMMITTER"
 
-# Test 17: git add -A in ops mode — MUST ALLOW
+# Test 17: git add -A in ops mode + CODEGEN_OPS_GIT_UNLOCK=1 — MUST ALLOW
 FIXTURE_ADD_OPS='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"git add -A"},"agent_type":"","agent_id":"a"}'
-run_test_env "git add -A allowed in ops mode" "0" "$FIXTURE_ADD_OPS" "CLAUDE_ROLE=ops"
+run_test_env "git add -A allowed in ops mode + unlock" "0" "$FIXTURE_ADD_OPS" "CLAUDE_ROLE=ops" "CODEGEN_OPS_GIT_UNLOCK=1"
+
+# Test 17b: git add -A in ops mode WITHOUT CODEGEN_OPS_GIT_UNLOCK — MUST DENY
+FIXTURE_ADD_OPS_ALONE='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"git add -A"},"agent_type":"","agent_id":"a"}'
+run_test_env "git add -A denied in ops mode alone (no unlock)" "2" "$FIXTURE_ADD_OPS_ALONE" "CLAUDE_ROLE=ops"
 
 # Test 18: git stash for non-committer — MUST DENY
 FIXTURE_STASH_BLOCKED='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"git stash"},"agent_type":"developer-phoenix-backend","agent_id":"a"}'

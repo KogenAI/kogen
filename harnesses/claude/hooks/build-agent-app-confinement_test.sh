@@ -134,11 +134,14 @@ else
     fail=$((fail + 1))
 fi
 
-# ── Test 10: empty FILE_PATH → ALLOW (no path to evaluate) ────────────────────
+# ── Test 10: empty FILE_PATH → DENY (fail-closed; file-bearing tool anomaly) ──
+# Matcher is Write|Edit|MultiEdit (file-bearing); an empty path here is
+# anomalous, not a legitimate skip — fail-closed per the
+# fail-closed-everywhere ruling.
 EMPTY_PATH_INPUT=$(jq -n \
     --arg cwd "$SANDBOX" \
     '{"hook_event_name":"PreToolUse","tool_name":"Write","tool_input":{"file_path":""},"agent_type":"developer-phoenix-backend","agent_id":"abc","cwd":$cwd}')
-run_test "empty FILE_PATH → ALLOW (no-op)" "allow" "$EMPTY_PATH_INPUT" "CODEGEN_BUILD_CWD=$SANDBOX"
+run_test "empty FILE_PATH → DENY (fail-closed)" "deny" "$EMPTY_PATH_INPUT" "CODEGEN_BUILD_CWD=$SANDBOX"
 
 # ── Test 11: CODEGEN_BUILD_CWD set to empty string → ALLOW (inert) ────────────
 INPUT_T11=$(make_input "Write" "$OUTSIDE_FILE" "$SANDBOX")

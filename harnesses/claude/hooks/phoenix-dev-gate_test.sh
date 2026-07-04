@@ -419,7 +419,7 @@ assert_file_not_contains "long wiring FAIL: no render section (no fallthrough)" 
 rm -f "$WSTUB12" "$RSTUB12" "$GATE12"
 rm -rf "$T12"
 
-# ── Test 13: RENDER_CHECK_CMD points at a nonexistent binary → INCONCLUSIVE ──
+# ── Test 13: RENDER_CHECK_CMD points at a nonexistent binary → BLOCK (fail-closed) ──
 T13=$(make_project)
 LOG13="$T13/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_step1.md"
 cat >"$LOG13" <<'MD'
@@ -432,12 +432,13 @@ MD
 make_transcript "$T13/transcript.jsonl" "$LOG13"
 out13=$(printf '%s' "$(input_for "$T13" developer-phoenix-backend false sess1 "$T13/transcript.jsonl")" |
     RENDER_CHECK_CMD="/nonexistent/render-bin" CODEGEN_DIR="$SCRIPT_DIR" bash "$HOOK" 2>/dev/null || true)
-assert_not_contains "render missing-binary: no block" '"decision": "block"' "$out13"
+assert_contains "render missing-binary: block emitted (fail-closed)" '"decision": "block"' "$out13"
 assert_file_not_contains "render missing-binary: no ALL CLEAR in log" "ALL CLEAR" "$LOG13"
-assert_file_contains "render missing-binary: INCONCLUSIVE in log" "INCONCLUSIVE" "$LOG13"
+assert_file_contains "render missing-binary: FAILED in log" "FAILED" "$LOG13"
+assert_file_contains "render missing-binary: install node in log" "install node" "$LOG13"
 rm -rf "$T13"
 
-# ── Test 14: RENDER_CHECK_CMD stub exits non-zero with no verdict line → INCONCLUSIVE ──
+# ── Test 14: RENDER_CHECK_CMD stub exits non-zero with no verdict line → BLOCK (fail-closed) ──
 T14=$(make_project)
 LOG14="$T14/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_step1.md"
 cat >"$LOG14" <<'MD'
@@ -457,17 +458,19 @@ STUB
 chmod +x "$STUB14"
 out14=$(printf '%s' "$(input_for "$T14" developer-phoenix-backend false sess1 "$T14/transcript.jsonl")" |
     RENDER_CHECK_CMD="$STUB14" CODEGEN_DIR="$SCRIPT_DIR" bash "$HOOK" 2>/dev/null || true)
-assert_not_contains "render cmd-failed: no block" '"decision": "block"' "$out14"
+assert_contains "render cmd-failed: block emitted (fail-closed)" '"decision": "block"' "$out14"
 assert_file_not_contains "render cmd-failed: no ALL CLEAR in log" "ALL CLEAR" "$LOG14"
-assert_file_contains "render cmd-failed: INCONCLUSIVE in log" "INCONCLUSIVE" "$LOG14"
+assert_file_contains "render cmd-failed: FAILED in log" "FAILED" "$LOG14"
 rm -f "$STUB14"
 rm -rf "$T14"
 
 # ── Test 15: CODEGEN_DIR unset + no override → INCONCLUSIVE (not clear) ──────
-# When CODEGEN_DIR is unset and no RENDER/WIRING override is given, the default
-# command expands to a path that does not exist on disk. The hook must emit
-# INCONCLUSIVE (render-checker-missing or wiring-checker-missing) and NOT
-# emit ALL CLEAR.
+# When CODEGEN_DIR is unset and no RENDER/WIRING override is given, the
+# default command still resolves via BASH_SOURCE[0] (sibling-relative), so
+# render-check.js/node ARE present on this box — this test actually
+# exercises the runtime "server-unready" path (class-2, out of scope for the
+# fail-closed flip), not the checker-missing path (class-1, in scope — see
+# Tests 13/14/22/23/28/29 for those). It must stay INCONCLUSIVE.
 T15=$(make_project)
 LOG15="$T15/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_step1.md"
 cat >"$LOG15" <<'MD'
@@ -530,9 +533,11 @@ assert_file_not_contains "wiring opt-out: no wiring INCONCLUSIVE" "wiring: INCON
 rm -f "$RSTUB17"
 rm -rf "$T17"
 
-# ── Test 18: wiring cmd exits non-zero with no verdict line → INCONCLUSIVE ───
-# Today's || true swallows the crash and falls through to ALL CLEAR — this test
-# was red before the rc-capture fix and is green after.
+# ── Test 18: wiring cmd exits non-zero with no verdict line → BLOCK (fail-closed) ──
+# A crashed wiring checker (exit non-zero, no WIRING_VERDICT= line) is a
+# checker-unavailable condition — fail-closed per the fail-closed-everywhere
+# ruling. Before this flip the crash downgraded to INCONCLUSIVE and ALL CLEAR
+# still shipped; now it blocks.
 T18=$(make_project)
 LOG18="$T18/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_step1.md"
 cat >"$LOG18" <<'MD'
@@ -553,11 +558,9 @@ chmod +x "$WCRASH18"
 RSTUB18=$(make_render_stub "PASS")
 out18=$(printf '%s' "$(input_for "$T18" developer-phoenix-backend false sess1 "$T18/transcript.jsonl")" |
     WIRING_CHECK_CMD="$WCRASH18" RENDER_CHECK_CMD="$RSTUB18" CODEGEN_DIR="$SCRIPT_DIR" bash "$HOOK" 2>/dev/null || true)
-# Wiring INCONCLUSIVE is fail-open: no block, ALL CLEAR still emitted (with an INCONCLUSIVE note).
-# Before the rc-capture fix, the crash was fully masked (|| true) → no INCONCLUSIVE note at all.
-# After fix: INCONCLUSIVE note appears — crash is no longer silently swallowed.
-assert_not_contains "wiring crash: no block" '"decision": "block"' "$out18"
-assert_file_contains "wiring crash: INCONCLUSIVE note in log" "wiring: INCONCLUSIVE" "$LOG18"
+assert_contains "wiring crash: block emitted (fail-closed)" '"decision": "block"' "$out18"
+assert_file_not_contains "wiring crash: no ALL CLEAR" "ALL CLEAR" "$LOG18"
+assert_file_contains "wiring crash: FAILED in log" "FAILED" "$LOG18"
 rm -f "$WCRASH18" "$RSTUB18"
 rm -rf "$T18"
 
@@ -630,9 +633,9 @@ assert_not_contains "flat-layout sibling PASS stubs: no block" '"decision": "blo
 assert_file_contains "flat-layout sibling PASS stubs: ALL CLEAR in log" "ALL CLEAR" "$LOG21"
 rm -rf "$T21_FLAT" "$T21"
 
-# ── Test 22: flat-layout — sibling render-check.js ABSENT → INCONCLUSIVE ──────
+# ── Test 22: flat-layout — sibling render-check.js ABSENT → BLOCK (fail-closed) ──
 # When render-check.js is missing from the sibling lib/ dir, the preflight check
-# must emit INCONCLUSIVE (render-checker-missing) and NOT emit ALL CLEAR.
+# must emit a BLOCK (render-checker-missing) and NOT emit ALL CLEAR.
 T22_FLAT=$(mktemp -d)
 mkdir -p "$T22_FLAT/lib"
 cp "$HOOK" "$T22_FLAT/"
@@ -653,15 +656,15 @@ MD
 make_transcript "$T22/transcript.jsonl" "$LOG22"
 out22=$(printf '%s' "$(input_for "$T22" developer-phoenix-backend false sess1 "$T22/transcript.jsonl")" |
     env -u RENDER_CHECK_CMD -u WIRING_CHECK_CMD -u CODEGEN_DIR bash "$T22_FLAT/phoenix-dev-gate.sh" 2>/dev/null || true)
-# render-checker-missing → INCONCLUSIVE, non-fatal, no ALL CLEAR.
-assert_not_contains "flat-layout absent render-check.js: no block" '"decision": "block"' "$out22"
+# render-checker-missing → BLOCK (fail-closed), no ALL CLEAR.
+assert_contains "flat-layout absent render-check.js: block emitted (fail-closed)" '"decision": "block"' "$out22"
 assert_file_not_contains "flat-layout absent render-check.js: no ALL CLEAR" "ALL CLEAR" "$LOG22"
-assert_file_contains "flat-layout absent render-check.js: INCONCLUSIVE in log" "INCONCLUSIVE" "$LOG22"
+assert_file_contains "flat-layout absent render-check.js: FAILED in log" "FAILED" "$LOG22"
 rm -rf "$T22_FLAT" "$T22"
 
-# ── Test 23: render-check cmd exits nonzero with stderr → INCONCLUSIVE carries marker ──
+# ── Test 23: render-check cmd exits nonzero with stderr → BLOCK carries marker ──
 # A stub that emits a stderr marker and exits 1 (no RENDER_VERDICT= line).
-# The INCONCLUSIVE verdict surfaced in the log must contain the marker.
+# The BLOCK verdict surfaced in the log must contain the marker.
 T23=$(make_project)
 LOG23="$T23/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_step1.md"
 cat >"$LOG23" <<'MD'
@@ -682,15 +685,15 @@ chmod +x "$RSTUB23"
 WSTUB23=$(make_wiring_stub "PASS")
 out23=$(printf '%s' "$(input_for "$T23" developer-phoenix-backend false sess1 "$T23/transcript.jsonl")" |
     RENDER_CHECK_CMD="$RSTUB23" WIRING_CHECK_CMD="$WSTUB23" CODEGEN_DIR="$SCRIPT_DIR" bash "$HOOK" 2>/dev/null || true)
-assert_not_contains "render-check stderr: no block" '"decision": "block"' "$out23"
-assert_file_contains "render-check stderr: INCONCLUSIVE in log" "INCONCLUSIVE" "$LOG23"
-assert_file_contains "render-check stderr: marker in INCONCLUSIVE detail" "__RENDER_STDERR_MARKER__" "$LOG23"
+assert_contains "render-check stderr: block emitted (fail-closed)" '"decision": "block"' "$out23"
+assert_file_contains "render-check stderr: FAILED in log" "FAILED" "$LOG23"
+assert_file_contains "render-check stderr: marker in block detail" "__RENDER_STDERR_MARKER__" "$LOG23"
 rm -f "$RSTUB23" "$WSTUB23"
 rm -rf "$T23"
 
-# ── Test 24: wiring-check cmd exits nonzero with stderr → INCONCLUSIVE carries marker ──
+# ── Test 24: wiring-check cmd exits nonzero with stderr → BLOCK carries marker ──
 # A stub that emits a stderr marker and exits 1 (no WIRING_VERDICT= line).
-# The INCONCLUSIVE verdict surfaced in the log must contain the marker.
+# The BLOCK verdict surfaced in the log must contain the marker.
 T24=$(make_project)
 LOG24="$T24/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_step1.md"
 cat >"$LOG24" <<'MD'
@@ -711,9 +714,9 @@ chmod +x "$WCRASH24"
 RSTUB24=$(make_render_stub "PASS")
 out24=$(printf '%s' "$(input_for "$T24" developer-phoenix-backend false sess1 "$T24/transcript.jsonl")" |
     WIRING_CHECK_CMD="$WCRASH24" RENDER_CHECK_CMD="$RSTUB24" CODEGEN_DIR="$SCRIPT_DIR" bash "$HOOK" 2>/dev/null || true)
-assert_not_contains "wiring-check stderr: no block" '"decision": "block"' "$out24"
-assert_file_contains "wiring-check stderr: INCONCLUSIVE in log" "wiring: INCONCLUSIVE" "$LOG24"
-assert_file_contains "wiring-check stderr: marker in INCONCLUSIVE detail" "__WIRING_STDERR_MARKER__" "$LOG24"
+assert_contains "wiring-check stderr: block emitted (fail-closed)" '"decision": "block"' "$out24"
+assert_file_contains "wiring-check stderr: FAILED in log" "FAILED" "$LOG24"
+assert_file_contains "wiring-check stderr: marker in block detail" "__WIRING_STDERR_MARKER__" "$LOG24"
 rm -f "$WCRASH24" "$RSTUB24"
 rm -rf "$T24"
 
@@ -788,6 +791,76 @@ assert_file_contains "verdict shape: wiring detail folded into section body" "wi
 assert_file_contains "verdict shape: render detail folded into section body" "render: DOM non-empty" "$LOG26"
 rm -f "$STUB26" "$WSTUB26"
 rm -rf "$T26"
+
+# ── Test 28: WIRING_CHECK_CMD points at a nonexistent binary → BLOCK (fail-closed) ──
+T28=$(make_project)
+LOG28="$T28/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_step1.md"
+cat >"$LOG28" <<'MD'
+# Step
+
+## Plan
+
+**Gate**: `true`
+MD
+make_transcript "$T28/transcript.jsonl" "$LOG28"
+out28=$(printf '%s' "$(input_for "$T28" developer-phoenix-backend false sess1 "$T28/transcript.jsonl")" |
+    WIRING_CHECK_CMD="/nonexistent/wiring-bin" CODEGEN_DIR="$SCRIPT_DIR" bash "$HOOK" 2>/dev/null || true)
+assert_contains "wiring missing-binary: block emitted (fail-closed)" '"decision": "block"' "$out28"
+assert_file_not_contains "wiring missing-binary: no ALL CLEAR in log" "ALL CLEAR" "$LOG28"
+assert_file_contains "wiring missing-binary: FAILED in log" "FAILED" "$LOG28"
+assert_file_contains "wiring missing-binary: install node in log" "install node" "$LOG28"
+rm -rf "$T28"
+
+# ── Test 29: flat-layout — sibling wiring-check.js ABSENT → BLOCK (fail-closed) ──
+# When wiring-check.js is missing from the sibling lib/ dir, the preflight
+# check must emit a BLOCK (wiring-checker-missing) and NOT emit ALL CLEAR.
+T29_FLAT=$(mktemp -d)
+mkdir -p "$T29_FLAT/lib"
+cp "$HOOK" "$T29_FLAT/"
+cp "$SCRIPT_DIR"/lib/*.sh "$T29_FLAT/lib/"
+# Plant render-check.js stub but NOT wiring-check.js
+cat >"$T29_FLAT/lib/render-check.js" <<'JS'
+process.stdout.write('RENDER_VERDICT=PASS\n');
+JS
+T29=$(make_project)
+LOG29="$T29/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_step1.md"
+cat >"$LOG29" <<'MD'
+# Step
+
+## Plan
+
+**Gate**: `true`
+MD
+make_transcript "$T29/transcript.jsonl" "$LOG29"
+out29=$(printf '%s' "$(input_for "$T29" developer-phoenix-backend false sess1 "$T29/transcript.jsonl")" |
+    env -u RENDER_CHECK_CMD -u WIRING_CHECK_CMD -u CODEGEN_DIR bash "$T29_FLAT/phoenix-dev-gate.sh" 2>/dev/null || true)
+assert_contains "flat-layout absent wiring-check.js: block emitted (fail-closed)" '"decision": "block"' "$out29"
+assert_file_not_contains "flat-layout absent wiring-check.js: no ALL CLEAR" "ALL CLEAR" "$LOG29"
+assert_file_contains "flat-layout absent wiring-check.js: FAILED in log" "FAILED" "$LOG29"
+rm -rf "$T29_FLAT" "$T29"
+
+# ── Test 30: legit-skip empty verdict (operator opt-out) → still ALL CLEAR ────
+# Distinguishes a genuinely-SKIPPED checker (operator sets RENDER_CHECK_CMD=""
+# and WIRING_CHECK_CMD="", the deliberate opt-out shape) from a crashed
+# checker. After the cmd-failed→BLOCK flip, the empty-verdict `*)` arm is
+# reachable ONLY via legit-skip — this test locks that distinction so a
+# future regression turning legit opt-out into a block is caught.
+T30=$(make_project)
+LOG30="$T30/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_step1.md"
+cat >"$LOG30" <<'MD'
+# Step
+
+## Plan
+
+**Gate**: `true`
+MD
+make_transcript "$T30/transcript.jsonl" "$LOG30"
+out30=$(printf '%s' "$(input_for "$T30" developer-phoenix-backend false sess1 "$T30/transcript.jsonl")" |
+    RENDER_CHECK_CMD="" WIRING_CHECK_CMD="" CODEGEN_DIR="$SCRIPT_DIR" bash "$HOOK" 2>/dev/null || true)
+assert_not_contains "legit-skip opt-out: no block" '"decision": "block"' "$out30"
+assert_file_contains "legit-skip opt-out: ALL CLEAR in log" "ALL CLEAR" "$LOG30"
+assert_file_not_contains "legit-skip opt-out: no FAILED in log" "FAILED" "$LOG30"
+rm -rf "$T30"
 
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

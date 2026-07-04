@@ -50,7 +50,10 @@ fi
 # Writes scoped to codegen/pitches/ — applies to subagents too,
 # so Agent-spawned helpers can't slip writes past the role's boundary.
 if [ "$role" = "debug" ] || [ "$role" = "shape" ]; then
+    # fail-closed: matcher is Write|Edit|MultiEdit|NotebookEdit (all
+    # file-bearing); empty path is anomalous, not a legitimate skip.
     if [ -z "$FILE_PATH" ]; then
+        deny "BLOCKED by orchestrator-no-source-edit: empty file path in ${role} mode — file-bearing tool with no resolvable path is anomalous; failing closed."
         exit 0
     fi
     if printf '%s' "$rel_path" | grep -qE '^codegen/pitches/'; then
@@ -68,7 +71,10 @@ fi
 
 # Plain orchestrator (no role): writes allowed only under codegen/logging/
 # and absolute /tmp/.
+# fail-closed: matcher is Write|Edit|MultiEdit|NotebookEdit (all
+# file-bearing); empty path is anomalous, not a legitimate skip.
 if [ -z "$FILE_PATH" ]; then
+    deny "BLOCKED by orchestrator-no-source-edit: empty file path for orchestrator — file-bearing tool with no resolvable path is anomalous; failing closed."
     exit 0
 fi
 if printf '%s' "$rel_path" | grep -qE '^codegen/logging/'; then

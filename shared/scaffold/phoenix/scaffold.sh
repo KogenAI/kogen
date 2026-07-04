@@ -296,12 +296,20 @@ echo "[scaffold.sh] running mix format (best-effort)..."
 (cd "$TARGET_DIR" && mix format) || true
 
 # ---------------------------------------------------------------------------
-# Phase 5b: generate missing usage_rules docs (non-fatal)
+# Phase 5b: generate missing usage_rules docs
 # ---------------------------------------------------------------------------
 if command -v codegen-document >/dev/null 2>&1; then
     echo "[scaffold.sh] generating usage_rules docs for new app deps..."
-    (cd "$TARGET_DIR" && codegen-document) || echo "[scaffold.sh] WARN: codegen-document: doc generation failed (non-fatal)" >&2
+    # Fail-loud: codegen-document IS present but FAILING would silently leave
+    # usage_rules docs missing from the scaffolded app — a correctness gap,
+    # not a benign skip. Fatal per the fail-closed-everywhere ruling.
+    if ! (cd "$TARGET_DIR" && codegen-document); then
+        echo "[scaffold.sh] FATAL: codegen-document failed — usage_rules docs would be silently missing from the scaffolded app. Fail-loud per fail-closed ruling." >&2
+        exit 1
+    fi
 else
+    # advisory: codegen-document is an optional provisioning tool; absence is
+    # a legitimate skip, distinct from a present-tool FAILURE (fatal above).
     echo "[scaffold.sh] WARN: codegen-document not on PATH — skipping usage_rules generation" >&2
 fi
 

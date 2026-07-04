@@ -179,12 +179,12 @@ run_phoenix_render_check() {
     if [ "$_render_check_default" -eq 1 ]; then
         local _js_path="$_self_dir/lib/render-check.js"
         if ! [ -f "$_js_path" ] || ! command -v node >/dev/null 2>&1; then
-            printf 'INCONCLUSIVE:render-checker-missing'
+            printf 'BLOCK:render-checker-missing'
             return 0
         fi
     fi
     if ! command -v "${render_check_cmd_arr[0]}" >/dev/null 2>&1; then
-        printf 'INCONCLUSIVE:render-check-cmd-missing'
+        printf 'BLOCK:render-check-cmd-missing'
         return 0
     fi
     local _rc_err_r
@@ -202,7 +202,7 @@ run_phoenix_render_check() {
     elif [ "$rc" -ne 0 ]; then
         local _tail_r
         _tail_r=$(printf '%s' "$_rc_stderr_r" | tr '\n' ' ' | cut -c1-150)
-        printf 'INCONCLUSIVE:render-check-cmd-failed:%s' "$_tail_r"
+        printf 'BLOCK:render-check-cmd-failed:%s' "$_tail_r"
     fi
 }
 
@@ -230,7 +230,7 @@ run_phoenix_wiring_check() {
     if [ "$_wiring_check_default" -eq 1 ]; then
         local _js_path="$_self_dir/lib/wiring-check.js"
         if ! [ -f "$_js_path" ] || ! command -v node >/dev/null 2>&1; then
-            printf 'INCONCLUSIVE:wiring-checker-missing'
+            printf 'BLOCK:wiring-checker-missing'
             return 0
         fi
     fi
@@ -249,7 +249,7 @@ run_phoenix_wiring_check() {
     elif [ "$rc" -ne 0 ]; then
         local _tail_w
         _tail_w=$(printf '%s' "$_rc_stderr_w" | tr '\n' ' ' | cut -c1-150)
-        printf 'INCONCLUSIVE:wiring-check-cmd-failed:%s' "$_tail_w"
+        printf 'BLOCK:wiring-check-cmd-failed:%s' "$_tail_w"
     fi
 }
 
@@ -477,8 +477,8 @@ if [ "$mode" = "short" ]; then
             exit 0
         fi
 
-        # Wiring check (static) — runs before render (runtime); fail-open only when
-        # checker can't run (INCONCLUSIVE), never on a found gap (FAIL blocks).
+        # Wiring check (static) — fail-CLOSED when checker can't run (BLOCK);
+        # INCONCLUSIVE only for genuine runtime-unready render verdicts.
         wiring_verdict=$(run_phoenix_wiring_check)
         debug_log dev-gate "short-gate wiring_verdict=${wiring_verdict:-none}"
 
@@ -492,6 +492,17 @@ if [ "$mode" = "short" ]; then
             append_ve_section "FAILED ❌ wiring check failed: handlers without an element-driven side-effect test: $wiring_reason ($(failed_suffix))" "Log: $log_path"
             _stamp_gated failed
             block "Wiring check failed: $wiring_reason"
+            exit 0
+            ;;
+        BLOCK:*)
+            wiring_block_detail="${wiring_verdict#BLOCK:}"
+            debug_log dev-gate "wiring checker unavailable (fail-closed): $wiring_block_detail"
+            write_gate_result "$gate" "short" "$_diff_sha" "$_diff_count" \
+                "true" 0 "$actual_segs" "$expected_segs" "" "" \
+                "$(ts_now)" "$(ts_now)" "$session_id" "$log_path" "$project_dir" "wiring-checker-unavailable: $wiring_block_detail"
+            append_ve_section "FAILED ❌ wiring checker unavailable: $wiring_block_detail — install node/toolchain" "Log: $log_path"
+            _stamp_gated failed
+            block "Wiring checker could not run ($wiring_block_detail). Install node so wiring-check.js can execute. Infra condition, not a code/hook defect."
             exit 0
             ;;
         *)
@@ -513,6 +524,17 @@ if [ "$mode" = "short" ]; then
             append_ve_section "FAILED ❌ render check failed: $reason ($(failed_suffix))" "Log: $log_path"
             _stamp_gated failed
             block "Render check failed after gate passed: $reason"
+            ;;
+        BLOCK:*)
+            render_block_detail="${render_verdict#BLOCK:}"
+            debug_log dev-gate "render checker unavailable (fail-closed): $render_block_detail"
+            write_gate_result "$gate" "short" "$_diff_sha" "$_diff_count" \
+                "true" 0 "$actual_segs" "$expected_segs" "$render_verdict" "" \
+                "$(ts_now)" "$(ts_now)" "$session_id" "$log_path" "$project_dir" "render-checker-unavailable: $render_block_detail"
+            append_ve_section "FAILED ❌ render checker unavailable: $render_block_detail — install node/toolchain" "Log: $log_path"
+            _stamp_gated failed
+            block "Render checker could not run ($render_block_detail). Install node so render-check.js can execute. Infra condition, not a code/hook defect."
+            exit 0
             ;;
         INCONCLUSIVE:*)
             inc_detail="${render_verdict#INCONCLUSIVE:}"
@@ -743,8 +765,8 @@ elif [ "$(cat "$exitcode_path")" = "0" ]; then
         exit 0
     fi
 
-    # Wiring check (static) — runs before render (runtime); fail-open only when
-    # checker can't run (INCONCLUSIVE), never on a found gap (FAIL blocks).
+    # Wiring check (static) — fail-CLOSED when checker can't run (BLOCK);
+    # INCONCLUSIVE only for genuine runtime-unready render verdicts.
     long_wiring_verdict=$(run_phoenix_wiring_check)
     debug_log dev-gate "long-gate wiring_verdict=${long_wiring_verdict:-none}"
 
@@ -760,6 +782,19 @@ elif [ "$(cat "$exitcode_path")" = "0" ]; then
         append_ve_section "FAILED ❌ wiring check failed: handlers without an element-driven side-effect test: $long_wiring_reason ($(failed_suffix))" \
             "Gate '$gate' passed but wiring check failed. Log: $log_path"
         block "Wiring check failed: $long_wiring_reason"
+        exit 0
+        ;;
+    BLOCK:*)
+        long_wiring_block_detail="${long_wiring_verdict#BLOCK:}"
+        debug_log dev-gate "wiring checker unavailable (fail-closed): $long_wiring_block_detail"
+        write_gate_result "$gate" "long" "$_diff_sha" "$_diff_count" \
+            "true" 0 "$long_actual_segs" "$long_expected_segs" "" "" \
+            "$started_at" "$long_ended_at" "$session_id" "$log_path" "$project_dir" "wiring-checker-unavailable: $long_wiring_block_detail"
+        rm -f "$flag_dir/latest.flag"
+        _stamp_gated failed
+        append_ve_section "FAILED ❌ wiring checker unavailable: $long_wiring_block_detail — install node/toolchain" \
+            "Gate '$gate' passed but wiring checker could not run. Log: $log_path"
+        block "Wiring checker could not run ($long_wiring_block_detail). Install node so wiring-check.js can execute. Infra condition, not a code/hook defect."
         exit 0
         ;;
     *)
@@ -779,6 +814,19 @@ elif [ "$(cat "$exitcode_path")" = "0" ]; then
         append_ve_section "FAILED ❌ render check failed: $long_reason ($(failed_suffix))" \
             "Gate '$gate' passed but render check failed. Log: $log_path"
         block "Render check failed after gate passed: $long_reason"
+        ;;
+    BLOCK:*)
+        long_render_block_detail="${long_render_verdict#BLOCK:}"
+        debug_log dev-gate "render checker unavailable (fail-closed): $long_render_block_detail"
+        write_gate_result "$gate" "long" "$_diff_sha" "$_diff_count" \
+            "true" 0 "$long_actual_segs" "$long_expected_segs" "$long_render_verdict" "" \
+            "$started_at" "$long_ended_at" "$session_id" "$log_path" "$project_dir" "render-checker-unavailable: $long_render_block_detail"
+        rm -f "$flag_dir/latest.flag"
+        _stamp_gated failed
+        append_ve_section "FAILED ❌ render checker unavailable: $long_render_block_detail — install node/toolchain" \
+            "Gate '$gate' passed but render checker could not run. Log: $log_path"
+        block "Render checker could not run ($long_render_block_detail). Install node so render-check.js can execute. Infra condition, not a code/hook defect."
+        exit 0
         ;;
     INCONCLUSIVE:*)
         long_inc_detail="${long_render_verdict#INCONCLUSIVE:}"

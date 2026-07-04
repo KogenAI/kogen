@@ -43,8 +43,11 @@ Write | Edit | MultiEdit) ;;
 *) exit 0 ;;
 esac
 
-# No path to evaluate.
+# fail-closed: matcher is Write|Edit|MultiEdit (file-bearing); empty path is
+# an anomaly, not a legitimate skip (interaction-composition proof verified —
+# every reachable caller here is a file-bearing tool call).
 if [ -z "$FILE_PATH" ]; then
+    deny "BLOCKED by build-agent-app-confinement: empty/unresolvable file path on a Write|Edit|MultiEdit call inside a managed build (CODEGEN_BUILD_CWD set). A file-bearing tool with no path is anomalous; failing closed. Provide an explicit path under the sandbox."
     exit 0
 fi
 

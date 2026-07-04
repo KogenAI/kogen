@@ -306,6 +306,16 @@ run_test_role "experiment mode Edit on arbitrary on-box path allows" "0" "experi
 FIXTURE_PI_EXP_LIB='{"hook_event_name":"PreToolUse","tool_name":"Edit","tool_input":{"file_path":"lib/my_app/foo.ex","old_string":"x","new_string":"y"},"agent_id":"","agent_type":""}'
 run_test_parity "PI_ROLE=experiment Edit on lib/ allows" "0" "PI_ROLE" "experiment" "$FIXTURE_PI_EXP_LIB"
 
+# Test 43: CLAUDE_ROLE=debug + empty FILE_PATH — DENY (fail-closed)
+# Matcher is Write|Edit|MultiEdit|NotebookEdit (all file-bearing); an empty
+# path in debug mode is anomalous, not a legitimate skip.
+FIXTURE_DEBUG_EMPTY='{"hook_event_name":"PreToolUse","tool_name":"Write","tool_input":{"file_path":""},"agent_id":"","agent_type":""}'
+run_test_role "debug mode empty FILE_PATH denies (fail-closed)" "2" "debug" "$FIXTURE_DEBUG_EMPTY"
+
+# Test 44: plain orchestrator (no role) + empty FILE_PATH — DENY (fail-closed)
+FIXTURE_PLAIN_EMPTY='{"hook_event_name":"PreToolUse","tool_name":"Write","tool_input":{"file_path":""},"agent_id":"","agent_type":""}'
+run_test "plain-orchestrator empty FILE_PATH denies (fail-closed)" "2" "$FIXTURE_PLAIN_EMPTY"
+
 echo ""
 echo "Results: $pass passed, $fail failed"
 

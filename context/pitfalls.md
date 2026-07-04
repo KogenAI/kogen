@@ -20,8 +20,8 @@ Codegen-infra pitfalls and bash gotchas — split from `context/development.md` 
 - **Fixture-source change: migrate ALL dependent cases** — Old-path test cases assert dead OLD spec. SIBLING files (e.g., dispatch_test + codegen-build_test) testing same target need IDENTICAL fixes. Grep ALL `_test.sh` files, not just the paired hook test.
 - **`shared/scaffold/static/scaffold_test.sh` is wired into `make test`** — new bash test cases run automatically (Makefile `for t in` loop that lists `shared/scaffold/static/scaffold_test.sh` as a test target). No Makefile edits needed; test summary updates via inline helpers.
 - **config.yaml anchoring** — Multiple blocks may share leaf values; `old_string` MUST include surrounding context to avoid wrong block. Verify via `yq` post-change.
-- **Pitch line numbers are estimates** — always Read the file to locate exact anchor text; pitch approximations drift over time.
-- **Verify pitch edits not already applied** — Pitch authored before a prior commit may be obsolete. `git show <commit> --stat` checks if targets listed; `git status --porcelain -- <files>` verifies clean tree. If all clean + stat includes files, pitch already realized — treat as VERIFY-ONLY, run gate to prove end-state. Skipping verification causes duplicate edits (breaking identity-match or parity counts).
+- **Pitch line numbers are estimates** — Read the file to locate exact anchor text; estimates drift over time.
+- **Verify pitch edits not already applied** — Pitch may be obsolete. `git show <commit> --stat` checks targets; `git status --porcelain -- <files>` verifies clean. If clean + stat includes files, pitch realized — VERIFY-ONLY, run gate. Skipping causes duplicates.
 - **Example blocks in references carry routing targets** — when bulk-repathing, check inline examples too; all old paths must be repathed or inside warnings.
 - **Phoenix-colocated esbuild** — `phoenix-colocated` import requires `mix compile` first; include `"compile"` in `assets.build`/`assets.deploy` aliases.
 - **`CODEGEN_DIR` must be absolute; empty vars skip fallbacks** — Relative paths break symlink resolution. `${CWD:-$PWD}` skips fallback if `CWD=""` (empty). Use three-level: `${CWD:-${CLAUDE_PROJECT_DIR:-$PWD}}`.
@@ -30,7 +30,6 @@ Codegen-infra pitfalls and bash gotchas — split from `context/development.md` 
 - **Makefile recipes run under `/bin/sh`, not bash** — process substitution fails. Use pipeline patterns instead of bash-specific syntax.
 - **Flaky tests: investigate state leakage, not timing** — Check counter files, temp dirs. Cleanup in `afterEach` required.
 - **Test isolation scoping** — Capture streams at test-body, restore both paths. Env cleanup in beforeEach/afterEach. Bash: trap-clean temps, PATH stubs.
-- **Managed-build env var pollution** — Strip via `unset` line in `run-tests.sh` before tests.
 - **Pi test essentials** — Create real temps at test paths. `npm run build` before test (runs on `dist/`).
 - **`make test` tail-capture hides earlier summaries** — Piping to `| tail -N` drops hook-parity and bash hook-test summaries even when final `ALL CLEAR ✅` is green. Verify new assertions by re-running the test file directly to confirm execution.
 - **`make test` npm-ext transient race** — Extensions run in parallel; enforcement tsc writes `dist/` while tests import from it. Slow machines see transient "module not found". Re-run passes; not durable.
@@ -43,9 +42,8 @@ Codegen-infra pitfalls and bash gotchas — split from `context/development.md` 
 - **[shared] Stale-doc-twin defect** — Subsystem docs span multiple `context/*.md` files. Grep FULL vocabulary across ALL files when fixing drift. Fixing only the open diff leaves twin claims uncorrected.
 - **Repo-level counters: `_substrate_root` pattern** — Repo-level vs per-session counters. Repo-level scans once (no double-count) via `ALL_REPO_COUNTERS` list. Reading `codegen/logging/`: check `project_dir` first (test), else use `config.codegen_dir / "codegen" / "logging"`.
 - **Sole-writer migrations: reconcile ALL command-scanning guards** — Grep all guards for old patterns BEFORE enforcement commit; deny-hook is only first stop.
-- **Bash test forward-reference trap** — Variables defined later unreachable under `set -u`. Define at top or embed inline.
-- **[shared] `jq input_line_number` stable within same pipeline** — `input_line_number` values in the same pipeline are stable. A same-line tie → equal `$ln` for both scans; use `-ge` (not `-gt`) to allow ties.
-- **codegen-log command-scan bypass shipped** — 12 phrase-counting Claude hooks + Pi twins all call `is_codegen_log_write`/`isCodegenLogWrite` BEFORE any grep/counter. Session-log WRITE prose never triggers gated-action denial [FIXED, Phase 4].
+- **Bash test forward-reference trap** — Variables defined later unreachable under `set -u`. Define at top.
+- **[shared] `jq input_line_number` + codegen-log bypass** — `input_line_number` stable within same pipeline (use `-ge` for ties). 12 phrase-counting hooks call `is_codegen_log_write` BEFORE any grep to prevent log-prose denial [FIXED, Phase 4].
 - **Gate hook command switch** — Build invocation changes (e.g., `npm run build` → `make ci`) → update all fixtures. Add `Makefile` with `ci:` recipe. Recipe lines MUST use hard tabs.
 - **`developer-no-self-gate` cap counts ALL test invocations per session** — `mix test`, `make test`, targeted `mix test <file>`, and even blocked cap-violation attempts all count toward the 3-per-session budget. Budget carefully: combine format+test into one call, or rely on pre-format baseline + format-only confirmation (format has no semantic risk on green code). Approaching cap? defer live re-run to next session or accept the format+baseline proof instead of test-on-changed-code.
 - **Inverse-gate pattern for build-runtime Stop hooks** — Skip when role NON-EMPTY, enforce when EMPTY. Use `signal: CLAUDE_ROLE_FAMILY`; flip in `registry.yaml`, not HOOK-MANIFEST manually.
@@ -64,7 +62,7 @@ Codegen-infra pitfalls and bash gotchas — split from `context/development.md` 
 - **`dev-no-self-gate` blocks after 3 invocations per session** — developer role can invoke own gate at most 3 times. Run targeted tests (bash script directly, or npm test in extension dir) rather than full gate to verify before triggering gate slots.
 - **External contract: OR not AND** — code path OR direct test; alternatives, not cumulative.
 - **Semantic equivalence vs structural identity in prompt-body sibling files** — verify semantic equivalence of all rules, NOT literal step-count parity. Compression preserving all semantic rules is correct mirroring.
-- **Planner-guard blocks Read on rule files** — use `Grep -C` for anchors; cite in pitch, developer confirms via Read.
+- **Planner-guard blocks Read on rule files** — Use `Grep -C` for anchors; developer uses Read to verify.
 - **Context files carry a 40 KB advisory cap** — `context/*.md` files have 40,960-byte limit. Compress or split when near cap.
 - **Exit-code capture under `set -u`** — `local rc; raw=$(cmd) || rc=$?; rc=${rc:-0}`. `rc` unset on success. Distinguishes broken-cmd (empty) from `INCONCLUSIVE:*` verdicts.
 - **Makefile `@for` recipes are POSIX-only** — Accumulator: `fail=0; ... || fail=1; exit "$$fail"`.
@@ -83,7 +81,7 @@ Codegen-infra pitfalls and bash gotchas — split from `context/development.md` 
 - **Removing a config.yaml role breaks slow ExUnit tests** — `@moduletag :slow` tests excluded from `make test` (`--exclude slow`) but run in `make test-stacks` (`--only slow`). Deleting a role → silently passes `make test`, fails `make test-stacks` with `ERROR: roles.<role>.model missing/empty`. Survey both gates; update all `:slow` tests to valid roles before commit.
 - **Curator byte cap enforcement** — `curator-context-size-gate.sh` denies over-cap Edit/Write in curator's turn (hard gate). Commit-time `context-file-size-gate.sh` backstop re-routes to curator. Compress bullets or split to new file.
 - **Grep recipe glob depth** — `harnesses/claude/hooks/*.sh` misses subdirs. Use `**/*.sh` or recursive for complete enumeration.
-- **Orchestrator file enumeration is gated by tool, not directory** — [local] Claude read-discipline matches `Read|Bash` only, NOT Glob. Glob tool is safe for orchestrator enumeration (e.g., "build all ready pitches").
+- **Orchestrator file enumeration is tool-gated, not directory-gated** — Claude read-discipline blocks Read|Bash; Glob is safe.
 - **Enforcement subsection placement in rule files** — when adding a new subsection to a rule file with existing structure (e.g., `## Ownership`), place it as a new H2 section at the same level rather than embedding mid-section. Cleaner structure, avoids disrupting prose flow. Accompanied by a pointer-only reference in dependent docs (no duplication).
 - **Rule-file line caps are STYLE_GUIDE advisory only** — `_core/` rule files have a <50-line advisory in STYLE_GUIDE; `roles/` and `stacks/` have <150-line advisory. No hook enforces rule-file line count. Only `context/*.md` byte cap (40,960 B) is hook-enforced via `context-file-size-gate.sh`. Rule-file overage is acceptable if unavoidable; byte-cap overage blocks commit.
 - **`process_template.py` include/if ordering** — `process_includes_recursively` runs AFTER if-stripping → `{% if tool %}` blocks inside fragments survive un-stripped → both branches concatenate (BROKEN). Fix: move include call to TOP of `_strip_template_blocks`, before if-stripping. Verify via `make test-generator` + `make test`.
@@ -95,7 +93,7 @@ Codegen-infra pitfalls and bash gotchas — split from `context/development.md` 
 - **Structural grep sentinels with literal quotes** — Anchor to stable substrings (variable names, icons, unique ops), not full lines. Use `grep -F` (fixed-string) for double-quoted sentinels. For single-quote shell strings, escape: `'! grep -qF "pattern with \"quotes\"" file'`.
 - **Relative symlinks relocation** — Compute relpaths against FINAL dir, not temp. Thread `link_base_dir` to `run_integrate_stage()`
 - **Masked pipe errors reveal fixture gaps** — When `| sed` masks real errors, removing the mask surfaces hidden failures in test fixtures. Investigate and fix, don't ignore the newly-visible error.
-- **Stale doc comments when same-cycle gap closes** — Header comment ("no parity test") + same-diff test landing = stale contradiction. Grep file's own prose for claims contradicted by sibling edits in same diff.
+- **Stale doc comments when gap closes same-cycle** — Comment ("no parity test") + test landing = stale contradiction. Grep file's prose for contradictions.
 - **`grep -v` filter exits 1 when all lines filtered** — `git status --porcelain | grep -v '^??'` exits 1 when filtering removes ALL lines. Under `set -e` with a `[ -n "$(..)" ]` guard, the exit is absorbed and condition correctly evaluates false.
 - **Git stash -u excludes gitignored paths** — Untracked files without `.gitignore` get scooped. Use `grep -v '^??'` filter to exclude them.
 - **INCONCLUSIVE verdict glob arms absorb suffix variants** — Existing `INCONCLUSIVE:*)` glob arm absorbs new suffix variants (e.g., `INCONCLUSIVE:cmd-failed:<stderr>`) automatically — no case edits needed. The `*` matches ANY suffix including embedded text. Works across SubagentStop hooks and gate verdict dispatch.
@@ -183,6 +181,9 @@ Codegen-infra pitfalls and bash gotchas — split from `context/development.md` 
 - **[local, dev] New `_fn` seam default in shared test helper** — When adding a function seam (e.g., `discover_session_log_fn`) to a module, provide the default impl BOTH in the seam AND in the shared test base-opts helper. Pre-existing tests using the old arity without the new seam still invoke the real default (slow/blocking). Fix: expose seam as test parameter with fast default in base-opts. Example: `default_discover_session_log/3` had `:discover_session_log_fn` opt; direct-call tests asserting "not found" hit real 30s sleep unless `base_opts/2` defaults the seam to fast `fn -> nil end`.
 - **[local, dev] Capturing return value + stderr with `capture_io`** — `capture_io(:stderr, fn -> result end)` swallows the block's return. Recovery: `send(self(), {:result, <call>})` inside, then `receive do {:result, r} -> r end` outside to recover both output AND value.
 - **[local, reviewer] Direct function calls bypass seam overrides** — Tests calling a function directly invoke the real default even if the caller has overridden the seam in its opts. Example: `default_discover_session_log/3` with `max_polls: 0` override only works through the seam; direct calls ignore it. Fix: expose poll limit as public parameter with production-safe default (`max_polls \\ @discover_max_polls`), so direct tests can override. Arity-N seam still works (Elixir auto-generates lower-arity clause).
+- **[local] Test comment drift** — Test 15 comment claimed checker-missing, but `_self_dir` resolves via `BASH_SOURCE[0]` regardless of `CODEGEN_DIR`. Exercises runtime server-unready on boxes with node. Discovered via red-green (flip failed for different reason). Verify comments against code paths.
+- **[shared] is_allowed_path empty-loop vs file-tool** — `[ -z "$p" ] && return 0` reached via Bash token loop (skip), NOT file-tool anomaly. Distinct from empty FILE_PATH denial.
+- **[local] git status pollution in managed-build test** — Inherits `CODEGEN_BUILD_*` vars from parent, causing false mismatches. `run-tests.sh` unsets; ad-hoc re-runs need `env -u` isolation.
 
 ## Trigger Keywords
 

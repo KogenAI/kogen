@@ -67,7 +67,11 @@ fi
 
 is_allowed_path() {
     local p="$1"
-    # Empty path: let the tool handle it.
+    # Empty path: this is the Bash abs-path-token loop path (an empty token
+    # from splitting a command string is a legitimate skip of a non-path
+    # match, NOT a file-bearing tool anomaly) — distinct from the
+    # Read|Write|Edit|MultiEdit|NotebookEdit file-tool arm below, which
+    # denies on empty FILE_PATH. Let the tool handle it here.
     [ -z "$p" ] && return 0
     local real
     real=$(hooks_realpath "$p")
@@ -88,7 +92,10 @@ is_allowed_path() {
 
 case "$TOOL_NAME" in
 Read | Write | Edit | MultiEdit | NotebookEdit)
+    # fail-closed: matcher is file-bearing; empty path is anomalous, not a
+    # legitimate skip (interaction-composition proof verified).
     if [ -z "$FILE_PATH" ]; then
+        deny "BLOCKED by build-worker-cwd-guard: empty/unresolvable file path for orchestrator $TOOL_NAME inside a managed build worker (cwd under OCG_APPS_ROOT). File-bearing tool with no path is anomalous; failing closed."
         exit 0
     fi
     if is_allowed_path "$FILE_PATH"; then

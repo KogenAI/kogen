@@ -66,6 +66,51 @@ end"
 actual_content=$(printf '%s\n' "$result" | sed -n '/^CONTENT=/,$p')
 assert_eq "parse_input Write content has multi-line" "$expected_content" "$actual_content"
 
+# ── parse_input — malformed/non-JSON stdin → hard exit 2 (fail-loud) ────────
+# Non-JSON stdin is an anomaly (Claude Code always sends JSON) — parse_input
+# must hard-fail rather than silently produce all-empty vars.
+set +e
+malformed_out=$(printf 'not valid json {{{' | (
+    source "$SCRIPT_DIR/hooks-lib.sh"
+    parse_input
+) 2>&1)
+malformed_rc=$?
+set -e
+assert_eq "parse_input malformed stdin: exit code 2" "2" "$malformed_rc"
+if printf '%s' "$malformed_out" | grep -q "not valid JSON"; then
+    [ -n "${VERBOSE:-}" ] && printf 'PASS: %s\n' "parse_input malformed stdin: stderr message present"
+    pass=$((pass + 1))
+else
+    printf 'FAIL: parse_input malformed stdin: stderr message present\n  actual: %s\n' "$malformed_out"
+    fail=$((fail + 1))
+fi
+
+# ── parse_input — valid JSON, absent optional field → "" (still tolerated) ──
+# A field genuinely absent on a given event type (e.g. no tool_input.command
+# on a Write event) must still default to "" — NOT hard-fail. This proves
+# the jq-validity assert doesn't over-fire on legitimate optional-absence.
+optional_out=$(printf '{"tool_name":"Write","tool_input":{"file_path":"lib/baz.ex"}}' | (
+    source "$SCRIPT_DIR/hooks-lib.sh"
+    parse_input
+    printf 'CMD=[%s]\n' "$COMMAND"
+))
+assert_eq "parse_input optional-absent field: COMMAND defaults to empty" "CMD=[]" "$optional_out"
+
+# ── parse_input — empty stdin → no exit 2 (tolerated) ────────────────────────
+# Some hooks legitimately invoke parse_input with no stdin at all; the
+# jq-validity assert must be guarded on non-empty RAW_INPUT so this stays
+# tolerated (not a hard fail).
+set +e
+empty_out=$(printf '' | (
+    source "$SCRIPT_DIR/hooks-lib.sh"
+    parse_input
+    printf 'TOOL=[%s]\n' "$TOOL_NAME"
+) 2>&1)
+empty_rc=$?
+set -e
+assert_eq "parse_input empty stdin: exit code 0 (tolerated)" "0" "$empty_rc"
+assert_eq "parse_input empty stdin: TOOL_NAME defaults to empty" "TOOL=[]" "$empty_out"
+
 # ── deny — emits the modern PreToolUse JSON envelope ─────────────────────────
 denyout=$(deny "test reason")
 assert_eq "deny permissionDecision" "deny" "$(printf '%s' "$denyout" | jq -r '.hookSpecificOutput.permissionDecision')"

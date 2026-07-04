@@ -133,7 +133,13 @@ developer-*)
     if [ "$is_context_dir" -eq 1 ]; then
         step_log=$(session_log_from_transcript)
         if [ -z "$step_log" ] || [ ! -r "$step_log" ]; then
-            # Fail-open: no step log found (session init or missing transcript).
+            # ANTI-WEDGE FAIL-OPEN (fail-loud-rule exemption): the step log
+            # may not yet exist during session init, or the transcript may
+            # lag the live write (async flush). Denying the Read here would
+            # wedge legitimate early-session orientation reads. Sanctioned
+            # fail-open survivor of the fail-closed-everywhere ruling —
+            # intentional, commented, justified. (Second survivor:
+            # stop-cycle-guard retry-cap release.)
             exit 0
         fi
 
@@ -167,7 +173,13 @@ reviewer-*)
     if [ "$is_context_dir" -eq 1 ]; then
         step_log=$(session_log_from_transcript)
         if [ -z "$step_log" ] || [ ! -r "$step_log" ]; then
-            # Fail-open: no step log found.
+            # ANTI-WEDGE FAIL-OPEN (fail-loud-rule exemption): the step log
+            # may not yet exist during session init, or the transcript may
+            # lag the live write (async flush). Denying the Read here would
+            # wedge legitimate early-session orientation reads. Sanctioned
+            # fail-open survivor of the fail-closed-everywhere ruling —
+            # intentional, commented, justified. (Second survivor:
+            # stop-cycle-guard retry-cap release.)
             exit 0
         fi
 

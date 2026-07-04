@@ -217,6 +217,11 @@ fi
 
 # Install Chromium browser binary (required for static-site render verification).
 # Only run if playwright is present (dev-dep); skip gracefully on production installs.
+# advisory: chromium absence is fail-CLOSED-enforced at the GATE
+# (static-site-build-check.sh chromium-launch-failed arm blocks the
+# developer), NOT at install. Install-time is warn-only by design — a box
+# may provision chromium after install. Do not make fatal (would break
+# non-static + deferred-provision installs).
 if command -v npm &>/dev/null && (cd "$CODEGEN_DIR" && npm list playwright >/dev/null 2>&1); then
     echo "📦 Installing Chromium browser binary (playwright)..."
     if (cd "$CODEGEN_DIR" && npx playwright install chromium) 2>&1; then

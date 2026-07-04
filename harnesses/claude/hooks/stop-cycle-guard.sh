@@ -64,6 +64,11 @@ if [ -n "$step_log" ] && [ "$step_log" != "$prev_step" ]; then
     count=0
 fi
 scope_step="${step_log:-$prev_step}"
+# ANTI-WEDGE FAIL-OPEN (fail-loud-rule exemption): after 2 consecutive
+# blocks for the SAME step, release the stop. Blocking a 3rd time would
+# wedge the session in an infinite block loop with no operator recourse.
+# This is one of the two sanctioned fail-open survivors of the
+# fail-closed-everywhere ruling — intentional, commented, justified.
 if [ "$count" -ge 2 ]; then
     printf '[stop-cycle-guard] per-step retry cap reached for step %s (count=%s) — allowing stop\n' "${scope_step:-unknown}" "$count" >&2
     debug_log claude-cycle-guard "skip: retry-cap count=$count step=$scope_step"

@@ -16,9 +16,11 @@
 # is "") is also blocked — per CLAUDE.md only the committer may touch
 # history.
 #
-# Ops mode (CLAUDE_ROLE=ops / PI_ROLE=ops) bypasses entirely — full git
-# surface, no restriction (interactive ops on live boxes).
-
+# Ops mode (CLAUDE_ROLE=ops / PI_ROLE=ops) bypasses ONLY when the operator
+# ALSO sets CODEGEN_OPS_GIT_UNLOCK=1 — a two-signal gate. Role alone no
+# longer unlocks destructive git under the fail-closed-everywhere ruling;
+# the operator must explicitly confirm intent via a second, harness-only
+# toggle (NOT an app runtime var — do not add to .env.sample/.env.prod.sample).
 set -u
 
 source "$(dirname "$0")/lib/hooks-lib.sh"
@@ -27,9 +29,16 @@ parse_input
 
 debug_log pre-commit-guard "tool=$TOOL_NAME agent=$AGENT_TYPE cmd=$COMMAND"
 
-# ops mode bypasses: full git surface for interactive ops on live boxes.
+# ops mode bypasses: full git surface for interactive ops on live boxes,
+# but ONLY with CODEGEN_OPS_GIT_UNLOCK=1 as a second confirming signal.
 _role=$(resolve_role)
-[ "$_role" = "ops" ] && exit 0
+if [ "$_role" = "ops" ]; then
+    if [ "${CODEGEN_OPS_GIT_UNLOCK:-}" = "1" ]; then
+        exit 0
+    fi
+    deny "BLOCKED by pre-commit-guard: ops role alone no longer unlocks destructive git. Set CODEGEN_OPS_GIT_UNLOCK=1 in the environment ALSO to confirm intent (two-signal gate)."
+    exit 0
+fi
 
 # Only guard Bash — git ops go through Bash exclusively.
 if [ "$TOOL_NAME" != "Bash" ]; then

@@ -250,9 +250,12 @@ if [ "$_NPM_BUILD_SKIPPED" = "false" ] && [ -f package.json ] && jq -e '.scripts
             fail "render-check.js could not require the playwright module from any candidate path — codegen install/path fault, not a missing browser. Verify lib/render-check.js sits beside the hook and node_modules/playwright is resolvable."
             ;;
         INCONCLUSIVE:*)
+            # Fail-closed: config-error/timeout/no-verdict block under the
+            # fail-closed-everywhere ruling — the gate cannot confirm a clean
+            # render, so it must not pass silently.
             detail="${render_verdict#INCONCLUSIVE:}"
-            render_summary="render: INCONCLUSIVE ($detail) — skipped"
             debug_log static-site-build-check "render check INCONCLUSIVE: $detail"
+            fail "render check INCONCLUSIVE ($detail) — gate cannot confirm a clean render. Config-error/timeout/no-verdict block under fail-closed policy. Detail: $detail"
             ;;
         *)
             # render-check emitted no RENDER_VERDICT= line — crash or parse error
@@ -276,6 +279,9 @@ _render_for_result="$render_verdict"
 if [ "$_NPM_BUILD_SKIPPED" = "false" ]; then
     case "$render_verdict" in
     INCONCLUSIVE:*)
+        # Unreachable after the render-dispatch INCONCLUSIVE→fail flip above
+        # (fail() exits before reaching this block). Kept for structural
+        # parity/defensiveness — do not delete.
         write_gate_result "$_gate_cmd" "short" "$_diff_sha" "$_diff_count" \
             "true" 0 1 1 "$render_verdict" "render-inconclusive" \
             "$_ts_now" "$_ts_now" "${session_id:-unknown}" "" "$project_dir"
@@ -302,6 +308,9 @@ elif [ -w "$log_file" ]; then
     result_line=""
     case "$render_verdict" in
     INCONCLUSIVE:*)
+        # Unreachable after the render-dispatch INCONCLUSIVE→fail flip above
+        # (fail() exits before reaching this block). Kept for structural
+        # parity/defensiveness — do not delete.
         inc_detail="${render_verdict#INCONCLUSIVE:}"
         result_line="INCONCLUSIVE ⚠️ render-inconclusive: $inc_detail"
         ;;

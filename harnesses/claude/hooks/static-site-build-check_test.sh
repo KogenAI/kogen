@@ -569,5 +569,74 @@ fi
 rm -f "$STUB24"
 rm -rf "$T24"
 
+# ── Test 25: render INCONCLUSIVE config-error — BLOCKS (fail-closed) ─────────
+# Generic INCONCLUSIVE:*) catch-all (config-error/timeout/server-unready) is
+# no longer a silent pass-through — the gate cannot confirm a clean render,
+# so it must block under the fail-closed-everywhere ruling.
+T25=$(make_tmp_site)
+mkdir -p "$T25/public"
+touch "$T25/public/app.css"
+printf '<html><head><link rel="stylesheet" href="app.css"></head><body><p>hi</p></body></html>\n' \
+    >"$T25/public/index.html"
+STUB25=$(make_render_stub "INCONCLUSIVE:config-error")
+out25=$(printf '%s' "$(input_for "$T25")" |
+    RENDER_CHECK_CMD="$STUB25" CODEGEN_DIR="$SCRIPT_DIR" bash "$HOOK" 2>/dev/null || true)
+outcome25="allow"
+printf '%s' "$out25" | grep -q '"decision"[[:space:]]*:[[:space:]]*"block"' && outcome25="block"
+if [ "$outcome25" = "block" ] && printf '%s' "$out25" | grep -q 'config-error'; then
+    [ -n "${VERBOSE:-}" ] && printf 'PASS: %s\n' "render INCONCLUSIVE config-error blocks (fail-closed)"
+    pass=$((pass + 1))
+else
+    printf 'FAIL: render INCONCLUSIVE config-error should block (fail-closed)\n  outcome: %s\n  stdout: %s\n' \
+        "$outcome25" "$out25"
+    fail=$((fail + 1))
+fi
+rm -f "$STUB25"
+rm -rf "$T25"
+
+# ── Test 26: render INCONCLUSIVE timeout — BLOCKS (fail-closed) ─────────────
+T26=$(make_tmp_site)
+mkdir -p "$T26/public"
+touch "$T26/public/app.css"
+printf '<html><head><link rel="stylesheet" href="app.css"></head><body><p>hi</p></body></html>\n' \
+    >"$T26/public/index.html"
+STUB26=$(make_render_stub "INCONCLUSIVE:timeout")
+out26=$(printf '%s' "$(input_for "$T26")" |
+    RENDER_CHECK_CMD="$STUB26" CODEGEN_DIR="$SCRIPT_DIR" bash "$HOOK" 2>/dev/null || true)
+outcome26="allow"
+printf '%s' "$out26" | grep -q '"decision"[[:space:]]*:[[:space:]]*"block"' && outcome26="block"
+if [ "$outcome26" = "block" ] && printf '%s' "$out26" | grep -q 'timeout'; then
+    [ -n "${VERBOSE:-}" ] && printf 'PASS: %s\n' "render INCONCLUSIVE timeout blocks (fail-closed)"
+    pass=$((pass + 1))
+else
+    printf 'FAIL: render INCONCLUSIVE timeout should block (fail-closed)\n  outcome: %s\n  stdout: %s\n' \
+        "$outcome26" "$out26"
+    fail=$((fail + 1))
+fi
+rm -f "$STUB26"
+rm -rf "$T26"
+
+# ── Test 27: render INCONCLUSIVE server-unready — BLOCKS (fail-closed) ──────
+T27=$(make_tmp_site)
+mkdir -p "$T27/public"
+touch "$T27/public/app.css"
+printf '<html><head><link rel="stylesheet" href="app.css"></head><body><p>hi</p></body></html>\n' \
+    >"$T27/public/index.html"
+STUB27=$(make_render_stub "INCONCLUSIVE:server-unready")
+out27=$(printf '%s' "$(input_for "$T27")" |
+    RENDER_CHECK_CMD="$STUB27" CODEGEN_DIR="$SCRIPT_DIR" bash "$HOOK" 2>/dev/null || true)
+outcome27="allow"
+printf '%s' "$out27" | grep -q '"decision"[[:space:]]*:[[:space:]]*"block"' && outcome27="block"
+if [ "$outcome27" = "block" ] && printf '%s' "$out27" | grep -q 'server-unready'; then
+    [ -n "${VERBOSE:-}" ] && printf 'PASS: %s\n' "render INCONCLUSIVE server-unready blocks (fail-closed)"
+    pass=$((pass + 1))
+else
+    printf 'FAIL: render INCONCLUSIVE server-unready should block (fail-closed)\n  outcome: %s\n  stdout: %s\n' \
+        "$outcome27" "$out27"
+    fail=$((fail + 1))
+fi
+rm -f "$STUB27"
+rm -rf "$T27"
+
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]
