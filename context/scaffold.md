@@ -15,6 +15,7 @@ scaffold.sh, eex_render, mutations, AGENTS.md.j2, PROJECT_CONTEXT.md.j2, ocg set
 | `shared/scaffold/phoenix/scaffold.sh`             | Phoenix scaffold entry — creates new Phoenix app via mutations                 |
 | `shared/scaffold/phoenix/mutations/`              | Per-file bash mutation scripts (config_exs.sh, mix_exs.sh, credo_fix.sh, etc.) |
 | `shared/scaffold/phoenix/eex_render.sh`           | Renders `.eex` templates with variable substitution                            |
+| `shared/scaffold/phoenix/scaffold_cache.sh`       | Machine-global scaffold cache (deps/\_build/PLT reuse); sourced by scaffold.sh |
 | `shared/scaffold/phoenix/templates/`              | `.eex` source templates for Phoenix scaffold output                            |
 | `shared/scaffold/static/scaffold.sh`              | Static site scaffold entry                                                     |
 | `shared/scaffold/static/scaffold_test.sh`         | Bash tests for static scaffold                                                 |
@@ -231,14 +232,20 @@ If any step fails, the trap cleanup (activated at temp-parent assignment) wipes 
 | `coveralls.json.eex`         | Updated: minimum_coverage set to 30.0 (fresh phx.new boilerplate ~33.7%; no ratchet — downstream teams may regress and still pass) |
 | `Makefile.eex`               | Gate targets + delegating stubs: gate-status, gate-kill, gate-logs                                                                 |
 
-### Machine-Global PLT Cache (B3 — Dormant until full `make ci`)
+### Machine-Global Scaffold Cache
 
-`scaffold.sh` (lines ~340) initializes a machine-global Dialyzer PLT cache helper:
+`shared/scaffold/phoenix/scaffold_cache.sh` (sourced by `scaffold.sh`) implements a transparent, machine-global cache for the Phoenix scaffold path so repeated same-toolchain+lockfile `codegen-scaffold create --stack=phoenix` runs skip the expensive deps-compile + Dialyzer PLT-build steps.
 
-- Location: `~/.cache/codegen-plt/<otp>-<elixir>-<lockhash>/`
-- On first hit: generated app's `.mix_dialyzer_plt/` is populated from cache
-- On cache miss: Dialyzer builds the PLT; cache is saved for future runs
-- Status: **Dormant** — dialyzer only runs under full `make ci`, which is gated behind credo-clean landing. The lock commit + cache infrastructure is in place; the reuse path activates once full `make ci` is enabled.
+- **Location**: `${XDG_CACHE_HOME:-$HOME/.cache}/codegen-scaffold/<key>/` — standard XDG cache dir, no new env var.
+- **Key**: `<otp>-<elixir>-<sha256(mix.lock)>` — `$OTP_VERSION`/`$ELIXIR_VERSION` scaffold vars (not a runtime `elixir --version` probe) + a sha256 hash of the generated app's `mix.lock` (`sha256sum` on Linux, `shasum -a 256` fallback on macOS). Computable only once `mix.lock` exists (after `mix phx.new` + mutations, before Phase 5's `mix deps.get`); absent lockfile → key not computable → cold run.
+- **Three cached layers**: (1) `deps/` + `_build/*/lib/<dep>` for hex deps only — every `_build/*/` env dir (dev, test, …) is globbed, but the app's own `_build/*/lib/<app_name>` is NEVER cached; (2) `priv/plts/dialyzer.plt`; (3) population-on-miss after a successful `make ci`.
+- **`make ci` stays unconditional** — dialyzer always runs; the cache never gates or skips it, it only pre-seeds inputs.
+- **Restore** (Phase 5, before `mix deps.get`): on a hit, `cp -R` copies the three layers into the target dir; `deps.get`/`mix setup` still run unconditionally afterward (cheap no-ops when already warm; they validate the lock and catch drift).
+- **Self-heal on a warm-run failure**: if `make ci` fails on a restored (hit) run, `scaffold.sh` purges the restored `deps/`, `_build/`, and `priv/plts/dialyzer.plt`, writes a `disabled` sentinel into `<root>/<key>/`, and re-runs the full cold path (`deps.get` → `setup` → `prettier` → `make ci`). A cold-run `make ci` failure stays fatal — it signals a real template/mutation bug, not a cache problem.
+- **Disable sentinel**: `<root>/<key>/disabled` blocks BOTH restore and save for that key; only an operator manually deleting the entry clears it.
+- **Save**: best-effort and atomic — writes to a temp dir (`<root>/<key>.tmp.$$`), then `mv`s into place; runs only after a cold miss's successful `make ci` (skipped on hit/disabled). On an unwritable cache root or disk-full, it warns on stderr (`WARN: scaffold cache save failed — next scaffold will be cold`) and returns 0 — it never fails the scaffold.
+- **Readiness summary** line (one of): `Cache: hit (key <short>)`, `Cache: miss — populated`, `Cache: miss — save failed`, `Cache: disabled (key <short>) — cold`.
+- **No auto-eviction** — the cache grows unboundedly across toolchain/lockfile combinations; pruning stale entries under `<root>/` is a manual operator task, accepted as a known caveat.
 
 ### Optimum Templates Submodule
 

@@ -31,6 +31,15 @@ TEMPLATES_DIR="$SCRIPT_DIR/templates"
 MUTATIONS_DIR="$SCRIPT_DIR/mutations"
 RENDER_SH="$SCRIPT_DIR/eex_render.sh"
 
+# shellcheck source=./scaffold_cache.sh
+source "$SCRIPT_DIR/scaffold_cache.sh"
+
+# Machine-global scaffold cache state (module scope; populated in Phase 5).
+CACHE_STATUS=""
+CACHE_KEY_SHORT=""
+CACHE_ROOT="$(scaffold_cache_root)"
+CACHE_KEY=""
+
 # Parse positional and flag args
 # Note: version defaults are NOT set here — callers (codegen-scaffold) always pass them explicitly.
 ELIXIR_VERSION=""
@@ -284,8 +293,27 @@ if command -v mise >/dev/null 2>&1; then
 fi
 
 # ---------------------------------------------------------------------------
-# Phase 5: deps.get + format
+# Phase 5: scaffold cache restore attempt, then deps.get + format
 # ---------------------------------------------------------------------------
+echo "[scaffold.sh] checking scaffold cache..."
+if key="$(scaffold_cache_key "$TARGET_DIR" "$OTP_VERSION" "$ELIXIR_VERSION" 2>/dev/null)"; then
+    CACHE_KEY="$key"
+    CACHE_KEY_SHORT="${CACHE_KEY:0:12}"
+    if scaffold_cache_is_disabled "$CACHE_ROOT" "$CACHE_KEY"; then
+        CACHE_STATUS="disabled"
+        echo "[scaffold.sh] scaffold cache disabled for key $CACHE_KEY_SHORT — cold run" >&2
+    elif scaffold_cache_restore "$TARGET_DIR" "$CACHE_ROOT" "$CACHE_KEY"; then
+        CACHE_STATUS="hit"
+        echo "[scaffold.sh] scaffold cache hit (key $CACHE_KEY_SHORT) — restored deps/_build/plt"
+    else
+        CACHE_STATUS="miss"
+        echo "[scaffold.sh] scaffold cache miss (key $CACHE_KEY_SHORT) — cold run, will populate on success"
+    fi
+else
+    CACHE_STATUS="miss"
+    echo "[scaffold.sh] scaffold cache key not computable (mix.lock absent) — cold run" >&2
+fi
+
 echo "[scaffold.sh] running mix deps.get..."
 (cd "$TARGET_DIR" && mix deps.get) || {
     echo "[scaffold.sh] ERROR: mix deps.get failed" >&2
@@ -358,10 +386,56 @@ echo "[scaffold.sh] running npx prettier --write ."
 }
 
 echo "[scaffold.sh] running make ci..."
-(cd "$TARGET_DIR" && make ci) || {
-    echo "[scaffold.sh] ERROR: make ci failed" >&2
-    exit 1
-}
+if ! (cd "$TARGET_DIR" && make ci); then
+    if [[ "$CACHE_STATUS" == "hit" ]]; then
+        # Self-heal: a warm (restored) run failed make ci. The cached deps/PLT
+        # may be stale or corrupt — purge, disable the cache entry, and
+        # re-run the full cold path. A cold-run make ci failure below is a
+        # real template/mutation bug and stays fatal (existing behavior).
+        echo "[scaffold.sh] WARN: make ci failed on a warm cache run (key $CACHE_KEY_SHORT) — purging cache entry and retrying cold" >&2
+        rm -rf "$TARGET_DIR/deps" "$TARGET_DIR/_build" "$TARGET_DIR/priv/plts/dialyzer.plt"
+        scaffold_cache_disable "$CACHE_ROOT" "$CACHE_KEY"
+        CACHE_STATUS="disabled"
+
+        echo "[scaffold.sh] re-running mix deps.get (cold)..."
+        (cd "$TARGET_DIR" && mix deps.get) || {
+            echo "[scaffold.sh] ERROR: mix deps.get failed on cold retry" >&2
+            exit 1
+        }
+
+        echo "[scaffold.sh] re-running mix setup (cold)..."
+        (cd "$TARGET_DIR" && mix setup) || {
+            echo "[scaffold.sh] ERROR: mix setup failed on cold retry" >&2
+            exit 1
+        }
+
+        echo "[scaffold.sh] re-running npx prettier --write . (cold)..."
+        (cd "$TARGET_DIR" && npx prettier --write .) || {
+            echo "[scaffold.sh] ERROR: npx prettier --write . failed on cold retry" >&2
+            exit 1
+        }
+
+        echo "[scaffold.sh] re-running make ci (cold)..."
+        (cd "$TARGET_DIR" && make ci) || {
+            echo "[scaffold.sh] ERROR: make ci failed on cold retry — this is a real template/mutation bug" >&2
+            exit 1
+        }
+    else
+        echo "[scaffold.sh] ERROR: make ci failed" >&2
+        exit 1
+    fi
+fi
+
+# make ci succeeded. On a cold miss (not disabled), populate the cache for
+# future runs. Best-effort; scaffold_cache_save never returns non-zero.
+if [[ "$CACHE_STATUS" == "miss" ]]; then
+    scaffold_cache_save "$TARGET_DIR" "$CACHE_ROOT" "$CACHE_KEY" "$APP_NAME"
+    if [[ -d "$CACHE_ROOT/$CACHE_KEY" ]]; then
+        CACHE_STATUS="miss-saved"
+    else
+        CACHE_STATUS="miss-save-failed"
+    fi
+fi
 
 # ---------------------------------------------------------------------------
 # Phase 8: git commit — owned by codegen-scaffold (runs after integrate stage)
@@ -383,5 +457,19 @@ echo "[scaffold.sh]   App: $APP_NAME ($APP_NAME_MODULE)"
 echo "[scaffold.sh]   Path: $TARGET_DIR"
 echo "[scaffold.sh]   Elixir: $ELIXIR_VERSION / OTP: $OTP_VERSION"
 echo "[scaffold.sh]   Next: cd $TARGET_DIR && mix phx.server"
+case "$CACHE_STATUS" in
+hit)
+    echo "[scaffold.sh]   Cache: hit (key $CACHE_KEY_SHORT)"
+    ;;
+miss-saved)
+    echo "[scaffold.sh]   Cache: miss — populated"
+    ;;
+miss-save-failed)
+    echo "[scaffold.sh]   Cache: miss — save failed"
+    ;;
+disabled)
+    echo "[scaffold.sh]   Cache: disabled (key $CACHE_KEY_SHORT) — cold"
+    ;;
+esac
 echo "[scaffold.sh] =========================================="
 echo "[scaffold.sh] scaffold complete"
