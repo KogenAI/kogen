@@ -149,6 +149,10 @@ Some generated system-prompt files may become stale and stay in the repo as lega
 
 (See `context/enforcement-compiler.md` for renderer-neutral regex tokens details.)
 
+## Config as Single Source of Truth
+
+Shell launcher + Elixir runner read same config keys. Two configs for one component (`harness.build.claude` AND `roles.build`) → silent drift. One canonical path. Both consumers read it. Rename → grep all, update together. ❌ Duplicate model/tool per consumer ✅ Shared key, consumers reference.
+
 ## Update When Changing
 
 Load this file when touching: `manifest.yaml`, `generate.sh`, `process_template.py`, `hook_registrations.py`, `enforcement_compiler.py`, `install.sh`, `uninstall.sh`, `codegen-build`, `codegen-scaffold`, `config.sh`, `resource_manager.sh`, `utils.sh`, or `shared/enforcement/registry.yaml`.
@@ -165,4 +169,4 @@ A third partition exists alongside `user_global_hooks`/`per_call_hooks`: the **l
 
 ## Trigger Keywords
 
-manifest.yaml, generate.sh, harness install, install.sh, hook_registrations.py, codegen-build, codegen-scaffold, codegen-call, generator pipeline, manifest schema, guard_bundle_flag, legacy interactive path
+manifest.yaml, generate.sh, harness install, install.sh, hook_registrations.py, codegen-build, codegen-scaffold, codegen-call, generator pipeline, manifest schema, guard_bundle_flag, legacy interactive path, config single source

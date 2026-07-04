@@ -14,9 +14,6 @@ Stack-specific rules (Phoenix vs static sites) plus cross-stack shared rules (gi
 | `shared/rules/stacks/phoenix/generators.md`       | Generator discipline — ALWAYS phx.gen.schema/auth, NEVER hand-write schemas/migrations |
 | `shared/rules/stacks/static/`                     | Static site stack rules (mirrors phoenix structure)                                    |
 | `shared/rules/shared/git-readonly.md`             | Git safety rules — never force-push, credential handling                               |
-| `shared/rules/shared/hook-layering.md`            | How hooks layer across harnesses and events                                            |
-| `shared/rules/shared/hook-test-coverage.md`       | Rules for maintaining hook test coverage                                               |
-| `shared/rules/shared/config-single-source.md`     | Config must have a single source of truth — no duplication                             |
 | `shared/rules/build-runtime/result-json.md`       | Result-JSON format for build-mode subagent output                                      |
 
 ## Key Paths
@@ -34,9 +31,6 @@ shared/rules/stacks/
     *.md              ← mirrors phoenix structure for static stacks
 shared/rules/shared/
   git-readonly.md
-  hook-layering.md
-  hook-test-coverage.md
-  config-single-source.md
   (others)
 shared/rules/build-runtime/
   result-json.md
@@ -51,7 +45,7 @@ shared/rules/build-runtime/
 
 ## Trigger Keywords
 
-phoenix rules, static rules, git-readonly, config-single-source, hook-layering, multi-repo-ordering, result-json, LiveView patterns, ExUnit, Oban, migrations, static site stack
+phoenix rules, static rules, git-readonly, result-json, LiveView patterns, ExUnit, Oban, migrations, static site stack
 
 ## Pitfalls
 

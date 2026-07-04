@@ -129,6 +129,10 @@ When porting a guard/hook from Claude (Bash) to Pi (TypeScript), the runtime cap
 
 The goal is truthful hooks that accurately reflect capability limits, not feature parity claims that hide missing capabilities.
 
+## Three-Repo Coordination Ordering
+
+Order: context → codegen → platform. Deploy docs show actual SSH invocations verbatim, not prose. Each repo committed before next. ❌ Bundle changes across repos in prose ✅ Numbered SSH/git commands.
+
 ## Scaffold File Rendering Order
 
 Integrate-stage renders (PROJECT_CONTEXT, restart_server.sh, usage_rules_INDEX) run BEFORE the git commit (codegen-scaffold do_create):
@@ -146,4 +150,4 @@ This eliminates the dirty-tree race: integrate-stage files rendered AFTER the co
 
 ## Trigger Keywords
 
-make install, make test, make test-stacks, CI/CD, Makefile, contribution, README, env vars, harness-parity, launcher tests, Makefile for t in list, dev loop, tech stack, coding conventions
+make install, make test, make test-stacks, CI/CD, Makefile, contribution, README, env vars, harness-parity, launcher tests, Makefile for t in list, dev loop, tech stack, coding conventions, multi-repo ordering, context codegen platform

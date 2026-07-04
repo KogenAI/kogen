@@ -1,6 +1,6 @@
 # Hook Authoring Patterns — How to Write & Test a Hook
 
-How-to patterns for authoring Claude Code hook scripts in `harnesses/claude/hooks/`: test authoring, Stop/SubagentStop authoring, hooks-lib usage, output protocol, gate-verdict flow, registration mechanics, and the bash micro-patterns guards rely on. This is the AUTHORING companion to `context/hooks.md` (the hook INVENTORY/catalog — which hooks exist, what each guard does, where sources/tests/registrations live). Read this file for "how do I build/test a hook?"; read `context/hooks.md` for "which hooks exist / what does guard X do?".
+How-to patterns for authoring Claude Code hook scripts in `harnesses/claude/hooks/`: test authoring, Stop/SubagentStop authoring, hooks-lib usage, output protocol, gate-verdict flow, registration mechanics, bash micro-patterns. AUTHORING companion to `context/hooks.md` (INVENTORY/catalog — which hooks exist, what each guard does, sources/tests/registrations). This file: "how do I build/test a hook?"; `context/hooks.md`: "which hooks exist / what does guard X do?".
 
 For the per-hook inventory table, hook-event taxonomy, key paths, and the Pitfalls reference index → `context/hooks.md`.
 
@@ -61,21 +61,9 @@ When adding assertion helpers (e.g., `assert_file_contains` / `assert_file_absen
 2. **Update `pass_count`/`fail_count`** — so `run-tests.sh` summary parsing (`N passed, N failed`) works; helpers in outer scope propagate totals automatically.
 3. **Negative-assertion caveat** — `grep -qF` exits 1 on missing file (same as "absent"), so false-pass silently when target is deleted. Acceptable for committed files (e.g., `harnesses/` launchers); document if reused elsewhere.
 
-**Example** (from `call-dispatch_test.sh`):
+Example (`call-dispatch_test.sh`): fn wraps `grep -qF -- "$search_string" "$file_path"`, incrementing `pass_count`/`fail_count`, printing `FAIL: '<str>' not found in <file>` on miss.
 
-```bash
-assert_file_contains() {
-  local file_path="$1" search_string="$2"
-  if grep -qF -- "$search_string" "$file_path"; then
-    pass_count=$((pass_count + 1))
-    return 0
-  else
-    fail_count=$((fail_count + 1))
-    printf "FAIL: '%s' not found in %s\n" "$search_string" "$file_path" >&2
-    return 1
-  fi
-}
-```
+**Coverage minimum**: every guard ≥14 cases, DENY+ALLOW — silent failures (grep partial, null crash, missing `//`) caught by tests not review. **Optional-pipeline** (both FORBID bare skip): (a) guaranteed dep (node/prettier/yq) — assert presence, fail loud on absence; (b) genuinely-optional (e.g. app omits `assets.deploy`) — check fs+config preconditions, assert ABSENCE-path fallback/no-op, not bare skip. **Hermeticity**: role-reading guards tested via `env -u CLAUDE_ROLE -u PI_ROLE bash "$GUARD"`. **Markdown headings** in LLM output: case-insensitive `~r/##\s+heading/i` (capitalisation varies).
 
 ## Hook Coverage Verification — Emoji Verdict Lines as Ground Truth
 
@@ -237,6 +225,10 @@ Multiple hooks on the same event → **first-deny-wins**: pipe the same input th
 
 Use mktemp dirs per test; absolute paths in JSONL Write entries. Do NOT mock hook internals — real subprocess invocation catches cross-hook interaction bugs.
 
+**One hook = one concern.** Universal hooks (no-cat-pipe, pre-commit) fire every role; role-specific (debug-bash-safety, planner-guard) gate role boundaries only. ❌ mix universal+role checks in one file ✅ separate files/registrations.
+
+**Measurement vs enforcement**: two hooks coexist on same event/matcher without ordering deps IF upstream MEASURES (appends verdict, never blocks) and downstream ENFORCES (reads measurement, blocks at threshold) — e.g. `static-site-build-check.sh` measures; downstream reader enforces. Distinct per-blocker counter files (`/tmp/claude-<hook>-${SESSION_ID}.count`) avoid clobbering. Under the Elixir loop, gate measurement+retry-cap are both owned by `LoopGate.run_gate`/`OrchestrationLoop.invoke_with_retry`, not cooperating hooks.
+
 ## Hooks-Lib Patterns
 
 ### `session_log_from_transcript` — Callers Must Guard Existence
@@ -383,11 +375,11 @@ When a guard pattern (e.g., session-log filename schema) is encoded in 9 places 
 3. **Edit all 9 occurrences** — registry edits → `make install` → generated files refresh → `make test` sees all in sync.
 4. **Test both allow and deny** — new fixtures (e.g., underscore-slug allow) AND existing deny fixtures (to confirm structure anchors preserved).
 
-Pattern applies to any widely-encoded schema (e.g., session-log slug class encoded in 9 places across hand-authored + registry-driven + documented siblings). Post-edit grep confirms zero old-class hits.
+Applies to any widely-encoded schema (e.g., session-log slug class in 9 places: hand-authored+registry-driven+doc siblings). Post-edit grep confirms zero old-class hits.
 
 ## Clean-Tree Gate at SHIPPED Signal
 
-`build-no-success-before-commit.sh` enforces clean working tree before BUILD_RESULT: success. Flow: commit found (commit-ts > start-ts) → gate verdict clear → `git status --porcelain` empty → allow. Any dirty/untracked file blocks with list of uncommitted files. No allowlist; add unwanted files to `.gitignore` before commit. Enforces "one commit per cycle capturing ALL output" rule.
+`build-no-success-before-commit.sh` enforces clean tree before BUILD_RESULT: success. Flow: commit found (commit-ts > start-ts) → gate clear → `git status --porcelain` empty → allow. Dirty/untracked file blocks with file list. No allowlist; gitignore unwanted files. Enforces "one commit/cycle capturing ALL output".
 
 ## Transcript Lag & Discovery Pattern
 
@@ -485,13 +477,13 @@ HOOK-MANIFEST edits require BOTH `.sh` AND `registry.yaml` to update:
 2. **Auto-generation**: `make install` → injects header from registry, generates settings.json from headers
 3. **Consistency check**: `make hook-parity` diffs committed settings.json vs. freshly-generated; divergence fails
 
-**Workflow**: Edit `registry.yaml` → `make install` (regenerates header + settings.json) → commit both. Never hand-edit settings.json — `regenerate_settings()` rebuilds from manifest, wiping stray keys.
+**Workflow**: Edit `registry.yaml` → `make install` (regen header+settings.json) → commit both. Never hand-edit settings.json — rebuilt from manifest, wiping stray keys.
 
-**Threading new fields (e.g., `timeout`)**: Register in `registry.yaml` → `render_header()` emits to header (when set) → `parse_manifest()` reads (conditional) → `build_hook_entry()` adds to JSON (conditional only). Prevents spurious keys in sibling hooks, keeps parity green.
+**Threading new fields (e.g., `timeout`)**: Register in `registry.yaml` → `render_header()` emits to header (when set) → `parse_manifest()` reads (conditional) → `build_hook_entry()` adds to JSON (conditional only). Prevents spurious keys in siblings, keeps parity green.
 
-`kind: registration` hooks preserve hand-authored bodies across edits. `kind: denial` (`generated: true`) hooks have ENTIRE `.sh` regenerated at `make install` — do not hand-edit.
+`kind: registration` hooks preserve hand-authored bodies. `kind: denial` (`generated: true`) hooks have ENTIRE `.sh` regenerated at `make install` — do not hand-edit.
 ```
 
 ## Trigger Keywords
 
-how to write a hook, SubagentStop fix-up, Stop hook authoring, hook test authoring, hooks-lib, output protocol, gate verdict flow, hook registration mechanics, transcript lag, kind: registration vs kind: denial
+how to write a hook, SubagentStop fix-up, Stop hook authoring, hook test authoring, hooks-lib, output protocol, gate verdict flow, hook registration, transcript lag, kind: registration vs denial, hook layering, measurement vs enforcement, DENY+ALLOW, ≥14 cases

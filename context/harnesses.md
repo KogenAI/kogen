@@ -264,6 +264,10 @@ These flags are spliced as the **first positional** after `exec claude` (before 
 
 **SSH launchers (ops, debug)**: export `SSH_TARGET_NON_INTERACTIVE=1` when `CLAUDE_NONINTERACTIVE` is set; `ssh-target.sh` exits 1 on alias miss instead of prompting (no interactive hang in headless mode).
 
+## Operator vs Batch Divergence Intentional
+
+Different exec modes (interactive vs CI, operator vs batch) → different output format, persistence, hardening flags. Don't unify these. Unify shared config only: model, tools, base prompt. ❌ Force single launcher path ✅ Two launchers, one config block.
+
 ## See Also
 
 See `context/launcher-hook-matrix.md` for which orchestrator-level hooks gate each launcher mode (build vs debug/shape/refactor vs ops).
@@ -337,4 +341,4 @@ Both shape launchers (`claude-shape.sh`, `pi-shape.sh`) accept a `--draft <path>
 
 ## Trigger Keywords
 
-claude-build, claude-debug, claude-shape, pi-build, dispatch.sh, launcher, system prompt, modes, tools-header, new launcher mode, claude-ops, pi-ops, CLAUDE_ROLE, per-mode hook bypass, claude-experiment.sh, harness-parity launcher tests, spawn ritual wording
+claude-build, claude-debug, claude-shape, pi-build, dispatch.sh, launcher, system prompt, modes, tools-header, new launcher mode, claude-ops, pi-ops, CLAUDE_ROLE, per-mode hook bypass, claude-experiment.sh, harness-parity launcher tests, spawn ritual wording, operator vs batch divergence

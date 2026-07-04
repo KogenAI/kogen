@@ -5,7 +5,7 @@ Codegen-infra pitfalls and bash gotchas — split from `context/development.md` 
 ## Common Pitfalls
 
 - **Split extraction: verify load-bearing, not meta** — Extractors pull EOF by default. Stop boundary BEFORE trailing meta (e.g., `## Update When Changing`). Verify last H2 is terminal cluster, not footer. Use grep `^## ` to detect boundaries.
-- **`make install` registry/settings.json parity** — add registry.yaml entry, add .sh file, run `hook_registrations.py --output-settings` BEFORE `make install` to regenerate settings.json. Running `make install` first causes hook-parity diff to fail (generator creates fresh settings.json that differs from committed version).
+- **`make install` registry/settings.json parity** — add registry.yaml entry + .sh file, run `hook_registrations.py --output-settings` BEFORE `make install` (else hook-parity diff fails).
 - **Bash heredoc keeps loop state** — `while <<EOF` not `|` pipe.
 - **TS `execFileSync` args: array not string** — pass `['commit', '-m', 'msg']`, not string. `.trim()` loses trailing-newline; use trim in some contexts (gitLog), not others (gitBlob).
 - **Check WIP before planning** — Large in-flight changes need reconciliation against pitch.
@@ -134,6 +134,7 @@ Codegen-infra pitfalls and bash gotchas — split from `context/development.md` 
 - **PATH-mutation runtime order** — New exec branch added textually AFTER PATH-prepend still inherits it at runtime. Trace EXECUTION flow (not file order); textually-later can run textually-after PATH-mutation.
 - **Hook stub isolation for sourced files** — Pre-sourcing doesn't work. Create per-test `CODEGEN_DIR` subdir with stub, invoke with `CODEGEN_DIR="$TMP_ROOT/tN" bash "$HOOK"`.
 - **jq null extraction in hook payloads** — `jq -r '.field'` on JSON null emits `"null"` (not empty). Always use `jq -r '.field // empty'` for optional fields; bare `.field` causes git/mkdir to treat `"null"` as a literal path argument.
+- **yq null-safety** — Every yq array op → `(.field // [])` guard. `.field | join(",")` crashes when field null/absent. ✅ `(.tools // []) | join(",")`.
 - **Conditional final statements** — `&&` flips exit code; use `if/then/fi` instead.
 - **Post-condition assertions in mutations** — validate preconditions (file exists, anchor present) and postconditions (expected lines added, placeholders resolved). `eex_render.sh` should fail on unresolved `<%= ... %>` placeholders.
 - **Cleanup wrappers & exit code propagation** — `bash -c "cmd; rm -rf $TMP"` loses the inner exit code if cleanup succeeds. Pattern: `RESULT=0; inner_cmd || RESULT=$?; cleanup_code; exit $RESULT`.
@@ -187,4 +188,4 @@ Codegen-infra pitfalls and bash gotchas — split from `context/development.md` 
 
 ## Trigger Keywords
 
-pitfall, gotcha, bash pattern
+pitfall, gotcha, bash pattern, yq null safety

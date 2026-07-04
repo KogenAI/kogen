@@ -47,9 +47,9 @@ Route in this order (matches the baked curator role rule's decision tree):
 3. Learning is project-specific → `context/*.md` (never `shared/rules/`).
 
 - **Style & code conventions** → `codegen/rules/STYLE_GUIDE.md`
-- **Hook design, guard layering patterns** → `codegen/rules/shared/hook-layering.md`
+- **Hook design, guard layering patterns** → `context/hook-authoring-patterns.md`
 - **Shell script structure/discipline** → `codegen/rules/shared/shell-script-discipline.md`
-- **Rule file organization, rules distribution/composition** → `codegen/rules/shared/rule-file-organization.md`
+- **Rule file organization, rules distribution/composition** → `context/rules-core.md`
 - **Stack-specific patterns** (Phoenix, static-site) → `codegen/rules/stacks/<stack>/`
 - **Role patterns** → `codegen/rules/roles/`
 - **Token mechanics, caching, prompt tuning** → `context/claude-token-mechanics.md` (project-local; no cross-project `_core` file exists for this topic)
@@ -74,7 +74,7 @@ If a block spans both local and shared:
 Example: "discovered that the Phoenix loop gate behavior differs from static-site-build-check.sh in a way that should be documented":
 
 - `[local]` block → `context/hooks.md` (phoenix vs static differences)
-- `[shared]` block → `codegen/rules/shared/hook-layering.md` (common hook design pattern)
+- `[shared]` block → `context/hook-authoring-patterns.md` (common hook design pattern)
 
 ## Trigger Keywords
 
