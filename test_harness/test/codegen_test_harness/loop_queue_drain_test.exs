@@ -499,6 +499,45 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
     refute File.exists?(ctx.lock_path)
   end
 
+  # ── Leg 1: stale legacy manifest cleared at startup ─────────────────────
+
+  test "L1: stale build-queue.json is removed at drain startup", ctx do
+    gate_pending = Path.join([ctx.dir, "codegen", "gate-pending"])
+    File.mkdir_p!(gate_pending)
+    manifest = Path.join(gate_pending, "build-queue.json")
+    File.write!(manifest, "{}")
+    assert File.exists?(manifest)
+
+    write_pitch(ctx.ready_dir, "solo")
+    spawn_fn = fn _slug, _h, _s, _cwd, _jsonl -> {:exit_code, 0} end
+
+    assert {:ok, 1} = LoopQueueDrain.drain(base_opts(ctx, spawn_fn: spawn_fn))
+    refute File.exists?(manifest)
+    assert File.exists?(Path.join(ctx.shipped_dir, "solo.md"))
+  end
+
+  # ── Leg 2: default lock path unified with legacy (gate-pending) ──────────
+
+  test "L2: default lock path is codegen/gate-pending/queue.lock", ctx do
+    gate_pending = Path.join([ctx.dir, "codegen", "gate-pending"])
+    File.mkdir_p!(gate_pending)
+    default_lock = Path.join(gate_pending, "queue.lock")
+    File.write!(default_lock, "99999 queue\n")
+
+    write_pitch(ctx.ready_dir, "solo")
+    spawn_fn = fn _slug, _h, _s, _cwd, _jsonl -> {:exit_code, 0} end
+    pid_alive_fn = fn _pid -> true end
+
+    opts =
+      ctx
+      |> base_opts(spawn_fn: spawn_fn, pid_alive_fn: pid_alive_fn)
+      |> Keyword.delete(:lock_path)
+
+    assert {:error, reason} = LoopQueueDrain.drain(opts)
+    assert reason =~ "already running"
+    assert File.exists?(Path.join(ctx.ready_dir, "solo.md"))
+  end
+
   # ── 11. Resume by re-scan (refillable mid-run) ──────────────────────────
 
   test "11: re-scan picks up a pitch written as a side-effect mid-run", ctx do

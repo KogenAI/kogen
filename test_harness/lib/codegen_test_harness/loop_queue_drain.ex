@@ -55,7 +55,7 @@ defmodule CodegenTestHarness.LoopQueueDrain do
     * `:cwd` — project directory the drain operates in (required)
     * `:ready_dir` — default `Path.join([cwd, "codegen", "pitches", "ready"])`
     * `:shipped_dir` — default `Path.join([cwd, "codegen", "pitches", "shipped"])`
-    * `:lock_path` — default `Path.join([cwd, "codegen", "pitches", "queue.lock"])`
+    * `:lock_path` — default `Path.join([cwd, "codegen", "gate-pending", "queue.lock"])`
     * `:max_retries` — default 3 (env `CODEGEN_BUILD_QUEUE_MAX_RETRIES`)
     * `:retry_delays` — default `[30, 120, 300]` (env `CODEGEN_BUILD_QUEUE_RETRY_DELAYS`)
     * `:pitch_budget_secs` — default 3600 (env `CODEGEN_BUILD_QUEUE_PITCH_BUDGET_SECS`)
@@ -84,7 +84,7 @@ defmodule CodegenTestHarness.LoopQueueDrain do
       Keyword.get(opts, :shipped_dir, Path.join([cwd, "codegen", "pitches", "shipped"]))
 
     lock_path =
-      Keyword.get(opts, :lock_path, Path.join([cwd, "codegen", "pitches", "queue.lock"]))
+      Keyword.get(opts, :lock_path, Path.join([cwd, "codegen", "gate-pending", "queue.lock"]))
 
     File.mkdir_p!(ready_dir)
     File.mkdir_p!(shipped_dir)
@@ -95,6 +95,13 @@ defmodule CodegenTestHarness.LoopQueueDrain do
     case acquire_lock(lock_path, pid_alive_fn) do
       :ok ->
         try do
+          # leg 1: clear any stale legacy build-queue.json manifest left by an
+          # aborted legacy --queue run. Under --elixir --queue nothing writes it;
+          # the shared lock (see :lock_path default) guarantees no legacy drain is
+          # concurrently mid-run relying on it. Ignore {:error, :enoent} (absent
+          # is the normal case).
+          File.rm(Path.join([cwd, "codegen", "gate-pending", "build-queue.json"]))
+
           state = %{
             harness: harness,
             stack: stack,
