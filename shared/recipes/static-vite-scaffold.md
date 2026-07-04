@@ -47,12 +47,29 @@ MUST use `import` (ESM), never `require()` — `@vitejs/plugin-react` is ESM-onl
 ## index.html (project root)
 
 ```html
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>App Title</title>
+    <meta name="description" content="App Title is a website." />
+    <meta property="og:title" content="App Title" />
+    <meta property="og:description" content="App Title is a website." />
+    <meta property="og:type" content="website" />
+    <meta
+      property="og:image"
+      content="https://SITE_URL_PLACEHOLDER/og-image.png"
+    />
+    <link rel="canonical" href="https://SITE_URL_PLACEHOLDER/" />
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "WebSite",
+        "name": "App Title",
+        "url": "https://SITE_URL_PLACEHOLDER/"
+      }
+    </script>
   </head>
   <body>
     <div id="root"></div>
@@ -60,6 +77,8 @@ MUST use `import` (ESM), never `require()` — `@vitejs/plugin-react` is ESM-onl
   </body>
 </html>
 ```
+
+SEO/AI-discoverability baseline (description, `og:*` tags, canonical, ld+json) carries over from the vanilla base — the `SITE_URL_PLACEHOLDER` token is planted by the scaffold and patched post-build by the platform (codegen cannot know the deploy host). See `shared/rules/stacks/static/assets.md` for the full convention.
 
 ## src/index.css
 

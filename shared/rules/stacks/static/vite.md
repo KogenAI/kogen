@@ -59,7 +59,7 @@ For vanilla multi-page sites, create additional HTML files at project root and a
 
 `index.html` (shell, title, meta), `src/main.js` (entry), `src/style.css`, `vite.config.js`. ❌ `public/`.
 
-`index.html` `<head>` is the single Vite injection point for all discoverability markup: JSON-LD `<script type="application/ld+json">`, OG tags (`og:title`, `og:description`, `og:type`, `og:image`), `<meta name="description">`, and `<link rel="canonical">` all inject here. When a framework is opted in (React/Vue), framework head-management libraries write into this same shell. The complete meta and JSON-LD field requirements live in the assets discipline (Complete Meta and Structured Data sections).
+`index.html` `<head>` is the single Vite injection point for all discoverability markup: JSON-LD `<script type="application/ld+json">`, OG tags (`og:title`, `og:description`, `og:type`, `og:image`), `<meta name="description">`, and `<link rel="canonical">` all inject here. When a framework is opted in (React/Vue), framework head-management libraries write into this same shell. The complete meta and JSON-LD field requirements live in the assets discipline (Complete Meta and Structured Data sections). All absolute-URL fields in this baseline use the `SITE_URL_PLACEHOLDER` token, planted by the scaffold and patched post-build by the platform — see the assets discipline's `SITE_URL_PLACEHOLDER` convention.
 
 ## Answer-First Headings
 

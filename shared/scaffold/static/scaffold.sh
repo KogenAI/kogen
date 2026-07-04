@@ -9,11 +9,12 @@
 #   --app-name  human-readable app name (used in <title>, <h1>, README heading)
 #
 # Writes:
-#   index.html            ← Vite entry (root)
-#   vite.config.js        ← Vite config with @tailwindcss/vite plugin
+#   index.html            ← Vite entry (root); SEO/AI-discoverability baseline head tags
+#   vite.config.js        ← Vite config with @tailwindcss/vite plugin; publicDir: "static"
 #   package.json          ← scripts: build/serve/dev; devDeps: vite, @tailwindcss/vite, tailwindcss
 #   src/main.js           ← app entry
 #   src/style.css         ← @import "tailwindcss"
+#   static/robots.txt     ← copied to public/ via publicDir
 #   README.md
 #   .gitignore
 #   codegen/pitches/{draft,ready,shipped}/.gitkeep
@@ -73,6 +74,23 @@ cat >"$CWD/index.html" <<EOF
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>${APP_NAME}</title>
+    <meta name="description" content="${APP_NAME} is a website." />
+    <meta property="og:title" content="${APP_NAME}" />
+    <meta property="og:description" content="${APP_NAME} is a website." />
+    <meta property="og:type" content="website" />
+    <meta
+      property="og:image"
+      content="https://SITE_URL_PLACEHOLDER/og-image.png"
+    />
+    <link rel="canonical" href="https://SITE_URL_PLACEHOLDER/" />
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "WebSite",
+        "name": "${APP_NAME}",
+        "url": "https://SITE_URL_PLACEHOLDER/"
+      }
+    </script>
   </head>
   <body>
     <div id="app"></div>
@@ -88,6 +106,7 @@ import tailwindcss from "@tailwindcss/vite";
 
 export default defineConfig({
   plugins: [tailwindcss()],
+  publicDir: "static",
   build: {
     outDir: "public",
   },
@@ -125,6 +144,13 @@ EOF
 # ── src/style.css ─────────────────────────────────────────────────────────────
 cat >"$CWD/src/style.css" <<'EOF'
 @import "tailwindcss";
+EOF
+
+# ── static/robots.txt ─────────────────────────────────────────────────────────
+mkdir -p "$CWD/static"
+cat >"$CWD/static/robots.txt" <<'EOF'
+User-agent: *
+Allow: /
 EOF
 
 # ── README.md ─────────────────────────────────────────────────────────────────

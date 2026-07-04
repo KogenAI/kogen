@@ -86,11 +86,12 @@ The `--no-ecto` post-render strip (`scaffold.sh` lines 187-201) must NOT remove 
 
 **Key files and config**:
 
-- `vite.config.js`: sets `build: { outDir: "public" }` + `@tailwindcss/vite` plugin (Tailwind v4)
+- `vite.config.js`: sets `build: { outDir: "public" }` + `publicDir: "static"` (copies static/\* to public/ at build) + `@tailwindcss/vite` plugin (Tailwind v4)
 - `package.json`: scripts `build: "vite build"`, `serve: "vite build && python3 -u -m http.server --directory public 0"`, `dev: "vite"` + `"type": "module"` + devDeps `vite`, `@tailwindcss/vite`, `tailwindcss`
+- `index.html` (root): `<head>` carries SEO baseline by default — `<meta name="description">`, four `og:*` tags (title/description/type/image), `<link rel="canonical">`, one `<script type="application/ld+json">` WebSite block; all absolute-URL fields use the literal `SITE_URL_PLACEHOLDER` host (patched post-build by the platform); `<script type="module" src="/src/main.js">` + app name + `<div id="app">` container
+- `static/robots.txt`: written by scaffold with `User-agent: * / Allow: /` template; copied to public/ via vite's `publicDir: "static"` at build
 - src/main.js: ES module entry that imports ./style.css
 - `src/style.css`: `@import "tailwindcss";` (Tailwind v4 directive)
-- `index.html` (root): `<script type="module" src="/src/main.js">` + app name + `<div id="app">` container
 - `run_integrate_stage` appends to `.gitignore`: `/node_modules/`, `/public/`, marker blocks for `current`, `public-*`, `.DS_Store`, `/package-lock.json`
 
 **Serve invariant**: The `static-site-build-check.sh` hook expects the `serve` script to end with the literal regex `python3 -u -m http\.server --directory public 0$` (exact tail match). Any deviation breaks the downstream gate.

@@ -47,9 +47,23 @@ shared/rules/build-runtime/
 
 phoenix rules, static rules, git-readonly, result-json, LiveView patterns, ExUnit, Oban, migrations, static site stack
 
+## Static Stack — SEO/AI-Discoverability Baseline
+
+Every static site scaffold plants an SEO baseline by default in `index.html` `<head>`:
+
+- `<meta name="description">` — non-empty, short sentence from app name
+- Four `og:*` tags: `og:title`, `og:description`, `og:type=website`, `og:image`
+- `<link rel="canonical" href="...">` — points to site root
+- One `<script type="application/ld+json">` block — WebSite schema
+
+All absolute-URL fields use the literal `SITE_URL_PLACEHOLDER` host, never a plausible-looking fake or unreplaced template variable. Host is obviously broken if never patched → fail-loud enforcement.
+
+**Token convention**: `https://SITE_URL_PLACEHOLDER/` (path-relative URLs omit host). Emitted by scaffold (vite.config.js `publicDir: "static"` copies static/robots.txt to public/ at build). Post-build patcher (platform repo, out of scope) replaces the token with the real canonical host. Gate (static-site-build-check.sh `check_seo_baseline`) enforces: token present OR real non-`example.com`-family URL; blocks invented fakes, unreplaced `%…%` vars, and any site without the baseline tags (except for developer-created multi-page sites which may define different baselines per page, subject to the same invariants).
+
 ## Pitfalls
 
 - **Phoenix and static rule files mirror each other in structure** — when adding a new rule category to one stack, evaluate whether the other stack needs an equivalent
+- **`og:image` tag presence with missing asset** — scaffold emits `og:image` content="https://SITE_URL_PLACEHOLDER/og-image.png" even if the asset is not yet created (fail-loud: obviously broken URL pre-patch). Developer may replace with a real asset path or omit the tag entirely if no image exists; the baseline mandates the tag be present + host be token/real, not the existence of the referenced file
 - **`shared/rules/shared/`** is cross-stack — not phoenix-specific despite living alongside phoenix rules; applies to both harnesses
 - **INCONCLUSIVE table** — the Phoenix INCONCLUSIVE classification table moved into the loop gate logic (`LoopGate.run_gate/2`) this cutover; the former shared/rules/stacks/phoenix/orchestrator.md and shared/rules/roles/orchestrator.md role-rule files no longer exist
 - **Rule changes are not live** — must `make install` to propagate to running agents

@@ -25,7 +25,7 @@ Hook registration: **Two pipelines** — both write to `harnesses/claude/hooks/*
 
 | File | Purpose |
 | - | - |
-| `harnesses/claude/hooks/static-site-build-check.sh` | SubagentStop (interactive-session fallback only) — builds static site + render check, appends gate verdict. Under the loop, the static stack's gate step invokes the same render check directly via `LoopGate.run_gate`. |
+| `harnesses/claude/hooks/static-site-build-check.sh` | SubagentStop (interactive-session fallback only) — builds static site + 8 output checks (CSS, HTML stylesheet link, asset filename, SEO baseline, render gate), appends verdict. SEO baseline (Check 6b, `check_seo_baseline`) validates every `public/**/*.html`: non-empty `<meta name="description">`, all 4 `og:*` tags present, `<link rel="canonical">` present, exactly one valid `application/ld+json` block, `public/robots.txt` exists, all absolute-URL fields are either `SITE_URL_PLACEHOLDER` token or real non-`example.com` URLs (never unreplaced `%...%` vars). Under the loop, the static stack's gate step invokes the same checks directly via `LoopGate.run_gate`. |
 | `harnesses/claude/hooks/pitch-format-validator.sh` | Stop — validates ## Questions/## Answers/> Status: grammar in active pitch for shape/refactor/ops sessions. |
 | `harnesses/claude/hooks/llm-pending-sweep.sh` | Stop — sweeps for pending LLM-generated artifacts before exit |
 | `harnesses/claude/hooks/session-log-writer-only.sh` | PreToolUse — `codegen-log` is the SOLE writer of session logs; denies raw Edit/Write/MultiEdit and raw Bash writes into `codegen/logging/*.md` |

@@ -1,5 +1,9 @@
 #!/bin/bash
 # static-site-build-check_test.sh — unit tests for static-site-build-check.sh
+#
+# Tests 28-39: SEO/AI-discoverability baseline invariant (Check 6b). Each case
+# violates exactly one invariant with all others valid + a PASS render stub,
+# so the SEO check is the sole blocker under test.
 
 set -u
 
@@ -82,6 +86,49 @@ printf 'RENDER_VERDICT=%s\n' '$verdict_to_emit'
 STUB
     chmod +x "$stub_path"
     printf '%s' "$stub_path"
+}
+
+# make_seo_site <canonical_url> — a make_tmp_site with a valid SEO/AI-discoverability
+# baseline in public/index.html + public/robots.txt. canonical_url substitutes into
+# the canonical link, og:image, and ld+json url fields (default SITE_URL_PLACEHOLDER).
+make_seo_site() {
+    local url="${1:-SITE_URL_PLACEHOLDER}"
+    local d
+    d=$(make_tmp_site)
+    mkdir -p "$d/public"
+    cat >"$d/public/robots.txt" <<'ROBOTS'
+User-agent: *
+Allow: /
+ROBOTS
+    cat >"$d/public/index.html" <<HTML
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Test Site</title>
+    <meta name="description" content="Test Site is a website." />
+    <meta property="og:title" content="Test Site" />
+    <meta property="og:description" content="Test Site is a website." />
+    <meta property="og:type" content="website" />
+    <meta property="og:image" content="https://${url}/og-image.png" />
+    <link rel="canonical" href="https://${url}/" />
+    <link rel="stylesheet" href="app.css" />
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "WebSite",
+        "name": "Test Site",
+        "url": "https://${url}/"
+      }
+    </script>
+  </head>
+  <body>
+    <p>hi</p>
+  </body>
+</html>
+HTML
+    touch "$d/public/app.css"
+    printf '%s' "$d"
 }
 
 # ── Test 1: stop_hook_active=true short-circuits ────────────────────────────
@@ -186,8 +233,9 @@ rm -rf "$T10"
 # ── Test 11: all checks pass — appends SSV section ──────────────────────────
 T11=$(make_tmp_site)
 mkdir -p "$T11/public" "$T11/codegen/logging"
+printf 'User-agent: *\nAllow: /\n' >"$T11/public/robots.txt"
 printf 'body { font-family: sans-serif; }\n' >"$T11/public/app.css"
-printf '<html><head><link rel="stylesheet" href="app.css"></head><body><p>hi</p></body></html>\n' \
+printf '<html><head><meta name="description" content="Test Site is a website." /><meta property="og:title" content="Test Site" /><meta property="og:description" content="Test Site is a website." /><meta property="og:type" content="website" /><meta property="og:image" content="https://SITE_URL_PLACEHOLDER/og-image.png" /><link rel="canonical" href="https://SITE_URL_PLACEHOLDER/" /><script type="application/ld+json">{"@context":"https://schema.org","@type":"WebSite","name":"Test Site","url":"https://SITE_URL_PLACEHOLDER/"}</script><link rel="stylesheet" href="app.css"></head><body><p>hi</p></body></html>\n' \
     >"$T11/public/index.html"
 LOG="$T11/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_session.md"
 cat >"$LOG" <<'MD'
@@ -218,8 +266,9 @@ rm -rf "$T11"
 T12A=$(make_tmp_site)
 T12B=$(make_tmp_site)
 mkdir -p "$T12A/public" "$T12A/codegen/logging" "$T12B/codegen/logging"
+printf 'User-agent: *\nAllow: /\n' >"$T12A/public/robots.txt"
 printf 'body { font-family: sans-serif; }\n' >"$T12A/public/app.css"
-printf '<html><head><link rel="stylesheet" href="app.css"></head><body><p>hi</p></body></html>\n' \
+printf '<html><head><meta name="description" content="Test Site is a website." /><meta property="og:title" content="Test Site" /><meta property="og:description" content="Test Site is a website." /><meta property="og:type" content="website" /><meta property="og:image" content="https://SITE_URL_PLACEHOLDER/og-image.png" /><link rel="canonical" href="https://SITE_URL_PLACEHOLDER/" /><script type="application/ld+json">{"@context":"https://schema.org","@type":"WebSite","name":"Test Site","url":"https://SITE_URL_PLACEHOLDER/"}</script><link rel="stylesheet" href="app.css"></head><body><p>hi</p></body></html>\n' \
     >"$T12A/public/index.html"
 LOG_A="$T12A/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_session_A.md"
 cat >"$LOG_A" <<'MD'
@@ -253,8 +302,9 @@ rm -rf "$T12A" "$T12B"
 # ── Test 13: render PASS — all checks pass + render PASS appends SSV ────────
 T13=$(make_tmp_site)
 mkdir -p "$T13/public" "$T13/codegen/logging"
+printf 'User-agent: *\nAllow: /\n' >"$T13/public/robots.txt"
 touch "$T13/public/app.css"
-printf '<html><head><link rel="stylesheet" href="app.css"></head><body><p>hi</p></body></html>\n' \
+printf '<html><head><meta name="description" content="Test Site is a website." /><meta property="og:title" content="Test Site" /><meta property="og:description" content="Test Site is a website." /><meta property="og:type" content="website" /><meta property="og:image" content="https://SITE_URL_PLACEHOLDER/og-image.png" /><link rel="canonical" href="https://SITE_URL_PLACEHOLDER/" /><script type="application/ld+json">{"@context":"https://schema.org","@type":"WebSite","name":"Test Site","url":"https://SITE_URL_PLACEHOLDER/"}</script><link rel="stylesheet" href="app.css"></head><body><p>hi</p></body></html>\n' \
     >"$T13/public/index.html"
 LOG13="$T13/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_session.md"
 cat >"$LOG13" <<'MD'
@@ -278,8 +328,9 @@ rm -rf "$T13"
 # ── Test 14: render FAIL empty-dom — blocks ─────────────────────────────────
 T14=$(make_tmp_site)
 mkdir -p "$T14/public"
+printf 'User-agent: *\nAllow: /\n' >"$T14/public/robots.txt"
 touch "$T14/public/app.css"
-printf '<html><head><link rel="stylesheet" href="app.css"></head><body></body></html>\n' \
+printf '<html><head><meta name="description" content="Test Site is a website." /><meta property="og:title" content="Test Site" /><meta property="og:description" content="Test Site is a website." /><meta property="og:type" content="website" /><meta property="og:image" content="https://SITE_URL_PLACEHOLDER/og-image.png" /><link rel="canonical" href="https://SITE_URL_PLACEHOLDER/" /><script type="application/ld+json">{"@context":"https://schema.org","@type":"WebSite","name":"Test Site","url":"https://SITE_URL_PLACEHOLDER/"}</script><link rel="stylesheet" href="app.css"></head><body></body></html>\n' \
     >"$T14/public/index.html"
 STUB14=$(make_render_stub "FAIL:empty-dom")
 out14=$(printf '%s' "$(input_for "$T14")" |
@@ -299,8 +350,9 @@ rm -rf "$T14"
 # ── Test 15: render FAIL unstyled — blocks ──────────────────────────────────
 T15=$(make_tmp_site)
 mkdir -p "$T15/public"
+printf 'User-agent: *\nAllow: /\n' >"$T15/public/robots.txt"
 touch "$T15/public/app.css"
-printf '<html><head></head><body><p>hi</p></body></html>\n' >"$T15/public/index.html"
+printf '<html><head><meta name="description" content="Test Site is a website." /><meta property="og:title" content="Test Site" /><meta property="og:description" content="Test Site is a website." /><meta property="og:type" content="website" /><meta property="og:image" content="https://SITE_URL_PLACEHOLDER/og-image.png" /><link rel="canonical" href="https://SITE_URL_PLACEHOLDER/" /><script type="application/ld+json">{"@context":"https://schema.org","@type":"WebSite","name":"Test Site","url":"https://SITE_URL_PLACEHOLDER/"}</script></head><body><p>hi</p></body></html>\n' >"$T15/public/index.html"
 STUB15=$(make_render_stub "FAIL:unstyled")
 out15=$(printf '%s' "$(input_for "$T15")" |
     RENDER_CHECK_CMD="$STUB15" CODEGEN_DIR="$SCRIPT_DIR" bash "$HOOK" 2>/dev/null || true)
@@ -321,10 +373,11 @@ rm -rf "$T15"
 # var is inherited by the subshell: `printf ... | RENDER_CHECK_CMD=stub bash "$HOOK"`.
 T16=$(make_tmp_site)
 mkdir -p "$T16/public"
+printf 'User-agent: *\nAllow: /\n' >"$T16/public/robots.txt"
 cat >"$T16/public/app.css" <<'CSS'
 body { margin: 0; font-family: sans-serif; }
 CSS
-printf '<html><head><link rel="stylesheet" href="app.css"></head><body><p>hi</p><script>throw new Error("intentional test error");</script></body></html>\n' \
+printf '<html><head><meta name="description" content="Test Site is a website." /><meta property="og:title" content="Test Site" /><meta property="og:description" content="Test Site is a website." /><meta property="og:type" content="website" /><meta property="og:image" content="https://SITE_URL_PLACEHOLDER/og-image.png" /><link rel="canonical" href="https://SITE_URL_PLACEHOLDER/" /><script type="application/ld+json">{"@context":"https://schema.org","@type":"WebSite","name":"Test Site","url":"https://SITE_URL_PLACEHOLDER/"}</script><link rel="stylesheet" href="app.css"></head><body><p>hi</p><script>throw new Error("intentional test error");</script></body></html>\n' \
     >"$T16/public/index.html"
 STUB16=$(make_render_stub "FAIL:js-error:Error: intentional test error")
 out16=$(printf '%s' "$(input_for "$T16")" |
@@ -345,8 +398,9 @@ rm -rf "$T16"
 # Gate must block when Chromium is absent; install guarantees it on static boxes.
 T17=$(make_tmp_site)
 mkdir -p "$T17/public"
+printf 'User-agent: *\nAllow: /\n' >"$T17/public/robots.txt"
 touch "$T17/public/app.css"
-printf '<html><head><link rel="stylesheet" href="app.css"></head><body><p>hi</p></body></html>\n' \
+printf '<html><head><meta name="description" content="Test Site is a website." /><meta property="og:title" content="Test Site" /><meta property="og:description" content="Test Site is a website." /><meta property="og:type" content="website" /><meta property="og:image" content="https://SITE_URL_PLACEHOLDER/og-image.png" /><link rel="canonical" href="https://SITE_URL_PLACEHOLDER/" /><script type="application/ld+json">{"@context":"https://schema.org","@type":"WebSite","name":"Test Site","url":"https://SITE_URL_PLACEHOLDER/"}</script><link rel="stylesheet" href="app.css"></head><body><p>hi</p></body></html>\n' \
     >"$T17/public/index.html"
 STUB17=$(make_render_stub "INCONCLUSIVE:chromium-launch-failed")
 out17=$(printf '%s' "$(input_for "$T17")" |
@@ -369,8 +423,9 @@ rm -rf "$T17"
 # no RENDER_VERDICT= line. The gate must block with a clear error, not silently pass.
 T18=$(make_tmp_site)
 mkdir -p "$T18/public"
+printf 'User-agent: *\nAllow: /\n' >"$T18/public/robots.txt"
 touch "$T18/public/app.css"
-printf '<html><head><link rel="stylesheet" href="app.css"></head><body><p>hi</p></body></html>\n' \
+printf '<html><head><meta name="description" content="Test Site is a website." /><meta property="og:title" content="Test Site" /><meta property="og:description" content="Test Site is a website." /><meta property="og:type" content="website" /><meta property="og:image" content="https://SITE_URL_PLACEHOLDER/og-image.png" /><link rel="canonical" href="https://SITE_URL_PLACEHOLDER/" /><script type="application/ld+json">{"@context":"https://schema.org","@type":"WebSite","name":"Test Site","url":"https://SITE_URL_PLACEHOLDER/"}</script><link rel="stylesheet" href="app.css"></head><body><p>hi</p></body></html>\n' \
     >"$T18/public/index.html"
 # Stub outputs garbage (no RENDER_VERDICT= line) — simulates render-check.js crash
 STUB18=$(mktemp)
@@ -397,8 +452,9 @@ rm -rf "$T18"
 # ── Test 19: GATED/clear stamp written when build passes (PASS render) ───────
 T19=$(make_tmp_site)
 mkdir -p "$T19/public"
+printf 'User-agent: *\nAllow: /\n' >"$T19/public/robots.txt"
 touch "$T19/public/app.css"
-printf '<html><head><link rel="stylesheet" href="app.css"></head><body><p>hi</p></body></html>\n' \
+printf '<html><head><meta name="description" content="Test Site is a website." /><meta property="og:title" content="Test Site" /><meta property="og:description" content="Test Site is a website." /><meta property="og:type" content="website" /><meta property="og:image" content="https://SITE_URL_PLACEHOLDER/og-image.png" /><link rel="canonical" href="https://SITE_URL_PLACEHOLDER/" /><script type="application/ld+json">{"@context":"https://schema.org","@type":"WebSite","name":"Test Site","url":"https://SITE_URL_PLACEHOLDER/"}</script><link rel="stylesheet" href="app.css"></head><body><p>hi</p></body></html>\n' \
     >"$T19/public/index.html"
 STUB19=$(mktemp)
 cat >"$STUB19" <<'STUB'
@@ -459,8 +515,9 @@ process.stdout.write('RENDER_VERDICT=PASS\n');
 JS
 T21=$(make_tmp_site)
 mkdir -p "$T21/public" "$T21/codegen/logging"
+printf 'User-agent: *\nAllow: /\n' >"$T21/public/robots.txt"
 touch "$T21/public/app.css"
-printf '<html><head><link rel="stylesheet" href="app.css"></head><body><p>hi</p></body></html>\n' \
+printf '<html><head><meta name="description" content="Test Site is a website." /><meta property="og:title" content="Test Site" /><meta property="og:description" content="Test Site is a website." /><meta property="og:type" content="website" /><meta property="og:image" content="https://SITE_URL_PLACEHOLDER/og-image.png" /><link rel="canonical" href="https://SITE_URL_PLACEHOLDER/" /><script type="application/ld+json">{"@context":"https://schema.org","@type":"WebSite","name":"Test Site","url":"https://SITE_URL_PLACEHOLDER/"}</script><link rel="stylesheet" href="app.css"></head><body><p>hi</p></body></html>\n' \
     >"$T21/public/index.html"
 LOG21="$T21/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_session.md"
 cat >"$LOG21" <<'MD'
@@ -497,8 +554,9 @@ cp "$SCRIPT_DIR"/lib/*.sh "$T22_FLAT/lib/"
 # Do NOT plant render-check.js — sibling is absent
 T22=$(make_tmp_site)
 mkdir -p "$T22/public"
+printf 'User-agent: *\nAllow: /\n' >"$T22/public/robots.txt"
 touch "$T22/public/app.css"
-printf '<html><head><link rel="stylesheet" href="app.css"></head><body><p>hi</p></body></html>\n' \
+printf '<html><head><meta name="description" content="Test Site is a website." /><meta property="og:title" content="Test Site" /><meta property="og:description" content="Test Site is a website." /><meta property="og:type" content="website" /><meta property="og:image" content="https://SITE_URL_PLACEHOLDER/og-image.png" /><link rel="canonical" href="https://SITE_URL_PLACEHOLDER/" /><script type="application/ld+json">{"@context":"https://schema.org","@type":"WebSite","name":"Test Site","url":"https://SITE_URL_PLACEHOLDER/"}</script><link rel="stylesheet" href="app.css"></head><body><p>hi</p></body></html>\n' \
     >"$T22/public/index.html"
 out22=$(printf '%s' "$(input_for "$T22" developer-static false)" |
     env -u RENDER_CHECK_CMD -u CODEGEN_DIR bash "$T22_FLAT/static-site-build-check.sh" 2>/dev/null || true)
@@ -520,8 +578,9 @@ rm -rf "$T22_FLAT" "$T22"
 # distinct loud message naming the path/env fault (not a browser message).
 T23=$(make_tmp_site)
 mkdir -p "$T23/public"
+printf 'User-agent: *\nAllow: /\n' >"$T23/public/robots.txt"
 touch "$T23/public/app.css"
-printf '<html><head><link rel="stylesheet" href="app.css"></head><body><p>hi</p></body></html>\n' \
+printf '<html><head><meta name="description" content="Test Site is a website." /><meta property="og:title" content="Test Site" /><meta property="og:description" content="Test Site is a website." /><meta property="og:type" content="website" /><meta property="og:image" content="https://SITE_URL_PLACEHOLDER/og-image.png" /><link rel="canonical" href="https://SITE_URL_PLACEHOLDER/" /><script type="application/ld+json">{"@context":"https://schema.org","@type":"WebSite","name":"Test Site","url":"https://SITE_URL_PLACEHOLDER/"}</script><link rel="stylesheet" href="app.css"></head><body><p>hi</p></body></html>\n' \
     >"$T23/public/index.html"
 STUB23=$(make_render_stub "INCONCLUSIVE:playwright-module-unresolvable")
 out23=$(printf '%s' "$(input_for "$T23")" |
@@ -544,8 +603,9 @@ rm -rf "$T23"
 # The gate must block AND the block message must contain the stderr marker.
 T24=$(make_tmp_site)
 mkdir -p "$T24/public"
+printf 'User-agent: *\nAllow: /\n' >"$T24/public/robots.txt"
 touch "$T24/public/app.css"
-printf '<html><head><link rel="stylesheet" href="app.css"></head><body><p>hi</p></body></html>\n' \
+printf '<html><head><meta name="description" content="Test Site is a website." /><meta property="og:title" content="Test Site" /><meta property="og:description" content="Test Site is a website." /><meta property="og:type" content="website" /><meta property="og:image" content="https://SITE_URL_PLACEHOLDER/og-image.png" /><link rel="canonical" href="https://SITE_URL_PLACEHOLDER/" /><script type="application/ld+json">{"@context":"https://schema.org","@type":"WebSite","name":"Test Site","url":"https://SITE_URL_PLACEHOLDER/"}</script><link rel="stylesheet" href="app.css"></head><body><p>hi</p></body></html>\n' \
     >"$T24/public/index.html"
 STUB24=$(mktemp)
 cat >"$STUB24" <<'STUB'
@@ -575,8 +635,9 @@ rm -rf "$T24"
 # so it must block under the fail-closed-everywhere ruling.
 T25=$(make_tmp_site)
 mkdir -p "$T25/public"
+printf 'User-agent: *\nAllow: /\n' >"$T25/public/robots.txt"
 touch "$T25/public/app.css"
-printf '<html><head><link rel="stylesheet" href="app.css"></head><body><p>hi</p></body></html>\n' \
+printf '<html><head><meta name="description" content="Test Site is a website." /><meta property="og:title" content="Test Site" /><meta property="og:description" content="Test Site is a website." /><meta property="og:type" content="website" /><meta property="og:image" content="https://SITE_URL_PLACEHOLDER/og-image.png" /><link rel="canonical" href="https://SITE_URL_PLACEHOLDER/" /><script type="application/ld+json">{"@context":"https://schema.org","@type":"WebSite","name":"Test Site","url":"https://SITE_URL_PLACEHOLDER/"}</script><link rel="stylesheet" href="app.css"></head><body><p>hi</p></body></html>\n' \
     >"$T25/public/index.html"
 STUB25=$(make_render_stub "INCONCLUSIVE:config-error")
 out25=$(printf '%s' "$(input_for "$T25")" |
@@ -597,8 +658,9 @@ rm -rf "$T25"
 # ── Test 26: render INCONCLUSIVE timeout — BLOCKS (fail-closed) ─────────────
 T26=$(make_tmp_site)
 mkdir -p "$T26/public"
+printf 'User-agent: *\nAllow: /\n' >"$T26/public/robots.txt"
 touch "$T26/public/app.css"
-printf '<html><head><link rel="stylesheet" href="app.css"></head><body><p>hi</p></body></html>\n' \
+printf '<html><head><meta name="description" content="Test Site is a website." /><meta property="og:title" content="Test Site" /><meta property="og:description" content="Test Site is a website." /><meta property="og:type" content="website" /><meta property="og:image" content="https://SITE_URL_PLACEHOLDER/og-image.png" /><link rel="canonical" href="https://SITE_URL_PLACEHOLDER/" /><script type="application/ld+json">{"@context":"https://schema.org","@type":"WebSite","name":"Test Site","url":"https://SITE_URL_PLACEHOLDER/"}</script><link rel="stylesheet" href="app.css"></head><body><p>hi</p></body></html>\n' \
     >"$T26/public/index.html"
 STUB26=$(make_render_stub "INCONCLUSIVE:timeout")
 out26=$(printf '%s' "$(input_for "$T26")" |
@@ -619,8 +681,9 @@ rm -rf "$T26"
 # ── Test 27: render INCONCLUSIVE server-unready — BLOCKS (fail-closed) ──────
 T27=$(make_tmp_site)
 mkdir -p "$T27/public"
+printf 'User-agent: *\nAllow: /\n' >"$T27/public/robots.txt"
 touch "$T27/public/app.css"
-printf '<html><head><link rel="stylesheet" href="app.css"></head><body><p>hi</p></body></html>\n' \
+printf '<html><head><meta name="description" content="Test Site is a website." /><meta property="og:title" content="Test Site" /><meta property="og:description" content="Test Site is a website." /><meta property="og:type" content="website" /><meta property="og:image" content="https://SITE_URL_PLACEHOLDER/og-image.png" /><link rel="canonical" href="https://SITE_URL_PLACEHOLDER/" /><script type="application/ld+json">{"@context":"https://schema.org","@type":"WebSite","name":"Test Site","url":"https://SITE_URL_PLACEHOLDER/"}</script><link rel="stylesheet" href="app.css"></head><body><p>hi</p></body></html>\n' \
     >"$T27/public/index.html"
 STUB27=$(make_render_stub "INCONCLUSIVE:server-unready")
 out27=$(printf '%s' "$(input_for "$T27")" |
@@ -637,6 +700,125 @@ else
 fi
 rm -f "$STUB27"
 rm -rf "$T27"
+
+# ── SEO/AI-discoverability baseline tests ────────────────────────────────────
+# Each case mutates make_seo_site's output to violate exactly ONE invariant
+# (all others valid) with a PASS render stub, so the SEO check is the sole
+# blocker under test. run_seo_test wires the PASS stub + CODEGEN_DIR uniformly.
+run_seo_test() {
+    local desc="$1"
+    local expected="$2"
+    local site_dir="$3"
+    local stub
+    stub=$(make_render_stub "PASS")
+    local out
+    out=$(printf '%s' "$(input_for "$site_dir")" |
+        RENDER_CHECK_CMD="$stub" CODEGEN_DIR="$SCRIPT_DIR" bash "$HOOK" 2>/dev/null || true)
+    rm -f "$stub"
+    local outcome="allow"
+    printf '%s' "$out" | grep -q '"decision"[[:space:]]*:[[:space:]]*"block"' && outcome="block"
+    if [ "$outcome" = "$expected" ]; then
+        [ -n "${VERBOSE:-}" ] && printf 'PASS: %s\n' "$desc"
+        pass=$((pass + 1))
+    else
+        printf 'FAIL: %s — expected %s, got %s\n  stdout: %s\n' "$desc" "$expected" "$outcome" "$out"
+        fail=$((fail + 1))
+    fi
+    rm -rf "$site_dir"
+}
+
+# ── Test 28: valid baseline with SITE_URL_PLACEHOLDER token — passes ────────
+T28=$(make_seo_site "SITE_URL_PLACEHOLDER")
+run_seo_test "SEO baseline: valid site with SITE_URL_PLACEHOLDER token passes" "allow" "$T28"
+
+# ── Test 29: valid baseline with a real non-example.com URL — passes ────────
+T29=$(make_seo_site "myrealsite.com")
+run_seo_test "SEO baseline: valid site with real non-example.com URL passes" "allow" "$T29"
+
+# ── Test 30: missing description — blocks ───────────────────────────────────
+T30=$(make_seo_site)
+python3 -c "
+import re
+p = '$T30/public/index.html'
+c = open(p).read()
+c = re.sub(r'\s*<meta name=\"description\"[^>]*/>\n', '\n', c)
+open(p, 'w').write(c)
+"
+run_seo_test "SEO baseline: missing description blocks" "block" "$T30"
+
+# ── Test 31: missing og:image — blocks ──────────────────────────────────────
+T31=$(make_seo_site)
+python3 -c "
+import re
+p = '$T31/public/index.html'
+c = open(p).read()
+c = re.sub(r'\s*<meta property=\"og:image\"[^>]*/>\n', '\n', c)
+open(p, 'w').write(c)
+"
+run_seo_test "SEO baseline: missing og:image blocks" "block" "$T31"
+
+# ── Test 32: missing canonical — blocks ──────────────────────────────────────
+T32=$(make_seo_site)
+python3 -c "
+import re
+p = '$T32/public/index.html'
+c = open(p).read()
+c = re.sub(r'\s*<link rel=\"canonical\"[^>]*/>\n', '\n', c)
+open(p, 'w').write(c)
+"
+run_seo_test "SEO baseline: missing canonical blocks" "block" "$T32"
+
+# ── Test 33: zero ld+json blocks — blocks ────────────────────────────────────
+T33=$(make_seo_site)
+python3 -c "
+import re
+p = '$T33/public/index.html'
+c = open(p).read()
+c = re.sub(r'\s*<script type=\"application/ld\+json\">.*?</script>\n', '\n', c, flags=re.DOTALL)
+open(p, 'w').write(c)
+"
+run_seo_test "SEO baseline: zero ld+json blocks blocks" "block" "$T33"
+
+# ── Test 34: two ld+json blocks — blocks ─────────────────────────────────────
+T34=$(make_seo_site)
+python3 -c "
+p = '$T34/public/index.html'
+c = open(p).read()
+extra = '''    <script type=\"application/ld+json\">
+      { \"@context\": \"https://schema.org\", \"@type\": \"WebSite\", \"name\": \"x\", \"url\": \"https://SITE_URL_PLACEHOLDER/\" }
+    </script>
+'''
+c = c.replace('  </head>', extra + '  </head>')
+open(p, 'w').write(c)
+"
+run_seo_test "SEO baseline: two ld+json blocks blocks" "block" "$T34"
+
+# ── Test 35: malformed ld+json — blocks ──────────────────────────────────────
+T35=$(make_seo_site)
+python3 -c "
+p = '$T35/public/index.html'
+c = open(p).read()
+c = c.replace('\"@type\": \"WebSite\",', '\"@type\" \"WebSite\"')
+open(p, 'w').write(c)
+"
+run_seo_test "SEO baseline: malformed ld+json blocks" "block" "$T35"
+
+# ── Test 36: missing public/robots.txt — blocks ──────────────────────────────
+T36=$(make_seo_site)
+rm -f "$T36/public/robots.txt"
+run_seo_test "SEO baseline: missing public/robots.txt blocks" "block" "$T36"
+
+# ── Test 37: example.com canonical — blocks ──────────────────────────────────
+T37=$(make_seo_site "example.com")
+run_seo_test "SEO baseline: example.com canonical blocks" "block" "$T37"
+
+# ── Test 38: trav.example.com subdomain og:url-style — blocks ───────────────
+T38=$(make_seo_site "trav.example.com")
+run_seo_test "SEO baseline: trav.example.com subdomain blocks" "block" "$T38"
+
+# ── Test 39: unreplaced %SITE% template variable — blocks ───────────────────
+T39=$(make_seo_site "%SITE%")
+run_seo_test "SEO baseline: unreplaced %SITE% template var blocks" "block" "$T39"
 
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

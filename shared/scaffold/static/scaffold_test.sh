@@ -9,6 +9,9 @@
 #  (e) README.md contains app-name + "npm install" + "npm run build" + "npm run serve"
 #  (f) vite.config.js exists with outDir "public" and @tailwindcss/vite; src/main.js and src/style.css exist
 #  (prettier) scaffold output is prettier-clean (prettier --check)
+#  (ah) index.html has SEO baseline head tags (description, 4x og:*, canonical, ld+json)
+#  (ai) index.html carries SITE_URL_PLACEHOLDER token, no example.com
+#  (aj) vite.config.js has publicDir "static"; static/robots.txt exists
 #  codegen-scaffold smoke:
 #  (g) bad --stack=x exits 2
 #  (h) missing --slug for create exits 2
@@ -144,6 +147,32 @@ assert_exit "scaffold output is prettier-clean" "0" "$PRETTIER_EXIT"
 assert_file_exists "codegen/pitches/draft/.gitkeep exists" "$TMPDIR/codegen/pitches/draft/.gitkeep"
 assert_file_exists "codegen/pitches/ready/.gitkeep exists" "$TMPDIR/codegen/pitches/ready/.gitkeep"
 assert_file_exists "codegen/pitches/shipped/.gitkeep exists" "$TMPDIR/codegen/pitches/shipped/.gitkeep"
+
+# (ah) SEO/AI-discoverability baseline head tags present in index.html
+assert_contains "index.html has meta description" "$INDEX_CONTENT" '<meta name="description" content="My Test App is a website." />'
+assert_contains "index.html has og:title" "$INDEX_CONTENT" '<meta property="og:title" content="My Test App" />'
+assert_contains "index.html has og:description" "$INDEX_CONTENT" '<meta property="og:description" content="My Test App is a website." />'
+assert_contains "index.html has og:type website" "$INDEX_CONTENT" '<meta property="og:type" content="website" />'
+assert_contains "index.html has og:image" "$INDEX_CONTENT" 'property="og:image"'
+assert_contains "index.html has canonical link" "$INDEX_CONTENT" '<link rel="canonical" href="https://SITE_URL_PLACEHOLDER/" />'
+assert_contains "index.html has ld+json script" "$INDEX_CONTENT" '<script type="application/ld+json">'
+assert_contains "index.html ld+json has WebSite type" "$INDEX_CONTENT" '"@type": "WebSite"'
+
+# (ai) SITE_URL_PLACEHOLDER token present, no example.com in index.html
+assert_contains "index.html carries SITE_URL_PLACEHOLDER token" "$INDEX_CONTENT" "SITE_URL_PLACEHOLDER"
+if [[ "$INDEX_CONTENT" == *"example.com"* ]]; then
+    printf 'FAIL: index.html must not contain example.com\n'
+    fail=$((fail + 1))
+else
+    [ -n "${VERBOSE:-}" ] && printf 'PASS: index.html has no example.com\n'
+    pass=$((pass + 1))
+fi
+
+# (aj) vite.config.js has publicDir: "static"; static/robots.txt exists with User-agent
+assert_contains "vite.config.js has publicDir static" "$VITE_CONTENT" 'publicDir: "static"'
+assert_file_exists "static/robots.txt exists" "$TMPDIR/static/robots.txt"
+ROBOTS_CONTENT="$(<"$TMPDIR/static/robots.txt")"
+assert_contains "static/robots.txt has User-agent" "$ROBOTS_CONTENT" "User-agent: *"
 
 # ── codegen-scaffold smoke tests ──────────────────────────────────────────────
 

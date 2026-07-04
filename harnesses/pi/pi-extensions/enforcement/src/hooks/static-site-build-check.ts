@@ -25,6 +25,101 @@ export const HANDLER_META = {
 
 const STATIC_DEV_AGENTS = new Set(["developer-static"]);
 
+const OG_PROPS = ["og:title", "og:description", "og:type", "og:image"];
+
+// _isExcludedUrlHost — JSON-LD/XML namespace hosts that are never a deploy
+// host (schema.org @context, w3.org XML namespaces).
+function isExcludedUrlHost(url: string): boolean {
+  return /schema\.org|w3\.org/.test(url);
+}
+
+// _isBadUrl — invented fake host or unreplaced template variable. Reduced-
+// fidelity note: mirrors the bash gate's example.com/%...% arms; JSON.parse
+// below is the boundary-validation carve-out for ld+json well-formedness.
+function isBadUrl(url: string): boolean {
+  return /example\.com|example\.org|example\.net|%/.test(url);
+}
+
+// checkSeoBaseline — mirrors the bash gate's Check 6b (SEO/AI-discoverability
+// baseline). Pi's session_shutdown event cannot block (see module header for
+// the reduced-fidelity gap vs. the Claude harness's fail-closed enforcement),
+// so violations are collected and surfaced to stderr, never thrown.
+function checkSeoBaseline(projectDir: string): string[] {
+  const violations: string[] = [];
+  const outputDir = path.join(projectDir, "public");
+  if (!fs.existsSync(outputDir)) return violations;
+
+  if (!fs.existsSync(path.join(outputDir, "robots.txt"))) {
+    violations.push(
+      "public/robots.txt missing — check vite.config.js publicDir + static/robots.txt",
+    );
+  }
+
+  const htmlFiles: string[] = [];
+  (function walk(dir: string) {
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      const full = path.join(dir, entry.name);
+      if (entry.isDirectory()) walk(full);
+      else if (entry.isFile() && entry.name.endsWith(".html")) {
+        htmlFiles.push(full);
+      }
+    }
+  })(outputDir);
+
+  for (const htmlFile of htmlFiles) {
+    const html = fs.readFileSync(htmlFile, "utf8");
+
+    if (!/<meta[^>]*name="description"[^>]*content="[^"]+"/s.test(html)) {
+      violations.push(`${htmlFile} missing non-empty <meta name="description">`);
+    }
+
+    for (const prop of OG_PROPS) {
+      if (!new RegExp(`<meta[^>]*property="${prop}"`, "s").test(html)) {
+        violations.push(`${htmlFile} missing <meta property="${prop}">`);
+      }
+    }
+
+    if (!/<link[^>]*rel="canonical"/s.test(html)) {
+      violations.push(`${htmlFile} missing <link rel="canonical">`);
+    }
+
+    const ldjsonMatches = [
+      ...html.matchAll(
+        /<script[^>]*type="application\/ld\+json"[^>]*>([\s\S]*?)<\/script>/g,
+      ),
+    ];
+    if (ldjsonMatches.length === 0) {
+      violations.push(
+        `${htmlFile} has zero <script type="application/ld+json"> blocks — need exactly one`,
+      );
+    } else if (ldjsonMatches.length > 1) {
+      violations.push(
+        `${htmlFile} has ${ldjsonMatches.length} ld+json blocks — need exactly one`,
+      );
+    } else {
+      // Boundary validation: JSON.parse in try/catch is the sanctioned
+      // carve-out for validating externally-authored ld+json well-formedness.
+      try {
+        JSON.parse(ldjsonMatches[0][1]);
+      } catch {
+        violations.push(`${htmlFile} ld+json block is not valid JSON`);
+      }
+    }
+
+    const urlMatches = html.match(/https?:\/\/[^"'\s]+/g) ?? [];
+    for (const url of urlMatches) {
+      if (isExcludedUrlHost(url)) continue;
+      if (isBadUrl(url)) {
+        violations.push(
+          `${htmlFile} has invented/unreplaced URL: ${url} — use SITE_URL_PLACEHOLDER`,
+        );
+      }
+    }
+  }
+
+  return violations;
+}
+
 function writeGateArtifacts(params: {
   projectDir: string;
   gate: string;
@@ -137,6 +232,19 @@ export function register(pi: ExtensionAPI): void {
           process.env["SESSION_ID"] ?? process.env["CLAUDE_SESSION_ID"] ?? "",
       });
       return;
+    }
+
+    // ── SEO/AI-discoverability baseline ─────────────────────────────────────
+    // Pi's session_shutdown event cannot block(): this check is observe-only
+    // (stderr), unlike the Claude harness's fail-closed static-site-build-check.sh
+    // twin which blocks on the same invariants. Reduced-fidelity gap: a static
+    // site can ship a broken SEO baseline via Pi without the developer being
+    // re-spawned — the Claude harness holds the fail-closed authority.
+    const seoViolations = checkSeoBaseline(projectDir);
+    for (const v of seoViolations) {
+      process.stderr.write(
+        `[pi-enforcement:static-site-build-check] SEO: ${v}\n`,
+      );
     }
 
     // ── Render verification ────────────────────────────────────────────────

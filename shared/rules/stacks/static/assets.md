@@ -68,7 +68,7 @@ Sizes: `16x16`/`32x32` browser tab; `180x180` iOS home. Skip `192`/`512` unless 
 
 ## robots.txt
 
-`static/robots.txt` → build copies to `public/`:
+`static/robots.txt` → build copies to `public/`. The scaffold's `vite.config.js` sets `publicDir: "static"`, so `static/robots.txt` and `static/images/*` favicons copy into `public/` at build time — this is the mechanism that makes `public/robots.txt` exist after `npm run build`.
 
 ```
 User-agent: *
@@ -104,7 +104,7 @@ Every page emits exactly one `<script type="application/ld+json">` block in `<he
   "@context": "https://schema.org",
   "@type": "WebSite",
   "name": "Site Name",
-  "url": "https://example.com"
+  "url": "https://SITE_URL_PLACEHOLDER/"
 }
 ```
 
@@ -116,3 +116,13 @@ Every page emits exactly one `<script type="application/ld+json">` block in `<he
 - Values come from real content. Never invent placeholders.
 - One block per page — do not emit duplicate `<script type="application/ld+json">` blocks.
 - This is baseline craft applied default-on (same tier as favicon and robots.txt) — NOT signal-gated behind user SEO intent.
+
+## The `SITE_URL_PLACEHOLDER` Convention
+
+Codegen never knows the deploy host — planting a real-looking fake (e.g. `https://example.com`) would be a silently-wrong value that ships undetected. Every absolute-URL field (canonical `href`, `og:url`, `og:image`, JSON-LD `url`) MUST use the literal token `SITE_URL_PLACEHOLDER` instead:
+
+- `<link rel="canonical" href="https://SITE_URL_PLACEHOLDER/" />`
+- `<meta property="og:image" content="https://SITE_URL_PLACEHOLDER/og-image.png" />`
+- `"url": "https://SITE_URL_PLACEHOLDER/"` (JSON-LD)
+
+The scaffold plants this token; the separate platform repo patches it post-build once the real deploy host is known (out of scope for codegen — one-way boundary). NEVER invent a plausible fake host (`example.com`, `mysite.com`, etc.) — the whole point of the token is that it is obviously unpatched if a deploy ships without the patch step, so the defect is caught immediately instead of silently shipping a wrong domain.

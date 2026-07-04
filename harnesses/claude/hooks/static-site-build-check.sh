@@ -24,6 +24,11 @@
 #   3. Tailwind v4 config absence — neither tailwind.config.js nor postcss.config.js
 #      may exist at the app root.
 #   4. Tailwind v4 directive — no `@tailwind ` directive in any *.css file.
+#   5. SEO/AI-discoverability baseline — public/robots.txt exists; every
+#      public/**/*.html has a non-empty description, all 4 og:* tags, a
+#      canonical link, and exactly one valid ld+json block; every absolute
+#      URL in that markup is SITE_URL_PLACEHOLDER, an excluded namespace host
+#      (schema.org/w3.org), or a real non-example.com/non-%...% URL.
 #
 # Loop guard: STOP_HOOK_ACTIVE=true exits 0 immediately so the hook does not
 # re-run after the developer resumes from a `block` envelope.
@@ -190,6 +195,116 @@ check_html_stylesheet_link() {
 
 check_css_output
 check_html_stylesheet_link
+
+# ── Check 6b: SEO/AI-discoverability baseline ────────────────────────────────
+# Verifies the baseline planted by shared/scaffold/static/scaffold.sh survives
+# the build: robots.txt copied to public/, and every built HTML page carries a
+# non-empty description, all 4 og:* tags, a canonical link, and exactly one
+# valid ld+json block. Absolute-URL fields must be SITE_URL_PLACEHOLDER, an
+# excluded namespace host (schema.org/w3.org — JSON-LD @context, not a deploy
+# host), or a real non-example.com/non-%...% URL.
+# _flatten_tags <html_file> — joins multi-line <meta>/<link> tags into single
+# lines so per-line grep can match attributes regardless of prettier wrapping
+# (e.g. a wrapped og:image tag spanning 3 lines).
+_flatten_tags() {
+    awk '
+    BEGIN { buf=""; intag=0 }
+    {
+      line=$0
+      if (intag) {
+        buf = buf " " line
+        if (line ~ /\/>/ || line ~ />/) {
+          print buf
+          buf=""
+          intag=0
+        }
+        next
+      }
+      if (line ~ /<(meta|link)[^>]*$/) {
+        buf = line
+        intag = 1
+        next
+      }
+      print line
+    }
+    ' "$1"
+}
+
+# _is_excluded_url_host <url> — true (exit 0) for JSON-LD/XML namespace hosts
+# that are never a deploy host (schema.org @context, w3.org XML namespaces).
+_is_excluded_url_host() {
+    case "$1" in
+    *schema.org* | *w3.org*) return 0 ;;
+    *) return 1 ;;
+    esac
+}
+
+# _is_bad_url <url> — true (exit 0) when the URL is an invented fake host or
+# an unreplaced template variable. SITE_URL_PLACEHOLDER and excluded namespace
+# hosts are valid; any other real absolute URL is also valid.
+_is_bad_url() {
+    case "$1" in
+    *example.com* | *example.org* | *example.net* | *%*) return 0 ;;
+    *) return 1 ;;
+    esac
+}
+
+check_seo_baseline() {
+    [ -f package.json ] || return 0
+
+    # No scripts object → tooling-only; skip.
+    jq -e '.scripts' package.json >/dev/null 2>&1 || return 0
+
+    [ -d "public" ] || return 0
+
+    if [ ! -f "public/robots.txt" ]; then
+        fail "SEO baseline: public/robots.txt missing — check vite.config.js publicDir + static/robots.txt"
+    fi
+
+    local html_file flat
+    while IFS= read -r html_file; do
+        flat=$(_flatten_tags "$html_file")
+
+        if ! printf '%s\n' "$flat" | grep -qE '<meta[^>]*name="description"[^>]*content="[^"]+"'; then
+            fail "SEO baseline: $html_file missing non-empty <meta name=\"description\">"
+        fi
+
+        for og_prop in og:title og:description og:type og:image; do
+            if ! printf '%s\n' "$flat" | grep -qE "<meta[^>]*property=\"$og_prop\""; then
+                fail "SEO baseline: $html_file missing <meta property=\"$og_prop\">"
+            fi
+        done
+
+        if ! printf '%s\n' "$flat" | grep -qE '<link[^>]*rel="canonical"'; then
+            fail "SEO baseline: $html_file missing <link rel=\"canonical\">"
+        fi
+
+        local ldjson_count
+        ldjson_count=$(printf '%s\n' "$flat" | grep -cE '<script[^>]*type="application/ld\+json"')
+        if [ "$ldjson_count" -eq 0 ]; then
+            fail "SEO baseline: $html_file has zero <script type=\"application/ld+json\"> blocks — need exactly one"
+        elif [ "$ldjson_count" -gt 1 ]; then
+            fail "SEO baseline: $html_file has $ldjson_count ld+json blocks — need exactly one"
+        fi
+
+        local ldjson_body
+        ldjson_body=$(awk '/<script[^>]*type="application\/ld\+json"/{f=1;next} /<\/script>/{f=0} f' "$html_file")
+        if [ -n "$ldjson_body" ] && ! printf '%s' "$ldjson_body" | jq -e . >/dev/null 2>&1; then
+            fail "SEO baseline: $html_file ld+json block is not valid JSON"
+        fi
+
+        local url
+        while IFS= read -r url; do
+            [ -n "$url" ] || continue
+            _is_excluded_url_host "$url" && continue
+            if _is_bad_url "$url"; then
+                fail "SEO baseline: $html_file has invented/unreplaced URL: $url — use SITE_URL_PLACEHOLDER"
+            fi
+        done < <(printf '%s\n%s\n' "$flat" "$ldjson_body" | grep -oE 'https?://[^"'"'"' ]+')
+    done < <(find public -name '*.html' -type f)
+}
+
+check_seo_baseline
 
 # ── Check 7: render verification (headless Chromium) ─────────────────────────
 # Runs after all static-file checks pass. Uses render-check.js which serves

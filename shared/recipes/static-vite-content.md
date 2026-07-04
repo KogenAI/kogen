@@ -170,7 +170,7 @@ import { readdir, readFile, writeFile, mkdir } from "node:fs/promises";
 import { join, basename } from "node:path";
 import matter from "gray-matter";
 
-const SITE_URL = process.env.SITE_URL ?? "https://example.com";
+const SITE_URL = process.env.SITE_URL ?? "https://SITE_URL_PLACEHOLDER";
 const SITE_TITLE = process.env.SITE_TITLE ?? "My Blog";
 const SITE_DESCRIPTION = process.env.SITE_DESCRIPTION ?? "";
 const POSTS_DIR = join(process.cwd(), "src", "posts");
@@ -278,11 +278,11 @@ console.log(`Feeds written: rss.xml, atom.xml (${posts.length} posts)`);
 
 Configure via environment variables at build time:
 
-| Variable           | Default               | Purpose            |
-| ------------------ | --------------------- | ------------------ |
-| `SITE_URL`         | `https://example.com` | Canonical site URL |
-| `SITE_TITLE`       | `My Blog`             | Feed title         |
-| `SITE_DESCRIPTION` | _(empty)_             | Feed description   |
+| Variable           | Default                        | Purpose            |
+| ------------------ | ------------------------------ | ------------------ |
+| `SITE_URL`         | `https://SITE_URL_PLACEHOLDER` | Canonical site URL |
+| `SITE_TITLE`       | `My Blog`                      | Feed title         |
+| `SITE_DESCRIPTION` | _(empty)_                      | Feed description   |
 
 ### 7 — React Router setup (src/main.jsx)
 
@@ -539,7 +539,7 @@ A plain landing page or portfolio site carries none of this. The base scaffold s
 
 ### Environment variables for feed metadata
 
-`SITE_URL`, `SITE_TITLE`, `SITE_DESCRIPTION` configure the feed. Set them in the build environment (CI secrets or `.env` file). The script falls back to placeholder values if unset so the build never fails on missing config — but the feed content will be wrong without them.
+`SITE_URL`, `SITE_TITLE`, `SITE_DESCRIPTION` configure the feed. Set them in the build environment (CI secrets or `.env` file). When `SITE_URL` is unset the script falls back to the literal `https://SITE_URL_PLACEHOLDER` token — an intentionally obvious, unpatched-looking value (never a plausible fake domain) so an unreplaced deploy is trivially detectable rather than silently wrong. The platform patches this token post-build with the real deploy host; codegen cannot know that host (one-way boundary).
 
 ### React Router and static hosting
 
