@@ -63,7 +63,7 @@ Deterministic Elixir replacement; selected by `--elixir` on `codegen-build` (exp
 
 - `OrchestrationLoop.role_sequence/1` — Phoenix plan-first; static developer-first.
 - `OrchestrationLoop.run/1` — sequences roles via `invoke_role/4` (real `RoleResolver.resolve_role/2` → `codegen-call`), interleaves `LoopGate.run_gate/2` after the developer role. Envelope `result.status`: `"success"` advances, `"failed"`/`"clarifying_question"` retries SAME role once then `{:error, reason}`; other shapes RAISE. Gate verdict BINARY (`:clear|:failed`); RAISES on stray verdict. `stack: "static"` runs `:preflight_fn` before gate — RAISES naming missing dep (node/render-check.js/chromium). Phoenix skips preflight.
-- **Reviewer→dev fix cycle** (`handle_review/7`, private) — reviewer told (via `build_prompt/2`) to end output with `REVIEW_VERDICT: APPROVED|CHANGES_REQUESTED`; `parse_review_verdict/1` reads it. `CHANGES_REQUESTED` (within `:max_review_cycles`, default 1) re-invokes the developer (`dev_role_from_ctx/1`) with feedback in `ctx.artifacts.review_feedback`, re-formats, re-gates (`run_gate_once/2`), re-reviews, recurses; else advance `REVIEWED`. `build_prompt/2` also threads the planner's plan (`planner_plan/1`) to devs and gives committer an explicit commit directive (not the raw pitch).
+- **Reviewer→dev fix cycle** — reviewer ends with `REVIEW_VERDICT: APPROVED|CHANGES_REQUESTED`. `CHANGES_REQUESTED` re-invokes dev with feedback, re-formats, re-gates, re-reviews (within `:max_review_cycles`, default 1).
 - **Committer verification** (`verify_committed!/1`) — after committer succeeds, asserts `git status --porcelain` empty in `ctx.cwd`; dirty tree RAISES. No-op on non-git cwd (mocked tests).
 - **Cwd-threaded calls** — `invoke_role/4`'s default `codegen_call_fn` closes over `ctx.cwd`, calls `default_codegen_call/7` (cwd now first arg, `System.cmd(cd: cwd)`) so each role's agent runs IN the project dir. Test seam stays `/6`.
 - **Telemetry** — `accumulate_telemetry/2` sums each envelope's `usage` (cost/tokens/turns) into a process-dict accumulator (`get_telemetry/0`/`zero_telemetry/0`) per role, across all invocations incl. retries. `Mix.Tasks.Codegen.Loop.emit_loop_telemetry/1` prints one aggregated `{"type":"result",...}` JSON line after `run/1` regardless of outcome, for the benchmark harness.
@@ -283,6 +283,10 @@ Apply to EVERY `make test-stacks` failure before touching source. Reference: `sh
 - A flake with a deterministic root cause (race, stale assertion, nil guard) is bucket 1/2, not bucket 3 — fix it.
 - NEVER mask a genuine flake with assertion widening or retry infra.
 - Record confirmed flakes in session log: file:line, failure message, number of passes in re-runs.
+
+## Hermetic Source-Text Regression Guards
+
+Static source-ordering assertions (no runtime, no LLM) pinning invariant ordering in scripts. Pattern: extract file text → use `:binary.match/2` + stable substrings (not brittle full-line literals) to find byte-offsets → assert ordering/presence. Example: `screenshot.js` pre-warm guard asserts `index("mix deps.get") < index("waitForHttp200")`. Runs in `make test` (fast gate), fails loud with invariant message on reorder. Mirrors `render_check_test.exs` node-syntax model.
 
 ## Trigger Keywords
 
