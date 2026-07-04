@@ -33,6 +33,19 @@ assert_contains() {
     fi
 }
 
+assert_absent() {
+    local desc="$1"
+    local file="$2"
+    local pattern="$3"
+    if grep -qF "$pattern" "$file" 2>/dev/null; then
+        printf 'FAIL: %s — forbidden sentinel present in %s\n' "$desc" "$file"
+        fail=$((fail + 1))
+    else
+        [ -n "${VERBOSE:-}" ] && printf 'PASS: %s\n' "$desc"
+        pass=$((pass + 1))
+    fi
+}
+
 # ── Test 1: sentinel present in claude shape baked prompt ─────────────────────
 assert_contains \
     "ASK-GATE sentinel in claude-shape-system-prompt.txt" \
@@ -186,6 +199,18 @@ assert_contains \
     "tailwind.md deep-dive sentinel present in stacks/static/tailwind.md source rule" \
     "$CODEGEN_DIR/shared/rules/stacks/static/tailwind.md" \
     "$SENTINEL8"
+
+# ── Tests 28a-28b: NO static planner prompt carries a package.json-gated tailwindcss clause ──
+# (mandate: Tailwind v4 always compiled, no package.json detection; regression guard for
+#  tailwind-mandate-stated-uniformly — the stale gate must not silently reappear)
+assert_absent \
+    "no package.json-gated tailwindcss clause in planner-static.md.j2" \
+    "$CODEGEN_DIR/shared/subagents/static/planner-static.md.j2" \
+    "detected in \`package.json\`, name \`stacks/static/tailwind.md\`"
+assert_absent \
+    "no package.json-gated tailwind path-pass in stacks/static/planner.md" \
+    "$CODEGEN_DIR/shared/rules/stacks/static/planner.md" \
+    "names \`stacks/static/tailwind.md\` in dev delegation prompt"
 
 # ── Tests 29-32: context-claim ≠ provenance proof sentinel in shape prompts + sources ──
 assert_contains \

@@ -14,7 +14,7 @@ Multi-page vanilla → use Vite `build.rollupOptions.input`. Multi-page React �
 
 ## Tailwind Mandatory (All Static Sites)
 
-All static sites MUST ship compiled Tailwind v4. Planner ALWAYS names `stacks/static/tailwind.md` in dev delegation prompt. No `package.json` detection. No opt-out.
+All static sites ship compiled Tailwind v4 — no `package.json` detection, no opt-out. `developer-static` bakes `tailwind.md`; plan the `Files to touch` below.
 
 First-build Vite plans MUST include in `Files to touch`:
 
