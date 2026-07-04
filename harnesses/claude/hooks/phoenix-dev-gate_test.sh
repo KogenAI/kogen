@@ -741,5 +741,53 @@ assert_file_contains "codegen sentinel: ALL CLEAR in log" "ALL CLEAR" "$LOG25"
 rm -f "$STUB25"
 rm -rf "$T25"
 
+# ── Test 26: sole-writer invariant — verdict routes via codegen-log, no raw >> ──
+# The hook source itself must contain zero raw `>>"$log_file"`/`>> "$log_file"`
+# writes (Phase 5: all such sites replaced by `codegen-log verdict` calls).
+# This is a static grep of the hook SOURCE, not a runtime behavior assertion —
+# it directly proves the sole-writer invariant the pitch requires.
+raw_write_count=$(grep -cE '>>[[:space:]]*"?\$log_file"?' "$HOOK" || true)
+assert_eq_num() {
+    local desc="$1" expected="$2" actual="$3"
+    if [ "$actual" = "$expected" ]; then
+        [ -n "${VERBOSE:-}" ] && printf 'PASS: %s\n' "$desc"
+        pass=$((pass + 1))
+    else
+        printf 'FAIL: %s — expected %s, got %s\n' "$desc" "$expected" "$actual"
+        fail=$((fail + 1))
+    fi
+}
+assert_eq_num "sole-writer: zero raw >>\"\$log_file\" writes remain in phoenix-dev-gate.sh" "0" "${raw_write_count:-0}"
+
+# ── Test 27: verdict output byte-shape unchanged — ALL CLEAR path ────────────
+# Confirms the "## dev-gate Section" block routed through codegen-log verdict
+# carries the exact same field labels/order as the pre-Phase-5 raw-write shape:
+# Gate:/Ran:/**Rules loaded**:/**Commands executed**: table/**Result**:.
+T26=$(make_project)
+LOG26="$T26/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_step1.md"
+cat >"$LOG26" <<'MD'
+# Step
+
+## Plan
+
+**Gate**: `true`
+MD
+make_transcript "$T26/transcript.jsonl" "$LOG26"
+STUB26=$(make_render_stub "PASS")
+WSTUB26=$(make_wiring_stub "PASS")
+out26=$(printf '%s' "$(input_for "$T26" developer-phoenix-backend false sess1 "$T26/transcript.jsonl")" |
+    RENDER_CHECK_CMD="$STUB26" WIRING_CHECK_CMD="$WSTUB26" CODEGEN_DIR="$SCRIPT_DIR" bash "$HOOK" 2>/dev/null || true)
+assert_file_contains "verdict shape: dev-gate Section header present" "## dev-gate Section" "$LOG26"
+assert_file_contains "verdict shape: Gate: line present" "Gate: true" "$LOG26"
+assert_file_contains "verdict shape: Ran: line present" "Ran: true" "$LOG26"
+assert_file_contains "verdict shape: Rules loaded line present" "**Rules loaded**: deterministic hook (dev-gate.sh) — no rules loaded" "$LOG26"
+assert_file_contains "verdict shape: Commands executed table header present" "**Commands executed**:" "$LOG26"
+assert_file_contains "verdict shape: table column header row present" "| Time (HH:MM:SS UTC) | Command | Exit | Notes |" "$LOG26"
+assert_file_contains "verdict shape: Result line present" "**Result**: ALL CLEAR ✅" "$LOG26"
+assert_file_contains "verdict shape: wiring detail folded into section body" "wiring: PASS" "$LOG26"
+assert_file_contains "verdict shape: render detail folded into section body" "render: DOM non-empty" "$LOG26"
+rm -f "$STUB26" "$WSTUB26"
+rm -rf "$T26"
+
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

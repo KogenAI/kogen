@@ -16,6 +16,7 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { parseAgentType, debugLog } from "../lib/hook-helpers";
 import {
   execSync,
+  execFileSync,
   type ExecSyncOptionsWithStringEncoding,
 } from "node:child_process";
 import * as fs from "node:fs";
@@ -31,6 +32,28 @@ const PHOENIX_DEV_AGENTS = new Set([
   "developer-phoenix-backend",
   "developer-phoenix-frontend",
 ]);
+
+// Resolves codegen-log's absolute path (mirrors the OCG_CODEGEN_DIR/
+// CODEGEN_DIR/BASH_SOURCE-derivation pattern used by phoenix-dev-gate.sh)
+// so the verdict write goes through the sole-writer CLI regardless of
+// whether the installed ~/.local/bin symlink is on PATH in this hook's env.
+function resolveCodegenLogBin(): string {
+  const codegenDir =
+    process.env["OCG_CODEGEN_DIR"] ?? process.env["CODEGEN_DIR"] ?? "";
+  if (codegenDir) {
+    const candidate = path.join(codegenDir, "codegen-log");
+    if (fs.existsSync(candidate)) return candidate;
+  }
+  try {
+    const found = execSync("command -v codegen-log", {
+      encoding: "utf8",
+    }).trim();
+    if (found) return found;
+  } catch {
+    // not on PATH — fall through to empty (caller treats as unresolved)
+  }
+  return "";
+}
 
 export function register(pi: ExtensionAPI): void {
   pi.on("session_shutdown", async () => {
@@ -357,26 +380,46 @@ export function register(pi: ExtensionAPI): void {
       );
     }
 
-    // Append verdict to step log
-    const verdictLines = [
-      "",
-      "## phoenix-dev-gate Section",
-      "",
-      `**Gate**: \`${gateCmd}\``,
-      `**Ran**: \`${gateCmd}\``,
-      "",
-      verdict,
-      "",
-    ];
-    if (wiringSummary) {
-      verdictLines.push(wiringSummary, "");
-    }
-    if (renderSummary) {
-      verdictLines.push(renderSummary, "");
-    }
-    const verdictSection = verdictLines.join("\n");
+    // Write verdict to step log via `codegen-log verdict` — the sole writer
+    // of session logs. No raw fs write to activeLog; mirrors the Claude-side
+    // phoenix-dev-gate.sh append_ve_section()/CODEGEN_LOG_BIN pattern and
+    // produces the same "## dev-gate Section" byte shape for cross-harness
+    // parity.
+    const detailLines = [wiringSummary, renderSummary].filter(Boolean);
+    const detailText = detailLines.join("\n");
 
-    fs.appendFileSync(activeLog, verdictSection);
+    const codegenLogBin = resolveCodegenLogBin();
+    if (codegenLogBin) {
+      const verdictArgs = [
+        "verdict",
+        "--gate",
+        gateCmd,
+        "--mode",
+        isLongGate ? "long" : "short",
+        "--result",
+        verdict,
+      ];
+      if (detailText) {
+        verdictArgs.push("--detail", detailText);
+      }
+      try {
+        execFileSync(codegenLogBin, verdictArgs, {
+          cwd: projectDir,
+          stdio: "pipe",
+          env: { ...process.env, CODEGEN_LOG_PATH: activeLog },
+        });
+      } catch (e) {
+        debugLog(
+          "phoenix-dev-gate",
+          `codegen-log verdict failed: ${String(e)}`,
+        );
+      }
+    } else {
+      debugLog(
+        "phoenix-dev-gate",
+        "codegen-log binary not resolvable — verdict not written to step log",
+      );
+    }
     debugLog("phoenix-dev-gate", `verdict=${verdict.slice(0, 50)}`);
   });
 }

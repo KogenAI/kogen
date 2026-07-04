@@ -70,6 +70,16 @@ source "$(dirname "$0")/lib/gate-result.sh"
 source "$(dirname "$0")/lib/cycle-state.sh"
 parse_input
 
+# Resolve codegen-log's absolute path (mirrors the OCG_CODEGEN_DIR/CODEGEN_DIR/
+# BASH_SOURCE-derivation pattern used elsewhere, e.g. worktree-create-phoenix.sh)
+# so append_ve_section can invoke it as the sole session-log writer regardless
+# of whether the installed ~/.local/bin symlink is on PATH in this hook's env.
+_dev_gate_codegen_dir="${OCG_CODEGEN_DIR:-${CODEGEN_DIR:-"$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd -P)"}}"
+CODEGEN_LOG_BIN="$_dev_gate_codegen_dir/codegen-log"
+if [ ! -x "$CODEGEN_LOG_BIN" ]; then
+    CODEGEN_LOG_BIN="$(command -v codegen-log || true)"
+fi
+
 # ── Stale-flag sweep helper ─────────────────────────────────────────────────
 # Invariant: latest.flag exists ⇔ a long gate is currently in flight.
 # Sweep: if latest.flag's referenced exitcode_file exists as a regular file,
@@ -243,36 +253,44 @@ run_phoenix_wiring_check() {
     fi
 }
 
-# Appends wiring verdict detail to the log file as a trailing line.
+# _pending_detail — module-scope accumulator for wiring/render summary lines.
+# append_wiring_detail/append_render_detail append to it instead of writing
+# the log directly (sole-writer invariant: codegen-log is the only writer).
+# append_ve_section folds the accumulator into the verdict block's detail
+# text, then clears it. This preserves the exact prior text ("wiring: PASS
+# (...)" / "render: DOM non-empty, ...") that used to be raw trailing lines,
+# now folded INTO the "## dev-gate Section" body instead of floating outside
+# any section.
+_pending_detail=""
+
+# Buffers wiring verdict detail for the next append_ve_section call.
 # $1 = wiring verdict string (may be empty)
 append_wiring_detail() {
     local wv="$1"
     [ -z "$wv" ] && return 0
-    [ -n "$log_file" ] && [ -w "$log_file" ] || return 0
     case "$wv" in
     PASS)
-        printf 'wiring: PASS (all phx-* handlers have an element-driven side-effect test)\n' >>"$log_file"
+        _pending_detail="${_pending_detail}wiring: PASS (all phx-* handlers have an element-driven side-effect test)\n"
         ;;
     INCONCLUSIVE:*)
         local detail="${wv#INCONCLUSIVE:}"
-        printf 'wiring: INCONCLUSIVE (%s) — skipped\n' "$detail" >>"$log_file"
+        _pending_detail="${_pending_detail}wiring: INCONCLUSIVE (${detail}) — skipped\n"
         ;;
     esac
 }
 
-# Appends render verdict detail to the log file as a trailing line.
+# Buffers render verdict detail for the next append_ve_section call.
 # $1 = render verdict string (may be empty)
 append_render_detail() {
     local rv="$1"
     [ -z "$rv" ] && return 0
-    [ -n "$log_file" ] && [ -w "$log_file" ] || return 0
     case "$rv" in
     PASS)
-        printf 'render: DOM non-empty, styles applied, 0 JS errors\n' >>"$log_file"
+        _pending_detail="${_pending_detail}render: DOM non-empty, styles applied, 0 JS errors\n"
         ;;
     INCONCLUSIVE:*)
         local detail="${rv#INCONCLUSIVE:}"
-        printf 'render: INCONCLUSIVE (%s) — skipped\n' "$detail" >>"$log_file"
+        _pending_detail="${_pending_detail}render: INCONCLUSIVE (${detail}) — skipped\n"
         ;;
     esac
 }
@@ -342,26 +360,37 @@ classify_inconclusive() {
     printf '%s' "$reason"
 }
 
+# append_ve_section <verdict> <detail> — writes the "## dev-gate Section"
+# verdict block via `codegen-log verdict` (sole-writer invariant — no raw
+# `>>` to the step log). Any buffered wiring/render summary lines
+# (_pending_detail) are folded into the detail text ahead of the caller's
+# own detail, then the accumulator is cleared for the next gate run.
 append_ve_section() {
     local verdict="$1"
     local detail="$2"
     [ -n "$log_file" ] && [ -w "$log_file" ] || return 0
-    local ts
-    ts=$(ts_now)
-    {
-        printf '\n## dev-gate Section\n\n'
-        printf 'Gate: %s\n' "$gate"
-        printf 'Ran: %s\n\n' "$gate"
-        printf '**Rules loaded**: deterministic hook (dev-gate.sh) — no rules loaded\n\n'
-        printf '**Commands executed**:\n\n'
-        printf '| Time (HH:MM:SS UTC) | Command | Exit | Notes |\n'
-        printf '| ------------------- | ------- | ---- | ----- |\n'
-        printf '| %s | %s | — | mode=%s |\n\n' "$ts" "$gate" "$mode"
-        printf '**Result**: %s\n' "$verdict"
-        if [ -n "$detail" ]; then
-            printf '\n%s\n' "$detail"
+    local combined_detail="$detail"
+    if [ -n "$_pending_detail" ]; then
+        local pending_rendered
+        pending_rendered=$(printf '%b' "$_pending_detail")
+        if [ -n "$combined_detail" ]; then
+            combined_detail="${pending_rendered}
+${combined_detail}"
+        else
+            combined_detail="$pending_rendered"
         fi
-    } >>"$log_file"
+        _pending_detail=""
+    fi
+    [ -n "$CODEGEN_LOG_BIN" ] && [ -x "$CODEGEN_LOG_BIN" ] || return 0
+    if [ -n "$combined_detail" ]; then
+        CODEGEN_LOG_PATH="$log_file" "$CODEGEN_LOG_BIN" verdict \
+            --gate "$gate" --mode "$mode" --result "$verdict" --detail "$combined_detail" \
+            >/dev/null 2>&1 || true
+    else
+        CODEGEN_LOG_PATH="$log_file" "$CODEGEN_LOG_BIN" verdict \
+            --gate "$gate" --mode "$mode" --result "$verdict" \
+            >/dev/null 2>&1 || true
+    fi
 }
 
 # _stamp_gated <verdict> — write cycle-state.json GATED with given verdict.
@@ -491,17 +520,17 @@ if [ "$mode" = "short" ]; then
             write_gate_result "$gate" "short" "$_diff_sha" "$_diff_count" \
                 "true" 0 "$actual_segs" "$expected_segs" "$render_verdict" "render-inconclusive" \
                 "$(ts_now)" "$(ts_now)" "$session_id" "$log_path" "$project_dir" ""
+            append_render_detail "$render_verdict"
             append_ve_section "INCONCLUSIVE ⚠️ render-inconclusive: $inc_detail" "Log: $log_path"
             _stamp_gated inconclusive
-            append_render_detail "$render_verdict"
             ;;
         *)
             write_gate_result "$gate" "short" "$_diff_sha" "$_diff_count" \
                 "true" 0 "$actual_segs" "$expected_segs" "$render_verdict" "" \
                 "$(ts_now)" "$(ts_now)" "$session_id" "$log_path" "$project_dir" ""
+            append_render_detail "$render_verdict"
             append_ve_section "ALL CLEAR ✅" ""
             _stamp_gated clear
-            append_render_detail "$render_verdict"
             debug_log dev-gate "short-gate ALL CLEAR (render=${render_verdict:-skipped})"
             ;;
         esac
@@ -759,8 +788,8 @@ elif [ "$(cat "$exitcode_path")" = "0" ]; then
             "$started_at" "$long_ended_at" "$session_id" "$log_path" "$project_dir" ""
         rm -f "$flag_dir/latest.flag"
         _stamp_gated inconclusive
-        append_ve_section "INCONCLUSIVE ⚠️ render-inconclusive: $long_inc_detail" "Gate '$gate' passed. Log: $log_path"
         append_render_detail "$long_render_verdict"
+        append_ve_section "INCONCLUSIVE ⚠️ render-inconclusive: $long_inc_detail" "Gate '$gate' passed. Log: $log_path"
         ;;
     *)
         write_gate_result "$gate" "long" "$_diff_sha" "$_diff_count" \
@@ -768,8 +797,8 @@ elif [ "$(cat "$exitcode_path")" = "0" ]; then
             "$started_at" "$long_ended_at" "$session_id" "$log_path" "$project_dir" ""
         rm -f "$flag_dir/latest.flag"
         _stamp_gated clear
-        append_ve_section "ALL CLEAR ✅" "Gate '$gate' passed. Log: $log_path"
         append_render_detail "$long_render_verdict"
+        append_ve_section "ALL CLEAR ✅" "Gate '$gate' passed. Log: $log_path"
         debug_log dev-gate "long-gate ALL CLEAR (render=${long_render_verdict:-skipped})"
         ;;
     esac

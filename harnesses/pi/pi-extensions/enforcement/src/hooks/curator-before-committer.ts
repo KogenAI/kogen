@@ -17,36 +17,14 @@
  */
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { deny, debugLog } from "../lib/hook-helpers";
+import { deny, debugLog, getActiveStepLog } from "../lib/hook-helpers";
 import * as fs from "node:fs";
-import * as path from "node:path";
 
 export const HANDLER_META = {
   name: "curator-before-committer",
   event: "tool_call",
   matcher: "subagent",
 } as const;
-
-/** Find the most recently modified step log in codegen/logging/. */
-function getActiveStepLog(): string | null {
-  const projectDir = process.env["CWD"] ?? process.cwd();
-  const loggingDir = path.join(projectDir, "codegen", "logging");
-
-  if (!fs.existsSync(loggingDir)) return null;
-
-  const logFiles = fs
-    .readdirSync(loggingDir)
-    .filter((f) => f.endsWith(".md") && !f.includes("progress"))
-    .map((f) => ({
-      name: f,
-      mtime: fs.statSync(path.join(loggingDir, f)).mtimeMs,
-    }))
-    .sort((a, b) => b.mtime - a.mtime);
-
-  if (logFiles.length === 0) return null;
-
-  return path.join(loggingDir, logFiles[0].name);
-}
 
 export function register(pi: ExtensionAPI): void {
   pi.on("tool_call", async (event) => {
@@ -64,7 +42,8 @@ export function register(pi: ExtensionAPI): void {
     if (subagentType !== "committer") return;
 
     // Locate active step log — fail-open if missing.
-    const logPath = getActiveStepLog();
+    const projectDir = process.env["CWD"] ?? process.cwd();
+    const logPath = getActiveStepLog(projectDir);
     if (!logPath) {
       debugLog("curator-before-committer", "fail-open: no active step log");
       return;

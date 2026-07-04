@@ -21,6 +21,134 @@ function makeShutdownEvent(
   };
 }
 
+describe("phoenix-dev-gate sole-writer invariant", () => {
+  it("source has zero raw fs.appendFileSync/fs.writeFileSync writes to the step log", () => {
+    const srcPath = path.join(
+      REPO_ROOT,
+      "harnesses",
+      "pi",
+      "pi-extensions",
+      "enforcement",
+      "src",
+      "hooks",
+      "phoenix-dev-gate.ts",
+    );
+    const src = fs.readFileSync(srcPath, "utf8");
+    // gate-result.json / cycle-state.json writes are unrelated JSON artifacts,
+    // not the step log — only flag writes targeting activeLog/verdictSection.
+    assert.ok(
+      !/fs\.appendFileSync\(activeLog/.test(src),
+      "raw fs.appendFileSync(activeLog, ...) must not remain — route through codegen-log verdict",
+    );
+    assert.ok(
+      !/fs\.writeFileSync\(activeLog/.test(src),
+      "raw fs.writeFileSync(activeLog, ...) must not remain — route through codegen-log verdict",
+    );
+  });
+
+  it("emits '## dev-gate Section' (not the stale '## phoenix-dev-gate Section') via codegen-log verdict", async () => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "pdg-solewriter-"));
+    try {
+      const loggingDir = path.join(tmpDir, "codegen", "logging");
+      fs.mkdirSync(loggingDir, { recursive: true });
+      const logPath = path.join(loggingDir, "20260101_000000_step1.md");
+      fs.writeFileSync(
+        logPath,
+        `## developer-phoenix-backend Section\n\n**Gate**: \`true\`\n`,
+      );
+
+      // Fake codegenDir carrying a REAL copy of codegen-log (the actual
+      // sole-writer CLI, not a hand-rolled stub) plus fake wiring/render
+      // checkers so the test stays hermetic and fast (no real port/browser
+      // dependency). This proves genuine codegen-log verdict byte-shape
+      // parity while keeping the wiring/render legs stubbed like the other
+      // tests in this file.
+      assert.ok(
+        fs.existsSync(REAL_CODEGEN_LOG_BIN),
+        `expected real codegen-log binary at ${REAL_CODEGEN_LOG_BIN}`,
+      );
+      const fakeCodegenDir = fs.mkdtempSync(
+        path.join(os.tmpdir(), "pdg-solewriter-codegendir-"),
+      );
+      fs.copyFileSync(
+        REAL_CODEGEN_LOG_BIN,
+        path.join(fakeCodegenDir, "codegen-log"),
+      );
+      fs.chmodSync(path.join(fakeCodegenDir, "codegen-log"), 0o755);
+      const hooksLibDir = path.join(
+        fakeCodegenDir,
+        "harnesses",
+        "claude",
+        "hooks",
+        "lib",
+      );
+      fs.mkdirSync(hooksLibDir, { recursive: true });
+      fs.writeFileSync(
+        path.join(hooksLibDir, "wiring-check.js"),
+        `process.stdout.write("WIRING_VERDICT=PASS\\n");\n`,
+      );
+      fs.writeFileSync(
+        path.join(hooksLibDir, "render-check.js"),
+        `process.stdout.write("RENDER_VERDICT=PASS\\n");\n`,
+      );
+
+      process.env["AGENT_TYPE"] = "developer-phoenix-backend";
+      process.env["CWD"] = tmpDir;
+      process.env["CODEGEN_DIR"] = fakeCodegenDir;
+
+      try {
+        const { register } = await import("../phoenix-dev-gate");
+        let capturedHandler: (event: unknown) => Promise<unknown>;
+        const mockPi = {
+          on: (
+            _event: string,
+            handler: (event: unknown) => Promise<unknown>,
+          ) => {
+            capturedHandler = handler;
+          },
+        };
+        register(
+          mockPi as unknown as import("@earendil-works/pi-coding-agent").ExtensionAPI,
+        );
+        await capturedHandler!(
+          makeShutdownEvent("developer-phoenix-backend", tmpDir),
+        );
+
+        const logContents = fs.readFileSync(logPath, "utf8");
+        assert.ok(
+          logContents.includes("## dev-gate Section"),
+          `expected '## dev-gate Section' header in log, got: ${logContents}`,
+        );
+        assert.ok(
+          !logContents.includes("## phoenix-dev-gate Section"),
+          `stale '## phoenix-dev-gate Section' header must not appear, got: ${logContents}`,
+        );
+        // codegen-log verdict's byte shape: Gate:/Ran:/Rules loaded/Commands
+        // executed table/Result — matches the Claude-side contract.
+        assert.ok(
+          logContents.includes("Gate: true"),
+          `expected 'Gate: true' line, got: ${logContents}`,
+        );
+        assert.ok(
+          logContents.includes("**Result**:"),
+          `expected '**Result**:' line, got: ${logContents}`,
+        );
+        assert.ok(
+          logContents.includes("ALL CLEAR"),
+          `expected ALL CLEAR in log, got: ${logContents}`,
+        );
+      } finally {
+        fs.rmSync(fakeCodegenDir, { recursive: true, force: true });
+      }
+    } finally {
+      delete process.env["AGENT_TYPE"];
+      delete process.env["CWD"];
+      delete process.env["CODEGEN_DIR"];
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    }
+  });
+});
+
 describe("phoenix-dev-gate", () => {
   let _capturedHandler: (event: unknown) => Promise<unknown>;
 
@@ -72,6 +200,9 @@ describe("phoenix-dev-gate", () => {
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
+
+const REPO_ROOT = path.resolve(__dirname, "../../../../../../..");
+const REAL_CODEGEN_LOG_BIN = path.join(REPO_ROOT, "codegen-log");
 
 describe("phoenix-dev-gate render-check integration", () => {
   async function runHookWithRenderStub(

@@ -169,3 +169,56 @@ export function isCodegenLogWrite(command: string): boolean {
 export function voidCtx(_ctx: ExtensionContext): void {
   // intentionally unused
 }
+
+/**
+ * getActiveStepLog() — Resolve the active codegen/logging/*.md session log
+ * for a project dir.
+ *
+ * Resolution order (mirrors codegen-log's resolve_log_file precedence, minus
+ * CODEGEN_LOG_PATH/--slug which are CLI-only concerns not relevant to a
+ * disk-scanning guard):
+ *   1. codegen/logging/.active sentinel (written by `codegen-log init` /
+ *      `relocate`), IFF it points at a path that still exists on disk. Full
+ *      fidelity for Pi: this is a synchronous disk read, so unlike the Claude
+ *      transcript-scan fallback it needs no JSONL/flush timing workaround —
+ *      the sentinel is native ground truth here.
+ *   2. Most recently modified canonical *.md file in codegen/logging/
+ *      (mtime scan, `progress` files excluded) — belt-and-suspenders when no
+ *      sentinel is present (fixtures that never ran codegen-log init) or the
+ *      sentinel is stale (points at a relocated/deleted log).
+ *
+ * Returns null when codegen/logging/ does not exist or contains no matches.
+ */
+export function getActiveStepLog(projectDir: string): string | null {
+  const loggingDir = path.join(projectDir, "codegen", "logging");
+  if (!fs.existsSync(loggingDir)) return null;
+
+  const sentinelPath = path.join(loggingDir, ".active");
+  if (fs.existsSync(sentinelPath)) {
+    try {
+      const pointee = fs.readFileSync(sentinelPath, "utf8").trim();
+      if (pointee && fs.existsSync(pointee)) {
+        return pointee;
+      }
+    } catch {
+      // Unreadable sentinel — fall through to mtime scan.
+    }
+  }
+
+  let logFiles: { name: string; mtime: number }[];
+  try {
+    logFiles = fs
+      .readdirSync(loggingDir)
+      .filter((f) => f.endsWith(".md") && !f.includes("progress"))
+      .map((f) => ({
+        name: f,
+        mtime: fs.statSync(path.join(loggingDir, f)).mtimeMs,
+      }))
+      .sort((a, b) => b.mtime - a.mtime);
+  } catch {
+    return null;
+  }
+
+  if (logFiles.length === 0) return null;
+  return path.join(loggingDir, logFiles[0].name);
+}

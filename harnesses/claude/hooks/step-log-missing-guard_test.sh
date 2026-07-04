@@ -250,5 +250,33 @@ assert_not_contains "diagnostic message: no blind 'Do not investigate' phrasing"
 assert_contains "diagnostic message: names stale-trigger guidance" 'stale' "$out"
 rm -rf "$Tp"
 
+# ── Test (q): .active sentinel belt-and-suspenders — dev delegated, transcript
+#              has NO log-creation evidence at all, but codegen/logging/.active
+#              exists, points at a real log, and is at least as fresh as the
+#              transcript → ALLOW (sentinel counts as satisfying evidence) ─────
+Tq=$(make_project)
+TRANSCRIPT_Tq="$Tq/transcript.jsonl"
+make_transcript_with_agent "$TRANSCRIPT_Tq" "developer-phoenix-backend"
+LOG_Tq="$Tq/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_sentinel-test_session.md"
+touch "$LOG_Tq"
+printf '%s' "$LOG_Tq" >"$Tq/codegen/logging/.active"
+# Ensure the sentinel is at least as fresh as the transcript (touch after).
+touch "$Tq/codegen/logging/.active"
+out=$(make_input "$Tq" false "" "$TRANSCRIPT_Tq" | env -u CLAUDE_ROLE -u PI_ROLE bash "$HOOK" 2>/dev/null || true)
+assert_not_contains "sentinel belt-and-suspenders: fresh .active → ALLOW (no block)" '"decision"' "$out"
+rm -rf "$Tq"
+
+# ── Test (r): stale .active sentinel (older than transcript, or pointing at a
+#              deleted log) does NOT satisfy — transcript-position block stands ──
+Tr=$(make_project)
+TRANSCRIPT_Tr="$Tr/transcript.jsonl"
+make_transcript_with_agent "$TRANSCRIPT_Tr" "developer-phoenix-backend"
+STALE_LOG_Tr="$Tr/codegen/logging/20200101_000000_deleted-log_session.md"
+printf '%s' "$STALE_LOG_Tr" >"$Tr/codegen/logging/.active"
+# Deliberately do NOT create $STALE_LOG_Tr — sentinel points at a nonexistent file.
+out=$(make_input "$Tr" false "" "$TRANSCRIPT_Tr" | env -u CLAUDE_ROLE -u PI_ROLE bash "$HOOK" 2>/dev/null || true)
+assert_contains "stale/dangling sentinel does not satisfy: BLOCK stands" '"decision"' "$out"
+rm -rf "$Tr"
+
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

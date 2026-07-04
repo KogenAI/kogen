@@ -42,7 +42,7 @@ Edit)
     # session-log-writer-only.sh (codegen-log is the sole writer). This arm
     # still gates the path shape for any non-log Edit attempt.
     rel=$(repo_relative "$FILE_PATH") &&
-        printf '%s' "$rel" | grep -qE 'codegen/logging/[0-9]{8}_[0-9]{6}(_[a-z0-9_-]+)?_(session|step[0-9]+_[a-z0-9_-]+)\.md$' && exit 0
+        printf '%s' "$rel" | grep -qE "codegen/logging/${SESSION_LOG_NAME_RE}" && exit 0
     deny "BLOCKED by reviewer-guard: $AGENT_TYPE may not edit files outside session logs: $FILE_PATH"
     exit 0
     ;;

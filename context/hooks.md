@@ -152,6 +152,23 @@ slug=$(basename "$log" | sed -E 's/^[0-9]{8}_[0-9]{6}_(.+)_session\.md$/\1/')
 
 **What it rejects**: Multi-step logs (`<ts>_step1_<slug>.md`) do not match the regex and are correctly skipped.
 
+### Session Log Filename Regex — Single-Source Contract (Phase 6)
+
+**Canonical regex** (authoritative source: `shared/rules/_core/session-log.md:8`):
+
+```
+[0-9]{8}_[0-9]{6}(_[a-z0-9_-]+)?_(session|step[0-9]+_[a-z0-9_-]+)\.md$
+```
+
+**Consumed by** (MUST be kept in sync — parity-tested):
+- `hooks-lib.sh`: `SESSION_LOG_NAME_RE` variable (shared by all guards that need to validate log filenames)
+- Bash guards: `reviewer-guard.sh`, `committer-write-allowlist.sh`, `pitch-shipped-before-stop.sh` (reference the variable)
+- Pi twins: `committer-write-allowlist.ts` (hardcoded string with header comment linking to canonical source)
+- `registry.yaml`: 2 `match:` lines for the above guards (hardcoded; parity-tested in `make test`)
+- `session-log.md` § File Naming (canonical prose)
+
+When the regex changes, update `hooks-lib.sh` first, then regenerate guards via `make install`, then verify all 6 sites match via parity test.
+
 ## Key Paths
 
 ```
@@ -221,11 +238,21 @@ When designing shell case statements where one verdict variant should block and 
 
 ## Session-Log Writing (codegen-log Sole-Writer Model)
 
-`codegen-log` is the SOLE writer of session logs — raw Edit/Write/MultiEdit on `codegen/logging/*.md`, and raw Bash writes (redirect/tee/in-place-stream-edit/move-into) into that path, are denied by the `session-log-writer-only` hook (Claude + Pi twins). There is no result-simulation or Edit-anchoring concern anymore: all section insertion, replacement, and append operations are performed by `codegen-log`'s own rank-ordered awk logic, which is correct by construction (no duplicate headers, no order violations, no atomicity gaps between a section-header and its body).
+`codegen-log` is the SOLE writer of session logs — raw Edit/Write/MultiEdit on `codegen/logging/*.md`, and raw Bash writes (redirect/tee/in-place-stream-edit/move-into) into that path, are denied by the `session-log-writer-only` hook (Claude + Pi twins). All section insertion, replacement, and append operations are performed by `codegen-log`'s own rank-ordered awk logic, which is correct by construction (no duplicate headers, no order violations, no atomicity gaps).
 
-- `codegen-log section --body @-` replaces a section's body at canonical rank (creates the header if absent).
-- `codegen-log section --role <role> --body @-` overrides the AGENT_TYPE/CLAUDE_ROLE-derived header — used by the loop to pre-open a role's section before spawn.
-- `codegen-log append --role <role> --body @-` inserts the piped body at the END of an EXISTING section's body, preserving the prior body — used for death-stamp H3 markers. Exits 2 if the target section does not exist (append never creates).
+**Positional role (taught/default form)**: `codegen-log section <role> --slug <slug>` and `codegen-log append <role> --slug <slug>` read the role as the first bare argument after the subcommand; `--body` is implicit stdin when omitted. `--role <role>` and `--body @-` remain accepted aliases for existing callers; a bare `codegen-log section` with no role (positional or `--role`) always exits 2.
+
+**Core operations**:
+- `codegen-log init --slug <slug>` — creates a new log; also writes `codegen/logging/.active` sentinel (synchronous disk signal for log-resolution fallback).
+- `codegen-log section <role> --slug <slug>` (piping body via stdin) — replaces a section's body at canonical rank (creates the header if absent). First/only write for the section.
+- `codegen-log append <role> --slug <slug>` — inserts piped body at END of EXISTING section body, preserving prior content; exits 2 if the target section is missing (append never creates).
+- `codegen-log append <role> --learned "<text>" --slug <slug>` — emits byte-exact `### What I Learned This Step` + blank + text block.
+- `codegen-log append <role> --died interrupted|aborted [--cause "..."] --slug <slug>` — emits byte-exact H3 death-stamp marker (`### INTERRUPTED ⚠️ — ...` or `### ABORTED 💀 — ...`).
+- `codegen-log append <role> --verdict clear|failed|inconclusive --slug <slug>` — emits byte-exact line with `ALL CLEAR ✅` / `FAILED ❌` / `INCONCLUSIVE ⚠️`.
+- `codegen-log verdict --gate <cmd> --mode <mode> --result "<text>" [--detail "..."] --slug <slug>` — dedicated writer for freeform `## dev-gate Section` block (phoenix-dev-gate's deterministic gate verdict); every call APPENDS a fresh block.
+- `codegen-log relocate --new-slug <slug> [--slug <slug>]` — renames log in place + rewrites `.active` sentinel.
+
+**Resolution precedence**: `CODEGEN_LOG_PATH` env > `--slug` > `codegen/logging/.active` sentinel > most recently modified `*_session.md` (mtime).
 
 See `shared/rules/_core/session-log.md` § Ownership for the full contract.
 
@@ -246,4 +273,4 @@ See `shared/rules/_core/session-log.md` § Ownership for the full contract.
 
 ## Trigger Keywords
 
-PreToolUse, SubagentStop, Stop hook, Elixir orchestration loop, LoopGate, hook test, run-tests.sh, gate verdict, hook registration, orchestrator hook bypass, resolve_role, ops bypass, per-role gate, AGENT_TYPE gate, gate-result.json verdict
+PreToolUse, SubagentStop, Stop hook, Elixir orchestration loop, LoopGate, hook test, run-tests.sh, gate verdict, hook registration, orchestrator hook bypass, resolve_role, ops bypass, per-role gate, AGENT_TYPE gate, gate-result.json verdict, codegen-log, session-log writer, marker flags, .active sentinel, positional-role, slug-class regex, session-log contract

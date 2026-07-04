@@ -106,7 +106,12 @@ if [ "$count" -ge 2 ]; then
     exit 0
 fi
 
-slug=$(basename "$log" | sed -E 's/^[0-9]{8}_[0-9]{6}_(.+)_session\.md$/\1/')
+# Slug-capture (not filename-class match): derives the shared timestamp
+# prefix from SESSION_LOG_TIMESTAMP_RE (hooks-lib.sh) so a shape change to the
+# timestamp format only needs an edit there. Only fires on the single-log
+# "_session.md" kind — multi-step "_stepN_<slug>.md" logs are skipped (empty
+# slug, checked below).
+slug=$(basename "$log" | sed -E "s/^${SESSION_LOG_TIMESTAMP_RE}(.+)_session\\.md\$/\\1/")
 if [ -z "$slug" ] || [ "$slug" = "$(basename "$log")" ]; then
     debug_log pitch-shipped-before-stop "skip: no slug in log filename (free-form or multi-step log)"
     exit 0

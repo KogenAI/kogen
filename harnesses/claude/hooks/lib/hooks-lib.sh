@@ -46,6 +46,29 @@
 
 set -u
 
+# SESSION_LOG_NAME_RE — canonical session-log filename-class regex (basename
+# match, no leading path segment). Single source of truth for the slug-class
+# shape: YYYYMMDD_HHMMSS[_<slug>]_session.md or YYYYMMDD_HHMMSS_<slug>_stepN_<slug>.md.
+# Consumers that need the "codegen/logging/" prefix concatenate it themselves
+# (reviewer-guard.sh, committer-write-allowlist.sh both do `codegen/logging/${SESSION_LOG_NAME_RE}`).
+# Kept in lockstep (parity-tested, not shared via a single runtime include —
+# bash guards cannot `source` a fragment mid-grep-pattern) with:
+#   - harnesses/pi/pi-extensions/enforcement/src/hooks/committer-write-allowlist.ts (CANONICAL_LOG_RE)
+#   - shared/enforcement/registry.yaml (2 `match:` lines)
+#   - shared/rules/_core/session-log.md § File Naming (authoritative prose)
+# Any edit to the slug-class shape MUST update all 6 sites in the same change;
+# see codegen-log_test.sh / hooks-lib_test.sh for the cross-site parity assertion.
+SESSION_LOG_NAME_RE='[0-9]{8}_[0-9]{6}(_[a-z0-9_-]+)?_(session|step[0-9]+_[a-z0-9_-]+)\.md$'
+
+# SESSION_LOG_TIMESTAMP_RE — the shared "<ts>_" prefix (YYYYMMDD_HHMMSS_) at the
+# head of every session-log filename. Extracted as its own constant because
+# pitch-shipped-before-stop.sh needs a SLUG-CAPTURE regex (single-log,
+# _session.md kind only — it never fires on multi-step logs) rather than a
+# filename-class match; the two regexes cannot be the identical string, but
+# BOTH derive the timestamp prefix from this one constant so a shape change
+# (e.g. widening the timestamp format) only needs an edit here.
+SESSION_LOG_TIMESTAMP_RE='[0-9]{8}_[0-9]{6}_'
+
 # parse_input — populate exported vars from JSON-on-stdin.
 # Reads stdin once into RAW_INPUT, then runs a single jq invocation that
 # emits each field on its own line in a fixed order. We re-read stdin via
@@ -288,11 +311,20 @@ repo_relative() {
 # session_log_from_transcript — return the last codegen/logging/*.md path written
 # by this session, derived from $TRANSCRIPT_PATH (set by parse_input).
 #
-# Reads TRANSCRIPT_PATH as a JSONL file (one JSON object per line). Filters
-# assistant tool_use entries with name in {Write, Edit, MultiEdit} whose
-# input.file_path matches the pattern codegen/logging/.*\.md$. Outputs the
-# LAST matching file_path (tail -n 1 semantics — most recent write in
-# transcript order). Empty result when:
+# Resolution order:
+#   1. codegen/logging/.active sentinel under $cwd, IFF it points at a path
+#      that still exists on disk. Synchronous disk read, flush-independent —
+#      does not depend on the transcript having caught up with a live write.
+#      Written by codegen-log init/relocate.
+#   2. The transcript-based scan below (belt-and-suspenders — kept as a
+#      fallback for cwds/fixtures that never ran codegen-log init, or a
+#      stale/relocated sentinel).
+#
+# Transcript scan: reads TRANSCRIPT_PATH as a JSONL file (one JSON object per
+# line). Filters assistant tool_use entries with name in {Write, Edit,
+# MultiEdit} whose input.file_path matches the pattern codegen/logging/.*\.md$.
+# Outputs the LAST matching file_path (tail -n 1 semantics — most recent write
+# in transcript order). Empty result when:
 #   - TRANSCRIPT_PATH is unset or empty
 #   - TRANSCRIPT_PATH does not exist or is not readable
 #   - No matching tool_use entries found
@@ -312,6 +344,15 @@ repo_relative() {
 session_log_from_transcript() {
     local result=""
     local codegen_log_evidence=""
+    local active_sentinel="${CWD:-$PWD}/codegen/logging/.active"
+    if [ -f "$active_sentinel" ]; then
+        local sentinel_path
+        sentinel_path=$(cat "$active_sentinel" 2>/dev/null || true)
+        if [ -n "$sentinel_path" ] && [ -e "$sentinel_path" ]; then
+            printf '%s' "$sentinel_path"
+            return
+        fi
+    fi
     # Run the transcript jq scan only when TRANSCRIPT_PATH is usable. When it is
     # empty/unset/unreadable, skip the scan but FALL THROUGH to the disk fallback
     # below (managed builds with a lagging or absent transcript still resolve).

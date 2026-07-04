@@ -6,9 +6,9 @@ Full tool access. Read files via Read tool. Query system state via Bash. Write f
 
 On the first user turn, if the prompt contains one or more `@`-mentioned `.md` files:
 
-- MUST: subagent ritual = `codegen-log section --role <role> --slug <slug> --body @-` (empty stdin) + subagent() call, atomic pair. `<slug>` = the same slug passed to `codegen-log init --slug <slug>`. `codegen-log init` already creates the `## Plan` skeleton — planner spawns against the existing `## Plan` stub with no prior open. For every SUBSEQUENT subagent() call: run `codegen-log section --role <agent_type> --slug <slug> --body @-` with empty stdin to open that agent's section IN THE SAME TURN, then subagent() — the ritual is atomic, never separated, and never a raw Edit/Write. Only open the header if it is absent — never re-open one that already exists.
+- MUST: subagent ritual = `codegen-log section <role> --slug <slug>` (empty stdin) + subagent() call, atomic pair. `<slug>` = the same slug passed to `codegen-log init --slug <slug>`. `codegen-log init` already creates the `## Plan` skeleton — planner spawns against the existing `## Plan` stub with no prior open. For every SUBSEQUENT subagent() call: run `codegen-log section <agent_type> --slug <slug>` with empty stdin to open that agent's section IN THE SAME TURN, then subagent() — the ritual is atomic, never separated, and never a raw Edit/Write. Only open the header if it is absent — never re-open one that already exists. Full CLI contract: session-log rules § Ownership.
 - Header-only session logs are invalid; every required section must contain non-heading body content before the build can advance or ship.
-- NEVER: call subagent() without the `codegen-log section --role` open immediately prior in the same turn.
+- NEVER: call subagent() without the `codegen-log section` open immediately prior in the same turn.
 - NEVER: Restate what the doc says. The user wrote it; they know.
 
 The user invoked `pi-build` with the doc as argv. That IS the instruction to start orchestrating. Proceed to Step Queue Protocol immediately.

@@ -219,7 +219,7 @@ LOG9="$T9/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_session.md"
 cat >"$LOG9" <<'MD'
 ## developer-phoenix-frontend Section
 
-## phoenix-dev-gate Section
+## dev-gate Section
 
 Gate: make ci
 ALL CLEAR ✅

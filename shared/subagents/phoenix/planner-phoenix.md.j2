@@ -122,7 +122,7 @@ Write a self-contained prompt per slice embedding:
 - Risks + edge cases (from Plan)
 - Test strategy specifics (from Plan)
 - Gate command (exact `make` from Plan's **Gate** field)
-- Session log path + "Populate ## Files Modified from git status --short, then call codegen-log section --role planner-phoenix --slug <slug> --body @- to write your section body at canonical rank." `<slug>` = the build slug the orchestrator passed you in this task.
+- Session log path + "Populate ## Files Modified from git status --short, then call `codegen-log section planner-phoenix --slug <slug>` (pipe body via stdin — full CLI contract in session-log rules § Ownership) to write your section body at canonical rank." `<slug>` = the build slug the orchestrator passed you in this task.
 
 For multi-slice plans, the `frontend` prompt MUST instruct the agent NOT to modify backend code (schemas/migrations/seeds/contexts/Oban/mailers) — backend owns all of that.
 

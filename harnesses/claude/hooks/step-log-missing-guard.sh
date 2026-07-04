@@ -128,6 +128,29 @@ if [ -n "$last_log_index" ] && [ "$last_log_index" -ge "$last_dev_index" ]; then
     exit 0
 fi
 
+# ── Belt-and-suspenders: .active sentinel mtime ──────────────────────────────
+# The transcript-position scan above can lag a live codegen-log write (Bash
+# tool_use entries land in the transcript asynchronously). codegen/logging/.active
+# is a synchronous disk write (codegen-log init/relocate) — if it exists, points
+# at a log that still exists, AND its mtime is at or after the transcript file's
+# own mtime (i.e. the sentinel was touched no earlier than the most recent
+# transcript activity we can observe), treat that as equivalent satisfying
+# evidence. EITHER signal (transcript position OR sentinel mtime) is sufficient;
+# neither replaces the other — this only closes the async-lag gap, it never
+# narrows the transcript-based check.
+active_sentinel="${CWD:-$PWD}/codegen/logging/.active"
+if [ -f "$active_sentinel" ]; then
+    sentinel_target=$(cat "$active_sentinel" 2>/dev/null || true)
+    if [ -n "$sentinel_target" ] && [ -e "$sentinel_target" ]; then
+        sentinel_mtime=$(stat -f '%m' "$active_sentinel" 2>/dev/null || stat -c '%Y' "$active_sentinel" 2>/dev/null || echo 0)
+        transcript_mtime=$(stat -f '%m' "$TRANSCRIPT_PATH" 2>/dev/null || stat -c '%Y' "$TRANSCRIPT_PATH" 2>/dev/null || echo 0)
+        if [ "$sentinel_mtime" -ge "$transcript_mtime" ]; then
+            debug_log step-log-missing-guard "skip: .active sentinel mtime ($sentinel_mtime) >= transcript mtime ($transcript_mtime) — treated as satisfying evidence"
+            exit 0
+        fi
+    fi
+fi
+
 debug_log step-log-missing-guard "developer-* delegation at line $last_dev_index has no log-creation after it (last_log_index=${last_log_index:-none})"
 
 # ── Block: developer-* delegated but no step log created ─────────────────────

@@ -125,9 +125,9 @@ old plan
 EOF
 
 export CODEGEN_LOG_PATH="$fixture"
-export AGENT_TYPE="developer-phoenix-backend"
+unset AGENT_TYPE
 section_out="$(
-    cd "$PROJECT" && env -u CODEGEN_BUILD_CWD -u CLAUDE_PROJECT_DIR "$CODEGEN/codegen-log" section --body @- <<'EOF'
+    cd "$PROJECT" && env -u CODEGEN_BUILD_CWD -u CLAUDE_PROJECT_DIR "$CODEGEN/codegen-log" section developer-phoenix-backend <<'EOF'
 ## developer-phoenix-backend Section
 
 ### What I Learned This Step
@@ -142,9 +142,8 @@ assert "section landed before reviewer" "0" "$([ $(grep -n '^## developer-phoeni
 assert "section body preserved" "0" "$([ "$(grep -c '^### What I Learned This Step$' "$fixture")" -eq 1 ] && printf 0 || printf 1)"
 
 # Test 3: rerun replaces in place instead of duplicating the header.
-export AGENT_TYPE="developer-phoenix-backend"
 (
-    cd "$PROJECT" && env -u CODEGEN_BUILD_CWD -u CLAUDE_PROJECT_DIR "$CODEGEN/codegen-log" section --body @- <<'EOF'
+    cd "$PROJECT" && env -u CODEGEN_BUILD_CWD -u CLAUDE_PROJECT_DIR "$CODEGEN/codegen-log" section developer-phoenix-backend <<'EOF'
 ## developer-phoenix-backend Section
 
 ### What I Learned This Step
@@ -212,6 +211,203 @@ slug_section_path="$(printf '%s' "$slug_section_out" | tail -n 1)"
 assert "--slug wrote to the slug-matching log, not the most-recently-touched one" "0" "$([ "$slug_section_path" = "$newer_log" ] && printf 0 || printf 1)"
 assert "--slug-targeted log got the developer section" "0" "$([ "$(grep -c '^## developer-phoenix-backend Section$' "$newer_log")" -eq 1 ] && printf 0 || printf 1)"
 assert "--slug did not divert the write into the older (more-recently-touched) log" "0" "$([ "$(grep -c '^## developer-phoenix-backend Section$' "$older_log")" -eq 0 ] && printf 0 || printf 1)"
+
+# Test 6: opaque-body ingest — a stray col-0 "## " (H2) line in an author body
+# is indented so it can never be parsed as a canonical section header, while
+# H3 retro markers and H1 titles stay untouched (still author-typed in P1).
+unset CODEGEN_LOG_PATH
+unset AGENT_TYPE
+opaque_log="$PROJECT/codegen/logging/20260102_000000_opaque-body_session.md"
+cat >"$opaque_log" <<'EOF'
+## Version Stamp
+
+- project: proj123
+- context: ctxabc
+- codegen: cgn456
+- claude: claude 1.2.3
+- stamped_at: 2026-01-02T00:00:00Z
+EOF
+
+opaque_section_out="$(
+    cd "$PROJECT" && env -u CODEGEN_BUILD_CWD -u CLAUDE_PROJECT_DIR "$CODEGEN/codegen-log" section --role developer-phoenix-backend --slug opaque-body --body @- <<'EOF'
+## developer-phoenix-backend Section
+
+prose before
+
+## Fake Header
+
+prose after
+
+### What I Learned This Step
+
+- learned x
+
+# Step 1
+
+end prose
+EOF
+)"
+opaque_section_path="$(printf '%s' "$opaque_section_out" | tail -n 1)"
+assert "opaque-body section wrote to the opaque-body log" "0" "$([ "$opaque_section_path" = "$opaque_log" ] && printf 0 || printf 1)"
+assert "opaque-body stray H2 is indented, not col-0" "0" "$([ "$(grep -c '^## Fake Header$' "$opaque_log")" -eq 0 ] && printf 0 || printf 1)"
+assert "opaque-body stray H2 present indented" "0" "$([ "$(grep -c '^  ## Fake Header$' "$opaque_log")" -eq 1 ] && printf 0 || printf 1)"
+assert "opaque-body H3 retro marker stays col-0 (untouched)" "0" "$([ "$(grep -c '^### What I Learned This Step$' "$opaque_log")" -eq 1 ] && printf 0 || printf 1)"
+assert "opaque-body H3 retro marker NOT indented" "0" "$([ "$(grep -c '^  ### What I Learned This Step$' "$opaque_log")" -eq 0 ] && printf 0 || printf 1)"
+assert "opaque-body H1 title stays col-0 (untouched)" "0" "$([ "$(grep -c '^# Step 1$' "$opaque_log")" -eq 1 ] && printf 0 || printf 1)"
+
+# Test 7: opaque-body ingest on the append path — same transform applied.
+opaque_append_out="$(
+    cd "$PROJECT" && env -u CODEGEN_BUILD_CWD -u CLAUDE_PROJECT_DIR "$CODEGEN/codegen-log" append --role developer-phoenix-backend --slug opaque-body --body @- <<'EOF'
+appended prose
+
+## Baz
+
+more appended prose
+EOF
+)"
+opaque_append_path="$(printf '%s' "$opaque_append_out" | tail -n 1)"
+assert "opaque-body append wrote to the opaque-body log" "0" "$([ "$opaque_append_path" = "$opaque_log" ] && printf 0 || printf 1)"
+assert "opaque-body appended stray H2 is indented, not col-0" "0" "$([ "$(grep -c '^## Baz$' "$opaque_log")" -eq 0 ] && printf 0 || printf 1)"
+assert "opaque-body appended stray H2 present indented" "0" "$([ "$(grep -c '^  ## Baz$' "$opaque_log")" -eq 1 ] && printf 0 || printf 1)"
+
+# Test 8: --learned/--died/--verdict emit byte-exact canonical marker blocks
+# that the reader hooks (subagent-retrospective-guard, step-log-completeness,
+# stop-cycle-guard) grep for verbatim.
+unset CODEGEN_LOG_PATH
+unset AGENT_TYPE
+marker_log="$PROJECT/codegen/logging/20260103_000000_marker-flags_session.md"
+cat >"$marker_log" <<'EOF'
+## Version Stamp
+
+- project: proj123
+- context: ctxabc
+- codegen: cgn456
+- claude: claude 1.2.3
+- stamped_at: 2026-01-03T00:00:00Z
+
+## developer-phoenix-backend Section
+
+body
+EOF
+
+learned_out="$(
+    cd "$PROJECT" && env -u CODEGEN_BUILD_CWD -u CLAUDE_PROJECT_DIR "$CODEGEN/codegen-log" append --role developer-phoenix-backend --slug marker-flags --learned "- nothing notable"
+)"
+learned_path="$(printf '%s' "$learned_out" | tail -n 1)"
+assert "--learned wrote to the marker-flags log" "0" "$([ "$learned_path" = "$marker_log" ] && printf 0 || printf 1)"
+assert "--learned emits byte-exact retro header" "0" "$([ "$(grep -c '^### What I Learned This Step$' "$marker_log")" -eq 1 ] && printf 0 || printf 1)"
+assert "--learned emits the supplied text" "0" "$([ "$(grep -c '^- nothing notable$' "$marker_log")" -eq 1 ] && printf 0 || printf 1)"
+
+died_out="$(
+    cd "$PROJECT" && env -u CODEGEN_BUILD_CWD -u CLAUDE_PROJECT_DIR "$CODEGEN/codegen-log" append --role developer-phoenix-backend --slug marker-flags --died interrupted --cause "timeout"
+)"
+died_path="$(printf '%s' "$died_out" | tail -n 1)"
+assert "--died interrupted wrote to the marker-flags log" "0" "$([ "$died_path" = "$marker_log" ] && printf 0 || printf 1)"
+assert "--died interrupted emits byte-exact marker" "0" "$([ "$(grep -cF '### INTERRUPTED ⚠️ — developer-phoenix-backend dropped (timeout); re-spawning (attempt N/2)' "$marker_log")" -eq 1 ] && printf 0 || printf 1)"
+
+cd "$PROJECT" && env -u CODEGEN_BUILD_CWD -u CLAUDE_PROJECT_DIR "$CODEGEN/codegen-log" append --role developer-phoenix-backend --slug marker-flags --died aborted >/dev/null
+assert "--died aborted emits byte-exact marker" "0" "$([ "$(grep -cF '### ABORTED 💀 — developer-phoenix-backend dropped twice; stage failed.' "$marker_log")" -eq 1 ] && printf 0 || printf 1)"
+
+cd "$PROJECT" && env -u CODEGEN_BUILD_CWD -u CLAUDE_PROJECT_DIR "$CODEGEN/codegen-log" append --role developer-phoenix-backend --slug marker-flags --verdict clear >/dev/null
+assert "--verdict clear emits ALL CLEAR emoji" "0" "$([ "$(grep -cF 'ALL CLEAR ✅' "$marker_log")" -eq 1 ] && printf 0 || printf 1)"
+
+cd "$PROJECT" && env -u CODEGEN_BUILD_CWD -u CLAUDE_PROJECT_DIR "$CODEGEN/codegen-log" append --role developer-phoenix-backend --slug marker-flags --verdict failed >/dev/null
+assert "--verdict failed emits FAILED emoji" "0" "$([ "$(grep -cF 'FAILED ❌' "$marker_log")" -eq 1 ] && printf 0 || printf 1)"
+
+cd "$PROJECT" && env -u CODEGEN_BUILD_CWD -u CLAUDE_PROJECT_DIR "$CODEGEN/codegen-log" append --role developer-phoenix-backend --slug marker-flags --verdict inconclusive >/dev/null
+assert "--verdict inconclusive emits INCONCLUSIVE emoji" "0" "$([ "$(grep -cF 'INCONCLUSIVE ⚠️' "$marker_log")" -eq 1 ] && printf 0 || printf 1)"
+
+# Test 9: init writes the .active sentinel with the resolved absolute log path.
+unset CODEGEN_LOG_PATH
+unset AGENT_TYPE
+sentinel_init_out="$(cd "$PROJECT" && env -u CODEGEN_BUILD_CWD -u CLAUDE_PROJECT_DIR "$CODEGEN/codegen-log" init --slug sentinel-test)"
+sentinel_init_path="$(printf '%s' "$sentinel_init_out" | tail -n 1)"
+sentinel_file="$PROJECT/codegen/logging/.active"
+assert "init writes .active sentinel" "0" "$([ -f "$sentinel_file" ] && printf 0 || printf 1)"
+assert ".active sentinel contains the resolved log path" "0" "$([ "$(cat "$sentinel_file")" = "$sentinel_init_path" ] && printf 0 || printf 1)"
+
+# Test 10: positional role resolves for section/append with implicit stdin.
+positional_out="$(
+    cd "$PROJECT" && env -u CODEGEN_BUILD_CWD -u CLAUDE_PROJECT_DIR "$CODEGEN/codegen-log" section developer-phoenix-backend <<'EOF'
+positional stdin body
+EOF
+)"
+positional_path="$(printf '%s' "$positional_out" | tail -n 1)"
+assert "positional section wrote to the sentinel-resolved log" "0" "$([ "$positional_path" = "$sentinel_init_path" ] && printf 0 || printf 1)"
+assert "positional section body landed" "0" "$([ "$(grep -c 'positional stdin body' "$sentinel_init_path")" -eq 1 ] && printf 0 || printf 1)"
+
+# Test 11: .active sentinel precedence over a more-recently-touched log.
+older_touch_log="$PROJECT/codegen/logging/20260104_000000_older-touch_session.md"
+cat >"$older_touch_log" <<'EOF'
+## Version Stamp
+
+- project: proj123
+- context: ctxabc
+- codegen: cgn456
+- claude: claude 1.2.3
+- stamped_at: 2026-01-04T00:00:00Z
+EOF
+touch "$older_touch_log"
+sentinel_precedence_out="$(
+    cd "$PROJECT" && env -u CODEGEN_BUILD_CWD -u CLAUDE_PROJECT_DIR "$CODEGEN/codegen-log" append developer-phoenix-backend <<'EOF'
+via sentinel not mtime
+EOF
+)"
+sentinel_precedence_path="$(printf '%s' "$sentinel_precedence_out" | tail -n 1)"
+assert "sentinel precedence honored over touched log" "0" "$([ "$sentinel_precedence_path" = "$sentinel_init_path" ] && printf 0 || printf 1)"
+
+# Test 12: relocate renames the log and rewrites .active.
+relocate_out="$(cd "$PROJECT" && env -u CODEGEN_BUILD_CWD -u CLAUDE_PROJECT_DIR "$CODEGEN/codegen-log" relocate --new-slug sentinel-test-renamed)"
+relocate_path="$(printf '%s' "$relocate_out" | tail -n 1)"
+case "$relocate_path" in
+*_sentinel-test-renamed_session.md) relocate_slug_ok=0 ;;
+*) relocate_slug_ok=1 ;;
+esac
+assert "relocate returns a path with the new slug" "0" "$relocate_slug_ok"
+assert "relocate old path no longer exists" "0" "$([ ! -f "$sentinel_init_path" ] && printf 0 || printf 1)"
+assert "relocate new path exists" "0" "$([ -f "$relocate_path" ] && printf 0 || printf 1)"
+assert "relocate rewrote .active to the new path" "0" "$([ "$(cat "$sentinel_file")" = "$relocate_path" ] && printf 0 || printf 1)"
+
+# Test 13: `verdict` writes the byte-exact "## dev-gate Section" block (the
+# phoenix-dev-gate.sh sole-writer routing target) and APPENDS a new block on
+# each call rather than replacing a prior one.
+unset CODEGEN_LOG_PATH
+unset AGENT_TYPE
+verdict_log="$PROJECT/codegen/logging/20260105_000000_verdict-subcommand_session.md"
+cat >"$verdict_log" <<'EOF'
+## Version Stamp
+
+- project: proj123
+- context: ctxabc
+- codegen: cgn456
+- claude: claude 1.2.3
+- stamped_at: 2026-01-05T00:00:00Z
+EOF
+
+verdict_out1="$(
+    cd "$PROJECT" && env -u CODEGEN_BUILD_CWD -u CLAUDE_PROJECT_DIR "$CODEGEN/codegen-log" \
+        verdict --gate "make test" --mode short --result "ALL CLEAR ✅" --slug verdict-subcommand
+)"
+verdict_path1="$(printf '%s' "$verdict_out1" | tail -n 1)"
+assert "verdict wrote to the verdict-subcommand log" "0" "$([ "$verdict_path1" = "$verdict_log" ] && printf 0 || printf 1)"
+assert "verdict emits dev-gate Section header" "0" "$([ "$(grep -c '^## dev-gate Section$' "$verdict_log")" -eq 1 ] && printf 0 || printf 1)"
+assert "verdict emits Gate: line" "0" "$([ "$(grep -c '^Gate: make test$' "$verdict_log")" -eq 1 ] && printf 0 || printf 1)"
+assert "verdict emits Ran: line" "0" "$([ "$(grep -c '^Ran: make test$' "$verdict_log")" -eq 1 ] && printf 0 || printf 1)"
+assert "verdict emits Rules loaded line" "0" "$([ "$(grep -cF '**Rules loaded**: deterministic hook (dev-gate.sh) — no rules loaded' "$verdict_log")" -eq 1 ] && printf 0 || printf 1)"
+assert "verdict emits Commands executed table header" "0" "$([ "$(grep -cF '**Commands executed**:' "$verdict_log")" -eq 1 ] && printf 0 || printf 1)"
+assert "verdict emits table column header row" "0" "$([ "$(grep -cF '| Time (HH:MM:SS UTC) | Command | Exit | Notes |' "$verdict_log")" -eq 1 ] && printf 0 || printf 1)"
+assert "verdict emits Result line" "0" "$([ "$(grep -cF '**Result**: ALL CLEAR ✅' "$verdict_log")" -eq 1 ] && printf 0 || printf 1)"
+
+verdict_out2="$(
+    cd "$PROJECT" && env -u CODEGEN_BUILD_CWD -u CLAUDE_PROJECT_DIR "$CODEGEN/codegen-log" \
+        verdict --gate "make test" --mode short --result "FAILED ❌ exit=1" --detail "Log: /tmp/bar.log" --slug verdict-subcommand
+)"
+verdict_path2="$(printf '%s' "$verdict_out2" | tail -n 1)"
+assert "second verdict call wrote to the same log" "0" "$([ "$verdict_path2" = "$verdict_log" ] && printf 0 || printf 1)"
+assert "second verdict call APPENDS a new dev-gate Section (does not replace)" "0" "$([ "$(grep -c '^## dev-gate Section$' "$verdict_log")" -eq 2 ] && printf 0 || printf 1)"
+assert "first verdict block's Result still present after second call" "0" "$([ "$(grep -cF '**Result**: ALL CLEAR ✅' "$verdict_log")" -eq 1 ] && printf 0 || printf 1)"
+assert "second verdict block's Result present" "0" "$([ "$(grep -cF '**Result**: FAILED ❌ exit=1' "$verdict_log")" -eq 1 ] && printf 0 || printf 1)"
+assert "second verdict block's detail present" "0" "$([ "$(grep -cF 'Log: /tmp/bar.log' "$verdict_log")" -eq 1 ] && printf 0 || printf 1)"
 
 echo ""
 echo "Results: $pass passed, $fail failed"

@@ -17,7 +17,7 @@ Owns ALL source: Vite config, JS, CSS, assets. Vanilla Vite by default; adds Rea
 
 Domain context + usage rules: planner names files in delegation prompt.
 
-Read `## Plan` → edit source → NEVER run builds → `mise exec -- npm install` for new deps only → edit ONLY files in planner's `## Files to touch` — context/rules updates are curator's job post-reviewer → call codegen-log section --role developer-static --slug <slug> --body @- to write your section body at canonical rank (`<slug>` = the build slug the orchestrator passed you in this task). Done: source updated, log appended.
+Read `## Plan` → edit source → NEVER run builds → `mise exec -- npm install` for new deps only → edit ONLY files in planner's `## Files to touch` — context/rules updates are curator's job post-reviewer → call `codegen-log section developer-static --slug <slug>` (pipe body via stdin — full CLI contract in session-log rules § Ownership) to write your section body at canonical rank (`<slug>` = the build slug the orchestrator passed you in this task). Done: source updated, log appended.
 
 ## Stuck-loop escalation
 

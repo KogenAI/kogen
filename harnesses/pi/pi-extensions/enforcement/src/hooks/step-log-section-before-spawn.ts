@@ -18,43 +18,14 @@
  */
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { deny, debugLog } from "../lib/hook-helpers";
+import { deny, debugLog, getActiveStepLog } from "../lib/hook-helpers";
 import * as fs from "node:fs";
-import * as path from "node:path";
 
 export const HANDLER_META = {
   name: "step-log-section-before-spawn",
   event: "tool_call",
   matcher: "subagent",
 } as const;
-
-/**
- * Find the most recently modified step log in codegen/logging/.
- *
- * Resolves step log by disk mtime-scan, not transcript-scan — structurally
- * immune to the denied-Write fail-open bug in the Claude bash hook. A denied
- * Write never creates a file on disk, so readdirSync will never surface a
- * phantom path; the logging dir simply appears empty and the hook denies.
- */
-function getActiveStepLog(): string | null {
-  const projectDir = process.env["CWD"] ?? process.cwd();
-  const loggingDir = path.join(projectDir, "codegen", "logging");
-
-  if (!fs.existsSync(loggingDir)) return null;
-
-  const logFiles = fs
-    .readdirSync(loggingDir)
-    .filter((f) => f.endsWith(".md") && !f.includes("progress"))
-    .map((f) => ({
-      name: f,
-      mtime: fs.statSync(path.join(loggingDir, f)).mtimeMs,
-    }))
-    .sort((a, b) => b.mtime - a.mtime);
-
-  if (logFiles.length === 0) return null;
-
-  return path.join(loggingDir, logFiles[0].name);
-}
 
 /** Map subagent type to the expected header string. */
 function expectedHeader(subagentType: string): string {
@@ -113,7 +84,8 @@ export function register(pi: ExtensionAPI): void {
     debugLog("step-log-section-before-spawn", `need=${need}`);
 
     // Locate active step log — fail-open if missing.
-    const logPath = getActiveStepLog();
+    const projectDir = process.env["CWD"] ?? process.cwd();
+    const logPath = getActiveStepLog(projectDir);
 
     if (!logPath) {
       debugLog(

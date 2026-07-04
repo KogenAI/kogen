@@ -3,8 +3,17 @@
 #
 # Usage:
 #   codegen-log init --slug <slug>
-#   codegen-log section --body @- [--role <role>] [--slug <slug>]
-#   codegen-log append --role <role> --body @- [--slug <slug>]
+#   codegen-log section [<role>] [--body @-] [--role <role>] [--slug <slug>]
+#   codegen-log append <role> [--body @-] [--slug <slug>]
+#   codegen-log append <role> --learned "<text>" [--slug <slug>]
+#   codegen-log append <role> --died interrupted|aborted [--cause "<text>"] [--slug <slug>]
+#   codegen-log append <role> --verdict clear|failed|inconclusive [--slug <slug>]
+#   codegen-log verdict --gate <cmd> --mode <mode> --result "<text>" [--detail "<text>"] [--slug <slug>]
+#   codegen-log relocate --new-slug <slug> [--slug <slug>]
+#
+# Positional <role> (taught/default form) and --role/--body @- (accepted
+# aliases, kept for existing callers) resolve to the same behavior. When
+# --body is omitted, stdin is read implicitly (same as --body @-).
 #
 # init: create a new codegen/logging/<ts>_<slug>_session.md with only the
 #       Version Stamp block. Idempotent: re-running init with a slug that
@@ -20,11 +29,37 @@
 #         Use for a SECOND write to the same section this cycle (re-run,
 #         death marker) — never use `section` for that, it would overwrite.
 #
+# Marker flags (append only) — emit a BYTE-EXACT canonical block instead of
+# reading stdin. Mutually exclusive with --body and with each other.
+#   --learned "<text>"           -> "### What I Learned This Step\n\n<text>"
+#   --died interrupted [--cause] -> "### INTERRUPTED ⚠️ — <role> dropped (<cause>); re-spawning (attempt N/2)"
+#   --died aborted                -> "### ABORTED 💀 — <role> dropped twice; stage failed."
+#   --verdict clear|failed|inconclusive -> a line containing
+#       "ALL CLEAR ✅" / "FAILED ❌" / "INCONCLUSIVE ⚠️" respectively.
+#
 # Target-log resolution (section/append), in precedence order:
 #   1. CODEGEN_LOG_PATH env var, if set.
 #   2. --slug <slug>, if given — resolves to the single log on disk matching
 #      *_<slug>_session.md; zero or multiple matches exit 2.
-#   3. Otherwise, the most recently modified *_session.md (latest_session_log).
+#   3. codegen/logging/.active sentinel (written by init/relocate), if it
+#      points at a log that still exists on disk.
+#   4. Otherwise, the most recently modified *_session.md (mtime, latest_session_log).
+#
+# relocate: rewrite the .active sentinel to point at a RENAMED log file
+# (rename in place, no rm+init). Resolves the CURRENT log via the same
+# precedence as section/append (CODEGEN_LOG_PATH > --slug > .active > mtime),
+# renames it to carry --new-slug, and updates .active to the new path.
+#
+# verdict: dedicated writer for the freeform "## dev-gate Section" block
+# (phoenix-dev-gate.sh's deterministic gate verdict — rank 999, ignored by
+# the canonical section-order check). Unlike `section`, EVERY call APPENDS a
+# brand-new "## dev-gate Section" block at end-of-file — it never replaces a
+# prior one, matching one-block-per-gate-run semantics (a step log commonly
+# carries more than one dev-gate verdict block across retries). Emits the
+# BYTE-EXACT shape phoenix-dev-gate.sh previously wrote via raw `>>`:
+#   \n## dev-gate Section\n\nGate: <gate>\nRan: <gate>\n\n
+#   **Rules loaded**: deterministic hook (dev-gate.sh) — no rules loaded\n\n
+#   **Commands executed**:\n\n<table>\n\n**Result**: <result>\n[\n<detail>\n]
 
 set -euo pipefail
 
@@ -40,12 +75,27 @@ SUBCOMMAND=""
 SLUG=""
 BODY_SOURCE=""
 ROLE_OVERRIDE=""
+ROLE_POSITIONAL_SEEN=""
+LEARNED_TEXT=""
+DIED_KIND=""
+DIED_CAUSE=""
+VERDICT_KIND=""
+NEW_SLUG=""
+GATE_CMD=""
+GATE_MODE=""
+RESULT_TEXT=""
+DETAIL_TEXT=""
 
 usage() {
     printf 'Usage:\n' >&2
     printf '  codegen-log init --slug <slug>\n' >&2
     printf '  codegen-log section --body @- [--role <role>] [--slug <slug>]\n' >&2
     printf '  codegen-log append --role <role> --body @- [--slug <slug>]\n' >&2
+    printf '  codegen-log append --role <role> --learned "<text>" [--slug <slug>]\n' >&2
+    printf '  codegen-log append --role <role> --died interrupted|aborted [--cause "<text>"] [--slug <slug>]\n' >&2
+    printf '  codegen-log append --role <role> --verdict clear|failed|inconclusive [--slug <slug>]\n' >&2
+    printf '  codegen-log verdict --gate <cmd> --mode <mode> --result "<text>" [--detail "<text>"] [--slug <slug>]\n' >&2
+    printf '  codegen-log relocate --new-slug <slug> [--slug <slug>]\n' >&2
     printf '\n' >&2
     printf "section REPLACES the whole section body (first/only write); append PRESERVES it and adds to the end (re-run, second write, death marker).\n" >&2
     exit 2
@@ -53,7 +103,7 @@ usage() {
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
-    init | section | append)
+    init | section | append | relocate | verdict)
         if [[ -n "$SUBCOMMAND" ]]; then
             printf 'codegen-log: only one subcommand is allowed\n' >&2
             usage
@@ -85,6 +135,78 @@ while [[ $# -gt 0 ]]; do
         ROLE_OVERRIDE="$2"
         shift 2
         ;;
+    --learned=*)
+        LEARNED_TEXT="${1#--learned=}"
+        shift
+        ;;
+    --learned)
+        LEARNED_TEXT="$2"
+        shift 2
+        ;;
+    --died=*)
+        DIED_KIND="${1#--died=}"
+        shift
+        ;;
+    --died)
+        DIED_KIND="$2"
+        shift 2
+        ;;
+    --cause=*)
+        DIED_CAUSE="${1#--cause=}"
+        shift
+        ;;
+    --cause)
+        DIED_CAUSE="$2"
+        shift 2
+        ;;
+    --verdict=*)
+        VERDICT_KIND="${1#--verdict=}"
+        shift
+        ;;
+    --verdict)
+        VERDICT_KIND="$2"
+        shift 2
+        ;;
+    --new-slug=*)
+        NEW_SLUG="${1#--new-slug=}"
+        shift
+        ;;
+    --new-slug)
+        NEW_SLUG="$2"
+        shift 2
+        ;;
+    --gate=*)
+        GATE_CMD="${1#--gate=}"
+        shift
+        ;;
+    --gate)
+        GATE_CMD="$2"
+        shift 2
+        ;;
+    --mode=*)
+        GATE_MODE="${1#--mode=}"
+        shift
+        ;;
+    --mode)
+        GATE_MODE="$2"
+        shift 2
+        ;;
+    --result=*)
+        RESULT_TEXT="${1#--result=}"
+        shift
+        ;;
+    --result)
+        RESULT_TEXT="$2"
+        shift 2
+        ;;
+    --detail=*)
+        DETAIL_TEXT="${1#--detail=}"
+        shift
+        ;;
+    --detail)
+        DETAIL_TEXT="$2"
+        shift 2
+        ;;
     --help | -h)
         usage
         ;;
@@ -93,8 +215,19 @@ while [[ $# -gt 0 ]]; do
         usage
         ;;
     *)
-        printf 'codegen-log: unexpected argument %q\n' "$1" >&2
-        usage
+        # Positional role: a bare token (not starting with -) immediately
+        # following section/append is accepted as the role, ALIASING
+        # --role. Only one positional role is accepted; a second bare
+        # token is an error (relocate's NEW_SLUG uses --slug, never a
+        # second positional).
+        if [[ ("$SUBCOMMAND" == "section" || "$SUBCOMMAND" == "append") && -z "$ROLE_OVERRIDE" && -z "$ROLE_POSITIONAL_SEEN" ]]; then
+            ROLE_OVERRIDE="$1"
+            ROLE_POSITIONAL_SEEN=1
+            shift
+        else
+            printf 'codegen-log: unexpected argument %q\n' "$1" >&2
+            usage
+        fi
         ;;
     esac
 done
@@ -103,19 +236,106 @@ if [[ -z "$SUBCOMMAND" ]]; then
     usage
 fi
 
+# Marker flags (--learned/--died/--verdict) are append-only and mutually
+# exclusive with each other and with --body.
+MARKER_FLAG_COUNT=0
+[[ -n "$LEARNED_TEXT" ]] && MARKER_FLAG_COUNT=$((MARKER_FLAG_COUNT + 1))
+[[ -n "$DIED_KIND" ]] && MARKER_FLAG_COUNT=$((MARKER_FLAG_COUNT + 1))
+[[ -n "$VERDICT_KIND" ]] && MARKER_FLAG_COUNT=$((MARKER_FLAG_COUNT + 1))
+if [[ "$MARKER_FLAG_COUNT" -gt 1 ]]; then
+    printf 'codegen-log: --learned, --died, and --verdict are mutually exclusive\n' >&2
+    exit 2
+fi
+if [[ "$MARKER_FLAG_COUNT" -gt 0 ]]; then
+    if [[ "$SUBCOMMAND" != "append" ]]; then
+        printf 'codegen-log: --learned/--died/--verdict are only valid with the append subcommand\n' >&2
+        exit 2
+    fi
+    if [[ -n "$BODY_SOURCE" ]]; then
+        printf 'codegen-log: --learned/--died/--verdict are mutually exclusive with --body\n' >&2
+        exit 2
+    fi
+fi
+
+# build_marker_body — emit the byte-exact canonical block for the active
+# marker flag. Must be called only when MARKER_FLAG_COUNT -eq 1.
+build_marker_body() {
+    if [[ -n "$LEARNED_TEXT" ]]; then
+        printf '### What I Learned This Step\n\n%s\n' "$LEARNED_TEXT"
+        return
+    fi
+    if [[ -n "$DIED_KIND" ]]; then
+        case "$DIED_KIND" in
+        interrupted)
+            local cause="${DIED_CAUSE:-unknown}"
+            printf '### INTERRUPTED ⚠️ — %s dropped (%s); re-spawning (attempt N/2)\n' "$ROLE_OVERRIDE" "$cause"
+            ;;
+        aborted)
+            printf '### ABORTED 💀 — %s dropped twice; stage failed.\n' "$ROLE_OVERRIDE"
+            ;;
+        *)
+            printf 'codegen-log: --died must be interrupted|aborted (got %q)\n' "$DIED_KIND" >&2
+            exit 2
+            ;;
+        esac
+        return
+    fi
+    if [[ -n "$VERDICT_KIND" ]]; then
+        case "$VERDICT_KIND" in
+        clear)
+            printf 'Verdict: ALL CLEAR ✅\n'
+            ;;
+        failed)
+            printf 'Verdict: FAILED ❌\n'
+            ;;
+        inconclusive)
+            printf 'Verdict: INCONCLUSIVE ⚠️\n'
+            ;;
+        *)
+            printf 'codegen-log: --verdict must be clear|failed|inconclusive (got %q)\n' "$VERDICT_KIND" >&2
+            exit 2
+            ;;
+        esac
+        return
+    fi
+}
+
 repo_root() {
     printf '%s' "$LOG_ROOT"
 }
 
+active_sentinel_path() {
+    printf '%s/codegen/logging/.active' "$(repo_root)"
+}
+
+# active_sentinel_log — read the .active sentinel and return its contents
+# (an absolute log path) IFF that path still exists on disk. Empty otherwise
+# (stale sentinel pointing at a relocated/deleted log falls through to the
+# mtime fallback, never a hard error).
+active_sentinel_log() {
+    local sentinel path
+    sentinel="$(active_sentinel_path)"
+    [[ -f "$sentinel" ]] || return 0
+    path="$(cat "$sentinel" 2>/dev/null || true)"
+    [[ -n "$path" && -f "$path" ]] || return 0
+    printf '%s' "$path"
+}
+
+write_active_sentinel() {
+    local log_path="$1"
+    local sentinel
+    sentinel="$(active_sentinel_path)"
+    mkdir -p "$(dirname "$sentinel")"
+    printf '%s' "$log_path" >"$sentinel"
+}
+
+# latest_session_log — most recently MODIFIED *_session.md (mtime order via
+# `ls -t`), not lexicographic/glob-order. This is the last-resort fallback
+# when neither CODEGEN_LOG_PATH, --slug, nor the .active sentinel resolve.
 latest_session_log() {
-    local root latest candidate
+    local root
     root="$(repo_root)"
-    latest=""
-    for candidate in "$root"/codegen/logging/*_session.md; do
-        [[ -e "$candidate" ]] || continue
-        latest="$candidate"
-    done
-    printf '%s' "$latest"
+    ls -t "$root"/codegen/logging/*_session.md 2>/dev/null | head -n 1
 }
 
 validate_slug() {
@@ -156,6 +376,12 @@ resolve_log_file() {
         resolve_by_slug "$SLUG"
         return
     fi
+    local sentinel_log
+    sentinel_log="$(active_sentinel_log)"
+    if [[ -n "$sentinel_log" ]]; then
+        printf '%s' "$sentinel_log"
+        return
+    fi
     latest_session_log
 }
 
@@ -184,7 +410,7 @@ EOF
 }
 
 section_header_for_agent() {
-    local role="${ROLE_OVERRIDE:-${AGENT_TYPE:-${CLAUDE_ROLE:-}}}"
+    local role="$ROLE_OVERRIDE"
     case "$role" in
     planner*) printf '## Plan' ;;
     developer-*) printf '## %s Section' "$role" ;;
@@ -192,7 +418,7 @@ section_header_for_agent() {
     context-curator) printf '## context-curator Section' ;;
     committer) printf '## committer Section' ;;
     *)
-        printf 'codegen-log: could not resolve role (got %q). Pass --role <planner*|developer-*|reviewer-*|context-curator|committer>; env fallback ($AGENT_TYPE/$CLAUDE_ROLE) is unset in build subagents.\n' "${role:-unknown}" >&2
+        printf 'codegen-log: could not resolve role (got %q). Pass the role positionally (codegen-log section <role>) or via --role <planner*|developer-*|reviewer-*|context-curator|committer>.\n' "${role:-unknown}" >&2
         exit 2
         ;;
     esac
@@ -250,6 +476,7 @@ init)
         existing+=("$candidate")
     done
     if [[ "${#existing[@]}" -eq 1 ]]; then
+        write_active_sentinel "${existing[0]}"
         printf '%s\n' "${existing[0]}"
         exit 0
     fi
@@ -261,9 +488,12 @@ init)
     timestamp="$(date -u +%Y%m%d_%H%M%S)"
     path="$root/codegen/logging/${timestamp}_${SLUG}_session.md"
     write_atomic "$path" "$(version_stamp)"
+    write_active_sentinel "$path"
     printf '%s\n' "$path"
     ;;
 section)
+    # Implicit stdin: --body is optional. Omitted -> read stdin (same as @-).
+    [[ -z "$BODY_SOURCE" ]] && BODY_SOURCE="@-"
     if [[ "$BODY_SOURCE" != @* ]]; then
         printf 'codegen-log section: --body must start with @ (got %q)\n' "$BODY_SOURCE" >&2
         exit 2
@@ -297,6 +527,12 @@ section)
         done
         ;;
     esac
+    # Opaque-body ingest: indent any stray col-0 "## " (H2) line in the author
+    # body so it can never be parsed as a canonical section header by the
+    # awk inserter below or by downstream col-0-anchored reader hooks.
+    # Deliberately narrow to "^## " (H2 + trailing space) — H3 retro/death
+    # markers and H1 titles are untouched.
+    body="$(printf '%s' "$body" | sed 's/^## /  ## /')"
     printf '%s' "$body" >"$body_file"
 
     target_rank="$(rank_of "$target_header")"
@@ -376,14 +612,19 @@ section)
     ;;
 append)
     if [[ -z "$ROLE_OVERRIDE" ]]; then
-        printf 'codegen-log append: --role is required\n' >&2
+        printf 'codegen-log append: role is required (positional: codegen-log append <role>, or --role <role>)\n' >&2
         usage
     fi
-    if [[ "$BODY_SOURCE" != @* ]]; then
+    # Implicit stdin: --body is optional when no marker flag is given.
+    if [[ "$MARKER_FLAG_COUNT" -eq 0 && -z "$BODY_SOURCE" ]]; then
+        BODY_SOURCE="@-"
+    fi
+    if [[ "$MARKER_FLAG_COUNT" -gt 0 ]]; then
+        body="$(build_marker_body)"
+    elif [[ "$BODY_SOURCE" != @* ]]; then
         printf 'codegen-log append: --body must start with @ (got %q)\n' "$BODY_SOURCE" >&2
         exit 2
-    fi
-    if [[ "$BODY_SOURCE" != @- ]]; then
+    elif [[ "$BODY_SOURCE" != @- ]]; then
         body_path="${BODY_SOURCE#@}"
         if [[ ! -f "$body_path" ]]; then
             printf 'codegen-log append: body file not found: %s\n' "$body_path" >&2
@@ -393,6 +634,13 @@ append)
     else
         body="$(cat)"
     fi
+
+    # Opaque-body ingest: indent any stray col-0 "## " (H2) line in the author
+    # body so it can never be parsed as a canonical section header — same
+    # transform as the `section` path (parallel-cases: same family, same fix).
+    # Marker bodies are tool-generated and never contain a stray H2, but the
+    # transform is idempotent/harmless to apply uniformly.
+    body="$(printf '%s' "$body" | sed 's/^## /  ## /')"
 
     body_file="$(mktemp "${TMPDIR:-/tmp}/.codegen-log-append-body.XXXXXX")"
     printf '%s' "$body" >"$body_file"
@@ -455,6 +703,91 @@ append)
 
     rm -f "$body_file"
     mv "$tmp" "$log_file"
+    printf '%s\n' "$log_file"
+    ;;
+relocate)
+    if [[ -z "$NEW_SLUG" ]]; then
+        printf 'codegen-log relocate: --new-slug is required\n' >&2
+        usage
+    fi
+    if [[ ! "$NEW_SLUG" =~ ^[a-z0-9_-]+$ ]]; then
+        printf 'codegen-log relocate: --new-slug must match [a-z0-9_-]+ (got %q)\n' "$NEW_SLUG" >&2
+        exit 2
+    fi
+    log_file="$(resolve_log_file)"
+    if [[ -z "$log_file" || ! -f "$log_file" ]]; then
+        printf 'codegen-log relocate: no session log found (set CODEGEN_LOG_PATH or create one first)\n' >&2
+        exit 2
+    fi
+    log_dir="$(dirname "$log_file")"
+    log_base="$(basename "$log_file")"
+    # Preserve the timestamp + kind suffix (session|stepN_slug), swap the slug.
+    case "$log_base" in
+    [0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]_[0-9][0-9][0-9][0-9][0-9][0-9]_*)
+        timestamp_prefix="${log_base:0:15}"
+        rest="${log_base:16}"
+        # rest is "<old-slug>_<kind_suffix>"; kind_suffix is either
+        # "session.md" or "step[0-9]+_[a-z0-9_-]+.md" — the slug itself may
+        # contain "_-", so derive kind_suffix by matching the known kind
+        # shapes from the tail of $rest rather than naive splitting.
+        case "$rest" in
+        *_session.md) kind_suffix="session.md" ;;
+        *)
+            kind_suffix="$(printf '%s' "$rest" | grep -oE 'step[0-9]+_[a-z0-9_-]+\.md$' || true)"
+            ;;
+        esac
+        if [[ -z "$kind_suffix" ]]; then
+            printf 'codegen-log relocate: could not parse log filename: %s\n' "$log_base" >&2
+            exit 2
+        fi
+        ;;
+    *)
+        printf 'codegen-log relocate: could not parse log filename: %s\n' "$log_base" >&2
+        exit 2
+        ;;
+    esac
+    new_path="$log_dir/${timestamp_prefix}_${NEW_SLUG}_${kind_suffix}"
+    if [[ -e "$new_path" ]]; then
+        printf 'codegen-log relocate: target already exists: %s\n' "$new_path" >&2
+        exit 2
+    fi
+    mv "$log_file" "$new_path"
+    write_active_sentinel "$new_path"
+    printf '%s\n' "$new_path"
+    ;;
+verdict)
+    if [[ -z "$GATE_CMD" ]]; then
+        printf 'codegen-log verdict: --gate is required\n' >&2
+        usage
+    fi
+    if [[ -z "$GATE_MODE" ]]; then
+        printf 'codegen-log verdict: --mode is required\n' >&2
+        usage
+    fi
+    if [[ -z "$RESULT_TEXT" ]]; then
+        printf 'codegen-log verdict: --result is required\n' >&2
+        usage
+    fi
+    log_file="$(resolve_log_file)"
+    if [[ -z "$log_file" || ! -f "$log_file" ]]; then
+        printf 'codegen-log verdict: no session log found (set CODEGEN_LOG_PATH or create one first)\n' >&2
+        exit 2
+    fi
+    ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    {
+        printf '\n## dev-gate Section\n\n'
+        printf 'Gate: %s\n' "$GATE_CMD"
+        printf 'Ran: %s\n\n' "$GATE_CMD"
+        printf '**Rules loaded**: deterministic hook (dev-gate.sh) — no rules loaded\n\n'
+        printf '**Commands executed**:\n\n'
+        printf '| Time (HH:MM:SS UTC) | Command | Exit | Notes |\n'
+        printf '| ------------------- | ------- | ---- | ----- |\n'
+        printf '| %s | %s | — | mode=%s |\n\n' "$ts" "$GATE_CMD" "$GATE_MODE"
+        printf '**Result**: %s\n' "$RESULT_TEXT"
+        if [[ -n "$DETAIL_TEXT" ]]; then
+            printf '\n%s\n' "$DETAIL_TEXT"
+        fi
+    } >>"$log_file"
     printf '%s\n' "$log_file"
     ;;
 esac

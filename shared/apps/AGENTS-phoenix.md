@@ -44,7 +44,7 @@ Backend runs before frontend by default.
 
 Each build creates a new log file under `codegen/logging/`. The loop creates it via `codegen-log init --slug <slug>` before delegating to the planner.
 
-All section writes go through codegen-log (section --body @-, section --role <role>, append); raw Edit/Write on codegen/logging/\*.md is denied.
+All section writes go through codegen-log (`section <role>`, `append <role>` — see session-log rules § Ownership for the full CLI contract); raw Edit/Write on codegen/logging/\*.md is denied.
 
 ## Gate
 

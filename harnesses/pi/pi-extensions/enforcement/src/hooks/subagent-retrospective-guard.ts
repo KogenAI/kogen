@@ -23,9 +23,12 @@
  */
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { debugLog, parseAgentType } from "../lib/hook-helpers";
+import {
+  debugLog,
+  parseAgentType,
+  getActiveStepLog,
+} from "../lib/hook-helpers";
 import * as fs from "node:fs";
-import * as path from "node:path";
 
 export const HANDLER_META = {
   name: "subagent-retrospective-guard",
@@ -41,24 +44,6 @@ const MATCHED_AGENTS = new Set([
   "planner-phoenix",
   "planner-static",
 ]);
-
-/** Find the most recently modified step log in codegen/logging/. */
-function getActiveStepLog(projectDir: string): string | null {
-  const loggingDir = path.join(projectDir, "codegen", "logging");
-  if (!fs.existsSync(loggingDir)) return null;
-
-  const logFiles = fs
-    .readdirSync(loggingDir)
-    .filter((f) => f.endsWith(".md") && !f.includes("progress"))
-    .map((f) => ({
-      name: f,
-      mtime: fs.statSync(path.join(loggingDir, f)).mtimeMs,
-    }))
-    .sort((a, b) => b.mtime - a.mtime);
-
-  if (logFiles.length === 0) return null;
-  return path.join(loggingDir, logFiles[0].name);
-}
 
 /**
  * Extract the body of the LAST matching section block (heading to next ## heading or EOF).

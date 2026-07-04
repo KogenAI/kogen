@@ -18,6 +18,16 @@
  * case but cannot detect the position-correlation nuance (delegated-then-logged
  * vs. delegated-never-logged).
  *
+ * SENTINEL NOTE (codegen/logging/.active): the Claude twin's belt-and-suspenders
+ * check treats a fresh .active sentinel (written synchronously by codegen-log
+ * init/relocate) as evidence equivalent to a transcript-position match, closing
+ * an async-lag gap between a Bash codegen-log write and its transcript entry
+ * landing. Pi's disk heuristic ALREADY reads the canonical log files directly —
+ * the .active sentinel is strictly weaker evidence than the log file itself
+ * (which this check already scans for), so it is NOT consulted here. Adding it
+ * would not raise fidelity: if a canonical log exists on disk, the check below
+ * already sees it regardless of whether .active also points at it.
+ *
  * Skip when:
  *   - codegen/logging/ directory does not exist
  *   - No recently modified (< 60 min) files in directory
