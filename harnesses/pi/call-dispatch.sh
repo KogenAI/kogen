@@ -47,7 +47,7 @@ ARGS=(
     --mode json
     --no-session
     --no-context-files
-    --system-prompt "$SYSTEM_PROMPT"
+    --append-system-prompt "$SYSTEM_PROMPT"
     --provider openai-codex
     --model "$MODEL"
     --thinking "$EFFORT"

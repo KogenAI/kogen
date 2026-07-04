@@ -40,7 +40,7 @@ COMMON_FLAGS=(
     --strict-mcp-config
     --no-session-persistence
     --disable-slash-commands
-    --system-prompt "$SYSTEM_PROMPT"
+    --append-system-prompt "$SYSTEM_PROMPT"
     --model "$MODEL"
     --effort "$EFFORT"
 )

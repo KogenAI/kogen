@@ -40,6 +40,8 @@ Codegen-infra pitfalls and bash gotchas — split from `context/development.md` 
 - **session-log-writer-only guards all session-log writes** — `codegen-log` is the SOLE writer; guards Edit/Write/MultiEdit and raw Bash writes (redirect/tee/move) to `codegen/logging/*.md`. Workaround: `mktemp/cmp/mv` no longer bypasses the hook — must invoke `codegen-log`.
 - **[local] Byte-cap trimming** — Measure before appending; trim stale bullets to make room.
 - **[shared] Stale-doc-twin defect** — Grep full vocabulary across ALL files when fixing drift.
+- **Mix-task semantic-merge vs. blind patch** — Worktree diffs may omit code added to main AFTER the branch. Blind `git apply` deletes the main-only code. Example: `:ok` arm gains `maybe_ship_pitch` on main; worktree lacks it. **Fix**: thread the code result additively (e.g., call `emit_telemetry(result)` before `case`), keep main's body unchanged. Post-edit grep for main-only code (e.g., `maybe_ship_pitch` must appear ≥2 times).
+- **`stack_default_gate` test-assertion stale expectations** — Gate-logic changes (e.g., `static + "make test"` → `"make ci"`) invalidate existing test assertions for the old behavior. **Fix**: proactively grep all `_test.exs` files for input/output assertions on the changed gate logic; re-evaluate OLD assertions against NEW logic and update fixtures to assert correctly.
 - **Repo-level counters: `_substrate_root` pattern** — Repo-level vs per-session counters. Repo-level scans once (no double-count) via `ALL_REPO_COUNTERS` list. Reading `codegen/logging/`: check `project_dir` first (test), else use `config.codegen_dir / "codegen" / "logging"`.
 - **Sole-writer migrations: reconcile ALL command-scanning guards** — Grep all guards for old patterns BEFORE enforcement commit; deny-hook is only first stop.
 - **Bash test forward-reference trap** — Variables defined later unreachable under `set -u`. Define at top.
@@ -148,7 +150,7 @@ Codegen-infra pitfalls and bash gotchas — split from `context/development.md` 
 - **Never quarantine a failing hook test** — fix it or revert the change that broke it. The runner fails-closed on any red: there is no allowlist. A green gate means every test passed.
 - **[shared] RED-then-GREEN proof for regression guards is load-bearing** — When adding `assert_absent`-style guards (or "must NOT appear" tests), run BEFORE the fix to prove RED, apply fix, run again to prove GREEN. Direct proof the guard catches bugs, not a vacuous grep-always-passes trap. Cheap 30s insurance.
 - **`${PIPESTATUS[1]}` captured immediately after pipeline** — Any intervening command resets the array. Pattern: `find | xargs ...; _rc=${PIPESTATUS[1]}` on next line only.
-- **Retry-feature test design: disable real sleep** — Set `CODEGEN_BUILD_QUEUE_RETRY_DELAYS="0 0 0"` to avoid real sleep (default "30 120 300" stalls tests). Use indirect-var pattern for per-attempt fixtures; gate tests with subshell override.
+- **Retry-feature test design: disable real sleep** — Set `CODEGEN_BUILD_QUEUE_RETRY_DELAYS="0 0 0"` to avoid stalls.
 - **Per-attempt test variants via `eval`** — Use `eval "body=\"\${STUB_JSONL_BODY_${attempt}:-\${STUB_JSONL_BODY:-}}\"` for per-attempt overrides. Bash 3.2-safe, injection-safe with integer counter.
 - **Sourced bash library in Bash tool context** — Use `bash -c 'source <lib> && fn'` for bash-specific syntax.
 - **`--no-config` flag isolates tmpdir tests** — Use `--no-config` for tools with hierarchical config discovery to block ancestor leakage.

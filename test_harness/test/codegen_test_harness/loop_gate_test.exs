@@ -74,11 +74,13 @@ defmodule CodegenTestHarness.LoopGateTest do
     test "static stack with no public/ dir skips render check — stays clear", %{dir: dir} do
       run_fn = fn _gate, _project_dir -> {"built ok", 0} end
 
-      assert {:clear, "make test"} =
+      # stack_default_gate/2 forces static's stack-blind "make test" fallback
+      # to "make ci" (no mix.exs, no step_log -> gate-select's default).
+      assert {:clear, "make ci"} =
                LoopGate.run_gate(dir,
                  run_fn: run_fn,
                  stack: "static",
-                 preflight_fn: fn _ -> :ok end
+                 preflight_fn: fn _project_dir -> :ok end
                )
     end
 
@@ -87,12 +89,12 @@ defmodule CodegenTestHarness.LoopGateTest do
       run_fn = fn _gate, _project_dir -> {"built ok", 0} end
       render_check_fn = fn _project_dir -> {"RENDER_VERDICT=PASS", 0} end
 
-      assert {:clear, "make test"} =
+      assert {:clear, "make ci"} =
                LoopGate.run_gate(dir,
                  run_fn: run_fn,
                  stack: "static",
                  render_check_fn: render_check_fn,
-                 preflight_fn: fn _ -> :ok end
+                 preflight_fn: fn _project_dir -> :ok end
                )
     end
 
@@ -101,12 +103,12 @@ defmodule CodegenTestHarness.LoopGateTest do
       run_fn = fn _gate, _project_dir -> {"built ok", 0} end
       render_check_fn = fn _project_dir -> {"RENDER_VERDICT=FAIL:no-dom", 0} end
 
-      assert {:failed, "make test"} =
+      assert {:failed, "make ci"} =
                LoopGate.run_gate(dir,
                  run_fn: run_fn,
                  stack: "static",
                  render_check_fn: render_check_fn,
-                 preflight_fn: fn _ -> :ok end
+                 preflight_fn: fn _project_dir -> :ok end
                )
     end
 
@@ -118,12 +120,12 @@ defmodule CodegenTestHarness.LoopGateTest do
         {"RENDER_VERDICT=INCONCLUSIVE:chromium-launch-failed", 0}
       end
 
-      assert {:failed, "make test"} =
+      assert {:failed, "make ci"} =
                LoopGate.run_gate(dir,
                  run_fn: run_fn,
                  stack: "static",
                  render_check_fn: render_check_fn,
-                 preflight_fn: fn _ -> :ok end
+                 preflight_fn: fn _project_dir -> :ok end
                )
     end
 
@@ -135,12 +137,12 @@ defmodule CodegenTestHarness.LoopGateTest do
         flunk("render check must not run when the gate command itself failed")
       end
 
-      assert {:failed, "make test"} =
+      assert {:failed, "make ci"} =
                LoopGate.run_gate(dir,
                  run_fn: run_fn,
                  stack: "static",
                  render_check_fn: render_check_fn,
-                 preflight_fn: fn _ -> :ok end
+                 preflight_fn: fn _project_dir -> :ok end
                )
     end
   end
@@ -173,7 +175,7 @@ defmodule CodegenTestHarness.LoopGateTest do
     test "real static preflight passes on a healthy box (chromium present)", %{dir: dir} do
       run_fn = fn _gate, _project_dir -> {"ok", 0} end
 
-      assert {:clear, "make test"} = LoopGate.run_gate(dir, run_fn: run_fn, stack: "static")
+      assert {:clear, "make ci"} = LoopGate.run_gate(dir, run_fn: run_fn, stack: "static")
     end
   end
 

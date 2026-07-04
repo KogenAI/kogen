@@ -58,8 +58,12 @@ defmodule CodegenTestHarness.RoleResolver do
     agents_dir = Keyword.get(opts, :agents_dir, @default_agents_dir)
     generated_dir = Keyword.get(opts, :generated_dir, @default_generated_dir)
 
-    model = config_yaml_read!(".harness.#{role}.#{harness}.model")
-    effort = config_yaml_read!(".harness.#{role}.#{harness}.effort")
+    # config.yaml + agent .md dirs key on the SHORT harness name ("claude"),
+    # but the loop/codegen-call canonical harness is "claude_code". Normalize.
+    config_harness = normalize_harness(harness)
+
+    model = config_yaml_read!(".harness.#{role}.#{config_harness}.model")
+    effort = config_yaml_read!(".harness.#{role}.#{config_harness}.effort")
 
     agent_md_path = locate_agent_md!(role, agents_dir, generated_dir)
     content = File.read!(agent_md_path)
@@ -70,6 +74,11 @@ defmodule CodegenTestHarness.RoleResolver do
 
     {system_prompt_path, model, effort, allowed_tools}
   end
+
+  # Maps the canonical loop/codegen-call harness name to the short name that
+  # config.yaml and the agent .md directories key on.
+  defp normalize_harness("claude_code"), do: "claude"
+  defp normalize_harness(other), do: other
 
   # Reads a scalar value from templates/generator/config.yaml using yq.
   # Raises if yq is not on PATH or if the key is missing/empty/null.

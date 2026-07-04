@@ -21,6 +21,12 @@ defmodule CodegenTestHarness.OrchestrationLoop do
   # Phoenix: plan-first. static: developer-first. Terminal role is committer
   # in both sequences — the gate/reviewer/curator/committer tail is common.
   @phoenix_roles ~w(planner-phoenix developer-phoenix-backend reviewer-phoenix context-curator committer)
+  # Static is developer-first (no planner) by design — static tasks are simpler and
+  # the planner is an opus-priced role whose scoping isn't needed for them. (An
+  # experiment briefly added planner-static to suppress "gold-plating" like SEO/OG
+  # metadata, but that polish is not a defect, so the planner was reverted here.)
+  # build_prompt/2 still threads a planner's plan to the developer WHEN one runs —
+  # i.e. on the phoenix (plan-first) sequence.
   @static_roles ~w(developer-static reviewer-static context-curator committer)
 
   @cycle_state_lib Path.expand(
@@ -85,8 +91,7 @@ defmodule CodegenTestHarness.OrchestrationLoop do
           run_gate_then_continue(role, rest, harness, ctx, opts)
 
         role == "reviewer-phoenix" or role == "reviewer-static" ->
-          advance_cycle_state_step("REVIEWED", ctx, opts)
-          run_roles(rest, harness, ctx, opts)
+          handle_review(role, result, rest, harness, ctx, opts, 0)
 
         role == "context-curator" ->
           run_format_step(ctx.cwd, opts)
@@ -94,6 +99,14 @@ defmodule CodegenTestHarness.OrchestrationLoop do
           run_roles(rest, harness, ctx, opts)
 
         role == "committer" ->
+          # Structural gap #9: the committer ROLE returning success does NOT
+          # prove a commit landed — the committer can inspect the repo, see the
+          # feature already implemented (it was, by the developer), and report
+          # "done" without ever running `git commit`. Trusting role-return here
+          # is the exact false-success failure the loop exists to prevent. VERIFY
+          # the working tree is actually clean (all cycle output committed); a
+          # dirty tree after the committer means it did not commit → fail loud.
+          verify_committed!(ctx.cwd)
           advance_cycle_state_step("COMMITTED", ctx, opts)
           run_roles(rest, harness, ctx, opts)
 
@@ -104,6 +117,111 @@ defmodule CodegenTestHarness.OrchestrationLoop do
   end
 
   defp developer_role?(role), do: String.starts_with?(role, "developer-")
+
+  # Structural gap #9 (verification): after the committer role runs, the working
+  # tree MUST be clean — every cycle change committed. A dirty tree means the
+  # committer did not actually commit (it no-op'd on an already-implemented
+  # feature, hit a blocked git op, etc.). Fail loud rather than reporting a
+  # false `loop_committed`. Gitignored paths never show in --porcelain, so a
+  # legitimately-clean tree passes.
+  defp verify_committed!(cwd) do
+    # Only a real git work tree can be verified. Mocked tests pass a synthetic
+    # cwd ("/tmp/irrelevant") that either does not exist or is not a repo; there
+    # is nothing to verify there. A real loop run ALWAYS operates inside the
+    # scaffolded project's git repo, so the guard always fires in production.
+    with true <- File.dir?(cwd),
+         {out, 0} <-
+           System.cmd("git", ["status", "--porcelain"], cd: cwd, stderr_to_stdout: true) do
+      dirty = String.trim(out)
+
+      if dirty != "" do
+        n = dirty |> String.split("\n") |> length()
+
+        raise "OrchestrationLoop: committer returned success but the working tree is NOT clean — " <>
+                "#{n} uncommitted file(s):\n#{dirty}\n" <>
+                "The committer must stage ALL cycle changes and create exactly one commit. " <>
+                "Advancing COMMITTED here would be a false success (the failure the loop exists to prevent)."
+      end
+
+      :ok
+    else
+      # fail-loud-exempt: a non-existent cwd or non-git work tree is a legitimate
+      # "nothing to verify" (only mocked tests use such a cwd; real runs always
+      # operate in the project git repo). The clean-tree assertion above is the
+      # real guard and only applies when a git tree actually exists.
+      _ -> :ok
+    end
+  end
+
+  # Reviewer→developer fix cycle (structural gap #7). The reviewer ends its output
+  # with `REVIEW_VERDICT: APPROVED | CHANGES_REQUESTED` (instructed via build_prompt).
+  # APPROVED / unparseable → advance REVIEWED and continue. CHANGES_REQUESTED (within
+  # :max_review_cycles, default 1) → re-invoke the developer with the reviewer's
+  # feedback, re-format, re-gate, re-review, and recurse. Budget-exhausted → proceed
+  # (don't wedge the cycle forever) but the state still records REVIEWED.
+  defp handle_review(reviewer_role, review_result, rest, harness, ctx, opts, cycle) do
+    max_cycles = Keyword.get(opts, :max_review_cycles, 1)
+
+    case parse_review_verdict(review_result) do
+      :changes_requested when cycle < max_cycles ->
+        dev_role = dev_role_from_ctx(ctx)
+
+        if is_nil(dev_role) do
+          # No developer role in this cycle to route feedback to — proceed.
+          advance_cycle_state_step("REVIEWED", ctx, opts)
+          run_roles(rest, harness, ctx, opts)
+        else
+          feedback = review_result["value"] || "changes requested"
+          rework_ctx = put_in(ctx, [:artifacts, :review_feedback], feedback)
+
+          with {:ok, dev_result} <- invoke_with_retry(dev_role, harness, rework_ctx, opts) do
+            ctx = put_in(rework_ctx, [:artifacts, dev_role], dev_result)
+            run_format_step(ctx.cwd, opts)
+
+            case run_gate_once(ctx, opts) do
+              :clear ->
+                advance_cycle_state_step("GATED", ctx, opts)
+
+                with {:ok, review2} <- invoke_with_retry(reviewer_role, harness, ctx, opts) do
+                  ctx = put_in(ctx, [:artifacts, reviewer_role], review2)
+                  handle_review(reviewer_role, review2, rest, harness, ctx, opts, cycle + 1)
+                end
+
+              verdict ->
+                {:error, "gate verdict=#{verdict} after review re-work (cycle #{cycle + 1})"}
+            end
+          end
+        end
+
+      _verdict ->
+        # :approved, :unknown, or CHANGES_REQUESTED with budget exhausted.
+        advance_cycle_state_step("REVIEWED", ctx, opts)
+        run_roles(rest, harness, ctx, opts)
+    end
+  end
+
+  defp parse_review_verdict(%{"value" => v}) when is_binary(v) do
+    cond do
+      Regex.match?(~r/REVIEW_VERDICT:\s*CHANGES_REQUESTED/i, v) -> :changes_requested
+      Regex.match?(~r/REVIEW_VERDICT:\s*APPROVED/i, v) -> :approved
+      true -> :unknown
+    end
+  end
+
+  defp parse_review_verdict(_), do: :unknown
+
+  defp dev_role_from_ctx(ctx) do
+    (ctx[:artifacts] || %{})
+    |> Map.keys()
+    |> Enum.find(fn k -> is_binary(k) and String.starts_with?(k, "developer-") end)
+  end
+
+  # Runs the gate once (developer already ran) and returns the verdict atom.
+  defp run_gate_once(ctx, opts) do
+    gate_fn = Keyword.get(opts, :gate_fn, &LoopGate.run_gate/2)
+    {verdict, _cmd} = gate_fn.(ctx.cwd, opts)
+    verdict
+  end
 
   # After a developer role completes, run the gate. Clear → continue to the
   # reviewer/curator/committer tail. Non-clear → re-invoke the SAME
@@ -215,13 +333,23 @@ defmodule CodegenTestHarness.OrchestrationLoop do
           {:ok, map()} | {:error, String.t()}
   def invoke_role(role, harness, ctx, opts) do
     resolve_fn = Keyword.get(opts, :resolve_fn, &RoleResolver.resolve_role/2)
-    codegen_call_fn = Keyword.get(opts, :codegen_call_fn, &default_codegen_call/6)
+
+    # Default threads ctx.cwd into the codegen-call so the role's agent runs IN
+    # the project directory. dispatch.sh cd's to test_harness to run mix, so
+    # WITHOUT this every role would edit the wrong directory (loop bug #3).
+    # The /6 seam signature is preserved for test overrides.
+    codegen_call_fn =
+      Keyword.get(opts, :codegen_call_fn, fn h, m, e, sp, tools, pr ->
+        default_codegen_call(ctx.cwd, h, m, e, sp, tools, pr)
+      end)
 
     {system_prompt_path, model, effort, allowed_tools} = resolve_fn.(role, harness)
 
     prompt = build_prompt(role, ctx)
 
     envelope = codegen_call_fn.(harness, model, effort, system_prompt_path, allowed_tools, prompt)
+
+    accumulate_telemetry(role, envelope)
 
     case envelope do
       %{"result" => %{"status" => "success"} = result} ->
@@ -243,12 +371,87 @@ defmodule CodegenTestHarness.OrchestrationLoop do
 
     base = ctx[:pitch] || ""
 
+    # Thread the planner's plan to the developer so it implements what was actually
+    # planned instead of re-deriving scope from the raw pitch. (This is the real
+    # value: prior-role context threading — see structural gap #6. We do NOT try to
+    # suppress "gold-plating" like SEO/OG/JSON-LD: that is normal, harmless polish,
+    # not a defect — an earlier iteration mis-treated it as one.)
+    plan = planner_plan(ctx)
+
+    base =
+      if developer_role?(role) and is_binary(plan) and String.trim(plan) != "" do
+        base <> "\n\n## Implementation plan (from the planner)\n\n" <> plan
+      else
+        base
+      end
+
+    # On a review re-work pass, thread the reviewer's feedback to the developer.
+    fb = get_in(ctx, [:artifacts, :review_feedback])
+
+    base =
+      if developer_role?(role) and is_binary(fb) and String.trim(fb) != "" do
+        base <>
+          "\n\n## Reviewer feedback to address (re-work)\n\n" <>
+          fb <> "\n\nApply these specific changes; do not introduce unrelated changes."
+      else
+        base
+      end
+
+    # Reviewers must emit a machine-readable verdict the loop can act on (#7).
+    base =
+      if role == "reviewer-phoenix" or role == "reviewer-static" do
+        base <>
+          "\n\nEND your response with a line exactly `REVIEW_VERDICT: APPROVED` if the change is " <>
+          "acceptable, or `REVIEW_VERDICT: CHANGES_REQUESTED` followed by a short, specific, " <>
+          "actionable list of required changes if not."
+      else
+        base
+      end
+
+    # Structural gap #8: the committer must be told to COMMIT the working tree —
+    # not handed the raw feature pitch (which makes it inspect the repo, see the
+    # feature already implemented by the developer, and no-op with "done", the
+    # observed Phoenix false-success). Give it an unambiguous commit directive;
+    # the pitch is context only.
+    base =
+      if role == "committer" do
+        "The developer and reviewer for this cycle have already implemented and approved " <>
+          "the change; ALL of it is sitting UNCOMMITTED in the project's working tree. Your " <>
+          "ONLY job is to stage EVERY change (tracked modifications AND new untracked files) " <>
+          "and create EXACTLY ONE git commit with a concise, why-focused message. Do NOT " <>
+          "implement, modify, or re-verify features. If `git status --porcelain` is empty " <>
+          "(nothing to commit), STOP and report that as a failure — it means the cycle " <>
+          "produced no changes.\n\n## Task that was implemented (context only)\n\n" <> base
+      else
+        base
+      end
+
     if reason do
       base <>
         "\n\nPrevious attempt at role #{role} failed with: #{reason}. Please address this and retry."
     else
       base
     end
+  end
+
+  # Extracts the planner's plan text from ctx.artifacts (static or phoenix
+  # planner), or nil if no planner has run yet.
+  defp planner_plan(ctx) do
+    artifacts = ctx[:artifacts] || %{}
+
+    ["planner-static", "planner-phoenix"]
+    |> Enum.find_value(fn key ->
+      case Map.get(artifacts, key) do
+        %{"value" => v} when is_binary(v) ->
+          v
+
+        # fail-loud-exempt: absent planner (nil) or non-string value is a
+        # legitimate "no plan to thread" — the developer falls back to the raw
+        # pitch. Optional context enrichment, not a required contract.
+        _ ->
+          nil
+      end
+    end)
   end
 
   @codegen_call_bin Path.expand("../../../codegen-call", __DIR__)
@@ -316,7 +519,7 @@ defmodule CodegenTestHarness.OrchestrationLoop do
     raise "OrchestrationLoop: unknown harness #{inspect(other)} — cannot resolve guard bundle"
   end
 
-  defp default_codegen_call(harness, model, effort, system_prompt_path, allowed_tools, prompt) do
+  defp default_codegen_call(cwd, harness, model, effort, system_prompt_path, allowed_tools, prompt) do
     unless File.exists?(@codegen_call_bin) do
       raise "OrchestrationLoop: codegen-call not found at #{@codegen_call_bin}"
     end
@@ -340,13 +543,25 @@ defmodule CodegenTestHarness.OrchestrationLoop do
     ]
 
     {output, exit_code} =
-      System.cmd(@codegen_call_bin, args, stderr_to_stdout: true, env: env)
+      System.cmd(@codegen_call_bin, args, stderr_to_stdout: true, env: env, cd: cwd)
 
+    # A non-zero codegen-call exit is an OPERATIONAL failure (transient claude
+    # SIGTERM/exit 143, rate-limit kill, network blip) — NOT a programming error.
+    # Return a synthetic failed envelope so invoke_with_retry/4 retries the role
+    # ONCE instead of crashing the whole multi-role cycle. A genuinely broken
+    # role still fails cleanly (failed status after the retry), never a raw crash
+    # that discards all prior role work.
     if exit_code != 0 do
-      raise "OrchestrationLoop: codegen-call exited #{exit_code}:\n#{output}"
+      %{
+        "result" => %{
+          "status" => "failed",
+          "reason" => "codegen-call exited #{exit_code} (transient?): #{String.slice(output, max(String.length(output) - 400, 0), 400)}"
+        }
+      }
+    else
+      # Malformed JSON on a zero exit IS an unexpected contract violation — crash loud.
+      Jason.decode!(output)
     end
-
-    Jason.decode!(output)
   end
 
   @doc """
@@ -370,4 +585,85 @@ defmodule CodegenTestHarness.OrchestrationLoop do
   end
 
   defp shell_quote(arg), do: "'" <> String.replace(arg, "'", "'\\''") <> "'"
+
+  # ── Telemetry accumulation (benchmark instrumentation) ──────────────────────
+  # The loop invokes N per-role codegen-calls, each returning an envelope whose
+  # top-level `usage` block carries cost/tokens/num_turns (call-dispatch.sh).
+  # We sum these across EVERY invocation (including gate retries — they cost
+  # real tokens) into the loop process dictionary so the mix task can emit a
+  # single aggregated `type:result` line for the benchmark harness to parse.
+
+  @telemetry_key :loop_telemetry
+
+  @doc false
+  def zero_telemetry do
+    %{
+      cost_usd: 0.0,
+      input_tokens: 0,
+      output_tokens: 0,
+      cache_read_tokens: 0,
+      cache_creation_tokens: 0,
+      num_turns: 0,
+      role_calls: 0,
+      per_role: %{}
+    }
+  end
+
+  @doc false
+  def get_telemetry, do: Process.get(@telemetry_key, zero_telemetry())
+
+  @doc false
+  def accumulate_telemetry(role, %{"usage" => usage}) when is_map(usage) do
+    acc = get_telemetry()
+
+    role_entry = %{
+      cost_usd: t_num(usage["cost_usd"]),
+      input_tokens: t_int(usage["input_tokens"]),
+      output_tokens: t_int(usage["output_tokens"]),
+      cache_read_tokens: t_int(usage["cache_read_input_tokens"]),
+      cache_creation_tokens: t_int(usage["cache_creation_input_tokens"]),
+      num_turns: t_int(usage["num_turns"])
+    }
+
+    updated = %{
+      cost_usd: acc.cost_usd + role_entry.cost_usd,
+      input_tokens: acc.input_tokens + role_entry.input_tokens,
+      output_tokens: acc.output_tokens + role_entry.output_tokens,
+      cache_read_tokens: acc.cache_read_tokens + role_entry.cache_read_tokens,
+      cache_creation_tokens: acc.cache_creation_tokens + role_entry.cache_creation_tokens,
+      num_turns: acc.num_turns + role_entry.num_turns,
+      role_calls: acc.role_calls + 1,
+      per_role: Map.update(acc.per_role, role, [role_entry], &(&1 ++ [role_entry]))
+    }
+
+    Process.put(@telemetry_key, updated)
+    :ok
+  end
+
+  def accumulate_telemetry(_role, _envelope), do: :ok
+
+  defp t_num(nil), do: 0.0
+  defp t_num(n) when is_number(n), do: n
+
+  defp t_num(s) when is_binary(s) do
+    case Float.parse(s) do
+      {f, _} -> f
+      :error -> 0.0
+    end
+  end
+
+  defp t_num(_), do: 0.0
+
+  defp t_int(nil), do: 0
+  defp t_int(n) when is_integer(n), do: n
+  defp t_int(n) when is_float(n), do: trunc(n)
+
+  defp t_int(s) when is_binary(s) do
+    case Integer.parse(s) do
+      {i, _} -> i
+      :error -> 0
+    end
+  end
+
+  defp t_int(_), do: 0
 end

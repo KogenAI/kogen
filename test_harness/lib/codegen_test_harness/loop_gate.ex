@@ -109,6 +109,14 @@ defmodule CodegenTestHarness.LoopGate do
 
     {gate, mode, _timeout} = decide_gate(project_dir, step_log)
 
+    # gate-select.sh's no-config fallback is stack-blind: mix.exs → "make ci",
+    # everything else → "make test". The loop's static sequence has no planner
+    # to write a `**Gate**:` line, so a static project falls back to "make test"
+    # (absent in a static app → permanent gate failure). Force the static gate
+    # (build + prettier) here. Loop-local — the shared gate-select stays
+    # untouched (codegen's own repo gate is legitimately "make test").
+    gate = stack_default_gate(stack, gate)
+
     started = now_iso8601()
     {output, exit_code} = run_fn.(gate, project_dir)
 
@@ -139,6 +147,11 @@ defmodule CodegenTestHarness.LoopGate do
 
     {read_verdict(project_dir), gate}
   end
+
+  # Stack-aware default gate when gate-select.sh fell back to the stack-blind
+  # "make test" default. A static project's gate is "make ci" (build+prettier).
+  defp stack_default_gate("static", "make test"), do: "make ci"
+  defp stack_default_gate(_stack, gate), do: gate
 
   # Runs the static-stack render check (headless Chromium via render-check.js)
   # against `<project_dir>/public`. Returns `{render_verdict_line, combined_output}`.

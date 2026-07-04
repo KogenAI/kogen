@@ -48,7 +48,14 @@ defmodule Mix.Tasks.Codegen.Loop do
 
     pitch = resolve_pitch(pitch_arg, cwd)
 
-    case OrchestrationLoop.run(harness: harness, stack: stack, cwd: cwd, pitch: pitch) do
+    result = OrchestrationLoop.run(harness: harness, stack: stack, cwd: cwd, pitch: pitch)
+
+    # Emit aggregated per-cycle telemetry as a parseable stream-json result line
+    # (benchmark instrumentation) regardless of outcome — a failed cycle still
+    # spent tokens and its cost belongs in the A/B.
+    emit_loop_telemetry(result)
+
+    case result do
       :ok ->
         Mix.shell().info("codegen.loop: COMMITTED, gate clear")
         source = resolve_pitch_source(pitch_arg, cwd)
@@ -58,6 +65,52 @@ defmodule Mix.Tasks.Codegen.Loop do
         Mix.shell().error("codegen.loop: FAILED — #{reason}")
         exit({:shutdown, 1})
     end
+  end
+
+  @doc false
+  def emit_loop_telemetry(result) do
+    t = OrchestrationLoop.get_telemetry()
+
+    subtype = if result == :ok, do: "success", else: "error"
+
+    per_role =
+      Map.new(t.per_role, fn {role, entries} ->
+        summed =
+          Enum.reduce(
+            entries,
+            %{cost_usd: 0.0, input_tokens: 0, output_tokens: 0, num_turns: 0},
+            fn e, acc ->
+              %{
+                cost_usd: acc.cost_usd + e.cost_usd,
+                input_tokens: acc.input_tokens + e.input_tokens,
+                output_tokens: acc.output_tokens + e.output_tokens,
+                num_turns: acc.num_turns + e.num_turns
+              }
+            end
+          )
+
+        {role, Map.put(summed, :calls, length(entries))}
+      end)
+
+    line =
+      Jason.encode!(%{
+        "type" => "result",
+        "subtype" => subtype,
+        "engine" => "elixir_loop",
+        "num_turns" => t.num_turns,
+        "total_cost_usd" => t.cost_usd,
+        "terminal_reason" => if(result == :ok, do: "loop_committed", else: "loop_failed"),
+        "role_calls" => t.role_calls,
+        "usage" => %{
+          "input_tokens" => t.input_tokens,
+          "output_tokens" => t.output_tokens,
+          "cache_read_input_tokens" => t.cache_read_tokens,
+          "cache_creation_input_tokens" => t.cache_creation_tokens
+        },
+        "per_role" => per_role
+      })
+
+    IO.puts(line)
   end
 
   @doc false

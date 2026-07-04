@@ -70,6 +70,65 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
     end
   end
 
+  describe "run/1 — reviewer→fix cycle (#7)" do
+    test "CHANGES_REQUESTED re-invokes the developer, then completes on APPROVED",
+         %{calls_agent: calls_agent} do
+      invoke_fn = fn role, _harness, _ctx, _opts ->
+        Agent.update(calls_agent, fn calls -> calls ++ [role] end)
+
+        value =
+          if role == "reviewer-static" do
+            seen = Enum.count(Agent.get(calls_agent, & &1), &(&1 == "reviewer-static"))
+
+            if seen <= 1,
+              do: "REVIEW_VERDICT: CHANGES_REQUESTED — fix the nav link",
+              else: "REVIEW_VERDICT: APPROVED"
+          else
+            "did #{role}"
+          end
+
+        {:ok, %{"status" => "success", "value" => value}}
+      end
+
+      assert :ok ==
+               OrchestrationLoop.run(
+                 harness: "claude_code",
+                 stack: "static",
+                 cwd: "/tmp/irrelevant",
+                 pitch: "do the thing",
+                 invoke_fn: invoke_fn,
+                 gate_fn: always_clear_gate_fn()
+               )
+
+      calls = Agent.get(calls_agent, & &1)
+      assert Enum.count(calls, &(&1 == "developer-static")) == 2
+      assert Enum.count(calls, &(&1 == "reviewer-static")) == 2
+      assert "committer" in calls
+    end
+
+    test "APPROVED runs the developer exactly once", %{calls_agent: calls_agent} do
+      invoke_fn = fn role, _harness, _ctx, _opts ->
+        Agent.update(calls_agent, fn calls -> calls ++ [role] end)
+        value = if role == "reviewer-static", do: "REVIEW_VERDICT: APPROVED", else: "did #{role}"
+        {:ok, %{"status" => "success", "value" => value}}
+      end
+
+      assert :ok ==
+               OrchestrationLoop.run(
+                 harness: "claude_code",
+                 stack: "static",
+                 cwd: "/tmp/irrelevant",
+                 pitch: "x",
+                 invoke_fn: invoke_fn,
+                 gate_fn: always_clear_gate_fn()
+               )
+
+      calls = Agent.get(calls_agent, & &1)
+      assert Enum.count(calls, &(&1 == "developer-static")) == 1
+      assert Enum.count(calls, &(&1 == "reviewer-static")) == 1
+    end
+  end
+
   describe "run/1 — role failure handling" do
     test "role fails once then succeeds on retry — cycle still completes", %{
       calls_agent: calls_agent
@@ -392,6 +451,146 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
     test "real pi enforcement extension resolves without override (positive control)" do
       assert ["--extension=@" <> path] = OrchestrationLoop.guard_bundle_flag!("pi")
       assert String.ends_with?(path, "enforcement")
+    end
+  end
+
+  describe "telemetry accumulation" do
+    test "zero_telemetry/0 returns an all-zero map" do
+      assert OrchestrationLoop.zero_telemetry() == %{
+               cost_usd: 0.0,
+               input_tokens: 0,
+               output_tokens: 0,
+               cache_read_tokens: 0,
+               cache_creation_tokens: 0,
+               num_turns: 0,
+               role_calls: 0,
+               per_role: %{}
+             }
+    end
+
+    test "accumulate_telemetry/2 bumps role_calls, cost_usd, and per_role on a usage envelope" do
+      Process.delete(:loop_telemetry)
+
+      envelope = %{
+        "usage" => %{
+          "cost_usd" => 0.5,
+          "input_tokens" => 100,
+          "output_tokens" => 20,
+          "cache_read_input_tokens" => 5,
+          "cache_creation_input_tokens" => 1,
+          "num_turns" => 3
+        }
+      }
+
+      assert :ok == OrchestrationLoop.accumulate_telemetry("developer-static", envelope)
+
+      t = OrchestrationLoop.get_telemetry()
+      assert t.role_calls == 1
+      assert t.cost_usd == 0.5
+      assert t.input_tokens == 100
+      assert t.output_tokens == 20
+      assert t.cache_read_tokens == 5
+      assert t.cache_creation_tokens == 1
+      assert t.num_turns == 3
+      assert Map.has_key?(t.per_role, "developer-static")
+
+      # A second call accumulates on top rather than replacing.
+      assert :ok == OrchestrationLoop.accumulate_telemetry("developer-static", envelope)
+      t2 = OrchestrationLoop.get_telemetry()
+      assert t2.role_calls == 2
+      assert t2.cost_usd == 1.0
+
+      Process.delete(:loop_telemetry)
+    end
+
+    test "accumulate_telemetry/2 no-ops (returns :ok, does not bump) on an envelope with no usage key" do
+      Process.delete(:loop_telemetry)
+
+      assert :ok == OrchestrationLoop.accumulate_telemetry("developer-static", %{"result" => %{}})
+      assert OrchestrationLoop.get_telemetry() == OrchestrationLoop.zero_telemetry()
+
+      Process.delete(:loop_telemetry)
+    end
+  end
+
+  describe "verify_committed! (structural gap #9)" do
+    setup do
+      dir =
+        Path.join(System.tmp_dir!(), "verify_committed_test_#{:erlang.unique_integer([:positive])}")
+
+      File.mkdir_p!(dir)
+      on_exit(fn -> File.rm_rf!(dir) end)
+
+      {_out, 0} = System.cmd("git", ["init", "-q"], cd: dir)
+      {_out, 0} = System.cmd("git", ["config", "user.email", "test@example.com"], cd: dir)
+      {_out, 0} = System.cmd("git", ["config", "user.name", "Test"], cd: dir)
+      {_out, 0} = System.cmd("git", ["config", "commit.gpgsign", "false"], cd: dir)
+
+      File.write!(Path.join(dir, "README.md"), "init\n")
+      {_out, 0} = System.cmd("git", ["add", "-A"], cd: dir)
+      {_out, 0} = System.cmd("git", ["commit", "-q", "-m", "init"], cd: dir)
+
+      {:ok, dir: dir}
+    end
+
+    test "committer returning success on a DIRTY tree raises (false-success guard)", %{
+      calls_agent: calls_agent,
+      dir: dir
+    } do
+      # Leave an uncommitted file — the committer role will claim success
+      # without actually running `git commit`.
+      File.write!(Path.join(dir, "uncommitted.txt"), "oops\n")
+
+      invoke_fn = fn role, _harness, _ctx, _opts ->
+        Agent.update(calls_agent, fn calls -> calls ++ [role] end)
+
+        value =
+          if role == "reviewer-static", do: "REVIEW_VERDICT: APPROVED", else: "did #{role}"
+
+        {:ok, %{"status" => "success", "value" => value}}
+      end
+
+      assert_raise RuntimeError, ~r/working tree is NOT clean/, fn ->
+        OrchestrationLoop.run(
+          harness: "claude_code",
+          stack: "static",
+          cwd: dir,
+          pitch: "do the thing",
+          invoke_fn: invoke_fn,
+          gate_fn: always_clear_gate_fn()
+        )
+      end
+    end
+
+    test "committer returning success on a CLEAN tree proceeds to :ok", %{
+      calls_agent: calls_agent,
+      dir: dir
+    } do
+      invoke_fn = fn role, _harness, _ctx, _opts ->
+        Agent.update(calls_agent, fn calls -> calls ++ [role] end)
+
+        value =
+          if role == "reviewer-static", do: "REVIEW_VERDICT: APPROVED", else: "did #{role}"
+
+        {:ok, %{"status" => "success", "value" => value}}
+      end
+
+      # advance_cycle_state_fn is stubbed to a no-op: the real implementation
+      # writes codegen/gate-pending/cycle-state.json under `dir`, which would
+      # itself show up as an untracked file and trip verify_committed!'s
+      # clean-tree check — irrelevant to what this test verifies.
+      assert :ok ==
+               OrchestrationLoop.run(
+                 harness: "claude_code",
+                 stack: "static",
+                 cwd: dir,
+                 pitch: "do the thing",
+                 invoke_fn: invoke_fn,
+                 gate_fn: always_clear_gate_fn(),
+                 advance_cycle_state_fn: fn _state, _step_log, _session_id, _verdict, _project_dir ->
+                   :ok
+                 end
+               )
     end
   end
 end
