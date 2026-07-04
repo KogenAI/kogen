@@ -192,7 +192,8 @@ defmodule CodegenTestHarness.LoopQueueDrain do
 
   defp run_slug(state, slug, shipped_count) do
     ts = state.now_fn.()
-    jsonl = Path.join([state.cwd, "codegen", "logging", "#{ts}_#{slug}_build.jsonl"])
+    stamp = Calendar.strftime(DateTime.from_unix!(ts), "%Y%m%d_%H%M%S")
+    jsonl = Path.join([state.cwd, "codegen", "logging", "#{stamp}_#{slug}_build.jsonl"])
     File.mkdir_p!(Path.dirname(jsonl))
 
     head_before = state.git_head_fn.(state.cwd)

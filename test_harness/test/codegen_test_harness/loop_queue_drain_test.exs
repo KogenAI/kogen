@@ -66,6 +66,23 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
     assert File.exists?(Path.join(ctx.shipped_dir, "b.md"))
   end
 
+  test "1b: jsonl filename uses UTC YYYYMMDD_HHMMSS stamp, not raw epoch", ctx do
+    write_pitch(ctx.ready_dir, "solo")
+
+    jsonl_path = start_agent(nil)
+
+    spawn_fn = fn _slug, _h, _s, _cwd, jsonl ->
+      Agent.update(jsonl_path, fn _ -> jsonl end)
+      {:exit_code, 0}
+    end
+
+    assert {:ok, 1} = LoopQueueDrain.drain(base_opts(ctx, spawn_fn: spawn_fn))
+
+    captured = Agent.get(jsonl_path, & &1)
+    assert Path.basename(captured) == "20231114_221320_solo_build.jsonl"
+    assert Path.basename(captured) =~ ~r/^[0-9]{8}_[0-9]{6}_/
+  end
+
   # ── 2. Cycle raises ─────────────────────────────────────────────────────
 
   test "2: Blocks-on: cycle raises", ctx do
@@ -179,7 +196,11 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
     spawn_fn = fn slug, _h, _s, cwd, _jsonl ->
       # simulate the agent's own committer having already shipped the pitch
       # (ready/<slug>.md -> shipped/<slug>.md) before the post-commit hiccup
-      File.rename!(Path.join(ctx.ready_dir, "#{slug}.md"), Path.join(ctx.shipped_dir, "#{slug}.md"))
+      File.rename!(
+        Path.join(ctx.ready_dir, "#{slug}.md"),
+        Path.join(ctx.shipped_dir, "#{slug}.md")
+      )
+
       _ = cwd
       {:exit_code, 1}
     end

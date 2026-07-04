@@ -120,10 +120,6 @@ Codegen-infra pitfalls and bash gotchas — split from `context/development.md` 
 - **[shared] Stale-bake false-positive in dev-gate** — `FAILED ❌` with uncommitted rule/template edits often stale-bake. Re-run `make install && make test` fresh. Multi-hook failure span signals missing `make install`.
 - **[local] Prettier table-repad in rule diffs** — Rule-only diff shows repad noise. Use `git diff -w` to isolate real content.
 
-## Deployment / Distribution
-
-Codegen runs on servers too — production/staging Linux hosts and the Hetzner dashboard box all run codegen, in addition to operator Macs. Distribution = `make install` on each machine; each derives its root from `BASH_SOURCE`, never hardcoded. CI validates that scaffold output compiles and hook tests pass. PRs require both `make test` and `make test-stacks` green before merge. See `context/deployment-topology.md`.
-
 ## Bash Patterns & Pitfalls (Codegen-Infra)
 
 - **Scaffold global-read convention** — `run_integrate_stage()` reads scaffold parameters as GLOBALS (`STACK`, `SLUG`, `RESTART_RPC_CMD`, etc.), not function parameters. New flags assigned in the shared arg-parse loop; NO parameter threading. One arg-parse pass; dual callsites (create + integrate) both see the globals.
@@ -139,7 +135,7 @@ Codegen runs on servers too — production/staging Linux hosts and the Hetzner d
 - **Grep footguns** — `-v` deletes before keep. BRE `\(` = GROUP; use `-F` for literals. **Always use `grep -qF -- "$needle"`** when needle may be flag-shaped (e.g., `--harness=X`); macOS grep silently misparses without `--`.
 - **Shell test binary stubbing** — Symlink tools, omit target, filter `$PATH`. Use `command -v` (builtin). `export -f` doesn't propagate to subprocesses; use PATH-stub pattern instead. Pattern: `PATH="$BIN_DIR:$PATH" bash "$HOOK"`.
 - **PATH-mutation runtime order** — New exec branch added textually AFTER PATH-prepend still inherits it at runtime. Trace EXECUTION flow (not file order); textually-later can run textually-after PATH-mutation.
-- **Hook stub isolation for sourced files** — Pre-sourcing a stub doesn't work — hook's own source call overrides it. Instead: create per-test `CODEGEN_DIR` subdir, write stub there, invoke with `CODEGEN_DIR="$TMP_ROOT/resource_manager_tN" bash "$HOOK"`. Each test needs its own isolated dir.
+- **Hook stub isolation for sourced files** — Pre-sourcing doesn't work. Create per-test `CODEGEN_DIR` subdir with stub, invoke with `CODEGEN_DIR="$TMP_ROOT/tN" bash "$HOOK"`.
 - **jq null extraction in hook payloads** — `jq -r '.field'` on JSON null emits `"null"` (not empty). Always use `jq -r '.field // empty'` for optional fields; bare `.field` causes git/mkdir to treat `"null"` as a literal path argument.
 - **Conditional final statements** — `&&` flips exit code; use `if/then/fi` instead.
 - **Post-condition assertions in mutations** — validate preconditions (file exists, anchor present) and postconditions (expected lines added, placeholders resolved). `eex_render.sh` should fail on unresolved `<%= ... %>` placeholders.
@@ -157,8 +153,8 @@ Codegen runs on servers too — production/staging Linux hosts and the Hetzner d
 - **`${PIPESTATUS[1]}` captured immediately after pipeline** — Any intervening command resets the array. Pattern: `find | xargs ...; _rc=${PIPESTATUS[1]}` on next line only.
 - **Retry-feature test design: disable real sleep** — Set `CODEGEN_BUILD_QUEUE_RETRY_DELAYS="0 0 0"` to avoid real sleep (default "30 120 300" stalls tests). Use indirect-var pattern for per-attempt fixtures; gate tests with subshell override.
 - **Per-attempt test variants via `eval`** — Use `eval "body=\"\${STUB_JSONL_BODY_${attempt}:-\${STUB_JSONL_BODY:-}}\"` for per-attempt overrides. Bash 3.2-safe, injection-safe with integer counter.
-- **Sourced bash library in Bash tool context** — Bash tool runs in zsh; use `bash -c 'source <lib> && fn'` for bash-specific syntax.
-- **`--no-config` flag isolates tmpdir tests** — Ancestor config files leak into temp tests (e.g., root `package.json` prettier config). Use `--no-config` flag for tools with hierarchical config discovery. Pattern: `prettier --no-config --check "$TMPDIR"`.
+- **Sourced bash library in Bash tool context** — Use `bash -c 'source <lib> && fn'` for bash-specific syntax.
+- **`--no-config` flag isolates tmpdir tests** — Use `--no-config` for tools with hierarchical config discovery to block ancestor leakage.
 - **Fail-loud on guaranteed-dependency absence** — Don't skip tests for tools guaranteed by `make install` (prettier, node). Fail loud; soft-skip masks environment assumption violations.
 - **Hoist variable assignments before guards** — Computed vars must be assigned ABOVE the branch that uses them, not inline. Read full function scope before editing.
 - **`set -u` with git commands** — Guard both call (`2>/dev/null` on git) and comparison (`-n "$var"` before arithmetic) to handle empty repos safely.
@@ -182,6 +178,8 @@ Codegen runs on servers too — production/staging Linux hosts and the Hetzner d
 - **[shared] Session-log retrospective extraction is H2-scoped** — `### What I Learned` must be FIRST under `## <role> Section`, BEFORE any nested `## ` headers (which terminate awk scanning).
 - **Positive-only test assertions can hide their own bugs** — when a multi-assertion test uses a `refute` guard AFTER positive assertions that already fail first on the buggy branch, the `refute` becomes a non-discriminating decoration that never fires. Trace which SPECIFIC assertion would fail red on the buggy variant, not just confirm "a refute exists". Direct path assertions (e.g., `assert File.exists?(path)`) are stronger isolation than env-toggle tests where a masking ancestor-search fallback (e.g., Node's `require` walking up the tree) papers over the broken logic.
 - **[shared] Delegation-prompt H2 promotion bug (FIXED Phase 1)** — Column-0 `## <name>` lines in delegation bodies used to become H2 sections, corrupting canonical order. FIXED: `codegen-log section/append` indents any body line matching `^## ` to ` ##` before writing, upstream of awk rank-detection. Phase 1 complete; Phase 2+ (tool-emitted markers) pending.
+- **Pitch line-number drift** — Pitch estimates ("~line N") drift as files evolve. Always Read the target file to confirm exact anchor text BEFORE editing. A 15-line offset (pitch "~180" vs actual "195") is not uncommon. Grep the keyword + surrounding context to locate construction site.
+- **Elixir epoch-to-UTC-stamp pattern** — Format Unix timestamps for YYYYMMDD*HHMMSS naming via `Calendar.strftime(DateTime.from_unix!(ts), "%Y%m%d*%H%M%S")`(UTC, mirrors bash`date -u +%Y%m%d\_%H%M%S`). Enables exact-stamp test assertions (`assert basename == "20231114_221320_build.jsonl"`) vs regex-conformance alone. Default `now_fn` returning raw integer remains unchanged (consumed by timeout math, stash messages); format only at filename-construction sites.
 
 ## Trigger Keywords
 
