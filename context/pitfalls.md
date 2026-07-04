@@ -38,12 +38,12 @@ Codegen-infra pitfalls and bash gotchas — split from `context/development.md` 
 - **Codegen pitch path resolution: `codegen/pitches/ready/<slug>.md`** — Pitch files live in nested self-meta dir under codegen root, NOT under a bare `pitches/` at repo root. Resolution: `${CODEGEN_DIR}/codegen/pitches/ready/<slug>.md`. Read-only; never HALT on denied Bash `ls/find/grep` due to `orchestrator-read-discipline.sh` allow-list.
 - **`templates/generator/install_test.sh` not auto-discovered** — Only `test_harness/install/*_test.sh` auto-discovered. Tests in both dirs must reconcile sentinels when editing install.sh. Conflicts surface on full `make test` when both hooks auto-run.
 - **session-log-writer-only guards all session-log writes** — `codegen-log` is the SOLE writer; guards Edit/Write/MultiEdit and raw Bash writes (redirect/tee/move) to `codegen/logging/*.md`. Workaround: `mktemp/cmp/mv` no longer bypasses the hook — must invoke `codegen-log`.
-- **[local] Byte-cap trimming** — Measure `wc -c` BEFORE appending; bulk edits near cap need stale-bullet trims to make room.
-- **[shared] Stale-doc-twin defect** — Subsystem docs span multiple `context/*.md` files. Grep FULL vocabulary across ALL files when fixing drift. Fixing only the open diff leaves twin claims uncorrected.
+- **[local] Byte-cap trimming** — Measure before appending; trim stale bullets to make room.
+- **[shared] Stale-doc-twin defect** — Grep full vocabulary across ALL files when fixing drift.
 - **Repo-level counters: `_substrate_root` pattern** — Repo-level vs per-session counters. Repo-level scans once (no double-count) via `ALL_REPO_COUNTERS` list. Reading `codegen/logging/`: check `project_dir` first (test), else use `config.codegen_dir / "codegen" / "logging"`.
 - **Sole-writer migrations: reconcile ALL command-scanning guards** — Grep all guards for old patterns BEFORE enforcement commit; deny-hook is only first stop.
 - **Bash test forward-reference trap** — Variables defined later unreachable under `set -u`. Define at top.
-- **[shared] `jq input_line_number` + codegen-log bypass** — `input_line_number` stable within same pipeline (use `-ge` for ties). 12 phrase-counting hooks call `is_codegen_log_write` BEFORE any grep to prevent log-prose denial [FIXED, Phase 4].
+- **[shared] `jq input_line_number` + codegen-log bypass** — Use `-ge` for ties; 12 hooks call `is_codegen_log_write` before grep [FIXED, Phase 4].
 - **Gate hook command switch** — Build invocation changes (e.g., `npm run build` → `make ci`) → update all fixtures. Add `Makefile` with `ci:` recipe. Recipe lines MUST use hard tabs.
 - **`developer-no-self-gate` cap counts ALL test invocations per session** — `mix test`, `make test`, targeted `mix test <file>`, and even blocked cap-violation attempts all count toward the 3-per-session budget. Budget carefully: combine format+test into one call, or rely on pre-format baseline + format-only confirmation (format has no semantic risk on green code). Approaching cap? defer live re-run to next session or accept the format+baseline proof instead of test-on-changed-code.
 - **Inverse-gate pattern for build-runtime Stop hooks** — Skip when role NON-EMPTY, enforce when EMPTY. Use `signal: CLAUDE_ROLE_FAMILY`; flip in `registry.yaml`, not HOOK-MANIFEST manually.
@@ -69,7 +69,7 @@ Codegen-infra pitfalls and bash gotchas — split from `context/development.md` 
 - **Pitch byte targets grow stale** — Stale budgets fail gates.
 - **Heredoc piping: write to temp, redirect outside** — Avoids planner-guard trip.
 - **Prettier re-pads markdown tables** — Column widths auto-align. Guard byte-capped files: list in `.prettierignore` to preserve alignment.
-- **Env var leakage in tests** — Prior runs leave env vars set; tests exercising DEFAULT branches must `env -u VAR bash` to isolate (e.g., `env -u RENDER_CHECK_CMD -u WIRING_CHECK_CMD bash "$HOOK"`). Single `env -u` leaves fallback. Applies to tool overrides and build toggles (`CODEGEN_BUILD_NON_INTERACTIVE=1`).
+- **Env var leakage in tests** — Tests exercising DEFAULT branches must `env -u VAR bash` to isolate. Single `env -u` leaves fallback.
 - **codegen-log positional role shipped** — `codegen-log section <role>` is the taught form; `--role <role>` kept as an accepted alias for existing callers. Bare `codegen-log section` (no positional or flag) always exits 2 — role must be explicit. This fix eliminates the dead env-role fallback that caused "unsupported role unknown" errors in build subagents [FIXED, Phases 2-6].
 - **codegen-log marker flags shipped** — `--learned`, `--died interrupted|aborted`, `--verdict clear|failed|inconclusive` emit byte-exact canonical blocks; readers (retrospective-guard, completeness, stop-cycle-guard) grep the exact emitted strings [FIXED, Phase 2].
 - **`.active` sentinel shipped** — `codegen-log init` writes `codegen/logging/.active` pointing at the resolved log path; resolution precedence is `CODEGEN_LOG_PATH` > `--slug` > `.active` > mtime. `relocate` renames the log and rewrites the sentinel [FIXED, Phase 3].
@@ -184,7 +184,8 @@ Codegen-infra pitfalls and bash gotchas — split from `context/development.md` 
 - **[local, reviewer] Direct function calls bypass seam overrides** — Tests calling a function directly invoke the real default even if the caller has overridden the seam in its opts. Example: `default_discover_session_log/3` with `max_polls: 0` override only works through the seam; direct calls ignore it. Fix: expose poll limit as public parameter with production-safe default (`max_polls \\ @discover_max_polls`), so direct tests can override. Arity-N seam still works (Elixir auto-generates lower-arity clause).
 - **[local] Test comment drift** — Test 15 comment claimed checker-missing, but `_self_dir` resolves via `BASH_SOURCE[0]` regardless of `CODEGEN_DIR`. Exercises runtime server-unready on boxes with node. Discovered via red-green (flip failed for different reason). Verify comments against code paths.
 - **[shared] is_allowed_path empty-loop vs file-tool** — `[ -z "$p" ] && return 0` reached via Bash token loop (skip), NOT file-tool anomaly. Distinct from empty FILE_PATH denial.
-- **[local] git status pollution in managed-build test** — Inherits `CODEGEN_BUILD_*` vars from parent, causing false mismatches. `run-tests.sh` unsets; ad-hoc re-runs need `env -u` isolation.
+- **[local] git status pollution in test** — Inherits `CODEGEN_BUILD_*` vars; use `env -u` isolation in ad-hoc runs.
+- **[shared] git mv blocked for developer by pre-commit-guard** — `plain mv` relocates tracked files; git status shows old path as D, new as ??. Committer handles both.
 
 ## Trigger Keywords
 

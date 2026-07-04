@@ -50,6 +50,10 @@ Generated output lands in `templates/generated/<harness>/` then installed to `~/
 - **scaffold**: `shared/apps/AGENTS-phoenix.md.j2` and `AGENTS-static.md.j2` are downstream AGENTS.md templates (separate from subagent templates here)
 - **commands**: slash commands in `harnesses/claude/commands/` can spawn subagent swarms (e.g., `/poke-holes` spawns Explore agents to stress-test a pitch). Spawned subagents must satisfy role allowlist in `operator-subagent-allowlist.sh` (debug, shape, refactor, ops roles only).
 
+## Eager-vs-Lazy Include Discipline
+
+When a pattern applies to every invocation of a role in a stack (e.g., Tailwind always required for static reviews), eagerly include it in the role template. When a pattern applies only to specific tasks (e.g., Oban + Ecto.Multi rarely needed), keep it as a recipe for planner forwarding. Example: `reviewer-static.md.j2` now eagerly includes vite.md + tailwind.md (mandatory); Oban/refactor/node patterns moved to recipes (task-triggered, forwarded by orchestrator on keyword match).
+
 ## Rule Propagation & Two-Common-Fragment Pattern
 
 **Developer rule consolidation via `_phoenix_developer_common.md.j2` and `_static_developer_common.md.j2`**: Both include `shared/rules/roles/developer.md` via `{% include 'rules/roles/developer.md' %}`. This means a single edit to `developer.md` (e.g., adding a never-commit bullet) automatically propagates to all 3 developer variants — backend, frontend, and static — without any additional template edits. The two common fragments fan out to all instances:

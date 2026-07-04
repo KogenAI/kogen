@@ -63,3 +63,7 @@ Rules loaded by multiple roles must either:
 2. Add to the smallest appropriate file
 3. Update INDEX.md keyword index
 4. Follow compression principles above
+
+## Include Classification Test
+
+An {% include %} belongs in an always-loaded role prompt only if every invocation of that role needs it; otherwise it is a recipe (on-demand) or dead.

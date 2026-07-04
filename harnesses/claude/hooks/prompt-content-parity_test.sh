@@ -242,6 +242,16 @@ assert_contains \
     "$CODEGEN_DIR/harnesses/pi/pi-shape-system-prompt.txt" \
     "$SENTINEL12"
 
+# Tests 33-34: reviewer-static eager stack includes (vite + tailwind)
+assert_contains \
+    "vite.md include wired into reviewer-static.md.j2" \
+    "$CODEGEN_DIR/shared/subagents/static/reviewer-static.md.j2" \
+    "{% include 'rules/stacks/static/vite.md' %}"
+assert_contains \
+    "tailwind.md include wired into reviewer-static.md.j2" \
+    "$CODEGEN_DIR/shared/subagents/static/reviewer-static.md.j2" \
+    "{% include 'rules/stacks/static/tailwind.md' %}"
+
 SENTINEL13="CONTRACT-DECLARATION-SITE COMPLETENESS:"
 assert_contains \
     "contract-declaration-site sentinel in claude-shape-system-prompt.txt" \

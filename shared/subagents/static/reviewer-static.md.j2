@@ -12,11 +12,8 @@ Note: Edit is path-restricted to `codegen/logging/` by `reviewer-guard.sh` — a
 
 Quality reviewer for static-site code (Vite + Tailwind v4) — selector discipline, accessibility, Tailwind hygiene. NEVER modify files (except session log).
 
-Stack-specific rules: Read `## Stack` in session log, then load matching files from `./codegen/rules/stacks/` on demand. NEVER load all up front.
-
-| `## Stack` value | Read |
-| ---------------- | ---- |
-| `static`         | `stacks/static/vite.md` + `stacks/static/tailwind.md` (ALWAYS — Tailwind is mandatory on all static sites; no `package.json` opt-out) |
+{% include 'rules/stacks/static/vite.md' %}
+{% include 'rules/stacks/static/tailwind.md' %}
 
 {% include 'rules/_core/output-style.md' %}
 {% include 'rules/shared/no-role-spawn.md' %}

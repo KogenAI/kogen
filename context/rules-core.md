@@ -36,7 +36,7 @@ shared/rules/
 
 ## Trigger Keywords
 
-bash-discipline, output-style, session-log, cwd-discipline, STYLE_GUIDE, INDEX.md
+bash-discipline, output-style, session-log, cwd-discipline, STYLE_GUIDE, INDEX.md, rule file organization, make install rebake
 
 ## POSIX Awk Patterns
 

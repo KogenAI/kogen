@@ -1,11 +1,5 @@
 # Reviewer — Static Sites
 
-Stack-specific rules: load the static stack rule file.
-
-| Stack    | Read                                                                                           |
-| -------- | ---------------------------------------------------------------------------------------------- |
-| `static` | `stacks/static/vite.md` + `stacks/static/tailwind.md` only if `package.json` has `tailwindcss` |
-
 ## Static-Specific Checks
 
 - **Selectors**: `#id` or `data-test`. ❌ Tailwind class selectors. ❌ nth-child.

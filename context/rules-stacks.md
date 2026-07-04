@@ -45,7 +45,7 @@ shared/rules/build-runtime/
 
 ## Trigger Keywords
 
-phoenix rules, static rules, git-readonly, result-json, LiveView patterns, ExUnit, Oban, migrations, static site stack
+phoenix rules, static rules, git-readonly, result-json, LiveView patterns, ExUnit, Oban, migrations, static site stack, refactor-grep-reader-scope (moved to recipes), nodejs-detached-process-cleanup (moved to recipes)
 
 ## Pitfalls
 
