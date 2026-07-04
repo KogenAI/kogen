@@ -298,6 +298,21 @@ for mode in build debug shape experiment ops; do
         "$SENTINEL_PUSHBACK"
 done
 
+# ── Test: Incomplete-replacement blocker sentinel across shape prompts + /ready ──
+SENTINEL_INCOMPLETE_REPLACEMENT="Incomplete replacement (dropped functionality / unwired new code)"
+assert_contains \
+    "incomplete-replacement sentinel in claude-shape-system-prompt.txt" \
+    "$CODEGEN_DIR/harnesses/claude/claude-shape-system-prompt.txt" \
+    "$SENTINEL_INCOMPLETE_REPLACEMENT"
+assert_contains \
+    "incomplete-replacement sentinel in pi-shape-system-prompt.txt" \
+    "$CODEGEN_DIR/harnesses/pi/pi-shape-system-prompt.txt" \
+    "$SENTINEL_INCOMPLETE_REPLACEMENT"
+assert_contains \
+    "incomplete-replacement sentinel in ready.md.j2" \
+    "$CODEGEN_DIR/harnesses/claude/commands/ready.md.j2" \
+    "$SENTINEL_INCOMPLETE_REPLACEMENT"
+
 echo ""
 echo "Results: $pass passed, $fail failed"
 

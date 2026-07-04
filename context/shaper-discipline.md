@@ -236,6 +236,33 @@ When a pitch **adds or strengthens a full-surface deny** that closes an existing
 
 **Motivating incident**: the `session-log-uniform-across-surfaces` pitch reached SHAPED with an 11-row claim ledger that proved the `codegen-log` mechanism works but never checked that every role denied `Edit`/`Write`/`MultiEdit` on `codegen/logging/*.md` could reach `codegen-log` — `reviewer-phoenix` had no `Bash` grant and was structurally locked out at ship time (patched hours later in commit `aa6ea00`).
 
+## Completeness Contract for Replacement Pitches
+
+**Invariant**: a delete/replace change MUST ship a COMPLETE, WIRED replacement in the SAME change — the new code has a live production caller, the removed code's functionality is preserved (or its drop is operator-approved), and every integration point of the removed code is reconciled. A pitch that deletes Y and introduces X without proving all three is not done, even if X "looks" like a correct port.
+
+**Three-probe detector**: triggers on any DELETE/replace move OR any `absorb|replace|subsume|supersede`-shaped claim (prose or `## Claim ledger`). BLOCKED-from-SHAPED unless the ledger carries:
+
+- **(a) WIRED** — replacement X has a live production caller. Real-contract probe: non-test `grep -rn <new-symbol>` hit, OR `git log -S <symbol>` proving the symbol was not born-dead.
+- **(b) RECONCILED** — every consumer/integration-point of removed Y is enumerated and individually probed (each updated in the same change, or explicitly carved to a tracked draft).
+- **(c) PRESERVED** — Y's behavior is preserved by X, OR the drop is operator-approved via `AskUserQuestion`.
+
+Any one of the three missing → blocker.
+
+**Proxy-probe carve-out**: this extends the Unverified-empirical-claims proxy-probe discipline — a ledger row proving only that the removed Y existed/worked is a proxy, not a wiring probe; the real-contract probe for "X absorbs Y" is a live caller of X, not a read of Y.
+
+**Dead-code sub-rule** (second mechanism, same class): every NEW module/function/script/launcher a pitch introduces MUST name a live production caller in the same pitch (non-test `grep -rn <symbol>` hit OR the explicit wiring move). A new symbol with no caller and no wiring move is born-dead — blocker.
+
+**Resolution template**: run the three probes now; raise ONE `AskUserQuestion` ONLY for the (c) PRESERVED drop-vs-keep fork; a born-dead X cannot self-clear by asking — build the caller in the same pitch or delete X.
+
+**Producer/verifier layout**:
+
+- Producers: `harnesses/shared/prompt-bodies/shape.txt` (readiness blocker) + `shared/prompt-fragments/_probing.txt` (inline probe bullet).
+- Verifiers: `harnesses/claude/commands/ready.md.j2` (promotion-gate scan) + the `prompt-content-parity_test.sh` sentinel (`Incomplete replacement (dropped functionality / unwired new code)`) asserting both baked shape prompts and `/ready` carry the rule.
+
+**Motivating incident**: loop-core commit `ee88926` shipped `LoopQueue` born-dead (no live caller) while deleting `--queue` / `build-queue.sh`, backed by a false "translate then delete ✅" ledger row that was a proxy — it proved the old code was read/translated, never that the new code was called. Corrective commit `af87ad1` finally wired `LoopQueue` live.
+
+**Sibling-section design pattern**: the "Completeness Contract for X Pitches" sections (Sweep-class, Capability-removal, Replacement) form a crystallized pattern — each new completeness-contract rule should follow the same six-part subsection structure: (1) Invariant, (2) three-probe detector (or detection criteria), (3) carve-out or exception, (4) sub-rule or secondary mechanism, (5) resolution template, (6) producer/verifier layout + motivating incident. This consistency makes future similar additions predictable and aids readers building mental models across sibling rules. When a new contract-establishment pitch lands, review against this pattern checklist before committing.
+
 ## Integration with `/ready` Command
 
 The `/ready` skill is a sibling investigation aid that gates a pitch's readiness-check loop. It carries a near-verbatim copy of the soft ask-vs-decide classifier and the deferral-with-draft contract rules. When the shape.txt rules change significantly, `/ready` may need parallel tightening to keep both tools in sync.
@@ -246,7 +273,7 @@ This is a SEPARATE pitch and change, not folded into shape-mode tightening. The 
 
 ## Trigger Keywords
 
-shaper rules, ask-vs-decide, deferral-with-draft, decompose-then-split, derive-and-write edges, Rule G, Rule H, Rule I, Rule J, shape mode discipline, prompt durability, section-name anchors, sweep-class, completeness contract, full-vocabulary sweep, producer/verifier reconciliation, operator-owned surface, user-facing surface removal, surface preservation, keep-vs-remove fork, contract-declaration-site completeness, declaration-site sweep, contract establishment, cross-cutting contract, declares-teaches bound, capability-removal reachability, deny blast radius, stranded actor, tool-grant reachability, sole remaining path
+shaper rules, ask-vs-decide, deferral-with-draft, decompose-then-split, derive-and-write edges, Rule G, Rule H, Rule I, Rule J, shape mode discipline, prompt durability, section-name anchors, sweep-class, completeness contract, full-vocabulary sweep, producer/verifier reconciliation, operator-owned surface, user-facing surface removal, surface preservation, keep-vs-remove fork, contract-declaration-site completeness, declaration-site sweep, contract establishment, cross-cutting contract, declares-teaches bound, capability-removal reachability, deny blast radius, stranded actor, tool-grant reachability, sole remaining path, incomplete replacement, replacement completeness, WIRED RECONCILED PRESERVED, born-dead code, proxy probe, absorbs claim
 
 ## See Also
 
