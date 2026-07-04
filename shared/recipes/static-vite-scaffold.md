@@ -15,12 +15,12 @@ Starter files for Vite + React static apps. Merge/override into the vanilla base
     "serve": "npm run build && python3 -u -m http.server --directory public 0"
   },
   "dependencies": {
-    "react": "^18",
-    "react-dom": "^18"
+    "react": "^19",
+    "react-dom": "^19"
   },
   "devDependencies": {
-    "vite": "^5",
-    "@vitejs/plugin-react": "^4",
+    "vite": "^8",
+    "@vitejs/plugin-react": "^6",
     "tailwindcss": "^4",
     "@tailwindcss/vite": "^4"
   }

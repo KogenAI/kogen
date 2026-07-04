@@ -40,14 +40,14 @@ Merge into the existing `package.json` produced by the React add-on:
     "serve": "npm run build && python3 -u -m http.server --directory public 0"
   },
   "dependencies": {
-    "react": "^18",
-    "react-dom": "^18",
-    "react-router-dom": "^6",
+    "react": "^19",
+    "react-dom": "^19",
+    "react-router-dom": "^7",
     "gray-matter": "^4"
   },
   "devDependencies": {
-    "vite": "^5",
-    "@vitejs/plugin-react": "^4",
+    "vite": "^8",
+    "@vitejs/plugin-react": "^6",
     "@mdx-js/rollup": "^3",
     "tailwindcss": "^4",
     "@tailwindcss/vite": "^4"

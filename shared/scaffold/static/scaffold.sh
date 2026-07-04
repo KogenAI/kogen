@@ -107,7 +107,7 @@ cat >"$CWD/package.json" <<EOF
   "devDependencies": {
     "@tailwindcss/vite": "^4.0.0",
     "tailwindcss": "^4.0.0",
-    "vite": "^6.0.0"
+    "vite": "^8.0.0"
   }
 }
 EOF
