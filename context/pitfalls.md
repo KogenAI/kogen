@@ -12,7 +12,7 @@ Codegen-infra pitfalls and bash gotchas — split from `context/development.md` 
 - **`manifest_regenerate_prompts` file check** — new prompt-source `.txt` files must exist before `make install` (tools-header, prompt bodies). Gate's install round-trip catches missing files.
 - **yq binary must be mikefarah, not python-yq** — wrong binary causes silent manifest parsing errors.
 - **`npm install` at codegen root required** — absent → hooks emit INCONCLUSIVE.
-- **`make install` required after rule/template change** — regenerates baked prompts. Specifically: editing `harnesses/shared/prompt-bodies/*.txt` files requires `make install` BEFORE `make test`; `make test` does NOT invoke install. Skipping install leaves baked harness build prompts stale — changes invisible to runtime. Parity gates do not catch this; workflow rule is mandatory.
+- **`make install` required after rule/template change** — regenerates baked prompts. Workflow: edit → `make install` BEFORE `make test`; parity gates do not catch stale bakes. Mandatory rule.
 - **Transient taxonomy: Bash + Elixir (no parity test)** — `retryable_regex` in `harnesses/shared/retryable-errors.sh` + `loop_queue.ex` `@retryable_regex`. Add token to BOTH files (Pi TS half deleted). No active sync test.
 - **`mise trust` runs unconditionally on install** — no interactive prompt.
 - **Do not run `npm install` at repo root for Pi extensions** — each extension has its own node_modules; only root install is managed by install.sh
@@ -33,6 +33,7 @@ Codegen-infra pitfalls and bash gotchas — split from `context/development.md` 
 - **Test isolation scoping** — TS: capture streams at test-body; restore both paths. Env cleanup in BOTH `beforeEach`/`afterEach`. Bash: trap-clean temps; PATH stubs per-line. Layering: clean→symlink→dirty.
 - **Managed-build env var pollution** — `CODEGEN_BUILD_START_TS`, `CODEGEN_BUILD_NON_INTERACTIVE`, `OCG_CODEGEN_DIR` persist after live build. Strip via the `unset` line in `run-tests.sh` before test invocation.
 - **Pi test essentials** — Create real temps at test paths. `npm run build` before test (runs on `dist/`). Grep for `fail 0` to verify; "FAIL:" in names is description, not failure.
+- **`make test` tail-capture hides earlier summaries** — Piping to `| tail -N` drops hook-parity and bash hook-test summaries even when final `ALL CLEAR ✅` is green. Verify new assertions by re-running the test file directly to confirm execution.
 - **`make test` npm-ext transient race** — Extensions run in parallel; enforcement tsc writes `dist/` while tests import from it. Slow machines see transient "module not found". Re-run passes; not durable.
 - **SENTINEL parity check** — Before `make install`, verify SENTINELs in both sources via `grep -c "SENTINEL_TEXT" file1 file2`
 - **Gate verdict from JSON** — Read `gate-result.json` `.verdict` field, not log prose; JSON reflects actual code

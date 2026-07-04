@@ -221,6 +221,21 @@ When a pitch **establishes or strengthens a cross-cutting contract or invariant*
 
 **Motivating incident**: the `session-log-uniform-across-surfaces` pitch reached READY status with `shared/apps/AGENTS-phoenix.md.j2` and `shared/apps/AGENTS-static.md.j2` `## Session Logging` sections left out of scope — both files declared the pre-strengthening session-log contract and were never updated, leaving downstream consumer docs teaching a stale rule.
 
+## Completeness Contract for Capability-Removal Pitches
+
+When a pitch **adds or strengthens a full-surface deny** that closes an existing path to a resource for a set of actors and designates ONE narrower substitute path (a hook with `role: "*"`, or a full-surface Edit/Write/Bash deny plus a single replacement command/tool), the shaper MUST enumerate EVERY actor in the deny's blast radius and, per actor, probe that the substitute is REACHABLE under that actor's ACTUAL grant — the role's `tools:` frontmatter, permission set, or harness capability — not merely that the substitute mechanism works in isolation.
+
+**AUTO-RESOLVE (mechanical, never `AskUserQuestion`)**: actors and grants are all in-repo — no product fork. Grep every affected role's `tools:` frontmatter (`grep -rn '^tools:' shared/subagents/**/*.md.j2`) and cross-check each denied actor's grant against the capability the substitute requires (a Bash-invoked replacement requires every denied actor to hold Bash). Any actor missing the required capability is a REAL lockout the pitch MUST close in the SAME build — grant the capability (scoping with an allowlist per the `reviewer-bash-allowlist.sh` precedent) or explicitly carve that actor out of the deny. A shaped pitch may never ship a deny that strands an actor with no working path.
+
+**Distinct from `User-facing surface removal/change`**: that blocker concerns OPERATOR-typed/seen surfaces and requires operator sign-off; this concerns INTERNAL automated actors and their tool-grant reachability, resolved mechanically without asking. Missing per-actor enumeration → blocker.
+
+**Producer/verifier layout**:
+
+- Producers: `harnesses/shared/prompt-bodies/shape.txt` (readiness blocker) + `shared/prompt-fragments/_probing.txt` (inline probe bullet).
+- Verifiers: `harnesses/claude/commands/ready.md.j2` (promotion-gate scan) + the `prompt-content-parity_test.sh` sentinel (`CAPABILITY-REMOVAL REACHABILITY:`) asserting both baked shape prompts and `/ready` carry the rule.
+
+**Motivating incident**: the `session-log-uniform-across-surfaces` pitch reached SHAPED with an 11-row claim ledger that proved the `codegen-log` mechanism works but never checked that every role denied `Edit`/`Write`/`MultiEdit` on `codegen/logging/*.md` could reach `codegen-log` — `reviewer-phoenix` had no `Bash` grant and was structurally locked out at ship time (patched hours later in commit `aa6ea00`).
+
 ## Integration with `/ready` Command
 
 The `/ready` skill is a sibling investigation aid that gates a pitch's readiness-check loop. It carries a near-verbatim copy of the soft ask-vs-decide classifier and the deferral-with-draft contract rules. When the shape.txt rules change significantly, `/ready` may need parallel tightening to keep both tools in sync.
@@ -231,7 +246,7 @@ This is a SEPARATE pitch and change, not folded into shape-mode tightening. The 
 
 ## Trigger Keywords
 
-shaper rules, ask-vs-decide, deferral-with-draft, decompose-then-split, derive-and-write edges, Rule G, Rule H, Rule I, Rule J, shape mode discipline, prompt durability, section-name anchors, sweep-class, completeness contract, full-vocabulary sweep, producer/verifier reconciliation, operator-owned surface, user-facing surface removal, surface preservation, keep-vs-remove fork, contract-declaration-site completeness, declaration-site sweep, contract establishment, cross-cutting contract, declares-teaches bound
+shaper rules, ask-vs-decide, deferral-with-draft, decompose-then-split, derive-and-write edges, Rule G, Rule H, Rule I, Rule J, shape mode discipline, prompt durability, section-name anchors, sweep-class, completeness contract, full-vocabulary sweep, producer/verifier reconciliation, operator-owned surface, user-facing surface removal, surface preservation, keep-vs-remove fork, contract-declaration-site completeness, declaration-site sweep, contract establishment, cross-cutting contract, declares-teaches bound, capability-removal reachability, deny blast radius, stranded actor, tool-grant reachability, sole remaining path
 
 ## See Also
 
