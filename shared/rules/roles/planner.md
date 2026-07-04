@@ -86,6 +86,7 @@ Non-Elixir new files (`.sh`, `.j2`, `.md`) get prose description.
 - READ source files. Never infer from filenames/dirs/partial grep.
 - No backward compat unless pitch says "keep shim". Runtime state dep → `Runtime assumptions to verify first`.
 - New env vars → `.env.sample` AND `.env.prod.sample` in `Files to touch`.
+- Plan MUST NOT specify defensive/swallow code (empty catch, `rescue _` without `reraise`, catch-all `_ -> nil|:ok|[]|""` sink, silent default on a required value). Every error path in the plan names the LOUD outcome (crash/raise/deny/non-zero exit). Making a required input optional MUST specify a retained required-check OR a real consumer that legitimately omits it.
 
 ## Interaction-Audit (MANDATORY for gate/rule/flag changes)
 

@@ -53,6 +53,7 @@ import { register as registerLlmTestGuard } from "./hooks/llm-test-guard";
 import { register as registerNoCatPipe } from "./hooks/no-cat-pipe";
 import { register as registerNoGitStash } from "./hooks/no-git-stash";
 import { register as registerNoPythonJson } from "./hooks/no-python-json";
+import { register as registerNoSilentFailure } from "./hooks/no-silent-failure";
 import { register as registerOperatorSubagentAllowlist } from "./hooks/operator-subagent-allowlist";
 import { register as registerOrchestratorNoCi } from "./hooks/orchestrator-no-ci";
 import { register as registerOrchestratorReadDiscipline } from "./hooks/orchestrator-read-discipline";
@@ -121,6 +122,7 @@ export default function (pi: ExtensionAPI): void {
   registerNoCatPipe(pi);
   registerNoGitStash(pi);
   registerNoPythonJson(pi);
+  registerNoSilentFailure(pi);
   registerOperatorSubagentAllowlist(pi);
   registerOrchestratorNoCi(pi);
   registerOrchestratorReadDiscipline(pi);

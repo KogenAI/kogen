@@ -32,6 +32,7 @@ Hook registration: **Two pipelines** — both write to `harnesses/claude/hooks/*
 | `harnesses/claude/hooks/no-python-json.sh` | PreToolUse — blocks inline `python3 -c` JSON parsing |
 | `harnesses/claude/hooks/no-cat-pipe.sh` | PreToolUse — blocks `cat file \| ...` and `head`/`tail` pipe patterns |
 | `harnesses/claude/hooks/no-git-stash.sh` | PreToolUse — blocks `git stash` |
+| `harnesses/claude/hooks/no-silent-failure.sh` | PreToolUse — hand-authored `kind: registration` content-matcher (mirrors `context-curator-guard.sh` precedent); denies an Edit/Write/MultiEdit whose new content contains a high-precision silent-failure swallow token (empty TS `catch {}`, bare Python `except:`, Elixir `rescue _ ->` without `reraise`, catch-all `_ -> nil\|:ok\|[]\|""` sink); bypassed by `# fail-loud-exempt: <reason>` (reason mandatory) or `reraise` present anywhere in the content. Does NOT gate `\|\| true` — that is reviewer-owned (see `shared/rules/roles/reviewer.md` Rule S). |
 | `harnesses/claude/hooks/orchestrator-no-source-edit.sh` | PreToolUse — blocks the main-agent session from editing source files; `experiment` role: exits 0 (confinement via launcher `--worktree`, not path restriction); distinct from `debug`/`shape` read-only arm |
 | `harnesses/claude/hooks/orchestrator-no-ci.sh` | PreToolUse — blocks the main-agent session from running CI/test commands |
 | `harnesses/claude/hooks/orchestrator-read-discipline.sh` | PreToolUse — blocks the main-agent session from reading files it shouldn't |

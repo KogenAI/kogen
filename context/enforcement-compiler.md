@@ -5,9 +5,11 @@
 `templates/generator/enforcement_compiler.py` generates enforcement hook scripts from a declarative registry (`shared/enforcement/registry.yaml`). Two entry kinds:
 
 - **`kind: denial`** (default when `kind` absent) — generates ENTIRE `.sh`/`.ts` files (header + body). `generated: true` means `make install` OVERWRITES the whole file. Only 5 CLAUDE `.sh` files are owned this way.
-- **`kind: registration`** — does NOT generate any file body. Header-only: `hook_registrations.py --emit-headers` reads these entries and injects the `# HOOK-MANIFEST:` block into the existing hand-written `.sh`, leaving body bytes identical. 45 behavioral hooks use this path.
+- **`kind: registration`** — does NOT generate any file body. Header-only: `hook_registrations.py --emit-headers` reads these entries and injects the `# HOOK-MANIFEST:` block into the existing hand-written `.sh`, leaving body bytes identical. 46 behavioral hooks use this path.
 
 Both kinds coexist in `shared/enforcement/registry.yaml`. The compiler skips `kind: registration` entries entirely — they have no `match`/`message` and are not denial rules.
+
+**Content-matching hooks are always `kind: registration`** — the compiler's `source` axis supports only `COMMAND` (`.tool_input.command`) and `FILE_PATH` (the file path); neither reaches Edit/Write CONTENT (`.tool_input.new_string` / `.tool_input.content`). A hook that must inspect the text being written (e.g. `no-silent-failure` scanning for swallow tokens, `context-curator-guard` scanning path + projected line count) is hand-authored: `kind: registration` header + a hand-written body reading content directly from `$RAW_INPUT` via jq (bash) or `event.input` (Pi TS). Adding a `source: CONTENT` compiler template is a larger shared-codepath change (touches `parse_input` for every hook) and is not required — the hand-authored precedent is the sanctioned default for this class.
 
 ### Compiler Axes
 

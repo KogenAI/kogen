@@ -327,6 +327,16 @@ assert_contains \
     "$CODEGEN_DIR/harnesses/claude/commands/ready.md.j2" \
     "$SENTINEL_EMPIRICAL_USAGE"
 
+SENTINEL_SILENT_FAILURE="Silent-failure / fail-open design"
+assert_contains \
+    "silent-failure blocker sentinel in claude-shape-system-prompt.txt" \
+    "$CODEGEN_DIR/harnesses/claude/claude-shape-system-prompt.txt" \
+    "$SENTINEL_SILENT_FAILURE"
+assert_contains \
+    "silent-failure blocker sentinel in pi-shape-system-prompt.txt" \
+    "$CODEGEN_DIR/harnesses/pi/pi-shape-system-prompt.txt" \
+    "$SENTINEL_SILENT_FAILURE"
+
 echo ""
 echo "Results: $pass passed, $fail failed"
 

@@ -582,6 +582,15 @@
         ]
       },
       {
+        "matcher": "Edit|Write|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "$HOME/.claude/hooks/no-silent-failure.sh"
+          }
+        ]
+      },
+      {
         "matcher": "Agent",
         "hooks": [
           {

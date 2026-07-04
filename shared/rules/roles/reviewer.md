@@ -40,6 +40,13 @@ Hook-enforced — Read/Grep/Glob only, plus Edit on session log.
 | 14  | Deployment → stack file                                                                                                                | —                |
 | 15  | Translation Completeness → stack file                                                                                                  | —                |
 | 16  | Manifest Completeness — if `## Plan` has `### Deliverable Manifest`, diff satisfies EVERY item                                         | yes (item unmet) |
+| 17  | Silent-failure scan — Rule S below                                                                                                     | yes              |
+
+## Rule S — Silent-Failure Scan
+
+Grep the diff for the language-agnostic FORBIDDEN swallow list: empty `catch {}` (TS), bare `except:` / `except Exception:` followed by lone `pass` (Python), `rescue _` / `rescue <var>` without `reraise` in the same arm (Elixir), a catch-all `_ -> (nil|:ok|[]|"")` sink, and a silent default on a required value (masking-default 3-part test: required-not-optional AND sentinel-papers-over-absence AND proceeds-wrong). REJECT any occurrence lacking an explicit justifying comment (`# fail-loud-exempt: <reason>` or equivalent inline justification with non-empty reason).
+
+The reviewer OWNS the `|| true` / `2>/dev/null || true` class CONTEXTUALLY — it is NOT mechanically gated (too pervasive/legitimate for a keystroke-level deny). A new `|| true` in cleanup code or a sourced helper (see Sourced Helpers carve-out) is fine. One on a load-bearing command whose failure IS the signal (e.g. a test assertion, a gate command, a build step whose success is being verified) is REJECTED.
 
 ## Rule L — Test Must Exercise the CHANGED Branch, Not a Bypass
 
