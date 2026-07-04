@@ -119,9 +119,17 @@ defmodule CodegenTestHarness.LoopQueueDrain do
             transient_fn: Keyword.get(opts, :transient_fn, &LoopQueue.transient?/1),
             git_head_fn: Keyword.get(opts, :git_head_fn, &default_git_head_fn/1),
             gate_verdict_fn: Keyword.get(opts, :gate_verdict_fn, &default_gate_verdict_fn/1),
+            discover_session_log_fn:
+              Keyword.get(opts, :discover_session_log_fn, &default_discover_session_log/3),
             timed_out_slugs: MapSet.new(),
             retry_count: 0,
-            last_slug: nil
+            last_slug: nil,
+            # Computed ONCE on first scan (mirrors legacy build-queue.sh:356-358
+            # "Set total on first scan only"). A pitch written mid-run as a
+            # side-effect (see test 11) is NOT reflected in `total` — this is
+            # intentional legacy parity, not a bug: legacy's TOTAL has the
+            # identical "may understate after refill" caveat (build-queue.sh:355).
+            total: length(Keyword.get(opts, :ordered_fn, &LoopQueue.ordered_slugs/1).(ready_dir))
           }
 
           run_loop(state, 0)
@@ -198,25 +206,41 @@ defmodule CodegenTestHarness.LoopQueueDrain do
   end
 
   defp run_slug(state, slug, shipped_count) do
+    idx = shipped_count + 1
     ts = state.now_fn.()
     stamp = Calendar.strftime(DateTime.from_unix!(ts), "%Y%m%d_%H%M%S")
     jsonl = Path.join([state.cwd, "codegen", "logging", "#{stamp}_#{slug}_build.jsonl"])
     File.mkdir_p!(Path.dirname(jsonl))
 
+    IO.puts(:stderr, "[#{idx}/#{state.total}] #{slug} ... building")
+
     head_before = state.git_head_fn.(state.cwd)
 
-    case state.spawn_fn.(slug, state.harness, state.stack, state.cwd, jsonl) do
+    result = state.spawn_fn.(slug, state.harness, state.stack, state.cwd, jsonl)
+
+    echo_paths(state, slug, stamp, jsonl)
+
+    case result do
       {:exit_code, 0} ->
         ship(state.ready_dir, state.shipped_dir, slug)
+        IO.puts(:stderr, "[#{idx}/#{state.total}] #{slug} ... shipped")
         state = %{state | retry_count: 0, last_slug: nil}
         run_loop(state, shipped_count + 1)
 
       {:exit_code, _n} ->
-        handle_nonzero_exit(state, slug, jsonl, head_before, shipped_count)
+        handle_nonzero_exit(state, slug, jsonl, head_before, shipped_count, idx)
 
       :timeout ->
-        handle_timeout(state, slug, shipped_count)
+        handle_timeout(state, slug, shipped_count, idx)
     end
+  end
+
+  # Two-path echo: session.md (if discovered) then jsonl (legacy fallback
+  # `build-queue.sh:499` echoes jsonl alone when session.md is absent).
+  defp echo_paths(state, slug, spawn_stamp, jsonl) do
+    session_md = state.discover_session_log_fn.(state.cwd, slug, spawn_stamp)
+    if session_md, do: IO.puts(:stderr, "  " <> session_md)
+    IO.puts(:stderr, "  " <> jsonl)
   end
 
   defp ship(ready_dir, shipped_dir, slug) do
@@ -226,7 +250,7 @@ defmodule CodegenTestHarness.LoopQueueDrain do
     :ok
   end
 
-  defp handle_nonzero_exit(state, slug, jsonl, head_before, shipped_count) do
+  defp handle_nonzero_exit(state, slug, jsonl, head_before, shipped_count, idx) do
     committed? =
       head_before != nil and head_before != "" and
         state.git_head_fn.(state.cwd) != head_before
@@ -239,6 +263,7 @@ defmodule CodegenTestHarness.LoopQueueDrain do
         # committer-post-commit hiccup: agent already shipped the pitch
         # (moved ready/<slug>.md -> shipped/<slug>.md) before the non-zero
         # exit. Count it shipped, do not call ship/3 again (src is gone).
+        IO.puts(:stderr, "[#{idx}/#{state.total}] #{slug} ... shipped")
         state = %{state | retry_count: 0, last_slug: nil}
         run_loop(state, shipped_count + 1)
 
@@ -247,6 +272,7 @@ defmodule CodegenTestHarness.LoopQueueDrain do
         # pitch file is still sitting in ready/ (ship step never ran). Finish
         # the ship ourselves rather than halting the whole queue.
         ship(state.ready_dir, state.shipped_dir, slug)
+        IO.puts(:stderr, "[#{idx}/#{state.total}] #{slug} ... shipped")
         state = %{state | retry_count: 0, last_slug: nil}
         run_loop(state, shipped_count + 1)
 
@@ -254,14 +280,54 @@ defmodule CodegenTestHarness.LoopQueueDrain do
         retry_count = if state.last_slug == slug, do: state.retry_count, else: 0
         attempt = retry_count + 1
         delay = pick_delay(state.retry_delays, attempt)
+        IO.puts(:stderr, "[#{idx}/#{state.total}] #{slug} ... failed (retrying)")
         if delay > 0, do: state.sleep_fn.(delay)
 
         state = %{state | retry_count: attempt, last_slug: slug}
         run_slug(state, slug, shipped_count)
 
       true ->
+        emit_failure_diagnostics(jsonl, idx, state.total, slug)
         {:error, "queue: #{slug} failed (deterministic or retries exhausted)"}
     end
+  end
+
+  # Fail-open jsonl parse (mirrors build-queue.sh:571-576): a malformed or
+  # missing jsonl yields no result_text/session_id — never crashes the drain.
+  defp emit_failure_diagnostics(jsonl, idx, total, slug) do
+    case File.read(jsonl) do
+      {:ok, content} ->
+        records =
+          content
+          |> String.split("\n", trim: true)
+          |> Enum.map(&Jason.decode/1)
+          |> Enum.filter(&match?({:ok, %{"type" => "result"}}, &1))
+          |> Enum.map(fn {:ok, map} -> map end)
+
+        case List.last(records) do
+          nil ->
+            :ok
+
+          last ->
+            case Map.get(last, "result") do
+              result when is_binary(result) and result != "" -> IO.puts(:stderr, result)
+              _ -> :ok
+            end
+
+            case Map.get(last, "session_id") do
+              session_id when is_binary(session_id) and session_id != "" ->
+                IO.puts(:stderr, "session_id: " <> session_id)
+
+              _ ->
+                :ok
+            end
+        end
+
+      {:error, _reason} ->
+        :ok
+    end
+
+    IO.puts(:stderr, "[#{idx}/#{total}] #{slug} ... FAILED")
   end
 
   defp retry_eligible?(state, slug, jsonl, committed?, gate_clear?) do
@@ -271,13 +337,23 @@ defmodule CodegenTestHarness.LoopQueueDrain do
       retry_count < state.max_retries
   end
 
-  defp handle_timeout(state, slug, shipped_count) do
+  defp handle_timeout(state, slug, shipped_count, idx) do
+    budget = state.pitch_budget_secs
+    second_timeout? = MapSet.member?(state.timed_out_slugs, {:once, slug})
+
+    outcome = if second_timeout?, do: "skipped", else: "stashed, retrying"
+
+    IO.puts(
+      :stderr,
+      "[#{idx}/#{state.total}] #{slug} ... TIMED OUT (budget #{budget}s) — #{outcome}"
+    )
+
     case state.git_stash_fn.(state.cwd, slug) do
       :ok -> :ok
       {:error, _reason} -> :ok
     end
 
-    if MapSet.member?(state.timed_out_slugs, {:once, slug}) do
+    if second_timeout? do
       # second timeout for this slug — mark skipped for the remainder of this run
       state = %{
         state
@@ -420,6 +496,7 @@ defmodule CodegenTestHarness.LoopQueueDrain do
   defp collect_spawn_output(port, acc, budget_ms, jsonl_path) do
     receive do
       {^port, {:data, chunk}} ->
+        IO.binwrite(:stderr, chunk)
         collect_spawn_output(port, [chunk | acc], budget_ms, jsonl_path)
 
       {^port, {:exit_status, code}} ->
@@ -523,6 +600,53 @@ defmodule CodegenTestHarness.LoopQueueDrain do
       verdict
     else
       _ -> ""
+    end
+  end
+
+  # ── Real discover_session_log_fn: newest *_<slug>_session.md at/after spawn ──
+  # Mirrors legacy `latest_session_log` (build-queue.sh:254-268) + poll loop
+  # (build-queue.sh:426, 30 iterations x sleep 1). Bounded retry, fail-open
+  # (no hit after the window -> nil, caller falls back to jsonl-only echo).
+
+  @discover_max_polls 30
+
+  @doc false
+  @spec default_discover_session_log(String.t(), String.t(), String.t(), pos_integer()) ::
+          String.t() | nil
+  def default_discover_session_log(cwd, slug, spawn_stamp, max_polls \\ @discover_max_polls) do
+    poll_discover_session_log(cwd, slug, spawn_stamp, max_polls)
+  end
+
+  defp poll_discover_session_log(cwd, slug, spawn_stamp, tries_left) do
+    case newest_session_log(cwd, slug, spawn_stamp) do
+      nil when tries_left > 0 ->
+        Process.sleep(1000)
+        poll_discover_session_log(cwd, slug, spawn_stamp, tries_left - 1)
+
+      result ->
+        result
+    end
+  end
+
+  defp newest_session_log(cwd, slug, spawn_stamp) do
+    pattern = Path.join([cwd, "codegen", "logging", "*_#{slug}_session.md"])
+
+    pattern
+    |> Path.wildcard()
+    |> Enum.map(fn path -> {session_log_stamp(path, slug), path} end)
+    |> Enum.filter(fn {stamp, _path} -> stamp != nil and stamp >= spawn_stamp end)
+    |> Enum.max_by(fn {stamp, _path} -> stamp end, fn -> {nil, nil} end)
+    |> elem(1)
+  end
+
+  defp session_log_stamp(path, slug) do
+    suffix = "_#{slug}_session.md"
+    base = Path.basename(path)
+
+    if String.ends_with?(base, suffix) do
+      String.replace_suffix(base, suffix, "")
+    else
+      nil
     end
   end
 end

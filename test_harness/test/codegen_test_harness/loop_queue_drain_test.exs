@@ -1,5 +1,6 @@
 defmodule CodegenTestHarness.LoopQueueDrainTest do
   use ExUnit.Case, async: true
+  import ExUnit.CaptureIO
 
   alias CodegenTestHarness.LoopQueueDrain
 
@@ -34,7 +35,8 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
       now_fn: fn -> 1_700_000_000 end,
       pid_alive_fn: fn _pid -> false end,
       git_head_fn: fn _cwd -> nil end,
-      gate_verdict_fn: fn _cwd -> "" end
+      gate_verdict_fn: fn _cwd -> "" end,
+      discover_session_log_fn: fn _cwd, _slug, _spawn_stamp -> nil end
     ]
 
     Keyword.merge(defaults, extra)
@@ -81,6 +83,164 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
     captured = Agent.get(jsonl_path, & &1)
     assert Path.basename(captured) == "20231114_221320_solo_build.jsonl"
     assert Path.basename(captured) =~ ~r/^[0-9]{8}_[0-9]{6}_/
+  end
+
+  # ── 1c. Progress banner / two-path echo / terminal lines ────────────────
+
+  test "1c: banner emits [1/1] slug ... building", ctx do
+    write_pitch(ctx.ready_dir, "solo")
+
+    spawn_fn = fn _slug, _h, _s, _cwd, _jsonl -> {:exit_code, 0} end
+
+    output =
+      capture_io(:stderr, fn ->
+        assert {:ok, 1} = LoopQueueDrain.drain(base_opts(ctx, spawn_fn: spawn_fn))
+      end)
+
+    assert output =~ ~r/\[1\/1\] solo \.\.\. building/
+  end
+
+  test "1d: idx/total computed once across 2 pitches (b Blocks-on a)", ctx do
+    write_pitch(ctx.ready_dir, "a")
+    write_pitch(ctx.ready_dir, "b", "# Pitch: b\n\nBlocks-on: a\n")
+
+    spawn_fn = fn _slug, _h, _s, _cwd, _jsonl -> {:exit_code, 0} end
+
+    output =
+      capture_io(:stderr, fn ->
+        assert {:ok, 2} = LoopQueueDrain.drain(base_opts(ctx, spawn_fn: spawn_fn))
+      end)
+
+    assert output =~ "[1/2] a ... building"
+    assert output =~ "[2/2] b ... building"
+  end
+
+  test "1e: two-path echo — session.md discovered via seam", ctx do
+    write_pitch(ctx.ready_dir, "solo")
+
+    jsonl_path = start_agent(nil)
+
+    spawn_fn = fn _slug, _h, _s, _cwd, jsonl ->
+      Agent.update(jsonl_path, fn _ -> jsonl end)
+      {:exit_code, 0}
+    end
+
+    discover_session_log_fn = fn _cwd, slug, _stamp -> "/path/#{slug}_session.md" end
+
+    output =
+      capture_io(:stderr, fn ->
+        assert {:ok, 1} =
+                 LoopQueueDrain.drain(
+                   base_opts(ctx,
+                     spawn_fn: spawn_fn,
+                     discover_session_log_fn: discover_session_log_fn
+                   )
+                 )
+      end)
+
+    assert output =~ "/path/solo_session.md"
+    assert output =~ Path.basename(Agent.get(jsonl_path, & &1))
+  end
+
+  test "1f: two-path echo — session.md not found falls back to jsonl alone", ctx do
+    write_pitch(ctx.ready_dir, "solo")
+
+    spawn_fn = fn _slug, _h, _s, _cwd, _jsonl -> {:exit_code, 0} end
+
+    output =
+      capture_io(:stderr, fn ->
+        assert {:ok, 1} =
+                 LoopQueueDrain.drain(
+                   base_opts(ctx,
+                     spawn_fn: spawn_fn,
+                     discover_session_log_fn: fn _, _, _ -> nil end
+                   )
+                 )
+      end)
+
+    refute output =~ "_session.md"
+    assert output =~ "_solo_build.jsonl"
+  end
+
+  test "1g: default_discover_session_log/3 finds newest at/after spawn stamp, excludes stale",
+       ctx do
+    logging_dir = Path.join([ctx.dir, "codegen", "logging"])
+    File.mkdir_p!(logging_dir)
+
+    stale = Path.join(logging_dir, "20200101_000000_solo_session.md")
+    newest = Path.join(logging_dir, "20231114_221320_solo_session.md")
+    File.write!(stale, "# stale\n")
+    File.write!(newest, "# newest\n")
+
+    assert LoopQueueDrain.default_discover_session_log(ctx.dir, "solo", "20231114_221320") ==
+             newest
+
+    File.rm!(newest)
+
+    # max_polls: 0 keeps this assertion instant (zero Process.sleep calls,
+    # vs. the production default of 30 x 1s) while still exercising the real
+    # bounded-retry-then-nil fail-open branch of poll_discover_session_log/4.
+    assert LoopQueueDrain.default_discover_session_log(
+             ctx.dir,
+             "solo",
+             "20231114_221320",
+             0
+           ) == nil
+  end
+
+  test "1h: failure diagnostics on halt — result/session_id surfaced, FAILED line emitted", ctx do
+    write_pitch(ctx.ready_dir, "solo")
+
+    spawn_fn = fn _slug, _h, _s, _cwd, jsonl ->
+      File.write!(jsonl, ~s({"type":"result","result":"boom","session_id":"sess-123"}\n))
+      {:exit_code, 1}
+    end
+
+    transient_fn = fn _jsonl -> false end
+
+    output =
+      capture_io(:stderr, fn ->
+        assert {:error, _reason} =
+                 LoopQueueDrain.drain(
+                   base_opts(ctx, spawn_fn: spawn_fn, transient_fn: transient_fn)
+                 )
+      end)
+
+    assert output =~ "boom"
+    assert output =~ "session_id: sess-123"
+    assert output =~ ~r/\[1\/1\] solo \.\.\. FAILED/
+    assert File.exists?(Path.join(ctx.ready_dir, "solo.md"))
+  end
+
+  test "1i: streaming tee — child stdout/stderr echoed to :stderr AND persisted to jsonl", ctx do
+    jsonl = Path.join(ctx.dir, "out.jsonl")
+
+    script =
+      Path.join(ctx.dir, "echoer_tee.sh")
+
+    File.write!(script, """
+    #!/usr/bin/env bash
+    printf 'OUT'
+    printf 'ERR' >&2
+    exit 0
+    """)
+
+    File.chmod!(script, 0o755)
+
+    Process.put(:__queue_drain_build_bin__, script)
+    on_exit(fn -> Process.delete(:__queue_drain_build_bin__) end)
+
+    output =
+      capture_io(:stderr, fn ->
+        result = LoopQueueDrain.default_spawn_fn("slug", "claude", "phoenix", ctx.dir, jsonl)
+        assert result == {:exit_code, 0}
+      end)
+
+    assert output =~ "OUT"
+    assert output =~ "ERR"
+    contents = File.read!(jsonl)
+    assert contents =~ "OUT"
+    assert contents =~ "ERR"
   end
 
   # ── 2. Cycle raises ─────────────────────────────────────────────────────
@@ -688,7 +848,17 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
       System.put_env("CODEGEN_BUILD_QUEUE_PITCH_BUDGET_SECS", "1")
       on_exit(fn -> System.delete_env("CODEGEN_BUILD_QUEUE_PITCH_BUDGET_SECS") end)
 
-      result = LoopQueueDrain.default_spawn_fn("slug", "claude", "phoenix", ctx.dir, jsonl)
+      capture_io(:stderr, fn ->
+        send(
+          self(),
+          {:result, LoopQueueDrain.default_spawn_fn("slug", "claude", "phoenix", ctx.dir, jsonl)}
+        )
+      end)
+
+      result =
+        receive do
+          {:result, r} -> r
+        end
 
       assert result == :timeout
       assert File.exists?(jsonl)
@@ -712,9 +882,23 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
       Process.put(:__queue_drain_build_bin__, script)
       on_exit(fn -> Process.delete(:__queue_drain_build_bin__) end)
 
-      result = LoopQueueDrain.default_spawn_fn("slug", "claude", "phoenix", ctx.dir, jsonl)
+      output =
+        capture_io(:stderr, fn ->
+          send(
+            self(),
+            {:result,
+             LoopQueueDrain.default_spawn_fn("slug", "claude", "phoenix", ctx.dir, jsonl)}
+          )
+        end)
+
+      result =
+        receive do
+          {:result, r} -> r
+        end
 
       assert result == {:exit_code, 0}
+      assert output =~ "OUT"
+      assert output =~ "ERR"
       contents = File.read!(jsonl)
       assert contents =~ "OUT"
       assert contents =~ "ERR"
