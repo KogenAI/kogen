@@ -38,16 +38,19 @@ defmodule CodegenTestHarness.Stacks.Static.SeedTest.Vanilla do
 
     # Verify 2nd-prompt marker (faq section) survived the second build
     html_files = Path.wildcard(Path.join(cwd, "**/*.html"))
-    faq_found = Enum.any?(html_files, fn path ->
-      content = File.read!(path)
-      String.contains?(content, ~s(id="faq")) and String.contains?(content, "<details")
-    end)
-    assert faq_found, "expected id=\"faq\" and <details in at least one HTML file after second build"
+
+    faq_found =
+      Enum.any?(html_files, fn path ->
+        content = File.read!(path)
+        String.contains?(content, ~s(id="faq")) and String.contains?(content, "<details")
+      end)
+
+    assert faq_found,
+           "expected id=\"faq\" and <details in at least one HTML file after second build"
 
     Fixtures.bench_assertions_passed!("static", "seed_static_vanilla_first")
     Fixtures.bench_assertions_passed!("static", "seed_static_vanilla_second")
   end
-
 end
 
 defmodule CodegenTestHarness.Stacks.Static.SeedTest.ViteReact do
@@ -90,14 +93,21 @@ defmodule CodegenTestHarness.Stacks.Static.SeedTest.ViteReact do
     Assertions.assert_not_revert_head!(cwd)
 
     # Verify 2nd-prompt marker (step input) survived the second build
-    jsx_files = [Path.join(cwd, "src/**/*.jsx"), Path.join(cwd, "src/**/*.tsx")] |> Enum.flat_map(&Path.wildcard/1)
-    step_found = Enum.any?(jsx_files, fn path -> String.contains?(File.read!(path), ~s(data-testid="step")) end)
-    assert step_found, "expected data-testid=\"step\" in at least one JSX/TSX file after second build"
+    jsx_files =
+      [Path.join(cwd, "src/**/*.jsx"), Path.join(cwd, "src/**/*.tsx")]
+      |> Enum.flat_map(&Path.wildcard/1)
+
+    step_found =
+      Enum.any?(jsx_files, fn path ->
+        String.contains?(File.read!(path), ~s(data-testid="step"))
+      end)
+
+    assert step_found,
+           "expected data-testid=\"step\" in at least one JSX/TSX file after second build"
 
     Fixtures.bench_assertions_passed!("static", "seed_static_react_first")
     Fixtures.bench_assertions_passed!("static", "seed_static_react_second")
   end
-
 end
 
 defmodule CodegenTestHarness.Stacks.Static.SeedTest.ViteVue do
@@ -139,14 +149,21 @@ defmodule CodegenTestHarness.Stacks.Static.SeedTest.ViteVue do
     Assertions.assert_not_revert_head!(cwd)
 
     # Verify 2nd-prompt marker (reset button) survived the second build
-    vue_files = [Path.join(cwd, "src/**/*.vue"), Path.join(cwd, "src/**/*.js")] |> Enum.flat_map(&Path.wildcard/1)
-    reset_found = Enum.any?(vue_files, fn path -> String.contains?(File.read!(path), ~s(data-testid="reset")) end)
-    assert reset_found, "expected data-testid=\"reset\" in at least one Vue/JS file after second build"
+    vue_files =
+      [Path.join(cwd, "src/**/*.vue"), Path.join(cwd, "src/**/*.js")]
+      |> Enum.flat_map(&Path.wildcard/1)
+
+    reset_found =
+      Enum.any?(vue_files, fn path ->
+        String.contains?(File.read!(path), ~s(data-testid="reset"))
+      end)
+
+    assert reset_found,
+           "expected data-testid=\"reset\" in at least one Vue/JS file after second build"
 
     Fixtures.bench_assertions_passed!("static", "seed_static_vue_first")
     Fixtures.bench_assertions_passed!("static", "seed_static_vue_second")
   end
-
 end
 
 defmodule CodegenTestHarness.Stacks.Static.SeedTest.Multilingual do
@@ -188,7 +205,9 @@ defmodule CodegenTestHarness.Stacks.Static.SeedTest.Multilingual do
     Assertions.assert_not_revert_head!(cwd)
 
     # Verify 2nd-prompt markers (language links) survived the second build
-    all_files = [Path.join(cwd, "**/*.html"), Path.join(cwd, "**/*.md")] |> Enum.flat_map(&Path.wildcard/1)
+    all_files =
+      [Path.join(cwd, "**/*.html"), Path.join(cwd, "**/*.md")] |> Enum.flat_map(&Path.wildcard/1)
+
     en_found = Enum.any?(all_files, fn p -> File.read!(p) =~ ~r(href=.?/en) end)
     hr_found = Enum.any?(all_files, fn p -> File.read!(p) =~ ~r(href=.?/hr) end)
     assert en_found, "expected href=\"/en\" link in at least one file after second build"
@@ -197,5 +216,4 @@ defmodule CodegenTestHarness.Stacks.Static.SeedTest.Multilingual do
     Fixtures.bench_assertions_passed!("static", "seed_static_multilingual_first")
     Fixtures.bench_assertions_passed!("static", "seed_static_multilingual_second")
   end
-
 end

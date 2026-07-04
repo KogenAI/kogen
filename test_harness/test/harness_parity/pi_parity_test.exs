@@ -62,7 +62,9 @@ defmodule CodegenTestHarness.HarnessParity.PhoenixMinimalTest do
       else
         assert r.exit == 0, "#{@scenario}/#{harness} exit #{r.exit} (expected 0)\n#{r.output}"
         assert r.key, "#{@scenario}/#{harness} missing #{@key_file}"
-        assert r.new_commits >= 1, "#{@scenario}/#{harness} produced no commit beyond scaffold init"
+
+        assert r.new_commits >= 1,
+               "#{@scenario}/#{harness} produced no commit beyond scaffold init"
       end
     end
   end
@@ -131,9 +133,10 @@ defmodule CodegenTestHarness.HarnessParity.StaticMinimalTest do
       else
         assert r.exit == 0, "#{@scenario}/#{harness} exit #{r.exit} (expected 0)\n#{r.output}"
         assert r.key, "#{@scenario}/#{harness} missing #{@key_file}"
-        assert r.new_commits >= 1, "#{@scenario}/#{harness} produced no commit beyond scaffold init"
+
+        assert r.new_commits >= 1,
+               "#{@scenario}/#{harness} produced no commit beyond scaffold init"
       end
     end
   end
 end
-

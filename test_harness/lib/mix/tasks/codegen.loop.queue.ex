@@ -52,7 +52,10 @@ defmodule Mix.Tasks.Codegen.Loop.Queue do
     cwd = Keyword.get(opts, :cwd) || missing_flag!("--cwd")
 
     unless harness in ["claude", "pi"] do
-      Mix.shell().error("codegen.loop.queue: --harness must be \"claude\" or \"pi\", got #{inspect(harness)}")
+      Mix.shell().error(
+        "codegen.loop.queue: --harness must be \"claude\" or \"pi\", got #{inspect(harness)}"
+      )
+
       exit({:shutdown, 2})
     end
 

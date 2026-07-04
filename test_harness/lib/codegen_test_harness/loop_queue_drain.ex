@@ -71,8 +71,12 @@ defmodule CodegenTestHarness.LoopQueueDrain do
     cwd = Keyword.fetch!(opts, :cwd)
 
     ready_dir = Keyword.get(opts, :ready_dir, Path.join([cwd, "codegen", "pitches", "ready"]))
-    shipped_dir = Keyword.get(opts, :shipped_dir, Path.join([cwd, "codegen", "pitches", "shipped"]))
-    lock_path = Keyword.get(opts, :lock_path, Path.join([cwd, "codegen", "pitches", "queue.lock"]))
+
+    shipped_dir =
+      Keyword.get(opts, :shipped_dir, Path.join([cwd, "codegen", "pitches", "shipped"]))
+
+    lock_path =
+      Keyword.get(opts, :lock_path, Path.join([cwd, "codegen", "pitches", "queue.lock"]))
 
     File.mkdir_p!(ready_dir)
     File.mkdir_p!(shipped_dir)
@@ -121,7 +125,8 @@ defmodule CodegenTestHarness.LoopQueueDrain do
         case String.split(String.trim(content), " ", parts: 2) do
           [pid_str | _] when pid_str != "" ->
             if pid_alive_fn.(pid_str) do
-              {:error, "queue: a build is already running (pid #{pid_str}) — refusing to start a second"}
+              {:error,
+               "queue: a build is already running (pid #{pid_str}) — refusing to start a second"}
             else
               write_lock(lock_path)
             end
@@ -379,8 +384,10 @@ defmodule CodegenTestHarness.LoopQueueDrain do
   @doc false
   @spec default_git_stash_fn(String.t(), String.t()) :: :ok | {:error, String.t()}
   def default_git_stash_fn(cwd, slug) do
-    with {_out, 0} <- System.cmd("git", ["-C", cwd, "rev-parse", "--git-dir"], stderr_to_stdout: true),
-         {status, 0} <- System.cmd("git", ["-C", cwd, "status", "--porcelain"], stderr_to_stdout: true) do
+    with {_out, 0} <-
+           System.cmd("git", ["-C", cwd, "rev-parse", "--git-dir"], stderr_to_stdout: true),
+         {status, 0} <-
+           System.cmd("git", ["-C", cwd, "status", "--porcelain"], stderr_to_stdout: true) do
       tracked_dirty? =
         status
         |> String.split("\n", trim: true)
@@ -389,7 +396,9 @@ defmodule CodegenTestHarness.LoopQueueDrain do
       if tracked_dirty? do
         msg = "queue-timeout:#{slug}:#{default_now_fn()}"
 
-        case System.cmd("git", ["-C", cwd, "stash", "push", "-u", "-m", msg], stderr_to_stdout: true) do
+        case System.cmd("git", ["-C", cwd, "stash", "push", "-u", "-m", msg],
+               stderr_to_stdout: true
+             ) do
           {_out, 0} -> :ok
           {out, _} -> {:error, "git stash failed: #{out}"}
         end

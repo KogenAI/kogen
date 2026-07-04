@@ -28,7 +28,8 @@ defmodule CodegenTestHarness.Stacks.Modes.DebugTest do
 
   test "debug mode emits diagnostic report and writes nothing",
        %{cwd: cwd, before_porcelain: before_porcelain} do
-    {output, exit_code} = Fixtures.run_mode_launcher(cwd, :debug, @prompt, test_name: "debug_mode")
+    {output, exit_code} =
+      Fixtures.run_mode_launcher(cwd, :debug, @prompt, test_name: "debug_mode")
 
     assert exit_code == 0,
            "#{Fixtures.harness()}-debug exit #{exit_code}:\n#{output}"

@@ -48,7 +48,12 @@ defmodule CodegenTestHarness.Stacks.Phoenix.SeedTest do
 
     # Verify 2nd-prompt marker landed in the TodoLive file
     live_files = Path.wildcard(Path.join(cwd, "lib/*_web/live/**/*.ex"))
-    todo_files = Enum.filter(live_files, fn f -> f |> Path.basename() |> String.downcase() |> String.contains?("todo") end)
+
+    todo_files =
+      Enum.filter(live_files, fn f ->
+        f |> Path.basename() |> String.downcase() |> String.contains?("todo")
+      end)
+
     fallback = Path.wildcard(Path.join(cwd, "lib/**/todo*.ex"))
     target_files = if todo_files == [], do: fallback, else: todo_files
 
@@ -61,5 +66,4 @@ defmodule CodegenTestHarness.Stacks.Phoenix.SeedTest do
     Fixtures.bench_assertions_passed!("phoenix", "seed_phoenix_first_build")
     Fixtures.bench_assertions_passed!("phoenix", "seed_phoenix_second_build")
   end
-
 end

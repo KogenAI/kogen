@@ -148,7 +148,9 @@ defmodule CodegenTestHarness.Stacks.Modes.HeadlessLauncherTest do
 
     {output, exit_code} = run_launcher(@ops_script, ["myserver"], env)
     assert exit_code != 0, "Expected non-zero exit when ssh alias missing. Output:\n#{output}"
-    assert String.contains?(output, "not found"), "Expected 'not found' in output.\nGot: #{output}"
+
+    assert String.contains?(output, "not found"),
+           "Expected 'not found' in output.\nGot: #{output}"
   end
 
   @tag timeout: 30_000
@@ -181,15 +183,18 @@ defmodule CodegenTestHarness.Stacks.Modes.HeadlessLauncherTest do
   # ── claude-debug.sh ──────────────────────────────────────────────────────────
 
   @tag timeout: 30_000
-  test "claude-debug WITH CLAUDE_NONINTERACTIVE=1 + missing ssh alias exits non-zero (no hang)", %{
-    tmp: tmp,
-    stub_dir: stub_dir
-  } do
+  test "claude-debug WITH CLAUDE_NONINTERACTIVE=1 + missing ssh alias exits non-zero (no hang)",
+       %{
+         tmp: tmp,
+         stub_dir: stub_dir
+       } do
     env = base_env(tmp, stub_dir) ++ [{"CLAUDE_NONINTERACTIVE", "1"}]
 
     {output, exit_code} = run_launcher(@debug_script, ["myserver"], env)
     assert exit_code != 0, "Expected non-zero exit when ssh alias missing. Output:\n#{output}"
-    assert String.contains?(output, "not found"), "Expected 'not found' in output.\nGot: #{output}"
+
+    assert String.contains?(output, "not found"),
+           "Expected 'not found' in output.\nGot: #{output}"
   end
 
   @tag timeout: 30_000

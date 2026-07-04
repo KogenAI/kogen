@@ -4,7 +4,9 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
   alias CodegenTestHarness.LoopQueueDrain
 
   setup do
-    dir = Path.join(System.tmp_dir!(), "loop_queue_drain_test_#{:erlang.unique_integer([:positive])}")
+    dir =
+      Path.join(System.tmp_dir!(), "loop_queue_drain_test_#{:erlang.unique_integer([:positive])}")
+
     ready_dir = Path.join([dir, "codegen", "pitches", "ready"])
     shipped_dir = Path.join([dir, "codegen", "pitches", "shipped"])
     lock_path = Path.join([dir, "codegen", "pitches", "queue.lock"])
@@ -268,9 +270,7 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
     pid_alive_fn = fn _pid -> true end
 
     assert {:error, reason} =
-             LoopQueueDrain.drain(
-               base_opts(ctx, spawn_fn: spawn_fn, pid_alive_fn: pid_alive_fn)
-             )
+             LoopQueueDrain.drain(base_opts(ctx, spawn_fn: spawn_fn, pid_alive_fn: pid_alive_fn))
 
     assert reason =~ "already running"
     assert File.exists?(Path.join(ctx.ready_dir, "solo.md"))
@@ -284,9 +284,7 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
     pid_alive_fn = fn _pid -> false end
 
     assert {:ok, 1} =
-             LoopQueueDrain.drain(
-               base_opts(ctx, spawn_fn: spawn_fn, pid_alive_fn: pid_alive_fn)
-             )
+             LoopQueueDrain.drain(base_opts(ctx, spawn_fn: spawn_fn, pid_alive_fn: pid_alive_fn))
 
     assert File.exists?(Path.join(ctx.shipped_dir, "solo.md"))
     refute File.exists?(ctx.lock_path)

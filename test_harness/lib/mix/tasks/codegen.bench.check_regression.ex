@@ -49,7 +49,10 @@ defmodule Mix.Tasks.Codegen.Bench.CheckRegression do
     end
 
     unless File.exists?(@baseline_path) do
-      Mix.shell().info("perf_baseline.json not found at #{@baseline_path} — skipping regression check")
+      Mix.shell().info(
+        "perf_baseline.json not found at #{@baseline_path} — skipping regression check"
+      )
+
       exit(:normal)
     end
 
@@ -129,7 +132,13 @@ defmodule Mix.Tasks.Codegen.Bench.CheckRegression do
       passed_count = Enum.count(records, fn r -> r["assertion_passed"] == true end)
       pass_rate = passed_count / count
 
-      metric_keys = ["build_duration_ms", "cost_usd", "num_turns", "input_tokens", "output_tokens"]
+      metric_keys = [
+        "build_duration_ms",
+        "cost_usd",
+        "num_turns",
+        "input_tokens",
+        "output_tokens"
+      ]
 
       averages =
         Enum.reduce(metric_keys, %{}, fn key, acc ->
@@ -195,7 +204,16 @@ defmodule Mix.Tasks.Codegen.Bench.CheckRegression do
           threshold = baseline_val * (1 + max_pct / 100)
 
           if actual > threshold do
-            [%{metric: metric_key, baseline: baseline_val, actual: actual, threshold: threshold, kind: :max_regression} | regressions]
+            [
+              %{
+                metric: metric_key,
+                baseline: baseline_val,
+                actual: actual,
+                threshold: threshold,
+                kind: :max_regression
+              }
+              | regressions
+            ]
           else
             regressions
           end
@@ -208,7 +226,16 @@ defmodule Mix.Tasks.Codegen.Bench.CheckRegression do
 
     if min_abs = spec["min_abs"] do
       if actual < min_abs do
-        [%{metric: metric_key, baseline: baseline_val, actual: actual, threshold: min_abs, kind: :min_abs} | regressions]
+        [
+          %{
+            metric: metric_key,
+            baseline: baseline_val,
+            actual: actual,
+            threshold: min_abs,
+            kind: :min_abs
+          }
+          | regressions
+        ]
       else
         regressions
       end
@@ -221,7 +248,9 @@ defmodule Mix.Tasks.Codegen.Bench.CheckRegression do
 
   @spec format_table([regression()]) :: String.t()
   defp format_table(regressions) do
-    header = "  Metric                              | Baseline    | Actual      | Threshold   | Kind"
+    header =
+      "  Metric                              | Baseline    | Actual      | Threshold   | Kind"
+
     divider = "  " <> String.duplicate("-", 90)
 
     rows =

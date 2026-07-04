@@ -20,7 +20,12 @@ defmodule CodegenTestHarness.Stacks.Modes.OpsTest do
 
   setup do
     # Use a temp dir as HOME so ~/.ssh/config is isolated
-    tmp = Path.join(System.tmp_dir!(), "ops_test_#{:os.system_time(:millisecond)}_#{:erlang.unique_integer([:positive])}")
+    tmp =
+      Path.join(
+        System.tmp_dir!(),
+        "ops_test_#{:os.system_time(:millisecond)}_#{:erlang.unique_integer([:positive])}"
+      )
+
     File.mkdir_p!(Path.join(tmp, ".ssh"))
     File.write!(Path.join(tmp, ".ssh/config"), "# placeholder\n")
 

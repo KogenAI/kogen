@@ -311,7 +311,9 @@ defmodule CodegenTestHarness.Fixtures do
 
   # Writes content to a temp file with the given suffix and returns its path.
   defp write_tmp_file!(content, suffix) do
-    path = Path.join(System.tmp_dir!(), "codegen_call_#{:erlang.unique_integer([:positive])}#{suffix}")
+    path =
+      Path.join(System.tmp_dir!(), "codegen_call_#{:erlang.unique_integer([:positive])}#{suffix}")
+
     File.write!(path, content)
     path
   end
@@ -538,7 +540,13 @@ defmodule CodegenTestHarness.Fixtures do
 
           System.cmd(
             "claude",
-            ["--print", "--dangerously-skip-permissions", "--system-prompt", system_prompt, prompt],
+            [
+              "--print",
+              "--dangerously-skip-permissions",
+              "--system-prompt",
+              system_prompt,
+              prompt
+            ],
             cd: cwd,
             stderr_to_stdout: true
           )
@@ -570,7 +578,15 @@ defmodule CodegenTestHarness.Fixtures do
       end
 
     build_duration_ms = System.monotonic_time(:millisecond) - build_started_at
-    maybe_write_mode_bench_record(output, exit_code, harness_val, "modes", test_name, build_duration_ms)
+
+    maybe_write_mode_bench_record(
+      output,
+      exit_code,
+      harness_val,
+      "modes",
+      test_name,
+      build_duration_ms
+    )
 
     {output, exit_code}
   end
@@ -673,9 +689,7 @@ defmodule CodegenTestHarness.Fixtures do
             IO.warn("bench_assertions_passed!: no harness_summary found in #{path}")
         end
       else
-        IO.warn(
-          "bench_assertions_passed!: no JSONL found at #{path} — test_name mismatch?"
-        )
+        IO.warn("bench_assertions_passed!: no JSONL found at #{path} — test_name mismatch?")
       end
     end
   end
@@ -686,7 +700,14 @@ defmodule CodegenTestHarness.Fixtures do
     Path.join([bench_run_dir, "runs", harness_val, stack, "#{test_name}.jsonl"])
   end
 
-  defp maybe_write_bench_record(output, exit_code, harness_val, stack, test_name, build_duration_ms) do
+  defp maybe_write_bench_record(
+         output,
+         exit_code,
+         harness_val,
+         stack,
+         test_name,
+         build_duration_ms
+       ) do
     bench_run_dir = System.get_env("BENCH_RUN_DIR")
 
     if is_nil(bench_run_dir) or String.trim(bench_run_dir) == "" do
@@ -757,7 +778,14 @@ defmodule CodegenTestHarness.Fixtures do
     end
   end
 
-  defp maybe_write_mode_bench_record(output, exit_code, harness_val, stack, test_name, build_duration_ms) do
+  defp maybe_write_mode_bench_record(
+         output,
+         exit_code,
+         harness_val,
+         stack,
+         test_name,
+         build_duration_ms
+       ) do
     bench_run_dir = System.get_env("BENCH_RUN_DIR")
 
     if is_nil(bench_run_dir) or String.trim(bench_run_dir) == "" do

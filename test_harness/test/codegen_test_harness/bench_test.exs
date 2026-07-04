@@ -68,7 +68,12 @@ defmodule CodegenTestHarness.BenchTest do
     end
 
     test "stub metrics have gap strings" do
-      for id <- [:judge_pass_rate, :lighthouse_score, :judge_coherence_score, :cache_read_tokens_by_role] do
+      for id <- [
+            :judge_pass_rate,
+            :lighthouse_score,
+            :judge_coherence_score,
+            :cache_read_tokens_by_role
+          ] do
         metric = BenchMetrics.metric_for(id)
         assert is_binary(metric.gap), "expected gap string for #{id}"
       end
@@ -318,7 +323,9 @@ defmodule CodegenTestHarness.BenchTest do
     test "returns empty map when projects_root dir not found" do
       sid = "test-sid-#{:erlang.unique_integer([:positive])}"
       output = stream_output_with_sid(sid)
-      missing_root = Path.join(System.tmp_dir!(), "nonexistent_#{:erlang.unique_integer([:positive])}")
+
+      missing_root =
+        Path.join(System.tmp_dir!(), "nonexistent_#{:erlang.unique_integer([:positive])}")
 
       assert UsageParser.parse_per_role(output, :claude, projects_root: missing_root) == %{}
     end
@@ -527,7 +534,7 @@ defmodule CodegenTestHarness.BenchTest do
           "cost_usd" => 0.01,
           "duration_ms" => 5000,
           "duration_api_ms" => 4000,
-          "build_duration_ms" => 120000,
+          "build_duration_ms" => 120_000,
           "num_turns" => 3,
           "terminal_reason" => "stop"
         }

@@ -22,6 +22,7 @@ defmodule CodegenTestHarness.CallContractTest do
       {output, exit_code} = System.cmd(codegen_call, [], stderr_to_stdout: true, env: [])
 
       assert exit_code == 2, "expected exit 2 on missing args, got #{exit_code}"
+
       refute output =~ ~r/--role/,
              "expected usage to NOT mention --role (it is dead code), got:\n#{output}"
     end
@@ -32,8 +33,15 @@ defmodule CodegenTestHarness.CallContractTest do
       {_output, exit_code} =
         System.cmd(
           codegen_call,
-          ["--harness=claude_code", "--role=x", "--model=haiku", "--effort=low",
-           "--system-prompt", "@/nonexistent", "prompt"],
+          [
+            "--harness=claude_code",
+            "--role=x",
+            "--model=haiku",
+            "--effort=low",
+            "--system-prompt",
+            "@/nonexistent",
+            "prompt"
+          ],
           stderr_to_stdout: true,
           env: []
         )

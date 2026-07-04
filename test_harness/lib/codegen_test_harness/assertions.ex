@@ -197,8 +197,13 @@ defmodule CodegenTestHarness.Assertions do
     # compile, eliminating the dev/test cross-contamination.
     File.rm_rf!(Path.join(cwd, "_build"))
 
-    {out, code} = System.cmd("mix", ["test", "--max-failures", "1"],
-                             cd: cwd, stderr_to_stdout: true, env: [{"MIX_ENV", "test"}])
+    {out, code} =
+      System.cmd("mix", ["test", "--max-failures", "1"],
+        cd: cwd,
+        stderr_to_stdout: true,
+        env: [{"MIX_ENV", "test"}]
+      )
+
     assert code == 0, "generated app's own tests failed in #{cwd}:\n#{out}"
     :ok
   end
@@ -213,8 +218,10 @@ defmodule CodegenTestHarness.Assertions do
   def assert_router_root_route_replaced!(router_path) do
     content = File.read!(router_path)
     assert content =~ ~r/live\s+"\/"/, "router missing live \"/\" route"
+
     refute content =~ ~r/get\s+"\/"\s*,\s*\w+Controller/,
            "default get \"/\" PageController route still present — generated app must REPLACE it, not add alongside (router serves blank default page)"
+
     :ok
   end
 
@@ -294,7 +301,11 @@ defmodule CodegenTestHarness.Assertions do
 
     if has_assets_dir and has_alias do
       {output, exit_code} =
-        System.cmd("mix", ["assets.deploy"], cd: cwd, stderr_to_stdout: true, env: [{"MIX_ENV", "dev"}])
+        System.cmd("mix", ["assets.deploy"],
+          cd: cwd,
+          stderr_to_stdout: true,
+          env: [{"MIX_ENV", "dev"}]
+        )
 
       assert exit_code == 0, "mix assets.deploy failed in #{cwd}:\n#{output}"
 

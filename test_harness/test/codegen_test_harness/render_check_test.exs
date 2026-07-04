@@ -13,8 +13,22 @@ defmodule CodegenTestHarness.RenderCheckTest do
   use ExUnit.Case, async: true
 
   @codegen_dir Path.expand("../../../", __DIR__)
-  @render_check Path.join([@codegen_dir, "harnesses", "claude", "hooks", "lib", "render-check.js"])
-  @phoenix_server Path.join([@codegen_dir, "harnesses", "claude", "hooks", "lib", "phoenix-server.js"])
+  @render_check Path.join([
+                  @codegen_dir,
+                  "harnesses",
+                  "claude",
+                  "hooks",
+                  "lib",
+                  "render-check.js"
+                ])
+  @phoenix_server Path.join([
+                    @codegen_dir,
+                    "harnesses",
+                    "claude",
+                    "hooks",
+                    "lib",
+                    "phoenix-server.js"
+                  ])
 
   describe "node --check" do
     test "render-check.js has valid syntax" do

@@ -69,12 +69,20 @@ defmodule CodegenTestHarness.Stacks.Static.GateTest do
       System.cmd("git", ["commit", "-m", "init app"],
         cd: cwd,
         stderr_to_stdout: true,
-        env: [{"GIT_AUTHOR_NAME", "t"}, {"GIT_AUTHOR_EMAIL", "t@t"}, {"GIT_COMMITTER_NAME", "t"}, {"GIT_COMMITTER_EMAIL", "t@t"}]
+        env: [
+          {"GIT_AUTHOR_NAME", "t"},
+          {"GIT_AUTHOR_EMAIL", "t@t"},
+          {"GIT_COMMITTER_NAME", "t"},
+          {"GIT_COMMITTER_EMAIL", "t@t"}
+        ]
       )
 
     # Write a step log whose Gate is `false` — deterministic failure
     log_path =
-      Path.join(cwd, "codegen/logging/#{DateTime.utc_now() |> Calendar.strftime("%Y%m%d_%H%M%S")}_step1_fail.md")
+      Path.join(
+        cwd,
+        "codegen/logging/#{DateTime.utc_now() |> Calendar.strftime("%Y%m%d_%H%M%S")}_step1_fail.md"
+      )
 
     File.write!(log_path, """
     # Step
@@ -91,7 +99,9 @@ defmodule CodegenTestHarness.Stacks.Static.GateTest do
       Jason.encode!(%{
         "type" => "assistant",
         "message" => %{
-          "content" => [%{"type" => "tool_use", "name" => "Write", "input" => %{"file_path" => log_path}}]
+          "content" => [
+            %{"type" => "tool_use", "name" => "Write", "input" => %{"file_path" => log_path}}
+          ]
         }
       }) <> "\n"
     )
