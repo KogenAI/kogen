@@ -14,7 +14,7 @@ assert_contains() {
     local desc="$1"
     local haystack="$2"
     local needle="$3"
-    if printf '%s' "$haystack" | grep -Fq -- "$needle" 2>/dev/null; then
+    if grep -Fq -- "$needle" <<<"$haystack" 2>/dev/null; then
         pass=$((pass + 1))
     else
         printf 'FAIL: %s — expected to find %q\n  got: %s\n' "$desc" "$needle" "${haystack:0:400}"
@@ -38,7 +38,7 @@ assert_not_contains() {
     local desc="$1"
     local haystack="$2"
     local needle="$3"
-    if printf '%s' "$haystack" | grep -Fq -- "$needle" 2>/dev/null; then
+    if grep -Fq -- "$needle" <<<"$haystack" 2>/dev/null; then
         printf 'FAIL: %s — unexpected match for %q\n  got: %s\n' "$desc" "$needle" "${haystack:0:400}"
         fail=$((fail + 1))
     else
@@ -217,7 +217,8 @@ assert_contains "engine=elixir: banner present" "$out" "pi dispatch: engine=elix
 ARGS_LEGACY="$TMP_ROOT/args-legacy.txt"
 rc=0
 out=$(
-    TARGET_ARGS_FILE="$ARGS_LEGACY" \
+    env -u CODEGEN_BUILD_ELIXIR \
+        TARGET_ARGS_FILE="$ARGS_LEGACY" \
         PATH="$FAKE_BIN:$PATH" \
         OCG_CODEGEN_DIR="$CODEGEN_ROOT" \
         CODEGEN_BUILD_MODEL="test-model" \

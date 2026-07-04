@@ -519,7 +519,15 @@ defmodule CodegenTestHarness.OrchestrationLoop do
     raise "OrchestrationLoop: unknown harness #{inspect(other)} — cannot resolve guard bundle"
   end
 
-  defp default_codegen_call(cwd, harness, model, effort, system_prompt_path, allowed_tools, prompt) do
+  defp default_codegen_call(
+         cwd,
+         harness,
+         model,
+         effort,
+         system_prompt_path,
+         allowed_tools,
+         prompt
+       ) do
     unless File.exists?(@codegen_call_bin) do
       raise "OrchestrationLoop: codegen-call not found at #{@codegen_call_bin}"
     end
@@ -555,7 +563,8 @@ defmodule CodegenTestHarness.OrchestrationLoop do
       %{
         "result" => %{
           "status" => "failed",
-          "reason" => "codegen-call exited #{exit_code} (transient?): #{String.slice(output, max(String.length(output) - 400, 0), 400)}"
+          "reason" =>
+            "codegen-call exited #{exit_code} (transient?): #{String.slice(output, max(String.length(output) - 400, 0), 400)}"
         }
       }
     else

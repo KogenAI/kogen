@@ -951,5 +951,35 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
       assert contents =~ "OUT"
       assert contents =~ "ERR"
     end
+
+    test "passes --elixir alongside --non-interactive to the per-pitch child", ctx do
+      jsonl = Path.join(ctx.dir, "out.jsonl")
+      spawn_args_file = Path.join(ctx.dir, "spawn_args.txt")
+
+      script =
+        write_script(ctx.dir, "argcapture.sh", """
+        #!/usr/bin/env bash
+        printf '%s\\n' "$@" > "#{spawn_args_file}"
+        exit 0
+        """)
+
+      Process.put(:__queue_drain_build_bin__, script)
+      on_exit(fn -> Process.delete(:__queue_drain_build_bin__) end)
+
+      capture_io(:stderr, fn ->
+        send(
+          self(),
+          {:result, LoopQueueDrain.default_spawn_fn("slug", "claude", "phoenix", ctx.dir, jsonl)}
+        )
+      end)
+
+      receive do
+        {:result, {:exit_code, 0}} -> :ok
+      end
+
+      spawned_args = File.read!(spawn_args_file)
+      assert spawned_args =~ "--elixir"
+      assert spawned_args =~ "--non-interactive"
+    end
   end
 end

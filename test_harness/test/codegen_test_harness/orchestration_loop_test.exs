@@ -516,7 +516,10 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
   describe "verify_committed! (structural gap #9)" do
     setup do
       dir =
-        Path.join(System.tmp_dir!(), "verify_committed_test_#{:erlang.unique_integer([:positive])}")
+        Path.join(
+          System.tmp_dir!(),
+          "verify_committed_test_#{:erlang.unique_integer([:positive])}"
+        )
 
       File.mkdir_p!(dir)
       on_exit(fn -> File.rm_rf!(dir) end)
@@ -587,7 +590,11 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
                  pitch: "do the thing",
                  invoke_fn: invoke_fn,
                  gate_fn: always_clear_gate_fn(),
-                 advance_cycle_state_fn: fn _state, _step_log, _session_id, _verdict, _project_dir ->
+                 advance_cycle_state_fn: fn _state,
+                                            _step_log,
+                                            _session_id,
+                                            _verdict,
+                                            _project_dir ->
                    :ok
                  end
                )

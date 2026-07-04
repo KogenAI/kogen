@@ -473,6 +473,7 @@ defmodule CodegenTestHarness.LoopQueueDrain do
 
     args = [
       "--harness=#{harness}",
+      "--elixir",
       "--non-interactive",
       "--stack=#{stack}",
       "--cwd=#{cwd}",

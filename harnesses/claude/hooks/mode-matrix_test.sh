@@ -65,22 +65,27 @@ make_transcript() {
         "$log_path" >"$transcript_path"
 }
 
-# mk_agent_input <subagent_type> <transcript_path>
+# mk_agent_input <subagent_type> <transcript_path> [cwd]
 mk_agent_input() {
     local stype="$1"
     local transcript_path="$2"
+    local cwd="${3:-}"
     jq -n \
         --arg s "$stype" \
         --arg t "$transcript_path" \
-        '{"hook_event_name":"PreToolUse","tool_name":"Agent","tool_input":{"subagent_type":$s,"description":"x","prompt":"y"},"agent_id":"","agent_type":"","transcript_path":$t}'
+        --arg c "$cwd" \
+        '{"hook_event_name":"PreToolUse","tool_name":"Agent","tool_input":{"subagent_type":$s,"description":"x","prompt":"y"},"agent_id":"","agent_type":"","transcript_path":$t,"cwd":$c}'
 }
 
-# composed_verdict <role> <subagent_type> <transcript_path>
+# composed_verdict <role> <subagent_type> <transcript_path> [cwd]
 # Pipes Agent input through all discovered Agent-matcher hooks in order; first deny wins.
+# Optional [cwd] scopes hooks' CWD resolution (e.g. codegen/logging/.active lookup) to a
+# fixture directory instead of leaking the real repo's ambient $PWD/.active sentinel.
 composed_verdict() {
     local role="$1"
     local stype="$2"
     local transcript_path="$3"
+    local cwd="${4:-}"
 
     local hooks=()
     while IFS= read -r h; do
@@ -88,7 +93,7 @@ composed_verdict() {
     done < <(discover_agent_hooks)
 
     local agent_input
-    agent_input=$(mk_agent_input "$stype" "$transcript_path")
+    agent_input=$(mk_agent_input "$stype" "$transcript_path" "$cwd")
 
     for hook in "${hooks[@]}"; do
         local out
@@ -152,7 +157,7 @@ out4=$(composed_verdict "" "Explore" "$EMPTY_TRANSCRIPT")
 assert_deny "row4: no-role + Explore + no-log → deny" "$out4"
 
 # Row 5: no role, developer-phoenix-backend, with-log + section header → allow
-out5=$(composed_verdict "" "developer-phoenix-backend" "$TRANSCRIPT5")
+out5=$(composed_verdict "" "developer-phoenix-backend" "$TRANSCRIPT5" "$LOG5_DIR")
 assert_allow "row5: no-role + developer-phoenix-backend + with-log+header → allow" "$out5"
 
 # ── Results ────────────────────────────────────────────────────────────────────
