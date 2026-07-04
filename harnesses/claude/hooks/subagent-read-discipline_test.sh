@@ -148,7 +148,7 @@ STEP11="$(make_fixture_dir "$TMP11")"
 TRANS11="${TMP11}/transcript.jsonl"
 make_step_log "$STEP11" "- context/builds.md (EDIT) — update section" ""
 make_transcript "$TRANS11" "$STEP11"
-F11='{"hook_event_name":"PreToolUse","tool_name":"Read","tool_input":{"file_path":"context/builds.md"},"agent_id":"abc","agent_type":"developer-phoenix-backend","transcript_path":"'"$TRANS11"'"}'
+F11='{"hook_event_name":"PreToolUse","tool_name":"Read","tool_input":{"file_path":"context/builds.md"},"agent_id":"abc","agent_type":"developer-phoenix-backend","transcript_path":"'"$TRANS11"'","cwd":"'"$TMP11"'"}'
 run_test "developer Read context/builds.md listed in plan allows" "0" "$F11"
 rm -rf "$TMP11"
 
@@ -183,8 +183,10 @@ run_test "developer-static Read PROJECT_CONTEXT.md denies (static stack)" "2" "$
 # ── Developer: fail-open on missing transcript ──────────────────────────────
 
 # Test 16: developer Read context/builds.md, empty TRANSCRIPT_PATH → ALLOW (fail-open)
-F16='{"hook_event_name":"PreToolUse","tool_name":"Read","tool_input":{"file_path":"context/builds.md"},"agent_id":"abc","agent_type":"developer-phoenix-backend","transcript_path":""}'
+TMP16="$(mktemp -d)"
+F16='{"hook_event_name":"PreToolUse","tool_name":"Read","tool_input":{"file_path":"context/builds.md"},"agent_id":"abc","agent_type":"developer-phoenix-backend","transcript_path":"","cwd":"'"$TMP16"'"}'
 run_test "developer Read context/*.md with empty transcript_path allows (fail-open)" "0" "$F16"
+rm -rf "$TMP16"
 
 # ── Reviewer: PROJECT_CONTEXT.md always denied ──────────────────────────────
 
@@ -200,7 +202,7 @@ STEP18="$(make_fixture_dir "$TMP18")"
 TRANS18="${TMP18}/transcript.jsonl"
 make_step_log "$STEP18" "" "- context/builds.md"
 make_transcript "$TRANS18" "$STEP18"
-F18='{"hook_event_name":"PreToolUse","tool_name":"Read","tool_input":{"file_path":"context/builds.md"},"agent_id":"abc","agent_type":"reviewer-phoenix","transcript_path":"'"$TRANS18"'"}'
+F18='{"hook_event_name":"PreToolUse","tool_name":"Read","tool_input":{"file_path":"context/builds.md"},"agent_id":"abc","agent_type":"reviewer-phoenix","transcript_path":"'"$TRANS18"'","cwd":"'"$TMP18"'"}'
 run_test "reviewer Read context/builds.md in ## Files Modified allows" "0" "$F18"
 rm -rf "$TMP18"
 

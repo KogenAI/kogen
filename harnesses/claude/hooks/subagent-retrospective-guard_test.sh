@@ -51,10 +51,17 @@ make_transcript() {
 make_input() {
     local agent_type="$1"
     local transcript_path="${2:-}"
+    # cwd defaults to the transcript's own tmpdir (its dirname) so this fixture's
+    # session_log_from_transcript() call never falls through to the real repo
+    # $PWD's codegen/logging/.active sentinel — isolates the test from whatever
+    # live session happens to be running `make test`. Pass "" explicitly to
+    # exercise the true empty-cwd fail-open/fallback path when needed.
+    local cwd="${3-$(dirname "${transcript_path:-}")}"
     jq -n \
         --arg agent_type "$agent_type" \
         --arg transcript_path "$transcript_path" \
-        '{"hook_event_name":"SubagentStop","agent_type":$agent_type,"agent_id":"test","session_id":"testsession","transcript_path":$transcript_path,"cwd":""}'
+        --arg cwd "$cwd" \
+        '{"hook_event_name":"SubagentStop","agent_type":$agent_type,"agent_id":"test","session_id":"testsession","transcript_path":$transcript_path,"cwd":$cwd}'
 }
 
 # ── Test 1: Missing retrospective block → BLOCK ──────────────────────────────

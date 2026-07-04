@@ -6,29 +6,19 @@ System prompt assembly: `tools-header/<mode>.txt` + entries in `prompt_body[]` (
 
 ## Components
 
-| File / Dir                                        | Purpose                                                                        |
-| ------------------------------------------------- | ------------------------------------------------------------------------------ |
-| `harnesses/claude/claude-build.sh`                | Build mode launcher — sets model/effort, invokes `claude`                      |
-| `harnesses/claude/claude-debug.sh`                | Debug mode launcher (Opus, high effort)                                        |
-| `harnesses/claude/claude-experiment.sh`           | Experiment mode (Opus, high, source-writable, `--worktree exp-<slug>`)         |
-| `harnesses/claude/claude-shape.sh`                | Shape mode (Opus, high effort, web tools)                                      |
-| `harnesses/claude/claude-ops.sh`                  | Ops mode launcher (Opus, high effort)                                          |
-| `harnesses/claude/dispatch.sh`                    | Mode dispatcher — reads manifest, sets flags, execs claude                     |
-| `harnesses/claude/load-role.sh`                   | Runtime config reader for shape/ops/debug/experiment; skipped in build (baked) |
-| `harnesses/claude/tools-header/`                  | Per-mode prompt headers (build, debug, experiment, shape, ops)                 |
-| `harnesses/claude/claude-code-settings.json`      | Claude Code hook/permission config (source)                                    |
-| `harnesses/claude/claude-build-system-prompt.txt` | Generated — concat of tools-header + prompt-body (do not hand-edit)            |
-| `harnesses/claude/commands/`                      | Slash commands → `~/.claude/commands/`                                         |
-| `harnesses/pi/pi-build.sh`                        | Pi build mode launcher                                                         |
-| `harnesses/pi/pi-debug.sh`                        | Pi debug mode launcher                                                         |
-| `harnesses/pi/pi-experiment.sh`                   | Experiment mode (tool-allowlist + prompt confinement)                          |
-| `harnesses/pi/pi-shape.sh`                        | Pi shape mode launcher                                                         |
-| `harnesses/pi/pi-ops.sh`                          | Pi ops mode launcher                                                           |
-| `harnesses/pi/dispatch.sh`                        | Pi mode dispatcher                                                             |
-| `harnesses/pi/pi-prompts/`                        | Pi-specific prompt fragments                                                   |
-| `harnesses/shared/prompt-bodies/`                 | Shared body text (build, debug, experiment, shape, ops) — both harnesses       |
-| `shared/prompt-fragments/`                        | Reusable fragments (`_probing.txt`, `_authoring-spine.txt`)                    |
-| `harnesses/claude/commands/`                      | Slash commands (`.md.j2` templates) → `~/.claude/commands/`                    |
+| File / Dir                                                      | Purpose                                            |
+| --------------------------------------------------------------- | -------------------------------------------------- |
+| `harnesses/claude/claude-{build,debug,experiment,shape,ops}.sh` | Mode launchers                                     |
+| `harnesses/claude/dispatch.sh`                                  | Mode dispatcher                                    |
+| `harnesses/claude/load-role.sh`                                 | Runtime config reader (shape/ops/debug/experiment) |
+| `harnesses/claude/tools-header/`                                | Per-mode prompt headers                            |
+| `harnesses/claude/claude-code-settings.json`                    | Hook/permission config (source)                    |
+| `harnesses/claude/claude-build-system-prompt.txt`               | Generated prompt (do not hand-edit)                |
+| `harnesses/pi/pi-{build,debug,experiment,shape,ops}.sh`         | Pi mode launchers                                  |
+| `harnesses/pi/dispatch.sh`                                      | Pi mode dispatcher                                 |
+| `harnesses/shared/prompt-bodies/`                               | Shared prompt body (both harnesses)                |
+| `shared/prompt-fragments/`                                      | Reusable fragments                                 |
+| `harnesses/claude/commands/`                                    | Slash commands (`.md.j2` templates)                |
 
 ## Dispatch & Session Re-Attach API
 
@@ -84,27 +74,17 @@ tools-header/<mode>.txt   (per-harness: mode title + ## Tools + any pre-Tools co
 
 **Mode assembly map:**
 
-| Mode  | tools-header contains (per-harness)                                                                                                        | prompt_body list (shared)                                                                                             |
-| ----- | ------------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------- |
-| build | `## Tools` + harness-specific tool list + FIRST-TURN bullets + `## Cycle Protocol` / `## Step Queue Protocol`                              | [harnesses/shared/prompt-bodies/build.txt] — neutral tool-discipline lines, Commit Hygiene, shared FIRST-TURN bullets |
-| debug | `## Tools` + harness-specific tool list + FORBIDDEN list + cross-repo grep allowance                                                       | [harnesses/shared/prompt-bodies/debug.txt] — no-cat-pipe line + Protocol + Forbidden + Refusal & Pivot                |
-| shape | `## Tools` + harness-specific tool bullets (claude: Agent/Skill/AskUserQuestion/Write-Edit; pi: askuserquestion/subagents/web-utils names) | [shared/prompt-bodies/shape.txt, _probing.txt, _authoring-spine.txt] — mode-title + no-cat-pipe line                  |
-| ops   | `## Tools` + harness-specific per-tool bullets                                                                                             | [harnesses/shared/prompt-bodies/ops.txt] — starts with Cold-Start Opening block, followed by procedural ops rules     |
+| Mode  | tools-header contains (per-harness)                                                                                                        | prompt_body list (shared)                                                                                                                                      |
+| ----- | ------------------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| build | `## Tools` + harness-specific tool list + FIRST-TURN bullets + `## Cycle Protocol` / `## Step Queue Protocol`                              | [harnesses/shared/prompt-bodies/build.txt] — neutral tool-discipline lines, Commit Hygiene, shared FIRST-TURN bullets                                          |
+| debug | `## Tools` + harness-specific tool list + FORBIDDEN list + cross-repo grep allowance                                                       | [harnesses/shared/prompt-bodies/debug.txt] — no-cat-pipe line + Protocol + Forbidden + Refusal & Pivot                                                         |
+| shape | `## Tools` + harness-specific tool bullets (claude: Agent/Skill/AskUserQuestion/Write-Edit; pi: askuserquestion/subagents/web-utils names) | [harnesses/shared/prompt-bodies/shape.txt, shared/prompt-fragments/_probing.txt, shared/prompt-fragments/_authoring-spine.txt] — mode-title + no-cat-pipe line |
+| ops   | `## Tools` + harness-specific per-tool bullets                                                                                             | [harnesses/shared/prompt-bodies/ops.txt] — starts with Cold-Start Opening block, followed by procedural ops rules                                              |
 
-**Placement checklist** — content location decision:
+**Placement checklist**:
 
-- **→ per-harness header** (must differ):
-  - Tool names differing per harness (e.g., claude `Agent` vs pi `subagents`)
-  - Launcher flags / hook-capability differences
-  - Install paths specific to one harness (`~/.claude/hooks/`, `~/.claude/settings.json`)
-  - Per-harness protocol names (`## Cycle Protocol` vs `## Step Queue Protocol`)
-  - Harness-specific ritual wording, invocation sentence, post-commit hook names
-
-- **→ shared body** (identical across harnesses):
-  - Neutral tool-usage discipline (no-cat-pipe, no-explore)
-  - Orchestration rules (session logs, context-curator naming)
-  - Commit Hygiene, WHY-handoff, cold-start gates
-  - Harness-agnostic behavior (headless mode, output style, forbidden actions)
+- **→ per-harness header**: Tool names differing (claude `Agent` vs pi `subagents`); launcher flags; install paths; protocol names
+- **→ shared body**: Neutral tool discipline; orchestration rules; commit hygiene; harness-agnostic behavior
 
 **Fragment paths** in manifest are relative to `CODEGEN_DIR`. The `manifest_mode_get` function returns scalars; `prompt_body` uses `yq '.modes.<mode>.prompt_body[]'` to enumerate the list.
 
@@ -116,7 +96,7 @@ tools-header/<mode>.txt   (per-harness: mode title + ## Tools + any pre-Tools co
 
 **Shape investigative disciplines**: Shape mode includes `_authoring-spine.txt`, which encodes readiness-loop gates (context load → investigation → readiness check). Spine enforces six core rules (A–F): intent-guard, plain-language, command-pairing auto-cover, dedup, symptom-vs-target, context-drift auto-cover. Also enforces deletion-safety blockers: un-investigated rabbit holes, untraced edit surface, dangling cross-refs. See `context/subagents.md` § Authoring Spine Rules. Intent-guard (A) patched into empirical-claim option-(b) in `shape.txt`, forbidding any readiness option to nullify core intent.
 
-**Shaper ask-vs-decide classifier** (hardened): Ask ONLY when answer changes user experience or user-controlled identity — UX copy/flow/behavior, product-intent fork (A vs B), user-owned identity. Test: "Does answer change PRODUCT behavior?" If no → auto-decide. Never-ask: tools/models, environment, input processing, pitch scope, naming, dir/file placement. Behaviors: (1) **answered-question memory** — scan prior answers; already-answered/deflected = binding (no re-ask); (2) **cold-start raw-material** — user arrives with audio/notes → shaper states plan, reads material, writes SKELETON pitches into `codegen/pitches/draft/`. Auto-decide engineering choices: install-guarantee, fail-closed-when-guaranteed, internal naming, split strategy (record as `Assumed: <key> = <value>`; override rule at step c' in shape.txt).
+**Shaper ask-vs-decide classifier**: Ask when answer changes product behavior (UX, copy, intent fork). Never-ask: tools, models, env, naming, placement. Behaviors: (1) answered-question memory (no re-ask), (2) cold-start raw-material (reads input, writes SKELETON drafts). Auto-decide engineering choices; record as `Assumed: key=value`.
 
 **SSH target resolution paths (ops/debug launchers)**: `resolve_ssh_target()` in `ssh-target.sh` has three distinct resolution outcomes: (1) **HIT** — candidate alias is found in `~/.ssh/config` as a defined Host; (2) **MISS-save** — user typed a bare IP that `ssh -G` cannot resolve; treat the IP as a new Host and save it to config under the candidate alias name; (3) **MISS-existing** — user typed an alias that IS defined in `~/.ssh/config` but differs from the candidate (user deliberately chose an existing alias, not the candidate). The connect alias MUST be different on the third path: use `$user_alias` (what the user typed, which IS a real Host), NOT `$candidate` (which has no defined Host block on this path). All three paths export `${prefix}_ALIAS` for consumption by launchers (debug/ops). When `${prefix}_ALIAS` is empty, fall back to `server_resolved` (bare IP) so the exported value is never empty and launcher self-check commands (`ssh ${DEBUG_ALIAS}`) remain well-formed. Tests assert the alias export on all three paths: `T-new-11` (HIT), `T-new-12` (MISS-save), `T-new-13` (MISS-existing).
 
@@ -126,11 +106,11 @@ tools-header/<mode>.txt   (per-harness: mode title + ## Tools + any pre-Tools co
 
 **Fragment references in shared bodies** — `_authoring-spine.txt` references `~/.claude/settings.json` as a debugging target for enforcement-bug investigation. This is SHARED investigative discipline (correct in Pi assembled prompt). Distinction: `~/.claude/hooks/` / `orchestrator-no-source-edit.sh` are Claude-only (remove from Pi header); `~/.claude/settings.json` as inspection target is cross-harness (keep in shared).
 
-**Deferral-with-draft contract**: Every deferral (deferred/future work/phase 2/out-of-scope/cut-1) MUST be backed by a real `codegen/pitches/draft/<slug>.md`. Pitch references it (e.g., "deferred — see `<slug>`"). Prose-only deferral = blocker, not resolution. Security/safety deferrals (auth, access, secrets, deletion) must state exposure assumption in draft rationale (e.g., "safe only while box unreachable"). Prevents shipped incomplete features.
+**Deferral-with-draft contract**: Every deferral MUST be backed by real `codegen/pitches/draft/<slug>.md`. Prose-only deferral = blocker. Security/safety deferrals must state exposure assumptions.
 
-**Decompose-then-split rule** (Rule G): Shaper SPLITS problems spanning multiple surfaces/missing prerequisites into N independently-buildable pitches — NOT asking user "split how?". Splitting is eng-decomposition, not user choice. Only product forks (feature A vs B) reach user. Emit: `Decomposed: extracted pitches <slug-1>, <slug-2> …`
+**Decompose-then-split rule** (Rule G): SPLIT multi-surface problems into independent pitches (eng-decomposition, not user choice). Only product forks reach user.
 
-**Derive-and-write dependency edges rule** (Rule H): Shaper DERIVES build-order edges (code reading) and WRITES as `Blocks-on: <slug>` in `## Dependencies` blocks. Omitted edges → silent mis-order. Shaper does NOT ask user. Circular/ambiguous from code → AskUserQuestion. Derivable → auto-decide. Grammar in `pitch-format-contract.md`. Every split MUST have correct `## Dependencies` blocks.
+**Derive-and-write dependency edges rule** (Rule H): DERIVE `Blocks-on:` edges from code; omitted edges → silent mis-order. Auto-derive; ask only on circular/ambiguous cases.
 
 ## Multi-Pitch Protocol
 
@@ -141,13 +121,7 @@ Per-harness tools-headers now contain complete multi-pitch sequencing rules for 
 - **Claude** (`harnesses/claude/tools-header/build.txt` — the Cycle Protocol section) — uses "cycle" and "pitch" vocabulary; sequences via `Cycle Protocol` section
 - **Pi** (`harnesses/pi/tools-header/build.txt` — the Step Queue Protocol section) — uses "step queue" and "queue position" vocabulary; sequences via the multi-pitch sequencing rules in Step Queue Protocol
 
-**The five rules** (identical intent, harness-specific vocabulary):
-
-1. **One session log per pitch** — each pitch file gets its own `<ts>_<slug>_session.md` log; never combine pitches.
-2. **Strict sequencing** — complete the full cycle/queue for pitch[i] (including ready/→shipped/ move) before starting pitch[i+1]; never overlap or parallelize.
-3. **Dependency-order pre-check** — before building starts, read each pitch's `## Dependencies / Blocks-on:` edges; if argv order violates any declared edge, STOP and report the violation; do NOT auto-reorder.
-4. **Mid-queue halt** — if pitch[i]'s cycle fails (gate fails after one dev retry), HALT at position i; do NOT skip ahead to pitch[i+1].
-5. **Queue continuity is autonomous** — after pitch[i] ships, immediately begin pitch[i+1]'s cycle with zero interruption: emit no chat text, ask zero questions. NEVER solicit user permission to continue ("Should I proceed with pitch #2?", "Should I continue?", "are you stopping these builds intentionally?"). The ONLY legitimate stop is rule 4 (Mid-queue halt on gate failure).
+**Five-rule protocol**: (1) one session log per pitch; (2) strict sequencing (full cycle before next); (3) pre-check `Blocks-on:` edges; (4) halt on cycle failure; (5) autonomous continuity (zero interruption, no permission prompts).
 
 **Pre-check semantics**: The multi-pitch orchestrator reads `Blocks-on:` edges BEFORE any building starts. If a pitch declares `Blocks-on: foo` but `foo` is not in argv, or if argv order places a blocking pitch after the dependent pitch, the build stops immediately with a violation report. This prevents silent mis-ordering that would break build semantics.
 
@@ -161,13 +135,7 @@ Per-harness tools-headers now contain complete multi-pitch sequencing rules for 
 
 **Ready command source isolation**: `ready.md.j2` includes ONLY `_probing.txt`, NOT `_authoring-spine.txt`. Spine-fragment edits don't propagate to `/ready`. Intentional: `/ready` is single-turn; spine encodes multi-turn shape loop.
 
-**Empirical-claim probe-list homes** — allowed-probes authored in THREE places:
-
-1. `shared/prompt-fragments/_probing.txt` — canonical; included by `/ready` + `/poke-holes`; appended to shape body
-2. `harnesses/shared/prompt-bodies/shape.txt` — inline copy (allowed-probes + FORBIDDEN)
-3. `harnesses/claude/commands/ready.md.j2` — inline copy; includes `_probing.txt` for `/ready`
-
-Edits must land in all three. Skipping `_probing.txt` causes pitch-scoping error — it ships in four contexts.
+**Empirical-claim probe-list homes**: (1) canonical `_probing.txt`, (2) inline shape.txt, (3) ready.md.j2. Edits land in all three or pitch-scoping fails.
 
 ## Dispatcher Routing
 

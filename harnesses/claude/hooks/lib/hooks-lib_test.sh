@@ -179,7 +179,7 @@ make_edit_line() {
 TMP_T1=$(mktemp -d)
 make_write_line "$TMP_T1/codegen/logging/A_session.md" >"$TMP_T1/transcript.jsonl"
 mkdir -p "$TMP_T1/codegen/logging" && : >"$TMP_T1/codegen/logging/A_session.md"
-result=$(TRANSCRIPT_PATH="$TMP_T1/transcript.jsonl" bash -c "source '$SCRIPT_DIR/hooks-lib.sh'; session_log_from_transcript")
+result=$(TRANSCRIPT_PATH="$TMP_T1/transcript.jsonl" CWD="$TMP_T1" bash -c "source '$SCRIPT_DIR/hooks-lib.sh'; session_log_from_transcript")
 assert_eq "session_log_from_transcript: A only → A path" "$TMP_T1/codegen/logging/A_session.md" "$result"
 rm -rf "$TMP_T1"
 
@@ -187,7 +187,7 @@ rm -rf "$TMP_T1"
 TMP_T2=$(mktemp -d)
 make_write_line "$TMP_T2/codegen/logging/B_session.md" >"$TMP_T2/transcript.jsonl"
 mkdir -p "$TMP_T2/codegen/logging" && : >"$TMP_T2/codegen/logging/B_session.md"
-result=$(TRANSCRIPT_PATH="$TMP_T2/transcript.jsonl" bash -c "source '$SCRIPT_DIR/hooks-lib.sh'; session_log_from_transcript")
+result=$(TRANSCRIPT_PATH="$TMP_T2/transcript.jsonl" CWD="$TMP_T2" bash -c "source '$SCRIPT_DIR/hooks-lib.sh'; session_log_from_transcript")
 assert_eq "session_log_from_transcript: B only → B path" "$TMP_T2/codegen/logging/B_session.md" "$result"
 rm -rf "$TMP_T2"
 
@@ -198,30 +198,34 @@ TMP_T3=$(mktemp -d)
     make_write_line "$TMP_T3/codegen/logging/B_session.md"
 } >"$TMP_T3/transcript.jsonl"
 mkdir -p "$TMP_T3/codegen/logging" && : >"$TMP_T3/codegen/logging/A_session.md" && : >"$TMP_T3/codegen/logging/B_session.md"
-result=$(TRANSCRIPT_PATH="$TMP_T3/transcript.jsonl" bash -c "source '$SCRIPT_DIR/hooks-lib.sh'; session_log_from_transcript")
+result=$(TRANSCRIPT_PATH="$TMP_T3/transcript.jsonl" CWD="$TMP_T3" bash -c "source '$SCRIPT_DIR/hooks-lib.sh'; session_log_from_transcript")
 assert_eq "session_log_from_transcript: interleaved A+B → last (B)" "$TMP_T3/codegen/logging/B_session.md" "$result"
 rm -rf "$TMP_T3"
 
 # Case 4: Zero tool_use writes to logging path → empty.
 TMP_T4=$(mktemp -d)
 printf '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Write","input":{"file_path":"/tmp/other/not-logging.md"}}]}}\n' >"$TMP_T4/transcript.jsonl"
-result=$(TRANSCRIPT_PATH="$TMP_T4/transcript.jsonl" CODEGEN_BUILD_NON_INTERACTIVE="" bash -c "source '$SCRIPT_DIR/hooks-lib.sh'; session_log_from_transcript")
+result=$(TRANSCRIPT_PATH="$TMP_T4/transcript.jsonl" CODEGEN_BUILD_NON_INTERACTIVE="" CWD="$TMP_T4" bash -c "source '$SCRIPT_DIR/hooks-lib.sh'; session_log_from_transcript")
 assert_eq "session_log_from_transcript: no logging writes → empty" "" "$result"
 rm -rf "$TMP_T4"
 
 # Case 5: TRANSCRIPT_PATH="" → empty.
-result=$(TRANSCRIPT_PATH="" CODEGEN_BUILD_NON_INTERACTIVE="" bash -c "source '$SCRIPT_DIR/hooks-lib.sh'; session_log_from_transcript")
+TMP_T5=$(mktemp -d)
+result=$(TRANSCRIPT_PATH="" CODEGEN_BUILD_NON_INTERACTIVE="" CWD="$TMP_T5" bash -c "source '$SCRIPT_DIR/hooks-lib.sh'; session_log_from_transcript")
 assert_eq "session_log_from_transcript: empty TRANSCRIPT_PATH → empty" "" "$result"
+rm -rf "$TMP_T5"
 
 # Case 6: TRANSCRIPT_PATH set to non-existent file → empty.
-result=$(TRANSCRIPT_PATH="/tmp/no-such-transcript-$(date -u +%s).jsonl" CODEGEN_BUILD_NON_INTERACTIVE="" bash -c "source '$SCRIPT_DIR/hooks-lib.sh'; session_log_from_transcript")
+TMP_T6=$(mktemp -d)
+result=$(TRANSCRIPT_PATH="/tmp/no-such-transcript-$(date -u +%s).jsonl" CODEGEN_BUILD_NON_INTERACTIVE="" CWD="$TMP_T6" bash -c "source '$SCRIPT_DIR/hooks-lib.sh'; session_log_from_transcript")
 assert_eq "session_log_from_transcript: missing file → empty" "" "$result"
+rm -rf "$TMP_T6"
 
 # Case 7: Edit tool_use also matched.
 TMP_T7=$(mktemp -d)
 make_edit_line "$TMP_T7/codegen/logging/edit_session.md" >"$TMP_T7/transcript.jsonl"
 mkdir -p "$TMP_T7/codegen/logging" && : >"$TMP_T7/codegen/logging/edit_session.md"
-result=$(TRANSCRIPT_PATH="$TMP_T7/transcript.jsonl" bash -c "source '$SCRIPT_DIR/hooks-lib.sh'; session_log_from_transcript")
+result=$(TRANSCRIPT_PATH="$TMP_T7/transcript.jsonl" CWD="$TMP_T7" bash -c "source '$SCRIPT_DIR/hooks-lib.sh'; session_log_from_transcript")
 assert_eq "session_log_from_transcript: Edit tool_use matched" "$TMP_T7/codegen/logging/edit_session.md" "$result"
 rm -rf "$TMP_T7"
 

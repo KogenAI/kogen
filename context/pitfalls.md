@@ -8,7 +8,7 @@ Codegen-infra pitfalls and bash gotchas — split from `context/development.md` 
 - **`make install` registry/settings.json parity** — add registry.yaml entry, add .sh file, run `hook_registrations.py --output-settings` BEFORE `make install` to regenerate settings.json. Running `make install` first causes hook-parity diff to fail (generator creates fresh settings.json that differs from committed version).
 - **Bash heredoc keeps loop state** — `while <<EOF` not `|` pipe.
 - **TS `execFileSync` args: array not string** — pass `['commit', '-m', 'msg']`, not string. `.trim()` loses trailing-newline; use trim in some contexts (gitLog), not others (gitBlob).
-- **Check WIP/uncommitted before planning** — Large in-flight changes require reconciliation against pitch. Skipping risks redundant/contradictory work.
+- **Check WIP before planning** — Large in-flight changes need reconciliation against pitch.
 - **`manifest_regenerate_prompts` file check** — new prompt-source `.txt` files must exist before `make install` (tools-header, prompt bodies). Gate's install round-trip catches missing files.
 - **yq binary must be mikefarah, not python-yq** — wrong binary causes silent manifest parsing errors.
 - **`npm install` at codegen root required** — absent → hooks emit INCONCLUSIVE.
@@ -29,10 +29,10 @@ Codegen-infra pitfalls and bash gotchas — split from `context/development.md` 
 - **Session log filename format must include `_HHMMSS`** — non-canonical forms (e.g., `YYYYMMDD-slug.md`) are blocked by reviewer-guard and dev-gate hooks at Edit time
 - **Hook deletion: full-vocabulary grep post-deletion** — Search filename, id, deny-message substrings across ALL `_test.sh`, README.md, libraries, headers (not just paired test file). Pitch inventory misses 6+ stale sites. Repo-wide grep after core deletion, before `make test` verify.
 - **Makefile recipes run under `/bin/sh`, not bash** — process substitution fails. Use pipeline patterns instead of bash-specific syntax.
-- **Flaky tests often indicate state leakage, not async timing** — investigate persistent state first (counter files, temp dirs). Cleanup in `afterEach` required for counter files (e.g., `claude-autoship-guard-<sessionId>.count`).
-- **Test isolation scoping** — TS: capture streams at test-body; restore both paths. Env cleanup in BOTH `beforeEach`/`afterEach`. Bash: trap-clean temps; PATH stubs per-line. Layering: clean→symlink→dirty.
-- **Managed-build env var pollution** — `CODEGEN_BUILD_START_TS`, `CODEGEN_BUILD_NON_INTERACTIVE`, `OCG_CODEGEN_DIR` persist after live build. Strip via the `unset` line in `run-tests.sh` before test invocation.
-- **Pi test essentials** — Create real temps at test paths. `npm run build` before test (runs on `dist/`). Grep for `fail 0` to verify; "FAIL:" in names is description, not failure.
+- **Flaky tests: investigate state leakage, not timing** — Check counter files, temp dirs. Cleanup in `afterEach` required.
+- **Test isolation scoping** — Capture streams at test-body, restore both paths. Env cleanup in beforeEach/afterEach. Bash: trap-clean temps, PATH stubs.
+- **Managed-build env var pollution** — Strip via `unset` line in `run-tests.sh` before tests.
+- **Pi test essentials** — Create real temps at test paths. `npm run build` before test (runs on `dist/`).
 - **`make test` tail-capture hides earlier summaries** — Piping to `| tail -N` drops hook-parity and bash hook-test summaries even when final `ALL CLEAR ✅` is green. Verify new assertions by re-running the test file directly to confirm execution.
 - **`make test` npm-ext transient race** — Extensions run in parallel; enforcement tsc writes `dist/` while tests import from it. Slow machines see transient "module not found". Re-run passes; not durable.
 - **SENTINEL parity check** — Before `make install`, verify SENTINELs in both sources via `grep -c "SENTINEL_TEXT" file1 file2`
@@ -41,9 +41,9 @@ Codegen-infra pitfalls and bash gotchas — split from `context/development.md` 
 - **`templates/generator/install_test.sh` not auto-discovered** — Only `test_harness/install/*_test.sh` auto-discovered. Tests in both dirs must reconcile sentinels when editing install.sh. Conflicts surface on full `make test` when both hooks auto-run.
 - **session-log-writer-only guards all session-log writes** — `codegen-log` is the SOLE writer; guards Edit/Write/MultiEdit and raw Bash writes (redirect/tee/move) to `codegen/logging/*.md`. Workaround: `mktemp/cmp/mv` no longer bypasses the hook — must invoke `codegen-log`.
 - **[local] Byte-cap trimming** — Measure `wc -c` BEFORE appending; bulk edits near cap need stale-bullet trims to make room.
-- **[shared] Stale-doc-twin defect requires FULL vocabulary grep** — Subsystem docs often span multiple `context/*.md` files. When fixing a drift claim, grep the FULL vocabulary across ALL context files before marking complete. Fixing only the open diff leaves twin stale claims uncorrected, creating contradictory context for the next session.
-- **Repo-level counters: distinct interface + `_substrate_root` resolver pattern** — `analysis/counters/<name>.py` implements `run_repo(config) -> List[Finding]` (repo-level) vs `run(session, config) -> List[Finding]` (per-session). Repo-level counters scan repo artifacts once (no double-count per transcript) and run AFTER the per-session loop via `ALL_REPO_COUNTERS` list. Any counter reading `codegen/logging/` must mirror `hook_intervention._substrate_root`: `project_dir` set (test) → scan `project_dir` directly; else → `config.codegen_dir / "codegen" / "logging"` (fixture convention places substrate directly under test `project_dir`, not nested).
-- **Sole-writer migrations must reconcile ALL command-scanning guards** — Deny-hook is only the first stop. Any other guard pattern-matching the old tool shape must update IN SAME CHANGE. Failure: downstream guards never recognize new tool shape. Fix: grep all guards for old patterns BEFORE enforcement commit.
+- **[shared] Stale-doc-twin defect** — Subsystem docs span multiple `context/*.md` files. Grep FULL vocabulary across ALL files when fixing drift. Fixing only the open diff leaves twin claims uncorrected.
+- **Repo-level counters: `_substrate_root` pattern** — Repo-level vs per-session counters. Repo-level scans once (no double-count) via `ALL_REPO_COUNTERS` list. Reading `codegen/logging/`: check `project_dir` first (test), else use `config.codegen_dir / "codegen" / "logging"`.
+- **Sole-writer migrations: reconcile ALL command-scanning guards** — Grep all guards for old patterns BEFORE enforcement commit; deny-hook is only first stop.
 - **Bash test forward-reference trap** — Variables defined later unreachable under `set -u`. Define at top or embed inline.
 - **[shared] `jq input_line_number` stable within same pipeline** — `input_line_number` values in the same pipeline are stable. A same-line tie → equal `$ln` for both scans; use `-ge` (not `-gt`) to allow ties.
 - **codegen-log command-scan bypass shipped** — 12 phrase-counting Claude hooks + Pi twins all call `is_codegen_log_write`/`isCodegenLogWrite` BEFORE any grep/counter. Session-log WRITE prose never triggers gated-action denial [FIXED, Phase 4].
@@ -68,9 +68,9 @@ Codegen-infra pitfalls and bash gotchas — split from `context/development.md` 
 - **Context files carry a 40 KB advisory cap** — `context/*.md` files have 40,960-byte limit. Compress or split when near cap.
 - **Exit-code capture under `set -u`** — `local rc; raw=$(cmd) || rc=$?; rc=${rc:-0}`. `rc` unset on success. Distinguishes broken-cmd (empty) from `INCONCLUSIVE:*` verdicts.
 - **Makefile `@for` recipes are POSIX-only** — Accumulator: `fail=0; ... || fail=1; exit "$$fail"`.
-- **Pitch byte targets grow stale** — Re-measured at plan time; stale budgets fail gates.
-- **Heredoc piping with `>` redirects trips planner-guard** — Write to temp, redirect outside.
-- **Prettier re-pads markdown tables** — Column widths auto-align via prettier. Guard byte-capped context files by listing in `.prettierignore`: manual column-width alignment MUST be preserved in Edits.
+- **Pitch byte targets grow stale** — Stale budgets fail gates.
+- **Heredoc piping: write to temp, redirect outside** — Avoids planner-guard trip.
+- **Prettier re-pads markdown tables** — Column widths auto-align. Guard byte-capped files: list in `.prettierignore` to preserve alignment.
 - **Dual-read unset tests** — `env -u NEW -u OLD bash "$HOOK"` (single unset leaves fallback).
 - **Override var leakage in tests** — Prior `make test` runs may leave override env vars set. Tests exercising the DEFAULT branch must use `env -u RENDER_CHECK_CMD -u WIRING_CHECK_CMD` to isolate, else override branch silently activates.
 - **Managed-build env var pollution in tests** — `CODEGEN_BUILD_NON_INTERACTIVE=1` persists in test shell. Interactive-allow cases must use `env -u CODEGEN_BUILD_NON_INTERACTIVE bash` to isolate.
@@ -116,6 +116,9 @@ Codegen-infra pitfalls and bash gotchas — split from `context/development.md` 
 - **`parse_edges` multi-dep pitfall: captures only first dep per line** — Naive line-split + first-token extraction on `Blocks-on: a, b, c` gets only `a`. Always iterate ALL comma/space-separated tokens.
 - **`harnesses/shared/` scripts are NOT installed alongside launchers** — `install.sh` symlinks launchers to `~/.local/bin/` but NOT `harnesses/shared/`. Launchers calling `$SCRIPT_DIR/../shared/` work in repo but fail post-install. Fix: use `$OCG_CODEGEN_DIR/harnesses/shared/<script>.sh` with fallback, or add to manifest install steps.
 - **Launcher `$SCRIPT_DIR/../..` tree-climbing** — Works for symlinked paths only. Portable: check `OCG_CODEGEN_DIR` first, then `$SCRIPT_DIR/harnesses` presence, then fallback
+- **[shared] CWD-isolation in hook test fixtures** — Fixtures with `cwd:""` inherit real `$PWD`, leaking live session state. Derive cwd from tmpdir, not empty literal.
+- **[shared] Stale-bake false-positive in dev-gate** — `FAILED ❌` with uncommitted rule/template edits often stale-bake. Re-run `make install && make test` fresh. Multi-hook failure span signals missing `make install`.
+- **[local] Prettier table-repad in rule diffs** — Rule-only diff shows repad noise. Use `git diff -w` to isolate real content.
 
 ## Deployment / Distribution
 

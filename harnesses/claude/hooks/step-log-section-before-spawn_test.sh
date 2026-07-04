@@ -52,10 +52,17 @@ make_transcript() {
 mk_agent_input() {
     local stype="$1"
     local transcript_path="$2"
+    # cwd defaults to the transcript's own tmpdir (its dirname) so
+    # session_log_from_transcript()'s ${CWD:-$PWD}/codegen/logging/.active
+    # lookup never falls through to the real repo $PWD's live sentinel —
+    # isolates the test from whatever session happens to be running `make test`.
+    local cwd
+    cwd="$(dirname "${transcript_path:-}")"
     jq -n \
         --arg s "$stype" \
         --arg t "$transcript_path" \
-        '{"hook_event_name":"PreToolUse","tool_name":"Agent","tool_input":{"subagent_type":$s,"description":"x","prompt":"y"},"agent_id":"","agent_type":"","transcript_path":$t}'
+        --arg c "$cwd" \
+        '{"hook_event_name":"PreToolUse","tool_name":"Agent","tool_input":{"subagent_type":$s,"description":"x","prompt":"y"},"agent_id":"","agent_type":"","cwd":$c,"transcript_path":$t}'
 }
 
 mk_agent_input_with_cwd() {

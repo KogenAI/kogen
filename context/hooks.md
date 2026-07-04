@@ -154,7 +154,7 @@ slug=$(basename "$log" | sed -E 's/^[0-9]{8}_[0-9]{6}_(.+)_session\.md$/\1/')
 
 ### Session Log Filename Regex — Single-Source Contract (Phase 6)
 
-**Canonical regex** (authoritative source: `shared/rules/_core/session-log.md:8`):
+**Canonical regex** (authoritative source: `shared/rules/_core/session-log.md` § File Naming):
 
 ```
 [0-9]{8}_[0-9]{6}(_[a-z0-9_-]+)?_(session|step[0-9]+_[a-z0-9_-]+)\.md$

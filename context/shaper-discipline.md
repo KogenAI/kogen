@@ -263,6 +263,25 @@ Any one of the three missing → blocker.
 
 **Sibling-section design pattern**: the "Completeness Contract for X Pitches" sections (Sweep-class, Capability-removal, Replacement) form a crystallized pattern — each new completeness-contract rule should follow the same six-part subsection structure: (1) Invariant, (2) three-probe detector (or detection criteria), (3) carve-out or exception, (4) sub-rule or secondary mechanism, (5) resolution template, (6) producer/verifier layout + motivating incident. This consistency makes future similar additions predictable and aids readers building mental models across sibling rules. When a new contract-establishment pitch lands, review against this pattern checklist before committing.
 
+## Completeness Contract for Empirical-Usage-Grounding Pitches
+
+**Invariant**: for codegen's OWN command surface / flag set / verb set / on-disk format / teaching convention, the real contract for "what should this API be" is how it is ACTUALLY used and how it ACTUALLY fails — living in session transcripts, build logs, and the prior-pitch record — not in source-reading alone. A design decision made from code-reading with no usage evidence risks re-deciding a question the usage history already answered.
+
+**Detection criteria**: a codegen self-tooling pitch decides an API/convention/contract/naming design for a subject that already has a usage history, with no usage-mining evidence in `## References`.
+
+**Carve-out**: downstream Phoenix/static app pitches do NOT trigger this blocker — the three data sources (transcripts, build logs, pitch corpus) are codegen-local and irrelevant to consumer-app design decisions. A genuinely-new subject (brand-new command, zero prior invocations, no build-log mentions, no prior pitches) is not exempt from the check — it must note all three sources "checked, found empty," never silently skipped.
+
+**Sub-rule**: transcript extraction is best-effort — the `.jsonl` schema is Claude-Code-owned and can drift, so the rule names the GOAL (extract invocation signatures + error taxonomy), never a frozen jq expression. `codegen/logging/` is gitignored/ephemeral; when absent, source 2 legitimately yields nothing.
+
+**Resolution template**: AUTO-RESOLVE (mechanical, never `AskUserQuestion`) — run the mining now: jq-extract `tool_use` Bash commands + `is_error: true` results from `~/.claude/projects/<cwd-slashes-as-dashes>/*.jsonl`, grep `codegen/logging/*_session.md`, list `codegen/pitches/{shipped,archive,ready,draft}/` hits — embed all three transcripts in `## References`, then let the evidence inform the decision. Usage history is entirely in-repo; there is no product fork to ask about.
+
+**Producer/verifier layout**:
+
+- Producers: `harnesses/shared/prompt-bodies/shape.txt` (readiness blocker) + `shared/prompt-fragments/_probing.txt` (inline probe bullet).
+- Verifiers: `harnesses/claude/commands/ready.md.j2` (promotion-gate scan) + the `prompt-content-parity_test.sh` sentinel (`Empirical-usage-grounding`) asserting both baked shape prompts and `/ready` carry the rule.
+
+**Distinct from "Unverified empirical claims" / convention-claim verification mode**: that blocker checks whether a _claim_ is source-ENCODED (doc citation + confirming grep of the authoritative source); this blocker checks whether a _design decision_ is _usage-GROUNDED_ (mined from real invocation/failure history). Additive, not redundant — both may apply to the same pitch.
+
 ## Integration with `/ready` Command
 
 The `/ready` skill is a sibling investigation aid that gates a pitch's readiness-check loop. It carries a near-verbatim copy of the soft ask-vs-decide classifier and the deferral-with-draft contract rules. When the shape.txt rules change significantly, `/ready` may need parallel tightening to keep both tools in sync.
@@ -273,7 +292,7 @@ This is a SEPARATE pitch and change, not folded into shape-mode tightening. The 
 
 ## Trigger Keywords
 
-shaper rules, ask-vs-decide, deferral-with-draft, decompose-then-split, derive-and-write edges, Rule G, Rule H, Rule I, Rule J, shape mode discipline, prompt durability, section-name anchors, sweep-class, completeness contract, full-vocabulary sweep, producer/verifier reconciliation, operator-owned surface, user-facing surface removal, surface preservation, keep-vs-remove fork, contract-declaration-site completeness, declaration-site sweep, contract establishment, cross-cutting contract, declares-teaches bound, capability-removal reachability, deny blast radius, stranded actor, tool-grant reachability, sole remaining path, incomplete replacement, replacement completeness, WIRED RECONCILED PRESERVED, born-dead code, proxy probe, absorbs claim
+shaper rules, ask-vs-decide, deferral-with-draft, decompose-then-split, derive-and-write edges, Rule G, Rule H, Rule I, Rule J, shape mode discipline, prompt durability, section-name anchors, sweep-class, completeness contract, full-vocabulary sweep, producer/verifier reconciliation, operator-owned surface, user-facing surface removal, surface preservation, keep-vs-remove fork, contract-declaration-site completeness, declaration-site sweep, contract establishment, cross-cutting contract, declares-teaches bound, capability-removal reachability, deny blast radius, stranded actor, tool-grant reachability, sole remaining path, incomplete replacement, replacement completeness, WIRED RECONCILED PRESERVED, born-dead code, proxy probe, absorbs claim, empirical-usage-grounding, usage-mining, transcript mining, invocation frequency, error taxonomy, prior-pitch corpus, patch-sedimentation, design-decision grounding
 
 ## See Also
 

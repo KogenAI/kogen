@@ -313,6 +313,20 @@ assert_contains \
     "$CODEGEN_DIR/harnesses/claude/commands/ready.md.j2" \
     "$SENTINEL_INCOMPLETE_REPLACEMENT"
 
+SENTINEL_EMPIRICAL_USAGE="Empirical-usage-grounding"
+assert_contains \
+    "empirical-usage-grounding sentinel in claude-shape-system-prompt.txt" \
+    "$CODEGEN_DIR/harnesses/claude/claude-shape-system-prompt.txt" \
+    "$SENTINEL_EMPIRICAL_USAGE"
+assert_contains \
+    "empirical-usage-grounding sentinel in pi-shape-system-prompt.txt" \
+    "$CODEGEN_DIR/harnesses/pi/pi-shape-system-prompt.txt" \
+    "$SENTINEL_EMPIRICAL_USAGE"
+assert_contains \
+    "empirical-usage-grounding sentinel in ready.md.j2" \
+    "$CODEGEN_DIR/harnesses/claude/commands/ready.md.j2" \
+    "$SENTINEL_EMPIRICAL_USAGE"
+
 echo ""
 echo "Results: $pass passed, $fail failed"
 
