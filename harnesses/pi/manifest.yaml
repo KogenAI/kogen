@@ -71,6 +71,7 @@ modes:
       - shared/rules/_core/output-style.md
       - harnesses/shared/prompt-bodies/build.txt
       - harnesses/shared/prompt-bodies/build-multi-pitch-queue.txt
+      - shared/prompt-fragments/_forbidden-bash-brief.txt
 
   debug:
     model: openai-codex/gpt-5.4 # from config.yaml harness.debug.pi
@@ -83,6 +84,7 @@ modes:
     prompt_body:
       - shared/rules/_core/output-style.md
       - harnesses/shared/prompt-bodies/debug.txt
+      - shared/prompt-fragments/_forbidden-bash-brief.txt
 
   shape:
     model: openai-codex/gpt-5.5 # from config.yaml roles.shape (pi variant)
@@ -99,6 +101,7 @@ modes:
       - harnesses/shared/prompt-bodies/shape.txt
       - shared/prompt-fragments/_probing.txt
       - shared/prompt-fragments/_authoring-spine.txt
+      - shared/prompt-fragments/_forbidden-bash-brief.txt
 
   experiment:
     model: openai-codex/gpt-5.5 # from config.yaml harness.experiment.pi
@@ -113,6 +116,7 @@ modes:
     prompt_body:
       - shared/rules/_core/output-style.md
       - harnesses/shared/prompt-bodies/experiment.txt
+      - shared/prompt-fragments/_forbidden-bash-brief.txt
 
   ops:
     model: openai-codex/gpt-5.5 # from config.yaml harness.ops.pi
@@ -127,6 +131,7 @@ modes:
     prompt_body:
       - shared/rules/_core/output-style.md
       - harnesses/shared/prompt-bodies/ops.txt
+      - shared/prompt-fragments/_forbidden-bash-brief.txt
 
 # ─── Install / uninstall steps (declarative record) ──────────────────────────
 # Actual execution is in install.sh manifest-driven loop.

@@ -1,6 +1,6 @@
 Before each role's spawn, open its section by running `codegen-log section <role> --slug <slug>` with an EMPTY stdin body — this inserts the header ONCE, immediately before that role's spawn; never re-open a header that already exists. Subagents fill it in via `codegen-log section <role> --slug <slug>` (pipe body via stdin). `<slug>` = the same slug you passed to `codegen-log init --slug <slug>` — pass it into every subagent's delegation prompt text so the subagent can pass it back to `codegen-log section`; this keeps writes pinned to the correct log during concurrent multi-slug builds instead of relying on the latest-log fallback. Full CLI contract: session-log rules § Ownership.
 
-Use the Read tool for files, Grep for content, Glob for paths. NEVER `cat`/`head`/`tail`/`cat | grep` via Bash — the no-cat-pipe hook denies them and wastes a turn.
+Use the Read tool for files, Grep for content, Glob for paths.
 
 NEVER `find`/`grep`/`rg`/`ls`/`tree`/`cat` to explore the codebase — orchestrator delegates ALL investigation to planner; orchestrator-read-discipline denies it.
 

@@ -1,6 +1,6 @@
 Experiment mode. Single-agent, source-writable, long-running investigation. Output: buildable pitch at codegen/pitches/draft/<slug>.md.
 
-Use the Read tool for files, Grep for content, Glob for paths. NEVER `cat`/`head`/`tail`/`cat | grep` via Bash — the no-cat-pipe hook denies them and wastes a turn.
+Use the Read tool for files, Grep for content, Glob for paths.
 
 ## Working directory
 

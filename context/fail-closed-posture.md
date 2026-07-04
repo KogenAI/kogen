@@ -39,9 +39,9 @@ Catch: Discovered via red-green: assertion flip produced a red for a DIFFERENT r
 
 `build-worker-cwd-guard.sh` `is_allowed_path()` has an internal empty-token path (`[ -z "$p" ] && return 0`) distinct from file-bearing tool empty-FILE_PATH denial:
 
-- **Internal loop path** (~line 71): Bash abs-path-token iteration (empty token = legitimate skip of non-path match). Tolerated, documented.
+- **Internal loop path** (`is_allowed_path()` abs-path-token iteration in `build-worker-cwd-guard.sh`): empty token = legitimate skip of non-path match. Tolerated, documented.
 - **File-tool level** (inside Read/Write/Edit/MultiEdit case): Empty FILE_PATH on a file-bearing tool = anomaly → deny. Both needed distinguishing comments.
 
 ## Trigger Keywords
 
-INCONCLUSIVE class, two-signal gate, anti-wedge fail-open, test comment drift, confinement scope
+phoenix-dev-gate INCONCLUSIVE classification, two-signal pre-commit-guard, anti-wedge fail-open survivors, test comment drift, confinement guard scope, fail-loud exemptions
