@@ -64,6 +64,26 @@ Routing flow: `codegen-build` → `harnesses/<harness>/dispatch.sh` → reads `c
 
 Enforcement compiler (registry schema, pattern dialects, renderer-neutral tokens, install workflow): → see `context/enforcement-compiler.md`.
 
+## codegen-call Arg-Parsing + call-dispatch.sh Flag Threading
+
+`codegen-call` is a pure bash arg-parser + env-exporter that DOES NOT exec the LLM binary directly. It parses all flags, validates required ones, and EXPORTS them as `CODEGEN_CALL_*` env vars, then returns (allowing dispatch stubs to read the env). `harnesses/<harness>/call-dispatch.sh` reads those exports and builds the final executable argv. This two-stage design maintains a **one-way knowledge boundary**: codegen-call MUST NOT know about `--agent` value semantics or role names; it accepts any non-empty string as a passthrough and exports it. Callers (Elixir orchestration loop) supply role identity via the `--agent` flag; `call-dispatch.sh` routes it natively to `claude --agent <role>`.
+
+**Architecture requirement**: codegen-call's arg parser must NEVER hardcode a role name or reference `--append-system-prompt`. Tests enforce this via regex assertions:
+
+- Test (o) in `codegen-call_test.sh` (`:405-407`) — asserts source has ZERO role-name tokens (`planner|developer|committer|reviewer|curator`)
+- Test (p) (`:412-414`) — asserts source has ZERO `--append-system-prompt` tokens
+
+These tests block any regression that would hardcode role knowledge into codegen-call's source. The `--append-system-prompt` flag lives ONLY in `call-dispatch.sh` (`:56`, conditionally omitted when `CODEGEN_CALL_AGENT` is set); codegen-call never exports it.
+
+**Flag threading pattern** (mirrors existing `CODEGEN_CALL_SETTINGS_PATH`, `CODEGEN_CALL_EXTENSION_PATH`):
+
+1. `codegen-call --agent=<role>` parses the flag and exports `CODEGEN_CALL_AGENT="<role>"`
+2. `call-dispatch.sh` reads `AGENT="${CODEGEN_CALL_AGENT:-}"` in its env-read block
+3. When `AGENT` is non-empty, the COMMON_FLAGS builder appends `--agent "$AGENT"` and OMITS the `--append-system-prompt` line
+4. When `AGENT` is empty (non-agent-mode), the append flag is present (legacy path)
+
+This design lets codegen-call stay a generic boundary layer: it parses flags but never interprets them, allowing new features (like `--agent`) to pass through without modifying codegen-call's semantics or test boundary assertions.
+
 ## Prompt-Body Duplication and Sibling Synchronization
 
 When a pitch names N source files for extension but the load-bearing text is duplicated across (N+1) siblings that feed the SAME generated artifact, this is a **Rule-J parallel case**. Example: `shape.txt` extension to the Unverified-empirical-claims blocker also requires parallel updates to `_probing.txt` (same shape system prompt sink via `manifest.yaml` modes: `prompt_body = [shape.txt, _probing.txt, ...]`). Both files appear in the same rendered output; editing only the pitch-named N files leaves split-brain generated prompts.
@@ -146,16 +166,10 @@ Shell launcher + Elixir runner read same config keys. Two configs for one compon
 
 Load this file when touching: `manifest.yaml`, `generate.sh`, `process_template.py`, `hook_registrations.py`, `enforcement_compiler.py`, `install.sh`, `uninstall.sh`, `codegen-build`, `codegen-scaffold`, `config.sh`, `resource_manager.sh`, `utils.sh`, or `shared/enforcement/registry.yaml`.
 
-## Loop Settings Bundle
+## Loop Role Invocation
 
-A second partition exists alongside `user_global_hooks`: the **loop bundle**, emitted to the COMMITTED file `harnesses/claude/claude-code-loop-settings.json`.
-
-- **Why**: the Elixir `OrchestrationLoop` (`test_harness/lib/codegen_test_harness/orchestration_loop.ex`, `guard_bundle_flag!/2`) runs every per-role `codegen-call` WITHOUT role identity set (no `CLAUDE_ROLE`/`AGENT_TYPE` export). Handing such a call the FULL settings.json would either over-apply orchestrator-scoped guards (e.g. `orchestrator-no-source-edit` denying a loop developer from editing source files) or carry dead-weight AGENT_TYPE-gated role guards that never fire. The loop bundle is a minimal, role-agnostic allowlist instead.
-- **Membership**: `LOOP_BUNDLE_IDS` in `templates/generator/hook_registrations.py` — a hardcoded frozenset of 8 hook ids, all `signal: none`, `role: "*"`, `surface: user_global`: `no-cat-pipe`, `no-git-stash`, `no-python-json`, `clean-tree-before-ship`, `build-no-success-before-commit`, `build-agent-app-confinement`, `build-worker-cwd-guard`, `curator-learning-committed`. `surface` is NOT overloaded for this — the 8 hooks stay `user_global` because the legacy (non-loop) path still needs them via the full settings.json.
-- **Generation**: `main()`'s settings-regeneration path computes `loop_hooks` from `user_global_hooks`, fails loud (`sys.exit(1)`) if any `LOOP_BUNDLE_IDS` member is missing, then calls `emit_loop_settings(loop_hooks, settings_path.parent / "claude-code-loop-settings.json")`. Deriving the output path from `settings_path.parent` means the `make hook-parity` run (`--output-settings /tmp/...`) emits to `/tmp/claude-code-loop-settings.json`, and the real install run emits the committed sibling of `claude-code-settings.json`.
-- **Artifact ownership**: This file IS committed (`harnesses/claude/claude-code-loop-settings.json`) — it is read directly by `OrchestrationLoop.guard_bundle_flag!("claude_code")` at loop runtime, not copied into `~/.claude/`. `make hook-parity` diffs it against a freshly regenerated `/tmp` copy on every run.
-- **Legacy path unaffected**: the legacy (non-loop) interactive path loads the full `~/.claude/settings.json` directly and has no caller of `guard_bundle_flag!/2` — it is untouched by this partition.
+The Elixir `OrchestrationLoop` (`test_harness/lib/codegen_test_harness/orchestration_loop.ex`, `guard_bundle_flag!/2`) invokes each role via native `claude --agent <role>` + the FULL committed `harnesses/claude/claude-code-settings.json` — the same settings file the legacy (non-loop) path loads. `--agent <role>` stamps `.agent_type` natively (the installed `~/.claude/agents/<role>.md` supplies system prompt + tools), so AGENT_TYPE-gated role guards (committer/reviewer/curator/developer) and the two orchestrator confinement guards (which bypass on either `agent_id` OR `agent_type`) apply exactly as they do under a real subagent spawn. There is no reduced hook subset — the loop and legacy paths share one settings.json.
 
 ## Trigger Keywords
 
-manifest.yaml, generate.sh, harness install, install.sh, hook_registrations.py, codegen-build, codegen-scaffold, codegen-call, generator pipeline, manifest schema, guard_bundle_flag, legacy interactive path, config single source
+manifest.yaml, generate.sh, harness install, install.sh, hook_registrations.py, codegen-build, codegen-scaffold, codegen-call, generator pipeline, manifest schema, guard_bundle_flag, config single source

@@ -25,7 +25,6 @@ hook-parity:
 	rc=$$?; [ -n "$$VERBOSE" ] && printf '%s\n' "$$out"; \
 	[ $$rc -eq 0 ] || { [ -z "$$VERBOSE" ] && printf '%s\n' "$$out"; exit $$rc; }
 	@diff -u "$(SCRIPT_DIR)/harnesses/claude/claude-code-settings.json" /tmp/claude-code-settings-parity.json || exit 1
-	@diff -u "$(SCRIPT_DIR)/harnesses/claude/claude-code-loop-settings.json" /tmp/claude-code-loop-settings.json || exit 1
 	@[ -z "$$VERBOSE" ] || echo "hook-parity: PASS"
 
 .PHONY: hook-header-parity

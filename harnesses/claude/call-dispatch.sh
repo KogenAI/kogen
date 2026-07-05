@@ -24,7 +24,7 @@ _ts_ms() {
 }
 
 # ── Read CODEGEN_CALL_* env vars ──────────────────────────────────────────────
-SYSTEM_PROMPT="${CODEGEN_CALL_SYSTEM_PROMPT:?CODEGEN_CALL_SYSTEM_PROMPT not set}"
+AGENT="${CODEGEN_CALL_AGENT:-}"
 MODEL="${CODEGEN_CALL_MODEL:?CODEGEN_CALL_MODEL not set}"
 EFFORT="${CODEGEN_CALL_EFFORT:?CODEGEN_CALL_EFFORT not set}"
 PROMPT="${CODEGEN_CALL_PROMPT:?CODEGEN_CALL_PROMPT not set}"
@@ -33,6 +33,14 @@ JSON_SCHEMA_CONTENT="${CODEGEN_CALL_JSON_SCHEMA:-}"
 ALLOWED_TOOLS="${CODEGEN_CALL_ALLOWED_TOOLS:-}"
 ALLOWED_TOOLS_SET="${CODEGEN_CALL_ALLOWED_TOOLS_SET:-}"
 SETTINGS_PATH="${CODEGEN_CALL_SETTINGS_PATH:-}"
+
+# --system-prompt is required UNLESS --agent is set (agent supplies identity
+# natively via `claude --agent <role>`; codegen-call waives the requirement).
+if [[ -z "$AGENT" ]]; then
+    SYSTEM_PROMPT="${CODEGEN_CALL_SYSTEM_PROMPT:?CODEGEN_CALL_SYSTEM_PROMPT not set}"
+else
+    SYSTEM_PROMPT="${CODEGEN_CALL_SYSTEM_PROMPT:-}"
+fi
 
 _capture_transcript() {
     [ -n "${CODEGEN_CALL_TRANSCRIPT_PATH:-}" ] || return 0
@@ -53,10 +61,16 @@ COMMON_FLAGS=(
     --strict-mcp-config
     --no-session-persistence
     --disable-slash-commands
-    --append-system-prompt "$SYSTEM_PROMPT"
     --model "$MODEL"
     --effort "$EFFORT"
 )
+
+# --agent: named-agent identity (native, replaces --append-system-prompt)
+if [[ -n "$AGENT" ]]; then
+    COMMON_FLAGS+=(--agent "$AGENT")
+else
+    COMMON_FLAGS+=(--append-system-prompt "$SYSTEM_PROMPT")
+fi
 
 # --tools: pass if explicitly set (including empty string = no tools)
 if [[ -n "$ALLOWED_TOOLS_SET" ]]; then

@@ -63,9 +63,10 @@ if [ "$role" = "debug" ] || [ "$role" = "shape" ]; then
     exit 0
 fi
 
-# Subagents under no role (standard orchestrator spawns) — pass through.
-# Their bypass applies here because they have no inherited role restriction.
-if [ -n "$AGENT_ID" ]; then
+# Subagents under no role (standard orchestrator spawns), and named agents
+# invoked via --agent (agent_type set, no agent_id) — pass through. Mirrors
+# orchestrator-read-discipline.sh's agent_type bypass.
+if [ -n "$AGENT_ID" ] || [ -n "$AGENT_TYPE" ]; then
     exit 0
 fi
 

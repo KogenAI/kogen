@@ -40,25 +40,6 @@ import sys
 import tempfile
 from pathlib import Path
 
-# Minimal per-role hook bundle for OrchestrationLoop.guard_bundle_flag!("claude_code").
-# Every loop-invoked codegen-call runs WITHOUT role identity set (no CLAUDE_ROLE/AGENT_TYPE
-# export), so AGENT_TYPE-gated role guards and orchestrator-* guards would either be dead
-# weight or over-apply (e.g. orchestrator-no-source-edit would deny a loop `developer`
-# editing lib/foo.ex). This allowlist keeps ONLY generic, signal:none, role:"*" denial
-# hooks that make sense with no role identity. See context/core.md § Loop Settings Bundle.
-LOOP_BUNDLE_IDS = frozenset(
-    {
-        "no-cat-pipe",
-        "no-git-stash",
-        "no-python-json",
-        "clean-tree-before-ship",
-        "build-no-success-before-commit",
-        "build-agent-app-confinement",
-        "build-worker-cwd-guard",
-        "curator-learning-committed",
-    }
-)
-
 
 def dumps_compact(obj, indent=2, print_width=80):
     """json.dumps with indent=2 but keeps flat string-only arrays on one line when they fit within print_width."""
@@ -725,36 +706,6 @@ def regenerate_settings(
     print(f"Wrote {settings_path}")
 
 
-def emit_loop_settings(loop_hooks: list, out_path: Path) -> None:
-    """Write the Elixir orchestration-loop settings bundle {"hooks": {...}}.
-
-    Groups loop_hooks by event (only PreToolUse in practice) and emits one
-    {"matcher", "hooks":[entry]} per hook, matching the settings.json
-    PreToolUse entry shape. This file IS committed — read directly by
-    OrchestrationLoop.guard_bundle_flag!("claude_code") at loop runtime.
-    """
-    by_event = group_by_event(loop_hooks)
-    hooks_section: dict = {}
-    for evt in EVENT_ORDER:
-        if evt not in by_event:
-            continue
-        entries = []
-        for h in by_event[evt]:
-            entries.append({"matcher": h["matcher"], "hooks": [build_hook_entry(h)]})
-        hooks_section[evt] = entries
-    # Append any events not in EVENT_ORDER (defensive; loop hooks are PreToolUse).
-    for evt in by_event:
-        if evt not in hooks_section:
-            entries = [
-                {"matcher": h["matcher"], "hooks": [build_hook_entry(h)]}
-                for h in by_event[evt]
-            ]
-            hooks_section[evt] = entries
-    out_path.parent.mkdir(parents=True, exist_ok=True)
-    out_path.write_text(dumps_compact({"hooks": hooks_section}) + "\n")
-    print(f"Wrote {out_path}")
-
-
 def validate_pi_ts_handlers(pi_hooks: list, pi_extension_dir: Path) -> None:
     """Verify every Pi-targeted hook has a matching TypeScript handler.
 
@@ -852,25 +803,6 @@ def main() -> None:
     user_global_hooks = [h for h in all_hooks if h["surface"] == "user_global"]
 
     print(f"Found {len(all_hooks)} hooks: {len(user_global_hooks)} user_global")
-
-    # Emit the minimal Elixir orchestration-loop hook bundle (committed; read directly
-    # by OrchestrationLoop.guard_bundle_flag!). Derived from settings_path.parent so the
-    # hook-parity run (--output-settings /tmp/...) emits to /tmp, and the install run
-    # (--output-settings <repo>/harnesses/claude/claude-code-settings.json) emits the
-    # committed sibling file.
-    loop_hooks = [h for h in user_global_hooks if h["filename"][:-3] in LOOP_BUNDLE_IDS]
-    if len(loop_hooks) != len(LOOP_BUNDLE_IDS):
-        found_ids = {h["filename"][:-3] for h in loop_hooks}
-        missing_ids = sorted(LOOP_BUNDLE_IDS - found_ids)
-        print(
-            "ERROR: LOOP_BUNDLE_IDS incomplete — missing hook(s) not found among "
-            f"user_global hooks in {hooks_dir}: {missing_ids}. "
-            "Every loop-bundle ID must correspond to a real user_global hook.",
-            file=sys.stderr,
-        )
-        sys.exit(1)
-    loop_out = settings_path.parent / "claude-code-loop-settings.json"
-    emit_loop_settings(loop_hooks, loop_out)
 
     # Regenerate settings.json
     existing = load_existing_settings(settings_path, existing_settings_path)

@@ -21,6 +21,11 @@
 #   --allowed-tools=<l>   OPTIONAL: comma-list of tools; empty string → no tools
 #   --settings @<p>       OPTIONAL: @<abs-path> to settings JSON (claude only)
 #   --extension @<p>      OPTIONAL: @<abs-path> to extension file (pi only)
+#   --agent=<v>           OPTIONAL: generic passthrough value; when set, the
+#                         --system-prompt requirement below is waived (the
+#                         invoking harness supplies identity another way).
+#                         This script performs zero validation of the value
+#                         and never special-cases it — pure passthrough.
 #   PROMPT                REQUIRED positional arg (last arg or after --)
 #
 # Exit codes:
@@ -73,10 +78,11 @@ ALLOWED_TOOLS=""
 ALLOWED_TOOLS_SET=""
 SETTINGS_PATH=""
 EXTENSION_PATH=""
+AGENT=""
 PROMPT=""
 
 usage() {
-    printf 'Usage: codegen-call --harness=<claude_code|pi> --model=<m> --effort=<e> --system-prompt @<path> [--json-schema @<path>] [--allowed-tools=<list>] [--settings @<path>] [--extension @<path>] PROMPT\n' >&2
+    printf 'Usage: codegen-call --harness=<claude_code|pi> --model=<m> --effort=<e> [--system-prompt @<path>] [--agent=<v>] [--json-schema @<path>] [--allowed-tools=<list>] [--settings @<path>] [--extension @<path>] PROMPT\n' >&2
     exit 2
 }
 
@@ -152,6 +158,14 @@ while [[ $# -gt 0 ]]; do
         EXTENSION_PATH="$2"
         shift 2
         ;;
+    --agent=*)
+        AGENT="${1#--agent=}"
+        shift
+        ;;
+    --agent)
+        AGENT="$2"
+        shift 2
+        ;;
     --)
         shift
         PROMPT="$*"
@@ -199,7 +213,7 @@ if [[ -z "$EFFORT" ]]; then
     usage
 fi
 
-if [[ -z "$SYSTEM_PROMPT_PATH" ]]; then
+if [[ -z "$AGENT" ]] && [[ -z "$SYSTEM_PROMPT_PATH" ]]; then
     printf 'codegen-call: --system-prompt @<path> is required\n' >&2
     usage
 fi
@@ -226,9 +240,12 @@ _read_at_path() {
     printf '%s' "$path"
 }
 
-# Resolve system-prompt path
-SP_PATH="$(_read_at_path "--system-prompt" "$SYSTEM_PROMPT_PATH")"
-SYSTEM_PROMPT_CONTENT="$(cat "$SP_PATH")"
+# Resolve system-prompt path (optional when --agent is set)
+SYSTEM_PROMPT_CONTENT=""
+if [[ -n "$SYSTEM_PROMPT_PATH" ]]; then
+    SP_PATH="$(_read_at_path "--system-prompt" "$SYSTEM_PROMPT_PATH")"
+    SYSTEM_PROMPT_CONTENT="$(cat "$SP_PATH")"
+fi
 
 # Resolve json-schema path (optional)
 JSON_SCHEMA_CONTENT=""
@@ -268,6 +285,7 @@ export CODEGEN_CALL_ALLOWED_TOOLS="${ALLOWED_TOOLS:-}"
 export CODEGEN_CALL_ALLOWED_TOOLS_SET="${ALLOWED_TOOLS_SET:-}"
 export CODEGEN_CALL_SETTINGS_PATH="$SETTINGS_ABS_PATH"
 export CODEGEN_CALL_EXTENSION_PATH="$EXTENSION_ABS_PATH"
+export CODEGEN_CALL_AGENT="$AGENT"
 export CODEGEN_CALL_PROMPT="$PROMPT"
 
 DISPATCH="$SCRIPT_DIR/harnesses/$DISPATCH_DIR/call-dispatch.sh"

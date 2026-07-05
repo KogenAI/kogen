@@ -26,6 +26,32 @@ The RED proof must NOT reuse the stateful stub from the GREEN assertion — the 
 
 This isolates RED and GREEN at the stub level, ensuring the RED probe actually exercises the failure path rather than hitting a skipped branch because the counter advanced in an earlier assertion.
 
+## Test Environment Isolation: Ambient Env-Var Leakage
+
+Bash hook `_test.sh` files run directly (not via `run-tests.sh`) inherit ambient shell env vars. If the developer's own agent shell sets `CLAUDE_ROLE` or `PI_ROLE`, direct test invocations see the leakage and may hit unintended code paths. Example: Test 45 in `orchestrator-no-source-edit_test.sh` uses `run_test` (not `run_test_role`), so it reads the ambient env directly; if `CLAUDE_ROLE=build` is set, the test wrongly selects the build-role path and fails for an unrelated reason.
+
+**Fix**: When running hook `_test.sh` files interactively (outside the CI clean shell), strip inherited role vars before invocation:
+
+```bash
+env -u CLAUDE_ROLE -u PI_ROLE bash <test>.sh
+```
+
+This is NOT needed when tests run via `harnesses/claude/hooks/run-tests.sh` in a clean CI environment — only when invoking directly from within an agent session. The issue is test-invocation discipline (direct runs), not the tests themselves (run-tests.sh context cleans the env).
+
+## git show Redirect Source-Sourcing Trap
+
+When creating a RED-then-GREEN proof by redirecting a hook script via `git show HEAD:<path> > /tmp/copy.sh`, the copied script may use relative sourcing (e.g., `source "$(dirname "$0")/lib/hooks-lib.sh"`). The `dirname` of `/tmp/copy.sh` is `/tmp/`, not the original source directory, so the relative path breaks and the sourced file is not found.
+
+**Fix**: Perform RED-then-GREEN swaps IN-PLACE rather than copying the hook to a temp location:
+
+1. Save the original: `git show HEAD:<hook.sh> > /tmp/pre-fix.sh`
+2. Swap in the pre-fix: `cp /tmp/pre-fix.sh <real-hook-path>`
+3. Run the test (RED phase): verify it fails/blocks as expected
+4. Restore from a backup of the post-fix version or re-edit in-place
+5. Run the test again (GREEN phase): verify it passes
+
+This keeps both `dirname "$0"` resolutions in the real source directory where relative sourcing works correctly.
+
 ## Trigger Keywords
 
-stateful stub, counter file, test isolation, RED-then-GREEN proof, bash test patterns
+stateful stub, counter file, test isolation, RED-then-GREEN proof, bash test patterns, ambient env leakage, CLAUDE_ROLE, PI_ROLE, git show, dirname sourcing

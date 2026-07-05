@@ -98,8 +98,6 @@ See `.env.sample` and `.env.prod.sample` for full variable lists.
 | `templates/generator/generate.sh <harness>` | Render agent prompts for harness                                    |
 | `update_ai_tools.sh`                        | Update Claude CLI and AI tool deps                                  |
 
-**New-generated-output bootstrap gotcha**: When adding a NEW committed output file to `hook_registrations.py` (e.g., `claude-code-loop-settings.json`), the `hook-parity` target runs BEFORE the output-settings step that creates the file for the first time. On a truly first-ever run, `hook-parity` fails with "No such file or directory" because the committed file doesn't exist yet. Workaround: run `hook_registrations.py` directly once with `--output-settings <path>` (outside the install cycle) to bootstrap the committed file, then the install cycle proceeds normally on all subsequent runs. The derivation pattern `settings_path.parent / "new-file.json"` ensures the file lands in the repo on install and in `/tmp` on parity-check with zero branching logic.
-
 ## Benchmark Viewer (Mix Tasks)
 
 Run from `test_harness/`:
@@ -144,7 +142,28 @@ Integrate-stage renders (PROJECT_CONTEXT, restart_server.sh, usage_rules_INDEX) 
 
 This eliminates the dirty-tree race: integrate-stage files rendered AFTER the commit → `git status --porcelain` non-empty → build failure.
 
-## Pitfalls & Bash Gotchas
+## Elixir Seam Threading — Preserving Test-Override Capacity
+
+When adding a new parameter to an Elixir function that is called in a default closure but tested via seam overrides, thread the parameter into the closure BINDING, not into the seam signature. Example:
+
+The `OrchestrationLoop.invoke_role/4` function has a `/6` `codegen_call_fn` seam. When the Elixir loop needs to pass a new `agent` parameter to `default_codegen_call`, the loop adds a trailing `:agent` param to `default_codegen_call/8` → `/9`. The loop's default closure `:369-372` binds `role` (already in scope in `invoke_role`) into the call to `default_codegen_call`, passing `role` as the new ninth argument. Tests that override `codegen_call_fn` via a seam do NOT change signature — they still receive /6 args (`cwd, model, effort, system_prompt_path, allowed_tools, prompt`). The loop's default closure adapts: it builds the /9 call internally without forcing test overrides to match.
+
+**Benefits**: 
+- Zero churn to every test override of `codegen_call_fn` (can be dozens across the test suite)
+- The parameter is added at the call site (the loop) where it's known, not at the seam boundary
+- The seam stays a stable interface for tests
+
+**When NOT to use this pattern**: When the parameter is genuinely part of the seam contract (i.e., every override MUST know about it), thread it into the seam signature and update all test overrides. Use this pattern only when the loop-specific code (the default closure) should own the new parameter and tests don't need to override it.
+
+## RoleResolver Shape Changes and Sibling Test Ripple
+
+When a public function in Elixir changes its return type (e.g., `resolve_role/2,3` returning `{String.t(), String.t()}` instead of a 4-tuple), the shape change ripples to test files that are NOT explicitly listed in the edit scope. Example: a pitch naming `orchestration_loop_test.exs` but NOT `role_resolver_test.exs` still requires the sibling to be updated because `resolve_role`'s public contract changed.
+
+**Fix**: Before editing the primary target file, grep for ALL references to the function across `test_harness/test/` with keywords like `resolve_fn`, `resolve_role`, `codegen_call_fn` + the module name. A narrower grep scoped only to the plan's file list will miss sibling test files that stub the same functions. Update all test overrides/stubs in the same pass.
+
+## Trigger Keywords
+
+make install, make test, make test-stacks, CI/CD, Makefile, contribution, README, env vars, harness-parity, launcher tests, Makefile for t in list, dev loop, tech stack, coding conventions, multi-repo ordering, context codegen platform, seam threading, RoleResolver, function shape change
 
 → See `context/pitfalls.md` for codegen-infra pitfalls and bash gotchas.
 

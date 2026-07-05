@@ -184,7 +184,7 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
         %{"result" => %{"status" => "failed", "reason" => "boom", "value" => nil}}
       end
 
-      resolve_fn = fn _role, _harness -> {"/tmp/sp.txt", "sonnet", "medium", "Bash"} end
+      resolve_fn = fn _role, _harness -> {"sonnet", "medium"} end
 
       assert {:error, "boom"} =
                OrchestrationLoop.invoke_role(
@@ -201,7 +201,7 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
         %{"unexpected" => "shape"}
       end
 
-      resolve_fn = fn _role, _harness -> {"/tmp/sp.txt", "sonnet", "medium", "Bash"} end
+      resolve_fn = fn _role, _harness -> {"sonnet", "medium"} end
 
       assert_raise RuntimeError, ~r/unexpected codegen-call envelope/, fn ->
         OrchestrationLoop.invoke_role(
@@ -442,10 +442,10 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
     end
 
     test "real installed claude settings bundle resolves without override (positive control)" do
-      # No override — proves the real default path (harnesses/claude/claude-code-loop-settings.json,
-      # the minimal per-role loop bundle) exists in this checkout, so a live loop run would NOT raise.
+      # No override — proves the real default path (harnesses/claude/claude-code-settings.json,
+      # the full installed settings) exists in this checkout, so a live loop run would NOT raise.
       assert ["--settings=@" <> path] = OrchestrationLoop.guard_bundle_flag!("claude_code")
-      assert String.ends_with?(path, "claude-code-loop-settings.json")
+      assert String.ends_with?(path, "claude-code-settings.json")
     end
 
     test "real pi enforcement extension resolves without override (positive control)" do
@@ -553,7 +553,7 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
         "developer-static",
         "claude_code",
         %{cwd: cwd, pitch: "p", artifacts: %{}},
-        resolve_fn: fn _r, _h -> {"/tmp/sp.txt", "sonnet", "medium", "Bash"} end,
+        resolve_fn: fn _r, _h -> {"sonnet", "medium"} end,
         codegen_call_fn: fn _h, _m, _e, _sp, _t, _pr -> envelope end
       )
 
@@ -589,7 +589,7 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
         "developer-static",
         "claude_code",
         %{cwd: cwd, pitch: "p", artifacts: %{}},
-        resolve_fn: fn _r, _h -> {"/tmp/sp.txt", "sonnet", "medium", "Bash"} end,
+        resolve_fn: fn _r, _h -> {"sonnet", "medium"} end,
         codegen_call_fn: fn _h, _m, _e, _sp, _t, _pr -> envelope end
       )
 

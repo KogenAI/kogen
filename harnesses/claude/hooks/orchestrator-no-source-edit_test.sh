@@ -316,6 +316,13 @@ run_test_role "debug mode empty FILE_PATH denies (fail-closed)" "2" "debug" "$FI
 FIXTURE_PLAIN_EMPTY='{"hook_event_name":"PreToolUse","tool_name":"Write","tool_input":{"file_path":""},"agent_id":"","agent_type":""}'
 run_test "plain-orchestrator empty FILE_PATH denies (fail-closed)" "2" "$FIXTURE_PLAIN_EMPTY"
 
+# Test 45: named agent invoked via --agent (agent_type set, agent_id empty,
+# CLAUDE_ROLE unset) Edit on app source path — ALLOW (native loop role
+# invocation bypass, mirrors orchestrator-read-discipline.sh's agent_type
+# bypass). RED-then-GREEN proven manually against pre-fix source during dev.
+FIXTURE_NAMED_AGENT='{"hook_event_name":"PreToolUse","tool_name":"Edit","tool_input":{"file_path":"lib/my_app/foo.ex","old_string":"x","new_string":"y"},"agent_id":"","agent_type":"developer-static"}'
+run_test "named agent (agent_type set, agent_id empty) Edit on lib/ allows" "0" "$FIXTURE_NAMED_AGENT"
+
 echo ""
 echo "Results: $pass passed, $fail failed"
 

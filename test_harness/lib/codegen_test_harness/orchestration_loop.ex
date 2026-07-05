@@ -340,9 +340,12 @@ defmodule CodegenTestHarness.OrchestrationLoop do
   end
 
   @doc """
-  Invokes one role via `RoleResolver.resolve_role/2` → `codegen-call`,
-  parses the `{result: {status, value, reason, ...}}` envelope, and
-  branches on `status`.
+  Invokes one role via `RoleResolver.resolve_role/2` (model/effort only) →
+  `codegen-call --agent <role>` (native agent identity — the installed
+  `~/.claude/agents/<role>.md` supplies the system prompt and allowed tools;
+  RoleResolver no longer resolves or writes a prompt file), parses the
+  `{result: {status, value, reason, ...}}` envelope, and branches on
+  `status`.
 
   `status`:
   - `"success"` → `{:ok, envelope["result"]}`
@@ -365,17 +368,22 @@ defmodule CodegenTestHarness.OrchestrationLoop do
     # Default threads ctx.cwd into the codegen-call so the role's agent runs IN
     # the project directory. dispatch.sh cd's to test_harness to run mix, so
     # WITHOUT this every role would edit the wrong directory (loop bug #3).
-    # The /6 seam signature is preserved for test overrides.
+    # The /6 seam signature is preserved for test overrides. `role` is bound
+    # into the closure and threaded to default_codegen_call as the new
+    # trailing `agent` arg — native `claude --agent <role>` invocation.
     codegen_call_fn =
       Keyword.get(opts, :codegen_call_fn, fn h, m, e, sp, tools, pr ->
-        default_codegen_call(ctx.cwd, h, m, e, sp, tools, pr, transcript)
+        default_codegen_call(ctx.cwd, h, m, e, sp, tools, pr, transcript, role)
       end)
 
-    {system_prompt_path, model, effort, allowed_tools} = resolve_fn.(role, harness)
+    {model, effort} = resolve_fn.(role, harness)
 
     prompt = build_prompt(role, ctx)
 
-    envelope = codegen_call_fn.(harness, model, effort, system_prompt_path, allowed_tools, prompt)
+    # No --system-prompt: the agent's identity (system prompt + tools) is
+    # resolved natively by `claude --agent <role>` from the installed agent
+    # .md, not by RoleResolver.
+    envelope = codegen_call_fn.(harness, model, effort, nil, nil, prompt)
 
     accumulate_telemetry(role, envelope)
     write_cycle_summary(cycle_id, ctx.cwd, role, seq, transcript, envelope)
@@ -486,7 +494,7 @@ defmodule CodegenTestHarness.OrchestrationLoop do
   @codegen_call_bin Path.expand("../../../codegen-call", __DIR__)
   @codegen_dir Path.expand("../../..", __DIR__)
   @claude_settings_path Path.expand(
-                          "../../../harnesses/claude/claude-code-loop-settings.json",
+                          "../../../harnesses/claude/claude-code-settings.json",
                           __DIR__
                         )
   @pi_enforcement_ext_path Path.expand(
@@ -497,18 +505,18 @@ defmodule CodegenTestHarness.OrchestrationLoop do
   @doc """
   Resolves the B-bucket in-agent guard bundle flag for `harness`:
 
-  - `"claude_code"` → `["--settings=@<claude-code-loop-settings.json>"]`
+  - `"claude_code"` → `["--settings=@<claude-code-settings.json>"]`
   - `"pi"` → `["--extension=@<enforcement extension dir>"]`
 
-  The `"claude_code"` bundle is the MINIMAL per-role loop hook set (8 generic,
-  signal:none, role:"*" denial hooks — see LOOP_BUNDLE_IDS in
-  templates/generator/hook_registrations.py and context/core.md § Loop Settings
-  Bundle), not the full installed settings.json. Every loop-invoked codegen-call
-  runs WITHOUT role identity set, so AGENT_TYPE-gated role guards and
-  orchestrator-* guards would either be dead weight or over-apply (e.g.
-  orchestrator-no-source-edit would deny a loop `developer` editing lib/foo.ex).
-  The legacy (non-loop) path is unaffected — it loads the full
-  `~/.claude/settings.json` directly and does not call this function.
+  The `"claude_code"` bundle is the FULL installed `claude-code-settings.json`
+  (every registered hook), not a reduced bundle. Each loop-invoked
+  codegen-call now runs `claude --agent <role>`, which stamps `.agent_type`
+  natively — the same identity signal a real subagent spawn carries — so
+  AGENT_TYPE-gated role guards (committer/reviewer/curator/developer) and the
+  two orchestrator-* confinement guards (which bypass on either agent_id OR
+  agent_type) apply exactly as they do under the legacy (non-loop) path. There
+  is no longer a reduced hook subset — the loop and legacy paths share one
+  settings.json.
 
   RAISES (crash loud) if the resolved bundle path is absent — every role
   invocation MUST carry its guard bundle; a silently-unguarded run (e.g.
@@ -517,7 +525,7 @@ defmodule CodegenTestHarness.OrchestrationLoop do
 
   `opts`:
   - `:claude_settings_path` — override for testing (default: the committed
-    `harnesses/claude/claude-code-loop-settings.json` minimal loop bundle)
+    `harnesses/claude/claude-code-settings.json` full settings)
   - `:pi_enforcement_ext_path` — override for testing (default: the built
     `harnesses/pi/pi-extensions/enforcement` directory)
   """
@@ -556,7 +564,8 @@ defmodule CodegenTestHarness.OrchestrationLoop do
          system_prompt_path,
          allowed_tools,
          prompt,
-         transcript
+         transcript,
+         agent
        ) do
     unless File.exists?(@codegen_call_bin) do
       raise "OrchestrationLoop: codegen-call not found at #{@codegen_call_bin}"
@@ -566,9 +575,13 @@ defmodule CodegenTestHarness.OrchestrationLoop do
       [
         "--harness=#{harness}",
         "--model=#{model}",
-        "--effort=#{effort}",
-        "--system-prompt=@#{system_prompt_path}"
+        "--effort=#{effort}"
       ] ++
+        if(system_prompt_path && system_prompt_path != "",
+          do: ["--system-prompt=@#{system_prompt_path}"],
+          else: []
+        ) ++
+        if(agent && agent != "", do: ["--agent=#{agent}"], else: []) ++
         guard_bundle_flag!(harness) ++
         if(allowed_tools && allowed_tools != "",
           do: ["--allowed-tools=#{allowed_tools}"],

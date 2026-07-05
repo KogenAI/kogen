@@ -135,6 +135,13 @@ run_test "orchestrator Read inside OCG_USER_FILES_DIR allows (upload dir)" "0" "
 FIXTURE_EMPTY_FILE_PATH='{"hook_event_name":"PreToolUse","tool_name":"Write","tool_input":{"file_path":""},"agent_id":"","agent_type":"","cwd":"'"$PROJECT_DIR"'"}'
 run_test "orchestrator Write empty FILE_PATH (managed worker) denies (fail-closed)" "2" "$FIXTURE_EMPTY_FILE_PATH"
 
+# Test 13: named agent invoked via --agent (agent_type set, agent_id empty)
+# Read of a path OUTSIDE the project dir under OCG_APPS_ROOT — ALLOW (native
+# loop role invocation bypass). RED-then-GREEN proven manually against
+# pre-fix source during dev.
+FIXTURE_NAMED_AGENT_OUTSIDE='{"hook_event_name":"PreToolUse","tool_name":"Read","tool_input":{"file_path":"/etc/passwd"},"agent_id":"","agent_type":"developer-static","cwd":"'"$PROJECT_DIR"'"}'
+run_test "named agent (agent_type set, agent_id empty) Read outside project dir allows" "0" "$FIXTURE_NAMED_AGENT_OUTSIDE"
+
 echo ""
 echo "Results: $pass passed, $fail failed"
 

@@ -23,8 +23,10 @@ parse_input
 debug_log build-worker-cwd-guard "tool=$TOOL_NAME agent_id=$AGENT_ID agent_type=$AGENT_TYPE"
 
 # ── Subagent escape hatch ────────────────────────────────────────────────────
-# Any non-empty agent_id means we're inside a subagent; pass through.
-if [ -n "$AGENT_ID" ]; then
+# Any non-empty agent_id means we're inside a subagent; a non-empty agent_type
+# with empty agent_id means we're a named agent invoked via --agent (native
+# loop role invocation). Both pass through.
+if [ -n "$AGENT_ID" ] || [ -n "$AGENT_TYPE" ]; then
     exit 0
 fi
 
