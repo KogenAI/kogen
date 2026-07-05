@@ -16,6 +16,8 @@
 # (k) clarifying-question heuristic: text ending "?" without --json-schema → clarifying_question
 # (l) exit codes: success→0; harness exits non-zero→codegen-call exits 1, error-envelope on stdout
 # (m) envelope JSON validates against contract (all required keys present, types correct)
+# (o) codegen-call source contains zero role-name tokens (planner/developer/committer/reviewer/curator)
+# (p) codegen-call source contains zero --append-system-prompt tokens (REPLACE-only identity)
 
 set -euo pipefail
 
@@ -396,6 +398,20 @@ USAGE_N="$("$CC_N/codegen-call" 2>&1 || true)"
 ROLE_IN_USAGE=0
 [[ "$USAGE_N" == *"--role"* ]] && ROLE_IN_USAGE=1
 check "(n) usage does not mention --role" "0" "$ROLE_IN_USAGE"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Test (o): codegen-call source contains zero role-name tokens
+# ─────────────────────────────────────────────────────────────────────────────
+ROLE_TOKEN_COUNT="$(grep -cE 'planner|developer|committer|reviewer|curator' "$CODEGEN_CALL" || true)"
+ROLE_TOKEN_COUNT="${ROLE_TOKEN_COUNT:-0}"
+check "(o) codegen-call has zero role-name tokens" "0" "$ROLE_TOKEN_COUNT"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Test (p): codegen-call source contains zero --append-system-prompt tokens
+# ─────────────────────────────────────────────────────────────────────────────
+APPEND_FLAG_COUNT="$(grep -cF -- '--append-system-prompt' "$CODEGEN_CALL" || true)"
+APPEND_FLAG_COUNT="${APPEND_FLAG_COUNT:-0}"
+check "(p) codegen-call has zero --append-system-prompt tokens" "0" "$APPEND_FLAG_COUNT"
 
 # ─────────────────────────────────────────────────────────────────────────────
 echo ""

@@ -30,6 +30,10 @@ System prompt assembly: `tools-header/<mode>.txt` + entries in `prompt_body[]` (
 
 **`call-dispatch.sh` optional transcript capture**: both harness `call-dispatch.sh` scripts honor an optional `CODEGEN_CALL_TRANSCRIPT_PATH` env var — when set, the captured stream-json is copied there on the EXIT trap before the temp file is deleted (fail-loud-non-blocking: a copy failure prints to stderr but never changes the exit code); unset = current behavior (no copy). Consumed by the `--elixir` orchestration loop for durable per-role transcripts; see `context/test-harness.md` § Orchestration Loop.
 
+## Consumer Role Definition
+
+A role = one `codegen-call` invocation. Identity flags: `--system-prompt` (REPLACE = whole identity), `--model`, `--effort`, `--harness`, `--allowed-tools`, `--settings @<path>` (claude enforcement bundle) / `--extension @<path>` (pi). No role name is hardcoded; a consumer defines an arbitrary role with these flags and ZERO codegen change. One-way boundary: `codegen-call` never references a consumer role name.
+
 ## Key Paths
 
 ```

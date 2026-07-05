@@ -28,6 +28,27 @@
 #   1  — dispatch infra failure (harness binary error, jq failure, etc.)
 #   2  — usage/config error (missing required arg, bad harness, missing file)
 #   127 — harness binary not found (propagated from dispatch)
+#
+# Consumer role-definition contract:
+#   An agent role, for the purposes of this call, is defined entirely by the
+#   identity flags passed on the command line — there is no built-in notion
+#   of a role name inside this script:
+#     --system-prompt @<path>   REPLACE semantics: the file content IS the
+#                                whole agent identity for this call (no
+#                                layering, no merge with any prior prompt)
+#     --model / --effort        which model + effort tier runs the call
+#     --harness                 claude_code | pi — which CLI executes it
+#     --allowed-tools            tool allowlist for this call, if the harness
+#                                supports scoping tools per invocation
+#     --settings @<path>        claude only — enforcement/hook bundle overlay
+#     --extension @<path>       pi only — extension bundle overlay
+#   No agent name is hardcoded anywhere in this file or its dispatch targets.
+#   A consumer wanting a new kind of agent supplies these flags with its own
+#   values; that is a zero-change operation from this script's point of view.
+#   This is a strict one-way boundary: this file never references, imports,
+#   or special-cases any consumer-defined agent identity, and there is no
+#   flag here that appends to or layers on top of an existing system prompt
+#   — every call gets exactly one, whole, replacing system prompt.
 
 set -euo pipefail
 
