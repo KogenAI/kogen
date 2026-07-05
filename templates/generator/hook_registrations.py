@@ -10,7 +10,7 @@ Algorithm:
     1. Find all .sh files (excluding _test.sh and run-tests.sh) in --hooks-dir.
     2. Parse HOOK-MANIFEST header block (event, matcher, surface, signal, role).
     3. Validate declared signal appears in script body.
-    4. Build user_global and per_call_inspector lists.
+    4. Build the user_global hook list.
     5. Emit --output-settings (user_global entries replace manifest-driven hook events;
        non-manifest-driven events preserved verbatim from existing JSON).
 
@@ -82,7 +82,7 @@ def dumps_compact(obj, indent=2, print_width=80):
     )
 
 REQUIRED_FIELDS = {"event", "matcher", "surface", "signal", "role"}
-VALID_SURFACES = {"user_global", "per_call_inspector", "both"}
+VALID_SURFACES = {"user_global"}
 VALID_SIGNALS = {"AGENT_TYPE", "CLAUDE_ROLE", "CLAUDE_ROLE_FAMILY", "none"}
 VALID_HARNESSES = {"claude_code", "pi"}
 
@@ -252,18 +252,12 @@ def validate_role_match(script_path: Path, manifest: dict) -> None:
                     sys.exit(1)
             continue
 
-        # Literal role with | — multi-case, expect case statement or helper fn
+        # Literal role with | — multi-case, expect case statement
         if "|" in role_raw:
-            # Each token in a multi-value role must appear in a case statement,
-            # OR the hook uses require_inspector_agent_type (covers all inspector roles).
+            # Each token in a multi-value role must appear in a case statement.
             # Case patterns can be: token) OR token | othertoken)
-            inspector_fn = "require_inspector_agent_type"
             token_in_case = f'{token})' in content or f'{token} |' in content or f'{token} )' in content
-            if (
-                f'"{token}"' not in content
-                and not token_in_case
-                and not ("inspector" in token and inspector_fn in content)
-            ):
+            if f'"{token}"' not in content and not token_in_case:
                 print(
                     f"ERROR: {script_path.name} declares role: {token} but body "
                     f"does not contain \"{token}\" or {token}) in a case statement",
@@ -273,17 +267,14 @@ def validate_role_match(script_path: Path, manifest: dict) -> None:
             continue
 
         # Single literal role — accept [ "$AGENT_TYPE" = "<literal>" ] (equality),
-        # [ "$AGENT_TYPE" != "<literal>" ] (inequality guard), case statement,
-        # or require_inspector_agent_type (for inspector roles)
+        # [ "$AGENT_TYPE" != "<literal>" ] (inequality guard), or case statement
         eq_check = f'[ "$AGENT_TYPE" = "{token}" ]'
         ne_check = f'[ "$AGENT_TYPE" != "{token}" ]'
         case_check = f'{token})'
-        inspector_fn = "require_inspector_agent_type"
         if (
             eq_check not in content
             and ne_check not in content
             and case_check not in content
-            and not ("inspector" in token and inspector_fn in content)
         ):
             print(
                 f"ERROR: {script_path.name} declares role: {token} but body "
@@ -302,7 +293,7 @@ def validate_signal(script_path: Path, manifest: dict) -> None:
       CLAUDE_ROLE         — body must reference CLAUDE_ROLE literal.
       CLAUDE_ROLE_FAMILY  — body must call resolve_role() or is_build_mode() (from _role.sh);
                             supports CLAUDE_ROLE, PI_ROLE with unified precedence.
-      AGENT_TYPE          — body must reference AGENT_TYPE or require_inspector_agent_type.
+      AGENT_TYPE          — body must reference AGENT_TYPE literal.
       none                — no signal check.
     """
     signal = manifest["signal"]
@@ -311,9 +302,9 @@ def validate_signal(script_path: Path, manifest: dict) -> None:
 
     content = script_path.read_text()
     if signal == "AGENT_TYPE":
-        if "AGENT_TYPE" not in content and "require_inspector_agent_type" not in content:
+        if "AGENT_TYPE" not in content:
             print(
-                f"ERROR: {script_path.name} declares signal: AGENT_TYPE but body does not reference AGENT_TYPE or require_inspector_agent_type",
+                f"ERROR: {script_path.name} declares signal: AGENT_TYPE but body does not reference AGENT_TYPE",
                 file=sys.stderr,
             )
             sys.exit(1)
@@ -734,44 +725,13 @@ def regenerate_settings(
     print(f"Wrote {settings_path}")
 
 
-def write_inspector_settings(per_call_hooks: list, out_path: Path) -> None:
-    """Write the per-call inspector settings fragment {"hooks": {...}}.
-
-    Groups per_call_hooks by event (only PreToolUse in practice) and emits
-    one {"matcher", "hooks":[entry]} per hook, matching the settings.json
-    PreToolUse entry shape. Parent dir is created if absent (the generated
-    output tree is gitignored and may not exist).
-    """
-    by_event = group_by_event(per_call_hooks)
-    hooks_section: dict = {}
-    for evt in EVENT_ORDER:
-        if evt not in by_event:
-            continue
-        entries = []
-        for h in by_event[evt]:
-            entries.append({"matcher": h["matcher"], "hooks": [build_hook_entry(h)]})
-        hooks_section[evt] = entries
-    # Append any events not in EVENT_ORDER (defensive; per-call hooks are PreToolUse).
-    for evt in by_event:
-        if evt not in hooks_section:
-            entries = [
-                {"matcher": h["matcher"], "hooks": [build_hook_entry(h)]}
-                for h in by_event[evt]
-            ]
-            hooks_section[evt] = entries
-    out_path.parent.mkdir(parents=True, exist_ok=True)
-    out_path.write_text(dumps_compact({"hooks": hooks_section}) + "\n")
-    print(f"Wrote {out_path}")
-
-
 def emit_loop_settings(loop_hooks: list, out_path: Path) -> None:
     """Write the Elixir orchestration-loop settings bundle {"hooks": {...}}.
 
-    Structurally identical to write_inspector_settings: groups loop_hooks by
-    event (only PreToolUse in practice) and emits one {"matcher", "hooks":[entry]}
-    per hook, matching the settings.json PreToolUse entry shape. Unlike the
-    per-call inspector fragment, this file IS committed — it is read directly
-    by OrchestrationLoop.guard_bundle_flag!("claude_code") at loop runtime.
+    Groups loop_hooks by event (only PreToolUse in practice) and emits one
+    {"matcher", "hooks":[entry]} per hook, matching the settings.json
+    PreToolUse entry shape. This file IS committed — read directly by
+    OrchestrationLoop.guard_bundle_flag!("claude_code") at loop runtime.
     """
     by_event = group_by_event(loop_hooks)
     hooks_section: dict = {}
@@ -889,16 +849,9 @@ def main() -> None:
     all_hooks = collect_hooks(hooks_dir)
 
     # Partition by surface
-    user_global_hooks = [h for h in all_hooks if h["surface"] in ("user_global", "both")]
-    per_call_hooks = [h for h in all_hooks if h["surface"] in ("per_call_inspector", "both")]
+    user_global_hooks = [h for h in all_hooks if h["surface"] == "user_global"]
 
-    print(
-        f"Found {len(all_hooks)} hooks: {len(user_global_hooks)} user_global, {len(per_call_hooks)} per_call_inspector"
-    )
-
-    # Emit per-call inspector settings fragment (separate from user_global settings.json).
-    inspector_out = Path(__file__).parent.parent / "generated" / "claude-code" / "inspector-settings.json"
-    write_inspector_settings(per_call_hooks, inspector_out)
+    print(f"Found {len(all_hooks)} hooks: {len(user_global_hooks)} user_global")
 
     # Emit the minimal Elixir orchestration-loop hook bundle (committed; read directly
     # by OrchestrationLoop.guard_bundle_flag!). Derived from settings_path.parent so the

@@ -6,27 +6,27 @@ Data flow: `manifest.yaml` → `generate.sh` (renders via `process_template.py`)
 
 ## Key Modules
 
-| Module                                        | Purpose                                                                                                                                                                                                |
-| --------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `templates/generator/generate.sh`             | Entry — renders `.md.j2` templates for a named harness                                                                                                                                                 |
-| `templates/generator/process_template.py`     | Jinja-style `{% include %}` processor; inlines rule/recipe files                                                                                                                                       |
-| `templates/generator/hook_registrations.py`   | Generates `settings.json` hook entries from hook source dir; partitions hooks by `surface` field into `user_global_hooks` and `per_call_hooks`; emits per-call inspector settings fragment (ephemeral) |
-| `templates/generator/enforcement_compiler.py` | Generates enforcement hook scripts (bash + TS) from `shared/enforcement/registry.yaml`                                                                                                                 |
-| `templates/generator/manifest-lib.sh`         | Bash lib wrapping `yq` for manifest field extraction                                                                                                                                                   |
-| `templates/generator/config.yaml`             | Role → model/effort/tools mapping; read by `load-role.sh`                                                                                                                                              |
-| `templates/generator/test_dual_render.sh`     | Self-test: renders both harnesses and diffs output for regressions                                                                                                                                     |
-| `templates/generator/test_fixtures/`          | Fixture `.md.j2` templates used by generator self-tests                                                                                                                                                |
-| `harnesses/claude/manifest.yaml`              | Claude harness install contract (agents, hooks, launchers, modes)                                                                                                                                      |
-| `harnesses/pi/manifest.yaml`                  | Pi harness install contract                                                                                                                                                                            |
-| `install.sh`                                  | Per-harness install via `for _harness in "${HARNESSES[@]}"` loop with `case "$_harness" in` dispatch; reads manifest for step names                                                                    |
-| `uninstall.sh`                                | Removes artifacts listed in manifest uninstall_steps                                                                                                                                                   |
-| `codegen-build`                               | Top-level launcher: requires --harness flag; delegates to harnesses/<harness>/dispatch.sh, which execs claude/pi with model/effort/tools flags                                                         |
-| `codegen-scaffold`                            | Downstream app scaffolder: renders `shared/scaffold/` templates into a new project dir                                                                                                                 |
-| `codegen-call`                                | One-shot structured LLM call binary: requires --harness (exits 2 if missing); unknown flags exit 2 (fail-loud); no --role flag                                                                         |
-| `config.sh`                                   | Shared env/path config sourced by all scripts                                                                                                                                                          |
-| `resource_manager.sh`                         | Manages port allocation across OCG projects system-wide via ~/.ocg/resources.json                                                                                                                      |
-| `utils.sh`                                    | Common bash utilities: OCG_CMD invocation                                                                                                                                                              |
-| `update_ai_tools.sh`                          | Post-install: updates Claude CLI and AI tool deps                                                                                                                                                      |
+| Module                                        | Purpose                                                                                                                                        |
+| --------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| `templates/generator/generate.sh`             | Entry — renders `.md.j2` templates for a named harness                                                                                         |
+| `templates/generator/process_template.py`     | Jinja-style `{% include %}` processor; inlines rule/recipe files                                                                               |
+| `templates/generator/hook_registrations.py`   | Generates `settings.json` hook entries from the hook source dir (single user_global surface)                                                   |
+| `templates/generator/enforcement_compiler.py` | Generates enforcement hook scripts (bash + TS) from `shared/enforcement/registry.yaml`                                                         |
+| `templates/generator/manifest-lib.sh`         | Bash lib wrapping `yq` for manifest field extraction                                                                                           |
+| `templates/generator/config.yaml`             | Role → model/effort/tools mapping; read by `load-role.sh`                                                                                      |
+| `templates/generator/test_dual_render.sh`     | Self-test: renders both harnesses and diffs output for regressions                                                                             |
+| `templates/generator/test_fixtures/`          | Fixture `.md.j2` templates used by generator self-tests                                                                                        |
+| `harnesses/claude/manifest.yaml`              | Claude harness install contract (agents, hooks, launchers, modes)                                                                              |
+| `harnesses/pi/manifest.yaml`                  | Pi harness install contract                                                                                                                    |
+| `install.sh`                                  | Per-harness install via `for _harness in "${HARNESSES[@]}"` loop with `case "$_harness" in` dispatch; reads manifest for step names            |
+| `uninstall.sh`                                | Removes artifacts listed in manifest uninstall_steps                                                                                           |
+| `codegen-build`                               | Top-level launcher: requires --harness flag; delegates to harnesses/<harness>/dispatch.sh, which execs claude/pi with model/effort/tools flags |
+| `codegen-scaffold`                            | Downstream app scaffolder: renders `shared/scaffold/` templates into a new project dir                                                         |
+| `codegen-call`                                | One-shot structured LLM call binary: requires --harness (exits 2 if missing); unknown flags exit 2 (fail-loud); no --role flag                 |
+| `config.sh`                                   | Shared env/path config sourced by all scripts                                                                                                  |
+| `resource_manager.sh`                         | Manages port allocation across OCG projects system-wide via ~/.ocg/resources.json                                                              |
+| `utils.sh`                                    | Common bash utilities: OCG_CMD invocation                                                                                                      |
+| `update_ai_tools.sh`                          | Post-install: updates Claude CLI and AI tool deps                                                                                              |
 
 ## Key Paths
 
@@ -91,17 +91,6 @@ Each harness declares its full installation contract in `harnesses/<harness>/man
 | `install_steps`   | list   | Ordered install phases executed by `install.sh`                                                                   |
 | `uninstall_steps` | list   | Ordered removal phases executed by `uninstall.sh`                                                                 |
 
-## Per-Call Inspector Settings Fragment
-
-`hook_registrations.py` partitions hooks during settings-regeneration mode:
-
-- **`user_global_hooks`** — hooks with `surface: "user_global"` or `"both"` → emitted to `harnesses/claude/claude-code-settings.json` (and installed to `~/.claude/settings.json` by `install.sh`)
-- **`per_call_hooks`** — hooks with `surface: "per_call_inspector"` (currently the 3 inspector hooks: bash-guard, read-guard, write-guard) → emitted to a per-call inspector settings fragment in the generated output tree (ephemeral, fully gitignored)
-
-The fragment is generated unconditionally on every `make install` run via `write_inspector_settings()`. The main settings.json intentionally excludes per-call hooks to keep the hook surface segregated.
-
-**Artifact ownership**: Generated output artifacts are FULLY GITIGNORED; the fragment is ephemeral working storage and never committed.
-
 ## Repo-Root Artifact Ownership
 
 Several scripts and dirs at repo root are owned or managed by the core pipeline:
@@ -159,12 +148,12 @@ Load this file when touching: `manifest.yaml`, `generate.sh`, `process_template.
 
 ## Loop Settings Bundle
 
-A third partition exists alongside `user_global_hooks`/`per_call_hooks`: the **loop bundle**, emitted to the COMMITTED file `harnesses/claude/claude-code-loop-settings.json`.
+A second partition exists alongside `user_global_hooks`: the **loop bundle**, emitted to the COMMITTED file `harnesses/claude/claude-code-loop-settings.json`.
 
 - **Why**: the Elixir `OrchestrationLoop` (`test_harness/lib/codegen_test_harness/orchestration_loop.ex`, `guard_bundle_flag!/2`) runs every per-role `codegen-call` WITHOUT role identity set (no `CLAUDE_ROLE`/`AGENT_TYPE` export). Handing such a call the FULL settings.json would either over-apply orchestrator-scoped guards (e.g. `orchestrator-no-source-edit` denying a loop developer from editing source files) or carry dead-weight AGENT_TYPE-gated role guards that never fire. The loop bundle is a minimal, role-agnostic allowlist instead.
 - **Membership**: `LOOP_BUNDLE_IDS` in `templates/generator/hook_registrations.py` — a hardcoded frozenset of 8 hook ids, all `signal: none`, `role: "*"`, `surface: user_global`: `no-cat-pipe`, `no-git-stash`, `no-python-json`, `clean-tree-before-ship`, `build-no-success-before-commit`, `build-agent-app-confinement`, `build-worker-cwd-guard`, `curator-learning-committed`. `surface` is NOT overloaded for this — the 8 hooks stay `user_global` because the legacy (non-loop) path still needs them via the full settings.json.
-- **Generation**: `main()`'s settings-regeneration path computes `loop_hooks` from `user_global_hooks`, fails loud (`sys.exit(1)`) if any `LOOP_BUNDLE_IDS` member is missing, then calls `emit_loop_settings(loop_hooks, settings_path.parent / "claude-code-loop-settings.json")` — structurally identical to `write_inspector_settings`. Deriving the output path from `settings_path.parent` means the `make hook-parity` run (`--output-settings /tmp/...`) emits to `/tmp/claude-code-loop-settings.json`, and the real install run emits the committed sibling of `claude-code-settings.json`.
-- **Artifact ownership**: UNLIKE the per-call inspector fragment, this file IS committed (`harnesses/claude/claude-code-loop-settings.json`) — it is read directly by `OrchestrationLoop.guard_bundle_flag!("claude_code")` at loop runtime, not copied into `~/.claude/`. `make hook-parity` diffs it against a freshly regenerated `/tmp` copy on every run.
+- **Generation**: `main()`'s settings-regeneration path computes `loop_hooks` from `user_global_hooks`, fails loud (`sys.exit(1)`) if any `LOOP_BUNDLE_IDS` member is missing, then calls `emit_loop_settings(loop_hooks, settings_path.parent / "claude-code-loop-settings.json")`. Deriving the output path from `settings_path.parent` means the `make hook-parity` run (`--output-settings /tmp/...`) emits to `/tmp/claude-code-loop-settings.json`, and the real install run emits the committed sibling of `claude-code-settings.json`.
+- **Artifact ownership**: This file IS committed (`harnesses/claude/claude-code-loop-settings.json`) — it is read directly by `OrchestrationLoop.guard_bundle_flag!("claude_code")` at loop runtime, not copied into `~/.claude/`. `make hook-parity` diffs it against a freshly regenerated `/tmp` copy on every run.
 - **Legacy path unaffected**: the legacy (non-loop) interactive path loads the full `~/.claude/settings.json` directly and has no caller of `guard_bundle_flag!/2` — it is untouched by this partition.
 
 ## Trigger Keywords

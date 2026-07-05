@@ -455,19 +455,6 @@ pitch_from_transcript() {
     ' "$TRANSCRIPT_PATH" 2>/dev/null | tail -n 1
 }
 
-# require_inspector_agent_type — guard for inspector-only hooks.
-# If AGENT_TYPE is set and is NOT one of the known inspector values,
-# exit 0 (allow the tool, not our responsibility). If AGENT_TYPE is unset
-# (outer session, not a subagent), exit 0. If AGENT_TYPE matches an inspector
-# identity, return (continue to hook logic). This pattern prevents
-# inspector-scoped hooks from firing in non-inspector contexts.
-require_inspector_agent_type() {
-    case "${AGENT_TYPE:-}" in
-    inspector | inspector-phoenix) return 0 ;;
-    *) exit 0 ;;
-    esac
-}
-
 # is_subagent — true if AGENT_TYPE is set (inner subagent invocation).
 # Used to gate outer-session-only constraints that must NOT apply to subagents.
 is_subagent() {

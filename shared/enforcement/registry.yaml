@@ -37,7 +37,7 @@
 #   event        — Claude Code hook event (PreToolUse, SubagentStop, Stop, PostToolUseFailure)
 #   tool_guard   — tool name(s) in header matcher field (Bash, Write|Edit, etc.)
 #                  NOTE: tool_guard maps to the header field "matcher:" (token alias)
-#   surface      — hook surface (user_global, per_call_inspector, both)
+#   surface      — hook surface (user_global)
 #   signal       — hook signal (none, AGENT_TYPE, CLAUDE_ROLE, CLAUDE_ROLE_FAMILY)
 #   role         — role scope (* = all; pipe-separated for multiple; glob e.g. developer-*)
 #   harnesses    — which harnesses deploy this hook (all, claude, pi)
@@ -290,36 +290,6 @@
   role: "*"
   harnesses: claude
   rationale: CLAUDE_ROLE_FAMILY-keyed; Pi investigation sessions use load-gate not role flags
-
-- kind: registration
-  id: claude-inspector-bash-guard
-  event: PreToolUse
-  tool_guard: Bash
-  surface: per_call_inspector
-  signal: AGENT_TYPE
-  role: "inspector|inspector-phoenix"
-  harnesses: claude
-  rationale: Claude Code per-call inspector hook; Pi uses load-gate tool restriction
-
-- kind: registration
-  id: claude-inspector-read-guard
-  event: PreToolUse
-  tool_guard: Read
-  surface: per_call_inspector
-  signal: AGENT_TYPE
-  role: "inspector|inspector-phoenix"
-  harnesses: claude
-  rationale: Claude Code per-call inspector hook; Pi uses load-gate tool restriction
-
-- kind: registration
-  id: claude-inspector-write-guard
-  event: PreToolUse
-  tool_guard: "Write|Edit|MultiEdit|NotebookEdit"
-  surface: per_call_inspector
-  signal: AGENT_TYPE
-  role: "inspector|inspector-phoenix"
-  harnesses: claude
-  rationale: Claude Code per-call inspector hook; Pi uses load-gate tool restriction
 
 - kind: registration
   id: curator-before-committer

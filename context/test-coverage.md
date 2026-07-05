@@ -101,9 +101,6 @@ For every `harnesses/claude/hooks/<name>.sh` there is a paired `<name>_test.sh` 
 | build-no-success-before-commit   | hook           | `.../hooks/build-no-success-before-commit.sh`   | `.../hooks/build-no-success-before-commit_test.sh`   |                                              |
 | build-worker-cwd-guard           | hook           | `.../hooks/build-worker-cwd-guard.sh`           | `.../hooks/build-worker-cwd-guard_test.sh`           |                                              |
 | claude-debug-bash-guard          | hook           | `.../hooks/claude-debug-bash-guard.sh`          | `.../hooks/claude-debug-bash-guard_test.sh`          |                                              |
-| claude-inspector-bash-guard      | hook           | `.../hooks/claude-inspector-bash-guard.sh`      | `.../hooks/claude-inspector-bash-guard_test.sh`      |                                              |
-| claude-inspector-read-guard      | hook           | `.../hooks/claude-inspector-read-guard.sh`      | `.../hooks/claude-inspector-read-guard_test.sh`      |                                              |
-| claude-inspector-write-guard     | hook           | `.../hooks/claude-inspector-write-guard.sh`     | `.../hooks/claude-inspector-write-guard_test.sh`     |                                              |
 | codegen-build (harness parity)   | hook-test-only | (no script — test is the surface)               | `.../hooks/codegen-build_test.sh`                    | Invoked separately via `make harness-parity` |
 | committer-no-trailer-guard       | hook           | `.../hooks/committer-no-trailer-guard.sh`       | `.../hooks/committer-no-trailer-guard_test.sh`       |                                              |
 | committer-single-line-guard      | hook           | `.../hooks/committer-single-line-guard.sh`      | `.../hooks/committer-single-line-guard_test.sh`      |                                              |

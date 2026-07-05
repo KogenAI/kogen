@@ -24,7 +24,7 @@ When bug class is enforcement (hooks, permissions, gating), follow this procedur
 - Step 6 — Verify Elixir-spawned subprocess environment: read build-cmd assembly in `App.LLM.Backend.*`. If `CLAUDE_PROJECT_DIR` not explicitly set → hook falls back to `$PWD` = `System.tmp_dir!()`.
 - Step 7 — Run `claude --print --verbose --output-format stream-json --tools "Read,Bash" "test"`. First line is `init`. Read `init.tools`, `init.agents`. Watch for `permission_denials` naming the hook.
 
-Enforcement bug report must include: registration map, self-gate inventory, fire population, intent mismatch, sibling drift (if any), recommended scope (`per_call_inspector` / `user_global` / `both`) + signal (`AGENT_TYPE` / `CLAUDE_ROLE`).
+Enforcement bug report must include: registration map, self-gate inventory, fire population, intent mismatch, sibling drift (if any), recommended scope (`user_global`) + signal (`AGENT_TYPE` / `CLAUDE_ROLE`).
 
 When symptom is a hook deny, the verbatim deny string is MANDATORY evidence: include `permissionDecisionReason`, working dir, tool name as exact strings from the deny output. Do NOT paraphrase.
 
