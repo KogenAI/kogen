@@ -16,6 +16,7 @@ Codegen values failing loud. Language-agnostic across Elixir, TS/JS, Bash, Pytho
 
 - **Sourced hook helpers** — bash helpers sourced into a `set -e` launcher use `set -uo pipefail` (no `-e`) and end fail-open steps with `|| true`. INTENTIONAL fail-open: a hook failing open lets the agent proceed rather than wedging the session. The only deliberate non-zero is a final `return 1` on a genuine not-found error.
 - **Observe-only Stop twins** — a Stop-event hook that only observes/records (never blocks) may swallow its own errors so it cannot wedge Stop.
+- **Fail-loud-non-blocking on optional observability** — when a feature is entirely optional (can be disabled by omitting an env var or flag) and its FAILURE is observable-only (not correctness-required), emit loud stderr but do NOT change exit code — preserves the outer operation's exit code while surfacing the problem. Example: optional transcript capture fails → print error to stderr, still exit 0 so the build succeeds. The entire feature can be disabled (no observability needed), making the failure non-critical rather than masked.
 - **Boundary validation on external input** — HTTP params, webhooks, user-supplied data MAY apply a fallback/default at the boundary layer. Inside core logic, treat data as already validated.
 - **Genuinely-optional knobs** — timeouts, backoffs, pool sizes, feature flags, display formats: the default IS the intended value, not a mask.
 

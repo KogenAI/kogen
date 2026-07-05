@@ -267,6 +267,101 @@ assert_file_contains "$HARNESSES_DIR/claude-ops.sh" "--settings"
 # Test 13: experiment preserves API_FORCE_IDLE_TIMEOUT (regression guard)
 assert_file_contains "$HARNESSES_DIR/claude-experiment.sh" "API_FORCE_IDLE_TIMEOUT"
 
+# ── Durable transcript capture (CODEGEN_CALL_TRANSCRIPT_PATH) ────────────────
+
+# (d) Runtime capture: env var set → transcript copied to dest (nested mkdir -p)
+(
+    export FIXTURE_PATH="$FIXTURE"
+    export CODEGEN_CALL_SYSTEM_PROMPT="You are a test classifier assistant."
+    export CODEGEN_CALL_MODEL="claude-haiku-4-5"
+    export CODEGEN_CALL_EFFORT="low"
+    export CODEGEN_CALL_PROMPT="Classify this message: Hello, how do I set up the platform?"
+    export CODEGEN_CALL_JSON_SCHEMA='{"type":"object","properties":{"lang":{"type":"string"},"intent":{"type":"string"}},"required":["lang","intent"]}'
+    export CODEGEN_CALL_TRANSCRIPT_PATH="$BASE_TMP/cap/nested/out.jsonl"
+    unset CODEGEN_CALL_JSON_SCHEMA_PATH 2>/dev/null || true
+    unset CODEGEN_CALL_ALLOWED_TOOLS_SET 2>/dev/null || true
+    unset CODEGEN_CALL_ALLOWED_TOOLS 2>/dev/null || true
+    unset CODEGEN_CALL_SETTINGS_PATH 2>/dev/null || true
+    bash "$DISPATCH_SCRIPT" 2>/dev/null
+) >"$BASE_TMP/cap_envelope.json" 2>/dev/null || true
+
+if [[ -f "$BASE_TMP/cap/nested/out.jsonl" ]]; then
+    [ -n "${VERBOSE:-}" ] && printf 'PASS: (d) transcript copied to nested dest\n'
+    pass=$((pass + 1))
+else
+    printf 'FAIL: (d) transcript not copied to nested dest %s\n' "$BASE_TMP/cap/nested/out.jsonl"
+    fail=$((fail + 1))
+fi
+
+assert_file_contains "$BASE_TMP/cap/nested/out.jsonl" "PLATFORM_QUESTION"
+
+# (e) Unset: no env var → no durable capture file created
+(
+    export FIXTURE_PATH="$FIXTURE"
+    export CODEGEN_CALL_SYSTEM_PROMPT="You are a test classifier assistant."
+    export CODEGEN_CALL_MODEL="claude-haiku-4-5"
+    export CODEGEN_CALL_EFFORT="low"
+    export CODEGEN_CALL_PROMPT="Classify this message: Hello, how do I set up the platform?"
+    export CODEGEN_CALL_JSON_SCHEMA='{"type":"object","properties":{"lang":{"type":"string"},"intent":{"type":"string"}},"required":["lang","intent"]}'
+    unset CODEGEN_CALL_TRANSCRIPT_PATH 2>/dev/null || true
+    unset CODEGEN_CALL_JSON_SCHEMA_PATH 2>/dev/null || true
+    unset CODEGEN_CALL_ALLOWED_TOOLS_SET 2>/dev/null || true
+    unset CODEGEN_CALL_ALLOWED_TOOLS 2>/dev/null || true
+    unset CODEGEN_CALL_SETTINGS_PATH 2>/dev/null || true
+    bash "$DISPATCH_SCRIPT" 2>/dev/null
+) >"$BASE_TMP/nocap_envelope.json" 2>/dev/null || true
+
+if [[ -f "$BASE_TMP/nocap.jsonl" ]]; then
+    printf 'FAIL: (e) unexpected durable capture file created without env var\n'
+    fail=$((fail + 1))
+else
+    [ -n "${VERBOSE:-}" ] && printf 'PASS: (e) no durable capture file without env var\n'
+    pass=$((pass + 1))
+fi
+
+assert_jq \
+    "(e) unset transcript path: result.status still success" \
+    "$(cat "$BASE_TMP/nocap_envelope.json")" \
+    ".result.status" \
+    "success"
+
+# (f) Failure non-blocking: unwritable dest → dispatch still emits envelope + exits normally
+(
+    export FIXTURE_PATH="$FIXTURE"
+    export CODEGEN_CALL_SYSTEM_PROMPT="You are a test classifier assistant."
+    export CODEGEN_CALL_MODEL="claude-haiku-4-5"
+    export CODEGEN_CALL_EFFORT="low"
+    export CODEGEN_CALL_PROMPT="Classify this message: Hello, how do I set up the platform?"
+    export CODEGEN_CALL_JSON_SCHEMA='{"type":"object","properties":{"lang":{"type":"string"},"intent":{"type":"string"}},"required":["lang","intent"]}'
+    export CODEGEN_CALL_TRANSCRIPT_PATH="/dev/null/cannot"
+    unset CODEGEN_CALL_JSON_SCHEMA_PATH 2>/dev/null || true
+    unset CODEGEN_CALL_ALLOWED_TOOLS_SET 2>/dev/null || true
+    unset CODEGEN_CALL_ALLOWED_TOOLS 2>/dev/null || true
+    unset CODEGEN_CALL_SETTINGS_PATH 2>/dev/null || true
+    bash "$DISPATCH_SCRIPT" 2>"$BASE_TMP/fail_stderr.log"
+) >"$BASE_TMP/fail_envelope.json" 2>/dev/null
+fail_exit=$?
+
+if [[ "$fail_exit" -eq 0 ]]; then
+    [ -n "${VERBOSE:-}" ] && printf 'PASS: (f) dispatch exits normally despite unwritable transcript dest\n'
+    pass=$((pass + 1))
+else
+    printf 'FAIL: (f) dispatch exit code changed by transcript copy failure — got %d\n' "$fail_exit"
+    fail=$((fail + 1))
+fi
+
+assert_jq \
+    "(f) unwritable transcript dest: result.status still success" \
+    "$(cat "$BASE_TMP/fail_envelope.json")" \
+    ".result.status" \
+    "success"
+
+# Test 14-15: source-assertions — both claude and pi call-dispatch.sh honor the env var
+assert_file_contains "$HARNESSES_DIR/call-dispatch.sh" "CODEGEN_CALL_TRANSCRIPT_PATH"
+
+PI_DISPATCH="$(cd "$HOOKS_DIR/../../pi" && pwd)/call-dispatch.sh"
+assert_file_contains "$PI_DISPATCH" "CODEGEN_CALL_TRANSCRIPT_PATH"
+
 # ─────────────────────────────────────────────────────────────────────────────
 echo ""
 echo "Results: $pass passed, $fail failed"

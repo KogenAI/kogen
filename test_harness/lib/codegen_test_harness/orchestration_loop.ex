@@ -34,6 +34,9 @@ defmodule CodegenTestHarness.OrchestrationLoop do
                      __DIR__
                    )
 
+  @transcript_seq_key :loop_transcript_seq
+  @cycle_id_key :loop_cycle_id
+
   @doc """
   Returns the ordered role sequence for `stack` (`"phoenix"` or
   `"static"`). Raises on any other stack name.
@@ -72,6 +75,9 @@ defmodule CodegenTestHarness.OrchestrationLoop do
 
     roles = role_sequence(stack)
     ctx = %{cwd: cwd, pitch: pitch, artifacts: %{}}
+
+    Process.put(@transcript_seq_key, 0)
+    Process.put(@cycle_id_key, Keyword.get(opts, :cycle_id))
 
     run_roles(roles, harness, ctx, opts)
   end
@@ -317,6 +323,23 @@ defmodule CodegenTestHarness.OrchestrationLoop do
   end
 
   @doc """
+  Returns the durable per-role transcript path for `cycle_id` (nil → nil,
+  no durable capture is possible without a cycle id), `cwd`, `seq`
+  (1-based, zero-padded to 2 digits), and `role`:
+
+      transcript_path("20260705_070557_slug", "/proj", 1, "developer-static")
+      #=> "/proj/codegen/logging/20260705_070557_slug/01-developer-static.jsonl"
+  """
+  @spec transcript_path(String.t() | nil, String.t(), non_neg_integer(), String.t()) ::
+          String.t() | nil
+  def transcript_path(nil, _cwd, _seq, _role), do: nil
+
+  def transcript_path(cycle_id, cwd, seq, role) do
+    nn = seq |> Integer.to_string() |> String.pad_leading(2, "0")
+    Path.join([cwd, "codegen", "logging", cycle_id, "#{nn}-#{role}.jsonl"])
+  end
+
+  @doc """
   Invokes one role via `RoleResolver.resolve_role/2` → `codegen-call`,
   parses the `{result: {status, value, reason, ...}}` envelope, and
   branches on `status`.
@@ -334,13 +357,18 @@ defmodule CodegenTestHarness.OrchestrationLoop do
   def invoke_role(role, harness, ctx, opts) do
     resolve_fn = Keyword.get(opts, :resolve_fn, &RoleResolver.resolve_role/2)
 
+    cycle_id = Process.get(@cycle_id_key)
+    seq = Process.get(@transcript_seq_key, 0) + 1
+    Process.put(@transcript_seq_key, seq)
+    transcript = transcript_path(cycle_id, ctx.cwd, seq, role)
+
     # Default threads ctx.cwd into the codegen-call so the role's agent runs IN
     # the project directory. dispatch.sh cd's to test_harness to run mix, so
     # WITHOUT this every role would edit the wrong directory (loop bug #3).
     # The /6 seam signature is preserved for test overrides.
     codegen_call_fn =
       Keyword.get(opts, :codegen_call_fn, fn h, m, e, sp, tools, pr ->
-        default_codegen_call(ctx.cwd, h, m, e, sp, tools, pr)
+        default_codegen_call(ctx.cwd, h, m, e, sp, tools, pr, transcript)
       end)
 
     {system_prompt_path, model, effort, allowed_tools} = resolve_fn.(role, harness)
@@ -350,6 +378,7 @@ defmodule CodegenTestHarness.OrchestrationLoop do
     envelope = codegen_call_fn.(harness, model, effort, system_prompt_path, allowed_tools, prompt)
 
     accumulate_telemetry(role, envelope)
+    write_cycle_summary(cycle_id, ctx.cwd, role, seq, transcript, envelope)
 
     case envelope do
       %{"result" => %{"status" => "success"} = result} ->
@@ -526,7 +555,8 @@ defmodule CodegenTestHarness.OrchestrationLoop do
          effort,
          system_prompt_path,
          allowed_tools,
-         prompt
+         prompt,
+         transcript
        ) do
     unless File.exists?(@codegen_call_bin) do
       raise "OrchestrationLoop: codegen-call not found at #{@codegen_call_bin}"
@@ -545,10 +575,11 @@ defmodule CodegenTestHarness.OrchestrationLoop do
           else: []
         ) ++ [prompt]
 
-    env = [
-      {"CODEGEN_DIR", @codegen_dir},
-      {"CODEGEN_BUILD_START_TS", Integer.to_string(System.system_time(:second))}
-    ]
+    env =
+      [
+        {"CODEGEN_DIR", @codegen_dir},
+        {"CODEGEN_BUILD_START_TS", Integer.to_string(System.system_time(:second))}
+      ] ++ if(transcript, do: [{"CODEGEN_CALL_TRANSCRIPT_PATH", transcript}], else: [])
 
     {output, exit_code} =
       System.cmd(@codegen_call_bin, args, stderr_to_stdout: true, env: env, cd: cwd)
@@ -650,6 +681,31 @@ defmodule CodegenTestHarness.OrchestrationLoop do
   end
 
   def accumulate_telemetry(_role, _envelope), do: :ok
+
+  # Appends one JSONL line to <cwd>/codegen/logging/<cycle_id>/cycle-summary.jsonl
+  # per role invocation — a durable per-cycle turn-summary alongside the raw
+  # per-role transcript files. A nil cycle_id (legacy/one-shot callers, or
+  # cycle_id-free ExUnit calls) is a no-op: no directory, no file.
+  defp write_cycle_summary(nil, _cwd, _role, _seq, _transcript, _envelope), do: :ok
+
+  defp write_cycle_summary(cycle_id, cwd, role, seq, transcript, envelope) do
+    usage = Map.get(envelope, "usage", %{})
+
+    line =
+      Jason.encode!(%{
+        "role" => role,
+        "seq" => seq,
+        "num_turns" => t_int(usage["num_turns"]),
+        "cost_usd" => t_num(usage["cost_usd"]),
+        "status" => get_in(envelope, ["result", "status"]),
+        "transcript" => transcript
+      })
+
+    dir = Path.join([cwd, "codegen", "logging", cycle_id])
+    File.mkdir_p!(dir)
+    File.write!(Path.join(dir, "cycle-summary.jsonl"), line <> "\n", [:append])
+    :ok
+  end
 
   defp t_num(nil), do: 0.0
   defp t_num(n) when is_number(n), do: n

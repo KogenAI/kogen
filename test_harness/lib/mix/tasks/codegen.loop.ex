@@ -47,8 +47,25 @@ defmodule Mix.Tasks.Codegen.Loop do
       end
 
     pitch = resolve_pitch(pitch_arg, cwd)
+    source = resolve_pitch_source(pitch_arg, cwd)
 
-    result = OrchestrationLoop.run(harness: harness, stack: stack, cwd: cwd, pitch: pitch)
+    slug =
+      case source do
+        {:file, abs} -> Path.basename(abs, ".md")
+        :literal -> "adhoc"
+      end
+
+    stamp = Calendar.strftime(DateTime.utc_now(), "%Y%m%d_%H%M%S")
+    cycle_id = "#{stamp}_#{slug}"
+
+    result =
+      OrchestrationLoop.run(
+        harness: harness,
+        stack: stack,
+        cwd: cwd,
+        pitch: pitch,
+        cycle_id: cycle_id
+      )
 
     # Emit aggregated per-cycle telemetry as a parseable stream-json result line
     # (benchmark instrumentation) regardless of outcome — a failed cycle still
@@ -58,7 +75,6 @@ defmodule Mix.Tasks.Codegen.Loop do
     case result do
       :ok ->
         Mix.shell().info("codegen.loop: COMMITTED, gate clear")
-        source = resolve_pitch_source(pitch_arg, cwd)
         maybe_ship_pitch(source, cwd)
 
       {:error, reason} ->

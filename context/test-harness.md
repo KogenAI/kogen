@@ -65,7 +65,8 @@ Deterministic Elixir replacement; selected by `--elixir` on `codegen-build` (exp
 - `OrchestrationLoop.run/1` — sequences roles via `invoke_role/4` (real `RoleResolver.resolve_role/2` → `codegen-call`), interleaves `LoopGate.run_gate/2` after the developer role. Envelope `result.status`: `"success"` advances, `"failed"`/`"clarifying_question"` retries SAME role once then `{:error, reason}`; other shapes RAISE. Gate verdict BINARY (`:clear|:failed`); RAISES on stray verdict. `stack: "static"` runs `:preflight_fn` before gate — RAISES naming missing dep (node/render-check.js/chromium). Phoenix skips preflight.
 - **Reviewer→dev fix cycle** — reviewer ends with `REVIEW_VERDICT: APPROVED|CHANGES_REQUESTED`. `CHANGES_REQUESTED` re-invokes dev with feedback, re-formats, re-gates, re-reviews (within `:max_review_cycles`, default 1).
 - **Committer verification** (`verify_committed!/1`) — after committer succeeds, asserts `git status --porcelain` empty in `ctx.cwd`; dirty tree RAISES. No-op on non-git cwd (mocked tests).
-- **Cwd-threaded calls** — `invoke_role/4`'s default `codegen_call_fn` closes over `ctx.cwd`, calls `default_codegen_call/7` (cwd now first arg, `System.cmd(cd: cwd)`) so each role's agent runs IN the project dir. Test seam stays `/6`.
+- **Cwd-threaded calls** — `invoke_role/4`'s default `codegen_call_fn` closes over `ctx.cwd`, calls `default_codegen_call/8` (cwd first arg, transcript last arg, `System.cmd(cd: cwd)`) so each role's agent runs IN the project dir. Test seam stays `/6`.
+- **Per-role transcript capture (optional)** — `mix codegen.loop` derives `cycle_id="<stamp>_<slug>"` (single-pitch entry; queue inherits via child subprocess), threads into `run(cycle_id: ...)`. `invoke_role/4` computes `transcript_path/4` = `<cwd>/codegen/logging/<cycle_id>/NN-<role>.jsonl` (nil cycle_id → nil, no-op) → `CODEGEN_CALL_TRANSCRIPT_PATH` env; both `call-dispatch.sh` copy their temp stream-json there on EXIT (fail-loud-non-blocking). `write_cycle_summary/6` appends `{role,seq,num_turns,cost_usd,status,transcript}` per invocation to `cycle-summary.jsonl` in the same dir. Gitignored.
 - **Telemetry** — `accumulate_telemetry/2` sums each envelope's `usage` (cost/tokens/turns) into a process-dict accumulator (`get_telemetry/0`/`zero_telemetry/0`) per role, across all invocations incl. retries. `Mix.Tasks.Codegen.Loop.emit_loop_telemetry/1` prints one aggregated `{"type":"result",...}` JSON line after `run/1` regardless of outcome, for the benchmark harness.
 - **`stack_default_gate/2`** (`LoopGate`, private) — `gate-select.sh`'s stack-blind fallback picks `"make test"` for non-mix.exs; loop's static sequence has no planner `**Gate**:` line, so this forces static + `"make test"` → `"make ci"`. Loop-local; shared `gate-select.sh` untouched.
 - **`call-dispatch.sh` flip** — both harness `call-dispatch.sh` scripts now pass `--append-system-prompt` (not `--system-prompt`) unconditionally, no toggle.
@@ -73,7 +74,7 @@ Deterministic Elixir replacement; selected by `--elixir` on `codegen-build` (exp
 - Test seams: `:invoke_fn`, `:gate_fn`, and (on `invoke_role/4`) `:resolve_fn`/`:codegen_call_fn` opts let tests stub the LLM/gate entirely. Use `Keyword.merge(defaults, extra)` NOT `list1 ++ list2` when merging `_fn` opts (left wins in concat, right wins in merge — applies to all seam-based test helpers, e.g. `orchestration_loop_test.exs`, `loop_queue_drain_test.exs`).
 - `LoopGate.run_gate/2` shells `gate-select.sh`/`gate-result.sh` — reuses `codegen/gate-pending/` JSON schema unchanged.
 - **Single-pitch move** (`OrchestrationLoop.run/1` `:ok` branch) — calls `maybe_ship_pitch/2` to move `ready/<slug>.md` → `shipped/<slug>.md` (idempotent, clean-tree-guarded). Mirrors queue discipline. Tests in `codegen_loop_test.exs`.
-- `LoopQueue` mirrors `retryable_regex` transient and Kahn topo-sort. `LoopQueueDrain.drain/1` live caller: `--elixir --queue` execs `mix codegen.loop.queue`; bare `--queue` execs legacy `harnesses/shared/build-queue.sh`. Both share `codegen/gate-pending/` lock. **Operator output**: per-pitch banner, two-path echo (session.md + jsonl, fail-open), streamed child stderr, terminal outcomes. Session.md discovery via glob ≤30 polls. Tests: `loop_queue_drain_test.exs`. **Per-pitch engine**: `default_spawn_fn/5` passes `--elixir` in the per-pitch `codegen-build` child args, so under `--elixir --queue` each pitch is ALSO built by `mix codegen.loop` (engine=elixir throughout), not the legacy per-pitch session.
+- `LoopQueue` mirrors `retryable_regex` transient and Kahn topo-sort. `LoopQueueDrain.drain/1` live caller: `--elixir --queue` execs `mix codegen.loop.queue`; bare `--queue` execs legacy `harnesses/shared/build-queue.sh`. Both share `codegen/gate-pending/` lock. **Operator output**: per-pitch banner, two-path echo (session.md + jsonl, fail-open), streamed child stderr, terminal outcomes; session.md discovery via glob ≤30 polls. Tests: `loop_queue_drain_test.exs`. **Per-pitch engine**: `default_spawn_fn/5` passes `--elixir` in the per-pitch `codegen-build` child args (engine=elixir throughout under `--elixir --queue`).
 - **Committed-but-nonzero recovery** — `handle_nonzero_exit/5` detects committer-post-commit hiccup (HEAD moved + gate `"clear"`) and counts pitch shipped instead of erroring. Seams `:git_head_fn`, `:gate_verdict_fn` fail-open. Only `"clear"` recovers; others halt loud. Tests: `loop_queue_drain_test.exs` (`6r1`-`6r6`).
   - **Idempotency contract**: `LoopQueueDrain.ship/3` MUST be idempotent (return `:ok` if dst exists) — the build agent already moves ready→shipped per baked system-prompt contract; drain never fights it for ownership.
 - State advancement (GATED→REVIEWED→CURATED→COMMITTED) shells `cycle-state.sh` via `advance_cycle_state_step/3`.
@@ -185,15 +186,11 @@ Hermetic bash test files (e.g., `prompt-content-parity_test.sh`) that use sequen
 
 When a hook's conditional logic widens (e.g., `agentType === "planner-phoenix"` → `agentType.startsWith("planner")`), existing test fixtures that rely on the literal condition falling through to an `else` branch become INVALID post-widen. They must be **converted**, not kept as-is.
 
-**Example from session 20260613_planner-header-churn**: The Pi hook `subagent-retrospective-guard.ts` had a test fixture "enforces for planner-static" with header `## planner-static Section`. The fixture relied on the old literal `agentType === "planner-phoenix"` check to fall through to the `else` branch that looks for `## ${agentType} Section`. After widening to `agentType.startsWith("planner")`, planner-static no longer falls through — it matches the true branch and looks for `## Plan` instead. The old fixture's `## planner-static Section` header would never be found, causing the hook to skip (no warning). The assertion `stderr.includes("warning")` would fail.
+**Example (session 20260613_planner-header-churn)**: `subagent-retrospective-guard.ts` had a fixture "enforces for planner-static" relying on the old `agentType === "planner-phoenix"` check falling through to an `else` branch. After widening to `agentType.startsWith("planner")`, the fixture's old header was never found, the hook silently skipped, and `stderr.includes("warning")` failed.
 
-**Conversion pattern**:
+**Conversion pattern**: identify fixtures relying on the OLD condition falling through → rewrite to satisfy the NEW condition (same test name, new setup) — this is a required fix, not a new test.
 
-1. Identify existing fixtures that relied on the OLD narrow condition falling through
-2. Rewrite those fixtures to satisfy the NEW condition — same test name but NEW setup
-3. The conversion is not a new test; it is a required fix to prevent silent test breakage
-
-**Critical**: When narrowing/widening logic in a hook, grep the paired test file(s) for fixture setups that may be invalidated. A fixture using `## planner-static Section` with the old code is no longer valid after the widen — convert it before the change lands or the test suite will emit false-positive passes (the condition no longer matches, so the hook's intended path never runs, but the test passes because the deny/block never fires).
+**Critical**: when narrowing/widening hook logic, grep paired test file(s) for fixtures the change may invalidate; convert before landing or the suite emits false-positive passes (deny/block path never exercised, but assertion passes).
 
 ### Fixture and Build Patterns
 
@@ -263,8 +260,8 @@ Benchmark mode (BENCH=1), artifact layout, screenshot capture, mix viewer tasks:
 - **`run_with_timeout/4` return order** — returns `{output, exit_code}` (output-first); re-tuple explicitly if contract differs.
 - **`assert_assets_deploy!` needs `MIX_ENV=dev`** — tailwind config is dev-only; pass `env: [{"MIX_ENV", "dev"}]` in System.cmd call.
 - **`codegen-call` requires `--model`, `--effort`, `@<abs-path>`** — old API used exit 2; fixtures resolve from config.yaml, write temps, pass @/tmp/...
-- **`default_spawn_fn/5` timeout kills the whole child tree** — `Port.open({:spawn_executable, ...})` + receive-loop (mirrors `fixtures.ex` `do_timeout/3`/`bench_artifacts.ex` `kill_port/1`), not `Task.shutdown(:brutal_kill)` (orphaned grandchildren). Test seams: `Process.put(:__queue_drain_build_bin__, ...)`, `:__queue_drain_kill_fn__`.
-- **`bench_artifacts_test.exs` token list tracks screenshot.js changes** — pre-Vite: playwright/node errors; Vite: resolveServeDir; update on js migration.
+- **`default_spawn_fn/5` timeout kills whole child tree** — `Port.open`+receive-loop, not `Task.shutdown(:brutal_kill)` (orphans grandchildren). Seams: `:__queue_drain_build_bin__`, `:__queue_drain_kill_fn__`.
+- **`bench_artifacts_test.exs` token list tracks screenshot.js changes** — update on Vite migration.
 
 ### Flake Triage Protocol
 
@@ -272,10 +269,10 @@ Apply to EVERY `make test-stacks` failure before touching source. Reference: `sh
 
 **4 buckets:**
 
-1. **Deterministic source bug** — same failure across 2+ runs with identical message; root cause is in source (scaffold script, fixture, assertion logic). Fix source; run `make test` (fast gate) + targeted `mix test <file> --only slow` to confirm.
-2. **Deterministic test-vs-impl conflict** — assertion was written against old API/behavior; impl changed, test didn't. Fix the stale side (whichever drifted); re-run that file.
-3. **Genuine LLM flake** — LLM non-determinism: PROJECT_CONTEXT.md absent, content markers missing, empty HTML body, generated code compile error. Confirm by re-running `HARNESS=<h> MIX_BUILD_PATH=_build/<h>_test mix test test/stacks/<path> --only slow` up to 3×. If all 3 pass → accept as flake. Do NOT add retry infra. Do NOT widen assertions.
-4. **Operational** — tool missing, API credentials wrong, quota exceeded. Fix the precondition (tool/env), not the test. Pi `debug_test.exs` failing with `gpt-5.3-codex-spark not supported` = Codex API account required, not a flake.
+1. **Deterministic source bug** — same failure across 2+ runs, identical message; root cause in source. Fix source; confirm via `make test` + targeted `mix test <file> --only slow`.
+2. **Deterministic test-vs-impl conflict** — assertion written against old API/behavior; impl changed, test didn't. Fix stale side; re-run.
+3. **Genuine LLM flake** — non-determinism (missing PROJECT_CONTEXT.md, content markers, empty HTML, compile error). Confirm via 3× re-run; all pass → accept as flake. No retry infra, no widened assertions.
+4. **Operational** — tool missing, bad creds, quota. Fix the precondition, not the test. Pi `gpt-5.3-codex-spark not supported` = account required, not a flake.
 
 **Rules:**
 

@@ -513,6 +513,90 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
     end
   end
 
+  describe "per-role transcript capture" do
+    test "transcript_path/4 returns nil when cycle_id is nil" do
+      assert OrchestrationLoop.transcript_path(nil, "/x", 1, "developer-static") == nil
+    end
+
+    test "transcript_path/4 builds a zero-padded NN-<role>.jsonl path under codegen/logging/<cycle_id>" do
+      path =
+        OrchestrationLoop.transcript_path("20260705_070557_slug", "/x", 1, "developer-static")
+
+      assert String.ends_with?(
+               path,
+               "codegen/logging/20260705_070557_slug/01-developer-static.jsonl"
+             )
+
+      path10 =
+        OrchestrationLoop.transcript_path("20260705_070557_slug", "/x", 10, "developer-static")
+
+      assert String.ends_with?(
+               path10,
+               "codegen/logging/20260705_070557_slug/10-developer-static.jsonl"
+             )
+    end
+
+    test "invoke_role/4 writes a cycle-summary.jsonl entry when a cycle_id is set" do
+      cwd = Path.join(System.tmp_dir!(), "octel-#{System.unique_integer([:positive])}")
+      File.mkdir_p!(cwd)
+      on_exit(fn -> File.rm_rf(cwd) end)
+
+      Process.put(:loop_cycle_id, "20260705_x_slug")
+      Process.put(:loop_transcript_seq, 0)
+
+      envelope = %{
+        "result" => %{"status" => "success", "value" => "x"},
+        "usage" => %{"num_turns" => 3, "cost_usd" => 0.02}
+      }
+
+      OrchestrationLoop.invoke_role(
+        "developer-static",
+        "claude_code",
+        %{cwd: cwd, pitch: "p", artifacts: %{}},
+        resolve_fn: fn _r, _h -> {"/tmp/sp.txt", "sonnet", "medium", "Bash"} end,
+        codegen_call_fn: fn _h, _m, _e, _sp, _t, _pr -> envelope end
+      )
+
+      summary_path =
+        Path.join([cwd, "codegen", "logging", "20260705_x_slug", "cycle-summary.jsonl"])
+
+      assert File.exists?(summary_path)
+
+      [line] = summary_path |> File.read!() |> String.split("\n", trim: true)
+      decoded = Jason.decode!(line)
+
+      assert decoded["num_turns"] == 3
+      assert decoded["role"] == "developer-static"
+      assert decoded["seq"] == 1
+      assert decoded["status"] == "success"
+      assert String.ends_with?(decoded["transcript"], "01-developer-static.jsonl")
+    end
+
+    test "invoke_role/4 writes no cycle-summary file when cycle_id is nil" do
+      cwd = Path.join(System.tmp_dir!(), "octel-#{System.unique_integer([:positive])}")
+      File.mkdir_p!(cwd)
+      on_exit(fn -> File.rm_rf(cwd) end)
+
+      Process.put(:loop_cycle_id, nil)
+      Process.put(:loop_transcript_seq, 0)
+
+      envelope = %{
+        "result" => %{"status" => "success", "value" => "x"},
+        "usage" => %{"num_turns" => 3, "cost_usd" => 0.02}
+      }
+
+      OrchestrationLoop.invoke_role(
+        "developer-static",
+        "claude_code",
+        %{cwd: cwd, pitch: "p", artifacts: %{}},
+        resolve_fn: fn _r, _h -> {"/tmp/sp.txt", "sonnet", "medium", "Bash"} end,
+        codegen_call_fn: fn _h, _m, _e, _sp, _t, _pr -> envelope end
+      )
+
+      refute File.exists?(Path.join([cwd, "codegen", "logging"]))
+    end
+  end
+
   describe "verify_committed! (structural gap #9)" do
     setup do
       dir =

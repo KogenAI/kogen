@@ -28,6 +28,8 @@ System prompt assembly: `tools-header/<mode>.txt` + entries in `prompt_body[]` (
 
 **One-shot launcher boundary**: `claude-ops.sh`, `claude-shape.sh`, `claude-debug.sh`, `call-dispatch.sh` are single-invocation launchers with UNCONDITIONAL `--no-session-persistence` (Claude) or `--no-session` (Pi). These must NOT read `CODEGEN_BUILD_RESUMABLE` or `CODEGEN_BUILD_RESUME_ID` environment variables. The boundary is clean: only `dispatch.sh` (called by `codegen-build`) reads resumable flags; one-shot launchers remain deterministic. Enforce via grep: variable names MUST NOT appear in launcher source files.
 
+**`call-dispatch.sh` optional transcript capture**: both harness `call-dispatch.sh` scripts honor an optional `CODEGEN_CALL_TRANSCRIPT_PATH` env var — when set, the captured stream-json is copied there on the EXIT trap before the temp file is deleted (fail-loud-non-blocking: a copy failure prints to stderr but never changes the exit code); unset = current behavior (no copy). Consumed by the `--elixir` orchestration loop for durable per-role transcripts; see `context/test-harness.md` § Orchestration Loop.
+
 ## Key Paths
 
 ```

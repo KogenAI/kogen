@@ -5,6 +5,10 @@
 # Captures pi JSONL output, parses agent_end events into a normalized JSON envelope,
 # emits the envelope on stdout.
 # STDOUT: one JSON envelope object. STDERR: diagnostics only.
+#
+# CODEGEN_CALL_TRANSCRIPT_PATH is OPTIONAL — when set, the temp stream-json is
+# copied there before deletion; unset → no transcript (one-shot codegen-call
+# unaffected).
 
 set -euo pipefail
 
@@ -31,6 +35,15 @@ EFFORT="${CODEGEN_CALL_EFFORT:?CODEGEN_CALL_EFFORT not set}"
 PROMPT="${CODEGEN_CALL_PROMPT:?CODEGEN_CALL_PROMPT not set}"
 JSON_SCHEMA_CONTENT="${CODEGEN_CALL_JSON_SCHEMA:-}"
 EXTENSION_PATH="${CODEGEN_CALL_EXTENSION_PATH:-}"
+
+_capture_transcript() {
+    [ -n "${CODEGEN_CALL_TRANSCRIPT_PATH:-}" ] || return 0
+    [ -n "${TMP_OUT:-}" ] && [ -f "$TMP_OUT" ] || return 0
+    local dest="$CODEGEN_CALL_TRANSCRIPT_PATH"
+    if ! mkdir -p "$(dirname "$dest")" 2>/dev/null || ! cp "$TMP_OUT" "$dest" 2>/dev/null; then
+        printf 'codegen-call: transcript copy failed: could not write %s\n' "$dest" >&2
+    fi
+}
 
 # ── Build prompt (embed JSON schema as instruction if provided) ───────────────
 EFFECTIVE_PROMPT="$PROMPT"
@@ -61,7 +74,7 @@ ARGS+=("$EFFECTIVE_PROMPT")
 
 # ── Capture pi output ─────────────────────────────────────────────────────────
 TMP_OUT="$(mktemp -t codegen-call-pi.XXXXXX.jsonl)"
-trap 'rm -f "$TMP_OUT"' EXIT
+trap '_capture_transcript; rm -f "$TMP_OUT"' EXIT
 
 START_TS_MS="$(_ts_ms)"
 
