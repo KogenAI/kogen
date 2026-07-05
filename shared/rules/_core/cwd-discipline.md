@@ -44,5 +44,5 @@ mix phx.new /tmp/some_app
 
 The session-log naming rule in this prompt governs naming/schema; this path-form rule governs relative-vs-absolute. Both rules must be satisfied:
 
-- Path form: relative OR absolute starting with cwd (line 10 above)
+- Path form: relative OR absolute starting with cwd (see the Hard Rules above)
 - Schema: matches canonical regex in the session-log naming rule in this prompt

@@ -196,6 +196,8 @@ templates/generator/hook_registrations.py  ← generates settings.json entries
 
 **Static sentinel co-location tests**: Pre-existing bash tests that assert a specific sentinel on a specific line (e.g., `grep -c 'SETTINGS_JSON=.*API_FORCE_IDLE_TIMEOUT'` on the same line) break when the implementation refactors to use variable indirection (`SETTINGS_JSON` assigned separately, referenced via var on exec line). When fixing such tests, migrate to co-location assertions at the variable level (two separate patterns: one for the assignment line, one for the reference line) instead of literal same-line blob matching. This pattern is more robust to future indirection refactorings and better captures the load-bearing invariant (key present in both branches, not co-located with specific other text).
 
+**Hermetic CI tests vs hooks**: `context-doc-provenance_test.sh` and `context-index-coverage_test.sh` are hermetic bash tests that scan documentation and rules for rotting line-citations and index drift — they are NOT hook/registry entries and do NOT appear in `settings.json`. Auto-discovered via `run-tests.sh` footer detection (`N passed, N failed`). Independent from hook-parity and enforce-registry-parity gates; they are pure linting checks on the content corpus. Corpus scope changes (e.g., widening to include `shared/rules/**/*.md`) are feature additions to the test suite, not hook-registration changes.
+
 ## See Also
 
 For matrix of which hooks gate which launcher modes (build vs debug/shape/refactor vs ops), see `context/launcher-hook-matrix.md`.

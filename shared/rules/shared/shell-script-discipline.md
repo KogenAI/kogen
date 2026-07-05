@@ -1,6 +1,6 @@
 # Shell Script Authoring Discipline
 
-Every `.sh` file: `#!/usr/bin/env bash` + `set -euo pipefail` on line 2.
+Every `.sh` file: `#!/usr/bin/env bash` shebang, immediately followed by `set -euo pipefail`.
 
 Quote all expansions: `"$var"`, `"${arr[@]}"`. Empty-array-safe splice: `"${ARR[@]+"${ARR[@]}"}"`
 

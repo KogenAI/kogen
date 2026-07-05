@@ -90,7 +90,7 @@ Before any edit:
 
 Never duplicate. If the file already says it, skip.
 
-**Content-anchor edits over line-number anchors**: When targeting doc fixes, match by exact content string, NOT line numbers. Line numbers drift across edits; content anchors are durable. Example: if a pitch cites `billing.md:73` but the actual false claim is at line 87, grep the content to find the truth-source. This is especially critical for docs covering multi-file sibling claims (e.g., phantom-table references spanning both the billing doc AND the `stripe_events.ex` moduledoc) — sweep for ALL instances of the false claim by content, not just pitch-named line numbers.
+**Content-anchor edits over line-number anchors**: When targeting doc fixes, match by exact content string, NOT line numbers. Line numbers drift across edits; content anchors are durable. Example: if a pitch cites `billing.md:<line>` (a pitch-supplied line number) but the actual false claim is at a different line, grep the content to find the truth-source. This is especially critical for docs covering multi-file sibling claims (e.g., phantom-table references spanning both the billing doc AND the `stripe_events.ex` moduledoc) — sweep for ALL instances of the false claim by content, not just pitch-named line numbers.
 
 ## Tool Interactions
 

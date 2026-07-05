@@ -32,11 +32,8 @@ Codegen-infra pitfalls and bash gotchas — split from `context/development.md` 
 - **[shared] Pure hard-delete safer than deprecation** — When deleting dead code (validator branches, special-cases), hard-delete entirely vs leaving always-false backstop. Pure deletion is verifiable by GREP (zero matches) and prevents future developers from resurrecting dead code without understanding the original boundary violation.
 - **Makefile recipes run under `/bin/sh`, not bash** — process substitution fails. Use pipeline patterns instead of bash-specific syntax.
 - **Flaky tests: investigate state leakage, not timing** — Check counter files, temp dirs. Cleanup in `afterEach` required.
-- **Test isolation scoping** — Capture streams at test-body, restore both paths. Env cleanup in beforeEach/afterEach. Bash: trap-clean temps, PATH stubs.
-- **Pi test essentials** — Create real temps at test paths. `npm run build` before test (runs on `dist/`).
-- **`make test` tail-capture hides earlier summaries** — Piping to `| tail -N` drops hook-parity summaries. Re-run the test file directly to confirm execution.
-- **`make test` npm-ext transient race** — Extensions run in parallel; enforcement tsc writes `dist/` while tests import from it. Slow machines see transient "module not found". Re-run passes; not durable.
-- **SENTINEL parity check** — Before `make install`, verify SENTINELs in both sources via `grep -c "SENTINEL_TEXT" file1 file2`
+- **Test isolation scoping** — Capture streams at test-body, restore both paths. Env cleanup in beforeEach/afterEach.
+- **`make test` tail-capture hides summaries** — Piping to `| tail` drops hook-parity output. Re-run test file directly to confirm.
 - **Gate verdict from JSON** — Read `gate-result.json` `.verdict` field, not log prose; JSON reflects actual code
 - **Codegen pitch path resolution: `codegen/pitches/ready/<slug>.md`** — Pitch files live in nested self-meta dir under codegen root, NOT under a bare `pitches/` at repo root. Resolution: `${CODEGEN_DIR}/codegen/pitches/ready/<slug>.md`. `subagent-read-discipline.sh` denies Read tool access regardless of explicit mentions in delegation prompt. Extract intent from the delegation prompt's restated requirements instead of opening the pitch file.
 - **`templates/generator/install_test.sh` not auto-discovered** — Only `test_harness/install/*_test.sh` auto-discovered. Tests in both dirs must reconcile sentinels when editing install.sh. Conflicts surface on full `make test` when both hooks auto-run.
@@ -60,11 +57,9 @@ Codegen-infra pitfalls and bash gotchas — split from `context/development.md` 
 - **`git status --porcelain` on fresh fixtures requires explicit commit** — `git init` + untracked files = dirty. Run `git init` + `git add -A` + `git commit` to establish a clean-tree baseline, then create stray files for the dirty case.
 - **Semantic equivalence vs structural identity in prompt-body sibling files** — verify semantic equivalence of all rules, NOT literal step-count parity. Compression preserving all semantic rules is correct mirroring.
 - **Planner-guard blocks Read on rule files** — Use `Grep -C` for anchors; developer uses Read to verify.
-- **Context files carry a 40 KB advisory cap** — `context/*.md` files have 40,960-byte limit. Compress or split when near cap.
 - **Env var leakage in tests** — Tests exercising DEFAULT branches must `env -u VAR bash` to isolate. Single `env -u` leaves fallback.
 - **Gate Verdict Authority applies retroactively** — the runtime-written gate-result JSON's `.verdict` field is authoritative, never session-log prose.
 - **Bash array-literal fix** — Use literals for spaces; isolate override-var tests via `env -u OVERRIDE_VAR`.
-- **`replace_all` composite keys** — use separate passes for different path prefixes.
 - **Removing a config.yaml role breaks slow ExUnit tests** — `@moduletag :slow` tests excluded from `make test` (`--exclude slow`) but run in `make test-stacks` (`--only slow`). Deleting a role → silently passes `make test`, fails `make test-stacks` with `ERROR: roles.<role>.model missing/empty`. Survey both gates; update all `:slow` tests to valid roles before commit.
 - **Curator byte cap enforcement** — `curator-context-size-gate.sh` denies over-cap Edit/Write in curator's turn (hard gate). Commit-time `context-file-size-gate.sh` backstop re-routes to curator. Compress bullets or split to new file.
 - **Grep recipe glob depth** — `harnesses/claude/hooks/*.sh` misses subdirs. Use `**/*.sh` or recursive for complete enumeration.
@@ -186,6 +181,10 @@ Codegen-infra pitfalls and bash gotchas — split from `context/development.md` 
 - **[shared] Fix unrelated defects when discovered by gate failure** — When `make test` surfaces a pre-existing, wholly unrelated repo defect (e.g., missing `## Trigger Keywords` section in a context file), fix it in-place per Fail Loud rather than working around or ignoring the gate failure. The gate's job is detecting correctness violations; a structural doc gap discovered en route is a legitimate repair, not scope creep.
 - **[shared] Generic `FAIL:*` wildcard routes new verdict reasons without case-arm edits** — A pre-existing `case "$render_verdict" in FAIL:*)` arm in gate verdict routing automatically catches any new `FAIL:<reason>` value, provided the wildcard existed BEFORE the pitch (verify by reading source pre-pitch, not assuming generic coverage). No new arm needed for each reason; only the verdict-producing side (e.g., render-check.js) needs the change. Reviewers should verify the wildcard existed before confirming zero-touch routing.
 - **[shared] Two-path fail-open/fail-closed design defended by calling-contract difference** — A render-check with `--spawn <dir>` self-boot (gate owns lifecycle) can fail-closed to FAIL; a `--port <N>` assume-running probe (external caller owns server) must fail-open to INCONCLUSIVE (can't tell not-ready from broken). The two paths have fundamentally different calling contracts — not an inconsistency, a deliberate design. Reviewers should verify both paths exist and are scoped to their calling context.
+- **[local] Dodge-the-regex sweep semantics** — replacement regex-clean (no `.ext:N`/`line N`) yet factually wrong. Reviewer MUST read prose for semantic accuracy, not just grep-verify pattern absence.
+- **[shared] developer-no-self-gate literal-phrase false-positives** — counter increments on ANY Bash phrase (e.g., `make test`) anywhere in payload, including heredocs. Isolate gate-phrase edits to separate script file.
+- **[shared] reviewer-guard hard-restricts Edit regardless of delegation** — denies Edit outside session logs even if prompt says "you have Edit". Hook enforcement > agent message. Use Grep + `-B`/`-A` for anchors.
+- **[local] Detection-regex re-verify after edit** — when sweeping cites, re-run exact grep regex AFTER EACH file edit to confirm zero matches. Factual corrections can reintroduce regex text.
 
 ## Trigger Keywords
 

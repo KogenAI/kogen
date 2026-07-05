@@ -147,7 +147,7 @@ Only use scoped warning strings (e.g., `"function_name unexpected response"`) th
 ## Rules
 
 - `async: true` default. ❌ `@tag :skip` (use `@moduletag :skip` at module scope).
-- Flaky: `mix test test/file.exs:123 --repeat-until-failure 10000`
+- Flaky: `mix test test/file.exs:<line> --repeat-until-failure 10000`
 - `ExUnit.start(exclude: [:slow])` in `test_helper.exs`. One place.
 - Append `2>&1`. ❌ `time`, ❌ pipe to `head`/`tail`/`grep`. Read log.
 

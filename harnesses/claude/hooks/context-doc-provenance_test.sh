@@ -46,7 +46,7 @@ real_git_mode() {
     git -C "$CODEGEN_DIR" ls-files --stage "$1" 2>/dev/null | awk '{print $1}'
 }
 
-# ── Real-corpus scan: context/*.md + PROJECT_CONTEXT.md ──────────────────────
+# ── Real-corpus scan: context/*.md + PROJECT_CONTEXT.md + shared/rules/**/*.md ─
 # (a) line-cites
 {
     corpus_fail=0
@@ -58,6 +58,14 @@ real_git_mode() {
             corpus_fail=$((corpus_fail + 1))
         fi
     done
+    while IFS= read -r f; do
+        [ -f "$f" ] || continue
+        if detect_line_cites "$f" | grep -q .; then
+            printf 'FAIL: raw line-citation in %s\n' "$f"
+            detect_line_cites "$f"
+            corpus_fail=$((corpus_fail + 1))
+        fi
+    done < <(find "$CODEGEN_DIR/shared/rules" -name '*.md')
     if [ "$corpus_fail" -eq 0 ]; then pass=$((pass + 1)); else fail=$((fail + corpus_fail)); fi
 }
 # (b) provenance contradictions
@@ -71,6 +79,14 @@ real_git_mode() {
             corpus_fail=$((corpus_fail + 1))
         fi
     done
+    while IFS= read -r f; do
+        [ -f "$f" ] || continue
+        n="$(detect_provenance_contradiction "$f" real_git_mode)"
+        if [ "$n" -gt 0 ]; then
+            printf 'FAIL: provenance contradiction in %s (%d)\n' "$f" "$n"
+            corpus_fail=$((corpus_fail + 1))
+        fi
+    done < <(find "$CODEGEN_DIR/shared/rules" -name '*.md')
     if [ "$corpus_fail" -eq 0 ]; then pass=$((pass + 1)); else fail=$((fail + corpus_fail)); fi
 }
 
@@ -127,6 +143,20 @@ if [ "$(detect_provenance_contradiction "$TMP_DIR/f6.md" fixture_git_mode)" -eq 
     printf 'FAIL: F6 false contradiction on non-symlink\n'
     fail=$((fail + 1))
 fi
+
+# F7: rule-file-style line-cite mod.py:329 → detected
+printf 'See mod.py:329 for the flag.\n' >"$TMP_DIR/f7.md"
+if detect_line_cites "$TMP_DIR/f7.md" | grep -q .; then pass=$((pass + 1)); else
+    printf 'FAIL: F7 rule-file .py:NN not detected\n'
+    fail=$((fail + 1))
+fi
+
+# F8: clean rule-file text → no detection
+printf 'A rule referencing run-tests.sh by name only, no line number.\n' >"$TMP_DIR/f8.md"
+if detect_line_cites "$TMP_DIR/f8.md" | grep -q .; then
+    printf 'FAIL: F8 clean rule file flagged\n'
+    fail=$((fail + 1))
+else pass=$((pass + 1)); fi
 
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -gt 0 ] && exit 1

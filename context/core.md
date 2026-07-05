@@ -70,8 +70,8 @@ Enforcement compiler (registry schema, pattern dialects, renderer-neutral tokens
 
 **Architecture requirement**: codegen-call's arg parser must NEVER hardcode a role name or reference `--append-system-prompt`. Tests enforce this via regex assertions:
 
-- Test (o) in `codegen-call_test.sh` (`:405-407`) — asserts source has ZERO role-name tokens (`planner|developer|committer|reviewer|curator`)
-- Test (p) (`:412-414`) — asserts source has ZERO `--append-system-prompt` tokens
+- Test (o) in `codegen-call_test.sh` (the role-name-token assertion) — asserts source has ZERO role-name tokens (`planner|developer|committer|reviewer|curator`)
+- Test (p) (the --append-system-prompt-token assertion) — asserts source has ZERO `--append-system-prompt` tokens
 
 These tests block any regression that would hardcode role knowledge into codegen-call's source. The `--append-system-prompt` flag lives ONLY in `call-dispatch.sh` (`:56`, conditionally omitted when `CODEGEN_CALL_AGENT` is set); codegen-call never exports it.
 
