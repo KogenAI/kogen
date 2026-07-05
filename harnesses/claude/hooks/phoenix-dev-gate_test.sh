@@ -464,13 +464,15 @@ assert_file_contains "render cmd-failed: FAILED in log" "FAILED" "$LOG14"
 rm -f "$STUB14"
 rm -rf "$T14"
 
-# ── Test 15: CODEGEN_DIR unset + no override → INCONCLUSIVE (not clear) ──────
+# ── Test 15: CODEGEN_DIR unset + no override → self-spawn boot fails → block ──
 # When CODEGEN_DIR is unset and no RENDER/WIRING override is given, the
 # default command still resolves via BASH_SOURCE[0] (sibling-relative), so
-# render-check.js/node ARE present on this box — this test actually
-# exercises the runtime "server-unready" path (class-2, out of scope for the
-# fail-closed flip), not the checker-missing path (class-1, in scope — see
-# Tests 13/14/22/23/28/29 for those). It must stay INCONCLUSIVE.
+# render-check.js/node ARE present on this box. render-check.js now runs
+# `--spawn "$project_dir"` (real `mix phx.server`) against the fixture
+# project, which has no valid Phoenix app — the server never boots, so this
+# exercises the runtime self-spawn-boot-failure path (class-2, in scope for
+# the fail-closed flip: FAIL:server-boot-failed), not the checker-missing
+# path (class-1 — see Tests 13/14/22/23/28/29 for those). It must now block.
 T15=$(make_project)
 LOG15="$T15/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_step1.md"
 cat >"$LOG15" <<'MD'
@@ -483,9 +485,9 @@ MD
 make_transcript "$T15/transcript.jsonl" "$LOG15"
 out15=$(printf '%s' "$(input_for "$T15" developer-phoenix-backend false sess1 "$T15/transcript.jsonl")" |
     env -u RENDER_CHECK_CMD -u WIRING_CHECK_CMD -u CODEGEN_DIR bash "$HOOK" 2>/dev/null || true)
-assert_not_contains "CODEGEN_DIR unset: no block" '"decision": "block"' "$out15"
+assert_contains "CODEGEN_DIR unset: block emitted (fail-closed on boot failure)" '"decision": "block"' "$out15"
 assert_file_not_contains "CODEGEN_DIR unset: no ALL CLEAR" "ALL CLEAR" "$LOG15"
-assert_file_contains "CODEGEN_DIR unset: INCONCLUSIVE in log" "INCONCLUSIVE" "$LOG15"
+assert_file_contains "CODEGEN_DIR unset: FAILED in log" "FAILED" "$LOG15"
 rm -rf "$T15"
 
 # ── Test 16: explicit RENDER_CHECK_CMD="" opt-out → no INCONCLUSIVE ───────────
@@ -861,6 +863,51 @@ assert_not_contains "legit-skip opt-out: no block" '"decision": "block"' "$out30
 assert_file_contains "legit-skip opt-out: ALL CLEAR in log" "ALL CLEAR" "$LOG30"
 assert_file_not_contains "legit-skip opt-out: no FAILED in log" "FAILED" "$LOG30"
 rm -rf "$T30"
+
+# ── Test 31: render PASS (self-spawn) — short gate success → ALL CLEAR ───────
+# Mirrors Test 1 but documents the self-spawn invocation contract:
+# run_phoenix_render_check now passes --spawn "$project_dir" instead of
+# --port, so a stubbed PASS verdict (the stub does not care which flag it
+# was invoked with) still proves the ALL-CLEAR path is intact end-to-end.
+T31=$(make_project)
+LOG31="$T31/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_step1.md"
+cat >"$LOG31" <<'MD'
+# Step
+
+## Plan
+
+**Gate**: `true`
+MD
+make_transcript "$T31/transcript.jsonl" "$LOG31"
+STUB31=$(make_render_stub "PASS")
+out31=$(printf '%s' "$(input_for "$T31" developer-phoenix-backend false sess1 "$T31/transcript.jsonl")" |
+    RENDER_CHECK_CMD="$STUB31" CODEGEN_DIR="$SCRIPT_DIR" bash "$HOOK" 2>/dev/null || true)
+assert_not_contains "spawn-success: no block" '"decision": "block"' "$out31"
+assert_file_contains "spawn-success: ALL CLEAR in log" "ALL CLEAR" "$LOG31"
+rm -f "$STUB31"
+rm -rf "$T31"
+
+# ── Test 32: render FAIL:server-boot-failed (self-spawn boot failure) — blocks ──
+# Proves the gate treats a self-spawned server that never boots as a
+# fail-closed FAIL, not a fail-open INCONCLUSIVE skip.
+T32=$(make_project)
+LOG32="$T32/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_step1.md"
+cat >"$LOG32" <<'MD'
+# Step
+
+## Plan
+
+**Gate**: `true`
+MD
+make_transcript "$T32/transcript.jsonl" "$LOG32"
+STUB32=$(make_render_stub "FAIL:server-boot-failed")
+out32=$(printf '%s' "$(input_for "$T32" developer-phoenix-backend false sess1 "$T32/transcript.jsonl")" |
+    RENDER_CHECK_CMD="$STUB32" CODEGEN_DIR="$SCRIPT_DIR" bash "$HOOK" 2>/dev/null || true)
+assert_contains "spawn-boot-failure: block emitted (fail-closed)" '"decision": "block"' "$out32"
+assert_file_contains "spawn-boot-failure: FAILED in log" "FAILED" "$LOG32"
+assert_file_not_contains "spawn-boot-failure: no ALL CLEAR" "ALL CLEAR" "$LOG32"
+rm -f "$STUB32"
+rm -rf "$T32"
 
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

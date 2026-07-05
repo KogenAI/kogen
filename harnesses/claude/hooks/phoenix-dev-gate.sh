@@ -190,7 +190,7 @@ run_phoenix_render_check() {
     local _rc_err_r
     _rc_err_r=$(mktemp)
     local raw rc
-    raw=$("${render_check_cmd_arr[@]}" --mode phoenix --port "${PHOENIX_DEV_PORT:-4000}" --timeout 30000 2>"$_rc_err_r") || rc=$?
+    raw=$("${render_check_cmd_arr[@]}" --mode phoenix --spawn "$project_dir" --timeout 30000 2>"$_rc_err_r") || rc=$?
     rc=${rc:-0}
     local _rc_stderr_r
     _rc_stderr_r=$(cat "$_rc_err_r")

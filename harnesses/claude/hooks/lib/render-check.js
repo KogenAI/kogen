@@ -11,7 +11,7 @@
  *   RENDER_VERDICT=FAIL:<reason>
  *   RENDER_VERDICT=INCONCLUSIVE:<reason>
  *
- * FAIL reasons:    empty-dom | empty-content-region | unstyled | js-error:<detail> | asset-404:<url>
+ * FAIL reasons:    empty-dom | empty-content-region | unstyled | js-error:<detail> | asset-404:<url> | server-boot-failed
  * INCONCLUSIVE:    chromium-launch-failed | playwright-module-unresolvable | server-unready | timeout | config-error | <other>
  *
  * Exit 0 always — verdict is communicated via the RENDER_VERDICT line.
@@ -31,7 +31,7 @@ const {
 } = require("./phoenix-server.js");
 
 const DEFAULT_TIMEOUT_MS = 30_000;
-const PHOENIX_READINESS_MS = 20_000;
+const PHOENIX_READINESS_MS = Number(process.env.PHOENIX_READINESS_MS) || 20_000;
 
 // ── Argument parsing ─────────────────────────────────────────────────────────
 
@@ -429,8 +429,10 @@ async function main() {
         try {
           await waitForHttp200(port, PHOENIX_READINESS_MS);
         } catch (_e) {
-          log(`phoenix server did not start in ${args.spawn}`);
-          verdict("INCONCLUSIVE:server-unready");
+          log(
+            `phoenix server failed to boot (never reached HTTP 200) in ${args.spawn}`,
+          );
+          verdict("FAIL:server-boot-failed");
           return;
         }
         await runChecks(`http://localhost:${port}/`, timeoutMs, "phoenix");

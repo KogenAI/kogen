@@ -96,5 +96,27 @@ else
     fail=$((fail + 1))
 fi
 
+# ── Test 6: --spawn boot-failure fails closed (FAIL:server-boot-failed) ─────
+# Asserts the --spawn branch converts a boot-timeout into a fail-closed
+# FAIL:server-boot-failed verdict, not the old fail-open INCONCLUSIVE skip.
+# Scoped to the spawn block (between "if (args.spawn)" and the "--port" else
+# branch) so the assertion does not collide with the --port branch, which
+# legitimately still emits INCONCLUSIVE:server-unready (assume-running probe).
+_t6_spawn_block=$(awk '/if \(args\.spawn\)/{flag=1} flag{print} /assume server already running/{exit}' "$SCRIPT_DIR/render-check.js")
+if printf '%s' "$_t6_spawn_block" | grep -qF 'FAIL:server-boot-failed'; then
+    [ -n "${VERBOSE:-}" ] && printf 'PASS: render-check.js --spawn branch contains FAIL:server-boot-failed\n'
+    pass=$((pass + 1))
+else
+    printf 'FAIL: render-check.js --spawn branch missing FAIL:server-boot-failed\n'
+    fail=$((fail + 1))
+fi
+if printf '%s' "$_t6_spawn_block" | grep -qF 'INCONCLUSIVE:server-unready'; then
+    printf 'FAIL: render-check.js --spawn branch still contains INCONCLUSIVE:server-unready (fail-open, should be fail-closed)\n'
+    fail=$((fail + 1))
+else
+    [ -n "${VERBOSE:-}" ] && printf 'PASS: render-check.js --spawn branch does not contain INCONCLUSIVE:server-unready\n'
+    pass=$((pass + 1))
+fi
+
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

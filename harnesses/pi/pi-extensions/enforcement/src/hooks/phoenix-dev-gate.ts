@@ -252,7 +252,6 @@ export function register(pi: ExtensionAPI): void {
         : "";
 
       if (renderCheckScript && fs.existsSync(renderCheckScript)) {
-        const phoenixPort = process.env["PHOENIX_DEV_PORT"] ?? "4000";
         let renderRaw = "";
         try {
           const opts: ExecSyncOptionsWithStringEncoding = {
@@ -262,7 +261,7 @@ export function register(pi: ExtensionAPI): void {
             encoding: "utf8",
           };
           renderRaw = execSync(
-            `node "${renderCheckScript}" --mode phoenix --port ${phoenixPort} --timeout 30000`,
+            `node "${renderCheckScript}" --mode phoenix --spawn "${projectDir}" --timeout 30000`,
             opts,
           ).toString();
         } catch (err) {
