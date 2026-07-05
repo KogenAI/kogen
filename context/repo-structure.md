@@ -47,13 +47,13 @@ codegen/                          ← repo root
 
 ## Entry-Point Scripts
 
-| File               | Purpose                                                                                                                                     | Caller                                                 |
-| ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------ |
-| `ocg`              | User CLI dispatcher — wraps `make` targets; symlinked to `$PATH`; sets `OCG_CLI=true` for ocg-only targets                                  | End users, shell tab-completion                        |
-| `codegen-build`    | Harness API — `--harness`, `--stack`, `--cwd`, `--model`, `--effort`; delegates to `harnesses/<harness>/dispatch.sh`                        | Platform, CI, downstream Makefiles                     |
-| `codegen-scaffold` | App provisioning — subcommands `create` (full scaffold) and `integrate` (symlinks only); delegates to `shared/scaffold/<stack>/scaffold.sh` | Platform setup, `ocg setup`                            |
-| `codegen-call`     | One-shot LLM call — `--harness`, `--model`, `--effort`, `--system-prompt @<path>`, optional `--json-schema @<path>`; single-response        | Consuming platform for non-build single-response calls |
-| `codegen-analyze`  | Turn-waste analyzer — `--since`, `--json`, `--window`, `--threshold-reread`, `--project-dir`; read-only; execs `python3 -m analysis`        | Operators, CI, manual inspection                       |
+| File               | Purpose                                                                                                                                                                                                           | Caller                                                 |
+| ------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------ |
+| `ocg`              | User CLI dispatcher — wraps `make` targets; symlinked to `$PATH`; sets `OCG_CLI=true` for ocg-only targets                                                                                                        | End users, shell tab-completion                        |
+| `codegen-build`    | Harness API — `--harness`, `[--stack]`, `--cwd`, `--model`, `--effort`; stack detected from cwd markers (`mix.exs`→phoenix, `vite.config.js`→static) when omitted; delegates to `harnesses/<harness>/dispatch.sh` | Platform, CI, downstream Makefiles                     |
+| `codegen-scaffold` | App provisioning — subcommands `create` (full scaffold) and `integrate` (symlinks only); delegates to `shared/scaffold/<stack>/scaffold.sh`                                                                       | Platform setup, `ocg setup`                            |
+| `codegen-call`     | One-shot LLM call — `--harness`, `--model`, `--effort`, `--system-prompt @<path>`, optional `--json-schema @<path>`; single-response                                                                              | Consuming platform for non-build single-response calls |
+| `codegen-analyze`  | Turn-waste analyzer — `--since`, `--json`, `--window`, `--threshold-reread`, `--project-dir`; read-only; execs `python3 -m analysis`                                                                              | Operators, CI, manual inspection                       |
 
 `ocg` = user-facing (menu, doctor, install). `codegen-build` = machine API for downstream Makefiles. Never conflate them.
 

@@ -152,7 +152,6 @@ Codegen-infra pitfalls and bash gotchas — split from `context/development.md` 
 - **Never quarantine a failing hook test** — fix it or revert the change that broke it. The runner fails-closed on any red: there is no allowlist. A green gate means every test passed.
 - **[shared] RED-then-GREEN proof for regression guards is load-bearing** — When adding `assert_absent`-style guards (or "must NOT appear" tests), run BEFORE the fix to prove RED, apply fix, run again to prove GREEN. Direct proof the guard catches bugs, not a vacuous grep-always-passes trap. Cheap 30s insurance.
 - **`${PIPESTATUS[1]}` captured immediately after pipeline** — Any intervening command resets the array. Pattern: `find | xargs ...; _rc=${PIPESTATUS[1]}` on next line only.
-- **Retry-feature test design: disable real sleep** — Set `CODEGEN_BUILD_QUEUE_RETRY_DELAYS="0 0 0"` to avoid stalls.
 - **Per-attempt test variants via `eval`** — Use `eval "body=\"\${STUB_JSONL_BODY_${attempt}:-\${STUB_JSONL_BODY:-}}\"` for per-attempt overrides. Bash 3.2-safe, injection-safe with integer counter.
 - **Sourced bash library in Bash tool context** — Use `bash -c 'source <lib> && fn'` for bash-specific syntax.
 - **`--no-config` flag isolates tmpdir tests** — Use `--no-config` for tools with hierarchical config discovery to block ancestor leakage.
@@ -189,8 +188,8 @@ Codegen-infra pitfalls and bash gotchas — split from `context/development.md` 
 - **[local] Test comment drift** — Test 15 comment claimed checker-missing, but `_self_dir` resolves via `BASH_SOURCE[0]` regardless of `CODEGEN_DIR`. Exercises runtime server-unready on boxes with node. Discovered via red-green (flip failed for different reason). Verify comments against code paths.
 - **[shared] Worktree-cwd is ephemeral** — Launcher `--worktree` cwd destroyed at teardown. Exports like `CODEGEN_PITCH_ROOT` resolve durable main-repo root via `cd "$(dirname "$(git rev-parse --git-common-dir 2>/dev/null)")" && pwd || printf '%s' "$PWD"` BEFORE worktree re-root. This resolver yields `.` from main, `…/<repo>` from worktree. Always-on exports (not gated) ensure all paths inherit durable root; skills write deliverables there.
 - **[local] git status pollution** — Test inherits `CODEGEN_BUILD_*` vars; isolate via `env -u`.
-- **[shared] git stash + git mv blocked for developer** — `git stash`/`git mv` owned by committer. For RED-then-GREEN: save Edit sequence to re-apply manually, or use temp-diff pattern: `git diff > /tmp/p; checkout; fix; patch < /tmp/p`.
-- **[shared] Ambient env leaks into hermetic test fixtures** — Session exports (e.g., `CODEGEN_DIR`) leak into child shell invocations. Any test asserting "neither VAR1 nor VAR2 set" MUST `env -u VAR1 -u VAR2` — omitting one is not sufficient. Discovered via RED (--version case, ambient CODEGEN_DIR blocked unresolved-root marker).
+- **[local] RED-then-GREEN for single-file launchers (git stash blocked)** — Save pre-fix: `git show HEAD:<file> > /tmp/pre`; swap via `cp /tmp/pre <file>` or `cp /path/fix <file>`.
+- **[shared] Ambient env leaks into hermetic test fixtures** — Session exports leak into child shells. Test "neither VAR1 nor VAR2 set" MUST use `env -u VAR1 -u VAR2` — omitting one fails.
 
 ## Trigger Keywords
 

@@ -23,6 +23,13 @@
 #  (n) --elixir --non-interactive <prompt> → mix codegen.loop invoked
 #  (o) --non-interactive WITHOUT --elixir → legacy claude stub invoked, mix
 #      NOT invoked (new default: legacy engine)
+#  (p1) --stack omitted, cwd has mix.exs only → detects phoenix
+#  (p2) --stack omitted, cwd has vite.config.js only → detects static
+#  (p3) --stack omitted, cwd has BOTH mix.exs and vite.config.js → ambiguous,
+#       exit 2
+#  (p4) --stack omitted, cwd has neither marker → cannot detect, exit 2
+#  (p5) --stack omitted, cwd has self-build markers → detects phoenix
+#       (self-build precedence over mix.exs/vite.config.js sniffs)
 
 set -euo pipefail
 
@@ -712,6 +719,83 @@ else
     printf 'FAIL: (o) args file not created — claude stub not invoked (exit: %s)\n' "$actual_ec"
     fail=$((fail + 2))
 fi
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Tests (p1)-(p5): --stack optional, detected from cwd markers.
+# Fixtures do NOT copy codegen-scaffold into the cb_root so the integrate
+# pre-step's `[[ -x "$SCAFFOLD_CMD" ]]` check is false and the block is
+# skipped entirely — isolates detection from the integrate side effect.
+# ─────────────────────────────────────────────────────────────────────────────
+
+# (p1) mix.exs only → detects phoenix
+CB_P1="$(make_cb_root cb_p1)"
+mkdir -p "$CB_P1/harnesses/claude"
+make_stub "$CB_P1/harnesses/claude/dispatch.sh" 'exit 0'
+MARKER_P1="$BASE_TMP/marker_p1"
+mkdir -p "$MARKER_P1"
+touch "$MARKER_P1/mix.exs"
+
+actual_ec=0
+stderr_p1=$("$CB_P1/codegen-build" --harness=claude --cwd="$MARKER_P1" --non-interactive \
+    "p1 prompt" 2>&1 >/dev/null) || actual_ec=$?
+check "(p1) mix.exs-only detects phoenix: exit 0" "0" "$actual_ec"
+assert_contains "(p1) stderr reports detected stack=phoenix" "$stderr_p1" "detected stack=phoenix from cwd markers"
+
+# (p2) vite.config.js only → detects static
+CB_P2="$(make_cb_root cb_p2)"
+mkdir -p "$CB_P2/harnesses/claude"
+make_stub "$CB_P2/harnesses/claude/dispatch.sh" 'exit 0'
+MARKER_P2="$BASE_TMP/marker_p2"
+mkdir -p "$MARKER_P2"
+touch "$MARKER_P2/vite.config.js"
+
+actual_ec=0
+stderr_p2=$("$CB_P2/codegen-build" --harness=claude --cwd="$MARKER_P2" --non-interactive \
+    "p2 prompt" 2>&1 >/dev/null) || actual_ec=$?
+check "(p2) vite.config.js-only detects static: exit 0" "0" "$actual_ec"
+assert_contains "(p2) stderr reports detected stack=static" "$stderr_p2" "detected stack=static from cwd markers"
+
+# (p3) both mix.exs and vite.config.js → ambiguous, exit 2
+CB_P3="$(make_cb_root cb_p3)"
+mkdir -p "$CB_P3/harnesses/claude"
+make_stub "$CB_P3/harnesses/claude/dispatch.sh" 'exit 0'
+MARKER_P3="$BASE_TMP/marker_p3"
+mkdir -p "$MARKER_P3"
+touch "$MARKER_P3/mix.exs" "$MARKER_P3/vite.config.js"
+
+actual_ec=0
+stderr_p3=$("$CB_P3/codegen-build" --harness=claude --cwd="$MARKER_P3" --non-interactive \
+    "p3 prompt" 2>&1 >/dev/null) || actual_ec=$?
+check "(p3) both markers present: ambiguous exit 2" "2" "$actual_ec"
+assert_contains "(p3) stderr mentions ambiguous" "$stderr_p3" "ambiguous"
+assert_contains "(p3) stderr names both markers" "$stderr_p3" "mix.exs and vite.config.js"
+
+# (p4) neither marker → cannot detect, exit 2
+CB_P4="$(make_cb_root cb_p4)"
+mkdir -p "$CB_P4/harnesses/claude"
+make_stub "$CB_P4/harnesses/claude/dispatch.sh" 'exit 0'
+MARKER_P4="$BASE_TMP/marker_p4"
+mkdir -p "$MARKER_P4"
+
+actual_ec=0
+stderr_p4=$("$CB_P4/codegen-build" --harness=claude --cwd="$MARKER_P4" --non-interactive \
+    "p4 prompt" 2>&1 >/dev/null) || actual_ec=$?
+check "(p4) no markers: cannot detect exit 2" "2" "$actual_ec"
+assert_contains "(p4) stderr mentions cannot detect stack" "$stderr_p4" "cannot detect stack"
+
+# (p5) self-build markers present → detects phoenix (case-2 precedence)
+CB_P5="$(make_cb_root cb_p5)"
+mkdir -p "$CB_P5/harnesses/claude"
+make_stub "$CB_P5/harnesses/claude/dispatch.sh" 'exit 0'
+MARKER_P5="$BASE_TMP/marker_p5"
+mkdir -p "$MARKER_P5/harnesses/claude" "$MARKER_P5/templates/generator"
+touch "$MARKER_P5/harnesses/claude/manifest.yaml" "$MARKER_P5/templates/generator/generate.sh"
+
+actual_ec=0
+stderr_p5=$("$CB_P5/codegen-build" --harness=claude --cwd="$MARKER_P5" --non-interactive \
+    "p5 prompt" 2>&1 >/dev/null) || actual_ec=$?
+check "(p5) self-build markers detect phoenix: exit 0" "0" "$actual_ec"
+assert_contains "(p5) stderr reports detected stack=phoenix" "$stderr_p5" "detected stack=phoenix"
 
 # ─────────────────────────────────────────────────────────────────────────────
 echo ""

@@ -2,11 +2,16 @@
 # codegen-build — canonical entrypoint for all harness-based build invocations.
 #
 # Usage:
-#   codegen-build --harness=<claude|pi> --stack=<phoenix|static> [options] PROMPT
+#   codegen-build --harness=<claude|pi> [--stack=<phoenix|static>] [options] PROMPT
 #
 # Options:
 #   --harness=<claude|pi>     required: which harness to use
-#   --stack=<phoenix|static>  required: project stack
+#   --stack=<phoenix|static>  optional: project stack. When omitted, detected
+#                             from cwd markers (mix.exs -> phoenix,
+#                             vite.config.js -> static; codegen self-build
+#                             markers -> phoenix). Fails loud (non-zero exit)
+#                             when undetectable or ambiguous (both markers
+#                             present) -- never silent-defaults.
 #   --cwd=<dir>               working directory (default: $PWD)
 #   --elixir                  engine selector: run the deterministic Elixir
 #                             orchestration loop (mix codegen.loop) instead of
@@ -42,7 +47,7 @@ EXTRA_FLAGS=()
 PROMPT=""
 
 usage() {
-    printf 'Usage: codegen-build --harness=<claude|pi> --stack=<phoenix|static> [--cwd=<dir>] [--elixir] [--non-interactive] [--resumable] [--resume-id=<id>] [--model=<m>] [--effort=<e>] PROMPT\n' >&2
+    printf 'Usage: codegen-build --harness=<claude|pi> [--stack=<phoenix|static>] [--cwd=<dir>] [--elixir] [--non-interactive] [--resumable] [--resume-id=<id>] [--model=<m>] [--effort=<e>] PROMPT\n' >&2
     exit 2
 }
 
@@ -137,7 +142,7 @@ while [[ $# -gt 0 ]]; do
         exit 0
         ;;
     -h | --help)
-        printf 'Usage: codegen-build --harness=<claude|pi> --stack=<phoenix|static> [--cwd=<dir>] [--elixir] [--non-interactive] [--resumable] [--resume-id=<id>] [--model=<m>] [--effort=<e>] PROMPT\n'
+        printf 'Usage: codegen-build --harness=<claude|pi> [--stack=<phoenix|static>] [--cwd=<dir>] [--elixir] [--non-interactive] [--resumable] [--resume-id=<id>] [--model=<m>] [--effort=<e>] PROMPT\n'
         exit 0
         ;;
     --)
@@ -176,9 +181,28 @@ if [[ "$HARNESS" != "claude" && "$HARNESS" != "pi" ]]; then
     usage
 fi
 
+# --stack is optional: use it when passed; otherwise detect from cwd markers.
+# Fail loud when undetectable or ambiguous -- never silent-default (a silent
+# phoenix default was removed in 66ec8d5; do not re-introduce it).
 if [[ -z "$STACK" ]]; then
-    printf 'codegen-build: --stack is required\n' >&2
-    usage
+    if [[ -f "$CWD/harnesses/claude/manifest.yaml" && -f "$CWD/templates/generator/generate.sh" ]]; then
+        # Self-build markers -> phoenix. Fires before the file sniffs so the
+        # codegen repo's root index.html fixture never mis-detects.
+        STACK="phoenix"
+        printf 'codegen-build: stack not passed; detected stack=phoenix from cwd markers\n' >&2
+    elif [[ -f "$CWD/mix.exs" && -f "$CWD/vite.config.js" ]]; then
+        printf 'codegen-build: ambiguous stack markers in cwd (mix.exs and vite.config.js both present); pass --stack explicitly\n' >&2
+        usage
+    elif [[ -f "$CWD/mix.exs" ]]; then
+        STACK="phoenix"
+        printf 'codegen-build: stack not passed; detected stack=phoenix from cwd markers\n' >&2
+    elif [[ -f "$CWD/vite.config.js" ]]; then
+        STACK="static"
+        printf 'codegen-build: stack not passed; detected stack=static from cwd markers\n' >&2
+    else
+        printf 'codegen-build: cannot detect stack from cwd; pass --stack=<phoenix|static>\n' >&2
+        usage
+    fi
 fi
 
 if [[ "$STACK" != "phoenix" && "$STACK" != "static" ]]; then
