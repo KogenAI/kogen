@@ -31,6 +31,12 @@ mk_input() {
         '{"hook_event_name":"PreToolUse","tool_name":"Agent","tool_input":{"subagent_type":$s,"description":"x","prompt":"y"},"transcript_path":$t}'
 }
 
+# hook stdin for a new Agent spawn, carrying cwd + session_id (for breadcrumb tests)
+mk_input_with_cwd() {
+    jq -n --arg s "$1" --arg t "$2" --arg c "$3" --arg sid "$4" \
+        '{"hook_event_name":"PreToolUse","tool_name":"Agent","tool_input":{"subagent_type":$s,"description":"x","prompt":"y"},"cwd":$c,"session_id":$sid,"transcript_path":$t}'
+}
+
 # hook stdin for a non-Agent tool
 mk_non_agent() {
     jq -n --arg t "$1" \
@@ -258,6 +264,76 @@ else
     fail=$((fail + 1))
 fi
 rm -f "$T"
+
+# ---------------------------------------------------------------------------
+# Breadcrumb diagnostic tests (T24-T26)
+# ---------------------------------------------------------------------------
+
+# T24: breadcrumb written with expected fields on a synthetic in-flight fire
+T24_CWD=$(mktemp -d)
+mkdir -p "$T24_CWD/codegen/logging"
+T24_TRANSCRIPT="$T24_CWD/transcript.jsonl"
+agent_spawn "toolu_24" "planner-phoenix" >"$T24_TRANSCRIPT"
+SID24="test-sid-24"
+out24=$(mk_input_with_cwd "developer-phoenix-backend" "$T24_TRANSCRIPT" "$T24_CWD" "$SID24" | env -u CLAUDE_ROLE -u PI_ROLE bash "$HOOK" 2>/dev/null)
+BC24="$T24_CWD/codegen/logging/.guard-diagnostics/${SID24}.jsonl"
+if [ -f "$BC24" ] && jq -e '.in_flight != "" and .agent_ids != "" and (.guard == "single-cycle-agent-in-flight")' "$BC24" >/dev/null 2>&1; then
+    echo "PASS: T24 breadcrumb written with expected fields"
+    pass=$((pass + 1))
+else
+    echo "FAIL: T24 breadcrumb missing or malformed at $BC24"
+    fail=$((fail + 1))
+fi
+# still DENY on breadcrumb success
+if echo "$out24" | grep -q '"permissionDecision"'; then
+    echo "PASS: T24b verdict unchanged (still DENY) on breadcrumb success"
+    pass=$((pass + 1))
+else
+    echo "FAIL: T24b — expected DENY but got ALLOW"
+    fail=$((fail + 1))
+fi
+rm -rf "$T24_CWD"
+
+# T25: breadcrumb write FAILURE (diagnostics path occupied by a regular file)
+# must NOT alter the verdict — still DENY, no crash.
+T25_CWD=$(mktemp -d)
+mkdir -p "$T25_CWD/codegen/logging"
+printf 'x' >"$T25_CWD/codegen/logging/.guard-diagnostics"
+T25_TRANSCRIPT="$T25_CWD/transcript.jsonl"
+agent_spawn "toolu_25" "planner-phoenix" >"$T25_TRANSCRIPT"
+SID25="test-sid-25"
+out25=$(mk_input_with_cwd "developer-phoenix-backend" "$T25_TRANSCRIPT" "$T25_CWD" "$SID25" | env -u CLAUDE_ROLE -u PI_ROLE bash "$HOOK" 2>/dev/null)
+if echo "$out25" | grep -q '"permissionDecision"'; then
+    echo "PASS: T25 verdict unchanged (still DENY) when breadcrumb write fails"
+    pass=$((pass + 1))
+else
+    echo "FAIL: T25 — expected DENY but got ALLOW when breadcrumb write fails"
+    fail=$((fail + 1))
+fi
+rm -rf "$T25_CWD"
+
+# T26: deny text no longer contains "Do not investigate"; points at breadcrumb path
+T26_CWD=$(mktemp -d)
+mkdir -p "$T26_CWD/codegen/logging"
+T26_TRANSCRIPT="$T26_CWD/transcript.jsonl"
+agent_spawn "toolu_26" "planner-phoenix" >"$T26_TRANSCRIPT"
+SID26="test-sid-26"
+out26=$(mk_input_with_cwd "developer-phoenix-backend" "$T26_TRANSCRIPT" "$T26_CWD" "$SID26" | env -u CLAUDE_ROLE -u PI_ROLE bash "$HOOK" 2>/dev/null)
+if echo "$out26" | grep -q "Do not investigate"; then
+    echo "FAIL: T26 deny text still contains 'Do not investigate'"
+    fail=$((fail + 1))
+else
+    echo "PASS: T26 deny text no longer contains 'Do not investigate'"
+    pass=$((pass + 1))
+fi
+if echo "$out26" | grep -q "guard-diagnostics"; then
+    echo "PASS: T26b deny text points at breadcrumb path"
+    pass=$((pass + 1))
+else
+    echo "FAIL: T26b deny text does not reference breadcrumb path"
+    fail=$((fail + 1))
+fi
+rm -rf "$T26_CWD"
 
 # ---------------------------------------------------------------------------
 # Summary

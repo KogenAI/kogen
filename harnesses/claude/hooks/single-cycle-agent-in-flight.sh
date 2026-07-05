@@ -95,7 +95,30 @@ in_flight=$(comm -23 <(printf '%s\n' "$agent_ids") <(printf '%s\n' "$result_ids"
 
 if [ -n "$in_flight" ]; then
     debug_log single-cycle-agent-in-flight "DENY: in-flight agent id(s): $in_flight"
-    deny "BLOCKED: a cycle agent is already in flight (Agent spawn with no completion in the transcript). The build cycle runs ONE cycle agent at a time — spawning '${subagent_type}' now would collide two writers on one tree. Wait for the in-flight agent to finish (its result will appear in the transcript), then spawn. Do not spawn a status-check or second cycle agent while one is running. Do not investigate why this fired — wait and retry."
+
+    bc_sid="${SESSION_ID:-unknown}"
+    bc_ts=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+    bc_mtime=$(stat -f '%m' "$TRANSCRIPT_PATH" 2>/dev/null || stat -c '%Y' "$TRANSCRIPT_PATH" 2>/dev/null || echo 0)
+    bc_agent_ids=$(printf '%s' "$agent_ids" | tr '\n' ' ')
+    bc_result_ids=$(printf '%s' "$result_ids" | tr '\n' ' ')
+    bc_in_flight=$(printf '%s' "$in_flight" | tr '\n' ' ')
+    bc_last_types=$(tail -n 5 "$TRANSCRIPT_PATH" 2>/dev/null | jq -r '.type // "?"' 2>/dev/null | tr '\n' ',')
+    bc=$(jq -n \
+        --arg ts "$bc_ts" \
+        --arg guard "single-cycle-agent-in-flight" \
+        --arg session_id "$bc_sid" \
+        --arg transcript_path "$TRANSCRIPT_PATH" \
+        --arg transcript_mtime "$bc_mtime" \
+        --arg agent_ids "$bc_agent_ids" \
+        --arg result_ids "$bc_result_ids" \
+        --arg in_flight "$bc_in_flight" \
+        --arg last_line_types "$bc_last_types" \
+        '{ts: $ts, guard: $guard, session_id: $session_id, transcript_path: $transcript_path,
+          transcript_mtime: ($transcript_mtime | tonumber), agent_ids: $agent_ids,
+          result_ids: $result_ids, in_flight: $in_flight, last_line_types: $last_line_types}' 2>/dev/null)
+    guard_breadcrumb "$bc_sid" "$bc"
+
+    deny "BLOCKED: a cycle agent is already in flight (Agent spawn with no completion in the transcript). The build cycle runs ONE cycle agent at a time — spawning '${subagent_type}' now would collide two writers on one tree. Wait for the in-flight agent to finish (its result will appear in the transcript), then spawn. Do not spawn a status-check or second cycle agent while one is running. A diagnostic breadcrumb was recorded at codegen/logging/.guard-diagnostics/${bc_sid}.jsonl; if this recurs, attach it to the guard-false-positive pitch."
     exit 0
 fi
 

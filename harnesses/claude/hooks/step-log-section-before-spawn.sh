@@ -87,15 +87,50 @@ log=$(session_log_from_transcript)
 
 debug_log step-log-section-before-spawn "log=$log"
 
+# build_spawn_breadcrumb <branch> <extra_jq_args...> — assembles the shared
+# JSONL fields (ts/guard/session_id/transcript/mtime/sentinel/env) plus a
+# caller-supplied `branch` tag, then fires guard_breadcrumb. Best-effort only.
+build_and_fire_breadcrumb() {
+    local branch="$1"
+    shift
+    local sid="${SESSION_ID:-unknown}"
+    local bc_ts bc_mtime bc_sentinel bc_sentinel_path
+    bc_ts=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+    bc_mtime=$(stat -f '%m' "$TRANSCRIPT_PATH" 2>/dev/null || stat -c '%Y' "$TRANSCRIPT_PATH" 2>/dev/null || echo 0)
+    bc_sentinel_path="${CWD:-$PWD}/codegen/logging/.active"
+    bc_sentinel=""
+    [ -f "$bc_sentinel_path" ] && bc_sentinel=$(cat "$bc_sentinel_path" 2>/dev/null || true)
+    local bc
+    bc=$(jq -n \
+        --arg ts "$bc_ts" \
+        --arg guard "step-log-section-before-spawn" \
+        --arg session_id "$sid" \
+        --arg transcript_path "${TRANSCRIPT_PATH:-}" \
+        --arg transcript_mtime "$bc_mtime" \
+        --arg guard_resolved_log "${log:-}" \
+        --arg active_sentinel_target "$bc_sentinel" \
+        --arg codegen_log_path_env "${CODEGEN_LOG_PATH:-}" \
+        --arg need "${need:-}" \
+        --arg branch "$branch" \
+        "$@" \
+        '{ts: $ts, guard: $guard, session_id: $session_id, transcript_path: $transcript_path,
+          transcript_mtime: ($transcript_mtime | tonumber), guard_resolved_log: $guard_resolved_log,
+          active_sentinel_target: $active_sentinel_target, codegen_log_path_env: $codegen_log_path_env,
+          need: $need, branch: $branch}' 2>/dev/null)
+    guard_breadcrumb "$sid" "$bc"
+}
+
 # No log found → orchestrator skipped step-0 log creation.
 if [ -z "$log" ]; then
-    deny "BLOCKED: no step log found in transcript. Create the step log FIRST before spawning ${subagent_type}. Step 0 is non-negotiable: Write the step log skeleton, THEN insert the ## ${subagent_type} Section header, THEN spawn. Do not investigate why this fired — do the above and retry."
+    build_and_fire_breadcrumb "no-log"
+    deny "BLOCKED: no step log found in transcript. Create the step log FIRST before spawning ${subagent_type}. Step 0 is non-negotiable: Write the step log skeleton, THEN insert the ## ${subagent_type} Section header, THEN spawn. A diagnostic breadcrumb was recorded at codegen/logging/.guard-diagnostics/${SESSION_ID:-unknown}.jsonl; if this recurs, attach it to the guard-false-positive pitch."
     exit 0
 fi
 
 # Distinguish absent (denied/never-created) from exists-but-unreadable (transient).
 if [ ! -e "$log" ]; then
-    deny "BLOCKED: step log was referenced in the transcript but was never created — a denied or failed Write leaves no file on disk. Create the step log for real before spawning. Do not investigate why this fired — do the above and retry."
+    build_and_fire_breadcrumb "never-created"
+    deny "BLOCKED: step log was referenced in the transcript but was never created — a denied or failed Write leaves no file on disk. Create the step log for real before spawning. A diagnostic breadcrumb was recorded at codegen/logging/.guard-diagnostics/${SESSION_ID:-unknown}.jsonl; if this recurs, attach it to the guard-false-positive pitch."
     exit 0
 fi
 # Log exists but is momentarily unreadable (genuine transient) → fail-open.
@@ -154,6 +189,38 @@ if grep -qF "$need" "$log" 2>/dev/null; then
     exit 0
 fi
 
-# Header absent → block and name the missing header.
-deny "BLOCKED: missing section header in step log before spawning ${subagent_type}. Edit the step log to append '${need}' immediately before this Agent() call, then retry. Do not investigate why this fired — do the above and retry."
+# Header absent → block and name the missing header. Full resolver-divergence
+# breadcrumb: dual grep against both the guard-resolved log and the (possibly
+# different) sentinel target, so a log-resolution mismatch is visible.
+bc_sid="${SESSION_ID:-unknown}"
+bc_sentinel_path="${CWD:-$PWD}/codegen/logging/.active"
+bc_sentinel_target=""
+[ -f "$bc_sentinel_path" ] && bc_sentinel_target=$(cat "$bc_sentinel_path" 2>/dev/null || true)
+bc_grep_guard_log="no"
+grep -qF "$need" "$log" 2>/dev/null && bc_grep_guard_log="yes"
+bc_grep_sentinel_log="na"
+if [ -n "$bc_sentinel_target" ] && [ "$bc_sentinel_target" != "$log" ] && [ -e "$bc_sentinel_target" ]; then
+    bc_grep_sentinel_log="no"
+    grep -qF "$need" "$bc_sentinel_target" 2>/dev/null && bc_grep_sentinel_log="yes"
+fi
+bc_mtime=$(stat -f '%m' "$TRANSCRIPT_PATH" 2>/dev/null || stat -c '%Y' "$TRANSCRIPT_PATH" 2>/dev/null || echo 0)
+bc=$(jq -n \
+    --arg ts "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+    --arg guard "step-log-section-before-spawn" \
+    --arg session_id "$bc_sid" \
+    --arg transcript_path "${TRANSCRIPT_PATH:-}" \
+    --arg transcript_mtime "$bc_mtime" \
+    --arg guard_resolved_log "$log" \
+    --arg active_sentinel_target "$bc_sentinel_target" \
+    --arg codegen_log_path_env "${CODEGEN_LOG_PATH:-}" \
+    --arg need "$need" \
+    --arg grep_in_guard_log "$bc_grep_guard_log" \
+    --arg grep_in_sentinel_log "$bc_grep_sentinel_log" \
+    '{ts: $ts, guard: $guard, session_id: $session_id, transcript_path: $transcript_path,
+      transcript_mtime: ($transcript_mtime | tonumber), guard_resolved_log: $guard_resolved_log,
+      active_sentinel_target: $active_sentinel_target, codegen_log_path_env: $codegen_log_path_env,
+      need: $need, grep_in_guard_log: $grep_in_guard_log, grep_in_sentinel_log: $grep_in_sentinel_log}' 2>/dev/null)
+guard_breadcrumb "$bc_sid" "$bc"
+
+deny "BLOCKED: missing section header in step log before spawning ${subagent_type}. Edit the step log to append '${need}' immediately before this Agent() call, then retry. A diagnostic breadcrumb was recorded at codegen/logging/.guard-diagnostics/${bc_sid}.jsonl; if this recurs, attach it to the guard-false-positive pitch."
 exit 0

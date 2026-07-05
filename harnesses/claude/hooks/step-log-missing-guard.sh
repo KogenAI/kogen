@@ -163,9 +163,41 @@ bash_redirect_create=$(jq -r '
     | "yes"
 ' "$TRANSCRIPT_PATH" 2>/dev/null | grep -c "yes" || true)
 
+# build_and_fire_breadcrumb <branch> — best-effort diagnostic append before a
+# block(). Captures position indices + sentinel/mtime state. NEVER alters the
+# block verdict — guard_breadcrumb is fully fail-open internally.
+build_and_fire_breadcrumb() {
+    local branch="$1"
+    local bc_ts bc_transcript_mtime bc_sentinel_target bc_sentinel_mtime
+    bc_ts=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+    bc_transcript_mtime=$(stat -f '%m' "$TRANSCRIPT_PATH" 2>/dev/null || stat -c '%Y' "$TRANSCRIPT_PATH" 2>/dev/null || echo 0)
+    bc_sentinel_target="${sentinel_target:-}"
+    bc_sentinel_mtime="${sentinel_mtime:-}"
+    local bc
+    bc=$(jq -n \
+        --arg ts "$bc_ts" \
+        --arg guard "step-log-missing-guard" \
+        --arg session_id "$session_id" \
+        --arg transcript_path "${TRANSCRIPT_PATH:-}" \
+        --arg transcript_mtime "$bc_transcript_mtime" \
+        --arg last_dev_index "${last_dev_index:-}" \
+        --arg last_log_index "${last_log_index:-none}" \
+        --arg active_sentinel_target "$bc_sentinel_target" \
+        --arg codegen_log_path_env "${CODEGEN_LOG_PATH:-}" \
+        --arg sentinel_mtime "$bc_sentinel_mtime" \
+        --arg block_branch "$branch" \
+        '{ts: $ts, guard: $guard, session_id: $session_id, transcript_path: $transcript_path,
+          transcript_mtime: ($transcript_mtime | tonumber), last_dev_index: ($last_dev_index | tonumber? // null),
+          last_log_index: $last_log_index, active_sentinel_target: $active_sentinel_target,
+          codegen_log_path_env: $codegen_log_path_env, sentinel_mtime: $sentinel_mtime,
+          block_branch: $block_branch}' 2>/dev/null)
+    guard_breadcrumb "$session_id" "$bc"
+}
+
 if [ "${bash_redirect_create:-0}" -gt 0 ]; then
     reason_br="step-log-missing-guard: step log was created via Bash redirect (e.g., \`cat > ... << EOF\`, \`echo > ...\`, \`tee\`). The gate hook (phoenix-dev-gate.sh) and this guard discover logs via Write|Edit|MultiEdit tool_use entries only. Recreate the log using the Write tool. Path template: ${template} A developer-* delegation (transcript line ${last_dev_index}) has no Write/Edit/MultiEdit or codegen-log step-log creation after it. If a delegation is genuinely pending this turn, recreate the log via the Write tool or codegen-log and retry. If NO developer-* delegation is pending this turn, this is a STALE trigger — report it as a stale step-log-missing-guard replay rather than fabricate a step log."
     debug_log step-log-missing-guard "BLOCK: bash-redirect step-log creation detected"
+    build_and_fire_breadcrumb "bash-redirect"
     block "$reason_br"
     exit 0
 fi
@@ -174,5 +206,6 @@ reason="step-log-missing-guard: a developer-* subagent was delegated but no step
 
 debug_log step-log-missing-guard "BLOCK: no log write in transcript"
 
+build_and_fire_breadcrumb "no-log"
 block "$reason"
 exit 0

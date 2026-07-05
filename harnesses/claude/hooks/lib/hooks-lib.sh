@@ -24,6 +24,9 @@
 #                                  <dir>/codegen/logging/failures/*.jsonl. Groups by tool.
 #   read_gate_verdicts <dir>     — pretty-print durable gate-verdict history at
 #                                  <dir>/codegen/logging/gate-verdicts.jsonl. Groups by verdict.
+#   guard_breadcrumb <sid> <line> — best-effort JSONL append to
+#                                  codegen/logging/.guard-diagnostics/<sid>.jsonl.
+#                                  Instrumentation only — NEVER alters caller verdict.
 #
 # Input contract (PreToolUse + SubagentStop + Stop fields, parse_input fills any
 # field present on stdin and leaves the rest empty):
@@ -474,6 +477,23 @@ is_outer_session() {
 # bypass in session-log-writer-only.sh.
 is_codegen_log_write() {
     printf '%s' "${COMMAND:-}" | grep -qE '(^|[[:space:]/])codegen-log\b'
+}
+
+# guard_breadcrumb <session_id> <jsonl_line> — best-effort diagnostic append.
+# Appends <jsonl_line> to codegen/logging/.guard-diagnostics/<session_id>.jsonl
+# under ${CWD:-$PWD}, creating the directory if needed. This is a pure
+# instrumentation aid for settling cycle-guard false-positive reports (flush-lag
+# vs resolver-divergence vs compaction-orphan) — it MUST NEVER change the
+# caller's verdict. Every step is best-effort (`2>/dev/null || true`) and the
+# function ALWAYS returns 0, even when the sink directory cannot be created
+# (e.g. a stray regular file occupies the intended directory path).
+guard_breadcrumb() {
+    local sid="${1:-unknown}"
+    local line="${2:-}"
+    local dir="${CWD:-$PWD}/codegen/logging/.guard-diagnostics"
+    mkdir -p "$dir" 2>/dev/null || true
+    printf '%s\n' "$line" >>"$dir/${sid}.jsonl" 2>/dev/null || true
+    return 0
 }
 
 # read_tool_failures <project_dir> — pretty-print the durable tool-failure

@@ -20,11 +20,11 @@ Codegen-infra pitfalls and bash gotchas — split from `context/development.md` 
 - **Fixture-source change: migrate ALL dependent cases** — Old-path test cases assert dead OLD spec. SIBLING files (e.g., dispatch_test + codegen-build_test) testing same target need IDENTICAL fixes. Grep ALL `_test.sh` files, not just the paired hook test.
 - **`shared/scaffold/static/scaffold_test.sh` is wired into `make test`** — new bash test cases run automatically (Makefile `for t in` loop that lists `shared/scaffold/static/scaffold_test.sh` as a test target). No Makefile edits needed; test summary updates via inline helpers.
 - **config.yaml anchoring** — Multiple blocks may share leaf values; `old_string` MUST include surrounding context to avoid wrong block. Verify via `yq` post-change.
-- **Pitch line numbers are estimates** — Read the file to locate exact anchor text; estimates drift over time.
+- **Pitch line numbers drift** — Read files for exact anchor text; never trust line-number estimates.
 - **Verify pitch edits not already applied** — Pitch may be obsolete. `git show <commit> --stat` checks targets; `git status --porcelain -- <files>` verifies clean. If clean + stat includes files, pitch realized — VERIFY-ONLY, run gate. Skipping causes duplicates.
 - **Example blocks in references carry routing targets** — when bulk-repathing, check inline examples too; all old paths must be repathed or inside warnings.
 - **Phoenix-colocated esbuild** — `phoenix-colocated` import requires `mix compile` first; include `"compile"` in `assets.build`/`assets.deploy` aliases.
-- **`CODEGEN_DIR` must be absolute; empty vars skip fallbacks** — Relative paths break symlink resolution. `${CWD:-$PWD}` skips fallback if `CWD=""` (empty). Use three-level: `${CWD:-${CLAUDE_PROJECT_DIR:-$PWD}}`.
+- **`CODEGEN_DIR` must be absolute** — Relative paths break symlink resolution. Use three-level: `${CWD:-${CLAUDE_PROJECT_DIR:-$PWD}}`.
 - **Session log filename format must include `_HHMMSS`** — non-canonical forms (e.g., `YYYYMMDD-slug.md`) are blocked by reviewer-guard and dev-gate hooks at Edit time
 - **Hook deletion: full-vocabulary grep post-deletion** — Search filename, id, deny-message substrings across ALL `_test.sh`, README.md, libraries, headers (not just paired test file). Pitch inventory misses 6+ stale sites. Repo-wide grep after core deletion, before `make test` verify.
 - **[shared] `git rm` blocked for developer role** — `pre-commit-guard.sh` forbids `git rm` (committer owns staging). Plain `rm` works and still registers as `D` in `git status --porcelain` without staging; committer handles `git add`/`git rm --cached` later.
@@ -148,18 +148,18 @@ Codegen-infra pitfalls and bash gotchas — split from `context/development.md` 
 - **Fail-closed refute in tests** — to prove a script aborts BEFORE an irreversible action, use a shimmed subprocess marker: stub the irreversible command to record if called, then `refute` the marker was set.
 - **Advisory health checks** — embed in same output blob; parse ONLY gate labels, never in logic.
 - **Operator toggles vs config** — toggles (e.g., `DEPLOY_AUTO=1`) → script comments, NOT `.env.sample`; env vars → `.env.sample`. Toggles control harness; vars control app runtime.
-- **Deriving state properties from ordered lists** — Derive computed property (e.g., "terminal") from the list's LAST element: `for w in $CYCLE_STATE_ORDER; do last="$w"; done; [ "$1" = "$last" ]` — not hard-coded. Adding a new terminal state shifts the property automatically. Callers test returned values (`[ -n "$result" ]`); helpers return empty string on unmatched input (`set -u`-safe).
+- **Derive state properties from ordered lists** — Computed properties from LAST element: `for w in $CYCLE_STATE_ORDER; do last="$w"; done; [ "$1" = "$last" ]` not hard-coded. Return empty on unmatched (`set -u`-safe).
 - **Bash test runner role-isolation** — `unset CLAUDE_ROLE PI_ROLE` at runner scope, per-invocation overrides still work. Backstop: `if [ -n "${CLAUDE_ROLE:-}" ]; then FATAL: role leaked; fi` before dispatch.
 - **Backstop guard `${VAR:-}` idiom** — `${VAR:-}` expands to empty when unset. Use in guards under `set -u`.
 - **`run-tests.sh` is NOT a registered hook and has NO paired `*_test.sh`** — It is a utility runner, not a hook subject to registration/enforcement. No `run-tests.sh_test.sh` pairing exists. (1) Runner is untested by hook-test suite by design. (2) Edits require manual verification via `make test`. (3) Fixing the runner needs no test-file changes.
 - **Never quarantine a failing hook test** — fix it or revert the change that broke it. The runner fails-closed on any red: there is no allowlist. A green gate means every test passed.
 - **[shared] RED-then-GREEN proof for regression guards is load-bearing** — When adding `assert_absent`-style guards (or "must NOT appear" tests), run BEFORE the fix to prove RED, apply fix, run again to prove GREEN. Direct proof the guard catches bugs, not a vacuous grep-always-passes trap. Cheap 30s insurance.
 - **`${PIPESTATUS[1]}` captured immediately after pipeline** — Any intervening command resets the array. Pattern: `find | xargs ...; _rc=${PIPESTATUS[1]}` on next line only.
-- **Per-attempt test variants via `eval`** — Use `eval "body=\"\${STUB_JSONL_BODY_${attempt}:-\${STUB_JSONL_BODY:-}}\"` for per-attempt overrides. Bash 3.2-safe, injection-safe with integer counter.
+- **Per-attempt test variants via `eval`** — Use integer counter + eval for per-attempt body overrides (Bash 3.2-safe, injection-safe).
 - **Sourced bash library in Bash tool context** — Use `bash -c 'source <lib> && fn'` for bash-specific syntax.
 - **`--no-config` flag isolates tmpdir tests** — Use `--no-config` for tools with hierarchical config discovery to block ancestor leakage.
 - **Fail-loud on guaranteed-dependency absence** — Don't skip tests for tools guaranteed by `make install` (prettier, node). Fail loud; soft-skip masks environment assumption violations.
-- **Hoist variable assignments before guards** — Computed vars must be assigned ABOVE the branch that uses them, not inline. Read full function scope before editing.
+- **Hoist variable assignments before guards** — Assign ABOVE the branch that uses them, not inline.
 - **`set -u` with git commands** — Guard both call (`2>/dev/null` on git) and comparison (`-n "$var"` before arithmetic) to handle empty repos safely.
 - **Git repo init in test setup** — Test fixtures calling `git commit` must call `git init` themselves (make_workspace doesn't). Pattern: `git init -q` + `git config user.email/name` + `git add/commit`.
 - **Test edge case: START_TS=0 permits any commit** — `CODEGEN_BUILD_START_TS=0` means the test stays green (unset/no-cycle allows all commits). Not a false negative; it's correct behavior.
@@ -168,7 +168,7 @@ Codegen-infra pitfalls and bash gotchas — split from `context/development.md` 
 - **`$CWD` in launchers is local** — `codegen-build`/`codegen-scaffold` shadow it; use `--cwd=` flag, not env var.
 - **`developer-no-self-gate` regex-matches literal phrases anywhere in payload** — Regex fires on ANY Bash call containing exact two-word phrases (e.g., `make test`) ANYWHERE, including heredocs piped to unrelated tools (e.g., session-log prose describing gate runs). Causes false-positive counter increments. Workaround: paraphrase in prose (e.g., "gate run" instead of "make test").
 - **Multi-value `role: "a\|b"` compiler case-arm join breaks `hook_registrations.py` role-parity** — bash case-arm emitter must join multi-value role tokens with `" \| "` (space-padded); a bare `a\|b)` join leaves non-last tokens unmatched → `make hook-parity` fails. Fix is compiler-side (`enforcement_compiler.py`).
-- **Sentinel byte-identity on multi-byte chars** — Copy sentinel from source (Read/cat), NOT description. Byte mismatch surfaces as RED at test; fallback to ASCII substring
+- **Sentinel byte-identity** — Copy from source, NOT description. Mismatch = RED; fallback to ASCII substring.
 - **Registry `generated: true` means compiler-owned** — hooks with `generated: true` + no `kind: registration` have compiler-owned bodies (templates/generator/enforcement_compiler.py). Hand-editing .sh/.ts directly causes registry-parity DRIFT. Fix: edit shared compiler template, let compiler regenerate all siblings sharing that template.
 - **Compiler templates regenerate all siblings** — Template fix regenerates all; reverting siblings re-triggers DRIFT. Accept symmetric regeneration.
 - **[shared] JS `\s` crosses newlines; bash grep per-line** — Port `\s*` from bash to JS, use `[ \t]` for same-line-only whitespace to match grep semantics.
@@ -177,11 +177,11 @@ Codegen-infra pitfalls and bash gotchas — split from `context/development.md` 
 - **`developer-no-self-gate` cap counts `mix test` invocations, not just `make ci`** — the 3-call-per-session budget spans ALL test commands: `make test`, `mix test --exclude slow`, direct `mix test` runs. Post-format verification best done via single combined `mix format && mix test` call to conserve budget, or relying on pre-format green run since format-only reindents without semantic change.
 - **test_harness project has NO credo dependency** — `mix credo --strict` exits "task not found". Credo pre-commit verification only applies to Phoenix-app slices; test_harness Elixir edits skip to `mix format` + `mix test`.
 - **Reviewer Bash allowlist blocks test re-runs** — flake-triage needing live re-execution → delegate to developer. Use gate-result JSON + git diff for attribution, not live re-run.
-- **[shared] macOS `pwd -P` symlink mismatch** — Plain `cd` does NOT resolve `/var` → `/private/var`. Assert on `basename` (stable substring) instead of fully-resolved path.
+- **[shared] macOS symlink mismatch** — Plain `cd` doesn't resolve `/var` → `/private/var`. Assert basename not full path.
 - **[shared] Session-log retrospective extraction is H2-scoped** — `### What I Learned` must be FIRST under `## <role> Section`, BEFORE any nested `## ` headers (which terminate awk scanning).
 - **Positive-only test assertions hide bugs** — multi-assertion tests with late `refute` after early-failing positive assertions never exercise the refute. Trace which assertion fires first on the buggy branch. Direct path assertions (`File.exists?`) stronger than env-toggle with fallback masking.
 - **[shared] Delegation-prompt H2 promotion bug (FIXED Phase 1)** — Column-0 `## <name>` lines in delegation bodies used to become H2 sections, corrupting canonical order. FIXED: `codegen-log section/append` indents any body line matching `^## ` to ` ##` before writing, upstream of awk rank-detection. Phase 1 complete; Phase 2+ (tool-emitted markers) pending.
-- **Pitch line-number drift** — Always Read to confirm exact anchor text before editing; pitch estimates drift.
+- **Pitch line-number drift** — Read files for exact anchor text; never trust estimates.
 - **[local] Elixir epoch-to-UTC-stamp pattern** — Format via `Calendar.strftime(DateTime.from_unix!(ts), "%Y%m%d*%H%M%S")` (UTC). Use only at filename construction; `now_fn` raw integer unchanged elsewhere.
 - **[shared] `Port.open` `:env` requires charlist tuples, NOT binary tuples** — `{:env, [{"KEY","VAL"}]}` raises `ArgumentError: invalid option in list`. Correct: `{:env, [{~c"KEY", ~c"VAL"}]}` (charlist tuples). `System.cmd(:env)` accepts binary tuples — API divergence. Probe empirically on target OTP before finalizing.
 - **[local] `Task.shutdown(:brutal_kill)` only kills BEAM Task, not OS child tree** — Orphans underlying OS children (and grandchildren). Fix: `Port.open({:spawn_executable, ...})` + process-group `kill -9 -<pgid>` + `pkill -9 -P <pgid>`. Already in-repo (`fixtures.ex do_timeout/3`, `bench_artifacts.ex kill_port/1`).
@@ -193,6 +193,9 @@ Codegen-infra pitfalls and bash gotchas — split from `context/development.md` 
 - **[local] git status pollution** — Test inherits `CODEGEN_BUILD_*` vars; isolate via `env -u`.
 - **[local] RED-then-GREEN for single-file launchers (git stash blocked)** — Save pre-fix: `git show HEAD:<file> > /tmp/pre`; swap via `cp /tmp/pre <file>` or `cp /path/fix <file>`.
 - **[shared] Ambient env leaks into hermetic test fixtures** — Use `env -u VAR1 -u VAR2` for "neither set" test; omitting one fails.
+- **[shared] `git show HEAD:<test-file> > /tmp/copy` breaks dirname** — Copy to `/tmp` silently breaks `HOOK="$(dirname "$0")/hook.sh"` (dirname is `/tmp`, not source). Copy-and-test fails or returns empty under `2>/dev/null`. Diff in-place via `git diff`/`git show` instead.
+- **[shared] `guard_breadcrumb` helper: `harnesses/claude/hooks/lib/hooks-lib.sh`** — Portable mtime: `stat -f '%m' "$path" 2>/dev/null || stat -c '%Y' "$path" 2>/dev/null || echo 0` (BSD/GNU/fallback). Reuse `.active` sentinel read pattern.
+- **[local] `make install` mandatory after hand-authored hook edits** — Even `kind: registration` bodies require install before test (rule-render-freshness gate includes template re-render + diff). Full cycle: edit → install → test.
 
 ## Trigger Keywords
 

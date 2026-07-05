@@ -286,5 +286,49 @@ out=$(make_input "$Tr" false "" "$TRANSCRIPT_Tr" | env -u CLAUDE_ROLE -u PI_ROLE
 assert_contains "stale/dangling sentinel does not satisfy: BLOCK stands" '"decision"' "$out"
 rm -rf "$Tr"
 
+# ── Test (s): breadcrumb written on bash-redirect BLOCK; verdict unchanged ────
+Ts=$(make_project)
+TRANSCRIPT_Ts="$Ts/transcript.jsonl"
+printf '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Agent","input":{"subagent_type":"developer-phoenix-backend"}}]}}\n' \
+    >"$TRANSCRIPT_Ts"
+printf '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Bash","input":{"command":"cat > /tmp/x/codegen/logging/foo_session.md << '"'"'EOF'"'"'\\n# Step 1\\nEOF"}}]}}\n' \
+    >>"$TRANSCRIPT_Ts"
+out=$(make_input "$Ts" false "" "$TRANSCRIPT_Ts" | bash "$HOOK" 2>/dev/null || true)
+assert_contains "T(s): bash-redirect fire — still BLOCK" '"decision"' "$out"
+BCs="$Ts/codegen/logging/.guard-diagnostics/testsession.jsonl"
+if [ -f "$BCs" ] && jq -e '.block_branch == "bash-redirect" and (.guard == "step-log-missing-guard")' "$BCs" >/dev/null 2>&1; then
+    echo "PASS: T(s)b breadcrumb written with expected fields (bash-redirect branch)"
+    pass=$((pass + 1))
+else
+    echo "FAIL: T(s)b breadcrumb missing or malformed at $BCs"
+    fail=$((fail + 1))
+fi
+rm -rf "$Ts"
+
+# ── Test (t): breadcrumb written on no-log BLOCK; verdict unchanged ──────────
+Tt=$(make_project)
+TRANSCRIPT_Tt="$Tt/transcript.jsonl"
+make_transcript_with_agent "$TRANSCRIPT_Tt" "developer-phoenix-backend"
+out=$(make_input "$Tt" false "" "$TRANSCRIPT_Tt" | bash "$HOOK" 2>/dev/null || true)
+assert_contains "T(t): no-log fire — still BLOCK" '"decision"' "$out"
+BCt="$Tt/codegen/logging/.guard-diagnostics/testsession.jsonl"
+if [ -f "$BCt" ] && jq -e '.last_dev_index != null and .block_branch == "no-log"' "$BCt" >/dev/null 2>&1; then
+    echo "PASS: T(t)b breadcrumb written with expected fields (no-log branch)"
+    pass=$((pass + 1))
+else
+    echo "FAIL: T(t)b breadcrumb missing or malformed at $BCt"
+    fail=$((fail + 1))
+fi
+rm -rf "$Tt"
+
+# ── Test (u): breadcrumb write FAILURE must NOT alter verdict — still BLOCK ──
+Tu=$(make_project)
+printf 'x' >"$Tu/codegen/logging/.guard-diagnostics"
+TRANSCRIPT_Tu="$Tu/transcript.jsonl"
+make_transcript_with_agent "$TRANSCRIPT_Tu" "developer-phoenix-backend"
+out=$(make_input "$Tu" false "" "$TRANSCRIPT_Tu" | bash "$HOOK" 2>/dev/null || true)
+assert_contains "T(u): verdict unchanged (still BLOCK) when breadcrumb write fails" '"decision"' "$out"
+rm -rf "$Tu"
+
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

@@ -635,6 +635,96 @@ out33=$(mk_agent_input "developer-phoenix-backend" "$T33/transcript.jsonl" | env
 assert_allow "T33: allow — ## Plan retro-first then trailing prose reads as real body, developer spawn permitted" "$out33"
 rm -rf "$T33"
 
+# ── Breadcrumb diagnostic tests (T34-T36) ─────────────────────────────────────
+
+# T34: header-absent fire writes breadcrumb with expected fields; verdict unchanged
+T34=$(make_project)
+LOG34="$T34/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_step1_test.md"
+cat >"$LOG34" <<'MD'
+# Step 1 — test
+
+## Plan
+
+planner wrote here
+MD
+make_transcript "$T34/transcript.jsonl" "$LOG34"
+SID34="test-sid-34"
+IN34=$(jq -n --arg s "developer-phoenix-backend" --arg t "$T34/transcript.jsonl" --arg c "$T34" --arg sid "$SID34" \
+    '{"hook_event_name":"PreToolUse","tool_name":"Agent","tool_input":{"subagent_type":$s,"description":"x","prompt":"y"},"agent_id":"","agent_type":"","cwd":$c,"session_id":$sid,"transcript_path":$t}')
+out34=$(printf '%s' "$IN34" | env -u CLAUDE_ROLE -u PI_ROLE bash "$HOOK" 2>/dev/null || true)
+assert_deny "T34: header-absent fire — still deny" "$out34"
+BC34="$T34/codegen/logging/.guard-diagnostics/${SID34}.jsonl"
+if [ -f "$BC34" ] && jq -e '.need != "" and .grep_in_guard_log == "no" and (.guard == "step-log-section-before-spawn")' "$BC34" >/dev/null 2>&1; then
+    echo "PASS: T34b breadcrumb written with expected fields"
+    pass=$((pass + 1))
+else
+    echo "FAIL: T34b breadcrumb missing or malformed at $BC34"
+    fail=$((fail + 1))
+fi
+rm -rf "$T34"
+
+# T35: breadcrumb write FAILURE (diagnostics path occupied by a regular file)
+# must NOT alter the verdict — still deny, no crash.
+T35=$(make_project)
+LOG35="$T35/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_step1_test.md"
+cat >"$LOG35" <<'MD'
+# Step 1 — test
+
+## Plan
+
+planner wrote here
+MD
+make_transcript "$T35/transcript.jsonl" "$LOG35"
+printf 'x' >"$T35/codegen/logging/.guard-diagnostics"
+IN35=$(jq -n --arg s "developer-phoenix-backend" --arg t "$T35/transcript.jsonl" --arg c "$T35" \
+    '{"hook_event_name":"PreToolUse","tool_name":"Agent","tool_input":{"subagent_type":$s,"description":"x","prompt":"y"},"agent_id":"","agent_type":"","cwd":$c,"transcript_path":$t}')
+out35=$(printf '%s' "$IN35" | env -u CLAUDE_ROLE -u PI_ROLE bash "$HOOK" 2>/dev/null || true)
+assert_deny "T35: verdict unchanged (still deny) when breadcrumb write fails" "$out35"
+rm -rf "$T35"
+
+# T36: deny texts no longer contain "Do not investigate"; point at breadcrumb path.
+# Covers all 3 sites: no-log (91), never-created (97), header-absent (34 above).
+T36=$(make_project)
+FAKE_TRANSCRIPT36="$T36/transcript.jsonl"
+printf '' >"$FAKE_TRANSCRIPT36"
+out36_nolog=$(mk_agent_input "planner-phoenix" "$FAKE_TRANSCRIPT36" | env -u CLAUDE_ROLE -u PI_ROLE bash "$HOOK" 2>/dev/null || true)
+if printf '%s' "$out36_nolog" | grep -q "Do not investigate"; then
+    echo "FAIL: T36 no-log deny still contains 'Do not investigate'"
+    fail=$((fail + 1))
+else
+    echo "PASS: T36 no-log deny no longer contains 'Do not investigate'"
+    pass=$((pass + 1))
+fi
+if printf '%s' "$out36_nolog" | grep -q "guard-diagnostics"; then
+    echo "PASS: T36b no-log deny points at breadcrumb path"
+    pass=$((pass + 1))
+else
+    echo "FAIL: T36b no-log deny does not reference breadcrumb path"
+    fail=$((fail + 1))
+fi
+rm -rf "$T36"
+
+T36C=$(make_project)
+GHOST_LOG36="$T36C/codegen/logging/20260101_000000_ghost-session.md"
+printf '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Write","input":{"file_path":"%s"}}]}}\n' \
+    "$GHOST_LOG36" >"$T36C/transcript.jsonl"
+out36_ghost=$(mk_agent_input "planner-phoenix" "$T36C/transcript.jsonl" | env -u CLAUDE_ROLE -u PI_ROLE bash "$HOOK" 2>/dev/null || true)
+if printf '%s' "$out36_ghost" | grep -q "Do not investigate"; then
+    echo "FAIL: T36c never-created deny still contains 'Do not investigate'"
+    fail=$((fail + 1))
+else
+    echo "PASS: T36c never-created deny no longer contains 'Do not investigate'"
+    pass=$((pass + 1))
+fi
+if printf '%s' "$out36_ghost" | grep -q "guard-diagnostics"; then
+    echo "PASS: T36d never-created deny points at breadcrumb path"
+    pass=$((pass + 1))
+else
+    echo "FAIL: T36d never-created deny does not reference breadcrumb path"
+    fail=$((fail + 1))
+fi
+rm -rf "$T36C"
+
 echo ""
 echo "Results: $pass passed, $fail failed"
 
