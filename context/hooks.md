@@ -257,11 +257,12 @@ See `shared/rules/_core/session-log.md` § Ownership for the full contract.
 
 ## Test Assertion Discrimination Patterns
 
-**Presence-only vs co-location asserts**: Bash static source guards using `assert_file_contains` (presence-only) do not prove per-branch correctness for boolean env-injection features. For example, checking `CLAUDE_AFK_TIMEOUT_MS` exists in a file is weak — if the key leaked into BOTH interactive and headless branches, presence-only assertion passes silently. **Stronger pattern**: co-location/var-level assertions (e.g., `grep -c 'SETTINGS_JSON=.*API_FORCE_IDLE_TIMEOUT.*NONINTERACTIVE'` to verify the assignment co-locates with the branch test). When a launcher-settings area undergoes refactoring, upgrade presence-only tests to co-location style to catch inter-branch leakage — the extra specificity is not overconstrained, it's necessary for correctness.
+**Presence-only vs co-location asserts**: Presence-only `assert_file_contains` is weak for boolean env-injection tests (key leaking to BOTH branches passes silently). Use co-location assertions: `grep -c 'SETTINGS_JSON=.*API_FORCE_IDLE_TIMEOUT.*NONINTERACTIVE'` to verify assignment co-locates with branch test.
 
 ## Pitfalls
 
 - **Phoenix gates**: wiring-check → render-check → runtime. [local] **T17 watchdog signal**: exit 0 + slug-ready + NOT-shipped (timeout-only); not messages (racy).
+- **Stop-hook block timeout ceiling**: Claude Code honors Stop-hook `block()` decisions up to ~300–350s, NOT the aspirational 360s registration timeout. Blocks at ≥350s silently drop (no error, no retry). Verified: N=300 (block+resume ✓), N=350 (no block/resume), N=400 (no block/resume). Ceiling between 300–350s.
 
 ## Testing & Verdict Patterns
 

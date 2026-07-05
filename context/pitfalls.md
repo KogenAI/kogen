@@ -51,6 +51,7 @@ Codegen-infra pitfalls and bash gotchas — split from `context/development.md` 
 - **Gate hook command switch** — Build invocation changes (e.g., `npm run build` → `make ci`) → update all fixtures. Add `Makefile` with `ci:` recipe. Recipe lines MUST use hard tabs.
 - **`developer-no-self-gate` cap counts ALL ops per session** — `mix test`, `make test`, `mix format`, blocked attempts all count toward 3-per-session budget. Combine `mix format && mix test` or defer format.
 - **[shared] Read/Edit blocked for codegen/pitches/** — `subagent-read-discipline.sh` denies both on pitch files (even edit-in-place). Workaround: Bash `awk`/`grep` + Python string-replace.
+- **[local] Pitch file grep-c anchor pitfall** — `grep -c "literal header text"` on pitch files false-positives when prose mentions the header elsewhere. Use `grep -n "^## ..."` (anchored H2) for reliable "exactly one section" assertions.
 - **`chmod 000` is no-op under root** — Cannot test file unreadability via `chmod 000` when running as root.
 - **`make test` does NOT run `make install`** — rule-prose / template edits are baked at install time. Workflow: edit → `make install` → `make test`. Skipping install leaves baked prompts stale.
 - **Shape prompt two-layer architecture** — inline-probe (`_probing.txt`) checks claim-intro; readiness-check (`shape.txt`) scans completeness. Place rules by gate-phase. `/ready` inherits `_probing.txt` automatically.
@@ -62,8 +63,8 @@ Codegen-infra pitfalls and bash gotchas — split from `context/development.md` 
 - **Context files carry a 40 KB advisory cap** — `context/*.md` files have 40,960-byte limit. Compress or split when near cap.
 - **Env var leakage in tests** — Tests exercising DEFAULT branches must `env -u VAR bash` to isolate. Single `env -u` leaves fallback.
 - **Gate Verdict Authority applies retroactively** — the runtime-written gate-result JSON's `.verdict` field is authoritative, never session-log prose.
-- **Bash array-literal fix** — `arr=("word1" "${VAR:-}/path")` vs `read -ra arr <<< "..."` (splits). Use literals for spaces; isolate override-var tests via `env -u OVERRIDE_VAR`.
-- **`replace_all` composite keys** — `"user_app_build"` ≠ `"claude/user_app_build"`; use separate passes.
+- **Bash array-literal fix** — Use literals for spaces; isolate override-var tests via `env -u OVERRIDE_VAR`.
+- **`replace_all` composite keys** — use separate passes for different path prefixes.
 - **Removing a config.yaml role breaks slow ExUnit tests** — `@moduletag :slow` tests excluded from `make test` (`--exclude slow`) but run in `make test-stacks` (`--only slow`). Deleting a role → silently passes `make test`, fails `make test-stacks` with `ERROR: roles.<role>.model missing/empty`. Survey both gates; update all `:slow` tests to valid roles before commit.
 - **Curator byte cap enforcement** — `curator-context-size-gate.sh` denies over-cap Edit/Write in curator's turn (hard gate). Commit-time `context-file-size-gate.sh` backstop re-routes to curator. Compress bullets or split to new file.
 - **Grep recipe glob depth** — `harnesses/claude/hooks/*.sh` misses subdirs. Use `**/*.sh` or recursive for complete enumeration.
@@ -107,8 +108,9 @@ Codegen-infra pitfalls and bash gotchas — split from `context/development.md` 
 - **Scaffold global-read convention** — `run_integrate_stage()` reads scaffold parameters as GLOBALS (`STACK`, `SLUG`, `RESTART_RPC_CMD`, etc.), not function parameters. New flags assigned in the shared arg-parse loop; NO parameter threading. One arg-parse pass; dual callsites (create + integrate) both see the globals.
 - **COMMON_FLAGS array** — dispatch scripts use a shared flags array for mode-invariant vs mode-specific flags. Build array once, splice into both exec paths. Under `set -u`, guard VALUE expansions with `if [[ ${#arr[@]} -gt 0 ]]; then` — `${arr[@]+"${arr[@]}"}` is rejected by shfmt; use explicit length-guards.
 - **Shared fns called from multiple harnesses** — thread a `mode` parameter to gate harness-specific behavior. Example: `render-check.js` `runChecks(url, timeoutMs, mode)` gates content-region check on `if (mode === "phoenix")`.
+- **[local] Multi-iteration loop tool timeout** — When orchestrating multiple slow (5+ min) external commands in a shell loop, the tool call's own timeout can kill the loop BETWEEN iterations even though each child process completed normally. Inspect per-iteration output files before assuming batch failure — they may be complete even though the loop wrapper was killed.
 - **`local` keyword under `set -u`** — fails in `if/elif` at script scope. Use bare assignment. Function scope OK. Reset loop-branch locals at top: `local repo_url="" tree_ref=""`.
-- **Portable sed** — `sed -i ''` (macOS BSD) NOT portable to GNU sed. Use temp-file or `sed -i.bak 's/old/new/' && rm *.bak`. BSD `sed` lacks `\b` word-boundary — silently no-ops; use Python for portability.
+- **Portable sed** — `sed -i ''` (BSD) not portable to GNU. Use temp-file or Python for portability.
 - **Bash grep `\b` false-positive on hyphens** — `grep -E '\blog\b'` falsely matches `codegen-log` (hyphen is non-word). Use `(^|[^a-zA-Z0-9-])token([^a-zA-Z0-9-]|$)` to exclude hyphen-adjacency.
 - **Bash 3.2 compatibility** — No `declare -A`, no `wait -n`. Walk `git -C` to ancestor; use `hooks_realpath` for symlinks.
 - **Path canonicalization for prefix-compare across harnesses** — Always canonicalize both sides of path comparisons to handle `/var`↔`/private/var` symlinks. Use `hooks_realpath` (bash) or `resolveRealPath` (TS). Guard with trailing `/` on cwd to prevent sibling false-matches.
@@ -122,7 +124,7 @@ Codegen-infra pitfalls and bash gotchas — split from `context/development.md` 
 - **Hook stub isolation for sourced files** — Pre-sourcing doesn't work. Create per-test `CODEGEN_DIR` subdir with stub, invoke with `CODEGEN_DIR="$TMP_ROOT/tN" bash "$HOOK"`.
 - **jq null extraction in hook payloads** — `jq -r '.field'` on JSON null emits `"null"` (not empty). Always use `jq -r '.field // empty'` for optional fields; bare `.field` causes git/mkdir to treat `"null"` as a literal path argument.
 - **yq null-safety** — Every yq array op → `(.field // [])` guard. `.field | join(",")` crashes when field null/absent. ✅ `(.tools // []) | join(",")`.
-- **Conditional final statements** — `&&` flips exit code; use `if/then/fi` instead.
+- **Conditional final statements** — Use `if/then/fi` instead of `&&` (flips exit code).
 - **Post-condition assertions in mutations** — validate preconditions (file exists, anchor present) and postconditions (expected lines added, placeholders resolved). `eex_render.sh` should fail on unresolved `<%= ... %>` placeholders.
 - **Cleanup wrappers & exit code propagation** — `bash -c "cmd; rm -rf $TMP"` loses the inner exit code if cleanup succeeds. Pattern: `RESULT=0; inner_cmd || RESULT=$?; cleanup_code; exit $RESULT`.
 - **Fail-closed refute in tests** — to prove a script aborts BEFORE an irreversible action, use a shimmed subprocess marker: stub the irreversible command to record if called, then `refute` the marker was set.
