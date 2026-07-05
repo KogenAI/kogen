@@ -126,12 +126,11 @@ describe("env-var-sample-consistency", () => {
     // Regression for the shell-injection/space-in-path bug fixed alongside
     // this pass: execFileSync passes args as an array, so a staged path with
     // a space is diffed correctly (no throw, no shell-injection) rather than
-    // corrupting command parsing. NOTE: the hook's separate, pre-existing
-    // `/^\+/.test(exDiff)` whole-string check (unchanged by this pass) means
-    // the deny-for-missing-.env.sample branch is unreachable for any real git
-    // diff output (which always starts with "diff --git", never "+") — so
-    // the only currently-reachable, correct behavior is pass-through. This
-    // test asserts the actual reachable contract: no throw, no block.
+    // corrupting command parsing. This adds a NEW undocumented literal env
+    // var (no .env.sample present in this fixture at all) with samples not
+    // staged, so the deny branch IS reachable and exercised here — the dead
+    // `/^\+/.test(exDiff)` whole-string guard that used to make this branch
+    // unreachable has been removed as part of the literal-arg tightening.
     const tmpDir = fs.mkdtempSync(
       path.join(os.tmpdir(), "env-var-sample-space-path-"),
     );
@@ -152,8 +151,96 @@ describe("env-var-sample-consistency", () => {
       const result = await runHook('git commit -m "x"', "committer");
       const asObj = result as { block?: boolean; reason?: string } | null;
       assert.ok(
-        asObj == null || asObj.block !== true,
-        `expected pass-through (no crash on space-in-path) but got: ${JSON.stringify(result)}`,
+        asObj != null && asObj.block === true,
+        `expected block (new undocumented literal var, no samples staged) but got: ${JSON.stringify(result)}`,
+      );
+    } finally {
+      process.chdir(originalCwd);
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    }
+  });
+
+  it("allows argless System.get_env() with no literal arg (no lookup possible)", async () => {
+    const tmpDir = fs.mkdtempSync(
+      path.join(os.tmpdir(), "env-var-sample-argless-"),
+    );
+    const originalCwd = process.cwd();
+    try {
+      execSync("git init -q", { cwd: tmpDir });
+      execSync("git config user.email t@t", { cwd: tmpDir });
+      execSync("git config user.name t", { cwd: tmpDir });
+      execSync("git checkout -q -b main", { cwd: tmpDir });
+      fs.writeFileSync(path.join(tmpDir, "foo.exs"), "System.get_env()\n");
+      execFileSync("git", ["add", "foo.exs"], { cwd: tmpDir });
+
+      process.chdir(tmpDir);
+      const result = await runHook('git commit -m "x"', "committer");
+      assert.ok(
+        result == null || (result as { block?: boolean }).block !== true,
+        `expected allow (argless read) but got: ${JSON.stringify(result)}`,
+      );
+    } finally {
+      process.chdir(originalCwd);
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    }
+  });
+
+  it("allows a literal var already declared in .env.sample", async () => {
+    const tmpDir = fs.mkdtempSync(
+      path.join(os.tmpdir(), "env-var-sample-documented-"),
+    );
+    const originalCwd = process.cwd();
+    try {
+      execSync("git init -q", { cwd: tmpDir });
+      execSync("git config user.email t@t", { cwd: tmpDir });
+      execSync("git config user.name t", { cwd: tmpDir });
+      execSync("git checkout -q -b main", { cwd: tmpDir });
+      fs.writeFileSync(
+        path.join(tmpDir, ".env.sample"),
+        "export EXISTING_VAR=\n",
+      );
+      execFileSync("git", ["add", ".env.sample"], { cwd: tmpDir });
+      execSync('git commit -q -m init', { cwd: tmpDir });
+      fs.writeFileSync(
+        path.join(tmpDir, "foo.exs"),
+        'System.get_env("EXISTING_VAR")\n',
+      );
+      execFileSync("git", ["add", "foo.exs"], { cwd: tmpDir });
+
+      process.chdir(tmpDir);
+      const result = await runHook('git commit -m "x"', "committer");
+      assert.ok(
+        result == null || (result as { block?: boolean }).block !== true,
+        `expected allow (already-documented var) but got: ${JSON.stringify(result)}`,
+      );
+    } finally {
+      process.chdir(originalCwd);
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    }
+  });
+
+  it("allows when the new undocumented literal var's samples ARE staged", async () => {
+    const tmpDir = fs.mkdtempSync(
+      path.join(os.tmpdir(), "env-var-sample-with-samples-"),
+    );
+    const originalCwd = process.cwd();
+    try {
+      execSync("git init -q", { cwd: tmpDir });
+      execSync("git config user.email t@t", { cwd: tmpDir });
+      execSync("git config user.name t", { cwd: tmpDir });
+      execSync("git checkout -q -b main", { cwd: tmpDir });
+      fs.writeFileSync(path.join(tmpDir, "foo.exs"), 'System.get_env("NEW_VAR")\n');
+      fs.writeFileSync(path.join(tmpDir, ".env.sample"), "export NEW_VAR=\n");
+      fs.writeFileSync(path.join(tmpDir, ".env.prod.sample"), "NEW_VAR=\n");
+      execFileSync("git", ["add", "foo.exs", ".env.sample", ".env.prod.sample"], {
+        cwd: tmpDir,
+      });
+
+      process.chdir(tmpDir);
+      const result = await runHook('git commit -m "x"', "committer");
+      assert.ok(
+        result == null || (result as { block?: boolean }).block !== true,
+        `expected allow (samples staged) but got: ${JSON.stringify(result)}`,
       );
     } finally {
       process.chdir(originalCwd);

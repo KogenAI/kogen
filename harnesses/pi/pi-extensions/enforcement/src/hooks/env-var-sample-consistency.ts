@@ -15,6 +15,7 @@ import {
   isCodegenLogWrite,
 } from "../lib/hook-helpers";
 import { execSync, execFileSync } from "node:child_process";
+import { readFileSync } from "node:fs";
 
 export const HANDLER_META = {
   name: "env-var-sample-consistency",
@@ -70,22 +71,39 @@ export function register(pi: ExtensionAPI): void {
       );
     }
 
-    if (
-      !/(System\.get_env|System\.fetch_env)/.test(exDiff) ||
-      !/^\+/.test(exDiff)
-    ) {
-      return;
-    }
-
-    // Check if new System.get_env calls were added (lines starting with +)
+    // Only ADDED lines (starting with "+") with a string-literal arg count —
+    // argless reads like `System.get_env()` give no name to look up in
+    // .env.sample, so they cannot be a documentation gap.
+    const literalArgRe = /System\.(get_env|fetch_env)\(\s*"[^"]+"/;
     const addedEnvLines = exDiff
       .split("\n")
-      .filter(
-        (l) =>
-          l.startsWith("+") && /(System\.get_env|System\.fetch_env)/.test(l),
-      );
+      .filter((l) => l.startsWith("+") && literalArgRe.test(l));
 
     if (addedEnvLines.length === 0) return;
+
+    // Extract each quoted literal var name from the added lines.
+    const addedNames = addedEnvLines
+      .map((l) => l.match(literalArgRe)?.[0].match(/"([^"]+)"/)?.[1])
+      .filter((n): n is string => Boolean(n));
+
+    if (addedNames.length === 0) return;
+
+    // Read the working-tree .env.sample. ENOENT (file absent) means every
+    // extracted name is "not declared" — loud, not swallowed; any other read
+    // error propagates (not caught here).
+    let sampleContent = "";
+    try {
+      sampleContent = readFileSync(".env.sample", "utf8");
+    } catch (e) {
+      if ((e as NodeJS.ErrnoException).code !== "ENOENT") throw e;
+    }
+
+    const isDeclared = (name: string): boolean =>
+      new RegExp(`^(export )?${name}=`, "m").test(sampleContent);
+
+    const undocumented = addedNames.filter((n) => !isDeclared(n));
+
+    if (undocumented.length === 0) return;
 
     const sampleStaged = stagedFiles.some((f) =>
       [".env.sample", ".env.prod.sample"].includes(f),

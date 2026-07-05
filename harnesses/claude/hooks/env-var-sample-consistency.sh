@@ -59,8 +59,30 @@ if [ -z "$ex_diff" ]; then
     exit 0
 fi
 
-# Check if diff contains System.get_env or System.fetch_env additions/removals
-if ! printf '%s' "$ex_diff" | grep -qE '^[+-].*System\.(get_env|fetch_env)'; then
+# Extract ADDED-only lines (exclude removed `^-` lines) that call
+# System.get_env/fetch_env with a string-literal arg (argless reads like
+# `System.get_env()` do not match — nothing to look up in .env.sample).
+added_literal_lines=$(printf '%s\n' "$ex_diff" | grep -E '^\+' | grep -E 'System\.(get_env|fetch_env)\(\s*"[^"]+"' || true)
+if [ -z "$added_literal_lines" ]; then
+    exit 0
+fi
+
+# Pull each quoted literal var name and check whether it is already declared
+# in the working-tree .env.sample (`^(export )?NAME=`). If .env.sample itself
+# is missing, every extracted name is "not declared" (loud, not swallowed —
+# no `|| true` around the sample-membership check itself).
+new_undocumented=0
+while IFS= read -r var_name; do
+    [ -z "$var_name" ] && continue
+    if ! grep -qE "^(export )?${var_name}=" .env.sample 2>/dev/null; then
+        new_undocumented=1
+        break
+    fi
+done <<VARNAMES
+$(printf '%s\n' "$added_literal_lines" | grep -oE 'System\.(get_env|fetch_env)\(\s*"[^"]+"' | grep -oE '"[^"]+"' | tr -d '"')
+VARNAMES
+
+if [ "$new_undocumented" -eq 0 ]; then
     exit 0
 fi
 

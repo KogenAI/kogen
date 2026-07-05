@@ -101,7 +101,7 @@ Example: Create a directory with a `.md` extension in a location where the test 
 
 ## Related Pitfalls
 
-- **Pre-existing latent bug in `env-var-sample-consistency.ts`** — the condition `/^\+/.test(exDiff)` tests the first character of the entire diff string (always `"diff --git..."`, never `+`), making the missing-`.env.sample` deny branch permanently unreachable. The bash `.sh` sibling uses correct per-line `grep -E '^[+-]...'`. Flagged for follow-up, out-of-scope for current CR-fix round.
+- **`env-var-sample-consistency.ts` whole-string regex bug (FIXED)** — the condition `/^\+/.test(exDiff)` tested the first character of the entire diff string (always `"diff --git..."`, never `+`), making the missing-`.env.sample` deny branch permanently unreachable. Fixed by removing the dead guard and replacing the filter with per-line `l.startsWith("+")` + literal-arg regex. Test assertions updated to exercise the now-reachable deny branch. Related: bash sibling was already correct (`grep -E '^+...'` per-line only, not `^[+-]`); twin unification completed as part of the fix.
 
 ## Trigger Keywords
 

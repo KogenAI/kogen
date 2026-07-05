@@ -180,9 +180,9 @@ Codegen-infra pitfalls and bash gotchas — split from `context/development.md` 
 - **[shared] macOS symlink mismatch** — Plain `cd` doesn't resolve `/var` → `/private/var`. Assert basename not full path.
 - **[shared] Session-log retrospective extraction is H2-scoped** — `### What I Learned` must be FIRST under `## <role> Section`, BEFORE any nested `## ` headers (which terminate awk scanning).
 - **Positive-only test assertions hide bugs** — multi-assertion tests with late `refute` after early-failing positive assertions never exercise the refute. Trace which assertion fires first on the buggy branch. Direct path assertions (`File.exists?`) stronger than env-toggle with fallback masking.
-- **[shared] Delegation-prompt H2 promotion bug (FIXED Phase 1)** — Column-0 `## <name>` lines in delegation bodies used to become H2 sections, corrupting canonical order. FIXED: `codegen-log section/append` indents any body line matching `^## ` to ` ##` before writing, upstream of awk rank-detection. Phase 1 complete; Phase 2+ (tool-emitted markers) pending.
+- **[shared] Delegation-prompt H2 promotion (FIXED)** — `## ` lines in delegation bodies are indented to `##` before writing to prevent rank-order corruption.
 - **Pitch line-number drift** — Read files for exact anchor text; never trust estimates.
-- **[local] Elixir epoch-to-UTC-stamp pattern** — Format via `Calendar.strftime(DateTime.from_unix!(ts), "%Y%m%d*%H%M%S")` (UTC). Use only at filename construction; `now_fn` raw integer unchanged elsewhere.
+- **[local] Elixir epoch-to-UTC-stamp pattern** — Use `Calendar.strftime(DateTime.from_unix!(ts), "%Y%m%d*%H%M%S")` only at filename construction; keep `now_fn` raw integer elsewhere.
 - **[shared] `Port.open` `:env` requires charlist tuples, NOT binary tuples** — `{:env, [{"KEY","VAL"}]}` raises `ArgumentError: invalid option in list`. Correct: `{:env, [{~c"KEY", ~c"VAL"}]}` (charlist tuples). `System.cmd(:env)` accepts binary tuples — API divergence. Probe empirically on target OTP before finalizing.
 - **[local] `Task.shutdown(:brutal_kill)` only kills BEAM Task, not OS child tree** — Orphans underlying OS children (and grandchildren). Fix: `Port.open({:spawn_executable, ...})` + process-group `kill -9 -<pgid>` + `pkill -9 -P <pgid>`. Already in-repo (`fixtures.ex do_timeout/3`, `bench_artifacts.ex kill_port/1`).
 - **[local, dev] New `_fn` seam default in shared test helper** — Add seam default to base-opts to avoid real slow defaults in pre-existing tests. Example: `base_opts/2` must default `:discover_session_log_fn` seam to fast `fn -> nil end` to skip 30s sleeps.
@@ -194,8 +194,10 @@ Codegen-infra pitfalls and bash gotchas — split from `context/development.md` 
 - **[local] RED-then-GREEN for single-file launchers (git stash blocked)** — Save pre-fix: `git show HEAD:<file> > /tmp/pre`; swap via `cp /tmp/pre <file>` or `cp /path/fix <file>`.
 - **[shared] Ambient env leaks into hermetic test fixtures** — Use `env -u VAR1 -u VAR2` for "neither set" test; omitting one fails.
 - **[shared] `git show HEAD:<test-file> > /tmp/copy` breaks dirname** — Copy to `/tmp` silently breaks `HOOK="$(dirname "$0")/hook.sh"` (dirname is `/tmp`, not source). Copy-and-test fails or returns empty under `2>/dev/null`. Diff in-place via `git diff`/`git show` instead.
-- **[shared] `guard_breadcrumb` helper: `harnesses/claude/hooks/lib/hooks-lib.sh`** — Portable mtime: `stat -f '%m' "$path" 2>/dev/null || stat -c '%Y' "$path" 2>/dev/null || echo 0` (BSD/GNU/fallback). Reuse `.active` sentinel read pattern.
+- **[shared] `guard_breadcrumb` helper portability** — Use `stat -f '%m' "$path" 2>/dev/null || stat -c '%Y' "$path" 2>/dev/null || echo 0` for mtime (BSD/GNU/fallback).
 - **[local] `make install` mandatory after hand-authored hook edits** — Even `kind: registration` bodies require install before test (rule-render-freshness gate includes template re-render + diff). Full cycle: edit → install → test.
+
+- **Test fixture leak: `git reset HEAD` vs `git checkout`** — `git reset HEAD <file>` unstages but leaves appended working-tree content. Later tests re-reading the file see the leaked append. Fix: `git checkout -- <file>` after reset to revert both staging and working tree.
 
 ## Trigger Keywords
 
