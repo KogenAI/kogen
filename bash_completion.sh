@@ -20,7 +20,7 @@ _codegen_completion() {
 
     # Complete main commands
     if [[ ${COMP_CWORD} == 1 ]]; then
-        local opts="doctor format help hook-parity install rule-parity test uninstall update"
+        local opts="doctor format help hook-parity install harness-path-check test uninstall update"
         COMPREPLY=($(compgen -W "$opts" -- "$cur"))
         return 0
     fi

@@ -54,7 +54,7 @@ What the developer subagent runs after any change:
 1. Edit a `.md.j2` template, rule file, hook script, or scaffold script
 2. `make test` — fast, hermetic; no LLM calls
 3. `make install` — regenerate agents, register hooks, render settings; propagates edits to `~/.claude/`
-4. Post-gate checks (optional): `make rule-parity` — standalone optional manual target
+4. Post-gate checks (optional): `make harness-path-check` — standalone optional manual target
 5. `make test-stacks` — slow ExUnit scaffold suite; real LLM calls; run as pre-deploy gate
 
 **Gate command = `make test`** (fast, hermetic). `make test-stacks` is the pre-deploy gate (slow, real LLM calls). `make ci` does NOT exist in this repo — that is a Phoenix-only target. Planners: always emit `Gate: make test` for codegen tasks.

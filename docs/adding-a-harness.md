@@ -167,7 +167,7 @@ make install
 9. **Run `make install --harness=<name>`** — verify agents install, launchers land in `~/.local/bin/`,
    completions install.
 
-10. **Run `make test && make rule-parity && make hook-parity`** — all must pass.
+10. **Run `make test && make harness-path-check && make hook-parity`** — all must pass.
 
 ## System Prompt Authorship
 
@@ -198,6 +198,6 @@ After any manifest or install change, all gates MUST be green:
 
 ```bash
 make test          # hook unit tests + harness-parity + pi npm tests
-make rule-parity   # AGENTS.md / CLAUDE.md match template render
+make harness-path-check   # Grep baked agents for stale harness-relative paths (not a render/content parity check)
 make hook-parity   # claude-code-settings.json matches hook_registrations.py output
 ```

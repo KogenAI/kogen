@@ -462,19 +462,20 @@ test-all: test test-stacks record-green
 record-green:
 	@"$(SCRIPT_DIR)/test_harness/record-green.sh"
 
-# rule-parity: verify baked agent files do not reference stale harness paths.
-# Exits non-zero if any generated agent contains old templates/shared/claude-* or pi-* paths.
-rule-parity:
+# harness-path-check: post-install agent path sanity check, NOT a content-parity gate.
+# Verifies baked agent files do not reference stale harness paths (grep-only; does not
+# re-render or diff template content — that is covered by `make rule-render-freshness`).
+harness-path-check:
 	@AGENTS_DIR="$(HOME)/.claude/agents"; \
 	if [ -d "$$AGENTS_DIR" ]; then \
 		if grep -rl "templates/shared/claude-\|templates/shared/pi-" "$$AGENTS_DIR" 2>/dev/null | grep -q .; then \
-			echo "rule-parity: ERROR — generated agent files reference old templates/shared/claude-* or pi-* paths"; \
+			echo "harness-path-check: ERROR — generated agent files reference old templates/shared/claude-* or pi-* paths"; \
 			grep -rl "templates/shared/claude-\|templates/shared/pi-" "$$AGENTS_DIR" 2>/dev/null; \
 			exit 1; \
 		fi; \
-		echo "rule-parity: OK — no stale harness paths in baked agents [checked: $$AGENTS_DIR]"; \
+		echo "harness-path-check: OK — no stale harness paths in baked agents [checked: $$AGENTS_DIR]"; \
 	else \
-		echo "rule-parity: FAIL — $$AGENTS_DIR not found (run make install first)"; \
+		echo "harness-path-check: FAIL — $$AGENTS_DIR not found (run make install first)"; \
 		exit 1; \
 	fi
 
@@ -654,7 +655,7 @@ help:
 	@echo "  make test-all       Full pre-deploy gate: test + test-stacks + record-green"
 	@echo "  make record-green   Write test_harness/last_green.json with current sha + versions"
 	@echo "  make hook-parity    Verify hook registrations match claude-code-settings.json"
-	@echo "  make rule-parity            Grep baked agents for stale harness-relative paths"
+	@echo "  make harness-path-check     Grep baked agents for stale harness-relative paths"
 	@echo "  make rule-render-freshness  Verify committed apps docs match a fresh render"
 	@echo "  make show-failures  Pretty-print durable agent tool-failure store"
 	@echo "  make show-verdicts  Pretty-print durable gate-verdict history"
