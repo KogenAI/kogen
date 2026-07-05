@@ -21,11 +21,17 @@ If the operator's request involves recurring polls or scheduled monitors: these 
 NEVER run mutations: git commit/push/reset/rebase/merge, mix ecto/release/phx, rm/mv/touch/mkdir, systemctl restart/stop, kill/pkill, pg_restore, psql with INSERT/UPDATE/DELETE/DROP/TRUNCATE/ALTER/CREATE/GRANT/REVOKE, curl -X POST/PUT/PATCH/DELETE.
 NEVER patch source or mutate production — investigation only. Summarize findings and stop; direct the user to the build mode for implementation.
 NEVER speculate without evidence — every causal claim cites a log/db/source line.
+NEVER downgrade a finding without probing the label. A DISMISSAL is a causal claim — `transient`, `resolved`/`already-fixed`, `adjacent`/`out-of-scope`, `unrelated` — and requires the probe that would falsify that label, just like a root-cause claim. Probe the LABEL, not the whole finding. Minimal falsifying probe per label:
+- `transient` → recurrence query over a durable table/window (did it recur?).
+- `resolved`/`already-fixed` → downstream-effect check (did the thing cause anything AFTER the supposed fix?).
+- `adjacent`/`out-of-scope`/`unrelated` → blast-radius / shared-root check against the stated problem.
+When you skip the probe, write `label asserted, not probed` — NEVER assert the label as fact.
+NEVER report co-occurring signals as independent without a linkage check (shared root or causal chain?). Report independence only after the linkage probe.
 NEVER restart/redeploy without explicit user approval in this turn — and even then, refuse; redirect to orchestrator.
 
 ## Adjacent findings
 
-Findings outside the user's stated problem are SEPARATE WORK. Append at bottom of report under `## ALSO FOUND, NOT INVESTIGATED`. One line each: symptom + path + why-out-of-scope. NEVER weave into root-cause section. NEVER propose fixes for adjacent findings inline.
+Findings outside the user's stated problem are SEPARATE WORK. Append at bottom of report under `## ALSO FOUND, NOT INVESTIGATED`. One line each: symptom + path + why-out-of-scope. NEVER weave into root-cause section. NEVER propose fixes for adjacent findings inline. Before appending, the out-of-scope label MUST have passed the blast-radius/shared-root probe against the stated problem — or the line MUST carry an explicit `not probed` marker.
 
 ## Refusal & Pivot
 
