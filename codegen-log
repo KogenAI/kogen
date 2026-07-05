@@ -10,6 +10,15 @@
 #   codegen-log append <role> --verdict clear|failed|inconclusive [--slug <slug>]
 #   codegen-log verdict --gate <cmd> --mode <mode> --result "<text>" [--detail "<text>"] [--slug <slug>]
 #   codegen-log relocate --new-slug <slug> [--slug <slug>]
+#   codegen-log --version
+#
+# --version: cheap read-only presence/preflight probe. Prints
+#   "codegen-log root=<resolved|unresolved-root>" to stdout and exits 0.
+#   Always exits 0 when the binary itself runs — an unresolved CODEGEN_ROOT
+#   only degrades the printed status, it never fails this probe (root
+#   resolution failure is a version_stamp metadata concern, not a binary
+#   presence concern). Callers that need root resolution to be authoritative
+#   should grep the printed status, not just the exit code.
 #
 # Positional <role> (taught/default form) and --role/--body @- (accepted
 # aliases, kept for existing callers) resolve to the same behavior. When
@@ -64,11 +73,26 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
-if [[ ! -d "$SCRIPT_DIR/codegen" && -n "${OCG_CODEGEN_DIR:-}" ]]; then
-    SCRIPT_DIR="$OCG_CODEGEN_DIR"
-fi
-
+# Root resolution: prefer a sibling checkout next to this script (self-build
+# / repo-relative invocation). When installed as a stable copy (no sibling
+# codegen/ dir alongside it — e.g. ~/.local/bin/codegen-log), fall back to
+# CODEGEN_DIR (exported by the Elixir orchestration loop) OR OCG_CODEGEN_DIR
+# (exported by dispatch.sh/ocg), in that order. Either resolves; CODEGEN_DIR
+# takes precedence when both are set. If NEITHER resolves a valid codegen
+# root, leave CODEGEN_ROOT empty — this is NOT a hard failure: log writing
+# uses LOG_ROOT (cwd), which is unaffected. version_stamp() detects the empty
+# root and emits an honest "unresolved-root" marker instead of running git
+# blind.
 CODEGEN_ROOT="$SCRIPT_DIR"
+if [[ ! -d "$SCRIPT_DIR/codegen" ]]; then
+    if [[ -n "${CODEGEN_DIR:-}" && -d "$CODEGEN_DIR/codegen" ]]; then
+        CODEGEN_ROOT="$CODEGEN_DIR"
+    elif [[ -n "${OCG_CODEGEN_DIR:-}" && -d "$OCG_CODEGEN_DIR/codegen" ]]; then
+        CODEGEN_ROOT="$OCG_CODEGEN_DIR"
+    else
+        CODEGEN_ROOT=""
+    fi
+fi
 LOG_ROOT="${CODEGEN_BUILD_CWD:-${CLAUDE_PROJECT_DIR:-$PWD}}"
 
 SUBCOMMAND=""
@@ -96,10 +120,25 @@ usage() {
     printf '  codegen-log append --role <role> --verdict clear|failed|inconclusive [--slug <slug>]\n' >&2
     printf '  codegen-log verdict --gate <cmd> --mode <mode> --result "<text>" [--detail "<text>"] [--slug <slug>]\n' >&2
     printf '  codegen-log relocate --new-slug <slug> [--slug <slug>]\n' >&2
+    printf '  codegen-log --version\n' >&2
     printf '\n' >&2
     printf "section REPLACES the whole section body (first/only write); append PRESERVES it and adds to the end (re-run, second write, death marker).\n" >&2
     exit 2
 }
+
+# --version: handled BEFORE subcommand dispatch — it IS the action, requires
+# no subcommand. Cheap, read-only, always exits 0 (proves the binary is
+# present + runnable; root-resolution status is reported, not enforced).
+for _arg in "$@"; do
+    if [[ "$_arg" == "--version" ]]; then
+        if [[ -n "$CODEGEN_ROOT" ]]; then
+            printf 'codegen-log root=resolved\n'
+        else
+            printf 'codegen-log root=unresolved-root\n'
+        fi
+        exit 0
+    fi
+done
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -388,8 +427,17 @@ resolve_log_file() {
 version_stamp() {
     local project_hash context_hash codegen_hash claude_version stamped_at
     project_hash="$(git -C "$LOG_ROOT" rev-parse --short HEAD 2>/dev/null || printf 'unknown')"
-    context_hash="$(git -C "$CODEGEN_ROOT/codegen/rules" rev-parse --short HEAD 2>/dev/null || printf 'unknown')"
-    codegen_hash="$(git -C "$CODEGEN_ROOT" rev-parse --short HEAD 2>/dev/null || printf 'unknown')"
+    if [[ -n "$CODEGEN_ROOT" ]]; then
+        context_hash="$(git -C "$CODEGEN_ROOT/codegen/rules" rev-parse --short HEAD 2>/dev/null || printf 'unknown')"
+        codegen_hash="$(git -C "$CODEGEN_ROOT" rev-parse --short HEAD 2>/dev/null || printf 'unknown')"
+    else
+        # CODEGEN_ROOT never resolved (neither CODEGEN_DIR nor OCG_CODEGEN_DIR
+        # pointed at a valid codegen checkout, and no sibling codegen/ dir
+        # exists next to this script). An honest marker beats running
+        # `git -C ""` blind, which would print the misleading `unknown`.
+        context_hash="unresolved-root"
+        codegen_hash="unresolved-root"
+    fi
     if command -v claude >/dev/null 2>&1; then
         claude_version="$(claude --version 2>/dev/null || printf 'unknown')"
     elif command -v pi >/dev/null 2>&1; then

@@ -65,6 +65,15 @@ assert "hooks/lib dir populated" '[ "$(ls "$tmp_home/.claude/hooks/lib" 2>/dev/n
 assert "agents dir populated" '[ "$(ls "$tmp_home/.claude/agents" 2>/dev/null | wc -l | tr -d " ")" -gt 0 ]'
 assert "no pi launchers present" '[ ! -f "$tmp_home/.local/bin/pi-build" ]'
 assert "codegen-log launcher exists" '[ -f "$tmp_home/.local/bin/codegen-log" ]'
+# codegen-log is installed as a stable COPY, not a live-checkout symlink (a
+# symlink dangles when the shared codegen checkout mutates mid-build). The
+# plain `-f` assertion above follows symlinks and would stay green even if
+# install.sh regressed to `ln -s` — these explicit `-L`/`-s`/`-x` assertions
+# are the load-bearing proof of copy-not-symlink.
+assert "codegen-log is a real file, not a symlink" '[ ! -L "$tmp_home/.local/bin/codegen-log" ]'
+assert "codegen-log copy is non-empty" '[ -s "$tmp_home/.local/bin/codegen-log" ]'
+assert "codegen-log copy is executable" '[ -x "$tmp_home/.local/bin/codegen-log" ]'
+assert "codegen-log copy matches source bytes" 'cmp -s "$CODEGEN_DIR/codegen-log" "$tmp_home/.local/bin/codegen-log"'
 
 # Claude-specific launcher(s) from manifest
 if [ -f "$CODEGEN_DIR/harnesses/claude/manifest.yaml" ] && command -v yq >/dev/null 2>&1; then

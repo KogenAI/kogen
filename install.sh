@@ -111,15 +111,23 @@ fi
 echo "   🔗 Creating symlink: $SYMLINK_PATH -> $CODEGEN_DIR/ocg"
 ln -s "$CODEGEN_DIR/ocg" "$SYMLINK_PATH"
 
-# Create symlink for codegen-log
+# Install codegen-log as a stable COPY, not a live-checkout symlink. A
+# symlink dangles when the shared codegen checkout mutates mid-build (branch
+# switch, worktree teardown); a copy is immune — it is a real file that keeps
+# working regardless of what the source checkout is doing. Remove any
+# pre-existing symlink/file first so a stale symlink from a prior install is
+# replaced by a real copy (content_stable_cp only skips writes when dst is
+# already an identical regular file — a symlink target never compares equal
+# via `cmp`, so this always converts symlink -> copy on the next install).
 CODEGEN_LOG_PATH="$INSTALL_DIR/$CODEGEN_LOG_NAME"
-if [ -L "$CODEGEN_LOG_PATH" ] || [ -f "$CODEGEN_LOG_PATH" ]; then
-    echo "   🔄 Removing existing $CODEGEN_LOG_NAME command"
+if [ -L "$CODEGEN_LOG_PATH" ]; then
+    echo "   🔄 Removing existing $CODEGEN_LOG_NAME symlink"
     rm -f "$CODEGEN_LOG_PATH"
 fi
 
-echo "   🔗 Creating symlink: $CODEGEN_LOG_PATH -> $CODEGEN_DIR/codegen-log"
-ln -s "$CODEGEN_DIR/codegen-log" "$CODEGEN_LOG_PATH"
+echo "   📄 Copying: $CODEGEN_DIR/codegen-log -> $CODEGEN_LOG_PATH"
+content_stable_cp "$CODEGEN_DIR/codegen-log" "$CODEGEN_LOG_PATH"
+chmod +x "$CODEGEN_LOG_PATH"
 
 # Wire dispatch path: codegen-call resolves $SCRIPT_DIR/harnesses at runtime.
 # A sibling harnesses/ symlink in INSTALL_DIR makes tier-1 dispatch resolve without env-var fallback.

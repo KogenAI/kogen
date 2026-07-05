@@ -409,6 +409,114 @@ assert "first verdict block's Result still present after second call" "0" "$([ "
 assert "second verdict block's Result present" "0" "$([ "$(grep -cF '**Result**: FAILED ❌ exit=1' "$verdict_log")" -eq 1 ] && printf 0 || printf 1)"
 assert "second verdict block's detail present" "0" "$([ "$(grep -cF 'Log: /tmp/bar.log' "$verdict_log")" -eq 1 ] && printf 0 || printf 1)"
 
+# Test 14: root resolution from CODEGEN_DIR / OCG_CODEGEN_DIR when the
+# copy has NO sibling `codegen/` dir (the ~/.local/bin install shape).
+# NOWHERE_DIR has no `codegen` subdir alongside the copied binary, so the
+# sibling-check fallback is forced to consult the env vars.
+NOWHERE_DIR="$TMP_DIR/nowhere"
+mkdir -p "$NOWHERE_DIR"
+cp "$CODEGEN_LOG_SRC" "$NOWHERE_DIR/codegen-log"
+chmod +x "$NOWHERE_DIR/codegen-log"
+
+# 14a: CODEGEN_DIR set (git-stubbed CODEGEN root) -> real hashes.
+unset CODEGEN_LOG_PATH
+unset AGENT_TYPE
+env_root_out="$(
+    cd "$PROJECT" && env -u CODEGEN_BUILD_CWD -u CLAUDE_PROJECT_DIR -u OCG_CODEGEN_DIR \
+        CODEGEN_DIR="$CODEGEN" \
+        "$NOWHERE_DIR/codegen-log" init --slug env-root-codegen-dir
+)"
+env_root_path="$(printf '%s' "$env_root_out" | tail -n 1)"
+assert "CODEGEN_DIR resolves codegen hash" "0" "$([ "$(grep -c '^- codegen: cgn456$' "$env_root_path")" -eq 1 ] && printf 0 || printf 1)"
+assert "CODEGEN_DIR resolves context hash" "0" "$([ "$(grep -c '^- context: ctxabc$' "$env_root_path")" -eq 1 ] && printf 0 || printf 1)"
+
+# 14b: OCG_CODEGEN_DIR set (no CODEGEN_DIR) -> same real hashes.
+unset CODEGEN_LOG_PATH
+unset AGENT_TYPE
+ocg_root_out="$(
+    cd "$PROJECT" && env -u CODEGEN_BUILD_CWD -u CLAUDE_PROJECT_DIR -u CODEGEN_DIR \
+        OCG_CODEGEN_DIR="$CODEGEN" \
+        "$NOWHERE_DIR/codegen-log" init --slug env-root-ocg-codegen-dir
+)"
+ocg_root_path="$(printf '%s' "$ocg_root_out" | tail -n 1)"
+assert "OCG_CODEGEN_DIR resolves codegen hash" "0" "$([ "$(grep -c '^- codegen: cgn456$' "$ocg_root_path")" -eq 1 ] && printf 0 || printf 1)"
+assert "OCG_CODEGEN_DIR resolves context hash" "0" "$([ "$(grep -c '^- context: ctxabc$' "$ocg_root_path")" -eq 1 ] && printf 0 || printf 1)"
+
+# 14c: both set -> CODEGEN_DIR takes documented precedence. Build a second,
+# distinct git-stubbed root (CODEGEN2) so precedence is provable — if
+# OCG_CODEGEN_DIR won instead, the hash would be cgn789, not cgn456.
+CODEGEN2="$TMP_DIR/codegen2"
+mkdir -p "$CODEGEN2/codegen/rules"
+make_stub "$STUB_BIN/git" '
+if [ "$1" = "-C" ]; then
+    dir="$2"
+    shift 2
+    if [ "$1" = "rev-parse" ] && [ "$2" = "--short" ] && [ "$3" = "HEAD" ]; then
+        case "$dir" in
+        */codegen/rules)
+            case "$dir" in
+            *"'"$CODEGEN2"'"*) printf "ctx789\n" ;;
+            *) printf "ctxabc\n" ;;
+            esac
+            ;;
+        *"'"$PROJECT"'") printf "proj123\n" ;;
+        *"'"$CODEGEN2"'") printf "cgn789\n" ;;
+        *"'"$CODEGEN"'") printf "cgn456\n" ;;
+        *) printf "unknown\n" ;;
+        esac
+        exit 0
+    fi
+fi
+command git "$@"
+'
+unset CODEGEN_LOG_PATH
+unset AGENT_TYPE
+precedence_out="$(
+    cd "$PROJECT" && env -u CODEGEN_BUILD_CWD -u CLAUDE_PROJECT_DIR \
+        CODEGEN_DIR="$CODEGEN" \
+        OCG_CODEGEN_DIR="$CODEGEN2" \
+        "$NOWHERE_DIR/codegen-log" init --slug env-root-precedence
+)"
+precedence_path="$(printf '%s' "$precedence_out" | tail -n 1)"
+assert "CODEGEN_DIR takes precedence over OCG_CODEGEN_DIR when both set" "0" "$([ "$(grep -c '^- codegen: cgn456$' "$precedence_path")" -eq 1 ] && printf 0 || printf 1)"
+assert "precedence: OCG_CODEGEN_DIR hash NOT used" "0" "$([ "$(grep -c '^- codegen: cgn789$' "$precedence_path")" -eq 0 ] && printf 0 || printf 1)"
+
+# 14d: NEITHER set + no sibling codegen/ -> unresolved-root marker, init
+# still exits 0, log still lands under PROJECT cwd, project: still stamped.
+# RED-then-GREEN: before the codegen-log root-resolution fix, this case
+# ran `git -C ""` and printed the misleading `unknown` for BOTH fields
+# instead of the honest `unresolved-root` marker.
+unset CODEGEN_LOG_PATH
+unset AGENT_TYPE
+unresolved_rc=0
+unresolved_out="$(
+    cd "$PROJECT" && env -u CODEGEN_BUILD_CWD -u CLAUDE_PROJECT_DIR -u CODEGEN_DIR -u OCG_CODEGEN_DIR \
+        "$NOWHERE_DIR/codegen-log" init --slug unresolved-root-case
+)" || unresolved_rc=$?
+unresolved_path="$(printf '%s' "$unresolved_out" | tail -n 1)"
+assert "unresolved-root init still exits 0" "0" "$unresolved_rc"
+assert "unresolved-root marker for context" "0" "$([ "$(grep -c '^- context: unresolved-root$' "$unresolved_path")" -eq 1 ] && printf 0 || printf 1)"
+assert "unresolved-root marker for codegen" "0" "$([ "$(grep -c '^- codegen: unresolved-root$' "$unresolved_path")" -eq 1 ] && printf 0 || printf 1)"
+assert "unresolved-root does NOT print misleading unknown for codegen" "0" "$([ "$(grep -c '^- codegen: unknown$' "$unresolved_path")" -eq 0 ] && printf 0 || printf 1)"
+case "$unresolved_path" in
+"$PROJECT/codegen/logging/"*) unresolved_under_project=0 ;;
+*) unresolved_under_project=1 ;;
+esac
+assert "unresolved-root log still lands under PROJECT/codegen/logging" "0" "$unresolved_under_project"
+assert "unresolved-root project hash still stamped from LOG_ROOT" "0" "$([ "$(grep -c '^- project: proj123$' "$unresolved_path")" -eq 1 ] && printf 0 || printf 1)"
+
+# Test 15: --version exits 0 and prints a non-empty token.
+version_rc=0
+version_out="$(env -u CODEGEN_DIR -u OCG_CODEGEN_DIR "$NOWHERE_DIR/codegen-log" --version)" || version_rc=$?
+assert "--version exits 0" "0" "$version_rc"
+assert "--version prints a non-empty token" "0" "$([ -n "$version_out" ] && printf 0 || printf 1)"
+assert "--version reports unresolved-root when neither env var set nor sibling present" "0" "$(printf '%s' "$version_out" | grep -qF 'unresolved-root' && printf 0 || printf 1)"
+
+version_resolved_rc=0
+version_resolved_out="$(env -u OCG_CODEGEN_DIR CODEGEN_DIR="$CODEGEN" "$NOWHERE_DIR/codegen-log" --version)" || version_resolved_rc=$?
+assert "--version exits 0 when root resolves" "0" "$version_resolved_rc"
+assert "--version reports resolved when CODEGEN_DIR set" "0" "$(printf '%s' "$version_resolved_out" | grep -qF 'root=resolved' && printf 0 || printf 1)"
+
 echo ""
 echo "Results: $pass passed, $fail failed"
 

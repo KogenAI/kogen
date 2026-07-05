@@ -16,6 +16,16 @@ fi
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 CODEGEN_DIR="${OCG_CODEGEN_DIR:-$(cd "$SCRIPT_DIR/../.." && pwd -P)}"
 
+# Preflight: every role every cycle depends on `codegen-log` succeeding to
+# open/write its session-log section. Assert it is present + runnable BEFORE
+# any role spawns — a broken/missing install must fail loud and early here,
+# never surface mid-cycle as a bare "command not found" after subagents have
+# already produced work.
+if ! codegen-log --version >/dev/null 2>&1; then
+    printf 'pi dispatch: codegen-log unresolvable — run `make install` in codegen\n' >&2
+    exit 2
+fi
+
 SP_FILE="$SCRIPT_DIR/pi-build-system-prompt.txt"
 if [[ ! -f "$SP_FILE" ]]; then
     printf 'pi dispatch: system prompt file not found at %s\n' "$SP_FILE" >&2

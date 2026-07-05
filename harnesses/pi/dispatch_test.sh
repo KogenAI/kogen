@@ -70,6 +70,12 @@ exit 0
 STUB
 chmod +x "$FAKE_BIN/mix"
 
+# Passing codegen-log stub — dispatch.sh now preflights `codegen-log --version`
+# before spawning any role. Without this stub, EVERY pre-existing exec-path
+# case below would break (codegen-log absent from PATH -> preflight abort).
+printf '#!/usr/bin/env bash\nprintf "codegen-log root=resolved\\n"\nexit 0\n' >"$FAKE_BIN/codegen-log"
+chmod +x "$FAKE_BIN/codegen-log"
+
 make_temp_dispatch() {
     local root="$1"
     mkdir -p "$root"
@@ -259,6 +265,43 @@ assert_contains "missing CODEGEN_BUILD_STACK: stderr names CODEGEN_BUILD_STACK" 
     "$out" "CODEGEN_BUILD_STACK is required but empty/unset"
 if [[ -f "$MIX_ARGS_FILE_6" ]]; then
     printf 'FAIL: missing CODEGEN_BUILD_STACK — mix must NOT have been invoked\n'
+    fail=$((fail + 1))
+else
+    pass=$((pass + 1))
+fi
+
+# ── Test 7: codegen-log preflight — broken/absent codegen-log aborts loud,
+# before any role spawns (assert exec-not-reached via the mix-args-file
+# shimmed-subprocess marker, same pattern used by Test 6). ─────────────────
+FAKE_BIN_BROKEN_LOG="$TMP_ROOT/bin-broken-log"
+mkdir -p "$FAKE_BIN_BROKEN_LOG"
+cp "$FAKE_BIN/pi" "$FAKE_BIN_BROKEN_LOG/pi"
+cp "$FAKE_BIN/mix" "$FAKE_BIN_BROKEN_LOG/mix"
+printf '#!/usr/bin/env bash\nexit 1\n' >"$FAKE_BIN_BROKEN_LOG/codegen-log"
+chmod +x "$FAKE_BIN_BROKEN_LOG/codegen-log"
+
+MIX_ARGS_FILE_7="$TMP_ROOT/mix-args-7.txt"
+rc=0
+out=$(
+    env -i \
+        HOME="${HOME:-/tmp}" \
+        TARGET_MIX_ARGS_FILE="$MIX_ARGS_FILE_7" \
+        PATH="$FAKE_BIN_BROKEN_LOG:$PATH" \
+        OCG_CODEGEN_DIR="$CODEGEN_ROOT" \
+        CODEGEN_BUILD_MODEL="test-model" \
+        CODEGEN_BUILD_EFFORT="low" \
+        CODEGEN_BUILD_NON_INTERACTIVE=1 \
+        CODEGEN_BUILD_ELIXIR=1 \
+        CODEGEN_BUILD_STACK=phoenix \
+        CODEGEN_BUILD_CWD="$TMP_ROOT/project" \
+        "$TEST1_HARNESS/dispatch.sh" "hello prompt" \
+        2>&1
+) || rc=$?
+assert_eq "broken codegen-log: exit code non-zero (2)" "2" "$rc"
+assert_contains "broken codegen-log: stderr names codegen-log unresolvable" "$out" "codegen-log unresolvable"
+assert_contains "broken codegen-log: stderr suggests make install" "$out" "make install"
+if [[ -f "$MIX_ARGS_FILE_7" ]]; then
+    printf 'FAIL: broken codegen-log — mix must NOT have been invoked (preflight must abort before exec)\n'
     fail=$((fail + 1))
 else
     pass=$((pass + 1))

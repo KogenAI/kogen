@@ -58,6 +58,12 @@ mkdir -p "$FAKE_BIN"
 printf '#!/usr/bin/env bash\nenv\nexit 0\n' >"$FAKE_BIN/claude"
 chmod +x "$FAKE_BIN/claude"
 
+# Passing codegen-log stub — dispatch.sh now preflights `codegen-log --version`
+# before spawning any role. Without this stub, EVERY pre-existing exec-path
+# case below would break (codegen-log absent from PATH -> preflight abort).
+printf '#!/usr/bin/env bash\nprintf "codegen-log root=resolved\\n"\nexit 0\n' >"$FAKE_BIN/codegen-log"
+chmod +x "$FAKE_BIN/codegen-log"
+
 # Fake build-tools.txt in a scratch SCRIPT_DIR copy
 FAKE_HARNESS="$TMP_ROOT/harness"
 mkdir -p "$FAKE_HARNESS"
@@ -122,6 +128,7 @@ assert_contains "missing test_harness/ dir: stderr mentions 'orchestration loop 
 FAKE_BIN_MIX="$TMP_ROOT/bin-mix"
 mkdir -p "$FAKE_BIN_MIX"
 cp "$FAKE_BIN/claude" "$FAKE_BIN_MIX/claude"
+cp "$FAKE_BIN/codegen-log" "$FAKE_BIN_MIX/codegen-log"
 MIX_ARGS_FILE="$TMP_ROOT/mix-args.txt"
 cat >"$FAKE_BIN_MIX/mix" <<STUB
 #!/usr/bin/env bash
@@ -163,6 +170,7 @@ fi
 FAKE_BIN_NOYQ="$TMP_ROOT/bin-noyq"
 mkdir -p "$FAKE_BIN_NOYQ"
 cp "$FAKE_BIN/claude" "$FAKE_BIN_NOYQ/claude"
+cp "$FAKE_BIN/codegen-log" "$FAKE_BIN_NOYQ/codegen-log"
 rc=0
 out=$(
     env -i \
@@ -319,6 +327,44 @@ if [[ -f "$MIX_ARGS_FILE" ]]; then
     fail=$((fail + 1))
 else
     [ -n "${VERBOSE:-}" ] && printf 'PASS: missing CODEGEN_BUILD_STACK — mix not invoked\n'
+    pass=$((pass + 1))
+fi
+
+# ── Test 10: codegen-log preflight — broken/absent codegen-log aborts loud,
+# before any role spawns (assert exec-not-reached via the mix-args-file
+# shimmed-subprocess marker, same pattern used by Test 9). ─────────────────
+FAKE_BIN_BROKEN_LOG="$TMP_ROOT/bin-broken-log"
+mkdir -p "$FAKE_BIN_BROKEN_LOG"
+cp "$FAKE_BIN/claude" "$FAKE_BIN_BROKEN_LOG/claude"
+cp "$FAKE_BIN_MIX/mix" "$FAKE_BIN_BROKEN_LOG/mix"
+printf '#!/usr/bin/env bash\nexit 1\n' >"$FAKE_BIN_BROKEN_LOG/codegen-log"
+chmod +x "$FAKE_BIN_BROKEN_LOG/codegen-log"
+
+rm -f "$MIX_ARGS_FILE"
+rc=0
+out=$(
+    env -i \
+        HOME="${HOME:-/tmp}" \
+        PATH="$FAKE_BIN_BROKEN_LOG:$PATH" \
+        OCG_CODEGEN_DIR="$FAKE_CODEGEN" \
+        CODEGEN_BUILD_MODEL=test-model \
+        CODEGEN_BUILD_EFFORT=low \
+        CODEGEN_BUILD_NON_INTERACTIVE=1 \
+        CODEGEN_BUILD_ELIXIR=1 \
+        CODEGEN_BUILD_STACK=phoenix \
+        bash "$FAKE_HARNESS/dispatch.sh" "dummy-prompt" \
+        2>&1
+) || rc=$?
+assert_eq "broken codegen-log: exit code non-zero (2)" "2" "$rc"
+assert_contains "broken codegen-log: stderr names codegen-log unresolvable" \
+    "codegen-log unresolvable" "$out"
+assert_contains "broken codegen-log: stderr suggests make install" \
+    "make install" "$out"
+if [[ -f "$MIX_ARGS_FILE" ]]; then
+    printf 'FAIL: broken codegen-log — mix must NOT have been invoked (preflight must abort before exec)\n'
+    fail=$((fail + 1))
+else
+    [ -n "${VERBOSE:-}" ] && printf 'PASS: broken codegen-log — mix not invoked (aborted before exec)\n'
     pass=$((pass + 1))
 fi
 
