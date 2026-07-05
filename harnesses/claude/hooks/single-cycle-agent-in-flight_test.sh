@@ -231,6 +231,34 @@ agent_spawn "toolu_21b" "developer-phoenix-backend" >>"$T"
 assert_deny "T21 one completed one in-flight" "$(mk_input "reviewer-phoenix" "$T")"
 rm -f "$T"
 
+# T22: DENY — CLAUDE_ROLE=build with in-flight cycle agent (explicit build role enforces)
+T=$(mktemp)
+agent_spawn "toolu_22" "planner-phoenix" >"$T"
+INPUT=$(mk_input "developer-phoenix-backend" "$T")
+out=$(echo "$INPUT" | CLAUDE_ROLE=build bash "$HOOK" 2>/dev/null)
+if echo "$out" | grep -q '"permissionDecision"'; then
+    echo "PASS: T22 build role — in-flight still denies"
+    pass=$((pass + 1))
+else
+    echo "FAIL: T22 build role — expected DENY but got ALLOW"
+    fail=$((fail + 1))
+fi
+rm -f "$T"
+
+# T23: DENY — empty role (CLAUDE_ROLE/PI_ROLE unset) with in-flight cycle agent
+T=$(mktemp)
+agent_spawn "toolu_23" "planner-phoenix" >"$T"
+INPUT=$(mk_input "developer-phoenix-backend" "$T")
+out=$(echo "$INPUT" | env -u CLAUDE_ROLE -u PI_ROLE bash "$HOOK" 2>/dev/null)
+if echo "$out" | grep -q '"permissionDecision"'; then
+    echo "PASS: T23 empty role — in-flight still denies"
+    pass=$((pass + 1))
+else
+    echo "FAIL: T23 empty role — expected DENY but got ALLOW"
+    fail=$((fail + 1))
+fi
+rm -f "$T"
+
 # ---------------------------------------------------------------------------
 # Summary
 # ---------------------------------------------------------------------------

@@ -38,15 +38,14 @@ if [ "$STOP_HOOK_ACTIVE" = "true" ]; then
     exit 0
 fi
 
-# Investigative-mode skip: this build-runtime gate enforces ONLY in build mode
-# (empty role). Skip (exit 0) for any non-empty investigative role (shape/debug/
-# ops/experiment) — mirrors signal: CLAUDE_ROLE_FAMILY. Inverse of pitch-format-validator.
+# Investigative-mode skip: this build-runtime gate enforces ONLY in build mode.
+# Skip (exit 0) for any investigative role (shape/debug/ops/experiment/refactor)
+# via is_build_mode() — mirrors signal: CLAUDE_ROLE_FAMILY.
 source "$(dirname "$0")/_role.sh"
-role=$(resolve_role)
-if [ -n "$role" ]; then
-    debug_log claude-cycle-guard "skip: investigative role=$role"
+is_build_mode || {
+    debug_log claude-cycle-guard "skip: investigative role=$(resolve_role)"
     exit 0
-fi
+}
 
 # Per-step retry counter: line 1 = step-log this counter is scoped to, line 2 = count.
 prev_step=""

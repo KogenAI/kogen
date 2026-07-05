@@ -164,6 +164,20 @@ describe("step-log-missing-guard", { concurrency: false }, () => {
     );
   });
 
+  it("still warns when PI_ROLE=build (explicit build role enforces)", async () => {
+    const loggingDir = path.join(tmpDir, "codegen", "logging");
+    fs.mkdirSync(loggingDir, { recursive: true });
+    fs.writeFileSync(path.join(loggingDir, "random-notes.md"), "notes\n");
+
+    process.env["PI_ROLE"] = "build";
+
+    const stderr = await runHook();
+    assert.ok(
+      stderr.includes("WARNING"),
+      "expected WARNING when PI_ROLE=build (explicit build role)",
+    );
+  });
+
   it("stays observe-only under position-correlation source change (warns, never blocks)", async () => {
     // The Claude source moved to transcript position-correlation; Pi has no
     // transcript and keeps its disk heuristic. This test locks in that the twin

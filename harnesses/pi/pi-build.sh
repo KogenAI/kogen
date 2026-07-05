@@ -1,11 +1,10 @@
 #!/usr/bin/env bash
 # Pi build launcher — analogous to claude-build.sh.
 #
-# PI_ROLE=build is exported before exec so hooks/guards that check PI_ROLE read it.
 # Non-interactive execution uses `pi -p --mode json`.
 # Model and effort read from config.yaml harness.build.pi block.
+# PI_ROLE=build is set by dispatch.sh at exec time (single source of truth).
 set -euo pipefail
-export PI_ROLE=build
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 BUILD_BIN="${OCG_CODEGEN_DIR:+$OCG_CODEGEN_DIR/codegen-build}"

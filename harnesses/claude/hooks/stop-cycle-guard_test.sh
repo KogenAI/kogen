@@ -611,6 +611,22 @@ fi
 rm -rf "$tmp30"
 rm -f "/tmp/claude-cycle-guard-test-sess-30.count"
 
+# ── Test 31: CLAUDE_ROLE=build still blocks (explicit build role) ────────────
+rm -f "/tmp/claude-cycle-guard-test-sess-31.count"
+tmp31=$(mktemp -d)
+printf '%s\n' "$AGENT_ENTRY_DEVELOPER" >"$tmp31/transcript.jsonl"
+INPUT31=$(make_input "$tmp31/transcript.jsonl" "$tmp31" "false" "Done." "test-sess-31")
+stdout31=$(printf '%s' "$INPUT31" | CLAUDE_ROLE=build bash "$GUARD" 2>/dev/null || true)
+if printf '%s' "$stdout31" | grep -q '"decision"[[:space:]]*:[[:space:]]*"block"'; then
+    [ -n "${VERBOSE:-}" ] && printf 'PASS: build_role_blocks: CLAUDE_ROLE=build → block (explicit build role enforces)\n'
+    pass=$((pass + 1))
+else
+    printf 'FAIL: build_role_blocks: expected block for CLAUDE_ROLE=build\n  stdout: %s\n' "$stdout31"
+    fail=$((fail + 1))
+fi
+rm -rf "$tmp31"
+rm -f "/tmp/claude-cycle-guard-test-sess-31.count"
+
 echo ""
 echo "Results: $pass passed, $fail failed"
 

@@ -239,6 +239,13 @@ describe("step-log-section-before-spawn", () => {
     assert.ok(result == null || (result as { block?: boolean }).block !== true);
   });
 
+  // ── Test 16b: PI_ROLE=build still denies (explicit build role enforces) ────
+  it("denies spawn when PI_ROLE=build and log dir is empty", async () => {
+    process.env["PI_ROLE"] = "build";
+    const result = await runHook("planner-phoenix");
+    assert.ok((result as { block?: boolean }).block === true);
+  });
+
   // ── Test 17: deny when section header present but body empty ──────────────
   it("denies when section header is present but body is empty", async () => {
     const ts = "20260601_120000";

@@ -17,7 +17,7 @@
 # Guard order:
 #   1. STOP_HOOK_ACTIVE=true → exit (loop guard)
 #   2. Retry-cap via /tmp/claude-autoship-guard-<SESSION_ID>.count (cap 2)
-#   3. Role bypass: CLAUDE_ROLE=dashboard-build OR CODEGEN_NO_AUTOSHIP=1 → exit
+#   3. Build-mode gate (is_build_mode) OR CODEGEN_NO_AUTOSHIP=1 → exit
 #   4. Intent-question regex → exit (orchestrator asking user something)
 #   5. Transcript unreadable → exit (fail-open)
 #   6. session_log_from_transcript; extract slug from <ts>_<slug>_session.md filename
@@ -26,7 +26,7 @@
 #   8. ready/<slug>.md still exists → block with move instruction
 #
 # Bypass paths:
-#   CLAUDE_ROLE=dashboard-build — dashboard manages shipped/ move itself post-merge
+#   Investigative role (shape/debug/ops/experiment/refactor) — is_build_mode() false
 #   CODEGEN_NO_AUTOSHIP=1 — explicit operator suppression
 #
 # Fail-open on missing transcript or missing pitch path.
@@ -62,10 +62,13 @@ case "$count" in
 esac
 # Note: step-log-scoped reset happens after guard 6 discovers the active log.
 
-# 3. Role bypass — dashboard-build or explicit env suppression.
-_role=$(resolve_role)
-if [ "$_role" = "dashboard-build" ] || [ -n "${CODEGEN_NO_AUTOSHIP:-}" ]; then
-    debug_log pitch-shipped-before-stop "skip: role-bypass role=$_role CODEGEN_NO_AUTOSHIP=${CODEGEN_NO_AUTOSHIP:-}"
+# 3. Build-mode gate + explicit env suppression.
+is_build_mode || {
+    debug_log pitch-shipped-before-stop "skip: investigative role=$(resolve_role)"
+    exit 0
+}
+if [ -n "${CODEGEN_NO_AUTOSHIP:-}" ]; then
+    debug_log pitch-shipped-before-stop "skip: CODEGEN_NO_AUTOSHIP=${CODEGEN_NO_AUTOSHIP:-}"
     exit 0
 fi
 

@@ -9,14 +9,14 @@ For the per-hook inventory table, hook-event taxonomy, key paths, and the Pitfal
 **Role-based bypass**: Some hooks need to distinguish between orchestrator launcher modes (`claude-build`, `claude-ops`, `claude-debug`, etc.) — these use the `signal` field in their registration. The most common signal is `CLAUDE_ROLE_FAMILY`, which maps the outer-session launcher mode to a role name via `resolve_role()` from `_role.sh`. Examples:
 
 - `orchestrator-no-source-edit.sh` — `signal: CLAUDE_ROLE_FAMILY` — sources `_role.sh`, calls `resolve_role()`. If `_role == "ops"`, bypass the hook (ops needs full write access on live boxes).
-- `pitch-shipped-before-stop.sh` — `signal: CLAUDE_ROLE_FAMILY` — checks `_role == "dashboard-build"` (dashboard CI manages the shipped/ move post-merge) OR `CODEGEN_NO_AUTOSHIP=1` env override (operator explicit suppression).
-- `step-log-section-before-spawn.sh` — `signal: CLAUDE_ROLE_FAMILY` — sources `_role.sh`, calls `resolve_role()`. Bypassed for `debug`, `shape`, and `ops` (investigative modes spawn Explore subagents without a step log). Enforces step-0 log creation and per-agent section headers in all other modes.
+- `pitch-shipped-before-stop.sh` — `signal: CLAUDE_ROLE_FAMILY` — calls `is_build_mode()` (skips shape/debug/ops/experiment/refactor) OR `CODEGEN_NO_AUTOSHIP=1` env override.
+- `step-log-section-before-spawn.sh` — `signal: CLAUDE_ROLE_FAMILY` — sources `_role.sh`, calls `is_build_mode()`. Skips the investigative set (shape/debug/ops/experiment/refactor — these spawn Explore without a step log). Enforces step-0 log + section headers otherwise.
+- `stop-cycle-guard.sh` — `signal: CLAUDE_ROLE_FAMILY` — calls `is_build_mode()`; active on build/empty/unknown, skips the investigative set.
 
-**Static enforcement of signal/body coupling**: The generator validates signal-to-body consistency at `make test` / `make install` time via `validate_signal()` in `hook_registrations.py`. When a hook's HOOK-MANIFEST header declares `signal: CLAUDE_ROLE_FAMILY`, the validator greps the `.sh` body for a `resolve_role()` call — if absent, validation fails loud. Similarly, the registry entry must match the header: flipping the signal in `registry.yaml` without adding the call to the body, OR vice versa, causes validation to fail. This coupling ensures that signal declarations and in-body role branching stay synchronized; either both flip together or the generator detects the inconsistency.
+**Static enforcement of signal/body coupling**: At `make test`/`make install`, `validate_signal()` in `hook_registrations.py` greps the body for either `resolve_role()` or `is_build_mode()` — if neither is present on a `signal: CLAUDE_ROLE_FAMILY` hook, validation fails. Registry and header must stay synchronized; flipping the signal without updating the body (or vice versa) causes validation failure. This ensures signal declarations and role branching stay in sync.
 
 **Signal: none (role-blind)**: Hooks without a signal field fire unconditionally for all launcher modes. Examples:
 
-- `stop-cycle-guard.sh` — `signal: none` — blocks premature stop in all modes.
 - `stop-spin-guard.sh` — `signal: AGENT_TYPE` — scoped to developer-\* roles; fires on every SubagentStop but exits 0 (allow) when AGENT_TYPE is not a developer role variant.
 - `stop-gate-failure-breaker.sh` — `signal: AGENT_TYPE` — scoped to developer-\* roles; reads session-log `FAILED ❌` count + cross-checks `gate_result_verdict`; blocks at ≥3 failures with verdict=failed.
 

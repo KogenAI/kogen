@@ -49,7 +49,7 @@ Codegen-infra pitfalls and bash gotchas — split from `context/development.md` 
 - **Gate hook command switch** — Build invocation changes (e.g., `npm run build` → `make ci`) → update all fixtures. Add `Makefile` with `ci:` recipe. Recipe lines MUST use hard tabs.
 - **`developer-no-self-gate` cap counts ALL ops per session** — `mix test`, `make test`, `mix format`, blocked attempts all count toward 3-per-session budget. Combine `mix format && mix test` or defer format.
 - **[shared] Read/Edit blocked for codegen/pitches/** — `subagent-read-discipline.sh` denies both on pitch files (even edit-in-place). Workaround: Bash `awk`/`grep` + Python string-replace.
-- **Inverse-gate pattern for build-runtime Stop hooks** — Skip when role NON-EMPTY, enforce when EMPTY. Use `signal: CLAUDE_ROLE_FAMILY`; flip in `registry.yaml`, not HOOK-MANIFEST manually.
+- **Inverse-gate pattern for build-runtime Stop hooks** — unified on `is_build_mode()`/`isBuildMode()` (bash `_role.sh` / TS `_role.ts`): skip iff role ∈ investigative set `{shape, debug, ops, experiment, refactor}`; enforce on build/empty/unknown (fail-safe). Use `signal: CLAUDE_ROLE_FAMILY`; flip in `registry.yaml`, not HOOK-MANIFEST manually.
 - **`chmod 000` is no-op under root** — Cannot test file unreadability via `chmod 000` when running as root.
 - **Clean-tree gate enforces one-commit-per-cycle rule** — `build-no-success-before-commit.sh` blocks BUILD_RESULT: success if `git status --porcelain` non-empty. All dirty/untracked files must be gitignored or committed.
 - **Rule-file includes are static at install time** — edit rule, add `{% include %}` to template, run `make install`. Discovery without implementation = dry audit.

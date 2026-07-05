@@ -41,8 +41,8 @@ fi
 
 _role=$(resolve_role)
 debug_log step-log-section-before-spawn "role=$_role"
-if [ "$_role" = "debug" ] || [ "$_role" = "shape" ] || [ "$_role" = "ops" ]; then
-    debug_log step-log-section-before-spawn "investigative mode bypass: allowing Agent spawn"
+if ! is_build_mode; then
+    debug_log step-log-section-before-spawn "investigative mode bypass: allowing Agent spawn (role=$_role)"
     exit 0
 fi
 

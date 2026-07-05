@@ -219,6 +219,14 @@ out=$(make_input "$Tn" false "" "$TRANSCRIPT_Tn" | env -u CLAUDE_ROLE -u PI_ROLE
 assert_contains "role unset (build mode) — gate unchanged (still blocks)" '"decision"' "$out"
 rm -rf "$Tn"
 
+# ── Test (n2): CLAUDE_ROLE=build still blocks (explicit build role) ───────────
+Tn2=$(make_project)
+TRANSCRIPT_Tn2="$Tn2/transcript.jsonl"
+make_transcript_with_agent "$TRANSCRIPT_Tn2" "developer-phoenix-backend"
+out=$(make_input "$Tn2" false "" "$TRANSCRIPT_Tn2" | CLAUDE_ROLE=build bash "$HOOK" 2>/dev/null || true)
+assert_contains "CLAUDE_ROLE=build — explicit build role still enforces (blocks)" '"decision"' "$out"
+rm -rf "$Tn2"
+
 # ── Test (o): stale-replay — dev delegated, log created AFTER via codegen-log,
 #              later non-dev turns → ALLOW (no stale block) ────────────────────
 To=$(make_project)

@@ -190,6 +190,7 @@ exec env \
     MCP_CONNECTION_NONBLOCKING=true \
     CODEGEN_BUILD_START_TS="$(date +%s)" \
     CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=1 \
+    CLAUDE_ROLE=build \
     claude \
     "${NON_INTERACTIVE_FLAGS[@]+"${NON_INTERACTIVE_FLAGS[@]}"}" \
     "${RESUME_FLAGS[@]+"${RESUME_FLAGS[@]}"}" \

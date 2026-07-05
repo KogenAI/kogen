@@ -21,6 +21,7 @@
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { deny, debugLog, getActiveStepLog } from "../lib/hook-helpers";
+import { isBuildMode } from "./_role";
 import * as fs from "node:fs";
 
 export const HANDLER_META = {
@@ -70,9 +71,7 @@ export function register(pi: ExtensionAPI): void {
   pi.on("tool_call", async (event) => {
     if (event.toolName !== "subagent") return;
 
-    const role =
-      process.env["CLAUDE_ROLE"] || process.env["PI_ROLE"] || "";
-    if (["debug", "shape", "ops"].includes(role)) return;
+    if (!isBuildMode()) return;
 
     const subagentType: string =
       (event.input as { agent?: string; subagent_type?: string }).agent ??

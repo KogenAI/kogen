@@ -205,4 +205,20 @@ describe("build-queue-continuity", { concurrency: false }, () => {
       "expected no warning when PI_ROLE=shape (investigative mode)",
     );
   });
+
+  // ── Test 9: PI_ROLE=build still warns (explicit build role enforces) ────────
+  it("still warns when PI_ROLE=build (explicit build role enforces)", async () => {
+    writeManifest({
+      slugs: ["a", "b", "c"],
+      position: 1,
+      started_at: "2026-01-01T00:00:00Z",
+    });
+    writeGateResult("clear");
+    process.env["PI_ROLE"] = "build";
+    const stderrOutput = await runHook(tmpDir);
+    assert.ok(
+      stderrOutput.includes("WARNING"),
+      "expected warning when PI_ROLE=build (explicit build role)",
+    );
+  });
 });

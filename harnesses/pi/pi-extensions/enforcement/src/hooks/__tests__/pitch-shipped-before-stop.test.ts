@@ -177,13 +177,22 @@ describe("pitch-shipped-before-stop", { concurrency: false }, () => {
     assert.ok(!stderrOutput.includes("WARNING"), "expected no warning");
   });
 
-  // ── Test 5: bypass CLAUDE_ROLE=dashboard-build ────────────────────────────
-  it("bypasses when CLAUDE_ROLE=dashboard-build", async () => {
-    process.env["CLAUDE_ROLE"] = "dashboard-build";
+  // ── Test 5a: shape role bypass (isBuildMode() false) — regression fix ─────
+  it("bypasses when CLAUDE_ROLE=shape (investigative bypass)", async () => {
+    process.env["CLAUDE_ROLE"] = "shape";
     writeLog("## committer Section\n\nCommitted.\n");
     writePitchReady("my-feature.md");
-    const stderrOutput = await runHook(tmpDir, "dashboard-sess-5");
+    const stderrOutput = await runHook(tmpDir, "shape-sess-5a");
     assert.ok(!stderrOutput.includes("WARNING"), "expected no warning");
+  });
+
+  // ── Test 5b: CLAUDE_ROLE=build still enforces (real build, not investigative) ─
+  it("still warns when CLAUDE_ROLE=build (explicit build role enforces)", async () => {
+    process.env["CLAUDE_ROLE"] = "build";
+    writeLog("## committer Section\n\nCommitted.\n");
+    writePitchReady("my-feature.md");
+    const stderrOutput = await runHook(tmpDir, "build-sess-5b");
+    assert.ok(stderrOutput.includes("WARNING"), "expected warning");
   });
 
   // ── Test 6: bypass CODEGEN_NO_AUTOSHIP=1 ──────────────────────────────────
@@ -195,9 +204,9 @@ describe("pitch-shipped-before-stop", { concurrency: false }, () => {
     assert.ok(!stderrOutput.includes("WARNING"), "expected no warning");
   });
 
-  // ── Test 7: bypass PI_ROLE=dashboard-build ────────────────────────────────
-  it("bypasses when PI_ROLE=dashboard-build", async () => {
-    process.env["PI_ROLE"] = "dashboard-build";
+  // ── Test 7: bypass PI_ROLE=shape (investigative bypass, Pi precedence) ────
+  it("bypasses when PI_ROLE=shape", async () => {
+    process.env["PI_ROLE"] = "shape";
     writeLog("## committer Section\n\nCommitted.\n");
     writePitchReady("my-feature.md");
     const stderrOutput = await runHook(tmpDir, "pi-role-sess-7");

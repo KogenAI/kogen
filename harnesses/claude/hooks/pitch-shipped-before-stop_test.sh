@@ -122,20 +122,38 @@ out4=$(mk_stop_input "sess4" "$T4/transcript.jsonl" "$T4" | bash "$HOOK" 2>/dev/
 assert_allow "allow: committer section absent (committer hasn't run yet)" "$out4"
 rm -rf "$T4"
 
-# ── Test 5: bypass CLAUDE_ROLE=dashboard-build ───────────────────────────────
-T5=$(make_project)
-PITCH5="$T5/codegen/pitches/ready/my-feature.md"
-printf '# Pitch\n' >"$PITCH5"
-LOG5="$T5/codegen/logging/20260601_123456_my-feature_session.md"
-cat >"$LOG5" <<'MD'
+# ── Test 5a: shape role bypass (is_build_mode() false) — regression fix ──────
+# Pre-fix (old code): _role="shape" != "dashboard-build" -> falls through to
+# block logic -> would BLOCK (RED, the misfire this pitch fixes).
+# Post-fix: is_build_mode() is false for "shape" -> skip -> ALLOW (GREEN).
+T5A=$(make_project)
+PITCH5A="$T5A/codegen/pitches/ready/my-feature.md"
+printf '# Pitch\n' >"$PITCH5A"
+LOG5A="$T5A/codegen/logging/20260601_123456_my-feature_session.md"
+cat >"$LOG5A" <<'MD'
 ## committer Section
 
 Committed.
 MD
-make_transcript_with_log "$T5/transcript.jsonl" "$LOG5"
-out5=$(CLAUDE_ROLE=dashboard-build mk_stop_input "sess5" "$T5/transcript.jsonl" "$T5" | CLAUDE_ROLE=dashboard-build bash "$HOOK" 2>/dev/null || true)
-assert_allow "allow: CLAUDE_ROLE=dashboard-build bypass" "$out5"
-rm -rf "$T5"
+make_transcript_with_log "$T5A/transcript.jsonl" "$LOG5A"
+out5a=$(CLAUDE_ROLE=shape mk_stop_input "sess5a" "$T5A/transcript.jsonl" "$T5A" | CLAUDE_ROLE=shape bash "$HOOK" 2>/dev/null || true)
+assert_allow "allow: CLAUDE_ROLE=shape investigative bypass (regression fix)" "$out5a"
+rm -rf "$T5A"
+
+# ── Test 5b: CLAUDE_ROLE=build still enforces (real build, not investigative) ─
+T5B=$(make_project)
+PITCH5B="$T5B/codegen/pitches/ready/my-feature.md"
+printf '# Pitch\n' >"$PITCH5B"
+LOG5B="$T5B/codegen/logging/20260601_123456_my-feature_session.md"
+cat >"$LOG5B" <<'MD'
+## committer Section
+
+Committed.
+MD
+make_transcript_with_log "$T5B/transcript.jsonl" "$LOG5B"
+out5b=$(CLAUDE_ROLE=build mk_stop_input "sess5b" "$T5B/transcript.jsonl" "$T5B" | CLAUDE_ROLE=build bash "$HOOK" 2>/dev/null || true)
+assert_block "block: CLAUDE_ROLE=build still enforces (guard active)" "$out5b"
+rm -rf "$T5B"
 
 # ── Test 6: bypass CODEGEN_NO_AUTOSHIP=1 ─────────────────────────────────────
 T6=$(make_project)

@@ -190,6 +190,14 @@ out11=$(mk_stop_input "$T11" | env -u CLAUDE_ROLE -u PI_ROLE bash "$HOOK" 2>/dev
 assert_block "block: role unset (build mode) — gate unchanged" "$out11"
 rm -rf "$T11"
 
+# ── Test 12: CLAUDE_ROLE=build still blocks (explicit build role, not just empty) ──
+T12=$(make_project)
+mk_manifest "$T12" '{"slugs":["a","b","c"],"position":1,"started_at":"2026-01-01T00:00:00Z"}'
+mk_gate_result "$T12" "clear"
+out12=$(mk_stop_input "$T12" | CLAUDE_ROLE=build bash "$HOOK" 2>/dev/null || true)
+assert_block "block: CLAUDE_ROLE=build — explicit build role still enforces" "$out12"
+rm -rf "$T12"
+
 echo ""
 echo "Results: $pass passed, $fail failed"
 

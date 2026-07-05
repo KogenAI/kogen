@@ -690,6 +690,25 @@ out=$(make_input "$T31" false "" "$T31/transcript.jsonl" | env -u CLAUDE_ROLE -u
 assert_contains "Test 31: role unset (build mode) — gate unchanged (still blocks)" '"decision"' "$out"
 rm -rf "$T31"
 
+# ── Test 31b: CLAUDE_ROLE=build still blocks (explicit build role) ────────────
+T31B=$(make_project)
+LOG31B="$T31B/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_step1_test.md"
+cat >"$LOG31B" <<'MD'
+## developer-phoenix-backend Section
+
+Some content
+
+## dev-gate Section
+
+Gate: make ci
+ALL CLEAR ✅
+MD
+write_cycle_state_fixture "$T31B" "GATED" "$LOG31B" "clear"
+make_transcript "$T31B/transcript.jsonl" "$LOG31B"
+out=$(make_input "$T31B" false "" "$T31B/transcript.jsonl" | CLAUDE_ROLE=build bash "$HOOK" 2>/dev/null || true)
+assert_contains "Test 31b: CLAUDE_ROLE=build — explicit build role still enforces (blocks)" '"decision"' "$out"
+rm -rf "$T31B"
+
 # ── Test 32: retro-first reviewer body then trailing prose → floor passes ──
 # Regression guard: retrospective block appears BEFORE the trailing verdict
 # prose (not after). The floor must bound the retro to its heading + blank/

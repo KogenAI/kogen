@@ -300,8 +300,8 @@ def validate_signal(script_path: Path, manifest: dict) -> None:
 
     Signal semantics:
       CLAUDE_ROLE         — body must reference CLAUDE_ROLE literal.
-      CLAUDE_ROLE_FAMILY  — body must call resolve_role() (from _role.sh); supports CLAUDE_ROLE,
-                            PI_ROLE with unified precedence.
+      CLAUDE_ROLE_FAMILY  — body must call resolve_role() or is_build_mode() (from _role.sh);
+                            supports CLAUDE_ROLE, PI_ROLE with unified precedence.
       AGENT_TYPE          — body must reference AGENT_TYPE or require_inspector_agent_type.
       none                — no signal check.
     """
@@ -325,9 +325,9 @@ def validate_signal(script_path: Path, manifest: dict) -> None:
             )
             sys.exit(1)
     elif signal == "CLAUDE_ROLE_FAMILY":
-        if "resolve_role" not in content:
+        if "resolve_role" not in content and "is_build_mode" not in content:
             print(
-                f"ERROR: {script_path.name} declares signal: CLAUDE_ROLE_FAMILY but body does not call resolve_role (sourced from _role.sh)",
+                f"ERROR: {script_path.name} declares signal: CLAUDE_ROLE_FAMILY but body does not call resolve_role or is_build_mode (sourced from _role.sh)",
                 file=sys.stderr,
             )
             sys.exit(1)

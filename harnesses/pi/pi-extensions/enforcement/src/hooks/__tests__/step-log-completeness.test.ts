@@ -88,6 +88,40 @@ describe("step-log-completeness", () => {
     );
   });
 
+  it("still warns when PI_ROLE=build (explicit build role enforces)", async () => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "step-log-completeness-role-test-"));
+    const loggingDir = path.join(tmpDir, "codegen", "logging");
+    fs.mkdirSync(loggingDir, { recursive: true });
+    const logFile = path.join(loggingDir, "20260101_120000_step1_test.md");
+    fs.writeFileSync(
+      logFile,
+      "## developer-phoenix-backend Section\n\nSome content\n\n## dev-gate Section\n\nALL CLEAR ✅\n",
+      "utf8",
+    );
+    const now = Date.now();
+    fs.utimesSync(logFile, new Date(now), new Date(now));
+
+    process.env["PI_ROLE"] = "build";
+
+    let stderrOutput = "";
+    const origWrite = process.stderr.write.bind(process.stderr);
+    process.stderr.write = (s: string) => {
+      stderrOutput += s;
+      return true;
+    };
+    try {
+      await runHook(false, tmpDir);
+    } finally {
+      process.stderr.write = origWrite;
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    }
+
+    assert.ok(
+      stderrOutput.includes("WARNING"),
+      "expected WARNING when PI_ROLE=build (explicit build role)",
+    );
+  });
+
   it("active log path resolves but read throws — INCONCLUSIVE warning, no crash", async () => {
     // A directory named *.md passes readdirSync's endsWith(".md") filter and
     // statSync succeeds on it, but fs.readFileSync throws EISDIR — the

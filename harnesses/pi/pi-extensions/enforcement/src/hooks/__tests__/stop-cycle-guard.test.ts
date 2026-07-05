@@ -220,4 +220,48 @@ describe("stop-cycle-guard", { concurrency: 1 }, () => {
       fs.rmSync(tmpDir, { recursive: true, force: true });
     }
   });
+
+  it("still warns when PI_ROLE=build (explicit build role enforces)", async () => {
+    const sessionId = "pi-test-build-enforce";
+    const counterFile = path.join(
+      os.tmpdir(),
+      `claude-cycle-guard-${sessionId}.count`,
+    );
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "pi-scg-build-test-"));
+    const loggingDir = path.join(tmpDir, "codegen", "logging");
+    fs.mkdirSync(loggingDir, { recursive: true });
+
+    const stepFile = "20260614_120000_step1_session.md";
+    fs.writeFileSync(
+      path.join(loggingDir, stepFile),
+      "# Step 1\n## developer-phoenix-backend Section\nDone.\n",
+    );
+
+    process.env["SESSION_ID"] = sessionId;
+    process.env["CWD"] = tmpDir;
+    process.env["PI_ROLE"] = "build";
+
+    let stderrOutput = "";
+    const origWrite = process.stderr.write.bind(process.stderr);
+    process.stderr.write = (s: string) => {
+      stderrOutput += s;
+      return true;
+    };
+
+    try {
+      await runHook("developer-phoenix-backend", false, tmpDir);
+      assert.ok(
+        stderrOutput.includes("WARNING"),
+        `expected WARNING when PI_ROLE=build, got: ${stderrOutput}`,
+      );
+    } finally {
+      process.stderr.write = origWrite as typeof process.stderr.write;
+      delete process.env["SESSION_ID"];
+      delete process.env["CWD"];
+      delete process.env["AGENT_TYPE"];
+      delete process.env["PI_ROLE"];
+      fs.rmSync(counterFile, { force: true });
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    }
+  });
 });

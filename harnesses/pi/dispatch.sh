@@ -162,6 +162,7 @@ exec env \
     -u OPENAI_API_KEY \
     -u ANTHROPIC_API_KEY \
     -u CURSOR_API_KEY \
+    PI_ROLE=build \
     pi \
     "${SYSTEM_PROMPT_FLAG[@]+"${SYSTEM_PROMPT_FLAG[@]}"}" \
     "${NON_INTERACTIVE_FLAGS[@]+"${NON_INTERACTIVE_FLAGS[@]}"}" \

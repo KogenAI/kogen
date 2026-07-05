@@ -7,13 +7,13 @@
  * OBSERVE-ONLY — Pi session_shutdown cannot block; warns to stderr.
  *
  * Bypass paths:
- *   process.env.CLAUDE_ROLE === "dashboard-build" — dashboard manages shipped/ move
- *   process.env.PI_ROLE === "dashboard-build"     — same, Pi harness
+ *   Investigative role (shape/debug/ops/experiment/refactor) — isBuildMode() false
  *   process.env.CODEGEN_NO_AUTOSHIP               — explicit operator suppression
  */
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { debugLog, getActiveStepLog } from "../lib/hook-helpers";
+import { isBuildMode } from "./_role";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import * as os from "node:os";
@@ -43,6 +43,17 @@ export function register(pi: ExtensionAPI): void {
 
     debugLog("pitch-shipped-before-stop", `session=${sessionId}`);
 
+    // Build-mode gate — investigative roles never auto-ship.
+    if (!isBuildMode()) {
+      debugLog("pitch-shipped-before-stop", "skip: investigative role");
+      return;
+    }
+
+    if (process.env["CODEGEN_NO_AUTOSHIP"]) {
+      debugLog("pitch-shipped-before-stop", "skip: CODEGEN_NO_AUTOSHIP");
+      return;
+    }
+
     // Retry cap.
     let count = 0;
     try {
@@ -52,21 +63,6 @@ export function register(pi: ExtensionAPI): void {
     }
     if (count >= 2) {
       fs.rmSync(counterFile, { force: true });
-      return;
-    }
-
-    // Role bypass — dashboard-build or explicit env suppression.
-    const claudeRole = process.env["CLAUDE_ROLE"] ?? "";
-    const piRole = process.env["PI_ROLE"] ?? "";
-    const activeRole = claudeRole || piRole;
-    if (
-      activeRole === "dashboard-build" ||
-      process.env["CODEGEN_NO_AUTOSHIP"]
-    ) {
-      debugLog(
-        "pitch-shipped-before-stop",
-        `skip: role-bypass role=${activeRole}`,
-      );
       return;
     }
 

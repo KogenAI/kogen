@@ -42,8 +42,8 @@ fi
 
 _role=$(resolve_role)
 debug_log single-cycle-agent-in-flight "role=$_role"
-if [ "$_role" = "debug" ] || [ "$_role" = "shape" ] || [ "$_role" = "ops" ]; then
-    debug_log single-cycle-agent-in-flight "investigative bypass"
+if ! is_build_mode; then
+    debug_log single-cycle-agent-in-flight "investigative bypass (role=$_role)"
     exit 0
 fi
 

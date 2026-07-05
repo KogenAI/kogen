@@ -386,6 +386,14 @@ out19=$(mk_agent_input "planner-phoenix" "$FAKE_TRANSCRIPT19" | CLAUDE_ROLE=bana
 assert_deny "deny: CLAUDE_ROLE=banana — unknown role not bypassed, no log → deny" "$out19"
 rm -rf "$T19"
 
+# ── Test 22b: CLAUDE_ROLE=build denies with no step log (explicit build role) ─
+T19B=$(make_project)
+FAKE_TRANSCRIPT19B="$T19B/transcript.jsonl"
+printf '' >"$FAKE_TRANSCRIPT19B"
+out19b=$(mk_agent_input "planner-phoenix" "$FAKE_TRANSCRIPT19B" | CLAUDE_ROLE=build bash "$HOOK" 2>/dev/null || true)
+assert_deny "deny: CLAUDE_ROLE=build — explicit build role enforces, no log → deny" "$out19b"
+rm -rf "$T19B"
+
 # ── Test 20 (bug fix): deny when log path in transcript but file never created ─
 # Transcript has a Write entry for a logging path, but the file does NOT exist.
 # This was the fail-open bug: ! -r is true on absent files → old code allowed.
