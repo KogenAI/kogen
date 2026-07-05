@@ -146,6 +146,7 @@ harness-parity:
 		"$(SCRIPT_DIR)/harnesses/claude/hooks/codegen-build_test.sh" \
 		"$(SCRIPT_DIR)/harnesses/pi/dispatch_test.sh" \
 		"$(SCRIPT_DIR)/harnesses/claude/hooks/codegen-call_test.sh" \
+		"$(SCRIPT_DIR)/harnesses/claude/hooks/codegen-propose_test.sh" \
 		"$(SCRIPT_DIR)/shared/scaffold/static/scaffold_test.sh" \
 		"$(SCRIPT_DIR)/harnesses/shared/experiment-prune_test.sh" \
 		"$(SCRIPT_DIR)/harnesses/shared/build-queue-launcher_test.sh" \
@@ -667,6 +668,7 @@ help:
 	@echo ""
 	@echo "PATH binaries (no make target):"
 	@echo "  codegen-analyze     Scan Claude sessions for agent turn-waste; ranked report (--since, --json, --window, --threshold-reread, --project-dir)"
+	@echo "  codegen-propose     Turn codegen-analyze clusters into human-gated proposed-change records (--since, --max, --min-wasted-turns, --model)"
 
 .PHONY: diagnose-pi-all diagnose-pi-phoenix-scaffold diagnose-pi-phoenix-gate diagnose-pi-phoenix-committer diagnose-pi-phoenix-iteration diagnose-pi-phoenix-seed diagnose-pi-static-iteration-vanilla diagnose-pi-static-iteration-react diagnose-pi-static-iteration-vue diagnose-pi-static-iteration-multilingual
 
