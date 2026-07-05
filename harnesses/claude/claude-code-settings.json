@@ -269,6 +269,15 @@
         "hooks": [
           {
             "type": "command",
+            "command": "$HOME/.claude/hooks/env-var-sample-consistency.sh"
+          }
+        ]
+      },
+      {
+        "matcher": "developer-phoenix-backend|developer-phoenix-frontend",
+        "hooks": [
+          {
+            "type": "command",
             "command": "$HOME/.claude/hooks/phoenix-dev-gate.sh"
           }
         ]
@@ -524,15 +533,6 @@
           {
             "type": "command",
             "command": "$HOME/.claude/hooks/developer-static-no-manual-build.sh"
-          }
-        ]
-      },
-      {
-        "matcher": "Bash",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "$HOME/.claude/hooks/env-var-sample-consistency.sh"
           }
         ]
       },

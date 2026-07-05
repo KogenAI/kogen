@@ -87,11 +87,11 @@ Example: Create a directory with a `.md` extension in a location where the test 
 
 **Hooks using this pattern**:
 
-- `env-var-sample-consistency` (enforcement hook) — first `git diff --cached --name-only` (repo-absence check) succeeds, second scoped `git diff --cached -- <files>` (content-read for sample consistency) fails with textconv error
+- **Stale** — `env-var-sample-consistency` no longer uses this pattern: the hook relocated from a committer PreToolUse `git diff --cached` two-phase check to a developer-role SubagentStop observe-only check reading the working-tree diff vs HEAD (`git diff HEAD -- '*.ex' '*.exs'`), a single git call with no cached/textconv two-phase split. Current behavior: scans added `System.get_env("VAR")` literal-arg reads in `.ex`/`.exs` files not yet declared in `.env.sample`/`.env.prod.sample`; warns (Pi, observe-only) or blocks (Claude, unless `stop_hook_active`) for `developer-phoenix-backend`/`developer-phoenix-frontend` only. See `context/hooks.md` for the current contract.
 
 **Test files**:
 
-- `env-var-sample-consistency.test` — new anomaly case "blocks when sample diff throws after repo-presence check succeeds"
+- **Stale** — `env-var-sample-consistency.test` no longer has a "blocks when sample diff throws after repo-presence check succeeds" case (that fixture technique doesn't apply post-relocation). Current suite (`harnesses/pi/pi-extensions/enforcement/src/hooks/__tests__/env-var-sample-consistency.test.ts`, `harnesses/claude/hooks/env-var-sample-consistency_test.sh`) covers: undocumented working-tree var warns/blocks, both-samples-declared allows, argless `System.get_env()` allows, already-documented var allows, removed-only line allows, unstaged edit still blocks/warns (working-tree not staged-only), and pattern in a non-`.exs` file is not scanned (extension-scoping regression guard).
 
 ## Test Isolation Rules
 

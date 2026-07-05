@@ -1,10 +1,11 @@
 #!/bin/bash
 # env-var-sample-consistency_test.sh — unit tests for env-var-sample-consistency.sh
+# (SubagentStop hook for developer-phoenix-backend | developer-phoenix-frontend)
 
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-GUARD="$SCRIPT_DIR/env-var-sample-consistency.sh"
+GUARD="${GUARD_OVERRIDE:-$SCRIPT_DIR/env-var-sample-consistency.sh}"
 
 pass=0
 fail=0
@@ -13,38 +14,29 @@ run_test() {
     local desc="$1"
     local expected="$2"
     local input="$3"
+    local test_dir="$4"
 
-    # Capture stdout — the hook now emits a permissionDecision JSON envelope
-    # to stdout for deny outcomes (exit 0) instead of stderr + exit 2. We
-    # translate the legacy expected values: "2" means "expect deny",
-    # "0" means "expect allow (no deny envelope)".
-    local test_dir="${4:-}"
     local stdout
-    if [ -n "$test_dir" ]; then
-        stdout=$(cd "$test_dir" && printf '%s' "$input" | bash "$GUARD" 2>/dev/null || true)
-    else
-        stdout=$(printf '%s' "$input" | bash "$GUARD" 2>/dev/null || true)
-    fi
+    stdout=$(cd "$test_dir" && printf '%s' "$input" | bash "$GUARD" 2>/dev/null || true)
 
     local outcome
-    if printf '%s' "$stdout" | grep -q '"permissionDecision"[[:space:]]*:[[:space:]]*"deny"'; then
-        outcome="2"
+    if printf '%s' "$stdout" | grep -q '"decision"[[:space:]]*:[[:space:]]*"block"'; then
+        outcome="block"
     else
-        outcome="0"
+        outcome="allow"
     fi
 
     if [ "$outcome" = "$expected" ]; then
         [ -n "${VERBOSE:-}" ] && printf 'PASS: %s\n' "$desc"
         pass=$((pass + 1))
     else
-        printf 'FAIL: %s — expected %s (deny=2/allow=0), got %s
+        printf 'FAIL: %s — expected %s, got %s
   stdout: %s
 ' "$desc" "$expected" "$outcome" "$stdout"
         fail=$((fail + 1))
     fi
 }
 
-# Set up a tmp git repo for realistic staging tests
 TMP_DIR="$(mktemp -d)"
 cleanup() { rm -rf "$TMP_DIR"; }
 trap cleanup EXIT
@@ -54,7 +46,7 @@ trap cleanup EXIT
     git init -q
     git config user.email "test@test.com"
     git config user.name "Test"
-    # Create runtime.exs with System.get_env
+    git config commit.gpgsign false
     printf 'config :app, key: System.get_env("EXISTING_VAR")\n' >runtime.exs
     printf 'export EXISTING_VAR=\n' >.env.sample
     printf 'EXISTING_VAR=\n' >.env.prod.sample
@@ -62,117 +54,103 @@ trap cleanup EXIT
     git commit -q -m "init"
 )
 
-# Test 1: Non-committer — not gated by this hook
-FIXTURE_NON_COMMITTER='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"git commit -m \"test\""},"agent_type":"developer-phoenix-backend","agent_id":"abc"}'
-run_test "non-committer is not gated" "0" "$FIXTURE_NON_COMMITTER" "$TMP_DIR"
+payload() {
+    local agent_type="$1"
+    local stop_active="$2"
+    printf '{"hook_event_name":"SubagentStop","agent_type":"%s","cwd":"%s","session_id":"s1","stop_hook_active":%s}' \
+        "$agent_type" "$TMP_DIR" "$stop_active"
+}
 
-# Test 2: Committer with non-env staged files — ALLOW
+# Test 1: committer — not gated
+FIXTURE_COMMITTER=$(payload "committer" "false")
+run_test "committer is not gated" "allow" "$FIXTURE_COMMITTER" "$TMP_DIR"
+
+# Test 2: developer, stop_hook_active=true — loop guard allows
+FIXTURE_LOOP=$(payload "developer-phoenix-backend" "true")
+run_test "stop_hook_active loop guard allows" "allow" "$FIXTURE_LOOP" "$TMP_DIR"
+
+# Test 3: developer, working-tree diff adds System.get_env("NEW_VAR") to a
+# tracked file, samples untouched — BLOCK
 (
     cd "$TMP_DIR"
-    printf 'Some markdown\n' >README.md
-    git add README.md
+    printf 'config :app, key: System.get_env("EXISTING_VAR")\nconfig :app, key2: System.get_env("NEW_VAR")\n' >runtime.exs
 )
-FIXTURE_NO_ENV='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"git commit -m \"Add readme\""},"agent_type":"committer","agent_id":"abc"}'
-run_test "committer with non-env diff allows" "0" "$FIXTURE_NO_ENV" "$TMP_DIR"
-(cd "$TMP_DIR" && git reset HEAD README.md 2>/dev/null || true)
+FIXTURE_NEW_VAR=$(payload "developer-phoenix-backend" "false")
+run_test "developer working-tree diff adds undocumented var blocks" "block" "$FIXTURE_NEW_VAR" "$TMP_DIR"
+(cd "$TMP_DIR" && git checkout -- runtime.exs)
 
-# Test 3: Committer with env-var changes but no sample files — BLOCK
+# Test 4: developer, same diff but both sample files declare NEW_VAR — allow
 (
     cd "$TMP_DIR"
-    printf 'config :app, key: System.get_env("NEW_VAR")\n' >runtime.exs
-    git add runtime.exs
-)
-FIXTURE_NO_SAMPLE='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"git commit -m \"Add env var\""},"agent_type":"committer","agent_id":"abc"}'
-run_test "committer with env-var diff but no samples blocks" "2" "$FIXTURE_NO_SAMPLE" "$TMP_DIR"
-
-# Test 4: Committer with env-var changes AND both sample files — ALLOW
-(
-    cd "$TMP_DIR"
+    printf 'config :app, key: System.get_env("EXISTING_VAR")\nconfig :app, key2: System.get_env("NEW_VAR")\n' >runtime.exs
     printf 'export NEW_VAR=\n' >>.env.sample
     printf 'NEW_VAR=\n' >>.env.prod.sample
-    git add .env.sample .env.prod.sample
 )
-FIXTURE_WITH_SAMPLES='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"git commit -m \"Add env var with samples\""},"agent_type":"committer","agent_id":"abc"}'
-run_test "committer with env-var diff and both samples allows" "0" "$FIXTURE_WITH_SAMPLES" "$TMP_DIR"
-# Clean up staged changes AND revert sample content back to the committed
-# baseline (NEW_VAR must be undeclared again for Test 6's re-check of the
-# no-samples-staged scenario — unstaging alone leaves NEW_VAR= in the
-# working-tree .env.sample, which would falsely satisfy the new
-# not-already-declared predicate).
-(
-    cd "$TMP_DIR" && git reset HEAD 2>/dev/null || true
-    git checkout -- .env.sample .env.prod.sample 2>/dev/null || true
-)
+FIXTURE_WITH_SAMPLES=$(payload "developer-phoenix-backend" "false")
+run_test "developer working-tree diff with both samples declared allows" "allow" "$FIXTURE_WITH_SAMPLES" "$TMP_DIR"
+(cd "$TMP_DIR" && git checkout -- runtime.exs .env.sample .env.prod.sample)
 
-# Test 5: codegen-log write narrating env-var commit without samples staged — ALLOW
-(
-    cd "$TMP_DIR"
-    printf 'config :app, key: System.get_env("NEW_VAR")\n' >runtime.exs
-    git add runtime.exs
-)
-FIXTURE_LOG_WRITE=$(jq -n \
-    '{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"codegen-log section --slug test --body @- <<EOF\n## committer Section\nRan git commit -m \"Add env var\" — denied as expected (missing samples).\nEOF"},"agent_type":"committer","agent_id":"abc"}')
-run_test "codegen-log write narrating missing-samples commit ALLOWED" "0" "$FIXTURE_LOG_WRITE" "$TMP_DIR"
-
-# Test 6: real standalone commit with same staged diff still BLOCKED unchanged
-run_test "real env-var commit without samples still blocks (unchanged)" "2" "$FIXTURE_NO_SAMPLE" "$TMP_DIR"
-(cd "$TMP_DIR" && git reset HEAD 2>/dev/null || true)
-
-# Test 7: argless System.get_env() (no literal arg) — no lookup possible, ALLOW
+# Test 5: developer, argless System.get_env() — allow
 (
     cd "$TMP_DIR"
     printf 'config :app, key: System.get_env()\n' >runtime.exs
-    git add runtime.exs
 )
-FIXTURE_ARGLESS='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"git commit -m \"argless env read\""},"agent_type":"committer","agent_id":"abc"}'
-run_test "argless System.get_env() with no samples staged allows" "0" "$FIXTURE_ARGLESS" "$TMP_DIR"
-(
-    cd "$TMP_DIR" && git reset HEAD 2>/dev/null || true
-    git checkout -- runtime.exs 2>/dev/null || true
-)
+FIXTURE_ARGLESS=$(payload "developer-phoenix-backend" "false")
+run_test "argless System.get_env() allows" "allow" "$FIXTURE_ARGLESS" "$TMP_DIR"
+(cd "$TMP_DIR" && git checkout -- runtime.exs)
 
-# Test 8: literal var already declared in .env.sample (EXISTING_VAR) — ALLOW
+# Test 6: developer, System.get_env("EXISTING_VAR") already in samples — allow
 (
     cd "$TMP_DIR"
     printf 'config :app, key: System.get_env("EXISTING_VAR")\nconfig :app, other: 1\n' >runtime.exs
-    git add runtime.exs
 )
-FIXTURE_DOCUMENTED='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"git commit -m \"read documented var\""},"agent_type":"committer","agent_id":"abc"}'
-run_test "already-documented literal var read allows" "0" "$FIXTURE_DOCUMENTED" "$TMP_DIR"
-(
-    cd "$TMP_DIR" && git reset HEAD 2>/dev/null || true
-    git checkout -- runtime.exs 2>/dev/null || true
-)
+FIXTURE_DOCUMENTED=$(payload "developer-phoenix-backend" "false")
+run_test "already-documented var read allows" "allow" "$FIXTURE_DOCUMENTED" "$TMP_DIR"
+(cd "$TMP_DIR" && git checkout -- runtime.exs)
 
-# Test 9: diff only REMOVES a System.get_env("GONE_VAR") line (no additions) — ALLOW
+# Test 7: developer, UNSTAGED edit adding System.get_env("UNSTAGED_VAR")
+# (no `git add`), samples untouched — BLOCK. Proves working-tree source, not
+# staged-only.
 (
     cd "$TMP_DIR"
-    printf 'config :app, key: System.get_env("GONE_VAR")\n' >runtime.exs
+    printf 'config :app, key: System.get_env("EXISTING_VAR")\nconfig :app, key2: System.get_env("UNSTAGED_VAR")\n' >runtime.exs
+)
+FIXTURE_UNSTAGED=$(payload "developer-phoenix-backend" "false")
+run_test "unstaged working-tree edit with undocumented var blocks" "block" "$FIXTURE_UNSTAGED" "$TMP_DIR"
+(cd "$TMP_DIR" && git checkout -- runtime.exs)
+
+# Test 8: developer, diff only REMOVES a System.get_env("GONE_VAR") line — allow
+(
+    cd "$TMP_DIR"
+    printf 'config :app, key: System.get_env("EXISTING_VAR")\nconfig :app, key2: System.get_env("GONE_VAR")\n' >runtime.exs
     git add runtime.exs
     git commit -q -m "add gone var read"
-    printf '' >runtime.exs
-    git add runtime.exs
+    printf 'config :app, key: System.get_env("EXISTING_VAR")\n' >runtime.exs
 )
-FIXTURE_REMOVED_ONLY='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"git commit -m \"remove env var read\""},"agent_type":"committer","agent_id":"abc"}'
-run_test "removed-only System.get_env line allows (added-only unification)" "0" "$FIXTURE_REMOVED_ONLY" "$TMP_DIR"
+FIXTURE_REMOVED_ONLY=$(payload "developer-phoenix-backend" "false")
+run_test "removed-only System.get_env line allows" "allow" "$FIXTURE_REMOVED_ONLY" "$TMP_DIR"
 (
     cd "$TMP_DIR"
-    git reset HEAD 2>/dev/null || true
-    git reset --hard HEAD~1 -q 2>/dev/null || true
+    git checkout -- runtime.exs
+    git reset --hard HEAD~1 -q
 )
 
-# Test 10: new underscore/digit literal var name, absent from sample — BLOCK
-# (regression guard on the name-extraction regex)
+# Test 9: pattern appears only inside a non-.exs file (e.g. a test-authoring
+# .sh/.ts fixture whose string literal constructs `System.get_env("X")` text)
+# — must NOT block. Regression guard for the file-extension scoping fix.
 (
     cd "$TMP_DIR"
-    printf 'config :app, key: System.get_env("CODEGEN_BUILD_NEW1")\n' >runtime.exs
-    git add runtime.exs
+    printf 'echo "System.get_env(\\"SCRIPT_ONLY_VAR\\")"\n' >script.sh
+    git add script.sh
+    git commit -q -m "add unrelated script"
+    printf 'echo "System.get_env(\\"SCRIPT_ONLY_VAR\\")"\necho done\n' >script.sh
 )
-FIXTURE_UNDERSCORE_DIGIT='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"git commit -m \"add underscore/digit var\""},"agent_type":"committer","agent_id":"abc"}'
-run_test "new underscore/digit literal var name blocks" "2" "$FIXTURE_UNDERSCORE_DIGIT" "$TMP_DIR"
+FIXTURE_NON_EXS=$(payload "developer-phoenix-backend" "false")
+run_test "pattern in non-.exs file is not scanned (scoping fix)" "allow" "$FIXTURE_NON_EXS" "$TMP_DIR"
 (
-    cd "$TMP_DIR" && git reset HEAD 2>/dev/null || true
-    git checkout -- runtime.exs 2>/dev/null || true
+    cd "$TMP_DIR"
+    git checkout -- script.sh
+    git reset --hard HEAD~1 -q
 )
 
 echo ""

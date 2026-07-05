@@ -1,81 +1,86 @@
 /**
- * env-var-sample-consistency.ts — Pi enforcement: block git commits that add
- * System.get_env without updating .env.sample.
+ * env-var-sample-consistency.ts — Pi enforcement: warn when the working-tree
+ * diff (vs HEAD), scoped to *.ex/*.exs files, adds System.get_env/fetch_env
+ * without updating .env.sample and .env.prod.sample.
  *
- * Mirrors: templates/shared/hooks/env-var-sample-consistency.sh
- * Event: tool_call (PreToolUse equivalent)
- * Matcher: bash
+ * Mirrors: harnesses/claude/hooks/env-var-sample-consistency.sh
+ * Event: session_shutdown (SubagentStop equivalent)
+ * OBSERVE-ONLY — Pi session_shutdown cannot block; warns to stderr.
+ *
+ * Relocated from a committer tool_call (PreToolUse) gate — the committer
+ * cannot edit .env.sample, so gating there was a structural deadlock — to
+ * developer session_shutdown, scanning the working-tree diff instead of the
+ * staged-only diff. Scoped to *.ex/*.exs (not the whole tree) so a
+ * test-authoring file's string literals (e.g. a fixture that writes
+ * `System.get_env("X")` into a temp .exs file) never trip this hook.
  */
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import {
-  deny,
-  parseAgentType,
-  debugLog,
-  isCodegenLogWrite,
-} from "../lib/hook-helpers";
-import { execSync, execFileSync } from "node:child_process";
+import { debugLog, parseAgentType } from "../lib/hook-helpers";
+import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
+import * as path from "node:path";
 
 export const HANDLER_META = {
   name: "env-var-sample-consistency",
-  event: "tool_call",
-  matcher: "bash",
+  event: "session_shutdown",
+  matcher: "developer-phoenix-backend|developer-phoenix-frontend",
 } as const;
 
 export function register(pi: ExtensionAPI): void {
-  pi.on("tool_call", async (event) => {
-    if (event.toolName !== "bash") return;
-    if (parseAgentType() !== "committer") return;
-
-    const command: string = (event.input as { command?: string }).command ?? "";
-    debugLog("env-var-sample-consistency", `cmd=${command}`);
-
-    // A codegen-log write narrates gated phrases in its heredoc body; it is
-    // never the gated action itself. Bypass before any phrase match or
-    // counter increment.
-    if (isCodegenLogWrite(command)) return;
-
-    if (!/\bgit\s+commit\b/.test(command)) return;
-
-    let stagedFiles: string[];
-    try {
-      stagedFiles = execSync("git diff --cached --name-only", {
-        encoding: "utf8",
-      })
-        .split("\n")
-        .filter(Boolean);
-    } catch {
-      // git not available or not in repo — pass through
+  pi.on("session_shutdown", async () => {
+    const agentType = parseAgentType();
+    if (
+      agentType !== "developer-phoenix-backend" &&
+      agentType !== "developer-phoenix-frontend"
+    ) {
       return;
     }
 
-    if (stagedFiles.length === 0) return;
+    const projectDir = process.env["CWD"] ?? process.cwd();
+    debugLog("env-var-sample-consistency", `cwd=${projectDir}`);
 
-    const stagedExs = stagedFiles.filter((f) => /\.exs?$/.test(f));
-    if (stagedExs.length === 0) return;
-
-    // execFileSync passes args as an array — no shell interpolation, so a
-    // staged path containing a space (or shell metacharacter) cannot break
-    // the command or silently fail-open the whole check.
-    let exDiff: string;
+    // Scope to *.ex/*.exs files only — prevents false positives from
+    // test-authoring files (.ts/.sh) whose string literals merely construct
+    // fixture text containing the same call-site pattern.
+    let changedNames: string[];
     try {
-      exDiff = execFileSync(
-        "git",
-        ["diff", "--cached", "--", ...stagedExs],
-        { encoding: "utf8" },
+      changedNames = execFileSync("git", ["diff", "HEAD", "--name-only"], {
+        cwd: projectDir,
+        encoding: "utf8",
+      })
+        .split("\n")
+        .filter((f) => /\.exs?$/.test(f));
+    } catch {
+      process.stderr.write(
+        "[pi-enforcement:env-var-sample-consistency] WARNING: git diff HEAD failed — cannot verify env-sample parity.\n",
       );
-    } catch (e) {
-      return deny(
-        `BLOCKED by env-var-sample-consistency: 'git diff --cached' failed unexpectedly for staged Elixir files (${(e as Error).message}). Cannot verify .env.sample parity — resolve the git error before committing.`,
-      );
+      return;
     }
+
+    if (changedNames.length === 0) return;
+
+    let wtDiff: string;
+    try {
+      wtDiff = execFileSync(
+        "git",
+        ["diff", "HEAD", "--", ...changedNames],
+        { cwd: projectDir, encoding: "utf8" },
+      );
+    } catch {
+      process.stderr.write(
+        "[pi-enforcement:env-var-sample-consistency] WARNING: git diff HEAD failed — cannot verify env-sample parity.\n",
+      );
+      return;
+    }
+
+    if (!wtDiff) return;
 
     // Only ADDED lines (starting with "+") with a string-literal arg count —
     // argless reads like `System.get_env()` give no name to look up in
     // .env.sample, so they cannot be a documentation gap.
     const literalArgRe = /System\.(get_env|fetch_env)\(\s*"[^"]+"/;
-    const addedEnvLines = exDiff
+    const addedEnvLines = wtDiff
       .split("\n")
       .filter((l) => l.startsWith("+") && literalArgRe.test(l));
 
@@ -88,31 +93,33 @@ export function register(pi: ExtensionAPI): void {
 
     if (addedNames.length === 0) return;
 
-    // Read the working-tree .env.sample. ENOENT (file absent) means every
+    // Read the working-tree sample files. ENOENT (file absent) means every
     // extracted name is "not declared" — loud, not swallowed; any other read
     // error propagates (not caught here).
-    let sampleContent = "";
-    try {
-      sampleContent = readFileSync(".env.sample", "utf8");
-    } catch (e) {
-      if ((e as NodeJS.ErrnoException).code !== "ENOENT") throw e;
-    }
+    const readSample = (fileName: string): string => {
+      try {
+        return readFileSync(path.join(projectDir, fileName), "utf8");
+      } catch (e) {
+        if ((e as NodeJS.ErrnoException).code !== "ENOENT") throw e;
+        return "";
+      }
+    };
 
-    const isDeclared = (name: string): boolean =>
-      new RegExp(`^(export )?${name}=`, "m").test(sampleContent);
+    const sampleContent = readSample(".env.sample");
+    const prodSampleContent = readSample(".env.prod.sample");
 
-    const undocumented = addedNames.filter((n) => !isDeclared(n));
+    const isDeclared = (name: string, content: string): boolean =>
+      new RegExp(`^(export )?${name}=`, "m").test(content);
+
+    const undocumented = addedNames.filter(
+      (n) =>
+        !isDeclared(n, sampleContent) || !isDeclared(n, prodSampleContent),
+    );
 
     if (undocumented.length === 0) return;
 
-    const sampleStaged = stagedFiles.some((f) =>
-      [".env.sample", ".env.prod.sample"].includes(f),
+    process.stderr.write(
+      `[pi-enforcement:env-var-sample-consistency] WARNING: new env var '${undocumented[0]}' read (System.get_env/fetch_env) but not declared in .env.sample/.env.prod.sample. Add it to both sample files.\n`,
     );
-
-    if (!sampleStaged) {
-      return deny(
-        "BLOCKED by env-var-sample-consistency: staged Elixir files add System.get_env/fetch_env calls, but .env.sample and .env.prod.sample are not staged. Stage the sample files with the new env var.",
-      );
-    }
   });
 }

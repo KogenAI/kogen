@@ -5,14 +5,14 @@ Codegen-infra pitfalls and bash gotchas — split from `context/development.md` 
 ## Common Pitfalls
 
 - **Split extraction: verify load-bearing, not meta** — Extractors pull EOF by default. Stop boundary BEFORE trailing meta (e.g., `## Update When Changing`). Verify last H2 is terminal cluster, not footer. Use grep `^## ` to detect boundaries.
-- **`make install` registry/settings.json parity** — add registry.yaml entry + .sh file, run `hook_registrations.py --output-settings` BEFORE `make install` (else hook-parity diff fails).
-- **Bash heredoc keeps loop state** — `while <<EOF` not `|` pipe.
+- **`make install` registry/settings.json parity — bootstrap on content change** — hook-parity runs BEFORE settings.json regen. Changing registry `event`/`tool_guard`/`role` requires bootstrap: `hook_registrations.py --output-settings` once BEFORE `make install`. New-file additions skip bootstrap.
+- **Bash heredoc loop state** — use `while <<EOF`, not `|` pipe.
 - **TS `execFileSync` args: array not string** — pass `['commit', '-m', 'msg']`, not string. `.trim()` loses trailing-newline; use trim in some contexts (gitLog), not others (gitBlob).
 - **Check WIP before planning** — Large in-flight changes need reconciliation against pitch.
 - **`manifest_regenerate_prompts` file check** — new prompt-source `.txt` files must exist before `make install` (tools-header, prompt bodies). Gate's install round-trip catches missing files.
 - **yq binary must be mikefarah, not python-yq** — wrong binary causes silent manifest parsing errors.
 - **`npm install` at codegen root required** — absent → hooks emit INCONCLUSIVE.
-- **`make install` required after rule/template change** — regenerates baked prompts. Workflow: edit → `make install` BEFORE `make test`; parity gates do not catch stale bakes. Mandatory rule.
+- **`make install` required after rule/template change** — regenerates baked prompts; parity gates do not catch stale bakes. Workflow: edit → `make install` BEFORE `make test`.
 - **`mise trust` runs unconditionally on install** — no interactive prompt.
 - **Do not run `npm install` at repo root for Pi extensions** — each extension has its own node_modules; only root install is managed by install.sh
 - **Hook test failures are not ExUnit** — `make test` runs bash tests + hermetic ExUnit; they are separate suites
@@ -20,9 +20,9 @@ Codegen-infra pitfalls and bash gotchas — split from `context/development.md` 
 - **Fixture-source change: migrate ALL dependent cases** — Old-path test cases assert dead OLD spec. SIBLING files (e.g., dispatch_test + codegen-build_test) testing same target need IDENTICAL fixes. Grep ALL `_test.sh` files, not just the paired hook test.
 - **`shared/scaffold/static/scaffold_test.sh` is wired into `make test`** — new bash test cases run automatically (Makefile `for t in` loop that lists `shared/scaffold/static/scaffold_test.sh` as a test target). No Makefile edits needed; test summary updates via inline helpers.
 - **config.yaml anchoring** — Multiple blocks may share leaf values; `old_string` MUST include surrounding context to avoid wrong block. Verify via `yq` post-change.
-- **Pitch line numbers drift** — Read files for exact anchor text; never trust line-number estimates.
+- **Pitch line numbers drift** — Use exact anchor text, not line numbers.
 - **Verify pitch edits not already applied** — Pitch may be obsolete. `git show <commit> --stat` checks targets; `git status --porcelain -- <files>` verifies clean. If clean + stat includes files, pitch realized — VERIFY-ONLY, run gate. Skipping causes duplicates.
-- **Example blocks in references carry routing targets** — when bulk-repathing, check inline examples too; all old paths must be repathed or inside warnings.
+- **Example blocks in references carry routing targets** — bulk-repathing must cover inline examples too.
 - **Phoenix-colocated esbuild** — `phoenix-colocated` import requires `mix compile` first; include `"compile"` in `assets.build`/`assets.deploy` aliases.
 - **`CODEGEN_DIR` must be absolute** — Relative paths break symlink resolution. Use three-level: `${CWD:-${CLAUDE_PROJECT_DIR:-$PWD}}`.
 - **Session log filename format must include `_HHMMSS`** — non-canonical forms (e.g., `YYYYMMDD-slug.md`) are blocked by reviewer-guard and dev-gate hooks at Edit time
@@ -34,7 +34,7 @@ Codegen-infra pitfalls and bash gotchas — split from `context/development.md` 
 - **Flaky tests: investigate state leakage, not timing** — Check counter files, temp dirs. Cleanup in `afterEach` required.
 - **Test isolation scoping** — Capture streams at test-body, restore both paths. Env cleanup in beforeEach/afterEach. Bash: trap-clean temps, PATH stubs.
 - **Pi test essentials** — Create real temps at test paths. `npm run build` before test (runs on `dist/`).
-- **`make test` tail-capture hides earlier summaries** — Piping to `| tail -N` drops hook-parity and bash hook-test summaries even when final `ALL CLEAR ✅` is green. Verify new assertions by re-running the test file directly to confirm execution.
+- **`make test` tail-capture hides earlier summaries** — Piping to `| tail -N` drops hook-parity summaries. Re-run the test file directly to confirm execution.
 - **`make test` npm-ext transient race** — Extensions run in parallel; enforcement tsc writes `dist/` while tests import from it. Slow machines see transient "module not found". Re-run passes; not durable.
 - **SENTINEL parity check** — Before `make install`, verify SENTINELs in both sources via `grep -c "SENTINEL_TEXT" file1 file2`
 - **Gate verdict from JSON** — Read `gate-result.json` `.verdict` field, not log prose; JSON reflects actual code
