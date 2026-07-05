@@ -292,7 +292,17 @@ defmodule CodegenTestHarness.LoopGate do
   end
 
   defp default_run_fn(gate_command, project_dir) do
-    System.cmd("bash", ["-c", gate_command], cd: project_dir, stderr_to_stdout: true)
+    scrub =
+      System.get_env()
+      |> Map.keys()
+      |> Enum.filter(&String.starts_with?(&1, "CODEGEN_BUILD_"))
+      |> Enum.map(&{&1, nil})
+
+    System.cmd("bash", ["-c", gate_command],
+      cd: project_dir,
+      stderr_to_stdout: true,
+      env: scrub
+    )
   end
 
   defp write_gate_log!(project_dir, output) do

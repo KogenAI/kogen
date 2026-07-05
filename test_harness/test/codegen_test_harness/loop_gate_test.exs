@@ -224,3 +224,46 @@ defmodule CodegenTestHarness.LoopGateCodegenRootTest do
              "(3 levels up from render-check.js's lib/ dir instead of 4)"
   end
 end
+
+defmodule CodegenTestHarness.LoopGateEnvScrubTest do
+  # async: false — mutates process-global env (System.put_env), which would
+  # leak into async: true siblings in LoopGateTest. Sibling module isolates it.
+  use ExUnit.Case, async: false
+
+  alias CodegenTestHarness.LoopGate
+
+  setup do
+    dir = Path.join(System.tmp_dir!(), "loop_gate_scrub_#{:erlang.unique_integer([:positive])}")
+    File.mkdir_p!(dir)
+    System.put_env("CODEGEN_BUILD_TESTPROBE", "1")
+
+    on_exit(fn ->
+      System.delete_env("CODEGEN_BUILD_TESTPROBE")
+      File.rm_rf!(dir)
+    end)
+
+    {:ok, dir: dir}
+  end
+
+  test "default runner scrubs CODEGEN_BUILD_* from the gate subprocess", %{dir: dir} do
+    step_log = Path.join(dir, "session.md")
+
+    File.write!(step_log, """
+    ## Plan
+
+    **Gate**:
+
+    ```gate-json
+    {"command": "env | grep -c '^CODEGEN_BUILD_'", "mode": "short", "timeout": 0}
+    ```
+    """)
+
+    # No run_fn override → exercises the REAL default_run_fn/2.
+    LoopGate.run_gate(dir, stack: "phoenix", step_log: step_log)
+
+    log = File.read!(Path.join(dir, "codegen/gate-pending/gate-run.log"))
+
+    assert String.trim(log) == "0",
+           "expected child to see zero CODEGEN_BUILD_* vars (scrubbed), got: #{inspect(log)}"
+  end
+end
