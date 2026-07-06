@@ -57,26 +57,51 @@ describe("pitch-shipped-before-stop", { concurrency: false }, () => {
   });
 
   /**
-   * Write a session log with the canonical <ts>_<slug>_session.md name.
+   * Write a JSONL cycle log with the canonical <ts>_<slug>_cycle.jsonl name.
    * Default slug is "my-feature" to match writePitchReady("my-feature.md").
+   * `committerPresent` controls whether a committer role event is appended
+   * (the old fixtures encoded this via "## committer Section" markdown text
+   * in the raw body — under JSONL this is a structured event instead).
    */
-  function writeLog(content: string, slug = "my-feature"): void {
+  function writeLog(committerPresent: boolean, slug = "my-feature"): void {
     const logPath = path.join(
       tmpDir,
       "codegen",
       "logging",
-      `20260601_123456_${slug}_session.md`,
+      `20260601_123456_${slug}_cycle.jsonl`,
     );
-    fs.writeFileSync(logPath, content);
+    const lines = [
+      JSON.stringify({ ev: "init", pitch: slug, path: "", stamp: {} }),
+    ];
+    if (committerPresent) {
+      lines.push(
+        JSON.stringify({ ev: "role", role: "committer", body: "Committed." }),
+      );
+    } else {
+      lines.push(
+        JSON.stringify({
+          ev: "role",
+          role: "reviewer-phoenix",
+          body: "QUALITY APPROVED",
+        }),
+      );
+    }
+    fs.writeFileSync(logPath, lines.join("\n") + "\n");
   }
 
   /**
-   * Write a log with a non-session filename (multi-step or free-form).
+   * Write a JSONL cycle log with no init event and no slug segment in the
+   * filename (simulates a free-form/never-codegen-log-init'd log).
    */
-  function writeNonSessionLog(filename: string, content: string): void {
+  function writeNoSlugLog(filename: string): void {
+    const line = JSON.stringify({
+      ev: "role",
+      role: "committer",
+      body: "Committed.",
+    });
     fs.writeFileSync(
       path.join(tmpDir, "codegen", "logging", filename),
-      content,
+      line + "\n",
     );
   }
 
@@ -141,7 +166,7 @@ describe("pitch-shipped-before-stop", { concurrency: false }, () => {
 
   // ── Test 1: warns when committer-section present + pitch in ready/ ─────────
   it("warns when committer section present and pitch in ready/", async () => {
-    writeLog("## committer Section\n\nCommitted.\n");
+    writeLog(true);
     writePitchReady("my-feature.md");
     const stderrOutput = await runHook(tmpDir);
     assert.ok(
@@ -153,7 +178,7 @@ describe("pitch-shipped-before-stop", { concurrency: false }, () => {
 
   // ── Test 2: no warning when pitch in shipped/ (no ready/ pitch) ────────────
   it("does not warn when no pitches in ready/", async () => {
-    writeLog("## committer Section\n\nCommitted.\n");
+    writeLog(true);
     writePitchShipped("my-feature.md");
     const stderrOutput = await runHook(tmpDir);
     assert.ok(
@@ -171,7 +196,7 @@ describe("pitch-shipped-before-stop", { concurrency: false }, () => {
 
   // ── Test 4: no warning when committer section absent ──────────────────────
   it("does not warn when committer section absent", async () => {
-    writeLog("## reviewer-phoenix Section\n\nQUALITY APPROVED\n");
+    writeLog(false);
     writePitchReady("my-feature.md");
     const stderrOutput = await runHook(tmpDir, "no-committer-sess-4");
     assert.ok(!stderrOutput.includes("WARNING"), "expected no warning");
@@ -180,7 +205,7 @@ describe("pitch-shipped-before-stop", { concurrency: false }, () => {
   // ── Test 5a: shape role bypass (isBuildMode() false) — regression fix ─────
   it("bypasses when CLAUDE_ROLE=shape (investigative bypass)", async () => {
     process.env["CLAUDE_ROLE"] = "shape";
-    writeLog("## committer Section\n\nCommitted.\n");
+    writeLog(true);
     writePitchReady("my-feature.md");
     const stderrOutput = await runHook(tmpDir, "shape-sess-5a");
     assert.ok(!stderrOutput.includes("WARNING"), "expected no warning");
@@ -189,7 +214,7 @@ describe("pitch-shipped-before-stop", { concurrency: false }, () => {
   // ── Test 5b: CLAUDE_ROLE=build still enforces (real build, not investigative) ─
   it("still warns when CLAUDE_ROLE=build (explicit build role enforces)", async () => {
     process.env["CLAUDE_ROLE"] = "build";
-    writeLog("## committer Section\n\nCommitted.\n");
+    writeLog(true);
     writePitchReady("my-feature.md");
     const stderrOutput = await runHook(tmpDir, "build-sess-5b");
     assert.ok(stderrOutput.includes("WARNING"), "expected warning");
@@ -198,7 +223,7 @@ describe("pitch-shipped-before-stop", { concurrency: false }, () => {
   // ── Test 6: bypass CODEGEN_NO_AUTOSHIP=1 ──────────────────────────────────
   it("bypasses when CODEGEN_NO_AUTOSHIP is set", async () => {
     process.env["CODEGEN_NO_AUTOSHIP"] = "1";
-    writeLog("## committer Section\n\nCommitted.\n");
+    writeLog(true);
     writePitchReady("my-feature.md");
     const stderrOutput = await runHook(tmpDir, "no-autoship-sess-6");
     assert.ok(!stderrOutput.includes("WARNING"), "expected no warning");
@@ -207,7 +232,7 @@ describe("pitch-shipped-before-stop", { concurrency: false }, () => {
   // ── Test 7: bypass PI_ROLE=shape (investigative bypass, Pi precedence) ────
   it("bypasses when PI_ROLE=shape", async () => {
     process.env["PI_ROLE"] = "shape";
-    writeLog("## committer Section\n\nCommitted.\n");
+    writeLog(true);
     writePitchReady("my-feature.md");
     const stderrOutput = await runHook(tmpDir, "pi-role-sess-7");
     assert.ok(!stderrOutput.includes("WARNING"), "expected no warning");
@@ -215,7 +240,7 @@ describe("pitch-shipped-before-stop", { concurrency: false }, () => {
 
   // ── Test 8: retry cap stops warning at 2 ──────────────────────────────────
   it("stops warning after retry cap (count >= 2)", async () => {
-    writeLog("## committer Section\n\nCommitted.\n");
+    writeLog(true);
     writePitchReady("my-feature.md");
 
     const counterFile = path.join(
@@ -232,7 +257,7 @@ describe("pitch-shipped-before-stop", { concurrency: false }, () => {
 
   // ── Test 9: increments counter on first warn ───────────────────────────────
   it("increments counter on first warning", async () => {
-    writeLog("## committer Section\n\nCommitted.\n");
+    writeLog(true);
     writePitchReady("my-feature.md");
 
     const counterFile = path.join(
@@ -252,7 +277,7 @@ describe("pitch-shipped-before-stop", { concurrency: false }, () => {
 
   // ── Test 10: no warning when no pitches/ dir ──────────────────────────────
   it("does not crash when no pitches dir exists", async () => {
-    writeLog("## committer Section\n\nCommitted.\n");
+    writeLog(true);
     // Remove ready/ dir
     fs.rmSync(path.join(tmpDir, "codegen", "pitches", "ready"), {
       recursive: true,
@@ -264,7 +289,7 @@ describe("pitch-shipped-before-stop", { concurrency: false }, () => {
 
   // ── Test 11: second warn still fires before cap ───────────────────────────
   it("warns again at count=1 (below cap)", async () => {
-    writeLog("## committer Section\n\nCommitted.\n");
+    writeLog(true);
     writePitchReady("my-feature.md");
 
     const counterFile = path.join(
@@ -291,7 +316,7 @@ describe("pitch-shipped-before-stop", { concurrency: false }, () => {
 
   // ── Test 13: warning message names the pitch basename ─────────────────────
   it("warning message includes pitch basename", async () => {
-    writeLog("## committer Section\n\nCommitted.\n", "orchestrator-discipline");
+    writeLog(true, "orchestrator-discipline");
     writePitchReady("orchestrator-discipline.md");
     const stderrOutput = await runHook(tmpDir, "name-check-sess-13");
     assert.ok(
@@ -302,7 +327,7 @@ describe("pitch-shipped-before-stop", { concurrency: false }, () => {
 
   // ── Test 15: slug-match + committer-section + warn contains slug filename ──
   it("warning references slug filename when slug-match + committer + ready/", async () => {
-    writeLog("## committer Section\n\nCommitted.\n", "my-feature");
+    writeLog(true, "my-feature");
     writePitchReady("my-feature.md");
     const stderrOutput = await runHook(tmpDir, "slug-match-sess-15");
     assert.ok(
@@ -320,7 +345,7 @@ describe("pitch-shipped-before-stop", { concurrency: false }, () => {
   // New logic: only ships the pitch matching THIS session's slug (X), not Y.
   it("does not warn when slug pitch is absent from ready/ (unrelated pitch present)", async () => {
     // Log slug is "foo"; ready/ only has "unrelated-pitch.md", not "foo.md"
-    writeLog("## committer Section\n\nCommitted.\n", "foo");
+    writeLog(true, "foo");
     writePitchReady("unrelated-pitch.md");
     const stderrOutput = await runHook(tmpDir, "slug-absent-sess-16");
     assert.ok(!stderrOutput.includes("WARNING"), "expected no warning");
@@ -328,8 +353,8 @@ describe("pitch-shipped-before-stop", { concurrency: false }, () => {
 
   // ── Test 17: free-form log (no slug) → no warning ────────────────────────
   it("does not warn when log has no slug (free-form session)", async () => {
-    // Log filename has no slug segment: <ts>_session.md
-    writeNonSessionLog("20260601_123456_session.md", "## committer Section\n\nCommitted.\n");
+    // Log has no init event and filename has no slug segment: <ts>_cycle.jsonl
+    writeNoSlugLog("20260601_123456_cycle.jsonl");
     writePitchReady("anything.md");
     const stderrOutput = await runHook(tmpDir, "free-form-sess-17");
     assert.ok(!stderrOutput.includes("WARNING"), "expected no warning");
@@ -337,7 +362,7 @@ describe("pitch-shipped-before-stop", { concurrency: false }, () => {
 
   // ── Test 14: does not block (observe-only) ────────────────────────────────
   it("returns null/undefined (observe-only — cannot block)", async () => {
-    writeLog("## committer Section\n\nCommitted.\n");
+    writeLog(true);
     writePitchReady("my-feature.md");
 
     // Run hook directly to capture return value alongside stderr

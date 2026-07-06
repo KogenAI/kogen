@@ -65,7 +65,7 @@ Never omit the load-bearing fact.
 
 ## Output Marker
 
-The curator's `## context-curator Section` in the session log MUST end with a line:
+The curator's context-curator role event body (written via `codegen-log section context-curator`) MUST end with a line:
 
 ```
 Files edited: <space-separated repo-relative paths>

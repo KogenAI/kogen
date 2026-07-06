@@ -63,16 +63,17 @@ make_input() {
         '{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":$cmd},"agent_type":"","agent_id":"abc","cwd":$cwd}'
 }
 
-# make_session_log: write a session log with curator section under codegen/logging/
-# $1 = project dir, $2 = curator section body (raw text, appended after header)
+# make_session_log: write a JSONL cycle log with a developer role event and,
+# optionally, a context-curator role event, under codegen/logging/.
+# $1 = project dir, $2 = curator role body (raw text; "" = no curator event)
 make_session_log() {
     local project_dir="$1"
     local curator_body="$2"
     mkdir -p "$project_dir/codegen/logging"
-    local log_path="$project_dir/codegen/logging/20260101_000000_test_session.md"
-    printf '# Step 1 — test\n\n## developer-phoenix-backend Section\n\nWork done.\n\n' >"$log_path"
+    local log_path="$project_dir/codegen/logging/20260101_000000_test_cycle.jsonl"
+    jq -c -n '{ev:"role",role:"developer-phoenix-backend",body:"Work done."}' >"$log_path"
     if [ -n "$curator_body" ]; then
-        printf '## context-curator Section\n\n%s\n' "$curator_body" >>"$log_path"
+        jq -c -n --arg body "$curator_body" '{ev:"role",role:"context-curator",body:$body}' >>"$log_path"
     fi
     printf '%s' "$log_path"
 }
@@ -135,7 +136,7 @@ rm -rf "$T7"
 # ── Test 8: recorded file is gitignored (session log under /codegen/) → ALLOW ─
 T8=$(make_project)
 # Session log itself lives under codegen/ which is in .gitignore
-log8=$(make_session_log "$T8" "Files edited: codegen/logging/20260101_000000_test_session.md")
+log8=$(make_session_log "$T8" "Files edited: codegen/logging/20260101_000000_test_cycle.jsonl")
 out=$(make_input 'echo "BUILD_RESULT: success"' "$T8" | CODEGEN_BUILD_START_TS="9999999999" TRANSCRIPT_PATH="" bash "$HOOK" 2>/dev/null || true)
 assert_not_contains "gitignored path dropped → ALLOW" '"permissionDecision"' "$out"
 rm -rf "$T8"
@@ -187,28 +188,30 @@ out=$(make_input 'echo "BUILD_RESULT: success"' "$T14" | CODEGEN_BUILD_START_TS=
 assert_not_contains "multi-path all present → ALLOW" '"permissionDecision"' "$out"
 rm -rf "$T14"
 
-# ── Test 15: section-bounded extraction — marker in DEVELOPER section, curator says none → ALLOW ─
-# The developer section contains "Files edited: context/development.md"; the curator section
-# contains "Files edited: none". The awk section-bounding must scope to the curator section only.
+# ── Test 15: role-bounded extraction — marker in DEVELOPER role, curator says none → ALLOW ─
+# The developer role event body contains "Files edited: context/development.md";
+# the context-curator role event body contains "Files edited: none". The role
+# selector (.role=="context-curator") must scope to the curator event only.
 T15=$(make_project)
 mkdir -p "$T15/context"
 echo "content" >"$T15/context/development.md"
 (cd "$T15" && git add context/development.md && git commit -qm "add development.md")
-log15="$T15/codegen/logging/20260101_000000_test_session.md"
+log15="$T15/codegen/logging/20260101_000000_test_cycle.jsonl"
 mkdir -p "$T15/codegen/logging"
-printf '# Step 1 — test\n\n## developer-phoenix-backend Section\n\nFiles edited: context/development.md\n\n## context-curator Section\n\nFiles edited: none\n' >"$log15"
+jq -c -n '{ev:"role",role:"developer-phoenix-backend",body:"Files edited: context/development.md"}' >"$log15"
+jq -c -n '{ev:"role",role:"context-curator",body:"Files edited: none"}' >>"$log15"
 out=$(make_input 'echo "BUILD_RESULT: success"' "$T15" | CODEGEN_BUILD_START_TS="9999999999" bash "$HOOK" 2>/dev/null || true)
-assert_not_contains "marker in developer section, curator=none → ALLOW (section-bounded)" '"permissionDecision"' "$out"
+assert_not_contains "marker in developer role, curator=none → ALLOW (role-bounded)" '"permissionDecision"' "$out"
 rm -rf "$T15"
 
-# ── Test 16: lowercase marker in curator section — strict format means fail-open (ALLOW) ─
+# ── Test 16: lowercase marker in curator role body — strict format means fail-open (ALLOW) ─
 # "files edited:" (lowercase f) does not match "^Files edited:" — hook must fail-open.
 T16=$(make_project)
-log16="$T16/codegen/logging/20260101_000000_test_session.md"
+log16="$T16/codegen/logging/20260101_000000_test_cycle.jsonl"
 mkdir -p "$T16/codegen/logging"
-printf '# Step 1 — test\n\n## context-curator Section\n\nfiles edited: context/foo.md\n' >"$log16"
+jq -c -n '{ev:"role",role:"context-curator",body:"files edited: context/foo.md"}' >"$log16"
 out=$(make_input 'echo "BUILD_RESULT: success"' "$T16" | CODEGEN_BUILD_START_TS="9999999999" bash "$HOOK" 2>/dev/null || true)
-assert_not_contains "lowercase marker in curator section → ALLOW (strict format)" '"permissionDecision"' "$out"
+assert_not_contains "lowercase marker in curator role → ALLOW (strict format)" '"permissionDecision"' "$out"
 rm -rf "$T16"
 
 printf '\n%d passed, %d failed\n' "$pass" "$fail"

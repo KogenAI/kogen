@@ -114,7 +114,7 @@ fi
 if [ -n "${STUB_SESSION_LOG:-}" ] && [ -n "$slug" ]; then
     log_ts="$(date -u +%Y%m%d_%H%M%S)"
     mkdir -p "$PWD/codegen/logging"
-    printf 'ALL CLEAR ✅\n' >"$PWD/codegen/logging/${log_ts}_${slug}_session.md"
+    printf '{"ev":"gate","role":"dev-gate","verdict":"clear"}\n' >"$PWD/codegen/logging/${log_ts}_${slug}_cycle.jsonl"
 fi
 
 eval "ship_flag=\"\${STUB_SHIP_${attempt}:-\${STUB_SHIP:-1}}\""
@@ -194,7 +194,7 @@ T2_OUT=$(
         bash "$HELPER" --harness=claude 2>&1
 ) || T2_EXIT=$?
 
-T2_SESSION_PATH="$(printf '%s\n' "$T2_ROOT/codegen/logging"/*_alpha_session.md 2>/dev/null | sed -n '1p')"
+T2_SESSION_PATH="$(printf '%s\n' "$T2_ROOT/codegen/logging"/*_alpha_cycle.jsonl 2>/dev/null | sed -n '1p')"
 T2_JSONL_PATH="$(printf '%s\n' "$T2_ROOT/codegen/logging"/*_alpha_build.jsonl 2>/dev/null | sed -n '1p')"
 
 assert_eq "T2: single pitch exits 0" "0" "$T2_EXIT"
@@ -600,29 +600,29 @@ LOG_DIR="$T14_LOG_DIR"
 START_TS="20260601_120000"
 SLUG="my-pitch"
 
-# T14-A: qualifying log with ALL CLEAR → returns 0
-T14A_LOG="$T14_LOG_DIR/${START_TS}_${SLUG}_session.md"
-printf 'Some content\nALL CLEAR ✅\nMore content\n' >"$T14A_LOG"
+# T14-A: qualifying log with gate-clear event → returns 0
+T14A_LOG="$T14_LOG_DIR/${START_TS}_${SLUG}_cycle.jsonl"
+printf '{"ev":"role","role":"planner-phoenix","body":"plan"}\n{"ev":"gate","role":"dev-gate","verdict":"clear"}\n{"ev":"role","role":"reviewer-phoenix","body":"lgtm"}\n' >"$T14A_LOG"
 T14A_RC=0
 is_gate_green "$SLUG" "$START_TS" || T14A_RC=$?
-assert_eq "T14-A: ALL CLEAR + ts>=start → 0" "0" "$T14A_RC"
+assert_eq "T14-A: gate-clear + ts>=start → 0" "0" "$T14A_RC"
 
-# T14-B: stale log (ts < start_ts) with ALL CLEAR → returns 1
+# T14-B: stale log (ts < start_ts) with gate-clear event → returns 1
 STALE_TS="20260601_115959"
-T14B_LOG="$T14_LOG_DIR/${STALE_TS}_${SLUG}_session.md"
-printf 'ALL CLEAR ✅\n' >"$T14B_LOG"
+T14B_LOG="$T14_LOG_DIR/${STALE_TS}_${SLUG}_cycle.jsonl"
+printf '{"ev":"gate","role":"dev-gate","verdict":"clear"}\n' >"$T14B_LOG"
 rm -f "$T14A_LOG"
 T14B_RC=0
 is_gate_green "$SLUG" "$START_TS" || T14B_RC=$?
-assert_eq "T14-B: ALL CLEAR but ts<start (stale) → 1" "1" "$T14B_RC"
+assert_eq "T14-B: gate-clear but ts<start (stale) → 1" "1" "$T14B_RC"
 
-# T14-C: qualifying log exists but NO ALL CLEAR → returns 1
-T14C_LOG="$T14_LOG_DIR/${START_TS}_${SLUG}_session.md"
-printf 'FAILED ❌\nNo gate green here\n' >"$T14C_LOG"
+# T14-C: qualifying log exists but NO gate-clear event → returns 1
+T14C_LOG="$T14_LOG_DIR/${START_TS}_${SLUG}_cycle.jsonl"
+printf '{"ev":"gate","role":"dev-gate","verdict":"failed"}\n' >"$T14C_LOG"
 rm -f "$T14B_LOG"
 T14C_RC=0
 is_gate_green "$SLUG" "$START_TS" || T14C_RC=$?
-assert_eq "T14-C: ts>=start but no ALL CLEAR → 1" "1" "$T14C_RC"
+assert_eq "T14-C: ts>=start but no gate-clear event → 1" "1" "$T14C_RC"
 
 # T14-D: no matching log at all → returns 1
 rm -f "$T14C_LOG"
@@ -630,37 +630,37 @@ T14D_RC=0
 is_gate_green "$SLUG" "$START_TS" || T14D_RC=$?
 assert_eq "T14-D: no matching log → 1" "1" "$T14D_RC"
 
-# T14-E: two logs, newest has ALL CLEAR → 0; oldest also has ALL CLEAR
+# T14-E: two logs, newest has gate-clear → 0; oldest also has gate-clear
 OLDER_TS="20260601_120001"
 NEWER_TS="20260601_130000"
-T14E_OLD="$T14_LOG_DIR/${OLDER_TS}_${SLUG}_session.md"
-T14E_NEW="$T14_LOG_DIR/${NEWER_TS}_${SLUG}_session.md"
-printf 'ALL CLEAR ✅\n' >"$T14E_OLD"
-printf 'ALL CLEAR ✅\n' >"$T14E_NEW"
+T14E_OLD="$T14_LOG_DIR/${OLDER_TS}_${SLUG}_cycle.jsonl"
+T14E_NEW="$T14_LOG_DIR/${NEWER_TS}_${SLUG}_cycle.jsonl"
+printf '{"ev":"gate","role":"dev-gate","verdict":"clear"}\n' >"$T14E_OLD"
+printf '{"ev":"gate","role":"dev-gate","verdict":"clear"}\n' >"$T14E_NEW"
 T14E_RC=0
 is_gate_green "$SLUG" "$START_TS" || T14E_RC=$?
-assert_eq "T14-E: two logs, newest (ts-greatest) has ALL CLEAR → 0" "0" "$T14E_RC"
+assert_eq "T14-E: two logs, newest (ts-greatest) has gate-clear → 0" "0" "$T14E_RC"
 
-# T14-F: two logs, newest lacks ALL CLEAR though older has it → 1 (newest wins)
-printf 'FAILED ❌\n' >"$T14E_NEW"
+# T14-F: two logs, newest lacks gate-clear though older has it → 1 (newest wins)
+printf '{"ev":"gate","role":"dev-gate","verdict":"failed"}\n' >"$T14E_NEW"
 T14F_RC=0
 is_gate_green "$SLUG" "$START_TS" || T14F_RC=$?
-assert_eq "T14-F: newest lacks ALL CLEAR though older has it → 1" "1" "$T14F_RC"
+assert_eq "T14-F: newest lacks gate-clear though older has it → 1" "1" "$T14F_RC"
 rm -f "$T14E_OLD" "$T14E_NEW"
 
 # T14-G: slug-suffix isolation — log for "bar-my-pitch" does NOT match "my-pitch"
 SUFFIX_SLUG="bar-${SLUG}"
-T14G_LOG="$T14_LOG_DIR/${START_TS}_${SUFFIX_SLUG}_session.md"
-printf 'ALL CLEAR ✅\n' >"$T14G_LOG"
+T14G_LOG="$T14_LOG_DIR/${START_TS}_${SUFFIX_SLUG}_cycle.jsonl"
+printf '{"ev":"gate","role":"dev-gate","verdict":"clear"}\n' >"$T14G_LOG"
 T14G_RC=0
 is_gate_green "$SLUG" "$START_TS" || T14G_RC=$?
 assert_eq "T14-G: bar-my-pitch log does not satisfy is_gate_green my-pitch → 1" "1" "$T14G_RC"
 rm -f "$T14G_LOG"
 
 # ── Test T15: gate-green / commit-pending retry integration ───────────────────
-# Child fails non-transient (has result record) but a session log with ALL CLEAR
-# appears in logging/ with ts >= child-start ts → queue retries instead of halt.
-# On second attempt the stub ships the pitch.
+# Child fails non-transient (has result record) but a cycle log with a
+# gate-clear event appears in logging/ with ts >= child-start ts → queue
+# retries instead of halt. On second attempt the stub ships the pitch.
 T15_ROOT="$TMP_ROOT/t15"
 make_workspace "$T15_ROOT"
 printf 'Pitch: beta\n' >"$T15_ROOT/codegen/pitches/ready/beta.md"
@@ -669,7 +669,7 @@ T15_CALL_LOG="$T15_ROOT/calls.log"
 T15_ATTEMPT_FILE="$T15_ROOT/attempt"
 T15_DET='{"type":"result","result":"committed but not shipped","session_id":"sT15"}'
 
-# Stub that writes an ALL CLEAR session log on attempt 1 then ships on attempt 2.
+# Stub that writes a gate-clear cycle log on attempt 1 then ships on attempt 2.
 cat >"$T15_ROOT/fake-codegen-bin/codegen-build" <<'STUB15'
 #!/usr/bin/env bash
 CALL_LOG="${STUB_CALL_LOG:-/dev/null}"
@@ -696,10 +696,10 @@ slug="$(basename "$pitch_path" .md)"
 if [ "$attempt" = "1" ]; then
     # Emit deterministic result (so is_transient returns 1 / not transient).
     printf '{"type":"result","result":"gate passed but not shipped","session_id":"sT15"}\n'
-    # Write a session log with ALL CLEAR for this slug, using a ts >= child's ts.
+    # Write a cycle log with a gate-clear event for this slug, using a ts >= child's ts.
     log_ts="$(date -u +%Y%m%d_%H%M%S)"
     mkdir -p "$PWD/codegen/logging"
-    printf 'ALL CLEAR ✅\n' >"$PWD/codegen/logging/${log_ts}_${slug}_session.md"
+    printf '{"ev":"gate","role":"dev-gate","verdict":"clear"}\n' >"$PWD/codegen/logging/${log_ts}_${slug}_cycle.jsonl"
     exit 1
 fi
 
@@ -739,7 +739,7 @@ printf 'Pitch: gamma\n' >"$T15B_ROOT/codegen/pitches/ready/gamma.md"
 
 T15B_CALL_LOG="$T15B_ROOT/calls.log"
 
-# Stub: always emits ALL CLEAR session log but never ships.
+# Stub: always emits a gate-clear cycle log but never ships.
 cat >"$T15B_ROOT/fake-codegen-bin/codegen-build" <<'STUB15B'
 #!/usr/bin/env bash
 CALL_LOG="${STUB_CALL_LOG:-/dev/null}"
@@ -757,7 +757,7 @@ slug="$(basename "$pitch_path" .md)"
 printf '{"type":"result","result":"deterministic failure","session_id":"sT15B"}\n'
 log_ts="$(date -u +%Y%m%d_%H%M%S)"
 mkdir -p "$PWD/codegen/logging"
-printf 'ALL CLEAR ✅\n' >"$PWD/codegen/logging/${log_ts}_${slug}_session.md"
+printf '{"ev":"gate","role":"dev-gate","verdict":"clear"}\n' >"$PWD/codegen/logging/${log_ts}_${slug}_cycle.jsonl"
 exit 1
 STUB15B
 chmod +x "$T15B_ROOT/fake-codegen-bin/codegen-build"
@@ -777,7 +777,7 @@ T15B_CALLS="$(grep -c '.' "$T15B_CALL_LOG" 2>/dev/null || printf '0')"
 assert_eq "T15-B: total calls = 3 (1 initial + 2 retries = MAX_RETRIES)" "3" "$T15B_CALLS"
 
 # ── Test T16: gate green + HEAD changed but ship-marker absent → ship, no re-spawn ─
-# Simulates: child's gate passes (ALL CLEAR), child made a git commit (HEAD moved)
+# Simulates: child's gate passes (gate-clear), child made a git commit (HEAD moved)
 # but did NOT move the pitch file to shipped/. build-queue should detect the
 # HEAD-changed case and complete shipping without re-spawning the child.
 T16_ROOT="$TMP_ROOT/t16"
@@ -798,7 +798,7 @@ printf 'Pitch: kappa\n' >"$T16_ROOT/codegen/pitches/ready/kappa.md"
 
 T16_CALL_LOG="$T16_ROOT/calls.log"
 
-# Custom stub: emits ALL CLEAR session log + makes a real git commit in $PWD
+# Custom stub: emits a gate-clear cycle log + makes a real git commit in $PWD
 # but does NOT move the pitch to shipped/.
 cat >"$T16_ROOT/fake-codegen-bin/codegen-build" <<'STUB16'
 #!/usr/bin/env bash
@@ -818,10 +818,10 @@ slug="$(basename "$pitch_path" .md)"
 # Emit a deterministic result record (not transient).
 printf '{"type":"result","result":"gate passed, committed but not shipped","session_id":"sT16"}\n'
 
-# Write ALL CLEAR session log so is_gate_green returns 0.
+# Write a gate-clear cycle log so is_gate_green returns 0.
 log_ts="$(date -u +%Y%m%d_%H%M%S)"
 mkdir -p "$PWD/codegen/logging"
-printf 'ALL CLEAR ✅\n' >"$PWD/codegen/logging/${log_ts}_${slug}_session.md"
+printf '{"ev":"gate","role":"dev-gate","verdict":"clear"}\n' >"$PWD/codegen/logging/${log_ts}_${slug}_cycle.jsonl"
 
 # Make a real git commit so HEAD changes (simulates committer sub-agent having committed).
 printf 'child change\n' >child-change.txt
@@ -1100,7 +1100,7 @@ pitch_path="${pitch_path#@}"
 slug="$(basename "$pitch_path" .md)"
 log_ts="$(date -u +%Y%m%d_%H%M%S)"
 mkdir -p "$PWD/codegen/logging"
-printf 'ALL CLEAR ✅\n' >"$PWD/codegen/logging/${log_ts}_${slug}_session.md"
+printf '{"ev":"gate","role":"dev-gate","verdict":"clear"}\n' >"$PWD/codegen/logging/${log_ts}_${slug}_cycle.jsonl"
 printf '{"type":"result","result":"live body should stay in jsonl","session_id":"sT21"}\n'
 sleep 2
 shipped_dir="$PWD/codegen/pitches/shipped"
@@ -1133,7 +1133,7 @@ done
 
 wait "$T21_PID" || T21_EXIT=$?
 T21_OUT="$(<"$T21_OUT_LOG")"
-T21_SESSION_PATH="$(printf '%s\n' "$T21_ROOT/codegen/logging"/*_live_session.md 2>/dev/null | sed -n '1p')"
+T21_SESSION_PATH="$(printf '%s\n' "$T21_ROOT/codegen/logging"/*_live_cycle.jsonl 2>/dev/null | sed -n '1p')"
 T21_JSONL_CONTENT="$(<"$T21_JSONL_PATH")"
 
 assert_eq "T21: live build exits 0" "0" "$T21_EXIT"

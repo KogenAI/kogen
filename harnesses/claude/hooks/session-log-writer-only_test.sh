@@ -39,7 +39,7 @@ run_test() {
     fi
 }
 
-LOG_PATH="codegen/logging/20260101_120000_test_session.md"
+LOG_PATH="codegen/logging/20260101_120000_test_cycle.jsonl"
 NON_LOG_MD="codegen/pitches/ready/some-pitch.md"
 
 make_write_fixture() {
@@ -76,11 +76,11 @@ run_test "Write on non-log .md path — ALLOW" "0" "$(make_write_fixture "$NON_L
 run_test "Edit on non-log .md path — ALLOW" "0" "$(make_edit_fixture "$NON_LOG_MD")"
 
 # ── Bash writes into a log (redirect, tee, in-place-stream-edit, move-into-log) → DENY (4) ──
-run_test "Bash redirect > into log — DENY" "2" "$(make_bash_fixture "echo hi > codegen/logging/20260101_120000_test_session.md")"
-run_test "Bash append >> into log — DENY" "2" "$(make_bash_fixture "printf 'x' >> codegen/logging/20260101_120000_test_session.md")"
-run_test "Bash tee into log — DENY" "2" "$(make_bash_fixture "echo hi | tee -a codegen/logging/20260101_120000_test_session.md")"
-run_test "Bash sed -i in-place-edit on log — DENY" "2" "$(make_bash_fixture "sed -i '' 's/a/b/' codegen/logging/20260101_120000_test_session.md")"
-run_test "Bash mv into log path — DENY" "2" "$(make_bash_fixture "mv /tmp/foo.md codegen/logging/20260101_120000_test_session.md")"
+run_test "Bash redirect > into log — DENY" "2" "$(make_bash_fixture "echo hi > codegen/logging/20260101_120000_test_cycle.jsonl")"
+run_test "Bash append >> into log — DENY" "2" "$(make_bash_fixture "printf 'x' >> codegen/logging/20260101_120000_test_cycle.jsonl")"
+run_test "Bash tee into log — DENY" "2" "$(make_bash_fixture "echo hi | tee -a codegen/logging/20260101_120000_test_cycle.jsonl")"
+run_test "Bash sed -i in-place-edit on log — DENY" "2" "$(make_bash_fixture "sed -i '' 's/a/b/' codegen/logging/20260101_120000_test_cycle.jsonl")"
+run_test "Bash mv into log path — DENY" "2" "$(make_bash_fixture "mv /tmp/foo.md codegen/logging/20260101_120000_test_cycle.jsonl")"
 
 # ── codegen-log init/section/section --role/append Bash → ALLOW (4) ──
 run_test "Bash codegen-log init — ALLOW" "0" "$(make_bash_fixture "codegen-log init --slug demo")"
@@ -94,7 +94,7 @@ run_test "Bash unrelated read (cat other file) — ALLOW" "0" "$(make_bash_fixtu
 
 # ── BYPASS debug/shape/ops ──
 run_test "debug role bypass on Write to log — ALLOW" "0" "$(make_write_fixture "$LOG_PATH")" "CLAUDE_ROLE=debug"
-run_test "shape role bypass on Bash redirect into log — ALLOW" "0" "$(make_bash_fixture "echo hi > codegen/logging/20260101_120000_test_session.md")" "CLAUDE_ROLE=shape"
+run_test "shape role bypass on Bash redirect into log — ALLOW" "0" "$(make_bash_fixture "echo hi > codegen/logging/20260101_120000_test_cycle.jsonl")" "CLAUDE_ROLE=shape"
 run_test "ops role bypass on MultiEdit to log — ALLOW" "0" "$(make_multiedit_fixture "$LOG_PATH")" "CLAUDE_ROLE=ops"
 
 # ─────────────────────────────────────────────────────────────────────────────

@@ -83,39 +83,39 @@ fi
 
 debug_log step-log-completeness "log=$log_file"
 
-# Skip when INCONCLUSIVE is present — orchestrator is in recovery mode.
-if grep -qE 'INCONCLUSIVE ⚠️' "$log_file" 2>/dev/null; then
-    debug_log step-log-completeness "skip: INCONCLUSIVE in log"
+# Skip when an inconclusive gate event is present — orchestrator is in
+# recovery mode.
+if jq -e 'select(.ev=="gate" and .verdict=="inconclusive")' "$log_file" >/dev/null 2>&1; then
+    debug_log step-log-completeness "skip: INCONCLUSIVE gate event in log"
     exit 0
 fi
 
-# Skip when a death marker is present — orchestrator is mid-recovery.
-if grep -qF '### INTERRUPTED ⚠️' "$log_file" 2>/dev/null || grep -qF '### ABORTED 💀' "$log_file" 2>/dev/null; then
-    debug_log step-log-completeness "skip: death marker in log (in recovery)"
+# Skip when a death event is present — orchestrator is mid-recovery.
+if jq -e 'select(.ev=="died")' "$log_file" >/dev/null 2>&1; then
+    debug_log step-log-completeness "skip: death event in log (in recovery)"
     exit 0
 fi
 
-# _section_body_floor <log_file> <section_header>
-# Extracts the body of the named section, skipping blank lines and ### retro blocks.
-# Blocks if body is empty OR a single line shorter than 40 chars (suspected death).
-_section_body_floor() {
+# _role_body_floor <log_file> <role> — concatenates every role event body for
+# the given role (decoded from the JSONL cycle log, in call order), skipping
+# blank lines and ### retro blocks. Blocks if the concatenated body is empty
+# (suspected death — the role appears to have produced no real content).
+_role_body_floor() {
     local _lf="$1"
-    local _hdr="$2"
-    if ! grep -qF "$_hdr" "$_lf" 2>/dev/null; then
+    local _role="$2"
+    if ! jq -e --arg r "$_role" 'select(.ev=="role" and .role==$r)' "$_lf" >/dev/null 2>&1; then
         return 0
     fi
     local _body
-    _body=$(awk -v header="$_hdr" '
-        found && /^## / { exit }
-        found && /^### What I Learned/ { in_retro=1; next }
+    _body=$(jq -r --arg r "$_role" 'select(.ev=="role" and .role==$r)|.body' "$_lf" 2>/dev/null | awk '
+        /^### What I Learned/ { in_retro=1; next }
         in_retro && /^[[:space:]]*$/ { next }
         in_retro && /^[[:space:]]*[-*]/ { next }
         in_retro { in_retro=0 }
-        found && !/^###/ { print }
-        $0 == header { found=1 }
-    ' "$_lf" 2>/dev/null | grep -v '^[[:space:]]*$')
+        !/^###/ { print }
+    ' | grep -v '^[[:space:]]*$')
     if [ -z "$_body" ]; then
-        block "step-log-completeness: '$_hdr' has no real body — the role appears to have died mid-response (empty or status-line-only section). Recover: write the INTERRUPTED/ABORTED death stamp and re-spawn the dead role, OR mark the stage ABORTED 💀 and halt. Do not advance the cycle past a dead stage. Step log: $_lf"
+        block "step-log-completeness: role '$_role' has no real body — the role appears to have died mid-response (empty or status-line-only body). Recover: write the INTERRUPTED/ABORTED death stamp and re-spawn the dead role, OR mark the stage ABORTED 💀 and halt. Do not advance the cycle past a dead stage. Step log: $_lf"
         exit 0
     fi
 }
@@ -138,25 +138,25 @@ if [ -n "$cs_state" ] && [ "$cs_step" = "$log_file" ]; then
         debug_log step-log-completeness "BLOCK: cycle-state=$cs_state — $role not yet run"
         case "$cs_state" in
         REVIEWED)
-            # Content-floor: reviewer section must have a real body.
-            _floor_hdr=$(grep -m1 '^## reviewer-' "$log_file" 2>/dev/null || true)
-            if [ -n "$_floor_hdr" ]; then
-                _section_body_floor "$log_file" "$_floor_hdr"
+            # Content-floor: reviewer role event must have a real body.
+            _floor_role=$(jq -r 'select(.ev=="role" and (.role | startswith("reviewer-")))|.role' "$log_file" 2>/dev/null | tail -n 1)
+            if [ -n "$_floor_role" ]; then
+                _role_body_floor "$log_file" "$_floor_role"
             fi
             block "step-log-completeness: reviewer finished (cycle-state=REVIEWED) but context-curator has not run yet. Continue the cycle: delegate to context-curator, then committer. Step log: $log_file"
             ;;
         CURATED)
-            # Content-floor: context-curator section must have a real body.
-            _section_body_floor "$log_file" "## context-curator Section"
+            # Content-floor: context-curator role event must have a real body.
+            _role_body_floor "$log_file" "context-curator"
             block "step-log-completeness: context-curator finished (cycle-state=CURATED) but committer has not run yet. Continue the cycle: delegate to committer. Step log: $log_file"
             ;;
         GATED)
             verdict=$(cycle_state_verdict "$project_dir")
             if [ "$verdict" = "clear" ]; then
-                # Content-floor: developer section must have a real body when gate cleared.
-                _floor_hdr=$(grep -m1 '^## developer-' "$log_file" 2>/dev/null || true)
-                if [ -n "$_floor_hdr" ]; then
-                    _section_body_floor "$log_file" "$_floor_hdr"
+                # Content-floor: developer role event must have a real body when gate cleared.
+                _floor_role=$(jq -r 'select(.ev=="role" and (.role | startswith("developer-")))|.role' "$log_file" 2>/dev/null | tail -n 1)
+                if [ -n "$_floor_role" ]; then
+                    _role_body_floor "$log_file" "$_floor_role"
                 fi
                 block "step-log-completeness: developer gate cleared (ALL CLEAR ✅) but reviewer has not run yet. Continue the cycle: delegate to reviewer-phoenix, then context-curator, then committer. Step log: $log_file"
             else

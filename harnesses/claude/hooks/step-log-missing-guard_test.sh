@@ -104,7 +104,7 @@ rm -rf "$Tb"
 # ── Test (c): developer-phoenix-backend Agent call + log Write → no block ────
 Tc=$(make_project)
 TRANSCRIPT_Tc="$Tc/transcript.jsonl"
-LOG_Tc="$Tc/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_session.md"
+LOG_Tc="$Tc/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_cycle.jsonl"
 touch "$LOG_Tc"
 make_transcript_agent_and_log "$TRANSCRIPT_Tc" "developer-phoenix-backend" "$LOG_Tc"
 out=$(make_input "$Tc" false "" "$TRANSCRIPT_Tc" | bash "$HOOK" 2>/dev/null || true)
@@ -154,7 +154,7 @@ Th=$(make_project)
 TRANSCRIPT_Th="$Th/transcript.jsonl"
 printf '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Agent","input":{"subagent_type":"developer-phoenix-backend"}}]}}\n' \
     >"$TRANSCRIPT_Th"
-printf '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Bash","input":{"command":"cat > /tmp/x/codegen/logging/foo_session.md << '"'"'EOF'"'"'\\n# Step 1\\nEOF"}}]}}\n' \
+printf '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Bash","input":{"command":"cat > /tmp/x/codegen/logging/foo_cycle.jsonl << '"'"'EOF'"'"'\\n# Step 1\\nEOF"}}]}}\n' \
     >>"$TRANSCRIPT_Th"
 out=$(make_input "$Th" false "" "$TRANSCRIPT_Th" | bash "$HOOK" 2>/dev/null || true)
 assert_contains "step log via Bash heredoc → BLOCK" '"decision"' "$out"
@@ -166,7 +166,7 @@ Ti=$(make_project)
 TRANSCRIPT_Ti="$Ti/transcript.jsonl"
 printf '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Agent","input":{"subagent_type":"developer-phoenix-backend"}}]}}\n' \
     >"$TRANSCRIPT_Ti"
-printf '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Bash","input":{"command":"echo \\\"# Session\\\" > codegen/logging/bar_session.md"}}]}}\n' \
+printf '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Bash","input":{"command":"echo \\\"# Session\\\" > codegen/logging/bar_cycle.jsonl"}}]}}\n' \
     >>"$TRANSCRIPT_Ti"
 out=$(make_input "$Ti" false "" "$TRANSCRIPT_Ti" | bash "$HOOK" 2>/dev/null || true)
 assert_contains "step log via echo redirect → BLOCK" '"decision"' "$out"
@@ -180,7 +180,7 @@ printf '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Age
     >"$TRANSCRIPT_Tj"
 printf '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Bash","input":{"command":"ls codegen/logging/"}}]}}\n' \
     >>"$TRANSCRIPT_Tj"
-printf '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Bash","input":{"command":"grep -E PATTERN codegen/logging/foo.md"}}]}}\n' \
+printf '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Bash","input":{"command":"grep -E PATTERN codegen/logging/foo.jsonl"}}]}}\n' \
     >>"$TRANSCRIPT_Tj"
 out=$(make_input "$Tj" false "" "$TRANSCRIPT_Tj" | bash "$HOOK" 2>/dev/null || true)
 assert_contains "ls/grep on logging path → still BLOCK (no Write)" '"decision"' "$out"
@@ -245,7 +245,7 @@ rm -rf "$To"
 #              with no log after it → BLOCK ───────────────────────────────────
 Tp=$(make_project)
 TRANSCRIPT_Tp="$Tp/transcript.jsonl"
-LOG_Tp="$Tp/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_session.md"
+LOG_Tp="$Tp/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_cycle.jsonl"
 touch "$LOG_Tp"
 printf '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Write","input":{"file_path":"%s"}}]}}\n' \
     "$LOG_Tp" >"$TRANSCRIPT_Tp"
@@ -265,7 +265,7 @@ rm -rf "$Tp"
 Tq=$(make_project)
 TRANSCRIPT_Tq="$Tq/transcript.jsonl"
 make_transcript_with_agent "$TRANSCRIPT_Tq" "developer-phoenix-backend"
-LOG_Tq="$Tq/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_sentinel-test_session.md"
+LOG_Tq="$Tq/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_sentinel-test_cycle.jsonl"
 touch "$LOG_Tq"
 printf '%s' "$LOG_Tq" >"$Tq/codegen/logging/.active"
 # Ensure the sentinel is at least as fresh as the transcript (touch after).
@@ -279,7 +279,7 @@ rm -rf "$Tq"
 Tr=$(make_project)
 TRANSCRIPT_Tr="$Tr/transcript.jsonl"
 make_transcript_with_agent "$TRANSCRIPT_Tr" "developer-phoenix-backend"
-STALE_LOG_Tr="$Tr/codegen/logging/20200101_000000_deleted-log_session.md"
+STALE_LOG_Tr="$Tr/codegen/logging/20200101_000000_deleted-log_cycle.jsonl"
 printf '%s' "$STALE_LOG_Tr" >"$Tr/codegen/logging/.active"
 # Deliberately do NOT create $STALE_LOG_Tr — sentinel points at a nonexistent file.
 out=$(make_input "$Tr" false "" "$TRANSCRIPT_Tr" | env -u CLAUDE_ROLE -u PI_ROLE bash "$HOOK" 2>/dev/null || true)
@@ -291,7 +291,7 @@ Ts=$(make_project)
 TRANSCRIPT_Ts="$Ts/transcript.jsonl"
 printf '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Agent","input":{"subagent_type":"developer-phoenix-backend"}}]}}\n' \
     >"$TRANSCRIPT_Ts"
-printf '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Bash","input":{"command":"cat > /tmp/x/codegen/logging/foo_session.md << '"'"'EOF'"'"'\\n# Step 1\\nEOF"}}]}}\n' \
+printf '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Bash","input":{"command":"cat > /tmp/x/codegen/logging/foo_cycle.jsonl << '"'"'EOF'"'"'\\n# Step 1\\nEOF"}}]}}\n' \
     >>"$TRANSCRIPT_Ts"
 out=$(make_input "$Ts" false "" "$TRANSCRIPT_Ts" | bash "$HOOK" 2>/dev/null || true)
 assert_contains "T(s): bash-redirect fire — still BLOCK" '"decision"' "$out"

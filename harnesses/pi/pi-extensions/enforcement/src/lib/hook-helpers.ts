@@ -171,7 +171,7 @@ export function voidCtx(_ctx: ExtensionContext): void {
 }
 
 /**
- * getActiveStepLog() — Resolve the active codegen/logging/*.md session log
+ * getActiveStepLog() — Resolve the active codegen/logging/*.jsonl cycle log
  * for a project dir.
  *
  * Resolution order (mirrors codegen-log's resolve_log_file precedence, minus
@@ -180,9 +180,9 @@ export function voidCtx(_ctx: ExtensionContext): void {
  *   1. codegen/logging/.active sentinel (written by `codegen-log init` /
  *      `relocate`), IFF it points at a path that still exists on disk. Full
  *      fidelity for Pi: this is a synchronous disk read, so unlike the Claude
- *      transcript-scan fallback it needs no JSONL/flush timing workaround —
- *      the sentinel is native ground truth here.
- *   2. Most recently modified canonical *.md file in codegen/logging/
+ *      transcript-scan fallback it needs no flush timing workaround — the
+ *      sentinel is native ground truth here.
+ *   2. Most recently modified canonical *.jsonl file in codegen/logging/
  *      (mtime scan, `progress` files excluded) — belt-and-suspenders when no
  *      sentinel is present (fixtures that never ran codegen-log init) or the
  *      sentinel is stale (points at a relocated/deleted log).
@@ -209,7 +209,7 @@ export function getActiveStepLog(projectDir: string): string | null {
   try {
     logFiles = fs
       .readdirSync(loggingDir)
-      .filter((f) => f.endsWith(".md") && !f.includes("progress"))
+      .filter((f) => f.endsWith(".jsonl") && !f.includes("progress"))
       .map((f) => ({
         name: f,
         mtime: fs.statSync(path.join(loggingDir, f)).mtimeMs,
@@ -221,4 +221,42 @@ export function getActiveStepLog(projectDir: string): string | null {
 
   if (logFiles.length === 0) return null;
   return path.join(loggingDir, logFiles[0].name);
+}
+
+/** Shape of codegen/gate-pending/cycle-state.json (mirrors cycle-state.sh). */
+export interface CycleState {
+  state: string;
+  step_log: string;
+  session_id: string;
+  verdict: string;
+  updated_at: string;
+}
+
+/**
+ * getCycleState() — reads codegen/gate-pending/cycle-state.json for a
+ * project dir. Mirrors cycle-state.sh's cycle_state_get and friends.
+ * Returns null when the file is absent, unreadable, or malformed JSON.
+ */
+export function getCycleState(projectDir: string): CycleState | null {
+  const f = path.join(
+    projectDir,
+    "codegen",
+    "gate-pending",
+    "cycle-state.json",
+  );
+  if (!fs.existsSync(f)) return null;
+  try {
+    const parsed = JSON.parse(fs.readFileSync(f, "utf8"));
+    return {
+      state: typeof parsed.state === "string" ? parsed.state : "",
+      step_log: typeof parsed.step_log === "string" ? parsed.step_log : "",
+      session_id:
+        typeof parsed.session_id === "string" ? parsed.session_id : "",
+      verdict: typeof parsed.verdict === "string" ? parsed.verdict : "",
+      updated_at:
+        typeof parsed.updated_at === "string" ? parsed.updated_at : "",
+    };
+  } catch {
+    return null;
+  }
 }

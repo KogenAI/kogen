@@ -130,7 +130,7 @@ Load when integrating external libraries. Generate if missing: `ocg usage-rules`
 
 All agents create session logs.
 
-**WHERE**: `./codegen/logging/$(date -u +%Y%m%d_%H%M%S)_<slug>_session.md`
+**WHERE**: `./codegen/logging/$(date -u +%Y%m%d_%H%M%S)_<slug>_cycle.jsonl`
 (See `shared/rules/_core/session-log.md` for canonical schema.)
 
 **Agent roles**: `orchestrator`, `poc-developer`, `reviewer-phoenix`

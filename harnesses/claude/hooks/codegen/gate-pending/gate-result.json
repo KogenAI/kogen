@@ -1,0 +1,19 @@
+{
+  "gate": "make ci",
+  "mode": "short",
+  "diff_sha": "823c53e",
+  "diff_files_count": 424,
+  "runner_found": true,
+  "exit": 0,
+  "execution_evidence": 1,
+  "expected_segments": 1,
+  "render_verdict": "",
+  "verdict": "clear",
+  "verdict_marker": "ALL CLEAR ✅",
+  "classification": "",
+  "started": "2026-07-05T23:33:13Z",
+  "ended": "2026-07-05T23:33:13Z",
+  "session_id": "unknown",
+  "log": "",
+  "witness": ""
+}

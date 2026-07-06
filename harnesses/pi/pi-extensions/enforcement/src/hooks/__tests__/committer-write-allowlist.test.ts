@@ -49,20 +49,20 @@ describe("committer-write-allowlist", () => {
     delete process.env["AGENT_TYPE"];
   });
 
-  // ── Write/Edit: ALLOW (canonical session log path) ─────────────────────
+  // ── Write/Edit: ALLOW (canonical cycle log path) ─────────────────────
 
-  it("allows Write to canonical session log", async () => {
+  it("allows Write to canonical cycle log", async () => {
     const result = await runFileHook(
       "write",
-      "codegen/logging/20260607_120000_session.md",
+      "codegen/logging/20260607_120000_my-task_cycle.jsonl",
     );
     assert.ok(result == null || (result as { block?: boolean }).block !== true);
   });
 
-  it("allows Edit to canonical step log", async () => {
+  it("allows Edit to canonical cycle log", async () => {
     const result = await runFileHook(
       "edit",
-      "codegen/logging/20260607_120000_step1_my-task.md",
+      "codegen/logging/20260607_120000_my-task_cycle.jsonl",
     );
     assert.ok(result == null || (result as { block?: boolean }).block !== true);
   });

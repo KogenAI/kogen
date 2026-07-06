@@ -1,6 +1,6 @@
 /**
- * step-log-section-before-spawn.ts — Pi enforcement: require step log +
- * section header before any subagent spawn.
+ * step-log-section-before-spawn.ts — Pi enforcement: require cycle log +
+ * required role event before any subagent spawn.
  *
  * Mirrors: harnesses/claude/hooks/step-log-section-before-spawn.sh
  * Event: tool_call
@@ -8,15 +8,21 @@
  *
  * Logic:
  *   Read subagent_type from tool input.
- *   Map planner-* → "## Plan"; anything else → "## <type> Section".
- *   Locate active step log via getActiveStepLog().
+ *   Map planner-* → any role event whose "role" startsWith "planner";
+ *   anything else → the subagent_type itself (literal role match).
+ *   Locate active cycle log via getActiveStepLog().
  *   If no log found → deny ("create step log FIRST")
- *   If log exists but expected header absent → deny (naming the missing header)
+ *   If log exists but expected role event absent → deny (naming the missing role)
  *   Else → allow
  *
  * Fail-open: only when no log path resolves at all (log dir/file absent).
  * A log path that resolves but throws on read (present-but-unreadable) denies —
- * an unreadable log cannot prove the required header exists.
+ * an unreadable log cannot prove the required role event exists.
+ *
+ * REDUCED FIDELITY NOTE: Pi has no transcript access, so this twin cannot
+ * emit the Claude original's diagnostic breadcrumb file. The core role-event
+ * + prior-stage-body checks are otherwise mirrored line-for-line against the
+ * Claude jq contract (role startsWith("planner") OR role===need).
  */
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
@@ -30,41 +36,86 @@ export const HANDLER_META = {
   matcher: "subagent",
 } as const;
 
-/** Map subagent type to the expected header string. */
-function expectedHeader(subagentType: string): string {
-  if (subagentType.startsWith("planner")) {
-    return "## Plan";
+type CycleEvent = {
+  ev?: string;
+  role?: string;
+  body?: string;
+};
+
+/** Parse a .jsonl cycle log into its event objects, skipping malformed lines. */
+function parseCycleLog(logContent: string): CycleEvent[] {
+  const events: CycleEvent[] = [];
+  for (const line of logContent.split("\n")) {
+    if (!line.trim()) continue;
+    try {
+      events.push(JSON.parse(line) as CycleEvent);
+    } catch {
+      // Malformed/partial line (append-only file mid-write) — skip.
+      continue;
+    }
   }
-  return `## ${subagentType} Section`;
+  return events;
+}
+
+/** Does at least one "role" event match the expected role token? */
+function roleEventPresent(events: CycleEvent[], need: string): boolean {
+  if (need.startsWith("planner")) {
+    return events.some(
+      (e) => e.ev === "role" && (e.role ?? "").startsWith("planner"),
+    );
+  }
+  return events.some((e) => e.ev === "role" && e.role === need);
 }
 
 /**
- * Return true when the named section has at least one non-heading body line,
- * excluding the "### What I Learned This Step" retrospective block (which is
- * not real content on its own). Any other "### " line (e.g. a verdict
- * marker like "### FINAL VERDICT — APPROVED") counts as body content.
+ * Return true when the given role has at least one non-heading body line
+ * across ALL its role events (concatenated in file order), excluding the
+ * "### What I Learned This Step" retrospective block (which is not real
+ * content on its own). Any other "### " line (e.g. a verdict marker like
+ * "### FINAL VERDICT — APPROVED") counts as body content.
  */
-function sectionHasBody(logContent: string, header: string): boolean {
-  const lines = logContent.split("\n");
-  const headerIdx = lines.findIndex((l) => l === header);
-  if (headerIdx === -1) return false;
+function roleHasBody(events: CycleEvent[], role: string): boolean {
+  const bodies = events
+    .filter((e) => e.ev === "role" && e.role === role)
+    .map((e) => e.body ?? "");
 
-  let inRetro = false;
-  for (let i = headerIdx + 1; i < lines.length; i++) {
-    const line = lines[i];
-    if (line.startsWith("## ")) break;
-    if (line.startsWith("### What I Learned")) {
-      inRetro = true;
-      continue;
+  for (const body of bodies) {
+    const lines = body.split("\n");
+    let inRetro = false;
+    for (const line of lines) {
+      if (line.startsWith("### What I Learned")) {
+        inRetro = true;
+        continue;
+      }
+      if (inRetro && line.trim() === "") continue;
+      if (inRetro && /^\s*[-*]/.test(line)) continue;
+      if (inRetro) inRetro = false;
+      if (line.trim() === "") continue;
+      return true;
     }
-    if (inRetro && line.trim() === "") continue;
-    if (inRetro && /^\s*[-*]/.test(line)) continue;
-    if (inRetro) inRetro = false;
-    if (line.trim() === "") continue;
-    return true;
   }
 
   return false;
+}
+
+/** Map subagent_type → the role whose body must be non-empty before it may spawn. */
+function priorRoleFor(subagentType: string): string {
+  if (subagentType.startsWith("developer-")) return "planner"; // startsWith match below
+  if (subagentType.startsWith("reviewer-")) return "developer-"; // startsWith match below
+  if (subagentType === "context-curator") return "reviewer-"; // startsWith match below
+  if (subagentType === "committer") return "context-curator";
+  return "";
+}
+
+/** Find the last role event whose role startsWith the given prefix. */
+function lastRoleStartingWith(events: CycleEvent[], prefix: string): string {
+  let last = "";
+  for (const e of events) {
+    if (e.ev === "role" && (e.role ?? "").startsWith(prefix)) {
+      last = e.role ?? "";
+    }
+  }
+  return last;
 }
 
 export function register(pi: ExtensionAPI): void {
@@ -81,10 +132,10 @@ export function register(pi: ExtensionAPI): void {
 
     debugLog("step-log-section-before-spawn", `subagent_type=${subagentType}`);
 
-    const need = expectedHeader(subagentType);
+    const need = subagentType;
     debugLog("step-log-section-before-spawn", `need=${need}`);
 
-    // Locate active step log — fail-open if missing.
+    // Locate active cycle log — fail-open if missing.
     const projectDir = process.env["CWD"] ?? process.cwd();
     const logPath = getActiveStepLog(projectDir);
 
@@ -94,7 +145,7 @@ export function register(pi: ExtensionAPI): void {
         "no step log found — deny (create log first)",
       );
       return deny(
-        `BLOCKED: no step log found. Create the step log FIRST before spawning ${subagentType}. Step 0 is non-negotiable: Write the step log skeleton, THEN insert the ${need} header, THEN spawn.`,
+        `BLOCKED: no step log found. Create the step log FIRST before spawning ${subagentType}. Step 0 is non-negotiable: run codegen-log init, THEN write the '${need}' role event, THEN spawn.`,
       );
     }
 
@@ -107,31 +158,36 @@ export function register(pi: ExtensionAPI): void {
         `deny: log path resolved but unreadable: ${(e as Error).message}`,
       );
       return deny(
-        `BLOCKED: step log ${logPath} was located but could not be read (${(e as Error).message}). Cannot verify the '${need}' header before spawning ${subagentType} — fix the log read error first.`,
+        `BLOCKED: step log ${logPath} was located but could not be read (${(e as Error).message}). Cannot verify the '${need}' role event before spawning ${subagentType} — fix the log read error first.`,
       );
     }
 
     debugLog("step-log-section-before-spawn", `log=${logPath}`);
 
-    if (logContent.includes(need)) {
-      // Pi has no transcript access so we cannot determine the authoritative
-      // step log from transcript context. We read the most recently modified
-      // log, which may differ from the active session log.
-      //
-      // Fail closed on header-only sections: the next role may not spawn until
-      // the prior required section contains at least one non-heading body line.
-      if (!sectionHasBody(logContent, need)) {
+    const events = parseCycleLog(logContent);
+
+    if (roleEventPresent(events, need)) {
+      // Fail closed on empty-body role events: the next role may not spawn
+      // until the prior required stage's role event has real body content.
+      const priorPrefix = priorRoleFor(subagentType);
+      const priorRole = priorPrefix
+        ? subagentType === "committer"
+          ? priorPrefix
+          : lastRoleStartingWith(events, priorPrefix)
+        : "";
+
+      if (priorRole && !roleHasBody(events, priorRole)) {
         return deny(
-          `BLOCKED: '${need}' exists but has no non-heading body content. Populate the section before spawning ${subagentType}.`,
+          `BLOCKED: '${priorRole}' role event exists in the step log but its body is empty — the prior stage produced no real content (subagent likely died). Recover: re-spawn the dead stage, produce real output, then retry. Do not skip a stage because the subagent died.`,
         );
       }
 
-      debugLog("step-log-section-before-spawn", "allow: header present");
+      debugLog("step-log-section-before-spawn", "allow: role event present with body content");
       return;
     }
 
     return deny(
-      `BLOCKED: missing section header in step log before spawning ${subagentType}. Edit the step log to append '${need}' immediately before this Agent() call, then retry.`,
+      `BLOCKED: missing '${need}' role event in step log before spawning ${subagentType}. Run codegen-log section ${need} immediately before this Agent() call, then retry.`,
     );
   });
 }

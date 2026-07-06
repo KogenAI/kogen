@@ -123,8 +123,8 @@ printf '' >"$EMPTY_TRANSCRIPT"
 # Transcript + session log with developer-phoenix-backend section header (row 5)
 LOG5_DIR="$TMPDIR_BASE/project_r5"
 mkdir -p "$LOG5_DIR/codegen/logging"
-LOG5_PATH="$LOG5_DIR/codegen/logging/test-session.md"
-printf '## developer-phoenix-backend Section\n' >"$LOG5_PATH"
+LOG5_PATH="$LOG5_DIR/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_test_cycle.jsonl"
+printf '{"ev":"role","role":"developer-phoenix-backend","body":"result here"}\n' >"$LOG5_PATH"
 TRANSCRIPT5="$LOG5_DIR/transcript.jsonl"
 make_transcript "$TRANSCRIPT5" "$LOG5_PATH"
 

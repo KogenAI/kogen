@@ -45,7 +45,7 @@ export function register(pi: ExtensionAPI): void {
     if (fs.existsSync(loggingDir)) {
       logFiles = fs
         .readdirSync(loggingDir)
-        .filter((f) => f.endsWith(".md") && !f.includes("progress"))
+        .filter((f) => f.endsWith(".jsonl") && !f.includes("progress"))
         .map((f) => ({
           name: f,
           mtime: fs.statSync(path.join(loggingDir, f)).mtimeMs,
@@ -127,13 +127,28 @@ export function register(pi: ExtensionAPI): void {
     const activeLog = path.join(loggingDir, logFiles[0].name);
     const logContent = fs.readFileSync(activeLog, "utf8");
 
-    const hasDeveloper = /## developer.*Section/i.test(logContent);
+    // Role presence is read from JSONL {"ev":"role","role":"<x>",...} events,
+    // not markdown "## <x> Section" headers (that shape belonged to the
+    // pre-JSONL markdown session log).
+    const roles = new Set<string>();
+    for (const line of logContent.split("\n")) {
+      if (!line.trim()) continue;
+      try {
+        const obj = JSON.parse(line) as { ev?: string; role?: string };
+        if (obj.ev === "role" && typeof obj.role === "string") {
+          roles.add(obj.role);
+        }
+      } catch {
+        // skip malformed lines
+      }
+    }
+    const hasDeveloper = [...roles].some((r) => r.startsWith("developer"));
     const hasVeVerdict = /ALL CLEAR ✅|FAILED ❌|INCONCLUSIVE ⚠️/.test(
       logContent,
     );
-    const hasReviewer = /## reviewer.*Section/i.test(logContent);
-    const hasCurator = /## context-curator.*Section/i.test(logContent);
-    const hasCommitter = /## committer.*Section/i.test(logContent);
+    const hasReviewer = [...roles].some((r) => r.startsWith("reviewer"));
+    const hasCurator = roles.has("context-curator");
+    const hasCommitter = roles.has("committer");
 
     // Hardening #1 (advisory): developer section present but no VE verdict
     // and no gate-result.json → VE likely never ran (mirrors stop-cycle-guard.sh).

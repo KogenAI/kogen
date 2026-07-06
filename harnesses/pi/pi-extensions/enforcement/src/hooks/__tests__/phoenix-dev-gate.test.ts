@@ -51,10 +51,14 @@ describe("phoenix-dev-gate sole-writer invariant", () => {
     try {
       const loggingDir = path.join(tmpDir, "codegen", "logging");
       fs.mkdirSync(loggingDir, { recursive: true });
-      const logPath = path.join(loggingDir, "20260101_000000_step1.md");
+      const logPath = path.join(loggingDir, "20260101_000000_step1_cycle.jsonl");
       fs.writeFileSync(
         logPath,
-        `## developer-phoenix-backend Section\n\n**Gate**: \`true\`\n`,
+        JSON.stringify({
+          ev: "role",
+          role: "planner-phoenix",
+          body: "# Step\n\n## Plan\n\n**Gate**: `true`\n",
+        }) + "\n",
       );
 
       // Fake codegenDir carrying a REAL copy of codegen-log (the actual
@@ -115,27 +119,42 @@ describe("phoenix-dev-gate sole-writer invariant", () => {
         );
 
         const logContents = fs.readFileSync(logPath, "utf8");
+        // codegen-log verdict appends one {"ev":"gate","role":"dev-gate",...}
+        // JSONL line — never a markdown "## dev-gate Section" header (that
+        // shape belonged to the pre-JSONL markdown session log).
+        const gateLine = logContents
+          .split("\n")
+          .filter(Boolean)
+          .map((line) => {
+            try {
+              return JSON.parse(line) as {
+                ev?: string;
+                role?: string;
+                gate?: string;
+                result?: string;
+              };
+            } catch {
+              return null;
+            }
+          })
+          .find((obj) => obj?.ev === "gate" && obj?.role === "dev-gate");
         assert.ok(
-          logContents.includes("## dev-gate Section"),
-          `expected '## dev-gate Section' header in log, got: ${logContents}`,
+          gateLine,
+          `expected a {"ev":"gate","role":"dev-gate",...} JSONL line, got: ${logContents}`,
         );
         assert.ok(
-          !logContents.includes("## phoenix-dev-gate Section"),
-          `stale '## phoenix-dev-gate Section' header must not appear, got: ${logContents}`,
+          !logContents.includes("## dev-gate Section") &&
+            !logContents.includes("## phoenix-dev-gate Section"),
+          `stale markdown section headers must not appear, got: ${logContents}`,
         );
-        // codegen-log verdict's byte shape: Gate:/Ran:/Rules loaded/Commands
-        // executed table/Result — matches the Claude-side contract.
-        assert.ok(
-          logContents.includes("Gate: true"),
-          `expected 'Gate: true' line, got: ${logContents}`,
-        );
-        assert.ok(
-          logContents.includes("**Result**:"),
-          `expected '**Result**:' line, got: ${logContents}`,
+        assert.equal(
+          gateLine!.gate,
+          "true",
+          `expected gate='true', got: ${JSON.stringify(gateLine)}`,
         );
         assert.ok(
-          logContents.includes("ALL CLEAR"),
-          `expected ALL CLEAR in log, got: ${logContents}`,
+          gateLine!.result?.includes("ALL CLEAR"),
+          `expected ALL CLEAR in result, got: ${JSON.stringify(gateLine)}`,
         );
       } finally {
         fs.rmSync(fakeCodegenDir, { recursive: true, force: true });
@@ -219,13 +238,17 @@ describe("phoenix-dev-gate render-check integration", () => {
     };
 
     try {
-      // Set up a step log with a Gate directive.
+      // Set up a step log with a Gate directive (planner role JSONL event).
       const loggingDir = path.join(tmpDir, "codegen", "logging");
       fs.mkdirSync(loggingDir, { recursive: true });
-      const logPath = path.join(loggingDir, "20260101_000000_step1.md");
+      const logPath = path.join(loggingDir, "20260101_000000_step1_cycle.jsonl");
       fs.writeFileSync(
         logPath,
-        `# Step\n\n## Plan\n\n**Gate**: \`${gatePasses ? "true" : "false"}\`\n`,
+        JSON.stringify({
+          ev: "role",
+          role: "planner-phoenix",
+          body: `# Step\n\n## Plan\n\n**Gate**: \`${gatePasses ? "true" : "false"}\`\n`,
+        }) + "\n",
       );
 
       // Set up fake wiring-check.js and render-check.js.
@@ -361,8 +384,15 @@ describe("phoenix-dev-gate checker-missing", () => {
     try {
       const loggingDir = path.join(tmpDir, "codegen", "logging");
       fs.mkdirSync(loggingDir, { recursive: true });
-      const logPath = path.join(loggingDir, "20260101_000000_step1.md");
-      fs.writeFileSync(logPath, `# Step\n\n## Plan\n\n**Gate**: \`true\`\n`);
+      const logPath = path.join(loggingDir, "20260101_000000_step1_cycle.jsonl");
+      fs.writeFileSync(
+        logPath,
+        JSON.stringify({
+          ev: "role",
+          role: "planner-phoenix",
+          body: "# Step\n\n## Plan\n\n**Gate**: `true`\n",
+        }) + "\n",
+      );
 
       const fakeCodegenDir = tmpDir;
       const hooksLibDir = path.join(
@@ -468,10 +498,14 @@ describe("phoenix-dev-gate wiring-check integration", () => {
     try {
       const loggingDir = path.join(tmpDir, "codegen", "logging");
       fs.mkdirSync(loggingDir, { recursive: true });
-      const logPath = path.join(loggingDir, "20260101_000000_step1.md");
+      const logPath = path.join(loggingDir, "20260101_000000_step1_cycle.jsonl");
       fs.writeFileSync(
         logPath,
-        `# Step\n\n## Plan\n\n**Gate**: \`true\`\n`,
+        JSON.stringify({
+          ev: "role",
+          role: "planner-phoenix",
+          body: "# Step\n\n## Plan\n\n**Gate**: `true`\n",
+        }) + "\n",
       );
 
       const fakeCodegenDir = tmpDir;
@@ -600,10 +634,14 @@ describe("phoenix-dev-gate long-gate verdict", () => {
   ) {
     const loggingDir = path.join(tmpDir, "codegen", "logging");
     fs.mkdirSync(loggingDir, { recursive: true });
-    const logPath = path.join(loggingDir, "20260101_000000_step1.md");
+    const logPath = path.join(loggingDir, "20260101_000000_step1_cycle.jsonl");
     fs.writeFileSync(
       logPath,
-      `# Step\n\n## Plan\n\n\`\`\`gate-json\n${gateJsonBlock}\n\`\`\`\n`,
+      JSON.stringify({
+        ev: "role",
+        role: "planner-phoenix",
+        body: `# Step\n\n## Plan\n\n\`\`\`gate-json\n${gateJsonBlock}\n\`\`\`\n`,
+      }) + "\n",
     );
     return logPath;
   }

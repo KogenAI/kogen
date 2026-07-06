@@ -54,6 +54,20 @@ assert_file_contains() {
     fi
 }
 
+# write_plan_log <log_path> <gate_line> — writes a single JSONL planner role
+# event whose body contains a "**Gate**: <gate_line>" line, mirroring what
+# codegen-log section planner-phoenix --slug <slug> would produce. Callers
+# that need extra plan body text can extend this later; today's tests only
+# need the Gate line for gate_select_read_planner_gate to resolve.
+write_plan_log() {
+    local log_path="$1"
+    local gate_line="$2"
+    local body
+    body=$(printf '# Step\n\n## Plan\n\n**Gate**: %s\n' "$gate_line")
+    jq -n --arg role "planner-phoenix" --arg body "$body" \
+        '{ev:"role",role:$role,body:$body}' >"$log_path"
+}
+
 make_project() {
     local dir
     dir=$(mktemp -d)
@@ -93,14 +107,8 @@ JSON
 
 # ── Test 8: previous PID alive → INCONCLUSIVE previous-gate-running ─────────
 T8=$(make_project)
-LOG8="$T8/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_step1_prevpid.md"
-cat >"$LOG8" <<'MD'
-# Step
-
-## Plan
-
-**Gate**: `make llm`
-MD
+LOG8="$T8/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_prevpid_cycle.jsonl"
+write_plan_log "$LOG8" 'make llm'
 mkdir -p "$T8/codegen/gate-pending"
 # Start a long-lived background process to stand in as the "previous gate".
 sleep 600 &
@@ -132,7 +140,7 @@ rm -rf "$T8"
 # ── Test 9: previous PID dead → reaper sweeps orphan files, new gate launches
 # Uses a long-mode gate so the hook enters the long-gate branch where the reaper lives.
 T9=$(make_project)
-LOG9="$T9/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_step1_deadpid.md"
+LOG9="$T9/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_deadpid_cycle.jsonl"
 # Stub `make` exits 0 immediately so the poll loop completes quickly.
 stub_bin9=$(mktemp -d)
 cat >"$stub_bin9/make" <<'SH'
@@ -140,14 +148,7 @@ cat >"$stub_bin9/make" <<'SH'
 exit 0
 SH
 chmod +x "$stub_bin9/make"
-cat >"$LOG9" <<'MD'
-# Step
-
-## Plan
-
-**Gate**: `make llm`
-
-MD
+write_plan_log "$LOG9" 'make llm'
 mkdir -p "$T9/codegen/gate-pending"
 # Write latest.flag pointing to a dead PID (99999 is reliably dead).
 cat >"$T9/codegen/gate-pending/latest.flag" <<'EOF'
@@ -189,14 +190,8 @@ rm -rf "$T9" "$stub_bin9"
 
 # ── Test 10: mutex contention → INCONCLUSIVE concurrent-launch ──────────────
 T10=$(make_project)
-LOG10="$T10/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_step1_mutex.md"
-cat >"$LOG10" <<'MD'
-# Step
-
-## Plan
-
-**Gate**: `make llm`
-MD
+LOG10="$T10/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_mutex_cycle.jsonl"
+write_plan_log "$LOG10" 'make llm'
 mkdir -p "$T10/codegen/gate-pending/.launch.lock"
 # Write a live PID into the lock so stale-lock recovery does not remove it.
 echo "$$" >"$T10/codegen/gate-pending/.launch.lock/launched_pid"
@@ -208,14 +203,8 @@ rm -rf "$T10"
 
 # ── Test 16: live PID + absent exitcode_file → flag preserved ───────────────
 T16=$(make_project)
-LOG16="$T16/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_step1_sweep_live.md"
-cat >"$LOG16" <<'MD'
-# Step
-
-## Plan
-
-**Gate**: `make llm`
-MD
+LOG16="$T16/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_sweep_live_cycle.jsonl"
+write_plan_log "$LOG16" 'make llm'
 mkdir -p "$T16/codegen/gate-pending"
 nonexistent_ec="/tmp/nonexistent-dev-gate-test-$$-$(date -u +%s).exitcode"
 rm -f "$nonexistent_ec"
@@ -241,14 +230,8 @@ rm -rf "$T16"
 
 # ── Test 17: reused-PID stale flag → sweep prevents false lockout ───────────
 T17=$(make_project)
-LOG17="$T17/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_step1_sweep_reused.md"
-cat >"$LOG17" <<'MD'
-# Step
-
-## Plan
-
-**Gate**: `true`
-MD
+LOG17="$T17/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_sweep_reused_cycle.jsonl"
+write_plan_log "$LOG17" 'true'
 mkdir -p "$T17/codegen/gate-pending"
 # Spawn a long-lived process to simulate a reused PID.
 sleep 600 &

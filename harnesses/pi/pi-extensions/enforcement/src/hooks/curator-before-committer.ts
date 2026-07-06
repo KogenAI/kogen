@@ -6,22 +6,19 @@
  * Event: tool_call
  * Matcher: subagent
  *
- * Logic:
+ * Logic (cycle-state.json is the source of truth, not session-log content —
+ * matches the bash sibling's migration off markdown-header scanning):
  *   If subagent_type == "committer"
- *     AND session log has a ## reviewer-* Section
- *     AND session log has NO ## context-curator Section
+ *     AND cycle-state.json state == "REVIEWED"
  *   → deny with explanation
  *
- * Fail-open: if no session log found (path absent), allow. If the log path
- * resolves but the read throws (present-but-unreadable), deny — an unreadable
- * log cannot verify the curator ran, so allowing here would silently skip
- * the gate.
- * All other subagent types: allow unconditionally.
+ * Fail-open: if no active step log, or no cycle-state.json / state absent,
+ * allow (cannot determine state). All other subagent types: allow
+ * unconditionally.
  */
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { deny, debugLog, getActiveStepLog } from "../lib/hook-helpers";
-import * as fs from "node:fs";
+import { deny, debugLog, getActiveStepLog, getCycleState } from "../lib/hook-helpers";
 
 export const HANDLER_META = {
   name: "curator-before-committer",
@@ -52,33 +49,17 @@ export function register(pi: ExtensionAPI): void {
       return;
     }
 
-    let logContent: string;
-    try {
-      logContent = fs.readFileSync(logPath, "utf8");
-    } catch (e) {
-      debugLog(
-        "curator-before-committer",
-        `deny: log path resolved but unreadable: ${(e as Error).message}`,
-      );
+    debugLog("curator-before-committer", `log=${logPath}`);
+
+    const cycleState = getCycleState(projectDir);
+    const csState = cycleState?.state ?? "";
+
+    debugLog("curator-before-committer", `cs_state=${csState}`);
+
+    // Block only when cycle-state is REVIEWED (reviewer ran, curator has not).
+    if (csState === "REVIEWED") {
       return deny(
-        `BLOCKED by curator-before-committer: step log at ${logPath} was located but could not be read (${(e as Error).message}). Cannot verify context-curator ran before committer — fix the log read error first.`,
-      );
-    }
-
-    const hasReviewer =
-      /^## reviewer-.+ Section|^## reviewer-phoenix Section|^## reviewer-static Section/m.test(
-        logContent,
-      );
-    const hasCurator = /^## context-curator Section/m.test(logContent);
-
-    debugLog(
-      "curator-before-committer",
-      `hasReviewer=${hasReviewer} hasCurator=${hasCurator}`,
-    );
-
-    if (hasReviewer && !hasCurator) {
-      return deny(
-        "BLOCKED: context-curator must run before committer. Reviewer ran, curator has not. Delegate to context-curator first.",
+        "BLOCKED: context-curator must run before committer. Reviewer ran (cycle-state=REVIEWED), curator has not. Delegate to context-curator first.",
       );
     }
   });

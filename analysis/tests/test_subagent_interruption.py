@@ -22,15 +22,14 @@ class TestSubagentInterruption(unittest.TestCase):
         self.findings = run_repo(_cfg(FIXTURES))
         self.by_key = {f.pattern_key: f for f in self.findings}
 
-    def test_all_three_markers_detected(self) -> None:
+    def test_both_died_kinds_detected(self) -> None:
         self.assertEqual(
-            {"interrupted", "resumed", "aborted"},
+            {"interrupted", "aborted"},
             {f.pattern_key for f in self.findings},
         )
 
     def test_wasted_turns_weights(self) -> None:
         self.assertEqual(self.by_key["interrupted"].wasted_turns, 2)
-        self.assertEqual(self.by_key["resumed"].wasted_turns, 0)
         self.assertEqual(self.by_key["aborted"].wasted_turns, 3)
 
     def test_counter_name(self) -> None:
@@ -39,32 +38,23 @@ class TestSubagentInterruption(unittest.TestCase):
 
     def test_session_id_is_basename(self) -> None:
         for f in self.findings:
-            self.assertEqual(f.session_id, "session_interruptions_session.md")
+            self.assertEqual(f.session_id, "session_interruptions_cycle.jsonl")
 
     def test_turn_index_is_line_number(self) -> None:
         for f in self.findings:
             self.assertGreater(f.turn_index, 0)
         self.assertLess(
             self.by_key["interrupted"].turn_index,
-            self.by_key["resumed"].turn_index,
-        )
-        self.assertLess(
-            self.by_key["resumed"].turn_index,
             self.by_key["aborted"].turn_index,
         )
 
-    def test_evidence_is_marker_line(self) -> None:
-        self.assertTrue(
-            self.by_key["interrupted"].evidence.startswith("### INTERRUPTED")
-        )
-        self.assertEqual(self.by_key["resumed"].evidence, "### RESUMED")
-        self.assertTrue(
-            self.by_key["aborted"].evidence.startswith("### ABORTED")
-        )
+    def test_evidence_is_died_event_line(self) -> None:
+        self.assertIn('"kind":"interrupted"', self.by_key["interrupted"].evidence)
+        self.assertIn('"kind":"aborted"', self.by_key["aborted"].evidence)
 
-    def test_non_marker_hashhashhash_line_ignored(self) -> None:
+    def test_non_died_events_ignored(self) -> None:
         self.assertNotIn(
-            "### What I Learned This Step",
+            "What I Learned This Step",
             {f.evidence for f in self.findings},
         )
 
@@ -77,13 +67,13 @@ class TestSubagentInterruption(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             self.assertEqual(run_repo(_cfg(Path(tmp))), [])
 
-    def test_malformed_log_no_crash(self) -> None:
+    def test_malformed_line_fail_open_skip(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
-            log = Path(tmp) / "broken_session.md"
+            log = Path(tmp) / "broken_cycle.jsonl"
             log.write_text(
-                "###partial-no-space\n"
-                "### INTERRUPTED ⚠️ dropped (x); re-spawning\n"
-                "random prose ### INTERRUPTED not-at-line-start\n",
+                "not-json-at-all\n"
+                '{"ev":"died","role":"developer-phoenix-backend","kind":"interrupted"}\n'
+                '{"ev":"role","role":"planner-phoenix","body":"prose"}\n',
                 encoding="utf-8",
             )
             findings = run_repo(_cfg(Path(tmp)))

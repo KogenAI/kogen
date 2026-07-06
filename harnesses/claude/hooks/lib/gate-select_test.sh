@@ -23,6 +23,21 @@ assert_eq() {
     fi
 }
 
+# write_planner_log <path> <heredoc-body-via-stdin> — wraps the given
+# markdown body (the "## Plan" prose planners write) into a single JSONL
+# "role" event line, matching what codegen-log actually writes on disk. Test
+# fixtures below pipe their markdown heredocs through this helper instead of
+# writing raw markdown bytes directly, since gate_select_read_planner_gate /
+# gate_select_decide now read the planner body via planner_body_from_log
+# (jq-decoded from the JSONL cycle log), not raw file bytes.
+write_planner_log() {
+    local path="$1"
+    local body
+    body="$(cat)"
+    jq -c -n --arg role "planner-phoenix" --arg body "$body" \
+        '{ev: "role", role: $role, body: $body}' >"$path"
+}
+
 # ── gate_timeout_for ────────────────────────────────────────────────────────
 assert_eq "gate_timeout_for(make ci) = 900" "900" "$(gate_timeout_for 'make ci')"
 assert_eq "gate_timeout_for(make llm) = 1500" "1500" "$(gate_timeout_for 'make llm')"
@@ -45,7 +60,7 @@ assert_eq "gate_mode_for(rebuild-seed-then) = long" "long" "$(gate_mode_for 'COD
 
 # Case 1: backticked gate value
 TMP=$(mktemp)
-cat >"$TMP" <<'MD'
+write_planner_log "$TMP" <<'MD'
 # Step
 
 ## Plan
@@ -59,7 +74,7 @@ rm -f "$TMP"
 
 # Case 2: backticked + prose suffix
 TMP=$(mktemp)
-cat >"$TMP" <<'MD'
+write_planner_log "$TMP" <<'MD'
 # Step
 
 ## Plan
@@ -73,7 +88,7 @@ rm -f "$TMP"
 
 # Case 3: bare value, no suffix
 TMP=$(mktemp)
-cat >"$TMP" <<'MD'
+write_planner_log "$TMP" <<'MD'
 # Step
 
 ## Plan
@@ -87,7 +102,7 @@ rm -f "$TMP"
 
 # Case 4: bare value + paren prose
 TMP=$(mktemp)
-cat >"$TMP" <<'MD'
+write_planner_log "$TMP" <<'MD'
 # Step
 
 ## Plan
@@ -101,7 +116,7 @@ rm -f "$TMP"
 
 # Case 5: bare value + em dash (U+2014)
 TMP=$(mktemp)
-cat >"$TMP" <<'MD'
+write_planner_log "$TMP" <<'MD'
 # Step
 
 ## Plan
@@ -115,7 +130,7 @@ rm -f "$TMP"
 
 # Case 6: plain Gate: prefix (no bold)
 TMP=$(mktemp)
-cat >"$TMP" <<'MD'
+write_planner_log "$TMP" <<'MD'
 # Step
 
 ## Plan
@@ -129,7 +144,7 @@ rm -f "$TMP"
 
 # Case 7: ## Plan section with no Gate line
 TMP=$(mktemp)
-cat >"$TMP" <<'MD'
+write_planner_log "$TMP" <<'MD'
 # Step
 
 ## Plan
@@ -141,9 +156,12 @@ MD
 assert_eq "read_planner_gate: no Gate line" "" "$(gate_select_read_planner_gate "$TMP")"
 rm -f "$TMP"
 
-# Case 8: Gate: line present but in ## Approach section (after ## Plan)
+# Case 8: Gate: line present later in the SAME planner body (no separate
+# "## Approach" role-boundary exists any more — the whole body belongs to
+# the planner's single "role" event under JSONL storage, so a Gate: line
+# anywhere in that body is picked up).
 TMP=$(mktemp)
-cat >"$TMP" <<'MD'
+write_planner_log "$TMP" <<'MD'
 # Step
 
 ## Plan
@@ -154,12 +172,12 @@ no gate here
 
 Gate: make ci
 MD
-assert_eq "read_planner_gate: Gate in wrong section" "" "$(gate_select_read_planner_gate "$TMP")"
+assert_eq "read_planner_gate: Gate line found anywhere in the planner's own body" "make ci" "$(gate_select_read_planner_gate "$TMP")"
 rm -f "$TMP"
 
 # Case 9: bare value + ASCII hyphen with surrounding spaces
 TMP=$(mktemp)
-cat >"$TMP" <<'MD'
+write_planner_log "$TMP" <<'MD'
 # Step
 
 ## Plan
@@ -302,7 +320,7 @@ touch "$SEED_DIR/seed.bundle" "$SEED_DIR/seed.sql" "$SEED_DIR/validated"
 write_gate_config "$T7" "$SEED_DIR/seed.bundle" "$SEED_DIR/seed.sql" "$SEED_DIR/validated"
 echo "x" >"$T7/CLAUDE.md"
 LOG="$T7/step.md"
-cat >"$LOG" <<'MD'
+write_planner_log "$LOG" <<'MD'
 # Step
 
 ## Plan
@@ -365,7 +383,7 @@ rm -rf "$T10"
 
 # Case J1: Valid gate-json block → correct command/mode/timeout extracted
 TJ1=$(mktemp)
-cat >"$TJ1" <<'MD'
+write_planner_log "$TJ1" <<'MD'
 # Step 1 — test
 
 ## Plan
@@ -390,7 +408,7 @@ rm -f "$TJ1"
 
 # Case J2: Valid gate-json block with long mode
 TJ2=$(mktemp)
-cat >"$TJ2" <<'MD'
+write_planner_log "$TJ2" <<'MD'
 # Step 1 — test
 
 ## Plan
@@ -415,7 +433,7 @@ rm -f "$TJ2"
 
 # Case J3: Malformed JSON block → __GATE_PARSE_ERROR__
 TJ3=$(mktemp)
-cat >"$TJ3" <<'MD'
+write_planner_log "$TJ3" <<'MD'
 # Step 1 — test
 
 ## Plan
@@ -441,7 +459,7 @@ rm -f "$TJ3"
 
 # Case J4: No JSON block → prose fallback still works
 TJ4=$(mktemp)
-cat >"$TJ4" <<'MD'
+write_planner_log "$TJ4" <<'MD'
 # Step 1 — test
 
 ## Plan
@@ -457,7 +475,7 @@ rm -f "$TJ4"
 
 # Case J5: JSON mode/timeout override classifier (command says make test but json says long/1500)
 TJ5=$(mktemp)
-cat >"$TJ5" <<'MD'
+write_planner_log "$TJ5" <<'MD'
 # Step 1 — test
 
 ## Plan
@@ -479,7 +497,7 @@ rm -f "$TJ5"
 
 # Case J6: JSON block missing required field → parse error
 TJ6=$(mktemp)
-cat >"$TJ6" <<'MD'
+write_planner_log "$TJ6" <<'MD'
 # Step 1 — test
 
 ## Plan
@@ -505,7 +523,7 @@ rm -f "$TJ6"
 
 # Case J7: gate-json block in plan body as an EXAMPLE (not after **Gate**:) → prose fallback used
 TJ7=$(mktemp)
-cat >"$TJ7" <<'MD'
+write_planner_log "$TJ7" <<'MD'
 # Step — test
 
 ## Plan
@@ -529,7 +547,7 @@ rm -f "$TJ7"
 
 # Case J8: gate-json block after **Gate**: in ## Plan → authoritative (not example)
 TJ8=$(mktemp)
-cat >"$TJ8" <<'MD'
+write_planner_log "$TJ8" <<'MD'
 # Step — test
 
 ## Plan

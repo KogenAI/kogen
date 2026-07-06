@@ -20,7 +20,7 @@
   3. If edges are cyclic or ambiguous, report the conflict and HALT.
 
   **Execution rules (both order-provided and no-order paths)**:
-  1. **One session log per pitch**: each pitch gets its own `<ts>_<slug>_session.md`; never combine pitches into a shared `build-queue_session.md` or any combined log.
+  1. **One cycle log per pitch**: each pitch gets its own `<ts>_<slug>_cycle.jsonl`; never combine pitches into a shared `build-queue_cycle.jsonl` or any combined log.
   2. **Strict sequencing**: complete the full build for pitch[i] (including ready/→shipped/ move) before starting pitch[i+1]. Never overlap or parallelize. On claude that means the full planner→dev→gate→review→committer cycle; on pi it means the pitch's entire step queue.
   3. **Mid-queue halt**: if pitch[i]'s build fails (gate fails after one dev retry), HALT at position i; do NOT skip ahead to pitch[i+1].
   4. **Queue continuity is autonomous**: after pitch[i] ships, immediately run `codegen-log init --slug <next-slug>` for the next pitch's session log and begin its build — emit zero chat text, ask zero questions. NEVER ask the user permission to continue ("Should I proceed with pitch #2?", "Should I continue?", "are you stopping these builds intentionally?"). The ONLY legitimate stop is rule 3 (Mid-queue halt on gate failure).

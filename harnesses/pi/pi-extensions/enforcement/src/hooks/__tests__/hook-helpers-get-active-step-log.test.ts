@@ -45,11 +45,11 @@ describe("getActiveStepLog", () => {
   it("resolves via .active sentinel when it points at an existing file", () => {
     const projectDir = makeProjectDir();
     const loggingDir = path.join(projectDir, "codegen", "logging");
-    const target = path.join(loggingDir, "20260101_120000_foo_session.md");
+    const target = path.join(loggingDir, "20260101_120000_foo_cycle.jsonl");
     fs.writeFileSync(target, "## Version Stamp\n");
     // A second, newer file exists on disk but must NOT win — the sentinel
     // takes precedence over mtime.
-    const newer = path.join(loggingDir, "20260101_130000_bar_session.md");
+    const newer = path.join(loggingDir, "20260101_130000_bar_cycle.jsonl");
     fs.writeFileSync(newer, "## Version Stamp\n");
     fs.writeFileSync(path.join(loggingDir, ".active"), target);
 
@@ -59,9 +59,9 @@ describe("getActiveStepLog", () => {
   it("falls back to mtime scan when .active points at a deleted file (stale sentinel)", () => {
     const projectDir = makeProjectDir();
     const loggingDir = path.join(projectDir, "codegen", "logging");
-    const stale = path.join(loggingDir, "20260101_120000_gone_session.md");
+    const stale = path.join(loggingDir, "20260101_120000_gone_cycle.jsonl");
     // Never created on disk — simulates a relocated/deleted log.
-    const survivor = path.join(loggingDir, "20260101_130000_still_session.md");
+    const survivor = path.join(loggingDir, "20260101_130000_still_cycle.jsonl");
     fs.writeFileSync(survivor, "## Version Stamp\n");
     fs.writeFileSync(path.join(loggingDir, ".active"), stale);
 
@@ -71,10 +71,10 @@ describe("getActiveStepLog", () => {
   it("falls back to mtime scan when no .active sentinel is present", () => {
     const projectDir = makeProjectDir();
     const loggingDir = path.join(projectDir, "codegen", "logging");
-    const older = path.join(loggingDir, "20260101_120000_older_session.md");
+    const older = path.join(loggingDir, "20260101_120000_older_cycle.jsonl");
     fs.writeFileSync(older, "## Version Stamp\n");
     // Ensure a distinct, later mtime for the "newer" file.
-    const newer = path.join(loggingDir, "20260101_130000_newer_session.md");
+    const newer = path.join(loggingDir, "20260101_130000_newer_cycle.jsonl");
     fs.writeFileSync(newer, "## Version Stamp\n");
     const now = Date.now();
     fs.utimesSync(older, new Date(now - 10_000), new Date(now - 10_000));
@@ -86,9 +86,9 @@ describe("getActiveStepLog", () => {
   it("excludes progress files from the mtime-scan fallback", () => {
     const projectDir = makeProjectDir();
     const loggingDir = path.join(projectDir, "codegen", "logging");
-    const progress = path.join(loggingDir, "20260101_130000_progress.md");
+    const progress = path.join(loggingDir, "20260101_130000_progress.jsonl");
     fs.writeFileSync(progress, "progress\n");
-    const real = path.join(loggingDir, "20260101_120000_real_session.md");
+    const real = path.join(loggingDir, "20260101_120000_real_cycle.jsonl");
     fs.writeFileSync(real, "## Version Stamp\n");
 
     assert.equal(getActiveStepLog(projectDir), real);
@@ -97,7 +97,7 @@ describe("getActiveStepLog", () => {
   it("ignores an empty .active sentinel file (falls back to mtime scan)", () => {
     const projectDir = makeProjectDir();
     const loggingDir = path.join(projectDir, "codegen", "logging");
-    const real = path.join(loggingDir, "20260101_120000_real_session.md");
+    const real = path.join(loggingDir, "20260101_120000_real_cycle.jsonl");
     fs.writeFileSync(real, "## Version Stamp\n");
     fs.writeFileSync(path.join(loggingDir, ".active"), "");
 

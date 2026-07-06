@@ -28,15 +28,21 @@ describe("stop-verify-planner-gate", { concurrency: false }, () => {
     delete process.env["AGENT_TYPE"];
   });
 
-  function writeLog(content: string): void {
+  /** Write a cycle log whose planner role event body is the given plan prose. */
+  function writeLog(planBody: string): void {
+    const line = JSON.stringify({
+      ev: "role",
+      role: "planner-phoenix",
+      body: planBody,
+    });
     fs.writeFileSync(
       path.join(
         tmpDir,
         "codegen",
         "logging",
-        "20260601_120000_my-step_session.md",
+        "20260601_120000_my-step_cycle.jsonl",
       ),
-      content,
+      line + "\n",
     );
   }
 

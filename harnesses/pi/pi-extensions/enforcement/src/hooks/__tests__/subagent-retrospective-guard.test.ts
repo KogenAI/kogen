@@ -1,6 +1,6 @@
 /**
  * Tests for subagent-retrospective-guard hook.
- * Mirrors cases from subagent-retrospective-guard_test.sh.
+ * Mirrors cases from subagent-retrospective-guard_test.sh (JSONL cycle log storage).
  * Note: Pi session_shutdown is observe-only — warns to stderr, cannot block.
  */
 
@@ -28,16 +28,25 @@ describe("subagent-retrospective-guard", { concurrency: false }, () => {
     delete process.env["AGENT_TYPE"];
   });
 
-  function writeLog(content: string): void {
+  /** Write a cycle log from a list of raw JSONL event lines (already JSON-encoded). */
+  function writeLogLines(lines: string[]): void {
     fs.writeFileSync(
       path.join(
         tmpDir,
         "codegen",
         "logging",
-        "20260601_120000_test_session.md",
+        "20260601_120000_test_cycle.jsonl",
       ),
-      content,
+      lines.join("\n") + "\n",
     );
+  }
+
+  function roleEvent(role: string, body: string): string {
+    return JSON.stringify({ ev: "role", role, body });
+  }
+
+  function learnedEvent(role: string, text: string): string {
+    return JSON.stringify({ ev: "learned", role, text });
   }
 
   async function runHook(agentType: string): Promise<string> {
@@ -75,7 +84,7 @@ describe("subagent-retrospective-guard", { concurrency: false }, () => {
 
   // Skip: agent not in matcher set
   it("skips for committer (not in matcher)", async () => {
-    writeLog("## committer Section\n\nDone.\n");
+    writeLogLines([roleEvent("committer", "Done.")]);
     const stderr = await runHook("committer");
     assert.ok(!stderr.includes("subagent-retrospective-guard"), "expected no warning");
   });
@@ -100,93 +109,65 @@ describe("subagent-retrospective-guard", { concurrency: false }, () => {
     assert.ok(!stderr.includes("subagent-retrospective-guard"), "expected no warning");
   });
 
-  // Skip: section header absent (defensive)
-  it("skips when agent section header not found in log", async () => {
-    writeLog("## some-other Section\n\nContent.\n");
+  // Skip: no role event for this agent (defensive)
+  it("skips when agent has no role event in the log", async () => {
+    writeLogLines([roleEvent("some-other", "Content.")]);
     const stderr = await runHook("developer-phoenix-backend");
     assert.ok(!stderr.includes("subagent-retrospective-guard"), "expected no warning");
   });
 
   // Valid: retrospective present with content
   it("does not warn when developer-phoenix-backend has retrospective with bullet", async () => {
-    const content = [
-      "## developer-phoenix-backend Section",
-      "",
-      "Work done.",
-      "",
-      "### What I Learned This Step",
-      "",
-      "- nothing notable",
-      "",
-    ].join("\n");
-    writeLog(content);
+    writeLogLines([
+      roleEvent(
+        "developer-phoenix-backend",
+        "Work done.\n\n### What I Learned This Step\n\n- nothing notable",
+      ),
+    ]);
     const stderr = await runHook("developer-phoenix-backend");
     assert.ok(!stderr.includes("WARNING"), "expected no warning");
   });
 
   it("does not warn for developer-phoenix-frontend with retrospective", async () => {
-    const content = [
-      "## developer-phoenix-frontend Section",
-      "",
-      "Work done.",
-      "",
-      "### What I Learned This Step",
-      "",
-      "- [local] something specific",
-      "",
-    ].join("\n");
-    writeLog(content);
+    writeLogLines([
+      roleEvent(
+        "developer-phoenix-frontend",
+        "Work done.\n\n### What I Learned This Step\n\n- [local] something specific",
+      ),
+    ]);
     const stderr = await runHook("developer-phoenix-frontend");
     assert.ok(!stderr.includes("WARNING"), "expected no warning");
   });
 
   it("does not warn for reviewer-phoenix with retrospective", async () => {
-    const content = [
-      "## reviewer-phoenix Section",
-      "",
-      "Review done.",
-      "",
-      "### What I Learned This Step",
-      "",
-      "- nothing notable",
-      "",
-    ].join("\n");
-    writeLog(content);
+    writeLogLines([
+      roleEvent(
+        "reviewer-phoenix",
+        "Review done.\n\n### What I Learned This Step\n\n- nothing notable",
+      ),
+    ]);
     const stderr = await runHook("reviewer-phoenix");
     assert.ok(!stderr.includes("WARNING"), "expected no warning");
   });
 
-  // Valid: planner-phoenix under ## Plan
-  it("does not warn for planner-phoenix with retrospective under ## Plan", async () => {
-    const content = [
-      "## Plan",
-      "",
-      "Plan content here.",
-      "",
-      "### What I Learned This Step",
-      "",
-      "- [local] planner finding",
-      "",
-      "## developer-phoenix-backend Section",
-      "",
-      "stub",
-    ].join("\n");
-    writeLog(content);
+  // Valid: planner-phoenix matches any role startsWith "planner"
+  it("does not warn for planner-phoenix with retrospective in its role body", async () => {
+    writeLogLines([
+      roleEvent(
+        "planner-phoenix",
+        "Plan content here.\n\n### What I Learned This Step\n\n- [local] planner finding",
+      ),
+      roleEvent("developer-phoenix-backend", "stub"),
+    ]);
     const stderr = await runHook("planner-phoenix");
     assert.ok(!stderr.includes("WARNING"), "expected no warning");
   });
 
   // Warn: retrospective header missing
-  it("warns when developer-phoenix-backend section lacks retrospective header", async () => {
-    const content = [
-      "## developer-phoenix-backend Section",
-      "",
-      "Work done.",
-      "",
-      "**Result**: complete.",
-      "",
-    ].join("\n");
-    writeLog(content);
+  it("warns when developer-phoenix-backend body lacks retrospective header", async () => {
+    writeLogLines([
+      roleEvent("developer-phoenix-backend", "Work done.\n\n**Result**: complete."),
+    ]);
     const stderr = await runHook("developer-phoenix-backend");
     assert.ok(
       stderr.includes("subagent-retrospective-guard"),
@@ -197,16 +178,12 @@ describe("subagent-retrospective-guard", { concurrency: false }, () => {
 
   // Warn: retrospective header present but body empty
   it("warns when retrospective header present but body is empty", async () => {
-    const content = [
-      "## developer-phoenix-backend Section",
-      "",
-      "Work done.",
-      "",
-      "### What I Learned This Step",
-      "",
-      "",
-    ].join("\n");
-    writeLog(content);
+    writeLogLines([
+      roleEvent(
+        "developer-phoenix-backend",
+        "Work done.\n\n### What I Learned This Step\n\n",
+      ),
+    ]);
     const stderr = await runHook("developer-phoenix-backend");
     assert.ok(
       stderr.includes("subagent-retrospective-guard"),
@@ -217,118 +194,98 @@ describe("subagent-retrospective-guard", { concurrency: false }, () => {
 
   // reviewer-static in matcher set
   it("enforces for reviewer-static", async () => {
-    const content = [
-      "## reviewer-static Section",
-      "",
-      "Review done.",
-      "",
-    ].join("\n");
-    writeLog(content);
+    writeLogLines([roleEvent("reviewer-static", "Review done.")]);
     const stderr = await runHook("reviewer-static");
     assert.ok(stderr.includes("subagent-retrospective-guard"), "expected warning");
   });
 
-  // planner-static in matcher set — writes under ## Plan
-  it("does not warn for planner-static with retrospective under ## Plan", async () => {
-    const content = [
-      "## Plan",
-      "",
-      "Plan content here.",
-      "",
-      "### What I Learned This Step",
-      "",
-      "- [local] static planner finding",
-      "",
-    ].join("\n");
-    writeLog(content);
+  // planner-static in matcher set
+  it("does not warn for planner-static with retrospective in its role body", async () => {
+    writeLogLines([
+      roleEvent(
+        "planner-static",
+        "Plan content here.\n\n### What I Learned This Step\n\n- [local] static planner finding",
+      ),
+    ]);
     const stderr = await runHook("planner-static");
     assert.ok(!stderr.includes("WARNING"), "expected no warning");
   });
 
-  it("warns for planner-static missing retrospective under ## Plan", async () => {
-    const content = [
-      "## Plan",
-      "",
-      "Plan content here, no retrospective.",
-      "",
-    ].join("\n");
-    writeLog(content);
+  it("warns for planner-static missing retrospective", async () => {
+    writeLogLines([
+      roleEvent("planner-static", "Plan content here, no retrospective."),
+    ]);
     const stderr = await runHook("planner-static");
     assert.ok(stderr.includes("subagent-retrospective-guard"), "expected warning");
   });
 
-  it("does not warn for planner-static with retrospective under ## Plan", async () => {
-    const content = [
-      "## Plan",
-      "",
-      "Plan content here.",
-      "",
-      "### What I Learned This Step",
-      "",
-      "- nothing notable",
-      "",
-    ].join("\n");
-    writeLog(content);
-    const stderr = await runHook("planner-static");
+  // Re-spawn: multiple role events for the same agent — bodies are
+  // CONCATENATED (not last-wins) under the JSONL contract, so the retro
+  // header anywhere across all passes satisfies the check.
+  it("does not warn when second pass's role event has retrospective (first pass missing)", async () => {
+    writeLogLines([
+      roleEvent("reviewer-phoenix", "**Result**: no retrospective in pass 1."),
+      roleEvent(
+        "reviewer-phoenix",
+        "**Result**: Done.\n\n### What I Learned This Step\n\n- nothing notable",
+      ),
+    ]);
+    const stderr = await runHook("reviewer-phoenix");
+    assert.ok(!stderr.includes("WARNING"), "expected no warning — concatenated body has retro");
+  });
+
+  it("does not warn when first pass had retro even if second pass omits it (concatenation, not last-wins)", async () => {
+    writeLogLines([
+      roleEvent(
+        "reviewer-phoenix",
+        "**Result**: Done.\n\n### What I Learned This Step\n\n- nothing notable",
+      ),
+      roleEvent("reviewer-phoenix", "**Result**: Done again, forgot retro."),
+    ]);
+    const stderr = await runHook("reviewer-phoenix");
+    // Concatenation means the retro header from pass 1 is still present in
+    // the joined body — this is a deliberate semantic change from the old
+    // last-block-wins markdown parse (see planner's collapse note).
+    assert.ok(!stderr.includes("WARNING"), "expected no warning — concatenated body still has retro");
+  });
+
+  // Dedicated learned event satisfies the check even with no retro header in body.
+  it("does not warn when a dedicated learned event is present", async () => {
+    writeLogLines([
+      roleEvent("developer-phoenix-backend", "Work done, no retro block here."),
+      learnedEvent("developer-phoenix-backend", "[local] captured via --learned"),
+    ]);
+    const stderr = await runHook("developer-phoenix-backend");
+    assert.ok(!stderr.includes("WARNING"), "expected no warning — dedicated learned event present");
+  });
+
+  it("warns when a dedicated learned event is present but blank", async () => {
+    writeLogLines([
+      roleEvent("developer-phoenix-backend", "Work done, no retro block here."),
+      learnedEvent("developer-phoenix-backend", "   "),
+    ]);
+    const stderr = await runHook("developer-phoenix-backend");
+    assert.ok(stderr.includes("subagent-retrospective-guard"), "expected warning — blank learned event does not count");
+  });
+
+  // Malformed line in cycle log is skipped, not fatal.
+  it("skips malformed JSONL lines without crashing", async () => {
+    writeLogLines([
+      "not-json-at-all",
+      roleEvent(
+        "developer-phoenix-backend",
+        "Work done.\n\n### What I Learned This Step\n\n- nothing notable",
+      ),
+    ]);
+    const stderr = await runHook("developer-phoenix-backend");
     assert.ok(!stderr.includes("WARNING"), "expected no warning");
-  });
-
-  // Last-block-wins: re-spawn (pass N) tests
-  it("does not warn when last pass block has retrospective (pass1 missing, pass2 has retro)", async () => {
-    const content = [
-      "## reviewer-phoenix Section",
-      "",
-      "**Result**: no retrospective in pass 1.",
-      "",
-      "## reviewer-phoenix Section (pass 2)",
-      "",
-      "**Result**: Done.",
-      "",
-      "### What I Learned This Step",
-      "",
-      "- nothing notable",
-      "",
-      "## Files Modified",
-      "",
-      "- nothing",
-    ].join("\n");
-    writeLog(content);
-    const stderr = await runHook("reviewer-phoenix");
-    assert.ok(!stderr.includes("WARNING"), "expected no warning — last pass has retro");
-  });
-
-  it("warns when last pass block missing retrospective despite first block having it", async () => {
-    const content = [
-      "## reviewer-phoenix Section",
-      "",
-      "**Result**: Done.",
-      "",
-      "### What I Learned This Step",
-      "",
-      "- nothing notable",
-      "",
-      "## reviewer-phoenix Section (pass 2)",
-      "",
-      "**Result**: Done again, forgot retro.",
-      "",
-    ].join("\n");
-    writeLog(content);
-    const stderr = await runHook("reviewer-phoenix");
-    assert.ok(
-      stderr.includes("subagent-retrospective-guard"),
-      "expected warning — last pass missing retro",
-    );
   });
 
   // Never blocks
   it("never returns block result (observe-only)", async () => {
-    const content = [
-      "## developer-phoenix-backend Section",
-      "",
-      "No retrospective here.",
-      "",
-    ].join("\n");
-    writeLog(content);
+    writeLogLines([
+      roleEvent("developer-phoenix-backend", "No retrospective here."),
+    ]);
     process.env["AGENT_TYPE"] = "developer-phoenix-backend";
 
     let capturedHandler: (event: unknown) => Promise<unknown>;

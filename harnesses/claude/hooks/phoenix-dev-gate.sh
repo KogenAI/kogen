@@ -18,7 +18,7 @@
 #   1. Loop guard: STOP_HOOK_ACTIVE=true → exit 0.
 #   2. Skip if agent_type is not developer-phoenix-backend or developer-phoenix-frontend.
 #   3. Discover the active step log via session_log_from_transcript: the last
-#      codegen/logging/*.md write in THIS session's transcript (session-bound,
+#      codegen/logging/*.jsonl write in THIS session's transcript (session-bound,
 #      tail -n 1 — most recent write in transcript order). Managed builds fall
 #      back to an mtime scan (ls -t | head -1) only when OCG_APPS_ROOT contains
 #      cwd, or CODEGEN_BUILD_NON_INTERACTIVE is set; fail-closed (empty → deny).

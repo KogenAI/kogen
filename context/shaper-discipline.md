@@ -273,7 +273,7 @@ Any one of the three missing → blocker.
 
 **Sub-rule**: transcript extraction is best-effort — the `.jsonl` schema is Claude-Code-owned and can drift, so the rule names the GOAL (extract invocation signatures + error taxonomy), never a frozen jq expression. `codegen/logging/` is gitignored/ephemeral; when absent, source 2 legitimately yields nothing.
 
-**Resolution template**: AUTO-RESOLVE (mechanical, never `AskUserQuestion`) — run the mining now: jq-extract `tool_use` Bash commands + `is_error: true` results from `~/.claude/projects/<cwd-slashes-as-dashes>/*.jsonl`, grep `codegen/logging/*_session.md`, list `codegen/pitches/{shipped,archive,ready,draft}/` hits — embed all three transcripts in `## References`, then let the evidence inform the decision. Usage history is entirely in-repo; there is no product fork to ask about.
+**Resolution template**: AUTO-RESOLVE (mechanical, never `AskUserQuestion`) — run the mining now: jq-extract `tool_use` Bash commands + `is_error: true` results from `~/.claude/projects/<cwd-slashes-as-dashes>/*.jsonl`, grep `codegen/logging/*_cycle.jsonl`, list `codegen/pitches/{shipped,archive,ready,draft}/` hits — embed all three transcripts in `## References`, then let the evidence inform the decision. Usage history is entirely in-repo; there is no product fork to ask about.
 
 **Producer/verifier layout**:
 

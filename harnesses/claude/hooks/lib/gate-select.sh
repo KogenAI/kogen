@@ -52,6 +52,24 @@
 
 set -u
 
+# planner_body_from_log <step_log_file> — extract the concatenated planner
+# role body text from a JSONL cycle log. The `## Plan`/`**Gate**:` prose
+# scanners below operate on this DECODED body text, never on the raw JSONL
+# bytes (a plan body containing "## Plan" is just a JSON string value, not a
+# markdown structure). Multiple planner role events (re-runs) are joined with
+# a newline, in call order (jq preserves file order). Empty string when the
+# log is missing, unreadable, or carries no planner role event — callers fall
+# through to their existing "no gate found" path exactly as before.
+planner_body_from_log() {
+    local log_file="$1"
+    [ -f "$log_file" ] || {
+        printf ''
+        return 0
+    }
+    jq -r 'select(.ev == "role" and (.role | startswith("planner"))) | .body' \
+        "$log_file" 2>/dev/null
+}
+
 # gate_timeout_for <command> — print timeout in seconds for a gate command.
 # The timeout budget is based on substring matching, independent of gate mode:
 #   make ci (with or without llm)  → present in combined → contributes 900
@@ -118,7 +136,10 @@ gate_mode_for() {
 }
 
 # gate_select_read_planner_json <step_log_file>
-# Extracts a ```gate-json block from the ## Plan section of the step log.
+# Extracts a ```gate-json block from the planner's role body (decoded from
+# the JSONL cycle log via planner_body_from_log — the body text is treated as
+# though it were still a "## Plan" section, since that's the prose shape
+# planners still write inside the opaque body string).
 # On success: prints gate command to stdout and sets the env vars
 #   __GATE_JSON_MODE and __GATE_JSON_TIMEOUT (caller reads them after).
 # On malformed/invalid JSON block: prints "__GATE_PARSE_ERROR__:<reason>" and returns 0.
@@ -131,19 +152,30 @@ gate_select_read_planner_json() {
         return 0
     }
 
-    # Extract the gate-json block that immediately follows a **Gate**: line inside ## Plan.
-    # This avoids picking up gate-json blocks that appear as FORMAT EXAMPLES in the plan body.
+    local body
+    body=$(planner_body_from_log "$log_file")
+    [ -z "$body" ] && {
+        printf ''
+        return 0
+    }
+
+    # Extract the gate-json block that immediately follows a **Gate**: line.
+    # This avoids picking up gate-json blocks that appear as FORMAT EXAMPLES in
+    # the plan body. The body IS the planner's role prose (the "## Plan"
+    # section content, or the whole body if no such sub-heading is present) —
+    # scan the entire body directly; a "## <other> Section" heading inside a
+    # planner's own body would only appear as a stray, non-authoritative
+    # string (planner bodies do not carry OTHER roles' sections under
+    # per-event JSONL storage), so no early-exit boundary is needed.
     local json_block
-    json_block=$(awk '
-        /^## Plan[[:space:]]*$/ { in_plan = 1; next }
-        in_plan && /^## / && !/^## Plan/ { exit }
-        in_plan && /^\*\*Gate\*\*:/ { after_gate = 1; next }
-        in_plan && after_gate && /^[[:space:]]*$/ { next }
-        in_plan && after_gate && /^```gate-json[[:space:]]*$/ { in_block = 1; after_gate = 0; next }
-        in_plan && after_gate { after_gate = 0 }
-        in_plan && in_block && /^```[[:space:]]*$/ { in_block = 0; exit }
-        in_plan && in_block { print }
-    ' "$log_file" 2>/dev/null)
+    json_block=$(printf '%s' "$body" | awk '
+        /^\*\*Gate\*\*:/ { after_gate = 1; next }
+        after_gate && /^[[:space:]]*$/ { next }
+        after_gate && /^```gate-json[[:space:]]*$/ { in_block = 1; after_gate = 0; next }
+        after_gate { after_gate = 0 }
+        in_block && /^```[[:space:]]*$/ { in_block = 0; exit }
+        in_block { print }
+    ' 2>/dev/null)
 
     # No block found — fall through to prose parser
     [ -z "$json_block" ] && {
@@ -192,7 +224,8 @@ gate_select_read_planner_json() {
 
 # gate_select_read_planner_gate <step_log_file> — print the planner's
 # `**Gate**:` value (without the `**Gate**:` prefix and surrounding markdown),
-# or empty if absent. Reads only the `## Plan` section.
+# or empty if absent. Reads the planner role body decoded from the JSONL
+# cycle log (planner_body_from_log) — the body IS the "## Plan" prose.
 #
 # NEW: tries gate_select_read_planner_json first. On valid JSON block, returns
 # the command on the first line followed by __GATE_JSON_MODE=<mode> and
@@ -224,11 +257,16 @@ gate_select_read_planner_gate() {
         return 0
     fi
 
-    # No JSON block — fall through to existing prose awk parser (backward compat)
-    awk '
-        /^## Plan[[:space:]]*$/ { in_plan = 1; next }
-        in_plan && /^## / && !/^## Plan/ { exit }
-        in_plan {
+    # No JSON block — fall through to existing prose awk parser (backward
+    # compat), scanning the decoded planner body directly.
+    local body
+    body=$(planner_body_from_log "$log_file")
+    [ -z "$body" ] && {
+        printf ''
+        return 0
+    }
+    printf '%s' "$body" | awk '
+        {
             line = $0
             # Match **Gate**: or Gate:
             if (match(line, /^\*\*Gate\*\*:[[:space:]]*/) || match(line, /^Gate:[[:space:]]*/)) {
@@ -253,7 +291,7 @@ gate_select_read_planner_gate() {
                 if (length(rest) > 0) { print rest; exit }
             }
         }
-    ' "$log_file"
+    '
 }
 
 # gate_select_decide <project_dir> [<step_log_file>]

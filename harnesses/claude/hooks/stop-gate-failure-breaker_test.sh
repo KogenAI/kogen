@@ -87,7 +87,7 @@ rm -f /tmp/claude-gate-breaker-test-breaker-sess-incr.count
 
 # --- Test 1: 2 FAILED + verdict=failed → ALLOW (below threshold) ---
 tmp1=$(mktemp -d)
-log1="$tmp1/codegen/logging/step_log.md"
+log1="$tmp1/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_test_cycle.jsonl"
 mkdir -p "$tmp1/codegen/logging"
 make_session_log "$log1" 2
 make_gate_result "$tmp1" "failed"
@@ -98,7 +98,7 @@ rm -rf "$tmp1"
 
 # --- Test 2: 3 FAILED + verdict=failed → BLOCK (at threshold) ---
 tmp2=$(mktemp -d)
-log2="$tmp2/codegen/logging/step_log.md"
+log2="$tmp2/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_test_cycle.jsonl"
 mkdir -p "$tmp2/codegen/logging"
 make_session_log "$log2" 3
 make_gate_result "$tmp2" "failed"
@@ -111,7 +111,7 @@ rm -f "/tmp/claude-gate-breaker-test-breaker-sess-3a.count"
 
 # --- Test 3: 5 FAILED + verdict=failed → BLOCK (above threshold) ---
 tmp3=$(mktemp -d)
-log3="$tmp3/codegen/logging/step_log.md"
+log3="$tmp3/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_test_cycle.jsonl"
 mkdir -p "$tmp3/codegen/logging"
 make_session_log "$log3" 5
 make_gate_result "$tmp3" "failed"
@@ -124,7 +124,7 @@ rm -f "/tmp/claude-gate-breaker-test-breaker-sess-5a.count"
 
 # --- Test 4: 3 FAILED + verdict=clear → ALLOW (verdict guard: recovered) ---
 tmp4=$(mktemp -d)
-log4="$tmp4/codegen/logging/step_log.md"
+log4="$tmp4/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_test_cycle.jsonl"
 mkdir -p "$tmp4/codegen/logging"
 make_session_log "$log4" 3
 make_gate_result "$tmp4" "clear"
@@ -135,7 +135,7 @@ rm -rf "$tmp4"
 
 # --- Test 5: 3 FAILED + verdict=inconclusive → ALLOW (env flake) ---
 tmp5=$(mktemp -d)
-log5="$tmp5/codegen/logging/step_log.md"
+log5="$tmp5/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_test_cycle.jsonl"
 mkdir -p "$tmp5/codegen/logging"
 make_session_log "$log5" 3
 make_gate_result "$tmp5" "inconclusive"
@@ -146,7 +146,7 @@ rm -rf "$tmp5"
 
 # --- Test 6: 3 FAILED + NO gate-result.json → ALLOW (verdict absent) ---
 tmp6=$(mktemp -d)
-log6="$tmp6/codegen/logging/step_log.md"
+log6="$tmp6/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_test_cycle.jsonl"
 mkdir -p "$tmp6/codegen/logging"
 make_session_log "$log6" 3
 # No gate-result.json created.
@@ -157,7 +157,7 @@ rm -rf "$tmp6"
 
 # --- Test 7: non-developer AGENT_TYPE (reviewer-phoenix) → ALLOW (matcher skip) ---
 tmp7=$(mktemp -d)
-log7="$tmp7/codegen/logging/step_log.md"
+log7="$tmp7/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_test_cycle.jsonl"
 mkdir -p "$tmp7/codegen/logging"
 make_session_log "$log7" 5
 make_gate_result "$tmp7" "failed"
@@ -168,7 +168,7 @@ rm -rf "$tmp7"
 
 # --- Test 8: STOP_HOOK_ACTIVE=true → ALLOW (loop guard) ---
 tmp8=$(mktemp -d)
-log8="$tmp8/codegen/logging/step_log.md"
+log8="$tmp8/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_test_cycle.jsonl"
 mkdir -p "$tmp8/codegen/logging"
 make_session_log "$log8" 5
 make_gate_result "$tmp8" "failed"
@@ -186,7 +186,7 @@ rm -rf "$tmp9"
 
 # --- Test 10: 0 FAILED in log → ALLOW ---
 tmp10=$(mktemp -d)
-log10="$tmp10/codegen/logging/step_log.md"
+log10="$tmp10/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_test_cycle.jsonl"
 mkdir -p "$tmp10/codegen/logging"
 make_session_log "$log10" 0
 make_gate_result "$tmp10" "failed"
@@ -197,7 +197,7 @@ rm -rf "$tmp10"
 
 # --- Test 11: cap release: counter=2 + 5 failures + verdict=failed → ALLOW (cap cleared) ---
 tmp11=$(mktemp -d)
-log11="$tmp11/codegen/logging/step_log.md"
+log11="$tmp11/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_test_cycle.jsonl"
 mkdir -p "$tmp11/codegen/logging"
 make_session_log "$log11" 5
 make_gate_result "$tmp11" "failed"
@@ -210,7 +210,7 @@ rm -f "/tmp/claude-gate-breaker-test-breaker-sess-cap.count"
 
 # --- Test 12: malformed counter (line2="bad") + 3 failures + verdict=failed → BLOCK (treated as 0) ---
 tmp12=$(mktemp -d)
-log12="$tmp12/codegen/logging/step_log.md"
+log12="$tmp12/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_test_cycle.jsonl"
 mkdir -p "$tmp12/codegen/logging"
 make_session_log "$log12" 3
 make_gate_result "$tmp12" "failed"
@@ -223,7 +223,7 @@ rm -f "/tmp/claude-gate-breaker-test-breaker-sess-bad.count"
 
 # --- Test 13: block increments counter — 1st block writes step_log\n1 (two-line) ---
 tmp13=$(mktemp -d)
-log13="$tmp13/codegen/logging/step_log.md"
+log13="$tmp13/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_test_cycle.jsonl"
 mkdir -p "$tmp13/codegen/logging"
 make_session_log "$log13" 3
 make_gate_result "$tmp13" "failed"
@@ -248,7 +248,7 @@ rm -f "/tmp/claude-gate-breaker-test-breaker-sess-incr.count"
 
 # --- Test 14: developer-static + 3 FAILED + verdict=failed → BLOCK (broad matcher) ---
 tmp14=$(mktemp -d)
-log14="$tmp14/codegen/logging/step_log.md"
+log14="$tmp14/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_test_cycle.jsonl"
 mkdir -p "$tmp14/codegen/logging"
 make_session_log "$log14" 3
 make_gate_result "$tmp14" "failed"

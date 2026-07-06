@@ -58,10 +58,13 @@ describe("step-log-completeness", () => {
     const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "step-log-completeness-role-test-"));
     const loggingDir = path.join(tmpDir, "codegen", "logging");
     fs.mkdirSync(loggingDir, { recursive: true });
-    const logFile = path.join(loggingDir, "20260101_120000_step1_test.md");
+    const logFile = path.join(loggingDir, "20260101_120000_test.jsonl");
     fs.writeFileSync(
       logFile,
-      "## developer-phoenix-backend Section\n\nSome content\n\n## dev-gate Section\n\nALL CLEAR ✅\n",
+      [
+        JSON.stringify({ ev: "role", role: "developer-phoenix-backend", body: "Some content" }),
+        JSON.stringify({ ev: "gate", role: "dev-gate", verdict: "clear" }),
+      ].join("\n") + "\n",
       "utf8",
     );
     const now = Date.now();
@@ -92,10 +95,13 @@ describe("step-log-completeness", () => {
     const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "step-log-completeness-role-test-"));
     const loggingDir = path.join(tmpDir, "codegen", "logging");
     fs.mkdirSync(loggingDir, { recursive: true });
-    const logFile = path.join(loggingDir, "20260101_120000_step1_test.md");
+    const logFile = path.join(loggingDir, "20260101_120000_test.jsonl");
     fs.writeFileSync(
       logFile,
-      "## developer-phoenix-backend Section\n\nSome content\n\n## dev-gate Section\n\nALL CLEAR ✅\n",
+      [
+        JSON.stringify({ ev: "role", role: "developer-phoenix-backend", body: "Some content" }),
+        JSON.stringify({ ev: "gate", role: "dev-gate", verdict: "clear" }),
+      ].join("\n") + "\n",
       "utf8",
     );
     const now = Date.now();
@@ -131,7 +137,7 @@ describe("step-log-completeness", () => {
     );
     const loggingDir = path.join(tmpDir, "codegen", "logging");
     fs.mkdirSync(loggingDir, { recursive: true });
-    const logDirAsFile = path.join(loggingDir, "20260101_120000_step1_test.md");
+    const logDirAsFile = path.join(loggingDir, "20260101_120000_test.jsonl");
     fs.mkdirSync(logDirAsFile, { recursive: true });
 
     let stderrOutput = "";
@@ -164,10 +170,13 @@ describe("step-log-completeness", () => {
     );
     const loggingDir = path.join(tmpDir, "codegen", "logging");
     fs.mkdirSync(loggingDir, { recursive: true });
-    const logFile = path.join(loggingDir, "20260101_120000_step1_test.md");
+    const logFile = path.join(loggingDir, "20260101_120000_test.jsonl");
     fs.writeFileSync(
       logFile,
-      "## developer-phoenix-backend Section\n\nSome content\n\nALL CLEAR ✅\n",
+      [
+        JSON.stringify({ ev: "role", role: "developer-phoenix-backend", body: "Some content" }),
+        JSON.stringify({ ev: "gate", role: "dev-gate", verdict: "clear" }),
+      ].join("\n") + "\n",
       "utf8",
     );
     const now = Date.now();
@@ -214,11 +223,11 @@ describe("step-log-completeness", () => {
       tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "step-log-completeness-test-"));
       const loggingDir = path.join(tmpDir, "codegen", "logging");
       fs.mkdirSync(loggingDir, { recursive: true });
-      // Write a recent log with developer section header but empty body
-      const logFile = path.join(loggingDir, "20260101_120000_step1_test.md");
+      // Write a recent log with a developer role event but empty body
+      const logFile = path.join(loggingDir, "20260101_120000_test.jsonl");
       fs.writeFileSync(
         logFile,
-        "## developer-phoenix-backend Section\n\n",
+        JSON.stringify({ ev: "role", role: "developer-phoenix-backend", body: "" }) + "\n",
         "utf8",
       );
       // Touch the file to ensure it's within the 60-min window
@@ -239,10 +248,13 @@ describe("step-log-completeness", () => {
 
     it("log with INTERRUPTED marker — no throw, death-marker skip fires", async () => {
       const loggingDir = path.join(tmpDir, "codegen", "logging");
-      const logFile = path.join(loggingDir, "20260101_130000_step2_test.md");
+      const logFile = path.join(loggingDir, "20260101_130000_test.jsonl");
       fs.writeFileSync(
         logFile,
-        "## developer-phoenix-backend Section\n\n### INTERRUPTED ⚠️ — developer dropped; re-spawning (attempt 1/2)\n",
+        [
+          JSON.stringify({ ev: "role", role: "developer-phoenix-backend", body: "" }),
+          JSON.stringify({ ev: "died", role: "developer-phoenix-backend", kind: "interrupted", cause: "" }),
+        ].join("\n") + "\n",
         "utf8",
       );
       const now = Date.now();
@@ -254,19 +266,18 @@ describe("step-log-completeness", () => {
 
     it("retro-first reviewer body then trailing prose — no OBSERVE-ONLY warning", async () => {
       const loggingDir = path.join(tmpDir, "codegen", "logging");
-      const logFile = path.join(loggingDir, "20260101_140000_step3_test.md");
+      const logFile = path.join(loggingDir, "20260101_140000_test.jsonl");
+      const retroFirstBody = [
+        "### What I Learned This Step",
+        "",
+        "- nothing notable",
+        "",
+        "Verdict: APPROVED — ready for curator.",
+        "",
+      ].join("\n");
       fs.writeFileSync(
         logFile,
-        [
-          "## reviewer-phoenix Section",
-          "",
-          "### What I Learned This Step",
-          "",
-          "- nothing notable",
-          "",
-          "Verdict: APPROVED — ready for curator.",
-          "",
-        ].join("\n"),
+        JSON.stringify({ ev: "role", role: "reviewer-phoenix", body: retroFirstBody }) + "\n",
         "utf8",
       );
       // Explicit future mtime (well past any prior test's mtime in this shared
@@ -295,12 +306,11 @@ describe("step-log-completeness", () => {
 
     it("truly-empty reviewer section body — OBSERVE-ONLY warning still fires", async () => {
       const loggingDir = path.join(tmpDir, "codegen", "logging");
-      const logFile = path.join(loggingDir, "20260101_150000_step4_test.md");
+      const logFile = path.join(loggingDir, "20260101_150000_test.jsonl");
+      const trulyEmptyBody = ["### What I Learned This Step", "", "- nothing notable", ""].join("\n");
       fs.writeFileSync(
         logFile,
-        ["## reviewer-phoenix Section", "", "### What I Learned This Step", "", "- nothing notable", ""].join(
-          "\n",
-        ),
+        JSON.stringify({ ev: "role", role: "reviewer-phoenix", body: trulyEmptyBody }) + "\n",
         "utf8",
       );
       // Explicit future mtime, later than the sibling test's +10s offset, so

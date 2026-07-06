@@ -235,11 +235,12 @@ defmodule CodegenTestHarness.LoopQueueDrain do
     end
   end
 
-  # Two-path echo: session.md (if discovered) then jsonl (legacy fallback
-  # `build-queue.sh:499` echoes jsonl alone when session.md is absent).
+  # Single-path echo: discover_session_log_fn now resolves the SAME
+  # `_cycle.jsonl` artifact the `jsonl` var already holds (storage format
+  # flipped from markdown to JSONL) — echoing both would print the
+  # identical path twice, so this collapses to one echo.
   defp echo_paths(state, slug, spawn_stamp, jsonl) do
-    session_md = state.discover_session_log_fn.(state.cwd, slug, spawn_stamp)
-    if session_md, do: IO.puts(:stderr, "  " <> session_md)
+    _ = state.discover_session_log_fn.(state.cwd, slug, spawn_stamp)
     IO.puts(:stderr, "  " <> jsonl)
   end
 
@@ -613,10 +614,11 @@ defmodule CodegenTestHarness.LoopQueueDrain do
     end
   end
 
-  # ── Real discover_session_log_fn: newest *_<slug>_session.md at/after spawn ──
+  # ── Real discover_session_log_fn: newest *_<slug>_cycle.jsonl at/after spawn ──
   # Mirrors legacy `latest_session_log` (build-queue.sh:254-268) + poll loop
   # (build-queue.sh:426, 30 iterations x sleep 1). Bounded retry, fail-open
-  # (no hit after the window -> nil, caller falls back to jsonl-only echo).
+  # (no hit after the window -> nil; echo_paths/4 ignores the nil, the caller
+  # already has the same artifact path via `jsonl`).
 
   @discover_max_polls 30
 
@@ -639,7 +641,7 @@ defmodule CodegenTestHarness.LoopQueueDrain do
   end
 
   defp newest_session_log(cwd, slug, spawn_stamp) do
-    pattern = Path.join([cwd, "codegen", "logging", "*_#{slug}_session.md"])
+    pattern = Path.join([cwd, "codegen", "logging", "*_#{slug}_cycle.jsonl"])
 
     pattern
     |> Path.wildcard()
@@ -650,7 +652,7 @@ defmodule CodegenTestHarness.LoopQueueDrain do
   end
 
   defp session_log_stamp(path, slug) do
-    suffix = "_#{slug}_session.md"
+    suffix = "_#{slug}_cycle.jsonl"
     base = Path.basename(path)
 
     if String.ends_with?(base, suffix) do

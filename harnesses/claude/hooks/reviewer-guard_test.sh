@@ -58,25 +58,26 @@ run_test "Bash passes for developer-phoenix-backend" "0" "$FIXTURE_ALLOW"
 FIXTURE_CODEGEN_LOG='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"printf %s \"body\" | codegen-log section --body @-"},"agent_type":"reviewer-phoenix","agent_id":"abc123"}'
 run_test "Bash codegen-log invocation passes for reviewer-phoenix" "0" "$FIXTURE_CODEGEN_LOG"
 
-# Test 4: Edit on canonical single-session log (full %H%M%S) — ALLOW
-FIXTURE_EDIT_SESSION='{"hook_event_name":"PreToolUse","tool_name":"Edit","tool_input":{"file_path":"codegen/logging/20260602_201515_session.md","old_string":"x","new_string":"y"},"agent_type":"reviewer-phoenix","agent_id":"abc123"}'
-run_test "Edit on canonical single-session log allows (full %H%M%S)" "0" "$FIXTURE_EDIT_SESSION"
+# Test 4: Edit on canonical slug-bearing cycle log (full %H%M%S) — ALLOW
+FIXTURE_EDIT_SESSION='{"hook_event_name":"PreToolUse","tool_name":"Edit","tool_input":{"file_path":"codegen/logging/20260602_201515_my-slug_cycle.jsonl","old_string":"x","new_string":"y"},"agent_type":"reviewer-phoenix","agent_id":"abc123"}'
+run_test "Edit on canonical cycle log allows (full %H%M%S)" "0" "$FIXTURE_EDIT_SESSION"
 
-# Test 5: Edit on canonical multi-step log (full %H%M%S step form) — ALLOW
+# Test 5: Edit on the dead pre-JSONL multi-step markdown form — BLOCK (never
+# written by codegen-log; JSONL storage has no multi-step alternate).
 FIXTURE_EDIT_STEP='{"hook_event_name":"PreToolUse","tool_name":"Edit","tool_input":{"file_path":"codegen/logging/20260602_201515_step1_my-task.md","old_string":"x","new_string":"y"},"agent_type":"reviewer-phoenix","agent_id":"abc123"}'
-run_test "Edit on canonical multi-step log allows (full %H%M%S step form)" "0" "$FIXTURE_EDIT_STEP"
+run_test "Edit on dead multi-step markdown form blocks" "2" "$FIXTURE_EDIT_STEP"
 
-# Test 6: Edit on slug-bearing single-session log — ALLOW (optional slug schema)
-FIXTURE_EDIT_SLUG='{"hook_event_name":"PreToolUse","tool_name":"Edit","tool_input":{"file_path":"codegen/logging/20260602_201515_my-slug_session.md","old_string":"x","new_string":"y"},"agent_type":"reviewer-phoenix","agent_id":"abc123"}'
-run_test "Edit on slug-bearing single-session log allows (optional slug)" "0" "$FIXTURE_EDIT_SLUG"
+# Test 6: Edit on slug-bearing cycle log — ALLOW (slug schema)
+FIXTURE_EDIT_SLUG='{"hook_event_name":"PreToolUse","tool_name":"Edit","tool_input":{"file_path":"codegen/logging/20260602_201515_my-slug_cycle.jsonl","old_string":"x","new_string":"y"},"agent_type":"reviewer-phoenix","agent_id":"abc123"}'
+run_test "Edit on slug-bearing cycle log allows" "0" "$FIXTURE_EDIT_SLUG"
 
 # Test 7: Edit on non-canonical path — BLOCK
 FIXTURE_EDIT_BAD='{"hook_event_name":"PreToolUse","tool_name":"Edit","tool_input":{"file_path":"lib/foo.ex","old_string":"x","new_string":"y"},"agent_type":"reviewer-phoenix","agent_id":"abc123"}'
 run_test "Edit on non-canonical path blocks" "2" "$FIXTURE_EDIT_BAD"
 
-# Test 8: Edit on old-schema date-only multi-step (no time component) — BLOCK
-FIXTURE_EDIT_OLD='{"hook_event_name":"PreToolUse","tool_name":"Edit","tool_input":{"file_path":"codegen/logging/20260602_step1_my-task.md","old_string":"x","new_string":"y"},"agent_type":"reviewer-phoenix","agent_id":"abc123"}'
-run_test "Edit on old date-only multi-step schema blocks (must use full %H%M%S)" "2" "$FIXTURE_EDIT_OLD"
+# Test 8: Edit on old markdown _session.md schema (pre-JSONL) — BLOCK
+FIXTURE_EDIT_OLD='{"hook_event_name":"PreToolUse","tool_name":"Edit","tool_input":{"file_path":"codegen/logging/20260602_201515_session.md","old_string":"x","new_string":"y"},"agent_type":"reviewer-phoenix","agent_id":"abc123"}'
+run_test "Edit on old markdown _session.md schema blocks (must use _cycle.jsonl)" "2" "$FIXTURE_EDIT_OLD"
 
 echo ""
 echo "Results: $pass passed, $fail failed"

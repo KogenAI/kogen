@@ -20,9 +20,10 @@
 #   3. Build-mode gate (is_build_mode) OR CODEGEN_NO_AUTOSHIP=1 → exit
 #   4. Intent-question regex → exit (orchestrator asking user something)
 #   5. Transcript unreadable → exit (fail-open)
-#   6. session_log_from_transcript; extract slug from <ts>_<slug>_session.md filename
+#   6. session_log_from_transcript; extract slug from the log's "init" event
+#      (.pitch field), falling back to the <ts>_<slug>_cycle.jsonl filename
 #      → empty slug = not a pitch-driven log → exit
-#   7. No ## committer Section in log → exit (committer hasn't run yet)
+#   7. No committer role event in log → exit (committer hasn't run yet)
 #   8. ready/<slug>.md still exists → block with move instruction
 #
 # Bypass paths:
@@ -92,7 +93,7 @@ if [ -z "${TRANSCRIPT_PATH:-}" ] || [ ! -r "$TRANSCRIPT_PATH" ]; then
     exit 0
 fi
 
-# 6. Active session log → extract slug from <ts>_<slug>_session.md filename.
+# 6. Active session log → extract slug from <ts>_<slug>_cycle.jsonl filename.
 log=$(session_log_from_transcript)
 if [ -z "$log" ] || [ ! -r "$log" ]; then
     debug_log pitch-shipped-before-stop "skip: no step log"
@@ -109,23 +110,26 @@ if [ "$count" -ge 2 ]; then
     exit 0
 fi
 
-# Slug-capture (not filename-class match): derives the shared timestamp
-# prefix from SESSION_LOG_TIMESTAMP_RE (hooks-lib.sh) so a shape change to the
-# timestamp format only needs an edit there. Only fires on the single-log
-# "_session.md" kind — multi-step "_stepN_<slug>.md" logs are skipped (empty
-# slug, checked below).
-slug=$(basename "$log" | sed -E "s/^${SESSION_LOG_TIMESTAMP_RE}(.+)_session\\.md\$/\\1/")
-if [ -z "$slug" ] || [ "$slug" = "$(basename "$log")" ]; then
-    debug_log pitch-shipped-before-stop "skip: no slug in log filename (free-form or multi-step log)"
-    exit 0
+# Slug resolution: prefer the log's "init" event .pitch field (guaranteed
+# present, JSONL is authoritative), falling back to a filename slug-capture
+# (derives the shared timestamp prefix from SESSION_LOG_TIMESTAMP_RE so a
+# shape change to the timestamp format only needs an edit there) for logs
+# that predate an init event or were relocated oddly.
+slug=$(jq -r 'select(.ev=="init")|.pitch' "$log" 2>/dev/null | head -n 1)
+if [ -z "$slug" ] || [ "$slug" = "null" ]; then
+    slug=$(basename "$log" | sed -E "s/^${SESSION_LOG_TIMESTAMP_RE}(.+)_cycle\\.jsonl\$/\\1/")
+    if [ -z "$slug" ] || [ "$slug" = "$(basename "$log")" ]; then
+        debug_log pitch-shipped-before-stop "skip: no slug in init event or log filename"
+        exit 0
+    fi
 fi
 
 debug_log pitch-shipped-before-stop "slug=$slug log=$(basename "$log")"
 
-# 7. Committer-section guard — only act after committer has committed.
+# 7. Committer-role guard — only act after committer has committed.
 project_dir="${CWD:-${CLAUDE_PROJECT_DIR:-$PWD}}"
-if ! grep -qF "## committer Section" "$log" 2>/dev/null; then
-    debug_log pitch-shipped-before-stop "skip: committer section absent"
+if ! jq -e 'select(.ev=="role" and .role=="committer")' "$log" >/dev/null 2>&1; then
+    debug_log pitch-shipped-before-stop "skip: committer role event absent"
     exit 0
 fi
 

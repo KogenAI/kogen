@@ -24,12 +24,30 @@ export const HANDLER_META = {
   matcher: "*",
 } as const;
 
-/** Extract pitch slug from a session log filename: <ts>_<slug>_session.md → slug. */
+/** Extract pitch slug from a cycle log filename: <ts>_<slug>_cycle.jsonl → slug. */
 function slugFromLogName(logPath: string): string | null {
   const basename = path.basename(logPath);
-  const match = /^[0-9]{8}_[0-9]{6}_(.+)_session\.md$/.exec(basename);
+  const match = /^[0-9]{8}_[0-9]{6}_(.+)_cycle\.jsonl$/.exec(basename);
   if (!match) return null;
   return match[1];
+}
+
+/** Parsed JSONL event — minimal shape needed by this hook. */
+type CycleEvent = { ev?: string; pitch?: string; role?: string };
+
+/** Parse a JSONL cycle log's lines into event objects, skipping malformed lines. */
+function parseCycleEvents(logContent: string): CycleEvent[] {
+  const events: CycleEvent[] = [];
+  for (const line of logContent.split("\n")) {
+    if (!line.trim()) continue;
+    try {
+      events.push(JSON.parse(line) as CycleEvent);
+    } catch {
+      // Skip malformed lines — fail-open per the fail-open discipline the
+      // old markdown greps also had.
+    }
+  }
+  return events;
 }
 
 export function register(pi: ExtensionAPI): void {
@@ -73,12 +91,23 @@ export function register(pi: ExtensionAPI): void {
       return;
     }
 
-    // Extract slug from log filename: <ts>_<slug>_session.md → slug.
-    const slug = slugFromLogName(logPath);
+    let logContent: string;
+    try {
+      logContent = fs.readFileSync(logPath, "utf8");
+    } catch {
+      debugLog("pitch-shipped-before-stop", "skip: log unreadable");
+      return;
+    }
+    const events = parseCycleEvents(logContent);
+
+    // Slug resolution: prefer the log's "init" event .pitch field, falling
+    // back to a filename slug-capture for logs that predate an init event.
+    const initEvent = events.find((e) => e.ev === "init" && e.pitch);
+    const slug = initEvent?.pitch ?? slugFromLogName(logPath);
     if (!slug) {
       debugLog(
         "pitch-shipped-before-stop",
-        "skip: no slug in log filename (free-form or multi-step log)",
+        "skip: no slug in init event or log filename",
       );
       return;
     }
@@ -88,17 +117,12 @@ export function register(pi: ExtensionAPI): void {
       `slug=${slug} log=${path.basename(logPath)}`,
     );
 
-    let logContent: string;
-    try {
-      logContent = fs.readFileSync(logPath, "utf8");
-    } catch {
-      debugLog("pitch-shipped-before-stop", "skip: log unreadable");
-      return;
-    }
-
     // Only act after committer has committed.
-    if (!logContent.includes("## committer Section")) {
-      debugLog("pitch-shipped-before-stop", "skip: committer section absent");
+    const committerPresent = events.some(
+      (e) => e.ev === "role" && e.role === "committer",
+    );
+    if (!committerPresent) {
+      debugLog("pitch-shipped-before-stop", "skip: committer role event absent");
       return;
     }
 

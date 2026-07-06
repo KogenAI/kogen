@@ -35,6 +35,21 @@ describe("curator-before-committer", () => {
     return logPath;
   }
 
+  function writeCycleState(state: string, stepLog: string): void {
+    const dir = path.join(tmpDir, "codegen", "gate-pending");
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(
+      path.join(dir, "cycle-state.json"),
+      JSON.stringify({
+        state,
+        step_log: stepLog,
+        session_id: "test-session",
+        verdict: "",
+        updated_at: new Date().toISOString(),
+      }),
+    );
+  }
+
   async function runHook(subagentType: string) {
     process.env["CWD"] = tmpDir;
     const { register } = await import("../curator-before-committer");
@@ -48,118 +63,101 @@ describe("curator-before-committer", () => {
     });
   }
 
-  it("blocks committer when reviewer present, curator absent", async () => {
-    writeLog(
-      "20260601_step1_test.md",
-      [
-        "## developer-phoenix-backend Section",
-        "",
-        "result here",
-        "",
-        "## dev-gate Section",
-        "",
-        "ALL CLEAR ✅",
-        "",
-        "## reviewer-phoenix Section",
-        "",
-        "**Verdict**: QUALITY APPROVED ✅",
-      ].join("\n"),
+  it("blocks committer when reviewer present, curator absent (cycle-state=REVIEWED)", async () => {
+    const logPath = writeLog(
+      "20260601_test_cycle.jsonl",
+      JSON.stringify({
+        ev: "role",
+        role: "reviewer-phoenix",
+        body: "**Verdict**: QUALITY APPROVED ✅",
+      }) + "\n",
     );
+    writeCycleState("REVIEWED", logPath);
 
     const result = await runHook("committer");
     assert.ok((result as { block?: boolean }).block === true);
   });
 
-  it("allows committer when context-curator section present", async () => {
-    writeLog(
-      "20260601_step1_test.md",
+  it("allows committer when context-curator has run (cycle-state=CURATED)", async () => {
+    const logPath = writeLog(
+      "20260601_test_cycle.jsonl",
       [
-        "## developer-phoenix-backend Section",
-        "",
-        "result here",
-        "",
-        "## dev-gate Section",
-        "",
-        "ALL CLEAR ✅",
-        "",
-        "## reviewer-phoenix Section",
-        "",
-        "**Verdict**: QUALITY APPROVED ✅",
-        "",
-        "## context-curator Section",
-        "",
-        "Files updated.",
-      ].join("\n"),
+        JSON.stringify({
+          ev: "role",
+          role: "reviewer-phoenix",
+          body: "**Verdict**: QUALITY APPROVED ✅",
+        }),
+        JSON.stringify({
+          ev: "role",
+          role: "context-curator",
+          body: "Files updated.",
+        }),
+      ].join("\n") + "\n",
     );
+    writeCycleState("CURATED", logPath);
 
     const result = await runHook("committer");
     assert.ok(result == null || (result as { block?: boolean }).block !== true);
   });
 
   it("allows planner-phoenix unconditionally (not committer)", async () => {
-    writeLog(
-      "20260601_step1_test.md",
-      [
-        "## reviewer-phoenix Section",
-        "",
-        "**Verdict**: QUALITY APPROVED ✅",
-      ].join("\n"),
+    const logPath = writeLog(
+      "20260601_test_cycle.jsonl",
+      JSON.stringify({
+        ev: "role",
+        role: "reviewer-phoenix",
+        body: "**Verdict**: QUALITY APPROVED ✅",
+      }) + "\n",
     );
+    writeCycleState("REVIEWED", logPath);
 
     const result = await runHook("planner-phoenix");
     assert.ok(result == null || (result as { block?: boolean }).block !== true);
   });
 
   it("allows developer-phoenix-backend unconditionally (not committer)", async () => {
-    writeLog(
-      "20260601_step1_test.md",
-      [
-        "## reviewer-phoenix Section",
-        "",
-        "**Verdict**: QUALITY APPROVED ✅",
-      ].join("\n"),
+    const logPath = writeLog(
+      "20260601_test_cycle.jsonl",
+      JSON.stringify({
+        ev: "role",
+        role: "reviewer-phoenix",
+        body: "**Verdict**: QUALITY APPROVED ✅",
+      }) + "\n",
     );
+    writeCycleState("REVIEWED", logPath);
 
     const result = await runHook("developer-phoenix-backend");
     assert.ok(result == null || (result as { block?: boolean }).block !== true);
   });
 
   it("allows reviewer-phoenix unconditionally (not committer)", async () => {
-    writeLog(
-      "20260601_step1_test.md",
-      [
-        "## reviewer-phoenix Section",
-        "",
-        "**Verdict**: QUALITY APPROVED ✅",
-      ].join("\n"),
+    const logPath = writeLog(
+      "20260601_test_cycle.jsonl",
+      JSON.stringify({
+        ev: "role",
+        role: "reviewer-phoenix",
+        body: "**Verdict**: QUALITY APPROVED ✅",
+      }) + "\n",
     );
+    writeCycleState("REVIEWED", logPath);
 
     const result = await runHook("reviewer-phoenix");
     assert.ok(result == null || (result as { block?: boolean }).block !== true);
   });
 
-  it("blocks committer when log path resolves but read throws (present-but-unreadable)", async () => {
-    // A directory named *.md matches getActiveStepLog's readdirSync filter
-    // (endsWith(".md")) and existsSync, but fs.readFileSync throws EISDIR on
-    // it — this is the present-but-unreadable anomaly path, not absence.
-    const logDirAsFile = path.join(
-      tmpDir,
-      "codegen",
-      "logging",
-      "20260601_step1_test.md",
+  it("allows committer when no cycle-state.json exists (fail-open: can't determine state)", async () => {
+    writeLog(
+      "20260601_test_cycle.jsonl",
+      JSON.stringify({
+        ev: "role",
+        role: "reviewer-phoenix",
+        body: "**Verdict**: QUALITY APPROVED ✅",
+      }) + "\n",
     );
-    fs.mkdirSync(logDirAsFile, { recursive: true });
+    // No cycle-state.json written.
 
     const result = await runHook("committer");
-    const asObj = result as { block?: boolean; reason?: string } | null;
-    assert.ok(
-      asObj != null && asObj.block === true,
-      `expected block but got: ${JSON.stringify(result)}`,
-    );
-    assert.ok(
-      asObj.reason?.includes("could not be read"),
-      `expected "could not be read" in reason but got: ${asObj.reason}`,
-    );
+    assert.ok(result == null || (result as { block?: boolean }).block !== true);
   });
 
   it("allows committer when no log file exists (fail-open)", async () => {

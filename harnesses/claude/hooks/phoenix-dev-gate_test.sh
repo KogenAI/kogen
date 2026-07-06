@@ -69,6 +69,22 @@ assert_file_not_contains() {
     fi
 }
 
+# assert_file_matches_jq <desc> <jq-select-expr> <file> — presence check via
+# jq (at least one matching JSONL line).
+assert_file_matches_jq() {
+    local desc="$1"
+    local expr="$2"
+    local file="$3"
+    if [ -f "$file" ] && jq -e "$expr" "$file" >/dev/null 2>&1; then
+        [ -n "${VERBOSE:-}" ] && printf 'PASS: %s\n' "$desc"
+        pass=$((pass + 1))
+    else
+        printf 'FAIL: %s\n  expr: %s\n  file: %s\n' "$desc" "$expr" "$file"
+        if [ -f "$file" ]; then printf '  contents:\n%s\n' "$(cat "$file")"; fi
+        fail=$((fail + 1))
+    fi
+}
+
 make_project() {
     local dir
     dir=$(mktemp -d)
@@ -91,6 +107,17 @@ make_transcript() {
     local log_path="$2"
     printf '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Write","input":{"file_path":"%s"}}]}}\n' \
         "$log_path" >"$transcript_path"
+}
+
+# write_planner_log <path> — wraps the markdown body piped on stdin (the
+# "## Plan" prose planners write) into a single JSONL "role" event line,
+# matching what codegen-log actually writes on disk.
+write_planner_log() {
+    local path="$1"
+    local body
+    body="$(cat)"
+    jq -c -n --arg role "planner-phoenix" --arg body "$body" \
+        '{ev: "role", role: $role, body: $body}' >"$path"
 }
 
 input_for() {
@@ -132,8 +159,8 @@ STUB
 
 # ── Test 1: render PASS — short gate success + render PASS → ALL CLEAR ───────
 T1=$(make_project)
-LOG1="$T1/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_step1.md"
-cat >"$LOG1" <<'MD'
+LOG1="$T1/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_cycle.jsonl"
+write_planner_log "$LOG1" <<'MD'
 # Step
 
 ## Plan
@@ -152,8 +179,8 @@ rm -rf "$T1"
 
 # ── Test 2: render FAIL empty-dom — short gate blocks ───────────────────────
 T2=$(make_project)
-LOG2="$T2/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_step1.md"
-cat >"$LOG2" <<'MD'
+LOG2="$T2/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_cycle.jsonl"
+write_planner_log "$LOG2" <<'MD'
 # Step
 
 ## Plan
@@ -172,8 +199,8 @@ rm -rf "$T2"
 
 # ── Test 3: render FAIL unstyled — short gate blocks ────────────────────────
 T3=$(make_project)
-LOG3="$T3/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_step1.md"
-cat >"$LOG3" <<'MD'
+LOG3="$T3/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_cycle.jsonl"
+write_planner_log "$LOG3" <<'MD'
 # Step
 
 ## Plan
@@ -191,8 +218,8 @@ rm -rf "$T3"
 
 # ── Test 4: render FAIL js-error — short gate blocks ────────────────────────
 T4=$(make_project)
-LOG4="$T4/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_step1.md"
-cat >"$LOG4" <<'MD'
+LOG4="$T4/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_cycle.jsonl"
+write_planner_log "$LOG4" <<'MD'
 # Step
 
 ## Plan
@@ -210,8 +237,8 @@ rm -rf "$T4"
 
 # ── Test 5: render INCONCLUSIVE chromium-launch-failed — non-fatal ───────────
 T5=$(make_project)
-LOG5="$T5/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_step1.md"
-cat >"$LOG5" <<'MD'
+LOG5="$T5/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_cycle.jsonl"
+write_planner_log "$LOG5" <<'MD'
 # Step
 
 ## Plan
@@ -230,8 +257,8 @@ rm -rf "$T5"
 
 # ── Test 6: render INCONCLUSIVE server-unready — non-fatal ───────────────────
 T6=$(make_project)
-LOG6="$T6/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_step1.md"
-cat >"$LOG6" <<'MD'
+LOG6="$T6/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_cycle.jsonl"
+write_planner_log "$LOG6" <<'MD'
 # Step
 
 ## Plan
@@ -250,8 +277,8 @@ rm -rf "$T6"
 
 # ── Test 7: GATED/clear stamp written on short-gate ALL CLEAR ────────────────
 T7=$(make_project)
-LOG7="$T7/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_step1.md"
-cat >"$LOG7" <<'MD'
+LOG7="$T7/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_cycle.jsonl"
+write_planner_log "$LOG7" <<'MD'
 # Step
 
 ## Plan
@@ -284,8 +311,8 @@ rm -rf "$T7"
 
 # ── Test 8: GATED/inconclusive stamp written on short-gate INCONCLUSIVE ──────
 T8=$(make_project)
-LOG8="$T8/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_step1.md"
-cat >"$LOG8" <<'MD'
+LOG8="$T8/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_cycle.jsonl"
+write_planner_log "$LOG8" <<'MD'
 # Step
 
 ## Plan
@@ -316,8 +343,8 @@ rm -rf "$T8"
 
 # ── Test 9: wiring FAIL — short gate blocks ───────────────────────────────────
 T9=$(make_project)
-LOG9="$T9/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_step1.md"
-cat >"$LOG9" <<'MD'
+LOG9="$T9/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_cycle.jsonl"
+write_planner_log "$LOG9" <<'MD'
 # Step
 
 ## Plan
@@ -338,8 +365,8 @@ rm -rf "$T9"
 
 # ── Test 10: wiring PASS — short gate proceeds to render ─────────────────────
 T10=$(make_project)
-LOG10="$T10/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_step1.md"
-cat >"$LOG10" <<'MD'
+LOG10="$T10/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_cycle.jsonl"
+write_planner_log "$LOG10" <<'MD'
 # Step
 
 ## Plan
@@ -359,8 +386,8 @@ rm -rf "$T10"
 
 # ── Test 11: wiring INCONCLUSIVE — short gate proceeds (fall through) ─────────
 T11=$(make_project)
-LOG11="$T11/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_step1.md"
-cat >"$LOG11" <<'MD'
+LOG11="$T11/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_cycle.jsonl"
+write_planner_log "$LOG11" <<'MD'
 # Step
 
 ## Plan
@@ -385,7 +412,7 @@ rm -rf "$T11"
 #   - log contains "FAILED" and "wiring check failed"
 #   - log does NOT contain a render section (no fallthrough into render case)
 T12=$(make_project)
-LOG12="$T12/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_step1.md"
+LOG12="$T12/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_cycle.jsonl"
 # Create a stub gate script that exits 0 and emits execution evidence
 GATE12=$(mktemp)
 cat >"$GATE12" <<'GATESTUB'
@@ -394,7 +421,7 @@ printf 'make test\nALL CLEAR\n'
 exit 0
 GATESTUB
 chmod +x "$GATE12"
-cat >"$LOG12" <<MD
+write_planner_log "$LOG12" <<MD
 # Step
 
 ## Plan
@@ -421,8 +448,8 @@ rm -rf "$T12"
 
 # ── Test 13: RENDER_CHECK_CMD points at a nonexistent binary → BLOCK (fail-closed) ──
 T13=$(make_project)
-LOG13="$T13/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_step1.md"
-cat >"$LOG13" <<'MD'
+LOG13="$T13/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_cycle.jsonl"
+write_planner_log "$LOG13" <<'MD'
 # Step
 
 ## Plan
@@ -440,8 +467,8 @@ rm -rf "$T13"
 
 # ── Test 14: RENDER_CHECK_CMD stub exits non-zero with no verdict line → BLOCK (fail-closed) ──
 T14=$(make_project)
-LOG14="$T14/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_step1.md"
-cat >"$LOG14" <<'MD'
+LOG14="$T14/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_cycle.jsonl"
+write_planner_log "$LOG14" <<'MD'
 # Step
 
 ## Plan
@@ -474,8 +501,8 @@ rm -rf "$T14"
 # the fail-closed flip: FAIL:server-boot-failed), not the checker-missing
 # path (class-1 — see Tests 13/14/22/23/28/29 for those). It must now block.
 T15=$(make_project)
-LOG15="$T15/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_step1.md"
-cat >"$LOG15" <<'MD'
+LOG15="$T15/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_cycle.jsonl"
+write_planner_log "$LOG15" <<'MD'
 # Step
 
 ## Plan
@@ -495,8 +522,8 @@ rm -rf "$T15"
 # The render step must be silently skipped; the log must show ALL CLEAR from
 # the PASS wiring stub.
 T16=$(make_project)
-LOG16="$T16/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_step1.md"
-cat >"$LOG16" <<'MD'
+LOG16="$T16/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_cycle.jsonl"
+write_planner_log "$LOG16" <<'MD'
 # Step
 
 ## Plan
@@ -517,8 +544,8 @@ rm -rf "$T16"
 # Setting WIRING_CHECK_CMD to empty string is deliberate opt-out. The wiring
 # step is silently skipped; gate proceeds to render (which passes) → ALL CLEAR.
 T17=$(make_project)
-LOG17="$T17/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_step1.md"
-cat >"$LOG17" <<'MD'
+LOG17="$T17/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_cycle.jsonl"
+write_planner_log "$LOG17" <<'MD'
 # Step
 
 ## Plan
@@ -541,8 +568,8 @@ rm -rf "$T17"
 # ruling. Before this flip the crash downgraded to INCONCLUSIVE and ALL CLEAR
 # still shipped; now it blocks.
 T18=$(make_project)
-LOG18="$T18/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_step1.md"
-cat >"$LOG18" <<'MD'
+LOG18="$T18/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_cycle.jsonl"
+write_planner_log "$LOG18" <<'MD'
 # Step
 
 ## Plan
@@ -568,8 +595,8 @@ rm -rf "$T18"
 
 # ── Test 19: Witness present — parseable ExUnit location in block envelope ────
 TW=$(make_project)
-LOGW="$TW/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_step1.md"
-cat >"$LOGW" <<'MD'
+LOGW="$TW/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_cycle.jsonl"
+write_planner_log "$LOGW" <<'MD'
 # Step
 
 ## Plan
@@ -587,8 +614,8 @@ rm -rf "$TW"
 
 # ── Test 20: Witness absent — unparseable log, no Witness prefix in block ─────
 TU=$(make_project)
-LOGU="$TU/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_step1.md"
-cat >"$LOGU" <<'MD'
+LOGU="$TU/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_cycle.jsonl"
+write_planner_log "$LOGU" <<'MD'
 # Step
 
 ## Plan
@@ -619,8 +646,8 @@ cat >"$T21_FLAT/lib/wiring-check.js" <<'JS'
 process.stdout.write('WIRING_VERDICT=PASS\n');
 JS
 T21=$(make_project)
-LOG21="$T21/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_step1.md"
-cat >"$LOG21" <<'MD'
+LOG21="$T21/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_cycle.jsonl"
+write_planner_log "$LOG21" <<'MD'
 # Step
 
 ## Plan
@@ -647,8 +674,8 @@ cat >"$T22_FLAT/lib/wiring-check.js" <<'JS'
 process.stdout.write('WIRING_VERDICT=PASS\n');
 JS
 T22=$(make_project)
-LOG22="$T22/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_step1.md"
-cat >"$LOG22" <<'MD'
+LOG22="$T22/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_cycle.jsonl"
+write_planner_log "$LOG22" <<'MD'
 # Step
 
 ## Plan
@@ -668,8 +695,8 @@ rm -rf "$T22_FLAT" "$T22"
 # A stub that emits a stderr marker and exits 1 (no RENDER_VERDICT= line).
 # The BLOCK verdict surfaced in the log must contain the marker.
 T23=$(make_project)
-LOG23="$T23/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_step1.md"
-cat >"$LOG23" <<'MD'
+LOG23="$T23/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_cycle.jsonl"
+write_planner_log "$LOG23" <<'MD'
 # Step
 
 ## Plan
@@ -697,8 +724,8 @@ rm -rf "$T23"
 # A stub that emits a stderr marker and exits 1 (no WIRING_VERDICT= line).
 # The BLOCK verdict surfaced in the log must contain the marker.
 T24=$(make_project)
-LOG24="$T24/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_step1.md"
-cat >"$LOG24" <<'MD'
+LOG24="$T24/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_cycle.jsonl"
+write_planner_log "$LOG24" <<'MD'
 # Step
 
 ## Plan
@@ -728,8 +755,8 @@ rm -rf "$T24"
 T25=$(make_project)
 mkdir -p "$T25/shared/enforcement"
 touch "$T25/shared/enforcement/registry.yaml"
-LOG25="$T25/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_step1.md"
-cat >"$LOG25" <<'MD'
+LOG25="$T25/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_cycle.jsonl"
+write_planner_log "$LOG25" <<'MD'
 # Step
 
 ## Plan
@@ -764,13 +791,14 @@ assert_eq_num() {
 }
 assert_eq_num "sole-writer: zero raw >>\"\$log_file\" writes remain in phoenix-dev-gate.sh" "0" "${raw_write_count:-0}"
 
-# ── Test 27: verdict output byte-shape unchanged — ALL CLEAR path ────────────
-# Confirms the "## dev-gate Section" block routed through codegen-log verdict
-# carries the exact same field labels/order as the pre-Phase-5 raw-write shape:
-# Gate:/Ran:/**Rules loaded**:/**Commands executed**: table/**Result**:.
+# ── Test 27: verdict output shape — ALL CLEAR path, JSONL gate event ─────────
+# Confirms the gate event codegen-log verdict appends carries the same
+# semantic fields the pre-JSONL "## dev-gate Section" markdown block carried:
+# gate command, mode, classified verdict, result text, and folded wiring/
+# render detail — now as structured JSON fields rather than markdown lines.
 T26=$(make_project)
-LOG26="$T26/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_step1.md"
-cat >"$LOG26" <<'MD'
+LOG26="$T26/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_cycle.jsonl"
+write_planner_log "$LOG26" <<'MD'
 # Step
 
 ## Plan
@@ -782,22 +810,20 @@ STUB26=$(make_render_stub "PASS")
 WSTUB26=$(make_wiring_stub "PASS")
 out26=$(printf '%s' "$(input_for "$T26" developer-phoenix-backend false sess1 "$T26/transcript.jsonl")" |
     RENDER_CHECK_CMD="$STUB26" WIRING_CHECK_CMD="$WSTUB26" CODEGEN_DIR="$SCRIPT_DIR" bash "$HOOK" 2>/dev/null || true)
-assert_file_contains "verdict shape: dev-gate Section header present" "## dev-gate Section" "$LOG26"
-assert_file_contains "verdict shape: Gate: line present" "Gate: true" "$LOG26"
-assert_file_contains "verdict shape: Ran: line present" "Ran: true" "$LOG26"
-assert_file_contains "verdict shape: Rules loaded line present" "**Rules loaded**: deterministic hook (dev-gate.sh) — no rules loaded" "$LOG26"
-assert_file_contains "verdict shape: Commands executed table header present" "**Commands executed**:" "$LOG26"
-assert_file_contains "verdict shape: table column header row present" "| Time (HH:MM:SS UTC) | Command | Exit | Notes |" "$LOG26"
-assert_file_contains "verdict shape: Result line present" "**Result**: ALL CLEAR ✅" "$LOG26"
-assert_file_contains "verdict shape: wiring detail folded into section body" "wiring: PASS" "$LOG26"
-assert_file_contains "verdict shape: render detail folded into section body" "render: DOM non-empty" "$LOG26"
+assert_file_matches_jq "verdict shape: dev-gate gate event present" 'select(.ev=="gate" and .role=="dev-gate")' "$LOG26"
+assert_file_matches_jq "verdict shape: gate command is true" 'select(.ev=="gate" and .gate=="true")' "$LOG26"
+assert_file_matches_jq "verdict shape: mode=short" 'select(.ev=="gate" and .mode=="short")' "$LOG26"
+assert_file_matches_jq "verdict shape: verdict=clear" 'select(.ev=="gate" and .verdict=="clear")' "$LOG26"
+assert_file_matches_jq "verdict shape: result text present" 'select(.ev=="gate" and (.result | test("ALL CLEAR")))' "$LOG26"
+assert_file_matches_jq "verdict shape: wiring detail folded into gate event detail" 'select(.ev=="gate" and (.detail | test("wiring: PASS")))' "$LOG26"
+assert_file_matches_jq "verdict shape: render detail folded into gate event detail" 'select(.ev=="gate" and (.detail | test("render: DOM non-empty")))' "$LOG26"
 rm -f "$STUB26" "$WSTUB26"
 rm -rf "$T26"
 
 # ── Test 28: WIRING_CHECK_CMD points at a nonexistent binary → BLOCK (fail-closed) ──
 T28=$(make_project)
-LOG28="$T28/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_step1.md"
-cat >"$LOG28" <<'MD'
+LOG28="$T28/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_cycle.jsonl"
+write_planner_log "$LOG28" <<'MD'
 # Step
 
 ## Plan
@@ -825,8 +851,8 @@ cat >"$T29_FLAT/lib/render-check.js" <<'JS'
 process.stdout.write('RENDER_VERDICT=PASS\n');
 JS
 T29=$(make_project)
-LOG29="$T29/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_step1.md"
-cat >"$LOG29" <<'MD'
+LOG29="$T29/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_cycle.jsonl"
+write_planner_log "$LOG29" <<'MD'
 # Step
 
 ## Plan
@@ -848,8 +874,8 @@ rm -rf "$T29_FLAT" "$T29"
 # reachable ONLY via legit-skip — this test locks that distinction so a
 # future regression turning legit opt-out into a block is caught.
 T30=$(make_project)
-LOG30="$T30/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_step1.md"
-cat >"$LOG30" <<'MD'
+LOG30="$T30/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_cycle.jsonl"
+write_planner_log "$LOG30" <<'MD'
 # Step
 
 ## Plan
@@ -870,8 +896,8 @@ rm -rf "$T30"
 # --port, so a stubbed PASS verdict (the stub does not care which flag it
 # was invoked with) still proves the ALL-CLEAR path is intact end-to-end.
 T31=$(make_project)
-LOG31="$T31/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_step1.md"
-cat >"$LOG31" <<'MD'
+LOG31="$T31/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_cycle.jsonl"
+write_planner_log "$LOG31" <<'MD'
 # Step
 
 ## Plan
@@ -891,8 +917,8 @@ rm -rf "$T31"
 # Proves the gate treats a self-spawned server that never boots as a
 # fail-closed FAIL, not a fail-open INCONCLUSIVE skip.
 T32=$(make_project)
-LOG32="$T32/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_step1.md"
-cat >"$LOG32" <<'MD'
+LOG32="$T32/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_cycle.jsonl"
+write_planner_log "$LOG32" <<'MD'
 # Step
 
 ## Plan

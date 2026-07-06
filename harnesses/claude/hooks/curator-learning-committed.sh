@@ -53,9 +53,9 @@ project_dir="${CWD:-$PWD}"
 # Resolve session log
 session_log=$(session_log_from_transcript)
 
-# Fallback: newest .md in project codegen/logging/ if transcript scan empty
+# Fallback: newest .jsonl in project codegen/logging/ if transcript scan empty
 if [ -z "$session_log" ]; then
-    session_log=$(ls -t "$project_dir/codegen/logging"/*.md 2>/dev/null | head -1 || true)
+    session_log=$(ls -t "$project_dir/codegen/logging"/*.jsonl 2>/dev/null | head -1 || true)
 fi
 
 if [ -z "$session_log" ] || [ ! -r "$session_log" ]; then
@@ -65,15 +65,15 @@ fi
 
 debug_log curator-learning-committed "session_log=$session_log"
 
-# Extract the curator section body: from "## context-curator Section" to next "^## "
-curator_section=$(awk '
-    /^## context-curator Section/ { in_section=1; next }
-    in_section && /^## / { in_section=0 }
-    in_section { print }
-' "$session_log")
+# Extract the context-curator role body(ies) decoded from the JSONL cycle log
+# (concatenated in call order, joined by newline). A body containing markdown-
+# looking "## " lines is just an opaque string value — never re-parsed as
+# structure. Fail-open on jq errors (malformed line, absent role) exactly like
+# the old awk "section not found" path.
+curator_section=$(jq -r 'select(.ev=="role" and .role=="context-curator")|.body' "$session_log" 2>/dev/null || true)
 
 if [ -z "$curator_section" ]; then
-    debug_log curator-learning-committed "allow: no context-curator Section found"
+    debug_log curator-learning-committed "allow: no context-curator role event found"
     exit 0
 fi
 

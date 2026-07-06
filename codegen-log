@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# codegen-log — canonical session-log writer.
+# codegen-log — canonical cycle-log writer.
 #
 # Usage:
 #   codegen-log init --slug <slug>
@@ -24,51 +24,63 @@
 # aliases, kept for existing callers) resolve to the same behavior. When
 # --body is omitted, stdin is read implicitly (same as --body @-).
 #
-# init: create a new codegen/logging/<ts>_<slug>_session.md with only the
-#       Version Stamp block. Idempotent: re-running init with a slug that
-#       already has a matching log prints that log's path and exits 0
-#       WITHOUT creating a second log; more than one match is ambiguous
-#       and exits 2.
-# section: atomically insert/replace the active role section at canonical rank.
-#          --role overrides AGENT_TYPE/CLAUDE_ROLE-derived header when present.
-#          REPLACES the whole section body (first/only write for the section).
-# append: insert the piped body at the END of an EXISTING section's body
-#         (before the next "## " header or EOF), PRESERVING the prior body.
-#         Never creates a section — exits 2 if the target section is missing.
-#         Use for a SECOND write to the same section this cycle (re-run,
-#         death marker) — never use `section` for that, it would overwrite.
+# On-disk storage: codegen/logging/<ts>_<slug>_cycle.jsonl — append-only
+# JSONL, one JSON object per line, NEVER rewritten/ranked. Every event object
+# carries an "ev" discriminator field:
+#   init:    {"ev":"init","pitch":<slug>,"path":<pitch-path-or-empty>,
+#             "stamp":{"project","context","codegen","claude","at"}}
+#   role:    {"ev":"role","role":<role>,"body":<prose>} — one line per
+#            section/append call. Re-running `section`/`append` for the same
+#            role APPENDS a new "role" event; it never overwrites a prior one
+#            (there is no rank/order concept under JSONL).
+#   learned: {"ev":"learned","role":<role>,"text":<t>}
+#   died:    {"ev":"died","role":<role>,"kind":"interrupted"|"aborted","cause":<c-or-empty>}
+#   gate:    {"ev":"gate","role":<role>,"verdict":"clear"|"failed"|"inconclusive",
+#             ...gate metadata for the `verdict` subcommand}
 #
-# Marker flags (append only) — emit a BYTE-EXACT canonical block instead of
-# reading stdin. Mutually exclusive with --body and with each other.
-#   --learned "<text>"           -> "### What I Learned This Step\n\n<text>"
-#   --died interrupted [--cause] -> "### INTERRUPTED ⚠️ — <role> dropped (<cause>); re-spawning (attempt N/2)"
-#   --died aborted                -> "### ABORTED 💀 — <role> dropped twice; stage failed."
-#   --verdict clear|failed|inconclusive -> a line containing
-#       "ALL CLEAR ✅" / "FAILED ❌" / "INCONCLUSIVE ⚠️" respectively.
+# init: create a new codegen/logging/<ts>_<slug>_cycle.jsonl containing only
+#       the initial "init" event line. Idempotent: re-running init with a
+#       slug that already has a matching log prints that log's path and
+#       exits 0 WITHOUT creating a second log; more than one match is
+#       ambiguous and exits 2.
+# section: append ONE "role" event line with the given role + full body.
+#          --role overrides AGENT_TYPE/CLAUDE_ROLE-derived role when present.
+#          A second `section` call for the same role APPENDS another "role"
+#          event line — it does NOT replace the earlier one (append-only
+#          storage; there is nothing to overwrite).
+# append: append ONE more event line for an EXISTING role (plain body ->
+#         another "role" event; marker flags -> "learned"/"died"/"gate"
+#         events). JSONL append is unconditional — there is no "section must
+#         exist first" precondition (that constraint only existed to protect
+#         markdown section-insertion order, which JSONL has no concept of).
+#
+# Marker flags (append only) — emit a structured event instead of reading
+# stdin. Mutually exclusive with --body and with each other.
+#   --learned "<text>"            -> {"ev":"learned",...}
+#   --died interrupted [--cause]  -> {"ev":"died","kind":"interrupted",...}
+#   --died aborted                -> {"ev":"died","kind":"aborted",...}
+#   --verdict clear|failed|inconclusive -> {"ev":"gate","verdict":<v>,...}
 #
 # Target-log resolution (section/append), in precedence order:
 #   1. CODEGEN_LOG_PATH env var, if set.
 #   2. --slug <slug>, if given — resolves to the single log on disk matching
-#      *_<slug>_session.md; zero or multiple matches exit 2.
+#      *_<slug>_cycle.jsonl; zero or multiple matches exit 2.
 #   3. codegen/logging/.active sentinel (written by init/relocate), if it
 #      points at a log that still exists on disk.
-#   4. Otherwise, the most recently modified *_session.md (mtime, latest_session_log).
+#   4. Otherwise, the most recently modified *_cycle.jsonl (mtime).
 #
 # relocate: rewrite the .active sentinel to point at a RENAMED log file
 # (rename in place, no rm+init). Resolves the CURRENT log via the same
 # precedence as section/append (CODEGEN_LOG_PATH > --slug > .active > mtime),
 # renames it to carry --new-slug, and updates .active to the new path.
 #
-# verdict: dedicated writer for the freeform "## dev-gate Section" block
-# (phoenix-dev-gate.sh's deterministic gate verdict — rank 999, ignored by
-# the canonical section-order check). Unlike `section`, EVERY call APPENDS a
-# brand-new "## dev-gate Section" block at end-of-file — it never replaces a
-# prior one, matching one-block-per-gate-run semantics (a step log commonly
-# carries more than one dev-gate verdict block across retries). Emits the
-# BYTE-EXACT shape phoenix-dev-gate.sh previously wrote via raw `>>`:
-#   \n## dev-gate Section\n\nGate: <gate>\nRan: <gate>\n\n
-#   **Rules loaded**: deterministic hook (dev-gate.sh) — no rules loaded\n\n
-#   **Commands executed**:\n\n<table>\n\n**Result**: <result>\n[\n<detail>\n]
+# verdict: dedicated writer for the phoenix-dev-gate.sh deterministic gate
+# verdict. Every call APPENDS a brand-new "gate" event line (role="dev-gate")
+# — never replaces a prior one, matching one-event-per-gate-run semantics (a
+# cycle log commonly carries more than one dev-gate verdict across retries).
+# The verdict field is derived from --result text: contains "ALL CLEAR" ->
+# clear, "FAILED" -> failed, "INCONCLUSIVE" -> inconclusive; the raw --result
+# and --detail text are preserved alongside the classified verdict.
 
 set -euo pipefail
 
@@ -122,7 +134,7 @@ usage() {
     printf '  codegen-log relocate --new-slug <slug> [--slug <slug>]\n' >&2
     printf '  codegen-log --version\n' >&2
     printf '\n' >&2
-    printf "section REPLACES the whole section body (first/only write); append PRESERVES it and adds to the end (re-run, second write, death marker).\n" >&2
+    printf "section and append both APPEND a new event line to the JSONL cycle log — there is no overwrite/replace semantics.\n" >&2
     exit 2
 }
 
@@ -296,47 +308,20 @@ if [[ "$MARKER_FLAG_COUNT" -gt 0 ]]; then
     fi
 fi
 
-# build_marker_body — emit the byte-exact canonical block for the active
-# marker flag. Must be called only when MARKER_FLAG_COUNT -eq 1.
-build_marker_body() {
-    if [[ -n "$LEARNED_TEXT" ]]; then
-        printf '### What I Learned This Step\n\n%s\n' "$LEARNED_TEXT"
-        return
-    fi
-    if [[ -n "$DIED_KIND" ]]; then
-        case "$DIED_KIND" in
-        interrupted)
-            local cause="${DIED_CAUSE:-unknown}"
-            printf '### INTERRUPTED ⚠️ — %s dropped (%s); re-spawning (attempt N/2)\n' "$ROLE_OVERRIDE" "$cause"
-            ;;
-        aborted)
-            printf '### ABORTED 💀 — %s dropped twice; stage failed.\n' "$ROLE_OVERRIDE"
-            ;;
-        *)
-            printf 'codegen-log: --died must be interrupted|aborted (got %q)\n' "$DIED_KIND" >&2
-            exit 2
-            ;;
-        esac
-        return
-    fi
-    if [[ -n "$VERDICT_KIND" ]]; then
-        case "$VERDICT_KIND" in
-        clear)
-            printf 'Verdict: ALL CLEAR ✅\n'
-            ;;
-        failed)
-            printf 'Verdict: FAILED ❌\n'
-            ;;
-        inconclusive)
-            printf 'Verdict: INCONCLUSIVE ⚠️\n'
-            ;;
-        *)
-            printf 'codegen-log: --verdict must be clear|failed|inconclusive (got %q)\n' "$VERDICT_KIND" >&2
-            exit 2
-            ;;
-        esac
-        return
-    fi
+# validate_role — ensure ROLE_OVERRIDE matches the known role-family
+# vocabulary. Exits 2 on unknown role (same families the old markdown header
+# mapping recognized: planner*/developer-*/reviewer-*/context-curator/
+# committer/dev-gate). dev-gate is only ever set internally by the `verdict`
+# subcommand, never accepted from a caller-supplied --role for section/append.
+validate_role() {
+    local role="$1"
+    case "$role" in
+    planner* | developer-* | reviewer-* | context-curator | committer) ;;
+    *)
+        printf 'codegen-log: could not resolve role (got %q). Pass the role positionally (codegen-log section <role>) or via --role <planner*|developer-*|reviewer-*|context-curator|committer>.\n' "${role:-unknown}" >&2
+        exit 2
+        ;;
+    esac
 }
 
 repo_root() {
@@ -368,13 +353,13 @@ write_active_sentinel() {
     printf '%s' "$log_path" >"$sentinel"
 }
 
-# latest_session_log — most recently MODIFIED *_session.md (mtime order via
+# latest_cycle_log — most recently MODIFIED *_cycle.jsonl (mtime order via
 # `ls -t`), not lexicographic/glob-order. This is the last-resort fallback
 # when neither CODEGEN_LOG_PATH, --slug, nor the .active sentinel resolve.
-latest_session_log() {
+latest_cycle_log() {
     local root
     root="$(repo_root)"
-    ls -t "$root"/codegen/logging/*_session.md 2>/dev/null | head -n 1
+    ls -t "$root"/codegen/logging/*_cycle.jsonl 2>/dev/null | head -n 1
 }
 
 validate_slug() {
@@ -389,12 +374,12 @@ resolve_by_slug() {
     local slug="$1"
     local root matches=() candidate
     root="$(repo_root)"
-    for candidate in "$root"/codegen/logging/*_"${slug}"_session.md; do
+    for candidate in "$root"/codegen/logging/*_"${slug}"_cycle.jsonl; do
         [[ -e "$candidate" ]] || continue
         matches+=("$candidate")
     done
     if [[ "${#matches[@]}" -eq 0 ]]; then
-        printf 'codegen-log: no session log matches slug %s\n' "$slug" >&2
+        printf 'codegen-log: no cycle log matches slug %s\n' "$slug" >&2
         exit 2
     fi
     if [[ "${#matches[@]}" -gt 1 ]]; then
@@ -421,10 +406,13 @@ resolve_log_file() {
         printf '%s' "$sentinel_log"
         return
     fi
-    latest_session_log
+    latest_cycle_log
 }
 
-version_stamp() {
+# version_stamp_json — emit the stamp object fields for the init event as a
+# single-line JSON object via jq. Computes the same hash/version values the
+# old markdown "## Version Stamp" block carried.
+version_stamp_json() {
     local project_hash context_hash codegen_hash claude_version stamped_at
     project_hash="$(git -C "$LOG_ROOT" rev-parse --short HEAD 2>/dev/null || printf 'unknown')"
     if [[ -n "$CODEGEN_ROOT" ]]; then
@@ -446,65 +434,21 @@ version_stamp() {
         claude_version="unknown"
     fi
     stamped_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-    cat <<EOF
-## Version Stamp
-
-- project: $project_hash
-- context: $context_hash
-- codegen: $codegen_hash
-- claude: $claude_version
-- stamped_at: $stamped_at
-EOF
+    jq -c -n \
+        --arg project "$project_hash" \
+        --arg context "$context_hash" \
+        --arg codegen "$codegen_hash" \
+        --arg claude "$claude_version" \
+        --arg at "$stamped_at" \
+        '{project: $project, context: $context, codegen: $codegen, claude: $claude, at: $at}'
 }
 
-section_header_for_agent() {
-    local role="$ROLE_OVERRIDE"
-    case "$role" in
-    planner*) printf '## Plan' ;;
-    developer-*) printf '## %s Section' "$role" ;;
-    reviewer-*) printf '## %s Section' "$role" ;;
-    context-curator) printf '## context-curator Section' ;;
-    committer) printf '## committer Section' ;;
-    *)
-        printf 'codegen-log: could not resolve role (got %q). Pass the role positionally (codegen-log section <role>) or via --role <planner*|developer-*|reviewer-*|context-curator|committer>.\n' "${role:-unknown}" >&2
-        exit 2
-        ;;
-    esac
-}
-
-rank_of() {
-    case "$1" in
-    '## Version Stamp') printf '1' ;;
-    '## Rules Loaded'*) printf '2' ;;
-    '## Plan'*) printf '3' ;;
-    '## Slices'*) printf '3' ;;
-    '## Delegation Timeline') printf '4' ;;
-    '## Files Modified') printf '5' ;;
-    '## developer-'*' Section'*) printf '6' ;;
-    '## reviewer-'*' Section'*) printf '8' ;;
-    '## context-curator Section') printf '9' ;;
-    '## committer Section') printf '10' ;;
-    *) printf '999' ;;
-    esac
-}
-
-render_section() {
-    local header="$1"
-    local body="$2"
-    printf '%s\n\n%s' "$header" "$body"
-    if [[ -z "$body" || "${body: -1}" != $'\n' ]]; then
-        printf '\n'
-    fi
-}
-
-write_atomic() {
+# append_event_line — append ONE compact JSON line to the given log file.
+# `$1` is the log path, `$2` is the already-built compact JSON object string.
+append_event_line() {
     local path="$1"
-    local content="$2"
-    mkdir -p "$(dirname "$path")"
-    local tmp
-    tmp="$(mktemp "${path}.XXXXXX")"
-    printf '%s' "$content" >"$tmp"
-    mv "$tmp" "$path"
+    local line="$2"
+    printf '%s\n' "$line" >>"$path"
 }
 
 case "$SUBCOMMAND" in
@@ -519,7 +463,7 @@ init)
     fi
     root="$(repo_root)"
     existing=()
-    for candidate in "$root"/codegen/logging/*_"${SLUG}"_session.md; do
+    for candidate in "$root"/codegen/logging/*_"${SLUG}"_cycle.jsonl; do
         [[ -e "$candidate" ]] || continue
         existing+=("$candidate")
     done
@@ -534,8 +478,15 @@ init)
         exit 2
     fi
     timestamp="$(date -u +%Y%m%d_%H%M%S)"
-    path="$root/codegen/logging/${timestamp}_${SLUG}_session.md"
-    write_atomic "$path" "$(version_stamp)"
+    path="$root/codegen/logging/${timestamp}_${SLUG}_cycle.jsonl"
+    mkdir -p "$(dirname "$path")"
+    # Best-effort pitch path — empty string (not a masking-default fake path)
+    # when it cannot be resolved. codegen-log has no reliable way to know the
+    # pitch file's path at init time; leave it empty rather than guess.
+    stamp_json="$(version_stamp_json)"
+    init_line="$(jq -c -n --arg pitch "$SLUG" --arg path "" --argjson stamp "$stamp_json" \
+        '{ev: "init", pitch: $pitch, path: $path, stamp: $stamp}')"
+    printf '%s\n' "$init_line" >"$path"
     write_active_sentinel "$path"
     printf '%s\n' "$path"
     ;;
@@ -557,105 +508,20 @@ section)
         body="$(cat)"
     fi
 
-    body_file="$(mktemp "${TMPDIR:-/tmp}/.codegen-log-body.XXXXXX")"
-    printf '%s' "$body" >"$body_file"
+    if [[ -z "$ROLE_OVERRIDE" ]]; then
+        printf 'codegen-log section: role is required (positional: codegen-log section <role>, or --role <role>)\n' >&2
+        usage
+    fi
+    validate_role "$ROLE_OVERRIDE"
 
     log_file="$(resolve_log_file)"
     if [[ -z "$log_file" || ! -f "$log_file" ]]; then
-        printf 'codegen-log section: no session log found (set CODEGEN_LOG_PATH or create one first)\n' >&2
+        printf 'codegen-log section: no cycle log found (set CODEGEN_LOG_PATH or create one first)\n' >&2
         exit 2
     fi
 
-    target_header="$(section_header_for_agent)"
-    case "$body" in
-    "$target_header"$'\n'*)
-        body="${body#"$target_header"}"
-        while [[ "$body" == $'\n'* ]]; do
-            body="${body#$'\n'}"
-        done
-        ;;
-    esac
-    # Opaque-body ingest: indent any stray col-0 "## " (H2) line in the author
-    # body so it can never be parsed as a canonical section header by the
-    # awk inserter below or by downstream col-0-anchored reader hooks.
-    # Deliberately narrow to "^## " (H2 + trailing space) — H3 retro/death
-    # markers and H1 titles are untouched.
-    body="$(printf '%s' "$body" | sed 's/^## /  ## /')"
-    printf '%s' "$body" >"$body_file"
-
-    target_rank="$(rank_of "$target_header")"
-    tmp="$(mktemp "${log_file}.XXXXXX")"
-
-    awk -v target="$target_header" -v body_file="$body_file" -v target_rank="$target_rank" '
-    function rank_of(h) {
-        if (h == "## Version Stamp") return 1
-        if (h ~ /^## Rules Loaded/) return 2
-        if (h ~ /^## Plan/) return 3
-        if (h ~ /^## Slices/) return 3
-        if (h == "## Delegation Timeline") return 4
-        if (h == "## Files Modified") return 5
-        if (h ~ /^## developer-.* Section( \(pass [0-9]+\))?$/) return 6
-        if (h ~ /^## reviewer-.* Section( \(pass [0-9]+\))?$/) return 8
-        if (h == "## context-curator Section") return 9
-        if (h == "## committer Section") return 10
-        return 999
-    }
-    function is_target(h) {
-        return h == target || (index(h, target " (pass ") == 1)
-    }
-    function emit_section(hdr, txt) {
-        print hdr
-        print ""
-        printf "%s", txt
-        if (txt == "" || substr(txt, length(txt), 1) != "\n") {
-            printf "\n"
-        }
-    }
-    BEGIN {
-        inserted = 0
-        replaced_target = 0
-        skipping = 0
-        body = ""
-        while ((getline line < body_file) > 0) {
-            body = body line "\n"
-        }
-        close(body_file)
-    }
-    {
-        if ($0 ~ /^## /) {
-            if (!inserted && rank_of($0) > target_rank) {
-                emit_section(target, body)
-                inserted = 1
-            }
-            if (is_target($0)) {
-                if (!replaced_target) {
-                    emit_section(target, body)
-                    inserted = 1
-                    replaced_target = 1
-                }
-                skipping = 1
-                next
-            }
-            if (skipping) {
-                skipping = 0
-            }
-            print $0
-            next
-        }
-        if (skipping) {
-            next
-        }
-        print $0
-    }
-    END {
-        if (!inserted) {
-            emit_section(target, body)
-        }
-    }
-    ' "$log_file" >"$tmp"
-
-    rm -f "$body_file"
-    mv "$tmp" "$log_file"
+    line="$(jq -c -n --arg role "$ROLE_OVERRIDE" --arg body "$body" '{ev: "role", role: $role, body: $body}')"
+    append_event_line "$log_file" "$line"
     printf '%s\n' "$log_file"
     ;;
 append)
@@ -663,16 +529,57 @@ append)
         printf 'codegen-log append: role is required (positional: codegen-log append <role>, or --role <role>)\n' >&2
         usage
     fi
-    # Implicit stdin: --body is optional when no marker flag is given.
-    if [[ "$MARKER_FLAG_COUNT" -eq 0 && -z "$BODY_SOURCE" ]]; then
-        BODY_SOURCE="@-"
+    validate_role "$ROLE_OVERRIDE"
+
+    log_file="$(resolve_log_file)"
+    if [[ -z "$log_file" || ! -f "$log_file" ]]; then
+        printf 'codegen-log append: no cycle log found (set CODEGEN_LOG_PATH or create one first)\n' >&2
+        exit 2
     fi
-    if [[ "$MARKER_FLAG_COUNT" -gt 0 ]]; then
-        body="$(build_marker_body)"
-    elif [[ "$BODY_SOURCE" != @* ]]; then
+
+    if [[ -n "$LEARNED_TEXT" ]]; then
+        line="$(jq -c -n --arg role "$ROLE_OVERRIDE" --arg text "$LEARNED_TEXT" '{ev: "learned", role: $role, text: $text}')"
+        append_event_line "$log_file" "$line"
+        printf '%s\n' "$log_file"
+        exit 0
+    fi
+
+    if [[ -n "$DIED_KIND" ]]; then
+        case "$DIED_KIND" in
+        interrupted | aborted) ;;
+        *)
+            printf 'codegen-log: --died must be interrupted|aborted (got %q)\n' "$DIED_KIND" >&2
+            exit 2
+            ;;
+        esac
+        line="$(jq -c -n --arg role "$ROLE_OVERRIDE" --arg kind "$DIED_KIND" --arg cause "${DIED_CAUSE:-}" \
+            '{ev: "died", role: $role, kind: $kind, cause: $cause}')"
+        append_event_line "$log_file" "$line"
+        printf '%s\n' "$log_file"
+        exit 0
+    fi
+
+    if [[ -n "$VERDICT_KIND" ]]; then
+        case "$VERDICT_KIND" in
+        clear | failed | inconclusive) ;;
+        *)
+            printf 'codegen-log: --verdict must be clear|failed|inconclusive (got %q)\n' "$VERDICT_KIND" >&2
+            exit 2
+            ;;
+        esac
+        line="$(jq -c -n --arg role "$ROLE_OVERRIDE" --arg verdict "$VERDICT_KIND" '{ev: "gate", role: $role, verdict: $verdict}')"
+        append_event_line "$log_file" "$line"
+        printf '%s\n' "$log_file"
+        exit 0
+    fi
+
+    # Plain --body append (no marker flag): implicit stdin when omitted.
+    [[ -z "$BODY_SOURCE" ]] && BODY_SOURCE="@-"
+    if [[ "$BODY_SOURCE" != @* ]]; then
         printf 'codegen-log append: --body must start with @ (got %q)\n' "$BODY_SOURCE" >&2
         exit 2
-    elif [[ "$BODY_SOURCE" != @- ]]; then
+    fi
+    if [[ "$BODY_SOURCE" != @- ]]; then
         body_path="${BODY_SOURCE#@}"
         if [[ ! -f "$body_path" ]]; then
             printf 'codegen-log append: body file not found: %s\n' "$body_path" >&2
@@ -683,74 +590,8 @@ append)
         body="$(cat)"
     fi
 
-    # Opaque-body ingest: indent any stray col-0 "## " (H2) line in the author
-    # body so it can never be parsed as a canonical section header — same
-    # transform as the `section` path (parallel-cases: same family, same fix).
-    # Marker bodies are tool-generated and never contain a stray H2, but the
-    # transform is idempotent/harmless to apply uniformly.
-    body="$(printf '%s' "$body" | sed 's/^## /  ## /')"
-
-    body_file="$(mktemp "${TMPDIR:-/tmp}/.codegen-log-append-body.XXXXXX")"
-    printf '%s' "$body" >"$body_file"
-
-    log_file="$(resolve_log_file)"
-    if [[ -z "$log_file" || ! -f "$log_file" ]]; then
-        printf 'codegen-log append: no session log found (set CODEGEN_LOG_PATH or create one first)\n' >&2
-        exit 2
-    fi
-
-    target_header="$(section_header_for_agent)"
-    tmp="$(mktemp "${log_file}.XXXXXX")"
-
-    awk -v target="$target_header" -v body_file="$body_file" '
-    function is_target(h) {
-        return h == target || (index(h, target " (pass ") == 1)
-    }
-    BEGIN {
-        found = 0
-        in_target = 0
-        appended = 0
-        body = ""
-        while ((getline line < body_file) > 0) {
-            body = body line "\n"
-        }
-        close(body_file)
-    }
-    {
-        if ($0 ~ /^## /) {
-            if (in_target && !appended) {
-                printf "%s", body
-                appended = 1
-            }
-            in_target = is_target($0)
-            if (in_target) {
-                found = 1
-            }
-            print $0
-            next
-        }
-        print $0
-    }
-    END {
-        if (in_target && !appended) {
-            printf "%s", body
-            appended = 1
-        }
-        if (!found) {
-            exit 3
-        }
-    }
-    ' "$log_file" >"$tmp" || awk_rc=$?
-    awk_rc="${awk_rc:-0}"
-
-    if [[ "$awk_rc" -eq 3 ]]; then
-        rm -f "$body_file" "$tmp"
-        printf 'codegen-log append: section not found: %s — run '"'"'codegen-log section --role <role> --body @-'"'"' to create the section first\n' "$target_header" >&2
-        exit 2
-    fi
-
-    rm -f "$body_file"
-    mv "$tmp" "$log_file"
+    line="$(jq -c -n --arg role "$ROLE_OVERRIDE" --arg body "$body" '{ev: "role", role: $role, body: $body}')"
+    append_event_line "$log_file" "$line"
     printf '%s\n' "$log_file"
     ;;
 relocate)
@@ -764,37 +605,24 @@ relocate)
     fi
     log_file="$(resolve_log_file)"
     if [[ -z "$log_file" || ! -f "$log_file" ]]; then
-        printf 'codegen-log relocate: no session log found (set CODEGEN_LOG_PATH or create one first)\n' >&2
+        printf 'codegen-log relocate: no cycle log found (set CODEGEN_LOG_PATH or create one first)\n' >&2
         exit 2
     fi
     log_dir="$(dirname "$log_file")"
     log_base="$(basename "$log_file")"
-    # Preserve the timestamp + kind suffix (session|stepN_slug), swap the slug.
+    # Preserve the timestamp prefix, swap the slug. Only the "_cycle.jsonl"
+    # suffix form is supported (the dead "_stepN_<slug>.md" alternate was
+    # never written by codegen-log and is not ported).
     case "$log_base" in
-    [0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]_[0-9][0-9][0-9][0-9][0-9][0-9]_*)
+    [0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]_[0-9][0-9][0-9][0-9][0-9][0-9]_*_cycle.jsonl)
         timestamp_prefix="${log_base:0:15}"
-        rest="${log_base:16}"
-        # rest is "<old-slug>_<kind_suffix>"; kind_suffix is either
-        # "session.md" or "step[0-9]+_[a-z0-9_-]+.md" — the slug itself may
-        # contain "_-", so derive kind_suffix by matching the known kind
-        # shapes from the tail of $rest rather than naive splitting.
-        case "$rest" in
-        *_session.md) kind_suffix="session.md" ;;
-        *)
-            kind_suffix="$(printf '%s' "$rest" | grep -oE 'step[0-9]+_[a-z0-9_-]+\.md$' || true)"
-            ;;
-        esac
-        if [[ -z "$kind_suffix" ]]; then
-            printf 'codegen-log relocate: could not parse log filename: %s\n' "$log_base" >&2
-            exit 2
-        fi
         ;;
     *)
         printf 'codegen-log relocate: could not parse log filename: %s\n' "$log_base" >&2
         exit 2
         ;;
     esac
-    new_path="$log_dir/${timestamp_prefix}_${NEW_SLUG}_${kind_suffix}"
+    new_path="$log_dir/${timestamp_prefix}_${NEW_SLUG}_cycle.jsonl"
     if [[ -e "$new_path" ]]; then
         printf 'codegen-log relocate: target already exists: %s\n' "$new_path" >&2
         exit 2
@@ -818,24 +646,30 @@ verdict)
     fi
     log_file="$(resolve_log_file)"
     if [[ -z "$log_file" || ! -f "$log_file" ]]; then
-        printf 'codegen-log verdict: no session log found (set CODEGEN_LOG_PATH or create one first)\n' >&2
+        printf 'codegen-log verdict: no cycle log found (set CODEGEN_LOG_PATH or create one first)\n' >&2
         exit 2
     fi
-    ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-    {
-        printf '\n## dev-gate Section\n\n'
-        printf 'Gate: %s\n' "$GATE_CMD"
-        printf 'Ran: %s\n\n' "$GATE_CMD"
-        printf '**Rules loaded**: deterministic hook (dev-gate.sh) — no rules loaded\n\n'
-        printf '**Commands executed**:\n\n'
-        printf '| Time (HH:MM:SS UTC) | Command | Exit | Notes |\n'
-        printf '| ------------------- | ------- | ---- | ----- |\n'
-        printf '| %s | %s | — | mode=%s |\n\n' "$ts" "$GATE_CMD" "$GATE_MODE"
-        printf '**Result**: %s\n' "$RESULT_TEXT"
-        if [[ -n "$DETAIL_TEXT" ]]; then
-            printf '\n%s\n' "$DETAIL_TEXT"
-        fi
-    } >>"$log_file"
+    # Derive the classified verdict discriminator from the raw --result text.
+    # This is the single authoritative field readers key on; the raw result
+    # text is preserved alongside it for detail.
+    case "$RESULT_TEXT" in
+    *'ALL CLEAR'*) derived_verdict="clear" ;;
+    *'FAILED'*) derived_verdict="failed" ;;
+    *'INCONCLUSIVE'*) derived_verdict="inconclusive" ;;
+    *)
+        printf 'codegen-log verdict: --result must contain ALL CLEAR, FAILED, or INCONCLUSIVE (got %q)\n' "$RESULT_TEXT" >&2
+        exit 2
+        ;;
+    esac
+    line="$(jq -c -n \
+        --arg role "dev-gate" \
+        --arg verdict "$derived_verdict" \
+        --arg gate "$GATE_CMD" \
+        --arg mode "$GATE_MODE" \
+        --arg result "$RESULT_TEXT" \
+        --arg detail "${DETAIL_TEXT:-}" \
+        '{ev: "gate", role: $role, verdict: $verdict, gate: $gate, mode: $mode, result: $result, detail: $detail}')"
+    append_event_line "$log_file" "$line"
     printf '%s\n' "$log_file"
     ;;
 esac

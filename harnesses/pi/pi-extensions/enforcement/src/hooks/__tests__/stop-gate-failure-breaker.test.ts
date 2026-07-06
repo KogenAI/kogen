@@ -41,7 +41,7 @@ describe("stop-gate-failure-breaker", () => {
     const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "sgfb-"));
     const loggingDir = path.join(tmpDir, "codegen", "logging");
     fs.mkdirSync(loggingDir, { recursive: true });
-    const logPath = path.join(loggingDir, "20260101_000000_step1_test.md");
+    const logPath = path.join(loggingDir, "20260101_000000_step1_test_cycle.jsonl");
     fs.writeFileSync(logPath, opts.logContent);
 
     if (opts.verdict !== undefined) {

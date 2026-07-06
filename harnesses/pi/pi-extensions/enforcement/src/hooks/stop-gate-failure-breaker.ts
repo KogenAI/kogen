@@ -45,7 +45,7 @@ export function register(pi: ExtensionAPI): void {
     if (!fs.existsSync(loggingDir)) return;
     const logFiles = fs
       .readdirSync(loggingDir)
-      .filter((f) => f.endsWith(".md") && !f.includes("progress"))
+      .filter((f) => f.endsWith(".jsonl") && !f.includes("progress"))
       .map((f) => ({ name: f, mtime: fs.statSync(path.join(loggingDir, f)).mtimeMs }))
       .sort((a, b) => b.mtime - a.mtime);
     if (logFiles.length === 0) return;

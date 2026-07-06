@@ -75,7 +75,7 @@ describe(
     });
 
     const logPath = () =>
-      path.join(logDir, "20260101_120000_test_session.md");
+      path.join(logDir, "20260101_120000_test_cycle.jsonl");
     const nonLogMdPath = () =>
       path.join(tmpDir, "codegen", "pitches", "ready", "some-pitch.md");
 
@@ -109,7 +109,7 @@ describe(
     it("Bash redirect > into log — DENY", async () => {
       await loadHook();
       const result = await _capturedHandler(
-        bashEvent("echo hi > codegen/logging/20260101_120000_test_session.md"),
+        bashEvent("echo hi > codegen/logging/20260101_120000_test_cycle.jsonl"),
       );
       assert.equal(denied(result), true);
     });
@@ -118,7 +118,7 @@ describe(
       await loadHook();
       const result = await _capturedHandler(
         bashEvent(
-          "printf 'x' >> codegen/logging/20260101_120000_test_session.md",
+          "printf 'x' >> codegen/logging/20260101_120000_test_cycle.jsonl",
         ),
       );
       assert.equal(denied(result), true);
@@ -128,7 +128,7 @@ describe(
       await loadHook();
       const result = await _capturedHandler(
         bashEvent(
-          "echo hi | tee -a codegen/logging/20260101_120000_test_session.md",
+          "echo hi | tee -a codegen/logging/20260101_120000_test_cycle.jsonl",
         ),
       );
       assert.equal(denied(result), true);
@@ -138,7 +138,7 @@ describe(
       await loadHook();
       const result = await _capturedHandler(
         bashEvent(
-          "sed -i '' 's/a/b/' codegen/logging/20260101_120000_test_session.md",
+          "sed -i '' 's/a/b/' codegen/logging/20260101_120000_test_cycle.jsonl",
         ),
       );
       assert.equal(denied(result), true);
@@ -148,7 +148,7 @@ describe(
       await loadHook();
       const result = await _capturedHandler(
         bashEvent(
-          "mv /tmp/foo.md codegen/logging/20260101_120000_test_session.md",
+          "mv /tmp/foo.md codegen/logging/20260101_120000_test_cycle.jsonl",
         ),
       );
       assert.equal(denied(result), true);
@@ -214,7 +214,7 @@ describe(
       process.env["CLAUDE_ROLE"] = "shape";
       await loadHook();
       const result = await _capturedHandler(
-        bashEvent("echo hi > codegen/logging/20260101_120000_test_session.md"),
+        bashEvent("echo hi > codegen/logging/20260101_120000_test_cycle.jsonl"),
       );
       assert.equal(allowed(result), true);
     });

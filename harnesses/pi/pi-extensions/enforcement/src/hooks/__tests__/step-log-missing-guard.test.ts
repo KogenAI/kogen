@@ -63,35 +63,24 @@ describe("step-log-missing-guard", { concurrency: false }, () => {
     assert.ok(!stderr.includes("WARNING"), "expected no warning");
   });
 
-  it("does not warn when canonical session log present", async () => {
+  it("does not warn when canonical cycle log present", async () => {
     const loggingDir = path.join(tmpDir, "codegen", "logging");
     fs.mkdirSync(loggingDir, { recursive: true });
     fs.writeFileSync(
-      path.join(loggingDir, "20260601_120000_my-feature_session.md"),
-      "# Session\n",
+      path.join(loggingDir, "20260601_120000_my-feature_cycle.jsonl"),
+      '{"ev":"init","pitch":"my-feature","path":"","stamp":{}}\n',
     );
     const stderr = await runHook();
     assert.ok(!stderr.includes("WARNING"), "expected no warning");
   });
 
-  it("does not warn when canonical step log present", async () => {
-    const loggingDir = path.join(tmpDir, "codegen", "logging");
-    fs.mkdirSync(loggingDir, { recursive: true });
-    fs.writeFileSync(
-      path.join(loggingDir, "20260601_120000_step1_my-feature.md"),
-      "# Step\n",
-    );
-    const stderr = await runHook();
-    assert.ok(!stderr.includes("WARNING"), "expected no warning");
-  });
-
-  it("does not warn when only progress log exists (no session logs)", async () => {
-    // progress.md is not a session/step log — should not suppress warning
+  it("does not warn when only progress log exists (no cycle logs)", async () => {
+    // progress.jsonl is not a canonical cycle log — should not suppress warning
     const loggingDir = path.join(tmpDir, "codegen", "logging");
     fs.mkdirSync(loggingDir, { recursive: true });
     // Write a recently-modified progress file
-    const progressPath = path.join(loggingDir, "20260601_progress.md");
-    fs.writeFileSync(progressPath, "# Progress\n");
+    const progressPath = path.join(loggingDir, "20260601_progress.jsonl");
+    fs.writeFileSync(progressPath, '{"note":"progress"}\n');
     // The canonical regex excludes progress files, so this should warn
     const stderr = await runHook();
     assert.ok(stderr.includes("step-log-missing-guard"), "expected warning");
@@ -101,7 +90,7 @@ describe("step-log-missing-guard", { concurrency: false }, () => {
     const loggingDir = path.join(tmpDir, "codegen", "logging");
     fs.mkdirSync(loggingDir, { recursive: true });
     // Write a non-canonical file
-    fs.writeFileSync(path.join(loggingDir, "random-notes.md"), "notes\n");
+    fs.writeFileSync(path.join(loggingDir, "random-notes.jsonl"), "notes\n");
     const stderr = await runHook();
     assert.ok(stderr.includes("step-log-missing-guard"), "expected warning");
   });
@@ -110,14 +99,14 @@ describe("step-log-missing-guard", { concurrency: false }, () => {
     const loggingDir = path.join(tmpDir, "codegen", "logging");
     fs.mkdirSync(loggingDir, { recursive: true });
     const stderr = await runHook();
-    // Empty dir → no .md files → should silently return
+    // Empty dir → no .jsonl files → should silently return
     assert.ok(!stderr.includes("WARNING"), "expected no warning on empty dir");
   });
 
   it("never returns block result (observe-only)", async () => {
     const loggingDir = path.join(tmpDir, "codegen", "logging");
     fs.mkdirSync(loggingDir, { recursive: true });
-    fs.writeFileSync(path.join(loggingDir, "random-notes.md"), "notes\n");
+    fs.writeFileSync(path.join(loggingDir, "random-notes.jsonl"), "notes\n");
 
     let capturedHandler: (event: unknown) => Promise<unknown>;
     const localMockPi = {
@@ -153,7 +142,7 @@ describe("step-log-missing-guard", { concurrency: false }, () => {
     const loggingDir = path.join(tmpDir, "codegen", "logging");
     fs.mkdirSync(loggingDir, { recursive: true });
     // Non-canonical file that would normally trigger warning
-    fs.writeFileSync(path.join(loggingDir, "random-notes.md"), "notes\n");
+    fs.writeFileSync(path.join(loggingDir, "random-notes.jsonl"), "notes\n");
 
     process.env["PI_ROLE"] = "shape";
 
@@ -167,7 +156,7 @@ describe("step-log-missing-guard", { concurrency: false }, () => {
   it("still warns when PI_ROLE=build (explicit build role enforces)", async () => {
     const loggingDir = path.join(tmpDir, "codegen", "logging");
     fs.mkdirSync(loggingDir, { recursive: true });
-    fs.writeFileSync(path.join(loggingDir, "random-notes.md"), "notes\n");
+    fs.writeFileSync(path.join(loggingDir, "random-notes.jsonl"), "notes\n");
 
     process.env["PI_ROLE"] = "build";
 
@@ -185,7 +174,7 @@ describe("step-log-missing-guard", { concurrency: false }, () => {
     // never returns a block result.
     const loggingDir = path.join(tmpDir, "codegen", "logging");
     fs.mkdirSync(loggingDir, { recursive: true });
-    fs.writeFileSync(path.join(loggingDir, "random-notes.md"), "notes\n");
+    fs.writeFileSync(path.join(loggingDir, "random-notes.jsonl"), "notes\n");
 
     let capturedHandler: (event: unknown) => Promise<unknown>;
     const localMockPi = {

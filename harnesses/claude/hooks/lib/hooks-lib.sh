@@ -14,7 +14,7 @@
 #                                  CODEGEN_HOOKS_DEBUG or per-slug overrides are set
 #   hooks_realpath <path>        — pure-bash equivalent of `python3 os.path.realpath`,
 #                                  handling non-existent paths via parent-walk fallback
-#   session_log_from_transcript  — return the last codegen/logging/*.md path written by
+#   session_log_from_transcript  — return the last codegen/logging/*.jsonl path written by
 #                                  this session, from $TRANSCRIPT_PATH. Empty if none.
 #   pitch_from_transcript        — return the last codegen/pitches/*.md path written by
 #                                  this session, from $TRANSCRIPT_PATH. Empty if none.
@@ -49,9 +49,11 @@
 
 set -u
 
-# SESSION_LOG_NAME_RE — canonical session-log filename-class regex (basename
+# SESSION_LOG_NAME_RE — canonical cycle-log filename-class regex (basename
 # match, no leading path segment). Single source of truth for the slug-class
-# shape: YYYYMMDD_HHMMSS[_<slug>]_session.md or YYYYMMDD_HHMMSS_<slug>_stepN_<slug>.md.
+# shape: YYYYMMDD_HHMMSS_<slug>_cycle.jsonl (append-only JSONL storage — the
+# old markdown "_session.md" / "_stepN_<slug>.md" forms are gone; the latter
+# was never written by codegen-log and is not ported).
 # Consumers that need the "codegen/logging/" prefix concatenate it themselves
 # (reviewer-guard.sh, committer-write-allowlist.sh both do `codegen/logging/${SESSION_LOG_NAME_RE}`).
 # Kept in lockstep (parity-tested, not shared via a single runtime include —
@@ -61,13 +63,13 @@ set -u
 #   - shared/rules/_core/session-log.md § File Naming (authoritative prose)
 # Any edit to the slug-class shape MUST update all 6 sites in the same change;
 # see codegen-log_test.sh / hooks-lib_test.sh for the cross-site parity assertion.
-SESSION_LOG_NAME_RE='[0-9]{8}_[0-9]{6}(_[a-z0-9_-]+)?_(session|step[0-9]+_[a-z0-9_-]+)\.md$'
+SESSION_LOG_NAME_RE='[0-9]{8}_[0-9]{6}_[a-z0-9_-]+_cycle\.jsonl$'
 
 # SESSION_LOG_TIMESTAMP_RE — the shared "<ts>_" prefix (YYYYMMDD_HHMMSS_) at the
 # head of every session-log filename. Extracted as its own constant because
 # pitch-shipped-before-stop.sh needs a SLUG-CAPTURE regex (single-log,
-# _session.md kind only — it never fires on multi-step logs) rather than a
-# filename-class match; the two regexes cannot be the identical string, but
+# _cycle.jsonl kind only — there is only one log kind under JSONL storage)
+# rather than a filename-class match; the two regexes cannot be the identical string, but
 # BOTH derive the timestamp prefix from this one constant so a shape change
 # (e.g. widening the timestamp format) only needs an edit here.
 SESSION_LOG_TIMESTAMP_RE='[0-9]{8}_[0-9]{6}_'
@@ -327,8 +329,8 @@ repo_relative() {
     esac
 }
 
-# session_log_from_transcript — return the last codegen/logging/*.md path written
-# by this session, derived from $TRANSCRIPT_PATH (set by parse_input).
+# session_log_from_transcript — return the last codegen/logging/*.jsonl path
+# written by this session, derived from $TRANSCRIPT_PATH (set by parse_input).
 #
 # Resolution order:
 #   1. codegen/logging/.active sentinel under $cwd, IFF it points at a path
@@ -341,7 +343,7 @@ repo_relative() {
 #
 # Transcript scan: reads TRANSCRIPT_PATH as a JSONL file (one JSON object per
 # line). Filters assistant tool_use entries with name in {Write, Edit,
-# MultiEdit} whose input.file_path matches the pattern codegen/logging/.*\.md$.
+# MultiEdit} whose input.file_path matches the pattern codegen/logging/.*\.jsonl$.
 # Outputs the LAST matching file_path (tail -n 1 semantics — most recent write
 # in transcript order). Empty result when:
 #   - TRANSCRIPT_PATH is unset or empty
@@ -349,17 +351,18 @@ repo_relative() {
 #   - No matching tool_use entries found
 # jq errors are swallowed via 2>/dev/null. No --slurp (streams line-by-line).
 #
-# codegen-log is the SOLE legitimate writer of session logs (see
-# session-log-writer-only.sh) — raw Write/Edit/MultiEdit on codegen/logging/*.md
-# are hard-denied. When the Write/Edit/MultiEdit scan above finds nothing, this
-# fn also scans for a Bash tool_use whose .input.command invokes a codegen-log
-# writer subcommand (init|section|append). That is treated as equivalent
-# creation evidence, and — UNCONDITIONALLY, not gated on OCG_APPS_ROOT or
+# codegen-log is the SOLE legitimate writer of cycle logs (see
+# session-log-writer-only.sh) — raw Write/Edit/MultiEdit on
+# codegen/logging/*.jsonl are hard-denied. When the Write/Edit/MultiEdit scan
+# above finds nothing, this fn also scans for a Bash tool_use whose
+# .input.command invokes a codegen-log writer subcommand
+# (init|section|append). That is treated as equivalent creation evidence,
+# and — UNCONDITIONALLY, not gated on OCG_APPS_ROOT or
 # CODEGEN_BUILD_NON_INTERACTIVE — falls through to a disk mtime-scan of
-# codegen/logging/*.md under $cwd (same heuristic the Pi TS twins already use).
-# This closes the deadlock where an interactive/self-build session's transcript
-# never contains a Write/Edit/MultiEdit event for the log (because codegen-log
-# is a Bash invocation), so the strict scan always returns empty.
+# codegen/logging/*.jsonl under $cwd (same heuristic the Pi TS twins already
+# use). This closes the deadlock where an interactive/self-build session's
+# transcript never contains a Write/Edit/MultiEdit event for the log (because
+# codegen-log is a Bash invocation), so the strict scan always returns empty.
 session_log_from_transcript() {
     local result=""
     local codegen_log_evidence=""
@@ -380,7 +383,7 @@ session_log_from_transcript() {
         .message.content[]?
         | select(.type == "tool_use"
             and (.name == "Write" or .name == "Edit" or .name == "MultiEdit"))
-        | select(.input.file_path | test("codegen/logging/.*\\.md$"))
+        | select(.input.file_path | test("codegen/logging/.*\\.jsonl$"))
         | .input.file_path
     ' "$TRANSCRIPT_PATH" 2>/dev/null | tail -n 1)
         if [ -z "$result" ]; then
@@ -396,7 +399,7 @@ session_log_from_transcript() {
     # resolve via disk mtime-scan unconditionally (not gated on managed-build env).
     if [ -z "$result" ] && [ -n "$codegen_log_evidence" ]; then
         local cwd="${CWD:-$PWD}"
-        result=$(ls -t "$cwd/codegen/logging"/*.md 2>/dev/null | head -1)
+        result=$(ls -t "$cwd/codegen/logging"/*.jsonl 2>/dev/null | head -1)
     fi
     # Filesystem fallback for managed build sessions where the transcript file
     # lags the live stream (print-mode builds flush the transcript asynchronously).
@@ -413,7 +416,7 @@ session_log_from_transcript() {
         if [ -n "$apps_root" ]; then
             case "$cwd" in
             "${apps_root%/}"/*)
-                result=$(ls -t "$cwd/codegen/logging"/*.md 2>/dev/null | head -1)
+                result=$(ls -t "$cwd/codegen/logging"/*.jsonl 2>/dev/null | head -1)
                 ;;
             esac
         fi
@@ -427,7 +430,7 @@ session_log_from_transcript() {
         # (step-log-section-before-spawn.ts getActiveStepLog). Still fail-closed:
         # an empty/absent logging dir yields empty result -> caller denies.
         if [ -z "$result" ] && [ -n "${CODEGEN_BUILD_NON_INTERACTIVE:-}" ]; then
-            result=$(ls -t "$cwd/codegen/logging"/*.md 2>/dev/null | head -1)
+            result=$(ls -t "$cwd/codegen/logging"/*.jsonl 2>/dev/null | head -1)
         fi
     fi
     printf '%s' "$result"

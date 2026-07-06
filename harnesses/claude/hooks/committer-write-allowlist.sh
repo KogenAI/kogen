@@ -34,7 +34,7 @@ esac
 
 # Allowlist: normalise to repo-relative path, then check pattern.
 rel=$(repo_relative "$FILE_PATH")
-if printf '%s' "$rel" | grep -qE 'codegen/logging/[0-9]{8}_[0-9]{6}(_[a-z0-9_-]+)?_(session|step[0-9]+_[a-z0-9_-]+)\.md$'; then
+if printf '%s' "$rel" | grep -qE 'codegen/logging/[0-9]{8}_[0-9]{6}_[a-z0-9_-]+_cycle\.jsonl$'; then
     exit 0
 fi
 

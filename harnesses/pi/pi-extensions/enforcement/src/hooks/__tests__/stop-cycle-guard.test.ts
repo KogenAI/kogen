@@ -76,11 +76,15 @@ describe("stop-cycle-guard", { concurrency: 1 }, () => {
     const loggingDir = path.join(tmpDir, "codegen", "logging");
     fs.mkdirSync(loggingDir, { recursive: true });
 
-    // Create step-B log with developer section and no VE verdict → triggers warn path.
-    const stepBFile = "20260614_120000_stepB_session.md";
+    // Create step-B log with developer role event and no VE verdict → triggers warn path.
+    const stepBFile = "20260614_120000_stepB_cycle.jsonl";
     fs.writeFileSync(
       path.join(loggingDir, stepBFile),
-      "# Step B\n## developer-phoenix-backend Section\nDone.\n",
+      JSON.stringify({
+        ev: "role",
+        role: "developer-phoenix-backend",
+        body: "Done.",
+      }) + "\n",
     );
 
     // Pre-seed counter scoped to step-A at cap.
@@ -187,10 +191,14 @@ describe("stop-cycle-guard", { concurrency: 1 }, () => {
     fs.mkdirSync(loggingDir, { recursive: true });
 
     // Log with developer section but no VE verdict — triggers warn path in build mode.
-    const stepFile = "20260614_120000_step1_session.md";
+    const stepFile = "20260614_120000_step1_cycle.jsonl";
     fs.writeFileSync(
       path.join(loggingDir, stepFile),
-      "# Step 1\n## developer-phoenix-backend Section\nDone.\n",
+      JSON.stringify({
+        ev: "role",
+        role: "developer-phoenix-backend",
+        body: "Done.",
+      }) + "\n",
     );
 
     process.env["SESSION_ID"] = sessionId;
@@ -231,10 +239,14 @@ describe("stop-cycle-guard", { concurrency: 1 }, () => {
     const loggingDir = path.join(tmpDir, "codegen", "logging");
     fs.mkdirSync(loggingDir, { recursive: true });
 
-    const stepFile = "20260614_120000_step1_session.md";
+    const stepFile = "20260614_120000_step1_cycle.jsonl";
     fs.writeFileSync(
       path.join(loggingDir, stepFile),
-      "# Step 1\n## developer-phoenix-backend Section\nDone.\n",
+      JSON.stringify({
+        ev: "role",
+        role: "developer-phoenix-backend",
+        body: "Done.",
+      }) + "\n",
     );
 
     process.env["SESSION_ID"] = sessionId;

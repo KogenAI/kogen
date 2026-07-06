@@ -5,102 +5,81 @@
 Canonical schema (single source of truth — hooks and guards match against this):
 
 ```
-codegen/logging/[0-9]{8}_[0-9]{6}(_[a-z0-9_-]+)?_(session|step[0-9]+_[a-z0-9_-]+)\.md$
+codegen/logging/[0-9]{8}_[0-9]{6}_[a-z0-9_-]+_cycle\.jsonl$
 ```
 
-- Single: `./codegen/logging/$(date -u +%Y%m%d_%H%M%S)[_<slug>]_session.md`
-- Multi-step: `./codegen/logging/$(date -u +%Y%m%d_%H%M%S)_step<N>_<slug>.md`
+- `./codegen/logging/$(date -u +%Y%m%d_%H%M%S)_<slug>_cycle.jsonl`
+
+On-disk storage is **append-only JSONL** — one JSON object per line, one typed event per call, NEVER rewritten or ranked. Every event object carries an `"ev"` discriminator field (`init`/`role`/`learned`/`died`/`gate`). A cycle log is a flat, growing list of events in call order — there is no section-ordering, header, or rank concept to enforce.
 
 ## Path Discipline
 
-ALL roles MUST use relative paths OR absolute paths starting with cwd for session logs, project files, and git operations.
+ALL roles MUST use relative paths OR absolute paths starting with cwd for cycle logs, project files, and git operations.
 
 ## Git Status
 
-Session logs live under `/codegen/` and are **gitignored** — in the codegen repo (`.gitignore`) and in every scaffolded downstream app (both stacks, appended by `codegen-scaffold` integrate). They are **ephemeral working artifacts — never committed, never durable**.
+Cycle logs live under `/codegen/` and are **gitignored** — in the codegen repo (`.gitignore`) and in every scaffolded downstream app (both stacks, appended by `codegen-scaffold` integrate). They are **ephemeral working artifacts — never committed, never durable**.
 
-- NEVER `git add` a session log or include one in a commit. `git add -A` already skips gitignored logs.
+- NEVER `git add` a cycle log or include one in a commit. `git add -A` already skips gitignored logs.
 - NEVER make a separate "record the log" commit — git refuses the ignored path (`exit 1`, "paths are ignored… Use -f") and the log never registers dirty under `git status --porcelain`, so nothing is missing.
 
 ## Ownership
 
-**`codegen-log` is the SOLE writer of session logs.** Raw Edit/Write/MultiEdit on `codegen/logging/*.md`, and raw Bash writes (redirect, tee, in-place stream-edit, move/copy into the path) are DENIED by the `session-log-writer-only` hook.
+**`codegen-log` is the SOLE writer of cycle logs.** Raw Edit/Write/MultiEdit on `codegen/logging/*.jsonl`, and raw Bash writes (redirect, tee, in-place stream-edit, move/copy into the path) are DENIED by the `session-log-writer-only` hook.
 
 **THIS SECTION is the ONE authoritative CLI contract for `codegen-log`.** Role rules and subagent templates reference it by name — they do not re-teach the flag forms.
 
-- The loop creates the log FIRST via **`codegen-log init --slug <slug>`**. `init` is idempotent: re-`init` on an existing slug prints the existing log's path and exits 0 without creating a second log; more than one log matching the slug is ambiguous and exits 2. `init` also writes `codegen/logging/.active` (a synchronous sentinel pointing at the resolved log path — see Resolution below).
+- The loop creates the log FIRST via **`codegen-log init --slug <slug>`**. `init` is idempotent: re-`init` on an existing slug prints the existing log's path and exits 0 without creating a second log; more than one log matching the slug is ambiguous and exits 2. `init` writes ONE `{"ev":"init",...}` event line and also writes `codegen/logging/.active` (a synchronous sentinel pointing at the resolved log path — see Resolution below).
 - **Positional role (taught/default form)**: `codegen-log section <role> --slug <slug>` and `codegen-log append <role> --slug <slug>` read the role as the first bare argument after the subcommand. `--body` is implicit stdin when omitted — pipe the body directly: `printf '%s' "$body" | codegen-log section developer-phoenix-backend --slug <slug>`. `--role <role>` and `--body @-` remain accepted ALIASES for existing callers; a bare `codegen-log section` with no role (positional or `--role`) always exits 2, even if ambient `AGENT_TYPE`/`CLAUDE_ROLE` env vars are set — the role must be passed explicitly.
-- The loop opens each role's section BEFORE spawn via **`codegen-log section <role> --slug <slug>`** with an empty body — this inserts the header ONCE at canonical rank; never re-open a header that already exists.
-- **`codegen-log section <role> --slug <slug>`** (piping the body via stdin) is the sole section-body writer: planner, developers, reviewer, curator, and committer each write their own body atomically at canonical rank. `section` REPLACES the whole section body — it is the first/only write for that section.
-- The loop stamps death markers via **`codegen-log append <role> --died interrupted|aborted [--cause "<text>"] --slug <slug>`**, which emits the byte-exact canonical H3 marker (see Death Stamps below) and PRESERVES the existing section body, inserting the marker at the end of that section. `append` is for a SECOND write to an already-written section this cycle (re-run, death marker, retrospective, verdict) — never use `section` for that, it would overwrite the prior body. `append` never creates a section — it exits 2 if the target section is missing.
-- **`codegen-log append <role> --learned "<text>" --slug <slug>`** emits the byte-exact `### What I Learned This Step` retrospective block. **`codegen-log append <role> --verdict clear|failed|inconclusive --slug <slug>`** emits the byte-exact `ALL CLEAR ✅`/`FAILED ❌`/`INCONCLUSIVE ⚠️` line the loop's own gate-verdict readers grep for.
-- **`codegen-log verdict --gate <cmd> --mode <mode> --result "<text>" [--detail "<text>"] --slug <slug>`** is the dedicated writer for the freeform `## dev-gate Section` deterministic gate-verdict block (written by the phoenix-dev-gate hook, not by a subagent) — every call APPENDS a fresh block rather than replacing a prior one, since a step log commonly carries more than one gate-verdict block across retries.
+- **`codegen-log section <role> --slug <slug>`** (piping the body via stdin) APPENDS one `{"ev":"role","role":<role>,"body":<prose>}` event line: planner, developers, reviewer, curator, and committer each write their own body. Re-running `section` for the same role APPENDS another event line — there is nothing to overwrite, so a second call is never a mistake, just another entry in the log.
+- **`codegen-log append <role> --learned "<text>" --slug <slug>`** appends a `{"ev":"learned",...}` event. **`codegen-log append <role> --died interrupted|aborted [--cause "<text>"] --slug <slug>`** appends a `{"ev":"died",...}` event (see Death Stamps below). **`codegen-log append <role> --verdict clear|failed|inconclusive --slug <slug>`** appends a `{"ev":"gate","verdict":<v>,...}` event the loop's own gate-verdict readers select on. `append` with a plain `--body` (no marker flag) appends another `{"ev":"role",...}` event — the same shape `section` writes. JSONL append is unconditional: there is no "section must exist first" precondition.
+- **`codegen-log verdict --gate <cmd> --mode <mode> --result "<text>" [--detail "<text>"] --slug <slug>`** is the dedicated writer for the phoenix-dev-gate hook's deterministic gate verdict (not written by a subagent) — every call APPENDS a fresh `{"ev":"gate","role":"dev-gate",...}` event rather than replacing a prior one, since a cycle log commonly carries more than one dev-gate verdict across retries. `verdict` derives a classified `verdict` field (`clear`/`failed`/`inconclusive`) from the raw `--result` text and stores both.
 - **`codegen-log relocate --new-slug <slug> [--slug <slug>]`** renames the currently-resolved log in place and rewrites `.active` to the new path — used when a slug needs to change mid-cycle without losing log continuity.
-- Subagents write body under the canonical section header via the writer — never emit or pre-seed placeholder headers themselves.
-- Header-only sections are invalid: every required section must contain non-heading body content before the next role may spawn or the build may ship.
+- Subagents write body under their role via the writer — never emit or pre-seed placeholder events themselves.
+- A role with zero `role`/`learned` events is invalid: every required role must have written at least one event with real content before the next role may spawn or the build may ship.
 - **`--slug <slug>` is the recommended/default form** — pass it whenever the slug is known: the orchestrator always knows it after `codegen-log init --slug <slug>`, and MUST pass the same `<slug>` into every subagent's delegation prompt text so the subagent can pass it back to `codegen-log section`/`append`. This pins writes to the correct log in concurrent multi-slug builds. Omit `--slug` only when the slug genuinely isn't known at call time (manual/human CLI use).
-- **Resolution precedence** when `codegen-log section`/`append`/`verdict`/`relocate` run: `CODEGEN_LOG_PATH` env var (if set) > `--slug` (resolves to the single on-disk log matching `*_<slug>_session.md`; zero or multiple matches exit 2) > `codegen/logging/.active` sentinel (if it points at a log that still exists on disk) > the most recently modified `*_session.md` (mtime) — this fallback stays in place as the safety net for calls that omit both `--slug` and a live sentinel.
+- **Resolution precedence** when `codegen-log section`/`append`/`verdict`/`relocate` run: `CODEGEN_LOG_PATH` env var (if set) > `--slug` (resolves to the single on-disk log matching `*_<slug>_cycle.jsonl`; zero or multiple matches exit 2) > `codegen/logging/.active` sentinel (if it points at a log that still exists on disk) > the most recently modified `*_cycle.jsonl` (mtime) — this fallback stays in place as the safety net for calls that omit both `--slug` and a live sentinel.
 
 ## Death Stamps
 
-When a role's per-role invocation drops mid-response, the loop records it INSIDE the dead role's section as an H3 marker (H3 so it never participates in the H2 canonical-order check):
+When a role's per-role invocation drops mid-response, the loop records it as a `{"ev":"died",...}` event on the dead role:
 
-- `### INTERRUPTED ⚠️ — <role> dropped (<cause>); re-spawning (attempt N/2)` — written when the drop is observed.
-- `### RESUMED` — written when the re-spawn produces real output.
-- `### ABORTED 💀 — <role> dropped twice; stage failed.` — written on re-spawn exhaustion, then the stage halts.
+- `{"ev":"died","role":<role>,"kind":"interrupted","cause":<cause>}` — written when the drop is observed.
+- `{"ev":"died","role":<role>,"kind":"aborted","cause":<cause>}` — written on re-spawn exhaustion, then the stage halts.
 
-## Canonical Section Order
-
-Session log sections MUST appear in this non-decreasing phase order (rank):
-
-| Rank | Header pattern               |
-| ---- | ---------------------------- |
-| 1    | `## Version Stamp`           |
-| 2    | `## Rules Loaded` (optional) |
-| 3    | `## Plan` / `## Slices`      |
-| 4    | `## Delegation Timeline`     |
-| 5    | `## Files Modified`          |
-| 6    | `## developer-* Section`     |
-| 8    | `## reviewer-* Section`      |
-| 9    | `## context-curator Section` |
-| 10   | `## committer Section`       |
-
-Only `## ` (H2) headers participate in the order check. H1 title lines (`# Step N`) and sub-headers (`### `) are ignored to avoid false-positives from code-block comment lines. Unknown/freeform `## ` headers are also ignored. Recognized `## ` headers must appear in non-decreasing rank order — a `## reviewer-* Section` before `## developer-* Section` is forbidden. This rank table is enforced by construction: `codegen-log`'s own `rank_of`/awk insert-at-rank logic is the only path that can add a section, so out-of-order insertion is structurally impossible.
+There is no `resumed` kind — no writer ever emits one; a successful re-spawn simply appends the role's normal `role`/`learned` events after the `died` event, in call order.
 
 ## Enforcement
 
-**Enforced by** the `session-log-writer-only` hard-deny hook (Claude + Pi twins) plus `codegen-log`'s own rank-ordered insert logic — catalog in `context/hooks.md`; enumerate via `grep -rlE 'session.?log|codegen/logging' harnesses/claude/hooks/*.sh`.
+**Enforced by** the `session-log-writer-only` hard-deny hook (Claude + Pi twins) — catalog in `context/hooks.md`; enumerate via `grep -rlE 'session.?log|codegen/logging' harnesses/claude/hooks/*.sh`.
 
-## Step Log Skeleton
+## Event Schema
 
-```markdown
-## Version Stamp
+Every event object has an `"ev"` discriminator field:
 
-- project: <hash>
-- context: <hash>
-- codegen: <hash>
-- claude: <version>
-- stamped_at: <iso timestamp>
+- `{"ev":"init","pitch":<slug>,"path":<pitch-path-or-empty>,"stamp":{"project","context","codegen","claude","at"}}`
+- `{"ev":"role","role":<role>,"body":<prose>}`
+- `{"ev":"learned","role":<role>,"text":<t>}`
+- `{"ev":"died","role":<role>,"kind":"interrupted"|"aborted","cause":<c-or-empty>}`
+- `{"ev":"gate","role":<role>,"verdict":"clear"|"failed"|"inconclusive", ...gate metadata for the `verdict` subcommand}`
 
-## Plan
+**Reader jq canonical forms** (use these exact selectors so all consumers agree):
 
-<planner fills in>
+- role body present: `jq -e --arg r "<role>" 'select(.ev=="role" and .role==$r)' <file>`
+- concatenated role body text: `jq -r --arg r "<role>" 'select(.ev=="role" and .role==$r)|.body' <file>`
+- inconclusive gate present: `jq -e 'select(.ev=="gate" and .verdict=="inconclusive")' <file>`
+- clear gate present: `jq -e 'select(.ev=="gate" and .verdict=="clear")' <file>`
+- death marker present: `jq -e 'select(.ev=="died")' <file>`; by kind: `select(.ev=="died" and .kind=="interrupted")`
+- learned present for role: `jq -e --arg r "<role>" 'select(.ev=="learned" and .role==$r)' <file>`
+- slug from init: `jq -r 'select(.ev=="init")|.pitch' <file>`
 
-## Delegation Timeline
+All `jq -e` uses: exit 0 = at least one match, exit 1 = none. Wrap every `jq` in `2>/dev/null` on read paths (swallow malformed-line noise, fail-open) EXCEPT where a hard block requires certainty.
 
-| Time | Agent | Task | Result |
-| ---- | ----- | ---- | ------ |
+## Subagent Retrospective Convention
 
-## Files Modified
+A body written via `codegen-log section`/`append` is an opaque prose string — a body containing markdown-looking text (e.g. `## Foo`) is never re-parsed as structure. By convention, subagent bodies still include a `### What I Learned This Step` retrospective block so readers extracting retrospectives from the body string can find it consistently:
 
-(populated by dev)
 ```
-
-## Subagent Section
-
-```markdown
-## <role> Section
-
 **Rules loaded**: [x] <files>
 
 **Commands executed**:
@@ -116,15 +95,11 @@ Only `## ` (H2) headers participate in the order check. H1 title lines (`# Step 
 - nothing notable
 ```
 
-**Critical ordering**: `### What I Learned This Step` MUST appear BEFORE any `## ` sub-header (e.g., `## Files Modified`, `## Next Steps`). Hooks extract retrospectives via awk section scanning; a `## ` header inside the section body terminates extraction and prevents subsequent `### What I Learned ...` blocks from being read. Violations silently hide learnings from curation. Pattern: result summary → retrospective block → then any `## ` sub-headers (if needed). **Note**: The retrospective-guard awk scan does NOT fence-skip — literal `## ` headers inside fenced code blocks (e.g., `json ... ##... `) are treated as section terminators. Place `### What I Learned This Step` as the **FIRST block** under `## Plan` (before any code/prose with `## ` lines inside) to prevent early termination of the extraction.
-
 Tags: `[local]` = project-specific. `[shared]` = framework idioms, cross-cutting patterns.
-
-Retrospective placement: `### What I Learned This Step` for planner variants MUST sit inside `## Plan` body.
 
 ## Gate Verdict Authority
 
-Gate hooks write `gate-result.json` with a `.verdict` field (`"passed"` or `"failed"`). **The `.verdict` JSON field is the authoritative gate result — never cosmetic log strings.** When a reviewer or the loop evaluates a gate's outcome, read `.verdict` from `gate-result.json`, not prose like "ALL CLEAR ✅" in the session log body. Log strings may reflect developer's intended state; JSON reflects the actual gate return code. Example: developer logs claim "ALL CLEAR ✅ on retry" but `gate-result.json` shows `.verdict: "failed"` — the JSON is authoritative and the gate truly failed.
+Gate hooks write `gate-result.json` with a `.verdict` field (`"passed"` or `"failed"`). **The `.verdict` JSON field is the authoritative gate result — never cosmetic log strings.** When a reviewer or the loop evaluates a gate's outcome, read `.verdict` from `gate-result.json`, not prose like "ALL CLEAR ✅" in the cycle log body. Log strings may reflect developer's intended state; JSON reflects the actual gate return code. Example: developer logs claim "ALL CLEAR ✅ on retry" but `gate-result.json` shows `.verdict: "failed"` — the JSON is authoritative and the gate truly failed.
 
 ## Citations
 

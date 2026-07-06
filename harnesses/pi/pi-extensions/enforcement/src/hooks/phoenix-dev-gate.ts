@@ -70,13 +70,13 @@ export function register(pi: ExtensionAPI): void {
       `agent=${agentType} cwd=${projectDir} session=${sessionId}`,
     );
 
-    // Find active step log
+    // Find active step log — canonical *_<slug>_cycle.jsonl append-only log.
     const loggingDir = path.join(projectDir, "codegen", "logging");
     if (!fs.existsSync(loggingDir)) return;
 
     const logFiles = fs
       .readdirSync(loggingDir)
-      .filter((f) => f.endsWith(".md") && !f.includes("progress"))
+      .filter((f) => f.endsWith(".jsonl") && !f.includes("progress"))
       .map((f) => ({
         name: f,
         mtime: fs.statSync(path.join(loggingDir, f)).mtimeMs,
@@ -86,7 +86,42 @@ export function register(pi: ExtensionAPI): void {
     if (logFiles.length === 0) return;
 
     const activeLog = path.join(loggingDir, logFiles[0].name);
-    const logContent = fs.readFileSync(activeLog, "utf8");
+    const rawLog = fs.readFileSync(activeLog, "utf8");
+
+    // Decode the planner's role body from the JSONL cycle log (mirrors
+    // gate-select.sh's planner_body_from_log) — the "## Plan"/"**Gate**:"
+    // prose scanners below operate on this DECODED body text, never on the
+    // raw JSONL bytes. Multiple planner role events (re-runs) are joined
+    // with a newline, in file order.
+    const logContent = rawLog
+      .split("\n")
+      .filter(Boolean)
+      .map((line) => {
+        try {
+          return JSON.parse(line) as {
+            ev?: string;
+            role?: string;
+            body?: string;
+          };
+        } catch {
+          return null;
+        }
+      })
+      .filter(
+        (obj): obj is { ev: string; role: string; body: string } =>
+          obj !== null &&
+          obj.ev === "role" &&
+          typeof obj.role === "string" &&
+          obj.role.startsWith("planner") &&
+          typeof obj.body === "string",
+      )
+      .map((obj) => obj.body)
+      .join("\n");
+
+    if (!logContent) {
+      debugLog("phoenix-dev-gate", "no planner role event found in cycle log");
+      return;
+    }
 
     // Extract Gate from step log — try gate-json block first, fall back to prose
     let gateCmd = "";
@@ -380,10 +415,10 @@ export function register(pi: ExtensionAPI): void {
     }
 
     // Write verdict to step log via `codegen-log verdict` — the sole writer
-    // of session logs. No raw fs write to activeLog; mirrors the Claude-side
+    // of cycle logs. No raw fs write to activeLog; mirrors the Claude-side
     // phoenix-dev-gate.sh append_ve_section()/CODEGEN_LOG_BIN pattern and
-    // produces the same "## dev-gate Section" byte shape for cross-harness
-    // parity.
+    // produces the same {"ev":"gate","role":"dev-gate",...} JSONL event
+    // shape for cross-harness parity.
     const detailLines = [wiringSummary, renderSummary].filter(Boolean);
     const detailText = detailLines.join("\n");
 

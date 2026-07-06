@@ -1,5 +1,5 @@
 #!/bin/bash
-# codegen-log_test.sh — unit tests for codegen-log
+# codegen-log_test.sh — unit tests for codegen-log (JSONL cycle-log storage)
 #
 # Topology under test: PROJECT (downstream app cwd) != CODEGEN (script install
 # dir). This reproduces the split-brain bug where codegen-log resolved logs
@@ -36,6 +36,12 @@ assert() {
         printf 'FAIL: %s — expected %s, got %s\n' "$desc" "$expected" "$actual"
         fail=$((fail + 1))
     fi
+}
+
+# jq_count <file> <jq-select-expr> — count matching JSONL lines.
+jq_count() {
+    local file="$1" expr="$2"
+    jq -c "$expr" "$file" 2>/dev/null | grep -c . || true
 }
 
 # --- Two distinct roots: PROJECT (downstream app cwd) and CODEGEN (script's
@@ -87,78 +93,53 @@ case "$init_path" in
 esac
 assert "init landed under PROJECT/codegen/logging" "0" "$init_under_project"
 assert "init did not leak into CODEGEN/codegen/logging" "0" "$([ ! -d "$CODEGEN/codegen/logging" ] || [ -z "$(ls -A "$CODEGEN/codegen/logging" 2>/dev/null)" ] && printf 0 || printf 1)"
-assert "init wrote version stamp" "0" "$([ "$(grep -c '^## Version Stamp$' "$init_path")" -eq 1 ] && printf 0 || printf 1)"
-assert "init omitted plan header" "0" "$([ "$(grep -c '^## Plan$' "$init_path")" -eq 0 ] && printf 0 || printf 1)"
-assert "init stamped project hash from PROJECT root" "0" "$([ "$(grep -c '^- project: proj123$' "$init_path")" -eq 1 ] && printf 0 || printf 1)"
-assert "init stamped codegen hash from CODEGEN root" "0" "$([ "$(grep -c '^- codegen: cgn456$' "$init_path")" -eq 1 ] && printf 0 || printf 1)"
-assert "init stamped context hash from CODEGEN/codegen/rules" "0" "$([ "$(grep -c '^- context: ctxabc$' "$init_path")" -eq 1 ] && printf 0 || printf 1)"
-assert "init stamped claude version" "0" "$([ "$(grep -c '^- claude: claude 1.2.3$' "$init_path")" -eq 1 ] && printf 0 || printf 1)"
+case "$init_path" in
+*_cycle.jsonl) init_ext_ok=0 ;;
+*) init_ext_ok=1 ;;
+esac
+assert "init filename ends with _cycle.jsonl" "0" "$init_ext_ok"
+assert "init wrote exactly one line" "1" "$(wc -l <"$init_path" | tr -d ' ')"
+assert "init line is a valid init event" "0" "$(jq -e '.ev == "init"' "$init_path" >/dev/null 2>&1 && printf 0 || printf 1)"
+assert "init stamped pitch=slug" "0" "$([ "$(jq -r '.pitch' "$init_path")" = "canonical" ] && printf 0 || printf 1)"
+assert "init stamped project hash from PROJECT root" "0" "$([ "$(jq -r '.stamp.project' "$init_path")" = "proj123" ] && printf 0 || printf 1)"
+assert "init stamped codegen hash from CODEGEN root" "0" "$([ "$(jq -r '.stamp.codegen' "$init_path")" = "cgn456" ] && printf 0 || printf 1)"
+assert "init stamped context hash from CODEGEN/codegen/rules" "0" "$([ "$(jq -r '.stamp.context' "$init_path")" = "ctxabc" ] && printf 0 || printf 1)"
+assert "init stamped claude version" "0" "$([ "$(jq -r '.stamp.claude' "$init_path")" = "claude 1.2.3" ] && printf 0 || printf 1)"
 
-# Test 2: section inserts developer body between Files Modified and reviewer,
+# Test 2: section appends a "role" event with the given role + body,
 # operating with cwd=PROJECT and the binary invoked from $CODEGEN.
-fixture="$PROJECT/codegen/logging/fixture.md"
-cat >"$fixture" <<'EOF'
-## Version Stamp
-
-- project: proj123
-- context: ctxabc
-- codegen: cgn456
-- claude: claude 1.2.3
-- stamped_at: 2026-06-29T00:00:00Z
-
-## Plan
-
-old plan
-
-## Delegation Timeline
-
-| Time | Agent | Task | Result |
-| ---- | ----- | ---- | ------ |
-
-## Files Modified
-
-- a
-
-## reviewer-phoenix Section
-
-**Verdict**: QUALITY APPROVED ✅
-EOF
+fixture="$PROJECT/codegen/logging/fixture.jsonl"
+: >"$fixture"
 
 export CODEGEN_LOG_PATH="$fixture"
 unset AGENT_TYPE
 section_out="$(
     cd "$PROJECT" && env -u CODEGEN_BUILD_CWD -u CLAUDE_PROJECT_DIR "$CODEGEN/codegen-log" section developer-phoenix-backend <<'EOF'
-## developer-phoenix-backend Section
-
 ### What I Learned This Step
 - inserted by test
 EOF
 )"
 section_path="$(printf '%s' "$section_out" | tail -n 1)"
 assert "section wrote target file" "0" "$([ "$section_path" = "$fixture" ] && printf 0 || printf 1)"
-assert "section inserted developer header" "0" "$([ "$(grep -c '^## developer-phoenix-backend Section$' "$fixture")" -eq 1 ] && printf 0 || printf 1)"
-assert "section preserved reviewer header" "0" "$([ "$(grep -c '^## reviewer-phoenix Section$' "$fixture")" -eq 1 ] && printf 0 || printf 1)"
-assert "section landed before reviewer" "0" "$([ $(grep -n '^## developer-phoenix-backend Section$' "$fixture" | cut -d: -f1) -lt $(grep -n '^## reviewer-phoenix Section$' "$fixture" | cut -d: -f1) ] && printf 0 || printf 1)"
-assert "section body preserved" "0" "$([ "$(grep -c '^### What I Learned This Step$' "$fixture")" -eq 1 ] && printf 0 || printf 1)"
+assert "section appended one role event" "1" "$(jq_count "$fixture" 'select(.ev=="role" and .role=="developer-phoenix-backend")')"
+assert "section body preserved" "0" "$(jq -r --arg r developer-phoenix-backend 'select(.ev=="role" and .role==$r)|.body' "$fixture" | grep -qF 'inserted by test' && printf 0 || printf 1)"
 
-# Test 3: rerun replaces in place instead of duplicating the header.
+# Test 3: rerun APPENDS a second role event — never overwrites/replaces.
 (
     cd "$PROJECT" && env -u CODEGEN_BUILD_CWD -u CLAUDE_PROJECT_DIR "$CODEGEN/codegen-log" section developer-phoenix-backend <<'EOF'
-## developer-phoenix-backend Section
-
 ### What I Learned This Step
 - updated body
 EOF
 )
 
-assert "rerun keeps one developer header" "0" "$([ "$(grep -c '^## developer-phoenix-backend Section$' "$fixture")" -eq 1 ] && printf 0 || printf 1)"
-assert "rerun updated body" "0" "$([ "$(grep -c '^- updated body$' "$fixture")" -eq 1 ] && printf 0 || printf 1)"
+assert "rerun appends a second developer role event (append-not-overwrite)" "2" "$(jq_count "$fixture" 'select(.ev=="role" and .role=="developer-phoenix-backend")')"
+assert "rerun new body present" "0" "$(jq -r --arg r developer-phoenix-backend 'select(.ev=="role" and .role==$r)|.body' "$fixture" | grep -qF 'updated body' && printf 0 || printf 1)"
+assert "rerun original body still present (append preserved, not replaced)" "0" "$(jq -r --arg r developer-phoenix-backend 'select(.ev=="role" and .role==$r)|.body' "$fixture" | grep -qF 'inserted by test' && printf 0 || printf 1)"
 
-# Test 4: mktemp relocation — no stray .codegen-log-body.* temp file left
-# under $CODEGEN (the script's own dir) after a section run. Proves the body
-# temp file is rooted at TMPDIR, not SCRIPT_DIR.
-stray_count="$(find "$CODEGEN" -maxdepth 2 -name '.codegen-log-body.*' 2>/dev/null | wc -l | tr -d ' ')"
-assert "no stray body temp file under CODEGEN" "0" "$stray_count"
+# Test 4: mktemp/scratch relocation — no stray temp file left under $CODEGEN
+# (the script's own dir) after a section run.
+stray_count="$(find "$CODEGEN" -maxdepth 2 -name '.codegen-log-*' 2>/dev/null | wc -l | tr -d ' ')"
+assert "no stray temp file under CODEGEN" "0" "$stray_count"
 
 # Test 5: --slug targets a specific log by slug, not the most-recently-
 # modified one. Two logs exist under PROJECT/codegen/logging; the OLDER one
@@ -167,71 +148,35 @@ assert "no stray body temp file under CODEGEN" "0" "$stray_count"
 # still resolve to the slug-matching log.
 unset CODEGEN_LOG_PATH
 unset AGENT_TYPE
-older_log="$PROJECT/codegen/logging/20260101_000000_older-slug_session.md"
-newer_log="$PROJECT/codegen/logging/20260101_000100_newer-slug_session.md"
-cat >"$older_log" <<'EOF'
-## Version Stamp
-
-- project: proj123
-- context: ctxabc
-- codegen: cgn456
-- claude: claude 1.2.3
-- stamped_at: 2026-01-01T00:00:00Z
-
-## Plan
-
-older plan
-EOF
-cat >"$newer_log" <<'EOF'
-## Version Stamp
-
-- project: proj123
-- context: ctxabc
-- codegen: cgn456
-- claude: claude 1.2.3
-- stamped_at: 2026-01-01T00:01:00Z
-
-## Plan
-
-newer plan
-EOF
+older_log="$PROJECT/codegen/logging/20260101_000000_older-slug_cycle.jsonl"
+newer_log="$PROJECT/codegen/logging/20260101_000100_newer-slug_cycle.jsonl"
+jq -c -n '{ev:"init",pitch:"older-slug",path:"",stamp:{}}' >"$older_log"
+jq -c -n '{ev:"init",pitch:"newer-slug",path:"",stamp:{}}' >"$newer_log"
 # Bump older_log's mtime AFTER newer_log's so a latest-mtime fallback would
 # wrongly select older_log if --slug resolution were not honored.
 touch "$older_log"
 
 slug_section_out="$(
     cd "$PROJECT" && env -u CODEGEN_BUILD_CWD -u CLAUDE_PROJECT_DIR "$CODEGEN/codegen-log" section --role developer-phoenix-backend --slug newer-slug --body @- <<'EOF'
-## developer-phoenix-backend Section
-
-### What I Learned This Step
-- targeted by slug, not by mtime
+targeted by slug, not by mtime
 EOF
 )"
 slug_section_path="$(printf '%s' "$slug_section_out" | tail -n 1)"
 assert "--slug wrote to the slug-matching log, not the most-recently-touched one" "0" "$([ "$slug_section_path" = "$newer_log" ] && printf 0 || printf 1)"
-assert "--slug-targeted log got the developer section" "0" "$([ "$(grep -c '^## developer-phoenix-backend Section$' "$newer_log")" -eq 1 ] && printf 0 || printf 1)"
-assert "--slug did not divert the write into the older (more-recently-touched) log" "0" "$([ "$(grep -c '^## developer-phoenix-backend Section$' "$older_log")" -eq 0 ] && printf 0 || printf 1)"
+assert "--slug-targeted log got the developer role event" "1" "$(jq_count "$newer_log" 'select(.ev=="role" and .role=="developer-phoenix-backend")')"
+assert "--slug did not divert the write into the older (more-recently-touched) log" "0" "$(jq_count "$older_log" 'select(.ev=="role" and .role=="developer-phoenix-backend")')"
 
-# Test 6: opaque-body ingest — a stray col-0 "## " (H2) line in an author body
-# is indented so it can never be parsed as a canonical section header, while
-# H3 retro markers and H1 titles stay untouched (still author-typed in P1).
+# Test 6: multi-line body preserved exactly across JSON string escaping,
+# including a stray "## " (H2)-looking line — under JSONL, a body containing
+# markdown-looking text is just an opaque string, never re-parsed as
+# structure. No indent-mangling transform is needed or applied.
 unset CODEGEN_LOG_PATH
 unset AGENT_TYPE
-opaque_log="$PROJECT/codegen/logging/20260102_000000_opaque-body_session.md"
-cat >"$opaque_log" <<'EOF'
-## Version Stamp
-
-- project: proj123
-- context: ctxabc
-- codegen: cgn456
-- claude: claude 1.2.3
-- stamped_at: 2026-01-02T00:00:00Z
-EOF
+opaque_log="$PROJECT/codegen/logging/20260102_000000_opaque-body_cycle.jsonl"
+jq -c -n '{ev:"init",pitch:"opaque-body",path:"",stamp:{}}' >"$opaque_log"
 
 opaque_section_out="$(
     cd "$PROJECT" && env -u CODEGEN_BUILD_CWD -u CLAUDE_PROJECT_DIR "$CODEGEN/codegen-log" section --role developer-phoenix-backend --slug opaque-body --body @- <<'EOF'
-## developer-phoenix-backend Section
-
 prose before
 
 ## Fake Header
@@ -249,13 +194,12 @@ EOF
 )"
 opaque_section_path="$(printf '%s' "$opaque_section_out" | tail -n 1)"
 assert "opaque-body section wrote to the opaque-body log" "0" "$([ "$opaque_section_path" = "$opaque_log" ] && printf 0 || printf 1)"
-assert "opaque-body stray H2 is indented, not col-0" "0" "$([ "$(grep -c '^## Fake Header$' "$opaque_log")" -eq 0 ] && printf 0 || printf 1)"
-assert "opaque-body stray H2 present indented" "0" "$([ "$(grep -c '^  ## Fake Header$' "$opaque_log")" -eq 1 ] && printf 0 || printf 1)"
-assert "opaque-body H3 retro marker stays col-0 (untouched)" "0" "$([ "$(grep -c '^### What I Learned This Step$' "$opaque_log")" -eq 1 ] && printf 0 || printf 1)"
-assert "opaque-body H3 retro marker NOT indented" "0" "$([ "$(grep -c '^  ### What I Learned This Step$' "$opaque_log")" -eq 0 ] && printf 0 || printf 1)"
-assert "opaque-body H1 title stays col-0 (untouched)" "0" "$([ "$(grep -c '^# Step 1$' "$opaque_log")" -eq 1 ] && printf 0 || printf 1)"
+assert "opaque-body line is valid JSON" "0" "$(tail -n 1 "$opaque_log" | jq -e '.ev == "role"' >/dev/null 2>&1 && printf 0 || printf 1)"
+assert "opaque-body preserves stray H2 verbatim in body (no mangling)" "0" "$(jq -r --arg r developer-phoenix-backend 'select(.ev=="role" and .role==$r)|.body' "$opaque_log" | grep -qF '## Fake Header' && printf 0 || printf 1)"
+assert "opaque-body preserves H3 retro marker in body" "0" "$(jq -r --arg r developer-phoenix-backend 'select(.ev=="role" and .role==$r)|.body' "$opaque_log" | grep -qF '### What I Learned This Step' && printf 0 || printf 1)"
+assert "opaque-body preserves H1 title in body" "0" "$(jq -r --arg r developer-phoenix-backend 'select(.ev=="role" and .role==$r)|.body' "$opaque_log" | grep -qF '# Step 1' && printf 0 || printf 1)"
 
-# Test 7: opaque-body ingest on the append path — same transform applied.
+# Test 7: append with a plain --body appends another "role" event line.
 opaque_append_out="$(
     cd "$PROJECT" && env -u CODEGEN_BUILD_CWD -u CLAUDE_PROJECT_DIR "$CODEGEN/codegen-log" append --role developer-phoenix-backend --slug opaque-body --body @- <<'EOF'
 appended prose
@@ -267,55 +211,45 @@ EOF
 )"
 opaque_append_path="$(printf '%s' "$opaque_append_out" | tail -n 1)"
 assert "opaque-body append wrote to the opaque-body log" "0" "$([ "$opaque_append_path" = "$opaque_log" ] && printf 0 || printf 1)"
-assert "opaque-body appended stray H2 is indented, not col-0" "0" "$([ "$(grep -c '^## Baz$' "$opaque_log")" -eq 0 ] && printf 0 || printf 1)"
-assert "opaque-body appended stray H2 present indented" "0" "$([ "$(grep -c '^  ## Baz$' "$opaque_log")" -eq 1 ] && printf 0 || printf 1)"
+assert "opaque-body append is a second role event" "2" "$(jq_count "$opaque_log" 'select(.ev=="role" and .role=="developer-phoenix-backend")')"
+assert "opaque-body appended stray H2 preserved verbatim" "0" "$(jq -r --arg r developer-phoenix-backend 'select(.ev=="role" and .role==$r)|.body' "$opaque_log" | grep -qF '## Baz' && printf 0 || printf 1)"
 
-# Test 8: --learned/--died/--verdict emit byte-exact canonical marker blocks
-# that the reader hooks (subagent-retrospective-guard, step-log-completeness,
-# stop-cycle-guard) grep for verbatim.
+# Test 8: --learned/--died/--verdict emit structured events the reader hooks
+# (subagent-retrospective-guard, step-log-completeness, stop-cycle-guard)
+# jq-select for.
 unset CODEGEN_LOG_PATH
 unset AGENT_TYPE
-marker_log="$PROJECT/codegen/logging/20260103_000000_marker-flags_session.md"
-cat >"$marker_log" <<'EOF'
-## Version Stamp
-
-- project: proj123
-- context: ctxabc
-- codegen: cgn456
-- claude: claude 1.2.3
-- stamped_at: 2026-01-03T00:00:00Z
-
-## developer-phoenix-backend Section
-
-body
-EOF
+marker_log="$PROJECT/codegen/logging/20260103_000000_marker-flags_cycle.jsonl"
+jq -c -n '{ev:"init",pitch:"marker-flags",path:"",stamp:{}}' >"$marker_log"
+jq -c -n '{ev:"role",role:"developer-phoenix-backend",body:"body"}' >>"$marker_log"
 
 learned_out="$(
     cd "$PROJECT" && env -u CODEGEN_BUILD_CWD -u CLAUDE_PROJECT_DIR "$CODEGEN/codegen-log" append --role developer-phoenix-backend --slug marker-flags --learned "- nothing notable"
 )"
 learned_path="$(printf '%s' "$learned_out" | tail -n 1)"
 assert "--learned wrote to the marker-flags log" "0" "$([ "$learned_path" = "$marker_log" ] && printf 0 || printf 1)"
-assert "--learned emits byte-exact retro header" "0" "$([ "$(grep -c '^### What I Learned This Step$' "$marker_log")" -eq 1 ] && printf 0 || printf 1)"
-assert "--learned emits the supplied text" "0" "$([ "$(grep -c '^- nothing notable$' "$marker_log")" -eq 1 ] && printf 0 || printf 1)"
+assert "--learned emits exactly one learned event" "1" "$(jq_count "$marker_log" 'select(.ev=="learned" and .role=="developer-phoenix-backend")')"
+assert "--learned emits the supplied text" "0" "$([ "$(jq -r 'select(.ev=="learned")|.text' "$marker_log")" = "- nothing notable" ] && printf 0 || printf 1)"
 
 died_out="$(
     cd "$PROJECT" && env -u CODEGEN_BUILD_CWD -u CLAUDE_PROJECT_DIR "$CODEGEN/codegen-log" append --role developer-phoenix-backend --slug marker-flags --died interrupted --cause "timeout"
 )"
 died_path="$(printf '%s' "$died_out" | tail -n 1)"
 assert "--died interrupted wrote to the marker-flags log" "0" "$([ "$died_path" = "$marker_log" ] && printf 0 || printf 1)"
-assert "--died interrupted emits byte-exact marker" "0" "$([ "$(grep -cF '### INTERRUPTED ⚠️ — developer-phoenix-backend dropped (timeout); re-spawning (attempt N/2)' "$marker_log")" -eq 1 ] && printf 0 || printf 1)"
+assert "--died interrupted emits a died event with kind=interrupted" "1" "$(jq_count "$marker_log" 'select(.ev=="died" and .kind=="interrupted")')"
+assert "--died interrupted carries the cause" "0" "$([ "$(jq -r 'select(.ev=="died" and .kind=="interrupted")|.cause' "$marker_log")" = "timeout" ] && printf 0 || printf 1)"
 
 cd "$PROJECT" && env -u CODEGEN_BUILD_CWD -u CLAUDE_PROJECT_DIR "$CODEGEN/codegen-log" append --role developer-phoenix-backend --slug marker-flags --died aborted >/dev/null
-assert "--died aborted emits byte-exact marker" "0" "$([ "$(grep -cF '### ABORTED 💀 — developer-phoenix-backend dropped twice; stage failed.' "$marker_log")" -eq 1 ] && printf 0 || printf 1)"
+assert "--died aborted emits a died event with kind=aborted" "1" "$(jq_count "$marker_log" 'select(.ev=="died" and .kind=="aborted")')"
 
 cd "$PROJECT" && env -u CODEGEN_BUILD_CWD -u CLAUDE_PROJECT_DIR "$CODEGEN/codegen-log" append --role developer-phoenix-backend --slug marker-flags --verdict clear >/dev/null
-assert "--verdict clear emits ALL CLEAR emoji" "0" "$([ "$(grep -cF 'ALL CLEAR ✅' "$marker_log")" -eq 1 ] && printf 0 || printf 1)"
+assert "--verdict clear emits gate event with verdict=clear" "1" "$(jq_count "$marker_log" 'select(.ev=="gate" and .verdict=="clear")')"
 
 cd "$PROJECT" && env -u CODEGEN_BUILD_CWD -u CLAUDE_PROJECT_DIR "$CODEGEN/codegen-log" append --role developer-phoenix-backend --slug marker-flags --verdict failed >/dev/null
-assert "--verdict failed emits FAILED emoji" "0" "$([ "$(grep -cF 'FAILED ❌' "$marker_log")" -eq 1 ] && printf 0 || printf 1)"
+assert "--verdict failed emits gate event with verdict=failed" "1" "$(jq_count "$marker_log" 'select(.ev=="gate" and .verdict=="failed")')"
 
 cd "$PROJECT" && env -u CODEGEN_BUILD_CWD -u CLAUDE_PROJECT_DIR "$CODEGEN/codegen-log" append --role developer-phoenix-backend --slug marker-flags --verdict inconclusive >/dev/null
-assert "--verdict inconclusive emits INCONCLUSIVE emoji" "0" "$([ "$(grep -cF 'INCONCLUSIVE ⚠️' "$marker_log")" -eq 1 ] && printf 0 || printf 1)"
+assert "--verdict inconclusive emits gate event with verdict=inconclusive" "1" "$(jq_count "$marker_log" 'select(.ev=="gate" and .verdict=="inconclusive")')"
 
 # Test 9: init writes the .active sentinel with the resolved absolute log path.
 unset CODEGEN_LOG_PATH
@@ -334,19 +268,11 @@ EOF
 )"
 positional_path="$(printf '%s' "$positional_out" | tail -n 1)"
 assert "positional section wrote to the sentinel-resolved log" "0" "$([ "$positional_path" = "$sentinel_init_path" ] && printf 0 || printf 1)"
-assert "positional section body landed" "0" "$([ "$(grep -c 'positional stdin body' "$sentinel_init_path")" -eq 1 ] && printf 0 || printf 1)"
+assert "positional section body landed" "0" "$(jq -r --arg r developer-phoenix-backend 'select(.ev=="role" and .role==$r)|.body' "$sentinel_init_path" | grep -qF 'positional stdin body' && printf 0 || printf 1)"
 
 # Test 11: .active sentinel precedence over a more-recently-touched log.
-older_touch_log="$PROJECT/codegen/logging/20260104_000000_older-touch_session.md"
-cat >"$older_touch_log" <<'EOF'
-## Version Stamp
-
-- project: proj123
-- context: ctxabc
-- codegen: cgn456
-- claude: claude 1.2.3
-- stamped_at: 2026-01-04T00:00:00Z
-EOF
+older_touch_log="$PROJECT/codegen/logging/20260104_000000_older-touch_cycle.jsonl"
+jq -c -n '{ev:"init",pitch:"older-touch",path:"",stamp:{}}' >"$older_touch_log"
 touch "$older_touch_log"
 sentinel_precedence_out="$(
     cd "$PROJECT" && env -u CODEGEN_BUILD_CWD -u CLAUDE_PROJECT_DIR "$CODEGEN/codegen-log" append developer-phoenix-backend <<'EOF'
@@ -360,7 +286,7 @@ assert "sentinel precedence honored over touched log" "0" "$([ "$sentinel_preced
 relocate_out="$(cd "$PROJECT" && env -u CODEGEN_BUILD_CWD -u CLAUDE_PROJECT_DIR "$CODEGEN/codegen-log" relocate --new-slug sentinel-test-renamed)"
 relocate_path="$(printf '%s' "$relocate_out" | tail -n 1)"
 case "$relocate_path" in
-*_sentinel-test-renamed_session.md) relocate_slug_ok=0 ;;
+*_sentinel-test-renamed_cycle.jsonl) relocate_slug_ok=0 ;;
 *) relocate_slug_ok=1 ;;
 esac
 assert "relocate returns a path with the new slug" "0" "$relocate_slug_ok"
@@ -368,21 +294,13 @@ assert "relocate old path no longer exists" "0" "$([ ! -f "$sentinel_init_path" 
 assert "relocate new path exists" "0" "$([ -f "$relocate_path" ] && printf 0 || printf 1)"
 assert "relocate rewrote .active to the new path" "0" "$([ "$(cat "$sentinel_file")" = "$relocate_path" ] && printf 0 || printf 1)"
 
-# Test 13: `verdict` writes the byte-exact "## dev-gate Section" block (the
-# phoenix-dev-gate.sh sole-writer routing target) and APPENDS a new block on
+# Test 13: `verdict` appends a "gate" event (role="dev-gate") — the
+# phoenix-dev-gate.sh sole-writer routing target — and APPENDS a new event on
 # each call rather than replacing a prior one.
 unset CODEGEN_LOG_PATH
 unset AGENT_TYPE
-verdict_log="$PROJECT/codegen/logging/20260105_000000_verdict-subcommand_session.md"
-cat >"$verdict_log" <<'EOF'
-## Version Stamp
-
-- project: proj123
-- context: ctxabc
-- codegen: cgn456
-- claude: claude 1.2.3
-- stamped_at: 2026-01-05T00:00:00Z
-EOF
+verdict_log="$PROJECT/codegen/logging/20260105_000000_verdict-subcommand_cycle.jsonl"
+jq -c -n '{ev:"init",pitch:"verdict-subcommand",path:"",stamp:{}}' >"$verdict_log"
 
 verdict_out1="$(
     cd "$PROJECT" && env -u CODEGEN_BUILD_CWD -u CLAUDE_PROJECT_DIR "$CODEGEN/codegen-log" \
@@ -390,13 +308,11 @@ verdict_out1="$(
 )"
 verdict_path1="$(printf '%s' "$verdict_out1" | tail -n 1)"
 assert "verdict wrote to the verdict-subcommand log" "0" "$([ "$verdict_path1" = "$verdict_log" ] && printf 0 || printf 1)"
-assert "verdict emits dev-gate Section header" "0" "$([ "$(grep -c '^## dev-gate Section$' "$verdict_log")" -eq 1 ] && printf 0 || printf 1)"
-assert "verdict emits Gate: line" "0" "$([ "$(grep -c '^Gate: make test$' "$verdict_log")" -eq 1 ] && printf 0 || printf 1)"
-assert "verdict emits Ran: line" "0" "$([ "$(grep -c '^Ran: make test$' "$verdict_log")" -eq 1 ] && printf 0 || printf 1)"
-assert "verdict emits Rules loaded line" "0" "$([ "$(grep -cF '**Rules loaded**: deterministic hook (dev-gate.sh) — no rules loaded' "$verdict_log")" -eq 1 ] && printf 0 || printf 1)"
-assert "verdict emits Commands executed table header" "0" "$([ "$(grep -cF '**Commands executed**:' "$verdict_log")" -eq 1 ] && printf 0 || printf 1)"
-assert "verdict emits table column header row" "0" "$([ "$(grep -cF '| Time (HH:MM:SS UTC) | Command | Exit | Notes |' "$verdict_log")" -eq 1 ] && printf 0 || printf 1)"
-assert "verdict emits Result line" "0" "$([ "$(grep -cF '**Result**: ALL CLEAR ✅' "$verdict_log")" -eq 1 ] && printf 0 || printf 1)"
+assert "verdict emits exactly one gate event (role=dev-gate)" "1" "$(jq_count "$verdict_log" 'select(.ev=="gate" and .role=="dev-gate")')"
+assert "verdict derives verdict=clear from ALL CLEAR result text" "0" "$([ "$(jq -r 'select(.ev=="gate")|.verdict' "$verdict_log")" = "clear" ] && printf 0 || printf 1)"
+assert "verdict carries gate command" "0" "$([ "$(jq -r 'select(.ev=="gate")|.gate' "$verdict_log")" = "make test" ] && printf 0 || printf 1)"
+assert "verdict carries mode" "0" "$([ "$(jq -r 'select(.ev=="gate")|.mode' "$verdict_log")" = "short" ] && printf 0 || printf 1)"
+assert "verdict carries raw result text" "0" "$([ "$(jq -r 'select(.ev=="gate")|.result' "$verdict_log")" = "ALL CLEAR ✅" ] && printf 0 || printf 1)"
 
 verdict_out2="$(
     cd "$PROJECT" && env -u CODEGEN_BUILD_CWD -u CLAUDE_PROJECT_DIR "$CODEGEN/codegen-log" \
@@ -404,10 +320,10 @@ verdict_out2="$(
 )"
 verdict_path2="$(printf '%s' "$verdict_out2" | tail -n 1)"
 assert "second verdict call wrote to the same log" "0" "$([ "$verdict_path2" = "$verdict_log" ] && printf 0 || printf 1)"
-assert "second verdict call APPENDS a new dev-gate Section (does not replace)" "0" "$([ "$(grep -c '^## dev-gate Section$' "$verdict_log")" -eq 2 ] && printf 0 || printf 1)"
-assert "first verdict block's Result still present after second call" "0" "$([ "$(grep -cF '**Result**: ALL CLEAR ✅' "$verdict_log")" -eq 1 ] && printf 0 || printf 1)"
-assert "second verdict block's Result present" "0" "$([ "$(grep -cF '**Result**: FAILED ❌ exit=1' "$verdict_log")" -eq 1 ] && printf 0 || printf 1)"
-assert "second verdict block's detail present" "0" "$([ "$(grep -cF 'Log: /tmp/bar.log' "$verdict_log")" -eq 1 ] && printf 0 || printf 1)"
+assert "second verdict call APPENDS a new gate event (does not replace)" "2" "$(jq_count "$verdict_log" 'select(.ev=="gate" and .role=="dev-gate")')"
+assert "first verdict event's result still present after second call" "1" "$(jq_count "$verdict_log" 'select(.ev=="gate" and .result=="ALL CLEAR ✅")')"
+assert "second verdict event derives verdict=failed" "1" "$(jq_count "$verdict_log" 'select(.ev=="gate" and .verdict=="failed")')"
+assert "second verdict event's detail present" "0" "$([ "$(jq -r 'select(.ev=="gate" and .verdict=="failed")|.detail' "$verdict_log")" = "Log: /tmp/bar.log" ] && printf 0 || printf 1)"
 
 # Test 14: root resolution from CODEGEN_DIR / OCG_CODEGEN_DIR when the
 # copy has NO sibling `codegen/` dir (the ~/.local/bin install shape).
@@ -427,8 +343,8 @@ env_root_out="$(
         "$NOWHERE_DIR/codegen-log" init --slug env-root-codegen-dir
 )"
 env_root_path="$(printf '%s' "$env_root_out" | tail -n 1)"
-assert "CODEGEN_DIR resolves codegen hash" "0" "$([ "$(grep -c '^- codegen: cgn456$' "$env_root_path")" -eq 1 ] && printf 0 || printf 1)"
-assert "CODEGEN_DIR resolves context hash" "0" "$([ "$(grep -c '^- context: ctxabc$' "$env_root_path")" -eq 1 ] && printf 0 || printf 1)"
+assert "CODEGEN_DIR resolves codegen hash" "0" "$([ "$(jq -r '.stamp.codegen' "$env_root_path")" = "cgn456" ] && printf 0 || printf 1)"
+assert "CODEGEN_DIR resolves context hash" "0" "$([ "$(jq -r '.stamp.context' "$env_root_path")" = "ctxabc" ] && printf 0 || printf 1)"
 
 # 14b: OCG_CODEGEN_DIR set (no CODEGEN_DIR) -> same real hashes.
 unset CODEGEN_LOG_PATH
@@ -439,8 +355,8 @@ ocg_root_out="$(
         "$NOWHERE_DIR/codegen-log" init --slug env-root-ocg-codegen-dir
 )"
 ocg_root_path="$(printf '%s' "$ocg_root_out" | tail -n 1)"
-assert "OCG_CODEGEN_DIR resolves codegen hash" "0" "$([ "$(grep -c '^- codegen: cgn456$' "$ocg_root_path")" -eq 1 ] && printf 0 || printf 1)"
-assert "OCG_CODEGEN_DIR resolves context hash" "0" "$([ "$(grep -c '^- context: ctxabc$' "$ocg_root_path")" -eq 1 ] && printf 0 || printf 1)"
+assert "OCG_CODEGEN_DIR resolves codegen hash" "0" "$([ "$(jq -r '.stamp.codegen' "$ocg_root_path")" = "cgn456" ] && printf 0 || printf 1)"
+assert "OCG_CODEGEN_DIR resolves context hash" "0" "$([ "$(jq -r '.stamp.context' "$ocg_root_path")" = "ctxabc" ] && printf 0 || printf 1)"
 
 # 14c: both set -> CODEGEN_DIR takes documented precedence. Build a second,
 # distinct git-stubbed root (CODEGEN2) so precedence is provable — if
@@ -478,8 +394,8 @@ precedence_out="$(
         "$NOWHERE_DIR/codegen-log" init --slug env-root-precedence
 )"
 precedence_path="$(printf '%s' "$precedence_out" | tail -n 1)"
-assert "CODEGEN_DIR takes precedence over OCG_CODEGEN_DIR when both set" "0" "$([ "$(grep -c '^- codegen: cgn456$' "$precedence_path")" -eq 1 ] && printf 0 || printf 1)"
-assert "precedence: OCG_CODEGEN_DIR hash NOT used" "0" "$([ "$(grep -c '^- codegen: cgn789$' "$precedence_path")" -eq 0 ] && printf 0 || printf 1)"
+assert "CODEGEN_DIR takes precedence over OCG_CODEGEN_DIR when both set" "0" "$([ "$(jq -r '.stamp.codegen' "$precedence_path")" = "cgn456" ] && printf 0 || printf 1)"
+assert "precedence: OCG_CODEGEN_DIR hash NOT used" "0" "$([ "$(jq -r '.stamp.codegen' "$precedence_path")" != "cgn789" ] && printf 0 || printf 1)"
 
 # 14d: NEITHER set + no sibling codegen/ -> unresolved-root marker, init
 # still exits 0, log still lands under PROJECT cwd, project: still stamped.
@@ -495,15 +411,15 @@ unresolved_out="$(
 )" || unresolved_rc=$?
 unresolved_path="$(printf '%s' "$unresolved_out" | tail -n 1)"
 assert "unresolved-root init still exits 0" "0" "$unresolved_rc"
-assert "unresolved-root marker for context" "0" "$([ "$(grep -c '^- context: unresolved-root$' "$unresolved_path")" -eq 1 ] && printf 0 || printf 1)"
-assert "unresolved-root marker for codegen" "0" "$([ "$(grep -c '^- codegen: unresolved-root$' "$unresolved_path")" -eq 1 ] && printf 0 || printf 1)"
-assert "unresolved-root does NOT print misleading unknown for codegen" "0" "$([ "$(grep -c '^- codegen: unknown$' "$unresolved_path")" -eq 0 ] && printf 0 || printf 1)"
+assert "unresolved-root marker for context" "0" "$([ "$(jq -r '.stamp.context' "$unresolved_path")" = "unresolved-root" ] && printf 0 || printf 1)"
+assert "unresolved-root marker for codegen" "0" "$([ "$(jq -r '.stamp.codegen' "$unresolved_path")" = "unresolved-root" ] && printf 0 || printf 1)"
+assert "unresolved-root does NOT print misleading unknown for codegen" "0" "$([ "$(jq -r '.stamp.codegen' "$unresolved_path")" != "unknown" ] && printf 0 || printf 1)"
 case "$unresolved_path" in
 "$PROJECT/codegen/logging/"*) unresolved_under_project=0 ;;
 *) unresolved_under_project=1 ;;
 esac
 assert "unresolved-root log still lands under PROJECT/codegen/logging" "0" "$unresolved_under_project"
-assert "unresolved-root project hash still stamped from LOG_ROOT" "0" "$([ "$(grep -c '^- project: proj123$' "$unresolved_path")" -eq 1 ] && printf 0 || printf 1)"
+assert "unresolved-root project hash still stamped from LOG_ROOT" "0" "$([ "$(jq -r '.stamp.project' "$unresolved_path")" = "proj123" ] && printf 0 || printf 1)"
 
 # Test 15: --version exits 0 and prints a non-empty token.
 version_rc=0
@@ -516,6 +432,18 @@ version_resolved_rc=0
 version_resolved_out="$(env -u OCG_CODEGEN_DIR CODEGEN_DIR="$CODEGEN" "$NOWHERE_DIR/codegen-log" --version)" || version_resolved_rc=$?
 assert "--version exits 0 when root resolves" "0" "$version_resolved_rc"
 assert "--version reports resolved when CODEGEN_DIR set" "0" "$(printf '%s' "$version_resolved_out" | grep -qF 'root=resolved' && printf 0 || printf 1)"
+
+# Test 16: ambiguous --slug (two logs matching the same slug) exits 2.
+unset CODEGEN_LOG_PATH
+unset AGENT_TYPE
+dup1="$PROJECT/codegen/logging/20260106_000000_dup-slug_cycle.jsonl"
+dup2="$PROJECT/codegen/logging/20260106_000100_dup-slug_cycle.jsonl"
+jq -c -n '{ev:"init",pitch:"dup-slug",path:"",stamp:{}}' >"$dup1"
+jq -c -n '{ev:"init",pitch:"dup-slug",path:"",stamp:{}}' >"$dup2"
+dup_rc=0
+(cd "$PROJECT" && env -u CODEGEN_BUILD_CWD -u CLAUDE_PROJECT_DIR "$CODEGEN/codegen-log" append developer-phoenix-backend --slug dup-slug --body @- <<<"x" >/dev/null 2>&1) || dup_rc=$?
+assert "ambiguous slug exits 2" "2" "$dup_rc"
+rm -f "$dup1" "$dup2"
 
 echo ""
 echo "Results: $pass passed, $fail failed"

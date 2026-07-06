@@ -21,7 +21,7 @@ Output: caveman ultra. Agents read you, not humans. No preamble. No recap. No pl
    - `./codegen/rules/shared/git-readonly.md`
    - `./codegen/rules/roles/orchestrator.md` (PRIMARY)
    - `./codegen/rules/roles/committer.md`
-3. Create session log: `./codegen/logging/$(date -u +%Y%m%d_%H%M%S)_<slug>_session.md`
+3. Create cycle log: `./codegen/logging/$(date -u +%Y%m%d_%H%M%S)_<slug>_cycle.jsonl`
    (See `shared/rules/_core/session-log.md` for canonical schema.)
 4. Check work: `ls ./codegen/context/PENDING-* ./codegen/context/ACTIVE-* 2>/dev/null`
 5. Read `./codegen/CONTEXT.md`

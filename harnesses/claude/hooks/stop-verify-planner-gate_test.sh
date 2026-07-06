@@ -68,18 +68,33 @@ make_transcript_with_log_write() {
 }
 
 # make_step_log_with_gate <log_path> <gate_value>
-# Writes a minimal step log with ## Plan and **Gate**: <gate_value>.
+# Writes a JSONL cycle log with a planner-phoenix role event whose body
+# contains "## Plan" prose and "**Gate**: <gate_value>".
 make_step_log_with_gate() {
     local log_path="$1"
     local gate_value="$2"
-    printf '# Step 1 — test\n\n## Plan\n\n**Gate**: %s\n' "$gate_value" >"$log_path"
+    local body
+    body=$(printf '# Step 1 — test\n\n## Plan\n\n**Gate**: %s' "$gate_value")
+    jq -c -n --arg role "planner-phoenix" --arg body "$body" '{ev: "role", role: $role, body: $body}' >"$log_path"
 }
 
 # make_step_log_no_gate <log_path>
-# Writes a minimal step log with ## Plan but NO **Gate**: line.
+# Writes a JSONL cycle log with a planner-phoenix role event body containing
+# "## Plan" prose but NO **Gate**: line.
 make_step_log_no_gate() {
     local log_path="$1"
-    printf '# Step 1 — test\n\n## Plan\n\nSome plan content without a gate line.\n' >"$log_path"
+    local body
+    body=$(printf '# Step 1 — test\n\n## Plan\n\nSome plan content without a gate line.')
+    jq -c -n --arg role "planner-phoenix" --arg body "$body" '{ev: "role", role: $role, body: $body}' >"$log_path"
+}
+
+# make_step_log_with_body <log_path> <body>
+# Writes a JSONL cycle log with a planner-phoenix role event whose body is the
+# given raw text verbatim (used for gate-json block fixtures).
+make_step_log_with_body() {
+    local log_path="$1"
+    local body="$2"
+    jq -c -n --arg role "planner-phoenix" --arg body "$body" '{ev: "role", role: $role, body: $body}' >"$log_path"
 }
 
 # ── Test 1: no TRANSCRIPT_PATH → no block ────────────────────────────────────
@@ -91,7 +106,7 @@ rm -rf "$T1_dir"
 # ── Test 2: transcript references log with **Gate**: make ci → allow ─────────
 T2_dir=$(mktemp -d)
 mkdir -p "$T2_dir/codegen/logging"
-T2_log="$T2_dir/codegen/logging/20260518_step1_test.md"
+T2_log="$T2_dir/codegen/logging/20260518_test_cycle.jsonl"
 T2_transcript="$T2_dir/transcript.jsonl"
 make_step_log_with_gate "$T2_log" "make ci"
 make_transcript_with_log_write "$T2_transcript" "$T2_log"
@@ -102,7 +117,7 @@ rm -rf "$T2_dir"
 # ── Test 3: transcript references log with **Gate**: TBD → block ─────────────
 T3_dir=$(mktemp -d)
 mkdir -p "$T3_dir/codegen/logging"
-T3_log="$T3_dir/codegen/logging/20260518_step1_test.md"
+T3_log="$T3_dir/codegen/logging/20260518_test_cycle.jsonl"
 T3_transcript="$T3_dir/transcript.jsonl"
 make_step_log_with_gate "$T3_log" "TBD (planner to determine)"
 make_transcript_with_log_write "$T3_transcript" "$T3_log"
@@ -114,7 +129,7 @@ rm -rf "$T3_dir"
 # ── Test 4: transcript references log with NO **Gate**: line → block ──────────
 T4_dir=$(mktemp -d)
 mkdir -p "$T4_dir/codegen/logging"
-T4_log="$T4_dir/codegen/logging/20260518_step1_test.md"
+T4_log="$T4_dir/codegen/logging/20260518_test_cycle.jsonl"
 T4_transcript="$T4_dir/transcript.jsonl"
 make_step_log_no_gate "$T4_log"
 make_transcript_with_log_write "$T4_transcript" "$T4_log"
@@ -125,7 +140,7 @@ rm -rf "$T4_dir"
 # ── Test 5: developer-phoenix-backend Stop → no block ────────────────────────
 T5_dir=$(mktemp -d)
 mkdir -p "$T5_dir/codegen/logging"
-T5_log="$T5_dir/codegen/logging/20260518_step1_test.md"
+T5_log="$T5_dir/codegen/logging/20260518_test_cycle.jsonl"
 T5_transcript="$T5_dir/transcript.jsonl"
 make_step_log_no_gate "$T5_log"
 make_transcript_with_log_write "$T5_transcript" "$T5_log"
@@ -136,7 +151,7 @@ rm -rf "$T5_dir"
 # ── Test 6: planner Stop with STOP_HOOK_ACTIVE=true → no block ───────────────
 T6_dir=$(mktemp -d)
 mkdir -p "$T6_dir/codegen/logging"
-T6_log="$T6_dir/codegen/logging/20260518_step1_test.md"
+T6_log="$T6_dir/codegen/logging/20260518_test_cycle.jsonl"
 T6_transcript="$T6_dir/transcript.jsonl"
 make_step_log_no_gate "$T6_log"
 make_transcript_with_log_write "$T6_transcript" "$T6_log"
@@ -147,7 +162,7 @@ rm -rf "$T6_dir"
 # ── Test 7: transcript references log with **Gate**: pending → block ──────────
 T7_dir=$(mktemp -d)
 mkdir -p "$T7_dir/codegen/logging"
-T7_log="$T7_dir/codegen/logging/20260518_step1_test.md"
+T7_log="$T7_dir/codegen/logging/20260518_test_cycle.jsonl"
 T7_transcript="$T7_dir/transcript.jsonl"
 make_step_log_with_gate "$T7_log" "pending"
 make_transcript_with_log_write "$T7_transcript" "$T7_log"
@@ -158,11 +173,10 @@ rm -rf "$T7_dir"
 # ── Test 8: gate-json parse error → block with parse-error reason ─────────────
 T8_dir=$(mktemp -d)
 mkdir -p "$T8_dir/codegen/logging"
-T8_log="$T8_dir/codegen/logging/20260518_step1_test.md"
+T8_log="$T8_dir/codegen/logging/20260518_test_cycle.jsonl"
 T8_transcript="$T8_dir/transcript.jsonl"
 # Write a log with a malformed gate-json block
-cat >"$T8_log" <<'MD'
-# Step 1 — test
+make_step_log_with_body "$T8_log" '# Step 1 — test
 
 ## Plan
 
@@ -170,8 +184,7 @@ cat >"$T8_log" <<'MD'
 
 ```gate-json
 { "command": "make ci", bad json here
-```
-MD
+```'
 make_transcript_with_log_write "$T8_transcript" "$T8_log"
 out=$(make_stop_input "$T8_dir" "planner-phoenix" false "$T8_transcript" | bash "$HOOK" 2>/dev/null || true)
 assert_contains "planner Stop, malformed gate-json → block" '"decision"' "$out"
@@ -181,10 +194,9 @@ rm -rf "$T8_dir"
 # ── Test 9: valid gate-json block → allow ─────────────────────────────────────
 T9_dir=$(mktemp -d)
 mkdir -p "$T9_dir/codegen/logging"
-T9_log="$T9_dir/codegen/logging/20260518_step1_test.md"
+T9_log="$T9_dir/codegen/logging/20260518_test_cycle.jsonl"
 T9_transcript="$T9_dir/transcript.jsonl"
-cat >"$T9_log" <<'MD'
-# Step 1 — test
+make_step_log_with_body "$T9_log" '# Step 1 — test
 
 ## Plan
 
@@ -196,8 +208,7 @@ cat >"$T9_log" <<'MD'
   "mode": "short",
   "timeout": 900
 }
-```
-MD
+```'
 make_transcript_with_log_write "$T9_transcript" "$T9_log"
 out=$(make_stop_input "$T9_dir" "planner-phoenix" false "$T9_transcript" | bash "$HOOK" 2>/dev/null || true)
 assert_not_contains "planner Stop, valid gate-json block → allow" '"decision"' "$out"

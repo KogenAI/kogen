@@ -17,7 +17,7 @@ MUST-NOT: Committer delegation MUST NOT include the gate command, test output, o
 
 - MUST: First action is creating a session log. Zero chat text before the first tool call.
   (1) Run `Bash(date -u +%Y%m%d_%H%M%S)` to fetch the timestamp when needed for the slug path.
-  (2) Use `codegen-log init --slug <slug>` via Bash to create `codegen/logging/<ts>_<slug>_session.md` — separators are UNDERSCORES; dashes only inside the slug; never raw Write/Redirect.
+  (2) Use `codegen-log init --slug <slug>` via Bash to create `codegen/logging/<ts>_<slug>_cycle.jsonl` — separators are UNDERSCORES; dashes only inside the slug; never raw Write/Redirect.
 - MUST: Spawn context-curator by its literal name `context-curator` — never an empty subagent_type.
 - NEVER: Summarize the doc back to the user.
 - NEVER: Ask "Implement it / Refine it / Promote it / Archive it / Something else" or any permission-seeking menu.
@@ -67,14 +67,13 @@ When a delegated subagent returns a connection-drop result — `Connection close
 - NEVER address or send a message to the dropped agent — it is gone; spawn a fresh instance of the same role.
 - NEVER silently split the dropped role's work across other roles or do it yourself.
 
-Example RESUMING context: "RESUMING: developer-phoenix-backend dropped mid-task. Partial work on disk: lib/app/foo.ex (partial), test/app/foo_test.exs (started). Continue under the existing `## developer-phoenix-backend Section` in the session log; do not re-create the header. Finish the remaining sub-tasks and run the gate."
+Example RESUMING context: "RESUMING: developer-phoenix-backend dropped mid-task. Partial work on disk: lib/app/foo.ex (partial), test/app/foo_test.exs (started). Continue under the role's existing codegen-log entries (do not re-init); pass the same `--slug <slug>` so new events append to the same cycle log. Finish the remaining sub-tasks and run the gate."
 
-## Stamp the death into the session log
+## Stamp the death into the cycle log
 
-On EVERY drop/recovery, call `codegen-log append <role> --slug <slug> ...` (same `<slug>` as `init`) to stamp the dead role's session-log section (its existing `## <role> Section` body) with an H3 marker, WITHOUT deleting the existing body — NEVER an H2 (H2 trips the canonical-order check), NEVER a raw Edit/Write/redirect:
+On EVERY drop/recovery, call `codegen-log append <role> --slug <slug> ...` (same `<slug>` as `init`) to append a `{"ev":"died",...}` event for the dead role, WITHOUT touching its prior role-event bodies — never a raw Edit/Write/redirect:
 
-- On observing the drop tool_result: `codegen-log append <role> --died interrupted --cause "<cause, e.g. Connection closed mid-response>" --slug <slug>` (emits `### INTERRUPTED ⚠️ — <role> dropped (<cause>); re-spawning (attempt N/2)`)
-- On the re-spawn producing real output: `codegen-log append <role> --slug <slug>` piping `### RESUMED` as the body
-- On exhausting the 2 re-spawns (stage failed): `codegen-log append <role> --died aborted --slug <slug>` (emits `### ABORTED 💀 — <role> dropped twice; stage failed.`) then halt
+- On observing the drop tool_result: `codegen-log append <role> --died interrupted --cause "<cause, e.g. Connection closed mid-response>" --slug <slug>` (appends a `{"ev":"died","kind":"interrupted",...}` event)
+- On exhausting the 2 re-spawns (stage failed): `codegen-log append <role> --died aborted --slug <slug>` (appends a `{"ev":"died","kind":"aborted",...}` event) then halt
 
-These markers are observed by the Stop completeness hook: a section carrying `### INTERRUPTED ⚠️` or `### ABORTED 💀` is treated as in-recovery and not floor-blocked. The markers are H3 so they never participate in the H2 canonical-order check.
+There is no `resumed` kind — a successful re-spawn simply appends the role's normal `role`/`learned` events after the `died` event, in call order. These `died` events are observed by the Stop completeness hook: a role carrying a `died` event is treated as in-recovery and not floor-blocked.

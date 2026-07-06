@@ -230,15 +230,15 @@ is_transient() {
 
 # --- is_gate_green: gate passed but build never shipped (commit pending) ---
 # Args: $1=slug, $2=start_ts (YYYYMMDD_HHMMSS captured before child spawned).
-# Returns 0 iff the NEWEST per-slug session log whose filename ts >= start_ts
-# contains "ALL CLEAR" (gate-green marker). Returns 1 otherwise.
+# Returns 0 iff the NEWEST per-slug cycle log whose filename ts >= start_ts
+# contains a {"ev":"gate","verdict":"clear"} event. Returns 1 otherwise.
 is_gate_green() {
     local slug="$1" start_ts="$2"
     local newest="" newest_ts="" f base fts
-    for f in "$LOG_DIR"/*_"${slug}"_session.md; do
+    for f in "$LOG_DIR"/*_"${slug}"_cycle.jsonl; do
         [ -f "$f" ] || continue
         base="$(basename "$f")"
-        fts="${base%%_"${slug}"_session.md}" # leading YYYYMMDD_HHMMSS
+        fts="${base%%_"${slug}"_cycle.jsonl}" # leading YYYYMMDD_HHMMSS
         # keep only logs written during/after this child's start
         [ "$fts" \< "$start_ts" ] && continue
         if [ -z "$newest_ts" ] || [ "$fts" \> "$newest_ts" ]; then
@@ -247,16 +247,19 @@ is_gate_green() {
         fi
     done
     [ -n "$newest" ] || return 1
-    grep -qF 'ALL CLEAR' "$newest"
+    if jq -e 'select(.ev=="gate" and .verdict=="clear")' "$newest" >/dev/null 2>&1; then
+        return 0
+    fi
+    return 1
 }
 
-# --- latest_session_log: newest qualifying *_<slug>_session.md at/after start_ts ---
+# --- latest_session_log: newest qualifying *_<slug>_cycle.jsonl at/after start_ts ---
 latest_session_log() {
     local slug="$1" start_ts="$2" newest="" newest_ts="" f base fts
-    for f in "$LOG_DIR"/*_"${slug}"_session.md; do
+    for f in "$LOG_DIR"/*_"${slug}"_cycle.jsonl; do
         [ -f "$f" ] || continue
         base="$(basename "$f")"
-        fts="${base%%_"${slug}"_session.md}"
+        fts="${base%%_"${slug}"_cycle.jsonl}"
         [ "$fts" \< "$start_ts" ] && continue
         if [ -z "$newest_ts" ] || [ "$fts" \> "$newest_ts" ]; then
             newest_ts="$fts"

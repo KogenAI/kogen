@@ -187,29 +187,29 @@ make_edit_line() {
 
 # Case 1: A's log only → returns A's path.
 TMP_T1=$(mktemp -d)
-make_write_line "$TMP_T1/codegen/logging/A_session.md" >"$TMP_T1/transcript.jsonl"
-mkdir -p "$TMP_T1/codegen/logging" && : >"$TMP_T1/codegen/logging/A_session.md"
+make_write_line "$TMP_T1/codegen/logging/A_cycle.jsonl" >"$TMP_T1/transcript.jsonl"
+mkdir -p "$TMP_T1/codegen/logging" && : >"$TMP_T1/codegen/logging/A_cycle.jsonl"
 result=$(TRANSCRIPT_PATH="$TMP_T1/transcript.jsonl" CWD="$TMP_T1" bash -c "source '$SCRIPT_DIR/hooks-lib.sh'; session_log_from_transcript")
-assert_eq "session_log_from_transcript: A only → A path" "$TMP_T1/codegen/logging/A_session.md" "$result"
+assert_eq "session_log_from_transcript: A only → A path" "$TMP_T1/codegen/logging/A_cycle.jsonl" "$result"
 rm -rf "$TMP_T1"
 
 # Case 2: B's log only → returns B's path.
 TMP_T2=$(mktemp -d)
-make_write_line "$TMP_T2/codegen/logging/B_session.md" >"$TMP_T2/transcript.jsonl"
-mkdir -p "$TMP_T2/codegen/logging" && : >"$TMP_T2/codegen/logging/B_session.md"
+make_write_line "$TMP_T2/codegen/logging/B_cycle.jsonl" >"$TMP_T2/transcript.jsonl"
+mkdir -p "$TMP_T2/codegen/logging" && : >"$TMP_T2/codegen/logging/B_cycle.jsonl"
 result=$(TRANSCRIPT_PATH="$TMP_T2/transcript.jsonl" CWD="$TMP_T2" bash -c "source '$SCRIPT_DIR/hooks-lib.sh'; session_log_from_transcript")
-assert_eq "session_log_from_transcript: B only → B path" "$TMP_T2/codegen/logging/B_session.md" "$result"
+assert_eq "session_log_from_transcript: B only → B path" "$TMP_T2/codegen/logging/B_cycle.jsonl" "$result"
 rm -rf "$TMP_T2"
 
 # Case 3: Interleaved A+B writes → returns LAST (B).
 TMP_T3=$(mktemp -d)
 {
-    make_write_line "$TMP_T3/codegen/logging/A_session.md"
-    make_write_line "$TMP_T3/codegen/logging/B_session.md"
+    make_write_line "$TMP_T3/codegen/logging/A_cycle.jsonl"
+    make_write_line "$TMP_T3/codegen/logging/B_cycle.jsonl"
 } >"$TMP_T3/transcript.jsonl"
-mkdir -p "$TMP_T3/codegen/logging" && : >"$TMP_T3/codegen/logging/A_session.md" && : >"$TMP_T3/codegen/logging/B_session.md"
+mkdir -p "$TMP_T3/codegen/logging" && : >"$TMP_T3/codegen/logging/A_cycle.jsonl" && : >"$TMP_T3/codegen/logging/B_cycle.jsonl"
 result=$(TRANSCRIPT_PATH="$TMP_T3/transcript.jsonl" CWD="$TMP_T3" bash -c "source '$SCRIPT_DIR/hooks-lib.sh'; session_log_from_transcript")
-assert_eq "session_log_from_transcript: interleaved A+B → last (B)" "$TMP_T3/codegen/logging/B_session.md" "$result"
+assert_eq "session_log_from_transcript: interleaved A+B → last (B)" "$TMP_T3/codegen/logging/B_cycle.jsonl" "$result"
 rm -rf "$TMP_T3"
 
 # Case 4: Zero tool_use writes to logging path → empty.
@@ -233,25 +233,25 @@ rm -rf "$TMP_T6"
 
 # Case 7: Edit tool_use also matched.
 TMP_T7=$(mktemp -d)
-make_edit_line "$TMP_T7/codegen/logging/edit_session.md" >"$TMP_T7/transcript.jsonl"
-mkdir -p "$TMP_T7/codegen/logging" && : >"$TMP_T7/codegen/logging/edit_session.md"
+make_edit_line "$TMP_T7/codegen/logging/edit_cycle.jsonl" >"$TMP_T7/transcript.jsonl"
+mkdir -p "$TMP_T7/codegen/logging" && : >"$TMP_T7/codegen/logging/edit_cycle.jsonl"
 result=$(TRANSCRIPT_PATH="$TMP_T7/transcript.jsonl" CWD="$TMP_T7" bash -c "source '$SCRIPT_DIR/hooks-lib.sh'; session_log_from_transcript")
-assert_eq "session_log_from_transcript: Edit tool_use matched" "$TMP_T7/codegen/logging/edit_session.md" "$result"
+assert_eq "session_log_from_transcript: Edit tool_use matched" "$TMP_T7/codegen/logging/edit_cycle.jsonl" "$result"
 rm -rf "$TMP_T7"
 
 # Case 8: Non-interactive fallback — CODEGEN_BUILD_NON_INTERACTIVE set, no
 # apps-root, empty transcript, real log on disk → returns disk path by mtime.
 TMP_T8=$(mktemp -d)
 mkdir -p "$TMP_T8/codegen/logging"
-: >"$TMP_T8/codegen/logging/20260611_000000_step1_demo.md"
+: >"$TMP_T8/codegen/logging/20260611_000000_demo_cycle.jsonl"
 : >"$TMP_T8/transcript.jsonl"
 result=$(CODEGEN_BUILD_NON_INTERACTIVE=1 OCG_APPS_ROOT="" CWD="$TMP_T8" TRANSCRIPT_PATH="$TMP_T8/transcript.jsonl" \
     bash -c "source '$SCRIPT_DIR/hooks-lib.sh'; session_log_from_transcript")
-assert_eq "session_log_from_transcript: non-interactive fallback → disk log" "$TMP_T8/codegen/logging/20260611_000000_step1_demo.md" "$result"
+assert_eq "session_log_from_transcript: non-interactive fallback → disk log" "$TMP_T8/codegen/logging/20260611_000000_demo_cycle.jsonl" "$result"
 rm -rf "$TMP_T8"
 
 # Case 9: Non-interactive fallback fail-closed — same env, empty logging dir
-# (no .md files) → returns empty (gate denies, no phantom path).
+# (no .jsonl files) → returns empty (gate denies, no phantom path).
 TMP_T9=$(mktemp -d)
 mkdir -p "$TMP_T9/codegen/logging"
 : >"$TMP_T9/transcript.jsonl"
@@ -264,20 +264,20 @@ rm -rf "$TMP_T9"
 # and a real log on disk → disk fallback fires, returns disk path.
 TMP_T10=$(mktemp -d)
 mkdir -p "$TMP_T10/codegen/logging"
-: >"$TMP_T10/codegen/logging/20260614_000000_step1_demo.md"
+: >"$TMP_T10/codegen/logging/20260614_000000_demo_cycle.jsonl"
 result=$(CODEGEN_BUILD_NON_INTERACTIVE=1 OCG_APPS_ROOT="" CWD="$TMP_T10" TRANSCRIPT_PATH="" \
     bash -c "source '$SCRIPT_DIR/hooks-lib.sh'; session_log_from_transcript")
-assert_eq "session_log_from_transcript: empty TRANSCRIPT_PATH + managed build → disk log" "$TMP_T10/codegen/logging/20260614_000000_step1_demo.md" "$result"
+assert_eq "session_log_from_transcript: empty TRANSCRIPT_PATH + managed build → disk log" "$TMP_T10/codegen/logging/20260614_000000_demo_cycle.jsonl" "$result"
 rm -rf "$TMP_T10"
 
 # Case 11: TRANSCRIPT_PATH set to a nonexistent path with CODEGEN_BUILD_NON_INTERACTIVE set
 # and a real log on disk → disk fallback fires, returns disk path.
 TMP_T11=$(mktemp -d)
 mkdir -p "$TMP_T11/codegen/logging"
-: >"$TMP_T11/codegen/logging/20260614_000000_step1_demo.md"
+: >"$TMP_T11/codegen/logging/20260614_000000_demo_cycle.jsonl"
 result=$(CODEGEN_BUILD_NON_INTERACTIVE=1 OCG_APPS_ROOT="" CWD="$TMP_T11" TRANSCRIPT_PATH="/tmp/no-such-transcript-$(date -u +%s).jsonl" \
     bash -c "source '$SCRIPT_DIR/hooks-lib.sh'; session_log_from_transcript")
-assert_eq "session_log_from_transcript: unreadable TRANSCRIPT_PATH + managed build → disk log" "$TMP_T11/codegen/logging/20260614_000000_step1_demo.md" "$result"
+assert_eq "session_log_from_transcript: unreadable TRANSCRIPT_PATH + managed build → disk log" "$TMP_T11/codegen/logging/20260614_000000_demo_cycle.jsonl" "$result"
 rm -rf "$TMP_T11"
 
 # Helper: build one JSONL line with a Bash tool_use for the given command.
@@ -291,39 +291,39 @@ make_bash_line() {
 # unconditionally. This is the interactive/self-build deadlock repro.
 TMP_T12=$(mktemp -d)
 mkdir -p "$TMP_T12/codegen/logging"
-: >"$TMP_T12/codegen/logging/20260702_000000_step1_demo.md"
+: >"$TMP_T12/codegen/logging/20260702_000000_demo_cycle.jsonl"
 make_bash_line "codegen-log init --slug demo" >"$TMP_T12/transcript.jsonl"
 result=$(TRANSCRIPT_PATH="$TMP_T12/transcript.jsonl" OCG_APPS_ROOT="" CODEGEN_BUILD_NON_INTERACTIVE="" CWD="$TMP_T12" \
     bash -c "source '$SCRIPT_DIR/hooks-lib.sh'; session_log_from_transcript")
-assert_eq "session_log_from_transcript: codegen-log init evidence only → disk log" "$TMP_T12/codegen/logging/20260702_000000_step1_demo.md" "$result"
+assert_eq "session_log_from_transcript: codegen-log init evidence only → disk log" "$TMP_T12/codegen/logging/20260702_000000_demo_cycle.jsonl" "$result"
 rm -rf "$TMP_T12"
 
 # Case 13: codegen-log section --body @- (no Write event) → resolves disk log.
 TMP_T13=$(mktemp -d)
 mkdir -p "$TMP_T13/codegen/logging"
-: >"$TMP_T13/codegen/logging/20260702_000000_step1_demo.md"
+: >"$TMP_T13/codegen/logging/20260702_000000_demo_cycle.jsonl"
 make_bash_line "codegen-log section --body @-" >"$TMP_T13/transcript.jsonl"
 result=$(TRANSCRIPT_PATH="$TMP_T13/transcript.jsonl" OCG_APPS_ROOT="" CODEGEN_BUILD_NON_INTERACTIVE="" CWD="$TMP_T13" \
     bash -c "source '$SCRIPT_DIR/hooks-lib.sh'; session_log_from_transcript")
-assert_eq "session_log_from_transcript: codegen-log section evidence only → disk log" "$TMP_T13/codegen/logging/20260702_000000_step1_demo.md" "$result"
+assert_eq "session_log_from_transcript: codegen-log section evidence only → disk log" "$TMP_T13/codegen/logging/20260702_000000_demo_cycle.jsonl" "$result"
 rm -rf "$TMP_T13"
 
 # Case 14: codegen-log append --role committer --body @- (no Write event) →
 # resolves disk log.
 TMP_T14=$(mktemp -d)
 mkdir -p "$TMP_T14/codegen/logging"
-: >"$TMP_T14/codegen/logging/20260702_000000_step1_demo.md"
+: >"$TMP_T14/codegen/logging/20260702_000000_demo_cycle.jsonl"
 make_bash_line "codegen-log append --role committer --body @-" >"$TMP_T14/transcript.jsonl"
 result=$(TRANSCRIPT_PATH="$TMP_T14/transcript.jsonl" OCG_APPS_ROOT="" CODEGEN_BUILD_NON_INTERACTIVE="" CWD="$TMP_T14" \
     bash -c "source '$SCRIPT_DIR/hooks-lib.sh'; session_log_from_transcript")
-assert_eq "session_log_from_transcript: codegen-log append evidence only → disk log" "$TMP_T14/codegen/logging/20260702_000000_step1_demo.md" "$result"
+assert_eq "session_log_from_transcript: codegen-log append evidence only → disk log" "$TMP_T14/codegen/logging/20260702_000000_demo_cycle.jsonl" "$result"
 rm -rf "$TMP_T14"
 
 # Case 15: non-writer Bash command only (e.g. ls codegen/logging/), no Write,
 # empty env → empty. Evidence predicate must NOT over-match.
 TMP_T15=$(mktemp -d)
 mkdir -p "$TMP_T15/codegen/logging"
-: >"$TMP_T15/codegen/logging/20260702_000000_step1_demo.md"
+: >"$TMP_T15/codegen/logging/20260702_000000_demo_cycle.jsonl"
 make_bash_line "ls codegen/logging/" >"$TMP_T15/transcript.jsonl"
 result=$(TRANSCRIPT_PATH="$TMP_T15/transcript.jsonl" OCG_APPS_ROOT="" CODEGEN_BUILD_NON_INTERACTIVE="" CWD="$TMP_T15" \
     bash -c "source '$SCRIPT_DIR/hooks-lib.sh'; session_log_from_transcript")
@@ -334,36 +334,36 @@ rm -rf "$TMP_T15"
 # FIRST, before the transcript scan even runs (empty/no TRANSCRIPT_PATH).
 TMP_T16=$(mktemp -d)
 mkdir -p "$TMP_T16/codegen/logging"
-: >"$TMP_T16/codegen/logging/20260703_000000_sentinel-demo_session.md"
-printf '%s' "$TMP_T16/codegen/logging/20260703_000000_sentinel-demo_session.md" >"$TMP_T16/codegen/logging/.active"
+: >"$TMP_T16/codegen/logging/20260703_000000_sentinel-demo_cycle.jsonl"
+printf '%s' "$TMP_T16/codegen/logging/20260703_000000_sentinel-demo_cycle.jsonl" >"$TMP_T16/codegen/logging/.active"
 result=$(TRANSCRIPT_PATH="" CWD="$TMP_T16" \
     bash -c "source '$SCRIPT_DIR/hooks-lib.sh'; session_log_from_transcript")
-assert_eq "session_log_from_transcript: .active sentinel resolves with no transcript" "$TMP_T16/codegen/logging/20260703_000000_sentinel-demo_session.md" "$result"
+assert_eq "session_log_from_transcript: .active sentinel resolves with no transcript" "$TMP_T16/codegen/logging/20260703_000000_sentinel-demo_cycle.jsonl" "$result"
 rm -rf "$TMP_T16"
 
 # Case 17: .active sentinel takes precedence over a transcript scan that would
 # otherwise resolve a DIFFERENT log.
 TMP_T17=$(mktemp -d)
 mkdir -p "$TMP_T17/codegen/logging"
-: >"$TMP_T17/codegen/logging/20260703_000000_sentinel-demo_session.md"
-: >"$TMP_T17/codegen/logging/20260703_000001_transcript-demo_session.md"
-printf '%s' "$TMP_T17/codegen/logging/20260703_000000_sentinel-demo_session.md" >"$TMP_T17/codegen/logging/.active"
-make_write_line "$TMP_T17/codegen/logging/20260703_000001_transcript-demo_session.md" >"$TMP_T17/transcript.jsonl"
+: >"$TMP_T17/codegen/logging/20260703_000000_sentinel-demo_cycle.jsonl"
+: >"$TMP_T17/codegen/logging/20260703_000001_transcript-demo_cycle.jsonl"
+printf '%s' "$TMP_T17/codegen/logging/20260703_000000_sentinel-demo_cycle.jsonl" >"$TMP_T17/codegen/logging/.active"
+make_write_line "$TMP_T17/codegen/logging/20260703_000001_transcript-demo_cycle.jsonl" >"$TMP_T17/transcript.jsonl"
 result=$(TRANSCRIPT_PATH="$TMP_T17/transcript.jsonl" CWD="$TMP_T17" \
     bash -c "source '$SCRIPT_DIR/hooks-lib.sh'; session_log_from_transcript")
-assert_eq "session_log_from_transcript: .active sentinel wins over transcript scan" "$TMP_T17/codegen/logging/20260703_000000_sentinel-demo_session.md" "$result"
+assert_eq "session_log_from_transcript: .active sentinel wins over transcript scan" "$TMP_T17/codegen/logging/20260703_000000_sentinel-demo_cycle.jsonl" "$result"
 rm -rf "$TMP_T17"
 
 # Case 18: stale .active sentinel (points at a deleted/relocated log) falls
 # through to the transcript scan instead of returning a dead path.
 TMP_T18=$(mktemp -d)
 mkdir -p "$TMP_T18/codegen/logging"
-: >"$TMP_T18/codegen/logging/20260703_000002_transcript-demo_session.md"
-printf '%s' "$TMP_T18/codegen/logging/20260703_000002_does-not-exist_session.md" >"$TMP_T18/codegen/logging/.active"
-make_write_line "$TMP_T18/codegen/logging/20260703_000002_transcript-demo_session.md" >"$TMP_T18/transcript.jsonl"
+: >"$TMP_T18/codegen/logging/20260703_000002_transcript-demo_cycle.jsonl"
+printf '%s' "$TMP_T18/codegen/logging/20260703_000002_does-not-exist_cycle.jsonl" >"$TMP_T18/codegen/logging/.active"
+make_write_line "$TMP_T18/codegen/logging/20260703_000002_transcript-demo_cycle.jsonl" >"$TMP_T18/transcript.jsonl"
 result=$(TRANSCRIPT_PATH="$TMP_T18/transcript.jsonl" CWD="$TMP_T18" \
     bash -c "source '$SCRIPT_DIR/hooks-lib.sh'; session_log_from_transcript")
-assert_eq "session_log_from_transcript: stale .active sentinel falls through to transcript scan" "$TMP_T18/codegen/logging/20260703_000002_transcript-demo_session.md" "$result"
+assert_eq "session_log_from_transcript: stale .active sentinel falls through to transcript scan" "$TMP_T18/codegen/logging/20260703_000002_transcript-demo_cycle.jsonl" "$result"
 rm -rf "$TMP_T18"
 
 # ── read_tool_failures ───────────────────────────────────────────────────────
@@ -490,7 +490,7 @@ fi
 # The literal regex string (as it appears verbatim inside a single-quoted bash
 # string or grep -E pattern) — escape nothing extra, grep -E extracts the
 # exact substring between the sentinel markers used at each site.
-RE_EXTRACT_PATTERN='\[0-9\]\{8\}_\[0-9\]\{6\}\(_\[a-z0-9_-\]\+\)\?_\(session\|step\[0-9\]\+_\[a-z0-9_-\]\+\)\\\.md\$'
+RE_EXTRACT_PATTERN='\[0-9\]\{8\}_\[0-9\]\{6\}_\[a-z0-9_-\]\+_cycle\\\.jsonl\$'
 
 assert_regex_site_matches "SESSION_LOG_NAME_RE parity: shared/rules/_core/session-log.md" \
     "$CODEGEN_ROOT_PARITY/shared/rules/_core/session-log.md" "$RE_EXTRACT_PATTERN"

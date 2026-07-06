@@ -11,9 +11,10 @@
 # harnesses: all
 # GENERATED FROM shared/enforcement/registry.yaml — DO NOT EDIT
 #
-# Blocks SubagentStop when the returning agent's ## <role> Section in the
-# active step log does not contain a ### What I Learned This Step header
-# followed by at least one non-blank content line.
+# Blocks SubagentStop when the returning agent's role event(s) in the active
+# JSONL cycle log do not contain a ### What I Learned This Step block with at
+# least one non-blank content line — either embedded in a "role" event body,
+# or as a dedicated "learned" event (codegen-log append --learned).
 #
 # Acceptable minimal block:
 #   ### What I Learned This Step
@@ -22,7 +23,7 @@
 # Skip when:
 #   - AGENT_TYPE not in matcher set
 #   - No active step log found in transcript
-#   - Agent's ## <role> Section not found in log (defensive — let other guards catch)
+#   - Agent has no role event in the log yet (defensive — let other guards catch)
 
 set -u
 
@@ -53,53 +54,58 @@ fi
 
 debug_log subagent-retrospective-guard "log=$log_file agent=$AGENT_TYPE"
 
-# Find the agent's ## <role> Section header in the log.
-# Extract lines from that header to the next ^## header (or EOF).
-# All planner variants write their body under ## Plan (not ## planner-* Section).
+# Find the agent's role event(s) in the JSONL cycle log. All planner variants
+# write under the "planner*" role family (matching the old ## Plan exception);
+# other roles match AGENT_TYPE literally.
 if [[ "${AGENT_TYPE}" == planner* ]]; then
-    section_header="## Plan"
+    role_label="planner"
 else
-    section_header="## ${AGENT_TYPE} Section"
+    role_label="${AGENT_TYPE}"
 fi
 
-# Check the section header exists.
-if ! grep -qF "$section_header" "$log_file" 2>/dev/null; then
-    debug_log subagent-retrospective-guard "skip: no section header found for $AGENT_TYPE"
+# Check at least one role event exists for this agent.
+if [[ "${AGENT_TYPE}" == planner* ]]; then
+    role_present=$(jq -e 'select(.ev=="role" and (.role | startswith("planner")))' "$log_file" >/dev/null 2>&1 && echo 1 || echo 0)
+else
+    role_present=$(jq -e --arg r "$AGENT_TYPE" 'select(.ev=="role" and .role==$r)' "$log_file" >/dev/null 2>&1 && echo 1 || echo 0)
+fi
+if [ "$role_present" -eq 0 ]; then
+    debug_log subagent-retrospective-guard "skip: no role event found for $AGENT_TYPE"
     exit 0
 fi
 
-# Extract the LAST matching section block's body. A re-spawned pass logs under
-# "## <role> Section (pass N)" which prefix-matches the same header regex.
-# Reset the buffer on every matching header so only the final block survives.
-section_body=$(awk "
-    /^## /{
-        if (match(\$0, \"^${section_header//\//\\/}\")) {
-            in_section = 1
-            body = \"\"
-            next
-        }
-        if (in_section) { in_section = 0 }
-    }
-    in_section {
-        body = body \$0 \"\\n\"
-    }
-    END { printf \"%s\", body }
-" "$log_file" 2>/dev/null)
+# Concatenate every role-event body for this agent (in call order — a
+# re-spawned pass appends another role event, all bodies are scanned) plus
+# any dedicated "learned" event bodies (codegen-log append --learned).
+if [[ "${AGENT_TYPE}" == planner* ]]; then
+    section_body=$(jq -r 'select(.ev=="role" and (.role | startswith("planner")))|.body' "$log_file" 2>/dev/null)
+    learned_events=$(jq -r 'select(.ev=="learned" and (.role | startswith("planner")))|.text' "$log_file" 2>/dev/null)
+else
+    section_body=$(jq -r --arg r "$AGENT_TYPE" 'select(.ev=="role" and .role==$r)|.body' "$log_file" 2>/dev/null)
+    learned_events=$(jq -r --arg r "$AGENT_TYPE" 'select(.ev=="learned" and .role==$r)|.text' "$log_file" 2>/dev/null)
+fi
 
 debug_log subagent-retrospective-guard "section_body_lines=$(printf '%s' "$section_body" | wc -l | tr -d ' ')"
 
-# Check for ### What I Learned This Step header in the section.
-if ! printf '%s' "$section_body" | grep -q '### What I Learned This Step'; then
-    block "subagent-retrospective-guard: $AGENT_TYPE returned but its ${section_header} in the step log is missing the '### What I Learned This Step' block. Add this block to your section before finishing. Minimal acceptable content: '- nothing notable'. Step log: $log_file"
+# Check for ### What I Learned This Step header in the role body, OR a
+# dedicated "learned" event (either counts as the retrospective block).
+if ! printf '%s' "$section_body" | grep -q '### What I Learned This Step' && [ -z "$learned_events" ]; then
+    block "subagent-retrospective-guard: $AGENT_TYPE returned but its role event(s) in the step log are missing the '### What I Learned This Step' block (or a dedicated 'codegen-log append --learned' event). Add this before finishing. Minimal acceptable content: '- nothing notable'. Step log: $log_file"
     exit 0
 fi
 
-# Check at least one non-blank line follows the header.
-learned_body=$(printf '%s' "$section_body" | awk '
-    /^### What I Learned This Step/{ found=1; next }
-    found && /^### /{ exit }
-    found { print }
-')
+# A dedicated "learned" event with non-empty text always satisfies the check.
+if [ -n "$learned_events" ] && printf '%s' "$learned_events" | grep -qv '^[[:space:]]*$'; then
+    debug_log subagent-retrospective-guard "PASS: dedicated learned event present"
+    learned_body="$learned_events"
+else
+    # Check at least one non-blank line follows the header in the role body.
+    learned_body=$(printf '%s' "$section_body" | awk '
+        /^### What I Learned This Step/{ found=1; next }
+        found && /^### /{ exit }
+        found { print }
+    ')
+fi
 
 has_content=0
 while IFS= read -r line; do
@@ -114,7 +120,7 @@ $learned_body
 EOF
 
 if [ "$has_content" -eq 0 ]; then
-    block "subagent-retrospective-guard: $AGENT_TYPE's '### What I Learned This Step' block in ${section_header} exists but is empty. Add at least one bullet (minimum: '- nothing notable'). Step log: $log_file"
+    block "subagent-retrospective-guard: $AGENT_TYPE's '### What I Learned This Step' block (role: ${role_label}) exists but is empty. Add at least one bullet (minimum: '- nothing notable'). Step log: $log_file"
     exit 0
 fi
 

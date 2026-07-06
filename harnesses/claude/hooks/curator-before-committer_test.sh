@@ -75,7 +75,7 @@ write_cycle_state_fixture() {
 
 # ── Test 1: committer blocked when cycle-state=REVIEWED ─────────────────────
 T1=$(make_project)
-LOG1="$T1/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_step1_test.md"
+LOG1="$T1/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_test_cycle.jsonl"
 cat >"$LOG1" <<'MD'
 ## developer-phoenix-backend Section
 
@@ -97,7 +97,7 @@ rm -rf "$T1"
 
 # ── Test 2: committer allowed when cycle-state=CURATED ──────────────────────
 T2=$(make_project)
-LOG2="$T2/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_step1_test.md"
+LOG2="$T2/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_test_cycle.jsonl"
 cat >"$LOG2" <<'MD'
 ## developer-phoenix-backend Section
 
@@ -123,7 +123,7 @@ rm -rf "$T2"
 
 # ── Test 3: non-committer subagents allowed unconditionally ─────────────────
 T3=$(make_project)
-LOG3="$T3/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_step1_test.md"
+LOG3="$T3/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_test_cycle.jsonl"
 cat >"$LOG3" <<'MD'
 ## developer-phoenix-backend Section
 
@@ -149,7 +149,7 @@ rm -rf "$T3"
 # ── Test 4: allow when log is missing (fail-open) ───────────────────────────
 T4=$(make_project)
 # No log file created; transcript references a non-existent log
-FAKE_LOG="$T4/codegen/logging/nonexistent.md"
+FAKE_LOG="$T4/codegen/logging/nonexistent.jsonl"
 make_transcript "$T4/transcript.jsonl" "$FAKE_LOG"
 out4=$(mk_agent_input "committer" "$T4/transcript.jsonl" "$T4" | bash "$HOOK" 2>/dev/null || true)
 assert_allow "committer allowed: no log file (fail-open)" "$out4"
@@ -159,7 +159,7 @@ rm -rf "$T4"
 # Log header suggests curator ran; cycle-state says REVIEWED (curator NOT run).
 # Cycle-state wins → DENY.
 T5=$(make_project)
-LOG5="$T5/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_step1_test.md"
+LOG5="$T5/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_test_cycle.jsonl"
 cat >"$LOG5" <<'MD'
 ## developer-phoenix-backend Section
 

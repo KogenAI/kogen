@@ -38,14 +38,18 @@ run_test() {
 COMMITTER='committer'
 REVIEWER='reviewer-phoenix'
 
-# ── Write/Edit: ALLOW (canonical session log path) ─────────────────────────
+# ── Write/Edit: ALLOW (canonical cycle log path) ────────────────────────────
 
-# 14. Write to canonical session log → ALLOW
-run_test "committer Write session log ALLOWED" "0" \
-    "{\"hook_event_name\":\"PreToolUse\",\"tool_name\":\"Write\",\"tool_input\":{\"file_path\":\"codegen/logging/20260607_120000_session.md\"},\"agent_type\":\"$COMMITTER\",\"agent_id\":\"abc\"}"
+# 14. Write to canonical cycle log → ALLOW
+run_test "committer Write cycle log ALLOWED" "0" \
+    "{\"hook_event_name\":\"PreToolUse\",\"tool_name\":\"Write\",\"tool_input\":{\"file_path\":\"codegen/logging/20260607_120000_my-slug_cycle.jsonl\"},\"agent_type\":\"$COMMITTER\",\"agent_id\":\"abc\"}"
 
-# 15. Edit canonical session log → ALLOW
-run_test "committer Edit session log ALLOWED" "0" \
+# 15. Edit canonical cycle log → ALLOW
+run_test "committer Edit cycle log ALLOWED" "0" \
+    "{\"hook_event_name\":\"PreToolUse\",\"tool_name\":\"Edit\",\"tool_input\":{\"file_path\":\"codegen/logging/20260607_120000_my-task_cycle.jsonl\"},\"agent_type\":\"$COMMITTER\",\"agent_id\":\"abc\"}"
+
+# 15b. Edit the dead pre-JSONL multi-step markdown form → DENY (never written)
+run_test "committer Edit dead multi-step markdown form DENIED" "2" \
     "{\"hook_event_name\":\"PreToolUse\",\"tool_name\":\"Edit\",\"tool_input\":{\"file_path\":\"codegen/logging/20260607_120000_step1_my-task.md\"},\"agent_type\":\"$COMMITTER\",\"agent_id\":\"abc\"}"
 
 # ── Write/Edit: DENY (source files) ──────────────────────────────────────

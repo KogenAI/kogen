@@ -1,6 +1,6 @@
 /**
  * step-log-missing-guard.ts — Pi enforcement: warn when session shuts down with
- * no canonical session log present in the logging directory.
+ * no canonical cycle log (*.jsonl) present in the logging directory.
  *
  * Mirrors: harnesses/claude/hooks/step-log-missing-guard.sh (REDUCED FIDELITY)
  * Event: session_shutdown (Stop equivalent)
@@ -31,7 +31,7 @@
  * Skip when:
  *   - codegen/logging/ directory does not exist
  *   - No recently modified (< 60 min) files in directory
- *   - Canonical session log(s) are present
+ *   - Canonical cycle log(s) are present
  */
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
@@ -46,8 +46,7 @@ export const HANDLER_META = {
   matcher: "*",
 } as const;
 
-const CANONICAL_LOG_RE =
-  /^[0-9]{8}_[0-9]{6}(_[a-z0-9_-]+)?_(session|step[0-9]+_[a-z0-9_-]+)\.md$/;
+const CANONICAL_LOG_RE = /^[0-9]{8}_[0-9]{6}_[a-z0-9_-]+_cycle\.jsonl$/;
 
 const SIXTY_MIN_MS = 60 * 60 * 1000;
 
@@ -69,14 +68,14 @@ export function register(pi: ExtensionAPI): void {
 
     let files: string[];
     try {
-      files = fs.readdirSync(loggingDir).filter((f) => f.endsWith(".md"));
+      files = fs.readdirSync(loggingDir).filter((f) => f.endsWith(".jsonl"));
     } catch {
       debugLog("step-log-missing-guard", "skip: could not read logging dir");
       return;
     }
 
     if (files.length === 0) {
-      debugLog("step-log-missing-guard", "skip: no .md files in logging dir");
+      debugLog("step-log-missing-guard", "skip: no .jsonl files in logging dir");
       return;
     }
 
@@ -105,7 +104,7 @@ export function register(pi: ExtensionAPI): void {
     }
 
     process.stderr.write(
-      `[pi-enforcement:step-log-missing-guard] WARNING: codegen/logging/ has recently active files but no canonical session log (YYYYMMDD_HHMMSS[_slug]_session.md or _step<N>_<slug>.md). Per session-log rules, the orchestrator MUST create the step log FIRST using the Write tool before delegating to developer-* subagents. Template: codegen/logging/$(date -u +%Y%m%d_%H%M%S)_<slug>_session.md\n`,
+      `[pi-enforcement:step-log-missing-guard] WARNING: codegen/logging/ has recently active files but no canonical cycle log (YYYYMMDD_HHMMSS_<slug>_cycle.jsonl). Per session-log rules, the orchestrator MUST create the cycle log FIRST via codegen-log init before delegating to developer-* subagents. Template: codegen/logging/$(date -u +%Y%m%d_%H%M%S)_<slug>_cycle.jsonl\n`,
     );
   });
 }

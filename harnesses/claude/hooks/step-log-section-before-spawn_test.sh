@@ -96,16 +96,8 @@ rm -rf "$T1"
 
 # ── Test 2: deny planner-phoenix when ## Plan header absent ─────────────────
 T2=$(make_project)
-LOG2="$T2/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_step1_test.md"
-cat >"$LOG2" <<'MD'
-# Step 1 — test
-
-**Started**: 2026-01-01T00:00:00Z
-
-## Version Stamp
-
-- context: abc
-MD
+LOG2="$T2/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_test_cycle.jsonl"
+: >"$LOG2"
 make_transcript "$T2/transcript.jsonl" "$LOG2"
 out2=$(mk_agent_input "planner-phoenix" "$T2/transcript.jsonl" | env -u CLAUDE_ROLE -u PI_ROLE bash "$HOOK" 2>/dev/null || true)
 assert_deny "deny: planner-phoenix — ## Plan header absent" "$out2"
@@ -113,14 +105,9 @@ rm -rf "$T2"
 
 # ── Test 3: deny developer-phoenix-backend when its section header absent ────
 T3=$(make_project)
-LOG3="$T3/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_step1_test.md"
-cat >"$LOG3" <<'MD'
-# Step 1 — test
-
-## Plan
-
-planner wrote here
-MD
+LOG3="$T3/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_test_cycle.jsonl"
+: >"$LOG3"
+printf '%s\n' '{"ev": "role", "role": "planner-phoenix", "body": "planner wrote here"}' >>"$LOG3"
 make_transcript "$T3/transcript.jsonl" "$LOG3"
 out3=$(mk_agent_input "developer-phoenix-backend" "$T3/transcript.jsonl" | env -u CLAUDE_ROLE -u PI_ROLE bash "$HOOK" 2>/dev/null || true)
 assert_deny "deny: developer-phoenix-backend — section header absent" "$out3"
@@ -128,13 +115,9 @@ rm -rf "$T3"
 
 # ── Test 4: allow planner-phoenix when ## Plan header present (even empty) ───
 T4=$(make_project)
-LOG4="$T4/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_step1_test.md"
-cat >"$LOG4" <<'MD'
-# Step 1 — test
-
-## Plan
-
-MD
+LOG4="$T4/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_test_cycle.jsonl"
+: >"$LOG4"
+printf '%s\n' '{"ev": "role", "role": "planner-phoenix", "body": ""}' >>"$LOG4"
 make_transcript "$T4/transcript.jsonl" "$LOG4"
 out4=$(mk_agent_input "planner-phoenix" "$T4/transcript.jsonl" | env -u CLAUDE_ROLE -u PI_ROLE bash "$HOOK" 2>/dev/null || true)
 assert_allow "allow: planner-phoenix — ## Plan header present (empty body)" "$out4"
@@ -142,17 +125,10 @@ rm -rf "$T4"
 
 # ── Test 5: allow developer-phoenix-backend with header present ───────────────
 T5=$(make_project)
-LOG5="$T5/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_step1_test.md"
-cat >"$LOG5" <<'MD'
-# Step 1 — test
-
-## Plan
-
-planner wrote here
-
-## developer-phoenix-backend Section
-
-MD
+LOG5="$T5/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_test_cycle.jsonl"
+: >"$LOG5"
+printf '%s\n' '{"ev": "role", "role": "planner-phoenix", "body": "planner wrote here"}' >>"$LOG5"
+printf '%s\n' '{"ev": "role", "role": "developer-phoenix-backend", "body": ""}' >>"$LOG5"
 make_transcript "$T5/transcript.jsonl" "$LOG5"
 out5=$(mk_agent_input "developer-phoenix-backend" "$T5/transcript.jsonl" | env -u CLAUDE_ROLE -u PI_ROLE bash "$HOOK" 2>/dev/null || true)
 assert_allow "allow: developer-phoenix-backend — section header present" "$out5"
@@ -160,11 +136,9 @@ rm -rf "$T5"
 
 # ── Test 6: allow developer-phoenix-frontend with header present ──────────────
 T6=$(make_project)
-LOG6="$T6/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_step1_test.md"
-cat >"$LOG6" <<'MD'
-## developer-phoenix-frontend Section
-
-MD
+LOG6="$T6/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_test_cycle.jsonl"
+: >"$LOG6"
+printf '%s\n' '{"ev": "role", "role": "developer-phoenix-frontend", "body": ""}' >>"$LOG6"
 make_transcript "$T6/transcript.jsonl" "$LOG6"
 out6=$(mk_agent_input "developer-phoenix-frontend" "$T6/transcript.jsonl" | env -u CLAUDE_ROLE -u PI_ROLE bash "$HOOK" 2>/dev/null || true)
 assert_allow "allow: developer-phoenix-frontend — section header present" "$out6"
@@ -172,11 +146,9 @@ rm -rf "$T6"
 
 # ── Test 7: allow developer-static with header present ───────────────────────
 T7=$(make_project)
-LOG7="$T7/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_step1_test.md"
-cat >"$LOG7" <<'MD'
-## developer-static Section
-
-MD
+LOG7="$T7/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_test_cycle.jsonl"
+: >"$LOG7"
+printf '%s\n' '{"ev": "role", "role": "developer-static", "body": ""}' >>"$LOG7"
 make_transcript "$T7/transcript.jsonl" "$LOG7"
 out7=$(mk_agent_input "developer-static" "$T7/transcript.jsonl" | env -u CLAUDE_ROLE -u PI_ROLE bash "$HOOK" 2>/dev/null || true)
 assert_allow "allow: developer-static — section header present" "$out7"
@@ -184,11 +156,9 @@ rm -rf "$T7"
 
 # ── Test 8: allow reviewer-phoenix with header present ───────────────────────
 T8=$(make_project)
-LOG8="$T8/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_step1_test.md"
-cat >"$LOG8" <<'MD'
-## reviewer-phoenix Section
-
-MD
+LOG8="$T8/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_test_cycle.jsonl"
+: >"$LOG8"
+printf '%s\n' '{"ev": "role", "role": "reviewer-phoenix", "body": ""}' >>"$LOG8"
 make_transcript "$T8/transcript.jsonl" "$LOG8"
 out8=$(mk_agent_input "reviewer-phoenix" "$T8/transcript.jsonl" | env -u CLAUDE_ROLE -u PI_ROLE bash "$HOOK" 2>/dev/null || true)
 assert_allow "allow: reviewer-phoenix — section header present" "$out8"
@@ -196,11 +166,9 @@ rm -rf "$T8"
 
 # ── Test 9: allow reviewer-static with header present ────────────────────────
 T9=$(make_project)
-LOG9="$T9/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_step1_test.md"
-cat >"$LOG9" <<'MD'
-## reviewer-static Section
-
-MD
+LOG9="$T9/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_test_cycle.jsonl"
+: >"$LOG9"
+printf '%s\n' '{"ev": "role", "role": "reviewer-static", "body": ""}' >>"$LOG9"
 make_transcript "$T9/transcript.jsonl" "$LOG9"
 out9=$(mk_agent_input "reviewer-static" "$T9/transcript.jsonl" | env -u CLAUDE_ROLE -u PI_ROLE bash "$HOOK" 2>/dev/null || true)
 assert_allow "allow: reviewer-static — section header present" "$out9"
@@ -208,11 +176,9 @@ rm -rf "$T9"
 
 # ── Test 10: allow context-curator with header present ───────────────────────
 T10=$(make_project)
-LOG10="$T10/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_step1_test.md"
-cat >"$LOG10" <<'MD'
-## context-curator Section
-
-MD
+LOG10="$T10/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_test_cycle.jsonl"
+: >"$LOG10"
+printf '%s\n' '{"ev": "role", "role": "context-curator", "body": ""}' >>"$LOG10"
 make_transcript "$T10/transcript.jsonl" "$LOG10"
 out10=$(mk_agent_input "context-curator" "$T10/transcript.jsonl" | env -u CLAUDE_ROLE -u PI_ROLE bash "$HOOK" 2>/dev/null || true)
 assert_allow "allow: context-curator — section header present" "$out10"
@@ -220,11 +186,9 @@ rm -rf "$T10"
 
 # ── Test 11: allow committer with header present ──────────────────────────────
 T11=$(make_project)
-LOG11="$T11/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_step1_test.md"
-cat >"$LOG11" <<'MD'
-## committer Section
-
-MD
+LOG11="$T11/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_test_cycle.jsonl"
+: >"$LOG11"
+printf '%s\n' '{"ev": "role", "role": "committer", "body": ""}' >>"$LOG11"
 make_transcript "$T11/transcript.jsonl" "$LOG11"
 out11=$(mk_agent_input "committer" "$T11/transcript.jsonl" | env -u CLAUDE_ROLE -u PI_ROLE bash "$HOOK" 2>/dev/null || true)
 assert_allow "allow: committer — section header present" "$out11"
@@ -248,11 +212,9 @@ rm -rf "$T13"
 
 # ── Test 14: allow developer-static (unified static stack) ────────────────────
 T14=$(make_project)
-LOG14="$T14/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_step1_test.md"
-cat >"$LOG14" <<'MD'
-## developer-static Section
-
-MD
+LOG14="$T14/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_test_cycle.jsonl"
+: >"$LOG14"
+printf '%s\n' '{"ev": "role", "role": "developer-static", "body": ""}' >>"$LOG14"
 make_transcript "$T14/transcript.jsonl" "$LOG14"
 out14=$(mk_agent_input "developer-static" "$T14/transcript.jsonl" | env -u CLAUDE_ROLE -u PI_ROLE bash "$HOOK" 2>/dev/null || true)
 assert_allow "allow: developer-static (test 14) — section header present" "$out14"
@@ -260,11 +222,9 @@ rm -rf "$T14"
 
 # ── Test 15: allow developer-static (unified static stack) ────────────────────
 T15=$(make_project)
-LOG15="$T15/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_step1_test.md"
-cat >"$LOG15" <<'MD'
-## developer-static Section
-
-MD
+LOG15="$T15/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_test_cycle.jsonl"
+: >"$LOG15"
+printf '%s\n' '{"ev": "role", "role": "developer-static", "body": ""}' >>"$LOG15"
 make_transcript "$T15/transcript.jsonl" "$LOG15"
 out15=$(mk_agent_input "developer-static" "$T15/transcript.jsonl" | env -u CLAUDE_ROLE -u PI_ROLE bash "$HOOK" 2>/dev/null || true)
 assert_allow "allow: developer-static (test 15) — section header present" "$out15"
@@ -278,20 +238,13 @@ rm -rf "$T15"
 T16_APPS=$(mktemp -d)
 T16="$T16_APPS/myapp"
 mkdir -p "$T16/codegen/logging"
-LOG16="$T16/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_step1_test.md"
-cat >"$LOG16" <<'MD'
-# Step 1 — test
-
-## Plan
-
-planner wrote here
-
-## developer-phoenix-backend Section
-
-MD
+LOG16="$T16/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_test_cycle.jsonl"
+: >"$LOG16"
+printf '%s\n' '{"ev": "role", "role": "planner-phoenix", "body": "planner wrote here"}' >>"$LOG16"
+printf '%s\n' '{"ev": "role", "role": "developer-phoenix-backend", "body": ""}' >>"$LOG16"
 # Transcript has only an unrelated older Write entry — simulating transcript lag
 FAKE_TRANSCRIPT16="$T16/transcript.jsonl"
-printf '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Write","input":{"file_path":"codegen/logging/20240101_000000_old_session.md"}}]}}\n' \
+printf '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Write","input":{"file_path":"codegen/logging/20240101_000000_old_cycle.jsonl"}}]}}\n' \
     >"$FAKE_TRANSCRIPT16"
 export OCG_APPS_ROOT="$T16_APPS"
 out16=$(mk_agent_input_with_cwd "developer-phoenix-backend" "$FAKE_TRANSCRIPT16" "$T16" | env -u CLAUDE_ROLE -u PI_ROLE bash "$HOOK" 2>/dev/null || true)
@@ -303,18 +256,14 @@ rm -rf "$T16_APPS"
 # Same setup as T16 (log on disk, transcript lags) but OCG_APPS_ROOT is unset.
 # Should deny — strict transcript-bound resolution for interactive sessions.
 T17=$(make_project)
-LOG17="$T17/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_step1_test.md"
-cat >"$LOG17" <<'MD'
-# Step 1 — test
-
-## developer-phoenix-backend Section
-
-MD
+LOG17="$T17/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_test_cycle.jsonl"
+: >"$LOG17"
+printf '%s\n' '{"ev": "role", "role": "developer-phoenix-backend", "body": ""}' >>"$LOG17"
 FAKE_TRANSCRIPT17="$T17/transcript.jsonl"
 printf '' >"$FAKE_TRANSCRIPT17"
 out17=$(
     unset OCG_APPS_ROOT 2>/dev/null
-    mk_agent_input "developer-phoenix-backend" "$FAKE_TRANSCRIPT17" | env -u CLAUDE_ROLE -u PI_ROLE bash "$HOOK" 2>/dev/null || true
+    mk_agent_input "developer-phoenix-backend" "$FAKE_TRANSCRIPT17" | env -u CLAUDE_ROLE -u PI_ROLE -u CODEGEN_BUILD_NON_INTERACTIVE bash "$HOOK" 2>/dev/null || true
 )
 assert_deny "deny: no fallback outside managed build (OCG_APPS_ROOT unset)" "$out17"
 rm -rf "$T17"
@@ -329,27 +278,22 @@ rm -rf "$T17"
 T18_APPS=$(mktemp -d)
 T18="$T18_APPS/myapp"
 mkdir -p "$T18/codegen/logging"
-LOG18="$T18/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_step1_test.md"
-cat >"$LOG18" <<'MD'
-# Step 1 — test
-
-## Plan
-
-planner wrote here
-MD
+LOG18="$T18/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_test_cycle.jsonl"
+: >"$LOG18"
+printf '%s\n' '{"ev": "role", "role": "planner-phoenix", "body": "planner wrote here"}' >>"$LOG18"
 # Transcript is empty — no Write entries at all — full transcript lag
 FAKE_TRANSCRIPT18="$T18/transcript.jsonl"
 printf '' >"$FAKE_TRANSCRIPT18"
 export OCG_APPS_ROOT="$T18_APPS"
 out18=$(mk_agent_input_with_cwd "developer-phoenix-backend" "$FAKE_TRANSCRIPT18" "$T18" | env -u CLAUDE_ROLE -u PI_ROLE bash "$HOOK" 2>/dev/null || true)
 unset OCG_APPS_ROOT
-assert_deny "deny: filesystem fallback finds log but section header absent — append header (not create log)" "$out18"
-# Verify the deny message names the missing header (not the "create log" message)
-if printf '%s' "$out18" | grep -q "append"; then
-    [ -n "${VERBOSE:-}" ] && printf 'PASS: test 18 deny names "append" (correct message)\n'
+assert_deny "deny: filesystem fallback finds log but role event absent — missing role (not create log)" "$out18"
+# Verify the deny message names the missing role event (not the "create log" message)
+if printf '%s' "$out18" | grep -q "missing 'developer-phoenix-backend' role event"; then
+    [ -n "${VERBOSE:-}" ] && printf 'PASS: test 18 deny names the missing role event (correct message)\n'
     pass=$((pass + 1))
 else
-    printf 'FAIL: test 18 deny should mention "append" but got: %s\n' "$out18"
+    printf 'FAIL: test 18 deny should mention the missing role event but got: %s\n' "$out18"
     fail=$((fail + 1))
 fi
 rm -rf "$T18_APPS"
@@ -399,7 +343,7 @@ rm -rf "$T19B"
 # This was the fail-open bug: ! -r is true on absent files → old code allowed.
 T20=$(make_project)
 FAKE_TRANSCRIPT20="$T20/transcript.jsonl"
-GHOST_LOG="$T20/codegen/logging/20260101_000000_test-session.md"
+GHOST_LOG="$T20/codegen/logging/20260101_000000_test-session_cycle.jsonl"
 # Build transcript referencing the ghost log (file not created on disk).
 printf '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Write","input":{"file_path":"%s"}}]}}\n' \
     "$GHOST_LOG" >"$FAKE_TRANSCRIPT20"
@@ -413,7 +357,7 @@ rm -rf "$T20"
 # (allow or deny) satisfies the invariant that the hook does NOT hard-deny on
 # an existing-but-unreadable file. We assert: NOT a "file never created" deny.
 T21=$(make_project)
-LOG21="$T21/codegen/logging/20260101_000000_chmod-test.md"
+LOG21="$T21/codegen/logging/20260101_000000_chmod-test_cycle.jsonl"
 printf '# Step\n' >"$LOG21"
 make_transcript "$T21/transcript.jsonl" "$LOG21"
 chmod 000 "$LOG21"
@@ -474,14 +418,9 @@ rm -rf "$T26"
 # Test 22j: REGRESSION — build-mode + developer-phoenix-backend with log present but section header ABSENT
 # Must still DENY (skip guard must NOT over-skip legal types)
 T27=$(make_project)
-LOG27="$T27/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_step1_regression.md"
-cat >"$LOG27" <<'MD'
-# Step 1 — regression
-
-## Plan
-
-planner content only — no developer section header
-MD
+LOG27="$T27/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_regression_cycle.jsonl"
+: >"$LOG27"
+printf '%s\n' '{"ev": "role", "role": "planner-phoenix", "body": "planner content only — no developer section header"}' >>"$LOG27"
 make_transcript "$T27/transcript.jsonl" "$LOG27"
 out27=$(mk_agent_input "developer-phoenix-backend" "$T27/transcript.jsonl" | env -u CLAUDE_ROLE -u PI_ROLE bash "$HOOK" 2>/dev/null || true)
 assert_deny "deny: REGRESSION — build + developer-phoenix-backend, log present but section header absent" "$out27"
@@ -490,15 +429,10 @@ rm -rf "$T27"
 # ── T28: prior stage (## Plan) present but body empty → DENY when spawning developer
 # Scenario: planner subagent died; orchestrator skips ahead to spawn developer.
 T28=$(make_project)
-LOG28="$T28/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_step1_empty-plan.md"
-cat >"$LOG28" <<'MD'
-# Step 1 — empty plan test
-
-## Plan
-
-## developer-phoenix-backend Section
-
-MD
+LOG28="$T28/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_empty-plan_cycle.jsonl"
+: >"$LOG28"
+printf '%s\n' '{"ev": "role", "role": "planner-phoenix", "body": ""}' >>"$LOG28"
+printf '%s\n' '{"ev": "role", "role": "developer-phoenix-backend", "body": ""}' >>"$LOG28"
 make_transcript "$T28/transcript.jsonl" "$LOG28"
 out28=$(mk_agent_input "developer-phoenix-backend" "$T28/transcript.jsonl" | env -u CLAUDE_ROLE -u PI_ROLE bash "$HOOK" 2>/dev/null || true)
 assert_deny "T28: deny — ## Plan present but empty, spawning developer blocked" "$out28"
@@ -515,19 +449,10 @@ rm -rf "$T28"
 # ── T29: ## Plan has only retrospective block → DENY when spawning developer ──
 # Scenario: planner section body is only a retrospective stub — no real plan.
 T29=$(make_project)
-LOG29="$T29/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_step1_plan-retro-only.md"
-cat >"$LOG29" <<'MD'
-# Step 1 — plan with only retrospective
-
-## Plan
-
-### What I Learned This Step
-
-- nothing notable
-
-## developer-phoenix-backend Section
-
-MD
+LOG29="$T29/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_plan-retro-only_cycle.jsonl"
+: >"$LOG29"
+printf '%s\n' '{"ev": "role", "role": "planner-phoenix", "body": "### What I Learned This Step\n\n- nothing notable"}' >>"$LOG29"
+printf '%s\n' '{"ev": "role", "role": "developer-phoenix-backend", "body": ""}' >>"$LOG29"
 make_transcript "$T29/transcript.jsonl" "$LOG29"
 out29=$(mk_agent_input "developer-phoenix-backend" "$T29/transcript.jsonl" | env -u CLAUDE_ROLE -u PI_ROLE bash "$HOOK" 2>/dev/null || true)
 assert_deny "T29: deny — ## Plan has only retrospective (no real plan content), developer spawn blocked" "$out29"
@@ -536,19 +461,10 @@ rm -rf "$T29"
 # ── T30: prior stage has real content → ALLOW (regression guard) ─────────────
 # Scenario: planner wrote real content in ## Plan; developer spawn allowed.
 T30=$(make_project)
-LOG30="$T30/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_step1_real-plan.md"
-cat >"$LOG30" <<'MD'
-# Step 1 — real plan content
-
-## Plan
-
-Files to touch:
-- lib/foo.ex (NEW)
-- test/foo_test.exs (NEW)
-
-## developer-phoenix-backend Section
-
-MD
+LOG30="$T30/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_real-plan_cycle.jsonl"
+: >"$LOG30"
+printf '%s\n' '{"ev": "role", "role": "planner-phoenix", "body": "Files to touch:\n- lib/foo.ex (NEW)\n- test/foo_test.exs (NEW)"}' >>"$LOG30"
+printf '%s\n' '{"ev": "role", "role": "developer-phoenix-backend", "body": ""}' >>"$LOG30"
 make_transcript "$T30/transcript.jsonl" "$LOG30"
 out30=$(mk_agent_input "developer-phoenix-backend" "$T30/transcript.jsonl" | env -u CLAUDE_ROLE -u PI_ROLE bash "$HOOK" 2>/dev/null || true)
 assert_allow "T30: allow — ## Plan has real content, developer spawn permitted" "$out30"
@@ -563,20 +479,10 @@ rm -rf "$T30"
 # step log with both ## Plan (with body) and the developer section header
 # (with body) must still resolve via the codegen-log-evidence disk fallback.
 T31=$(make_project)
-LOG31="$T31/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_step1_codegen-log-only.md"
-cat >"$LOG31" <<'MD'
-# Step 1 — codegen-log-only evidence
-
-## Plan
-
-Files to touch:
-- lib/foo.ex (NEW)
-
-## developer-phoenix-backend Section
-
-dev wrote real content here
-
-MD
+LOG31="$T31/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_codegen-log-only_cycle.jsonl"
+: >"$LOG31"
+printf '%s\n' '{"ev": "role", "role": "planner-phoenix", "body": "Files to touch:\n- lib/foo.ex (NEW)"}' >>"$LOG31"
+printf '%s\n' '{"ev": "role", "role": "developer-phoenix-backend", "body": "dev wrote real content here"}' >>"$LOG31"
 FAKE_TRANSCRIPT31="$T31/transcript.jsonl"
 printf '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Bash","input":{"command":"codegen-log section --role developer-phoenix-backend --body @-"}}]}}\n' \
     >"$FAKE_TRANSCRIPT31"
@@ -594,17 +500,10 @@ rm -rf "$T31"
 # awk fix that previously excluded ALL "###"-prefixed lines from the body
 # scan, not just the "### What I Learned" retrospective block.
 T32=$(make_project)
-LOG32="$T32/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_step1_verdict-only.md"
-cat >"$LOG32" <<'MD'
-# Step 1 — verdict-only reviewer section
-
-## reviewer-phoenix Section
-
-### FINAL VERDICT — APPROVED
-
-## context-curator Section
-
-MD
+LOG32="$T32/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_verdict-only_cycle.jsonl"
+: >"$LOG32"
+printf '%s\n' '{"ev": "role", "role": "reviewer-phoenix", "body": "### FINAL VERDICT — APPROVED"}' >>"$LOG32"
+printf '%s\n' '{"ev": "role", "role": "context-curator", "body": ""}' >>"$LOG32"
 make_transcript "$T32/transcript.jsonl" "$LOG32"
 out32=$(mk_agent_input "context-curator" "$T32/transcript.jsonl" | env -u CLAUDE_ROLE -u PI_ROLE bash "$HOOK" 2>/dev/null || true)
 assert_allow "T32: allow — reviewer section body is only an H3 verdict line, context-curator spawn permitted" "$out32"
@@ -615,21 +514,10 @@ rm -rf "$T32"
 # after). The extractor must bound the retro to its heading + blank/bullet
 # lines only, so the trailing prose still counts as real plan content.
 T33=$(make_project)
-LOG33="$T33/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_step1_plan-retro-first.md"
-cat >"$LOG33" <<'MD'
-# Step 1 — plan retro-first then trailing prose
-
-## Plan
-
-### What I Learned This Step
-
-- nothing notable
-
-The real plan: implement feature X in lib/foo.ex.
-
-## developer-phoenix-backend Section
-
-MD
+LOG33="$T33/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_plan-retro-first_cycle.jsonl"
+: >"$LOG33"
+printf '%s\n' '{"ev": "role", "role": "planner-phoenix", "body": "### What I Learned This Step\n\n- nothing notable\n\nThe real plan: implement feature X in lib/foo.ex."}' >>"$LOG33"
+printf '%s\n' '{"ev": "role", "role": "developer-phoenix-backend", "body": ""}' >>"$LOG33"
 make_transcript "$T33/transcript.jsonl" "$LOG33"
 out33=$(mk_agent_input "developer-phoenix-backend" "$T33/transcript.jsonl" | env -u CLAUDE_ROLE -u PI_ROLE bash "$HOOK" 2>/dev/null || true)
 assert_allow "T33: allow — ## Plan retro-first then trailing prose reads as real body, developer spawn permitted" "$out33"
@@ -639,14 +527,9 @@ rm -rf "$T33"
 
 # T34: header-absent fire writes breadcrumb with expected fields; verdict unchanged
 T34=$(make_project)
-LOG34="$T34/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_step1_test.md"
-cat >"$LOG34" <<'MD'
-# Step 1 — test
-
-## Plan
-
-planner wrote here
-MD
+LOG34="$T34/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_test_cycle.jsonl"
+: >"$LOG34"
+printf '%s\n' '{"ev": "role", "role": "planner-phoenix", "body": "planner wrote here"}' >>"$LOG34"
 make_transcript "$T34/transcript.jsonl" "$LOG34"
 SID34="test-sid-34"
 IN34=$(jq -n --arg s "developer-phoenix-backend" --arg t "$T34/transcript.jsonl" --arg c "$T34" --arg sid "$SID34" \
@@ -666,14 +549,9 @@ rm -rf "$T34"
 # T35: breadcrumb write FAILURE (diagnostics path occupied by a regular file)
 # must NOT alter the verdict — still deny, no crash.
 T35=$(make_project)
-LOG35="$T35/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_step1_test.md"
-cat >"$LOG35" <<'MD'
-# Step 1 — test
-
-## Plan
-
-planner wrote here
-MD
+LOG35="$T35/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_test_cycle.jsonl"
+: >"$LOG35"
+printf '%s\n' '{"ev": "role", "role": "planner-phoenix", "body": "planner wrote here"}' >>"$LOG35"
 make_transcript "$T35/transcript.jsonl" "$LOG35"
 printf 'x' >"$T35/codegen/logging/.guard-diagnostics"
 IN35=$(jq -n --arg s "developer-phoenix-backend" --arg t "$T35/transcript.jsonl" --arg c "$T35" \
@@ -705,7 +583,7 @@ fi
 rm -rf "$T36"
 
 T36C=$(make_project)
-GHOST_LOG36="$T36C/codegen/logging/20260101_000000_ghost-session.md"
+GHOST_LOG36="$T36C/codegen/logging/20260101_000000_ghost-session_cycle.jsonl"
 printf '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Write","input":{"file_path":"%s"}}]}}\n' \
     "$GHOST_LOG36" >"$T36C/transcript.jsonl"
 out36_ghost=$(mk_agent_input "planner-phoenix" "$T36C/transcript.jsonl" | env -u CLAUDE_ROLE -u PI_ROLE bash "$HOOK" 2>/dev/null || true)

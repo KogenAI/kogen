@@ -28,7 +28,7 @@ Hook registration: **Two pipelines** — both write to `harnesses/claude/hooks/*
 | `harnesses/claude/hooks/static-site-build-check.sh` | SubagentStop (interactive-session fallback only) — builds static site + 8 output checks (CSS, HTML stylesheet link, asset filename, SEO baseline, render gate), appends verdict. SEO baseline (Check 6b, `check_seo_baseline`) validates every `public/**/*.html`: non-empty `<meta name="description">`, all 4 `og:*` tags present, `<link rel="canonical">` present, exactly one valid `application/ld+json` block, `public/robots.txt` exists, all absolute-URL fields are either `SITE_URL_PLACEHOLDER` token or real non-`example.com` URLs (never unreplaced `%...%` vars). Under the loop, the static stack's gate step invokes the same checks directly via `LoopGate.run_gate`. |
 | `harnesses/claude/hooks/pitch-format-validator.sh` | Stop — validates ## Questions/## Answers/> Status: grammar in active pitch for shape/refactor/ops sessions. |
 | `harnesses/claude/hooks/llm-pending-sweep.sh` | Stop — sweeps for pending LLM-generated artifacts before exit |
-| `harnesses/claude/hooks/session-log-writer-only.sh` | PreToolUse — `codegen-log` is the SOLE writer of session logs; denies raw Edit/Write/MultiEdit and raw Bash writes into `codegen/logging/*.md` |
+| `harnesses/claude/hooks/session-log-writer-only.sh` | PreToolUse — `codegen-log` is the SOLE writer of cycle logs; denies raw Edit/Write/MultiEdit and raw Bash writes into `codegen/logging/*.jsonl` |
 | `harnesses/claude/hooks/no-python-json.sh` | PreToolUse — blocks inline `python3 -c` JSON parsing |
 | `harnesses/claude/hooks/no-cat-pipe.sh` | PreToolUse — blocks `cat file \| ...` and `head`/`tail` pipe patterns |
 | `harnesses/claude/hooks/no-git-stash.sh` | PreToolUse — blocks `git stash` |
@@ -40,7 +40,7 @@ Hook registration: **Two pipelines** — both write to `harnesses/claude/hooks/*
 | `harnesses/claude/hooks/pre-commit-guard.sh` | PreToolUse — blocks direct `git commit` outside committer role; early codegen-log carve-out (mirrors session-log-writer-only's own pattern) exits allow BEFORE the git-verb scans when the command invokes codegen-log, so role-authored prose piped into a session-log section body is never denied by containing a git-verb token — bare history-mutating git commands remain denied |
 | `harnesses/claude/hooks/dev-no-ci.sh` | PreToolUse — blocks developer from running CI commands |
 | `harnesses/claude/hooks/developer-no-self-gate.sh` | PreToolUse — blocks developer gate invocation |
-| `harnesses/claude/hooks/planner-guard.sh` | PreToolUse — enforces planner constraints (no writes, no bash exec); an early codegen-log carve-out (top of the Bash block, mirrors session-log-writer-only's own pattern) exits allow BEFORE the scans below when the command invokes codegen-log, so the plan's session-log section body (piped prose) is never denied by containing a gate token, git verb, redirect char, or `../` sequence; blocks (non-codegen-log commands): (1) Bash redirects to `codegen/logging/*.md` including shell heredocs, `>>` appends, and brace-group redirect forms (all defeat transcript-based path detection); requires exact `codegen/logging/` or `/tmp/` path in redirect target (no `./codegen/logging/` prefix); (2) Read on implementer rule files (`developer.md`, `testing-liveview.md`, `testing.md`, `reviewer.md`, `committer.md`) to prevent token waste and over-specification; (3) `rm`/`rmdir` outside `/tmp/`; (4) `git` state-modify and state-inspection commands. **Implication**: session-log section body writes route through `codegen-log section --body @-` (piped), NOT bash redirect patterns of ANY form; edits to rule files must be planned blind (verbatim content + text anchors supplied to developer subagent). **Planning rule edits blind**: planner cannot Read rule files — use Grep tool to locate anchors, supply verbatim in pitch; developer uses those anchors with Edit tool. |
+| `harnesses/claude/hooks/planner-guard.sh` | PreToolUse — enforces planner constraints (no writes, no bash exec); an early codegen-log carve-out (top of the Bash block, mirrors session-log-writer-only's own pattern) exits allow BEFORE the scans below when the command invokes codegen-log, so the plan's session-log section body (piped prose) is never denied by containing a gate token, git verb, redirect char, or `../` sequence; blocks (non-codegen-log commands): (1) Bash redirects to `codegen/logging/*.jsonl` including shell heredocs, `>>` appends, and brace-group redirect forms (all defeat transcript-based path detection); requires exact `codegen/logging/` or `/tmp/` path in redirect target (no `./codegen/logging/` prefix); (2) Read on implementer rule files (`developer.md`, `testing-liveview.md`, `testing.md`, `reviewer.md`, `committer.md`) to prevent token waste and over-specification; (3) `rm`/`rmdir` outside `/tmp/`; (4) `git` state-modify and state-inspection commands. **Implication**: session-log section body writes route through `codegen-log section --body @-` (piped), NOT bash redirect patterns of ANY form; edits to rule files must be planned blind (verbatim content + text anchors supplied to developer subagent). **Planning rule edits blind**: planner cannot Read rule files — use Grep tool to locate anchors, supply verbatim in pitch; developer uses those anchors with Edit tool. |
 | `harnesses/claude/hooks/reviewer-guard.sh` | PreToolUse — reviewer constraint enforcement (Write/Edit/MultiEdit/Monitor deny; Bash no longer gated here — see reviewer-bash-allowlist.sh) |
 | `harnesses/claude/hooks/reviewer-bash-allowlist.sh` | PreToolUse — reviewer Bash allowlist (GENERATED): default-deny; permits only `codegen-log` invocations (any position — typically piped, e.g. `printf '%s' "$body" \| codegen-log section --body @-`) plus safe read-only utilities (`git diff/status/log/show`, `echo`, `wc`, `cat`, `ls`, `true`, `:`). No history-mutating git verbs. Fills the Bash gap left when reviewer-guard.sh's Bash hard-deny arm was removed, so reviewers can write their session-log section via codegen-log. **Sandbox constraint**: The allowlist blocks direct invocation of `make`, `python3`, and `grep` — reviewers cannot execute the full `make test` gate directly. Gate-status verification falls back to `git log`/`git diff --stat` cross-checks: verify claimed-unrelated test files are untouched by the current diff and their last-touch commit predates the cycle, rather than re-running the gate. |
 | `harnesses/claude/hooks/context-curator-guard.sh` | PreToolUse — guards context file edits to curator role only |
@@ -112,51 +112,51 @@ Cross-reference: curator decision tree → `context/rules-roles.md` § Curator W
 
 **Satisfy**: Append a row to `PROJECT_CONTEXT.md` § Domain Context Files table with the basename (e.g., `"deployment-topology"` for `context/deployment-topology.md`).
 
-## Session Log Section Detection
+## Session Log Role-Event Detection
 
-Hooks check session log state via `## <role>.*Section` patterns:
+Cycle logs are append-only JSONL (one JSON object per line, `"ev"` discriminator field) — there is no markdown section structure to pattern-scan anymore. Hooks check session log state via `jq` role-event selectors against the log file:
 
-| Pattern | Meaning |
+| Check | Canonical `jq` form |
 | - | - |
-| `## reviewer-*` | reviewer has run (any stack variant) |
-| `## context-curator Section` | curator has run (literal, no variant) |
-| `## committer Section` | committer has run (literal, no variant) |
-| `## developer-*` | developer has run |
-| `## planner Section` | planner has run (literal for bare planner) |
+| role has run (any role) | `jq -e --arg r "<role>" 'select(.ev=="role" and .role==$r)' <file>` |
+| planner has run (any stack variant) | `jq -e 'select(.ev=="role" and (.role \| startswith("planner")))' <file>` |
+| developer has run (any stack variant) | `jq -e 'select(.ev=="role" and (.role \| startswith("developer-")))' <file>` |
+| reviewer has run (any stack variant) | `jq -e 'select(.ev=="role" and (.role \| startswith("reviewer-")))' <file>` |
+| concatenated role body text | `jq -r --arg r "<role>" 'select(.ev=="role" and .role==$r)\|.body' <file>` |
 
-`committer` and `context-curator` are stack-agnostic — always literal, no stack suffix.
+`committer` and `context-curator` are stack-agnostic — the role string is always the literal value, no stack suffix. Planner variants (`planner-phoenix`, `planner-static`) are matched via `startswith("planner")` rather than an exact string, so any stack-prefixed planner role satisfies a bare "planner has run" check.
 
-**Stack-prefixed planner variants** (`planner-phoenix`, `planner-static`): `codegen-log`'s `section_header_for_agent` derives the literal stack-prefixed header (e.g., `## planner-phoenix Section`) from `AGENT_TYPE`/`CLAUDE_ROLE` (or the `--role` override). The bare-planner case does NOT widen to stack variants.
+All `jq -e` reads exit 0 = at least one match, exit 1 = none. Wrap in `2>/dev/null` on read paths (swallow malformed-line noise, fail-open) except where a hard block requires certainty. Full event schema and reader forms: session-log rules § Event Schema.
 
 ## Retrospective Placement Rule (subagent-retrospective-guard)
 
-`subagent-retrospective-guard.sh` — SubagentStop hook (interactive-session fallback only) validating `### What I Learned This Step` placement. For planner variants: block MUST sit INSIDE `## Plan` body BEFORE any `## ` sub-headers — awk section scanning terminates at `## ` so a sub-header inside the block hides it from curation.
+`subagent-retrospective-guard.sh` — SubagentStop hook (interactive-session fallback only) validating `### What I Learned This Step` placement inside a role's opaque body string. The hook concatenates all `role`/`learned` events for the agent (`jq -r --arg r "$AGENT_TYPE" 'select(.ev=="role" and .role==$r)|.body'`), then scans that body string for the header.
 
-**Placement chain**: planner prose → sub-tasks → `### What I Learned This Step` → then `## Delegation Prompt` etc.
+Body strings are opaque prose (never re-parsed as markdown structure by any other hook), but WITHIN the retrospective-guard's own extraction, an `awk` pass still bounds the retrospective content: `/^### What I Learned This Step/{ found=1; next } found && /^### /{ exit } found { print }` — a `### `-prefixed sub-header appearing AFTER the retrospective header inside the same body string still terminates the captured block early. Put "nothing notable" or real bullets directly under the header with no intervening `### ` line.
 
-**Enforcement**: exits non-zero if block is missing (unconditional, all subagents). Positioning enforcement scoped to planner role.
+A dedicated `codegen-log append --learned "<text>"` event (writing a `{"ev":"learned",...}` line) also satisfies the check independent of body-string placement — this is the more robust option when a body will contain further `### `-level structure.
+
+**Enforcement**: exits non-zero (blocks) if the retrospective content is missing or empty (unconditional, all subagents).
 
 ### Slug Extraction Patterns
 
-When extracting a slug from a session log filename, use a **fixed-width regex anchored on timestamp and suffix**, not a pattern that splits on `_`. This handles slugs containing underscores without ambiguity.
+When extracting a slug from a cycle log filename, use a **fixed-width regex anchored on timestamp and suffix**, not a pattern that splits on `_`. This handles slugs containing underscores without ambiguity.
 
 **Canonical pattern** (matches the slug-extraction block in `codegen-log`'s `init` subcommand):
 
 ```bash
-slug=$(basename "$log" | sed -E 's/^[0-9]{8}_[0-9]{6}_(.+)_session\.md$/\1/')
-[ -z "$slug" ] && exit 0  # no match → free-form or multi-step log, skip
+slug=$(basename "$log" | sed -E 's/^[0-9]{8}_[0-9]{6}_(.+)_cycle\.jsonl$/\1/')
+[ -z "$slug" ] && exit 0  # no match → skip
 ```
 
 **Why fixed-width**: Splitting on the last `_` would incorrectly fragment a slug containing an underscore. Prefix/suffix anchoring on the 8-digit date and 6-digit time is unambiguous.
 
-**What it rejects**: Multi-step logs (`<ts>_step1_<slug>.md`) do not match the regex and are correctly skipped.
-
-### Session Log Filename Regex — Single-Source Contract (Phase 6)
+### Cycle Log Filename Regex — Single-Source Contract
 
 **Canonical regex** (authoritative source: `shared/rules/_core/session-log.md` § File Naming):
 
 ```
-[0-9]{8}_[0-9]{6}(_[a-z0-9_-]+)?_(session|step[0-9]+_[a-z0-9_-]+)\.md$
+[0-9]{8}_[0-9]{6}_[a-z0-9_-]+_cycle\.jsonl$
 ```
 
 **Consumed by** (MUST be kept in sync — parity-tested):
@@ -239,23 +239,19 @@ When designing shell case statements where one verdict variant should block and 
 
 ## Session-Log Writing (codegen-log Sole-Writer Model)
 
-`codegen-log` is the SOLE writer of session logs — raw Edit/Write/MultiEdit on `codegen/logging/*.md`, and raw Bash writes (redirect/tee/in-place-stream-edit/move-into) into that path, are denied by the `session-log-writer-only` hook (Claude + Pi twins). All section insertion, replacement, and append operations are performed by `codegen-log`'s own rank-ordered awk logic, which is correct by construction (no duplicate headers, no order violations, no atomicity gaps).
+`codegen-log` is the SOLE writer of cycle logs (append-only JSONL). Raw Edit/Write/Bash writes denied by `session-log-writer-only` hook.
 
-**Positional role (taught/default form)**: `codegen-log section <role> --slug <slug>` and `codegen-log append <role> --slug <slug>` read the role as the first bare argument after the subcommand; `--body` is implicit stdin when omitted. `--role <role>` and `--body @-` remain accepted aliases for existing callers; a bare `codegen-log section` with no role (positional or `--role`) always exits 2.
+**Core ops**:
+- `init --slug <slug>` — create log (idempotent); writes `.active` sentinel.
+- `section <role> --slug <slug>` — append `{"ev":"role","role":<role>,"body":<prose>}`.
+- `append <role> --slug <slug>` — append `{"ev":"role",...}` event.
+- `append <role> --learned "<text>" --slug <slug>` — append `{"ev":"learned",...}`.
+- `append <role> --died interrupted|aborted --slug <slug>` — append `{"ev":"died",...}`.
+- `append <role> --verdict clear|failed|inconclusive --slug <slug>` — append `{"ev":"gate",...}`.
+- `verdict --gate <cmd> --mode <mode> --result "<text>" --slug <slug>` — phoenix-dev-gate verdict writer.
+- `relocate --new-slug <slug>` — rename + update `.active`.
 
-**Core operations**:
-- `codegen-log init --slug <slug>` — creates a new log; also writes `codegen/logging/.active` sentinel (synchronous disk signal for log-resolution fallback).
-- `codegen-log section <role> --slug <slug>` (piping body via stdin) — replaces a section's body at canonical rank (creates the header if absent). First/only write for the section.
-- `codegen-log append <role> --slug <slug>` — inserts piped body at END of EXISTING section body, preserving prior content; exits 2 if the target section is missing (append never creates).
-- `codegen-log append <role> --learned "<text>" --slug <slug>` — emits byte-exact `### What I Learned This Step` + blank + text block.
-- `codegen-log append <role> --died interrupted|aborted [--cause "..."] --slug <slug>` — emits byte-exact H3 death-stamp marker (`### INTERRUPTED ⚠️ — ...` or `### ABORTED 💀 — ...`).
-- `codegen-log append <role> --verdict clear|failed|inconclusive --slug <slug>` — emits byte-exact line with `ALL CLEAR ✅` / `FAILED ❌` / `INCONCLUSIVE ⚠️`.
-- `codegen-log verdict --gate <cmd> --mode <mode> --result "<text>" [--detail "..."] --slug <slug>` — dedicated writer for freeform `## dev-gate Section` block (phoenix-dev-gate's deterministic gate verdict); every call APPENDS a fresh block.
-- `codegen-log relocate --new-slug <slug> [--slug <slug>]` — renames log in place + rewrites `.active` sentinel.
-
-**Resolution precedence**: `CODEGEN_LOG_PATH` env > `--slug` > `codegen/logging/.active` sentinel > most recently modified `*_session.md` (mtime).
-
-See `shared/rules/_core/session-log.md` § Ownership for the full contract.
+**Resolution**: `CODEGEN_LOG_PATH` env > `--slug` > `.active` sentinel > mtime. Full contract: `shared/rules/_core/session-log.md` § Ownership.
 
 ## Test Assertion Discrimination Patterns
 

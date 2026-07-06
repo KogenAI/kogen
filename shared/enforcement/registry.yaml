@@ -134,7 +134,7 @@
   mode: allowlist
   canonicalize: repo_relative
   tool_guard: "Write|Edit"
-  match: 'codegen/logging/[0-9]{8}_[0-9]{6}(_[a-z0-9_-]+)?_(session|step[0-9]+_[a-z0-9_-]+)\.md$'
+  match: 'codegen/logging/[0-9]{8}_[0-9]{6}_[a-z0-9_-]+_cycle\.jsonl$'
   message: "BLOCKED by committer-write-allowlist: committer may only write to canonical session logs"
   surface: user_global
   signal: AGENT_TYPE
@@ -150,7 +150,7 @@
   mode: allowlist
   canonicalize: repo_relative
   tool_guard: "Write|Edit"
-  match: 'codegen/logging/[0-9]{8}_[0-9]{6}(_[a-z0-9_-]+)?_(session|step[0-9]+_[a-z0-9_-]+)\.md$'
+  match: 'codegen/logging/[0-9]{8}_[0-9]{6}_[a-z0-9_-]+_cycle\.jsonl$'
   message: "BLOCKED by reviewer-guard-session-log-write: reviewer may only write to canonical session logs"
   surface: user_global
   signal: AGENT_TYPE
@@ -584,7 +584,7 @@
   signal: AGENT_TYPE
   role: "*"
   harnesses: all
-  rationale: codegen-log is the SOLE writer of session logs — raw Edit/Write/MultiEdit on codegen/logging/*.md, and raw Bash writes (redirect/tee/in-place-stream-edit/move-into) into that path, are denied. All log mutation must route through codegen-log init / section --body @- / section --role <role> / append --role <role>.
+  rationale: codegen-log is the SOLE writer of cycle logs — raw Edit/Write/MultiEdit on codegen/logging/*.jsonl, and raw Bash writes (redirect/tee/in-place-stream-edit/move-into) into that path, are denied. All log mutation must route through codegen-log init / section --body @- / section --role <role> / append --role <role>.
 
 - kind: registration
   id: single-cycle-agent-in-flight

@@ -115,7 +115,7 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
     assert output =~ "[2/2] b ... building"
   end
 
-  test "1e: two-path echo — session.md discovered via seam", ctx do
+  test "1e: single-path echo — discover_session_log_fn result is ignored (same artifact)", ctx do
     write_pitch(ctx.ready_dir, "solo")
 
     jsonl_path = start_agent(nil)
@@ -125,7 +125,7 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
       {:exit_code, 0}
     end
 
-    discover_session_log_fn = fn _cwd, slug, _stamp -> "/path/#{slug}_session.md" end
+    discover_session_log_fn = fn _cwd, slug, _stamp -> "/path/#{slug}_cycle.jsonl" end
 
     output =
       capture_io(:stderr, fn ->
@@ -138,11 +138,15 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
                  )
       end)
 
-    assert output =~ "/path/solo_session.md"
+    # Storage format flip: discover_session_log_fn now resolves the SAME
+    # artifact the `jsonl` var already holds — the md-then-jsonl fallback
+    # collapses to a single echoed path (the seam's stubbed return is
+    # ignored; only the real jsonl path is printed).
+    refute output =~ "/path/solo_cycle.jsonl"
     assert output =~ Path.basename(Agent.get(jsonl_path, & &1))
   end
 
-  test "1f: two-path echo — session.md not found falls back to jsonl alone", ctx do
+  test "1f: single-path echo — discover_session_log_fn absent still echoes jsonl alone", ctx do
     write_pitch(ctx.ready_dir, "solo")
 
     spawn_fn = fn _slug, _h, _s, _cwd, _jsonl -> {:exit_code, 0} end
@@ -167,8 +171,8 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
     logging_dir = Path.join([ctx.dir, "codegen", "logging"])
     File.mkdir_p!(logging_dir)
 
-    stale = Path.join(logging_dir, "20200101_000000_solo_session.md")
-    newest = Path.join(logging_dir, "20231114_221320_solo_session.md")
+    stale = Path.join(logging_dir, "20200101_000000_solo_cycle.jsonl")
+    newest = Path.join(logging_dir, "20231114_221320_solo_cycle.jsonl")
     File.write!(stale, "# stale\n")
     File.write!(newest, "# newest\n")
 

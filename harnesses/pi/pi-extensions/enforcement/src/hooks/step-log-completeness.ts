@@ -26,6 +26,29 @@ export const HANDLER_META = {
   matcher: "*",
 } as const;
 
+/** Parsed JSONL event — minimal shape needed by this hook. */
+type CycleEvent = {
+  ev?: string;
+  role?: string;
+  body?: string;
+  verdict?: string;
+  kind?: string;
+};
+
+/** Parse a JSONL cycle log's lines into event objects, skipping malformed lines. */
+function parseCycleEvents(logContent: string): CycleEvent[] {
+  const events: CycleEvent[] = [];
+  for (const line of logContent.split("\n")) {
+    if (!line.trim()) continue;
+    try {
+      events.push(JSON.parse(line) as CycleEvent);
+    } catch {
+      // Skip malformed lines — fail-open, mirrors the old regex's tolerance.
+    }
+  }
+  return events;
+}
+
 export function register(pi: ExtensionAPI): void {
   pi.on("session_shutdown", async () => {
     // Investigative-mode skip: observe-only Stop twin enforces only in build
@@ -41,7 +64,7 @@ export function register(pi: ExtensionAPI): void {
 
     const logFiles = fs
       .readdirSync(loggingDir)
-      .filter((f) => f.endsWith(".md") && !f.includes("progress"))
+      .filter((f) => f.endsWith(".jsonl") && !f.includes("progress"))
       .map((f) => ({
         name: f,
         mtime: fs.statSync(path.join(loggingDir, f)).mtimeMs,
@@ -70,26 +93,34 @@ export function register(pi: ExtensionAPI): void {
       return;
     }
 
-    if (logContent.includes("INCONCLUSIVE ⚠️")) return;
+    const events = parseCycleEvents(logContent);
 
-    // Skip when a death marker is present — orchestrator is mid-recovery.
-    // Mirrors the death-marker skip in step-log-completeness.sh.
-    if (
-      logContent.includes("### INTERRUPTED ⚠️") ||
-      logContent.includes("### ABORTED 💀")
-    ) {
+    if (events.some((e) => e.ev === "gate" && e.verdict === "inconclusive")) {
+      return;
+    }
+
+    // Skip when a death event is present — orchestrator is mid-recovery.
+    // Mirrors the death-event skip in step-log-completeness.sh.
+    if (events.some((e) => e.ev === "died")) {
       debugLog(
         "step-log-completeness",
-        "skip: death marker in log (in recovery)",
+        "skip: death event in log (in recovery)",
       );
       return;
     }
 
-    const hasDeveloper = /## developer.*Section/i.test(logContent);
-    let hasAllClear = /ALL CLEAR ✅/.test(logContent);
-    const hasReviewer = /## reviewer.*Section/i.test(logContent);
-    const hasCurator = /## context-curator.*Section/i.test(logContent);
-    const hasCommitter = /## committer.*Section/i.test(logContent);
+    const roleEvents = events.filter((e) => e.ev === "role" && e.role);
+    const hasDeveloper = roleEvents.some((e) =>
+      (e.role ?? "").startsWith("developer-"),
+    );
+    let hasAllClear = events.some(
+      (e) => e.ev === "gate" && e.verdict === "clear",
+    );
+    const hasReviewer = roleEvents.some((e) =>
+      (e.role ?? "").startsWith("reviewer-"),
+    );
+    const hasCurator = roleEvents.some((e) => e.role === "context-curator");
+    const hasCommitter = roleEvents.some((e) => e.role === "committer");
 
     // Reconcile ALL CLEAR with gate-result.json verdict field
     const gateResultPath = path.join(
@@ -143,55 +174,52 @@ export function register(pi: ExtensionAPI): void {
     }
 
     // REDUCED-FIDELITY observe-only content-floor: warn when the most-recently-
-    // completed section appears to have no real body (suspected subagent death).
-    // The Claude Stop hook (step-log-completeness.sh) enforces this with a block;
-    // here we can only warn.
-    const _extractSectionBody = (header: RegExp): string => {
-      const lines = logContent.split("\n");
-      let found = false;
+    // completed role's event body appears to have no real content (suspected
+    // subagent death). The Claude Stop hook (step-log-completeness.sh)
+    // enforces this with a block; here we can only warn.
+    const extractRoleBody = (rolePredicate: (role: string) => boolean): string => {
+      const bodies = roleEvents
+        .filter((e) => rolePredicate(e.role ?? ""))
+        .map((e) => e.body ?? "");
+      const lines = bodies.join("\n").split("\n");
       let inRetro = false;
       const body: string[] = [];
       for (const line of lines) {
-        if (found) {
-          if (/^## /.test(line)) break;
-          if (/^### What I Learned/.test(line)) {
-            inRetro = true;
-            continue;
-          }
-          if (inRetro && line.trim() === "") continue;
-          if (inRetro && /^\s*[-*]/.test(line)) continue;
-          if (inRetro) inRetro = false;
-          if (!/^###/.test(line) && line.trim() !== "") {
-            body.push(line);
-          }
-        } else if (header.test(line)) {
-          found = true;
+        if (/^### What I Learned/.test(line)) {
+          inRetro = true;
+          continue;
+        }
+        if (inRetro && line.trim() === "") continue;
+        if (inRetro && /^\s*[-*]/.test(line)) continue;
+        if (inRetro) inRetro = false;
+        if (!/^###/.test(line) && line.trim() !== "") {
+          body.push(line);
         }
       }
       return body.join("\n").trim();
     };
 
-    // Check the most-recently-completed section for empty/near-empty body.
-    let _suspectHeader: RegExp | null = null;
+    // Check the most-recently-completed role for empty/near-empty body.
+    let _suspectPredicate: ((role: string) => boolean) | null = null;
     let _suspectName = "";
     if (hasReviewer && hasCurator && hasCommitter) {
       // Full cycle — no floor check needed
     } else if (hasReviewer && hasCurator) {
-      _suspectHeader = /^## context-curator.*Section/i;
+      _suspectPredicate = (r) => r === "context-curator";
       _suspectName = "context-curator";
     } else if (hasReviewer) {
-      _suspectHeader = /^## reviewer.*Section/i;
+      _suspectPredicate = (r) => r.startsWith("reviewer-");
       _suspectName = "reviewer";
     } else if (hasDeveloper) {
-      _suspectHeader = /^## developer.*Section/i;
+      _suspectPredicate = (r) => r.startsWith("developer-");
       _suspectName = "developer";
     }
 
-    if (_suspectHeader !== null) {
-      const _body = _extractSectionBody(_suspectHeader);
+    if (_suspectPredicate !== null) {
+      const _body = extractRoleBody(_suspectPredicate);
       if (_body === "") {
         process.stderr.write(
-          `[pi-enforcement:step-log-completeness] OBSERVE-ONLY: '## ${_suspectName} Section' has no real body — the role may have died mid-response. Claude Stop hook will block if applicable. Step log: ${activeLog}\n`,
+          `[pi-enforcement:step-log-completeness] OBSERVE-ONLY: '${_suspectName}' role event has no real body — the role may have died mid-response. Claude Stop hook will block if applicable. Step log: ${activeLog}\n`,
         );
       }
     }

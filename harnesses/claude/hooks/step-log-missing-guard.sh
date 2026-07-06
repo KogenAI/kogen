@@ -16,7 +16,7 @@
 #   The LAST developer-* Agent tool_use in transcript order has NO step-log
 #   creation after it — i.e. last_dev_index exists AND (no log-creation evidence
 #   at all OR last_log_index < last_dev_index). Log-creation evidence =
-#   Write/Edit/MultiEdit to codegen/logging/*.md OR a Bash codegen-log
+#   Write/Edit/MultiEdit to codegen/logging/*.jsonl OR a Bash codegen-log
 #   (init|section|append) invocation.
 #   → The current cycle's delegation was never logged. Block with a DIAGNOSTIC
 #     message naming the unlogged delegation.
@@ -103,17 +103,17 @@ if [ -z "$last_dev_index" ]; then
     exit 0
 fi
 
-# Log-creation evidence = Write/Edit/MultiEdit to codegen/logging/*.md OR a Bash
-# codegen-log (init|section|append) invocation (same two forms recognized by
-# session_log_from_transcript in hooks-lib.sh; inlined here so the trigger stays
-# position-correlated instead of an existence check).
+# Log-creation evidence = Write/Edit/MultiEdit to codegen/logging/*.jsonl OR a
+# Bash codegen-log (init|section|append) invocation (same two forms recognized
+# by session_log_from_transcript in hooks-lib.sh; inlined here so the trigger
+# stays position-correlated instead of an existence check).
 last_log_index=$(jq -r '
     input_line_number as $ln
     | .message.content[]?
     | select(.type == "tool_use")
     | select(
         ((.name == "Write" or .name == "Edit" or .name == "MultiEdit")
-            and (.input.file_path // "" | test("codegen/logging/.*\\.md$")))
+            and (.input.file_path // "" | test("codegen/logging/.*\\.jsonl$")))
         or (.name == "Bash"
             and (.input.command // "" | test("codegen-log[[:space:]]+(init|section|append)")))
     )
@@ -154,12 +154,12 @@ debug_log step-log-missing-guard "developer-* delegation at line $last_dev_index
 
 # ── Block: developer-* delegated but no step log created ─────────────────────
 
-template='codegen/logging/$(date -u +%Y%m%d_%H%M%S)_<slug>_session.md'
+template='codegen/logging/$(date -u +%Y%m%d_%H%M%S)_<slug>_cycle.jsonl'
 
 bash_redirect_create=$(jq -r '
     .message.content[]?
     | select(.type == "tool_use" and .name == "Bash")
-    | select(.input.command | test("(>+|tee[^|]*)[[:space:]]*[^[:space:]]*codegen/logging/[^[:space:]]+\\.md"))
+    | select(.input.command | test("(>+|tee[^|]*)[[:space:]]*[^[:space:]]*codegen/logging/[^[:space:]]+\\.jsonl"))
     | "yes"
 ' "$TRANSCRIPT_PATH" 2>/dev/null | grep -c "yes" || true)
 
@@ -202,7 +202,7 @@ if [ "${bash_redirect_create:-0}" -gt 0 ]; then
     exit 0
 fi
 
-reason="step-log-missing-guard: a developer-* subagent was delegated but no step log Write was found in the session transcript. Per codegen/rules/_core/session-log.md § Ownership, the orchestrator MUST create the step log BEFORE the first Agent call — for ALL prompt types including free-form and claude-build invocations. Action required: (1) Create the step log now using the single-session form: ${template} (2) Populate the ## Plan section from the planner's output. (3) Re-delegate to the developer-* subagent. This block keyed on a developer-* delegation at transcript line ${last_dev_index} with no step-log creation after it. If NO developer-* delegation is actually pending this turn, this is a STALE trigger — report it as a stale step-log-missing-guard replay rather than fabricate a step log; do NOT blindly re-delegate work that was not requested this turn."
+reason="step-log-missing-guard: a developer-* subagent was delegated but no step log Write was found in the session transcript. Per codegen/rules/_core/session-log.md § Ownership, the orchestrator MUST create the step log BEFORE the first Agent call — for ALL prompt types including free-form and claude-build invocations. Action required: (1) Create the step log now using the single-session form: ${template} (2) Record the planner's role event via 'codegen-log section planner-phoenix --slug <slug>' (or the matching planner-* role). (3) Re-delegate to the developer-* subagent. This block keyed on a developer-* delegation at transcript line ${last_dev_index} with no step-log creation after it. If NO developer-* delegation is actually pending this turn, this is a STALE trigger — report it as a stale step-log-missing-guard replay rather than fabricate a step log; do NOT blindly re-delegate work that was not requested this turn."
 
 debug_log step-log-missing-guard "BLOCK: no log write in transcript"
 

@@ -8,7 +8,7 @@
 # signal: AGENT_TYPE
 # role: *
 # harnesses: all
-# rationale: codegen-log is the SOLE writer of session logs — raw Edit/Write/MultiEdit on codegen/logging/*.md, and raw Bash writes (redirect/tee/in-place-stream-edit/move-into) into that path, are denied. All log mutation must route through codegen-log init / section --body @- / section --role <role> / append --role <role>.
+# rationale: codegen-log is the SOLE writer of cycle logs — raw Edit/Write/MultiEdit on codegen/logging/*.jsonl, and raw Bash writes (redirect/tee/in-place-stream-edit/move-into) into that path, are denied. All log mutation must route through codegen-log init / section --body @- / section --role <role> / append --role <role>.
 # GENERATED FROM shared/enforcement/registry.yaml — DO NOT EDIT
 #
 # Bypasses debug/shape/ops. Fails open on all tools other than Bash/Edit/Write/MultiEdit.
@@ -27,8 +27,8 @@ case "$_role" in debug | shape | ops) exit 0 ;; esac
 
 case "$TOOL_NAME" in
 Edit | Write | MultiEdit)
-    if printf '%s' "$FILE_PATH" | grep -qE 'codegen/logging/.*\.md$'; then
-        deny "BLOCKED by session-log-writer-only: raw $TOOL_NAME on session logs is denied — write via codegen-log (init / section --body @- / section --role <role> / append --role <role>)."
+    if printf '%s' "$FILE_PATH" | grep -qE 'codegen/logging/.*\.jsonl$'; then
+        deny "BLOCKED by session-log-writer-only: raw $TOOL_NAME on cycle logs is denied — write via codegen-log (init / section --body @- / section --role <role> / append --role <role>)."
         exit 0
     fi
     exit 0
@@ -41,9 +41,9 @@ Bash)
     # Deny any command that writes into codegen/logging/* without codegen-log:
     # redirects (> >>), tee, in-place stream-edit (sed -i), or move/copy INTO
     # the path (mv/cp ... codegen/logging/...).
-    if printf '%s' "$COMMAND" | grep -qE 'codegen/logging/[^[:space:]]*\.md'; then
+    if printf '%s' "$COMMAND" | grep -qE 'codegen/logging/[^[:space:]]*\.jsonl'; then
         if printf '%s' "$COMMAND" | grep -qE '(>{1,2}[[:space:]]*[^[:space:]]*codegen/logging/|\|[[:space:]]*tee\b.*codegen/logging/|\bsed\b[^|]*-i[^|]*codegen/logging/|\b(mv|cp)\b[^|]*codegen/logging/)'; then
-            deny "BLOCKED by session-log-writer-only: raw Bash write into a session log is denied — write via codegen-log (init / section --body @- / section --role <role> / append --role <role>)."
+            deny "BLOCKED by session-log-writer-only: raw Bash write into a cycle log is denied — write via codegen-log (init / section --body @- / section --role <role> / append --role <role>)."
             exit 0
         fi
     fi

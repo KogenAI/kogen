@@ -217,9 +217,9 @@ class TestDelegationChurn(unittest.TestCase):
         import tempfile
 
         with tempfile.TemporaryDirectory() as tmpdir:
-            # Create a fake step log
-            fake_log = Path(tmpdir) / "20260619_000000_step1_foo.md"
-            fake_log.write_text("# step")
+            # Create a fake cycle log
+            fake_log = Path(tmpdir) / "20260619_000000_foo_cycle.jsonl"
+            fake_log.write_text('{"ev":"init","pitch":"foo","path":"","stamp":{}}\n')
             cfg = Config(
                 since=datetime.date(2026, 1, 1),
                 project_dir=Path(tmpdir),

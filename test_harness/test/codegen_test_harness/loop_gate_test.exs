@@ -22,9 +22,9 @@ defmodule CodegenTestHarness.LoopGateTest do
     end
 
     test "planner gate-json block in step log wins", %{dir: dir} do
-      step_log = Path.join(dir, "session.md")
+      step_log = Path.join(dir, "20260601_120000_test_cycle.jsonl")
 
-      File.write!(step_log, """
+      plan_body = """
       ## Plan
 
       **Gate**:
@@ -32,15 +32,20 @@ defmodule CodegenTestHarness.LoopGateTest do
       ```gate-json
       {"command": "make custom-gate", "mode": "short", "timeout": 42}
       ```
-      """)
+      """
+
+      File.write!(
+        step_log,
+        Jason.encode!(%{"ev" => "role", "role" => "planner-phoenix", "body" => plan_body}) <> "\n"
+      )
 
       assert LoopGate.decide_gate(dir, step_log) == {"make custom-gate", "short", 42}
     end
 
     test "raises when gate_select_decide returns a parse-error sentinel (crash loud)", %{dir: dir} do
-      step_log = Path.join(dir, "session.md")
+      step_log = Path.join(dir, "20260601_120000_test_cycle.jsonl")
 
-      File.write!(step_log, """
+      plan_body = """
       ## Plan
 
       **Gate**:
@@ -48,7 +53,12 @@ defmodule CodegenTestHarness.LoopGateTest do
       ```gate-json
       {"command": "make x"
       ```
-      """)
+      """
+
+      File.write!(
+        step_log,
+        Jason.encode!(%{"ev" => "role", "role" => "planner-phoenix", "body" => plan_body}) <> "\n"
+      )
 
       assert_raise RuntimeError, ~r/gate_select_decide returned a parse error/, fn ->
         LoopGate.decide_gate(dir, step_log)
@@ -246,9 +256,9 @@ defmodule CodegenTestHarness.LoopGateEnvScrubTest do
   end
 
   test "default runner scrubs CODEGEN_BUILD_* from the gate subprocess", %{dir: dir} do
-    step_log = Path.join(dir, "session.md")
+    step_log = Path.join(dir, "20260601_120000_test_cycle.jsonl")
 
-    File.write!(step_log, """
+    plan_body = """
     ## Plan
 
     **Gate**:
@@ -256,7 +266,12 @@ defmodule CodegenTestHarness.LoopGateEnvScrubTest do
     ```gate-json
     {"command": "env | grep -c '^CODEGEN_BUILD_'", "mode": "short", "timeout": 0}
     ```
-    """)
+    """
+
+    File.write!(
+      step_log,
+      Jason.encode!(%{"ev" => "role", "role" => "planner-phoenix", "body" => plan_body}) <> "\n"
+    )
 
     # No run_fn override → exercises the REAL default_run_fn/2.
     LoopGate.run_gate(dir, stack: "phoenix", step_log: step_log)

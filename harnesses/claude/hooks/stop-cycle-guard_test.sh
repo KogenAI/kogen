@@ -28,9 +28,9 @@ run_test() {
     # Write a session log if provided (simulates a stale prior-session log).
     if [ -n "$log_content" ]; then
         mkdir -p "$tmp/codegen/logging"
-        printf '%s\n' "$log_content" >"$tmp/codegen/logging/test_session.md"
+        printf '%s\n' "$log_content" >"$tmp/codegen/logging/test_session_cycle.jsonl"
         # Touch it so -mmin -60 finds it.
-        touch "$tmp/codegen/logging/test_session.md"
+        touch "$tmp/codegen/logging/test_session_cycle.jsonl"
     fi
 
     local stdout
@@ -83,8 +83,8 @@ tmp1=$(mktemp -d)
 trap 'rm -rf "$tmp1"' EXIT
 printf '%s\n' "$EMPTY_TRANSCRIPT" >"$tmp1/transcript.jsonl"
 mkdir -p "$tmp1/codegen/logging"
-printf '%s\n' "$STALE_LOG_WITH_DEVELOPER" >"$tmp1/codegen/logging/stale.md"
-touch "$tmp1/codegen/logging/stale.md"
+printf '%s\n' "$STALE_LOG_WITH_DEVELOPER" >"$tmp1/codegen/logging/stale_cycle.jsonl"
+touch "$tmp1/codegen/logging/stale_cycle.jsonl"
 INPUT1=$(make_input "$tmp1/transcript.jsonl" "$tmp1" "false" "Done.")
 run_test "no_agent_calls: empty transcript + stale log with developer → allow" \
     "allow" "$INPUT1" "$EMPTY_TRANSCRIPT"
@@ -121,8 +121,8 @@ run_test "mid_cycle_reviewer_phoenix: transcript ends in reviewer-phoenix → bl
 # transcript_path is empty with mid-cycle log present → MUST allow.
 tmp5=$(mktemp -d)
 mkdir -p "$tmp5/codegen/logging"
-printf '%s\n' "$STALE_LOG_WITH_DEVELOPER" >"$tmp5/codegen/logging/current.md"
-touch "$tmp5/codegen/logging/current.md"
+printf '%s\n' "$STALE_LOG_WITH_DEVELOPER" >"$tmp5/codegen/logging/current_cycle.jsonl"
+touch "$tmp5/codegen/logging/current_cycle.jsonl"
 INPUT5=$(make_input "" "$tmp5" "false" "Done.")
 run_test "empty_transcript_path: no transcript path → allow (safe fallback)" \
     "allow" "$INPUT5" ""
@@ -177,11 +177,11 @@ rm -f "/tmp/claude-cycle-guard-test-sess-10a.count"
 tmp10=$(mktemp -d)
 mkdir -p "$tmp10/codegen/logging"
 printf '# Session Log\n## dev-gate Section\nDiagnosis: timeout.\n' \
-    >"$tmp10/codegen/logging/test_session.md"
+    >"$tmp10/codegen/logging/test_session_cycle.jsonl"
 # Transcript must record the Write to the log so session_log_from_transcript finds it.
 {
     printf '%s\n' "$AGENT_ENTRY_DEVELOPER"
-    printf '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Write","input":{"file_path":"%s/codegen/logging/test_session.md"}}]}}\n' "$tmp10"
+    printf '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Write","input":{"file_path":"%s/codegen/logging/test_session_cycle.jsonl"}}]}}\n' "$tmp10"
 } >"$tmp10/transcript.jsonl"
 INPUT10=$(printf '{"hook_event_name":"Stop","session_id":"test-sess-10a","transcript_path":"%s/transcript.jsonl","cwd":"%s","stop_hook_active":false,"last_assistant_message":"Done."}' "$tmp10" "$tmp10")
 run_test "verdict_guard_developer_no_verdict_no_gate_result: developer ran, no verdict, no gate-result.json → block" \
@@ -193,10 +193,10 @@ rm -rf "$tmp10"
 tmp10b=$(mktemp -d)
 mkdir -p "$tmp10b/codegen/logging"
 printf '# Session Log\n## reviewer-phoenix Section\nReview complete.\n' \
-    >"$tmp10b/codegen/logging/test_session.md"
+    >"$tmp10b/codegen/logging/test_session_cycle.jsonl"
 {
     printf '%s\n' "$AGENT_ENTRY_REVIEWER"
-    printf '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Write","input":{"file_path":"%s/codegen/logging/test_session.md"}}]}}\n' "$tmp10b"
+    printf '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Write","input":{"file_path":"%s/codegen/logging/test_session_cycle.jsonl"}}]}}\n' "$tmp10b"
 } >"$tmp10b/transcript.jsonl"
 INPUT10b=$(printf '{"hook_event_name":"Stop","session_id":"test-sess-10b","transcript_path":"%s/transcript.jsonl","cwd":"%s","stop_hook_active":false,"last_assistant_message":"Done."}' "$tmp10b" "$tmp10b")
 run_test "verdict_guard_reviewer_no_verdict: reviewer ran, no verdict → allow" \
@@ -208,11 +208,11 @@ rm -f "/tmp/claude-cycle-guard-test-sess-11.count"
 tmp11=$(mktemp -d)
 mkdir -p "$tmp11/codegen/logging"
 printf '# Session Log\n## dev-gate Section\nALL CLEAR ✅\n' \
-    >"$tmp11/codegen/logging/test_session.md"
+    >"$tmp11/codegen/logging/test_session_cycle.jsonl"
 # Transcript must record the Write so session_log_from_transcript finds it.
 {
     printf '%s\n' "$AGENT_ENTRY_DEVELOPER"
-    printf '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Write","input":{"file_path":"%s/codegen/logging/test_session.md"}}]}}\n' "$tmp11"
+    printf '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Write","input":{"file_path":"%s/codegen/logging/test_session_cycle.jsonl"}}]}}\n' "$tmp11"
 } >"$tmp11/transcript.jsonl"
 INPUT11=$(make_input "$tmp11/transcript.jsonl" "$tmp11" "false" "Done." "test-sess-11")
 run_test "verdict_guard_with_verdict: developer in transcript, log has ALL CLEAR → block" \
@@ -224,10 +224,10 @@ run_test "verdict_guard_with_verdict: developer in transcript, log has ALL CLEAR
 tmp12A=$(mktemp -d)
 tmp12B=$(mktemp -d)
 mkdir -p "$tmp12A/codegen/logging" "$tmp12B/codegen/logging"
-LOG12A="$tmp12A/codegen/logging/A_session.md"
+LOG12A="$tmp12A/codegen/logging/A_session_cycle.jsonl"
 printf '# Session A\n## dev-gate Section\nALL CLEAR ✅\n' >"$LOG12A"
 sleep 1
-LOG12B="$tmp12B/codegen/logging/B_session.md"
+LOG12B="$tmp12B/codegen/logging/B_session_cycle.jsonl"
 printf '# Session B\n## dev-gate Section\nALL CLEAR ✅\n' >"$LOG12B"
 # A's transcript records Write to A's log + developer agent call.
 {
@@ -255,13 +255,13 @@ rm -rf "$tmp12A" "$tmp12B"
 tmp13=$(mktemp -d)
 mkdir -p "$tmp13/codegen/logging"
 printf '# Session Log\n## dev-gate Section\nALL CLEAR ✅\n' \
-    >"$tmp13/codegen/logging/test_session.md"
+    >"$tmp13/codegen/logging/test_session_cycle.jsonl"
 # Remove any stale counter file for the unique session.
 rm -f "/tmp/claude-cycle-guard-test-sess-13.count"
 AGENT_ENTRY_CURATOR='{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Agent","input":{"subagent_type":"context-curator","description":"x","prompt":"x"}}]}}'
 {
     printf '%s\n' "$AGENT_ENTRY_CURATOR"
-    printf '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Write","input":{"file_path":"%s/codegen/logging/test_session.md"}}]}}\n' "$tmp13"
+    printf '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Write","input":{"file_path":"%s/codegen/logging/test_session_cycle.jsonl"}}]}}\n' "$tmp13"
 } >"$tmp13/transcript.jsonl"
 INPUT13=$(printf '{"hook_event_name":"Stop","session_id":"test-sess-13","transcript_path":"%s/transcript.jsonl","cwd":"%s","stop_hook_active":false,"last_assistant_message":"Done."}' "$tmp13" "$tmp13")
 run_test "mid_cycle_context_curator: transcript ends in context-curator + ALL CLEAR → block" \
@@ -359,12 +359,12 @@ rm -f "/tmp/claude-cycle-guard-test-sess-19.count"
 tmp19=$(mktemp -d)
 mkdir -p "$tmp19/codegen/logging" "$tmp19/codegen/gate-pending"
 printf '# Session Log\n## dev-gate Section\nDiagnosis: pool exhausted.\n' \
-    >"$tmp19/codegen/logging/test_session.md"
+    >"$tmp19/codegen/logging/test_session_cycle.jsonl"
 printf '{"verdict":"inconclusive","gate":"make test","mode":"short"}\n' \
     >"$tmp19/codegen/gate-pending/gate-result.json"
 {
     printf '%s\n' "$AGENT_ENTRY_DEVELOPER"
-    printf '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Write","input":{"file_path":"%s/codegen/logging/test_session.md"}}]}}\n' "$tmp19"
+    printf '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Write","input":{"file_path":"%s/codegen/logging/test_session_cycle.jsonl"}}]}}\n' "$tmp19"
 } >"$tmp19/transcript.jsonl"
 INPUT19=$(make_input "$tmp19/transcript.jsonl" "$tmp19" "false" "Done." "test-sess-19")
 run_test "developer_gate_result_inconclusive: developer + gate-result=inconclusive → BLOCK (gate did not confirm clear)" \
@@ -376,7 +376,7 @@ rm -f "/tmp/claude-cycle-guard-test-sess-20.count"
 tmp20=$(mktemp -d)
 mkdir -p "$tmp20/codegen/logging" "$tmp20/codegen/gate-pending"
 printf '# Session Log\n## dev-gate Section\nALL CLEAR ✅\n' \
-    >"$tmp20/codegen/logging/test_session.md"
+    >"$tmp20/codegen/logging/test_session_cycle.jsonl"
 printf '{"verdict":"clear","gate":"make test","mode":"short"}\n' \
     >"$tmp20/codegen/gate-pending/gate-result.json"
 # Init a real git repo so git status --porcelain works.
@@ -385,7 +385,7 @@ git -C "$tmp20" init -q 2>/dev/null
 printf 'dirty\n' >"$tmp20/untracked-file.txt"
 {
     printf '%s\n' "$AGENT_ENTRY_DEVELOPER"
-    printf '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Write","input":{"file_path":"%s/codegen/logging/test_session.md"}}]}}\n' "$tmp20"
+    printf '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Write","input":{"file_path":"%s/codegen/logging/test_session_cycle.jsonl"}}]}}\n' "$tmp20"
 } >"$tmp20/transcript.jsonl"
 INPUT20=$(make_input "$tmp20/transcript.jsonl" "$tmp20" "false" "Done." "test-sess-20")
 stdout20=$(printf '%s' "$INPUT20" | bash "$GUARD" 2>/dev/null || true)
@@ -404,7 +404,7 @@ rm -f "/tmp/claude-cycle-guard-test-sess-21.count"
 tmp21=$(mktemp -d)
 mkdir -p "$tmp21/codegen/logging" "$tmp21/codegen/gate-pending"
 printf '# Session Log\n## dev-gate Section\nALL CLEAR ✅\n' \
-    >"$tmp21/codegen/logging/test_session.md"
+    >"$tmp21/codegen/logging/test_session_cycle.jsonl"
 printf '{"verdict":"clear","gate":"make test","mode":"short"}\n' \
     >"$tmp21/codegen/gate-pending/gate-result.json"
 # Init a real git repo and commit all fixture files so the tree is clean.
@@ -416,7 +416,7 @@ git -C "$tmp21" commit -q -m "fixture" 2>/dev/null
 # Write transcript AFTER commit so it's a new untracked file — but then add+commit it too.
 {
     printf '%s\n' "$AGENT_ENTRY_DEVELOPER"
-    printf '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Write","input":{"file_path":"%s/codegen/logging/test_session.md"}}]}}\n' "$tmp21"
+    printf '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Write","input":{"file_path":"%s/codegen/logging/test_session_cycle.jsonl"}}]}}\n' "$tmp21"
 } >"$tmp21/transcript.jsonl"
 git -C "$tmp21" add -A 2>/dev/null
 git -C "$tmp21" commit -q -m "transcript" 2>/dev/null
@@ -438,12 +438,12 @@ rm -f "/tmp/claude-cycle-guard-test-sess-22.count"
 tmp22=$(mktemp -d)
 mkdir -p "$tmp22/codegen/logging" "$tmp22/codegen/gate-pending"
 printf '# Session Log\n## reviewer-phoenix Section\nReview complete.\n' \
-    >"$tmp22/codegen/logging/test_session.md"
+    >"$tmp22/codegen/logging/test_session_cycle.jsonl"
 printf '{"verdict":"inconclusive","gate":"make test","mode":"short"}\n' \
     >"$tmp22/codegen/gate-pending/gate-result.json"
 {
     printf '%s\n' "$AGENT_ENTRY_REVIEWER"
-    printf '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Write","input":{"file_path":"%s/codegen/logging/test_session.md"}}]}}\n' "$tmp22"
+    printf '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Write","input":{"file_path":"%s/codegen/logging/test_session_cycle.jsonl"}}]}}\n' "$tmp22"
 } >"$tmp22/transcript.jsonl"
 INPUT22=$(make_input "$tmp22/transcript.jsonl" "$tmp22" "false" "Done." "test-sess-22")
 run_test "reviewer_gate_result_inconclusive: reviewer + gate-result=inconclusive → block" \
@@ -457,8 +457,8 @@ rm -f "/tmp/claude-cycle-guard-test-sess-23.count"
 tmp23A=$(mktemp -d)
 tmp23B=$(mktemp -d)
 mkdir -p "$tmp23A/codegen/logging" "$tmp23B/codegen/logging"
-LOG23A="$tmp23A/codegen/logging/A_session.md"
-LOG23B="$tmp23B/codegen/logging/B_session.md"
+LOG23A="$tmp23A/codegen/logging/A_session_cycle.jsonl"
+LOG23B="$tmp23B/codegen/logging/B_session_cycle.jsonl"
 printf '# Session A\n## dev-gate Section\nALL CLEAR ✅\n' >"$LOG23A"
 printf '# Session B\n## dev-gate Section\nALL CLEAR ✅\n' >"$LOG23B"
 # Pre-seed counter scoped to step-A at cap.
@@ -480,7 +480,7 @@ rm -f "/tmp/claude-cycle-guard-test-sess-23.count"
 # (count=1 < cap; empty resolver did NOT collapse to global / did NOT reset).
 rm -f "/tmp/claude-cycle-guard-test-sess-24.count"
 tmp24=$(mktemp -d)
-LOG24="$tmp24/codegen/logging/cur_session.md"
+LOG24="$tmp24/codegen/logging/cur_session_cycle.jsonl"
 mkdir -p "$tmp24/codegen/logging"
 printf '# Session\n## dev-gate Section\nALL CLEAR ✅\n' >"$LOG24"
 # Pre-seed counter scoped to cur_session.md, count=1.
@@ -499,7 +499,7 @@ rm -f "/tmp/claude-cycle-guard-test-sess-24.count"
 # cycle-state.json step_log matches active log + state=COMMITTED → allow immediately.
 tmp25=$(mktemp -d)
 mkdir -p "$tmp25/codegen/logging" "$tmp25/codegen/gate-pending"
-LOG25="$tmp25/codegen/logging/20260614_step1_feat.md"
+LOG25="$tmp25/codegen/logging/20260614_150000_feat_cycle.jsonl"
 printf '# Session\n## committer Section\n\nCommitted.\n' >"$LOG25"
 jq -n \
     --arg state "COMMITTED" \
@@ -523,8 +523,8 @@ rm -rf "$tmp25"
 rm -f "/tmp/claude-cycle-guard-test-sess-26.count"
 tmp26=$(mktemp -d)
 mkdir -p "$tmp26/codegen/logging" "$tmp26/codegen/gate-pending"
-LOG26_ACTIVE="$tmp26/codegen/logging/20260614_step1_feat.md"
-LOG26_OTHER="$tmp26/codegen/logging/20260614_step2_other.md"
+LOG26_ACTIVE="$tmp26/codegen/logging/20260614_150000_feat_cycle.jsonl"
+LOG26_OTHER="$tmp26/codegen/logging/20260614_150001_other_cycle.jsonl"
 printf '# Session\n## dev-gate Section\nALL CLEAR ✅\n' >"$LOG26_ACTIVE"
 # cycle-state references a different log → mismatch → fall-through → standard logic blocks
 jq -n \

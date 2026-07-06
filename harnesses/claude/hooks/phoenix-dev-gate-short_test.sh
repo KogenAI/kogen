@@ -40,15 +40,18 @@ assert_not_contains() {
     fi
 }
 
-assert_file_contains() {
+# assert_file_matches_jq <desc> <jq-select-expr> <file> — presence check via
+# jq (at least one matching JSONL line). Mirrors the old assert_file_contains
+# grep helper but at the event level rather than raw-text substring.
+assert_file_matches_jq() {
     local desc="$1"
-    local needle="$2"
+    local expr="$2"
     local file="$3"
-    if [ -f "$file" ] && grep -qF "$needle" "$file"; then
+    if [ -f "$file" ] && jq -e "$expr" "$file" >/dev/null 2>&1; then
         [ -n "${VERBOSE:-}" ] && printf 'PASS: %s\n' "$desc"
         pass=$((pass + 1))
     else
-        printf 'FAIL: %s\n  needle: %s\n  file: %s\n' "$desc" "$needle" "$file"
+        printf 'FAIL: %s\n  expr: %s\n  file: %s\n' "$desc" "$expr" "$file"
         if [ -f "$file" ]; then printf '  contents:\n%s\n' "$(cat "$file")"; fi
         fail=$((fail + 1))
     fi
@@ -69,6 +72,17 @@ make_project() {
     )
     mkdir -p "$dir/.claude" "$dir/codegen/logging"
     printf '%s' "$dir"
+}
+
+# write_planner_log <path> — wraps the markdown body piped on stdin (the
+# "## Plan" prose planners write) into a single JSONL "role" event line,
+# matching what codegen-log actually writes on disk.
+write_planner_log() {
+    local path="$1"
+    local body
+    body="$(cat)"
+    jq -c -n --arg role "planner-phoenix" --arg body "$body" \
+        '{ev: "role", role: $role, body: $body}' >"$path"
 }
 
 # make_transcript <transcript_path> <log_path> — write a synthetic JSONL
@@ -105,8 +119,8 @@ rm -rf "$T2"
 
 # ── Test 3: short-gate success (planner says `make true`) ───────────────────
 T3=$(make_project)
-LOG="$T3/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_step1_test.md"
-cat >"$LOG" <<'MD'
+LOG="$T3/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_test_cycle.jsonl"
+write_planner_log "$LOG" <<'MD'
 # Step
 
 ## Plan
@@ -118,13 +132,13 @@ MD
 make_transcript "$T3/transcript.jsonl" "$LOG"
 out=$(printf '%s' "$(input_for "$T3" developer-phoenix-backend false sess1 "$T3/transcript.jsonl")" | RENDER_CHECK_CMD="" bash "$HOOK" 2>/dev/null || true)
 assert_not_contains "short-gate success no block" '"decision":"block"' "$out"
-assert_file_contains "short-gate success appends ALL CLEAR" "ALL CLEAR" "$LOG"
+assert_file_matches_jq "short-gate success appends ALL CLEAR" 'select(.ev=="gate" and .verdict=="clear")' "$LOG"
 rm -rf "$T3"
 
 # ── Test 4: short-gate failure emits block envelope ─────────────────────────
 T4=$(make_project)
-LOG="$T4/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_step1_fail.md"
-cat >"$LOG" <<'MD'
+LOG="$T4/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_fail_cycle.jsonl"
+write_planner_log "$LOG" <<'MD'
 # Step
 
 ## Plan
@@ -134,7 +148,7 @@ MD
 make_transcript "$T4/transcript.jsonl" "$LOG"
 out=$(printf '%s' "$(input_for "$T4" developer-phoenix-backend false sess1 "$T4/transcript.jsonl")" | bash "$HOOK" 2>/dev/null || true)
 assert_contains "short-gate failure emits block" '"decision": "block"' "$out"
-assert_file_contains "short-gate failure appends FAILED" "FAILED" "$LOG"
+assert_file_matches_jq "short-gate failure appends FAILED" 'select(.ev=="gate" and .verdict=="failed")' "$LOG"
 rm -rf "$T4"
 
 # ── Test 6: planner gate wins over decision tree ────────────────────────────
@@ -157,8 +171,8 @@ SEED_VALIDATED_PATH=""
 GATE_FINAL_STEP_DETECTOR="true"
 EOF
 echo "x" >"$T6/CLAUDE.md"
-LOG="$T6/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_step1_planner.md"
-cat >"$LOG" <<'MD'
+LOG="$T6/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_planner_cycle.jsonl"
+write_planner_log "$LOG" <<'MD'
 # Step
 
 ## Plan
@@ -168,7 +182,7 @@ MD
 make_transcript "$T6/transcript.jsonl" "$LOG"
 out=$(printf '%s' "$(input_for "$T6" developer-phoenix-backend false sess1 "$T6/transcript.jsonl")" | bash "$HOOK" 2>/dev/null || true)
 assert_not_contains "planner gate wins (no block from $(false))" '"decision":"block"' "$out"
-assert_file_contains "planner gate logs $(true)" "Gate: true" "$LOG"
+assert_file_matches_jq "planner gate logs $(true)" 'select(.ev=="gate" and .gate=="true")' "$LOG"
 rm -rf "$T6"
 
 # ── Test 7: no step log → graceful no-op (no flag file) ─────────────────────
@@ -186,8 +200,8 @@ rm -rf "$T7"
 
 # ── Test 15: short-gate sweeps pre-seeded terminal flag ─────────────────────
 T15=$(make_project)
-LOG15="$T15/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_step1_sweep_short.md"
-cat >"$LOG15" <<'MD'
+LOG15="$T15/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_sweep_short_cycle.jsonl"
+write_planner_log "$LOG15" <<'MD'
 # Step
 
 ## Plan
@@ -216,7 +230,7 @@ out=$(printf '%s' "$(input_for "$T15" developer-phoenix-backend false sess15 "$T
     printf 'FAIL: T15: pre-seeded terminal latest.flag not swept\n'
     fail=$((fail + 1))
 }
-assert_file_contains "T15: short-gate verdict appended normally" "ALL CLEAR" "$LOG15"
+assert_file_matches_jq "T15: short-gate verdict appended normally" 'select(.ev=="gate" and .verdict=="clear")' "$LOG15"
 rm -rf "$T15"
 
 # ── Test 18: A+B regression — A's transcript, B's newer log on disk → A's log ─
@@ -224,8 +238,8 @@ rm -rf "$T15"
 # Gate verdict MUST be appended to A's log, not B's.
 T18A=$(make_project)
 T18B=$(make_project)
-LOG_A="$T18A/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_step1_A.md"
-cat >"$LOG_A" <<'MD'
+LOG_A="$T18A/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_A_cycle.jsonl"
+write_planner_log "$LOG_A" <<'MD'
 # Step A
 
 ## Plan
@@ -234,8 +248,8 @@ cat >"$LOG_A" <<'MD'
 MD
 # Create B's log with a newer mtime (sleep 1 to guarantee).
 sleep 1
-LOG_B="$T18B/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_step1_B.md"
-cat >"$LOG_B" <<'MD'
+LOG_B="$T18B/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_B_cycle.jsonl"
+write_planner_log "$LOG_B" <<'MD'
 # Step B
 
 ## Plan
@@ -245,8 +259,9 @@ MD
 # A's transcript only records A's log write.
 make_transcript "$T18A/transcript.jsonl" "$LOG_A"
 out=$(printf '%s' "$(input_for "$T18A" developer-phoenix-backend false sess18 "$T18A/transcript.jsonl")" | RENDER_CHECK_CMD="" bash "$HOOK" 2>/dev/null || true)
-# A's log must have ALL CLEAR; B's log must NOT.
-if grep -qF "ALL CLEAR" "$LOG_A" && ! grep -qF "ALL CLEAR" "$LOG_B"; then
+# A's log must have a clear gate event; B's log must NOT.
+if jq -e 'select(.ev=="gate" and .verdict=="clear")' "$LOG_A" >/dev/null 2>&1 &&
+    ! jq -e 'select(.ev=="gate" and .verdict=="clear")' "$LOG_B" >/dev/null 2>&1; then
     [ -n "${VERBOSE:-}" ] && printf 'PASS: A+B regression: verdict appended to A only\n'
     pass=$((pass + 1))
 else
@@ -257,8 +272,8 @@ rm -rf "$T18A" "$T18B"
 
 # ── Test 19: first failure → "attempt 1 — dev-fixable" in log ──────────────
 T19=$(make_project)
-LOG19="$T19/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_step1_attempt1.md"
-cat >"$LOG19" <<'MD'
+LOG19="$T19/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_attempt1_cycle.jsonl"
+write_planner_log "$LOG19" <<'MD'
 # Step
 
 ## Plan
@@ -267,26 +282,23 @@ cat >"$LOG19" <<'MD'
 MD
 make_transcript "$T19/transcript.jsonl" "$LOG19"
 out=$(printf '%s' "$(input_for "$T19" developer-phoenix-backend false sess19 "$T19/transcript.jsonl")" | bash "$HOOK" 2>/dev/null || true)
-assert_file_contains "T19: first failure labels as attempt 1 dev-fixable" "attempt 1 — dev-fixable" "$LOG19"
+assert_file_matches_jq "T19: first failure labels as attempt 1 dev-fixable" 'select(.ev=="gate" and (.result | test("attempt 1 — dev-fixable")))' "$LOG19"
 rm -rf "$T19"
 
 # ── Test 20: second failure (pre-seeded FAILED ❌) → "ROOT-CAUSE: route to planner" ─
 T20=$(make_project)
-LOG20="$T20/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_step1_attempt2.md"
-cat >"$LOG20" <<'MD'
+LOG20="$T20/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_attempt2_cycle.jsonl"
+write_planner_log "$LOG20" <<'MD'
 # Step
 
 ## Plan
 
 **Gate**: `false`
-
-## dev-gate Section
-
-**Result**: FAILED ❌ exit=1 (attempt 1 — dev-fixable)
 MD
+jq -c -n '{ev:"gate",role:"dev-gate",verdict:"failed",gate:"false",mode:"short",result:"FAILED ❌ exit=1 (attempt 1 — dev-fixable)",detail:""}' >>"$LOG20"
 make_transcript "$T20/transcript.jsonl" "$LOG20"
 out=$(printf '%s' "$(input_for "$T20" developer-phoenix-backend false sess20 "$T20/transcript.jsonl")" | bash "$HOOK" 2>/dev/null || true)
-assert_file_contains "T20: second failure labels as ROOT-CAUSE: route to planner" "ROOT-CAUSE: route to planner" "$LOG20"
+assert_file_matches_jq "T20: second failure labels as ROOT-CAUSE: route to planner" 'select(.ev=="gate" and (.result | test("ROOT-CAUSE: route to planner")))' "$LOG20"
 rm -rf "$T20"
 
 # ── Test 21: no-op gate detection — make -v redirected, exit 0, no evidence ──
@@ -296,8 +308,8 @@ rm -rf "$T20"
 #   output fully redirected → actual_segs=0 < 1 → no-op branch fires (:416-428)
 #   make -v exits 0 → rc=0 path exercised deterministically
 T21=$(make_project)
-LOG21="$T21/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_step1_noop.md"
-cat >"$LOG21" <<'MD'
+LOG21="$T21/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_noop_cycle.jsonl"
+write_planner_log "$LOG21" <<'MD'
 # Step
 
 ## Plan
@@ -306,7 +318,7 @@ cat >"$LOG21" <<'MD'
 MD
 make_transcript "$T21/transcript.jsonl" "$LOG21"
 out=$(printf '%s' "$(input_for "$T21" developer-phoenix-backend false sess21 "$T21/transcript.jsonl")" | bash "$HOOK" 2>/dev/null || true)
-assert_file_contains "T21: no-op gate detected in step log" "FAILED ❌ no-op gate" "$LOG21"
+assert_file_matches_jq "T21: no-op gate detected in step log" 'select(.ev=="gate" and (.result | test("FAILED ❌ no-op gate")))' "$LOG21"
 assert_contains "T21: no-op gate emits block envelope" '"decision": "block"' "$out"
 rm -rf "$T21"
 

@@ -16,8 +16,8 @@ Codegen-infra pitfalls and bash gotchas — split from `context/development.md` 
 - **`mise trust` runs unconditionally on install** — no interactive prompt.
 - **Do not run `npm install` at repo root for Pi extensions** — each extension has its own node_modules; only root install is managed by install.sh
 - **Hook test failures are not ExUnit** — `make test` runs bash tests + hermetic ExUnit; they are separate suites
-- **`make test-stacks` must never regress to bare `mix test`** — gate uses `mix test --only slow`; bare `mix test` silently runs ZERO stack tests and exits 0 (fake-green). Always tag LLM-driven tests with `:slow`.
-- **Fixture-source change: migrate ALL dependent cases** — Old-path test cases assert dead OLD spec. SIBLING files (e.g., dispatch_test + codegen-build_test) testing same target need IDENTICAL fixes. Grep ALL `_test.sh` files, not just the paired hook test.
+- **`make test-stacks` must use `mix test --only slow`** — Bare `mix test` silently runs zero slow tests + exits 0 (fake-green). Tag LLM tests `:slow`.
+- **Fixture-source change: migrate ALL siblings** — Grep ALL test files for same target; sibling tests need identical fixes.
 - **`shared/scaffold/static/scaffold_test.sh` is wired into `make test`** — new bash test cases run automatically (Makefile `for t in` loop that lists `shared/scaffold/static/scaffold_test.sh` as a test target). No Makefile edits needed; test summary updates via inline helpers.
 - **config.yaml anchoring** — Multiple blocks may share leaf values; `old_string` MUST include surrounding context to avoid wrong block. Verify via `yq` post-change.
 - **Pitch line numbers drift** — Use exact anchor text, not line numbers.
@@ -31,8 +31,7 @@ Codegen-infra pitfalls and bash gotchas — split from `context/development.md` 
 - **[shared] `codegen-log section` replaces whole body, not append** — `codegen-log section <role>` REPLACES the entire section body (not append). Multi-call approach to add content fails — second call overwrites first. Compose COMPLETE section body (description + lists + learnings) in ONE `section` call. Use `append` only for second writes.
 - **[shared] Pure hard-delete safer than deprecation** — When deleting dead code (validator branches, special-cases), hard-delete entirely vs leaving always-false backstop. Pure deletion is verifiable by GREP (zero matches) and prevents future developers from resurrecting dead code without understanding the original boundary violation.
 - **Makefile recipes run under `/bin/sh`, not bash** — process substitution fails. Use pipeline patterns instead of bash-specific syntax.
-- **Flaky tests: investigate state leakage, not timing** — Check counter files, temp dirs. Cleanup in `afterEach` required.
-- **Test isolation scoping** — Capture streams at test-body, restore both paths. Env cleanup in beforeEach/afterEach.
+- **Flaky tests: state leakage, not timing** — Check counter/temp-dir cleanup in `afterEach`.
 - **`make test` tail-capture hides summaries** — Piping to `| tail` drops hook-parity output. Re-run test file directly to confirm.
 - **Gate verdict from JSON** — Read `gate-result.json` `.verdict` field, not log prose; JSON reflects actual code
 - **Codegen pitch path resolution: `codegen/pitches/ready/<slug>.md`** — Pitch files live in nested self-meta dir under codegen root, NOT under a bare `pitches/` at repo root. Resolution: `${CODEGEN_DIR}/codegen/pitches/ready/<slug>.md`. `subagent-read-discipline.sh` denies Read tool access regardless of explicit mentions in delegation prompt. Extract intent from the delegation prompt's restated requirements instead of opening the pitch file.
@@ -67,7 +66,7 @@ Codegen-infra pitfalls and bash gotchas — split from `context/development.md` 
 - **Enforcement subsection placement in rule files** — when adding a new subsection to a rule file with existing structure (e.g., `## Ownership`), place it as a new H2 section at the same level rather than embedding mid-section. Cleaner structure, avoids disrupting prose flow. Accompanied by a pointer-only reference in dependent docs (no duplication).
 - **Rule-file line caps are STYLE_GUIDE advisory only** — `_core/` rule files have a <50-line advisory; `roles/` and `stacks/` have <150-line advisory. No hook enforces rule-file line count. Only `context/*.md` byte cap (40,960 B) is hook-enforced. Rule-file overage is acceptable if unavoidable; byte-cap overage blocks commit.
 - **`process_template.py` include/if ordering** — `process_includes_recursively` runs AFTER if-stripping → `{% if tool %}` blocks inside fragments survive un-stripped → both branches concatenate (BROKEN). Fix: move include call to TOP of `_strip_template_blocks`, before if-stripping. Verify via `make test-generator` + `make test`.
-- **Fragment whitespace and byte-identity** — `resolve_include` appends `\n` only when absent. Template whitespace around `{% include %}` (not fragment's internal `\n`) determines output blank lines. Byte-identity requires exact trailing-newline match when extracting.
+- **Fragment whitespace and byte-identity** — Template whitespace around `{% include %}` determines output blank lines. Exact trailing-newline match required.
 - **Non-contiguous shared regions need separate fragments** — Verify regions are contiguous in BOTH templates BEFORE design. Non-contiguous regions → separate fragments (one per region with own `{% include %}`), not single-file-multiple-includes (→ duplication).
 - **`make test-stacks` pre-gate checklist** — Run `make doctor` (Chromium + ajv), verify `claude` CLI auth (`~/.claude.json`), verify `command -v pi`. Bucket failures via 4-bucket protocol → `context/test-harness.md § Flake Triage Protocol`.
 - **`make test` auto-discovers `test_harness/install/` tests** — New `*_test.sh` files run via `run-tests.sh` (greps `N passed, N failed`). No Makefile edits. Footer format critical for runner match.
@@ -104,16 +103,14 @@ Codegen-infra pitfalls and bash gotchas — split from `context/development.md` 
 - **COMMON_FLAGS array** — dispatch scripts use a shared flags array for mode-invariant vs mode-specific flags. Build array once, splice into both exec paths. Under `set -u`, guard VALUE expansions with `if [[ ${#arr[@]} -gt 0 ]]; then` — `${arr[@]+"${arr[@]}"}` is rejected by shfmt; use explicit length-guards.
 - **Shared fns called from multiple harnesses** — thread a `mode` parameter to gate harness-specific behavior. Example: `render-check.js` `runChecks(url, timeoutMs, mode)` gates content-region check on `if (mode === "phoenix")`.
 - **[local] Multi-iteration loop tool timeout** — When orchestrating multiple slow (5+ min) external commands in a shell loop, the tool call's own timeout can kill the loop BETWEEN iterations even though each child process completed normally. Inspect per-iteration output files before assuming batch failure — they may be complete even though the loop wrapper was killed.
-- **`local` keyword under `set -u`** — fails in `if/elif` at script scope. Use bare assignment. Function scope OK. Reset loop-branch locals at top: `local repo_url="" tree_ref=""`.
-- **Portable sed** — `sed -i ''` (BSD) not portable to GNU. Use temp-file or Python for portability.
-- **Bash grep `\b` false-positive on hyphens** — `grep -E '\blog\b'` falsely matches `codegen-log` (hyphen is non-word). Use `(^|[^a-zA-Z0-9-])token([^a-zA-Z0-9-]|$)` to exclude hyphen-adjacency.
-- **Bash 3.2 compatibility** — No `declare -A`, no `wait -n`. Walk `git -C` to ancestor; use `hooks_realpath` for symlinks.
+- **`local` under `set -u`** — fails in if/elif at script scope. Bare assignment OK. Reset at loop top.
+- **Portable sed** — `sed -i ''` (BSD) ≠ GNU. Use Python for portability.
+- **Bash grep `\b` hyphen false-positive** — Use `(^|[^a-zA-Z0-9-])token` to exclude hyphens.
+- **Bash 3.2** — No `declare -A`, `wait -n`. Use `hooks_realpath` for symlinks.
 - **Path canonicalization for prefix-compare across harnesses** — Always canonicalize both sides of path comparisons to handle `/var`↔`/private/var` symlinks. Use `hooks_realpath` (bash) or `resolveRealPath` (TS). Guard with trailing `/` on cwd to prevent sibling false-matches.
-- **IFS multi-char join** — `IFS=', '; echo "${arr[*]}"` uses only first char. Use `printf '%s, ' "${arr[@]}" | sed 's/, $//'` instead.
-- **`cut` mixed delimiters** — `cut -d: -f2` captures tail. Chain delimiters: `cut -d: -f2 | cut -d'|' -f1`.
 - **Heredoc expansion** — Unquoted `<<EOF` expands; `<<'EOF'` doesn't. Match stub convention: single-quoted uses bare `$*`; unquoted needs `\$*`.
 - **Grep footguns** — `-v` deletes before keep. BRE `\(` = GROUP; use `-F` for literals. **Always use `grep -qF -- "$needle"`** when needle may be flag-shaped (e.g., `--harness=X`); macOS grep silently misparses without `--`.
-- **[shared] `grep -c PATTERN || echo 0` double-prints on zero-match** — `grep -c` prints the count (0) and exits 1 when no matches; the `|| echo 0` fallback still fires on the non-zero exit, emitting a second `0`. Fix: drop the `|| echo 0`, rely on `grep -c`'s own printed count (empty output only on broken grep command, not zero-match).
+- **[shared] `grep -c` + fallback double-prints** — `grep -c` exits 1 on no-match; `|| echo 0` fires and emits second `0`. Drop fallback, rely on grep-c alone.
 - **Shell test binary stubbing** — Symlink tools, omit target, filter `$PATH`. Use `command -v` (builtin). `export -f` doesn't propagate to subprocesses; use PATH-stub pattern instead. Pattern: `PATH="$BIN_DIR:$PATH" bash "$HOOK"`.
 - **PATH-mutation runtime order** — New exec branch added textually AFTER PATH-prepend still inherits it at runtime. Trace EXECUTION flow (not file order); textually-later can run textually-after PATH-mutation.
 - **Hook stub isolation for sourced files** — Pre-sourcing doesn't work. Create per-test `CODEGEN_DIR` subdir with stub, invoke with `CODEGEN_DIR="$TMP_ROOT/tN" bash "$HOOK"`.
@@ -121,7 +118,7 @@ Codegen-infra pitfalls and bash gotchas — split from `context/development.md` 
 - **yq null-safety** — Every yq array op → `(.field // [])` guard. `.field | join(",")` crashes when field null/absent. ✅ `(.tools // []) | join(",")`.
 - **Conditional final statements** — Use `if/then/fi` instead of `&&` (flips exit code).
 - **Post-condition assertions in mutations** — validate preconditions (file exists, anchor present) and postconditions (expected lines added, placeholders resolved). `eex_render.sh` should fail on unresolved `<%= ... %>` placeholders.
-- **Cleanup wrappers & exit code propagation** — `bash -c "cmd; rm -rf $TMP"` loses the inner exit code if cleanup succeeds. Pattern: `RESULT=0; inner_cmd || RESULT=$?; cleanup_code; exit $RESULT`.
+- **Cleanup exit code** — `RESULT=0; inner_cmd || RESULT=$?; cleanup; exit $RESULT`.
 - **Fail-closed refute in tests** — to prove a script aborts BEFORE an irreversible action, use a shimmed subprocess marker: stub the irreversible command to record if called, then `refute` the marker was set.
 - **Advisory health checks** — embed in same output blob; parse ONLY gate labels, never in logic.
 - **Operator toggles vs config** — toggles (e.g., `DEPLOY_AUTO=1`) → script comments, NOT `.env.sample`; env vars → `.env.sample`. Toggles control harness; vars control app runtime.
@@ -155,7 +152,7 @@ Codegen-infra pitfalls and bash gotchas — split from `context/development.md` 
 - **test_harness project has NO credo dependency** — `mix credo --strict` exits "task not found". Credo pre-commit verification only applies to Phoenix-app slices; test_harness Elixir edits skip to `mix format` + `mix test`.
 - **Reviewer Bash allowlist blocks test re-runs** — flake-triage needing live re-execution → delegate to developer. Use gate-result JSON + git diff for attribution, not live re-run.
 - **[shared] macOS symlink mismatch** — Plain `cd` doesn't resolve `/var` → `/private/var`. Assert basename not full path.
-- **[shared] Session-log retrospective extraction is H2-scoped** — `### What I Learned` must be FIRST under `## <role> Section`, BEFORE any nested `## ` headers (which terminate awk scanning).
+- **[shared] Retrospective extraction H2-scoped** — `### What I Learned` must be FIRST under role header, BEFORE nested `## `.
 - **Positive-only test assertions hide bugs** — multi-assertion tests with late `refute` after early-failing positive assertions never exercise the refute. Trace which assertion fires first on the buggy branch. Direct path assertions (`File.exists?`) stronger than env-toggle with fallback masking.
 - **[shared] Delegation-prompt H2 promotion (FIXED)** — `## ` lines in delegation bodies are indented to `##` before writing to prevent rank-order corruption.
 - **Pitch line-number drift** — Read files for exact anchor text; never trust estimates.
@@ -186,6 +183,14 @@ Codegen-infra pitfalls and bash gotchas — split from `context/development.md` 
 - **[shared] reviewer-guard hard-restricts Edit regardless of delegation** — denies Edit outside session logs even if prompt says "you have Edit". Hook enforcement > agent message. Use Grep + `-B`/`-A` for anchors.
 - **[local] Detection-regex re-verify after edit** — when sweeping cites, re-run exact grep regex AFTER EACH file edit to confirm zero matches. Factual corrections can reintroduce regex text.
 
+- **[local] Format-flip cascades to all fixtures** — Reader contract change (`.md`→`.jsonl`) cascades to ALL test siblings; full `make test` surfaces (grep misses path-in-JSON).
+- **[shared] Two format contracts on flip** — JSONL needs (1) filename filter AND (2) content shape. Filename-only fix insufficient; parsing hooks need valid bytes.
+- **[shared] Shared helper doesn't propagate** — Hooks with inline copies need grep+fix per source; helper fix alone doesn't cascade.
+- **[shared] Test bugs self-mask** — Both hook AND fixture stale → green but unreachable. Fix filter FIRST (exposes downstream), THEN fixtures.
+- **[local] Glob prose hides in literal sweeps** — Add second grep for `\*\.md` pattern forms alongside literal sweep.
+- **[shared] jq `-e select(...)` exits 4 not 1** — Boolean wrappers need `if jq -e ... ; then 0; fi; return 1`.
+- **[local] Sibling discovery needs full-scope grep** — Grep ALL call-sites (gate_select, decide_gate across tests), not delegation list only.
+
 ## Trigger Keywords
 
-pitfall, gotcha, bash pattern, yq null safety
+pitfall, gotcha, bash pattern, yq null safety, JSONL migration, format flip, fixture ripple

@@ -1,6 +1,6 @@
 /**
  * session-log-writer-only.ts — Pi enforcement: codegen-log is the SOLE
- * writer of session logs. Denies raw write/edit on codegen/logging/*.md
+ * writer of cycle logs. Denies raw write/edit on codegen/logging/*.jsonl
  * and raw bash writes (redirect/tee/in-place-stream-edit/move-into) into
  * that path.
  *
@@ -41,9 +41,9 @@ export function register(pi: ExtensionAPI): void {
 
       debugLog("session-log-writer-only", `tool=${event.toolName} file=${filePath}`);
 
-      if (filePath.includes("codegen/logging/") && filePath.endsWith(".md")) {
+      if (filePath.includes("codegen/logging/") && filePath.endsWith(".jsonl")) {
         return deny(
-          `BLOCKED by session-log-writer-only: raw ${event.toolName} on session logs is denied — write via codegen-log (init / section --body @- / section --role <role> / append --role <role>).`,
+          `BLOCKED by session-log-writer-only: raw ${event.toolName} on cycle logs is denied — write via codegen-log (init / section --body @- / section --role <role> / append --role <role>).`,
         );
       }
       return;
@@ -57,13 +57,13 @@ export function register(pi: ExtensionAPI): void {
       // Allow any command that invokes codegen-log — the sole legitimate writer.
       if (/(^|[\s/])codegen-log\b/.test(command)) return;
 
-      // Deny raw writes into codegen/logging/*.md that don't go through codegen-log.
+      // Deny raw writes into codegen/logging/*.jsonl that don't go through codegen-log.
       if (
-        /codegen\/logging\/[^\s]*\.md/.test(command) &&
+        /codegen\/logging\/[^\s]*\.jsonl/.test(command) &&
         BASH_WRITE_INTO_LOG_RE.test(command)
       ) {
         return deny(
-          "BLOCKED by session-log-writer-only: raw Bash write into a session log is denied — write via codegen-log (init / section --body @- / section --role <role> / append --role <role>).",
+          "BLOCKED by session-log-writer-only: raw Bash write into a cycle log is denied — write via codegen-log (init / section --body @- / section --role <role> / append --role <role>).",
         );
       }
       return;

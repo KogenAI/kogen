@@ -7,7 +7,7 @@ You are the orchestrator. Before any work:
 
 **STRICT ORDER — do NOT read files before steps 1 and 2 are complete.**
 
-1. Create session log at `./codegen/logging/$(date -u +%Y%m%d_%H%M%S)_session.md` — FIRST action. If multi-step task resuming prior session, check `./codegen/logging/` for existing progress file with same slug — if found, read to determine where to resume.
+1. Create session log at `./codegen/logging/$(date -u +%Y%m%d_%H%M%S)_session.md` — FIRST action. If multi-step task resuming prior session, check `./codegen/logging/` for existing progress file with same slug — if found, read to determine where to resume. (ARCHIVED — legacy markdown session-log form; live storage is `_cycle.jsonl`.)
 
 2. Stamp session log with `## Version Stamp`. Run and append verbatim (replace `<SESSION_LOG>` with path from step 1):
 

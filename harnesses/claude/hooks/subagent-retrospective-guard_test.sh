@@ -66,14 +66,9 @@ make_input() {
 
 # ── Test 1: Missing retrospective block → BLOCK ──────────────────────────────
 T1=$(make_project)
-LOG1="$T1/codegen/logging/step1_test.md"
-cat >"$LOG1" <<'MD'
-## developer-phoenix-backend Section
-
-**Commands executed**: none
-
-**Result**: Done.
-MD
+LOG1="$T1/codegen/logging/test_cycle.jsonl"
+: >"$LOG1"
+printf '%s\n' '{"ev": "role", "role": "developer-phoenix-backend", "body": "**Commands executed**: none\n\n**Result**: Done."}' >>"$LOG1"
 make_transcript "$T1/transcript.jsonl" "$LOG1"
 out=$(make_input "developer-phoenix-backend" "$T1/transcript.jsonl" | bash "$HOOK" 2>/dev/null || true)
 assert_block "missing retrospective block → block" "$out"
@@ -81,15 +76,9 @@ rm -rf "$T1"
 
 # ── Test 2: Empty retrospective block → BLOCK ─────────────────────────────────
 T2=$(make_project)
-LOG2="$T2/codegen/logging/step1_test.md"
-cat >"$LOG2" <<'MD'
-## developer-phoenix-backend Section
-
-**Result**: Done.
-
-### What I Learned This Step
-
-MD
+LOG2="$T2/codegen/logging/test_cycle.jsonl"
+: >"$LOG2"
+printf '%s\n' '{"ev": "role", "role": "developer-phoenix-backend", "body": "**Result**: Done.\n\n### What I Learned This Step"}' >>"$LOG2"
 make_transcript "$T2/transcript.jsonl" "$LOG2"
 out=$(make_input "developer-phoenix-backend" "$T2/transcript.jsonl" | bash "$HOOK" 2>/dev/null || true)
 assert_block "empty retrospective block → block" "$out"
@@ -97,16 +86,9 @@ rm -rf "$T2"
 
 # ── Test 3: Minimal acceptable '- nothing notable' → ALLOW ───────────────────
 T3=$(make_project)
-LOG3="$T3/codegen/logging/step1_test.md"
-cat >"$LOG3" <<'MD'
-## developer-phoenix-backend Section
-
-**Result**: Done.
-
-### What I Learned This Step
-
-- nothing notable
-MD
+LOG3="$T3/codegen/logging/test_cycle.jsonl"
+: >"$LOG3"
+printf '%s\n' '{"ev": "role", "role": "developer-phoenix-backend", "body": "**Result**: Done.\n\n### What I Learned This Step\n\n- nothing notable"}' >>"$LOG3"
 make_transcript "$T3/transcript.jsonl" "$LOG3"
 out=$(make_input "developer-phoenix-backend" "$T3/transcript.jsonl" | bash "$HOOK" 2>/dev/null || true)
 assert_allow "minimal '- nothing notable' → allow" "$out"
@@ -114,16 +96,9 @@ rm -rf "$T3"
 
 # ── Test 4: Local learning bullet → ALLOW ────────────────────────────────────
 T4=$(make_project)
-LOG4="$T4/codegen/logging/step1_test.md"
-cat >"$LOG4" <<'MD'
-## Plan
-
-...content...
-
-### What I Learned This Step
-
-- [local] The context file needs updating when schema changes.
-MD
+LOG4="$T4/codegen/logging/test_cycle.jsonl"
+: >"$LOG4"
+printf '%s\n' '{"ev": "role", "role": "planner-phoenix", "body": "...content...\n\n### What I Learned This Step\n\n- [local] The context file needs updating when schema changes."}' >>"$LOG4"
 make_transcript "$T4/transcript.jsonl" "$LOG4"
 out=$(make_input "planner-phoenix" "$T4/transcript.jsonl" | bash "$HOOK" 2>/dev/null || true)
 assert_allow "[local] bullet → allow" "$out"
@@ -131,16 +106,9 @@ rm -rf "$T4"
 
 # ── Test 5: Shared learning bullet → ALLOW ───────────────────────────────────
 T5=$(make_project)
-LOG5="$T5/codegen/logging/step1_test.md"
-cat >"$LOG5" <<'MD'
-## reviewer-phoenix Section
-
-**Result**: Done.
-
-### What I Learned This Step
-
-- [shared] Always check Credo before delegating to committer.
-MD
+LOG5="$T5/codegen/logging/test_cycle.jsonl"
+: >"$LOG5"
+printf '%s\n' '{"ev": "role", "role": "reviewer-phoenix", "body": "**Result**: Done.\n\n### What I Learned This Step\n\n- [shared] Always check Credo before delegating to committer."}' >>"$LOG5"
 make_transcript "$T5/transcript.jsonl" "$LOG5"
 INPUT5=$(jq -n \
     --arg agent_type "reviewer-phoenix" \
@@ -153,17 +121,9 @@ rm -rf "$T5"
 
 # ── Test 6: Multiple bullets → ALLOW ─────────────────────────────────────────
 T6=$(make_project)
-LOG6="$T6/codegen/logging/step1_test.md"
-cat >"$LOG6" <<'MD'
-## developer-phoenix-frontend Section
-
-**Result**: Done.
-
-### What I Learned This Step
-
-- [local] HEEx attrs must be alphabetical.
-- [shared] Use Phoenix.Component.used_input?/1 for error display.
-MD
+LOG6="$T6/codegen/logging/test_cycle.jsonl"
+: >"$LOG6"
+printf '%s\n' '{"ev": "role", "role": "developer-phoenix-frontend", "body": "**Result**: Done.\n\n### What I Learned This Step\n\n- [local] HEEx attrs must be alphabetical.\n- [shared] Use Phoenix.Component.used_input?/1 for error display."}' >>"$LOG6"
 make_transcript "$T6/transcript.jsonl" "$LOG6"
 out=$(make_input "developer-phoenix-frontend" "$T6/transcript.jsonl" | bash "$HOOK" 2>/dev/null || true)
 assert_allow "multiple bullets → allow" "$out"
@@ -171,12 +131,9 @@ rm -rf "$T6"
 
 # ── Test 7: Non-matcher agent (committer) → ALLOW (pass-through) ─────────────
 T7=$(make_project)
-LOG7="$T7/codegen/logging/step1_test.md"
-cat >"$LOG7" <<'MD'
-## committer Section
-
-**Result**: Committed.
-MD
+LOG7="$T7/codegen/logging/test_cycle.jsonl"
+: >"$LOG7"
+printf '%s\n' '{"ev": "role", "role": "committer", "body": "**Result**: Committed."}' >>"$LOG7"
 make_transcript "$T7/transcript.jsonl" "$LOG7"
 out=$(make_input "committer" "$T7/transcript.jsonl" | bash "$HOOK" 2>/dev/null || true)
 assert_allow "non-matcher agent (committer) → allow (pass-through)" "$out"
@@ -191,14 +148,9 @@ rm -rf "$T8"
 
 # ── Test 9: Section header absent (defensive) → ALLOW ────────────────────────
 T9=$(make_project)
-LOG9="$T9/codegen/logging/step1_test.md"
-cat >"$LOG9" <<'MD'
-## reviewer-phoenix Section
-
-### What I Learned This Step
-
-- nothing notable
-MD
+LOG9="$T9/codegen/logging/test_cycle.jsonl"
+: >"$LOG9"
+printf '%s\n' '{"ev": "role", "role": "reviewer-phoenix", "body": "### What I Learned This Step\n\n- nothing notable"}' >>"$LOG9"
 make_transcript "$T9/transcript.jsonl" "$LOG9"
 # Ask about developer-phoenix-backend whose section is absent in this log.
 out=$(make_input "developer-phoenix-backend" "$T9/transcript.jsonl" | bash "$HOOK" 2>/dev/null || true)
@@ -207,8 +159,8 @@ rm -rf "$T9"
 
 # ── Test 10: Retrospective with only whitespace lines → BLOCK ─────────────────
 T10=$(make_project)
-LOG10="$T10/codegen/logging/step1_test.md"
-printf '## developer-phoenix-backend Section\n\n### What I Learned This Step\n\n   \n\t\n' >"$LOG10"
+LOG10="$T10/codegen/logging/test_cycle.jsonl"
+jq -c -n '{ev: "role", role: "developer-phoenix-backend", body: "### What I Learned This Step\n\n   \n\t\n"}' >"$LOG10"
 make_transcript "$T10/transcript.jsonl" "$LOG10"
 out=$(make_input "developer-phoenix-backend" "$T10/transcript.jsonl" | bash "$HOOK" 2>/dev/null || true)
 assert_block "only whitespace after retrospective header → block" "$out"
@@ -216,16 +168,9 @@ rm -rf "$T10"
 
 # ── Test 11: planner-static with retrospective under ## Plan → ALLOW ────────────
 T11=$(make_project)
-LOG11="$T11/codegen/logging/step1_test.md"
-cat >"$LOG11" <<'MD'
-## Plan
-
-Plan content for html stack.
-
-### What I Learned This Step
-
-- [local] HTML planner finding.
-MD
+LOG11="$T11/codegen/logging/test_cycle.jsonl"
+: >"$LOG11"
+printf '%s\n' '{"ev": "role", "role": "planner-phoenix", "body": "Plan content for html stack.\n\n### What I Learned This Step\n\n- [local] HTML planner finding."}' >>"$LOG11"
 make_transcript "$T11/transcript.jsonl" "$LOG11"
 out=$(make_input "planner-static" "$T11/transcript.jsonl" | bash "$HOOK" 2>/dev/null || true)
 assert_allow "planner-static with retrospective under ## Plan → allow" "$out"
@@ -233,16 +178,9 @@ rm -rf "$T11"
 
 # ── Test 12: planner-phoenix with retrospective under ## Plan → ALLOW ─────────
 T12=$(make_project)
-LOG12="$T12/codegen/logging/step1_test.md"
-cat >"$LOG12" <<'MD'
-## Plan
-
-Plan content for phoenix stack.
-
-### What I Learned This Step
-
-- nothing notable
-MD
+LOG12="$T12/codegen/logging/test_cycle.jsonl"
+: >"$LOG12"
+printf '%s\n' '{"ev": "role", "role": "planner-phoenix", "body": "Plan content for phoenix stack.\n\n### What I Learned This Step\n\n- nothing notable"}' >>"$LOG12"
 make_transcript "$T12/transcript.jsonl" "$LOG12"
 out=$(make_input "planner-phoenix" "$T12/transcript.jsonl" | bash "$HOOK" 2>/dev/null || true)
 assert_allow "planner-phoenix with retrospective under ## Plan → allow" "$out"
@@ -250,12 +188,9 @@ rm -rf "$T12"
 
 # ── Test 13: planner-static missing retrospective under ## Plan → BLOCK ─────────
 T13=$(make_project)
-LOG13="$T13/codegen/logging/step1_test.md"
-cat >"$LOG13" <<'MD'
-## Plan
-
-Plan content here, no retrospective.
-MD
+LOG13="$T13/codegen/logging/test_cycle.jsonl"
+: >"$LOG13"
+printf '%s\n' '{"ev": "role", "role": "planner-phoenix", "body": "Plan content here, no retrospective."}' >>"$LOG13"
 make_transcript "$T13/transcript.jsonl" "$LOG13"
 out=$(make_input "planner-static" "$T13/transcript.jsonl" | bash "$HOOK" 2>/dev/null || true)
 assert_block "planner-static missing retrospective under ## Plan → block" "$out"
@@ -263,16 +198,9 @@ rm -rf "$T13"
 
 # ── Test 14: reviewer-phoenix with retrospective → ALLOW + REVIEWED stamp written ─
 T14=$(make_project)
-LOG14="$T14/codegen/logging/step1_test.md"
-cat >"$LOG14" <<'MD'
-## reviewer-phoenix Section
-
-**Result**: QUALITY APPROVED ✅
-
-### What I Learned This Step
-
-- nothing notable
-MD
+LOG14="$T14/codegen/logging/test_cycle.jsonl"
+: >"$LOG14"
+printf '%s\n' '{"ev": "role", "role": "reviewer-phoenix", "body": "**Result**: QUALITY APPROVED ✅\n\n### What I Learned This Step\n\n- nothing notable"}' >>"$LOG14"
 make_transcript "$T14/transcript.jsonl" "$LOG14"
 # Pass cwd so cycle-state.sh can find project_dir
 INPUT14=$(jq -n \
@@ -299,16 +227,9 @@ rm -rf "$T14"
 
 # ── Test 15: developer-phoenix-backend with retrospective → ALLOW + NO stamp ─
 T15=$(make_project)
-LOG15="$T15/codegen/logging/step1_test.md"
-cat >"$LOG15" <<'MD'
-## developer-phoenix-backend Section
-
-**Result**: Done.
-
-### What I Learned This Step
-
-- nothing notable
-MD
+LOG15="$T15/codegen/logging/test_cycle.jsonl"
+: >"$LOG15"
+printf '%s\n' '{"ev": "role", "role": "developer-phoenix-backend", "body": "**Result**: Done.\n\n### What I Learned This Step\n\n- nothing notable"}' >>"$LOG15"
 make_transcript "$T15/transcript.jsonl" "$LOG15"
 INPUT15=$(jq -n \
     --arg agent_type "developer-phoenix-backend" \
@@ -329,29 +250,17 @@ else
 fi
 rm -rf "$T15"
 
-# ── Test 16: Two section blocks — pass1 missing retro, pass2 has retro → ALLOW ─
-# Last-block-wins: guard validates the LAST matching section; pass2 has the retro.
+# ── Test 16: Two role events — event1 missing retro, event2 has retro → ALLOW ─
+# JSONL is append-only: a re-spawned pass appends ANOTHER role event for the
+# same role. The guard concatenates ALL role-event bodies for the agent and
+# checks the combined text — there is no "last pass wins" concept (every
+# event is equally valid); satisfying the retro requirement in ANY event body
+# is sufficient.
 T16=$(make_project)
-LOG16="$T16/codegen/logging/step1_test.md"
-cat >"$LOG16" <<'MD'
-## reviewer-phoenix Section
-
-**Commands executed**: none
-
-**Result**: no retrospective in pass 1.
-
-## reviewer-phoenix Section (pass 2)
-
-**Result**: Done.
-
-### What I Learned This Step
-
-- nothing notable
-
-## Files Modified
-
-- nothing
-MD
+LOG16="$T16/codegen/logging/test_cycle.jsonl"
+: >"$LOG16"
+printf '%s\n' '{"ev": "role", "role": "reviewer-phoenix", "body": "**Commands executed**: none\n\n**Result**: no retrospective in pass 1."}' >>"$LOG16"
+printf '%s\n' '{"ev": "role", "role": "reviewer-phoenix", "body": "**Result**: Done.\n\n### What I Learned This Step\n\n- nothing notable\n\n## Files Modified\n\n- nothing"}' >>"$LOG16"
 make_transcript "$T16/transcript.jsonl" "$LOG16"
 INPUT16=$(jq -n \
     --arg agent_type "reviewer-phoenix" \
@@ -359,30 +268,24 @@ INPUT16=$(jq -n \
     --arg cwd "$T16" \
     '{"hook_event_name":"SubagentStop","agent_type":$agent_type,"agent_id":"test","session_id":"test16","transcript_path":$transcript_path,"cwd":$cwd}')
 out=$(printf '%s' "$INPUT16" | bash "$HOOK" 2>/dev/null || true)
-assert_allow "two blocks: pass1 no retro, pass2 has retro → last wins → allow" "$out"
+assert_allow "two role events: event1 no retro, event2 has retro → concatenated body satisfies → allow" "$out"
 rm -rf "$T16"
 
-# ── Test 17: Two section blocks — pass1 has retro, pass2 missing retro → BLOCK ─
-# Last-block-wins: first block's retro must NOT satisfy; guard validates pass2 only.
+# ── Test 17: Two role events — event1 has retro, event2 missing retro → ALLOW ─
+# Under JSONL's append-only, concatenate-all-events semantics, event1's retro
+# text is STILL present in the concatenated body even though event2 (the most
+# recent re-spawn pass) forgot to add one — there is no way to "invalidate" a
+# prior event's content once it's on disk. This differs from the old markdown
+# "last-block-wins" semantics (where a stale earlier block was structurally
+# replaced/superseded); under JSONL, ALL prior content remains valid evidence.
 T17=$(make_project)
-LOG17="$T17/codegen/logging/step1_test.md"
-cat >"$LOG17" <<'MD'
-## reviewer-phoenix Section
-
-**Result**: Done.
-
-### What I Learned This Step
-
-- nothing notable
-
-## reviewer-phoenix Section (pass 2)
-
-**Result**: Done again, but forgot retrospective.
-
-MD
+LOG17="$T17/codegen/logging/test_cycle.jsonl"
+: >"$LOG17"
+printf '%s\n' '{"ev": "role", "role": "reviewer-phoenix", "body": "**Result**: Done.\n\n### What I Learned This Step\n\n- nothing notable"}' >>"$LOG17"
+printf '%s\n' '{"ev": "role", "role": "reviewer-phoenix", "body": "**Result**: Done again, but forgot retrospective."}' >>"$LOG17"
 make_transcript "$T17/transcript.jsonl" "$LOG17"
 out=$(make_input "reviewer-phoenix" "$T17/transcript.jsonl" | bash "$HOOK" 2>/dev/null || true)
-assert_block "two blocks: pass1 has retro, pass2 missing retro → last wins → block" "$out"
+assert_allow "two role events: event1 has retro (still present in concatenated body) → allow" "$out"
 rm -rf "$T17"
 
 printf '\n%d passed, %d failed\n' "$pass" "$fail"

@@ -237,7 +237,7 @@ printf 'User-agent: *\nAllow: /\n' >"$T11/public/robots.txt"
 printf 'body { font-family: sans-serif; }\n' >"$T11/public/app.css"
 printf '<html><head><meta name="description" content="Test Site is a website." /><meta property="og:title" content="Test Site" /><meta property="og:description" content="Test Site is a website." /><meta property="og:type" content="website" /><meta property="og:image" content="https://SITE_URL_PLACEHOLDER/og-image.png" /><link rel="canonical" href="https://SITE_URL_PLACEHOLDER/" /><script type="application/ld+json">{"@context":"https://schema.org","@type":"WebSite","name":"Test Site","url":"https://SITE_URL_PLACEHOLDER/"}</script><link rel="stylesheet" href="app.css"></head><body><p>hi</p></body></html>\n' \
     >"$T11/public/index.html"
-LOG="$T11/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_session.md"
+LOG="$T11/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_test_cycle.jsonl"
 cat >"$LOG" <<'MD'
 # Session Log
 
@@ -270,12 +270,12 @@ printf 'User-agent: *\nAllow: /\n' >"$T12A/public/robots.txt"
 printf 'body { font-family: sans-serif; }\n' >"$T12A/public/app.css"
 printf '<html><head><meta name="description" content="Test Site is a website." /><meta property="og:title" content="Test Site" /><meta property="og:description" content="Test Site is a website." /><meta property="og:type" content="website" /><meta property="og:image" content="https://SITE_URL_PLACEHOLDER/og-image.png" /><link rel="canonical" href="https://SITE_URL_PLACEHOLDER/" /><script type="application/ld+json">{"@context":"https://schema.org","@type":"WebSite","name":"Test Site","url":"https://SITE_URL_PLACEHOLDER/"}</script><link rel="stylesheet" href="app.css"></head><body><p>hi</p></body></html>\n' \
     >"$T12A/public/index.html"
-LOG_A="$T12A/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_session_A.md"
+LOG_A="$T12A/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_test_a_cycle.jsonl"
 cat >"$LOG_A" <<'MD'
 # Session A
 MD
 sleep 1
-LOG_B="$T12B/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_session_B.md"
+LOG_B="$T12B/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_test_b_cycle.jsonl"
 cat >"$LOG_B" <<'MD'
 # Session B
 MD
@@ -306,7 +306,7 @@ printf 'User-agent: *\nAllow: /\n' >"$T13/public/robots.txt"
 touch "$T13/public/app.css"
 printf '<html><head><meta name="description" content="Test Site is a website." /><meta property="og:title" content="Test Site" /><meta property="og:description" content="Test Site is a website." /><meta property="og:type" content="website" /><meta property="og:image" content="https://SITE_URL_PLACEHOLDER/og-image.png" /><link rel="canonical" href="https://SITE_URL_PLACEHOLDER/" /><script type="application/ld+json">{"@context":"https://schema.org","@type":"WebSite","name":"Test Site","url":"https://SITE_URL_PLACEHOLDER/"}</script><link rel="stylesheet" href="app.css"></head><body><p>hi</p></body></html>\n' \
     >"$T13/public/index.html"
-LOG13="$T13/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_session.md"
+LOG13="$T13/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_test_cycle.jsonl"
 cat >"$LOG13" <<'MD'
 # Session
 MD
@@ -519,7 +519,7 @@ printf 'User-agent: *\nAllow: /\n' >"$T21/public/robots.txt"
 touch "$T21/public/app.css"
 printf '<html><head><meta name="description" content="Test Site is a website." /><meta property="og:title" content="Test Site" /><meta property="og:description" content="Test Site is a website." /><meta property="og:type" content="website" /><meta property="og:image" content="https://SITE_URL_PLACEHOLDER/og-image.png" /><link rel="canonical" href="https://SITE_URL_PLACEHOLDER/" /><script type="application/ld+json">{"@context":"https://schema.org","@type":"WebSite","name":"Test Site","url":"https://SITE_URL_PLACEHOLDER/"}</script><link rel="stylesheet" href="app.css"></head><body><p>hi</p></body></html>\n' \
     >"$T21/public/index.html"
-LOG21="$T21/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_session.md"
+LOG21="$T21/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_test_cycle.jsonl"
 cat >"$LOG21" <<'MD'
 # Session Log
 

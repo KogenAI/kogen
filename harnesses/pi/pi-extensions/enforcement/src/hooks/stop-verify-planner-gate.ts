@@ -1,15 +1,20 @@
 /**
  * stop-verify-planner-gate.ts — Pi enforcement: warn when a planner subagent
- * stops without a valid **Gate**: declaration in the active step log.
+ * stops without a valid **Gate**: declaration in its cycle log role event body.
  *
- * Mirrors: harnesses/claude/hooks/stop-verify-planner-gate.sh
+ * Mirrors: harnesses/claude/hooks/stop-verify-planner-gate.sh (+ lib/gate-select.sh
+ * planner_body_from_log)
  * Event: session_shutdown (SubagentStop equivalent)
  * OBSERVE-ONLY — Pi session_shutdown cannot block; warns to stderr.
  *
  * Gate: only enforces when parseAgentType() matches /^planner-/.
  *
  * Validation:
- *   Disk-scan for active step log → find **Gate**: line in ## Plan section.
+ *   Disk-scan for active cycle log (.jsonl) → parse JSON lines → concatenate
+ *   the `.body` of every {"ev":"role","role":<planner*>} event (in file
+ *   order) → run the SAME **Gate**:/gate-json extraction on that prose,
+ *   since planners still write "## Plan" / "**Gate**:" markdown prose INSIDE
+ *   the opaque body string (never re-parsed as JSONL structure).
  *   Warn if:
  *     - gate-json fenced block is malformed JSON
  *     - **Gate**: is absent or empty
@@ -17,7 +22,7 @@
  *
  * Skip when:
  *   - AGENT_TYPE does not match planner-*
- *   - No step log found
+ *   - No cycle log found, or it carries no planner role event
  *   - **Gate**: is present and not a placeholder
  */
 
@@ -36,16 +41,37 @@ export const HANDLER_META = {
 } as const;
 
 /**
- * Parse the gate value from the ## Plan section of a step log.
+ * Concatenate the `.body` of every {"ev":"role","role":<planner*>} JSONL
+ * event in the cycle log, in file order, joined by newlines — mirrors
+ * `planner_body_from_log` (gate-select.sh). Malformed lines are skipped
+ * (fail-open on a possibly-partial append-only file).
+ */
+function plannerBodyFromLog(logContent: string): string {
+  const bodies: string[] = [];
+  for (const line of logContent.split("\n")) {
+    if (!line.trim()) continue;
+    let obj: { ev?: string; role?: string; body?: string };
+    try {
+      obj = JSON.parse(line);
+    } catch {
+      continue;
+    }
+    if (obj.ev === "role" && (obj.role ?? "").startsWith("planner")) {
+      bodies.push(obj.body ?? "");
+    }
+  }
+  return bodies.join("\n");
+}
+
+/**
+ * Parse the gate value from the concatenated planner role body prose.
  * Returns:
  *   - the gate value string if found and valid
  *   - "" if **Gate**: is absent or empty
  *   - "__GATE_PARSE_ERROR__:<reason>" if gate-json block is malformed
  */
 function readPlannerGate(logContent: string): string {
-  // Extract the ## Plan section (from heading to next ## heading or EOF).
-  const planMatch = logContent.match(/^## Plan\n([\s\S]*?)(?=^## |\z)/m);
-  const planSection = planMatch?.[1] ?? logContent;
+  const planSection = plannerBodyFromLog(logContent);
 
   // Check for ```gate-json fenced block after **Gate**:
   const gateJsonMatch = planSection.match(

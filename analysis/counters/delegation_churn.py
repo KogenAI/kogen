@@ -54,12 +54,11 @@ def _log_dir(config: Config) -> Path:
 
 
 def _count_step_logs(log_dir: Path) -> int:
-    """Count session/step log markdown files in the log directory."""
+    """Count cycle log JSONL files in the log directory."""
     if not log_dir.exists():
         return 0
     count = 0
     for p in log_dir.iterdir():
-        name = p.name
-        if name.endswith(".md") and ("_step" in name or "_session" in name):
+        if p.name.endswith("_cycle.jsonl"):
             count += 1
     return count
