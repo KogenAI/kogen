@@ -23,6 +23,13 @@ defmodule CodegenTestHarness.LoopQueueDrain do
   watchdog timeout always stashes + retries-once + skips-on-second, and is
   never routed through `transient?/1` (mirrors old build-queue.sh where the
   timeout branch `continue`s before the transient-check block).
+
+  A ready pitch whose `Blocks-on:` dependency is unsatisfied (dep in
+  draft/ or absent entirely — see `LoopQueue.blocked_by_unmet_dep/2`) is a
+  SELECTION-time gate: it is never selected, left physically in `ready_dir`,
+  skipped on every subsequent scan, and surfaced as a distinct SKIPPED
+  (unmet dep) bucket — separate from the timeout bucket. This is NOT a
+  build failure; the run still completes `{:ok, shipped_count}`.
   """
 
   alias CodegenTestHarness.LoopQueue
@@ -65,6 +72,12 @@ defmodule CodegenTestHarness.LoopQueueDrain do
     * `:now_fn` — `(-> integer unix secs)`
     * `:ordered_fn` — `(ready_dir -> [slug])`, default `LoopQueue.ordered_slugs/1`
     * `:transient_fn` — `(jsonl_path -> boolean)`, default `LoopQueue.transient?/1`
+    * `:blocked_fn` — `(-> %{slug => dep})`, default zero-arg closure binding
+      `{ready_dir, shipped_dir}` into `LoopQueue.blocked_by_unmet_dep/2`.
+      Recomputed on every scan (mirrors legacy `build-queue.sh`'s re-scan
+      per iteration). A slug present in the returned map is BLOCKED — left
+      in `ready_dir`, skipped for the remainder of this run, surfaced once
+      as a `SKIPPED (unmet dep ...)` stderr line, never reaches `run_slug/3`.
     * `:pid_alive_fn` — `(pid -> boolean)`, default checks `/proc`-independent
       via `System.cmd("kill", ["-0", pid])` exit status
     * `:git_head_fn` — `(cwd -> String.t() | nil)`, default reads
@@ -117,11 +130,16 @@ defmodule CodegenTestHarness.LoopQueueDrain do
             now_fn: Keyword.get(opts, :now_fn, &default_now_fn/0),
             ordered_fn: Keyword.get(opts, :ordered_fn, &LoopQueue.ordered_slugs/1),
             transient_fn: Keyword.get(opts, :transient_fn, &LoopQueue.transient?/1),
+            blocked_fn:
+              Keyword.get(opts, :blocked_fn, fn ->
+                LoopQueue.blocked_by_unmet_dep(ready_dir, shipped_dir)
+              end),
             git_head_fn: Keyword.get(opts, :git_head_fn, &default_git_head_fn/1),
             gate_verdict_fn: Keyword.get(opts, :gate_verdict_fn, &default_gate_verdict_fn/1),
             discover_session_log_fn:
               Keyword.get(opts, :discover_session_log_fn, &default_discover_session_log/3),
             timed_out_slugs: MapSet.new(),
+            blocked_printed: MapSet.new(),
             retry_count: 0,
             last_slug: nil,
             # Computed ONCE on first scan (mirrors legacy build-queue.sh:356-358
@@ -192,17 +210,44 @@ defmodule CodegenTestHarness.LoopQueueDrain do
 
   defp run_loop(state, shipped_count) do
     ordered = state.ordered_fn.(state.ready_dir)
+    blocked = state.blocked_fn.()
+
+    state = print_new_blocked(state, blocked)
 
     remaining =
-      Enum.reject(ordered, fn slug -> MapSet.member?(state.timed_out_slugs, slug) end)
+      Enum.reject(ordered, fn slug ->
+        MapSet.member?(state.timed_out_slugs, slug) or Map.has_key?(blocked, slug)
+      end)
 
     case remaining do
       [] ->
+        if map_size(blocked) > 0 do
+          IO.puts(
+            :stderr,
+            "queue: SKIPPED (unmet dep) bucket: " <>
+              Enum.map_join(blocked, ", ", fn {slug, dep} -> "#{slug} (dep #{dep})" end)
+          )
+        end
+
         {:ok, shipped_count}
 
       [slug | _] ->
         run_slug(state, slug, shipped_count)
     end
+  end
+
+  # Print a SKIPPED line once per NEWLY-blocked slug (mirrors legacy
+  # build-queue.sh: print only when the slug is first added, not on every
+  # re-scan). Returns updated state with blocked_printed extended.
+  defp print_new_blocked(state, blocked) do
+    Enum.reduce(blocked, state, fn {slug, dep}, acc ->
+      if MapSet.member?(acc.blocked_printed, slug) do
+        acc
+      else
+        IO.puts(:stderr, "#{slug} ... SKIPPED (unmet dep #{dep}) — left in ready/, advancing")
+        %{acc | blocked_printed: MapSet.put(acc.blocked_printed, slug)}
+      end
+    end)
   end
 
   defp run_slug(state, slug, shipped_count) do

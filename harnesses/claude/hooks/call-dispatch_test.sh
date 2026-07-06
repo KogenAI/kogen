@@ -491,52 +491,60 @@ assert_log_line_after "$BASE_TMP/argv_i.log" "--setting-sources" "user,project" 
     "(i) agent + explicit tools: --setting-sources followed by user,project"
 
 # ── RED-then-GREEN proof for FIX-1/FIX-3 (case g) ────────────────────────────
-# Pull the pre-fix source straight from git HEAD (committed state, before this
-# cycle's edits) and prove case (g)'s new assertion would have failed against
-# it — direct evidence the assertion is load-bearing, not a vacuous grep.
+# Synthetic pre-fix fixture (NOT git HEAD): a floating `git show HEAD:` compare
+# self-invalidates permanently once the fix lands and becomes part of HEAD —
+# every future run then "pulls the pre-fix source" and gets the ALREADY-FIXED
+# script, so the RED assertion can never fire again. A hardcoded synthetic
+# fixture reproducing the historical bug (hardcoded "project" scope regardless
+# of --agent) stays a stable, permanent regression proof that the (g)
+# assertion (lines ~439-443 above, which runs against the LIVE script every
+# time) is load-bearing — not a vacuous grep.
 PRE_FIX_SCRIPT="$BASE_TMP/call-dispatch.pre.sh"
-if git -C "$CODEGEN_DIR" show HEAD:harnesses/claude/call-dispatch.sh >"$PRE_FIX_SCRIPT" 2>/dev/null &&
-    [[ -s "$PRE_FIX_SCRIPT" ]]; then
-    chmod +x "$PRE_FIX_SCRIPT"
-else
-    PRE_FIX_SCRIPT=""
+cat >"$PRE_FIX_SCRIPT" <<'PREFIX'
+#!/usr/bin/env bash
+# Synthetic reproduction of the pre-fix bug: --setting-sources hardcoded to
+# "project" regardless of whether CODEGEN_CALL_AGENT is set.
+set -euo pipefail
+AGENT="${CODEGEN_CALL_AGENT:-}"
+SETTING_SOURCES="project"
+ARGS=(claude --setting-sources "$SETTING_SOURCES")
+if [ -n "$AGENT" ]; then
+    ARGS+=(--agent "$AGENT")
 fi
+exec "${ARGS[@]}"
+PREFIX
+chmod +x "$PRE_FIX_SCRIPT"
 
-if [[ -n "$PRE_FIX_SCRIPT" ]]; then
-    (
-        export PATH="$ARGV_STUB_DIR:$PATH"
-        export ARGV_LOG="$BASE_TMP/argv_g_red.log"
-        export FIXTURE_PATH="$FIXTURE"
-        export CODEGEN_CALL_AGENT="developer-static"
-        export CODEGEN_CALL_MODEL="claude-haiku-4-5"
-        export CODEGEN_CALL_EFFORT="low"
-        export CODEGEN_CALL_PROMPT="Do the thing."
-        unset CODEGEN_CALL_SYSTEM_PROMPT 2>/dev/null || true
-        unset CODEGEN_CALL_ALLOWED_TOOLS_SET 2>/dev/null || true
-        unset CODEGEN_CALL_ALLOWED_TOOLS 2>/dev/null || true
-        unset CODEGEN_CALL_JSON_SCHEMA 2>/dev/null || true
-        unset CODEGEN_CALL_JSON_SCHEMA_PATH 2>/dev/null || true
-        unset CODEGEN_CALL_SETTINGS_PATH 2>/dev/null || true
-        bash "$PRE_FIX_SCRIPT" >/dev/null 2>"$BASE_TMP/argv_g_red_stderr.log" || true
-    )
+(
+    export PATH="$ARGV_STUB_DIR:$PATH"
+    export ARGV_LOG="$BASE_TMP/argv_g_red.log"
+    export FIXTURE_PATH="$FIXTURE"
+    export CODEGEN_CALL_AGENT="developer-static"
+    export CODEGEN_CALL_MODEL="claude-haiku-4-5"
+    export CODEGEN_CALL_EFFORT="low"
+    export CODEGEN_CALL_PROMPT="Do the thing."
+    unset CODEGEN_CALL_SYSTEM_PROMPT 2>/dev/null || true
+    unset CODEGEN_CALL_ALLOWED_TOOLS_SET 2>/dev/null || true
+    unset CODEGEN_CALL_ALLOWED_TOOLS 2>/dev/null || true
+    unset CODEGEN_CALL_JSON_SCHEMA 2>/dev/null || true
+    unset CODEGEN_CALL_JSON_SCHEMA_PATH 2>/dev/null || true
+    unset CODEGEN_CALL_SETTINGS_PATH 2>/dev/null || true
+    bash "$PRE_FIX_SCRIPT" >/dev/null 2>"$BASE_TMP/argv_g_red_stderr.log" || true
+)
 
-    # Pre-fix source hardcodes "project" scope even with AGENT set — the fixed
-    # assertion (user,project) must NOT match against the pre-fix log, proving
-    # the new assertion is load-bearing (would have caught the bug).
-    RED_SCOPE="$(grep -A1 -Fx -- '--setting-sources' "$BASE_TMP/argv_g_red.log" 2>/dev/null | sed -n '2p')"
-    if [[ "$RED_SCOPE" != "user,project" ]]; then
-        [ -n "${VERBOSE:-}" ] && printf 'PASS: RED-then-GREEN — pre-fix source fails the (g) scope assertion as expected\n'
-        pass=$((pass + 1))
-    else
-        printf 'FAIL: RED-then-GREEN — pre-fix source unexpectedly satisfies the (g) scope assertion (got %q)\n' "$RED_SCOPE"
-        fail=$((fail + 1))
-    fi
-
-    rm -f "$PRE_FIX_SCRIPT"
+# Pre-fix source hardcodes "project" scope even with AGENT set — the fixed
+# assertion (user,project) must NOT match against the pre-fix log, proving
+# the new assertion is load-bearing (would have caught the bug).
+RED_SCOPE="$(grep -A1 -Fx -- '--setting-sources' "$BASE_TMP/argv_g_red.log" 2>/dev/null | sed -n '2p')"
+if [[ "$RED_SCOPE" != "user,project" ]]; then
+    [ -n "${VERBOSE:-}" ] && printf 'PASS: RED-then-GREEN — pre-fix source fails the (g) scope assertion as expected\n'
+    pass=$((pass + 1))
 else
-    printf 'FAIL: RED-then-GREEN — could not retrieve pre-fix call-dispatch.sh from git HEAD\n'
+    printf 'FAIL: RED-then-GREEN — pre-fix source unexpectedly satisfies the (g) scope assertion (got %q)\n' "$RED_SCOPE"
     fail=$((fail + 1))
 fi
+
+rm -f "$PRE_FIX_SCRIPT"
 
 # ─────────────────────────────────────────────────────────────────────────────
 echo ""

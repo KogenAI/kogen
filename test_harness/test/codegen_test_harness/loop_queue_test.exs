@@ -65,6 +65,54 @@ defmodule CodegenTestHarness.LoopQueueTest do
     end
   end
 
+  describe "blocked_by_unmet_dep/2" do
+    setup %{dir: dir} do
+      ready_dir = Path.join(dir, "ready")
+      shipped_dir = Path.join(dir, "shipped")
+      File.mkdir_p!(ready_dir)
+      File.mkdir_p!(shipped_dir)
+      {:ok, ready_dir: ready_dir, shipped_dir: shipped_dir}
+    end
+
+    test "dep in draft/absent (neither ready nor shipped) -> blocked", %{
+      ready_dir: ready_dir,
+      shipped_dir: shipped_dir
+    } do
+      File.write!(Path.join(ready_dir, "b.md"), "# Pitch: b\n\nBlocks-on: draft-dep\n")
+
+      assert LoopQueue.blocked_by_unmet_dep(ready_dir, shipped_dir) == %{"b" => "draft-dep"}
+    end
+
+    test "dep present in shipped/ -> satisfied, not blocked", %{
+      ready_dir: ready_dir,
+      shipped_dir: shipped_dir
+    } do
+      File.write!(Path.join(shipped_dir, "sdep.md"), "# Pitch: sdep\n")
+      File.write!(Path.join(ready_dir, "b.md"), "# Pitch: b\n\nBlocks-on: sdep\n")
+
+      assert LoopQueue.blocked_by_unmet_dep(ready_dir, shipped_dir) == %{}
+    end
+
+    test "dep present intra-batch in ready/ -> satisfied, not blocked (topo handles ordering)", %{
+      ready_dir: ready_dir,
+      shipped_dir: shipped_dir
+    } do
+      File.write!(Path.join(ready_dir, "a.md"), "# Pitch: a\n")
+      File.write!(Path.join(ready_dir, "b.md"), "# Pitch: b\n\nBlocks-on: a\n")
+
+      assert LoopQueue.blocked_by_unmet_dep(ready_dir, shipped_dir) == %{}
+    end
+
+    test "no deps -> not blocked (absent from map)", %{
+      ready_dir: ready_dir,
+      shipped_dir: shipped_dir
+    } do
+      File.write!(Path.join(ready_dir, "a.md"), "# Pitch: a\n")
+
+      assert LoopQueue.blocked_by_unmet_dep(ready_dir, shipped_dir) == %{}
+    end
+  end
+
   describe "topo_sort/2" do
     test "deps-first ordering with a 3-node chain" do
       assert LoopQueue.topo_sort(["a", "b", "c"], [{"c", "b"}, {"b", "a"}]) == ["a", "b", "c"]

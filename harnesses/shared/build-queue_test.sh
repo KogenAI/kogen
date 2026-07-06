@@ -1146,6 +1146,53 @@ assert_not_contains "T21: terminal does not dump raw JSON body" "live body shoul
 assert_eq "T21: pitch moved to shipped" "1" "$([ -f "$T21_ROOT/codegen/pitches/shipped/live.md" ] && printf '1' || printf '0')"
 rm -rf "$T21_ROOT"
 
+# ── T22: unmet dep (draft/absent) → skip-and-continue, other pitch ships ─────
+T22_ROOT="$TMP_ROOT/t22"
+make_workspace "$T22_ROOT"
+printf 'Blocks-on: some-draft-dep\n' >"$T22_ROOT/codegen/pitches/ready/alpha.md"
+printf 'Pitch: zulu\n' >"$T22_ROOT/codegen/pitches/ready/zulu.md"
+
+T22_CALL_LOG="$T22_ROOT/calls.log"
+T22_EXIT=0
+T22_OUT=$(
+    cd "$T22_ROOT"
+    STUB_CALL_LOG="$T22_CALL_LOG" \
+        OCG_CODEGEN_DIR="$T22_ROOT/fake-codegen-bin" \
+        bash "$HELPER" --harness=claude 2>&1
+) || T22_EXIT=$?
+
+assert_eq "T22: unmet-dep pitch present → queue still exits 0" "0" "$T22_EXIT"
+assert_eq "T22: zulu (no deps) moved to shipped" "1" \
+    "$([ -f "$T22_ROOT/codegen/pitches/shipped/zulu.md" ] && printf '1' || printf '0')"
+assert_eq "T22: alpha (unmet dep) STILL in ready/" "1" \
+    "$([ -f "$T22_ROOT/codegen/pitches/ready/alpha.md" ] && printf '1' || printf '0')"
+assert_contains "T22: SKIPPED (unmet dep) message surfaced" "SKIPPED (unmet dep some-draft-dep)" "$T22_OUT"
+T22_CALLS="$(grep -c '.' "$T22_CALL_LOG" 2>/dev/null || printf '0')"
+assert_eq "T22: exactly one child spawned (zulu only)" "1" "$T22_CALLS"
+assert_not_contains "T22: alpha never spawned" "ready/alpha.md" "$(cat "$T22_CALL_LOG" 2>/dev/null || true)"
+
+# ── T22b: dep satisfied via shipped/ → pitch selected and shipped normally ────
+T22B_ROOT="$TMP_ROOT/t22b"
+make_workspace "$T22B_ROOT"
+printf 'Pitch: shipped-dep\n' >"$T22B_ROOT/codegen/pitches/shipped/shipped-dep.md"
+printf 'Blocks-on: shipped-dep\n' >"$T22B_ROOT/codegen/pitches/ready/beta.md"
+
+T22B_CALL_LOG="$T22B_ROOT/calls.log"
+T22B_EXIT=0
+T22B_OUT=$(
+    cd "$T22B_ROOT"
+    STUB_CALL_LOG="$T22B_CALL_LOG" \
+        OCG_CODEGEN_DIR="$T22B_ROOT/fake-codegen-bin" \
+        bash "$HELPER" --harness=claude 2>&1
+) || T22B_EXIT=$?
+
+assert_eq "T22b: dep-in-shipped → queue exits 0" "0" "$T22B_EXIT"
+assert_eq "T22b: beta (dep satisfied via shipped) shipped" "1" \
+    "$([ -f "$T22B_ROOT/codegen/pitches/shipped/beta.md" ] && printf '1' || printf '0')"
+assert_not_contains "T22b: no SKIPPED (unmet dep) message" "SKIPPED (unmet dep" "$T22B_OUT"
+T22B_CALLS="$(grep -c '.' "$T22B_CALL_LOG" 2>/dev/null || printf '0')"
+assert_eq "T22b: exactly one child spawned (beta)" "1" "$T22B_CALLS"
+
 # ── Summary ───────────────────────────────────────────────────────────────────
 printf '\nResults: %d passed, %d failed\n' "$pass" "$fail"
 

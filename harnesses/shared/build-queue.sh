@@ -313,6 +313,10 @@ last_slug=""
 retry_count=0
 # Slugs timed out in this run — left in ready/ but skipped for remaining iterations.
 TIMED_OUT_SLUGS=""
+# Slugs blocked by an unmet Blocks-on: dep this run (dep not in ready/ nor
+# shipped/) — left in ready/ but skipped for remaining iterations. Paired
+# newline-delimited list of "SLUG DEP" (first unmet dep), same shape as edges.
+SKIPPED_DEP_SLUGS=""
 
 init_display_counters_from_manifest() {
     local manifest="$PWD/codegen/gate-pending/build-queue.json"
@@ -342,16 +346,81 @@ while true; do
         if [ -n "$TIMED_OUT_SLUGS" ] && printf '%s\n' "$TIMED_OUT_SLUGS" | grep -qxF "$slug"; then
             continue
         fi
+        # Skip slugs already classified as blocked-by-unmet-dep this run.
+        if [ -n "$SKIPPED_DEP_SLUGS" ] && printf '%s\n' "$SKIPPED_DEP_SLUGS" | cut -d' ' -f1 | grep -qxF "$slug"; then
+            continue
+        fi
         slugs="${slugs:+$slugs
 }$slug"
     done
 
+    # Dep-satisfaction filtering pass: a dep is satisfied iff it is in the
+    # current ready-candidate set (intra-batch, topo_sort will order it) OR
+    # already shipped. A dep in draft/ or absent entirely leaves its
+    # dependent slug BLOCKED — skip-and-continue, never selected, left
+    # physically in ready/. This runs BEFORE TOTAL first-scan + topo_sort so
+    # blocked pitches never enter either.
+    if [ -n "$slugs" ]; then
+        filtered_slugs=""
+        while IFS= read -r slug; do
+            [ -z "$slug" ] && continue
+            slug_blocked=0
+            slug_dep=""
+            pitchedges="$(parse_edges "$slug" "$READY_DIR/$slug.md" 2>/dev/null || true)"
+            if [ -n "$pitchedges" ]; then
+                while IFS= read -r edge; do
+                    [ -z "$edge" ] && continue
+                    dep="${edge#* }"
+                    if printf '%s\n' "$slugs" | grep -qxF "$dep"; then
+                        continue # satisfied: intra-batch ready dep
+                    fi
+                    if [ -f "$SHIPPED_DIR/$dep.md" ]; then
+                        continue # satisfied: already shipped
+                    fi
+                    slug_blocked=1
+                    slug_dep="$dep"
+                    break
+                done <<PITCHEDGES
+$pitchedges
+PITCHEDGES
+            fi
+            if [ "$slug_blocked" = "1" ]; then
+                printf '%s ... SKIPPED (unmet dep %s) — left in ready/, advancing\n' \
+                    "$slug" "$slug_dep" >&2
+                SKIPPED_DEP_SLUGS="${SKIPPED_DEP_SLUGS:+$SKIPPED_DEP_SLUGS
+}$slug $slug_dep"
+            else
+                filtered_slugs="${filtered_slugs:+$filtered_slugs
+}$slug"
+            fi
+        done <<CANDIDATES
+$slugs
+CANDIDATES
+        slugs="$filtered_slugs"
+    fi
+
     if [ -z "$slugs" ]; then
         if [ "$TOTAL" = "0" ]; then
+            if [ -n "$SKIPPED_DEP_SLUGS" ]; then
+                printf 'build-queue: no buildable ready pitches in %s\n' "$READY_DIR"
+                printf 'build-queue: SKIPPED (unmet dep) bucket:\n'
+                printf '%s\n' "$SKIPPED_DEP_SLUGS" | while IFS= read -r line; do
+                    [ -z "$line" ] && continue
+                    printf '  %s\n' "$line"
+                done
+                exit 0
+            fi
             printf 'build-queue: no ready pitches in %s\n' "$READY_DIR"
             exit 0
         fi
         printf 'build-queue: %d shipped\n' "$SHIPPED_COUNT"
+        if [ -n "$SKIPPED_DEP_SLUGS" ]; then
+            printf 'build-queue: SKIPPED (unmet dep) bucket:\n'
+            printf '%s\n' "$SKIPPED_DEP_SLUGS" | while IFS= read -r line; do
+                [ -z "$line" ] && continue
+                printf '  %s\n' "$line"
+            done
+        fi
         exit 0
     fi
 

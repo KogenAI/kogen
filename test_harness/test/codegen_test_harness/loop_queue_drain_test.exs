@@ -36,7 +36,8 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
       pid_alive_fn: fn _pid -> false end,
       git_head_fn: fn _cwd -> nil end,
       gate_verdict_fn: fn _cwd -> "" end,
-      discover_session_log_fn: fn _cwd, _slug, _spawn_stamp -> nil end
+      discover_session_log_fn: fn _cwd, _slug, _spawn_stamp -> nil end,
+      blocked_fn: fn -> %{} end
     ]
 
     Keyword.merge(defaults, extra)
@@ -640,6 +641,34 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
     assert {:ok, 1} = LoopQueueDrain.drain(base_opts(ctx, spawn_fn: spawn_fn))
     assert File.exists?(Path.join(ctx.ready_dir, "bad.md"))
     assert File.exists?(Path.join(ctx.shipped_dir, "good.md"))
+  end
+
+  # ── 8c. Blocked-by-unmet-dep -> skip-and-continue ───────────────────────
+
+  test "8c: blocked slug never spawned, stays in ready/, other ships, SKIPPED line emitted",
+       ctx do
+    write_pitch(ctx.ready_dir, "blocked", "# Pitch: blocked\n\nBlocks-on: draft-dep\n")
+    write_pitch(ctx.ready_dir, "good")
+
+    calls = start_agent([])
+
+    spawn_fn = fn slug, _h, _s, _cwd, _jsonl ->
+      Agent.update(calls, &(&1 ++ [slug]))
+      {:exit_code, 0}
+    end
+
+    blocked_fn = fn -> %{"blocked" => "draft-dep"} end
+
+    output =
+      capture_io(:stderr, fn ->
+        assert {:ok, 1} =
+                 LoopQueueDrain.drain(base_opts(ctx, spawn_fn: spawn_fn, blocked_fn: blocked_fn))
+      end)
+
+    assert File.exists?(Path.join(ctx.ready_dir, "blocked.md"))
+    assert File.exists?(Path.join(ctx.shipped_dir, "good.md"))
+    refute "blocked" in Agent.get(calls, & &1)
+    assert output =~ "SKIPPED (unmet dep draft-dep)"
   end
 
   # ── 9. Dirty-tree stash label + fail-open ───────────────────────────────

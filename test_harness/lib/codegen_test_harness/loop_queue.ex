@@ -18,6 +18,7 @@ defmodule CodegenTestHarness.LoopQueue do
 
   @type slug :: String.t()
   @type edge :: {slug(), slug()}
+  @type blocked_map :: %{slug() => slug()}
 
   @retryable_regex ~r/Stream idle timeout|Unable to connect|FailedToOpenSocket|ConnectionRefused|API Error: 529|API Error: 500|API Error: 502|API Error: 503|API Error: 504|overloaded_error|Internal server error|upstream connect error|connection reset|socket hang up|ETIMEDOUT|context deadline exceeded|File has been modified since read|has been unexpectedly modified|socket connection was closed|Connection closed mid-response/
 
@@ -118,6 +119,53 @@ defmodule CodegenTestHarness.LoopQueue do
     |> List.first("")
     |> String.split("(")
     |> List.first("")
+  end
+
+  @doc """
+  Scans the `.md` slugs under `ready_dir` and returns a map of
+  `slug => dep` for every ready pitch whose FIRST `Blocks-on:`/`##
+  Dependencies` dependency is unsatisfied.
+
+  A dep is satisfied iff it is present in `ready_dir` (intra-batch — `topo_sort`
+  will order it before its dependent) OR present in `shipped_dir` (already
+  built). A dep in draft/ or absent entirely is UNSATISFIED — its dependent
+  slug is BLOCKED and appears in the returned map.
+
+  Pitches with no unmet dep are absent from the map (not included with a
+  `nil`/empty value — absence IS the "not blocked" signal).
+  """
+  @spec blocked_by_unmet_dep(String.t(), String.t()) :: blocked_map()
+  def blocked_by_unmet_dep(ready_dir, shipped_dir) do
+    ready_slugs =
+      ready_dir
+      |> Path.join("*.md")
+      |> Path.wildcard()
+      |> Enum.map(&Path.basename(&1, ".md"))
+
+    ready_set = MapSet.new(ready_slugs)
+
+    shipped_set =
+      shipped_dir
+      |> Path.join("*.md")
+      |> Path.wildcard()
+      |> Enum.map(&Path.basename(&1, ".md"))
+      |> MapSet.new()
+
+    ready_slugs
+    |> Enum.reduce(%{}, fn slug, acc ->
+      edges = parse_edges(slug, Path.join(ready_dir, "#{slug}.md"))
+
+      first_unmet =
+        Enum.find_value(edges, fn {_slug, dep} ->
+          if MapSet.member?(ready_set, dep) or MapSet.member?(shipped_set, dep) do
+            nil
+          else
+            dep
+          end
+        end)
+
+      if first_unmet, do: Map.put(acc, slug, first_unmet), else: acc
+    end)
   end
 
   @doc """
