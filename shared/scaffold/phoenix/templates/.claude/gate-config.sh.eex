@@ -3,3 +3,4 @@
 GATE_STACK=phoenix
 GATE_DEV_PORT=<%= dev_port %>
 GATE_APP_SLUG=<%= slug %>
+GATE_COMMAND="make ci"

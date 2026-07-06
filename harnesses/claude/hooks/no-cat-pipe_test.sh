@@ -26,8 +26,46 @@ run_test() {
     local expected="$2"
     local input="$3"
 
+    # Ambient CLAUDE_ROLE/AGENT_TYPE/PI_ROLE (e.g. the developer session
+    # running this test suite carries CLAUDE_ROLE=build) must not leak into
+    # the fixture — resolve_role()'s CLAUDE_ROLE > PI_ROLE precedence would
+    # silently override a test's intended role.
     local stdout
-    stdout=$(printf '%s' "$input" | bash "$GUARD" 2>/dev/null || true)
+    stdout=$(printf '%s' "$input" | env -u CLAUDE_ROLE -u AGENT_TYPE -u PI_ROLE bash "$GUARD" 2>/dev/null || true)
+
+    local outcome
+    if printf '%s' "$stdout" | grep -q '"permissionDecision"[[:space:]]*:[[:space:]]*"deny"'; then
+        outcome="2"
+    else
+        outcome="0"
+    fi
+
+    if [ "$outcome" = "$expected" ]; then
+        [ -n "${VERBOSE:-}" ] && printf 'PASS: %s\n' "$desc"
+        pass=$((pass + 1))
+    else
+        printf 'FAIL: %s — expected %s (deny=2/allow=0), got %s\n  stdout: %s\n' \
+            "$desc" "$expected" "$outcome" "$stdout"
+        fail=$((fail + 1))
+    fi
+}
+
+# Like run_test but accepts extra env vars as "KEY=value" strings (4th+ args).
+run_test_env() {
+    local desc="$1"
+    local expected="$2"
+    local input="$3"
+    shift 3
+    local env_prefix=""
+    for kv in "$@"; do
+        env_prefix="$kv $env_prefix"
+    done
+
+    # Same ambient-leak isolation as run_test — strip CLAUDE_ROLE/AGENT_TYPE/
+    # PI_ROLE from the outer shell before applying the test's explicit
+    # env_prefix overrides.
+    local stdout
+    stdout=$(printf '%s' "$input" | env -u CLAUDE_ROLE -u AGENT_TYPE -u PI_ROLE $env_prefix bash "$GUARD" 2>/dev/null || true)
 
     local outcome
     if printf '%s' "$stdout" | grep -q '"permissionDecision"[[:space:]]*:[[:space:]]*"deny"'; then
@@ -116,26 +154,48 @@ run_test "real cat pipe still blocked (unchanged)" "2" \
     '{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"cat foo.txt | head -50"},"agent_type":"developer-phoenix-backend","agent_id":"a"}'
 
 # ── ops bypass_roles regression ─────────────────────────────────────────────
-# RED-then-GREEN proof: confirm the PRE-fix committed body denies ops
-# unconditionally (no role check at all), then confirm the fixed
-# (post-`make install` regenerated) working-tree body allows ops only.
-# Written INTO SCRIPT_DIR (not /tmp) so relative `dirname "$0"` sourcing of
-# lib/hooks-lib.sh still resolves.
+# RED-then-GREEN proof: confirm a PRE-fix body (no ops-role check at all —
+# the historical bug) denies ops unconditionally, then confirm the fixed
+# working-tree body (Test 13 below) allows ops only.
+#
+# NOTE: this used to pull the "pre-fix" body via `git show HEAD:<file>`, but
+# that self-invalidates the instant the fix lands at HEAD (`git show HEAD`
+# then fetches the ALREADY-FIXED script and the RED branch can never fire —
+# see context/pitfalls.md "RED-then-GREEN proof via floating git show HEAD
+# self-invalidates once fix lands"). Fixed by synthesizing the exact
+# historical buggy body as a literal fixture instead of depending on git
+# history. Written INTO SCRIPT_DIR (not /tmp) so relative `dirname "$0"`
+# sourcing of lib/hooks-lib.sh still resolves.
 PRE_FIX_NO_CAT_PIPE="$SCRIPT_DIR/.no-cat-pipe.pre-fix.sh"
 trap 'rm -f "$PRE_FIX_NO_CAT_PIPE"' EXIT
-git -C "$SCRIPT_DIR" show HEAD:harnesses/claude/hooks/no-cat-pipe.sh >"$PRE_FIX_NO_CAT_PIPE" 2>/dev/null || true
+cat >"$PRE_FIX_NO_CAT_PIPE" <<'PREFIXEOF'
+#!/bin/bash
+# Synthetic pre-fix fixture: reproduces the historical bug where no-cat-pipe.sh
+# had no ops-role check at all, so the cat-pipe pattern was denied for everyone
+# including ops.
+set -u
+source "$(dirname "$0")/lib/hooks-lib.sh"
+parse_input
+debug_log no-cat-pipe "tool=$TOOL_NAME agent=$AGENT_TYPE cmd=$COMMAND"
+if [ "$TOOL_NAME" != "Bash" ]; then
+    exit 0
+fi
+if printf '%s' "$COMMAND" | grep -qE 'cat[[:space:]]+[^|]*\|[[:space:]]*(head|tail|grep|less|more)\b'; then
+    deny "Use Read tool with offset/limit instead of \`cat | head/tail\`. Use Grep tool instead of \`cat | grep\`. Truncation hides relevant lines."
+    exit 0
+fi
+exit 0
+PREFIXEOF
 
-if [ -s "$PRE_FIX_NO_CAT_PIPE" ]; then
-    FIXTURE_RED_OPS_CAT='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"ssh box \"cat /etc/passwd | grep studio\""},"agent_type":"","agent_id":"a"}'
-    pre_fix_stdout=$(printf '%s' "$FIXTURE_RED_OPS_CAT" |
-        env CLAUDE_ROLE=ops bash "$PRE_FIX_NO_CAT_PIPE" 2>/dev/null || true)
-    if printf '%s' "$pre_fix_stdout" | grep -q '"permissionDecision"[[:space:]]*:[[:space:]]*"deny"'; then
-        [ -n "${VERBOSE:-}" ] && printf 'PASS (RED): pre-fix body denies ops cat-pipe (no role check confirmed)\n'
-        pass=$((pass + 1))
-    else
-        printf 'FAIL (RED): pre-fix body did NOT deny ops cat-pipe — RED proof invalid\n'
-        fail=$((fail + 1))
-    fi
+FIXTURE_RED_OPS_CAT='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"ssh box \"cat /etc/passwd | grep studio\""},"agent_type":"","agent_id":"a"}'
+pre_fix_stdout=$(printf '%s' "$FIXTURE_RED_OPS_CAT" |
+    env CLAUDE_ROLE=ops bash "$PRE_FIX_NO_CAT_PIPE" 2>/dev/null || true)
+if printf '%s' "$pre_fix_stdout" | grep -q '"permissionDecision"[[:space:]]*:[[:space:]]*"deny"'; then
+    [ -n "${VERBOSE:-}" ] && printf 'PASS (RED): pre-fix body denies ops cat-pipe (no role check confirmed)\n'
+    pass=$((pass + 1))
+else
+    printf 'FAIL (RED): pre-fix body did NOT deny ops cat-pipe — RED proof invalid\n'
+    fail=$((fail + 1))
 fi
 
 # Test 13: CLAUDE_ROLE=ops + cat-pipe-in-ssh-arg — MUST ALLOW (bypass_roles)

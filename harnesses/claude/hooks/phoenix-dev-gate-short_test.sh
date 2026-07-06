@@ -151,26 +151,12 @@ assert_contains "short-gate failure emits block" '"decision": "block"' "$out"
 assert_file_matches_jq "short-gate failure appends FAILED" 'select(.ev=="gate" and .verdict=="failed")' "$LOG"
 rm -rf "$T4"
 
-# ── Test 6: planner gate wins over decision tree ────────────────────────────
+# ── Test 6: planner gate wins over per-app GATE_COMMAND ─────────────────────
 T6=$(make_project)
-# Add LLM-changing path that would normally produce `make ci && make llm`
-# but planner says `true`. Project config defines the tree.
+# Per-app config says `false`, but planner says `true` — planner wins.
 cat >"$T6/.claude/gate-config.sh" <<'EOF'
-GATE_SHORT_DEFAULT="false"
-GATE_SHORT_FINAL="false"
-GATE_LLM="false"
-GATE_LLM_AND_PHOENIX="false"
-GATE_PHOENIX="false"
-GATE_PHOENIX_VALIDATE_THEN="false"
-GATE_PHOENIX_REBUILD_THEN="false"
-LLM_PATHS_REGEX="CLAUDE\\.md"
-PHOENIX_PATHS_REGEX="phoenix"
-SEED_BUNDLE_PATH=""
-SEED_SQL_PATH=""
-SEED_VALIDATED_PATH=""
-GATE_FINAL_STEP_DETECTOR="true"
+GATE_COMMAND="false"
 EOF
-echo "x" >"$T6/CLAUDE.md"
 LOG="$T6/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_planner_cycle.jsonl"
 write_planner_log "$LOG" <<'MD'
 # Step
@@ -184,6 +170,22 @@ out=$(printf '%s' "$(input_for "$T6" developer-phoenix-backend false sess1 "$T6/
 assert_not_contains "planner gate wins (no block from $(false))" '"decision":"block"' "$out"
 assert_file_matches_jq "planner gate logs $(true)" 'select(.ev=="gate" and .gate=="true")' "$LOG"
 rm -rf "$T6"
+
+# ── Test 6b: fail-loud — no planner gate line AND no gate-config.sh ─────────
+T6B=$(make_project)
+LOG="$T6B/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_unresolved_cycle.jsonl"
+write_planner_log "$LOG" <<'MD'
+# Step
+
+## Plan
+
+no gate line here
+MD
+make_transcript "$T6B/transcript.jsonl" "$LOG"
+out=$(printf '%s' "$(input_for "$T6B" developer-phoenix-backend false sess1 "$T6B/transcript.jsonl")" | bash "$HOOK" 2>/dev/null || true)
+assert_contains "unresolved gate emits block" '"decision": "block"' "$out"
+assert_contains "unresolved gate block mentions Gate unresolved" "Gate unresolved" "$out"
+rm -rf "$T6B"
 
 # ── Test 7: no step log → graceful no-op (no flag file) ─────────────────────
 # No log file and no transcript → hook exits 0 immediately (no session log in transcript)

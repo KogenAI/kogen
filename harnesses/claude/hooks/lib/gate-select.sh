@@ -12,39 +12,21 @@
 #   timeout=<seconds>   (0 for short gates; the foreground poll budget for long gates)
 #
 # Inputs (in priority order):
-#   1. The active step log's `## Plan` section first `**Gate**:` (or `Gate:`) line.
-#      If present, planner wins — gate = that string, mode chosen from the
-#      command itself (see `gate_mode_for`).
-#   2. Otherwise, project-local config at `<project_dir>/.claude/gate-config.sh`,
-#      sourced for its variables. The config drives a project-specific tree
-#      based on `git diff --name-only origin/main..HEAD`.
-#   3. Otherwise (no config), stack-conditional fallback: Phoenix (mix.exs present)
-#      → `gate=make ci mode=short timeout=900`; other → `gate=make test mode=short timeout=0`.
+#   1. The active step log's `## Plan` section first `**Gate**:` (or `Gate:`)
+#      line, or its ```gate-json block. If present, planner wins — gate = that
+#      string, mode/timeout from the JSON sideband or `gate_mode_for`/`gate_timeout_for`.
+#   2. Otherwise, per-app config `<project_dir>/.claude/gate-config.sh`, sourced
+#      for a single required variable GATE_COMMAND. If GATE_COMMAND is non-empty,
+#      gate = GATE_COMMAND (mode/timeout via gate_mode_for/gate_timeout_for).
+#   3. Otherwise (no planner gate AND no GATE_COMMAND): FAIL LOUD. Print
+#      `__GATE_UNRESOLVED__:<reason>` to stdout and return 0. There is NO
+#      stack-guessing fallback and NO default gate — an unresolved gate is a
+#      real misconfiguration the caller must surface (block / raise), never
+#      silently skip.
 #
-# Project config contract (`<project_dir>/.claude/gate-config.sh`):
-#
-#   GATE_SHORT_DEFAULT       — gate when none of the path regexes match and
-#                              this is NOT the final step (e.g. "make ci")
-#   GATE_SHORT_FINAL         — gate when none match and step is final
-#                              (e.g. "make ci")
-#   GATE_LLM                 — gate when LLM_PATHS_REGEX matches
-#                              (e.g. "make ci && make llm")
-#   GATE_LLM_AND_PHOENIX     — gate when both LLM and PHOENIX match
-#                              (e.g. "make ci && make llm && make llm-phoenix")
-#   GATE_PHOENIX             — gate when only PHOENIX matches and seed is healthy
-#                              (e.g. "make llm-phoenix")
-#   GATE_PHOENIX_VALIDATE_THEN — gate when PHOENIX matches and validated marker
-#                              is missing (e.g. "make llm-phoenix-validate && make llm-phoenix")
-#   GATE_PHOENIX_REBUILD_THEN  — gate when PHOENIX matches and seed.bundle/seed.sql
-#                              are missing (e.g. "CODEGEN_VE_GATE=rebuild-seed-then make llm-phoenix")
-#   LLM_PATHS_REGEX          — extended regex matched against changed paths
-#   PHOENIX_PATHS_REGEX      — extended regex matched against changed paths
-#   SEED_BUNDLE_PATH         — absolute path to seed.bundle (existence check)
-#   SEED_SQL_PATH            — absolute path to seed.sql (existence check)
-#   SEED_VALIDATED_PATH      — absolute path to validated marker
-#   GATE_FINAL_STEP_DETECTOR — bash command (string) that exits 0 if this step
-#                              is the final step in the multi-step session.
-#                              Defaults to "true" (always final → use SHORT_FINAL).
+# Per-app config contract (`<project_dir>/.claude/gate-config.sh`):
+#   GATE_COMMAND — the exact gate command for this app (e.g. "make ci" for a
+#                  Phoenix/static downstream app, "make test" for codegen itself).
 #
 # Mode selection from gate string (`gate_mode_for`):
 #   contains "make llm" or "rebuild-seed-then" → long
@@ -332,92 +314,24 @@ gate_select_decide() {
         fi
     fi
 
-    # 2. Project config drives the tree.
+    # 2. Per-app config: a single required GATE_COMMAND variable.
     local config="$project_dir/.claude/gate-config.sh"
     if [ ! -f "$config" ]; then
-        # 3. No config — stack-conditional fallback.
-        if [ -f "$project_dir/mix.exs" ]; then
-            printf 'gate=make ci\nmode=short\ntimeout=900\n'
-        else
-            printf 'gate=make test\nmode=short\ntimeout=0\n'
-        fi
+        printf '__GATE_UNRESOLVED__:no planner gate and no %s\n' "$config"
         return 0
     fi
 
-    # Source config in a subshell-safe manner.
-    # shellcheck disable=SC1090
-    GATE_SHORT_DEFAULT=""
-    GATE_SHORT_FINAL=""
-    GATE_LLM=""
-    GATE_LLM_AND_PHOENIX=""
-    GATE_PHOENIX=""
-    GATE_PHOENIX_VALIDATE_THEN=""
-    GATE_PHOENIX_REBUILD_THEN=""
-    LLM_PATHS_REGEX=""
-    PHOENIX_PATHS_REGEX=""
-    SEED_BUNDLE_PATH=""
-    SEED_SQL_PATH=""
-    SEED_VALIDATED_PATH=""
-    GATE_FINAL_STEP_DETECTOR="true"
+    GATE_COMMAND=""
     # shellcheck disable=SC1090
     source "$config"
 
-    # Compute changed paths: committed-vs-origin/main + working-tree-vs-HEAD +
-    # untracked files. Untracked files matter because new modules introduced in
-    # the current step won't appear in any `git diff` output.
-    local diff_out=""
-    if (cd "$project_dir" && git rev-parse --is-inside-work-tree >/dev/null 2>&1); then
-        local committed wt untracked
-        committed=$(cd "$project_dir" && git diff --name-only origin/main...HEAD 2>/dev/null)
-        wt=$(cd "$project_dir" && git diff --name-only HEAD 2>/dev/null)
-        untracked=$(cd "$project_dir" && git ls-files --others --exclude-standard 2>/dev/null)
-        diff_out=$(printf '%s\n%s\n%s\n' "$committed" "$wt" "$untracked" | grep -v '^$' | sort -u)
-    fi
-
-    local llm_match=0
-    local phx_match=0
-    if [ -n "$LLM_PATHS_REGEX" ] && [ -n "$diff_out" ] &&
-        printf '%s' "$diff_out" | grep -qE "$LLM_PATHS_REGEX"; then
-        llm_match=1
-    fi
-    if [ -n "$PHOENIX_PATHS_REGEX" ] && [ -n "$diff_out" ] &&
-        printf '%s' "$diff_out" | grep -qE "$PHOENIX_PATHS_REGEX"; then
-        phx_match=1
-    fi
-
-    local gate=""
-    if [ "$llm_match" -eq 1 ] && [ "$phx_match" -eq 1 ]; then
-        gate="$GATE_LLM_AND_PHOENIX"
-    elif [ "$llm_match" -eq 1 ]; then
-        gate="$GATE_LLM"
-    elif [ "$phx_match" -eq 1 ]; then
-        # Seed health gating.
-        if [ -n "$SEED_BUNDLE_PATH" ] && [ ! -f "$SEED_BUNDLE_PATH" ]; then
-            gate="$GATE_PHOENIX_REBUILD_THEN"
-        elif [ -n "$SEED_SQL_PATH" ] && [ ! -f "$SEED_SQL_PATH" ]; then
-            gate="$GATE_PHOENIX_REBUILD_THEN"
-        elif [ -n "$SEED_VALIDATED_PATH" ] && [ ! -f "$SEED_VALIDATED_PATH" ]; then
-            gate="$GATE_PHOENIX_VALIDATE_THEN"
-        else
-            gate="$GATE_PHOENIX"
-        fi
-    else
-        # No matches — final-step detection.
-        # Wrap eval in a subshell so that `exit 0`/`exit 1` inside the
-        # detector script terminates the subshell, not the parent function.
-        if (eval "$GATE_FINAL_STEP_DETECTOR") >/dev/null 2>&1; then
-            gate="$GATE_SHORT_FINAL"
-        else
-            gate="$GATE_SHORT_DEFAULT"
-        fi
-    fi
-
-    if [ -z "$gate" ]; then
-        gate="make test"
+    if [ -z "$GATE_COMMAND" ]; then
+        printf '__GATE_UNRESOLVED__:%s present but GATE_COMMAND is empty\n' "$config"
+        return 0
     fi
 
     local mode timeout
-    mode=$(gate_mode_for "$gate")
-    timeout=$(gate_timeout_for "$gate")
-    printf 'gate=%s\nmode=%s\ntimeout=%s\n' "$gate" "$mode" "$timeout"
+    mode=$(gate_mode_for "$GATE_COMMAND")
+    timeout=$(gate_timeout_for "$GATE_COMMAND")
+    printf 'gate=%s\nmode=%s\ntimeout=%s\n' "$GATE_COMMAND" "$mode" "$timeout"
 }

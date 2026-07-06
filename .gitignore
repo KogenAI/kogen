@@ -36,7 +36,8 @@ bench_run_*.log
 *.bak
 unknown.flag
 
-/.claude/
+/.claude/*
+!/.claude/gate-config.sh
 erl_crash.dump
 
 # Codegen machine-local symlinks (do not commit)

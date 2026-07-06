@@ -36,8 +36,12 @@ run_test() {
     # to stdout for deny outcomes (exit 0) instead of stderr + exit 2. We
     # translate the legacy expected values: "2" means "expect deny",
     # "0" means "expect allow (no deny envelope)".
+    # Ambient CLAUDE_ROLE/AGENT_TYPE/PI_ROLE (e.g. the developer session
+    # running this test suite carries CLAUDE_ROLE=build) must not leak into
+    # the fixture — resolve_role()'s CLAUDE_ROLE > PI_ROLE precedence would
+    # silently override a test's intended role.
     local stdout
-    stdout=$(printf '%s' "$input" | bash "$GUARD" 2>/dev/null || true)
+    stdout=$(printf '%s' "$input" | env -u CLAUDE_ROLE -u AGENT_TYPE -u PI_ROLE bash "$GUARD" 2>/dev/null || true)
 
     local outcome
     if printf '%s' "$stdout" | grep -q '"permissionDecision"[[:space:]]*:[[:space:]]*"deny"'; then
@@ -68,8 +72,11 @@ run_test_env() {
         env_prefix="$kv $env_prefix"
     done
 
+    # Same ambient-leak isolation as run_test — strip CLAUDE_ROLE/AGENT_TYPE/
+    # PI_ROLE from the outer shell before applying the test's explicit
+    # env_prefix overrides.
     local stdout
-    stdout=$(printf '%s' "$input" | env $env_prefix bash "$GUARD" 2>/dev/null || true)
+    stdout=$(printf '%s' "$input" | env -u CLAUDE_ROLE -u AGENT_TYPE -u PI_ROLE $env_prefix bash "$GUARD" 2>/dev/null || true)
 
     local outcome
     if printf '%s' "$stdout" | grep -q '"permissionDecision"[[:space:]]*:[[:space:]]*"deny"'; then
@@ -222,25 +229,51 @@ run_test "git restore (no --staged) allowed for non-committer" "0" "$FIXTURE_RES
 # destructive-git verbs only; non-git Bash and read-only git pass straight
 # through regardless of CODEGEN_OPS_GIT_UNLOCK.
 
-# RED-then-GREEN proof: confirm the PRE-fix committed body denies ops
-# non-git Bash (proves the bug existed), then confirm the fixed working-tree
-# body allows it. Written INTO SCRIPT_DIR (not /tmp) so the relative
-# `dirname "$0"` sourcing of lib/hooks-lib.sh and _role.sh still resolves.
+# RED-then-GREEN proof: confirm a PRE-fix body (returns a deny verdict for
+# ALL Bash under ops before even checking whether the command is git) denies
+# ops non-git Bash (proves the historical bug), then confirm the fixed
+# working-tree body allows it (Test 25 below).
+#
+# NOTE: this used to pull the "pre-fix" body via `git show HEAD:<file>`, but
+# that self-invalidates the instant the fix lands at HEAD (`git show HEAD`
+# then fetches the ALREADY-FIXED script and the RED branch can never fire —
+# see context/pitfalls.md "RED-then-GREEN proof via floating git show HEAD
+# self-invalidates once fix lands"). Fixed by synthesizing the exact
+# historical buggy body as a literal fixture instead of depending on git
+# history. Written INTO SCRIPT_DIR (not /tmp) so the relative `dirname "$0"`
+# sourcing of lib/hooks-lib.sh and _role.sh still resolves.
 PRE_FIX_GUARD="$SCRIPT_DIR/.pre-commit-guard.pre-fix.sh"
 trap 'rm -rf "$FAKE_GIT_DIR"; rm -f "$PRE_FIX_GUARD"' EXIT
-git -C "$SCRIPT_DIR" show HEAD:harnesses/claude/hooks/pre-commit-guard.sh >"$PRE_FIX_GUARD" 2>/dev/null || true
+cat >"$PRE_FIX_GUARD" <<'PREFIXEOF'
+#!/bin/bash
+# Synthetic pre-fix fixture: reproduces the historical bug where the ops
+# branch returned a deny verdict for ALL Bash (never checked whether the
+# command was even a git invocation before denying).
+set -u
+source "$(dirname "$0")/lib/hooks-lib.sh"
+source "$(dirname "$0")/_role.sh"
+parse_input
+debug_log pre-commit-guard "tool=$TOOL_NAME agent=$AGENT_TYPE cmd=$COMMAND"
+if [ "$TOOL_NAME" != "Bash" ]; then
+    exit 0
+fi
+_role=$(resolve_role)
+if [ "$_role" = "ops" ]; then
+    deny "BLOCKED by pre-commit-guard: ops role denied unconditionally (historical bug — no git-ness check)."
+    exit 0
+fi
+exit 0
+PREFIXEOF
 
-if [ -s "$PRE_FIX_GUARD" ]; then
-    FIXTURE_RED_PROOF='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"ssh box \"hostname\""},"agent_type":"","agent_id":"a"}'
-    pre_fix_stdout=$(printf '%s' "$FIXTURE_RED_PROOF" |
-        env CLAUDE_ROLE=ops bash "$PRE_FIX_GUARD" 2>/dev/null || true)
-    if printf '%s' "$pre_fix_stdout" | grep -q '"permissionDecision"[[:space:]]*:[[:space:]]*"deny"'; then
-        [ -n "${VERBOSE:-}" ] && printf 'PASS (RED): pre-fix body denies ops non-git Bash (bug confirmed)\n'
-        pass=$((pass + 1))
-    else
-        printf 'FAIL (RED): pre-fix body did NOT deny ops non-git Bash — RED proof invalid, bug may already be fixed at HEAD\n'
-        fail=$((fail + 1))
-    fi
+FIXTURE_RED_PROOF='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"ssh box \"hostname\""},"agent_type":"","agent_id":"a"}'
+pre_fix_stdout=$(printf '%s' "$FIXTURE_RED_PROOF" |
+    env CLAUDE_ROLE=ops bash "$PRE_FIX_GUARD" 2>/dev/null || true)
+if printf '%s' "$pre_fix_stdout" | grep -q '"permissionDecision"[[:space:]]*:[[:space:]]*"deny"'; then
+    [ -n "${VERBOSE:-}" ] && printf 'PASS (RED): pre-fix body denies ops non-git Bash (bug confirmed)\n'
+    pass=$((pass + 1))
+else
+    printf 'FAIL (RED): pre-fix body did NOT deny ops non-git Bash — RED proof invalid\n'
+    fail=$((fail + 1))
 fi
 
 # Test 25: ops role + non-git Bash (ssh) — MUST ALLOW (no unlock needed)

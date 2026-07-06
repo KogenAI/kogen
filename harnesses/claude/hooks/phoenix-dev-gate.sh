@@ -142,12 +142,32 @@ fi
 
 # ── Decide the gate ─────────────────────────────────────────────────────────
 decision=$(gate_select_decide "$project_dir" "$log_file")
+
+# Fail loud on an unresolved or malformed gate — never silently skip. A gate
+# the selector could not resolve (no planner **Gate**: line AND no per-app
+# GATE_COMMAND) or a malformed planner gate-json block is a real
+# misconfiguration; blocking the SubagentStop surfaces it instead of shipping
+# an ungated cycle.
+case "$decision" in
+__GATE_UNRESOLVED__:*)
+    debug_log dev-gate "block: gate unresolved — ${decision#__GATE_UNRESOLVED__:}"
+    block "Gate unresolved — ${decision#__GATE_UNRESOLVED__:}. Add a planner \`**Gate**:\` line to the step log, or a \`.claude/gate-config.sh\` with GATE_COMMAND set for this project."
+    exit 0
+    ;;
+__GATE_PARSE_ERROR__:*)
+    debug_log dev-gate "block: gate parse error — ${decision#__GATE_PARSE_ERROR__:}"
+    block "Gate parse error — ${decision#__GATE_PARSE_ERROR__:}. Fix the planner's gate-json block in the step log."
+    exit 0
+    ;;
+esac
+
 gate=$(printf '%s' "$decision" | sed -n 's/^gate=//p' | head -n 1)
 mode=$(printf '%s' "$decision" | sed -n 's/^mode=//p' | head -n 1)
 gate_timeout=$(printf '%s' "$decision" | sed -n 's/^timeout=//p' | head -n 1)
 
 if [ -z "$gate" ]; then
-    debug_log dev-gate "no gate decided; skipping"
+    debug_log dev-gate "block: resolved decision carries no gate= line (bug)"
+    block "Gate decision resolved but produced no gate command — this is a gate-select.sh bug, not a recoverable state."
     exit 0
 fi
 

@@ -10,13 +10,33 @@ defmodule CodegenTestHarness.LoopGateTest do
     {:ok, dir: dir}
   end
 
+  # Writes a per-app `.claude/gate-config.sh` with the given GATE_COMMAND so
+  # `decide_gate`/`run_gate` resolve explicitly instead of raising unresolved.
+  defp write_gate_config!(dir, gate_command) do
+    claude_dir = Path.join(dir, ".claude")
+    File.mkdir_p!(claude_dir)
+    File.write!(Path.join(claude_dir, "gate-config.sh"), ~s(GATE_COMMAND="#{gate_command}"\n))
+  end
+
   describe "decide_gate/2" do
-    test "no step_log, no project config, non-Phoenix dir → make test fallback", %{dir: dir} do
-      assert LoopGate.decide_gate(dir) == {"make test", "short", 0}
+    test "no step_log, no project config → raises unresolved (fail loud)", %{dir: dir} do
+      assert_raise RuntimeError, ~r/could not resolve a gate/, fn ->
+        LoopGate.decide_gate(dir)
+      end
     end
 
-    test "no step_log, mix.exs present → make ci fallback", %{dir: dir} do
+    test "no step_log, mix.exs present but no gate-config → still raises unresolved", %{
+      dir: dir
+    } do
       File.write!(Path.join(dir, "mix.exs"), "")
+
+      assert_raise RuntimeError, ~r/could not resolve a gate/, fn ->
+        LoopGate.decide_gate(dir)
+      end
+    end
+
+    test "no step_log, GATE_COMMAND from per-app config resolves", %{dir: dir} do
+      write_gate_config!(dir, "make ci")
 
       assert LoopGate.decide_gate(dir) == {"make ci", "short", 900}
     end
@@ -40,6 +60,25 @@ defmodule CodegenTestHarness.LoopGateTest do
       )
 
       assert LoopGate.decide_gate(dir, step_log) == {"make custom-gate", "short", 42}
+    end
+
+    test "planner gate wins over per-app GATE_COMMAND", %{dir: dir} do
+      write_gate_config!(dir, "make ci")
+
+      step_log = Path.join(dir, "20260601_120000_test_cycle.jsonl")
+
+      plan_body = """
+      ## Plan
+
+      **Gate**: `make custom-gate`
+      """
+
+      File.write!(
+        step_log,
+        Jason.encode!(%{"ev" => "role", "role" => "planner-phoenix", "body" => plan_body}) <> "\n"
+      )
+
+      assert {"make custom-gate", _mode, _timeout} = LoopGate.decide_gate(dir, step_log)
     end
 
     test "raises when gate_select_decide returns a parse-error sentinel (crash loud)", %{dir: dir} do
@@ -68,6 +107,7 @@ defmodule CodegenTestHarness.LoopGateTest do
 
   describe "run_gate/2" do
     test "clear verdict on exit 0, non-static stack (no render check)", %{dir: dir} do
+      write_gate_config!(dir, "make test")
       run_fn = fn _gate, _project_dir -> {"all good", 0} end
 
       assert {:clear, "make test"} = LoopGate.run_gate(dir, run_fn: run_fn, stack: "phoenix")
@@ -76,16 +116,16 @@ defmodule CodegenTestHarness.LoopGateTest do
     end
 
     test "failed verdict on non-zero exit", %{dir: dir} do
+      write_gate_config!(dir, "make test")
       run_fn = fn _gate, _project_dir -> {"boom", 1} end
 
       assert {:failed, "make test"} = LoopGate.run_gate(dir, run_fn: run_fn)
     end
 
     test "static stack with no public/ dir skips render check — stays clear", %{dir: dir} do
+      write_gate_config!(dir, "make ci")
       run_fn = fn _gate, _project_dir -> {"built ok", 0} end
 
-      # stack_default_gate/2 forces static's stack-blind "make test" fallback
-      # to "make ci" (no mix.exs, no step_log -> gate-select's default).
       assert {:clear, "make ci"} =
                LoopGate.run_gate(dir,
                  run_fn: run_fn,
@@ -95,6 +135,7 @@ defmodule CodegenTestHarness.LoopGateTest do
     end
 
     test "static stack with public/ dir invokes render check — PASS stays clear", %{dir: dir} do
+      write_gate_config!(dir, "make ci")
       File.mkdir_p!(Path.join(dir, "public"))
       run_fn = fn _gate, _project_dir -> {"built ok", 0} end
       render_check_fn = fn _project_dir -> {"RENDER_VERDICT=PASS", 0} end
@@ -109,6 +150,7 @@ defmodule CodegenTestHarness.LoopGateTest do
     end
 
     test "static stack render check FAIL → gate verdict failed", %{dir: dir} do
+      write_gate_config!(dir, "make ci")
       File.mkdir_p!(Path.join(dir, "public"))
       run_fn = fn _gate, _project_dir -> {"built ok", 0} end
       render_check_fn = fn _project_dir -> {"RENDER_VERDICT=FAIL:no-dom", 0} end
@@ -123,6 +165,7 @@ defmodule CodegenTestHarness.LoopGateTest do
     end
 
     test "static stack render check INCONCLUSIVE collapses to failed (fail-closed)", %{dir: dir} do
+      write_gate_config!(dir, "make ci")
       File.mkdir_p!(Path.join(dir, "public"))
       run_fn = fn _gate, _project_dir -> {"built ok", 0} end
 
@@ -140,6 +183,7 @@ defmodule CodegenTestHarness.LoopGateTest do
     end
 
     test "static stack: gate command itself failing skips render check entirely", %{dir: dir} do
+      write_gate_config!(dir, "make ci")
       File.mkdir_p!(Path.join(dir, "public"))
       run_fn = fn _gate, _project_dir -> {"build broke", 1} end
 
@@ -159,6 +203,7 @@ defmodule CodegenTestHarness.LoopGateTest do
 
   describe "static render-check dependency preflight" do
     test "missing chromium raises naming the dep (via injected preflight_fn)", %{dir: dir} do
+      write_gate_config!(dir, "make ci")
       run_fn = fn _gate, _project_dir -> {"built ok", 0} end
 
       preflight_fn = fn _project_dir ->
@@ -171,6 +216,7 @@ defmodule CodegenTestHarness.LoopGateTest do
     end
 
     test "phoenix stack does not run preflight", %{dir: dir} do
+      write_gate_config!(dir, "make test")
       run_fn = fn _gate, _project_dir -> {"all good", 0} end
       preflight_fn = fn _project_dir -> raise "should not run" end
 
@@ -183,6 +229,7 @@ defmodule CodegenTestHarness.LoopGateTest do
     end
 
     test "real static preflight passes on a healthy box (chromium present)", %{dir: dir} do
+      write_gate_config!(dir, "make ci")
       run_fn = fn _gate, _project_dir -> {"ok", 0} end
 
       assert {:clear, "make ci"} = LoopGate.run_gate(dir, run_fn: run_fn, stack: "static")
