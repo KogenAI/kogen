@@ -21,6 +21,9 @@ export function register(pi: ExtensionAPI): void {
   pi.on("tool_call", async (event) => {
     if (event.toolName !== "bash") return;
 
+    const _role = process.env["CLAUDE_ROLE"] || process.env["PI_ROLE"] || "";
+    if (["ops"].includes(_role)) return;
+
     const command: string = (event.input as { command?: string }).command ?? "";
     debugLog("no-cat-pipe", `cmd=${command}`);
 

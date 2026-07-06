@@ -52,25 +52,25 @@ Codegen-infra pitfalls and bash gotchas — split from `context/development.md` 
 - **When a plan specifies dynamic-enumeration engine, verify implementation does it** — Hard-coding paths contradicts the design guarantee. Always inspect the implementation; description alone is not evidence of execution.
 - **Sentinel sync: source files, grep-validate before edit** — Load-bearing changes → sentinels MUST match (`grep -qF`). Pre-validate source-file names in test; zero hits → no sync.
 - **`git status --porcelain` on fresh fixtures requires explicit commit** — `git init` + untracked files = dirty. Run `git init` + `git add -A` + `git commit` to establish a clean-tree baseline, then create stray files for the dirty case.
-- **Semantic equivalence vs structural identity in prompt-body sibling files** — verify semantic equivalence of all rules, NOT literal step-count parity. Compression preserving all semantic rules is correct mirroring.
+- **Semantic equivalence in prompt-body siblings** — verify all rules present, not step-count parity. Compression preserving semantics is correct.
 - **Planner-guard blocks Read on rule files** — Use `Grep -C` for anchors; developer uses Read to verify.
 - **Env var leakage in tests** — Tests exercising DEFAULT branches must `env -u VAR bash` to isolate. Single `env -u` leaves fallback.
 - **Gate Verdict Authority applies retroactively** — the runtime-written gate-result JSON's `.verdict` field is authoritative, never session-log prose.
 - **Bash array-literal fix** — Use literals for spaces; isolate override-var tests via `env -u OVERRIDE_VAR`.
-- **Removing a config.yaml role breaks slow ExUnit tests** — `@moduletag :slow` tests excluded from `make test` (`--exclude slow`) but run in `make test-stacks` (`--only slow`). Deleting a role → silently passes `make test`, fails `make test-stacks` with `ERROR: roles.<role>.model missing/empty`. Survey both gates; update all `:slow` tests to valid roles before commit.
+- **Removing config.yaml role breaks slow tests** — Silently passes `make test`, fails `make test-stacks`. Update all `:slow` tests to valid roles.
 - **Curator byte cap enforcement** — `curator-context-size-gate.sh` denies over-cap Edit/Write in curator's turn (hard gate). Commit-time `context-file-size-gate.sh` backstop re-routes to curator. Compress bullets or split to new file.
 - **Grep recipe glob depth** — `harnesses/claude/hooks/*.sh` misses subdirs. Use `**/*.sh` or recursive for complete enumeration.
 - **Orchestrator file enumeration is tool-gated, not directory-gated** — Claude read-discipline blocks Read|Bash; Glob is safe.
 - **Enforcement subsection placement in rule files** — when adding a new subsection to a rule file with existing structure (e.g., `## Ownership`), place it as a new H2 section at the same level rather than embedding mid-section. Cleaner structure, avoids disrupting prose flow. Accompanied by a pointer-only reference in dependent docs (no duplication).
 - **Rule-file line caps are STYLE_GUIDE advisory only** — `_core/` rule files have a <50-line advisory; `roles/` and `stacks/` have <150-line advisory. No hook enforces rule-file line count. Only `context/*.md` byte cap (40,960 B) is hook-enforced. Rule-file overage is acceptable if unavoidable; byte-cap overage blocks commit.
-- **`process_template.py` include/if ordering** — `process_includes_recursively` runs AFTER if-stripping → `{% if tool %}` blocks inside fragments survive un-stripped → both branches concatenate (BROKEN). Fix: move include call to TOP of `_strip_template_blocks`, before if-stripping. Verify via `make test-generator` + `make test`.
-- **Fragment whitespace and byte-identity** — Template whitespace around `{% include %}` determines output blank lines. Exact trailing-newline match required.
-- **Non-contiguous shared regions need separate fragments** — Verify regions are contiguous in BOTH templates BEFORE design. Non-contiguous regions → separate fragments (one per region with own `{% include %}`), not single-file-multiple-includes (→ duplication).
+- **`process_template.py` include/if ordering** — includes run AFTER if-stripping, breaking fragments. Fix: move to TOP before if-stripping.
+- **Fragment whitespace** — Whitespace around `{% include %}` determines output blank lines; trailing-newline must match exactly.
+- **Non-contiguous regions** — Use separate fragments, one per region; not single-file multiple-includes.
 - **`make test-stacks` pre-gate checklist** — Run `make doctor` (Chromium + ajv), verify `claude` CLI auth (`~/.claude.json`), verify `command -v pi`. Bucket failures via 4-bucket protocol → `context/test-harness.md § Flake Triage Protocol`.
 - **`make test` auto-discovers `test_harness/install/` tests** — New `*_test.sh` files run via `run-tests.sh` (greps `N passed, N failed`). No Makefile edits. Footer format critical for runner match.
 - **install.sh fatal-exit composition** — New guards compose without reordering; non-fatal stderr observed-only.
-- **Structural grep sentinels with literal quotes** — Anchor to stable substrings (variable names, icons, unique ops), not full lines. Use `grep -F` (fixed-string) for double-quoted sentinels. For single-quote shell strings, escape: `'! grep -qF "pattern with \"quotes\"" file'`.
-- **Relative symlinks relocation** — Compute relpaths against FINAL dir, not temp. Thread `link_base_dir` to `run_integrate_stage()`
+- **Grep sentinels** — Anchor to stable substrings, not full lines; use `grep -F` for literals.
+- **Relative symlinks** — Compute relpaths against final dir, not temp.
 - **Masked pipe errors reveal fixture gaps** — When `| sed` masks real errors, removing the mask surfaces hidden failures in test fixtures. Investigate and fix, don't ignore the newly-visible error.
 - **Stale doc comments when gap closes same-cycle** — Comment ("no parity test") + test landing = stale contradiction. Grep file's prose for contradictions.
 - **`grep -v` filter exits 1 when all lines filtered** — `git status --porcelain | grep -v '^??'` exits 1 when filtering removes ALL lines. Under `set -e` with a `[ -n "$(..)" ]` guard, the exit is absorbed and condition correctly evaluates false.
@@ -80,7 +80,7 @@ Codegen-infra pitfalls and bash gotchas — split from `context/development.md` 
 - **PROJECT_CONTEXT.md Domain Context Files table requires 4 cells per row** — Rows must have all 4 cells: `| file | description | keywords | sources |`. Missing sources column produces a ragged table that markdown renders but reviewers should flag. Always verify column count when adding rows to `PROJECT_CONTEXT.md` tables.
 - **Pi test `git commit` + global `commit.gpgsign=true`** — Parallel npm-ext tests MUST call `git config commit.gpgsign false` per tmpDir setup to isolate from global config.
 - **Makefile npm-ext race** — Parallel `make test`: both `subagents-integration` + npm-ext loop target `subagents/dist/`. Fix: serialize build BEFORE pids fan-out
-- **Pi guard scope: projectDir (repo under test) not codegenDir (checker install location)** — Porting filesystem guards: use `projectDir` (project being tested), not `codegenDir` (checker machine). Checker always has `codegenDir`, so `codegenDir` checks wrongly skip every run. Pattern: `fs.existsSync(join(projectDir, "codegen/enforcement/registry.yaml"))` for codegen self-builds.
+- **Pi guard scope** — Use `projectDir` (repo tested), not `codegenDir` (checker location); codegenDir checks skip every run.
 - **Session-log order-check H1-rank false-positives** — Order-check algorithms must be H2-scoped (`##` prefix only). Ranking H1 lines (e.g., `# hook-name` in code blocks) causes false "rank decreased" denials. Fix: exclude H1 from rank tables and guards (`if line.startsWith("## ")` in TS, `case "$line" in '## '*) ... esac` in bash).
 - **Hook alphabetical id ordering in settings.json** — `hook_registrations.py --output-settings` generates `claude-code-settings.json` hook entries in alphabetical id order (e.g., `session-log-writer-only` before `static-site-build-check`). Hand-inserted registry entries in the wrong order cause hook-parity diff on `make install` (generated order differs from committed order). Remedy: sort new entries alphabetically in `shared/enforcement/registry.yaml` OR reorder and re-run `make install` to regenerate.
 - **Pi enforcement tests run against compiled dist, not source** — Pi extension tests for enforcement hooks must run against compiled `dist/*.test.js`, NOT `.ts` source files directly. Pattern: `npm run build && npm test` (or `node --test dist/...`). Running `node --test src/...ts` fails with `ERR_MODULE_NOT_FOUND` even after build because the test runner cannot locate the compiled module references. Always build before test.
@@ -198,6 +198,9 @@ Codegen-infra pitfalls and bash gotchas — split from `context/development.md` 
 - **[shared] gate-result.json stale; sanity-check metadata** — JSON fields (gate, diff_files_count) can be stale from unrelated runs. When metadata mismatches current diff, fall back to raw gate-run.log. Verdict authoritative; cross-check metadata first.
 
 - **[local] Two-sided comparison parity: fix both sides** — context-index-coverage_test.sh compares source file's Trigger Keywords AND index row. Fix both in same pass or escalate gap separately.
+- **[shared] RED-then-GREEN proof scripts via `git show HEAD` break relative sourcing when copied to /tmp** — Pre-fix copies written to /tmp lose dir context; `dirname "$0"` no longer points to hook dir. Fix: write copies alongside real hook (e.g., `$SCRIPT_DIR/.hookname.pre-fix.sh`), clean up via `trap "rm -f ..." EXIT`.
+- **[local] Ambient CLAUDE_ROLE/CODEGEN_BUILD_START_TS leak into unscoped hook tests** — Dev-shell env vars bleed into `bash "$HOOK"` calls, causing false failures (git reset check denies, PI_ROLE shadowed). Fix: `env -u CLAUDE_ROLE -u CODEGEN_BUILD_START_TS bash "$HOOK"` when running standalone outside `make test`.
+- **[local] Verb-set parity in role-scoped gates verified by enumeration** — When narrowing a gate to a role (ops) with a regex alternation (add, rm, mv, etc.), enumerate both lists side-by-side vs. pre-existing per-verb scans. Direct comparison catches omissions; prose doesn't.
 
 ## Trigger Keywords
 

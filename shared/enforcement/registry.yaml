@@ -83,6 +83,7 @@
   signal: none
   role: "*"
   harnesses: all
+  bypass_roles: [ops]
 
 - id: no-git-stash
   generated: true

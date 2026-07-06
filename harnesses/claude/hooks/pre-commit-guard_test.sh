@@ -216,6 +216,73 @@ run_test "git restore --staged blocked for non-committer" "2" "$FIXTURE_RESTORE_
 FIXTURE_RESTORE_ALLOWED='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"git restore foo"},"agent_type":"developer-phoenix-backend","agent_id":"a"}'
 run_test "git restore (no --staged) allowed for non-committer" "0" "$FIXTURE_RESTORE_ALLOWED"
 
+# ── ops-mode scope regression: gate must not blanket-deny all Bash for ops ──
+# Bug: the ops branch previously returned a verdict for ALL Bash before
+# checking whether it was even a git command. Fix scopes the ops branch to
+# destructive-git verbs only; non-git Bash and read-only git pass straight
+# through regardless of CODEGEN_OPS_GIT_UNLOCK.
+
+# RED-then-GREEN proof: confirm the PRE-fix committed body denies ops
+# non-git Bash (proves the bug existed), then confirm the fixed working-tree
+# body allows it. Written INTO SCRIPT_DIR (not /tmp) so the relative
+# `dirname "$0"` sourcing of lib/hooks-lib.sh and _role.sh still resolves.
+PRE_FIX_GUARD="$SCRIPT_DIR/.pre-commit-guard.pre-fix.sh"
+trap 'rm -rf "$FAKE_GIT_DIR"; rm -f "$PRE_FIX_GUARD"' EXIT
+git -C "$SCRIPT_DIR" show HEAD:harnesses/claude/hooks/pre-commit-guard.sh >"$PRE_FIX_GUARD" 2>/dev/null || true
+
+if [ -s "$PRE_FIX_GUARD" ]; then
+    FIXTURE_RED_PROOF='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"ssh box \"hostname\""},"agent_type":"","agent_id":"a"}'
+    pre_fix_stdout=$(printf '%s' "$FIXTURE_RED_PROOF" |
+        env CLAUDE_ROLE=ops bash "$PRE_FIX_GUARD" 2>/dev/null || true)
+    if printf '%s' "$pre_fix_stdout" | grep -q '"permissionDecision"[[:space:]]*:[[:space:]]*"deny"'; then
+        [ -n "${VERBOSE:-}" ] && printf 'PASS (RED): pre-fix body denies ops non-git Bash (bug confirmed)\n'
+        pass=$((pass + 1))
+    else
+        printf 'FAIL (RED): pre-fix body did NOT deny ops non-git Bash — RED proof invalid, bug may already be fixed at HEAD\n'
+        fail=$((fail + 1))
+    fi
+fi
+
+# Test 25: ops role + non-git Bash (ssh) — MUST ALLOW (no unlock needed)
+FIXTURE_OPS_SSH='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"ssh box \"hostname\""},"agent_type":"","agent_id":"a"}'
+run_test_env "ops role + non-git ssh allowed (no unlock needed)" "0" "$FIXTURE_OPS_SSH" "CLAUDE_ROLE=ops"
+
+# Test 26: ops role + non-git Bash (ls -la) — MUST ALLOW
+FIXTURE_OPS_LS='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"ls -la"},"agent_type":"","agent_id":"a"}'
+run_test_env "ops role + ls -la allowed (no unlock needed)" "0" "$FIXTURE_OPS_LS" "CLAUDE_ROLE=ops"
+
+# Test 27: ops role + non-git Bash (cp) — MUST ALLOW
+FIXTURE_OPS_CP='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"cp a b"},"agent_type":"","agent_id":"a"}'
+run_test_env "ops role + cp a b allowed (no unlock needed)" "0" "$FIXTURE_OPS_CP" "CLAUDE_ROLE=ops"
+
+# Test 28: ops role + git status — MUST ALLOW
+FIXTURE_OPS_STATUS='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"git status"},"agent_type":"","agent_id":"a"}'
+run_test_env "ops role + git status allowed" "0" "$FIXTURE_OPS_STATUS" "CLAUDE_ROLE=ops"
+
+# Test 29: ops role + git diff — MUST ALLOW
+FIXTURE_OPS_DIFF='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"git diff"},"agent_type":"","agent_id":"a"}'
+run_test_env "ops role + git diff allowed" "0" "$FIXTURE_OPS_DIFF" "CLAUDE_ROLE=ops"
+
+# Test 30: ops role + git log — MUST ALLOW
+FIXTURE_OPS_LOG='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"git log"},"agent_type":"","agent_id":"a"}'
+run_test_env "ops role + git log allowed" "0" "$FIXTURE_OPS_LOG" "CLAUDE_ROLE=ops"
+
+# Test 31: ops role + destructive git (commit) WITHOUT unlock — MUST DENY
+FIXTURE_OPS_SCOPE_COMMIT='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"git commit -m \"x\""},"agent_type":"","agent_id":"a"}'
+run_test_env "ops role + destructive git commit without unlock denied" "2" "$FIXTURE_OPS_SCOPE_COMMIT" "CLAUDE_ROLE=ops"
+
+# Test 32: ops role + destructive git (reset --hard) WITHOUT unlock — MUST DENY
+FIXTURE_OPS_SCOPE_RESET='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"git reset --hard HEAD~1"},"agent_type":"","agent_id":"a"}'
+run_test_env "ops role + destructive git reset --hard without unlock denied" "2" "$FIXTURE_OPS_SCOPE_RESET" "CLAUDE_ROLE=ops"
+
+# Test 33: ops role + destructive git (push --force) WITHOUT unlock — MUST DENY
+FIXTURE_OPS_SCOPE_PUSH='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"git push --force origin main"},"agent_type":"","agent_id":"a"}'
+run_test_env "ops role + destructive git push --force without unlock denied" "2" "$FIXTURE_OPS_SCOPE_PUSH" "CLAUDE_ROLE=ops"
+
+# Test 34: ops role + destructive git (commit) WITH unlock — MUST ALLOW
+FIXTURE_OPS_SCOPE_COMMIT_UNLOCK='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"git commit -m \"x\""},"agent_type":"","agent_id":"a"}'
+run_test_env "ops role + destructive git commit with unlock allowed" "0" "$FIXTURE_OPS_SCOPE_COMMIT_UNLOCK" "CLAUDE_ROLE=ops" "CODEGEN_OPS_GIT_UNLOCK=1"
+
 # ── codegen-log carve-out: piped body prose containing git-verb tokens ─────
 # Every role's session-log section body is written via `printf '%s' "$body" |
 # codegen-log section --body @-`. The piped body is arbitrary role-authored

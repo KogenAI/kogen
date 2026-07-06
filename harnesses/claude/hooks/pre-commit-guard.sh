@@ -16,8 +16,10 @@
 # is "") is also blocked — per CLAUDE.md only the committer may touch
 # history.
 #
-# Ops mode (CLAUDE_ROLE=ops / PI_ROLE=ops) bypasses ONLY when the operator
-# ALSO sets CODEGEN_OPS_GIT_UNLOCK=1 — a two-signal gate. Role alone no
+# Ops mode (CLAUDE_ROLE=ops / PI_ROLE=ops) scopes the gate to destructive
+# git verbs ONLY — non-git Bash and read-only git (status/diff/log/show)
+# pass straight through for interactive ops on live boxes. Destructive git
+# ALSO requires CODEGEN_OPS_GIT_UNLOCK=1 — a two-signal gate. Role alone no
 # longer unlocks destructive git under the fail-closed-everywhere ruling;
 # the operator must explicitly confirm intent via a second, harness-only
 # toggle (NOT an app runtime var — do not add to .env.sample/.env.prod.sample).
@@ -29,19 +31,22 @@ parse_input
 
 debug_log pre-commit-guard "tool=$TOOL_NAME agent=$AGENT_TYPE cmd=$COMMAND"
 
-# ops mode bypasses: full git surface for interactive ops on live boxes,
-# but ONLY with CODEGEN_OPS_GIT_UNLOCK=1 as a second confirming signal.
-_role=$(resolve_role)
-if [ "$_role" = "ops" ]; then
-    if [ "${CODEGEN_OPS_GIT_UNLOCK:-}" = "1" ]; then
-        exit 0
-    fi
-    deny "BLOCKED by pre-commit-guard: ops role alone no longer unlocks destructive git. Set CODEGEN_OPS_GIT_UNLOCK=1 in the environment ALSO to confirm intent (two-signal gate)."
+# Only guard Bash — git ops go through Bash exclusively.
+if [ "$TOOL_NAME" != "Bash" ]; then
     exit 0
 fi
 
-# Only guard Bash — git ops go through Bash exclusively.
-if [ "$TOOL_NAME" != "Bash" ]; then
+# ops mode: scope the gate to destructive git verbs only. Non-git Bash and
+# read-only git (status/diff/log/show/blame/ls-files) pass straight through
+# — the gate must NOT return a verdict for all Bash before checking whether
+# the command is even a destructive git invocation.
+_role=$(resolve_role)
+if [ "$_role" = "ops" ]; then
+    if printf '%s' "$COMMAND" | grep -qE '\bgit[[:space:]]+(add|rm|mv|stash|commit|rebase|cherry-pick|revert|merge)\b|\bgit[[:space:]]+restore\b.*--staged\b|\bgit[[:space:]]+reset\b.*--hard\b|\bgit[[:space:]]+push\b.*(--force(-with-lease)?|[[:space:]]-f([[:space:]]|$))'; then
+        [ "${CODEGEN_OPS_GIT_UNLOCK:-}" = "1" ] && exit 0
+        deny "BLOCKED by pre-commit-guard: ops role alone no longer unlocks destructive git. Set CODEGEN_OPS_GIT_UNLOCK=1 in the environment ALSO to confirm intent (two-signal gate)."
+        exit 0
+    fi
     exit 0
 fi
 

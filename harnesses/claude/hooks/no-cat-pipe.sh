@@ -15,6 +15,7 @@
 set -u
 
 source "$(dirname "$0")/lib/hooks-lib.sh"
+source "$(dirname "$0")/_role.sh"
 parse_input
 
 debug_log no-cat-pipe "tool=$TOOL_NAME agent=$AGENT_TYPE cmd=$COMMAND"
@@ -23,6 +24,9 @@ debug_log no-cat-pipe "tool=$TOOL_NAME agent=$AGENT_TYPE cmd=$COMMAND"
 if [ "$TOOL_NAME" != "Bash" ]; then
     exit 0
 fi
+
+_role=$(resolve_role)
+for _m in ops; do [ "$_role" = "$_m" ] && exit 0; done
 
 # A codegen-log write narrates gated phrases in its heredoc body; it is never
 # the gated action itself. Bypass before any phrase match or counter increment.
