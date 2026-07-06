@@ -92,6 +92,11 @@ describe("operator-subagent-allowlist", () => {
     assert.ok((result as { block?: boolean }).block === true);
   });
 
+  it("allows Explore under experiment role", async () => {
+    const result = await runHook("Explore", "experiment");
+    assert.ok(result == null || (result as { block?: boolean }).block !== true);
+  });
+
   it("passes through non-subagent tool calls", async () => {
     process.env["PI_ROLE"] = "build";
     const { register } = await import("../operator-subagent-allowlist");

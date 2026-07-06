@@ -8,7 +8,7 @@
  * Rules (mirroring operator-subagent-allowlist.sh):
  *   Built-in subagent types {Plan, general-purpose, statusline-setup} — denied always.
  *   Empty subagent_type — denied defensively (fail-closed).
- *   Explore — allowed only under debug/shape PI_ROLE.
+ *   Explore — allowed only under debug/shape/experiment PI_ROLE.
  *   All other project subagents — allowed.
  */
 
@@ -61,9 +61,9 @@ export function register(pi: ExtensionAPI): void {
       );
     }
 
-    // Explore — allowed only under debug/shape operator roles.
+    // Explore — allowed only under debug/shape/experiment operator roles.
     if (subagentType === "Explore") {
-      if (role === "debug" || role === "shape") {
+      if (role === "debug" || role === "shape" || role === "experiment") {
         return;
       }
       return deny(

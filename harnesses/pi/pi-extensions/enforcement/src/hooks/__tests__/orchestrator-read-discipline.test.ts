@@ -266,4 +266,22 @@ describe("orchestrator-read-discipline", () => {
     );
     assert.ok(result == null || (result as { block?: boolean }).block !== true);
   });
+
+  it("allows PI_ROLE=experiment Read on lib/ file", async () => {
+    const result = await runHook(
+      "read",
+      { file_path: "lib/my_app/apps.ex" },
+      { PI_ROLE: "experiment" },
+    );
+    assert.ok(result == null || (result as { block?: boolean }).block !== true);
+  });
+
+  it("allows PI_ROLE=experiment Bash grep", async () => {
+    const result = await runHook(
+      "bash",
+      { command: "grep foo" },
+      { PI_ROLE: "experiment" },
+    );
+    assert.ok(result == null || (result as { block?: boolean }).block !== true);
+  });
 });

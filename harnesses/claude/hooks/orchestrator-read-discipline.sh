@@ -32,7 +32,7 @@
 # Subagents (non-empty agent_id) are always allowed through.
 #
 # Responds to CLAUDE_ROLE (Claude Code) and PI_ROLE (PI harness)
-# via resolve_role() for the debug/shape/ops bypass — precedence: CLAUDE_ROLE > PI_ROLE.
+# via resolve_role() for the debug/shape/ops/experiment bypass — precedence: CLAUDE_ROLE > PI_ROLE.
 # Primary signal is AGENT_TYPE (set by Claude Code on subagent spawn); role check is secondary.
 
 set -u
@@ -43,9 +43,9 @@ parse_input
 
 debug_log orchestrator-read-discipline "tool=$TOOL_NAME agent_id=$AGENT_ID agent_type=$AGENT_TYPE"
 
-# Debug, shape, and ops modes bypass read discipline — investigation, shaping, and ops sessions need full access.
+# Debug, shape, ops, and experiment modes bypass read discipline — investigation, shaping, ops, and experiment sessions need full access.
 _role=$(resolve_role)
-if [ "$_role" = "debug" ] || [ "$_role" = "shape" ] || [ "$_role" = "ops" ]; then
+if [ "$_role" = "debug" ] || [ "$_role" = "shape" ] || [ "$_role" = "ops" ] || [ "$_role" = "experiment" ]; then
     exit 0
 fi
 

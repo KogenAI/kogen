@@ -180,6 +180,12 @@ run_test "ops + Plan denied" "deny" "ops" "$(mk_agent 'Plan')"
 # 19f: ops + developer-phoenix-backend allowed (project subagents always allowed)
 run_test "ops + developer-phoenix-backend allowed" "allow" "ops" "$(mk_agent 'developer-phoenix-backend')"
 
+# 19g: experiment + Explore allowed (experiment needs Agent/Explore for investigation)
+run_test "experiment + Explore allowed" "allow" "experiment" "$(mk_agent 'Explore')"
+
+# 19h: experiment + Plan denied (built-in denied always, even under experiment)
+run_test "experiment + Plan denied" "deny" "experiment" "$(mk_agent 'Plan')"
+
 # PI_ROLE parity tests (via env var, no CLAUDE_ROLE set)
 
 run_test_env() {

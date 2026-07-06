@@ -184,6 +184,18 @@ PI_ROLE=ops run_test "PI_ROLE=ops bypasses read discipline" "0" "$FIXTURE_PI_OPS
 FIXTURE_BASH_OPS_GREP='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"grep foo"},"agent_id":"","agent_type":""}'
 CLAUDE_ROLE=ops run_test "CLAUDE_ROLE=ops Bash grep allows" "0" "$FIXTURE_BASH_OPS_GREP"
 
+# Test 32b: CLAUDE_ROLE=experiment bypasses read discipline — experiment sessions need full access
+FIXTURE_EXPERIMENT_BYPASS='{"hook_event_name":"PreToolUse","tool_name":"Read","tool_input":{"file_path":"lib/my_app/apps.ex"},"agent_id":"","agent_type":""}'
+CLAUDE_ROLE=experiment run_test "CLAUDE_ROLE=experiment bypasses read discipline" "0" "$FIXTURE_EXPERIMENT_BYPASS"
+
+# Test 32c: PI_ROLE=experiment bypasses read discipline
+FIXTURE_PI_EXPERIMENT_BYPASS='{"hook_event_name":"PreToolUse","tool_name":"Read","tool_input":{"file_path":"lib/my_app/apps.ex"},"agent_id":"","agent_type":""}'
+PI_ROLE=experiment run_test "PI_ROLE=experiment bypasses read discipline" "0" "$FIXTURE_PI_EXPERIMENT_BYPASS"
+
+# Test B18c: CLAUDE_ROLE=experiment Bash grep — ALLOW (experiment needs full local inspection)
+FIXTURE_BASH_EXPERIMENT_GREP='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"grep foo"},"agent_id":"","agent_type":""}'
+CLAUDE_ROLE=experiment run_test "CLAUDE_ROLE=experiment Bash grep allows" "0" "$FIXTURE_BASH_EXPERIMENT_GREP"
+
 # Test 33: orchestrator Read codegen/PROJECT_CONTEXT.md (relative symlink form) — DENY
 FIXTURE_PC_CODEGEN='{"hook_event_name":"PreToolUse","tool_name":"Read","tool_input":{"file_path":"codegen/PROJECT_CONTEXT.md"},"agent_id":"","agent_type":""}'
 run_test "orchestrator Read on codegen/PROJECT_CONTEXT.md denies (symlink relative form)" "2" "$FIXTURE_PC_CODEGEN"
