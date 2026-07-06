@@ -51,13 +51,18 @@ _capture_transcript() {
     fi
 }
 
+# --setting-sources: user-scope (~/.claude/agents/) is where role agents
+# install; a loop-invoked --agent call needs it. Non-agent one-shot calls
+# (e.g. consuming-platform --system-prompt calls) stay project-only (thinking-off scope).
+if [[ -n "$AGENT" ]]; then SETTING_SOURCES="user,project"; else SETTING_SOURCES="project"; fi
+
 # ── Build claude argv ─────────────────────────────────────────────────────────
 COMMON_FLAGS=(
     --dangerously-skip-permissions
     --print
     --output-format stream-json
     --verbose
-    --setting-sources project
+    --setting-sources "$SETTING_SOURCES"
     --strict-mcp-config
     --no-session-persistence
     --disable-slash-commands
@@ -72,10 +77,11 @@ else
     COMMON_FLAGS+=(--append-system-prompt "$SYSTEM_PROMPT")
 fi
 
-# --tools: pass if explicitly set (including empty string = no tools)
+# --tools: explicit list wins; no agent + no explicit → hermetic deny-all;
+# agent + no explicit → omit flag so agent frontmatter tools: apply.
 if [[ -n "$ALLOWED_TOOLS_SET" ]]; then
     COMMON_FLAGS+=(--tools "$ALLOWED_TOOLS")
-else
+elif [[ -z "$AGENT" ]]; then
     COMMON_FLAGS+=(--tools "")
 fi
 

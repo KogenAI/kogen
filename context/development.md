@@ -142,6 +142,10 @@ Integrate-stage renders (PROJECT_CONTEXT, restart_server.sh, usage_rules_INDEX) 
 
 This eliminates the dirty-tree race: integrate-stage files rendered AFTER the commit → `git status --porcelain` non-empty → build failure.
 
+## Developer Test Budget — `developer-no-self-gate` Constraint
+
+The `developer-no-self-gate` hook caps developer at 3 test-command invocations per session. Each of these counts toward the budget: `make test`, `mix test`, bare `mix test --exclude slow`, `mix format && mix compile` (combined, still one call). **Note**: `mix format && mix compile` on the same Bash line consumes ONE budget slot (same as a single `mix test`), not two. When budget is tight, front-load the actual full test run early, or combine multiple checks into one Bash invocation (e.g., `mix format && mix test` rather than format in one call and test in another). Do NOT assume combining invocations buys additional capacity — the gate counts Bash calls, not shell commands within.
+
 ## Elixir Seam Threading — Preserving Test-Override Capacity
 
 When adding a new parameter to an Elixir function that is called in a default closure but tested via seam overrides, thread the parameter into the closure BINDING, not into the seam signature. Example:
@@ -163,10 +167,6 @@ When a public function in Elixir changes its return type (e.g., `resolve_role/2,
 
 ## Trigger Keywords
 
-make install, make test, make test-stacks, CI/CD, Makefile, contribution, README, env vars, harness-parity, launcher tests, Makefile for t in list, dev loop, tech stack, coding conventions, multi-repo ordering, context codegen platform, seam threading, RoleResolver, function shape change
+make install, make test, make test-stacks, CI/CD, Makefile, contribution, README, env vars, harness-parity, launcher tests, Makefile for t in list, dev loop, tech stack, coding conventions, multi-repo ordering, context codegen platform, seam threading, RoleResolver, function shape change, developer-no-self-gate, test budget
 
 → See `context/pitfalls.md` for codegen-infra pitfalls and bash gotchas.
-
-## Trigger Keywords
-
-make install, make test, make test-stacks, CI/CD, Makefile, contribution, README, env vars, harness-parity, launcher tests, Makefile for t in list, dev loop, tech stack, coding conventions, multi-repo ordering, context codegen platform

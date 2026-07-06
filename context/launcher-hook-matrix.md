@@ -74,13 +74,13 @@ The three investigative modes (debug, shape, ops) now have a headless variant ac
 
 ## Lessons Learned
 
-- **[local] Hand-authored bypass guards require role additions in 4 places** — A new investigative role (e.g., experiment) must be added to: Claude `orchestrator-read-discipline.sh:48`, Claude `operator-subagent-allowlist.sh:60`, Pi `orchestrator-read-discipline.ts:78`, Pi `operator-subagent-allowlist.ts:66`. All 4 must be kept in sync; missing even one blocks the role's granted tools. This is a recurring pattern when adding a new investigative mode.
+- **[local] Hand-authored bypass guards require role additions in 4 places** — A new investigative role (e.g., experiment) must be added to: Claude `orchestrator-read-discipline.sh` (the main role-list gate), Claude `operator-subagent-allowlist.sh` (Agent-matcher allowlist), Pi `orchestrator-read-discipline.ts` (TS role-list gate), Pi `operator-subagent-allowlist.ts` (TS Agent-matcher allowlist). All 4 must be kept in sync; missing even one blocks the role's granted tools. This is a recurring pattern when adding a new investigative mode.
 
 - **[local] Pi TS twins can have asymmetric bypass profiles vs Claude bash twins** — Pi `orchestrator-read-discipline.ts` currently recognizes `debug|shape|experiment` (NOT `ops`), while the Claude bash twin recognizes `debug|shape|ops|experiment`. This asymmetry is documented in the matrix and deliberate (ops gap on Pi is a separately-deferred bug). When porting a role to both harnesses, verify the target profile per harness is intentional, not accidental drift.
 
 ## Trigger Keywords
 
-new launcher mode, claude-ops, pi-ops, CLAUDE_ROLE bypass, PI_ROLE bypass, resolve_role, AGENT_TYPE gate, orchestrator hook leak, which hook gates, per-role bypass, ops bypass, ops mode, per-mode hook bypass, hook discipline, build orchestrator gate, debug bypass, shape bypass, hook_registrations.py, signal field, hand-authored bypass guards, investigative role, harness asymmetry
+new launcher mode, claude-ops, pi-ops, CLAUDE_ROLE bypass, PI_ROLE bypass, resolve_role, AGENT_TYPE gate, orchestrator hook leak, which hook gates, per-role bypass, ops bypass, ops mode, per-mode hook bypass, hook discipline, build orchestrator gate, debug bypass, shape bypass, hook_registrations.py, signal field
 
 ## Update When Changing
 

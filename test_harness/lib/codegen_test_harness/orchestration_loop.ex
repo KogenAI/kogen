@@ -74,7 +74,7 @@ defmodule CodegenTestHarness.OrchestrationLoop do
     pitch = Keyword.fetch!(opts, :pitch)
 
     roles = role_sequence(stack)
-    ctx = %{cwd: cwd, pitch: pitch, artifacts: %{}}
+    ctx = %{cwd: cwd, pitch: pitch, artifacts: %{}, base_head: cycle_base_head(cwd)}
 
     Process.put(@transcript_seq_key, 0)
     Process.put(@cycle_id_key, Keyword.get(opts, :cycle_id))
@@ -112,7 +112,7 @@ defmodule CodegenTestHarness.OrchestrationLoop do
           # is the exact false-success failure the loop exists to prevent. VERIFY
           # the working tree is actually clean (all cycle output committed); a
           # dirty tree after the committer means it did not commit → fail loud.
-          verify_committed!(ctx.cwd)
+          verify_committed!(ctx.cwd, ctx.base_head)
           advance_cycle_state_step("COMMITTED", ctx, opts)
           run_roles(rest, harness, ctx, opts)
 
@@ -124,13 +124,30 @@ defmodule CodegenTestHarness.OrchestrationLoop do
 
   defp developer_role?(role), do: String.starts_with?(role, "developer-")
 
+  # Cycle-base HEAD captured before any role runs. nil when cwd is not a git
+  # work tree or the branch is unborn (zero commits) — the work-produced check
+  # is then skipped (nothing to compare against); the clean-tree assertion still
+  # applies. Real loop runs always operate in the scaffolded repo with commits.
+  defp cycle_base_head(cwd) do
+    with true <- File.dir?(cwd),
+         {out, 0} <-
+           System.cmd("git", ["rev-parse", "HEAD"], cd: cwd, stderr_to_stdout: true) do
+      case String.trim(out) do
+        "" -> nil
+        sha -> sha
+      end
+    else
+      _ -> nil
+    end
+  end
+
   # Structural gap #9 (verification): after the committer role runs, the working
   # tree MUST be clean — every cycle change committed. A dirty tree means the
   # committer did not actually commit (it no-op'd on an already-implemented
   # feature, hit a blocked git op, etc.). Fail loud rather than reporting a
   # false `loop_committed`. Gitignored paths never show in --porcelain, so a
   # legitimately-clean tree passes.
-  defp verify_committed!(cwd) do
+  defp verify_committed!(cwd, base_head) do
     # Only a real git work tree can be verified. Mocked tests pass a synthetic
     # cwd ("/tmp/irrelevant") that either does not exist or is not a repo; there
     # is nothing to verify there. A real loop run ALWAYS operates inside the
@@ -149,6 +166,7 @@ defmodule CodegenTestHarness.OrchestrationLoop do
                 "Advancing COMMITTED here would be a false success (the failure the loop exists to prevent)."
       end
 
+      assert_work_produced!(cwd, base_head)
       :ok
     else
       # fail-loud-exempt: a non-existent cwd or non-git work tree is a legitimate
@@ -157,6 +175,38 @@ defmodule CodegenTestHarness.OrchestrationLoop do
       # real guard and only applies when a git tree actually exists.
       _ -> :ok
     end
+  end
+
+  # Work-produced guard (FIX-4): a CLEAN tree alone does not prove the cycle
+  # implemented anything — an empty/pristine tree is clean too. Require HEAD to
+  # have advanced past the cycle base AND a non-empty diff base..HEAD. Empty →
+  # raise → loop_failed, never a false loop_committed. base_head == nil means
+  # we could not capture a base (non-git/unborn cwd — only mocked/edge cases);
+  # skip the check there (nothing to compare), the clean-tree assertion above
+  # is the guard.
+  defp assert_work_produced!(_cwd, nil), do: :ok
+
+  defp assert_work_produced!(cwd, base_head) do
+    {count_out, 0} =
+      System.cmd("git", ["rev-list", "--count", "#{base_head}..HEAD"],
+        cd: cwd,
+        stderr_to_stdout: true
+      )
+
+    advanced? = String.trim(count_out) != "0"
+
+    {diff_out, 0} =
+      System.cmd("git", ["diff", base_head, "HEAD"], cd: cwd, stderr_to_stdout: true)
+
+    diff_nonempty? = String.trim(diff_out) != ""
+
+    unless advanced? and diff_nonempty? do
+      raise "OrchestrationLoop: committer returned success and the tree is clean, but NO work was " <>
+              "produced this cycle — HEAD did not advance past the cycle base (#{base_head}) with a " <>
+              "non-empty diff. This is the no-op false-success the loop exists to prevent (loop_failed)."
+    end
+
+    :ok
   end
 
   # Reviewer→developer fix cycle (structural gap #7). The reviewer ends its output

@@ -649,12 +649,19 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
       end
     end
 
-    test "committer returning success on a CLEAN tree proceeds to :ok", %{
-      calls_agent: calls_agent,
-      dir: dir
-    } do
+    test "committer returning success on a CLEAN tree with real work committed proceeds to :ok",
+         %{
+           calls_agent: calls_agent,
+           dir: dir
+         } do
       invoke_fn = fn role, _harness, _ctx, _opts ->
         Agent.update(calls_agent, fn calls -> calls ++ [role] end)
+
+        if role == "committer" do
+          File.write!(Path.join(dir, "feature.txt"), "done\n")
+          {_o, 0} = System.cmd("git", ["add", "-A"], cd: dir)
+          {_o, 0} = System.cmd("git", ["commit", "-q", "-m", "impl"], cd: dir)
+        end
 
         value =
           if role == "reviewer-static", do: "REVIEW_VERDICT: APPROVED", else: "did #{role}"
@@ -682,6 +689,34 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
                    :ok
                  end
                )
+    end
+
+    test "no-op cycle (clean tree, zero work produced) raises — never loop_committed", %{
+      calls_agent: calls_agent,
+      dir: dir
+    } do
+      invoke_fn = fn role, _harness, _ctx, _opts ->
+        Agent.update(calls_agent, fn calls -> calls ++ [role] end)
+
+        value =
+          if role == "reviewer-static", do: "REVIEW_VERDICT: APPROVED", else: "did #{role}"
+
+        {:ok, %{"status" => "success", "value" => value}}
+      end
+
+      assert_raise RuntimeError, ~r/NO work was produced|no-op false-success/, fn ->
+        OrchestrationLoop.run(
+          harness: "claude_code",
+          stack: "static",
+          cwd: dir,
+          pitch: "do the thing",
+          invoke_fn: invoke_fn,
+          gate_fn: always_clear_gate_fn(),
+          advance_cycle_state_fn: fn _state, _step_log, _session_id, _verdict, _project_dir ->
+            :ok
+          end
+        )
+      end
     end
   end
 end
