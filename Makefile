@@ -2,6 +2,7 @@
 # Usage: make [command]
 
 SCRIPT_DIR := $(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
+SHELL := bash
 
 # Helper functions for command restrictions
 define check_ocg_only

@@ -134,7 +134,7 @@ F9='{"hook_event_name":"PreToolUse","tool_name":"Read","tool_input":{"file_path"
 run_test "developer-phoenix-backend Read codegen/PROJECT_CONTEXT.md denies (symlink form)" "2" "$F9"
 
 # Test 10: developer-phoenix-backend Read absolute PROJECT_CONTEXT.md → DENY
-TMP_CWD10="$(mktemp -d)"
+TMP_CWD10="$(mktemp -d /var/tmp/subagent-cwd-XXXXXX)"
 ABS_PC10="${TMP_CWD10}/PROJECT_CONTEXT.md"
 F10='{"hook_event_name":"PreToolUse","tool_name":"Read","tool_input":{"file_path":"'"$ABS_PC10"'"},"agent_id":"abc","agent_type":"developer-phoenix-backend","cwd":"'"$TMP_CWD10"'"}'
 run_test "developer-phoenix-backend Read absolute PROJECT_CONTEXT.md denies" "2" "$F10"
@@ -143,7 +143,7 @@ rm -rf "$TMP_CWD10"
 # ── Developer: context/*.md step-log allowlist ──────────────────────────────
 
 # Test 11: developer Read context/builds.md — listed in ## Plan Files to touch → ALLOW
-TMP11="$(mktemp -d)"
+TMP11="$(mktemp -d /var/tmp/subagent-read-XXXXXX)"
 STEP11="$(make_fixture_dir "$TMP11")"
 TRANS11="${TMP11}/transcript.jsonl"
 make_step_log "$STEP11" "- context/builds.md (EDIT) — update section" ""
@@ -153,7 +153,7 @@ run_test "developer Read context/builds.md listed in plan allows" "0" "$F11"
 rm -rf "$TMP11"
 
 # Test 12: developer Read context/builds.md — NOT listed in ## Plan → DENY
-TMP12="$(mktemp -d)"
+TMP12="$(mktemp -d /var/tmp/subagent-read-XXXXXX)"
 STEP12="$(make_fixture_dir "$TMP12")"
 TRANS12="${TMP12}/transcript.jsonl"
 make_step_log "$STEP12" "- lib/foo.ex (EXISTING) — some change" ""
@@ -167,7 +167,7 @@ F13='{"hook_event_name":"PreToolUse","tool_name":"Read","tool_input":{"file_path
 run_test "developer Read lib/foo.ex allows (outside scope)" "0" "$F13"
 
 # Test 14: developer-phoenix-frontend Read context/builds.md NOT in plan → DENY
-TMP14="$(mktemp -d)"
+TMP14="$(mktemp -d /var/tmp/subagent-read-XXXXXX)"
 STEP14="$(make_fixture_dir "$TMP14")"
 TRANS14="${TMP14}/transcript.jsonl"
 make_step_log "$STEP14" "- lib/web/live/foo_live.ex (EXISTING) — render update" ""
@@ -183,7 +183,7 @@ run_test "developer-static Read PROJECT_CONTEXT.md denies (static stack)" "2" "$
 # ── Developer: fail-open on missing transcript ──────────────────────────────
 
 # Test 16: developer Read context/builds.md, empty TRANSCRIPT_PATH → ALLOW (fail-open)
-TMP16="$(mktemp -d)"
+TMP16="$(mktemp -d /var/tmp/subagent-read-XXXXXX)"
 F16='{"hook_event_name":"PreToolUse","tool_name":"Read","tool_input":{"file_path":"context/builds.md"},"agent_id":"abc","agent_type":"developer-phoenix-backend","transcript_path":"","cwd":"'"$TMP16"'"}'
 run_test "developer Read context/*.md with empty transcript_path allows (fail-open)" "0" "$F16"
 rm -rf "$TMP16"
@@ -197,7 +197,7 @@ run_test "reviewer-phoenix Read PROJECT_CONTEXT.md denies" "2" "$F17"
 # ── Reviewer: context/*.md ## Files Modified allowlist ───────────────────────
 
 # Test 18: reviewer Read context/builds.md — listed in ## Files Modified → ALLOW
-TMP18="$(mktemp -d)"
+TMP18="$(mktemp -d /var/tmp/subagent-read-XXXXXX)"
 STEP18="$(make_fixture_dir "$TMP18")"
 TRANS18="${TMP18}/transcript.jsonl"
 make_step_log "$STEP18" "" "- context/builds.md"
@@ -207,7 +207,7 @@ run_test "reviewer Read context/builds.md in ## Files Modified allows" "0" "$F18
 rm -rf "$TMP18"
 
 # Test 19: reviewer Read context/builds.md — NOT in ## Files Modified → DENY
-TMP19="$(mktemp -d)"
+TMP19="$(mktemp -d /var/tmp/subagent-read-XXXXXX)"
 STEP19="$(make_fixture_dir "$TMP19")"
 TRANS19="${TMP19}/transcript.jsonl"
 make_step_log "$STEP19" "" "- lib/foo.ex"

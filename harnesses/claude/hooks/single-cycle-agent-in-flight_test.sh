@@ -270,7 +270,7 @@ rm -f "$T"
 # ---------------------------------------------------------------------------
 
 # T24: breadcrumb written with expected fields on a synthetic in-flight fire
-T24_CWD=$(mktemp -d)
+T24_CWD=$(mktemp -d /var/tmp/single-cycle-XXXXXX)
 mkdir -p "$T24_CWD/codegen/logging"
 T24_TRANSCRIPT="$T24_CWD/transcript.jsonl"
 agent_spawn "toolu_24" "planner-phoenix" >"$T24_TRANSCRIPT"
@@ -296,7 +296,7 @@ rm -rf "$T24_CWD"
 
 # T25: breadcrumb write FAILURE (diagnostics path occupied by a regular file)
 # must NOT alter the verdict — still DENY, no crash.
-T25_CWD=$(mktemp -d)
+T25_CWD=$(mktemp -d /var/tmp/single-cycle-XXXXXX)
 mkdir -p "$T25_CWD/codegen/logging"
 printf 'x' >"$T25_CWD/codegen/logging/.guard-diagnostics"
 T25_TRANSCRIPT="$T25_CWD/transcript.jsonl"
@@ -313,7 +313,7 @@ fi
 rm -rf "$T25_CWD"
 
 # T26: deny text no longer contains "Do not investigate"; points at breadcrumb path
-T26_CWD=$(mktemp -d)
+T26_CWD=$(mktemp -d /var/tmp/single-cycle-XXXXXX)
 mkdir -p "$T26_CWD/codegen/logging"
 T26_TRANSCRIPT="$T26_CWD/transcript.jsonl"
 agent_spawn "toolu_26" "planner-phoenix" >"$T26_TRANSCRIPT"

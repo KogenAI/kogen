@@ -123,16 +123,19 @@ assert_eq "block decision" "block" "$(printf '%s' "$blockout" | jq -r '.decision
 assert_eq "block reason" "stop reason" "$(printf '%s' "$blockout" | jq -r '.reason')"
 
 # ── hooks_realpath — existing path ───────────────────────────────────────────
-assert_eq "hooks_realpath /tmp resolves macOS symlink" "/private/tmp" "$(hooks_realpath /tmp)"
+CANONICAL_TMP="$(cd /tmp && pwd -P)"
+assert_eq "hooks_realpath /tmp resolves to canonical form" "$CANONICAL_TMP" "$(hooks_realpath /tmp)"
 
 # ── hooks_realpath — symlink target ──────────────────────────────────────────
 LINK_DIR=$(mktemp -d)
 ln -sf /etc "$LINK_DIR/etc-link"
-assert_eq "hooks_realpath resolves symlink" "/private/etc" "$(hooks_realpath "$LINK_DIR/etc-link")"
+CANONICAL_ETC="$(cd /etc && pwd -P)"
+assert_eq "hooks_realpath resolves symlink to canonical form" "$CANONICAL_ETC" "$(hooks_realpath "$LINK_DIR/etc-link")"
 rm -rf "$LINK_DIR"
 
 # ── hooks_realpath — non-existent path ───────────────────────────────────────
-assert_eq "hooks_realpath non-existent under /tmp" "/private/tmp/no/such/path" "$(hooks_realpath /tmp/no/such/path)"
+CANONICAL_TMP_NONEXIST="$(cd /tmp && pwd -P)/no/such/path"
+assert_eq "hooks_realpath non-existent under /tmp" "$CANONICAL_TMP_NONEXIST" "$(hooks_realpath /tmp/no/such/path)"
 
 # ── debug_log — gated by env vars ────────────────────────────────────────────
 LOG=/tmp/hooks-lib-test-slug-debug.log

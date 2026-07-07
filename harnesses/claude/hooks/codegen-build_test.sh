@@ -227,6 +227,8 @@ make_pi_harness "$CB_B" >/dev/null
 ARGS_B="$BASE_TMP/args_b.txt"
 MIX_B_DIR="$BASE_TMP/bin_b"
 make_mix_stub "$MIX_B_DIR"
+# Create a pi stub so dispatch.sh's command -v pi doesn't exit 127
+make_stub "$MIX_B_DIR/pi" "exit 0"
 
 actual_ec=0
 TARGET_ARGS_FILE="$ARGS_B" \

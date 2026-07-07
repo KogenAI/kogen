@@ -50,8 +50,8 @@ make_input() {
 }
 
 # Create a real temp dir to use as the sandbox.
-SANDBOX="$(mktemp -d)"
-OUTSIDE="$(mktemp -d)"
+SANDBOX="$(mktemp -d /var/tmp/confinement-sandbox.XXXXXX)"
+OUTSIDE="$(mktemp -d /var/tmp/confinement-outside.XXXXXX)"
 trap 'rm -rf "$SANDBOX" "$OUTSIDE"' EXIT
 
 SANDBOX_FILE="$SANDBOX/lib/foo.ex"

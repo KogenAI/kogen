@@ -19,7 +19,7 @@ run_test() {
     local log_content="${5:-}"
 
     local tmp
-    tmp=$(mktemp -d)
+    tmp=$(mktemp -d /var/tmp/stop-cycle-guard-XXXXXX)
     trap 'rm -rf "$tmp"' RETURN
 
     # Write transcript fixture.
@@ -79,7 +79,7 @@ STALE_LOG_WITH_DEVELOPER='# Session Log
 
 # --- Test 1: Original bug repro ---
 # Empty transcript (no Agent entries) + stale log with developer-phoenix-backend → MUST allow.
-tmp1=$(mktemp -d)
+tmp1=$(mktemp -d /var/tmp/stop-cycle-guard-XXXXXX)
 trap 'rm -rf "$tmp1"' EXIT
 printf '%s\n' "$EMPTY_TRANSCRIPT" >"$tmp1/transcript.jsonl"
 mkdir -p "$tmp1/codegen/logging"
@@ -92,7 +92,7 @@ run_test "no_agent_calls: empty transcript + stale log with developer → allow"
 # --- Test 2: Mid-cycle developer ---
 # Transcript ending in developer-phoenix-backend → MUST block.
 rm -f "/tmp/claude-cycle-guard-test-sess-2.count"
-tmp2=$(mktemp -d)
+tmp2=$(mktemp -d /var/tmp/stop-cycle-guard-XXXXXX)
 printf '%s\n' "$AGENT_ENTRY_DEVELOPER" >"$tmp2/transcript.jsonl"
 INPUT2=$(make_input "$tmp2/transcript.jsonl" "$tmp2" "false" "Done." "test-sess-2")
 run_test "mid_cycle_developer: transcript ends in developer-phoenix-backend → block" \
@@ -100,7 +100,7 @@ run_test "mid_cycle_developer: transcript ends in developer-phoenix-backend → 
 
 # --- Test 3: Cycle complete (committer) ---
 # Transcript ending in committer → MUST allow.
-tmp3=$(mktemp -d)
+tmp3=$(mktemp -d /var/tmp/stop-cycle-guard-XXXXXX)
 TRANSCRIPT3="${AGENT_ENTRY_DEVELOPER}
 ${AGENT_ENTRY_COMMITTER}"
 printf '%s\n' "$TRANSCRIPT3" >"$tmp3/transcript.jsonl"
@@ -111,7 +111,7 @@ run_test "cycle_complete_committer: transcript ends in committer → allow" \
 # --- Test 4: Mid-cycle reviewer-phoenix ---
 # Transcript ending in reviewer-phoenix → MUST block.
 rm -f "/tmp/claude-cycle-guard-test-sess-4.count"
-tmp4=$(mktemp -d)
+tmp4=$(mktemp -d /var/tmp/stop-cycle-guard-XXXXXX)
 printf '%s\n' "$AGENT_ENTRY_REVIEWER" >"$tmp4/transcript.jsonl"
 INPUT4=$(make_input "$tmp4/transcript.jsonl" "$tmp4" "false" "Done." "test-sess-4")
 run_test "mid_cycle_reviewer_phoenix: transcript ends in reviewer-phoenix → block" \
@@ -119,7 +119,7 @@ run_test "mid_cycle_reviewer_phoenix: transcript ends in reviewer-phoenix → bl
 
 # --- Test 5: Empty transcript_path (fallback) ---
 # transcript_path is empty with mid-cycle log present → MUST allow.
-tmp5=$(mktemp -d)
+tmp5=$(mktemp -d /var/tmp/stop-cycle-guard-XXXXXX)
 mkdir -p "$tmp5/codegen/logging"
 printf '%s\n' "$STALE_LOG_WITH_DEVELOPER" >"$tmp5/codegen/logging/current_cycle.jsonl"
 touch "$tmp5/codegen/logging/current_cycle.jsonl"
@@ -130,7 +130,7 @@ run_test "empty_transcript_path: no transcript path → allow (safe fallback)" \
 # --- Test 6: Intent guard wins ---
 # Transcript ending in developer-phoenix-backend + message ends in "?" → MUST allow.
 # Use env -u to simulate interactive context (unset headless env if present).
-tmp6=$(mktemp -d)
+tmp6=$(mktemp -d /var/tmp/stop-cycle-guard-XXXXXX)
 printf '%s\n' "$AGENT_ENTRY_DEVELOPER" >"$tmp6/transcript.jsonl"
 INPUT6=$(make_input "$tmp6/transcript.jsonl" "$tmp6" "false" "Should I continue?")
 stdout6=$(printf '%s' "$INPUT6" | env -u CODEGEN_BUILD_NON_INTERACTIVE bash "$GUARD" 2>/dev/null || true)
@@ -144,7 +144,7 @@ fi
 
 # --- Test 7: STOP_HOOK_ACTIVE wins ---
 # stop_hook_active: true + mid-cycle transcript → MUST allow.
-tmp7=$(mktemp -d)
+tmp7=$(mktemp -d /var/tmp/stop-cycle-guard-XXXXXX)
 printf '%s\n' "$AGENT_ENTRY_DEVELOPER" >"$tmp7/transcript.jsonl"
 INPUT7=$(make_input "$tmp7/transcript.jsonl" "$tmp7" "true" "Done.")
 run_test "stop_hook_active_wins: stop_hook_active=true → allow" \
@@ -153,7 +153,7 @@ run_test "stop_hook_active_wins: stop_hook_active=true → allow" \
 # --- Test 8: ScheduleWakeup tool_use in transcript → ALLOW ---
 # Transcript ends in developer-phoenix-backend + ScheduleWakeup tool_use entry → MUST allow.
 # The guard keys on the tool-call record, not prose.
-tmp8=$(mktemp -d)
+tmp8=$(mktemp -d /var/tmp/stop-cycle-guard-XXXXXX)
 SCHEDULE_WAKEUP_ENTRY='{"type":"assistant","message":{"content":[{"type":"tool_use","name":"ScheduleWakeup","input":{"delay_seconds":60}}]}}'
 printf '%s\n%s\n' "$AGENT_ENTRY_DEVELOPER" "$SCHEDULE_WAKEUP_ENTRY" >"$tmp8/transcript.jsonl"
 INPUT8=$(make_input "$tmp8/transcript.jsonl" "$tmp8" "false" "Gate still running, scheduled wakeup.")
@@ -163,7 +163,7 @@ run_test "schedulewakeup_tool_use: ScheduleWakeup tool_use in transcript → all
 # --- Test 9: async-wait prose without ScheduleWakeup tool_use → BLOCK ---
 # "still running" prose alone is no longer sufficient — requires a real tool call.
 rm -f "/tmp/claude-cycle-guard-test-sess-9.count"
-tmp9=$(mktemp -d)
+tmp9=$(mktemp -d /var/tmp/stop-cycle-guard-XXXXXX)
 printf '%s\n' "$AGENT_ENTRY_DEVELOPER" >"$tmp9/transcript.jsonl"
 INPUT9=$(make_input "$tmp9/transcript.jsonl" "$tmp9" "false" "The gate is still running, will resume when done." "test-sess-9")
 run_test "async_wait_prose_no_tool_use: still running prose without ScheduleWakeup tool_use → block" \
@@ -174,7 +174,7 @@ run_test "async_wait_prose_no_tool_use: still running prose without ScheduleWake
 # Previously this allowed the stop — now it BLOCKS.
 # Uses unique session_id to avoid cap exhaustion from earlier blocking tests.
 rm -f "/tmp/claude-cycle-guard-test-sess-10a.count"
-tmp10=$(mktemp -d)
+tmp10=$(mktemp -d /var/tmp/stop-cycle-guard-XXXXXX)
 mkdir -p "$tmp10/codegen/logging"
 printf '# Session Log\n## dev-gate Section\nDiagnosis: timeout.\n' \
     >"$tmp10/codegen/logging/test_session_cycle.jsonl"
@@ -205,7 +205,7 @@ rm -rf "$tmp10b"
 
 # --- Test 11: Verdict guard — developer in transcript, session log has ALL CLEAR → block ---
 rm -f "/tmp/claude-cycle-guard-test-sess-11.count"
-tmp11=$(mktemp -d)
+tmp11=$(mktemp -d /var/tmp/stop-cycle-guard-XXXXXX)
 mkdir -p "$tmp11/codegen/logging"
 printf '# Session Log\n## dev-gate Section\nALL CLEAR ✅\n' \
     >"$tmp11/codegen/logging/test_session_cycle.jsonl"
@@ -221,8 +221,8 @@ run_test "verdict_guard_with_verdict: developer in transcript, log has ALL CLEAR
 # --- Test 12: A+B regression — A's transcript + B's newer log on disk → block reason cites A ---
 # B's log has newer mtime; A's transcript records only A's log.
 # Verdict guard must read A's log (which has ALL CLEAR) → block with A's path, not B's.
-tmp12A=$(mktemp -d)
-tmp12B=$(mktemp -d)
+tmp12A=$(mktemp -d /var/tmp/stop-cycle-guard-XXXXXX)
+tmp12B=$(mktemp -d /var/tmp/stop-cycle-guard-XXXXXX)
 mkdir -p "$tmp12A/codegen/logging" "$tmp12B/codegen/logging"
 LOG12A="$tmp12A/codegen/logging/A_session_cycle.jsonl"
 printf '# Session A\n## dev-gate Section\nALL CLEAR ✅\n' >"$LOG12A"
@@ -252,7 +252,7 @@ rm -rf "$tmp12A" "$tmp12B"
 # --- Test 13: context-curator mid-cycle → BLOCK ---
 # Transcript ending in context-curator with a session log containing ALL CLEAR → MUST block.
 # Use a unique session_id to avoid counter-file exhaustion from earlier blocking tests.
-tmp13=$(mktemp -d)
+tmp13=$(mktemp -d /var/tmp/stop-cycle-guard-XXXXXX)
 mkdir -p "$tmp13/codegen/logging"
 printf '# Session Log\n## dev-gate Section\nALL CLEAR ✅\n' \
     >"$tmp13/codegen/logging/test_session_cycle.jsonl"
@@ -271,7 +271,7 @@ rm -rf "$tmp13"
 # --- Test 14: committer is terminal → ALLOW ---
 # Transcript ending in committer → MUST allow (not mid-cycle).
 # This confirms the committer case is NOT in the mid-cycle blocker.
-tmp14=$(mktemp -d)
+tmp14=$(mktemp -d /var/tmp/stop-cycle-guard-XXXXXX)
 TRANSCRIPT14="${AGENT_ENTRY_DEVELOPER}
 ${AGENT_ENTRY_COMMITTER}"
 printf '%s\n' "$TRANSCRIPT14" >"$tmp14/transcript.jsonl"
@@ -283,7 +283,7 @@ rm -rf "$tmp14"
 # ── Test 15: in-flight gate (live PID flag) → BLOCK ─────────────────────────
 # When latest.flag exists and PID is alive, stop-cycle-guard must BLOCK
 # regardless of transcript state.
-tmp15=$(mktemp -d)
+tmp15=$(mktemp -d /var/tmp/stop-cycle-guard-XXXXXX)
 mkdir -p "$tmp15/codegen/gate-pending"
 # Use own PID as a live PID
 LIVE_PID_15=$$
@@ -310,7 +310,7 @@ rm -rf "$tmp15"
 
 # ── Test 16: no-flag async-wait with ScheduleWakeup tool_use → ALLOW ────────
 # When no flag is in flight + ScheduleWakeup tool_use exists in transcript → allow.
-tmp16=$(mktemp -d)
+tmp16=$(mktemp -d /var/tmp/stop-cycle-guard-XXXXXX)
 SCHEDULE_WAKEUP_ENTRY16='{"type":"assistant","message":{"content":[{"type":"tool_use","name":"ScheduleWakeup","input":{"delay_seconds":60}}]}}'
 printf '%s\n%s\n' "$AGENT_ENTRY_DEVELOPER" "$SCHEDULE_WAKEUP_ENTRY16" >"$tmp16/transcript.jsonl"
 INPUT16=$(make_input "$tmp16/transcript.jsonl" "$tmp16" "false" "ScheduleWakeup called. Will check back once gate finishes.")
@@ -319,7 +319,7 @@ run_test "no_flag_async_wait_allow: no flag + ScheduleWakeup tool_use → allow"
 rm -rf "$tmp16"
 
 # ── Test 17: dead-PID flag → not-in-flight → allow (falls through to other guards) ─
-tmp17=$(mktemp -d)
+tmp17=$(mktemp -d /var/tmp/stop-cycle-guard-XXXXXX)
 mkdir -p "$tmp17/codegen/gate-pending"
 # Dead PID
 cat >"$tmp17/codegen/gate-pending/9999999.flag" <<EOF
@@ -345,7 +345,7 @@ rm -rf "$tmp17"
 # ── Test 18: bare "Blocked" keyword in last message + developer → BLOCK ──────
 # The intent guard no longer grants escape on "Blocked" substring — only trailing "?" counts.
 rm -f "/tmp/claude-cycle-guard-test-sess-18.count"
-tmp18=$(mktemp -d)
+tmp18=$(mktemp -d /var/tmp/stop-cycle-guard-XXXXXX)
 printf '%s\n' "$AGENT_ENTRY_DEVELOPER" >"$tmp18/transcript.jsonl"
 INPUT18=$(make_input "$tmp18/transcript.jsonl" "$tmp18" "false" "I am Blocked on this task." "test-sess-18")
 run_test "bare_blocked_keyword_blocks: Blocked keyword alone no longer escapes intent guard → block" \
@@ -356,7 +356,7 @@ rm -rf "$tmp18"
 # gate-result.json says inconclusive → gate did not confirm clear → BLOCK (not "never ran" carve-out).
 # gate_result_verdict reads from <project_dir>/codegen/gate-pending/gate-result.json
 rm -f "/tmp/claude-cycle-guard-test-sess-19.count"
-tmp19=$(mktemp -d)
+tmp19=$(mktemp -d /var/tmp/stop-cycle-guard-XXXXXX)
 mkdir -p "$tmp19/codegen/logging" "$tmp19/codegen/gate-pending"
 printf '# Session Log\n## dev-gate Section\nDiagnosis: pool exhausted.\n' \
     >"$tmp19/codegen/logging/test_session_cycle.jsonl"
@@ -373,7 +373,7 @@ rm -rf "$tmp19"
 
 # --- Test 20: Gate=clear + dirty tree → BLOCK with "tree is dirty" reason ---
 rm -f "/tmp/claude-cycle-guard-test-sess-20.count"
-tmp20=$(mktemp -d)
+tmp20=$(mktemp -d /var/tmp/stop-cycle-guard-XXXXXX)
 mkdir -p "$tmp20/codegen/logging" "$tmp20/codegen/gate-pending"
 printf '# Session Log\n## dev-gate Section\nALL CLEAR ✅\n' \
     >"$tmp20/codegen/logging/test_session_cycle.jsonl"
@@ -401,7 +401,7 @@ rm -rf "$tmp20"
 
 # --- Test 21: Gate=clear + clean tree → BLOCK for mid-cycle reason (NOT dirty-tree) ---
 rm -f "/tmp/claude-cycle-guard-test-sess-21.count"
-tmp21=$(mktemp -d)
+tmp21=$(mktemp -d /var/tmp/stop-cycle-guard-XXXXXX)
 mkdir -p "$tmp21/codegen/logging" "$tmp21/codegen/gate-pending"
 printf '# Session Log\n## dev-gate Section\nALL CLEAR ✅\n' \
     >"$tmp21/codegen/logging/test_session_cycle.jsonl"
@@ -435,7 +435,7 @@ rm -rf "$tmp21"
 # ── Test 22: reviewer + gate-result.json inconclusive → BLOCK ────────────────
 # Inconclusive is no longer a permitted stop for ANY role — gate did not confirm clear.
 rm -f "/tmp/claude-cycle-guard-test-sess-22.count"
-tmp22=$(mktemp -d)
+tmp22=$(mktemp -d /var/tmp/stop-cycle-guard-XXXXXX)
 mkdir -p "$tmp22/codegen/logging" "$tmp22/codegen/gate-pending"
 printf '# Session Log\n## reviewer-phoenix Section\nReview complete.\n' \
     >"$tmp22/codegen/logging/test_session_cycle.jsonl"
@@ -454,8 +454,8 @@ rm -rf "$tmp22"
 # Step-A counter is at cap (2). Guard fires with a transcript pointing to step-B.
 # Expected: step-B is a new step → count resets to 0 → BLOCK (first block on B).
 rm -f "/tmp/claude-cycle-guard-test-sess-23.count"
-tmp23A=$(mktemp -d)
-tmp23B=$(mktemp -d)
+tmp23A=$(mktemp -d /var/tmp/stop-cycle-guard-XXXXXX)
+tmp23B=$(mktemp -d /var/tmp/stop-cycle-guard-XXXXXX)
 mkdir -p "$tmp23A/codegen/logging" "$tmp23B/codegen/logging"
 LOG23A="$tmp23A/codegen/logging/A_session_cycle.jsonl"
 LOG23B="$tmp23B/codegen/logging/B_session_cycle.jsonl"
@@ -479,7 +479,7 @@ rm -f "/tmp/claude-cycle-guard-test-sess-23.count"
 # to any codegen/logging/*.md (resolver returns empty). Expected: still BLOCK
 # (count=1 < cap; empty resolver did NOT collapse to global / did NOT reset).
 rm -f "/tmp/claude-cycle-guard-test-sess-24.count"
-tmp24=$(mktemp -d)
+tmp24=$(mktemp -d /var/tmp/stop-cycle-guard-XXXXXX)
 LOG24="$tmp24/codegen/logging/cur_session_cycle.jsonl"
 mkdir -p "$tmp24/codegen/logging"
 printf '# Session\n## dev-gate Section\nALL CLEAR ✅\n' >"$LOG24"
@@ -497,7 +497,7 @@ rm -f "/tmp/claude-cycle-guard-test-sess-24.count"
 
 # ── Test 25: cycle-state=COMMITTED → allow (fast-path) ───────────────────────
 # cycle-state.json step_log matches active log + state=COMMITTED → allow immediately.
-tmp25=$(mktemp -d)
+tmp25=$(mktemp -d /var/tmp/stop-cycle-guard-XXXXXX)
 mkdir -p "$tmp25/codegen/logging" "$tmp25/codegen/gate-pending"
 LOG25="$tmp25/codegen/logging/20260614_150000_feat_cycle.jsonl"
 printf '# Session\n## committer Section\n\nCommitted.\n' >"$LOG25"
@@ -521,7 +521,7 @@ rm -rf "$tmp25"
 # ── Test 26: cycle-state=COMMITTED but step_log mismatch → fall-through → block ─
 # cycle-state.json belongs to a different step log → authoritative, but mismatch → fall-through.
 rm -f "/tmp/claude-cycle-guard-test-sess-26.count"
-tmp26=$(mktemp -d)
+tmp26=$(mktemp -d /var/tmp/stop-cycle-guard-XXXXXX)
 mkdir -p "$tmp26/codegen/logging" "$tmp26/codegen/gate-pending"
 LOG26_ACTIVE="$tmp26/codegen/logging/20260614_150000_feat_cycle.jsonl"
 LOG26_OTHER="$tmp26/codegen/logging/20260614_150001_other_cycle.jsonl"
@@ -549,7 +549,7 @@ rm -f "/tmp/claude-cycle-guard-test-sess-26.count"
 # Headless build: transcript ends in developer-phoenix-backend + last message "?"
 # → intent escape must NOT fire → guard blocks.
 rm -f "/tmp/claude-cycle-guard-test-sess-headless-scg.count"
-tmp27=$(mktemp -d)
+tmp27=$(mktemp -d /var/tmp/stop-cycle-guard-XXXXXX)
 printf '%s\n' "$AGENT_ENTRY_DEVELOPER" >"$tmp27/transcript.jsonl"
 INPUT27=$(make_input "$tmp27/transcript.jsonl" "$tmp27" "false" "Should I continue?" "test-sess-headless-scg")
 stdout27=$(printf '%s' "$INPUT27" | CODEGEN_BUILD_NON_INTERACTIVE=1 bash "$GUARD" 2>/dev/null || true)
@@ -565,7 +565,7 @@ rm -f "/tmp/claude-cycle-guard-test-sess-headless-scg.count"
 
 # ── Test 28: interactive still allows intent question (regression guard) ──────
 rm -f "/tmp/claude-cycle-guard-test-sess-28.count"
-tmp28=$(mktemp -d)
+tmp28=$(mktemp -d /var/tmp/stop-cycle-guard-XXXXXX)
 printf '%s\n' "$AGENT_ENTRY_DEVELOPER" >"$tmp28/transcript.jsonl"
 INPUT28=$(make_input "$tmp28/transcript.jsonl" "$tmp28" "false" "Should I continue?" "test-sess-28")
 stdout28=$(printf '%s' "$INPUT28" | env -u CODEGEN_BUILD_NON_INTERACTIVE bash "$GUARD" 2>/dev/null || true)
@@ -581,7 +581,7 @@ rm -f "/tmp/claude-cycle-guard-test-sess-28.count"
 
 # ── Test 29: skip when CLAUDE_ROLE=shape (investigative mode) ────────────────
 rm -f "/tmp/claude-cycle-guard-test-sess-29.count"
-tmp29=$(mktemp -d)
+tmp29=$(mktemp -d /var/tmp/stop-cycle-guard-XXXXXX)
 printf '%s\n' "$AGENT_ENTRY_DEVELOPER" >"$tmp29/transcript.jsonl"
 INPUT29=$(make_input "$tmp29/transcript.jsonl" "$tmp29" "false" "Done." "test-sess-29")
 stdout29=$(printf '%s' "$INPUT29" | CLAUDE_ROLE=shape bash "$GUARD" 2>/dev/null || true)
@@ -597,7 +597,7 @@ rm -f "/tmp/claude-cycle-guard-test-sess-29.count"
 
 # ── Test 30: build mode (role unset) still blocks — behavior unchanged ────────
 rm -f "/tmp/claude-cycle-guard-test-sess-30.count"
-tmp30=$(mktemp -d)
+tmp30=$(mktemp -d /var/tmp/stop-cycle-guard-XXXXXX)
 printf '%s\n' "$AGENT_ENTRY_DEVELOPER" >"$tmp30/transcript.jsonl"
 INPUT30=$(make_input "$tmp30/transcript.jsonl" "$tmp30" "false" "Done." "test-sess-30")
 stdout30=$(printf '%s' "$INPUT30" | env -u CLAUDE_ROLE -u PI_ROLE bash "$GUARD" 2>/dev/null || true)
@@ -613,7 +613,7 @@ rm -f "/tmp/claude-cycle-guard-test-sess-30.count"
 
 # ── Test 31: CLAUDE_ROLE=build still blocks (explicit build role) ────────────
 rm -f "/tmp/claude-cycle-guard-test-sess-31.count"
-tmp31=$(mktemp -d)
+tmp31=$(mktemp -d /var/tmp/stop-cycle-guard-XXXXXX)
 printf '%s\n' "$AGENT_ENTRY_DEVELOPER" >"$tmp31/transcript.jsonl"
 INPUT31=$(make_input "$tmp31/transcript.jsonl" "$tmp31" "false" "Done." "test-sess-31")
 stdout31=$(printf '%s' "$INPUT31" | CLAUDE_ROLE=build bash "$GUARD" 2>/dev/null || true)

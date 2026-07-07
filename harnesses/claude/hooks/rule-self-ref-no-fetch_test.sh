@@ -102,9 +102,9 @@ extract_md_pointers() {
     local file="$1"
     # For each line, extract all backtick-quoted *.md tokens and emit them
     # with their source line for context detection
-    grep -nE '\`[a-zA-Z0-9_/.-]+\.md\`' "$file" 2>/dev/null | while IFS=: read -r lineno rest; do
+    grep -nE '`[a-zA-Z0-9_/.-]+\.md`' "$file" 2>/dev/null | while IFS=: read -r lineno rest; do
         # Extract each token on this line
-        printf '%s' "$rest" | grep -oE '\`[a-zA-Z0-9_/.-]+\.md\`' | while IFS= read -r token; do
+        printf '%s' "$rest" | grep -oE '`[a-zA-Z0-9_/.-]+\.md`' | while IFS= read -r token; do
             local tok="${token#\`}"
             tok="${tok%\`}"
             printf '%s\t%s\n' "$tok" "$rest"

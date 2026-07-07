@@ -37,7 +37,7 @@ assert_not_contains() {
 
 make_project() {
     local dir
-    dir=$(mktemp -d)
+    dir=$(mktemp -d /var/tmp/step-log-missing-XXXXXX)
     mkdir -p "$dir/codegen/logging"
     printf '%s' "$dir"
 }

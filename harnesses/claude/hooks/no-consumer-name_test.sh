@@ -73,6 +73,7 @@ scan() {
         --exclude-dir=tmp \
         --exclude-dir=recipes-combobulate \
         --exclude-dir=.claude \
+        --exclude-dir=runs \
         2>/dev/null |
         grep -v 'test_harness/deps\|test_harness/_build\|codegen/pitches' |
         grep -v 'no-consumer-name_test\.sh' |

@@ -61,14 +61,14 @@ run_test "orchestrator Edit on relative tmp/ blocks" "2" "$FIXTURE_TMP"
 
 # Test 6: orchestrator Edit on absolute path inside codegen/logging/ — ALLOW
 # Simulates Claude Code passing file_path as an absolute path (e.g. /Users/.../my_app/codegen/logging/foo.md)
-CWD_ABS="$(mktemp -d)"
+CWD_ABS="$(mktemp -d /var/tmp/orchestrator-abs-XXXXXX)"
 ABS_LOG_PATH="${CWD_ABS}/codegen/logging/session.md"
 FIXTURE_ABS_LOG='{"hook_event_name":"PreToolUse","tool_name":"Edit","tool_input":{"file_path":"'"$ABS_LOG_PATH"'","old_string":"x","new_string":"y"},"agent_id":"","agent_type":"","cwd":"'"$CWD_ABS"'"}'
 run_test "orchestrator Edit on absolute codegen/logging/ path allows" "0" "$FIXTURE_ABS_LOG"
 rm -rf "$CWD_ABS"
 
 # Test 7: orchestrator Edit on absolute path inside lib/ — BLOCK
-CWD_ABS2="$(mktemp -d)"
+CWD_ABS2="$(mktemp -d /var/tmp/orchestrator-abs2-XXXXXX)"
 ABS_LIB_PATH="${CWD_ABS2}/lib/app/foo.ex"
 FIXTURE_ABS_BLOCK='{"hook_event_name":"PreToolUse","tool_name":"Edit","tool_input":{"file_path":"'"$ABS_LIB_PATH"'","old_string":"x","new_string":"y"},"agent_id":"","agent_type":"","cwd":"'"$CWD_ABS2"'"}'
 run_test "orchestrator Edit on absolute lib/ path blocks" "2" "$FIXTURE_ABS_BLOCK"

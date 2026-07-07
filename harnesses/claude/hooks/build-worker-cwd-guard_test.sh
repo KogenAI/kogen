@@ -41,7 +41,7 @@ run_test() {
 
 # Use a user-app-like cwd so the guard engages (guard is a no-op outside real apps_root).
 # OCG_APPS_ROOT drives enforcement; PROJECT_DIR is a synthetic user-app under it.
-BASE_TMP="$(mktemp -d)"
+BASE_TMP="$(mktemp -d /var/tmp/build-worker-XXXXXX)"
 export OCG_APPS_ROOT="${BASE_TMP}/apps"
 PROJECT_DIR="${OCG_APPS_ROOT}/abc123"
 mkdir -p "$PROJECT_DIR"
