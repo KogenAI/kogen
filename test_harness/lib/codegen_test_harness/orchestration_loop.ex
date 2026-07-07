@@ -58,6 +58,8 @@ defmodule CodegenTestHarness.OrchestrationLoop do
     defaults to `invoke_role/4` (real `codegen-call` round-trip)
   - `:gate_fn` — test seam: `(cwd, opts -> {verdict, gate_command})`, defaults
     to `LoopGate.run_gate/2`
+  - `:gate_preflight_fn` — test seam: `(cwd -> resolved)` — resolves the app
+    gate at turn 0 before any role runs; defaults to `LoopGate.decide_gate/1`
   - `:max_gate_retries` — developer re-runs allowed after a non-clear gate
     before giving up (default 1)
 
@@ -79,8 +81,37 @@ defmodule CodegenTestHarness.OrchestrationLoop do
     Process.put(@transcript_seq_key, 0)
     Process.put(@cycle_id_key, Keyword.get(opts, :cycle_id))
 
+    # Turn-0 gate preflight: resolve the app's gate command BEFORE invoking
+    # (and paying for) any role. Resolution-only — decide_gate never executes
+    # the gate. An unresolvable gate (missing/empty/stale GATE_COMMAND) raises
+    # here, at turn 0, cheaply, instead of mid-cycle after the developer runs.
+    preflight_gate!(cwd, opts)
+
     run_roles(roles, harness, ctx, opts)
   end
+
+  # Resolves the app gate at turn 0 via the :gate_preflight_fn seam (default
+  # LoopGate.decide_gate/1). Reuses the same resolution path the later gate run
+  # takes (no :step_log in the real loop), so it cannot pass-then-fail. Rescues
+  # the __GATE_UNRESOLVED__ RuntimeError and re-raises with an actionable hint.
+  defp preflight_gate!(cwd, opts) do
+    preflight_fn = Keyword.get(opts, :gate_preflight_fn, &default_gate_preflight/1)
+
+    try do
+      _resolved = preflight_fn.(cwd)
+      :ok
+    rescue
+      e in RuntimeError ->
+        reraise(
+          "LoopGate preflight: app gate unresolved at #{cwd}/.claude/gate-config.sh " <>
+            "— add GATE_COMMAND (e.g. \"make ci\") or re-integrate via codegen-scaffold. " <>
+            "(underlying: #{Exception.message(e)})",
+          __STACKTRACE__
+        )
+    end
+  end
+
+  defp default_gate_preflight(cwd), do: LoopGate.decide_gate(cwd)
 
   # Runs each role in sequence up to (not including) the gate-dependent
   # tail (reviewer onward); the gate step is interleaved between the

@@ -34,6 +34,10 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
     fn _cwd, _opts -> {:clear, "make test"} end
   end
 
+  defp no_op_gate_preflight_fn do
+    fn _cwd -> {"make test", "short", 0} end
+  end
+
   setup do
     {:ok, calls_agent} = Agent.start_link(fn -> [] end)
     on_exit(fn -> if Process.alive?(calls_agent), do: Agent.stop(calls_agent) end)
@@ -49,7 +53,8 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
                  cwd: "/tmp/irrelevant",
                  pitch: "do the thing",
                  invoke_fn: always_ok_invoke_fn(calls_agent),
-                 gate_fn: always_clear_gate_fn()
+                 gate_fn: always_clear_gate_fn(),
+                 gate_preflight_fn: no_op_gate_preflight_fn()
                )
 
       assert Agent.get(calls_agent, & &1) == @phoenix_sequence
@@ -63,7 +68,8 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
                  cwd: "/tmp/irrelevant",
                  pitch: "do the thing",
                  invoke_fn: always_ok_invoke_fn(calls_agent),
-                 gate_fn: always_clear_gate_fn()
+                 gate_fn: always_clear_gate_fn(),
+                 gate_preflight_fn: no_op_gate_preflight_fn()
                )
 
       assert Agent.get(calls_agent, & &1) == @static_sequence
@@ -97,7 +103,8 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
                  cwd: "/tmp/irrelevant",
                  pitch: "do the thing",
                  invoke_fn: invoke_fn,
-                 gate_fn: always_clear_gate_fn()
+                 gate_fn: always_clear_gate_fn(),
+                 gate_preflight_fn: no_op_gate_preflight_fn()
                )
 
       calls = Agent.get(calls_agent, & &1)
@@ -120,7 +127,8 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
                  cwd: "/tmp/irrelevant",
                  pitch: "x",
                  invoke_fn: invoke_fn,
-                 gate_fn: always_clear_gate_fn()
+                 gate_fn: always_clear_gate_fn(),
+                 gate_preflight_fn: no_op_gate_preflight_fn()
                )
 
       calls = Agent.get(calls_agent, & &1)
@@ -156,7 +164,8 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
                  cwd: "/tmp/irrelevant",
                  pitch: "do the thing",
                  invoke_fn: invoke_fn,
-                 gate_fn: always_clear_gate_fn()
+                 gate_fn: always_clear_gate_fn(),
+                 gate_preflight_fn: no_op_gate_preflight_fn()
                )
 
       # reviewer-static was invoked twice (fail then retry-succeed)
@@ -173,7 +182,8 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
                  cwd: "/tmp/irrelevant",
                  pitch: "do the thing",
                  invoke_fn: invoke_fn,
-                 gate_fn: always_clear_gate_fn()
+                 gate_fn: always_clear_gate_fn(),
+                 gate_preflight_fn: no_op_gate_preflight_fn()
                )
 
       assert reason =~ "failed twice"
@@ -234,7 +244,8 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
                  cwd: "/tmp/irrelevant",
                  pitch: "do the thing",
                  invoke_fn: always_ok_invoke_fn(calls_agent),
-                 gate_fn: gate_fn
+                 gate_fn: gate_fn,
+                 gate_preflight_fn: no_op_gate_preflight_fn()
                )
 
       # developer-static invoked twice: once initially, once after gate=failed retry
@@ -253,7 +264,8 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
                  cwd: "/tmp/irrelevant",
                  pitch: "do the thing",
                  invoke_fn: always_ok_invoke_fn(calls_agent),
-                 gate_fn: gate_fn
+                 gate_fn: gate_fn,
+                 gate_preflight_fn: no_op_gate_preflight_fn()
                )
 
       assert reason =~ "gate verdict=failed"
@@ -271,7 +283,8 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
           cwd: "/tmp/irrelevant",
           pitch: "do the thing",
           invoke_fn: always_ok_invoke_fn(calls_agent),
-          gate_fn: gate_fn
+          gate_fn: gate_fn,
+          gate_preflight_fn: no_op_gate_preflight_fn()
         )
       end
     end
@@ -288,7 +301,8 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
                  cwd: "/tmp/irrelevant",
                  pitch: "do the thing",
                  invoke_fn: always_ok_invoke_fn(calls_agent),
-                 gate_fn: always_clear_gate_fn()
+                 gate_fn: always_clear_gate_fn(),
+                 gate_preflight_fn: no_op_gate_preflight_fn()
                )
 
       assert List.last(Agent.get(calls_agent, & &1)) == "committer"
@@ -315,6 +329,7 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
                  pitch: "do the thing",
                  invoke_fn: always_ok_invoke_fn(calls_agent),
                  gate_fn: always_clear_gate_fn(),
+                 gate_preflight_fn: no_op_gate_preflight_fn(),
                  advance_cycle_state_fn: advance_fn
                )
 
@@ -341,6 +356,7 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
                  pitch: "do the thing",
                  invoke_fn: always_ok_invoke_fn(calls_agent),
                  gate_fn: always_clear_gate_fn(),
+                 gate_preflight_fn: no_op_gate_preflight_fn(),
                  advance_cycle_state_fn: advance_fn
                )
 
@@ -373,6 +389,7 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
                  pitch: "do the thing",
                  invoke_fn: always_ok_invoke_fn(calls_agent),
                  gate_fn: always_clear_gate_fn(),
+                 gate_preflight_fn: no_op_gate_preflight_fn(),
                  format_fn: format_fn
                )
 
@@ -644,7 +661,8 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
           cwd: dir,
           pitch: "do the thing",
           invoke_fn: invoke_fn,
-          gate_fn: always_clear_gate_fn()
+          gate_fn: always_clear_gate_fn(),
+          gate_preflight_fn: no_op_gate_preflight_fn()
         )
       end
     end
@@ -681,6 +699,7 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
                  pitch: "do the thing",
                  invoke_fn: invoke_fn,
                  gate_fn: always_clear_gate_fn(),
+                 gate_preflight_fn: no_op_gate_preflight_fn(),
                  advance_cycle_state_fn: fn _state,
                                             _step_log,
                                             _session_id,
@@ -712,11 +731,53 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
           pitch: "do the thing",
           invoke_fn: invoke_fn,
           gate_fn: always_clear_gate_fn(),
+          gate_preflight_fn: no_op_gate_preflight_fn(),
           advance_cycle_state_fn: fn _state, _step_log, _session_id, _verdict, _project_dir ->
             :ok
           end
         )
       end
+    end
+  end
+
+  describe "run/1 — turn-0 gate preflight (loop-gate-preflight-turn0)" do
+    test "unresolvable gate refuses BEFORE any role is invoked",
+         %{calls_agent: calls_agent} do
+      raising_preflight = fn _cwd ->
+        raise "LoopGate: gate_select_decide could not resolve a gate — " <>
+                "__GATE_UNRESOLVED__:/x/.claude/gate-config.sh present but GATE_COMMAND is empty"
+      end
+
+      assert_raise RuntimeError, ~r/gate unresolved/, fn ->
+        OrchestrationLoop.run(
+          harness: "claude_code",
+          stack: "phoenix",
+          cwd: "/tmp/irrelevant",
+          pitch: "do the thing",
+          invoke_fn: always_ok_invoke_fn(calls_agent),
+          gate_fn: always_clear_gate_fn(),
+          gate_preflight_fn: raising_preflight
+        )
+      end
+
+      # The refusal MUST happen before the first role spend.
+      assert Agent.get(calls_agent, & &1) == []
+    end
+
+    test "resolvable gate proceeds through the full sequence",
+         %{calls_agent: calls_agent} do
+      assert :ok ==
+               OrchestrationLoop.run(
+                 harness: "claude_code",
+                 stack: "phoenix",
+                 cwd: "/tmp/irrelevant",
+                 pitch: "do the thing",
+                 invoke_fn: always_ok_invoke_fn(calls_agent),
+                 gate_fn: always_clear_gate_fn(),
+                 gate_preflight_fn: no_op_gate_preflight_fn()
+               )
+
+      assert Agent.get(calls_agent, & &1) == @phoenix_sequence
     end
   end
 end
