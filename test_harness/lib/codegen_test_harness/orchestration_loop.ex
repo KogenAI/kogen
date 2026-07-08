@@ -162,8 +162,14 @@ defmodule CodegenTestHarness.OrchestrationLoop do
       raise "OrchestrationLoop: codegen-call not found at #{@codegen_call_bin}"
     end
 
+    # codegen-call validates --model/--effort in pure bash BEFORE dispatch
+    # (call-dispatch.sh :? guards), regardless of the sentinel --agent value
+    # below causing an immediate exit 1 with zero model turns. These must be
+    # present and valid even though no real model call ever executes.
     args = [
       "--harness=claude_code",
+      "--model=sonnet",
+      "--effort=low",
       "--agent=#{@preflight_sentinel}",
       "PING"
     ]
