@@ -94,18 +94,23 @@ Codegen-infra pitfalls and bash gotchas — split from `context/development.md` 
 - **[shared] CWD-isolation in hook test fixtures** — Fixtures with `cwd:""` inherit real `$PWD`, leaking live session state. Derive cwd from tmpdir, not empty literal.
 - **[shared] Stale-bake false-positive in dev-gate** — `FAILED ❌` with uncommitted rule/template edits often stale-bake. Re-run `make install && make test` fresh. Multi-hook failure span signals missing `make install`.
 - **[local] Prettier table-repad in rule diffs** — Rule-only diff shows repad noise. Use `git diff -w` to isolate real content.
+- **[shared] `xargs` in `git -C <dir> | xargs` runs in caller's cwd** — `git -C` only affects git, not downstream pipeline. Tools need `cd "$dir" && git ... | xargs ...` or `cd: cwd` (Elixir). Without it: silent empty hashes.
+- **[local] `advance_cycle_state/5` races on shared literal cwd** — Async tests on same literal cwd race on `mkdir -p`. Stub no-op OR use per-test unique tmpdir.
+- **[local] Task line numbers drift on file growth** — Locate assertions by content, not line number.
+- **[local] `developer-no-self-gate` budget: loops burn budget per invocation** — `for i in 1 2 3; do mix test; done` burns all 3 calls in one Bash call. Use flags like `--repeat-until-failure` instead.
+- **[shared] Bash↔TS hook twin divergence: do not "fix" on unrelated features** — Pre-existing pattern divergences (e.g., `developer-no-self-gate.ts` matches 'make ci-fast', bash doesn't) should NOT be "fixed" when adding shared features to both twins. Keep each twin's existing pattern untouched; only ADD the new shared feature. Fixing old divergence couples unrelated changes and complicates review.
 
 ## Bash Patterns & Pitfalls (Codegen-Infra)
 
 - **Scaffold global-read convention** — `run_integrate_stage()` reads scaffold parameters as GLOBALS (`STACK`, `SLUG`, `RESTART_RPC_CMD`, etc.), not function parameters. New flags assigned in the shared arg-parse loop; NO parameter threading. One arg-parse pass; dual callsites (create + integrate) both see the globals.
 - **COMMON_FLAGS array** — dispatch scripts use a shared flags array for mode-invariant vs mode-specific flags. Build array once, splice into both exec paths. Under `set -u`, guard VALUE expansions with `if [[ ${#arr[@]} -gt 0 ]]; then` — `${arr[@]+"${arr[@]}"}` is rejected by shfmt; use explicit length-guards.
 - **Shared fns called from multiple harnesses** — thread a `mode` parameter to gate harness-specific behavior. Example: `render-check.js` `runChecks(url, timeoutMs, mode)` gates content-region check on `if (mode === "phoenix")`.
-- **[local] Multi-iteration loop tool timeout** — When orchestrating multiple slow (5+ min) external commands in a shell loop, the tool call's own timeout can kill the loop BETWEEN iterations even though each child process completed normally. Inspect per-iteration output files before assuming batch failure — they may be complete even though the loop wrapper was killed.
+- **[local] Multi-iteration loop tool timeout** — Tool timeout can kill loop BETWEEN iterations. Inspect per-iteration output files before assuming batch failure.
 - **`local` under `set -u`** — fails in if/elif at script scope. Bare assignment OK. Reset at loop top.
 - **Portable sed** — `sed -i ''` (BSD) ≠ GNU. Use Python for portability.
-- **Bash grep `\b` hyphen false-positive** — Use `(^|[^a-zA-Z0-9-])token` to exclude hyphens.
-- **Bash 3.2** — No `declare -A`, `wait -n`. Use `hooks_realpath` for symlinks.
-- **Path canonicalization for prefix-compare across harnesses** — Always canonicalize both sides of path comparisons to handle `/var`↔`/private/var` symlinks. Use `hooks_realpath` (bash) or `resolveRealPath` (TS). Guard with trailing `/` on cwd to prevent sibling false-matches.
+- **Bash grep `\b` hyphen false-positive** — Use `(^|[^a-zA-Z0-9-])token`.
+- **Bash 3.2** — No `declare -A`, `wait -n`.
+- **Path canonicalization** — Canonicalize both sides for `/var`↔`/private/var` symlinks via `hooks_realpath` (bash) or `resolveRealPath` (TS).
 - **Heredoc expansion** — Unquoted `<<EOF` expands; `<<'EOF'` doesn't. Match stub convention: single-quoted uses bare `$*`; unquoted needs `\$*`.
 - **[shared] bash `continue` in nested heredoc loops breaks inner loop only** — `continue` inside `while read -r` heredoc-fed inner loop only breaks inner loop, not outer main loop. Place `break`/logic at outer loop level to break out of edge-scan after first-unmet-dep found.
 - **Grep footguns** — `-v` deletes before keep. BRE `\(` = GROUP; use `-F` for literals. **Always use `grep -qF -- "$needle"`** when needle may be flag-shaped (e.g., `--harness=X`); macOS grep silently misparses without `--`.

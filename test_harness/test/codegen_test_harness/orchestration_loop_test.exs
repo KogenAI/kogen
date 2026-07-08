@@ -60,6 +60,18 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
     fn _cwd -> {"make test", "short", 0} end
   end
 
+  # Real advance_cycle_state/5 shells out to `write_cycle_state`, which does
+  # `mkdir -p "#{cwd}/codegen/gate-pending"` + writes cycle-state.json on
+  # disk. Every test below shares the literal "/tmp/irrelevant" cwd and runs
+  # `async: true` — without this no-op stub, concurrent tests race on the
+  # same physical file, causing intermittent `{_output, 0} = System.cmd(...)`
+  # MatchError failures under load. Use for any run/1 call whose gate_fn can
+  # reach :clear (GATED) and that doesn't assert on advance_cycle_state_fn
+  # itself.
+  defp no_op_advance_cycle_state_fn do
+    fn _state, _step_log, _session_id, _verdict, _project_dir -> :ok end
+  end
+
   defp all_present_preflight_probe_fn do
     fn _cwd ->
       "--agent '__codegen_loop_preflight_probe__' not found. Available agents: " <>
@@ -85,7 +97,8 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
                  invoke_fn: always_ok_invoke_fn(calls_agent),
                  gate_fn: always_clear_gate_fn(),
                  gate_preflight_fn: no_op_gate_preflight_fn(),
-                 preflight_probe_fn: all_present_preflight_probe_fn()
+                 preflight_probe_fn: all_present_preflight_probe_fn(),
+                 advance_cycle_state_fn: no_op_advance_cycle_state_fn()
                )
 
       assert Agent.get(calls_agent, & &1) == @phoenix_sequence
@@ -101,7 +114,8 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
                  invoke_fn: always_ok_invoke_fn(calls_agent),
                  gate_fn: always_clear_gate_fn(),
                  gate_preflight_fn: no_op_gate_preflight_fn(),
-                 preflight_probe_fn: all_present_preflight_probe_fn()
+                 preflight_probe_fn: all_present_preflight_probe_fn(),
+                 advance_cycle_state_fn: no_op_advance_cycle_state_fn()
                )
 
       assert Agent.get(calls_agent, & &1) == @static_sequence
@@ -137,7 +151,8 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
                  invoke_fn: invoke_fn,
                  gate_fn: always_clear_gate_fn(),
                  gate_preflight_fn: no_op_gate_preflight_fn(),
-                 preflight_probe_fn: all_present_preflight_probe_fn()
+                 preflight_probe_fn: all_present_preflight_probe_fn(),
+                 advance_cycle_state_fn: no_op_advance_cycle_state_fn()
                )
 
       calls = Agent.get(calls_agent, & &1)
@@ -162,7 +177,8 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
                  invoke_fn: invoke_fn,
                  gate_fn: always_clear_gate_fn(),
                  gate_preflight_fn: no_op_gate_preflight_fn(),
-                 preflight_probe_fn: all_present_preflight_probe_fn()
+                 preflight_probe_fn: all_present_preflight_probe_fn(),
+                 advance_cycle_state_fn: no_op_advance_cycle_state_fn()
                )
 
       calls = Agent.get(calls_agent, & &1)
@@ -200,7 +216,8 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
                  invoke_fn: invoke_fn,
                  gate_fn: always_clear_gate_fn(),
                  gate_preflight_fn: no_op_gate_preflight_fn(),
-                 preflight_probe_fn: all_present_preflight_probe_fn()
+                 preflight_probe_fn: all_present_preflight_probe_fn(),
+                 advance_cycle_state_fn: no_op_advance_cycle_state_fn()
                )
 
       # reviewer-static was invoked twice (fail then retry-succeed)
@@ -282,7 +299,8 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
                  invoke_fn: always_ok_invoke_fn(calls_agent),
                  gate_fn: gate_fn,
                  gate_preflight_fn: no_op_gate_preflight_fn(),
-                 preflight_probe_fn: all_present_preflight_probe_fn()
+                 preflight_probe_fn: all_present_preflight_probe_fn(),
+                 advance_cycle_state_fn: no_op_advance_cycle_state_fn()
                )
 
       # developer-static invoked twice: once initially, once after gate=failed retry
@@ -329,6 +347,247 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
     end
   end
 
+  describe "build_prompt/2 — gate self-verify threading" do
+    test "developer prompt includes the threaded gate command + self-verify instruction" do
+      ctx = %{
+        cwd: "/tmp",
+        pitch: "do the thing",
+        artifacts: %{gate_command: "make test"}
+      }
+
+      content = OrchestrationLoop.build_prompt("developer-static", ctx)
+
+      assert content =~ "Gate — self-verify"
+      assert content =~ "make test"
+      assert content =~ "fix EVERY red"
+      assert content =~ "CODEGEN_LOOP=1"
+    end
+
+    test "no gate_command artifact → no self-verify block appended" do
+      ctx = %{cwd: "/tmp", pitch: "do the thing", artifacts: %{}}
+
+      content = OrchestrationLoop.build_prompt("developer-static", ctx)
+
+      refute content =~ "Gate — self-verify"
+    end
+
+    test "non-developer role prompt is not enriched with the self-verify block" do
+      ctx = %{
+        cwd: "/tmp",
+        pitch: "do the thing",
+        artifacts: %{gate_command: "make test"}
+      }
+
+      content = OrchestrationLoop.build_prompt("reviewer-static", ctx)
+
+      refute content =~ "Gate — self-verify"
+    end
+  end
+
+  describe "run/1 — gate progress-based retry bound" do
+    test "signature changes each attempt → re-invokes past legacy count-1 bound, then clears",
+         %{calls_agent: calls_agent} do
+      {:ok, gate_calls_agent} = Agent.start_link(fn -> 0 end)
+      on_exit(fn -> if Process.alive?(gate_calls_agent), do: Agent.stop(gate_calls_agent) end)
+
+      # Fails 3 times (more than the legacy max_gate_retries: 1 default),
+      # then clears — only possible under the progress bound, not the old
+      # raw-count bound.
+      gate_fn = fn _cwd, _opts ->
+        n = Agent.get_and_update(gate_calls_agent, fn n -> {n, n + 1} end)
+        if n < 3, do: {:failed, "make test"}, else: {:clear, "make test"}
+      end
+
+      # A fresh, always-different signature each call simulates continuous
+      # progress (the developer edits something every retry).
+      {:ok, sig_calls_agent} = Agent.start_link(fn -> 0 end)
+      on_exit(fn -> if Process.alive?(sig_calls_agent), do: Agent.stop(sig_calls_agent) end)
+
+      signature_fn = fn _cwd ->
+        n = Agent.get_and_update(sig_calls_agent, fn n -> {n, n + 1} end)
+        "sig-#{n}"
+      end
+
+      assert :ok ==
+               OrchestrationLoop.run(
+                 harness: "claude_code",
+                 stack: "static",
+                 cwd: "/tmp/irrelevant",
+                 pitch: "do the thing",
+                 invoke_fn: always_ok_invoke_fn(calls_agent),
+                 gate_fn: gate_fn,
+                 gate_preflight_fn: no_op_gate_preflight_fn(),
+                 preflight_probe_fn: all_present_preflight_probe_fn(),
+                 tree_signature_fn: signature_fn,
+                 advance_cycle_state_fn: no_op_advance_cycle_state_fn()
+               )
+
+      # developer-static invoked 4 times: initial + 3 progress-bounded retries
+      assert Enum.count(Agent.get(calls_agent, & &1), &(&1 == "developer-static")) == 4
+    end
+
+    test "signature unchanged (no progress) → stops retrying, {:error, reason}", %{
+      calls_agent: calls_agent
+    } do
+      gate_fn = fn _cwd, _opts -> {:failed, "make test"} end
+      signature_fn = fn _cwd -> "same-sig" end
+
+      assert {:error, reason} =
+               OrchestrationLoop.run(
+                 harness: "claude_code",
+                 stack: "static",
+                 cwd: "/tmp/irrelevant",
+                 pitch: "do the thing",
+                 invoke_fn: always_ok_invoke_fn(calls_agent),
+                 gate_fn: gate_fn,
+                 gate_preflight_fn: no_op_gate_preflight_fn(),
+                 preflight_probe_fn: all_present_preflight_probe_fn(),
+                 tree_signature_fn: signature_fn
+               )
+
+      assert reason =~ "gate verdict=failed"
+      # allowed exactly one retry (first attempt always allowed), then the
+      # unchanged signature on the second failure stops further retries.
+      assert Enum.count(Agent.get(calls_agent, & &1), &(&1 == "developer-static")) == 2
+    end
+
+    test "hard ceiling (15) caps retries even with continuous progress", %{
+      calls_agent: calls_agent
+    } do
+      gate_fn = fn _cwd, _opts -> {:failed, "make test"} end
+
+      {:ok, sig_calls_agent} = Agent.start_link(fn -> 0 end)
+      on_exit(fn -> if Process.alive?(sig_calls_agent), do: Agent.stop(sig_calls_agent) end)
+
+      signature_fn = fn _cwd ->
+        n = Agent.get_and_update(sig_calls_agent, fn n -> {n, n + 1} end)
+        "sig-#{n}"
+      end
+
+      assert {:error, reason} =
+               OrchestrationLoop.run(
+                 harness: "claude_code",
+                 stack: "static",
+                 cwd: "/tmp/irrelevant",
+                 pitch: "do the thing",
+                 invoke_fn: always_ok_invoke_fn(calls_agent),
+                 gate_fn: gate_fn,
+                 gate_preflight_fn: no_op_gate_preflight_fn(),
+                 preflight_probe_fn: all_present_preflight_probe_fn(),
+                 tree_signature_fn: signature_fn
+               )
+
+      assert reason =~ "gate verdict=failed"
+      # 15 is the hard ceiling on retries (attempt < 15 allows attempts
+      # 0..14): initial call + 15 retries = 16 total developer invocations.
+      assert Enum.count(Agent.get(calls_agent, & &1), &(&1 == "developer-static")) == 16
+    end
+
+    test "non-git cwd (unavailable signature) falls back to legacy count bound", %{
+      calls_agent: calls_agent
+    } do
+      # No :tree_signature_fn override — the real tree_signature/1 runs
+      # against the synthetic non-git cwd and returns "" (unavailable),
+      # exercising the count-based fallback exactly like the pre-existing
+      # "gate verdict stays failed past budget" test above.
+      gate_fn = fn _cwd, _opts -> {:failed, "make test"} end
+
+      assert {:error, reason} =
+               OrchestrationLoop.run(
+                 harness: "claude_code",
+                 stack: "static",
+                 cwd: "/tmp/irrelevant",
+                 pitch: "do the thing",
+                 invoke_fn: always_ok_invoke_fn(calls_agent),
+                 gate_fn: gate_fn,
+                 gate_preflight_fn: no_op_gate_preflight_fn(),
+                 preflight_probe_fn: all_present_preflight_probe_fn()
+               )
+
+      assert reason =~ "gate verdict=failed"
+      # default :max_gate_retries is 1 → initial call + one re-invocation.
+      assert Enum.count(Agent.get(calls_agent, & &1), &(&1 == "developer-static")) == 2
+    end
+
+    test "gate-run.log content is folded into last_failure_reason on retry", %{
+      calls_agent: calls_agent
+    } do
+      tmp_cwd = Path.join(System.tmp_dir!(), "loop-gate-log-fold-#{System.unique_integer([:positive])}")
+      log_dir = Path.join([tmp_cwd, "codegen", "gate-pending"])
+      File.mkdir_p!(log_dir)
+      File.write!(Path.join(log_dir, "gate-run.log"), "COMPILE ERROR: undefined function foo/1")
+      on_exit(fn -> File.rm_rf!(tmp_cwd) end)
+
+      {:ok, gate_calls_agent} = Agent.start_link(fn -> 0 end)
+      on_exit(fn -> if Process.alive?(gate_calls_agent), do: Agent.stop(gate_calls_agent) end)
+
+      gate_fn = fn _cwd, _opts ->
+        n = Agent.get_and_update(gate_calls_agent, fn n -> {n, n + 1} end)
+        if n == 0, do: {:failed, "make test"}, else: {:clear, "make test"}
+      end
+
+      {:ok, seen_reason_agent} = Agent.start_link(fn -> nil end)
+      on_exit(fn -> if Process.alive?(seen_reason_agent), do: Agent.stop(seen_reason_agent) end)
+
+      invoke_fn = fn role, _harness, ctx, _opts ->
+        Agent.update(calls_agent, fn calls -> calls ++ [role] end)
+
+        if role == "developer-static" do
+          reason = get_in(ctx, [:artifacts, :last_failure_reason])
+          Agent.update(seen_reason_agent, fn _ -> reason end)
+        end
+
+        {:ok, %{"status" => "success", "value" => "did #{role}"}}
+      end
+
+      assert :ok ==
+               OrchestrationLoop.run(
+                 harness: "claude_code",
+                 stack: "static",
+                 cwd: tmp_cwd,
+                 pitch: "do the thing",
+                 invoke_fn: invoke_fn,
+                 gate_fn: gate_fn,
+                 gate_preflight_fn: no_op_gate_preflight_fn(),
+                 preflight_probe_fn: all_present_preflight_probe_fn()
+               )
+
+      seen_reason = Agent.get(seen_reason_agent, & &1)
+      assert seen_reason =~ "COMPILE ERROR: undefined function foo/1"
+    end
+  end
+
+  describe "tree_signature/1" do
+    test "non-git cwd returns empty string (unavailable)" do
+      assert OrchestrationLoop.tree_signature("/tmp/definitely-not-a-git-repo-#{System.unique_integer([:positive])}") ==
+               ""
+    end
+
+    test "real git work tree returns a non-empty, stable content hash" do
+      tmp_cwd = Path.join(System.tmp_dir!(), "loop-tree-sig-#{System.unique_integer([:positive])}")
+      File.mkdir_p!(tmp_cwd)
+      on_exit(fn -> File.rm_rf!(tmp_cwd) end)
+
+      {_out, 0} = System.cmd("git", ["init", "-q"], cd: tmp_cwd)
+      {_out, 0} = System.cmd("git", ["config", "user.email", "test@example.com"], cd: tmp_cwd)
+      {_out, 0} = System.cmd("git", ["config", "user.name", "Test"], cd: tmp_cwd)
+      {_out, 0} = System.cmd("git", ["config", "commit.gpgsign", "false"], cd: tmp_cwd)
+      File.write!(Path.join(tmp_cwd, "a.txt"), "hello")
+      {_out, 0} = System.cmd("git", ["add", "a.txt"], cd: tmp_cwd)
+      {_out, 0} = System.cmd("git", ["commit", "-q", "-m", "init"], cd: tmp_cwd)
+
+      sig1 = OrchestrationLoop.tree_signature(tmp_cwd)
+      assert sig1 != ""
+
+      sig1_again = OrchestrationLoop.tree_signature(tmp_cwd)
+      assert sig1 == sig1_again
+
+      File.write!(Path.join(tmp_cwd, "b.txt"), "new file")
+      sig2 = OrchestrationLoop.tree_signature(tmp_cwd)
+      assert sig2 != sig1
+    end
+  end
+
   describe "COMMITTED terminal" do
     test "full static run reaching committer with clear gate returns :ok (terminal)", %{
       calls_agent: calls_agent
@@ -342,7 +601,8 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
                  invoke_fn: always_ok_invoke_fn(calls_agent),
                  gate_fn: always_clear_gate_fn(),
                  gate_preflight_fn: no_op_gate_preflight_fn(),
-                 preflight_probe_fn: all_present_preflight_probe_fn()
+                 preflight_probe_fn: all_present_preflight_probe_fn(),
+                 advance_cycle_state_fn: no_op_advance_cycle_state_fn()
                )
 
       assert List.last(Agent.get(calls_agent, & &1)) == "committer"
@@ -433,7 +693,8 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
                  gate_fn: always_clear_gate_fn(),
                  gate_preflight_fn: no_op_gate_preflight_fn(),
                  preflight_probe_fn: all_present_preflight_probe_fn(),
-                 format_fn: format_fn
+                 format_fn: format_fn,
+                 advance_cycle_state_fn: no_op_advance_cycle_state_fn()
                )
 
       # developer-static (pre-gate) + context-curator (pre-commit) = 2 format calls
@@ -822,7 +1083,8 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
                  invoke_fn: always_ok_invoke_fn(calls_agent),
                  gate_fn: always_clear_gate_fn(),
                  gate_preflight_fn: no_op_gate_preflight_fn(),
-                 preflight_probe_fn: all_present_preflight_probe_fn()
+                 preflight_probe_fn: all_present_preflight_probe_fn(),
+                 advance_cycle_state_fn: no_op_advance_cycle_state_fn()
                )
 
       assert Agent.get(calls_agent, & &1) == @phoenix_sequence
@@ -883,7 +1145,8 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
                  invoke_fn: always_ok_invoke_fn(calls_agent),
                  gate_fn: always_clear_gate_fn(),
                  gate_preflight_fn: no_op_gate_preflight_fn(),
-                 preflight_probe_fn: all_present_preflight_probe_fn()
+                 preflight_probe_fn: all_present_preflight_probe_fn(),
+                 advance_cycle_state_fn: no_op_advance_cycle_state_fn()
                )
 
       assert Agent.get(calls_agent, & &1) == @phoenix_sequence

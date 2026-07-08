@@ -151,5 +151,89 @@ out=$(make_input "make ci" "developer-phoenix-backend" "$SID10" | bash "$HOOK" 2
 assert_contains "real make ci at count=3 STILL BLOCKED" '"permissionDecision"' "$out"
 rm -f "/tmp/codegen-self-gate-${SID10}.count"
 
+# ── Loop-mode tests (CODEGEN_LOOP=1): progress-bounded self-verify ─────────
+# Real tmpdir git fixture so the tree-signature command is exercised for
+# real (not stubbed).
+LOOP_TMPDIR=$(mktemp -d)
+trap 'rm -rf "$LOOP_TMPDIR"' EXIT
+git -C "$LOOP_TMPDIR" init -q
+git -C "$LOOP_TMPDIR" config user.email "test@example.com"
+git -C "$LOOP_TMPDIR" config user.name "Test"
+git -C "$LOOP_TMPDIR" config commit.gpgsign false
+printf 'hello' >"$LOOP_TMPDIR/a.txt"
+git -C "$LOOP_TMPDIR" add a.txt
+git -C "$LOOP_TMPDIR" commit -q -m init
+
+make_loop_input() {
+    local cmd="$1"
+    local agent="${2:-developer-phoenix-backend}"
+    local sid="${3:-test-session-$$}"
+    local cwd="${4:-$LOOP_TMPDIR}"
+    jq -n \
+        --arg cmd "$cmd" \
+        --arg agent "$agent" \
+        --arg sid "$sid" \
+        --arg cwd "$cwd" \
+        '{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":$cmd},"agent_type":$agent,"agent_id":"abc","session_id":$sid,"cwd":$cwd}'
+}
+
+# ── Test 11: loop-mode, first run → ALLOW (RED-then-GREEN: prove allow fires) ──
+SID11="sid11-$$-$(date -u +%s)"
+rm -f "/tmp/codegen-self-gate-${SID11}.sig"
+out=$(make_loop_input "make test" "developer-phoenix-backend" "$SID11" | CODEGEN_LOOP=1 bash "$HOOK" 2>/dev/null || true)
+assert_not_contains "loop-mode first run ALLOWED" '"permissionDecision"' "$out"
+[ -f "/tmp/codegen-self-gate-${SID11}.sig" ] && {
+    [ -n "${VERBOSE:-}" ] && printf 'PASS: loop-mode .sig file written on first run\n'
+    pass=$((pass + 1))
+} || {
+    printf 'FAIL: loop-mode .sig file not written on first run\n'
+    fail=$((fail + 1))
+}
+rm -f "/tmp/codegen-self-gate-${SID11}.sig"
+
+# ── Test 12: loop-mode, tree changed since last run → ALLOW ────────────────
+SID12="sid12-$$-$(date -u +%s)"
+rm -f "/tmp/codegen-self-gate-${SID12}.sig"
+out=$(make_loop_input "make test" "developer-phoenix-backend" "$SID12" | CODEGEN_LOOP=1 bash "$HOOK" 2>/dev/null || true)
+assert_not_contains "loop-mode 1st run (baseline) ALLOWED" '"permissionDecision"' "$out"
+# Make a real edit to the tree so the content signature changes.
+printf 'goodbye' >"$LOOP_TMPDIR/b.txt"
+out2=$(make_loop_input "make test" "developer-phoenix-backend" "$SID12" | CODEGEN_LOOP=1 bash "$HOOK" 2>/dev/null || true)
+assert_not_contains "loop-mode 2nd run after tree edit (progress) ALLOWED" '"permissionDecision"' "$out2"
+rm -f "$LOOP_TMPDIR/b.txt"
+rm -f "/tmp/codegen-self-gate-${SID12}.sig"
+
+# ── Test 13: loop-mode, tree UNCHANGED since last run → DENY (spin) ────────
+# RED-then-GREEN: this is the case the progress bound exists to catch — a
+# repeat gate run with zero tree change must be denied.
+SID13="sid13-$$-$(date -u +%s)"
+rm -f "/tmp/codegen-self-gate-${SID13}.sig"
+out=$(make_loop_input "make test" "developer-phoenix-backend" "$SID13" | CODEGEN_LOOP=1 bash "$HOOK" 2>/dev/null || true)
+assert_not_contains "loop-mode 1st run (baseline, no edit yet) ALLOWED" '"permissionDecision"' "$out"
+# No edit this time — same tree, same signature.
+out2=$(make_loop_input "make test" "developer-phoenix-backend" "$SID13" | CODEGEN_LOOP=1 bash "$HOOK" 2>/dev/null || true)
+assert_contains "loop-mode 2nd run with NO tree change DENIED (spin)" '"permissionDecision"' "$out2"
+assert_contains "loop-mode spin-deny mentions making an edit" 'Make an edit' "$out2"
+rm -f "/tmp/codegen-self-gate-${SID13}.sig"
+
+# ── Test 14: loop-mode, hard ceiling (15) denies regardless of progress ────
+SID14="sid14-$$-$(date -u +%s)"
+rm -f "/tmp/codegen-self-gate-${SID14}.sig"
+# Pre-seed the .sig state file at count=14 (one below the ceiling) with a
+# signature that will not match the next real computed signature (forces the
+# "progress" branch to be the one under test, not the spin branch).
+printf 'bogus-prior-signature\n14\n' >"/tmp/codegen-self-gate-${SID14}.sig"
+out=$(make_loop_input "make test" "developer-phoenix-backend" "$SID14" | CODEGEN_LOOP=1 bash "$HOOK" 2>/dev/null || true)
+assert_contains "loop-mode hard ceiling (15) DENIED even with progress" '"permissionDecision"' "$out"
+assert_contains "loop-mode ceiling-deny mentions hard ceiling" 'hard ceiling' "$out"
+rm -f "/tmp/codegen-self-gate-${SID14}.sig"
+
+# ── Test 15: legacy mode (CODEGEN_LOOP unset) count-of-3 cap unchanged ─────
+SID15="sid15-$$-$(date -u +%s)"
+printf '2' >"/tmp/codegen-self-gate-${SID15}.count"
+out=$(make_input "make ci" "developer-phoenix-backend" "$SID15" | env -u CODEGEN_LOOP bash "$HOOK" 2>/dev/null || true)
+assert_contains "legacy mode still BLOCKED at count=3 with CODEGEN_LOOP unset" '"permissionDecision"' "$out"
+rm -f "/tmp/codegen-self-gate-${SID15}.count"
+
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

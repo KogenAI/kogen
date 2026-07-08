@@ -69,12 +69,21 @@ defmodule CodegenTestHarness.OrchestrationLoop do
     `codegen-call --agent <bogus>` call parsing claude's "Available agents:"
     error text — zero model turns)
   - `:max_gate_retries` — developer re-runs allowed after a non-clear gate
-    before giving up (default 1)
+    before giving up (default 1). This is a FALLBACK bound used only when
+    the tree-progress signature is unavailable (non-git `:cwd`, e.g. mocked
+    unit tests). When a real git work tree is present, developer re-runs are
+    instead bounded by PROGRESS (the working tree must actually change
+    between gate runs) up to a hard ceiling of 15 attempts — see
+    `do_gate_loop/9`.
+  - `:tree_signature_fn` — test seam: `(cwd -> signature)`, defaults to
+    `tree_signature/1` (a content-hash of the tracked+untracked working
+    tree). Drives the progress bound on developer gate re-runs.
 
   Returns `:ok` on COMMITTED + clear gate. Returns `{:error, reason}` on
-  any role failure (after one retry), a non-clear gate (after
-  `:max_gate_retries` developer re-runs), or an unexpected envelope shape
-  (raised, not returned — crash loud).
+  any role failure (after one retry), a non-clear gate (after the gate-retry
+  bound is exhausted — progress-based, or `:max_gate_retries` when no
+  progress signature is available), or an unexpected envelope shape (raised,
+  not returned — crash loud).
   """
   @spec run(run_opts()) :: :ok | {:error, String.t()}
   def run(opts) do
@@ -93,7 +102,12 @@ defmodule CodegenTestHarness.OrchestrationLoop do
     # (and paying for) any role. Resolution-only — decide_gate never executes
     # the gate. An unresolvable gate (missing/empty/stale GATE_COMMAND) raises
     # here, at turn 0, cheaply, instead of mid-cycle after the developer runs.
-    preflight_gate!(cwd, opts)
+    # The resolved gate command is stashed into ctx.artifacts so build_prompt/2
+    # can thread it into the developer's self-verify instruction — reusing this
+    # preflight result instead of re-shelling git inside build_prompt (which
+    # would crash the synthetic-cwd ("/tmp/irrelevant") unit tests).
+    gate_command = preflight_gate!(cwd, opts)
+    ctx = put_in(ctx, [:artifacts, :gate_command], gate_command)
     preflight_roles!(roles, cwd, opts)
 
     run_roles(roles, harness, ctx, opts)
@@ -185,12 +199,24 @@ defmodule CodegenTestHarness.OrchestrationLoop do
   # LoopGate.decide_gate/1). Reuses the same resolution path the later gate run
   # takes (no :step_log in the real loop), so it cannot pass-then-fail. Rescues
   # the __GATE_UNRESOLVED__ RuntimeError and re-raises with an actionable hint.
+  # Returns the resolved gate command string when the seam's result is a
+  # {gate, mode, timeout} tuple (real LoopGate.decide_gate/1 shape); nil when
+  # a test override returns some other shape — gate_command is an optional
+  # enrichment (self-verify prompt text), not a required contract:
+  # build_prompt/2 tolerates its absence.
   defp preflight_gate!(cwd, opts) do
     preflight_fn = Keyword.get(opts, :gate_preflight_fn, &default_gate_preflight/1)
 
     try do
-      _resolved = preflight_fn.(cwd)
-      :ok
+      case preflight_fn.(cwd) do
+        {gate, _mode, _timeout} when is_binary(gate) ->
+          gate
+
+        # fail-loud-exempt: non-tuple test-seam overrides (:ok, etc.) are a
+        # legitimate "no gate command to thread" — optional enrichment only.
+        _other ->
+          nil
+      end
     rescue
       e in RuntimeError ->
         reraise(
@@ -409,21 +435,76 @@ defmodule CodegenTestHarness.OrchestrationLoop do
     gate_fn = Keyword.get(opts, :gate_fn, &LoopGate.run_gate/2)
     max_retries = Keyword.get(opts, :max_gate_retries, 1)
 
-    do_gate_loop(dev_role, rest, harness, ctx, opts, gate_fn, max_retries, 0)
+    do_gate_loop(dev_role, rest, harness, ctx, opts, gate_fn, max_retries, 0, nil)
   end
 
-  defp do_gate_loop(dev_role, rest, harness, ctx, opts, gate_fn, max_retries, attempt) do
+  # Hard ceiling backstop: even with continuous progress, a run/1 cycle never
+  # re-invokes the developer for gate failures more than this many times.
+  @gate_progress_ceiling 15
+
+  # Progress+ceiling bound for developer gate re-runs:
+  #
+  # - `attempt` counts prior developer re-invocations for this gate loop.
+  # - `prev_signature` is the tree content-hash captured at the PRIOR gate
+  #   run (nil on the first attempt). When the signature is available
+  #   ("" is treated as unavailable -- non-git cwd, e.g. every existing
+  #   gate_fn-stub unit test that passes a synthetic "/tmp/irrelevant" cwd),
+  #   a re-invocation is allowed only when the tree actually changed since
+  #   the last gate run (progress) AND the hard ceiling has not been hit.
+  #   When the signature is unavailable, the bound falls back to the legacy
+  #   raw :max_gate_retries count (still capped by the hard ceiling) so
+  #   existing count-based tests are unaffected.
+  defp do_gate_loop(
+         dev_role,
+         rest,
+         harness,
+         ctx,
+         opts,
+         gate_fn,
+         max_retries,
+         attempt,
+         prev_signature
+       ) do
     case gate_fn.(ctx.cwd, opts) do
       {:clear, _gate_cmd} ->
         advance_cycle_state_step("GATED", ctx, opts)
         run_roles(rest, harness, ctx, opts)
 
       {:failed, _gate_cmd} ->
-        if attempt < max_retries do
-          with {:ok, result} <- invoke_with_retry(dev_role, harness, ctx, opts) do
-            ctx = put_in(ctx, [:artifacts, dev_role], result)
+        signature_fn = Keyword.get(opts, :tree_signature_fn, &tree_signature/1)
+        signature = signature_fn.(ctx.cwd)
+
+        progressed? = signature != "" and prev_signature != nil and signature != prev_signature
+        first_attempt? = prev_signature == nil
+        signature_available? = signature != ""
+
+        allow? =
+          attempt < @gate_progress_ceiling and
+            if signature_available? do
+              first_attempt? or progressed?
+            else
+              attempt < max_retries
+            end
+
+        if allow? do
+          reason = gate_failure_reason(ctx.cwd)
+          retry_ctx = put_in(ctx, [:artifacts, :last_failure_reason], reason)
+
+          with {:ok, result} <- invoke_with_retry(dev_role, harness, retry_ctx, opts) do
+            ctx = put_in(retry_ctx, [:artifacts, dev_role], result)
             run_format_step(ctx.cwd, opts)
-            do_gate_loop(dev_role, rest, harness, ctx, opts, gate_fn, max_retries, attempt + 1)
+
+            do_gate_loop(
+              dev_role,
+              rest,
+              harness,
+              ctx,
+              opts,
+              gate_fn,
+              max_retries,
+              attempt + 1,
+              signature
+            )
           end
         else
           {:error, "gate verdict=failed after #{attempt + 1} developer attempt(s)"}
@@ -432,6 +513,67 @@ defmodule CodegenTestHarness.OrchestrationLoop do
       {other, _gate_cmd} ->
         raise "OrchestrationLoop: unexpected gate verdict #{inspect(other)}"
     end
+  end
+
+  # Reads the full gate-run.log written by LoopGate.run_gate/2 (via
+  # gate-result.sh's write_gate_result) so a developer re-invocation carries
+  # the real red output, not just a terse "gate verdict=failed" reason. Falls
+  # back to the terse reason when the log is absent/unreadable (e.g. mocked
+  # gate_fn test overrides that never write a real log file).
+  defp gate_failure_reason(cwd) do
+    log_path = Path.join([cwd, "codegen", "gate-pending", "gate-run.log"])
+
+    case File.read(log_path) do
+      {:ok, content} ->
+        "gate verdict=failed\n\n" <> content
+
+      # fail-loud-exempt: a missing/unreadable gate-run.log is a legitimate
+      # "no full log to fold in" case (mocked gate_fn test overrides never
+      # write a real log file; a real loop run always writes one via
+      # LoopGate.run_gate/2). Falls back to the terse reason string.
+      {:error, _reason} ->
+        "gate verdict=failed"
+    end
+  end
+
+  # Content-hash of the tracked+untracked working tree (excluding gitignored
+  # paths) -- used as a progress signal for gate-retry bounding. Returns ""
+  # when `cwd` is not a git work tree (synthetic/non-git cwd -- only mocked
+  # unit tests use such a cwd; a real loop run always operates inside the
+  # scaffolded project's git repo).
+  @spec tree_signature(String.t()) :: String.t()
+  def tree_signature(cwd) do
+    if git_work_tree?(cwd) do
+      script =
+        "git ls-files -oc --exclude-standard | sort | " <>
+          "xargs shasum 2>/dev/null | shasum | cut -d' ' -f1"
+
+      case System.cmd("bash", ["-c", script], stderr_to_stdout: true, cd: cwd) do
+        {output, 0} ->
+          String.trim(output)
+
+        # fail-loud-exempt: git-dir check above already confirmed `cwd` is a
+        # real git work tree; a non-zero exit here means shasum/xargs/sort
+        # are unavailable — a legitimate "no signature available" case
+        # do_gate_loop/9 falls back to the count-based bound for.
+        _other ->
+          ""
+      end
+    else
+      ""
+    end
+  end
+
+  # True when `cwd` is a real git work tree (existing dir with a resolvable
+  # git-dir) — the pre-check `tree_signature/1` needs because the shell
+  # pipeline's own exit code reflects only its LAST stage (`cut`), which
+  # exits 0 even when `git ls-files` failed upstream on a non-git cwd.
+  defp git_work_tree?(cwd) do
+    File.dir?(cwd) and
+      match?(
+        {_out, 0},
+        System.cmd("git", ["-C", cwd, "rev-parse", "--git-dir"], stderr_to_stdout: true)
+      )
   end
 
   # Runs `mix format`/`make format` in `cwd` as an explicit loop step. This
@@ -591,6 +733,26 @@ defmodule CodegenTestHarness.OrchestrationLoop do
     base =
       if developer_role?(role) and is_binary(plan) and String.trim(plan) != "" do
         base <> "\n\n## Implementation plan (from the planner)\n\n" <> plan
+      else
+        base
+      end
+
+    # Thread the resolved gate command (stashed at turn-0 preflight — see
+    # run/1) into a self-verify instruction: under the loop the developer
+    # runs the gate itself, in its own warm session, and fixes every red
+    # (its own or inherited) before handing back. The `developer-no-self-gate`
+    # hook permits progress-bounded gate runs while CODEGEN_LOOP=1.
+    gate_command = get_in(ctx, [:artifacts, :gate_command])
+
+    base =
+      if developer_role?(role) and is_binary(gate_command) and String.trim(gate_command) != "" do
+        base <>
+          "\n\n## Gate — self-verify (you run this, in THIS session)\n\n" <>
+          "Before handing back, run `#{gate_command}` yourself. A red gate is a FAILED " <>
+          "build regardless of cause — fix EVERY red, yours OR inherited: stale render → " <>
+          "`make install`; stale lock → `mix deps.get`; your own test/compile failures → " <>
+          "fix them. Re-run `#{gate_command}` until it is GREEN, then stop. The loop's hook " <>
+          "permits progress-bounded gate runs while CODEGEN_LOOP=1."
       else
         base
       end
@@ -767,7 +929,8 @@ defmodule CodegenTestHarness.OrchestrationLoop do
     env =
       [
         {"CODEGEN_DIR", @codegen_dir},
-        {"CODEGEN_BUILD_START_TS", Integer.to_string(System.system_time(:second))}
+        {"CODEGEN_BUILD_START_TS", Integer.to_string(System.system_time(:second))},
+        {"CODEGEN_LOOP", "1"}
       ] ++ if(transcript, do: [{"CODEGEN_CALL_TRANSCRIPT_PATH", transcript}], else: [])
 
     {output, exit_code} =

@@ -4,7 +4,7 @@ For all developer-\* subagents. NOT for reviewers.
 
 ## Your Boundaries
 
-State this upfront, as methodology — the plan is self-contained by design, not by hook denial (under the Elixir loop, hooks do not fire, so treat this as how you work, not what stops you):
+State this upfront, as methodology — the plan is self-contained by design, not merely by hook denial. Hooks DO fire under the Elixir loop (a loop-invoked role is a native `claude --agent <role>` spawn carrying its full guard bundle), but treat this discipline as how you work regardless, not just what stops you:
 
 - **Read**: the delegation prompt's `## Plan` is self-contained. Do not Read the pitch or `PROJECT_CONTEXT.md` for orientation. Read `context/*.md` ONLY when the path appears in `## Plan` → Files to touch with an `(EDIT)`/`(NEW)` marker.
 - **Bash**: unrestricted, EXCEPT the CI gate. Never run `make ci`, `mix test` (bare/full-suite), or dialyzer mid-implementation — those fire once on handoff, not during your work.
@@ -45,11 +45,13 @@ Disallowed in build-runtime. Elsewhere ≤4 options per call.
 
 `Gate: none` → zero test commands. Deliver edited files, populate `## Files Modified`, done.
 
-Dev MUST NOT run CI gate — gate fires on hand-off. Fix failures during impl. Wire new modules: grep new symbol across `lib/`/`test/`.
+**Legacy (non-loop, real-subagent) mode:** Dev MUST NOT run CI gate — gate fires on hand-off. Fix failures during impl. Wire new modules: grep new symbol across `lib/`/`test/`. The `developer-no-self-gate` hook caps you at 3 CI/test-command invocations per session in this mode.
+
+**Loop mode (`CODEGEN_LOOP=1`):** You run the delegated gate command yourself, in THIS warm session, before handing back — the loop's build_prompt threads the exact gate command into your task. A red gate is a FAILED build regardless of cause: fix EVERY red, yours OR inherited (stale render → `make install`; stale lock → `mix deps.get`; your own test/compile failures → fix them directly). Re-run the gate until it is GREEN, then stop. `developer-no-self-gate` permits gate re-runs in this mode as long as you keep making progress (the working tree must actually change between runs) — it denies a pure spin (re-running with no edit) and hard-caps at 15 runs regardless.
 
 **Credo convergence before handoff (REQUIRED):** Before handing off, run `mix credo --strict` scoped to your changed files. Read the COMPLETE violation list and fix EVERY item — no skipping "minor" violations. Re-run until the output is clean. Only then hand off. Do NOT rely on the gate to surface residual violations; that wastes a full round-trip per violation batch.
 
-`mix credo --strict` on your own changed files is NOT the CI gate — it is cheap (~10s), scoped, and required. What stays forbidden mid-impl: `make ci`, `mix test`, dialyzer. Those fire once on handoff.
+`mix credo --strict` on your own changed files is NOT the CI gate — it is cheap (~10s), scoped, and required. What stays forbidden mid-impl in legacy mode: `make ci`, `mix test`, dialyzer. Those fire once on handoff.
 
 ## Tests With Every Change (MANDATORY)
 

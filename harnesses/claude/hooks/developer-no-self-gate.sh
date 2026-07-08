@@ -56,6 +56,55 @@ if printf '%s' "$COMMAND" | grep -qE '\bmix[[:space:]]+credo\b' &&
 fi
 
 session_id="${SESSION_ID:-unknown}"
+
+# ── Loop-mode: progress-bounded self-verify ─────────────────────────────────
+# Under the Elixir loop (CODEGEN_LOOP=1) the developer runs the delegated
+# gate itself, in its own warm session, and must keep fixing red until it is
+# green. A raw count-of-3 cap would wedge that workflow on a real multi-red
+# fix cycle. Instead, bound retries by PROGRESS: allow a gate re-run whenever
+# the working tree's content signature changed since the last gate run (the
+# dev made an edit); deny on a pure spin (signature unchanged — nothing was
+# fixed, re-running the gate again cannot help). A hard ceiling (15) still
+# backstops runaway loops regardless of continued progress.
+if [ "${CODEGEN_LOOP:-}" = "1" ]; then
+    cwd="${CWD:-$PWD}"
+    signature=$(cd "$cwd" 2>/dev/null && git ls-files -oc --exclude-standard 2>/dev/null | sort | xargs shasum 2>/dev/null | shasum 2>/dev/null | cut -d' ' -f1)
+
+    sig_file="/tmp/codegen-self-gate-${session_id}.sig"
+
+    prev_sig=""
+    prev_count=0
+    if [ -r "$sig_file" ]; then
+        prev_sig=$(sed -n '1p' "$sig_file" 2>/dev/null || printf '')
+        prev_count=$(sed -n '2p' "$sig_file" 2>/dev/null || printf '0')
+    fi
+    case "$prev_count" in
+    '' | *[!0-9]*) prev_count=0 ;;
+    esac
+
+    new_count=$((prev_count + 1))
+
+    debug_log developer-no-self-gate "loop-mode session=$session_id count=$new_count sig=$signature prev_sig=$prev_sig"
+
+    if [ "$new_count" -ge 15 ]; then
+        printf '%s\n%s\n' "$signature" "$new_count" >"$sig_file"
+        deny "BLOCKED by developer-no-self-gate: hard ceiling (15 gate self-verify runs) reached this session — hand back to the loop rather than continuing to retry."
+        exit 0
+    fi
+
+    if [ -z "$prev_sig" ] || [ "$signature" != "$prev_sig" ]; then
+        # First run, or the tree changed since the last gate run → progress.
+        printf '%s\n%s\n' "$signature" "$new_count" >"$sig_file"
+        exit 0
+    fi
+
+    # Signature unchanged → pure spin, nothing was fixed since the last run.
+    printf '%s\n%s\n' "$signature" "$new_count" >"$sig_file"
+    deny "BLOCKED by developer-no-self-gate: the gate command was re-run with NO change to the working tree since the last run — that cannot fix anything. Make an edit that addresses the failure, or hand back to the loop if you are stuck."
+    exit 0
+fi
+
+# ── Legacy (non-loop) mode: raw count-of-3 cap ──────────────────────────────
 counter_file="/tmp/codegen-self-gate-${session_id}.count"
 
 # Read current count

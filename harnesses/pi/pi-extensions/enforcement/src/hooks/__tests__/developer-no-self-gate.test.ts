@@ -8,6 +8,7 @@ import assert from "node:assert/strict";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
+import { execSync } from "node:child_process";
 
 function makeToolCallEvent(
   command: string,
@@ -35,9 +36,15 @@ describe("developer-no-self-gate", () => {
     command: string,
     agentType = "developer-phoenix-backend",
     sessionId = "test-session",
+    cwd?: string,
   ) {
     process.env["AGENT_TYPE"] = agentType;
     process.env["SESSION_ID"] = sessionId;
+    if (cwd) {
+      process.env["CWD"] = cwd;
+    } else {
+      delete process.env["CWD"];
+    }
     const { register } = await import("../developer-no-self-gate");
     register(
       mockPi as unknown as import("@earendil-works/pi-coding-agent").ExtensionAPI,
@@ -49,9 +56,15 @@ describe("developer-no-self-gate", () => {
     return path.join(os.tmpdir(), `codegen-self-gate-${sessionId}.count`);
   }
 
+  function sigPath(sessionId: string): string {
+    return path.join(os.tmpdir(), `codegen-self-gate-${sessionId}.sig`);
+  }
+
   beforeEach(() => {
     delete process.env["AGENT_TYPE"];
     delete process.env["SESSION_ID"];
+    delete process.env["CWD"];
+    delete process.env["CODEGEN_LOOP"];
   });
 
   it("passes through for non-developer agent", async () => {
@@ -179,6 +192,148 @@ describe("developer-no-self-gate", () => {
   it("still blocks real standalone make ci at count=3 (unchanged)", async () => {
     const sid = `sid9-${Date.now()}`;
     fs.writeFileSync(counterPath(sid), "2");
+    try {
+      const result = await runHook("make ci", "developer-phoenix-backend", sid);
+      assert.ok((result as { block?: boolean }).block === true);
+    } finally {
+      fs.rmSync(counterPath(sid), { force: true });
+    }
+  });
+
+  describe("loop-mode (CODEGEN_LOOP=1): progress-bounded self-verify", () => {
+    let loopTmpDir: string;
+
+    beforeEach(() => {
+      loopTmpDir = fs.mkdtempSync(
+        path.join(os.tmpdir(), "loop-gate-ts-fixture-"),
+      );
+      execSync("git init -q", { cwd: loopTmpDir });
+      execSync('git config user.email "test@example.com"', {
+        cwd: loopTmpDir,
+      });
+      execSync('git config user.name "Test"', { cwd: loopTmpDir });
+      execSync("git config commit.gpgsign false", { cwd: loopTmpDir });
+      fs.writeFileSync(path.join(loopTmpDir, "a.txt"), "hello");
+      execSync("git add a.txt", { cwd: loopTmpDir });
+      execSync('git commit -q -m init', { cwd: loopTmpDir });
+      process.env["CODEGEN_LOOP"] = "1";
+    });
+
+    it("first run in a session is ALLOWED", async () => {
+      const sid = `loopsid1-${Date.now()}`;
+      fs.rmSync(sigPath(sid), { force: true });
+      try {
+        const result = await runHook(
+          "make test",
+          "developer-phoenix-backend",
+          sid,
+          loopTmpDir,
+        );
+        assert.ok(
+          result == null || (result as { block?: boolean }).block !== true,
+        );
+        assert.ok(
+          fs.existsSync(sigPath(sid)),
+          "loop-mode .sig file must be written on first run",
+        );
+      } finally {
+        fs.rmSync(sigPath(sid), { force: true });
+        fs.rmSync(loopTmpDir, { recursive: true, force: true });
+      }
+    });
+
+    it("tree changed since last run → ALLOWED (progress)", async () => {
+      const sid = `loopsid2-${Date.now()}`;
+      fs.rmSync(sigPath(sid), { force: true });
+      try {
+        const first = await runHook(
+          "make test",
+          "developer-phoenix-backend",
+          sid,
+          loopTmpDir,
+        );
+        assert.ok(
+          first == null || (first as { block?: boolean }).block !== true,
+        );
+
+        fs.writeFileSync(path.join(loopTmpDir, "b.txt"), "goodbye");
+
+        const second = await runHook(
+          "make test",
+          "developer-phoenix-backend",
+          sid,
+          loopTmpDir,
+        );
+        assert.ok(
+          second == null || (second as { block?: boolean }).block !== true,
+        );
+      } finally {
+        fs.rmSync(sigPath(sid), { force: true });
+        fs.rmSync(loopTmpDir, { recursive: true, force: true });
+      }
+    });
+
+    it("tree UNCHANGED since last run → DENIED (spin)", async () => {
+      const sid = `loopsid3-${Date.now()}`;
+      fs.rmSync(sigPath(sid), { force: true });
+      try {
+        const first = await runHook(
+          "make test",
+          "developer-phoenix-backend",
+          sid,
+          loopTmpDir,
+        );
+        assert.ok(
+          first == null || (first as { block?: boolean }).block !== true,
+        );
+
+        // No edit — same tree, same signature.
+        const second = await runHook(
+          "make test",
+          "developer-phoenix-backend",
+          sid,
+          loopTmpDir,
+        );
+        assert.ok((second as { block?: boolean }).block === true);
+        assert.match(
+          (second as { reason: string }).reason,
+          /Make an edit/,
+        );
+      } finally {
+        fs.rmSync(sigPath(sid), { force: true });
+        fs.rmSync(loopTmpDir, { recursive: true, force: true });
+      }
+    });
+
+    it("hard ceiling (15) denies regardless of progress", async () => {
+      const sid = `loopsid4-${Date.now()}`;
+      // Pre-seed the .sig state file at count=14 (one below the ceiling)
+      // with a signature that will not match the next real computed
+      // signature (forces the "progress" branch, not the spin branch).
+      fs.writeFileSync(sigPath(sid), "bogus-prior-signature\n14\n");
+      try {
+        const result = await runHook(
+          "make test",
+          "developer-phoenix-backend",
+          sid,
+          loopTmpDir,
+        );
+        assert.ok((result as { block?: boolean }).block === true);
+        assert.match(
+          (result as { reason: string }).reason,
+          /hard ceiling/,
+        );
+      } finally {
+        fs.rmSync(sigPath(sid), { force: true });
+        fs.rmSync(loopTmpDir, { recursive: true, force: true });
+      }
+    });
+  });
+
+  it("legacy mode (CODEGEN_LOOP unset) count-of-3 cap unchanged", async () => {
+    const sid = `sid10-${Date.now()}`;
+    fs.writeFileSync(counterPath(sid), "2");
+    delete process.env["CODEGEN_LOOP"];
     try {
       const result = await runHook("make ci", "developer-phoenix-backend", sid);
       assert.ok((result as { block?: boolean }).block === true);

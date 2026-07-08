@@ -144,7 +144,7 @@ This eliminates the dirty-tree race: integrate-stage files rendered AFTER the co
 
 ## Developer Test Budget — `developer-no-self-gate` Constraint
 
-The `developer-no-self-gate` hook caps developer at 3 test-command invocations per session. Each of these counts toward the budget: `make test`, `mix test`, bare `mix test --exclude slow`, `mix format && mix compile` (combined, still one call). **Note**: `mix format && mix compile` on the same Bash line consumes ONE budget slot (same as a single `mix test`), not two. When budget is tight, front-load the actual full test run early, or combine multiple checks into one Bash invocation (e.g., `mix format && mix test` rather than format in one call and test in another). Do NOT assume combining invocations buys additional capacity — the gate counts Bash calls, not shell commands within.
+The `developer-no-self-gate` hook caps developer at 3 test-command invocations per session. Each of these counts toward the budget: `make test`, `mix test`, bare `mix test --exclude slow`, `mix format && mix compile` (combined, still one call). **Note**: `mix format && mix compile` on the same Bash line consumes ONE budget slot (same as a single `mix test`), not two. When budget is tight, front-load the actual full test run early, or combine multiple checks into one Bash invocation (e.g., `mix format && mix test` rather than format in one call and test in another). **Shell loops in a single Bash call burn budget per invocation**: `for i in 1 2 3; do mix test; done` burns all 3 calls in one Bash invocation. Use explicit repeat flags (e.g., `--repeat-until-failure N`) instead of shell loops to conserve budget for mandatory multi-run verification sequences.
 
 ## Elixir Seam Threading — Preserving Test-Override Capacity
 
