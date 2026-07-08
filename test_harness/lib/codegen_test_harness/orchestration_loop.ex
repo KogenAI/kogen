@@ -575,7 +575,8 @@ defmodule CodegenTestHarness.OrchestrationLoop do
     end
   end
 
-  defp build_prompt(role, ctx) do
+  @doc false
+  def build_prompt(role, ctx) do
     reason = get_in(ctx, [:artifacts, :last_failure_reason])
 
     base = ctx[:pitch] || ""
@@ -610,7 +611,12 @@ defmodule CodegenTestHarness.OrchestrationLoop do
     base =
       if role == "reviewer-phoenix" or role == "reviewer-static" do
         base <>
-          "\n\nEND your response with a line exactly `REVIEW_VERDICT: APPROVED` if the change is " <>
+          "\n\nThere is no `## Files Modified` section this cycle; the developer's entire " <>
+          "change is sitting UNCOMMITTED in the project's working tree. Derive the " <>
+          "authoritative changed set yourself: run `git diff HEAD` for tracked modifications " <>
+          "plus `git status --porcelain` for new/untracked files, then review THAT diff " <>
+          "against normal reviewer checks (quality, security, silent-failure/Rule S, test " <>
+          "coverage).\n\nEND your response with a line exactly `REVIEW_VERDICT: APPROVED` if the change is " <>
           "acceptable, or `REVIEW_VERDICT: CHANGES_REQUESTED` followed by a short, specific, " <>
           "actionable list of required changes if not."
       else

@@ -6,6 +6,28 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
   @phoenix_sequence ~w(planner-phoenix developer-phoenix-backend reviewer-phoenix context-curator committer)
   @static_sequence ~w(developer-static reviewer-static context-curator committer)
 
+  describe "build_prompt/2 — reviewer git-diff-as-source directive" do
+    test "reviewer-phoenix prompt tells reviewer to derive changes via git diff HEAD" do
+      ctx = %{cwd: "/tmp", pitch: "do the thing", artifacts: %{}}
+      content = OrchestrationLoop.build_prompt("reviewer-phoenix", ctx)
+
+      assert content =~ "git diff HEAD"
+      assert content =~ "git status --porcelain"
+      assert content =~ "UNCOMMITTED"
+      assert content =~ "REVIEW_VERDICT: APPROVED"
+    end
+
+    test "reviewer-static prompt tells reviewer to derive changes via git diff HEAD" do
+      ctx = %{cwd: "/tmp", pitch: "do the thing", artifacts: %{}}
+      content = OrchestrationLoop.build_prompt("reviewer-static", ctx)
+
+      assert content =~ "git diff HEAD"
+      assert content =~ "git status --porcelain"
+      assert content =~ "UNCOMMITTED"
+      assert content =~ "REVIEW_VERDICT: APPROVED"
+    end
+  end
+
   describe "role_sequence/1" do
     test "phoenix is plan-first" do
       assert OrchestrationLoop.role_sequence("phoenix") == @phoenix_sequence

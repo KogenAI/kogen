@@ -82,6 +82,7 @@ Deterministic Elixir replacement; selected by `--elixir` on `codegen-build` (exp
 - State advancement (GATED→REVIEWED→CURATED→COMMITTED) shells `cycle-state.sh` via `advance_cycle_state_step/3`.
 - **Cutover complete**: in-harness self-orchestration (SubagentStop/Stop role-sequencing, orchestrator rules, curator-format.sh, etc.) DELETED. `build-queue.sh` NOT deleted — LIVE default `--queue` drainer (above). Loop/legacy coexist via `--elixir` (legacy default) for build AND `--queue` leg. Prompt-body files retained for legacy engine in dispatch.sh.
 - **Pitch-path resolution contract** — `dispatch.sh` runs `cd "$LOOP_DIR"` (`$LOOP_DIR` = `<repo>/test_harness/`) before execing `mix codegen.loop`. Any mix task resolving a relative file path (pitch arg, draft slug) MUST join it against the explicit `--cwd` flag (the real project root), never `File.cwd!()`. Pattern: `Path.expand(relative_path, cwd)`. Applies to any future mix task accepting a file-path arg.
+- **`build_prompt/2` testability & reviewer directive** — Single prompt-assembly point in `OrchestrationLoop.build_prompt(role, ctx)` (orchestration_loop.ex). Promoted from `defp` to `def` with `@doc false` for ExUnit direct test calls, matching `zero_telemetry` convention. Reviewer branch (reviewer-phoenix/reviewer-static) prepends directive to source changed set via `git diff HEAD` + `git status --porcelain` (loop session log carries NO `## Files Modified`), mirroring committer "sitting UNCOMMITTED" phrasing.
 
 ## Make Target Catalog
 
@@ -124,9 +125,7 @@ Boundary guard (grep for consumer name) runs in both: hermetic bash tests via `s
 
 ## Assertion Coverage Pattern
 
-Assertion helper functions defined in `CodegenTestHarness.Assertions` should be reused across multiple test cases when they guard important postconditions (e.g., `assert_assets_deploy!`, `assert_generated_tests_pass!`). When an assertion is defined but has zero call sites, it represents a regression-guard gap — identify where that assertion logically belongs and wire it into at least one test case. Example: `assert_assets_deploy!/1` validates compile-first alias ordering (the `assert_assets_deploy!` block in `assertions.ex`); it was wired into `no_ecto_scaffold_test.exs` (the `mix assets.deploy` test case) to ensure `mix assets.deploy` succeeds under `--no-ecto` scaffold, a key compile precondition. Scan newly defined assertions during review; if a helper has no callers, route it to the test file that should guard it.
-
-**Static scaffold outDir configuration**: The Vite static scaffold explicitly sets `outDir: "public"` (not the Vite default `dist/`). Any test assertion, hook, or tooling checking for built output must use `public/` as the expected output directory, not `dist/`. Path-string mismatches (e.g., assertions expecting `dist/index.html` when the scaffold writes to `public/index.html`) are NOT caught by hermetic `make test` (string literals compile fine) — only real LLM builds via `make test-stacks` would surface the mismatch. Audit all output-path expectations (assertions.ex, fixtures.ex, hook scripts, bench verifiers) for `dist/` references when touching static stack output paths.
+Assertion helpers defined in `CodegenTestHarness.Assertions` should be wired into test cases guarding important postconditions (e.g., `assert_assets_deploy!`, `assert_generated_tests_pass!`). Undefined helpers with zero call sites represent regression gaps. **Static scaffold outDir**: Vite sets `outDir: "public"` (not `dist/`). Assertions must expect `public/` not `dist/`.
 
 ## Bash Hook Test Debugging — Silent Crashes & Early Exits
 
@@ -264,28 +263,6 @@ Benchmark mode (BENCH=1), artifact layout, screenshot capture, mix viewer tasks:
 - **`codegen-call` requires `--model`, `--effort`, `@<abs-path>`** — old API used exit 2; fixtures resolve from config.yaml, write temps, pass @/tmp/...
 - **`default_spawn_fn/5` timeout kills whole child tree** — `Port.open`+receive-loop, not `Task.shutdown(:brutal_kill)` (orphans grandchildren). Seams: `:__queue_drain_build_bin__`, `:__queue_drain_kill_fn__`.
 - **`bench_artifacts_test.exs` token list tracks screenshot.js changes** — update on Vite migration.
-
-### Flake Triage Protocol
-
-Apply to EVERY `make test-stacks` failure before touching source. Reference: `shared/recipes/flaky-test-fix.md` for pattern details.
-
-**4 buckets:**
-
-1. **Deterministic source bug** — same failure across 2+ runs, identical message; root cause in source. Fix source; confirm via `make test` + targeted `mix test <file> --only slow`.
-2. **Deterministic test-vs-impl conflict** — assertion written against old API/behavior; impl changed, test didn't. Fix stale side; re-run.
-3. **Genuine LLM flake** — non-determinism (missing PROJECT_CONTEXT.md, content markers, empty HTML, compile error). Confirm via 3× re-run; all pass → accept as flake. No retry infra, no widened assertions.
-4. **Operational** — tool missing, bad creds, quota. Fix the precondition, not the test. Pi `gpt-5.3-codex-spark not supported` = account required, not a flake.
-
-**Rules:**
-
-- `--only slow` reporting "0 tests, exit 1" → tag/config problem (operational), not a flake.
-- A flake with a deterministic root cause (race, stale assertion, nil guard) is bucket 1/2, not bucket 3 — fix it.
-- NEVER mask a genuine flake with assertion widening or retry infra.
-- Record confirmed flakes in session log: file:line, failure message, number of passes in re-runs.
-
-## Hermetic Source-Text Regression Guards
-
-Static source-ordering assertions (no runtime, no LLM) pinning invariant ordering in scripts. Pattern: extract file text → use `:binary.match/2` + stable substrings (not brittle full-line literals) to find byte-offsets → assert ordering/presence. Example: `screenshot.js` pre-warm guard asserts `index("mix deps.get") < index("waitForHttp200")`. Runs in `make test` (fast gate), fails loud with invariant message on reorder. Mirrors `render_check_test.exs` node-syntax model.
 
 ## Trigger Keywords
 
