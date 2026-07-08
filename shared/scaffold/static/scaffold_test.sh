@@ -467,6 +467,37 @@ assert_contains "codegen/rules relative target points at shared/rules" "$RULES_T
 assert_file_exists "AGENTS.md relative link resolves" "$REL_CWD/AGENTS.md"
 assert_file_exists "codegen/recipes/INDEX.md resolves through relative dir link" "$REL_CWD/codegen/recipes/INDEX.md"
 
+# (ah) codegen/manifest.yaml written after phoenix integrate, matches SCHEMA_VERSION
+MANIFEST_CWD="$BASE_TMP/manifest_test"
+mkdir -p "$MANIFEST_CWD/codegen"
+"$CODEGEN_SCAFFOLD" integrate --stack=phoenix --cwd="$MANIFEST_CWD" --slug=test-manifest
+assert_file_exists "codegen/manifest.yaml exists after phoenix integrate" "$MANIFEST_CWD/codegen/manifest.yaml"
+EXPECTED_SCHEMA_VERSION="$(cat "$CODEGEN_ROOT/shared/scaffold/SCHEMA_VERSION")"
+MANIFEST_CONTENT="$(cat "$MANIFEST_CWD/codegen/manifest.yaml")"
+assert_contains "manifest.yaml scaffold_schema_version matches SCHEMA_VERSION file" "$MANIFEST_CONTENT" "scaffold_schema_version: $EXPECTED_SCHEMA_VERSION"
+
+# (ai) codegen/manifest.yaml also written for static integrate
+MANIFEST_STATIC_CWD="$BASE_TMP/manifest_static_test"
+mkdir -p "$MANIFEST_STATIC_CWD/codegen"
+"$CODEGEN_SCAFFOLD" integrate --stack=static --cwd="$MANIFEST_STATIC_CWD" --slug=test-manifest-static
+assert_file_exists "codegen/manifest.yaml exists after static integrate" "$MANIFEST_STATIC_CWD/codegen/manifest.yaml"
+
+# (aj) re-integrate ALWAYS REWRITES manifest.yaml (not write-once/idempotent-skip)
+printf 'scaffold_schema_version: 999\nscaffolded_from_sha: bogus\nscaffolded_at: bogus\n' >"$MANIFEST_CWD/codegen/manifest.yaml"
+"$CODEGEN_SCAFFOLD" integrate --stack=phoenix --cwd="$MANIFEST_CWD" --slug=test-manifest
+REWRITTEN_CONTENT="$(cat "$MANIFEST_CWD/codegen/manifest.yaml")"
+case "$REWRITTEN_CONTENT" in
+*"scaffold_schema_version: 999"*)
+    printf 'FAIL: manifest.yaml was not rewritten — bogus sentinel value 999 still present\n'
+    fail=$((fail + 1))
+    ;;
+*)
+    [ -n "${VERBOSE:-}" ] && printf 'PASS: manifest.yaml rewritten — bogus sentinel value gone\n'
+    pass=$((pass + 1))
+    ;;
+esac
+assert_contains "manifest.yaml rewritten with current schema version" "$REWRITTEN_CONTENT" "scaffold_schema_version: $EXPECTED_SCHEMA_VERSION"
+
 # ── Summary ───────────────────────────────────────────────────────────────────
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 

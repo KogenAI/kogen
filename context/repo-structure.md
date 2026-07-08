@@ -166,22 +166,24 @@ codegen/                          ← repo root
 
 ## Artifact Ownership and Update Triggers
 
-| Artifact                                          | Owner                                        | Updated by                                             | Trigger                                    |
-| ------------------------------------------------- | -------------------------------------------- | ------------------------------------------------------ | ------------------------------------------ |
-| `harnesses/claude/claude-code-settings.json`      | Generator                                    | `hook_registrations.py`                                | `make install` or `make hook-parity`       |
-| `harnesses/claude/claude-build-system-prompt.txt` | Generator                                    | `generate.sh`                                          | `make install`                             |
-| `AGENTS.md` (repo root)                           | Hand-authored regular file (git mode 100644) | Direct edit; no `.j2` source or install.sh render step | When codegen session loop docs change      |
-| `CLAUDE.md` (repo root)                           | Hand-authored regular file (git mode 100644) | Direct edit; no `.j2` source or install.sh render step | When codegen session loop docs change      |
-| `shared/` (all subdirs)                           | Contributors / curator                       | Manual edit or context-curator subagent                | Feature development, learning accumulation |
-| `context/*.md`                                    | Context curator                              | `context-curator.md.j2` subagent + manual              | Post-reviewer in each dev cycle            |
-| `codegen/logging/*.md`                            | Orchestrator + subagents                     | Session log write/edit during dev sessions             | Every dev cycle on THIS repo               |
-| `codegen/analysis-proposals/<from>_<to>.md`       | `codegen-propose`                            | Overwritten each `codegen-propose` run                 | Manual operator run; ephemeral, gitignored |
-| `test_harness/last_green.json`                    | CI / `record-green.sh`                       | `make record-green` after `make test-all` passes       | Pre-deploy gate                            |
-| `harnesses/pi/pi-extensions/*/node_modules/`      | npm                                          | `npm install` in extension dir                         | After any `package.json` change            |
-| Root `node_modules/`                              | npm                                          | `npm install` at repo root                             | After `package.json` changes               |
-| `shared/enforcement/registry.yaml`                | Contributors / curator                       | Manual edit; compiler reads at `make install`          | When adding/changing denial rules          |
-| `harnesses/claude/hooks/no-*.sh` (generated)      | `enforcement_compiler.py`                    | `make install` (compiler step)                         | When `registry.yaml` changes               |
-| `harnesses/pi/.../hooks/no-*.ts` (generated)      | `enforcement_compiler.py`                    | `make install` (compiler step)                         | When `registry.yaml` changes               |
+| Artifact                                          | Owner                                        | Updated by                                                    | Trigger                                                                              |
+| ------------------------------------------------- | -------------------------------------------- | ------------------------------------------------------------- | ------------------------------------------------------------------------------------ |
+| `harnesses/claude/claude-code-settings.json`      | Generator                                    | `hook_registrations.py`                                       | `make install` or `make hook-parity`                                                 |
+| `harnesses/claude/claude-build-system-prompt.txt` | Generator                                    | `generate.sh`                                                 | `make install`                                                                       |
+| `AGENTS.md` (repo root)                           | Hand-authored regular file (git mode 100644) | Direct edit; no `.j2` source or install.sh render step        | When codegen session loop docs change                                                |
+| `CLAUDE.md` (repo root)                           | Hand-authored regular file (git mode 100644) | Direct edit; no `.j2` source or install.sh render step        | When codegen session loop docs change                                                |
+| `shared/` (all subdirs)                           | Contributors / curator                       | Manual edit or context-curator subagent                       | Feature development, learning accumulation                                           |
+| `context/*.md`                                    | Context curator                              | `context-curator.md.j2` subagent + manual                     | Post-reviewer in each dev cycle                                                      |
+| `codegen/logging/*.md`                            | Orchestrator + subagents                     | Session log write/edit during dev sessions                    | Every dev cycle on THIS repo                                                         |
+| `codegen/analysis-proposals/<from>_<to>.md`       | `codegen-propose`                            | Overwritten each `codegen-propose` run                        | Manual operator run; ephemeral, gitignored                                           |
+| `test_harness/last_green.json`                    | CI / `record-green.sh`                       | `make record-green` after `make test-all` passes              | Pre-deploy gate                                                                      |
+| `harnesses/pi/pi-extensions/*/node_modules/`      | npm                                          | `npm install` in extension dir                                | After any `package.json` change                                                      |
+| Root `node_modules/`                              | npm                                          | `npm install` at repo root                                    | After `package.json` changes                                                         |
+| `shared/enforcement/registry.yaml`                | Contributors / curator                       | Manual edit; compiler reads at `make install`                 | When adding/changing denial rules                                                    |
+| `shared/scaffold/SCHEMA_VERSION`                  | Maintainers                                  | Manual bump (plain integer)                                   | When a scaffold change requires apps to consciously re-integrate                     |
+| `<app>/codegen/manifest.yaml` (downstream)        | `codegen-scaffold` (`run_integrate_stage`)   | ALWAYS-REWRITE (not write-once) on every `create`/`integrate` | Every scaffold integrate run; `codegen-build` refuses when stamped version is behind |
+| `harnesses/claude/hooks/no-*.sh` (generated)      | `enforcement_compiler.py`                    | `make install` (compiler step)                                | When `registry.yaml` changes                                                         |
+| `harnesses/pi/.../hooks/no-*.ts` (generated)      | `enforcement_compiler.py`                    | `make install` (compiler step)                                | When `registry.yaml` changes                                                         |
 
 ---
 
@@ -198,6 +200,7 @@ codegen/                          ← repo root
 - **`shared/usage_rules/` vs `shared/recipes/`** — usage rules are machine-generated library API summaries; recipes are hand-authored implementation patterns.
 - **`*-system-prompt.txt` files** — generated by `make install`; source is `tools-header/` + `harnesses/shared/prompt-bodies/`. Hand edits are silently overwritten.
 - **`analysis/proposer/`** — subpackage consumed by `codegen-propose`. `select.py` is pure/deterministic (no LLM): filters+ranks `codegen-analyze --json` clusters by `COUNTER_CONFIDENCE_PRIOR` × `wasted_turns`, drops `DROP_COUNTERS` (currently `subagent_interruption`) and clusters below `--min-wasted-turns`, caps at `--max`. `__init__.py` carries `COUNTER_FIX_TYPE` (counter → target-file-class playbook) consumed by `harnesses/claude/propose-system-prompt.md`. Tests auto-run via `analysis/tests/test_proposer.py` (no Makefile wiring needed — `make test` discovers all `analysis/tests/*`).
+- **`shared/scaffold/SCHEMA_VERSION`** — single-integer scaffold schema version, source of truth for downstream-app staleness detection. `codegen-scaffold` stamps it (plus `scaffolded_from_sha`/`scaffolded_at`) into `<app>/codegen/manifest.yaml` on every `create`/`integrate` (ALWAYS-REWRITE, unlike sibling write-once files). `codegen-build` refuses (exit 2, fail-closed) when the app's stamped version is behind the repo's current version, naming `codegen-scaffold integrate --stack=<s> --cwd=<cwd>` as remediation. `<app>/codegen/` is gitignored — the manifest is machine-local, never committed.
 
 ---
 
@@ -240,7 +243,7 @@ codegen/                          ← repo root
 
 ## Trigger Keywords
 
-repo layout, directory structure, where does X go, file tree, top-level files, codegen root, which directory, where to add, artifact location, file organization, repo anatomy, ocg vs codegen-build, ai-agents orphaned, self-meta codegen/, codegen/logging, context vs templates, shared vs templates, bin/ utilities, CLAUDE.md symlink, AGENTS.md source, codegen-propose, analysis-proposals, proposed-change record, turn-waste to proposal
+repo layout, directory structure, where does X go, file tree, top-level files, codegen root, which directory, where to add, artifact location, file organization, repo anatomy, ocg vs codegen-build, ai-agents orphaned, self-meta codegen/, codegen/logging, context vs templates, shared vs templates, bin/ utilities, CLAUDE.md symlink, AGENTS.md source, codegen-propose, analysis-proposals, proposed-change record, turn-waste to proposal, scaffold schema version, per-app manifest, staleness preflight, codegen-build refuse, SCHEMA_VERSION
 
 ---
 

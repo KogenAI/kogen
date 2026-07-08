@@ -392,6 +392,19 @@ RESTARTEOF
         fi
     fi
 
+    # ── codegen/manifest.yaml provenance (ALWAYS REWRITE; not write-once) ──────
+    # Records which codegen scaffold schema wired this app so codegen-build can
+    # refuse builds whose stamped version is behind the repo's current version.
+    # Machine-local: /codegen/ is gitignored in the app (see .gitignore block above).
+    local schema_version_file="$SCRIPT_DIR/shared/scaffold/SCHEMA_VERSION"
+    local schema_version scaffolded_sha scaffolded_at
+    schema_version="$(cat "$schema_version_file" 2>/dev/null || echo unknown)"
+    scaffolded_sha="$(git -C "$SCRIPT_DIR/shared" rev-parse --short HEAD 2>/dev/null || echo unknown)"
+    scaffolded_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    mkdir -p "$target_dir/codegen"
+    printf 'scaffold_schema_version: %s\nscaffolded_from_sha: %s\nscaffolded_at: %s\n' \
+        "$schema_version" "$scaffolded_sha" "$scaffolded_at" >"$target_dir/codegen/manifest.yaml"
+
     printf '[codegen-scaffold] integrate complete for stack=%s at %s\n' "$STACK" "$target_dir"
 }
 

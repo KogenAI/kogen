@@ -800,6 +800,83 @@ check "(p5) self-build markers detect phoenix: exit 0" "0" "$actual_ec"
 assert_contains "(p5) stderr reports detected stack=phoenix" "$stderr_p5" "detected stack=phoenix"
 
 # ─────────────────────────────────────────────────────────────────────────────
+# Tests (q1)-(q4): schema-staleness preflight (codegen/manifest.yaml).
+# cb_root fixtures do NOT ship shared/scaffold/SCHEMA_VERSION by default
+# (make_cb_root only copies codegen-build itself) — cases needing a version
+# plant $CB_X/shared/scaffold/SCHEMA_VERSION themselves.
+# ─────────────────────────────────────────────────────────────────────────────
+
+# (q1) manifest absent → build proceeds (preflight skipped, no refuse message)
+CB_Q1="$(make_cb_root cb_q1)"
+mkdir -p "$CB_Q1/harnesses/claude" "$CB_Q1/shared/scaffold"
+make_stub "$CB_Q1/harnesses/claude/dispatch.sh" 'exit 0'
+printf '1\n' >"$CB_Q1/shared/scaffold/SCHEMA_VERSION"
+MARKER_Q1="$BASE_TMP/marker_q1"
+mkdir -p "$MARKER_Q1"
+
+actual_ec=0
+stderr_q1=$("$CB_Q1/codegen-build" --harness=claude --stack=static --cwd="$MARKER_Q1" --non-interactive \
+    "q1 prompt" 2>&1 >/dev/null) || actual_ec=$?
+check "(q1) manifest absent: proceeds exit 0" "0" "$actual_ec"
+q1_refused=$(printf '%s' "$stderr_q1" | grep -c "app wired at scaffold schema" || true)
+check "(q1) no refuse message when manifest absent" "0" "$q1_refused"
+
+# (q2) stamped version equals current → proceeds
+CB_Q2="$(make_cb_root cb_q2)"
+mkdir -p "$CB_Q2/harnesses/claude" "$CB_Q2/shared/scaffold"
+make_stub "$CB_Q2/harnesses/claude/dispatch.sh" 'exit 0'
+printf '1\n' >"$CB_Q2/shared/scaffold/SCHEMA_VERSION"
+MARKER_Q2="$BASE_TMP/marker_q2"
+mkdir -p "$MARKER_Q2/codegen"
+printf 'scaffold_schema_version: 1\nscaffolded_from_sha: abc123\nscaffolded_at: 2026-01-01T00:00:00Z\n' \
+    >"$MARKER_Q2/codegen/manifest.yaml"
+
+actual_ec=0
+stderr_q2=$("$CB_Q2/codegen-build" --harness=claude --stack=static --cwd="$MARKER_Q2" --non-interactive \
+    "q2 prompt" 2>&1 >/dev/null) || actual_ec=$?
+check "(q2) stamped version equals current: proceeds exit 0" "0" "$actual_ec"
+q2_refused=$(printf '%s' "$stderr_q2" | grep -c "app wired at scaffold schema" || true)
+check "(q2) no refuse message when versions equal" "0" "$q2_refused"
+
+# (q3) stamped version behind current → refuse exit 2 + remediation message
+# RED-then-GREEN: this fixture is deliberately behind (0 < 1); confirm the
+# refusal fires before trusting the mitigation is load-bearing.
+CB_Q3="$(make_cb_root cb_q3)"
+mkdir -p "$CB_Q3/harnesses/claude" "$CB_Q3/shared/scaffold"
+make_stub "$CB_Q3/harnesses/claude/dispatch.sh" 'exit 0'
+printf '1\n' >"$CB_Q3/shared/scaffold/SCHEMA_VERSION"
+MARKER_Q3="$BASE_TMP/marker_q3"
+mkdir -p "$MARKER_Q3/codegen"
+printf 'scaffold_schema_version: 0\nscaffolded_from_sha: abc123\nscaffolded_at: 2026-01-01T00:00:00Z\n' \
+    >"$MARKER_Q3/codegen/manifest.yaml"
+
+actual_ec=0
+stderr_q3=$("$CB_Q3/codegen-build" --harness=claude --stack=static --cwd="$MARKER_Q3" --non-interactive \
+    "q3 prompt" 2>&1 >/dev/null) || actual_ec=$?
+check "(q3) stamped version behind current: refuse exit 2" "2" "$actual_ec"
+assert_contains "(q3) stderr names remediation command" "$stderr_q3" "codegen-scaffold integrate"
+assert_contains "(q3) stderr reports stamped v0" "$stderr_q3" "v0"
+assert_contains "(q3) stderr reports current v1" "$stderr_q3" "v1"
+
+# (q4) self-build markers present + behind manifest → preflight skipped, proceeds
+CB_Q4="$(make_cb_root cb_q4)"
+mkdir -p "$CB_Q4/harnesses/claude" "$CB_Q4/shared/scaffold"
+make_stub "$CB_Q4/harnesses/claude/dispatch.sh" 'exit 0'
+printf '1\n' >"$CB_Q4/shared/scaffold/SCHEMA_VERSION"
+MARKER_Q4="$BASE_TMP/marker_q4"
+mkdir -p "$MARKER_Q4/codegen" "$MARKER_Q4/harnesses/claude" "$MARKER_Q4/templates/generator"
+touch "$MARKER_Q4/harnesses/claude/manifest.yaml" "$MARKER_Q4/templates/generator/generate.sh"
+printf 'scaffold_schema_version: 0\nscaffolded_from_sha: abc123\nscaffolded_at: 2026-01-01T00:00:00Z\n' \
+    >"$MARKER_Q4/codegen/manifest.yaml"
+
+actual_ec=0
+stderr_q4=$("$CB_Q4/codegen-build" --harness=claude --stack=phoenix --cwd="$MARKER_Q4" --non-interactive \
+    "q4 prompt" 2>&1 >/dev/null) || actual_ec=$?
+check "(q4) self-build markers present: preflight skipped, proceeds exit 0" "0" "$actual_ec"
+q4_refused=$(printf '%s' "$stderr_q4" | grep -c "app wired at scaffold schema" || true)
+check "(q4) no refuse message on self-build even with behind manifest" "0" "$q4_refused"
+
+# ─────────────────────────────────────────────────────────────────────────────
 echo ""
 echo "Results: $pass passed, $fail failed"
 

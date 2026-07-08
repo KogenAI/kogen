@@ -224,6 +224,26 @@ if [[ -n "$ELIXIR" && (-n "$RESUME_ID" || -n "$RESUMABLE") ]]; then
     usage
 fi
 
+# ── Pre-step: staleness preflight (refuse builds wired at a behind schema) ──
+# Fail-closed: an app whose stamped scaffold schema version is BEHIND the
+# codegen repo's current version must be consciously re-integrated first.
+# Skipped on self-build (codegen repo has no per-app manifest) and when the
+# manifest is absent/unparseable (fresh clone / pre-manifest app → the
+# integrate pre-step below stamps a baseline).
+if [[ ! (-f "$CWD/harnesses/claude/manifest.yaml" && -f "$CWD/templates/generator/generate.sh") ]]; then
+    _schema_file="$SCRIPT_DIR/shared/scaffold/SCHEMA_VERSION"
+    if [[ -f "$_schema_file" && -f "$CWD/codegen/manifest.yaml" ]]; then
+        _current_ver="$(cat "$_schema_file" 2>/dev/null || echo "")"
+        _stamped_ver="$(yq '.scaffold_schema_version // ""' "$CWD/codegen/manifest.yaml" 2>/dev/null || echo "")"
+        # Only refuse on a positively-parsed integer that is strictly behind.
+        if [[ "$_current_ver" =~ ^[0-9]+$ && "$_stamped_ver" =~ ^[0-9]+$ && "$_stamped_ver" -lt "$_current_ver" ]]; then
+            printf 'codegen-build: app wired at scaffold schema v%s; codegen now v%s — run '\''codegen-scaffold integrate --stack=%s --cwd=%s'\'' to migrate, then rebuild\n' \
+                "$_stamped_ver" "$_current_ver" "$STACK" "$CWD" >&2
+            exit 2
+        fi
+    fi
+fi
+
 # ── Pre-step: run integrate stage to wire agent files + PROJECT_CONTEXT.md ──────
 # Idempotent: all writes are guarded by existence checks in run_integrate_stage.
 # Creates PROJECT_CONTEXT.md, restart_server.sh, codegen/ symlinks, Makefile targets.
