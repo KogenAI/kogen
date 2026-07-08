@@ -2,7 +2,7 @@
 # stop-gate-failure-breaker.sh — SubagentStop circuit-breaker: blocks and forces
 # escalation to planner-phoenix once the dev-gate has logged ≥3 FAILED ❌ verdicts
 # in the active session log. Turns the advisory "ROOT-CAUSE: route to planner"
-# suffix written by phoenix-dev-gate.sh into an enforced stop.
+# suffix written by the Elixir loop's LoopGate into an enforced stop.
 #
 # HOOK-MANIFEST:
 # event: SubagentStop
@@ -14,12 +14,12 @@
 # GENERATED FROM shared/enforcement/registry.yaml — DO NOT EDIT
 #
 # Signal: session-log FAILED ❌ count (monotonic within a session, written by
-# phoenix-dev-gate.sh each time it fires with a failed verdict). Cross-checked
-# against gate_result_verdict to avoid blocking on stale/inconclusive runs.
+# the Elixir loop's LoopGate each time it fires with a failed verdict).
+# Cross-checked against gate_result_verdict to avoid blocking on
+# stale/inconclusive runs.
 #
 # Cap: after 2 blocks the counter file is cleared to prevent wedging a genuinely
-# stuck session. Mirrors the cap=2 pattern in stop-spin-guard.sh and
-# stop-cycle-guard.sh.
+# stuck session. Mirrors the cap=2 pattern in stop-spin-guard.sh.
 #
 # Counter file: /tmp/claude-gate-breaker-<session>.count — tracks block count only
 # (not failure count, which is derived from the session log each call).

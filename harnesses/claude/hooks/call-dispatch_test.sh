@@ -282,8 +282,10 @@ assert_file_contains "$HARNESSES_DIR/call-dispatch.sh" "MAX_THINKING_TOKENS=0"
 # Test 2: call-dispatch.sh preserves the non-agent default scope (thinking-off)
 assert_file_contains "$HARNESSES_DIR/call-dispatch.sh" 'SETTING_SOURCES="project"'
 
-# Test 3: dispatch.sh sets MAX_THINKING_TOKENS=0
-assert_file_contains "$HARNESSES_DIR/dispatch.sh" "MAX_THINKING_TOKENS=0"
+# Test 3: dispatch.sh always execs the Elixir loop, which calls
+# call-dispatch.sh per-role (Test 1 covers MAX_THINKING_TOKENS=0 there).
+# dispatch.sh itself no longer invokes `claude` directly, so it carries no
+# MAX_THINKING_TOKENS setting of its own.
 
 # Test 4: claude-code-settings.json has installed-settings copy
 assert_file_contains "$HARNESSES_DIR/claude-code-settings.json" '"MAX_THINKING_TOKENS": "0"'

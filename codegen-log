@@ -74,7 +74,7 @@
 # precedence as section/append (CODEGEN_LOG_PATH > --slug > .active > mtime),
 # renames it to carry --new-slug, and updates .active to the new path.
 #
-# verdict: dedicated writer for the phoenix-dev-gate.sh deterministic gate
+# verdict: dedicated writer for the Elixir loop's LoopGate deterministic gate
 # verdict. Every call APPENDS a brand-new "gate" event line (role="dev-gate")
 # — never replaces a prior one, matching one-event-per-gate-run semantics (a
 # cycle log commonly carries more than one dev-gate verdict across retries).

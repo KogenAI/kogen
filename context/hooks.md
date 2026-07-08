@@ -2,7 +2,7 @@
 
 The hooks domain covers all Claude Code hook scripts, their shared library, registration mechanism, and bash test suite. Hooks fire on `PreToolUse`, `SubagentStop`, and `Stop` lifecycle events — these are the events codegen currently registers; Claude Code supports a larger event catalog (see § Hook Event Types and Scripts below). Each hook has a paired `_test.sh` file; `run-tests.sh` runs the full suite.
 
-**Non-interactive builds are driven by the deterministic Elixir orchestration loop** (`mix codegen.loop`, invoked unconditionally by `dispatch.sh` for non-interactive/no-resume builds), NOT a self-orchestrating agent session. Because the loop invokes each role as a separate main-agent `codegen-call` (`claude -p --print`), there is NO `SubagentStop` event under the loop — SubagentStop-matched hooks only fire for the surviving interactive/resumable-session fallback path. PreToolUse hooks fire normally in every per-role session regardless of driver.
+**Builds are driven unconditionally by the deterministic Elixir orchestration loop** (`mix codegen.loop`, invoked unconditionally by `dispatch.sh` for every build) — there is no interactive self-orchestrating build session. Because the loop invokes each role as a separate main-agent `codegen-call` (`claude -p --print`), there is NO `SubagentStop` event under the loop — SubagentStop-matched hooks fire only in non-build modes (debug/shape/ops/experiment) that still spawn subagents outside the loop. PreToolUse hooks fire normally in every per-role session regardless of mode.
 
 Hook registration: **Two pipelines** — both write to `harnesses/claude/hooks/*.sh` but own different parts:
 
@@ -25,7 +25,7 @@ Hook registration: **Two pipelines** — both write to `harnesses/claude/hooks/*
 
 | File | Purpose |
 | - | - |
-| `harnesses/claude/hooks/static-site-build-check.sh` | SubagentStop (interactive-session fallback only) — builds static site + 8 output checks (CSS, HTML stylesheet link, asset filename, SEO baseline, render gate), appends verdict. SEO baseline (Check 6b, `check_seo_baseline`) validates every `public/**/*.html`: non-empty `<meta name="description">`, all 4 `og:*` tags present, `<link rel="canonical">` present, exactly one valid `application/ld+json` block, `public/robots.txt` exists, all absolute-URL fields are either `SITE_URL_PLACEHOLDER` token or real non-`example.com` URLs (never unreplaced `%...%` vars). Under the loop, the static stack's gate step invokes the same checks directly via `LoopGate.run_gate`. |
+| `harnesses/claude/hooks/static-site-build-check.sh` | SubagentStop (non-build modes only) — builds static site + 8 output checks (CSS, HTML stylesheet link, asset filename, SEO baseline, render gate), appends verdict. SEO baseline (Check 6b, `check_seo_baseline`) validates every `public/**/*.html`: non-empty `<meta name="description">`, all 4 `og:*` tags present, `<link rel="canonical">` present, exactly one valid `application/ld+json` block, `public/robots.txt` exists, all absolute-URL fields are either `SITE_URL_PLACEHOLDER` token or real non-`example.com` URLs (never unreplaced `%...%` vars). Under the loop, the static stack's gate step invokes the same checks directly via `LoopGate.run_gate`. |
 | `harnesses/claude/hooks/pitch-format-validator.sh` | Stop — validates ## Questions/## Answers/> Status: grammar in active pitch for shape/refactor/ops sessions. |
 | `harnesses/claude/hooks/llm-pending-sweep.sh` | Stop — sweeps for pending LLM-generated artifacts before exit |
 | `harnesses/claude/hooks/session-log-writer-only.sh` | PreToolUse — `codegen-log` is the SOLE writer of cycle logs; denies raw Edit/Write/MultiEdit and raw Bash writes into `codegen/logging/*.jsonl` |
@@ -58,8 +58,8 @@ Hook registration: **Two pipelines** — both write to `harnesses/claude/hooks/*
 | `harnesses/claude/hooks/phoenix-backend-developer-guard.sh` | PreToolUse — guards backend developer file scope |
 | `harnesses/claude/hooks/phoenix-frontend-developer-guard.sh` | PreToolUse — guards frontend developer file scope |
 | `harnesses/claude/hooks/static-site-ex-guard.sh` | PreToolUse — blocks .ex file writes in static site context |
-| `harnesses/claude/hooks/subagent-retrospective-guard.sh` | SubagentStop (interactive-session fallback only) — validates retrospective placement in step log |
-| `harnesses/claude/hooks/developer-no-self-gate-reset.sh` | SubagentStop (interactive-session fallback only) — blocks developer from resetting its own gate |
+| `harnesses/claude/hooks/subagent-retrospective-guard.sh` | SubagentStop (non-build modes only) — validates retrospective placement in step log |
+| `harnesses/claude/hooks/developer-no-self-gate-reset.sh` | SubagentStop (non-build modes only) — blocks developer from resetting its own gate |
 | `harnesses/claude/hooks/track-subagent-edits.sh` | PreToolUse — tracks files edited per subagent for session log |
 | `harnesses/claude/hooks/track-tool-failures.sh` | PostToolUseFailure — logs tool failures to global `~/.claude/tool-failures/<session>_<agent>.jsonl`; also appends `{ts,tool,error,agent}` to `codegen/logging/failures/<session>.jsonl` when `shared/enforcement/registry.yaml` sentinel present (codegen-repo only). Reader: `read_tool_failures` in hooks-lib.sh; surface: `make show-failures`. |
 | `harnesses/claude/hooks/usage-rules-grep-guard.sh` | PreToolUse — enforces grep usage rules (no bare grep on files) |
@@ -76,7 +76,7 @@ Hook registration: **Two pipelines** — both write to `harnesses/claude/hooks/*
 | `harnesses/claude/hooks/lib/render-check.js` | Headless Chromium render verdict engine: DOM non-empty, styles applied, no JS errors. Parse guard: detects dup fn defs via `node --check`. Phoenix mode `--spawn <dir>` self-boots `mix phx.server` (real app, not an assumed-already-running port) — boot failure fail-closes to `FAIL:server-boot-failed`, not `INCONCLUSIVE`. `--port <N>` (assume-running probe) still emits `INCONCLUSIVE:server-unready`. |
 | `harnesses/claude/hooks/lib/render-check_test.sh` | Regression guard: `node --check` on render-check.js + phoenix-server.js; tests SyntaxError paths for duplicate functions |
 | `harnesses/claude/hooks/portable-launcher_test.sh` | Real launcher invocation tests: tests CONTEXT_FLAGS/ROLE_SYSTEM_PROMPT append logic, SCRIPT_DIR/CODEGEN_DIR drift-block, pitch resolution, Tier-0/Tier-1 context loading (always-load, fail-open, pitch-matched, dedup, 6-row cap) |
-| `harnesses/claude/hooks/build-launcher-wrapper_test.sh` | Hermetic wrapper tests for claude-build.sh + pi-build.sh: CODEGEN_DIR 3-branch resolution, --queue dispatch (elixir + legacy), --elixir strip/re-add, basename resolution, cwd normalization. ALL terminal execs stubbed (zero real LLM builds). 14 matrix cases × 2 launchers = 118 assertions. |
+| `harnesses/claude/hooks/build-launcher-wrapper_test.sh` | Hermetic wrapper tests for claude-build.sh + pi-build.sh: CODEGEN_DIR 3-branch resolution, --queue dispatch (mix codegen.loop.queue), basename resolution, cwd normalization. ALL terminal execs stubbed (zero real LLM builds). 14 matrix cases × 2 launchers = 118 assertions. |
 | `harnesses/claude/hooks/prompt-content-parity_test.sh` | Verifies baked shape prompts preserve fixed sentinel strings: `ASK-GATE: product forks only`, `INTERACTION-AUDIT: compose-check siblings`, `Never treat N prose...`; non-sentinel edits to spine or shape bodies do not require sentinel sync |
 | `harnesses/claude/hooks/role-boundary-parity_test.sh` | Drift guard for role boundary enforcement: extracts allowlist verb tokens from `registry.yaml` committer/reviewer `match:` regex; asserts each appears in the corresponding rule file (`.md`). Tests both directions (registry-parity and prose-parity), substring-safety (codegen-log vs standalone git `log`), exit codes. 14 assertions: live + fixture ±drift cases. |
 | `harnesses/claude/hooks/run-tests.sh` | Auto-discovers and runs all `*_test.sh` hook tests via a `find "$HOOKS_DIR" -name '*_test.sh'` call near the top of the script. Combined with manifest exemption (`--exclude-pattern=_test.sh` in hook_registrations.py), new CI-lint guards in `harnesses/claude/hooks/` need ZERO Makefile wiring or registry entries — file presence + exec bit is sufficient for auto-discovery. Test can be hand-authored (no HOOK-MANIFEST header required). |
@@ -90,8 +90,8 @@ Event → script mapping from `harnesses/claude/claude-code-settings.json`:
 | `PreToolUse` | no-cat-pipe, no-python-json, no-git-stash, orchestrator-no-source-edit, orchestrator-no-ci, orchestrator-read-discipline, subagent-read-discipline, pre-commit-guard, dev-no-ci, developer-no-self-gate, planner-guard, reviewer-guard, reviewer-bash-allowlist (GENERATED), context-curator-guard, context-index-parity, operator-subagent-allowlist, build-worker-cwd-guard, build-no-success-before-commit, committer-bash-allowlist (GENERATED), committer-write-allowlist (GENERATED), committer-no-trailer-guard, committer-single-line-guard, committer-subject-length, phoenix-backend-developer-guard, phoenix-frontend-developer-guard, static-site-ex-guard, session-log-writer-only, track-subagent-edits, usage-rules-grep-guard, llm-suite-guard, llm-test-guard, claude-debug-bash-guard, step-log-section-before-spawn, curator-before-committer, single-cycle-agent-in-flight | Discipline enforcement before tool runs |
 | `PostToolUse` | (autovalidate inline script for `make llm-phoenix`) | Post-tool validation |
 | `PostToolUseFailure` | track-tool-failures | Logs tool failures for diagnostics |
-| `SubagentStop` | developer-no-self-gate-reset, static-site-build-check, subagent-retrospective-guard, phoenix-dev-gate, env-var-sample-consistency, curator-format, post-developer-format, stop-gate-failure-breaker, stop-spin-guard | Interactive-session-fallback-only: gate verdicts + retrospective validation. Dead under the loop (no SubagentStop fires for per-role `codegen-call` invocations) — the loop covers gate execution (`LoopGate`), formatting (`run_format_step`), and cycle-state advancement explicitly as loop steps. `env-var-sample-consistency` fires for both developer roles, scanning the working-tree diff vs HEAD (relocated from a committer PreToolUse gate — committer cannot edit `.env.sample`, a structural deadlock). |
-| `Stop` | llm-pending-sweep, pitch-format-validator, build-queue-continuity, pitch-shipped-before-stop, stop-cycle-guard, stop-resume, stop-spin-guard, stop-gate-failure-breaker, stop-verify-planner-gate, step-log-completeness, step-log-missing-guard | End-of-session guards (interactive-session fallback) |
+| `SubagentStop` | developer-no-self-gate-reset, static-site-build-check, subagent-retrospective-guard, env-var-sample-consistency, curator-format, post-developer-format, stop-gate-failure-breaker, stop-spin-guard | Non-build-modes-only: gate verdicts + retrospective validation. Dead under the loop (no SubagentStop fires for per-role `codegen-call` invocations) — the loop covers gate execution (`LoopGate`), formatting (`run_format_step`), and cycle-state advancement explicitly as loop steps. `env-var-sample-consistency` fires for both developer roles, scanning the working-tree diff vs HEAD (relocated from a committer PreToolUse gate — committer cannot edit `.env.sample`, a structural deadlock). |
+| `Stop` | llm-pending-sweep, pitch-format-validator, build-queue-continuity, stop-resume, stop-spin-guard, stop-gate-failure-breaker, stop-verify-planner-gate | End-of-session guards (non-build modes: debug/shape/ops/experiment) |
 | `UserPromptSubmit` | (inline: `/orchestrate` session state capture) | Session routing for `/orchestrate` command |
 | `SessionStart` | (inline: orchestrate session context restore) | Restores context after compact |
 | `SessionEnd` | (inline: cleans up orchestrate session JSON) | Cleanup |
@@ -130,7 +130,7 @@ All `jq -e` reads exit 0 = at least one match, exit 1 = none. Wrap in `2>/dev/nu
 
 ## Retrospective Placement Rule (subagent-retrospective-guard)
 
-`subagent-retrospective-guard.sh` — SubagentStop hook (interactive-session fallback only) validating `### What I Learned This Step` placement inside a role's opaque body string. The hook concatenates all `role`/`learned` events for the agent (`jq -r --arg r "$AGENT_TYPE" 'select(.ev=="role" and .role==$r)|.body'`), then scans that body string for the header.
+`subagent-retrospective-guard.sh` — SubagentStop hook (non-build modes only) validating `### What I Learned This Step` placement inside a role's opaque body string. The hook concatenates all `role`/`learned` events for the agent (`jq -r --arg r "$AGENT_TYPE" 'select(.ev=="role" and .role==$r)|.body'`), then scans that body string for the header.
 
 Body strings are opaque prose (never re-parsed as markdown structure by any other hook), but WITHIN the retrospective-guard's own extraction, an `awk` pass still bounds the retrospective content: `/^### What I Learned This Step/{ found=1; next } found && /^### /{ exit } found { print }` — a `### `-prefixed sub-header appearing AFTER the retrospective header inside the same body string still terminates the captured block early. Put "nothing notable" or real bullets directly under the header with no intervening `### ` line.
 
@@ -161,7 +161,7 @@ slug=$(basename "$log" | sed -E 's/^[0-9]{8}_[0-9]{6}_(.+)_cycle\.jsonl$/\1/')
 
 **Consumed by** (MUST be kept in sync — parity-tested):
 - `hooks-lib.sh`: `SESSION_LOG_NAME_RE` variable (shared by all guards that need to validate log filenames)
-- Bash guards: `reviewer-guard.sh`, `committer-write-allowlist.sh`, `pitch-shipped-before-stop.sh` (reference the variable)
+- Bash guards: `reviewer-guard.sh`, `committer-write-allowlist.sh` (reference the variable)
 - Pi twins: `committer-write-allowlist.ts` (hardcoded string with header comment linking to canonical source)
 - `registry.yaml`: 2 `match:` lines for the above guards (hardcoded; parity-tested in `make test`)
 - `session-log.md` § File Naming (canonical prose)
@@ -187,7 +187,7 @@ templates/generator/hook_registrations.py  ← generates settings.json entries
 
 - **core**: `hook_registrations.py` reads hooks source dir; `install.sh` copies hooks to `~/.claude/hooks/`
 - **harnesses**: `claude-code-settings.json` declares hook event → script mappings; generated version installed at `~/.claude/settings.json`; see `context/harnesses.md` for harness install contract details
-- **rules**: hooks enforce rules at runtime (e.g. `no-python-json.sh` → `bash-discipline.md` rule). For non-interactive builds, gate verdict _generation_ and _reaction_ are both owned by the Elixir loop (`test_harness/lib/codegen_test_harness/loop_gate.ex`, `orchestration_loop.ex`), not by SubagentStop hooks.
+- **rules**: hooks enforce rules at runtime (e.g. `no-python-json.sh` → `bash-discipline.md` rule). For builds, gate verdict _generation_ and _reaction_ are both owned by the Elixir loop (`test_harness/lib/codegen_test_harness/loop_gate.ex`, `orchestration_loop.ex`), not by SubagentStop hooks.
 - **test-harness**: hook tests (`*_test.sh`) are bash scripts; `run-tests.sh` runs them separately from ExUnit suite
 
 ## Test Suite Behavior — Combined make test vs Hermetic-Only
@@ -204,7 +204,7 @@ For matrix of which hooks gate which launcher modes (build vs debug/shape/refact
 
 For hook authoring patterns (how to write/test a hook, output protocol, gate verdict flow, hooks-lib usage, registration mechanics) → `context/hook-authoring-patterns.md`.
 
-For the loop's own gate mechanism (non-interactive build path) → `context/test-harness.md`.
+For the loop's own gate mechanism (the build path) → `context/test-harness.md`.
 
 ## Enforce-Registry-Parity — Compiler-Generated Files & Gate Ordering
 
@@ -248,7 +248,7 @@ When designing shell case statements where one verdict variant should block and 
 - `append <role> --learned "<text>" --slug <slug>` — append `{"ev":"learned",...}`.
 - `append <role> --died interrupted|aborted --slug <slug>` — append `{"ev":"died",...}`.
 - `append <role> --verdict clear|failed|inconclusive --slug <slug>` — append `{"ev":"gate",...}`.
-- `verdict --gate <cmd> --mode <mode> --result "<text>" --slug <slug>` — phoenix-dev-gate verdict writer.
+- `verdict --gate <cmd> --mode <mode> --result "<text>" --slug <slug>` — the loop's dev-gate step verdict writer.
 - `relocate --new-slug <slug>` — rename + update `.active`.
 
 **Resolution**: `CODEGEN_LOG_PATH` env > `--slug` > `.active` sentinel > mtime. Full contract: `shared/rules/_core/session-log.md` § Ownership.

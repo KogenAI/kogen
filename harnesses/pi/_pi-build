@@ -1,11 +1,11 @@
 #compdef pi-build
 # _pi-build — zsh completion for pi-build
 # Completes basenames (without .md) from $PWD/codegen/pitches/ready/, plus
-# the --elixir (engine selector) and --non-interactive flags.
+# the --queue flag (drain codegen/pitches/ready/ one pitch at a time).
 
 _pi_build() {
     local -a flags
-    flags=('--elixir' '--non-interactive')
+    flags=('--queue')
     _describe 'flag' flags
 
     local ready_dir="$PWD/codegen/pitches/ready"

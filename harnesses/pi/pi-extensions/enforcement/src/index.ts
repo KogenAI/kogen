@@ -58,10 +58,8 @@ import { register as registerOperatorSubagentAllowlist } from "./hooks/operator-
 import { register as registerOrchestratorNoCi } from "./hooks/orchestrator-no-ci";
 import { register as registerOrchestratorReadDiscipline } from "./hooks/orchestrator-read-discipline";
 import { register as registerPhoenixBackendDeveloperGuard } from "./hooks/phoenix-backend-developer-guard";
-import { register as registerPhoenixDevGate } from "./hooks/phoenix-dev-gate";
 import { register as registerPhoenixFrontendDeveloperGuard } from "./hooks/phoenix-frontend-developer-guard";
 import { register as registerPitchFormatValidator } from "./hooks/pitch-format-validator";
-import { register as registerPitchShippedBeforeStop } from "./hooks/pitch-shipped-before-stop";
 import { register as registerPlannerGuard } from "./hooks/planner-guard";
 import { register as registerPostDeveloperFormat } from "./hooks/post-developer-format";
 import { register as registerPreCommitGuard } from "./hooks/pre-commit-guard";
@@ -71,10 +69,7 @@ import { register as registerReviewerGuardSessionLogWrite } from "./hooks/review
 import { register as registerSessionLogWriterOnly } from "./hooks/session-log-writer-only";
 import { register as registerStaticSiteBuildCheck } from "./hooks/static-site-build-check";
 import { register as registerStaticSiteExGuard } from "./hooks/static-site-ex-guard";
-import { register as registerStepLogCompleteness } from "./hooks/step-log-completeness";
-import { register as registerStepLogMissingGuard } from "./hooks/step-log-missing-guard";
 import { register as registerStepLogSectionBeforeSpawn } from "./hooks/step-log-section-before-spawn";
-import { register as registerStopCycleGuard } from "./hooks/stop-cycle-guard";
 import { register as registerStopGateFailureBreaker } from "./hooks/stop-gate-failure-breaker";
 import { register as registerStopResume } from "./hooks/stop-resume";
 import { register as registerStopVerifyPlannerGate } from "./hooks/stop-verify-planner-gate";
@@ -127,10 +122,8 @@ export default function (pi: ExtensionAPI): void {
   registerOrchestratorNoCi(pi);
   registerOrchestratorReadDiscipline(pi);
   registerPhoenixBackendDeveloperGuard(pi);
-  registerPhoenixDevGate(pi);
   registerPhoenixFrontendDeveloperGuard(pi);
   registerPitchFormatValidator(pi);
-  registerPitchShippedBeforeStop(pi);
   registerPlannerGuard(pi);
   registerPostDeveloperFormat(pi);
   registerPreCommitGuard(pi);
@@ -140,10 +133,7 @@ export default function (pi: ExtensionAPI): void {
   registerSessionLogWriterOnly(pi);
   registerStaticSiteBuildCheck(pi);
   registerStaticSiteExGuard(pi);
-  registerStepLogCompleteness(pi);
-  registerStepLogMissingGuard(pi);
   registerStepLogSectionBeforeSpawn(pi);
-  registerStopCycleGuard(pi);
   registerStopGateFailureBreaker(pi);
   registerStopResume(pi);
   registerStopVerifyPlannerGate(pi);

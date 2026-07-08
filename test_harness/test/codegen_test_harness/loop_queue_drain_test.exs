@@ -985,7 +985,7 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
       assert contents =~ "ERR"
     end
 
-    test "passes --elixir alongside --non-interactive to the per-pitch child", ctx do
+    test "passes --harness/--stack/--cwd to the per-pitch child (no engine flag)", ctx do
       jsonl = Path.join(ctx.dir, "out.jsonl")
       spawn_args_file = Path.join(ctx.dir, "spawn_args.txt")
 
@@ -1011,8 +1011,10 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
       end
 
       spawned_args = File.read!(spawn_args_file)
-      assert spawned_args =~ "--elixir"
-      assert spawned_args =~ "--non-interactive"
+      assert spawned_args =~ "--harness=claude"
+      assert spawned_args =~ "--stack=phoenix"
+      refute spawned_args =~ "--elixir"
+      refute spawned_args =~ "--non-interactive"
     end
   end
 end

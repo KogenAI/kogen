@@ -108,11 +108,11 @@ defmodule CodegenTestHarness.LoopQueueDrain do
     case acquire_lock(lock_path, pid_alive_fn) do
       :ok ->
         try do
-          # leg 1: clear any stale legacy build-queue.json manifest left by an
-          # aborted legacy --queue run. Under --elixir --queue nothing writes it;
-          # the shared lock (see :lock_path default) guarantees no legacy drain is
-          # concurrently mid-run relying on it. Ignore {:error, :enoent} (absent
-          # is the normal case).
+          # leg 1: clear any stale legacy build-queue.json manifest left by the
+          # now-removed legacy build-queue.sh drainer. The Elixir loop never
+          # writes this file; the shared lock (see :lock_path default)
+          # guarantees no legacy drain is concurrently mid-run relying on it.
+          # Ignore {:error, :enoent} (absent is the normal case).
           File.rm(Path.join([cwd, "codegen", "gate-pending", "build-queue.json"]))
 
           state = %{
@@ -519,8 +519,6 @@ defmodule CodegenTestHarness.LoopQueueDrain do
 
     args = [
       "--harness=#{harness}",
-      "--elixir",
-      "--non-interactive",
       "--stack=#{stack}",
       "--cwd=#{cwd}",
       "--",

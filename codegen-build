@@ -13,16 +13,6 @@
 #                             when undetectable or ambiguous (both markers
 #                             present) -- never silent-defaults.
 #   --cwd=<dir>               working directory (default: $PWD)
-#   --elixir                  engine selector: run the deterministic Elixir
-#                             orchestration loop (mix codegen.loop) instead of
-#                             the legacy self-orchestrating harness session.
-#                             Absent (default) selects the legacy engine. The
-#                             loop is not resumable — cannot combine with
-#                             --resume-id/--resumable.
-#   --non-interactive         legacy-engine I/O mode only (stream-json/headless
-#                             vs interactive UI); decoupled from engine choice
-#   --resumable               opt-in: persist session so --resume can re-attach a dead process (build path only)
-#   --resume-id=<id>          re-attach to a persisted session by id (requires --resumable)
 #   --model=<m>               model override
 #   --effort=<e>              effort override
 #   PROMPT                    the prompt string (required, positional, last arg)
@@ -37,17 +27,13 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 HARNESS=""
 STACK=""
 CWD="$PWD"
-ELIXIR=""
-NON_INTERACTIVE=""
-RESUMABLE=""
-RESUME_ID=""
 MODEL=""
 EFFORT=""
 EXTRA_FLAGS=()
 PROMPT=""
 
 usage() {
-    printf 'Usage: codegen-build --harness=<claude|pi> [--stack=<phoenix|static>] [--cwd=<dir>] [--elixir] [--non-interactive] [--resumable] [--resume-id=<id>] [--model=<m>] [--effort=<e>] PROMPT\n' >&2
+    printf 'Usage: codegen-build --harness=<claude|pi> [--stack=<phoenix|static>] [--cwd=<dir>] [--model=<m>] [--effort=<e>] PROMPT\n' >&2
     exit 2
 }
 
@@ -75,26 +61,6 @@ while [[ $# -gt 0 ]]; do
         ;;
     --cwd)
         CWD="$2"
-        shift 2
-        ;;
-    --elixir)
-        ELIXIR="1"
-        shift
-        ;;
-    --non-interactive)
-        NON_INTERACTIVE="1"
-        shift
-        ;;
-    --resumable)
-        RESUMABLE="1"
-        shift
-        ;;
-    --resume-id=*)
-        RESUME_ID="${1#--resume-id=}"
-        shift
-        ;;
-    --resume-id)
-        RESUME_ID="$2"
         shift 2
         ;;
     --model=*)
@@ -142,7 +108,7 @@ while [[ $# -gt 0 ]]; do
         exit 0
         ;;
     -h | --help)
-        printf 'Usage: codegen-build --harness=<claude|pi> [--stack=<phoenix|static>] [--cwd=<dir>] [--elixir] [--non-interactive] [--resumable] [--resume-id=<id>] [--model=<m>] [--effort=<e>] PROMPT\n'
+        printf 'Usage: codegen-build --harness=<claude|pi> [--stack=<phoenix|static>] [--cwd=<dir>] [--model=<m>] [--effort=<e>] PROMPT\n'
         exit 0
         ;;
     --)
@@ -168,11 +134,6 @@ done
 # Validate required args
 if [[ -z "$HARNESS" ]]; then
     printf 'codegen-build: --harness is required\n' >&2
-    usage
-fi
-
-if [[ -n "$NON_INTERACTIVE" && -z "$PROMPT" ]]; then
-    printf 'codegen-build: PROMPT is required in non-interactive mode\n' >&2
     usage
 fi
 
@@ -207,20 +168,6 @@ fi
 
 if [[ "$STACK" != "phoenix" && "$STACK" != "static" ]]; then
     printf 'codegen-build: --stack must be "phoenix" or "static", got %q\n' "$STACK" >&2
-    usage
-fi
-
-# --resume-id without --resumable would persist nothing → resume hits
-# "No conversation found". Reject the contradictory combination.
-if [[ -n "$RESUME_ID" && -z "$RESUMABLE" ]]; then
-    printf 'codegen-build: --resume-id requires --resumable\n' >&2
-    usage
-fi
-
-# The Elixir loop is not resumable — reject rather than silently dropping
-# --resume-id/--resumable when --elixir is also present.
-if [[ -n "$ELIXIR" && (-n "$RESUME_ID" || -n "$RESUMABLE") ]]; then
-    printf 'codegen-build: --elixir cannot be combined with --resume-id/--resumable (the Elixir loop is not resumable)\n' >&2
     usage
 fi
 
@@ -269,10 +216,6 @@ fi
 export CODEGEN_BUILD_HARNESS="$HARNESS"
 export CODEGEN_BUILD_STACK="$STACK"
 export CODEGEN_BUILD_CWD="$CWD"
-export CODEGEN_BUILD_ELIXIR="${ELIXIR:-}"
-export CODEGEN_BUILD_NON_INTERACTIVE="${NON_INTERACTIVE:-}"
-export CODEGEN_BUILD_RESUMABLE="${RESUMABLE:-}"
-export CODEGEN_BUILD_RESUME_ID="${RESUME_ID:-}"
 export CODEGEN_BUILD_MODEL="${MODEL:-}"
 export CODEGEN_BUILD_EFFORT="${EFFORT:-}"
 export CLAUDE_ASYNC_AGENT_STALL_TIMEOUT_MS=0

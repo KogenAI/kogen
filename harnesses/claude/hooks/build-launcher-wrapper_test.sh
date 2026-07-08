@@ -1,15 +1,15 @@
 #!/usr/bin/env bash
 # build-launcher-wrapper_test.sh — hermetic tests for claude-build.sh + pi-build.sh
-# wrapper logic (CODEGEN_DIR resolution, --elixir strip/re-add, --queue
-# dispatch, basename resolver, cwd normalization).
+# wrapper logic (CODEGEN_DIR resolution, --queue dispatch, basename resolver,
+# cwd normalization).
 #
 # CRITICAL INVARIANT: no test case may ever reach a real exec of
-# `codegen-build`, `mix codegen.loop*`, `harnesses/shared/build-queue.sh`,
-# `claude`, or `pi`. Every case stubs the terminal exec target(s) it can
-# reach and asserts the stub's capture file was written (absent capture file
-# ⇒ real binary ran ⇒ FAIL loud). run-tests.sh unsets OCG_CODEGEN_DIR before
-# discovery, so every case pins it explicitly (or copies the launcher into a
-# synthetic SCRIPT_DIR layout for the two non-override CODEGEN_DIR branches).
+# `codegen-build`, `mix codegen.loop*`, `claude`, or `pi`. Every case stubs
+# the terminal exec target(s) it can reach and asserts the stub's capture
+# file was written (absent capture file ⇒ real binary ran ⇒ FAIL loud).
+# run-tests.sh unsets OCG_CODEGEN_DIR before discovery, so every case pins it
+# explicitly (or copies the launcher into a synthetic SCRIPT_DIR layout for
+# the two non-override CODEGEN_DIR branches).
 #
 # Both launchers are ~identical; three divergences: pi exports PI_ROLE=build;
 # pi emits bare `codegen/pitches/ready/<slug>.md` mentions (claude prefixes
@@ -114,7 +114,7 @@ for entry in "${LAUNCHERS[@]}"; do
     HARNESS="${rest%%:*}"
     MSGPFX="${rest#*:}"
 
-    # ── Case 1: CODEGEN_DIR override — --queue --elixir → mix codegen.loop.queue ──
+    # ── Case 1: CODEGEN_DIR override — --queue → mix codegen.loop.queue ──
     WS1="$(make_ws "${HARNESS}_c1")"
     mkdir -p "$WS1/test_harness"
     MIXDIR1="$(make_mix_stub_dir "${HARNESS}_c1_mix")"
@@ -124,9 +124,9 @@ for entry in "${LAUNCHERS[@]}"; do
     mkdir -p "$OUT1"
     (
         cd "$OUT1"
-        OCG_CODEGEN_DIR="$WS1" PATH="$MIXDIR1:$PATH" "$LAUNCHER" --queue --elixir
+        OCG_CODEGEN_DIR="$WS1" PATH="$MIXDIR1:$PATH" "$LAUNCHER" --queue
     ) >/dev/null 2>"$BASE_TMP/${HARNESS}_c1_stderr" || ec=$?
-    check "(1:$HARNESS) --queue --elixir override exits 0" "0" "$ec"
+    check "(1:$HARNESS) --queue override exits 0" "0" "$ec"
     assert_capture_exists "(1:$HARNESS) mix stub capture exists" "$MIXDIR1/mix_capture.txt"
     if [[ -f "$MIXDIR1/mix_capture.txt" ]]; then
         MIX1C="$(cat "$MIXDIR1/mix_capture.txt")"
@@ -144,7 +144,7 @@ for entry in "${LAUNCHERS[@]}"; do
     MIXDIR2="$(make_mix_stub_dir "${HARNESS}_c2_mix")"
 
     ec=0
-    env -u OCG_CODEGEN_DIR PATH="$MIXDIR2:$PATH" "$FLAT_ROOT/launcher.sh" --queue --elixir \
+    env -u OCG_CODEGEN_DIR PATH="$MIXDIR2:$PATH" "$FLAT_ROOT/launcher.sh" --queue \
         >/dev/null 2>"$BASE_TMP/${HARNESS}_c2_stderr" || ec=$?
     check "(2:$HARNESS) installed-flat resolves + exits 0" "0" "$ec"
     assert_capture_exists "(2:$HARNESS) mix stub capture exists (installed-flat)" "$MIXDIR2/mix_capture.txt"
@@ -161,7 +161,7 @@ for entry in "${LAUNCHERS[@]}"; do
     MIXDIR3="$(make_mix_stub_dir "${HARNESS}_c3_mix")"
 
     ec=0
-    env -u OCG_CODEGEN_DIR PATH="$MIXDIR3:$PATH" "$REPO_ROOT/a/b/launcher.sh" --queue --elixir \
+    env -u OCG_CODEGEN_DIR PATH="$MIXDIR3:$PATH" "$REPO_ROOT/a/b/launcher.sh" --queue \
         >/dev/null 2>"$BASE_TMP/${HARNESS}_c3_stderr" || ec=$?
     check "(3:$HARNESS) in-repo fallback resolves + exits 0" "0" "$ec"
     assert_capture_exists "(3:$HARNESS) mix stub capture exists (in-repo fallback)" "$MIXDIR3/mix_capture.txt"
@@ -170,14 +170,14 @@ for entry in "${LAUNCHERS[@]}"; do
             "$(cat "$MIXDIR3/mix_capture.txt")" "codegen.loop.queue"
     fi
 
-    # ── Case 4: --queue --elixir, test_harness/ absent → exit 2 ──
+    # ── Case 4: --queue, test_harness/ absent → exit 2 ──
     WS4="$(make_ws "${HARNESS}_c4")"
     # deliberately no test_harness dir under $WS4
     MIXDIR4="$(make_mix_stub_dir "${HARNESS}_c4_mix")"
 
     ec=0
     STDERR4="$BASE_TMP/${HARNESS}_c4_stderr"
-    OCG_CODEGEN_DIR="$WS4" PATH="$MIXDIR4:$PATH" "$LAUNCHER" --queue --elixir \
+    OCG_CODEGEN_DIR="$WS4" PATH="$MIXDIR4:$PATH" "$LAUNCHER" --queue \
         >/dev/null 2>"$STDERR4" || ec=$?
     check "(4:$HARNESS) missing test_harness/ exits 2" "2" "$ec"
     assert_contains "(4:$HARNESS) stderr mentions test_harness/ not found" "$(cat "$STDERR4")" "test_harness/ not found"
@@ -189,25 +189,22 @@ for entry in "${LAUNCHERS[@]}"; do
         pass=$((pass + 1))
     fi
 
-    # ── Case 5: --queue alone (legacy) → exec bash build-queue.sh ──
+    # ── Case 5: --queue alone → exec mix codegen.loop.queue ──
     WS5="$(make_ws "${HARNESS}_c5")"
-    make_stub "$WS5/harnesses/shared/build-queue.sh" \
-        'printf '"'"'%s\n'"'"' "$@" > "'"$WS5"'/buildqueue_capture.txt"'
+    mkdir -p "$WS5/test_harness"
+    MIXDIR5="$(make_mix_stub_dir "${HARNESS}_c5_mix")"
 
     ec=0
     STDERR5="$BASE_TMP/${HARNESS}_c5_stderr"
-    OCG_CODEGEN_DIR="$WS5" "$LAUNCHER" --queue >/dev/null 2>"$STDERR5" || ec=$?
-    check "(5:$HARNESS) legacy --queue exits 0" "0" "$ec"
-    assert_contains "(5:$HARNESS) stderr shows engine=legacy" "$(cat "$STDERR5")" "engine=legacy"
-    assert_capture_exists "(5:$HARNESS) build-queue.sh stub capture exists" "$WS5/buildqueue_capture.txt"
-    if [[ -f "$WS5/buildqueue_capture.txt" ]]; then
-        BQ5C="$(cat "$WS5/buildqueue_capture.txt")"
-        assert_contains "(5:$HARNESS) --harness=$HARNESS passed to build-queue.sh" "$BQ5C" "--harness=$HARNESS"
-        assert_contains "(5:$HARNESS) --stack=phoenix passed to build-queue.sh" "$BQ5C" "--stack=phoenix"
+    OCG_CODEGEN_DIR="$WS5" PATH="$MIXDIR5:$PATH" "$LAUNCHER" --queue >/dev/null 2>"$STDERR5" || ec=$?
+    check "(5:$HARNESS) --queue exits 0" "0" "$ec"
+    assert_capture_exists "(5:$HARNESS) mix stub capture exists" "$MIXDIR5/mix_capture.txt"
+    if [[ -f "$MIXDIR5/mix_capture.txt" ]]; then
+        MIX5C="$(cat "$MIXDIR5/mix_capture.txt")"
+        assert_contains "(5:$HARNESS) codegen.loop.queue invoked" "$MIX5C" "codegen.loop.queue"
+        assert_contains "(5:$HARNESS) --harness=$HARNESS passed" "$MIX5C" "--harness=$HARNESS"
+        assert_contains "(5:$HARNESS) --stack=phoenix default" "$MIX5C" "--stack=phoenix"
     fi
-
-    # ── Case 6: --queue --elixir allowed, stderr shows engine=elixir (from case 1 run) ──
-    assert_contains "(6:$HARNESS) stderr shows engine=elixir" "$(cat "$BASE_TMP/${HARNESS}_c1_stderr")" "engine=elixir"
 
     # ── Case 7: --queue foo (slug arg) → exit 1 usage error ──
     WS7="$(make_ws "${HARNESS}_c7")"
@@ -224,7 +221,7 @@ for entry in "${LAUNCHERS[@]}"; do
         pass=$((pass + 1))
     fi
 
-    # ── Case 8: --elixir <ready-slug> strip/re-add ──
+    # ── Case 8: ready/ slug basename resolves ──
     WS8="$(make_ws "${HARNESS}_c8")"
     mkdir -p "$WS8/codegen/pitches/ready"
     printf '# a real ready pitch\n' >"$WS8/codegen/pitches/ready/my-real-slug.md"
@@ -232,34 +229,20 @@ for entry in "${LAUNCHERS[@]}"; do
     ec=0
     (
         cd "$WS8"
-        OCG_CODEGEN_DIR="$WS8" "$LAUNCHER" --elixir my-real-slug
+        OCG_CODEGEN_DIR="$WS8" "$LAUNCHER" my-real-slug
     ) >/dev/null 2>/dev/null || ec=$?
-    check "(8:$HARNESS) --elixir <slug> exits 0" "0" "$ec"
+    check "(8:$HARNESS) <slug> exits 0" "0" "$ec"
     assert_capture_exists "(8:$HARNESS) codegen-build stub capture exists" "$WS8/cb_capture.txt"
     if [[ -f "$WS8/cb_capture.txt" ]]; then
         CB8C="$(cat "$WS8/cb_capture.txt")"
-        assert_contains "(8:$HARNESS) --elixir forwarded" "$CB8C" "--elixir"
         if [[ "$HARNESS" == "claude" ]]; then
             assert_contains "(8:$HARNESS) @-mention resolved" "$CB8C" "@codegen/pitches/ready/my-real-slug.md"
         else
             assert_contains "(8:$HARNESS) bare mention resolved" "$CB8C" "codegen/pitches/ready/my-real-slug.md"
         fi
-        # Exactly one --elixir token, and it appears before the mention (not
-        # a prompt part / duplicated).
-        elixir_count="$(printf '%s\n' "$CB8C" | tr ' ' '\n' | grep -c -- '--elixir' || true)"
-        check "(8:$HARNESS) exactly one --elixir token" "1" "$elixir_count"
-        elixir_idx="$(printf '%s\n' "$CB8C" | tr ' ' '\n' | grep -n -- '--elixir' | head -1 | cut -d: -f1)"
-        mention_idx="$(printf '%s\n' "$CB8C" | tr ' ' '\n' | grep -n 'my-real-slug' | head -1 | cut -d: -f1)"
-        if [[ -n "$elixir_idx" && -n "$mention_idx" && "$elixir_idx" -lt "$mention_idx" ]]; then
-            [ -n "${VERBOSE:-}" ] && printf 'PASS: (8:%s) --elixir precedes mention\n' "$HARNESS"
-            pass=$((pass + 1))
-        else
-            printf 'FAIL: (8:%s) --elixir does not precede mention (elixir_idx=%s mention_idx=%s)\n' "$HARNESS" "$elixir_idx" "$mention_idx"
-            fail=$((fail + 1))
-        fi
     fi
 
-    # ── Case 9: basename ready/ slug exact match (no --elixir) ──
+    # ── Case 9: basename ready/ slug exact match ──
     WS9="$(make_ws "${HARNESS}_c9")"
     mkdir -p "$WS9/codegen/pitches/ready"
     printf '# ready\n' >"$WS9/codegen/pitches/ready/exact-match-slug.md"

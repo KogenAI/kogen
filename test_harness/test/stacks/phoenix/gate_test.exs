@@ -66,84 +66,9 @@ defmodule CodegenTestHarness.Stacks.Phoenix.GateTest do
     Fixtures.bench_assertions_passed!("phoenix", "gate_phoenix_exit0")
   end
 
-  test "phoenix gate failure writes non-clear verdict", %{cwd: cwd} do
-    hook = Path.join(File.cwd!(), "../harnesses/claude/hooks/phoenix-dev-gate.sh")
-    hook = Path.expand(hook)
-
-    # Scaffold a minimal committed phoenix app so the hook has a real project_dir
-    File.write!(Path.join(cwd, "mix.exs"), "# placeholder")
-    File.mkdir_p!(Path.join(cwd, "codegen/logging"))
-
-    {_output, 0} =
-      System.cmd("git", ["add", "."], cd: cwd, stderr_to_stdout: true)
-
-    {_output, 0} =
-      System.cmd("git", ["commit", "-m", "init app"],
-        cd: cwd,
-        stderr_to_stdout: true,
-        env: [
-          {"GIT_AUTHOR_NAME", "t"},
-          {"GIT_AUTHOR_EMAIL", "t@t"},
-          {"GIT_COMMITTER_NAME", "t"},
-          {"GIT_COMMITTER_EMAIL", "t@t"}
-        ]
-      )
-
-    # Write a step log whose Gate is `false` — deterministic failure
-    log_path =
-      Path.join(
-        cwd,
-        "codegen/logging/#{DateTime.utc_now() |> Calendar.strftime("%Y%m%d_%H%M%S")}_step1_fail.md"
-      )
-
-    File.write!(log_path, """
-    # Step
-
-    ## Plan
-
-    **Gate**: `false`
-    """)
-
-    transcript_path = Path.join(cwd, "transcript.jsonl")
-
-    File.write!(
-      transcript_path,
-      Jason.encode!(%{
-        "type" => "assistant",
-        "message" => %{
-          "content" => [
-            %{"type" => "tool_use", "name" => "Write", "input" => %{"file_path" => log_path}}
-          ]
-        }
-      }) <> "\n"
-    )
-
-    input =
-      Jason.encode!(%{
-        "hook_event_name" => "SubagentStop",
-        "agent_type" => "developer-phoenix-backend",
-        "agent_id" => "abc",
-        "session_id" => "test-failure-phoenix",
-        "cwd" => cwd,
-        "stop_hook_active" => false,
-        "transcript_path" => transcript_path
-      })
-
-    {_out, _rc} =
-      System.cmd("bash", ["-c", "printf '%s' \"$INPUT\" | bash \"$HOOK\""],
-        cd: cwd,
-        stderr_to_stdout: true,
-        env: [{"INPUT", input}, {"HOOK", hook}]
-      )
-
-    gate_result_path = Path.join(cwd, "codegen/gate-pending/gate-result.json")
-
-    assert File.exists?(gate_result_path),
-           "expected gate-result.json at #{gate_result_path} after forced gate failure"
-
-    gate_result = gate_result_path |> File.read!() |> Jason.decode!()
-
-    assert gate_result["verdict"] != "clear",
-           "expected gate-result.json verdict != clear after forced failure, got: #{inspect(gate_result["verdict"])}"
-  end
+  # "phoenix gate failure writes non-clear verdict" (formerly drove the
+  # deleted phoenix-dev-gate.sh directly) was removed — gate execution for
+  # non-interactive builds is now owned by the Elixir loop's LoopGate
+  # (test_harness/lib/codegen_test_harness/loop_gate.ex), whose failed-verdict
+  # path is already covered by loop_gate_test.exs (fast, hermetic, no LLM).
 end

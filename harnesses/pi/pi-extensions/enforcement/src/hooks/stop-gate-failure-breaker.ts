@@ -40,7 +40,7 @@ export function register(pi: ExtensionAPI): void {
     const projectDir = process.env["CWD"] ?? process.cwd();
     const sessionId = process.env["SESSION_ID"] ?? "unknown";
 
-    // Resolve active step log (mtime-sorted, exclude progress) — mirror phoenix-dev-gate.ts:51-62.
+    // Resolve active step log (mtime-sorted, exclude progress) — mirror the claude .sh twin.
     const loggingDir = path.join(projectDir, "codegen", "logging");
     if (!fs.existsSync(loggingDir)) return;
     const logFiles = fs
@@ -73,7 +73,7 @@ export function register(pi: ExtensionAPI): void {
     const logContent = fs.readFileSync(activeLog, "utf8");
     const failedCount = (logContent.match(/FAILED ❌/g) ?? []).length;
 
-    // Cross-check latest gate verdict from gate-result.json (written by phoenix-dev-gate.ts).
+    // Cross-check latest gate verdict from gate-result.json (written by the Elixir loop's LoopGate).
     let verdict = "";
     try {
       const gr = JSON.parse(

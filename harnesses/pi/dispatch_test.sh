@@ -51,17 +51,10 @@ trap 'rm -rf "$TMP_ROOT"' EXIT
 
 FAKE_BIN="$TMP_ROOT/bin"
 mkdir -p "$FAKE_BIN"
-cat >"$FAKE_BIN/pi" <<'STUB'
-#!/usr/bin/env bash
-printf '%s\n' "$@" > "${TARGET_ARGS_FILE:-/dev/null}"
-exit 0
-STUB
-chmod +x "$FAKE_BIN/pi"
 
-# Fake mix stub: engine selected by CODEGEN_BUILD_ELIXIR — the
-# --elixir/no-resume path execs `mix codegen.loop`. Stub it so these
-# hermetic tests never invoke a real LLM/ExUnit round-trip; capture argv +
-# env for assertions.
+# Fake mix stub — dispatch.sh always execs `mix codegen.loop`. Stub it so
+# these hermetic tests never invoke a real LLM/ExUnit round-trip; capture
+# argv + env for assertions.
 cat >"$FAKE_BIN/mix" <<'STUB'
 #!/usr/bin/env bash
 printf '%s\n' "$@" > "${TARGET_MIX_ARGS_FILE:-/dev/null}"
@@ -70,9 +63,9 @@ exit 0
 STUB
 chmod +x "$FAKE_BIN/mix"
 
-# Passing codegen-log stub — dispatch.sh now preflights `codegen-log --version`
-# before spawning any role. Without this stub, EVERY pre-existing exec-path
-# case below would break (codegen-log absent from PATH -> preflight abort).
+# Passing codegen-log stub — dispatch.sh preflights `codegen-log --version`
+# before spawning any role. Without this stub, every exec-path case below
+# would break (codegen-log absent from PATH -> preflight abort).
 printf '#!/usr/bin/env bash\nprintf "codegen-log root=resolved\\n"\nexit 0\n' >"$FAKE_BIN/codegen-log"
 chmod +x "$FAKE_BIN/codegen-log"
 
@@ -80,21 +73,12 @@ make_temp_dispatch() {
     local root="$1"
     mkdir -p "$root"
     cp "$DISPATCH" "$root/dispatch.sh"
-    cp "$CODEGEN_ROOT/harnesses/pi/manifest.yaml" "$root/manifest.yaml"
     chmod +x "$root/dispatch.sh"
 }
 
-# ── Test 1: --elixir selects the loop → execs mix codegen.loop (not pi) ───────
-# Historically this test asserted the pi stub ran directly with
-# --extension/--system-prompt flags forwarded. With CODEGEN_BUILD_ELIXIR=1,
-# the --elixir/no-resume build path execs `mix codegen.loop --harness=pi
-# ...` instead — the pi stub only runs when the loop's
-# `RoleResolver`/`codegen-call` round-trip later invokes pi per-role (out of
-# scope for this hermetic dispatch-level test), or when --elixir is absent
-# (legacy engine, the new default).
+# ── Test 1: loop execs mix codegen.loop ───────────────────────────────────────
 TEST1_HARNESS="$TMP_ROOT/harnesses/pi"
 make_temp_dispatch "$TEST1_HARNESS"
-printf 'generated build prompt sentinel\n' >"$TEST1_HARNESS/pi-build-system-prompt.txt"
 mkdir -p "$TMP_ROOT/project"
 
 MIX_ARGS_FILE_1="$TMP_ROOT/mix-args-1.txt"
@@ -102,13 +86,9 @@ rc=0
 TARGET_MIX_ARGS_FILE="$MIX_ARGS_FILE_1" \
     PATH="$FAKE_BIN:$PATH" \
     OCG_CODEGEN_DIR="$CODEGEN_ROOT" \
-    CODEGEN_BUILD_MODEL="test-model" \
-    CODEGEN_BUILD_EFFORT="low" \
-    CODEGEN_BUILD_NON_INTERACTIVE=1 \
-    CODEGEN_BUILD_ELIXIR=1 \
     CODEGEN_BUILD_STACK=phoenix \
     CODEGEN_BUILD_CWD="$TMP_ROOT/project" \
-    "$TEST1_HARNESS/dispatch.sh" --extension "$TMP_ROOT/custom-extension" "hello prompt" \
+    "$TEST1_HARNESS/dispatch.sh" "hello prompt" \
     >/dev/null 2>&1 || rc=$?
 
 assert_eq "loop path: exit 0 (mix stub)" "0" "$rc"
@@ -124,27 +104,18 @@ else
     fail=$((fail + 1))
 fi
 
-# ── Test 1b: missing test_harness/ dir → exit 2 (fail loud, no silent fallback) ──
-TEST1B_HARNESS="$TMP_ROOT/no-loop-dir/harnesses/pi"
-make_temp_dispatch "$TEST1B_HARNESS"
-printf 'generated build prompt sentinel\n' >"$TEST1B_HARNESS/pi-build-system-prompt.txt"
+# ── Test 2: missing test_harness/ dir → exit 2 (fail loud, no silent fallback) ──
+TEST2_HARNESS="$TMP_ROOT/no-loop-dir/harnesses/pi"
+make_temp_dispatch "$TEST2_HARNESS"
 FAKE_CODEGEN_NO_LOOP="$TMP_ROOT/fake-codegen-no-loop"
-mkdir -p "$FAKE_CODEGEN_NO_LOOP/harnesses/pi/pi-extensions/askuserquestion"
-mkdir -p "$FAKE_CODEGEN_NO_LOOP/harnesses/pi/pi-extensions/subagents"
-mkdir -p "$FAKE_CODEGEN_NO_LOOP/harnesses/pi/pi-extensions/enforcement"
-cp "$TEST1B_HARNESS/dispatch.sh" "$FAKE_CODEGEN_NO_LOOP/harnesses/pi/dispatch.sh"
-cp "$TEST1B_HARNESS/manifest.yaml" "$FAKE_CODEGEN_NO_LOOP/harnesses/pi/manifest.yaml"
-cp "$TEST1B_HARNESS/pi-build-system-prompt.txt" "$FAKE_CODEGEN_NO_LOOP/harnesses/pi/pi-build-system-prompt.txt"
+mkdir -p "$FAKE_CODEGEN_NO_LOOP/harnesses/pi"
+cp "$TEST2_HARNESS/dispatch.sh" "$FAKE_CODEGEN_NO_LOOP/harnesses/pi/dispatch.sh"
 mkdir -p "$TMP_ROOT/no-loop-dir/project"
 
 rc=0
 out=$(
     PATH="$FAKE_BIN:$PATH" \
         OCG_CODEGEN_DIR="$FAKE_CODEGEN_NO_LOOP" \
-        CODEGEN_BUILD_MODEL="test-model" \
-        CODEGEN_BUILD_EFFORT="low" \
-        CODEGEN_BUILD_NON_INTERACTIVE=1 \
-        CODEGEN_BUILD_ELIXIR=1 \
         CODEGEN_BUILD_STACK=phoenix \
         CODEGEN_BUILD_CWD="$TMP_ROOT/no-loop-dir/project" \
         "$FAKE_CODEGEN_NO_LOOP/harnesses/pi/dispatch.sh" "hello prompt" \
@@ -154,36 +125,12 @@ assert_eq "missing test_harness/ dir: exit code 2" "2" "$rc"
 assert_contains "missing test_harness/ dir: stderr mentions 'orchestration loop dir not found'" \
     "$out" "orchestration loop dir not found"
 
-# ── Test 2: missing generated prompt fails loud before model launch ───────────
-TEST2_HARNESS="$TMP_ROOT/missing-prompt/harnesses/pi"
-make_temp_dispatch "$TEST2_HARNESS"
-mkdir -p "$TMP_ROOT/missing-prompt/project"
-
-stderr_file="$TMP_ROOT/stderr-2.txt"
-rc=0
-PATH="$FAKE_BIN:$PATH" \
-    OCG_CODEGEN_DIR="$CODEGEN_ROOT" \
-    CODEGEN_BUILD_MODEL="test-model" \
-    CODEGEN_BUILD_EFFORT="low" \
-    CODEGEN_BUILD_NON_INTERACTIVE=1 \
-    CODEGEN_BUILD_ELIXIR=1 \
-    CODEGEN_BUILD_CWD="$TMP_ROOT/missing-prompt/project" \
-    "$TEST2_HARNESS/dispatch.sh" "hello prompt" >"$stderr_file" 2>&1 || rc=$?
-
-assert_eq "missing prompt exits 2" "2" "$rc"
-stderr_content="$(cat "$stderr_file")"
-assert_contains "missing prompt stderr mentions system prompt file" "$stderr_content" "system prompt file not found"
-
 # ── Test 3: env-isolation — provider keys stripped before exec (loop path) ────
 MIX_ARGS_FILE_3="$TMP_ROOT/mix-args-3.txt"
 rc=0
 TARGET_MIX_ARGS_FILE="$MIX_ARGS_FILE_3" \
     PATH="$FAKE_BIN:$PATH" \
     OCG_CODEGEN_DIR="$CODEGEN_ROOT" \
-    CODEGEN_BUILD_MODEL="test-model" \
-    CODEGEN_BUILD_EFFORT="low" \
-    CODEGEN_BUILD_NON_INTERACTIVE=1 \
-    CODEGEN_BUILD_ELIXIR=1 \
     CODEGEN_BUILD_STACK=phoenix \
     CODEGEN_BUILD_CWD="$TMP_ROOT/project" \
     OPENAI_API_KEY=leak1 \
@@ -203,59 +150,20 @@ else
     fail=$((fail + 1))
 fi
 
-# ── Test 4: engine=elixir banner ──────────────────────────────────────────────
-rc=0
-out=$(
-    PATH="$FAKE_BIN:$PATH" \
-        OCG_CODEGEN_DIR="$CODEGEN_ROOT" \
-        CODEGEN_BUILD_MODEL="test-model" \
-        CODEGEN_BUILD_EFFORT="low" \
-        CODEGEN_BUILD_ELIXIR=1 \
-        CODEGEN_BUILD_STACK=phoenix \
-        CODEGEN_BUILD_CWD="$TMP_ROOT/project" \
-        "$TEST1_HARNESS/dispatch.sh" "hello prompt" \
-        2>&1 >/dev/null
-) || rc=$?
-assert_eq "engine=elixir: exit 0 (mix stub)" "0" "$rc"
-assert_contains "engine=elixir: banner present" "$out" "pi dispatch: engine=elixir"
-
-# ── Test 5: engine=legacy banner — CODEGEN_BUILD_ELIXIR unset → pi stub runs ──
-ARGS_LEGACY="$TMP_ROOT/args-legacy.txt"
-rc=0
-out=$(
-    env -u CODEGEN_BUILD_ELIXIR \
-        TARGET_ARGS_FILE="$ARGS_LEGACY" \
-        PATH="$FAKE_BIN:$PATH" \
-        OCG_CODEGEN_DIR="$CODEGEN_ROOT" \
-        CODEGEN_BUILD_MODEL="test-model" \
-        CODEGEN_BUILD_EFFORT="low" \
-        CODEGEN_BUILD_NON_INTERACTIVE=1 \
-        CODEGEN_BUILD_CWD="$TMP_ROOT/project" \
-        "$TEST1_HARNESS/dispatch.sh" "hello prompt" \
-        2>&1 >/dev/null
-) || rc=$?
-assert_eq "engine=legacy: exit 0 (pi stub)" "0" "$rc"
-assert_contains "engine=legacy: banner present" "$out" "pi dispatch: engine=legacy"
-assert_not_contains "engine=legacy: engine=elixir banner absent" "$out" "pi dispatch: engine=elixir"
-
-# ── Test 6: CODEGEN_BUILD_STACK unset/empty in --elixir path → exit 2 ────────
+# ── Test 4: CODEGEN_BUILD_STACK unset/empty → exit 2 ──────────────────────────
 # Regression lock: dispatch.sh must NOT silently coerce an empty/unset stack
 # to "phoenix" — it must fail loud naming CODEGEN_BUILD_STACK.
 # env -i (not just omitting the var) — guarantees CODEGEN_BUILD_STACK is truly
 # absent regardless of the CALLER's ambient environment (a prior make-test
 # fixture or manual export in the same shell can otherwise leak it through).
-MIX_ARGS_FILE_6="$TMP_ROOT/mix-args-6.txt"
+MIX_ARGS_FILE_4="$TMP_ROOT/mix-args-4.txt"
 rc=0
 out=$(
     env -i \
         HOME="${HOME:-/tmp}" \
-        TARGET_MIX_ARGS_FILE="$MIX_ARGS_FILE_6" \
+        TARGET_MIX_ARGS_FILE="$MIX_ARGS_FILE_4" \
         PATH="$FAKE_BIN:$PATH" \
         OCG_CODEGEN_DIR="$CODEGEN_ROOT" \
-        CODEGEN_BUILD_MODEL="test-model" \
-        CODEGEN_BUILD_EFFORT="low" \
-        CODEGEN_BUILD_NON_INTERACTIVE=1 \
-        CODEGEN_BUILD_ELIXIR=1 \
         CODEGEN_BUILD_CWD="$TMP_ROOT/project" \
         "$TEST1_HARNESS/dispatch.sh" "hello prompt" \
         2>&1
@@ -263,35 +171,30 @@ out=$(
 assert_eq "missing CODEGEN_BUILD_STACK: exit code 2" "2" "$rc"
 assert_contains "missing CODEGEN_BUILD_STACK: stderr names CODEGEN_BUILD_STACK" \
     "$out" "CODEGEN_BUILD_STACK is required but empty/unset"
-if [[ -f "$MIX_ARGS_FILE_6" ]]; then
+if [[ -f "$MIX_ARGS_FILE_4" ]]; then
     printf 'FAIL: missing CODEGEN_BUILD_STACK — mix must NOT have been invoked\n'
     fail=$((fail + 1))
 else
     pass=$((pass + 1))
 fi
 
-# ── Test 7: codegen-log preflight — broken/absent codegen-log aborts loud,
+# ── Test 5: codegen-log preflight — broken/absent codegen-log aborts loud,
 # before any role spawns (assert exec-not-reached via the mix-args-file
-# shimmed-subprocess marker, same pattern used by Test 6). ─────────────────
+# shimmed-subprocess marker, same pattern used by Test 4). ─────────────────
 FAKE_BIN_BROKEN_LOG="$TMP_ROOT/bin-broken-log"
 mkdir -p "$FAKE_BIN_BROKEN_LOG"
-cp "$FAKE_BIN/pi" "$FAKE_BIN_BROKEN_LOG/pi"
 cp "$FAKE_BIN/mix" "$FAKE_BIN_BROKEN_LOG/mix"
 printf '#!/usr/bin/env bash\nexit 1\n' >"$FAKE_BIN_BROKEN_LOG/codegen-log"
 chmod +x "$FAKE_BIN_BROKEN_LOG/codegen-log"
 
-MIX_ARGS_FILE_7="$TMP_ROOT/mix-args-7.txt"
+MIX_ARGS_FILE_5="$TMP_ROOT/mix-args-5.txt"
 rc=0
 out=$(
     env -i \
         HOME="${HOME:-/tmp}" \
-        TARGET_MIX_ARGS_FILE="$MIX_ARGS_FILE_7" \
+        TARGET_MIX_ARGS_FILE="$MIX_ARGS_FILE_5" \
         PATH="$FAKE_BIN_BROKEN_LOG:$PATH" \
         OCG_CODEGEN_DIR="$CODEGEN_ROOT" \
-        CODEGEN_BUILD_MODEL="test-model" \
-        CODEGEN_BUILD_EFFORT="low" \
-        CODEGEN_BUILD_NON_INTERACTIVE=1 \
-        CODEGEN_BUILD_ELIXIR=1 \
         CODEGEN_BUILD_STACK=phoenix \
         CODEGEN_BUILD_CWD="$TMP_ROOT/project" \
         "$TEST1_HARNESS/dispatch.sh" "hello prompt" \
@@ -300,7 +203,7 @@ out=$(
 assert_eq "broken codegen-log: exit code non-zero (2)" "2" "$rc"
 assert_contains "broken codegen-log: stderr names codegen-log unresolvable" "$out" "codegen-log unresolvable"
 assert_contains "broken codegen-log: stderr suggests make install" "$out" "make install"
-if [[ -f "$MIX_ARGS_FILE_7" ]]; then
+if [[ -f "$MIX_ARGS_FILE_5" ]]; then
     printf 'FAIL: broken codegen-log — mix must NOT have been invoked (preflight must abort before exec)\n'
     fail=$((fail + 1))
 else

@@ -138,8 +138,7 @@ developer-*)
             # lag the live write (async flush). Denying the Read here would
             # wedge legitimate early-session orientation reads. Sanctioned
             # fail-open survivor of the fail-closed-everywhere ruling —
-            # intentional, commented, justified. (Second survivor:
-            # stop-cycle-guard retry-cap release.)
+            # intentional, commented, justified.
             exit 0
         fi
 
@@ -178,8 +177,7 @@ reviewer-*)
             # lag the live write (async flush). Denying the Read here would
             # wedge legitimate early-session orientation reads. Sanctioned
             # fail-open survivor of the fail-closed-everywhere ruling —
-            # intentional, commented, justified. (Second survivor:
-            # stop-cycle-guard retry-cap release.)
+            # intentional, commented, justified.
             exit 0
         fi
 

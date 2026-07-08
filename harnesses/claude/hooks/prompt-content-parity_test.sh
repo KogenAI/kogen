@@ -8,8 +8,6 @@ CODEGEN_DIR="$(cd "$SCRIPT_DIR/../../.." && pwd)"
 
 SENTINEL="ASK-GATE: product forks only"
 SENTINEL2="INTERACTION-AUDIT: compose-check siblings"
-SENTINEL3="Never treat N prose/image-named pitches as one combined task."
-SENTINEL4="Before each role's spawn, open its section by running \`codegen-log section <role> --slug <slug>\` with an EMPTY stdin body — this inserts the header ONCE, immediately before that role's spawn; never re-open a header that already exists."
 SENTINEL5="SWEEP-CLASS COMPLETENESS:"
 SENTINEL6="Latent contract-mirror fork"
 SENTINEL7="NEVER fail open by default"
@@ -123,28 +121,6 @@ assert_contains \
     "LiveView correctness: cursor" \
     "$CODEGEN_DIR/shared/rules/stacks/phoenix/reviewer.md" \
     "Tailwind preflight resets to"
-
-# ── Tests 15-16: prose/image-named pitch trigger in baked build prompts ───────
-assert_contains \
-    "prose/image-named-pitch sentinel in claude-build-system-prompt.txt" \
-    "$CODEGEN_DIR/harnesses/claude/claude-build-system-prompt.txt" \
-    "$SENTINEL3"
-
-assert_contains \
-    "prose/image-named-pitch sentinel in pi-build-system-prompt.txt" \
-    "$CODEGEN_DIR/harnesses/pi/pi-build-system-prompt.txt" \
-    "$SENTINEL3"
-
-# ── Tests 17-18: codegen-log section --role open-before-spawn sentinel ───────
-assert_contains \
-    "codegen-log section --role open-before-spawn sentinel in claude-build-system-prompt.txt" \
-    "$CODEGEN_DIR/harnesses/claude/claude-build-system-prompt.txt" \
-    "$SENTINEL4"
-
-assert_contains \
-    "codegen-log section --role open-before-spawn sentinel in pi-build-system-prompt.txt" \
-    "$CODEGEN_DIR/harnesses/pi/pi-build-system-prompt.txt" \
-    "$SENTINEL4"
 
 # ── Tests 19-21: SWEEP-CLASS COMPLETENESS sentinel in shape prompts + ready ───
 assert_contains \
@@ -317,16 +293,21 @@ assert_contains \
 
 SENTINEL_PUSHBACK="Concede in ≤1 sentence"
 
-# ── Test: Under Pushback / When Wrong sentinel in all 5 claude modes ──────────
-for mode in build debug shape experiment ops; do
+# ── Test: Under Pushback / When Wrong sentinel in remaining claude modes ──────
+# NOTE: "build" mode excluded — its self-orchestrating system prompt was
+# deleted when the legacy build engine was consolidated onto the Elixir loop
+# (see harnesses/shared/prompt-bodies/build.txt deletion). The Elixir loop's
+# role prompts carry their own pushback discipline via shared/rules includes,
+# not this generated tools-header-based file.
+for mode in debug shape experiment ops; do
     assert_contains \
         "pushback sentinel in claude-${mode}-system-prompt.txt" \
         "$CODEGEN_DIR/harnesses/claude/claude-${mode}-system-prompt.txt" \
         "$SENTINEL_PUSHBACK"
 done
 
-# ── Test: Under Pushback / When Wrong sentinel in all 5 pi modes ──────────────
-for mode in build debug shape experiment ops; do
+# ── Test: Under Pushback / When Wrong sentinel in remaining pi modes ─────────
+for mode in debug shape experiment ops; do
     assert_contains \
         "pushback sentinel in pi-${mode}-system-prompt.txt" \
         "$CODEGEN_DIR/harnesses/pi/pi-${mode}-system-prompt.txt" \

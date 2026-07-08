@@ -4,12 +4,12 @@ Codegen-infra pitfalls and bash gotchas — split from `context/development.md` 
 
 ## Common Pitfalls
 
-- **Split extraction: verify load-bearing, not meta** — Extractors pull EOF by default. Stop boundary BEFORE trailing meta (e.g., `## Update When Changing`). Verify last H2 is terminal cluster, not footer. Use grep `^## ` to detect boundaries.
-- **`make install` registry/settings.json parity — bootstrap on content change** — hook-parity runs BEFORE settings.json regen. Changing registry `event`/`tool_guard`/`role` requires bootstrap: `hook_registrations.py --output-settings` once BEFORE `make install`. New-file additions skip bootstrap.
-- **Bash heredoc loop state** — use `while <<EOF`, not `|` pipe.
-- **TS `execFileSync` args: array not string** — pass `['commit', '-m', 'msg']`, not string. `.trim()` loses trailing-newline; use trim in some contexts (gitLog), not others (gitBlob).
+- **Split extraction: verify load-bearing, not meta** — Extractors pull EOF by default. Stop boundary BEFORE trailing meta. Verify last H2 is terminal cluster, not footer.
+- **`make install` registry/settings.json parity** — Changing registry `event`/`tool_guard`/`role` requires bootstrap: `hook_registrations.py --output-settings` BEFORE `make install`. New-file additions skip bootstrap.
+- **Bash heredoc loop state** — use `while <<EOF`, not pipe.
+- **TS `execFileSync` args: array not string** — pass `['commit', '-m', 'msg']` not string. `.trim()` loses trailing-newline; use trim in gitLog not gitBlob.
 - **Check WIP before planning** — Large in-flight changes need reconciliation against pitch.
-- **`manifest_regenerate_prompts` file check** — new prompt-source `.txt` files must exist before `make install` (tools-header, prompt bodies). Gate's install round-trip catches missing files.
+- **`manifest_regenerate_prompts` file check** — new prompt-source `.txt` files must exist before `make install`. Gate's install round-trip catches missing files.
 - **yq binary must be mikefarah, not python-yq** — wrong binary causes silent manifest parsing errors.
 - **`npm install` at codegen root required** — absent → hooks emit INCONCLUSIVE.
 - **`make install` required after rule/template change** — regenerates baked prompts; parity gates do not catch stale bakes. Workflow: edit → `make install` BEFORE `make test`.
@@ -18,15 +18,15 @@ Codegen-infra pitfalls and bash gotchas — split from `context/development.md` 
 - **Hook test failures are not ExUnit** — `make test` runs bash tests + hermetic ExUnit; they are separate suites
 - **`make test-stacks` must use `mix test --only slow`** — Bare `mix test` silently runs zero slow tests + exits 0 (fake-green). Tag LLM tests `:slow`.
 - **Fixture-source change: migrate ALL siblings** — Grep ALL test files for same target; sibling tests need identical fixes.
-- **`shared/scaffold/static/scaffold_test.sh` is wired into `make test`** — new bash test cases run automatically (Makefile `for t in` loop that lists `shared/scaffold/static/scaffold_test.sh` as a test target). No Makefile edits needed; test summary updates via inline helpers.
-- **config.yaml anchoring** — Multiple blocks may share leaf values; `old_string` MUST include surrounding context to avoid wrong block. Verify via `yq` post-change.
-- **Pitch line numbers drift** — Use exact anchor text, not line numbers.
-- **Verify pitch edits not already applied** — Pitch may be obsolete. `git show <commit> --stat` checks targets; `git status --porcelain -- <files>` verifies clean. If clean + stat includes files, pitch realized — VERIFY-ONLY, run gate. Skipping causes duplicates.
-- **Example blocks in references carry routing targets** — bulk-repathing must cover inline examples too.
-- **Phoenix-colocated esbuild** — `phoenix-colocated` import requires `mix compile` first; include `"compile"` in `assets.build`/`assets.deploy` aliases.
-- **`CODEGEN_DIR` must be absolute** — Relative paths break symlink resolution. Use three-level: `${CWD:-${CLAUDE_PROJECT_DIR:-$PWD}}`.
-- **Session log filename format must include `_HHMMSS`** — non-canonical forms blocked by reviewer-guard and dev-gate hooks
-- **Hook deletion: full-vocabulary grep post-deletion** — Search filename, id, deny-message substrings across ALL files, not just paired test. Repo-wide grep after core deletion.
+- **`shared/scaffold/static/scaffold_test.sh` is wired into `make test`** — new bash test cases run automatically. No Makefile edits needed.
+- **config.yaml anchoring** — Multiple blocks may share leaf values; include surrounding context. Verify via `yq` post-change.
+- **Pitch line numbers drift** — Use exact anchor text, not line numbers in edits.
+- **Verify pitch edits not already applied** — `git show <commit> --stat` checks targets; verify clean. If clean + stat includes files, pitch already realized.
+- **Example blocks carry routing targets** — bulk-repathing must cover inline examples too.
+- **Phoenix-colocated esbuild** — `phoenix-colocated` import requires `mix compile` first.
+- **`CODEGEN_DIR` must be absolute** — Relative paths break symlink resolution.
+- **Session log filename format must include `_HHMMSS`** — non-canonical forms blocked by hooks
+- **Hook deletion: full-vocabulary grep** — Search filename, id, deny-message across ALL files post-deletion.
 - **[shared] `git rm` blocked for developer role** — `pre-commit-guard.sh` forbids `git rm` (committer owns staging). Plain `rm` works and still registers as `D` in `git status --porcelain` without staging; committer handles `git add`/`git rm --cached` later.
 - **[shared] `codegen-log section` replaces whole body, not append** — `codegen-log section <role>` REPLACES the entire section body (not append). Multi-call approach to add content fails — second call overwrites first. Compose COMPLETE section body (description + lists + learnings) in ONE `section` call. Use `append` only for second writes.
 - **[shared] Pure hard-delete safer than deprecation** — When deleting dead code (validator branches, special-cases), hard-delete entirely vs leaving always-false backstop. Pure deletion is verifiable by GREP (zero matches) and prevents future developers from resurrecting dead code without understanding the original boundary violation.
@@ -43,7 +43,7 @@ Codegen-infra pitfalls and bash gotchas — split from `context/development.md` 
 - **Repo-level counters: `_substrate_root` pattern** — Repo-level scans once via `ALL_REPO_COUNTERS` list. Reading `codegen/logging/`: check `project_dir` first (test), else use `config.codegen_dir`.
 - **Sole-writer migrations: reconcile ALL command-scanning guards** — Grep all guards for old patterns BEFORE enforcement commit; deny-hook is only first stop.
 - **Bash test forward-reference trap** — Variables defined later unreachable under `set -u`. Define at top.
-- **Gate hook command switch** — Build invocation changes (e.g., `npm run build` → `make ci`) → update all fixtures. Add `Makefile` with `ci:` recipe. Recipe lines MUST use hard tabs.
+- **Gate hook command switch** — Build invocation changes require all fixtures updated + new Makefile recipe.
 - **`developer-no-self-gate` cap counts ALL ops per session** — `mix test`, `make test`, `mix format`, blocked attempts all count toward 3-per-session budget. Combine `mix format && mix test` or defer format.
 - **[shared] Read/Edit blocked for codegen/pitches/** — `subagent-read-discipline.sh` denies both on pitch files (even edit-in-place). Workaround: Bash `awk`/`grep` + Python string-replace.
 - **[local] Pitch file grep-c anchor pitfall** — `grep -c "literal header text"` on pitch files false-positives when prose mentions the header elsewhere. Use `grep -n "^## ..."` (anchored H2) for reliable "exactly one section" assertions.
@@ -57,7 +57,7 @@ Codegen-infra pitfalls and bash gotchas — split from `context/development.md` 
 - **Env var leakage in tests** — Tests exercising DEFAULT branches must `env -u VAR bash` to isolate. Single `env -u` leaves fallback.
 - **Gate Verdict Authority applies retroactively** — the runtime-written gate-result JSON's `.verdict` field is authoritative, never session-log prose.
 - **Bash array-literal fix** — Use literals for spaces; isolate override-var tests via `env -u OVERRIDE_VAR`.
-- **Removing config.yaml role breaks slow tests** — Silently passes `make test`, fails `make test-stacks`. Update all `:slow` tests to valid roles.
+- **Removing config.yaml role breaks slow tests** — Silently passes `make test`, fails `make test-stacks`.
 - **Curator byte cap enforcement** — `curator-context-size-gate.sh` denies over-cap Edit/Write in curator's turn (hard gate). Commit-time `context-file-size-gate.sh` backstop re-routes to curator. Compress bullets or split to new file.
 - **Grep recipe glob depth** — `harnesses/claude/hooks/*.sh` misses subdirs. Use `**/*.sh` or recursive for complete enumeration.
 - **Orchestrator file enumeration is tool-gated, not directory-gated** — Claude read-discipline blocks Read|Bash; Glob is safe.
@@ -95,8 +95,6 @@ Codegen-infra pitfalls and bash gotchas — split from `context/development.md` 
 - **[shared] Stale-bake false-positive in dev-gate** — `FAILED ❌` with uncommitted rule/template edits often stale-bake. Re-run `make install && make test` fresh. Multi-hook failure span signals missing `make install`.
 - **[local] Prettier table-repad in rule diffs** — Rule-only diff shows repad noise. Use `git diff -w` to isolate real content.
 - **[shared] `xargs` in `git -C <dir> | xargs` runs in caller's cwd** — `git -C` only affects git, not downstream pipeline. Tools need `cd "$dir" && git ... | xargs ...` or `cd: cwd` (Elixir). Without it: silent empty hashes.
-- **[local] `advance_cycle_state/5` races on shared literal cwd** — Async tests on same literal cwd race on `mkdir -p`. Stub no-op OR use per-test unique tmpdir.
-- **[local] Task line numbers drift on file growth** — Locate assertions by content, not line number.
 - **[local] `developer-no-self-gate` budget: loops burn budget per invocation** — `for i in 1 2 3; do mix test; done` burns all 3 calls in one Bash call. Use flags like `--repeat-until-failure` instead.
 - **[shared] Bash↔TS hook twin divergence: do not "fix" on unrelated features** — Pre-existing pattern divergences (e.g., `developer-no-self-gate.ts` matches 'make ci-fast', bash doesn't) should NOT be "fixed" when adding shared features to both twins. Keep each twin's existing pattern untouched; only ADD the new shared feature. Fixing old divergence couples unrelated changes and complicates review.
 
@@ -208,6 +206,12 @@ Codegen-infra pitfalls and bash gotchas — split from `context/development.md` 
 - **[local] Ambient CLAUDE_ROLE/CODEGEN_BUILD_START_TS leak into unscoped hook tests** — Dev-shell env vars bleed into `bash "$HOOK"` calls, causing false failures (git reset check denies, PI_ROLE shadowed). Fix: `env -u CLAUDE_ROLE -u CODEGEN_BUILD_START_TS bash "$HOOK"` when running standalone outside `make test`.
 - **[local] Verb-set parity in role-scoped gates verified by enumeration** — When narrowing a gate to a role (ops) with a regex alternation (add, rm, mv, etc.), enumerate both lists side-by-side vs. pre-existing per-verb scans. Direct comparison catches omissions; prose doesn't.
 
+- **[local] manifest_regenerate_prompts requires FULL mode block deletion** — Cannot null out just system_prompt_file; must delete the entire mode block or regen errors.
+- **[local] Makefile harness-parity for-loop is an EXPLICIT list** — Deleting a test requires the list edit only if listed.
+- **[shared] Coupled-flag deletion: all callers must drop both flags** — Dropping one flag forces all callers to drop ALL coupled flags.
+- **[shared] Stale compiled dist/ test artifacts survive src deletion** — Fix: `rm -rf dist &&` as first step of build script.
+- **[local] bash -n misparses zsh completion scripts** — Use `zsh -n` for zsh files, not `bash -n`.
+
 ## Trigger Keywords
 
-pitfall, gotcha, bash pattern, yq null safety, JSONL migration, format flip, fixture ripple
+pitfall, gotcha, bash pattern, yq null safety, JSONL migration, format flip, fixture ripple, manifest-regenerate, deletion-completeness, stale-dist

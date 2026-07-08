@@ -6,19 +6,18 @@ System prompt assembly: `tools-header/<mode>.txt` + entries in `prompt_body[]` (
 
 ## Components
 
-| File / Dir                                                      | Purpose                                            |
-| --------------------------------------------------------------- | -------------------------------------------------- |
-| `harnesses/claude/claude-{build,debug,experiment,shape,ops}.sh` | Mode launchers                                     |
-| `harnesses/claude/dispatch.sh`                                  | Mode dispatcher                                    |
-| `harnesses/claude/load-role.sh`                                 | Runtime config reader (shape/ops/debug/experiment) |
-| `harnesses/claude/tools-header/`                                | Per-mode prompt headers                            |
-| `harnesses/claude/claude-code-settings.json`                    | Hook/permission config (source)                    |
-| `harnesses/claude/claude-build-system-prompt.txt`               | Generated prompt (do not hand-edit)                |
-| `harnesses/pi/pi-{build,debug,experiment,shape,ops}.sh`         | Pi mode launchers                                  |
-| `harnesses/pi/dispatch.sh`                                      | Pi mode dispatcher                                 |
-| `harnesses/shared/prompt-bodies/`                               | Shared prompt body (both harnesses)                |
-| `shared/prompt-fragments/`                                      | Reusable fragments                                 |
-| `harnesses/claude/commands/`                                    | Slash commands (`.md.j2` templates)                |
+| File / Dir                                                | Purpose                                            |
+| --------------------------------------------------------- | -------------------------------------------------- |
+| `harnesses/claude/claude-{debug,experiment,shape,ops}.sh` | Mode launchers                                     |
+| `harnesses/claude/dispatch.sh`                            | Mode dispatcher                                    |
+| `harnesses/claude/load-role.sh`                           | Runtime config reader (shape/ops/debug/experiment) |
+| `harnesses/claude/tools-header/`                          | Per-mode prompt headers                            |
+| `harnesses/claude/claude-code-settings.json`              | Hook/permission config (source)                    |
+| `harnesses/pi/pi-{debug,experiment,shape,ops}.sh`         | Pi mode launchers                                  |
+| `harnesses/pi/dispatch.sh`                                | Pi mode dispatcher                                 |
+| `harnesses/shared/prompt-bodies/`                         | Shared prompt body (both harnesses)                |
+| `shared/prompt-fragments/`                                | Reusable fragments                                 |
+| `harnesses/claude/commands/`                              | Slash commands (`.md.j2` templates)                |
 
 ## Dispatch & Session Re-Attach API
 
@@ -26,9 +25,9 @@ System prompt assembly: `tools-header/<mode>.txt` + entries in `prompt_body[]` (
 
 **Pi re-attach flag**: `pi --session <path|id>` (full or partial UUID or file path). Pi has `--session-id <id>` which CREATES a new session if the id doesn't exist — wrong for re-attach (would silently start fresh on stale id). Always use `--session "$id"` for re-attach semantics (fails on stale id, correct error path). Dispatch MUST emit `--session "$id"` only when id is non-empty.
 
-**One-shot launcher boundary**: `claude-ops.sh`, `claude-shape.sh`, `claude-debug.sh`, `call-dispatch.sh` are single-invocation launchers with UNCONDITIONAL `--no-session-persistence` (Claude) or `--no-session` (Pi). These must NOT read `CODEGEN_BUILD_RESUMABLE` or `CODEGEN_BUILD_RESUME_ID` environment variables. The boundary is clean: only `dispatch.sh` (called by `codegen-build`) reads resumable flags; one-shot launchers remain deterministic. Enforce via grep: variable names MUST NOT appear in launcher source files.
+**One-shot launcher boundary**: `claude-ops.sh`, `claude-shape.sh`, `claude-debug.sh`, `call-dispatch.sh` are single-invocation launchers with UNCONDITIONAL `--no-session-persistence` (Claude) or `--no-session` (Pi). `codegen-build`/`dispatch.sh` (the build path) has no resumable/resume-id flags at all — it always execs the deterministic Elixir orchestration loop.
 
-**`call-dispatch.sh` optional transcript capture**: both harness `call-dispatch.sh` scripts honor an optional `CODEGEN_CALL_TRANSCRIPT_PATH` env var — when set, the captured stream-json is copied there on the EXIT trap before the temp file is deleted (fail-loud-non-blocking: a copy failure prints to stderr but never changes the exit code); unset = current behavior (no copy). Consumed by the `--elixir` orchestration loop for durable per-role transcripts; see `context/test-harness.md` § Orchestration Loop.
+**`call-dispatch.sh` optional transcript capture**: both harness `call-dispatch.sh` scripts honor an optional `CODEGEN_CALL_TRANSCRIPT_PATH` env var — when set, the captured stream-json is copied there on the EXIT trap before the temp file is deleted (fail-loud-non-blocking: a copy failure prints to stderr but never changes the exit code); unset = current behavior (no copy). Consumed by the Elixir orchestration loop for durable per-role transcripts; see `context/test-harness.md` § Orchestration Loop.
 
 ## Consumer Role Definition
 
@@ -40,16 +39,14 @@ A role = one `codegen-call` invocation. Identity flags: `--system-prompt` (REPLA
 harnesses/claude/
   claude-build.sh, claude-debug.sh, claude-experiment.sh, claude-shape.sh, claude-ops.sh
   dispatch.sh, load-role.sh
-  tools-header/{build,debug,experiment,shape,ops}.txt  ← disk path uses hyphen
+  tools-header/{debug,experiment,shape,ops}.txt  ← disk path uses hyphen
   claude-code-settings.json
-  claude-build-system-prompt.txt   ← generated
   commands/
 harnesses/pi/
   pi-build.sh, pi-debug.sh, pi-experiment.sh, pi-shape.sh, pi-ops.sh
   dispatch.sh
   pi-prompts/
 harnesses/shared/prompt-bodies/
-  build.txt      ← Cycle Protocol + FIRST-TURN PROTOCOL body (shared between claude/pi)
   debug.txt      ← Protocol + Allowed Queries + Forbidden + Refusal & Pivot (shared)
   experiment.txt ← single-agent, source-writable, worktree investigation (shared)
   shape.txt      ← Cold-start + Pitch Readiness Check (shared between claude/pi)
@@ -82,7 +79,6 @@ tools-header/<mode>.txt   (per-harness: mode title + ## Tools + any pre-Tools co
 
 | Mode  | tools-header contains (per-harness)                                                                                                        | prompt_body list (shared)                                                                                                                                      |
 | ----- | ------------------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| build | `## Tools` + harness-specific tool list + FIRST-TURN bullets + `## Cycle Protocol` / `## Step Queue Protocol`                              | [harnesses/shared/prompt-bodies/build.txt] — neutral tool-discipline lines, Commit Hygiene, shared FIRST-TURN bullets                                          |
 | debug | `## Tools` + harness-specific tool list + FORBIDDEN list + cross-repo grep allowance                                                       | [harnesses/shared/prompt-bodies/debug.txt] — no-cat-pipe line + Protocol + Forbidden + Refusal & Pivot                                                         |
 | shape | `## Tools` + harness-specific tool bullets (claude: Agent/Skill/AskUserQuestion/Write-Edit; pi: askuserquestion/subagents/web-utils names) | [harnesses/shared/prompt-bodies/shape.txt, shared/prompt-fragments/_probing.txt, shared/prompt-fragments/_authoring-spine.txt] — mode-title + no-cat-pipe line |
 | ops   | `## Tools` + harness-specific per-tool bullets                                                                                             | [harnesses/shared/prompt-bodies/ops.txt] — starts with Cold-Start Opening block, followed by procedural ops rules                                              |
@@ -120,20 +116,7 @@ tools-header/<mode>.txt   (per-harness: mode title + ## Tools + any pre-Tools co
 
 ## Multi-Pitch Protocol
 
-Per-harness tools-headers now contain complete multi-pitch sequencing rules for handling multiple pitches in a single build invocation (`claude-build a b c` or `pi-build a b c`).
-
-**Why per-harness**: Claude and Pi have different concurrency models (Claude cycles through planner/dev/gate/reviewer/curator/committer; Pi processes sequential step queues). The four-rule protocol is identical in INTENT but expressed in per-harness vocabularies to align with each harness's native concepts:
-
-- **Claude** (`harnesses/claude/tools-header/build.txt` — the Cycle Protocol section) — uses "cycle" and "pitch" vocabulary; sequences via `Cycle Protocol` section
-- **Pi** (`harnesses/pi/tools-header/build.txt` — the Step Queue Protocol section) — uses "step queue" and "queue position" vocabulary; sequences via the multi-pitch sequencing rules in Step Queue Protocol
-
-**Five-rule protocol**: (1) one session log per pitch; (2) strict sequencing (full cycle before next); (3) pre-check `Blocks-on:` edges; (4) halt on cycle failure; (5) autonomous continuity (zero interruption, no permission prompts).
-
-**Pre-check semantics**: The multi-pitch orchestrator reads `Blocks-on:` edges BEFORE any building starts. If a pitch declares `Blocks-on: foo` but `foo` is not in argv, or if argv order places a blocking pitch after the dependent pitch, the build stops immediately with a violation report. This prevents silent mis-ordering that would break build semantics.
-
-**Example**: if argv is `claude-build b a` and pitch `b` contains `Blocks-on: a`, the orchestrator reports the violation and stops before invoking planner for either pitch.
-
-**Prompt durability**: Use section-name anchors in self-references (e.g., "step c'", "U1–U7 template"), not absolute line numbers. Line-number citations go stale → silent drift. Section-name anchors survive line-number shifts.
+Multi-pitch handling (`--queue`) is now owned entirely by the Elixir loop's `mix codegen.loop.queue` (`CodegenTestHarness.LoopQueueDrain.drain/1`) — see `context/test-harness.md` § Orchestration Loop for the topo-sort, `Blocks-on:` pre-check, and per-pitch sequencing contract. There is no per-harness tools-header prose for this anymore.
 
 **Pitch-format contract**: `shape.txt` and `ops.txt` specify EXACT grammar for `## Questions` / `## Answers` in headless mode. Machine-parseable; enforced by `pitch-format-validator.sh` Stop hook (shape/ops). Grammar: `### Q<n>:` + ≥2 `- **<letter>)**` options; `## Answers` references matching Q headings; `> Status:` ∈ {SKELETON, SHAPING, SHAPED}. `/document` writes `> Status: SKELETON`. Shape advances to SHAPING/SHAPED.
 
@@ -157,10 +140,10 @@ For harness install contract details (agents_dir, hooks_dir, modes, launchers), 
 
 **Key distinction**: `load-role.sh` reads `config.yaml` at _runtime_, NOT at install time. This differs from system prompts, which are baked at `make install`:
 
-- **Build mode**: Uses baked prompt (`claude-build-system-prompt.txt`). `load-role.sh` is NOT invoked; tools/model/effort are already compiled into the prompt. Changes to config.yaml require `make install` to propagate.
 - **Shape/ops/debug modes**: Use `load-role.sh` to read `config.yaml` at launcher time. Changes to config.yaml take effect _immediately on next invocation_ — no `make install` required.
+- **Build**: has no launcher-side mode config at all — `dispatch.sh` always execs the Elixir loop, which resolves model/effort per-role itself.
 
-**Tool allowlist enforcement**: The `--tools` flag passed to `claude`/`pi` CLI is populated by `load-role.sh` parsing `roles.<role>.tools[]` from config.yaml. Harness launcher `.sh` scripts gate tool spawning via the `--tools` flag, not system-prompt text. Thus, a new tool added to `config.yaml` → immediately available in shape/ops/debug sessions. Build mode does not use `load-role.sh`; build tools are static in the baked prompt body.
+**Tool allowlist enforcement**: The `--tools` flag passed to `claude`/`pi` CLI is populated by `load-role.sh` parsing `roles.<role>.tools[]` from config.yaml. Harness launcher `.sh` scripts gate tool spawning via the `--tools` flag, not system-prompt text. Thus, a new tool added to `config.yaml` → immediately available in shape/ops/debug sessions. Build has no launcher-side mode; the loop resolves per-role tool allowlists itself.
 
 **`--agents` flag — size ceiling**: Passing the full custom-agent set to `claude` via the `--agents <json>` CLI flag does NOT work. A single argv string is capped at `MAX_ARG_STRLEN` (~128 KB on standard Linux, independent of the total `ARG_MAX` budget), and a complete `--agents` JSON blob overruns it — confirmed failed on a server. Therefore subagent _availability_ is gated by the `operator-subagent-allowlist.sh` PreToolUse hook, NOT by `--agents`. (Caching of agent files in the prompt prefix is a separate concern, covered in `context/claude-token-mechanics.md`; this note is about the launch-time argv limit.)
 
@@ -203,24 +186,13 @@ The create hook is idempotent: a re-run re-attaches an already-registered worktr
 
 ## Orchestrated Build Mode (Pi-Specific)
 
-Pi build now uses the same orchestrated contract in both launcher paths:
+`pi-build.sh` / `codegen-build --harness=pi` always route the build to `harnesses/pi/dispatch.sh`, which unconditionally execs `mix codegen.loop --harness=pi`. There is no `build` manifest mode, no baked build system prompt, and no build-time extension loading in dispatch.sh anymore — the loop resolves each role's model/effort/tools itself via `codegen-call`. `codegen-build` still fails closed unless the gate result JSON written to `codegen/gate-pending/` carries a `clear` verdict.
 
-- `pi-build.sh` / `codegen-build --harness=pi` consume `pi-build-system-prompt.txt`
-- `harnesses/pi/dispatch.sh` loads the build extensions declared in `harnesses/pi/manifest.yaml` (`askuserquestion`, `subagents`, `enforcement`)
-- caller-supplied `--extension` flags remain additive
-- the legacy `pi-build-system-prompt-direct-*.txt` files remain tracked, but build dispatch no longer consumes them
-- `codegen-build` fails closed unless Pi returns a clear verdict in the gate-result JSON written to `codegen/gate-pending/`
+`dispatch.sh` (both harnesses) unconditionally execs `mix codegen.loop` — the deterministic Elixir orchestration loop is the sole build engine; there is no engine flag, no TTY auto-detection, and no legacy self-orchestrating fallback. The parent wrapper (`codegen-build`) decides build success from the structured gate result written to `codegen/gate-pending/gate-result.json`.
 
-Engine is chosen by the explicit `--elixir` boolean flag on `codegen-build` (exported as `CODEGEN_BUILD_ELIXIR`) — no TTY auto-detection. `--elixir` present → `dispatch.sh` execs `mix codegen.loop` (the deterministic orchestration loop); absent → the legacy self-orchestrating harness session runs (the default). The two engines coexist; `--non-interactive` (I/O mode: headless stream-json vs interactive UI) is fully decoupled from engine choice and only affects the legacy exec's flags. The build path is orchestrated when `--elixir` is used; the parent wrapper decides success from the structured gate result either way.
+## EXEC-MECHANICS vs SYSTEM-PROMPT-CONTENT: Orthogonal Concerns in Harness Design (Historical)
 
-## EXEC-MECHANICS vs SYSTEM-PROMPT-CONTENT: Orthogonal Concerns in Harness Design
-
-When refactoring orchestration (e.g., self-orchestrating prompts → deterministic Elixir loop), separate two layers:
-
-1. **EXEC-MECHANICS** — how agents run: session persistence, re-attach, resumable builds, TTY interaction, launch order. Owned by the outer dispatcher (`dispatch.sh`, the loop). Keep exec blocks serving legitimate use cases (interactive `--resume-id`, TTY) — they are transport, not orchestration.
-2. **SYSTEM-PROMPT-CONTENT** — what the prompt tells the agent to do: self-orchestrating narrative, phase instructions, role responsibilities. Delete when the loop now handles sequencing.
-
-**Common mistake**: conflating layers — a "delete self-orchestration" pitch targeting only prompt narrative may wrongly prescribe deleting exec blocks still load-bearing for interactive/resumable fallback. Verify via control-flow grep which exec paths are truly unreachable before deleting.
+The build path's cutover from a self-orchestrating harness session to the deterministic Elixir orchestration loop is COMPLETE — `dispatch.sh` unconditionally execs `mix codegen.loop`, there is no legacy engine, no resumable/non-interactive build flags, and no build-mode system prompt. This section previously documented the transitional coexistence period; retained only as a note that when refactoring ANY orchestration mechanism in the future, separate EXEC-MECHANICS (how agents run: session persistence, re-attach, launch order) from SYSTEM-PROMPT-CONTENT (what the prompt tells the agent to do) as two distinct layers before deleting either.
 
 ## Pi Extensions
 
@@ -256,7 +228,7 @@ Build dispatch flags (`user,project,local` scope):
 --disable-slash-commands
 ```
 
-These flags are spliced as the **first positional** after `exec claude` (before `--model`). The env var name `CLAUDE_NONINTERACTIVE` intentionally diverges from `CODEGEN_BUILD_NON_INTERACTIVE` (dispatch) and `PI_NON_INTERACTIVE` (Pi).
+These flags are spliced as the **first positional** after `exec claude` (before `--model`). The env var name `CLAUDE_NONINTERACTIVE` intentionally diverges from `PI_NON_INTERACTIVE` (Pi) — these are investigative-mode (debug/ops) toggles, unrelated to the build path (which has no non-interactive flag at all).
 
 **One-shot semantics**: headless investigative sessions run once and exit. There is no resume. If the agent needs a user decision (e.g., a pitch blocker in shape mode), it writes a `## Questions` block in the in-scope pitch file (permitted `codegen/pitches/` write) and stops. The operator answers out-of-band via a `## Answers` block; a fresh session continues.
 
@@ -282,7 +254,7 @@ See `context/launcher-hook-matrix.md` for which orchestrator-level hooks gate ea
 
 **Ordering problem**: Models treat multi-step instructions (Edit → Agent) as separable; regression cause is treating them as alternatives (pick one).
 
-**Solution**: Name the pair "spawn ritual" and phrase as ONE atomic operation in the prompt. Same wording appears in both `harnesses/{claude,pi}/tools-header/build.txt` (the `"spawn ritual = header-Edit + Agent() call, always as indivisible pair"` line in FIRST-TURN PROTOCOL) → models treat header-Edit + delegation as indivisible. This applies to the surviving interactive/resumable-session fallback only — the Elixir orchestration loop drives non-interactive builds without a spawn ritual (each role is invoked directly, and the loop writes each role's session-log section itself).
+**Solution**: Name the pair "spawn ritual" and phrase as ONE atomic operation in the prompt when a mode still needs manual header-Edit + Agent() sequencing (e.g., shape/ops/debug). The build path no longer needs this pattern at all — the Elixir orchestration loop invokes each role directly and writes each role's session-log section itself.
 
 **Reusable pattern for similar regressions**: When a prompt should enforce a strictly-ordered multi-step sequence, give it a memorable name (ritual, ceremony, protocol) and describe it as ONE conceptual operation. The name prevents decomposition into pick-one choices.
 
@@ -335,16 +307,13 @@ Both shape launchers (`claude-shape.sh`, `pi-shape.sh`) accept a `--draft <path>
 
 - **Never hand-edit `*-system-prompt.txt`** — generated by `manifest_regenerate_prompts()`; overwritten on `make install`
 - **Mode tools lists canonical in `config.yaml`** — manifest is documentation only
-- **`dispatch.sh` uses `COMMON_FLAGS` array** — under `set -u`, use `"${ARR[@]+"${ARR[@]}"}"` for empty-safe splicing
-- **SP_FILE required** — must exist before exec; dispatch.sh exits 2 if absent
-- **Build dispatch is hermetic** — exits 2 on yq/config errors; unsets API keys before exec; test: `dispatch_test.sh`
+- **Build dispatch is hermetic** — `dispatch.sh` (both harnesses) always execs `mix codegen.loop`; unsets API keys before exec; test: `dispatch_test.sh`
 - **`prompt_body` is ordered list** — missing entries → non-zero exit
 - **Fragment paths relative to `CODEGEN_DIR`** — process_template.py resolves under `$CODEGEN_DIR/shared/`
 - **Installed launchers have full `harnesses/` tree** — check `~/.local/bin/harnesses/` to verify dispatch.sh edits propagated
 - **`codegen-log section` + developer role** — sets `CLAUDE_ROLE` explicitly to avoid 3-strike gate collision; use Edit tool as workaround
 - **`ready.md.j2` is template** — generated by `generate.sh`; never install from source `.j2` directly
-- **Spawn ritual wording must match in both harnesses** — claude/pi `tools-header/build.txt` FIRST-TURN PROTOCOL identical phrasing
 
 ## Trigger Keywords
 
-claude-build, claude-debug, claude-shape, pi-build, dispatch.sh, launcher, system prompt, modes, tools-header, new launcher mode, claude-ops, pi-ops, CLAUDE_ROLE, per-mode hook bypass, claude-experiment.sh, harness-parity launcher tests, spawn ritual wording, operator vs batch divergence
+claude-build, claude-debug, claude-shape, pi-build, dispatch.sh, launcher, system prompt, modes, tools-header, new launcher mode, claude-ops, pi-ops, CLAUDE_ROLE, per-mode hook bypass, claude-experiment.sh, harness-parity launcher tests, operator vs batch divergence

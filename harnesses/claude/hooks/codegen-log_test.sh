@@ -215,8 +215,7 @@ assert "opaque-body append is a second role event" "2" "$(jq_count "$opaque_log"
 assert "opaque-body appended stray H2 preserved verbatim" "0" "$(jq -r --arg r developer-phoenix-backend 'select(.ev=="role" and .role==$r)|.body' "$opaque_log" | grep -qF '## Baz' && printf 0 || printf 1)"
 
 # Test 8: --learned/--died/--verdict emit structured events the reader hooks
-# (subagent-retrospective-guard, step-log-completeness, stop-cycle-guard)
-# jq-select for.
+# (subagent-retrospective-guard, stop-gate-failure-breaker) jq-select for.
 unset CODEGEN_LOG_PATH
 unset AGENT_TYPE
 marker_log="$PROJECT/codegen/logging/20260103_000000_marker-flags_cycle.jsonl"
@@ -294,8 +293,8 @@ assert "relocate old path no longer exists" "0" "$([ ! -f "$sentinel_init_path" 
 assert "relocate new path exists" "0" "$([ -f "$relocate_path" ] && printf 0 || printf 1)"
 assert "relocate rewrote .active to the new path" "0" "$([ "$(cat "$sentinel_file")" = "$relocate_path" ] && printf 0 || printf 1)"
 
-# Test 13: `verdict` appends a "gate" event (role="dev-gate") — the
-# phoenix-dev-gate.sh sole-writer routing target — and APPENDS a new event on
+# Test 13: `verdict` appends a "gate" event (role="dev-gate") — the Elixir
+# loop's LoopGate sole-writer routing target — and APPENDS a new event on
 # each call rather than replacing a prior one.
 unset CODEGEN_LOG_PATH
 unset AGENT_TYPE

@@ -23,8 +23,6 @@ developer-phoenix-backend   ← ALL non-UI work in codegen (schemas, contexts, c
     ↓ (if frontend slice)
 developer-phoenix-frontend  ← only if HEEx/LiveView/Tailwind/JS changes needed
     ↓
-[phoenix-dev-gate.sh hook]  ← fires automatically on agent stop
-    ↓
 reviewer-phoenix
     ↓
 context-curator
@@ -101,7 +99,7 @@ This block is parsed programmatically. If you omit it, emit invalid JSON, or inc
 `{"status":"success"}` requires ALL of:
 
 1. Session log exists with all subagent sections
-2. CI passed (dev-gate.sh hook → `ALL CLEAR ✅` in session log)
+2. CI passed (loop's dev-gate step → `ALL CLEAR ✅` in session log)
 3. Quality approved (reviewer-phoenix)
 4. Git commit made
 

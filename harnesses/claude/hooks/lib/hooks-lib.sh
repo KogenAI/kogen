@@ -65,15 +65,6 @@ set -u
 # see codegen-log_test.sh / hooks-lib_test.sh for the cross-site parity assertion.
 SESSION_LOG_NAME_RE='[0-9]{8}_[0-9]{6}_[a-z0-9_-]+_cycle\.jsonl$'
 
-# SESSION_LOG_TIMESTAMP_RE — the shared "<ts>_" prefix (YYYYMMDD_HHMMSS_) at the
-# head of every session-log filename. Extracted as its own constant because
-# pitch-shipped-before-stop.sh needs a SLUG-CAPTURE regex (single-log,
-# _cycle.jsonl kind only — there is only one log kind under JSONL storage)
-# rather than a filename-class match; the two regexes cannot be the identical string, but
-# BOTH derive the timestamp prefix from this one constant so a shape change
-# (e.g. widening the timestamp format) only needs an edit here.
-SESSION_LOG_TIMESTAMP_RE='[0-9]{8}_[0-9]{6}_'
-
 # parse_input — populate exported vars from JSON-on-stdin.
 # Reads stdin once into RAW_INPUT, then runs a single jq invocation that
 # emits each field on its own line in a fixed order. We re-read stdin via
@@ -357,11 +348,10 @@ repo_relative() {
 # above finds nothing, this fn also scans for a Bash tool_use whose
 # .input.command invokes a codegen-log writer subcommand
 # (init|section|append). That is treated as equivalent creation evidence,
-# and — UNCONDITIONALLY, not gated on OCG_APPS_ROOT or
-# CODEGEN_BUILD_NON_INTERACTIVE — falls through to a disk mtime-scan of
-# codegen/logging/*.jsonl under $cwd (same heuristic the Pi TS twins already
-# use). This closes the deadlock where an interactive/self-build session's
-# transcript never contains a Write/Edit/MultiEdit event for the log (because
+# and — UNCONDITIONALLY, not gated on OCG_APPS_ROOT — falls through to a disk
+# mtime-scan of codegen/logging/*.jsonl under $cwd (same heuristic the Pi TS
+# twins already use). This closes the deadlock where a session's transcript
+# never contains a Write/Edit/MultiEdit event for the log (because
 # codegen-log is a Bash invocation), so the strict scan always returns empty.
 session_log_from_transcript() {
     local result=""
@@ -419,18 +409,6 @@ session_log_from_transcript() {
                 result=$(ls -t "$cwd/codegen/logging"/*.jsonl 2>/dev/null | head -1)
                 ;;
             esac
-        fi
-        # Non-interactive managed builds (CODEGEN_BUILD_NON_INTERACTIVE, set by
-        # dispatch.sh) run with cwd already at the app dir but may sit outside
-        # OCG_APPS_ROOT (e.g. codegen self-build). Slow-flushing Node runtimes
-        # (Node 20 on a drifted box) let the hook fire before the step-log Write
-        # lands in the transcript, so the strict transcript scan above returns
-        # empty and the planner-spawn gate fails closed -> deadlock spiral.
-        # Scan the logging dir by mtime as a parity twin to the Pi handler
-        # (step-log-section-before-spawn.ts getActiveStepLog). Still fail-closed:
-        # an empty/absent logging dir yields empty result -> caller denies.
-        if [ -z "$result" ] && [ -n "${CODEGEN_BUILD_NON_INTERACTIVE:-}" ]; then
-            result=$(ls -t "$cwd/codegen/logging"/*.jsonl 2>/dev/null | head -1)
         fi
     fi
     printf '%s' "$result"

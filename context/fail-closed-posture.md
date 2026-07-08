@@ -2,23 +2,21 @@
 
 Learnings from the fail-loud-tradeoff-rulings cycle: establishing "fail-closed everywhere except explicitly-commented anti-wedge survivors" posture across hooks, guards, and scaffold phases.
 
-## Two INCONCLUSIVE Classes in phoenix-dev-gate.sh
+## Two INCONCLUSIVE Classes (Historical — Superseded)
 
-Never conflate in a fail-closed sweep:
+Historical pattern from the retired `phoenix-dev-gate.sh` SubagentStop hook (deleted — gate execution for non-interactive builds is now owned by the Elixir loop's `LoopGate`, `test_harness/lib/codegen_test_harness/loop_gate.ex`). `static-site-build-check.sh` still distinguishes the same two INCONCLUSIVE classes on its own scope:
 
-1. **Class 1: checker unavailable** (hook-emitted, environment fault) — `render-checker-missing`, `render-check-cmd-missing`, `render-check-cmd-failed`, `wiring-checker-missing`, `wiring-check-cmd-failed`. Flip to `BLOCK:*` arms across all 4 dispatch sites (short+long × render+wiring). These are `BLOCK:*)` case arms placed BEFORE the `INCONCLUSIVE:*)` arms.
+1. **Class 1: checker unavailable** (hook-emitted, environment fault) — `render-checker-missing`, `render-check-cmd-missing`, `render-check-cmd-failed`, `wiring-checker-missing`, `wiring-check-cmd-failed`. `BLOCK:*)` case arms placed BEFORE the `INCONCLUSIVE:*)` arms.
 
-2. **Class 2: runtime render verdict** (emitted by render-check.js itself, browser state) — `chromium-launch-failed`, `server-unready`, `timeout`, `config-error`. Stay `INCONCLUSIVE:*)` in phoenix-dev-gate (out of scope for flip), even though static-site-build-check DOES flip its own class-2 catch-all. Same token vocabulary, different gate, different posture — reviewing fail-closed sweeps requires checking each gate's own scope, not assuming symmetry across hooks.
+2. **Class 2: runtime render verdict** (emitted by render-check.js itself, browser state) — `chromium-launch-failed`, `server-unready`, `timeout`, `config-error`. Same token vocabulary, different gate, different posture — reviewing fail-closed sweeps requires checking each gate's own scope, not assuming symmetry across hooks.
 
-## Two Anti-Wedge Fail-Open Survivors
+## Anti-Wedge Fail-Open Survivor
 
-Intentional, commented, justified (fail-loud-rule exemptions):
+Intentional, commented, justified (fail-loud-rule exemption):
 
-1. **stop-cycle-guard.sh retry-cap release** — After 2 consecutive blocks for the SAME step, allow stop anyway to avoid infinite block loop with no operator recourse. Marked: `# ANTI-WEDGE FAIL-OPEN (fail-loud-rule exemption)`.
+**subagent-read-discipline.sh transcript-lag path** — Early-session Read may fire before step log exists (transcript lag / async flush). Denying would wedge legitimate orientation reads. Marked: `# ANTI-WEDGE FAIL-OPEN (fail-loud-rule exemption)`.
 
-2. **subagent-read-discipline.sh transcript-lag path** — Early-session Read may fire before step log exists (transcript lag / async flush). Denying would wedge legitimate orientation reads. Marked: `# ANTI-WEDGE FAIL-OPEN (fail-loud-rule exemption)`.
-
-These are not contradictions of the fail-closed ruling — they are deliberate, narrow carve-outs with explicit justification comments. Future fail-closed sweeps must preserve both.
+This is not a contradiction of the fail-closed ruling — it is a deliberate, narrow carve-out with an explicit justification comment. Future fail-closed sweeps must preserve it. (The `stop-cycle-guard.sh` retry-cap release, a second former survivor, was retired along with the legacy self-orchestrating harness engine it guarded.)
 
 ## Two-Signal pre-commit-guard Pattern
 
@@ -31,7 +29,7 @@ Neither alone unlocks commit/reset/push. Both together unlock. Documented in hoo
 
 ## Test Comment Drift Detection
 
-Test comments can silently drift from actual code paths as resolution mechanisms change. Example: phoenix-dev-gate_test.sh Test 15 comment claimed "CODEGEN_DIR unset" → checker-missing path, but `_self_dir` resolves via `BASH_SOURCE[0]` regardless of `CODEGEN_DIR` — on boxes with node present, the test actually exercises runtime server-unready (class-2, out of scope).
+Test comments can silently drift from actual code paths as resolution mechanisms change. Example (historical, from the retired `phoenix-dev-gate_test.sh`): a test comment claimed "CODEGEN_DIR unset" → checker-missing path, but `_self_dir` resolved via `BASH_SOURCE[0]` regardless of `CODEGEN_DIR` — on boxes with node present, the test actually exercised runtime server-unready (class-2, out of scope).
 
 Catch: Discovered via red-green: assertion flip produced a red for a DIFFERENT reason than expected, signaling stale comment. When reviewing tests, verify comments against actual code paths, not test names alone. If a comment claims a specific code path and an assertion flip produces an unexpected error, STOP and re-diagnose the test's real behavior.
 
@@ -44,4 +42,4 @@ Catch: Discovered via red-green: assertion flip produced a red for a DIFFERENT r
 
 ## Trigger Keywords
 
-phoenix-dev-gate INCONCLUSIVE classification, two-signal pre-commit-guard, anti-wedge fail-open survivors, test comment drift, confinement guard scope, fail-loud exemptions
+INCONCLUSIVE classification, two-signal pre-commit-guard, anti-wedge fail-open survivor, test comment drift, confinement guard scope, fail-loud exemptions, static-site-build-check

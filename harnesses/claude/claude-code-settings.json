@@ -200,38 +200,6 @@
         "hooks": [
           {
             "type": "command",
-            "command": "$HOME/.claude/hooks/pitch-shipped-before-stop.sh"
-          }
-        ]
-      },
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "$HOME/.claude/hooks/step-log-completeness.sh"
-          }
-        ]
-      },
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "$HOME/.claude/hooks/step-log-missing-guard.sh"
-          }
-        ]
-      },
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "$HOME/.claude/hooks/stop-cycle-guard.sh"
-          }
-        ]
-      },
-      {
-        "hooks": [
-          {
-            "type": "command",
             "command": "$HOME/.claude/hooks/stop-resume.sh"
           }
         ]
@@ -270,15 +238,6 @@
           {
             "type": "command",
             "command": "$HOME/.claude/hooks/env-var-sample-consistency.sh"
-          }
-        ]
-      },
-      {
-        "matcher": "developer-phoenix-backend|developer-phoenix-frontend",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "$HOME/.claude/hooks/phoenix-dev-gate.sh"
           }
         ]
       },

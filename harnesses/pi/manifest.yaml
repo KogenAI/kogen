@@ -57,22 +57,6 @@ completions:
 # tools_header: harnesses/pi/tools-header/<mode>.txt (per-harness ## Tools section + mode header).
 # manifest_regenerate_prompts() cats tools_header + each prompt_body entry → system_prompt_file.
 modes:
-  build:
-    model: openai-codex/gpt-5.4-mini # from config.yaml harness.build.pi
-    effort: medium
-    tools: read,grep,find,ls,edit,write,bash
-    extensions:
-      - askuserquestion
-      - subagents
-      - enforcement
-    system_prompt_file: harnesses/pi/pi-build-system-prompt.txt
-    tools_header: harnesses/pi/tools-header/build.txt
-    prompt_body:
-      - shared/rules/_core/output-style.md
-      - harnesses/shared/prompt-bodies/build.txt
-      - harnesses/shared/prompt-bodies/build-multi-pitch-queue.txt
-      - shared/prompt-fragments/_forbidden-bash-brief.txt
-
   debug:
     model: openai-codex/gpt-5.4 # from config.yaml harness.debug.pi
     effort: medium

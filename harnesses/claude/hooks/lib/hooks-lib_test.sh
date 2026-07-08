@@ -218,19 +218,19 @@ rm -rf "$TMP_T3"
 # Case 4: Zero tool_use writes to logging path → empty.
 TMP_T4=$(mktemp -d)
 printf '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Write","input":{"file_path":"/tmp/other/not-logging.md"}}]}}\n' >"$TMP_T4/transcript.jsonl"
-result=$(TRANSCRIPT_PATH="$TMP_T4/transcript.jsonl" CODEGEN_BUILD_NON_INTERACTIVE="" CWD="$TMP_T4" bash -c "source '$SCRIPT_DIR/hooks-lib.sh'; session_log_from_transcript")
+result=$(TRANSCRIPT_PATH="$TMP_T4/transcript.jsonl" CWD="$TMP_T4" bash -c "source '$SCRIPT_DIR/hooks-lib.sh'; session_log_from_transcript")
 assert_eq "session_log_from_transcript: no logging writes → empty" "" "$result"
 rm -rf "$TMP_T4"
 
 # Case 5: TRANSCRIPT_PATH="" → empty.
 TMP_T5=$(mktemp -d)
-result=$(TRANSCRIPT_PATH="" CODEGEN_BUILD_NON_INTERACTIVE="" CWD="$TMP_T5" bash -c "source '$SCRIPT_DIR/hooks-lib.sh'; session_log_from_transcript")
+result=$(TRANSCRIPT_PATH="" CWD="$TMP_T5" bash -c "source '$SCRIPT_DIR/hooks-lib.sh'; session_log_from_transcript")
 assert_eq "session_log_from_transcript: empty TRANSCRIPT_PATH → empty" "" "$result"
 rm -rf "$TMP_T5"
 
 # Case 6: TRANSCRIPT_PATH set to non-existent file → empty.
 TMP_T6=$(mktemp -d)
-result=$(TRANSCRIPT_PATH="/tmp/no-such-transcript-$(date -u +%s).jsonl" CODEGEN_BUILD_NON_INTERACTIVE="" CWD="$TMP_T6" bash -c "source '$SCRIPT_DIR/hooks-lib.sh'; session_log_from_transcript")
+result=$(TRANSCRIPT_PATH="/tmp/no-such-transcript-$(date -u +%s).jsonl" CWD="$TMP_T6" bash -c "source '$SCRIPT_DIR/hooks-lib.sh'; session_log_from_transcript")
 assert_eq "session_log_from_transcript: missing file → empty" "" "$result"
 rm -rf "$TMP_T6"
 
@@ -242,46 +242,12 @@ result=$(TRANSCRIPT_PATH="$TMP_T7/transcript.jsonl" CWD="$TMP_T7" bash -c "sourc
 assert_eq "session_log_from_transcript: Edit tool_use matched" "$TMP_T7/codegen/logging/edit_cycle.jsonl" "$result"
 rm -rf "$TMP_T7"
 
-# Case 8: Non-interactive fallback — CODEGEN_BUILD_NON_INTERACTIVE set, no
-# apps-root, empty transcript, real log on disk → returns disk path by mtime.
-TMP_T8=$(mktemp -d)
-mkdir -p "$TMP_T8/codegen/logging"
-: >"$TMP_T8/codegen/logging/20260611_000000_demo_cycle.jsonl"
-: >"$TMP_T8/transcript.jsonl"
-result=$(CODEGEN_BUILD_NON_INTERACTIVE=1 OCG_APPS_ROOT="" CWD="$TMP_T8" TRANSCRIPT_PATH="$TMP_T8/transcript.jsonl" \
-    bash -c "source '$SCRIPT_DIR/hooks-lib.sh'; session_log_from_transcript")
-assert_eq "session_log_from_transcript: non-interactive fallback → disk log" "$TMP_T8/codegen/logging/20260611_000000_demo_cycle.jsonl" "$result"
-rm -rf "$TMP_T8"
-
-# Case 9: Non-interactive fallback fail-closed — same env, empty logging dir
-# (no .jsonl files) → returns empty (gate denies, no phantom path).
-TMP_T9=$(mktemp -d)
-mkdir -p "$TMP_T9/codegen/logging"
-: >"$TMP_T9/transcript.jsonl"
-result=$(CODEGEN_BUILD_NON_INTERACTIVE=1 OCG_APPS_ROOT="" CWD="$TMP_T9" TRANSCRIPT_PATH="$TMP_T9/transcript.jsonl" \
-    bash -c "source '$SCRIPT_DIR/hooks-lib.sh'; session_log_from_transcript")
-assert_eq "session_log_from_transcript: non-interactive fallback empty dir → empty" "" "$result"
-rm -rf "$TMP_T9"
-
-# Case 10: TRANSCRIPT_PATH="" (empty string) with CODEGEN_BUILD_NON_INTERACTIVE set
-# and a real log on disk → disk fallback fires, returns disk path.
-TMP_T10=$(mktemp -d)
-mkdir -p "$TMP_T10/codegen/logging"
-: >"$TMP_T10/codegen/logging/20260614_000000_demo_cycle.jsonl"
-result=$(CODEGEN_BUILD_NON_INTERACTIVE=1 OCG_APPS_ROOT="" CWD="$TMP_T10" TRANSCRIPT_PATH="" \
-    bash -c "source '$SCRIPT_DIR/hooks-lib.sh'; session_log_from_transcript")
-assert_eq "session_log_from_transcript: empty TRANSCRIPT_PATH + managed build → disk log" "$TMP_T10/codegen/logging/20260614_000000_demo_cycle.jsonl" "$result"
-rm -rf "$TMP_T10"
-
-# Case 11: TRANSCRIPT_PATH set to a nonexistent path with CODEGEN_BUILD_NON_INTERACTIVE set
-# and a real log on disk → disk fallback fires, returns disk path.
-TMP_T11=$(mktemp -d)
-mkdir -p "$TMP_T11/codegen/logging"
-: >"$TMP_T11/codegen/logging/20260614_000000_demo_cycle.jsonl"
-result=$(CODEGEN_BUILD_NON_INTERACTIVE=1 OCG_APPS_ROOT="" CWD="$TMP_T11" TRANSCRIPT_PATH="/tmp/no-such-transcript-$(date -u +%s).jsonl" \
-    bash -c "source '$SCRIPT_DIR/hooks-lib.sh'; session_log_from_transcript")
-assert_eq "session_log_from_transcript: unreadable TRANSCRIPT_PATH + managed build → disk log" "$TMP_T11/codegen/logging/20260614_000000_demo_cycle.jsonl" "$result"
-rm -rf "$TMP_T11"
+# Cases 8-11 (removed): previously tested a CODEGEN_BUILD_NON_INTERACTIVE-gated
+# unconditional disk-mtime fallback. That env var and its fallback branch were
+# retired along with the legacy self-orchestrating harness engine — the
+# codegen-log-evidence-based fallback (cases 12-15 below) is the sole
+# surviving disk-mtime fallback and is unconditional (not gated on any env
+# var).
 
 # Helper: build one JSONL line with a Bash tool_use for the given command.
 make_bash_line() {
@@ -289,14 +255,14 @@ make_bash_line() {
     printf '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Bash","input":{"command":"%s"}}]}}\n' "$cmd"
 }
 
-# Case 12: codegen-log init (no Write event) + disk log present + neither
-# OCG_APPS_ROOT nor CODEGEN_BUILD_NON_INTERACTIVE set → resolves disk log
-# unconditionally. This is the interactive/self-build deadlock repro.
+# Case 12: codegen-log init (no Write event) + disk log present + no
+# OCG_APPS_ROOT set → resolves disk log unconditionally. This is the
+# interactive/self-build deadlock repro.
 TMP_T12=$(mktemp -d)
 mkdir -p "$TMP_T12/codegen/logging"
 : >"$TMP_T12/codegen/logging/20260702_000000_demo_cycle.jsonl"
 make_bash_line "codegen-log init --slug demo" >"$TMP_T12/transcript.jsonl"
-result=$(TRANSCRIPT_PATH="$TMP_T12/transcript.jsonl" OCG_APPS_ROOT="" CODEGEN_BUILD_NON_INTERACTIVE="" CWD="$TMP_T12" \
+result=$(TRANSCRIPT_PATH="$TMP_T12/transcript.jsonl" OCG_APPS_ROOT="" CWD="$TMP_T12" \
     bash -c "source '$SCRIPT_DIR/hooks-lib.sh'; session_log_from_transcript")
 assert_eq "session_log_from_transcript: codegen-log init evidence only → disk log" "$TMP_T12/codegen/logging/20260702_000000_demo_cycle.jsonl" "$result"
 rm -rf "$TMP_T12"
@@ -306,7 +272,7 @@ TMP_T13=$(mktemp -d)
 mkdir -p "$TMP_T13/codegen/logging"
 : >"$TMP_T13/codegen/logging/20260702_000000_demo_cycle.jsonl"
 make_bash_line "codegen-log section --body @-" >"$TMP_T13/transcript.jsonl"
-result=$(TRANSCRIPT_PATH="$TMP_T13/transcript.jsonl" OCG_APPS_ROOT="" CODEGEN_BUILD_NON_INTERACTIVE="" CWD="$TMP_T13" \
+result=$(TRANSCRIPT_PATH="$TMP_T13/transcript.jsonl" OCG_APPS_ROOT="" CWD="$TMP_T13" \
     bash -c "source '$SCRIPT_DIR/hooks-lib.sh'; session_log_from_transcript")
 assert_eq "session_log_from_transcript: codegen-log section evidence only → disk log" "$TMP_T13/codegen/logging/20260702_000000_demo_cycle.jsonl" "$result"
 rm -rf "$TMP_T13"
@@ -317,7 +283,7 @@ TMP_T14=$(mktemp -d)
 mkdir -p "$TMP_T14/codegen/logging"
 : >"$TMP_T14/codegen/logging/20260702_000000_demo_cycle.jsonl"
 make_bash_line "codegen-log append --role committer --body @-" >"$TMP_T14/transcript.jsonl"
-result=$(TRANSCRIPT_PATH="$TMP_T14/transcript.jsonl" OCG_APPS_ROOT="" CODEGEN_BUILD_NON_INTERACTIVE="" CWD="$TMP_T14" \
+result=$(TRANSCRIPT_PATH="$TMP_T14/transcript.jsonl" OCG_APPS_ROOT="" CWD="$TMP_T14" \
     bash -c "source '$SCRIPT_DIR/hooks-lib.sh'; session_log_from_transcript")
 assert_eq "session_log_from_transcript: codegen-log append evidence only → disk log" "$TMP_T14/codegen/logging/20260702_000000_demo_cycle.jsonl" "$result"
 rm -rf "$TMP_T14"
@@ -328,7 +294,7 @@ TMP_T15=$(mktemp -d)
 mkdir -p "$TMP_T15/codegen/logging"
 : >"$TMP_T15/codegen/logging/20260702_000000_demo_cycle.jsonl"
 make_bash_line "ls codegen/logging/" >"$TMP_T15/transcript.jsonl"
-result=$(TRANSCRIPT_PATH="$TMP_T15/transcript.jsonl" OCG_APPS_ROOT="" CODEGEN_BUILD_NON_INTERACTIVE="" CWD="$TMP_T15" \
+result=$(TRANSCRIPT_PATH="$TMP_T15/transcript.jsonl" OCG_APPS_ROOT="" CWD="$TMP_T15" \
     bash -c "source '$SCRIPT_DIR/hooks-lib.sh'; session_log_from_transcript")
 assert_eq "session_log_from_transcript: non-writer bash command → empty" "" "$result"
 rm -rf "$TMP_T15"

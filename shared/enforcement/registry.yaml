@@ -506,30 +506,12 @@
   harnesses: all
 
 - kind: registration
-  id: phoenix-dev-gate
-  event: SubagentStop
-  tool_guard: "developer-phoenix-backend|developer-phoenix-frontend"
-  surface: user_global
-  signal: AGENT_TYPE
-  role: "developer-phoenix-backend|developer-phoenix-frontend"
-  harnesses: all
-
-- kind: registration
   id: phoenix-frontend-developer-guard
   event: PreToolUse
   tool_guard: "Edit|Write|MultiEdit"
   surface: user_global
   signal: AGENT_TYPE
   role: developer-phoenix-frontend
-  harnesses: all
-
-- kind: registration
-  id: pitch-shipped-before-stop
-  event: Stop
-  tool_guard: "*"
-  surface: user_global
-  signal: CLAUDE_ROLE_FAMILY
-  role: "*"
   harnesses: all
 
 - kind: registration
@@ -616,24 +598,6 @@
   harnesses: all
 
 - kind: registration
-  id: step-log-completeness
-  event: Stop
-  tool_guard: "*"
-  surface: user_global
-  signal: CLAUDE_ROLE_FAMILY
-  role: "*"
-  harnesses: all
-
-- kind: registration
-  id: step-log-missing-guard
-  event: Stop
-  tool_guard: "*"
-  surface: user_global
-  signal: CLAUDE_ROLE_FAMILY
-  role: "*"
-  harnesses: all
-
-- kind: registration
   id: step-log-section-before-spawn
   event: PreToolUse
   tool_guard: Agent
@@ -641,16 +605,6 @@
   signal: CLAUDE_ROLE_FAMILY
   role: "*"
   harnesses: all
-
-- kind: registration
-  id: stop-cycle-guard
-  event: Stop
-  tool_guard: "*"
-  surface: user_global
-  signal: CLAUDE_ROLE_FAMILY
-  role: "*"
-  harnesses: all
-  rationale: Claude blocks (stop-cycle-guard.sh block calls); Pi session_shutdown is observe-only and cannot block, so the Pi twin only debugLogs — documented divergence, not a bug.
 
 - kind: registration
   id: stop-gate-failure-breaker

@@ -9,9 +9,7 @@ For the per-hook inventory table, hook-event taxonomy, key paths, and the Pitfal
 **Role-based bypass**: Some hooks need to distinguish between orchestrator launcher modes (`claude-build`, `claude-ops`, `claude-debug`, etc.) — these use the `signal` field in their registration. The most common signal is `CLAUDE_ROLE_FAMILY`, which maps the outer-session launcher mode to a role name via `resolve_role()` from `_role.sh`. Examples:
 
 - `orchestrator-no-source-edit.sh` — `signal: CLAUDE_ROLE_FAMILY` — sources `_role.sh`, calls `resolve_role()`. If `_role == "ops"`, bypass the hook (ops needs full write access on live boxes).
-- `pitch-shipped-before-stop.sh` — `signal: CLAUDE_ROLE_FAMILY` — calls `is_build_mode()` (skips shape/debug/ops/experiment/refactor) OR `CODEGEN_NO_AUTOSHIP=1` env override.
 - `step-log-section-before-spawn.sh` — `signal: CLAUDE_ROLE_FAMILY` — sources `_role.sh`, calls `is_build_mode()`. Skips the investigative set (shape/debug/ops/experiment/refactor — these spawn Explore without a step log). Enforces step-0 log + section headers otherwise.
-- `stop-cycle-guard.sh` — `signal: CLAUDE_ROLE_FAMILY` — calls `is_build_mode()`; active on build/empty/unknown, skips the investigative set.
 
 **Static enforcement of signal/body coupling**: At `make test`/`make install`, `validate_signal()` in `hook_registrations.py` greps the body for either `resolve_role()` or `is_build_mode()` — if neither is present on a `signal: CLAUDE_ROLE_FAMILY` hook, validation fails. Registry and header must stay synchronized; flipping the signal without updating the body (or vice versa) causes validation failure. This ensures signal declarations and role branching stay in sync.
 
@@ -32,7 +30,7 @@ See `context/launcher-hook-matrix.md` for a table of per-hook bypass and fail-op
 
 Hoist idempotent resolver calls (e.g., `session_log_from_transcript`) to the top of the hook function and assign to a single variable — eliminates redundant subprocess forks and fixes the value for the entire invocation.
 
-**Self-describing counter files**: Store the scope key in the counter file itself (first line = step-log path, second line = retry count). When the resolver returns empty due to transcript JSONL flush lag, the hook reads the prev-step scope from line1 and keeps the counter in scope without resetting. Pattern: `stop-cycle-guard.sh` two-line counter format.
+**Self-describing counter files**: Store the scope key in the counter file itself (first line = step-log path, second line = retry count). When the resolver returns empty due to transcript JSONL flush lag, the hook reads the prev-step scope from line1 and keeps the counter in scope without resetting.
 
 ## SubagentStop Fix-Up Hooks — Minimal Pattern & Parity
 
@@ -195,23 +193,7 @@ Key: `line.startsWith(header)` is a prefix test, so `"## developer-phoenix-backe
 
 **Transcript analysis**: Parse `$TRANSCRIPT_PATH` JSONL via jq for cross-call patterns (e.g., consecutive same-role developer spawns). Transcript is session-bound and self-cleaning.
 
-**Managed-build fail-closed pattern**: Guard hard constraints with `CODEGEN_BUILD_NON_INTERACTIVE` check — allow fail-open in interactive mode. Pattern:
-
-```bash
-if [ -z "$log_file" ]; then
-    if [ -n "${CODEGEN_BUILD_NON_INTERACTIVE:-}" ]; then
-        debug_log "gate" "BLOCK: managed build but no session log"
-        block "Managed build but no session log is discoverable."
-        exit 0
-    fi
-    debug_log "gate" "skip: no log in transcript (interactive fail-open)"
-    exit 0
-fi
-```
-
-This preserves the interactive fail-open contract (silent allow when state unrecoverable) while enforcing fail-closed in managed builds where all required state should be preestablished. The `CODEGEN_BUILD_NON_INTERACTIVE` flag is set by `dispatch.sh` and similar non-interactive entrypoints; interactive mode never sets it, so the interactive branch always executes.
-
-**Stop hook placement relative to retry-counter logic**: When a Stop hook measures some condition (e.g., `gate_result_verdict == clear` + `git status --porcelain` is dirty) and wants to block, place the measurement+block BEFORE any existing retry-counter increment. Do NOT increment the counter in the new branch — let control flow exit via the new block. This design keeps the circuit-breaker's 2-strike livelock-cap unaffected: the new guard signals one clean "go commit" action per mid-cycle stop without consuming strikes. Example: stop-cycle-guard.sh's dirty-tree block sits before the final Increment counter anchor; it exits before reaching the counter logic. All prior skip-guards have already exited, so reaching the new block implies the measurement is certain.
+**Stop hook placement relative to retry-counter logic**: When a Stop hook measures some condition (e.g., `gate_result_verdict == clear` + `git status --porcelain` is dirty) and wants to block, place the measurement+block BEFORE any existing retry-counter increment. Do NOT increment the counter in the new branch — let control flow exit via the new block. This design keeps a circuit-breaker's 2-strike livelock-cap unaffected: the new guard signals one clean "go commit" action per mid-cycle stop without consuming strikes. Example: `stop-gate-failure-breaker.sh`'s dirty-tree-style block sits before the final Increment counter anchor; it exits before reaching the counter logic. All prior skip-guards have already exited, so reaching the new block implies the measurement is certain.
 
 ### Full Claude Code Event Catalog
 
@@ -316,7 +298,7 @@ Valid `permissionDecision` values:
 
 ```
 SubagentStop fires → gate-select.sh picks stack →
-  phoenix-dev-gate.sh (mix test) OR static-site-build-check.sh (npm run build) →
+  the Elixir loop's dev-gate step (mix test) OR static-site-build-check.sh (npm run build) →
   writes codegen/gate-pending/gate-result.json (structured verdict file) →
   appends "ALL CLEAR ✅" / "FAILED ❌" / "INCONCLUSIVE ⚠️ <class>" to step log ## dev-gate Section
 ```
@@ -329,8 +311,6 @@ Orchestrator reads verdict before deciding next delegation.
 - **Path**: Always in `codegen/gate-pending/` subdirectory, not at `codegen/` root. Hooks that read gate result must use `$project_dir/codegen/gate-pending/gate-result.json`
 - Fields: `gate`, `mode`, `verdict` (clear|failed|inconclusive), `exit_code`, `execution_evidence`, `expected_segments`, `render_verdict`, `classification`, `started_at`, `ended_at`, `session_id`, `log`, `runner_found`
 - `build-no-success-before-commit.sh` reads `verdict` field — requires `clear` before allowing BUILD_RESULT signal
-- `stop-cycle-guard.sh` reads `verdict` field — blocks if verdict ≠ clear (see § stop-cycle-guard Verdict Semantics)
-- `step-log-completeness.sh` reads `verdict` field — `clear` enables completion even without log ALL CLEAR marker
 
 **Gate JSON block format** (new — `gate-select.sh` parses gate-json fence in `## Plan`):
 
@@ -354,8 +334,8 @@ New guards can be added to codegen by following established patterns:
 
 - `PreToolUse` on `Agent` tool + `tool_input.subagent_type == "name"` match — intercepts subagent spawning (e.g., `curator-before-committer.sh` blocks committer spawn)
 - `PreToolUse` on any tool — blocks arbitrary tool calls (e.g., `no-git-stash.sh` blocks `git stash`)
-- `SubagentStop` — fires when a subagent completes, for post-agent logic (e.g., `phoenix-dev-gate.sh` appends gate verdict)
-- `Stop` — fires at session end for final guards (e.g., `step-log-completeness.sh` checks log integrity before exit)
+- `SubagentStop` — fires when a subagent completes, for post-agent logic (e.g., the loop's dev-gate step appends gate verdict)
+- `Stop` — fires at session end for final guards
 
 **Pi harness** (`harnesses/pi/pi-extensions/enforcement/src/hooks/`)
 

@@ -24,7 +24,7 @@
 #      that never make forward progress.
 #
 # Cap: after 2 blocks the counter file is cleared to prevent wedging a
-# genuinely stuck session. Mirrors the cap=2 pattern in stop-cycle-guard.sh.
+# genuinely stuck session.
 #
 # Counter file: /tmp/claude-spin-<session>.count — tracks block count only
 # (not spawn count, which is derived from the transcript each call).

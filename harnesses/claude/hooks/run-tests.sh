@@ -70,10 +70,8 @@ if [ -n "${CLAUDE_ROLE:-}" ] || [ -n "${PI_ROLE:-}" ]; then
     exit 1
 fi
 
-# Strip managed-build env vars so hook tests run in a hermetic interactive-mode
-# environment. CODEGEN_BUILD_NON_INTERACTIVE (set by dispatch.sh in managed
-# builds) activates non-interactive code paths that break interactive-mode
-# tests. CODEGEN_BUILD_START_TS (set by dispatch.sh for the live cycle) leaks
+# Strip managed-build env vars so hook tests run in a hermetic environment.
+# CODEGEN_BUILD_START_TS (set by dispatch.sh for the live cycle) leaks
 # into pre-commit-guard's git-reset-foreign-commit check, causing
 # default-env tests (no explicit CODEGEN_BUILD_START_TS override) to
 # spuriously deny against the real repo's HEAD commit time. OCG_CODEGEN_DIR
@@ -83,7 +81,7 @@ fi
 # portable-launcher_test.sh and worktree-*_test.sh fixtures (which stub a
 # sibling codegen-build next to the launcher under test) to silently invoke
 # the REAL installed codegen-build instead of the test stub.
-unset CODEGEN_BUILD_NON_INTERACTIVE CODEGEN_BUILD_START_TS OCG_CODEGEN_DIR
+unset CODEGEN_BUILD_START_TS OCG_CODEGEN_DIR
 
 set +e
 find "$HOOKS_DIR" -name '*_test.sh' -type f -print0 |

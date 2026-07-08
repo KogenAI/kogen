@@ -50,9 +50,6 @@ harness:
   context-curator:
     claude: { model: haiku, effort: low }
     pi: { model: openai-codex/gpt-5.4-mini, effort: low }
-  build:
-    claude: { model: sonnet, effort: medium }
-    pi: { model: openai-codex/gpt-5.4-mini, effort: medium }
   app_build:
     claude: { model: sonnet, effort: medium }
     pi: { model: openai-codex/gpt-5.4, effort: medium }
@@ -82,28 +79,6 @@ roles:
     allowed_tools:
       - Write
       - WebFetch
-
-  build:
-    model: sonnet
-    effort: medium
-    output_format: stream-json
-    # build uses --tools allowlist (load gate) instead of --disallowed-tools
-    # (permission filter). Same rationale as debug/design: only listed tools
-    # enter context, and ToolSearch can't be used to re-expand the surface
-    # mid-session. Allowlist covers orchestrate + delegate + dev work. Write
-    # surface is further restricted to codegen/logging/ by
-    # orchestrator-no-source-edit.sh (plain-orchestrator branch — CLAUDE_ROLE unset).
-    tools:
-      - Agent
-      - Bash
-      - Edit
-      - Glob
-      - Grep
-      - Read
-      - Skill
-      - Write
-    system_prompt_file: harnesses/claude/claude-build-system-prompt.txt
-    append_project_context: false
 
   # debug/shape use --tools allowlist (load gate) instead of --disallowed-tools
   # (permission filter). The deferred-tool harness already keeps most tools out

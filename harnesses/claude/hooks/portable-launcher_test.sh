@@ -260,66 +260,6 @@ else
     fail=$((fail + 1))
 fi
 
-# ── Test 6: dispatch.sh (claude) missing config → exit 1 ─────────────────────
-T6="$BASE_TMP/t6_dispatch"
-mkdir -p "$T6/harnesses/claude"
-cp "$CODEGEN_ROOT/harnesses/claude/dispatch.sh" "$T6/harnesses/claude/dispatch.sh"
-cp "$CODEGEN_ROOT/harnesses/claude/build-tools.txt" "$T6/harnesses/claude/build-tools.txt"
-cp "$CODEGEN_ROOT/harnesses/claude/claude-build-system-prompt.txt" "$T6/harnesses/claude/claude-build-system-prompt.txt"
-# No config.yaml — use a fake empty OCG dir
-FAKE_OCG6="$BASE_TMP/t6_ocg_empty"
-mkdir -p "$FAKE_OCG6/templates/generator"
-# No config.yaml in that dir
-YQ_T6="$BASE_TMP/t6_yq"
-mkdir -p "$YQ_T6"
-make_stub "$YQ_T6/yq" 'echo "sonnet"' # yq present but config missing
-
-actual_exit=0
-stderr6=$(
-    PATH="$YQ_T6:$PATH" \
-        OCG_CODEGEN_DIR="$FAKE_OCG6" \
-        CODEGEN_BUILD_MODEL="" CODEGEN_BUILD_EFFORT="" \
-        bash "$T6/harnesses/claude/dispatch.sh" 2>&1
-) || actual_exit=$?
-assert_exit "(6) dispatch.sh missing config exits 1" "1" "$actual_exit"
-assert_contains "(6) dispatch.sh missing config stderr contains 'config.yaml not found'" "config.yaml not found" "$stderr6"
-
-# ── Test 7: dispatch.sh (claude) no silent haiku fallback ─────────────────────
-T7="$BASE_TMP/t7_dispatch"
-mkdir -p "$T7/harnesses/claude"
-cp "$CODEGEN_ROOT/harnesses/claude/dispatch.sh" "$T7/harnesses/claude/dispatch.sh"
-cp "$CODEGEN_ROOT/harnesses/claude/build-tools.txt" "$T7/harnesses/claude/build-tools.txt"
-cp "$CODEGEN_ROOT/harnesses/claude/claude-build-system-prompt.txt" "$T7/harnesses/claude/claude-build-system-prompt.txt"
-# config.yaml present but model key is empty/null
-FAKE_OCG7="$BASE_TMP/t7_ocg"
-mkdir -p "$FAKE_OCG7/templates/generator"
-cat >"$FAKE_OCG7/templates/generator/config.yaml" <<'YAML'
-harness:
-  build:
-    claude:
-      model: ""
-      effort: medium
-YAML
-YQ_T7="$BASE_TMP/t7_yq"
-mkdir -p "$YQ_T7"
-# Real yq if available, else stub
-if command -v yq >/dev/null 2>&1; then
-    ln -s "$(command -v yq)" "$YQ_T7/yq"
-else
-    make_stub "$YQ_T7/yq" 'echo ""'
-fi
-
-actual_exit=0
-stderr7=$(
-    PATH="$YQ_T7:$PATH" \
-        OCG_CODEGEN_DIR="$FAKE_OCG7" \
-        CODEGEN_BUILD_MODEL="" CODEGEN_BUILD_EFFORT="" \
-        bash "$T7/harnesses/claude/dispatch.sh" 2>&1
-) || actual_exit=$?
-# Must fail (exit 1) — no silent "haiku" fallback
-assert_exit "(7) dispatch.sh empty model exits 1 (no silent fallback)" "1" "$actual_exit"
-assert_not_contains "(7) dispatch.sh does not fall through to exec claude" "exec env" "$stderr7"
-
 # ── Test 8: load-role.sh model fail-loud on missing model ─────────────────────
 T8="$BASE_TMP/t8_load"
 mkdir -p "$T8"

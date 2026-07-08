@@ -103,7 +103,7 @@ echo 0 >"$CALL_COUNTER_FILE_A"
 make_stub "$BIN_A/codegen-call" '
 n=$(($(cat "'"$CALL_COUNTER_FILE_A"'") + 1))
 echo "$n" > "'"$CALL_COUNTER_FILE_A"'"
-printf "%s\n" "{\"result\":{\"status\":\"success\",\"value\":{\"cluster\":{\"counter\":\"forbidden_bash\",\"pattern_key\":\"x\",\"wasted_turns\":8},\"target_file\":\"harnesses/claude/tools-header/build.txt\",\"anchor\":\"## Tools\",\"change\":{\"description\":\"add a line naming the forbidden command\"},\"rationale\":\"evidence shows repeated forbidden bash use\",\"confidence\":\"high\"},\"reason\":null,\"clarifying_question\":null,\"retry_meta\":null},\"usage\":{},\"error\":null,\"harness\":\"claude_code\"}"
+printf "%s\n" "{\"result\":{\"status\":\"success\",\"value\":{\"cluster\":{\"counter\":\"forbidden_bash\",\"pattern_key\":\"x\",\"wasted_turns\":8},\"target_file\":\"harnesses/claude/tools-header/debug.txt\",\"anchor\":\"## Tools\",\"change\":{\"description\":\"add a line naming the forbidden command\"},\"rationale\":\"evidence shows repeated forbidden bash use\",\"confidence\":\"high\"},\"reason\":null,\"clarifying_question\":null,\"retry_meta\":null},\"usage\":{},\"error\":null,\"harness\":\"claude_code\"}"
 '
 
 actual_exit=0
