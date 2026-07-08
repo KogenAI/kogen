@@ -37,6 +37,9 @@ defmodule CodegenTestHarness.OrchestrationLoop do
   @transcript_seq_key :loop_transcript_seq
   @cycle_id_key :loop_cycle_id
 
+  @codegen_call_bin Path.expand("../../../codegen-call", __DIR__)
+  @codegen_dir Path.expand("../../..", __DIR__)
+
   @doc """
   Returns the ordered role sequence for `stack` (`"phoenix"` or
   `"static"`). Raises on any other stack name.
@@ -60,6 +63,11 @@ defmodule CodegenTestHarness.OrchestrationLoop do
     to `LoopGate.run_gate/2`
   - `:gate_preflight_fn` — test seam: `(cwd -> resolved)` — resolves the app
     gate at turn 0 before any role runs; defaults to `LoopGate.decide_gate/1`
+  - `:preflight_probe_fn` — test seam: `(cwd -> raw_output)` — resolves the
+    full set of installed `--agent` role names at turn 0, before any role
+    runs; defaults to `default_preflight_probe/1` (a single sentinel
+    `codegen-call --agent <bogus>` call parsing claude's "Available agents:"
+    error text — zero model turns)
   - `:max_gate_retries` — developer re-runs allowed after a non-clear gate
     before giving up (default 1)
 
@@ -86,8 +94,91 @@ defmodule CodegenTestHarness.OrchestrationLoop do
     # the gate. An unresolvable gate (missing/empty/stale GATE_COMMAND) raises
     # here, at turn 0, cheaply, instead of mid-cycle after the developer runs.
     preflight_gate!(cwd, opts)
+    preflight_roles!(roles, cwd, opts)
 
     run_roles(roles, harness, ctx, opts)
+  end
+
+  # Sentinel agent name guaranteed never to be installed — used solely to
+  # trigger claude's "--agent '<x>' not found. Available agents: <csv>" error,
+  # which enumerates the FULL set of resolvable agents in one no-model-turn
+  # probe. Never registered as a real role.
+  @preflight_sentinel "__codegen_loop_preflight_probe__"
+
+  # Turn-0 role-resolution preflight: confirms every role in `roles` resolves
+  # under `claude --agent <role> --setting-sources user,project` BEFORE any
+  # role is invoked (and paid for). A broken/uninstalled role set raises here,
+  # naming the missing roles, instead of surfacing mid-cycle as a mis-labeled
+  # transient retry (codegen-call's non-zero-exit synthetic-failure path).
+  #
+  # Reuses the exact `--agent`/`--setting-sources user,project` flag assembly
+  # call-dispatch.sh established (single-sourced scope — no Elixir-side
+  # duplication). Fails CLOSED: an inconclusive probe (no parseable
+  # "Available agents:" line) raises rather than assuming the roles resolve.
+  defp preflight_roles!(roles, cwd, opts) do
+    probe_fn = Keyword.get(opts, :preflight_probe_fn, &default_preflight_probe/1)
+
+    output = probe_fn.(cwd)
+
+    case parse_available_agents(output) do
+      {:ok, available} ->
+        missing = Enum.reject(roles, &(&1 in available))
+
+        if missing != [] do
+          raise "OrchestrationLoop: required role agent(s) not resolvable: " <>
+                  Enum.join(missing, ", ") <>
+                  ". Available: " <>
+                  Enum.join(available, ", ") <>
+                  ". Run 'make install' to (re)install role agents."
+        end
+
+        :ok
+
+      :error ->
+        raise "OrchestrationLoop: could not confirm role-agent resolution (preflight probe " <>
+                "returned no agent list): #{String.slice(output, 0, 400)}"
+    end
+  end
+
+  # Real probe: invokes codegen-call with the sentinel --agent so claude exits
+  # 1 immediately (before any model turn) with the full "Available agents:"
+  # list. Returns the raw combined output for parse_available_agents/1.
+  defp default_preflight_probe(cwd) do
+    unless File.exists?(@codegen_call_bin) do
+      raise "OrchestrationLoop: codegen-call not found at #{@codegen_call_bin}"
+    end
+
+    args = [
+      "--harness=claude_code",
+      "--agent=#{@preflight_sentinel}",
+      "PING"
+    ]
+
+    env = [{"CODEGEN_DIR", @codegen_dir}]
+
+    {output, _exit_code} =
+      System.cmd(@codegen_call_bin, args, stderr_to_stdout: true, env: env, cd: cwd)
+
+    output
+  end
+
+  # Parses "Available agents: a, b, c" out of raw probe output. Returns
+  # {:ok, [String.t()]} on a match, :error when no such line is present
+  # (inconclusive — CLI missing, network error, unexpected format).
+  defp parse_available_agents(output) do
+    case Regex.run(~r/Available agents:\s*(.+)/, output) do
+      [_, csv] ->
+        agents =
+          csv
+          |> String.split(",")
+          |> Enum.map(&String.trim/1)
+          |> Enum.reject(&(&1 == ""))
+
+        {:ok, agents}
+
+      nil ->
+        :error
+    end
   end
 
   # Resolves the app gate at turn 0 via the :gate_preflight_fn seam (default
@@ -572,8 +663,6 @@ defmodule CodegenTestHarness.OrchestrationLoop do
     end)
   end
 
-  @codegen_call_bin Path.expand("../../../codegen-call", __DIR__)
-  @codegen_dir Path.expand("../../..", __DIR__)
   @claude_settings_path Path.expand(
                           "../../../harnesses/claude/claude-code-settings.json",
                           __DIR__
