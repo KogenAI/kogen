@@ -161,7 +161,7 @@ run_test "real cat pipe still blocked (unchanged)" "2" \
 # NOTE: this used to pull the "pre-fix" body via `git show HEAD:<file>`, but
 # that self-invalidates the instant the fix lands at HEAD (`git show HEAD`
 # then fetches the ALREADY-FIXED script and the RED branch can never fire —
-# see context/pitfalls.md "RED-then-GREEN proof via floating git show HEAD
+# see context/bash-patterns.md "RED-then-GREEN proof via floating git show HEAD
 # self-invalidates once fix lands"). Fixed by synthesizing the exact
 # historical buggy body as a literal fixture instead of depending on git
 # history. Written INTO SCRIPT_DIR (not /tmp) so relative `dirname "$0"`

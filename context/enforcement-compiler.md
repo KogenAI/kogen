@@ -4,8 +4,8 @@
 
 `templates/generator/enforcement_compiler.py` generates enforcement hook scripts from a declarative registry (`shared/enforcement/registry.yaml`). Two entry kinds:
 
-- **`kind: denial`** (default when `kind` absent) — generates ENTIRE `.sh`/`.ts` files (header + body). `generated: true` means `make install` OVERWRITES the whole file. Only 5 CLAUDE `.sh` files are owned this way.
-- **`kind: registration`** — does NOT generate any file body. Header-only: `hook_registrations.py --emit-headers` reads these entries and injects the `# HOOK-MANIFEST:` block into the existing hand-written `.sh`, leaving body bytes identical. 46 behavioral hooks use this path.
+- **`kind: denial`** (default when `kind` absent) — generates ENTIRE `.sh`/`.ts` files (header + body). `generated: true` means `make install` OVERWRITES the whole file. Only 2 CLAUDE `.sh` files are owned this way (verify: `grep -c 'kind: denial' shared/enforcement/registry.yaml`).
+- **`kind: registration`** — does NOT generate any file body. Header-only: `hook_registrations.py --emit-headers` reads these entries and injects the `# HOOK-MANIFEST:` block into the existing hand-written `.sh`, leaving body bytes identical. 56 behavioral hooks use this path (verify: `grep -c 'kind: registration' shared/enforcement/registry.yaml`).
 
 Both kinds coexist in `shared/enforcement/registry.yaml`. The compiler skips `kind: registration` entries entirely — they have no `match`/`message` and are not denial rules.
 
@@ -62,6 +62,7 @@ All forms compose with `bypass_roles` prelude (if specified): the bypass exits e
 | `harnesses`    | string | Canonical form: `claude` or `pi` (registry enum). Rendered to hook header as `claude_code` or `pi`. Deployment target (all, claude, pi)        | all      |
 | `rationale`    | string | Hook rationale text (optional, supports multi-line via YAML block scalar `\|`). For `kind: registration` only                                  | —        |
 | `canonicalize` | string | Path canonicalization (repo_relative); FILE_PATH only                                                                                          | —        |
+| `surface`      | string | Rendered as `# surface: {surface}` header comment (e.g., `user_global`); documents hook exposure scope                                         | —        |
 
 ### Pattern Dialect
 
@@ -108,13 +109,20 @@ The generated set is rarely purely additive; drops are silent runtime breaks if 
 - `inject_header(script_path, header_text)` — rewrites ONLY the header span (from `# HOOK-MANIFEST:` to the original terminator) in an existing hook script, leaving body bytes identical. Uses mktemp/cmp/mv for idempotency (re-running with unchanged input → no file touch).
 - `--emit-headers` — injects freshly-rendered headers into all migrated hooks. Must run before `hook_registrations.py` default mode (step 6) to ensure settings are derived from the new headers.
 - `--check-headers` — regenerates headers to /tmp and diffs vs committed `.sh` files. Used by `make hook-header-parity` gate to verify headers match the registry.
-- Token mapping: registry stores `claude` (enum), but header field is `claude_code` (hook script format). Renderer maps `claude` → `claude_code` when emitting. Parser already accepts both via `_VALID_HARNESSES` (currently `{"claude_code", "pi"}` — see `hook_registrations.py`).
+- Token mapping: registry stores `claude` (enum), but header field is `claude_code` (hook script format). Renderer maps `claude` → `claude_code` when emitting. Parser already accepts both via `hook_registrations.py`'s `VALID_HARNESSES` (currently `{"claude_code", "pi"}`) — distinct from `enforcement_compiler.py`'s own `_VALID_HARNESSES = ("all", "claude", "pi")` (registry-enum validation, different module, different value set/naming).
 - Multi-line `rationale`: stored in registry as YAML block scalar (`|`); renderer emits `# rationale:` first line + `#   ` (indent) continuation lines. Parity diff catches any byte drift on round-trip.
 
 ## Enforcement Compiler — Renderer-Neutral Regex Tokens
 
 `enforcement_compiler.py` `_to_bash` does a literal `.replace(r"\s", "[[:space:]]")` — this fires inside character classes too, corrupting nested brackets. When defining regex patterns in `shared/enforcement/registry.yaml` that compile to both bash ERE and JavaScript regex, avoid `\s` inside char classes (`[^&\s]`, `[\s]`) — they become `[^&[[:space:]]]` (broken) in bash. Use `\S` instead (negated class that round-trips identically across both renderers): `match: "[^&]*\\S+"` → bash: `[^&]*\S+`; JS: `/[^&]*\S+/`. Verify by testing both `_to_bash` and `_to_ts` renderers on the pattern.
 
+## Pitfalls
+
+- **Registry `generated: true` means compiler-owned** — hooks with `generated: true` + no `kind: registration` have compiler-owned bodies. Hand-editing .sh/.ts directly causes registry-parity DRIFT. Fix: edit shared compiler template, let compiler regenerate all siblings sharing that template.
+- **Compiler templates regenerate all siblings** — Template fix regenerates all; reverting siblings re-triggers DRIFT. Accept symmetric regeneration.
+- **Multi-value `role: "a\|b"` compiler case-arm join breaks `hook_registrations.py` role-parity** — bash case-arm emitter must join multi-value role tokens with `" \| "` (space-padded); a bare `a\|b)` join leaves non-last tokens unmatched → `make hook-parity` fails. Fix is compiler-side.
+- **Hook alphabetical id ordering in settings.json** — `hook_registrations.py --output-settings` generates entries in alphabetical id order. Hand-inserted registry entries in the wrong order cause hook-parity diff on `make install`. Remedy: sort new entries alphabetically in `registry.yaml` OR reorder and re-run `make install`.
+
 ## Trigger Keywords
 
-enforcement_compiler.py, registry.yaml, kind: denial, kind: registration, renderer-neutral regex tokens, pattern dialect, COMMAND/FILE_PATH source, hook generation, negated class, bash vs TS renderer parity
+enforcement_compiler.py, registry.yaml, kind: denial, kind: registration, renderer-neutral regex tokens, pattern dialect, COMMAND/FILE_PATH source, hook generation, negated class, bash vs TS renderer parity, registry generated compiler-owned, compiler template regeneration, hook alphabetical ordering

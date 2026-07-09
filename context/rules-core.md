@@ -4,14 +4,17 @@ Core discipline rules that apply to ALL agents regardless of role or stack. Thes
 
 ## Components
 
-| File                                    | Purpose                                                                |
-| --------------------------------------- | ---------------------------------------------------------------------- |
-| `shared/rules/INDEX.md`                 | Registry — file → trigger keywords; loaded by orchestrators/planners   |
-| `shared/rules/STYLE_GUIDE.md`           | Cross-cutting style rules for all agents                               |
-| `shared/rules/_core/bash-discipline.md` | Forbidden bash patterns, token-budget rules, safe alternatives         |
-| `shared/rules/_core/output-style.md`    | Caveman Ultra output compression rules                                 |
-| `shared/rules/_core/session-log.md`     | Session log format, ownership, section headers, subagent body template |
-| `shared/rules/_core/cwd-discipline.md`  | Working-directory rules — no /tmp writes, absolute paths only          |
+| File                                              | Purpose                                                                |
+| ------------------------------------------------- | ---------------------------------------------------------------------- |
+| `shared/rules/INDEX.md`                           | Registry — file → trigger keywords; loaded by orchestrators/planners   |
+| `shared/rules/STYLE_GUIDE.md`                     | Cross-cutting style rules for all agents                               |
+| `shared/rules/_core/bash-discipline.md`           | Forbidden bash patterns, token-budget rules, safe alternatives         |
+| `shared/rules/_core/output-style.md`              | Caveman Ultra output compression rules                                 |
+| `shared/rules/_core/session-log.md`               | Session log format, ownership, section headers, subagent body template |
+| `shared/rules/_core/cwd-discipline.md`            | Working-directory rules — no /tmp writes, absolute paths only          |
+| `shared/rules/_core/fail-fast-required-values.md` | Masking-default detection: 3-part test for required-value defaults     |
+| `shared/rules/_core/fail-loud.md`                 | Universal fail-loud posture: forbidden swallows/silent-defaults        |
+| `shared/rules/_core/witness-discipline.md`        | FAILED-gate witness requirement (file:line + verbatim cause)           |
 
 ## Key Paths
 
@@ -24,11 +27,14 @@ shared/rules/
     output-style.md
     session-log.md
     cwd-discipline.md
+    fail-fast-required-values.md
+    fail-loud.md
+    witness-discipline.md
 ```
 
 ## Integration Points
 
-- **subagents**: `_core` rules are `{% include %}`d selectively per role — NOT every subagent includes all 4. Developer templates (via `_phoenix_developer_common.md.j2` / `_static_developer_common.md.j2`) include all 4. Planners include 3 (omit `cwd-discipline`). Committers include only `output-style` + `bash-discipline`. Check each `.md.j2` template for exact includes. Changes require `make install` to propagate
+- **subagents**: `_core` rules are `{% include %}`d selectively per role — NOT every subagent includes all 7. Check each `.md.j2` template for exact includes. Changes require `make install` to propagate
 - **shape spine**: The authoring spine (`_authoring-spine.txt`, included in shape mode body) enforces the "plain-language discipline" rule (Rule B), which cites `output-style.md` § Verbatim to define protected literal categories (code blocks, error strings, JSON field names, `MUST`/`NEVER`/`FORBIDDEN`, gate markers). The rule allows these literals to appear verbatim in user-facing prose while suppressing other internal shorthand.
 - **hooks**: some hooks enforce these rules at runtime (e.g. `no-python-json.sh` enforces `bash-discipline.md`; `no-cat-pipe.sh` enforces pipe patterns) — see `context/hooks.md`
 - **rules-roles**: role rules are layered on top of these core rules; core rules define the floor
@@ -69,3 +75,6 @@ The `codegen-log` binary resolves role via precedence chain: `ROLE_OVERRIDE` env
 - **INDEX.md must stay in sync** — adding a rule file without an INDEX row means orchestrators won't load it on demand
 - **`@apply` in rules is Tailwind-context only** — static site rules reference Tailwind `@apply`; don't confuse with CSS `@apply`
 - **Shared rules must be harness-agnostic** — no launcher/dispatcher binary names in files under `shared/rules/shared/` or symlink-included rules; these are baked into downstream agent prompts
+- **[shared] Pure hard-delete safer than deprecation** — When deleting dead code (validator branches, special-cases), hard-delete entirely vs leaving always-false backstop. Pure deletion is verifiable by GREP (zero matches) and prevents future developers from resurrecting dead code without understanding the original boundary violation.
+- **[shared] Stale-doc-twin defect** — Grep full vocabulary across ALL files when fixing drift.
+- **Rule-file line caps are STYLE_GUIDE advisory only** — `_core/` rule files have a <50-line advisory; `roles/` and `stacks/` have <150-line advisory. No hook enforces rule-file line count. Only `context/*.md` byte cap (40,960 B) is hook-enforced.

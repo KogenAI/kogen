@@ -170,6 +170,31 @@ Load this file when touching: `manifest.yaml`, `generate.sh`, `process_template.
 
 The Elixir `OrchestrationLoop` (`test_harness/lib/codegen_test_harness/orchestration_loop.ex`, `guard_bundle_flag!/2`) invokes each role via native `claude --agent <role>` + the FULL committed `harnesses/claude/claude-code-settings.json` — the same settings file the legacy (non-loop) path loads. `--agent <role>` stamps `.agent_type` natively (the installed `~/.claude/agents/<role>.md` supplies system prompt + tools), so AGENT_TYPE-gated role guards (committer/reviewer/curator/developer) and the two orchestrator confinement guards (which bypass on either `agent_id` OR `agent_type`) apply exactly as they do under a real subagent spawn. There is no reduced hook subset — the loop and legacy paths share one settings.json.
 
+## Pitfalls
+
+- **Split extraction: verify load-bearing, not meta** — Extractors pull EOF by default. Stop boundary BEFORE trailing meta. Verify last H2 is terminal cluster, not footer.
+- **`make install` registry/settings.json parity** — Changing registry `event`/`tool_guard`/`role` requires bootstrap: `hook_registrations.py --output-settings` BEFORE `make install`. New-file additions skip bootstrap.
+- **`manifest_regenerate_prompts` file check** — new prompt-source `.txt` files must exist before `make install`. Gate's install round-trip catches missing files.
+- **yq binary must be mikefarah, not python-yq** — wrong binary causes silent manifest parsing errors.
+- **`npm install` at codegen root required** — absent → hooks emit INCONCLUSIVE.
+- **`make install` required after rule/template change** — regenerates baked prompts; parity gates do not catch stale bakes. Workflow: edit → `make install` BEFORE `make test`.
+- **`mise trust` runs unconditionally on install** — no interactive prompt.
+- **Do not run `npm install` at repo root for Pi extensions** — each extension has its own node_modules; only root install is managed by install.sh.
+- **config.yaml anchoring** — Multiple blocks may share leaf values; include surrounding context. Verify via `yq` post-change.
+- **`process_template.py` include/if ordering** — includes run AFTER if-stripping, breaking fragments. Fix: move to TOP before if-stripping.
+- **Fragment whitespace** — Whitespace around `{% include %}` determines output blank lines; trailing-newline must match exactly.
+- **Non-contiguous regions** — Use separate fragments, one per region; not single-file multiple-includes.
+- **`templates/generator/install_test.sh` not auto-discovered** — Only `test_harness/install/*_test.sh` auto-discovered. Tests in both dirs must reconcile sentinels when editing install.sh.
+- **install.sh fatal-exit composition** — New guards compose without reordering; non-fatal stderr observed-only.
+- **Coupled-flag deletion: all callers must drop both flags** — Dropping one flag forces all callers to drop ALL coupled flags.
+- **`manifest_regenerate_prompts` requires FULL mode block deletion** — Cannot null out just system_prompt_file; must delete the entire mode block or regen errors.
+- **Env var leakage in tests** — Tests exercising DEFAULT branches must `env -u VAR bash` to isolate. Single `env -u` leaves fallback.
+- **Session-log order-check H1-rank false-positives** — Order-check algorithms must be H2-scoped (`##` prefix only). Ranking H1 lines (e.g., `# hook-name` in code blocks) causes false "rank decreased" denials.
+- **`Kahn algorithm`: edge direction** — Edge `SLUG -> DEP` = "SLUG blocked by DEP" (DEP executes first). Confusion between "depends on" vs "is depended on by" causes wrong sort.
+- **`parse_edges` multi-dep pitfall: captures only first dep per line** — Naive line-split + first-token extraction on `Blocks-on: a, b, c` gets only `a`. Always iterate ALL comma/space-separated tokens.
+- **Byte-cap trimming** — Measure before appending; trim stale bullets to make room.
+- **Appending an H3 death-stamp to an existing section body** — never Edit/Write; run `codegen-log append --role <role> --body @-` piping the H3 marker. Preserves the existing body, inserts before the next `## ` header or EOF.
+
 ## Trigger Keywords
 
-manifest.yaml, generate.sh, harness install, install.sh, hook_registrations.py, codegen-build, codegen-scaffold, codegen-call, generator pipeline, manifest schema, guard_bundle_flag, config single source
+manifest.yaml, generate.sh, harness install, install.sh, hook_registrations.py, codegen-build, codegen-scaffold, codegen-call, generator pipeline, manifest schema, guard_bundle_flag, config single source, yq mikefarah, npm install root, mise trust, install.sh fatal-exit, process_template include ordering

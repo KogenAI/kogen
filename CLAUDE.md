@@ -8,8 +8,6 @@ Guidance for AI agents working in the codegen repository.
 
 @context/development.md
 
-@context/pitfalls.md
-
 ---
 
 ## Agent Roles

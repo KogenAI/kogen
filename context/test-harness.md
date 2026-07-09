@@ -16,7 +16,7 @@ Tests live under `test_harness/test/stacks/` organized by stack (phoenix, static
 | `test_harness/lib/codegen_test_harness/`                      | Shared test helpers and assertion modules                                                                                                                                               |
 | `test_harness/lib/codegen_test_harness/assertions.ex`         | Shared assertion helpers used across stack tests                                                                                                                                        |
 | `test_harness/lib/codegen_test_harness/fixtures.ex`           | Fixture helpers for scaffold and generated output tests                                                                                                                                 |
-| `test_harness/lib/codegen_test_harness/role_resolver.ex`      | Resolves `{role, harness}` → `{system_prompt_path, model, effort, allowed_tools}` via `config.yaml` + agent `.md`. **Critical**: reads `.harness.<role>.<harness>.*` keys (e.g. `.harness.ops.claude.model`), NOT `.roles.<role>.*` keys which are read by live launchers (e.g. `claude-ops.sh` reads `.roles.ops.model`). These are distinct config blocks. Hermetic tests in `role_resolver_test.exs`.                          |
+| `test_harness/lib/codegen_test_harness/role_resolver.ex`      | Resolves `{role, harness}` → `{model, effort}` via `config.yaml`. Agent identity (system prompt, allowed tools) is NOT resolved here — the claude_code loop invokes roles natively via `claude --agent <role>`, which resolves prompt + tools from the installed `~/.claude/agents/<role>.md` itself. **Critical**: reads `.harness.<role>.<harness>.*` keys (e.g. `.harness.ops.claude.model`), NOT `.roles.<role>.*` keys which are read by live launchers (e.g. `claude-ops.sh` reads `.roles.ops.model`). These are distinct config blocks. Hermetic tests in `role_resolver_test.exs`.                          |
 | `test_harness/lib/codegen_test_harness/orchestration_loop.ex` | Deterministic cycle driver: sequences roles per stack, invokes each via `RoleResolver` → `codegen-call`, runs the gate via `LoopGate`. Hermetic tests in `orchestration_loop_test.exs`. |
 | `test_harness/lib/codegen_test_harness/loop_gate.ex`          | Runs the gate as a loop step by shelling `gate-select.sh`/`gate-result.sh` — no gate-logic reimplementation.                                                                            |
 | `test_harness/lib/codegen_test_harness/loop_queue.ex`         | Kahn topo-sort + transient-error classification; ported from removed `build-queue.sh`. See "Orchestration Loop" § below. Tests: `loop_queue_test.exs`. |
@@ -127,17 +127,7 @@ Boundary guard (grep for consumer name) runs in both: hermetic bash tests via `s
 
 Assertion helpers defined in `CodegenTestHarness.Assertions` should be wired into test cases guarding important postconditions (e.g., `assert_assets_deploy!`, `assert_generated_tests_pass!`). Undefined helpers with zero call sites represent regression gaps. **Static scaffold outDir**: Vite sets `outDir: "public"` (not `dist/`). Assertions must expect `public/` not `dist/`.
 
-## Bash Hook Test Debugging — Silent Crashes & Early Exits
-
-When bash hook tests show a pattern of ALL blocking tests failing while non-blocking tests pass, **suspect an early fatal crash (unbound variable under `set -u`, syntax error) rather than logic errors**. The hook exits non-zero BEFORE reaching the `block()` call, so the verdict JSON is never emitted and the output appears empty — this looks like "allow" to the test harness (no block JSON = PASSED).
-
-**Diagnostic pattern**: Run the hook in isolation with `set -x` to trace execution: `bash -x harnesses/claude/hooks/your-hook.sh 2>&1 | head -50`. Look for the line where execution stops (the last line printed before exit) — typically a variable reference before assignment (e.g., `write_cycle_state "..." "$project_dir" ...` when `project_dir` was assigned later in the script under `set -u`). Fix by **hoisting variable assignments before first use**, or by guarding with `${var:-}` if the variable is optional.
-
-**Test implication**: When a hook test suite suddenly goes from "all pass" to "all blocking tests fail", do NOT assume logic regression — check for unbound-variable crashes first. Run a single test case with `bash -x` to confirm the hook's execution trace reaches the intended block-decision point.
-
-## npm Extension Parallel-Race Flake
-
-When running `make test` (which includes TypeScript Pi extensions in parallel), occasional transient race-condition failures may occur in the extension test suites. The failure does NOT indicate code defects — the same tests pass when run individually via `cd harnesses/pi/pi-extensions/extension-name && npm run build && npm test`. Remedy: re-run `make test`. This is a known environmental race, not a gate blocker. If a single extension test passes in isolation but fails under `make test`, verify the extension has no shared state leakage (file handles, global variables, console stream restores in `finally` blocks on both success and error paths).
+Bash hook test debugging (silent crashes, early exits) → `context/hooks.md`. npm extension parallel-race flake → `context/test-harness-pitfalls.md`.
 
 ## Hermetic Regression Guards
 
@@ -150,8 +140,6 @@ Two new test files in `test_harness/test/codegen_test_harness/` run under `make 
 
 `Fixtures.run_codegen_call/3` derives `--model` and `--effort` flags from `config.yaml` by role → a **real role string is required**. This helper cannot serve as a test vehicle for role-absent cases. Instead, hermetic role-absent tests trigger via a **different missing argument** (e.g., `--harness`) that causes exit 2 with usage text, then assert the usage message is emitted. Pattern: `System.cmd("codegen-call", [missing args that trigger exit 2], ...)` and `assert {_, 2} = result`, then inspect stdout for usage text mentioning `--harness`. This approach validates the role-optional behavior without requiring dispatch through the role-resolution path.
 
-**G1–G3 confidence gaps (historical, closed)**: G1 `ops_test.exs`/`headless_launcher_test.exs` tagged `:slow`. G2 `assert_generated_tests_pass!/1` broadened to ≥4 call sites. G3 removed silent-pass on empty wildcard in seed_test.exs.
-
 For full make-target index including install/uninstall/CI targets, see `context/development.md`.
 
 ## Integration Points
@@ -160,6 +148,8 @@ For full make-target index including install/uninstall/CI targets, see `context/
 - **core**: `generate.sh` output (rendered agent files) may be asserted against in tests
 - **development**: `make test-stacks` runs the ExUnit suite; `make record-green` stamps last_green after CI passes; see `context/development.md` for full make-target index
 - **hooks**: hook bash tests (`*_test.sh`) are separate — run via `harnesses/claude/hooks/run-tests.sh`, not `mix test`; see `context/hooks.md`
+
+Seam threading (preserving test-override capacity when adding new fn params) + RoleResolver shape-change ripple to sibling tests → `context/test-harness-pitfalls.md`. Fixture/flake/Ecto/Port gotchas that overflow this file also live there.
 
 ## Testing Patterns
 

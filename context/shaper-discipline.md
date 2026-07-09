@@ -290,6 +290,16 @@ This is a SEPARATE pitch and change, not folded into shape-mode tightening. The 
 
 - **Sweep-class enforcement**: `/ready` blocks promotion when a sweep/purge/audit/collapse/rename/remove pitch is missing a full-vocabulary sweep transcript OR a producer/verifier reconciliation in `## References`. This enforcement is baked into the `/ready` skill body (not just context docs) via the `ready.md.j2` source.
 
+## Pitfalls
+
+- **Pitch line numbers drift** — Use exact anchor text, not line numbers in edits.
+- **Verify pitch edits not already applied** — `git show <commit> --stat` checks targets; verify clean.
+- **Example blocks carry routing targets** — bulk-repathing must cover inline examples too.
+- **Shape prompt two-layer architecture** — inline-probe (`_probing.txt`) checks claim-intro; readiness-check (`shape.txt`) scans completeness. Place rules by gate-phase. `/ready` inherits `_probing.txt` automatically.
+- **Read/Edit blocked for codegen/pitches/** — `subagent-read-discipline.sh` denies both on pitch files. Workaround: Bash `awk`/`grep` + Python string-replace.
+- **Pitch file grep-c anchor pitfall** — `grep -c "literal header text"` on pitch files false-positives when prose mentions the header elsewhere. Use `grep -n "^## ..."` (anchored H2) for reliable "exactly one section" assertions.
+- **Delegation-prompt H2 promotion** — `## ` lines in delegation bodies are indented to `##` before writing to prevent rank-order corruption.
+
 ## Trigger Keywords
 
 shaper rules, ask-vs-decide, deferral-with-draft, decompose-then-split, derive-and-write edges, Rule G, Rule H, Rule I, Rule J, shape mode discipline, prompt durability, section-name anchors, sweep-class, completeness contract, full-vocabulary sweep, producer/verifier reconciliation, operator-owned surface, user-facing surface removal, surface preservation, keep-vs-remove fork, contract-declaration-site completeness, declaration-site sweep, contract establishment, cross-cutting contract, declares-teaches bound, capability-removal reachability, deny blast radius, stranded actor, tool-grant reachability, sole remaining path, incomplete replacement, replacement completeness, WIRED RECONCILED PRESERVED, born-dead code, proxy probe, absorbs claim, empirical-usage-grounding, usage-mining, transcript mining, invocation frequency, error taxonomy, prior-pitch corpus, patch-sedimentation, design-decision grounding

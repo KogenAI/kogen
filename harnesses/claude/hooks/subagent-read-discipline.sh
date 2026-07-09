@@ -142,8 +142,15 @@ developer-*)
             exit 0
         fi
 
+        # Cycle logs are append-only JSONL (one JSON object per line, "ev"
+        # discriminator). Reconstruct this role's concatenated body text
+        # (jq -r unescapes \n to real newlines) before awk-scanning for the
+        # "## Plan" heading — raw-byte awk on the JSONL file itself can never
+        # match (body text is JSON-escaped, not literal markdown).
+        role_body=$(jq -r --arg r "$AGENT_TYPE" 'select(.ev=="role" and .role==$r) | .body' "$step_log" 2>/dev/null)
+
         # Extract ## Plan block (from "## Plan" to next "## " heading).
-        plan_block=$(awk '/^## Plan$/{found=1; next} found && /^## /{exit} found{print}' "$step_log")
+        plan_block=$(printf '%s\n' "$role_body" | awk '/^## Plan$/{found=1; next} found && /^## /{exit} found{print}')
 
         # Check if rel_path appears in "Files to touch:" lines within the plan block.
         if printf '%s' "$plan_block" | grep -qF "$rel_path"; then
@@ -181,8 +188,13 @@ reviewer-*)
             exit 0
         fi
 
+        # Cycle logs are append-only JSONL — reconstruct this role's
+        # concatenated body text (jq -r unescapes \n) before awk-scanning.
+        # See matching comment in the developer-* branch above.
+        role_body=$(jq -r --arg r "$AGENT_TYPE" 'select(.ev=="role" and .role==$r) | .body' "$step_log" 2>/dev/null)
+
         # Extract ## Files Modified block (from heading to next "## " heading).
-        files_modified_block=$(awk '/^## Files Modified$/{found=1; next} found && /^## /{exit} found{print}' "$step_log")
+        files_modified_block=$(printf '%s\n' "$role_body" | awk '/^## Files Modified$/{found=1; next} found && /^## /{exit} found{print}')
 
         # Check if rel_path appears in ## Files Modified.
         if printf '%s' "$files_modified_block" | grep -qF "$rel_path"; then

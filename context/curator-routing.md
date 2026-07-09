@@ -14,7 +14,9 @@ All `[local]` blocks (project-specific knowledge about codegen's structure, mode
 - **Hook authoring patterns (how to write/test a hook, output protocol, gate flow)** → `context/hook-authoring-patterns.md`
 - **Subagents, roles, agents** → `context/subagents.md`
 - **Development workflow, Make targets, testing** → `context/development.md`
-- **Pitfalls, bash gotchas, state-leakage, sed/jq/heredoc patterns** → `context/pitfalls.md`
+- **Bash-generic pitfalls, gotchas, sed/jq/heredoc patterns, RED-then-GREEN test techniques** → `context/bash-patterns.md`
+- **ExUnit/fixture/seam/flake test-harness pitfalls** → `context/test-harness-pitfalls.md`
+- **Domain-specific pitfalls** → route to the matching domain file's own `## Pitfalls` section (e.g., hook gotchas → `context/hooks.md`, scaffold gotchas → `context/scaffold.md`, core/generator gotchas → `context/core.md`)
 - **Token tuning, model config, roles** → `context/claude-token-tuning.md`
 - **Recipes, workloads** → `context/recipes.md`
 - **Scaffold behavior, output, symlinks** → `context/scaffold.md`
@@ -25,12 +27,11 @@ All `[local]` blocks (project-specific knowledge about codegen's structure, mode
 - **Test coverage, test inventory** → `context/test-coverage.md`
 - **Token mechanics (caching, prefix, lookback)** → `context/claude-token-mechanics.md`
 - **Pitch writing conventions** → `context/pitch-writing-guide.md`
-- **Benchmarking prohibitions** → `context/bench-prohibition.md`
+- **Benchmarking prohibitions, BENCH mode, artifacts, viewer** → `context/test-benchmarking.md`
 - **Deployment locations, path derivation, server topology** → `context/deployment-topology.md`
 - **Document/usage-rules generation patterns** → `context/codegen-document-patterns.md`
 - **Launcher ↔ hook wiring matrix** → `context/launcher-hook-matrix.md`
 - **Shape-mode discipline, pitch shaping** → `context/shaper-discipline.md`
-- **Benchmark BENCH mode, artifacts, viewer** → `context/test-benchmarking.md`
 - **ExUnit stack test suite, test inventory** → `context/test-harness.md`
 - **Test monitoring, watch loops** → `context/test-monitoring.md`
 

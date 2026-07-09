@@ -1,5 +1,29 @@
 # Test Benchmarking — BENCH Mode, Artifacts, Viewer
 
+## Agent Prohibition
+
+Agents MUST NEVER invoke `make test-stacks BENCH=1` or any benchmark-capture variant (`BENCH=1 REASON=...`). These commands burn real LLM token budget and run only at human-operator discretion. `make test-stacks` without `BENCH=1` stays agent-callable for the default pass/fail sweep.
+
+## Benchmark Viewer (Mix Tasks) — Quick Reference
+
+Run from `test_harness/`:
+
+- `mix codegen.bench.list` — lists all runs under `codegen/benchmarks/` newest-first
+- `mix codegen.bench.view --run codegen/benchmarks/<ts>` — ASCII metrics table for one run; add `--compare <prev>` for delta column
+
+## Benchmark Prerequisites
+
+Screenshot capture for static-stack benchmark runs requires:
+
+- `node` — must be on `PATH`
+- `playwright` npm devDependency — pinned at `^1.60.0` in root `package.json`; install via `npm install` at repo root
+- Chromium browser binary — `make install` guarantees this on static-capable boxes; `make doctor` verifies. Manual install: `npx playwright install chromium`
+
+**Two separate subsystems with different failure modes**:
+
+1. **Benchmark screenshots** — `BenchArtifacts.capture_screenshot/4` (ExUnit test phase). Missing Playwright is **non-fatal**: logs warning and returns `:ok`. JSONL bench records always written.
+2. **Static-site render gate** — `static-site-build-check.sh` (SubagentStop hook). **Fail-closed**: Chromium absent on a static-capable box blocks the developer subagent. The gate requires Chromium; benchmarks tolerate its absence.
+
 ## Benchmarking mode (BENCH=1)
 
 Enable with `BENCH=1 REASON="<description>"` on `make test-stacks`. Requires `REASON` to be non-empty (bench-prepare.sh exits 2 otherwise).
@@ -57,4 +81,4 @@ Parser (`CodegenTestHarness.UsageParser`) trims each harness envelope to `{model
 
 ## Trigger Keywords
 
-BENCH=1, REASON, benchmark capture, screenshot, bench artifacts, mix codegen.bench, summarize.js, JSONL harness_summary, last_green.json coexistence
+BENCH=1, REASON, benchmark capture, screenshot, bench artifacts, mix codegen.bench, summarize.js, JSONL harness_summary, last_green.json coexistence, playwright, agent prohibition, make bench, make test-stacks BENCH, human-operator discretion, benchmark-coverage, makefile-targets, bench-prereqs

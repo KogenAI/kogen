@@ -98,75 +98,20 @@ See `.env.sample` and `.env.prod.sample` for full variable lists.
 | `templates/generator/generate.sh <harness>` | Render agent prompts for harness                                    |
 | `update_ai_tools.sh`                        | Update Claude CLI and AI tool deps                                  |
 
-## Benchmark Viewer (Mix Tasks)
+Benchmark viewer (mix tasks), benchmark prerequisites (playwright/Chromium, two-subsystem failure modes) → `context/test-benchmarking.md`.
 
-Run from `test_harness/`:
+Runtime porting (reduced fidelity across Claude/Pi harnesses) → `context/harnesses.md`.
 
-- `mix codegen.bench.list` — lists all runs under `codegen/benchmarks/` newest-first
-- `mix codegen.bench.view --run codegen/benchmarks/<ts>` — ASCII metrics table for one run; add `--compare <prev>` for delta column
+Three-repo coordination ordering (context → codegen → platform) → `context/deployment-topology.md`.
 
-## Benchmark Prerequisites
-
-Screenshot capture for static-stack benchmark runs requires:
-
-- `node` — must be on `PATH`
-- `playwright` npm devDependency — pinned at `^1.60.0` in root `package.json`; install via `npm install` at repo root
-- Chromium browser binary — `make install` guarantees this on static-capable boxes; `make doctor` verifies. Manual install: `npx playwright install chromium`
-
-**Two separate subsystems with different failure modes**:
-
-1. **Benchmark screenshots** — `BenchArtifacts.capture_screenshot/4` (ExUnit test phase). Missing Playwright is **non-fatal**: logs warning and returns `:ok`. JSONL bench records always written.
-2. **Static-site render gate** — `static-site-build-check.sh` (SubagentStop hook). **Fail-closed**: Chromium absent on a static-capable box blocks the developer subagent. The gate requires Chromium; benchmarks tolerate its absence.
-
-## Runtime Porting — Reduced Fidelity Across Harnesses
-
-When porting a guard/hook from Claude (Bash) to Pi (TypeScript), the runtime capabilities may differ:
-
-- **Transcript access**: Claude has JSONL transcript inspection via `jq` + `TRANSCRIPT_PATH`; Pi has no transcript. Guards depending on transcript-based detection cannot be ported with full fidelity. Write a reduced-fidelity observe-only twin with disk-scan heuristics + explicit header comment documenting the gap.
-- **Event blocking asymmetry**: Claude's Stop event can block; Pi's `session_shutdown` is observe-only. All 4 Stop/SubagentStop twins emit stderr warnings, NEVER `block()`.
-
-The goal is truthful hooks that accurately reflect capability limits, not feature parity claims that hide missing capabilities.
-
-## Three-Repo Coordination Ordering
-
-Order: context → codegen → platform. Deploy docs show actual SSH invocations verbatim, not prose. Each repo committed before next. ❌ Bundle changes across repos in prose ✅ Numbered SSH/git commands.
-
-## Scaffold File Rendering Order
-
-Integrate-stage renders (PROJECT_CONTEXT, restart_server.sh, usage_rules_INDEX) run BEFORE the git commit (codegen-scaffold do_create):
-
-1. Stack-specific scaffold.sh completes file writes
-2. `run_integrate_stage` renders cross-stack files from templates
-3. Git commit runs after integrate-stage (single commit point for both stacks)
-4. Atomic mv from temp parent to final location
-
-This eliminates the dirty-tree race: integrate-stage files rendered AFTER the commit → `git status --porcelain` non-empty → build failure.
+Scaffold file rendering order (integrate-stage vs commit sequencing) → `context/scaffold.md`.
 
 ## Developer Test Budget — `developer-no-self-gate` Constraint
 
 The `developer-no-self-gate` hook caps developer at 3 test-command invocations per session. Each of these counts toward the budget: `make test`, `mix test`, bare `mix test --exclude slow`, `mix format && mix compile` (combined, still one call). **Note**: `mix format && mix compile` on the same Bash line consumes ONE budget slot (same as a single `mix test`), not two. When budget is tight, front-load the actual full test run early, or combine multiple checks into one Bash invocation (e.g., `mix format && mix test` rather than format in one call and test in another). **Shell loops in a single Bash call burn budget per invocation**: `for i in 1 2 3; do mix test; done` burns all 3 calls in one Bash invocation. Use explicit repeat flags (e.g., `--repeat-until-failure N`) instead of shell loops to conserve budget for mandatory multi-run verification sequences.
 
-## Elixir Seam Threading — Preserving Test-Override Capacity
-
-When adding a new parameter to an Elixir function that is called in a default closure but tested via seam overrides, thread the parameter into the closure BINDING, not into the seam signature. Example:
-
-The `OrchestrationLoop.invoke_role/4` function has a `/6` `codegen_call_fn` seam. When the Elixir loop needs to pass a new `agent` parameter to `default_codegen_call`, the loop adds a trailing `:agent` param to `default_codegen_call/8` → `/9`. The loop's default closure in `invoke_role` binds `role` (already in scope in `invoke_role`) into the call to `default_codegen_call`, passing `role` as the new ninth argument. Tests that override `codegen_call_fn` via a seam do NOT change signature — they still receive /6 args (`cwd, model, effort, system_prompt_path, allowed_tools, prompt`). The loop's default closure adapts: it builds the /9 call internally without forcing test overrides to match.
-
-**Benefits**: 
-- Zero churn to every test override of `codegen_call_fn` (can be dozens across the test suite)
-- The parameter is added at the call site (the loop) where it's known, not at the seam boundary
-- The seam stays a stable interface for tests
-
-**When NOT to use this pattern**: When the parameter is genuinely part of the seam contract (i.e., every override MUST know about it), thread it into the seam signature and update all test overrides. Use this pattern only when the loop-specific code (the default closure) should own the new parameter and tests don't need to override it.
-
-## RoleResolver Shape Changes and Sibling Test Ripple
-
-When a public function in Elixir changes its return type (e.g., `resolve_role/2,3` returning `{String.t(), String.t()}` instead of a 4-tuple), the shape change ripples to test files that are NOT explicitly listed in the edit scope. Example: a pitch naming `orchestration_loop_test.exs` but NOT `role_resolver_test.exs` still requires the sibling to be updated because `resolve_role`'s public contract changed.
-
-**Fix**: Before editing the primary target file, grep for ALL references to the function across `test_harness/test/` with keywords like `resolve_fn`, `resolve_role`, `codegen_call_fn` + the module name. A narrower grep scoped only to the plan's file list will miss sibling test files that stub the same functions. Update all test overrides/stubs in the same pass.
+Elixir seam threading (preserving test-override capacity) + RoleResolver shape-change sibling-test ripple → `context/test-harness-pitfalls.md`.
 
 ## Trigger Keywords
 
-make install, make test, make test-stacks, CI/CD, Makefile, contribution, README, env vars, harness-parity, launcher tests, Makefile for t in list, dev loop, tech stack, coding conventions, multi-repo ordering, context codegen platform, seam threading, RoleResolver, function shape change, developer-no-self-gate, test budget
-
-→ See `context/pitfalls.md` for codegen-infra pitfalls and bash gotchas.
+make install, make test, make test-stacks, CI/CD, Makefile, contribution, README, env vars, harness-parity, launcher tests, Makefile for t in list, dev loop, tech stack, coding conventions, developer-no-self-gate, test budget

@@ -168,7 +168,11 @@ This is not unit-testable in bash (overlays only exist post-phx.gen.release); co
 - **Idempotent .gitignore updates use section markers** — repeated `integrate` runs do not duplicate codegen symlink entries in .gitignore; marker comment detects already-present section
 - **Post-condition anchor drift** — after B4 fixture regeneration, re-verify every mutation's `grep -qF` anchor; mutations with drifted anchors will silently skip during tests (idempotency guard matches but post-condition fails). Always pair idempotency guard + post-condition on the same anchor.
 - **Fixture regeneration breaks make test** — B4 fixture regen is gate-affecting; fixture file changes → mutation unit tests run against new content. Re-run `shared/scaffold/phoenix/run-tests.sh` after any regen to catch anchor drift or mutation failures.
+- **Bash module name derivation**: Use `python3` one-liner for slug→CamelCase; pure-sed BRE is fragile across BSD/GNU + bash 3.2 case-fold gaps. Reference: the `app_module` derivation block in `scaffold.sh` (search `app_module=`).
+- **Scaffold.sh Phase pattern for new directories**: Canonical model is Phase 3 (`priv/plts` + `.keep` file): `mkdir -p` + `touch .gitkeep` + echo status message.
+- **`SCHEMA_VERSION` staleness preflight** — `codegen-scaffold` stamps `SCHEMA_VERSION` + `scaffolded_from_sha`/`scaffolded_at` into `<app>/codegen/manifest.yaml` on every `create`/`integrate` (ALWAYS-REWRITE). `codegen-build` refuses (exit 2, fail-closed) when the app's stamped version is behind the repo's current version.
+- **`git status --porcelain` on fresh fixtures requires explicit commit** — `git init` + untracked files = dirty. Run `git init` + `git add -A` + `git commit` to establish a clean-tree baseline, then create stray files for the dirty case.
 
 ## Trigger Keywords
 
-scaffold mutations, guard test discovery, credo cleanup, portable sed, eex_render postcondition, mutation flag discipline, PageController route strip, mutation unit tests
+scaffold mutations, guard test discovery, credo cleanup, portable sed, eex_render postcondition, mutation flag discipline, PageController route strip, mutation unit tests, app_module derivation, SCHEMA_VERSION staleness, clean-tree fixture baseline

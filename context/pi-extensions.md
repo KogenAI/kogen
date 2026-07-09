@@ -182,6 +182,12 @@ Timer deps are injected via a `LoopDeps` interface (`{setInterval, clearInterval
 - **Extension structure varies** — `enforcement` has no root-level `index.ts` (entry is under `src/`); all four extensions have a `src/` subdirectory; do not assume a uniform layout at root level across all four extensions
 - **`\z` anchor (PCRE) not supported in JS regex** — JavaScript regex treats `\z` as literal `z`. When porting regex from Bash/Ruby, replace end-of-string anchors with string-split patterns: `text.split(header)` + `slice` to find section boundary instead of `(?=\n###)` lookahead anchors. If the regex has a fallback pattern, the bug is masked in tests but creates a latent over-match edge case.
 - **Markdown section body extraction** — avoid `\z`-anchored regex for extracting markdown section bodies. Prefer string-split pattern: `split("## ")[N]` then slice to the next `\n## ` boundary. This avoids both regex limitations and makes intent explicit.
+- **[shared] JS `\s` vs bash grep** — JS `\s` crosses newlines; bash grep per-line. Use `[ \t]` for same-line-only whitespace parity.
+- **Pi enforcement tests run against compiled dist, not source** — Pi extension tests for enforcement hooks must run against compiled `dist/*.test.js`, NOT `.ts` source files directly. Pattern: `npm run build && npm test`. Running `node --test src/...ts` fails with `ERR_MODULE_NOT_FOUND` even after build.
+- **Stale compiled dist/ test artifacts survive src deletion** — Fix: `rm -rf dist &&` as first step of build script.
+- **Makefile npm-ext race** — Parallel `make test`: both `subagents-integration` + npm-ext loop target `subagents/dist/`. Fix: serialize build BEFORE pids fan-out.
+- **Pi guard scope** — Use `projectDir` (repo tested), not `codegenDir` (checker location); codegenDir checks skip every run.
+- **Pi test `git commit` + global `commit.gpgsign=true`** — Parallel npm-ext tests MUST call `git config commit.gpgsign false` per tmpDir setup to isolate from global config.
 
 ## Trigger Keywords
 

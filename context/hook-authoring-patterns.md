@@ -4,6 +4,10 @@ How-to patterns for authoring Claude Code hook scripts in `harnesses/claude/hook
 
 For the per-hook inventory table, hook-event taxonomy, key paths, and the Pitfalls reference index → `context/hooks.md`.
 
+## Hook Relocation & Porting
+
+**[shared] Diff-scanning hook scope independence — when widening diff source** — When relocating a hook from staged-only (`git diff --cached`) to working-tree (`git diff HEAD`) scope, preserve the file-extension scope (`.ex`/`.exs`) independently. Widening the diff SOURCE is orthogonal to narrowing the diff TARGET files. A hook that scans string-literal patterns in source diffs will false-positive on its OWN test-fixture files (`.sh`/`.ts` test scripts constructing the same literal text) if file-type scoping is dropped — self-referential blast radius, especially dangerous for hooks that develop/test themselves in the same repo they protect. Always gate content scans to target file type BEFORE pattern matching. **Fast diagnostic**: `git diff HEAD --name-only` cross-referenced against the hook's scoping predicate confirms whether the predicate (not detection logic) is the defect.
+
 ## Hook Bypass Patterns & Signal Handling
 
 **Role-based bypass**: Some hooks need to distinguish between orchestrator launcher modes (`claude-build`, `claude-ops`, `claude-debug`, etc.) — these use the `signal` field in their registration. The most common signal is `CLAUDE_ROLE_FAMILY`, which maps the outer-session launcher mode to a role name via `resolve_role()` from `_role.sh`. Examples:
@@ -466,4 +470,4 @@ HOOK-MANIFEST edits require BOTH `.sh` AND `registry.yaml` to update:
 
 ## Trigger Keywords
 
-how to write a hook, SubagentStop fix-up, Stop hook authoring, hook test authoring, hooks-lib, output protocol, gate verdict flow, hook registration, transcript lag, kind: registration vs denial, hook layering, measurement vs enforcement, DENY+ALLOW, ≥14 cases
+how to write a hook, SubagentStop fix-up, Stop hook authoring, hook test authoring, hooks-lib, output protocol, gate verdict flow, hook registration, transcript lag, kind: registration vs denial, hook layering, measurement vs enforcement, DENY+ALLOW, ≥14 cases, hook relocation, diff-scanning hook scope, hook porting, diff source widening, file-extension scope, scope independence, self-referential blast radius, test-fixture false-positive

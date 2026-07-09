@@ -128,7 +128,7 @@ while IFS= read -r fpath; do
         if [ -z "$index_staged" ]; then
             add_missing="${add_missing}${add_missing:+$'\n'}context-index-parity: context/${basename}.md added but $index_path is not staged. Stage $index_path with a \"Load when prompt mentions...\" row for \"${basename}\" in § Domain Context Files."
         else
-            if ! printf '%s' "$staged_body" | grep -qF "$basename"; then
+            if ! printf '%s' "$staged_body" | grep -qF "\`context/${basename}.md\`"; then
                 add_missing="${add_missing}${add_missing:+$'\n'}context-index-parity: context/${basename}.md added but no index row mentions \"${basename}\" in ${index_path} § Domain Context Files. Add a \"Load when prompt mentions...\" row."
             fi
         fi
@@ -139,7 +139,7 @@ while IFS= read -r fpath; do
         else
             check_body="$head_body"
         fi
-        if printf '%s' "$check_body" | grep -qF "$basename"; then
+        if printf '%s' "$check_body" | grep -qF "\`context/${basename}.md\`"; then
             delete_stale="${delete_stale}${delete_stale:+$'\n'}context-index-parity: context/${basename}.md deleted but a stale index row still mentions \"${basename}\". Remove it."
         fi
     fi

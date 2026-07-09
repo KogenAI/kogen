@@ -288,4 +288,22 @@ The fixture `test_harness/mutations/fixtures/phx_new_skeleton/` must stay in syn
 
 **Gate impact**: Fixture changes perturb `make test` (mutation unit tests run vs this fixture via Makefile:123). Highest gate risk if fixture drifts.
 
+## Scaffold File Rendering Order
+
+Integrate-stage renders (PROJECT_CONTEXT, restart_server.sh, usage_rules_INDEX) run BEFORE the git commit (codegen-scaffold do_create):
+
+1. Stack-specific scaffold.sh completes file writes
+2. `run_integrate_stage` renders cross-stack files from templates
+3. Git commit runs after integrate-stage (single commit point for both stacks)
+4. Atomic mv from temp parent to final location
+
+This eliminates the dirty-tree race: integrate-stage files rendered AFTER the commit → `git status --porcelain` non-empty → build failure.
+
+## Pitfalls
+
+- **Phoenix-colocated esbuild** — `phoenix-colocated` import requires `mix compile` first.
+- **Relative symlinks** — Compute relpaths against final dir, not temp.
+- **Scaffold global-read convention** — `run_integrate_stage()` reads scaffold parameters as GLOBALS (`STACK`, `SLUG`, `RESTART_RPC_CMD`, etc.), not function parameters. New flags assigned in the shared arg-parse loop; NO parameter threading.
+- **Post-condition assertions in mutations** — validate preconditions (file exists, anchor present) and postconditions (expected lines added, placeholders resolved). `eex_render.sh` should fail on unresolved `<%= ... %>` placeholders.
+
 Mutation scripts, guard-test discovery, fixture regeneration, credo cleanup, portable-sed idiom: → see `context/scaffold-mutations.md`.

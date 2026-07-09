@@ -65,11 +65,20 @@ export OCG_CODEGEN_DIR=/path/to/codegen   # override only when BASH_SOURCE deriv
 
 Cross-reference: `shared/rules/shared/shell-script-discipline.md` — "Derive Root, Never Hardcode" section.
 
+## Three-Repo Coordination Ordering
+
+Order: context → codegen → platform. Deploy docs show actual SSH invocations verbatim, not prose. Each repo committed before next. ❌ Bundle changes across repos in prose ✅ Numbered SSH/git commands.
+
+## Pitfalls
+
+- **`CODEGEN_DIR` must be absolute** — Relative paths break symlink resolution.
+- **[shared] Worktree-cwd is ephemeral** — Launcher `--worktree` cwd destroyed at teardown. Export `CODEGEN_PITCH_ROOT` resolving durable main-repo root (via git-common-dir) BEFORE worktree re-root. Always-on exports ensure all paths inherit durable root.
+
 ---
 
 ## Trigger Keywords
 
-deployment, server, prod, staging, dashboard box, Hetzner, CODEGEN_DIR, OCG_CODEGEN_DIR, hardcode, BASH_SOURCE, multi-location, install target vs source, codegen root, where does codegen run
+deployment, server, prod, staging, dashboard box, Hetzner, CODEGEN_DIR, OCG_CODEGEN_DIR, hardcode, BASH_SOURCE, multi-location, install target vs source, codegen root, where does codegen run, three-repo ordering, context codegen platform, worktree cwd ephemeral
 
 ---
 

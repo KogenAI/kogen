@@ -21,6 +21,10 @@
 #  17: delete context/stale.md, re-stage index with stale row still present → DENY
 #  18: live add-parity gap fixture — add context/bench-prohibition.md + index lacking basename → DENY
 #  19: live delete-parity gap fixture — delete context/curator-routing.md + stale row remains → DENY
+#  20: phantom row in staged index (references context/ghost.md, file absent) → DENY
+#  21: staged index references context/real.md, file exists on disk → ALLOW
+#  22: substring-collision regression — delete context/pitfalls.md while
+#      context/test-harness-pitfalls.md retained → ALLOW (not a false stale-row DENY)
 
 set -euo pipefail
 
@@ -100,7 +104,7 @@ run_test "staged add context/foo.md, no PROJECT_CONTEXT.md change → DENY" "2" 
 dir2=$(make_fixture 2)
 printf 'context\n' >"$dir2/context/bar.md"
 git -C "$dir2" add "context/bar.md"
-printf '# PROJECT_CONTEXT.md\n## Domain Context Files\n- context/bar.md\n' >"$dir2/PROJECT_CONTEXT.md"
+printf '# PROJECT_CONTEXT.md\n## Domain Context Files\n- `context/bar.md`\n' >"$dir2/PROJECT_CONTEXT.md"
 git -C "$dir2" add "PROJECT_CONTEXT.md"
 git -C "$dir2" commit -q -m "add bar with row"
 git -C "$dir2" rm -q "context/bar.md"
@@ -115,7 +119,7 @@ run_test "staged delete context/bar.md, stale row in HEAD index, no index re-sta
 dir3=$(make_fixture 3)
 printf 'context\n' >"$dir3/context/new.md"
 git -C "$dir3" add "context/new.md"
-printf '# PROJECT_CONTEXT.md\n## Domain Context Files\n- context/new.md\n' >"$dir3/PROJECT_CONTEXT.md"
+printf '# PROJECT_CONTEXT.md\n## Domain Context Files\n- `context/new.md`\n' >"$dir3/PROJECT_CONTEXT.md"
 git -C "$dir3" add "PROJECT_CONTEXT.md"
 
 run_test "staged add context/new.md + PROJECT_CONTEXT.md mentioning new → ALLOW" "0" \
@@ -232,7 +236,7 @@ run_test "user-app layout: staged add context/foo.md, no codegen/PROJECT_CONTEXT
 dir12=$(make_fixture_userapp 12)
 printf 'content\n' >"$dir12/context/new.md"
 git -C "$dir12" add "context/new.md"
-printf '# PROJECT_CONTEXT.md (codegen)\n## Domain Context Files\n- context/new.md\n' >"$dir12/codegen/PROJECT_CONTEXT.md"
+printf '# PROJECT_CONTEXT.md (codegen)\n## Domain Context Files\n- `context/new.md`\n' >"$dir12/codegen/PROJECT_CONTEXT.md"
 git -C "$dir12" add "codegen/PROJECT_CONTEXT.md"
 
 run_test "user-app layout: staged add context/new.md + codegen/PROJECT_CONTEXT.md mentioning new → ALLOW" "0" \
@@ -283,7 +287,7 @@ fi
 dir15=$(make_fixture 15)
 printf 'content\n' >"$dir15/context/foo.md"
 git -C "$dir15" add "context/foo.md"
-printf '# PROJECT_CONTEXT.md\n## Domain Context Files\n- context/unrelated.md\n' >"$dir15/PROJECT_CONTEXT.md"
+printf '# PROJECT_CONTEXT.md\n## Domain Context Files\n- `context/unrelated.md`\n' >"$dir15/PROJECT_CONTEXT.md"
 git -C "$dir15" add "PROJECT_CONTEXT.md"
 
 stdout15=$(printf '%s' \
@@ -305,7 +309,7 @@ fi
 dir16=$(make_fixture 16)
 printf 'content\n' >"$dir16/context/gone.md"
 git -C "$dir16" add "context/gone.md"
-printf '# PROJECT_CONTEXT.md\n## Domain Context Files\n- context/gone.md\n' >"$dir16/PROJECT_CONTEXT.md"
+printf '# PROJECT_CONTEXT.md\n## Domain Context Files\n- `context/gone.md`\n' >"$dir16/PROJECT_CONTEXT.md"
 git -C "$dir16" add "PROJECT_CONTEXT.md"
 git -C "$dir16" commit -q -m "add gone with row"
 git -C "$dir16" rm -q "context/gone.md"
@@ -322,7 +326,7 @@ run_test "delete context/gone.md + stage index with gone row removed → ALLOW" 
 dir17=$(make_fixture 17)
 printf 'content\n' >"$dir17/context/stale.md"
 git -C "$dir17" add "context/stale.md"
-printf '# PROJECT_CONTEXT.md\n## Domain Context Files\n- context/stale.md\n' >"$dir17/PROJECT_CONTEXT.md"
+printf '# PROJECT_CONTEXT.md\n## Domain Context Files\n- `context/stale.md`\n' >"$dir17/PROJECT_CONTEXT.md"
 git -C "$dir17" add "PROJECT_CONTEXT.md"
 git -C "$dir17" commit -q -m "add stale with row"
 git -C "$dir17" rm -q "context/stale.md"
@@ -349,7 +353,7 @@ fi
 dir18=$(make_fixture 18)
 printf 'content\n' >"$dir18/context/bench-prohibition.md"
 git -C "$dir18" add "context/bench-prohibition.md"
-printf '# PROJECT_CONTEXT.md\n## Domain Context Files\n- context/other-file.md\n' >"$dir18/PROJECT_CONTEXT.md"
+printf '# PROJECT_CONTEXT.md\n## Domain Context Files\n- `context/other-file.md`\n' >"$dir18/PROJECT_CONTEXT.md"
 git -C "$dir18" add "PROJECT_CONTEXT.md"
 
 stdout18=$(printf '%s' \
@@ -372,7 +376,7 @@ fi
 dir19=$(make_fixture 19)
 printf 'content\n' >"$dir19/context/curator-routing.md"
 git -C "$dir19" add "context/curator-routing.md"
-printf '# PROJECT_CONTEXT.md\n## Domain Context Files\n- context/curator-routing.md\n' >"$dir19/PROJECT_CONTEXT.md"
+printf '# PROJECT_CONTEXT.md\n## Domain Context Files\n- `context/curator-routing.md`\n' >"$dir19/PROJECT_CONTEXT.md"
 git -C "$dir19" add "PROJECT_CONTEXT.md"
 git -C "$dir19" commit -q -m "add curator-routing with row"
 git -C "$dir19" rm -q "context/curator-routing.md"
@@ -397,7 +401,7 @@ fi
 # ---------------------------------------------------------------------------
 dir20=$(make_fixture 20)
 # Stage PROJECT_CONTEXT.md with a phantom row for context/ghost.md (file not created).
-printf '# PROJECT_CONTEXT.md\n## Domain Context Files\n- context/ghost.md\n' >"$dir20/PROJECT_CONTEXT.md"
+printf '# PROJECT_CONTEXT.md\n## Domain Context Files\n- `context/ghost.md`\n' >"$dir20/PROJECT_CONTEXT.md"
 git -C "$dir20" add "PROJECT_CONTEXT.md"
 
 stdout20=$(printf '%s' \
@@ -420,11 +424,35 @@ fi
 dir21=$(make_fixture 21)
 printf 'content\n' >"$dir21/context/real.md"
 git -C "$dir21" add "context/real.md"
-printf '# PROJECT_CONTEXT.md\n## Domain Context Files\n- context/real.md\n' >"$dir21/PROJECT_CONTEXT.md"
+printf '# PROJECT_CONTEXT.md\n## Domain Context Files\n- `context/real.md`\n' >"$dir21/PROJECT_CONTEXT.md"
 git -C "$dir21" add "PROJECT_CONTEXT.md"
 
 run_test "staged index references context/real.md, file exists → ALLOW" "0" \
     "{\"hook_event_name\":\"PreToolUse\",\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"git commit -m \\\"add real\\\"\"},\"agent_type\":\"committer\",\"agent_id\":\"a\",\"cwd\":\"$dir21\"}"
+
+# ---------------------------------------------------------------------------
+# Test 22: substring-collision regression — delete context/pitfalls.md while
+# context/test-harness-pitfalls.md remains a live, valid index row → ALLOW.
+# A bare `grep -qF "$basename"` on "pitfalls" would false-match the retained
+# "test-harness-pitfalls" row and wrongly DENY as delete_stale. The fix anchors
+# on the exact backtick-delimited row (`context/pitfalls.md`), so the retained
+# sibling row must NOT trigger a false stale-row denial.
+# ---------------------------------------------------------------------------
+dir22=$(make_fixture 22)
+printf 'content\n' >"$dir22/context/pitfalls.md"
+git -C "$dir22" add "context/pitfalls.md"
+printf 'content\n' >"$dir22/context/test-harness-pitfalls.md"
+git -C "$dir22" add "context/test-harness-pitfalls.md"
+printf '# PROJECT_CONTEXT.md\n## Domain Context Files\n- `context/pitfalls.md`\n- `context/test-harness-pitfalls.md`\n' >"$dir22/PROJECT_CONTEXT.md"
+git -C "$dir22" add "PROJECT_CONTEXT.md"
+git -C "$dir22" commit -q -m "add pitfalls + test-harness-pitfalls with rows"
+git -C "$dir22" rm -q "context/pitfalls.md"
+# Re-stage index with only the pitfalls row removed; test-harness-pitfalls row retained.
+printf '# PROJECT_CONTEXT.md\n## Domain Context Files\n- `context/test-harness-pitfalls.md`\n' >"$dir22/PROJECT_CONTEXT.md"
+git -C "$dir22" add "PROJECT_CONTEXT.md"
+
+run_test "delete context/pitfalls.md, retained context/test-harness-pitfalls.md row (substring collision) → ALLOW" "0" \
+    "{\"hook_event_name\":\"PreToolUse\",\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"git commit -m \\\"remove pitfalls\\\"\"},\"agent_type\":\"committer\",\"agent_id\":\"a\",\"cwd\":\"$dir22\"}"
 
 echo ""
 echo "Results: $pass passed, $fail failed"

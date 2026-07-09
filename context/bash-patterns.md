@@ -52,6 +52,53 @@ When creating a RED-then-GREEN proof by redirecting a hook script via `git show 
 
 This keeps both `dirname "$0"` resolutions in the real source directory where relative sourcing works correctly.
 
+## Pitfalls
+
+- **Bash heredoc loop state** — use `while <<EOF`, not pipe.
+- **Bash subshell export isolation**: Pipe subshells (`printf ... | fn`) execute in a subshell — exports + variable mutations invisible to outer process. Fix: use file redirect (`while ... done < file` or `fn < "$stdin_file"`) instead of pipe.
+- **`local` under `set -u`** — fails in if/elif at script scope. Bare assignment OK. Reset at loop top.
+- **Portable sed** — `sed -i ''` (BSD) ≠ GNU. Use Python for portability, or temp-file rewrite: `sed 'EXPR' file >"${file}.tmp" && mv "${file}.tmp" file`.
+- **Bash grep `\b` hyphen false-positive** — Use `(^|[^a-zA-Z0-9-])token`.
+- **Bash 3.2** — No `declare -A`, `wait -n`, `${VAR@L}` case-fold. Use `tr '[:upper:]' '[:lower:]'`.
+- **Path canonicalization** — Canonicalize both sides for `/var`↔`/private/var` symlinks via `hooks_realpath` (bash) or `resolveRealPath` (TS).
+- **Heredoc expansion** — Unquoted `<<EOF` expands; `<<'EOF'` doesn't. Match stub convention: single-quoted uses bare `$*`; unquoted needs `\$*`.
+- **[shared] bash `continue` in nested heredoc loops breaks inner loop only** — `continue` inside `while read -r` heredoc-fed inner loop only breaks inner loop, not outer main loop. Place `break`/logic at outer loop level to break out of edge-scan after first-unmet-dep found.
+- **Grep footguns** — `-v` deletes before keep. BRE `\(` = GROUP; use `-F` for literals. **Always use `grep -qF -- "$needle"`** when needle may be flag-shaped (e.g., `--harness=X`); macOS grep silently misparses without `--`.
+- **[shared] `grep -c` + fallback double-prints** — `grep -c` exits 1 on no-match; `|| echo 0` fires and emits second `0`. Drop fallback, rely on grep-c alone.
+- **Shell test binary stubbing** — Symlink tools, omit target, filter `$PATH`. Use `command -v` (builtin). `export -f` doesn't propagate to subprocesses; use PATH-stub pattern instead. Pattern: `PATH="$BIN_DIR:$PATH" bash "$HOOK"`.
+- **PATH-mutation runtime order** — New exec branch added textually AFTER PATH-prepend still inherits it at runtime. Trace EXECUTION flow (not file order); textually-later can run textually-after PATH-mutation.
+- **Hook stub isolation for sourced files** — Pre-sourcing doesn't work. Create per-test `CODEGEN_DIR` subdir with stub, invoke with `CODEGEN_DIR="$TMP_ROOT/tN" bash "$HOOK"`.
+- **jq null extraction in hook payloads** — `jq -r '.field'` on JSON null emits `"null"` (not empty). Always use `jq -r '.field // empty'` for optional fields.
+- **yq null-safety** — Every yq array op → `(.field // [])` guard. `.field | join(",")` crashes when field null/absent.
+- **Conditional final statements** — Use `if/then/fi` instead of `&&` (flips exit code).
+- **Cleanup exit code** — `RESULT=0; inner_cmd || RESULT=$?; cleanup; exit $RESULT`.
+- **Fail-closed refute in tests** — to prove a script aborts BEFORE an irreversible action, use a shimmed subprocess marker: stub the irreversible command to record if called, then `refute` the marker was set.
+- **`${PIPESTATUS[1]}` captured immediately after pipeline** — Any intervening command resets the array. Pattern: `find | xargs ...; _rc=${PIPESTATUS[1]}` on next line only.
+- **PIPESTATUS through tee pipe: use set +e / set -e boundary pattern** — Pattern: `set +e; cmd | tee file; rc="${PIPESTATUS[0]}"; set -e`. Do NOT use `|| true` — it zeroes PIPESTATUS.
+- **Per-attempt test variants via `eval`** — Use integer counter + eval for per-attempt body overrides (Bash 3.2-safe, injection-safe).
+- **Sourced bash library in Bash tool context** — Use `bash -c 'source <lib> && fn'` for bash-specific syntax.
+- **`--no-config` flag isolates tmpdir tests** — Use `--no-config` for tools with hierarchical config discovery to block ancestor leakage.
+- **Fail-loud on guaranteed-dependency absence** — Don't skip tests for tools guaranteed by `make install` (prettier, node). Fail loud; soft-skip masks environment assumption violations.
+- **Hoist variable assignments before guards** — Assign ABOVE the branch that uses them, not inline.
+- **`set -u` with git commands** — Guard both call (`2>/dev/null` on git) and comparison (`-n "$var"` before arithmetic) to handle empty repos safely.
+- **Git repo init in test setup** — Test fixtures calling `git commit` must call `git init` themselves. Pattern: `git init -q` + `git config user.email/name` + `git add/commit`.
+- **`guard_breadcrumb` helper portability** — Use `stat -f '%m' "$path" 2>/dev/null || stat -c '%Y' "$path" 2>/dev/null || echo 0` for mtime (BSD/GNU/fallback).
+- **Test fixture leak: `git reset HEAD` vs `git checkout`** — `git reset HEAD <file>` unstages but leaves appended working-tree content. Later tests re-reading the file see the leaked append. Fix: `git checkout -- <file>` after reset to revert both staging and working tree.
+- **[local] RED-then-GREEN for verdict-string flips** — When converting output value (e.g., INCONCLUSIVE → FAIL), test against PRE-fix source (red, prove it fires) then POST-fix (green). Layer proof where verdict is produced, not routed.
+- **[local] RED-then-GREEN for source-grep guard tests via scratch copies** — When adding a source-grep guard, prove it catches violations: copy target to `/tmp`, inject forbidden token, run test against injected copy (RED), confirm real source re-passes (GREEN).
+- **[local] RED-then-GREEN for bash assertions via `git show HEAD:<path>` when fix uncommitted** — Pull pre-fix source via `git show HEAD:<file> > /tmp/<file>.pre.sh` while working-tree fix is uncommitted (RED test against pre-fix), then test against fixed source in working tree (GREEN).
+- **[shared] RED-then-GREEN proof via floating `git show HEAD:<file>` self-invalidates once fix lands** — When a proof depends on `git show HEAD:<file>` to pull pre-fix "broken" state, the moment the fix commits to HEAD the proof self-invalidates. Fix: synthesize hardcoded pre-fix fixture reproducing exact historical bug instead of relying on floating HEAD state.
+- **[shared] macOS symlink mismatch** — Plain `cd` doesn't resolve `/var` → `/private/var`. Assert basename not full path.
+- **[local] Ambient CLAUDE_ROLE/CODEGEN_BUILD_START_TS leak into unscoped hook tests** — Fix: `env -u CLAUDE_ROLE -u CODEGEN_BUILD_START_TS bash "$HOOK"` when running standalone outside `make test`.
+- **[shared] Ambient env leaks into hermetic test fixtures** — Use `env -u VAR1 -u VAR2` for "neither set" test; omitting one fails.
+- **[shared] Copying to `/tmp` breaks relative paths** — `HOOK="$(dirname "$0")/hook.sh"` breaks when `$0` is `/tmp/copy` (dirname is `/tmp`). Use in-place diffs via `git diff`/`git show` instead.
+- **Bash isolation**: `sed -n '/<fn>/,/<close>/p' | eval` avoids argparse `exit` when testing helpers.
+- **Timestamps**: `YYYYMMDD_HHMMSS` sorts lexically ≡ chronologically. Use `[ "$ts1" \< "$ts2" ]` for portable compare.
+- **Bash patterns**: `#` and `[]` are glob-special in `${var%%pattern}` expansions. Hook simulation may fail; test literal code.
+- **Hook deletion: full-vocabulary grep** — search filename, id, deny-message across ALL files post-deletion. A hook name can survive in `registry.yaml`, test comments, or a sibling hook's skip-list after the `.sh` itself is removed; a narrow grep on the deleted filename alone misses those. Sweep the full vocabulary (filename, HOOK-MANIFEST id, deny-message substrings) before declaring the deletion complete.
+- **`run-tests.sh` is NOT a registered hook and has NO paired `*_test.sh`** — it's a utility runner, not a hook subject to registration/enforcement. No `run-tests.sh_test.sh` pairing exists. (1) The runner is untested by the hook-test suite by design. (2) Edits require manual verification via `make test`. (3) Fixing the runner needs no test-file changes.
+- **`bash -n` misparses zsh completion scripts** — use `zsh -n` for zsh files, not `bash -n`.
+
 ## Trigger Keywords
 
-stateful stub, counter file, test isolation, RED-then-GREEN proof, bash test patterns, ambient env leakage, CLAUDE_ROLE, PI_ROLE, git show, dirname sourcing
+stateful stub, counter file, test isolation, RED-then-GREEN proof, bash test patterns, ambient env leakage, CLAUDE_ROLE, PI_ROLE, git show, dirname sourcing, PIPESTATUS, jq null safety, yq null safety, portable sed, macOS symlink, grep footguns, PATH stub, hook deletion full-vocabulary grep, run-tests.sh not a registered hook, zsh completion bash -n misparse
