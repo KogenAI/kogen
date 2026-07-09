@@ -114,6 +114,15 @@ A cycle whose only output was gitignored self-meta (pitch `mv`, session log) leg
 
 Multi-repo: see §Multi-Repo Sequencing for commit ordering across sibling repos.
 
+### Post-commit clean-tree self-check (MANDATORY)
+
+After `git commit` succeeds, run `git status --porcelain` AGAIN. If the output is **non-empty**, the commit did NOT capture the working tree — a pre-commit hook blocked it, or staging missed files. This is a FALSE success:
+
+- Report `status: failed` with a one-sentence reason (e.g. `commit left N file(s) uncommitted — pre-commit hook blocked or staging incomplete`). NEVER report `status: success`.
+- Do NOT retry blindly or fabricate a SHA.
+
+Gitignored paths never appear in `--porcelain`, so a legitimately-clean post-commit tree passes. This is the primary fail-loud for the legacy engine (which has no loop-level `verify_committed!`); the Elixir loop enforces the same invariant post-committer.
+
 ## One Logical Fix = One Commit
 
 Single pitch/task → single commit. Do NOT split unless the delegation prompt explicitly requests it.

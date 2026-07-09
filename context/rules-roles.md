@@ -113,6 +113,8 @@ Committer stages **ALL cycle output** in a single `git add -A` commit per cycle.
 
 **One commit per cycle is mandatory** — partial snapshots (staging only a subset of cycle-modified files) are forbidden. The clean-tree gate (`build-no-success-before-commit.sh`) blocks SHIPPED if any modified file remains unstaged.
 
+**Post-commit self-check**: after committing, the committer re-runs `git status --porcelain`; a non-empty tree means the commit did not capture the tree (blocked hook / incomplete staging) → report `status: failed`, never `success`. This is the source-level fail-loud for the legacy engine; the Elixir loop enforces the same exactly-one-commit + clean-tree invariant via `verify_committed!`/`assert_work_produced!` post-committer.
+
 **Exception: partial-readiness carve-out** — when work is genuinely blocked and incomplete (e.g., reviewer denies certain changes that must be redone), that blocked work remains unstaged for the next cycle. This is a distinct case from a partial commit of cycle-complete output. The loop re-invokes the developer role or fails the cycle based on reviewer guidance.
 
 ## Trigger Keywords

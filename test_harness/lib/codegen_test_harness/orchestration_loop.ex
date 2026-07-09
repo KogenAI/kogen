@@ -347,17 +347,19 @@ defmodule CodegenTestHarness.OrchestrationLoop do
         stderr_to_stdout: true
       )
 
-    advanced? = String.trim(count_out) != "0"
+    commit_count = String.trim(count_out)
+    exactly_one_commit? = commit_count == "1"
 
     {diff_out, 0} =
       System.cmd("git", ["diff", base_head, "HEAD"], cd: cwd, stderr_to_stdout: true)
 
     diff_nonempty? = String.trim(diff_out) != ""
 
-    unless advanced? and diff_nonempty? do
-      raise "OrchestrationLoop: committer returned success and the tree is clean, but NO work was " <>
-              "produced this cycle — HEAD did not advance past the cycle base (#{base_head}) with a " <>
-              "non-empty diff. This is the no-op false-success the loop exists to prevent (loop_failed)."
+    unless exactly_one_commit? and diff_nonempty? do
+      raise "OrchestrationLoop: committer returned success but the cycle did NOT produce exactly one " <>
+              "commit — git rev-list --count #{base_head}..HEAD = #{commit_count} (expected 1). " <>
+              "0 = no-op false-success (no work committed); ≥2 = split commits (the invariant is ALL " <>
+              "cycle changes in ONE commit). This is the no-op false-success the loop exists to prevent (loop_failed)."
     end
 
     :ok

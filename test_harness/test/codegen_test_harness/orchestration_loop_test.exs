@@ -1016,6 +1016,45 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
                )
     end
 
+    test "committer producing TWO commits raises (split-commit guard, exactly-one enforced)", %{
+      calls_agent: calls_agent,
+      dir: dir
+    } do
+      invoke_fn = fn role, _harness, _ctx, _opts ->
+        Agent.update(calls_agent, fn calls -> calls ++ [role] end)
+
+        if role == "committer" do
+          File.write!(Path.join(dir, "a.txt"), "one\n")
+          {_o, 0} = System.cmd("git", ["add", "-A"], cd: dir)
+          {_o, 0} = System.cmd("git", ["commit", "-q", "-m", "c1"], cd: dir)
+          File.write!(Path.join(dir, "b.txt"), "two\n")
+          {_o, 0} = System.cmd("git", ["add", "-A"], cd: dir)
+          {_o, 0} = System.cmd("git", ["commit", "-q", "-m", "c2"], cd: dir)
+        end
+
+        value =
+          if role == "reviewer-static", do: "REVIEW_VERDICT: APPROVED", else: "did #{role}"
+
+        {:ok, %{"status" => "success", "value" => value}}
+      end
+
+      assert_raise RuntimeError, ~r/exactly one commit|expected 1|split commits/, fn ->
+        OrchestrationLoop.run(
+          harness: "claude_code",
+          stack: "static",
+          cwd: dir,
+          pitch: "do the thing",
+          invoke_fn: invoke_fn,
+          gate_fn: always_clear_gate_fn(),
+          gate_preflight_fn: no_op_gate_preflight_fn(),
+          preflight_probe_fn: all_present_preflight_probe_fn(),
+          advance_cycle_state_fn: fn _state, _step_log, _session_id, _verdict, _project_dir ->
+            :ok
+          end
+        )
+      end
+    end
+
     test "no-op cycle (clean tree, zero work produced) raises — never loop_committed", %{
       calls_agent: calls_agent,
       dir: dir
