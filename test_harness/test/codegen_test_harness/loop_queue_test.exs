@@ -63,6 +63,59 @@ defmodule CodegenTestHarness.LoopQueueTest do
 
       assert LoopQueue.parse_edges("c", path) == [{"c", "dep-one"}]
     end
+
+    test "extracts dep from an em-dash-commented Blocks-on: line", %{dir: dir} do
+      path = Path.join(dir, "c.md")
+      File.write!(path, "Blocks-on: role-loading-audit — both add the include line\n")
+
+      assert LoopQueue.parse_edges("c", path) == [{"c", "role-loading-audit"}]
+    end
+
+    test "extracts dep from a backtick-wrapped Blocks-on: slug", %{dir: dir} do
+      path = Path.join(dir, "c.md")
+      File.write!(path, "Blocks-on: `fix-session-log-planner-dos-bash32`\n")
+
+      assert LoopQueue.parse_edges("c", path) == [{"c", "fix-session-log-planner-dos-bash32"}]
+    end
+
+    test "Blocks-on: (none — independent root) yields no edge", %{dir: dir} do
+      path = Path.join(dir, "c.md")
+      File.write!(path, "Blocks-on: (none — independent root)\n")
+
+      assert LoopQueue.parse_edges("c", path) == []
+    end
+
+    test "Blocks-on: none. <prose> yields no edge", %{dir: dir} do
+      path = Path.join(dir, "c.md")
+      File.write!(path, "Blocks-on: none. This is the structural-enforcement sibling\n")
+
+      assert LoopQueue.parse_edges("c", path) == []
+    end
+
+    test "a prose ## Dependencies bullet is annotation, not an edge", %{dir: dir} do
+      path = Path.join(dir, "c.md")
+
+      File.write!(
+        path,
+        "## Dependencies\n\n- **Depends on `land-elixir-loop-fixes`** — SHIPPED\n"
+      )
+
+      assert LoopQueue.parse_edges("c", path) == []
+    end
+
+    test "a bare-slug ## Dependencies bullet still yields an edge", %{dir: dir} do
+      path = Path.join(dir, "c.md")
+      File.write!(path, "## Dependencies\n\n- dep-one\n")
+
+      assert LoopQueue.parse_edges("c", path) == [{"c", "dep-one"}]
+    end
+
+    test "a genuinely unmet real-slug dep still resolves to that slug", %{dir: dir} do
+      path = Path.join(dir, "c.md")
+      File.write!(path, "Blocks-on: some-draft-dep\n")
+
+      assert LoopQueue.parse_edges("c", path) == [{"c", "some-draft-dep"}]
+    end
   end
 
   describe "blocked_by_unmet_dep/2" do

@@ -100,25 +100,41 @@ defmodule CodegenTestHarness.LoopQueue do
   defp maybe_prepend(acc, _slug, ""), do: acc
   defp maybe_prepend(acc, slug, dep), do: [{slug, dep} | acc]
 
-  # "Blocks-on: foo, bar)" → "foo" (first token only, matches build-queue.sh)
+  @dep_token_regex ~r/[a-z0-9][a-z0-9-]*/
+  @bare_slug_regex ~r/^[a-z0-9-]+$/
+
+  # "Blocks-on: foo — comment", "Blocks-on: (none — independent)",
+  # "Blocks-on: `foo`", "Blocks-on: none." → first bare slug token, or ""
+  # when the token is the "none" sentinel or absent entirely.
   defp extract_blocks_on_dep(line) do
-    line
-    |> String.replace_prefix("Blocks-on:", "")
-    |> String.split(",")
-    |> List.first("")
-    |> String.split(")")
-    |> List.first("")
-    |> String.replace(" ", "")
+    rest = String.replace_prefix(line, "Blocks-on:", "")
+
+    case Regex.run(@dep_token_regex, rest) do
+      [token] when token != "none" ->
+        token
+
+      # fail-loud-exempt: no dep token present (bare "Blocks-on: none" /
+      # "(none — independent root)") is the documented "no dependency"
+      # sentinel, not an unexpected condition — enumerated by convention C
+      # in the pitch (widely used "no deps" idiom).
+      _ ->
+        ""
+    end
   end
 
-  # "- foo (some note)" → "foo"
+  # "- foo" (bare slug bullet) → "foo"; a prose bullet
+  # ("- **Depends on `foo`** — SHIPPED") is annotation, not an edge → "".
   defp extract_bullet_dep(line) do
-    line
-    |> String.replace_prefix("- ", "")
-    |> String.split(" ")
-    |> List.first("")
-    |> String.split("(")
-    |> List.first("")
+    dep =
+      line
+      |> String.replace_prefix("- ", "")
+      |> String.trim()
+
+    if dep != "none" and Regex.match?(@bare_slug_regex, dep) do
+      dep
+    else
+      ""
+    end
   end
 
   @doc """
