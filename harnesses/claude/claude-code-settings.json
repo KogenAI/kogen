@@ -219,6 +219,15 @@
         "hooks": [
           {
             "type": "command",
+            "command": "$HOME/.claude/hooks/context-factcheck-curator-stop.sh"
+          }
+        ]
+      },
+      {
+        "matcher": "context-curator",
+        "hooks": [
+          {
+            "type": "command",
             "command": "$HOME/.claude/hooks/curator-format.sh"
           }
         ]
