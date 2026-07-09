@@ -82,7 +82,7 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
     assert {:ok, 1} = LoopQueueDrain.drain(base_opts(ctx, spawn_fn: spawn_fn))
 
     captured = Agent.get(jsonl_path, & &1)
-    assert Path.basename(captured) == "20231114_221320_solo_build.jsonl"
+    assert Path.basename(captured) == "20231114_221320_solo_build.log"
     assert Path.basename(captured) =~ ~r/^[0-9]{8}_[0-9]{6}_/
   end
 
@@ -116,7 +116,7 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
     assert output =~ "[2/2] b ... building"
   end
 
-  test "1e: single-path echo — discover_session_log_fn result is ignored (same artifact)", ctx do
+  test "1e: two-path echo — session log primary, build log secondary", ctx do
     write_pitch(ctx.ready_dir, "solo")
 
     jsonl_path = start_agent(nil)
@@ -139,15 +139,14 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
                  )
       end)
 
-    # Storage format flip: discover_session_log_fn now resolves the SAME
-    # artifact the `jsonl` var already holds — the md-then-jsonl fallback
-    # collapses to a single echoed path (the seam's stubbed return is
-    # ignored; only the real jsonl path is printed).
-    refute output =~ "/path/solo_cycle.jsonl"
+    # session log (`_cycle.jsonl`, the real per-role record) and build log
+    # (`_build.log`, the raw console capture) are DIFFERENT artifacts —
+    # both are echoed.
+    assert output =~ "/path/solo_cycle.jsonl"
     assert output =~ Path.basename(Agent.get(jsonl_path, & &1))
   end
 
-  test "1f: single-path echo — discover_session_log_fn absent still echoes jsonl alone", ctx do
+  test "1f: build log echoed alone when discover_session_log_fn returns nil", ctx do
     write_pitch(ctx.ready_dir, "solo")
 
     spawn_fn = fn _slug, _h, _s, _cwd, _jsonl -> {:exit_code, 0} end
@@ -163,8 +162,8 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
                  )
       end)
 
-    refute output =~ "_session.md"
-    assert output =~ "_solo_build.jsonl"
+    refute output =~ "session log:"
+    assert output =~ "_solo_build.log"
   end
 
   test "1g: default_discover_session_log/3 finds newest at/after spawn stamp, excludes stale",
@@ -191,6 +190,28 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
              "20231114_221320",
              0
            ) == nil
+  end
+
+  test "1g2: retention prunes _build.log older than 7 days, keeps recent + _cycle.jsonl", ctx do
+    logging_dir = Path.join([ctx.dir, "codegen", "logging"])
+    File.mkdir_p!(logging_dir)
+
+    old_build = Path.join(logging_dir, "20200101_000000_old_build.log")
+    recent_build = Path.join(logging_dir, "20991231_000000_recent_build.log")
+    keep_cycle = Path.join(logging_dir, "20200101_000000_old_cycle.jsonl")
+
+    File.write!(old_build, "old console capture\n")
+    File.write!(recent_build, "recent console capture\n")
+    File.write!(keep_cycle, ~s({"ev":"init"}\n))
+
+    eight_days_ago = System.system_time(:second) - 8 * 24 * 3600
+    :ok = File.touch(old_build, eight_days_ago)
+
+    assert {:ok, 0} = LoopQueueDrain.drain(base_opts(ctx, []))
+
+    refute File.exists?(old_build)
+    assert File.exists?(recent_build)
+    assert File.exists?(keep_cycle)
   end
 
   test "1h: failure diagnostics on halt — result/session_id surfaced, FAILED line emitted", ctx do

@@ -38,6 +38,10 @@ defmodule CodegenTestHarness.LoopQueueDrain do
 
   @default_max_retries 3
   @default_retry_delays [30, 120, 300]
+  # Retention window for `codegen/logging/*_build.log` console captures —
+  # ephemeral gitignored build-forensics; never applied to `*_cycle.jsonl`
+  # (the canonical, durable per-role session logs).
+  @build_log_retention_secs 7 * 24 * 3600
   @default_pitch_budget_secs 3600
 
   @codegen_build_bin Path.expand("../../../codegen-build", __DIR__)
@@ -114,6 +118,11 @@ defmodule CodegenTestHarness.LoopQueueDrain do
           # guarantees no legacy drain is concurrently mid-run relying on it.
           # Ignore {:error, :enoent} (absent is the normal case).
           File.rm(Path.join([cwd, "codegen", "gate-pending", "build-queue.json"]))
+
+          # Best-effort: bound the aggregate footprint of console captures.
+          # Never touches `*_cycle.jsonl` (canonical session logs). A failed
+          # cleanup (permission error, race) must never abort the drain.
+          prune_old_build_logs(cwd)
 
           state = %{
             harness: harness,
@@ -193,6 +202,28 @@ defmodule CodegenTestHarness.LoopQueueDrain do
     :ok
   end
 
+  # fail-loud-exempt: best-effort cleanup of an ephemeral gitignored
+  # scratch artifact (codegen/logging/*_build.log). A stat/rm failure here
+  # (permission race, concurrent removal, mid-run truncation) must never
+  # abort the drain — mirrors the pre-existing leg-1 File.rm(build-queue.json)
+  # above, which already ignores its return for the identical reason.
+  defp prune_old_build_logs(cwd) do
+    cutoff = System.system_time(:second) - @build_log_retention_secs
+
+    [cwd, "codegen", "logging", "*_build.log"]
+    |> Path.join()
+    |> Path.wildcard()
+    |> Enum.each(fn path ->
+      case File.stat(path, time: :posix) do
+        {:ok, %{mtime: mtime}} when mtime < cutoff -> File.rm(path)
+        {:ok, %{mtime: _mtime}} -> :ok
+        {:error, _reason} -> :ok
+      end
+    end)
+
+    :ok
+  end
+
   defp default_pid_alive?(pid_str) do
     case Integer.parse(pid_str) do
       {pid, ""} ->
@@ -254,7 +285,7 @@ defmodule CodegenTestHarness.LoopQueueDrain do
     idx = shipped_count + 1
     ts = state.now_fn.()
     stamp = Calendar.strftime(DateTime.from_unix!(ts), "%Y%m%d_%H%M%S")
-    jsonl = Path.join([state.cwd, "codegen", "logging", "#{stamp}_#{slug}_build.jsonl"])
+    jsonl = Path.join([state.cwd, "codegen", "logging", "#{stamp}_#{slug}_build.log"])
     File.mkdir_p!(Path.dirname(jsonl))
 
     IO.puts(:stderr, "[#{idx}/#{state.total}] #{slug} ... building")
@@ -280,13 +311,15 @@ defmodule CodegenTestHarness.LoopQueueDrain do
     end
   end
 
-  # Single-path echo: discover_session_log_fn now resolves the SAME
-  # `_cycle.jsonl` artifact the `jsonl` var already holds (storage format
-  # flipped from markdown to JSONL) — echoing both would print the
-  # identical path twice, so this collapses to one echo.
+  # Two-path echo: the discovered `_cycle.jsonl` (the real per-role session
+  # log, primary) is a DIFFERENT artifact from `jsonl` (the raw
+  # stdout+stderr console capture of the child `codegen-build`, secondary,
+  # `_build.log`). Session log is fail-open display — when not yet
+  # discovered (nil), only the build log is echoed.
   defp echo_paths(state, slug, spawn_stamp, jsonl) do
-    _ = state.discover_session_log_fn.(state.cwd, slug, spawn_stamp)
-    IO.puts(:stderr, "  " <> jsonl)
+    session = state.discover_session_log_fn.(state.cwd, slug, spawn_stamp)
+    if session, do: IO.puts(:stderr, "  session log: " <> session)
+    IO.puts(:stderr, "  build log:   " <> jsonl)
   end
 
   defp ship(ready_dir, shipped_dir, slug) do

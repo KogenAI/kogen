@@ -3,7 +3,7 @@ defmodule CodegenTestHarness.LoopQueue do
   Absorbs `harnesses/shared/build-queue.sh`'s pure-logic pieces: scans
   `codegen/pitches/ready/` pitch files, topologically sorts their
   `Blocks-on:`/`## Dependencies` edges (Kahn's algorithm, deps first),
-  and classifies a captured JSONL transcript as a transient (retryable)
+  and classifies a captured console capture as a transient (retryable)
   infra blip via `retryable_regex` (ported from
   `harnesses/shared/retryable-errors.sh`).
 
@@ -219,7 +219,7 @@ defmodule CodegenTestHarness.LoopQueue do
   end
 
   @doc """
-  Classifies a captured JSONL transcript at `jsonl_path` as transient
+  Classifies a captured console capture at `jsonl_path` as transient
   (retryable infra blip) vs. deterministic failure.
 
   Returns `true` (transient) iff:
