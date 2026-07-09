@@ -133,20 +133,47 @@ class TestHookIntervention(unittest.TestCase):
         self.assertIn("no-cat-pipe", keys)
 
     def test_silent_on_clean(self) -> None:
+        # Transcript leg only (run) — clean session has no Stop hook feedback.
         findings = self.counter.run(self.clean, _clean_config())
-        # No hook feedback or gate verdicts for clean session (substrate present in fixtures)
-        # gate-verdicts.jsonl has failed entries → findings from substrate
-        # We only assert transcript part is silent (no Stop hook feedback: in clean)
-        transcript_findings = [
-            f for f in findings if f.pattern_key != "gate:failed"
-        ]
-        self.assertEqual(transcript_findings, [])
+        self.assertEqual(findings, [])
 
-    def test_gate_verdict_substrate(self) -> None:
-        # project_dir has gate-verdicts.jsonl with 2 failed entries
-        findings = self.counter.run(self.thrash, _thrash_config())
+    def test_excludes_breaker_and_stale_rule(self) -> None:
+        from analysis.session_loader import Session, Turn
+
+        turns = [
+            Turn(
+                index=0,
+                kind="user",
+                timestamp="",
+                cwd="",
+                user_text="Stop hook feedback: stop-gate-failure-breaker — escalation",
+            ),
+            Turn(
+                index=1,
+                kind="user",
+                timestamp="",
+                cwd="",
+                user_text="Stop hook feedback: step-log-completeness — stale rule",
+            ),
+        ]
+        session = Session("x", Path("/tmp/x.jsonl"), turns)
+        findings = self.counter.run(session, _thrash_config())
+        self.assertEqual(findings, [])
+
+    def test_gate_verdict_substrate_repo_level(self) -> None:
+        # fixtures/gate-verdicts.jsonl has 2 failed entries, both session_thrash
+        findings = self.counter.run_repo(_thrash_config())
         gate_findings = [f for f in findings if f.pattern_key == "gate:failed"]
         self.assertEqual(len(gate_findings), 2)
+
+    def test_gate_verdict_not_multiplied_by_session_count(self) -> None:
+        # Regression: gate-leg wasted_turns must equal real record count,
+        # never real_count × number-of-sessions-that-called-run().
+        findings = self.counter.run_repo(_thrash_config())
+        total_wasted = sum(
+            f.wasted_turns for f in findings if f.pattern_key == "gate:failed"
+        )
+        self.assertEqual(total_wasted, 4)  # 2 failed records × weight 2
 
 
 class TestUserCorrection(unittest.TestCase):
@@ -247,7 +274,6 @@ class TestToolFailure(unittest.TestCase):
         from analysis.counters import tool_failure
 
         self.counter = tool_failure
-        self.thrash = _sessions_from_fixture("session_thrash.jsonl", _thrash_config())
 
     def test_returns_empty_when_substrate_absent(self) -> None:
         import tempfile
@@ -258,22 +284,89 @@ class TestToolFailure(unittest.TestCase):
                 project_dir=Path(tmpdir),
                 codegen_dir=CODEGEN_DIR,
             )
-            findings = self.counter.run(self.thrash, cfg)
+            findings = self.counter.run_repo(cfg)
         self.assertEqual(findings, [])
 
-    def test_clusters_when_substrate_present(self) -> None:
-        # fixtures/failures.jsonl has 3 records: Bash×developer, Read×developer, Bash×committer
-        findings = self.counter.run(self.thrash, _thrash_config())
-        self.assertGreater(len(findings), 0)
-        keys = {f.pattern_key for f in findings}
-        self.assertTrue(
-            any("Bash" in k for k in keys), f"No Bash key in {keys}"
-        )
+    def test_only_real_waste_is_counted(self) -> None:
+        # fixtures/failures.jsonl: 1 oversized-read (waste), 1 missing-file
+        # (expected, excluded), 1 interrupted (expected, excluded).
+        findings = self.counter.run_repo(_thrash_config())
+        keys = {f.pattern_key for f in findings if f.wasted_turns > 0}
+        self.assertEqual(keys, {"Read×oversized-read"})
+
+    def test_excludes_expected_failures(self) -> None:
+        findings = self.counter.run_repo(_thrash_config())
+        total_wasted = sum(f.wasted_turns for f in findings)
+        # Only the single oversized-read record counts; missing-file and
+        # interrupted are excluded.
+        self.assertEqual(total_wasted, 1)
 
     def test_counter_name(self) -> None:
-        findings = self.counter.run(self.thrash, _thrash_config())
+        findings = self.counter.run_repo(_thrash_config())
         for f in findings:
             self.assertEqual(f.counter, "tool_failure")
+
+    def test_not_multiplied_by_session_count(self) -> None:
+        # Regression: repo-level run_repo scans the substrate ONCE regardless
+        # of how many sessions exist — wasted_turns must equal real waste
+        # record count, never real_count × session_count.
+        findings = self.counter.run_repo(_thrash_config())
+        total_wasted = sum(f.wasted_turns for f in findings)
+        self.assertEqual(total_wasted, 1)
+
+    def test_classify_waste_classes(self) -> None:
+        from analysis.counters.tool_failure import _classify
+
+        self.assertEqual(_classify("Read", "Read exceeds maximum size"), ("oversized-read", True))
+        self.assertEqual(_classify("Read", "EISDIR: illegal operation"), ("dir-read", True))
+        self.assertEqual(_classify("Bash", "unsupported role"), ("bad-arg", True))
+        self.assertEqual(_classify("Agent", "not found"), ("agent-not-found", True))
+
+    def test_classify_expected_classes(self) -> None:
+        from analysis.counters.tool_failure import _classify
+
+        self.assertEqual(
+            _classify("Agent", "[Request interrupted by user for tool use]"),
+            ("expected", False),
+        )
+        self.assertEqual(
+            _classify("Read", "File does not exist. Note: ..."), ("expected", False)
+        )
+        self.assertEqual(_classify("Bash", "cat: illegal option"), ("guard-hit", False))
+        self.assertEqual(_classify("Bash", "Exit code 1"), ("exit-signal", False))
+
+
+class TestBoundedMagnitude(unittest.TestCase):
+    """Regression: no repo-level counter's wasted_turns may exceed its own
+    substrate record count. Guards against the per-session re-emission bug
+    (real_count × session_count) silently regressing and re-taking rank #1.
+    """
+
+    def test_tool_failure_bounded_by_substrate_size(self) -> None:
+        from analysis.counters import tool_failure
+
+        cfg = _thrash_config()
+        substrate_path = FIXTURES / "failures.jsonl"
+        with open(substrate_path, encoding="utf-8") as fh:
+            record_count = sum(1 for line in fh if line.strip())
+
+        findings = tool_failure.run_repo(cfg)
+        total_wasted = sum(f.wasted_turns for f in findings)
+        self.assertLessEqual(total_wasted, record_count)
+
+    def test_hook_intervention_gate_leg_bounded_by_substrate_size(self) -> None:
+        from analysis.counters import hook_intervention
+
+        cfg = _thrash_config()
+        substrate_path = FIXTURES / "gate-verdicts.jsonl"
+        with open(substrate_path, encoding="utf-8") as fh:
+            record_count = sum(1 for line in fh if line.strip())
+
+        findings = hook_intervention.run_repo(cfg)
+        # weight=2 per failed record, so the ceiling is 2× record_count, not
+        # record_count × number-of-callers.
+        total_wasted = sum(f.wasted_turns for f in findings)
+        self.assertLessEqual(total_wasted, record_count * 2)
 
 
 if __name__ == "__main__":

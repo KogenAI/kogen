@@ -25,11 +25,16 @@ ALL_COUNTERS: List[str] = [
     "hook_intervention",
     "user_correction",
     "delegation_churn",
-    "tool_failure",
 ]
 
 # Repo-level counters run ONCE after the per-session loop (not per session).
 # Their modules expose run_repo(config) -> List[Finding].
+#
+# hook_intervention appears in BOTH lists: its transcript leg (`run`) is
+# per-session, its gate-verdicts leg (`run_repo`) is repo-level — the
+# analyzer already loops both lists and calls whichever fn each exposes.
 ALL_REPO_COUNTERS: List[str] = [
     "subagent_interruption",
+    "tool_failure",
+    "hook_intervention",
 ]

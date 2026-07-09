@@ -1,3 +1,3 @@
-{"tool": "Bash", "error": "cat pipe forbidden", "ts": "2026-06-19T10:00:01Z", "role": "developer-phoenix-backend"}
-{"tool": "Read", "error": "file not found", "ts": "2026-06-19T10:00:05Z", "role": "developer-phoenix-backend"}
-{"tool": "Bash", "error": "git stash forbidden", "ts": "2026-06-19T10:00:10Z", "role": "committer"}
+{"ts": "2026-06-19T10:00:01Z", "tool": "Read", "error": "Read exceeds maximum size", "agent": "developer-phoenix-backend"}
+{"ts": "2026-06-19T10:00:05Z", "tool": "Read", "error": "File does not exist. Note: your current working directory is /tmp", "agent": "developer-phoenix-backend"}
+{"ts": "2026-06-19T10:00:10Z", "tool": "Agent", "error": "[Request interrupted by user for tool use]", "agent": "committer"}
