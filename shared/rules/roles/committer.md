@@ -123,6 +123,18 @@ After `git commit` succeeds, run `git status --porcelain` AGAIN. If the output i
 
 Gitignored paths never appear in `--porcelain`, so a legitimately-clean post-commit tree passes. This is the primary fail-loud for the legacy engine (which has no loop-level `verify_committed!`); the Elixir loop enforces the same invariant post-committer.
 
+### Pre-Commit Hook Block — Triage
+
+When a `git commit` is **DENIED** by a PreToolUse hook, the deny text is returned as the Bash tool result and names the hook + reason (e.g. `context-factcheck-guard: <file>:<line> references \`<path>\` which does not exist. …`). A denied commit never ran — NEVER treat it as committed, NEVER report `status: success`. Classify the deny before retrying:
+
+- **`context-factcheck-guard`** (a staged orientation doc has a stale backtick'd path or a `<!-- count: CMD -->NNN` anchor that no longer matches its live probe): the guard validates the STAGED blob, not the working tree — usually a fix already exists in the working tree but wasn't re-staged.
+  - Re-stage and retry once: `git add -A` then re-run `git commit`.
+  - If retry still fails because the staged doc content is genuinely stale, that fix is outside committer's write scope (committer does not `Edit context/*.md`). Report `status: failed`, quoting the deny's `<file>:<line>` and claim verbatim, so the loop routes it back to curator/developer. Do NOT hand-edit the doc yourself.
+- **`committer-single-commit-per-cycle`** (a commit already landed this cycle): use `git commit --amend`, never a second `git commit`.
+- **Any other/unresolvable block**: report `status: failed` with the hook's reason verbatim. Halt — do not guess.
+
+This triage composes with, and does not replace, the post-commit clean-tree self-check above: a successful re-stage-and-retry still needs `git status --porcelain` to confirm the tree is clean.
+
 ## One Logical Fix = One Commit
 
 Single pitch/task → single commit. Do NOT split unless the delegation prompt explicitly requests it.
