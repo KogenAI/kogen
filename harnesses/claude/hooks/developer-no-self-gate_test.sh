@@ -3,6 +3,13 @@
 
 set -u
 
+# This file's default assertions target the legacy (non-loop) count-of-3 cap
+# path. Unset any ambient CODEGEN_LOOP so an outer session running under the
+# Elixir loop (CODEGEN_LOOP=1) cannot leak into these tests and silently
+# divert them to the loop-mode progress-bounded branch. Loop-mode tests below
+# opt back in explicitly per-call via `CODEGEN_LOOP=1 bash "$HOOK"`.
+unset CODEGEN_LOOP
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 HOOK="$SCRIPT_DIR/developer-no-self-gate.sh"
 

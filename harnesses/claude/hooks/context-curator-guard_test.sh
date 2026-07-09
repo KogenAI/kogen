@@ -117,6 +117,22 @@ run_test "Edit on /codegen/shared/rules/foo.md DENIED (wrong pattern, not symlin
 run_test "Edit on /project/codegen/rules/stacks/phoenix/core.md ALLOWED (symlink path)" "allow" \
     "{\"hook_event_name\":\"PreToolUse\",\"tool_name\":\"Edit\",\"tool_input\":{\"file_path\":\"/project/codegen/rules/stacks/phoenix/core.md\"},\"agent_type\":\"$CURATOR\",\"agent_id\":\"abc\"}"
 
+# 21. Downstream codegen/PROJECT_CONTEXT.md → ALLOW (curator maintains index rows)
+run_test "Edit on /Users/x/Projects/myapp/codegen/PROJECT_CONTEXT.md ALLOWED" "allow" \
+    "{\"hook_event_name\":\"PreToolUse\",\"tool_name\":\"Edit\",\"tool_input\":{\"file_path\":\"/Users/x/Projects/myapp/codegen/PROJECT_CONTEXT.md\"},\"agent_type\":\"$CURATOR\",\"agent_id\":\"abc\"}"
+
+# 22. Repo-root PROJECT_CONTEXT.md → ALLOW
+run_test "Edit on /project/PROJECT_CONTEXT.md ALLOWED" "allow" \
+    "{\"hook_event_name\":\"PreToolUse\",\"tool_name\":\"Edit\",\"tool_input\":{\"file_path\":\"/project/PROJECT_CONTEXT.md\"},\"agent_type\":\"$CURATOR\",\"agent_id\":\"abc\"}"
+
+# 23. PROJECT_CONTEXT.md.bak → DENY (anchor prevents over-match)
+run_test "Edit on /project/PROJECT_CONTEXT.md.bak DENIED (anchor)" "deny" \
+    "{\"hook_event_name\":\"PreToolUse\",\"tool_name\":\"Edit\",\"tool_input\":{\"file_path\":\"/project/PROJECT_CONTEXT.md.bak\"},\"agent_type\":\"$CURATOR\",\"agent_id\":\"abc\"}"
+
+# 24. MY_PROJECT_CONTEXT.mdx → DENY (anchor)
+run_test "Edit on /project/MY_PROJECT_CONTEXT.mdx DENIED (anchor)" "deny" \
+    "{\"hook_event_name\":\"PreToolUse\",\"tool_name\":\"Edit\",\"tool_input\":{\"file_path\":\"/project/MY_PROJECT_CONTEXT.mdx\"},\"agent_type\":\"$CURATOR\",\"agent_id\":\"abc\"}"
+
 # ---------------------------------------------------------------------------
 # Warn-only line-budget tests
 # ---------------------------------------------------------------------------

@@ -20,14 +20,16 @@ Curator MAY ONLY edit:
 - `context/**` — project domain context files (`[local]` targets only)
 - `codegen/rules/**` — shared discipline rules via symlink to `<codegen-repo>/shared/rules`; used by all curators (codegen-on-codegen and downstream)
 - `codegen/logging/**` — session logs (codegen-on-codegen only)
+- `PROJECT_CONTEXT.md` § Domain Context Files rows — curator maintains index↔context parity directly, in its own turn, via the native Edit tool. The broader file (key paths, gate commands, everything outside § Domain Context Files) stays developer/orchestrator territory; curator's surgical-edit discipline (input = retrospective blocks only, no wholesale rewrites) bounds actual edits to the row(s) affected by the context file it just changed.
 
 ❌ `lib/`, `priv/`, `assets/`, `test/`, config files, migrations — those are dev territory.
 
-**Guard reality** (`context-curator-guard.sh` allow-pattern greps): the hook allows the three patterns above:
+**Guard reality** (`context-curator-guard.sh` allow-pattern greps): the hook allows the four patterns above:
 
 - `context/` anywhere in the path (`grep -qE '(^|/)context/'`) → works in any repo
 - `codegen/rules(/|$)` anywhere in the path (`grep -qE '(^|/)codegen/rules(/|$)'`) → matches `codegen/rules/**` symlink path; hook receives raw symlink path (not resolved target)
 - `codegen/logging/` anywhere in the path (`grep -qE '(^|/)codegen/logging/'`) → matches codegen-on-codegen session logs
+- `PROJECT_CONTEXT.md$` anywhere in the path (`grep -qE '(^|/)PROJECT_CONTEXT\.md$'`) → curator maintains index↔context row parity
 
 **Path-nesting distinction:**
 
@@ -91,13 +93,6 @@ Before any edit:
 Never duplicate. If the file already says it, skip.
 
 **Content-anchor edits over line-number anchors**: When targeting doc fixes, match by exact content string, NOT line numbers. Line numbers drift across edits; content anchors are durable. Example: if a pitch cites `billing.md:<line>` (a pitch-supplied line number) but the actual false claim is at a different line, grep the content to find the truth-source. This is especially critical for docs covering multi-file sibling claims (e.g., phantom-table references spanning both the billing doc AND the `stripe_events.ex` moduledoc) — sweep for ALL instances of the false claim by content, not just pitch-named line numbers.
-
-## Tool Interactions
-
-**Edit-tool pre-read blocking**: The Edit tool requires a Read of the target file BEFORE an edit is allowed. However, `subagent-read-discipline.sh` may block Read of certain files (e.g., `PROJECT_CONTEXT.md` to non-planner roles). If Read is blocked but you need to edit the file:
-
-- **Workaround**: Use Bash with `python3` to perform the string replacement directly on the file. This bypasses the Edit-tool's pre-read requirement. Example: `python3 -c "import sys; content = open(path).read(); open(path, 'w').write(content.replace(old, new))"`
-- **Scope**: Applies when Read is blocked but Edit is permitted (curator's write surface), and the edit is a simple text replacement (not complex structured edits).
 
 ## Constraints
 

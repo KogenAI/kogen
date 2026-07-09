@@ -45,11 +45,12 @@ Curator never initiates committer calls — curator is a leaf agent. The loop ow
 
 ## Curator Write Surface
 
-The guard `context-curator-guard.sh` enforces exactly three allowed path patterns (line numbers in the hook source):
+The guard `context-curator-guard.sh` enforces exactly four allowed path patterns (line numbers in the hook source; note pre-existing line refs below are already stale — out of scope for this fix, see grep-pattern-only entry for the newest branch):
 
 - Line 46: `(^|/)context/` — allows `context/*.md` relative to any project root (all repos)
 - Line 51: `(^|/)codegen/rules(/|$)` — allows `codegen/rules/**` symlink path (all repos; symlink target is `<codegen-repo>/shared/rules`)
 - Line 56: `(^|/)codegen/logging/` — allows `codegen/logging/*.md` session logs (codegen-on-codegen only)
+- `(^|/)PROJECT_CONTEXT\.md$` — allows `PROJECT_CONTEXT.md` § Domain Context Files rows (all repos); curator maintains index↔context row parity directly
 
 **Path-nesting note**: all curators use `codegen/rules/**` (the symlink path). Direct `shared/rules/` edits are DENIED — the guard does not allow them. Hook receives raw symlink path (not resolved target). Boundary: `codegen/recipes/` and `codegen/rulesets/` still DENIED — pattern anchors on `/rules(/|$)`.
 

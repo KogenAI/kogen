@@ -114,6 +114,11 @@ if printf '%s' "$FILE_PATH" | grep -qE '(^|/)codegen/logging/'; then
     exit 0
 fi
 
+# Allowed: PROJECT_CONTEXT.md § Domain Context Files rows (curator maintains index↔context parity)
+if printf '%s' "$FILE_PATH" | grep -qE '(^|/)PROJECT_CONTEXT\.md$'; then
+    exit 0
+fi
+
 # Everything else is denied for context-curator.
-deny "BLOCKED by context-curator-guard: $FILE_PATH is outside the curator's allowed write surface. Curator may only write to: context/**, codegen/rules/**, codegen/logging/**."
+deny "BLOCKED by context-curator-guard: $FILE_PATH is outside the curator's allowed write surface. Curator may only write to: context/**, codegen/rules/**, codegen/logging/**, PROJECT_CONTEXT.md."
 exit 0

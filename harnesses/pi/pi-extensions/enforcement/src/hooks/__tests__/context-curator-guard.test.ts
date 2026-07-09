@@ -130,6 +130,23 @@ describe("context-curator-guard", { concurrency: false }, () => {
     assert.ok((result as { block?: boolean }).block === true);
   });
 
+  // ─── PROJECT_CONTEXT.md allow cases ────────────────────────────────────────
+
+  it("allows curator writing to codegen/PROJECT_CONTEXT.md", async () => {
+    const result = await runHook("codegen/PROJECT_CONTEXT.md", "edit");
+    assert.ok(isAllow(result));
+  });
+
+  it("allows curator writing to PROJECT_CONTEXT.md (root)", async () => {
+    const result = await runHook("PROJECT_CONTEXT.md", "edit");
+    assert.ok(isAllow(result));
+  });
+
+  it("denies curator writing to PROJECT_CONTEXT.md.bak (anchor)", async () => {
+    const result = await runHook("PROJECT_CONTEXT.md.bak", "edit");
+    assert.ok((result as { block?: boolean }).block === true);
+  });
+
   // ─── Warn-only cap cases ─────────────────────────────────────────────────
   // All over-cap cases must be ALLOWED (no block). Warn appears on stderr only.
 

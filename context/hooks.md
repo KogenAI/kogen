@@ -100,7 +100,7 @@ Event → script mapping from `harnesses/claude/claude-code-settings.json`:
 
 ## context-curator-guard Write Surface
 
-`harnesses/claude/hooks/context-curator-guard.sh` — PreToolUse hook restricting curator to: `context/**`, `codegen/rules/**` (symlink path only — hook receives the symlink path, NOT the resolved target), `codegen/logging/**`. Fires only when `AGENT_TYPE == "context-curator"` and tool is `Edit|Write|MultiEdit`.
+`harnesses/claude/hooks/context-curator-guard.sh` — PreToolUse hook restricting curator to: `context/**`, `codegen/rules/**` (symlink path only — hook receives the symlink path, NOT the resolved target), `codegen/logging/**`, and `PROJECT_CONTEXT.md` (§ Domain Context Files rows — index↔context parity). Fires only when `AGENT_TYPE == "context-curator"` and tool is `Edit|Write|MultiEdit`.
 
 **DENIED**: Direct `shared/rules/` paths — only the `codegen/rules/` symlink path is allowed. Boundary cases also DENIED: `codegen/recipes/`, `codegen/rulesets/` (pattern anchors on `/rules(/|$)`).
 

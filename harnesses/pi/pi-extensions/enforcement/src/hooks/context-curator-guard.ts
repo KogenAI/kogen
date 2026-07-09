@@ -11,6 +11,7 @@
  *     - context/**
  *     - codegen/rules/**
  *     - codegen/logging/**
+ *     - PROJECT_CONTEXT.md (§ Domain Context Files rows)
  *   → deny with explanation.
  *
  * Fail-open: if file_path is empty → allow.
@@ -126,8 +127,11 @@ export function register(pi: ExtensionAPI): void {
     // Allowed: codegen/logging/**
     if (/(^|\/)codegen\/logging\//.test(rel)) return;
 
+    // Allowed: PROJECT_CONTEXT.md § Domain Context Files rows (curator maintains index↔context parity)
+    if (/(^|\/)PROJECT_CONTEXT\.md$/.test(rel)) return;
+
     return deny(
-      `BLOCKED by context-curator-guard: ${filePath} is outside the curator's allowed write surface. Curator may only write to: context/**, codegen/rules/**, codegen/logging/**.`,
+      `BLOCKED by context-curator-guard: ${filePath} is outside the curator's allowed write surface. Curator may only write to: context/**, codegen/rules/**, codegen/logging/**, PROJECT_CONTEXT.md.`,
     );
   });
 }
