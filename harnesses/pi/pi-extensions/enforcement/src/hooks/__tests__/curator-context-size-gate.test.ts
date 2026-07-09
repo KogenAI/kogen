@@ -53,14 +53,14 @@ describe("curator-context-size-gate", { concurrency: false }, () => {
   const CAP = 40960;
   const xString = (n: number): string => "x".repeat(n);
 
-  it("allows non-curator role writing over-cap content (role gate)", async () => {
+  it("denies non-curator role writing over-cap content (role-agnostic)", async () => {
     const result = await runHook(
       "context/big.md",
       "write",
       "developer-phoenix-backend",
       { content: xString(CAP + 1000) },
     );
-    assert.ok(isAllow(result));
+    assert.ok(isDeny(result));
   });
 
   it("allows curator bash tool with over-cap-shaped payload (tool gate)", async () => {
@@ -90,14 +90,34 @@ describe("curator-context-size-gate", { concurrency: false }, () => {
     assert.ok(isAllow(result));
   });
 
-  it("allows curator multiedit (fail-open: no single old/new pair)", async () => {
+  it("denies curator multiedit summing edits[] deltas over cap", async () => {
     const result = await runHook(
       "context/big.md",
       "multiedit",
       "context-curator",
       { edits: [{ old_string: "a", new_string: xString(CAP + 1000) }] },
     );
+    assert.ok(isDeny(result));
+  });
+
+  it("allows curator multiedit with no edits (fail-open)", async () => {
+    const result = await runHook(
+      "context/big.md",
+      "multiedit",
+      "context-curator",
+      { edits: [] },
+    );
     assert.ok(isAllow(result));
+  });
+
+  it("denies non-curator multiedit summing edits[] deltas over cap (role-agnostic)", async () => {
+    const result = await runHook(
+      "context/big.md",
+      "multiedit",
+      "developer-phoenix-backend",
+      { edits: [{ old_string: "a", new_string: xString(CAP + 1000) }] },
+    );
+    assert.ok(isDeny(result));
   });
 
   it("allows curator write with missing content field (fail-open)", async () => {
@@ -126,12 +146,11 @@ describe("curator-context-size-gate", { concurrency: false }, () => {
     assert.ok(isDeny(result));
   });
 
-  it("deny message names context-curator + compress, not committer", async () => {
+  it("deny message names compress, not committer", async () => {
     const result = await runHook("context/big.md", "write", "context-curator", {
       content: xString(CAP + 1000),
     });
     const reason = (result as { reason: string }).reason;
-    assert.ok(/context-curator/i.test(reason));
     assert.ok(/compress/i.test(reason));
     assert.ok(!/committer/i.test(reason));
   });

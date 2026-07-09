@@ -7,9 +7,10 @@
  * Event: tool_call (PreToolUse equivalent)
  * Matcher: write|edit
  *
- * Only the context-curator is gated (it is the sole role that can Read+edit
- * context/*.md); all other agents pass through. MultiEdit and unparseable
- * payloads fail open (backstop context-file-size-gate.ts catches at commit).
+ * Gates ANY role's write to context/*.md — any role may legitimately edit
+ * context files (e.g. developer, when planner marks one (EDIT)/(NEW)).
+ * Unparseable payloads fail open (backstop context-file-size-gate.ts catches
+ * at commit). MultiEdit sums all edits[] deltas rather than failing open.
  */
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
@@ -26,9 +27,6 @@ const CAP = 40960;
 
 export function register(pi: ExtensionAPI): void {
   pi.on("tool_call", async (event) => {
-    const agentType = process.env["AGENT_TYPE"] ?? "";
-    if (agentType !== "context-curator") return;
-
     const toolName = event.toolName;
     if (!(toolName === "write" || toolName === "edit" || toolName === "multiedit")) {
       return;
@@ -43,9 +41,6 @@ export function register(pi: ExtensionAPI): void {
     // Only direct-child context/<file>.md (parity with commit-time gate).
     if (!/(^|\/)context\/[^/]+\.md$/.test(filePath)) return;
 
-    // MultiEdit: no single old/new pair — fail open.
-    if (toolName === "multiedit") return;
-
     let projected = 0;
     try {
       if (toolName === "write") {
@@ -53,6 +48,17 @@ export function register(pi: ExtensionAPI): void {
         // empty/missing content = unparseable/absent → fail open
         if (!content) return;
         projected = Buffer.byteLength(content, "utf8");
+      } else if (toolName === "multiedit") {
+        const edits = input["edits"] as Array<Record<string, unknown>> | undefined;
+        if (!edits || edits.length === 0) return;
+        const oldBlob = edits.map((e) => (e["old_string"] as string | undefined) ?? "").join("");
+        const newBlob = edits.map((e) => (e["new_string"] as string | undefined) ?? "").join("");
+        let onDisk = 0;
+        if (fs.existsSync(filePath)) {
+          onDisk = Buffer.byteLength(fs.readFileSync(filePath, "utf8"), "utf8");
+        }
+        projected =
+          onDisk - Buffer.byteLength(oldBlob, "utf8") + Buffer.byteLength(newBlob, "utf8");
       } else {
         const newString = (input["new_string"] as string | undefined) ?? "";
         const oldString = (input["old_string"] as string | undefined) ?? "";
@@ -71,8 +77,9 @@ export function register(pi: ExtensionAPI): void {
     }
 
     if (projected > CAP) {
+      const toolLabel = toolName === "multiedit" ? "MultiEdit" : "write";
       return deny(
-        `curator-context-size-gate: your write to ${filePath} would make it ${projected} bytes, over the ${CAP}-byte (40k) cap. You (context-curator) are the role that can Read and edit context/*.md — compress a stale/redundant bullet, relocate a verbose example to another context file, or split to a new context/*.md (add the matching PROJECT_CONTEXT.md Domain Context Files row). Get the file under 40960 bytes before finishing this cycle.`,
+        `curator-context-size-gate: your ${toolLabel} to ${filePath} would make it ${projected} bytes, over the ${CAP}-byte (40k) cap. context/*.md is editable this turn — compress a stale/redundant bullet, relocate a verbose example to another context file, or split to a new context/*.md (add the matching PROJECT_CONTEXT.md Domain Context Files row). Get the file under 40960 bytes before finishing this cycle.`,
       );
     }
   });

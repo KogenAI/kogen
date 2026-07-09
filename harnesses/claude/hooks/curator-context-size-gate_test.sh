@@ -8,16 +8,18 @@
 #   4: curator Write context/over.md content 40961 bytes → DENY (one over)
 #   5: curator Edit context/existing.md projected over cap → DENY
 #   6: curator Edit context/existing.md projected under cap → ALLOW
-#   7: non-curator (developer-phoenix-backend) Write context/big.md 50000 bytes → ALLOW (role gate)
+#   7: non-curator (developer-phoenix-backend) Write context/big.md 50000 bytes → DENY (role-agnostic)
 #   8: curator Bash tool with over-cap payload → ALLOW (tool gate)
 #   9: curator Write lib/foo.ex 50000 bytes → ALLOW (path gate)
 #  10: curator Write context/sub/nested.md 50000 bytes → ALLOW (subdir excluded)
-#  11: curator MultiEdit context/big.md → ALLOW (fail-open: no single old/new pair)
+#  11: curator MultiEdit context/big.md over cap → DENY (sums edits[] deltas)
 #  12: curator Write context/big.md missing/empty content field → ALLOW (fail-open unparseable)
 #  13: curator Edit context/new.md not yet on disk, new_string over cap → DENY
-#  14: deny message contains "context-curator" AND "compress" AND does NOT contain "committer"
+#  14: deny message contains "compress" AND does NOT contain "committer"
 #  15: deny message contains the exact projected byte count and "40960-byte (40k) cap" substring
 #  16: FILE_PATH empty → ALLOW (graceful)
+#  17: curator MultiEdit context/small.md under cap → ALLOW
+#  18: non-curator MultiEdit context/big.md over cap → DENY (role-agnostic MultiEdit)
 
 set -euo pipefail
 
@@ -133,14 +135,14 @@ payload6=$(jq -n --arg fp "$dir6/context/existing.md" --arg old "$old6" --arg ne
 run_test "curator Edit context/existing.md projected under cap → ALLOW" "0" "$payload6"
 
 # ---------------------------------------------------------------------------
-# Test 7: non-curator (developer-phoenix-backend) Write context/big.md 50000 bytes → ALLOW
-# (role gate — only curator is scoped)
+# Test 7: non-curator (developer-phoenix-backend) Write context/big.md 50000 bytes → DENY
+# (role-agnostic — ANY role is gated)
 # ---------------------------------------------------------------------------
 dir7=$(make_fixture 7)
 content7=$(head -c 50000 /dev/zero | tr '\0' 'x')
 payload7=$(jq -n --arg fp "$dir7/context/big.md" --arg content "$content7" '{hook_event_name:"PreToolUse",tool_name:"Write",tool_input:{file_path:$fp,content:$content},agent_type:"developer-phoenix-backend",agent_id:"a",cwd:$fp}')
 
-run_test "non-curator Write context/big.md 50000 bytes → ALLOW (role gate)" "0" "$payload7"
+run_test "non-curator Write context/big.md 50000 bytes → DENY (role-agnostic)" "2" "$payload7"
 
 # ---------------------------------------------------------------------------
 # Test 8: curator Bash tool with over-cap payload → ALLOW (tool gate)
@@ -169,13 +171,13 @@ payload10=$(jq -n --arg fp "$dir10/context/sub/nested.md" --arg content "$conten
 run_test "curator Write context/sub/nested.md 50000 bytes → ALLOW (subdir excluded)" "0" "$payload10"
 
 # ---------------------------------------------------------------------------
-# Test 11: curator MultiEdit context/big.md → ALLOW (fail-open: no single old/new pair)
+# Test 11: curator MultiEdit context/big.md over cap → DENY (sums edits[] deltas)
 # ---------------------------------------------------------------------------
 dir11=$(make_fixture 11)
 big11=$(head -c 50000 /dev/zero | tr '\0' 'x')
 payload11=$(jq -n --arg fp "$dir11/context/big.md" --arg new "$big11" '{hook_event_name:"PreToolUse",tool_name:"MultiEdit",tool_input:{file_path:$fp,edits:[{old_string:"a",new_string:$new}]},agent_type:"context-curator",agent_id:"a",cwd:$fp}')
 
-run_test "curator MultiEdit context/big.md → ALLOW (fail-open)" "0" "$payload11"
+run_test "curator MultiEdit context/big.md over cap → DENY" "2" "$payload11"
 
 # ---------------------------------------------------------------------------
 # Test 12: curator Write context/big.md missing/empty content field → ALLOW (fail-open)
@@ -196,7 +198,7 @@ payload13=$(jq -n --arg fp "$dir13/context/new.md" --arg new "$new13" '{hook_eve
 run_test "curator Edit context/new.md not on disk, new_string over cap → DENY" "2" "$payload13"
 
 # ---------------------------------------------------------------------------
-# Test 14: deny message contains "context-curator" AND "compress" AND NOT "committer"
+# Test 14: deny message contains "compress" AND NOT "committer"
 # ---------------------------------------------------------------------------
 dir14=$(make_fixture 14)
 content14=$(head -c 50000 /dev/zero | tr '\0' 'x')
@@ -205,13 +207,12 @@ payload14=$(jq -n --arg fp "$dir14/context/big.md" --arg content "$content14" '{
 stdout14=$(printf '%s' "$payload14" | env -u CLAUDE_ROLE -u PI_ROLE bash "$GUARD" 2>/dev/null || true)
 
 if printf '%s' "$stdout14" | grep -q '"permissionDecision"[[:space:]]*:[[:space:]]*"deny"' &&
-    printf '%s' "$stdout14" | grep -qi "context-curator" &&
     printf '%s' "$stdout14" | grep -qi "compress" &&
     ! printf '%s' "$stdout14" | grep -qi "committer"; then
-    [ -n "${VERBOSE:-}" ] && printf 'PASS: deny message names context-curator + compress, not committer\n'
+    [ -n "${VERBOSE:-}" ] && printf 'PASS: deny message names compress, not committer\n'
     pass=$((pass + 1))
 else
-    printf 'FAIL: deny message missing context-curator/compress, or wrongly mentions committer\n  stdout: %s\n' "$stdout14"
+    printf 'FAIL: deny message missing compress, or wrongly mentions committer\n  stdout: %s\n' "$stdout14"
     fail=$((fail + 1))
 fi
 
@@ -240,6 +241,27 @@ fi
 payload16='{"hook_event_name":"PreToolUse","tool_name":"Write","tool_input":{"content":"x"},"agent_type":"context-curator","agent_id":"a","cwd":"/tmp"}'
 
 run_test "FILE_PATH empty → ALLOW (graceful)" "0" "$payload16"
+
+# ---------------------------------------------------------------------------
+# Test 17: curator MultiEdit context/small.md under cap → ALLOW
+# on-disk 100 - old(10) + new(20) = 110
+# ---------------------------------------------------------------------------
+dir17=$(make_fixture 17)
+head -c 100 /dev/zero | tr '\0' 'x' >"$dir17/context/small.md"
+old17="0123456789"
+new17=$(head -c 20 /dev/zero | tr '\0' 'y')
+payload17=$(jq -n --arg fp "$dir17/context/small.md" --arg old "$old17" --arg new "$new17" '{hook_event_name:"PreToolUse",tool_name:"MultiEdit",tool_input:{file_path:$fp,edits:[{old_string:$old,new_string:$new}]},agent_type:"context-curator",agent_id:"a",cwd:$fp}')
+
+run_test "curator MultiEdit context/small.md under cap → ALLOW" "0" "$payload17"
+
+# ---------------------------------------------------------------------------
+# Test 18: non-curator MultiEdit context/big.md over cap → DENY (role-agnostic MultiEdit)
+# ---------------------------------------------------------------------------
+dir18=$(make_fixture 18)
+big18=$(head -c 50000 /dev/zero | tr '\0' 'x')
+payload18=$(jq -n --arg fp "$dir18/context/big.md" --arg new "$big18" '{hook_event_name:"PreToolUse",tool_name:"MultiEdit",tool_input:{file_path:$fp,edits:[{old_string:"a",new_string:$new}]},agent_type:"developer-phoenix-backend",agent_id:"a",cwd:$fp}')
+
+run_test "non-curator MultiEdit context/big.md over cap → DENY" "2" "$payload18"
 
 echo ""
 echo "Results: $pass passed, $fail failed"
