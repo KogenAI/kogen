@@ -86,6 +86,9 @@ defmodule CodegenTestHarness.LoopQueueDrain do
       via `System.cmd("kill", ["-0", pid])` exit status
     * `:git_head_fn` — `(cwd -> String.t() | nil)`, default reads
       `git rev-parse HEAD`; `nil` when not a git repo (fail-open)
+    * `:git_ancestor_fn` — `(cwd, ancestor, descendant -> boolean)`, default
+      runs `git merge-base --is-ancestor`; used by the orphan-halt backstop
+      to detect a HEAD-moving `git reset` that dropped the cycle base
     * `:gate_verdict_fn` — `(cwd -> String.t())`, default reads
       `codegen/gate-pending/gate-result.json` `.verdict`; `""` when absent
   """
@@ -144,6 +147,7 @@ defmodule CodegenTestHarness.LoopQueueDrain do
                 LoopQueue.blocked_by_unmet_dep(ready_dir, shipped_dir)
               end),
             git_head_fn: Keyword.get(opts, :git_head_fn, &default_git_head_fn/1),
+            git_ancestor_fn: Keyword.get(opts, :git_ancestor_fn, &default_git_ancestor_fn/3),
             gate_verdict_fn: Keyword.get(opts, :gate_verdict_fn, &default_gate_verdict_fn/1),
             discover_session_log_fn:
               Keyword.get(opts, :discover_session_log_fn, &default_discover_session_log/3),
@@ -339,13 +343,44 @@ defmodule CodegenTestHarness.LoopQueueDrain do
   end
 
   defp handle_nonzero_exit(state, slug, jsonl, head_before, shipped_count, idx) do
-    committed? =
-      head_before != nil and head_before != "" and
-        state.git_head_fn.(state.cwd) != head_before
+    known_base? = head_before != nil and head_before != ""
+    # Only re-read HEAD when there is a known base to compare against — mirrors
+    # the pre-existing short-circuit (`head_before != nil and head_before !=
+    # "" and ...`) so a nil/empty head_before never triggers an extra
+    # git_head_fn call.
+    head_after = if known_base?, do: state.git_head_fn.(state.cwd), else: nil
+    head_moved? = known_base? and head_after != head_before
+
+    # Orphan check: HEAD moved AND head_before is no longer an ancestor of the
+    # new HEAD. This is the same ancestry-blindness bug class as
+    # `OrchestrationLoop.assert_work_produced!` — a HEAD-moving `git reset`
+    # (e.g. `git reset HEAD~1`) followed by a new commit makes HEAD != head_before
+    # true, but the new commit does NOT descend from head_before: a prior
+    # cycle's already-committed commit was silently dropped from the branch.
+    orphaned? =
+      head_moved? and head_after != nil and
+        not state.git_ancestor_fn.(state.cwd, head_before, head_after)
+
+    # `committed?` is forward-only: a legitimate commit REQUIRES head_before
+    # to still be an ancestor of the new HEAD. An orphaning move (HEAD moved,
+    # but backward/sideways past head_before) must NOT be treated as
+    # "committed" — else the post-commit-hiccup branches below would ship the
+    # orphaned pitch, masking the failure.
+    committed? = head_moved? and not orphaned?
 
     gate_clear? = state.gate_verdict_fn.(state.cwd) == "clear"
 
     cond do
+      orphaned? ->
+        # Deterministic failure — never transient, never retried. A blind
+        # retry would re-run the same pitch and can re-orphan. HALT the queue
+        # and leave the repo untouched; print the exact remediation.
+        IO.puts(:stderr, orphan_remediation(head_before, head_after))
+        emit_failure_diagnostics(jsonl, idx, state.total, slug)
+
+        {:error,
+         "queue: HALTED — #{slug} orphaned base #{head_before} (repo left untouched, see remediation above)"}
+
       committed? and gate_clear? and
           File.exists?(Path.join(state.shipped_dir, "#{slug}.md")) ->
         # committer-post-commit hiccup: agent already shipped the pitch
@@ -378,6 +413,19 @@ defmodule CodegenTestHarness.LoopQueueDrain do
         emit_failure_diagnostics(jsonl, idx, state.total, slug)
         {:error, "queue: #{slug} failed (deterministic or retries exhausted)"}
     end
+  end
+
+  # Copy-paste remediation for an orphaned-base cycle. `head_after` is the bad
+  # commit HEAD landed on; rebasing everything from its parent onto
+  # `head_before` replays the orphaned work back on top of the known-good base.
+  @spec orphan_remediation(String.t(), String.t()) :: String.t()
+  defp orphan_remediation(head_before, head_after) do
+    "queue: HALTED — cycle orphaned base #{head_before}\n" <>
+      "  HEAD (#{head_after}) does not descend from the cycle base.\n" <>
+      "  Repo left untouched. To recover:\n" <>
+      "    git rebase --onto #{head_before} #{head_after}^ HEAD\n" <>
+      "  then re-run: claude-build --queue\n" <>
+      "  (remaining pitches stay in ready/)"
   end
 
   # Fail-open jsonl parse (mirrors build-queue.sh:571-576): a malformed or
@@ -671,6 +719,26 @@ defmodule CodegenTestHarness.LoopQueueDrain do
     case System.cmd("git", ["-C", cwd, "rev-parse", "HEAD"], stderr_to_stdout: true) do
       {out, 0} -> String.trim(out)
       {_out, _code} -> nil
+    end
+  end
+
+  # ── Real git_ancestor_fn: `git merge-base --is-ancestor <a> <b>` ───────────
+  # `--is-ancestor` exits 0 when `ancestor` IS an ancestor of `descendant`,
+  # exits 1 when it is NOT (a normal, expected outcome — not an error), and
+  # exits >1 / errors when the refs are invalid or cwd is not a git repo.
+  # A genuine git-invocation error (invalid refs, non-git cwd — only
+  # mocked/edge cases) fails OPEN to true so it never spuriously trips the
+  # orphan-halt branch below; the exit-1 "not an ancestor" case is the one
+  # this fn exists to detect and must return false.
+  @doc false
+  @spec default_git_ancestor_fn(String.t(), String.t(), String.t()) :: boolean()
+  def default_git_ancestor_fn(cwd, ancestor, descendant) do
+    case System.cmd("git", ["-C", cwd, "merge-base", "--is-ancestor", ancestor, descendant],
+           stderr_to_stdout: true
+         ) do
+      {_out, 0} -> true
+      {_out, 1} -> false
+      {_out, _code} -> true
     end
   end
 

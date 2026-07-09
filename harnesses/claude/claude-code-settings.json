@@ -356,6 +356,15 @@
         "hooks": [
           {
             "type": "command",
+            "command": "$HOME/.claude/hooks/committer-no-head-move-reset.sh"
+          }
+        ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
             "command": "$HOME/.claude/hooks/committer-no-revert-prior-commit.sh"
           }
         ]

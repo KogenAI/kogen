@@ -311,6 +311,16 @@
   rationale: Denies a second non-amend git commit from the committer agent within the same build cycle, enforcing one commit per cycle and preventing accidental double-commits.
 
 - kind: registration
+  id: committer-no-head-move-reset
+  event: PreToolUse
+  tool_guard: Bash
+  surface: user_global
+  signal: AGENT_TYPE
+  role: committer
+  harnesses: all
+  rationale: Denies a HEAD-moving git reset (e.g. git reset HEAD~1, --hard/--soft/--keep/--merge, or a targeted commit-ish) from the committer agent, preventing a prior cycle's already-committed commit from being silently orphaned and folded into a new one.
+
+- kind: registration
   id: committer-no-trailer-guard
   event: PreToolUse
   tool_guard: Bash

@@ -362,7 +362,35 @@ defmodule CodegenTestHarness.OrchestrationLoop do
               "cycle changes in ONE commit). This is the no-op false-success the loop exists to prevent (loop_failed)."
     end
 
+    assert_base_not_orphaned!(cwd, base_head)
+
     :ok
+  end
+
+  # Ancestry backstop (orphaned-base guard): the count+diff check above is
+  # blind to a committer that ran `git reset <commit-ish> && git commit` —
+  # such a reset moves HEAD *backward* past base_head, then a new commit is
+  # made on top of the OLDER history. The new commit is still the sole commit
+  # not reachable from base_head (count == 1) and the diff is still nonempty,
+  # so the count+diff guard passes even though base_head's commit (and
+  # everything after it, up to the reset target) has been dropped from the
+  # branch. Assert base_head is still an ancestor of HEAD to catch this.
+  defp assert_base_not_orphaned!(cwd, base_head) do
+    case System.cmd("git", ["merge-base", "--is-ancestor", base_head, "HEAD"],
+           cd: cwd,
+           stderr_to_stdout: true
+         ) do
+      {_out, 0} ->
+        :ok
+
+      {_out, _nonzero} ->
+        raise "OrchestrationLoop: committer returned success but base commit #{base_head} is " <>
+                "no longer an ancestor of HEAD — the cycle orphaned the base, most likely via a " <>
+                "HEAD-moving `git reset` before the final commit. This silently drops a prior " <>
+                "cycle's already-committed (possibly already-pushed) commit. Recover with: " <>
+                "git rebase --onto #{base_head} <bad-commit>^ HEAD. This is loop_failed, never a " <>
+                "false loop_committed."
+    end
   end
 
   # Reviewer→developer fix cycle (structural gap #7). The reviewer ends its output

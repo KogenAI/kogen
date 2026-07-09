@@ -131,6 +131,7 @@ When a `git commit` is **DENIED** by a PreToolUse hook, the deny text is returne
   - Re-stage and retry once: `git add -A` then re-run `git commit`.
   - If retry still fails because the staged doc content is genuinely stale, that fix is outside committer's write scope (committer does not `Edit context/*.md`). Report `status: failed`, quoting the deny's `<file>:<line>` and claim verbatim, so the loop routes it back to curator/developer. Do NOT hand-edit the doc yourself.
 - **`committer-single-commit-per-cycle`** (a commit already landed this cycle): use `git commit --amend`, never a second `git commit`.
+- **`committer-no-head-move-reset`** (a `git reset` targeting a commit-ish other than bare `HEAD`, e.g. `git reset HEAD~1`, `--hard`/`--soft`/`--keep`/`--merge`, or a SHA/branch/tag): FORBIDDEN — this can silently orphan a prior cycle's already-committed (possibly already-pushed) commit by moving HEAD backward before a new commit is made. To fix THIS cycle's own commit use `git commit --amend`. Allowed reset forms: bare `git reset`, `git reset HEAD`, or `git reset -- <path>` (path-scoped unstage).
 - **Any other/unresolvable block**: report `status: failed` with the hook's reason verbatim. Halt — do not guess.
 
 This triage composes with, and does not replace, the post-commit clean-tree self-check above: a successful re-stage-and-retry still needs `git status --porcelain` to confirm the tree is clean.

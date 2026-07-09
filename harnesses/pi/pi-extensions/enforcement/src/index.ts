@@ -30,6 +30,7 @@ import { register as registerBuildQueueContinuity } from "./hooks/build-queue-co
 import { register as registerBuildWorkerCwdGuard } from "./hooks/build-worker-cwd-guard";
 import { register as registerCleanTreeBeforeShip } from "./hooks/clean-tree-before-ship";
 import { register as registerCommitterBashAllowlist } from "./hooks/committer-bash-allowlist";
+import { register as registerCommitterNoHeadMoveReset } from "./hooks/committer-no-head-move-reset";
 import { register as registerCommitterNoRevertPriorCommit } from "./hooks/committer-no-revert-prior-commit";
 import { register as registerCommitterNoTrailerGuard } from "./hooks/committer-no-trailer-guard";
 import { register as registerCommitterSingleCommitPerCycle } from "./hooks/committer-single-commit-per-cycle";
@@ -95,6 +96,7 @@ export default function (pi: ExtensionAPI): void {
   registerBuildWorkerCwdGuard(pi);
   registerCleanTreeBeforeShip(pi);
   registerCommitterBashAllowlist(pi);
+  registerCommitterNoHeadMoveReset(pi);
   registerCommitterNoRevertPriorCommit(pi);
   registerCommitterNoTrailerGuard(pi);
   registerCommitterSingleCommitPerCycle(pi);

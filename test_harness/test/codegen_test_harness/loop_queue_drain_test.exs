@@ -564,6 +564,76 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
     assert File.exists?(Path.join(ctx.ready_dir, "solo.md"))
   end
 
+  test "6r-orphan: HEAD moved + gate-clear + NOT an ancestor halts loud (never ships), repo untouched",
+       ctx do
+    write_pitch(ctx.ready_dir, "solo")
+
+    head_calls = start_agent(0)
+
+    # HEAD moved (aaa -> bbb) and gate is clear — without the forward-only
+    # fix this would match the committer-post-commit-hiccup branch and ship.
+    git_head_fn = fn _cwd ->
+      n = Agent.get_and_update(head_calls, fn n -> {n, n + 1} end)
+      if n == 0, do: "aaa", else: "bbb"
+    end
+
+    gate_verdict_fn = fn _cwd -> "clear" end
+    # bbb does NOT descend from aaa — the orphan condition.
+    git_ancestor_fn = fn _cwd, "aaa", "bbb" -> false end
+
+    spawn_fn = fn _slug, _h, _s, _cwd, _jsonl -> {:exit_code, 1} end
+
+    stderr =
+      capture_io(:stderr, fn ->
+        assert {:error, reason} =
+                 LoopQueueDrain.drain(
+                   base_opts(ctx,
+                     spawn_fn: spawn_fn,
+                     git_head_fn: git_head_fn,
+                     gate_verdict_fn: gate_verdict_fn,
+                     git_ancestor_fn: git_ancestor_fn
+                   )
+                 )
+
+        assert reason =~ "orphaned base"
+      end)
+
+    assert stderr =~ "git rebase --onto aaa bbb^ HEAD"
+    # Repo untouched: pitch stays in ready/, never moved to shipped/.
+    assert File.exists?(Path.join(ctx.ready_dir, "solo.md"))
+    refute File.exists?(Path.join(ctx.shipped_dir, "solo.md"))
+  end
+
+  test "6r-forward: HEAD moved + gate-clear + IS an ancestor still ships (forward-commit control)",
+       ctx do
+    write_pitch(ctx.ready_dir, "solo")
+
+    head_calls = start_agent(0)
+
+    git_head_fn = fn _cwd ->
+      n = Agent.get_and_update(head_calls, fn n -> {n, n + 1} end)
+      if n == 0, do: "aaa", else: "bbb"
+    end
+
+    gate_verdict_fn = fn _cwd -> "clear" end
+    # bbb DOES descend from aaa — a legitimate forward commit.
+    git_ancestor_fn = fn _cwd, "aaa", "bbb" -> true end
+
+    spawn_fn = fn _slug, _h, _s, _cwd, _jsonl -> {:exit_code, 1} end
+
+    assert {:ok, 1} =
+             LoopQueueDrain.drain(
+               base_opts(ctx,
+                 spawn_fn: spawn_fn,
+                 git_head_fn: git_head_fn,
+                 gate_verdict_fn: gate_verdict_fn,
+                 git_ancestor_fn: git_ancestor_fn
+               )
+             )
+
+    assert File.exists?(Path.join(ctx.shipped_dir, "solo.md"))
+  end
+
   test "6r6: transient nonzero (no commit, gate empty) retries unchanged, recovery seams do not fire",
        ctx do
     write_pitch(ctx.ready_dir, "solo")

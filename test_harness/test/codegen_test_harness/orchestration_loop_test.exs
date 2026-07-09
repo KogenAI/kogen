@@ -1055,6 +1055,52 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
       end
     end
 
+    test "committer orphaning the base via git reset raises (ancestry backstop)", %{
+      calls_agent: calls_agent,
+      dir: dir
+    } do
+      # Simulate a prior cycle's already-committed commit (the base this
+      # cycle must preserve).
+      File.write!(Path.join(dir, "prior_cycle.txt"), "prior work\n")
+      {_o, 0} = System.cmd("git", ["add", "-A"], cd: dir)
+      {_o, 0} = System.cmd("git", ["commit", "-q", "-m", "prior cycle commit"], cd: dir)
+
+      invoke_fn = fn role, _harness, _ctx, _opts ->
+        Agent.update(calls_agent, fn calls -> calls ++ [role] end)
+
+        if role == "committer" do
+          # Orphaning move: reset past the prior-cycle commit (base_head),
+          # then make exactly ONE new commit on the older history. This
+          # passes the count+diff guard but must trip the ancestry backstop.
+          {_o, 0} = System.cmd("git", ["reset", "--hard", "HEAD~1"], cd: dir)
+          File.write!(Path.join(dir, "new_work.txt"), "new\n")
+          {_o, 0} = System.cmd("git", ["add", "-A"], cd: dir)
+          {_o, 0} = System.cmd("git", ["commit", "-q", "-m", "orphaning commit"], cd: dir)
+        end
+
+        value =
+          if role == "reviewer-static", do: "REVIEW_VERDICT: APPROVED", else: "did #{role}"
+
+        {:ok, %{"status" => "success", "value" => value}}
+      end
+
+      assert_raise RuntimeError, ~r/no longer an ancestor|orphaned the base/, fn ->
+        OrchestrationLoop.run(
+          harness: "claude_code",
+          stack: "static",
+          cwd: dir,
+          pitch: "do the thing",
+          invoke_fn: invoke_fn,
+          gate_fn: always_clear_gate_fn(),
+          gate_preflight_fn: no_op_gate_preflight_fn(),
+          preflight_probe_fn: all_present_preflight_probe_fn(),
+          advance_cycle_state_fn: fn _state, _step_log, _session_id, _verdict, _project_dir ->
+            :ok
+          end
+        )
+      end
+    end
+
     test "no-op cycle (clean tree, zero work produced) raises — never loop_committed", %{
       calls_agent: calls_agent,
       dir: dir
