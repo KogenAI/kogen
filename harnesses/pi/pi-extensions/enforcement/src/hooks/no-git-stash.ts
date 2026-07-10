@@ -9,7 +9,7 @@
  */
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { deny, debugLog, isCodegenLogWrite } from "../lib/hook-helpers";
+import { deny, debugLog, isCodegenLogWrite, stripQuoted } from "../lib/hook-helpers";
 
 export const HANDLER_META = {
   name: "no-git-stash",
@@ -29,7 +29,7 @@ export function register(pi: ExtensionAPI): void {
     // counter increment.
     if (isCodegenLogWrite(command)) return;
 
-    if (/\bgit\s+stash\b/.test(command)) {
+    if (/\bgit\s+stash\b/.test(stripQuoted(command))) {
       return deny(
         "git stash forbidden. Commit WIP to a scratch branch or use worktrees. Stash hides work from orchestrator + reviewer.",
       );

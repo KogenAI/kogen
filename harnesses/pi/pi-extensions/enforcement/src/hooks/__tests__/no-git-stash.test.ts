@@ -86,4 +86,20 @@ describe("no-git-stash", () => {
     const result = await runHook("bash", "git stash");
     assert.ok((result as { block: boolean }).block === true);
   });
+
+  // ── quote-strip fail-closed regression (this pitch) ──────────────────────
+  it("allows ssh remote git-stash payload (quoted)", async () => {
+    const result = await runHook("bash", 'ssh box "git stash"');
+    assert.ok(result == null || (result as { block?: boolean }).block !== true);
+  });
+
+  it("allows git stash mentioned in quoted grep arg", async () => {
+    const result = await runHook("bash", 'grep -n "git stash" notes.md');
+    assert.ok(result == null || (result as { block?: boolean }).block !== true);
+  });
+
+  it("still blocks real unquoted git stash (fail-closed sanity)", async () => {
+    const result = await runHook("bash", "git stash push -m wip");
+    assert.ok((result as { block: boolean }).block === true);
+  });
 });

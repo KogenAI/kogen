@@ -38,7 +38,7 @@ Hook registration: **Two pipelines** (`enforcement_compiler.py` for `kind: denia
 | `harnesses/claude/hooks/curator-context-size-gate.sh` | PreToolUse — denies curator Edit/Write to `context/*.md` when the result would exceed the 40960-byte cap; hard gate (not a warning) |
 | `harnesses/claude/hooks/context-index-parity.sh` | PreToolUse — enforces context + PROJECT_CONTEXT.md parity |
 | `harnesses/claude/hooks/operator-subagent-allowlist.sh` | PreToolUse — enforces agent delegation allowlist (role ∈ {debug, shape, ops}); gates slash commands that spawn subagents |
-| `harnesses/claude/hooks/build-agent-app-confinement.sh` | PreToolUse — denies Write/Edit/MultiEdit when CODEGEN_BUILD_CWD is set and the target file resolves outside that dir; env-keyed (CODEGEN_BUILD_CWD), role-agnostic; /tmp escape hatch; canonicalizes both sides (macOS /var→/private/var); trailing-slash sibling-prefix safety; fills orchestrator-no-source-edit.sh subagent pass-through gap |
+| `harnesses/claude/hooks/build-agent-app-confinement.sh` | PreToolUse — denies Write/Edit/MultiEdit outside CODEGEN_BUILD_CWD; role-agnostic; /tmp escape hatch; canonicalizes macOS /var↔/private/var; fills orchestrator-no-source-edit.sh subagent gap |
 | `harnesses/claude/hooks/build-worker-cwd-guard.sh` | PreToolUse — guards build worker cwd discipline; whitelist honors optional `OCG_PHOENIX_SEED_DIR` and `OCG_USER_FILES_DIR` (consumer upload dir for user attachments) when set |
 | `harnesses/claude/hooks/build-no-success-before-commit.sh` | PreToolUse — blocks declaring success before commit completes; enforces clean working tree (no untracked/modified files) at SHIPPED signal |
 | `harnesses/claude/hooks/committer-bash-allowlist.sh` | PreToolUse — committer Bash allowlist: only git + safe shell utilities allowed (default-deny; GENERATED) |
@@ -212,6 +212,14 @@ If a file is committed with prettier multi-line formatting, the committed versio
 
 **Multi-value `role:` compiler case-arm join**: `enforcement_compiler.py`'s `_bash_agent_guard` joins multi-value `role: "a|b"` tokens with `" | "` (space-padded), not a bare `|`, when emitting the bash `case "$AGENT_TYPE" in a | b) ;; ...` guard. `hook_registrations.py`'s role-parity checker (`validate_role_body`) requires EACH token to independently satisfy either `<token>)` (last token) or `<token> |` (space before the pipe, earlier tokens) as a literal substring in the generated body — a bare `a|b)` join leaves every non-last token unmatched, failing `make hook-parity` with "declares role: X but body does not contain...". `reviewer-bash-allowlist` (first generated denial entry with a multi-value role) surfaced this; POSIX `case` syntax accepts space around `|` in patterns, so the fix is compiler-side and applies to all future multi-role generated hooks.
 
+## Quote-Aware Matching — `strip_quoted`/`ignore_quoted`
+
+Command-scanning guards grepping raw `$COMMAND` over-fire on tokens inside quoted spans (remote payloads `ssh host "cat f|head"`, quoted args `grep -n 'git stash' f`) that aren't real local invocations. `strip_quoted`/`stripQuoted` (`hooks-lib.sh`/`hook-helpers.ts`, beside `is_codegen_log_write`) strips quoted spans first — fail-closed: unquoted real invocation still matches/denies, quoted form bypasses.
+
+Compiler `{match_subject}` placeholder + registry `ignore_quoted: true` (no-cat-pipe, no-git-stash) selects strip-wrapped subject vs bare literal (default, byte-identical). `pre-commit-guard` (hand-authored twin, same failure-mode, folded) computes unquoted residue post-carve-out for all git-verb sites.
+
+Excluded: `no-python-json` (stripping disables its intrinsically-quoted `-c "<json>"` form); `context-factcheck-guard`/`-file-size-gate`/`-index-parity` (trigger-only, over-trigger harmless).
+
 ## Main-Agent-Scoped Guards (Registration-Based)
 
 Guards scoped to the main-agent session (empty `AGENT_TYPE`/`AGENT_ID`) use `kind: registration` entries — not the `generated: true` denial pipeline. The main-agent session lacks a named role; `role: "*"` would double-cover committer/reviewer allowlists.
@@ -253,7 +261,7 @@ When designing shell case statements where one verdict variant should block and 
 ## Pitfalls
 
 - **Phoenix gates**: wiring-check → render-check → runtime. [local] **T17 watchdog signal**: exit 0 + slug-ready + NOT-shipped (timeout-only); not messages (racy).
-- **Stop-hook block timeout ceiling**: Claude Code honors Stop-hook `block()` decisions up to ~300–350s, NOT the aspirational 360s registration timeout. Blocks at ≥350s silently drop (no error, no retry). Verified: N=300 (block+resume ✓), N=350 (no block/resume), N=400 (no block/resume). Ceiling between 300–350s.
+- **Stop-hook block timeout ceiling**: ~300–350s honored, NOT the 360s registration timeout; ≥350s silently drops (no error/retry). Verified N=300 ✓, N=350/400 no block.
 
 ## Testing & Verdict Patterns
 
@@ -264,11 +272,11 @@ When designing shell case statements where one verdict variant should block and 
 
 ## Bash Hook Test Debugging — Silent Crashes & Early Exits
 
-When bash hook tests show a pattern of ALL blocking tests failing while non-blocking tests pass, **suspect an early fatal crash (unbound variable under `set -u`, syntax error) rather than logic errors**. The hook exits non-zero BEFORE reaching the `block()` call, so the verdict JSON is never emitted and the output appears empty — this looks like "allow" to the test harness (no block JSON = PASSED).
+When ALL blocking tests fail while non-blocking pass, **suspect an early fatal crash (unbound var under `set -u`, syntax error) not logic errors** — hook exits non-zero before `block()`, verdict JSON never emitted, looks like "allow" (no block JSON = PASSED).
 
-**Diagnostic pattern**: Run the hook in isolation with `set -x` to trace execution: `bash -x harnesses/claude/hooks/your-hook.sh 2>&1 | head -50`. Look for the line where execution stops (the last line printed before exit) — typically a variable reference before assignment (e.g., `write_cycle_state "..." "$project_dir" ...` when `project_dir` was assigned later in the script under `set -u`). Fix by **hoisting variable assignments before first use**, or by guarding with `${var:-}` if the variable is optional.
+**Diagnostic**: `bash -x harnesses/claude/hooks/your-hook.sh 2>&1 | head -50` — find where execution stops (typically a var referenced before assignment under `set -u`). Fix by hoisting assignment before first use, or `${var:-}` guard if optional.
 
-**Test implication**: When a hook test suite suddenly goes from "all pass" to "all blocking tests fail", do NOT assume logic regression — check for unbound-variable crashes first. Run a single test case with `bash -x` to confirm the hook's execution trace reaches the intended block-decision point.
+**Test implication**: suite flips "all pass"→"all blocking fail" → check unbound-variable crashes first, not logic regression.
 
 ## Trigger Keywords
 

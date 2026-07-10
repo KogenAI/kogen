@@ -211,4 +211,41 @@ describe("pre-commit-guard", () => {
     );
     assert.ok((result as { block?: boolean }).block === true);
   });
+
+  // ── quote-strip fail-closed regression (this pitch) ──────────────────────
+  it("allows ssh remote git-stash payload (quoted) for non-committer", async () => {
+    const result = await runHook(
+      "bash",
+      'ssh box "git stash"',
+      "developer-phoenix-backend",
+    );
+    assert.ok(result == null || (result as { block?: boolean }).block !== true);
+  });
+
+  it("allows git add mentioned in quoted grep arg", async () => {
+    const result = await runHook(
+      "bash",
+      'grep -n "git add" notes.md',
+      "developer-phoenix-backend",
+    );
+    assert.ok(result == null || (result as { block?: boolean }).block !== true);
+  });
+
+  it("still blocks real unquoted git rebase (fail-closed sanity)", async () => {
+    const result = await runHook(
+      "bash",
+      "git rebase --continue",
+      "developer-phoenix-backend",
+    );
+    assert.ok((result as { block?: boolean }).block === true);
+  });
+
+  it("still blocks git commit with quoted -m arg (verb unquoted)", async () => {
+    const result = await runHook(
+      "bash",
+      "git commit -m 'quoted message'",
+      "developer-phoenix-backend",
+    );
+    assert.ok((result as { block?: boolean }).block === true);
+  });
 });

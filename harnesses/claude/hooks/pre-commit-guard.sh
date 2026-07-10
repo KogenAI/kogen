@@ -42,7 +42,11 @@ fi
 # the command is even a destructive git invocation.
 _role=$(resolve_role)
 if [ "$_role" = "ops" ]; then
-    if printf '%s' "$COMMAND" | grep -qE '\bgit[[:space:]]+(add|rm|mv|stash|commit|rebase|cherry-pick|revert|merge)\b|\bgit[[:space:]]+restore\b.*--staged\b|\bgit[[:space:]]+reset\b.*--hard\b|\bgit[[:space:]]+push\b.*(--force(-with-lease)?|[[:space:]]-f([[:space:]]|$))'; then
+    # Fail-closed subject transform (see strip_quoted() in hooks-lib.sh):
+    # a destructive git verb inside a quoted remote payload or string
+    # argument is not a real local invocation; strip before matching.
+    _ops_cmd_unquoted=$(strip_quoted "$COMMAND")
+    if printf '%s' "$_ops_cmd_unquoted" | grep -qE '\bgit[[:space:]]+(add|rm|mv|stash|commit|rebase|cherry-pick|revert|merge)\b|\bgit[[:space:]]+restore\b.*--staged\b|\bgit[[:space:]]+reset\b.*--hard\b|\bgit[[:space:]]+push\b.*(--force(-with-lease)?|[[:space:]]-f([[:space:]]|$))'; then
         [ "${CODEGEN_OPS_GIT_UNLOCK:-}" = "1" ] && exit 0
         deny "BLOCKED by pre-commit-guard: ops role alone no longer unlocks destructive git. Set CODEGEN_OPS_GIT_UNLOCK=1 in the environment ALSO to confirm intent (two-signal gate)."
         exit 0
@@ -68,67 +72,74 @@ if printf '%s' "$COMMAND" | grep -qE '(^|[[:space:]/])codegen-log\b'; then
     exit 0
 fi
 
+# Fail-closed subject transform: strip single/double-quoted spans so a
+# forbidden git verb sitting inside a quoted remote-exec payload (ssh host
+# "git stash") or a quoted string argument (grep -n 'git stash' file.sh) does
+# not trigger this guard. A real, unquoted, local git-verb invocation still
+# matches and is still denied. See strip_quoted() in hooks-lib.sh.
+_cmd_unquoted=$(strip_quoted "$COMMAND")
+
 # State-modifying git subcommands. Notably NOT blocked: status, diff,
 # log, show, blame, ls-files — these are routinely used for inspection by
 # every subagent.
-if printf '%s' "$COMMAND" | grep -qE '\bgit[[:space:]]+add\b'; then
+if printf '%s' "$_cmd_unquoted" | grep -qE '\bgit[[:space:]]+add\b'; then
     deny "BLOCKED by pre-commit-guard: git add is forbidden for agent \"$AGENT_TYPE\" — committer owns all git staging (delegate to committer)"
     exit 0
 fi
 
-if printf '%s' "$COMMAND" | grep -qE '\bgit[[:space:]]+rm\b'; then
+if printf '%s' "$_cmd_unquoted" | grep -qE '\bgit[[:space:]]+rm\b'; then
     deny "BLOCKED by pre-commit-guard: git rm is forbidden for agent \"$AGENT_TYPE\" — committer owns all git staging (delegate to committer)"
     exit 0
 fi
 
-if printf '%s' "$COMMAND" | grep -qE '\bgit[[:space:]]+mv\b'; then
+if printf '%s' "$_cmd_unquoted" | grep -qE '\bgit[[:space:]]+mv\b'; then
     deny "BLOCKED by pre-commit-guard: git mv is forbidden for agent \"$AGENT_TYPE\" — committer owns all git staging (delegate to committer)"
     exit 0
 fi
 
-if printf '%s' "$COMMAND" | grep -qE '\bgit[[:space:]]+restore\b.*--staged\b'; then
+if printf '%s' "$_cmd_unquoted" | grep -qE '\bgit[[:space:]]+restore\b.*--staged\b'; then
     deny "BLOCKED by pre-commit-guard: git restore --staged is forbidden for agent \"$AGENT_TYPE\" — committer owns all git staging (delegate to committer)"
     exit 0
 fi
 
-if printf '%s' "$COMMAND" | grep -qE '\bgit[[:space:]]+stash\b'; then
+if printf '%s' "$_cmd_unquoted" | grep -qE '\bgit[[:space:]]+stash\b'; then
     deny "BLOCKED by pre-commit-guard: git stash is forbidden for agent \"$AGENT_TYPE\" — committer owns all git staging (delegate to committer)"
     exit 0
 fi
 
-if printf '%s' "$COMMAND" | grep -qE '\bgit[[:space:]]+commit\b'; then
+if printf '%s' "$_cmd_unquoted" | grep -qE '\bgit[[:space:]]+commit\b'; then
     deny "BLOCKED by pre-commit-guard: git commit forbidden for agent \"$AGENT_TYPE\" — committer owns commit creation (see CLAUDE.md \"NEVER Commit Directly\")"
     exit 0
 fi
 
-if printf '%s' "$COMMAND" | grep -qE '\bgit[[:space:]]+rebase\b'; then
+if printf '%s' "$_cmd_unquoted" | grep -qE '\bgit[[:space:]]+rebase\b'; then
     deny "BLOCKED by pre-commit-guard: git rebase forbidden for agent \"$AGENT_TYPE\" — committer owns history"
     exit 0
 fi
 
-if printf '%s' "$COMMAND" | grep -qE '\bgit[[:space:]]+cherry-pick\b'; then
+if printf '%s' "$_cmd_unquoted" | grep -qE '\bgit[[:space:]]+cherry-pick\b'; then
     deny "BLOCKED by pre-commit-guard: git cherry-pick forbidden for agent \"$AGENT_TYPE\" — committer owns history"
     exit 0
 fi
 
-if printf '%s' "$COMMAND" | grep -qE '\bgit[[:space:]]+revert\b'; then
+if printf '%s' "$_cmd_unquoted" | grep -qE '\bgit[[:space:]]+revert\b'; then
     deny "BLOCKED by pre-commit-guard: git revert forbidden for agent \"$AGENT_TYPE\" — committer owns history"
     exit 0
 fi
 
-if printf '%s' "$COMMAND" | grep -qE '\bgit[[:space:]]+merge\b'; then
+if printf '%s' "$_cmd_unquoted" | grep -qE '\bgit[[:space:]]+merge\b'; then
     deny "BLOCKED by pre-commit-guard: git merge forbidden for agent \"$AGENT_TYPE\" — committer owns history"
     exit 0
 fi
 
 # git reset --hard / --keep (destructive).
-if printf '%s' "$COMMAND" | grep -qE '\bgit[[:space:]]+reset\b.*--hard\b'; then
+if printf '%s' "$_cmd_unquoted" | grep -qE '\bgit[[:space:]]+reset\b.*--hard\b'; then
     deny "BLOCKED by pre-commit-guard: git reset --hard forbidden for agent \"$AGENT_TYPE\" — destructive (use stash or committer)"
     exit 0
 fi
 
 # Soft/mixed reset is only allowed when it stays within this cycle's own HEAD.
-if printf '%s' "$COMMAND" | grep -qE '\bgit[[:space:]]+reset\b' && ! printf '%s' "$COMMAND" | grep -qE '\bgit[[:space:]]+reset\b.*--hard\b'; then
+if printf '%s' "$_cmd_unquoted" | grep -qE '\bgit[[:space:]]+reset\b' && ! printf '%s' "$_cmd_unquoted" | grep -qE '\bgit[[:space:]]+reset\b.*--hard\b'; then
     build_start_ts="${CODEGEN_BUILD_START_TS:-}"
     if [ -n "$build_start_ts" ]; then
         project_dir="${CLAUDE_PROJECT_DIR:-${CWD:-$PWD}}"
@@ -141,7 +152,7 @@ if printf '%s' "$COMMAND" | grep -qE '\bgit[[:space:]]+reset\b' && ! printf '%s'
 fi
 
 # git push --force / --force-with-lease / -f
-if printf '%s' "$COMMAND" | grep -qE '\bgit[[:space:]]+push\b.*(--force(-with-lease)?|[[:space:]]-f([[:space:]]|$))'; then
+if printf '%s' "$_cmd_unquoted" | grep -qE '\bgit[[:space:]]+push\b.*(--force(-with-lease)?|[[:space:]]-f([[:space:]]|$))'; then
     deny "BLOCKED by pre-commit-guard: git push --force forbidden for agent \"$AGENT_TYPE\" — committer owns push discipline"
     exit 0
 fi

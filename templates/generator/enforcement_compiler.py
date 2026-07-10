@@ -169,7 +169,7 @@ if is_codegen_log_write; then
 fi
 
 # Deny: pattern match.
-if printf '%s' "$COMMAND" | grep -qE '{match_bash}'; then
+if printf '%s' "{match_subject}" | grep -qE '{match_bash}'; then
     deny "{message}"
     exit 0
 fi
@@ -536,6 +536,9 @@ def _render_bash(entry):
         _check_forbidden(pattern, eid)
         match_bash = _to_bash(pattern)
         agent_guard = _bash_agent_guard(role)
+        match_subject = (
+            '$(strip_quoted "$COMMAND")' if entry.get("ignore_quoted", False) else "$COMMAND"
+        )
         return _BASH_TEMPLATE_SINGLE.format(
             id=eid,
             description=description,
@@ -547,6 +550,7 @@ def _render_bash(entry):
             harnesses=harnesses,
             message=message,
             match_bash=match_bash,
+            match_subject=match_subject,
             role_source_prelude=role_source_prelude,
             bypass_roles_prelude=bypass_prelude,
             agent_type_guard=agent_guard,
@@ -569,7 +573,7 @@ _TS_TEMPLATE_SINGLE = """\
  */
 
 import type {{ ExtensionAPI }} from "@earendil-works/pi-coding-agent";
-import {{ deny, debugLog, isCodegenLogWrite }} from "../lib/hook-helpers";
+import {{ deny, debugLog, isCodegenLogWrite{ts_extra_import} }} from "../lib/hook-helpers";
 
 export const HANDLER_META = {{
   name: "{id}",
@@ -589,7 +593,7 @@ export function register(pi: ExtensionAPI): void {{
     // counter increment.
     if (isCodegenLogWrite(command)) return;
 
-    if (/{match_ts}/.test(command)) {{
+    if (/{match_ts}/.test({match_subject})) {{
       return deny(
         "{message}",
       );
@@ -906,11 +910,16 @@ def _render_ts(entry):
         match_ts = _to_ts(pattern)
         role = entry.get("role", "*")
         agent_type_guard = _ts_agent_guard(role)
+        ignore_quoted = entry.get("ignore_quoted", False)
+        match_subject = "stripQuoted(command)" if ignore_quoted else "command"
+        ts_extra_import = ", stripQuoted" if ignore_quoted else ""
         return _TS_TEMPLATE_SINGLE.format(
             id=eid,
             description=description,
             message=message,
             match_ts=match_ts,
+            match_subject=match_subject,
+            ts_extra_import=ts_extra_import,
             bypass_roles_prelude=bypass_prelude_ts,
             agent_type_guard=agent_type_guard,
         )

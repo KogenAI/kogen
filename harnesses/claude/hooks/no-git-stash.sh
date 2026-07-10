@@ -31,7 +31,7 @@ if is_codegen_log_write; then
 fi
 
 # Deny: pattern match.
-if printf '%s' "$COMMAND" | grep -qE '\bgit[[:space:]]+stash\b'; then
+if printf '%s' "$(strip_quoted "$COMMAND")" | grep -qE '\bgit[[:space:]]+stash\b'; then
     deny "git stash forbidden. Commit WIP to a scratch branch or use worktrees. Stash hides work from orchestrator + reviewer."
     exit 0
 fi

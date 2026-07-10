@@ -69,4 +69,23 @@ describe("no-cat-pipe", () => {
     const result = await runHook("bash", "cat file.txt | head -20");
     assert.ok((result as { block?: boolean }).block === true);
   });
+
+  // ── quote-strip fail-closed regression (this pitch) ──────────────────────
+  it("allows ssh remote cat-pipe payload (quoted)", async () => {
+    const result = await runHook(
+      "bash",
+      'ssh box "cat /etc/passwd | grep studio"',
+    );
+    assert.ok(result == null || (result as { block?: boolean }).block !== true);
+  });
+
+  it("allows cat-pipe mentioned in quoted grep arg", async () => {
+    const result = await runHook("bash", 'grep -n "cat foo | head" notes.md');
+    assert.ok(result == null || (result as { block?: boolean }).block !== true);
+  });
+
+  it("still blocks real unquoted cat-pipe (fail-closed sanity)", async () => {
+    const result = await runHook("bash", "cat notes.md | head -20");
+    assert.ok((result as { block?: boolean }).block === true);
+  });
 });

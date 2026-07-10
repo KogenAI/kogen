@@ -460,6 +460,20 @@ is_codegen_log_write() {
     printf '%s' "${COMMAND:-}" | grep -qE '(^|[[:space:]/])codegen-log\b'
 }
 
+# strip_quoted <command_string> — echoes $1 with single- and double-quoted
+# spans removed. Fail-closed subject transform for command-scanning deny
+# guards: a forbidden token INSIDE a quoted span (a remote-exec payload like
+# ssh host "cat f | head", or a quoted string argument like grep -n 'git
+# stash' file) is not a real local invocation of that token — matching the
+# stripped residue means an unquoted (real, local) occurrence still matches
+# and is still denied, while a quoted (remote/string) occurrence is removed
+# and bypasses. Imperfect stripping (escaped/nested quotes) can only RETAIN
+# a false positive, never introduce a false negative. Mirrors the
+# is_codegen_log_write pre-match bypass precedent above.
+strip_quoted() {
+    printf '%s' "$1" | sed "s/'[^']*'//g; s/\"[^\"]*\"//g"
+}
+
 # guard_breadcrumb <session_id> <jsonl_line> — best-effort diagnostic append.
 # Appends <jsonl_line> to codegen/logging/.guard-diagnostics/<session_id>.jsonl
 # under ${CWD:-$PWD}, creating the directory if needed. This is a pure

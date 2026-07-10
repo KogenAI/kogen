@@ -79,6 +79,22 @@ run_test "codegen-log write narrating git stash allowed" "0" \
 run_test "real git stash still blocked (unchanged)" "2" \
     '{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"git stash"},"agent_type":"developer-phoenix-backend","agent_id":"a"}'
 
+# ── quote-strip fail-closed regression (this pitch) ─────────────────────────
+# Test 10: ssh remote payload mentioning git stash inside quotes — allowed
+# (not a real local invocation; quoted span is stripped before match).
+run_test "ssh remote git-stash payload (quoted) allowed" "0" \
+    '{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"ssh box \"git stash\""},"agent_type":"developer-phoenix-backend","agent_id":"a"}'
+
+# Test 11: git stash mentioned inside a quoted grep pattern — allowed
+# (quoted string argument, not a real local invocation).
+run_test "git stash mentioned in quoted grep arg allowed" "0" \
+    '{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"grep -n \"git stash\" notes.md"},"agent_type":"developer-phoenix-backend","agent_id":"a"}'
+
+# Test 12: real unquoted local git stash still denied (fail-closed sanity,
+# distinct from Test 9).
+run_test "real unquoted git stash still denied (fail-closed sanity)" "2" \
+    '{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"git stash push -m wip"},"agent_type":"developer-phoenix-backend","agent_id":"a"}'
+
 echo ""
 echo "Results: $pass passed, $fail failed"
 

@@ -226,6 +226,42 @@ class TestFilePathDenyNoCrossContamination(unittest.TestCase):
         self.assertIn("exit 0\nfi\n\ndeny ", bash)
 
 
+class TestRenderIgnoreQuoted(unittest.TestCase):
+    """_render_bash / _render_ts — ignore_quoted opt-in on the COMMAND+deny
+    SINGLE branch. Default-off MUST render byte-identical subject literals
+    to the pre-existing template (byte-parity regression guard); opt-in
+    routes the match subject through strip_quoted/stripQuoted.
+    """
+
+    def test_bash_without_ignore_quoted_uses_bare_command(self):
+        bash = ec._render_bash(_ENTRY_COMMAND_DENY)
+        self.assertIn('printf \'%s\' "$COMMAND" | grep -qE', bash)
+        self.assertNotIn("strip_quoted", bash)
+
+    def test_bash_with_ignore_quoted_uses_strip_quoted(self):
+        entry = dict(_ENTRY_COMMAND_DENY, ignore_quoted=True)
+        bash = ec._render_bash(entry)
+        self.assertIn(
+            'printf \'%s\' "$(strip_quoted "$COMMAND")" | grep -qE', bash
+        )
+
+    def test_ts_without_ignore_quoted_uses_bare_command(self):
+        ts = ec._render_ts(_ENTRY_COMMAND_DENY)
+        self.assertIn(".test(command)", ts)
+        self.assertNotIn("stripQuoted", ts)
+        self.assertNotIn(", stripQuoted", ts)
+
+    def test_ts_with_ignore_quoted_uses_strip_quoted(self):
+        entry = dict(_ENTRY_COMMAND_DENY, ignore_quoted=True)
+        ts = ec._render_ts(entry)
+        self.assertIn(".test(stripQuoted(command))", ts)
+        self.assertIn("stripQuoted", ts)
+        # Import line must pull in the new helper alongside the existing ones.
+        self.assertIn(
+            "import { deny, debugLog, isCodegenLogWrite, stripQuoted }", ts
+        )
+
+
 class TestValidateHarnesses(unittest.TestCase):
     """_validate_harnesses — token-set guard (seam b)."""
 

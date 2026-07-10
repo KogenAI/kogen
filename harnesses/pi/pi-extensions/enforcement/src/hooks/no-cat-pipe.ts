@@ -9,7 +9,7 @@
  */
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { deny, debugLog, isCodegenLogWrite } from "../lib/hook-helpers";
+import { deny, debugLog, isCodegenLogWrite, stripQuoted } from "../lib/hook-helpers";
 
 export const HANDLER_META = {
   name: "no-cat-pipe",
@@ -32,7 +32,7 @@ export function register(pi: ExtensionAPI): void {
     // counter increment.
     if (isCodegenLogWrite(command)) return;
 
-    if (/cat\s+[^|]*\|\s*(head|tail|grep|less|more)\b/.test(command)) {
+    if (/cat\s+[^|]*\|\s*(head|tail|grep|less|more)\b/.test(stripQuoted(command))) {
       return deny(
         "Use Read tool with offset/limit instead of `cat | head/tail`. Use Grep tool instead of `cat | grep`. Truncation hides relevant lines.",
       );

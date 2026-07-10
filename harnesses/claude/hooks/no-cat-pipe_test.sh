@@ -202,8 +202,30 @@ fi
 FIXTURE_OPS_CAT_PIPE='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"ssh box \"cat /etc/passwd | grep studio\""},"agent_type":"","agent_id":"a"}'
 run_test_env "ops role bypasses cat-pipe guard" "0" "$FIXTURE_OPS_CAT_PIPE" "CLAUDE_ROLE=ops"
 
-# Test 14: non-ops role + same command — MUST STILL DENY (bypass doesn't leak)
-run_test "non-ops role still denied for cat-pipe (bypass does not leak)" "2" "$FIXTURE_OPS_CAT_PIPE"
+# Test 14: non-ops role + real UNQUOTED local cat-pipe — MUST STILL DENY
+# (bypass doesn't leak). NOTE: FIXTURE_OPS_CAT_PIPE itself is now a quoted
+# ssh remote payload — with the quote-strip fix (this pitch) it legitimately
+# bypasses for ALL roles, ops or not (see Test 15/16 below), so it can no
+# longer prove "bypass does not leak to non-ops". Use an unquoted local
+# invocation instead to isolate the ops-bypass-roles behavior from the
+# quote-strip behavior.
+FIXTURE_LOCAL_CAT_PIPE='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"cat /etc/passwd | grep studio"},"agent_type":"","agent_id":"a"}'
+run_test "non-ops role still denied for unquoted local cat-pipe (bypass does not leak)" "2" "$FIXTURE_LOCAL_CAT_PIPE"
+
+# ── quote-strip fail-closed regression (this pitch) ─────────────────────────
+# Test 15: ssh remote payload with cat-pipe inside quotes — ALLOW for ANY
+# role (not a real local invocation; quoted span is stripped before match).
+run_test "ssh remote cat-pipe payload (quoted) allowed" "0" "$FIXTURE_OPS_CAT_PIPE"
+
+# Test 16: cat-pipe mentioned inside a quoted grep pattern — ALLOW (quoted
+# string argument, not a real local invocation).
+FIXTURE_QUOTED_GREP_ARG='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"grep -n \"cat foo | head\" notes.md"},"agent_type":"developer-phoenix-backend","agent_id":"a"}'
+run_test "cat-pipe mentioned in quoted grep arg allowed" "0" "$FIXTURE_QUOTED_GREP_ARG"
+
+# Test 17: real UNQUOTED local cat-pipe still denied unchanged (fail-closed
+# direction sanity check, distinct from Test 12).
+run_test "real unquoted cat-pipe still denied (fail-closed sanity)" "2" \
+    '{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"cat notes.md | head -20"},"agent_type":"developer-phoenix-backend","agent_id":"a"}'
 
 echo ""
 echo "Results: $pass passed, $fail failed"

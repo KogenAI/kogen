@@ -165,6 +165,22 @@ export function isCodegenLogWrite(command: string): boolean {
   return /(^|[\s/])codegen-log\b/.test(command);
 }
 
+/**
+ * stripQuoted() — Returns `command` with single- and double-quoted spans
+ * removed. Fail-closed subject transform for command-scanning deny guards: a
+ * forbidden token INSIDE a quoted span (a remote-exec payload like
+ * `ssh host "cat f | head"`, or a quoted string argument like
+ * `grep -n 'git stash' file`) is not a real local invocation of that token —
+ * matching the stripped residue means an unquoted (real, local) occurrence
+ * still matches and is still denied, while a quoted (remote/string)
+ * occurrence is removed and bypasses. Imperfect stripping (escaped/nested
+ * quotes) can only RETAIN a false positive, never introduce a false
+ * negative. Mirrors the isCodegenLogWrite pre-match bypass precedent above.
+ */
+export function stripQuoted(command: string): string {
+  return command.replace(/'[^']*'/g, "").replace(/"[^"]*"/g, "");
+}
+
 /** Unused ctx parameter helper — avoids lint warnings in hook modules that don't use ctx. */
 export function voidCtx(_ctx: ExtensionContext): void {
   // intentionally unused

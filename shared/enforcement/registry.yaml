@@ -84,6 +84,7 @@
   role: "*"
   harnesses: all
   bypass_roles: [ops]
+  ignore_quoted: true
 
 - id: no-git-stash
   generated: true
@@ -96,6 +97,7 @@
   signal: none
   role: "*"
   harnesses: all
+  ignore_quoted: true
 
 - id: no-python-json
   generated: true

@@ -333,6 +333,40 @@ run_test "non-committer codegen-log body with 'git commit' prose allowed (carve-
 FIXTURE_BARE_COMMIT='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"git commit -m \"x\""},"agent_type":"reviewer-phoenix","agent_id":"a"}'
 run_test "non-committer bare git commit (no codegen-log) still denied" "2" "$FIXTURE_BARE_COMMIT"
 
+# ── quote-strip fail-closed regression (this pitch) ─────────────────────────
+# The guard must block only a REAL, LOCAL git-verb invocation. A git verb
+# sitting inside a quoted remote-exec payload or a quoted string argument to
+# another command is not that action; strip_quoted() removes such spans
+# before the scan so these bypass, while a real unquoted invocation still
+# matches and is still denied.
+
+# Test 35: ssh remote payload with "git stash" inside quotes — MUST ALLOW
+# for a non-committer role (not a real local invocation).
+FIXTURE_SSH_STASH_PAYLOAD='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"ssh box \"git stash\""},"agent_type":"developer-phoenix-backend","agent_id":"a"}'
+run_test "ssh remote git-stash payload (quoted) allowed for non-committer" "0" "$FIXTURE_SSH_STASH_PAYLOAD"
+
+# Test 36: "git add" mentioned inside a quoted grep pattern — MUST ALLOW
+# (quoted string argument, not a real local invocation).
+FIXTURE_GREP_GIT_ADD='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"grep -n \"git add\" notes.md"},"agent_type":"developer-phoenix-backend","agent_id":"a"}'
+run_test "git add mentioned in quoted grep arg allowed" "0" "$FIXTURE_GREP_GIT_ADD"
+
+# Test 37: real unquoted local "git rebase" still denied (fail-closed sanity,
+# distinct from Test 6 — the verb itself is unquoted even though this fixture
+# has no trailing quoted arg at all).
+FIXTURE_REBASE_UNQUOTED='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"git rebase --continue"},"agent_type":"developer-phoenix-backend","agent_id":"a"}'
+run_test "real unquoted git rebase still denied (fail-closed sanity)" "2" "$FIXTURE_REBASE_UNQUOTED"
+
+# Test 38: quoted trailing arg does NOT strip the unquoted leading verb —
+# "git commit -m 'foo'" must still deny (verb precedes the quoted span).
+FIXTURE_COMMIT_QUOTED_ARG='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"git commit -m '\''quoted message'\''"},"agent_type":"developer-phoenix-backend","agent_id":"a"}'
+run_test "git commit with quoted -m arg still denied (verb unquoted)" "2" "$FIXTURE_COMMIT_QUOTED_ARG"
+
+# Test 39: ops mode + destructive git verb inside quoted ssh payload — MUST
+# ALLOW even without CODEGEN_OPS_GIT_UNLOCK (not a real local invocation;
+# the ops-mode branch also applies strip_quoted before its scan).
+FIXTURE_OPS_SSH_STASH='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"ssh box \"git stash\""},"agent_type":"","agent_id":"a"}'
+run_test_env "ops role + ssh remote git-stash payload (quoted) allowed without unlock" "0" "$FIXTURE_OPS_SSH_STASH" "CLAUDE_ROLE=ops"
+
 echo ""
 echo "Results: $pass passed, $fail failed"
 
