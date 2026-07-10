@@ -142,5 +142,67 @@ class TestIterSessions(unittest.TestCase):
         self.assertEqual(sessions, [])
 
 
+class TestWindowFilter(unittest.TestCase):
+    def test_since_future_excludes_all_turns(self) -> None:
+        # session_clean.jsonl turns are all timestamped 2026-06-19.
+        # A since date far in the future must exclude every turn, so the
+        # session itself (zero in-window turns) is dropped entirely.
+        config = Config(
+            since=datetime.date(2099, 1, 1),
+            project_dir=FIXTURES,
+        )
+        sessions = list(iter_sessions(config))
+        names = {s.session_id for s in sessions}
+        self.assertFalse(any("session_clean" in n for n in names))
+
+    def test_since_past_includes_all_turns(self) -> None:
+        config = Config(
+            since=datetime.date(2020, 1, 1),
+            project_dir=FIXTURES,
+        )
+        sessions = list(iter_sessions(config))
+        clean = [s for s in sessions if "session_clean" in s.session_id]
+        self.assertEqual(len(clean), 1)
+        self.assertEqual(len(clean[0].turns), 4)
+
+    def test_session_dropped_when_zero_turns_in_window(self) -> None:
+        config = Config(
+            since=datetime.date(2099, 1, 1),
+            project_dir=FIXTURES,
+        )
+        sessions = list(iter_sessions(config))
+        names = {s.session_id for s in sessions}
+        self.assertFalse(any("session_thrash" in n for n in names))
+        self.assertFalse(any("session_malformed" in n for n in names))
+
+    def test_turn_missing_timestamp_excluded_fail_closed(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = Path(tmpdir) / "session_no_ts.jsonl"
+            record = {
+                "type": "assistant",
+                "cwd": "/tmp/project",
+                "message": {"content": []},
+                # no "timestamp" key at all
+            }
+            path.write_text(json.dumps(record) + "\n", encoding="utf-8")
+            config = Config(since=datetime.date(2020, 1, 1), project_dir=Path(tmpdir))
+            sessions = list(iter_sessions(config))
+            self.assertEqual(sessions, [])
+
+    def test_turn_malformed_timestamp_excluded_fail_closed(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = Path(tmpdir) / "session_bad_ts.jsonl"
+            record = {
+                "type": "assistant",
+                "timestamp": "not-a-date",
+                "cwd": "/tmp/project",
+                "message": {"content": []},
+            }
+            path.write_text(json.dumps(record) + "\n", encoding="utf-8")
+            config = Config(since=datetime.date(2020, 1, 1), project_dir=Path(tmpdir))
+            sessions = list(iter_sessions(config))
+            self.assertEqual(sessions, [])
+
+
 if __name__ == "__main__":
     unittest.main()

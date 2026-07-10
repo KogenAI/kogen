@@ -1,6 +1,7 @@
 """Session loader — single normalization point for Claude JSONL transcripts."""
 from __future__ import annotations
 
+import datetime
 import json
 import os
 from dataclasses import dataclass, field
@@ -153,6 +154,24 @@ def _session_id_from_path(path: Path) -> str:
     return f"{path.parent.name}/{path.stem}"
 
 
+def _turn_in_window(turn: Turn, since: datetime.date) -> bool:
+    """Return True when turn.timestamp parses to a date on/after since.
+
+    Fail-closed: a turn with a missing or unparseable timestamp is treated
+    as out-of-window (excluded), never counted as in-window by default.
+    """
+    if not turn.timestamp:
+        return False
+    try:
+        # ISO-8601 UTC, e.g. "2026-07-07T21:32:52.204Z". Python's
+        # fromisoformat rejects a trailing "Z" pre-3.11, so normalize it.
+        ts = turn.timestamp.replace("Z", "+00:00")
+        turn_date = datetime.datetime.fromisoformat(ts).date()
+    except ValueError:
+        return False
+    return turn_date >= since
+
+
 def iter_sessions(config: Config) -> Iterator[Session]:
     """Yield Session objects for all matching transcript files.
 
@@ -168,6 +187,7 @@ def iter_sessions(config: Config) -> Iterator[Session]:
             if name in ("failures.jsonl", "gate-verdicts.jsonl"):
                 continue
             turns = _load_jsonl(jsonl_path)
+            turns = [t for t in turns if _turn_in_window(t, config.since)]
             if not turns:
                 continue
             session_id = _session_id_from_path(jsonl_path)
@@ -189,6 +209,7 @@ def iter_sessions(config: Config) -> Iterator[Session]:
             continue
         for jsonl_path in sorted(project_dir.glob("*.jsonl")):
             turns = _load_jsonl(jsonl_path)
+            turns = [t for t in turns if _turn_in_window(t, config.since)]
             if not turns:
                 continue
             session_id = _session_id_from_path(jsonl_path)
