@@ -11,9 +11,13 @@ defmodule Mix.Tasks.Codegen.Loop.Queue do
 
   Exits:
 
-  - `0` — drain returned `{:ok, n}` (n pitches shipped, `ready/` empty)
-  - non-zero, reason on stderr — `{:error, reason}` (deterministic child
-    failure, exhausted transient retries, or lock contention)
+  - `0` — drain returned `{:ok, n}` (n pitches shipped, `ready/` empty).
+    Isolated deterministic failures below the consecutive-failure circuit
+    breaker are tolerated here too — the failed pitch is skipped-and-left in
+    `ready/`, not a drain failure (see `LoopQueueDrain` moduledoc).
+  - non-zero, reason on stderr — `{:error, reason}` (circuit-breaker trip —
+    too many consecutive deterministic failures, an orphaned base, or lock
+    contention)
 
   A dependency cycle among the batch (the `blocks_on:` frontmatter graph,
   or legacy `Blocks-on:` prose graph when no frontmatter is present) is NOT
@@ -31,6 +35,9 @@ defmodule Mix.Tasks.Codegen.Loop.Queue do
   - `CODEGEN_BUILD_QUEUE_MAX_RETRIES` — max consecutive transient retries per slug (default 3)
   - `CODEGEN_BUILD_QUEUE_RETRY_DELAYS` — space-separated backoff seconds (default "30 120 300")
   - `CODEGEN_BUILD_QUEUE_PITCH_BUDGET_SECS` — per-pitch wall-clock budget seconds (default 7200)
+  - `CODEGEN_BUILD_QUEUE_MAX_CONSECUTIVE_FAILS` — consecutive deterministic
+    pitch failures (no ship in between) at which the drain HALTs instead of
+    skipping-and-continuing (default 3)
   """
 
   use Mix.Task

@@ -33,6 +33,22 @@ defmodule CodegenTestHarness.LoopQueueDrain do
   every subsequent scan, and surfaced as a distinct SKIPPED (unmet dep)
   bucket — separate from the timeout bucket. This is NOT a build failure;
   the run still completes `{:ok, shipped_count}`.
+
+  A deterministic child failure (or a pitch that burns through all of its
+  own transient retries without succeeding) SKIPS-AND-CONTINUES rather than
+  aborting the whole drain: the pitch stays physically in `ready_dir`, its
+  dirty tree is stashed under `queue-fail:<slug>:<ts>` (fail-open, parked
+  for operator forensics — never auto-popped; `:git_stash_restore_fn` only
+  matches the `queue-timeout:` prefix), and the slug is added to a
+  `failed_slugs` set rejected on every subsequent scan. This is guarded by a
+  consecutive-failure circuit breaker (`:max_consecutive_fails`, default 3,
+  env `CODEGEN_BUILD_QUEUE_MAX_CONSECUTIVE_FAILS`): any ship resets the
+  streak to 0; hitting the threshold HALTs the drain with `{:error, reason}`
+  under the theory that a systemically-broken environment (not an isolated
+  bad pitch) is failing every build. Isolated failures below the threshold
+  are tolerated — `drain/1` still returns `{:ok, shipped_count}` and prints
+  a FAILED bucket (parallel to the SKIPPED unmet-dep bucket) naming every
+  skipped slug.
   """
 
   alias CodegenTestHarness.{BuildLock, LoopQueue}
@@ -41,6 +57,7 @@ defmodule CodegenTestHarness.LoopQueueDrain do
 
   @default_max_retries 3
   @default_retry_delays [30, 120, 300]
+  @default_max_consecutive_fails 3
   # Retention window for `codegen/logging/*_build.log` console captures —
   # ephemeral gitignored build-forensics; never applied to `*_cycle.jsonl`
   # (the canonical, durable per-role session logs).
@@ -53,9 +70,12 @@ defmodule CodegenTestHarness.LoopQueueDrain do
   Drains `<cwd>/codegen/pitches/ready/` for `opts[:harness]`/`opts[:stack]`/
   `opts[:cwd]`. Returns `{:ok, shipped_count}` once `ready/` empties (either
   on the first scan — nothing to do — or after shipping every pitch that
-  isn't left behind by a deterministic failure/skip). Returns
-  `{:error, reason}` on a deterministic child failure, exhausted transient
-  retries, or lock contention.
+  isn't left behind by a deterministic failure/skip). Isolated deterministic
+  failures (below the `:max_consecutive_fails` circuit-breaker threshold)
+  are TOLERATED — the pitch is skipped-and-continued (see moduledoc), not a
+  drain failure. Returns `{:error, reason}` only on a circuit-breaker trip
+  (too many consecutive deterministic failures), an orphaned base, or lock
+  contention.
 
   Lets a dependency-cycle raise from `ordered_fn` (default
   `LoopQueue.ordered_slugs/1`) propagate uncaught — crash loud, never picks
@@ -73,9 +93,17 @@ defmodule CodegenTestHarness.LoopQueueDrain do
     * `:max_retries` — default 3 (env `CODEGEN_BUILD_QUEUE_MAX_RETRIES`)
     * `:retry_delays` — default `[30, 120, 300]` (env `CODEGEN_BUILD_QUEUE_RETRY_DELAYS`)
     * `:pitch_budget_secs` — default 7200 (env `CODEGEN_BUILD_QUEUE_PITCH_BUDGET_SECS`)
+    * `:max_consecutive_fails` — default 3 (env
+      `CODEGEN_BUILD_QUEUE_MAX_CONSECUTIVE_FAILS`); consecutive deterministic
+      pitch failures (no ship in between) at which the drain HALTs instead of
+      skipping-and-continuing (circuit breaker — see moduledoc)
     * `:spawn_fn` — `(slug, harness, stack, cwd, jsonl_path -> {:exit_code, integer} | :timeout)`
     * `:sleep_fn` — `(secs -> :ok)`
-    * `:git_stash_fn` — `(cwd, slug -> :ok | {:error, reason})`
+    * `:git_stash_fn` — `(cwd, slug, reason -> :ok | {:error, reason})` where
+      `reason` is `"timeout"` or `"fail"`; label is `queue-<reason>:<slug>:<ts>`.
+      `"fail"`-reason stashes are NEVER auto-popped — `:git_stash_restore_fn`
+      only matches the `queue-timeout:` prefix, so they are parked for
+      operator forensics.
     * `:git_stash_restore_fn` — `(cwd, slug -> :ok | {:error, reason})`, pops a
       prior `queue-timeout:<slug>:` stash (if any) before a retry attempt for
       `slug`. No matching stash -> `:ok` (no-op). A pop conflict fails loud
@@ -144,9 +172,11 @@ defmodule CodegenTestHarness.LoopQueueDrain do
             max_retries: Keyword.get(opts, :max_retries, max_retries_from_env()),
             retry_delays: Keyword.get(opts, :retry_delays, retry_delays_from_env()),
             pitch_budget_secs: Keyword.get(opts, :pitch_budget_secs, pitch_budget_from_env()),
+            max_consecutive_fails:
+              Keyword.get(opts, :max_consecutive_fails, max_consecutive_fails_from_env()),
             spawn_fn: Keyword.get(opts, :spawn_fn, &default_spawn_fn/5),
             sleep_fn: Keyword.get(opts, :sleep_fn, &default_sleep_fn/1),
-            git_stash_fn: Keyword.get(opts, :git_stash_fn, &default_git_stash_fn/2),
+            git_stash_fn: Keyword.get(opts, :git_stash_fn, &default_git_stash_fn/3),
             git_stash_restore_fn:
               Keyword.get(opts, :git_stash_restore_fn, &default_git_stash_restore_fn/2),
             now_fn: Keyword.get(opts, :now_fn, &default_now_fn/0),
@@ -162,6 +192,8 @@ defmodule CodegenTestHarness.LoopQueueDrain do
             discover_session_log_fn:
               Keyword.get(opts, :discover_session_log_fn, &default_discover_session_log/3),
             timed_out_slugs: MapSet.new(),
+            failed_slugs: MapSet.new(),
+            consecutive_fails: 0,
             blocked_printed: MapSet.new(),
             retry_count: 0,
             last_slug: nil,
@@ -215,7 +247,8 @@ defmodule CodegenTestHarness.LoopQueueDrain do
 
     remaining =
       Enum.reject(ordered, fn slug ->
-        MapSet.member?(state.timed_out_slugs, slug) or Map.has_key?(blocked, slug)
+        MapSet.member?(state.timed_out_slugs, slug) or
+          MapSet.member?(state.failed_slugs, slug) or Map.has_key?(blocked, slug)
       end)
 
     case remaining do
@@ -225,6 +258,13 @@ defmodule CodegenTestHarness.LoopQueueDrain do
             :stderr,
             "queue: SKIPPED (unmet dep) bucket: " <>
               Enum.map_join(blocked, ", ", fn {slug, dep} -> "#{slug} (dep #{dep})" end)
+          )
+        end
+
+        if MapSet.size(state.failed_slugs) > 0 do
+          IO.puts(
+            :stderr,
+            "queue: FAILED bucket: " <> Enum.join(state.failed_slugs, ", ")
           )
         end
 
@@ -275,7 +315,7 @@ defmodule CodegenTestHarness.LoopQueueDrain do
       {:exit_code, 0} ->
         ship(state.ready_dir, state.shipped_dir, slug)
         IO.puts(:stderr, "[#{idx}/#{state.total}] #{slug} ... shipped")
-        state = %{state | retry_count: 0, last_slug: nil}
+        state = %{state | retry_count: 0, last_slug: nil, consecutive_fails: 0}
         run_loop(state, shipped_count + 1)
 
       {:exit_code, _n} ->
@@ -358,7 +398,7 @@ defmodule CodegenTestHarness.LoopQueueDrain do
         # (moved ready/<slug>.md -> shipped/<slug>.md) before the non-zero
         # exit. Count it shipped, do not call ship/3 again (src is gone).
         IO.puts(:stderr, "[#{idx}/#{state.total}] #{slug} ... shipped")
-        state = %{state | retry_count: 0, last_slug: nil}
+        state = %{state | retry_count: 0, last_slug: nil, consecutive_fails: 0}
         run_loop(state, shipped_count + 1)
 
       committed? and gate_clear? and File.exists?(Path.join(state.ready_dir, "#{slug}.md")) ->
@@ -367,7 +407,7 @@ defmodule CodegenTestHarness.LoopQueueDrain do
         # the ship ourselves rather than halting the whole queue.
         ship(state.ready_dir, state.shipped_dir, slug)
         IO.puts(:stderr, "[#{idx}/#{state.total}] #{slug} ... shipped")
-        state = %{state | retry_count: 0, last_slug: nil}
+        state = %{state | retry_count: 0, last_slug: nil, consecutive_fails: 0}
         run_loop(state, shipped_count + 1)
 
       retry_eligible?(state, slug, jsonl, committed?, gate_clear?) ->
@@ -382,7 +422,31 @@ defmodule CodegenTestHarness.LoopQueueDrain do
 
       true ->
         emit_failure_diagnostics(jsonl, idx, state.total, slug)
-        {:error, "queue: #{slug} failed (deterministic or retries exhausted)"}
+
+        case state.git_stash_fn.(state.cwd, slug, "fail") do
+          :ok -> :ok
+          {:error, _reason} -> :ok
+        end
+
+        failed_slugs = MapSet.put(state.failed_slugs, slug)
+        consecutive_fails = state.consecutive_fails + 1
+
+        if consecutive_fails >= state.max_consecutive_fails do
+          {:error,
+           "queue: HALTED — #{consecutive_fails} consecutive deterministic failures " <>
+             "(#{Enum.join(failed_slugs, ", ")}), environment likely broken — fix env, re-run; " <>
+             "failed pitches remain in ready/, work recoverable from queue-fail: stashes"}
+        else
+          state = %{
+            state
+            | failed_slugs: failed_slugs,
+              consecutive_fails: consecutive_fails,
+              retry_count: 0,
+              last_slug: nil
+          }
+
+          run_loop(state, shipped_count)
+        end
     end
   end
 
@@ -455,7 +519,7 @@ defmodule CodegenTestHarness.LoopQueueDrain do
       "[#{idx}/#{state.total}] #{slug} ... TIMED OUT (budget #{budget}s) — #{outcome}"
     )
 
-    case state.git_stash_fn.(state.cwd, slug) do
+    case state.git_stash_fn.(state.cwd, slug, "timeout") do
       :ok -> :ok
       {:error, _reason} -> :ok
     end
@@ -533,6 +597,15 @@ defmodule CodegenTestHarness.LoopQueueDrain do
           {n, ""} when n > 0 -> n
           _ -> @default_pitch_budget_secs
         end
+    end
+  end
+
+  @doc "Resolves `CODEGEN_BUILD_QUEUE_MAX_CONSECUTIVE_FAILS`, default #{@default_max_consecutive_fails}."
+  @spec max_consecutive_fails_from_env() :: pos_integer()
+  def max_consecutive_fails_from_env do
+    case System.get_env("CODEGEN_BUILD_QUEUE_MAX_CONSECUTIVE_FAILS") do
+      nil -> @default_max_consecutive_fails
+      str -> parse_pos_int(str, @default_max_consecutive_fails)
     end
   end
 
@@ -768,8 +841,8 @@ defmodule CodegenTestHarness.LoopQueueDrain do
   # ── Real git_stash_fn: tracked-only, fail-open ──────────────────────────────
 
   @doc false
-  @spec default_git_stash_fn(String.t(), String.t()) :: :ok | {:error, String.t()}
-  def default_git_stash_fn(cwd, slug) do
+  @spec default_git_stash_fn(String.t(), String.t(), String.t()) :: :ok | {:error, String.t()}
+  def default_git_stash_fn(cwd, slug, reason) do
     with {_out, 0} <-
            System.cmd("git", ["-C", cwd, "rev-parse", "--git-dir"], stderr_to_stdout: true),
          {status, 0} <-
@@ -780,7 +853,7 @@ defmodule CodegenTestHarness.LoopQueueDrain do
         |> Enum.any?(&(not String.starts_with?(&1, "??")))
 
       if tracked_dirty? do
-        msg = "queue-timeout:#{slug}:#{default_now_fn()}"
+        msg = "queue-#{reason}:#{slug}:#{default_now_fn()}"
 
         case System.cmd("git", ["-C", cwd, "stash", "push", "-u", "-m", msg],
                stderr_to_stdout: true

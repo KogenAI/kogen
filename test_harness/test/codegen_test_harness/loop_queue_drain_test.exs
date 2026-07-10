@@ -31,7 +31,7 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
       shipped_dir: ctx.shipped_dir,
       lock_path: ctx.lock_path,
       sleep_fn: fn _secs -> :ok end,
-      git_stash_fn: fn _cwd, _slug -> :ok end,
+      git_stash_fn: fn _cwd, _slug, _reason -> :ok end,
       git_stash_restore_fn: fn _cwd, _slug -> :ok end,
       now_fn: fn -> 1_700_000_000 end,
       pid_alive_fn: fn _pid -> false end,
@@ -215,7 +215,8 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
     assert File.exists?(keep_cycle)
   end
 
-  test "1h: failure diagnostics on halt — result/session_id surfaced, FAILED line emitted", ctx do
+  test "1h: failure diagnostics on isolated skip — result/session_id surfaced, FAILED line emitted",
+       ctx do
     write_pitch(ctx.ready_dir, "solo")
 
     spawn_fn = fn _slug, _h, _s, _cwd, jsonl ->
@@ -227,7 +228,7 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
 
     output =
       capture_io(:stderr, fn ->
-        assert {:error, _reason} =
+        assert {:ok, 0} =
                  LoopQueueDrain.drain(
                    base_opts(ctx, spawn_fn: spawn_fn, transient_fn: transient_fn)
                  )
@@ -236,6 +237,7 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
     assert output =~ "boom"
     assert output =~ "session_id: sess-123"
     assert output =~ ~r/\[1\/1\] solo \.\.\. FAILED/
+    assert output =~ "queue: FAILED bucket: solo"
     assert File.exists?(Path.join(ctx.ready_dir, "solo.md"))
   end
 
@@ -375,9 +377,9 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
     assert File.exists?(Path.join(ctx.shipped_dir, "solo.md"))
   end
 
-  # ── 5. Transient exhausted -> halt loud ─────────────────────────────────
+  # ── 5. Transient exhausted -> skip-and-continue (isolated failure) ──────
 
-  test "5: transient exhausted after max_retries halts loud, left in ready/", ctx do
+  test "5: transient exhausted after max_retries skips-and-continues, left in ready/", ctx do
     write_pitch(ctx.ready_dir, "solo")
 
     sleeps = start_agent([])
@@ -386,7 +388,7 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
     transient_fn = fn _jsonl -> true end
     sleep_fn = fn secs -> Agent.update(sleeps, &(&1 ++ [secs])) end
 
-    assert {:error, _reason} =
+    assert {:ok, 0} =
              LoopQueueDrain.drain(
                base_opts(ctx,
                  spawn_fn: spawn_fn,
@@ -400,20 +402,141 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
     assert length(Agent.get(sleeps, & &1)) == 2
   end
 
-  # ── 6. Deterministic failure -> halt loud immediately ───────────────────
+  # ── 6. Deterministic failure -> skip-and-continue (below breaker threshold) ──
 
-  test "6: deterministic failure halts immediately, remaining pitches stay in ready/", ctx do
+  test "6: deterministic failure skips-and-continues, remaining pitches stay in ready/", ctx do
     write_pitch(ctx.ready_dir, "a")
     write_pitch(ctx.ready_dir, "b")
 
     spawn_fn = fn _slug, _h, _s, _cwd, _jsonl -> {:exit_code, 1} end
     transient_fn = fn _jsonl -> false end
 
-    assert {:error, _reason} =
-             LoopQueueDrain.drain(base_opts(ctx, spawn_fn: spawn_fn, transient_fn: transient_fn))
+    output =
+      capture_io(:stderr, fn ->
+        assert {:ok, 0} =
+                 LoopQueueDrain.drain(
+                   base_opts(ctx, spawn_fn: spawn_fn, transient_fn: transient_fn)
+                 )
+      end)
 
     assert File.exists?(Path.join(ctx.ready_dir, "a.md"))
     assert File.exists?(Path.join(ctx.ready_dir, "b.md"))
+    assert output =~ "queue: FAILED bucket:"
+    assert output =~ "a"
+    assert output =~ "b"
+  end
+
+  # ── 6b. Consecutive-failure circuit breaker ─────────────────────────────
+
+  test "6b: circuit breaker trips at default threshold (3 consecutive fails)", ctx do
+    write_pitch(ctx.ready_dir, "a")
+    write_pitch(ctx.ready_dir, "b")
+    write_pitch(ctx.ready_dir, "c")
+
+    spawn_fn = fn _slug, _h, _s, _cwd, _jsonl -> {:exit_code, 1} end
+    transient_fn = fn _jsonl -> false end
+
+    assert {:error, reason} =
+             LoopQueueDrain.drain(base_opts(ctx, spawn_fn: spawn_fn, transient_fn: transient_fn))
+
+    assert reason =~ "HALTED"
+    assert reason =~ "consecutive"
+    assert File.exists?(Path.join(ctx.ready_dir, "a.md"))
+    assert File.exists?(Path.join(ctx.ready_dir, "b.md"))
+    assert File.exists?(Path.join(ctx.ready_dir, "c.md"))
+  end
+
+  test "6c: a ship between fails resets the consecutive-fail streak, no trip", ctx do
+    # Ordered alphabetically by ordered_fn: a_fail1, b_good, c_fail2, d_fail3
+    # — ship at position 2 breaks the fail-streak before it reaches 3.
+    write_pitch(ctx.ready_dir, "a_fail1")
+    write_pitch(ctx.ready_dir, "b_good")
+    write_pitch(ctx.ready_dir, "c_fail2")
+    write_pitch(ctx.ready_dir, "d_fail3")
+
+    spawn_fn = fn slug, _h, _s, _cwd, _jsonl ->
+      if slug == "b_good", do: {:exit_code, 0}, else: {:exit_code, 1}
+    end
+
+    transient_fn = fn _jsonl -> false end
+
+    assert {:ok, 1} =
+             LoopQueueDrain.drain(base_opts(ctx, spawn_fn: spawn_fn, transient_fn: transient_fn))
+
+    assert File.exists?(Path.join(ctx.ready_dir, "a_fail1.md"))
+    assert File.exists?(Path.join(ctx.shipped_dir, "b_good.md"))
+    assert File.exists?(Path.join(ctx.ready_dir, "c_fail2.md"))
+    assert File.exists?(Path.join(ctx.ready_dir, "d_fail3.md"))
+  end
+
+  test "6d: custom :max_consecutive_fails trips at the configured threshold", ctx do
+    write_pitch(ctx.ready_dir, "a")
+    write_pitch(ctx.ready_dir, "b")
+
+    spawn_fn = fn _slug, _h, _s, _cwd, _jsonl -> {:exit_code, 1} end
+    transient_fn = fn _jsonl -> false end
+
+    assert {:error, reason} =
+             LoopQueueDrain.drain(
+               base_opts(ctx,
+                 spawn_fn: spawn_fn,
+                 transient_fn: transient_fn,
+                 max_consecutive_fails: 2
+               )
+             )
+
+    assert reason =~ "HALTED"
+    assert reason =~ "2 consecutive"
+  end
+
+  test "6e: failed pitch is stashed with reason \"fail\" (not \"timeout\")", ctx do
+    write_pitch(ctx.ready_dir, "solo")
+
+    stash_calls = start_agent([])
+
+    spawn_fn = fn _slug, _h, _s, _cwd, _jsonl -> {:exit_code, 1} end
+    transient_fn = fn _jsonl -> false end
+
+    git_stash_fn = fn cwd, slug, reason ->
+      Agent.update(stash_calls, &(&1 ++ [{cwd, slug, reason}]))
+      :ok
+    end
+
+    assert {:ok, 0} =
+             LoopQueueDrain.drain(
+               base_opts(ctx,
+                 spawn_fn: spawn_fn,
+                 transient_fn: transient_fn,
+                 git_stash_fn: git_stash_fn
+               )
+             )
+
+    assert Agent.get(stash_calls, & &1) == [{ctx.dir, "solo", "fail"}]
+  end
+
+  test "6f: fail-then-ship — failed pitch stays in ready/, good ships, FAILED bucket printed",
+       ctx do
+    write_pitch(ctx.ready_dir, "bad")
+    write_pitch(ctx.ready_dir, "good")
+
+    spawn_fn = fn slug, _h, _s, _cwd, _jsonl ->
+      if slug == "bad", do: {:exit_code, 1}, else: {:exit_code, 0}
+    end
+
+    transient_fn = fn _jsonl -> false end
+
+    output =
+      capture_io(:stderr, fn ->
+        assert {:ok, 1} =
+                 LoopQueueDrain.drain(
+                   base_opts(ctx, spawn_fn: spawn_fn, transient_fn: transient_fn)
+                 )
+      end)
+
+    assert File.exists?(Path.join(ctx.ready_dir, "bad.md"))
+    assert File.exists?(Path.join(ctx.shipped_dir, "good.md"))
+    assert output =~ "queue: FAILED bucket:"
+    assert output =~ "bad"
   end
 
   # ── 6r. Committer-post-commit-hiccup recovery ───────────────────────────
@@ -519,7 +642,7 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
     assert File.exists?(Path.join(ctx.shipped_dir, "solo.md"))
   end
 
-  test "6r4: gate-failed + nonzero + HEAD-moved halts loud, stays in ready/", ctx do
+  test "6r4: gate-failed + nonzero + HEAD-moved skips-and-continues, stays in ready/", ctx do
     write_pitch(ctx.ready_dir, "solo")
 
     head_calls = start_agent(0)
@@ -533,7 +656,7 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
     gate_verdict_fn = fn _cwd -> "failed" end
     transient_fn = fn _jsonl -> false end
 
-    assert {:error, _reason} =
+    assert {:ok, 0} =
              LoopQueueDrain.drain(
                base_opts(ctx,
                  spawn_fn: spawn_fn,
@@ -546,13 +669,14 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
     assert File.exists?(Path.join(ctx.ready_dir, "solo.md"))
   end
 
-  test "6r5: not-a-repo (nil head) + nonzero + non-transient halts loud (unchanged)", ctx do
+  test "6r5: not-a-repo (nil head) + nonzero + non-transient skips-and-continues (isolated)",
+       ctx do
     write_pitch(ctx.ready_dir, "solo")
 
     spawn_fn = fn _slug, _h, _s, _cwd, _jsonl -> {:exit_code, 1} end
     transient_fn = fn _jsonl -> false end
 
-    assert {:error, _reason} =
+    assert {:ok, 0} =
              LoopQueueDrain.drain(
                base_opts(ctx,
                  spawn_fn: spawn_fn,
@@ -689,7 +813,7 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
       if n == 0, do: :timeout, else: {:exit_code, 0}
     end
 
-    git_stash_fn = fn cwd, slug ->
+    git_stash_fn = fn cwd, slug, _reason ->
       Agent.update(stash_calls, &(&1 ++ [{cwd, slug}]))
       :ok
     end
@@ -710,7 +834,7 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
 
     spawn_fn = fn _slug, _h, _s, _cwd, _jsonl -> :timeout end
 
-    git_stash_fn = fn cwd, slug ->
+    git_stash_fn = fn cwd, slug, _reason ->
       Agent.update(stash_calls, &(&1 ++ [{cwd, slug}]))
       :ok
     end
@@ -775,7 +899,7 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
       if n == 0, do: :timeout, else: {:exit_code, 0}
     end
 
-    git_stash_fn = fn _cwd, _slug -> {:error, :not_a_repo} end
+    git_stash_fn = fn _cwd, _slug, _reason -> {:error, :not_a_repo} end
 
     assert {:ok, 1} =
              LoopQueueDrain.drain(base_opts(ctx, spawn_fn: spawn_fn, git_stash_fn: git_stash_fn))
@@ -788,8 +912,8 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
 
     spawn_fn = fn _slug, _h, _s, _cwd, _jsonl -> :timeout end
 
-    git_stash_fn = fn _cwd, slug ->
-      Agent.update(labels, &(&1 ++ ["queue-timeout:#{slug}:1700000000"]))
+    git_stash_fn = fn _cwd, slug, reason ->
+      Agent.update(labels, &(&1 ++ ["queue-#{reason}:#{slug}:1700000000"]))
       :ok
     end
 
@@ -1006,6 +1130,31 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
       System.put_env("CODEGEN_BUILD_QUEUE_RETRY_DELAYS", "1 2 3")
       on_exit(fn -> System.delete_env("CODEGEN_BUILD_QUEUE_RETRY_DELAYS") end)
       assert LoopQueueDrain.retry_delays_from_env() == [1, 2, 3]
+    end
+  end
+
+  describe "max_consecutive_fails_from_env/0" do
+    test "unset -> 3" do
+      System.delete_env("CODEGEN_BUILD_QUEUE_MAX_CONSECUTIVE_FAILS")
+      assert LoopQueueDrain.max_consecutive_fails_from_env() == 3
+    end
+
+    test "\"5\" -> 5" do
+      System.put_env("CODEGEN_BUILD_QUEUE_MAX_CONSECUTIVE_FAILS", "5")
+      on_exit(fn -> System.delete_env("CODEGEN_BUILD_QUEUE_MAX_CONSECUTIVE_FAILS") end)
+      assert LoopQueueDrain.max_consecutive_fails_from_env() == 5
+    end
+
+    test "\"0\" -> 3 (sentinel)" do
+      System.put_env("CODEGEN_BUILD_QUEUE_MAX_CONSECUTIVE_FAILS", "0")
+      on_exit(fn -> System.delete_env("CODEGEN_BUILD_QUEUE_MAX_CONSECUTIVE_FAILS") end)
+      assert LoopQueueDrain.max_consecutive_fails_from_env() == 3
+    end
+
+    test "\"x\" (non-numeric) -> 3" do
+      System.put_env("CODEGEN_BUILD_QUEUE_MAX_CONSECUTIVE_FAILS", "x")
+      on_exit(fn -> System.delete_env("CODEGEN_BUILD_QUEUE_MAX_CONSECUTIVE_FAILS") end)
+      assert LoopQueueDrain.max_consecutive_fails_from_env() == 3
     end
   end
 
