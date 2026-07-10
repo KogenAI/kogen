@@ -69,7 +69,9 @@ class TestSubagentInterruption(unittest.TestCase):
 
     def test_malformed_line_fail_open_skip(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
-            log = Path(tmp) / "broken_cycle.jsonl"
+            # Dated filename (YYYYMMDD_ prefix) so the file survives fail-closed
+            # windowing via the filename fallback (no init line present).
+            log = Path(tmp) / "20260619_000000_broken_cycle.jsonl"
             log.write_text(
                 "not-json-at-all\n"
                 '{"ev":"died","role":"developer-phoenix-backend","kind":"interrupted"}\n'
@@ -79,6 +81,52 @@ class TestSubagentInterruption(unittest.TestCase):
             findings = run_repo(_cfg(Path(tmp)))
             self.assertEqual(len(findings), 1)
             self.assertEqual(findings[0].pattern_key, "interrupted")
+
+    def test_in_window_init_stamp_counted(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            log = Path(tmp) / "some_cycle.jsonl"
+            log.write_text(
+                '{"ev":"init","pitch":"x","path":"","stamp":{"at":"2026-06-19T00:00:00Z"}}\n'
+                '{"ev":"died","role":"developer-phoenix-backend","kind":"interrupted"}\n',
+                encoding="utf-8",
+            )
+            findings = run_repo(_cfg(Path(tmp)))
+            self.assertEqual(len(findings), 1)
+
+    def test_undatable_cycle_dropped_fail_closed(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            # No init stamp.at, no YYYYMMDD_ filename prefix -> undatable.
+            log = Path(tmp) / "undatable_cycle.jsonl"
+            log.write_text(
+                '{"ev":"init","pitch":"x","path":"","stamp":{}}\n'
+                '{"ev":"died","role":"developer-phoenix-backend","kind":"interrupted"}\n',
+                encoding="utf-8",
+            )
+            findings = run_repo(_cfg(Path(tmp)))
+            self.assertEqual(findings, [])
+
+    def test_out_of_window_init_stamp_dropped(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            log = Path(tmp) / "some_cycle.jsonl"
+            log.write_text(
+                '{"ev":"init","pitch":"x","path":"","stamp":{"at":"2020-01-01T00:00:00Z"}}\n'
+                '{"ev":"died","role":"developer-phoenix-backend","kind":"interrupted"}\n',
+                encoding="utf-8",
+            )
+            findings = run_repo(_cfg(Path(tmp)))  # since=2026-01-01
+            self.assertEqual(findings, [])
+
+    def test_in_window_filename_fallback_counted(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            # No init line at all -> must fall back to filename date.
+            log = Path(tmp) / "20260619_000000_nostamp_cycle.jsonl"
+            log.write_text(
+                '{"ev":"died","role":"developer-phoenix-backend","kind":"aborted"}\n',
+                encoding="utf-8",
+            )
+            findings = run_repo(_cfg(Path(tmp)))
+            self.assertEqual(len(findings), 1)
+            self.assertEqual(findings[0].pattern_key, "aborted")
 
 
 if __name__ == "__main__":

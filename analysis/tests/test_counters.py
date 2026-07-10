@@ -411,5 +411,53 @@ class TestBoundedMagnitude(unittest.TestCase):
         self.assertLessEqual(total_wasted, record_count * 2)
 
 
+class TestRepoCounterWindowing(unittest.TestCase):
+    """Regression: repo-level counters must honor --since per-record, not
+    report lifetime evidence unconditionally.
+    """
+
+    def test_tool_failure_excludes_out_of_window_record(self) -> None:
+        import tempfile
+        from analysis.counters import tool_failure
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            substrate = Path(tmpdir) / "session_a.jsonl"
+            substrate.write_text(
+                '{"ts": "2020-01-01T00:00:00Z", "tool": "Read", "error": "Read exceeds maximum size", "agent": "x"}\n'
+                '{"ts": "2026-06-19T10:00:00Z", "tool": "Read", "error": "Read exceeds maximum size", "agent": "x"}\n',
+                encoding="utf-8",
+            )
+            cfg = Config(
+                since=datetime.date(2026, 1, 1),
+                project_dir=Path(tmpdir),
+                codegen_dir=CODEGEN_DIR,
+            )
+            findings = tool_failure.run_repo(cfg)
+            total_wasted = sum(f.wasted_turns for f in findings)
+            # Only the in-window record counted; the out-of-window one dropped.
+            self.assertEqual(total_wasted, 1)
+
+    def test_hook_intervention_gate_leg_excludes_out_of_window_record(self) -> None:
+        import tempfile
+        from analysis.counters import hook_intervention
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            substrate = Path(tmpdir) / "gate-verdicts.jsonl"
+            substrate.write_text(
+                '{"verdict": "failed", "started": "2020-01-01T00:00:00Z", "ended": "2020-01-01T00:00:00Z", "session_id": "s"}\n'
+                '{"verdict": "failed", "started": "2026-06-19T10:00:00Z", "ended": "2026-06-19T10:00:00Z", "session_id": "s"}\n',
+                encoding="utf-8",
+            )
+            cfg = Config(
+                since=datetime.date(2026, 1, 1),
+                project_dir=Path(tmpdir),
+                codegen_dir=CODEGEN_DIR,
+            )
+            findings = hook_intervention.run_repo(cfg)
+            gate_findings = [f for f in findings if f.pattern_key == "gate:failed"]
+            # Only the in-window failed record counted.
+            self.assertEqual(len(gate_findings), 1)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -1,4 +1,4 @@
-{"ev":"init","pitch":"interruptions-fixture","path":"","stamp":{}}
+{"ev":"init","pitch":"interruptions-fixture","path":"","stamp":{"at":"2026-06-19T00:00:00Z"}}
 {"ev":"role","role":"planner-phoenix","body":"Some plan prose."}
 {"ev":"died","role":"developer-phoenix-backend","kind":"interrupted","cause":"dropped (timeout); re-spawning (attempt 1/2)"}
 {"ev":"died","role":"developer-phoenix-backend","kind":"aborted","cause":"dropped twice; stage failed."}

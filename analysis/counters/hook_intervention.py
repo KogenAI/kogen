@@ -18,6 +18,7 @@ from typing import List
 from analysis.config import Config
 from analysis.counters import Finding
 from analysis.session_loader import Session
+from analysis.window import in_window
 from analysis.turn_window import evidence_snippet
 
 # Prefix that durable hook feedback messages carry in user turns
@@ -90,6 +91,8 @@ def run_repo(config: Config) -> List[Finding]:
                 except json.JSONDecodeError:
                     continue
                 if record.get("verdict") != "failed":
+                    continue
+                if not in_window(record.get("started"), config.since):
                     continue
                 session_id = record["session_id"]
                 findings.append(

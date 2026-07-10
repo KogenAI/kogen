@@ -16,6 +16,7 @@ from typing import List, Optional, Tuple
 
 from analysis.config import Config
 from analysis.counters import Finding
+from analysis.window import in_window
 
 # Waste taxonomy: (tool, error-substring-match) -> waste_class.
 # Only classes returned here count as real, fixable waste. Everything else
@@ -164,6 +165,8 @@ def run_repo(config: Config) -> List[Finding]:
                     try:
                         record = json.loads(line)
                     except json.JSONDecodeError:
+                        continue
+                    if not in_window(record.get("ts"), config.since):
                         continue
                     record["_line"] = line
                     file_records.append(record)
