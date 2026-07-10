@@ -116,6 +116,57 @@ describe("pitch-format-validator", { concurrency: false }, () => {
     assert.ok(!stderr.includes("invalid"), "expected no status warning");
   });
 
+  // (a) frontmatter status validation (dual-read)
+  it("warns on invalid frontmatter status: value", async () => {
+    writePitch("---\nstatus: FOO\nblocks_on: []\n---\n\nSome content.\n");
+    const stderr = await runHook("shape");
+    assert.ok(stderr.includes("pitch-format-validator"), "expected warning");
+    assert.ok(stderr.includes("FOO"));
+  });
+
+  it("does not warn on valid frontmatter status: SHAPED", async () => {
+    writePitch("---\nstatus: SHAPED\nblocks_on: []\n---\n\nSome content.\n");
+    const stderr = await runHook("shape");
+    assert.ok(!stderr.includes("invalid"), "expected no status warning");
+  });
+
+  it("frontmatter status: is inert to ## Questions/## Answers extraction", async () => {
+    const content = [
+      "---",
+      "status: SHAPED",
+      "blocks_on: []",
+      "---",
+      "",
+      "## Questions",
+      "",
+      "### Q1: Which approach?",
+      "",
+      "- **a)** Option A",
+      "- **b)** Option B",
+      "",
+    ].join("\n");
+    writePitch(content);
+    const stderr = await runHook("shape");
+    assert.ok(!stderr.includes("pitch-format-validator"), "expected no warning");
+  });
+
+  it("frontmatter present + malformed Questions still warns (Q/A validation still runs)", async () => {
+    const content = [
+      "---",
+      "status: SHAPED",
+      "blocks_on: []",
+      "---",
+      "",
+      "## Questions",
+      "",
+      "Just some text without Q headings.",
+      "",
+    ].join("\n");
+    writePitch(content);
+    const stderr = await runHook("shape");
+    assert.ok(stderr.includes("no `### Q<n>:`"), "expected Q heading warning");
+  });
+
   // (b) ## Questions validation
   it("warns when ## Questions has no ### Q<n>: headings", async () => {
     writePitch("## Questions\n\nJust some text without Q headings.\n");

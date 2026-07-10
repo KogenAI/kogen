@@ -112,13 +112,13 @@ tools-header/<mode>.txt   (per-harness: mode title + ## Tools + any pre-Tools co
 
 **Decompose-then-split rule** (Rule G): SPLIT multi-surface problems into independent pitches (eng-decomposition, not user choice). Only product forks reach user.
 
-**Derive-and-write dependency edges rule** (Rule H): DERIVE `Blocks-on:` edges from code; omitted edges → silent mis-order. Auto-derive; ask only on circular/ambiguous cases.
+**Derive-and-write dependency edges rule** (Rule H): DERIVE dependency edges from code and WRITE them into the pitch's `blocks_on:` YAML frontmatter flow-list (dual-read fallback: legacy `Blocks-on:` prose); omitted edges → silent mis-order. Auto-derive; ask only on circular/ambiguous cases.
 
 ## Multi-Pitch Protocol
 
-Multi-pitch handling (`--queue`) is now owned entirely by the Elixir loop's `mix codegen.loop.queue` (`CodegenTestHarness.LoopQueueDrain.drain/1`) — see `context/test-harness.md` § Orchestration Loop for the topo-sort, `Blocks-on:` pre-check, and per-pitch sequencing contract. There is no per-harness tools-header prose for this anymore.
+Multi-pitch handling (`--queue`) is now owned entirely by the Elixir loop's `mix codegen.loop.queue` (`CodegenTestHarness.LoopQueueDrain.drain/1`) — see `context/test-harness.md` § Orchestration Loop for the topo-sort, `blocks_on:` pre-check, and per-pitch sequencing contract. There is no per-harness tools-header prose for this anymore.
 
-**Pitch-format contract**: `shape.txt` and `ops.txt` specify EXACT grammar for `## Questions` / `## Answers` in headless mode. Machine-parseable; enforced by `pitch-format-validator.sh` Stop hook (shape/ops). Grammar: `### Q<n>:` + ≥2 `- **<letter>)**` options; `## Answers` references matching Q headings; `> Status:` ∈ {SKELETON, SHAPING, SHAPED}. `/document` writes `> Status: SKELETON`. Shape advances to SHAPING/SHAPED.
+**Pitch-format contract**: `shape.txt` and `ops.txt` specify EXACT grammar for `## Questions` / `## Answers` in headless mode. Machine-parseable; enforced by `pitch-format-validator.sh` Stop hook (shape/ops). Grammar: `### Q<n>:` + ≥2 `- **<letter>)**` options; `## Answers` references matching Q headings; `status:` (YAML frontmatter, dual-read fallback: legacy `> Status:` blockquote) ∈ {SKELETON, SHAPING, SHAPED}. `/document` writes `status: SKELETON` in frontmatter. Shape advances to SHAPING/SHAPED and persists a `summary:` field at SHAPED.
 
 **Slash commands**: Templates in `harnesses/claude/commands/*.md.j2` rendered by `generate.sh` → `templates/generated/claude-code/commands/` → installed to `~/.claude/commands/`. Can spawn swarms (e.g., `/poke-holes`). Gated by `operator-subagent-allowlist.sh` to {debug, shape, ops}. Examples: `/ready`, `/poke-holes`. Pi gets inert copy.
 

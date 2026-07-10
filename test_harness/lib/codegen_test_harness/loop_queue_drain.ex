@@ -24,12 +24,14 @@ defmodule CodegenTestHarness.LoopQueueDrain do
   never routed through `transient?/1` (mirrors old build-queue.sh where the
   timeout branch `continue`s before the transient-check block).
 
-  A ready pitch whose `Blocks-on:` dependency is unsatisfied (dep in
-  draft/ or absent entirely — see `LoopQueue.blocked_by_unmet_dep/2`) is a
-  SELECTION-time gate: it is never selected, left physically in `ready_dir`,
-  skipped on every subsequent scan, and surfaced as a distinct SKIPPED
-  (unmet dep) bucket — separate from the timeout bucket. This is NOT a
-  build failure; the run still completes `{:ok, shipped_count}`.
+  A ready pitch whose dependency (`blocks_on:` YAML frontmatter list, or
+  legacy `Blocks-on:` prose when no frontmatter is present — see
+  `LoopQueue.parse_edges/2`) is unsatisfied (dep in draft/ or absent
+  entirely — see `LoopQueue.blocked_by_unmet_dep/2`) is a SELECTION-time
+  gate: it is never selected, left physically in `ready_dir`, skipped on
+  every subsequent scan, and surfaced as a distinct SKIPPED (unmet dep)
+  bucket — separate from the timeout bucket. This is NOT a build failure;
+  the run still completes `{:ok, shipped_count}`.
   """
 
   alias CodegenTestHarness.LoopQueue

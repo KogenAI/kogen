@@ -15,9 +15,10 @@ defmodule Mix.Tasks.Codegen.Loop.Queue do
   - non-zero, reason on stderr — `{:error, reason}` (deterministic child
     failure, exhausted transient retries, or lock contention)
 
-  A dependency cycle among the batch (`Blocks-on:` graph) is NOT caught
-  here — `LoopQueueDrain.drain/1` lets it raise, crashing this task loud
-  (non-zero exit) rather than picking an arbitrary order.
+  A dependency cycle among the batch (the `blocks_on:` frontmatter graph,
+  or legacy `Blocks-on:` prose graph when no frontmatter is present) is NOT
+  caught here — `LoopQueueDrain.drain/1` lets it raise, crashing this task
+  loud (non-zero exit) rather than picking an arbitrary order.
 
   ## Flags
 

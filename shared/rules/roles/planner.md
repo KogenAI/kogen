@@ -165,4 +165,4 @@ Each risk: **Severity** (blocking|high|medium|low) + **Likelihood** (certain|lik
 
 ## Sub-Slice Splitting (Budget-Driven)
 
-Backend slice exceeding ~90 min / ~$30 / ~90 turns → split. Planning stays ONE opus pass. Each sub-slice: own `## Files to touch` + delegation prompt + `Blocks-on:` edges + independently passes gate.
+Backend slice exceeding ~90 min / ~$30 / ~90 turns → split. Planning stays ONE opus pass. Each sub-slice: own `## Files to touch` + delegation prompt + `blocks_on:` frontmatter edges (dual-read fallback: `Blocks-on:` prose) + independently passes gate.

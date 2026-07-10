@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 # pitch-format-validator.sh — Stop hook that validates ## Questions / ## Answers /
-# > Status: markers in the active pitch file for shape, refactor, and ops sessions.
+# status markers (YAML frontmatter `status:`, dual-read with the legacy
+# `> Status:` blockquote) in the active pitch file for shape, refactor, and
+# ops sessions.
 #
 # HOOK-MANIFEST:
 # event: Stop
@@ -25,7 +27,10 @@
 #   - No ## Questions heading in pitch (optional block — skip)
 #
 # Validation rules (anchors only — never prose content):
-#   (a) > Status: line present → value MUST be SKELETON, SHAPING, or SHAPED
+#   (a) YAML frontmatter `status:` key present (leading ---...--- block) OR
+#       legacy `> Status:` line present → value MUST be SKELETON, SHAPING, or
+#       SHAPED. Frontmatter is checked first; falls back to the blockquote
+#       form for pre-existing pitches with no frontmatter (dual-read).
 #   (b) ## Questions heading present → MUST have ≥1 ### Q<n>: heading AND each
 #       Q heading must be followed by ≥2 "- **<letter>)**" option bullets before
 #       the next ### or ## heading
@@ -83,18 +88,40 @@ fi
 
 pitch_content=$(cat "$pitch")
 
-# ── Validation (a): > Status: value ────────────────────────────────────────
-# If a "> Status:" line is present, value must be SKELETON, SHAPING, or SHAPED.
-status_line=$(printf '%s' "$pitch_content" | grep -m1 '^> Status:' || true)
-if [ -n "$status_line" ]; then
-    status_value=$(printf '%s' "$status_line" | sed 's/^> Status:[[:space:]]*//' | tr -d '[:space:]')
+# ── Validation (a): status value (frontmatter status: first, dual-read with
+# legacy > Status: blockquote) ──────────────────────────────────────────────
+# Frontmatter block is the leading "---"..."---" span (opening delimiter MUST
+# be the first line). Extract "status:" from inside it, else fall back to the
+# legacy "> Status:" blockquote line.
+status_value=""
+status_source=""
+
+first_line=$(printf '%s\n' "$pitch_content" | head -n1)
+if [ "$first_line" = "---" ]; then
+    frontmatter_block=$(printf '%s\n' "$pitch_content" | awk 'NR==1{next} /^---$/{exit} {print}')
+    fm_status_line=$(printf '%s\n' "$frontmatter_block" | grep -m1 '^status:' || true)
+    if [ -n "$fm_status_line" ]; then
+        status_value=$(printf '%s' "$fm_status_line" | sed 's/^status:[[:space:]]*//' | tr -d '[:space:]')
+        status_source="frontmatter status:"
+    fi
+fi
+
+if [ -z "$status_value" ]; then
+    status_line=$(printf '%s' "$pitch_content" | grep -m1 '^> Status:' || true)
+    if [ -n "$status_line" ]; then
+        status_value=$(printf '%s' "$status_line" | sed 's/^> Status:[[:space:]]*//' | tr -d '[:space:]')
+        status_source="legacy \`> Status:\`"
+    fi
+fi
+
+if [ -n "$status_value" ]; then
     case "$status_value" in
     SKELETON | SHAPING | SHAPED)
-        debug_log pitch-format-validator "status=$status_value ok"
+        debug_log pitch-format-validator "status=$status_value ok ($status_source)"
         ;;
     *)
-        reason="pitch-format-validator: invalid \`> Status:\` value \"${status_value}\" in ${pitch}. Allowed values: SKELETON, SHAPING, SHAPED. Re-emit the \`> Status:\` line with one of those values."
-        debug_log pitch-format-validator "BLOCK: bad status=$status_value"
+        reason="pitch-format-validator: invalid ${status_source} value \"${status_value}\" in ${pitch}. Allowed values: SKELETON, SHAPING, SHAPED. Re-emit the status field with one of those values."
+        debug_log pitch-format-validator "BLOCK: bad status=$status_value ($status_source)"
         block "$reason"
         exit 0
         ;;

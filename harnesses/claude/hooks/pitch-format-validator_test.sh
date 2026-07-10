@@ -19,6 +19,10 @@
 #  15:  no > Status: line → allow
 #  16:  PI_ROLE=ops + malformed Questions → block
 #  17:  block reason includes "pitch-format-validator" (traceability)
+#  18:  frontmatter status: SHAPED → allow
+#  19:  frontmatter status: BOGUS → block
+#  20:  frontmatter status: SHAPED + valid Questions block → allow (frontmatter inert to Q/A extraction)
+#  21:  frontmatter status: SHAPED + malformed Questions (zero Q headings) → block (Q/A validation still runs)
 
 set -u
 
@@ -241,6 +245,73 @@ No status line.
 MD
 }
 
+# write_pitch_frontmatter_status_shaped <path>
+write_pitch_frontmatter_status_shaped() {
+    local path="$1"
+    cat >"$path" <<'MD'
+---
+status: SHAPED
+blocks_on: []
+---
+# My Pitch
+
+## Problem
+
+Done.
+MD
+}
+
+# write_pitch_frontmatter_status_bogus <path>
+write_pitch_frontmatter_status_bogus() {
+    local path="$1"
+    cat >"$path" <<'MD'
+---
+status: INPROGRESS
+blocks_on: []
+---
+# My Pitch
+
+## Problem
+
+Bad status.
+MD
+}
+
+# write_pitch_frontmatter_status_shaped_valid_questions <path>
+write_pitch_frontmatter_status_shaped_valid_questions() {
+    local path="$1"
+    cat >"$path" <<'MD'
+---
+status: SHAPED
+blocks_on: []
+---
+# My Pitch
+
+## Questions
+
+### Q1: Which approach?
+
+- **a)** Option A — faster
+- **b)** Option B — safer
+MD
+}
+
+# write_pitch_frontmatter_status_shaped_malformed_questions <path>
+write_pitch_frontmatter_status_shaped_malformed_questions() {
+    local path="$1"
+    cat >"$path" <<'MD'
+---
+status: SHAPED
+blocks_on: []
+---
+# My Pitch
+
+## Questions
+
+Some prose but no Q headings.
+MD
+}
+
 # ── Test 1: no TRANSCRIPT_PATH → allow ──────────────────────────────────────
 T1_dir=$(mktemp -d)
 out=$(run_hook "$T1_dir" false "" "shape" "")
@@ -422,6 +493,52 @@ make_transcript_with_pitch_write "$T17_transcript" "$T17_pitch"
 out=$(run_hook "$T17_dir" false "$T17_transcript" "shape" "")
 assert_contains "block reason includes pitch-format-validator (traceability)" 'pitch-format-validator' "$out"
 rm -rf "$T17_dir"
+
+# ── Test 18: frontmatter status: SHAPED → allow ─────────────────────────────
+T18_dir=$(mktemp -d)
+mkdir -p "$T18_dir/codegen/pitches/draft"
+T18_pitch="$T18_dir/codegen/pitches/draft/my-pitch.md"
+T18_transcript="$T18_dir/transcript.jsonl"
+write_pitch_frontmatter_status_shaped "$T18_pitch"
+make_transcript_with_pitch_write "$T18_transcript" "$T18_pitch"
+out=$(run_hook "$T18_dir" false "$T18_transcript" "shape" "")
+assert_not_contains "frontmatter status: SHAPED → allow" '"decision"' "$out"
+rm -rf "$T18_dir"
+
+# ── Test 19: frontmatter status: BOGUS → block ──────────────────────────────
+T19_dir=$(mktemp -d)
+mkdir -p "$T19_dir/codegen/pitches/draft"
+T19_pitch="$T19_dir/codegen/pitches/draft/my-pitch.md"
+T19_transcript="$T19_dir/transcript.jsonl"
+write_pitch_frontmatter_status_bogus "$T19_pitch"
+make_transcript_with_pitch_write "$T19_transcript" "$T19_pitch"
+out=$(run_hook "$T19_dir" false "$T19_transcript" "shape" "")
+assert_contains "frontmatter status: BOGUS → block" '"decision"' "$out"
+rm -rf "$T19_dir"
+
+# ── Test 20: frontmatter + valid Questions block → allow (frontmatter inert
+# to Q/A extraction) ─────────────────────────────────────────────────────────
+T20_dir=$(mktemp -d)
+mkdir -p "$T20_dir/codegen/pitches/draft"
+T20_pitch="$T20_dir/codegen/pitches/draft/my-pitch.md"
+T20_transcript="$T20_dir/transcript.jsonl"
+write_pitch_frontmatter_status_shaped_valid_questions "$T20_pitch"
+make_transcript_with_pitch_write "$T20_transcript" "$T20_pitch"
+out=$(run_hook "$T20_dir" false "$T20_transcript" "shape" "")
+assert_not_contains "frontmatter + valid Questions → allow" '"decision"' "$out"
+rm -rf "$T20_dir"
+
+# ── Test 21: frontmatter + malformed Questions (zero Q headings) → block
+# (proves Q/A validation still runs after a frontmatter block) ──────────────
+T21_dir=$(mktemp -d)
+mkdir -p "$T21_dir/codegen/pitches/draft"
+T21_pitch="$T21_dir/codegen/pitches/draft/my-pitch.md"
+T21_transcript="$T21_dir/transcript.jsonl"
+write_pitch_frontmatter_status_shaped_malformed_questions "$T21_pitch"
+make_transcript_with_pitch_write "$T21_transcript" "$T21_pitch"
+out=$(run_hook "$T21_dir" false "$T21_transcript" "shape" "")
+assert_contains "frontmatter + malformed Questions → block" '"decision"' "$out"
+rm -rf "$T21_dir"
 
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

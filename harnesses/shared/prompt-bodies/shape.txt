@@ -54,12 +54,28 @@ Rules:
 
 ## Status stamping
 
-The in-scope pitch begins with a `> Status:` line (enum: SKELETON | SHAPING | SHAPED). Keep it current as you work:
+The in-scope pitch begins with a YAML frontmatter block (`---`-delimited) carrying `status:` (enum: SKELETON | SHAPING | SHAPED), `appetite:` (small | big), and `blocks_on:` (a flow-list of dependency slugs, e.g. `blocks_on: [dep-one, dep-two]`, or `blocks_on: []` when independent). The body below the closing `---` stays free markdown (Problem/Solution/etc.) — the frontmatter is metadata only. Keep it current as you work:
 
-- **On first advance** — the first time you edit a loaded SKELETON pitch to advance it (resolve a blocker, answer a question, tighten the solution), set the first line to `> Status: SHAPING`. Also write `> Status: SHAPING` when running headless and you exit after writing a `## Questions` block (investigation is mid-flight, not done).
-- **On completion** — when the readiness loop ends with no unresolved blockers and no open `## Questions`, set the first line to `> Status: SHAPED` immediately before emitting `Ready.`.
+- **On first advance** — the first time you edit a loaded SKELETON pitch to advance it (resolve a blocker, answer a question, tighten the solution), set `status: SHAPING` in the frontmatter. Also write `status: SHAPING` when running headless and you exit after writing a `## Questions` block (investigation is mid-flight, not done).
+- **On completion** — when the readiness loop ends with no unresolved blockers and no open `## Questions`, set `status: SHAPED` in the frontmatter, and write a `summary:` field (YAML block scalar `>`) holding the same 1–3 sentence what/effect/user-impact summary you emit to chat at the end of the loop — this persists the summary so it survives the session, not just the chat transcript. Set this immediately before emitting `Ready.`.
+- **Dependencies** — write derived `Blocks-on:` edges (see Rule H) into `blocks_on:` as a flow-list of bare slugs, e.g. `blocks_on: [other-pitch-slug]`. No dependency → `blocks_on: []`.
 
-If the pitch has no `> Status:` line, add it as the first line. Only one `> Status:` line per file.
+If the pitch has no frontmatter block yet, add one as the very first lines of the file (opening `---` MUST be line 1, no leading blank line). Only one frontmatter block per file. A pre-existing pitch that still carries the legacy `> Status:` blockquote (no frontmatter) may keep it — dual-read means both forms are recognized — but prefer emitting frontmatter going forward.
+
+Example frontmatter block:
+
+```
+---
+status: SHAPED
+appetite: small
+blocks_on: [other-pitch-slug]
+summary: >
+  What/effect/user-impact summary — the same 1-3 sentences emitted to chat.
+  Block scalar (>) folds newlines; colons, dashes, and quotes inside are safe.
+---
+# Problem
+...
+```
 
 ## Pitch Readiness Check
 
@@ -132,7 +148,7 @@ What the rule rejects:
    - [ ] U5: every user input has a stated persistence destination (stored in / saved to / written to).
    - [ ] U6: every user input field has stated constraints (format, length, allowed values, or "any string").
    - [ ] U7: every terminal user action has a success signal (what user sees/receives on completion).
-   All seven pass AND claim ledger complete (zero `UNPROBED` load-bearing claims, no proxy rows, no documented-risk gaps) AND the ZERO-OPEN-DECISIONS gate passes → set `> Status: SHAPED` in the pitch file, then emit `Ready.` on its own line. Done.
+   All seven pass AND claim ledger complete (zero `UNPROBED` load-bearing claims, no proxy rows, no documented-risk gaps) AND the ZERO-OPEN-DECISIONS gate passes → set `status: SHAPED` (and write `summary:`) in the pitch frontmatter, then emit `Ready.` on its own line. Done.
    ZERO-OPEN-DECISIONS gate — before emitting `Ready.`, confirm ALL of: (a) no undecided fork in the title or any move (no "X or Y" / "either/or" / "route or delete" / "TBD"); (b) every `Assumed:` states ONE executable path with a reason in the canonical committed form — none defer to build; (c) no move defers investigation, verification, or decision to the build cycle ("decide at build", "investigate at build", "verify during build"). ANY failure → treat as a blocker, loop continues (step 4); do NOT emit `Ready.`.
    Any fail → auto-resolve via inference (step c' escape-hatch rule); re-check. If gap persists (no sensible default AND the dimension is user-owned/user-facing) → escalate via escape hatch to AskUserQuestion, loop continues.
 4. **Blockers found** → loop one at a time:
@@ -153,7 +169,7 @@ What the rule rejects:
       - Defer-to-implementation → Create `codegen/pitches/draft/<slug>.md` for the deferred work AND edit pitch to note "deferred — see draft `<slug>`". A deferral with no draft pitch is a BLOCKER. If security/safety-relevant, the draft's rationale MUST state the exposure assumption the deferral rests on.
       - Leave-as-is → Create `codegen/pitches/draft/<slug>.md` for the deferred work AND append to `Rabbit holes`: `Deferred — see draft \`<slug>\`: <why deferring is safe>`. A prose-only rabbit-hole entry for real work, with no draft, is a BLOCKER. True non-actions (genuinely nothing) may remain as prose.
    e. Re-scan (edited) pitch. Continue loop if new blockers or partial resolution. Otherwise next blocker.
-5. **Loop ends** when no unresolved blockers remain AND claim ledger is complete (zero `UNPROBED` load-bearing claims, no proxy rows, no documented-risk gaps) → **emit end-summary (below)** → set `> Status: SHAPED` in the pitch file → emit `Ready.`
+5. **Loop ends** when no unresolved blockers remain AND claim ledger is complete (zero `UNPROBED` load-bearing claims, no proxy rows, no documented-risk gaps) → **emit end-summary (below)** → set `status: SHAPED` (and write `summary:`) in the pitch frontmatter → emit `Ready.`
 
 **End-summary** (emit before `Ready.` in the shape draft):
 Emit three sentences in chat:
@@ -161,6 +177,8 @@ Emit three sentences in chat:
    2. **How it affects the system** — which consumers, contexts, downstream modules are touched; integration boundaries that shift.
    3. **How it affects users** — the observable behavior change (new capability, removed limitation, workflow step added/removed/changed).
 Call out every **assumed default** explicitly using the canonical committed form: `Assumed: <dimension> = <value> — <one-line reason>. Build executes this; it does not re-decide.` An `Assumed:` is a DECISION the build runs verbatim, never a deferred guess to revisit at build time. This includes all Ux resolve-by-default decisions and any AUTO-DECIDE blocker resolutions.
+
+**Persist the summary**: write these same three sentences into the pitch frontmatter's `summary:` field (YAML block scalar `>`) at the same time you set `status: SHAPED` — the chat output is ephemeral, the frontmatter field is not.
 
 **Option templates by blocker type:**
 

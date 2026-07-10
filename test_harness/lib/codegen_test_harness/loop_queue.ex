@@ -2,10 +2,16 @@ defmodule CodegenTestHarness.LoopQueue do
   @moduledoc """
   Absorbs `harnesses/shared/build-queue.sh`'s pure-logic pieces: scans
   `codegen/pitches/ready/` pitch files, topologically sorts their
-  `Blocks-on:`/`## Dependencies` edges (Kahn's algorithm, deps first),
-  and classifies a captured console capture as a transient (retryable)
-  infra blip via `retryable_regex` (ported from
-  `harnesses/shared/retryable-errors.sh`).
+  dependency edges (Kahn's algorithm, deps first), and classifies a
+  captured console capture as a transient (retryable) infra blip via
+  `retryable_regex` (ported from `harnesses/shared/retryable-errors.sh`).
+
+  Dependency edges are read from a pitch's `blocks_on: [a, b]` YAML
+  frontmatter list when a leading `---`...`---` frontmatter block is
+  present (dual-read: frontmatter wins when present). Pitches with no
+  frontmatter fall back to the legacy prose parse (`Blocks-on:` lines /
+  `## Dependencies` bullet lists) — this keeps pre-existing pitches
+  without frontmatter working unchanged.
 
   Process-orchestration concerns owned by the shell script (queue lock,
   watchdog, per-pitch wall-clock budget, `build-queue.json` position) are
@@ -51,9 +57,13 @@ defmodule CodegenTestHarness.LoopQueue do
   end
 
   @doc """
-  Parses `Blocks-on:` lines and `## Dependencies` bullet lists out of the
-  pitch file at `pitch_path`, returning `{slug, dep}` edge tuples (`slug`
-  depends on/is blocked by `dep`).
+  Parses dependency edges out of the pitch file at `pitch_path`, returning
+  `{slug, dep}` edge tuples (`slug` depends on/is blocked by `dep`).
+
+  Frontmatter-first: when the file opens with a `---`...`---` block
+  containing a `blocks_on:` key, that flow-list is the sole edge source
+  (legacy prose in the body is ignored). Otherwise falls back to parsing
+  `Blocks-on:` lines / `## Dependencies` bullet lists from the body.
 
   Returns `[]` if `pitch_path` does not exist (mirrors the shell's silent
   no-op via `2>/dev/null || true`).
@@ -61,13 +71,95 @@ defmodule CodegenTestHarness.LoopQueue do
   @spec parse_edges(slug(), String.t()) :: [edge()]
   def parse_edges(slug, pitch_path) do
     if File.exists?(pitch_path) do
-      pitch_path
-      |> File.read!()
-      |> String.split("\n")
-      |> parse_edge_lines(slug, false)
+      content = File.read!(pitch_path)
+
+      case frontmatter_block(content) do
+        nil ->
+          content
+          |> String.split("\n")
+          |> parse_edge_lines(slug, false)
+
+        block ->
+          block
+          |> parse_frontmatter_blocks_on()
+          |> Enum.map(&{slug, &1})
+      end
     else
       []
     end
+  end
+
+  # Returns the raw text between the opening and closing `---` delimiters
+  # when `content` starts with a frontmatter block, else nil. The opening
+  # delimiter MUST be the very first line (no leading blank lines).
+  @spec frontmatter_block(String.t()) :: String.t() | nil
+  defp frontmatter_block(content) do
+    case String.split(content, "\n", parts: 2) do
+      ["---", rest] ->
+        case String.split(rest, "\n---", parts: 2) do
+          [block, _after] ->
+            block
+
+          # fail-loud-exempt: no closing "---" delimiter — the file opens
+          # with a bare "---" line but is not a well-formed frontmatter
+          # block. Documented "not frontmatter" sentinel for dual-read
+          # fallback, not an unexpected condition.
+          _ ->
+            nil
+        end
+
+      # fail-loud-exempt: file does not open with "---" — the documented
+      # "no frontmatter present" sentinel for dual-read fallback, not an
+      # unexpected condition.
+      _ ->
+        nil
+    end
+  end
+
+  # Reads a `blocks_on: [a, b]` inline flow-list from a frontmatter block
+  # body. Absent key, or `blocks_on: []`, returns [].
+  @spec parse_frontmatter_blocks_on(String.t()) :: [slug()]
+  defp parse_frontmatter_blocks_on(block) do
+    block
+    |> String.split("\n")
+    |> Enum.find_value("", &frontmatter_blocks_on_line/1)
+    |> parse_flow_list()
+  end
+
+  defp frontmatter_blocks_on_line(line) do
+    trimmed = String.trim(line)
+
+    if String.starts_with?(trimmed, "blocks_on:") do
+      String.trim_leading(trimmed, "blocks_on:")
+    end
+  end
+
+  defp parse_flow_list(value) do
+    trimmed = String.trim(value)
+
+    case Regex.run(~r/^\[(.*)\]$/s, trimmed) do
+      [_, inner] ->
+        inner
+        |> String.split(",")
+        |> Enum.map(&String.trim/1)
+        |> Enum.map(&unquote_flow_item/1)
+        |> Enum.reject(&(&1 == ""))
+
+      # fail-loud-exempt: value is not a "[...]" flow-list — the
+      # documented "blocks_on key absent or not a flow-list" sentinel
+      # (e.g. bare `blocks_on:` with no value), not an unexpected
+      # condition. Dual-read treats this as "no frontmatter deps".
+      _ ->
+        []
+    end
+  end
+
+  defp unquote_flow_item(item) do
+    item
+    |> String.trim_leading("\"")
+    |> String.trim_trailing("\"")
+    |> String.trim_leading("'")
+    |> String.trim_trailing("'")
   end
 
   defp parse_edge_lines(lines, slug, in_deps) do

@@ -17,7 +17,7 @@ Hook registration: **Two pipelines** (`enforcement_compiler.py` for `kind: denia
 | File | Purpose |
 | - | - |
 | `harnesses/claude/hooks/static-site-build-check.sh` | SubagentStop (non-build modes only) — builds static site + 8 output checks (CSS, HTML stylesheet link, asset filename, SEO baseline, render gate), appends verdict. SEO baseline (Check 6b, `check_seo_baseline`) validates every `public/**/*.html`: non-empty `<meta name="description">`, all 4 `og:*` tags present, `<link rel="canonical">` present, exactly one valid `application/ld+json` block, `public/robots.txt` exists, all absolute-URL fields are either `SITE_URL_PLACEHOLDER` token or real non-`example.com` URLs (never unreplaced `%...%` vars). Under the loop, the static stack's gate step invokes the same checks directly via `LoopGate.run_gate`. |
-| `harnesses/claude/hooks/pitch-format-validator.sh` | Stop — validates ## Questions/## Answers/> Status: grammar in active pitch for shape/refactor/ops sessions. |
+| `harnesses/claude/hooks/pitch-format-validator.sh` | Stop — validates ## Questions/## Answers/status grammar in active pitch for shape/refactor/ops sessions. Status is read from YAML frontmatter `status:` first, dual-read fallback to legacy `> Status:` blockquote. |
 | `harnesses/claude/hooks/llm-pending-sweep.sh` | Stop — sweeps for pending LLM-generated artifacts before exit |
 | `harnesses/claude/hooks/session-log-writer-only.sh` | PreToolUse — `codegen-log` is the SOLE writer of cycle logs; denies raw Edit/Write/MultiEdit and raw Bash writes into `codegen/logging/*.jsonl` |
 | `harnesses/claude/hooks/no-python-json.sh` | PreToolUse — blocks inline `python3 -c` JSON parsing |

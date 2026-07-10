@@ -9,7 +9,11 @@
  * Gate (role): only enforces when PI_ROLE or CLAUDE_ROLE ∈ {shape, refactor, ops}.
  *
  * Validation rules (anchors only — never prose content):
- *   (a) > Status: line present → value MUST be SKELETON, SHAPING, or SHAPED
+ *   (a) YAML frontmatter `status:` key present (leading ---...--- block) OR
+ *       legacy `> Status:` line present → value MUST be SKELETON, SHAPING,
+ *       or SHAPED. Frontmatter is checked first; falls back to the
+ *       blockquote form for pre-existing pitches with no frontmatter
+ *       (dual-read).
  *   (b) ## Questions heading present → MUST have ≥1 ### Q<n>: heading AND each
  *       Q heading must be followed by ≥2 "- **<letter>)**" option bullets before
  *       the next ### or ## heading
@@ -53,6 +57,19 @@ function getActivePitch(projectDir: string): string | null {
   if (allPitches.length === 0) return null;
   allPitches.sort((a, b) => b.mtime - a.mtime);
   return allPitches[0].fullPath;
+}
+
+/**
+ * Extract the raw text of a leading YAML frontmatter block (between the
+ * opening and closing `---` delimiters), or null if `content` does not
+ * open with one. The opening delimiter MUST be the very first line.
+ */
+function frontmatterBlock(content: string): string | null {
+  if (!content.startsWith("---\n") && content !== "---") return null;
+  const rest = content.slice(content.indexOf("\n") + 1);
+  const closeIdx = rest.indexOf("\n---");
+  if (closeIdx === -1) return null;
+  return rest.slice(0, closeIdx);
 }
 
 /** Extract section body from heading to next same-level heading or EOF. */
@@ -116,17 +133,36 @@ export function register(pi: ExtensionAPI): void {
       return;
     }
 
-    // ── Validation (a): > Status: value ────────────────────────────────────
-    const statusMatch = pitchContent.match(/^> Status:\s*(.+)$/m);
-    if (statusMatch) {
-      const statusValue = statusMatch[1].trim();
+    // ── Validation (a): status value (frontmatter status: first, dual-read
+    // with legacy > Status: blockquote) ─────────────────────────────────────
+    let statusValue: string | null = null;
+    let statusSource = "";
+
+    const fmBlock = frontmatterBlock(pitchContent);
+    if (fmBlock !== null) {
+      const fmStatusMatch = fmBlock.match(/^status:\s*(.+)$/m);
+      if (fmStatusMatch) {
+        statusValue = fmStatusMatch[1].trim();
+        statusSource = "frontmatter status:";
+      }
+    }
+
+    if (statusValue === null) {
+      const statusMatch = pitchContent.match(/^> Status:\s*(.+)$/m);
+      if (statusMatch) {
+        statusValue = statusMatch[1].trim();
+        statusSource = "legacy `> Status:`";
+      }
+    }
+
+    if (statusValue !== null) {
       if (
         statusValue !== "SKELETON" &&
         statusValue !== "SHAPING" &&
         statusValue !== "SHAPED"
       ) {
         process.stderr.write(
-          `[pi-enforcement:pitch-format-validator] WARNING: invalid \`> Status:\` value "${statusValue}" in ${pitchPath}. Allowed values: SKELETON, SHAPING, SHAPED. Re-emit the \`> Status:\` line with one of those values.\n`,
+          `[pi-enforcement:pitch-format-validator] WARNING: invalid ${statusSource} value "${statusValue}" in ${pitchPath}. Allowed values: SKELETON, SHAPING, SHAPED. Re-emit the status field with one of those values.\n`,
         );
       }
     }

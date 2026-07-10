@@ -118,6 +118,95 @@ defmodule CodegenTestHarness.LoopQueueTest do
     end
   end
 
+  describe "parse_edges/2 — frontmatter blocks_on:" do
+    test "frontmatter blocks_on: [a, b] yields both edges in order", %{dir: dir} do
+      path = Path.join(dir, "c.md")
+
+      File.write!(path, """
+      ---
+      status: SHAPED
+      blocks_on: [dep-one, dep-two]
+      ---
+      # Problem
+      """)
+
+      assert LoopQueue.parse_edges("c", path) == [{"c", "dep-one"}, {"c", "dep-two"}]
+    end
+
+    test "frontmatter blocks_on: [a] single-item list yields one edge", %{dir: dir} do
+      path = Path.join(dir, "c.md")
+
+      File.write!(path, """
+      ---
+      status: SHAPED
+      blocks_on: [dep-one]
+      ---
+      # Problem
+      """)
+
+      assert LoopQueue.parse_edges("c", path) == [{"c", "dep-one"}]
+    end
+
+    test "frontmatter blocks_on: [] empty list yields no edge", %{dir: dir} do
+      path = Path.join(dir, "c.md")
+
+      File.write!(path, """
+      ---
+      status: SHAPED
+      blocks_on: []
+      ---
+      # Problem
+      """)
+
+      assert LoopQueue.parse_edges("c", path) == []
+    end
+
+    test "frontmatter present with no blocks_on: key yields no edge", %{dir: dir} do
+      path = Path.join(dir, "c.md")
+
+      File.write!(path, """
+      ---
+      status: SHAPED
+      ---
+      # Problem
+      """)
+
+      assert LoopQueue.parse_edges("c", path) == []
+    end
+
+    test "frontmatter blocks_on: wins over prose Blocks-on: in the body (frontmatter-first)", %{
+      dir: dir
+    } do
+      path = Path.join(dir, "c.md")
+
+      File.write!(path, """
+      ---
+      status: SHAPED
+      blocks_on: [frontmatter-dep]
+      ---
+      # Problem
+
+      Blocks-on: prose-dep
+      """)
+
+      assert LoopQueue.parse_edges("c", path) == [{"c", "frontmatter-dep"}]
+    end
+
+    test "no frontmatter falls back to prose Blocks-on: parse (dual-read)", %{dir: dir} do
+      path = Path.join(dir, "c.md")
+      File.write!(path, "# Problem\n\nBlocks-on: prose-dep\n")
+
+      assert LoopQueue.parse_edges("c", path) == [{"c", "prose-dep"}]
+    end
+
+    test "ordered_slugs/1 topo-sorts correctly from frontmatter blocks_on:", %{dir: dir} do
+      File.write!(Path.join(dir, "b.md"), "---\nstatus: SHAPED\nblocks_on: [a]\n---\n# b\n")
+      File.write!(Path.join(dir, "a.md"), "---\nstatus: SHAPED\nblocks_on: []\n---\n# a\n")
+
+      assert LoopQueue.ordered_slugs(dir) == ["a", "b"]
+    end
+  end
+
   describe "blocked_by_unmet_dep/2" do
     setup %{dir: dir} do
       ready_dir = Path.join(dir, "ready")

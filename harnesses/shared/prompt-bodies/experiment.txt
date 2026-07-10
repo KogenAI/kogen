@@ -78,12 +78,12 @@ Rules:
 
 ## Status stamping
 
-The in-scope pitch begins with a `> Status:` line (enum: SKELETON | SHAPING | SHAPED). Keep it current as you work:
+The in-scope pitch begins with a YAML frontmatter block (`---`-delimited) carrying `status:` (enum: SKELETON | SHAPING | SHAPED). Keep it current as you work:
 
-- **On first advance** — the first time you edit a loaded SKELETON pitch to advance it, set the first line to `> Status: SHAPING`. Also write `> Status: SHAPING` when running headless and you exit after writing a `## Questions` block.
-- **On completion** — when the compaction step is done and the pitch is buildable, set the first line to `> Status: SHAPED`.
+- **On first advance** — the first time you edit a loaded SKELETON pitch to advance it, set `status: SHAPING` in the frontmatter. Also write `status: SHAPING` when running headless and you exit after writing a `## Questions` block.
+- **On completion** — when the compaction step is done and the pitch is buildable, set `status: SHAPED` in the frontmatter.
 
-If the pitch has no `> Status:` line, add it as the first line. Only one `> Status:` line per file.
+If the pitch has no frontmatter block yet, add one as the very first lines of the file (opening `---` MUST be line 1). Only one frontmatter block per file. A pre-existing pitch that still carries the legacy `> Status:` blockquote (no frontmatter) may keep it — dual-read means both forms are recognized — but prefer emitting frontmatter going forward.
 
 ## Compaction before handoff
 

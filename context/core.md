@@ -191,7 +191,7 @@ The Elixir `OrchestrationLoop` (`test_harness/lib/codegen_test_harness/orchestra
 - **Env var leakage in tests** — Tests exercising DEFAULT branches must `env -u VAR bash` to isolate. Single `env -u` leaves fallback.
 - **Session-log order-check H1-rank false-positives** — Order-check algorithms must be H2-scoped (`##` prefix only). Ranking H1 lines (e.g., `# hook-name` in code blocks) causes false "rank decreased" denials.
 - **`Kahn algorithm`: edge direction** — Edge `SLUG -> DEP` = "SLUG blocked by DEP" (DEP executes first). Confusion between "depends on" vs "is depended on by" causes wrong sort.
-- **`parse_edges` multi-dep pitfall: captures only first dep per line** — Naive line-split + first-token extraction on `Blocks-on: a, b, c` gets only `a`. Always iterate ALL comma/space-separated tokens.
+- **`parse_edges` multi-dep pitfall: captures only first dep per line** — Naive line-split + first-token extraction on legacy `Blocks-on: a, b, c` prose gets only `a`. Always iterate ALL comma/space-separated tokens (the prose fallback path deliberately keeps this first-dep-only behavior — matches `build-queue.sh`'s historical behavior). The frontmatter `blocks_on: [a, b, c]` flow-list path (dual-read first choice) parses ALL list items via comma-split, avoiding this pitfall entirely for pitches using frontmatter.
 - **Byte-cap trimming** — Measure before appending; trim stale bullets to make room.
 - **Appending an H3 death-stamp to an existing section body** — never Edit/Write; run `codegen-log append --role <role> --body @-` piping the H3 marker. Preserves the existing body, inserts before the next `## ` header or EOF.
 
