@@ -48,6 +48,33 @@ defmodule CodegenTestHarness.CallContractTest do
 
       assert exit_code == 2, "expected exit 2 for unknown flag --role, got #{exit_code}"
     end
+
+    test "fixture argv flags are all accepted by codegen-call parser" do
+      # Sentinel harness fails at validation (not parse) only if every
+      # preceding --* flag was recognized by the parser.
+      {output, exit_code} =
+        System.cmd(
+          @codegen_call,
+          [
+            "--harness=__bogus__",
+            "--model=x",
+            "--effort=low",
+            "--system-prompt=@/nonexistent",
+            "--json-schema=@/nonexistent",
+            "prompt"
+          ],
+          stderr_to_stdout: true,
+          env: []
+        )
+
+      assert exit_code == 2, "expected exit 2, got #{exit_code}:\n#{output}"
+
+      assert output =~ ~r/must be "claude_code" or "pi"/,
+             "expected parser to reach harness validation (all fixture flags known), got:\n#{output}"
+
+      refute output =~ ~r/unknown flag/,
+             "an unknown flag means a fixture argv flag is NOT accepted by codegen-call:\n#{output}"
+    end
   end
 
   describe "codegen_call_harness/0" do

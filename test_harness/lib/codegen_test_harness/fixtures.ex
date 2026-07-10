@@ -274,7 +274,6 @@ defmodule CodegenTestHarness.Fixtures do
           codegen_call_path(),
           [
             "--harness=#{harness_val}",
-            "--role=#{role}",
             "--model=#{model}",
             "--effort=#{effort}",
             "--system-prompt=@#{sp_path}",
