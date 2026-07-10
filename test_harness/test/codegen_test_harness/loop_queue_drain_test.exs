@@ -32,6 +32,7 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
       lock_path: ctx.lock_path,
       sleep_fn: fn _secs -> :ok end,
       git_stash_fn: fn _cwd, _slug -> :ok end,
+      git_stash_restore_fn: fn _cwd, _slug -> :ok end,
       now_fn: fn -> 1_700_000_000 end,
       pid_alive_fn: fn _pid -> false end,
       git_head_fn: fn _cwd -> nil end,
@@ -801,6 +802,93 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
            ]
   end
 
+  # ── 9c. Stash restore before each attempt ───────────────────────────────
+
+  test "9c: timeout stashes, retry restores stashed work first, then ships", ctx do
+    write_pitch(ctx.ready_dir, "solo")
+
+    attempts = start_agent(0)
+    restore_calls = start_agent([])
+
+    spawn_fn = fn _slug, _h, _s, _cwd, _jsonl ->
+      n = Agent.get_and_update(attempts, fn n -> {n, n + 1} end)
+      if n == 0, do: :timeout, else: {:exit_code, 0}
+    end
+
+    git_stash_restore_fn = fn cwd, slug ->
+      Agent.update(restore_calls, &(&1 ++ [{cwd, slug}]))
+      :ok
+    end
+
+    assert {:ok, 1} =
+             LoopQueueDrain.drain(
+               base_opts(ctx, spawn_fn: spawn_fn, git_stash_restore_fn: git_stash_restore_fn)
+             )
+
+    # Called once per attempt (first attempt + retry) — both with the same slug.
+    assert Agent.get(restore_calls, & &1) == [{ctx.dir, "solo"}, {ctx.dir, "solo"}]
+    assert File.exists?(Path.join(ctx.shipped_dir, "solo.md"))
+  end
+
+  test "9d: first attempt with no matching stash is a no-op — drain ships normally", ctx do
+    write_pitch(ctx.ready_dir, "solo")
+
+    spawn_fn = fn _slug, _h, _s, _cwd, _jsonl -> {:exit_code, 0} end
+    git_stash_restore_fn = fn _cwd, _slug -> :ok end
+
+    assert {:ok, 1} =
+             LoopQueueDrain.drain(
+               base_opts(ctx, spawn_fn: spawn_fn, git_stash_restore_fn: git_stash_restore_fn)
+             )
+
+    assert File.exists?(Path.join(ctx.shipped_dir, "solo.md"))
+  end
+
+  test "9e: stash pop conflict HALTs the drain with the retained ref named", ctx do
+    write_pitch(ctx.ready_dir, "solo")
+
+    spawn_fn = fn _slug, _h, _s, _cwd, _jsonl -> {:exit_code, 0} end
+
+    git_stash_restore_fn = fn _cwd, slug ->
+      {:error,
+       "queue: HALTED — stash pop conflict for #{slug}; stash stash@{0} retained, resolve manually then re-run"}
+    end
+
+    assert {:error, reason} =
+             LoopQueueDrain.drain(
+               base_opts(ctx, spawn_fn: spawn_fn, git_stash_restore_fn: git_stash_restore_fn)
+             )
+
+    assert reason =~ "stash pop conflict for solo"
+    assert reason =~ "stash@{0} retained"
+    assert reason =~ "resolve manually"
+    # Repo left untouched: pitch stays in ready/, never shipped.
+    assert File.exists?(Path.join(ctx.ready_dir, "solo.md"))
+    refute File.exists?(Path.join(ctx.shipped_dir, "solo.md"))
+  end
+
+  test "9f: multiple legacy stashes — restore stub warns residue and advances", ctx do
+    write_pitch(ctx.ready_dir, "solo")
+
+    spawn_fn = fn _slug, _h, _s, _cwd, _jsonl -> {:exit_code, 0} end
+
+    git_stash_restore_fn = fn _cwd, _slug ->
+      IO.puts(:stderr, "queue: extra queue-timeout:solo: stashes remain: stash@{1} — drop manually")
+      :ok
+    end
+
+    output =
+      capture_io(:stderr, fn ->
+        assert {:ok, 1} =
+                 LoopQueueDrain.drain(
+                   base_opts(ctx, spawn_fn: spawn_fn, git_stash_restore_fn: git_stash_restore_fn)
+                 )
+      end)
+
+    assert output =~ "extra queue-timeout:solo: stashes remain"
+    assert File.exists?(Path.join(ctx.shipped_dir, "solo.md"))
+  end
+
   # ── 10. Lock contention ─────────────────────────────────────────────────
 
   test "10a: live lock refuses a second queue", ctx do
@@ -1152,9 +1240,9 @@ defmodule CodegenTestHarness.LoopQueueDrainEnvSerialTest do
   end
 
   describe "pitch_budget_from_env/0" do
-    test "unset -> 3600" do
+    test "unset -> 7200" do
       System.delete_env("CODEGEN_BUILD_QUEUE_PITCH_BUDGET_SECS")
-      assert LoopQueueDrain.pitch_budget_from_env() == 3600
+      assert LoopQueueDrain.pitch_budget_from_env() == 7200
     end
 
     test "\"7\" -> 7" do
@@ -1163,16 +1251,16 @@ defmodule CodegenTestHarness.LoopQueueDrainEnvSerialTest do
       assert LoopQueueDrain.pitch_budget_from_env() == 7
     end
 
-    test "\"0\" -> 3600 (sentinel)" do
+    test "\"0\" -> 7200 (sentinel)" do
       System.put_env("CODEGEN_BUILD_QUEUE_PITCH_BUDGET_SECS", "0")
       on_exit(fn -> System.delete_env("CODEGEN_BUILD_QUEUE_PITCH_BUDGET_SECS") end)
-      assert LoopQueueDrain.pitch_budget_from_env() == 3600
+      assert LoopQueueDrain.pitch_budget_from_env() == 7200
     end
 
-    test "\"x\" (non-numeric) -> 3600" do
+    test "\"x\" (non-numeric) -> 7200" do
       System.put_env("CODEGEN_BUILD_QUEUE_PITCH_BUDGET_SECS", "x")
       on_exit(fn -> System.delete_env("CODEGEN_BUILD_QUEUE_PITCH_BUDGET_SECS") end)
-      assert LoopQueueDrain.pitch_budget_from_env() == 3600
+      assert LoopQueueDrain.pitch_budget_from_env() == 7200
     end
   end
 

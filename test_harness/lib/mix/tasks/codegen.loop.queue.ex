@@ -30,7 +30,7 @@ defmodule Mix.Tasks.Codegen.Loop.Queue do
 
   - `CODEGEN_BUILD_QUEUE_MAX_RETRIES` — max consecutive transient retries per slug (default 3)
   - `CODEGEN_BUILD_QUEUE_RETRY_DELAYS` — space-separated backoff seconds (default "30 120 300")
-  - `CODEGEN_BUILD_QUEUE_PITCH_BUDGET_SECS` — per-pitch wall-clock budget seconds (default 3600)
+  - `CODEGEN_BUILD_QUEUE_PITCH_BUDGET_SECS` — per-pitch wall-clock budget seconds (default 7200)
   """
 
   use Mix.Task

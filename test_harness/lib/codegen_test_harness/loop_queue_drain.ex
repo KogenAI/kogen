@@ -5,7 +5,8 @@ defmodule CodegenTestHarness.LoopQueueDrain do
   Elixir loop. Spawns one fresh `codegen-build` child per ordered pitch
   (zero cross-pitch context accumulation), transient-retries with backoff,
   enforces a per-pitch wall-clock budget/watchdog, stashes a dirty tree on
-  timeout, and moves `ready/<slug>.md` to `shipped/<slug>.md` on child exit 0.
+  timeout (restoring it before the retry attempt — see `:git_stash_restore_fn`),
+  and moves `ready/<slug>.md` to `shipped/<slug>.md` on child exit 0.
 
   Wires `CodegenTestHarness.LoopQueue.ordered_slugs/1` (topo-order,
   raise-on-cycle) and `LoopQueue.transient?/1` (JSONL classify) live — both
@@ -44,7 +45,7 @@ defmodule CodegenTestHarness.LoopQueueDrain do
   # ephemeral gitignored build-forensics; never applied to `*_cycle.jsonl`
   # (the canonical, durable per-role session logs).
   @build_log_retention_secs 7 * 24 * 3600
-  @default_pitch_budget_secs 3600
+  @default_pitch_budget_secs 7200
 
   @codegen_build_bin Path.expand("../../../codegen-build", __DIR__)
 
@@ -71,10 +72,15 @@ defmodule CodegenTestHarness.LoopQueueDrain do
     * `:lock_path` — default `Path.join([cwd, "codegen", "gate-pending", "queue.lock"])`
     * `:max_retries` — default 3 (env `CODEGEN_BUILD_QUEUE_MAX_RETRIES`)
     * `:retry_delays` — default `[30, 120, 300]` (env `CODEGEN_BUILD_QUEUE_RETRY_DELAYS`)
-    * `:pitch_budget_secs` — default 3600 (env `CODEGEN_BUILD_QUEUE_PITCH_BUDGET_SECS`)
+    * `:pitch_budget_secs` — default 7200 (env `CODEGEN_BUILD_QUEUE_PITCH_BUDGET_SECS`)
     * `:spawn_fn` — `(slug, harness, stack, cwd, jsonl_path -> {:exit_code, integer} | :timeout)`
     * `:sleep_fn` — `(secs -> :ok)`
     * `:git_stash_fn` — `(cwd, slug -> :ok | {:error, reason})`
+    * `:git_stash_restore_fn` — `(cwd, slug -> :ok | {:error, reason})`, pops a
+      prior `queue-timeout:<slug>:` stash (if any) before a retry attempt for
+      `slug`. No matching stash -> `:ok` (no-op). A pop conflict fails loud
+      with `{:error, reason}`, HALTing the whole drain — git retains the
+      stash on a conflicting pop, so the error names a recoverable ref.
     * `:now_fn` — `(-> integer unix secs)`
     * `:ordered_fn` — `(ready_dir -> [slug])`, default `LoopQueue.ordered_slugs/1`
     * `:transient_fn` — `(jsonl_path -> boolean)`, default `LoopQueue.transient?/1`
@@ -141,6 +147,8 @@ defmodule CodegenTestHarness.LoopQueueDrain do
             spawn_fn: Keyword.get(opts, :spawn_fn, &default_spawn_fn/5),
             sleep_fn: Keyword.get(opts, :sleep_fn, &default_sleep_fn/1),
             git_stash_fn: Keyword.get(opts, :git_stash_fn, &default_git_stash_fn/2),
+            git_stash_restore_fn:
+              Keyword.get(opts, :git_stash_restore_fn, &default_git_stash_restore_fn/2),
             now_fn: Keyword.get(opts, :now_fn, &default_now_fn/0),
             ordered_fn: Keyword.get(opts, :ordered_fn, &LoopQueue.ordered_slugs/1),
             transient_fn: Keyword.get(opts, :transient_fn, &LoopQueue.transient?/1),
@@ -242,6 +250,13 @@ defmodule CodegenTestHarness.LoopQueueDrain do
   end
 
   defp run_slug(state, slug, shipped_count) do
+    case state.git_stash_restore_fn.(state.cwd, slug) do
+      :ok -> do_run_slug(state, slug, shipped_count)
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  defp do_run_slug(state, slug, shipped_count) do
     idx = shipped_count + 1
     ts = state.now_fn.()
     stamp = Calendar.strftime(DateTime.from_unix!(ts), "%Y%m%d_%H%M%S")
@@ -779,6 +794,71 @@ defmodule CodegenTestHarness.LoopQueueDrain do
     else
       {out, _code} -> {:error, "not a git repo or git status failed: #{out}"}
     end
+  end
+
+  # ── Real git_stash_restore_fn: pop a prior queue-timeout stash for slug ──────
+  # Producer/consumer contract: `default_git_stash_fn/2` tags a push with
+  # "queue-timeout:#{slug}:#{ts}" (see above). This fn resolves the newest
+  # `stash@{N}` ref whose message starts with that exact prefix and pops it.
+  # No match (first attempt ever, or a slug that never timed out) -> :ok
+  # no-op. `git stash list` failing (not a git repo) fails OPEN to :ok — there
+  # is nothing to restore. A conflicting pop is the one case that fails LOUD:
+  # git retains the stash on a pop conflict, so the returned {:error, reason}
+  # names a real, still-present recovery ref for the operator.
+  @doc false
+  @spec default_git_stash_restore_fn(String.t(), String.t()) :: :ok | {:error, String.t()}
+  def default_git_stash_restore_fn(cwd, slug) do
+    case System.cmd("git", ["-C", cwd, "stash", "list"], stderr_to_stdout: true) do
+      {out, 0} ->
+        prefix = "queue-timeout:#{slug}:"
+
+        matches =
+          out
+          |> String.split("\n", trim: true)
+          |> Enum.filter(&String.contains?(&1, prefix))
+          |> Enum.map(&extract_stash_ref/1)
+          |> Enum.filter(& &1)
+
+        case matches do
+          [] ->
+            :ok
+
+          [newest | extras] ->
+            unless extras == [] do
+              IO.puts(
+                :stderr,
+                "queue: extra #{prefix} stashes remain: " <>
+                  Enum.join(extras, ", ") <> " — drop manually"
+              )
+            end
+
+            case System.cmd("git", ["-C", cwd, "stash", "pop", newest], stderr_to_stdout: true) do
+              {_out, 0} ->
+                :ok
+
+              {_out, _code} ->
+                {:error,
+                 "queue: HALTED — stash pop conflict for #{slug}; stash #{newest} retained, resolve manually then re-run"}
+            end
+        end
+
+      {_out, _code} ->
+        :ok
+    end
+  end
+
+  # `git stash list` line shape: "stash@{N}: On <branch>: <message>" or, with
+  # a custom `-m` message (as used here), "stash@{N}: <message>". Extract the
+  # leading `stash@{N}` token.
+  # fail-loud-exempt: `String.split/3` with `parts: 2` on a non-empty binary
+  # ALWAYS returns a non-empty list (worst case: `[line]`) — the `[ref | _]`
+  # match is exhaustive for this input; there is no unmatched-condition sink
+  # here, only a boolean classification of whether that first token looks
+  # like a stash ref.
+  @spec extract_stash_ref(String.t()) :: String.t() | nil
+  defp extract_stash_ref(line) do
+    [ref | _] = String.split(line, ":", parts: 2)
+    if String.starts_with?(ref, "stash@{"), do: ref, else: nil
   end
 
   # ── Real git_head_fn: fail-open (mirrors `git rev-parse HEAD 2>/dev/null || true`) ──
