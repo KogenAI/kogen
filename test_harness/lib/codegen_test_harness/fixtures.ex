@@ -137,7 +137,7 @@ defmodule CodegenTestHarness.Fixtures do
       )
 
     unless System.get_env("KEEP_TMP") == "1" do
-      ExUnit.Callbacks.on_exit(fn -> File.rm_rf!(path) end)
+      ExUnit.Callbacks.on_exit(fn -> rm_rf_resilient(path) end)
     else
       IO.puts(:stderr, "KEEP_TMP=1 — preserving tmp dir: #{path}")
     end
@@ -992,5 +992,54 @@ defmodule CodegenTestHarness.Fixtures do
     log
     |> String.split("\n", trim: true)
     |> length()
+  end
+
+  # Resilient recursive delete for `isolated_tmp_dir/1` teardown.
+  #
+  # A Phoenix dev server spawned during render-check (`--spawn`) is
+  # group-killed by `stopPhoenixServer` before `System.cmd` returns, but its
+  # tailwind/esbuild watcher can flush a handful of files into the tmp tree in
+  # the brief window after the kill signal and before the process actually
+  # exits. That race can make `File.rm_rf!/1` observe a path that reappears
+  # mid-delete and raise `EEXIST`, failing an otherwise-green test in
+  # `on_exit`.
+  #
+  # This helper retries the non-bang `File.rm_rf/1` a few times with a short
+  # sleep to let the last flush settle, then gives up quietly (with a visible
+  # stderr note) rather than raising. `/tmp` is reaped by the OS regardless,
+  # and the directory holds only scratch build output — a stuck cleanup here
+  # must never fail a passing test, but a genuinely stuck cleanup should still
+  # be observable via stderr.
+  @rm_rf_retry_attempts 5
+  @rm_rf_retry_sleep_ms 200
+
+  # Exposed as `@doc false` (public but undocumented) rather than `defp` so
+  # `CodegenTestHarness.FixturesTest` can exercise the retry/give-up paths
+  # directly, mirroring the `@doc false` test-seam pattern already used by
+  # `LoopGate`/`LoopQueueDrain`/`OrchestrationLoop`.
+  @doc false
+  @spec rm_rf_resilient(String.t()) :: :ok
+  def rm_rf_resilient(path) do
+    do_rm_rf_resilient(path, @rm_rf_retry_attempts)
+  end
+
+  defp do_rm_rf_resilient(path, attempts_left) do
+    case File.rm_rf(path) do
+      {:ok, _files} ->
+        :ok
+
+      {:error, _reason, _file} when attempts_left > 1 ->
+        Process.sleep(@rm_rf_retry_sleep_ms)
+        do_rm_rf_resilient(path, attempts_left - 1)
+
+      {:error, reason, file} ->
+        IO.puts(
+          :stderr,
+          "rm_rf_resilient: giving up cleaning up #{path} after #{@rm_rf_retry_attempts} attempts " <>
+            "(last error: #{inspect(reason)} on #{inspect(file)}) — leaving for OS tmp reaping"
+        )
+
+        :ok
+    end
   end
 end
