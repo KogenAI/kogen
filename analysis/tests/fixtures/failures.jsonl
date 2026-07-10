@@ -1,3 +1,8 @@
 {"ts": "2026-06-19T10:00:01Z", "tool": "Read", "error": "Read exceeds maximum size", "agent": "developer-phoenix-backend"}
 {"ts": "2026-06-19T10:00:05Z", "tool": "Read", "error": "File does not exist. Note: your current working directory is /tmp", "agent": "developer-phoenix-backend"}
 {"ts": "2026-06-19T10:00:10Z", "tool": "Agent", "error": "[Request interrupted by user for tool use]", "agent": "committer"}
+{"ts": "2026-06-19T10:05:00Z", "tool": "Read", "error": "EISDIR: illegal operation on a directory", "agent": "developer-phoenix-backend"}
+{"ts": "2026-06-19T10:10:59Z", "tool": "Read", "error": "EISDIR: illegal operation on a directory", "agent": "developer-phoenix-backend"}
+{"ts": "2026-06-19T11:00:00Z", "tool": "Bash", "error": "unsupported role", "agent": "developer-phoenix-backend"}
+{"ts": "2026-06-19T11:00:05Z", "tool": "Bash", "error": "unsupported role", "agent": "developer-phoenix-backend"}
+{"ts": "2026-06-19T11:00:11Z", "tool": "Bash", "error": "unsupported role", "agent": "developer-phoenix-backend"}

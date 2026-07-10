@@ -288,18 +288,22 @@ class TestToolFailure(unittest.TestCase):
         self.assertEqual(findings, [])
 
     def test_only_real_waste_is_counted(self) -> None:
-        # fixtures/failures.jsonl: 1 oversized-read (waste), 1 missing-file
-        # (expected, excluded), 1 interrupted (expected, excluded).
+        # fixtures/failures.jsonl: 1 oversized-read (waste, isolated), 1
+        # missing-file (expected, excluded), 1 interrupted (expected,
+        # excluded), 2 dir-read (waste, gap-separated -> recovered), 3
+        # bad-arg (waste, tight gaps -> spiral).
         findings = self.counter.run_repo(_thrash_config())
         keys = {f.pattern_key for f in findings if f.wasted_turns > 0}
-        self.assertEqual(keys, {"Read×oversized-read"})
+        self.assertEqual(
+            keys, {"Read×oversized-read", "Read×dir-read", "Bash×bad-arg:spiral"}
+        )
 
     def test_excludes_expected_failures(self) -> None:
         findings = self.counter.run_repo(_thrash_config())
         total_wasted = sum(f.wasted_turns for f in findings)
-        # Only the single oversized-read record counts; missing-file and
-        # interrupted are excluded.
-        self.assertEqual(total_wasted, 1)
+        # oversized-read(1) + dir-read(1+1, recovered) + bad-arg(3*2, spiral)
+        # = 1 + 2 + 6 = 9. missing-file and interrupted are excluded.
+        self.assertEqual(total_wasted, 9)
 
     def test_counter_name(self) -> None:
         findings = self.counter.run_repo(_thrash_config())
@@ -308,11 +312,46 @@ class TestToolFailure(unittest.TestCase):
 
     def test_not_multiplied_by_session_count(self) -> None:
         # Regression: repo-level run_repo scans the substrate ONCE regardless
-        # of how many sessions exist — wasted_turns must equal real waste
-        # record count, never real_count × session_count.
+        # of how many sessions exist — wasted_turns must equal real weighted
+        # waste, never weighted_count × session_count.
         findings = self.counter.run_repo(_thrash_config())
         total_wasted = sum(f.wasted_turns for f in findings)
-        self.assertEqual(total_wasted, 1)
+        self.assertEqual(total_wasted, 9)
+
+    def test_recovered_failures_stay_isolated_weight_one(self) -> None:
+        # Gap-separated same-class records (359s > spiral_gap_seconds=300)
+        # recover between incidents -> each counts as its own weight-1
+        # finding under the base (non-spiral) pattern_key, never merged.
+        findings = self.counter.run_repo(_thrash_config())
+        dir_read = [f for f in findings if f.pattern_key == "Read×dir-read"]
+        self.assertEqual(sum(f.wasted_turns for f in dir_read), 2)
+        self.assertNotIn(
+            "Read×dir-read:spiral", {f.pattern_key for f in findings}
+        )
+
+    def test_spiral_run_out_ranks_equal_count_scattered(self) -> None:
+        # 3 consecutive Bash×bad-arg records within the gap threshold form a
+        # spiral: pattern_key carries the :spiral suffix and weight is
+        # run_length * 2 (6), strictly greater than 3 equal scattered
+        # (weight-1) findings would sum to.
+        findings = self.counter.run_repo(_thrash_config())
+        spiral = [f for f in findings if f.pattern_key == "Bash×bad-arg:spiral"]
+        self.assertEqual(len(spiral), 1)
+        self.assertEqual(spiral[0].wasted_turns, 6)
+        self.assertGreater(spiral[0].wasted_turns, 3)
+
+    def test_run_group_file_isolated_ts_unparseable_is_fail_safe(self) -> None:
+        # Records with an unparseable/missing ts cannot be run-grouped and
+        # must fall back to isolated (recovered, weight-1) rather than
+        # crashing or silently merging into a spiral.
+        from analysis.counters.tool_failure import _run_group_file
+
+        records = [
+            {"tool": "Read", "error": "Read exceeds maximum size", "_line": "a"},
+            {"tool": "Read", "error": "Read exceeds maximum size", "_line": "b"},
+        ]
+        entries = _run_group_file(records, _thrash_config())
+        self.assertEqual(entries, [("Read×oversized-read", 1, "a"), ("Read×oversized-read", 1, "b")])
 
     def test_classify_waste_classes(self) -> None:
         from analysis.counters.tool_failure import _classify
@@ -352,7 +391,10 @@ class TestBoundedMagnitude(unittest.TestCase):
 
         findings = tool_failure.run_repo(cfg)
         total_wasted = sum(f.wasted_turns for f in findings)
-        self.assertLessEqual(total_wasted, record_count)
+        # spiral runs weight run_length * 2, so the ceiling is 2x record
+        # count, not record_count itself (mirrors hook_intervention's
+        # weight=2 bound below).
+        self.assertLessEqual(total_wasted, record_count * 2)
 
     def test_hook_intervention_gate_leg_bounded_by_substrate_size(self) -> None:
         from analysis.counters import hook_intervention

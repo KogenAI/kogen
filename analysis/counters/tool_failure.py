@@ -8,10 +8,11 @@ module mirrors.
 """
 from __future__ import annotations
 
+import datetime
 import json
 from collections import Counter
 from pathlib import Path
-from typing import List, Tuple
+from typing import List, Optional, Tuple
 
 from analysis.config import Config
 from analysis.counters import Finding
@@ -70,6 +71,77 @@ def _classify(tool: str, error: str) -> Tuple[str, bool]:
     return "exit-signal", False
 
 
+def _parse_ts(value: str) -> Optional[datetime.datetime]:
+    """Parse an ISO-8601 `ts` string (e.g. `...Z`) -> aware datetime, or None."""
+    if not value:
+        return None
+    try:
+        return datetime.datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+
+
+def _run_group_file(
+    records: List[dict], config: Config
+) -> List[Tuple[str, int, str]]:
+    """Group one file's genuine-waste records into runs of consecutive same
+    `{tool}×{waste_class}` records with inter-record `ts` gap below
+    `config.spiral_gap_seconds`.
+
+    Returns a list of (pattern_key, weight, evidence) tuples: one entry per
+    run. A run of length >= spiral_min_run becomes a single `:spiral` entry
+    weighted `run_length * 2`; a run of length 1 (isolated, or unparseable
+    ts — fail-safe) becomes a base-key entry weighted 1 (the parent's flat
+    behavior, preserved).
+
+    Records must already be filtered to genuine waste and given in file
+    (append) order.
+    """
+    entries: List[Tuple[str, int, str]] = []
+    run_key: Optional[str] = None
+    run_records: List[dict] = []
+    run_last_ts: Optional[datetime.datetime] = None
+
+    def _flush() -> None:
+        if not run_records:
+            return
+        base_key = run_key
+        evidence = run_records[0]["_line"][:120]
+        run_len = len(run_records)
+        if run_len >= config.spiral_min_run:
+            entries.append((f"{base_key}:spiral", run_len * 2, evidence))
+        else:
+            entries.append((base_key, 1, evidence))
+
+    for record in records:
+        tool = record.get("tool", "unknown")
+        error = record.get("error", "")
+        waste_class, is_waste = _classify(tool, error)
+        if not is_waste:
+            continue
+        key = f"{tool}×{waste_class}"
+        ts = _parse_ts(record.get("ts", ""))
+
+        same_run = (
+            run_key == key
+            and ts is not None
+            and run_last_ts is not None
+            and (ts - run_last_ts).total_seconds() <= config.spiral_gap_seconds
+        )
+
+        if same_run:
+            run_records.append(record)
+        else:
+            _flush()
+            run_key = key
+            run_records = [record]
+
+        run_last_ts = ts
+
+    _flush()
+    return entries
+
+
 def run_repo(config: Config) -> List[Finding]:
     """Scan failures/*.jsonl once (repo-level); return [] gracefully when absent."""
     failures_dir = _failures_dir(config)
@@ -82,6 +154,7 @@ def run_repo(config: Config) -> List[Finding]:
 
     for jsonl_path in sorted(failures_dir.glob("*.jsonl")):
         session_id = jsonl_path.stem
+        file_records: List[dict] = []
         try:
             with open(jsonl_path, encoding="utf-8") as fh:
                 for line in fh:
@@ -92,22 +165,20 @@ def run_repo(config: Config) -> List[Finding]:
                         record = json.loads(line)
                     except json.JSONDecodeError:
                         continue
-                    tool = record.get("tool", "unknown")
-                    error = record.get("error", "")
-                    waste_class, is_waste = _classify(tool, error)
-                    if not is_waste:
-                        continue
-                    key = f"{tool}×{waste_class}"
-                    pattern_counts[key] += 1
-                    pattern_sessions.setdefault(key, set()).add(session_id)
-                    if key not in pattern_first_line:
-                        pattern_first_line[key] = line[:120]
+                    record["_line"] = line
+                    file_records.append(record)
         except OSError:
             continue
 
+        for key, weight, evidence in _run_group_file(file_records, config):
+            pattern_counts[key] += weight
+            pattern_sessions.setdefault(key, set()).add(session_id)
+            if key not in pattern_first_line:
+                pattern_first_line[key] = evidence
+
     # Attribute the full wasted-turns count once, under the first session
     # seen for that pattern, so _cluster's sum(wasted_turns) equals the real
-    # record count exactly (not count × distinct-session-count). Emit
+    # weighted count exactly (not count × distinct-session-count). Emit
     # zero-weight findings for the remaining sessions so the cluster's
     # session-count still reflects every session that hit the pattern.
     findings: List[Finding] = []

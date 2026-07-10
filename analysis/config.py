@@ -16,6 +16,8 @@ class Config:
     as_json: bool = False
     window: int = 2
     reread_threshold: int = 2
+    spiral_min_run: int = 2
+    spiral_gap_seconds: int = 300
     project_dir: Optional[Path] = None
     claude_projects_root: Path = field(
         default_factory=lambda: Path.home() / ".claude" / "projects"
