@@ -141,6 +141,17 @@ describe("orchestrator-no-ci", { concurrency: false }, () => {
     assert.ok(result == null || (result as { block?: boolean }).block !== true);
   });
 
+  // Bypass cases — experiment role
+  it("bypasses when PI_ROLE=experiment", async () => {
+    const result = await runHook("make ci", "", "", "experiment");
+    assert.ok(result == null || (result as { block?: boolean }).block !== true);
+  });
+
+  it("bypasses when CLAUDE_ROLE=experiment", async () => {
+    const result = await runHook("make ci", "", "", "", "experiment");
+    assert.ok(result == null || (result as { block?: boolean }).block !== true);
+  });
+
   it("allows codegen-log write narrating gated phrase", async () => {
     const result = await runHook(
       'codegen-log section --slug test --body @- <<EOF\n## orchestrator Section\nDelegated to developer; make ci ran green in the gate.\nEOF',

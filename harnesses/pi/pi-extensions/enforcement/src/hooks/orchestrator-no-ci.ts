@@ -7,7 +7,8 @@
  *
  * Only enforces when AGENT_TYPE is empty AND AGENT_ID is empty (orchestrator level).
  * Subagents (any non-empty AGENT_TYPE or AGENT_ID) pass through.
- * ops mode (CLAUDE_ROLE=ops / PI_ROLE=ops) bypasses — full gate-command access.
+ * ops/experiment mode (CLAUDE_ROLE / PI_ROLE) bypasses — full gate-command access.
+ * ops runs on live boxes; experiment is a standalone source-writable dev session.
  *
  * Blocks:
  *   make ci / ci-cover / predeploy
@@ -41,11 +42,17 @@ export function register(pi: ExtensionAPI): void {
       `agent_type=${agentType} agent_id=${agentId}`,
     );
 
-    // ops mode bypass — full gate-command access on live boxes.
+    // ops/experiment bypass — full gate-command access on live boxes (ops) or
+    // standalone source-writable dev sessions (experiment).
     const piRole = process.env["PI_ROLE"] ?? "";
     const claudeRole = process.env["CLAUDE_ROLE"] ?? "";
-    if (piRole === "ops" || claudeRole === "ops") {
-      debugLog("orchestrator-no-ci", "skip: ops bypass");
+    if (
+      piRole === "ops" ||
+      claudeRole === "ops" ||
+      piRole === "experiment" ||
+      claudeRole === "experiment"
+    ) {
+      debugLog("orchestrator-no-ci", "skip: ops/experiment bypass");
       return;
     }
 

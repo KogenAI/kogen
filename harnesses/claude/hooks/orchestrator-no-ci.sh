@@ -12,8 +12,9 @@
 #
 # Only enforces when AGENT_TYPE is empty AND AGENT_ID is empty (orchestrator level).
 # Subagents (any non-empty AGENT_TYPE or AGENT_ID) pass through.
-# ops mode (CLAUDE_ROLE=ops / PI_ROLE=ops) bypasses via resolve_role() — ops runs on live boxes
-# and needs full gate-command access for inspection.
+# ops/experiment mode (CLAUDE_ROLE / PI_ROLE) bypasses via resolve_role() — ops runs on live
+# boxes, experiment is a standalone source-writable dev session; both need full gate-command
+# access for inspection.
 #
 # Blocks:
 #   make ci / ci-cover / predeploy
@@ -36,9 +37,10 @@ parse_input
 
 debug_log orchestrator-no-ci "tool=$TOOL_NAME agent_type=${AGENT_TYPE:-} agent_id=${AGENT_ID:-} cmd=${COMMAND:-}"
 
-# ops mode bypasses: full gate-command access for inspection on live boxes.
+# ops/experiment bypasses: full gate-command access for inspection on live boxes
+# (ops) or standalone source-writable dev sessions (experiment).
 _role=$(resolve_role)
-[ "$_role" = "ops" ] && exit 0
+case "$_role" in ops | experiment) exit 0 ;; esac
 
 # Only enforce for orchestrator level (both AGENT_TYPE and AGENT_ID empty)
 if [ -n "${AGENT_TYPE:-}" ] || [ -n "${AGENT_ID:-}" ]; then
