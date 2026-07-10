@@ -116,6 +116,31 @@ defmodule CodegenTestHarness.LoopQueue do
     end
   end
 
+  @doc """
+  Strips a leading YAML frontmatter block (`---`...`---`) from `content`,
+  returning the body only. Reuses `frontmatter_block/1`'s grammar so the
+  strip and the `blocks_on` parser can never disagree on what counts as
+  frontmatter.
+
+  When `content` has no well-formed frontmatter block (absent, or opens
+  with a bare `---` but never closes), `content` is returned UNCHANGED —
+  documented "not frontmatter" sentinel, dual-read parity with
+  `frontmatter_block/1`, not a swallow.
+  """
+  @spec strip_frontmatter(String.t()) :: String.t()
+  def strip_frontmatter(content) do
+    case frontmatter_block(content) do
+      nil ->
+        content
+
+      _block ->
+        case String.split(content, "\n---", parts: 2) do
+          [_before, after_delim] -> String.trim_leading(after_delim, "\n")
+          _ -> content
+        end
+    end
+  end
+
   # Reads a `blocks_on: [a, b]` inline flow-list from a frontmatter block
   # body. Absent key, or `blocks_on: []`, returns [].
   @spec parse_frontmatter_blocks_on(String.t()) :: [slug()]

@@ -22,6 +22,7 @@ defmodule Mix.Tasks.Codegen.Loop do
 
   use Mix.Task
 
+  alias CodegenTestHarness.LoopQueue
   alias CodegenTestHarness.OrchestrationLoop
 
   @impl Mix.Task
@@ -139,14 +140,18 @@ defmodule Mix.Tasks.Codegen.Loop do
       exit({:shutdown, 2})
     end
 
-    File.read!(abs)
+    abs
+    |> File.read!()
+    |> LoopQueue.strip_frontmatter()
   end
 
   def resolve_pitch(literal, cwd) do
     abs = Path.expand(literal, cwd)
 
     if File.exists?(abs) do
-      File.read!(abs)
+      abs
+      |> File.read!()
+      |> LoopQueue.strip_frontmatter()
     else
       literal
     end

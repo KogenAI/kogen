@@ -50,6 +50,19 @@ defmodule Mix.Tasks.Codegen.LoopTest do
     assert Loop.resolve_pitch("just some prompt text", ctx.tmp) == "just some prompt text"
   end
 
+  test "6: @-prefixed pitch with YAML frontmatter resolves to body only", ctx do
+    File.write!(
+      Path.join(ctx.ready_dir, "x.md"),
+      "---\nstatus: SHAPED\nblocks_on: []\n---\n# Pitch: x\n\nBody text.\n"
+    )
+
+    result = Loop.resolve_pitch("@codegen/pitches/ready/x.md", ctx.tmp)
+
+    refute String.starts_with?(result, "---")
+    assert result =~ "# Pitch: x"
+    assert result =~ "Body text."
+  end
+
   describe "maybe_ship_pitch/2" do
     test "happy-path move: ready file moves to shipped, content preserved", ctx do
       body = "# Pitch: foo\n"

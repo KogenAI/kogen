@@ -1181,6 +1181,18 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
     end
   end
 
+  describe "prompt_tail/1" do
+    test "wraps the prompt with an explicit end-of-flags separator" do
+      assert OrchestrationLoop.prompt_tail("PROMPT") == ["--", "PROMPT"]
+    end
+
+    test "a prompt body opening with -- is still returned as data, not consumed as a flag" do
+      prompt = "---\nstatus: SHAPED\n---\n# Body"
+
+      assert OrchestrationLoop.prompt_tail(prompt) == ["--", prompt]
+    end
+  end
+
   describe "telemetry accumulation" do
     test "zero_telemetry/0 returns an all-zero map" do
       assert OrchestrationLoop.zero_telemetry() == %{

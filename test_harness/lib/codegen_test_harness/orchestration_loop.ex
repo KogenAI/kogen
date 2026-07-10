@@ -445,14 +445,14 @@ defmodule CodegenTestHarness.OrchestrationLoop do
 
     schema_path = write_realized_check_schema!()
 
-    args = [
-      "--harness=claude_code",
-      "--model=haiku",
-      "--effort=low",
-      "--system-prompt=@#{@realized_check_prompt_path}",
-      "--json-schema=@#{schema_path}",
-      pitch
-    ]
+    args =
+      [
+        "--harness=claude_code",
+        "--model=haiku",
+        "--effort=low",
+        "--system-prompt=@#{@realized_check_prompt_path}",
+        "--json-schema=@#{schema_path}"
+      ] ++ prompt_tail(pitch)
 
     env = [{"CODEGEN_DIR", @codegen_dir}]
 
@@ -1314,6 +1314,17 @@ defmodule CodegenTestHarness.OrchestrationLoop do
     raise "OrchestrationLoop: unknown harness #{inspect(other)} — cannot resolve guard bundle"
   end
 
+  @doc """
+  Returns the trailing `codegen-call` argv tail for a prompt: an explicit
+  `--` end-of-flags separator immediately followed by the prompt. Prompt
+  content (pitch body) is DATA, never CLI flags — a body that happens to
+  open with `-` or `--` (e.g. stray YAML-like text) must never be parsed
+  as an option by `codegen-call`'s `OptionParser`. Shared by both
+  `codegen-call` invocation sites (main role call + realized-check).
+  """
+  @spec prompt_tail(String.t()) :: [String.t()]
+  def prompt_tail(prompt), do: ["--", prompt]
+
   defp default_codegen_call(
          cwd,
          harness,
@@ -1344,7 +1355,7 @@ defmodule CodegenTestHarness.OrchestrationLoop do
         if(allowed_tools && allowed_tools != "",
           do: ["--allowed-tools=#{allowed_tools}"],
           else: []
-        ) ++ [prompt]
+        ) ++ prompt_tail(prompt)
 
     env =
       [

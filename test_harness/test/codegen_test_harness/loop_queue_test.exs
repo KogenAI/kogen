@@ -207,6 +207,30 @@ defmodule CodegenTestHarness.LoopQueueTest do
     end
   end
 
+  describe "strip_frontmatter/1" do
+    test "well-formed frontmatter is stripped, body only remains" do
+      content = "---\nstatus: ready\nblocks_on: []\n---\n# Body\nline2\n"
+
+      result = LoopQueue.strip_frontmatter(content)
+
+      refute String.starts_with?(result, "---")
+      assert result =~ "# Body"
+      assert result =~ "line2"
+    end
+
+    test "plain task string with no frontmatter is returned unchanged" do
+      content = "# Just a task\n\nDo the thing.\n"
+
+      assert LoopQueue.strip_frontmatter(content) == content
+    end
+
+    test "malformed frontmatter (opens with --- but never closes) is returned unchanged" do
+      content = "---\nstatus: ready\nno closing delimiter here\n"
+
+      assert LoopQueue.strip_frontmatter(content) == content
+    end
+  end
+
   describe "blocked_by_unmet_dep/2" do
     setup %{dir: dir} do
       ready_dir = Path.join(dir, "ready")
