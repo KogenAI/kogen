@@ -53,7 +53,7 @@ What the developer subagent runs after any change:
 4. Post-gate checks (optional): `make harness-path-check` — standalone optional manual target
 5. `make test-stacks` — slow ExUnit scaffold suite; real LLM calls; run as pre-deploy gate
 
-**Gate command = `make test`** (fast, hermetic). `make test-stacks` is the pre-deploy gate (slow, real LLM calls). `make ci` does NOT exist in this repo — that is a Phoenix-only target. Planners: always emit `Gate: make test` for codegen tasks.
+**Gate command = `make test`** (fast, hermetic). `make test-stacks` is the pre-deploy gate (slow, real LLM calls). `make ci` exists as a pure alias for `make test` (`ci: test`) — not a distinct target; the Phoenix-only gate is the _downstream generated app's_ `make ci`. Planners: always emit `Gate: make test` for codegen tasks.
 
 ---
 

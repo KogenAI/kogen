@@ -19,13 +19,13 @@ The codegen repo is a Bash + Python + TypeScript + Elixir toolchain. Primary dev
 
 **`make ci`** in a codegen scaffold context is the DOWNSTREAM generated app's gate — not the codegen repo's own gate. `scaffold.sh` runs `make ci` on the generated app's output to validate the scaffold produced a compilable, testable structure.
 
-**THIS REPO's gate** is `make test` (codegen self-test: hook parity, generator tests, hermetic ExUnit). The codegen Makefile has no `make ci` target; CI validation is downstream-only.
+**THIS REPO's gate** is `make test` (codegen self-test: hook parity, generator tests, hermetic ExUnit). The codegen root Makefile has `ci: test` — a pure delegation alias for `make test`, not a distinct target. Real downstream CI validation (compile/rollback/warnings-as-errors) happens in the generated app's own `make ci`.
 
 **`make test-stacks`** (slow, real LLM) validates full stack output including the downstream `make ci` gate. The distinction:
 
 - `make test` — codegen repo self-checks (fast, hermetic)
 - `make test-stacks` — full end-to-end with real LLM + downstream-app `make ci` validation (slow)
-- Downstream `make ci` — generated app's gate (called by scaffold.sh, not codegen repo itself)
+- Downstream `make ci` — generated app's gate (called by scaffold.sh); distinct from codegen's own `ci: test` alias
 
 ## Make Targets (Index)
 
