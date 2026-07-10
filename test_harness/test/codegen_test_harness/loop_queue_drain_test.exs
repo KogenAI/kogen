@@ -889,31 +889,11 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
   end
 
   # ── 12. Budget default resolution ───────────────────────────────────────
-
-  describe "pitch_budget_from_env/0" do
-    test "unset -> 3600" do
-      System.delete_env("CODEGEN_BUILD_QUEUE_PITCH_BUDGET_SECS")
-      assert LoopQueueDrain.pitch_budget_from_env() == 3600
-    end
-
-    test "\"7\" -> 7" do
-      System.put_env("CODEGEN_BUILD_QUEUE_PITCH_BUDGET_SECS", "7")
-      on_exit(fn -> System.delete_env("CODEGEN_BUILD_QUEUE_PITCH_BUDGET_SECS") end)
-      assert LoopQueueDrain.pitch_budget_from_env() == 7
-    end
-
-    test "\"0\" -> 3600 (sentinel)" do
-      System.put_env("CODEGEN_BUILD_QUEUE_PITCH_BUDGET_SECS", "0")
-      on_exit(fn -> System.delete_env("CODEGEN_BUILD_QUEUE_PITCH_BUDGET_SECS") end)
-      assert LoopQueueDrain.pitch_budget_from_env() == 3600
-    end
-
-    test "\"x\" (non-numeric) -> 3600" do
-      System.put_env("CODEGEN_BUILD_QUEUE_PITCH_BUDGET_SECS", "x")
-      on_exit(fn -> System.delete_env("CODEGEN_BUILD_QUEUE_PITCH_BUDGET_SECS") end)
-      assert LoopQueueDrain.pitch_budget_from_env() == 3600
-    end
-  end
+  # NOTE: pitch_budget_from_env/0 tests that mutate CODEGEN_BUILD_QUEUE_PITCH_BUDGET_SECS
+  # live in the async: false sibling module at the bottom of this file
+  # (LoopQueueDrainEnvSerialTest) — System.put_env/2 is process-global and
+  # races with any other async: true test reading the same env var mid-flight
+  # (e.g. the grandchild-reap test below, which also reads this var).
 
   describe "max_retries_from_env/0" do
     test "unset -> 3" do
@@ -986,59 +966,11 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
       path
     end
 
-    test "timeout kills the child process tree via the kill_fn seam", ctx do
-      sleeper =
-        write_script(ctx.dir, "sleeper.sh", """
-        #!/usr/bin/env bash
-        echo starting
-        sleep 30
-        echo should-not-print
-        """)
-
-      calls = start_agent([])
-
-      kill_fn = fn port ->
-        os_pid =
-          case Port.info(port, :os_pid) do
-            {:os_pid, pid} -> pid
-            _ -> nil
-          end
-
-        Agent.update(calls, &(&1 ++ [os_pid]))
-      end
-
-      jsonl = Path.join(ctx.dir, "out.jsonl")
-
-      Process.put(:__queue_drain_build_bin__, sleeper)
-      Process.put(:__queue_drain_kill_fn__, kill_fn)
-
-      on_exit(fn ->
-        Process.delete(:__queue_drain_build_bin__)
-        Process.delete(:__queue_drain_kill_fn__)
-      end)
-
-      System.put_env("CODEGEN_BUILD_QUEUE_PITCH_BUDGET_SECS", "1")
-      on_exit(fn -> System.delete_env("CODEGEN_BUILD_QUEUE_PITCH_BUDGET_SECS") end)
-
-      capture_io(:stderr, fn ->
-        send(
-          self(),
-          {:result, LoopQueueDrain.default_spawn_fn("slug", "claude", "phoenix", ctx.dir, jsonl)}
-        )
-      end)
-
-      result =
-        receive do
-          {:result, r} -> r
-        end
-
-      assert result == :timeout
-      assert File.exists?(jsonl)
-      recorded = Agent.get(calls, & &1)
-      assert length(recorded) == 1
-      assert [os_pid] = recorded
-      assert is_integer(os_pid)
-    end
+    # NOTE: "timeout kills the child process tree via the kill_fn seam" (which
+    # sets CODEGEN_BUILD_QUEUE_PITCH_BUDGET_SECS) lives in the async: false
+    # sibling module at the bottom of this file (LoopQueueDrainEnvSerialTest)
+    # — System.put_env/2 is process-global and races with other async: true
+    # tests reading the same env var mid-flight.
 
     test "normal exit writes merged stdout+stderr and returns exit code", ctx do
       jsonl = Path.join(ctx.dir, "out.jsonl")
@@ -1106,6 +1038,305 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
       assert spawned_args =~ "--stack=phoenix"
       refute spawned_args =~ "--elixir"
       refute spawned_args =~ "--non-interactive"
+    end
+
+    test "sets CODEGEN_BUILD_LOCK_HELD=1 in the per-pitch child env (queue bypass)", ctx do
+      jsonl = Path.join(ctx.dir, "out.jsonl")
+      env_capture_file = Path.join(ctx.dir, "env_capture.txt")
+
+      script =
+        write_script(ctx.dir, "envcapture.sh", """
+        #!/usr/bin/env bash
+        printf '%s' "$CODEGEN_BUILD_LOCK_HELD" > "#{env_capture_file}"
+        exit 0
+        """)
+
+      Process.put(:__queue_drain_build_bin__, script)
+      on_exit(fn -> Process.delete(:__queue_drain_build_bin__) end)
+
+      capture_io(:stderr, fn ->
+        send(
+          self(),
+          {:result, LoopQueueDrain.default_spawn_fn("slug", "claude", "phoenix", ctx.dir, jsonl)}
+        )
+      end)
+
+      receive do
+        {:result, {:exit_code, 0}} -> :ok
+      end
+
+      assert File.read!(env_capture_file) == "1"
+    end
+  end
+
+  # ── default_kill_tree/1 — ppid descendant-walk reap ─────────────────────
+
+  describe "default_kill_tree/1 (via __queue_drain_ps_fn__ seam)" do
+    # NOTE: "reaps a spawned child's own subprocess grandchild via the ppid
+    # walk" (which sets CODEGEN_BUILD_QUEUE_PITCH_BUDGET_SECS) lives in the
+    # async: false sibling module at the bottom of this file
+    # (LoopQueueDrainEnvSerialTest) — System.put_env/2 is process-global and
+    # races with other async: true tests reading the same env var mid-flight.
+
+    test "default_ps_lister/0 parses `ps -A -o pid=,ppid=` into {pid, ppid} tuples" do
+      table = LoopQueueDrain.default_ps_lister()
+      assert is_list(table)
+      assert length(table) > 0
+      assert Enum.all?(table, fn {pid, ppid} -> is_integer(pid) and is_integer(ppid) end)
+      # init/launchd (pid 1) must be present on any POSIX host
+      assert Enum.any?(table, fn {pid, _ppid} -> pid == 1 end)
+    end
+  end
+end
+
+# Sibling module, async: false — holds every test in this file that mutates
+# the process-global CODEGEN_BUILD_QUEUE_PITCH_BUDGET_SECS env var via
+# System.put_env/2. That var is read once, per-call, inside
+# LoopQueueDrain.default_spawn_fn/5 (via pitch_budget_from_env/0) — any
+# concurrent async: true test setting a DIFFERENT value races the read and
+# can silently shrink/grow another test's timeout budget mid-flight. Moving
+# every mutator here (serialized) removes the race entirely; the rest of
+# LoopQueueDrainTest stays async: true.
+defmodule CodegenTestHarness.LoopQueueDrainEnvSerialTest do
+  use ExUnit.Case, async: false
+  import ExUnit.CaptureIO
+
+  alias CodegenTestHarness.LoopQueueDrain
+
+  setup do
+    dir =
+      Path.join(
+        System.tmp_dir!(),
+        "loop_queue_drain_env_serial_test_#{:erlang.unique_integer([:positive])}"
+      )
+
+    File.mkdir_p!(dir)
+    on_exit(fn -> File.rm_rf!(dir) end)
+
+    {:ok, dir: dir}
+  end
+
+  defp start_agent(initial) do
+    {:ok, agent} = Agent.start_link(fn -> initial end)
+    agent
+  end
+
+  defp write_script(dir, name, body) do
+    path = Path.join(dir, name)
+    File.write!(path, body)
+    File.chmod!(path, 0o755)
+    path
+  end
+
+  # Polls for `path` to exist and be non-empty, up to `timeout_ms`. Used
+  # instead of a fixed `Process.sleep/1` for asserting a concurrently
+  # (backgrounded) child process has written its pidfile.
+  defp wait_for_file_content(path, timeout_ms) do
+    deadline = System.monotonic_time(:millisecond) + timeout_ms
+    wait_for_file_content_loop(path, deadline)
+  end
+
+  defp wait_for_file_content_loop(path, deadline) do
+    case File.read(path) do
+      {:ok, content} when content != "" ->
+        String.trim(content)
+
+      _ ->
+        if System.monotonic_time(:millisecond) >= deadline do
+          flunk("timed out waiting for #{path} to be written")
+        else
+          Process.sleep(20)
+          wait_for_file_content_loop(path, deadline)
+        end
+    end
+  end
+
+  describe "pitch_budget_from_env/0" do
+    test "unset -> 3600" do
+      System.delete_env("CODEGEN_BUILD_QUEUE_PITCH_BUDGET_SECS")
+      assert LoopQueueDrain.pitch_budget_from_env() == 3600
+    end
+
+    test "\"7\" -> 7" do
+      System.put_env("CODEGEN_BUILD_QUEUE_PITCH_BUDGET_SECS", "7")
+      on_exit(fn -> System.delete_env("CODEGEN_BUILD_QUEUE_PITCH_BUDGET_SECS") end)
+      assert LoopQueueDrain.pitch_budget_from_env() == 7
+    end
+
+    test "\"0\" -> 3600 (sentinel)" do
+      System.put_env("CODEGEN_BUILD_QUEUE_PITCH_BUDGET_SECS", "0")
+      on_exit(fn -> System.delete_env("CODEGEN_BUILD_QUEUE_PITCH_BUDGET_SECS") end)
+      assert LoopQueueDrain.pitch_budget_from_env() == 3600
+    end
+
+    test "\"x\" (non-numeric) -> 3600" do
+      System.put_env("CODEGEN_BUILD_QUEUE_PITCH_BUDGET_SECS", "x")
+      on_exit(fn -> System.delete_env("CODEGEN_BUILD_QUEUE_PITCH_BUDGET_SECS") end)
+      assert LoopQueueDrain.pitch_budget_from_env() == 3600
+    end
+  end
+
+  describe "default_spawn_fn/5 timeout" do
+    test "timeout kills the child process tree via the kill_fn seam", ctx do
+      sleeper =
+        write_script(ctx.dir, "sleeper.sh", """
+        #!/usr/bin/env bash
+        echo starting
+        sleep 30
+        echo should-not-print
+        """)
+
+      calls = start_agent([])
+
+      kill_fn = fn port ->
+        os_pid =
+          case Port.info(port, :os_pid) do
+            {:os_pid, pid} ->
+              pid
+
+            # fail-loud-exempt: Port.info/2 returns nil when the port is
+            # already closed (process exited between spawn and this
+            # kill_fn call) — a legitimate race in this test's own timing,
+            # not an unexpected condition to raise on.
+            nil ->
+              nil
+          end
+
+        Agent.update(calls, &(&1 ++ [os_pid]))
+      end
+
+      jsonl = Path.join(ctx.dir, "out.jsonl")
+
+      Process.put(:__queue_drain_build_bin__, sleeper)
+      Process.put(:__queue_drain_kill_fn__, kill_fn)
+
+      on_exit(fn ->
+        Process.delete(:__queue_drain_build_bin__)
+        Process.delete(:__queue_drain_kill_fn__)
+      end)
+
+      System.put_env("CODEGEN_BUILD_QUEUE_PITCH_BUDGET_SECS", "1")
+      on_exit(fn -> System.delete_env("CODEGEN_BUILD_QUEUE_PITCH_BUDGET_SECS") end)
+
+      capture_io(:stderr, fn ->
+        send(
+          self(),
+          {:result, LoopQueueDrain.default_spawn_fn("slug", "claude", "phoenix", ctx.dir, jsonl)}
+        )
+      end)
+
+      result =
+        receive do
+          {:result, r} -> r
+        end
+
+      assert result == :timeout
+      assert File.exists?(jsonl)
+      recorded = Agent.get(calls, & &1)
+      assert length(recorded) == 1
+      assert [os_pid] = recorded
+      assert is_integer(os_pid)
+    end
+  end
+
+  describe "default_kill_tree/1 (via __queue_drain_ps_fn__ seam)" do
+    # Explicit timeout: this test's own duration (budget + await headroom)
+    # exceeds ExUnit's default 60s per-test timeout.
+    @tag timeout: 90_000
+    test "reaps a spawned child's own subprocess grandchild via the ppid walk", ctx do
+      # `parent.sh` spawns a real grandchild (`sleeper.sh`, backgrounded) then
+      # sleeps itself — mirrors mix codegen.loop -> claude CLI shape. Both
+      # must die once default_kill_tree walks the REAL system process table
+      # (no ps_fn override here — this exercises default_ps_lister/0 for
+      # real, proving the ppid walk finds true OS grandchildren that
+      # `pkill -P <direct-child-only>` would miss).
+      #
+      # sleeper's own sleep duration (60s) MUST exceed the budget below (10s)
+      # so the timeout-kill path is what ends the process — not sleeper
+      # completing naturally, which would return {:exit_code, 0} instead of
+      # :timeout and falsely pass/fail depending on race timing.
+      grandchild_pidfile = Path.join(ctx.dir, "grandchild.pid")
+
+      sleeper =
+        write_script(ctx.dir, "sleeper.sh", """
+        #!/usr/bin/env bash
+        sleep 60
+        """)
+
+      parent =
+        write_script(ctx.dir, "parent.sh", """
+        #!/usr/bin/env bash
+        "#{sleeper}" &
+        echo $! > "#{grandchild_pidfile}"
+        wait
+        """)
+
+      jsonl = Path.join(ctx.dir, "out.jsonl")
+
+      # Budget (10s) must be shorter than sleeper's own sleep (60s, above) so
+      # the timeout-kill path is what ends the process — and long enough,
+      # relative to the grandchild-confirmation step below, that the
+      # confirmation reliably completes before the kill fires even under
+      # full-suite `make test` load (280 tests, many spawning real
+      # subprocesses concurrently; fork+exec of a bash script has been
+      # observed to take several seconds end-to-end on a contended machine).
+      # This module is async: false (no other test in the suite can mutate
+      # this env var concurrently). The confirm-before-timeout ordering (not
+      # the specific number of seconds) is what makes this test deterministic.
+      System.put_env("CODEGEN_BUILD_QUEUE_PITCH_BUDGET_SECS", "10")
+      on_exit(fn -> System.delete_env("CODEGEN_BUILD_QUEUE_PITCH_BUDGET_SECS") end)
+
+      # Run default_spawn_fn in a Task so THIS test process can poll for the
+      # grandchild pidfile CONCURRENTLY with the blocking budget+kill call —
+      # rather than only observing after the whole call (budget + kill_tree)
+      # has already returned, which is what created the original race: the
+      # timeout could fire before parent.sh was even scheduled to fork
+      # sleeper.sh, leaving the pidfile never written.
+      #
+      # Process.put/2 is process-local — Task.async spawns a NEW process, so
+      # setting :__queue_drain_build_bin__ in the test process (as the prior
+      # version of this test did) is invisible inside the task. default_spawn_fn
+      # then silently fell back to the real @codegen_build_bin, which exits
+      # immediately with a non-zero code instead of ever running parent.sh —
+      # the grandchild pidfile was never written and the test flaked/failed
+      # regardless of timeout budget. Fix: put the process-dictionary entry
+      # INSIDE the task closure, where default_spawn_fn's Process.get/2 runs.
+      task =
+        Task.async(fn ->
+          Process.put(:__queue_drain_build_bin__, parent)
+          ref = make_ref()
+
+          capture_io(:stderr, fn ->
+            send(
+              self(),
+              {ref, LoopQueueDrain.default_spawn_fn("slug", "claude", "phoenix", ctx.dir, jsonl)}
+            )
+          end)
+
+          receive do
+            {^ref, r} -> r
+          end
+        end)
+
+      # Confirm the grandchild is alive BEFORE caring about the timeout —
+      # this decouples "spawn+confirm grandchild alive" from "the timeout
+      # kill fires", so the fork's OS scheduling delay can never race the
+      # budget window.
+      grandchild_pid = wait_for_file_content(grandchild_pidfile, 8_000)
+
+      assert LoopQueueDrain.default_ps_lister()
+             |> Enum.any?(fn {pid, _ppid} ->
+               Integer.to_string(pid) == grandchild_pid
+             end),
+             "expected grandchild pid #{grandchild_pid} to be alive before the timeout kill"
+
+      result = Task.await(task, 60_000)
+      assert result == :timeout
+
+      refute LoopQueueDrain.default_ps_lister()
+             |> Enum.any?(fn {pid, _ppid} ->
+               Integer.to_string(pid) == grandchild_pid
+             end)
     end
   end
 end

@@ -1527,3 +1527,144 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
     end
   end
 end
+
+# Isolated in a sibling async: false module because these tests mutate the
+# process-global CODEGEN_BUILD_LOCK_HELD env var that test_helper.exs sets
+# for the WHOLE suite (see comment there) — sharing async: true execution
+# with OrchestrationLoopTest's ~38 unrelated role-sequencing tests would
+# otherwise race on that same global. Mirrors the codebase's documented
+# System.put_env isolation pattern (see context/rules-stacks.md "Test
+# Discipline").
+defmodule CodegenTestHarness.OrchestrationLoopLockTest do
+  use ExUnit.Case, async: false
+
+  alias CodegenTestHarness.OrchestrationLoop
+
+  setup do
+    # Suite-wide bypass (test_helper.exs) must be OFF for these tests — they
+    # exercise the lock/orphan-scan mechanism itself.
+    System.delete_env("CODEGEN_BUILD_LOCK_HELD")
+    on_exit(fn -> System.put_env("CODEGEN_BUILD_LOCK_HELD", "1") end)
+
+    dir =
+      Path.join(
+        System.tmp_dir!(),
+        "orchestration_loop_lock_test_#{:erlang.unique_integer([:positive])}"
+      )
+
+    File.mkdir_p!(dir)
+    on_exit(fn -> File.rm_rf!(dir) end)
+
+    {:ok, dir: dir, lock_path: Path.join([dir, "codegen", "gate-pending", "queue.lock"])}
+  end
+
+  defp minimal_run_opts(ctx, extra) do
+    defaults = [
+      harness: "claude_code",
+      stack: "phoenix",
+      cwd: ctx.dir,
+      pitch: "do the thing",
+      invoke_fn: fn _role, _harness, _ctx, _opts -> {:ok, %{"status" => "success"}} end,
+      gate_fn: fn _cwd, _opts -> {:clear, "make test"} end,
+      gate_preflight_fn: fn _cwd -> {"make test", "short", 0} end,
+      preflight_probe_fn: fn _cwd ->
+        "--agent '__codegen_loop_preflight_probe__' not found. Available agents: " <>
+          "planner-phoenix, developer-phoenix-backend, developer-phoenix-frontend, " <>
+          "reviewer-phoenix, context-curator, committer, developer-static, reviewer-static"
+      end,
+      realized_check_fn: fn _pitch, _cwd ->
+        {:ok, %{"realized" => false, "confidence" => "low", "evidence" => ""}}
+      end,
+      advance_cycle_state_fn: fn _state, _step_log, _session_id, _verdict, _project_dir -> :ok end,
+      orphan_scan_fn: fn _cwd -> [] end
+    ]
+
+    Keyword.merge(defaults, extra)
+  end
+
+  test "acquires and releases the per-cwd lock across a successful run", ctx do
+    refute File.exists?(ctx.lock_path)
+
+    assert :ok == OrchestrationLoop.run(minimal_run_opts(ctx, []))
+
+    # Lock released after a successful run — file removed.
+    refute File.exists?(ctx.lock_path)
+  end
+
+  test "refuses when a live pid already holds the lock", ctx do
+    File.mkdir_p!(Path.dirname(ctx.lock_path))
+    File.write!(ctx.lock_path, "12345 solo\n")
+
+    assert {:error, reason} =
+             OrchestrationLoop.run(
+               minimal_run_opts(ctx, lock_path: ctx.lock_path, pid_alive_fn: fn _pid -> true end)
+             )
+
+    assert reason =~ "already running"
+    assert reason =~ "12345"
+  end
+
+  test "reclaims a stale (dead-pid) lock and proceeds", ctx do
+    File.mkdir_p!(Path.dirname(ctx.lock_path))
+    File.write!(ctx.lock_path, "99999 solo\n")
+
+    assert :ok ==
+             OrchestrationLoop.run(
+               minimal_run_opts(ctx,
+                 lock_path: ctx.lock_path,
+                 pid_alive_fn: fn _pid -> false end
+               )
+             )
+
+    refute File.exists?(ctx.lock_path)
+  end
+
+  test "releases the lock even when the run body raises", ctx do
+    raising_invoke_fn = fn _role, _harness, _ctx, _opts -> raise "boom" end
+
+    assert_raise RuntimeError, "boom", fn ->
+      OrchestrationLoop.run(minimal_run_opts(ctx, invoke_fn: raising_invoke_fn))
+    end
+
+    refute File.exists?(ctx.lock_path)
+  end
+
+  test "CODEGEN_BUILD_LOCK_HELD=1 bypasses lock acquisition entirely", ctx do
+    System.put_env("CODEGEN_BUILD_LOCK_HELD", "1")
+    on_exit(fn -> System.delete_env("CODEGEN_BUILD_LOCK_HELD") end)
+
+    File.mkdir_p!(Path.dirname(ctx.lock_path))
+    File.write!(ctx.lock_path, "12345 solo\n")
+
+    # Would refuse if the lock were checked (pid_alive_fn -> true); bypass
+    # means run_body executes directly, ignoring the held lock entirely.
+    assert :ok ==
+             OrchestrationLoop.run(
+               minimal_run_opts(ctx, lock_path: ctx.lock_path, pid_alive_fn: fn _pid -> true end)
+             )
+
+    # Bypassed run never touches the lock file — it is left exactly as
+    # written by the (simulated) queue drain parent.
+    assert File.read!(ctx.lock_path) == "12345 solo\n"
+  end
+
+  test "refuses when an orphan mix codegen.loop process is detected for this cwd", ctx do
+    assert {:error, reason} =
+             OrchestrationLoop.run(
+               minimal_run_opts(ctx, orphan_scan_fn: fn _cwd -> ["54321"] end)
+             )
+
+    assert reason =~ "orphan"
+    assert reason =~ "54321"
+    # Lock released on the orphan-refuse path too — no permanent wedge.
+    refute File.exists?(ctx.lock_path)
+  end
+
+  test "orphan scan sees no hits proceeds normally", ctx do
+    assert :ok == OrchestrationLoop.run(minimal_run_opts(ctx, orphan_scan_fn: fn _cwd -> [] end))
+  end
+
+  test "default_orphan_scan/1 returns [] when pgrep finds no match" do
+    assert OrchestrationLoop.default_orphan_scan("/no/such/cwd/#{:erlang.unique_integer()}") == []
+  end
+end

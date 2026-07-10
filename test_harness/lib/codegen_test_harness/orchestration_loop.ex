@@ -12,7 +12,7 @@ defmodule CodegenTestHarness.OrchestrationLoop do
   silent continue, no shim.
   """
 
-  alias CodegenTestHarness.{LoopGate, RoleResolver}
+  alias CodegenTestHarness.{BuildLock, LoopGate, RoleResolver}
 
   @type harness :: String.t()
   @type stack :: String.t()
@@ -106,6 +106,28 @@ defmodule CodegenTestHarness.OrchestrationLoop do
     (returns `:ok` immediately, no role invoked); every other outcome —
     `realized: false`, low confidence, empty evidence, an unparseable
     envelope, or a non-zero exit — proceeds to the full `run_roles` cycle.
+  - `:lock_path` — per-cwd single-flight lock file, default
+    `Path.join([cwd, "codegen", "gate-pending", "queue.lock"])` — the SAME
+    physical path `LoopQueueDrain.drain/1` locks, so a bare single build and
+    a `--queue` drain mutually exclude on one git tree. Acquired at the very
+    start of `run/1` (before any preflight), released in `after` regardless
+    of outcome (including a raise). Skipped entirely when the
+    `CODEGEN_BUILD_LOCK_HELD=1` env var is set — the bypass a per-pitch
+    `codegen-build` child spawned by the drain uses, since the drain already
+    holds the outer lock on the identical file.
+  - `:pid_alive_fn` — test seam: `(pid_str -> boolean)`, defaults to
+    `CodegenTestHarness.BuildLock.default_pid_alive?/1` (`kill -0`
+    liveness check). A lock naming a dead pid is reclaimed silently
+    (stale-lock recovery); a lock naming a live pid refuses with
+    `{:error, reason}` naming the pid.
+  - `:orphan_scan_fn` — test seam: `(cwd -> [pid_str])`, defaults to
+    `default_orphan_scan/1` (`pgrep -f` matching `mix codegen\\.loop
+    .*--cwd=<cwd>`). Runs once, right after lock acquisition — catches an
+    orphaned `mix codegen.loop` beam that already released (or never held)
+    the lock but is still running. Never auto-kills: a non-empty result
+    refuses with `{:error, reason}` naming the pid(s) + a copy-paste
+    inspect/reap command. Degrades to `[]` (lock-only enforcement) when
+    `pgrep` itself is unavailable.
 
   Returns `:ok` on COMMITTED + clear gate, OR immediately (before any role
   runs) when the turn-0 realized-check confirms the pitch's work already
@@ -117,6 +139,42 @@ defmodule CodegenTestHarness.OrchestrationLoop do
   """
   @spec run(run_opts()) :: :ok | {:error, String.t()}
   def run(opts) do
+    cwd = Keyword.fetch!(opts, :cwd)
+
+    if build_lock_bypassed?() do
+      run_body(opts)
+    else
+      lock_path = Keyword.get(opts, :lock_path, default_lock_path(cwd))
+      pid_alive_fn = Keyword.get(opts, :pid_alive_fn, &BuildLock.default_pid_alive?/1)
+
+      case BuildLock.acquire(lock_path, "solo", pid_alive_fn) do
+        :ok ->
+          try do
+            case refuse_if_orphan(cwd, opts) do
+              :ok -> run_body(opts)
+              {:error, reason} -> {:error, reason}
+            end
+          after
+            BuildLock.release(lock_path)
+          end
+
+        {:error, reason} ->
+          {:error, reason}
+      end
+    end
+  end
+
+  defp default_lock_path(cwd), do: Path.join([cwd, "codegen", "gate-pending", "queue.lock"])
+
+  # A `codegen-build` child spawned by `LoopQueueDrain.default_spawn_fn/5`
+  # already runs under the DRAIN's outer lock (same physical `queue.lock`
+  # file) — it must NOT re-acquire, or every queued pitch would immediately
+  # refuse against its own parent's lock. Threaded via env, checked here
+  # rather than as a Keyword opt so the real subprocess boundary (env, not
+  # in-process Elixir opts) is the actual bypass mechanism.
+  defp build_lock_bypassed?, do: System.get_env("CODEGEN_BUILD_LOCK_HELD") == "1"
+
+  defp run_body(opts) do
     harness = Keyword.fetch!(opts, :harness)
     stack = Keyword.fetch!(opts, :stack)
     cwd = Keyword.fetch!(opts, :cwd)
@@ -144,6 +202,69 @@ defmodule CodegenTestHarness.OrchestrationLoop do
       :ok
     else
       run_roles(roles, harness, ctx, opts)
+    end
+  end
+
+  # Start-time orphan surfacing: scans for live `mix codegen.loop` beams
+  # already bound to THIS cwd — catches the case Move 2's lock alone misses,
+  # an orphan that already released (or never held, e.g. crashed mid-run
+  # before ever writing) the lock file but is still running (e.g. the
+  # overnight `mix codegen.loop` beam that ran 8h past its budget kill).
+  # Never auto-kills — refuses + names pids so the operator can inspect
+  # before reaping (a hit could legitimately be another operator's build).
+  # Fails OPEN only when `pgrep` itself is unavailable (degrades to
+  # lock-only enforcement, which remains the primary guard) — every other
+  # branch is either a clean pass or a loud refuse.
+  defp refuse_if_orphan(cwd, opts) do
+    orphan_scan_fn = Keyword.get(opts, :orphan_scan_fn, &default_orphan_scan/1)
+
+    case orphan_scan_fn.(cwd) do
+      [] ->
+        :ok
+
+      pids when is_list(pids) ->
+        {:error,
+         "orphan mix codegen.loop process(es) already running for this cwd: " <>
+           Enum.join(pids, ", ") <>
+           " — refusing to start a second build. Inspect with `ps -p " <>
+           Enum.join(pids, ",") <>
+           " -o pid,etime,command`, then reap with `kill -9 " <>
+           Enum.join(pids, " ") <> "` if confirmed stale."}
+    end
+  end
+
+  # Real orphan_scan_fn: `pgrep -f` matching `mix codegen.loop .*--cwd=<cwd>`,
+  # excluding this process's own OS pid (the current invocation has not yet
+  # execed `mix codegen.loop` args into its own cmdline match target when
+  # this scan runs from within the `OrchestrationLoop` Elixir process, but
+  # exclusion is still applied defensively in case of re-entrant test/embed
+  # scenarios).
+  @doc false
+  @spec default_orphan_scan(String.t()) :: [String.t()]
+  def default_orphan_scan(cwd) do
+    pattern = "mix codegen\\.loop .*--cwd=#{Regex.escape(cwd)}"
+
+    case System.cmd("pgrep", ["-f", pattern], stderr_to_stdout: true) do
+      {output, 0} ->
+        self_pid = System.pid()
+
+        output
+        |> String.split("\n", trim: true)
+        |> Enum.reject(&(&1 == self_pid))
+
+      # fail-loud-exempt: pgrep exit 1 means "no matches" (its documented
+      # not-found contract) — an empty result, not an error.
+      {_output, 1} ->
+        []
+
+      # fail-loud-exempt: `pgrep` missing from PATH or another exec error —
+      # the orphan scan is a secondary guard on top of the per-cwd lock
+      # (Move 2, primary). Degrading to lock-only enforcement here is a
+      # justified, commented fail-open (documented in the calling doc
+      # comment above), not a silent swallow: logged loud on stderr.
+      {output, _other_code} ->
+        IO.puts(:stderr, "queue: orphan scan skipped — pgrep unavailable: #{output}")
+        []
     end
   end
 

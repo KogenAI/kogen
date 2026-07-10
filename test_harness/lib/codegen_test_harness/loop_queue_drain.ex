@@ -34,7 +34,7 @@ defmodule CodegenTestHarness.LoopQueueDrain do
   the run still completes `{:ok, shipped_count}`.
   """
 
-  alias CodegenTestHarness.LoopQueue
+  alias CodegenTestHarness.{BuildLock, LoopQueue}
 
   @type drain_opts :: keyword()
 
@@ -112,9 +112,9 @@ defmodule CodegenTestHarness.LoopQueueDrain do
     File.mkdir_p!(shipped_dir)
     File.mkdir_p!(Path.dirname(lock_path))
 
-    pid_alive_fn = Keyword.get(opts, :pid_alive_fn, &default_pid_alive?/1)
+    pid_alive_fn = Keyword.get(opts, :pid_alive_fn, &BuildLock.default_pid_alive?/1)
 
-    case acquire_lock(lock_path, pid_alive_fn) do
+    case BuildLock.acquire(lock_path, "queue", pid_alive_fn) do
       :ok ->
         try do
           # leg 1: clear any stale legacy build-queue.json manifest left by the
@@ -167,45 +167,12 @@ defmodule CodegenTestHarness.LoopQueueDrain do
 
           run_loop(state, 0)
         after
-          release_lock(lock_path)
+          BuildLock.release(lock_path)
         end
 
-      {:error, _reason} = err ->
-        err
+      {:error, reason} ->
+        {:error, "queue: #{reason}"}
     end
-  end
-
-  # ── Lock ──────────────────────────────────────────────────────────────────
-
-  defp acquire_lock(lock_path, pid_alive_fn) do
-    case File.read(lock_path) do
-      {:ok, content} ->
-        case String.split(String.trim(content), " ", parts: 2) do
-          [pid_str | _] when pid_str != "" ->
-            if pid_alive_fn.(pid_str) do
-              {:error,
-               "queue: a build is already running (pid #{pid_str}) — refusing to start a second"}
-            else
-              write_lock(lock_path)
-            end
-
-          _ ->
-            write_lock(lock_path)
-        end
-
-      {:error, _reason} ->
-        write_lock(lock_path)
-    end
-  end
-
-  defp write_lock(lock_path) do
-    File.write!(lock_path, "#{System.pid()} queue\n")
-    :ok
-  end
-
-  defp release_lock(lock_path) do
-    File.rm(lock_path)
-    :ok
   end
 
   # fail-loud-exempt: best-effort cleanup of an ephemeral gitignored
@@ -228,19 +195,6 @@ defmodule CodegenTestHarness.LoopQueueDrain do
     end)
 
     :ok
-  end
-
-  defp default_pid_alive?(pid_str) do
-    case Integer.parse(pid_str) do
-      {pid, ""} ->
-        case System.cmd("kill", ["-0", Integer.to_string(pid)], stderr_to_stdout: true) do
-          {_out, 0} -> true
-          {_out, _} -> false
-        end
-
-      _ ->
-        false
-    end
   end
 
   # ── Main loop ─────────────────────────────────────────────────────────────
@@ -612,7 +566,12 @@ defmodule CodegenTestHarness.LoopQueueDrain do
       {~c"PATH", String.to_charlist(System.get_env("PATH") || "")},
       {~c"CLAUDE_ASYNC_AGENT_STALL_TIMEOUT_MS", ~c"0"},
       {~c"CLAUDE_CODE_PRINT_BG_WAIT_CEILING_MS", ~c"0"},
-      {~c"CLAUDE_STREAM_IDLE_TIMEOUT_MS", ~c"0"}
+      {~c"CLAUDE_STREAM_IDLE_TIMEOUT_MS", ~c"0"},
+      # The drain already holds the outer per-cwd lock (same physical
+      # queue.lock file — see acquire above); this per-pitch codegen-build
+      # child's OrchestrationLoop.run/1 must NOT re-acquire it, or every
+      # queued pitch would immediately refuse against its own parent's lock.
+      {~c"CODEGEN_BUILD_LOCK_HELD", ~c"1"}
     ]
 
     budget_secs = pitch_budget_from_env()
@@ -660,14 +619,123 @@ defmodule CodegenTestHarness.LoopQueueDrain do
     :timeout
   end
 
+  # Reaps the FULL transitive descendant subtree of the timed-out port's OS
+  # pid via a ppid descendant-walk — NOT a process-group kill. The
+  # Port.open-spawned child is never a session/group leader (no `setsid` on
+  # macOS; `codegen-build` does not re-session either), so its pgid equals
+  # the drain beam's own pgid — `kill -9 -<os_pid>` targets a pgid that does
+  # not exist and reaps nothing. `pkill -9 -P <os_pid>` only reaps DIRECT
+  # children, missing grandchildren (`mix codegen.loop` -> `claude` CLI ->
+  # any subprocess it spawns, e.g. `caffeinate`). ppid links survive
+  # re-sessioning (a re-sessioned child keeps its parent pid), so the walk
+  # reaps the full subtree regardless of intermediate session boundaries.
+  #
+  # Post-reap: re-enumerate; if survivors remain, retry the walk ONCE, then
+  # emit a LOUD stderr line naming survivor pids (never silently return as
+  # if clean — a missed reap must be visible, not masked).
   defp default_kill_tree(port) do
+    ps_fn = Process.get(:__queue_drain_ps_fn__, &default_ps_lister/0)
+
     case Port.info(port, :os_pid) do
       {:os_pid, os_pid} ->
-        System.cmd("kill", ["-9", "-#{os_pid}"], stderr_to_stdout: true)
-        System.cmd("pkill", ["-9", "-P", "#{os_pid}"], stderr_to_stdout: true)
+        reap_descendant_subtree(os_pid, ps_fn, 2)
 
-      _ ->
+      # fail-loud-exempt: Port.info/2 returns nil when the port is already
+      # closed (process exited between the timeout firing and this call) —
+      # a legitimate race, not an unexpected condition. Nothing to reap.
+      nil ->
         :ok
+    end
+  end
+
+  defp reap_descendant_subtree(_os_pid, _ps_fn, 0), do: :ok
+
+  defp reap_descendant_subtree(os_pid, ps_fn, attempts_left) do
+    table = ps_fn.()
+    descendants = collect_descendants(os_pid, table)
+    targets = [os_pid | descendants]
+
+    Enum.each(targets, fn pid ->
+      System.cmd("kill", ["-9", Integer.to_string(pid)], stderr_to_stdout: true)
+    end)
+
+    survivors = Enum.filter(targets, &BuildLock.default_pid_alive?(Integer.to_string(&1)))
+
+    case {survivors, attempts_left} do
+      {[], _} ->
+        :ok
+
+      {_survivors, left} when left > 1 ->
+        reap_descendant_subtree(os_pid, ps_fn, left - 1)
+
+      {survivors, _} ->
+        IO.puts(
+          :stderr,
+          "queue: kill_tree: survivor pid(s) after reap retry: " <>
+            Enum.map_join(survivors, ", ", &Integer.to_string/1)
+        )
+
+        :ok
+    end
+  end
+
+  # Collects every transitive descendant of `os_pid` from `table` (a list of
+  # `{pid, ppid}` tuples). Builds a ppid -> [pid] adjacency map, then walks
+  # it breadth-first from `os_pid`. Never includes `os_pid` itself.
+  defp collect_descendants(os_pid, table) do
+    children_by_ppid =
+      Enum.reduce(table, %{}, fn {pid, ppid}, acc ->
+        Map.update(acc, ppid, [pid], &[pid | &1])
+      end)
+
+    walk_descendants([os_pid], children_by_ppid, [])
+  end
+
+  defp walk_descendants([], _children_by_ppid, acc), do: acc
+
+  defp walk_descendants([pid | rest], children_by_ppid, acc) do
+    children = Map.get(children_by_ppid, pid, [])
+    walk_descendants(children ++ rest, children_by_ppid, children ++ acc)
+  end
+
+  # Real ps_fn: enumerates the full system process table as `{pid, ppid}`
+  # tuples via `ps -A -o pid=,ppid=` — POSIX, works unmodified on both macOS
+  # and Linux.
+  @doc false
+  @spec default_ps_lister() :: [{pos_integer(), pos_integer()}]
+  def default_ps_lister do
+    case System.cmd("ps", ["-A", "-o", "pid=,ppid="], stderr_to_stdout: true) do
+      {output, 0} ->
+        output
+        |> String.split("\n", trim: true)
+        |> Enum.flat_map(&parse_ps_line/1)
+
+      # fail-loud-exempt: a failing `ps` invocation (missing binary, sandboxed
+      # environment) must not crash the timeout-handling path — the caller
+      # already reduces to a best-effort reap; an empty table degrades to
+      # "no descendants found" (only the top-level os_pid is still killed).
+      {_output, _nonzero} ->
+        []
+    end
+  end
+
+  defp parse_ps_line(line) do
+    case String.split(String.trim(line)) do
+      [pid_str, ppid_str] ->
+        case {Integer.parse(pid_str), Integer.parse(ppid_str)} do
+          {{pid, ""}, {ppid, ""}} -> [{pid, ppid}]
+          # fail-loud-exempt: a non-numeric ps field (rare platform quirk,
+          # e.g. locale-formatted output) is skipped for THIS line only —
+          # the walk degrades gracefully rather than crashing the whole
+          # timeout-handling path on one malformed row.
+          _ -> []
+        end
+
+      # fail-loud-exempt: `ps -o pid=,ppid=` occasionally emits a stray
+      # blank/malformed line (kernel scheduling races on some platforms);
+      # skipped rather than crashing the reap.
+      _ ->
+        []
     end
   end
 
