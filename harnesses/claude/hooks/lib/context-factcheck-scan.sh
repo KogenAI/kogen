@@ -39,6 +39,17 @@
 #   fail-open (not a violation). Malformed NNN → violation. Disallowed verb or
 #   injection token → violation.
 #
+# Claim class 3 — identifier corruption:
+#   Detects the LLM-transcription `_`→`*` artifact: a word-internal asterisk
+#   sandwiched between two alphanumerics (e.g. `register*route` corrupted from
+#   `register_route`, or `fn * ->` corrupted from `fn _ ->`). Pattern:
+#   [[:alnum:]]\*[[:alnum:]] — matched per-line. Deliberately narrow: only the
+#   word-internal case (zero false positives on real corpus — globs like
+#   `context/*.md`, `OCG_*`, `no-*.sh`, regex `.*`, and markdown bold `**x**`
+#   never sandwich an asterisk between two alphanumerics). The space-`*`-space
+#   case (`fn * ->`) is NOT detected here — ambiguous with bullets/multiplication,
+#   excluded by design (high false-positive risk).
+#
 # Fail-open (exit 0, no violations printed):
 #   - repo_root not a git repo or repo without a PROJECT_CONTEXT.md variant
 #   - Docs absent from the working tree (deleted/never existed — nothing to scan)
@@ -237,6 +248,14 @@ PATHS
                 msg="context-factcheck-scan: ${doc_path}:${linenum} malformed count anchor — NNN must be a bare integer. Fix or remove the anchor."
                 violations="${violations}${violations:+$nl}${msg}"
             fi
+        fi
+
+        # ── Claim class 3: identifier corruption (`_`→`*`) ──────────────────
+        if printf '%s\n' "$line" | grep -qE '[[:alnum:]]\*[[:alnum:]]'; then
+            corrupt_token=$(printf '%s\n' "$line" |
+                grep -oE '[[:alnum:]_]*\*[[:alnum:]_]*' | grep -E '[[:alnum:]]\*[[:alnum:]]' | head -1)
+            msg="context-factcheck-scan: ${doc_path}:${linenum} contains a '_'→'*' identifier corruption (e.g. \`${corrupt_token}\`). Restore the underscore."
+            violations="${violations}${violations:+$nl}${msg}"
         fi
 
     done <<BLOB

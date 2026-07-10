@@ -189,4 +189,44 @@ describe("context-factcheck-curator-stop", { concurrency: false }, () => {
       fs.rmSync(tmpDir, { recursive: true, force: true });
     }
   });
+
+  it("identifier corruption (word-internal '*') warns with token", async () => {
+    const tmpDir = makeRepo("factcheck-curator-corruption-");
+    try {
+      fs.writeFileSync(
+        path.join(tmpDir, "context", "foo.md"),
+        "# Foo\n\nCall `register*route_or_live` to add a route.\n",
+      );
+      const { stderr } = await runHook(tmpDir, "context-curator");
+      assert.ok(
+        stderr.includes("register*route"),
+        `expected corruption warning mentioning the token, got: ${stderr}`,
+      );
+    } finally {
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    }
+  });
+
+  it("legit '*' uses (globs, regex, bold) do not warn", async () => {
+    const tmpDir = makeRepo("factcheck-curator-legit-star-");
+    try {
+      fs.writeFileSync(
+        path.join(tmpDir, "context", "foo.md"),
+        [
+          "# Foo",
+          "",
+          "See context/*.md for domain docs.",
+          "Env vars follow the OCG_* convention.",
+          "Hooks named no-*.sh live under harnesses/claude/hooks/.",
+          "Regex `.*` matches anything.",
+          "This is **bold** text and this is *italic* text.",
+          "",
+        ].join("\n"),
+      );
+      const { stderr } = await runHook(tmpDir, "context-curator");
+      assert.equal(stderr, "");
+    } finally {
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    }
+  });
 });

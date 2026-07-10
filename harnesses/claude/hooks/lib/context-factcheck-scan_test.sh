@@ -225,5 +225,60 @@ rc=$?
 assert_exit "diff-scope: violation in scanned doc still caught → exit 1" "1" "$rc"
 rm -rf "$T20"
 
+# --- Test 21: identifier corruption (word-internal '*') → exit 1, token in message ---
+T21=$(new_repo)
+printf 'Call `register*route_or_live` to add a route.\n' >"$T21/CLAUDE.md"
+out=$(bash "$SCAN" "$T21")
+rc=$?
+assert_exit "identifier corruption → exit 1" "1" "$rc"
+case "$out" in
+*"register*route"*) pass=$((pass + 1)) ;;
+*)
+    printf 'FAIL: identifier corruption → message should reference token\n  actual: %s\n' "$out"
+    fail=$((fail + 1))
+    ;;
+esac
+rm -rf "$T21"
+
+# --- Test 22: FP-GUARD — legit '*' uses (globs, regex, bold) → exit 0, empty stdout ---
+T22=$(new_repo)
+cat >"$T22/CLAUDE.md" <<'DOC'
+See context/*.md for domain docs.
+Env vars follow the OCG_* convention.
+Hooks named no-*.sh live under harnesses/claude/hooks/.
+Regex `.*` matches anything.
+This is **bold** text and this is *italic* text.
+DOC
+out=$(bash "$SCAN" "$T22")
+rc=$?
+assert_exit "FP-guard: legit '*' uses → exit 0" "0" "$rc"
+assert_eq "FP-guard: legit '*' uses → empty stdout" "" "$out"
+rm -rf "$T22"
+
+# --- Test 23: mixed doc — one corrupt line + clean lines → exit 1, names only corrupt line ---
+T23=$(new_repo)
+cat >"$T23/CLAUDE.md" <<'DOC'
+# Heading
+
+This line is fine.
+See context/*.md for domain docs.
+Call `fn foo*bar end` — corrupted from foo_bar.
+Another fine line.
+DOC
+out=$(bash "$SCAN" "$T23")
+rc=$?
+assert_exit "mixed doc: corrupt + clean → exit 1" "1" "$rc"
+case "$out" in
+*":5 "*"foo*bar"*) pass=$((pass + 1)) ;;
+*)
+    printf 'FAIL: mixed doc → message should name line 5 and token foo*bar\n  actual: %s\n' "$out"
+    fail=$((fail + 1))
+    ;;
+esac
+# Ensure only ONE violation line printed (not clean lines).
+out_lines=$(printf '%s\n' "$out" | grep -c . || true)
+assert_eq "mixed doc: exactly one violation line" "1" "$out_lines"
+rm -rf "$T23"
+
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

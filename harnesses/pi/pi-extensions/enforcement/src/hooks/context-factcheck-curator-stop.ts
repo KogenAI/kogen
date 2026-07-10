@@ -1,8 +1,9 @@
 /**
  * context-factcheck-curator-stop.ts — Pi enforcement: warn when the
  * context-curator's working-tree orientation docs contain named-path claims
- * that don't resolve or <!-- count: CMD -->NNN anchors whose live probe
- * mismatches NNN.
+ * that don't resolve, <!-- count: CMD -->NNN anchors whose live probe
+ * mismatches NNN, or word-internal `_`→`*` identifier corruption (LLM
+ * transcription artifact, e.g. `register_route` corrupted to `register*route`).
  *
  * Mirrors: harnesses/claude/hooks/context-factcheck-curator-stop.sh
  * Event: session_shutdown (SubagentStop equivalent)
@@ -42,6 +43,14 @@ const ALLOWED_VERBS = new Set([
 ]);
 
 const INJECTION_RE = /\$\(|`|>|;|&&|&/;
+
+// Claim class 3 — identifier corruption: word-internal asterisk sandwiched
+// between two alphanumerics (the `_`→`*` LLM-transcription artifact). Narrow
+// by design — never matches globs (`context/*.md`), env-var patterns
+// (`OCG_*`), hook globs (`no-*.sh`), regex (`.*`), or markdown bold/italic
+// (`**x**`), since none of those sandwich an asterisk between two alphanumerics.
+const CORRUPTION_RE = /[a-zA-Z0-9]\*[a-zA-Z0-9]/;
+const CORRUPTION_TOKEN_RE = /[a-zA-Z0-9_]*\*[a-zA-Z0-9_]*/g;
 
 function isAllowedVerb(verb: string): boolean {
   return ALLOWED_VERBS.has(verb);
@@ -212,6 +221,22 @@ export function register(pi: ExtensionAPI): void {
                 `context-factcheck-curator-stop: ${docPath}:${linenum} malformed count anchor — NNN must be a bare integer. Fix or remove the anchor.`,
               );
             }
+          }
+
+          // ── Claim class 3: identifier corruption (`_`→`*`) ────────────────
+          if (CORRUPTION_RE.test(line)) {
+            CORRUPTION_TOKEN_RE.lastIndex = 0;
+            let corruptToken = "";
+            let tm: RegExpExecArray | null;
+            while ((tm = CORRUPTION_TOKEN_RE.exec(line)) !== null) {
+              if (CORRUPTION_RE.test(tm[0])) {
+                corruptToken = tm[0];
+                break;
+              }
+            }
+            violations.push(
+              `context-factcheck-curator-stop: ${docPath}:${linenum} contains a '_'→'*' identifier corruption (e.g. \`${corruptToken}\`). Restore the underscore.`,
+            );
           }
         }
       }
