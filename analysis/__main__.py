@@ -52,6 +52,15 @@ def main() -> None:
         help="Flag files read more than N times per session (default: 2)",
     )
     parser.add_argument(
+        "--raw",
+        action="store_true",
+        dest="raw",
+        help=(
+            "Show raw wasted_turns-desc table incl. dropped counters "
+            "(default: proposer-weighted, dropped hidden)"
+        ),
+    )
+    parser.add_argument(
         "--project-dir",
         metavar="DIR",
         type=Path,
@@ -78,7 +87,7 @@ def main() -> None:
     )
 
     report = run(config)
-    output = render_report(report, as_json=args.as_json)
+    output = render_report(report, as_json=args.as_json, raw=args.raw)
     print(output)
 
 

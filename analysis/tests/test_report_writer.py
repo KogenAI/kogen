@@ -70,6 +70,68 @@ class TestRenderReportHuman(unittest.TestCase):
         self.assertLess(idx_forbidden, idx_reread)
 
 
+class TestRenderReportDefaultProposerWeighted(unittest.TestCase):
+    def setUp(self) -> None:
+        # re_read (medium, prior 2): weight = 2*9 = 18
+        # forbidden_bash (high, prior 3): weight = 3*7 = 21
+        # Raw wasted_turns order would put re_read (9) before forbidden_bash (7);
+        # weighted order must put forbidden_bash first.
+        self.clusters = [
+            Cluster("re_read", "rr-pattern", 9, 4, "evidence RR"),
+            Cluster("forbidden_bash", "fb-pattern", 7, 3, "evidence FB"),
+        ]
+        self.report = _make_report(self.clusters, substrate_present=True)
+
+    def test_default_table_ranks_by_prior_weight(self) -> None:
+        output = render_report(self.report)
+        idx_fb = output.index("fb-pattern")
+        idx_rr = output.index("rr-pattern")
+        self.assertLess(idx_fb, idx_rr)
+
+    def test_raw_restores_wasted_turns_desc_order(self) -> None:
+        output = render_report(self.report, raw=True)
+        idx_fb = output.index("fb-pattern")
+        idx_rr = output.index("rr-pattern")
+        self.assertLess(idx_rr, idx_fb)
+
+
+class TestRenderReportDropCounters(unittest.TestCase):
+    def setUp(self) -> None:
+        self.clusters = [
+            Cluster("forbidden_bash", "fb-pattern", 5, 2, "evidence FB"),
+            Cluster("subagent_interruption", "si-pattern", 100, 10, "evidence SI"),
+        ]
+        self.report = _make_report(self.clusters, substrate_present=True)
+
+    def test_default_table_drops_dropped_counters(self) -> None:
+        output = render_report(self.report)
+        self.assertNotIn("si-pattern", output)
+        self.assertIn("fb-pattern", output)
+
+    def test_raw_includes_dropped_counters(self) -> None:
+        output = render_report(self.report, raw=True)
+        self.assertIn("si-pattern", output)
+        self.assertIn("fb-pattern", output)
+
+
+class TestRenderReportAllDropped(unittest.TestCase):
+    def setUp(self) -> None:
+        self.clusters = [
+            Cluster("subagent_interruption", "si-pattern", 100, 10, "evidence SI"),
+        ]
+        self.report = _make_report(self.clusters, substrate_present=True)
+
+    def test_all_dropped_emits_note(self) -> None:
+        output = render_report(self.report)
+        self.assertIn("all clusters below proposer-drop threshold", output)
+        self.assertIn("--raw", output)
+
+    def test_raw_shows_all_dropped_clusters(self) -> None:
+        output = render_report(self.report, raw=True)
+        self.assertIn("si-pattern", output)
+        self.assertNotIn("all clusters below proposer-drop threshold", output)
+
+
 class TestRenderReportJson(unittest.TestCase):
     def setUp(self) -> None:
         self.clusters = [

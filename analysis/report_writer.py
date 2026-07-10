@@ -17,11 +17,16 @@ def render(report: "Report") -> str:
     raise NotImplementedError("Use render_report(report, as_json) instead.")
 
 
-def render_report(report: "Report", as_json: bool = False) -> str:
+def render_report(report: "Report", as_json: bool = False, raw: bool = False) -> str:
     """Render a Report to a string.
 
-    as_json=True → one JSON object per cluster (machine-readable).
+    as_json=True → one JSON object per cluster (machine-readable); raw is a
+    no-op in this path (JSON contract is unfiltered/unordered by this fn).
     as_json=False → fixed-width human table.
+      raw=False (default) → ranked by the proposer trust model (prior-
+        weighted) with DROP_COUNTERS hidden — matches what codegen-propose
+        would select.
+      raw=True → today's raw wasted_turns-desc order, DROP_COUNTERS included.
     """
     clusters = report.clusters
 
@@ -33,7 +38,7 @@ def render_report(report: "Report", as_json: bool = False) -> str:
     if as_json:
         return _render_json(clusters)
 
-    return _render_table(report, clusters)
+    return _render_table(report, clusters, raw=raw)
 
 
 def _render_json(clusters: "List[Cluster]") -> str:
@@ -53,7 +58,7 @@ def _render_json(clusters: "List[Cluster]") -> str:
     return "\n".join(lines)
 
 
-def _render_table(report: "Report", clusters: "List[Cluster]") -> str:
+def _render_table(report: "Report", clusters: "List[Cluster]", raw: bool = False) -> str:
     header_lines = []
     if not report.substrate_present:
         header_lines.append(
@@ -62,6 +67,25 @@ def _render_table(report: "Report", clusters: "List[Cluster]") -> str:
     header_lines.append(
         f"project: {report.project_label}  since: {report.since_label}"
     )
+
+    if raw:
+        display_clusters = clusters
+    else:
+        from analysis.proposer import DROP_COUNTERS, weight
+
+        display_clusters = [c for c in clusters if c.counter not in DROP_COUNTERS]
+        if not display_clusters:
+            header_str = "\n".join(header_lines)
+            return (
+                f"{header_str}\n\n"
+                "all clusters below proposer-drop threshold — rerun with --raw"
+            )
+        display_clusters = sorted(
+            display_clusters,
+            key=lambda c: (-weight(c.counter, c.wasted_turns), -c.wasted_turns, c.pattern_key),
+        )
+
+    clusters = display_clusters
 
     col_pattern = max(len("PATTERN"), max(len(c.pattern_key) for c in clusters))
     col_counter = max(len("COUNTER"), max(len(c.counter) for c in clusters))

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # codegen-analyze — scan existing Claude sessions for agent turn-waste, ranked.
-# Usage: codegen-analyze [--since YYYY-MM-DD] [--json] [--window N]
+# Usage: codegen-analyze [--since YYYY-MM-DD] [--json] [--raw] [--window N]
 #                        [--threshold-reread N] [--project-dir DIR]
 # Read-only: reads ~/.claude/projects/<cwd-prefix>*/*.jsonl + optional
 #            codegen/logging/{failures/*.jsonl,gate-verdicts.jsonl}. Writes nothing.

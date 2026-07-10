@@ -9,21 +9,14 @@ from __future__ import annotations
 import argparse
 import json
 import sys
-from typing import Dict, List
+from typing import List
 
 from analysis.proposer import (
-    COUNTER_CONFIDENCE_PRIOR,
     DEFAULT_MAX_PROPOSALS,
     DEFAULT_MIN_WASTED_TURNS,
     DROP_COUNTERS,
+    weight,
 )
-
-_PRIOR_RANK: Dict[str, int] = {"high": 3, "medium": 2, "low": 1}
-
-
-def _weight(cluster: dict) -> int:
-    prior = COUNTER_CONFIDENCE_PRIOR.get(cluster["counter"], "low")
-    return _PRIOR_RANK[prior] * cluster["wasted_turns"]
 
 
 def select_clusters(
@@ -45,7 +38,11 @@ def select_clusters(
         if c["counter"] not in DROP_COUNTERS and c["wasted_turns"] >= min_wasted_turns
     ]
     eligible.sort(
-        key=lambda c: (-_weight(c), -c["wasted_turns"], c["pattern_key"])
+        key=lambda c: (
+            -weight(c["counter"], c["wasted_turns"]),
+            -c["wasted_turns"],
+            c["pattern_key"],
+        )
     )
     return eligible[:max_proposals]
 

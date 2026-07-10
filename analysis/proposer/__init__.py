@@ -49,3 +49,18 @@ DEFAULT_MAX_PROPOSALS = 5
 # Counters dropped by default — infra/low-confidence signals that rarely
 # point at an actionable, groundable fix.
 DROP_COUNTERS = frozenset({"subagent_interruption"})
+
+# Numeric rank per confidence prior — used to weight clusters so high-trust
+# counters outrank low-trust counters even at lower raw wasted_turns.
+_PRIOR_RANK: Dict[str, int] = {"high": 3, "medium": 2, "low": 1}
+
+
+def weight(counter: str, wasted_turns: int) -> int:
+    """Trust-weighted score for a cluster: prior_rank(counter) * wasted_turns.
+
+    Shared by analysis.proposer.select (machine selection) and
+    analysis.report_writer (human table default ranking) — single source
+    of truth for "what does the proposer trust".
+    """
+    prior = COUNTER_CONFIDENCE_PRIOR.get(counter, "low")
+    return _PRIOR_RANK[prior] * wasted_turns
