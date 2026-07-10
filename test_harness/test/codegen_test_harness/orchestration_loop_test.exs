@@ -512,7 +512,9 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
     test "gate-run.log content is folded into last_failure_reason on retry", %{
       calls_agent: calls_agent
     } do
-      tmp_cwd = Path.join(System.tmp_dir!(), "loop-gate-log-fold-#{System.unique_integer([:positive])}")
+      tmp_cwd =
+        Path.join(System.tmp_dir!(), "loop-gate-log-fold-#{System.unique_integer([:positive])}")
+
       log_dir = Path.join([tmp_cwd, "codegen", "gate-pending"])
       File.mkdir_p!(log_dir)
       File.write!(Path.join(log_dir, "gate-run.log"), "COMPILE ERROR: undefined function foo/1")
@@ -559,12 +561,16 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
 
   describe "tree_signature/1" do
     test "non-git cwd returns empty string (unavailable)" do
-      assert OrchestrationLoop.tree_signature("/tmp/definitely-not-a-git-repo-#{System.unique_integer([:positive])}") ==
+      assert OrchestrationLoop.tree_signature(
+               "/tmp/definitely-not-a-git-repo-#{System.unique_integer([:positive])}"
+             ) ==
                ""
     end
 
     test "real git work tree returns a non-empty, stable content hash" do
-      tmp_cwd = Path.join(System.tmp_dir!(), "loop-tree-sig-#{System.unique_integer([:positive])}")
+      tmp_cwd =
+        Path.join(System.tmp_dir!(), "loop-tree-sig-#{System.unique_integer([:positive])}")
+
       File.mkdir_p!(tmp_cwd)
       on_exit(fn -> File.rm_rf!(tmp_cwd) end)
 
@@ -699,6 +705,134 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
 
       # developer-static (pre-gate) + context-curator (pre-commit) = 2 format calls
       assert Agent.get(format_calls_agent, & &1) == ["/tmp/irrelevant", "/tmp/irrelevant"]
+    end
+  end
+
+  defp always_clean_factcheck_fn do
+    fn _cwd -> {:clean} end
+  end
+
+  describe "run/1 — factcheck fix cycle" do
+    test "clean scan advances CURATED and reaches the committer", %{calls_agent: calls_agent} do
+      assert :ok ==
+               OrchestrationLoop.run(
+                 harness: "claude_code",
+                 stack: "static",
+                 cwd: "/tmp/irrelevant",
+                 pitch: "do the thing",
+                 invoke_fn: always_ok_invoke_fn(calls_agent),
+                 gate_fn: always_clear_gate_fn(),
+                 gate_preflight_fn: no_op_gate_preflight_fn(),
+                 preflight_probe_fn: all_present_preflight_probe_fn(),
+                 advance_cycle_state_fn: no_op_advance_cycle_state_fn(),
+                 factcheck_scan_fn: always_clean_factcheck_fn()
+               )
+
+      assert Agent.get(calls_agent, & &1) == @static_sequence
+    end
+
+    test "violation once then clean re-invokes context-curator exactly once, then reaches committer",
+         %{calls_agent: calls_agent} do
+      {:ok, scan_calls_agent} = Agent.start_link(fn -> 0 end)
+      on_exit(fn -> if Process.alive?(scan_calls_agent), do: Agent.stop(scan_calls_agent) end)
+
+      scan_fn = fn _cwd ->
+        n = Agent.get_and_update(scan_calls_agent, fn c -> {c, c + 1} end)
+        if n == 0, do: {:violations, "CLAUDE.md:1 bad path"}, else: {:clean}
+      end
+
+      assert :ok ==
+               OrchestrationLoop.run(
+                 harness: "claude_code",
+                 stack: "static",
+                 cwd: "/tmp/irrelevant",
+                 pitch: "do the thing",
+                 invoke_fn: always_ok_invoke_fn(calls_agent),
+                 gate_fn: always_clear_gate_fn(),
+                 gate_preflight_fn: no_op_gate_preflight_fn(),
+                 preflight_probe_fn: all_present_preflight_probe_fn(),
+                 advance_cycle_state_fn: no_op_advance_cycle_state_fn(),
+                 factcheck_scan_fn: scan_fn
+               )
+
+      curator_calls = Enum.count(Agent.get(calls_agent, & &1), &(&1 == "context-curator"))
+      assert curator_calls == 2
+      assert List.last(Agent.get(calls_agent, & &1)) == "committer"
+      assert Agent.get(scan_calls_agent, & &1) == 2
+    end
+
+    test "violations exhausting max_factcheck_cycles returns {:error, reason}; CURATED never advances, committer never invoked",
+         %{calls_agent: calls_agent} do
+      {:ok, states_agent} = Agent.start_link(fn -> [] end)
+      on_exit(fn -> if Process.alive?(states_agent), do: Agent.stop(states_agent) end)
+
+      advance_fn = fn state, _step_log, _session_id, _verdict, _project_dir ->
+        Agent.update(states_agent, fn states -> states ++ [state] end)
+        :ok
+      end
+
+      always_violates_fn = fn _cwd -> {:violations, "CLAUDE.md:1 bad path"} end
+
+      result =
+        OrchestrationLoop.run(
+          harness: "claude_code",
+          stack: "static",
+          cwd: "/tmp/irrelevant",
+          pitch: "do the thing",
+          invoke_fn: always_ok_invoke_fn(calls_agent),
+          gate_fn: always_clear_gate_fn(),
+          gate_preflight_fn: no_op_gate_preflight_fn(),
+          preflight_probe_fn: all_present_preflight_probe_fn(),
+          advance_cycle_state_fn: advance_fn,
+          factcheck_scan_fn: always_violates_fn,
+          max_factcheck_cycles: 1
+        )
+
+      assert {:error, reason} = result
+      assert reason =~ "factcheck unresolved"
+      assert reason =~ "CLAUDE.md:1 bad path"
+      refute "CURATED" in Agent.get(states_agent, & &1)
+      refute "committer" in Agent.get(calls_agent, & &1)
+    end
+
+    test "factcheck_scan_fn raising propagates (loop crashes loud)", %{calls_agent: calls_agent} do
+      raising_fn = fn _cwd -> raise "scan script exploded" end
+
+      assert_raise RuntimeError, ~r/scan script exploded/, fn ->
+        OrchestrationLoop.run(
+          harness: "claude_code",
+          stack: "static",
+          cwd: "/tmp/irrelevant",
+          pitch: "do the thing",
+          invoke_fn: always_ok_invoke_fn(calls_agent),
+          gate_fn: always_clear_gate_fn(),
+          gate_preflight_fn: no_op_gate_preflight_fn(),
+          preflight_probe_fn: all_present_preflight_probe_fn(),
+          advance_cycle_state_fn: no_op_advance_cycle_state_fn(),
+          factcheck_scan_fn: raising_fn
+        )
+      end
+    end
+
+    test "factcheck_scan_fn returning an unexpected shape raises (no silent clean)", %{
+      calls_agent: calls_agent
+    } do
+      bogus_fn = fn _cwd -> :not_a_valid_shape end
+
+      assert_raise CaseClauseError, fn ->
+        OrchestrationLoop.run(
+          harness: "claude_code",
+          stack: "static",
+          cwd: "/tmp/irrelevant",
+          pitch: "do the thing",
+          invoke_fn: always_ok_invoke_fn(calls_agent),
+          gate_fn: always_clear_gate_fn(),
+          gate_preflight_fn: no_op_gate_preflight_fn(),
+          preflight_probe_fn: all_present_preflight_probe_fn(),
+          advance_cycle_state_fn: no_op_advance_cycle_state_fn(),
+          factcheck_scan_fn: bogus_fn
+        )
+      end
     end
   end
 

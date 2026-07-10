@@ -40,6 +40,11 @@ defmodule CodegenTestHarness.OrchestrationLoop do
   @codegen_call_bin Path.expand("../../../codegen-call", __DIR__)
   @codegen_dir Path.expand("../../..", __DIR__)
 
+  @factcheck_scan_lib Path.expand(
+                        "../../../harnesses/claude/hooks/lib/context-factcheck-scan.sh",
+                        __DIR__
+                      )
+
   @doc """
   Returns the ordered role sequence for `stack` (`"phoenix"` or
   `"static"`). Raises on any other stack name.
@@ -78,6 +83,19 @@ defmodule CodegenTestHarness.OrchestrationLoop do
   - `:tree_signature_fn` — test seam: `(cwd -> signature)`, defaults to
     `tree_signature/1` (a content-hash of the tracked+untracked working
     tree). Drives the progress bound on developer gate re-runs.
+  - `:factcheck_scan_fn` — test seam: `(cwd -> {:clean} | {:violations, String.t()})`,
+    defaults to `default_factcheck_scan/1` (shells
+    `harnesses/claude/hooks/lib/context-factcheck-scan.sh <cwd>`). Runs after
+    the context-curator role, replacing the dead-under-loop
+    `context-factcheck-curator-stop` SubagentStop hook (roles run as
+    main-agent `codegen-call` invocations under the loop, so SubagentStop
+    never fires here — same reasoning as `run_format_step`).
+  - `:max_factcheck_cycles` — context-curator re-invokes allowed after a
+    factcheck violation before giving up (default 1). Diverges from
+    `:max_review_cycles` (which proceeds on budget exhaustion): factcheck
+    exhaustion fails the cycle LOUD instead of proceeding — the committer
+    cannot Read/Edit `context/*.md`, so handing it a known-bad doc is an
+    unfixable dead-end that used to deadlock as a compounding dirty-tree retry.
 
   Returns `:ok` on COMMITTED + clear gate. Returns `{:error, reason}` on
   any role failure (after one retry), a non-clear gate (after the gate-retry
@@ -255,8 +273,7 @@ defmodule CodegenTestHarness.OrchestrationLoop do
 
         role == "context-curator" ->
           run_format_step(ctx.cwd, opts)
-          advance_cycle_state_step("CURATED", ctx, opts)
-          run_roles(rest, harness, ctx, opts)
+          run_factcheck_step(role, rest, harness, ctx, opts, 0)
 
         role == "committer" ->
           # Structural gap #9: the committer ROLE returning success does NOT
@@ -437,6 +454,72 @@ defmodule CodegenTestHarness.OrchestrationLoop do
         # :approved, :unknown, or CHANGES_REQUESTED with budget exhausted.
         advance_cycle_state_step("REVIEWED", ctx, opts)
         run_roles(rest, harness, ctx, opts)
+    end
+  end
+
+  # Context-curator → factcheck fix cycle. Replaces the dead-under-loop
+  # `context-factcheck-curator-stop` SubagentStop hook: under the loop, roles
+  # run as main-agent `codegen-call` invocations with no SubagentStop event,
+  # so this scan has to be driven explicitly here (same reasoning as
+  # `run_format_step`). Scan clean → advance CURATED and continue. Violations
+  # within `:max_factcheck_cycles` (default 1) → fold the violation list into
+  # context, re-invoke the context-curator (the last role that CAN edit
+  # `context/*.md`), re-format, re-scan, recurse. Budget-exhausted → FAIL LOUD
+  # (diverges from `handle_review`'s proceed-on-exhaustion): the committer
+  # cannot Read/Edit `context/*.md`, so handing it a known-bad doc is an
+  # unfixable dead-end that used to compound into a dirty-tree retry loop.
+  defp run_factcheck_step(curator_role, rest, harness, ctx, opts, cycle) do
+    max_cycles = Keyword.get(opts, :max_factcheck_cycles, 1)
+
+    case run_factcheck_scan(ctx.cwd, opts) do
+      {:clean} ->
+        advance_cycle_state_step("CURATED", ctx, opts)
+        run_roles(rest, harness, ctx, opts)
+
+      {:violations, violations} when cycle < max_cycles ->
+        rework_ctx = put_in(ctx, [:artifacts, :factcheck_violations], violations)
+
+        with {:ok, curator_result} <- invoke_with_retry(curator_role, harness, rework_ctx, opts) do
+          ctx = put_in(rework_ctx, [:artifacts, curator_role], curator_result)
+          run_format_step(ctx.cwd, opts)
+          run_factcheck_step(curator_role, rest, harness, ctx, opts, cycle + 1)
+        end
+
+      {:violations, violations} ->
+        {:error,
+         "context factcheck unresolved after #{cycle} cycle(s):\n#{violations}\n" <>
+           "The committer cannot Read/Edit context/*.md (subagent-read-discipline denies it), " <>
+           "so handing this violation onward would be an unfixable dead-end. Fix the orientation " <>
+           "docs and re-run the cycle."}
+    end
+  end
+
+  # Dispatches the `:factcheck_scan_fn` test seam; defaults to
+  # `default_factcheck_scan/1` (the real shelled scan).
+  defp run_factcheck_scan(cwd, opts) do
+    scan_fn = Keyword.get(opts, :factcheck_scan_fn, &default_factcheck_scan/1)
+    scan_fn.(cwd)
+  end
+
+  # Shells `context-factcheck-scan.sh <cwd>` (the extracted scan shared with
+  # the interactive SubagentStop hook — see
+  # harnesses/claude/hooks/context-factcheck-curator-stop.sh). exit 0 → clean;
+  # exit 1 with output → violations; anything else (missing script, unexpected
+  # exit code) is an infra fault — raise (fail-closed), never treat as clean.
+  defp default_factcheck_scan(cwd) do
+    unless File.exists?(@factcheck_scan_lib) do
+      raise "OrchestrationLoop: context-factcheck-scan.sh not found at #{@factcheck_scan_lib}"
+    end
+
+    case System.cmd("bash", [@factcheck_scan_lib, cwd], stderr_to_stdout: true) do
+      {_out, 0} ->
+        {:clean}
+
+      {out, 1} ->
+        {:violations, String.trim(out)}
+
+      {out, code} ->
+        raise "OrchestrationLoop: context-factcheck-scan.sh exited #{code} (expected 0 or 1): #{out}"
     end
   end
 
@@ -801,6 +884,18 @@ defmodule CodegenTestHarness.OrchestrationLoop do
         base <>
           "\n\n## Reviewer feedback to address (re-work)\n\n" <>
           fb <> "\n\nApply these specific changes; do not introduce unrelated changes."
+      else
+        base
+      end
+
+    # On a factcheck re-work pass, thread the violation list to the curator.
+    fv = get_in(ctx, [:artifacts, :factcheck_violations])
+
+    base =
+      if role == "context-curator" and is_binary(fv) and String.trim(fv) != "" do
+        base <>
+          "\n\n## Factcheck violations to fix (re-work)\n\n" <>
+          fv <> "\n\nFix these in the working tree; do not introduce unrelated changes."
       else
         base
       end
