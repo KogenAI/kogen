@@ -62,6 +62,17 @@ MUST include: Recipe, Domain context, Usage rules, `## Files to touch` (NEW|EXIS
 
 When the pitch's Scope/Solution lists deliverables 1..N (numbered or ordered), transcribe EVERY item verbatim into the step log `## Plan` block as a `### Deliverable Manifest` checklist — one line per item: the item text PLUS a concrete per-item success criterion (e.g., "context/hooks.md byte size reduced vs HEAD"). The reviewer cannot Read the pitch (`subagent-read-discipline.sh` denies `reviewer-*` any `codegen/pitches/**`); this transcribed manifest is its only view of the full deliverable list. If the pitch has NO numbered/ordered list, write NO manifest subsection — the reviewer's Manifest Completeness step then passes vacuously.
 
+## Existing-Entity Scan (Redundancy Check)
+
+Before finalizing any `(NEW)` file / module / fn in `Files to touch`, grep the architectural slice — the owning source dir (per `repo-structure.md`) PLUS the `context/*.md` targets already loaded in Step 0.25 — for an existing entity that already provides the same capability. This is the INVERSE of verify-before-naming: verify-before-naming stops a PHANTOM name (does X exist before I name it); this stops a `(NEW)` entity that DUPLICATES a real existing one.
+
+Outcome rule per `(NEW)` entity:
+
+- Existing equivalent found → REUSE it: downgrade the entity to `(EXISTING)` in `Files to touch`, name the real path, do NOT create a duplicate. Hand the developer the exact existing entity to reuse IN THE PLAN (the developer reads nothing new — self-contained-plan bet preserved).
+- None found → `(NEW)` is justified; record the verdict.
+
+Emit the result in the `## Plan` `**Redundancy check**` field: for each `(NEW)` entity, the grep run + verdict. When the plan adds no `(NEW)` file/module/fn, the field reads `none — plan adds no (NEW) entities`.
+
 ## Module Skeletons (Mandatory for NEW Elixir files)
 
 Every `(NEW)` Elixir file MUST include a literal code skeleton — actual module names and function signatures, NOT `<...>` placeholders:
@@ -102,6 +113,8 @@ Verdict: `composes` (no conflict) or `contradiction: <sibling names>`. **FORBIDD
 ## Self-Validation
 
 Re-read plan: consistency, framework fit, redundancy, edge cases, integration points, test coverage, delegation prompt concrete, alternatives weighed, risks classified, no "investigate further" deferrals.
+
+Existing-entity scan run: every `(NEW)` entity in Files to touch grepped against its owning slice; equivalents downgraded to `(EXISTING)`; `**Redundancy check**` field emitted with grep transcripts (or `none` when no `(NEW)` entities).
 
 ## Rule J — Parallel Cases Get Parallel Treatment
 
