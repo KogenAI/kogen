@@ -19,7 +19,9 @@
 #   For each staged orientation doc (CLAUDE.md, AGENTS.md, PROJECT_CONTEXT.md,
 #   codegen/PROJECT_CONTEXT.md, context/*.md), extract backtick'd path-like
 #   literals (containing at least one slash, matching known extensions).
-#   If the path does not exist under repo_root → DENY.
+#   If the path does not exist under repo_root → try Elixir source roots
+#   (lib/, test/) for .ex/.exs literals (module→file convention) → still
+#   missing → DENY.
 #
 # Claim class 2 — count anchors:
 #   Match lines of the form: <!-- count: CMD -->NNN
@@ -124,8 +126,22 @@ while IFS= read -r doc_path; do
         while IFS= read -r claim_path; do
             [ -z "$claim_path" ] && continue
             if [ ! -e "$repo_root/$claim_path" ]; then
-                msg="context-factcheck-guard: ${doc_path}:${linenum} references \`${claim_path}\` which does not exist. Fix the path or remove the claim."
-                violations="${violations}${violations:+$'\n'}${msg}"
+                # Elixir source-root fallback: `widgetapp/billing.ex` (module
+                # convention) commonly resolves at lib/widgetapp/billing.ex or
+                # test/widgetapp/billing_test.ex. Only tried on literal-miss,
+                # only for .ex/.exs — can never mask a real bare-root miss.
+                resolved=0
+                case "$claim_path" in
+                *.ex | *.exs)
+                    if [ -e "$repo_root/lib/$claim_path" ] || [ -e "$repo_root/test/$claim_path" ]; then
+                        resolved=1
+                    fi
+                    ;;
+                esac
+                if [ "$resolved" -eq 0 ]; then
+                    msg="context-factcheck-guard: ${doc_path}:${linenum} references \`${claim_path}\` which does not exist. Fix the path or remove the claim."
+                    violations="${violations}${violations:+$'\n'}${msg}"
+                fi
             fi
         done <<PATHS
 $path_claims

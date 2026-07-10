@@ -254,4 +254,43 @@ describe("context-factcheck-guard", { concurrency: 1 }, () => {
     );
   });
 
+  // ── Elixir source-root fallback (lib/) → passes ──────────────────────────
+  it("Elixir source-root (lib/) fallback → passes", async () => {
+    const dir = makeFixture("ex-source-root");
+    fixtures.push(dir);
+    fs.mkdirSync(path.join(dir, "context"), { recursive: true });
+    fs.mkdirSync(path.join(dir, "lib", "widgetapp"), { recursive: true });
+    fs.writeFileSync(
+      path.join(dir, "lib", "widgetapp", "billing.ex"),
+      "code\n",
+    );
+    fs.writeFileSync(
+      path.join(dir, "context", "x.md"),
+      "See `widgetapp/billing.ex` for details.\n",
+    );
+    execSync("git add context/x.md lib/widgetapp/billing.ex", {
+      cwd: dir,
+    });
+
+    const result = await runHookInDir(dir, 'git commit -m "add x"');
+    assert.ok(
+      result == null || (result as { block?: boolean }).block !== true,
+    );
+  });
+
+  // ── Genuinely-dead .ex path (literal, lib/, test/ all miss) → deny ───────
+  it("genuinely-dead .ex path → deny", async () => {
+    const dir = makeFixture("ex-genuinely-dead");
+    fixtures.push(dir);
+    fs.mkdirSync(path.join(dir, "context"), { recursive: true });
+    fs.writeFileSync(
+      path.join(dir, "context", "x.md"),
+      "See `widgetapp/nope.ex` for details.\n",
+    );
+    execSync("git add context/x.md", { cwd: dir });
+
+    const result = await runHookInDir(dir, 'git commit -m "add x"');
+    assert.ok((result as { block?: boolean } | null)?.block === true);
+  });
+
 });

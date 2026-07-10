@@ -9,7 +9,14 @@
 # the loop invokes roles as main-agent `codegen-call` calls with no SubagentStop
 # event, so the hook alone never fires in the build path.
 #
-# Usage: context-factcheck-scan.sh <repo_root>
+# Usage: context-factcheck-scan.sh <repo_root> [doc_path...]
+#
+# With no doc_path args: scans the full working-tree orientation-doc set
+# (whole-tree default — used by the interactive SubagentStop hook).
+# With one or more doc_path args (each relative to repo_root): scans ONLY
+# those docs — used by the in-loop Elixir step to diff-scope the scan to the
+# current cycle's own edits so ambient rot in untouched docs never blocks an
+# unrelated build.
 #
 # Exit 0: clean (no violations). Prints nothing.
 # Exit 1: violations found. Prints one violation per line to stdout.
@@ -19,7 +26,9 @@
 # Claim class 1 — named-path probes:
 #   For each working-tree orientation doc, extract backtick'd path-like
 #   literals (containing at least one slash, matching known extensions).
-#   If the path does not exist under repo_root → violation.
+#   If the path does not exist under repo_root → try Elixir source roots
+#   (lib/, test/) for .ex/.exs literals (module→file convention) → still
+#   missing → violation.
 #
 # Claim class 2 — count anchors:
 #   Match lines of the form: <!-- count: CMD -->NNN
@@ -39,11 +48,21 @@
 set -uo pipefail
 
 repo_root="${1:-}"
+shift 2>/dev/null || true
 
 if [ -z "$repo_root" ]; then
-    printf 'context-factcheck-scan: usage: context-factcheck-scan.sh <repo_root>\n' >&2
+    printf 'context-factcheck-scan: usage: context-factcheck-scan.sh <repo_root> [doc_path...]\n' >&2
     exit 0
 fi
+
+# Optional explicit doc-path args (diff-scope caller). Empty when none given.
+explicit_docs=""
+nl_explicit="
+"
+for explicit_doc in "$@"; do
+    [ -z "$explicit_doc" ] && continue
+    explicit_docs="${explicit_docs}${explicit_docs:+$nl_explicit}${explicit_doc}"
+done
 
 if ! git -C "$repo_root" rev-parse --git-dir >/dev/null 2>&1; then
     exit 0
@@ -64,22 +83,29 @@ else
     exit 0
 fi
 
-# Build the list of working-tree orientation docs to scan.
+# Build the list of orientation docs to scan. When the caller passed explicit
+# doc-path args (diff-scope), scan ONLY those (each still resolved under
+# repo_root below). Otherwise fall back to the whole-tree walk (default,
+# preserves the interactive hook's existing behavior).
 docs=""
 nl="
 "
-for fixed_doc in CLAUDE.md AGENTS.md PROJECT_CONTEXT.md codegen/PROJECT_CONTEXT.md; do
-    if [ -f "$repo_root/$fixed_doc" ]; then
-        docs="${docs}${docs:+$nl}${fixed_doc}"
-    fi
-done
-if [ -d "$repo_root/context" ]; then
-    while IFS= read -r ctx_doc; do
-        [ -z "$ctx_doc" ] && continue
-        docs="${docs}${docs:+$nl}context/${ctx_doc}"
-    done <<CTXDOCS
+if [ -n "$explicit_docs" ]; then
+    docs="$explicit_docs"
+else
+    for fixed_doc in CLAUDE.md AGENTS.md PROJECT_CONTEXT.md codegen/PROJECT_CONTEXT.md; do
+        if [ -f "$repo_root/$fixed_doc" ]; then
+            docs="${docs}${docs:+$nl}${fixed_doc}"
+        fi
+    done
+    if [ -d "$repo_root/context" ]; then
+        while IFS= read -r ctx_doc; do
+            [ -z "$ctx_doc" ] && continue
+            docs="${docs}${docs:+$nl}context/${ctx_doc}"
+        done <<CTXDOCS
 $(cd "$repo_root/context" && find . -maxdepth 1 -name '*.md' -type f -exec basename {} \; 2>/dev/null | sort)
 CTXDOCS
+    fi
 fi
 
 if [ -z "$docs" ]; then
@@ -125,8 +151,22 @@ while IFS= read -r doc_path; do
         while IFS= read -r claim_path; do
             [ -z "$claim_path" ] && continue
             if [ ! -e "$repo_root/$claim_path" ]; then
-                msg="context-factcheck-scan: ${doc_path}:${linenum} references \`${claim_path}\` which does not exist. Fix the path or remove the claim."
-                violations="${violations}${violations:+$nl}${msg}"
+                # Elixir source-root fallback: `widgetapp/billing.ex` (module
+                # convention) commonly resolves at lib/widgetapp/billing.ex or
+                # test/widgetapp/billing_test.ex. Only tried on literal-miss,
+                # only for .ex/.exs — can never mask a real bare-root miss.
+                resolved=0
+                case "$claim_path" in
+                *.ex | *.exs)
+                    if [ -e "$repo_root/lib/$claim_path" ] || [ -e "$repo_root/test/$claim_path" ]; then
+                        resolved=1
+                    fi
+                    ;;
+                esac
+                if [ "$resolved" -eq 0 ]; then
+                    msg="context-factcheck-scan: ${doc_path}:${linenum} references \`${claim_path}\` which does not exist. Fix the path or remove the claim."
+                    violations="${violations}${violations:+$nl}${msg}"
+                fi
             fi
         done <<PATHS
 $path_claims

@@ -162,5 +162,68 @@ rc=$?
 assert_exit "no PROJECT_CONTEXT.md → exit 0 (no layout detected)" "0" "$rc"
 rm -rf "$T14"
 
+# --- Test 15: Elixir source-root fallback (lib/) → resolves, exit 0 ---
+T15=$(new_repo)
+mkdir -p "$T15/lib/widgetapp"
+printf 'code\n' >"$T15/lib/widgetapp/billing.ex"
+printf 'See `widgetapp/billing.ex` for details.\n' >"$T15/CLAUDE.md"
+out=$(bash "$SCAN" "$T15")
+rc=$?
+assert_exit "Elixir source-root (lib/) fallback → exit 0" "0" "$rc"
+rm -rf "$T15"
+
+# --- Test 16: Elixir source-root fallback (test/) → resolves, exit 0 ---
+T16=$(new_repo)
+mkdir -p "$T16/test/widgetapp"
+printf 'code\n' >"$T16/test/widgetapp/billing_test.exs"
+printf 'See `widgetapp/billing_test.exs` for details.\n' >"$T16/CLAUDE.md"
+out=$(bash "$SCAN" "$T16")
+rc=$?
+assert_exit "Elixir source-root (test/) fallback → exit 0" "0" "$rc"
+rm -rf "$T16"
+
+# --- Test 17: Elixir path missing everywhere (literal, lib/, test/) → exit 1 ---
+T17=$(new_repo)
+printf 'See `widgetapp/nope.ex` for details.\n' >"$T17/CLAUDE.md"
+out=$(bash "$SCAN" "$T17")
+rc=$?
+assert_exit "genuinely-dead .ex path → exit 1" "1" "$rc"
+case "$out" in
+*"widgetapp/nope.ex"*) pass=$((pass + 1)) ;;
+*)
+    printf 'FAIL: genuinely-dead .ex path → message should reference path\n  actual: %s\n' "$out"
+    fail=$((fail + 1))
+    ;;
+esac
+rm -rf "$T17"
+
+# --- Test 18: non-.ex/.exs path still fails literal-only (no source-root fallback) ---
+T18=$(new_repo)
+mkdir -p "$T18/lib/widgetapp"
+printf 'x\n' >"$T18/lib/widgetapp/notes.md"
+printf 'See `widgetapp/notes.md` for details.\n' >"$T18/CLAUDE.md"
+out=$(bash "$SCAN" "$T18")
+rc=$?
+assert_exit "non-.ex/.exs path → no source-root fallback → exit 1" "1" "$rc"
+rm -rf "$T18"
+
+# --- Test 19: diff-scope explicit doc args → scans ONLY named docs ---
+T19=$(new_repo)
+printf 'See `widgetapp/nope.ex` for details.\n' >"$T19/CLAUDE.md"
+printf 'Nothing wrong here.\n' >"$T19/AGENTS.md"
+out=$(bash "$SCAN" "$T19" "AGENTS.md")
+rc=$?
+assert_exit "diff-scope: unscanned doc's violation ignored → exit 0" "0" "$rc"
+rm -rf "$T19"
+
+# --- Test 20: diff-scope explicit doc args → still catches violation in scanned doc ---
+T20=$(new_repo)
+printf 'See `widgetapp/nope.ex` for details.\n' >"$T20/CLAUDE.md"
+printf 'Nothing wrong here.\n' >"$T20/AGENTS.md"
+out=$(bash "$SCAN" "$T20" "CLAUDE.md")
+rc=$?
+assert_exit "diff-scope: violation in scanned doc still caught → exit 1" "1" "$rc"
+rm -rf "$T20"
+
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

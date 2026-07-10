@@ -20,6 +20,8 @@
 #  16: repo with neither PROJECT_CONTEXT.md variant → ALLOW (out of scope)
 #  17: user-app layout (codegen/PROJECT_CONTEXT.md) + named-path miss → DENY
 #  18: unstaged doc with contradicted claim → ALLOW (not staged, not scanned)
+#  19: Elixir source-root fallback (lib/) → ALLOW
+#  20: Elixir path missing everywhere (literal, lib/, test/) → DENY
 
 set -euo pipefail
 
@@ -339,6 +341,32 @@ git -C "$dir18" add "README.md"
 
 run_test "unstaged doc with bad claim → ALLOW (not staged)" "0" \
     "{\"hook_event_name\":\"PreToolUse\",\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"git commit -m \\\"test\\\"\"},\"agent_type\":\"committer\",\"agent_id\":\"a\",\"cwd\":\"$dir18\"}"
+
+# ---------------------------------------------------------------------------
+# Test 19: Elixir source-root fallback (lib/) → ALLOW
+# ---------------------------------------------------------------------------
+dir19=$(make_fixture 19)
+mkdir -p "$dir19/lib/widgetapp"
+printf 'code\n' >"$dir19/lib/widgetapp/billing.ex"
+cat >"$dir19/context/x.md" <<'DOC'
+See `widgetapp/billing.ex` for details.
+DOC
+git -C "$dir19" add "context/x.md" "lib/widgetapp/billing.ex"
+
+run_test "Elixir source-root (lib/) fallback → ALLOW" "0" \
+    "{\"hook_event_name\":\"PreToolUse\",\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"git commit -m \\\"x\\\"\"},\"agent_type\":\"committer\",\"agent_id\":\"a\",\"cwd\":\"$dir19\"}"
+
+# ---------------------------------------------------------------------------
+# Test 20: Elixir path missing everywhere (literal, lib/, test/) → DENY
+# ---------------------------------------------------------------------------
+dir20=$(make_fixture 20)
+cat >"$dir20/context/x.md" <<'DOC'
+See `widgetapp/nope.ex` for details.
+DOC
+git -C "$dir20" add "context/x.md"
+
+run_test "genuinely-dead .ex path → DENY" "2" \
+    "{\"hook_event_name\":\"PreToolUse\",\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"git commit -m \\\"x\\\"\"},\"agent_type\":\"committer\",\"agent_id\":\"a\",\"cwd\":\"$dir20\"}"
 
 echo ""
 echo "Results: $pass passed, $fail failed"

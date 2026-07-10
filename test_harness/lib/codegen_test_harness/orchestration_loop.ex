@@ -84,12 +84,15 @@ defmodule CodegenTestHarness.OrchestrationLoop do
     `tree_signature/1` (a content-hash of the tracked+untracked working
     tree). Drives the progress bound on developer gate re-runs.
   - `:factcheck_scan_fn` — test seam: `(cwd -> {:clean} | {:violations, String.t()})`,
-    defaults to `default_factcheck_scan/1` (shells
-    `harnesses/claude/hooks/lib/context-factcheck-scan.sh <cwd>`). Runs after
-    the context-curator role, replacing the dead-under-loop
-    `context-factcheck-curator-stop` SubagentStop hook (roles run as
-    main-agent `codegen-call` invocations under the loop, so SubagentStop
-    never fires here — same reasoning as `run_format_step`).
+    defaults to `default_factcheck_scan/1` (diff-scopes to the current
+    cycle's own orientation-doc edits via `changed_orientation_docs/1`, then
+    shells `harnesses/claude/hooks/lib/context-factcheck-scan.sh <cwd> <doc>...`
+    scoped to exactly those docs — no docs changed this cycle → `{:clean}`
+    without shelling at all, so ambient rot in an untouched doc never blocks
+    an unrelated build). Runs after the context-curator role, replacing the
+    dead-under-loop `context-factcheck-curator-stop` SubagentStop hook (roles
+    run as main-agent `codegen-call` invocations under the loop, so
+    SubagentStop never fires here — same reasoning as `run_format_step`).
   - `:max_factcheck_cycles` — context-curator re-invokes allowed after a
     factcheck violation before giving up (default 1). Diverges from
     `:max_review_cycles` (which proceeds on budget exhaustion): factcheck
@@ -726,25 +729,86 @@ defmodule CodegenTestHarness.OrchestrationLoop do
     scan_fn.(cwd)
   end
 
-  # Shells `context-factcheck-scan.sh <cwd>` (the extracted scan shared with
-  # the interactive SubagentStop hook — see
-  # harnesses/claude/hooks/context-factcheck-curator-stop.sh). exit 0 → clean;
-  # exit 1 with output → violations; anything else (missing script, unexpected
-  # exit code) is an infra fault — raise (fail-closed), never treat as clean.
+  # Diff-scopes the in-loop scan to the CURRENT CYCLE's own orientation-doc
+  # edits — ambient rot in a doc this cycle never touched must not block an
+  # unrelated build (the whole-tree scan used to fail-loud on ANY pre-existing
+  # violation anywhere in context/*.md, regardless of what the cycle changed).
+  # Empty list (no orientation docs touched this cycle) → {:clean} WITHOUT
+  # shelling the scan at all — there is nothing this cycle could have broken.
+  # Non-empty list → shells `context-factcheck-scan.sh <cwd> <doc>...` (the
+  # extracted scan shared with the interactive SubagentStop hook — see
+  # harnesses/claude/hooks/context-factcheck-curator-stop.sh), scoped to
+  # exactly those docs. exit 0 → clean; exit 1 with output → violations;
+  # anything else (missing script, unexpected exit code) is an infra fault —
+  # raise (fail-closed), never treat as clean.
   defp default_factcheck_scan(cwd) do
     unless File.exists?(@factcheck_scan_lib) do
       raise "OrchestrationLoop: context-factcheck-scan.sh not found at #{@factcheck_scan_lib}"
     end
 
-    case System.cmd("bash", [@factcheck_scan_lib, cwd], stderr_to_stdout: true) do
-      {_out, 0} ->
+    case changed_orientation_docs(cwd) do
+      [] ->
         {:clean}
 
-      {out, 1} ->
-        {:violations, String.trim(out)}
+      changed_docs ->
+        case System.cmd("bash", [@factcheck_scan_lib, cwd | changed_docs], stderr_to_stdout: true) do
+          {_out, 0} ->
+            {:clean}
+
+          {out, 1} ->
+            {:violations, String.trim(out)}
+
+          {out, code} ->
+            raise "OrchestrationLoop: context-factcheck-scan.sh exited #{code} (expected 0 or 1): #{out}"
+        end
+    end
+  end
+
+  # Orientation-doc filter shared by the diff-scope computation below —
+  # mirrors the doc grammar in context-factcheck-scan.sh / context-factcheck-guard.sh.
+  @orientation_doc_re ~r{^(CLAUDE\.md|AGENTS\.md|PROJECT_CONTEXT\.md|codegen/PROJECT_CONTEXT\.md|context/[^/]+\.md)$}
+
+  # Computes the orientation docs the CURRENT CYCLE changed: uncommitted diff
+  # against HEAD (the cycle's own edits are still unstaged/uncommitted at
+  # factcheck time — the committer runs after this step) unioned with new
+  # untracked orientation docs, filtered to the known orientation-doc grammar.
+  # Non-git `cwd` (mocked unit tests, no `.git`) is the ONLY expected non-repo
+  # case → empty list (fail-open to {:clean} above — nothing to diff against).
+  # Any other git failure (corrupt repo, permissions) is unexpected → raise.
+  @spec changed_orientation_docs(String.t()) :: [String.t()]
+  defp changed_orientation_docs(cwd) do
+    case System.cmd("git", ["rev-parse", "--git-dir"], cd: cwd, stderr_to_stdout: true) do
+      {_out, 0} ->
+        {diff_out, 0} =
+          System.cmd("git", ["diff", "--name-only", "HEAD"], cd: cwd, stderr_to_stdout: false)
+
+        {untracked_out, 0} =
+          System.cmd("git", ["ls-files", "--others", "--exclude-standard"],
+            cd: cwd,
+            stderr_to_stdout: false
+          )
+
+        (String.split(diff_out, "\n", trim: true) ++ String.split(untracked_out, "\n", trim: true))
+        |> Enum.uniq()
+        |> Enum.filter(&Regex.match?(@orientation_doc_re, &1))
 
       {out, code} ->
-        raise "OrchestrationLoop: context-factcheck-scan.sh exited #{code} (expected 0 or 1): #{out}"
+        # Expected non-zero cases: "not a git repository" (real repo check
+        # failed normally) and code 2 with empty output (cwd does not exist
+        # at all — System.cmd's `cd:` cannot chdir there; seen in mocked unit
+        # tests using placeholder cwds like "/tmp/irrelevant"). Anything else
+        # is an unexpected infra fault — fail loud rather than silently
+        # returning [] (which would mask a real problem as "nothing changed").
+        cond do
+          String.contains?(out, "not a git repository") ->
+            []
+
+          code == 2 and out == "" and not File.dir?(cwd) ->
+            []
+
+          true ->
+            raise "OrchestrationLoop: git rev-parse --git-dir failed unexpectedly in #{cwd}: #{out}"
+        end
     end
   end
 

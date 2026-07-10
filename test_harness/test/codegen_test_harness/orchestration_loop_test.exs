@@ -981,6 +981,133 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
     end
   end
 
+  # Like always_ok_invoke_fn/1, but commits the working tree when it "runs"
+  # the committer role — needed because these tests use a REAL git repo cwd
+  # (to exercise the real `changed_orientation_docs/1` diff-scope logic), so
+  # `verify_committed!/2` actually checks tree cleanliness post-committer.
+  defp always_ok_invoke_fn_with_real_commit(calls_agent) do
+    fn
+      "committer", _harness, ctx, _opts ->
+        Agent.update(calls_agent, fn calls -> calls ++ ["committer"] end)
+        System.cmd("git", ["add", "-A"], cd: ctx.cwd)
+        System.cmd("git", ["commit", "-q", "-m", "test commit"], cd: ctx.cwd)
+        {:ok, %{"status" => "success", "value" => "did committer"}}
+
+      role, _harness, _ctx, _opts ->
+        Agent.update(calls_agent, fn calls -> calls ++ [role] end)
+        {:ok, %{"status" => "success", "value" => "did #{role}"}}
+    end
+  end
+
+  describe "run/1 — default factcheck scan diff-scoping (real scan.sh, temp git repo)" do
+    setup do
+      dir =
+        Path.join(
+          System.tmp_dir!(),
+          "factcheck_diffscope_test_#{:erlang.unique_integer([:positive])}"
+        )
+
+      File.mkdir_p!(Path.join(dir, "context"))
+      System.cmd("git", ["init", "-q"], cd: dir)
+      System.cmd("git", ["config", "user.email", "t@t"], cd: dir)
+      System.cmd("git", ["config", "user.name", "t"], cd: dir)
+      System.cmd("git", ["config", "commit.gpgsign", "false"], cd: dir)
+      File.write!(Path.join(dir, "PROJECT_CONTEXT.md"), "# PROJECT_CONTEXT.md\n")
+      System.cmd("git", ["add", "PROJECT_CONTEXT.md"], cd: dir)
+      System.cmd("git", ["commit", "-q", "-m", "init"], cd: dir)
+
+      on_exit(fn -> File.rm_rf!(dir) end)
+      %{dir: dir}
+    end
+
+    test "no orientation docs changed this cycle → {:clean} without shelling the scan, even with ambient rot elsewhere",
+         %{calls_agent: calls_agent, dir: dir} do
+      # Ambient rot: a committed (untouched-this-cycle) doc with a dead path claim.
+      File.mkdir_p!(Path.join(dir, "context"))
+
+      File.write!(
+        Path.join([dir, "context", "rotten.md"]),
+        "See `widgetapp/nope.ex` for details.\n"
+      )
+
+      System.cmd("git", ["add", "context/rotten.md"], cd: dir)
+      System.cmd("git", ["commit", "-q", "-m", "seed rotten doc"], cd: dir)
+
+      # This cycle changes only an unrelated, non-orientation file.
+      File.write!(Path.join(dir, "unrelated.txt"), "unrelated change\n")
+
+      assert :ok ==
+               OrchestrationLoop.run(
+                 harness: "claude_code",
+                 stack: "static",
+                 cwd: dir,
+                 pitch: "do the thing",
+                 invoke_fn: always_ok_invoke_fn_with_real_commit(calls_agent),
+                 gate_fn: always_clear_gate_fn(),
+                 gate_preflight_fn: no_op_gate_preflight_fn(),
+                 preflight_probe_fn: all_present_preflight_probe_fn(),
+                 realized_check_fn: not_realized_fn(),
+                 advance_cycle_state_fn: no_op_advance_cycle_state_fn()
+               )
+
+      assert List.last(Agent.get(calls_agent, & &1)) == "committer"
+    end
+
+    test "orientation doc changed this cycle with a genuine dead-path violation → factcheck fails loud",
+         %{calls_agent: calls_agent, dir: dir} do
+      File.write!(
+        Path.join([dir, "context", "foo.md"]),
+        "See `widgetapp/nope.ex` for details.\n"
+      )
+
+      result =
+        OrchestrationLoop.run(
+          harness: "claude_code",
+          stack: "static",
+          cwd: dir,
+          pitch: "do the thing",
+          invoke_fn: always_ok_invoke_fn(calls_agent),
+          gate_fn: always_clear_gate_fn(),
+          gate_preflight_fn: no_op_gate_preflight_fn(),
+          preflight_probe_fn: all_present_preflight_probe_fn(),
+          realized_check_fn: not_realized_fn(),
+          advance_cycle_state_fn: no_op_advance_cycle_state_fn(),
+          max_factcheck_cycles: 0
+        )
+
+      assert {:error, reason} = result
+      assert reason =~ "factcheck unresolved"
+      assert reason =~ "widgetapp/nope.ex"
+    end
+
+    test "Elixir source-root fallback resolves a changed doc's module-convention path claim → {:ok}",
+         %{calls_agent: calls_agent, dir: dir} do
+      File.mkdir_p!(Path.join([dir, "lib", "widgetapp"]))
+      File.write!(Path.join([dir, "lib", "widgetapp", "billing.ex"]), "code\n")
+
+      File.write!(
+        Path.join([dir, "context", "foo.md"]),
+        "See `widgetapp/billing.ex` for details.\n"
+      )
+
+      assert :ok ==
+               OrchestrationLoop.run(
+                 harness: "claude_code",
+                 stack: "static",
+                 cwd: dir,
+                 pitch: "do the thing",
+                 invoke_fn: always_ok_invoke_fn_with_real_commit(calls_agent),
+                 gate_fn: always_clear_gate_fn(),
+                 gate_preflight_fn: no_op_gate_preflight_fn(),
+                 preflight_probe_fn: all_present_preflight_probe_fn(),
+                 realized_check_fn: not_realized_fn(),
+                 advance_cycle_state_fn: no_op_advance_cycle_state_fn()
+               )
+
+      assert List.last(Agent.get(calls_agent, & &1)) == "committer"
+    end
+  end
+
   describe "guard_bundle_flag!/2 — B-bucket guard bundle wiring" do
     setup do
       dir =

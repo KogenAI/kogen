@@ -40,6 +40,18 @@ function isAllowedVerb(verb: string): boolean {
   return ALLOWED_VERBS.has(verb);
 }
 
+// Elixir source-root fallback: `widgetapp/billing.ex` (module convention)
+// commonly resolves at lib/widgetapp/billing.ex or
+// test/widgetapp/billing_test.ex. Only tried on literal-miss, only for
+// .ex/.exs — can never mask a real bare-root miss.
+function resolvesUnderSourceRoot(cwd: string, claimPath: string): boolean {
+  if (!/\.exs?$/.test(claimPath)) return false;
+  return (
+    fs.existsSync(path.join(cwd, "lib", claimPath)) ||
+    fs.existsSync(path.join(cwd, "test", claimPath))
+  );
+}
+
 function extractNamedPaths(line: string): string[] {
   const re =
     /`([a-zA-Z0-9_-]+\/[a-zA-Z0-9_./-]+\.(?:sh|md|py|ts|js|json|yaml|exs|ex))`/g;
@@ -107,7 +119,10 @@ export function register(pi: ExtensionAPI): void {
           // ── Claim class 1: named-path probes ──────────────────────────────
           const namedPaths = extractNamedPaths(line);
           for (const claimPath of namedPaths) {
-            if (!fs.existsSync(path.join(cwd, claimPath))) {
+            if (
+              !fs.existsSync(path.join(cwd, claimPath)) &&
+              !resolvesUnderSourceRoot(cwd, claimPath)
+            ) {
               violations.push(
                 `context-factcheck-guard: ${docPath}:${linenum} references \`${claimPath}\` which does not exist. Fix the path or remove the claim.`,
               );

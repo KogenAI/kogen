@@ -151,4 +151,42 @@ describe("context-factcheck-curator-stop", { concurrency: false }, () => {
       fs.rmSync(tmpDir, { recursive: true, force: true });
     }
   });
+
+  it("Elixir source-root (lib/) fallback does not warn", async () => {
+    const tmpDir = makeRepo("factcheck-curator-ex-source-root-");
+    try {
+      fs.mkdirSync(path.join(tmpDir, "lib", "widgetapp"), {
+        recursive: true,
+      });
+      fs.writeFileSync(
+        path.join(tmpDir, "lib", "widgetapp", "billing.ex"),
+        "code\n",
+      );
+      fs.writeFileSync(
+        path.join(tmpDir, "context", "foo.md"),
+        "# Foo\n\nSee `widgetapp/billing.ex` for detail.\n",
+      );
+      const { stderr } = await runHook(tmpDir, "context-curator");
+      assert.equal(stderr, "");
+    } finally {
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    }
+  });
+
+  it("genuinely-dead .ex path (literal, lib/, test/ all miss) warns", async () => {
+    const tmpDir = makeRepo("factcheck-curator-ex-dead-");
+    try {
+      fs.writeFileSync(
+        path.join(tmpDir, "context", "foo.md"),
+        "# Foo\n\nSee `widgetapp/nope.ex` for detail.\n",
+      );
+      const { stderr } = await runHook(tmpDir, "context-curator");
+      assert.ok(
+        stderr.includes("widgetapp/nope.ex"),
+        `expected warning mentioning the missing path, got: ${stderr}`,
+      );
+    } finally {
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    }
+  });
 });
