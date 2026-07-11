@@ -130,7 +130,6 @@ For every `harnesses/claude/hooks/<name>.sh` there is a paired `<name>_test.sh` 
 | static-site-build-check          | hook           | `.../hooks/static-site-build-check.sh`          | `.../hooks/static-site-build-check_test.sh`          |                                              |
 | static-site-ex-guard             | hook           | `.../hooks/static-site-ex-guard.sh`             | `.../hooks/static-site-ex-guard_test.sh`             |                                              |
 | subagent-read-discipline         | hook           | `.../hooks/subagent-read-discipline.sh`         | `.../hooks/subagent-read-discipline_test.sh`         |                                              |
-| subagent-retrospective-guard     | hook           | `.../hooks/subagent-retrospective-guard.sh`     | `.../hooks/subagent-retrospective-guard_test.sh`     |                                              |
 | track-subagent-edits             | hook           | `.../hooks/track-subagent-edits.sh`             | `.../hooks/track-subagent-edits_test.sh`             |                                              |
 | track-tool-failures              | hook           | `.../hooks/track-tool-failures.sh`              | `.../hooks/track-tool-failures_test.sh`              |                                              |
 | usage-rules-grep-guard           | hook           | `.../hooks/usage-rules-grep-guard.sh`           | `.../hooks/usage-rules-grep-guard_test.sh`           |                                              |

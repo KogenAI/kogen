@@ -1812,6 +1812,332 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
       assert Agent.get(calls_agent, & &1) == @phoenix_sequence
     end
   end
+
+  describe "run/1 — retrospective warm-resume" do
+    @with_block "did the thing\n\n### What I Learned This Step\n\n- nothing notable\n"
+    @without_block "did the thing, no retrospective included"
+
+    # invoke_fn seam that lets each role's returned value + session_id vary by
+    # role name, via a caller-supplied map. Unlisted roles get @with_block
+    # (so only the role(s) under test are missing it).
+    defp scripted_invoke_fn(calls_agent, per_role_values, per_role_sids \\ %{}) do
+      fn role, _harness, _ctx, _opts ->
+        Agent.update(calls_agent, fn calls -> calls ++ [role] end)
+        value = Map.get(per_role_values, role, @with_block)
+        sid = Map.get(per_role_sids, role, "sid-#{role}")
+
+        {:ok, %{"status" => "success", "value" => value, "session_id" => sid}}
+      end
+    end
+
+    # developer-phoenix-backend (not developer-static) is used for the
+    # "developer" scenarios below because `@retrospective_roles` mirrors the
+    # deleted hook's exact matcher set, which intentionally does NOT include
+    # developer-static (registry.yaml's tool_guard for
+    # subagent-retrospective-guard listed only the phoenix developer roles).
+
+    test "developer value with block present → resume seam never called, run reaches GATED",
+         %{calls_agent: calls_agent} do
+      {:ok, resume_calls_agent} = Agent.start_link(fn -> [] end)
+      on_exit(fn -> if Process.alive?(resume_calls_agent), do: Agent.stop(resume_calls_agent) end)
+
+      resume_fn = fn role, sid, _ctx, _opts ->
+        Agent.update(resume_calls_agent, fn calls -> calls ++ [{role, sid}] end)
+        {:ok, @with_block}
+      end
+
+      assert :ok ==
+               OrchestrationLoop.run(
+                 harness: "claude_code",
+                 stack: "phoenix",
+                 cwd: "/tmp/irrelevant",
+                 pitch: "do the thing",
+                 invoke_fn: scripted_invoke_fn(calls_agent, %{}),
+                 gate_fn: always_clear_gate_fn(),
+                 gate_preflight_fn: no_op_gate_preflight_fn(),
+                 preflight_probe_fn: all_present_preflight_probe_fn(),
+                 realized_check_fn: not_realized_fn(),
+                 advance_cycle_state_fn: no_op_advance_cycle_state_fn(),
+                 factcheck_scan_fn: always_clean_factcheck_fn(),
+                 env_var_scan_fn: always_clean_env_var_fn(),
+                 retrospective_resume_fn: resume_fn
+               )
+
+      assert Agent.get(resume_calls_agent, & &1) == []
+      assert Agent.get(calls_agent, & &1) == @phoenix_sequence
+    end
+
+    test "developer value missing block → resume seam invoked once, recovered block stored, run reaches GATED",
+         %{calls_agent: calls_agent} do
+      {:ok, resume_calls_agent} = Agent.start_link(fn -> [] end)
+      on_exit(fn -> if Process.alive?(resume_calls_agent), do: Agent.stop(resume_calls_agent) end)
+
+      resume_fn = fn role, sid, _ctx, _opts ->
+        Agent.update(resume_calls_agent, fn calls -> calls ++ [{role, sid}] end)
+        {:ok, "### What I Learned This Step\n\n- [local] recovered via warm-resume\n"}
+      end
+
+      assert :ok ==
+               OrchestrationLoop.run(
+                 harness: "claude_code",
+                 stack: "phoenix",
+                 cwd: "/tmp/irrelevant",
+                 pitch: "do the thing",
+                 invoke_fn:
+                   scripted_invoke_fn(calls_agent, %{
+                     "developer-phoenix-backend" => @without_block
+                   }),
+                 gate_fn: always_clear_gate_fn(),
+                 gate_preflight_fn: no_op_gate_preflight_fn(),
+                 preflight_probe_fn: all_present_preflight_probe_fn(),
+                 realized_check_fn: not_realized_fn(),
+                 advance_cycle_state_fn: no_op_advance_cycle_state_fn(),
+                 factcheck_scan_fn: always_clean_factcheck_fn(),
+                 env_var_scan_fn: always_clean_env_var_fn(),
+                 retrospective_resume_fn: resume_fn
+               )
+
+      assert Agent.get(resume_calls_agent, & &1) == [
+               {"developer-phoenix-backend", "sid-developer-phoenix-backend"}
+             ]
+
+      assert Agent.get(calls_agent, & &1) == @phoenix_sequence
+    end
+
+    test "resume seam returns {:error} → build STILL proceeds (never surfaces as a run/1 error)",
+         %{calls_agent: calls_agent} do
+      resume_fn = fn _role, _sid, _ctx, _opts -> {:error, "session expired"} end
+
+      assert :ok ==
+               OrchestrationLoop.run(
+                 harness: "claude_code",
+                 stack: "phoenix",
+                 cwd: "/tmp/irrelevant",
+                 pitch: "do the thing",
+                 invoke_fn:
+                   scripted_invoke_fn(calls_agent, %{
+                     "developer-phoenix-backend" => @without_block
+                   }),
+                 gate_fn: always_clear_gate_fn(),
+                 gate_preflight_fn: no_op_gate_preflight_fn(),
+                 preflight_probe_fn: all_present_preflight_probe_fn(),
+                 realized_check_fn: not_realized_fn(),
+                 advance_cycle_state_fn: no_op_advance_cycle_state_fn(),
+                 factcheck_scan_fn: always_clean_factcheck_fn(),
+                 env_var_scan_fn: always_clean_env_var_fn(),
+                 retrospective_resume_fn: resume_fn
+               )
+
+      assert Agent.get(calls_agent, & &1) == @phoenix_sequence
+    end
+
+    test "planner-phoenix missing block → resume seam invoked (top-of-run_roles wiring covers the true-> arm)",
+         %{calls_agent: calls_agent} do
+      {:ok, resume_calls_agent} = Agent.start_link(fn -> [] end)
+      on_exit(fn -> if Process.alive?(resume_calls_agent), do: Agent.stop(resume_calls_agent) end)
+
+      resume_fn = fn role, sid, _ctx, _opts ->
+        Agent.update(resume_calls_agent, fn calls -> calls ++ [{role, sid}] end)
+        {:ok, @with_block}
+      end
+
+      assert :ok ==
+               OrchestrationLoop.run(
+                 harness: "claude_code",
+                 stack: "phoenix",
+                 cwd: "/tmp/irrelevant",
+                 pitch: "do the thing",
+                 invoke_fn:
+                   scripted_invoke_fn(calls_agent, %{"planner-phoenix" => @without_block}),
+                 gate_fn: always_clear_gate_fn(),
+                 gate_preflight_fn: no_op_gate_preflight_fn(),
+                 preflight_probe_fn: all_present_preflight_probe_fn(),
+                 realized_check_fn: not_realized_fn(),
+                 advance_cycle_state_fn: no_op_advance_cycle_state_fn(),
+                 factcheck_scan_fn: always_clean_factcheck_fn(),
+                 env_var_scan_fn: always_clean_env_var_fn(),
+                 retrospective_resume_fn: resume_fn
+               )
+
+      assert Agent.get(resume_calls_agent, & &1) == [{"planner-phoenix", "sid-planner-phoenix"}]
+    end
+
+    test "reviewer-static missing block → resume seam invoked (handle_review path covered)",
+         %{calls_agent: calls_agent} do
+      {:ok, resume_calls_agent} = Agent.start_link(fn -> [] end)
+      on_exit(fn -> if Process.alive?(resume_calls_agent), do: Agent.stop(resume_calls_agent) end)
+
+      resume_fn = fn role, sid, _ctx, _opts ->
+        Agent.update(resume_calls_agent, fn calls -> calls ++ [{role, sid}] end)
+        {:ok, @with_block}
+      end
+
+      assert :ok ==
+               OrchestrationLoop.run(
+                 harness: "claude_code",
+                 stack: "static",
+                 cwd: "/tmp/irrelevant",
+                 pitch: "do the thing",
+                 invoke_fn:
+                   scripted_invoke_fn(calls_agent, %{
+                     "reviewer-static" => "APPROVED, " <> @without_block
+                   }),
+                 gate_fn: always_clear_gate_fn(),
+                 gate_preflight_fn: no_op_gate_preflight_fn(),
+                 preflight_probe_fn: all_present_preflight_probe_fn(),
+                 realized_check_fn: not_realized_fn(),
+                 advance_cycle_state_fn: no_op_advance_cycle_state_fn(),
+                 factcheck_scan_fn: always_clean_factcheck_fn(),
+                 env_var_scan_fn: always_clean_env_var_fn(),
+                 retrospective_resume_fn: resume_fn
+               )
+
+      assert Agent.get(resume_calls_agent, & &1) == [{"reviewer-static", "sid-reviewer-static"}]
+    end
+
+    test "CHANGES_REQUESTED rework re-invoke: missing block on both dev and reviewer re-invoke → resume seam fires for each",
+         %{calls_agent: calls_agent} do
+      {:ok, resume_calls_agent} = Agent.start_link(fn -> [] end)
+      on_exit(fn -> if Process.alive?(resume_calls_agent), do: Agent.stop(resume_calls_agent) end)
+
+      resume_fn = fn role, sid, _ctx, _opts ->
+        Agent.update(resume_calls_agent, fn calls -> calls ++ [{role, sid}] end)
+        {:ok, @with_block}
+      end
+
+      # phoenix stack: developer-phoenix-backend and reviewer-phoenix are
+      # BOTH in @retrospective_roles (unlike developer-static/reviewer-static
+      # is fine too, but phoenix exercises both roles from the same matcher
+      # set the deleted hook covered). First developer/reviewer calls
+      # include the block (so the top-of-run_roles retrospective step
+      # doesn't fire there); the SECOND call of each (the CHANGES_REQUESTED
+      # rework re-invoke) omits it, isolating the assertion to the
+      # rework-path wiring inside handle_review/7.
+      invoke_fn = fn role, _harness, _ctx, _opts ->
+        Agent.update(calls_agent, fn calls -> calls ++ [role] end)
+
+        value =
+          case role do
+            "reviewer-phoenix" ->
+              seen = Enum.count(Agent.get(calls_agent, & &1), &(&1 == "reviewer-phoenix"))
+
+              if seen <= 1,
+                do: "REVIEW_VERDICT: CHANGES_REQUESTED — fix it\n\n" <> @with_block,
+                else: "REVIEW_VERDICT: APPROVED, " <> @without_block
+
+            "developer-phoenix-backend" ->
+              seen =
+                Enum.count(Agent.get(calls_agent, & &1), &(&1 == "developer-phoenix-backend"))
+
+              if seen <= 1, do: "did it, " <> @with_block, else: @without_block
+
+            _ ->
+              @with_block
+          end
+
+        {:ok, %{"status" => "success", "value" => value, "session_id" => "sid-#{role}"}}
+      end
+
+      assert :ok ==
+               OrchestrationLoop.run(
+                 harness: "claude_code",
+                 stack: "phoenix",
+                 cwd: "/tmp/irrelevant",
+                 pitch: "do the thing",
+                 invoke_fn: invoke_fn,
+                 gate_fn: always_clear_gate_fn(),
+                 gate_preflight_fn: no_op_gate_preflight_fn(),
+                 preflight_probe_fn: all_present_preflight_probe_fn(),
+                 realized_check_fn: not_realized_fn(),
+                 advance_cycle_state_fn: no_op_advance_cycle_state_fn(),
+                 factcheck_scan_fn: always_clean_factcheck_fn(),
+                 env_var_scan_fn: always_clean_env_var_fn(),
+                 retrospective_resume_fn: resume_fn
+               )
+
+      resume_calls = Agent.get(resume_calls_agent, & &1)
+      assert {"developer-phoenix-backend", "sid-developer-phoenix-backend"} in resume_calls
+      assert {"reviewer-phoenix", "sid-reviewer-phoenix"} in resume_calls
+    end
+
+    test "env-var violation rework re-invoke: missing block on dev's second call → resume seam fires",
+         %{calls_agent: calls_agent} do
+      {:ok, resume_calls_agent} = Agent.start_link(fn -> [] end)
+      on_exit(fn -> if Process.alive?(resume_calls_agent), do: Agent.stop(resume_calls_agent) end)
+
+      resume_fn = fn role, sid, _ctx, _opts ->
+        Agent.update(resume_calls_agent, fn calls -> calls ++ [{role, sid}] end)
+        {:ok, @with_block}
+      end
+
+      {:ok, scan_calls_agent} = Agent.start_link(fn -> 0 end)
+      on_exit(fn -> if Process.alive?(scan_calls_agent), do: Agent.stop(scan_calls_agent) end)
+
+      scan_fn = fn _cwd ->
+        n = Agent.get_and_update(scan_calls_agent, fn c -> {c, c + 1} end)
+        if n == 0, do: {:violations, "MY_VAR"}, else: {:clean}
+      end
+
+      # phoenix stack: developer-phoenix-backend is the role run_env_var_step
+      # re-invokes on a violation, and it IS in @retrospective_roles (unlike
+      # developer-static). First developer-phoenix-backend call includes the
+      # block; the SECOND call (the env-var-violation rework re-invoke)
+      # omits it, isolating the assertion to run_env_var_step's rework-path
+      # wiring.
+      invoke_fn = fn role, _harness, _ctx, _opts ->
+        Agent.update(calls_agent, fn calls -> calls ++ [role] end)
+
+        value =
+          if role == "developer-phoenix-backend" do
+            seen =
+              Enum.count(Agent.get(calls_agent, & &1), &(&1 == "developer-phoenix-backend"))
+
+            if seen <= 1, do: "did it, " <> @with_block, else: @without_block
+          else
+            @with_block
+          end
+
+        {:ok, %{"status" => "success", "value" => value, "session_id" => "sid-#{role}"}}
+      end
+
+      assert :ok ==
+               OrchestrationLoop.run(
+                 harness: "claude_code",
+                 stack: "phoenix",
+                 cwd: "/tmp/irrelevant",
+                 pitch: "do the thing",
+                 invoke_fn: invoke_fn,
+                 gate_fn: always_clear_gate_fn(),
+                 gate_preflight_fn: no_op_gate_preflight_fn(),
+                 preflight_probe_fn: all_present_preflight_probe_fn(),
+                 realized_check_fn: not_realized_fn(),
+                 advance_cycle_state_fn: no_op_advance_cycle_state_fn(),
+                 factcheck_scan_fn: always_clean_factcheck_fn(),
+                 env_var_scan_fn: scan_fn,
+                 retrospective_resume_fn: resume_fn
+               )
+
+      assert Agent.get(resume_calls_agent, & &1) == [
+               {"developer-phoenix-backend", "sid-developer-phoenix-backend"}
+             ]
+    end
+
+    test "invoke_role threads envelope session_id into returned result" do
+      codegen_call_fn = fn _harness, _model, _effort, _sp, _tools, _prompt ->
+        %{"result" => %{"status" => "success", "value" => "ok"}, "session_id" => "abc-123"}
+      end
+
+      ctx = %{cwd: "/tmp/irrelevant", pitch: "x", artifacts: %{}}
+
+      assert {:ok, result} =
+               OrchestrationLoop.invoke_role("developer-static", "claude_code", ctx,
+                 codegen_call_fn: codegen_call_fn,
+                 resolve_fn: fn _role, _harness -> {"m", "e"} end
+               )
+
+      assert result["session_id"] == "abc-123"
+    end
+  end
 end
 
 # Isolated in a sibling async: false module because these tests mutate the

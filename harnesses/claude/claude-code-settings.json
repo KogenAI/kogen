@@ -231,15 +231,6 @@
             "command": "$HOME/.claude/hooks/developer-no-self-gate-reset.sh"
           }
         ]
-      },
-      {
-        "matcher": "developer-phoenix-backend|developer-phoenix-frontend|planner-phoenix|planner-static|reviewer-phoenix|reviewer-static",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "$HOME/.claude/hooks/subagent-retrospective-guard.sh"
-          }
-        ]
       }
     ],
     "PreToolUse": [

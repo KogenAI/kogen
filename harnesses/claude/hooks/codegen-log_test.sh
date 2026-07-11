@@ -215,7 +215,7 @@ assert "opaque-body append is a second role event" "2" "$(jq_count "$opaque_log"
 assert "opaque-body appended stray H2 preserved verbatim" "0" "$(jq -r --arg r developer-phoenix-backend 'select(.ev=="role" and .role==$r)|.body' "$opaque_log" | grep -qF '## Baz' && printf 0 || printf 1)"
 
 # Test 8: --learned/--died/--verdict emit structured events the reader hooks
-# (subagent-retrospective-guard) jq-select for.
+# jq-select for.
 unset CODEGEN_LOG_PATH
 unset AGENT_TYPE
 marker_log="$PROJECT/codegen/logging/20260103_000000_marker-flags_cycle.jsonl"

@@ -70,7 +70,6 @@ import { register as registerStaticSiteExGuard } from "./hooks/static-site-ex-gu
 import { register as registerStepLogSectionBeforeSpawn } from "./hooks/step-log-section-before-spawn";
 import { register as registerStopResume } from "./hooks/stop-resume";
 import { register as registerStopVerifyPlannerGate } from "./hooks/stop-verify-planner-gate";
-import { register as registerSubagentRetrospectiveGuard } from "./hooks/subagent-retrospective-guard";
 import { register as registerTrackSubagentEdits } from "./hooks/track-subagent-edits";
 import { register as registerTrackToolFailures } from "./hooks/track-tool-failures";
 import { register as registerUsageRulesGrepGuard } from "./hooks/usage-rules-grep-guard";
@@ -131,7 +130,6 @@ export default function (pi: ExtensionAPI): void {
   registerStepLogSectionBeforeSpawn(pi);
   registerStopResume(pi);
   registerStopVerifyPlannerGate(pi);
-  registerSubagentRetrospectiveGuard(pi);
   registerTrackSubagentEdits(pi);
   registerTrackToolFailures(pi);
   registerUsageRulesGrepGuard(pi);
