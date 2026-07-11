@@ -400,6 +400,21 @@ ROLE_IN_USAGE=0
 check "(n) usage does not mention --role" "0" "$ROLE_IN_USAGE"
 
 # ─────────────────────────────────────────────────────────────────────────────
+# Test (q): --resume <sid> round-trips into CODEGEN_CALL_RESUME
+# ─────────────────────────────────────────────────────────────────────────────
+CC_Q="$(make_cc_root cc_q)"
+make_claude_dispatch_stub "$CC_Q" 'printf "%s" "$CODEGEN_CALL_RESUME" > "'"$BASE_TMP"'/resume_seen.txt"; printf '"'"'%s\n'"'"' '"'"'{"result":{"status":"success","value":"ok","reason":null,"clarifying_question":null,"retry_meta":null},"usage":{"input_tokens":1,"output_tokens":1,"cache_read_input_tokens":0,"cache_creation_input_tokens":0,"cost_usd":0,"latency_ms":100,"model":"haiku","num_turns":1},"error":null,"harness":"claude_code","session_id":null}'"'"''
+
+actual_exit=0
+"$CC_Q/codegen-call" \
+    --harness=claude_code --model=haiku --effort=low \
+    --system-prompt "@$SP_FILE" --resume=warm-session-123 \
+    "resume test" >/dev/null 2>/dev/null || actual_exit=$?
+check "(q) --resume round-trip exits 0" "0" "$actual_exit"
+RESUME_SEEN="$(cat "$BASE_TMP/resume_seen.txt" 2>/dev/null || true)"
+check "(q) CODEGEN_CALL_RESUME carries the session id" "warm-session-123" "$RESUME_SEEN"
+
+# ─────────────────────────────────────────────────────────────────────────────
 # Test (o): codegen-call source contains zero role-name tokens
 # ─────────────────────────────────────────────────────────────────────────────
 ROLE_TOKEN_COUNT="$(grep -cE 'planner|developer|committer|reviewer|curator' "$CODEGEN_CALL" || true)"

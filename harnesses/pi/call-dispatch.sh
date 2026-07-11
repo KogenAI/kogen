@@ -35,6 +35,7 @@ EFFORT="${CODEGEN_CALL_EFFORT:?CODEGEN_CALL_EFFORT not set}"
 PROMPT="${CODEGEN_CALL_PROMPT:?CODEGEN_CALL_PROMPT not set}"
 JSON_SCHEMA_CONTENT="${CODEGEN_CALL_JSON_SCHEMA:-}"
 EXTENSION_PATH="${CODEGEN_CALL_EXTENSION_PATH:-}"
+RESUME="${CODEGEN_CALL_RESUME:-}"
 
 _capture_transcript() {
     [ -n "${CODEGEN_CALL_TRANSCRIPT_PATH:-}" ] || return 0
@@ -58,13 +59,20 @@ fi
 ARGS=(
     -p
     --mode json
-    --no-session
     --no-context-files
     --append-system-prompt "$SYSTEM_PROMPT"
     --provider openai-codex
     --model "$MODEL"
     --thinking "$EFFORT"
 )
+
+# --session-id resumes/creates a specific persisted session (pi's closest
+# equivalent to claude's --resume); no RESUME → keep the call ephemeral.
+if [[ -n "$RESUME" ]]; then
+    ARGS+=(--session-id "$RESUME")
+else
+    ARGS+=(--no-session)
+fi
 
 if [[ -n "$EXTENSION_PATH" ]]; then
     ARGS+=(--extension "$EXTENSION_PATH")
@@ -119,7 +127,8 @@ if [[ $EXIT_CODE -ne 0 ]] && [[ -z "$AGENT_END_EVENT" ]]; then
                 num_turns: 1
             },
             error: $error,
-            harness: "pi"
+            harness: "pi",
+            session_id: null
         }'
     exit 1
 fi
@@ -149,7 +158,8 @@ if [[ -z "$AGENT_END_EVENT" ]]; then
                 num_turns: 1
             },
             error: ("no agent_end event; tail: " + $tail_out),
-            harness: "pi"
+            harness: "pi",
+            session_id: null
         }'
     exit 0
 fi
@@ -276,6 +286,7 @@ jq -n \
             num_turns: $num_turns
         },
         error: null,
-        harness: "pi"
+        harness: "pi",
+        session_id: null
     }'
 exit 0

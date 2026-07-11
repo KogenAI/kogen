@@ -26,6 +26,10 @@
 #                         invoking harness supplies identity another way).
 #                         This script performs zero validation of the value
 #                         and never special-cases it — pure passthrough.
+#   --resume=<sid>        OPTIONAL: generic passthrough value; a prior
+#                         session id to resume. This script performs zero
+#                         validation of the value and never special-cases
+#                         it — pure passthrough (mirrors --agent).
 #   PROMPT                REQUIRED positional arg (last arg or after --)
 #
 # Exit codes:
@@ -79,10 +83,11 @@ ALLOWED_TOOLS_SET=""
 SETTINGS_PATH=""
 EXTENSION_PATH=""
 AGENT=""
+RESUME=""
 PROMPT=""
 
 usage() {
-    printf 'Usage: codegen-call --harness=<claude_code|pi> --model=<m> --effort=<e> [--system-prompt @<path>] [--agent=<v>] [--json-schema @<path>] [--allowed-tools=<list>] [--settings @<path>] [--extension @<path>] PROMPT\n' >&2
+    printf 'Usage: codegen-call --harness=<claude_code|pi> --model=<m> --effort=<e> [--system-prompt @<path>] [--agent=<v>] [--resume=<sid>] [--json-schema @<path>] [--allowed-tools=<list>] [--settings @<path>] [--extension @<path>] PROMPT\n' >&2
     exit 2
 }
 
@@ -164,6 +169,14 @@ while [[ $# -gt 0 ]]; do
         ;;
     --agent)
         AGENT="$2"
+        shift 2
+        ;;
+    --resume=*)
+        RESUME="${1#--resume=}"
+        shift
+        ;;
+    --resume)
+        RESUME="$2"
         shift 2
         ;;
     --)
@@ -286,6 +299,7 @@ export CODEGEN_CALL_ALLOWED_TOOLS_SET="${ALLOWED_TOOLS_SET:-}"
 export CODEGEN_CALL_SETTINGS_PATH="$SETTINGS_ABS_PATH"
 export CODEGEN_CALL_EXTENSION_PATH="$EXTENSION_ABS_PATH"
 export CODEGEN_CALL_AGENT="$AGENT"
+export CODEGEN_CALL_RESUME="$RESUME"
 export CODEGEN_CALL_PROMPT="$PROMPT"
 
 DISPATCH="$SCRIPT_DIR/harnesses/$DISPATCH_DIR/call-dispatch.sh"

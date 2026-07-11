@@ -184,6 +184,13 @@ assert_jq_truthy \
     "$ENVELOPE" \
     '.result.value != null'
 
+# session_id is threaded into the envelope from the result event
+assert_jq \
+    "envelope carries session_id from result event" \
+    "$ENVELOPE" \
+    ".session_id" \
+    "test-session-abc123"
+
 # exit code should be 0
 if [[ "$actual_exit" -eq 0 ]]; then
     [ -n "${VERBOSE:-}" ] && printf 'PASS: dispatch exits 0\n'
@@ -312,6 +319,13 @@ assert_file_contains "$HARNESSES_DIR/claude-ops.sh" "--settings"
 
 # Test 13: experiment preserves API_FORCE_IDLE_TIMEOUT (regression guard)
 assert_file_contains "$HARNESSES_DIR/claude-experiment.sh" "API_FORCE_IDLE_TIMEOUT"
+
+# ── Persist-always: --no-session-persistence is gone ─────────────────────────
+assert_file_absent "$HARNESSES_DIR/call-dispatch.sh" "--no-session-persistence"
+
+# ── Pi divergence: --no-session persists only in absence of --resume ────────
+PI_DISPATCH_SRC="$(cd "$HOOKS_DIR/../../pi" && pwd)/call-dispatch.sh"
+assert_file_contains "$PI_DISPATCH_SRC" "--session-id"
 
 # ── Durable transcript capture (CODEGEN_CALL_TRANSCRIPT_PATH) ────────────────
 
@@ -491,6 +505,50 @@ assert_log_line_after "$BASE_TMP/argv_i.log" "--tools" "Read Edit" \
     "(i) agent + explicit tools: --tools followed by explicit list"
 assert_log_line_after "$BASE_TMP/argv_i.log" "--setting-sources" "user,project" \
     "(i) agent + explicit tools: --setting-sources followed by user,project"
+
+# (j) CODEGEN_CALL_RESUME set → --resume threaded with the session id
+(
+    export PATH="$ARGV_STUB_DIR:$PATH"
+    export ARGV_LOG="$BASE_TMP/argv_j.log"
+    export FIXTURE_PATH="$FIXTURE"
+    export CODEGEN_CALL_AGENT="developer-static"
+    export CODEGEN_CALL_RESUME="warm-session-xyz"
+    export CODEGEN_CALL_MODEL="claude-haiku-4-5"
+    export CODEGEN_CALL_EFFORT="low"
+    export CODEGEN_CALL_PROMPT="Do the thing."
+    unset CODEGEN_CALL_SYSTEM_PROMPT 2>/dev/null || true
+    unset CODEGEN_CALL_ALLOWED_TOOLS_SET 2>/dev/null || true
+    unset CODEGEN_CALL_ALLOWED_TOOLS 2>/dev/null || true
+    unset CODEGEN_CALL_JSON_SCHEMA 2>/dev/null || true
+    unset CODEGEN_CALL_JSON_SCHEMA_PATH 2>/dev/null || true
+    unset CODEGEN_CALL_SETTINGS_PATH 2>/dev/null || true
+    bash "$DISPATCH_SCRIPT" >/dev/null 2>"$BASE_TMP/argv_j_stderr.log" || true
+)
+
+assert_log_contains_line "$BASE_TMP/argv_j.log" "--resume" "(j) CODEGEN_CALL_RESUME set: --resume flag present"
+assert_log_line_after "$BASE_TMP/argv_j.log" "--resume" "warm-session-xyz" \
+    "(j) CODEGEN_CALL_RESUME set: --resume followed by session id"
+
+# (k) CODEGEN_CALL_RESUME unset → no --resume flag threaded
+(
+    export PATH="$ARGV_STUB_DIR:$PATH"
+    export ARGV_LOG="$BASE_TMP/argv_k.log"
+    export FIXTURE_PATH="$FIXTURE"
+    export CODEGEN_CALL_AGENT="developer-static"
+    export CODEGEN_CALL_MODEL="claude-haiku-4-5"
+    export CODEGEN_CALL_EFFORT="low"
+    export CODEGEN_CALL_PROMPT="Do the thing."
+    unset CODEGEN_CALL_RESUME 2>/dev/null || true
+    unset CODEGEN_CALL_SYSTEM_PROMPT 2>/dev/null || true
+    unset CODEGEN_CALL_ALLOWED_TOOLS_SET 2>/dev/null || true
+    unset CODEGEN_CALL_ALLOWED_TOOLS 2>/dev/null || true
+    unset CODEGEN_CALL_JSON_SCHEMA 2>/dev/null || true
+    unset CODEGEN_CALL_JSON_SCHEMA_PATH 2>/dev/null || true
+    unset CODEGEN_CALL_SETTINGS_PATH 2>/dev/null || true
+    bash "$DISPATCH_SCRIPT" >/dev/null 2>"$BASE_TMP/argv_k_stderr.log" || true
+)
+
+assert_log_absent_line "$BASE_TMP/argv_k.log" "--resume" "(k) CODEGEN_CALL_RESUME unset: --resume flag absent"
 
 # ── RED-then-GREEN proof for FIX-1/FIX-3 (case g) ────────────────────────────
 # Synthetic pre-fix fixture (NOT git HEAD): a floating `git show HEAD:` compare

@@ -25,6 +25,7 @@ _ts_ms() {
 
 # ── Read CODEGEN_CALL_* env vars ──────────────────────────────────────────────
 AGENT="${CODEGEN_CALL_AGENT:-}"
+RESUME="${CODEGEN_CALL_RESUME:-}"
 MODEL="${CODEGEN_CALL_MODEL:?CODEGEN_CALL_MODEL not set}"
 EFFORT="${CODEGEN_CALL_EFFORT:?CODEGEN_CALL_EFFORT not set}"
 PROMPT="${CODEGEN_CALL_PROMPT:?CODEGEN_CALL_PROMPT not set}"
@@ -64,7 +65,6 @@ COMMON_FLAGS=(
     --verbose
     --setting-sources "$SETTING_SOURCES"
     --strict-mcp-config
-    --no-session-persistence
     --disable-slash-commands
     --model "$MODEL"
     --effort "$EFFORT"
@@ -75,6 +75,12 @@ if [[ -n "$AGENT" ]]; then
     COMMON_FLAGS+=(--agent "$AGENT")
 else
     COMMON_FLAGS+=(--append-system-prompt "$SYSTEM_PROMPT")
+fi
+
+# --resume: warm-resume a prior persisted session (sessions persist by
+# default now — no opt-out flag disables that).
+if [[ -n "$RESUME" ]]; then
+    COMMON_FLAGS+=(--resume "$RESUME")
 fi
 
 # --tools: explicit list wins; no agent + no explicit → hermetic deny-all;
@@ -150,7 +156,8 @@ if [[ $EXIT_CODE -ne 0 ]] && [[ -z "$RESULT_EVENT" ]]; then
                 num_turns: 0
             },
             error: $error,
-            harness: "claude_code"
+            harness: "claude_code",
+            session_id: null
         }'
     exit 1
 fi
@@ -181,7 +188,8 @@ if [[ -z "$RESULT_EVENT" ]]; then
                 num_turns: 0
             },
             error: ("no result event; tail: " + $tail_out),
-            harness: "claude_code"
+            harness: "claude_code",
+            session_id: null
         }'
     exit 0
 fi
@@ -192,6 +200,7 @@ IS_ERROR="$(printf '%s' "$RESULT_EVENT" | jq -r '.is_error // false')"
 RESULT_TEXT="$(printf '%s' "$RESULT_EVENT" | jq -r '.result // ""')"
 NUM_TURNS="$(printf '%s' "$RESULT_EVENT" | jq -r '.num_turns // 1')"
 TOTAL_COST="$(printf '%s' "$RESULT_EVENT" | jq -r '.total_cost_usd // 0')"
+SESSION_ID="$(printf '%s' "$RESULT_EVENT" | jq -r '.session_id // ""')"
 
 # Extract usage tokens from result event
 INPUT_TOKENS="$(printf '%s' "$RESULT_EVENT" | jq -r '.usage.input_tokens // 0')"
@@ -299,6 +308,7 @@ jq -n \
     --argjson latency_ms "$LATENCY_MS" \
     --arg model "$MODEL" \
     --argjson num_turns "$NUM_TURNS" \
+    --arg session_id "$SESSION_ID" \
     '{
         result: {
             status: $status,
@@ -318,6 +328,7 @@ jq -n \
             num_turns: $num_turns
         },
         error: null,
-        harness: "claude_code"
+        harness: "claude_code",
+        session_id: (if $session_id == "" then null else $session_id end)
     }'
 exit 0
