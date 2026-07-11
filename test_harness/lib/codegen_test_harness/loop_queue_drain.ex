@@ -6,19 +6,28 @@ defmodule CodegenTestHarness.LoopQueueDrain do
   (zero cross-pitch context accumulation), transient-retries with backoff,
   enforces a per-pitch wall-clock budget/watchdog, stashes a dirty tree on
   timeout (restoring it before the retry attempt — see `:git_stash_restore_fn`),
-  and moves `ready/<slug>.md` to `shipped/<slug>.md` on child exit 0.
+  and moves `ready/<slug>.md` to `shipped/<slug>.md` on a VERIFIED ship.
 
   Wires `CodegenTestHarness.LoopQueue.ordered_slugs/1` (topo-order,
   raise-on-cycle) and `LoopQueue.transient?/1` (JSONL classify) live — both
   were previously unreachable from any runtime caller.
 
   Old `build-queue.sh` `build-queue.json` position-manifest concerns are
-  superseded by the child's exit code (0 = shipped, non-zero = not shipped).
-  `is_gate_green`/committed-but-nonzero recovery (legacy `build-queue.sh`
-  lines 529, 546-551, 554) IS ported — see `git_head_fn`/`gate_verdict_fn`
-  below: a committer-post-commit hiccup (child exits non-zero after HEAD
-  already moved and the gate verdict is `"clear"`) ships or counts the
-  pitch as shipped instead of halting the whole queue.
+  superseded by a verified-commit check, NOT the child's bare exit code. A
+  child exit code of 0 is NECESSARY but not SUFFICIENT proof of a real ship
+  — see `handle_exit_zero/6`: it additionally requires `committed?` (HEAD
+  moved forward, non-orphaning, since the pre-spawn `head_before` read) AND
+  a FRESH `gate_clear?` (verdict `"clear"` AND its recorded `diff_sha` is a
+  prefix of the current HEAD — never a stale mid-cycle verdict) before
+  shipping. An exit-0 without a verified commit under a fresh clear gate
+  (a "false-0") is treated as a deterministic failure: the dirty tree is
+  stashed and the pitch is skipped-and-continued, same as a genuine
+  nonzero exit. `is_gate_green`/committed-but-nonzero recovery (legacy
+  `build-queue.sh` lines 529, 546-551, 554) IS ported — see
+  `git_head_fn`/`gate_verdict_fn` below: a committer-post-commit hiccup
+  (child exits non-zero after HEAD already moved and the gate verdict is
+  `"clear"`) ships or counts the pitch as shipped instead of halting the
+  whole queue.
 
   Timeout is handled SEPARATELY from transient-retry classification: a
   watchdog timeout always stashes + retries-once + skips-on-second, and is
@@ -127,6 +136,12 @@ defmodule CodegenTestHarness.LoopQueueDrain do
       to detect a HEAD-moving `git reset` that dropped the cycle base
     * `:gate_verdict_fn` — `(cwd -> String.t())`, default reads
       `codegen/gate-pending/gate-result.json` `.verdict`; `""` when absent
+    * `:gate_diff_sha_fn` — `(cwd -> String.t())`, default reads
+      `codegen/gate-pending/gate-result.json` `.diff_sha` (SHORT sha); `""`
+      when absent. Used with `:git_head_fn` (FULL sha) via
+      `String.starts_with?/2` to reject a stale mid-cycle "clear" verdict on
+      the exit-0 ship path (`handle_exit_zero/6`) — never a bare equality,
+      which would always fail short-vs-full.
   """
   @spec drain(drain_opts()) :: {:ok, non_neg_integer()} | {:error, String.t()}
   def drain(opts) do
@@ -189,6 +204,7 @@ defmodule CodegenTestHarness.LoopQueueDrain do
             git_head_fn: Keyword.get(opts, :git_head_fn, &default_git_head_fn/1),
             git_ancestor_fn: Keyword.get(opts, :git_ancestor_fn, &default_git_ancestor_fn/3),
             gate_verdict_fn: Keyword.get(opts, :gate_verdict_fn, &default_gate_verdict_fn/1),
+            gate_diff_sha_fn: Keyword.get(opts, :gate_diff_sha_fn, &default_gate_diff_sha_fn/1),
             discover_session_log_fn:
               Keyword.get(opts, :discover_session_log_fn, &default_discover_session_log/3),
             timed_out_slugs: MapSet.new(),
@@ -313,16 +329,95 @@ defmodule CodegenTestHarness.LoopQueueDrain do
 
     case result do
       {:exit_code, 0} ->
-        ship(state.ready_dir, state.shipped_dir, slug)
-        IO.puts(:stderr, "[#{idx}/#{state.total}] #{slug} ... shipped")
-        state = %{state | retry_count: 0, last_slug: nil, consecutive_fails: 0}
-        run_loop(state, shipped_count + 1)
+        handle_exit_zero(state, slug, jsonl, head_before, shipped_count, idx)
 
       {:exit_code, _n} ->
         handle_nonzero_exit(state, slug, jsonl, head_before, shipped_count, idx)
 
       :timeout ->
         handle_timeout(state, slug, shipped_count, idx)
+    end
+  end
+
+  # A child exit code of 0 is NOT sufficient proof the cycle actually shipped
+  # a commit under a clear gate — a false-0 (the at-source defect is tracked
+  # separately: draft loop-exits-zero-despite-failed-cycle) would otherwise
+  # sail straight to "shipped" with HEAD unmoved and a dirty tree. Symmetric
+  # with handle_nonzero_exit/6: verify `committed?` (HEAD moved forward,
+  # non-orphaning) AND a FRESH `gate_clear?` (verdict "clear" AND its
+  # recorded short diff_sha is a prefix of the full head_after — never a
+  # stale mid-cycle verdict) before shipping. Anything short of that is
+  # treated as a failed cycle: stash the dirty tree and fall through the
+  # same skip-and-continue / circuit-breaker path as a deterministic
+  # nonzero failure.
+  defp handle_exit_zero(state, slug, jsonl, head_before, shipped_count, idx) do
+    known_base? = head_before != nil and head_before != ""
+    head_after = if known_base?, do: state.git_head_fn.(state.cwd), else: nil
+    head_moved? = known_base? and head_after != head_before
+
+    orphaned? =
+      head_moved? and head_after != nil and
+        not state.git_ancestor_fn.(state.cwd, head_before, head_after)
+
+    committed? = head_moved? and not orphaned?
+
+    diff_sha = state.gate_diff_sha_fn.(state.cwd)
+
+    gate_fresh? =
+      diff_sha != "" and head_after != nil and String.starts_with?(head_after, diff_sha)
+
+    gate_clear? = state.gate_verdict_fn.(state.cwd) == "clear" and gate_fresh?
+
+    cond do
+      orphaned? ->
+        IO.puts(:stderr, orphan_remediation(head_before, head_after))
+        emit_failure_diagnostics(jsonl, idx, state.total, slug)
+
+        {:error,
+         "queue: HALTED — #{slug} orphaned base #{head_before} (repo left untouched, see remediation above)"}
+
+      committed? and gate_clear? ->
+        ship(state.ready_dir, state.shipped_dir, slug)
+        IO.puts(:stderr, "[#{idx}/#{state.total}] #{slug} ... shipped")
+        state = %{state | retry_count: 0, last_slug: nil, consecutive_fails: 0}
+        run_loop(state, shipped_count + 1)
+
+      true ->
+        # False exit-0: no verified commit under a fresh clear gate. Treat as
+        # a deterministic failure — stash whatever dirty tree is left (never
+        # auto-popped, `queue-fail:` prefix, operator forensics), skip and
+        # continue subject to the same consecutive-failure circuit breaker.
+        IO.puts(
+          :stderr,
+          "[#{idx}/#{state.total}] #{slug} ... exit 0 but no verified commit under a fresh clear gate — treating as FAILED"
+        )
+
+        emit_failure_diagnostics(jsonl, idx, state.total, slug)
+
+        case state.git_stash_fn.(state.cwd, slug, "fail") do
+          :ok -> :ok
+          {:error, _reason} -> :ok
+        end
+
+        failed_slugs = MapSet.put(state.failed_slugs, slug)
+        consecutive_fails = state.consecutive_fails + 1
+
+        if consecutive_fails >= state.max_consecutive_fails do
+          {:error,
+           "queue: HALTED — #{consecutive_fails} consecutive deterministic failures " <>
+             "(#{Enum.join(failed_slugs, ", ")}), environment likely broken — fix env, re-run; " <>
+             "failed pitches remain in ready/, work recoverable from queue-fail: stashes"}
+        else
+          state = %{
+            state
+            | failed_slugs: failed_slugs,
+              consecutive_fails: consecutive_fails,
+              retry_count: 0,
+              last_slug: nil
+          }
+
+          run_loop(state, shipped_count)
+        end
     end
   end
 
@@ -977,6 +1072,35 @@ defmodule CodegenTestHarness.LoopQueueDrain do
          true <- is_binary(verdict) do
       verdict
     else
+      # fail-loud-exempt: absent/malformed gate-result.json means no gate has
+      # run yet (or ran before the file existed) — a legitimate "no verdict
+      # known" state, not an unexpected error. Callers treat "" as never
+      # "clear", so this never masks a real gate failure.
+      _ -> ""
+    end
+  end
+
+  # ── Real gate_diff_sha_fn: reads codegen/gate-pending/gate-result.json's
+  # short `diff_sha` (written by `write_gate_result`, gate-result.sh:197) —
+  # mirrors default_gate_verdict_fn's read but surfaces the SHORT sha used
+  # for the freshness check against the FULL git_head_fn sha in
+  # handle_exit_zero/6 (String.starts_with?/2 prefix match, never equality).
+
+  @doc false
+  @spec default_gate_diff_sha_fn(String.t()) :: String.t()
+  def default_gate_diff_sha_fn(cwd) do
+    path = Path.join([cwd, "codegen", "gate-pending", "gate-result.json"])
+
+    with {:ok, content} <- File.read(path),
+         {:ok, %{"diff_sha" => diff_sha}} <- Jason.decode(content),
+         true <- is_binary(diff_sha) do
+      diff_sha
+    else
+      # fail-loud-exempt: absent/malformed gate-result.json (no gate has run
+      # yet, or file predates the diff_sha field) is a legitimate "no fresh
+      # sha known" state — mirrors default_gate_verdict_fn's identical
+      # fail-open contract immediately above. Callers treat "" as never a
+      # match for String.starts_with?/2, so this never masks a real check.
       _ -> ""
     end
   end

@@ -37,11 +37,63 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
       pid_alive_fn: fn _pid -> false end,
       git_head_fn: fn _cwd -> nil end,
       gate_verdict_fn: fn _cwd -> "" end,
+      gate_diff_sha_fn: fn _cwd -> "" end,
       discover_session_log_fn: fn _cwd, _slug, _spawn_stamp -> nil end,
       blocked_fn: fn -> %{} end
     ]
 
     Keyword.merge(defaults, extra)
+  end
+
+  # Fixture opts simulating a LEGITIMATE ship on the exit-0 path (see
+  # LoopQueueDrain.handle_exit_zero/6): git_head_fn is called once per
+  # do_run_slug invocation REGARDLESS of outcome (once for the pre-spawn
+  # head_before read on EVERY attempt, including timeout/retry attempts that
+  # never reach handle_exit_zero/handle_nonzero_exit — see do_run_slug's
+  # `head_before = state.git_head_fn.(state.cwd)` above the result match).
+  # git_head_fn returns a MONOTONICALLY INCREASING value on every call
+  # ("head-0", "head-1", ...) — so any (head_before, head_after) pair for a
+  # given attempt is guaranteed head_after != head_before (forward move),
+  # independent of how many extra calls earlier timeout attempts consumed.
+  # gate_verdict_fn/gate_diff_sha_fn track the MOST RECENT head value.
+  #
+  # SAFE for: exit-0-only sequences, and TIMEOUT-then-exit-0 sequences
+  # (timeout attempts never reach handle_nonzero_exit, so its
+  # committer-post-commit-hiccup ship branches are never evaluated with this
+  # fixture's "clear" verdict).
+  #
+  # UNSAFE for: sequences with a NONZERO-exit attempt before the real
+  # exit-0 ship (e.g. transient-retry-then-ship) — a nonzero attempt DOES
+  # reach handle_nonzero_exit/6, which shares this same "always clear"
+  # verdict and would spuriously trip its committer-post-commit-hiccup
+  # branches (shipping early, on the wrong attempt, before the intended
+  # retry). Tests with that shape need a bespoke fixture (see test 4,
+  # 6r3, 6f above) that keeps the gate non-clear until the exit-0 attempt.
+  defp shipped_opts(ctx, extra) do
+    head_calls = start_agent(0)
+    latest_head = start_agent("")
+
+    git_head_fn = fn _cwd ->
+      n = Agent.get_and_update(head_calls, fn n -> {n, n + 1} end)
+      head = "head-#{n}"
+      Agent.update(latest_head, fn _ -> head end)
+      head
+    end
+
+    gate_verdict_fn = fn _cwd -> "clear" end
+    gate_diff_sha_fn = fn _cwd -> Agent.get(latest_head, & &1) end
+
+    base_opts(
+      ctx,
+      Keyword.merge(
+        [
+          git_head_fn: git_head_fn,
+          gate_verdict_fn: gate_verdict_fn,
+          gate_diff_sha_fn: gate_diff_sha_fn
+        ],
+        extra
+      )
+    )
   end
 
   defp start_agent(initial) do
@@ -62,7 +114,7 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
       {:exit_code, 0}
     end
 
-    assert {:ok, 2} = LoopQueueDrain.drain(base_opts(ctx, spawn_fn: spawn_fn))
+    assert {:ok, 2} = LoopQueueDrain.drain(shipped_opts(ctx, spawn_fn: spawn_fn))
     assert Agent.get(calls, & &1) == ["a", "b"]
     refute File.exists?(Path.join(ctx.ready_dir, "a.md"))
     refute File.exists?(Path.join(ctx.ready_dir, "b.md"))
@@ -80,7 +132,7 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
       {:exit_code, 0}
     end
 
-    assert {:ok, 1} = LoopQueueDrain.drain(base_opts(ctx, spawn_fn: spawn_fn))
+    assert {:ok, 1} = LoopQueueDrain.drain(shipped_opts(ctx, spawn_fn: spawn_fn))
 
     captured = Agent.get(jsonl_path, & &1)
     assert Path.basename(captured) == "20231114_221320_solo_build.log"
@@ -96,7 +148,7 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
 
     output =
       capture_io(:stderr, fn ->
-        assert {:ok, 1} = LoopQueueDrain.drain(base_opts(ctx, spawn_fn: spawn_fn))
+        assert {:ok, 1} = LoopQueueDrain.drain(shipped_opts(ctx, spawn_fn: spawn_fn))
       end)
 
     assert output =~ ~r/\[1\/1\] solo \.\.\. building/
@@ -110,7 +162,7 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
 
     output =
       capture_io(:stderr, fn ->
-        assert {:ok, 2} = LoopQueueDrain.drain(base_opts(ctx, spawn_fn: spawn_fn))
+        assert {:ok, 2} = LoopQueueDrain.drain(shipped_opts(ctx, spawn_fn: spawn_fn))
       end)
 
     assert output =~ "[1/2] a ... building"
@@ -133,7 +185,7 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
       capture_io(:stderr, fn ->
         assert {:ok, 1} =
                  LoopQueueDrain.drain(
-                   base_opts(ctx,
+                   shipped_opts(ctx,
                      spawn_fn: spawn_fn,
                      discover_session_log_fn: discover_session_log_fn
                    )
@@ -156,7 +208,7 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
       capture_io(:stderr, fn ->
         assert {:ok, 1} =
                  LoopQueueDrain.drain(
-                   base_opts(ctx,
+                   shipped_opts(ctx,
                      spawn_fn: spawn_fn,
                      discover_session_log_fn: fn _, _, _ -> nil end
                    )
@@ -292,7 +344,7 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
 
     spawn_fn = fn _slug, _h, _s, _cwd, _jsonl -> {:exit_code, 0} end
 
-    assert {:ok, 1} = LoopQueueDrain.drain(base_opts(ctx, spawn_fn: spawn_fn))
+    assert {:ok, 1} = LoopQueueDrain.drain(shipped_opts(ctx, spawn_fn: spawn_fn))
     refute File.exists?(Path.join(ctx.ready_dir, "solo.md"))
     assert File.exists?(Path.join(ctx.shipped_dir, "solo.md"))
   end
@@ -314,7 +366,7 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
         {:exit_code, 0}
       end
 
-      assert {:ok, 1} = LoopQueueDrain.drain(base_opts(ctx, spawn_fn: spawn_fn))
+      assert {:ok, 1} = LoopQueueDrain.drain(shipped_opts(ctx, spawn_fn: spawn_fn))
       refute File.exists?(Path.join(ctx.ready_dir, "solo.md"))
       assert File.exists?(Path.join(ctx.shipped_dir, "solo.md"))
     end
@@ -325,7 +377,7 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
       # non-compliant agent: exits 0 but never ships (leaves ready/<slug>.md).
       spawn_fn = fn _slug, _h, _s, _cwd, _jsonl -> {:exit_code, 0} end
 
-      assert {:ok, 1} = LoopQueueDrain.drain(base_opts(ctx, spawn_fn: spawn_fn))
+      assert {:ok, 1} = LoopQueueDrain.drain(shipped_opts(ctx, spawn_fn: spawn_fn))
       refute File.exists?(Path.join(ctx.ready_dir, "solo.md"))
       assert File.exists?(Path.join(ctx.shipped_dir, "solo.md"))
     end
@@ -340,7 +392,7 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
       end
 
       assert_raise RuntimeError, ~r/solo in neither ready.*nor shipped/, fn ->
-        LoopQueueDrain.drain(base_opts(ctx, spawn_fn: spawn_fn))
+        LoopQueueDrain.drain(shipped_opts(ctx, spawn_fn: spawn_fn))
       end
     end
   end
@@ -364,12 +416,47 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
       end
     end
 
+    # Attempt 1 (nonzero) must NOT look committed/clear — else
+    # handle_nonzero_exit/6's committer-post-commit-hiccup branch would ship
+    # on attempt 1, short-circuiting the intended retry. HEAD stays "aaa"
+    # through attempt 1's head_before/head_after pair (gate "" too), then
+    # moves to "bbb" for attempt 2's pair once the retry actually spawns
+    # again — satisfying handle_exit_zero/6's committed + fresh-clear check.
+    head_calls = start_agent(0)
+
+    # calls: 0 = attempt1 head_before, 1 = attempt1 head_after (both "aaa",
+    # not moved -> committed? false, safe from the hiccup branch regardless
+    # of gate_clear?), 2 = attempt2 head_before ("aaa"), 3 = attempt2
+    # head_after ("bbb", moved -> committed? true).
+    git_head_fn = fn _cwd ->
+      n = Agent.get_and_update(head_calls, fn n -> {n, n + 1} end)
+      if n == 3, do: "bbb", else: "aaa"
+    end
+
+    gate_calls = start_agent(0)
+
+    # gate_verdict_fn is called once per handler: call 0 = attempt1
+    # (nonzero, must NOT be clear — committed? is already false here so this
+    # is belt-and-suspenders), call 1 = attempt2 (exit 0, must be clear).
+    gate_verdict_fn = fn _cwd ->
+      n = Agent.get_and_update(gate_calls, fn n -> {n, n + 1} end)
+      if n == 1, do: "clear", else: "failed"
+    end
+
+    gate_diff_sha_fn = fn _cwd -> "bbb" end
     transient_fn = fn _jsonl -> true end
     sleep_fn = fn secs -> Agent.update(sleeps, &(&1 ++ [secs])) end
 
     assert {:ok, 1} =
              LoopQueueDrain.drain(
-               base_opts(ctx, spawn_fn: spawn_fn, transient_fn: transient_fn, sleep_fn: sleep_fn)
+               base_opts(ctx,
+                 spawn_fn: spawn_fn,
+                 git_head_fn: git_head_fn,
+                 gate_verdict_fn: gate_verdict_fn,
+                 gate_diff_sha_fn: gate_diff_sha_fn,
+                 transient_fn: transient_fn,
+                 sleep_fn: sleep_fn
+               )
              )
 
     assert Agent.get(attempts, & &1) == 2
@@ -460,8 +547,50 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
 
     transient_fn = fn _jsonl -> false end
 
+    # Only "b_good" (exit 0) must look committed + fresh-clear; the *_fail
+    # slugs (nonzero) must NOT — else handle_nonzero_exit/6's
+    # committer-post-commit-hiccup branch would ship them anyway.
+    # git_head_fn is called TWICE per attempt whenever head_before is
+    # non-nil/non-empty (head_before pre-spawn, head_after post-spawn — both
+    # handle_nonzero_exit/6 and handle_exit_zero/6 re-read HEAD when
+    # known_base? is true): call 0-1 = a_fail1 (before, after), call 2-3 =
+    # b_good (before, after — must show a forward move), call 4-5 =
+    # c_fail2, call 6-7 = d_fail3 (transient_fn is false, so each
+    # deterministic failure skip-and-continues after exactly one attempt —
+    # no retries to account for).
+    head_calls = start_agent(0)
+    gate_calls = start_agent(0)
+
+    git_head_fn = fn _cwd ->
+      n = Agent.get_and_update(head_calls, fn n -> {n, n + 1} end)
+      if n in [2, 3], do: (if n == 2, do: "aaa", else: "bbb"), else: "zzz"
+    end
+
+    # gate_verdict_fn/gate_diff_sha_fn are called ONCE per handler invocation
+    # (handle_nonzero_exit or handle_exit_zero), immediately after the
+    # matching head_before/head_after pair — so their own call sequence
+    # mirrors the per-attempt cadence: call 0 = a_fail1 (nonzero), call 1 =
+    # b_good (exit 0, the only one that must read "clear"), call 2 =
+    # c_fail2 (nonzero), call 3 = d_fail3 (nonzero — never reached because
+    # 6c's fail-streak is reset by b_good's ship, so the circuit breaker
+    # threshold of 3 is never hit).
+    gate_verdict_fn = fn _cwd ->
+      n = Agent.get_and_update(gate_calls, fn n -> {n, n + 1} end)
+      if n == 1, do: "clear", else: "failed"
+    end
+
+    gate_diff_sha_fn = fn _cwd -> "bbb" end
+
     assert {:ok, 1} =
-             LoopQueueDrain.drain(base_opts(ctx, spawn_fn: spawn_fn, transient_fn: transient_fn))
+             LoopQueueDrain.drain(
+               base_opts(ctx,
+                 spawn_fn: spawn_fn,
+                 transient_fn: transient_fn,
+                 git_head_fn: git_head_fn,
+                 gate_verdict_fn: gate_verdict_fn,
+                 gate_diff_sha_fn: gate_diff_sha_fn
+               )
+             )
 
     assert File.exists?(Path.join(ctx.ready_dir, "a_fail1.md"))
     assert File.exists?(Path.join(ctx.shipped_dir, "b_good.md"))
@@ -519,17 +648,48 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
     write_pitch(ctx.ready_dir, "bad")
     write_pitch(ctx.ready_dir, "good")
 
+    current_slug = start_agent(nil)
+
     spawn_fn = fn slug, _h, _s, _cwd, _jsonl ->
+      Agent.update(current_slug, fn _ -> slug end)
       if slug == "bad", do: {:exit_code, 1}, else: {:exit_code, 0}
     end
 
     transient_fn = fn _jsonl -> false end
 
+    # "bad" (nonzero) must NOT look committed/clear — else
+    # handle_nonzero_exit's committer-post-commit-hiccup branch would ship it
+    # anyway. "good" (exit 0) needs committed + fresh-clear to ship via
+    # handle_exit_zero. current_slug (set by spawn_fn just above) lets
+    # git_head_fn/gate_verdict_fn special-case per slug.
+    head_calls = start_agent(0)
+
+    git_head_fn = fn _cwd ->
+      if Agent.get(current_slug, & &1) == "bad" do
+        "aaa"
+      else
+        n = Agent.get_and_update(head_calls, fn n -> {n, n + 1} end)
+        if rem(n, 2) == 0, do: "aaa", else: "bbb"
+      end
+    end
+
+    gate_verdict_fn = fn _cwd ->
+      if Agent.get(current_slug, & &1) == "bad", do: "failed", else: "clear"
+    end
+
+    gate_diff_sha_fn = fn _cwd -> "bbb" end
+
     output =
       capture_io(:stderr, fn ->
         assert {:ok, 1} =
                  LoopQueueDrain.drain(
-                   base_opts(ctx, spawn_fn: spawn_fn, transient_fn: transient_fn)
+                   base_opts(ctx,
+                     spawn_fn: spawn_fn,
+                     transient_fn: transient_fn,
+                     git_head_fn: git_head_fn,
+                     gate_verdict_fn: gate_verdict_fn,
+                     gate_diff_sha_fn: gate_diff_sha_fn
+                   )
                  )
       end)
 
@@ -604,11 +764,13 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
     assert File.exists?(Path.join(ctx.shipped_dir, "solo.md"))
   end
 
-  test "6r3: gate-clear + HEAD-unmoved retries, ships on 2nd spawn", ctx do
+  test "6r3: gate-clear + HEAD-unmoved-on-1st-attempt retries, ships on 2nd spawn (HEAD moves)",
+       ctx do
     write_pitch(ctx.ready_dir, "solo")
 
     attempts = start_agent(0)
     sleeps = start_agent([])
+    head_calls = start_agent(0)
 
     spawn_fn = fn _slug, _h, _s, _cwd, jsonl ->
       n = Agent.get_and_update(attempts, fn n -> {n, n + 1} end)
@@ -621,9 +783,17 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
       end
     end
 
-    # HEAD never moves -> committed? stays false every call
-    git_head_fn = fn _cwd -> "aaa" end
+    # HEAD never moves during attempt 1 (both head_before/head_after calls
+    # return "aaa" -> committed? stays false -> retry_eligible? fires). On
+    # attempt 2 (exit 0) HEAD moves forward aaa -> bbb between head_before
+    # and head_after, satisfying handle_exit_zero/6's committed? check.
+    git_head_fn = fn _cwd ->
+      n = Agent.get_and_update(head_calls, fn n -> {n, n + 1} end)
+      if n < 3, do: "aaa", else: "bbb"
+    end
+
     gate_verdict_fn = fn _cwd -> "clear" end
+    gate_diff_sha_fn = fn _cwd -> "bbb" end
     transient_fn = fn _jsonl -> false end
     sleep_fn = fn secs -> Agent.update(sleeps, &(&1 ++ [secs])) end
 
@@ -633,6 +803,7 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
                  spawn_fn: spawn_fn,
                  git_head_fn: git_head_fn,
                  gate_verdict_fn: gate_verdict_fn,
+                 gate_diff_sha_fn: gate_diff_sha_fn,
                  transient_fn: transient_fn,
                  sleep_fn: sleep_fn
                )
@@ -759,7 +930,7 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
     assert File.exists?(Path.join(ctx.shipped_dir, "solo.md"))
   end
 
-  test "6r6: transient nonzero (no commit, gate empty) retries unchanged, recovery seams do not fire",
+  test "6r6: transient nonzero retries, then exit-0 with unknown git state (nil head) is treated as FAILED — no unverifiable ship",
        ctx do
     write_pitch(ctx.ready_dir, "solo")
 
@@ -784,7 +955,12 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
 
     transient_fn = fn _jsonl -> true end
 
-    assert {:ok, 1} =
+    # Attempt 1 is a transient nonzero exit -> retries. Attempt 2 exits 0,
+    # but git_head_fn returns nil throughout (mirrors a not-a-repo / unknown
+    # git state) — handle_exit_zero/6 cannot verify a commit landed, so this
+    # is correctly treated as a FAILED cycle (never an unverifiable ship),
+    # per the pitch's core fix: exit 0 alone is no longer sufficient proof.
+    assert {:ok, 0} =
              LoopQueueDrain.drain(
                base_opts(ctx,
                  spawn_fn: spawn_fn,
@@ -795,9 +971,12 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
 
     assert Agent.get(attempts, & &1) == 2
     # git_head_fn called once per run_slug invocation (pre-spawn), never used
-    # for a recovery decision since it's always nil here
+    # for a recovery decision since it's always nil here — known_base? false
+    # short-circuits the head_after re-read on both the nonzero-exit path
+    # (attempt 1) and the exit-0 path (attempt 2).
     assert Agent.get(head_calls, & &1) == [ctx.dir, ctx.dir]
-    assert File.exists?(Path.join(ctx.shipped_dir, "solo.md"))
+    refute File.exists?(Path.join(ctx.shipped_dir, "solo.md"))
+    assert File.exists?(Path.join(ctx.ready_dir, "solo.md"))
   end
 
   # ── 7. Timeout -> stash -> retry once -> ship ───────────────────────────
@@ -819,7 +998,7 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
     end
 
     assert {:ok, 1} =
-             LoopQueueDrain.drain(base_opts(ctx, spawn_fn: spawn_fn, git_stash_fn: git_stash_fn))
+             LoopQueueDrain.drain(shipped_opts(ctx, spawn_fn: spawn_fn, git_stash_fn: git_stash_fn))
 
     assert Agent.get(stash_calls, & &1) == [{ctx.dir, "solo"}]
     assert File.exists?(Path.join(ctx.shipped_dir, "solo.md"))
@@ -854,7 +1033,7 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
       if slug == "bad", do: :timeout, else: {:exit_code, 0}
     end
 
-    assert {:ok, 1} = LoopQueueDrain.drain(base_opts(ctx, spawn_fn: spawn_fn))
+    assert {:ok, 1} = LoopQueueDrain.drain(shipped_opts(ctx, spawn_fn: spawn_fn))
     assert File.exists?(Path.join(ctx.ready_dir, "bad.md"))
     assert File.exists?(Path.join(ctx.shipped_dir, "good.md"))
   end
@@ -878,7 +1057,7 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
     output =
       capture_io(:stderr, fn ->
         assert {:ok, 1} =
-                 LoopQueueDrain.drain(base_opts(ctx, spawn_fn: spawn_fn, blocked_fn: blocked_fn))
+                 LoopQueueDrain.drain(shipped_opts(ctx, spawn_fn: spawn_fn, blocked_fn: blocked_fn))
       end)
 
     assert File.exists?(Path.join(ctx.ready_dir, "blocked.md"))
@@ -902,7 +1081,7 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
     git_stash_fn = fn _cwd, _slug, _reason -> {:error, :not_a_repo} end
 
     assert {:ok, 1} =
-             LoopQueueDrain.drain(base_opts(ctx, spawn_fn: spawn_fn, git_stash_fn: git_stash_fn))
+             LoopQueueDrain.drain(shipped_opts(ctx, spawn_fn: spawn_fn, git_stash_fn: git_stash_fn))
   end
 
   test "9b: real-ish git_stash_fn label format queue-timeout:<slug>:<ts>", ctx do
@@ -946,7 +1125,7 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
 
     assert {:ok, 1} =
              LoopQueueDrain.drain(
-               base_opts(ctx, spawn_fn: spawn_fn, git_stash_restore_fn: git_stash_restore_fn)
+               shipped_opts(ctx, spawn_fn: spawn_fn, git_stash_restore_fn: git_stash_restore_fn)
              )
 
     # Called once per attempt (first attempt + retry) — both with the same slug.
@@ -962,7 +1141,7 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
 
     assert {:ok, 1} =
              LoopQueueDrain.drain(
-               base_opts(ctx, spawn_fn: spawn_fn, git_stash_restore_fn: git_stash_restore_fn)
+               shipped_opts(ctx, spawn_fn: spawn_fn, git_stash_restore_fn: git_stash_restore_fn)
              )
 
     assert File.exists?(Path.join(ctx.shipped_dir, "solo.md"))
@@ -1005,7 +1184,7 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
       capture_io(:stderr, fn ->
         assert {:ok, 1} =
                  LoopQueueDrain.drain(
-                   base_opts(ctx, spawn_fn: spawn_fn, git_stash_restore_fn: git_stash_restore_fn)
+                   shipped_opts(ctx, spawn_fn: spawn_fn, git_stash_restore_fn: git_stash_restore_fn)
                  )
       end)
 
@@ -1037,7 +1216,7 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
     pid_alive_fn = fn _pid -> false end
 
     assert {:ok, 1} =
-             LoopQueueDrain.drain(base_opts(ctx, spawn_fn: spawn_fn, pid_alive_fn: pid_alive_fn))
+             LoopQueueDrain.drain(shipped_opts(ctx, spawn_fn: spawn_fn, pid_alive_fn: pid_alive_fn))
 
     assert File.exists?(Path.join(ctx.shipped_dir, "solo.md"))
     refute File.exists?(ctx.lock_path)
@@ -1055,7 +1234,7 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
     write_pitch(ctx.ready_dir, "solo")
     spawn_fn = fn _slug, _h, _s, _cwd, _jsonl -> {:exit_code, 0} end
 
-    assert {:ok, 1} = LoopQueueDrain.drain(base_opts(ctx, spawn_fn: spawn_fn))
+    assert {:ok, 1} = LoopQueueDrain.drain(shipped_opts(ctx, spawn_fn: spawn_fn))
     refute File.exists?(manifest)
     assert File.exists?(Path.join(ctx.shipped_dir, "solo.md"))
   end
@@ -1095,7 +1274,7 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
       {:exit_code, 0}
     end
 
-    assert {:ok, 2} = LoopQueueDrain.drain(base_opts(ctx, spawn_fn: spawn_fn))
+    assert {:ok, 2} = LoopQueueDrain.drain(shipped_opts(ctx, spawn_fn: spawn_fn))
     assert File.exists?(Path.join(ctx.shipped_dir, "a.md"))
     assert File.exists?(Path.join(ctx.shipped_dir, "c.md"))
   end
