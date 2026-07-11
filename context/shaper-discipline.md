@@ -141,16 +141,7 @@ In any case: shaper SPLITS into N pitches. Does NOT ask the user "should I split
 
 ## Prompt Durability (Anchor Over Line Numbers)
 
-Prompt bodies that cite their own sections (e.g., "the escape-hatch rule", "the U1–U7 option template") should use section-name anchors rather than absolute line numbers. Line numbers become stale whenever an edit shifts positions.
-
-**Anti-pattern**: `"See the template at the options block (currently near the middle of the file)."` — an edit shifts positions, that position becomes something else, silent drift.
-
-**Pattern**: `"Step c' (the escape-hatch rule) applies here."` — references the step name, which doesn't move; readers find it by searching "step c'" even if line numbers shift.
-
-When the prompt text DOES name the step or section (e.g., "step c'", "the U-template", "the auto-decide rule"), prefer the anchor. Only keep absolute numbers where:
-
-- The pitch text itself says "correct to line N" (rare)
-- A number is genuinely clearer than a section name (uncommon)
+Prompt bodies that cite their own sections should use section-name anchors (e.g., "step c' — the escape-hatch rule") rather than absolute line numbers, which go stale whenever an edit shifts positions. Anti-pattern: `"currently near the middle of the file"` — silent drift on next edit. Keep absolute numbers only where the pitch text itself says "correct to line N" (rare) or a number is genuinely clearer (uncommon).
 
 ## Readiness Blockers with AUTO-RESOLVE Semantics
 
@@ -197,6 +188,10 @@ When a pitch **establishes or strengthens a cross-cutting contract or invariant*
 
 **Motivating incident**: the `session-log-uniform-across-surfaces` pitch reached READY status with `shared/apps/AGENTS-phoenix.md.j2` and `shared/apps/AGENTS-static.md.j2` `## Session Logging` sections left out of scope — both files declared the pre-strengthening session-log contract and were never updated, leaving downstream consumer docs teaching a stale rule.
 
+## Completeness Contract for Dead-Code Retention Pitches
+
+A redundant mechanism (hook/rule/path/config/doc/flag/fn) MUST be hard-deleted, never kept as deprecated/backstop/legacy-fallback/rename-shim — unless a probe proves a live consumer EXERCISES it (invokes/spawns/emits), not merely REFERENCES it. Registration/permission/reachability is a PROXY, not liveness (same bar as Unverified-empirical-claims). Carve-outs: (a) live orthogonal mechanism; (b) rename-shim for a live EXTERNAL contract only; (c) operator-facing surface → `User-facing surface removal/change` instead. AUTO-RESOLVE: hard-delete + full-vocabulary grep; ask only if inconclusive. Producers: `shape.txt` + `_probing.txt`. Verifiers: `ready.md.j2` + parity sentinel. Incident: a pitch kept 5 dead `SubagentStop` hooks as "live," backed only by registry refs not an exercise probe — corrected by `add-loop-enforcement-then-delete-dead-hooks`.
+
 ## Completeness Contract for Capability-Removal Pitches
 
 When a pitch **adds or strengthens a full-surface deny** that closes an existing path to a resource for a set of actors and designates ONE narrower substitute path (a hook with `role: "*"`, or a full-surface Edit/Write/Bash deny plus a single replacement command/tool), the shaper MUST enumerate EVERY actor in the deny's blast radius and, per actor, probe that the substitute is REACHABLE under that actor's ACTUAL grant — the role's `tools:` frontmatter, permission set, or harness capability — not merely that the substitute mechanism works in isolation.
@@ -237,7 +232,7 @@ Any one of the three missing → blocker.
 
 **Motivating incident**: loop-core commit `ee88926` shipped `LoopQueue` born-dead (no live caller) while deleting `--queue` / `build-queue.sh`, backed by a false "translate then delete ✅" ledger row that was a proxy — it proved the old code was read/translated, never that the new code was called. Corrective commit `af87ad1` finally wired `LoopQueue` live.
 
-**Sibling-section design pattern**: the "Completeness Contract for X Pitches" sections (Sweep-class, Capability-removal, Replacement) form a crystallized pattern — each new completeness-contract rule should follow the same six-part subsection structure: (1) Invariant, (2) three-probe detector (or detection criteria), (3) carve-out or exception, (4) sub-rule or secondary mechanism, (5) resolution template, (6) producer/verifier layout + motivating incident. This consistency makes future similar additions predictable and aids readers building mental models across sibling rules. When a new contract-establishment pitch lands, review against this pattern checklist before committing.
+**Sibling-section pattern**: "Completeness Contract for X Pitches" sections share a six-part shape — invariant, detector, carve-out, sub-rule, resolution template, producer/verifier+incident. New contract sections should follow it.
 
 ## Completeness Contract for Empirical-Usage-Grounding Pitches
 
