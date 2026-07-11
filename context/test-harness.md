@@ -204,14 +204,7 @@ When a hook's conditional logic widens (e.g., `agentType === "planner-phoenix"` 
 - ✅ `run_no_ecto_scaffold/2` — signals this helper runs with `--no-ecto` fixed
 - ❌ `run_codegen_scaffold/2` — too generic; doesn't signal fixed flags
 
-Naming prevents accidental parameter overrides that would be silently ignored. Example:
-
-```elixir
-def run_no_ecto_scaffold(root_dir, app_name) do
-  %{"NO_ECTO" => "1"}
-  |> System.cmd(codegen-scaffold, ["create", "--stack=phoenix", "--cwd=#{root_dir}", "--slug=#{app_name}"], ...)
-end
-```
+Naming prevents accidental parameter overrides that would be silently ignored.
 
 **Timeout guidance**: Deterministic scaffold runs (fixture setup only, no LLM) complete in seconds. Multi-phase LLM builds (scaffold + dev + review + commit) require 210+ seconds per iteration (deps.get 60s + compile 90s + LLM roundtrip 30-60s per phase).
 
@@ -222,7 +215,7 @@ end
 `Fixtures.isolated_tmp_dir/1` creates separate temp directories for each harness test, with stack-specific config:
 
 - `isolated_tmp_dir(stack: :phoenix)` — creates and pre-scaffolds a Phoenix app via `scaffold_phoenix_app!/1` before invoking harness
-- `scaffold_phoenix_app!/1` runs `mix phx.new`, `mix deps.get`, and `git commit` in fixture setup, ensuring harness works on a real, git-tracked project
+- `scaffold_phoenix_app!/1` delegates to `codegen-scaffold create` (not raw `mix phx.new`) — base fixture carries `make ci` toolchain for the loop gate
 - Non-Phoenix stacks pass no `:stack` opt → directory is created empty (no scaffold pre-run)
 - Both phoenix and non-phoenix variants initialize git (`git init` + initial commit) — fixtures are suitable for driving hooks directly via `System.cmd` that read git state or write the gate-result JSON
 
