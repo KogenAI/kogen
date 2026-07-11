@@ -981,6 +981,153 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
     end
   end
 
+  defp always_clean_env_var_fn do
+    fn _cwd -> {:clean} end
+  end
+
+  describe "run/1 — env-var fix cycle" do
+    test "clean scan reaches the gate then the committer", %{calls_agent: calls_agent} do
+      assert :ok ==
+               OrchestrationLoop.run(
+                 harness: "claude_code",
+                 stack: "static",
+                 cwd: "/tmp/irrelevant",
+                 pitch: "do the thing",
+                 invoke_fn: always_ok_invoke_fn(calls_agent),
+                 gate_fn: always_clear_gate_fn(),
+                 gate_preflight_fn: no_op_gate_preflight_fn(),
+                 preflight_probe_fn: all_present_preflight_probe_fn(),
+                 realized_check_fn: not_realized_fn(),
+                 advance_cycle_state_fn: no_op_advance_cycle_state_fn(),
+                 factcheck_scan_fn: always_clean_factcheck_fn(),
+                 env_var_scan_fn: always_clean_env_var_fn()
+               )
+
+      assert Agent.get(calls_agent, & &1) == @static_sequence
+    end
+
+    test "violation once then clean re-invokes developer exactly once, then GATED then committer",
+         %{calls_agent: calls_agent} do
+      {:ok, scan_calls_agent} = Agent.start_link(fn -> 0 end)
+      on_exit(fn -> if Process.alive?(scan_calls_agent), do: Agent.stop(scan_calls_agent) end)
+
+      scan_fn = fn _cwd ->
+        n = Agent.get_and_update(scan_calls_agent, fn c -> {c, c + 1} end)
+        if n == 0, do: {:violations, "MY_VAR"}, else: {:clean}
+      end
+
+      {:ok, states_agent} = Agent.start_link(fn -> [] end)
+      on_exit(fn -> if Process.alive?(states_agent), do: Agent.stop(states_agent) end)
+
+      advance_fn = fn state, _step_log, _session_id, _verdict, _project_dir ->
+        Agent.update(states_agent, fn states -> states ++ [state] end)
+        :ok
+      end
+
+      assert :ok ==
+               OrchestrationLoop.run(
+                 harness: "claude_code",
+                 stack: "static",
+                 cwd: "/tmp/irrelevant",
+                 pitch: "do the thing",
+                 invoke_fn: always_ok_invoke_fn(calls_agent),
+                 gate_fn: always_clear_gate_fn(),
+                 gate_preflight_fn: no_op_gate_preflight_fn(),
+                 preflight_probe_fn: all_present_preflight_probe_fn(),
+                 realized_check_fn: not_realized_fn(),
+                 advance_cycle_state_fn: advance_fn,
+                 factcheck_scan_fn: always_clean_factcheck_fn(),
+                 env_var_scan_fn: scan_fn
+               )
+
+      dev_calls = Enum.count(Agent.get(calls_agent, & &1), &(&1 == "developer-static"))
+      assert dev_calls == 2
+      assert List.last(Agent.get(calls_agent, & &1)) == "committer"
+      assert Agent.get(scan_calls_agent, & &1) == 2
+      assert "GATED" in Agent.get(states_agent, & &1)
+    end
+
+    test "violations exhausting max_env_var_cycles returns {:error, reason}; GATED never advances, committer never invoked",
+         %{calls_agent: calls_agent} do
+      {:ok, states_agent} = Agent.start_link(fn -> [] end)
+      on_exit(fn -> if Process.alive?(states_agent), do: Agent.stop(states_agent) end)
+
+      advance_fn = fn state, _step_log, _session_id, _verdict, _project_dir ->
+        Agent.update(states_agent, fn states -> states ++ [state] end)
+        :ok
+      end
+
+      always_violates_fn = fn _cwd -> {:violations, "MY_VAR"} end
+
+      result =
+        OrchestrationLoop.run(
+          harness: "claude_code",
+          stack: "static",
+          cwd: "/tmp/irrelevant",
+          pitch: "do the thing",
+          invoke_fn: always_ok_invoke_fn(calls_agent),
+          gate_fn: always_clear_gate_fn(),
+          gate_preflight_fn: no_op_gate_preflight_fn(),
+          preflight_probe_fn: all_present_preflight_probe_fn(),
+          realized_check_fn: not_realized_fn(),
+          advance_cycle_state_fn: advance_fn,
+          factcheck_scan_fn: always_clean_factcheck_fn(),
+          env_var_scan_fn: always_violates_fn,
+          max_env_var_cycles: 1
+        )
+
+      assert {:error, reason} = result
+      assert reason =~ "env var"
+      assert reason =~ "MY_VAR"
+      refute "GATED" in Agent.get(states_agent, & &1)
+      refute "committer" in Agent.get(calls_agent, & &1)
+    end
+
+    test "env_var_scan_fn raising propagates (loop crashes loud)", %{calls_agent: calls_agent} do
+      raising_fn = fn _cwd -> raise "scan script exploded" end
+
+      assert_raise RuntimeError, ~r/scan script exploded/, fn ->
+        OrchestrationLoop.run(
+          harness: "claude_code",
+          stack: "static",
+          cwd: "/tmp/irrelevant",
+          pitch: "do the thing",
+          invoke_fn: always_ok_invoke_fn(calls_agent),
+          gate_fn: always_clear_gate_fn(),
+          gate_preflight_fn: no_op_gate_preflight_fn(),
+          preflight_probe_fn: all_present_preflight_probe_fn(),
+          realized_check_fn: not_realized_fn(),
+          advance_cycle_state_fn: no_op_advance_cycle_state_fn(),
+          factcheck_scan_fn: always_clean_factcheck_fn(),
+          env_var_scan_fn: raising_fn
+        )
+      end
+    end
+
+    test "env_var_scan_fn returning an unexpected shape raises (no silent clean)", %{
+      calls_agent: calls_agent
+    } do
+      bogus_fn = fn _cwd -> :not_a_valid_shape end
+
+      assert_raise CaseClauseError, fn ->
+        OrchestrationLoop.run(
+          harness: "claude_code",
+          stack: "static",
+          cwd: "/tmp/irrelevant",
+          pitch: "do the thing",
+          invoke_fn: always_ok_invoke_fn(calls_agent),
+          gate_fn: always_clear_gate_fn(),
+          gate_preflight_fn: no_op_gate_preflight_fn(),
+          preflight_probe_fn: all_present_preflight_probe_fn(),
+          realized_check_fn: not_realized_fn(),
+          advance_cycle_state_fn: no_op_advance_cycle_state_fn(),
+          factcheck_scan_fn: always_clean_factcheck_fn(),
+          env_var_scan_fn: bogus_fn
+        )
+      end
+    end
+  end
+
   # Like always_ok_invoke_fn/1, but commits the working tree when it "runs"
   # the committer role — needed because these tests use a REAL git repo cwd
   # (to exercise the real `changed_orientation_docs/1` diff-scope logic), so

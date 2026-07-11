@@ -34,7 +34,7 @@ export function register(pi: ExtensionAPI): void {
 
     if (/(render|wiring)-check\.js|npm\s+(run\s+)?(build|serve)|vite\s+build|playwright/.test(command)) {
       return deny(
-        "BLOCKED by developer-static-no-manual-build: do not run build/render/wiring-check/serve/playwright manually. The static-site-build-check gate runs verification automatically on SubagentStop. Manual runs cause thrash.",
+        "BLOCKED by developer-static-no-manual-build: do not run build/render/wiring-check/serve/playwright manually. LoopGate runs static-site verification automatically in the build loop after the developer role. Manual runs cause thrash.",
       );
     }
   });

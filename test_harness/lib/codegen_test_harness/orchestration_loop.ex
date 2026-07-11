@@ -45,6 +45,11 @@ defmodule CodegenTestHarness.OrchestrationLoop do
                         __DIR__
                       )
 
+  @env_var_scan_lib Path.expand(
+                       "../../../harnesses/claude/hooks/lib/env-var-sample-scan.sh",
+                       __DIR__
+                     )
+
   @doc """
   Returns the ordered role sequence for `stack` (`"phoenix"` or
   `"static"`). Raises on any other stack name.
@@ -99,6 +104,22 @@ defmodule CodegenTestHarness.OrchestrationLoop do
     exhaustion fails the cycle LOUD instead of proceeding — the committer
     cannot Read/Edit `context/*.md`, so handing it a known-bad doc is an
     unfixable dead-end that used to deadlock as a compounding dirty-tree retry.
+  - `:env_var_scan_fn` — test seam: `(cwd -> {:clean} | {:violations, String.t()})`,
+    defaults to `default_env_var_scan/1` (shells
+    `harnesses/claude/hooks/lib/env-var-sample-scan.sh <cwd>`, which scopes
+    the working-tree diff vs HEAD to `*.ex/*.exs` files and flags any newly
+    added `System.get_env`/`fetch_env("VAR")` string-literal read whose VAR
+    is not declared in BOTH `.env.sample` and `.env.prod.sample`). Runs
+    after the developer role (between format and gate), replacing the
+    dead-under-loop `env-var-sample-consistency` SubagentStop hook (roles
+    run as main-agent `codegen-call` invocations under the loop, so
+    SubagentStop never fires here — same reasoning as `run_format_step` and
+    `run_factcheck_step`).
+  - `:max_env_var_cycles` — developer re-invokes allowed after an env-var
+    violation before giving up (default 1). Exhaustion fails the cycle LOUD
+    (same posture as `:max_factcheck_cycles`, not `:max_review_cycles`'s
+    proceed-on-exhaustion): an undeclared required env var is a real defect
+    the app crashes on at runtime, so handing it onward unfixed is not safe.
   - `:realized_check_fn` — test seam: `(pitch, cwd -> {:ok, map} | {:error, reason})`
     — turn-0 preflight run AFTER role/gate preflights but BEFORE any role is
     invoked; defaults to `default_realized_check/2` (a single `codegen-call`
@@ -494,7 +515,7 @@ defmodule CodegenTestHarness.OrchestrationLoop do
       cond do
         developer_role?(role) ->
           run_format_step(ctx.cwd, opts)
-          run_gate_then_continue(role, rest, harness, ctx, opts)
+          run_env_var_step(role, rest, harness, ctx, opts, 0)
 
         role == "reviewer-phoenix" or role == "reviewer-static" ->
           handle_review(role, result, rest, harness, ctx, opts, 0)
@@ -761,6 +782,72 @@ defmodule CodegenTestHarness.OrchestrationLoop do
           {out, code} ->
             raise "OrchestrationLoop: context-factcheck-scan.sh exited #{code} (expected 0 or 1): #{out}"
         end
+    end
+  end
+
+  # Developer → env-var sample-consistency fix cycle. Replaces the
+  # dead-under-loop `env-var-sample-consistency` SubagentStop hook: under
+  # the loop, roles run as main-agent `codegen-call` invocations with no
+  # SubagentStop event, so this scan has to be driven explicitly here (same
+  # reasoning as `run_format_step` and `run_factcheck_step`). Scan clean →
+  # continue to the gate. Violations within `:max_env_var_cycles` (default
+  # 1) → fold the undocumented-var list into context, re-invoke the SAME
+  # developer role (the one that can edit `.env.sample`/`.env.prod.sample`),
+  # re-format, re-scan, recurse. Budget-exhausted → FAIL LOUD (same posture
+  # as `run_factcheck_step`, not `handle_review`'s proceed-on-exhaustion):
+  # an undeclared required env var is a real defect the app crashes on at
+  # runtime.
+  defp run_env_var_step(dev_role, rest, harness, ctx, opts, cycle) do
+    max_cycles = Keyword.get(opts, :max_env_var_cycles, 1)
+
+    case run_env_var_scan(ctx.cwd, opts) do
+      {:clean} ->
+        run_gate_then_continue(dev_role, rest, harness, ctx, opts)
+
+      {:violations, violations} when cycle < max_cycles ->
+        rework_ctx = put_in(ctx, [:artifacts, :env_var_violation], violations)
+
+        with {:ok, dev_result} <- invoke_with_retry(dev_role, harness, rework_ctx, opts) do
+          ctx = put_in(rework_ctx, [:artifacts, dev_role], dev_result)
+          run_format_step(ctx.cwd, opts)
+          run_env_var_step(dev_role, rest, harness, ctx, opts, cycle + 1)
+        end
+
+      {:violations, violations} ->
+        {:error,
+         "env var sample-consistency unresolved after #{cycle} cycle(s):\n#{violations}\n" <>
+           "Undeclared env var(s) are read (System.get_env/fetch_env) but not declared in " <>
+           ".env.sample and/or .env.prod.sample. Declare them in BOTH sample files and re-run " <>
+           "the cycle."}
+    end
+  end
+
+  # Dispatches the `:env_var_scan_fn` test seam; defaults to
+  # `default_env_var_scan/1` (the real shelled scan).
+  defp run_env_var_scan(cwd, opts) do
+    scan_fn = Keyword.get(opts, :env_var_scan_fn, &default_env_var_scan/1)
+    scan_fn.(cwd)
+  end
+
+  # Shells `env-var-sample-scan.sh <cwd>` (the extracted scan shared with
+  # the retired interactive SubagentStop hook). exit 0 → clean; exit 1 with
+  # output → violations (one undocumented VAR name per line, folded into a
+  # trimmed string); anything else (missing script, unexpected exit code)
+  # is an infra fault — raise (fail-closed), never treat as clean.
+  defp default_env_var_scan(cwd) do
+    unless File.exists?(@env_var_scan_lib) do
+      raise "OrchestrationLoop: env-var-sample-scan.sh not found at #{@env_var_scan_lib}"
+    end
+
+    case System.cmd("bash", [@env_var_scan_lib, cwd], stderr_to_stdout: true) do
+      {_out, 0} ->
+        {:clean}
+
+      {out, 1} ->
+        {:violations, String.trim(out)}
+
+      {out, code} ->
+        raise "OrchestrationLoop: env-var-sample-scan.sh exited #{code} (expected 0 or 1): #{out}"
     end
   end
 
@@ -1185,6 +1272,20 @@ defmodule CodegenTestHarness.OrchestrationLoop do
         base <>
           "\n\n## Factcheck violations to fix (re-work)\n\n" <>
           fv <> "\n\nFix these in the working tree; do not introduce unrelated changes."
+      else
+        base
+      end
+
+    # On an env-var re-work pass, thread the undocumented-var list to the developer.
+    ev = get_in(ctx, [:artifacts, :env_var_violation])
+
+    base =
+      if developer_role?(role) and is_binary(ev) and String.trim(ev) != "" do
+        base <>
+          "\n\n## Undeclared env var(s) to fix (re-work)\n\n" <>
+          "The following env var(s) are read (System.get_env/fetch_env) in the working " <>
+          "tree diff but are not declared in .env.sample and/or .env.prod.sample:\n\n" <>
+          ev <> "\n\nDeclare each in BOTH sample files; do not introduce unrelated changes."
       else
         base
       end

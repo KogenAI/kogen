@@ -38,7 +38,7 @@ fi
 
 # Deny: pattern match.
 if printf '%s' "$COMMAND" | grep -qE '(render|wiring)-check\.js|npm[[:space:]]+(run[[:space:]]+)?(build|serve)|vite[[:space:]]+build|playwright'; then
-    deny "BLOCKED by developer-static-no-manual-build: do not run build/render/wiring-check/serve/playwright manually. The static-site-build-check gate runs verification automatically on SubagentStop. Manual runs cause thrash."
+    deny "BLOCKED by developer-static-no-manual-build: do not run build/render/wiring-check/serve/playwright manually. LoopGate runs static-site verification automatically in the build loop after the developer role. Manual runs cause thrash."
     exit 0
 fi
 

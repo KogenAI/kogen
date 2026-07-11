@@ -20,7 +20,7 @@ Typical firing order for common roles:
 | Event                      | Hooks that fire                                                                         |
 | -------------------------- | --------------------------------------------------------------------------------------- |
 | `Bash`                     | `dev-no-ci`, `no-cat-pipe`, `no-python-json`, `no-git-stash`, `session-log-writer-only` |
-| `Edit`/`Write`/`MultiEdit` | `session-log-writer-only`, `track-subagent-edits`, `env-var-sample-consistency`         |
+| `Edit`/`Write`/`MultiEdit` | `session-log-writer-only`, `track-subagent-edits`                                       |
 | `PostToolUse` (failure)    | `track-tool-failures`                                                                   |
 
 ### Planner (`agent_type=planner`)

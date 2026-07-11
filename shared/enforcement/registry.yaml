@@ -183,7 +183,7 @@
   source: COMMAND
   tool_guard: Bash
   match: "(render|wiring)-check\\.js|npm\\s+(run\\s+)?(build|serve)|vite\\s+build|playwright"
-  message: "BLOCKED by developer-static-no-manual-build: do not run build/render/wiring-check/serve/playwright manually. The static-site-build-check gate runs verification automatically on SubagentStop. Manual runs cause thrash."
+  message: "BLOCKED by developer-static-no-manual-build: do not run build/render/wiring-check/serve/playwright manually. LoopGate runs static-site verification automatically in the build loop after the developer role. Manual runs cause thrash."
   surface: user_global
   signal: AGENT_TYPE
   role: developer-static
@@ -390,15 +390,6 @@
 #   reason: role value "unset" is a non-standard token; deferred until schema accepts it
 
 - kind: registration
-  id: curator-format
-  event: SubagentStop
-  tool_guard: "context-curator"
-  surface: user_global
-  signal: AGENT_TYPE
-  role: "context-curator"
-  harnesses: all
-
-- kind: registration
   id: context-factcheck-curator-stop
   event: SubagentStop
   tool_guard: "context-curator"
@@ -432,15 +423,6 @@
   surface: user_global
   signal: AGENT_TYPE
   role: "developer-*"
-  harnesses: all
-
-- kind: registration
-  id: env-var-sample-consistency
-  event: SubagentStop
-  tool_guard: "developer-phoenix-backend|developer-phoenix-frontend"
-  surface: user_global
-  signal: AGENT_TYPE
-  role: "developer-phoenix-backend|developer-phoenix-frontend"
   harnesses: all
 
 - kind: registration
@@ -536,15 +518,6 @@
   harnesses: all
 
 - kind: registration
-  id: post-developer-format
-  event: SubagentStop
-  tool_guard: "developer-phoenix-backend|developer-phoenix-frontend|developer-static"
-  surface: user_global
-  signal: AGENT_TYPE
-  role: "developer-phoenix-backend|developer-phoenix-frontend|developer-static"
-  harnesses: all
-
-- kind: registration
   id: pitch-format-validator
   event: Stop
   tool_guard: "*"
@@ -601,15 +574,6 @@
   rationale: Claude Code Task-tool in-flight tracking has no Pi equivalent; Pi lacks a comparable Agent-spawn PreToolUse hook point for this check
 
 - kind: registration
-  id: static-site-build-check
-  event: SubagentStop
-  tool_guard: "developer-static"
-  surface: user_global
-  signal: AGENT_TYPE
-  role: "developer-static"
-  harnesses: all
-
-- kind: registration
   id: static-site-ex-guard
   event: PreToolUse
   tool_guard: "Write|Edit"
@@ -628,15 +592,6 @@
   harnesses: all
 
 - kind: registration
-  id: stop-gate-failure-breaker
-  event: SubagentStop
-  tool_guard: "developer-phoenix-backend|developer-phoenix-frontend|developer-static"
-  surface: user_global
-  signal: AGENT_TYPE
-  role: "developer-*"
-  harnesses: all
-
-- kind: registration
   id: stop-resume
   event: Stop
   tool_guard: "*"
@@ -644,16 +599,6 @@
   signal: none
   role: "*"
   harnesses: all
-
-- kind: registration
-  id: stop-spin-guard
-  event: SubagentStop
-  tool_guard: "developer-phoenix-backend|developer-phoenix-frontend|developer-static"
-  surface: user_global
-  signal: AGENT_TYPE
-  role: "developer-*"
-  harnesses: claude
-  rationale: Claude SubagentStop can block a spinning developer subagent; Pi's session_shutdown-equivalent has no comparable block-capable SubagentStop event for this check
 
 - kind: registration
   id: stop-verify-planner-gate
