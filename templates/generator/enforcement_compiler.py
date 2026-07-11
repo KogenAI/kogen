@@ -284,12 +284,21 @@ if [ "$TOOL_NAME" != "{tool_guard}" ]; then
     exit 0
 fi
 {bypass_roles_prelude}{agent_type_guard}
-# Allowlist: allow matching commands; deny everything else.
-if printf '%s' "$COMMAND" | grep -qE '{match_bash}'; then
+# Allowlist: split command into unquoted-chained segments; EVERY segment
+# must match the allowlist. Prevents an allowed prefix (e.g. `ls`) chained
+# via && / ; / | / & to a forbidden command from bypassing the gate.
+if ! _segs=$(split_command_segments "$COMMAND"); then
+    deny "{message}"
     exit 0
 fi
-
-deny "{message}"
+while IFS= read -r _seg; do
+    _trimmed=$(printf '%s' "$_seg" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+    [ -z "$_trimmed" ] && continue
+    if ! printf '%s' "$_trimmed" | grep -qE '{match_bash}'; then
+        deny "{message}"
+        exit 0
+    fi
+done <<<"$_segs"
 exit 0
 """
 
@@ -737,7 +746,7 @@ _TS_TEMPLATE_COMMAND_ALLOWLIST = """\
  */
 
 import type {{ ExtensionAPI }} from "@earendil-works/pi-coding-agent";
-import {{ deny, debugLog }} from "../lib/hook-helpers";
+import {{ deny, debugLog, splitCommandSegments }} from "../lib/hook-helpers";
 
 export const HANDLER_META = {{
   name: "{id}",
@@ -752,13 +761,21 @@ export function register(pi: ExtensionAPI): void {{
     const command: string = (event.input as {{ command?: string }}).command ?? "";
     debugLog("{id}", `cmd=${{command}}`);
 {agent_type_guard}
-    if (/{match_ts}/.test(command)) {{
-      return;
+    // Allowlist: split command into unquoted-chained segments; EVERY segment
+    // must match the allowlist. Prevents an allowed prefix chained via
+    // && / ; / | / & to a forbidden command from bypassing the gate.
+    const segs = splitCommandSegments(command);
+    if (segs === null) {{
+      return deny("{message}");
     }}
-
-    return deny(
-      "{message}",
-    );
+    for (const seg of segs) {{
+      const trimmed = seg.trim();
+      if (trimmed === "") continue;
+      if (!/{match_ts}/.test(trimmed)) {{
+        return deny("{message}");
+      }}
+    }}
+    return;
   }});
 }}
 """

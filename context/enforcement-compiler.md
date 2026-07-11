@@ -34,11 +34,11 @@ Both kinds coexist in `shared/enforcement/registry.yaml`. The compiler skips `ki
 
 ### Template Forms
 
-| Source    | Mode      | Body Template                                                                                         | Role Gate                          |
-| --------- | --------- | ----------------------------------------------------------------------------------------------------- | ---------------------------------- |
-| COMMAND   | deny      | `if grep -qE '<pattern>' <<< "$COMMAND"; then deny; fi`                                               | AGENT_TYPE guard wraps entire body |
-| COMMAND   | allowlist | `if grep -qE '<pattern>' <<< "$COMMAND"; then exit 0; fi; deny`                                       | AGENT_TYPE guard wraps entire body |
-| FILE_PATH | allowlist | Multi-tool switch (Write/Edit); each arm: `if grep -qE '<pattern>' <<< "$FILE_PATH"; then exit 0; fi` | AGENT_TYPE guard wraps entire body |
+| Source    | Mode      | Body Template                                                                                                                                                                                                                                                                       | Role Gate                          |
+| --------- | --------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------- |
+| COMMAND   | deny      | `if grep -qE '<pattern>' <<< "$COMMAND"; then deny; fi`                                                                                                                                                                                                                             | AGENT_TYPE guard wraps entire body |
+| COMMAND   | allowlist | Segment-split-and-allowlist: `split_command_segments`/`splitCommandSegments` splits `$COMMAND` on unquoted chaining ops (&&, ;, pipe, &) and newline; EVERY trimmed non-empty segment must match `<pattern>` or the whole command is denied; unbalanced quotes → deny (fail-closed) | AGENT_TYPE guard wraps entire body |
+| FILE_PATH | allowlist | Multi-tool switch (Write/Edit); each arm: `if grep -qE '<pattern>' <<< "$FILE_PATH"; then exit 0; fi`                                                                                                                                                                               | AGENT_TYPE guard wraps entire body |
 
 All forms compose with `bypass_roles` prelude (if specified): the bypass exits early, skipping both role and match gates.
 

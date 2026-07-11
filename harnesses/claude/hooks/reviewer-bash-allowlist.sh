@@ -30,10 +30,19 @@ reviewer-phoenix | reviewer-static) ;;
 *) exit 0 ;;
 esac
 
-# Allowlist: allow matching commands; deny everything else.
-if printf '%s' "$COMMAND" | grep -qE '(^|[[:space:]]|/)codegen-log\b|^[[:space:]]*(cd[[:space:]]+\S+[[:space:]]+&&[[:space:]]+)?(git[[:space:]]+(-C[[:space:]]+\S+[[:space:]]+)?(diff|status|log|show)\b|echo\b|wc\b|cat\b|ls\b|true\b|:)'; then
+# Allowlist: split command into unquoted-chained segments; EVERY segment
+# must match the allowlist. Prevents an allowed prefix (e.g. `ls`) chained
+# via && / ; / | / & to a forbidden command from bypassing the gate.
+if ! _segs=$(split_command_segments "$COMMAND"); then
+    deny "BLOCKED by reviewer-bash-allowlist: only codegen-log and safe read-only shell utilities (git diff/status/log/show, echo, wc, cat, ls, true, :) allowed for reviewer"
     exit 0
 fi
-
-deny "BLOCKED by reviewer-bash-allowlist: only codegen-log and safe read-only shell utilities (git diff/status/log/show, echo, wc, cat, ls, true, :) allowed for reviewer"
+while IFS= read -r _seg; do
+    _trimmed=$(printf '%s' "$_seg" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+    [ -z "$_trimmed" ] && continue
+    if ! printf '%s' "$_trimmed" | grep -qE '^[[:space:]]*(codegen-log\b|git[[:space:]]+(-C[[:space:]]+\S+[[:space:]]+)?(diff|status|log|show)\b|printf\b|echo\b|wc\b|cat\b|ls\b|true\b|:)'; then
+        deny "BLOCKED by reviewer-bash-allowlist: only codegen-log and safe read-only shell utilities (git diff/status/log/show, echo, wc, cat, ls, true, :) allowed for reviewer"
+        exit 0
+    fi
+done <<<"$_segs"
 exit 0

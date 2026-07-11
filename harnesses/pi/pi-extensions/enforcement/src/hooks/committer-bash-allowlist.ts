@@ -9,7 +9,7 @@
  */
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { deny, debugLog } from "../lib/hook-helpers";
+import { deny, debugLog, splitCommandSegments } from "../lib/hook-helpers";
 
 export const HANDLER_META = {
   name: "committer-bash-allowlist",
@@ -27,12 +27,20 @@ export function register(pi: ExtensionAPI): void {
     const agentType = process.env["AGENT_TYPE"] ?? "";
     if (!(agentType === "committer")) return;
 
-    if (/^\s*(cd\s+\S+\s+&&\s+)?(git\s+(-C\s+\S+\s+)?(diff|status|log|show|commit|add|rm|mv|tag|checkout|switch|branch|restore|reset)\b|codegen-log\b|echo\b|wc\b|cat\b|ls\b|true\b|:)/.test(command)) {
-      return;
+    // Allowlist: split command into unquoted-chained segments; EVERY segment
+    // must match the allowlist. Prevents an allowed prefix chained via
+    // && / ; / | / & to a forbidden command from bypassing the gate.
+    const segs = splitCommandSegments(command);
+    if (segs === null) {
+      return deny("BLOCKED by committer-bash-allowlist: only git read/write commands and safe shell utilities allowed for committer");
     }
-
-    return deny(
-      "BLOCKED by committer-bash-allowlist: only git read/write commands and safe shell utilities allowed for committer",
-    );
+    for (const seg of segs) {
+      const trimmed = seg.trim();
+      if (trimmed === "") continue;
+      if (!/^\s*(cd\b|git\s+(-C\s+\S+\s+)?(diff|status|log|show|commit|add|rm|mv|tag|checkout|switch|branch|restore|reset)\b|codegen-log\b|printf\b|echo\b|wc\b|cat\b|ls\b|true\b|:)/.test(trimmed)) {
+        return deny("BLOCKED by committer-bash-allowlist: only git read/write commands and safe shell utilities allowed for committer");
+      }
+    }
+    return;
   });
 }
