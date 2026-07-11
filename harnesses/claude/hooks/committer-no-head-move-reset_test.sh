@@ -129,6 +129,18 @@ log_write_fixture() {
 run_test "codegen-log write narrating git reset HEAD~1 → allow" "0" \
     "$(log_write_fixture)"
 
+# --- Test 15: git reset -q → allow (leftover flag must not survive to ref detection) ---
+run_test "git reset -q → allow" "0" \
+    "$(cmd_fixture "git reset -q")"
+
+# --- Test 16: git reset --quiet → allow ---
+run_test "git reset --quiet → allow" "0" \
+    "$(cmd_fixture "git reset --quiet")"
+
+# --- Test 17: git reset -q HEAD~1 → deny (flag strip must not swallow the real target) ---
+run_test "git reset -q HEAD~1 → deny" "2" \
+    "$(cmd_fixture "git reset -q HEAD~1")"
+
 printf '\nResults: %s passed, %s failed\n' "$pass" "$fail"
 
 if [ "$fail" -gt 0 ]; then

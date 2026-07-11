@@ -49,7 +49,7 @@ export function register(pi: ExtensionAPI): void {
     // counter increment.
     if (isCodegenLogWrite(command)) return;
 
-    if (!/\bgit\s+commit\b/.test(command)) return;
+    if (!/\bgit\s+commit(?:[\s;&|]|$)/.test(command)) return;
 
     const projectDir =
       process.env["CLAUDE_PROJECT_DIR"] ??

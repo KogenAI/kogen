@@ -402,15 +402,6 @@
   harnesses: all
 
 - kind: registration
-  id: llm-suite-guard
-  event: PreToolUse
-  tool_guard: Bash
-  surface: user_global
-  signal: AGENT_TYPE
-  role: "developer-*"
-  harnesses: all
-
-- kind: registration
   id: llm-test-guard
   event: PreToolUse
   tool_guard: Bash

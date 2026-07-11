@@ -33,10 +33,11 @@ export function register(pi: ExtensionAPI): void {
     // counter increment.
     if (isCodegenLogWrite(command)) return;
 
-    if (!/\bgit\s+commit\b/.test(command)) return;
+    if (!/\bgit\s+commit(?:[\s;&|]|$)/.test(command)) return;
 
-    // Allow if -m flag is present
-    if (/-m\s/.test(command)) return;
+    // Allow if -m flag is present (covers `-m "..."`, `-m'...'`, and the
+    // no-space forms `-m"..."`/`-m'...'`)
+    if (/-m['"\s]/.test(command)) return;
 
     // --file or -F forms — denied
     if (/\bgit\s+commit\b.*(-F\s|--file\s)/.test(command)) {

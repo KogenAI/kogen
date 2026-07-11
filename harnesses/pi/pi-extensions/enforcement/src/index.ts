@@ -37,7 +37,6 @@ import { register as registerDeveloperNoSelfGateReset } from "./hooks/developer-
 import { register as registerDeveloperStaticNoBuildOutputProbe } from "./hooks/developer-static-no-build-output-probe";
 import { register as registerDeveloperStaticNoManualBuild } from "./hooks/developer-static-no-manual-build";
 import { register as registerLlmPendingSweep } from "./hooks/llm-pending-sweep";
-import { register as registerLlmSuiteGuard } from "./hooks/llm-suite-guard";
 import { register as registerLlmTestGuard } from "./hooks/llm-test-guard";
 import { register as registerNoCatPipe } from "./hooks/no-cat-pipe";
 import { register as registerNoGitStash } from "./hooks/no-git-stash";
@@ -89,7 +88,6 @@ export default function (pi: ExtensionAPI): void {
   registerDeveloperStaticNoBuildOutputProbe(pi);
   registerDeveloperStaticNoManualBuild(pi);
   registerLlmPendingSweep(pi);
-  registerLlmSuiteGuard(pi);
   registerLlmTestGuard(pi);
   registerNoCatPipe(pi);
   registerNoGitStash(pi);

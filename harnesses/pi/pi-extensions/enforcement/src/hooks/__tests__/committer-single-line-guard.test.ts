@@ -47,6 +47,11 @@ describe("committer-single-line-guard", () => {
     assert.ok(result == null || (result as { block?: boolean }).block !== true);
   });
 
+  it("allows git commit-tree (word-boundary fix: no substring match on git commit)", async () => {
+    const result = await runHook("git commit-tree abc123 -p def456");
+    assert.ok(result == null || (result as { block?: boolean }).block !== true);
+  });
+
   it("allows non-committer with multi-line message", async () => {
     const result = await runHook(
       'git commit -m "bad\\nmsg"',

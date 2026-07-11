@@ -37,16 +37,13 @@ if is_codegen_log_write; then
 fi
 
 # Only inspect git commit commands
-if ! printf '%s' "$COMMAND" | grep -qE '\bgit[[:space:]]+commit\b'; then
+if ! printf '%s' "$COMMAND" | grep -qE '\bgit[[:space:]]+commit([[:space:];&|]|$)'; then
     exit 0
 fi
 
-# Allow if -m flag is present (with optional --amend)
-if printf '%s' "$COMMAND" | grep -qE '\bgit[[:space:]]+(commit|commit[[:space:]]+--amend)[[:space:]].*-m[[:space:]]'; then
-    exit 0
-fi
-# Also allow: git commit --amend -m "..."
-if printf '%s' "$COMMAND" | grep -qE '\bgit[[:space:]]+commit[[:space:]].*-m[[:space:]]'; then
+# Allow if -m flag is present (covers `-m "..."`, `-m'...'`, and the
+# no-space forms `-m"..."`/`-m'...'`); also covers `git commit --amend -m ...`.
+if printf '%s' "$COMMAND" | grep -qE "\\bgit[[:space:]]+commit[[:space:]].*-m['\"[:space:]]"; then
     exit 0
 fi
 

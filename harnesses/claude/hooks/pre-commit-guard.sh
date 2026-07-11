@@ -102,12 +102,7 @@ if printf '%s' "$_cmd_unquoted" | grep -qE '\bgit[[:space:]]+restore\b.*--staged
     exit 0
 fi
 
-if printf '%s' "$_cmd_unquoted" | grep -qE '\bgit[[:space:]]+stash\b'; then
-    deny "BLOCKED by pre-commit-guard: git stash is forbidden for agent \"$AGENT_TYPE\" — committer owns all git staging (delegate to committer)"
-    exit 0
-fi
-
-if printf '%s' "$_cmd_unquoted" | grep -qE '\bgit[[:space:]]+commit\b'; then
+if printf '%s' "$_cmd_unquoted" | grep -qE '\bgit[[:space:]]+commit([[:space:];&|]|$)'; then
     deny "BLOCKED by pre-commit-guard: git commit forbidden for agent \"$AGENT_TYPE\" — committer owns commit creation (see CLAUDE.md \"NEVER Commit Directly\")"
     exit 0
 fi

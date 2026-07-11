@@ -89,42 +89,6 @@ describe("no-silent-failure", () => {
     assert.ok(isDeny(result));
   });
 
-  it("denies catch-all _ -> nil sink", async () => {
-    const result = await runHook("edit", {
-      file_path: "lib/foo.ex",
-      old_string: "x",
-      new_string: "case v do\n  {:ok, r} -> r\n  _ -> nil\nend",
-    });
-    assert.ok(isDeny(result));
-  });
-
-  it("denies catch-all _ -> :ok sink", async () => {
-    const result = await runHook("edit", {
-      file_path: "lib/foo.ex",
-      old_string: "x",
-      new_string: "case v do\n  {:ok, r} -> r\n  _ -> :ok\nend",
-    });
-    assert.ok(isDeny(result));
-  });
-
-  it("denies catch-all _ -> [] sink", async () => {
-    const result = await runHook("edit", {
-      file_path: "lib/foo.ex",
-      old_string: "x",
-      new_string: 'case v do\n  {:ok, r} -> r\n  _ -> []\nend',
-    });
-    assert.ok(isDeny(result));
-  });
-
-  it('denies catch-all _ -> "" sink', async () => {
-    const result = await runHook("edit", {
-      file_path: "lib/foo.ex",
-      old_string: "x",
-      new_string: 'case v do\n  {:ok, r} -> r\n  _ -> ""\nend',
-    });
-    assert.ok(isDeny(result));
-  });
-
   it("denies MultiEdit concat with swallow token in edits[]", async () => {
     const result = await runHook("multiedit", {
       file_path: "lib/foo.ex",
@@ -197,6 +161,24 @@ describe("no-silent-failure", () => {
 
   it("allows non-content tool", async () => {
     const result = await runHook("bash", { command: "echo hi" });
+    assert.ok(isAllow(result));
+  });
+
+  it("allows catch-all _ -> nil (class-4 removed, over-fired on doc/string content)", async () => {
+    const result = await runHook("edit", {
+      file_path: "lib/foo.ex",
+      old_string: "x",
+      new_string: "case v do\n  {:ok, r} -> r\n  _ -> nil\nend",
+    });
+    assert.ok(isAllow(result));
+  });
+
+  it("allows else _ -> %{} (class-4 removed)", async () => {
+    const result = await runHook("edit", {
+      file_path: "lib/foo.ex",
+      old_string: "x",
+      new_string: "else\n  _ -> %{}\nend",
+    });
     assert.ok(isAllow(result));
   });
 });

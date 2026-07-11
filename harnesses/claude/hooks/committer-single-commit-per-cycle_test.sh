@@ -120,6 +120,22 @@ run_test "git status → allow (not a commit)" "0" \
     "$(status_fixture)" \
     "CODEGEN_BUILD_START_TS=1000000"
 
+# --- Test 4a: git commit-graph (not git commit) → allow (word-boundary fix) ---
+commit_graph_fixture() {
+    printf '{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"git commit-graph write"},"agent_type":"committer","agent_id":"abc"}'
+}
+run_test "git commit-graph → allow (word-boundary fix)" "0" \
+    "$(commit_graph_fixture)" \
+    "CODEGEN_BUILD_START_TS=1000000"
+
+# --- Test 4b: git commit-tree (not git commit) → allow (word-boundary fix) ---
+commit_tree_fixture() {
+    printf '{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"git commit-tree abc123 -m msg"},"agent_type":"committer","agent_id":"abc"}'
+}
+run_test "git commit-tree → allow (word-boundary fix)" "0" \
+    "$(commit_tree_fixture)" \
+    "CODEGEN_BUILD_START_TS=1000000"
+
 # --- Tests 5-7: require a real git repo with a session commit ---
 TMP=$(mktemp -d)
 trap 'rm -rf "$TMP_EARLY" "$TMP"' EXIT

@@ -44,8 +44,12 @@ if [ "${role}" != "debug" ] && [ "${role}" != "shape" ]; then
     exit 0
 fi
 
-# rm -rf / rm -r (recursive deletion)
-if printf '%s' "$COMMAND" | grep -qE '\brm[[:space:]].*-[a-zA-Z]*r[a-zA-Z]*[[:space:]]|\brm[[:space:]].*--recursive\b'; then
+# rm -rf / rm -r (recursive deletion) — anchor on a short flag cluster
+# containing r/R (e.g. -r, -rf, -fr, -rfv), whether it is the first token
+# after `rm` or a later one, or the explicit --recursive long flag. Must NOT
+# match long flags like --force/--verbose whose letters happen to contain
+# 'r' (e.g. the 2nd dash-char run in --force).
+if printf '%s' "$COMMAND" | grep -qE '\brm[[:space:]].*[[:space:]]-[a-zA-Z]*[rR][a-zA-Z]*([[:space:]]|$)|\brm[[:space:]]+-[a-zA-Z]*[rR][a-zA-Z]*([[:space:]]|$)|\brm[[:space:]].*--recursive\b'; then
     deny "BLOCKED by claude-debug-bash-guard: recursive rm forbidden in ${role} sessions (read-only investigation)"
     exit 0
 fi
@@ -56,10 +60,11 @@ if printf '%s' "$COMMAND" | grep -qE '\bmix[[:space:]]+(ecto\.(migrate|rollback|
     exit 0
 fi
 
-# git commit / push / reset --hard / rebase / cherry-pick / revert / merge
-# (belt-and-suspenders on top of pre-commit-guard which also catches these)
-if printf '%s' "$COMMAND" | grep -qE '\bgit[[:space:]]+(commit|push)\b'; then
-    deny "BLOCKED by claude-debug-bash-guard: git write operations forbidden in ${role} sessions"
+# git push (belt-and-suspenders — pre-commit-guard only blocks `push --force`,
+# so plain `git push` needs coverage here; `git commit` is pre-commit-guard's
+# job alone — dropped to avoid a redundant duplicate deny)
+if printf '%s' "$COMMAND" | grep -qE '\bgit[[:space:]]+push\b'; then
+    deny "BLOCKED by claude-debug-bash-guard: git push forbidden in ${role} sessions"
     exit 0
 fi
 

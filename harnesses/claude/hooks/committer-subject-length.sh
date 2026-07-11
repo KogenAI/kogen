@@ -35,7 +35,7 @@ if is_codegen_log_write; then
 fi
 
 # Only inspect git commit commands
-if ! printf '%s' "$COMMAND" | grep -qE '\bgit[[:space:]]+commit\b'; then
+if ! printf '%s' "$COMMAND" | grep -qE '\bgit[[:space:]]+commit([[:space:];&|]|$)'; then
     exit 0
 fi
 

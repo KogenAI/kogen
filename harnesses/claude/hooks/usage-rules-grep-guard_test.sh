@@ -43,9 +43,15 @@ run_test() {
 FIXTURE_DEV_BLOCK='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"grep foo codegen/usage_rules/oban.md"},"agent_type":"developer-phoenix-backend","agent_id":"abc"}'
 run_test "developer-phoenix-backend grep usage_rules blocks" "2" "$FIXTURE_DEV_BLOCK"
 
-# Test 2: planner grepping codegen/usage_rules/ — ALLOW
-FIXTURE_PLANNER_ALLOW='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"grep foo codegen/usage_rules/oban.md"},"agent_type":"planner","agent_id":"abc"}'
-run_test "planner grep usage_rules allows" "0" "$FIXTURE_PLANNER_ALLOW"
+# Test 2: planner-phoenix grepping codegen/usage_rules/ — ALLOW
+# (real role name carries a stack suffix; bare "planner" never fires in
+# production — this fixture exercises the actual planner-* match)
+FIXTURE_PLANNER_ALLOW='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"grep foo codegen/usage_rules/oban.md"},"agent_type":"planner-phoenix","agent_id":"abc"}'
+run_test "planner-phoenix grep usage_rules allows" "0" "$FIXTURE_PLANNER_ALLOW"
+
+# Test 2b: planner-static grepping codegen/usage_rules/ — ALLOW
+FIXTURE_PLANNER_STATIC_ALLOW='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"grep foo codegen/usage_rules/oban.md"},"agent_type":"planner-static","agent_id":"abc"}'
+run_test "planner-static grep usage_rules allows" "0" "$FIXTURE_PLANNER_STATIC_ALLOW"
 
 # Test 3: developer-phoenix-backend grepping codegen/recipes/ — ALLOW
 FIXTURE_RECIPES_ALLOW='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"grep foo codegen/recipes/INDEX.md"},"agent_type":"developer-phoenix-backend","agent_id":"abc"}'

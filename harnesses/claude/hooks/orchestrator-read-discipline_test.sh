@@ -322,6 +322,18 @@ CLAUDE_ROLE=debug run_test "CLAUDE_ROLE=debug Bash .jsonl command allows" "0" "$
 FIXTURE_BASH_TF6='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"git log --oneline"},"agent_id":"","agent_type":""}'
 run_test "orchestrator Bash git log --oneline allows (no transcript tokens)" "0" "$FIXTURE_BASH_TF6"
 
+# Test TF8: orchestrator codegen-log write to codegen/logging/*.jsonl — ALLOW
+# (narrowed jsonl matcher: bare .jsonl outside .claude/projects/ is no longer
+# a transcript-forgery signal — codegen-log's own on-disk cycle logs are a
+# legitimate, unrelated .jsonl surface)
+FIXTURE_BASH_TF8='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"codegen-log section developer-phoenix-backend --slug hook-hygiene-sweep <<< body writing to codegen/logging/20260711_000000_x_cycle.jsonl"},"agent_id":"","agent_type":""}'
+run_test "orchestrator codegen-log write mentioning codegen/logging/*.jsonl allows" "0" "$FIXTURE_BASH_TF8"
+
+# Test TF9: orchestrator cat on .claude/projects/*.jsonl — DENY (still covered,
+# narrowing must not open a hole on the actual transcript surface)
+FIXTURE_BASH_TF9='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"cat .claude/projects/foo/session.jsonl"},"agent_id":"","agent_type":""}'
+run_test "orchestrator cat on .claude/projects/*.jsonl still denies" "2" "$FIXTURE_BASH_TF9"
+
 # Test TF7: command matches BOTH the transcript-forge pattern AND the leading
 # exploration-verb pattern (cat ...jsonl) — must emit exactly ONE deny JSON
 # object, not two concatenated blobs (regression: missing exit 0 after the

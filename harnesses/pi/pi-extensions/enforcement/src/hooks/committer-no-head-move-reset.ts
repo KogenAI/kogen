@@ -59,7 +59,15 @@ export function register(pi: ExtensionAPI): void {
     // is a path, never a commit-ish, and must not trigger ref detection.
     const resetArgsNoPaths = resetArgs.replace(/\s--\s.*$/, "");
 
-    const trimmed = resetArgsNoPaths.trim();
+    // Strip leading non-HEAD-moving option flags (-q/--quiet, -p/--patch, -N,
+    // -v/--verbose, etc.) so a leftover flag like `-q` does not survive into
+    // ref detection below and get misread as a target commit-ish.
+    const resetArgsNoFlags = resetArgsNoPaths.replace(
+      /(^|\s)(-q|--quiet|-p|--patch|-N|--intent-to-add|-v|--verbose)(\s|$)/g,
+      " ",
+    );
+
+    const trimmed = resetArgsNoFlags.trim();
 
     // No target token left (bare `git reset`) — allowed, HEAD unmoved.
     if (trimmed === "") {

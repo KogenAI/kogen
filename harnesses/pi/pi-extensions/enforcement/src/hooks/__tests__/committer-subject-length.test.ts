@@ -49,6 +49,11 @@ describe("committer-subject-length", () => {
     assert.ok(result == null || (result as { block?: boolean }).block !== true);
   });
 
+  it("allows git commit-graph (word-boundary fix: no substring match on git commit)", async () => {
+    const result = await runHook("git commit-graph write");
+    assert.ok(result == null || (result as { block?: boolean }).block !== true);
+  });
+
   it("passes through for non-committer agent", async () => {
     const longSubject = "A".repeat(60);
     const result = await runHook(

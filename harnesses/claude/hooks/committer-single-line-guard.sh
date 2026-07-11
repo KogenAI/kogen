@@ -39,7 +39,7 @@ if is_codegen_log_write; then
 fi
 
 # Only inspect git commit commands
-if ! printf '%s' "$COMMAND" | grep -qE '\bgit[[:space:]]+commit\b'; then
+if ! printf '%s' "$COMMAND" | grep -qE '\bgit[[:space:]]+commit([[:space:];&|]|$)'; then
     exit 0
 fi
 
@@ -54,15 +54,6 @@ fi
 # Deny if COMMAND contains literal \n (backslash + n) in any -m argument
 if printf '%s' "$COMMAND" | grep -qF '\n'; then
     deny "BLOCKED by committer-single-line-guard: commit -m payload contains literal \\n. Use a single-line subject only."
-    exit 0
-fi
-
-# Extract commit message from -m flag (single or double quoted)
-# Same regex as committer-subject-length.sh
-msg=$(printf '%s' "$COMMAND" | grep -oE -- '-m[[:space:]]+("([^"]+)"|'"'"'([^'"'"']+)'"'"')' | head -1 | sed -E 's/-m[[:space:]]+["'"'"']//; s/["'"'"']$//')
-
-# No -m flag found → pass-through (committer-no-trailer-guard owns that case)
-if [ -z "$msg" ]; then
     exit 0
 fi
 

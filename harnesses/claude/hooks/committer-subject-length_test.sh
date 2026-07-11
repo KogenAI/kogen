@@ -77,6 +77,14 @@ run_test "codegen-log write narrating long subject ALLOWED" "0" "$FIXTURE_LOG_WR
 # real standalone 51-byte message still BLOCKED unchanged
 run_test "real 51-byte message still blocks (unchanged)" "2" "$FIXTURE_BLOCK"
 
+# git commit-graph — not a real commit, must not be gated by this hook
+FIXTURE_COMMIT_GRAPH='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"git commit-graph write"},"agent_type":"committer","agent_id":"abc"}'
+run_test "git commit-graph allowed (word-boundary fix)" "0" "$FIXTURE_COMMIT_GRAPH"
+
+# git commit-tree — not a real commit, must not be gated by this hook
+FIXTURE_COMMIT_TREE='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"git commit-tree abc123 -m msg"},"agent_type":"committer","agent_id":"abc"}'
+run_test "git commit-tree allowed (word-boundary fix)" "0" "$FIXTURE_COMMIT_TREE"
+
 echo ""
 echo "Results: $pass passed, $fail failed"
 

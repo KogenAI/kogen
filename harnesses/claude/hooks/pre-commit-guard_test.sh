@@ -104,6 +104,11 @@ run_test "git commit blocked for developer-phoenix-backend" "2" "$FIXTURE_COMMIT
 FIXTURE_STATUS_ALLOWED='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"git status"},"agent_type":"developer-phoenix-backend","agent_id":"abc123"}'
 run_test "git status passes for developer-phoenix-backend" "0" "$FIXTURE_STATUS_ALLOWED"
 
+# Test 2b: git commit-graph PASSES for developer-phoenix-backend (word-boundary
+# fix: `git commit` must NOT substring-match `git commit-graph`/`commit-tree`)
+FIXTURE_COMMIT_GRAPH_ALLOWED='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"git commit-graph write"},"agent_type":"developer-phoenix-backend","agent_id":"abc123"}'
+run_test "git commit-graph passes for developer-phoenix-backend" "0" "$FIXTURE_COMMIT_GRAPH_ALLOWED"
+
 # Test 3: git commit PASSES for committer
 FIXTURE_COMMIT_ALLOWED='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"git commit -m '\''foo'\''"},"agent_type":"committer","agent_id":"abc123"}'
 run_test "git commit passes for committer" "0" "$FIXTURE_COMMIT_ALLOWED"
@@ -203,9 +208,11 @@ run_test_env "git add -A allowed in ops mode + unlock" "0" "$FIXTURE_ADD_OPS" "C
 FIXTURE_ADD_OPS_ALONE='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"git add -A"},"agent_type":"","agent_id":"a"}'
 run_test_env "git add -A denied in ops mode alone (no unlock)" "2" "$FIXTURE_ADD_OPS_ALONE" "CLAUDE_ROLE=ops"
 
-# Test 18: git stash for non-committer — MUST DENY
-FIXTURE_STASH_BLOCKED='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"git stash"},"agent_type":"developer-phoenix-backend","agent_id":"a"}'
-run_test "git stash blocked for non-committer" "2" "$FIXTURE_STASH_BLOCKED"
+# Test 18: git stash — arm REMOVED from pre-commit-guard (hook-hygiene-sweep):
+# no-git-stash.sh already denies `git stash` for role `*` with no exemption,
+# strictly broader coverage. See no-git-stash_test.sh for the live DENY case.
+FIXTURE_STASH_NOW_PASSTHROUGH='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"git stash"},"agent_type":"developer-phoenix-backend","agent_id":"a"}'
+run_test "git stash no longer gated by pre-commit-guard (no-git-stash.sh owns it)" "0" "$FIXTURE_STASH_NOW_PASSTHROUGH"
 
 # Test 19: git rm --cached foo for non-committer — MUST DENY
 FIXTURE_RM_BLOCKED='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"git rm --cached foo"},"agent_type":"developer-phoenix-backend","agent_id":"a"}'

@@ -79,8 +79,14 @@ reset_args=$(printf '%s' "$COMMAND" | sed -E 's/^.*git[[:space:]]+reset//' | sed
 # path, never a commit-ish, and must not trigger the ref-detection below.
 reset_args_no_paths=$(printf '%s' "$reset_args" | sed -E 's/[[:space:]]--[[:space:]].*$//')
 
+# Strip leading non-HEAD-moving option flags (-q/--quiet, -p/--patch, -N,
+# -v/--verbose, etc.) so a leftover flag like `-q` does not survive into the
+# ref-detection below and get misread as a target commit-ish.
+# --soft/--hard/--keep/--merge are already denied earlier and are never seen here.
+reset_args_no_flags=$(printf '%s' "$reset_args_no_paths" | sed -E 's/(^|[[:space:]])(-q|--quiet|-p|--patch|-N|--intent-to-add|-v|--verbose)([[:space:]]|$)/ /g')
+
 # No target token left (bare `git reset`) — allowed, HEAD unmoved.
-trimmed=$(printf '%s' "$reset_args_no_paths" | sed -E 's/^[[:space:]]+//; s/[[:space:]]+$//')
+trimmed=$(printf '%s' "$reset_args_no_flags" | sed -E 's/^[[:space:]]+//; s/[[:space:]]+$//')
 if [ -z "$trimmed" ]; then
     debug_log committer-no-head-move-reset "allow: bare git reset (no target)"
     exit 0

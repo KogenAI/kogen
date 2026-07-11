@@ -63,12 +63,7 @@ export function register(pi: ExtensionAPI): void {
         `BLOCKED by pre-commit-guard: git restore --staged is forbidden for agent "${agentType}" — committer owns all git staging (delegate to committer)`,
       );
     }
-    if (/\bgit\s+stash\b/.test(scan)) {
-      return deny(
-        `BLOCKED by pre-commit-guard: git stash is forbidden for agent "${agentType}" — committer owns all git staging (delegate to committer)`,
-      );
-    }
-    if (/\bgit\s+commit\b/.test(scan)) {
+    if (/\bgit\s+commit(?:[\s;&|]|$)/.test(scan)) {
       return deny(
         `BLOCKED by pre-commit-guard: git commit forbidden for agent "${agentType}" — committer owns commit creation (see CLAUDE.md "NEVER Commit Directly")`,
       );

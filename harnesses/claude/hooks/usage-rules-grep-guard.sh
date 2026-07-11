@@ -22,9 +22,11 @@ parse_input
 debug_log usage-rules-grep-guard "tool=$TOOL_NAME agent=$AGENT_TYPE"
 
 # Planner may scan usage_rules freely
-if [ "$AGENT_TYPE" = "planner" ]; then
+case "$AGENT_TYPE" in
+planner-*)
     exit 0
-fi
+    ;;
+esac
 
 case "$TOOL_NAME" in
 Bash)

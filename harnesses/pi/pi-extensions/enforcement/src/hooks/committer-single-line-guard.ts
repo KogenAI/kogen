@@ -34,7 +34,7 @@ export function register(pi: ExtensionAPI): void {
     // counter increment.
     if (isCodegenLogWrite(command)) return;
 
-    if (!/\bgit\s+commit\b/.test(command)) return;
+    if (!/\bgit\s+commit(?:[\s;&|]|$)/.test(command)) return;
 
     // Deny if command contains actual newline character
     if (command.includes("\n")) {

@@ -65,30 +65,6 @@ if is_denied "$out"; then PASS=$((PASS + 1)); else
     echo "FAIL: rescue e -> (named var) w/o reraise (Elixir) should DENY: $out"
 fi
 
-out=$(run_hook '{"tool_name":"Edit","tool_input":{"file_path":"lib/foo.ex","old_string":"x","new_string":"case v do\n  {:ok, r} -> r\n  _ -> nil\nend"}}')
-if is_denied "$out"; then PASS=$((PASS + 1)); else
-    FAIL=$((FAIL + 1))
-    echo "FAIL: catch-all _ -> nil should DENY: $out"
-fi
-
-out=$(run_hook '{"tool_name":"Edit","tool_input":{"file_path":"lib/foo.ex","old_string":"x","new_string":"case v do\n  {:ok, r} -> r\n  _ -> :ok\nend"}}')
-if is_denied "$out"; then PASS=$((PASS + 1)); else
-    FAIL=$((FAIL + 1))
-    echo "FAIL: catch-all _ -> :ok should DENY: $out"
-fi
-
-out=$(run_hook '{"tool_name":"Edit","tool_input":{"file_path":"lib/foo.ex","old_string":"x","new_string":"case v do\n  {:ok, r} -> r\n  _ -> []\nend"}}')
-if is_denied "$out"; then PASS=$((PASS + 1)); else
-    FAIL=$((FAIL + 1))
-    echo "FAIL: catch-all _ -> [] should DENY: $out"
-fi
-
-out=$(run_hook '{"tool_name":"Edit","tool_input":{"file_path":"lib/foo.ex","old_string":"x","new_string":"case v do\n  {:ok, r} -> r\n  _ -> \"\"\nend"}}')
-if is_denied "$out"; then PASS=$((PASS + 1)); else
-    FAIL=$((FAIL + 1))
-    echo "FAIL: catch-all _ -> \"\" should DENY: $out"
-fi
-
 out=$(run_hook '{"tool_name":"MultiEdit","tool_input":{"file_path":"lib/foo.ex","edits":[{"old_string":"a","new_string":"ok"},{"old_string":"b","new_string":"rescue _ ->\n  :error\nend"}]}}')
 if is_denied "$out"; then PASS=$((PASS + 1)); else
     FAIL=$((FAIL + 1))
@@ -131,6 +107,18 @@ out=$(run_hook '{"tool_name":"Edit","tool_input":{"file_path":"scripts/cleanup.s
 if is_denied "$out"; then
     FAIL=$((FAIL + 1))
     echo "FAIL: || true should ALLOW (not mechanically gated): $out"
+else PASS=$((PASS + 1)); fi
+
+out=$(run_hook '{"tool_name":"Edit","tool_input":{"file_path":"lib/foo.ex","old_string":"x","new_string":"case v do\n  {:ok, r} -> r\n  _ -> nil\nend"}}')
+if is_denied "$out"; then
+    FAIL=$((FAIL + 1))
+    echo "FAIL: catch-all _ -> nil should ALLOW (class-4 removed, over-fired on doc/string content): $out"
+else PASS=$((PASS + 1)); fi
+
+out=$(run_hook '{"tool_name":"Edit","tool_input":{"file_path":"lib/foo.ex","old_string":"x","new_string":"else\n  _ -> %{}\nend"}}')
+if is_denied "$out"; then
+    FAIL=$((FAIL + 1))
+    echo "FAIL: else _ -> %{} should ALLOW (class-4 removed): $out"
 else PASS=$((PASS + 1)); fi
 
 out=$(run_hook '{"tool_name":"Bash","tool_input":{"command":"echo hi"}}')

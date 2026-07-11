@@ -50,7 +50,14 @@ fi
 # Classification regexes live in the harness-agnostic shared fragment so the
 # (claude + pi) dispatch retry loops can source the same taxonomy. Single
 # source of truth — do not re-inline here.
-source "$(dirname "$0")/../../shared/retryable-errors.sh"
+# Prefer the flat install location (hooks/lib/, populated by install.sh from
+# harnesses/shared/); fall back to the in-tree shared path so hermetic tests
+# running directly against the repo source (no install step) still resolve.
+_retryable_lib="$(dirname "$0")/lib/retryable-errors.sh"
+if [ ! -f "$_retryable_lib" ]; then
+    _retryable_lib="$(dirname "$0")/../../shared/retryable-errors.sh"
+fi
+source "$_retryable_lib"
 
 is_retryable=0
 

@@ -42,7 +42,7 @@ export function register(pi: ExtensionAPI): void {
       )
     ) {
       return deny(
-        "Dev MUST NOT run gate commands. The dev-gate.sh SubagentStop hook runs the gate after you exit. Specific test files are OK: `mix test test/path/file.exs`.",
+        "Dev MUST NOT run gate commands. The dev-gate.sh SubagentStop hook runs the gate after you exit. Specific test files are OK: `mix test test/path/file.exs`. For the LLM suite specifically, use `make llm-single FILE=<path>` to iterate on one file.",
       );
     }
 

@@ -72,6 +72,16 @@ describe("committer-no-trailer-guard", () => {
     assert.ok(result == null || (result as { block?: boolean }).block !== true);
   });
 
+  it("allows git commit -m with no-space quote form (-m\"...\")", async () => {
+    const result = await runHook('git commit -m"Add thing"');
+    assert.ok(result == null || (result as { block?: boolean }).block !== true);
+  });
+
+  it("allows git commit-graph (word-boundary fix: no substring match on git commit)", async () => {
+    const result = await runHook("git commit-graph write");
+    assert.ok(result == null || (result as { block?: boolean }).block !== true);
+  });
+
   it("allows codegen-log write narrating bare git commit", async () => {
     const result = await runHook(
       'codegen-log section --slug test --body @- <<EOF\n## committer Section\nRan bare git commit — denied by trailer guard, as expected.\nEOF',

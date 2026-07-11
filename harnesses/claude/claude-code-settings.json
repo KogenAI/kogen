@@ -419,15 +419,6 @@
         "hooks": [
           {
             "type": "command",
-            "command": "$HOME/.claude/hooks/llm-suite-guard.sh"
-          }
-        ]
-      },
-      {
-        "matcher": "Bash",
-        "hooks": [
-          {
-            "type": "command",
             "command": "$HOME/.claude/hooks/llm-test-guard.sh"
           }
         ]

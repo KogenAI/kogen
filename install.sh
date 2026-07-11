@@ -378,6 +378,12 @@ for _harness in "${HARNESSES[@]}"; do
                         content_stable_cp "$lib_file" "$CLAUDE_SETTINGS_DIR/hooks/lib/$(basename "$lib_file")"
                     fi
                 done
+                # stop-resume.sh sources the shared retryable-error taxonomy;
+                # install it beside the hook (single source of truth stays in
+                # harnesses/shared/) so the flat install dir has no ../.. reach.
+                if [ -f "$CODEGEN_DIR/harnesses/shared/retryable-errors.sh" ]; then
+                    content_stable_cp "$CODEGEN_DIR/harnesses/shared/retryable-errors.sh" "$CLAUDE_SETTINGS_DIR/hooks/lib/retryable-errors.sh"
+                fi
                 echo "   ✅ Hooks lib installed at: $CLAUDE_SETTINGS_DIR/hooks/lib/"
             fi
         fi

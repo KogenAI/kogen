@@ -133,4 +133,19 @@ describe("committer-no-head-move-reset", { concurrency: 1 }, () => {
     );
     assert.ok(result == null || (result as { block?: boolean }).block !== true);
   });
+
+  it("15. allows git reset -q (leftover flag survives a leftover -q token)", async () => {
+    const result = await runHook("git reset -q", "committer");
+    assert.ok(result == null || (result as { block?: boolean }).block !== true);
+  });
+
+  it("16. allows git reset --quiet", async () => {
+    const result = await runHook("git reset --quiet", "committer");
+    assert.ok(result == null || (result as { block?: boolean }).block !== true);
+  });
+
+  it("17. denies git reset -q HEAD~1 (flag strip must not swallow the real target)", async () => {
+    const result = await runHook("git reset -q HEAD~1", "committer");
+    assert.ok((result as { block?: boolean }).block === true);
+  });
 });

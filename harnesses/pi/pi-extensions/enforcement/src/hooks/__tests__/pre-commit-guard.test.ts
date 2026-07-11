@@ -160,13 +160,22 @@ describe("pre-commit-guard", () => {
     assert.ok(result == null || (result as { block?: boolean }).block !== true);
   });
 
-  it("blocks git stash for non-committer", async () => {
+  it("no longer blocks git stash directly (no-git-stash.ts owns it; arm removed as redundant)", async () => {
     const result = await runHook(
       "bash",
       "git stash",
       "developer-phoenix-backend",
     );
-    assert.ok((result as { block?: boolean }).block === true);
+    assert.ok(result == null || (result as { block?: boolean }).block !== true);
+  });
+
+  it("allows git commit-graph (word-boundary fix: no substring match on git commit)", async () => {
+    const result = await runHook(
+      "bash",
+      "git commit-graph write",
+      "developer-phoenix-backend",
+    );
+    assert.ok(result == null || (result as { block?: boolean }).block !== true);
   });
 
   it("allows git restore foo (no --staged) for non-committer", async () => {

@@ -108,6 +108,13 @@ describe("committer-single-commit-per-cycle", { concurrency: 1 }, () => {
     assert.ok(result == null || (result as { block?: boolean }).block !== true);
   });
 
+  it("allows git commit-graph (word-boundary fix: no substring match on git commit)", async () => {
+    const result = await runHook("git commit-graph write", "committer", {
+      CODEGEN_BUILD_START_TS: "1000000",
+    });
+    assert.ok(result == null || (result as { block?: boolean }).block !== true);
+  });
+
   describe("with a real git repo", () => {
     let tmpDir: string;
 

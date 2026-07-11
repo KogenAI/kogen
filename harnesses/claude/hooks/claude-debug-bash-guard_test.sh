@@ -67,6 +67,22 @@ run_test "rm -rf blocked in debug role" "2" \
 run_test "rm -r blocked in debug role" "2" \
     "$(mk 'rm -r build/')" "debug"
 
+# 2a: rm -fr (reversed cluster) blocked in debug
+run_test "rm -fr blocked in debug role" "2" \
+    "$(mk 'rm -fr build/')" "debug"
+
+# 2b: rm --recursive blocked in debug
+run_test "rm --recursive blocked in debug role" "2" \
+    "$(mk 'rm --recursive build/')" "debug"
+
+# 2c: rm --force allowed in debug (no r-cluster; long-flag false-positive fix)
+run_test "rm --force allowed in debug role (no recursive flag)" "0" \
+    "$(mk 'rm --force /tmp/foo')" "debug"
+
+# 2d: rm --verbose allowed in debug (no r-cluster; long-flag false-positive fix)
+run_test "rm --verbose allowed in debug role (no recursive flag)" "0" \
+    "$(mk 'rm --verbose /tmp/foo')" "debug"
+
 # 3: mix ecto.migrate blocked
 run_test "mix ecto.migrate blocked in debug role" "2" \
     "$(mk 'mix ecto.migrate')" "debug"
@@ -79,8 +95,9 @@ run_test "mix ecto.rollback blocked in debug role" "2" \
 run_test "mix ecto.drop blocked in debug role" "2" \
     "$(mk 'mix ecto.drop')" "debug"
 
-# 6: git commit blocked
-run_test "git commit blocked in debug role" "2" \
+# 6: git commit — now ALLOWED here (pre-commit-guard owns the deny; this
+# hook dropped its redundant duplicate clause per hook-hygiene-sweep)
+run_test "git commit allowed in debug role (pre-commit-guard owns deny)" "0" \
     "$(mk 'git commit -m "fix"')" "debug"
 
 # 7: git push blocked

@@ -67,7 +67,7 @@ if [ "$TOOL_NAME" = "Bash" ]; then
     # Deny any Bash command that touches the session transcript — the orchestrator
     # has no legitimate reason to read, write, or forge the .jsonl transcript.
     # Forging JSONL to trick step-log guards is the demonstrated exploit.
-    if printf '%s' "$_cmd" | grep -qE '(\$TRANSCRIPT_PATH|\.jsonl|\.claude/projects/)'; then
+    if printf '%s' "$_cmd" | grep -qE '(\$TRANSCRIPT_PATH|\.claude/projects/[^[:space:]]*\.jsonl|\.claude/projects/)'; then
         deny "Orchestrator must not touch the session transcript via Bash. Delegate transcript-dependent work or comply with the hook denial instead."
         exit 0
     fi
