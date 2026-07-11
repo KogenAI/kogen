@@ -367,6 +367,20 @@ assert_contains \
     "$CODEGEN_DIR/harnesses/pi/pi-shape-system-prompt.txt" \
     "$SENTINEL_SILENT_FAILURE"
 
+SENTINEL_PROBE_COMPLETENESS="PROBE-COMPLETENESS: derive second-order claims to the leaves"
+assert_contains \
+    "probe-completeness sentinel in claude-shape-system-prompt.txt" \
+    "$CODEGEN_DIR/harnesses/claude/claude-shape-system-prompt.txt" \
+    "$SENTINEL_PROBE_COMPLETENESS"
+assert_contains \
+    "probe-completeness sentinel in pi-shape-system-prompt.txt" \
+    "$CODEGEN_DIR/harnesses/pi/pi-shape-system-prompt.txt" \
+    "$SENTINEL_PROBE_COMPLETENESS"
+assert_contains \
+    "probe-completeness sentinel in ready.md.j2" \
+    "$CODEGEN_DIR/harnesses/claude/commands/ready.md.j2" \
+    "$SENTINEL_PROBE_COMPLETENESS"
+
 echo ""
 echo "Results: $pass passed, $fail failed"
 

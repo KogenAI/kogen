@@ -80,18 +80,7 @@ Before composing ANY AskUserQuestion, the shaper scans the conversation history 
 
 ## Cold-Start Raw Multi-Source Material
 
-When the user arrives with raw material implying MANY pitches — an audio recording, dumped notes, a brain-dump, references to "several pitches", "many pitches", "a bunch of ideas" — the shaper does NOT interrogate them about tooling.
-
-**Protocol**:
-
-1. State a one-line plan (e.g., "Reading the material, splitting into problem threads, writing one skeleton pitch per thread.").
-2. Read whatever text is accessible.
-3. Split into distinct problem threads.
-4. Write one SKELETON pitch per thread into `codegen/pitches/draft/`.
-
-**Getting the material into readable text** (transcription, format conversion, etc.) is the shaper's own engineering problem. Pick a sane default and state it as `Assumed: <x> (override if wrong)`. NEVER quiz the user on which transcription model, machine, or pipeline to use.
-
-**If the source is genuinely unreadable**: state in ONE sentence exactly what file/text is needed and where to drop it, then stop. Never a multi-question interrogation.
+When the user arrives with raw material implying MANY pitches — audio, dumped notes, brain-dump, "several/many pitches" — the shaper does NOT interrogate them about tooling. **Protocol**: state a one-line plan → read accessible text → split into distinct problem threads → write one SKELETON pitch per thread into `codegen/pitches/draft/`. Getting the material into readable text (transcription, format conversion) is the shaper's own engineering problem — pick a sane default, state `Assumed: <x> (override if wrong)`, never quiz on model/machine/pipeline. If genuinely unreadable: state in ONE sentence what's needed and where to drop it, then stop — never a multi-question interrogation.
 
 ## Deferral-with-Draft Contract (Rule J)
 
@@ -165,11 +154,7 @@ When the prompt text DOES name the step or section (e.g., "step c'", "the U-temp
 
 ## Readiness Blockers with AUTO-RESOLVE Semantics
 
-When adding a readiness blocker that carries AUTO-RESOLVE semantics (automatic classification + resolution without user question), the blocker description MUST inline the complete classify-and-act logic inline. Pointer-only references to external rules are insufficient because baked `shape.txt` (where the blocker lives) is included in the system prompt WITHOUT `_authoring-spine.txt` — references must be self-contained.
-
-**Pattern**: A blocker scans for a trigger condition (e.g., "Undeclared sibling relationship" checks for shared edit-surface + ordering language without a `## Dependencies` declaration), then inlines the full classify-and-act tree (e.g., cases a/b/c/d outcomes with act-on instructions), then emits a resolution line.
-
-**Constraint**: Rule-prose (e.g., Rule H in `_authoring-spine.txt`) and blocker-class definition (e.g., "Undeclared sibling relationship" in `shape.txt`) are producer/verifier of the same contract — both must be present and aligned or the rule is unenforced. If Rule H generalizes, the blocker's classify-and-act cases must mirror that generalization; if a new blocker is added, the corresponding rule prose (if any) must exist and agree.
+An AUTO-RESOLVE readiness blocker (auto-classify + resolve, no user question) MUST inline its complete classify-and-act logic — baked `shape.txt` ships WITHOUT `_authoring-spine.txt`, so pointer-only references to external rules are unenforceable. Pattern: scan for trigger condition → inline full classify-and-act tree (e.g., cases a/b/c/d) → emit resolution line. Rule-prose (Rule H) and blocker-class definition (`shape.txt`) are producer/verifier of the same contract — both must stay aligned; a rule generalization requires the blocker's cases to mirror it.
 
 ## Cross-Harness Coverage (Both Claude + Pi)
 
@@ -287,6 +272,10 @@ Any one of the three missing → blocker.
 
 **Producer/verifier**: `_authoring-spine.txt` + `shape.txt` (blocker+template) + `_probing.txt` (probe) + `ready.md.j2` (gate) + `prompt-content-parity_test.sh` sentinel (`Format/syntax-change consumer completeness`). Incident: pitch-frontmatter `---` broke the loop's opaque `File.read!` whole-pitch reader; fixed by `650941e8` (`strip_frontmatter/1`).
 
+## Probe-Completeness — Recursive Ledger to the Leaves
+
+Probing is a tree exhausted to its leaves, not one pass. Every probe RESULT and every "X fully probed" assertion must be re-tested: does the result make anything NEW load-bearing, and is the sub-surface fully enumerated (not one first-order probe)? Any surfaced claim becomes a new `UNPROBED` ledger row, gets probed, and recurses on its own result to leaves. Incident: a shaper probed a tool-deny, declared "fully probed" — the RESULT made two new things load-bearing (surviving `>` write path, guard-under-`--agent`), caught only by operator pushback. Inline self-pass only, never an automatic subagent swarm (`/poke-holes` stays opt-in). Producer/verifier: `shape.txt` gate 2b + `_probing.txt` recursion bullet + `ready.md.j2` mirror + sentinel `PROBE-COMPLETENESS: derive second-order claims to the leaves`.
+
 ## Integration with `/ready` Command
 
 The `/ready` skill is a sibling investigation aid that gates a pitch's readiness-check loop. It carries a near-verbatim copy of the soft ask-vs-decide classifier and the deferral-with-draft contract rules. When the shape.txt rules change significantly, `/ready` may need parallel tightening to keep both tools in sync.
@@ -297,13 +286,13 @@ This is a SEPARATE pitch and change, not folded into shape-mode tightening. The 
 
 ## Pitfalls
 
-- **Pitch line numbers drift** — use exact anchor text, not line numbers. Verify via `git show <commit> --stat`. Example blocks carry routing targets too — bulk-repathing must cover them.
+- **Pitch line numbers drift** — use exact anchor text, not line numbers. Example blocks carry routing targets too — bulk-repathing must cover them.
 - **Shape prompt two-layer architecture** — inline-probe (`_probing.txt`) checks claim-intro; readiness-check (`shape.txt`) scans completeness. Place rules by gate-phase. `/ready` inherits `_probing.txt` automatically.
-- **Read/Edit blocked for codegen/pitches/** — `subagent-read-discipline.sh` denies both on pitch files; workaround: Bash `awk`/`grep` + Python string-replace. `grep -c "header text"` false-positives on prose mentions — use `grep -n "^## ..."` (anchored H2) for "exactly one section" checks. Delegation-prompt `## ` lines get indented to `##` to prevent rank-order corruption.
+- **Read/Edit blocked for codegen/pitches/** — `subagent-read-discipline.sh` denies both; workaround: Bash `awk`/`grep` + Python string-replace. `grep -c "header text"` false-positives on prose mentions — use `grep -n "^## ..."` (anchored H2) for "exactly one section" checks. Delegation-prompt `## ` lines get indented to `##` to prevent rank-order corruption.
 
 ## Trigger Keywords
 
-shaper rules, ask-vs-decide, deferral-with-draft, decompose-then-split, derive-and-write edges, Rule G, Rule H, Rule I, Rule J, shape mode discipline, prompt durability, section-name anchors, sweep-class, completeness contract, full-vocabulary sweep, producer/verifier reconciliation, operator-owned surface, user-facing surface removal, keep-vs-remove fork, contract-declaration-site completeness, declaration-site sweep, cross-cutting contract, declares-teaches bound, capability-removal reachability, deny blast radius, stranded actor, tool-grant reachability, incomplete replacement, replacement completeness, WIRED RECONCILED PRESERVED, born-dead code, proxy probe, absorbs claim, empirical-usage-grounding, usage-mining, transcript mining, error taxonomy, prior-pitch corpus, patch-sedimentation, format/syntax-change consumer completeness, opaque reader, whole-artifact reader, reader enumeration
+shaper rules, ask-vs-decide, deferral-with-draft, decompose-then-split, derive-and-write edges, Rule G, Rule H, Rule I, Rule J, shape mode discipline, prompt durability, section-name anchors, sweep-class, completeness contract, full-vocabulary sweep, producer/verifier reconciliation, operator-owned surface, user-facing surface removal, keep-vs-remove fork, contract-declaration-site completeness, declaration-site sweep, cross-cutting contract, declares-teaches bound, capability-removal reachability, deny blast radius, stranded actor, tool-grant reachability, incomplete replacement, replacement completeness, WIRED RECONCILED PRESERVED, born-dead code, proxy probe, absorbs claim, empirical-usage-grounding, usage-mining, transcript mining, error taxonomy, prior-pitch corpus, patch-sedimentation, format/syntax-change consumer completeness, opaque reader, whole-artifact reader, reader enumeration, probe-completeness, recursive ledger, second-order claim, sub-surface, leaves
 
 ## See Also
 
