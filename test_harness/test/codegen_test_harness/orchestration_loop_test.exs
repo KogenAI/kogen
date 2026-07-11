@@ -848,11 +848,11 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
     end
   end
 
-  defp always_clean_factcheck_fn do
+  defp always_clean_curator_doc_fn do
     fn _cwd -> {:clean} end
   end
 
-  describe "run/1 — factcheck fix cycle" do
+  describe "run/1 — curator doc check cycle (factcheck + index-parity)" do
     test "clean scan advances CURATED and reaches the committer", %{calls_agent: calls_agent} do
       assert :ok ==
                OrchestrationLoop.run(
@@ -866,7 +866,7 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
                  preflight_probe_fn: all_present_preflight_probe_fn(),
                  realized_check_fn: not_realized_fn(),
                  advance_cycle_state_fn: no_op_advance_cycle_state_fn(),
-                 factcheck_scan_fn: always_clean_factcheck_fn()
+                 curator_doc_check_fn: always_clean_curator_doc_fn()
                )
 
       assert Agent.get(calls_agent, & &1) == @static_sequence
@@ -894,7 +894,7 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
                  preflight_probe_fn: all_present_preflight_probe_fn(),
                  realized_check_fn: not_realized_fn(),
                  advance_cycle_state_fn: no_op_advance_cycle_state_fn(),
-                 factcheck_scan_fn: scan_fn
+                 curator_doc_check_fn: scan_fn
                )
 
       curator_calls = Enum.count(Agent.get(calls_agent, & &1), &(&1 == "context-curator"))
@@ -903,7 +903,43 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
       assert Agent.get(scan_calls_agent, & &1) == 2
     end
 
-    test "violations exhausting max_factcheck_cycles returns {:error, reason}; CURATED never advances, committer never invoked",
+    test "ADD-without-row index-parity violation once then clean re-invokes context-curator exactly once",
+         %{calls_agent: calls_agent} do
+      {:ok, scan_calls_agent} = Agent.start_link(fn -> 0 end)
+      on_exit(fn -> if Process.alive?(scan_calls_agent), do: Agent.stop(scan_calls_agent) end)
+
+      scan_fn = fn _cwd ->
+        n = Agent.get_and_update(scan_calls_agent, fn c -> {c, c + 1} end)
+
+        if n == 0 do
+          {:violations,
+           "context-index-parity-scan: context/new.md added but no index row mentions \"new\" in PROJECT_CONTEXT.md § Domain Context Files. Add a \"Load when prompt mentions...\" row."}
+        else
+          {:clean}
+        end
+      end
+
+      assert :ok ==
+               OrchestrationLoop.run(
+                 harness: "claude_code",
+                 stack: "static",
+                 cwd: "/tmp/irrelevant",
+                 pitch: "do the thing",
+                 invoke_fn: always_ok_invoke_fn(calls_agent),
+                 gate_fn: always_clear_gate_fn(),
+                 gate_preflight_fn: no_op_gate_preflight_fn(),
+                 preflight_probe_fn: all_present_preflight_probe_fn(),
+                 realized_check_fn: not_realized_fn(),
+                 advance_cycle_state_fn: no_op_advance_cycle_state_fn(),
+                 curator_doc_check_fn: scan_fn
+               )
+
+      curator_calls = Enum.count(Agent.get(calls_agent, & &1), &(&1 == "context-curator"))
+      assert curator_calls == 2
+      assert List.last(Agent.get(calls_agent, & &1)) == "committer"
+    end
+
+    test "violations exhausting max_curator_doc_cycles returns {:error, reason} with combined factcheck+index-parity text; CURATED never advances, committer never invoked",
          %{calls_agent: calls_agent} do
       {:ok, states_agent} = Agent.start_link(fn -> [] end)
       on_exit(fn -> if Process.alive?(states_agent), do: Agent.stop(states_agent) end)
@@ -913,7 +949,10 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
         :ok
       end
 
-      always_violates_fn = fn _cwd -> {:violations, "CLAUDE.md:1 bad path"} end
+      always_violates_fn = fn _cwd ->
+        {:violations,
+         "CLAUDE.md:1 bad path\ncontext-index-parity-scan: context/new.md added but no index row mentions \"new\""}
+      end
 
       result =
         OrchestrationLoop.run(
@@ -927,18 +966,19 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
           preflight_probe_fn: all_present_preflight_probe_fn(),
           realized_check_fn: not_realized_fn(),
           advance_cycle_state_fn: advance_fn,
-          factcheck_scan_fn: always_violates_fn,
-          max_factcheck_cycles: 1
+          curator_doc_check_fn: always_violates_fn,
+          max_curator_doc_cycles: 1
         )
 
       assert {:error, reason} = result
-      assert reason =~ "factcheck unresolved"
+      assert reason =~ "doc check unresolved"
       assert reason =~ "CLAUDE.md:1 bad path"
+      assert reason =~ "context-index-parity-scan"
       refute "CURATED" in Agent.get(states_agent, & &1)
       refute "committer" in Agent.get(calls_agent, & &1)
     end
 
-    test "factcheck_scan_fn raising propagates (loop crashes loud)", %{calls_agent: calls_agent} do
+    test "curator_doc_check_fn raising propagates (loop crashes loud)", %{calls_agent: calls_agent} do
       raising_fn = fn _cwd -> raise "scan script exploded" end
 
       assert_raise RuntimeError, ~r/scan script exploded/, fn ->
@@ -953,12 +993,12 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
           preflight_probe_fn: all_present_preflight_probe_fn(),
           realized_check_fn: not_realized_fn(),
           advance_cycle_state_fn: no_op_advance_cycle_state_fn(),
-          factcheck_scan_fn: raising_fn
+          curator_doc_check_fn: raising_fn
         )
       end
     end
 
-    test "factcheck_scan_fn returning an unexpected shape raises (no silent clean)", %{
+    test "curator_doc_check_fn returning an unexpected shape raises (no silent clean)", %{
       calls_agent: calls_agent
     } do
       bogus_fn = fn _cwd -> :not_a_valid_shape end
@@ -975,7 +1015,7 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
           preflight_probe_fn: all_present_preflight_probe_fn(),
           realized_check_fn: not_realized_fn(),
           advance_cycle_state_fn: no_op_advance_cycle_state_fn(),
-          factcheck_scan_fn: bogus_fn
+          curator_doc_check_fn: bogus_fn
         )
       end
     end
@@ -999,7 +1039,7 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
                  preflight_probe_fn: all_present_preflight_probe_fn(),
                  realized_check_fn: not_realized_fn(),
                  advance_cycle_state_fn: no_op_advance_cycle_state_fn(),
-                 factcheck_scan_fn: always_clean_factcheck_fn(),
+                 curator_doc_check_fn: always_clean_curator_doc_fn(),
                  env_var_scan_fn: always_clean_env_var_fn()
                )
 
@@ -1036,7 +1076,7 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
                  preflight_probe_fn: all_present_preflight_probe_fn(),
                  realized_check_fn: not_realized_fn(),
                  advance_cycle_state_fn: advance_fn,
-                 factcheck_scan_fn: always_clean_factcheck_fn(),
+                 curator_doc_check_fn: always_clean_curator_doc_fn(),
                  env_var_scan_fn: scan_fn
                )
 
@@ -1071,7 +1111,7 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
           preflight_probe_fn: all_present_preflight_probe_fn(),
           realized_check_fn: not_realized_fn(),
           advance_cycle_state_fn: advance_fn,
-          factcheck_scan_fn: always_clean_factcheck_fn(),
+          curator_doc_check_fn: always_clean_curator_doc_fn(),
           env_var_scan_fn: always_violates_fn,
           max_env_var_cycles: 1
         )
@@ -1098,7 +1138,7 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
           preflight_probe_fn: all_present_preflight_probe_fn(),
           realized_check_fn: not_realized_fn(),
           advance_cycle_state_fn: no_op_advance_cycle_state_fn(),
-          factcheck_scan_fn: always_clean_factcheck_fn(),
+          curator_doc_check_fn: always_clean_curator_doc_fn(),
           env_var_scan_fn: raising_fn
         )
       end
@@ -1121,7 +1161,7 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
           preflight_probe_fn: all_present_preflight_probe_fn(),
           realized_check_fn: not_realized_fn(),
           advance_cycle_state_fn: no_op_advance_cycle_state_fn(),
-          factcheck_scan_fn: always_clean_factcheck_fn(),
+          curator_doc_check_fn: always_clean_curator_doc_fn(),
           env_var_scan_fn: bogus_fn
         )
       end
@@ -1146,7 +1186,7 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
     end
   end
 
-  describe "run/1 — default factcheck scan diff-scoping (real scan.sh, temp git repo)" do
+  describe "run/1 — default curator doc scan diff-scoping (real scan.sh, temp git repo)" do
     setup do
       dir =
         Path.join(
@@ -1219,11 +1259,11 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
           preflight_probe_fn: all_present_preflight_probe_fn(),
           realized_check_fn: not_realized_fn(),
           advance_cycle_state_fn: no_op_advance_cycle_state_fn(),
-          max_factcheck_cycles: 0
+          max_curator_doc_cycles: 0
         )
 
       assert {:error, reason} = result
-      assert reason =~ "factcheck unresolved"
+      assert reason =~ "doc check unresolved"
       assert reason =~ "widgetapp/nope.ex"
     end
 
@@ -1235,6 +1275,64 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
       File.write!(
         Path.join([dir, "context", "foo.md"]),
         "See `widgetapp/billing.ex` for details.\n"
+      )
+
+      # Isolate this test to the factcheck path-resolution behavior — add the
+      # matching index row so the (independent) index-parity check stays clean.
+      File.write!(
+        Path.join(dir, "PROJECT_CONTEXT.md"),
+        "# PROJECT_CONTEXT.md\n`context/foo.md`\n"
+      )
+
+      assert :ok ==
+               OrchestrationLoop.run(
+                 harness: "claude_code",
+                 stack: "static",
+                 cwd: dir,
+                 pitch: "do the thing",
+                 invoke_fn: always_ok_invoke_fn_with_real_commit(calls_agent),
+                 gate_fn: always_clear_gate_fn(),
+                 gate_preflight_fn: no_op_gate_preflight_fn(),
+                 preflight_probe_fn: all_present_preflight_probe_fn(),
+                 realized_check_fn: not_realized_fn(),
+                 advance_cycle_state_fn: no_op_advance_cycle_state_fn()
+               )
+
+      assert List.last(Agent.get(calls_agent, & &1)) == "committer"
+    end
+
+    test "context/*.md added this cycle without a PROJECT_CONTEXT.md row → index-parity fails loud",
+         %{calls_agent: calls_agent, dir: dir} do
+      File.write!(Path.join([dir, "context", "new.md"]), "brand new context doc\n")
+
+      result =
+        OrchestrationLoop.run(
+          harness: "claude_code",
+          stack: "static",
+          cwd: dir,
+          pitch: "do the thing",
+          invoke_fn: always_ok_invoke_fn(calls_agent),
+          gate_fn: always_clear_gate_fn(),
+          gate_preflight_fn: no_op_gate_preflight_fn(),
+          preflight_probe_fn: all_present_preflight_probe_fn(),
+          realized_check_fn: not_realized_fn(),
+          advance_cycle_state_fn: no_op_advance_cycle_state_fn(),
+          max_curator_doc_cycles: 0
+        )
+
+      assert {:error, reason} = result
+      assert reason =~ "doc check unresolved"
+      assert reason =~ "context-index-parity-scan"
+      assert reason =~ "new.md added but no index row"
+    end
+
+    test "context/*.md added this cycle WITH a matching row → clean, reaches the committer",
+         %{calls_agent: calls_agent, dir: dir} do
+      File.write!(Path.join([dir, "context", "new.md"]), "brand new context doc\n")
+
+      File.write!(
+        Path.join(dir, "PROJECT_CONTEXT.md"),
+        "# PROJECT_CONTEXT.md\n`context/new.md`\n"
       )
 
       assert :ok ==
@@ -1858,7 +1956,7 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
                  preflight_probe_fn: all_present_preflight_probe_fn(),
                  realized_check_fn: not_realized_fn(),
                  advance_cycle_state_fn: no_op_advance_cycle_state_fn(),
-                 factcheck_scan_fn: always_clean_factcheck_fn(),
+                 curator_doc_check_fn: always_clean_curator_doc_fn(),
                  env_var_scan_fn: always_clean_env_var_fn(),
                  retrospective_resume_fn: resume_fn
                )
@@ -1892,7 +1990,7 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
                  preflight_probe_fn: all_present_preflight_probe_fn(),
                  realized_check_fn: not_realized_fn(),
                  advance_cycle_state_fn: no_op_advance_cycle_state_fn(),
-                 factcheck_scan_fn: always_clean_factcheck_fn(),
+                 curator_doc_check_fn: always_clean_curator_doc_fn(),
                  env_var_scan_fn: always_clean_env_var_fn(),
                  retrospective_resume_fn: resume_fn
                )
@@ -1923,7 +2021,7 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
                  preflight_probe_fn: all_present_preflight_probe_fn(),
                  realized_check_fn: not_realized_fn(),
                  advance_cycle_state_fn: no_op_advance_cycle_state_fn(),
-                 factcheck_scan_fn: always_clean_factcheck_fn(),
+                 curator_doc_check_fn: always_clean_curator_doc_fn(),
                  env_var_scan_fn: always_clean_env_var_fn(),
                  retrospective_resume_fn: resume_fn
                )
@@ -1954,7 +2052,7 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
                  preflight_probe_fn: all_present_preflight_probe_fn(),
                  realized_check_fn: not_realized_fn(),
                  advance_cycle_state_fn: no_op_advance_cycle_state_fn(),
-                 factcheck_scan_fn: always_clean_factcheck_fn(),
+                 curator_doc_check_fn: always_clean_curator_doc_fn(),
                  env_var_scan_fn: always_clean_env_var_fn(),
                  retrospective_resume_fn: resume_fn
                )
@@ -1987,7 +2085,7 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
                  preflight_probe_fn: all_present_preflight_probe_fn(),
                  realized_check_fn: not_realized_fn(),
                  advance_cycle_state_fn: no_op_advance_cycle_state_fn(),
-                 factcheck_scan_fn: always_clean_factcheck_fn(),
+                 curator_doc_check_fn: always_clean_curator_doc_fn(),
                  env_var_scan_fn: always_clean_env_var_fn(),
                  retrospective_resume_fn: resume_fn
                )
@@ -2050,7 +2148,7 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
                  preflight_probe_fn: all_present_preflight_probe_fn(),
                  realized_check_fn: not_realized_fn(),
                  advance_cycle_state_fn: no_op_advance_cycle_state_fn(),
-                 factcheck_scan_fn: always_clean_factcheck_fn(),
+                 curator_doc_check_fn: always_clean_curator_doc_fn(),
                  env_var_scan_fn: always_clean_env_var_fn(),
                  retrospective_resume_fn: resume_fn
                )
@@ -2112,7 +2210,7 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
                  preflight_probe_fn: all_present_preflight_probe_fn(),
                  realized_check_fn: not_realized_fn(),
                  advance_cycle_state_fn: no_op_advance_cycle_state_fn(),
-                 factcheck_scan_fn: always_clean_factcheck_fn(),
+                 curator_doc_check_fn: always_clean_curator_doc_fn(),
                  env_var_scan_fn: scan_fn,
                  retrospective_resume_fn: resume_fn
                )

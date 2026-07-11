@@ -13,16 +13,6 @@
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
-// NOT-YET-MIGRATED: context-factcheck-guard has role: unset (non-standard token);
-// deferred until schema accepts or normalises the unset sentinel.
-import { register as registerContextFactcheckGuard } from "./hooks/context-factcheck-guard";
-// NOT-YET-MIGRATED: context-index-parity has role: unset (non-standard token);
-// deferred until schema accepts or normalises the unset sentinel.
-import { register as registerContextIndexParity } from "./hooks/context-index-parity";
-// NOT-YET-MIGRATED: context-file-size-gate has role: unset (non-standard token);
-// deferred until schema accepts or normalises the unset sentinel.
-import { register as registerContextFileSizeGate } from "./hooks/context-file-size-gate";
-
 // BEGIN-GENERATED-ENFORCEMENT-BLOCK
 import { register as registerBuildAgentAppConfinement } from "./hooks/build-agent-app-confinement";
 import { register as registerBuildNoSuccessBeforeCommit } from "./hooks/build-no-success-before-commit";
@@ -38,10 +28,9 @@ import { register as registerCommitterSingleLineGuard } from "./hooks/committer-
 import { register as registerCommitterSubjectLength } from "./hooks/committer-subject-length";
 import { register as registerCommitterWriteAllowlist } from "./hooks/committer-write-allowlist";
 import { register as registerContextCuratorGuard } from "./hooks/context-curator-guard";
-import { register as registerContextFactcheckCuratorStop } from "./hooks/context-factcheck-curator-stop";
+import { register as registerContextFactcheckEditGate } from "./hooks/context-factcheck-edit-gate";
 import { register as registerCuratorBeforeCommitter } from "./hooks/curator-before-committer";
 import { register as registerCuratorContextSizeGate } from "./hooks/curator-context-size-gate";
-import { register as registerCuratorLearningCommitted } from "./hooks/curator-learning-committed";
 import { register as registerDevNoCi } from "./hooks/dev-no-ci";
 import { register as registerDeveloperNoSelfGate } from "./hooks/developer-no-self-gate";
 import { register as registerDeveloperNoSelfGateReset } from "./hooks/developer-no-self-gate-reset";
@@ -76,13 +65,6 @@ import { register as registerUsageRulesGrepGuard } from "./hooks/usage-rules-gre
 // END-GENERATED-ENFORCEMENT-BLOCK
 
 export default function (pi: ExtensionAPI): void {
-  // NOT-YET-MIGRATED: context-factcheck-guard — hand-wired outside generated block.
-  registerContextFactcheckGuard(pi);
-  // NOT-YET-MIGRATED: context-index-parity — hand-wired outside generated block.
-  registerContextIndexParity(pi);
-  // NOT-YET-MIGRATED: context-file-size-gate — hand-wired outside generated block.
-  registerContextFileSizeGate(pi);
-
   // BEGIN-GENERATED-ENFORCEMENT-BLOCK
   registerBuildAgentAppConfinement(pi);
   registerBuildNoSuccessBeforeCommit(pi);
@@ -98,10 +80,9 @@ export default function (pi: ExtensionAPI): void {
   registerCommitterSubjectLength(pi);
   registerCommitterWriteAllowlist(pi);
   registerContextCuratorGuard(pi);
-  registerContextFactcheckCuratorStop(pi);
+  registerContextFactcheckEditGate(pi);
   registerCuratorBeforeCommitter(pi);
   registerCuratorContextSizeGate(pi);
-  registerCuratorLearningCommitted(pi);
   registerDevNoCi(pi);
   registerDeveloperNoSelfGate(pi);
   registerDeveloperNoSelfGateReset(pi);

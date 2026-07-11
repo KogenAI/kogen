@@ -1,0 +1,214 @@
+#!/bin/bash
+# context-factcheck-edit-gate_test.sh — unit tests for context-factcheck-edit-gate.sh
+#
+# Tests:
+#   1: Write context/foo.md content with `_`->`*` corruption → DENY
+#   2: Write context/foo.md clean content → ALLOW
+#   3: Edit context/foo.md folding to corruption → DENY
+#   4: MultiEdit context/foo.md folding to corruption → DENY
+#   5: Write lib/foo.ex with corruption-shaped content → ALLOW (path gate)
+#   6: Bash tool with corruption-shaped payload → ALLOW (tool gate)
+#   7: FILE_PATH empty → ALLOW (graceful)
+#   8: Write context/sub/nested.md corruption → ALLOW (subdir excluded)
+#   9: Write CLAUDE.md with corruption → DENY (root doc, not just context/)
+#  10: deny message contains a "<doc>:<linenum>"-shaped substring AND does NOT
+#      contain "committer"
+#  11: outside a git repo → ALLOW (fail-open)
+#  12: Write context/big.md missing content field → ALLOW (fail-open unparseable)
+#  13: Edit context/new.md not yet on disk, new_string clean → ALLOW
+
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+GUARD="$SCRIPT_DIR/context-factcheck-edit-gate.sh"
+
+pass=0
+fail=0
+
+FIXTURES=()
+cleanup() {
+    for d in "${FIXTURES[@]:-}"; do
+        rm -rf "$d"
+    done
+}
+trap cleanup EXIT
+
+# make_fixture <n> — create a throwaway git repo with context/, context/sub/,
+# lib/, PROJECT_CONTEXT.md placeholder.
+make_fixture() {
+    local n="$1"
+    local dir="/tmp/factcheck-edit-gate-test-${n}"
+    rm -rf "$dir"
+    mkdir -p "$dir/context/sub" "$dir/lib"
+    (cd "$dir" && git init -q)
+    : >"$dir/PROJECT_CONTEXT.md"
+    FIXTURES+=("$dir")
+    printf '%s' "$dir"
+}
+
+run_test() {
+    local desc="$1"
+    local expected="$2"
+    local input="$3"
+
+    local stdout
+    stdout=$(printf '%s' "$input" | env -u CLAUDE_ROLE -u PI_ROLE bash "$GUARD" 2>/dev/null || true)
+
+    local outcome
+    if printf '%s' "$stdout" | grep -q '"permissionDecision"[[:space:]]*:[[:space:]]*"deny"'; then
+        outcome="2"
+    else
+        outcome="0"
+    fi
+
+    if [ "$outcome" = "$expected" ]; then
+        [ -n "${VERBOSE:-}" ] && printf 'PASS: %s\n' "$desc"
+        pass=$((pass + 1))
+    else
+        printf 'FAIL: %s — expected %s (deny=2/allow=0), got %s\n  stdout: %s\n' \
+            "$desc" "$expected" "$outcome" "$stdout"
+        fail=$((fail + 1))
+    fi
+}
+
+# ---------------------------------------------------------------------------
+# Test 1: Write context/foo.md content with `_`->`*` corruption → DENY
+# ---------------------------------------------------------------------------
+dir1=$(make_fixture 1)
+payload1=$(jq -n --arg fp "$dir1/context/foo.md" --arg cwd "$dir1" \
+    '{hook_event_name:"PreToolUse",tool_name:"Write",tool_input:{file_path:$fp,content:"see `lib/register*route.ex` corrupted\n"},agent_type:"context-curator",agent_id:"a",cwd:$cwd}')
+
+run_test "Write context/foo.md with corruption → DENY" "2" "$payload1"
+
+# ---------------------------------------------------------------------------
+# Test 2: Write context/foo.md clean content → ALLOW
+# ---------------------------------------------------------------------------
+dir2=$(make_fixture 2)
+payload2=$(jq -n --arg fp "$dir2/context/foo.md" --arg cwd "$dir2" \
+    '{hook_event_name:"PreToolUse",tool_name:"Write",tool_input:{file_path:$fp,content:"clean content, no claims here\n"},agent_type:"context-curator",agent_id:"a",cwd:$cwd}')
+
+run_test "Write context/foo.md clean content → ALLOW" "0" "$payload2"
+
+# ---------------------------------------------------------------------------
+# Test 3: Edit context/foo.md folding to corruption → DENY
+# ---------------------------------------------------------------------------
+dir3=$(make_fixture 3)
+printf 'old content here\n' >"$dir3/context/foo.md"
+payload3=$(jq -n --arg fp "$dir3/context/foo.md" --arg cwd "$dir3" \
+    '{hook_event_name:"PreToolUse",tool_name:"Edit",tool_input:{file_path:$fp,old_string:"old content here",new_string:"register*route corrupted"},agent_type:"context-curator",agent_id:"a",cwd:$cwd}')
+
+run_test "Edit context/foo.md folding to corruption → DENY" "2" "$payload3"
+
+# ---------------------------------------------------------------------------
+# Test 4: MultiEdit context/foo.md folding to corruption → DENY
+# ---------------------------------------------------------------------------
+dir4=$(make_fixture 4)
+printf 'old content here\n' >"$dir4/context/foo.md"
+payload4=$(jq -n --arg fp "$dir4/context/foo.md" --arg cwd "$dir4" \
+    '{hook_event_name:"PreToolUse",tool_name:"MultiEdit",tool_input:{file_path:$fp,edits:[{old_string:"old content here",new_string:"register*route corrupted"}]},agent_type:"context-curator",agent_id:"a",cwd:$cwd}')
+
+run_test "MultiEdit context/foo.md folding to corruption → DENY" "2" "$payload4"
+
+# ---------------------------------------------------------------------------
+# Test 5: Write lib/foo.ex with corruption-shaped content → ALLOW (path gate)
+# ---------------------------------------------------------------------------
+dir5=$(make_fixture 5)
+payload5=$(jq -n --arg fp "$dir5/lib/foo.ex" --arg cwd "$dir5" \
+    '{hook_event_name:"PreToolUse",tool_name:"Write",tool_input:{file_path:$fp,content:"register*route\n"},agent_type:"context-curator",agent_id:"a",cwd:$cwd}')
+
+run_test "Write lib/foo.ex with corruption-shaped content → ALLOW (path gate)" "0" "$payload5"
+
+# ---------------------------------------------------------------------------
+# Test 6: Bash tool with corruption-shaped payload → ALLOW (tool gate)
+# ---------------------------------------------------------------------------
+dir6=$(make_fixture 6)
+payload6=$(jq -n --arg fp "$dir6/context/foo.md" --arg cwd "$dir6" \
+    '{hook_event_name:"PreToolUse",tool_name:"Bash",tool_input:{command:"echo register*route",file_path:$fp},agent_type:"context-curator",agent_id:"a",cwd:$cwd}')
+
+run_test "Bash tool with corruption-shaped payload → ALLOW (tool gate)" "0" "$payload6"
+
+# ---------------------------------------------------------------------------
+# Test 7: FILE_PATH empty → ALLOW (graceful)
+# ---------------------------------------------------------------------------
+dir7=$(make_fixture 7)
+payload7=$(jq -n --arg cwd "$dir7" \
+    '{hook_event_name:"PreToolUse",tool_name:"Write",tool_input:{content:"x"},agent_type:"context-curator",agent_id:"a",cwd:$cwd}')
+
+run_test "FILE_PATH empty → ALLOW (graceful)" "0" "$payload7"
+
+# ---------------------------------------------------------------------------
+# Test 8: Write context/sub/nested.md corruption → ALLOW (subdir excluded)
+# ---------------------------------------------------------------------------
+dir8=$(make_fixture 8)
+payload8=$(jq -n --arg fp "$dir8/context/sub/nested.md" --arg cwd "$dir8" \
+    '{hook_event_name:"PreToolUse",tool_name:"Write",tool_input:{file_path:$fp,content:"register*route\n"},agent_type:"context-curator",agent_id:"a",cwd:$cwd}')
+
+run_test "Write context/sub/nested.md corruption → ALLOW (subdir excluded)" "0" "$payload8"
+
+# ---------------------------------------------------------------------------
+# Test 9: Write CLAUDE.md with corruption → DENY (root doc, not just context/)
+# ---------------------------------------------------------------------------
+dir9=$(make_fixture 9)
+payload9=$(jq -n --arg fp "$dir9/CLAUDE.md" --arg cwd "$dir9" \
+    '{hook_event_name:"PreToolUse",tool_name:"Write",tool_input:{file_path:$fp,content:"register*route\n"},agent_type:"context-curator",agent_id:"a",cwd:$cwd}')
+
+run_test "Write CLAUDE.md with corruption → DENY (root doc)" "2" "$payload9"
+
+# ---------------------------------------------------------------------------
+# Test 10: deny message contains a "<doc>:<linenum>"-shaped substring AND
+# does NOT contain "committer"
+# ---------------------------------------------------------------------------
+dir10=$(make_fixture 10)
+payload10=$(jq -n --arg fp "$dir10/context/foo.md" --arg cwd "$dir10" \
+    '{hook_event_name:"PreToolUse",tool_name:"Write",tool_input:{file_path:$fp,content:"register*route\n"},agent_type:"context-curator",agent_id:"a",cwd:$cwd}')
+
+stdout10=$(printf '%s' "$payload10" | env -u CLAUDE_ROLE -u PI_ROLE bash "$GUARD" 2>/dev/null || true)
+
+if printf '%s' "$stdout10" | grep -q '"permissionDecision"[[:space:]]*:[[:space:]]*"deny"' &&
+    printf '%s' "$stdout10" | grep -qE 'context/foo\.md:[0-9]+' &&
+    ! printf '%s' "$stdout10" | grep -qi "committer"; then
+    [ -n "${VERBOSE:-}" ] && printf 'PASS: deny message has <doc>:<linenum>, not committer\n'
+    pass=$((pass + 1))
+else
+    printf 'FAIL: deny message missing <doc>:<linenum>, or wrongly mentions committer\n  stdout: %s\n' "$stdout10"
+    fail=$((fail + 1))
+fi
+
+# ---------------------------------------------------------------------------
+# Test 11: outside a git repo → ALLOW (fail-open)
+# ---------------------------------------------------------------------------
+dir11="/tmp/factcheck-edit-gate-test-11-nogit"
+rm -rf "$dir11"
+mkdir -p "$dir11/context"
+FIXTURES+=("$dir11")
+payload11=$(jq -n --arg fp "$dir11/context/foo.md" --arg cwd "$dir11" \
+    '{hook_event_name:"PreToolUse",tool_name:"Write",tool_input:{file_path:$fp,content:"register*route\n"},agent_type:"context-curator",agent_id:"a",cwd:$cwd}')
+
+run_test "outside a git repo → ALLOW (fail-open)" "0" "$payload11"
+
+# ---------------------------------------------------------------------------
+# Test 12: Write context/big.md missing content field → ALLOW (fail-open)
+# ---------------------------------------------------------------------------
+dir12=$(make_fixture 12)
+payload12=$(jq -n --arg fp "$dir12/context/big.md" --arg cwd "$dir12" \
+    '{hook_event_name:"PreToolUse",tool_name:"Write",tool_input:{file_path:$fp},agent_type:"context-curator",agent_id:"a",cwd:$cwd}')
+
+run_test "Write context/big.md missing content field → ALLOW (fail-open)" "0" "$payload12"
+
+# ---------------------------------------------------------------------------
+# Test 13: Edit context/new.md not yet on disk, new_string clean → ALLOW
+# ---------------------------------------------------------------------------
+dir13=$(make_fixture 13)
+payload13=$(jq -n --arg fp "$dir13/context/new.md" --arg cwd "$dir13" \
+    '{hook_event_name:"PreToolUse",tool_name:"Edit",tool_input:{file_path:$fp,old_string:"",new_string:"brand new clean doc\n"},agent_type:"context-curator",agent_id:"a",cwd:$cwd}')
+
+run_test "Edit context/new.md not on disk, clean new_string → ALLOW" "0" "$payload13"
+
+echo ""
+echo "Results: $pass passed, $fail failed"
+
+if [ "$fail" -gt 0 ]; then
+    exit 1
+fi
+
+exit 0

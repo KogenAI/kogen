@@ -2,12 +2,14 @@
 # context-factcheck-scan.sh — standalone working-tree factcheck scan.
 #
 # Scans WORKING-TREE orientation docs (CLAUDE.md, AGENTS.md, PROJECT_CONTEXT.md,
-# codegen/PROJECT_CONTEXT.md, context/*.md) for the two factcheck claim classes
-# (named-path + count-anchor). Extracted from context-factcheck-curator-stop.sh
-# so the same logic can run both as an interactive SubagentStop hook (Task-spawned
-# curator) AND as an in-loop Elixir step (OrchestrationLoop.run_factcheck_step) —
-# the loop invokes roles as main-agent `codegen-call` calls with no SubagentStop
-# event, so the hook alone never fires in the build path.
+# codegen/PROJECT_CONTEXT.md, context/*.md) for the three factcheck claim classes
+# (named-path, count-anchor, `_`->`*` identifier corruption). Originally extracted
+# from the now-deleted context-factcheck-curator-stop.sh (dead-under-loop
+# SubagentStop hook) so the same logic could run both there and as an in-loop
+# Elixir step. Now shared by TWO live callers: the PreToolUse
+# context-factcheck-edit-gate.sh (projected post-write content, writer's own
+# turn) and the in-loop Elixir OrchestrationLoop.run_curator_doc_check (working
+# tree, end-of-turn backstop for Bash writes the edit-gate never sees).
 #
 # Usage: context-factcheck-scan.sh <repo_root> [doc_path...]
 #
@@ -85,7 +87,7 @@ if [ -z "$resolved_root" ]; then
 fi
 repo_root="$resolved_root"
 
-# Detect layout (same priority as context-factcheck-guard / context-index-parity).
+# Detect layout (same priority as context-factcheck-edit-gate.sh / context-index-parity-scan.sh).
 if [ -f "$repo_root/PROJECT_CONTEXT.md" ]; then
     :
 elif [ -f "$repo_root/codegen/PROJECT_CONTEXT.md" ]; then

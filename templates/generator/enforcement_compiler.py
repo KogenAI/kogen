@@ -1154,8 +1154,8 @@ def main():
 
     # Collect registration ids that have a .ts file in the pi hooks dir.
     # Only include ids for entries with harnesses in {all, pi}.
-    # context-index-parity is NOT-YET-MIGRATED (commented out in registry) —
-    # it stays as a hand-import outside the generated block.
+    # A NOT-YET-MIGRATED entry (commented out in registry) stays as a
+    # hand-import outside the generated block — see registry.yaml header.
     # Use --pi-hooks-dir if provided, otherwise default to --ts-out.
     pi_hooks_dir = Path(args.pi_hooks_dir) if args.pi_hooks_dir else ts_out
     registration_ids = []

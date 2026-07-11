@@ -10,7 +10,7 @@
 # signal: none
 # role: *
 # harnesses: all
-# rationale: Denies ANY role's Edit/Write/MultiEdit to context/<file>.md when the projected post-write byte size exceeds the 40,960-byte cap, so the over-cap file is fixed in the writer's own turn — where context/*.md is editable this turn — instead of failing later at commit on the committer, which cannot repair it. Composes with context-curator-guard (path surface, curator-only) and the commit-time context-file-size-gate backstop.
+# rationale: Denies ANY role's Edit/Write/MultiEdit to context/<file>.md when the projected post-write byte size exceeds the 40,960-byte cap, so the over-cap file is fixed in the writer's own turn — where context/*.md is editable this turn — instead of failing later at commit on the committer, which cannot repair it. Composes with context-curator-guard (path surface, curator-only).
 # GENERATED FROM shared/enforcement/registry.yaml — DO NOT EDIT
 #
 # Gates ANY role's write to context/*.md — any role may legitimately edit

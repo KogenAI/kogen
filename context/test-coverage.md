@@ -106,7 +106,7 @@ For every `harnesses/claude/hooks/<name>.sh` there is a paired `<name>_test.sh` 
 | committer-single-line-guard      | hook           | `.../hooks/committer-single-line-guard.sh`      | `.../hooks/committer-single-line-guard_test.sh`      |                                              |
 | committer-subject-length         | hook           | `.../hooks/committer-subject-length.sh`         | `.../hooks/committer-subject-length_test.sh`         |                                              |
 | context-curator-guard            | hook           | `.../hooks/context-curator-guard.sh`            | `.../hooks/context-curator-guard_test.sh`            |                                              |
-| context-index-parity             | hook           | `.../hooks/context-index-parity.sh`             | `.../hooks/context-index-parity_test.sh`             |                                              |
+| context-factcheck-edit-gate      | hook           | `.../hooks/context-factcheck-edit-gate.sh`      | `.../hooks/context-factcheck-edit-gate_test.sh`      |                                              |
 | dev-no-ci                        | hook           | `.../hooks/dev-no-ci.sh`                        | `.../hooks/dev-no-ci_test.sh`                        |                                              |
 | developer-no-self-gate           | hook           | `.../hooks/developer-no-self-gate.sh`           | `.../hooks/developer-no-self-gate_test.sh`           |                                              |
 | developer-no-self-gate-reset     | hook           | `.../hooks/developer-no-self-gate-reset.sh`     | `.../hooks/developer-no-self-gate-reset_test.sh`     |                                              |

@@ -51,6 +51,11 @@ defmodule CodegenTestHarness.OrchestrationLoop do
                         __DIR__
                       )
 
+  @index_parity_scan_lib Path.expand(
+                            "../../../harnesses/claude/hooks/lib/context-index-parity-scan.sh",
+                            __DIR__
+                          )
+
   @env_var_scan_lib Path.expand(
                       "../../../harnesses/claude/hooks/lib/env-var-sample-scan.sh",
                       __DIR__
@@ -94,22 +99,35 @@ defmodule CodegenTestHarness.OrchestrationLoop do
   - `:tree_signature_fn` — test seam: `(cwd -> signature)`, defaults to
     `tree_signature/1` (a content-hash of the tracked+untracked working
     tree). Drives the progress bound on developer gate re-runs.
-  - `:factcheck_scan_fn` — test seam: `(cwd -> {:clean} | {:violations, String.t()})`,
-    defaults to `default_factcheck_scan/1` (diff-scopes to the current
-    cycle's own orientation-doc edits via `changed_orientation_docs/1`, then
-    shells `harnesses/claude/hooks/lib/context-factcheck-scan.sh <cwd> <doc>...`
-    scoped to exactly those docs — no docs changed this cycle → `{:clean}`
-    without shelling at all, so ambient rot in an untouched doc never blocks
-    an unrelated build). Runs after the context-curator role, replacing the
-    dead-under-loop `context-factcheck-curator-stop` SubagentStop hook (roles
-    run as main-agent `codegen-call` invocations under the loop, so
-    SubagentStop never fires here — same reasoning as `run_format_step`).
-  - `:max_factcheck_cycles` — context-curator re-invokes allowed after a
-    factcheck violation before giving up (default 1). Diverges from
-    `:max_review_cycles` (which proceeds on budget exhaustion): factcheck
-    exhaustion fails the cycle LOUD instead of proceeding — the committer
-    cannot Read/Edit `context/*.md`, so handing it a known-bad doc is an
-    unfixable dead-end that used to deadlock as a compounding dirty-tree retry.
+  - `:curator_doc_check_fn` — test seam: `(cwd -> {:clean} | {:violations, String.t()})`,
+    defaults to `default_curator_doc_scan/1`. Runs TWO checks after the
+    context-curator role: (1) cross-file index-parity (shells
+    `harnesses/claude/hooks/lib/context-index-parity-scan.sh <cwd>`,
+    detecting a working-tree `context/*.md` add/delete without matching
+    `PROJECT_CONTEXT.md` § Domain Context Files parity — this check can
+    NEVER be a per-edit gate: an ADD needs BOTH the file AND its index row,
+    so whichever write lands first would deadlock a PreToolUse gate); and
+    (2) a factcheck Bash-write backstop (diff-scopes to the current cycle's
+    own orientation-doc edits via `changed_orientation_docs/1`, then shells
+    `harnesses/claude/hooks/lib/context-factcheck-scan.sh <cwd> <doc>...`
+    scoped to exactly those docs), catching a `sed`/`printf>`/`mv` Bash write
+    the PreToolUse `context-factcheck-edit-gate` hook (which only fires on
+    Edit/Write/MultiEdit) never sees. Violations from either check are
+    joined into one message. Empty changed-docs AND clean index-parity →
+    `{:clean}` without shelling either scan. Runs after the context-curator
+    role, replacing the dead-under-loop `context-factcheck-curator-stop`
+    SubagentStop hook (roles run as main-agent `codegen-call` invocations
+    under the loop, so SubagentStop never fires here — same reasoning as
+    `run_format_step`) and the commit-time `context-index-parity` hook
+    (which only ever dead-ended the committer, which cannot Read/Edit
+    `context/*.md`).
+  - `:max_curator_doc_cycles` — context-curator re-invokes allowed after a
+    curator-doc violation (factcheck or index-parity) before giving up
+    (default 1). Diverges from `:max_review_cycles` (which proceeds on
+    budget exhaustion): exhaustion fails the cycle LOUD instead of
+    proceeding — the committer cannot Read/Edit `context/*.md`, so handing
+    it a known-bad doc is an unfixable dead-end that used to deadlock as a
+    compounding dirty-tree retry.
   - `:env_var_scan_fn` — test seam: `(cwd -> {:clean} | {:violations, String.t()})`,
     defaults to `default_env_var_scan/1` (shells
     `harnesses/claude/hooks/lib/env-var-sample-scan.sh <cwd>`, which scopes
@@ -120,10 +138,10 @@ defmodule CodegenTestHarness.OrchestrationLoop do
     dead-under-loop `env-var-sample-consistency` SubagentStop hook (roles
     run as main-agent `codegen-call` invocations under the loop, so
     SubagentStop never fires here — same reasoning as `run_format_step` and
-    `run_factcheck_step`).
+    `run_curator_doc_check`).
   - `:max_env_var_cycles` — developer re-invokes allowed after an env-var
     violation before giving up (default 1). Exhaustion fails the cycle LOUD
-    (same posture as `:max_factcheck_cycles`, not `:max_review_cycles`'s
+    (same posture as `:max_curator_doc_cycles`, not `:max_review_cycles`'s
     proceed-on-exhaustion): an undeclared required env var is a real defect
     the app crashes on at runtime, so handing it onward unfixed is not safe.
   - `:realized_check_fn` — test seam: `(pitch, cwd -> {:ok, map} | {:error, reason})`
@@ -545,7 +563,7 @@ defmodule CodegenTestHarness.OrchestrationLoop do
 
         role == "context-curator" ->
           run_format_step(ctx.cwd, opts)
-          run_factcheck_step(role, rest, harness, ctx, opts, 0)
+          run_curator_doc_check(role, rest, harness, ctx, opts, 0)
 
         role == "committer" ->
           # Structural gap #9: the committer ROLE returning success does NOT
@@ -731,95 +749,132 @@ defmodule CodegenTestHarness.OrchestrationLoop do
     end
   end
 
-  # Context-curator → factcheck fix cycle. Replaces the dead-under-loop
-  # `context-factcheck-curator-stop` SubagentStop hook: under the loop, roles
-  # run as main-agent `codegen-call` invocations with no SubagentStop event,
-  # so this scan has to be driven explicitly here (same reasoning as
-  # `run_format_step`). Scan clean → advance CURATED and continue. Violations
-  # within `:max_factcheck_cycles` (default 1) → fold the violation list into
-  # context, re-invoke the context-curator (the last role that CAN edit
-  # `context/*.md`), re-format, re-scan, recurse. Budget-exhausted → FAIL LOUD
-  # (diverges from `handle_review`'s proceed-on-exhaustion): the committer
-  # cannot Read/Edit `context/*.md`, so handing it a known-bad doc is an
-  # unfixable dead-end that used to compound into a dirty-tree retry loop.
-  defp run_factcheck_step(curator_role, rest, harness, ctx, opts, cycle) do
-    max_cycles = Keyword.get(opts, :max_factcheck_cycles, 1)
+  # Context-curator → curator-doc fix cycle (factcheck + index-parity).
+  # Replaces the dead-under-loop `context-factcheck-curator-stop` SubagentStop
+  # hook AND the commit-time `context-index-parity` hook: under the loop,
+  # roles run as main-agent `codegen-call` invocations with no SubagentStop
+  # event, so the factcheck backstop has to be driven explicitly here (same
+  # reasoning as `run_format_step`); index-parity can NEVER be a per-edit gate
+  # (an ADD needs BOTH the file AND its index row, so whichever write lands
+  # first would deadlock a PreToolUse gate), so it is inherently an
+  # end-of-turn check, and this step is its only home. Clean → advance
+  # CURATED and continue. Violations within `:max_curator_doc_cycles` (default
+  # 1) → fold the combined violation list into context, re-invoke the
+  # context-curator (the last role that CAN edit `context/*.md`), re-format,
+  # re-scan, recurse. Budget-exhausted → FAIL LOUD (diverges from
+  # `handle_review`'s proceed-on-exhaustion): the committer cannot Read/Edit
+  # `context/*.md`, so handing it a known-bad doc is an unfixable dead-end
+  # that used to compound into a dirty-tree retry loop.
+  defp run_curator_doc_check(curator_role, rest, harness, ctx, opts, cycle) do
+    max_cycles = Keyword.get(opts, :max_curator_doc_cycles, 1)
 
-    case run_factcheck_scan(ctx.cwd, opts) do
+    case run_curator_doc_scan(ctx.cwd, opts) do
       {:clean} ->
         advance_cycle_state_step("CURATED", ctx, opts)
         run_roles(rest, harness, ctx, opts)
 
       {:violations, violations} when cycle < max_cycles ->
-        rework_ctx = put_in(ctx, [:artifacts, :factcheck_violations], violations)
+        rework_ctx = put_in(ctx, [:artifacts, :curator_doc_violations], violations)
 
         with {:ok, curator_result} <- invoke_with_retry(curator_role, harness, rework_ctx, opts) do
           ctx = put_in(rework_ctx, [:artifacts, curator_role], curator_result)
           run_format_step(ctx.cwd, opts)
-          run_factcheck_step(curator_role, rest, harness, ctx, opts, cycle + 1)
+          run_curator_doc_check(curator_role, rest, harness, ctx, opts, cycle + 1)
         end
 
       {:violations, violations} ->
         {:error,
-         "context factcheck unresolved after #{cycle} cycle(s):\n#{violations}\n" <>
+         "context-curator doc check unresolved after #{cycle} cycle(s):\n#{violations}\n" <>
            "The committer cannot Read/Edit context/*.md (subagent-read-discipline denies it), " <>
            "so handing this violation onward would be an unfixable dead-end. Fix the orientation " <>
            "docs and re-run the cycle."}
     end
   end
 
-  # Dispatches the `:factcheck_scan_fn` test seam; defaults to
-  # `default_factcheck_scan/1` (the real shelled scan).
-  defp run_factcheck_scan(cwd, opts) do
-    scan_fn = Keyword.get(opts, :factcheck_scan_fn, &default_factcheck_scan/1)
+  # Dispatches the `:curator_doc_check_fn` test seam; defaults to
+  # `default_curator_doc_scan/1` (the real shelled scans).
+  defp run_curator_doc_scan(cwd, opts) do
+    scan_fn = Keyword.get(opts, :curator_doc_check_fn, &default_curator_doc_scan/1)
     scan_fn.(cwd)
   end
 
-  # Diff-scopes the in-loop scan to the CURRENT CYCLE's own orientation-doc
-  # edits — ambient rot in a doc this cycle never touched must not block an
-  # unrelated build (the whole-tree scan used to fail-loud on ANY pre-existing
-  # violation anywhere in context/*.md, regardless of what the cycle changed).
-  # Empty list (no orientation docs touched this cycle) → {:clean} WITHOUT
-  # shelling the scan at all — there is nothing this cycle could have broken.
-  # Non-empty list → shells `context-factcheck-scan.sh <cwd> <doc>...` (the
-  # extracted scan shared with the interactive SubagentStop hook — see
-  # harnesses/claude/hooks/context-factcheck-curator-stop.sh), scoped to
-  # exactly those docs. exit 0 → clean; exit 1 with output → violations;
-  # anything else (missing script, unexpected exit code) is an infra fault —
-  # raise (fail-closed), never treat as clean.
-  defp default_factcheck_scan(cwd) do
+  # Runs index-parity (cross-file, working-tree-vs-HEAD) AND the factcheck
+  # Bash-write backstop (diff-scoped to this cycle's own orientation-doc
+  # edits), joining any violations from either into one message.
+  #
+  # Index-parity: shells `context-index-parity-scan.sh <cwd>` unconditionally
+  # (cheap — a single git diff/ls-files call) — detects a working-tree
+  # `context/*.md` add/delete lacking `PROJECT_CONTEXT.md` § Domain Context
+  # Files parity. exit 0 → clean; exit 1 with output → violations; anything
+  # else is an infra fault — raise (fail-closed).
+  #
+  # Factcheck backstop: diff-scopes to the CURRENT CYCLE's own
+  # orientation-doc edits via `changed_orientation_docs/1` — ambient rot in a
+  # doc this cycle never touched must not block an unrelated build. Empty
+  # list → skip the shell-out entirely (nothing this cycle could have
+  # broken); this catches a Bash `sed`/`printf>`/`mv` write to a changed doc
+  # that the PreToolUse `context-factcheck-edit-gate` hook (Edit/Write/
+  # MultiEdit only) never saw. Non-empty list → shells
+  # `context-factcheck-scan.sh <cwd> <doc>...` scoped to exactly those docs.
+  # exit 0 → clean; exit 1 with output → violations; anything else is an
+  # infra fault — raise (fail-closed).
+  defp default_curator_doc_scan(cwd) do
+    unless File.exists?(@index_parity_scan_lib) do
+      raise "OrchestrationLoop: context-index-parity-scan.sh not found at #{@index_parity_scan_lib}"
+    end
+
     unless File.exists?(@factcheck_scan_lib) do
       raise "OrchestrationLoop: context-factcheck-scan.sh not found at #{@factcheck_scan_lib}"
     end
 
-    case changed_orientation_docs(cwd) do
-      [] ->
-        {:clean}
+    index_parity_result =
+      case System.cmd("bash", [@index_parity_scan_lib, cwd], stderr_to_stdout: true) do
+        {_out, 0} -> {:clean}
+        {out, 1} -> {:violations, String.trim(out)}
+        {out, code} -> raise "OrchestrationLoop: context-index-parity-scan.sh exited #{code} (expected 0 or 1): #{out}"
+      end
 
-      changed_docs ->
-        case System.cmd("bash", [@factcheck_scan_lib, cwd | changed_docs], stderr_to_stdout: true) do
-          {_out, 0} ->
-            {:clean}
+    factcheck_result =
+      case changed_orientation_docs(cwd) do
+        [] ->
+          {:clean}
 
-          {out, 1} ->
-            {:violations, String.trim(out)}
+        changed_docs ->
+          case System.cmd("bash", [@factcheck_scan_lib, cwd | changed_docs], stderr_to_stdout: true) do
+            {_out, 0} ->
+              {:clean}
 
-          {out, code} ->
-            raise "OrchestrationLoop: context-factcheck-scan.sh exited #{code} (expected 0 or 1): #{out}"
-        end
-    end
+            {out, 1} ->
+              {:violations, String.trim(out)}
+
+            {out, code} ->
+              raise "OrchestrationLoop: context-factcheck-scan.sh exited #{code} (expected 0 or 1): #{out}"
+          end
+      end
+
+    combine_curator_doc_results(index_parity_result, factcheck_result)
+  end
+
+  defp combine_curator_doc_results({:clean}, {:clean}), do: {:clean}
+
+  defp combine_curator_doc_results({:violations, v}, {:clean}), do: {:violations, v}
+
+  defp combine_curator_doc_results({:clean}, {:violations, v}), do: {:violations, v}
+
+  defp combine_curator_doc_results({:violations, v1}, {:violations, v2}) do
+    {:violations, Enum.join([v1, v2], "\n")}
   end
 
   # Developer → env-var sample-consistency fix cycle. Replaces the
   # dead-under-loop `env-var-sample-consistency` SubagentStop hook: under
   # the loop, roles run as main-agent `codegen-call` invocations with no
   # SubagentStop event, so this scan has to be driven explicitly here (same
-  # reasoning as `run_format_step` and `run_factcheck_step`). Scan clean →
+  # reasoning as `run_format_step` and `run_curator_doc_check`). Scan clean →
   # continue to the gate. Violations within `:max_env_var_cycles` (default
   # 1) → fold the undocumented-var list into context, re-invoke the SAME
   # developer role (the one that can edit `.env.sample`/`.env.prod.sample`),
   # re-format, re-scan, recurse. Budget-exhausted → FAIL LOUD (same posture
-  # as `run_factcheck_step`, not `handle_review`'s proceed-on-exhaustion):
+  # as `run_curator_doc_check`, not `handle_review`'s proceed-on-exhaustion):
   # an undeclared required env var is a real defect the app crashes on at
   # runtime.
   defp run_env_var_step(dev_role, rest, harness, ctx, opts, cycle) do
@@ -881,7 +936,7 @@ defmodule CodegenTestHarness.OrchestrationLoop do
   # `subagent-retrospective-guard` SubagentStop hook: under the loop, roles
   # run as main-agent `codegen-call` invocations with no SubagentStop event,
   # so this assertion has to be driven explicitly here (same reasoning as
-  # `run_format_step`/`run_env_var_step`/`run_factcheck_step`). Unlike those
+  # `run_format_step`/`run_env_var_step`/`run_curator_doc_check`). Unlike those
   # siblings, this step NEVER fails the build — fatal-on-miss is off the
   # table (operator decision). A role not in `@retrospective_roles` (or
   # already carrying a valid block) is returned unchanged.

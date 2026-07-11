@@ -39,7 +39,7 @@
 #  35:  kind:registration entry skipped by full-file generator (no .sh body overwrite)
 #  36:  registration-in-block: kind:registration harnesses:all id WITH .ts file IS in generated block
 #  37:  denial-still-in: existing denial hook id still appears in generated block
-#  38:  deferred-not-in: context-index-parity (NOT-YET-MIGRATED) is NOT in generated block
+#  38:  deferred-not-in: a nonexistent/deferred id (context-index-parity, deleted) is NOT in generated block
 #  39:  existence-guard: kind:registration harnesses:all id WITHOUT .ts file is NOT in generated block
 #  40:  symmetry: import line count == register call line count inside generated block
 #  41:  harnesses typo aborts compiler with token-set message (seam b)
@@ -589,8 +589,10 @@ assert_contains \
     'import { register as registerNoCatPipe }' \
     "$real_index_content"
 
-# Test 38: deferred-not-in — context-index-parity NOT-YET-MIGRATED is NOT inside the
-# generated block (it must remain as a hand-import outside the block).
+# Test 38: deferred-not-in — an id with no corresponding .ts file (context-index-parity,
+# deleted; formerly a NOT-YET-MIGRATED deferred hand-import) is NOT inside the generated
+# block. A deferred/commented-out registry entry would ALSO stay out of the block via the
+# same existence-guard path exercised by test 39 below.
 block_context=$(awk \
     '/\/\/ BEGIN-GENERATED-ENFORCEMENT-BLOCK/,/\/\/ END-GENERATED-ENFORCEMENT-BLOCK/' \
     "$tmpdir/real_index.ts" | grep -c 'context-index-parity' 2>/dev/null || true)

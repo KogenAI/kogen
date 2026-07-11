@@ -215,15 +215,6 @@
     ],
     "SubagentStop": [
       {
-        "matcher": "context-curator",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "$HOME/.claude/hooks/context-factcheck-curator-stop.sh"
-          }
-        ]
-      },
-      {
         "matcher": "developer-phoenix-backend|developer-phoenix-frontend|developer-static",
         "hooks": [
           {
@@ -361,29 +352,11 @@
         ]
       },
       {
-        "matcher": "Bash",
+        "matcher": "Edit|Write|MultiEdit",
         "hooks": [
           {
             "type": "command",
-            "command": "$HOME/.claude/hooks/context-factcheck-guard.sh"
-          }
-        ]
-      },
-      {
-        "matcher": "Bash",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "$HOME/.claude/hooks/context-file-size-gate.sh"
-          }
-        ]
-      },
-      {
-        "matcher": "Bash",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "$HOME/.claude/hooks/context-index-parity.sh"
+            "command": "$HOME/.claude/hooks/context-factcheck-edit-gate.sh"
           }
         ]
       },
@@ -402,15 +375,6 @@
           {
             "type": "command",
             "command": "$HOME/.claude/hooks/curator-context-size-gate.sh"
-          }
-        ]
-      },
-      {
-        "matcher": "Bash",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "$HOME/.claude/hooks/curator-learning-committed.sh"
           }
         ]
       },
