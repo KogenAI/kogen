@@ -154,20 +154,9 @@ In any case: shaper SPLITS into N pitches. Does NOT ask the user "should I split
 
 Prompt bodies that cite their own sections (e.g., "the escape-hatch rule", "the U1–U7 option template") should use section-name anchors rather than absolute line numbers. Line numbers become stale whenever an edit shifts positions.
 
-**Anti-pattern**:
+**Anti-pattern**: `"See the template at the options block (currently near the middle of the file)."` — an edit shifts positions, that position becomes something else, silent drift.
 
-```
-# BAD: "See the template at the options block (currently near the middle of the file)."
-→ Someone edits, positions shift. That position is now something else. Silent drift.
-```
-
-**Pattern**:
-
-```
-Step c' (the escape-hatch rule) applies here.
-→ Prose references the step name "c'", which doesn't move.
-→ Readers can find it by searching for "step c'" even if line numbers shift.
-```
+**Pattern**: `"Step c' (the escape-hatch rule) applies here."` — references the step name, which doesn't move; readers find it by searching "step c'" even if line numbers shift.
 
 When the prompt text DOES name the step or section (e.g., "step c'", "the U-template", "the auto-decide rule"), prefer the anchor. Only keep absolute numbers where:
 
@@ -284,6 +273,20 @@ Any one of the three missing → blocker.
 
 **Distinct from "Unverified empirical claims" / convention-claim verification mode**: that blocker checks whether a _claim_ is source-ENCODED (doc citation + confirming grep of the authoritative source); this blocker checks whether a _design decision_ is _usage-GROUNDED_ (mined from real invocation/failure history). Additive, not redundant — both may apply to the same pitch.
 
+## Completeness Contract for Format/Syntax-Change Pitches
+
+**Invariant**: a format/schema/syntax change affects EVERY consumer incl. opaque whole-artifact readers that never parse the changed field — enumerating only field PARSERS misses the readers a structural change breaks.
+
+**Detection + bar**: byte-level artifact changes (delimiters, leading/trailing block, field order) or serialization/file-format/API-shape/DB-column/config-key/log-line/naming changes. Structural (whole-artifact shape) → FULL bar. Semantic (field VALUE, structure unchanged) → field-parser bar suffices, no blocker.
+
+**Carve-out**: semantic-only changes and new artifacts with no consumer are exempt — note "checked, not skipped."
+
+**Sub-rule**: enumerate by searching READERS (path/handle/type/endpoint/`File.read`/`open`/`fetch`), NOT the field name — grepping the field misses opaque readers. Classify field-parser vs opaque; prove new format safe for both.
+
+**Resolution**: AUTO-RESOLVE — run the enumeration now; fix any breaking opaque reader (strip/guard/migrate) same change or carve to a tracked draft (Rule J). Ask only if a migration fork.
+
+**Producer/verifier**: `_authoring-spine.txt` + `shape.txt` (blocker+template) + `_probing.txt` (probe) + `ready.md.j2` (gate) + `prompt-content-parity_test.sh` sentinel (`Format/syntax-change consumer completeness`). Incident: pitch-frontmatter `---` broke the loop's opaque `File.read!` whole-pitch reader; fixed by `650941e8` (`strip_frontmatter/1`).
+
 ## Integration with `/ready` Command
 
 The `/ready` skill is a sibling investigation aid that gates a pitch's readiness-check loop. It carries a near-verbatim copy of the soft ask-vs-decide classifier and the deferral-with-draft contract rules. When the shape.txt rules change significantly, `/ready` may need parallel tightening to keep both tools in sync.
@@ -294,17 +297,13 @@ This is a SEPARATE pitch and change, not folded into shape-mode tightening. The 
 
 ## Pitfalls
 
-- **Pitch line numbers drift** — Use exact anchor text, not line numbers in edits.
-- **Verify pitch edits not already applied** — `git show <commit> --stat` checks targets; verify clean.
-- **Example blocks carry routing targets** — bulk-repathing must cover inline examples too.
+- **Pitch line numbers drift** — use exact anchor text, not line numbers. Verify via `git show <commit> --stat`. Example blocks carry routing targets too — bulk-repathing must cover them.
 - **Shape prompt two-layer architecture** — inline-probe (`_probing.txt`) checks claim-intro; readiness-check (`shape.txt`) scans completeness. Place rules by gate-phase. `/ready` inherits `_probing.txt` automatically.
-- **Read/Edit blocked for codegen/pitches/** — `subagent-read-discipline.sh` denies both on pitch files. Workaround: Bash `awk`/`grep` + Python string-replace.
-- **Pitch file grep-c anchor pitfall** — `grep -c "literal header text"` on pitch files false-positives when prose mentions the header elsewhere. Use `grep -n "^## ..."` (anchored H2) for reliable "exactly one section" assertions.
-- **Delegation-prompt H2 promotion** — `## ` lines in delegation bodies are indented to `##` before writing to prevent rank-order corruption.
+- **Read/Edit blocked for codegen/pitches/** — `subagent-read-discipline.sh` denies both on pitch files; workaround: Bash `awk`/`grep` + Python string-replace. `grep -c "header text"` false-positives on prose mentions — use `grep -n "^## ..."` (anchored H2) for "exactly one section" checks. Delegation-prompt `## ` lines get indented to `##` to prevent rank-order corruption.
 
 ## Trigger Keywords
 
-shaper rules, ask-vs-decide, deferral-with-draft, decompose-then-split, derive-and-write edges, Rule G, Rule H, Rule I, Rule J, shape mode discipline, prompt durability, section-name anchors, sweep-class, completeness contract, full-vocabulary sweep, producer/verifier reconciliation, operator-owned surface, user-facing surface removal, surface preservation, keep-vs-remove fork, contract-declaration-site completeness, declaration-site sweep, contract establishment, cross-cutting contract, declares-teaches bound, capability-removal reachability, deny blast radius, stranded actor, tool-grant reachability, sole remaining path, incomplete replacement, replacement completeness, WIRED RECONCILED PRESERVED, born-dead code, proxy probe, absorbs claim, empirical-usage-grounding, usage-mining, transcript mining, invocation frequency, error taxonomy, prior-pitch corpus, patch-sedimentation, design-decision grounding
+shaper rules, ask-vs-decide, deferral-with-draft, decompose-then-split, derive-and-write edges, Rule G, Rule H, Rule I, Rule J, shape mode discipline, prompt durability, section-name anchors, sweep-class, completeness contract, full-vocabulary sweep, producer/verifier reconciliation, operator-owned surface, user-facing surface removal, keep-vs-remove fork, contract-declaration-site completeness, declaration-site sweep, cross-cutting contract, declares-teaches bound, capability-removal reachability, deny blast radius, stranded actor, tool-grant reachability, incomplete replacement, replacement completeness, WIRED RECONCILED PRESERVED, born-dead code, proxy probe, absorbs claim, empirical-usage-grounding, usage-mining, transcript mining, error taxonomy, prior-pitch corpus, patch-sedimentation, format/syntax-change consumer completeness, opaque reader, whole-artifact reader, reader enumeration
 
 ## See Also
 

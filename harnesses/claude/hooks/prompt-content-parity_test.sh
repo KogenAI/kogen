@@ -343,6 +343,20 @@ assert_contains \
     "$CODEGEN_DIR/harnesses/claude/commands/ready.md.j2" \
     "$SENTINEL_EMPIRICAL_USAGE"
 
+SENTINEL_FORMAT_CONSUMER="Format/syntax-change consumer completeness"
+assert_contains \
+    "format-consumer sentinel in claude-shape-system-prompt.txt" \
+    "$CODEGEN_DIR/harnesses/claude/claude-shape-system-prompt.txt" \
+    "$SENTINEL_FORMAT_CONSUMER"
+assert_contains \
+    "format-consumer sentinel in pi-shape-system-prompt.txt" \
+    "$CODEGEN_DIR/harnesses/pi/pi-shape-system-prompt.txt" \
+    "$SENTINEL_FORMAT_CONSUMER"
+assert_contains \
+    "format-consumer sentinel in ready.md.j2" \
+    "$CODEGEN_DIR/harnesses/claude/commands/ready.md.j2" \
+    "$SENTINEL_FORMAT_CONSUMER"
+
 SENTINEL_SILENT_FAILURE="Silent-failure / fail-open design"
 assert_contains \
     "silent-failure blocker sentinel in claude-shape-system-prompt.txt" \
