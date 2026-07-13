@@ -444,6 +444,47 @@ dup_rc=0
 assert "ambiguous slug exits 2" "2" "$dup_rc"
 rm -f "$dup1" "$dup2"
 
+# Test 17: --slug "" (explicitly empty, e.g. an unset shell var expanding
+# into the flag) must FAIL CLOSED — never silently fall back to the newest
+# log. Pre-existing unrelated log must gain zero new role events.
+unset CODEGEN_LOG_PATH
+unset AGENT_TYPE
+empty_slug_log="$PROJECT/codegen/logging/20260107_000000_unrelated-slug_cycle.jsonl"
+jq -c -n '{ev:"init",pitch:"unrelated-slug",path:"",stamp:{}}' >"$empty_slug_log"
+empty_slug_rc=0
+(cd "$PROJECT" && env -u CODEGEN_BUILD_CWD -u CLAUDE_PROJECT_DIR "$CODEGEN/codegen-log" section developer-phoenix-backend --slug "" --body @- <<<"should not land anywhere" >/dev/null 2>&1) || empty_slug_rc=$?
+assert "explicit empty --slug exits 2" "2" "$empty_slug_rc"
+assert "explicit empty --slug did not write into the newest unrelated log" "0" "$(jq_count "$empty_slug_log" 'select(.ev=="role" and .role=="developer-phoenix-backend")')"
+
+# Test 18: omitting --slug entirely is the sanctioned manual-CLI path and
+# MUST keep resolving via the newest-mtime fallback (not fail closed). Clear
+# every other *_cycle.jsonl fixture left behind by earlier tests so the
+# mtime-fallback outcome is deterministic (only empty_slug_log remains).
+find "$PROJECT/codegen/logging" -maxdepth 1 -name '*_cycle.jsonl' ! -name "$(basename "$empty_slug_log")" -delete
+touch "$empty_slug_log"
+omitted_slug_rc=0
+omitted_slug_out="$(cd "$PROJECT" && env -u CODEGEN_BUILD_CWD -u CLAUDE_PROJECT_DIR "$CODEGEN/codegen-log" section developer-phoenix-backend --body @- <<<"### What I Learned This Step
+- omitted slug still resolves" 2>&1)" || omitted_slug_rc=$?
+assert "omitted --slug exits 0 (still resolves)" "0" "$omitted_slug_rc"
+omitted_slug_path="$(printf '%s' "$omitted_slug_out" | tail -n 1)"
+assert "omitted --slug landed on the newest-mtime log" "0" "$([ "$omitted_slug_path" = "$empty_slug_log" ] && printf 0 || printf 1)"
+rm -f "$empty_slug_log"
+
+# Test 19: --slug "" PLUS CODEGEN_LOG_PATH set must resolve via
+# CODEGEN_LOG_PATH (highest precedence) — the fail-closed check in Test 17
+# must sit AFTER the CODEGEN_LOG_PATH early-return, not before it, or a
+# role pinned via CODEGEN_LOG_PATH (whose own --slug may be empty) would be
+# wrongly rejected.
+pinned_log="$PROJECT/codegen/logging/20260108_000000_pinned-slug_cycle.jsonl"
+jq -c -n '{ev:"init",pitch:"pinned-slug",path:"",stamp:{}}' >"$pinned_log"
+pinned_rc=0
+pinned_out="$(cd "$PROJECT" && env -u CODEGEN_BUILD_CWD -u CLAUDE_PROJECT_DIR CODEGEN_LOG_PATH="$pinned_log" "$CODEGEN/codegen-log" section developer-phoenix-backend --slug "" --body @- <<<"pinned via CODEGEN_LOG_PATH despite empty --slug" 2>&1)" || pinned_rc=$?
+assert "CODEGEN_LOG_PATH + empty --slug exits 0" "0" "$pinned_rc"
+pinned_path="$(printf '%s' "$pinned_out" | tail -n 1)"
+assert "CODEGEN_LOG_PATH + empty --slug wrote to the pinned log" "0" "$([ "$pinned_path" = "$pinned_log" ] && printf 0 || printf 1)"
+assert "CODEGEN_LOG_PATH + empty --slug body landed" "1" "$(jq_count "$pinned_log" 'select(.ev=="role" and .role=="developer-phoenix-backend")')"
+rm -f "$pinned_log"
+
 echo ""
 echo "Results: $pass passed, $fail failed"
 

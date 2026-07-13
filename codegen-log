@@ -109,6 +109,7 @@ LOG_ROOT="${CODEGEN_BUILD_CWD:-${CLAUDE_PROJECT_DIR:-$PWD}}"
 
 SUBCOMMAND=""
 SLUG=""
+SLUG_SET=""
 BODY_SOURCE=""
 ROLE_OVERRIDE=""
 ROLE_POSITIONAL_SEEN=""
@@ -164,10 +165,12 @@ while [[ $# -gt 0 ]]; do
         ;;
     --slug=*)
         SLUG="${1#--slug=}"
+        SLUG_SET=1
         shift
         ;;
     --slug)
         SLUG="$2"
+        SLUG_SET=1
         shift 2
         ;;
     --body=*)
@@ -394,6 +397,10 @@ resolve_log_file() {
     if [[ -n "${CODEGEN_LOG_PATH:-}" ]]; then
         printf '%s' "$CODEGEN_LOG_PATH"
         return
+    fi
+    if [[ -n "$SLUG_SET" && -z "$SLUG" ]]; then
+        printf 'codegen-log: --slug was passed but is empty (refusing to fall back to the newest log)\n' >&2
+        exit 2
     fi
     if [[ -n "$SLUG" ]]; then
         validate_slug "$SLUG"

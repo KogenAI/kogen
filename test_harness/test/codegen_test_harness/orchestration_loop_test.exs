@@ -978,7 +978,9 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
       refute "committer" in Agent.get(calls_agent, & &1)
     end
 
-    test "curator_doc_check_fn raising propagates (loop crashes loud)", %{calls_agent: calls_agent} do
+    test "curator_doc_check_fn raising propagates (loop crashes loud)", %{
+      calls_agent: calls_agent
+    } do
       raising_fn = fn _cwd -> raise "scan script exploded" end
 
       assert_raise RuntimeError, ~r/scan script exploded/, fn ->
@@ -1915,14 +1917,44 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
     @with_block "did the thing\n\n### What I Learned This Step\n\n- nothing notable\n"
     @without_block "did the thing, no retrospective included"
 
+    # Retrospective checks now read the CYCLE LOG (the artifact
+    # context-curator consumes), not the role's returned envelope value —
+    # so these tests write real JSONL log fixtures and pin the run to them
+    # via log_init_fn, rather than varying invoke_fn's `value`.
+    defp fresh_cycle_log! do
+      path =
+        Path.join(
+          System.tmp_dir!(),
+          "orch_loop_retro_#{System.unique_integer([:positive])}_cycle.jsonl"
+        )
+
+      File.write!(path, Jason.encode!(%{"ev" => "init", "pitch" => "x"}) <> "\n")
+      on_exit(fn -> File.rm(path) end)
+      path
+    end
+
+    defp append_role_body!(log_path, role, body) do
+      line = Jason.encode!(%{"ev" => "role", "role" => role, "body" => body})
+      File.write!(log_path, line <> "\n", [:append])
+    end
+
+    defp log_init_fn_for(log_path) do
+      fn _slug, _cwd -> log_path end
+    end
+
     # invoke_fn seam that lets each role's returned value + session_id vary by
     # role name, via a caller-supplied map. Unlisted roles get @with_block
-    # (so only the role(s) under test are missing it).
-    defp scripted_invoke_fn(calls_agent, per_role_values, per_role_sids \\ %{}) do
+    # (so only the role(s) under test are missing it). ALSO writes each
+    # role's body into the given cycle log (simulating the real
+    # `codegen-log section` call every role's rules require), so the
+    # retrospective step's log-based check sees the same content the old
+    # envelope-based check varied.
+    defp scripted_invoke_fn(calls_agent, per_role_values, per_role_sids \\ %{}, log_path \\ nil) do
       fn role, _harness, _ctx, _opts ->
         Agent.update(calls_agent, fn calls -> calls ++ [role] end)
         value = Map.get(per_role_values, role, @with_block)
         sid = Map.get(per_role_sids, role, "sid-#{role}")
+        if log_path, do: append_role_body!(log_path, role, value)
 
         {:ok, %{"status" => "success", "value" => value, "session_id" => sid}}
       end
@@ -1944,13 +1976,17 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
         {:ok, @with_block}
       end
 
+      log_path = fresh_cycle_log!()
+
       assert :ok ==
                OrchestrationLoop.run(
                  harness: "claude_code",
                  stack: "phoenix",
                  cwd: "/tmp/irrelevant",
                  pitch: "do the thing",
-                 invoke_fn: scripted_invoke_fn(calls_agent, %{}),
+                 slug: "adhoc",
+                 log_init_fn: log_init_fn_for(log_path),
+                 invoke_fn: scripted_invoke_fn(calls_agent, %{}, %{}, log_path),
                  gate_fn: always_clear_gate_fn(),
                  gate_preflight_fn: no_op_gate_preflight_fn(),
                  preflight_probe_fn: all_present_preflight_probe_fn(),
@@ -1970,9 +2006,13 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
       {:ok, resume_calls_agent} = Agent.start_link(fn -> [] end)
       on_exit(fn -> if Process.alive?(resume_calls_agent), do: Agent.stop(resume_calls_agent) end)
 
+      log_path = fresh_cycle_log!()
+
       resume_fn = fn role, sid, _ctx, _opts ->
         Agent.update(resume_calls_agent, fn calls -> calls ++ [{role, sid}] end)
-        {:ok, "### What I Learned This Step\n\n- [local] recovered via warm-resume\n"}
+        recovered = "### What I Learned This Step\n\n- [local] recovered via warm-resume\n"
+        append_role_body!(log_path, role, recovered)
+        {:ok, recovered}
       end
 
       assert :ok ==
@@ -1981,10 +2021,15 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
                  stack: "phoenix",
                  cwd: "/tmp/irrelevant",
                  pitch: "do the thing",
+                 slug: "adhoc",
+                 log_init_fn: log_init_fn_for(log_path),
                  invoke_fn:
-                   scripted_invoke_fn(calls_agent, %{
-                     "developer-phoenix-backend" => @without_block
-                   }),
+                   scripted_invoke_fn(
+                     calls_agent,
+                     %{"developer-phoenix-backend" => @without_block},
+                     %{},
+                     log_path
+                   ),
                  gate_fn: always_clear_gate_fn(),
                  gate_preflight_fn: no_op_gate_preflight_fn(),
                  preflight_probe_fn: all_present_preflight_probe_fn(),
@@ -2034,8 +2079,11 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
       {:ok, resume_calls_agent} = Agent.start_link(fn -> [] end)
       on_exit(fn -> if Process.alive?(resume_calls_agent), do: Agent.stop(resume_calls_agent) end)
 
+      log_path = fresh_cycle_log!()
+
       resume_fn = fn role, sid, _ctx, _opts ->
         Agent.update(resume_calls_agent, fn calls -> calls ++ [{role, sid}] end)
+        append_role_body!(log_path, role, @with_block)
         {:ok, @with_block}
       end
 
@@ -2045,8 +2093,15 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
                  stack: "phoenix",
                  cwd: "/tmp/irrelevant",
                  pitch: "do the thing",
+                 slug: "adhoc",
+                 log_init_fn: log_init_fn_for(log_path),
                  invoke_fn:
-                   scripted_invoke_fn(calls_agent, %{"planner-phoenix" => @without_block}),
+                   scripted_invoke_fn(
+                     calls_agent,
+                     %{"planner-phoenix" => @without_block},
+                     %{},
+                     log_path
+                   ),
                  gate_fn: always_clear_gate_fn(),
                  gate_preflight_fn: no_op_gate_preflight_fn(),
                  preflight_probe_fn: all_present_preflight_probe_fn(),
@@ -2098,41 +2153,51 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
       {:ok, resume_calls_agent} = Agent.start_link(fn -> [] end)
       on_exit(fn -> if Process.alive?(resume_calls_agent), do: Agent.stop(resume_calls_agent) end)
 
+      log_path = fresh_cycle_log!()
+
       resume_fn = fn role, sid, _ctx, _opts ->
         Agent.update(resume_calls_agent, fn calls -> calls ++ [{role, sid}] end)
+        append_role_body!(log_path, role, @with_block)
         {:ok, @with_block}
       end
 
       # phoenix stack: developer-phoenix-backend and reviewer-phoenix are
       # BOTH in @retrospective_roles (unlike developer-static/reviewer-static
       # is fine too, but phoenix exercises both roles from the same matcher
-      # set the deleted hook covered). First developer/reviewer calls
-      # include the block (so the top-of-run_roles retrospective step
-      # doesn't fire there); the SECOND call of each (the CHANGES_REQUESTED
-      # rework re-invoke) omits it, isolating the assertion to the
-      # rework-path wiring inside handle_review/7.
+      # set the deleted hook covered). The log-based retrospective check is
+      # append-only-any-match (a role satisfies it once ANY of its logged
+      # bodies carries the block), so — unlike the pre-log-based envelope
+      # check — dev/reviewer's FIRST-call body must NOT be written to the
+      # log yet (it would satisfy the check permanently and mask the
+      # rework-path assertion below). Only the SECOND call (post-rework,
+      # still missing the block) is written, isolating the assertion to
+      # the rework-path wiring inside handle_review/7. Roles NOT under
+      # test (planner/curator/committer) write normally every call.
       invoke_fn = fn role, _harness, _ctx, _opts ->
         Agent.update(calls_agent, fn calls -> calls ++ [role] end)
 
-        value =
+        {value, log_this_call?} =
           case role do
             "reviewer-phoenix" ->
               seen = Enum.count(Agent.get(calls_agent, & &1), &(&1 == "reviewer-phoenix"))
 
               if seen <= 1,
-                do: "REVIEW_VERDICT: CHANGES_REQUESTED — fix it\n\n" <> @with_block,
-                else: "REVIEW_VERDICT: APPROVED, " <> @without_block
+                do: {"REVIEW_VERDICT: CHANGES_REQUESTED — fix it\n\n" <> @with_block, false},
+                else: {"REVIEW_VERDICT: APPROVED, " <> @without_block, true}
 
             "developer-phoenix-backend" ->
               seen =
                 Enum.count(Agent.get(calls_agent, & &1), &(&1 == "developer-phoenix-backend"))
 
-              if seen <= 1, do: "did it, " <> @with_block, else: @without_block
+              if seen <= 1,
+                do: {"did it, " <> @with_block, false},
+                else: {@without_block, true}
 
             _ ->
-              @with_block
+              {@with_block, true}
           end
 
+        if log_this_call?, do: append_role_body!(log_path, role, value)
         {:ok, %{"status" => "success", "value" => value, "session_id" => "sid-#{role}"}}
       end
 
@@ -2142,6 +2207,8 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
                  stack: "phoenix",
                  cwd: "/tmp/irrelevant",
                  pitch: "do the thing",
+                 slug: "adhoc",
+                 log_init_fn: log_init_fn_for(log_path),
                  invoke_fn: invoke_fn,
                  gate_fn: always_clear_gate_fn(),
                  gate_preflight_fn: no_op_gate_preflight_fn(),
@@ -2163,8 +2230,11 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
       {:ok, resume_calls_agent} = Agent.start_link(fn -> [] end)
       on_exit(fn -> if Process.alive?(resume_calls_agent), do: Agent.stop(resume_calls_agent) end)
 
+      log_path = fresh_cycle_log!()
+
       resume_fn = fn role, sid, _ctx, _opts ->
         Agent.update(resume_calls_agent, fn calls -> calls ++ [{role, sid}] end)
+        append_role_body!(log_path, role, @with_block)
         {:ok, @with_block}
       end
 
@@ -2178,23 +2248,30 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
 
       # phoenix stack: developer-phoenix-backend is the role run_env_var_step
       # re-invokes on a violation, and it IS in @retrospective_roles (unlike
-      # developer-static). First developer-phoenix-backend call includes the
-      # block; the SECOND call (the env-var-violation rework re-invoke)
-      # omits it, isolating the assertion to run_env_var_step's rework-path
-      # wiring.
+      # developer-static). The log-based retrospective check is
+      # append-only-any-match (a role satisfies it once ANY of its logged
+      # bodies carries the block), so dev's FIRST-call body must NOT be
+      # written to the log yet (it would satisfy the check permanently and
+      # mask the rework-path assertion below). Only the SECOND call (the
+      # env-var-violation rework re-invoke, still missing the block) is
+      # written, isolating the assertion to run_env_var_step's rework-path
+      # wiring. Roles NOT under test write normally every call.
       invoke_fn = fn role, _harness, _ctx, _opts ->
         Agent.update(calls_agent, fn calls -> calls ++ [role] end)
 
-        value =
+        {value, log_this_call?} =
           if role == "developer-phoenix-backend" do
             seen =
               Enum.count(Agent.get(calls_agent, & &1), &(&1 == "developer-phoenix-backend"))
 
-            if seen <= 1, do: "did it, " <> @with_block, else: @without_block
+            if seen <= 1,
+              do: {"did it, " <> @with_block, false},
+              else: {@without_block, true}
           else
-            @with_block
+            {@with_block, true}
           end
 
+        if log_this_call?, do: append_role_body!(log_path, role, value)
         {:ok, %{"status" => "success", "value" => value, "session_id" => "sid-#{role}"}}
       end
 
@@ -2204,6 +2281,8 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
                  stack: "phoenix",
                  cwd: "/tmp/irrelevant",
                  pitch: "do the thing",
+                 slug: "adhoc",
+                 log_init_fn: log_init_fn_for(log_path),
                  invoke_fn: invoke_fn,
                  gate_fn: always_clear_gate_fn(),
                  gate_preflight_fn: no_op_gate_preflight_fn(),
@@ -2234,6 +2313,108 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
                )
 
       assert result["session_id"] == "abc-123"
+    end
+  end
+
+  describe "run/1 — cycle log init + CODEGEN_LOG_PATH pinning" do
+    test "log_init_fn is called exactly once, with the cycle's slug, before the first role invoke",
+         %{calls_agent: calls_agent} do
+      {:ok, init_calls_agent} = Agent.start_link(fn -> [] end)
+      on_exit(fn -> if Process.alive?(init_calls_agent), do: Agent.stop(init_calls_agent) end)
+
+      log_path =
+        Path.join(System.tmp_dir!(), "init_pin_#{System.unique_integer([:positive])}.jsonl")
+
+      File.write!(log_path, Jason.encode!(%{"ev" => "init", "pitch" => "x"}) <> "\n")
+      on_exit(fn -> File.rm(log_path) end)
+
+      log_init_fn = fn slug, cwd ->
+        Agent.update(init_calls_agent, fn calls -> calls ++ [{slug, cwd}] end)
+        # Called before the first role: calls_agent must still be empty.
+        assert Agent.get(calls_agent, & &1) == []
+        log_path
+      end
+
+      invoke_fn = fn role, _harness, _ctx, _opts ->
+        Agent.update(calls_agent, fn calls -> calls ++ [role] end)
+        with_block = "did the thing\n\n### What I Learned This Step\n\n- nothing notable\n"
+        append_role_body!(log_path, role, with_block)
+        {:ok, %{"status" => "success", "value" => with_block, "session_id" => "sid-#{role}"}}
+      end
+
+      assert :ok ==
+               OrchestrationLoop.run(
+                 harness: "claude_code",
+                 stack: "static",
+                 cwd: "/tmp/irrelevant",
+                 pitch: "do the thing",
+                 slug: "my-test-slug",
+                 log_init_fn: log_init_fn,
+                 invoke_fn: invoke_fn,
+                 gate_fn: always_clear_gate_fn(),
+                 gate_preflight_fn: no_op_gate_preflight_fn(),
+                 preflight_probe_fn: all_present_preflight_probe_fn(),
+                 realized_check_fn: not_realized_fn(),
+                 advance_cycle_state_fn: no_op_advance_cycle_state_fn(),
+                 curator_doc_check_fn: always_clean_curator_doc_fn(),
+                 env_var_scan_fn: always_clean_env_var_fn()
+               )
+
+      assert Agent.get(init_calls_agent, & &1) == [{"my-test-slug", "/tmp/irrelevant"}]
+    end
+
+    test "a raising log_init_fn makes run/1 raise — no silent log-less cycle" do
+      log_init_fn = fn _slug, _cwd -> raise "codegen-log init failed (2): boom" end
+
+      assert_raise RuntimeError, ~r/codegen-log init failed/, fn ->
+        OrchestrationLoop.run(
+          harness: "claude_code",
+          stack: "static",
+          cwd: "/tmp/irrelevant",
+          pitch: "do the thing",
+          slug: "my-test-slug",
+          log_init_fn: log_init_fn,
+          invoke_fn: fn _role, _h, _ctx, _o ->
+            flunk("a role must never be invoked when log init raised")
+          end,
+          gate_fn: always_clear_gate_fn(),
+          gate_preflight_fn: no_op_gate_preflight_fn(),
+          preflight_probe_fn: all_present_preflight_probe_fn(),
+          realized_check_fn: not_realized_fn(),
+          advance_cycle_state_fn: no_op_advance_cycle_state_fn(),
+          curator_doc_check_fn: always_clean_curator_doc_fn(),
+          env_var_scan_fn: always_clean_env_var_fn()
+        )
+      end
+    end
+
+    test "nil slug (no slug opt) skips log init cleanly — no raise, retrospective degrades to soft-warn",
+         %{calls_agent: calls_agent} do
+      resume_fn = fn _role, _sid, _ctx, _opts -> {:error, "no log configured"} end
+
+      assert :ok ==
+               OrchestrationLoop.run(
+                 harness: "claude_code",
+                 stack: "static",
+                 cwd: "/tmp/irrelevant",
+                 pitch: "do the thing",
+                 invoke_fn: fn role, _harness, _ctx, _opts ->
+                   Agent.update(calls_agent, fn calls -> calls ++ [role] end)
+
+                   {:ok,
+                    %{"status" => "success", "value" => "no block here", "session_id" => "sid"}}
+                 end,
+                 gate_fn: always_clear_gate_fn(),
+                 gate_preflight_fn: no_op_gate_preflight_fn(),
+                 preflight_probe_fn: all_present_preflight_probe_fn(),
+                 realized_check_fn: not_realized_fn(),
+                 advance_cycle_state_fn: no_op_advance_cycle_state_fn(),
+                 curator_doc_check_fn: always_clean_curator_doc_fn(),
+                 env_var_scan_fn: always_clean_env_var_fn(),
+                 retrospective_resume_fn: resume_fn
+               )
+
+      assert Agent.get(calls_agent, & &1) == @static_sequence
     end
   end
 end

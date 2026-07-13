@@ -65,7 +65,8 @@ defmodule Mix.Tasks.Codegen.Loop do
         stack: stack,
         cwd: cwd,
         pitch: pitch,
-        cycle_id: cycle_id
+        cycle_id: cycle_id,
+        slug: slug
       )
 
     # Emit aggregated per-cycle telemetry as a parseable stream-json result line

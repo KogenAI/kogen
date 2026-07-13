@@ -42,8 +42,10 @@ defmodule CodegenTestHarness.OrchestrationLoop do
 
   @transcript_seq_key :loop_transcript_seq
   @cycle_id_key :loop_cycle_id
+  @log_path_key :loop_log_path
 
   @codegen_call_bin Path.expand("../../../codegen-call", __DIR__)
+  @codegen_log_bin Path.expand("../../../codegen-log", __DIR__)
   @codegen_dir Path.expand("../../..", __DIR__)
 
   @factcheck_scan_lib Path.expand(
@@ -52,9 +54,9 @@ defmodule CodegenTestHarness.OrchestrationLoop do
                       )
 
   @index_parity_scan_lib Path.expand(
-                            "../../../harnesses/claude/hooks/lib/context-index-parity-scan.sh",
-                            __DIR__
-                          )
+                           "../../../harnesses/claude/hooks/lib/context-index-parity-scan.sh",
+                           __DIR__
+                         )
 
   @env_var_scan_lib Path.expand(
                       "../../../harnesses/claude/hooks/lib/env-var-sample-scan.sh",
@@ -249,6 +251,22 @@ defmodule CodegenTestHarness.OrchestrationLoop do
 
     Process.put(@transcript_seq_key, 0)
     Process.put(@cycle_id_key, Keyword.get(opts, :cycle_id))
+
+    # Cycle-log ownership: this loop is the SOLE creator of the cycle's own
+    # session log. A nil slug (many unit tests pass none, cwd is often a
+    # synthetic "/tmp/irrelevant") skips init cleanly — no raise, log-path
+    # key stays nil, and role_logged_retrospective?/2 degrades to false.
+    # A present slug that fails to init is fatal: a cycle with no log of its
+    # own would otherwise silently append its roles' sections into whatever
+    # unrelated log happens to be newest on disk.
+    case Keyword.get(opts, :slug) do
+      nil ->
+        :ok
+
+      slug ->
+        log_init_fn = Keyword.get(opts, :log_init_fn, &default_log_init/2)
+        Process.put(@log_path_key, log_init_fn.(slug, cwd))
+    end
 
     # Turn-0 gate preflight: resolve the app's gate command BEFORE invoking
     # (and paying for) any role. Resolution-only — decide_gate never executes
@@ -829,9 +847,14 @@ defmodule CodegenTestHarness.OrchestrationLoop do
 
     index_parity_result =
       case System.cmd("bash", [@index_parity_scan_lib, cwd], stderr_to_stdout: true) do
-        {_out, 0} -> {:clean}
-        {out, 1} -> {:violations, String.trim(out)}
-        {out, code} -> raise "OrchestrationLoop: context-index-parity-scan.sh exited #{code} (expected 0 or 1): #{out}"
+        {_out, 0} ->
+          {:clean}
+
+        {out, 1} ->
+          {:violations, String.trim(out)}
+
+        {out, code} ->
+          raise "OrchestrationLoop: context-index-parity-scan.sh exited #{code} (expected 0 or 1): #{out}"
       end
 
     factcheck_result =
@@ -840,7 +863,9 @@ defmodule CodegenTestHarness.OrchestrationLoop do
           {:clean}
 
         changed_docs ->
-          case System.cmd("bash", [@factcheck_scan_lib, cwd | changed_docs], stderr_to_stdout: true) do
+          case System.cmd("bash", [@factcheck_scan_lib, cwd | changed_docs],
+                 stderr_to_stdout: true
+               ) do
             {_out, 0} ->
               {:clean}
 
@@ -961,10 +986,10 @@ defmodule CodegenTestHarness.OrchestrationLoop do
 
   defp do_run_retrospective_step(role, ctx, opts, cycle) do
     result = get_in(ctx, [:artifacts, role])
-    value = result && result["value"]
+    log_path = Process.get(@log_path_key)
 
     cond do
-      has_retrospective?(value) ->
+      role_logged_retrospective?(role, log_path) ->
         ctx
 
       cycle >= Keyword.get(opts, :max_retrospective_cycles, 1) ->
@@ -992,10 +1017,10 @@ defmodule CodegenTestHarness.OrchestrationLoop do
             Keyword.get(opts, :retrospective_resume_fn, &default_retrospective_resume/4)
 
           case resume_fn.(role, session_id, ctx, opts) do
-            {:ok, block} ->
-              new_value = String.trim_trailing(value || "") <> "\n\n" <> block
-              new_result = Map.put(result, "value", new_value)
-              ctx = put_in(ctx, [:artifacts, role], new_result)
+            {:ok, _block} ->
+              # The role wrote its retrospective to the CYCLE LOG (via
+              # `codegen-log append <role> --learned`), not into this
+              # envelope — re-check the log itself, never the resumed value.
               do_run_retrospective_step(role, ctx, opts, cycle + 1)
 
             {:error, reason} ->
@@ -1011,11 +1036,78 @@ defmodule CodegenTestHarness.OrchestrationLoop do
     end
   end
 
+  # Creates THIS cycle's log via the sole writer (codegen-log) and returns
+  # its resolved path (printed on stdout). Idempotent: re-init on an
+  # existing slug prints that log's path and exits 0, so this is safe to
+  # call unconditionally at cycle start (including on a resumed/retried
+  # run). A non-zero exit is fatal — a cycle with no log of its own would
+  # otherwise silently append its roles' sections into whatever unrelated
+  # log happens to be newest on disk.
+  @spec default_log_init(String.t(), String.t()) :: String.t()
+  defp default_log_init(slug, cwd) do
+    unless File.exists?(@codegen_log_bin) do
+      raise "OrchestrationLoop: codegen-log not found at #{@codegen_log_bin}"
+    end
+
+    {output, exit_code} =
+      System.cmd(@codegen_log_bin, ["init", "--slug", slug],
+        stderr_to_stdout: true,
+        env: [{"CODEGEN_DIR", @codegen_dir}],
+        cd: cwd
+      )
+
+    if exit_code != 0 do
+      raise "OrchestrationLoop: codegen-log init --slug #{slug} failed (#{exit_code}): #{output}"
+    end
+
+    String.trim(output)
+  end
+
+  # Env-list fragment pinning a role's codegen-log writes to THIS cycle's
+  # log — CODEGEN_LOG_PATH is codegen-log's highest-precedence resolver, so
+  # a role whose own --slug is empty (or whose invocation forgot --slug
+  # entirely) still lands in the right file. Empty when no log was
+  # initialized (nil slug at cycle start — many unit tests pass none).
+  @spec log_path_env() :: [{String.t(), String.t()}]
+  defp log_path_env do
+    case Process.get(@log_path_key) do
+      nil -> []
+      path -> [{"CODEGEN_LOG_PATH", path}]
+    end
+  end
+
+  # True when THIS role wrote a retrospective block into THIS cycle's log —
+  # the same bytes context-curator consumes (session-log.md § Subagent
+  # Retrospective Convention). Reads the log directly: codegen-log is a
+  # writer, not a reader, and adding a read subcommand is out of scope.
+  # A malformed JSONL line is skipped, never fatal; a missing/nil log path
+  # is simply "no block" — this step is contractually soft-warn-only.
+  @spec role_logged_retrospective?(String.t(), String.t() | nil) :: boolean()
+  defp role_logged_retrospective?(_role, nil), do: false
+
+  defp role_logged_retrospective?(role, log_path) do
+    case File.read(log_path) do
+      {:ok, contents} ->
+        contents
+        |> String.split("\n", trim: true)
+        |> Enum.any?(fn line ->
+          case Jason.decode(line) do
+            {:ok, %{"ev" => "role", "role" => ^role, "body" => body}} -> block_present?(body)
+            {:ok, %{"ev" => "learned", "role" => ^role, "text" => text}} -> block_present?(text)
+            _ -> false
+          end
+        end)
+
+      {:error, _reason} ->
+        false
+    end
+  end
+
   # A valid retrospective block requires the header AND at least one
   # non-blank content line after it — a bare/empty header (e.g. the header
   # text alone, no body) does not count.
-  defp has_retrospective?(value) when is_binary(value) do
-    case String.split(value, "### What I Learned This Step", parts: 2) do
+  defp block_present?(text) when is_binary(text) do
+    case String.split(text, "### What I Learned This Step", parts: 2) do
       [_before, after_header] ->
         after_header
         |> String.split("\n")
@@ -1026,7 +1118,7 @@ defmodule CodegenTestHarness.OrchestrationLoop do
     end
   end
 
-  defp has_retrospective?(_value), do: false
+  defp block_present?(_text), do: false
 
   # Warm-resumes the role's ALREADY-RUN session (never a cold re-invoke) to
   # author the omitted retrospective block. Reuses the same argv/env shape
@@ -1052,14 +1144,17 @@ defmodule CodegenTestHarness.OrchestrationLoop do
       ] ++
         guard_bundle_flag!(harness, opts) ++
         prompt_tail(
-          "You omitted your '### What I Learned This Step' block — add it now, nothing else."
+          "You omitted your '### What I Learned This Step' block. Add it to the cycle log " <>
+            "now by running: codegen-log append #{role} --learned \"<your learnings>\" — " <>
+            "nothing else."
         )
 
-    env = [
-      {"CODEGEN_DIR", @codegen_dir},
-      {"CODEGEN_BUILD_START_TS", Integer.to_string(System.system_time(:second))},
-      {"CODEGEN_LOOP", "1"}
-    ]
+    env =
+      [
+        {"CODEGEN_DIR", @codegen_dir},
+        {"CODEGEN_BUILD_START_TS", Integer.to_string(System.system_time(:second))},
+        {"CODEGEN_LOOP", "1"}
+      ] ++ log_path_env()
 
     {output, exit_code} =
       System.cmd(@codegen_call_bin, args, stderr_to_stdout: true, env: env, cd: ctx.cwd)
@@ -1077,7 +1172,7 @@ defmodule CodegenTestHarness.OrchestrationLoop do
           # line reflects the full spend (never under-reports recovery cost).
           accumulate_telemetry(role, envelope)
 
-          if has_retrospective?(value) do
+          if role_logged_retrospective?(role, Process.get(@log_path_key)) do
             {:ok, value}
           else
             {:error, "resumed role still omitted the retrospective block"}
@@ -1704,7 +1799,9 @@ defmodule CodegenTestHarness.OrchestrationLoop do
         {"CODEGEN_DIR", @codegen_dir},
         {"CODEGEN_BUILD_START_TS", Integer.to_string(System.system_time(:second))},
         {"CODEGEN_LOOP", "1"}
-      ] ++ if(transcript, do: [{"CODEGEN_CALL_TRANSCRIPT_PATH", transcript}], else: [])
+      ] ++
+        if(transcript, do: [{"CODEGEN_CALL_TRANSCRIPT_PATH", transcript}], else: []) ++
+        log_path_env()
 
     {output, exit_code} =
       System.cmd(@codegen_call_bin, args, stderr_to_stdout: true, env: env, cd: cwd)
