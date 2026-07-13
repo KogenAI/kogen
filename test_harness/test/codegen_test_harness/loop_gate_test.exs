@@ -1,7 +1,7 @@
 defmodule CodegenTestHarness.LoopGateTest do
   use ExUnit.Case, async: true
 
-  alias CodegenTestHarness.LoopGate
+  alias CodegenTestHarness.{LoopGate, LoopQueueDrain}
 
   setup do
     dir = Path.join(System.tmp_dir!(), "loop_gate_test_#{:erlang.unique_integer([:positive])}")
@@ -243,6 +243,47 @@ defmodule CodegenTestHarness.LoopGateTest do
       assert_raise RuntimeError, ~r/unrecognized\/missing verdict/, fn ->
         LoopGate.read_verdict(dir)
       end
+    end
+  end
+
+  describe "gate record freshness (producer/consumer reconciliation)" do
+    # This is the test class whose absence let a producer (LoopGate) writing
+    # diff_sha "" sit under a consumer (LoopQueueDrain) requiring a
+    # non-"" prefix-of-head_before for two commits. Runs the REAL producer
+    # against a REAL git repo, then asserts the REAL consumer's default
+    # readers satisfy the consumer's own freshness predicate.
+    test "run_gate/2 in a real git repo writes a diff_sha the drain's own readers accept",
+         %{dir: dir} do
+      write_gate_config!(dir, "make test")
+      run_fn = fn _gate, _project_dir -> {"all good", 0} end
+
+      System.cmd("git", ["init", "-q"], cd: dir)
+      System.cmd("git", ["config", "user.email", "test@example.com"], cd: dir)
+      System.cmd("git", ["config", "user.name", "Test"], cd: dir)
+      File.write!(Path.join(dir, "README.md"), "seed\n")
+      System.cmd("git", ["add", "."], cd: dir)
+      System.cmd("git", ["commit", "-q", "-m", "seed"], cd: dir)
+
+      ts_before = System.system_time(:second)
+
+      assert {:clear, "make test"} = LoopGate.run_gate(dir, run_fn: run_fn, stack: "phoenix")
+
+      sha = LoopQueueDrain.default_gate_diff_sha_fn(dir)
+      assert sha != ""
+
+      head = LoopQueueDrain.default_git_head_fn(dir)
+      assert String.starts_with?(head, sha)
+
+      assert LoopQueueDrain.default_gate_mtime_fn(dir) >= ts_before
+    end
+
+    test "run_gate/2 in a non-git dir still writes diff_sha \"\" (fail-open)", %{dir: dir} do
+      write_gate_config!(dir, "make test")
+      run_fn = fn _gate, _project_dir -> {"all good", 0} end
+
+      assert {:clear, "make test"} = LoopGate.run_gate(dir, run_fn: run_fn, stack: "phoenix")
+
+      assert LoopQueueDrain.default_gate_diff_sha_fn(dir) == ""
     end
   end
 end

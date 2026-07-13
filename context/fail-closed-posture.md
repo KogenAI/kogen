@@ -20,6 +20,10 @@ Intentional, commented, justified (fail-loud-rule exemption):
 
 This is not a contradiction of the fail-closed ruling — it is a deliberate, narrow carve-out with an explicit justification comment. Future fail-closed sweeps must preserve it. (The `stop-cycle-guard.sh` retry-cap release, a second former survivor, was retired along with the legacy self-orchestrating harness engine it guarded.)
 
+## Resolved Green-on-Red: Fabricated Gate Verdict on Missing Result
+
+`codegen-build`'s claude leg previously synthesized a fabricated `verdict: "clear"` gate-result JSON (execution_evidence 1, ALL CLEAR marker) whenever a successful dispatch left no real gate-result behind — with no gate having actually run. The sibling pi leg was correctly fail-closed (missing result → non-zero exit) the whole time; only claude carried the fabrication. Resolved: both harnesses now fail closed identically — a successful dispatch with no gate-result.json is treated as a build defect, never papered over with an invented clear verdict. The loop is the sole build engine and always gates, so this path should never fire on a healthy build; if it does, it must be loud.
+
 ## Two-Signal pre-commit-guard Pattern
 
 Destructive git bypass requires BOTH signals present:

@@ -240,45 +240,26 @@ else
     "$DISPATCH" "${EXTRA_FLAGS[@]+"${EXTRA_FLAGS[@]}"}" || _dispatch_rc=$?
 fi
 
-# ── Post-step: Pi must present a structured clear gate result; Claude may synthesize one ──
+# ── Post-step: both harnesses must present a structured gate result; a missing
+# gate-result.json after a successful dispatch is fail-closed. The loop is the
+# sole build engine and always gates, so this branch should never fire on a
+# healthy build — if it does, it is a real defect and must be loud, never
+# fabricated. ──
 _gate_result="$CWD/codegen/gate-pending/gate-result.json"
 if [[ "$_dispatch_rc" -eq 0 ]]; then
-    if [[ "$HARNESS" == "pi" ]]; then
-        if [[ ! -f "$_gate_result" ]]; then
-            printf 'codegen-build: pi build missing gate-result.json after successful dispatch\n' >&2
-            _dispatch_rc=1
-        else
-            _pi_verdict=$(jq -r '.verdict // empty' "$_gate_result" 2>/dev/null || true)
-            if [[ "$_pi_verdict" != "clear" ]]; then
-                if [[ -z "$_pi_verdict" ]]; then
-                    printf 'codegen-build: pi build gate verdict missing or unreadable\n' >&2
-                else
-                    printf 'codegen-build: pi build gate verdict=%s (expected clear)\n' "$_pi_verdict" >&2
-                fi
-                _dispatch_rc=1
+    if [[ ! -f "$_gate_result" ]]; then
+        printf 'codegen-build: %s build missing gate-result.json after successful dispatch\n' "$HARNESS" >&2
+        _dispatch_rc=1
+    elif [[ "$HARNESS" == "pi" ]]; then
+        _pi_verdict=$(jq -r '.verdict // empty' "$_gate_result" 2>/dev/null || true)
+        if [[ "$_pi_verdict" != "clear" ]]; then
+            if [[ -z "$_pi_verdict" ]]; then
+                printf 'codegen-build: pi build gate verdict missing or unreadable\n' >&2
+            else
+                printf 'codegen-build: pi build gate verdict=%s (expected clear)\n' "$_pi_verdict" >&2
             fi
+            _dispatch_rc=1
         fi
-    elif [[ ! -f "$_gate_result" ]]; then
-        _ts=$(date -u +%Y-%m-%dT%H:%M:%SZ)
-        _diff_sha=$(git -C "$CWD" rev-parse --short HEAD 2>/dev/null || printf 'unknown')
-        _diff_count=$(git -C "$CWD" diff --name-only origin/main...HEAD 2>/dev/null | wc -l | tr -d ' ' || printf '0')
-        mkdir -p "$(dirname "$_gate_result")"
-        jq -n \
-            --arg gate "make ci" \
-            --arg mode "short" \
-            --arg diff_sha "$_diff_sha" \
-            --argjson diff_files_count "${_diff_count:-0}" \
-            --arg verdict "clear" \
-            --arg verdict_marker "ALL CLEAR ✅" \
-            --arg started "$_ts" \
-            --arg ended "$_ts" \
-            --arg session_id "${SESSION_ID:-unknown}" \
-            '{gate: $gate, mode: $mode, diff_sha: $diff_sha, diff_files_count: $diff_files_count,
-              runner_found: true, exit: 0, execution_evidence: 1, expected_segments: 1,
-              render_verdict: "", verdict: $verdict, verdict_marker: $verdict_marker,
-              classification: "", started: $started, ended: $ended,
-              session_id: $session_id, log: "", witness: ""}' \
-            >"$_gate_result" 2>/dev/null || true
     fi
 fi
 

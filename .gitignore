@@ -28,6 +28,12 @@ codegen/gate-pending/
 codegen/logging/failures/
 codegen/logging/gate-verdicts.jsonl
 
+# Same runtime files can be planted under a hooks-dir cb_root by a hermetic
+# test that omits --cwd (see codegen-build_test.sh) — defense-in-depth on
+# top of the --cwd fix; the root codegen/gate-pending/ pattern above only
+# anchors to the repo root, not this nested path.
+harnesses/*/hooks/codegen/
+
 # Temporary build artifacts
 tmp/
 test_harness/bench_run.log

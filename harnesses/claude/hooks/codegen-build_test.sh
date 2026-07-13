@@ -121,6 +121,19 @@ make_codegen_log_stub() {
     make_stub "$dir/codegen-log" 'printf "codegen-log root=resolved\n"'
 }
 
+# gate_ok_body
+# Stub body fragment that writes a minimal clear gate-result.json before
+# exiting 0. codegen-build now fails closed (exit 1) when a successful
+# dispatch leaves no gate-result.json behind — a bare `exit 0` dispatch stub
+# no longer represents a real successful build. Use for any claude dispatch
+# stub whose test asserts exit 0. Writes under $CODEGEN_BUILD_CWD (exported
+# by codegen-build) rather than a relative path — real dispatch.sh `cd`s into
+# that dir before running, but bare stubs here do not, so a relative write
+# would land in whatever directory the stub happens to execute from.
+gate_ok_body() {
+    printf 'mkdir -p "${CODEGEN_BUILD_CWD:-.}/codegen/gate-pending"\ncat > "${CODEGEN_BUILD_CWD:-.}/codegen/gate-pending/gate-result.json" <<"JSON"\n{"verdict":"clear"}\nJSON\nexit 0\n'
+}
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Test (c): missing --harness → exit 2 + usage on stderr
 # ─────────────────────────────────────────────────────────────────────────────
@@ -150,10 +163,16 @@ check "(e) exit code 2 propagates" "2" "$actual_ec"
 for ec in 0 1 130; do
     CB_E="$(make_cb_root "cb_e${ec}")"
     mkdir -p "$CB_E/harnesses/claude"
-    make_stub "$CB_E/harnesses/claude/dispatch.sh" "exit $ec"
+    MARKER_E="$BASE_TMP/marker_e${ec}"
+    mkdir -p "$MARKER_E"
+    if [[ "$ec" -eq 0 ]]; then
+        make_stub "$CB_E/harnesses/claude/dispatch.sh" "$(gate_ok_body)"
+    else
+        make_stub "$CB_E/harnesses/claude/dispatch.sh" "exit $ec"
+    fi
 
     actual_ec=0
-    "$CB_E/codegen-build" --harness=claude --stack=phoenix \
+    "$CB_E/codegen-build" --harness=claude --stack=phoenix --cwd="$MARKER_E" \
         "test prompt" 2>/dev/null ||
         actual_ec=$?
 
@@ -172,12 +191,18 @@ BIN_A="$BASE_TMP/bin_a"
 make_mix_stub "$BIN_A"
 make_codegen_log_stub "$BIN_A"
 
+# Real dispatch.sh execs a stubbed `mix` that never writes gate-result.json —
+# plant one at the --cwd target so the post-step's fail-closed check passes.
+MARKER_A="$BASE_TMP/marker_a"
+mkdir -p "$MARKER_A/codegen/gate-pending"
+printf '{"verdict":"clear"}\n' >"$MARKER_A/codegen/gate-pending/gate-result.json"
+
 actual_ec=0
 TARGET_ARGS_FILE="$ARGS_A" \
     PATH="$BIN_A:$PATH" \
     OCG_CODEGEN_DIR="$CODEGEN_ROOT" \
     CODEGEN_BUILD_MODEL="" CODEGEN_BUILD_EFFORT="" \
-    "$CB_A/codegen-build" --harness=claude --stack=phoenix \
+    "$CB_A/codegen-build" --harness=claude --stack=phoenix --cwd="$MARKER_A" \
     "hello prompt" 2>/dev/null ||
     actual_ec=$?
 
@@ -278,10 +303,16 @@ mkdir -p "$BIN_F"
 make_stub "$BIN_F/mix" "printf '%s\n' '${FIXTURE_LINE}'"
 make_codegen_log_stub "$BIN_F"
 
+# mix stub never writes gate-result.json — plant one at --cwd so the
+# post-step's fail-closed check passes and stdout passthrough can be checked.
+MARKER_F="$BASE_TMP/marker_f"
+mkdir -p "$MARKER_F/codegen/gate-pending"
+printf '{"verdict":"clear"}\n' >"$MARKER_F/codegen/gate-pending/gate-result.json"
+
 ACTUAL_F_OUT=$(PATH="$BIN_F:$PATH" \
     OCG_CODEGEN_DIR="$CODEGEN_ROOT" \
     CODEGEN_BUILD_MODEL="" CODEGEN_BUILD_EFFORT="" \
-    "$CB_F/codegen-build" --harness=claude --stack=phoenix \
+    "$CB_F/codegen-build" --harness=claude --stack=phoenix --cwd="$MARKER_F" \
     "fixture prompt" 2>/dev/null ||
     true)
 
@@ -307,7 +338,7 @@ mkdir -p "$MARKER_CWD/harnesses/claude" "$MARKER_CWD/templates/generator"
 touch "$MARKER_CWD/harnesses/claude/manifest.yaml" "$MARKER_CWD/templates/generator/generate.sh"
 
 # Dispatch stub exits 0 so the build short-circuits right after the integrate pre-step.
-make_stub "$CB_K/harnesses/claude/dispatch.sh" 'exit 0'
+make_stub "$CB_K/harnesses/claude/dispatch.sh" "$(gate_ok_body)"
 
 STDERR_K="$BASE_TMP/stderr_k.txt"
 actual_ec=0
@@ -338,7 +369,7 @@ fi
 # (p1) mix.exs only → detects phoenix
 CB_P1="$(make_cb_root cb_p1)"
 mkdir -p "$CB_P1/harnesses/claude"
-make_stub "$CB_P1/harnesses/claude/dispatch.sh" 'exit 0'
+make_stub "$CB_P1/harnesses/claude/dispatch.sh" "$(gate_ok_body)"
 MARKER_P1="$BASE_TMP/marker_p1"
 mkdir -p "$MARKER_P1"
 touch "$MARKER_P1/mix.exs"
@@ -352,7 +383,7 @@ assert_contains "(p1) stderr reports detected stack=phoenix" "$stderr_p1" "detec
 # (p2) vite.config.js only → detects static
 CB_P2="$(make_cb_root cb_p2)"
 mkdir -p "$CB_P2/harnesses/claude"
-make_stub "$CB_P2/harnesses/claude/dispatch.sh" 'exit 0'
+make_stub "$CB_P2/harnesses/claude/dispatch.sh" "$(gate_ok_body)"
 MARKER_P2="$BASE_TMP/marker_p2"
 mkdir -p "$MARKER_P2"
 touch "$MARKER_P2/vite.config.js"
@@ -394,7 +425,7 @@ assert_contains "(p4) stderr mentions cannot detect stack" "$stderr_p4" "cannot 
 # (p5) self-build markers present → detects phoenix (case-2 precedence)
 CB_P5="$(make_cb_root cb_p5)"
 mkdir -p "$CB_P5/harnesses/claude"
-make_stub "$CB_P5/harnesses/claude/dispatch.sh" 'exit 0'
+make_stub "$CB_P5/harnesses/claude/dispatch.sh" "$(gate_ok_body)"
 MARKER_P5="$BASE_TMP/marker_p5"
 mkdir -p "$MARKER_P5/harnesses/claude" "$MARKER_P5/templates/generator"
 touch "$MARKER_P5/harnesses/claude/manifest.yaml" "$MARKER_P5/templates/generator/generate.sh"
@@ -415,7 +446,7 @@ assert_contains "(p5) stderr reports detected stack=phoenix" "$stderr_p5" "detec
 # (q1) manifest absent → build proceeds (preflight skipped, no refuse message)
 CB_Q1="$(make_cb_root cb_q1)"
 mkdir -p "$CB_Q1/harnesses/claude" "$CB_Q1/shared/scaffold"
-make_stub "$CB_Q1/harnesses/claude/dispatch.sh" 'exit 0'
+make_stub "$CB_Q1/harnesses/claude/dispatch.sh" "$(gate_ok_body)"
 printf '1\n' >"$CB_Q1/shared/scaffold/SCHEMA_VERSION"
 MARKER_Q1="$BASE_TMP/marker_q1"
 mkdir -p "$MARKER_Q1"
@@ -430,7 +461,7 @@ check "(q1) no refuse message when manifest absent" "0" "$q1_refused"
 # (q2) stamped version equals current → proceeds
 CB_Q2="$(make_cb_root cb_q2)"
 mkdir -p "$CB_Q2/harnesses/claude" "$CB_Q2/shared/scaffold"
-make_stub "$CB_Q2/harnesses/claude/dispatch.sh" 'exit 0'
+make_stub "$CB_Q2/harnesses/claude/dispatch.sh" "$(gate_ok_body)"
 printf '1\n' >"$CB_Q2/shared/scaffold/SCHEMA_VERSION"
 MARKER_Q2="$BASE_TMP/marker_q2"
 mkdir -p "$MARKER_Q2/codegen"
@@ -467,7 +498,7 @@ assert_contains "(q3) stderr reports current v1" "$stderr_q3" "v1"
 # (q4) self-build markers present + behind manifest → preflight skipped, proceeds
 CB_Q4="$(make_cb_root cb_q4)"
 mkdir -p "$CB_Q4/harnesses/claude" "$CB_Q4/shared/scaffold"
-make_stub "$CB_Q4/harnesses/claude/dispatch.sh" 'exit 0'
+make_stub "$CB_Q4/harnesses/claude/dispatch.sh" "$(gate_ok_body)"
 printf '1\n' >"$CB_Q4/shared/scaffold/SCHEMA_VERSION"
 MARKER_Q4="$BASE_TMP/marker_q4"
 mkdir -p "$MARKER_Q4/codegen" "$MARKER_Q4/harnesses/claude" "$MARKER_Q4/templates/generator"
@@ -481,6 +512,59 @@ stderr_q4=$("$CB_Q4/codegen-build" --harness=claude --stack=phoenix --cwd="$MARK
 check "(q4) self-build markers present: preflight skipped, proceeds exit 0" "0" "$actual_ec"
 q4_refused=$(printf '%s' "$stderr_q4" | grep -c "app wired at scaffold schema" || true)
 check "(q4) no refuse message on self-build even with behind manifest" "0" "$q4_refused"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Test (m): claude dispatch exits 0 with NO gate-result.json → fail closed.
+# Proves the fabricated-clear-verdict synth block is gone: before that fix
+# this case would fabricate a clear verdict and exit 0.
+# ─────────────────────────────────────────────────────────────────────────────
+CB_M="$(make_cb_root cb_m)"
+mkdir -p "$CB_M/harnesses/claude"
+make_stub "$CB_M/harnesses/claude/dispatch.sh" 'exit 0'
+MARKER_M="$BASE_TMP/marker_m"
+mkdir -p "$MARKER_M"
+
+actual_ec=0
+stderr_m=$("$CB_M/codegen-build" --harness=claude --stack=phoenix --cwd="$MARKER_M" \
+    "m prompt" 2>&1 >/dev/null) || actual_ec=$?
+check "(m) missing gate-result.json fails closed" "1" "$actual_ec"
+assert_contains "(m) stderr mentions missing gate-result.json" "$stderr_m" "missing gate-result.json"
+[[ ! -f "$MARKER_M/codegen/gate-pending/gate-result.json" ]] &&
+    {
+        [ -n "${VERBOSE:-}" ] && printf 'PASS: (m) no gate-result.json fabricated\n'
+        pass=$((pass + 1))
+    } ||
+    {
+        printf 'FAIL: (m) a gate-result.json was fabricated despite no gate having run\n'
+        fail=$((fail + 1))
+    }
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Test (g): codegen-build must never write into $PWD when --cwd points
+# elsewhere — no gate-pending state leaks into the invoking shell's directory.
+# ─────────────────────────────────────────────────────────────────────────────
+CB_G="$(make_cb_root cb_g)"
+mkdir -p "$CB_G/harnesses/claude"
+make_stub "$CB_G/harnesses/claude/dispatch.sh" "$(gate_ok_body)"
+MARKER_G="$BASE_TMP/marker_g"
+mkdir -p "$MARKER_G"
+SCRATCH_G="$BASE_TMP/scratch_g"
+mkdir -p "$SCRATCH_G"
+
+actual_ec=0
+(
+    cd "$SCRATCH_G"
+    "$CB_G/codegen-build" --harness=claude --stack=phoenix --cwd="$MARKER_G" \
+        "g prompt" >/dev/null 2>&1
+) || actual_ec=$?
+check "(g) build with --cwd elsewhere exits 0" "0" "$actual_ec"
+if [[ ! -d "$SCRATCH_G/codegen" ]]; then
+    [ -n "${VERBOSE:-}" ] && printf 'PASS: (g) no codegen/ dir leaked into $PWD\n'
+    pass=$((pass + 1))
+else
+    printf 'FAIL: (g) codegen/ dir leaked into $PWD (%s)\n' "$SCRATCH_G"
+    fail=$((fail + 1))
+fi
 
 # ─────────────────────────────────────────────────────────────────────────────
 echo ""

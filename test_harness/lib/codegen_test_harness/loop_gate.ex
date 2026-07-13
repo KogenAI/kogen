@@ -134,9 +134,12 @@ defmodule CodegenTestHarness.LoopGate do
       raise "LoopGate: gate-result.sh not found at #{@gate_result_lib}"
     end
 
+    diff_sha = gate_diff_sha(project_dir)
+    diff_files_count = gate_diff_files_count(project_dir)
+
     write_script = """
     source #{shell_quote(@gate_result_lib)} && write_gate_result \
-      #{shell_quote(gate)} #{shell_quote(mode)} "" 0 \
+      #{shell_quote(gate)} #{shell_quote(mode)} #{shell_quote(diff_sha)} #{diff_files_count} \
       true #{exit_code} 1 1 #{shell_quote(render_verdict)} "" \
       #{shell_quote(started)} #{shell_quote(ended)} \
       #{shell_quote(session_id)} #{shell_quote(log_path)} #{shell_quote(project_dir)}
@@ -283,6 +286,31 @@ defmodule CodegenTestHarness.LoopGate do
     end
 
     :ok
+  end
+
+  # Short HEAD of `project_dir` at GATE time (pre-commit — the loop gates
+  # before the committer in role order). "" when project_dir is not a git
+  # repo — fail-closed sentinel: the drain's freshness check treats "" as
+  # never-fresh, and LoopGate's own tests run in a bare non-git tmp dir.
+  @spec gate_diff_sha(String.t()) :: String.t()
+  defp gate_diff_sha(project_dir) do
+    case System.cmd("git", ["-C", project_dir, "rev-parse", "--short", "HEAD"],
+           stderr_to_stdout: true
+         ) do
+      {out, 0} -> String.trim(out)
+      {_out, _code} -> ""
+    end
+  end
+
+  # Count of changed (tracked + untracked) files in `project_dir` at gate
+  # time. 0 when project_dir is not a git repo (fail-open — observability
+  # only, nothing branches on this value today).
+  @spec gate_diff_files_count(String.t()) :: non_neg_integer()
+  defp gate_diff_files_count(project_dir) do
+    case System.cmd("git", ["-C", project_dir, "status", "--porcelain"], stderr_to_stdout: true) do
+      {out, 0} -> out |> String.split("\n", trim: true) |> length()
+      {_out, _code} -> 0
+    end
   end
 
   defp default_run_fn(gate_command, project_dir) do
