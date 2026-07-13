@@ -126,9 +126,30 @@ assert_contains "missing test_harness/ dir: stderr mentions 'orchestration loop 
     "$out" "orchestration loop dir not found"
 
 # ── Test 3: env-isolation — provider keys stripped before exec (loop path) ────
+# env -u strips ambient CODEGEN_CALL_* vars: when this test itself runs inside
+# a codegen-call-launched session (e.g. a developer role invocation), the
+# parent process's own CODEGEN_CALL_PROMPT/etc. would otherwise leak into the
+# child env dump and produce false-positive substring matches unrelated to
+# the actual OPENAI_API_KEY/ANTHROPIC_API_KEY/CURSOR_API_KEY leak this test
+# targets.
 MIX_ARGS_FILE_3="$TMP_ROOT/mix-args-3.txt"
 rc=0
-TARGET_MIX_ARGS_FILE="$MIX_ARGS_FILE_3" \
+env \
+    -u CODEGEN_CALL_PROMPT \
+    -u CODEGEN_CALL_AGENT \
+    -u CODEGEN_CALL_MODEL \
+    -u CODEGEN_CALL_EFFORT \
+    -u CODEGEN_CALL_RESUME \
+    -u CODEGEN_CALL_SYSTEM_PROMPT \
+    -u CODEGEN_CALL_HARNESS \
+    -u CODEGEN_CALL_JSON_SCHEMA \
+    -u CODEGEN_CALL_JSON_SCHEMA_PATH \
+    -u CODEGEN_CALL_ALLOWED_TOOLS \
+    -u CODEGEN_CALL_ALLOWED_TOOLS_SET \
+    -u CODEGEN_CALL_SETTINGS_PATH \
+    -u CODEGEN_CALL_EXTENSION_PATH \
+    -u CODEGEN_CALL_TRANSCRIPT_PATH \
+    TARGET_MIX_ARGS_FILE="$MIX_ARGS_FILE_3" \
     PATH="$FAKE_BIN:$PATH" \
     OCG_CODEGEN_DIR="$CODEGEN_ROOT" \
     CODEGEN_BUILD_STACK=phoenix \

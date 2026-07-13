@@ -29,13 +29,52 @@ _ts_ms() {
 }
 
 # ── Read CODEGEN_CALL_* env vars ──────────────────────────────────────────────
-SYSTEM_PROMPT="${CODEGEN_CALL_SYSTEM_PROMPT:?CODEGEN_CALL_SYSTEM_PROMPT not set}"
+AGENT="${CODEGEN_CALL_AGENT:-}"
 MODEL="${CODEGEN_CALL_MODEL:?CODEGEN_CALL_MODEL not set}"
 EFFORT="${CODEGEN_CALL_EFFORT:?CODEGEN_CALL_EFFORT not set}"
 PROMPT="${CODEGEN_CALL_PROMPT:?CODEGEN_CALL_PROMPT not set}"
 JSON_SCHEMA_CONTENT="${CODEGEN_CALL_JSON_SCHEMA:-}"
 EXTENSION_PATH="${CODEGEN_CALL_EXTENSION_PATH:-}"
 RESUME="${CODEGEN_CALL_RESUME:-}"
+
+# --system-prompt is required UNLESS --agent is set (agent supplies identity
+# natively via the resolved agent-definition body; codegen-call waives the
+# requirement — mirrors harnesses/claude/call-dispatch.sh).
+if [[ -z "$AGENT" ]]; then
+    SYSTEM_PROMPT="${CODEGEN_CALL_SYSTEM_PROMPT:?CODEGEN_CALL_SYSTEM_PROMPT not set}"
+else
+    SYSTEM_PROMPT="${CODEGEN_CALL_SYSTEM_PROMPT:-}"
+fi
+
+# ── Resolve a named-agent's prompt body from its installed .md definition ────
+# Pi has no native --agent flag; identity is --system-prompt (REPLACE) + the
+# AGENT_TYPE env var the enforcement extension reads. agents_dir mirrors
+# harnesses/pi/manifest.yaml's `agents_dir: ~/.pi/agent/agents`; the
+# repo-relative templates/generated/pi/agent/ dir is the pre-install fallback.
+_resolve_pi_agent_prompt() {
+    local role="$1"
+    local script_dir installed_dir generated_dir agent_file
+    script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
+    installed_dir="$HOME/.pi/agent/agents"
+    generated_dir="$(cd "$script_dir/../.." && pwd -P)/templates/generated/pi/agent"
+
+    for agent_file in "$installed_dir/$role.md" "$generated_dir/$role.md"; do
+        if [[ -f "$agent_file" ]]; then
+            cat "$agent_file"
+            return 0
+        fi
+    done
+
+    printf 'codegen-call (pi): agent definition not found: %s/%s.md\n' "$installed_dir" "$role" >&2
+    return 2
+}
+
+if [[ -n "$AGENT" ]]; then
+    SYSTEM_PROMPT="$(_resolve_pi_agent_prompt "$AGENT")"
+    # Native identity signal for the enforcement extension (pi analogue of the
+    # `.agent_type` claude stamps into hook payloads natively).
+    export AGENT_TYPE="$AGENT"
+fi
 
 _capture_transcript() {
     [ -n "${CODEGEN_CALL_TRANSCRIPT_PATH:-}" ] || return 0
@@ -56,20 +95,34 @@ ${JSON_SCHEMA_CONTENT}"
 fi
 
 # ── Build pi argv ─────────────────────────────────────────────────────────────
+# --system-prompt REPLACES pi's default coding-assistant prompt (matches
+# codegen-call's whole-identity REPLACE contract for both agent and one-shot
+# system-prompt calls — see harnesses/claude/call-dispatch.sh's --agent leg).
 ARGS=(
     -p
     --mode json
     --no-context-files
-    --append-system-prompt "$SYSTEM_PROMPT"
+    --system-prompt "$SYSTEM_PROMPT"
     --provider openai-codex
     --model "$MODEL"
     --thinking "$EFFORT"
 )
 
 # --session-id resumes/creates a specific persisted session (pi's closest
-# equivalent to claude's --resume); no RESUME → keep the call ephemeral.
+# equivalent to claude's --resume). A loop-shaped agent call with no RESUME
+# still needs an id so the envelope can echo one back for warm-resume
+# (pi's --session-id creates the session if missing — see `pi --help`).
+# A bare one-shot call (no --agent) stays ephemeral: --no-session.
+MINTED_SESSION_ID=""
 if [[ -n "$RESUME" ]]; then
     ARGS+=(--session-id "$RESUME")
+elif [[ -n "$AGENT" ]]; then
+    if command -v uuidgen >/dev/null 2>&1; then
+        MINTED_SESSION_ID="$(uuidgen)"
+    else
+        MINTED_SESSION_ID="$(od -An -tx1 -N16 /dev/urandom | tr -d ' \n')"
+    fi
+    ARGS+=(--session-id "$MINTED_SESSION_ID")
 else
     ARGS+=(--no-session)
 fi
@@ -79,6 +132,13 @@ if [[ -n "$EXTENSION_PATH" ]]; then
 fi
 
 ARGS+=("$EFFECTIVE_PROMPT")
+
+# Session id actually in play for this call — threaded into the envelope so
+# the loop's retrospective-resume (--resume=<session_id>) can round-trip on
+# pi the same way it does on claude. Ephemeral one-shot calls (--no-session)
+# carry no session id.
+EFFECTIVE_SESSION_ID="$RESUME"
+[[ -z "$EFFECTIVE_SESSION_ID" ]] && EFFECTIVE_SESSION_ID="$MINTED_SESSION_ID"
 
 # ── Capture pi output ─────────────────────────────────────────────────────────
 TMP_OUT="$(mktemp -t codegen-call-pi.XXXXXX.jsonl)"
@@ -108,6 +168,7 @@ if [[ $EXIT_CODE -ne 0 ]] && [[ -z "$AGENT_END_EVENT" ]]; then
         --arg error "pi exited ${EXIT_CODE}: ${TAIL_OUT}" \
         --argjson latency_ms "$LATENCY_MS" \
         --arg model "$MODEL" \
+        --arg session_id "$EFFECTIVE_SESSION_ID" \
         '{
             result: {
                 status: "failed",
@@ -128,7 +189,7 @@ if [[ $EXIT_CODE -ne 0 ]] && [[ -z "$AGENT_END_EVENT" ]]; then
             },
             error: $error,
             harness: "pi",
-            session_id: null
+            session_id: (if $session_id == "" then null else $session_id end)
         }'
     exit 1
 fi
@@ -139,6 +200,7 @@ if [[ -z "$AGENT_END_EVENT" ]]; then
         --arg tail_out "$TAIL_OUT" \
         --argjson latency_ms "$LATENCY_MS" \
         --arg model "$MODEL" \
+        --arg session_id "$EFFECTIVE_SESSION_ID" \
         '{
             result: {
                 status: "failed",
@@ -159,7 +221,7 @@ if [[ -z "$AGENT_END_EVENT" ]]; then
             },
             error: ("no agent_end event; tail: " + $tail_out),
             harness: "pi",
-            session_id: null
+            session_id: (if $session_id == "" then null else $session_id end)
         }'
     exit 0
 fi
@@ -267,6 +329,7 @@ jq -n \
     --argjson latency_ms "$LATENCY_MS" \
     --arg model "$MODEL" \
     --argjson num_turns "$NUM_TURNS" \
+    --arg session_id "$EFFECTIVE_SESSION_ID" \
     '{
         result: {
             status: $status,
@@ -287,6 +350,6 @@ jq -n \
         },
         error: null,
         harness: "pi",
-        session_id: null
+        session_id: (if $session_id == "" then null else $session_id end)
     }'
 exit 0

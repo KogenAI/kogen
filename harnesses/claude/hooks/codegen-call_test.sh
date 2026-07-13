@@ -415,6 +415,70 @@ RESUME_SEEN="$(cat "$BASE_TMP/resume_seen.txt" 2>/dev/null || true)"
 check "(q) CODEGEN_CALL_RESUME carries the session id" "warm-session-123" "$RESUME_SEEN"
 
 # ─────────────────────────────────────────────────────────────────────────────
+# Test (r): pi --agent=committer resolves agent definition and mints session_id
+# ─────────────────────────────────────────────────────────────────────────────
+CC_R="$(make_cc_root cc_r)"
+
+mkdir -p "$CC_R/templates/generated/pi/agent"
+printf '# Committer\n\nYou are a committer specialist.' >"$CC_R/templates/generated/pi/agent/committer.md"
+
+# Stub that echoes a minted session_id
+make_pi_dispatch_stub "$CC_R" 'printf '"'"'{"result":{"status":"success","value":"committed","reason":null,"clarifying_question":null,"retry_meta":null},"usage":{"input_tokens":10,"output_tokens":2,"cache_read_input_tokens":0,"cache_creation_input_tokens":0,"cost_usd":0.001,"latency_ms":200,"model":"gpt-5","num_turns":1},"error":null,"harness":"pi","session_id":"r-minted-session"}'"'"''
+
+actual_exit=0
+OUT_R="$("$CC_R/codegen-call" \
+    --harness=pi --model=gpt-5 --effort=low \
+    --agent=committer "commit test" 2>/dev/null)" || actual_exit=$?
+
+check "(r) pi --agent=committer exits 0" "0" "$actual_exit"
+assert_jq "(r) result.status == success" "$OUT_R" ".result.status" "success"
+assert_jq "(r) harness == pi" "$OUT_R" ".harness" "pi"
+SESSION_ID_R="$(printf '%s' "$OUT_R" | jq -r '.session_id')"
+check "(r) pi mints non-null session_id for agent call" "false" "$([[ "$SESSION_ID_R" == "null" ]] && echo true || echo false)"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Test (s): pi --agent=nonexistent_role exits 2 with error on stderr
+# ─────────────────────────────────────────────────────────────────────────────
+CC_S="$(make_cc_root cc_s)"
+mkdir -p "$CC_S/templates/generated/pi/agent"
+
+# Copy the REAL pi dispatch so agent resolution actually runs
+mkdir -p "$CC_S/harnesses/pi"
+cp "$REAL_PI_HARNESS/call-dispatch.sh" "$CC_S/harnesses/pi/call-dispatch.sh"
+
+actual_exit=0
+STDERR_S="$("$CC_S/codegen-call" \
+    --harness=pi --model=gpt-5 --effort=low \
+    --agent=nonexistent_role "test" 2>&1 >/dev/null || true)"
+
+# Verify exit code is 2
+"$CC_S/codegen-call" \
+    --harness=pi --model=gpt-5 --effort=low \
+    --agent=nonexistent_role "test" >/dev/null 2>/dev/null || actual_exit=$?
+check "(s) pi --agent=nonexistent_role exits 2" "2" "$actual_exit"
+assert_contains "(s) stderr mentions agent not found" "$STDERR_S" "agent definition not found"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Test (t): pi --agent with --resume round-trips session_id
+# ─────────────────────────────────────────────────────────────────────────────
+CC_T="$(make_cc_root cc_t)"
+
+mkdir -p "$CC_T/templates/generated/pi/agent"
+printf '# Developer\n\nYou are a developer.' >"$CC_T/templates/generated/pi/agent/developer.md"
+
+# Stub that captures CODEGEN_CALL_RESUME and echoes it back in session_id
+make_pi_dispatch_stub "$CC_T" 'RESUME_VAL="${CODEGEN_CALL_RESUME:-}"; printf '"'"'{"result":{"status":"success","value":"done","reason":null,"clarifying_question":null,"retry_meta":null},"usage":{"input_tokens":5,"output_tokens":1,"cache_read_input_tokens":0,"cache_creation_input_tokens":0,"cost_usd":0,"latency_ms":100,"model":"gpt-5","num_turns":1},"error":null,"harness":"pi","session_id":"%s"}'"'"' "$RESUME_VAL"'
+
+actual_exit=0
+OUT_T="$("$CC_T/codegen-call" \
+    --harness=pi --model=gpt-5 --effort=low \
+    --agent=developer --resume=test-session-456 \
+    "resume with agent test" 2>/dev/null)" || actual_exit=$?
+
+check "(t) pi --agent with --resume exits 0" "0" "$actual_exit"
+assert_jq "(t) session_id round-trips with --resume" "$OUT_T" ".session_id" "test-session-456"
+
+# ─────────────────────────────────────────────────────────────────────────────
 # Test (o): codegen-call source contains zero role-name tokens
 # ─────────────────────────────────────────────────────────────────────────────
 ROLE_TOKEN_COUNT="$(grep -cE 'planner|developer|committer|reviewer|curator' "$CODEGEN_CALL" || true)"

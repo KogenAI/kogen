@@ -606,6 +606,159 @@ fi
 
 rm -f "$PRE_FIX_SCRIPT"
 
+# ── Pi loop role identity: --agent resolution, AGENT_TYPE export, minted session id ──
+PI_DISPATCH_SCRIPT="$(cd "$HOOKS_DIR/../../pi" && pwd)/call-dispatch.sh"
+
+PI_STUB_DIR="$BASE_TMP/pi_stub_bin"
+mkdir -p "$PI_STUB_DIR"
+cat >"$PI_STUB_DIR/pi" <<'PISTUB'
+#!/usr/bin/env bash
+# Stub pi: log argv + AGENT_TYPE, emit fixture, exit 0
+: >"$PI_ARGV_LOG"
+for a in "$@"; do printf '%s\n' "$a" >>"$PI_ARGV_LOG"; done
+printf '%s\n' "${AGENT_TYPE:-}" >"$PI_AGENT_TYPE_SEEN"
+cat "$PI_FIXTURE_PATH"
+PISTUB
+chmod +x "$PI_STUB_DIR/pi"
+
+PI_FIXTURE="$BASE_TMP/pi_agent_end.jsonl"
+cat >"$PI_FIXTURE" <<'PIFIX'
+{"type":"agent_end","messages":[{"role":"assistant","content":"work complete"}],"usage":{"input_tokens":12,"output_tokens":4}}
+PIFIX
+
+PI_FAKE_HOME="$BASE_TMP/pi_fake_home"
+mkdir -p "$PI_FAKE_HOME/.pi/agent/agents"
+printf 'You are the committer agent.' >"$PI_FAKE_HOME/.pi/agent/agents/committer.md"
+
+# (r) --agent set + agent file present → resolves prompt, exports AGENT_TYPE,
+#     mints + echoes a session id, uses --system-prompt (REPLACE) not --append.
+PI_R_EXIT=0
+(
+    export PATH="$PI_STUB_DIR:$PATH"
+    export HOME="$PI_FAKE_HOME"
+    export PI_ARGV_LOG="$BASE_TMP/pi_argv_r.log"
+    export PI_AGENT_TYPE_SEEN="$BASE_TMP/pi_agent_type_r.txt"
+    export PI_FIXTURE_PATH="$PI_FIXTURE"
+    export CODEGEN_CALL_AGENT="committer"
+    export CODEGEN_CALL_MODEL="gpt-5"
+    export CODEGEN_CALL_EFFORT="low"
+    export CODEGEN_CALL_PROMPT="Commit the change."
+    unset CODEGEN_CALL_SYSTEM_PROMPT 2>/dev/null || true
+    unset CODEGEN_CALL_RESUME 2>/dev/null || true
+    unset CODEGEN_CALL_EXTENSION_PATH 2>/dev/null || true
+    unset CODEGEN_CALL_JSON_SCHEMA 2>/dev/null || true
+    bash "$PI_DISPATCH_SCRIPT" 2>"$BASE_TMP/pi_r_stderr.log"
+) >"$BASE_TMP/pi_r_envelope.json" || PI_R_EXIT=$?
+
+if [[ "$PI_R_EXIT" -eq 0 ]]; then
+    [ -n "${VERBOSE:-}" ] && printf 'PASS: (r) pi --agent call exits 0\n'
+    pass=$((pass + 1))
+else
+    printf 'FAIL: (r) pi --agent call exits 0 — got %d\n  stderr: %s\n' "$PI_R_EXIT" "$(cat "$BASE_TMP/pi_r_stderr.log" 2>/dev/null || true)"
+    fail=$((fail + 1))
+fi
+
+assert_log_contains_line "$BASE_TMP/pi_argv_r.log" "--system-prompt" \
+    "(r) --agent resolved: --system-prompt flag present"
+assert_log_line_after "$BASE_TMP/pi_argv_r.log" "--system-prompt" "You are the committer agent." \
+    "(r) --agent resolved: agent .md body used as system prompt"
+assert_log_absent_line "$BASE_TMP/pi_argv_r.log" "--append-system-prompt" \
+    "(r) --agent resolved: no --append-system-prompt (REPLACE contract)"
+
+if [[ "$(cat "$BASE_TMP/pi_agent_type_r.txt" 2>/dev/null || true)" == "committer" ]]; then
+    [ -n "${VERBOSE:-}" ] && printf 'PASS: (r) AGENT_TYPE exported to pi process env\n'
+    pass=$((pass + 1))
+else
+    printf 'FAIL: (r) AGENT_TYPE not exported — got %q\n' "$(cat "$BASE_TMP/pi_agent_type_r.txt" 2>/dev/null || true)"
+    fail=$((fail + 1))
+fi
+
+R_ENVELOPE="$(cat "$BASE_TMP/pi_r_envelope.json")"
+assert_jq_truthy "(r) envelope session_id non-null in agent mode" "$R_ENVELOPE" '.session_id != null'
+assert_jq_truthy "(r) envelope session_id non-empty string" "$R_ENVELOPE" '(.session_id | type) == "string" and (.session_id | length) > 0'
+
+# (s) --agent set but the agent .md is absent → exit 2, loud stderr, no silent fallback
+PI_S_EXIT=0
+(
+    export PATH="$PI_STUB_DIR:$PATH"
+    export HOME="$PI_FAKE_HOME"
+    export PI_ARGV_LOG="$BASE_TMP/pi_argv_s.log"
+    export PI_AGENT_TYPE_SEEN="$BASE_TMP/pi_agent_type_s.txt"
+    export PI_FIXTURE_PATH="$PI_FIXTURE"
+    export CODEGEN_CALL_AGENT="no-such-role"
+    export CODEGEN_CALL_MODEL="gpt-5"
+    export CODEGEN_CALL_EFFORT="low"
+    export CODEGEN_CALL_PROMPT="Do the thing."
+    unset CODEGEN_CALL_SYSTEM_PROMPT 2>/dev/null || true
+    unset CODEGEN_CALL_RESUME 2>/dev/null || true
+    unset CODEGEN_CALL_EXTENSION_PATH 2>/dev/null || true
+    unset CODEGEN_CALL_JSON_SCHEMA 2>/dev/null || true
+    bash "$PI_DISPATCH_SCRIPT" 2>"$BASE_TMP/pi_s_stderr.log"
+) >"$BASE_TMP/pi_s_envelope.json" || PI_S_EXIT=$?
+
+if [[ "$PI_S_EXIT" -eq 2 ]]; then
+    [ -n "${VERBOSE:-}" ] && printf 'PASS: (s) missing agent definition exits 2\n'
+    pass=$((pass + 1))
+else
+    printf 'FAIL: (s) missing agent definition exits 2 — got %d\n' "$PI_S_EXIT"
+    fail=$((fail + 1))
+fi
+assert_file_contains "$BASE_TMP/pi_s_stderr.log" "agent definition not found"
+
+# (t) no --agent (bare one-shot) → session_id stays null, --no-session used
+PI_T_EXIT=0
+(
+    export PATH="$PI_STUB_DIR:$PATH"
+    export HOME="$PI_FAKE_HOME"
+    export PI_ARGV_LOG="$BASE_TMP/pi_argv_t.log"
+    export PI_AGENT_TYPE_SEEN="$BASE_TMP/pi_agent_type_t.txt"
+    export PI_FIXTURE_PATH="$PI_FIXTURE"
+    unset CODEGEN_CALL_AGENT 2>/dev/null || true
+    export CODEGEN_CALL_SYSTEM_PROMPT="You are a one-shot assistant."
+    export CODEGEN_CALL_MODEL="gpt-5"
+    export CODEGEN_CALL_EFFORT="low"
+    export CODEGEN_CALL_PROMPT="Classify this."
+    unset CODEGEN_CALL_RESUME 2>/dev/null || true
+    unset CODEGEN_CALL_EXTENSION_PATH 2>/dev/null || true
+    unset CODEGEN_CALL_JSON_SCHEMA 2>/dev/null || true
+    bash "$PI_DISPATCH_SCRIPT" 2>"$BASE_TMP/pi_t_stderr.log"
+) >"$BASE_TMP/pi_t_envelope.json" || PI_T_EXIT=$?
+
+if [[ "$PI_T_EXIT" -eq 0 ]]; then
+    [ -n "${VERBOSE:-}" ] && printf 'PASS: (t) bare one-shot pi call exits 0\n'
+    pass=$((pass + 1))
+else
+    printf 'FAIL: (t) bare one-shot pi call exits 0 — got %d\n' "$PI_T_EXIT"
+    fail=$((fail + 1))
+fi
+assert_log_contains_line "$BASE_TMP/pi_argv_t.log" "--no-session" \
+    "(t) bare one-shot: --no-session used (ephemeral)"
+T_ENVELOPE="$(cat "$BASE_TMP/pi_t_envelope.json")"
+assert_jq "(t) bare one-shot: envelope session_id is null" "$T_ENVELOPE" ".session_id" "null"
+
+# (u) --resume set + --agent set → resumed id threaded verbatim, no minting
+(
+    export PATH="$PI_STUB_DIR:$PATH"
+    export HOME="$PI_FAKE_HOME"
+    export PI_ARGV_LOG="$BASE_TMP/pi_argv_u.log"
+    export PI_AGENT_TYPE_SEEN="$BASE_TMP/pi_agent_type_u.txt"
+    export PI_FIXTURE_PATH="$PI_FIXTURE"
+    export CODEGEN_CALL_AGENT="committer"
+    export CODEGEN_CALL_RESUME="warm-pi-session-999"
+    export CODEGEN_CALL_MODEL="gpt-5"
+    export CODEGEN_CALL_EFFORT="low"
+    export CODEGEN_CALL_PROMPT="Resume and commit."
+    unset CODEGEN_CALL_SYSTEM_PROMPT 2>/dev/null || true
+    unset CODEGEN_CALL_EXTENSION_PATH 2>/dev/null || true
+    unset CODEGEN_CALL_JSON_SCHEMA 2>/dev/null || true
+    bash "$PI_DISPATCH_SCRIPT" 2>"$BASE_TMP/pi_u_stderr.log"
+) >"$BASE_TMP/pi_u_envelope.json" || true
+
+U_ENVELOPE="$(cat "$BASE_TMP/pi_u_envelope.json")"
+assert_jq "(u) --resume set: envelope session_id echoes resumed id" "$U_ENVELOPE" ".session_id" "warm-pi-session-999"
+assert_log_line_after "$BASE_TMP/pi_argv_u.log" "--session-id" "warm-pi-session-999" \
+    "(u) --resume set: --session-id carries the resumed id verbatim"
+
 # ─────────────────────────────────────────────────────────────────────────────
 echo ""
 echo "Results: $pass passed, $fail failed"
