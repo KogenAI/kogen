@@ -420,7 +420,7 @@ check "(q) CODEGEN_CALL_RESUME carries the session id" "warm-session-123" "$RESU
 CC_R="$(make_cc_root cc_r)"
 
 mkdir -p "$CC_R/templates/generated/pi/agent"
-printf '# Committer\n\nYou are a committer specialist.' >"$CC_R/templates/generated/pi/agent/committer.md"
+printf -- '---\nname: committer\ndescription: d\nmodel: haiku\ntools: bash, edit, grep, read\n---\n# Committer\n\nYou are a committer specialist.' >"$CC_R/templates/generated/pi/agent/committer.md"
 
 # Stub that echoes a minted session_id
 make_pi_dispatch_stub "$CC_R" 'printf '"'"'{"result":{"status":"success","value":"committed","reason":null,"clarifying_question":null,"retry_meta":null},"usage":{"input_tokens":10,"output_tokens":2,"cache_read_input_tokens":0,"cache_creation_input_tokens":0,"cost_usd":0.001,"latency_ms":200,"model":"gpt-5","num_turns":1},"error":null,"harness":"pi","session_id":"r-minted-session"}'"'"''
@@ -435,6 +435,159 @@ assert_jq "(r) result.status == success" "$OUT_R" ".result.status" "success"
 assert_jq "(r) harness == pi" "$OUT_R" ".harness" "pi"
 SESSION_ID_R="$(printf '%s' "$OUT_R" | jq -r '.session_id')"
 check "(r) pi mints non-null session_id for agent call" "false" "$([[ "$SESSION_ID_R" == "null" ]] && echo true || echo false)"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Helper: real pi dispatch + a stubbed `pi` binary on PATH that captures argv
+# and the --system-prompt value to files the test can grep. Used by (r2)-(r5)
+# to exercise the ACTUAL frontmatter-strip + --tools emission logic in
+# harnesses/pi/call-dispatch.sh (not a call-dispatch stub).
+# ─────────────────────────────────────────────────────────────────────────────
+make_pi_binary_stub() {
+    local bindir="$1"
+    local argv_file="$2"
+    local sp_file="$3"
+    mkdir -p "$bindir"
+    cat >"$bindir/pi" <<STUB
+#!/usr/bin/env bash
+printf '%s\n' "\$*" > "$argv_file"
+prev=""
+for a in "\$@"; do
+    if [[ "\$prev" == "--system-prompt" ]]; then
+        printf '%s' "\$a" > "$sp_file"
+    fi
+    prev="\$a"
+done
+printf '%s\n' '{"type":"agent_end","messages":[{"role":"assistant","content":"ok"}],"usage":{"input_tokens":1,"output_tokens":1}}'
+STUB
+    chmod +x "$bindir/pi"
+}
+
+setup_real_pi_dispatch() {
+    local cc_root="$1"
+    local role="$2"
+    local agent_body="$3"
+    mkdir -p "$cc_root/templates/generated/pi/agent"
+    printf '%s' "$agent_body" >"$cc_root/templates/generated/pi/agent/$role.md"
+    mkdir -p "$cc_root/harnesses/pi"
+    cp "$REAL_PI_HARNESS/call-dispatch.sh" "$cc_root/harnesses/pi/call-dispatch.sh"
+}
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Test (r2): --system-prompt (real dispatch) contains only the body — no
+# leading '---' and no 'tools:' line leaked from the frontmatter.
+# ─────────────────────────────────────────────────────────────────────────────
+CC_R2="$(make_cc_root cc_r2)"
+setup_real_pi_dispatch "$CC_R2" "committer" '---
+name: committer
+description: d
+model: haiku
+tools: bash, edit, grep, read
+---
+# Committer
+
+You are a committer specialist.'
+
+R2_BIN="$BASE_TMP/cc_r2_bin"
+R2_ARGV="$BASE_TMP/cc_r2_argv.txt"
+R2_SP="$BASE_TMP/cc_r2_sp.txt"
+make_pi_binary_stub "$R2_BIN" "$R2_ARGV" "$R2_SP"
+
+# HOME override: _resolve_pi_agent checks $HOME/.pi/agent/agents/<role>.md
+# FIRST — an installed agent on the operator's real machine would shadow the
+# fixture. Point HOME at an empty dir so only the fixture resolves.
+R2_HOME="$BASE_TMP/cc_r2_home"
+mkdir -p "$R2_HOME"
+
+actual_exit=0
+HOME="$R2_HOME" PATH="$R2_BIN:$PATH" "$CC_R2/codegen-call" \
+    --harness=pi --model=gpt-5 --effort=low \
+    --agent=committer "commit test" >/dev/null 2>/dev/null || actual_exit=$?
+check "(r2) real pi dispatch exits 0" "0" "$actual_exit"
+
+SP_R2="$(cat "$R2_SP" 2>/dev/null || true)"
+assert_contains "(r2) system-prompt contains body" "$SP_R2" "# Committer"
+if [[ "$SP_R2" == *"tools:"* ]]; then
+    printf 'FAIL: (r2) system-prompt leaks frontmatter tools: line\n'
+    fail=$((fail + 1))
+else
+    [ -n "${VERBOSE:-}" ] && printf 'PASS: %s\n' "(r2) system-prompt has no tools: line"
+    pass=$((pass + 1))
+fi
+if [[ "$SP_R2" == "---"* ]]; then
+    printf 'FAIL: (r2) system-prompt leaks leading ---\n'
+    fail=$((fail + 1))
+else
+    [ -n "${VERBOSE:-}" ] && printf 'PASS: %s\n' "(r2) system-prompt has no leading ---"
+    pass=$((pass + 1))
+fi
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Test (r3): pi argv carries --tools with the frontmatter's tools: value.
+# ─────────────────────────────────────────────────────────────────────────────
+ARGV_R2="$(cat "$R2_ARGV" 2>/dev/null || true)"
+assert_contains "(r3) pi argv carries --tools with frontmatter value" "$ARGV_R2" "--tools bash, edit, grep, read"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Test (r4): explicit --allowed-tools wins over agent frontmatter.
+# ─────────────────────────────────────────────────────────────────────────────
+CC_R4="$(make_cc_root cc_r4)"
+setup_real_pi_dispatch "$CC_R4" "committer" '---
+name: committer
+description: d
+model: haiku
+tools: bash, edit, grep, read
+---
+# Committer
+
+You are a committer specialist.'
+
+R4_BIN="$BASE_TMP/cc_r4_bin"
+R4_ARGV="$BASE_TMP/cc_r4_argv.txt"
+R4_SP="$BASE_TMP/cc_r4_sp.txt"
+make_pi_binary_stub "$R4_BIN" "$R4_ARGV" "$R4_SP"
+
+R4_HOME="$BASE_TMP/cc_r4_home"
+mkdir -p "$R4_HOME"
+
+actual_exit=0
+HOME="$R4_HOME" PATH="$R4_BIN:$PATH" "$CC_R4/codegen-call" \
+    --harness=pi --model=gpt-5 --effort=low \
+    --agent=committer --allowed-tools=read "commit test" >/dev/null 2>/dev/null || actual_exit=$?
+check "(r4) explicit --allowed-tools + --agent exits 0" "0" "$actual_exit"
+ARGV_R4="$(cat "$R4_ARGV" 2>/dev/null || true)"
+assert_contains "(r4) explicit --allowed-tools wins over frontmatter" "$ARGV_R4" "--tools read"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Test (r5): frontmatter-less legacy agent file → body = whole file, no --tools.
+# ─────────────────────────────────────────────────────────────────────────────
+CC_R5="$(make_cc_root cc_r5)"
+setup_real_pi_dispatch "$CC_R5" "committer" '# Committer
+
+You are a committer specialist.'
+
+R5_BIN="$BASE_TMP/cc_r5_bin"
+R5_ARGV="$BASE_TMP/cc_r5_argv.txt"
+R5_SP="$BASE_TMP/cc_r5_sp.txt"
+make_pi_binary_stub "$R5_BIN" "$R5_ARGV" "$R5_SP"
+
+R5_HOME="$BASE_TMP/cc_r5_home"
+mkdir -p "$R5_HOME"
+
+actual_exit=0
+HOME="$R5_HOME" PATH="$R5_BIN:$PATH" "$CC_R5/codegen-call" \
+    --harness=pi --model=gpt-5 --effort=low \
+    --agent=committer "commit test" >/dev/null 2>/dev/null || actual_exit=$?
+check "(r5) legacy frontmatter-less agent exits 0" "0" "$actual_exit"
+SP_R5="$(cat "$R5_SP" 2>/dev/null || true)"
+assert_contains "(r5) legacy agent body is whole file" "$SP_R5" "# Committer"
+ARGV_R5="$(cat "$R5_ARGV" 2>/dev/null || true)"
+if [[ "$ARGV_R5" == *"--tools"* ]]; then
+    printf 'FAIL: (r5) legacy frontmatter-less agent must not emit --tools\n'
+    fail=$((fail + 1))
+else
+    [ -n "${VERBOSE:-}" ] && printf 'PASS: %s\n' "(r5) legacy frontmatter-less agent emits no --tools"
+    pass=$((pass + 1))
+fi
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Test (s): pi --agent=nonexistent_role exits 2 with error on stderr

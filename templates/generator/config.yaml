@@ -13,6 +13,29 @@ tools:
     commands_dir: "commands"
     agents_dir: "agents"
     settings_dir: "$HOME/.claude"
+  pi:
+    name: "pi"
+    display_name: "Pi"
+    yaml_frontmatter: true
+    agents_dir: "$HOME/.pi/agent/agents"
+    # claude tool name -> pi tool name. Pi's built-in registry is
+    # bash,edit,find,grep,ls,read,write (probed from the installed pi package);
+    # subagent/ask_user_question/web_search/fetch_webpage come from
+    # harnesses/pi/pi-extensions/*. An unmapped claude tool ABORTS generation —
+    # never silently drop a tool from a role's allowlist (pi silently ignores
+    # unknown --tools names at runtime, so generation-time is the only guard).
+    tool_map:
+      Agent: subagent
+      AskUserQuestion: ask_user_question
+      Bash: bash
+      Edit: edit
+      Glob: find
+      Grep: grep
+      MultiEdit: edit
+      Read: read
+      WebFetch: fetch_webpage
+      WebSearch: web_search
+      Write: write
 
 # Common variables available to all templates
 common:

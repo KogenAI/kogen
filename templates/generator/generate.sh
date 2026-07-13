@@ -169,8 +169,8 @@ _generate_pi() {
             output_file="$output_agents_dir/${role_name}.md"
 
             echo "   Generating: ${role_name}.md"
-            python3 "$SCRIPT_DIR/process_template.py" \
-                "$template_file" pi false >"$output_file"
+            python3 "$SCRIPT_DIR/process_template.py" --config "$SCRIPT_DIR/config.yaml" \
+                "$template_file" pi true >"$output_file"
             echo "   ✅ Written: $(basename "$output_file")"
         done
     done

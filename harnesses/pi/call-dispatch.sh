@@ -51,7 +51,16 @@ fi
 # AGENT_TYPE env var the enforcement extension reads. agents_dir mirrors
 # harnesses/pi/manifest.yaml's `agents_dir: ~/.pi/agent/agents`; the
 # repo-relative templates/generated/pi/agent/ dir is the pre-install fallback.
-_resolve_pi_agent_prompt() {
+#
+# Agent .md files now carry YAML frontmatter (name/description/model/tools —
+# rendered via config.yaml tools.pi.tool_map, already in pi vocabulary; a
+# frontmatter-less legacy file is still supported below). --system-prompt
+# must receive the BODY ONLY — leaking the raw frontmatter into the prompt
+# would corrupt every pi role's system prompt. Sets
+# MODULE-SCOPE AGENT_BODY and AGENT_TOOLS (read by the argv-build block below).
+AGENT_BODY=""
+AGENT_TOOLS=""
+_resolve_pi_agent() {
     local role="$1"
     local script_dir installed_dir generated_dir agent_file
     script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
@@ -60,7 +69,17 @@ _resolve_pi_agent_prompt() {
 
     for agent_file in "$installed_dir/$role.md" "$generated_dir/$role.md"; do
         if [[ -f "$agent_file" ]]; then
-            cat "$agent_file"
+            if [[ "$(head -n 1 "$agent_file")" == "---" ]]; then
+                # Frontmatter present: body = everything after the closing ---.
+                # n>=2 guard so a literal '---' horizontal rule inside the
+                # body is printed, not treated as a second delimiter.
+                AGENT_TOOLS="$(awk '/^---$/{n++; if(n==2) exit; next} n==1 && /^tools:[[:space:]]*/{sub(/^tools:[[:space:]]*/,""); print; exit}' "$agent_file")"
+                AGENT_BODY="$(awk 'BEGIN{n=0} /^---$/{n++; next} n>=2{print}' "$agent_file")"
+            else
+                # Legacy frontmatter-less agent: whole file is the identity.
+                AGENT_BODY="$(cat "$agent_file")"
+                AGENT_TOOLS=""
+            fi
             return 0
         fi
     done
@@ -70,7 +89,8 @@ _resolve_pi_agent_prompt() {
 }
 
 if [[ -n "$AGENT" ]]; then
-    SYSTEM_PROMPT="$(_resolve_pi_agent_prompt "$AGENT")"
+    _resolve_pi_agent "$AGENT"
+    SYSTEM_PROMPT="$AGENT_BODY"
     # Native identity signal for the enforcement extension (pi analogue of the
     # `.agent_type` claude stamps into hook payloads natively).
     export AGENT_TYPE="$AGENT"
@@ -125,6 +145,17 @@ elif [[ -n "$AGENT" ]]; then
     ARGS+=(--session-id "$MINTED_SESSION_ID")
 else
     ARGS+=(--no-session)
+fi
+
+# --tools: explicit --allowed-tools wins; otherwise the agent's frontmatter
+# tools: (already in pi vocabulary — translated at generate time via
+# config.yaml tools.pi.tool_map). No agent + no explicit → omit (pi default).
+ALLOWED_TOOLS="${CODEGEN_CALL_ALLOWED_TOOLS:-}"
+ALLOWED_TOOLS_SET="${CODEGEN_CALL_ALLOWED_TOOLS_SET:-}"
+if [[ -n "$ALLOWED_TOOLS_SET" ]]; then
+    ARGS+=(--tools "$ALLOWED_TOOLS")
+elif [[ -n "$AGENT_TOOLS" ]]; then
+    ARGS+=(--tools "$AGENT_TOOLS")
 fi
 
 if [[ -n "$EXTENSION_PATH" ]]; then

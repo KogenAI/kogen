@@ -139,6 +139,31 @@ def _strip_template_blocks(content, tool_name, yaml_frontmatter):
     return content
 
 
+def _map_pi_tools(tools_csv, tool_map, template_file):
+    """Translate a claude tools: CSV to pi tool names, de-duped, order-preserved.
+
+    Aborts loud (SystemExit) on any claude tool with no tool_map entry —
+    a silently-narrowed allowlist is an invisible capability removal. Pi
+    itself silently ignores unknown --tools names at runtime, so generation
+    time is the only guard against this.
+    """
+    mapped = []
+    for raw in tools_csv.split(','):
+        name = raw.strip()
+        if not name:
+            continue
+        if name not in tool_map:
+            raise SystemExit(
+                f"process_template.py: no pi tool_map entry for claude tool {name!r}"
+                f" (template {template_file}); add it to config.yaml tools.pi.tool_map"
+                f" or remove the tool from the template frontmatter"
+            )
+        pi_name = tool_map[name]
+        if pi_name not in mapped:
+            mapped.append(pi_name)
+    return ', '.join(mapped)
+
+
 def process_template(template_file, tool_name, yaml_frontmatter, config_yaml=None):
     """Process a template file with the given configuration (Markdown output).
 
@@ -216,6 +241,49 @@ def process_template(template_file, tool_name, yaml_frontmatter, config_yaml=Non
                 count=1,
                 flags=re.DOTALL,
             )
+
+    if tool_name == 'pi' and config_yaml:
+        try:
+            import yaml
+        except ImportError:
+            raise SystemExit(
+                "process_template.py: PyYAML required for pi config rendering but not installed"
+                " — pip3 install pyyaml"
+            )
+
+        with open(config_yaml, 'r') as f:
+            config = yaml.safe_load(f)
+        tool_map = config.get('tools', {}).get('pi', {}).get('tool_map', {})
+
+        # Only rewrite when a frontmatter block with a tools: line is present.
+        # Slash-command templates carry description:-only frontmatter (no
+        # tools: line) and must render unchanged — this is the only
+        # legitimate no-op path.
+        def rewrite_pi_frontmatter(m):
+            fm = m.group(1)
+
+            def rewrite_tools_line(tm):
+                mapped = _map_pi_tools(tm.group(1), tool_map, template_file)
+                return f'tools: {mapped}'
+
+            fm, n = re.subn(
+                r'^tools:[ \t]*(.+)$',
+                rewrite_tools_line,
+                fm,
+                count=1,
+                flags=re.MULTILINE,
+            )
+            if n == 0:
+                return f'---\n{m.group(1)}\n---'
+            return f'---\n{fm}\n---'
+
+        content = re.sub(
+            r'^---\n(.*?)\n---',
+            rewrite_pi_frontmatter,
+            content,
+            count=1,
+            flags=re.DOTALL,
+        )
 
     print(content, end='')
 
