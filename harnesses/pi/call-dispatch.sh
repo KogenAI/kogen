@@ -36,6 +36,12 @@ PROMPT="${CODEGEN_CALL_PROMPT:?CODEGEN_CALL_PROMPT not set}"
 JSON_SCHEMA_CONTENT="${CODEGEN_CALL_JSON_SCHEMA:-}"
 EXTENSION_PATH="${CODEGEN_CALL_EXTENSION_PATH:-}"
 RESUME="${CODEGEN_CALL_RESUME:-}"
+PRINT_ARGV="${CODEGEN_CALL_PRINT_ARGV:-}"
+# CODEGEN_CALL_AGENTS_PATH is claude-only (inline agent-def JSON); pi has no
+# native inline-agent-def concept and ignores it — accepted, never forwarded.
+# Pi's identity path stays fail-closed independently (see SYSTEM_PROMPT
+# required-unless-AGENT check above/below); silently dropping --agents here
+# can never yield an identity-less call.
 
 # --system-prompt is required UNLESS --agent is set (agent supplies identity
 # natively via the resolved agent-definition body; codegen-call waives the
@@ -163,6 +169,13 @@ if [[ -n "$EXTENSION_PATH" ]]; then
 fi
 
 ARGS+=("$EFFECTIVE_PROMPT")
+
+# --print-argv: dry-run — print the fully-built argv (one per line) and exit
+# 0 without invoking pi. Mirrors harnesses/claude/call-dispatch.sh.
+if [[ -n "$PRINT_ARGV" ]]; then
+    printf '%s\n' "${ARGS[@]}"
+    exit 0
+fi
 
 # Session id actually in play for this call — threaded into the envelope so
 # the loop's retrospective-resume (--resume=<session_id>) can round-trip on

@@ -34,6 +34,8 @@ JSON_SCHEMA_CONTENT="${CODEGEN_CALL_JSON_SCHEMA:-}"
 ALLOWED_TOOLS="${CODEGEN_CALL_ALLOWED_TOOLS:-}"
 ALLOWED_TOOLS_SET="${CODEGEN_CALL_ALLOWED_TOOLS_SET:-}"
 SETTINGS_PATH="${CODEGEN_CALL_SETTINGS_PATH:-}"
+AGENTS_PATH="${CODEGEN_CALL_AGENTS_PATH:-}"
+PRINT_ARGV="${CODEGEN_CALL_PRINT_ARGV:-}"
 
 # --system-prompt is required UNLESS --agent is set (agent supplies identity
 # natively via `claude --agent <role>`; codegen-call waives the requirement).
@@ -99,6 +101,21 @@ fi
 # --settings: path to settings JSON file
 if [[ -n "$SETTINGS_PATH" ]]; then
     COMMON_FLAGS+=(--settings "$SETTINGS_PATH")
+fi
+
+# --agents: inline agent-def JSON, passed through verbatim; this script never
+# opens, parses, or names the agents the JSON carries (mirrors --settings /
+# --extension passthrough discipline).
+if [[ -n "$AGENTS_PATH" ]]; then
+    COMMON_FLAGS+=(--agents "$(cat "$AGENTS_PATH")")
+fi
+
+# --print-argv: dry-run — print the fully-built argv (one per line) and exit
+# 0 without invoking claude. Lets an external consumer assert its exact argv
+# against this contract at CI speed, with no LLM spend.
+if [[ -n "$PRINT_ARGV" ]]; then
+    printf '%s\n' "${COMMON_FLAGS[@]}" -- "$PROMPT"
+    exit 0
 fi
 
 # ── Capture claude output ─────────────────────────────────────────────────────

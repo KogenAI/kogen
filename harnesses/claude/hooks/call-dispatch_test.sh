@@ -506,6 +506,100 @@ assert_log_line_after "$BASE_TMP/argv_i.log" "--tools" "Read Edit" \
 assert_log_line_after "$BASE_TMP/argv_i.log" "--setting-sources" "user,project" \
     "(i) agent + explicit tools: --setting-sources followed by user,project"
 
+# (i2) CODEGEN_CALL_AGENTS_PATH set → --agents threaded with the file content verbatim
+AGENTS_FIXTURE="$BASE_TMP/agents_fixture.json"
+printf '{"probe-agent":{"description":"probe","prompt":"probe","tools":[]}}' >"$AGENTS_FIXTURE"
+(
+    export PATH="$ARGV_STUB_DIR:$PATH"
+    export ARGV_LOG="$BASE_TMP/argv_i2.log"
+    export FIXTURE_PATH="$FIXTURE"
+    export CODEGEN_CALL_AGENT="probe-agent"
+    export CODEGEN_CALL_AGENTS_PATH="$AGENTS_FIXTURE"
+    export CODEGEN_CALL_MODEL="claude-haiku-4-5"
+    export CODEGEN_CALL_EFFORT="low"
+    export CODEGEN_CALL_PROMPT="Do the thing."
+    unset CODEGEN_CALL_SYSTEM_PROMPT 2>/dev/null || true
+    unset CODEGEN_CALL_ALLOWED_TOOLS_SET 2>/dev/null || true
+    unset CODEGEN_CALL_ALLOWED_TOOLS 2>/dev/null || true
+    unset CODEGEN_CALL_JSON_SCHEMA 2>/dev/null || true
+    unset CODEGEN_CALL_JSON_SCHEMA_PATH 2>/dev/null || true
+    unset CODEGEN_CALL_SETTINGS_PATH 2>/dev/null || true
+    unset CODEGEN_CALL_RESUME 2>/dev/null || true
+    bash "$DISPATCH_SCRIPT" >/dev/null 2>"$BASE_TMP/argv_i2_stderr.log" || true
+)
+
+assert_log_contains_line "$BASE_TMP/argv_i2.log" "--agents" "(i2) CODEGEN_CALL_AGENTS_PATH set: --agents flag present"
+assert_log_contains_line "$BASE_TMP/argv_i2.log" "probe-agent" "(i2) --agents carries the file content verbatim"
+
+# (i3) CODEGEN_CALL_AGENTS_PATH unset → --agents flag absent
+(
+    export PATH="$ARGV_STUB_DIR:$PATH"
+    export ARGV_LOG="$BASE_TMP/argv_i3.log"
+    export FIXTURE_PATH="$FIXTURE"
+    export CODEGEN_CALL_AGENT="developer-static"
+    export CODEGEN_CALL_MODEL="claude-haiku-4-5"
+    export CODEGEN_CALL_EFFORT="low"
+    export CODEGEN_CALL_PROMPT="Do the thing."
+    unset CODEGEN_CALL_SYSTEM_PROMPT 2>/dev/null || true
+    unset CODEGEN_CALL_ALLOWED_TOOLS_SET 2>/dev/null || true
+    unset CODEGEN_CALL_ALLOWED_TOOLS 2>/dev/null || true
+    unset CODEGEN_CALL_JSON_SCHEMA 2>/dev/null || true
+    unset CODEGEN_CALL_JSON_SCHEMA_PATH 2>/dev/null || true
+    unset CODEGEN_CALL_SETTINGS_PATH 2>/dev/null || true
+    unset CODEGEN_CALL_AGENTS_PATH 2>/dev/null || true
+    bash "$DISPATCH_SCRIPT" >/dev/null 2>"$BASE_TMP/argv_i3_stderr.log" || true
+)
+assert_log_absent_line "$BASE_TMP/argv_i3.log" "--agents" "(i3) CODEGEN_CALL_AGENTS_PATH unset: --agents flag absent"
+
+# (i4) CODEGEN_CALL_PRINT_ARGV=1 → argv printed to stdout, exit 0, claude never touched
+PRINT_ARGV_MARKER="$BASE_TMP/print_argv_never_called"
+rm -f "$PRINT_ARGV_MARKER"
+NEVER_STUB_DIR="$BASE_TMP/never_stub_bin"
+mkdir -p "$NEVER_STUB_DIR"
+cat >"$NEVER_STUB_DIR/claude" <<NEVERSTUB
+#!/usr/bin/env bash
+touch "$PRINT_ARGV_MARKER"
+cat "\$FIXTURE_PATH"
+NEVERSTUB
+chmod +x "$NEVER_STUB_DIR/claude"
+
+I4_EXIT=0
+I4_OUT_LOG="$BASE_TMP/argv_i4_stdout.log"
+(
+    export PATH="$NEVER_STUB_DIR:$PATH"
+    export FIXTURE_PATH="$FIXTURE"
+    export CODEGEN_CALL_AGENT="developer-static"
+    export CODEGEN_CALL_MODEL="claude-haiku-4-5"
+    export CODEGEN_CALL_EFFORT="low"
+    export CODEGEN_CALL_PROMPT="Do the thing."
+    export CODEGEN_CALL_PRINT_ARGV=1
+    unset CODEGEN_CALL_SYSTEM_PROMPT 2>/dev/null || true
+    unset CODEGEN_CALL_ALLOWED_TOOLS_SET 2>/dev/null || true
+    unset CODEGEN_CALL_ALLOWED_TOOLS 2>/dev/null || true
+    unset CODEGEN_CALL_JSON_SCHEMA 2>/dev/null || true
+    unset CODEGEN_CALL_JSON_SCHEMA_PATH 2>/dev/null || true
+    unset CODEGEN_CALL_SETTINGS_PATH 2>/dev/null || true
+    unset CODEGEN_CALL_AGENTS_PATH 2>/dev/null || true
+    unset CODEGEN_CALL_RESUME 2>/dev/null || true
+    bash "$DISPATCH_SCRIPT" >"$I4_OUT_LOG" 2>"$BASE_TMP/argv_i4_stderr.log"
+) || I4_EXIT=$?
+
+if [[ "$I4_EXIT" == "0" ]]; then
+    [ -n "${VERBOSE:-}" ] && printf 'PASS: (i4) --print-argv exits 0\n'
+    pass=$((pass + 1))
+else
+    printf 'FAIL: (i4) --print-argv exits 0 — got %s\n' "$I4_EXIT"
+    fail=$((fail + 1))
+fi
+assert_log_contains_line "$I4_OUT_LOG" "claude-haiku-4-5" "(i4) --print-argv output mentions model"
+assert_log_contains_line "$I4_OUT_LOG" "developer-static" "(i4) --print-argv output mentions agent"
+if [[ -f "$PRINT_ARGV_MARKER" ]]; then
+    printf 'FAIL: (i4) --print-argv must never exec claude\n'
+    fail=$((fail + 1))
+else
+    pass=$((pass + 1))
+fi
+
 # (j) CODEGEN_CALL_RESUME set → --resume threaded with the session id
 (
     export PATH="$ARGV_STUB_DIR:$PATH"
@@ -758,6 +852,86 @@ U_ENVELOPE="$(cat "$BASE_TMP/pi_u_envelope.json")"
 assert_jq "(u) --resume set: envelope session_id echoes resumed id" "$U_ENVELOPE" ".session_id" "warm-pi-session-999"
 assert_log_line_after "$BASE_TMP/pi_argv_u.log" "--session-id" "warm-pi-session-999" \
     "(u) --resume set: --session-id carries the resumed id verbatim"
+
+# (v) CODEGEN_CALL_AGENTS_PATH set on pi → accepted, ignored, never forwarded
+PI_AGENTS_FIXTURE="$BASE_TMP/pi_agents_fixture.json"
+printf '{"probe-agent":{"description":"probe","prompt":"probe","tools":[]}}' >"$PI_AGENTS_FIXTURE"
+PI_V_EXIT=0
+(
+    export PATH="$PI_STUB_DIR:$PATH"
+    export HOME="$PI_FAKE_HOME"
+    export PI_ARGV_LOG="$BASE_TMP/pi_argv_v.log"
+    export PI_AGENT_TYPE_SEEN="$BASE_TMP/pi_agent_type_v.txt"
+    export PI_FIXTURE_PATH="$PI_FIXTURE"
+    export CODEGEN_CALL_AGENT="committer"
+    export CODEGEN_CALL_AGENTS_PATH="$PI_AGENTS_FIXTURE"
+    export CODEGEN_CALL_MODEL="gpt-5"
+    export CODEGEN_CALL_EFFORT="low"
+    export CODEGEN_CALL_PROMPT="Commit the change."
+    unset CODEGEN_CALL_SYSTEM_PROMPT 2>/dev/null || true
+    unset CODEGEN_CALL_RESUME 2>/dev/null || true
+    unset CODEGEN_CALL_EXTENSION_PATH 2>/dev/null || true
+    unset CODEGEN_CALL_JSON_SCHEMA 2>/dev/null || true
+    bash "$PI_DISPATCH_SCRIPT" 2>"$BASE_TMP/pi_v_stderr.log"
+) >"$BASE_TMP/pi_v_envelope.json" || PI_V_EXIT=$?
+
+if [[ "$PI_V_EXIT" -eq 0 ]]; then
+    [ -n "${VERBOSE:-}" ] && printf 'PASS: (v) pi call with CODEGEN_CALL_AGENTS_PATH set exits 0\n'
+    pass=$((pass + 1))
+else
+    printf 'FAIL: (v) pi call with CODEGEN_CALL_AGENTS_PATH set exits 0 — got %d\n' "$PI_V_EXIT"
+    fail=$((fail + 1))
+fi
+assert_log_absent_line "$BASE_TMP/pi_argv_v.log" "--agents" \
+    "(v) CODEGEN_CALL_AGENTS_PATH set: --agents never forwarded to pi (no native concept)"
+assert_log_absent_line "$BASE_TMP/pi_argv_v.log" "probe-agent" \
+    "(v) CODEGEN_CALL_AGENTS_PATH set: inline agent JSON content never forwarded to pi"
+
+# (w) CODEGEN_CALL_PRINT_ARGV=1 on pi → argv printed to stdout, exit 0, pi never touched
+PI_PRINT_MARKER="$BASE_TMP/pi_print_argv_never_called"
+rm -f "$PI_PRINT_MARKER"
+PI_NEVER_STUB_DIR="$BASE_TMP/pi_never_stub_bin"
+mkdir -p "$PI_NEVER_STUB_DIR"
+cat >"$PI_NEVER_STUB_DIR/pi" <<PINEVERSTUB
+#!/usr/bin/env bash
+touch "$PI_PRINT_MARKER"
+cat "\$PI_FIXTURE_PATH"
+PINEVERSTUB
+chmod +x "$PI_NEVER_STUB_DIR/pi"
+
+PI_W_EXIT=0
+PI_W_OUT_LOG="$BASE_TMP/pi_argv_w_stdout.log"
+(
+    export PATH="$PI_NEVER_STUB_DIR:$PATH"
+    export HOME="$PI_FAKE_HOME"
+    export PI_FIXTURE_PATH="$PI_FIXTURE"
+    export CODEGEN_CALL_AGENT="committer"
+    export CODEGEN_CALL_MODEL="gpt-5"
+    export CODEGEN_CALL_EFFORT="low"
+    export CODEGEN_CALL_PROMPT="Commit the change."
+    export CODEGEN_CALL_PRINT_ARGV=1
+    unset CODEGEN_CALL_SYSTEM_PROMPT 2>/dev/null || true
+    unset CODEGEN_CALL_RESUME 2>/dev/null || true
+    unset CODEGEN_CALL_EXTENSION_PATH 2>/dev/null || true
+    unset CODEGEN_CALL_JSON_SCHEMA 2>/dev/null || true
+    unset CODEGEN_CALL_AGENTS_PATH 2>/dev/null || true
+    bash "$PI_DISPATCH_SCRIPT" >"$PI_W_OUT_LOG" 2>"$BASE_TMP/pi_w_stderr.log"
+) || PI_W_EXIT=$?
+
+if [[ "$PI_W_EXIT" -eq 0 ]]; then
+    [ -n "${VERBOSE:-}" ] && printf 'PASS: (w) pi --print-argv exits 0\n'
+    pass=$((pass + 1))
+else
+    printf 'FAIL: (w) pi --print-argv exits 0 — got %d\n' "$PI_W_EXIT"
+    fail=$((fail + 1))
+fi
+assert_log_contains_line "$PI_W_OUT_LOG" "You are the committer agent." "(w) pi --print-argv output mentions system prompt content"
+if [[ -f "$PI_PRINT_MARKER" ]]; then
+    printf 'FAIL: (w) pi --print-argv must never exec pi\n'
+    fail=$((fail + 1))
+else
+    pass=$((pass + 1))
+fi
 
 # ─────────────────────────────────────────────────────────────────────────────
 echo ""

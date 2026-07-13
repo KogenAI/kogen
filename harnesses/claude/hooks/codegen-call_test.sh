@@ -18,6 +18,11 @@
 # (m) envelope JSON validates against contract (all required keys present, types correct)
 # (o) codegen-call source contains zero role-name tokens (planner/developer/committer/reviewer/curator)
 # (p) codegen-call source contains zero --append-system-prompt tokens (REPLACE-only identity)
+# (q) --agents value missing @ prefix exits 2
+# (r) --agents @<nonexistent-path> exits 2
+# (s2) --agents @<path> passed through to claude dispatch verbatim (real dispatch, stubbed claude)
+# (t2) --print-argv on claude leg: prints argv, exits 0, never execs claude
+# (u) usage string mentions every parsed flag; every usage-mentioned flag is parsed (parity)
 
 set -euo pipefail
 
@@ -630,6 +635,120 @@ OUT_T="$("$CC_T/codegen-call" \
 
 check "(t) pi --agent with --resume exits 0" "0" "$actual_exit"
 assert_jq "(t) session_id round-trips with --resume" "$OUT_T" ".session_id" "test-session-456"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Test (q): --agents value missing @ prefix exits 2
+# ─────────────────────────────────────────────────────────────────────────────
+CC_Q2="$(make_cc_root cc_q2)"
+actual_exit=0
+"$CC_Q2/codegen-call" --harness=claude_code --model=haiku --effort=low \
+    --system-prompt "@$SP_FILE" --agents "not-an-at-path" "prompt" 2>/dev/null || actual_exit=$?
+check "(q) --agents missing @ exits 2" "2" "$actual_exit"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Test (r): --agents @<nonexistent-path> exits 2
+# ─────────────────────────────────────────────────────────────────────────────
+CC_R2="$(make_cc_root cc_r2)"
+actual_exit=0
+"$CC_R2/codegen-call" --harness=claude_code --model=haiku --effort=low \
+    --system-prompt "@$SP_FILE" --agents "@/nonexistent/agents.json" "prompt" 2>/dev/null || actual_exit=$?
+check "(r) --agents @nonexistent-path exits 2" "2" "$actual_exit"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Test (s2): --agents @<path> passed through to claude dispatch verbatim
+# ─────────────────────────────────────────────────────────────────────────────
+CC_S2="$(make_cc_root cc_s2)"
+cp "$REAL_CLAUDE_HARNESS/call-dispatch.sh" "$(mkdir -p "$CC_S2/harnesses/claude" && echo "$CC_S2/harnesses/claude")/call-dispatch.sh"
+AGENTS_FILE_S2="$BASE_TMP/agents_s2.json"
+printf '{"probe-agent":{"description":"probe","prompt":"probe","tools":[]}}' >"$AGENTS_FILE_S2"
+
+ARGV_LOG_S2="$BASE_TMP/argv_s2.log"
+: >"$ARGV_LOG_S2"
+STUB_BIN_S2="$BASE_TMP/stub_bin_s2"
+mkdir -p "$STUB_BIN_S2"
+cat >"$STUB_BIN_S2/claude" <<STUBEOF
+#!/usr/bin/env bash
+for a in "\$@"; do printf '%s\n' "\$a" >>"$ARGV_LOG_S2"; done
+printf '{"type":"result","subtype":"success","result":"ok","usage":{"input_tokens":1,"output_tokens":1,"cache_read_input_tokens":0,"cache_creation_input_tokens":0},"total_cost_usd":0,"duration_ms":10,"num_turns":1}\n'
+STUBEOF
+chmod +x "$STUB_BIN_S2/claude"
+
+actual_exit=0
+PATH="$STUB_BIN_S2:$PATH" "$CC_S2/codegen-call" \
+    --harness=claude_code --model=haiku --effort=low \
+    --agent=probe-agent --agents "@$AGENTS_FILE_S2" \
+    "prompt" >/dev/null 2>/dev/null || actual_exit=$?
+check "(s2) --agents passthrough call exits 0" "0" "$actual_exit"
+assert_contains "(s2) claude argv carries --agents" "$(cat "$ARGV_LOG_S2")" "--agents"
+assert_contains "(s2) claude argv carries agents JSON content" "$(cat "$ARGV_LOG_S2")" "probe-agent"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Test (t2): --print-argv dry-run on claude leg prints argv, exits 0, never execs claude
+# ─────────────────────────────────────────────────────────────────────────────
+CC_T2="$(make_cc_root cc_t2)"
+mkdir -p "$CC_T2/harnesses/claude"
+cp "$REAL_CLAUDE_HARNESS/call-dispatch.sh" "$CC_T2/harnesses/claude/call-dispatch.sh"
+
+NEVER_CALLED_MARKER="$BASE_TMP/never_called_t2"
+rm -f "$NEVER_CALLED_MARKER"
+STUB_BIN_T2="$BASE_TMP/stub_bin_t2"
+mkdir -p "$STUB_BIN_T2"
+cat >"$STUB_BIN_T2/claude" <<STUBEOF
+#!/usr/bin/env bash
+touch "$NEVER_CALLED_MARKER"
+printf '{"type":"result","subtype":"success","result":"ok","usage":{},"total_cost_usd":0,"duration_ms":1,"num_turns":1}\n'
+STUBEOF
+chmod +x "$STUB_BIN_T2/claude"
+
+actual_exit=0
+OUT_T2="$(PATH="$STUB_BIN_T2:$PATH" "$CC_T2/codegen-call" \
+    --harness=claude_code --model=haiku --effort=low \
+    --system-prompt "@$SP_FILE" --print-argv \
+    "dry run prompt" 2>/dev/null)" || actual_exit=$?
+
+check "(t2) --print-argv exits 0" "0" "$actual_exit"
+assert_contains "(t2) --print-argv output mentions model" "$OUT_T2" "haiku"
+if [[ -f "$NEVER_CALLED_MARKER" ]]; then
+    printf 'FAIL: (t2) --print-argv must never exec claude\n'
+    fail=$((fail + 1))
+else
+    pass=$((pass + 1))
+fi
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Test (u): usage<->parse parity — every parsed --flag appears in usage string,
+# and every usage-mentioned --flag is parsed in the case block
+# ─────────────────────────────────────────────────────────────────────────────
+USAGE_LINE="$(grep -m1 '^Usage: codegen-call' <(sed -n '/^usage() {/,/^}/p' "$CODEGEN_CALL") || true)"
+if [[ -z "$USAGE_LINE" ]]; then
+    USAGE_LINE="$(grep -m1 'printf .Usage: codegen-call' "$CODEGEN_CALL" || true)"
+fi
+
+# --version is a standalone short-circuit flag documented in the header
+# Flags list but intentionally omitted from the usage() synopsis line
+# (it takes no other required args); exempt it from parity.
+PARSED_FLAGS="$(sed -n '/^while \[\[ \$# -gt 0 \]\]; do/,/^done/p' "$CODEGEN_CALL" | grep -oE -- '--[a-zA-Z-]+' | grep -vxF -- '--version' | sort -u)"
+
+MISSING_FROM_USAGE=0
+while IFS= read -r flag; do
+    [[ -z "$flag" ]] && continue
+    if [[ "$USAGE_LINE" != *"$flag"* ]]; then
+        printf 'FAIL: (u) flag %s parsed but missing from usage string\n' "$flag"
+        MISSING_FROM_USAGE=$((MISSING_FROM_USAGE + 1))
+    fi
+done <<<"$PARSED_FLAGS"
+check "(u) every parsed flag appears in usage string" "0" "$MISSING_FROM_USAGE"
+
+USAGE_FLAGS="$(printf '%s' "$USAGE_LINE" | grep -oE -- '--[a-zA-Z-]+' | sort -u)"
+MISSING_FROM_PARSE=0
+while IFS= read -r flag; do
+    [[ -z "$flag" ]] && continue
+    if [[ "$PARSED_FLAGS" != *"$flag"* ]]; then
+        printf 'FAIL: (u) flag %s in usage string but not parsed\n' "$flag"
+        MISSING_FROM_PARSE=$((MISSING_FROM_PARSE + 1))
+    fi
+done <<<"$USAGE_FLAGS"
+check "(u) every usage-mentioned flag is parsed" "0" "$MISSING_FROM_PARSE"
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Test (o): codegen-call source contains zero role-name tokens
