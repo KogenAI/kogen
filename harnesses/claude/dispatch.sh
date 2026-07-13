@@ -21,6 +21,7 @@ fi
 
 # Consume env vars set by codegen-build
 CWD="${CODEGEN_BUILD_CWD:-}"
+PRINT_ARGV="${CODEGEN_BUILD_PRINT_ARGV:-}"
 
 # Extra flags (--max-budget-usd, --fallback-model, etc.) passed through as $@
 # Last arg is the PROMPT (only if any positional args were given)
@@ -50,6 +51,13 @@ LOOP_DIR="$CODEGEN_DIR/test_harness"
 if [[ ! -d "$LOOP_DIR" ]]; then
     printf 'claude dispatch: orchestration loop dir not found at %s\n' "$LOOP_DIR" >&2
     exit 2
+fi
+
+# --print-argv dry-run: print the would-be loop argv, one arg per line, exit
+# 0. Never execs the loop -- no spend, no mutation.
+if [[ -n "$PRINT_ARGV" ]]; then
+    printf '%s\n' mix codegen.loop --harness=claude_code "--stack=$STACK" "--cwd=$CWD" -- "$PROMPT"
+    exit 0
 fi
 
 exec env \

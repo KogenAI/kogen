@@ -20,6 +20,13 @@
 #  (p5) --stack omitted, cwd has self-build markers → detects phoenix
 #       (self-build precedence over mix.exs/vite.config.js sniffs)
 #  (q1)-(q4) schema-staleness preflight (codegen/manifest.yaml)
+#  (pa1) --print-argv on claude leg: exits 0, prints codegen.loop argv, never
+#        invokes the stubbed mix binary
+#  (pa2) --print-argv on pi leg: same, --harness=pi
+#  (pa3) --print-argv performs zero mutation — integrate pre-step skipped
+#  (u) usage<->parse parity: every parsed flag appears in the usage string
+#      and vice versa
+#  (snap) public flag surface snapshot: parsed flags == committed fixture
 
 set -euo pipefail
 
@@ -565,6 +572,164 @@ else
     printf 'FAIL: (g) codegen/ dir leaked into $PWD (%s)\n' "$SCRATCH_G"
     fail=$((fail + 1))
 fi
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Test (pa1): --print-argv on claude leg — exits 0, prints codegen.loop argv,
+# never invokes the stubbed mix binary (zero spend).
+# ─────────────────────────────────────────────────────────────────────────────
+CB_PA1="$(make_cb_root cb_pa1)"
+make_claude_harness "$CB_PA1" >/dev/null
+
+ARGS_PA1="$BASE_TMP/args_pa1.txt"
+rm -f "$ARGS_PA1"
+BIN_PA1="$BASE_TMP/bin_pa1"
+make_mix_stub "$BIN_PA1"
+make_codegen_log_stub "$BIN_PA1"
+
+MARKER_PA1="$BASE_TMP/marker_pa1"
+mkdir -p "$MARKER_PA1"
+
+actual_ec=0
+OUT_PA1=$(TARGET_ARGS_FILE="$ARGS_PA1" \
+    PATH="$BIN_PA1:$PATH" \
+    OCG_CODEGEN_DIR="$CODEGEN_ROOT" \
+    CODEGEN_BUILD_MODEL="" CODEGEN_BUILD_EFFORT="" \
+    "$CB_PA1/codegen-build" --harness=claude --stack=phoenix --cwd="$MARKER_PA1" \
+    --print-argv "pa1 prompt" 2>/dev/null) || actual_ec=$?
+
+check "(pa1) --print-argv exits 0" "0" "$actual_ec"
+assert_contains "(pa1) output mentions codegen.loop" "$OUT_PA1" "codegen.loop"
+assert_contains "(pa1) output mentions --harness=claude_code" "$OUT_PA1" "--harness=claude_code"
+assert_contains "(pa1) output mentions --stack=phoenix" "$OUT_PA1" "--stack=phoenix"
+assert_contains "(pa1) output mentions prompt" "$OUT_PA1" "pa1 prompt"
+if [[ -f "$ARGS_PA1" ]]; then
+    printf 'FAIL: (pa1) mix stub was invoked despite --print-argv (zero-spend violated)\n'
+    fail=$((fail + 1))
+else
+    [ -n "${VERBOSE:-}" ] && printf 'PASS: (pa1) mix stub never invoked\n'
+    pass=$((pass + 1))
+fi
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Test (pa2): --print-argv on pi leg — same, --harness=pi.
+# ─────────────────────────────────────────────────────────────────────────────
+CB_PA2="$(make_cb_root cb_pa2)"
+make_pi_harness "$CB_PA2" >/dev/null
+
+ARGS_PA2="$BASE_TMP/args_pa2.txt"
+rm -f "$ARGS_PA2"
+BIN_PA2="$BASE_TMP/bin_pa2"
+make_mix_stub "$BIN_PA2"
+make_codegen_log_stub "$BIN_PA2"
+
+actual_ec=0
+OUT_PA2=$(TARGET_ARGS_FILE="$ARGS_PA2" \
+    PATH="$BIN_PA2:$PATH" \
+    OCG_CODEGEN_DIR="$CODEGEN_ROOT" \
+    CODEGEN_BUILD_MODEL="" CODEGEN_BUILD_EFFORT="" \
+    "$CB_PA2/codegen-build" --harness=pi --stack=phoenix \
+    --print-argv "pa2 prompt" 2>/dev/null) || actual_ec=$?
+
+check "(pa2) --print-argv exits 0 on pi leg" "0" "$actual_ec"
+assert_contains "(pa2) output mentions codegen.loop" "$OUT_PA2" "codegen.loop"
+assert_contains "(pa2) output mentions --harness=pi" "$OUT_PA2" "--harness=pi"
+if [[ -f "$ARGS_PA2" ]]; then
+    printf 'FAIL: (pa2) mix stub was invoked despite --print-argv (zero-spend violated)\n'
+    fail=$((fail + 1))
+else
+    [ -n "${VERBOSE:-}" ] && printf 'PASS: (pa2) mix stub never invoked\n'
+    pass=$((pass + 1))
+fi
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Test (pa3): --print-argv performs zero mutation — integrate pre-step must
+# be skipped (no AGENTS.md / codegen/manifest.yaml written into --cwd).
+# ─────────────────────────────────────────────────────────────────────────────
+CB_PA3="$(make_cb_root cb_pa3)"
+make_claude_harness "$CB_PA3" >/dev/null
+cp "$CODEGEN_ROOT/codegen-scaffold" "$CB_PA3/codegen-scaffold"
+chmod +x "$CB_PA3/codegen-scaffold"
+
+BIN_PA3="$BASE_TMP/bin_pa3"
+make_mix_stub "$BIN_PA3"
+make_codegen_log_stub "$BIN_PA3"
+
+MARKER_PA3="$BASE_TMP/marker_pa3"
+mkdir -p "$MARKER_PA3"
+
+actual_ec=0
+PATH="$BIN_PA3:$PATH" \
+    OCG_CODEGEN_DIR="$CODEGEN_ROOT" \
+    CODEGEN_BUILD_MODEL="" CODEGEN_BUILD_EFFORT="" \
+    "$CB_PA3/codegen-build" --harness=claude --stack=static --cwd="$MARKER_PA3" \
+    --print-argv "pa3 prompt" >/dev/null 2>/dev/null || actual_ec=$?
+
+check "(pa3) --print-argv exits 0" "0" "$actual_ec"
+if [[ ! -e "$MARKER_PA3/AGENTS.md" ]] && [[ ! -e "$MARKER_PA3/codegen" ]]; then
+    [ -n "${VERBOSE:-}" ] && printf 'PASS: (pa3) integrate pre-step skipped — no mutation of --cwd\n'
+    pass=$((pass + 1))
+else
+    printf 'FAIL: (pa3) --print-argv mutated --cwd (AGENTS.md or codegen/ written)\n'
+    fail=$((fail + 1))
+fi
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Test (u): usage<->parse parity — every parsed --flag appears in usage
+# string, and every usage-mentioned --flag is parsed in the case block.
+# ─────────────────────────────────────────────────────────────────────────────
+CB_USAGE_LINE="$(grep -m1 'printf .Usage: codegen-build' "$CODEGEN_BUILD" || true)"
+
+CB_PARSED_FLAGS="$(sed -n '/^while \[\[ \$# -gt 0 \]\]; do/,/^done/p' "$CODEGEN_BUILD" | grep -oE -- '--[a-zA-Z-]+' | grep -vxF -- '--' | sort -u)"
+
+CB_MISSING_FROM_USAGE=0
+while IFS= read -r flag; do
+    [[ -z "$flag" ]] && continue
+    if [[ "$CB_USAGE_LINE" != *"$flag"* ]]; then
+        printf 'FAIL: (u) flag %s parsed but missing from usage string\n' "$flag"
+        CB_MISSING_FROM_USAGE=$((CB_MISSING_FROM_USAGE + 1))
+    fi
+done <<<"$CB_PARSED_FLAGS"
+check "(u) every parsed flag appears in usage string" "0" "$CB_MISSING_FROM_USAGE"
+
+CB_USAGE_FLAGS="$(printf '%s' "$CB_USAGE_LINE" | grep -oE -- '--[a-zA-Z-]+' | sort -u)"
+CB_MISSING_FROM_PARSE=0
+while IFS= read -r flag; do
+    [[ -z "$flag" ]] && continue
+    if [[ "$CB_PARSED_FLAGS" != *"$flag"* ]]; then
+        printf 'FAIL: (u) flag %s in usage string but not parsed\n' "$flag"
+        CB_MISSING_FROM_PARSE=$((CB_MISSING_FROM_PARSE + 1))
+    fi
+done <<<"$CB_USAGE_FLAGS"
+check "(u) every usage-mentioned flag is parsed" "0" "$CB_MISSING_FROM_PARSE"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Test (snap): public flag surface snapshot — codegen-build's parsed flags
+# must equal the committed fixture, in both directions. This is the assertion
+# usage<->parse parity CANNOT give: deleting a flag from both the parser and
+# the usage string keeps parity green, but this snapshot goes RED.
+# ─────────────────────────────────────────────────────────────────────────────
+CB_FIXTURE="$HOOKS_DIR/fixtures/codegen-build-flags.txt"
+CB_FIXTURE_FLAGS="$(grep -v '^#' "$CB_FIXTURE" | grep -v '^[[:space:]]*$' | sort -u)"
+
+CB_SNAP_ADDED=0
+while IFS= read -r flag; do
+    [[ -z "$flag" ]] && continue
+    if [[ "$CB_FIXTURE_FLAGS" != *"$flag"* ]]; then
+        printf 'FAIL: (snap) flag %s parsed but NOT in committed fixture (surface grew — update the fixture deliberately)\n' "$flag"
+        CB_SNAP_ADDED=$((CB_SNAP_ADDED + 1))
+    fi
+done <<<"$CB_PARSED_FLAGS"
+check "(snap) no parsed flag missing from fixture" "0" "$CB_SNAP_ADDED"
+
+CB_SNAP_REMOVED=0
+while IFS= read -r flag; do
+    [[ -z "$flag" ]] && continue
+    if [[ "$CB_PARSED_FLAGS" != *"$flag"* ]]; then
+        printf 'FAIL: (snap) flag %s in committed fixture but NOT parsed (surface shrank — a flag was deleted!)\n' "$flag"
+        CB_SNAP_REMOVED=$((CB_SNAP_REMOVED + 1))
+    fi
+done <<<"$CB_FIXTURE_FLAGS"
+check "(snap) no fixture flag missing from parser" "0" "$CB_SNAP_REMOVED"
 
 # ─────────────────────────────────────────────────────────────────────────────
 echo ""

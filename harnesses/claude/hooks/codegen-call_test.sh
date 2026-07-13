@@ -23,6 +23,7 @@
 # (s2) --agents @<path> passed through to claude dispatch verbatim (real dispatch, stubbed claude)
 # (t2) --print-argv on claude leg: prints argv, exits 0, never execs claude
 # (u) usage string mentions every parsed flag; every usage-mentioned flag is parsed (parity)
+# (snap) public flag surface snapshot: parsed flags == committed fixture (stability, distinct from parity)
 
 set -euo pipefail
 
@@ -749,6 +750,35 @@ while IFS= read -r flag; do
     fi
 done <<<"$USAGE_FLAGS"
 check "(u) every usage-mentioned flag is parsed" "0" "$MISSING_FROM_PARSE"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Test (snap): public flag surface snapshot — codegen-call's parsed flags
+# must equal the committed fixture, in both directions. Parity (above) checks
+# internal consistency; this checks stability — a flag deleted from both the
+# parser and the usage string keeps parity green but must flip this snapshot RED.
+# ─────────────────────────────────────────────────────────────────────────────
+CC_FIXTURE="$HOOKS_DIR/fixtures/codegen-call-flags.txt"
+CC_FIXTURE_FLAGS="$(grep -v '^#' "$CC_FIXTURE" | grep -v '^[[:space:]]*$' | sort -u)"
+
+CC_SNAP_ADDED=0
+while IFS= read -r flag; do
+    [[ -z "$flag" ]] && continue
+    if [[ "$CC_FIXTURE_FLAGS" != *"$flag"* ]]; then
+        printf 'FAIL: (snap) flag %s parsed but NOT in committed fixture (surface grew — update the fixture deliberately)\n' "$flag"
+        CC_SNAP_ADDED=$((CC_SNAP_ADDED + 1))
+    fi
+done <<<"$PARSED_FLAGS"
+check "(snap) no parsed flag missing from fixture" "0" "$CC_SNAP_ADDED"
+
+CC_SNAP_REMOVED=0
+while IFS= read -r flag; do
+    [[ -z "$flag" ]] && continue
+    if [[ "$PARSED_FLAGS" != *"$flag"* ]]; then
+        printf 'FAIL: (snap) flag %s in committed fixture but NOT parsed (surface shrank — a flag was deleted!)\n' "$flag"
+        CC_SNAP_REMOVED=$((CC_SNAP_REMOVED + 1))
+    fi
+done <<<"$CC_FIXTURE_FLAGS"
+check "(snap) no fixture flag missing from parser" "0" "$CC_SNAP_REMOVED"
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Test (o): codegen-call source contains zero role-name tokens

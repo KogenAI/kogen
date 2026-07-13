@@ -28,6 +28,7 @@ fi
 
 # Consume CWD env var set by codegen-build
 CWD="${CODEGEN_BUILD_CWD:-}"
+PRINT_ARGV="${CODEGEN_BUILD_PRINT_ARGV:-}"
 if [[ -n "$CWD" ]]; then
     cd "$CWD"
 fi
@@ -45,6 +46,13 @@ LOOP_DIR="$CODEGEN_DIR/test_harness"
 if [[ ! -d "$LOOP_DIR" ]]; then
     printf 'pi dispatch: orchestration loop dir not found at %s\n' "$LOOP_DIR" >&2
     exit 2
+fi
+
+# --print-argv dry-run: print the would-be loop argv, one arg per line, exit
+# 0. Never execs the loop -- no spend, no mutation.
+if [[ -n "$PRINT_ARGV" ]]; then
+    printf '%s\n' mix codegen.loop --harness=pi "--stack=$STACK" "--cwd=$CWD" -- "$PROMPT"
+    exit 0
 fi
 
 exec env \
