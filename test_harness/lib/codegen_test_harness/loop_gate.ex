@@ -24,6 +24,8 @@ defmodule CodegenTestHarness.LoopGate do
                      __DIR__
                    )
   @codegen_root Path.expand("../../../..", Path.dirname(@render_check_js))
+  @codegen_log_bin Path.expand("../../../codegen-log", __DIR__)
+  @codegen_dir Path.expand("../../..", __DIR__)
 
   @doc false
   # Test-only introspection: exposes the compile-time-derived codegen root
@@ -98,11 +100,25 @@ defmodule CodegenTestHarness.LoopGate do
     when `:stack` is `"static"`. RAISES (crash loud, infra abort — not a
     gate verdict) naming the first missing render-check dependency
     (node, render-check.js, chromium).
+  - `:cycle_log` — path to the active cycle-log JSONL file (the loop's
+    `Process.get(@log_path_key)`, threaded in via `gate_opts/1`). When
+    present, the derived verdict marker (`"ALL CLEAR ✅"` / `"FAILED ❌"` /
+    `"INCONCLUSIVE ⚠️"`) is recorded into the cycle log as a `{"ev":"gate"}`
+    event via `codegen-log verdict`, in addition to the existing
+    `gate-result.json` / `gate-verdicts.jsonl` writes. `nil` (no log
+    initialized, e.g. most unit tests) → no-op, silently.
+  - `:log_verdict_fn` — test seam: `(cycle_log, gate_command, mode, marker -> :ok)`,
+    defaults to `&default_log_verdict/4`.
 
   Never raises on a failing gate command or a failing render check — a
   `:failed` verdict is a legitimate return value, not an error. Missing
   render-check *dependencies* (as opposed to a failing check) are an infra
   abort and DO raise, via `:preflight_fn`.
+
+  A failed `codegen-log verdict` write (missing binary, non-zero exit) is
+  fail-loud-non-blocking: it prints to stderr and the gate verdict returned
+  to the caller is unaffected — this is an observability write, never a
+  reason to flip a green gate red or a red gate green.
   """
   @spec run_gate(String.t(), keyword()) :: {verdict(), String.t()}
   def run_gate(project_dir, opts \\ []) do
@@ -111,6 +127,8 @@ defmodule CodegenTestHarness.LoopGate do
     session_id = Keyword.get(opts, :session_id, "")
     run_fn = Keyword.get(opts, :run_fn, &default_run_fn/2)
     preflight_fn = Keyword.get(opts, :preflight_fn, &static_render_deps_preflight!/1)
+    cycle_log = Keyword.get(opts, :cycle_log)
+    log_verdict_fn = Keyword.get(opts, :log_verdict_fn, &default_log_verdict/4)
 
     if stack == "static", do: preflight_fn.(project_dir)
 
@@ -146,6 +164,9 @@ defmodule CodegenTestHarness.LoopGate do
     """
 
     {_write_out, 0} = System.cmd("bash", ["-c", write_script], stderr_to_stdout: true)
+
+    marker = gate_verdict_marker(project_dir)
+    log_verdict_fn.(cycle_log, gate, mode, marker)
 
     {read_verdict(project_dir), gate}
   end
@@ -310,6 +331,61 @@ defmodule CodegenTestHarness.LoopGate do
     case System.cmd("git", ["-C", project_dir, "status", "--porcelain"], stderr_to_stdout: true) do
       {out, 0} -> out |> String.split("\n", trim: true) |> length()
       {_out, _code} -> 0
+    end
+  end
+
+  # Reads the "verdict_marker" field back out of gate-result.json — the
+  # byte-exact string ("ALL CLEAR ✅" / "FAILED ❌" / "INCONCLUSIVE ⚠️")
+  # codegen-log's `verdict` subcommand classifies on. read_verdict/1's atom
+  # cannot carry this: it collapses "inconclusive" to :failed, so the atom
+  # would silently destroy the distinction this event exists to preserve.
+  # "" (absent/malformed file) → default_log_verdict/4 no-ops loudly rather
+  # than writing a bogus event.
+  @spec gate_verdict_marker(String.t()) :: String.t()
+  defp gate_verdict_marker(project_dir) do
+    path = Path.join(project_dir, "codegen/gate-pending/gate-result.json")
+
+    with {:ok, contents} <- File.read(path),
+         {:ok, %{"verdict_marker" => marker}} <- Jason.decode(contents),
+         true <- is_binary(marker) do
+      marker
+    else
+      _ -> ""
+    end
+  end
+
+  # Default :log_verdict_fn — shells `codegen-log verdict` against
+  # `cycle_log` via CODEGEN_LOG_PATH. nil cycle_log (no log initialized,
+  # e.g. most unit tests) or an empty marker (gate_verdict_marker/1 could
+  # not read one) → silent no-op, never an error. A non-zero codegen-log
+  # exit is fail-loud-non-blocking: this is an observability write, and
+  # must never flip the gate's own verdict.
+  @spec default_log_verdict(String.t() | nil, String.t(), String.t(), String.t()) :: :ok
+  defp default_log_verdict(nil, _gate, _mode, _marker), do: :ok
+  defp default_log_verdict(_cycle_log, _gate, _mode, ""), do: :ok
+
+  defp default_log_verdict(cycle_log, gate, mode, marker) do
+    unless File.exists?(@codegen_log_bin) do
+      IO.puts(
+        :stderr,
+        "LoopGate: codegen-log not found at #{@codegen_log_bin} — verdict not logged"
+      )
+
+      :ok
+    else
+      {output, exit_code} =
+        System.cmd(
+          @codegen_log_bin,
+          ["verdict", "--gate", gate, "--mode", mode, "--result", marker],
+          stderr_to_stdout: true,
+          env: [{"CODEGEN_DIR", @codegen_dir}, {"CODEGEN_LOG_PATH", cycle_log}]
+        )
+
+      if exit_code != 0 do
+        IO.puts(:stderr, "LoopGate: codegen-log verdict failed (#{exit_code}): #{output}")
+      end
+
+      :ok
     end
   end
 

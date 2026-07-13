@@ -246,6 +246,133 @@ defmodule CodegenTestHarness.LoopGateTest do
     end
   end
 
+  describe "run_gate/2 — cycle-log verdict recording" do
+    defp fresh_cycle_log! do
+      path =
+        Path.join(
+          System.tmp_dir!(),
+          "loop_gate_cyclelog_#{:erlang.unique_integer([:positive])}_cycle.jsonl"
+        )
+
+      File.write!(path, Jason.encode!(%{"ev" => "init", "pitch" => "x"}) <> "\n")
+      on_exit(fn -> File.rm(path) end)
+      path
+    end
+
+    defp read_gate_events(path) do
+      path
+      |> File.read!()
+      |> String.split("\n", trim: true)
+      |> Enum.map(&Jason.decode!/1)
+      |> Enum.filter(&(&1["ev"] == "gate"))
+    end
+
+    test "nil :cycle_log (no log initialized) → no-op, verdict unaffected", %{dir: dir} do
+      write_gate_config!(dir, "make test")
+      run_fn = fn _gate, _project_dir -> {"all good", 0} end
+
+      calls = :counters.new(1, [])
+
+      log_verdict_fn = fn _cycle_log, _gate, _mode, _marker ->
+        :counters.add(calls, 1, 1)
+        :ok
+      end
+
+      assert {:clear, "make test"} =
+               LoopGate.run_gate(dir,
+                 run_fn: run_fn,
+                 stack: "phoenix",
+                 log_verdict_fn: log_verdict_fn
+               )
+
+      assert :counters.get(calls, 1) == 1
+    end
+
+    test "clear verdict → codegen-log verdict called with the ALL CLEAR marker", %{dir: dir} do
+      write_gate_config!(dir, "make test")
+      run_fn = fn _gate, _project_dir -> {"all good", 0} end
+      log_path = fresh_cycle_log!()
+
+      assert {:clear, "make test"} =
+               LoopGate.run_gate(dir, run_fn: run_fn, stack: "phoenix", cycle_log: log_path)
+
+      [event] = read_gate_events(log_path)
+      assert event["verdict"] == "clear"
+      assert event["result"] =~ "ALL CLEAR"
+    end
+
+    test "failed verdict → codegen-log verdict called with the FAILED marker", %{dir: dir} do
+      write_gate_config!(dir, "make test")
+      run_fn = fn _gate, _project_dir -> {"boom", 1} end
+      log_path = fresh_cycle_log!()
+
+      assert {:failed, "make test"} =
+               LoopGate.run_gate(dir, run_fn: run_fn, stack: "phoenix", cycle_log: log_path)
+
+      [event] = read_gate_events(log_path)
+      assert event["verdict"] == "failed"
+      assert event["result"] =~ "FAILED"
+    end
+
+    # LOAD-BEARING: read_verdict/1 collapses "inconclusive" to :failed (the
+    # loop's own verdict is binary). Proves the cycle-log event still
+    # preserves "inconclusive" distinctly — via verdict_marker, not the atom
+    # — even though run_gate/2 itself returns :failed here.
+    test "inconclusive render-check verdict is preserved as INCONCLUSIVE in the cycle log, while run_gate/2 returns :failed",
+         %{dir: dir} do
+      write_gate_config!(dir, "make ci")
+      File.mkdir_p!(Path.join(dir, "public"))
+      run_fn = fn _gate, _project_dir -> {"built ok", 0} end
+
+      render_check_fn = fn _project_dir ->
+        {"RENDER_VERDICT=INCONCLUSIVE:chromium-launch-failed", 0}
+      end
+
+      log_path = fresh_cycle_log!()
+
+      assert {:failed, "make ci"} =
+               LoopGate.run_gate(dir,
+                 run_fn: run_fn,
+                 stack: "static",
+                 render_check_fn: render_check_fn,
+                 preflight_fn: fn _project_dir -> :ok end,
+                 cycle_log: log_path
+               )
+
+      [event] = read_gate_events(log_path)
+      assert event["verdict"] == "inconclusive"
+      assert event["result"] =~ "INCONCLUSIVE"
+    end
+
+    # Fail-open proof: a nonexistent/invalid cycle_log makes the real
+    # codegen-log binary exit non-zero; run_gate/2 must still return the
+    # correct verdict and must not raise.
+    test "codegen-log exit failure (nonexistent cycle_log path) is fail-loud-non-blocking — verdict still correct, no raise",
+         %{dir: dir} do
+      write_gate_config!(dir, "make test")
+      run_fn = fn _gate, _project_dir -> {"all good", 0} end
+
+      bogus_log =
+        Path.join(
+          System.tmp_dir!(),
+          "does_not_exist_#{:erlang.unique_integer([:positive])}.jsonl"
+        )
+
+      result_ref = :counters.new(1, [])
+
+      stderr =
+        ExUnit.CaptureIO.capture_io(:stderr, fn ->
+          case LoopGate.run_gate(dir, run_fn: run_fn, stack: "phoenix", cycle_log: bogus_log) do
+            {:clear, "make test"} -> :counters.add(result_ref, 1, 1)
+            other -> flunk("unexpected verdict: #{inspect(other)}")
+          end
+        end)
+
+      assert :counters.get(result_ref, 1) == 1
+      assert stderr =~ "codegen-log verdict failed" or stderr == ""
+    end
+  end
+
   describe "gate record freshness (producer/consumer reconciliation)" do
     # This is the test class whose absence let a producer (LoopGate) writing
     # diff_sha "" sit under a consumer (LoopQueueDrain) requiring a

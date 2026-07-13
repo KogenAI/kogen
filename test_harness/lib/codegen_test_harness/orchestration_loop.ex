@@ -83,7 +83,17 @@ defmodule CodegenTestHarness.OrchestrationLoop do
   - `:invoke_fn` — test seam: `(role, harness, ctx, opts -> {:ok, map} | {:error, reason})`,
     defaults to `invoke_role/4` (real `codegen-call` round-trip)
   - `:gate_fn` — test seam: `(cwd, opts -> {verdict, gate_command})`, defaults
-    to `LoopGate.run_gate/2`
+    to `LoopGate.run_gate/2`. Called with `gate_opts/1`-derived opts, which
+    add `:cycle_log` (THIS cycle's log path) so `LoopGate.run_gate/2` can
+    record its verdict into the cycle log — see `LoopGate.run_gate/2` docs.
+  - `:log_died_fn` — test seam: `(role, kind, cause, cycle_log -> :ok)`,
+    defaults to `default_log_died/4`. Called from `invoke_with_retry/4` on
+    every role-invocation failure: `"interrupted"` on the first failure
+    (even when the retry recovers), `"aborted"` on the second (retry also
+    failed, cycle halts). Writes a `{"ev":"died"}` event into the cycle log
+    via `codegen-log append <role> --died <kind>`; fail-loud-non-blocking
+    (nil cycle_log or a failed write → no-op / loud stderr, never raises,
+    never changes the `{:ok, _}`/`{:error, _}` this function returns).
   - `:gate_preflight_fn` — test seam: `(cwd -> resolved)` — resolves the app
     gate at turn 0 before any role runs; defaults to `LoopGate.decide_gate/1`
   - `:preflight_probe_fn` — test seam: `(cwd -> raw_output)` — resolves the
@@ -1254,7 +1264,7 @@ defmodule CodegenTestHarness.OrchestrationLoop do
   # Runs the gate once (developer already ran) and returns the verdict atom.
   defp run_gate_once(ctx, opts) do
     gate_fn = Keyword.get(opts, :gate_fn, &LoopGate.run_gate/2)
-    {verdict, _cmd} = gate_fn.(ctx.cwd, opts)
+    {verdict, _cmd} = gate_fn.(ctx.cwd, gate_opts(opts))
     verdict
   end
 
@@ -1267,6 +1277,17 @@ defmodule CodegenTestHarness.OrchestrationLoop do
     max_retries = Keyword.get(opts, :max_gate_retries, 1)
 
     do_gate_loop(dev_role, rest, harness, ctx, opts, gate_fn, max_retries, 0, nil)
+  end
+
+  # Adds :cycle_log (THIS cycle's log path, from Process.get(@log_path_key))
+  # to opts before it reaches LoopGate.run_gate/2 — the gate itself has no
+  # way to resolve the log path; the loop is the sole holder of it (set by
+  # default_log_init/2 at cycle start, or nil when no log was initialized,
+  # e.g. most unit tests). Adds a key only; never overwrites a :cycle_log a
+  # test already supplied in opts.
+  @spec gate_opts(run_opts()) :: run_opts()
+  defp gate_opts(opts) do
+    Keyword.put_new(opts, :cycle_log, Process.get(@log_path_key))
   end
 
   # Hard ceiling backstop: even with continuous progress, a run/1 cycle never
@@ -1296,7 +1317,7 @@ defmodule CodegenTestHarness.OrchestrationLoop do
          attempt,
          prev_signature
        ) do
-    case gate_fn.(ctx.cwd, opts) do
+    case gate_fn.(ctx.cwd, gate_opts(opts)) do
       {:clear, _gate_cmd} ->
         advance_cycle_state_step("GATED", ctx, opts)
         run_roles(rest, harness, ctx, opts)
@@ -1449,7 +1470,14 @@ defmodule CodegenTestHarness.OrchestrationLoop do
   end
 
   # Invokes `role` once; on {:error, reason} retries exactly once with the
-  # reason folded into context, then gives up.
+  # reason folded into context, then gives up. A first-attempt failure
+  # (even when the retry recovers) stamps `--died interrupted` — the
+  # `interrupted` kind is defined as "drop+respawn" (subagent_interruption.py
+  # _KIND_WEIGHTS), i.e. it records a recovered drop, not only a fatal one.
+  # A second failure (retry also failed, cycle halts) stamps `--died
+  # aborted`. Both writes are fail-loud-non-blocking observability — a
+  # failed `codegen-log append` write never changes the {:ok, _}/{:error, _}
+  # returned here.
   defp invoke_with_retry(role, harness, ctx, opts) do
     invoke_fn = Keyword.get(opts, :invoke_fn, &invoke_role/4)
 
@@ -1458,12 +1486,62 @@ defmodule CodegenTestHarness.OrchestrationLoop do
         {:ok, result}
 
       {:error, reason} ->
+        log_died(role, "interrupted", reason, opts)
         retry_ctx = put_in(ctx, [:artifacts, :last_failure_reason], reason)
 
         case invoke_fn.(role, harness, retry_ctx, opts) do
-          {:ok, result} -> {:ok, result}
-          {:error, reason2} -> {:error, "role #{role} failed twice: #{reason2}"}
+          {:ok, result} ->
+            {:ok, result}
+
+          {:error, reason2} ->
+            log_died(role, "aborted", reason2, opts)
+            {:error, "role #{role} failed twice: #{reason2}"}
         end
+    end
+  end
+
+  # Writes a `{"ev":"died","kind":<kind>}` death stamp into THIS cycle's log
+  # (via codegen-log append <role> --died <kind>) — see :log_died_fn for the
+  # test seam and default_log_died/4 for the real writer. cause is truncated
+  # by codegen-log itself; passed through verbatim here.
+  @spec log_died(String.t(), String.t(), String.t(), run_opts()) :: :ok
+  defp log_died(role, kind, cause, opts) do
+    log_died_fn = Keyword.get(opts, :log_died_fn, &default_log_died/4)
+    log_died_fn.(role, kind, cause, Process.get(@log_path_key))
+  end
+
+  # Default :log_died_fn — shells `codegen-log append <role> --died <kind>
+  # --cause <cause>` via CODEGEN_LOG_PATH. nil cycle_log (no log
+  # initialized, e.g. most unit tests) → silent no-op. A non-zero
+  # codegen-log exit is fail-loud-non-blocking: prints to stderr, never
+  # raises — this is an observability write, and the loop's retry/halt
+  # control flow must never depend on it succeeding.
+  @spec default_log_died(String.t(), String.t(), String.t(), String.t() | nil) :: :ok
+  defp default_log_died(_role, _kind, _cause, nil), do: :ok
+
+  defp default_log_died(role, kind, cause, cycle_log) do
+    unless File.exists?(@codegen_log_bin) do
+      IO.puts(
+        :stderr,
+        "OrchestrationLoop: codegen-log not found at #{@codegen_log_bin} — died not logged"
+      )
+
+      :ok
+    else
+      {output, exit_code} =
+        System.cmd(@codegen_log_bin, ["append", role, "--died", kind, "--cause", cause],
+          stderr_to_stdout: true,
+          env: [{"CODEGEN_DIR", @codegen_dir}, {"CODEGEN_LOG_PATH", cycle_log}]
+        )
+
+      if exit_code != 0 do
+        IO.puts(
+          :stderr,
+          "OrchestrationLoop: codegen-log append --died failed (#{exit_code}): #{output}"
+        )
+      end
+
+      :ok
     end
   end
 

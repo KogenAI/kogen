@@ -31,6 +31,18 @@
 
 set -euo pipefail
 
+# Every case below builds its own explicit workspace + log path and must never
+# inherit an ambient CODEGEN_LOG_PATH from the invoking shell (e.g. a live
+# developer session working on codegen-log/orchestration-loop pitches, which
+# legitimately exports CODEGEN_LOG_PATH pointing at its OWN active cycle log).
+# CODEGEN_LOG_PATH is codegen-log's highest-precedence resolver — left set, it
+# silently redirects every `section`/`append` call below into that unrelated
+# log instead of the per-case tmp workspace, which then reads back your own
+# cycle log's role/body events. Unsetting once here is exhaustive; scrubbing
+# every individual `env -u ...` call site is not (this file also runs several
+# calls without an explicit `env -u` wrapper at all).
+unset CODEGEN_LOG_PATH
+
 HOOKS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CODEGEN_ROOT="$HOOKS_DIR"
 CODEGEN_LOG="$CODEGEN_ROOT/codegen-log"
@@ -89,7 +101,7 @@ init_log() {
 # (a) --role override yields correct role event, ignoring ambient env
 WS_A="$(new_workspace)"
 LOG_A="$(init_log "$WS_A" test-role-override)"
-OUT_A=$(printf 'body a\n' | env -u AGENT_TYPE CLAUDE_ROLE=committer \
+OUT_A=$(printf 'body a\n' | env -u AGENT_TYPE -u CODEGEN_LOG_PATH CLAUDE_ROLE=committer \
     OCG_CODEGEN_DIR="$CODEGEN_ROOT" CODEGEN_BUILD_CWD="$WS_A" \
     "$CODEGEN_LOG" section --role reviewer-phoenix --body @-)
 check "(a) --role override appends a reviewer-phoenix role event, not committer" "1" "$(jq_count "$LOG_A" 'select(.ev=="role" and .role=="reviewer-phoenix")')"
@@ -99,7 +111,7 @@ check "(a) committer role event NOT inserted (env ignored)" "0" "$(jq_count "$LO
 # (b) empty-body `section --role <role>` still appends a role event
 WS_B="$(new_workspace)"
 LOG_B="$(init_log "$WS_B" test-empty-open)"
-printf '' | env -u AGENT_TYPE -u CLAUDE_ROLE \
+printf '' | env -u AGENT_TYPE -u CLAUDE_ROLE -u CODEGEN_LOG_PATH \
     OCG_CODEGEN_DIR="$CODEGEN_ROOT" CODEGEN_BUILD_CWD="$WS_B" \
     "$CODEGEN_LOG" section --role developer-phoenix-backend --body @- >/dev/null
 check "(b) empty-body section appends a developer-phoenix-backend role event" "1" "$(jq_count "$LOG_B" 'select(.ev=="role" and .role=="developer-phoenix-backend")')"
@@ -108,10 +120,10 @@ check "(b) empty-body section appends a developer-phoenix-backend role event" "1
 # (c) append preserves prior role event, adds new one in order
 WS_C="$(new_workspace)"
 LOG_C="$(init_log "$WS_C" test-append-order)"
-printf 'ORIGINAL BODY LINE\n' | env -u AGENT_TYPE -u CLAUDE_ROLE \
+printf 'ORIGINAL BODY LINE\n' | env -u AGENT_TYPE -u CLAUDE_ROLE -u CODEGEN_LOG_PATH \
     OCG_CODEGEN_DIR="$CODEGEN_ROOT" CODEGEN_BUILD_CWD="$WS_C" \
     "$CODEGEN_LOG" section --role reviewer-phoenix --body @- >/dev/null
-printf 'SECOND BODY LINE\n' | env -u AGENT_TYPE -u CLAUDE_ROLE \
+printf 'SECOND BODY LINE\n' | env -u AGENT_TYPE -u CLAUDE_ROLE -u CODEGEN_LOG_PATH \
     OCG_CODEGEN_DIR="$CODEGEN_ROOT" CODEGEN_BUILD_CWD="$WS_C" \
     "$CODEGEN_LOG" append --role reviewer-phoenix --body @- >/dev/null
 check "(c) append appends a second reviewer-phoenix role event" "2" "$(jq_count "$LOG_C" 'select(.ev=="role" and .role=="reviewer-phoenix")')"

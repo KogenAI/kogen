@@ -370,6 +370,158 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
       assert reason =~ "failed twice"
     end
 
+    test "role fails once then succeeds on retry → death stamp is 'interrupted' (a recovered drop is still stamped)",
+         %{calls_agent: calls_agent} do
+      {:ok, fail_once_agent} = Agent.start_link(fn -> MapSet.new() end)
+      on_exit(fn -> if Process.alive?(fail_once_agent), do: Agent.stop(fail_once_agent) end)
+      {:ok, died_agent} = Agent.start_link(fn -> [] end)
+      on_exit(fn -> if Process.alive?(died_agent), do: Agent.stop(died_agent) end)
+
+      invoke_fn = fn role, _harness, _ctx, _opts ->
+        Agent.update(calls_agent, fn calls -> calls ++ [role] end)
+        already_failed = Agent.get(fail_once_agent, &MapSet.member?(&1, role))
+
+        if role == "reviewer-static" and not already_failed do
+          Agent.update(fail_once_agent, &MapSet.put(&1, role))
+          {:error, "transient blip"}
+        else
+          {:ok, %{"status" => "success"}}
+        end
+      end
+
+      log_died_fn = fn role, kind, cause, _cycle_log ->
+        Agent.update(died_agent, fn calls -> calls ++ [{role, kind, cause}] end)
+        :ok
+      end
+
+      assert :ok ==
+               OrchestrationLoop.run(
+                 harness: "claude_code",
+                 stack: "static",
+                 cwd: "/tmp/irrelevant",
+                 pitch: "do the thing",
+                 invoke_fn: invoke_fn,
+                 gate_fn: always_clear_gate_fn(),
+                 gate_preflight_fn: no_op_gate_preflight_fn(),
+                 preflight_probe_fn: all_present_preflight_probe_fn(),
+                 realized_check_fn: not_realized_fn(),
+                 advance_cycle_state_fn: no_op_advance_cycle_state_fn(),
+                 log_died_fn: log_died_fn
+               )
+
+      assert Agent.get(died_agent, & &1) == [{"reviewer-static", "interrupted", "transient blip"}]
+    end
+
+    test "role fails twice in a row → death stamps are 'interrupted' then 'aborted'" do
+      {:ok, died_agent} = Agent.start_link(fn -> [] end)
+      on_exit(fn -> if Process.alive?(died_agent), do: Agent.stop(died_agent) end)
+
+      invoke_fn = fn _role, _harness, _ctx, _opts -> {:error, "deterministic failure"} end
+
+      log_died_fn = fn role, kind, cause, _cycle_log ->
+        Agent.update(died_agent, fn calls -> calls ++ [{role, kind, cause}] end)
+        :ok
+      end
+
+      assert {:error, reason} =
+               OrchestrationLoop.run(
+                 harness: "claude_code",
+                 stack: "static",
+                 cwd: "/tmp/irrelevant",
+                 pitch: "do the thing",
+                 invoke_fn: invoke_fn,
+                 gate_fn: always_clear_gate_fn(),
+                 gate_preflight_fn: no_op_gate_preflight_fn(),
+                 preflight_probe_fn: all_present_preflight_probe_fn(),
+                 realized_check_fn: not_realized_fn(),
+                 log_died_fn: log_died_fn
+               )
+
+      assert reason =~ "failed twice"
+
+      assert Agent.get(died_agent, & &1) == [
+               {"developer-static", "interrupted", "deterministic failure"},
+               {"developer-static", "aborted", "deterministic failure"}
+             ]
+    end
+
+    test "default :log_died_fn with no cycle log initialized (nil path) → silent no-op, run still completes" do
+      {:ok, fail_once_agent} = Agent.start_link(fn -> MapSet.new() end)
+      on_exit(fn -> if Process.alive?(fail_once_agent), do: Agent.stop(fail_once_agent) end)
+
+      invoke_fn = fn role, _harness, _ctx, _opts ->
+        already_failed = Agent.get(fail_once_agent, &MapSet.member?(&1, role))
+
+        if role == "reviewer-static" and not already_failed do
+          Agent.update(fail_once_agent, &MapSet.put(&1, role))
+          {:error, "transient blip"}
+        else
+          {:ok, %{"status" => "success"}}
+        end
+      end
+
+      # No log_died_fn override → exercises the REAL default_log_died/4 with
+      # no cycle log initialized (Process.get(@log_path_key) == nil, since no
+      # :slug/:log_init_fn was passed) — must be a silent no-op, not a crash.
+      assert :ok ==
+               OrchestrationLoop.run(
+                 harness: "claude_code",
+                 stack: "static",
+                 cwd: "/tmp/irrelevant",
+                 pitch: "do the thing",
+                 invoke_fn: invoke_fn,
+                 gate_fn: always_clear_gate_fn(),
+                 gate_preflight_fn: no_op_gate_preflight_fn(),
+                 preflight_probe_fn: all_present_preflight_probe_fn(),
+                 realized_check_fn: not_realized_fn(),
+                 advance_cycle_state_fn: no_op_advance_cycle_state_fn()
+               )
+    end
+
+    test "default :log_died_fn with a real cycle log → writes a real {\"ev\":\"died\"} event via codegen-log",
+         %{calls_agent: calls_agent} do
+      log_path = fresh_cycle_log!()
+      {:ok, fail_once_agent} = Agent.start_link(fn -> MapSet.new() end)
+      on_exit(fn -> if Process.alive?(fail_once_agent), do: Agent.stop(fail_once_agent) end)
+
+      invoke_fn = fn role, _harness, _ctx, _opts ->
+        Agent.update(calls_agent, fn calls -> calls ++ [role] end)
+        already_failed = Agent.get(fail_once_agent, &MapSet.member?(&1, role))
+
+        if role == "reviewer-static" and not already_failed do
+          Agent.update(fail_once_agent, &MapSet.put(&1, role))
+          {:error, "transient blip"}
+        else
+          {:ok, %{"status" => "success"}}
+        end
+      end
+
+      assert :ok ==
+               OrchestrationLoop.run(
+                 harness: "claude_code",
+                 stack: "static",
+                 cwd: "/tmp/irrelevant",
+                 pitch: "do the thing",
+                 slug: "adhoc",
+                 log_init_fn: log_init_fn_for(log_path),
+                 invoke_fn: invoke_fn,
+                 gate_fn: always_clear_gate_fn(),
+                 gate_preflight_fn: no_op_gate_preflight_fn(),
+                 preflight_probe_fn: all_present_preflight_probe_fn(),
+                 realized_check_fn: not_realized_fn(),
+                 advance_cycle_state_fn: no_op_advance_cycle_state_fn()
+               )
+
+      events =
+        log_path
+        |> File.read!()
+        |> String.split("\n", trim: true)
+        |> Enum.map(&Jason.decode!/1)
+        |> Enum.filter(&(&1["ev"] == "died"))
+
+      assert [%{"role" => "reviewer-static", "kind" => "interrupted"}] = events
+    end
+
     test "codegen-call status=failed maps to {:error, reason} via invoke_role/4" do
       codegen_call_fn = fn _harness, _model, _effort, _sp, _tools, _prompt ->
         %{"result" => %{"status" => "failed", "reason" => "boom", "value" => nil}}
