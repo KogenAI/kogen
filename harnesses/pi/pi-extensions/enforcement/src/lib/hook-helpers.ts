@@ -353,3 +353,25 @@ export function getCycleState(projectDir: string): CycleState | null {
     return null;
   }
 }
+
+/**
+ * getGateVerdict() — reads codegen/gate-pending/gate-result.json's .verdict
+ * field for a project dir. Mirrors gate-result.sh's gate_result_verdict.
+ * Returns "" when the file is absent, unreadable, malformed JSON, or the
+ * field is missing/non-string — never throws.
+ */
+export function getGateVerdict(projectDir: string): string {
+  const f = path.join(
+    projectDir,
+    "codegen",
+    "gate-pending",
+    "gate-result.json",
+  );
+  if (!fs.existsSync(f)) return "";
+  try {
+    const parsed = JSON.parse(fs.readFileSync(f, "utf8"));
+    return typeof parsed.verdict === "string" ? parsed.verdict : "";
+  } catch {
+    return "";
+  }
+}

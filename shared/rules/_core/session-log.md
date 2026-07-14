@@ -107,7 +107,7 @@ Tags inside `--learned` text: `[local]` = project-specific. `[shared]` = framewo
 
 ## Gate Verdict Authority
 
-Gate hooks write `gate-result.json` with a `.verdict` field (`"passed"` or `"failed"`). **The `.verdict` JSON field is the authoritative gate result — never cosmetic log strings.** When a reviewer or the loop evaluates a gate's outcome, read `.verdict` from `gate-result.json`, not prose like "ALL CLEAR ✅" in the cycle log body. Log strings may reflect developer's intended state; JSON reflects the actual gate return code. Example: developer logs claim "ALL CLEAR ✅ on retry" but `gate-result.json` shows `.verdict: "failed"` — the JSON is authoritative and the gate truly failed.
+Gate hooks write `gate-result.json` with a `.verdict` field. Valid values: `"clear"`, `"failed"`, `"inconclusive"` only. **The `.verdict` JSON field is the authoritative gate result — never cosmetic log strings.** When a reviewer or the loop evaluates a gate's outcome, read `.verdict` from `gate-result.json`, not prose like "ALL CLEAR ✅" in the cycle log body. Log strings may reflect developer's intended state; JSON reflects the actual gate return code. Example: developer logs claim "ALL CLEAR ✅ on retry" but `gate-result.json` shows `.verdict: "failed"` — the JSON is authoritative and the gate truly failed.
 
 ## Citations
 

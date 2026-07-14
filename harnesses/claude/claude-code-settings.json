@@ -292,6 +292,15 @@
         "hooks": [
           {
             "type": "command",
+            "command": "$HOME/.claude/hooks/committer-gate-verdict-clear.sh"
+          }
+        ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
             "command": "$HOME/.claude/hooks/committer-no-head-move-reset.sh"
           }
         ]

@@ -237,12 +237,20 @@ BIN_B="$BASE_TMP/bin_b"
 make_mix_stub "$BIN_B"
 make_codegen_log_stub "$BIN_B"
 
+# Real dispatch.sh execs a stubbed `mix` that never writes gate-result.json —
+# plant one at the --cwd target so the post-step's fail-closed check passes
+# and codegen-build's pi-leg `rm -f` on --cwd cleanup never touches the live
+# repo's own codegen/gate-pending/ (which is what --cwd omission used to do).
+MARKER_B="$BASE_TMP/marker_b"
+mkdir -p "$MARKER_B/codegen/gate-pending"
+printf '{"verdict":"clear"}\n' >"$MARKER_B/codegen/gate-pending/gate-result.json"
+
 actual_ec=0
 TARGET_ARGS_FILE="$ARGS_B" \
     PATH="$BIN_B:$PATH" \
     OCG_CODEGEN_DIR="$CODEGEN_ROOT" \
     CODEGEN_BUILD_MODEL="" CODEGEN_BUILD_EFFORT="" \
-    "$CB_B/codegen-build" --harness=pi --stack=phoenix \
+    "$CB_B/codegen-build" --harness=pi --stack=phoenix --cwd="$MARKER_B" \
     "pi prompt" 2>/dev/null ||
     actual_ec=$?
 
@@ -257,6 +265,13 @@ else
     printf 'FAIL: (b) args file not created — mix stub not invoked (exit: %s)\n' "$actual_ec"
     fail=$((fail + 5))
 fi
+
+# Live-tree-untouched: this test used to run the real pi-leg codegen-build
+# with no --cwd, defaulting CWD=$PWD and rm -f'ing the live repo's
+# codegen/gate-pending/{gate-result.json,cycle-state.json}. --cwd="$MARKER_B"
+# above scopes the rm -f to the marker dir. run-tests.sh's whole-directory
+# snapshot/compare of the live codegen/gate-pending/ (see run-tests.sh) is
+# the backstop that catches any future regression of this kind.
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Test (b2): --harness=pi exits non-zero when dispatch succeeds but gate verdict is missing

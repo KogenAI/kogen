@@ -26,18 +26,36 @@ trap 'rm -rf "$_test_project_dir"' EXIT
 HOOKS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 JOBS="${JOBS:-8}"
 
-# Snapshot the live cycle-state file BEFORE the run so the backstop can detect
-# a WRITE during the run (not mere presence — a real committed cycle leaves the
-# file on disk legitimately).
+# Snapshot EVERY file under the live codegen/gate-pending/ dir BEFORE the run
+# so the backstop can detect any removal or mutation during the run — not
+# just cycle-state.json. codegen-build's pi-leg `rm -f` (run against a bare
+# --cwd-less invocation) previously deleted gate-result.json out from under a
+# live cycle without this suite ever noticing (a file that is already absent
+# before AND after silences a presence-only check). Snapshot the whole
+# directory's file list + per-file signature so a removal is caught even when
+# the removed file was never watched individually.
 _cs_sig() { if [ -f "$1" ]; then cksum <"$1"; else printf 'absent'; fi; }
-_live_cs="${BASH_SOURCE[0]%/harnesses/*}/codegen/gate-pending/cycle-state.json"
+_live_root="$(cd "$HOOKS_DIR/../../.." && pwd)"
+_live_gate_pending="$_live_root/codegen/gate-pending"
+_live_cs="$_live_gate_pending/cycle-state.json"
 _live_cs_before=$(_cs_sig "$_live_cs")
 # Source the cycle-state lib so the backstop can read the writer's session_id
 # and distinguish a concurrent live self-build (legitimate external write,
 # carries a real session_id) from a genuine in-suite isolation leak.
 . "$(dirname "${BASH_SOURCE[0]}")/lib/cycle-state.sh"
-_live_root="${BASH_SOURCE[0]%/harnesses/*}"
 _live_cs_sid_before=$(cycle_state_session_id "$_live_root")
+
+# Whole-directory snapshot: filename\tsignature per line, sorted, for a stable
+# diff-able before/after comparison. Empty/absent dir → empty snapshot.
+_gate_pending_snapshot() {
+    local dir="$1"
+    if [ -d "$dir" ]; then
+        find "$dir" -maxdepth 1 -type f -print0 |
+            sort -z |
+            xargs -0 -I{} sh -c 'printf "%s\t%s\n" "{}" "$(cksum < "{}")"'
+    fi
+}
+_gate_pending_before=$(_gate_pending_snapshot "$_live_gate_pending")
 
 run_one() {
     local t="$1"
@@ -89,24 +107,38 @@ find "$HOOKS_DIR" -name '*_test.sh' -type f -print0 |
 _xargs_rc=${PIPESTATUS[1]}
 set -e
 
-# Backstop: fail loudly only if the live cycle-state was MODIFIED during the run.
-# A pre-existing committed cycle-state.json is legitimate (before == after);
-# only a write during the run indicates isolation leakage.
-_live_cs_after=$(_cs_sig "$_live_cs")
-if [ "$_live_cs_before" != "$_live_cs_after" ]; then
+# Backstop: fail loudly on ANY removal or mutation of a file that was present
+# under the live codegen/gate-pending/ before the run. cycle-state.json writes
+# carrying a fresh session_id (a concurrent live self-build advancing its own
+# state) are the one tolerated exception — warn, don't fail. Every other
+# change (including any removal, e.g. of gate-result.json) is an unconditional
+# isolation leak.
+_gate_pending_after=$(_gate_pending_snapshot "$_live_gate_pending")
+
+if [ "$_gate_pending_before" != "$_gate_pending_after" ]; then
     _live_cs_sid_after=$(cycle_state_session_id "$_live_root")
-    if [ -n "$_live_cs_sid_after" ] && [ "$_live_cs_sid_after" != "$_live_cs_sid_before" ]; then
-        # A concurrent live self-build advanced its own cycle-state during the
-        # run. It carries a real session_id distinct from the pre-run value (no
-        # hook test ever writes a session_id to the REAL repo-root path — every
-        # test uses its own temp dir). Tolerate it: warn, do not fail.
+    _live_cs_after=$(_cs_sig "$_live_cs")
+
+    # Compute the delta with cycle-state.json's legitimate advance excluded,
+    # to check whether that is the ONLY change.
+    _gate_pending_before_no_cs=$(printf '%s\n' "$_gate_pending_before" | grep -v "^${_live_cs}"$'\t' || true)
+    _gate_pending_after_no_cs=$(printf '%s\n' "$_gate_pending_after" | grep -v "^${_live_cs}"$'\t' || true)
+
+    if [ "$_gate_pending_before_no_cs" = "$_gate_pending_after_no_cs" ] &&
+        [ "$_live_cs_before" != "$_live_cs_after" ] &&
+        [ -n "$_live_cs_sid_after" ] && [ "$_live_cs_sid_after" != "$_live_cs_sid_before" ]; then
+        # The ONLY change is cycle-state.json, and it carries a real session_id
+        # distinct from the pre-run value (no hook test ever writes a
+        # session_id to the REAL repo-root path — every test uses its own temp
+        # dir). A concurrent live self-build advanced its own state. Tolerate.
         printf 'WARN: live cycle-state.json advanced during make test (external self-build session=%s) — tolerated, not an isolation leak\n' "$_live_cs_sid_after" >&2
     else
-        # Empty/unchanged session_id with a content delta on the real path is
-        # attributable to the suite — a genuine isolation leak. Fail loud.
-        printf 'FAIL: live cycle-state.json was modified during make test — isolation leak!\n' >&2
-        printf '  before: %s\n' "$_live_cs_before" >&2
-        printf '  after:  %s\n' "$_live_cs_after" >&2
+        # Any other change — including a removal of gate-result.json or any
+        # other gate-pending file — is attributable to the suite itself. Fail
+        # loud and name what changed.
+        printf 'FAIL: live codegen/gate-pending/ was modified during make test — isolation leak!\n' >&2
+        printf '  before:\n%s\n' "$_gate_pending_before" >&2
+        printf '  after:\n%s\n' "$_gate_pending_after" >&2
         exit 1
     fi
 fi
