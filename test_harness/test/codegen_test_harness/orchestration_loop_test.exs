@@ -60,6 +60,15 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
     fn _cwd -> {"make test", "short", 0} end
   end
 
+  # Stub :planner_plan_fn seam: skips the real cycle-log read (LoopGate.planner_body/1)
+  # for tests that stub invoke_fn without ever writing a real planner role body to
+  # disk. Provides a minimal, non-blank, single-`## Plan` body so
+  # resolve_planner_plan!/2 does not raise on phoenix-sequence tests that are
+  # exercising unrelated behavior (retry, locking, preflight).
+  defp stub_planner_plan_fn do
+    fn _log_file -> "## Plan\n\n**Approach**: do the thing." end
+  end
+
   # Real advance_cycle_state/5 shells out to `write_cycle_state`, which does
   # `mkdir -p "#{cwd}/codegen/gate-pending"` + writes cycle-state.json on
   # disk. Every test below shares the literal "/tmp/irrelevant" cwd and runs
@@ -123,13 +132,135 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
                  gate_fn: always_clear_gate_fn(),
                  gate_preflight_fn: no_op_gate_preflight_fn(),
                  preflight_probe_fn: all_present_preflight_probe_fn(),
-                 advance_cycle_state_fn: no_op_advance_cycle_state_fn()
+                 advance_cycle_state_fn: no_op_advance_cycle_state_fn(),
+                 planner_plan_fn: stub_planner_plan_fn()
                )
 
       assert Agent.get(calls_agent, & &1) == @phoenix_sequence
     end
 
     test "static sequence invokes all roles in order on success", %{calls_agent: calls_agent} do
+      assert :ok ==
+               OrchestrationLoop.run(
+                 harness: "claude_code",
+                 stack: "static",
+                 cwd: "/tmp/irrelevant",
+                 pitch: "do the thing",
+                 invoke_fn: always_ok_invoke_fn(calls_agent),
+                 gate_fn: always_clear_gate_fn(),
+                 gate_preflight_fn: no_op_gate_preflight_fn(),
+                 preflight_probe_fn: all_present_preflight_probe_fn(),
+                 advance_cycle_state_fn: no_op_advance_cycle_state_fn()
+               )
+
+      assert Agent.get(calls_agent, & &1) == @static_sequence
+    end
+  end
+
+  describe "run/1 — no developer invoked without its plan" do
+    test "phoenix cycle threads the planner's real ## Plan body (not the envelope chat message) into the developer prompt",
+         %{calls_agent: calls_agent} do
+      log_path = fresh_cycle_log!()
+
+      plan_body =
+        "Some chatty preamble.\n\n## Plan\n\n**Approach**: do the thing.\n\n" <>
+          "**Files to touch**: lib/foo.ex (NEW)\n\n## Slices\n\nslice text"
+
+      append_role_body!(log_path, "planner-phoenix", plan_body)
+
+      seen_prompt = Agent.start_link(fn -> nil end) |> elem(1)
+
+      invoke_fn = fn role, _harness, ctx, _opts ->
+        Agent.update(calls_agent, fn calls -> calls ++ [role] end)
+
+        if role == "developer-phoenix-backend" do
+          Agent.update(seen_prompt, fn _ -> OrchestrationLoop.build_prompt(role, ctx) end)
+        end
+
+        value =
+          if role == "reviewer-phoenix",
+            do: "REVIEW_VERDICT: APPROVED",
+            else: "did #{role}"
+
+        {:ok, %{"status" => "success", "value" => "chat recap with no plan in it — #{value}"}}
+      end
+
+      assert :ok ==
+               OrchestrationLoop.run(
+                 harness: "claude_code",
+                 stack: "phoenix",
+                 cwd: "/tmp/irrelevant",
+                 pitch: "do the thing",
+                 invoke_fn: invoke_fn,
+                 gate_fn: always_clear_gate_fn(),
+                 gate_preflight_fn: no_op_gate_preflight_fn(),
+                 preflight_probe_fn: all_present_preflight_probe_fn(),
+                 advance_cycle_state_fn: no_op_advance_cycle_state_fn(),
+                 slug: "plan-thread-test",
+                 log_init_fn: log_init_fn_for(log_path)
+               )
+
+      prompt = Agent.get(seen_prompt, & &1)
+      assert prompt =~ "## Plan"
+      assert prompt =~ "**Files to touch**: lib/foo.ex (NEW)"
+      refute prompt =~ "## Slices"
+      refute prompt =~ "chat recap with no plan in it"
+    end
+
+    test "blank planner body raises before the developer is ever invoked" do
+      log_path = fresh_cycle_log!()
+      append_role_body!(log_path, "planner-phoenix", "")
+
+      invoke_fn = fn role, _harness, _ctx, _opts ->
+        {:ok, %{"status" => "success", "value" => "did #{role}"}}
+      end
+
+      assert_raise RuntimeError, ~r/refusing to invoke a developer with no plan/, fn ->
+        OrchestrationLoop.run(
+          harness: "claude_code",
+          stack: "phoenix",
+          cwd: "/tmp/irrelevant",
+          pitch: "do the thing",
+          invoke_fn: invoke_fn,
+          gate_fn: always_clear_gate_fn(),
+          gate_preflight_fn: no_op_gate_preflight_fn(),
+          preflight_probe_fn: all_present_preflight_probe_fn(),
+          advance_cycle_state_fn: no_op_advance_cycle_state_fn(),
+          slug: "plan-thread-blank-test",
+          log_init_fn: log_init_fn_for(log_path)
+        )
+      end
+    end
+
+    test "two ## Plan sections in the joined planner body (re-run) raises as ambiguous" do
+      log_path = fresh_cycle_log!()
+      append_role_body!(log_path, "planner-phoenix", "## Plan\n\nplan A")
+      append_role_body!(log_path, "planner-phoenix", "## Plan\n\nplan B")
+
+      invoke_fn = fn role, _harness, _ctx, _opts ->
+        {:ok, %{"status" => "success", "value" => "did #{role}"}}
+      end
+
+      assert_raise RuntimeError, ~r/refusing to guess which plan/, fn ->
+        OrchestrationLoop.run(
+          harness: "claude_code",
+          stack: "phoenix",
+          cwd: "/tmp/irrelevant",
+          pitch: "do the thing",
+          invoke_fn: invoke_fn,
+          gate_fn: always_clear_gate_fn(),
+          gate_preflight_fn: no_op_gate_preflight_fn(),
+          preflight_probe_fn: all_present_preflight_probe_fn(),
+          advance_cycle_state_fn: no_op_advance_cycle_state_fn(),
+          slug: "plan-thread-ambiguous-test",
+          log_init_fn: log_init_fn_for(log_path)
+        )
+      end
+    end
+
+    test "static cycle (no planner) never resolves a plan and never raises", %{
+      calls_agent: calls_agent
+    } do
       assert :ok ==
                OrchestrationLoop.run(
                  harness: "claude_code",
@@ -551,7 +682,10 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
         if role == "developer-static" do
           Agent.update(seen_agent, fn seen ->
             seen ++
-              [{get_in(ctx, [:artifacts, :resume_session_id]), ctx.artifacts.transport_session_id}]
+              [
+                {get_in(ctx, [:artifacts, :resume_session_id]),
+                 ctx.artifacts.transport_session_id}
+              ]
           end)
         end
 
@@ -639,7 +773,10 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
         if role == "developer-static" do
           Agent.update(seen_agent, fn seen ->
             seen ++
-              [{get_in(ctx, [:artifacts, :resume_session_id]), ctx.artifacts.transport_session_id}]
+              [
+                {get_in(ctx, [:artifacts, :resume_session_id]),
+                 ctx.artifacts.transport_session_id}
+              ]
           end)
         end
 
@@ -793,6 +930,55 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
           preflight_probe_fn: all_present_preflight_probe_fn()
         )
       end
+    end
+  end
+
+  describe "build_prompt/2 — planner plan threading" do
+    test "developer prompt threads the resolved plan verbatim under its own ## Plan heading" do
+      plan = "## Plan\n\n**Approach**: do the thing.\n\n**Files to touch**: lib/foo.ex (NEW)"
+
+      ctx = %{
+        cwd: "/tmp",
+        pitch: "raw pitch text",
+        artifacts: %{planner_plan: plan}
+      }
+
+      content = OrchestrationLoop.build_prompt("developer-phoenix-backend", ctx)
+
+      assert content =~ "## Plan"
+      assert content =~ "**Files to touch**: lib/foo.ex (NEW)"
+      refute content =~ "Implementation plan (from the planner)"
+    end
+
+    test "no :planner_plan artifact → prompt is just the raw pitch (static path unaffected)" do
+      ctx = %{cwd: "/tmp", pitch: "raw pitch text", artifacts: %{}}
+
+      content = OrchestrationLoop.build_prompt("developer-static", ctx)
+
+      assert content == "raw pitch text"
+      refute content =~ "## Plan"
+    end
+
+    test "blank :planner_plan artifact → no plan block appended" do
+      ctx = %{cwd: "/tmp", pitch: "raw pitch text", artifacts: %{planner_plan: ""}}
+
+      content = OrchestrationLoop.build_prompt("developer-phoenix-backend", ctx)
+
+      assert content == "raw pitch text"
+    end
+
+    test "non-developer role prompt is not enriched with the plan block" do
+      plan = "## Plan\n\n**Approach**: do the thing."
+
+      ctx = %{
+        cwd: "/tmp",
+        pitch: "raw pitch text",
+        artifacts: %{planner_plan: plan}
+      }
+
+      content = OrchestrationLoop.build_prompt("reviewer-phoenix", ctx)
+
+      refute content =~ "**Approach**: do the thing."
     end
   end
 
@@ -2413,7 +2599,10 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
 
       gate_fn = fn _cwd, _opts ->
         :counters.add(regate_calls, 1, 1)
-        if :counters.get(regate_calls, 1) == 1, do: {:clear, "make test"}, else: {:failed, "make test"}
+
+        if :counters.get(regate_calls, 1) == 1,
+          do: {:clear, "make test"},
+          else: {:failed, "make test"}
       end
 
       assert {:error, reason} =
@@ -2483,20 +2672,22 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
       match_fn = fn _cwd -> true end
       gate_fn = fn _cwd, _opts -> {:clear, "make test"} end
 
-      assert_raise RuntimeError, ~r/does not match the last graded_tree_sha|DIFFERENT content/, fn ->
-        OrchestrationLoop.run(
-          harness: "claude_code",
-          stack: "static",
-          cwd: dir,
-          pitch: "do the thing",
-          invoke_fn: invoke_fn,
-          gate_fn: gate_fn,
-          gate_tree_match_fn: match_fn,
-          gate_preflight_fn: no_op_gate_preflight_fn(),
-          preflight_probe_fn: all_present_preflight_probe_fn(),
-          advance_cycle_state_fn: no_op_advance_cycle_state_fn()
-        )
-      end
+      assert_raise RuntimeError,
+                   ~r/does not match the last graded_tree_sha|DIFFERENT content/,
+                   fn ->
+                     OrchestrationLoop.run(
+                       harness: "claude_code",
+                       stack: "static",
+                       cwd: dir,
+                       pitch: "do the thing",
+                       invoke_fn: invoke_fn,
+                       gate_fn: gate_fn,
+                       gate_tree_match_fn: match_fn,
+                       gate_preflight_fn: no_op_gate_preflight_fn(),
+                       preflight_probe_fn: all_present_preflight_probe_fn(),
+                       advance_cycle_state_fn: no_op_advance_cycle_state_fn()
+                     )
+                   end
     end
   end
 
@@ -2537,7 +2728,8 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
                  gate_fn: always_clear_gate_fn(),
                  gate_preflight_fn: no_op_gate_preflight_fn(),
                  preflight_probe_fn: all_present_preflight_probe_fn(),
-                 advance_cycle_state_fn: no_op_advance_cycle_state_fn()
+                 advance_cycle_state_fn: no_op_advance_cycle_state_fn(),
+                 planner_plan_fn: stub_planner_plan_fn()
                )
 
       assert Agent.get(calls_agent, & &1) == @phoenix_sequence
@@ -2599,7 +2791,8 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
                  gate_fn: always_clear_gate_fn(),
                  gate_preflight_fn: no_op_gate_preflight_fn(),
                  preflight_probe_fn: all_present_preflight_probe_fn(),
-                 advance_cycle_state_fn: no_op_advance_cycle_state_fn()
+                 advance_cycle_state_fn: no_op_advance_cycle_state_fn(),
+                 planner_plan_fn: stub_planner_plan_fn()
                )
 
       assert Agent.get(calls_agent, & &1) == @phoenix_sequence
@@ -2748,7 +2941,8 @@ defmodule CodegenTestHarness.OrchestrationLoopLockTest do
           "reviewer-phoenix, context-curator, committer, developer-static, reviewer-static"
       end,
       advance_cycle_state_fn: fn _state, _step_log, _session_id, _verdict, _project_dir -> :ok end,
-      orphan_scan_fn: fn _cwd -> [] end
+      orphan_scan_fn: fn _cwd -> [] end,
+      planner_plan_fn: fn _log_file -> "## Plan\n\n**Approach**: do the thing." end
     ]
 
     Keyword.merge(defaults, extra)

@@ -105,6 +105,73 @@ defmodule CodegenTestHarness.LoopGateTest do
     end
   end
 
+  describe "planner_body/1" do
+    test "nil log_file returns empty string, never raises" do
+      assert LoopGate.planner_body(nil) == ""
+    end
+
+    test "missing log file on disk returns empty string" do
+      assert LoopGate.planner_body("/tmp/does-not-exist-loop-gate-test.jsonl") == ""
+    end
+
+    test "extracts a single planner role body verbatim", %{dir: dir} do
+      step_log = Path.join(dir, "20260601_120000_test_cycle.jsonl")
+
+      body = "## Plan\n\n**Approach**: do the thing.\n"
+
+      File.write!(
+        step_log,
+        Jason.encode!(%{"ev" => "role", "role" => "planner-phoenix", "body" => body}) <> "\n"
+      )
+
+      assert LoopGate.planner_body(step_log) == body <> "\n"
+    end
+
+    test "concatenates multiple planner role events (re-runs) in call order, newline-joined", %{
+      dir: dir
+    } do
+      step_log = Path.join(dir, "20260601_120000_test_cycle.jsonl")
+
+      lines =
+        [
+          %{"ev" => "role", "role" => "planner-phoenix", "body" => "## Plan\n\nplan A"},
+          %{"ev" => "role", "role" => "planner-phoenix", "body" => "## Plan\n\nplan B"}
+        ]
+        |> Enum.map_join("", &(Jason.encode!(&1) <> "\n"))
+
+      File.write!(step_log, lines)
+
+      assert LoopGate.planner_body(step_log) == "## Plan\n\nplan A\n## Plan\n\nplan B\n"
+    end
+
+    test "ignores non-planner role events and non-role events", %{dir: dir} do
+      step_log = Path.join(dir, "20260601_120000_test_cycle.jsonl")
+
+      lines =
+        [
+          %{"ev" => "init", "pitch" => "x"},
+          %{"ev" => "role", "role" => "developer-phoenix-backend", "body" => "dev work"},
+          %{"ev" => "role", "role" => "planner-phoenix", "body" => "## Plan\n\nthe plan"}
+        ]
+        |> Enum.map_join("", &(Jason.encode!(&1) <> "\n"))
+
+      File.write!(step_log, lines)
+
+      assert LoopGate.planner_body(step_log) == "## Plan\n\nthe plan\n"
+    end
+
+    test "log with no planner role event returns empty string", %{dir: dir} do
+      step_log = Path.join(dir, "20260601_120000_test_cycle.jsonl")
+
+      File.write!(
+        step_log,
+        Jason.encode!(%{"ev" => "init", "pitch" => "x"}) <> "\n"
+      )
+
+      assert LoopGate.planner_body(step_log) == ""
+    end
+  end
+
   describe "run_gate/2" do
     test "clear verdict on exit 0, non-static stack (no render check)", %{dir: dir} do
       write_gate_config!(dir, "make test")

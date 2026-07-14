@@ -75,6 +75,30 @@ defmodule CodegenTestHarness.LoopGate do
   end
 
   @doc """
+  Extracts the concatenated planner role body text from a JSONL cycle log,
+  via `gate-select.sh`'s `planner_body_from_log` — the SAME decoder
+  `decide_gate/2` already shells for the `**Gate**:`/`gate-json` scan, reused
+  here rather than reimplemented. Returns `""` when `log_file` is nil,
+  missing, unreadable, or carries no planner role event (never raises —
+  the caller decides what an empty body means).
+  """
+  @spec planner_body(String.t() | nil) :: String.t()
+  def planner_body(nil), do: ""
+
+  def planner_body(log_file) when is_binary(log_file) do
+    unless File.exists?(@gate_select_lib) do
+      raise "LoopGate: gate-select.sh not found at #{@gate_select_lib}"
+    end
+
+    script =
+      "source #{shell_quote(@gate_select_lib)} && planner_body_from_log #{shell_quote(log_file)}"
+
+    {output, 0} = System.cmd("bash", ["-c", script], stderr_to_stdout: true)
+
+    output
+  end
+
+  @doc """
   Runs the gate for `project_dir`: decides the gate command, executes it
   in `project_dir`, writes `gate-result.json` via `write_gate_result`, and
   returns `{verdict, gate_command}`.

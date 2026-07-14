@@ -469,6 +469,26 @@ defmodule CodegenTestHarness.OrchestrationLoop do
     with {:ok, result} <- invoke_with_retry(role, harness, ctx, opts) do
       ctx = put_in(ctx, [:artifacts, role], result)
 
+      # No-developer-invoked-without-its-plan: immediately after a planner
+      # role finishes, lift its ACTUAL plan (the `ev:role` body it wrote to
+      # the cycle log — hook-guaranteed non-blank by
+      # stop-verify-planner-gate.sh) rather than trusting the envelope
+      # `result`'s `value` (that's the planner's final CHAT MESSAGE, which
+      # can be a recap with no plan in it at all — see pitch
+      # no-ship-on-a-gate-that-didnt-grade-this-tree... no,
+      # no-developer-invoked-without-its-plan). A blank plan, or an
+      # AMBIGUOUS one (a re-run left 2+ `## Plan` sections in the joined
+      # body — gate-select.sh's first-gate-json-wins scan would then gate on
+      # a DIFFERENT plan than the one threaded here), raises here — one role
+      # in, before a developer is ever invoked on nothing.
+      ctx =
+        if planner_role?(role) do
+          plan = resolve_planner_plan!(role, opts)
+          put_in(ctx, [:artifacts, :planner_plan], plan)
+        else
+          ctx
+        end
+
       cond do
         developer_role?(role) ->
           run_format_step(ctx.cwd, opts)
@@ -488,6 +508,85 @@ defmodule CodegenTestHarness.OrchestrationLoop do
   end
 
   defp developer_role?(role), do: String.starts_with?(role, "developer-")
+
+  defp planner_role?(role), do: String.starts_with?(role, "planner-")
+
+  # Resolves the planner's plan text for threading into build_prompt/2, via
+  # the :planner_plan_fn seam (default reads the real cycle log through
+  # LoopGate.planner_body/1 + extract_plan_section/1). Fail-closed: a blank
+  # plan, or a body carrying more than one `## Plan` section (a planner
+  # retry left two joined bodies — see run_roles/4 comment), raises
+  # immediately rather than letting a developer run with no plan or an
+  # ambiguous one.
+  defp resolve_planner_plan!(role, opts) do
+    plan_fn = Keyword.get(opts, :planner_plan_fn, &default_planner_plan/1)
+    log_file = Process.get(@log_path_key)
+    body = plan_fn.(log_file)
+
+    case extract_plan_section(body) do
+      {:ok, plan} ->
+        plan
+
+      {:error, :blank} ->
+        raise "OrchestrationLoop: #{role} produced no ## Plan body in cycle log " <>
+                "#{inspect(log_file)} — refusing to invoke a developer with no plan"
+
+      {:error, {:ambiguous, count}} ->
+        raise "OrchestrationLoop: planner body carries #{count} ## Plan sections in cycle log " <>
+                "#{inspect(log_file)} — refusing to guess which plan the developer should implement"
+    end
+  end
+
+  defp default_planner_plan(log_file), do: LoopGate.planner_body(log_file)
+
+  # Slices the `## Plan` section out of a planner's role body: from the
+  # `## Plan` heading up to (not including) the next top-level `## ` heading,
+  # or the whole body when no `## Plan` heading is present at all (the same
+  # tolerance gate-select.sh's own scanners apply — some planner prose omits
+  # the sub-heading and the whole body IS the plan). More than one `## Plan`
+  # heading (a joined multi-attempt body) is ambiguous — see resolve_planner_plan!/2.
+  @spec extract_plan_section(String.t()) ::
+          {:ok, String.t()} | {:error, :blank} | {:error, {:ambiguous, pos_integer()}}
+  defp extract_plan_section(body) when not is_binary(body) or body == "" do
+    {:error, :blank}
+  end
+
+  defp extract_plan_section(body) do
+    lines = String.split(body, "\n")
+    plan_heading_count = Enum.count(lines, &(&1 == "## Plan"))
+
+    cond do
+      plan_heading_count > 1 ->
+        {:error, {:ambiguous, plan_heading_count}}
+
+      plan_heading_count == 0 ->
+        if String.trim(body) == "" do
+          {:error, :blank}
+        else
+          {:ok, body}
+        end
+
+      true ->
+        {_, start_idx} = Enum.find(Enum.with_index(lines), fn {l, _} -> l == "## Plan" end)
+
+        rest = Enum.slice(lines, start_idx, length(lines) - start_idx)
+
+        # Drop everything from the NEXT top-level "## " heading onward (but
+        # keep the "## Plan" heading line itself at index 0).
+        [_plan_heading | tail] = rest
+
+        tail_before_next_h2 =
+          Enum.take_while(tail, fn l -> not String.starts_with?(l, "## ") end)
+
+        section = Enum.join(["## Plan" | tail_before_next_h2], "\n")
+
+        if String.trim(section) == "" do
+          {:error, :blank}
+        else
+          {:ok, section}
+        end
+    end
+  end
 
   # No-ship-on-a-gate-that-didn't-grade-this-tree: runs immediately BEFORE
   # the committer role is invoked (keyed on the role about to run, not its
@@ -1462,7 +1561,11 @@ defmodule CodegenTestHarness.OrchestrationLoop do
           # a session that will never exist.
           retry_ctx =
             if transient? and not stale? do
-              put_in(retry_ctx, [:artifacts, :resume_session_id], ctx.artifacts.transport_session_id)
+              put_in(
+                retry_ctx,
+                [:artifacts, :resume_session_id],
+                ctx.artifacts.transport_session_id
+              )
             else
               Map.update!(retry_ctx, :artifacts, &Map.delete(&1, :resume_session_id))
             end
@@ -1713,16 +1816,22 @@ defmodule CodegenTestHarness.OrchestrationLoop do
 
     base = ctx[:pitch] || ""
 
-    # Thread the planner's plan to the developer so it implements what was actually
-    # planned instead of re-deriving scope from the raw pitch. (This is the real
-    # value: prior-role context threading — see structural gap #6. We do NOT try to
-    # suppress "gold-plating" like SEO/OG/JSON-LD: that is normal, harmless polish,
-    # not a defect — an earlier iteration mis-treated it as one.)
-    plan = planner_plan(ctx)
+    # Thread the planner's ACTUAL plan (resolved+validated at role-result-store
+    # time in run_roles/4, stashed at ctx.artifacts[:planner_plan] — NOT the
+    # envelope `result`'s `value`, which is the planner's final chat message
+    # and can be a recap with no plan in it) to the developer under the exact
+    # `## Plan` heading developer.md contracts on, so it implements what was
+    # actually planned instead of re-deriving scope from the raw pitch. (This
+    # is the real value: prior-role context threading — see structural gap
+    # #6. We do NOT try to suppress "gold-plating" like SEO/OG/JSON-LD: that
+    # is normal, harmless polish, not a defect — an earlier iteration
+    # mis-treated it as one.) Static has no planner in its sequence, so this
+    # is always absent there — the prompt stays the raw pitch, unchanged.
+    plan = get_in(ctx, [:artifacts, :planner_plan])
 
     base =
       if developer_role?(role) and is_binary(plan) and String.trim(plan) != "" do
-        base <> "\n\n## Implementation plan (from the planner)\n\n" <> plan
+        base <> "\n\n" <> plan
       else
         base
       end
@@ -1849,26 +1958,6 @@ defmodule CodegenTestHarness.OrchestrationLoop do
     end
   end
 
-  # Extracts the planner's plan text from ctx.artifacts (static or phoenix
-  # planner), or nil if no planner has run yet.
-  defp planner_plan(ctx) do
-    artifacts = ctx[:artifacts] || %{}
-
-    ["planner-static", "planner-phoenix"]
-    |> Enum.find_value(fn key ->
-      case Map.get(artifacts, key) do
-        %{"value" => v} when is_binary(v) ->
-          v
-
-        # fail-loud-exempt: absent planner (nil) or non-string value is a
-        # legitimate "no plan to thread" — the developer falls back to the raw
-        # pitch. Optional context enrichment, not a required contract.
-        _ ->
-          nil
-      end
-    end)
-  end
-
   @claude_settings_path Path.expand(
                           "../../../harnesses/claude/claude-code-settings.json",
                           __DIR__
@@ -1960,6 +2049,9 @@ defmodule CodegenTestHarness.OrchestrationLoop do
       raise "OrchestrationLoop: codegen-call not found at #{@codegen_call_bin}"
     end
 
+    # --resume (warm-resume a transient-retry attempt) and --session-id
+    # (pin a NEW cold call's id up front) are mutually exclusive per
+    # attempt — resume wins when both are somehow present.
     args =
       [
         "--harness=#{harness}",
@@ -1971,9 +2063,6 @@ defmodule CodegenTestHarness.OrchestrationLoop do
           else: []
         ) ++
         if(agent && agent != "", do: ["--agent=#{agent}"], else: []) ++
-        # --resume (warm-resume a transient-retry attempt) and --session-id
-        # (pin a NEW cold call's id up front) are mutually exclusive per
-        # attempt — resume wins when both are somehow present.
         cond do
           resume_session_id && resume_session_id != "" ->
             ["--resume=#{resume_session_id}"]
@@ -1990,6 +2079,10 @@ defmodule CodegenTestHarness.OrchestrationLoop do
           else: []
         ) ++ prompt_tail(prompt)
 
+    # CODEGEN_RESUME_ATTEMPT: set only on a warm-resume transient retry,
+    # to the session id being resumed into — a stable token the
+    # developer-no-self-gate guard uses to distinguish "first gate check
+    # after resuming" from a genuine same-tree spin (see hook comment).
     env =
       [
         {"CODEGEN_DIR", @codegen_dir},
@@ -1997,10 +2090,6 @@ defmodule CodegenTestHarness.OrchestrationLoop do
         {"CODEGEN_LOOP", "1"}
       ] ++
         if(transcript, do: [{"CODEGEN_CALL_TRANSCRIPT_PATH", transcript}], else: []) ++
-        # CODEGEN_RESUME_ATTEMPT: set only on a warm-resume transient retry,
-        # to the session id being resumed into — a stable token the
-        # developer-no-self-gate guard uses to distinguish "first gate check
-        # after resuming" from a genuine same-tree spin (see hook comment).
         if(resume_session_id && resume_session_id != "",
           do: [{"CODEGEN_RESUME_ATTEMPT", resume_session_id}],
           else: []
