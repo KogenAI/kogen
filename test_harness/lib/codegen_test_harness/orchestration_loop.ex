@@ -158,16 +158,6 @@ defmodule CodegenTestHarness.OrchestrationLoop do
     (same posture as `:max_curator_doc_cycles`, not `:max_review_cycles`'s
     proceed-on-exhaustion): an undeclared required env var is a real defect
     the app crashes on at runtime, so handing it onward unfixed is not safe.
-  - `:realized_check_fn` — test seam: `(pitch, cwd -> {:ok, map} | {:error, reason})`
-    — turn-0 preflight run AFTER role/gate preflights but BEFORE any role is
-    invoked; defaults to `default_realized_check/2` (a single `codegen-call`
-    against `harnesses/shared/prompt-bodies/realized-check.md` with a JSON
-    schema, asking whether the pitch's requirements are already satisfied by
-    the current tree). Fails CLOSED: only a `realized: true` +
-    `confidence: "high"` + non-empty `evidence` verdict skips the role chain
-    (returns `:ok` immediately, no role invoked); every other outcome —
-    `realized: false`, low confidence, empty evidence, an unparseable
-    envelope, or a non-zero exit — proceeds to the full `run_roles` cycle.
   - `:lock_path` — per-cwd single-flight lock file, default
     `Path.join([cwd, "codegen", "gate-pending", "queue.lock"])` — the SAME
     physical path `LoopQueueDrain.drain/1` locks, so a bare single build and
@@ -190,9 +180,7 @@ defmodule CodegenTestHarness.OrchestrationLoop do
     refuses with `{:error, reason}` naming the pid(s) + a copy-paste
     inspect/reap command. Degrades to `[]` (lock-only enforcement) when
     `pgrep` itself is unavailable.
-  Returns `:ok` on COMMITTED + clear gate, OR immediately (before any role
-  runs) when the turn-0 realized-check confirms the pitch's work already
-  exists in the tree. Returns `{:error, reason}` on
+  Returns `:ok` on COMMITTED + clear gate. Returns `{:error, reason}` on
   any role failure (after one retry), a non-clear gate (after the gate-retry
   bound is exhausted — progress-based, or `:max_gate_retries` when no
   progress signature is available), or an unexpected envelope shape (raised,
@@ -275,11 +263,7 @@ defmodule CodegenTestHarness.OrchestrationLoop do
     ctx = put_in(ctx, [:artifacts, :gate_command], gate_command)
     preflight_roles!(roles, cwd, opts)
 
-    if realized?(pitch, cwd, opts) do
-      :ok
-    else
-      run_roles(roles, harness, ctx, opts)
-    end
+    run_roles(roles, harness, ctx, opts)
   end
 
   # Start-time orphan surfacing: scans for live `mix codegen.loop` beams
@@ -467,94 +451,6 @@ defmodule CodegenTestHarness.OrchestrationLoop do
   end
 
   defp default_gate_preflight(cwd), do: LoopGate.decide_gate(cwd)
-
-  @realized_check_prompt_path Path.expand(
-                                "../../../harnesses/shared/prompt-bodies/realized-check.md",
-                                __DIR__
-                              )
-
-  @realized_check_schema Jason.encode!(%{
-                           "type" => "object",
-                           "required" => ["realized", "confidence", "evidence"],
-                           "additionalProperties" => false,
-                           "properties" => %{
-                             "realized" => %{"type" => "boolean"},
-                             "confidence" => %{"type" => "string", "enum" => ["high", "low"]},
-                             "evidence" => %{"type" => "string"}
-                           }
-                         })
-
-  # Turn-0 realized-check preflight: asks a single cheap LLM turn whether the
-  # pitch's requirements are ALREADY satisfied by the current tree, BEFORE any
-  # role is invoked (and paid for). Fails CLOSED — the default is "not
-  # realized, run the full cycle": only a high-confidence, evidenced
-  # realized:true verdict short-circuits the loop. Every other outcome
-  # (realized:false, low confidence, empty evidence, unparseable envelope, or
-  # a non-zero codegen-call exit) proceeds to the normal role chain. A false
-  # skip would silently ship a pitch without doing its work — the exact
-  # silent-wrong-output failure this loop exists to prevent — so asymmetric
-  # caution is mandatory: only skip on unambiguous, cited evidence.
-  defp realized?(pitch, cwd, opts) do
-    check_fn = Keyword.get(opts, :realized_check_fn, &default_realized_check/2)
-
-    case check_fn.(pitch, cwd) do
-      {:ok, %{"realized" => true, "confidence" => "high", "evidence" => evidence}}
-      when is_binary(evidence) and evidence != "" ->
-        IO.puts(:stderr, "REALIZED — skipping chain (evidence: #{evidence})")
-        true
-
-      _other ->
-        false
-    end
-  end
-
-  defp default_realized_check(pitch, cwd) do
-    unless File.exists?(@codegen_call_bin) do
-      raise "OrchestrationLoop: codegen-call not found at #{@codegen_call_bin}"
-    end
-
-    unless File.exists?(@realized_check_prompt_path) do
-      raise "OrchestrationLoop: realized-check prompt not found at #{@realized_check_prompt_path}"
-    end
-
-    schema_path = write_realized_check_schema!()
-
-    args =
-      [
-        "--harness=claude_code",
-        "--model=haiku",
-        "--effort=low",
-        "--system-prompt=@#{@realized_check_prompt_path}",
-        "--json-schema=@#{schema_path}"
-      ] ++ prompt_tail(pitch)
-
-    env = [{"CODEGEN_DIR", @codegen_dir}]
-
-    {output, exit_code} =
-      System.cmd(@codegen_call_bin, args, stderr_to_stdout: true, env: env, cd: cwd)
-
-    File.rm(schema_path)
-
-    with 0 <- exit_code,
-         {:ok, envelope} <- Jason.decode(output),
-         %{"result" => %{"status" => "success", "value" => value}} <- envelope,
-         true <- is_map(value) do
-      {:ok, value}
-    else
-      _other -> {:error, "realized-check: no confirmed verdict (fail closed)"}
-    end
-  end
-
-  defp write_realized_check_schema! do
-    path =
-      Path.join(
-        System.tmp_dir!(),
-        "codegen-realized-check-schema-#{:erlang.unique_integer([:positive])}.json"
-      )
-
-    File.write!(path, @realized_check_schema)
-    path
-  end
 
   # Runs each role in sequence up to (not including) the gate-dependent
   # tail (reviewer onward); the gate step is interleaved between the
@@ -1761,8 +1657,8 @@ defmodule CodegenTestHarness.OrchestrationLoop do
   `--` end-of-flags separator immediately followed by the prompt. Prompt
   content (pitch body) is DATA, never CLI flags — a body that happens to
   open with `-` or `--` (e.g. stray YAML-like text) must never be parsed
-  as an option by `codegen-call`'s `OptionParser`. Shared by both
-  `codegen-call` invocation sites (main role call + realized-check).
+  as an option by `codegen-call`'s `OptionParser`. Used by the role-call
+  `codegen-call` invocation site.
   """
   @spec prompt_tail(String.t()) :: [String.t()]
   def prompt_tail(prompt), do: ["--", prompt]

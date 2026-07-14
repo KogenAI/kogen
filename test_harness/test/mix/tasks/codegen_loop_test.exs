@@ -141,4 +141,64 @@ defmodule Mix.Tasks.Codegen.LoopTest do
       refute File.exists?(shipped_dir)
     end
   end
+
+  describe "verify_commit_landed/2 — solo ship-gate floor" do
+    defp init_git_repo!(cwd) do
+      System.cmd("git", ["init", "-q", cwd])
+      System.cmd("git", ["-C", cwd, "config", "user.email", "test@example.com"])
+      System.cmd("git", ["-C", cwd, "config", "user.name", "Test"])
+      System.cmd("git", ["-C", cwd, "config", "commit.gpgsign", "false"])
+    end
+
+    defp commit!(cwd, filename, message) do
+      File.write!(Path.join(cwd, filename), "content\n")
+      System.cmd("git", ["-C", cwd, "add", "."])
+      System.cmd("git", ["-C", cwd, "commit", "-q", "-m", message])
+    end
+
+    test "HEAD unmoved: raises-shaped error, no commit landed this cycle", ctx do
+      init_git_repo!(ctx.tmp)
+      commit!(ctx.tmp, "a.txt", "initial")
+
+      before = Loop.git_head(ctx.tmp)
+
+      assert {:error, reason} = Loop.verify_commit_landed(before, ctx.tmp)
+      assert reason =~ "HEAD did not advance"
+    end
+
+    test "HEAD advanced (non-orphaning): passes", ctx do
+      init_git_repo!(ctx.tmp)
+      commit!(ctx.tmp, "a.txt", "initial")
+
+      before = Loop.git_head(ctx.tmp)
+
+      commit!(ctx.tmp, "b.txt", "second")
+
+      assert Loop.verify_commit_landed(before, ctx.tmp) == :ok
+    end
+
+    test "orphaning HEAD (history rewritten, not extended): raises-shaped error", ctx do
+      init_git_repo!(ctx.tmp)
+      commit!(ctx.tmp, "a.txt", "initial")
+      commit!(ctx.tmp, "b.txt", "second")
+
+      before = Loop.git_head(ctx.tmp)
+
+      # Rewrite history: reset to an orphan commit unrelated to `before`.
+      System.cmd("git", ["-C", ctx.tmp, "checkout", "--orphan", "rewritten"])
+      File.write!(Path.join(ctx.tmp, "c.txt"), "content\n")
+      System.cmd("git", ["-C", ctx.tmp, "add", "."])
+      System.cmd("git", ["-C", ctx.tmp, "commit", "-q", "-m", "rewritten history"])
+
+      assert {:error, reason} = Loop.verify_commit_landed(before, ctx.tmp)
+      assert reason =~ "not an ancestor"
+    end
+
+    test "non-git cwd / unborn HEAD: fails open", ctx do
+      before = Loop.git_head(ctx.tmp)
+
+      assert before == :unborn
+      assert Loop.verify_commit_landed(before, ctx.tmp) == :ok
+    end
+  end
 end

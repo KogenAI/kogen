@@ -59,6 +59,8 @@ defmodule Mix.Tasks.Codegen.Loop do
     stamp = Calendar.strftime(DateTime.utc_now(), "%Y%m%d_%H%M%S")
     cycle_id = "#{stamp}_#{slug}"
 
+    head_before = git_head(cwd)
+
     result =
       OrchestrationLoop.run(
         harness: harness,
@@ -76,8 +78,15 @@ defmodule Mix.Tasks.Codegen.Loop do
 
     case result do
       :ok ->
-        Mix.shell().info("codegen.loop: COMMITTED, gate clear")
-        maybe_ship_pitch(source, cwd)
+        case verify_commit_landed(head_before, cwd) do
+          :ok ->
+            Mix.shell().info("codegen.loop: COMMITTED, gate clear")
+            maybe_ship_pitch(source, cwd)
+
+          {:error, reason} ->
+            Mix.shell().error("codegen.loop: FAILED — #{reason}")
+            exit({:shutdown, 1})
+        end
 
       {:error, reason} ->
         Mix.shell().error("codegen.loop: FAILED — #{reason}")
@@ -190,6 +199,65 @@ defmodule Mix.Tasks.Codegen.Loop do
   defp missing_flag!(name) do
     Mix.shell().error("codegen.loop: #{name} is required")
     exit({:shutdown, 2})
+  end
+
+  # Gate: `verify_commit_landed/2` below.
+
+  # Ship-gate floor for the SOLO path (the drain's twin floor already lives
+  # in `LoopQueueDrain.handle_exit_zero/8`): `OrchestrationLoop.run/1` can
+  # return a bare `:ok` with no work having actually landed — with the
+  # turn-0 realized-check preflight removed, the only remaining source of
+  # that would be a defect in the role chain itself, but this floor exists
+  # so such a defect fails LOUD (refuse the ship) instead of silently
+  # shipping an empty cycle. Requires HEAD to have moved AND the prior HEAD
+  # to be an ancestor of the new one (non-orphaning — rules out a rebase
+  # that discarded history rather than adding to it). Fails OPEN on a
+  # non-git cwd / unborn HEAD (mirrors `assert_clean_tree!/1`'s own
+  # fail-open posture for the same non-git case) — synthetic test cwds and
+  # the codegen self-build's own root are the intended beneficiaries.
+  @doc false
+  @spec git_head(String.t()) :: {:ok, String.t()} | :unborn
+  def git_head(cwd) do
+    case System.cmd("git", ["-C", cwd, "rev-parse", "HEAD"], stderr_to_stdout: true) do
+      {out, 0} -> {:ok, String.trim(out)}
+      {_out, _nonzero} -> :unborn
+    end
+  end
+
+  @doc false
+  @spec verify_commit_landed({:ok, String.t()} | :unborn, String.t()) ::
+          :ok | {:error, String.t()}
+  def verify_commit_landed(:unborn, _cwd), do: :ok
+
+  def verify_commit_landed({:ok, before_sha}, cwd) do
+    case git_head(cwd) do
+      :unborn ->
+        :ok
+
+      {:ok, after_sha} ->
+        cond do
+          after_sha == before_sha ->
+            {:error, "HEAD did not advance (no commit this cycle)"}
+
+          not ancestor?(cwd, before_sha, after_sha) ->
+            {:error,
+             "HEAD advanced but #{before_sha} is not an ancestor of #{after_sha} (history rewritten, not extended)"}
+
+          true ->
+            :ok
+        end
+    end
+  end
+
+  defp ancestor?(cwd, ancestor_sha, descendant_sha) do
+    case System.cmd(
+           "git",
+           ["-C", cwd, "merge-base", "--is-ancestor", ancestor_sha, descendant_sha],
+           stderr_to_stdout: true
+         ) do
+      {_out, 0} -> true
+      {_out, _nonzero} -> false
+    end
   end
 
   defp ship_ready_pitch(src, dst, cwd) do

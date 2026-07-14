@@ -80,21 +80,6 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
     end
   end
 
-  # Default realized-check stub for every test that doesn't exercise the
-  # turn-0 realized-check preflight itself — always reports "not realized" so
-  # the full role chain runs, matching pre-realized-check behavior. Mirrors
-  # no_op_gate_preflight_fn/all_present_preflight_probe_fn's role: a safe
-  # default so unrelated run/1 tests never shell out to a real codegen-call.
-  defp not_realized_fn do
-    fn _pitch, _cwd -> {:ok, %{"realized" => false, "confidence" => "low", "evidence" => ""}} end
-  end
-
-  defp realized_high_confidence_fn(evidence \\ "commit 13acbe2 — all requirements met") do
-    fn _pitch, _cwd ->
-      {:ok, %{"realized" => true, "confidence" => "high", "evidence" => evidence}}
-    end
-  end
-
   # Writes a real, minimal JSONL cycle log fixture on disk and returns its
   # path. Used by tests that need a real :log_init_fn (e.g. the
   # default :log_died_fn integration test), not the retrospective machinery
@@ -126,113 +111,6 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
     {:ok, calls_agent: calls_agent}
   end
 
-  describe "run/1 — turn-0 realized-check preflight" do
-    test "high-confidence realized verdict with evidence skips the entire role chain",
-         %{calls_agent: calls_agent} do
-      assert :ok ==
-               OrchestrationLoop.run(
-                 harness: "claude_code",
-                 stack: "phoenix",
-                 cwd: "/tmp/irrelevant",
-                 pitch: "already done",
-                 invoke_fn: always_ok_invoke_fn(calls_agent),
-                 gate_fn: always_clear_gate_fn(),
-                 gate_preflight_fn: no_op_gate_preflight_fn(),
-                 preflight_probe_fn: all_present_preflight_probe_fn(),
-                 realized_check_fn: realized_high_confidence_fn(),
-                 advance_cycle_state_fn: no_op_advance_cycle_state_fn()
-               )
-
-      assert Agent.get(calls_agent, & &1) == []
-    end
-
-    test "realized:false runs the full chain (fail closed on not-realized)",
-         %{calls_agent: calls_agent} do
-      assert :ok ==
-               OrchestrationLoop.run(
-                 harness: "claude_code",
-                 stack: "static",
-                 cwd: "/tmp/irrelevant",
-                 pitch: "do the thing",
-                 invoke_fn: always_ok_invoke_fn(calls_agent),
-                 gate_fn: always_clear_gate_fn(),
-                 gate_preflight_fn: no_op_gate_preflight_fn(),
-                 preflight_probe_fn: all_present_preflight_probe_fn(),
-                 realized_check_fn: not_realized_fn(),
-                 advance_cycle_state_fn: no_op_advance_cycle_state_fn()
-               )
-
-      assert Agent.get(calls_agent, & &1) == @static_sequence
-    end
-
-    test "high-confidence realized but empty evidence runs the full chain (fail closed)",
-         %{calls_agent: calls_agent} do
-      empty_evidence_fn = fn _pitch, _cwd ->
-        {:ok, %{"realized" => true, "confidence" => "high", "evidence" => ""}}
-      end
-
-      assert :ok ==
-               OrchestrationLoop.run(
-                 harness: "claude_code",
-                 stack: "static",
-                 cwd: "/tmp/irrelevant",
-                 pitch: "do the thing",
-                 invoke_fn: always_ok_invoke_fn(calls_agent),
-                 gate_fn: always_clear_gate_fn(),
-                 gate_preflight_fn: no_op_gate_preflight_fn(),
-                 preflight_probe_fn: all_present_preflight_probe_fn(),
-                 realized_check_fn: empty_evidence_fn,
-                 advance_cycle_state_fn: no_op_advance_cycle_state_fn()
-               )
-
-      assert Agent.get(calls_agent, & &1) == @static_sequence
-    end
-
-    test "realized:true but confidence:low runs the full chain (fail closed)",
-         %{calls_agent: calls_agent} do
-      low_confidence_fn = fn _pitch, _cwd ->
-        {:ok, %{"realized" => true, "confidence" => "low", "evidence" => "maybe commit abc123"}}
-      end
-
-      assert :ok ==
-               OrchestrationLoop.run(
-                 harness: "claude_code",
-                 stack: "static",
-                 cwd: "/tmp/irrelevant",
-                 pitch: "do the thing",
-                 invoke_fn: always_ok_invoke_fn(calls_agent),
-                 gate_fn: always_clear_gate_fn(),
-                 gate_preflight_fn: no_op_gate_preflight_fn(),
-                 preflight_probe_fn: all_present_preflight_probe_fn(),
-                 realized_check_fn: low_confidence_fn,
-                 advance_cycle_state_fn: no_op_advance_cycle_state_fn()
-               )
-
-      assert Agent.get(calls_agent, & &1) == @static_sequence
-    end
-
-    test "realized-check error result runs the full chain (fail closed)",
-         %{calls_agent: calls_agent} do
-      error_fn = fn _pitch, _cwd -> {:error, "codegen-call exited non-zero"} end
-
-      assert :ok ==
-               OrchestrationLoop.run(
-                 harness: "claude_code",
-                 stack: "static",
-                 cwd: "/tmp/irrelevant",
-                 pitch: "do the thing",
-                 invoke_fn: always_ok_invoke_fn(calls_agent),
-                 gate_fn: always_clear_gate_fn(),
-                 gate_preflight_fn: no_op_gate_preflight_fn(),
-                 preflight_probe_fn: all_present_preflight_probe_fn(),
-                 realized_check_fn: error_fn,
-                 advance_cycle_state_fn: no_op_advance_cycle_state_fn()
-               )
-
-      assert Agent.get(calls_agent, & &1) == @static_sequence
-    end
-  end
-
   describe "run/1 — sequence order" do
     test "phoenix sequence invokes all roles in order on success", %{calls_agent: calls_agent} do
       assert :ok ==
@@ -245,7 +123,6 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
                  gate_fn: always_clear_gate_fn(),
                  gate_preflight_fn: no_op_gate_preflight_fn(),
                  preflight_probe_fn: all_present_preflight_probe_fn(),
-                 realized_check_fn: not_realized_fn(),
                  advance_cycle_state_fn: no_op_advance_cycle_state_fn()
                )
 
@@ -263,7 +140,6 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
                  gate_fn: always_clear_gate_fn(),
                  gate_preflight_fn: no_op_gate_preflight_fn(),
                  preflight_probe_fn: all_present_preflight_probe_fn(),
-                 realized_check_fn: not_realized_fn(),
                  advance_cycle_state_fn: no_op_advance_cycle_state_fn()
                )
 
@@ -301,7 +177,6 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
                  gate_fn: always_clear_gate_fn(),
                  gate_preflight_fn: no_op_gate_preflight_fn(),
                  preflight_probe_fn: all_present_preflight_probe_fn(),
-                 realized_check_fn: not_realized_fn(),
                  advance_cycle_state_fn: no_op_advance_cycle_state_fn()
                )
 
@@ -328,7 +203,6 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
                  gate_fn: always_clear_gate_fn(),
                  gate_preflight_fn: no_op_gate_preflight_fn(),
                  preflight_probe_fn: all_present_preflight_probe_fn(),
-                 realized_check_fn: not_realized_fn(),
                  advance_cycle_state_fn: no_op_advance_cycle_state_fn()
                )
 
@@ -368,7 +242,6 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
                  gate_fn: always_clear_gate_fn(),
                  gate_preflight_fn: no_op_gate_preflight_fn(),
                  preflight_probe_fn: all_present_preflight_probe_fn(),
-                 realized_check_fn: not_realized_fn(),
                  advance_cycle_state_fn: no_op_advance_cycle_state_fn()
                )
 
@@ -388,8 +261,7 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
                  invoke_fn: invoke_fn,
                  gate_fn: always_clear_gate_fn(),
                  gate_preflight_fn: no_op_gate_preflight_fn(),
-                 preflight_probe_fn: all_present_preflight_probe_fn(),
-                 realized_check_fn: not_realized_fn()
+                 preflight_probe_fn: all_present_preflight_probe_fn()
                )
 
       assert reason =~ "failed twice"
@@ -429,7 +301,6 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
                  gate_fn: always_clear_gate_fn(),
                  gate_preflight_fn: no_op_gate_preflight_fn(),
                  preflight_probe_fn: all_present_preflight_probe_fn(),
-                 realized_check_fn: not_realized_fn(),
                  advance_cycle_state_fn: no_op_advance_cycle_state_fn(),
                  log_died_fn: log_died_fn
                )
@@ -458,7 +329,6 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
                  gate_fn: always_clear_gate_fn(),
                  gate_preflight_fn: no_op_gate_preflight_fn(),
                  preflight_probe_fn: all_present_preflight_probe_fn(),
-                 realized_check_fn: not_realized_fn(),
                  log_died_fn: log_died_fn
                )
 
@@ -499,7 +369,6 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
                  gate_fn: always_clear_gate_fn(),
                  gate_preflight_fn: no_op_gate_preflight_fn(),
                  preflight_probe_fn: all_present_preflight_probe_fn(),
-                 realized_check_fn: not_realized_fn(),
                  log_died_fn: log_died_fn,
                  sleep_fn: sleep_fn
                )
@@ -551,7 +420,6 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
                  gate_fn: always_clear_gate_fn(),
                  gate_preflight_fn: no_op_gate_preflight_fn(),
                  preflight_probe_fn: all_present_preflight_probe_fn(),
-                 realized_check_fn: not_realized_fn(),
                  advance_cycle_state_fn: no_op_advance_cycle_state_fn(),
                  sleep_fn: fn _ms -> :ok end
                )
@@ -588,7 +456,6 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
                  gate_fn: always_clear_gate_fn(),
                  gate_preflight_fn: no_op_gate_preflight_fn(),
                  preflight_probe_fn: all_present_preflight_probe_fn(),
-                 realized_check_fn: not_realized_fn(),
                  advance_cycle_state_fn: no_op_advance_cycle_state_fn()
                )
     end
@@ -623,7 +490,6 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
                  gate_fn: always_clear_gate_fn(),
                  gate_preflight_fn: no_op_gate_preflight_fn(),
                  preflight_probe_fn: all_present_preflight_probe_fn(),
-                 realized_check_fn: not_realized_fn(),
                  advance_cycle_state_fn: no_op_advance_cycle_state_fn()
                )
 
@@ -695,7 +561,6 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
                  gate_fn: gate_fn,
                  gate_preflight_fn: no_op_gate_preflight_fn(),
                  preflight_probe_fn: all_present_preflight_probe_fn(),
-                 realized_check_fn: not_realized_fn(),
                  advance_cycle_state_fn: no_op_advance_cycle_state_fn()
                )
 
@@ -717,8 +582,7 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
                  invoke_fn: always_ok_invoke_fn(calls_agent),
                  gate_fn: gate_fn,
                  gate_preflight_fn: no_op_gate_preflight_fn(),
-                 preflight_probe_fn: all_present_preflight_probe_fn(),
-                 realized_check_fn: not_realized_fn()
+                 preflight_probe_fn: all_present_preflight_probe_fn()
                )
 
       assert reason =~ "gate verdict=failed"
@@ -738,8 +602,7 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
           invoke_fn: always_ok_invoke_fn(calls_agent),
           gate_fn: gate_fn,
           gate_preflight_fn: no_op_gate_preflight_fn(),
-          preflight_probe_fn: all_present_preflight_probe_fn(),
-          realized_check_fn: not_realized_fn()
+          preflight_probe_fn: all_present_preflight_probe_fn()
         )
       end
     end
@@ -955,7 +818,6 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
                  gate_fn: gate_fn,
                  gate_preflight_fn: no_op_gate_preflight_fn(),
                  preflight_probe_fn: all_present_preflight_probe_fn(),
-                 realized_check_fn: not_realized_fn(),
                  tree_signature_fn: signature_fn,
                  advance_cycle_state_fn: no_op_advance_cycle_state_fn()
                )
@@ -980,7 +842,6 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
                  gate_fn: gate_fn,
                  gate_preflight_fn: no_op_gate_preflight_fn(),
                  preflight_probe_fn: all_present_preflight_probe_fn(),
-                 realized_check_fn: not_realized_fn(),
                  tree_signature_fn: signature_fn
                )
 
@@ -1013,7 +874,6 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
                  gate_fn: gate_fn,
                  gate_preflight_fn: no_op_gate_preflight_fn(),
                  preflight_probe_fn: all_present_preflight_probe_fn(),
-                 realized_check_fn: not_realized_fn(),
                  tree_signature_fn: signature_fn
                )
 
@@ -1041,8 +901,7 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
                  invoke_fn: always_ok_invoke_fn(calls_agent),
                  gate_fn: gate_fn,
                  gate_preflight_fn: no_op_gate_preflight_fn(),
-                 preflight_probe_fn: all_present_preflight_probe_fn(),
-                 realized_check_fn: not_realized_fn()
+                 preflight_probe_fn: all_present_preflight_probe_fn()
                )
 
       assert reason =~ "gate verdict=failed"
@@ -1092,8 +951,7 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
                  invoke_fn: invoke_fn,
                  gate_fn: gate_fn,
                  gate_preflight_fn: no_op_gate_preflight_fn(),
-                 preflight_probe_fn: all_present_preflight_probe_fn(),
-                 realized_check_fn: not_realized_fn()
+                 preflight_probe_fn: all_present_preflight_probe_fn()
                )
 
       seen_reason = Agent.get(seen_reason_agent, & &1)
@@ -1150,7 +1008,6 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
                  gate_fn: always_clear_gate_fn(),
                  gate_preflight_fn: no_op_gate_preflight_fn(),
                  preflight_probe_fn: all_present_preflight_probe_fn(),
-                 realized_check_fn: not_realized_fn(),
                  advance_cycle_state_fn: no_op_advance_cycle_state_fn()
                )
 
@@ -1180,7 +1037,6 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
                  gate_fn: always_clear_gate_fn(),
                  gate_preflight_fn: no_op_gate_preflight_fn(),
                  preflight_probe_fn: all_present_preflight_probe_fn(),
-                 realized_check_fn: not_realized_fn(),
                  advance_cycle_state_fn: advance_fn
                )
 
@@ -1209,7 +1065,6 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
                  gate_fn: always_clear_gate_fn(),
                  gate_preflight_fn: no_op_gate_preflight_fn(),
                  preflight_probe_fn: all_present_preflight_probe_fn(),
-                 realized_check_fn: not_realized_fn(),
                  advance_cycle_state_fn: advance_fn
                )
 
@@ -1244,7 +1099,6 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
                  gate_fn: always_clear_gate_fn(),
                  gate_preflight_fn: no_op_gate_preflight_fn(),
                  preflight_probe_fn: all_present_preflight_probe_fn(),
-                 realized_check_fn: not_realized_fn(),
                  format_fn: format_fn,
                  advance_cycle_state_fn: no_op_advance_cycle_state_fn()
                )
@@ -1270,7 +1124,6 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
                  gate_fn: always_clear_gate_fn(),
                  gate_preflight_fn: no_op_gate_preflight_fn(),
                  preflight_probe_fn: all_present_preflight_probe_fn(),
-                 realized_check_fn: not_realized_fn(),
                  advance_cycle_state_fn: no_op_advance_cycle_state_fn(),
                  curator_doc_check_fn: always_clean_curator_doc_fn()
                )
@@ -1298,7 +1151,6 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
                  gate_fn: always_clear_gate_fn(),
                  gate_preflight_fn: no_op_gate_preflight_fn(),
                  preflight_probe_fn: all_present_preflight_probe_fn(),
-                 realized_check_fn: not_realized_fn(),
                  advance_cycle_state_fn: no_op_advance_cycle_state_fn(),
                  curator_doc_check_fn: scan_fn
                )
@@ -1335,7 +1187,6 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
                  gate_fn: always_clear_gate_fn(),
                  gate_preflight_fn: no_op_gate_preflight_fn(),
                  preflight_probe_fn: all_present_preflight_probe_fn(),
-                 realized_check_fn: not_realized_fn(),
                  advance_cycle_state_fn: no_op_advance_cycle_state_fn(),
                  curator_doc_check_fn: scan_fn
                )
@@ -1370,7 +1221,6 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
           gate_fn: always_clear_gate_fn(),
           gate_preflight_fn: no_op_gate_preflight_fn(),
           preflight_probe_fn: all_present_preflight_probe_fn(),
-          realized_check_fn: not_realized_fn(),
           advance_cycle_state_fn: advance_fn,
           curator_doc_check_fn: always_violates_fn,
           max_curator_doc_cycles: 1
@@ -1399,7 +1249,6 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
           gate_fn: always_clear_gate_fn(),
           gate_preflight_fn: no_op_gate_preflight_fn(),
           preflight_probe_fn: all_present_preflight_probe_fn(),
-          realized_check_fn: not_realized_fn(),
           advance_cycle_state_fn: no_op_advance_cycle_state_fn(),
           curator_doc_check_fn: raising_fn
         )
@@ -1421,7 +1270,6 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
           gate_fn: always_clear_gate_fn(),
           gate_preflight_fn: no_op_gate_preflight_fn(),
           preflight_probe_fn: all_present_preflight_probe_fn(),
-          realized_check_fn: not_realized_fn(),
           advance_cycle_state_fn: no_op_advance_cycle_state_fn(),
           curator_doc_check_fn: bogus_fn
         )
@@ -1445,7 +1293,6 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
                  gate_fn: always_clear_gate_fn(),
                  gate_preflight_fn: no_op_gate_preflight_fn(),
                  preflight_probe_fn: all_present_preflight_probe_fn(),
-                 realized_check_fn: not_realized_fn(),
                  advance_cycle_state_fn: no_op_advance_cycle_state_fn(),
                  curator_doc_check_fn: always_clean_curator_doc_fn(),
                  env_var_scan_fn: always_clean_env_var_fn()
@@ -1482,7 +1329,6 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
                  gate_fn: always_clear_gate_fn(),
                  gate_preflight_fn: no_op_gate_preflight_fn(),
                  preflight_probe_fn: all_present_preflight_probe_fn(),
-                 realized_check_fn: not_realized_fn(),
                  advance_cycle_state_fn: advance_fn,
                  curator_doc_check_fn: always_clean_curator_doc_fn(),
                  env_var_scan_fn: scan_fn
@@ -1517,7 +1363,6 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
           gate_fn: always_clear_gate_fn(),
           gate_preflight_fn: no_op_gate_preflight_fn(),
           preflight_probe_fn: all_present_preflight_probe_fn(),
-          realized_check_fn: not_realized_fn(),
           advance_cycle_state_fn: advance_fn,
           curator_doc_check_fn: always_clean_curator_doc_fn(),
           env_var_scan_fn: always_violates_fn,
@@ -1544,7 +1389,6 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
           gate_fn: always_clear_gate_fn(),
           gate_preflight_fn: no_op_gate_preflight_fn(),
           preflight_probe_fn: all_present_preflight_probe_fn(),
-          realized_check_fn: not_realized_fn(),
           advance_cycle_state_fn: no_op_advance_cycle_state_fn(),
           curator_doc_check_fn: always_clean_curator_doc_fn(),
           env_var_scan_fn: raising_fn
@@ -1567,7 +1411,6 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
           gate_fn: always_clear_gate_fn(),
           gate_preflight_fn: no_op_gate_preflight_fn(),
           preflight_probe_fn: all_present_preflight_probe_fn(),
-          realized_check_fn: not_realized_fn(),
           advance_cycle_state_fn: no_op_advance_cycle_state_fn(),
           curator_doc_check_fn: always_clean_curator_doc_fn(),
           env_var_scan_fn: bogus_fn
@@ -1641,7 +1484,6 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
                  gate_fn: always_clear_gate_fn(),
                  gate_preflight_fn: no_op_gate_preflight_fn(),
                  preflight_probe_fn: all_present_preflight_probe_fn(),
-                 realized_check_fn: not_realized_fn(),
                  advance_cycle_state_fn: no_op_advance_cycle_state_fn()
                )
 
@@ -1665,7 +1507,6 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
           gate_fn: always_clear_gate_fn(),
           gate_preflight_fn: no_op_gate_preflight_fn(),
           preflight_probe_fn: all_present_preflight_probe_fn(),
-          realized_check_fn: not_realized_fn(),
           advance_cycle_state_fn: no_op_advance_cycle_state_fn(),
           max_curator_doc_cycles: 0
         )
@@ -1702,7 +1543,6 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
                  gate_fn: always_clear_gate_fn(),
                  gate_preflight_fn: no_op_gate_preflight_fn(),
                  preflight_probe_fn: all_present_preflight_probe_fn(),
-                 realized_check_fn: not_realized_fn(),
                  advance_cycle_state_fn: no_op_advance_cycle_state_fn()
                )
 
@@ -1723,7 +1563,6 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
           gate_fn: always_clear_gate_fn(),
           gate_preflight_fn: no_op_gate_preflight_fn(),
           preflight_probe_fn: all_present_preflight_probe_fn(),
-          realized_check_fn: not_realized_fn(),
           advance_cycle_state_fn: no_op_advance_cycle_state_fn(),
           max_curator_doc_cycles: 0
         )
@@ -1753,7 +1592,6 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
                  gate_fn: always_clear_gate_fn(),
                  gate_preflight_fn: no_op_gate_preflight_fn(),
                  preflight_probe_fn: all_present_preflight_probe_fn(),
-                 realized_check_fn: not_realized_fn(),
                  advance_cycle_state_fn: no_op_advance_cycle_state_fn()
                )
 
@@ -2038,8 +1876,7 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
           invoke_fn: invoke_fn,
           gate_fn: always_clear_gate_fn(),
           gate_preflight_fn: no_op_gate_preflight_fn(),
-          preflight_probe_fn: all_present_preflight_probe_fn(),
-          realized_check_fn: not_realized_fn()
+          preflight_probe_fn: all_present_preflight_probe_fn()
         )
       end
     end
@@ -2078,7 +1915,6 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
                  gate_fn: always_clear_gate_fn(),
                  gate_preflight_fn: no_op_gate_preflight_fn(),
                  preflight_probe_fn: all_present_preflight_probe_fn(),
-                 realized_check_fn: not_realized_fn(),
                  advance_cycle_state_fn: fn _state,
                                             _step_log,
                                             _session_id,
@@ -2121,7 +1957,6 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
           gate_fn: always_clear_gate_fn(),
           gate_preflight_fn: no_op_gate_preflight_fn(),
           preflight_probe_fn: all_present_preflight_probe_fn(),
-          realized_check_fn: not_realized_fn(),
           advance_cycle_state_fn: fn _state, _step_log, _session_id, _verdict, _project_dir ->
             :ok
           end
@@ -2168,7 +2003,6 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
           gate_fn: always_clear_gate_fn(),
           gate_preflight_fn: no_op_gate_preflight_fn(),
           preflight_probe_fn: all_present_preflight_probe_fn(),
-          realized_check_fn: not_realized_fn(),
           advance_cycle_state_fn: fn _state, _step_log, _session_id, _verdict, _project_dir ->
             :ok
           end
@@ -2199,7 +2033,6 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
           gate_fn: always_clear_gate_fn(),
           gate_preflight_fn: no_op_gate_preflight_fn(),
           preflight_probe_fn: all_present_preflight_probe_fn(),
-          realized_check_fn: not_realized_fn(),
           advance_cycle_state_fn: fn _state, _step_log, _session_id, _verdict, _project_dir ->
             :ok
           end
@@ -2225,8 +2058,7 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
           invoke_fn: always_ok_invoke_fn(calls_agent),
           gate_fn: always_clear_gate_fn(),
           gate_preflight_fn: raising_preflight,
-          preflight_probe_fn: all_present_preflight_probe_fn(),
-          realized_check_fn: not_realized_fn()
+          preflight_probe_fn: all_present_preflight_probe_fn()
         )
       end
 
@@ -2246,7 +2078,6 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
                  gate_fn: always_clear_gate_fn(),
                  gate_preflight_fn: no_op_gate_preflight_fn(),
                  preflight_probe_fn: all_present_preflight_probe_fn(),
-                 realized_check_fn: not_realized_fn(),
                  advance_cycle_state_fn: no_op_advance_cycle_state_fn()
                )
 
@@ -2271,8 +2102,7 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
           invoke_fn: always_ok_invoke_fn(calls_agent),
           gate_fn: always_clear_gate_fn(),
           gate_preflight_fn: no_op_gate_preflight_fn(),
-          preflight_probe_fn: missing_committer_probe,
-          realized_check_fn: not_realized_fn()
+          preflight_probe_fn: missing_committer_probe
         )
       end
 
@@ -2292,8 +2122,7 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
           invoke_fn: always_ok_invoke_fn(calls_agent),
           gate_fn: always_clear_gate_fn(),
           gate_preflight_fn: no_op_gate_preflight_fn(),
-          preflight_probe_fn: inconclusive_probe,
-          realized_check_fn: not_realized_fn()
+          preflight_probe_fn: inconclusive_probe
         )
       end
 
@@ -2311,7 +2140,6 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
                  gate_fn: always_clear_gate_fn(),
                  gate_preflight_fn: no_op_gate_preflight_fn(),
                  preflight_probe_fn: all_present_preflight_probe_fn(),
-                 realized_check_fn: not_realized_fn(),
                  advance_cycle_state_fn: no_op_advance_cycle_state_fn()
                )
 
@@ -2357,7 +2185,6 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
                  gate_fn: always_clear_gate_fn(),
                  gate_preflight_fn: no_op_gate_preflight_fn(),
                  preflight_probe_fn: all_present_preflight_probe_fn(),
-                 realized_check_fn: not_realized_fn(),
                  advance_cycle_state_fn: no_op_advance_cycle_state_fn(),
                  curator_doc_check_fn: always_clean_curator_doc_fn(),
                  env_var_scan_fn: always_clean_env_var_fn()
@@ -2383,7 +2210,6 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
           gate_fn: always_clear_gate_fn(),
           gate_preflight_fn: no_op_gate_preflight_fn(),
           preflight_probe_fn: all_present_preflight_probe_fn(),
-          realized_check_fn: not_realized_fn(),
           advance_cycle_state_fn: no_op_advance_cycle_state_fn(),
           curator_doc_check_fn: always_clean_curator_doc_fn(),
           env_var_scan_fn: always_clean_env_var_fn()
@@ -2408,7 +2234,6 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
                  gate_fn: always_clear_gate_fn(),
                  gate_preflight_fn: no_op_gate_preflight_fn(),
                  preflight_probe_fn: all_present_preflight_probe_fn(),
-                 realized_check_fn: not_realized_fn(),
                  advance_cycle_state_fn: no_op_advance_cycle_state_fn(),
                  curator_doc_check_fn: always_clean_curator_doc_fn(),
                  env_var_scan_fn: always_clean_env_var_fn()
@@ -2462,9 +2287,6 @@ defmodule CodegenTestHarness.OrchestrationLoopLockTest do
         "--agent '__codegen_loop_preflight_probe__' not found. Available agents: " <>
           "planner-phoenix, developer-phoenix-backend, developer-phoenix-frontend, " <>
           "reviewer-phoenix, context-curator, committer, developer-static, reviewer-static"
-      end,
-      realized_check_fn: fn _pitch, _cwd ->
-        {:ok, %{"realized" => false, "confidence" => "low", "evidence" => ""}}
       end,
       advance_cycle_state_fn: fn _state, _step_log, _session_id, _verdict, _project_dir -> :ok end,
       orphan_scan_fn: fn _cwd -> [] end
