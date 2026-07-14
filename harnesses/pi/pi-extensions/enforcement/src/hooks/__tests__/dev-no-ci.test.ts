@@ -40,9 +40,9 @@ describe("dev-no-ci", () => {
     assert.ok(result == null || (result as { block?: boolean }).block !== true);
   });
 
-  it("allows make test for developer (loop's own gate command)", async () => {
+  it("blocks make test for developer (full-suite target, owned by the loop's LoopGate)", async () => {
     const result = await runHook("make test");
-    assert.ok(result == null || (result as { block?: boolean }).block !== true);
+    assert.ok((result as { block?: boolean }).block === true);
   });
 
   it("blocks make test-stacks for developer", async () => {

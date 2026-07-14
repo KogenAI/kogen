@@ -54,12 +54,10 @@ Example: Create a directory with a `.md` extension in a location where the test 
 
 **Hooks using this pattern**:
 
-- `build-no-success-before-commit` (enforcement hook) — corrupt index AFTER `git log -1 --format=%ct` (commit-timestamp check) succeeds, forcing `git status --porcelain` to throw
 - `clean-tree-before-ship` (enforcement hook) — corrupt index AFTER `git rev-parse --show-toplevel` succeeds, forcing `git status --porcelain` to throw
 
 **Test files**:
 
-- `build-no-success-before-commit.test` — new case "blocks build when git status fails after repo-presence check"
 - `clean-tree-before-ship.test` — new case "blocks ship when git status fails after repo-presence check"
 
 ## `.gitattributes` External Diff-Driver for Per-Call-Failure Injection

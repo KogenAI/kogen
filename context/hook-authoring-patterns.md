@@ -314,7 +314,6 @@ Orchestrator reads verdict before deciding next delegation.
 - Written by `write_gate_result` (from `harnesses/claude/hooks/lib/gate-result.sh`) on every gate branch to `<project>/codegen/gate-pending/gate-result.json` (created at session start by gate-select.sh)
 - **Path**: Always in `codegen/gate-pending/` subdirectory, not at `codegen/` root. Hooks that read gate result must use `$project_dir/codegen/gate-pending/gate-result.json`
 - Fields: `gate`, `mode`, `verdict` (clear|failed|inconclusive), `exit_code`, `execution_evidence`, `expected_segments`, `render_verdict`, `classification`, `started_at`, `ended_at`, `session_id`, `log`, `runner_found`
-- `build-no-success-before-commit.sh` reads `verdict` field — requires `clear` before allowing BUILD_RESULT signal
 
 **Gate JSON block format** (new — `gate-select.sh` parses gate-json fence in `## Plan`):
 
@@ -363,7 +362,7 @@ Applies to any widely-encoded schema (e.g., session-log slug class in 9 places: 
 
 ## Clean-Tree Gate at SHIPPED Signal
 
-`build-no-success-before-commit.sh` enforces clean tree before BUILD_RESULT: success. Flow: commit found (commit-ts > start-ts) → gate clear → `git status --porcelain` empty → allow. Dirty/untracked file blocks with file list. No allowlist; gitignore unwanted files. Enforces "one commit/cycle capturing ALL output".
+`clean-tree-before-ship.sh` blocks the ship-mv (`codegen/pitches/ready/<slug>.md` → `shipped/<slug>.md`) when `git status --porcelain` is non-empty, preventing a pitch from shipping while orphaned cycle output sits uncommitted. Fail-open outside a git repo. Dirty/untracked file blocks with file list. No allowlist; gitignore unwanted files. The loop's own asserts (`OrchestrationLoop` clean-tree + exactly-one-commit checks) enforce "one commit/cycle capturing ALL output" unconditionally, independent of this hook.
 
 ## Transcript Lag & Discovery Pattern
 

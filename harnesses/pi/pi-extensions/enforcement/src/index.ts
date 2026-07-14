@@ -15,7 +15,6 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
 // BEGIN-GENERATED-ENFORCEMENT-BLOCK
 import { register as registerBuildAgentAppConfinement } from "./hooks/build-agent-app-confinement";
-import { register as registerBuildNoSuccessBeforeCommit } from "./hooks/build-no-success-before-commit";
 import { register as registerBuildQueueContinuity } from "./hooks/build-queue-continuity";
 import { register as registerBuildWorkerCwdGuard } from "./hooks/build-worker-cwd-guard";
 import { register as registerCleanTreeBeforeShip } from "./hooks/clean-tree-before-ship";
@@ -68,7 +67,6 @@ import { register as registerUsageRulesGrepGuard } from "./hooks/usage-rules-gre
 export default function (pi: ExtensionAPI): void {
   // BEGIN-GENERATED-ENFORCEMENT-BLOCK
   registerBuildAgentAppConfinement(pi);
-  registerBuildNoSuccessBeforeCommit(pi);
   registerBuildQueueContinuity(pi);
   registerBuildWorkerCwdGuard(pi);
   registerCleanTreeBeforeShip(pi);

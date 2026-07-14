@@ -98,7 +98,6 @@ For every `harnesses/claude/hooks/<name>.sh` there is a paired `<name>_test.sh` 
 
 | Surface                          | Type           | File/Path                                       | Test that exercises it                               | Notes                                        |
 | -------------------------------- | -------------- | ----------------------------------------------- | ---------------------------------------------------- | -------------------------------------------- |
-| build-no-success-before-commit   | hook           | `.../hooks/build-no-success-before-commit.sh`   | `.../hooks/build-no-success-before-commit_test.sh`   |                                              |
 | build-worker-cwd-guard           | hook           | `.../hooks/build-worker-cwd-guard.sh`           | `.../hooks/build-worker-cwd-guard_test.sh`           |                                              |
 | claude-debug-bash-guard          | hook           | `.../hooks/claude-debug-bash-guard.sh`          | `.../hooks/claude-debug-bash-guard_test.sh`          |                                              |
 | codegen-build (harness parity)   | hook-test-only | (no script — test is the surface)               | `.../hooks/codegen-build_test.sh`                    | Invoked separately via `make harness-parity` |

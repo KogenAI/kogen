@@ -111,7 +111,7 @@ Committer stages **ALL cycle output** in a single `git add -A` commit per cycle.
 - Curator context edits (`context/*.md`, `codegen/rules/**` in same-repo case)
 - Session logs (appended to `codegen/logging/*.md` during the cycle)
 
-**One commit per cycle is mandatory** — partial snapshots (staging only a subset of cycle-modified files) are forbidden. The clean-tree gate (`build-no-success-before-commit.sh`) blocks SHIPPED if any modified file remains unstaged.
+**One commit per cycle is mandatory** — partial snapshots (staging only a subset of cycle-modified files) are forbidden. Enforced unconditionally by `OrchestrationLoop`'s own post-committer asserts (clean-tree + exactly-one-commit) and, at the pitch-drain layer, by `clean-tree-before-ship.sh` blocking the ship-mv if any modified file remains unstaged.
 
 **Post-commit self-check**: after committing, the committer re-runs `git status --porcelain`; a non-empty tree means the commit did not capture the tree (blocked hook / incomplete staging) → report `status: failed`, never `success`. This is the source-level fail-loud for the legacy engine; the Elixir loop enforces the same exactly-one-commit + clean-tree invariant via `verify_committed!`/`assert_work_produced!` post-committer.
 

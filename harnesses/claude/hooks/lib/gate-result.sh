@@ -3,7 +3,7 @@
 #
 # Sourceable. After sourcing, call:
 #
-#   write_gate_result <gate> <mode> <diff_sha> <diff_files_count> \
+#   write_gate_result <gate> <mode> <base_sha> <diff_files_count> \
 #       <runner_found> <exit_code> <execution_evidence> <expected_segments> \
 #       <render_verdict> <classification> <started> <ended> \
 #       <session_id> <log> <project_dir> [<witness>]
@@ -126,14 +126,14 @@ extract_witness() {
     return 0
 }
 
-# write_gate_result <gate> <mode> <diff_sha> <diff_files_count>
+# write_gate_result <gate> <mode> <base_sha> <diff_files_count>
 #     <runner_found> <exit_code> <execution_evidence> <expected_segments>
 #     <render_verdict> <classification> <started> <ended>
 #     <session_id> <log> <project_dir> [<witness>]
 write_gate_result() {
     local gate="$1"
     local mode="$2"
-    local diff_sha="$3"
+    local base_sha="$3"
     local diff_files_count="$4"
     local runner_found="$5"
     local exit_code="$6"
@@ -175,7 +175,7 @@ write_gate_result() {
     jq -n \
         --arg gate "$gate" \
         --arg mode "$mode" \
-        --arg diff_sha "$diff_sha" \
+        --arg base_sha "$base_sha" \
         --argjson diff_files_count "${diff_files_count:-0}" \
         --argjson runner_found "$([ "$runner_found" = "true" ] && echo true || echo false)" \
         $exit_arg_type exit "${exit_num:-0}" \
@@ -193,7 +193,7 @@ write_gate_result() {
         '{
             gate: $gate,
             mode: $mode,
-            diff_sha: $diff_sha,
+            base_sha: $base_sha,
             diff_files_count: $diff_files_count,
             runner_found: $runner_found,
             exit: $exit,
@@ -232,14 +232,14 @@ gate_result_verdict() {
     jq -r '.verdict // ""' "$result_file" 2>/dev/null || printf ''
 }
 
-# gate_result_diff_sha <project_dir>
-# Reads diff_sha field from gate-result.json. Prints diff_sha or "" if absent.
-gate_result_diff_sha() {
+# gate_result_base_sha <project_dir>
+# Reads base_sha field from gate-result.json. Prints base_sha or "" if absent.
+gate_result_base_sha() {
     local project_dir="$1"
     local result_file="$project_dir/codegen/gate-pending/gate-result.json"
     [ -f "$result_file" ] || {
         printf ''
         return 0
     }
-    jq -r '.diff_sha // ""' "$result_file" 2>/dev/null || printf ''
+    jq -r '.base_sha // ""' "$result_file" 2>/dev/null || printf ''
 }

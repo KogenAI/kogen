@@ -152,12 +152,12 @@ defmodule CodegenTestHarness.LoopGate do
       raise "LoopGate: gate-result.sh not found at #{@gate_result_lib}"
     end
 
-    diff_sha = gate_diff_sha(project_dir)
+    base_sha = gate_base_sha(project_dir)
     diff_files_count = gate_diff_files_count(project_dir)
 
     write_script = """
     source #{shell_quote(@gate_result_lib)} && write_gate_result \
-      #{shell_quote(gate)} #{shell_quote(mode)} #{shell_quote(diff_sha)} #{diff_files_count} \
+      #{shell_quote(gate)} #{shell_quote(mode)} #{shell_quote(base_sha)} #{diff_files_count} \
       true #{exit_code} 1 1 #{shell_quote(render_verdict)} "" \
       #{shell_quote(started)} #{shell_quote(ended)} \
       #{shell_quote(session_id)} #{shell_quote(log_path)} #{shell_quote(project_dir)}
@@ -313,8 +313,8 @@ defmodule CodegenTestHarness.LoopGate do
   # before the committer in role order). "" when project_dir is not a git
   # repo — fail-closed sentinel: the drain's freshness check treats "" as
   # never-fresh, and LoopGate's own tests run in a bare non-git tmp dir.
-  @spec gate_diff_sha(String.t()) :: String.t()
-  defp gate_diff_sha(project_dir) do
+  @spec gate_base_sha(String.t()) :: String.t()
+  defp gate_base_sha(project_dir) do
     case System.cmd("git", ["-C", project_dir, "rev-parse", "--short", "HEAD"],
            stderr_to_stdout: true
          ) do

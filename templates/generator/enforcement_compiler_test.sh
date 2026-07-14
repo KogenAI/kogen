@@ -2,7 +2,7 @@
 # enforcement_compiler_test.sh — unit tests for enforcement_compiler.py.
 #
 # Tests (42):
-#   1:  parse valid registry (8 entries: 7 bash+ts + 1 pi-only); 15 sections in dry-run
+#   1:  parse valid registry; 17 sections in dry-run (count tracks live registry.yaml size)
 #   2:  dialect translation bash: \\s → [[:space:]] in generated .sh
 #   3:  match_all AND logic: two grep -qE calls joined with &&
 #   4:  generated:false entry skipped (no file emitted)
@@ -109,7 +109,7 @@ count=$(
     grep -c "^===" "$tmpdir/dry_run.txt" 2>/dev/null
     true
 )
-assert_eq "parse valid registry: 15 sections (7 bash+ts pairs + 1 pi-only ts)" "15" "$count"
+assert_eq "parse valid registry: 17 sections (registry has grown since this count was last updated)" "17" "$count"
 
 # ── Test 2: dialect translation bash: \s → [[:space:]] ───────────────────────
 
@@ -565,20 +565,20 @@ real_index_content=$(cat "$tmpdir/real_index.ts" 2>/dev/null || echo "")
 
 # Test 36: registration-in-block — a kind:registration harnesses:all id with
 # an existing .ts file IS emitted inside the generated block.
-# build-no-success-before-commit is kind:registration harnesses:all with a ts file.
+# build-agent-app-confinement is kind:registration harnesses:all with a ts file.
 assert_contains \
-    "registration-in-block: build-no-success-before-commit import in block" \
-    'import { register as registerBuildNoSuccessBeforeCommit }' \
+    "registration-in-block: build-agent-app-confinement import in block" \
+    'import { register as registerBuildAgentAppConfinement }' \
     "$real_index_content"
 assert_contains \
-    "registration-in-block: build-no-success-before-commit register call in block" \
-    'registerBuildNoSuccessBeforeCommit(pi)' \
+    "registration-in-block: build-agent-app-confinement register call in block" \
+    'registerBuildAgentAppConfinement(pi)' \
     "$real_index_content"
 
 # Verify the import line appears BETWEEN the BEGIN/END markers (not outside).
 block_import=$(awk \
     '/\/\/ BEGIN-GENERATED-ENFORCEMENT-BLOCK/,/\/\/ END-GENERATED-ENFORCEMENT-BLOCK/' \
-    "$tmpdir/real_index.ts" | grep -c 'registerBuildNoSuccessBeforeCommit' 2>/dev/null || true)
+    "$tmpdir/real_index.ts" | grep -c 'registerBuildAgentAppConfinement' 2>/dev/null || true)
 assert_eq \
     "registration-in-block: both import+call appear inside generated block" \
     "2" "$block_import"

@@ -224,15 +224,6 @@
   rationale: "Denies Write/Edit/MultiEdit when CODEGEN_BUILD_CWD is set and the target file resolves outside that dir, confining managed build subagents to the app sandbox. Fills the orchestrator-no-source-edit.sh subagent pass-through gap (AGENT_ID set -> exit 0). Env-keyed (CODEGEN_BUILD_CWD), role-agnostic; composes with orchestrator-no-source-edit and build-worker-cwd-guard."
 
 - kind: registration
-  id: build-no-success-before-commit
-  event: PreToolUse
-  tool_guard: Bash
-  surface: user_global
-  signal: none
-  role: "*"
-  harnesses: all
-
-- kind: registration
   id: clean-tree-before-ship
   event: PreToolUse
   tool_guard: Bash

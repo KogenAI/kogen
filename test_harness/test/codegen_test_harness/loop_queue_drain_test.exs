@@ -37,7 +37,7 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
       pid_alive_fn: fn _pid -> false end,
       git_head_fn: fn _cwd -> nil end,
       gate_verdict_fn: fn _cwd -> "" end,
-      gate_diff_sha_fn: fn _cwd -> "" end,
+      gate_base_sha_fn: fn _cwd -> "" end,
       # Stale by default (older than any real spawn `ts`) — never-fresh,
       # preserving the semantics of every failure-path test that doesn't
       # opt into a real gate record.
@@ -61,10 +61,10 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
   # independent of how many extra calls earlier timeout attempts consumed.
   #
   # The gate runs BEFORE the committer (loop role order), so a real gate
-  # record's diff_sha can only ever equal the head AT GATE TIME — i.e. this
+  # record's base_sha can only ever equal the head AT GATE TIME — i.e. this
   # attempt's head_before, the value git_head_fn returned on the call
   # immediately BEFORE the current (most recent) one. gate_verdict_fn/
-  # gate_diff_sha_fn track that PREVIOUS head value, not the latest.
+  # gate_base_sha_fn track that PREVIOUS head value, not the latest.
   # gate_mtime_fn always reports "now" (>= the frozen now_fn), so the
   # freshness mtime leg is always satisfied here.
   #
@@ -94,7 +94,7 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
     end
 
     gate_verdict_fn = fn _cwd -> "clear" end
-    gate_diff_sha_fn = fn _cwd -> Agent.get(prev_head, & &1) end
+    gate_base_sha_fn = fn _cwd -> Agent.get(prev_head, & &1) end
     gate_mtime_fn = fn _cwd -> 1_700_000_000 end
 
     base_opts(
@@ -103,7 +103,7 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
         [
           git_head_fn: git_head_fn,
           gate_verdict_fn: gate_verdict_fn,
-          gate_diff_sha_fn: gate_diff_sha_fn,
+          gate_base_sha_fn: gate_base_sha_fn,
           gate_mtime_fn: gate_mtime_fn
         ],
         extra
@@ -458,9 +458,9 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
       if n == 1, do: "clear", else: "failed"
     end
 
-    # Gate ran before the commit — diff_sha matches head_before ("aaa" for
+    # Gate ran before the commit — base_sha matches head_before ("aaa" for
     # attempt 2), never head_after ("bbb").
-    gate_diff_sha_fn = fn _cwd -> "aaa" end
+    gate_base_sha_fn = fn _cwd -> "aaa" end
     gate_mtime_fn = fn _cwd -> 1_700_000_000 end
     transient_fn = fn _jsonl -> true end
     sleep_fn = fn secs -> Agent.update(sleeps, &(&1 ++ [secs])) end
@@ -471,7 +471,7 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
                  spawn_fn: spawn_fn,
                  git_head_fn: git_head_fn,
                  gate_verdict_fn: gate_verdict_fn,
-                 gate_diff_sha_fn: gate_diff_sha_fn,
+                 gate_base_sha_fn: gate_base_sha_fn,
                  gate_mtime_fn: gate_mtime_fn,
                  transient_fn: transient_fn,
                  sleep_fn: sleep_fn
@@ -585,7 +585,7 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
       if n in [2, 3], do: if(n == 2, do: "aaa", else: "bbb"), else: "zzz"
     end
 
-    # gate_verdict_fn/gate_diff_sha_fn are called ONCE per handler invocation
+    # gate_verdict_fn/gate_base_sha_fn are called ONCE per handler invocation
     # (handle_nonzero_exit or handle_exit_zero), immediately after the
     # matching head_before/head_after pair — so their own call sequence
     # mirrors the per-attempt cadence: call 0 = a_fail1 (nonzero), call 1 =
@@ -598,9 +598,9 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
       if n == 1, do: "clear", else: "failed"
     end
 
-    # Gate ran before the commit — diff_sha matches b_good's head_before
+    # Gate ran before the commit — base_sha matches b_good's head_before
     # ("aaa"), never head_after ("bbb").
-    gate_diff_sha_fn = fn _cwd -> "aaa" end
+    gate_base_sha_fn = fn _cwd -> "aaa" end
     gate_mtime_fn = fn _cwd -> 1_700_000_000 end
 
     assert {:ok, 1} =
@@ -610,7 +610,7 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
                  transient_fn: transient_fn,
                  git_head_fn: git_head_fn,
                  gate_verdict_fn: gate_verdict_fn,
-                 gate_diff_sha_fn: gate_diff_sha_fn,
+                 gate_base_sha_fn: gate_base_sha_fn,
                  gate_mtime_fn: gate_mtime_fn
                )
              )
@@ -700,9 +700,9 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
       if Agent.get(current_slug, & &1) == "bad", do: "failed", else: "clear"
     end
 
-    # Gate ran before the commit — diff_sha matches "good"'s head_before
+    # Gate ran before the commit — base_sha matches "good"'s head_before
     # ("aaa"), never head_after ("bbb").
-    gate_diff_sha_fn = fn _cwd -> "aaa" end
+    gate_base_sha_fn = fn _cwd -> "aaa" end
     gate_mtime_fn = fn _cwd -> 1_700_000_000 end
 
     output =
@@ -714,7 +714,7 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
                      transient_fn: transient_fn,
                      git_head_fn: git_head_fn,
                      gate_verdict_fn: gate_verdict_fn,
-                     gate_diff_sha_fn: gate_diff_sha_fn,
+                     gate_base_sha_fn: gate_base_sha_fn,
                      gate_mtime_fn: gate_mtime_fn
                    )
                  )
@@ -751,9 +751,9 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
     end
 
     gate_verdict_fn = fn _cwd -> "clear" end
-    # Gate ran before the commit — diff_sha matches head_before ("aaa"), and
+    # Gate ran before the commit — base_sha matches head_before ("aaa"), and
     # the record must be fresh (mtime >= spawn ts).
-    gate_diff_sha_fn = fn _cwd -> "aaa" end
+    gate_base_sha_fn = fn _cwd -> "aaa" end
     gate_mtime_fn = fn _cwd -> 1_700_000_000 end
 
     assert {:ok, 1} =
@@ -762,7 +762,7 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
                  spawn_fn: spawn_fn,
                  git_head_fn: git_head_fn,
                  gate_verdict_fn: gate_verdict_fn,
-                 gate_diff_sha_fn: gate_diff_sha_fn,
+                 gate_base_sha_fn: gate_base_sha_fn,
                  gate_mtime_fn: gate_mtime_fn
                )
              )
@@ -783,7 +783,7 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
 
     spawn_fn = fn _slug, _h, _s, _cwd, _jsonl -> {:exit_code, 1} end
     gate_verdict_fn = fn _cwd -> "clear" end
-    gate_diff_sha_fn = fn _cwd -> "aaa" end
+    gate_base_sha_fn = fn _cwd -> "aaa" end
     gate_mtime_fn = fn _cwd -> 1_700_000_000 end
 
     assert {:ok, 1} =
@@ -792,7 +792,7 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
                  spawn_fn: spawn_fn,
                  git_head_fn: git_head_fn,
                  gate_verdict_fn: gate_verdict_fn,
-                 gate_diff_sha_fn: gate_diff_sha_fn,
+                 gate_base_sha_fn: gate_base_sha_fn,
                  gate_mtime_fn: gate_mtime_fn
                )
              )
@@ -831,9 +831,9 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
     end
 
     gate_verdict_fn = fn _cwd -> "clear" end
-    # Gate ran before the commit — diff_sha matches attempt 2's head_before
+    # Gate ran before the commit — base_sha matches attempt 2's head_before
     # ("aaa"), never head_after ("bbb").
-    gate_diff_sha_fn = fn _cwd -> "aaa" end
+    gate_base_sha_fn = fn _cwd -> "aaa" end
     gate_mtime_fn = fn _cwd -> 1_700_000_000 end
     transient_fn = fn _jsonl -> false end
     sleep_fn = fn secs -> Agent.update(sleeps, &(&1 ++ [secs])) end
@@ -844,7 +844,7 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
                  spawn_fn: spawn_fn,
                  git_head_fn: git_head_fn,
                  gate_verdict_fn: gate_verdict_fn,
-                 gate_diff_sha_fn: gate_diff_sha_fn,
+                 gate_base_sha_fn: gate_base_sha_fn,
                  gate_mtime_fn: gate_mtime_fn,
                  transient_fn: transient_fn,
                  sleep_fn: sleep_fn
@@ -954,8 +954,8 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
     end
 
     gate_verdict_fn = fn _cwd -> "clear" end
-    # Gate ran before the commit — diff_sha matches head_before ("aaa").
-    gate_diff_sha_fn = fn _cwd -> "aaa" end
+    # Gate ran before the commit — base_sha matches head_before ("aaa").
+    gate_base_sha_fn = fn _cwd -> "aaa" end
     gate_mtime_fn = fn _cwd -> 1_700_000_000 end
     # bbb DOES descend from aaa — a legitimate forward commit.
     git_ancestor_fn = fn _cwd, "aaa", "bbb" -> true end
@@ -968,7 +968,7 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
                  spawn_fn: spawn_fn,
                  git_head_fn: git_head_fn,
                  gate_verdict_fn: gate_verdict_fn,
-                 gate_diff_sha_fn: gate_diff_sha_fn,
+                 gate_base_sha_fn: gate_base_sha_fn,
                  gate_mtime_fn: gate_mtime_fn,
                  git_ancestor_fn: git_ancestor_fn
                )
@@ -1041,7 +1041,7 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
 
     spawn_fn = fn _slug, _h, _s, _cwd, _jsonl -> {:exit_code, 0} end
     gate_verdict_fn = fn _cwd -> "clear" end
-    gate_diff_sha_fn = fn _cwd -> "aaa" end
+    gate_base_sha_fn = fn _cwd -> "aaa" end
     gate_mtime_fn = fn _cwd -> 1_700_000_000 end
 
     assert {:ok, 1} =
@@ -1050,7 +1050,7 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
                  spawn_fn: spawn_fn,
                  git_head_fn: git_head_fn,
                  gate_verdict_fn: gate_verdict_fn,
-                 gate_diff_sha_fn: gate_diff_sha_fn,
+                 gate_base_sha_fn: gate_base_sha_fn,
                  gate_mtime_fn: gate_mtime_fn
                )
              )
@@ -1071,7 +1071,7 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
 
     spawn_fn = fn _slug, _h, _s, _cwd, _jsonl -> {:exit_code, 0} end
     gate_verdict_fn = fn _cwd -> "clear" end
-    gate_diff_sha_fn = fn _cwd -> "aaa" end
+    gate_base_sha_fn = fn _cwd -> "aaa" end
     # now_fn (base_opts default) is 1_700_000_000 — a mtime strictly before
     # that is a stale record from an earlier cycle.
     gate_mtime_fn = fn _cwd -> 1_699_999_999 end
@@ -1084,7 +1084,7 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
                      spawn_fn: spawn_fn,
                      git_head_fn: git_head_fn,
                      gate_verdict_fn: gate_verdict_fn,
-                     gate_diff_sha_fn: gate_diff_sha_fn,
+                     gate_base_sha_fn: gate_base_sha_fn,
                      gate_mtime_fn: gate_mtime_fn
                    )
                  )
@@ -1109,7 +1109,7 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
     gate_verdict_fn = fn _cwd -> "clear" end
     # "zzz" does not prefix head_before ("aaa") — a gate record from an
     # unrelated base.
-    gate_diff_sha_fn = fn _cwd -> "zzz" end
+    gate_base_sha_fn = fn _cwd -> "zzz" end
     gate_mtime_fn = fn _cwd -> 1_700_000_000 end
 
     output =
@@ -1120,7 +1120,7 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
                      spawn_fn: spawn_fn,
                      git_head_fn: git_head_fn,
                      gate_verdict_fn: gate_verdict_fn,
-                     gate_diff_sha_fn: gate_diff_sha_fn,
+                     gate_base_sha_fn: gate_base_sha_fn,
                      gate_mtime_fn: gate_mtime_fn
                    )
                  )
@@ -1155,7 +1155,7 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
     end
 
     gate_verdict_fn = fn _cwd -> "clear" end
-    gate_diff_sha_fn = fn _cwd -> "aaa" end
+    gate_base_sha_fn = fn _cwd -> "aaa" end
     # Stale — older than the frozen spawn ts (1_700_000_000).
     gate_mtime_fn = fn _cwd -> 1_699_999_999 end
     transient_fn = fn _jsonl -> false end
@@ -1166,7 +1166,7 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
                  spawn_fn: spawn_fn,
                  git_head_fn: git_head_fn,
                  gate_verdict_fn: gate_verdict_fn,
-                 gate_diff_sha_fn: gate_diff_sha_fn,
+                 gate_base_sha_fn: gate_base_sha_fn,
                  gate_mtime_fn: gate_mtime_fn,
                  transient_fn: transient_fn
                )
@@ -1492,6 +1492,149 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
     assert {:ok, 2} = LoopQueueDrain.drain(shipped_opts(ctx, spawn_fn: spawn_fn))
     assert File.exists?(Path.join(ctx.shipped_dir, "a.md"))
     assert File.exists?(Path.join(ctx.shipped_dir, "c.md"))
+  end
+
+  # ── 11b. [n/N] counts CONCLUDED pitches, not ships ──────────────────────
+  # A queue whose pitches fail must still ADVANCE the printed index — before
+  # the concluded_count fix, idx was `shipped_count + 1`, so a queue with no
+  # ships repeated "[1/N]" forever regardless of how many pitches concluded.
+
+  test "11b: [n/N] advances past a deterministically-failed pitch", ctx do
+    write_pitch(ctx.ready_dir, "a")
+    write_pitch(ctx.ready_dir, "b")
+    write_pitch(ctx.ready_dir, "c")
+
+    spawn_fn = fn slug, _h, _s, _cwd, _jsonl ->
+      if slug == "a", do: {:exit_code, 1}, else: {:exit_code, 0}
+    end
+
+    transient_fn = fn _jsonl -> false end
+
+    # "a" (nonzero) must NOT look committed — head_before == head_after
+    # ("zzz", unmoved), calls 0-1, so handle_nonzero_exit/8 falls straight to
+    # the deterministic-failure branch. "b" and "c" (exit 0) each need a real
+    # forward HEAD move (head_before -> head_after) under a fresh clear gate
+    # to ship — calls 2-3 = b's (before "aaa", after "bbb"), calls 4-5 =
+    # c's (before "bbb", after "ccc").
+    head_calls = start_agent(0)
+
+    git_head_fn = fn _cwd ->
+      n = Agent.get_and_update(head_calls, fn n -> {n, n + 1} end)
+
+      case n do
+        0 -> "zzz"
+        1 -> "zzz"
+        2 -> "aaa"
+        3 -> "bbb"
+        4 -> "bbb"
+        _ -> "ccc"
+      end
+    end
+
+    gate_verdict_calls = start_agent(0)
+    gate_sha_calls = start_agent(0)
+
+    # gate_verdict_fn is called once per handler invocation: call 0 = "a"
+    # (nonzero, committed? already false — value here is immaterial), call
+    # 1 = "b" (exit 0, must be clear), call 2 = "c" (exit 0, must be clear).
+    gate_verdict_fn = fn _cwd ->
+      n = Agent.get_and_update(gate_verdict_calls, fn n -> {n, n + 1} end)
+      if n == 0, do: "failed", else: "clear"
+    end
+
+    # Gate ran before each commit — base_sha matches that attempt's
+    # head_before ("aaa" for b, "bbb" for c), never its head_after.
+    # gate_base_sha_fn is short-circuited out entirely for "a" (its
+    # gate_verdict_fn call reads "failed", so the `and gate_fresh?/3` leg
+    # never evaluates) — this fn is only ever called for "b" (n=0, its
+    # first call) and "c" (n=1, its second call).
+    gate_base_sha_fn = fn _cwd ->
+      n = Agent.get_and_update(gate_sha_calls, fn n -> {n, n + 1} end)
+      if n == 0, do: "aaa", else: "bbb"
+    end
+
+    gate_mtime_fn = fn _cwd -> 1_700_000_000 end
+
+    output =
+      capture_io(:stderr, fn ->
+        assert {:ok, 2} =
+                 LoopQueueDrain.drain(
+                   base_opts(ctx,
+                     spawn_fn: spawn_fn,
+                     transient_fn: transient_fn,
+                     git_head_fn: git_head_fn,
+                     gate_verdict_fn: gate_verdict_fn,
+                     gate_base_sha_fn: gate_base_sha_fn,
+                     gate_mtime_fn: gate_mtime_fn
+                   )
+                 )
+      end)
+
+    # "a" fails (terminal, non-transient) at index 1; "b" and "c" ship at
+    # indexes 2 and 3 — the index must NOT stall at "[1/3]" for all three.
+    assert output =~ "[1/3] a ... FAILED"
+    assert output =~ "[2/3] b ... shipped"
+    assert output =~ "[3/3] c ... shipped"
+  end
+
+  test "11c: [n/N] holds (does not advance) across a transient retry of the same slug", ctx do
+    write_pitch(ctx.ready_dir, "solo")
+
+    attempts = start_agent(0)
+
+    spawn_fn = fn _slug, _h, _s, _cwd, jsonl ->
+      n = Agent.get_and_update(attempts, fn n -> {n, n + 1} end)
+
+      if n == 0 do
+        File.write!(jsonl, "no result record here")
+        {:exit_code, 1}
+      else
+        {:exit_code, 0}
+      end
+    end
+
+    # Same head/gate fixture shape as test 4 — attempt 1 (nonzero) must not
+    # look committed/clear, attempt 2 (exit 0) must.
+    head_calls = start_agent(0)
+
+    git_head_fn = fn _cwd ->
+      n = Agent.get_and_update(head_calls, fn n -> {n, n + 1} end)
+      if n == 3, do: "bbb", else: "aaa"
+    end
+
+    gate_calls = start_agent(0)
+
+    gate_verdict_fn = fn _cwd ->
+      n = Agent.get_and_update(gate_calls, fn n -> {n, n + 1} end)
+      if n == 1, do: "clear", else: "failed"
+    end
+
+    gate_base_sha_fn = fn _cwd -> "aaa" end
+    gate_mtime_fn = fn _cwd -> 1_700_000_000 end
+    transient_fn = fn _jsonl -> true end
+    sleep_fn = fn _secs -> :ok end
+
+    output =
+      capture_io(:stderr, fn ->
+        assert {:ok, 1} =
+                 LoopQueueDrain.drain(
+                   base_opts(ctx,
+                     spawn_fn: spawn_fn,
+                     git_head_fn: git_head_fn,
+                     gate_verdict_fn: gate_verdict_fn,
+                     gate_base_sha_fn: gate_base_sha_fn,
+                     gate_mtime_fn: gate_mtime_fn,
+                     transient_fn: transient_fn,
+                     sleep_fn: sleep_fn
+                   )
+                 )
+      end)
+
+    # A retry of the SAME pitch never advances the index — both the
+    # "failed (retrying)" line and the later "shipped" line read "[1/1]".
+    assert output =~ "[1/1] solo ... failed (retrying)"
+    assert output =~ "[1/1] solo ... shipped"
+    refute output =~ "[2/1]"
   end
 
   # ── 12. Budget default resolution ───────────────────────────────────────

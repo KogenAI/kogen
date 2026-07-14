@@ -243,15 +243,6 @@
         ]
       },
       {
-        "matcher": "Bash",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "$HOME/.claude/hooks/build-no-success-before-commit.sh"
-          }
-        ]
-      },
-      {
         "matcher": "Bash|Write|Edit|MultiEdit|Read|Monitor",
         "hooks": [
           {

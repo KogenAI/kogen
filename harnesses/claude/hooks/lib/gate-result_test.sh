@@ -133,7 +133,7 @@ RESULT_FILE="$DIR_STRUCT/codegen/gate-pending/gate-result.json"
 assert_eq "result file exists" "true" "$([ -f "$RESULT_FILE" ] && echo true || echo false)"
 assert_eq "json .gate field" "make ci" "$(jq -r '.gate' "$RESULT_FILE")"
 assert_eq "json .mode field" "short" "$(jq -r '.mode' "$RESULT_FILE")"
-assert_eq "json .diff_sha field" "a1b2c3d" "$(jq -r '.diff_sha' "$RESULT_FILE")"
+assert_eq "json .base_sha field" "a1b2c3d" "$(jq -r '.base_sha' "$RESULT_FILE")"
 assert_eq "json .diff_files_count field" "7" "$(jq -r '.diff_files_count' "$RESULT_FILE")"
 assert_eq "json .runner_found field" "true" "$(jq -r '.runner_found' "$RESULT_FILE")"
 assert_eq "json .exit field" "0" "$(jq -r '.exit' "$RESULT_FILE")"
@@ -146,7 +146,16 @@ assert_eq "json .session_id field" "abc123" "$(jq -r '.session_id' "$RESULT_FILE
 assert_eq "json .log field" "/tmp/gate.log" "$(jq -r '.log' "$RESULT_FILE")"
 assert_eq "json .started field" "2026-06-07T12:00:00Z" "$(jq -r '.started' "$RESULT_FILE")"
 assert_eq "json .ended field" "2026-06-07T12:03:11Z" "$(jq -r '.ended' "$RESULT_FILE")"
+
+# ── gate_result_base_sha ──────────────────────────────────────────────────────
+
+assert_eq "gate_result_base_sha reads written value" \
+    "a1b2c3d" "$(gate_result_base_sha "$DIR_STRUCT")"
+
 rm -rf "$DIR_STRUCT"
+
+assert_eq "gate_result_base_sha missing file → empty" \
+    "" "$(gate_result_base_sha /nonexistent/path)"
 
 # ── gate_result_verdict ───────────────────────────────────────────────────────
 

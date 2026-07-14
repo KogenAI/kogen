@@ -17,12 +17,12 @@ defmodule CodegenTestHarness.LoopQueueDrain do
   child exit code of 0 is NECESSARY but not SUFFICIENT proof of a real ship
   — see `handle_exit_zero/7`: it additionally requires `committed?` (HEAD
   moved forward, non-orphaning, since the pre-spawn `head_before` read) AND
-  a FRESH `gate_clear?` (verdict `"clear"` AND its recorded `diff_sha` is a
+  a FRESH `gate_clear?` (verdict `"clear"` AND its recorded `base_sha` is a
   prefix of `head_before` AND the gate record's mtime is at/after this
   attempt's spawn timestamp — never a stale verdict from an earlier cycle)
   before shipping. The gate ALWAYS runs BEFORE the committer (loop role
   order: planner -> developer -> gate -> reviewer -> curator -> committer),
-  so the recorded `diff_sha` can only ever prefix `head_before` — never the
+  so the recorded `base_sha` can only ever prefix `head_before` — never the
   post-commit `head_after`. The mtime leg is what rejects a stale clear
   verdict left on disk by an EARLIER cycle: `head_before` alone cannot
   distinguish "this cycle's gate" from "an earlier cycle's gate" when a
@@ -93,6 +93,12 @@ defmodule CodegenTestHarness.LoopQueueDrain do
   (too many consecutive deterministic failures), an orphaned base, or lock
   contention.
 
+  The printed `[n/N]` progress index counts CONCLUDED pitches (shipped OR
+  terminally failed/skipped) — never a retry of the same slug in place. This
+  is a DIFFERENT counter from the returned `shipped_count`: a queue where
+  every pitch fails still advances `[1/N]`, `[2/N]`, ... `[N/N]` on stderr
+  while `drain/1` returns `{:ok, 0}`.
+
   Lets a dependency-cycle raise from `ordered_fn` (default
   `LoopQueue.ordered_slugs/1`) propagate uncaught — crash loud, never picks
   an arbitrary order.
@@ -143,8 +149,8 @@ defmodule CodegenTestHarness.LoopQueueDrain do
       to detect a HEAD-moving `git reset` that dropped the cycle base
     * `:gate_verdict_fn` — `(cwd -> String.t())`, default reads
       `codegen/gate-pending/gate-result.json` `.verdict`; `""` when absent
-    * `:gate_diff_sha_fn` — `(cwd -> String.t())`, default reads
-      `codegen/gate-pending/gate-result.json` `.diff_sha` (SHORT sha); `""`
+    * `:gate_base_sha_fn` — `(cwd -> String.t())`, default reads
+      `codegen/gate-pending/gate-result.json` `.base_sha` (SHORT sha); `""`
       when absent. Compared against `head_before` (FULL sha, the base the
       gate actually ran against — the loop gates BEFORE the committer) via
       `String.starts_with?/2`, never a bare equality (which would always
@@ -154,7 +160,7 @@ defmodule CodegenTestHarness.LoopQueueDrain do
       `codegen/gate-pending/gate-result.json`'s mtime via
       `File.stat(path, time: :posix)`; `0` when absent/unstattable
       (fail-closed sentinel — older than any real spawn `ts`). Paired with
-      `:gate_diff_sha_fn` in `gate_fresh?/3`: rejects a stale "clear"
+      `:gate_base_sha_fn` in `gate_fresh?/3`: rejects a stale "clear"
       verdict left on disk by an EARLIER cycle that shares the same
       `head_before` (two consecutive non-committing attempts have an
       identical base, so the sha leg alone cannot tell them apart).
@@ -220,7 +226,7 @@ defmodule CodegenTestHarness.LoopQueueDrain do
             git_head_fn: Keyword.get(opts, :git_head_fn, &default_git_head_fn/1),
             git_ancestor_fn: Keyword.get(opts, :git_ancestor_fn, &default_git_ancestor_fn/3),
             gate_verdict_fn: Keyword.get(opts, :gate_verdict_fn, &default_gate_verdict_fn/1),
-            gate_diff_sha_fn: Keyword.get(opts, :gate_diff_sha_fn, &default_gate_diff_sha_fn/1),
+            gate_base_sha_fn: Keyword.get(opts, :gate_base_sha_fn, &default_gate_base_sha_fn/1),
             gate_mtime_fn: Keyword.get(opts, :gate_mtime_fn, &default_gate_mtime_fn/1),
             discover_session_log_fn:
               Keyword.get(opts, :discover_session_log_fn, &default_discover_session_log/3),
@@ -238,7 +244,7 @@ defmodule CodegenTestHarness.LoopQueueDrain do
             total: length(Keyword.get(opts, :ordered_fn, &LoopQueue.ordered_slugs/1).(ready_dir))
           }
 
-          run_loop(state, 0)
+          run_loop(state, 0, 0)
         after
           BuildLock.release(lock_path)
         end
@@ -272,7 +278,7 @@ defmodule CodegenTestHarness.LoopQueueDrain do
 
   # ── Main loop ─────────────────────────────────────────────────────────────
 
-  defp run_loop(state, shipped_count) do
+  defp run_loop(state, shipped_count, concluded_count) do
     ordered = state.ordered_fn.(state.ready_dir)
     blocked = state.blocked_fn.()
 
@@ -304,7 +310,7 @@ defmodule CodegenTestHarness.LoopQueueDrain do
         {:ok, shipped_count}
 
       [slug | _] ->
-        run_slug(state, slug, shipped_count)
+        run_slug(state, slug, shipped_count, concluded_count)
     end
   end
 
@@ -322,15 +328,15 @@ defmodule CodegenTestHarness.LoopQueueDrain do
     end)
   end
 
-  defp run_slug(state, slug, shipped_count) do
+  defp run_slug(state, slug, shipped_count, concluded_count) do
     case state.git_stash_restore_fn.(state.cwd, slug) do
-      :ok -> do_run_slug(state, slug, shipped_count)
+      :ok -> do_run_slug(state, slug, shipped_count, concluded_count)
       {:error, reason} -> {:error, reason}
     end
   end
 
-  defp do_run_slug(state, slug, shipped_count) do
-    idx = shipped_count + 1
+  defp do_run_slug(state, slug, shipped_count, concluded_count) do
+    idx = concluded_count + 1
     ts = state.now_fn.()
     stamp = Calendar.strftime(DateTime.from_unix!(ts), "%Y%m%d_%H%M%S")
     jsonl = Path.join([state.cwd, "codegen", "logging", "#{stamp}_#{slug}_build.log"])
@@ -346,20 +352,20 @@ defmodule CodegenTestHarness.LoopQueueDrain do
 
     case result do
       {:exit_code, 0} ->
-        handle_exit_zero(state, slug, jsonl, head_before, shipped_count, idx, ts)
+        handle_exit_zero(state, slug, jsonl, head_before, shipped_count, concluded_count, idx, ts)
 
       {:exit_code, _n} ->
-        handle_nonzero_exit(state, slug, jsonl, head_before, shipped_count, idx, ts)
+        handle_nonzero_exit(state, slug, jsonl, head_before, shipped_count, concluded_count, idx, ts)
 
       :timeout ->
-        handle_timeout(state, slug, shipped_count, idx)
+        handle_timeout(state, slug, shipped_count, concluded_count, idx)
     end
   end
 
   # A gate record is trustworthy only if a real gate wrote it, THIS cycle,
   # against THIS cycle's base. The loop gates BEFORE the committer
   # (orchestration_loop.ex role order: planner -> developer -> gate ->
-  # reviewer -> curator -> committer), so the recorded short `diff_sha` can
+  # reviewer -> curator -> committer), so the recorded short `base_sha` can
   # only ever prefix `head_before` — never the post-commit `head_after`. The
   # mtime leg (gate record written at/after this child's spawn `ts`) is what
   # rejects a stale "clear" verdict left on disk by an EARLIER cycle:
@@ -368,10 +374,10 @@ defmodule CodegenTestHarness.LoopQueueDrain do
   # base, stale record).
   @spec gate_fresh?(map(), String.t() | nil, integer()) :: boolean()
   defp gate_fresh?(state, head_before, ts) do
-    diff_sha = state.gate_diff_sha_fn.(state.cwd)
+    base_sha = state.gate_base_sha_fn.(state.cwd)
 
-    diff_sha != "" and is_binary(head_before) and head_before != "" and
-      String.starts_with?(head_before, diff_sha) and
+    base_sha != "" and is_binary(head_before) and head_before != "" and
+      String.starts_with?(head_before, base_sha) and
       state.gate_mtime_fn.(state.cwd) >= ts
   end
 
@@ -381,14 +387,14 @@ defmodule CodegenTestHarness.LoopQueueDrain do
   # sail straight to "shipped" with HEAD unmoved and a dirty tree. Symmetric
   # with handle_nonzero_exit/7: verify `committed?` (HEAD moved forward,
   # non-orphaning) AND a FRESH `gate_clear?` (verdict "clear" AND
-  # `gate_fresh?/3` — its recorded short diff_sha is a prefix of
+  # `gate_fresh?/3` — its recorded short base_sha is a prefix of
   # `head_before`, the base the gate actually ran against, AND its mtime is
   # at/after this attempt's spawn `ts` — never a stale verdict from an
   # earlier cycle) before shipping. Anything short of that is treated as a
   # failed cycle: stash the dirty tree and fall through the same
   # skip-and-continue / circuit-breaker path as a deterministic nonzero
   # failure.
-  defp handle_exit_zero(state, slug, jsonl, head_before, shipped_count, idx, ts) do
+  defp handle_exit_zero(state, slug, jsonl, head_before, shipped_count, concluded_count, idx, ts) do
     known_base? = head_before != nil and head_before != ""
     head_after = if known_base?, do: state.git_head_fn.(state.cwd), else: nil
     head_moved? = known_base? and head_after != head_before
@@ -414,7 +420,7 @@ defmodule CodegenTestHarness.LoopQueueDrain do
         ship(state.ready_dir, state.shipped_dir, slug)
         IO.puts(:stderr, "[#{idx}/#{state.total}] #{slug} ... shipped")
         state = %{state | retry_count: 0, last_slug: nil, consecutive_fails: 0}
-        run_loop(state, shipped_count + 1)
+        run_loop(state, shipped_count + 1, concluded_count + 1)
 
       true ->
         # False exit-0: no verified commit under a fresh clear gate. Treat as
@@ -450,7 +456,7 @@ defmodule CodegenTestHarness.LoopQueueDrain do
               last_slug: nil
           }
 
-          run_loop(state, shipped_count)
+          run_loop(state, shipped_count, concluded_count + 1)
         end
     end
   end
@@ -482,7 +488,7 @@ defmodule CodegenTestHarness.LoopQueueDrain do
     :ok
   end
 
-  defp handle_nonzero_exit(state, slug, jsonl, head_before, shipped_count, idx, ts) do
+  defp handle_nonzero_exit(state, slug, jsonl, head_before, shipped_count, concluded_count, idx, ts) do
     known_base? = head_before != nil and head_before != ""
     # Only re-read HEAD when there is a known base to compare against — mirrors
     # the pre-existing short-circuit (`head_before != nil and head_before !=
@@ -532,7 +538,7 @@ defmodule CodegenTestHarness.LoopQueueDrain do
         # exit. Count it shipped, do not call ship/3 again (src is gone).
         IO.puts(:stderr, "[#{idx}/#{state.total}] #{slug} ... shipped")
         state = %{state | retry_count: 0, last_slug: nil, consecutive_fails: 0}
-        run_loop(state, shipped_count + 1)
+        run_loop(state, shipped_count + 1, concluded_count + 1)
 
       committed? and gate_clear? and File.exists?(Path.join(state.ready_dir, "#{slug}.md")) ->
         # committer-post-commit hiccup: commit landed, gate is clear, but the
@@ -541,7 +547,7 @@ defmodule CodegenTestHarness.LoopQueueDrain do
         ship(state.ready_dir, state.shipped_dir, slug)
         IO.puts(:stderr, "[#{idx}/#{state.total}] #{slug} ... shipped")
         state = %{state | retry_count: 0, last_slug: nil, consecutive_fails: 0}
-        run_loop(state, shipped_count + 1)
+        run_loop(state, shipped_count + 1, concluded_count + 1)
 
       retry_eligible?(state, slug, jsonl, committed?, gate_clear?) ->
         retry_count = if state.last_slug == slug, do: state.retry_count, else: 0
@@ -551,7 +557,7 @@ defmodule CodegenTestHarness.LoopQueueDrain do
         if delay > 0, do: state.sleep_fn.(delay)
 
         state = %{state | retry_count: attempt, last_slug: slug}
-        run_slug(state, slug, shipped_count)
+        run_slug(state, slug, shipped_count, concluded_count)
 
       true ->
         emit_failure_diagnostics(jsonl, idx, state.total, slug)
@@ -578,7 +584,7 @@ defmodule CodegenTestHarness.LoopQueueDrain do
               last_slug: nil
           }
 
-          run_loop(state, shipped_count)
+          run_loop(state, shipped_count, concluded_count + 1)
         end
     end
   end
@@ -641,7 +647,7 @@ defmodule CodegenTestHarness.LoopQueueDrain do
       retry_count < state.max_retries
   end
 
-  defp handle_timeout(state, slug, shipped_count, idx) do
+  defp handle_timeout(state, slug, shipped_count, concluded_count, idx) do
     budget = state.pitch_budget_secs
     second_timeout? = MapSet.member?(state.timed_out_slugs, {:once, slug})
 
@@ -666,7 +672,7 @@ defmodule CodegenTestHarness.LoopQueueDrain do
           last_slug: nil
       }
 
-      run_loop(state, shipped_count)
+      run_loop(state, shipped_count, concluded_count + 1)
     else
       # first timeout — retry once
       state = %{
@@ -676,7 +682,7 @@ defmodule CodegenTestHarness.LoopQueueDrain do
           last_slug: nil
       }
 
-      run_slug(state, slug, shipped_count)
+      run_slug(state, slug, shipped_count, concluded_count)
     end
   end
 
@@ -1118,25 +1124,25 @@ defmodule CodegenTestHarness.LoopQueueDrain do
     end
   end
 
-  # ── Real gate_diff_sha_fn: reads codegen/gate-pending/gate-result.json's
-  # short `diff_sha` (written by `write_gate_result`, gate-result.sh:197) —
+  # ── Real gate_base_sha_fn: reads codegen/gate-pending/gate-result.json's
+  # short `base_sha` (written by `write_gate_result`, gate-result.sh:197) —
   # mirrors default_gate_verdict_fn's read but surfaces the SHORT sha used
   # for the freshness check against `head_before` (the base the gate
   # actually ran against) in `gate_fresh?/3`
   # (String.starts_with?/2 prefix match, never equality).
 
   @doc false
-  @spec default_gate_diff_sha_fn(String.t()) :: String.t()
-  def default_gate_diff_sha_fn(cwd) do
+  @spec default_gate_base_sha_fn(String.t()) :: String.t()
+  def default_gate_base_sha_fn(cwd) do
     path = Path.join([cwd, "codegen", "gate-pending", "gate-result.json"])
 
     with {:ok, content} <- File.read(path),
-         {:ok, %{"diff_sha" => diff_sha}} <- Jason.decode(content),
-         true <- is_binary(diff_sha) do
-      diff_sha
+         {:ok, %{"base_sha" => base_sha}} <- Jason.decode(content),
+         true <- is_binary(base_sha) do
+      base_sha
     else
       # fail-loud-exempt: absent/malformed gate-result.json (no gate has run
-      # yet, or file predates the diff_sha field) is a legitimate "no fresh
+      # yet, or file predates the base_sha field) is a legitimate "no fresh
       # sha known" state — mirrors default_gate_verdict_fn's identical
       # fail-open contract immediately above. Callers treat "" as never a
       # match for String.starts_with?/2, so this never masks a real check.
@@ -1145,7 +1151,7 @@ defmodule CodegenTestHarness.LoopQueueDrain do
   end
 
   # ── Real gate_mtime_fn: mtime of codegen/gate-pending/gate-result.json ─────
-  # Paired with default_gate_diff_sha_fn/1 in gate_fresh?/3 — rejects a
+  # Paired with default_gate_base_sha_fn/1 in gate_fresh?/3 — rejects a
   # stale "clear" verdict left on disk by an EARLIER cycle sharing the same
   # head_before (two consecutive non-committing attempts have an identical
   # base, so the sha leg alone cannot tell them apart).
@@ -1158,7 +1164,7 @@ defmodule CodegenTestHarness.LoopQueueDrain do
     # fail-loud-exempt: an absent/unstattable gate-result.json means no gate
     # record exists — mtime 0 is older than any real spawn `ts`, so callers
     # treat it as never-fresh (fail-closed). Mirrors default_gate_verdict_fn's
-    # and default_gate_diff_sha_fn's identical fail-open contracts above.
+    # and default_gate_base_sha_fn's identical fail-open contracts above.
     case File.stat(path, time: :posix) do
       {:ok, %{mtime: mtime}} -> mtime
       {:error, _reason} -> 0
