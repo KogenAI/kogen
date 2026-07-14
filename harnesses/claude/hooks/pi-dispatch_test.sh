@@ -6,9 +6,9 @@
 #
 # Cases:
 #   (1) success no-schema: text, no trailing "?" → status=success
-#   (2) clarifying no-schema: text ends "?" → status=clarifying_question
+#   (2) question-mark reply no-schema: text ends "?" → status=success
 #   (3) schema set + valid JSON → status=success, result.value is object
-#   (4) schema set + reply ends "?" (asymmetry guard) → status NOT clarifying_question
+#   (4) schema set + reply ends "?" → status not clarifying_question (heuristic gone in both directions)
 #   (5) schema-validate FAIL: JSON omits required field → status=failed, reason~schema
 #   (6) pi exits non-zero + no agent_end → status=failed, reason~"pi exited non-zero"
 #   (7) pi exits 0 + no agent_end → status=failed, reason~"no agent_end"
@@ -133,19 +133,19 @@ assert_jq \
     ".harness" \
     "pi"
 
-# ── Case (2): clarifying no-schema — text ends "?" ────────────────────────────
-ENVELOPE2="$(run_dispatch "$FIXTURES_DIR/pi_clarifying_question.jsonl")"
+# ── Case (2): question-mark reply no-schema — text ends "?" → success ─────────
+ENVELOPE2="$(run_dispatch "$FIXTURES_DIR/pi_question_mark_reply.jsonl")"
 
 assert_jq \
-    "(2) clarifying no-schema: result.status" \
+    "(2) question-mark reply no-schema: result.status" \
     "$ENVELOPE2" \
     ".result.status" \
-    "clarifying_question"
+    "success"
 
 assert_jq_truthy \
-    "(2) clarifying no-schema: clarifying_question field ends ?" \
+    "(2) question-mark reply no-schema: result.value ends ?" \
     "$ENVELOPE2" \
-    '(.result.clarifying_question // "") | test("\\?[[:space:]]*$")'
+    '(.result.value // "") | test("\\?[[:space:]]*$")'
 
 # ── Case (3): schema set + valid JSON → success, value is object ──────────────
 SCHEMA='{"type":"object","properties":{"lang":{"type":"string"},"intent":{"type":"string"}},"required":["lang","intent"]}'
@@ -162,11 +162,11 @@ assert_jq_truthy \
     "$ENVELOPE3" \
     '(.result.value | type) == "object"'
 
-# ── Case (4): schema set + reply ends "?" → NOT clarifying_question ───────────
+# ── Case (4): schema set + reply ends "?" → status not clarifying_question ────
 ENVELOPE4="$(run_dispatch "$FIXTURES_DIR/pi_schema_cq_asymmetry.jsonl" "CODEGEN_CALL_JSON_SCHEMA=$SCHEMA")"
 
 assert_jq_not_equal \
-    "(4) schema+CQ asymmetry guard: status must not be clarifying_question" \
+    "(4) schema+question-mark reply: status must not be clarifying_question" \
     "$ENVELOPE4" \
     ".result.status" \
     "clarifying_question"

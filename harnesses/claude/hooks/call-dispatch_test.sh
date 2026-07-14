@@ -13,7 +13,7 @@ set -euo pipefail
 HOOKS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DISPATCH_SCRIPT="$(cd "$HOOKS_DIR/.." && pwd)/call-dispatch.sh"
 FIXTURE="$HOOKS_DIR/fixtures/bouncer_classify_structured.jsonl"
-FIXTURE_CQ="$HOOKS_DIR/fixtures/clarifying_question.jsonl"
+FIXTURE_QMARK="$HOOKS_DIR/fixtures/question_mark_reply.jsonl"
 FIXTURE_ERR="$HOOKS_DIR/fixtures/is_error.jsonl"
 FIXTURE_SCHEMA_FAIL="$HOOKS_DIR/fixtures/schema_validate_fail.jsonl"
 
@@ -200,9 +200,9 @@ else
     fail=$((fail + 1))
 fi
 
-# ── Case (a): clarifying-question — no JSON schema, text ends "?" ─────────────
+# ── Case (a): question-mark reply, no schema → success (NOT a clarifying question) ──
 (
-    export FIXTURE_PATH="$FIXTURE_CQ"
+    export FIXTURE_PATH="$FIXTURE_QMARK"
     export CODEGEN_CALL_SYSTEM_PROMPT="You are a test assistant."
     export CODEGEN_CALL_MODEL="claude-haiku-4-5"
     export CODEGEN_CALL_EFFORT="low"
@@ -213,20 +213,20 @@ fi
     unset CODEGEN_CALL_ALLOWED_TOOLS 2>/dev/null || true
     unset CODEGEN_CALL_SETTINGS_PATH 2>/dev/null || true
     bash "$DISPATCH_SCRIPT" 2>/dev/null
-) >"$BASE_TMP/cq_envelope.json" 2>/dev/null || true
+) >"$BASE_TMP/qmark_envelope.json" 2>/dev/null || true
 
-CQ_ENVELOPE="$(cat "$BASE_TMP/cq_envelope.json")"
+QMARK_ENVELOPE="$(cat "$BASE_TMP/qmark_envelope.json")"
 
 assert_jq \
-    "(a) clarifying_question: result.status" \
-    "$CQ_ENVELOPE" \
+    "(a) question-mark reply: result.status" \
+    "$QMARK_ENVELOPE" \
     ".result.status" \
-    "clarifying_question"
+    "success"
 
 assert_jq_truthy \
-    "(a) clarifying_question: clarifying_question field ends ?" \
-    "$CQ_ENVELOPE" \
-    '(.result.clarifying_question // "") | test("\\?[[:space:]]*$")'
+    "(a) question-mark reply: result.value ends ?" \
+    "$QMARK_ENVELOPE" \
+    '(.result.value // "") | test("\\?[[:space:]]*$")'
 
 # ── Case (b): failed — is_error:true in fixture ───────────────────────────────
 (

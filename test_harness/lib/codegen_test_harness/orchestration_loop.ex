@@ -1397,8 +1397,6 @@ defmodule CodegenTestHarness.OrchestrationLoop do
   - `"success"` → `{:ok, envelope["result"]}`
   - `"failed"` → `{:error, reason}` (reason from `result.reason`, or a
     generic message if absent)
-  - `"clarifying_question"` → `{:error, reason}` (the loop cannot answer
-    interactively; surfaced as a failure)
   - anything else → raises (crash loud — unexpected envelope shape)
   """
   @spec invoke_role(String.t(), harness(), map(), run_opts()) ::
@@ -1440,9 +1438,6 @@ defmodule CodegenTestHarness.OrchestrationLoop do
 
       %{"result" => %{"status" => "failed", "reason" => reason}} ->
         {:error, reason || "role #{role} failed with no reason given"}
-
-      %{"result" => %{"status" => "clarifying_question"} = result} ->
-        {:error, "role #{role} asked a clarifying question: #{result["clarifying_question"]}"}
 
       other ->
         raise "OrchestrationLoop: unexpected codegen-call envelope for role #{role}: #{inspect(other)}"

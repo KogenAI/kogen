@@ -13,7 +13,6 @@
 # (h) claude_code with --json-schema returning structured JSON: result.value is object
 # (i) pi success fixture (agent_end with assistant text): result.status==success, harness==pi
 # (j) pi empty reply: result.status==failed
-# (k) clarifying-question heuristic: text ending "?" without --json-schema → clarifying_question
 # (l) exit codes: success→0; harness exits non-zero→codegen-call exits 1, error-envelope on stdout
 # (m) envelope JSON validates against contract (all required keys present, types correct)
 # (o) codegen-call source contains zero role-name tokens (planner/developer/committer/reviewer/curator)
@@ -170,7 +169,7 @@ assert_contains "(b) usage mentions harness" "$STDERR_B" "harness"
 CC_C="$(make_cc_root cc_c)"
 # Make a valid dispatch stub to ensure failures are from arg parsing, not dispatch
 mkdir -p "$CC_C/harnesses/claude"
-make_stub "$CC_C/harnesses/claude/call-dispatch.sh" 'printf '"'"'{"result":{"status":"success","value":"ok","reason":null,"clarifying_question":null,"retry_meta":null},"usage":{"input_tokens":1,"output_tokens":1,"cache_read_input_tokens":0,"cache_creation_input_tokens":0,"cost_usd":0,"latency_ms":100,"model":"haiku","num_turns":1},"error":null,"harness":"claude_code"}'"'"''
+make_stub "$CC_C/harnesses/claude/call-dispatch.sh" 'printf '"'"'{"result":{"status":"success","value":"ok","reason":null,"retry_meta":null},"usage":{"input_tokens":1,"output_tokens":1,"cache_read_input_tokens":0,"cache_creation_input_tokens":0,"cost_usd":0,"latency_ms":100,"model":"haiku","num_turns":1},"error":null,"harness":"claude_code"}'"'"''
 
 # missing --model
 actual_exit=0
@@ -217,7 +216,7 @@ check "(e) missing @path for --system-prompt exits 2" "2" "$actual_exit"
 # ─────────────────────────────────────────────────────────────────────────────
 # Test (f): claude_code success fixture
 # ─────────────────────────────────────────────────────────────────────────────
-SUCCESS_ENVELOPE='{"result":{"status":"success","value":"Hello world","reason":null,"clarifying_question":null,"retry_meta":null},"usage":{"input_tokens":42,"output_tokens":7,"cache_read_input_tokens":0,"cache_creation_input_tokens":0,"cost_usd":0.001,"latency_ms":500,"model":"haiku","num_turns":1},"error":null,"harness":"claude_code"}'
+SUCCESS_ENVELOPE='{"result":{"status":"success","value":"Hello world","reason":null,"retry_meta":null},"usage":{"input_tokens":42,"output_tokens":7,"cache_read_input_tokens":0,"cache_creation_input_tokens":0,"cost_usd":0.001,"latency_ms":500,"model":"haiku","num_turns":1},"error":null,"harness":"claude_code"}'
 
 CC_F="$(make_cc_root cc_f)"
 make_claude_dispatch_stub "$CC_F" "printf '%s\n' '${SUCCESS_ENVELOPE}'"
@@ -235,7 +234,7 @@ assert_jq_truthy "(f) usage.input_tokens > 0" "$OUT_F" ".usage.input_tokens > 0"
 # ─────────────────────────────────────────────────────────────────────────────
 # Test (g): claude_code schema_retry_exhausted fixture
 # ─────────────────────────────────────────────────────────────────────────────
-RETRY_ENVELOPE='{"result":{"status":"schema_retry_exhausted","value":null,"reason":"max retries exceeded","clarifying_question":null,"retry_meta":{"retries":3,"last_error":"malformed JSON"}},"usage":{"input_tokens":100,"output_tokens":20,"cache_read_input_tokens":0,"cache_creation_input_tokens":0,"cost_usd":0.002,"latency_ms":1200,"model":"haiku","num_turns":3},"error":null,"harness":"claude_code"}'
+RETRY_ENVELOPE='{"result":{"status":"schema_retry_exhausted","value":null,"reason":"max retries exceeded","retry_meta":{"retries":3,"last_error":"malformed JSON"}},"usage":{"input_tokens":100,"output_tokens":20,"cache_read_input_tokens":0,"cache_creation_input_tokens":0,"cost_usd":0.002,"latency_ms":1200,"model":"haiku","num_turns":3},"error":null,"harness":"claude_code"}'
 
 CC_G="$(make_cc_root cc_g)"
 make_claude_dispatch_stub "$CC_G" "printf '%s\n' '${RETRY_ENVELOPE}'"
@@ -256,7 +255,7 @@ assert_jq_truthy "(g) retry_meta.last_error non-null" "$OUT_G" '.result.retry_me
 SCHEMA_FILE="$BASE_TMP/schema.json"
 printf '{"type":"object","properties":{"name":{"type":"string"}},"required":["name"]}' >"$SCHEMA_FILE"
 
-STRUCT_ENVELOPE='{"result":{"status":"success","value":{"name":"Alice"},"reason":null,"clarifying_question":null,"retry_meta":null},"usage":{"input_tokens":55,"output_tokens":10,"cache_read_input_tokens":0,"cache_creation_input_tokens":0,"cost_usd":0.001,"latency_ms":600,"model":"haiku","num_turns":1},"error":null,"harness":"claude_code"}'
+STRUCT_ENVELOPE='{"result":{"status":"success","value":{"name":"Alice"},"reason":null,"retry_meta":null},"usage":{"input_tokens":55,"output_tokens":10,"cache_read_input_tokens":0,"cache_creation_input_tokens":0,"cost_usd":0.001,"latency_ms":600,"model":"haiku","num_turns":1},"error":null,"harness":"claude_code"}'
 
 CC_H="$(make_cc_root cc_h)"
 make_claude_dispatch_stub "$CC_H" "printf '%s\n' '${STRUCT_ENVELOPE}'"
@@ -275,7 +274,7 @@ assert_jq_truthy "(h) result.value is object" "$OUT_H" '(.result.value | type) =
 # ─────────────────────────────────────────────────────────────────────────────
 # Test (i): pi success fixture (agent_end with assistant text)
 # ─────────────────────────────────────────────────────────────────────────────
-PI_SUCCESS_ENVELOPE='{"result":{"status":"success","value":"The answer is 42","reason":null,"clarifying_question":null,"retry_meta":null},"usage":{"input_tokens":30,"output_tokens":8,"cache_read_input_tokens":0,"cache_creation_input_tokens":0,"cost_usd":0.001,"latency_ms":400,"model":"gpt-5","num_turns":1},"error":null,"harness":"pi"}'
+PI_SUCCESS_ENVELOPE='{"result":{"status":"success","value":"The answer is 42","reason":null,"retry_meta":null},"usage":{"input_tokens":30,"output_tokens":8,"cache_read_input_tokens":0,"cache_creation_input_tokens":0,"cost_usd":0.001,"latency_ms":400,"model":"gpt-5","num_turns":1},"error":null,"harness":"pi"}'
 
 CC_I="$(make_cc_root cc_i)"
 make_pi_dispatch_stub "$CC_I" "printf '%s\n' '${PI_SUCCESS_ENVELOPE}'"
@@ -292,7 +291,7 @@ assert_jq "(i) harness == pi" "$OUT_I" ".harness" "pi"
 # ─────────────────────────────────────────────────────────────────────────────
 # Test (j): pi empty reply → failed
 # ─────────────────────────────────────────────────────────────────────────────
-PI_EMPTY_ENVELOPE='{"result":{"status":"failed","value":null,"reason":"pi returned empty reply","clarifying_question":null,"retry_meta":null},"usage":{"input_tokens":0,"output_tokens":0,"cache_read_input_tokens":0,"cache_creation_input_tokens":0,"cost_usd":0,"latency_ms":300,"model":"gpt-5","num_turns":1},"error":null,"harness":"pi"}'
+PI_EMPTY_ENVELOPE='{"result":{"status":"failed","value":null,"reason":"pi returned empty reply","retry_meta":null},"usage":{"input_tokens":0,"output_tokens":0,"cache_read_input_tokens":0,"cache_creation_input_tokens":0,"cost_usd":0,"latency_ms":300,"model":"gpt-5","num_turns":1},"error":null,"harness":"pi"}'
 
 CC_J="$(make_cc_root cc_j)"
 make_pi_dispatch_stub "$CC_J" "printf '%s\n' '${PI_EMPTY_ENVELOPE}'"
@@ -304,23 +303,6 @@ OUT_J="$("$CC_J/codegen-call" \
 
 check "(j) pi empty reply exits 0" "0" "$actual_exit"
 assert_jq "(j) result.status == failed" "$OUT_J" ".result.status" "failed"
-
-# ─────────────────────────────────────────────────────────────────────────────
-# Test (k): clarifying-question heuristic
-# ─────────────────────────────────────────────────────────────────────────────
-CQ_ENVELOPE='{"result":{"status":"clarifying_question","value":"What is your preferred language?","reason":null,"clarifying_question":"What is your preferred language?","retry_meta":null},"usage":{"input_tokens":20,"output_tokens":6,"cache_read_input_tokens":0,"cache_creation_input_tokens":0,"cost_usd":0,"latency_ms":200,"model":"haiku","num_turns":1},"error":null,"harness":"claude_code"}'
-
-CC_K="$(make_cc_root cc_k)"
-make_claude_dispatch_stub "$CC_K" "printf '%s\n' '${CQ_ENVELOPE}'"
-
-actual_exit=0
-OUT_K="$("$CC_K/codegen-call" \
-    --harness=claude_code --model=haiku --effort=low \
-    --system-prompt "@$SP_FILE" "ambiguous prompt" 2>/dev/null)" || actual_exit=$?
-
-check "(k) clarifying_question exits 0" "0" "$actual_exit"
-assert_jq "(k) result.status == clarifying_question" "$OUT_K" ".result.status" "clarifying_question"
-assert_jq_truthy "(k) clarifying_question field non-null" "$OUT_K" '.result.clarifying_question != null'
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Test (l): exit codes — success→0; harness exits non-zero→codegen-call exits 1
@@ -336,7 +318,7 @@ actual_exit=0
 check "(l) dispatch exit 0 → codegen-call exits 0" "0" "$actual_exit"
 
 # Failure: dispatch exits 1
-ERROR_ENVELOPE='{"result":{"status":"failed","value":null,"reason":"infra error","clarifying_question":null,"retry_meta":null},"usage":{"input_tokens":0,"output_tokens":0,"cache_read_input_tokens":0,"cache_creation_input_tokens":0,"cost_usd":0,"latency_ms":100,"model":"haiku","num_turns":0},"error":"claude exited 1","harness":"claude_code"}'
+ERROR_ENVELOPE='{"result":{"status":"failed","value":null,"reason":"infra error","retry_meta":null},"usage":{"input_tokens":0,"output_tokens":0,"cache_read_input_tokens":0,"cache_creation_input_tokens":0,"cost_usd":0,"latency_ms":100,"model":"haiku","num_turns":0},"error":"claude exited 1","harness":"claude_code"}'
 CC_L1="$(make_cc_root cc_l1)"
 make_claude_dispatch_stub "$CC_L1" "printf '%s\n' '${ERROR_ENVELOPE}'; exit 1"
 actual_exit=0
@@ -370,7 +352,7 @@ assert_jq_truthy "(m) .harness exists" "$OUT_M" 'has("harness")'
 assert_jq_truthy "(m) .result.status exists" "$OUT_M" '.result | has("status")'
 assert_jq_truthy "(m) .result.value key exists" "$OUT_M" '.result | has("value")'
 assert_jq_truthy "(m) .result.reason key exists" "$OUT_M" '.result | has("reason")'
-assert_jq_truthy "(m) .result.clarifying_question key exists" "$OUT_M" '.result | has("clarifying_question")'
+assert_jq_truthy "(m) .result has NO clarifying_question key" "$OUT_M" '.result | has("clarifying_question") | not'
 assert_jq_truthy "(m) .result.retry_meta key exists" "$OUT_M" '.result | has("retry_meta")'
 
 # Validate usage sub-keys
@@ -409,7 +391,7 @@ check "(n) usage does not mention --role" "0" "$ROLE_IN_USAGE"
 # Test (q): --resume <sid> round-trips into CODEGEN_CALL_RESUME
 # ─────────────────────────────────────────────────────────────────────────────
 CC_Q="$(make_cc_root cc_q)"
-make_claude_dispatch_stub "$CC_Q" 'printf "%s" "$CODEGEN_CALL_RESUME" > "'"$BASE_TMP"'/resume_seen.txt"; printf '"'"'%s\n'"'"' '"'"'{"result":{"status":"success","value":"ok","reason":null,"clarifying_question":null,"retry_meta":null},"usage":{"input_tokens":1,"output_tokens":1,"cache_read_input_tokens":0,"cache_creation_input_tokens":0,"cost_usd":0,"latency_ms":100,"model":"haiku","num_turns":1},"error":null,"harness":"claude_code","session_id":null}'"'"''
+make_claude_dispatch_stub "$CC_Q" 'printf "%s" "$CODEGEN_CALL_RESUME" > "'"$BASE_TMP"'/resume_seen.txt"; printf '"'"'%s\n'"'"' '"'"'{"result":{"status":"success","value":"ok","reason":null,"retry_meta":null},"usage":{"input_tokens":1,"output_tokens":1,"cache_read_input_tokens":0,"cache_creation_input_tokens":0,"cost_usd":0,"latency_ms":100,"model":"haiku","num_turns":1},"error":null,"harness":"claude_code","session_id":null}'"'"''
 
 actual_exit=0
 "$CC_Q/codegen-call" \
@@ -429,7 +411,7 @@ mkdir -p "$CC_R/templates/generated/pi/agent"
 printf -- '---\nname: committer\ndescription: d\nmodel: haiku\ntools: bash, edit, grep, read\n---\n# Committer\n\nYou are a committer specialist.' >"$CC_R/templates/generated/pi/agent/committer.md"
 
 # Stub that echoes a minted session_id
-make_pi_dispatch_stub "$CC_R" 'printf '"'"'{"result":{"status":"success","value":"committed","reason":null,"clarifying_question":null,"retry_meta":null},"usage":{"input_tokens":10,"output_tokens":2,"cache_read_input_tokens":0,"cache_creation_input_tokens":0,"cost_usd":0.001,"latency_ms":200,"model":"gpt-5","num_turns":1},"error":null,"harness":"pi","session_id":"r-minted-session"}'"'"''
+make_pi_dispatch_stub "$CC_R" 'printf '"'"'{"result":{"status":"success","value":"committed","reason":null,"retry_meta":null},"usage":{"input_tokens":10,"output_tokens":2,"cache_read_input_tokens":0,"cache_creation_input_tokens":0,"cost_usd":0.001,"latency_ms":200,"model":"gpt-5","num_turns":1},"error":null,"harness":"pi","session_id":"r-minted-session"}'"'"''
 
 actual_exit=0
 OUT_R="$("$CC_R/codegen-call" \
@@ -626,7 +608,7 @@ mkdir -p "$CC_T/templates/generated/pi/agent"
 printf '# Developer\n\nYou are a developer.' >"$CC_T/templates/generated/pi/agent/developer.md"
 
 # Stub that captures CODEGEN_CALL_RESUME and echoes it back in session_id
-make_pi_dispatch_stub "$CC_T" 'RESUME_VAL="${CODEGEN_CALL_RESUME:-}"; printf '"'"'{"result":{"status":"success","value":"done","reason":null,"clarifying_question":null,"retry_meta":null},"usage":{"input_tokens":5,"output_tokens":1,"cache_read_input_tokens":0,"cache_creation_input_tokens":0,"cost_usd":0,"latency_ms":100,"model":"gpt-5","num_turns":1},"error":null,"harness":"pi","session_id":"%s"}'"'"' "$RESUME_VAL"'
+make_pi_dispatch_stub "$CC_T" 'RESUME_VAL="${CODEGEN_CALL_RESUME:-}"; printf '"'"'{"result":{"status":"success","value":"done","reason":null,"retry_meta":null},"usage":{"input_tokens":5,"output_tokens":1,"cache_read_input_tokens":0,"cache_creation_input_tokens":0,"cost_usd":0,"latency_ms":100,"model":"gpt-5","num_turns":1},"error":null,"harness":"pi","session_id":"%s"}'"'"' "$RESUME_VAL"'
 
 actual_exit=0
 OUT_T="$("$CC_T/codegen-call" \

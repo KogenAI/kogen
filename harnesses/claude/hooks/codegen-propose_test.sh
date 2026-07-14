@@ -103,7 +103,7 @@ echo 0 >"$CALL_COUNTER_FILE_A"
 make_stub "$BIN_A/codegen-call" '
 n=$(($(cat "'"$CALL_COUNTER_FILE_A"'") + 1))
 echo "$n" > "'"$CALL_COUNTER_FILE_A"'"
-printf "%s\n" "{\"result\":{\"status\":\"success\",\"value\":{\"cluster\":{\"counter\":\"forbidden_bash\",\"pattern_key\":\"x\",\"wasted_turns\":8},\"target_file\":\"harnesses/claude/tools-header/debug.txt\",\"anchor\":\"## Tools\",\"change\":{\"description\":\"add a line naming the forbidden command\"},\"rationale\":\"evidence shows repeated forbidden bash use\",\"confidence\":\"high\"},\"reason\":null,\"clarifying_question\":null,\"retry_meta\":null},\"usage\":{},\"error\":null,\"harness\":\"claude_code\"}"
+printf "%s\n" "{\"result\":{\"status\":\"success\",\"value\":{\"cluster\":{\"counter\":\"forbidden_bash\",\"pattern_key\":\"x\",\"wasted_turns\":8},\"target_file\":\"harnesses/claude/tools-header/debug.txt\",\"anchor\":\"## Tools\",\"change\":{\"description\":\"add a line naming the forbidden command\"},\"rationale\":\"evidence shows repeated forbidden bash use\",\"confidence\":\"high\"},\"reason\":null,\"retry_meta\":null},\"usage\":{},\"error\":null,\"harness\":\"claude_code\"}"
 '
 
 actual_exit=0
@@ -166,7 +166,7 @@ if [ "$n" = "1" ]; then
   echo "simulated dispatch failure" >&2
   exit 1
 fi
-printf "%s\n" "{\"result\":{\"status\":\"success\",\"value\":{\"cluster\":{\"counter\":\"user_correction\",\"pattern_key\":\"will-succeed\",\"wasted_turns\":9},\"target_file\":\"shared/rules/roles/developer.md\",\"anchor\":\"## Discipline\",\"change\":{\"description\":\"clarify rule X\"},\"rationale\":\"grounded in evidence\",\"confidence\":\"medium\"},\"reason\":null,\"clarifying_question\":null,\"retry_meta\":null},\"usage\":{},\"error\":null,\"harness\":\"claude_code\"}"
+printf "%s\n" "{\"result\":{\"status\":\"success\",\"value\":{\"cluster\":{\"counter\":\"user_correction\",\"pattern_key\":\"will-succeed\",\"wasted_turns\":9},\"target_file\":\"shared/rules/roles/developer.md\",\"anchor\":\"## Discipline\",\"change\":{\"description\":\"clarify rule X\"},\"rationale\":\"grounded in evidence\",\"confidence\":\"medium\"},\"reason\":null,\"retry_meta\":null},\"usage\":{},\"error\":null,\"harness\":\"claude_code\"}"
 '
 
 actual_exit=0
@@ -210,7 +210,7 @@ make_stub "$BIN_D/codegen-analyze" '
 printf "%s\n" "{\"counter\":\"hook_intervention\",\"pattern_key\":\"unclear-cause\",\"wasted_turns\":7,\"sessions\":1,\"top_evidence\":\"ev\"}"
 '
 make_stub "$BIN_D/codegen-call" '
-printf "%s\n" "{\"result\":{\"status\":\"success\",\"value\":{\"cluster\":{\"counter\":\"hook_intervention\",\"pattern_key\":\"unclear-cause\",\"wasted_turns\":7},\"target_file\":\"unknown\",\"anchor\":\"\",\"change\":null,\"rationale\":\"needs human investigation - evidence too sparse\",\"confidence\":\"low\"},\"reason\":null,\"clarifying_question\":null,\"retry_meta\":null},\"usage\":{},\"error\":null,\"harness\":\"claude_code\"}"
+printf "%s\n" "{\"result\":{\"status\":\"success\",\"value\":{\"cluster\":{\"counter\":\"hook_intervention\",\"pattern_key\":\"unclear-cause\",\"wasted_turns\":7},\"target_file\":\"unknown\",\"anchor\":\"\",\"change\":null,\"rationale\":\"needs human investigation - evidence too sparse\",\"confidence\":\"low\"},\"reason\":null,\"retry_meta\":null},\"usage\":{},\"error\":null,\"harness\":\"claude_code\"}"
 '
 
 actual_exit=0

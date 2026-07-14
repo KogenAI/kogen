@@ -34,7 +34,7 @@ defmodule CodegenTestHarness.Stacks.Call.CodegenCallTest do
     end
   end
 
-  test "schema-bound call never returns a clarifying_question" do
+  test "no call ever returns a clarifying_question" do
     env =
       Fixtures.run_codegen_call(
         "What do you need to know?",
