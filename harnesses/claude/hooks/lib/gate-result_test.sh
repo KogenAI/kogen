@@ -279,5 +279,45 @@ assert_eq "write_gate_result 15-arg legacy → .witness empty (default)" \
     "" "$(jq -r '.witness' "$DIR_LEG/codegen/gate-pending/gate-result.json")"
 rm -rf "$DIR_LEG"
 
+# ── graded_tree_sha (17th positional) ───────────────────────────────────────
+
+# write_gate_result with witness + graded_tree_sha (16th + 17th positional)
+DIR_GTS=$(mktemp -d)
+write_gate_result "make test" "short" "abc1234" 3 \
+    "true" 0 2 2 "PASS" "" \
+    "2026-06-07T12:00:00Z" "2026-06-07T12:03:00Z" \
+    "sessg" "/tmp/gate.log" "$DIR_GTS" "" "deadbeef1234567890"
+assert_eq "write_gate_result .graded_tree_sha field equals arg" \
+    "deadbeef1234567890" \
+    "$(jq -r '.graded_tree_sha' "$DIR_GTS/codegen/gate-pending/gate-result.json")"
+assert_eq "gate_result_graded_tree_sha reads back the same value" \
+    "deadbeef1234567890" \
+    "$(gate_result_graded_tree_sha "$DIR_GTS")"
+rm -rf "$DIR_GTS"
+
+# Legacy 16-arg caller (witness only, no graded_tree_sha) → field present, empty
+DIR_16=$(mktemp -d)
+write_gate_result "make test" "short" "abc1234" 3 \
+    "true" 1 2 2 "" "" \
+    "2026-06-07T12:00:00Z" "2026-06-07T12:03:00Z" \
+    "sess16" "/tmp/gate.log" "$DIR_16" "test/foo_test.exs:42 — boom"
+assert_eq "write_gate_result 16-arg legacy → .graded_tree_sha empty (default)" \
+    "" "$(jq -r '.graded_tree_sha' "$DIR_16/codegen/gate-pending/gate-result.json")"
+rm -rf "$DIR_16"
+
+# Legacy 15-arg caller (no witness, no graded_tree_sha) → both fields empty
+DIR_15=$(mktemp -d)
+write_gate_result "make test" "short" "abc1234" 3 \
+    "true" 0 2 2 "PASS" "" \
+    "2026-06-07T12:00:00Z" "2026-06-07T12:03:00Z" \
+    "sess15" "/tmp/gate.log" "$DIR_15"
+assert_eq "write_gate_result 15-arg legacy → .graded_tree_sha empty (default)" \
+    "" "$(jq -r '.graded_tree_sha' "$DIR_15/codegen/gate-pending/gate-result.json")"
+
+# gate_result_graded_tree_sha on a missing result file → ""
+assert_eq "gate_result_graded_tree_sha missing file → empty" \
+    "" "$(gate_result_graded_tree_sha "$(mktemp -d)")"
+rm -rf "$DIR_15"
+
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

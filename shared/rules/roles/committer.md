@@ -19,6 +19,8 @@ State this upfront, as methodology — not "the hook will deny you":
 
 NEVER commit cycle output unless the gate verdict is `clear`. Read the `.verdict` field from the gate-result JSON written into `codegen/gate-pending/`. Verdict `failed`, `inconclusive`, or absent → DO NOT commit; report the non-clear verdict and stop. Only `verdict=clear` permits the commit. Do not count `ALL CLEAR ✅` strings — read the structured field.
 
+A clear verdict is only a license to commit **for the tree it graded**. The loop re-gates automatically immediately before you run (comparing the gate's stamped `graded_tree_sha` against the tree right now) and re-verifies your actual commit's tree against that same value after you run — you do not need to do anything extra here, but the practical implication is: commit exactly what is on disk when you run (`git add -A && git commit`), don't hand-pick a subset, and don't let anything mutate the tree between the gate and your `git commit`.
+
 ## When to Commit
 
 NOT required between impl steps. ✅ User asks; feature 100% + user requests; task IS git op.

@@ -2041,6 +2041,277 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
     end
   end
 
+  describe "no ship on a gate that didn't grade this tree (pre-commit re-gate)" do
+    setup do
+      dir =
+        Path.join(
+          System.tmp_dir!(),
+          "no_ship_stale_gate_test_#{:erlang.unique_integer([:positive])}"
+        )
+
+      File.mkdir_p!(dir)
+      on_exit(fn -> File.rm_rf!(dir) end)
+
+      {_out, 0} = System.cmd("git", ["init", "-q"], cd: dir)
+      {_out, 0} = System.cmd("git", ["config", "user.email", "test@example.com"], cd: dir)
+      {_out, 0} = System.cmd("git", ["config", "user.name", "Test"], cd: dir)
+      {_out, 0} = System.cmd("git", ["config", "commit.gpgsign", "false"], cd: dir)
+
+      File.write!(Path.join(dir, "README.md"), "init\n")
+      {_out, 0} = System.cmd("git", ["add", "-A"], cd: dir)
+      {_out, 0} = System.cmd("git", ["commit", "-q", "-m", "init"], cd: dir)
+
+      {:ok, dir: dir}
+    end
+
+    # committer commits whatever is on disk at the time it runs (mirrors a
+    # faithful `git add -A && git commit`).
+    defp committing_invoke_fn(calls_agent, dir) do
+      fn role, _harness, _ctx, _opts ->
+        Agent.update(calls_agent, fn calls -> calls ++ [role] end)
+
+        if role == "committer" do
+          {_o, 0} = System.cmd("git", ["add", "-A"], cd: dir)
+          {_o, 0} = System.cmd("git", ["commit", "-q", "-m", "impl"], cd: dir)
+        end
+
+        value =
+          if role == "reviewer-static", do: "REVIEW_VERDICT: APPROVED", else: "did #{role}"
+
+        {:ok, %{"status" => "success", "value" => value}}
+      end
+    end
+
+    test "tree unchanged since gate → proceeds straight to the committer, no re-gate", %{
+      calls_agent: calls_agent,
+      dir: dir
+    } do
+      File.write!(Path.join(dir, "feature.txt"), "done\n")
+
+      regate_calls = :counters.new(1, [])
+
+      gate_fn = fn _cwd, _opts ->
+        :counters.add(regate_calls, 1, 1)
+        {:clear, "make test"}
+      end
+
+      # gate_tree_match_fn simulates "the gate already graded this exact
+      # content" — no re-gate should fire.
+      match_fn = fn _cwd -> true end
+
+      assert :ok ==
+               OrchestrationLoop.run(
+                 harness: "claude_code",
+                 stack: "static",
+                 cwd: dir,
+                 pitch: "do the thing",
+                 invoke_fn: committing_invoke_fn(calls_agent, dir),
+                 gate_fn: gate_fn,
+                 gate_tree_match_fn: match_fn,
+                 gate_preflight_fn: no_op_gate_preflight_fn(),
+                 preflight_probe_fn: all_present_preflight_probe_fn(),
+                 advance_cycle_state_fn: no_op_advance_cycle_state_fn()
+               )
+
+      # gate_fn is the PRIMARY developer-gate loop's gate — it fires once for
+      # that, and the pre-commit path never re-invokes it because the match
+      # check reports "match" without calling gate_fn at all.
+      assert :counters.get(regate_calls, 1) == 1
+      assert Agent.get(calls_agent, & &1) == @static_sequence
+    end
+
+    test "tree changed since gate, re-gate comes back clear → re-gates once then commits", %{
+      calls_agent: calls_agent,
+      dir: dir
+    } do
+      File.write!(Path.join(dir, "feature.txt"), "done\n")
+
+      match_calls = :counters.new(1, [])
+      regate_calls = :counters.new(1, [])
+
+      # First match check (primary gate already ran, opts[:gate_fn] fired
+      # once for the developer step) reports stale; the SECOND (after
+      # rework_final_gate re-gates) reports match.
+      match_fn = fn _cwd ->
+        :counters.add(match_calls, 1, 1)
+        :counters.get(match_calls, 1) > 1
+      end
+
+      gate_fn = fn _cwd, _opts ->
+        :counters.add(regate_calls, 1, 1)
+        {:clear, "make test"}
+      end
+
+      assert :ok ==
+               OrchestrationLoop.run(
+                 harness: "claude_code",
+                 stack: "static",
+                 cwd: dir,
+                 pitch: "do the thing",
+                 invoke_fn: committing_invoke_fn(calls_agent, dir),
+                 gate_fn: gate_fn,
+                 gate_tree_match_fn: match_fn,
+                 gate_preflight_fn: no_op_gate_preflight_fn(),
+                 preflight_probe_fn: all_present_preflight_probe_fn(),
+                 advance_cycle_state_fn: no_op_advance_cycle_state_fn()
+               )
+
+      # gate_fn fires once for the primary developer-gate step, then a
+      # second time for the pre-commit re-gate triggered by the stale match.
+      assert :counters.get(regate_calls, 1) == 2
+      assert Agent.get(calls_agent, & &1) == @static_sequence
+    end
+
+    test "tree changed since gate, re-gate FAILS → reworks the developer, then re-checks and commits",
+         %{
+           calls_agent: calls_agent,
+           dir: dir
+         } do
+      File.write!(Path.join(dir, "feature.txt"), "done\n")
+
+      match_calls = :counters.new(1, [])
+      regate_calls = :counters.new(1, [])
+
+      match_fn = fn _cwd ->
+        :counters.add(match_calls, 1, 1)
+        :counters.get(match_calls, 1) > 1
+      end
+
+      # First re-gate call (the pre-commit rework path) fails; every
+      # subsequent call (the primary developer-gate step's own call, plus
+      # any later pre-commit re-gate) is clear.
+      gate_fn = fn _cwd, _opts ->
+        :counters.add(regate_calls, 1, 1)
+        n = :counters.get(regate_calls, 1)
+        if n == 2, do: {:failed, "make test"}, else: {:clear, "make test"}
+      end
+
+      assert :ok ==
+               OrchestrationLoop.run(
+                 harness: "claude_code",
+                 stack: "static",
+                 cwd: dir,
+                 pitch: "do the thing",
+                 invoke_fn: committing_invoke_fn(calls_agent, dir),
+                 gate_fn: gate_fn,
+                 gate_tree_match_fn: match_fn,
+                 gate_preflight_fn: no_op_gate_preflight_fn(),
+                 preflight_probe_fn: all_present_preflight_probe_fn(),
+                 advance_cycle_state_fn: no_op_advance_cycle_state_fn(),
+                 max_final_gate_cycles: 1
+               )
+
+      # The developer role was invoked twice: once in the normal sequence,
+      # once more as pre-commit rework.
+      dev_calls = Agent.get(calls_agent, & &1) |> Enum.count(&(&1 == "developer-static"))
+      assert dev_calls == 2
+    end
+
+    test "tree changed since gate, re-gate fails every time → exhausts and errors, never commits",
+         %{
+           calls_agent: calls_agent,
+           dir: dir
+         } do
+      File.write!(Path.join(dir, "feature.txt"), "done\n")
+
+      match_fn = fn _cwd -> false end
+
+      # The PRIMARY developer-gate step (do_gate_loop/9) must clear so we
+      # actually reach the committer clause; only the PRE-COMMIT re-gate
+      # (rework_final_gate/5) must stay non-clear on every call, so the
+      # exhaustion path under test fires instead of the primary gate loop's
+      # own retry-exhaustion.
+      regate_calls = :counters.new(1, [])
+
+      gate_fn = fn _cwd, _opts ->
+        :counters.add(regate_calls, 1, 1)
+        if :counters.get(regate_calls, 1) == 1, do: {:clear, "make test"}, else: {:failed, "make test"}
+      end
+
+      assert {:error, reason} =
+               OrchestrationLoop.run(
+                 harness: "claude_code",
+                 stack: "static",
+                 cwd: dir,
+                 pitch: "do the thing",
+                 invoke_fn: committing_invoke_fn(calls_agent, dir),
+                 gate_fn: gate_fn,
+                 gate_tree_match_fn: match_fn,
+                 gate_preflight_fn: no_op_gate_preflight_fn(),
+                 preflight_probe_fn: all_present_preflight_probe_fn(),
+                 advance_cycle_state_fn: no_op_advance_cycle_state_fn(),
+                 max_final_gate_cycles: 1
+               )
+
+      assert reason =~ "pre-commit re-gate" or reason =~ "never graded clear"
+      refute "committer" in Agent.get(calls_agent, & &1)
+
+      {status_out, 0} = System.cmd("git", ["status", "--porcelain"], cd: dir)
+      # The developer's rework edits are still on disk, uncommitted — no
+      # commit landed, matching the "never a false loop_committed" contract.
+      assert status_out != ""
+    end
+
+    test "committer commits DIFFERENT content than the last-graded tree → post-commit guard raises",
+         %{
+           calls_agent: calls_agent,
+           dir: dir
+         } do
+      # The pre-commit match check says "match" (skip re-gate), but the
+      # committer itself still diverges from the stamped graded_tree_sha
+      # (simulating a bug in the committer, or a race). assert_commit_matches_gate!
+      # must catch this independently of the pre-commit re-gate.
+      invoke_fn = fn role, _harness, _ctx, _opts ->
+        Agent.update(calls_agent, fn calls -> calls ++ [role] end)
+
+        if role == "committer" do
+          File.write!(Path.join(dir, "unexpected.txt"), "not what was graded\n")
+          {_o, 0} = System.cmd("git", ["add", "-A"], cd: dir)
+          {_o, 0} = System.cmd("git", ["commit", "-q", "-m", "diverged"], cd: dir)
+        end
+
+        value =
+          if role == "reviewer-static", do: "REVIEW_VERDICT: APPROVED", else: "did #{role}"
+
+        {:ok, %{"status" => "success", "value" => value}}
+      end
+
+      # gate_result_sha_fn seam is not exposed directly — simulate the
+      # stamped verdict via a real LoopGate.run_gate/2 call before run/1,
+      # against a KNOWN tree that does NOT include unexpected.txt.
+      claude_dir = Path.join(dir, ".claude")
+      File.mkdir_p!(claude_dir)
+      File.write!(Path.join(claude_dir, "gate-config.sh"), ~s(GATE_COMMAND="make test"\n))
+      File.write!(Path.join(dir, "feature.txt"), "done\n")
+
+      CodegenTestHarness.LoopGate.run_gate(dir,
+        run_fn: fn _gate, _project_dir -> {"ok", 0} end,
+        stack: "static"
+      )
+
+      # gate_tree_match_fn reports "match" so the pre-commit re-gate is
+      # skipped entirely — the ONLY guard left standing is the post-commit
+      # content assertion.
+      match_fn = fn _cwd -> true end
+      gate_fn = fn _cwd, _opts -> {:clear, "make test"} end
+
+      assert_raise RuntimeError, ~r/does not match the last graded_tree_sha|DIFFERENT content/, fn ->
+        OrchestrationLoop.run(
+          harness: "claude_code",
+          stack: "static",
+          cwd: dir,
+          pitch: "do the thing",
+          invoke_fn: invoke_fn,
+          gate_fn: gate_fn,
+          gate_tree_match_fn: match_fn,
+          gate_preflight_fn: no_op_gate_preflight_fn(),
+          preflight_probe_fn: all_present_preflight_probe_fn(),
+          advance_cycle_state_fn: no_op_advance_cycle_state_fn()
+        )
+      end
+    end
+  end
+
   describe "run/1 — turn-0 gate preflight (loop-gate-preflight-turn0)" do
     test "unresolvable gate refuses BEFORE any role is invoked",
          %{calls_agent: calls_agent} do

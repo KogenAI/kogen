@@ -457,6 +457,14 @@ defmodule CodegenTestHarness.OrchestrationLoop do
   # developer role and the reviewer role.
   defp run_roles([], _harness, _ctx, _opts), do: :ok
 
+  defp run_roles([role | rest], harness, ctx, opts) when role == "committer" do
+    # No-ship-on-a-gate-that-didn't-grade-this-tree: the pre-commit re-gate
+    # check has to run BEFORE the committer role is invoked at all — unlike
+    # every other role clause below, this one intercepts ahead of the
+    # `invoke_with_retry` call rather than after it.
+    ensure_gate_graded_this_tree!(ctx, rest, harness, opts, 0)
+  end
+
   defp run_roles([role | rest], harness, ctx, opts) do
     with {:ok, result} <- invoke_with_retry(role, harness, ctx, opts) do
       ctx = put_in(ctx, [:artifacts, role], result)
@@ -473,18 +481,6 @@ defmodule CodegenTestHarness.OrchestrationLoop do
           run_format_step(ctx.cwd, opts)
           run_curator_doc_check(role, rest, harness, ctx, opts, 0)
 
-        role == "committer" ->
-          # Structural gap #9: the committer ROLE returning success does NOT
-          # prove a commit landed — the committer can inspect the repo, see the
-          # feature already implemented (it was, by the developer), and report
-          # "done" without ever running `git commit`. Trusting role-return here
-          # is the exact false-success failure the loop exists to prevent. VERIFY
-          # the working tree is actually clean (all cycle output committed); a
-          # dirty tree after the committer means it did not commit → fail loud.
-          verify_committed!(ctx.cwd, ctx.base_head)
-          advance_cycle_state_step("COMMITTED", ctx, opts)
-          run_roles(rest, harness, ctx, opts)
-
         true ->
           run_roles(rest, harness, ctx, opts)
       end
@@ -492,6 +488,124 @@ defmodule CodegenTestHarness.OrchestrationLoop do
   end
 
   defp developer_role?(role), do: String.starts_with?(role, "developer-")
+
+  # No-ship-on-a-gate-that-didn't-grade-this-tree: runs immediately BEFORE
+  # the committer role is invoked (keyed on the role about to run, not its
+  # predecessor, so it holds for both the phoenix and static sequences — the
+  # context-curator, `run_format_step`, and env-var steps are all sequenced
+  # ahead of the committer in both). A tree that changed since the last gate
+  # ran (curator doc edits, formatting, or a destructive revert like the
+  # incident that motivated this guard) means the recorded verdict no longer
+  # describes what's about to be committed — re-gate to restamp a verdict
+  # for the CURRENT tree before the committer ever runs.
+  #
+  # Match (or no comparable signature — non-git cwd, or no prior gate has
+  # run in this cycle's opts, e.g. most mocked unit tests) → proceed
+  # straight to the committer. Stale → re-gate via the same `LoopGate.run_gate/2`
+  # contract the primary gate loop uses. Clear on re-gate → proceed. Non-clear
+  # → route through the SAME developer-rework shape `do_gate_loop/9` uses
+  # (fold the gate failure reason + rework brief into context, re-invoke the
+  # developer, re-format, re-check), bounded by `:max_final_gate_cycles`
+  # (default 1 — separate from `:max_gate_retries`; this is a pre-commit
+  # backstop, not the primary gate loop). Exhaustion → `{:error, reason}`,
+  # no commit.
+  defp ensure_gate_graded_this_tree!(ctx, rest, harness, opts, cycle) do
+    case gate_tree_match?(ctx.cwd, opts) do
+      true ->
+        run_committer(ctx, rest, harness, opts)
+
+      false ->
+        max_cycles = Keyword.get(opts, :max_final_gate_cycles, 1)
+
+        if cycle < max_cycles do
+          rework_final_gate(ctx, rest, harness, opts, cycle)
+        else
+          {:error,
+           "pre-commit re-gate: tree changed since the gate ran and the gate stayed non-clear " <>
+             "after #{cycle + 1} rework attempt(s) — refusing to invoke the committer on a tree " <>
+             "the gate never graded clear (loop_failed, never a false loop_committed)."}
+        end
+    end
+  end
+
+  # Dispatches the `:gate_tree_match_fn` test seam; defaults to comparing
+  # `LoopGate.gate_result_graded_tree_sha/1` (what the last gate run
+  # stamped) against `LoopGate.graded_tree_sha_now/1` (the tree right now).
+  # `""` on either side (non-git cwd, or no gate has run yet) is treated as
+  # "nothing to compare" → true, matching the fail-open sentinel every
+  # other content-signature check in this module already uses.
+  defp gate_tree_match?(cwd, opts) do
+    match_fn = Keyword.get(opts, :gate_tree_match_fn, &default_gate_tree_match?/1)
+    match_fn.(cwd)
+  end
+
+  defp default_gate_tree_match?(cwd) do
+    graded = LoopGate.gate_result_graded_tree_sha(cwd)
+    current = LoopGate.graded_tree_sha_now(cwd)
+
+    graded == "" or current == "" or graded == current
+  end
+
+  defp run_committer(ctx, rest, harness, opts) do
+    with {:ok, result} <- invoke_with_retry("committer", harness, ctx, opts) do
+      ctx = put_in(ctx, [:artifacts, "committer"], result)
+
+      # Structural gap #9: the committer ROLE returning success does NOT
+      # prove a commit landed — the committer can inspect the repo, see the
+      # feature already implemented (it was, by the developer), and report
+      # "done" without ever running `git commit`. Trusting role-return here
+      # is the exact false-success failure the loop exists to prevent. VERIFY
+      # the working tree is actually clean (all cycle output committed); a
+      # dirty tree after the committer means it did not commit → fail loud.
+      verify_committed!(ctx.cwd, ctx.base_head)
+      advance_cycle_state_step("COMMITTED", ctx, opts)
+      run_roles(rest, harness, ctx, opts)
+    end
+  end
+
+  # Re-gates the CURRENT tree (the same `:gate_fn` contract `do_gate_loop/9`
+  # uses) before the committer runs. Clear → proceed to the committer
+  # (restamped `gate-result.json` now matches). Non-clear → re-invoke the
+  # SAME developer role with the gate failure folded into context (mirrors
+  # `do_gate_loop/9`'s rework shape), then recurse into
+  # `ensure_gate_graded_this_tree!/5` for another match check + gate cycle.
+  # No developer role in this cycle's artifacts (should not happen in
+  # practice — a developer always runs before the committer in both role
+  # sequences) → treat as exhausted rather than crash on a nil dev_role.
+  defp rework_final_gate(ctx, rest, harness, opts, cycle) do
+    gate_fn = Keyword.get(opts, :gate_fn, &LoopGate.run_gate/2)
+
+    case gate_fn.(ctx.cwd, gate_opts(opts)) do
+      {:clear, _gate_cmd} ->
+        run_committer(ctx, rest, harness, opts)
+
+      {:failed, _gate_cmd} ->
+        dev_role = dev_role_from_ctx(ctx)
+
+        if is_nil(dev_role) do
+          {:error,
+           "pre-commit re-gate failed and no developer role is present in this cycle's " <>
+             "artifacts to route rework to (loop_failed, never a false loop_committed)."}
+        else
+          reason = gate_failure_reason(ctx.cwd)
+          brief = capture_rework_brief(ctx.cwd, opts)
+
+          retry_ctx =
+            ctx
+            |> put_in([:artifacts, :last_failure_reason], reason)
+            |> put_in([:artifacts, :rework_brief], brief)
+
+          with {:ok, result} <- invoke_with_retry(dev_role, harness, retry_ctx, opts) do
+            ctx = put_in(retry_ctx, [:artifacts, dev_role], result)
+            run_format_step(ctx.cwd, opts)
+            ensure_gate_graded_this_tree!(ctx, rest, harness, opts, cycle + 1)
+          end
+        end
+
+      {other, _gate_cmd} ->
+        raise "OrchestrationLoop: unexpected gate verdict #{inspect(other)}"
+    end
+  end
 
   # Cycle-base HEAD captured before any role runs. nil when cwd is not a git
   # work tree or the branch is unborn (zero commits) — the work-produced check
@@ -578,6 +692,7 @@ defmodule CodegenTestHarness.OrchestrationLoop do
     end
 
     assert_base_not_orphaned!(cwd, base_head)
+    assert_commit_matches_gate!(cwd)
 
     :ok
   end
@@ -606,6 +721,42 @@ defmodule CodegenTestHarness.OrchestrationLoop do
                 "git rebase --onto #{base_head} <bad-commit>^ HEAD. This is loop_failed, never a " <>
                 "false loop_committed."
     end
+  end
+
+  # No-ship-on-a-gate-that-didn't-grade-this-tree, post-commit half:
+  # `ensure_gate_graded_this_tree!/4` re-gates BEFORE the committer runs, but
+  # nothing yet proves the committer's ACTUAL commit is the tree that gate
+  # graded — the committer runs as its own role invocation and could, in
+  # principle, still diverge (an edit, a partial-stage, a script it ran).
+  # `git commit`'s own tree is exactly HEAD-plus-everything-staged, which for
+  # a faithful committer (`git add -A && git commit`) is definitionally the
+  # same computation `LoopGate.graded_tree_sha_now/1` performs at gate time —
+  # so a match here is not an approximation, it is the same content by
+  # construction. A mismatch means the committer's commit diverged from what
+  # was last graded clear.
+  #
+  # `""` stamped graded_tree_sha (non-git cwd, or no gate ran in this
+  # cycle's opts — e.g. most mocked unit tests) → skip, matching every
+  # other sentinel-skip in `verify_committed!`'s guard chain.
+  defp assert_commit_matches_gate!(cwd) do
+    stamped = LoopGate.gate_result_graded_tree_sha(cwd)
+
+    if stamped != "" do
+      {commit_tree, 0} =
+        System.cmd("git", ["rev-parse", "HEAD^{tree}"], cd: cwd, stderr_to_stdout: true)
+
+      commit_tree = String.trim(commit_tree)
+
+      unless commit_tree == stamped do
+        raise "OrchestrationLoop: committed tree #{commit_tree} does not match the " <>
+                "last graded_tree_sha #{stamped} — the commit landed on DIFFERENT content than " <>
+                "the gate verdict describes. This is the exact false-success the pre-commit " <>
+                "re-gate exists to prevent slipping through (loop_failed, never a false " <>
+                "loop_committed)."
+      end
+    end
+
+    :ok
   end
 
   # Reviewer→developer fix cycle (structural gap #7). The reviewer ends its output

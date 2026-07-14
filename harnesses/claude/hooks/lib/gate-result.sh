@@ -6,13 +6,18 @@
 #   write_gate_result <gate> <mode> <base_sha> <diff_files_count> \
 #       <runner_found> <exit_code> <execution_evidence> <expected_segments> \
 #       <render_verdict> <classification> <started> <ended> \
-#       <session_id> <log> <project_dir> [<witness>]
+#       <session_id> <log> <project_dir> [<witness>] [<graded_tree_sha>]
 #
 # Writes codegen/gate-pending/gate-result.json under <project_dir>.
 # Verdict derivation is fully deterministic — see table below.
 #
 #   gate_result_verdict <project_dir> — reads verdict field from result file.
 #       Prints verdict string (clear|failed|inconclusive) or "" if absent.
+#
+#   gate_result_graded_tree_sha <project_dir> — reads graded_tree_sha field.
+#       Prints the sha or "" if absent. Binds this verdict to the exact
+#       working-tree content it graded (base_sha alone only pins HEAD, not
+#       content — a post-gate revert leaves base_sha unchanged).
 #
 # Verdict derivation table:
 #   runner_found=false                            → failed  / FAILED ❌
@@ -129,7 +134,7 @@ extract_witness() {
 # write_gate_result <gate> <mode> <base_sha> <diff_files_count>
 #     <runner_found> <exit_code> <execution_evidence> <expected_segments>
 #     <render_verdict> <classification> <started> <ended>
-#     <session_id> <log> <project_dir> [<witness>]
+#     <session_id> <log> <project_dir> [<witness>] [<graded_tree_sha>]
 write_gate_result() {
     local gate="$1"
     local mode="$2"
@@ -147,6 +152,7 @@ write_gate_result() {
     local log="${14}"
     local project_dir="${15}"
     local witness="${16:-}"
+    local graded_tree_sha="${17:-}"
 
     # Derive verdict
     local verdict_out
@@ -190,6 +196,7 @@ write_gate_result() {
         --arg session_id "$session_id" \
         --arg log "$log" \
         --arg witness "$witness" \
+        --arg graded_tree_sha "$graded_tree_sha" \
         '{
             gate: $gate,
             mode: $mode,
@@ -207,7 +214,8 @@ write_gate_result() {
             ended: $ended,
             session_id: $session_id,
             log: $log,
-            witness: $witness
+            witness: $witness,
+            graded_tree_sha: $graded_tree_sha
         }' >"$result_file"
 
     # Durable codegen-local verdict history (no overwrite, append-only).
@@ -242,4 +250,17 @@ gate_result_base_sha() {
         return 0
     }
     jq -r '.base_sha // ""' "$result_file" 2>/dev/null || printf ''
+}
+
+# gate_result_graded_tree_sha <project_dir>
+# Reads graded_tree_sha field from gate-result.json. Prints the sha or ""
+# if absent (legacy record predating this field, or non-git gate run).
+gate_result_graded_tree_sha() {
+    local project_dir="$1"
+    local result_file="$project_dir/codegen/gate-pending/gate-result.json"
+    [ -f "$result_file" ] || {
+        printf ''
+        return 0
+    }
+    jq -r '.graded_tree_sha // ""' "$result_file" 2>/dev/null || printf ''
 }

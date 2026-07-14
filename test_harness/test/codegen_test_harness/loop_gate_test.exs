@@ -413,6 +413,143 @@ defmodule CodegenTestHarness.LoopGateTest do
       assert LoopQueueDrain.default_gate_base_sha_fn(dir) == ""
     end
   end
+
+  describe "graded_tree_sha (content binding)" do
+    # No `git add`/`git commit` via System.cmd here — those are structurally
+    # forbidden for this role in THIS repo's own tree; these tests operate
+    # inside a throwaway `%{dir: dir}` fixture repo, which is a genuinely
+    # different git work tree than the one the pre-commit-guard hook is
+    # protecting, so the same operations used elsewhere in this test file
+    # (line ~391) are fine.
+    defp gate_result_graded_tree_sha(dir) do
+      path = Path.join(dir, "codegen/gate-pending/gate-result.json")
+      {:ok, contents} = File.read(path)
+      {:ok, %{"graded_tree_sha" => sha}} = Jason.decode(contents)
+      sha
+    end
+
+    test "dirty tree at gate time → graded_tree_sha != HEAD^{tree}", %{dir: dir} do
+      write_gate_config!(dir, "make test")
+      run_fn = fn _gate, _project_dir -> {"all good", 0} end
+
+      System.cmd("git", ["init", "-q"], cd: dir)
+      System.cmd("git", ["config", "user.email", "test@example.com"], cd: dir)
+      System.cmd("git", ["config", "user.name", "Test"], cd: dir)
+      File.write!(Path.join(dir, "README.md"), "seed\n")
+      System.cmd("git", ["add", "."], cd: dir)
+      System.cmd("git", ["commit", "-q", "-m", "seed"], cd: dir)
+
+      # Dirty the tree AFTER the base commit, BEFORE the gate runs.
+      File.write!(Path.join(dir, "README.md"), "seed\nchanged\n")
+      File.write!(Path.join(dir, "new_file.txt"), "new\n")
+
+      assert {:clear, "make test"} = LoopGate.run_gate(dir, run_fn: run_fn, stack: "phoenix")
+
+      graded_sha = gate_result_graded_tree_sha(dir)
+      assert graded_sha != ""
+
+      {head_tree, 0} =
+        System.cmd("git", ["rev-parse", "HEAD^{tree}"], cd: dir, stderr_to_stdout: true)
+
+      refute graded_sha == String.trim(head_tree)
+    end
+
+    test "a post-gate revert changes graded_tree_sha vs. the committed tree", %{dir: dir} do
+      write_gate_config!(dir, "make test")
+      run_fn = fn _gate, _project_dir -> {"all good", 0} end
+
+      System.cmd("git", ["init", "-q"], cd: dir)
+      System.cmd("git", ["config", "user.email", "test@example.com"], cd: dir)
+      System.cmd("git", ["config", "user.name", "Test"], cd: dir)
+      File.write!(Path.join(dir, "README.md"), "seed\n")
+      System.cmd("git", ["add", "."], cd: dir)
+      System.cmd("git", ["commit", "-q", "-m", "seed"], cd: dir)
+
+      File.write!(Path.join(dir, "README.md"), "seed\nchanged\n")
+
+      assert {:clear, "make test"} = LoopGate.run_gate(dir, run_fn: run_fn, stack: "phoenix")
+      graded_sha = gate_result_graded_tree_sha(dir)
+
+      # Simulate the incident: something reverts the working tree back to
+      # HEAD after the gate ran, then a commit lands on the reverted tree.
+      System.cmd("git", ["checkout", "HEAD", "--", "README.md"], cd: dir)
+      System.cmd("git", ["commit", "--allow-empty", "-q", "-m", "reverted"], cd: dir)
+
+      {commit_tree, 0} =
+        System.cmd("git", ["rev-parse", "HEAD^{tree}"], cd: dir, stderr_to_stdout: true)
+
+      refute graded_sha == String.trim(commit_tree)
+    end
+
+    test "clean tree at gate time, no drift → graded_tree_sha equals the eventual commit tree",
+         %{dir: dir} do
+      write_gate_config!(dir, "make test")
+      run_fn = fn _gate, _project_dir -> {"all good", 0} end
+
+      System.cmd("git", ["init", "-q"], cd: dir)
+      System.cmd("git", ["config", "user.email", "test@example.com"], cd: dir)
+      System.cmd("git", ["config", "user.name", "Test"], cd: dir)
+      # Mirrors the real repo's own gitignore for /codegen/ (gate-pending
+      # output) — otherwise the gate's own writes (gate-result.json,
+      # gate-run.log) get swept into "no drift", which they never are in
+      # production.
+      File.write!(Path.join(dir, ".gitignore"), "/codegen/\n")
+      File.write!(Path.join(dir, "README.md"), "seed\n")
+      System.cmd("git", ["add", "."], cd: dir)
+      System.cmd("git", ["commit", "-q", "-m", "seed"], cd: dir)
+
+      File.write!(Path.join(dir, "README.md"), "seed\nchanged\n")
+
+      assert {:clear, "make test"} = LoopGate.run_gate(dir, run_fn: run_fn, stack: "phoenix")
+      graded_sha = gate_result_graded_tree_sha(dir)
+
+      # Commit exactly what the gate graded — no drift.
+      System.cmd("git", ["add", "."], cd: dir)
+      System.cmd("git", ["commit", "-q", "-m", "matches gate"], cd: dir)
+
+      {commit_tree, 0} =
+        System.cmd("git", ["rev-parse", "HEAD^{tree}"], cd: dir, stderr_to_stdout: true)
+
+      assert graded_sha == String.trim(commit_tree)
+    end
+
+    test "non-git dir → graded_tree_sha \"\" (fail-open, same sentinel as base_sha)", %{
+      dir: dir
+    } do
+      write_gate_config!(dir, "make test")
+      run_fn = fn _gate, _project_dir -> {"all good", 0} end
+
+      assert {:clear, "make test"} = LoopGate.run_gate(dir, run_fn: run_fn, stack: "phoenix")
+
+      assert gate_result_graded_tree_sha(dir) == ""
+    end
+
+    test "it does not mutate the repo's real index (leaves index-only staged changes untouched)",
+         %{dir: dir} do
+      write_gate_config!(dir, "make test")
+      run_fn = fn _gate, _project_dir -> {"all good", 0} end
+
+      System.cmd("git", ["init", "-q"], cd: dir)
+      System.cmd("git", ["config", "user.email", "test@example.com"], cd: dir)
+      System.cmd("git", ["config", "user.name", "Test"], cd: dir)
+      File.write!(Path.join(dir, "README.md"), "seed\n")
+      System.cmd("git", ["add", "."], cd: dir)
+      System.cmd("git", ["commit", "-q", "-m", "seed"], cd: dir)
+
+      # Stage a change in the REAL index before the gate runs.
+      File.write!(Path.join(dir, "README.md"), "seed\nstaged\n")
+      System.cmd("git", ["add", "README.md"], cd: dir)
+
+      assert {:clear, "make test"} = LoopGate.run_gate(dir, run_fn: run_fn, stack: "phoenix")
+
+      {status_out, 0} =
+        System.cmd("git", ["status", "--porcelain"], cd: dir, stderr_to_stdout: true)
+
+      # The real index still shows README.md staged (M in the index column) —
+      # the temp-index computation never touched it.
+      assert String.trim(status_out) =~ ~r/^M\s+README\.md/
+    end
+  end
 end
 
 defmodule CodegenTestHarness.LoopGateCodegenRootTest do

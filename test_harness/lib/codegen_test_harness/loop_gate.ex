@@ -119,6 +119,14 @@ defmodule CodegenTestHarness.LoopGate do
   fail-loud-non-blocking: it prints to stderr and the gate verdict returned
   to the caller is unaffected — this is an observability write, never a
   reason to flip a green gate red or a red gate green.
+
+  `gate-result.json` also carries `graded_tree_sha` — a real git tree
+  object hashing HEAD plus every working-tree change at gate time (see
+  `graded_tree_sha/1`), computed via a temporary index so the repo's own
+  index is never touched. This binds the verdict to the exact content it
+  graded; `base_sha` alone only pins HEAD, which stays unchanged across a
+  post-gate revert. `""` when `project_dir` is not a git repo (fail-open,
+  same sentinel as `base_sha`).
   """
   @spec run_gate(String.t(), keyword()) :: {verdict(), String.t()}
   def run_gate(project_dir, opts \\ []) do
@@ -154,13 +162,15 @@ defmodule CodegenTestHarness.LoopGate do
 
     base_sha = gate_base_sha(project_dir)
     diff_files_count = gate_diff_files_count(project_dir)
+    tree_sha = graded_tree_sha(project_dir)
 
     write_script = """
     source #{shell_quote(@gate_result_lib)} && write_gate_result \
       #{shell_quote(gate)} #{shell_quote(mode)} #{shell_quote(base_sha)} #{diff_files_count} \
       true #{exit_code} 1 1 #{shell_quote(render_verdict)} "" \
       #{shell_quote(started)} #{shell_quote(ended)} \
-      #{shell_quote(session_id)} #{shell_quote(log_path)} #{shell_quote(project_dir)}
+      #{shell_quote(session_id)} #{shell_quote(log_path)} #{shell_quote(project_dir)} \
+      "" #{shell_quote(tree_sha)}
     """
 
     {_write_out, 0} = System.cmd("bash", ["-c", write_script], stderr_to_stdout: true)
@@ -250,6 +260,35 @@ defmodule CodegenTestHarness.LoopGate do
     end
   end
 
+  @doc """
+  Reads the `graded_tree_sha` field the last `run_gate/2` call stamped into
+  `<project_dir>/codegen/gate-pending/gate-result.json`. Returns `""` when
+  the file/field is absent (legacy record, or a gate that hasn't run).
+  """
+  @spec gate_result_graded_tree_sha(String.t()) :: String.t()
+  def gate_result_graded_tree_sha(project_dir) do
+    unless File.exists?(@gate_result_lib) do
+      raise "LoopGate: gate-result.sh not found at #{@gate_result_lib}"
+    end
+
+    script =
+      "source #{shell_quote(@gate_result_lib)} && gate_result_graded_tree_sha #{shell_quote(project_dir)}"
+
+    {output, 0} = System.cmd("bash", ["-c", script], stderr_to_stdout: true)
+    String.trim(output)
+  end
+
+  @doc """
+  Recomputes the CURRENT working-tree content-hash for `project_dir` — the
+  same computation `run_gate/2` stamps at gate time (see `graded_tree_sha/1`
+  private helper), exposed publicly so the loop's pre-commit re-check
+  (`verify_gate_graded_this_tree/2`) can compare "what the gate graded" vs.
+  "what the tree looks like right now, immediately before the committer
+  runs" without re-running the whole gate.
+  """
+  @spec graded_tree_sha_now(String.t()) :: String.t()
+  def graded_tree_sha_now(project_dir), do: graded_tree_sha(project_dir)
+
   # Static-stack render-check dependency preflight. Runs BEFORE the gate
   # command when `:stack` is `"static"`. RAISES (crash loud) naming the
   # FIRST missing dependency — this is an infra abort, not a gate verdict:
@@ -331,6 +370,74 @@ defmodule CodegenTestHarness.LoopGate do
     case System.cmd("git", ["-C", project_dir, "status", "--porcelain"], stderr_to_stdout: true) do
       {out, 0} -> out |> String.split("\n", trim: true) |> length()
       {_out, _code} -> 0
+    end
+  end
+
+  # Content-hash of the working tree at gate time: HEAD's tree with every
+  # working-tree change (tracked modifications, deletions, and untracked
+  # files, .gitignore-respecting) overlaid — via a TEMPORARY index, never
+  # the repo's real index. This is a real git tree object (comparable
+  # directly to `git rev-parse HEAD^{tree}` after a commit), NOT
+  # `tree_signature/1`'s shasum-of-shasums digest (different value space —
+  # cannot be compared post-commit, which is the entire point of this
+  # binding).
+  #
+  # `git update-index -q --refresh` FIRST is required, not optional — the
+  # racy-stat cache otherwise reports zero changes and the tree silently
+  # collapses to `HEAD^{tree}`, turning this into a no-op that always
+  # matches (a green-looking false pass). Confirmed by direct probe: the
+  # sequence without --refresh returns HEAD^{tree} even on a dirty tree.
+  #
+  # "" when project_dir is not a git repo or HEAD is unborn — the same
+  # fail-open sentinel gate_base_sha/1 already uses. Only mocked tests and
+  # bare tmp dirs land there; a real loop run always operates inside the
+  # scaffolded project's git repo.
+  @spec graded_tree_sha(String.t()) :: String.t()
+  defp graded_tree_sha(project_dir) do
+    case System.cmd("git", ["-C", project_dir, "rev-parse", "--verify", "-q", "HEAD"],
+           stderr_to_stdout: true
+         ) do
+      {_out, 0} -> compute_graded_tree_sha(project_dir)
+      {_out, _code} -> ""
+    end
+  end
+
+  defp compute_graded_tree_sha(project_dir) do
+    git_dir =
+      case System.cmd("git", ["-C", project_dir, "rev-parse", "--git-dir"],
+             stderr_to_stdout: true
+           ) do
+        {out, 0} -> String.trim(out)
+        {_out, _code} -> nil
+      end
+
+    if is_nil(git_dir) do
+      ""
+    else
+      abs_git_dir = Path.expand(git_dir, project_dir)
+
+      tmp_index =
+        Path.join(abs_git_dir, "codegen-graded-tree-index-#{:erlang.unique_integer([:positive])}")
+
+      script = """
+      set -e
+      cd #{shell_quote(project_dir)}
+      git update-index -q --refresh || true
+      rm -f #{shell_quote(tmp_index)}
+      GIT_INDEX_FILE=#{shell_quote(tmp_index)} git read-tree HEAD
+      git ls-files -m -d -o --exclude-standard -z | \
+        GIT_INDEX_FILE=#{shell_quote(tmp_index)} git update-index --add --remove -z --stdin
+      GIT_INDEX_FILE=#{shell_quote(tmp_index)} git write-tree
+      """
+
+      result =
+        case System.cmd("bash", ["-c", script], stderr_to_stdout: true) do
+          {out, 0} -> out |> String.trim() |> String.split("\n") |> List.last() |> String.trim()
+          {_out, _code} -> ""
+        end
+
+      File.rm(tmp_index)
+      result
     end
   end
 
