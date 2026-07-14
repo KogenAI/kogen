@@ -35,14 +35,69 @@ describe("dev-no-ci", () => {
     delete process.env["AGENT_TYPE"];
   });
 
-  it("blocks make ci for developer", async () => {
+  it("allows make ci for developer (loop's own gate command)", async () => {
     const result = await runHook("make ci");
+    assert.ok(result == null || (result as { block?: boolean }).block !== true);
+  });
+
+  it("allows make test for developer (loop's own gate command)", async () => {
+    const result = await runHook("make test");
+    assert.ok(result == null || (result as { block?: boolean }).block !== true);
+  });
+
+  it("blocks make test-stacks for developer", async () => {
+    const result = await runHook("make test-stacks");
+    assert.ok((result as { block?: boolean }).block === true);
+  });
+
+  it("blocks make test-stacks-claude for developer", async () => {
+    const result = await runHook("make test-stacks-claude");
+    assert.ok((result as { block?: boolean }).block === true);
+  });
+
+  it("blocks make test-stacks-pi for developer", async () => {
+    const result = await runHook("make test-stacks-pi");
+    assert.ok((result as { block?: boolean }).block === true);
+  });
+
+  it("blocks make test-all for developer", async () => {
+    const result = await runHook("make test-all");
+    assert.ok((result as { block?: boolean }).block === true);
+  });
+
+  it("blocks make test-coverage for developer", async () => {
+    const result = await runHook("make test-coverage");
+    assert.ok((result as { block?: boolean }).block === true);
+  });
+
+  it("blocks make bench for developer", async () => {
+    const result = await runHook("make bench REASON=foo");
+    assert.ok((result as { block?: boolean }).block === true);
+  });
+
+  it("blocks make test-hermetic for developer", async () => {
+    const result = await runHook("make test-hermetic");
     assert.ok((result as { block?: boolean }).block === true);
   });
 
   it("blocks make ci-fast for developer", async () => {
     const result = await runHook("make ci-fast");
     assert.ok((result as { block?: boolean }).block === true);
+  });
+
+  it("allows make install for developer", async () => {
+    const result = await runHook("make install");
+    assert.ok(result == null || (result as { block?: boolean }).block !== true);
+  });
+
+  it("allows make hook-parity for developer", async () => {
+    const result = await runHook("make hook-parity");
+    assert.ok(result == null || (result as { block?: boolean }).block !== true);
+  });
+
+  it("allows make enforce-registry-parity for developer", async () => {
+    const result = await runHook("make enforce-registry-parity");
+    assert.ok(result == null || (result as { block?: boolean }).block !== true);
   });
 
   it("blocks bare mix test for developer", async () => {
@@ -89,8 +144,8 @@ describe("dev-no-ci", () => {
     assert.ok(result == null || (result as { block?: boolean }).block !== true);
   });
 
-  it("still blocks real standalone make ci (unchanged)", async () => {
+  it("still allows real standalone make ci (unchanged)", async () => {
     const result = await runHook("make ci");
-    assert.ok((result as { block?: boolean }).block === true);
+    assert.ok(result == null || (result as { block?: boolean }).block !== true);
   });
 });

@@ -10,9 +10,10 @@
 # harnesses: all
 # GENERATED FROM shared/enforcement/registry.yaml — DO NOT EDIT
 #
-# Counts CI/test invocations per session. Once the counter reaches 3,
-# denies further attempts and instructs the dev to hand off to the
-# orchestrator via dev-gate.sh.
+# Counts CI/test invocations per session (legacy non-loop mode only). Once
+# the counter reaches 3, denies further attempts and instructs the dev to
+# stop and hand back — the loop's LoopGate (do_gate_loop/9 in
+# orchestration_loop.ex) owns the full gate run after the dev's turn.
 #
 # Tracked patterns:
 #   mix test, mix credo, mix format
@@ -123,7 +124,7 @@ printf '%s' "$count" >"$counter_file"
 debug_log developer-no-self-gate "session=$session_id count=$count cmd=$COMMAND"
 
 if [ "$count" -ge 3 ]; then
-    deny "BLOCKED by developer-no-self-gate: use dev-gate.sh handoff — return control to orchestrator. You have run CI/test commands $count times in this session. Complete your implementation and stop — the gate runs automatically via SubagentStop hook."
+    deny "BLOCKED by developer-no-self-gate: return control to orchestrator. You have run CI/test commands $count times in this session. Complete your implementation and stop — the loop's LoopGate runs the full gate after your turn."
     exit 0
 fi
 

@@ -136,7 +136,7 @@ export function register(pi: ExtensionAPI): void {
 
     if (count >= 3) {
       return deny(
-        `BLOCKED by developer-no-self-gate: use dev-gate.sh handoff — return control to orchestrator. You have run CI/test commands ${count} times in this session. Complete your implementation and stop — the gate runs automatically via SubagentStop hook.`,
+        `BLOCKED by developer-no-self-gate: return control to orchestrator. You have run CI/test commands ${count} times in this session. Complete your implementation and stop — the loop's LoopGate runs the full gate after your turn.`,
       );
     }
   });

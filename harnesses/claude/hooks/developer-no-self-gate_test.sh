@@ -87,7 +87,7 @@ SID4="sid4-$$-$(date -u +%s)"
 printf '2' >"/tmp/codegen-self-gate-${SID4}.count"
 out=$(make_input "make ci" "developer-phoenix-frontend" "$SID4" | bash "$HOOK" 2>/dev/null || true)
 assert_contains "3rd CI invocation BLOCKED" '"permissionDecision"' "$out"
-assert_contains "3rd CI block mentions dev-gate handoff" 'dev-gate.sh handoff' "$out"
+assert_contains "3rd CI block mentions LoopGate handoff" "LoopGate runs the full gate" "$out"
 rm -f "/tmp/codegen-self-gate-${SID4}.count"
 
 # ── Test 5: make ci pattern matched ──────────────────────────────────────────

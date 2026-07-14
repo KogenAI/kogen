@@ -35,21 +35,39 @@ export function register(pi: ExtensionAPI): void {
     // counter increment.
     if (isCodegenLogWrite(command)) return;
 
-    // Deny: make ci / ci-fast / ci-cover / predeploy / llm / llm-phoenix / llm-all
+    // Deny: make ci-fast / ci-cover / predeploy / llm / llm-phoenix / llm-all
+    // (make ci / make test are the loop's own gate command — NOT denied; the
+    // loop threads this exact command into the dev's own prompt and expects
+    // it to be run in-session; see orchestration_loop.ex build_prompt/2.)
     if (
-      /^\s*make\s+(ci|ci-fast|ci-cover|predeploy|llm|llm-phoenix|llm-all)(\s|$)/.test(
+      /^\s*make\s+(ci-fast|ci-cover|predeploy|llm|llm-phoenix|llm-all)(\s|$)/.test(
         command,
       )
     ) {
       return deny(
-        "Dev MUST NOT run gate commands. The dev-gate.sh SubagentStop hook runs the gate after you exit. Specific test files are OK: `mix test test/path/file.exs`. For the LLM suite specifically, use `make llm-single FILE=<path>` to iterate on one file.",
+        "Dev MUST NOT run this gate command. Use the loop's delegated gate command (typically `make test`) to iterate — see the loop's LoopGate (do_gate_loop/9). Specific test files are OK: `mix test test/path/file.exs`. For the LLM suite specifically, use `make llm-single FILE=<path>` to iterate on one file.",
+      );
+    }
+
+    // Deny: genuinely-unowned expensive full-suite targets — real LLM calls,
+    // multi-minute, pre-deploy-gate-only. Not the loop's per-cycle gate command.
+    // test-hermetic is included (component of `make test`, but not the exact
+    // string threaded into the dev's prompt — only `make test` itself is,
+    // per GATE_COMMAND in .claude/gate-config.sh).
+    if (
+      /^\s*make\s+(test|test-all|test-hermetic|test-coverage|test-stacks(-claude|-pi)?|bench)(\s|$)/.test(
+        command,
+      )
+    ) {
+      return deny(
+        "Dev MUST NOT run this full-suite target — it is slow and owned by the loop's LoopGate (do_gate_loop/9 in orchestration_loop.ex), which runs after your turn. Use targeted checks like `mix test test/path/file.exs` / `make hook-parity` / `make enforce-registry-parity` to iterate.",
       );
     }
 
     // Deny: full-suite coverage formatters — unconditional (no single-file form).
     if (/\bcoveralls\.(html|json)\b|\bmix\s+coveralls\b/.test(command)) {
       return deny(
-        "Dev MUST NOT run coverage formatters (coveralls.html, coveralls.json, mix coveralls). Coverage runs the full suite — the dev-gate.sh SubagentStop hook handles it after you exit.",
+        "Dev MUST NOT run coverage formatters (coveralls.html, coveralls.json, mix coveralls). Coverage runs the full suite — use the loop's delegated gate command instead.",
       );
     }
 
@@ -59,7 +77,7 @@ export function register(pi: ExtensionAPI): void {
       const hasPath = /[^\s]+\.exs|[^\s]+\/[^\s]+/.test(command);
       if (!hasPath) {
         return deny(
-          "Bare `mix test --cover` runs full-suite coverage — dev MUST NOT. The dev-gate.sh SubagentStop hook handles full coverage. A single file is OK: `mix test --cover test/path/file.exs`.",
+          "Bare `mix test --cover` runs full-suite coverage — dev MUST NOT. Use the loop's delegated gate command instead. A single file is OK: `mix test --cover test/path/file.exs`.",
         );
       }
     }
