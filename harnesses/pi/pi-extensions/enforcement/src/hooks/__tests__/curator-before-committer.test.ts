@@ -22,11 +22,17 @@ describe("curator-before-committer", () => {
   beforeEach(() => {
     tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "curator-test-"));
     fs.mkdirSync(path.join(tmpDir, "codegen", "logging"), { recursive: true });
+    // getActiveStepLog's resolution step 0 (CODEGEN_LOG_PATH) outranks the
+    // tmpDir-scoped .active/mtime scan this suite exercises — an ambient
+    // pin from the launching dev/loop session (every role invocation
+    // carries one) would silently redirect the hook outside tmpDir.
+    delete process.env["CODEGEN_LOG_PATH"];
   });
 
   afterEach(() => {
     fs.rmSync(tmpDir, { recursive: true, force: true });
     delete process.env["CWD"];
+    delete process.env["CODEGEN_LOG_PATH"];
   });
 
   function writeLog(filename: string, content: string): string {

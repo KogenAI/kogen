@@ -267,9 +267,16 @@ export function voidCtx(_ctx: ExtensionContext): void {
  * getActiveStepLog() — Resolve the active codegen/logging/*.jsonl cycle log
  * for a project dir.
  *
- * Resolution order (mirrors codegen-log's resolve_log_file precedence, minus
- * CODEGEN_LOG_PATH/--slug which are CLI-only concerns not relevant to a
- * disk-scanning guard):
+ * Resolution order (mirrors codegen-log's resolve_log_file precedence):
+ *   0. process.env.CODEGEN_LOG_PATH, IFF set and the path exists on disk.
+ *      This is the loop's own pin for the cycle's log, and every role
+ *      invocation (Pi included) carries it — hook processes inherit env the
+ *      same way Claude's do (verified live). Binding to the pin FIRST, ahead
+ *      of the sentinel, is what stops a same-process `codegen-log init` with
+ *      a mistyped/rival slug from hijacking .active out from under a guard
+ *      that is grading THIS cycle's log. A dangling pin (unset, or pointing
+ *      at a path that no longer exists) falls through to step 1, never
+ *      wedges the guard.
  *   1. codegen/logging/.active sentinel (written by `codegen-log init` /
  *      `relocate`), IFF it points at a path that still exists on disk. Full
  *      fidelity for Pi: this is a synchronous disk read, so unlike the Claude
@@ -283,6 +290,11 @@ export function voidCtx(_ctx: ExtensionContext): void {
  * Returns null when codegen/logging/ does not exist or contains no matches.
  */
 export function getActiveStepLog(projectDir: string): string | null {
+  const pinned = process.env.CODEGEN_LOG_PATH;
+  if (pinned && fs.existsSync(pinned)) {
+    return pinned;
+  }
+
   const loggingDir = path.join(projectDir, "codegen", "logging");
   if (!fs.existsSync(loggingDir)) return null;
 

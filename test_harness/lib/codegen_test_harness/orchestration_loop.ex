@@ -1120,7 +1120,7 @@ defmodule CodegenTestHarness.OrchestrationLoop do
     {output, exit_code} =
       System.cmd(@codegen_log_bin, ["init", "--slug", slug],
         stderr_to_stdout: true,
-        env: [{"CODEGEN_DIR", @codegen_dir}],
+        env: [{"CODEGEN_DIR", @codegen_dir}, {"CODEGEN_LOG_PATH", nil}],
         cd: cwd
       )
 

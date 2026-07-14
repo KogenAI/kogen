@@ -79,7 +79,7 @@ Event → script mapping from `harnesses/claude/claude-code-settings.json`:
 | `PreToolUse` | no-cat-pipe, no-python-json, no-git-stash, orchestrator-no-source-edit, orchestrator-no-ci, orchestrator-read-discipline, subagent-read-discipline, pre-commit-guard, dev-no-ci, developer-no-self-gate, planner-guard, reviewer-guard, reviewer-bash-allowlist (GENERATED), context-curator-guard, context-index-parity, operator-subagent-allowlist, build-worker-cwd-guard, committer-bash-allowlist (GENERATED), committer-write-allowlist (GENERATED), committer-no-trailer-guard, committer-single-line-guard, committer-subject-length, committer-gate-verdict-clear, phoenix-backend-developer-guard, phoenix-frontend-developer-guard, static-site-ex-guard, session-log-writer-only, track-subagent-edits, usage-rules-grep-guard, llm-suite-guard, llm-test-guard, claude-debug-bash-guard, step-log-section-before-spawn, curator-before-committer, single-cycle-agent-in-flight | Discipline enforcement before tool runs |
 | `PostToolUse` | (autovalidate inline script for `make llm-phoenix`) | Post-tool validation |
 | `PostToolUseFailure` | track-tool-failures | Logs tool failures for diagnostics |
-| `SubagentStop` | developer-no-self-gate-reset | Non-build-modes-only: gate verdicts. Dead under the loop (no SubagentStop fires for per-role `codegen-call` invocations) — the loop covers gate execution (`LoopGate`), formatting (`run_format_step`), cycle-state advancement, env-var sample-consistency (via `run_env_var_step` shelling `harnesses/claude/hooks/lib/env-var-sample-scan.sh` — replaces the deleted `env-var-sample-consistency` hook, scanning the working-tree diff vs HEAD for undeclared env vars; relocated from a committer PreToolUse gate originally — committer cannot edit `.env.sample`, a structural deadlock), and (via `run_curator_doc_check`) the context-curator factcheck + index-parity checks as loop steps. `curator-format`, `post-developer-format`, `static-site-build-check`, `stop-gate-failure-breaker`, `stop-spin-guard`, and `context-factcheck-curator-stop` were deleted (dead-under-loop; each rule's live equivalent — `run_format_step`, `LoopGate`, `do_gate_loop`'s progress ceiling, `context-factcheck-edit-gate`+`run_curator_doc_check` — already covers it). `run_curator_doc_check` wraps `context-factcheck-scan.sh` + `context-index-parity-scan.sh`; factcheck has 3 claim classes: named-path, count-anchor, id-corruption (`_`→`*`, e.g. `register_route`; narrow, excludes space-`*`-space). |
+| `SubagentStop` | developer-no-self-gate-reset | Non-build-modes-only: gate verdicts. Dead under the loop (no SubagentStop fires per-role) — loop covers gate exec (`LoopGate`), formatting (`run_format_step`), cycle-state advancement, env-var sample-consistency (`run_env_var_step` → `harnesses/claude/hooks/lib/env-var-sample-scan.sh`, diffs working-tree vs HEAD for undeclared env vars; relocated off committer, which cannot edit `.env.sample`), and curator factcheck + index-parity (`run_curator_doc_check` → `context-factcheck-scan.sh` + `context-index-parity-scan.sh`; 3 claim classes: named-path, count-anchor, id-corruption). `curator-format`, `post-developer-format`, `static-site-build-check`, `stop-gate-failure-breaker`, `stop-spin-guard`, `context-factcheck-curator-stop` deleted (dead-under-loop; live equivalents above already cover each). |
 | `Stop` | llm-pending-sweep, pitch-format-validator, build-queue-continuity, stop-resume, stop-verify-planner-gate, role-retrospective-before-stop | End-of-session guards (non-build modes: debug/shape/ops/experiment; role-retrospective-before-stop also fires under the loop) |
 | `UserPromptSubmit` | (inline: `/orchestrate` session state capture) | Session routing for `/orchestrate` command |
 | `SessionStart` | (inline: orchestrate session context restore) | Restores context after compact |
@@ -237,7 +237,7 @@ Place **specific arms BEFORE wildcards** in shell case statements. Example: a sp
 `codegen-log` is the SOLE writer of cycle logs (append-only JSONL). Raw Edit/Write/Bash writes denied by `session-log-writer-only` hook.
 
 **Core ops**:
-- `init --slug <slug>` — create log (idempotent); writes `.active` sentinel.
+- `init --slug <slug>` — create log; loop-only, refuses (exit 2, `.active` untouched) when `CODEGEN_LOG_PATH` set — role MUST NOT `init` inside a cycle.
 - `section <role> --slug <slug>` — append `{"ev":"role","role":<role>,"body":<prose>}`.
 - `append <role> --slug <slug>` — append `{"ev":"role",...}` event.
 - `append <role> --learned "<text>" --slug <slug>` — append `{"ev":"learned",...}`.
@@ -246,7 +246,7 @@ Place **specific arms BEFORE wildcards** in shell case statements. Example: a sp
 - `verdict --gate <cmd> --mode <mode> --result "<text>" --slug <slug>` — the loop's dev-gate step verdict writer.
 - `relocate --new-slug <slug>` — rename + update `.active`.
 
-**Resolution**: `CODEGEN_LOG_PATH` env > `--slug` > `.active` sentinel > mtime. Full contract: `shared/rules/_core/session-log.md` § Ownership.
+**Resolution**: `CODEGEN_LOG_PATH` env > `--slug` > `.active` sentinel > mtime — same order for the CLI AND both guard resolvers (`session_log_from_transcript`, `getActiveStepLog`), so a rival same-process `init` cannot hijack what a guard grades. Full contract: `shared/rules/_core/session-log.md` § Ownership.
 
 ## Test Assertion Discrimination Patterns
 

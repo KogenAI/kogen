@@ -324,6 +324,13 @@ repo_relative() {
 # written by this session, derived from $TRANSCRIPT_PATH (set by parse_input).
 #
 # Resolution order:
+#   0. $CODEGEN_LOG_PATH env var, IFF set and the path exists on disk. This is
+#      the loop's own pin for the cycle's log (see session-log.md § Resolution
+#      precedence) — every role invocation carries it. Binding to the pin
+#      FIRST, ahead of the sentinel, is what stops a same-process init with a
+#      mistyped/rival slug from hijacking .active out from under a guard that
+#      is grading THIS cycle's log. A dangling pin (unset or pointing at a
+#      path that no longer exists) falls through to step 1, never wedges.
 #   1. codegen/logging/.active sentinel under $cwd, IFF it points at a path
 #      that still exists on disk. Synchronous disk read, flush-independent —
 #      does not depend on the transcript having caught up with a live write.
@@ -356,6 +363,10 @@ repo_relative() {
 session_log_from_transcript() {
     local result=""
     local codegen_log_evidence=""
+    if [ -n "${CODEGEN_LOG_PATH:-}" ] && [ -e "$CODEGEN_LOG_PATH" ]; then
+        printf '%s' "$CODEGEN_LOG_PATH"
+        return
+    fi
     local active_sentinel="${CWD:-$PWD}/codegen/logging/.active"
     if [ -f "$active_sentinel" ]; then
         local sentinel_path

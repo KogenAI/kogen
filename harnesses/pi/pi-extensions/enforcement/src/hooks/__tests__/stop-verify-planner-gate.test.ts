@@ -20,12 +20,19 @@ describe("stop-verify-planner-gate", { concurrency: false }, () => {
     fs.mkdirSync(path.join(tmpDir, "codegen", "logging"), { recursive: true });
     process.env["CWD"] = tmpDir;
     delete process.env["AGENT_TYPE"];
+    // getActiveStepLog's resolution step 0 (CODEGEN_LOG_PATH) outranks the
+    // .active/mtime scan this suite exercises via tmpDir's fixture files —
+    // an ambient pin from the launching dev/loop session (every role
+    // invocation carries one) would silently redirect the hook at a log
+    // outside tmpDir instead of this test's own writeLog() fixture.
+    delete process.env["CODEGEN_LOG_PATH"];
   });
 
   afterEach(() => {
     fs.rmSync(tmpDir, { recursive: true, force: true });
     delete process.env["CWD"];
     delete process.env["AGENT_TYPE"];
+    delete process.env["CODEGEN_LOG_PATH"];
   });
 
   /** Write a cycle log whose planner role event body is the given plan prose. */

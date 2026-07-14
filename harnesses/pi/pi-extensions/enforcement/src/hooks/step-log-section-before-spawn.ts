@@ -138,7 +138,7 @@ export function register(pi: ExtensionAPI): void {
         "no step log found — deny (create log first)",
       );
       return deny(
-        `BLOCKED: no step log found. Create the step log FIRST before spawning ${subagentType}. Step 0 is non-negotiable: run codegen-log init, THEN write the '${need}' role event, THEN spawn.`,
+        `BLOCKED: no step log found. The loop creates the cycle's log before any role spawns — do NOT run 'codegen-log init' yourself (it now refuses under an active CODEGEN_LOG_PATH pin). If a log genuinely does not exist yet, this is a loop-level bug; write the '${need}' role event, THEN spawn, only after confirming the cycle's log exists.`,
       );
     }
 

@@ -9,6 +9,15 @@
 
 set -euo pipefail
 
+# Neutralize an ambient CODEGEN_LOG_PATH pin from the launching (this very)
+# dev session — codegen-log's highest-precedence resolver. Left set, several
+# fixtures below (which invoke `init`/`section` without an explicit `env -u
+# CODEGEN_LOG_PATH`) would silently redirect into the live session's own
+# cycle log instead of the per-test PROJECT fixture, and the new `init`
+# refusal-under-pin case would spuriously refuse. Unsetting once here is
+# exhaustive.
+unset CODEGEN_LOG_PATH
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REAL_CODEGEN_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
 CODEGEN_LOG_SRC="$REAL_CODEGEN_ROOT/codegen-log"
@@ -511,6 +520,27 @@ no learned flag here
 EOF
 assert "section without --learned emits exactly one role event" "1" "$(jq_count "$section_no_learned_log" 'select(.ev=="role" and .role=="developer-phoenix-backend")')"
 assert "section without --learned emits zero learned events (never refuses)" "0" "$(jq_count "$section_no_learned_log" 'select(.ev=="learned")')"
+
+# Test 21: `init` refuses (exit 2) when CODEGEN_LOG_PATH is set — creates no
+# new file, and .active is byte-identical before/after (never hijacked). This
+# is the fix for the cycle-20260714_182153 failure: a role re-running `init`
+# with a mistyped slug must not be able to mint a rival log and repoint the
+# sentinel out from under every guard grading the real one.
+pinned_log="$PROJECT/codegen/logging/20260110_000000_pinned-real_cycle.jsonl"
+jq -c -n '{ev:"init",pitch:"pinned-real",path:"",stamp:{}}' >"$pinned_log"
+printf '%s' "$pinned_log" >"$PROJECT/codegen/logging/.active"
+active_before="$(cat "$PROJECT/codegen/logging/.active")"
+files_before="$(find "$PROJECT/codegen/logging" -name '*_cycle.jsonl' | sort)"
+init_refuse_rc=0
+init_refuse_out="$(
+    cd "$PROJECT" && env -u CODEGEN_BUILD_CWD -u CLAUDE_PROJECT_DIR CODEGEN_LOG_PATH="$pinned_log" "$CODEGEN/codegen-log" init --slug rival-typo-slug 2>&1
+)" || init_refuse_rc=$?
+assert "init under CODEGEN_LOG_PATH pin exits 2" "2" "$init_refuse_rc"
+assert "init refusal message names the pin" "0" "$(printf '%s' "$init_refuse_out" | grep -qF "$pinned_log" && printf 0 || printf 1)"
+files_after="$(find "$PROJECT/codegen/logging" -name '*_cycle.jsonl' | sort)"
+assert "init refusal created no new *_cycle.jsonl file" "0" "$([ "$files_before" = "$files_after" ] && printf 0 || printf 1)"
+active_after="$(cat "$PROJECT/codegen/logging/.active")"
+assert "init refusal left .active byte-identical" "0" "$([ "$active_before" = "$active_after" ] && printf 0 || printf 1)"
 
 echo ""
 echo "Results: $pass passed, $fail failed"

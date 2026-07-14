@@ -815,6 +815,12 @@ PI_T_EXIT=0
     unset CODEGEN_CALL_RESUME 2>/dev/null || true
     unset CODEGEN_CALL_EXTENSION_PATH 2>/dev/null || true
     unset CODEGEN_CALL_JSON_SCHEMA 2>/dev/null || true
+    # Bare one-shot mode must mint no session id (--no-session, null in the
+    # envelope). Without this unset, an ambient CODEGEN_CALL_SESSION_ID
+    # (e.g. this very test run invoked from inside a live codegen-call/
+    # Claude session, which exports it — see codegen-call:353) leaks through
+    # and this case spuriously fails outside a fully clean shell.
+    unset CODEGEN_CALL_SESSION_ID 2>/dev/null || true
     bash "$PI_DISPATCH_SCRIPT" 2>"$BASE_TMP/pi_t_stderr.log"
 ) >"$BASE_TMP/pi_t_envelope.json" || PI_T_EXIT=$?
 

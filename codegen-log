@@ -478,6 +478,12 @@ append_event_line() {
 
 case "$SUBCOMMAND" in
 init)
+    if [[ -n "${CODEGEN_LOG_PATH:-}" ]]; then
+        printf 'codegen-log init: this cycle already has a log — the loop owns creation.\n' >&2
+        printf 'CODEGEN_LOG_PATH=%s. Write to it with `codegen-log section <role>` (already pinned there);\n' "$CODEGEN_LOG_PATH" >&2
+        printf 'never run `init` inside a cycle.\n' >&2
+        exit 2
+    fi
     if [[ -z "$SLUG" ]]; then
         printf 'codegen-log init: --slug is required\n' >&2
         usage

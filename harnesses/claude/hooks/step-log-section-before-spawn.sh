@@ -118,7 +118,7 @@ build_and_fire_breadcrumb() {
 # No log found → orchestrator skipped step-0 log creation.
 if [ -z "$log" ]; then
     build_and_fire_breadcrumb "no-log"
-    deny "BLOCKED: no step log found in transcript. Create the step log FIRST before spawning ${subagent_type}. Step 0 is non-negotiable: run 'codegen-log init --slug <slug>', THEN write the '${subagent_type}' role event via 'codegen-log section ${subagent_type} --slug <slug>', THEN spawn. A diagnostic breadcrumb was recorded at codegen/logging/.guard-diagnostics/${SESSION_ID:-unknown}.jsonl; if this recurs, attach it to the guard-false-positive pitch."
+    deny "BLOCKED: no step log found in transcript. The loop creates the cycle's log before any role spawns — do NOT run 'codegen-log init' yourself (it now refuses under an active CODEGEN_LOG_PATH pin). If a log genuinely does not exist yet, this is a loop-level bug; write the '${subagent_type}' role event via 'codegen-log section ${subagent_type} --slug <slug>' THEN spawn, only after confirming the cycle's log exists. A diagnostic breadcrumb was recorded at codegen/logging/.guard-diagnostics/${SESSION_ID:-unknown}.jsonl; if this recurs, attach it to the guard-false-positive pitch."
     exit 0
 fi
 

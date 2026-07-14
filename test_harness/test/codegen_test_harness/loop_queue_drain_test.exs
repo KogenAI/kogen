@@ -1638,62 +1638,13 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
   end
 
   # ── 12. Budget default resolution ───────────────────────────────────────
-  # NOTE: pitch_budget_from_env/0 tests that mutate CODEGEN_BUILD_QUEUE_PITCH_BUDGET_SECS
-  # live in the async: false sibling module at the bottom of this file
-  # (LoopQueueDrainEnvSerialTest) — System.put_env/2 is process-global and
-  # races with any other async: true test reading the same env var mid-flight
-  # (e.g. the grandchild-reap test below, which also reads this var).
-
-  describe "max_retries_from_env/0" do
-    test "unset -> 3" do
-      System.delete_env("CODEGEN_BUILD_QUEUE_MAX_RETRIES")
-      assert LoopQueueDrain.max_retries_from_env() == 3
-    end
-
-    test "\"5\" -> 5" do
-      System.put_env("CODEGEN_BUILD_QUEUE_MAX_RETRIES", "5")
-      on_exit(fn -> System.delete_env("CODEGEN_BUILD_QUEUE_MAX_RETRIES") end)
-      assert LoopQueueDrain.max_retries_from_env() == 5
-    end
-  end
-
-  describe "retry_delays_from_env/0" do
-    test "unset -> [30, 120, 300]" do
-      System.delete_env("CODEGEN_BUILD_QUEUE_RETRY_DELAYS")
-      assert LoopQueueDrain.retry_delays_from_env() == [30, 120, 300]
-    end
-
-    test "\"1 2 3\" -> [1, 2, 3]" do
-      System.put_env("CODEGEN_BUILD_QUEUE_RETRY_DELAYS", "1 2 3")
-      on_exit(fn -> System.delete_env("CODEGEN_BUILD_QUEUE_RETRY_DELAYS") end)
-      assert LoopQueueDrain.retry_delays_from_env() == [1, 2, 3]
-    end
-  end
-
-  describe "max_consecutive_fails_from_env/0" do
-    test "unset -> 3" do
-      System.delete_env("CODEGEN_BUILD_QUEUE_MAX_CONSECUTIVE_FAILS")
-      assert LoopQueueDrain.max_consecutive_fails_from_env() == 3
-    end
-
-    test "\"5\" -> 5" do
-      System.put_env("CODEGEN_BUILD_QUEUE_MAX_CONSECUTIVE_FAILS", "5")
-      on_exit(fn -> System.delete_env("CODEGEN_BUILD_QUEUE_MAX_CONSECUTIVE_FAILS") end)
-      assert LoopQueueDrain.max_consecutive_fails_from_env() == 5
-    end
-
-    test "\"0\" -> 3 (sentinel)" do
-      System.put_env("CODEGEN_BUILD_QUEUE_MAX_CONSECUTIVE_FAILS", "0")
-      on_exit(fn -> System.delete_env("CODEGEN_BUILD_QUEUE_MAX_CONSECUTIVE_FAILS") end)
-      assert LoopQueueDrain.max_consecutive_fails_from_env() == 3
-    end
-
-    test "\"x\" (non-numeric) -> 3" do
-      System.put_env("CODEGEN_BUILD_QUEUE_MAX_CONSECUTIVE_FAILS", "x")
-      on_exit(fn -> System.delete_env("CODEGEN_BUILD_QUEUE_MAX_CONSECUTIVE_FAILS") end)
-      assert LoopQueueDrain.max_consecutive_fails_from_env() == 3
-    end
-  end
+  # NOTE: pitch_budget_from_env/0, max_retries_from_env/0, retry_delays_from_env/0,
+  # and max_consecutive_fails_from_env/0 tests that mutate CODEGEN_BUILD_QUEUE_*
+  # env vars live in the async: false sibling module at the bottom of this
+  # file (LoopQueueDrainEnvSerialTest) — System.put_env/2 is process-global
+  # and races with any other async: true test reading the same env var
+  # mid-flight (e.g. the grandchild-reap test below, which also reads this
+  # var).
 
   # ── Harness -> mention-prefix mapping ───────────────────────────────────
 
@@ -1947,6 +1898,57 @@ defmodule CodegenTestHarness.LoopQueueDrainEnvSerialTest do
       System.put_env("CODEGEN_BUILD_QUEUE_PITCH_BUDGET_SECS", "x")
       on_exit(fn -> System.delete_env("CODEGEN_BUILD_QUEUE_PITCH_BUDGET_SECS") end)
       assert LoopQueueDrain.pitch_budget_from_env() == 7200
+    end
+  end
+
+  describe "max_retries_from_env/0" do
+    test "unset -> 3" do
+      System.delete_env("CODEGEN_BUILD_QUEUE_MAX_RETRIES")
+      assert LoopQueueDrain.max_retries_from_env() == 3
+    end
+
+    test "\"5\" -> 5" do
+      System.put_env("CODEGEN_BUILD_QUEUE_MAX_RETRIES", "5")
+      on_exit(fn -> System.delete_env("CODEGEN_BUILD_QUEUE_MAX_RETRIES") end)
+      assert LoopQueueDrain.max_retries_from_env() == 5
+    end
+  end
+
+  describe "retry_delays_from_env/0" do
+    test "unset -> [30, 120, 300]" do
+      System.delete_env("CODEGEN_BUILD_QUEUE_RETRY_DELAYS")
+      assert LoopQueueDrain.retry_delays_from_env() == [30, 120, 300]
+    end
+
+    test "\"1 2 3\" -> [1, 2, 3]" do
+      System.put_env("CODEGEN_BUILD_QUEUE_RETRY_DELAYS", "1 2 3")
+      on_exit(fn -> System.delete_env("CODEGEN_BUILD_QUEUE_RETRY_DELAYS") end)
+      assert LoopQueueDrain.retry_delays_from_env() == [1, 2, 3]
+    end
+  end
+
+  describe "max_consecutive_fails_from_env/0" do
+    test "unset -> 3" do
+      System.delete_env("CODEGEN_BUILD_QUEUE_MAX_CONSECUTIVE_FAILS")
+      assert LoopQueueDrain.max_consecutive_fails_from_env() == 3
+    end
+
+    test "\"5\" -> 5" do
+      System.put_env("CODEGEN_BUILD_QUEUE_MAX_CONSECUTIVE_FAILS", "5")
+      on_exit(fn -> System.delete_env("CODEGEN_BUILD_QUEUE_MAX_CONSECUTIVE_FAILS") end)
+      assert LoopQueueDrain.max_consecutive_fails_from_env() == 5
+    end
+
+    test "\"0\" -> 3 (sentinel)" do
+      System.put_env("CODEGEN_BUILD_QUEUE_MAX_CONSECUTIVE_FAILS", "0")
+      on_exit(fn -> System.delete_env("CODEGEN_BUILD_QUEUE_MAX_CONSECUTIVE_FAILS") end)
+      assert LoopQueueDrain.max_consecutive_fails_from_env() == 3
+    end
+
+    test "\"x\" (non-numeric) -> 3" do
+      System.put_env("CODEGEN_BUILD_QUEUE_MAX_CONSECUTIVE_FAILS", "x")
+      on_exit(fn -> System.delete_env("CODEGEN_BUILD_QUEUE_MAX_CONSECUTIVE_FAILS") end)
+      assert LoopQueueDrain.max_consecutive_fails_from_env() == 3
     end
   end
 

@@ -103,4 +103,72 @@ describe("getActiveStepLog", () => {
 
     assert.equal(getActiveStepLog(projectDir), real);
   });
+
+  // CODEGEN_LOG_PATH pin — resolution step 0. Save/restore process.env at
+  // test-body scope (not describe-level before/afterEach) so a failure in
+  // one case can never bleed the pin into a sibling test.
+  it("CODEGEN_LOG_PATH pin wins over a hijacked .active sentinel pointing at a different, existing log", () => {
+    const projectDir = makeProjectDir();
+    const loggingDir = path.join(projectDir, "codegen", "logging");
+    const pinned = path.join(
+      loggingDir,
+      "20260714_182153_pinned-real_cycle.jsonl",
+    );
+    const hijacked = path.join(
+      loggingDir,
+      "20260714_182357_hijacked-rival_cycle.jsonl",
+    );
+    fs.writeFileSync(pinned, "## Version Stamp\n");
+    fs.writeFileSync(hijacked, "## Version Stamp\n");
+    fs.writeFileSync(path.join(loggingDir, ".active"), hijacked);
+
+    const saved = process.env.CODEGEN_LOG_PATH;
+    try {
+      process.env.CODEGEN_LOG_PATH = pinned;
+      assert.equal(getActiveStepLog(projectDir), pinned);
+    } finally {
+      if (saved === undefined) delete process.env.CODEGEN_LOG_PATH;
+      else process.env.CODEGEN_LOG_PATH = saved;
+    }
+  });
+
+  it("dangling CODEGEN_LOG_PATH pin (set but file missing) falls through to .active", () => {
+    const projectDir = makeProjectDir();
+    const loggingDir = path.join(projectDir, "codegen", "logging");
+    const activeTarget = path.join(
+      loggingDir,
+      "20260714_000000_active-fallback_cycle.jsonl",
+    );
+    fs.writeFileSync(activeTarget, "## Version Stamp\n");
+    fs.writeFileSync(path.join(loggingDir, ".active"), activeTarget);
+
+    const saved = process.env.CODEGEN_LOG_PATH;
+    try {
+      process.env.CODEGEN_LOG_PATH = path.join(
+        loggingDir,
+        "does-not-exist_cycle.jsonl",
+      );
+      assert.equal(getActiveStepLog(projectDir), activeTarget);
+    } finally {
+      if (saved === undefined) delete process.env.CODEGEN_LOG_PATH;
+      else process.env.CODEGEN_LOG_PATH = saved;
+    }
+  });
+
+  it("no CODEGEN_LOG_PATH set → unaffected, .active still wins as before", () => {
+    const projectDir = makeProjectDir();
+    const loggingDir = path.join(projectDir, "codegen", "logging");
+    const target = path.join(loggingDir, "20260714_000001_no-pin_cycle.jsonl");
+    fs.writeFileSync(target, "## Version Stamp\n");
+    fs.writeFileSync(path.join(loggingDir, ".active"), target);
+
+    const saved = process.env.CODEGEN_LOG_PATH;
+    try {
+      delete process.env.CODEGEN_LOG_PATH;
+      assert.equal(getActiveStepLog(projectDir), target);
+    } finally {
+      if (saved === undefined) delete process.env.CODEGEN_LOG_PATH;
+      else process.env.CODEGEN_LOG_PATH = saved;
+    }
+  });
 });

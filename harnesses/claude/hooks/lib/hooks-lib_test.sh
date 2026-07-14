@@ -335,6 +335,42 @@ result=$(TRANSCRIPT_PATH="$TMP_T18/transcript.jsonl" CWD="$TMP_T18" \
 assert_eq "session_log_from_transcript: stale .active sentinel falls through to transcript scan" "$TMP_T18/codegen/logging/20260703_000002_transcript-demo_cycle.jsonl" "$result"
 rm -rf "$TMP_T18"
 
+# Case 19: CODEGEN_LOG_PATH pin wins over a HIJACKED .active sentinel pointing
+# at a different, existing log — the exact cycle-20260714_182153 failure mode
+# (a same-process `codegen-log init` with a mistyped slug repoints .active to
+# a rival log; the guard must still grade the real, pinned cycle log).
+TMP_T19=$(mktemp -d)
+mkdir -p "$TMP_T19/codegen/logging"
+: >"$TMP_T19/codegen/logging/20260714_182153_pinned-real_cycle.jsonl"
+: >"$TMP_T19/codegen/logging/20260714_182357_hijacked-rival_cycle.jsonl"
+printf '%s' "$TMP_T19/codegen/logging/20260714_182357_hijacked-rival_cycle.jsonl" >"$TMP_T19/codegen/logging/.active"
+result=$(CODEGEN_LOG_PATH="$TMP_T19/codegen/logging/20260714_182153_pinned-real_cycle.jsonl" TRANSCRIPT_PATH="" CWD="$TMP_T19" \
+    bash -c "source '$SCRIPT_DIR/hooks-lib.sh'; session_log_from_transcript")
+assert_eq "session_log_from_transcript: CODEGEN_LOG_PATH pin wins over a hijacked .active" "$TMP_T19/codegen/logging/20260714_182153_pinned-real_cycle.jsonl" "$result"
+rm -rf "$TMP_T19"
+
+# Case 20: dangling CODEGEN_LOG_PATH pin (set but file does not exist) falls
+# through to .active — a dangling pin must never wedge the resolver.
+TMP_T20=$(mktemp -d)
+mkdir -p "$TMP_T20/codegen/logging"
+: >"$TMP_T20/codegen/logging/20260714_000000_active-fallback_cycle.jsonl"
+printf '%s' "$TMP_T20/codegen/logging/20260714_000000_active-fallback_cycle.jsonl" >"$TMP_T20/codegen/logging/.active"
+result=$(CODEGEN_LOG_PATH="$TMP_T20/codegen/logging/does-not-exist_cycle.jsonl" TRANSCRIPT_PATH="" CWD="$TMP_T20" \
+    bash -c "source '$SCRIPT_DIR/hooks-lib.sh'; session_log_from_transcript")
+assert_eq "session_log_from_transcript: dangling CODEGEN_LOG_PATH falls through to .active" "$TMP_T20/codegen/logging/20260714_000000_active-fallback_cycle.jsonl" "$result"
+rm -rf "$TMP_T20"
+
+# Case 21: no CODEGEN_LOG_PATH set at all → unaffected, .active still wins as
+# before (regression guard for the unpinned/manual-CLI path).
+TMP_T21=$(mktemp -d)
+mkdir -p "$TMP_T21/codegen/logging"
+: >"$TMP_T21/codegen/logging/20260714_000001_no-pin_cycle.jsonl"
+printf '%s' "$TMP_T21/codegen/logging/20260714_000001_no-pin_cycle.jsonl" >"$TMP_T21/codegen/logging/.active"
+result=$(TRANSCRIPT_PATH="" CWD="$TMP_T21" \
+    bash -c "unset CODEGEN_LOG_PATH; source '$SCRIPT_DIR/hooks-lib.sh'; session_log_from_transcript")
+assert_eq "session_log_from_transcript: no pin set → .active resolves as before" "$TMP_T21/codegen/logging/20260714_000001_no-pin_cycle.jsonl" "$result"
+rm -rf "$TMP_T21"
+
 # ── read_tool_failures ───────────────────────────────────────────────────────
 
 # Case 1 (empty-state): no failures dir → "no tool failures recorded"

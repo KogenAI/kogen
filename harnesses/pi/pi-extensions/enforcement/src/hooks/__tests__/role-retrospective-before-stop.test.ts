@@ -31,12 +31,18 @@ describe("role-retrospective-before-stop", { concurrency: false }, () => {
     fs.writeFileSync(logPath, "");
     process.env["CWD"] = tmpDir;
     delete process.env["AGENT_TYPE"];
+    // getActiveStepLog's resolution step 0 (CODEGEN_LOG_PATH) outranks the
+    // tmpDir-scoped .active/mtime scan this suite exercises — an ambient
+    // pin from the launching dev/loop session (every role invocation
+    // carries one) would silently redirect the hook outside tmpDir.
+    delete process.env["CODEGEN_LOG_PATH"];
   });
 
   afterEach(() => {
     fs.rmSync(tmpDir, { recursive: true, force: true });
     delete process.env["CWD"];
     delete process.env["AGENT_TYPE"];
+    delete process.env["CODEGEN_LOG_PATH"];
   });
 
   function appendRole(role: string, body: string): void {

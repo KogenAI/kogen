@@ -3034,3 +3034,101 @@ defmodule CodegenTestHarness.OrchestrationLoopLockTest do
     assert OrchestrationLoop.default_orphan_scan("/no/such/cwd/#{:erlang.unique_integer()}") == []
   end
 end
+
+# Isolated for the same reason as OrchestrationLoopLockTest: exercises the
+# REAL default_log_init/2 (no :log_init_fn stub) against a real, ambient
+# CODEGEN_LOG_PATH — a process-global env var — so it cannot share async:
+# true execution with the ~38 unrelated role-sequencing tests above.
+defmodule CodegenTestHarness.OrchestrationLoopDefaultLogInitTest do
+  use ExUnit.Case, async: false
+
+  alias CodegenTestHarness.OrchestrationLoop
+
+  setup do
+    dir =
+      Path.join(
+        System.tmp_dir!(),
+        "orchestration_loop_default_log_init_test_#{:erlang.unique_integer([:positive])}"
+      )
+
+    File.mkdir_p!(Path.join(dir, "codegen/logging"))
+    on_exit(fn -> File.rm_rf!(dir) end)
+
+    System.put_env("CODEGEN_BUILD_LOCK_HELD", "1")
+    on_exit(fn -> System.delete_env("CODEGEN_BUILD_LOCK_HELD") end)
+
+    {:ok, dir: dir}
+  end
+
+  # The bug this guards against: OrchestrationLoop shells out to the REAL
+  # codegen-log binary via System.cmd. System.cmd inherits the calling BEAM
+  # process's OS-level env unless explicitly overridden per key — so if this
+  # test's ambient CODEGEN_LOG_PATH (set via System.put_env, ExUnit's own
+  # process env) is not explicitly cleared by default_log_init/2's env list,
+  # the loop's own `codegen-log init` call would refuse itself (exit 2, since
+  # `init` now hard-refuses under any non-empty pin) and run/1 would raise —
+  # a self-build (or any nested build) would never get past cycle-log
+  # creation. This test proves the loop clears its own pin before init'ing.
+  test "run/1 succeeds via the real default_log_init/2 even with an ambient CODEGEN_LOG_PATH set",
+       ctx do
+    ambient_pin = Path.join(ctx.dir, "codegen/logging/some_unrelated_cycle.jsonl")
+    File.write!(ambient_pin, Jason.encode!(%{"ev" => "init", "pitch" => "unrelated"}) <> "\n")
+
+    System.put_env("CODEGEN_LOG_PATH", ambient_pin)
+    on_exit(fn -> System.delete_env("CODEGEN_LOG_PATH") end)
+
+    # Neutralize an ambient CODEGEN_BUILD_CWD/CLAUDE_PROJECT_DIR the dev
+    # session running THIS suite may have exported (codegen-log's LOG_ROOT
+    # falls back to either before $PWD — see codegen-log:113). Left set, the
+    # loop's `cd: cwd` option is silently overridden and default_log_init/2
+    # mints its log under the wrong root entirely, masking this test's real
+    # assertion (the ambient-pin-clearing behavior) behind an unrelated path
+    # bug. Same isolation pattern codegen-log_test.sh already documents.
+    prior_build_cwd = System.get_env("CODEGEN_BUILD_CWD")
+    prior_claude_project_dir = System.get_env("CLAUDE_PROJECT_DIR")
+    System.delete_env("CODEGEN_BUILD_CWD")
+    System.delete_env("CLAUDE_PROJECT_DIR")
+
+    on_exit(fn ->
+      if prior_build_cwd, do: System.put_env("CODEGEN_BUILD_CWD", prior_build_cwd)
+
+      if prior_claude_project_dir,
+        do: System.put_env("CLAUDE_PROJECT_DIR", prior_claude_project_dir)
+    end)
+
+    assert :ok ==
+             OrchestrationLoop.run(
+               harness: "claude_code",
+               stack: "phoenix",
+               cwd: ctx.dir,
+               pitch: "do the thing",
+               slug: "default-log-init-under-ambient-pin",
+               invoke_fn: fn _role, _harness, _ctx, _opts -> {:ok, %{"status" => "success"}} end,
+               gate_fn: fn _cwd, _opts -> {:clear, "make test"} end,
+               gate_preflight_fn: fn _cwd -> {"make test", "short", 0} end,
+               preflight_probe_fn: fn _cwd ->
+                 "--agent '__codegen_loop_preflight_probe__' not found. Available agents: " <>
+                   "planner-phoenix, developer-phoenix-backend, developer-phoenix-frontend, " <>
+                   "reviewer-phoenix, context-curator, committer, developer-static, reviewer-static"
+               end,
+               advance_cycle_state_fn: fn _state,
+                                          _step_log,
+                                          _session_id,
+                                          _verdict,
+                                          _project_dir ->
+                 :ok
+               end,
+               orphan_scan_fn: fn _cwd -> [] end,
+               planner_plan_fn: fn _log_file -> "## Plan\n\n**Approach**: do the thing." end
+             )
+
+    # The cycle minted its OWN log under ctx.dir/codegen/logging — distinct
+    # from the ambient pin — proving default_log_init/2 actually ran (rather
+    # than, say, silently reusing the ambient pin because it never cleared
+    # it).
+    minted =
+      Path.wildcard(Path.join(ctx.dir, "codegen/logging/*default-log-init-under-ambient-pin*"))
+
+    assert length(minted) == 1
+  end
+end

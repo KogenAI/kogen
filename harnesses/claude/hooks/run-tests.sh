@@ -15,6 +15,13 @@ set -u
 # unset is safe under set -u (only reads of missing vars error, not unset).
 unset CLAUDE_ROLE PI_ROLE
 
+# Neutralize an ambient CODEGEN_LOG_PATH pin from the launching (this very)
+# dev session. session_log_from_transcript's new step 0 resolves this env var
+# BEFORE .active/mtime scans — without unsetting it here, every resolver test
+# in this suite would silently resolve to whatever cycle log this live
+# session happens to be pinned to, instead of exercising its own fixtures.
+unset CODEGEN_LOG_PATH
+
 # Isolate test suite from the live cycle-state file.
 # Production hooks resolve project_dir="${CWD:-${CLAUDE_PROJECT_DIR:-$PWD}}".
 # Tests that set an explicit cwd override this; hooks without an explicit cwd

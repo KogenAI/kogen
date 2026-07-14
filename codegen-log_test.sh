@@ -416,6 +416,29 @@ check "(bb) section without --learned emits exactly one role event" "1" "$(jq_co
 check "(bb) section without --learned emits zero learned events (never refuses)" "0" "$(jq_count "$LOG_BB2" 'select(.ev=="learned")')"
 
 # ─────────────────────────────────────────────────────────────────────────────
+# (cc) init refuses (exit 2) when CODEGEN_LOG_PATH is set — creates no new
+# file and leaves .active byte-identical. Also proves the resolver-side fix:
+# a guard resolving via CODEGEN_LOG_PATH still lands on the REAL pinned log
+# even though a same-process init-under-pin attempt was made and rejected —
+# this is the exact hijack this pitch closes (cycle-20260714_182153).
+WS_CC="$(new_workspace)"
+LOG_CC="$(init_log "$WS_CC" test-pin-refusal)"
+ACTIVE_CC="$WS_CC/codegen/logging/.active"
+ACTIVE_BEFORE_CC="$(cat "$ACTIVE_CC")"
+FILES_BEFORE_CC="$(find "$WS_CC/codegen/logging" -name '*_cycle.jsonl' | sort)"
+set +e
+ERR_CC=$(env -u AGENT_TYPE -u CLAUDE_ROLE \
+    OCG_CODEGEN_DIR="$CODEGEN_ROOT" CODEGEN_BUILD_CWD="$WS_CC" CODEGEN_LOG_PATH="$LOG_CC" \
+    "$CODEGEN_LOG" init --slug rival-typo-slug 2>&1)
+RC_CC=$?
+set -e
+check "(cc) init under CODEGEN_LOG_PATH pin exits 2" "2" "$RC_CC"
+assert_contains "(cc) refusal message names the pinned path" "$ERR_CC" "$LOG_CC"
+FILES_AFTER_CC="$(find "$WS_CC/codegen/logging" -name '*_cycle.jsonl' | sort)"
+check "(cc) refusal created no new *_cycle.jsonl file" "$FILES_BEFORE_CC" "$FILES_AFTER_CC"
+check "(cc) refusal left .active byte-identical" "$ACTIVE_BEFORE_CC" "$(cat "$ACTIVE_CC")"
+
+# ─────────────────────────────────────────────────────────────────────────────
 echo ""
 echo "Results: $pass passed, $fail failed"
 

@@ -27,6 +27,11 @@ describe("step-log-section-before-spawn", () => {
     delete process.env["CLAUDE_ROLE"];
     delete process.env["PI_ROLE"];
     delete process.env["CWD"];
+    // getActiveStepLog's resolution step 0 (CODEGEN_LOG_PATH) outranks the
+    // tmpDir-scoped .active/mtime scan this suite exercises — an ambient
+    // pin from the launching dev/loop session (every role invocation
+    // carries one) would silently redirect the hook outside tmpDir.
+    delete process.env["CODEGEN_LOG_PATH"];
   });
 
   afterEach(() => {
@@ -34,6 +39,7 @@ describe("step-log-section-before-spawn", () => {
     delete process.env["CWD"];
     delete process.env["CLAUDE_ROLE"];
     delete process.env["PI_ROLE"];
+    delete process.env["CODEGEN_LOG_PATH"];
   });
 
   function writeLog(filename: string, lines: string[]): string {
