@@ -159,7 +159,6 @@ if [[ $EXIT_CODE -ne 0 ]] && [[ -z "$RESULT_EVENT" ]]; then
                 status: "failed",
                 value: null,
                 reason: ("claude exited " + ($error | split(": ")[0] | ltrimstr("claude exited "))),
-                clarifying_question: null,
                 retry_meta: null
             },
             usage: {
@@ -191,7 +190,6 @@ if [[ -z "$RESULT_EVENT" ]]; then
                 status: "failed",
                 value: null,
                 reason: "no result event found in stream-json",
-                clarifying_question: null,
                 retry_meta: null
             },
             usage: {
@@ -228,7 +226,6 @@ CACHE_CREATION="$(printf '%s' "$RESULT_EVENT" | jq -r '.usage.cache_creation_inp
 # Determine status
 STATUS=""
 REASON=""
-CLARIFYING_QUESTION=""
 RETRY_META="null"
 
 if [[ "$SUBTYPE" == "error_max_structured_output_retries" ]]; then
@@ -240,13 +237,7 @@ elif [[ "$IS_ERROR" == "true" ]]; then
     STATUS="failed"
     REASON="$(printf '%s' "$RESULT_EVENT" | jq -r '.message // .result // "error"')"
 elif [[ "$SUBTYPE" == "success" ]]; then
-    # Clarifying question heuristic: text ends with "?" and no json-schema was passed
-    if [[ -z "$JSON_SCHEMA_CONTENT" ]] && [[ "$RESULT_TEXT" =~ \?[[:space:]]*$ ]]; then
-        STATUS="clarifying_question"
-        CLARIFYING_QUESTION="$RESULT_TEXT"
-    else
-        STATUS="success"
-    fi
+    STATUS="success"
 else
     STATUS="failed"
     REASON="unexpected result subtype: $SUBTYPE"
@@ -285,7 +276,7 @@ if [[ -n "$JSON_SCHEMA_CONTENT" ]] && [[ "$STATUS" == "success" || "$STATUS" == 
             fi
         fi
     fi
-elif [[ "$STATUS" == "success" || "$STATUS" == "clarifying_question" ]]; then
+elif [[ "$STATUS" == "success" ]]; then
     VALUE_JSON="$(printf '%s' "$RESULT_TEXT" | jq -Rs '.')"
 elif [[ -n "$RESULT_TEXT" ]]; then
     VALUE_JSON="$(printf '%s' "$RESULT_TEXT" | jq -Rs '.')"
@@ -315,7 +306,6 @@ jq -n \
     --arg status "$STATUS" \
     --argjson value "$VALUE_JSON" \
     --arg reason "$REASON" \
-    --arg cq "$CLARIFYING_QUESTION" \
     --argjson retry_meta "$RETRY_META" \
     --argjson input_tokens "$INPUT_TOKENS" \
     --argjson output_tokens "$OUTPUT_TOKENS" \
@@ -331,7 +321,6 @@ jq -n \
             status: $status,
             value: $value,
             reason: (if $reason == "" then null else $reason end),
-            clarifying_question: (if $cq == "" then null else $cq end),
             retry_meta: $retry_meta
         },
         usage: {

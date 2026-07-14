@@ -782,6 +782,145 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
     end
   end
 
+  describe "build_prompt/2 — repair brief threading" do
+    test "developer prompt includes the repair brief when :rework_brief is present" do
+      brief =
+        "### Your current diff (uncommitted, authoritative)\n\n```diff\n+foo\n```\n\n" <>
+          "### Untracked files\n\n```\n?? new_file.ex\n```"
+
+      ctx = %{
+        cwd: "/tmp",
+        pitch: "do the thing",
+        artifacts: %{rework_brief: brief}
+      }
+
+      content = OrchestrationLoop.build_prompt("developer-static", ctx)
+
+      assert content =~ "Repair brief — this is a repair, not a rebuild"
+      assert content =~ "this is a repair, not a rebuild"
+      assert content =~ "+foo"
+      assert content =~ "?? new_file.ex"
+    end
+
+    test "no :rework_brief artifact → no repair brief block appended" do
+      ctx = %{cwd: "/tmp", pitch: "do the thing", artifacts: %{}}
+
+      content = OrchestrationLoop.build_prompt("developer-static", ctx)
+
+      refute content =~ "Repair brief"
+    end
+
+    test "empty :rework_brief (blank string) → no repair brief block appended" do
+      ctx = %{cwd: "/tmp", pitch: "do the thing", artifacts: %{rework_brief: ""}}
+
+      content = OrchestrationLoop.build_prompt("developer-static", ctx)
+
+      refute content =~ "Repair brief"
+    end
+
+    test "non-developer role prompt is not enriched with the repair brief" do
+      ctx = %{
+        cwd: "/tmp",
+        pitch: "do the thing",
+        artifacts: %{rework_brief: "### Your current diff\n\n```diff\n+foo\n```"}
+      }
+
+      content = OrchestrationLoop.build_prompt("reviewer-static", ctx)
+
+      refute content =~ "Repair brief"
+    end
+
+    test "oversized brief (built by default_rework_brief_fn/1 over the cap) renders --stat fallback" do
+      # default_rework_brief_fn/1 itself produces the --stat fallback wording
+      # when the diff exceeds @rework_brief_max_bytes; here we simulate the
+      # already-built oversized-fallback brief text landing in ctx, since
+      # build_prompt/2 only renders what it is handed.
+      brief =
+        "### Your current diff (uncommitted, authoritative) — TOO LARGE TO INLINE\n\n" <>
+          "Diff is 45000 bytes — too large to inline. Run `git diff HEAD -- <path>` for " <>
+          "the specific files named in the fault below; do not sweep the tree.\n\n" <>
+          "```\n lib/foo.ex | 200 +++++++++\n```\n\n" <>
+          "### Untracked files\n\n```\n?? new_file.ex\n```"
+
+      ctx = %{cwd: "/tmp", pitch: "do the thing", artifacts: %{rework_brief: brief}}
+
+      content = OrchestrationLoop.build_prompt("developer-phoenix-backend", ctx)
+
+      assert content =~ "Repair brief"
+      assert content =~ "TOO LARGE TO INLINE"
+      assert content =~ "too large to inline"
+      assert content =~ "do not sweep the tree"
+    end
+  end
+
+  describe "default_rework_brief_fn/1" do
+    test "non-git cwd returns empty string" do
+      assert OrchestrationLoop.default_rework_brief_fn("/tmp/definitely-not-a-git-repo-xyz") == ""
+    end
+
+    test "clean git work tree (no diff, nothing untracked) returns empty string" do
+      tmp =
+        System.tmp_dir!() |> Path.join("rework-brief-clean-#{System.unique_integer([:positive])}")
+
+      File.mkdir_p!(tmp)
+      on_exit(fn -> File.rm_rf!(tmp) end)
+
+      {_out, 0} = System.cmd("git", ["init", "-q"], cd: tmp)
+      {_out, 0} = System.cmd("git", ["config", "user.email", "t@example.com"], cd: tmp)
+      {_out, 0} = System.cmd("git", ["config", "user.name", "T"], cd: tmp)
+      File.write!(Path.join(tmp, "a.txt"), "hello\n")
+      {_out, 0} = System.cmd("git", ["add", "a.txt"], cd: tmp)
+      {_out, 0} = System.cmd("git", ["commit", "-q", "-m", "init"], cd: tmp)
+
+      assert OrchestrationLoop.default_rework_brief_fn(tmp) == ""
+    end
+
+    test "dirty tracked file + untracked file produces a non-empty brief with both sections" do
+      tmp =
+        System.tmp_dir!() |> Path.join("rework-brief-dirty-#{System.unique_integer([:positive])}")
+
+      File.mkdir_p!(tmp)
+      on_exit(fn -> File.rm_rf!(tmp) end)
+
+      {_out, 0} = System.cmd("git", ["init", "-q"], cd: tmp)
+      {_out, 0} = System.cmd("git", ["config", "user.email", "t@example.com"], cd: tmp)
+      {_out, 0} = System.cmd("git", ["config", "user.name", "T"], cd: tmp)
+      File.write!(Path.join(tmp, "a.txt"), "hello\n")
+      {_out, 0} = System.cmd("git", ["add", "a.txt"], cd: tmp)
+      {_out, 0} = System.cmd("git", ["commit", "-q", "-m", "init"], cd: tmp)
+
+      File.write!(Path.join(tmp, "a.txt"), "hello\nworld\n")
+      File.write!(Path.join(tmp, "new.txt"), "new\n")
+
+      brief = OrchestrationLoop.default_rework_brief_fn(tmp)
+
+      assert brief =~ "Your current diff (uncommitted, authoritative)"
+      assert brief =~ "+world"
+      assert brief =~ "Untracked files"
+      assert brief =~ "?? new.txt"
+    end
+
+    test "unborn HEAD (zero commits) falls back to bare `git diff` instead of raising" do
+      tmp =
+        System.tmp_dir!()
+        |> Path.join("rework-brief-unborn-#{System.unique_integer([:positive])}")
+
+      File.mkdir_p!(tmp)
+      on_exit(fn -> File.rm_rf!(tmp) end)
+
+      {_out, 0} = System.cmd("git", ["init", "-q"], cd: tmp)
+      File.write!(Path.join(tmp, "a.txt"), "hello\n")
+
+      brief = OrchestrationLoop.default_rework_brief_fn(tmp)
+
+      # Unborn HEAD -> untracked-only (bare `git diff` sees nothing to
+      # compare against for an unstaged new file); the untracked section
+      # still names it.
+      assert brief =~ "Untracked files"
+      assert brief =~ "?? a.txt"
+    end
+  end
+
   describe "run/1 — gate progress-based retry bound" do
     test "signature changes each attempt → re-invokes past legacy count-1 bound, then clears",
          %{calls_agent: calls_agent} do

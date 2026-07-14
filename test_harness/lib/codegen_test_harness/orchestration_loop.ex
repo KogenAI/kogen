@@ -731,7 +731,12 @@ defmodule CodegenTestHarness.OrchestrationLoop do
           run_roles(rest, harness, ctx, opts)
         else
           feedback = review_result["value"] || "changes requested"
-          rework_ctx = put_in(ctx, [:artifacts, :review_feedback], feedback)
+          brief = capture_rework_brief(ctx.cwd, opts)
+
+          rework_ctx =
+            ctx
+            |> put_in([:artifacts, :review_feedback], feedback)
+            |> put_in([:artifacts, :rework_brief], brief)
 
           with {:ok, dev_result} <- invoke_with_retry(dev_role, harness, rework_ctx, opts) do
             ctx = put_in(rework_ctx, [:artifacts, dev_role], dev_result)
@@ -902,7 +907,12 @@ defmodule CodegenTestHarness.OrchestrationLoop do
         run_gate_then_continue(dev_role, rest, harness, ctx, opts)
 
       {:violations, violations} when cycle < max_cycles ->
-        rework_ctx = put_in(ctx, [:artifacts, :env_var_violation], violations)
+        brief = capture_rework_brief(ctx.cwd, opts)
+
+        rework_ctx =
+          ctx
+          |> put_in([:artifacts, :env_var_violation], violations)
+          |> put_in([:artifacts, :rework_brief], brief)
 
         with {:ok, dev_result} <- invoke_with_retry(dev_role, harness, rework_ctx, opts) do
           ctx = put_in(rework_ctx, [:artifacts, dev_role], dev_result)
@@ -987,7 +997,6 @@ defmodule CodegenTestHarness.OrchestrationLoop do
       path -> [{"CODEGEN_LOG_PATH", path}]
     end
   end
-
 
   # Orientation-doc filter shared by the diff-scope computation below —
   # mirrors the doc grammar in context-factcheck-scan.sh / context-factcheck-guard.sh.
@@ -1132,7 +1141,12 @@ defmodule CodegenTestHarness.OrchestrationLoop do
 
         if allow? do
           reason = gate_failure_reason(ctx.cwd)
-          retry_ctx = put_in(ctx, [:artifacts, :last_failure_reason], reason)
+          brief = capture_rework_brief(ctx.cwd, opts)
+
+          retry_ctx =
+            ctx
+            |> put_in([:artifacts, :last_failure_reason], reason)
+            |> put_in([:artifacts, :rework_brief], brief)
 
           with {:ok, result} <- invoke_with_retry(dev_role, harness, retry_ctx, opts) do
             ctx = put_in(retry_ctx, [:artifacts, dev_role], result)
@@ -1218,6 +1232,79 @@ defmodule CodegenTestHarness.OrchestrationLoop do
         {_out, 0},
         System.cmd("git", ["-C", cwd, "rev-parse", "--git-dir"], stderr_to_stdout: true)
       )
+  end
+
+  # Diff embed cap: above this many bytes the brief switches from the
+  # verbatim diff to `--stat` + a scoped-read instruction (see plan/pitch
+  # "Size bound" — observed cycle diffs run 35.6 KB typical, 111 KB worst).
+  @rework_brief_max_bytes 40_000
+
+  # Captures the developer's uncommitted working-tree diff for a rework
+  # re-entry (structural gap: gate-red / reviewer CHANGES_REQUESTED / env-var
+  # violation). This is the compressed form of the work already done — the
+  # re-entering developer should repair the named fault, not re-derive its
+  # own diff turn-by-turn via `git diff`/`Read`. Returns "" when `cwd` is not
+  # a real git work tree (synthetic/mocked test cwd) or the tree is clean
+  # (nothing to embed) -- both are legitimate "no brief" cases build_prompt/2
+  # renders nothing for.
+  @spec default_rework_brief_fn(String.t()) :: String.t()
+  def default_rework_brief_fn(cwd) do
+    if git_work_tree?(cwd) do
+      base_head = cycle_base_head(cwd)
+
+      diff_args = if base_head, do: ["diff", "HEAD"], else: ["diff"]
+
+      {diff_out, _status} =
+        System.cmd("git", diff_args, cd: cwd, stderr_to_stdout: true)
+
+      {status_out, _status} =
+        System.cmd("git", ["status", "--porcelain"], cd: cwd, stderr_to_stdout: true)
+
+      untracked =
+        status_out
+        |> String.split("\n", trim: true)
+        |> Enum.filter(&String.starts_with?(&1, "??"))
+        |> Enum.join("\n")
+
+      diff_trimmed = String.trim(diff_out)
+
+      cond do
+        diff_trimmed == "" and untracked == "" ->
+          ""
+
+        byte_size(diff_out) > @rework_brief_max_bytes ->
+          {stat_out, _status} =
+            System.cmd("git", diff_args ++ ["--stat"], cd: cwd, stderr_to_stdout: true)
+
+          "### Your current diff (uncommitted, authoritative) — TOO LARGE TO INLINE\n\n" <>
+            "Diff is #{byte_size(diff_out)} bytes — too large to inline. Run " <>
+            "`git #{Enum.join(diff_args, " ")} -- <path>` for the specific files named in " <>
+            "the fault below; do not sweep the tree.\n\n" <>
+            "```\n" <>
+            String.trim(stat_out) <>
+            "\n```\n\n" <>
+            "### Untracked files\n\n```\n" <> untracked <> "\n```"
+
+        true ->
+          "### Your current diff (uncommitted, authoritative)\n\n" <>
+            "```diff\n" <>
+            diff_trimmed <>
+            "\n```\n\n" <>
+            "### Untracked files\n\n```\n" <> untracked <> "\n```"
+      end
+    else
+      ""
+    end
+  end
+
+  # Dispatches the `:rework_brief_fn` test seam; defaults to the real shelled
+  # capture. Called at each of the three developer rework re-entry sites
+  # (review CHANGES_REQUESTED, env-var violation, gate red) so the brief is
+  # captured fresh at the moment of re-entry -- not stashed once at cycle
+  # start, where it would be stale by the time a later re-entry fires.
+  defp capture_rework_brief(cwd, opts) do
+    brief_fn = Keyword.get(opts, :rework_brief_fn, &default_rework_brief_fn/1)
+    brief_fn.(cwd)
   end
 
   # Runs `mix format`/`make format` in `cwd` as an explicit loop step. This
@@ -1460,6 +1547,28 @@ defmodule CodegenTestHarness.OrchestrationLoop do
     base =
       if developer_role?(role) and is_binary(plan) and String.trim(plan) != "" do
         base <> "\n\n## Implementation plan (from the planner)\n\n" <> plan
+      else
+        base
+      end
+
+    # On a rework re-entry (gate red / reviewer CHANGES_REQUESTED / env-var
+    # violation), thread the developer's own uncommitted working-tree diff
+    # ahead of the fault sections below. This is a repair, not a rebuild —
+    # the diff is the compressed form of the work already done; without it
+    # the re-entering developer burns turns re-deriving its own change via
+    # `git diff`/`Read` (measured: ~30% of a rework's turns on a real cycle).
+    brief = get_in(ctx, [:artifacts, :rework_brief])
+
+    base =
+      if developer_role?(role) and is_binary(brief) and String.trim(brief) != "" do
+        base <>
+          "\n\n## Repair brief — this is a repair, not a rebuild\n\n" <>
+          "You wrote the diff below three minutes ago in this same cycle. The design is " <>
+          "settled: the plan above is unchanged and the approach was accepted. Do NOT " <>
+          "re-explore the codebase, re-derive scope, or re-read files whose content is " <>
+          "already in the diff. This is the uncommitted working tree — if something in it " <>
+          "is not yours, it predates the cycle; leave it alone and fix only the fault named " <>
+          "below, then re-verify.\n\n" <> brief
       else
         base
       end

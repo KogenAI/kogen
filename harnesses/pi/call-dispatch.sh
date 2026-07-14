@@ -218,7 +218,6 @@ if [[ $EXIT_CODE -ne 0 ]] && [[ -z "$AGENT_END_EVENT" ]]; then
                 status: "failed",
                 value: null,
                 reason: "pi exited non-zero",
-                clarifying_question: null,
                 retry_meta: null
             },
             usage: {
@@ -250,7 +249,6 @@ if [[ -z "$AGENT_END_EVENT" ]]; then
                 status: "failed",
                 value: null,
                 reason: "no agent_end event found in pi JSONL",
-                clarifying_question: null,
                 retry_meta: null
             },
             usage: {
@@ -313,7 +311,6 @@ fi
 # Determine status
 STATUS=""
 REASON=""
-CLARIFYING_QUESTION=""
 VALUE_JSON="null"
 
 if [[ -z "$ASSISTANT_TEXT" ]]; then
@@ -330,11 +327,6 @@ elif [[ -n "$JSON_SCHEMA_CONTENT" ]]; then
         REASON="pi returned non-JSON reply when JSON schema was expected"
         VALUE_JSON="$(printf '%s' "$ASSISTANT_TEXT" | jq -Rs '.')"
     fi
-elif [[ -z "$JSON_SCHEMA_CONTENT" ]] && [[ "$ASSISTANT_TEXT" =~ \?[[:space:]]*$ ]]; then
-    # Clarifying question heuristic (only when no JSON schema was requested)
-    STATUS="clarifying_question"
-    CLARIFYING_QUESTION="$ASSISTANT_TEXT"
-    VALUE_JSON="$(printf '%s' "$ASSISTANT_TEXT" | jq -Rs '.')"
 else
     STATUS="success"
     VALUE_JSON="$(printf '%s' "$ASSISTANT_TEXT" | jq -Rs '.')"
@@ -364,7 +356,6 @@ jq -n \
     --arg status "$STATUS" \
     --argjson value "$VALUE_JSON" \
     --arg reason "$REASON" \
-    --arg cq "$CLARIFYING_QUESTION" \
     --argjson input_tokens "$INPUT_TOKENS" \
     --argjson output_tokens "$OUTPUT_TOKENS" \
     --argjson cache_read "$CACHE_READ" \
@@ -379,7 +370,6 @@ jq -n \
             status: $status,
             value: $value,
             reason: (if $reason == "" then null else $reason end),
-            clarifying_question: (if $cq == "" then null else $cq end),
             retry_meta: null
         },
         usage: {
