@@ -164,10 +164,15 @@ run_test "real cat pipe still blocked (unchanged)" "2" \
 # see context/bash-patterns.md "RED-then-GREEN proof via floating git show HEAD
 # self-invalidates once fix lands"). Fixed by synthesizing the exact
 # historical buggy body as a literal fixture instead of depending on git
-# history. Written INTO SCRIPT_DIR (not /tmp) so relative `dirname "$0"`
-# sourcing of lib/hooks-lib.sh still resolves.
-PRE_FIX_NO_CAT_PIPE="$SCRIPT_DIR/.no-cat-pipe.pre-fix.sh"
-trap 'rm -f "$PRE_FIX_NO_CAT_PIPE"' EXIT
+# history. Written into a mktemp -d scratch dir (never into the live hooks
+# source dir — a stray non-hook file there breaks `hook_registrations.py`'s
+# HOOK-MANIFEST parity check and hangs around if the process is killed) with
+# lib/ symlinked back so relative `dirname "$0"` sourcing of
+# lib/hooks-lib.sh still resolves.
+PRE_FIX_DIR="$(mktemp -d)"
+ln -s "$SCRIPT_DIR/lib" "$PRE_FIX_DIR/lib"
+PRE_FIX_NO_CAT_PIPE="$PRE_FIX_DIR/no-cat-pipe.pre-fix.sh"
+trap 'rm -rf "$PRE_FIX_DIR"' EXIT
 cat >"$PRE_FIX_NO_CAT_PIPE" <<'PREFIXEOF'
 #!/bin/bash
 # Synthetic pre-fix fixture: reproduces the historical bug where no-cat-pipe.sh

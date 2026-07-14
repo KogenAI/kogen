@@ -42,15 +42,27 @@ This is NOT needed when tests run via `harnesses/claude/hooks/run-tests.sh` in a
 
 When creating a RED-then-GREEN proof by redirecting a hook script via `git show HEAD:<path> > /tmp/copy.sh`, the copied script may use relative sourcing (e.g., `source "$(dirname "$0")/lib/hooks-lib.sh"`). The `dirname` of `/tmp/copy.sh` is `/tmp/`, not the original source directory, so the relative path breaks and the sourced file is not found.
 
-**Fix**: Perform RED-then-GREEN swaps IN-PLACE rather than copying the hook to a temp location:
+**NEVER fix this by writing the fixture INTO the live hooks source dir** (`harnesses/claude/hooks/`), in-place or otherwise — even as a leading-dot "hidden" file. That directory is walked by `hook_registrations.py` (`Path.glob("*.sh")` matches dotfiles too — a stray non-hook file there hard-fails `make install` with a missing-HOOK-MANIFEST-fields error) and by concurrent test/install consumers under `make test`'s parallel run. A trap-based cleanup only fires on a clean exit; a killed process stranded the file permanently, breaking every subsequent `make install` until someone deletes it by hand. This happened in production: two fixtures (`no-cat-pipe_test.sh`, `pre-commit-guard_test.sh`) synthesized a pre-fix hook body directly in `harnesses/claude/hooks/` and, under `make install` racing `make test`, caused a manifest error and a discarded $27 build cycle.
 
-1. Save the original: `git show HEAD:<hook.sh> > /tmp/pre-fix.sh`
-2. Swap in the pre-fix: `cp /tmp/pre-fix.sh <real-hook-path>`
-3. Run the test (RED phase): verify it fails/blocks as expected
-4. Restore from a backup of the post-fix version or re-edit in-place
-5. Run the test again (GREEN phase): verify it passes
+**Fix**: write the synthetic fixture into a fresh `mktemp -d` scratch dir, and symlink the real `lib/` (and any other sourced sibling, e.g. `_role.sh`) back into that scratch dir so the fixture's relative `dirname "$0"` sourcing still resolves:
 
-This keeps both `dirname "$0"` resolutions in the real source directory where relative sourcing works correctly.
+```bash
+PRE_FIX_DIR="$(mktemp -d)"
+ln -s "$SCRIPT_DIR/lib" "$PRE_FIX_DIR/lib"
+PRE_FIX_HOOK="$PRE_FIX_DIR/my-hook.pre-fix.sh"
+trap 'rm -rf "$PRE_FIX_DIR"' EXIT
+cat >"$PRE_FIX_HOOK" <<'PREFIXEOF'
+#!/bin/bash
+# ...historical buggy body, verbatim...
+source "$(dirname "$0")/lib/hooks-lib.sh"
+...
+PREFIXEOF
+
+# RED phase: run against $PRE_FIX_HOOK, confirm the historical bug reproduces
+# GREEN phase: run against the real hook, confirm the fix holds
+```
+
+This keeps `dirname "$0"` resolutions working (via the symlink) without ever writing a non-hook file into the real source directory. `run-tests.sh` asserts post-suite that `harnesses/claude/hooks/` carries zero dotfiles as a backstop against regressions of this pattern.
 
 ## Pitfalls
 
@@ -87,7 +99,7 @@ This keeps both `dirname "$0"` resolutions in the real source directory where re
 - **[local] RED-then-GREEN for verdict-string flips** — When converting output value (e.g., INCONCLUSIVE → FAIL), test against PRE-fix source (red, prove it fires) then POST-fix (green). Layer proof where verdict is produced, not routed.
 - **[local] RED-then-GREEN for source-grep guard tests via scratch copies** — When adding a source-grep guard, prove it catches violations: copy target to `/tmp`, inject forbidden token, run test against injected copy (RED), confirm real source re-passes (GREEN).
 - **[local] RED-then-GREEN for bash assertions via `git show HEAD:<path>` when fix uncommitted** — Pull pre-fix source via `git show HEAD:<file> > /tmp/<file>.pre.sh` while working-tree fix is uncommitted (RED test against pre-fix), then test against fixed source in working tree (GREEN).
-- **[shared] RED-then-GREEN proof via floating `git show HEAD:<file>` self-invalidates once fix lands** — When a proof depends on `git show HEAD:<file>` to pull pre-fix "broken" state, the moment the fix commits to HEAD the proof self-invalidates. Fix: synthesize hardcoded pre-fix fixture reproducing exact historical bug instead of relying on floating HEAD state.
+- **[shared] RED-then-GREEN proof via floating `git show HEAD:<file>` self-invalidates once fix lands** — When a proof depends on `git show HEAD:<file>` to pull pre-fix "broken" state, the moment the fix commits to HEAD the proof self-invalidates. Fix: synthesize hardcoded pre-fix fixture reproducing exact historical bug instead of relying on floating HEAD state. **NEVER write that fixture into `harnesses/claude/hooks/`** (breaks `hook_registrations.py`'s HOOK-MANIFEST parity, strands on a killed test) — write it into `mktemp -d` with `lib/` (and any sourced sibling) symlinked back for relative sourcing; see "git show Redirect Source-Sourcing Trap" above.
 - **[shared] macOS symlink mismatch** — Plain `cd` doesn't resolve `/var` → `/private/var`. Assert basename not full path.
 - **[local] Ambient CLAUDE_ROLE/CODEGEN_BUILD_START_TS leak into unscoped hook tests** — Fix: `env -u CLAUDE_ROLE -u CODEGEN_BUILD_START_TS bash "$HOOK"` when running standalone outside `make test`.
 - **[shared] Ambient env leaks into hermetic test fixtures** — Use `env -u VAR1 -u VAR2` for "neither set" test; omitting one fails.

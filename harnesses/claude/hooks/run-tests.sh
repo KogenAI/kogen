@@ -143,6 +143,19 @@ if [ "$_gate_pending_before" != "$_gate_pending_after" ]; then
     fi
 fi
 
+# Backstop: a hook test must never write a fixture file INTO the live hooks
+# source dir. No legitimate hook is ever a dotfile — every real hook is a
+# plain `*.sh`. A stray dotfile here breaks `hook_registrations.py`'s
+# HOOK-MANIFEST parity check (`Path.glob("*.sh")` matches dotfiles too) and,
+# if the test process is killed before its trap fires, strands the file
+# permanently until someone deletes it by hand.
+_stranded_fixtures=$(find "$HOOKS_DIR" -maxdepth 1 -name '.*' -type f)
+if [ -n "$_stranded_fixtures" ]; then
+    printf 'FAIL: STRANDED TEST FIXTURE in harnesses/claude/hooks/: a test wrote a non-hook file into the live hooks dir. Delete it (it will break `make install`), and write fixtures into `mktemp -d` instead.\n' >&2
+    printf '%s\n' "$_stranded_fixtures" >&2
+    exit 1
+fi
+
 # Propagate aggregate test failure. xargs exits 123 when any -I{} invocation
 # returned non-zero. Any non-zero xargs exit means at least one real failure
 # → fail the gate. The runner fails-closed: no allowlists, no suppression.

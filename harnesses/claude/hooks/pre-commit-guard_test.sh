@@ -247,10 +247,16 @@ run_test "git restore (no --staged) allowed for non-committer" "0" "$FIXTURE_RES
 # see context/bash-patterns.md "RED-then-GREEN proof via floating git show HEAD
 # self-invalidates once fix lands"). Fixed by synthesizing the exact
 # historical buggy body as a literal fixture instead of depending on git
-# history. Written INTO SCRIPT_DIR (not /tmp) so the relative `dirname "$0"`
-# sourcing of lib/hooks-lib.sh and _role.sh still resolves.
-PRE_FIX_GUARD="$SCRIPT_DIR/.pre-commit-guard.pre-fix.sh"
-trap 'rm -rf "$FAKE_GIT_DIR"; rm -f "$PRE_FIX_GUARD"' EXIT
+# history. Written into a mktemp -d scratch dir (never into the live hooks
+# source dir — a stray non-hook file there breaks `hook_registrations.py`'s
+# HOOK-MANIFEST parity check and hangs around if the process is killed) with
+# lib/ and _role.sh symlinked back so the relative `dirname "$0"` sourcing
+# still resolves.
+PRE_FIX_DIR="$(mktemp -d)"
+ln -s "$SCRIPT_DIR/lib" "$PRE_FIX_DIR/lib"
+ln -s "$SCRIPT_DIR/_role.sh" "$PRE_FIX_DIR/_role.sh"
+PRE_FIX_GUARD="$PRE_FIX_DIR/pre-commit-guard.pre-fix.sh"
+trap 'rm -rf "$FAKE_GIT_DIR"; rm -rf "$PRE_FIX_DIR"' EXIT
 cat >"$PRE_FIX_GUARD" <<'PREFIXEOF'
 #!/bin/bash
 # Synthetic pre-fix fixture: reproduces the historical bug where the ops
