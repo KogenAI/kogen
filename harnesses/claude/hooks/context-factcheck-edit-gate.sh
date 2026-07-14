@@ -148,7 +148,11 @@ if [ "$rel_path" != "PROJECT_CONTEXT.md" ]; then
 fi
 (cd "$tmp_root" && git init -q) >/dev/null 2>&1 || exit 0
 
-scan_out=$(bash "$(dirname "$0")/lib/context-factcheck-scan.sh" "$tmp_root" "$rel_path")
+# DOC CONTENT comes from the projection mirror; PATH CLAIMS and count probes
+# resolve against the REAL repo root. Passing $tmp_root as repo_root (as this
+# hook did until now) made every valid path claim in the doc a false violation
+# — nothing exists in the mirror.
+scan_out=$(FACTCHECK_DOC_ROOT="$tmp_root" bash "$(dirname "$0")/lib/context-factcheck-scan.sh" "$repo_root" "$rel_path")
 scan_rc=$?
 
 if [ "$scan_rc" -eq 1 ] && [ -n "$scan_out" ]; then

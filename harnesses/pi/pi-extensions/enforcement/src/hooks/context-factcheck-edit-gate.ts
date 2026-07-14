@@ -146,8 +146,12 @@ export function register(pi: ExtensionAPI): void {
       let scanOut = "";
       let scanRc = 0;
       try {
-        scanOut = execFileSync("bash", [SCAN_LIB, tmpRoot, relPath], {
+        // DOC CONTENT from the projection mirror (FACTCHECK_DOC_ROOT); PATH
+        // CLAIMS resolve against the REAL repo root. Passing tmpRoot as the
+        // repo root made every valid path claim a false violation.
+        scanOut = execFileSync("bash", [SCAN_LIB, repoRoot, relPath], {
           encoding: "utf8",
+          env: { ...process.env, FACTCHECK_DOC_ROOT: tmpRoot },
         });
       } catch (err) {
         const e = err as { status?: number; stdout?: string };

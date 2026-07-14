@@ -413,6 +413,10 @@ Write fake binary to temp dir, prepend PATH. Stub records args to marker file; t
 
 ALLOW test passes under both old (skip) and new (process-then-allow) paths — green-from-birth trap. Pair ALLOW with BLOCK (same path, missing input). BLOCK fails under old, passes under new → proves bypass widened.
 
+## Doc-Root vs Resolution-Root Split — RED-Proof Test Idiom
+
+Hook mirroring a PROJECTED doc into a temp dir (e.g. `context-factcheck-edit-gate.sh`) must NOT pass that mirror as scan-lib `repo_root` — empty mirror falsely denies every valid path claim. Split via env var (`FACTCHECK_DOC_ROOT`): doc body reads from mirror; `repo_root` arg stays real tree. Unset → both default to `repo_root`. RED-proof pair: real path + real `repo_root` → ALLOW; path nowhere → DENY. ALLOW alone can't tell "resolves" from "fails open."
+
 ## Three-Class Fetch-Pointer Guard Architecture
 
 The `rule-self-ref-no-fetch_test.sh` guard detects three error classes for fetch-pointer references (`[nav-word] \`path/to/rule.md\`` in subagent templates):

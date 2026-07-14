@@ -89,7 +89,7 @@ Example: Create a directory with a `.md` extension in a location where the test 
 
 **Test files**:
 
-- **Stale** — `env-var-sample-consistency.test` no longer has a "blocks when sample diff throws after repo-presence check succeeds" case (that fixture technique doesn't apply post-relocation). Current suite (`harnesses/pi/pi-extensions/enforcement/src/hooks/__tests__/env-var-sample-consistency.test.ts`, `harnesses/claude/hooks/env-var-sample-consistency_test.sh`) covers: undocumented working-tree var warns/blocks, both-samples-declared allows, argless `System.get_env()` allows, already-documented var allows, removed-only line allows, unstaged edit still blocks/warns (working-tree not staged-only), and pattern in a non-`.exs` file is not scanned (extension-scoping regression guard).
+- **Deleted** — the `env-var-sample-consistency` hook and both of its test suites (claude bash + pi TS) were removed in `035adb3` ("Enforce env-var in-loop, delete dead hooks"); the check now runs as an in-loop Elixir step. The technique above is retained for other two-phase git-diff hooks; there is no env-var-sample-consistency test file to consult.
 
 ## Test Isolation Rules
 

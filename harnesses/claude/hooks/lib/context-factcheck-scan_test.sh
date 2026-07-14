@@ -280,5 +280,48 @@ out_lines=$(printf '%s\n' "$out" | grep -c . || true)
 assert_eq "mixed doc: exactly one violation line" "1" "$out_lines"
 rm -rf "$T23"
 
+# --- Test 24: FACTCHECK_DOC_ROOT unset → back-compat, doc read from repo_root ---
+T24=$(new_repo)
+mkdir -p "$T24/lib/foo"
+printf 'code\n' >"$T24/lib/foo/bar.ex"
+printf 'See `lib/foo/bar.ex` for details.\n' >"$T24/CLAUDE.md"
+out=$(bash "$SCAN" "$T24")
+rc=$?
+assert_exit "FACTCHECK_DOC_ROOT unset → back-compat exit 0" "0" "$rc"
+rm -rf "$T24"
+
+# --- Test 25: FACTCHECK_DOC_ROOT set to a projection mirror → doc content
+# read from the mirror, but named-path claims resolve against the REAL
+# repo_root (proves the split: mirror holds only the doc, not the source tree) ---
+T25=$(new_repo)
+mkdir -p "$T25/lib/foo"
+printf 'code\n' >"$T25/lib/foo/bar.ex"
+mirror25=$(mktemp -d)
+mkdir -p "$mirror25/context"
+printf 'See `lib/foo/bar.ex` for details.\n' >"$mirror25/context/projected.md"
+out=$(FACTCHECK_DOC_ROOT="$mirror25" bash "$SCAN" "$T25" "context/projected.md")
+rc=$?
+assert_exit "FACTCHECK_DOC_ROOT mirror + real repo_root → valid path resolves, exit 0" "0" "$rc"
+rm -rf "$T25" "$mirror25"
+
+# --- Test 26: FACTCHECK_DOC_ROOT set, real repo_root missing the claimed path
+# → genuine violation still caught (proves resolution is NOT against the
+# mirror, which has no lib/ at all) ---
+T26=$(new_repo)
+mirror26=$(mktemp -d)
+mkdir -p "$mirror26/context"
+printf 'See `lib/does_not_exist.ex` for details.\n' >"$mirror26/context/projected.md"
+out=$(FACTCHECK_DOC_ROOT="$mirror26" bash "$SCAN" "$T26" "context/projected.md")
+rc=$?
+assert_exit "FACTCHECK_DOC_ROOT mirror + real repo_root → stale path still caught, exit 1" "1" "$rc"
+case "$out" in
+*"lib/does_not_exist.ex"*) pass=$((pass + 1)) ;;
+*)
+    printf 'FAIL: FACTCHECK_DOC_ROOT stale-path → message should reference path\n  actual: %s\n' "$out"
+    fail=$((fail + 1))
+    ;;
+esac
+rm -rf "$T26" "$mirror26"
+
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

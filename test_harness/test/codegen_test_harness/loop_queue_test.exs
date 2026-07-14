@@ -318,6 +318,25 @@ defmodule CodegenTestHarness.LoopQueueTest do
     end
   end
 
+  describe "retryable_reason?/1" do
+    test "reason string matching the retryable taxonomy is transient" do
+      assert LoopQueue.retryable_reason?("API Error: 529 overloaded_error")
+      assert LoopQueue.retryable_reason?("Connection closed mid-response")
+      assert LoopQueue.retryable_reason?("socket hang up")
+    end
+
+    test "reason string with no retryable pattern is deterministic (not transient)" do
+      refute LoopQueue.retryable_reason?("deterministic failure")
+      refute LoopQueue.retryable_reason?("role developer-static failed twice: bad input")
+    end
+
+    test "non-binary input is deterministic (not transient), never raises" do
+      refute LoopQueue.retryable_reason?(nil)
+      refute LoopQueue.retryable_reason?(:some_atom)
+      refute LoopQueue.retryable_reason?(%{reason: "API Error: 529"})
+    end
+  end
+
   describe "@retryable_regex parity with harnesses/shared/retryable-errors.sh" do
     @retryable_errors_sh Path.expand(
                            "../../../harnesses/shared/retryable-errors.sh",

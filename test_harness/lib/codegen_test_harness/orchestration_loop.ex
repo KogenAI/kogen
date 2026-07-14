@@ -12,7 +12,15 @@ defmodule CodegenTestHarness.OrchestrationLoop do
   silent continue, no shim.
   """
 
-  alias CodegenTestHarness.{BuildLock, LoopGate, RoleResolver}
+  alias CodegenTestHarness.{BuildLock, LoopGate, LoopQueue, RoleResolver}
+
+  # Role-call retry budget. A deterministic failure gets one retry (the
+  # historical "failed twice" contract). A failure whose reason matches the
+  # shared retryable taxonomy (transport fault / 5xx / overload /
+  # "Connection closed mid-response") gets up to 4 attempts with backoff —
+  # one API blip must not kill an unattended overnight build.
+  @deterministic_attempts 2
+  @transient_attempts 4
 
   @type harness :: String.t()
   @type stack :: String.t()
@@ -1480,24 +1488,55 @@ defmodule CodegenTestHarness.OrchestrationLoop do
   # returned here.
   defp invoke_with_retry(role, harness, ctx, opts) do
     invoke_fn = Keyword.get(opts, :invoke_fn, &invoke_role/4)
+    do_invoke_attempt(role, harness, ctx, opts, invoke_fn, 1)
+  end
 
+  # One attempt. On failure the reason is classified against the shared
+  # retryable taxonomy (LoopQueue.retryable_reason?/1):
+  #
+  #   * deterministic reason  -> @deterministic_attempts (2) total attempts,
+  #     preserving the historical "failed twice" contract;
+  #   * transient reason (transport fault, 5xx, overload, mid-response
+  #     disconnect) -> up to @transient_attempts (4) total, with a backoff
+  #     between them. A single "Connection closed mid-response" blip used to
+  #     burn a whole build (both attempts landing inside the same bad window);
+  #     an unattended overnight queue cannot afford that.
+  defp do_invoke_attempt(role, harness, ctx, opts, invoke_fn, attempt) do
     case invoke_fn.(role, harness, ctx, opts) do
       {:ok, result} ->
         {:ok, result}
 
       {:error, reason} ->
-        log_died(role, "interrupted", reason, opts)
-        retry_ctx = put_in(ctx, [:artifacts, :last_failure_reason], reason)
+        transient? = LoopQueue.retryable_reason?(reason)
+        max_attempts = if transient?, do: @transient_attempts, else: @deterministic_attempts
 
-        case invoke_fn.(role, harness, retry_ctx, opts) do
-          {:ok, result} ->
-            {:ok, result}
+        if attempt < max_attempts do
+          log_died(role, "interrupted", reason, opts)
+          retry_ctx = put_in(ctx, [:artifacts, :last_failure_reason], reason)
 
-          {:error, reason2} ->
-            log_died(role, "aborted", reason2, opts)
-            {:error, "role #{role} failed twice: #{reason2}"}
+          if transient? do
+            sleep_fn = Keyword.get(opts, :sleep_fn, &Process.sleep/1)
+            sleep_fn.(backoff_ms(attempt))
+          end
+
+          do_invoke_attempt(role, harness, retry_ctx, opts, invoke_fn, attempt + 1)
+        else
+          log_died(role, "aborted", reason, opts)
+
+          if attempt == 2 do
+            {:error, "role #{role} failed twice: #{reason}"}
+          else
+            {:error, "role #{role} failed after #{attempt} attempts: #{reason}"}
+          end
         end
     end
+  end
+
+  # Backoff between transient retries (ms), indexed by the attempt that just
+  # failed. Beyond the list, the last value repeats.
+  defp backoff_ms(attempt) do
+    delays = [15_000, 60_000, 120_000]
+    Enum.at(delays, attempt - 1, List.last(delays))
   end
 
   # Writes a `{"ev":"died","kind":<kind>}` death stamp into THIS cycle's log

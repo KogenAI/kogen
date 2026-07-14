@@ -13,6 +13,13 @@
 #
 # Usage: context-factcheck-scan.sh <repo_root> [doc_path...]
 #
+# Env: FACTCHECK_DOC_ROOT (optional) — root the DOC CONTENT is read from.
+# Defaults to <repo_root>. Callers that scan a PROJECTED (not-yet-written) doc
+# body — the PreToolUse edit-gate — mirror only that one doc into a temp dir and
+# pass it here, while still passing the REAL repo root as <repo_root> so that
+# named-path claims and count-anchor probes resolve against the real tree.
+# Conflating the two roots makes every valid path claim a false violation.
+#
 # With no doc_path args: scans the full working-tree orientation-doc set
 # (whole-tree default — used by the interactive SubagentStop hook).
 # With one or more doc_path args (each relative to repo_root): scans ONLY
@@ -87,6 +94,12 @@ if [ -z "$resolved_root" ]; then
 fi
 repo_root="$resolved_root"
 
+# Doc-content root: where the doc BODY is read from. Defaults to the repo root
+# (whole-tree + in-loop callers). The edit-gate supplies the projection mirror.
+# Claim resolution (class 1 named paths, class 2 count probes) always uses
+# $repo_root — the real tree.
+doc_root="${FACTCHECK_DOC_ROOT:-$repo_root}"
+
 # Detect layout (same priority as context-factcheck-edit-gate.sh / context-index-parity-scan.sh).
 if [ -f "$repo_root/PROJECT_CONTEXT.md" ]; then
     :
@@ -143,11 +156,12 @@ is_allowed_verb() {
 while IFS= read -r doc_path; do
     [ -z "$doc_path" ] && continue
 
-    # Read from the WORKING TREE (disk), not the staged/HEAD blob.
-    if [ ! -f "$repo_root/$doc_path" ]; then
+    # Read from the WORKING TREE (disk), not the staged/HEAD blob — or, when the
+    # caller supplied FACTCHECK_DOC_ROOT, from that projection mirror instead.
+    if [ ! -f "$doc_root/$doc_path" ]; then
         continue
     fi
-    blob=$(cat "$repo_root/$doc_path" 2>/dev/null || true)
+    blob=$(cat "$doc_root/$doc_path" 2>/dev/null || true)
     if [ -z "$blob" ]; then
         continue
     fi

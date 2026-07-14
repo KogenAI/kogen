@@ -151,4 +151,19 @@ describe("context-factcheck-edit-gate", { concurrency: false }, () => {
       fs.rmSync(noGitDir, { recursive: true, force: true });
     }
   });
+
+  it("allows write referencing a REAL repo-root path (proves resolution hits the real tree, not the empty tmp mirror)", async () => {
+    fs.writeFileSync(path.join(repoDir, "lib/real.ex"), "defmodule Real do\nend\n", "utf8");
+    const result = await runHook("context/foo.md", "write", {
+      content: "see `lib/real.ex` for details\n",
+    });
+    assert.ok(isAllow(result));
+  });
+
+  it("denies write referencing a STALE path that does not exist anywhere in the repo", async () => {
+    const result = await runHook("context/foo.md", "write", {
+      content: "see `lib/nonexistent_module.ex` for details\n",
+    });
+    assert.ok(isDeny(result));
+  });
 });

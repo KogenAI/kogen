@@ -336,6 +336,21 @@ defmodule CodegenTestHarness.LoopQueue do
   end
 
   @doc """
+  Classifies a single failure REASON STRING (not a file) against the same
+  shared `retryable_regex` taxonomy — transport faults, 5xx, overload,
+  mid-response disconnects. Used by `OrchestrationLoop` to decide whether a
+  failed role call is worth more than one retry.
+
+  Single-sources the taxonomy with `transient?/1` and with
+  `harnesses/shared/retryable-errors.sh`.
+  """
+  @spec retryable_reason?(String.t()) :: boolean()
+  def retryable_reason?(reason) when is_binary(reason),
+    do: Regex.match?(@retryable_regex, reason)
+
+  def retryable_reason?(_), do: false
+
+  @doc """
   Classifies a captured console capture at `jsonl_path` as transient
   (retryable infra blip) vs. deterministic failure.
 

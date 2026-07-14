@@ -16,6 +16,11 @@
 #  11: outside a git repo → ALLOW (fail-open)
 #  12: Write context/big.md missing content field → ALLOW (fail-open unparseable)
 #  13: Edit context/new.md not yet on disk, new_string clean → ALLOW
+#  14: Write context/foo.md referencing a REAL repo-root path (lib/real.ex,
+#      created in the fixture) → ALLOW (proves resolution now hits the real
+#      tree, not the empty tmp_root mirror)
+#  15: Write context/foo.md referencing a path that does NOT exist anywhere
+#      in the fixture repo → DENY (genuine stale-path violation still caught)
 
 set -euo pipefail
 
@@ -203,6 +208,27 @@ payload13=$(jq -n --arg fp "$dir13/context/new.md" --arg cwd "$dir13" \
     '{hook_event_name:"PreToolUse",tool_name:"Edit",tool_input:{file_path:$fp,old_string:"",new_string:"brand new clean doc\n"},agent_type:"context-curator",agent_id:"a",cwd:$cwd}')
 
 run_test "Edit context/new.md not on disk, clean new_string → ALLOW" "0" "$payload13"
+
+# ---------------------------------------------------------------------------
+# Test 14: Write context/foo.md referencing a REAL repo-root path → ALLOW
+# (proves claim resolution hits the real tree, not the empty tmp_root mirror)
+# ---------------------------------------------------------------------------
+dir14=$(make_fixture 14)
+printf 'defmodule Real do\nend\n' >"$dir14/lib/real.ex"
+payload14=$(jq -n --arg fp "$dir14/context/foo.md" --arg cwd "$dir14" \
+    '{hook_event_name:"PreToolUse",tool_name:"Write",tool_input:{file_path:$fp,content:"see `lib/real.ex` for details\n"},agent_type:"context-curator",agent_id:"a",cwd:$cwd}')
+
+run_test "Write context/foo.md referencing REAL path lib/real.ex → ALLOW" "0" "$payload14"
+
+# ---------------------------------------------------------------------------
+# Test 15: Write context/foo.md referencing a path that does NOT exist
+# anywhere in the fixture repo → DENY (genuine stale-path violation)
+# ---------------------------------------------------------------------------
+dir15=$(make_fixture 15)
+payload15=$(jq -n --arg fp "$dir15/context/foo.md" --arg cwd "$dir15" \
+    '{hook_event_name:"PreToolUse",tool_name:"Write",tool_input:{file_path:$fp,content:"see `lib/nonexistent_module.ex` for details\n"},agent_type:"context-curator",agent_id:"a",cwd:$cwd}')
+
+run_test "Write context/foo.md referencing STALE path lib/nonexistent_module.ex → DENY" "2" "$payload15"
 
 echo ""
 echo "Results: $pass passed, $fail failed"

@@ -190,7 +190,7 @@ The create hook is idempotent: a re-run re-attaches an already-registered worktr
 
 `pi-build.sh` / `codegen-build --harness=pi` always route the build to `harnesses/pi/dispatch.sh`, which unconditionally execs `mix codegen.loop --harness=pi`. There is no `build` manifest mode, no baked build system prompt, and no build-time extension loading in dispatch.sh anymore — the loop resolves each role's model/effort/tools itself via `codegen-call`. `codegen-build` still fails closed unless the gate result JSON written to `codegen/gate-pending/` carries a `clear` verdict.
 
-`dispatch.sh` (both harnesses) unconditionally execs `mix codegen.loop` — the deterministic Elixir orchestration loop is the sole build engine; there is no engine flag, no TTY auto-detection, and no legacy self-orchestrating fallback. The parent wrapper (`codegen-build`) decides build success from the structured gate result written to `codegen/gate-pending/gate-result.json`.
+`dispatch.sh` (both harnesses) unconditionally execs `mix codegen.loop` — the deterministic Elixir orchestration loop is the sole build engine; there is no engine flag, no TTY auto-detection, and no legacy self-orchestrating fallback. The parent wrapper (`codegen-build`) decides build success from the structured gate result the loop writes into `codegen/gate-pending/` (file: gate-result.json — a runtime artifact, absent on a clean tree).
 
 ## EXEC-MECHANICS vs SYSTEM-PROMPT-CONTENT: Orthogonal Concerns in Harness Design (Historical)
 

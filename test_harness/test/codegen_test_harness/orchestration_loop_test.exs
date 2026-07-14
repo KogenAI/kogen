@@ -445,6 +445,96 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
              ]
     end
 
+    test "role fails with a transient reason repeatedly → retries up to 4 attempts with backoff, then aborts",
+         %{calls_agent: calls_agent} do
+      {:ok, died_agent} = Agent.start_link(fn -> [] end)
+      on_exit(fn -> if Process.alive?(died_agent), do: Agent.stop(died_agent) end)
+      {:ok, sleep_agent} = Agent.start_link(fn -> [] end)
+      on_exit(fn -> if Process.alive?(sleep_agent), do: Agent.stop(sleep_agent) end)
+
+      invoke_fn = fn role, _harness, _ctx, _opts ->
+        Agent.update(calls_agent, fn calls -> calls ++ [role] end)
+        {:error, "API Error: 529 overloaded_error"}
+      end
+
+      log_died_fn = fn role, kind, cause, _cycle_log ->
+        Agent.update(died_agent, fn calls -> calls ++ [{role, kind, cause}] end)
+        :ok
+      end
+
+      sleep_fn = fn ms -> Agent.update(sleep_agent, fn calls -> calls ++ [ms] end) end
+
+      assert {:error, reason} =
+               OrchestrationLoop.run(
+                 harness: "claude_code",
+                 stack: "static",
+                 cwd: "/tmp/irrelevant",
+                 pitch: "do the thing",
+                 invoke_fn: invoke_fn,
+                 gate_fn: always_clear_gate_fn(),
+                 gate_preflight_fn: no_op_gate_preflight_fn(),
+                 preflight_probe_fn: all_present_preflight_probe_fn(),
+                 realized_check_fn: not_realized_fn(),
+                 log_died_fn: log_died_fn,
+                 sleep_fn: sleep_fn
+               )
+
+      assert reason =~ "failed after 4 attempts"
+
+      # 4 attempts total for the first role in the sequence (developer-static)
+      assert Enum.count(Agent.get(calls_agent, & &1), &(&1 == "developer-static")) == 4
+
+      # 3 backoff sleeps between the 4 attempts, increasing per the backoff table
+      assert Agent.get(sleep_agent, & &1) == [15_000, 60_000, 120_000]
+
+      assert Agent.get(died_agent, & &1) == [
+               {"developer-static", "interrupted", "API Error: 529 overloaded_error"},
+               {"developer-static", "interrupted", "API Error: 529 overloaded_error"},
+               {"developer-static", "interrupted", "API Error: 529 overloaded_error"},
+               {"developer-static", "aborted", "API Error: 529 overloaded_error"}
+             ]
+    end
+
+    test "role fails with a transient reason then succeeds on retry → recovers without exhausting attempts",
+         %{calls_agent: calls_agent} do
+      {:ok, fail_count_agent} = Agent.start_link(fn -> 0 end)
+      on_exit(fn -> if Process.alive?(fail_count_agent), do: Agent.stop(fail_count_agent) end)
+
+      invoke_fn = fn role, _harness, _ctx, _opts ->
+        Agent.update(calls_agent, fn calls -> calls ++ [role] end)
+
+        if role == "developer-static" do
+          n = Agent.get_and_update(fail_count_agent, fn n -> {n, n + 1} end)
+
+          if n < 2 do
+            {:error, "socket hang up"}
+          else
+            {:ok, %{"status" => "success"}}
+          end
+        else
+          {:ok, %{"status" => "success"}}
+        end
+      end
+
+      assert :ok ==
+               OrchestrationLoop.run(
+                 harness: "claude_code",
+                 stack: "static",
+                 cwd: "/tmp/irrelevant",
+                 pitch: "do the thing",
+                 invoke_fn: invoke_fn,
+                 gate_fn: always_clear_gate_fn(),
+                 gate_preflight_fn: no_op_gate_preflight_fn(),
+                 preflight_probe_fn: all_present_preflight_probe_fn(),
+                 realized_check_fn: not_realized_fn(),
+                 advance_cycle_state_fn: no_op_advance_cycle_state_fn(),
+                 sleep_fn: fn _ms -> :ok end
+               )
+
+      # 2 failures + 1 success = 3 total invocations of developer-static
+      assert Enum.count(Agent.get(calls_agent, & &1), &(&1 == "developer-static")) == 3
+    end
+
     test "default :log_died_fn with no cycle log initialized (nil path) → silent no-op, run still completes" do
       {:ok, fail_once_agent} = Agent.start_link(fn -> MapSet.new() end)
       on_exit(fn -> if Process.alive?(fail_once_agent), do: Agent.stop(fail_once_agent) end)
