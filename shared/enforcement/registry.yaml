@@ -512,6 +512,16 @@
   harnesses: all
 
 - kind: registration
+  id: role-retrospective-before-stop
+  event: Stop
+  tool_guard: "*"
+  surface: user_global
+  signal: AGENT_TYPE
+  role: "planner-*|developer-*|reviewer-*"
+  harnesses: all
+  rationale: Blocks a planner/developer/reviewer Stop until the cycle log carries both its work (ev:role body) and its learning (ev:learned). Pi twin is observe-only (session_shutdown cannot block).
+
+- kind: registration
   id: session-log-writer-only
   event: PreToolUse
   tool_guard: "Bash|Edit|Write|MultiEdit"

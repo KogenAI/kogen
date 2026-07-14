@@ -121,9 +121,9 @@ Every spawn-prompt code fence in `shared/apps/AGENTS-{phoenix,static}.md.j2` mus
 
 **Spawn directive placement**: The line is placed immediately ABOVE the opening `\`\`\`` fence of the delegation prompt, on its own line. It is NOT wrapped in Jinja conditionals (`{% if tool.name == 'claude' %}...{% endif %}`), so it renders identically in both pi and claude harness variants.
 
-## Retrospective Scan Scope in Session Logs
+## Retrospective Event Scope in Session Logs
 
-The `subagent-retrospective-guard.sh` hook scans session-log `## Plan` blocks to extract `### What I Learned This Step` retrospective blocks for context-curator routing. **Scan stops at the first `^## ` H2 header** encountered after `## Plan` start. If the delegation prompt includes a fenced code block (e.g., `\`\`\`gate-json`, `\`\`\``) containing H2 markers like `## Files to touch`, those markers are treated as H2 boundaries and truncate the scan window. **Consequence**: retrospective blocks must precede ANY fenced `## `line, not just H2 headings outside fences. Move retrospective to the`## Plan` body proper (before the delegation-prompt fence).
+Session logs are append-only JSONL, not markdown with H2 sections — there is no scan-window or header-boundary concept. The `role-retrospective-before-stop.sh` Stop hook (Claude: blocking; Pi: observe-only `session_shutdown` twin) asserts, for the currently-stopping role, that the cycle log carries BOTH a non-empty `{"ev":"role","role":<role>,"body":<prose>}` event AND a non-trivial `{"ev":"learned","role":<role>,"text":<t>}` event. The compliant path is one call: `printf '%s' "$body" | codegen-log section <role> --learned "<text>" --slug <slug>` — see `shared/rules/_core/session-log.md` § Ownership and § Enforcement for the full CLI contract and non-triviality bar.
 
 ## Pitfalls
 

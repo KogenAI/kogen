@@ -431,31 +431,13 @@ The `rule-self-ref-no-fetch_test.sh` guard detects three error classes for fetch
 
 **Nav-word anchoring pitfall**: The nav-word set (see/read/per/check/via/apply/from/at/in/→) triggers fetch-pointer detection when they precede a backtick reference. Removing a nav-word from prose before a backtick reference prevents false-positive class (c) flags. Example: `Check \`rule.md\`` flags rule.md; `If \`rule.md\` detected` does not (no nav-word before the backtick).
 
-## Retrospective Placement Constraint — Awk Section Extraction
+## Block-the-Stop Pattern — Enforce at the Only Moment the Role Is Warm
 
-`subagent-retrospective-guard.sh` uses `awk` to extract the retrospective section. **Critical constraint**: `### What I Learned This Step` CANNOT appear anywhere inside a `## Plan` body that contains nested `## ` literals — awk terminates at the first `## ` encountered, even inside fenced code blocks.
+A post-hoc check that re-invokes a FINISHED role to repair an omission cannot win: a cold re-invoke has no memory of the work it did, and a warm `--resume` only works if the resume prompt and the validator it's re-checked against share ONE source of truth (drift = unwinnable — see `role-retrospective-before-stop`'s deleted predecessor, which asked for bare text but validated a literal header).
 
-**Rule**: Retrospective MUST sit at the TOP of `## Plan`, immediately after the header, BEFORE any nested `## ` literals (fenced or prose).
+**Pattern**: gate on `Stop` BEFORE the role's turn ends. A blocking `Stop` hook's `{"decision":"block",...}` pushes the role back into its OWN still-live session — no teardown, no re-invoke. Claude can block; Pi's `session_shutdown` cannot (observe-only, warns on stderr).
 
-**Why**: Awk's `/^## / && NR > start_line { exit }` cannot distinguish fence boundaries. Example:
-
-````bash
-## Plan
-
-```markdown
-## Example Header in Code
-...
-````
-
-### What I Learned This Step
-
-...
-
-```
-
-Awk terminates at `## Example Header` (inside the fence), never reaching the retrospective.
-
-**Solution**: Place all fenced/formatted content AFTER the retrospective block, or place retrospective immediately after `## Plan` before any code examples.
+Corollary: a marker a hook keys on MUST be a typed structured field both writer and checker read the same way — never markdown text one side generates and the other re-parses heuristically. See `role-retrospective-before-stop` + `codegen-log section --learned`.
 
 ## Hook Registration Mechanics — Registry-Driven Header Sync
 

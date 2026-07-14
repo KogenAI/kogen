@@ -485,6 +485,33 @@ assert "CODEGEN_LOG_PATH + empty --slug wrote to the pinned log" "0" "$([ "$pinn
 assert "CODEGEN_LOG_PATH + empty --slug body landed" "1" "$(jq_count "$pinned_log" 'select(.ev=="role" and .role=="developer-phoenix-backend")')"
 rm -f "$pinned_log"
 
+# Test 20: `section <role> --learned "<text>"` emits BOTH a "role" event
+# (from --body/stdin) AND a "learned" event, in one call. `section` without
+# --learned emits only the "role" event and NEVER refuses the write.
+unset CODEGEN_LOG_PATH
+unset AGENT_TYPE
+section_learned_log="$PROJECT/codegen/logging/20260109_000000_section-learned_cycle.jsonl"
+jq -c -n '{ev:"init",pitch:"section-learned",path:"",stamp:{}}' >"$section_learned_log"
+section_learned_out="$(
+    cd "$PROJECT" && env -u CODEGEN_BUILD_CWD -u CLAUDE_PROJECT_DIR "$CODEGEN/codegen-log" section developer-phoenix-backend --slug section-learned --learned "learned something genuinely useful this step" <<'EOF'
+did the work this step
+EOF
+)"
+section_learned_path="$(printf '%s' "$section_learned_out" | tail -n 1)"
+assert "section --learned wrote to the section-learned log" "0" "$([ "$section_learned_path" = "$section_learned_log" ] && printf 0 || printf 1)"
+assert "section --learned emits exactly one role event" "1" "$(jq_count "$section_learned_log" 'select(.ev=="role" and .role=="developer-phoenix-backend")')"
+assert "section --learned emits exactly one learned event" "1" "$(jq_count "$section_learned_log" 'select(.ev=="learned" and .role=="developer-phoenix-backend")')"
+assert "section --learned role body landed" "0" "$(jq -r --arg r developer-phoenix-backend 'select(.ev=="role" and .role==$r)|.body' "$section_learned_log" | grep -qF 'did the work this step' && printf 0 || printf 1)"
+assert "section --learned learned text matches" "0" "$([ "$(jq -r 'select(.ev=="learned")|.text' "$section_learned_log")" = "learned something genuinely useful this step" ] && printf 0 || printf 1)"
+
+section_no_learned_log="$PROJECT/codegen/logging/20260109_000001_section-no-learned_cycle.jsonl"
+jq -c -n '{ev:"init",pitch:"section-no-learned",path:"",stamp:{}}' >"$section_no_learned_log"
+cd "$PROJECT" && env -u CODEGEN_BUILD_CWD -u CLAUDE_PROJECT_DIR "$CODEGEN/codegen-log" section developer-phoenix-backend --slug section-no-learned <<'EOF' >/dev/null
+no learned flag here
+EOF
+assert "section without --learned emits exactly one role event" "1" "$(jq_count "$section_no_learned_log" 'select(.ev=="role" and .role=="developer-phoenix-backend")')"
+assert "section without --learned emits zero learned events (never refuses)" "0" "$(jq_count "$section_no_learned_log" 'select(.ev=="learned")')"
+
 echo ""
 echo "Results: $pass passed, $fail failed"
 

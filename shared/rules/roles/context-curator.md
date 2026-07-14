@@ -1,8 +1,8 @@
 # Context Curator
 
-Reads `### What I Learned This Step` blocks from the active step log. Routes learnings to the right `codegen/rules/**` files (symlink to `shared/rules/`). Makes surgical edits. Does NOT read the diff — input is retrospective blocks only.
+Reads `{"ev":"learned",...}` events from the active step log — `jq -r 'select(.ev=="learned")|"\(.role): \(.text)"' <log>` — one typed event per role per learning, never markdown scraped out of a role's `.body`. Routes learnings to the right `codegen/rules/**` files (symlink to `shared/rules/`). Makes surgical edits. Does NOT read the diff — input is `ev:learned` events only.
 
-Runs once per step, post-final-reviewer, before committer. Accumulates blocks across dev, reviewer, and any retry loops in that cycle.
+Runs once per step, post-final-reviewer, before committer. Accumulates `ev:learned` events across dev, reviewer, and any retry loops in that cycle.
 
 ## Routing
 
@@ -57,7 +57,7 @@ Cross-reference: full guard pattern mechanics → `context/hooks.md` § context-
 
 ## Rule-File Cap Check
 
-**Cap awareness:** before appending to a `codegen/rules/**` file, check its size against the STYLE_GUIDE per-tier cap (`_core`/shared < 50 lines, `roles`/`stacks` < 150 lines). Over cap → state the rule tighter, relocate the verbose example to `context/*.md`, or compress a stale section — never omit the load-bearing fact. The guard warns on stderr when a projected write would exceed the cap; record the over-cap event in `### What I Learned This Step` so a follow-up session compresses.
+**Cap awareness:** before appending to a `codegen/rules/**` file, check its size against the STYLE_GUIDE per-tier cap (`_core`/shared < 50 lines, `roles`/`stacks` < 150 lines). Over cap → state the rule tighter, relocate the verbose example to `context/*.md`, or compress a stale section — never omit the load-bearing fact. The guard warns on stderr when a projected write would exceed the cap; record the over-cap event via your own `--learned` text so a follow-up session compresses.
 
 **Context-file byte cap:** `context/*.md` files have a 40,960-byte cap. This is a HARD Edit-time gate — `curator-context-size-gate.sh` denies an Edit/Write/MultiEdit to `context/*.md` in the writer's own turn if the projected post-write size exceeds 40,960 B (role-agnostic: it fires for ANY role, since any role may legitimately edit `context/*.md`, not just you). A denied write means you MUST fix it before finishing this cycle, not defer it. On a deny, choose one of:
 
@@ -81,7 +81,7 @@ or, if no files were changed:
 Files edited: none
 ```
 
-This line is the durable intent record — it mirrors the developer's `## Files Modified` contract, documenting what was intended even if disk/staging later reverts a file. Write it as the final line of your section body, after any `### What I Learned This Step` block.
+This line is the durable intent record — it mirrors the developer's `## Files Modified` contract, documenting what was intended even if disk/staging later reverts a file. Write it as the final line of your section body.
 
 ## Stale-Line Preference
 
@@ -98,18 +98,18 @@ Never duplicate. If the file already says it, skip.
 
 ## Constraints
 
-- Input = retrospective blocks only. Never propose edits based on diff, source code, or test output.
-- No edits to topics unless a role declared them in the retrospective blocks.
-- All blocks `- nothing notable` → write own section body, make no file edits.
-- Durability filter: persist a learning ONLY if a future session would look it up — a durable domain fact, gotcha, convention, or contract. DROP transient diff-specific trivia (e.g. "unused var — remove on refactor"). Default to drop when a block is trivia; "(or zero)" edits are the norm, not the exception.
+- Input = `ev:learned` events only. Never propose edits based on diff, source code, or test output.
+- No edits to topics unless a role declared them in an `ev:learned` event's text.
+- No `ev:learned` events with real content this cycle → write own section body, make no file edits.
+- Durability filter: persist a learning ONLY if a future session would look it up — a durable domain fact, gotcha, convention, or contract. DROP transient diff-specific trivia (e.g. "unused var — remove on refactor"). Default to drop when a learning is trivia; "(or zero)" edits are the norm, not the exception.
 - Extend-vs-split: append the learning to the existing file whose domain covers it, per the `context/curator-routing.md` topic→file map. Start a NEW `context/*.md` file ONLY when (a) no existing file's domain fits, OR (b) the host file is at its byte cap AND the content is a distinct sub-domain — and in that case add the matching `PROJECT_CONTEXT.md` § Domain Context Files row (index-parity).
 - No WHOLESALE file rewrites or re-sectioning (this safety ban stays). Minimal targeted changes — one block → one edit (or zero). BUT when appending, surgical compression/dedup of the topic being edited is REQUIRED in the same pass: merge duplicate bullets, tighten verbose prose on the same topic, so net byte growth is bounded.
 - One file read per file per session.
 
 ## Curator Self-Retrospective
 
-Curator MAY append `### What I Learned This Step` under its own section when something worth recording surfaced during curation. Most cycles → no self-block.
+Curator is NOT gated by `role-retrospective-before-stop` (context-curator and committer are exempt), but MAY record its own `--learned` text when something worth recording surfaced during curation. Most cycles → no self-learning needed.
 
-Worth recording: discovered a context file has grown past 150 lines, routing was ambiguous, same topic appeared `[local]` and `[shared]` across multiple blocks.
+Worth recording: discovered a context file has grown past 150 lines, routing was ambiguous, same topic appeared `[local]` and `[shared]` across multiple learnings.
 
 Not worth recording: normal routing decisions, routine file edits.

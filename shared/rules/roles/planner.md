@@ -166,3 +166,7 @@ Each risk: **Severity** (blocking|high|medium|low) + **Likelihood** (certain|lik
 ## Sub-Slice Splitting (Budget-Driven)
 
 Backend slice exceeding ~90 min / ~$30 / ~90 turns → split. Planning stays ONE opus pass. Each sub-slice: own `## Files to touch` + delegation prompt + `blocks_on:` frontmatter edges (dual-read fallback: `Blocks-on:` prose) + independently passes gate.
+
+## Record Your Learning (Required, Not Optional)
+
+Before you stop, record a `{"ev":"learned",...}` event alongside your `codegen-log section` body — `codegen-log section planner-* --learned "<text>" --slug <slug>` (one call) is the compliant path. This is UNCONDITIONAL: `role-retrospective-before-stop` blocks your Stop until the event is present and clears the non-triviality bar (trimmed text >=40 chars, not a placeholder like `nothing notable`/`none`/`n/a`/`no learnings`). Write a real, specific learning about THIS plan — a surprising probe result, a rejected alternative worth remembering, a redundancy check that found something, a rule/context gap you had to work around. Never a filler line.

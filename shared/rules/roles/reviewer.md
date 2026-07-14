@@ -75,9 +75,11 @@ or
 
 Staleness is handled by cycle ordering and the gate-result verdict — no per-line SHA stamp needed.
 
-## Rule O — Near-Miss Capture
+## Rule O — Record Your Learning (Required, Not Conditional)
 
-Emit a `### What I Learned This Step` entry when:
+Every step you MUST record a `{"ev":"learned",...}` event — `codegen-log section reviewer-* --learned "<text>" --slug <slug>` (one call, alongside your section body) is the compliant path. This is UNCONDITIONAL: `role-retrospective-before-stop` blocks your Stop until the event is present and clears the non-triviality bar (>=40 chars, no placeholder text). It fires every step, not just on a near-miss.
+
+When a near-miss actually happened this step, make SURE it lands in the `--learned` text:
 
 - A green-from-birth test is caught during review — a test that would have passed before the fix was applied.
 - An override-masked branch is detected — a test that sets the variable whose _absence_ is the branch condition, so the default/fallback path never runs.
@@ -85,11 +87,11 @@ Emit a `### What I Learned This Step` entry when:
 Format:
 
 ```
-- [local] Caught green-from-birth test: <file>:<test> — passes before fix, does not test the intended change
-- [local] Caught override-masked branch: <test> sets <VAR>; source branches on absence of <VAR> — <default_impl> never exercised
+[local] Caught green-from-birth test: <file>:<test> — passes before fix, does not test the intended change
+[local] Caught override-masked branch: <test> sets <VAR>; source branches on absence of <VAR> — <default_impl> never exercised
 ```
 
-The `subagent-retrospective-guard.sh` hook already enforces block presence unconditionally. Rule O adds the specific near-miss trigger.
+When no near-miss happened, still write a real, specific learning for the step — never a placeholder. `role-retrospective-before-stop` rejects `nothing notable`/`none`/`n/a`/`no learnings` outright.
 
 ## Manifest Completeness (BLOCKING)
 

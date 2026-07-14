@@ -176,13 +176,8 @@ if [ "$need_present" -eq 1 ]; then
     esac
 
     if [ -n "$prior_role" ] && jq -e --arg r "$prior_role" 'select(.ev=="role" and .role==$r)' "$log" >/dev/null 2>&1; then
-        section_body=$(jq -r --arg r "$prior_role" 'select(.ev=="role" and .role==$r)|.body' "$log" 2>/dev/null | awk '
-            /^### What I Learned/ { in_retro=1; next }
-            in_retro && /^[[:space:]]*$/ { next }
-            in_retro && /^[[:space:]]*[-*]/ { next }
-            in_retro { in_retro=0 }
-            { print }
-        ' | grep -v '^[[:space:]]*$' | head -5)
+        section_body=$(jq -r --arg r "$prior_role" 'select(.ev=="role" and .role==$r)|.body' "$log" 2>/dev/null |
+            grep -v '^[[:space:]]*$' | head -5)
 
         if [ -z "$section_body" ]; then
             deny "BLOCKED: '${prior_role}' role event exists in the step log but its body is empty — the prior stage produced no real content (subagent likely died). Recover: re-spawn the dead stage, produce real output, then retry. Do not skip a stage because the subagent died."

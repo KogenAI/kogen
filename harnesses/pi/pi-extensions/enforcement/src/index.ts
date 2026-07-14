@@ -53,6 +53,7 @@ import { register as registerPreCommitGuard } from "./hooks/pre-commit-guard";
 import { register as registerReviewerBashAllowlist } from "./hooks/reviewer-bash-allowlist";
 import { register as registerReviewerGuard } from "./hooks/reviewer-guard";
 import { register as registerReviewerGuardSessionLogWrite } from "./hooks/reviewer-guard-session-log-write";
+import { register as registerRoleRetrospectiveBeforeStop } from "./hooks/role-retrospective-before-stop";
 import { register as registerSessionLogWriterOnly } from "./hooks/session-log-writer-only";
 import { register as registerStaticSiteExGuard } from "./hooks/static-site-ex-guard";
 import { register as registerStepLogSectionBeforeSpawn } from "./hooks/step-log-section-before-spawn";
@@ -104,6 +105,7 @@ export default function (pi: ExtensionAPI): void {
   registerReviewerBashAllowlist(pi);
   registerReviewerGuard(pi);
   registerReviewerGuardSessionLogWrite(pi);
+  registerRoleRetrospectiveBeforeStop(pi);
   registerSessionLogWriterOnly(pi);
   registerStaticSiteExGuard(pi);
   registerStepLogSectionBeforeSpawn(pi);

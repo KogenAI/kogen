@@ -307,48 +307,4 @@ describe("step-log-section-before-spawn", () => {
     assert.ok(result == null || (result as { block?: boolean }).block !== true);
   });
 
-  // ── Test 20: deny when prior role event body is only the retrospective block ─
-  it("denies when developer role event body is only the retrospective block", async () => {
-    writeLog("20260703_000000_retro-only_cycle.jsonl", [
-      roleEvent("planner-phoenix", "planner wrote here"),
-      roleEvent(
-        "developer-phoenix-backend",
-        "### What I Learned This Step\n\n- nothing notable",
-      ),
-    ]);
-    const result = await runHook("developer-phoenix-backend");
-    // developer's role event IS present, but this test targets whether ITS
-    // OWN body counts as real content for a LATER stage's prior-check — here
-    // we check the prior (planner) which has real body, so it allows. The
-    // retro-only guard is exercised via roleHasBody directly against a
-    // reviewer spawn checking developer's body next.
-    assert.ok(result == null || (result as { block?: boolean }).block !== true);
-  });
-
-  it("denies reviewer-phoenix when prior developer body is only the retrospective block", async () => {
-    writeLog("20260703_000001_retro-only-dev_cycle.jsonl", [
-      roleEvent("planner-phoenix", "planner wrote here"),
-      roleEvent(
-        "developer-phoenix-backend",
-        "### What I Learned This Step\n\n- nothing notable",
-      ),
-      roleEvent("reviewer-phoenix", "review"),
-    ]);
-    const result = await runHook("reviewer-phoenix");
-    assert.ok((result as { block?: boolean }).block === true);
-  });
-
-  // ── Test 21: allow when retro block appears first, then trailing prose ────
-  it("allows reviewer-phoenix when developer body has retro-first then trailing prose", async () => {
-    writeLog("20260703_000002_retro-first-prose_cycle.jsonl", [
-      roleEvent("planner-phoenix", "planner wrote here"),
-      roleEvent(
-        "developer-phoenix-backend",
-        "### What I Learned This Step\n\n- nothing notable\n\nImplemented feature X.",
-      ),
-      roleEvent("reviewer-phoenix", "review"),
-    ]);
-    const result = await runHook("reviewer-phoenix");
-    assert.ok(result == null || (result as { block?: boolean }).block !== true);
-  });
 });

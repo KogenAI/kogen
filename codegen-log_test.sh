@@ -18,8 +18,9 @@
 # (r) append --learned emits a structured learned event
 # (s) append --died interrupted/aborted emits structured died events
 # (t) append --verdict clear|failed|inconclusive emits structured gate events
-# (u) --learned/--died/--verdict are mutually exclusive with each other and
-#     with --body; --learned/--died/--verdict are append-only
+# (u) --learned/--died/--verdict are mutually exclusive with each other;
+#     --died/--verdict are append-only; --learned+--body are mutually
+#     exclusive on append (but --learned is valid ALONGSIDE --body on section)
 # (v) init writes the .active sentinel with the resolved absolute log path
 # (w) positional role resolves for section/append; implicit stdin (no --body)
 # (x) .active sentinel precedence over a more-recently-touched log
@@ -28,6 +29,9 @@
 # (aa) `verdict` writes a structured "gate" event (role=dev-gate), and
 #      repeated calls APPEND a fresh event each time rather than replacing
 #      the prior one (dev-gate re-runs across retries must all remain visible)
+# (bb) `section <role> --learned "<text>"` emits BOTH a "role" event and a
+#      "learned" event in one call; `section` without --learned emits only
+#      the "role" event and NEVER refuses the write
 
 set -euo pipefail
 
@@ -290,11 +294,11 @@ assert_contains "(u) mutual-exclusivity error message" "$ERR_U1" "mutually exclu
 set +e
 ERR_U2=$(printf 'x\n' | env -u AGENT_TYPE -u CLAUDE_ROLE \
     OCG_CODEGEN_DIR="$CODEGEN_ROOT" CODEGEN_BUILD_CWD="$WS_U" \
-    "$CODEGEN_LOG" section --role committer --learned "x" 2>&1)
+    "$CODEGEN_LOG" append --role committer --learned "x" --body @- 2>&1)
 RC_U2=$?
 set -e
-check "(u) --learned on section subcommand exits 2" "2" "$RC_U2"
-assert_contains "(u) append-only error message" "$ERR_U2" "append"
+check "(u) --learned + --body on append exits 2" "2" "$RC_U2"
+assert_contains "(u) --learned+--body mutual-exclusivity error message" "$ERR_U2" "mutually exclusive"
 
 # ─────────────────────────────────────────────────────────────────────────────
 # (v) init writes the .active sentinel with the resolved absolute log path.
@@ -387,6 +391,29 @@ check "(aa) second verdict call appends a NEW gate event (does not replace)" "2"
 check "(aa) first verdict event still present after second call" "1" "$(jq_count "$LOG_AA" 'select(.ev=="gate" and .result=="ALL CLEAR ✅")')"
 check "(aa) second verdict event derives verdict=failed" "1" "$(jq_count "$LOG_AA" 'select(.ev=="gate" and .verdict=="failed")')"
 check "(aa) second verdict event's detail present" "Log: /tmp/foo.log" "$(jq -r 'select(.ev=="gate" and .verdict=="failed")|.detail' "$LOG_AA")"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# (bb) `section <role> --learned "<text>"` emits BOTH an "ev":"role" event
+# (from --body) AND an "ev":"learned" event, in one call. `section` without
+# --learned emits exactly one "ev":"role" event and zero "ev":"learned"
+# events — section NEVER refuses a write.
+WS_BB="$(new_workspace)"
+LOG_BB="$(init_log "$WS_BB" test-section-learned)"
+printf 'did the work\n' | env -u AGENT_TYPE -u CLAUDE_ROLE \
+    OCG_CODEGEN_DIR="$CODEGEN_ROOT" CODEGEN_BUILD_CWD="$WS_BB" \
+    "$CODEGEN_LOG" section committer --learned "learned something useful this step" >/dev/null
+check "(bb) section --learned emits exactly one role event" "1" "$(jq_count "$LOG_BB" 'select(.ev=="role" and .role=="committer")')"
+check "(bb) section --learned emits exactly one learned event" "1" "$(jq_count "$LOG_BB" 'select(.ev=="learned" and .role=="committer")')"
+check "(bb) role event body is the piped stdin" "did the work" "$(jq -r 'select(.ev=="role")|.body' "$LOG_BB")"
+check "(bb) learned event text matches --learned" "learned something useful this step" "$(jq -r 'select(.ev=="learned")|.text' "$LOG_BB")"
+
+WS_BB2="$(new_workspace)"
+LOG_BB2="$(init_log "$WS_BB2" test-section-no-learned)"
+printf 'no learned flag here\n' | env -u AGENT_TYPE -u CLAUDE_ROLE \
+    OCG_CODEGEN_DIR="$CODEGEN_ROOT" CODEGEN_BUILD_CWD="$WS_BB2" \
+    "$CODEGEN_LOG" section committer >/dev/null
+check "(bb) section without --learned emits exactly one role event" "1" "$(jq_count "$LOG_BB2" 'select(.ev=="role" and .role=="committer")')"
+check "(bb) section without --learned emits zero learned events (never refuses)" "0" "$(jq_count "$LOG_BB2" 'select(.ev=="learned")')"
 
 # ─────────────────────────────────────────────────────────────────────────────
 echo ""

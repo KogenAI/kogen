@@ -4,6 +4,7 @@
 # Usage:
 #   codegen-log init --slug <slug>
 #   codegen-log section [<role>] [--body @-] [--role <role>] [--slug <slug>]
+#   codegen-log section [<role>] [--body @-] --learned "<text>" [--slug <slug>]
 #   codegen-log append <role> [--body @-] [--slug <slug>]
 #   codegen-log append <role> --learned "<text>" [--slug <slug>]
 #   codegen-log append <role> --died interrupted|aborted [--cause "<text>"] [--slug <slug>]
@@ -54,12 +55,16 @@
 #         exist first" precondition (that constraint only existed to protect
 #         markdown section-insertion order, which JSONL has no concept of).
 #
-# Marker flags (append only) — emit a structured event instead of reading
-# stdin. Mutually exclusive with --body and with each other.
-#   --learned "<text>"            -> {"ev":"learned",...}
-#   --died interrupted [--cause]  -> {"ev":"died","kind":"interrupted",...}
-#   --died aborted                -> {"ev":"died","kind":"aborted",...}
-#   --verdict clear|failed|inconclusive -> {"ev":"gate","verdict":<v>,...}
+# Marker flags — emit a structured event. Mutually exclusive with each other.
+#   --learned "<text>"            -> {"ev":"learned",...}. Valid on BOTH
+#                                     `section` (additive: emits the "role"
+#                                     event from --body PLUS a "learned" event
+#                                     in one call — never refuses the write)
+#                                     and `append` (mutually exclusive with
+#                                     --body there; reads no stdin).
+#   --died interrupted [--cause]  -> {"ev":"died","kind":"interrupted",...} (append only)
+#   --died aborted                -> {"ev":"died","kind":"aborted",...} (append only)
+#   --verdict clear|failed|inconclusive -> {"ev":"gate","verdict":<v>,...} (append only)
 #
 # Target-log resolution (section/append), in precedence order:
 #   1. CODEGEN_LOG_PATH env var, if set.
@@ -127,6 +132,7 @@ usage() {
     printf 'Usage:\n' >&2
     printf '  codegen-log init --slug <slug>\n' >&2
     printf '  codegen-log section --body @- [--role <role>] [--slug <slug>]\n' >&2
+    printf '  codegen-log section --body @- --learned "<text>" [--role <role>] [--slug <slug>]\n' >&2
     printf '  codegen-log append --role <role> --body @- [--slug <slug>]\n' >&2
     printf '  codegen-log append --role <role> --learned "<text>" [--slug <slug>]\n' >&2
     printf '  codegen-log append --role <role> --died interrupted|aborted [--cause "<text>"] [--slug <slug>]\n' >&2
@@ -290,8 +296,14 @@ if [[ -z "$SUBCOMMAND" ]]; then
     usage
 fi
 
-# Marker flags (--learned/--died/--verdict) are append-only and mutually
-# exclusive with each other and with --body.
+# Marker flags (--learned/--died/--verdict) are mutually exclusive with each
+# other. --died/--verdict are append-only. --learned is ALSO accepted on
+# `section` (as an additive companion to the role body, not a replacement for
+# it) — see the `section)` arm, which emits BOTH an "ev":"role" event and an
+# "ev":"learned" event in one call. --learned is NEVER mutually exclusive
+# with --body on `section` (that is the point: one call, two events); it
+# stays mutually exclusive with --body on `append` (append has no body+marker
+# combined form).
 MARKER_FLAG_COUNT=0
 [[ -n "$LEARNED_TEXT" ]] && MARKER_FLAG_COUNT=$((MARKER_FLAG_COUNT + 1))
 [[ -n "$DIED_KIND" ]] && MARKER_FLAG_COUNT=$((MARKER_FLAG_COUNT + 1))
@@ -300,13 +312,19 @@ if [[ "$MARKER_FLAG_COUNT" -gt 1 ]]; then
     printf 'codegen-log: --learned, --died, and --verdict are mutually exclusive\n' >&2
     exit 2
 fi
-if [[ "$MARKER_FLAG_COUNT" -gt 0 ]]; then
+if [[ -n "$DIED_KIND" || -n "$VERDICT_KIND" ]]; then
     if [[ "$SUBCOMMAND" != "append" ]]; then
-        printf 'codegen-log: --learned/--died/--verdict are only valid with the append subcommand\n' >&2
+        printf 'codegen-log: --died/--verdict are only valid with the append subcommand\n' >&2
         exit 2
     fi
-    if [[ -n "$BODY_SOURCE" ]]; then
-        printf 'codegen-log: --learned/--died/--verdict are mutually exclusive with --body\n' >&2
+fi
+if [[ -n "$LEARNED_TEXT" ]]; then
+    if [[ "$SUBCOMMAND" != "append" && "$SUBCOMMAND" != "section" ]]; then
+        printf 'codegen-log: --learned is only valid with the section or append subcommand\n' >&2
+        exit 2
+    fi
+    if [[ "$SUBCOMMAND" == "append" && -n "$BODY_SOURCE" ]]; then
+        printf 'codegen-log: --learned is mutually exclusive with --body on append\n' >&2
         exit 2
     fi
 fi
@@ -529,6 +547,12 @@ section)
 
     line="$(jq -c -n --arg role "$ROLE_OVERRIDE" --arg body "$body" '{ev: "role", role: $role, body: $body}')"
     append_event_line "$log_file" "$line"
+
+    if [[ -n "$LEARNED_TEXT" ]]; then
+        learned_line="$(jq -c -n --arg role "$ROLE_OVERRIDE" --arg text "$LEARNED_TEXT" '{ev: "learned", role: $role, text: $text}')"
+        append_event_line "$log_file" "$learned_line"
+    fi
+
     printf '%s\n' "$log_file"
     ;;
 append)

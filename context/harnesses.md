@@ -165,13 +165,9 @@ Claude Code supports a `--settings` JSON flag that provides a command-line scope
 
 ## Session Log Protocol
 
-The orchestrator MUST pre-create the canonical session log (with full `## <agent_type> Section` headers) BEFORE delegating to any subagent (planner, developer, reviewer, etc.). This ensures:
+The loop creates the cycle log via `codegen-log init --slug <slug>` BEFORE delegating to any subagent (planner, developer, reviewer, etc.). The log is append-only JSONL, not markdown — there are no `## <agent_type> Section` headers to pre-create and no header-boundary scan. Each role writes its own body via `codegen-log section <role> --slug <slug>` (piping the body via stdin), appending a `{"ev":"role","role":<role>,"body":<prose>}` event.
 
-1. All section headers exist when `subagent-retrospective-guard.sh` scans the log to confirm header presence before allowing Edit.
-2. The planner writes the `## Plan` section into the orchestrator-created log, not a fresh one.
-3. The retrospective-guard hook knows the correct `## Plan` block boundaries: the guard stops scanning for `### What I Learned This Step` blocks at the next `## ` H2 heading (which prevents it from false-matching retrospectives in subsequent agent sections).
-
-The retrospective blocks MUST sit inside the `## Plan` body before any sibling H2 heading (e.g., `## Slices`). The guard parses the transcript to find the active session log path, then scans ONLY the `## Plan` section, stopping at the first H2 heading it encounters after the Plan start. Retrospectives appearing in agent sections (e.g., `## developer-phoenix-backend Section`) are not routed to the curator.
+Retrospective capture works the same way: `role-retrospective-before-stop.sh` (Claude: blocking `Stop` hook; Pi: observe-only `session_shutdown` twin) asserts the stopping role's log carries both a non-empty `ev:role` body and a non-trivial `ev:learned` event for that role — via the reader selectors in `shared/rules/_core/session-log.md` § Event Schema — not by scanning for markdown section boundaries. `context-curator` and `committer` are not gated by this hook. See `shared/rules/_core/session-log.md` § Ownership and § Enforcement for the full CLI contract.
 
 ## Worktree Isolation (Native `--worktree`)
 

@@ -68,11 +68,12 @@ function roleEventPresent(events: CycleEvent[], need: string): boolean {
 }
 
 /**
- * Return true when the given role has at least one non-heading body line
- * across ALL its role events (concatenated in file order), excluding the
- * "### What I Learned This Step" retrospective block (which is not real
- * content on its own). Any other "### " line (e.g. a verdict marker like
- * "### FINAL VERDICT — APPROVED") counts as body content.
+ * Return true when the given role has at least one non-blank body line
+ * across ALL its role events (concatenated in file order). The retrospective
+ * ("what I learned") no longer lives in this body — it is a typed
+ * {"ev":"learned"} event enforced separately by role-retrospective-before-stop
+ * — so no stripping pass is needed here; any non-blank line counts as body
+ * content.
  */
 function roleHasBody(events: CycleEvent[], role: string): boolean {
   const bodies = events
@@ -81,15 +82,7 @@ function roleHasBody(events: CycleEvent[], role: string): boolean {
 
   for (const body of bodies) {
     const lines = body.split("\n");
-    let inRetro = false;
     for (const line of lines) {
-      if (line.startsWith("### What I Learned")) {
-        inRetro = true;
-        continue;
-      }
-      if (inRetro && line.trim() === "") continue;
-      if (inRetro && /^\s*[-*]/.test(line)) continue;
-      if (inRetro) inRetro = false;
       if (line.trim() === "") continue;
       return true;
     }

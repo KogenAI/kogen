@@ -37,12 +37,6 @@ defmodule CodegenTestHarness.OrchestrationLoop do
   # i.e. on the phoenix (plan-first) sequence.
   @static_roles ~w(developer-static reviewer-static context-curator committer)
 
-  # Roles whose returned envelope value is asserted for a
-  # `### What I Learned This Step` retrospective block. Mirrors the deleted
-  # `subagent-retrospective-guard` hook's exact matcher set. context-curator
-  # and committer are intentionally excluded (matches the deleted hook).
-  @retrospective_roles ~w(developer-phoenix-backend developer-phoenix-frontend planner-phoenix planner-static reviewer-phoenix reviewer-static)
-
   @cycle_state_lib Path.expand(
                      "../../../harnesses/claude/hooks/lib/cycle-state.sh",
                      __DIR__
@@ -196,23 +190,6 @@ defmodule CodegenTestHarness.OrchestrationLoop do
     refuses with `{:error, reason}` naming the pid(s) + a copy-paste
     inspect/reap command. Degrades to `[]` (lock-only enforcement) when
     `pgrep` itself is unavailable.
-  - `:max_retrospective_cycles` — warm-resume attempts allowed to recover a
-    missing `### What I Learned This Step` block from a developer/planner/
-    reviewer role before giving up (default 1). Unlike `:max_env_var_cycles`
-    / `:max_factcheck_cycles`, exhaustion NEVER fails the cycle — it soft-
-    warns to stderr and proceeds. Replaces the dead-under-loop
-    `subagent-retrospective-guard` SubagentStop hook (roles run as
-    main-agent `codegen-call` invocations under the loop, so SubagentStop
-    never fires — same reasoning as `run_format_step`). A cold re-invoke of
-    the role cannot author an authentic retrospective (no memory of the
-    work it did), so recovery warm-resumes the SAME session via
-    `codegen-call --resume=<session_id>` instead of re-invoking cold.
-  - `:retrospective_resume_fn` — test seam:
-    `(role, session_id, ctx, opts -> {:ok, block} | {:error, reason})`,
-    defaults to `default_retrospective_resume/4` (a warm `codegen-call
-    --agent=<role> --resume=<session_id>` asking the role to add its
-    omitted retrospective block).
-
   Returns `:ok` on COMMITTED + clear gate, OR immediately (before any role
   runs) when the turn-0 realized-check confirms the pitch's work already
   exists in the tree. Returns `{:error, reason}` on
@@ -273,10 +250,10 @@ defmodule CodegenTestHarness.OrchestrationLoop do
     # Cycle-log ownership: this loop is the SOLE creator of the cycle's own
     # session log. A nil slug (many unit tests pass none, cwd is often a
     # synthetic "/tmp/irrelevant") skips init cleanly — no raise, log-path
-    # key stays nil, and role_logged_retrospective?/2 degrades to false.
-    # A present slug that fails to init is fatal: a cycle with no log of its
-    # own would otherwise silently append its roles' sections into whatever
-    # unrelated log happens to be newest on disk.
+    # key just stays nil. A present slug that fails to init is fatal: a
+    # cycle with no log of its own would otherwise silently append its
+    # roles' sections into whatever unrelated log happens to be newest on
+    # disk.
     case Keyword.get(opts, :slug) do
       nil ->
         :ok
@@ -587,7 +564,6 @@ defmodule CodegenTestHarness.OrchestrationLoop do
   defp run_roles([role | rest], harness, ctx, opts) do
     with {:ok, result} <- invoke_with_retry(role, harness, ctx, opts) do
       ctx = put_in(ctx, [:artifacts, role], result)
-      ctx = run_retrospective_step(role, ctx, opts)
 
       cond do
         developer_role?(role) ->
@@ -759,7 +735,6 @@ defmodule CodegenTestHarness.OrchestrationLoop do
 
           with {:ok, dev_result} <- invoke_with_retry(dev_role, harness, rework_ctx, opts) do
             ctx = put_in(rework_ctx, [:artifacts, dev_role], dev_result)
-            ctx = run_retrospective_step(dev_role, ctx, opts)
             run_format_step(ctx.cwd, opts)
 
             case run_gate_once(ctx, opts) do
@@ -768,7 +743,6 @@ defmodule CodegenTestHarness.OrchestrationLoop do
 
                 with {:ok, review2} <- invoke_with_retry(reviewer_role, harness, ctx, opts) do
                   ctx = put_in(ctx, [:artifacts, reviewer_role], review2)
-                  ctx = run_retrospective_step(reviewer_role, ctx, opts)
                   handle_review(reviewer_role, review2, rest, harness, ctx, opts, cycle + 1)
                 end
 
@@ -932,7 +906,6 @@ defmodule CodegenTestHarness.OrchestrationLoop do
 
         with {:ok, dev_result} <- invoke_with_retry(dev_role, harness, rework_ctx, opts) do
           ctx = put_in(rework_ctx, [:artifacts, dev_role], dev_result)
-          ctx = run_retrospective_step(dev_role, ctx, opts)
           run_format_step(ctx.cwd, opts)
           run_env_var_step(dev_role, rest, harness, ctx, opts, cycle + 1)
         end
@@ -972,85 +945,6 @@ defmodule CodegenTestHarness.OrchestrationLoop do
 
       {out, code} ->
         raise "OrchestrationLoop: env-var-sample-scan.sh exited #{code} (expected 0 or 1): #{out}"
-    end
-  end
-
-  # Retrospective warm-resume step. Replaces the dead-under-loop
-  # `subagent-retrospective-guard` SubagentStop hook: under the loop, roles
-  # run as main-agent `codegen-call` invocations with no SubagentStop event,
-  # so this assertion has to be driven explicitly here (same reasoning as
-  # `run_format_step`/`run_env_var_step`/`run_curator_doc_check`). Unlike those
-  # siblings, this step NEVER fails the build — fatal-on-miss is off the
-  # table (operator decision). A role not in `@retrospective_roles` (or
-  # already carrying a valid block) is returned unchanged.
-  #
-  # On a missing block: a COLD re-invoke cannot author an authentic
-  # retrospective (a fresh `codegen-call` process has no memory of the work
-  # it did — it could only fabricate the block from `git diff`, which is
-  # worse than no block at all). Recovery instead warm-resumes the SAME
-  # session via `codegen-call --agent=<role> --resume=<session_id>`, asking
-  # the still-warm role to add its omitted block. Bounded by
-  # `:max_retrospective_cycles` (default 1); any residual (no session_id,
-  # resume error, still-missing block after the budget) soft-warns to
-  # stderr and proceeds — never returns `{:error, _}`, never raises.
-  @spec run_retrospective_step(String.t(), map(), run_opts()) :: map()
-  defp run_retrospective_step(role, ctx, opts) do
-    if role in @retrospective_roles do
-      do_run_retrospective_step(role, ctx, opts, 0)
-    else
-      ctx
-    end
-  end
-
-  defp do_run_retrospective_step(role, ctx, opts, cycle) do
-    result = get_in(ctx, [:artifacts, role])
-    log_path = Process.get(@log_path_key)
-
-    cond do
-      role_logged_retrospective?(role, log_path) ->
-        ctx
-
-      cycle >= Keyword.get(opts, :max_retrospective_cycles, 1) ->
-        IO.puts(
-          :stderr,
-          "retrospective: #{role} omitted '### What I Learned This Step'; warm-resume " <>
-            "exhausted after #{cycle} cycle(s) — proceeding without it"
-        )
-
-        ctx
-
-      true ->
-        session_id = result && result["session_id"]
-
-        if is_nil(session_id) or session_id == "" do
-          IO.puts(
-            :stderr,
-            "retrospective: #{role} omitted '### What I Learned This Step'; no session_id " <>
-              "available to warm-resume — proceeding without it"
-          )
-
-          ctx
-        else
-          resume_fn =
-            Keyword.get(opts, :retrospective_resume_fn, &default_retrospective_resume/4)
-
-          case resume_fn.(role, session_id, ctx, opts) do
-            {:ok, _block} ->
-              # The role wrote its retrospective to the CYCLE LOG (via
-              # `codegen-log append <role> --learned`), not into this
-              # envelope — re-check the log itself, never the resumed value.
-              do_run_retrospective_step(role, ctx, opts, cycle + 1)
-
-            {:error, reason} ->
-              IO.puts(
-                :stderr,
-                "retrospective: #{role} omitted '### What I Learned This Step'; warm-resume " <>
-                  "failed (#{reason}) — proceeding without it"
-              )
-
-              ctx
-          end
-        end
     end
   end
 
@@ -1094,116 +988,6 @@ defmodule CodegenTestHarness.OrchestrationLoop do
     end
   end
 
-  # True when THIS role wrote a retrospective block into THIS cycle's log —
-  # the same bytes context-curator consumes (session-log.md § Subagent
-  # Retrospective Convention). Reads the log directly: codegen-log is a
-  # writer, not a reader, and adding a read subcommand is out of scope.
-  # A malformed JSONL line is skipped, never fatal; a missing/nil log path
-  # is simply "no block" — this step is contractually soft-warn-only.
-  @spec role_logged_retrospective?(String.t(), String.t() | nil) :: boolean()
-  defp role_logged_retrospective?(_role, nil), do: false
-
-  defp role_logged_retrospective?(role, log_path) do
-    case File.read(log_path) do
-      {:ok, contents} ->
-        contents
-        |> String.split("\n", trim: true)
-        |> Enum.any?(fn line ->
-          case Jason.decode(line) do
-            {:ok, %{"ev" => "role", "role" => ^role, "body" => body}} -> block_present?(body)
-            {:ok, %{"ev" => "learned", "role" => ^role, "text" => text}} -> block_present?(text)
-            _ -> false
-          end
-        end)
-
-      {:error, _reason} ->
-        false
-    end
-  end
-
-  # A valid retrospective block requires the header AND at least one
-  # non-blank content line after it — a bare/empty header (e.g. the header
-  # text alone, no body) does not count.
-  defp block_present?(text) when is_binary(text) do
-    case String.split(text, "### What I Learned This Step", parts: 2) do
-      [_before, after_header] ->
-        after_header
-        |> String.split("\n")
-        |> Enum.any?(&(String.trim(&1) != ""))
-
-      _ ->
-        false
-    end
-  end
-
-  defp block_present?(_text), do: false
-
-  # Warm-resumes the role's ALREADY-RUN session (never a cold re-invoke) to
-  # author the omitted retrospective block. Reuses the same argv/env shape
-  # as `default_codegen_call/9` (guard bundle, CODEGEN_DIR, CODEGEN_LOOP=1)
-  # plus `--resume=<session_id>`; no transcript path (this is a recovery
-  # side-call, not a primary role invocation).
-  defp default_retrospective_resume(role, session_id, ctx, opts) do
-    unless File.exists?(@codegen_call_bin) do
-      raise "OrchestrationLoop: codegen-call not found at #{@codegen_call_bin}"
-    end
-
-    resolve_fn = Keyword.get(opts, :resolve_fn, &RoleResolver.resolve_role/2)
-    harness = Keyword.fetch!(opts, :harness)
-    {model, effort} = resolve_fn.(role, harness)
-
-    args =
-      [
-        "--harness=#{harness}",
-        "--model=#{model}",
-        "--effort=#{effort}",
-        "--agent=#{role}",
-        "--resume=#{session_id}"
-      ] ++
-        guard_bundle_flag!(harness, opts) ++
-        prompt_tail(
-          "You omitted your '### What I Learned This Step' block. Add it to the cycle log " <>
-            "now by running: codegen-log append #{role} --learned \"<your learnings>\" — " <>
-            "nothing else."
-        )
-
-    env =
-      [
-        {"CODEGEN_DIR", @codegen_dir},
-        {"CODEGEN_BUILD_START_TS", Integer.to_string(System.system_time(:second))},
-        {"CODEGEN_LOOP", "1"}
-      ] ++ log_path_env()
-
-    {output, exit_code} =
-      System.cmd(@codegen_call_bin, args, stderr_to_stdout: true, env: env, cd: ctx.cwd)
-
-    if exit_code != 0 do
-      {:error,
-       "codegen-call exited #{exit_code}: #{String.slice(output, max(String.length(output) - 400, 0), 400)}"}
-    else
-      case Jason.decode(output) do
-        {:ok, %{"result" => %{"status" => "success", "value" => value}} = envelope}
-        when is_binary(value) ->
-          # Warm-resume calls burn real model turns just like a primary role
-          # invocation — fold their cost/tokens into the same benchmark totals
-          # `invoke_role/4` accumulates, so a cycle's aggregated `type:result`
-          # line reflects the full spend (never under-reports recovery cost).
-          accumulate_telemetry(role, envelope)
-
-          if role_logged_retrospective?(role, Process.get(@log_path_key)) do
-            {:ok, value}
-          else
-            {:error, "resumed role still omitted the retrospective block"}
-          end
-
-        {:ok, other} ->
-          {:error, "unexpected resume envelope: #{inspect(other)}"}
-
-        {:error, reason} ->
-          {:error, "malformed resume envelope JSON: #{inspect(reason)}"}
-      end
-    end
-  end
 
   # Orientation-doc filter shared by the diff-scope computation below —
   # mirrors the doc grammar in context-factcheck-scan.sh / context-factcheck-guard.sh.

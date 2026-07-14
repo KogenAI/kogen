@@ -31,7 +31,7 @@ Cycle logs live under `/codegen/` and are **gitignored** — in the codegen repo
 
 - The loop creates the log FIRST via **`codegen-log init --slug <slug>`**. `init` is idempotent: re-`init` on an existing slug prints the existing log's path and exits 0 without creating a second log; more than one log matching the slug is ambiguous and exits 2. `init` writes ONE `{"ev":"init",...}` event line and also writes `codegen/logging/.active` (a synchronous sentinel pointing at the resolved log path — see Resolution below).
 - **Positional role (taught/default form)**: `codegen-log section <role> --slug <slug>` and `codegen-log append <role> --slug <slug>` read the role as the first bare argument after the subcommand. `--body` is implicit stdin when omitted — pipe the body directly: `printf '%s' "$body" | codegen-log section developer-phoenix-backend --slug <slug>`. `--role <role>` and `--body @-` remain accepted ALIASES for existing callers; a bare `codegen-log section` with no role (positional or `--role`) always exits 2, even if ambient `AGENT_TYPE`/`CLAUDE_ROLE` env vars are set — the role must be passed explicitly.
-- **`codegen-log section <role> --slug <slug>`** (piping the body via stdin) APPENDS one `{"ev":"role","role":<role>,"body":<prose>}` event line: planner, developers, reviewer, curator, and committer each write their own body. Re-running `section` for the same role APPENDS another event line — there is nothing to overwrite, so a second call is never a mistake, just another entry in the log.
+- **`codegen-log section <role> --slug <slug>`** (piping the body via stdin) APPENDS one `{"ev":"role","role":<role>,"body":<prose>}` event line: planner, developers, reviewer, curator, and committer each write their own body. Re-running `section` for the same role APPENDS another event line — there is nothing to overwrite, so a second call is never a mistake, just another entry in the log. **`section` also accepts an optional `--learned "<text>"`** — when present, the SAME call APPENDS a second `{"ev":"learned","role":<role>,"text":<t>}` event immediately after the `role` event, so the compliant path for recording both work and learning is one call: `printf '%s' "$body" | codegen-log section <role> --learned "<text>" --slug <slug>`. `section` NEVER refuses a write for omitting `--learned` — it stays fully optional there; see § Enforcement for what checks it.
 - **`codegen-log append <role> --learned "<text>" --slug <slug>`** appends a `{"ev":"learned",...}` event. **`codegen-log append <role> --died interrupted|aborted [--cause "<text>"] --slug <slug>`** appends a `{"ev":"died",...}` event (see Death Stamps below). **`codegen-log append <role> --verdict clear|failed|inconclusive --slug <slug>`** appends a `{"ev":"gate","verdict":<v>,...}` event the loop's own gate-verdict readers select on. `append` with a plain `--body` (no marker flag) appends another `{"ev":"role",...}` event — the same shape `section` writes. JSONL append is unconditional: there is no "section must exist first" precondition.
 - **`codegen-log verdict --gate <cmd> --mode <mode> --result "<text>" [--detail "<text>"] --slug <slug>`** is the dedicated writer for the Elixir loop's LoopGate deterministic gate verdict (not written by a subagent). The loop calls this itself from `LoopGate.run_gate/2`, after every gate attempt, pinned to the cycle's own log via the `CODEGEN_LOG_PATH` env var it already holds (not `--slug` — the loop resolves the log path once at cycle start and threads it through as `CODEGEN_LOG_PATH`, same as every role invocation). Every call APPENDS a fresh `{"ev":"gate","role":"dev-gate",...}` event rather than replacing a prior one, since a cycle log commonly carries more than one dev-gate verdict across retries. `verdict` derives a classified `verdict` field (`clear`/`failed`/`inconclusive`) from the raw `--result` text (read from `gate-result.json`'s `verdict_marker` field, which alone preserves the inconclusive/failed distinction the loop's own binary `:clear | :failed` return value collapses) and stores both. A failed `codegen-log verdict` write is fail-loud-non-blocking — logged to stderr, never changes the gate's own returned verdict.
 - **`codegen-log relocate --new-slug <slug> [--slug <slug>]`** renames the currently-resolved log in place and rewrites `.active` to the new path — used when a slug needs to change mid-cycle without losing log continuity.
@@ -52,6 +52,8 @@ There is no `resumed` kind — no writer ever emits one; a successful re-spawn s
 ## Enforcement
 
 **Enforced by** the `session-log-writer-only` hard-deny hook (Claude + Pi twins) — catalog in `context/hooks.md`; enumerate via `grep -rlE 'session.?log|codegen/logging' harnesses/claude/hooks/*.sh`.
+
+**Also enforced by** `role-retrospective-before-stop` (Claude: blocking `Stop` hook; Pi: observe-only `session_shutdown` twin) — a planner/developer/reviewer trying to end its turn without BOTH a non-empty `ev:role` body AND a non-trivial `ev:learned` event for its own role is pushed back into its own warm session (Claude) or warned on stderr (Pi, which cannot block). Bounded at 3 attempts per session, then falls through with a loud stderr line — never fails the build. `context-curator` and `committer` are NOT gated by this hook.
 
 ## Event Schema
 
@@ -75,9 +77,11 @@ Every event object has an `"ev"` discriminator field:
 
 All `jq -e` uses: exit 0 = at least one match, exit 1 = none. Wrap every `jq` in `2>/dev/null` on read paths (swallow malformed-line noise, fail-open) EXCEPT where a hard block requires certainty.
 
-## Subagent Retrospective Convention
+## Subagent Retrospective — Required, Not Convention
 
-A body written via `codegen-log section`/`append` is an opaque prose string — a body containing markdown-looking text (e.g. `## Foo`) is never re-parsed as structure. By convention, subagent bodies still include a `### What I Learned This Step` retrospective block so readers extracting retrospectives from the body string can find it consistently:
+Every planner/developer/reviewer role MUST record its learning as a typed `{"ev":"learned","role":<role>,"text":<t>}` event — via `section --learned "<text>"` (the one-call compliant path) or a follow-up `append <role> --learned "<text>"`. This is enforced, not a convention: `role-retrospective-before-stop` (§ Enforcement above) blocks the role's Stop until the event is present and clears a non-triviality bar — trimmed text at least 40 characters, and not a normalized placeholder (`nothing notable`, `nothing`, `none`, `n/a`, `no learnings`).
+
+The role's BODY (the `ev:role` event, written via `section`) stays free-form prose — commands run, files touched, result summary. It is an opaque string; markdown-looking text inside it (e.g. `## Foo`) is never re-parsed as structure. A typical body:
 
 ```
 **Rules loaded**: [x] <files>
@@ -89,13 +93,17 @@ A body written via `codegen-log section`/`append` is an opaque prose string — 
 **Files written/updated**: <list>
 
 **Result**: <summary>
-
-### What I Learned This Step
-
-- nothing notable
 ```
 
-Tags: `[local]` = project-specific. `[shared]` = framework idioms, cross-cutting patterns.
+The learning goes in the SEPARATE `--learned` text, not inside this body — e.g.:
+
+```
+printf '%s' "$body" | codegen-log section developer-phoenix-backend \
+  --learned "[local] Caught green-from-birth test in foo_test.exs: the fixture set the very variable under test, so the default branch never ran." \
+  --slug <slug>
+```
+
+Tags inside `--learned` text: `[local]` = project-specific. `[shared]` = framework idioms, cross-cutting patterns.
 
 ## Gate Verdict Authority
 

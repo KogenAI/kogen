@@ -446,18 +446,6 @@ else
 fi
 rm -rf "$T28"
 
-# ── T29: ## Plan has only retrospective block → DENY when spawning developer ──
-# Scenario: planner section body is only a retrospective stub — no real plan.
-T29=$(make_project)
-LOG29="$T29/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_plan-retro-only_cycle.jsonl"
-: >"$LOG29"
-printf '%s\n' '{"ev": "role", "role": "planner-phoenix", "body": "### What I Learned This Step\n\n- nothing notable"}' >>"$LOG29"
-printf '%s\n' '{"ev": "role", "role": "developer-phoenix-backend", "body": ""}' >>"$LOG29"
-make_transcript "$T29/transcript.jsonl" "$LOG29"
-out29=$(mk_agent_input "developer-phoenix-backend" "$T29/transcript.jsonl" | env -u CLAUDE_ROLE -u PI_ROLE bash "$HOOK" 2>/dev/null || true)
-assert_deny "T29: deny — ## Plan has only retrospective (no real plan content), developer spawn blocked" "$out29"
-rm -rf "$T29"
-
 # ── T30: prior stage has real content → ALLOW (regression guard) ─────────────
 # Scenario: planner wrote real content in ## Plan; developer spawn allowed.
 T30=$(make_project)
@@ -508,20 +496,6 @@ make_transcript "$T32/transcript.jsonl" "$LOG32"
 out32=$(mk_agent_input "context-curator" "$T32/transcript.jsonl" | env -u CLAUDE_ROLE -u PI_ROLE bash "$HOOK" 2>/dev/null || true)
 assert_allow "T32: allow — reviewer section body is only an H3 verdict line, context-curator spawn permitted" "$out32"
 rm -rf "$T32"
-
-# ── T33: ## Plan is retro-first then trailing prose → ALLOW (regression guard) ──
-# Scenario: retrospective block appears BEFORE the trailing plan prose (not
-# after). The extractor must bound the retro to its heading + blank/bullet
-# lines only, so the trailing prose still counts as real plan content.
-T33=$(make_project)
-LOG33="$T33/codegen/logging/$(date -u +%Y%m%d_%H%M%S)_plan-retro-first_cycle.jsonl"
-: >"$LOG33"
-printf '%s\n' '{"ev": "role", "role": "planner-phoenix", "body": "### What I Learned This Step\n\n- nothing notable\n\nThe real plan: implement feature X in lib/foo.ex."}' >>"$LOG33"
-printf '%s\n' '{"ev": "role", "role": "developer-phoenix-backend", "body": ""}' >>"$LOG33"
-make_transcript "$T33/transcript.jsonl" "$LOG33"
-out33=$(mk_agent_input "developer-phoenix-backend" "$T33/transcript.jsonl" | env -u CLAUDE_ROLE -u PI_ROLE bash "$HOOK" 2>/dev/null || true)
-assert_allow "T33: allow — ## Plan retro-first then trailing prose reads as real body, developer spawn permitted" "$out33"
-rm -rf "$T33"
 
 # ── Breadcrumb diagnostic tests (T34-T36) ─────────────────────────────────────
 

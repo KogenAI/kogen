@@ -200,6 +200,14 @@
         "hooks": [
           {
             "type": "command",
+            "command": "$HOME/.claude/hooks/role-retrospective-before-stop.sh"
+          }
+        ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
             "command": "$HOME/.claude/hooks/stop-resume.sh"
           }
         ]

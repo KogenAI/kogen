@@ -82,9 +82,38 @@ if [ -f "$CODEGEN_DIR/harnesses/claude/manifest.yaml" ] && command -v yq >/dev/n
     done < <(yq e '.launchers[] | [.src, .name] | join("\t")' "$CODEGEN_DIR/harnesses/claude/manifest.yaml" 2>/dev/null)
 fi
 
-# Assert hook tree matches source (spot-check count)
-hook_src_count="$(find "$CODEGEN_DIR/harnesses/claude/hooks" -maxdepth 1 -name '*.sh' -type f | wc -l | tr -d ' ')"
-hook_dst_count="$(find "$tmp_home/.claude/hooks" -maxdepth 1 -name '*.sh' -type f 2>/dev/null | wc -l | tr -d ' ')"
+# Assert hook tree matches source (spot-check count).
+# NOTE: exclude dotfiles (-name '[!.]*.sh') — install.sh's copy loop uses a
+# bare bash glob (*.sh) which never matches dotfiles, but `find -name '*.sh'`
+# matches them regardless of leading dot. Some hook tests (e.g.
+# no-cat-pipe_test.sh, pre-commit-guard_test.sh) transiently write a
+# synthetic fixture file directly into this source dir
+# (`.no-cat-pipe.pre-fix.sh`, `.pre-commit-guard.pre-fix.sh`, cleaned up via
+# trap) to reproduce a historical pre-fix hook body without depending on git
+# history. When those fixture tests run concurrently with this install
+# round-trip test (both spawned by `make test`), an unfiltered `find` can
+# catch the fixture mid-existence and inflate hook_src_count by one relative
+# to hook_dst_count, which install.sh's glob never counted in the first
+# place. Excluding dotfiles matches install.sh's actual copy semantics.
+#
+# The dotfile exclusion alone does not fully close the race: hook_src_count
+# is sampled with a `find` call that runs AFTER install.sh already performed
+# its own copy pass earlier in wall-clock time (TOCTOU). Under `make test`'s
+# full parallel load (mise npm builds, ExUnit, xargs -P8 hook tests all
+# racing concurrently), the source tree can observe a transient extra/missing
+# non-dotfile entry between install.sh's copy and this later `find` even
+# though nothing in this repo intentionally creates non-dotfile churn in
+# harnesses/claude/hooks/. Retry with a short settle instead of asserting on
+# a single sample — a real (permanent) mismatch still fails after the
+# retries; a transient one self-heals.
+hook_src_count=0
+hook_dst_count=0
+for _attempt in 1 2 3 4 5; do
+    hook_src_count="$(find "$CODEGEN_DIR/harnesses/claude/hooks" -maxdepth 1 -name '[!.]*.sh' -type f | wc -l | tr -d ' ')"
+    hook_dst_count="$(find "$tmp_home/.claude/hooks" -maxdepth 1 -name '[!.]*.sh' -type f 2>/dev/null | wc -l | tr -d ' ')"
+    [ "$hook_src_count" -eq "$hook_dst_count" ] && break
+    sleep 0.2
+done
 assert "hook count matches source ($hook_src_count hooks)" '[ "$hook_src_count" -eq "$hook_dst_count" ]'
 
 # Assert dispatch symlink wired
