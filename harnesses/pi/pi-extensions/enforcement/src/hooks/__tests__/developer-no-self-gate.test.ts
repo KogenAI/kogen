@@ -65,6 +65,7 @@ describe("developer-no-self-gate", () => {
     delete process.env["SESSION_ID"];
     delete process.env["CWD"];
     delete process.env["CODEGEN_LOOP"];
+    delete process.env["CODEGEN_RESUME_ATTEMPT"];
   });
 
   it("passes through for non-developer agent", async () => {
@@ -300,6 +301,68 @@ describe("developer-no-self-gate", () => {
           /Make an edit/,
         );
       } finally {
+        fs.rmSync(sigPath(sid), { force: true });
+        fs.rmSync(loopTmpDir, { recursive: true, force: true });
+      }
+    });
+
+    it("same tree but a NEW CODEGEN_RESUME_ATTEMPT token → ALLOWED (not a spin)", async () => {
+      const sid = `loopsid5-${Date.now()}`;
+      fs.rmSync(sigPath(sid), { force: true });
+      try {
+        const first = await runHook(
+          "make test",
+          "developer-phoenix-backend",
+          sid,
+          loopTmpDir,
+        );
+        assert.ok(
+          first == null || (first as { block?: boolean }).block !== true,
+        );
+
+        // No tree edit — but a NEW resume token this time.
+        process.env["CODEGEN_RESUME_ATTEMPT"] = "resume-tok-a";
+        const second = await runHook(
+          "make test",
+          "developer-phoenix-backend",
+          sid,
+          loopTmpDir,
+        );
+        assert.ok(
+          second == null || (second as { block?: boolean }).block !== true,
+        );
+      } finally {
+        delete process.env["CODEGEN_RESUME_ATTEMPT"];
+        fs.rmSync(sigPath(sid), { force: true });
+        fs.rmSync(loopTmpDir, { recursive: true, force: true });
+      }
+    });
+
+    it("same tree AND the SAME resume token again → DENIED (spin)", async () => {
+      const sid = `loopsid6-${Date.now()}`;
+      fs.rmSync(sigPath(sid), { force: true });
+      try {
+        process.env["CODEGEN_RESUME_ATTEMPT"] = "resume-tok-b";
+        const first = await runHook(
+          "make test",
+          "developer-phoenix-backend",
+          sid,
+          loopTmpDir,
+        );
+        assert.ok(
+          first == null || (first as { block?: boolean }).block !== true,
+        );
+
+        // Same resume token, no tree change → genuine spin.
+        const second = await runHook(
+          "make test",
+          "developer-phoenix-backend",
+          sid,
+          loopTmpDir,
+        );
+        assert.ok((second as { block?: boolean }).block === true);
+      } finally {
+        delete process.env["CODEGEN_RESUME_ATTEMPT"];
         fs.rmSync(sigPath(sid), { force: true });
         fs.rmSync(loopTmpDir, { recursive: true, force: true });
       }

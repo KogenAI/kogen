@@ -26,6 +26,7 @@ _ts_ms() {
 # ── Read CODEGEN_CALL_* env vars ──────────────────────────────────────────────
 AGENT="${CODEGEN_CALL_AGENT:-}"
 RESUME="${CODEGEN_CALL_RESUME:-}"
+SESSION_ID_ARG="${CODEGEN_CALL_SESSION_ID:-}"
 MODEL="${CODEGEN_CALL_MODEL:?CODEGEN_CALL_MODEL not set}"
 EFFORT="${CODEGEN_CALL_EFFORT:?CODEGEN_CALL_EFFORT not set}"
 PROMPT="${CODEGEN_CALL_PROMPT:?CODEGEN_CALL_PROMPT not set}"
@@ -80,9 +81,14 @@ else
 fi
 
 # --resume: warm-resume a prior persisted session (sessions persist by
-# default now — no opt-out flag disables that).
+# default now — no opt-out flag disables that). --session-id: pin a NEW
+# (cold) call to a caller-minted id, so a future --resume can recover it
+# even if this process is killed before it ever reports its own session id.
+# Mutually exclusive: --resume wins if a caller mistakenly sets both.
 if [[ -n "$RESUME" ]]; then
     COMMON_FLAGS+=(--resume "$RESUME")
+elif [[ -n "$SESSION_ID_ARG" ]]; then
+    COMMON_FLAGS+=(--session-id "$SESSION_ID_ARG")
 fi
 
 # --tools: explicit list wins; no agent + no explicit → hermetic deny-all;
@@ -235,7 +241,11 @@ if [[ "$SUBTYPE" == "error_max_structured_output_retries" ]]; then
     RETRY_META="$(printf '%s' "$RESULT_EVENT" | jq -c '{retries: (.num_retries // 3), last_error: (.message // "max retries exceeded")}')"
 elif [[ "$IS_ERROR" == "true" ]]; then
     STATUS="failed"
-    REASON="$(printf '%s' "$RESULT_EVENT" | jq -r '.message // .result // "error"')"
+    # .errors[0] first: a resume against a nonexistent session reports its
+    # cause there (e.g. "No conversation found with session ID: <id>") —
+    # .message/.result are absent on that path, so the old fallback order
+    # collapsed to the useless literal "error".
+    REASON="$(printf '%s' "$RESULT_EVENT" | jq -r '.errors[0] // .message // .result // "error"')"
 elif [[ "$SUBTYPE" == "success" ]]; then
     STATUS="success"
 else

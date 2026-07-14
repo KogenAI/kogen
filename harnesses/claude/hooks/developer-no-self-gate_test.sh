@@ -242,5 +242,30 @@ out=$(make_input "make ci" "developer-phoenix-backend" "$SID15" | env -u CODEGEN
 assert_contains "legacy mode still BLOCKED at count=3 with CODEGEN_LOOP unset" '"permissionDecision"' "$out"
 rm -f "/tmp/codegen-self-gate-${SID15}.count"
 
+# ── Test 16: loop-mode, SAME tree but a NEW CODEGEN_RESUME_ATTEMPT token → ALLOW ──
+# RED-then-GREEN: without the resume-token check this would DENY (same tree =
+# "spin"), but a fresh resume token means the developer just woke up inside a
+# resumed session and has not had a chance to make the fixing edit yet.
+SID16="sid16-$$-$(date -u +%s)"
+rm -f "/tmp/codegen-self-gate-${SID16}.sig"
+out=$(make_loop_input "make test" "developer-phoenix-backend" "$SID16" | CODEGEN_LOOP=1 bash "$HOOK" 2>/dev/null || true)
+assert_not_contains "loop-mode 1st run (baseline, no edit yet) ALLOWED" '"permissionDecision"' "$out"
+# No tree edit — but a NEW resume token this time.
+out2=$(make_loop_input "make test" "developer-phoenix-backend" "$SID16" | CODEGEN_RESUME_ATTEMPT=resume-tok-a CODEGEN_LOOP=1 bash "$HOOK" 2>/dev/null || true)
+assert_not_contains "loop-mode 2nd run, same tree, NEW resume token ALLOWED (not a spin)" '"permissionDecision"' "$out2"
+rm -f "/tmp/codegen-self-gate-${SID16}.sig"
+
+# ── Test 17: loop-mode, SAME tree AND the SAME resume token again → DENY (spin) ──
+# A resumed session's SECOND gate check with no tree change and the SAME
+# resume token is a genuine spin — the resume-token allowance is one-shot per
+# token, not a standing bypass.
+SID17="sid17-$$-$(date -u +%s)"
+rm -f "/tmp/codegen-self-gate-${SID17}.sig"
+out=$(make_loop_input "make test" "developer-phoenix-backend" "$SID17" | CODEGEN_RESUME_ATTEMPT=resume-tok-b CODEGEN_LOOP=1 bash "$HOOK" 2>/dev/null || true)
+assert_not_contains "loop-mode 1st run under a resume token ALLOWED" '"permissionDecision"' "$out"
+out2=$(make_loop_input "make test" "developer-phoenix-backend" "$SID17" | CODEGEN_RESUME_ATTEMPT=resume-tok-b CODEGEN_LOOP=1 bash "$HOOK" 2>/dev/null || true)
+assert_contains "loop-mode 2nd run, SAME resume token, no tree change DENIED (spin)" '"permissionDecision"' "$out2"
+rm -f "/tmp/codegen-self-gate-${SID17}.sig"
+
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

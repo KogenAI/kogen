@@ -10,5 +10,6 @@
 --model
 --print-argv
 --resume
+--session-id
 --settings
 --system-prompt

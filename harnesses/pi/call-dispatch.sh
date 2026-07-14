@@ -36,6 +36,7 @@ PROMPT="${CODEGEN_CALL_PROMPT:?CODEGEN_CALL_PROMPT not set}"
 JSON_SCHEMA_CONTENT="${CODEGEN_CALL_JSON_SCHEMA:-}"
 EXTENSION_PATH="${CODEGEN_CALL_EXTENSION_PATH:-}"
 RESUME="${CODEGEN_CALL_RESUME:-}"
+SESSION_ID_ARG="${CODEGEN_CALL_SESSION_ID:-}"
 PRINT_ARGV="${CODEGEN_CALL_PRINT_ARGV:-}"
 # CODEGEN_CALL_AGENTS_PATH is claude-only (inline agent-def JSON); pi has no
 # native inline-agent-def concept and ignores it — accepted, never forwarded.
@@ -139,9 +140,15 @@ ARGS=(
 # still needs an id so the envelope can echo one back for warm-resume
 # (pi's --session-id creates the session if missing — see `pi --help`).
 # A bare one-shot call (no --agent) stays ephemeral: --no-session.
+#
+# Precedence: RESUME (warm-resume an existing session) > SESSION_ID_ARG (a
+# caller-minted id for a COLD call, pinned up front so a later --resume can
+# recover it) > AGENT (self-minted id, legacy loop path) > ephemeral.
 MINTED_SESSION_ID=""
 if [[ -n "$RESUME" ]]; then
     ARGS+=(--session-id "$RESUME")
+elif [[ -n "$SESSION_ID_ARG" ]]; then
+    ARGS+=(--session-id "$SESSION_ID_ARG")
 elif [[ -n "$AGENT" ]]; then
     if command -v uuidgen >/dev/null 2>&1; then
         MINTED_SESSION_ID="$(uuidgen)"
@@ -182,6 +189,7 @@ fi
 # pi the same way it does on claude. Ephemeral one-shot calls (--no-session)
 # carry no session id.
 EFFECTIVE_SESSION_ID="$RESUME"
+[[ -z "$EFFECTIVE_SESSION_ID" ]] && EFFECTIVE_SESSION_ID="$SESSION_ID_ARG"
 [[ -z "$EFFECTIVE_SESSION_ID" ]] && EFFECTIVE_SESSION_ID="$MINTED_SESSION_ID"
 
 # ── Capture pi output ─────────────────────────────────────────────────────────

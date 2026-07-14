@@ -73,11 +73,23 @@ if [ "${CODEGEN_LOOP:-}" = "1" ]; then
 
     sig_file="/tmp/codegen-self-gate-${session_id}.sig"
 
+    # CODEGEN_RESUME_ATTEMPT is set by the loop on a warm-resume transient
+    # retry (same claude session_id as the attempt that dropped). Without
+    # this, a developer that drops mid-gate resumes into an UNCHANGED tree
+    # (it never got to make the fixing edit) and would be denied here as a
+    # "pure spin" even though nothing was actually re-run yet. A NEW resume
+    # token vs. the last-seen one is treated as a fresh first-run: allow,
+    # and reset the stored signature — the hard ceiling below still applies
+    # regardless, so this only removes the false-positive, not the bound.
+    resume_token="${CODEGEN_RESUME_ATTEMPT:-}"
+    prev_resume_token=""
+
     prev_sig=""
     prev_count=0
     if [ -r "$sig_file" ]; then
         prev_sig=$(sed -n '1p' "$sig_file" 2>/dev/null || printf '')
         prev_count=$(sed -n '2p' "$sig_file" 2>/dev/null || printf '0')
+        prev_resume_token=$(sed -n '3p' "$sig_file" 2>/dev/null || printf '')
     fi
     case "$prev_count" in
     '' | *[!0-9]*) prev_count=0 ;;
@@ -85,22 +97,29 @@ if [ "${CODEGEN_LOOP:-}" = "1" ]; then
 
     new_count=$((prev_count + 1))
 
-    debug_log developer-no-self-gate "loop-mode session=$session_id count=$new_count sig=$signature prev_sig=$prev_sig"
+    debug_log developer-no-self-gate "loop-mode session=$session_id count=$new_count sig=$signature prev_sig=$prev_sig resume_token=$resume_token prev_resume_token=$prev_resume_token"
 
     if [ "$new_count" -ge 15 ]; then
-        printf '%s\n%s\n' "$signature" "$new_count" >"$sig_file"
+        printf '%s\n%s\n%s\n' "$signature" "$new_count" "$resume_token" >"$sig_file"
         deny "BLOCKED by developer-no-self-gate: hard ceiling (15 gate self-verify runs) reached this session — hand back to the loop rather than continuing to retry."
+        exit 0
+    fi
+
+    if [ -n "$resume_token" ] && [ "$resume_token" != "$prev_resume_token" ]; then
+        # First gate check under a NEW resume token → treat as a fresh run,
+        # not a spin, regardless of the tree signature.
+        printf '%s\n%s\n%s\n' "$signature" "$new_count" "$resume_token" >"$sig_file"
         exit 0
     fi
 
     if [ -z "$prev_sig" ] || [ "$signature" != "$prev_sig" ]; then
         # First run, or the tree changed since the last gate run → progress.
-        printf '%s\n%s\n' "$signature" "$new_count" >"$sig_file"
+        printf '%s\n%s\n%s\n' "$signature" "$new_count" "$resume_token" >"$sig_file"
         exit 0
     fi
 
     # Signature unchanged → pure spin, nothing was fixed since the last run.
-    printf '%s\n%s\n' "$signature" "$new_count" >"$sig_file"
+    printf '%s\n%s\n%s\n' "$signature" "$new_count" "$resume_token" >"$sig_file"
     deny "BLOCKED by developer-no-self-gate: the gate command was re-run with NO change to the working tree since the last run — that cannot fix anything. Make an edit that addresses the failure, or hand back to the loop if you are stuck."
     exit 0
 fi

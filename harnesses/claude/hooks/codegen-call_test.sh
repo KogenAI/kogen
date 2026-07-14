@@ -403,6 +403,54 @@ RESUME_SEEN="$(cat "$BASE_TMP/resume_seen.txt" 2>/dev/null || true)"
 check "(q) CODEGEN_CALL_RESUME carries the session id" "warm-session-123" "$RESUME_SEEN"
 
 # ─────────────────────────────────────────────────────────────────────────────
+# Test (q2): --session-id <sid> round-trips into CODEGEN_CALL_SESSION_ID and
+# claude leg builds --session-id (not --resume) when only --session-id is set
+# ─────────────────────────────────────────────────────────────────────────────
+CC_Q2="$(make_cc_root cc_q2)"
+make_claude_dispatch_stub "$CC_Q2" 'printf "%s" "$CODEGEN_CALL_SESSION_ID" > "'"$BASE_TMP"'/session_id_seen.txt"; printf '"'"'%s\n'"'"' '"'"'{"result":{"status":"success","value":"ok","reason":null,"retry_meta":null},"usage":{"input_tokens":1,"output_tokens":1,"cache_read_input_tokens":0,"cache_creation_input_tokens":0,"cost_usd":0,"latency_ms":100,"model":"haiku","num_turns":1},"error":null,"harness":"claude_code","session_id":null}'"'"''
+
+actual_exit=0
+"$CC_Q2/codegen-call" \
+    --harness=claude_code --model=haiku --effort=low \
+    --system-prompt "@$SP_FILE" --session-id=cold-session-456 \
+    "session-id test" >/dev/null 2>/dev/null || actual_exit=$?
+check "(q2) --session-id round-trip exits 0" "0" "$actual_exit"
+SESSION_ID_SEEN="$(cat "$BASE_TMP/session_id_seen.txt" 2>/dev/null || true)"
+check "(q2) CODEGEN_CALL_SESSION_ID carries the minted id" "cold-session-456" "$SESSION_ID_SEEN"
+
+# --print-argv proves claude leg builds --session-id (not --resume) when only
+# --session-id is set — needs the REAL call-dispatch.sh (the fixture stub
+# above has no --print-argv logic), mirrors test (t2)'s pattern.
+CC_Q2_ARGV="$(make_cc_root cc_q2_argv)"
+mkdir -p "$CC_Q2_ARGV/harnesses/claude"
+cp "$REAL_CLAUDE_HARNESS/call-dispatch.sh" "$CC_Q2_ARGV/harnesses/claude/call-dispatch.sh"
+
+ARGV_Q2="$("$CC_Q2_ARGV/codegen-call" \
+    --harness=claude_code --model=haiku --effort=low \
+    --system-prompt "@$SP_FILE" --session-id=cold-session-456 --print-argv \
+    "session-id test" 2>/dev/null)" || true
+Q2_HAS_SESSION_FLAG=0
+[[ "$ARGV_Q2" == *"--session-id"*"cold-session-456"* ]] && Q2_HAS_SESSION_FLAG=1
+check "(q2) --print-argv shows --session-id when only --session-id is set" "1" "$Q2_HAS_SESSION_FLAG"
+Q2_HAS_RESUME_FLAG=0
+[[ "$ARGV_Q2" == *"--resume"* ]] && Q2_HAS_RESUME_FLAG=1
+check "(q2) --print-argv shows no --resume when only --session-id is set" "0" "$Q2_HAS_RESUME_FLAG"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Test (q3): --resume wins over --session-id when both are set (mutual exclusion)
+# ─────────────────────────────────────────────────────────────────────────────
+ARGV_Q3="$("$CC_Q2_ARGV/codegen-call" \
+    --harness=claude_code --model=haiku --effort=low \
+    --system-prompt "@$SP_FILE" --resume=warm-wins --session-id=cold-loses --print-argv \
+    "both flags test" 2>/dev/null)" || true
+Q3_HAS_RESUME=0
+[[ "$ARGV_Q3" == *"--resume"*"warm-wins"* ]] && Q3_HAS_RESUME=1
+check "(q3) --resume wins when both --resume and --session-id are set" "1" "$Q3_HAS_RESUME"
+Q3_HAS_COLD_SESSION=0
+[[ "$ARGV_Q3" == *"cold-loses"* ]] && Q3_HAS_COLD_SESSION=1
+check "(q3) --session-id value is dropped when --resume also set" "0" "$Q3_HAS_COLD_SESSION"
+
+# ─────────────────────────────────────────────────────────────────────────────
 # Test (r): pi --agent=committer resolves agent definition and mints session_id
 # ─────────────────────────────────────────────────────────────────────────────
 CC_R="$(make_cc_root cc_r)"

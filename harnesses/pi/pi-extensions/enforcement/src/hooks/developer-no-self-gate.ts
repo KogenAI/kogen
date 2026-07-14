@@ -77,40 +77,60 @@ export function register(pi: ExtensionAPI): void {
         `codegen-self-gate-${sessionId}.sig`,
       );
 
+      // CODEGEN_RESUME_ATTEMPT is set by the loop on a warm-resume transient
+      // retry (same session id as the attempt that dropped). Without this, a
+      // developer that drops mid-gate resumes into an UNCHANGED tree (it
+      // never got to make the fixing edit) and would be denied here as a
+      // "pure spin" even though nothing was actually re-run yet. A NEW
+      // resume token vs. the last-seen one is treated as a fresh first-run:
+      // allow, and reset the stored signature — the hard ceiling below still
+      // applies regardless, so this only removes the false-positive.
+      const resumeToken = process.env["CODEGEN_RESUME_ATTEMPT"] ?? "";
+
       let prevSig = "";
       let prevCount = 0;
+      let prevResumeToken = "";
       try {
         const raw = fs.readFileSync(sigFile, "utf8");
         const lines = raw.split("\n");
         prevSig = lines[0] ?? "";
         prevCount = parseInt(lines[1] ?? "0", 10) || 0;
+        prevResumeToken = lines[2] ?? "";
       } catch {
         prevSig = "";
         prevCount = 0;
+        prevResumeToken = "";
       }
 
       const newCount = prevCount + 1;
 
       debugLog(
         "developer-no-self-gate",
-        `loop-mode session=${sessionId} count=${newCount} sig=${signature} prevSig=${prevSig}`,
+        `loop-mode session=${sessionId} count=${newCount} sig=${signature} prevSig=${prevSig} resumeToken=${resumeToken} prevResumeToken=${prevResumeToken}`,
       );
 
       if (newCount >= 15) {
-        fs.writeFileSync(sigFile, `${signature}\n${newCount}\n`);
+        fs.writeFileSync(sigFile, `${signature}\n${newCount}\n${resumeToken}\n`);
         return deny(
           "BLOCKED by developer-no-self-gate: hard ceiling (15 gate self-verify runs) reached this session — hand back to the loop rather than continuing to retry.",
         );
       }
 
+      if (resumeToken !== "" && resumeToken !== prevResumeToken) {
+        // First gate check under a NEW resume token → treat as a fresh run,
+        // not a spin, regardless of the tree signature.
+        fs.writeFileSync(sigFile, `${signature}\n${newCount}\n${resumeToken}\n`);
+        return;
+      }
+
       if (prevSig === "" || signature !== prevSig) {
         // First run, or the tree changed since the last gate run → progress.
-        fs.writeFileSync(sigFile, `${signature}\n${newCount}\n`);
+        fs.writeFileSync(sigFile, `${signature}\n${newCount}\n${resumeToken}\n`);
         return;
       }
 
       // Signature unchanged → pure spin, nothing was fixed since last run.
-      fs.writeFileSync(sigFile, `${signature}\n${newCount}\n`);
+      fs.writeFileSync(sigFile, `${signature}\n${newCount}\n${resumeToken}\n`);
       return deny(
         "BLOCKED by developer-no-self-gate: the gate command was re-run with NO change to the working tree since the last run — that cannot fix anything. Make an edit that addresses the failure, or hand back to the loop if you are stuck.",
       );

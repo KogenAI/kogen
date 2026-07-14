@@ -1420,21 +1420,62 @@ defmodule CodegenTestHarness.OrchestrationLoop do
   #     burn a whole build (both attempts landing inside the same bad window);
   #     an unattended overnight queue cannot afford that.
   defp do_invoke_attempt(role, harness, ctx, opts, invoke_fn, attempt) do
+    # Mint a session id for every COLD attempt-start — attempt 1 always, and
+    # any later attempt that is starting fresh because the prior session
+    # turned out unresumable (no :resume_session_id carried forward). This is
+    # the id a transient retry resumes into. It is set here (not inside
+    # invoke_role/4) so it survives even when the attempt drops before ever
+    # reporting its own session id back (the whole point: the loop knows the
+    # id up front instead of depending on a `result` event that a mid-response
+    # kill never delivers). A resuming attempt (has :resume_session_id) keeps
+    # the id it is about to resume as its own transport_session_id too, so a
+    # SECOND drop on the resumed attempt resumes the same session again.
+    ctx =
+      case get_in(ctx, [:artifacts, :resume_session_id]) do
+        nil -> put_in(ctx, [:artifacts, :transport_session_id], mint_session_id())
+        sid -> put_in(ctx, [:artifacts, :transport_session_id], sid)
+      end
+
     case invoke_fn.(role, harness, ctx, opts) do
       {:ok, result} ->
         {:ok, result}
 
       {:error, reason} ->
-        transient? = LoopQueue.retryable_reason?(reason)
+        # A stale-session reason can ONLY be produced by a --resume against a
+        # session this loop itself just minted (never a role's own doing), so
+        # it is classified with the SAME budget as the transient failure that
+        # caused the resume in the first place — it is a continuation of that
+        # transient chain, not a new deterministic failure of the role.
+        resuming? = not is_nil(get_in(ctx, [:artifacts, :resume_session_id]))
+        stale? = resuming? and stale_session_reason?(reason)
+        transient? = stale? or LoopQueue.retryable_reason?(reason)
         max_attempts = if transient?, do: @transient_attempts, else: @deterministic_attempts
 
         if attempt < max_attempts do
           log_died(role, "interrupted", reason, opts)
           retry_ctx = put_in(ctx, [:artifacts, :last_failure_reason], reason)
 
+          # A transient drop resumes the SAME session on the next attempt —
+          # unless the session itself turned out to be unresumable (never
+          # persisted before the drop), in which case fall back to a fresh
+          # cold attempt with a brand-new id rather than looping forever on
+          # a session that will never exist.
+          retry_ctx =
+            if transient? and not stale? do
+              put_in(retry_ctx, [:artifacts, :resume_session_id], ctx.artifacts.transport_session_id)
+            else
+              Map.update!(retry_ctx, :artifacts, &Map.delete(&1, :resume_session_id))
+            end
+
           if transient? do
             sleep_fn = Keyword.get(opts, :sleep_fn, &Process.sleep/1)
             sleep_fn.(backoff_ms(attempt))
+          end
+
+          if transient? and not stale? do
+            operator_note(
+              "role #{role}: transport drop — resuming session #{ctx.artifacts.transport_session_id} (attempt #{attempt + 1}/#{max_attempts})"
+            )
           end
 
           do_invoke_attempt(role, harness, retry_ctx, opts, invoke_fn, attempt + 1)
@@ -1448,6 +1489,47 @@ defmodule CodegenTestHarness.OrchestrationLoop do
           end
         end
     end
+  end
+
+  # Mints a fresh v4 uuid for a NEW (cold) session — no external dep; the
+  # repo carries no uuid library (grepped: 0 hits). RFC 4122 v4: 16 random
+  # bytes, patch the version nibble (byte 6 high nibble := 4) and the
+  # variant bits (byte 8 top 2 bits := 10), then hex-format with dashes.
+  @spec mint_session_id() :: String.t()
+  defp mint_session_id do
+    <<b0, b1, b2, b3, b4, b5, b6, b7, b8, b9, b10, b11, b12, b13, b14, b15>> =
+      :crypto.strong_rand_bytes(16)
+
+    b6 = Bitwise.bor(Bitwise.band(b6, 0x0F), 0x40)
+    b8 = Bitwise.bor(Bitwise.band(b8, 0x3F), 0x80)
+
+    bytes = <<b0, b1, b2, b3, b4, b5, b6, b7, b8, b9, b10, b11, b12, b13, b14, b15>>
+    hex = Base.encode16(bytes, case: :lower)
+
+    <<a::binary-size(8), b::binary-size(4), c::binary-size(4), d::binary-size(4),
+      e::binary-size(12)>> = hex
+
+    "#{a}-#{b}-#{c}-#{d}-#{e}"
+  end
+
+  # A resume against a session that never persisted (dropped before its
+  # first write) reports this exact string in the claude envelope's
+  # `error` field (via call-dispatch.sh's `.errors[0] // .message // .result`
+  # extraction) — probed in the pitch's References §5/§18. This reason is
+  # NOT in LoopQueue's retryable taxonomy, so it can never itself cause a
+  # resume loop; it only tells do_invoke_attempt/6 to fall back to cold.
+  @spec stale_session_reason?(String.t()) :: boolean()
+  defp stale_session_reason?(reason) when is_binary(reason),
+    do: String.contains?(reason, "No conversation found with session ID")
+
+  defp stale_session_reason?(_), do: false
+
+  # One stderr line per resumed attempt — operator visibility into an
+  # absorbed transport drop, no cycle-log format change.
+  @spec operator_note(String.t()) :: :ok
+  defp operator_note(msg) do
+    IO.puts(:stderr, msg)
+    :ok
   end
 
   # Backoff between transient retries (ms), indexed by the attempt that just
@@ -1527,6 +1609,11 @@ defmodule CodegenTestHarness.OrchestrationLoop do
   `{result: {status, value, reason, ...}}` envelope, and branches on
   `status`.
 
+  On a warm-resume attempt (`ctx.artifacts.resume_session_id` set by
+  `do_invoke_attempt/6`), sends `resume_prompt/1`'s short continuation
+  instead of the full `build_prompt/2` pitch/plan, and threads
+  `--resume=<id>` instead of `--session-id=<id>` to `codegen-call`.
+
   `status`:
   - `"success"` → `{:ok, envelope["result"]}`
   - `"failed"` → `{:error, reason}` (reason from `result.reason`, or a
@@ -1543,20 +1630,48 @@ defmodule CodegenTestHarness.OrchestrationLoop do
     Process.put(@transcript_seq_key, seq)
     transcript = transcript_path(cycle_id, ctx.cwd, seq, role)
 
+    # Session identity for THIS attempt — minted/carried forward by
+    # do_invoke_attempt/6 before invoke_fn is ever called. resume_session_id
+    # present -> warm-resume a transient-retry attempt; absent ->
+    # transport_session_id pins a NEW (cold) call so a future transient
+    # retry can recover it even if this attempt drops before reporting its
+    # own session id back.
+    resume_session_id = get_in(ctx, [:artifacts, :resume_session_id])
+    cold_session_id = get_in(ctx, [:artifacts, :transport_session_id])
+
     # Default threads ctx.cwd into the codegen-call so the role's agent runs IN
     # the project directory. dispatch.sh cd's to test_harness to run mix, so
     # WITHOUT this every role would edit the wrong directory (loop bug #3).
     # The /6 seam signature is preserved for test overrides. `role` is bound
     # into the closure and threaded to default_codegen_call as the new
     # trailing `agent` arg — native `claude --agent <role>` invocation.
+    # session_id/resume ride the CLOSURE (not the /6 seam) — same pattern
+    # already used for role/transcript.
     codegen_call_fn =
       Keyword.get(opts, :codegen_call_fn, fn h, m, e, sp, tools, pr ->
-        default_codegen_call(ctx.cwd, h, m, e, sp, tools, pr, transcript, role)
+        default_codegen_call(
+          ctx.cwd,
+          h,
+          m,
+          e,
+          sp,
+          tools,
+          pr,
+          transcript,
+          role,
+          resume_session_id,
+          cold_session_id
+        )
       end)
 
     {model, effort} = resolve_fn.(role, harness)
 
-    prompt = build_prompt(role, ctx)
+    prompt =
+      if resume_session_id do
+        resume_prompt(role)
+      else
+        build_prompt(role, ctx)
+      end
 
     # No --system-prompt: the agent's identity (system prompt + tools) is
     # resolved natively by `claude --agent <role>` from the installed agent
@@ -1576,6 +1691,20 @@ defmodule CodegenTestHarness.OrchestrationLoop do
       other ->
         raise "OrchestrationLoop: unexpected codegen-call envelope for role #{role}: #{inspect(other)}"
     end
+  end
+
+  @doc """
+  The continuation prompt sent on a warm-resume transient retry — replaces
+  the full pitch/plan prompt `build_prompt/2` would otherwise re-send. The
+  resumed session already carries the role's full identity, plan, and prior
+  tool-call history; re-sending the pitch would waste tokens re-deriving
+  context the transcript already has.
+  """
+  @spec resume_prompt(String.t()) :: String.t()
+  def resume_prompt(_role) do
+    "Your previous turn was cut off by a transport error. The session's history above is " <>
+      "your own work. Continue from where you stopped; do not redo completed work. Finish " <>
+      "and emit your result JSON."
   end
 
   @doc false
@@ -1823,7 +1952,9 @@ defmodule CodegenTestHarness.OrchestrationLoop do
          allowed_tools,
          prompt,
          transcript,
-         agent
+         agent,
+         resume_session_id,
+         cold_session_id
        ) do
     unless File.exists?(@codegen_call_bin) do
       raise "OrchestrationLoop: codegen-call not found at #{@codegen_call_bin}"
@@ -1840,6 +1971,19 @@ defmodule CodegenTestHarness.OrchestrationLoop do
           else: []
         ) ++
         if(agent && agent != "", do: ["--agent=#{agent}"], else: []) ++
+        # --resume (warm-resume a transient-retry attempt) and --session-id
+        # (pin a NEW cold call's id up front) are mutually exclusive per
+        # attempt — resume wins when both are somehow present.
+        cond do
+          resume_session_id && resume_session_id != "" ->
+            ["--resume=#{resume_session_id}"]
+
+          cold_session_id && cold_session_id != "" ->
+            ["--session-id=#{cold_session_id}"]
+
+          true ->
+            []
+        end ++
         guard_bundle_flag!(harness) ++
         if(allowed_tools && allowed_tools != "",
           do: ["--allowed-tools=#{allowed_tools}"],
@@ -1853,6 +1997,14 @@ defmodule CodegenTestHarness.OrchestrationLoop do
         {"CODEGEN_LOOP", "1"}
       ] ++
         if(transcript, do: [{"CODEGEN_CALL_TRANSCRIPT_PATH", transcript}], else: []) ++
+        # CODEGEN_RESUME_ATTEMPT: set only on a warm-resume transient retry,
+        # to the session id being resumed into — a stable token the
+        # developer-no-self-gate guard uses to distinguish "first gate check
+        # after resuming" from a genuine same-tree spin (see hook comment).
+        if(resume_session_id && resume_session_id != "",
+          do: [{"CODEGEN_RESUME_ATTEMPT", resume_session_id}],
+          else: []
+        ) ++
         log_path_env()
 
     {output, exit_code} =

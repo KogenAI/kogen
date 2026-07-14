@@ -36,6 +36,15 @@
 #                         session id to resume. This script performs zero
 #                         validation of the value and never special-cases
 #                         it — pure passthrough (mirrors --agent).
+#   --session-id=<sid>    OPTIONAL: generic passthrough value; a caller-minted
+#                         session id to pin a NEW (cold) call to, so a future
+#                         --resume can recover it even if the harness process
+#                         is killed before it ever reports its own session id.
+#                         This script performs zero validation of the value
+#                         and never special-cases it — pure passthrough
+#                         (mirrors --agent / --resume). Mutually exclusive
+#                         with --resume in practice (caller's choice, not
+#                         enforced here).
 #   --print-argv           OPTIONAL: dry-run — parse + validate every flag,
 #                         build the full harness argv, print it one arg per
 #                         line on stdout, exit 0. Never execs the LLM.
@@ -96,11 +105,12 @@ EXTENSION_PATH=""
 AGENTS_PATH=""
 AGENT=""
 RESUME=""
+SESSION_ID=""
 PRINT_ARGV=""
 PROMPT=""
 
 usage() {
-    printf 'Usage: codegen-call --harness=<claude_code|pi> --model=<m> --effort=<e> [--system-prompt @<path>] [--agent=<v>] [--agents @<path>] [--resume=<sid>] [--json-schema @<path>] [--allowed-tools=<list>] [--settings @<path>] [--extension @<path>] [--print-argv] PROMPT\n' >&2
+    printf 'Usage: codegen-call --harness=<claude_code|pi> --model=<m> --effort=<e> [--system-prompt @<path>] [--agent=<v>] [--agents @<path>] [--resume=<sid>] [--session-id=<sid>] [--json-schema @<path>] [--allowed-tools=<list>] [--settings @<path>] [--extension @<path>] [--print-argv] PROMPT\n' >&2
     exit 2
 }
 
@@ -198,6 +208,14 @@ while [[ $# -gt 0 ]]; do
         ;;
     --resume)
         RESUME="$2"
+        shift 2
+        ;;
+    --session-id=*)
+        SESSION_ID="${1#--session-id=}"
+        shift
+        ;;
+    --session-id)
+        SESSION_ID="$2"
         shift 2
         ;;
     --print-argv)
@@ -332,6 +350,7 @@ export CODEGEN_CALL_EXTENSION_PATH="$EXTENSION_ABS_PATH"
 export CODEGEN_CALL_AGENTS_PATH="$AGENTS_ABS_PATH"
 export CODEGEN_CALL_AGENT="$AGENT"
 export CODEGEN_CALL_RESUME="$RESUME"
+export CODEGEN_CALL_SESSION_ID="$SESSION_ID"
 export CODEGEN_CALL_PRINT_ARGV="${PRINT_ARGV:-}"
 export CODEGEN_CALL_PROMPT="$PROMPT"
 

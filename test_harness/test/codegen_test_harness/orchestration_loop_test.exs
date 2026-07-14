@@ -539,6 +539,194 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
     end
   end
 
+  describe "warm resume on transient retry" do
+    test "transient failure carries the SAME resume_session_id into the next attempt's ctx",
+         %{calls_agent: calls_agent} do
+      {:ok, seen_agent} = Agent.start_link(fn -> [] end)
+      on_exit(fn -> if Process.alive?(seen_agent), do: Agent.stop(seen_agent) end)
+
+      invoke_fn = fn role, _harness, ctx, _opts ->
+        Agent.update(calls_agent, fn calls -> calls ++ [role] end)
+
+        if role == "developer-static" do
+          Agent.update(seen_agent, fn seen ->
+            seen ++
+              [{get_in(ctx, [:artifacts, :resume_session_id]), ctx.artifacts.transport_session_id}]
+          end)
+        end
+
+        if role == "developer-static" and length(Agent.get(seen_agent, & &1)) < 2 do
+          {:error, "Connection closed mid-response"}
+        else
+          {:ok, %{"status" => "success"}}
+        end
+      end
+
+      assert :ok ==
+               OrchestrationLoop.run(
+                 harness: "claude_code",
+                 stack: "static",
+                 cwd: "/tmp/irrelevant",
+                 pitch: "do the thing",
+                 invoke_fn: invoke_fn,
+                 gate_fn: always_clear_gate_fn(),
+                 gate_preflight_fn: no_op_gate_preflight_fn(),
+                 preflight_probe_fn: all_present_preflight_probe_fn(),
+                 advance_cycle_state_fn: no_op_advance_cycle_state_fn(),
+                 sleep_fn: fn _ms -> :ok end
+               )
+
+      [{nil, cold_id}, {resume_id, transport_id}] = Agent.get(seen_agent, & &1)
+
+      # Attempt 1: cold — no resume id yet, a fresh transport_session_id minted.
+      assert is_binary(cold_id) and cold_id != ""
+      # Attempt 2: resumes — resume_session_id equals attempt 1's minted id,
+      # and transport_session_id is threaded to the SAME value (a second drop
+      # would resume the same session again).
+      assert resume_id == cold_id
+      assert transport_id == cold_id
+    end
+
+    test "deterministic (non-transient) failure carries NO resume_session_id on retry",
+         %{calls_agent: calls_agent} do
+      {:ok, seen_agent} = Agent.start_link(fn -> [] end)
+      on_exit(fn -> if Process.alive?(seen_agent), do: Agent.stop(seen_agent) end)
+
+      invoke_fn = fn role, _harness, ctx, _opts ->
+        Agent.update(calls_agent, fn calls -> calls ++ [role] end)
+
+        if role == "developer-static" do
+          Agent.update(seen_agent, fn seen ->
+            seen ++ [get_in(ctx, [:artifacts, :resume_session_id])]
+          end)
+        end
+
+        if role == "developer-static" and length(Agent.get(seen_agent, & &1)) < 2 do
+          {:error, "deterministic failure"}
+        else
+          {:ok, %{"status" => "success"}}
+        end
+      end
+
+      assert :ok ==
+               OrchestrationLoop.run(
+                 harness: "claude_code",
+                 stack: "static",
+                 cwd: "/tmp/irrelevant",
+                 pitch: "do the thing",
+                 invoke_fn: invoke_fn,
+                 gate_fn: always_clear_gate_fn(),
+                 gate_preflight_fn: no_op_gate_preflight_fn(),
+                 preflight_probe_fn: all_present_preflight_probe_fn(),
+                 advance_cycle_state_fn: no_op_advance_cycle_state_fn()
+               )
+
+      assert Agent.get(seen_agent, & &1) == [nil, nil]
+    end
+
+    test "a resumed attempt's stale-session reason falls back to a FRESH cold id, never loops",
+         %{calls_agent: calls_agent} do
+      {:ok, seen_agent} = Agent.start_link(fn -> [] end)
+      on_exit(fn -> if Process.alive?(seen_agent), do: Agent.stop(seen_agent) end)
+
+      # Attempt 1: transient drop -> attempt 2 resumes the same session.
+      # Attempt 2 (resumed): the resumed session itself turns out to have
+      # never persisted -> stale_session_reason?/1 matches -> attempt 3 must
+      # fall back to a FRESH cold id (not the same one, and not resumed).
+      invoke_fn = fn role, _harness, ctx, _opts ->
+        Agent.update(calls_agent, fn calls -> calls ++ [role] end)
+
+        if role == "developer-static" do
+          Agent.update(seen_agent, fn seen ->
+            seen ++
+              [{get_in(ctx, [:artifacts, :resume_session_id]), ctx.artifacts.transport_session_id}]
+          end)
+        end
+
+        case {role, length(Agent.get(seen_agent, & &1))} do
+          {"developer-static", 1} ->
+            {:error, "Connection closed mid-response"}
+
+          {"developer-static", 2} ->
+            {:error,
+             "No conversation found with session ID: " <> ctx.artifacts.transport_session_id}
+
+          _ ->
+            {:ok, %{"status" => "success"}}
+        end
+      end
+
+      assert :ok ==
+               OrchestrationLoop.run(
+                 harness: "claude_code",
+                 stack: "static",
+                 cwd: "/tmp/irrelevant",
+                 pitch: "do the thing",
+                 invoke_fn: invoke_fn,
+                 gate_fn: always_clear_gate_fn(),
+                 gate_preflight_fn: no_op_gate_preflight_fn(),
+                 preflight_probe_fn: all_present_preflight_probe_fn(),
+                 advance_cycle_state_fn: no_op_advance_cycle_state_fn(),
+                 sleep_fn: fn _ms -> :ok end
+               )
+
+      [{nil, cold_id_1}, {resume_id_2, transport_id_2}, {resume_id_3, cold_id_3}] =
+        Agent.get(seen_agent, & &1)
+
+      # Attempt 2 correctly resumed attempt 1's session.
+      assert resume_id_2 == cold_id_1
+      assert transport_id_2 == cold_id_1
+
+      # Attempt 3 falls back cold: no resume id carried forward, and a BRAND
+      # NEW transport_session_id (never loops on the dead session).
+      assert is_nil(resume_id_3)
+      assert cold_id_3 != cold_id_1
+    end
+  end
+
+  describe "mint_session_id/0 (via warm resume)" do
+    test "minted ids are lowercase v4-uuid shaped", %{calls_agent: calls_agent} do
+      {:ok, seen_agent} = Agent.start_link(fn -> [] end)
+      on_exit(fn -> if Process.alive?(seen_agent), do: Agent.stop(seen_agent) end)
+
+      invoke_fn = fn role, _harness, ctx, _opts ->
+        Agent.update(calls_agent, fn calls -> calls ++ [role] end)
+        Agent.update(seen_agent, fn seen -> seen ++ [ctx.artifacts.transport_session_id] end)
+        {:ok, %{"status" => "success"}}
+      end
+
+      assert :ok ==
+               OrchestrationLoop.run(
+                 harness: "claude_code",
+                 stack: "static",
+                 cwd: "/tmp/irrelevant",
+                 pitch: "do the thing",
+                 invoke_fn: invoke_fn,
+                 gate_fn: always_clear_gate_fn(),
+                 gate_preflight_fn: no_op_gate_preflight_fn(),
+                 preflight_probe_fn: all_present_preflight_probe_fn(),
+                 advance_cycle_state_fn: no_op_advance_cycle_state_fn()
+               )
+
+      [id | _] = Agent.get(seen_agent, & &1)
+
+      assert Regex.match?(
+               ~r/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
+               id
+             )
+    end
+  end
+
+  describe "resume_prompt/1" do
+    test "returns a short continuation instruction distinct from the full pitch" do
+      prompt = OrchestrationLoop.resume_prompt("developer-static")
+
+      assert prompt =~ "cut off"
+      assert prompt =~ "Continue from where you stopped"
+      refute prompt =~ "do the thing"
+    end
+  end
+
   describe "run/1 — gate handling" do
     test "gate verdict=failed → developer re-run within budget, then success on retry", %{
       calls_agent: calls_agent
