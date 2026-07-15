@@ -127,6 +127,62 @@ $ref_names
 EOF2
 fi
 
+# Full-tree parity pass — root/platform layout ONLY (PROJECT_CONTEXT.md at repo
+# root, i.e. codegen self-build). The ADD/DELETE pass above is delta-based
+# (working tree vs HEAD, this turn only) and misses a PRE-EXISTING context/*.md
+# that was already committed with no index row (or no Trigger Keywords
+# section, or drifted keywords) — the case that used to live in the deleted
+# `make test` gate test `context-index-coverage_test.sh`. Downstream/user-app
+# layout (codegen/PROJECT_CONTEXT.md) is a different index-doc convention and
+# keeps ONLY the delta + phantom-ref passes above — no behavior change there.
+if [ "$index_path" = "PROJECT_CONTEXT.md" ]; then
+    ctx_dir="$repo_root/context"
+
+    # Basenames referenced in the Domain table (col-1 backtick pattern).
+    listed=$(printf '%s' "$index_body" | grep -oE '`context/[a-z0-9_-]+\.md`' | sed 's|`context/||; s|`||' | sort -u || true)
+
+    # Normalize a comma-list to a sorted unique set of lowercased trimmed tokens.
+    norm() {
+        tr ',' '\n' |
+            sed 's/^[[:space:]]*//; s/[[:space:]]*$//' |
+            tr '[:upper:]' '[:lower:]' |
+            grep -v '^$' |
+            sort -u
+    }
+
+    if [ -d "$ctx_dir" ]; then
+        while IFS= read -r f; do
+            [ -z "$f" ] && continue
+            base=$(basename "$f")
+
+            # (a) full-tree coverage: every on-disk context/*.md is listed.
+            if ! printf '%s\n' "$listed" | grep -qxF "$base"; then
+                violations="${violations}${violations:+$nl}context-index-parity-scan: context/$base missing from $index_path Domain Context Files table (full-tree pass)."
+            fi
+
+            # (c) every on-disk context/*.md has a ## Trigger Keywords section.
+            if ! grep -qE '^## Trigger Keywords$' "$f"; then
+                violations="${violations}${violations:+$nl}context-index-parity-scan: context/$base missing ## Trigger Keywords section."
+                continue
+            fi
+
+            # (d) in-file Trigger Keywords set == index "Load when prompt
+            # mentions..." cell (col-4) set — byte-exact after normalization.
+            file_kw=$(awk '/^## Trigger Keywords$/{getline; while ($0 ~ /^[[:space:]]*$/) getline; print; exit}' "$f" | norm)
+            idx_kw=$(grep -F "\`context/$base\`" "$repo_root/$index_path" | awk -F'|' '{print $4}' | norm)
+            if [ "$file_kw" != "$idx_kw" ]; then
+                violations="${violations}${violations:+$nl}context-index-parity-scan: context/$base keyword drift between file Trigger Keywords and $index_path Domain Context Files row."
+            fi
+        done < <(find "$ctx_dir" -maxdepth 1 -name '*.md' -type f)
+
+        # (b) no non-.md clutter in context/.
+        while IFS= read -r c; do
+            [ -z "$c" ] && continue
+            violations="${violations}${violations:+$nl}context-index-parity-scan: non-.md clutter in context/: $(basename "$c")."
+        done < <(find "$ctx_dir" -maxdepth 1 -type f ! -name '*.md')
+    fi
+fi
+
 if [ -n "$violations" ]; then
     printf '%s\n' "$violations"
     exit 1

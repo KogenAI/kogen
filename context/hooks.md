@@ -183,7 +183,7 @@ templates/generator/hook_registrations.py  ← generates settings.json entries
 
 **Static sentinel co-location tests**: bash tests asserting a sentinel on one specific line (e.g. same-line `SETTINGS_JSON=.*API_FORCE_IDLE_TIMEOUT`) break under variable-indirection refactors. Fix: assert co-location at the variable level (separate assignment-line + reference-line patterns), not literal same-line blob matching — robust to future indirection, still captures the load-bearing invariant.
 
-**Hermetic CI tests vs hooks**: `context-doc-provenance_test.sh` and `context-index-coverage_test.sh` are hermetic bash tests that scan documentation and rules for rotting line-citations and index drift — they are NOT hook/registry entries and do NOT appear in `settings.json`. Auto-discovered via `run-tests.sh` footer detection (`N passed, N failed`). Independent from hook-parity and enforce-registry-parity gates; they are pure linting checks on the content corpus. Corpus scope changes (e.g., widening to include `shared/rules/**/*.md`) are feature additions to the test suite, not hook-registration changes.
+**Hermetic CI tests vs hooks**: `context-doc-provenance_test.sh` scans docs/rules for rotting line-citations — not a hook/registry entry, absent from `settings.json`. Auto-discovered via `run-tests.sh` footer (`N passed, N failed`). Full-tree context-index parity (coverage, Trigger-Keywords, keyword-drift, clutter) is NOT a `make test` gate — moved to the in-loop curator scan `context-index-parity-scan.sh` (root layout only), shelled by `run_curator_doc_check`, routed to context-curator on violation. Replaces deleted `context-index-coverage_test.sh` — lands on the role that owns `context/*.md`, not the developer via pre-commit re-gate.
 
 ## See Also
 

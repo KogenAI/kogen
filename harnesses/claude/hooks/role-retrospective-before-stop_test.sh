@@ -24,7 +24,6 @@ set -u
 # Unset CODEGEN_LOG_PATH to isolate test fixtures from the active loop log
 unset CODEGEN_LOG_PATH
 
-
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 HOOK="$SCRIPT_DIR/role-retrospective-before-stop.sh"
 

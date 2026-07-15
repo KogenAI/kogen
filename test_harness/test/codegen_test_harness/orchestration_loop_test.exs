@@ -1866,6 +1866,46 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
       refute "committer" in Agent.get(calls_agent, & &1)
     end
 
+    test "full-tree index-coverage violation once then clean re-invokes context-curator exactly once",
+         %{calls_agent: calls_agent} do
+      # Mirrors the ADD-without-row delta-pass test above, but the violation
+      # string here is the one only the full-tree pass in
+      # context-index-parity-scan.sh can produce (a PRE-EXISTING orphan with
+      # no working-tree delta this turn) — routing must still land on the
+      # context-curator, same as every other curator-doc-check violation.
+      {:ok, scan_calls_agent} = Agent.start_link(fn -> 0 end)
+      on_exit(fn -> if Process.alive?(scan_calls_agent), do: Agent.stop(scan_calls_agent) end)
+
+      scan_fn = fn _cwd ->
+        n = Agent.get_and_update(scan_calls_agent, fn c -> {c, c + 1} end)
+
+        if n == 0 do
+          {:violations,
+           "context-index-parity-scan: context/orphan.md missing from PROJECT_CONTEXT.md Domain Context Files table (full-tree pass)."}
+        else
+          {:clean}
+        end
+      end
+
+      assert :ok ==
+               OrchestrationLoop.run(
+                 harness: "claude_code",
+                 stack: "static",
+                 cwd: "/tmp/irrelevant",
+                 pitch: "do the thing",
+                 invoke_fn: always_ok_invoke_fn(calls_agent),
+                 gate_fn: always_clear_gate_fn(),
+                 gate_preflight_fn: no_op_gate_preflight_fn(),
+                 preflight_probe_fn: all_present_preflight_probe_fn(),
+                 advance_cycle_state_fn: no_op_advance_cycle_state_fn(),
+                 curator_doc_check_fn: scan_fn
+               )
+
+      curator_calls = Enum.count(Agent.get(calls_agent, & &1), &(&1 == "context-curator"))
+      assert curator_calls == 2
+      assert List.last(Agent.get(calls_agent, & &1)) == "committer"
+    end
+
     test "curator_doc_check_fn raising propagates (loop crashes loud)", %{
       calls_agent: calls_agent
     } do
@@ -2097,10 +2137,15 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
 
       File.write!(
         Path.join([dir, "context", "rotten.md"]),
-        "See `widgetapp/nope.ex` for details.\n"
+        "See `widgetapp/nope.ex` for details.\n\n## Trigger Keywords\n\nrotten\n"
       )
 
-      System.cmd("git", ["add", "context/rotten.md"], cd: dir)
+      File.write!(
+        Path.join(dir, "PROJECT_CONTEXT.md"),
+        "# PROJECT_CONTEXT.md\n`context/rotten.md` | x | x | rotten\n"
+      )
+
+      System.cmd("git", ["add", "context/rotten.md", "PROJECT_CONTEXT.md"], cd: dir)
       System.cmd("git", ["commit", "-q", "-m", "seed rotten doc"], cd: dir)
 
       # This cycle changes only an unrelated, non-orientation file.
@@ -2155,14 +2200,15 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
 
       File.write!(
         Path.join([dir, "context", "foo.md"]),
-        "See `widgetapp/billing.ex` for details.\n"
+        "See `widgetapp/billing.ex` for details.\n\n## Trigger Keywords\n\nfoo\n"
       )
 
       # Isolate this test to the factcheck path-resolution behavior — add the
-      # matching index row so the (independent) index-parity check stays clean.
+      # matching index row (with a keyword cell matching the file's Trigger
+      # Keywords section) so the (independent) index-parity check stays clean.
       File.write!(
         Path.join(dir, "PROJECT_CONTEXT.md"),
-        "# PROJECT_CONTEXT.md\n`context/foo.md`\n"
+        "# PROJECT_CONTEXT.md\n`context/foo.md` | x | x | foo\n"
       )
 
       assert :ok ==
@@ -2207,11 +2253,14 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
 
     test "context/*.md added this cycle WITH a matching row → clean, reaches the committer",
          %{calls_agent: calls_agent, dir: dir} do
-      File.write!(Path.join([dir, "context", "new.md"]), "brand new context doc\n")
+      File.write!(
+        Path.join([dir, "context", "new.md"]),
+        "brand new context doc\n\n## Trigger Keywords\n\nnew\n"
+      )
 
       File.write!(
         Path.join(dir, "PROJECT_CONTEXT.md"),
-        "# PROJECT_CONTEXT.md\n`context/new.md`\n"
+        "# PROJECT_CONTEXT.md\n`context/new.md` | x | x | new\n"
       )
 
       assert :ok ==

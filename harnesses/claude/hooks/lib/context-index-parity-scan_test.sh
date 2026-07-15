@@ -11,6 +11,13 @@
 #   7: outside a git repo → exit 0 (fail-open)
 #   8: unborn branch (no HEAD commit) → exit 0 (fail-open)
 #   9: user-app layout (codegen/PROJECT_CONTEXT.md) ADD with row → exit 0
+#  10: root layout, on-disk context/x.md with row but missing Trigger Keywords → exit 1
+#  11: root layout, keyword drift (file kw != index cell) → exit 1
+#  12: root layout, non-.md clutter in context/ → exit 1
+#  13: root layout, PRE-EXISTING (committed, no working-tree delta) context/x.md
+#      with no row → exit 1 (full-tree pass catches what the delta pass misses)
+#  14: user-app layout (codegen/PROJECT_CONTEXT.md), pre-existing orphan with no
+#      delta → exit 0 (full-tree/keyword strict passes stay root-layout-only)
 
 set -euo pipefail
 
@@ -78,8 +85,8 @@ run_test "ADD context/new.md, no row → exit 1" "1" "$dir1"
 dir2=$(init_fixture 2)
 printf '# doc\n' >"$dir2/PROJECT_CONTEXT.md"
 commit_all "$dir2" init
-printf 'new stuff\n' >"$dir2/context/new.md"
-printf '`context/new.md`\n' >>"$dir2/PROJECT_CONTEXT.md"
+printf '# New\n\n## Trigger Keywords\n\nfoo, bar\n' >"$dir2/context/new.md"
+printf '`context/new.md` | always | never | foo, bar\n' >>"$dir2/PROJECT_CONTEXT.md"
 
 run_test "ADD context/new.md with row → exit 0" "0" "$dir2"
 
@@ -160,6 +167,61 @@ printf 'new stuff\n' >"$dir9/context/new.md"
 printf '`context/new.md`\n' >>"$dir9/codegen/PROJECT_CONTEXT.md"
 
 run_test "user-app layout ADD with row → exit 0" "0" "$dir9"
+
+# ---------------------------------------------------------------------------
+# Test 10: root layout, on-disk context/x.md with row but missing Trigger
+# Keywords section → exit 1 (full-tree pass, committed so no working-tree delta)
+# ---------------------------------------------------------------------------
+dir10=$(init_fixture 10)
+printf '# doc\n\n`context/x.md` | always | never | foo, bar\n' >"$dir10/PROJECT_CONTEXT.md"
+printf '# X\n\nsome content, no keywords section\n' >"$dir10/context/x.md"
+commit_all "$dir10" init
+
+run_test "root layout, pre-existing file missing Trigger Keywords → exit 1" "1" "$dir10"
+
+# ---------------------------------------------------------------------------
+# Test 11: root layout, keyword drift (file kw != index cell) → exit 1
+# ---------------------------------------------------------------------------
+dir11=$(init_fixture 11)
+printf '# doc\n\n`context/x.md` | always | never | foo, bar\n' >"$dir11/PROJECT_CONTEXT.md"
+printf '# X\n\n## Trigger Keywords\n\nfoo, baz\n' >"$dir11/context/x.md"
+commit_all "$dir11" init
+
+run_test "root layout, keyword drift → exit 1" "1" "$dir11"
+
+# ---------------------------------------------------------------------------
+# Test 12: root layout, non-.md clutter in context/ → exit 1
+# ---------------------------------------------------------------------------
+dir12=$(init_fixture 12)
+printf '# doc\n' >"$dir12/PROJECT_CONTEXT.md"
+printf 'junk\n' >"$dir12/context/.DS_Store"
+commit_all "$dir12" init
+
+run_test "root layout, non-.md clutter in context/ → exit 1" "1" "$dir12"
+
+# ---------------------------------------------------------------------------
+# Test 13: root layout, PRE-EXISTING context/x.md (committed, no working-tree
+# delta) missing from the Domain table → exit 1 — this is the build-12 case
+# the delta pass misses (full-tree pass must catch it).
+# ---------------------------------------------------------------------------
+dir13=$(init_fixture 13)
+printf '# doc\n' >"$dir13/PROJECT_CONTEXT.md"
+printf '# X\n\n## Trigger Keywords\n\nfoo, bar\n' >"$dir13/context/x.md"
+commit_all "$dir13" init
+
+run_test "root layout, pre-existing orphan (no delta) → exit 1" "1" "$dir13"
+
+# ---------------------------------------------------------------------------
+# Test 14: user-app layout (codegen/PROJECT_CONTEXT.md), pre-existing orphan
+# with no working-tree delta → exit 0 (strict full-tree pass is root-only)
+# ---------------------------------------------------------------------------
+dir14=$(init_fixture 14)
+mkdir -p "$dir14/codegen"
+printf '# doc\n' >"$dir14/codegen/PROJECT_CONTEXT.md"
+printf '# X\n\nno keywords, no row\n' >"$dir14/context/x.md"
+commit_all "$dir14" init
+
+run_test "user-app layout, pre-existing orphan (no delta) → exit 0" "0" "$dir14"
 
 echo ""
 echo "Results: $pass passed, $fail failed"
