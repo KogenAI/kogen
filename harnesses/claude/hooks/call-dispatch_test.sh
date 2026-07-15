@@ -939,6 +939,159 @@ else
     pass=$((pass + 1))
 fi
 
+# ── Watchdog: hang-after-emit salvage + mid-stream stall (CODEGEN_LOOP=1) ────
+# Stub claude that emits the fixture then sleeps indefinitely (simulates a
+# stalled ESTABLISHED socket after the process has already produced output).
+WATCHDOG_STUB_DIR="$BASE_TMP/watchdog_stub_bin"
+mkdir -p "$WATCHDOG_STUB_DIR"
+cat >"$WATCHDOG_STUB_DIR/claude" <<'WDSTUB'
+#!/usr/bin/env bash
+# Stub claude: emit fixture (result event present), then hang forever.
+cat "$FIXTURE_PATH"
+sleep 3600
+WDSTUB
+chmod +x "$WATCHDOG_STUB_DIR/claude"
+
+# Stub claude that hangs with NO output at all (mid-stream stall, nothing to salvage).
+WATCHDOG_STALL_STUB_DIR="$BASE_TMP/watchdog_stall_stub_bin"
+mkdir -p "$WATCHDOG_STALL_STUB_DIR"
+cat >"$WATCHDOG_STALL_STUB_DIR/claude" <<'WDSTALLSTUB'
+#!/usr/bin/env bash
+# Stub claude: no output, hang forever.
+sleep 3600
+WDSTALLSTUB
+chmod +x "$WATCHDOG_STALL_STUB_DIR/claude"
+
+# (x) Hang-after-emit: result event present, process never exits → watchdog
+# kills after RESULT_GRACE_SECS, salvages the already-emitted result as success.
+WD_X_EXIT=0
+WD_X_START=$(date +%s)
+(
+    export PATH="$WATCHDOG_STUB_DIR:$PATH"
+    export FIXTURE_PATH="$FIXTURE"
+    export CODEGEN_CALL_SYSTEM_PROMPT="You are a test classifier assistant."
+    export CODEGEN_CALL_MODEL="claude-haiku-4-5"
+    export CODEGEN_CALL_EFFORT="low"
+    export CODEGEN_CALL_PROMPT="Classify this message: Hello, how do I set up the platform?"
+    export CODEGEN_CALL_JSON_SCHEMA='{"type":"object","properties":{"lang":{"type":"string"},"intent":{"type":"string"}},"required":["lang","intent"]}'
+    export CODEGEN_LOOP=1
+    export CODEGEN_CALL_RESULT_GRACE_SECS=2
+    export CODEGEN_CALL_IDLE_CAP_SECS=900
+    unset CODEGEN_CALL_JSON_SCHEMA_PATH 2>/dev/null || true
+    unset CODEGEN_CALL_ALLOWED_TOOLS_SET 2>/dev/null || true
+    unset CODEGEN_CALL_ALLOWED_TOOLS 2>/dev/null || true
+    unset CODEGEN_CALL_SETTINGS_PATH 2>/dev/null || true
+    bash "$DISPATCH_SCRIPT" 2>"$BASE_TMP/wd_x_stderr.log"
+) >"$BASE_TMP/wd_x_envelope.json" || WD_X_EXIT=$?
+WD_X_ELAPSED=$(($(date +%s) - WD_X_START))
+
+if [[ "$WD_X_EXIT" -eq 0 ]]; then
+    [ -n "${VERBOSE:-}" ] && printf 'PASS: (x) watchdog hang-after-emit exits 0\n'
+    pass=$((pass + 1))
+else
+    printf 'FAIL: (x) watchdog hang-after-emit exits 0 — got %d\n  stderr: %s\n' "$WD_X_EXIT" "$(cat "$BASE_TMP/wd_x_stderr.log" 2>/dev/null || true)"
+    fail=$((fail + 1))
+fi
+
+WD_X_ENVELOPE="$(cat "$BASE_TMP/wd_x_envelope.json")"
+assert_jq \
+    "(x) watchdog hang-after-emit: salvaged as success" \
+    "$WD_X_ENVELOPE" \
+    ".result.status" \
+    "success"
+
+assert_file_contains "$BASE_TMP/wd_x_stderr.log" "watchdog killing claude"
+
+if [[ "$WD_X_ELAPSED" -lt 60 ]]; then
+    [ -n "${VERBOSE:-}" ] && printf 'PASS: (x) watchdog recovers in well under idle cap (%ds)\n' "$WD_X_ELAPSED"
+    pass=$((pass + 1))
+else
+    printf 'FAIL: (x) watchdog took too long to recover (%ds)\n' "$WD_X_ELAPSED"
+    fail=$((fail + 1))
+fi
+
+# (y) Mid-stream stall: no output at all → watchdog idle-caps, emits failed
+# envelope with retryable "Stream idle timeout" reason, exits 0 (not 1) so the
+# loop reads the full untruncated reason.
+WD_Y_EXIT=0
+(
+    export PATH="$WATCHDOG_STALL_STUB_DIR:$PATH"
+    export FIXTURE_PATH="$FIXTURE"
+    export CODEGEN_CALL_SYSTEM_PROMPT="You are a test classifier assistant."
+    export CODEGEN_CALL_MODEL="claude-haiku-4-5"
+    export CODEGEN_CALL_EFFORT="low"
+    export CODEGEN_CALL_PROMPT="Classify this message: Hello, how do I set up the platform?"
+    export CODEGEN_LOOP=1
+    export CODEGEN_CALL_RESULT_GRACE_SECS=30
+    export CODEGEN_CALL_IDLE_CAP_SECS=2
+    unset CODEGEN_CALL_JSON_SCHEMA 2>/dev/null || true
+    unset CODEGEN_CALL_JSON_SCHEMA_PATH 2>/dev/null || true
+    unset CODEGEN_CALL_ALLOWED_TOOLS_SET 2>/dev/null || true
+    unset CODEGEN_CALL_ALLOWED_TOOLS 2>/dev/null || true
+    unset CODEGEN_CALL_SETTINGS_PATH 2>/dev/null || true
+    bash "$DISPATCH_SCRIPT" 2>"$BASE_TMP/wd_y_stderr.log"
+) >"$BASE_TMP/wd_y_envelope.json" || WD_Y_EXIT=$?
+
+if [[ "$WD_Y_EXIT" -eq 0 ]]; then
+    [ -n "${VERBOSE:-}" ] && printf 'PASS: (y) watchdog mid-stream stall exits 0 (not 1)\n'
+    pass=$((pass + 1))
+else
+    printf 'FAIL: (y) watchdog mid-stream stall exits 0 — got %d\n' "$WD_Y_EXIT"
+    fail=$((fail + 1))
+fi
+
+WD_Y_ENVELOPE="$(cat "$BASE_TMP/wd_y_envelope.json")"
+assert_jq \
+    "(y) watchdog mid-stream stall: result.status == failed" \
+    "$WD_Y_ENVELOPE" \
+    ".result.status" \
+    "failed"
+
+assert_jq_truthy \
+    "(y) watchdog mid-stream stall: reason contains retryable taxonomy token" \
+    "$WD_Y_ENVELOPE" \
+    '(.result.reason // "") | test("Stream idle timeout")'
+
+assert_file_contains "$BASE_TMP/wd_y_stderr.log" "watchdog killing claude"
+
+# (z) Loop-gate off (no CODEGEN_LOOP): watchdog never engages — one-shot
+# platform codegen-call behavior stays byte-identical (uncapped). Uses a
+# short-lived stub (not the hanging one) since an unbounded exec would hang
+# this test suite itself.
+WD_Z_EXIT=0
+(
+    export PATH="$STUB_DIR:$PATH"
+    export FIXTURE_PATH="$FIXTURE"
+    export CODEGEN_CALL_SYSTEM_PROMPT="You are a test classifier assistant."
+    export CODEGEN_CALL_MODEL="claude-haiku-4-5"
+    export CODEGEN_CALL_EFFORT="low"
+    export CODEGEN_CALL_PROMPT="Classify this message: Hello, how do I set up the platform?"
+    export CODEGEN_CALL_JSON_SCHEMA='{"type":"object","properties":{"lang":{"type":"string"},"intent":{"type":"string"}},"required":["lang","intent"]}'
+    unset CODEGEN_LOOP 2>/dev/null || true
+    unset CODEGEN_CALL_JSON_SCHEMA_PATH 2>/dev/null || true
+    unset CODEGEN_CALL_ALLOWED_TOOLS_SET 2>/dev/null || true
+    unset CODEGEN_CALL_ALLOWED_TOOLS 2>/dev/null || true
+    unset CODEGEN_CALL_SETTINGS_PATH 2>/dev/null || true
+    bash "$DISPATCH_SCRIPT" 2>"$BASE_TMP/wd_z_stderr.log"
+) >"$BASE_TMP/wd_z_envelope.json" || WD_Z_EXIT=$?
+
+if [[ "$WD_Z_EXIT" -eq 0 ]]; then
+    [ -n "${VERBOSE:-}" ] && printf 'PASS: (z) loop-gate off: dispatch exits 0 normally\n'
+    pass=$((pass + 1))
+else
+    printf 'FAIL: (z) loop-gate off: dispatch exits 0 — got %d\n' "$WD_Z_EXIT"
+    fail=$((fail + 1))
+fi
+
+assert_jq \
+    "(z) loop-gate off: result.status == success (unaffected by watchdog)" \
+    "$(cat "$BASE_TMP/wd_z_envelope.json")" \
+    ".result.status" \
+    "success"
+
+assert_log_absent_line "$BASE_TMP/wd_z_stderr.log" "watchdog killing claude" \
+    "(z) loop-gate off: watchdog never engages"
+
 # ─────────────────────────────────────────────────────────────────────────────
 echo ""
 echo "Results: $pass passed, $fail failed"

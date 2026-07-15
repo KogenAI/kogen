@@ -245,6 +245,160 @@ assert_jq \
     ".harness" \
     "pi"
 
+# ── Watchdog: hang-after-emit salvage + mid-stream stall (CODEGEN_LOOP=1) ────
+# Mirrors harnesses/claude/hooks/call-dispatch_test.sh's watchdog cases.
+WATCHDOG_STUB_DIR="$BASE_TMP/watchdog_stub_bin"
+mkdir -p "$WATCHDOG_STUB_DIR"
+cat >"$WATCHDOG_STUB_DIR/pi" <<'WDSTUB'
+#!/usr/bin/env bash
+# Stub pi: emit fixture (agent_end event present), then hang forever.
+cat "$FIXTURE_PATH"
+sleep 3600
+WDSTUB
+chmod +x "$WATCHDOG_STUB_DIR/pi"
+
+WATCHDOG_STALL_STUB_DIR="$BASE_TMP/watchdog_stall_stub_bin"
+mkdir -p "$WATCHDOG_STALL_STUB_DIR"
+cat >"$WATCHDOG_STALL_STUB_DIR/pi" <<'WDSTALLSTUB'
+#!/usr/bin/env bash
+# Stub pi: no output, hang forever.
+sleep 3600
+WDSTALLSTUB
+chmod +x "$WATCHDOG_STALL_STUB_DIR/pi"
+
+# (x) Hang-after-emit: agent_end event present, process never exits →
+# watchdog kills after RESULT_GRACE_SECS, salvages as success.
+WD_X_EXIT=0
+WD_X_START=$(date +%s)
+(
+    export PATH="$WATCHDOG_STUB_DIR:$PATH"
+    for v in "${BASE_ENV[@]}"; do export "$v"; done
+    unset CODEGEN_CALL_JSON_SCHEMA 2>/dev/null || true
+    unset CODEGEN_CALL_ALLOWED_TOOLS_SET 2>/dev/null || true
+    unset CODEGEN_CALL_ALLOWED_TOOLS 2>/dev/null || true
+    unset CODEGEN_CALL_SETTINGS_PATH 2>/dev/null || true
+    export FIXTURE_PATH="$FIXTURES_DIR/pi_success_text.jsonl"
+    export CODEGEN_LOOP=1
+    export CODEGEN_CALL_RESULT_GRACE_SECS=2
+    export CODEGEN_CALL_IDLE_CAP_SECS=900
+    bash "$DISPATCH_SCRIPT" 2>"$BASE_TMP/wd_x_stderr.log"
+) >"$BASE_TMP/wd_x_envelope.json" || WD_X_EXIT=$?
+WD_X_ELAPSED=$(($(date +%s) - WD_X_START))
+
+if [[ "$WD_X_EXIT" -eq 0 ]]; then
+    [ -n "${VERBOSE:-}" ] && printf 'PASS: (x) watchdog hang-after-emit exits 0\n'
+    pass=$((pass + 1))
+else
+    printf 'FAIL: (x) watchdog hang-after-emit exits 0 — got %d\n  stderr: %s\n' "$WD_X_EXIT" "$(cat "$BASE_TMP/wd_x_stderr.log" 2>/dev/null || true)"
+    fail=$((fail + 1))
+fi
+
+WD_X_ENVELOPE="$(cat "$BASE_TMP/wd_x_envelope.json")"
+assert_jq \
+    "(x) watchdog hang-after-emit: salvaged as success" \
+    "$WD_X_ENVELOPE" \
+    ".result.status" \
+    "success"
+
+if grep -qF "watchdog killing pi" "$BASE_TMP/wd_x_stderr.log" 2>/dev/null; then
+    [ -n "${VERBOSE:-}" ] && printf 'PASS: (x) stderr names watchdog kill\n'
+    pass=$((pass + 1))
+else
+    printf 'FAIL: (x) stderr missing watchdog kill message: %s\n' "$(cat "$BASE_TMP/wd_x_stderr.log" 2>/dev/null || true)"
+    fail=$((fail + 1))
+fi
+
+if [[ "$WD_X_ELAPSED" -lt 60 ]]; then
+    [ -n "${VERBOSE:-}" ] && printf 'PASS: (x) watchdog recovers well under idle cap (%ds)\n' "$WD_X_ELAPSED"
+    pass=$((pass + 1))
+else
+    printf 'FAIL: (x) watchdog took too long to recover (%ds)\n' "$WD_X_ELAPSED"
+    fail=$((fail + 1))
+fi
+
+# (y) Mid-stream stall: no output at all → watchdog idle-caps, emits failed
+# envelope with retryable "Stream idle timeout" reason, exits 0 (not 1).
+WD_Y_EXIT=0
+(
+    export PATH="$WATCHDOG_STALL_STUB_DIR:$PATH"
+    for v in "${BASE_ENV[@]}"; do export "$v"; done
+    unset CODEGEN_CALL_JSON_SCHEMA 2>/dev/null || true
+    unset CODEGEN_CALL_ALLOWED_TOOLS_SET 2>/dev/null || true
+    unset CODEGEN_CALL_ALLOWED_TOOLS 2>/dev/null || true
+    unset CODEGEN_CALL_SETTINGS_PATH 2>/dev/null || true
+    export FIXTURE_PATH="$FIXTURES_DIR/pi_success_text.jsonl"
+    export CODEGEN_LOOP=1
+    export CODEGEN_CALL_RESULT_GRACE_SECS=30
+    export CODEGEN_CALL_IDLE_CAP_SECS=2
+    bash "$DISPATCH_SCRIPT" 2>"$BASE_TMP/wd_y_stderr.log"
+) >"$BASE_TMP/wd_y_envelope.json" || WD_Y_EXIT=$?
+
+if [[ "$WD_Y_EXIT" -eq 0 ]]; then
+    [ -n "${VERBOSE:-}" ] && printf 'PASS: (y) watchdog mid-stream stall exits 0 (not 1)\n'
+    pass=$((pass + 1))
+else
+    printf 'FAIL: (y) watchdog mid-stream stall exits 0 — got %d\n' "$WD_Y_EXIT"
+    fail=$((fail + 1))
+fi
+
+WD_Y_ENVELOPE="$(cat "$BASE_TMP/wd_y_envelope.json")"
+assert_jq \
+    "(y) watchdog mid-stream stall: result.status == failed" \
+    "$WD_Y_ENVELOPE" \
+    ".result.status" \
+    "failed"
+
+assert_jq_truthy \
+    "(y) watchdog mid-stream stall: reason contains retryable taxonomy token" \
+    "$WD_Y_ENVELOPE" \
+    '(.result.reason // "") | test("Stream idle timeout")'
+
+if grep -qF "watchdog killing pi" "$BASE_TMP/wd_y_stderr.log" 2>/dev/null; then
+    [ -n "${VERBOSE:-}" ] && printf 'PASS: (y) stderr names watchdog kill\n'
+    pass=$((pass + 1))
+else
+    printf 'FAIL: (y) stderr missing watchdog kill message: %s\n' "$(cat "$BASE_TMP/wd_y_stderr.log" 2>/dev/null || true)"
+    fail=$((fail + 1))
+fi
+
+# (z) Loop-gate off (no CODEGEN_LOOP): watchdog never engages — one-shot
+# platform codegen-call behavior stays byte-identical. Uses the normal
+# short-lived stub, not the hanging one.
+WD_Z_EXIT=0
+(
+    export PATH="$STUB_DIR:$PATH"
+    for v in "${BASE_ENV[@]}"; do export "$v"; done
+    unset CODEGEN_CALL_JSON_SCHEMA 2>/dev/null || true
+    unset CODEGEN_CALL_ALLOWED_TOOLS_SET 2>/dev/null || true
+    unset CODEGEN_CALL_ALLOWED_TOOLS 2>/dev/null || true
+    unset CODEGEN_CALL_SETTINGS_PATH 2>/dev/null || true
+    unset CODEGEN_LOOP 2>/dev/null || true
+    export FIXTURE_PATH="$FIXTURES_DIR/pi_success_text.jsonl"
+    bash "$DISPATCH_SCRIPT" 2>"$BASE_TMP/wd_z_stderr.log"
+) >"$BASE_TMP/wd_z_envelope.json" || WD_Z_EXIT=$?
+
+if [[ "$WD_Z_EXIT" -eq 0 ]]; then
+    [ -n "${VERBOSE:-}" ] && printf 'PASS: (z) loop-gate off: dispatch exits 0 normally\n'
+    pass=$((pass + 1))
+else
+    printf 'FAIL: (z) loop-gate off: dispatch exits 0 — got %d\n' "$WD_Z_EXIT"
+    fail=$((fail + 1))
+fi
+
+assert_jq \
+    "(z) loop-gate off: result.status == success (unaffected by watchdog)" \
+    "$(cat "$BASE_TMP/wd_z_envelope.json")" \
+    ".result.status" \
+    "success"
+
+if grep -qF "watchdog killing pi" "$BASE_TMP/wd_z_stderr.log" 2>/dev/null; then
+    printf 'FAIL: (z) loop-gate off: watchdog unexpectedly engaged\n'
+    fail=$((fail + 1))
+else
+    [ -n "${VERBOSE:-}" ] && printf 'PASS: (z) loop-gate off: watchdog never engages\n'
+    pass=$((pass + 1))
+fi
+
 # ─────────────────────────────────────────────────────────────────────────────
 echo ""
 echo "Results: $pass passed, $fail failed"

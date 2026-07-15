@@ -198,14 +198,83 @@ trap '_capture_transcript; rm -f "$TMP_OUT"' EXIT
 
 START_TS_MS="$(_ts_ms)"
 
-set +e
-env \
-    -u OPENAI_API_KEY \
-    -u ANTHROPIC_API_KEY \
-    -u CURSOR_API_KEY \
-    pi "${ARGS[@]}" </dev/null >"$TMP_OUT" 2>&1
-EXIT_CODE=$?
-set -e
+# ── Idle/stall watchdog (loop-invoked calls only, CODEGEN_LOOP=1) ────────────
+# Mirrors harnesses/claude/call-dispatch.sh's watchdog: a dropped/stalled API
+# connection can leave pi emitting its full response then never exiting.
+# System.cmd in the Elixir loop has no timeout, so a hung pi wedges the whole
+# build indefinitely. Two kill triggers:
+#   (1) result-present fast-path: TMP_OUT already carries a terminal
+#       "agent_end" event AND the process is still alive after
+#       CODEGEN_CALL_RESULT_GRACE_SECS (default 30s) — salvage as success.
+#   (2) idle cap: TMP_OUT has not grown for CODEGEN_CALL_IDLE_CAP_SECS
+#       (default 900s) — a genuine mid-stream stall with nothing to salvage.
+# One-shot platform codegen-call (no CODEGEN_LOOP) runs the exec verbatim,
+# uncapped — byte-identical to pre-watchdog behavior.
+WATCHDOG_KILLED=""
+if [[ "${CODEGEN_LOOP:-}" == "1" ]]; then
+    RESULT_GRACE_SECS="${CODEGEN_CALL_RESULT_GRACE_SECS:-30}"
+    IDLE_CAP_SECS="${CODEGEN_CALL_IDLE_CAP_SECS:-900}"
+
+    set +e
+    env \
+        -u OPENAI_API_KEY \
+        -u ANTHROPIC_API_KEY \
+        -u CURSOR_API_KEY \
+        pi "${ARGS[@]}" </dev/null >"$TMP_OUT" 2>&1 &
+    CHILD_PID=$!
+
+    LAST_SIZE=-1
+    LAST_GROWTH_TS=$(_ts_ms)
+    RESULT_SEEN_TS=""
+    while kill -0 "$CHILD_PID" 2>/dev/null; do
+        sleep 5
+        CUR_SIZE="$(wc -c <"$TMP_OUT" 2>/dev/null || printf '0')"
+        NOW_MS=$(_ts_ms)
+        if [[ "$CUR_SIZE" != "$LAST_SIZE" ]]; then
+            LAST_SIZE="$CUR_SIZE"
+            LAST_GROWTH_TS="$NOW_MS"
+        fi
+
+        # Trigger (1): terminal agent_end event already present.
+        if [[ -z "$RESULT_SEEN_TS" ]]; then
+            if jq -c 'select(.type == "agent_end")' "$TMP_OUT" 2>/dev/null | grep -q .; then
+                RESULT_SEEN_TS="$NOW_MS"
+            fi
+        fi
+        if [[ -n "$RESULT_SEEN_TS" ]] && (((NOW_MS - RESULT_SEEN_TS) / 1000 >= RESULT_GRACE_SECS)); then
+            printf 'codegen-call: watchdog killing pi (pid %s) — agent_end already emitted, grace %ss elapsed\n' "$CHILD_PID" "$RESULT_GRACE_SECS" >&2
+            WATCHDOG_KILLED=1
+            break
+        fi
+
+        # Trigger (2): idle cap — no output growth for IDLE_CAP_SECS.
+        if (((NOW_MS - LAST_GROWTH_TS) / 1000 >= IDLE_CAP_SECS)); then
+            printf 'codegen-call: watchdog killing pi (pid %s) — idle %ss with no output growth\n' "$CHILD_PID" "$IDLE_CAP_SECS" >&2
+            WATCHDOG_KILLED=1
+            break
+        fi
+    done
+
+    if [[ -n "$WATCHDOG_KILLED" ]]; then
+        kill -TERM "$CHILD_PID" 2>/dev/null || true
+        sleep 2
+        kill -KILL "$CHILD_PID" 2>/dev/null || true
+        pkill -9 -P "$CHILD_PID" 2>/dev/null || true
+    fi
+
+    wait "$CHILD_PID"
+    EXIT_CODE=$?
+    set -e
+else
+    set +e
+    env \
+        -u OPENAI_API_KEY \
+        -u ANTHROPIC_API_KEY \
+        -u CURSOR_API_KEY \
+        pi "${ARGS[@]}" </dev/null >"$TMP_OUT" 2>&1
+    EXIT_CODE=$?
+    set -e
+fi
 
 END_TS_MS="$(_ts_ms)"
 LATENCY_MS=$((END_TS_MS - START_TS_MS))
@@ -213,6 +282,39 @@ LATENCY_MS=$((END_TS_MS - START_TS_MS))
 # ── Parse JSONL into envelope ─────────────────────────────────────────────────
 # Find last agent_end event
 AGENT_END_EVENT="$(jq -c 'select(.type == "agent_end")' "$TMP_OUT" 2>/dev/null | tail -1 || true)"
+
+# Watchdog stall (no salvageable agent_end event) → emit a proper failed
+# envelope with a retryable-taxonomy reason and exit 0 (NOT 1) so the loop
+# reads the FULL untruncated reason via Jason.decode! rather than
+# synthesizing its own reason from only the last 400 chars of stdout.
+if [[ -n "$WATCHDOG_KILLED" ]] && [[ -z "$AGENT_END_EVENT" ]]; then
+    jq -n \
+        --argjson latency_ms "$LATENCY_MS" \
+        --arg model "$MODEL" \
+        --arg session_id "$EFFECTIVE_SESSION_ID" \
+        '{
+            result: {
+                status: "failed",
+                value: null,
+                reason: "Stream idle timeout: pi process did not exit and produced no agent_end event",
+                retry_meta: null
+            },
+            usage: {
+                input_tokens: 0,
+                output_tokens: 0,
+                cache_read_input_tokens: 0,
+                cache_creation_input_tokens: 0,
+                cost_usd: 0,
+                latency_ms: $latency_ms,
+                model: $model,
+                num_turns: 1
+            },
+            error: "watchdog: Stream idle timeout",
+            harness: "pi",
+            session_id: (if $session_id == "" then null else $session_id end)
+        }'
+    exit 0
+fi
 
 if [[ $EXIT_CODE -ne 0 ]] && [[ -z "$AGENT_END_EVENT" ]]; then
     TAIL_OUT="$(tail -c 500 "$TMP_OUT" 2>/dev/null || true)"

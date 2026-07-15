@@ -130,21 +130,97 @@ trap '_capture_transcript; rm -f "$TMP_OUT"' EXIT
 
 START_TS_MS="$(_ts_ms)"
 
-set +e
-env \
-    -u CLAUDECODE \
-    -u CLAUDE_CODE_SSE_PORT \
-    -u CLAUDE_CODE_ENTRYPOINT \
-    -u CLAUDE_CODE_SESSION_ID \
-    -u CLAUDE_CODE_EXECPATH \
-    -u AI_AGENT \
-    -u SECRET_KEY_BASE \
-    ENABLE_PROMPT_CACHING_1H=1 \
-    MAX_THINKING_TOKENS=0 \
-    MCP_CONNECTION_NONBLOCKING=true \
-    claude "${COMMON_FLAGS[@]}" -- "$PROMPT" </dev/null >"$TMP_OUT" 2>&1
-EXIT_CODE=$?
-set -e
+# ── Idle/stall watchdog (loop-invoked calls only, CODEGEN_LOOP=1) ────────────
+# A dropped/stalled API connection can leave claude emitting its full response
+# then never exiting (S+/sleeping on a stalled ESTABLISHED socket). System.cmd
+# in the Elixir loop has no timeout, so a hung claude wedges the whole build
+# indefinitely. The watchdog kills a hung child on either of two triggers:
+#   (1) result-present fast-path: TMP_OUT already carries a terminal "result"
+#       event AND the process is still alive after CODEGEN_CALL_RESULT_GRACE_SECS
+#       (default 30s) — the work is done; recover it as a salvaged success.
+#   (2) idle cap: TMP_OUT has not grown for CODEGEN_CALL_IDLE_CAP_SECS (default
+#       900s) — a genuine mid-stream stall with no result to salvage.
+# One-shot platform codegen-call (no CODEGEN_LOOP) runs the exec verbatim,
+# uncapped — byte-identical to pre-watchdog behavior.
+WATCHDOG_KILLED=""
+if [[ "${CODEGEN_LOOP:-}" == "1" ]]; then
+    RESULT_GRACE_SECS="${CODEGEN_CALL_RESULT_GRACE_SECS:-30}"
+    IDLE_CAP_SECS="${CODEGEN_CALL_IDLE_CAP_SECS:-900}"
+
+    set +e
+    env \
+        -u CLAUDECODE \
+        -u CLAUDE_CODE_SSE_PORT \
+        -u CLAUDE_CODE_ENTRYPOINT \
+        -u CLAUDE_CODE_SESSION_ID \
+        -u CLAUDE_CODE_EXECPATH \
+        -u AI_AGENT \
+        -u SECRET_KEY_BASE \
+        ENABLE_PROMPT_CACHING_1H=1 \
+        MAX_THINKING_TOKENS=0 \
+        MCP_CONNECTION_NONBLOCKING=true \
+        claude "${COMMON_FLAGS[@]}" -- "$PROMPT" </dev/null >"$TMP_OUT" 2>&1 &
+    CHILD_PID=$!
+
+    LAST_SIZE=-1
+    LAST_GROWTH_TS=$(_ts_ms)
+    RESULT_SEEN_TS=""
+    while kill -0 "$CHILD_PID" 2>/dev/null; do
+        sleep 5
+        CUR_SIZE="$(wc -c <"$TMP_OUT" 2>/dev/null || printf '0')"
+        NOW_MS=$(_ts_ms)
+        if [[ "$CUR_SIZE" != "$LAST_SIZE" ]]; then
+            LAST_SIZE="$CUR_SIZE"
+            LAST_GROWTH_TS="$NOW_MS"
+        fi
+
+        # Trigger (1): terminal result event already present.
+        if [[ -z "$RESULT_SEEN_TS" ]]; then
+            if jq -c -R 'fromjson? | select(.type == "result")' "$TMP_OUT" 2>/dev/null | grep -q .; then
+                RESULT_SEEN_TS="$NOW_MS"
+            fi
+        fi
+        if [[ -n "$RESULT_SEEN_TS" ]] && (((NOW_MS - RESULT_SEEN_TS) / 1000 >= RESULT_GRACE_SECS)); then
+            printf 'codegen-call: watchdog killing claude (pid %s) — result already emitted, grace %ss elapsed\n' "$CHILD_PID" "$RESULT_GRACE_SECS" >&2
+            WATCHDOG_KILLED=1
+            break
+        fi
+
+        # Trigger (2): idle cap — no output growth for IDLE_CAP_SECS.
+        if (((NOW_MS - LAST_GROWTH_TS) / 1000 >= IDLE_CAP_SECS)); then
+            printf 'codegen-call: watchdog killing claude (pid %s) — idle %ss with no output growth\n' "$CHILD_PID" "$IDLE_CAP_SECS" >&2
+            WATCHDOG_KILLED=1
+            break
+        fi
+    done
+
+    if [[ -n "$WATCHDOG_KILLED" ]]; then
+        kill -TERM "$CHILD_PID" 2>/dev/null || true
+        sleep 2
+        kill -KILL "$CHILD_PID" 2>/dev/null || true
+        pkill -9 -P "$CHILD_PID" 2>/dev/null || true
+    fi
+
+    wait "$CHILD_PID"
+    EXIT_CODE=$?
+    set -e
+else
+    set +e
+    env \
+        -u CLAUDECODE \
+        -u CLAUDE_CODE_SSE_PORT \
+        -u CLAUDE_CODE_ENTRYPOINT \
+        -u CLAUDE_CODE_SESSION_ID \
+        -u CLAUDE_CODE_EXECPATH \
+        -u AI_AGENT \
+        -u SECRET_KEY_BASE \
+        ENABLE_PROMPT_CACHING_1H=1 \
+        MAX_THINKING_TOKENS=0 \
+        MCP_CONNECTION_NONBLOCKING=true \
+        claude "${COMMON_FLAGS[@]}" -- "$PROMPT" </dev/null >"$TMP_OUT" 2>&1
+    EXIT_CODE=$?
+    set -e
+fi
 
 END_TS_MS="$(_ts_ms)"
 LATENCY_MS=$((END_TS_MS - START_TS_MS))
@@ -152,6 +228,39 @@ LATENCY_MS=$((END_TS_MS - START_TS_MS))
 # ── Parse stream-json into envelope ──────────────────────────────────────────
 # Extract the last result event from stream-json
 RESULT_EVENT="$(jq -c -R 'fromjson? | select(.type == "result")' "$TMP_OUT" 2>/dev/null | tail -1 || true)"
+
+# Watchdog stall (no salvageable result event) → emit a proper failed envelope
+# with a retryable-taxonomy reason and exit 0 (NOT 1) so the loop reads the
+# FULL untruncated reason via Jason.decode! rather than synthesizing its own
+# reason from only the last 400 chars of stdout (which can truncate the
+# "Stream idle timeout" token out of a large raw TMP_OUT tail).
+if [[ -n "$WATCHDOG_KILLED" ]] && [[ -z "$RESULT_EVENT" ]]; then
+    jq -n \
+        --argjson latency_ms "$LATENCY_MS" \
+        --arg model "$MODEL" \
+        '{
+            result: {
+                status: "failed",
+                value: null,
+                reason: "Stream idle timeout: claude process did not exit and produced no result event",
+                retry_meta: null
+            },
+            usage: {
+                input_tokens: 0,
+                output_tokens: 0,
+                cache_read_input_tokens: 0,
+                cache_creation_input_tokens: 0,
+                cost_usd: 0,
+                latency_ms: $latency_ms,
+                model: $model,
+                num_turns: 0
+            },
+            error: "watchdog: Stream idle timeout",
+            harness: "claude_code",
+            session_id: null
+        }'
+    exit 0
+fi
 
 if [[ $EXIT_CODE -ne 0 ]] && [[ -z "$RESULT_EVENT" ]]; then
     # Claude binary failed with no parseable output
