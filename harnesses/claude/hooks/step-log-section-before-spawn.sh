@@ -91,7 +91,7 @@ build_and_fire_breadcrumb() {
     local sid="${SESSION_ID:-unknown}"
     local bc_ts bc_mtime bc_sentinel bc_sentinel_path
     bc_ts=$(date -u +%Y-%m-%dT%H:%M:%SZ)
-    bc_mtime=$(stat -f '%m' "$TRANSCRIPT_PATH" 2>/dev/null || stat -c '%Y' "$TRANSCRIPT_PATH" 2>/dev/null || echo 0)
+    bc_mtime=$(stat -c '%Y' "$TRANSCRIPT_PATH" 2>/dev/null || stat -f '%m' "$TRANSCRIPT_PATH" 2>/dev/null || echo 0)
     bc_sentinel_path="${CWD:-$PWD}/codegen/logging/.active"
     bc_sentinel=""
     [ -f "$bc_sentinel_path" ] && bc_sentinel=$(cat "$bc_sentinel_path" 2>/dev/null || true)
@@ -203,7 +203,7 @@ if [ -n "$bc_sentinel_target" ] && [ "$bc_sentinel_target" != "$log" ] && [ -e "
     bc_grep_sentinel_log="no"
     jq -e --arg r "$need" 'select(.ev=="role" and .role==$r)' "$bc_sentinel_target" >/dev/null 2>&1 && bc_grep_sentinel_log="yes"
 fi
-bc_mtime=$(stat -f '%m' "$TRANSCRIPT_PATH" 2>/dev/null || stat -c '%Y' "$TRANSCRIPT_PATH" 2>/dev/null || echo 0)
+bc_mtime=$(stat -c '%Y' "$TRANSCRIPT_PATH" 2>/dev/null || stat -f '%m' "$TRANSCRIPT_PATH" 2>/dev/null || echo 0)
 bc=$(jq -n \
     --arg ts "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
     --arg guard "step-log-section-before-spawn" \

@@ -98,7 +98,7 @@ if [ -n "$in_flight" ]; then
 
     bc_sid="${SESSION_ID:-unknown}"
     bc_ts=$(date -u +%Y-%m-%dT%H:%M:%SZ)
-    bc_mtime=$(stat -f '%m' "$TRANSCRIPT_PATH" 2>/dev/null || stat -c '%Y' "$TRANSCRIPT_PATH" 2>/dev/null || echo 0)
+    bc_mtime=$(stat -c '%Y' "$TRANSCRIPT_PATH" 2>/dev/null || stat -f '%m' "$TRANSCRIPT_PATH" 2>/dev/null || echo 0)
     bc_agent_ids=$(printf '%s' "$agent_ids" | tr '\n' ' ')
     bc_result_ids=$(printf '%s' "$result_ids" | tr '\n' ' ')
     bc_in_flight=$(printf '%s' "$in_flight" | tr '\n' ' ')

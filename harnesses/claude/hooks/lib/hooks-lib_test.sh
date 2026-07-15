@@ -566,6 +566,22 @@ result=$(split_command_segments "a & b")
 expected=$'a \n b'
 assert_eq "split_command_segments: single & splits into two segments" "$expected" "$result"
 
+# ── breadcrumb mtime probe — GNU-first with BSD fallback, OS-portable ────────
+# Regression for: on Linux/GNU coreutils, `stat -f` means --file-system (exits
+# 0, prints filesystem info) — NOT "format" as on BSD/macOS. A BSD-first probe
+# silently returns non-numeric garbage on Linux instead of falling back. The
+# probe must try GNU `-c` first (errors cleanly on BSD, triggering fallback).
+mtime_probe_file="$(mktemp)"
+trap 'rm -f "$mtime_probe_file"' EXIT
+mtime_probe_result=$(stat -c '%Y' "$mtime_probe_file" 2>/dev/null || stat -f '%m' "$mtime_probe_file" 2>/dev/null || echo 0)
+mtime_probe_numeric="no"
+case "$mtime_probe_result" in
+'' | *[!0-9]*) mtime_probe_numeric="no" ;;
+*) mtime_probe_numeric="yes" ;;
+esac
+assert_eq "breadcrumb mtime probe (GNU-first) yields purely numeric value on this OS" "yes" "$mtime_probe_numeric"
+rm -f "$mtime_probe_file"
+
 echo ""
 echo "Results: $pass passed, $fail failed"
 

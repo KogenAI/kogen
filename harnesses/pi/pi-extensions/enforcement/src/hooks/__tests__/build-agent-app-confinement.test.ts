@@ -10,14 +10,19 @@ import * as path from "node:path";
 import * as fs from "node:fs";
 
 // Synthetic build sandbox for test isolation.
-const SYNTHETIC_SANDBOX = path.join(
-  os.tmpdir(),
-  "build-agent-confinement-sandbox",
+//
+// Rooted under os.homedir(), NOT os.tmpdir(): the hook under test grants an
+// unconditional scratch escape hatch to any path under /tmp/ or
+// /private/tmp/ (see build-agent-app-confinement.ts). On Linux os.tmpdir()
+// resolves to /tmp, so a fixture rooted there would make every
+// "denies ... outside sandbox" assertion unreachable — the hook always
+// allows it before the sandbox-prefix check runs.
+const FIXTURE_ROOT = path.join(
+  os.homedir(),
+  ".build-agent-confinement-fixture",
 );
-const SYNTHETIC_OUTSIDE = path.join(
-  os.tmpdir(),
-  "build-agent-confinement-outside",
-);
+const SYNTHETIC_SANDBOX = path.join(FIXTURE_ROOT, "sandbox");
+const SYNTHETIC_OUTSIDE = path.join(FIXTURE_ROOT, "outside");
 
 describe("build-agent-app-confinement", { concurrency: 1 }, () => {
   let _capturedHandler: (event: unknown) => Promise<unknown>;
@@ -37,6 +42,7 @@ describe("build-agent-app-confinement", { concurrency: 1 }, () => {
   }
 
   before(() => {
+    fs.rmSync(FIXTURE_ROOT, { recursive: true, force: true });
     fs.mkdirSync(SYNTHETIC_SANDBOX, { recursive: true });
     fs.mkdirSync(SYNTHETIC_OUTSIDE, { recursive: true });
     // Create files for tests
@@ -48,8 +54,7 @@ describe("build-agent-app-confinement", { concurrency: 1 }, () => {
 
   after(() => {
     delete process.env["CODEGEN_BUILD_CWD"];
-    fs.rmSync(SYNTHETIC_SANDBOX, { recursive: true, force: true });
-    fs.rmSync(SYNTHETIC_OUTSIDE, { recursive: true, force: true });
+    fs.rmSync(FIXTURE_ROOT, { recursive: true, force: true });
   });
 
   beforeEach(() => {

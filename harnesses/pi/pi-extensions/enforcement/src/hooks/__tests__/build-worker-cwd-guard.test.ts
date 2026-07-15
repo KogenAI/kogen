@@ -9,9 +9,22 @@ import * as os from "node:os";
 import * as path from "node:path";
 
 // Synthetic apps root for test isolation — mirrors OCG_APPS_ROOT env var.
-const SYNTHETIC_APPS_ROOT = path.join(os.tmpdir(), "ocg-test-apps-root");
+//
+// Rooted under os.homedir(), NOT os.tmpdir(): the hook under test
+// unconditionally allows any path starting with /tmp (see
+// build-worker-cwd-guard.ts). On Linux os.tmpdir() resolves to /tmp, so a
+// fixture rooted there would make the "blocks Read inside upload dir when
+// OCG_USER_FILES_DIR unset (control)" assertion unreachable — the hook
+// always allows it before the userFilesDir check runs.
+const SYNTHETIC_APPS_ROOT = path.join(
+  os.homedir(),
+  ".ocg-test-apps-root",
+);
 const SYNTHETIC_PROJECT_DIR = path.join(SYNTHETIC_APPS_ROOT, "test-project");
-const SYNTHETIC_USER_FILES_DIR = path.join(os.tmpdir(), "ocg-test-user-files");
+const SYNTHETIC_USER_FILES_DIR = path.join(
+  os.homedir(),
+  ".ocg-test-user-files",
+);
 
 describe("build-worker-cwd-guard", () => {
   let _capturedHandler: (event: unknown) => Promise<unknown>;
