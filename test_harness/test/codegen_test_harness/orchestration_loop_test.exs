@@ -85,6 +85,17 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
     fn _cwd -> {"make test", "short", 0} end
   end
 
+  # Opt-out seam for tests that pre-seed a real dirty file BEFORE calling
+  # run/1 to simulate mid-cycle developer output (a real cycle never reaches
+  # the reviewer/gate/factcheck/commit-guard steps with a clean tree — see
+  # invoke_reviewer/4's empty-set refusal). That pre-seeded dirt is the
+  # test's own simulated in-cycle state, not the "foreign uncommitted
+  # changes at true cycle start" the turn-0 clean-tree guard exists to
+  # catch — these tests opt out of it explicitly.
+  defp no_op_clean_tree_preflight_fn do
+    fn _cwd -> :ok end
+  end
+
   # Stub :planner_plan_fn seam: skips the real cycle-log read (LoopGate.planner_body/1)
   # for tests that stub invoke_fn without ever writing a real planner role body to
   # disk. Provides a minimal, non-blank, single-`## Plan` body so
@@ -2278,7 +2289,8 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
                  gate_fn: always_clear_gate_fn(),
                  gate_preflight_fn: no_op_gate_preflight_fn(),
                  preflight_probe_fn: all_present_preflight_probe_fn(),
-                 advance_cycle_state_fn: no_op_advance_cycle_state_fn()
+                 advance_cycle_state_fn: no_op_advance_cycle_state_fn(),
+                 clean_tree_preflight_fn: no_op_clean_tree_preflight_fn()
                )
 
       assert List.last(Agent.get(calls_agent, & &1)) == "committer"
@@ -2302,7 +2314,8 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
           gate_preflight_fn: no_op_gate_preflight_fn(),
           preflight_probe_fn: all_present_preflight_probe_fn(),
           advance_cycle_state_fn: no_op_advance_cycle_state_fn(),
-          max_curator_doc_cycles: 0
+          max_curator_doc_cycles: 0,
+          clean_tree_preflight_fn: no_op_clean_tree_preflight_fn()
         )
 
       assert {:error, reason} = result
@@ -2338,7 +2351,8 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
                  gate_fn: always_clear_gate_fn(),
                  gate_preflight_fn: no_op_gate_preflight_fn(),
                  preflight_probe_fn: all_present_preflight_probe_fn(),
-                 advance_cycle_state_fn: no_op_advance_cycle_state_fn()
+                 advance_cycle_state_fn: no_op_advance_cycle_state_fn(),
+                 clean_tree_preflight_fn: no_op_clean_tree_preflight_fn()
                )
 
       assert List.last(Agent.get(calls_agent, & &1)) == "committer"
@@ -2359,7 +2373,8 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
           gate_preflight_fn: no_op_gate_preflight_fn(),
           preflight_probe_fn: all_present_preflight_probe_fn(),
           advance_cycle_state_fn: no_op_advance_cycle_state_fn(),
-          max_curator_doc_cycles: 0
+          max_curator_doc_cycles: 0,
+          clean_tree_preflight_fn: no_op_clean_tree_preflight_fn()
         )
 
       assert {:error, reason} = result
@@ -2390,7 +2405,8 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
                  gate_fn: always_clear_gate_fn(),
                  gate_preflight_fn: no_op_gate_preflight_fn(),
                  preflight_probe_fn: all_present_preflight_probe_fn(),
-                 advance_cycle_state_fn: no_op_advance_cycle_state_fn()
+                 advance_cycle_state_fn: no_op_advance_cycle_state_fn(),
+                 clean_tree_preflight_fn: no_op_clean_tree_preflight_fn()
                )
 
       assert List.last(Agent.get(calls_agent, & &1)) == "committer"
@@ -2724,7 +2740,8 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
                                             _verdict,
                                             _project_dir ->
                    :ok
-                 end
+                 end,
+                 clean_tree_preflight_fn: no_op_clean_tree_preflight_fn()
                )
     end
 
@@ -2767,7 +2784,8 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
           preflight_probe_fn: all_present_preflight_probe_fn(),
           advance_cycle_state_fn: fn _state, _step_log, _session_id, _verdict, _project_dir ->
             :ok
-          end
+          end,
+          clean_tree_preflight_fn: no_op_clean_tree_preflight_fn()
         )
       end
     end
@@ -2818,7 +2836,8 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
           preflight_probe_fn: all_present_preflight_probe_fn(),
           advance_cycle_state_fn: fn _state, _step_log, _session_id, _verdict, _project_dir ->
             :ok
-          end
+          end,
+          clean_tree_preflight_fn: no_op_clean_tree_preflight_fn()
         )
       end
     end
@@ -2933,7 +2952,8 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
                  gate_tree_match_fn: match_fn,
                  gate_preflight_fn: no_op_gate_preflight_fn(),
                  preflight_probe_fn: all_present_preflight_probe_fn(),
-                 advance_cycle_state_fn: no_op_advance_cycle_state_fn()
+                 advance_cycle_state_fn: no_op_advance_cycle_state_fn(),
+                 clean_tree_preflight_fn: no_op_clean_tree_preflight_fn()
                )
 
       # gate_fn is the PRIMARY developer-gate loop's gate — it fires once for
@@ -2976,7 +2996,8 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
                  gate_tree_match_fn: match_fn,
                  gate_preflight_fn: no_op_gate_preflight_fn(),
                  preflight_probe_fn: all_present_preflight_probe_fn(),
-                 advance_cycle_state_fn: no_op_advance_cycle_state_fn()
+                 advance_cycle_state_fn: no_op_advance_cycle_state_fn(),
+                 clean_tree_preflight_fn: no_op_clean_tree_preflight_fn()
                )
 
       # gate_fn fires once for the primary developer-gate step, then a
@@ -3021,7 +3042,8 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
                  gate_preflight_fn: no_op_gate_preflight_fn(),
                  preflight_probe_fn: all_present_preflight_probe_fn(),
                  advance_cycle_state_fn: no_op_advance_cycle_state_fn(),
-                 max_final_gate_cycles: 1
+                 max_final_gate_cycles: 1,
+                 clean_tree_preflight_fn: no_op_clean_tree_preflight_fn()
                )
 
       # The developer role was invoked twice: once in the normal sequence,
@@ -3066,7 +3088,8 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
                  gate_preflight_fn: no_op_gate_preflight_fn(),
                  preflight_probe_fn: all_present_preflight_probe_fn(),
                  advance_cycle_state_fn: no_op_advance_cycle_state_fn(),
-                 max_final_gate_cycles: 1
+                 max_final_gate_cycles: 1,
+                 clean_tree_preflight_fn: no_op_clean_tree_preflight_fn()
                )
 
       assert reason =~ "pre-commit re-gate" or reason =~ "never graded clear"
@@ -3134,9 +3157,135 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
                        gate_tree_match_fn: match_fn,
                        gate_preflight_fn: no_op_gate_preflight_fn(),
                        preflight_probe_fn: all_present_preflight_probe_fn(),
-                       advance_cycle_state_fn: no_op_advance_cycle_state_fn()
+                       advance_cycle_state_fn: no_op_advance_cycle_state_fn(),
+                       clean_tree_preflight_fn: no_op_clean_tree_preflight_fn()
                      )
                    end
+    end
+  end
+
+  describe "run/1 — turn-0 clean-tree precondition (symmetric HEAD guard)" do
+    setup do
+      dir =
+        Path.join(
+          System.tmp_dir!(),
+          "preflight_clean_tree_test_#{:erlang.unique_integer([:positive])}"
+        )
+
+      File.mkdir_p!(dir)
+      on_exit(fn -> File.rm_rf!(dir) end)
+
+      {_out, 0} = System.cmd("git", ["init", "-q"], cd: dir)
+      {_out, 0} = System.cmd("git", ["config", "user.email", "test@example.com"], cd: dir)
+      {_out, 0} = System.cmd("git", ["config", "user.name", "Test"], cd: dir)
+      {_out, 0} = System.cmd("git", ["config", "commit.gpgsign", "false"], cd: dir)
+
+      File.write!(Path.join(dir, "README.md"), "init\n")
+      {_out, 0} = System.cmd("git", ["add", "-A"], cd: dir)
+      {_out, 0} = System.cmd("git", ["commit", "-q", "-m", "init"], cd: dir)
+
+      {:ok, dir: dir}
+    end
+
+    test "dirty tree at cycle start raises BEFORE any role is invoked", %{
+      calls_agent: calls_agent,
+      dir: dir
+    } do
+      # A file left uncommitted from a prior (aborted) session — foreign
+      # dirt the incoming cycle must never inherit.
+      File.write!(Path.join(dir, "leftover.txt"), "from a prior aborted session\n")
+
+      invoke_fn = fn role, _harness, _ctx, _opts ->
+        Agent.update(calls_agent, fn calls -> calls ++ [role] end)
+        {:ok, %{"status" => "success", "value" => "did #{role}"}}
+      end
+
+      assert_raise RuntimeError, ~r/tree is NOT clean before the cycle/, fn ->
+        OrchestrationLoop.run(
+          harness: "claude_code",
+          stack: "static",
+          cwd: dir,
+          pitch: "do the thing",
+          invoke_fn: invoke_fn,
+          gate_fn: always_clear_gate_fn(),
+          gate_preflight_fn: no_op_gate_preflight_fn(),
+          preflight_probe_fn: all_present_preflight_probe_fn()
+        )
+      end
+
+      # No role was ever invoked — the guard fires before turn 0's first spawn.
+      assert Agent.get(calls_agent, & &1) == []
+    end
+
+    test "clean tree at cycle start proceeds normally (no false positive)", %{
+      calls_agent: calls_agent,
+      dir: dir
+    } do
+      # The stubbed developer role produces real work so the cycle has a
+      # non-empty diff to commit — a clean-start cycle that never dirties
+      # the tree would trip the (unrelated) "no changes for the reviewer"
+      # guard, not the guard under test here.
+      invoke_fn = fn
+        "developer-static", _harness, ctx, _opts ->
+          Agent.update(calls_agent, fn calls -> calls ++ ["developer-static"] end)
+          File.write!(Path.join(ctx.cwd, "feature.txt"), "wip\n")
+          {:ok, %{"status" => "success", "value" => "did developer-static"}}
+
+        "committer", _harness, ctx, _opts ->
+          Agent.update(calls_agent, fn calls -> calls ++ ["committer"] end)
+          System.cmd("git", ["add", "-A"], cd: ctx.cwd)
+          System.cmd("git", ["commit", "-q", "-m", "test commit"], cd: ctx.cwd)
+          {:ok, %{"status" => "success", "value" => "did committer"}}
+
+        role, _harness, _ctx, _opts ->
+          Agent.update(calls_agent, fn calls -> calls ++ [role] end)
+
+          value =
+            if role == "reviewer-static", do: "REVIEW_VERDICT: APPROVED", else: "did #{role}"
+
+          {:ok, %{"status" => "success", "value" => value}}
+      end
+
+      assert :ok ==
+               OrchestrationLoop.run(
+                 harness: "claude_code",
+                 stack: "static",
+                 cwd: dir,
+                 pitch: "do the thing",
+                 invoke_fn: invoke_fn,
+                 gate_fn: always_clear_gate_fn(),
+                 gate_preflight_fn: no_op_gate_preflight_fn(),
+                 preflight_probe_fn: all_present_preflight_probe_fn(),
+                 advance_cycle_state_fn: no_op_advance_cycle_state_fn()
+               )
+
+      assert List.last(Agent.get(calls_agent, & &1)) == "committer"
+    end
+
+    test "non-git cwd is fail-exempt (mocked-test synthetic cwd unaffected)", %{
+      calls_agent: calls_agent
+    } do
+      invoke_fn = fn role, _harness, _ctx, _opts ->
+        Agent.update(calls_agent, fn calls -> calls ++ [role] end)
+
+        value =
+          if role == "reviewer-static", do: "REVIEW_VERDICT: APPROVED", else: "did #{role}"
+
+        {:ok, %{"status" => "success", "value" => value}}
+      end
+
+      assert :ok ==
+               OrchestrationLoop.run(
+                 harness: "claude_code",
+                 stack: "static",
+                 cwd: "/tmp/irrelevant",
+                 pitch: "do the thing",
+                 invoke_fn: invoke_fn,
+                 gate_fn: always_clear_gate_fn(),
+                 gate_preflight_fn: no_op_gate_preflight_fn(),
+                 preflight_probe_fn: all_present_preflight_probe_fn(),
+                 advance_cycle_state_fn: no_op_advance_cycle_state_fn()
+               )
     end
   end
 

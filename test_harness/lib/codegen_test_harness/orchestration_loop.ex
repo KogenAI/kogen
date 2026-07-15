@@ -229,6 +229,19 @@ defmodule CodegenTestHarness.OrchestrationLoop do
     cwd = Keyword.fetch!(opts, :cwd)
     pitch = Keyword.fetch!(opts, :pitch)
 
+    # Turn-0 clean-tree precondition: symmetric HEAD guard to verify_committed!'s
+    # tail guard. A cycle starting on an already-dirty tree is ambiguous — roles
+    # can read, modify, or commit foreign uncommitted changes, and the tail
+    # guard can only report the mess after a full (paid) cycle. Refuse here,
+    # cheaply, before any role runs or the gate resolves. Overridable via
+    # :clean_tree_preflight_fn — existing mocked tests simulate mid-cycle
+    # developer output (a real dirty tree BEFORE their stubbed invoke_fn runs)
+    # to exercise gate/factcheck/commit-guard behavior in isolation; those are
+    # not the "foreign uncommitted changes at true cycle start" this guard
+    # exists to catch, so they opt out with a no-op here.
+    clean_tree_fn = Keyword.get(opts, :clean_tree_preflight_fn, &preflight_clean_tree!/1)
+    clean_tree_fn.(cwd)
+
     roles = role_sequence(stack)
     ctx = %{cwd: cwd, pitch: pitch, artifacts: %{}, base_head: cycle_base_head(cwd)}
 
@@ -730,6 +743,36 @@ defmodule CodegenTestHarness.OrchestrationLoop do
       end
     else
       _ -> nil
+    end
+  end
+
+  # Turn-0 HEAD guard, symmetric to verify_committed!/2's tail guard below.
+  # Reuses the exact same porcelain + fail-exempt idiom: a non-existent cwd or
+  # non-git work tree is a legitimate "nothing to verify" (only mocked tests
+  # use such a cwd; real runs always operate in the scaffolded project's git
+  # repo). A real dirty tree at cycle start raises — the loop is a pure
+  # detector, never an auto-stasher; the operator (or the queue drainer's
+  # existing stash-retry) resolves it.
+  defp preflight_clean_tree!(cwd) do
+    with true <- File.dir?(cwd),
+         {out, 0} <-
+           System.cmd("git", ["status", "--porcelain"], cd: cwd, stderr_to_stdout: true) do
+      dirty = String.trim(out)
+
+      if dirty != "" do
+        n = dirty |> String.split("\n") |> length()
+
+        raise "OrchestrationLoop: the working tree is NOT clean before the cycle — " <>
+                "#{n} uncommitted file(s):\n#{dirty}\n" <>
+                "Commit or stash before starting a loop cycle; a cycle must begin from a " <>
+                "clean tree so no role inherits or commits foreign changes."
+      end
+
+      :ok
+    else
+      # fail-loud-exempt: a non-existent cwd or non-git work tree is a
+      # legitimate "nothing to verify" (only mocked tests use such a cwd).
+      _ -> :ok
     end
   end
 
