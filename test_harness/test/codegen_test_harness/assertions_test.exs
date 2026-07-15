@@ -54,4 +54,55 @@ defmodule CodegenTestHarness.AssertionsTest do
       assert Assertions.assert_assets_deploy!(dir) == :ok
     end
   end
+
+  describe "assert_usage_rules_index_no_dangling_citations!/1" do
+    test "passes when every cited file exists on disk" do
+      dir = tmp_dir()
+      usage_rules_dir = Path.join(dir, "codegen/usage_rules")
+      File.mkdir_p!(usage_rules_dir)
+
+      File.write!(Path.join(usage_rules_dir, "phoenix-1.8.8.md"), "# phoenix")
+
+      File.write!(Path.join(usage_rules_dir, "INDEX.md"), """
+      # Usage Rules Index
+
+      ## phoenix
+
+      Use when: writing controllers.
+
+      - `phoenix-1.8.8.md`
+      """)
+
+      assert Assertions.assert_usage_rules_index_no_dangling_citations!(dir) == :ok
+    end
+
+    test "raises when a cited file does not exist" do
+      dir = tmp_dir()
+      usage_rules_dir = Path.join(dir, "codegen/usage_rules")
+      File.mkdir_p!(usage_rules_dir)
+
+      File.write!(Path.join(usage_rules_dir, "INDEX.md"), """
+      # Usage Rules Index
+
+      ## phoenix
+
+      Use when: writing controllers.
+
+      - `phoenix-1.8.4.md`
+      """)
+
+      assert_raise ExUnit.AssertionError, fn ->
+        Assertions.assert_usage_rules_index_no_dangling_citations!(dir)
+      end
+    end
+
+    test "raises when INDEX.md itself is missing" do
+      dir = tmp_dir()
+      File.mkdir_p!(Path.join(dir, "codegen/usage_rules"))
+
+      assert_raise ExUnit.AssertionError, fn ->
+        Assertions.assert_usage_rules_index_no_dangling_citations!(dir)
+      end
+    end
+  end
 end

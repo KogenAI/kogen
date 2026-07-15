@@ -190,13 +190,14 @@ tools-header-no-dup:
 ci: test
 
 # test: run every PreToolUse/SubagentStop/Stop hook unit-test script in parallel,
-# plus every gate check, in ONE pass — not fail-fast. All 10 former prereq
+# plus every gate check, in ONE pass — not fail-fast. All 11 former prereq
 # checks (hook-parity, hook-header-parity, harness-parity, test-generator,
 # enforce-registry-parity, enforce-hook-rationale, test-hermetic,
-# prompt-content-parity, tools-header-no-dup, rule-render-freshness) run as
-# backgrounded `$(MAKE)` stages alongside the existing hooks/scaffold/install/npm
-# stages, so a single `make test` surfaces every independent failure at once
-# instead of stopping at the first failing prereq.
+# prompt-content-parity, tools-header-no-dup, rule-render-freshness,
+# usage-rules-index-parity) run as backgrounded `$(MAKE)` stages alongside the
+# existing hooks/scaffold/install/npm stages, so a single `make test` surfaces
+# every independent failure at once instead of stopping at the first failing
+# prereq.
 # Each *_test.sh is hermetic — own tmp dirs, no shared state — so xargs -P is safe.
 # Job count caps at 8 to avoid thrashing on smaller machines.
 # Post-deps stages (hook-tests, phoenix scaffold, test_harness/install, npm) run
@@ -218,7 +219,7 @@ test:
 	tmp_hook_parity=$$(mktemp); tmp_hook_header_parity=$$(mktemp); tmp_harness_parity=$$(mktemp); \
 	tmp_test_generator=$$(mktemp); tmp_enforce_registry_parity=$$(mktemp); tmp_enforce_hook_rationale=$$(mktemp); \
 	tmp_test_hermetic=$$(mktemp); tmp_prompt_content_parity=$$(mktemp); tmp_tools_header_no_dup=$$(mktemp); \
-	tmp_rule_render_freshness=$$(mktemp); \
+	tmp_rule_render_freshness=$$(mktemp); tmp_usage_rules_index_parity=$$(mktemp); \
 	pids=(); labels=(); tmps=(); \
 	{ ./harnesses/claude/hooks/run-tests.sh; } > "$$tmp_hooks" 2>&1 & pids+=($$!); labels+=(hooks); tmps+=("$$tmp_hooks"); \
 	{ ./shared/scaffold/phoenix/run-tests.sh; } > "$$tmp_scaffold" 2>&1 & pids+=($$!); labels+=(scaffold-phoenix); tmps+=("$$tmp_scaffold"); \
@@ -233,6 +234,7 @@ test:
 	{ $(MAKE) --no-print-directory prompt-content-parity; } > "$$tmp_prompt_content_parity" 2>&1 & pids+=($$!); labels+=(prompt-content-parity); tmps+=("$$tmp_prompt_content_parity"); \
 	{ $(MAKE) --no-print-directory tools-header-no-dup; } > "$$tmp_tools_header_no_dup" 2>&1 & pids+=($$!); labels+=(tools-header-no-dup); tmps+=("$$tmp_tools_header_no_dup"); \
 	{ $(MAKE) --no-print-directory rule-render-freshness; } > "$$tmp_rule_render_freshness" 2>&1 & pids+=($$!); labels+=(rule-render-freshness); tmps+=("$$tmp_rule_render_freshness"); \
+	{ $(MAKE) --no-print-directory usage-rules-index-parity; } > "$$tmp_usage_rules_index_parity" 2>&1 & pids+=($$!); labels+=(usage-rules-index-parity); tmps+=("$$tmp_usage_rules_index_parity"); \
 	{ \
 		fail=0; \
 		for ext in enforcement askuserquestion subagents web-utils; do \
@@ -297,7 +299,8 @@ test:
 	rm -f "$$tmp_hooks" "$$tmp_scaffold" "$$tmp_install" "$$tmp_npm" "$$tmp_subagents" \
 		"$$tmp_hook_parity" "$$tmp_hook_header_parity" "$$tmp_harness_parity" "$$tmp_test_generator" \
 		"$$tmp_enforce_registry_parity" "$$tmp_enforce_hook_rationale" "$$tmp_test_hermetic" \
-		"$$tmp_prompt_content_parity" "$$tmp_tools_header_no_dup" "$$tmp_rule_render_freshness"; \
+		"$$tmp_prompt_content_parity" "$$tmp_tools_header_no_dup" "$$tmp_rule_render_freshness" \
+		"$$tmp_usage_rules_index_parity"; \
 	exit "$$fail"
 
 # test-hermetic: fast, deterministic ExUnit tests — no LLM, no Playwright, no real server.
@@ -533,6 +536,17 @@ rule-render-freshness:
 	done; \
 	if [ "$$fail" = "0" ]; then echo "rule-render-freshness: OK — all apps docs match fresh render"; fi; \
 	exit "$$fail"
+
+# usage-rules-index-parity: verify shared/usage_rules/INDEX.md matches a fresh
+# regeneration from the corpus on disk (max version per already-tracked dep).
+# Fails loud, naming the stale dep(s), so INDEX.md can never silently drift
+# behind the corpus again (see regenerate_usage_rules_index.py docstring).
+.PHONY: usage-rules-index-parity
+usage-rules-index-parity:
+	@python3 "$(SCRIPT_DIR)/templates/generator/regenerate_usage_rules_index.py" \
+		--usage-rules-dir "$(SCRIPT_DIR)/shared/usage_rules" --check; rc=$$?; \
+	if [ $$rc -eq 0 ] && [ -n "$$VERBOSE" ]; then echo "usage-rules-index-parity: PASS"; fi; \
+	exit $$rc
 
 # show-failures: pretty-print the durable agent tool-failure store.
 .PHONY: show-failures

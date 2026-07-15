@@ -16,13 +16,13 @@ Use when: configuring AppSignal Phoenix integration, instrumenting LiveView, or 
 
 Use when: configuring HTTP server, tuning connection limits, or debugging Plug adapter behaviour.
 
-- `bandit-1.10.3.md`
+- `bandit-1.12.0.md`
 
 ## credo
 
 Use when: fixing Credo violations, configuring `.credo.exs`, or understanding Credo checks.
 
-- `credo-1.7.17.md`
+- `credo-1.7.19.md`
 
 ## dialyxir
 
@@ -76,7 +76,7 @@ Use when: presigning S3 URLs, head_object, multipart uploads, or path-style/buck
 
 Use when: writing module docs, configuring `mix docs`, or setting up ExDoc extras.
 
-- `ex_doc-0.40.1.md`
+- `ex_doc-0.40.3.md`
 
 ## ex_machina
 
@@ -118,7 +118,7 @@ Use when: tuning HTTP pool size, SSL options, or debugging upstream request fail
 
 Use when: encoding/decoding JSON, handling custom types, or tuning encoder options.
 
-- `jason-1.4.4.md`
+- `jason-1.4.5.md`
 
 ## joken
 
@@ -142,34 +142,41 @@ Use when: declaring behaviour mocks (`App.LLM.RunnerMock`, `BuildAdapterMock`, `
 
 Use when: writing workers, configuring queues, testing jobs, or debugging distributed queue behaviour.
 
-- `oban-2.20.3.md`
-- `oban-2.20.3-architecture.md`
-- `oban-2.20.3-engines.md`
-- `oban-2.20.3-job-definition.md`
-- `oban-2.20.3-job-enqueueing.md`
-- `oban-2.20.3-job-execution.md`
-- `oban-2.20.3-queue-management.md`
-- `oban-2.20.3-telemetry.md`
-- `oban-2.20.3-testing.md`
+- `oban-2.21.1.md`
+- `oban-2.21.1-advanced.md`
+- `oban-2.21.1-installation.md`
+- `oban-2.21.1-jobs.md`
+- `oban-2.21.1-monitoring.md`
+- `oban-2.21.1-queues.md`
+- `oban-2.21.1-scheduling.md`
+- `oban-2.21.1-testing.md`
+- `oban-2.21.1-workers.md`
 
 ## optimum_credo
 
 Use when: understanding custom Credo checks added by the Optimum credo plugin.
 
-- `optimum_credo-0.3.0.md`
+- `optimum_credo-0.4.0.md`
 
 ## phoenix
 
 Use when: writing controllers, router scopes, channels, plugs, or deployment configs.
 
-- `phoenix-1.8.4.md`
-- `phoenix-1.8.4-channels.md`
-- `phoenix-1.8.4-controllers.md`
-- `phoenix-1.8.4-deployment.md`
-- `phoenix-1.8.4-ecto.md`
-- `phoenix-1.8.4-plugs.md`
-- `phoenix-1.8.4-routing.md`
-- `phoenix-1.8.4-testing.md`
+- `phoenix-1.8.8.md`
+- `phoenix-1.8.8-components.md`
+- `phoenix-1.8.8-controllers-views.md`
+- `phoenix-1.8.8-controllers.md`
+- `phoenix-1.8.8-deployment.md`
+- `phoenix-1.8.8-ecto.md`
+- `phoenix-1.8.8-json.md`
+- `phoenix-1.8.8-liveview.md`
+- `phoenix-1.8.8-plug.md`
+- `phoenix-1.8.8-plugs-telemetry.md`
+- `phoenix-1.8.8-realtime.md`
+- `phoenix-1.8.8-routing.md`
+- `phoenix-1.8.8-security.md`
+- `phoenix-1.8.8-setup.md`
+- `phoenix-1.8.8-testing.md`
 
 ## phoenix_ecto
 
@@ -199,14 +206,19 @@ Use when: configuring live reload patterns or debugging hot-reload behaviour in 
 
 Use when: writing LiveView modules, hooks, forms, navigation, uploads, or LiveView testing.
 
-- `phoenix_live_view-1.1.25.md`
-- `phoenix_live_view-1.1.25-async.md`
-- `phoenix_live_view-1.1.25-bindings.md`
-- `phoenix_live_view-1.1.25-forms.md`
-- `phoenix_live_view-1.1.25-lifecycle.md`
-- `phoenix_live_view-1.1.25-navigation.md`
-- `phoenix_live_view-1.1.25-streams.md`
-- `phoenix_live_view-1.1.25-uploads.md`
+- `phoenix_live_view-1.1.32.md`
+- `phoenix_live_view-1.1.32-assigns.md`
+- `phoenix_live_view-1.1.32-async.md`
+- `phoenix_live_view-1.1.32-bindings.md`
+- `phoenix_live_view-1.1.32-components.md`
+- `phoenix_live_view-1.1.32-forms.md`
+- `phoenix_live_view-1.1.32-js-interop.md`
+- `phoenix_live_view-1.1.32-js.md`
+- `phoenix_live_view-1.1.32-lifecycle.md`
+- `phoenix_live_view-1.1.32-navigation.md`
+- `phoenix_live_view-1.1.32-router.md`
+- `phoenix_live_view-1.1.32-security.md`
+- `phoenix_live_view-1.1.32-uploads.md`
 
 ## postgrex
 
@@ -260,8 +272,7 @@ Use when: integrating with systemd notifications/sockets in production releases.
 
 Use when: configuring the Tailwind build step, `tailwind.config.js`, or debugging CSS pipeline.
 
-- `tailwind-0.4.0.md`
-- `tailwind-0.4.1.md`
+- `tailwind-0.5.1.md`
 
 ## telemetry_metrics
 
@@ -279,4 +290,4 @@ Use when: configuring periodic measurement polling or adding custom VM metrics.
 
 Use when: configuring the Tidewave MCP server or verifying unknown library function signatures.
 
-- `tidewave-0.5.5.md`
+- `tidewave-0.6.1.md`

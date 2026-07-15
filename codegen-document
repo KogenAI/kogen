@@ -19,6 +19,7 @@ CODEGEN_DIR="$SCRIPT_DIR"
 
 USAGE_RULES_DIR="$CODEGEN_DIR/shared/usage_rules"
 SYSTEM_PROMPT_FILE="$CODEGEN_DIR/harnesses/claude/usage-rules-system-prompt.txt"
+REGEN_INDEX_SCRIPT="$CODEGEN_DIR/templates/generator/regenerate_usage_rules_index.py"
 MODEL="haiku"
 
 # Track background jobs for cleanup
@@ -313,6 +314,22 @@ PROMPT_EOF
     rm -f "$temp_output"
 }
 
+# Function to regenerate shared/usage_rules/INDEX.md from what is on disk.
+# Non-fatal: a regeneration failure prints a warning but never aborts
+# codegen-document (the per-dep .md files are already written by this point).
+regenerate_index() {
+    if [ ! -f "$REGEN_INDEX_SCRIPT" ]; then
+        echo "Warning: $REGEN_INDEX_SCRIPT not found — skipping INDEX.md regeneration" >&2
+        return 0
+    fi
+    if python3 "$REGEN_INDEX_SCRIPT" --usage-rules-dir "$USAGE_RULES_DIR" --output "$USAGE_RULES_DIR/INDEX.md"; then
+        return 0
+    else
+        echo "Warning: INDEX.md regeneration failed — corpus docs were written but INDEX.md may be stale" >&2
+        return 0
+    fi
+}
+
 # Main function — whole-lock mode
 main() {
     echo "codegen-document — Usage Rules Generator"
@@ -446,6 +463,8 @@ main() {
         echo ""
         echo "Some dependencies failed after 3 retries. Run again to retry, or check hexdocs.pm." >&2
     fi
+
+    regenerate_index
 }
 
 # ─── Argument parsing ─────────────────────────────────────────────────────────
@@ -472,6 +491,9 @@ while [[ $# -gt 0 ]]; do
         echo "  codegen-document              # generate all missing docs"
         echo "  codegen-document jason        # generate/regenerate doc for jason"
         echo "  codegen-document ecto --model sonnet"
+        echo ""
+        echo "After generation, shared/usage_rules/INDEX.md is regenerated automatically"
+        echo "(re-citing the max version present for each already-tracked dep)."
         exit 0
         ;;
     -*)
@@ -541,7 +563,9 @@ if [ -n "$POSITIONAL_DEP" ]; then
 
     dep_record="${dep_arg}:${dep_version}|${dep_repo_url}|${dep_tree_ref}"
     generate_usage_rule "$dep_arg" "$dep_version" "$dep_record"
-    exit $?
+    gen_rc=$?
+    regenerate_index
+    exit $gen_rc
 fi
 
 # ─── Whole-lock mode ──────────────────────────────────────────────────────────

@@ -52,6 +52,8 @@ defmodule CodegenTestHarness.Stacks.Phoenix.ScaffoldTest do
     assert File.exists?(Path.join(cwd, "codegen/usage_rules_INDEX.md")),
            "expected codegen/usage_rules_INDEX.md in #{cwd}"
 
+    Assertions.assert_usage_rules_index_no_dangling_citations!(cwd)
+
     # working tree must be clean after codegen-scaffold commit
     {porcelain, 0} =
       System.cmd("git", ["status", "--porcelain"], cd: cwd, stderr_to_stdout: true, env: [])

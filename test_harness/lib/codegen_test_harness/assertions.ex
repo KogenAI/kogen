@@ -322,4 +322,39 @@ defmodule CodegenTestHarness.Assertions do
 
     :ok
   end
+
+  @doc """
+  Asserts that the shared usage_rules corpus INDEX (reached via the
+  `codegen/usage_rules` symlink seeded by codegen-scaffold) cites no dangling
+  files — every `- \`<file>.md\`` line under a `## <dep>` heading must resolve
+  to a real file inside `codegen/usage_rules/`.
+
+  Returns `:ok`.
+  """
+  @spec assert_usage_rules_index_no_dangling_citations!(String.t()) :: :ok
+  def assert_usage_rules_index_no_dangling_citations!(cwd) do
+    usage_rules_dir = Path.join(cwd, "codegen/usage_rules")
+    index_path = Path.join(usage_rules_dir, "INDEX.md")
+
+    assert File.exists?(index_path), "expected #{index_path} to exist"
+
+    content = File.read!(index_path)
+
+    cited_files =
+      ~r/^- `([^`]+)`$/m
+      |> Regex.scan(content)
+      |> Enum.map(fn [_, filename] -> filename end)
+
+    assert cited_files != [], "expected #{index_path} to cite at least one file"
+
+    dangling =
+      Enum.reject(cited_files, fn filename ->
+        File.exists?(Path.join(usage_rules_dir, filename))
+      end)
+
+    assert dangling == [],
+           "dangling citation(s) in #{index_path} — cited but missing from #{usage_rules_dir}: #{inspect(dangling)}"
+
+    :ok
+  end
 end
