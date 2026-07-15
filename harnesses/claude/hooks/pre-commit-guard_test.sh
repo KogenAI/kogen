@@ -41,7 +41,7 @@ run_test() {
     # the fixture — resolve_role()'s CLAUDE_ROLE > PI_ROLE precedence would
     # silently override a test's intended role.
     local stdout
-    stdout=$(printf '%s' "$input" | env -u CLAUDE_ROLE -u AGENT_TYPE -u PI_ROLE bash "$GUARD" 2>/dev/null || true)
+    stdout=$(printf '%s' "$input" | env -u CLAUDE_ROLE -u AGENT_TYPE -u PI_ROLE -u CODEGEN_BUILD_START_TS -u CODEGEN_CYCLE_BASE_SHA bash "$GUARD" 2>/dev/null || true)
 
     local outcome
     if printf '%s' "$stdout" | grep -q '"permissionDecision"[[:space:]]*:[[:space:]]*"deny"'; then
@@ -76,7 +76,7 @@ run_test_env() {
     # PI_ROLE from the outer shell before applying the test's explicit
     # env_prefix overrides.
     local stdout
-    stdout=$(printf '%s' "$input" | env -u CLAUDE_ROLE -u AGENT_TYPE -u PI_ROLE $env_prefix bash "$GUARD" 2>/dev/null || true)
+    stdout=$(printf '%s' "$input" | env -u CLAUDE_ROLE -u AGENT_TYPE -u PI_ROLE -u CODEGEN_BUILD_START_TS -u CODEGEN_CYCLE_BASE_SHA $env_prefix bash "$GUARD" 2>/dev/null || true)
 
     local outcome
     if printf '%s' "$stdout" | grep -q '"permissionDecision"[[:space:]]*:[[:space:]]*"deny"'; then
@@ -379,6 +379,69 @@ run_test "git commit with quoted -m arg still denied (verb unquoted)" "2" "$FIXT
 # the ops-mode branch also applies strip_quoted before its scan).
 FIXTURE_OPS_SSH_STASH='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"ssh box \"git stash\""},"agent_type":"","agent_id":"a"}'
 run_test_env "ops role + ssh remote git-stash payload (quoted) allowed without unlock" "0" "$FIXTURE_OPS_SSH_STASH" "CLAUDE_ROLE=ops"
+
+# ── git global-option evasion regression (this pitch) ───────────────────────
+# git's global options (-C <path>, --git-dir=, -c k=v, --no-pager, ...) may
+# sit between `git` and its subcommand. Every verb regex assumed `git` was
+# immediately followed by the verb token — `git -C /tmp/x commit -m y`
+# evaded the match entirely. strip_git_global_opts() normalizes these before
+# matching; every verb arm (+ ops arm) must now deny the evaded form too.
+
+# Test 40: git -C <dir> commit for non-committer — MUST DENY (the reported evasion)
+FIXTURE_C_COMMIT='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"git -C /tmp/x commit -m y"},"agent_type":"developer-phoenix-backend","agent_id":"a"}'
+run_test "git -C <dir> commit denied for non-committer (global-opt evasion closed)" "2" "$FIXTURE_C_COMMIT"
+
+# Test 41: git --git-dir=<x> add for non-committer — MUST DENY
+FIXTURE_GITDIR_ADD='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"git --git-dir=/tmp/x/.git add -A"},"agent_type":"developer-phoenix-backend","agent_id":"a"}'
+run_test "git --git-dir=<x> add denied for non-committer" "2" "$FIXTURE_GITDIR_ADD"
+
+# Test 42: git -c k=v rm for non-committer — MUST DENY
+FIXTURE_C_OPT_RM='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"git -c user.name=x rm foo"},"agent_type":"developer-phoenix-backend","agent_id":"a"}'
+run_test "git -c k=v rm denied for non-committer" "2" "$FIXTURE_C_OPT_RM"
+
+# Test 43: git -C <dir> mv for non-committer — MUST DENY
+FIXTURE_C_MV='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"git -C /tmp/x mv a b"},"agent_type":"developer-phoenix-backend","agent_id":"a"}'
+run_test "git -C <dir> mv denied for non-committer" "2" "$FIXTURE_C_MV"
+
+# Test 44: git -C <dir> restore --staged for non-committer — MUST DENY
+FIXTURE_C_RESTORE='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"git -C /tmp/x restore --staged foo"},"agent_type":"developer-phoenix-backend","agent_id":"a"}'
+run_test "git -C <dir> restore --staged denied for non-committer" "2" "$FIXTURE_C_RESTORE"
+
+# Test 45: git -C <dir> rebase for non-committer — MUST DENY
+FIXTURE_C_REBASE='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"git -C /tmp/x rebase -i HEAD~3"},"agent_type":"developer-phoenix-backend","agent_id":"a"}'
+run_test "git -C <dir> rebase denied for non-committer" "2" "$FIXTURE_C_REBASE"
+
+# Test 46: git -C <dir> cherry-pick for non-committer — MUST DENY
+FIXTURE_C_CHERRY='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"git -C /tmp/x cherry-pick abc123"},"agent_type":"developer-phoenix-backend","agent_id":"a"}'
+run_test "git -C <dir> cherry-pick denied for non-committer" "2" "$FIXTURE_C_CHERRY"
+
+# Test 47: git -C <dir> revert for non-committer — MUST DENY
+FIXTURE_C_REVERT='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"git -C /tmp/x revert HEAD"},"agent_type":"developer-phoenix-backend","agent_id":"a"}'
+run_test "git -C <dir> revert denied for non-committer" "2" "$FIXTURE_C_REVERT"
+
+# Test 48: git -C <dir> merge for non-committer — MUST DENY
+FIXTURE_C_MERGE='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"git -C /tmp/x merge other-branch"},"agent_type":"developer-phoenix-backend","agent_id":"a"}'
+run_test "git -C <dir> merge denied for non-committer" "2" "$FIXTURE_C_MERGE"
+
+# Test 49: git -C <dir> push --force for non-committer — MUST DENY
+FIXTURE_C_PUSH='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"git -C /tmp/x push --force origin main"},"agent_type":"developer-phoenix-backend","agent_id":"a"}'
+run_test "git -C <dir> push --force denied for non-committer" "2" "$FIXTURE_C_PUSH"
+
+# Test 50: git -C <dir> reset --hard for non-committer — MUST DENY
+FIXTURE_C_RESET_HARD='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"git -C /tmp/x reset --hard HEAD~1"},"agent_type":"developer-phoenix-backend","agent_id":"a"}'
+run_test "git -C <dir> reset --hard denied for non-committer" "2" "$FIXTURE_C_RESET_HARD"
+
+# Test 51: committer STILL allowed for git -C <dir> commit (actor gate unaffected)
+FIXTURE_C_COMMIT_COMMITTER='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"git -C /tmp/x commit -m y"},"agent_type":"committer","agent_id":"a"}'
+run_test "git -C <dir> commit still allowed for committer" "0" "$FIXTURE_C_COMMIT_COMMITTER"
+
+# Test 52: ops mode + git -C <dir> commit WITHOUT unlock — MUST DENY (ops-arm evasion closed)
+FIXTURE_OPS_C_COMMIT='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"git -C /tmp/x commit -m y"},"agent_type":"","agent_id":"a"}'
+run_test_env "ops mode git -C <dir> commit without unlock denied (global-opt evasion closed)" "2" "$FIXTURE_OPS_C_COMMIT" "CLAUDE_ROLE=ops"
+
+# Test 53: git -C <dir> status for non-committer — MUST ALLOW (read-only verb unaffected)
+FIXTURE_C_STATUS='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"git -C /tmp/x status"},"agent_type":"developer-phoenix-backend","agent_id":"a"}'
+run_test "git -C <dir> status still allowed for non-committer (read-only unaffected)" "0" "$FIXTURE_C_STATUS"
 
 echo ""
 echo "Results: $pass passed, $fail failed"

@@ -16,15 +16,20 @@
 # backward rolls within the same build session.
 #
 # A "backward roll" on file F means:
-#   - Session commit C (committed after CODEGEN_BUILD_START_TS) changed F
+#   - Session commit C (reachable from HEAD but not from CODEGEN_CYCLE_BASE_SHA
+#     — the SHA captured ONCE at cycle start, before any role ran) changed F
 #   - The currently staged version of F is byte-identical to F's content at
 #     C's parent (the state *before* C was made)
+#
+# Using the cycle-stable base (rather than a per-role CODEGEN_BUILD_START_TS
+# timestamp) also catches a commit made by an EARLIER role in the same
+# cycle — the per-role timestamp window missed this.
 #
 # Allow conditions:
 #   - AGENT_TYPE != "committer" (defensive; registry already scopes this hook)
 #   - Tool call does not contain `git commit`
 #   - COMMITTER_ALLOW_REVERT=1 is set (documented operator escape hatch)
-#   - CODEGEN_BUILD_START_TS unset or empty (not in a build context)
+#   - CODEGEN_CYCLE_BASE_SHA unset or empty (not in a build context / unborn HEAD)
 #   - No commits exist in the session yet (first commit — nothing to protect)
 #   - No staged file matches a superseded prior state
 #
@@ -65,21 +70,17 @@ if [ "${COMMITTER_ALLOW_REVERT:-}" = "1" ]; then
 fi
 
 # Not in a build context — allow
-build_start_ts="${CODEGEN_BUILD_START_TS:-}"
-if [ -z "$build_start_ts" ]; then
-    debug_log committer-no-revert-prior-commit "allow: CODEGEN_BUILD_START_TS unset"
+base_sha="${CODEGEN_CYCLE_BASE_SHA:-}"
+if [ -z "$base_sha" ]; then
+    debug_log committer-no-revert-prior-commit "allow: CODEGEN_CYCLE_BASE_SHA unset"
     exit 0
 fi
 
 project_dir="${CLAUDE_PROJECT_DIR:-${CWD:-$PWD}}"
 
-# Collect session commits: SHAs committed after build start timestamp
-session_commits=$(git -C "$project_dir" log --format="%H %ct" 2>/dev/null |
-    while IFS=' ' read -r sha ct; do
-        if [ "$ct" -gt "$build_start_ts" ] 2>/dev/null; then
-            printf '%s\n' "$sha"
-        fi
-    done)
+# Collect session commits: SHAs reachable from HEAD but not from the
+# cycle-stable base (any role's commit this cycle, not just the committer's).
+session_commits=$(git -C "$project_dir" rev-list "$base_sha"..HEAD 2>/dev/null)
 
 # No session commits yet — first commit of session, nothing to protect against
 if [ -z "$session_commits" ]; then

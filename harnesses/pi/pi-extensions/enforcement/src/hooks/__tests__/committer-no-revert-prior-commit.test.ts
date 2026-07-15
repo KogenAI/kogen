@@ -28,6 +28,13 @@ function gitCmd(cwd: string, args: string[]): void {
   });
 }
 
+function gitRevParseHead(cwd: string): string {
+  return execFileSync("git", ["rev-parse", "HEAD"], {
+    cwd,
+    encoding: "utf8",
+  }).trim();
+}
+
 describe("committer-no-revert-prior-commit", { concurrency: 1 }, () => {
   let _capturedHandler: (event: unknown) => Promise<unknown>;
   let savedEnv: Record<string, string | undefined>;
@@ -59,11 +66,13 @@ describe("committer-no-revert-prior-commit", { concurrency: 1 }, () => {
       AGENT_TYPE: process.env["AGENT_TYPE"],
       COMMITTER_ALLOW_REVERT: process.env["COMMITTER_ALLOW_REVERT"],
       CODEGEN_BUILD_START_TS: process.env["CODEGEN_BUILD_START_TS"],
+      CODEGEN_CYCLE_BASE_SHA: process.env["CODEGEN_CYCLE_BASE_SHA"],
       CLAUDE_PROJECT_DIR: process.env["CLAUDE_PROJECT_DIR"],
     };
     delete process.env["AGENT_TYPE"];
     delete process.env["COMMITTER_ALLOW_REVERT"];
     delete process.env["CODEGEN_BUILD_START_TS"];
+    delete process.env["CODEGEN_CYCLE_BASE_SHA"];
     delete process.env["CLAUDE_PROJECT_DIR"];
   });
 
@@ -81,40 +90,41 @@ describe("committer-no-revert-prior-commit", { concurrency: 1 }, () => {
     const result = await runHook(
       "git commit -m test",
       "developer-phoenix-backend",
-      { CODEGEN_BUILD_START_TS: "1000000" },
+      { CODEGEN_CYCLE_BASE_SHA: "deadbeef" },
     );
     assert.ok(result == null || (result as { block?: boolean }).block !== true);
   });
 
   it("allows when COMMITTER_ALLOW_REVERT=1 (escape hatch)", async () => {
     const result = await runHook("git commit -m test", "committer", {
-      CODEGEN_BUILD_START_TS: "1000000",
+      CODEGEN_CYCLE_BASE_SHA: "deadbeef",
       COMMITTER_ALLOW_REVERT: "1",
     });
     assert.ok(result == null || (result as { block?: boolean }).block !== true);
   });
 
-  it("allows when CODEGEN_BUILD_START_TS is unset (not a build context)", async () => {
+  it("allows when CODEGEN_CYCLE_BASE_SHA is unset (not a build context)", async () => {
     const result = await runHook("git commit -m test", "committer", {});
     assert.ok(result == null || (result as { block?: boolean }).block !== true);
   });
 
   it("allows when command is not git commit (e.g. git status)", async () => {
     const result = await runHook("git status", "committer", {
-      CODEGEN_BUILD_START_TS: "1000000",
+      CODEGEN_CYCLE_BASE_SHA: "deadbeef",
     });
     assert.ok(result == null || (result as { block?: boolean }).block !== true);
   });
 
   it("allows git commit-graph (word-boundary fix: no substring match on git commit)", async () => {
     const result = await runHook("git commit-graph write", "committer", {
-      CODEGEN_BUILD_START_TS: "1000000",
+      CODEGEN_CYCLE_BASE_SHA: "deadbeef",
     });
     assert.ok(result == null || (result as { block?: boolean }).block !== true);
   });
 
   describe("with a real git repo", () => {
     let tmpDir: string;
+    let baseSha: string;
 
     beforeEach(() => {
       tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "pi-revert-test-"));
@@ -123,7 +133,7 @@ describe("committer-no-revert-prior-commit", { concurrency: 1 }, () => {
       gitCmd(tmpDir, ["config", "user.name", "Test"]);
       gitCmd(tmpDir, ["config", "core.hooksPath", "/dev/null"]);
 
-      // Baseline commit (pre-session)
+      // Baseline commit (pre-cycle — this is CODEGEN_CYCLE_BASE_SHA)
       fs.writeFileSync(path.join(tmpDir, "file.txt"), "original content");
       gitCmd(tmpDir, ["add", "file.txt"]);
       gitCmd(tmpDir, [
@@ -134,8 +144,9 @@ describe("committer-no-revert-prior-commit", { concurrency: 1 }, () => {
         "-m",
         "baseline",
       ]);
+      baseSha = gitRevParseHead(tmpDir);
 
-      // Session commit: update file
+      // Cycle commit: update file
       fs.writeFileSync(path.join(tmpDir, "file.txt"), "updated content");
       gitCmd(tmpDir, ["add", "file.txt"]);
       gitCmd(tmpDir, [
@@ -144,7 +155,7 @@ describe("committer-no-revert-prior-commit", { concurrency: 1 }, () => {
         "commit",
         "-q",
         "-m",
-        "session commit",
+        "cycle commit",
       ]);
     });
 
@@ -152,50 +163,48 @@ describe("committer-no-revert-prior-commit", { concurrency: 1 }, () => {
       fs.rmSync(tmpDir, { recursive: true, force: true });
     });
 
-    it("allows when no session commits in build window (future build_start)", async () => {
+    it("allows when no cycle commits exist (base == HEAD)", async () => {
       // Stage forward content
       fs.writeFileSync(path.join(tmpDir, "file.txt"), "new content");
       gitCmd(tmpDir, ["add", "file.txt"]);
 
-      // Build start in the far future — no session commits qualify
-      const futureTs = String(Math.floor(Date.now() / 1000) + 3600);
+      const headSha = gitRevParseHead(tmpDir);
       const result = await runHook("git commit -m forward", "committer", {
-        CODEGEN_BUILD_START_TS: futureTs,
+        CODEGEN_CYCLE_BASE_SHA: headSha,
         CLAUDE_PROJECT_DIR: tmpDir,
       });
       assert.ok(result == null || (result as { block?: boolean }).block !== true);
     });
 
-    it("denies when staged content reverts a session commit", async () => {
-      // Stage the original (pre-session-commit) content — backward roll
+    it("denies when staged content reverts a cycle commit", async () => {
+      // Stage the original (pre-cycle-commit) content — backward roll
       fs.writeFileSync(path.join(tmpDir, "file.txt"), "original content");
       gitCmd(tmpDir, ["add", "file.txt"]);
 
-      // BUILD_START_TS=0 → all commits qualify as session commits
       const result = await runHook("git commit -m revert", "committer", {
-        CODEGEN_BUILD_START_TS: "0",
+        CODEGEN_CYCLE_BASE_SHA: baseSha,
         CLAUDE_PROJECT_DIR: tmpDir,
       });
       assert.ok((result as { block?: boolean }).block === true);
     });
 
     it("allows when staged content is forward progress (not a backward roll)", async () => {
-      // Stage new content beyond the session commit
+      // Stage new content beyond the cycle commit
       fs.writeFileSync(
         path.join(tmpDir, "file.txt"),
-        "further progress beyond session commit",
+        "further progress beyond cycle commit",
       );
       gitCmd(tmpDir, ["add", "file.txt"]);
 
       const result = await runHook("git commit -m progress", "committer", {
-        CODEGEN_BUILD_START_TS: "0",
+        CODEGEN_CYCLE_BASE_SHA: baseSha,
         CLAUDE_PROJECT_DIR: tmpDir,
       });
       assert.ok(result == null || (result as { block?: boolean }).block !== true);
     });
 
     it("allows codegen-log write narrating git commit even with backward-roll content staged", async () => {
-      // Stage the original (pre-session-commit) content — would be a backward roll
+      // Stage the original (pre-cycle-commit) content — would be a backward roll
       fs.writeFileSync(path.join(tmpDir, "file.txt"), "original content");
       gitCmd(tmpDir, ["add", "file.txt"]);
 
@@ -203,7 +212,7 @@ describe("committer-no-revert-prior-commit", { concurrency: 1 }, () => {
         'codegen-log section --slug test --body @- <<EOF\n## committer Section\nRan git commit -m "msg" successfully.\nEOF',
         "committer",
         {
-          CODEGEN_BUILD_START_TS: "0",
+          CODEGEN_CYCLE_BASE_SHA: baseSha,
           CLAUDE_PROJECT_DIR: tmpDir,
         },
       );
@@ -217,7 +226,65 @@ describe("committer-no-revert-prior-commit", { concurrency: 1 }, () => {
       gitCmd(tmpDir, ["add", "file.txt"]);
 
       const result = await runHook("git commit -m revert", "committer", {
-        CODEGEN_BUILD_START_TS: "0",
+        CODEGEN_CYCLE_BASE_SHA: baseSha,
+        CLAUDE_PROJECT_DIR: tmpDir,
+      });
+      assert.ok((result as { block?: boolean }).block === true);
+    });
+  });
+
+  describe("earlier-role commit (cycle-stable base)", () => {
+    let tmpDir: string;
+    let cycleBase: string;
+
+    beforeEach(() => {
+      tmpDir = fs.mkdtempSync(
+        path.join(os.tmpdir(), "pi-revert-earlier-role-test-"),
+      );
+      gitCmd(tmpDir, ["init", "-q"]);
+      gitCmd(tmpDir, ["config", "user.email", "test@example.com"]);
+      gitCmd(tmpDir, ["config", "user.name", "Test"]);
+      gitCmd(tmpDir, ["config", "core.hooksPath", "/dev/null"]);
+
+      fs.writeFileSync(path.join(tmpDir, "file.txt"), "original");
+      gitCmd(tmpDir, ["add", "file.txt"]);
+      gitCmd(tmpDir, [
+        "-c",
+        "core.hooksPath=/dev/null",
+        "commit",
+        "-q",
+        "-m",
+        "cycle base commit",
+      ]);
+      cycleBase = gitRevParseHead(tmpDir);
+
+      // Simulate an EARLIER role committing before the committer's own turn.
+      fs.writeFileSync(
+        path.join(tmpDir, "file.txt"),
+        "changed by an earlier role",
+      );
+      gitCmd(tmpDir, ["add", "file.txt"]);
+      gitCmd(tmpDir, [
+        "-c",
+        "core.hooksPath=/dev/null",
+        "commit",
+        "-q",
+        "-m",
+        "earlier-role commit",
+      ]);
+    });
+
+    afterEach(() => {
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    });
+
+    it("denies backward roll against an earlier role's commit via cycle-stable base", async () => {
+      // committer stages a backward roll against the earlier role's commit
+      fs.writeFileSync(path.join(tmpDir, "file.txt"), "original");
+      gitCmd(tmpDir, ["add", "file.txt"]);
+
+      const result = await runHook("git commit -m revert", "committer", {
+        CODEGEN_CYCLE_BASE_SHA: cycleBase,
         CLAUDE_PROJECT_DIR: tmpDir,
       });
       assert.ok((result as { block?: boolean }).block === true);

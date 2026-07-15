@@ -6,10 +6,11 @@
  * Event: tool_call (PreToolUse equivalent)
  * Matcher: bash
  *
- * Note: This hook shells out to git for content comparison. Reduced fidelity vs
- * the Bash twin in one area: Pi has no transcript access, so session-commit
- * discovery relies solely on CODEGEN_BUILD_START_TS + git log timestamps.
- * Functionally equivalent for the primary use case (build session enforcement).
+ * Note: This hook shells out to git for content comparison. Session-commit
+ * discovery uses CODEGEN_CYCLE_BASE_SHA — the SHA captured ONCE at cycle
+ * start, before any role ran (identical across every role's env). This also
+ * catches a commit made by an EARLIER role in the same cycle, which a
+ * per-role timestamp window would miss.
  */
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
@@ -73,41 +74,33 @@ export function register(pi: ExtensionAPI): void {
       return;
     }
 
-    const buildStartTs = process.env["CODEGEN_BUILD_START_TS"] ?? "";
-    if (!buildStartTs) {
+    const baseSha = process.env["CODEGEN_CYCLE_BASE_SHA"] ?? "";
+    if (!baseSha) {
       debugLog(
         "committer-no-revert-prior-commit",
-        "allow: CODEGEN_BUILD_START_TS unset",
+        "allow: CODEGEN_CYCLE_BASE_SHA unset",
       );
       return;
     }
-    const buildStartNum = parseInt(buildStartTs, 10);
 
     const projectDir =
       process.env["CLAUDE_PROJECT_DIR"] ??
       process.env["CWD"] ??
       process.cwd();
 
-    // Collect session commits: SHAs committed strictly after build start timestamp
-    const logOutput = gitLog(projectDir, ["log", "--format=%H %ct"]);
+    // Collect session commits: SHAs reachable from HEAD but not from the
+    // cycle-stable base (any role's commit this cycle, not just the
+    // committer's).
+    const logOutput = gitLog(projectDir, ["rev-list", `${baseSha}..HEAD`]);
     if (!logOutput) {
       debugLog(
         "committer-no-revert-prior-commit",
-        "allow: no git log output",
+        "allow: no session commits yet",
       );
       return;
     }
 
-    const sessionCommits: string[] = [];
-    for (const line of logOutput.split("\n")) {
-      const parts = line.trim().split(" ");
-      if (parts.length < 2) continue;
-      const [sha, ct] = parts;
-      const commitTs = parseInt(ct, 10);
-      if (!isNaN(commitTs) && commitTs > buildStartNum) {
-        sessionCommits.push(sha);
-      }
-    }
+    const sessionCommits = logOutput.split("\n").filter((s) => s.trim());
 
     if (sessionCommits.length === 0) {
       debugLog(

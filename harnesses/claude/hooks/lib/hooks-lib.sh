@@ -485,6 +485,61 @@ strip_quoted() {
     printf '%s' "$1" | sed "s/'[^']*'//g; s/\"[^\"]*\"//g"
 }
 
+# strip_git_global_opts <command_string> — echoes $1 with git's global
+# options removed from between the `git` token and its subcommand, so
+# `git -C /tmp/x commit -m y` normalizes to `git commit -m y` before
+# verb-matching. Closed, documented set (see `man git`, GLOBAL OPTIONS):
+# -C <path>, -c <k=v>, --git-dir[=path], --work-tree[=path],
+# --exec-path[=path], --namespace[=ns], --no-pager, --no-replace-objects,
+# --literal-pathspecs, --bare, -p/--paginate, -P. Consumes ONLY tokens
+# matching these known option shapes and STOPS at the first token that does
+# not match one — that token is the subcommand (the verb) and is never
+# consumed, so a real `git commit` is always preserved. Applies to every
+# occurrence of a `git` token in the string (not just the first), so a
+# chained command (`foo && git -C x commit`) is normalized throughout.
+# Non-git input, or a bare `git <verb>` with no interposed options, passes
+# through unchanged. Pure-bash token walk — no external interpreter dep.
+strip_git_global_opts() {
+    local cmd="$1"
+    local -a words=($cmd)
+    local -a out=()
+    local -i n=${#words[@]}
+    local -i i=0
+    local w
+
+    while ((i < n)); do
+        w="${words[i]}"
+        out+=("$w")
+        if [ "$w" = "git" ]; then
+            i=$((i + 1))
+            while ((i < n)); do
+                w="${words[i]}"
+                case "$w" in
+                -C | -c | --git-dir | --work-tree | --exec-path | --namespace)
+                    # value-taking option with a SEPARATE next token (git -C /path)
+                    i=$((i + 1))
+                    ;;
+                --git-dir=* | --work-tree=* | --exec-path=* | --namespace=* | \
+                    --no-pager | --no-replace-objects | --literal-pathspecs | \
+                    --bare | --paginate | -p | -P)
+                    # value-inlined (--foo=bar) or boolean flag — consume just this token
+                    ;;
+                *)
+                    # first non-option token — the subcommand; stop consuming, re-emit
+                    break
+                    ;;
+                esac
+                i=$((i + 1))
+            done
+            continue
+        fi
+        i=$((i + 1))
+    done
+
+    local IFS=' '
+    printf '%s' "${out[*]}" 2>/dev/null
+}
+
 # split_command_segments <command_string> — echoes one shell-chain segment
 # per line, splitting ONLY on UNQUOTED && || ; | & and newline. Operators
 # inside single or double quotes are literal and never split (e.g. a commit

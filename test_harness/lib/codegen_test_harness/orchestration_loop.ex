@@ -2091,7 +2091,8 @@ defmodule CodegenTestHarness.OrchestrationLoop do
           transcript,
           role,
           resume_session_id,
-          cold_session_id
+          cold_session_id,
+          ctx.base_head
         )
       end)
 
@@ -2392,7 +2393,8 @@ defmodule CodegenTestHarness.OrchestrationLoop do
          transcript,
          agent,
          resume_session_id,
-         cold_session_id
+         cold_session_id,
+         base_head
        ) do
     unless File.exists?(@codegen_call_bin) do
       raise "OrchestrationLoop: codegen-call not found at #{@codegen_call_bin}"
@@ -2436,6 +2438,7 @@ defmodule CodegenTestHarness.OrchestrationLoop do
       [
         {"CODEGEN_DIR", @codegen_dir},
         {"CODEGEN_BUILD_START_TS", Integer.to_string(System.system_time(:second))},
+        {"CODEGEN_CYCLE_BASE_SHA", base_head || ""},
         {"CODEGEN_LOOP", "1"}
       ] ++
         if(transcript, do: [{"CODEGEN_CALL_TRANSCRIPT_PATH", transcript}], else: []) ++

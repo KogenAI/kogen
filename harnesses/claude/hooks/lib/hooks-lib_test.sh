@@ -582,6 +582,35 @@ esac
 assert_eq "breadcrumb mtime probe (GNU-first) yields purely numeric value on this OS" "yes" "$mtime_probe_numeric"
 rm -f "$mtime_probe_file"
 
+# ── strip_git_global_opts — normalizes interposed git global options ────────
+# Verb-preservation contract: consumes ONLY known option-shaped tokens
+# between `git` and the subcommand; the first non-option token (the verb)
+# is never consumed.
+assert_eq "strip_git_global_opts: -C <path> commit" "git commit -m y" \
+    "$(strip_git_global_opts "git -C /tmp/x commit -m y")"
+assert_eq "strip_git_global_opts: --git-dir=<x> add" "git add foo" \
+    "$(strip_git_global_opts "git --git-dir=/x add foo")"
+assert_eq "strip_git_global_opts: --git-dir <x> (separate token) add" "git add foo" \
+    "$(strip_git_global_opts "git --git-dir /x add foo")"
+assert_eq "strip_git_global_opts: -c k=v commit" "git commit -m y" \
+    "$(strip_git_global_opts "git -c user.name=x commit -m y")"
+assert_eq "strip_git_global_opts: --work-tree=<x> status" "git status" \
+    "$(strip_git_global_opts "git --work-tree=/x status")"
+assert_eq "strip_git_global_opts: --no-pager log" "git log" \
+    "$(strip_git_global_opts "git --no-pager log")"
+assert_eq "strip_git_global_opts: multiple stacked opts" "git commit -m y" \
+    "$(strip_git_global_opts "git -C /x -c user.name=y --no-pager commit -m y")"
+assert_eq "strip_git_global_opts: plain git commit unchanged" "git commit -m y" \
+    "$(strip_git_global_opts "git commit -m y")"
+assert_eq "strip_git_global_opts: non-git input unchanged" "echo hi && ls" \
+    "$(strip_git_global_opts "echo hi && ls")"
+assert_eq "strip_git_global_opts: chained command normalizes the git segment" \
+    "foo && git commit -m y && bar" \
+    "$(strip_git_global_opts "foo && git -C x commit -m y && bar")"
+assert_eq "strip_git_global_opts: -C without matching verb still preserves next token as verb" \
+    "git status" \
+    "$(strip_git_global_opts "git -C /tmp/x status")"
+
 echo ""
 echo "Results: $pass passed, $fail failed"
 

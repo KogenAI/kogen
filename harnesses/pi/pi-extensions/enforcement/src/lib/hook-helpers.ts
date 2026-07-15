@@ -182,6 +182,58 @@ export function stripQuoted(command: string): string {
 }
 
 /**
+ * stripGitGlobalOpts() — Returns `command` with git's global options removed
+ * from between the `git` token and its subcommand, so
+ * `git -C /tmp/x commit -m y` normalizes to `git commit -m y` before
+ * verb-matching. Closed, documented set (see `man git`, GLOBAL OPTIONS):
+ * -C <path>, -c <k=v>, --git-dir[=path], --work-tree[=path],
+ * --exec-path[=path], --namespace[=ns], --no-pager, --no-replace-objects,
+ * --literal-pathspecs, --bare, -p/--paginate, -P. Consumes ONLY tokens
+ * matching these known option shapes and STOPS at the first token that does
+ * not match one — that token is the subcommand (the verb) and is never
+ * consumed, so a real `git commit` is always preserved. Applies to every
+ * occurrence of a `git` token in the string (not just the first), so a
+ * chained command (`foo && git -C x commit`) is normalized throughout.
+ * Non-git input, or a bare `git <verb>` with no interposed options, passes
+ * through unchanged.
+ */
+export function stripGitGlobalOpts(command: string): string {
+  const words = command.split(/\s+/).filter((w) => w.length > 0);
+  const out: string[] = [];
+  const valueTaking = new Set(["-C", "-c", "--git-dir", "--work-tree", "--exec-path", "--namespace"]);
+  const inlineOrBoolean = /^(--git-dir=|--work-tree=|--exec-path=|--namespace=|--no-pager$|--no-replace-objects$|--literal-pathspecs$|--bare$|--paginate$|-p$|-P$)/;
+
+  let i = 0;
+  const n = words.length;
+  while (i < n) {
+    const w = words[i];
+    out.push(w);
+    if (w === "git") {
+      i += 1;
+      while (i < n) {
+        const opt = words[i];
+        if (valueTaking.has(opt)) {
+          // value-taking option with a SEPARATE next token (git -C /path)
+          i += 2;
+          continue;
+        }
+        if (inlineOrBoolean.test(opt)) {
+          // value-inlined (--foo=bar) or boolean flag — consume just this token
+          i += 1;
+          continue;
+        }
+        // first non-option token — the subcommand; stop consuming, re-emit
+        break;
+      }
+      continue;
+    }
+    i += 1;
+  }
+
+  return out.join(" ");
+}
+
+/**
  * splitCommandSegments() — Splits `command` into shell-chain segments,
  * splitting ONLY on UNQUOTED &&, ||, ;, |, & and newline. Operators inside
  * single or double quotes are literal and never split (e.g. a commit

@@ -45,7 +45,9 @@ if [ "$_role" = "ops" ]; then
     # Fail-closed subject transform (see strip_quoted() in hooks-lib.sh):
     # a destructive git verb inside a quoted remote payload or string
     # argument is not a real local invocation; strip before matching.
-    _ops_cmd_unquoted=$(strip_quoted "$COMMAND")
+    # Also normalize interposed git global options (git -C <dir> commit)
+    # so they cannot evade the verb match — see strip_git_global_opts().
+    _ops_cmd_unquoted=$(strip_git_global_opts "$(strip_quoted "$COMMAND")")
     if printf '%s' "$_ops_cmd_unquoted" | grep -qE '\bgit[[:space:]]+(add|rm|mv|stash|commit|rebase|cherry-pick|revert|merge)\b|\bgit[[:space:]]+restore\b.*--staged\b|\bgit[[:space:]]+reset\b.*--hard\b|\bgit[[:space:]]+push\b.*(--force(-with-lease)?|[[:space:]]-f([[:space:]]|$))'; then
         [ "${CODEGEN_OPS_GIT_UNLOCK:-}" = "1" ] && exit 0
         deny "BLOCKED by pre-commit-guard: ops role alone no longer unlocks destructive git. Set CODEGEN_OPS_GIT_UNLOCK=1 in the environment ALSO to confirm intent (two-signal gate)."
@@ -76,8 +78,11 @@ fi
 # forbidden git verb sitting inside a quoted remote-exec payload (ssh host
 # "git stash") or a quoted string argument (grep -n 'git stash' file.sh) does
 # not trigger this guard. A real, unquoted, local git-verb invocation still
-# matches and is still denied. See strip_quoted() in hooks-lib.sh.
-_cmd_unquoted=$(strip_quoted "$COMMAND")
+# matches and is still denied. See strip_quoted() in hooks-lib.sh. Also
+# normalize interposed git global options (git -C <dir> commit, git
+# --git-dir=<x> add, …) so they cannot evade the verb match below — see
+# strip_git_global_opts() in hooks-lib.sh.
+_cmd_unquoted=$(strip_git_global_opts "$(strip_quoted "$COMMAND")")
 
 # State-modifying git subcommands. Notably NOT blocked: status, diff,
 # log, show, blame, ls-files — these are routinely used for inspection by

@@ -28,6 +28,13 @@ function gitCmd(cwd: string, args: string[]): void {
   });
 }
 
+function gitRevParseHead(cwd: string): string {
+  return execFileSync("git", ["rev-parse", "HEAD"], {
+    cwd,
+    encoding: "utf8",
+  }).trim();
+}
+
 describe("committer-single-commit-per-cycle", { concurrency: 1 }, () => {
   let _capturedHandler: (event: unknown) => Promise<unknown>;
   let savedEnv: Record<string, string | undefined>;
@@ -61,11 +68,13 @@ describe("committer-single-commit-per-cycle", { concurrency: 1 }, () => {
       AGENT_TYPE: process.env["AGENT_TYPE"],
       COMMITTER_ALLOW_MULTI: process.env["COMMITTER_ALLOW_MULTI"],
       CODEGEN_BUILD_START_TS: process.env["CODEGEN_BUILD_START_TS"],
+      CODEGEN_CYCLE_BASE_SHA: process.env["CODEGEN_CYCLE_BASE_SHA"],
       CLAUDE_PROJECT_DIR: process.env["CLAUDE_PROJECT_DIR"],
     };
     delete process.env["AGENT_TYPE"];
     delete process.env["COMMITTER_ALLOW_MULTI"];
     delete process.env["CODEGEN_BUILD_START_TS"];
+    delete process.env["CODEGEN_CYCLE_BASE_SHA"];
     delete process.env["CLAUDE_PROJECT_DIR"];
   });
 
@@ -83,40 +92,33 @@ describe("committer-single-commit-per-cycle", { concurrency: 1 }, () => {
     const result = await runHook(
       "git commit -m test",
       "developer-phoenix-backend",
-      { CODEGEN_BUILD_START_TS: "1000000" },
+      { CODEGEN_CYCLE_BASE_SHA: "deadbeef" },
     );
     assert.ok(result == null || (result as { block?: boolean }).block !== true);
   });
 
-  it("allows when COMMITTER_ALLOW_MULTI=1 (escape hatch)", async () => {
-    const result = await runHook("git commit -m test", "committer", {
-      CODEGEN_BUILD_START_TS: "0",
-      COMMITTER_ALLOW_MULTI: "1",
-    });
-    assert.ok(result == null || (result as { block?: boolean }).block !== true);
-  });
-
-  it("allows when CODEGEN_BUILD_START_TS is unset", async () => {
+  it("allows when CODEGEN_CYCLE_BASE_SHA is unset", async () => {
     const result = await runHook("git commit -m test", "committer", {});
     assert.ok(result == null || (result as { block?: boolean }).block !== true);
   });
 
   it("allows when command is not git commit", async () => {
     const result = await runHook("git status", "committer", {
-      CODEGEN_BUILD_START_TS: "1000000",
+      CODEGEN_CYCLE_BASE_SHA: "deadbeef",
     });
     assert.ok(result == null || (result as { block?: boolean }).block !== true);
   });
 
   it("allows git commit-graph (word-boundary fix: no substring match on git commit)", async () => {
     const result = await runHook("git commit-graph write", "committer", {
-      CODEGEN_BUILD_START_TS: "1000000",
+      CODEGEN_CYCLE_BASE_SHA: "deadbeef",
     });
     assert.ok(result == null || (result as { block?: boolean }).block !== true);
   });
 
   describe("with a real git repo", () => {
     let tmpDir: string;
+    let baseSha: string;
 
     beforeEach(() => {
       tmpDir = fs.mkdtempSync(
@@ -127,7 +129,7 @@ describe("committer-single-commit-per-cycle", { concurrency: 1 }, () => {
       gitCmd(tmpDir, ["config", "user.name", "Test"]);
       gitCmd(tmpDir, ["config", "core.hooksPath", "/dev/null"]);
 
-      // Baseline commit (pre-session)
+      // Baseline commit (pre-cycle — this is CODEGEN_CYCLE_BASE_SHA)
       fs.writeFileSync(path.join(tmpDir, "file.txt"), "original content");
       gitCmd(tmpDir, ["add", "file.txt"]);
       gitCmd(tmpDir, [
@@ -138,8 +140,9 @@ describe("committer-single-commit-per-cycle", { concurrency: 1 }, () => {
         "-m",
         "baseline",
       ]);
+      baseSha = gitRevParseHead(tmpDir);
 
-      // Session commit
+      // Cycle commit (made during the build cycle, ahead of base)
       fs.writeFileSync(path.join(tmpDir, "file.txt"), "updated content");
       gitCmd(tmpDir, ["add", "file.txt"]);
       gitCmd(tmpDir, [
@@ -148,7 +151,7 @@ describe("committer-single-commit-per-cycle", { concurrency: 1 }, () => {
         "commit",
         "-q",
         "-m",
-        "session commit",
+        "cycle commit",
       ]);
     });
 
@@ -156,12 +159,23 @@ describe("committer-single-commit-per-cycle", { concurrency: 1 }, () => {
       fs.rmSync(tmpDir, { recursive: true, force: true });
     });
 
-    it("allows --amend even when session commit exists", async () => {
+    it("allows COMMITTER_ALLOW_MULTI=1 even when a cycle commit exists (escape hatch)", async () => {
+      const result = await runHook("git commit -m test", "committer", {
+        CODEGEN_CYCLE_BASE_SHA: baseSha,
+        COMMITTER_ALLOW_MULTI: "1",
+        CLAUDE_PROJECT_DIR: tmpDir,
+      });
+      assert.ok(
+        result == null || (result as { block?: boolean }).block !== true,
+      );
+    });
+
+    it("allows --amend even when a cycle commit exists ahead of base", async () => {
       const result = await runHook(
         "git commit --amend -m test",
         "committer",
         {
-          CODEGEN_BUILD_START_TS: "0",
+          CODEGEN_CYCLE_BASE_SHA: baseSha,
           CLAUDE_PROJECT_DIR: tmpDir,
         },
       );
@@ -170,11 +184,10 @@ describe("committer-single-commit-per-cycle", { concurrency: 1 }, () => {
       );
     });
 
-    it("allows first commit (no session commits in build window)", async () => {
-      // Build start in the far future — no session commits qualify
-      const futureTs = String(Math.floor(Date.now() / 1000) + 3600);
+    it("allows first commit (base == HEAD, no cycle commits yet)", async () => {
+      const headSha = gitRevParseHead(tmpDir);
       const result = await runHook("git commit -m first", "committer", {
-        CODEGEN_BUILD_START_TS: futureTs,
+        CODEGEN_CYCLE_BASE_SHA: headSha,
         CLAUDE_PROJECT_DIR: tmpDir,
       });
       assert.ok(
@@ -182,31 +195,29 @@ describe("committer-single-commit-per-cycle", { concurrency: 1 }, () => {
       );
     });
 
-    it("denies second non-amend commit when session commit already exists", async () => {
-      // BUILD_START_TS=0 → the session commit qualifies, so this is a second commit
+    it("denies second non-amend commit when a cycle commit already exists", async () => {
       const result = await runHook("git commit -m second", "committer", {
-        CODEGEN_BUILD_START_TS: "0",
+        CODEGEN_CYCLE_BASE_SHA: baseSha,
         CLAUDE_PROJECT_DIR: tmpDir,
       });
       assert.ok((result as { block?: boolean }).block === true);
     });
 
-    it("denies --amend when HEAD predates cycle start (foreign amend)", async () => {
-      // Set cycle start 1 hour in the future so HEAD commit time < cycle start
-      const futureStartTs = String(Math.floor(Date.now() / 1000) + 3600);
+    it("denies --amend when HEAD == base (nothing to amend this cycle)", async () => {
+      const headSha = gitRevParseHead(tmpDir);
       const result = await runHook("git commit --amend -m test", "committer", {
-        CODEGEN_BUILD_START_TS: futureStartTs,
+        CODEGEN_CYCLE_BASE_SHA: headSha,
         CLAUDE_PROJECT_DIR: tmpDir,
       });
       assert.ok((result as { block?: boolean }).block === true);
     });
 
-    it("allows codegen-log write narrating git commit even with session commit present", async () => {
+    it("allows codegen-log write narrating git commit even with a cycle commit present", async () => {
       const result = await runHook(
         'codegen-log section --slug test --body @- <<EOF\n## committer Section\nRan git commit -m "msg" successfully.\nEOF',
         "committer",
         {
-          CODEGEN_BUILD_START_TS: "0",
+          CODEGEN_CYCLE_BASE_SHA: baseSha,
           CLAUDE_PROJECT_DIR: tmpDir,
         },
       );
@@ -217,7 +228,61 @@ describe("committer-single-commit-per-cycle", { concurrency: 1 }, () => {
 
     it("still denies real standalone second commit unchanged", async () => {
       const result = await runHook("git commit -m second", "committer", {
-        CODEGEN_BUILD_START_TS: "0",
+        CODEGEN_CYCLE_BASE_SHA: baseSha,
+        CLAUDE_PROJECT_DIR: tmpDir,
+      });
+      assert.ok((result as { block?: boolean }).block === true);
+    });
+  });
+
+  describe("earlier-role commit (cycle-stable base)", () => {
+    let tmpDir: string;
+    let cycleBase: string;
+
+    beforeEach(() => {
+      tmpDir = fs.mkdtempSync(
+        path.join(os.tmpdir(), "pi-single-commit-earlier-role-test-"),
+      );
+      gitCmd(tmpDir, ["init", "-q"]);
+      gitCmd(tmpDir, ["config", "user.email", "test@example.com"]);
+      gitCmd(tmpDir, ["config", "user.name", "Test"]);
+      gitCmd(tmpDir, ["config", "core.hooksPath", "/dev/null"]);
+
+      fs.writeFileSync(path.join(tmpDir, "file.txt"), "original");
+      gitCmd(tmpDir, ["add", "file.txt"]);
+      gitCmd(tmpDir, [
+        "-c",
+        "core.hooksPath=/dev/null",
+        "commit",
+        "-q",
+        "-m",
+        "cycle base commit",
+      ]);
+      cycleBase = gitRevParseHead(tmpDir);
+
+      // Simulate an EARLIER role committing before the committer's own turn.
+      fs.writeFileSync(
+        path.join(tmpDir, "file.txt"),
+        "changed by an earlier role",
+      );
+      gitCmd(tmpDir, ["add", "file.txt"]);
+      gitCmd(tmpDir, [
+        "-c",
+        "core.hooksPath=/dev/null",
+        "commit",
+        "-q",
+        "-m",
+        "earlier-role commit",
+      ]);
+    });
+
+    afterEach(() => {
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    });
+
+    it("denies committer's second commit — earlier-role commit is counted via cycle-stable base", async () => {
+      const result = await runHook("git commit -m test", "committer", {
+        CODEGEN_CYCLE_BASE_SHA: cycleBase,
         CLAUDE_PROJECT_DIR: tmpDir,
       });
       assert.ok((result as { block?: boolean }).block === true);

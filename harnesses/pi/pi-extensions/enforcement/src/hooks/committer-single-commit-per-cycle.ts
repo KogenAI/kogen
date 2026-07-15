@@ -6,8 +6,11 @@
  * Event: tool_call (PreToolUse equivalent)
  * Matcher: bash
  *
- * Counts commits made after CODEGEN_BUILD_START_TS; if ≥1 exists and the
- * incoming command is not --amend, the command is denied.
+ * Counts commits reachable from HEAD but not from CODEGEN_CYCLE_BASE_SHA
+ * (the SHA captured ONCE at cycle start, before any role ran — identical
+ * across every role's env, unlike a per-role timestamp). If ≥1 such commit
+ * exists and the incoming command is not --amend, the command is denied.
+ * This also catches a commit made by an EARLIER role in the same cycle.
  */
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
@@ -28,6 +31,17 @@ function gitLog(projectDir: string, args: string[]): string {
   } catch {
     return "";
   }
+}
+
+// gitRevListCount() — number of commits reachable from HEAD but not from
+// baseSha, via `git rev-list --count <baseSha>..HEAD`. Returns NaN on any
+// git failure (missing base, not a repo, …) so callers can distinguish
+// "count is genuinely 0" from "count could not be determined".
+function gitRevListCount(projectDir: string, baseSha: string): number {
+  const out = gitLog(projectDir, ["rev-list", "--count", `${baseSha}..HEAD`]);
+  if (!out) return NaN;
+  const n = parseInt(out, 10);
+  return isNaN(n) ? NaN : n;
 }
 
 export const HANDLER_META = {
@@ -56,21 +70,20 @@ export function register(pi: ExtensionAPI): void {
       process.env["CWD"] ??
       process.cwd();
 
+    const baseSha = process.env["CODEGEN_CYCLE_BASE_SHA"] ?? "";
+
     if (/--amend/.test(command)) {
-      const buildStartTs = process.env["CODEGEN_BUILD_START_TS"] ?? "";
-      if (buildStartTs) {
-        const buildStartNum = parseInt(buildStartTs, 10);
-        const headCtStr = gitLog(projectDir, ["log", "-1", "--format=%ct"]);
-        const headCt = headCtStr ? parseInt(headCtStr, 10) : NaN;
-        if (!isNaN(headCt) && !isNaN(buildStartNum) && headCt < buildStartNum) {
+      if (baseSha) {
+        const cycleCommitCount = gitRevListCount(projectDir, baseSha);
+        if (!isNaN(cycleCommitCount) && cycleCommitCount === 0) {
           return deny(
-            `BLOCKED by committer-single-commit-per-cycle: --amend would rewrite a commit from BEFORE this build cycle (HEAD commit time ${headCt} < cycle start ${buildStartNum}). That commit belongs to a prior cycle and is immutable to this one. To allow (emergency only): set COMMITTER_ALLOW_MULTI=1`,
+            `BLOCKED by committer-single-commit-per-cycle: --amend has nothing to amend within this build cycle (HEAD == cycle base ${baseSha}). No commit from this cycle exists yet — that would rewrite a commit from BEFORE this build cycle, which is immutable to this one. To allow (emergency only): set COMMITTER_ALLOW_MULTI=1`,
           );
         }
       }
       debugLog(
         "committer-single-commit-per-cycle",
-        "allow: --amend present (HEAD time ok or start ts unset)",
+        "allow: --amend present (a cycle commit exists or base sha unset)",
       );
       return;
     }
@@ -83,38 +96,16 @@ export function register(pi: ExtensionAPI): void {
       return;
     }
 
-    const buildStartTs = process.env["CODEGEN_BUILD_START_TS"] ?? "";
-    if (!buildStartTs) {
+    if (!baseSha) {
       debugLog(
         "committer-single-commit-per-cycle",
-        "allow: CODEGEN_BUILD_START_TS unset",
-      );
-      return;
-    }
-    const buildStartNum = parseInt(buildStartTs, 10);
-
-    // Collect session commits: SHAs committed strictly after build start timestamp
-    const logOutput = gitLog(projectDir, ["log", "--format=%H %ct"]);
-    if (!logOutput) {
-      debugLog(
-        "committer-single-commit-per-cycle",
-        "allow: no git log output",
+        "allow: CODEGEN_CYCLE_BASE_SHA unset",
       );
       return;
     }
 
-    const sessionCommits: string[] = [];
-    for (const line of logOutput.split("\n")) {
-      const parts = line.trim().split(" ");
-      if (parts.length < 2) continue;
-      const [sha, ct] = parts;
-      const commitTs = parseInt(ct, 10);
-      if (!isNaN(commitTs) && commitTs > buildStartNum) {
-        sessionCommits.push(sha);
-      }
-    }
-
-    if (sessionCommits.length === 0) {
+    const sessionCount = gitRevListCount(projectDir, baseSha);
+    if (isNaN(sessionCount) || sessionCount === 0) {
       debugLog(
         "committer-single-commit-per-cycle",
         "allow: no session commits yet",
@@ -123,7 +114,7 @@ export function register(pi: ExtensionAPI): void {
     }
 
     return deny(
-      `BLOCKED by committer-single-commit-per-cycle: a commit was already made in this build cycle (${sessionCommits.length} session commit(s) found).\nOnly one commit per build cycle is allowed.\nTo amend the existing commit use: git commit --amend\nTo allow multiple commits (emergency only): set COMMITTER_ALLOW_MULTI=1`,
+      `BLOCKED by committer-single-commit-per-cycle: a commit was already made in this build cycle (${sessionCount} session commit(s) found since cycle base ${baseSha}).\nOnly one commit per build cycle is allowed.\nTo amend the existing commit use: git commit --amend\nTo allow multiple commits (emergency only): set COMMITTER_ALLOW_MULTI=1`,
     );
   });
 }

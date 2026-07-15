@@ -9,7 +9,7 @@
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { execSync } from "node:child_process";
-import { deny, parseAgentType, debugLog, stripQuoted } from "../lib/hook-helpers";
+import { deny, parseAgentType, debugLog, stripQuoted, stripGitGlobalOpts } from "../lib/hook-helpers";
 
 export const HANDLER_META = {
   name: "pre-commit-guard",
@@ -40,8 +40,11 @@ export function register(pi: ExtensionAPI): void {
     // (ssh host "git stash") or a quoted string argument
     // (grep -n 'git stash' file.sh) does not trigger this guard. A real,
     // unquoted, local git-verb invocation still matches and is still
-    // denied. See stripQuoted() in hook-helpers.ts.
-    const scan = stripQuoted(command);
+    // denied. See stripQuoted() in hook-helpers.ts. Also normalize
+    // interposed git global options (git -C <dir> commit, git
+    // --git-dir=<x> add, …) so they cannot evade the verb match below —
+    // see stripGitGlobalOpts() in hook-helpers.ts.
+    const scan = stripGitGlobalOpts(stripQuoted(command));
 
     if (/\bgit\s+add\b/.test(scan)) {
       return deny(
