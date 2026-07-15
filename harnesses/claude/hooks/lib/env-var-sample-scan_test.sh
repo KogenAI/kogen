@@ -111,5 +111,23 @@ out=$(bash "$SCAN" 2>/dev/null)
 rc=$?
 assert_exit "absent repo_root arg → exit 0" "0" "$rc"
 
+# --- Test I: undeclared DEFAULTED read (2-arg get_env) → exit 0, exempt ---
+TI=$(new_repo)
+printf 'defmodule Foo do\n  def bar, do: System.get_env("MY_VAR", "fallback")\nend\n' >"$TI/lib/foo.ex"
+out=$(bash "$SCAN" "$TI")
+rc=$?
+assert_exit "undeclared defaulted read → exit 0" "0" "$rc"
+assert_eq "undeclared defaulted read → empty stdout" "" "$out"
+rm -rf "$TI"
+
+# --- Test J: undeclared DEFAULTED read, spaced args → exit 0, exempt ---
+TJ=$(new_repo)
+printf 'defmodule Foo do\n  def bar, do: System.get_env( "SPACED" , "d")\nend\n' >"$TJ/lib/foo.ex"
+out=$(bash "$SCAN" "$TJ")
+rc=$?
+assert_exit "undeclared defaulted spaced read → exit 0" "0" "$rc"
+assert_eq "undeclared defaulted spaced read → empty stdout" "" "$out"
+rm -rf "$TJ"
+
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]
