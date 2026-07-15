@@ -126,6 +126,15 @@ end)
 
 Req 0.5+ headers: `%{"header-name" => ["value"]}` format (list-wrapped values, not tuple-list).
 
+## BEAM Probe Discipline
+
+Ad-hoc `erl`/`iex`/`elixir` probes run in a non-interactive build context — no stdin, no TTY. Two hang mechanisms, both cost the full Bash-tool timeout ceiling if triggered:
+
+- **Interactive drop**: a bare `erl -eval '…'`/`-run` (no `-noshell`) or bare `iex` (no `-e`/`--eval`) evaluates then drops into the interactive shell, which blocks forever on absent stdin. Use `erl -noshell -eval '…' -s init stop` (or `… halt().`), or prefer `elixir -e '…'` (evaluates and exits, shell-safe). `no-interactive-beam` denies the command-visible form of this up front.
+- **Self-signal break handler**: NEVER self-send INT/SIGINT to a non-interactive BEAM (e.g. `:os.cmd` sending a signal to its own probe process). SIGINT triggers the Erlang break handler, which blocks on stdin that never arrives. This form is buried in Elixir source (inline `-e` body or a `.exs` file) — no command-string hook can see it; avoiding it is on you.
+
+Time-bound any long or backgrounded probe — default `timeout 30 <cmd>` (foreground) or `<cmd> & sleep 30; <reap>` (backgrounded), so a hang costs 30s not the full ceiling. Raise the bound above 30s only with a one-line justification for a probe that legitimately needs longer. A true build (`make test`, `mix compile`) is not a probe — route it through the gate, unbounded.
+
 ## See Recipes
 
 UI: `phoenix-component-attribute-ordering`, `phoenix-dropdown-blur`, `phoenix-modal-js-animations`, `phoenix-file-upload-html-labels`, `phoenix-live-title-page-titles`, `phoenix-storybook-setup`.

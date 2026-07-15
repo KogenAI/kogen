@@ -40,6 +40,7 @@ import { register as registerLlmPendingSweep } from "./hooks/llm-pending-sweep";
 import { register as registerLlmTestGuard } from "./hooks/llm-test-guard";
 import { register as registerNoCatPipe } from "./hooks/no-cat-pipe";
 import { register as registerNoGitStash } from "./hooks/no-git-stash";
+import { register as registerNoInteractiveBeam } from "./hooks/no-interactive-beam";
 import { register as registerNoPythonJson } from "./hooks/no-python-json";
 import { register as registerNoSilentFailure } from "./hooks/no-silent-failure";
 import { register as registerOperatorSubagentAllowlist } from "./hooks/operator-subagent-allowlist";
@@ -91,6 +92,7 @@ export default function (pi: ExtensionAPI): void {
   registerLlmTestGuard(pi);
   registerNoCatPipe(pi);
   registerNoGitStash(pi);
+  registerNoInteractiveBeam(pi);
   registerNoPythonJson(pi);
   registerNoSilentFailure(pi);
   registerOperatorSubagentAllowlist(pi);

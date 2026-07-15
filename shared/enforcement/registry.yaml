@@ -422,6 +422,17 @@
   rationale: 'Denies an Edit/Write/MultiEdit whose new content/new_string contains a high-precision silent-failure swallow token: empty catch {} (TS), bare except: / except Exception: (Python), rescue _ / rescue <var> without reraise in the arm (Elixir), or a catch-all _ -> (nil|:ok|[]|"") sink. Bypassed by a justified `# fail-loud-exempt: <reason>` comment (reason mandatory) or when `reraise` appears anywhere in the new content. Does NOT gate `|| true` or Keyword.get/Map.get/get_env default-value calls — those are reviewer-owned contextual judgment (Rule S), not mechanically precise enough for a keystroke-level deny. Hand-authored (kind: registration) because the compiler''s COMMAND/FILE_PATH source templates cannot inspect Edit/Write content.'
 
 - kind: registration
+  id: no-interactive-beam
+  event: PreToolUse
+  tool_guard: Bash
+  surface: user_global
+  signal: none
+  role: "*"
+  harnesses: all
+  bypass_roles: [debug, shape, ops]
+  rationale: "Denies a bare 'erl -eval'/'-run' invocation missing -noshell (drops into an interactive shell that blocks on absent stdin until the Bash tool's 600s ceiling) and bare interactive 'iex' (no -e/--eval). Allows the safe '-noshell ... -s init stop'/'halt().' form and 'elixir -e' (evaluates and exits). AND-NOT logic (match minus -noshell) is beyond the compiler's match/match_all AND-only templates, so this is hand-authored (kind: registration) like no-silent-failure. Does NOT catch a self-SIGINT to a non-interactive BEAM buried inside Elixir source (inline -e body or .exs file) — that class is command-invisible and addressed by the BEAM-probe-discipline rule in shared/rules/stacks/phoenix/_core.md, not this hook."
+
+- kind: registration
   id: operator-subagent-allowlist
   event: PreToolUse
   tool_guard: Agent

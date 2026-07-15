@@ -454,6 +454,15 @@
         "hooks": [
           {
             "type": "command",
+            "command": "$HOME/.claude/hooks/no-interactive-beam.sh"
+          }
+        ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
             "command": "$HOME/.claude/hooks/no-python-json.sh"
           }
         ]
