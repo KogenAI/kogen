@@ -88,53 +88,53 @@ _cmd_unquoted=$(strip_git_global_opts "$(strip_quoted "$COMMAND")")
 # log, show, blame, ls-files — these are routinely used for inspection by
 # every subagent.
 if printf '%s' "$_cmd_unquoted" | grep -qE '\bgit[[:space:]]+add\b'; then
-    deny "BLOCKED by pre-commit-guard: git add is forbidden for agent \"$AGENT_TYPE\" — committer owns all git staging (delegate to committer)"
+    deny "BLOCKED by pre-commit-guard: git add is forbidden for agent \"$AGENT_TYPE\" — committer owns all git staging. Do not stage; leave changes in the working tree, the loop's committer step runs after you — finish your remaining in-role work and stop."
     exit 0
 fi
 
 if printf '%s' "$_cmd_unquoted" | grep -qE '\bgit[[:space:]]+rm\b'; then
-    deny "BLOCKED by pre-commit-guard: git rm is forbidden for agent \"$AGENT_TYPE\" — committer owns all git staging (delegate to committer)"
+    deny "BLOCKED by pre-commit-guard: git rm is forbidden for agent \"$AGENT_TYPE\" — committer owns all git staging. Do not stage; leave changes in the working tree, the loop's committer step runs after you — finish your remaining in-role work and stop."
     exit 0
 fi
 
 if printf '%s' "$_cmd_unquoted" | grep -qE '\bgit[[:space:]]+mv\b'; then
-    deny "BLOCKED by pre-commit-guard: git mv is forbidden for agent \"$AGENT_TYPE\" — committer owns all git staging (delegate to committer)"
+    deny "BLOCKED by pre-commit-guard: git mv is forbidden for agent \"$AGENT_TYPE\" — committer owns all git staging. Do not stage; leave changes in the working tree, the loop's committer step runs after you — finish your remaining in-role work and stop."
     exit 0
 fi
 
 if printf '%s' "$_cmd_unquoted" | grep -qE '\bgit[[:space:]]+restore\b.*--staged\b'; then
-    deny "BLOCKED by pre-commit-guard: git restore --staged is forbidden for agent \"$AGENT_TYPE\" — committer owns all git staging (delegate to committer)"
+    deny "BLOCKED by pre-commit-guard: git restore --staged is forbidden for agent \"$AGENT_TYPE\" — committer owns all git staging. Do not stage; leave changes in the working tree, the loop's committer step runs after you — finish your remaining in-role work and stop."
     exit 0
 fi
 
 if printf '%s' "$_cmd_unquoted" | grep -qE '\bgit[[:space:]]+commit([[:space:];&|]|$)'; then
-    deny "BLOCKED by pre-commit-guard: git commit forbidden for agent \"$AGENT_TYPE\" — committer owns commit creation (see CLAUDE.md \"NEVER Commit Directly\")"
+    deny "BLOCKED by pre-commit-guard: git commit forbidden for agent \"$AGENT_TYPE\" — committer owns commit creation (see CLAUDE.md \"NEVER Commit Directly\"). Do not commit; leave changes uncommitted in the working tree, the loop's committer step runs after you — finish your remaining in-role work and stop."
     exit 0
 fi
 
 if printf '%s' "$_cmd_unquoted" | grep -qE '\bgit[[:space:]]+rebase\b'; then
-    deny "BLOCKED by pre-commit-guard: git rebase forbidden for agent \"$AGENT_TYPE\" — committer owns history"
+    deny "BLOCKED by pre-commit-guard: git rebase forbidden for agent \"$AGENT_TYPE\" — committer owns history. Do not rebase; leave the branch as-is, the loop's committer step runs after you — finish your remaining in-role work and stop."
     exit 0
 fi
 
 if printf '%s' "$_cmd_unquoted" | grep -qE '\bgit[[:space:]]+cherry-pick\b'; then
-    deny "BLOCKED by pre-commit-guard: git cherry-pick forbidden for agent \"$AGENT_TYPE\" — committer owns history"
+    deny "BLOCKED by pre-commit-guard: git cherry-pick forbidden for agent \"$AGENT_TYPE\" — committer owns history. Do not cherry-pick; leave the branch as-is, the loop's committer step runs after you — finish your remaining in-role work and stop."
     exit 0
 fi
 
 if printf '%s' "$_cmd_unquoted" | grep -qE '\bgit[[:space:]]+revert\b'; then
-    deny "BLOCKED by pre-commit-guard: git revert forbidden for agent \"$AGENT_TYPE\" — committer owns history"
+    deny "BLOCKED by pre-commit-guard: git revert forbidden for agent \"$AGENT_TYPE\" — committer owns history. Do not revert; leave the branch as-is, the loop's committer step runs after you — finish your remaining in-role work and stop."
     exit 0
 fi
 
 if printf '%s' "$_cmd_unquoted" | grep -qE '\bgit[[:space:]]+merge\b'; then
-    deny "BLOCKED by pre-commit-guard: git merge forbidden for agent \"$AGENT_TYPE\" — committer owns history"
+    deny "BLOCKED by pre-commit-guard: git merge forbidden for agent \"$AGENT_TYPE\" — committer owns history. Do not merge; leave the branch as-is, the loop's committer step runs after you — finish your remaining in-role work and stop."
     exit 0
 fi
 
 # git reset --hard / --keep (destructive).
 if printf '%s' "$_cmd_unquoted" | grep -qE '\bgit[[:space:]]+reset\b.*--hard\b'; then
-    deny "BLOCKED by pre-commit-guard: git reset --hard forbidden for agent \"$AGENT_TYPE\" — destructive (use stash or committer)"
+    deny "BLOCKED by pre-commit-guard: git reset --hard forbidden for agent \"$AGENT_TYPE\" — destructive, committer owns history. Do not reset; leave the working tree as-is, the loop's committer step runs after you — finish your remaining in-role work and stop."
     exit 0
 fi
 
@@ -153,7 +153,7 @@ fi
 
 # git push --force / --force-with-lease / -f
 if printf '%s' "$_cmd_unquoted" | grep -qE '\bgit[[:space:]]+push\b.*(--force(-with-lease)?|[[:space:]]-f([[:space:]]|$))'; then
-    deny "BLOCKED by pre-commit-guard: git push --force forbidden for agent \"$AGENT_TYPE\" — committer owns push discipline"
+    deny "BLOCKED by pre-commit-guard: git push --force forbidden for agent \"$AGENT_TYPE\" — committer owns push discipline. Do not force-push; leave the branch as-is, the loop's committer step runs after you — finish your remaining in-role work and stop."
     exit 0
 fi
 

@@ -48,52 +48,52 @@ export function register(pi: ExtensionAPI): void {
 
     if (/\bgit\s+add\b/.test(scan)) {
       return deny(
-        `BLOCKED by pre-commit-guard: git add is forbidden for agent "${agentType}" — committer owns all git staging (delegate to committer)`,
+        `BLOCKED by pre-commit-guard: git add is forbidden for agent "${agentType}" — committer owns all git staging. Do not stage; leave changes in the working tree, the loop's committer step runs after you — finish your remaining in-role work and stop.`,
       );
     }
     if (/\bgit\s+rm\b/.test(scan)) {
       return deny(
-        `BLOCKED by pre-commit-guard: git rm is forbidden for agent "${agentType}" — committer owns all git staging (delegate to committer)`,
+        `BLOCKED by pre-commit-guard: git rm is forbidden for agent "${agentType}" — committer owns all git staging. Do not stage; leave changes in the working tree, the loop's committer step runs after you — finish your remaining in-role work and stop.`,
       );
     }
     if (/\bgit\s+mv\b/.test(scan)) {
       return deny(
-        `BLOCKED by pre-commit-guard: git mv is forbidden for agent "${agentType}" — committer owns all git staging (delegate to committer)`,
+        `BLOCKED by pre-commit-guard: git mv is forbidden for agent "${agentType}" — committer owns all git staging. Do not stage; leave changes in the working tree, the loop's committer step runs after you — finish your remaining in-role work and stop.`,
       );
     }
     if (/\bgit\s+restore\b.*--staged\b/.test(scan)) {
       return deny(
-        `BLOCKED by pre-commit-guard: git restore --staged is forbidden for agent "${agentType}" — committer owns all git staging (delegate to committer)`,
+        `BLOCKED by pre-commit-guard: git restore --staged is forbidden for agent "${agentType}" — committer owns all git staging. Do not stage; leave changes in the working tree, the loop's committer step runs after you — finish your remaining in-role work and stop.`,
       );
     }
     if (/\bgit\s+commit(?:[\s;&|]|$)/.test(scan)) {
       return deny(
-        `BLOCKED by pre-commit-guard: git commit forbidden for agent "${agentType}" — committer owns commit creation (see CLAUDE.md "NEVER Commit Directly")`,
+        `BLOCKED by pre-commit-guard: git commit forbidden for agent "${agentType}" — committer owns commit creation (see CLAUDE.md "NEVER Commit Directly"). Do not commit; leave changes uncommitted in the working tree, the loop's committer step runs after you — finish your remaining in-role work and stop.`,
       );
     }
     if (/\bgit\s+rebase\b/.test(scan)) {
       return deny(
-        `BLOCKED by pre-commit-guard: git rebase forbidden for agent "${agentType}" — committer owns history`,
+        `BLOCKED by pre-commit-guard: git rebase forbidden for agent "${agentType}" — committer owns history. Do not rebase; leave the branch as-is, the loop's committer step runs after you — finish your remaining in-role work and stop.`,
       );
     }
     if (/\bgit\s+cherry-pick\b/.test(scan)) {
       return deny(
-        `BLOCKED by pre-commit-guard: git cherry-pick forbidden for agent "${agentType}" — committer owns history`,
+        `BLOCKED by pre-commit-guard: git cherry-pick forbidden for agent "${agentType}" — committer owns history. Do not cherry-pick; leave the branch as-is, the loop's committer step runs after you — finish your remaining in-role work and stop.`,
       );
     }
     if (/\bgit\s+revert\b/.test(scan)) {
       return deny(
-        `BLOCKED by pre-commit-guard: git revert forbidden for agent "${agentType}" — committer owns history`,
+        `BLOCKED by pre-commit-guard: git revert forbidden for agent "${agentType}" — committer owns history. Do not revert; leave the branch as-is, the loop's committer step runs after you — finish your remaining in-role work and stop.`,
       );
     }
     if (/\bgit\s+merge\b/.test(scan)) {
       return deny(
-        `BLOCKED by pre-commit-guard: git merge forbidden for agent "${agentType}" — committer owns history`,
+        `BLOCKED by pre-commit-guard: git merge forbidden for agent "${agentType}" — committer owns history. Do not merge; leave the branch as-is, the loop's committer step runs after you — finish your remaining in-role work and stop.`,
       );
     }
     if (/\bgit\s+reset\b.*--hard\b/.test(scan)) {
       return deny(
-        `BLOCKED by pre-commit-guard: git reset --hard forbidden for agent "${agentType}" — destructive (use stash or committer)`,
+        `BLOCKED by pre-commit-guard: git reset --hard forbidden for agent "${agentType}" — destructive, committer owns history. Do not reset; leave the working tree as-is, the loop's committer step runs after you — finish your remaining in-role work and stop.`,
       );
     }
 
@@ -117,7 +117,7 @@ export function register(pi: ExtensionAPI): void {
     }
     if (/\bgit\s+push\b.*(--force(-with-lease)?|\s-f(\s|$))/.test(scan)) {
       return deny(
-        `BLOCKED by pre-commit-guard: git push --force forbidden for agent "${agentType}" — committer owns push discipline`,
+        `BLOCKED by pre-commit-guard: git push --force forbidden for agent "${agentType}" — committer owns push discipline. Do not force-push; leave the branch as-is, the loop's committer step runs after you — finish your remaining in-role work and stop.`,
       );
     }
   });
