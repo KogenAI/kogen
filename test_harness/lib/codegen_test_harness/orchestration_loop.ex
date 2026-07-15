@@ -465,6 +465,19 @@ defmodule CodegenTestHarness.OrchestrationLoop do
     ensure_gate_graded_this_tree!(ctx, rest, harness, opts, 0)
   end
 
+  defp run_roles([role | rest], harness, ctx, opts)
+       when role == "reviewer-phoenix" or role == "reviewer-static" do
+    # Reviewer's first pass routes through invoke_reviewer/4 — unlike every
+    # other role clause below, this one captures the loop-derived
+    # ## Files Modified set BEFORE invoking the role, not after (see pitch
+    # "reviewer handoff names the files under review"). The captured set is
+    # stashed on `ctx` for handle_review/7's re-review pass to reuse the seam.
+    with {:ok, result, ctx} <- invoke_reviewer(role, harness, ctx, opts) do
+      ctx = put_in(ctx, [:artifacts, role], result)
+      handle_review(role, result, rest, harness, ctx, opts, 0)
+    end
+  end
+
   defp run_roles([role | rest], harness, ctx, opts) do
     with {:ok, result} <- invoke_with_retry(role, harness, ctx, opts) do
       ctx = put_in(ctx, [:artifacts, role], result)
@@ -493,9 +506,6 @@ defmodule CodegenTestHarness.OrchestrationLoop do
         developer_role?(role) ->
           run_format_step(ctx.cwd, opts)
           run_env_var_step(role, rest, harness, ctx, opts, 0)
-
-        role == "reviewer-phoenix" or role == "reviewer-static" ->
-          handle_review(role, result, rest, harness, ctx, opts, 0)
 
         role == "context-curator" ->
           run_format_step(ctx.cwd, opts)
@@ -892,7 +902,7 @@ defmodule CodegenTestHarness.OrchestrationLoop do
               :clear ->
                 advance_cycle_state_step("GATED", ctx, opts)
 
-                with {:ok, review2} <- invoke_with_retry(reviewer_role, harness, ctx, opts) do
+                with {:ok, review2, ctx} <- invoke_reviewer(reviewer_role, harness, ctx, opts) do
                   ctx = put_in(ctx, [:artifacts, reviewer_role], review2)
                   handle_review(reviewer_role, review2, rest, harness, ctx, opts, cycle + 1)
                 end
@@ -1267,6 +1277,13 @@ defmodule CodegenTestHarness.OrchestrationLoop do
     case gate_fn.(ctx.cwd, gate_opts(opts)) do
       {:clear, _gate_cmd} ->
         advance_cycle_state_step("GATED", ctx, opts)
+
+        # A developer gate failure is not the NEXT role's "previous attempt"
+        # — once the gate goes clear, drop the stale reason so it never
+        # leaks into the reviewer (or any later role) prompt as a fault that
+        # isn't theirs (pitch "reviewer handoff names the files under
+        # review").
+        ctx = update_in(ctx, [:artifacts], &Map.delete(&1, :last_failure_reason))
         run_roles(rest, harness, ctx, opts)
 
       {:failed, _gate_cmd} ->
@@ -1451,6 +1468,66 @@ defmodule CodegenTestHarness.OrchestrationLoop do
   defp capture_rework_brief(cwd, opts) do
     brief_fn = Keyword.get(opts, :rework_brief_fn, &default_rework_brief_fn/1)
     brief_fn.(cwd)
+  end
+
+  # Loop-derived changed-file LIST (not a diff) for the reviewer's
+  # `## Files Modified` section — the file set was the actual gap in the
+  # reviewer prompt (see pitch "reviewer handoff names the files under
+  # review"); content is one allowed `git diff HEAD -- <path>` away.
+  # Mirrors default_rework_brief_fn/1's git idiom (unborn-HEAD fallback,
+  # non-git cwd -> ""). Returns "" when there is nothing changed (non-git
+  # cwd, or a real git tree with a clean status) -- build_prompt/2 renders
+  # no section for either case.
+  @spec default_review_file_set_fn(String.t()) :: String.t()
+  def default_review_file_set_fn(cwd) do
+    if git_work_tree?(cwd) do
+      base_head = cycle_base_head(cwd)
+
+      diff_args =
+        if base_head, do: ["diff", "--name-only", "HEAD"], else: ["diff", "--name-only"]
+
+      {tracked_out, _status} = System.cmd("git", diff_args, cd: cwd, stderr_to_stdout: true)
+
+      {status_out, _status} =
+        System.cmd("git", ["status", "--porcelain"], cd: cwd, stderr_to_stdout: true)
+
+      untracked =
+        status_out
+        |> String.split("\n", trim: true)
+        |> Enum.filter(&String.starts_with?(&1, "??"))
+        |> Enum.map(&String.trim_leading(&1, "?? "))
+
+      (String.split(tracked_out, "\n", trim: true) ++ untracked)
+      |> Enum.uniq()
+      |> Enum.join("\n")
+    else
+      ""
+    end
+  end
+
+  # Single reviewer-invocation seam (first pass in run_roles/4 AND re-review
+  # in handle_review/7 both route here) so no entry path can ship a reviewer
+  # prompt without the loop-derived ## Files Modified set -- the gap that
+  # made a reviewer refuse a gate-green cycle (pitch "reviewer handoff names
+  # the files under review"). Captures the set FRESH at each call (a
+  # re-review runs against a newer tree than the first pass). An empty set
+  # in a REAL git tree means the cycle produced nothing to review -- fail
+  # loud rather than hand the reviewer an empty scope, mirroring
+  # verify_committed!/2's existing dirty/empty guards. Non-git cwd (mocked
+  # unit tests) yields "" and skips the refusal.
+  defp invoke_reviewer(reviewer_role, harness, ctx, opts) do
+    set_fn = Keyword.get(opts, :review_file_set_fn, &default_review_file_set_fn/1)
+    files = set_fn.(ctx.cwd)
+
+    if files == "" and git_work_tree?(ctx.cwd) do
+      {:error, "cycle produced no changes — nothing for the reviewer to review"}
+    else
+      ctx = put_in(ctx, [:artifacts, :review_file_set], files)
+
+      with {:ok, result} <- invoke_with_retry(reviewer_role, harness, ctx, opts) do
+        {:ok, result, ctx}
+      end
+    end
   end
 
   # Runs `mix format`/`make format` in `cwd` as an explicit loop step. This
@@ -1916,18 +1993,35 @@ defmodule CodegenTestHarness.OrchestrationLoop do
         base
       end
 
-    # Reviewers must emit a machine-readable verdict the loop can act on (#7).
+    # Reviewers get the loop-derived changed-file set under the exact heading
+    # their baked contract names (## Files Modified) — the file set was the
+    # actual gap that made a reviewer refuse a gate-green cycle (pitch
+    # "reviewer handoff names the files under review"). The change is
+    # UNCOMMITTED in the working tree; content is one allowed
+    # `git diff HEAD -- <path>` away (reviewer-bash-allowlist permits it).
+    # Reviewers must also emit a machine-readable verdict the loop can act
+    # on (#7).
     base =
       if role == "reviewer-phoenix" or role == "reviewer-static" do
+        files = get_in(ctx, [:artifacts, :review_file_set]) || ""
+
+        file_section =
+          if String.trim(files) != "" do
+            "\n\n## Files Modified\n\n" <>
+              "The following files changed this cycle (UNCOMMITTED in the working tree). " <>
+              "Read any file's content with `git diff HEAD -- <path>`:\n\n" <>
+              "```\n" <> String.trim(files) <> "\n```"
+          else
+            ""
+          end
+
         base <>
-          "\n\nThere is no `## Files Modified` section this cycle; the developer's entire " <>
-          "change is sitting UNCOMMITTED in the project's working tree. Derive the " <>
-          "authoritative changed set yourself: run `git diff HEAD` for tracked modifications " <>
-          "plus `git status --porcelain` for new/untracked files, then review THAT diff " <>
-          "against normal reviewer checks (quality, security, silent-failure/Rule S, test " <>
-          "coverage).\n\nEND your response with a line exactly `REVIEW_VERDICT: APPROVED` if the change is " <>
-          "acceptable, or `REVIEW_VERDICT: CHANGES_REQUESTED` followed by a short, specific, " <>
-          "actionable list of required changes if not."
+          file_section <>
+          "\n\nReview these changes against normal reviewer checks (quality, security, " <>
+          "silent-failure/Rule S, test coverage).\n\nEND your response with a line exactly " <>
+          "`REVIEW_VERDICT: APPROVED` if the change is acceptable, or " <>
+          "`REVIEW_VERDICT: CHANGES_REQUESTED` followed by a short, specific, actionable list " <>
+          "of required changes if not."
       else
         base
       end

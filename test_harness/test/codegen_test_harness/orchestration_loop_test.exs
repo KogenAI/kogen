@@ -6,24 +6,49 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
   @phoenix_sequence ~w(planner-phoenix developer-phoenix-backend reviewer-phoenix context-curator committer)
   @static_sequence ~w(developer-static reviewer-static context-curator committer)
 
-  describe "build_prompt/2 — reviewer git-diff-as-source directive" do
-    test "reviewer-phoenix prompt tells reviewer to derive changes via git diff HEAD" do
+  describe "build_prompt/2 — reviewer file set (loop-supplied ## Files Modified)" do
+    test "reviewer-phoenix prompt renders the loop-supplied ## Files Modified list" do
+      ctx = %{
+        cwd: "/tmp",
+        pitch: "do the thing",
+        artifacts: %{review_file_set: "lib/foo.ex\nlib/bar.ex"}
+      }
+
+      content = OrchestrationLoop.build_prompt("reviewer-phoenix", ctx)
+
+      assert content =~ "## Files Modified"
+      assert content =~ "lib/foo.ex"
+      assert content =~ "lib/bar.ex"
+      assert content =~ "git diff HEAD -- <path>"
+      assert content =~ "UNCOMMITTED"
+      assert content =~ "REVIEW_VERDICT: APPROVED"
+      refute content =~ "derive"
+      refute content =~ "There is no `## Files Modified` section"
+    end
+
+    test "reviewer-static prompt renders the loop-supplied ## Files Modified list" do
+      ctx = %{
+        cwd: "/tmp",
+        pitch: "do the thing",
+        artifacts: %{review_file_set: "assets/js/app.js"}
+      }
+
+      content = OrchestrationLoop.build_prompt("reviewer-static", ctx)
+
+      assert content =~ "## Files Modified"
+      assert content =~ "assets/js/app.js"
+      assert content =~ "git diff HEAD -- <path>"
+      assert content =~ "UNCOMMITTED"
+      assert content =~ "REVIEW_VERDICT: APPROVED"
+      refute content =~ "derive"
+      refute content =~ "There is no `## Files Modified` section"
+    end
+
+    test "no review_file_set in ctx → no ## Files Modified section, but verdict instruction remains" do
       ctx = %{cwd: "/tmp", pitch: "do the thing", artifacts: %{}}
       content = OrchestrationLoop.build_prompt("reviewer-phoenix", ctx)
 
-      assert content =~ "git diff HEAD"
-      assert content =~ "git status --porcelain"
-      assert content =~ "UNCOMMITTED"
-      assert content =~ "REVIEW_VERDICT: APPROVED"
-    end
-
-    test "reviewer-static prompt tells reviewer to derive changes via git diff HEAD" do
-      ctx = %{cwd: "/tmp", pitch: "do the thing", artifacts: %{}}
-      content = OrchestrationLoop.build_prompt("reviewer-static", ctx)
-
-      assert content =~ "git diff HEAD"
-      assert content =~ "git status --porcelain"
-      assert content =~ "UNCOMMITTED"
+      refute content =~ "## Files Modified"
       assert content =~ "REVIEW_VERDICT: APPROVED"
     end
   end
@@ -1158,6 +1183,239 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
     end
   end
 
+  describe "default_review_file_set_fn/1" do
+    test "non-git cwd returns empty string" do
+      assert OrchestrationLoop.default_review_file_set_fn(
+               "/tmp/definitely-not-a-git-repo-#{System.unique_integer([:positive])}"
+             ) == ""
+    end
+
+    test "tracked mod + untracked file both appear in the returned list" do
+      tmp =
+        System.tmp_dir!()
+        |> Path.join("review-file-set-#{System.unique_integer([:positive])}")
+
+      File.mkdir_p!(tmp)
+      on_exit(fn -> File.rm_rf!(tmp) end)
+
+      {_out, 0} = System.cmd("git", ["init", "-q"], cd: tmp)
+      {_out, 0} = System.cmd("git", ["config", "user.email", "t@example.com"], cd: tmp)
+      {_out, 0} = System.cmd("git", ["config", "user.name", "T"], cd: tmp)
+      File.write!(Path.join(tmp, "a.txt"), "hello\n")
+      {_out, 0} = System.cmd("git", ["add", "a.txt"], cd: tmp)
+      {_out, 0} = System.cmd("git", ["commit", "-q", "-m", "init"], cd: tmp)
+
+      File.write!(Path.join(tmp, "a.txt"), "hello\nworld\n")
+      File.write!(Path.join(tmp, "new.txt"), "new\n")
+
+      set = OrchestrationLoop.default_review_file_set_fn(tmp)
+
+      assert set =~ "a.txt"
+      assert set =~ "new.txt"
+    end
+
+    test "clean git work tree returns empty string" do
+      tmp =
+        System.tmp_dir!()
+        |> Path.join("review-file-set-clean-#{System.unique_integer([:positive])}")
+
+      File.mkdir_p!(tmp)
+      on_exit(fn -> File.rm_rf!(tmp) end)
+
+      {_out, 0} = System.cmd("git", ["init", "-q"], cd: tmp)
+      {_out, 0} = System.cmd("git", ["config", "user.email", "t@example.com"], cd: tmp)
+      {_out, 0} = System.cmd("git", ["config", "user.name", "T"], cd: tmp)
+      File.write!(Path.join(tmp, "a.txt"), "hello\n")
+      {_out, 0} = System.cmd("git", ["add", "a.txt"], cd: tmp)
+      {_out, 0} = System.cmd("git", ["commit", "-q", "-m", "init"], cd: tmp)
+
+      assert OrchestrationLoop.default_review_file_set_fn(tmp) == ""
+    end
+  end
+
+  describe "run/1 — reviewer file set threading (loop-derived ## Files Modified)" do
+    test "review_file_set_fn output reaches the reviewer prompt on first pass", %{
+      calls_agent: calls_agent
+    } do
+      {:ok, prompt_agent} = Agent.start_link(fn -> nil end)
+      on_exit(fn -> if Process.alive?(prompt_agent), do: Agent.stop(prompt_agent) end)
+
+      set_fn = fn _cwd -> "lib/only_file.ex" end
+
+      invoke_fn = fn role, _harness, ctx, _opts ->
+        Agent.update(calls_agent, fn calls -> calls ++ [role] end)
+
+        if role == "reviewer-static" do
+          prompt = OrchestrationLoop.build_prompt(role, ctx)
+          Agent.update(prompt_agent, fn _ -> prompt end)
+          {:ok, %{"status" => "success", "value" => "REVIEW_VERDICT: APPROVED"}}
+        else
+          {:ok, %{"status" => "success", "value" => "did #{role}"}}
+        end
+      end
+
+      assert :ok ==
+               OrchestrationLoop.run(
+                 harness: "claude_code",
+                 stack: "static",
+                 cwd: "/tmp/irrelevant",
+                 pitch: "do the thing",
+                 invoke_fn: invoke_fn,
+                 review_file_set_fn: set_fn,
+                 gate_fn: always_clear_gate_fn(),
+                 gate_preflight_fn: no_op_gate_preflight_fn(),
+                 preflight_probe_fn: all_present_preflight_probe_fn(),
+                 advance_cycle_state_fn: no_op_advance_cycle_state_fn()
+               )
+
+      prompt = Agent.get(prompt_agent, & &1)
+      assert prompt =~ "## Files Modified"
+      assert prompt =~ "lib/only_file.ex"
+    end
+
+    test "review_file_set_fn is re-captured fresh on a re-review pass", %{
+      calls_agent: calls_agent
+    } do
+      {:ok, set_calls_agent} = Agent.start_link(fn -> 0 end)
+      on_exit(fn -> if Process.alive?(set_calls_agent), do: Agent.stop(set_calls_agent) end)
+
+      {:ok, prompts_agent} = Agent.start_link(fn -> [] end)
+      on_exit(fn -> if Process.alive?(prompts_agent), do: Agent.stop(prompts_agent) end)
+
+      set_fn = fn _cwd ->
+        n = Agent.get_and_update(set_calls_agent, fn n -> {n, n + 1} end)
+        "lib/pass_#{n}.ex"
+      end
+
+      invoke_fn = fn role, _harness, ctx, _opts ->
+        Agent.update(calls_agent, fn calls -> calls ++ [role] end)
+
+        if role == "reviewer-static" do
+          seen = Enum.count(Agent.get(calls_agent, & &1), &(&1 == "reviewer-static"))
+          prompt = OrchestrationLoop.build_prompt(role, ctx)
+          Agent.update(prompts_agent, fn ps -> ps ++ [prompt] end)
+
+          value =
+            if seen <= 1,
+              do: "REVIEW_VERDICT: CHANGES_REQUESTED — fix it",
+              else: "REVIEW_VERDICT: APPROVED"
+
+          {:ok, %{"status" => "success", "value" => value}}
+        else
+          {:ok, %{"status" => "success", "value" => "did #{role}"}}
+        end
+      end
+
+      assert :ok ==
+               OrchestrationLoop.run(
+                 harness: "claude_code",
+                 stack: "static",
+                 cwd: "/tmp/irrelevant",
+                 pitch: "do the thing",
+                 invoke_fn: invoke_fn,
+                 review_file_set_fn: set_fn,
+                 gate_fn: always_clear_gate_fn(),
+                 gate_preflight_fn: no_op_gate_preflight_fn(),
+                 preflight_probe_fn: all_present_preflight_probe_fn(),
+                 advance_cycle_state_fn: no_op_advance_cycle_state_fn()
+               )
+
+      prompts = Agent.get(prompts_agent, & &1)
+      assert length(prompts) == 2
+      assert Enum.at(prompts, 0) =~ "lib/pass_0.ex"
+      assert Enum.at(prompts, 1) =~ "lib/pass_1.ex"
+    end
+
+    test "empty changed set in a real git tree → loop refuses to invoke the reviewer" do
+      tmp =
+        System.tmp_dir!()
+        |> Path.join("review-empty-set-#{System.unique_integer([:positive])}")
+
+      File.mkdir_p!(tmp)
+      on_exit(fn -> File.rm_rf!(tmp) end)
+
+      {_out, 0} = System.cmd("git", ["init", "-q"], cd: tmp)
+      {_out, 0} = System.cmd("git", ["config", "user.email", "t@example.com"], cd: tmp)
+      {_out, 0} = System.cmd("git", ["config", "user.name", "T"], cd: tmp)
+      File.write!(Path.join(tmp, "a.txt"), "hello\n")
+      {_out, 0} = System.cmd("git", ["add", "a.txt"], cd: tmp)
+      {_out, 0} = System.cmd("git", ["commit", "-q", "-m", "init"], cd: tmp)
+
+      invoke_fn = fn role, _harness, _ctx, _opts ->
+        {:ok, %{"status" => "success", "value" => "did #{role}"}}
+      end
+
+      assert {:error, reason} =
+               OrchestrationLoop.run(
+                 harness: "claude_code",
+                 stack: "static",
+                 cwd: tmp,
+                 pitch: "do the thing",
+                 invoke_fn: invoke_fn,
+                 gate_fn: always_clear_gate_fn(),
+                 gate_preflight_fn: no_op_gate_preflight_fn(),
+                 preflight_probe_fn: all_present_preflight_probe_fn(),
+                 advance_cycle_state_fn: no_op_advance_cycle_state_fn()
+               )
+
+      assert reason =~ "cycle produced no changes — nothing for the reviewer to review"
+    end
+
+    test "gate-red developer re-entry then gate-clear → reviewer prompt carries no stale Previous attempt fault",
+         %{calls_agent: calls_agent} do
+      tmp_cwd =
+        Path.join(
+          System.tmp_dir!(),
+          "loop-reviewer-no-leak-#{System.unique_integer([:positive])}"
+        )
+
+      File.mkdir_p!(tmp_cwd)
+      on_exit(fn -> File.rm_rf!(tmp_cwd) end)
+
+      {:ok, gate_calls_agent} = Agent.start_link(fn -> 0 end)
+      on_exit(fn -> if Process.alive?(gate_calls_agent), do: Agent.stop(gate_calls_agent) end)
+
+      gate_fn = fn _cwd, _opts ->
+        n = Agent.get_and_update(gate_calls_agent, fn n -> {n, n + 1} end)
+        if n == 0, do: {:failed, "make test"}, else: {:clear, "make test"}
+      end
+
+      {:ok, reviewer_prompt_agent} = Agent.start_link(fn -> nil end)
+
+      on_exit(fn ->
+        if Process.alive?(reviewer_prompt_agent), do: Agent.stop(reviewer_prompt_agent)
+      end)
+
+      invoke_fn = fn role, _harness, ctx, _opts ->
+        Agent.update(calls_agent, fn calls -> calls ++ [role] end)
+
+        if role == "reviewer-static" do
+          prompt = OrchestrationLoop.build_prompt(role, ctx)
+          Agent.update(reviewer_prompt_agent, fn _ -> prompt end)
+          {:ok, %{"status" => "success", "value" => "REVIEW_VERDICT: APPROVED"}}
+        else
+          {:ok, %{"status" => "success", "value" => "did #{role}"}}
+        end
+      end
+
+      assert :ok ==
+               OrchestrationLoop.run(
+                 harness: "claude_code",
+                 stack: "static",
+                 cwd: tmp_cwd,
+                 pitch: "do the thing",
+                 invoke_fn: invoke_fn,
+                 gate_fn: gate_fn,
+                 gate_preflight_fn: no_op_gate_preflight_fn(),
+                 preflight_probe_fn: all_present_preflight_probe_fn(),
+                 advance_cycle_state_fn: no_op_advance_cycle_state_fn()
+               )
+
+      reviewer_prompt = Agent.get(reviewer_prompt_agent, & &1)
+      refute reviewer_prompt =~ "Previous attempt at role reviewer-"
+    end
+  end
+
   describe "run/1 — gate progress-based retry bound" do
     test "signature changes each attempt → re-invokes past legacy count-1 bound, then clears",
          %{calls_agent: calls_agent} do
@@ -2260,6 +2518,11 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
            calls_agent: calls_agent,
            dir: dir
          } do
+      # Simulate the developer's own work landing before the reviewer runs —
+      # a real cycle never reaches the reviewer with a clean tree (see
+      # invoke_reviewer/4's empty-set refusal).
+      File.write!(Path.join(dir, "feature.txt"), "wip\n")
+
       invoke_fn = fn role, _harness, _ctx, _opts ->
         Agent.update(calls_agent, fn calls -> calls ++ [role] end)
 
@@ -2303,6 +2566,11 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
       calls_agent: calls_agent,
       dir: dir
     } do
+      # Simulate the developer's own work landing before the reviewer runs —
+      # a real cycle never reaches the reviewer with a clean tree (see
+      # invoke_reviewer/4's empty-set refusal).
+      File.write!(Path.join(dir, "feature.txt"), "wip\n")
+
       invoke_fn = fn role, _harness, _ctx, _opts ->
         Agent.update(calls_agent, fn calls -> calls ++ [role] end)
 
@@ -2347,6 +2615,11 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
       File.write!(Path.join(dir, "prior_cycle.txt"), "prior work\n")
       {_o, 0} = System.cmd("git", ["add", "-A"], cd: dir)
       {_o, 0} = System.cmd("git", ["commit", "-q", "-m", "prior cycle commit"], cd: dir)
+
+      # Simulate THIS cycle's developer work landing before the reviewer
+      # runs — a real cycle never reaches the reviewer with a clean tree
+      # (see invoke_reviewer/4's empty-set refusal).
+      File.write!(Path.join(dir, "feature.txt"), "wip\n")
 
       invoke_fn = fn role, _harness, _ctx, _opts ->
         Agent.update(calls_agent, fn calls -> calls ++ [role] end)
@@ -2397,21 +2670,27 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
         {:ok, %{"status" => "success", "value" => value}}
       end
 
-      assert_raise RuntimeError, ~r/NO work was produced|no-op false-success/, fn ->
-        OrchestrationLoop.run(
-          harness: "claude_code",
-          stack: "static",
-          cwd: dir,
-          pitch: "do the thing",
-          invoke_fn: invoke_fn,
-          gate_fn: always_clear_gate_fn(),
-          gate_preflight_fn: no_op_gate_preflight_fn(),
-          preflight_probe_fn: all_present_preflight_probe_fn(),
-          advance_cycle_state_fn: fn _state, _step_log, _session_id, _verdict, _project_dir ->
-            :ok
-          end
-        )
-      end
+      # A genuinely no-op cycle (zero work anywhere) is now caught even
+      # earlier than the committer no-op guard: invoke_reviewer/4 refuses to
+      # invoke the reviewer at all on an empty changed-file set in a real
+      # git tree — see "empty changed set in a real git tree" test above.
+      # Same never-loop_committed contract, an earlier catch point.
+      assert {:error, reason} =
+               OrchestrationLoop.run(
+                 harness: "claude_code",
+                 stack: "static",
+                 cwd: dir,
+                 pitch: "do the thing",
+                 invoke_fn: invoke_fn,
+                 gate_fn: always_clear_gate_fn(),
+                 gate_preflight_fn: no_op_gate_preflight_fn(),
+                 preflight_probe_fn: all_present_preflight_probe_fn(),
+                 advance_cycle_state_fn: fn _state, _step_log, _session_id, _verdict, _project_dir ->
+                   :ok
+                 end
+               )
+
+      assert reason =~ "cycle produced no changes — nothing for the reviewer to review"
     end
   end
 

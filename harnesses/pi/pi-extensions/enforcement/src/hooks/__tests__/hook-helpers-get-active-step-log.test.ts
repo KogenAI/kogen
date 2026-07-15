@@ -8,7 +8,7 @@
  * against the shared helper.
  */
 
-import { describe, it, afterEach } from "node:test";
+import { describe, it, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
 import * as fs from "node:fs";
 import * as os from "node:os";
@@ -18,7 +18,29 @@ import { getActiveStepLog } from "../../lib/hook-helpers";
 describe("getActiveStepLog", () => {
   const created: string[] = [];
 
+  // getActiveStepLog()'s resolution step 0 reads process.env.CODEGEN_LOG_PATH
+  // FIRST, ahead of the .active sentinel / mtime scan every test below is
+  // actually exercising. Under a real loop-mode session this env var is
+  // ambiently set to the CURRENT cycle's own log — if it leaks into this
+  // suite unmuted, every assertion here silently gets overridden by that
+  // ambient pin instead of the fixture path under test. Save/restore at
+  // suite (beforeEach/afterEach) scope, not per-test-body, since ALL tests
+  // in this file are equally exposed (none of them intend to test the pin
+  // itself — that is the dedicated "CODEGEN_LOG_PATH pin wins" test below,
+  // which manages the var itself at body scope per existing convention).
+  let savedCodegenLogPath: string | undefined;
+
+  beforeEach(() => {
+    savedCodegenLogPath = process.env.CODEGEN_LOG_PATH;
+    delete process.env.CODEGEN_LOG_PATH;
+  });
+
   afterEach(() => {
+    if (savedCodegenLogPath === undefined) {
+      delete process.env.CODEGEN_LOG_PATH;
+    } else {
+      process.env.CODEGEN_LOG_PATH = savedCodegenLogPath;
+    }
     for (const d of created.splice(0)) {
       fs.rmSync(d, { recursive: true, force: true });
     }

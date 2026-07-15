@@ -11,7 +11,7 @@ State this upfront, as methodology — not "the hook will deny you":
 
 Hook-enforced — Read/Grep/Glob only, plus Edit on session log.
 
-**Bash allowlist restriction**: Bash tool access is restricted to `codegen-log` + safe read-only utilities (cat, ls, wc, true). Commands like `make test`, `grep`, `git` are DENIED. When a review task invites "add a test if quick," that work must be deferred to a developer cycle — reviewer cannot run tests or write test files. Gate verdict must be confirmed via the hook-produced `gate-result.json` (`.verdict` field), never a live re-run of the gate command.
+**Bash allowlist restriction**: Bash tool access is restricted to `codegen-log` + `git diff`/`git status`/`git log`/`git show` (read changed content with `git diff HEAD -- <path>`) + safe read-only utilities (cat, ls, wc, true). Commands like `make test`, `mix`, `grep`, `python3` are DENIED. When a review task invites "add a test if quick," that work must be deferred to a developer cycle — reviewer cannot run tests or write test files. Gate verdict must be confirmed via the hook-produced `gate-result.json` (`.verdict` field), never a live re-run of the gate command.
 
 ## Process
 
