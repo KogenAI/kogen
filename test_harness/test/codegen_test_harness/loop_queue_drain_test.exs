@@ -1842,6 +1842,62 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
 
       assert File.read!(env_capture_file) == "1"
     end
+
+    test "Move 3: updates the lock file's tree= token when __queue_drain_lock_path__ is set",
+         ctx do
+      jsonl = Path.join(ctx.dir, "out.jsonl")
+      lock_path = Path.join(ctx.dir, "queue.lock")
+      File.write!(lock_path, "#{System.pid()} queue\n")
+
+      script =
+        write_script(ctx.dir, "quick.sh", """
+        #!/usr/bin/env bash
+        exit 0
+        """)
+
+      Process.put(:__queue_drain_build_bin__, script)
+      Process.put(:__queue_drain_lock_path__, lock_path)
+
+      on_exit(fn ->
+        Process.delete(:__queue_drain_build_bin__)
+        Process.delete(:__queue_drain_lock_path__)
+      end)
+
+      capture_io(:stderr, fn ->
+        send(
+          self(),
+          {:result, LoopQueueDrain.default_spawn_fn("slug", "claude", "phoenix", ctx.dir, jsonl)}
+        )
+      end)
+
+      receive do
+        {:result, {:exit_code, 0}} -> :ok
+      end
+
+      assert File.read!(lock_path) =~ ~r/^#{System.pid()} queue tree=\d+\n$/
+    end
+
+    test "Move 3: is a no-op (no crash) when __queue_drain_lock_path__ is unset", ctx do
+      jsonl = Path.join(ctx.dir, "out.jsonl")
+
+      script =
+        write_script(ctx.dir, "quick2.sh", """
+        #!/usr/bin/env bash
+        exit 0
+        """)
+
+      Process.put(:__queue_drain_build_bin__, script)
+      on_exit(fn -> Process.delete(:__queue_drain_build_bin__) end)
+
+      capture_io(:stderr, fn ->
+        send(
+          self(),
+          {:result, LoopQueueDrain.default_spawn_fn("slug", "claude", "phoenix", ctx.dir, jsonl)}
+        )
+      end)
+
+      assert_receive {:result, {:exit_code, 0}}
+    end
   end
 
   # ── default_kill_tree/1 — ppid descendant-walk reap ─────────────────────
@@ -1860,6 +1916,54 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
       assert Enum.all?(table, fn {pid, ppid} -> is_integer(pid) and is_integer(ppid) end)
       # init/launchd (pid 1) must be present on any POSIX host
       assert Enum.any?(table, fn {pid, _ppid} -> pid == 1 end)
+    end
+  end
+
+  # ── Move 1: exit-path reap ───────────────────────────────────────────────
+
+  describe "reap_in_flight_tree/0" do
+    test "is a no-op when nothing is recorded as in-flight" do
+      assert LoopQueueDrain.reap_in_flight_tree() == :ok
+    end
+  end
+
+  # ── Move 4: startup preflight (orphan codegen-build scan) ───────────────
+
+  describe "drain/1 Move 4 preflight — refuse_if_build_orphan" do
+    test "refuses BEFORE acquiring the lock when orphan_scan_fn finds a live codegen-build pid",
+         ctx do
+      write_pitch(ctx.ready_dir, "solo")
+
+      opts =
+        base_opts(ctx, spawn_fn: fn _s, _h, _st, _c, _j -> {:exit_code, 0} end)
+        |> Keyword.put(:orphan_scan_fn, fn _cwd -> ["424242"] end)
+
+      assert {:error, reason} = LoopQueueDrain.drain(opts)
+      assert reason =~ "orphan codegen-build process(es)"
+      assert reason =~ "424242"
+      assert reason =~ "kill -9 424242"
+
+      # The lock must NEVER have been written — the preflight refuses before
+      # BuildLock.acquire runs.
+      refute File.exists?(ctx.lock_path)
+    end
+
+    test "proceeds normally when orphan_scan_fn returns []", ctx do
+      write_pitch(ctx.ready_dir, "solo")
+
+      opts =
+        shipped_opts(ctx, spawn_fn: fn _s, _h, _st, _c, _j -> {:exit_code, 0} end)
+        |> Keyword.put(:orphan_scan_fn, fn _cwd -> [] end)
+
+      assert {:ok, 1} = LoopQueueDrain.drain(opts)
+    end
+
+    test "default_build_orphan_scan/1 excludes this process's own OS pid" do
+      # Sanity: the real scan never matches a nonexistent pattern in this
+      # test's own cwd (no codegen-build process is bound to a random tmp
+      # dir path), so it degrades to [] rather than falsely refusing.
+      random_cwd = "/tmp/never-a-real-cwd-#{:erlang.unique_integer([:positive])}"
+      assert LoopQueueDrain.default_build_orphan_scan(random_cwd) == []
     end
   end
 end

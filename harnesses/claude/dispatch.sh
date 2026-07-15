@@ -60,7 +60,17 @@ if [[ -n "$PRINT_ARGV" ]]; then
     exit 0
 fi
 
-exec env \
+# Job-controlled, non-exec spawn: SIGINT is uncatchable inside the BEAM
+# (`:os.set_signal/2` excludes :sigint on every OTP release — see
+# test_harness/lib/codegen_test_harness/build_signal_handler.ex moduledoc),
+# so this shell must stay alive after spawning the loop, trap INT/TERM
+# itself, and forward SIGTERM (which IS catchable) to the child's process
+# group. `set -m` puts the child in its own process group with
+# child_pid == PGID, so `kill -TERM -$child_pid` reaches the loop AND every
+# descendant it spawns. Mirrors the shipped build-queue.sh trap pattern
+# (codegen/pitches/shipped/build-queue-process-supervision.md).
+set -m
+env \
     -u ANTHROPIC_API_KEY \
     -u CLAUDECODE \
     -u CLAUDE_CODE_SSE_PORT \
@@ -71,4 +81,15 @@ exec env \
     -u AI_AGENT \
     CODEGEN_DIR="$CODEGEN_DIR" \
     bash -c 'cd "$1" && exec mix codegen.loop --harness=claude_code "--stack=$2" "--cwd=$3" -- "$4"' \
-    _ "$LOOP_DIR" "$STACK" "$CWD" "$PROMPT"
+    _ "$LOOP_DIR" "$STACK" "$CWD" "$PROMPT" &
+child_pid=$!
+
+forward_term() {
+    kill -0 "$child_pid" 2>/dev/null && kill -TERM -"$child_pid" 2>/dev/null
+}
+trap 'forward_term' INT TERM
+
+wait "$child_pid"
+exit_code=$?
+trap - INT TERM
+exit "$exit_code"

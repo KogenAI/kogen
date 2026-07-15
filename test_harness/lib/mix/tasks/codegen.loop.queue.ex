@@ -42,6 +42,7 @@ defmodule Mix.Tasks.Codegen.Loop.Queue do
 
   use Mix.Task
 
+  alias CodegenTestHarness.BuildSignalHandler
   alias CodegenTestHarness.LoopQueueDrain
 
   @impl Mix.Task
@@ -58,6 +59,15 @@ defmodule Mix.Tasks.Codegen.Loop.Queue do
     harness = Keyword.get(opts, :harness) || missing_flag!("--harness")
     stack = Keyword.get(opts, :stack) || missing_flag!("--stack")
     cwd = Keyword.get(opts, :cwd) || missing_flag!("--cwd")
+
+    # Move 2: install the SIGTERM handler BEFORE the drain acquires its lock
+    # or spawns anything — a Ctrl-C landing before the first pitch even
+    # starts must still be handled cleanly (no-op reap, clean exit). SIGINT
+    # itself cannot be caught at the BEAM level (see BuildSignalHandler
+    # moduledoc); the bash dispatch layer traps INT and forwards SIGTERM to
+    # this process group so this handler still runs on Ctrl-C.
+    lock_path = Path.join([cwd, "codegen", "gate-pending", "queue.lock"])
+    :ok = BuildSignalHandler.install(lock_path)
 
     unless harness in ["claude", "pi"] do
       Mix.shell().error(

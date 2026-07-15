@@ -99,6 +99,17 @@ defmodule CodegenTestHarness.LoopQueueDrain do
 
   @codegen_build_bin Path.expand("../../../codegen-build", __DIR__)
 
+  # `:persistent_term` key holding the OS pid of the currently in-flight
+  # spawned child (set right after `Port.open` in `default_spawn_fn/5`,
+  # cleared once the port concludes normally). This is the invariant this
+  # module exists to close: "a build's process tree dies with the run that
+  # spawned it" — an exit via crash/raise/normal-return must reap the SAME
+  # subtree the timeout path already reaps (`default_kill_tree/1`), not only
+  # a budget timeout. `drain/1`'s `after` block calls `reap_in_flight_tree/0`
+  # unconditionally so every exit path is covered, not only the explicit
+  # timeout branch.
+  @in_flight_os_pid_key {__MODULE__, :in_flight_os_pid}
+
   @doc """
   Drains `<cwd>/codegen/pitches/ready/` for `opts[:harness]`/`opts[:stack]`/
   `opts[:cwd]`. Returns `{:ok, shipped_count}` once `ready/` empties (either
@@ -201,73 +212,153 @@ defmodule CodegenTestHarness.LoopQueueDrain do
     File.mkdir_p!(Path.dirname(lock_path))
 
     pid_alive_fn = Keyword.get(opts, :pid_alive_fn, &BuildLock.default_pid_alive?/1)
+    orphan_scan_fn = Keyword.get(opts, :orphan_scan_fn, &default_build_orphan_scan/1)
 
-    case BuildLock.acquire(lock_path, "queue", pid_alive_fn) do
-      :ok ->
-        try do
-          # leg 1: clear any stale legacy build-queue.json manifest left by the
-          # now-removed legacy build-queue.sh drainer. The Elixir loop never
-          # writes this file; the shared lock (see :lock_path default)
-          # guarantees no legacy drain is concurrently mid-run relying on it.
-          # Ignore {:error, :enoent} (absent is the normal case).
-          File.rm(Path.join([cwd, "codegen", "gate-pending", "build-queue.json"]))
+    with :ok <- refuse_if_build_orphan(cwd, orphan_scan_fn),
+         :ok <- BuildLock.acquire(lock_path, "queue", pid_alive_fn) do
+      try do
+        # Move 3 wiring: `default_spawn_fn/5` updates this SAME lock
+        # file's `tree=<os_pid>` token right after each per-pitch child
+        # starts (see `:__queue_drain_lock_path__` read there), so a
+        # second builder's `BuildLock.acquire/4` can discover the
+        # CURRENTLY in-flight child even though the drain acquired the
+        # lock once, up front, before any child existed.
+        Process.put(:__queue_drain_lock_path__, lock_path)
 
-          # Best-effort: bound the aggregate footprint of console captures.
-          # Never touches `*_cycle.jsonl` (canonical session logs). A failed
-          # cleanup (permission error, race) must never abort the drain.
-          prune_old_build_logs(cwd)
+        # leg 1: clear any stale legacy build-queue.json manifest left by the
+        # now-removed legacy build-queue.sh drainer. The Elixir loop never
+        # writes this file; the shared lock (see :lock_path default)
+        # guarantees no legacy drain is concurrently mid-run relying on it.
+        # Ignore {:error, :enoent} (absent is the normal case).
+        File.rm(Path.join([cwd, "codegen", "gate-pending", "build-queue.json"]))
 
-          state = %{
-            harness: harness,
-            stack: stack,
-            cwd: cwd,
-            ready_dir: ready_dir,
-            shipped_dir: shipped_dir,
-            max_retries: Keyword.get(opts, :max_retries, max_retries_from_env()),
-            retry_delays: Keyword.get(opts, :retry_delays, retry_delays_from_env()),
-            pitch_budget_secs: Keyword.get(opts, :pitch_budget_secs, pitch_budget_from_env()),
-            max_consecutive_fails:
-              Keyword.get(opts, :max_consecutive_fails, max_consecutive_fails_from_env()),
-            spawn_fn: Keyword.get(opts, :spawn_fn, &default_spawn_fn/5),
-            sleep_fn: Keyword.get(opts, :sleep_fn, &default_sleep_fn/1),
-            git_stash_fn: Keyword.get(opts, :git_stash_fn, &default_git_stash_fn/3),
-            git_stash_restore_fn:
-              Keyword.get(opts, :git_stash_restore_fn, &default_git_stash_restore_fn/2),
-            now_fn: Keyword.get(opts, :now_fn, &default_now_fn/0),
-            ordered_fn: Keyword.get(opts, :ordered_fn, &LoopQueue.ordered_slugs/1),
-            transient_fn: Keyword.get(opts, :transient_fn, &LoopQueue.transient?/1),
-            blocked_fn:
-              Keyword.get(opts, :blocked_fn, fn ->
-                LoopQueue.blocked_by_unmet_dep(ready_dir, shipped_dir)
-              end),
-            git_head_fn: Keyword.get(opts, :git_head_fn, &default_git_head_fn/1),
-            git_ancestor_fn: Keyword.get(opts, :git_ancestor_fn, &default_git_ancestor_fn/3),
-            gate_verdict_fn: Keyword.get(opts, :gate_verdict_fn, &default_gate_verdict_fn/1),
-            gate_base_sha_fn: Keyword.get(opts, :gate_base_sha_fn, &default_gate_base_sha_fn/1),
-            gate_mtime_fn: Keyword.get(opts, :gate_mtime_fn, &default_gate_mtime_fn/1),
-            discover_session_log_fn:
-              Keyword.get(opts, :discover_session_log_fn, &default_discover_session_log/3),
-            timed_out_slugs: MapSet.new(),
-            failed_slugs: MapSet.new(),
-            consecutive_fails: 0,
-            blocked_printed: MapSet.new(),
-            retry_count: 0,
-            last_slug: nil,
-            # Computed ONCE on first scan (mirrors legacy build-queue.sh:356-358
-            # "Set total on first scan only"). A pitch written mid-run as a
-            # side-effect (see test 11) is NOT reflected in `total` — this is
-            # intentional legacy parity, not a bug: legacy's TOTAL has the
-            # identical "may understate after refill" caveat (build-queue.sh:355).
-            total: length(Keyword.get(opts, :ordered_fn, &LoopQueue.ordered_slugs/1).(ready_dir))
-          }
+        # Best-effort: bound the aggregate footprint of console captures.
+        # Never touches `*_cycle.jsonl` (canonical session logs). A failed
+        # cleanup (permission error, race) must never abort the drain.
+        prune_old_build_logs(cwd)
 
-          run_loop(state, 0, 0)
-        after
-          BuildLock.release(lock_path)
-        end
+        state = %{
+          harness: harness,
+          stack: stack,
+          cwd: cwd,
+          ready_dir: ready_dir,
+          shipped_dir: shipped_dir,
+          lock_path: lock_path,
+          max_retries: Keyword.get(opts, :max_retries, max_retries_from_env()),
+          retry_delays: Keyword.get(opts, :retry_delays, retry_delays_from_env()),
+          pitch_budget_secs: Keyword.get(opts, :pitch_budget_secs, pitch_budget_from_env()),
+          max_consecutive_fails:
+            Keyword.get(opts, :max_consecutive_fails, max_consecutive_fails_from_env()),
+          spawn_fn: Keyword.get(opts, :spawn_fn, &default_spawn_fn/5),
+          sleep_fn: Keyword.get(opts, :sleep_fn, &default_sleep_fn/1),
+          git_stash_fn: Keyword.get(opts, :git_stash_fn, &default_git_stash_fn/3),
+          git_stash_restore_fn:
+            Keyword.get(opts, :git_stash_restore_fn, &default_git_stash_restore_fn/2),
+          now_fn: Keyword.get(opts, :now_fn, &default_now_fn/0),
+          ordered_fn: Keyword.get(opts, :ordered_fn, &LoopQueue.ordered_slugs/1),
+          transient_fn: Keyword.get(opts, :transient_fn, &LoopQueue.transient?/1),
+          blocked_fn:
+            Keyword.get(opts, :blocked_fn, fn ->
+              LoopQueue.blocked_by_unmet_dep(ready_dir, shipped_dir)
+            end),
+          git_head_fn: Keyword.get(opts, :git_head_fn, &default_git_head_fn/1),
+          git_ancestor_fn: Keyword.get(opts, :git_ancestor_fn, &default_git_ancestor_fn/3),
+          gate_verdict_fn: Keyword.get(opts, :gate_verdict_fn, &default_gate_verdict_fn/1),
+          gate_base_sha_fn: Keyword.get(opts, :gate_base_sha_fn, &default_gate_base_sha_fn/1),
+          gate_mtime_fn: Keyword.get(opts, :gate_mtime_fn, &default_gate_mtime_fn/1),
+          discover_session_log_fn:
+            Keyword.get(opts, :discover_session_log_fn, &default_discover_session_log/3),
+          timed_out_slugs: MapSet.new(),
+          failed_slugs: MapSet.new(),
+          consecutive_fails: 0,
+          blocked_printed: MapSet.new(),
+          retry_count: 0,
+          last_slug: nil,
+          # Computed ONCE on first scan (mirrors legacy build-queue.sh:356-358
+          # "Set total on first scan only"). A pitch written mid-run as a
+          # side-effect (see test 11) is NOT reflected in `total` — this is
+          # intentional legacy parity, not a bug: legacy's TOTAL has the
+          # identical "may understate after refill" caveat (build-queue.sh:355).
+          total: length(Keyword.get(opts, :ordered_fn, &LoopQueue.ordered_slugs/1).(ready_dir))
+        }
 
+        run_loop(state, 0, 0)
+      after
+        # Exit-path reap (Move 1): a crash/raise propagating out of
+        # `run_loop` (or its own normal `{:ok, _}` return) must not leave an
+        # in-flight spawned child's tree running. `reap_in_flight_tree/0` is
+        # a no-op when the port already concluded normally (the key is
+        # cleared in `collect_spawn_output/4`'s exit_status branch) —
+        # this only fires when something is genuinely still in flight.
+        reap_in_flight_tree()
+        Process.delete(:__queue_drain_lock_path__)
+        BuildLock.release(lock_path)
+      end
+    else
       {:error, reason} ->
         {:error, "queue: #{reason}"}
+    end
+  end
+
+  # Move 4: startup preflight — scans for a live `codegen-build` process
+  # already bound to THIS cwd, left running by a prior drain whose BEAM
+  # died (crash, `kill -9`, OOM) without releasing its lock file at all —
+  # the case Move 3 cannot see, because Move 3 only fires when the LOCK
+  # FILE still names a dead pid; a lock file deleted by hand (the
+  # operator's own `rm -f queue.lock` recovery step) leaves no trace for
+  # Move 3 to compare against. Reuses the SAME `ps_fn` seam the reap
+  # already uses (`__queue_drain_ps_fn__`) — one process-inspection
+  # mechanism, not a second one. Never auto-kills: refuses loud, naming the
+  # pids and the reap command, mirroring `OrchestrationLoop.refuse_if_orphan/2`'s
+  # contract for the solo path.
+  @spec refuse_if_build_orphan(String.t(), (String.t() -> [String.t()])) ::
+          :ok | {:error, String.t()}
+  defp refuse_if_build_orphan(cwd, orphan_scan_fn) do
+    case orphan_scan_fn.(cwd) do
+      [] ->
+        :ok
+
+      pids when is_list(pids) ->
+        {:error,
+         "orphan codegen-build process(es) already running for this cwd: " <>
+           Enum.join(pids, ", ") <>
+           " — refusing to start a second. Inspect with `ps -p " <>
+           Enum.join(pids, ",") <>
+           " -o pid,etime,command`, then reap with `kill -9 " <>
+           Enum.join(pids, " ") <> "` if confirmed stale."}
+    end
+  end
+
+  # Real orphan_scan_fn for Move 4: `pgrep -f` matching `codegen-build
+  # .*--cwd=<cwd>`, excluding this process's own OS pid. Degrades to `[]`
+  # (lock-only enforcement) when `pgrep` itself is unavailable — mirrors
+  # `OrchestrationLoop.default_orphan_scan/1`'s identical fail-open
+  # contract for the solo path.
+  @doc false
+  @spec default_build_orphan_scan(String.t()) :: [String.t()]
+  def default_build_orphan_scan(cwd) do
+    pattern = "codegen-build .*--cwd=#{Regex.escape(cwd)}"
+
+    case System.cmd("pgrep", ["-f", pattern], stderr_to_stdout: true) do
+      {output, 0} ->
+        self_pid = System.pid()
+
+        output
+        |> String.split("\n", trim: true)
+        |> Enum.reject(&(&1 == self_pid))
+
+      # fail-loud-exempt: pgrep exit 1 means "no matches" — an empty
+      # result, not an error (mirrors OrchestrationLoop.default_orphan_scan/1).
+      {_output, 1} ->
+        []
+
+      # fail-loud-exempt: `pgrep` missing from PATH or another exec error —
+      # this preflight is a secondary guard on top of the per-cwd lock
+      # (primary). Degrading to lock-only enforcement here is a justified,
+      # commented fail-open, not a silent swallow: logged loud on stderr.
+      {output, _other_code} ->
+        IO.puts(:stderr, "queue: orphan scan skipped — pgrep unavailable: #{output}")
+        []
     end
   end
 
@@ -846,6 +937,33 @@ defmodule CodegenTestHarness.LoopQueueDrain do
         {:env, env}
       ])
 
+    # Record the in-flight os_pid (Move 1) BEFORE blocking on the port's
+    # output/exit — this is what lets `reap_in_flight_tree/0` (called from
+    # `drain/1`'s `after`) find and reap this child's subtree on any exit
+    # path (crash, raise, normal `{:ok, _}` return), not only the explicit
+    # timeout branch below. Cleared in `collect_spawn_output/4`'s
+    # exit_status branch once the port concludes normally.
+    case Port.info(port, :os_pid) do
+      {:os_pid, os_pid} ->
+        :persistent_term.put(@in_flight_os_pid_key, os_pid)
+
+        # Move 3: keep the lock file's `tree=<os_pid>` token current as each
+        # new per-pitch child starts — best-effort, no-op when this drain's
+        # lock_path was never recorded (e.g. a test calling
+        # default_spawn_fn/5 directly, outside drain/1).
+        case Process.get(:__queue_drain_lock_path__) do
+          nil -> :ok
+          lock_path -> BuildLock.update_tree_pid(lock_path, os_pid)
+        end
+
+      # fail-loud-exempt: Port.info/2 returning nil immediately after
+      # Port.open/2 would mean the port already closed before this line ran
+      # — an extreme race, not a normal outcome. Nothing to track yet; the
+      # exit_status branch below still fires normally.
+      nil ->
+        :ok
+    end
+
     collect_spawn_output(port, [], budget_secs * 1000, jsonl_path)
   end
 
@@ -856,6 +974,7 @@ defmodule CodegenTestHarness.LoopQueueDrain do
         collect_spawn_output(port, [chunk | acc], budget_ms, jsonl_path)
 
       {^port, {:exit_status, code}} ->
+        :persistent_term.erase(@in_flight_os_pid_key)
         File.write!(jsonl_path, IO.iodata_to_binary(Enum.reverse(acc)))
         {:exit_code, code}
     after
@@ -867,6 +986,7 @@ defmodule CodegenTestHarness.LoopQueueDrain do
   defp do_spawn_timeout(port, acc, jsonl_path) do
     kill_fn = Process.get(:__queue_drain_kill_fn__, &default_kill_tree/1)
     kill_fn.(port)
+    :persistent_term.erase(@in_flight_os_pid_key)
 
     File.write!(jsonl_path, IO.iodata_to_binary(Enum.reverse(acc)))
 
@@ -877,6 +997,27 @@ defmodule CodegenTestHarness.LoopQueueDrain do
     end
 
     :timeout
+  end
+
+  # Move 1 entry point: reaps whatever subtree is CURRENTLY recorded as
+  # in-flight (if any) via the SAME ppid descendant-walk the timeout path
+  # uses (`reap_os_pid_subtree/1`, which `default_kill_tree/1` now
+  # delegates to). A no-op — :persistent_term.get/2 returns the default and
+  # nothing is reaped — when no child is in flight (the common case: the
+  # drain concluded normally and the key was already erased).
+  @doc false
+  @spec reap_in_flight_tree() :: :ok
+  def reap_in_flight_tree do
+    case :persistent_term.get(@in_flight_os_pid_key, nil) do
+      nil ->
+        :ok
+
+      os_pid ->
+        ps_fn = Process.get(:__queue_drain_ps_fn__, &default_ps_lister/0)
+        reap_descendant_subtree(os_pid, ps_fn, 2)
+        :persistent_term.erase(@in_flight_os_pid_key)
+        :ok
+    end
   end
 
   # Reaps the FULL transitive descendant subtree of the timed-out port's OS
@@ -906,6 +1047,39 @@ defmodule CodegenTestHarness.LoopQueueDrain do
       nil ->
         :ok
     end
+  end
+
+  # Solo-path (Move 2, `mix codegen.loop`) entry point: unlike the queue
+  # drain, the solo path never `Port.open`s a tracked child — its heavy
+  # subprocess (`codegen-call` -> `claude`) runs via synchronous
+  # `System.cmd/3`, which does not expose an os_pid this module can record.
+  # Reaps the CURRENT process's own OS-level descendant subtree (via the
+  # same ppid walk `reap_descendant_subtree/3` performs) WITHOUT killing the
+  # root itself — the root here is this BEAM, whose own halt is the
+  # caller's job (`BuildSignalHandler`), not this fn's.
+  @doc false
+  @spec reap_own_descendants() :: :ok
+  def reap_own_descendants do
+    ps_fn = Process.get(:__queue_drain_ps_fn__, &default_ps_lister/0)
+    self_os_pid = System.pid() |> String.to_integer()
+    table = ps_fn.()
+    descendants = collect_descendants(self_os_pid, table)
+
+    Enum.each(descendants, fn pid ->
+      System.cmd("kill", ["-9", Integer.to_string(pid)], stderr_to_stdout: true)
+    end)
+
+    survivors = Enum.filter(descendants, &BuildLock.default_pid_alive?(Integer.to_string(&1)))
+
+    unless survivors == [] do
+      IO.puts(
+        :stderr,
+        "queue: reap_own_descendants: survivor pid(s): " <>
+          Enum.map_join(survivors, ", ", &Integer.to_string/1)
+      )
+    end
+
+    :ok
   end
 
   defp reap_descendant_subtree(_os_pid, _ps_fn, 0), do: :ok

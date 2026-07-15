@@ -22,6 +22,7 @@ defmodule Mix.Tasks.Codegen.Loop do
 
   use Mix.Task
 
+  alias CodegenTestHarness.BuildSignalHandler
   alias CodegenTestHarness.InfraAbort
   alias CodegenTestHarness.LoopQueue
   alias CodegenTestHarness.OrchestrationLoop
@@ -49,6 +50,21 @@ defmodule Mix.Tasks.Codegen.Loop do
     harness = Keyword.get(opts, :harness) || missing_flag!("--harness")
     stack = Keyword.get(opts, :stack) || missing_flag!("--stack")
     cwd = Keyword.get(opts, :cwd) || missing_flag!("--cwd")
+
+    # Move 2: install the SIGTERM handler for the solo path (SIGINT cannot
+    # be caught at the BEAM level — see BuildSignalHandler moduledoc; the
+    # bash dispatch layer forwards SIGINT as SIGTERM to this process group).
+    # Unlike the queue drain (which tracks a Port os_pid), this path's heavy
+    # subprocess runs via synchronous `System.cmd/3` with no exposed os_pid
+    # — the reap here targets THIS process's own OS descendant subtree
+    # (`LoopQueueDrain.reap_own_descendants/0`) rather than a single tracked
+    # child.
+    lock_path = Path.join([cwd, "codegen", "gate-pending", "queue.lock"])
+
+    :ok =
+      BuildSignalHandler.install(lock_path,
+        reap_fn: &CodegenTestHarness.LoopQueueDrain.reap_own_descendants/0
+      )
 
     pitch_arg =
       case positional do
