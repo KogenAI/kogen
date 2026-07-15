@@ -942,6 +942,56 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
     refute File.exists?(Path.join(ctx.shipped_dir, "solo.md"))
   end
 
+  test "infra-abort exit code (3) HALTS the drain immediately — no stash, no skip-and-continue",
+       ctx do
+    write_pitch(ctx.ready_dir, "solo")
+
+    stash_calls = start_agent([])
+
+    git_stash_fn = fn _cwd, slug, reason ->
+      Agent.update(stash_calls, fn calls -> calls ++ [{slug, reason}] end)
+      :ok
+    end
+
+    spawn_fn = fn _slug, _h, _s, _cwd, _jsonl -> {:exit_code, 3} end
+
+    stderr =
+      capture_io(:stderr, fn ->
+        assert {:error, reason} =
+                 LoopQueueDrain.drain(
+                   base_opts(ctx, spawn_fn: spawn_fn, git_stash_fn: git_stash_fn)
+                 )
+
+        assert reason =~ "HALTED"
+        assert reason =~ "infra abort"
+      end)
+
+    assert stderr =~ "codegen.loop: FAILED" or stderr != ""
+    # never stashed — a stash is the deterministic-failure/timeout path only.
+    assert Agent.get(stash_calls, & &1) == []
+    # pitch left untouched in ready/, never marked failed-and-skipped.
+    assert File.exists?(Path.join(ctx.ready_dir, "solo.md"))
+    refute File.exists?(Path.join(ctx.shipped_dir, "solo.md"))
+  end
+
+  test "a second pitch behind an infra abort never runs — the drain halts on the first", ctx do
+    write_pitch(ctx.ready_dir, "a")
+    write_pitch(ctx.ready_dir, "b")
+
+    spawn_calls = start_agent([])
+
+    spawn_fn = fn slug, _h, _s, _cwd, _jsonl ->
+      Agent.update(spawn_calls, fn calls -> calls ++ [slug] end)
+      {:exit_code, 3}
+    end
+
+    capture_io(:stderr, fn ->
+      assert {:error, _reason} = LoopQueueDrain.drain(base_opts(ctx, spawn_fn: spawn_fn))
+    end)
+
+    assert Agent.get(spawn_calls, & &1) == ["a"]
+  end
+
   test "6r-forward: HEAD moved + gate-clear + IS an ancestor still ships (forward-commit control)",
        ctx do
     write_pitch(ctx.ready_dir, "solo")

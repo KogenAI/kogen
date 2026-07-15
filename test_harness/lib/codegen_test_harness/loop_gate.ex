@@ -10,6 +10,62 @@ defmodule CodegenTestHarness.LoopGate do
   """
 
   @type verdict :: :clear | :failed
+  @type fault_class :: :code | :infra
+
+  # Text signatures a FAILED gate/scan can carry that name a
+  # box-provisioning fault rather than a code defect — matched against the
+  # gate-run.log / scan-violation text a caller passes to `classify_failure/1`.
+  # Conservative and additive: an unrecognized failure is ALWAYS `:code`
+  # (see `classify_failure/1` doc) so this list can only ever EXCUSE a
+  # failure it explicitly recognizes, never silently excuse a real defect.
+  #
+  # - Postgrex/ecto errors naming pre-existing DB state the diff did not
+  #   create (relation/role already-exists or does-not-exist against a
+  #   migration the diff never touched) — the 20260713 `bouncer-prompt-
+  #   rule-collisions` incident: `mix ecto.rollback` poisoned by
+  #   pre-existing DB state no diff could turn green.
+  # - `gate-result.sh`'s own environmental classification vocabulary
+  #   (`seed-missing`, `pool-exhaustion`) — already shipped but previously
+  #   unreachable from the loop (classification was hardcoded to `""`).
+  @infra_signatures [
+    ~r/\*\* \(Postgrex\.Error\)/,
+    ~r/relation "[^"]+" already exists/,
+    ~r/role "[^"]+" does not exist/,
+    ~r/database "[^"]+" does not exist/,
+    ~r/seed-missing/,
+    ~r/pool-exhaustion/
+  ]
+
+  @doc """
+  Classifies a FAILED check's raw text (gate-run.log content, or a scan's
+  violation string) as `:code` (a developer edit can plausibly fix it) or
+  `:infra` (a box-provisioning fault no edit can fix — abort, don't
+  rework).
+
+  Default is ALWAYS `:code` for text matching none of `@infra_signatures`
+  — an unrecognized failure stays the developer's, so this classifier can
+  never silently excuse a real defect (mirrors the pitch's explicit
+  "default is :code" requirement).
+  """
+  @spec classify_failure(String.t()) :: fault_class()
+  def classify_failure(text) when is_binary(text) do
+    if Enum.any?(@infra_signatures, &Regex.match?(&1, text)) do
+      :infra
+    else
+      :code
+    end
+  end
+
+  @doc """
+  Generalizes `static_render_deps_preflight!/1`'s raise into a
+  stack-agnostic infra-abort seam: raises `CodegenTestHarness.InfraAbort`
+  naming `reason` — a fault classified `:infra` by `classify_failure/1`.
+  Never returns.
+  """
+  @spec infra_abort!(String.t(), String.t()) :: no_return()
+  def infra_abort!(check_name, reason) do
+    raise CodegenTestHarness.InfraAbort, "#{check_name}: #{reason}"
+  end
 
   @gate_select_lib Path.expand(
                      "../../../harnesses/claude/hooks/lib/gate-select.sh",
@@ -188,10 +244,23 @@ defmodule CodegenTestHarness.LoopGate do
     diff_files_count = gate_diff_files_count(project_dir)
     tree_sha = graded_tree_sha(project_dir)
 
+    # Classify a non-zero exit's raw output against the infra-fault
+    # signatures `classify_failure/1` knows — feeds `gate-result.sh`'s
+    # pre-existing `seed-missing|pool-exhaustion` environmental-
+    # classification branch (previously unreachable: this arg was
+    # hardcoded to `""`). Only ever narrows `gate-result.json`'s own
+    # `classification`/`verdict_marker` fields for observability —
+    # `run_gate/2`'s RETURNED verdict stays the binary `:clear | :failed`
+    # contract (ledger #6): callers that need the infra/code distinction
+    # read it back via `classify_failure/1` on the gate log themselves
+    # (see `OrchestrationLoop.do_gate_loop/9`), not from this return value.
+    classification =
+      if exit_code != 0, do: infra_classification_tag(output), else: ""
+
     write_script = """
     source #{shell_quote(@gate_result_lib)} && write_gate_result \
       #{shell_quote(gate)} #{shell_quote(mode)} #{shell_quote(base_sha)} #{diff_files_count} \
-      true #{exit_code} 1 1 #{shell_quote(render_verdict)} "" \
+      true #{exit_code} 1 1 #{shell_quote(render_verdict)} #{shell_quote(classification)} \
       #{shell_quote(started)} #{shell_quote(ended)} \
       #{shell_quote(session_id)} #{shell_quote(log_path)} #{shell_quote(project_dir)} \
       "" #{shell_quote(tree_sha)}
@@ -532,6 +601,18 @@ defmodule CodegenTestHarness.LoopGate do
       stderr_to_stdout: true,
       env: scrub
     )
+  end
+
+  # Maps `classify_failure/1`'s boolean-ish `:code | :infra` result to the
+  # tag string `gate-result.sh`'s `_derive_verdict` case-matches on
+  # (`seed-missing*` / `pool-exhaustion*`). `:code` -> `""` (no
+  # classification — the exit stays plain `:failed`, not laundered).
+  @spec infra_classification_tag(String.t()) :: String.t()
+  defp infra_classification_tag(output) do
+    case classify_failure(output) do
+      :infra -> "pool-exhaustion:generic-infra-fault"
+      :code -> ""
+    end
   end
 
   defp write_gate_log!(project_dir, output) do

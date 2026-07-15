@@ -201,4 +201,37 @@ defmodule Mix.Tasks.Codegen.LoopTest do
       assert Loop.verify_commit_landed(before, ctx.tmp) == :ok
     end
   end
+
+  describe "run_loop_catching_infra_abort/1 — the sole producer of exit code 3" do
+    test "OrchestrationLoop.run raising InfraAbort exits {:shutdown, 3} naming the fault" do
+      original_shell = Mix.shell()
+      Mix.shell(Mix.Shell.Process)
+      on_exit(fn -> Mix.shell(original_shell) end)
+
+      raising_run_fn = fn ->
+        raise CodegenTestHarness.InfraAbort, "gate: poisoned DB state no edit can fix"
+      end
+
+      assert catch_exit(Loop.run_loop_catching_infra_abort(raising_run_fn)) ==
+               {:shutdown, 3}
+
+      assert_receive {:mix_shell, :error, [msg]}
+      assert msg =~ "poisoned DB state no edit can fix"
+    end
+
+    test "a normal :ok result passes through untouched (no exit, no rescue triggered)" do
+      assert Loop.run_loop_catching_infra_abort(fn -> :ok end) == :ok
+    end
+
+    test "a normal {:error, reason} result passes through untouched (not converted to infra exit)" do
+      assert Loop.run_loop_catching_infra_abort(fn -> {:error, "gate verdict=failed"} end) ==
+               {:error, "gate verdict=failed"}
+    end
+
+    test "a DIFFERENT raised exception is NOT swallowed — only InfraAbort is caught" do
+      assert_raise RuntimeError, "unrelated crash", fn ->
+        Loop.run_loop_catching_infra_abort(fn -> raise "unrelated crash" end)
+      end
+    end
+  end
 end

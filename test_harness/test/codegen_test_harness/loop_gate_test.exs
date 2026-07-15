@@ -313,6 +313,44 @@ defmodule CodegenTestHarness.LoopGateTest do
     end
   end
 
+  describe "classify_failure/1" do
+    test "defaults to :code for unrecognized text (never silently excuses a real defect)" do
+      assert LoopGate.classify_failure("1) test foo\n   assert 1 == 2") == :code
+    end
+
+    test "classifies a Postgrex error naming pre-existing DB state as :infra" do
+      text = """
+      ** (Postgrex.Error) ERROR 42P07 (duplicate_table) relation "users" already exists
+          (ecto_sql 3.10.0) lib/ecto/adapters/postgres.ex:100
+      """
+
+      assert LoopGate.classify_failure(text) == :infra
+    end
+
+    test "classifies a role-does-not-exist Postgrex error as :infra" do
+      text = "** (Postgrex.Error) FATAL 28000 (invalid_authorization_specification) role \"app_user\" does not exist"
+      assert LoopGate.classify_failure(text) == :infra
+    end
+
+    test "classifies gate-result.sh's seed-missing/pool-exhaustion vocabulary as :infra" do
+      assert LoopGate.classify_failure("classification=seed-missing:no-fixture") == :infra
+      assert LoopGate.classify_failure("classification=pool-exhaustion:db-pool-full") == :infra
+    end
+
+    test "a code-level compile error is NOT reclassified as infra" do
+      text = "** (CompileError) lib/my_app/foo.ex:12: undefined function bar/0"
+      assert LoopGate.classify_failure(text) == :code
+    end
+  end
+
+  describe "infra_abort!/2" do
+    test "raises CodegenTestHarness.InfraAbort naming the check and reason" do
+      assert_raise CodegenTestHarness.InfraAbort, ~r/gate: poisoned DB state/, fn ->
+        LoopGate.infra_abort!("gate", "poisoned DB state")
+      end
+    end
+  end
+
   describe "run_gate/2 — cycle-log verdict recording" do
     defp fresh_cycle_log! do
       path =

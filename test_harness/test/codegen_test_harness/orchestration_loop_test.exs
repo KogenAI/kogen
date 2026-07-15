@@ -956,6 +956,63 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
         )
       end
     end
+
+    test "gate failure classified :infra aborts loud — NEVER re-invokes the developer", %{
+      calls_agent: calls_agent
+    } do
+      gate_fn = fn _cwd, _opts -> {:failed, "make test"} end
+      gate_classify_fn = fn _cwd -> :infra end
+
+      assert_raise CodegenTestHarness.InfraAbort,
+                   ~r/failed for a reason no developer edit can fix/,
+                   fn ->
+                     OrchestrationLoop.run(
+                       harness: "claude_code",
+                       stack: "static",
+                       cwd: "/tmp/irrelevant",
+                       pitch: "do the thing",
+                       invoke_fn: always_ok_invoke_fn(calls_agent),
+                       gate_fn: gate_fn,
+                       gate_classify_fn: gate_classify_fn,
+                       gate_preflight_fn: no_op_gate_preflight_fn(),
+                       preflight_probe_fn: all_present_preflight_probe_fn()
+                     )
+                   end
+
+      # developer-static ran ONCE (the normal initial pass) — never a SECOND
+      # time as a gate-failure rework: a developer edit could not have fixed
+      # this, so the rework budget must never be spent on it (the entire
+      # point of the pitch).
+      assert Enum.count(Agent.get(calls_agent, & &1), &(&1 == "developer-static")) == 1
+    end
+
+    test "gate failure classified :code still reworks as before (unchanged behavior)", %{
+      calls_agent: calls_agent
+    } do
+      {:ok, gate_calls_agent} = Agent.start_link(fn -> 0 end)
+      on_exit(fn -> if Process.alive?(gate_calls_agent), do: Agent.stop(gate_calls_agent) end)
+
+      gate_fn = fn _cwd, _opts ->
+        n = Agent.get_and_update(gate_calls_agent, fn n -> {n, n + 1} end)
+        if n == 0, do: {:failed, "make test"}, else: {:clear, "make test"}
+      end
+
+      assert :ok ==
+               OrchestrationLoop.run(
+                 harness: "claude_code",
+                 stack: "static",
+                 cwd: "/tmp/irrelevant",
+                 pitch: "do the thing",
+                 invoke_fn: always_ok_invoke_fn(calls_agent),
+                 gate_fn: gate_fn,
+                 gate_classify_fn: fn _cwd -> :code end,
+                 gate_preflight_fn: no_op_gate_preflight_fn(),
+                 preflight_probe_fn: all_present_preflight_probe_fn(),
+                 advance_cycle_state_fn: no_op_advance_cycle_state_fn()
+               )
+
+      assert Enum.count(Agent.get(calls_agent, & &1), &(&1 == "developer-static")) == 2
+    end
   end
 
   describe "build_prompt/2 — planner plan threading" do
@@ -1866,6 +1923,36 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
       refute "committer" in Agent.get(calls_agent, & &1)
     end
 
+    test "curator-doc violation classified :infra aborts loud — NEVER re-invokes context-curator",
+         %{calls_agent: calls_agent} do
+      always_violates_fn = fn _cwd ->
+        {:violations, "** (Postgrex.Error) relation \"widgets\" already exists"}
+      end
+
+      assert_raise CodegenTestHarness.InfraAbort,
+                   ~r/unsatisfiable by any curator edit/,
+                   fn ->
+                     OrchestrationLoop.run(
+                       harness: "claude_code",
+                       stack: "static",
+                       cwd: "/tmp/irrelevant",
+                       pitch: "do the thing",
+                       invoke_fn: always_ok_invoke_fn(calls_agent),
+                       gate_fn: always_clear_gate_fn(),
+                       gate_preflight_fn: no_op_gate_preflight_fn(),
+                       preflight_probe_fn: all_present_preflight_probe_fn(),
+                       advance_cycle_state_fn: no_op_advance_cycle_state_fn(),
+                       curator_doc_check_fn: always_violates_fn
+                     )
+                   end
+
+      # context-curator ran ONCE (the normal initial pass) — never a SECOND
+      # time as a doc-check rework re-invocation: no curator edit could
+      # satisfy an infra-classified violation, so the rework budget must
+      # never be spent on it.
+      assert Enum.count(Agent.get(calls_agent, & &1), &(&1 == "context-curator")) == 1
+    end
+
     test "full-tree index-coverage violation once then clean re-invokes context-curator exactly once",
          %{calls_agent: calls_agent} do
       # Mirrors the ADD-without-row delta-pass test above, but the violation
@@ -2046,6 +2133,36 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
       assert reason =~ "MY_VAR"
       refute "GATED" in Agent.get(states_agent, & &1)
       refute "committer" in Agent.get(calls_agent, & &1)
+    end
+
+    test "violation classified :infra aborts loud — NEVER re-invokes the developer",
+         %{calls_agent: calls_agent} do
+      always_violates_fn = fn _cwd ->
+        {:violations, "** (Postgrex.Error) relation \"widgets\" already exists"}
+      end
+
+      assert_raise CodegenTestHarness.InfraAbort,
+                   ~r/unsatisfiable by any developer edit/,
+                   fn ->
+                     OrchestrationLoop.run(
+                       harness: "claude_code",
+                       stack: "static",
+                       cwd: "/tmp/irrelevant",
+                       pitch: "do the thing",
+                       invoke_fn: always_ok_invoke_fn(calls_agent),
+                       gate_fn: always_clear_gate_fn(),
+                       gate_preflight_fn: no_op_gate_preflight_fn(),
+                       preflight_probe_fn: all_present_preflight_probe_fn(),
+                       advance_cycle_state_fn: no_op_advance_cycle_state_fn(),
+                       curator_doc_check_fn: always_clean_curator_doc_fn(),
+                       env_var_scan_fn: always_violates_fn
+                     )
+                   end
+
+      # developer-static ran ONCE (the normal initial pass) — never a SECOND
+      # time as an env-var-scan rework: no edit could have satisfied this
+      # scan, so the rework budget must never be spent on it.
+      assert Enum.count(Agent.get(calls_agent, & &1), &(&1 == "developer-static")) == 1
     end
 
     test "env_var_scan_fn raising propagates (loop crashes loud)", %{calls_agent: calls_agent} do
@@ -2734,7 +2851,11 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
                  gate_fn: always_clear_gate_fn(),
                  gate_preflight_fn: no_op_gate_preflight_fn(),
                  preflight_probe_fn: all_present_preflight_probe_fn(),
-                 advance_cycle_state_fn: fn _state, _step_log, _session_id, _verdict, _project_dir ->
+                 advance_cycle_state_fn: fn _state,
+                                            _step_log,
+                                            _session_id,
+                                            _verdict,
+                                            _project_dir ->
                    :ok
                  end
                )

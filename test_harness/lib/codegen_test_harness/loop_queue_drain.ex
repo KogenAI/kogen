@@ -65,6 +65,19 @@ defmodule CodegenTestHarness.LoopQueueDrain do
   are tolerated — `drain/1` still returns `{:ok, shipped_count}` and prints
   a FAILED bucket (parallel to the SKIPPED unmet-dep bucket) naming every
   skipped slug.
+
+  A THIRD, distinct child outcome exists alongside "shipped" and
+  "deterministic failure": an INFRA ABORT (`mix codegen.loop` exiting with
+  its dedicated code for `CodegenTestHarness.InfraAbort` — a fault no
+  developer edit could fix, e.g. a gate poisoned by pre-existing DB state,
+  or a scan no diff could ever satisfy). Unlike a deterministic failure,
+  this is NEVER stashed and NEVER skipped-and-continued: an infra fault
+  poisons every pitch behind it in the queue (the incident motivating this:
+  one poisoned DB killed three consecutive pitches, each blamed on its own
+  developer and reworked before failing anyway), so it HALTS the whole
+  drain outright with `{:error, reason}`, leaving the in-flight pitch
+  untouched in `ready_dir` — nothing about THAT pitch's diff was wrong. See
+  `handle_infra_abort/4`.
   """
 
   alias CodegenTestHarness.{BuildLock, LoopQueue}
@@ -79,6 +92,10 @@ defmodule CodegenTestHarness.LoopQueueDrain do
   # (the canonical, durable per-role session logs).
   @build_log_retention_secs 7 * 24 * 3600
   @default_pitch_budget_secs 7200
+  # `mix codegen.loop`'s distinct exit code for `CodegenTestHarness.InfraAbort`
+  # (see `Mix.Tasks.Codegen.Loop` `@infra_abort_exit_code`) — a fault no
+  # developer edit could fix.
+  @infra_abort_exit_code 3
 
   @codegen_build_bin Path.expand("../../../codegen-build", __DIR__)
 
@@ -354,12 +371,28 @@ defmodule CodegenTestHarness.LoopQueueDrain do
       {:exit_code, 0} ->
         handle_exit_zero(state, slug, jsonl, head_before, shipped_count, concluded_count, idx, ts)
 
+      {:exit_code, @infra_abort_exit_code} ->
+        handle_infra_abort(jsonl, idx, state.total, slug)
+
       {:exit_code, _n} ->
         handle_nonzero_exit(state, slug, jsonl, head_before, shipped_count, concluded_count, idx, ts)
 
       :timeout ->
         handle_timeout(state, slug, shipped_count, concluded_count, idx)
     end
+  end
+
+  # An infra fault poisons every pitch behind it (the 20260713 incident: one
+  # poisoned DB killed three consecutive pitches), so this HALTS the drain
+  # outright — no stash, no skip-and-continue, no pitch-failure verdict.
+  # The pitch that was mid-flight stays untouched in `ready_dir` (nothing
+  # about IT was wrong).
+  defp handle_infra_abort(jsonl, idx, total, slug) do
+    emit_failure_diagnostics(jsonl, idx, total, slug)
+
+    {:error,
+     "queue: HALTED — #{slug} hit an infra abort (a fault no developer edit could fix). " <>
+       "Fix the box, then re-run: claude-build --queue (pitch remains untouched in ready/)"}
   end
 
   # A gate record is trustworthy only if a real gate wrote it, THIS cycle,

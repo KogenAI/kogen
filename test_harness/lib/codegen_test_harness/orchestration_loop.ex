@@ -944,22 +944,68 @@ defmodule CodegenTestHarness.OrchestrationLoop do
         advance_cycle_state_step("CURATED", ctx, opts)
         run_roles(rest, harness, ctx, opts)
 
-      {:violations, violations} when cycle < max_cycles ->
-        rework_ctx = put_in(ctx, [:artifacts, :curator_doc_violations], violations)
-
-        with {:ok, curator_result} <- invoke_with_retry(curator_role, harness, rework_ctx, opts) do
-          ctx = put_in(rework_ctx, [:artifacts, curator_role], curator_result)
-          run_format_step(ctx.cwd, opts)
-          run_curator_doc_check(curator_role, rest, harness, ctx, opts, cycle + 1)
-        end
-
       {:violations, violations} ->
-        {:error,
-         "context-curator doc check unresolved after #{cycle} cycle(s):\n#{violations}\n" <>
-           "The committer cannot Read/Edit context/*.md (subagent-read-discipline denies it), " <>
-           "so handing this violation onward would be an unfixable dead-end. Fix the orientation " <>
-           "docs and re-run the cycle."}
+        classify_fn = Keyword.get(opts, :text_classify_fn, &LoopGate.classify_failure/1)
+
+        if classify_fn.(violations) == :infra do
+          LoopGate.infra_abort!(
+            "curator-doc-check",
+            "unsatisfiable by any curator edit (classified :infra) — #{violations}"
+          )
+        else
+          run_curator_doc_check_rework(
+            curator_role,
+            rest,
+            harness,
+            ctx,
+            opts,
+            cycle,
+            max_cycles,
+            violations
+          )
+        end
     end
+  end
+
+  # A curator edit CAN plausibly fix these doc violations — run the
+  # existing budget-bounded rework logic (unchanged from before infra
+  # classification was added; see `run_curator_doc_check/6`'s `:infra`
+  # branch above for the sibling that never reaches here).
+  defp run_curator_doc_check_rework(
+         curator_role,
+         rest,
+         harness,
+         ctx,
+         opts,
+         cycle,
+         max_cycles,
+         violations
+       )
+       when cycle < max_cycles do
+    rework_ctx = put_in(ctx, [:artifacts, :curator_doc_violations], violations)
+
+    with {:ok, curator_result} <- invoke_with_retry(curator_role, harness, rework_ctx, opts) do
+      ctx = put_in(rework_ctx, [:artifacts, curator_role], curator_result)
+      run_format_step(ctx.cwd, opts)
+      run_curator_doc_check(curator_role, rest, harness, ctx, opts, cycle + 1)
+    end
+  end
+
+  defp run_curator_doc_check_rework(
+         _curator_role,
+         _rest,
+         _harness,
+         _ctx,
+         _opts,
+         cycle,
+         _max_cycles,
+         violations
+       ) do
+    {:error,
+     "context-curator doc check unresolved after #{cycle} cycle(s):\n#{violations}\n" <>
+       "The committer cannot Read/Edit context/*.md (subagent-read-discipline denies it), " <>
+       "so handing this violation onward would be an unfixable dead-end. Fix the orientation " <>
+       "docs and re-run the cycle."}
   end
 
   # Dispatches the `:curator_doc_check_fn` test seam; defaults to
@@ -1062,27 +1108,64 @@ defmodule CodegenTestHarness.OrchestrationLoop do
       {:clean} ->
         run_gate_then_continue(dev_role, rest, harness, ctx, opts)
 
-      {:violations, violations} when cycle < max_cycles ->
-        brief = capture_rework_brief(ctx.cwd, opts)
-
-        rework_ctx =
-          ctx
-          |> put_in([:artifacts, :env_var_violation], violations)
-          |> put_in([:artifacts, :rework_brief], brief)
-
-        with {:ok, dev_result} <- invoke_with_retry(dev_role, harness, rework_ctx, opts) do
-          ctx = put_in(rework_ctx, [:artifacts, dev_role], dev_result)
-          run_format_step(ctx.cwd, opts)
-          run_env_var_step(dev_role, rest, harness, ctx, opts, cycle + 1)
-        end
-
       {:violations, violations} ->
-        {:error,
-         "env var sample-consistency unresolved after #{cycle} cycle(s):\n#{violations}\n" <>
-           "Undeclared env var(s) are read (System.get_env/fetch_env) but not declared in " <>
-           ".env.sample and/or .env.prod.sample. Declare them in BOTH sample files and re-run " <>
-           "the cycle."}
+        classify_fn = Keyword.get(opts, :text_classify_fn, &LoopGate.classify_failure/1)
+
+        if classify_fn.(violations) == :infra do
+          LoopGate.infra_abort!(
+            "env-var-sample-scan",
+            "unsatisfiable by any developer edit (classified :infra) — #{violations}"
+          )
+        else
+          run_env_var_step_rework(
+            dev_role,
+            rest,
+            harness,
+            ctx,
+            opts,
+            cycle,
+            max_cycles,
+            violations
+          )
+        end
     end
+  end
+
+  # A developer edit CAN plausibly fix these env-var violations — run the
+  # existing budget-bounded rework logic (unchanged from before infra
+  # classification was added; see `run_env_var_step/6`'s `:infra` branch
+  # above for the sibling that never reaches here).
+  defp run_env_var_step_rework(dev_role, rest, harness, ctx, opts, cycle, max_cycles, violations)
+       when cycle < max_cycles do
+    brief = capture_rework_brief(ctx.cwd, opts)
+
+    rework_ctx =
+      ctx
+      |> put_in([:artifacts, :env_var_violation], violations)
+      |> put_in([:artifacts, :rework_brief], brief)
+
+    with {:ok, dev_result} <- invoke_with_retry(dev_role, harness, rework_ctx, opts) do
+      ctx = put_in(rework_ctx, [:artifacts, dev_role], dev_result)
+      run_format_step(ctx.cwd, opts)
+      run_env_var_step(dev_role, rest, harness, ctx, opts, cycle + 1)
+    end
+  end
+
+  defp run_env_var_step_rework(
+         _dev_role,
+         _rest,
+         _harness,
+         _ctx,
+         _opts,
+         cycle,
+         _max_cycles,
+         violations
+       ) do
+    {:error,
+     "env var sample-consistency unresolved after #{cycle} cycle(s):\n#{violations}\n" <>
+       "Undeclared env var(s) are read (System.get_env/fetch_env) but not declared in " <>
+       ".env.sample and/or .env.prod.sample. Declare them in BOTH sample files and re-run " <>
+       "the cycle."}
   end
 
   # Dispatches the `:env_var_scan_fn` test seam; defaults to
@@ -1287,35 +1370,20 @@ defmodule CodegenTestHarness.OrchestrationLoop do
         run_roles(rest, harness, ctx, opts)
 
       {:failed, _gate_cmd} ->
-        signature_fn = Keyword.get(opts, :tree_signature_fn, &tree_signature/1)
-        signature = signature_fn.(ctx.cwd)
+        classify_fn = Keyword.get(opts, :gate_classify_fn, &default_gate_classify_fn/1)
 
-        progressed? = signature != "" and prev_signature != nil and signature != prev_signature
-        first_attempt? = prev_signature == nil
-        signature_available? = signature != ""
+        case classify_fn.(ctx.cwd) do
+          :infra ->
+            reason = gate_failure_reason(ctx.cwd)
 
-        allow? =
-          attempt < @gate_progress_ceiling and
-            if signature_available? do
-              first_attempt? or progressed?
-            else
-              attempt < max_retries
-            end
+            LoopGate.infra_abort!(
+              "gate",
+              "failed for a reason no developer edit can fix (classified :infra) — " <>
+                "#{reason}"
+            )
 
-        if allow? do
-          reason = gate_failure_reason(ctx.cwd)
-          brief = capture_rework_brief(ctx.cwd, opts)
-
-          retry_ctx =
-            ctx
-            |> put_in([:artifacts, :last_failure_reason], reason)
-            |> put_in([:artifacts, :rework_brief], brief)
-
-          with {:ok, result} <- invoke_with_retry(dev_role, harness, retry_ctx, opts) do
-            ctx = put_in(retry_ctx, [:artifacts, dev_role], result)
-            run_format_step(ctx.cwd, opts)
-
-            do_gate_loop(
+          :code ->
+            do_gate_loop_rework(
               dev_role,
               rest,
               harness,
@@ -1323,16 +1391,88 @@ defmodule CodegenTestHarness.OrchestrationLoop do
               opts,
               gate_fn,
               max_retries,
-              attempt + 1,
-              signature
+              attempt,
+              prev_signature
             )
-          end
-        else
-          {:error, "gate verdict=failed after #{attempt + 1} developer attempt(s)"}
         end
 
       {other, _gate_cmd} ->
         raise "OrchestrationLoop: unexpected gate verdict #{inspect(other)}"
+    end
+  end
+
+  # A developer edit CAN plausibly fix this gate failure — run the
+  # existing progress+ceiling-bounded rework logic (unchanged from before
+  # infra classification was added; see `do_gate_loop/9`'s `:infra` branch
+  # above for the sibling that never reaches here).
+  defp do_gate_loop_rework(
+         dev_role,
+         rest,
+         harness,
+         ctx,
+         opts,
+         gate_fn,
+         max_retries,
+         attempt,
+         prev_signature
+       ) do
+    signature_fn = Keyword.get(opts, :tree_signature_fn, &tree_signature/1)
+    signature = signature_fn.(ctx.cwd)
+
+    progressed? = signature != "" and prev_signature != nil and signature != prev_signature
+    first_attempt? = prev_signature == nil
+    signature_available? = signature != ""
+
+    allow? =
+      attempt < @gate_progress_ceiling and
+        if signature_available? do
+          first_attempt? or progressed?
+        else
+          attempt < max_retries
+        end
+
+    if allow? do
+      reason = gate_failure_reason(ctx.cwd)
+      brief = capture_rework_brief(ctx.cwd, opts)
+
+      retry_ctx =
+        ctx
+        |> put_in([:artifacts, :last_failure_reason], reason)
+        |> put_in([:artifacts, :rework_brief], brief)
+
+      with {:ok, result} <- invoke_with_retry(dev_role, harness, retry_ctx, opts) do
+        ctx = put_in(retry_ctx, [:artifacts, dev_role], result)
+        run_format_step(ctx.cwd, opts)
+
+        do_gate_loop(
+          dev_role,
+          rest,
+          harness,
+          ctx,
+          opts,
+          gate_fn,
+          max_retries,
+          attempt + 1,
+          signature
+        )
+      end
+    else
+      {:error, "gate verdict=failed after #{attempt + 1} developer attempt(s)"}
+    end
+  end
+
+  # Dispatches the `:gate_classify_fn` test seam; defaults to reading
+  # `gate-run.log` (the same file `gate_failure_reason/1` reads) through
+  # `LoopGate.classify_failure/1`. Absent/unreadable log -> `:code` (the
+  # safe default per `LoopGate.classify_failure/1`'s own contract — an
+  # unrecognized/absent signal is never excused as infra).
+  @spec default_gate_classify_fn(String.t()) :: LoopGate.fault_class()
+  defp default_gate_classify_fn(cwd) do
+    log_path = Path.join([cwd, "codegen", "gate-pending", "gate-run.log"])
+
+    case File.read(log_path) do
+      {:ok, content} -> LoopGate.classify_failure(content)
+      {:error, _reason} -> :code
     end
   end
 

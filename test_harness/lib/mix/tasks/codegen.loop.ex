@@ -22,8 +22,17 @@ defmodule Mix.Tasks.Codegen.Loop do
 
   use Mix.Task
 
+  alias CodegenTestHarness.InfraAbort
   alias CodegenTestHarness.LoopQueue
   alias CodegenTestHarness.OrchestrationLoop
+
+  # Distinct exit code for an infra abort (a fault no developer edit could
+  # fix — see `CodegenTestHarness.InfraAbort`), separate from `1`
+  # (deterministic cycle failure) and `2` (usage/flag error). This is the
+  # signal `LoopQueueDrain` needs to tell "the box is broken" apart from
+  # "this pitch's diff didn't pass" — both would otherwise be an
+  # indistinguishable non-zero exit.
+  @infra_abort_exit_code 3
 
   @impl Mix.Task
   def run(argv) do
@@ -62,14 +71,16 @@ defmodule Mix.Tasks.Codegen.Loop do
     head_before = git_head(cwd)
 
     result =
-      OrchestrationLoop.run(
-        harness: harness,
-        stack: stack,
-        cwd: cwd,
-        pitch: pitch,
-        cycle_id: cycle_id,
-        slug: slug
-      )
+      run_loop_catching_infra_abort(fn ->
+        OrchestrationLoop.run(
+          harness: harness,
+          stack: stack,
+          cwd: cwd,
+          pitch: pitch,
+          cycle_id: cycle_id,
+          slug: slug
+        )
+      end)
 
     # Emit aggregated per-cycle telemetry as a parseable stream-json result line
     # (benchmark instrumentation) regardless of outcome — a failed cycle still
@@ -92,6 +103,25 @@ defmodule Mix.Tasks.Codegen.Loop do
         Mix.shell().error("codegen.loop: FAILED — #{reason}")
         exit({:shutdown, 1})
     end
+  end
+
+  # Runs `run_fn` and converts a raised `CodegenTestHarness.InfraAbort` into
+  # process exit code `@infra_abort_exit_code` (3) — the signal
+  # `LoopQueueDrain` needs to tell "the box is broken" apart from "this
+  # pitch's diff didn't pass" (see module doc). Extracted as its own
+  # function (rather than inlined in `run/1`) so it is directly testable
+  # without exercising OptionParser/git/telemetry plumbing: a test can pass
+  # a `run_fn` that raises `InfraAbort` and assert the resulting exit
+  # without needing a real cwd/pitch/harness.
+  @doc false
+  @spec run_loop_catching_infra_abort((-> :ok | {:error, String.t()})) ::
+          :ok | {:error, String.t()}
+  def run_loop_catching_infra_abort(run_fn) do
+    run_fn.()
+  rescue
+    e in InfraAbort ->
+      Mix.shell().error("codegen.loop: #{e.message}")
+      exit({:shutdown, @infra_abort_exit_code})
   end
 
   @doc false
