@@ -9,7 +9,9 @@
 # role: *
 # harnesses: all
 # rationale: Denies Write/Edit/MultiEdit when CODEGEN_BUILD_CWD is set and the target file resolves outside that dir, confining managed build subagents to the app sandbox. Fills the orchestrator-no-source-edit.sh subagent pass-through gap (AGENT_ID set -> exit 0). Env-keyed (CODEGEN_BUILD_CWD), role-agnostic; composes with orchestrator-no-source-edit and build-worker-cwd-guard.
-# GENERATED FROM shared/enforcement/registry.yaml — DO NOT EDIT
+# registration only (hand-authored body) — the registry entry for this hook
+# is `kind: registration`, which emits ONLY the settings.json wiring; the
+# check logic below is NOT generated and is safe to hand-edit.
 #
 # Confines managed build agents (CODEGEN_BUILD_CWD set) to their app sandbox.
 # Denies Write/Edit/MultiEdit to any path that resolves outside CODEGEN_BUILD_CWD.

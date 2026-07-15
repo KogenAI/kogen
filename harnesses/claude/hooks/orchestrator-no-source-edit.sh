@@ -9,7 +9,9 @@
 # role: *
 # harnesses: claude_code
 # rationale: CLAUDE_ROLE_FAMILY-keyed launcher mode guard, Pi has no equivalent launcher concept
-# GENERATED FROM shared/enforcement/registry.yaml — DO NOT EDIT
+# registration only (hand-authored body) — the registry entry for this hook
+# is `kind: registration`, which emits ONLY the settings.json wiring; the
+# check logic below is NOT generated and is safe to hand-edit.
 #
 # Blocks the orchestrator from editing source files directly.
 # Subagents (non-empty agent_id) are allowed under no CLAUDE_ROLE_FAMILY (standard

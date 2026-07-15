@@ -403,7 +403,7 @@ class TestRenderHeader(unittest.TestCase):
         self.assertIn("# signal: none", h)
         self.assertIn("# role: *", h)
         self.assertIn("# harnesses: all", h)
-        self.assertIn("# GENERATED FROM shared/enforcement/registry.yaml", h)
+        self.assertIn("# registration only (hand-authored body)", h)
 
     def test_tool_guard_maps_to_matcher(self):
         """Registry tool_guard → header matcher."""
@@ -442,8 +442,14 @@ class TestRenderHeader(unittest.TestCase):
         self.assertNotIn("rationale", h)
 
     def test_provenance_comment_present(self):
+        """render_header must NOT claim the whole file is generated — the
+        body of a kind:registration hook is hand-authored; only the header
+        block above this comment is regenerated."""
         h = hr.render_header(self._base_entry())
-        self.assertIn("# GENERATED FROM shared/enforcement/registry.yaml — DO NOT EDIT", h)
+        self.assertIn(
+            "# check logic below is NOT generated and is safe to hand-edit.", h
+        )
+        self.assertNotIn("GENERATED FROM shared/enforcement/registry.yaml — DO NOT EDIT", h)
 
     def test_hook_manifest_is_first_line(self):
         h = hr.render_header(self._base_entry())
@@ -462,10 +468,11 @@ class TestRenderHeader(unittest.TestCase):
         self.assertIn("# timeout: 360", h)
 
     def test_timeout_line_before_generated_comment(self):
-        """# timeout: line appears before the GENERATED FROM provenance comment."""
+        """# timeout: line appears before the registration-only provenance
+        comment block."""
         h = hr.render_header(self._base_entry(timeout=360))
         timeout_pos = h.index("# timeout: 360")
-        generated_pos = h.index("# GENERATED FROM")
+        generated_pos = h.index("# registration only (hand-authored body)")
         self.assertLess(timeout_pos, generated_pos)
 
     def test_no_timeout_line_when_absent(self):

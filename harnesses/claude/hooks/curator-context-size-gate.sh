@@ -11,7 +11,9 @@
 # role: *
 # harnesses: all
 # rationale: Denies ANY role's Edit/Write/MultiEdit to context/<file>.md when the projected post-write byte size exceeds the 40,960-byte cap, so the over-cap file is fixed in the writer's own turn — where context/*.md is editable this turn — instead of failing later at commit on the committer, which cannot repair it. Composes with context-curator-guard (path surface, curator-only).
-# GENERATED FROM shared/enforcement/registry.yaml — DO NOT EDIT
+# registration only (hand-authored body) — the registry entry for this hook
+# is `kind: registration`, which emits ONLY the settings.json wiring; the
+# check logic below is NOT generated and is safe to hand-edit.
 #
 # Gates ANY role's write to context/*.md — any role may legitimately edit
 # context files (e.g. developer, when planner marks one (EDIT)/(NEW)).

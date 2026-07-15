@@ -9,7 +9,9 @@
 # role: *
 # harnesses: all
 # rationale: Blocks the orchestrator ship-mv (mv codegen/pitches/ready/<slug>.md codegen/pitches/shipped/<slug>.md) when git status --porcelain is non-empty, preventing a pitch from being shipped while orphaned cycle output sits uncommitted. Fail-open outside a git repo.
-# GENERATED FROM shared/enforcement/registry.yaml — DO NOT EDIT
+# registration only (hand-authored body) — the registry entry for this hook
+# is `kind: registration`, which emits ONLY the settings.json wiring; the
+# check logic below is NOT generated and is safe to hand-edit.
 #
 # Blocks the orchestrator ship-mv
 #   mv codegen/pitches/ready/<slug>.md codegen/pitches/shipped/<slug>.md

@@ -8,7 +8,9 @@
 # signal: AGENT_TYPE
 # role: developer-static
 # harnesses: all
-# GENERATED FROM shared/enforcement/registry.yaml — DO NOT EDIT
+# registration only (hand-authored body) — the registry entry for this hook
+# is `kind: registration`, which emits ONLY the settings.json wiring; the
+# check logic below is NOT generated and is safe to hand-edit.
 #
 # Blocks Write and Edit tool calls targeting Elixir/HEEX files when the active
 # agent is "developer-static". All other agents pass through unconditionally.

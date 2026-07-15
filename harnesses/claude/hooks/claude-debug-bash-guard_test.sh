@@ -196,6 +196,40 @@ run_test "curl -X POST blocked in shape role" "2" \
 run_test "rm -rf allowed in build role (guard inactive)" "0" \
     "$(mk 'rm -rf _build')" "build"
 
+# --- Mention-vs-invocation tests (this guard's own coverage of its central
+# claim: a forbidden token appearing inside a grep pattern, echo string, or
+# quoted/commented text is a MENTION, never an invocation, and must be
+# ALLOWED — only a real command-word invocation is DENIED). ---
+
+# 35: grep -c kill (mention of "kill" in a grep pattern) allowed in debug
+run_test "grep mentioning 'kill' allowed in debug role" "0" \
+    "$(mk 'grep -c kill foo.sh')" "debug"
+
+# 36: echo mentioning "git push" allowed in debug
+run_test "echo mentioning 'git push' allowed in debug role" "0" \
+    "$(mk 'echo "git push"')" "debug"
+
+# 37: grep mentioning "rm -rf x" in a search pattern allowed in debug
+run_test "grep mentioning 'rm -rf x' allowed in debug role" "0" \
+    "$(mk 'grep -rn "rm -rf x" notes.md')" "debug"
+
+# 38: grep mentioning "git push" in docs allowed in debug
+run_test "grep mentioning 'git push' in docs allowed in debug role" "0" \
+    "$(mk 'grep -n "git push" docs.md')" "debug"
+
+# 39: echo mentioning "kill" (tree-kill teardown) allowed in debug
+run_test "echo mentioning tree-kill teardown allowed in debug role" "0" \
+    "$(mk 'echo "tree-kill teardown"')" "debug"
+
+# 40: a REAL invocation nested inside bash -c is still denied (proves the
+# mention-allow fix did not regress the wrapped/nested-invocation case)
+run_test "bash -c 'kill 123' still blocked in debug role" "2" \
+    "$(mk "bash -c 'kill 123'")" "debug"
+
+# 41: a REAL rm -rf invocation is still denied alongside mention-allows above
+run_test "rm -rf still blocked in debug role (regression check)" "2" \
+    "$(mk 'rm -rf /tmp/foo')" "debug"
+
 # PI_ROLE parity tests (run_test uses CLAUDE_ROLE env var; use separate helper for PI_ROLE)
 
 run_test_env() {

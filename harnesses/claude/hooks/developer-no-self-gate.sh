@@ -8,14 +8,19 @@
 # signal: AGENT_TYPE
 # role: developer-*
 # harnesses: all
-# GENERATED FROM shared/enforcement/registry.yaml — DO NOT EDIT
+# registration only (hand-authored body) — the registry entry for this hook
+# is `kind: registration`, which emits ONLY the settings.json wiring; the
+# check logic below is NOT generated and is safe to hand-edit.
 #
 # Counts CI/test invocations per session (legacy non-loop mode only). Once
 # the counter reaches 3, denies further attempts and instructs the dev to
 # stop and hand back — the loop's LoopGate (do_gate_loop/9 in
 # orchestration_loop.ex) owns the full gate run after the dev's turn.
 #
-# Tracked patterns:
+# Tracked patterns (matched at the COMMAND-WORD position via
+# command_invokes(), never against the raw line — a mention of "mix test"
+# inside a grep pattern or echo string is not an invocation and never
+# enters the counted/gated path):
 #   mix test, mix credo, mix format
 #   make ci, make test
 
@@ -44,15 +49,19 @@ if is_codegen_log_write; then
     exit 0
 fi
 
-# Check if command matches a self-gate pattern
-if ! printf '%s' "$COMMAND" | grep -qE '\bmix[[:space:]]+(test|credo|format)\b|\bmake[[:space:]]+(ci|test)\b'; then
+# Check if command matches a self-gate pattern — command-word position only,
+# so `grep -n "mix test" README.md` or `echo "run make ci first"` never enter
+# the counted path (they mention the phrase, they do not invoke it).
+if ! command_invokes "$COMMAND" '^mix$' '^(test|credo|format)\b' &&
+    ! command_invokes "$COMMAND" '^make$' '^(ci|test)\b'; then
     exit 0
 fi
 
 # mix credo is cheap and required before handoff — bypass the cap entirely.
 # Only mix test / make ci / make test / mix format remain capped.
-if printf '%s' "$COMMAND" | grep -qE '\bmix[[:space:]]+credo\b' &&
-    ! printf '%s' "$COMMAND" | grep -qE '\bmake[[:space:]]+(ci|test)\b|\bmix[[:space:]]+test\b'; then
+if command_invokes "$COMMAND" '^mix$' '^credo\b' &&
+    ! command_invokes "$COMMAND" '^make$' '^(ci|test)\b' &&
+    ! command_invokes "$COMMAND" '^mix$' '^test\b'; then
     exit 0
 fi
 

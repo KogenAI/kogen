@@ -660,6 +660,183 @@ read_tool_failures() {
         ' 2>/dev/null
 }
 
+# command_word_of_segment <segment> — echoes the resolved COMMAND WORD of one
+# shell-chain segment (as produced by split_command_segments), after
+# stripping leading `VAR=val` environment assignments and known wrapper
+# prefixes (sudo, env, nohup, time, command, exec — each consumed once,
+# repeatedly, so `sudo env FOO=1 exec rm -rf /x` resolves to `rm`). Returns
+# empty when the segment has no resolvable command word (blank segment) —
+# callers MUST treat empty as "could not resolve" and fail CLOSED (deny),
+# never allow. This is a plain whitespace tokenizer, not a shell grammar: it
+# does not need to be, because a token it cannot make sense of simply fails
+# to resolve, which is the safe (deny) direction.
+command_word_of_segment() {
+    local seg="$1"
+    local -a words=($seg)
+    local -i n=${#words[@]}
+    local -i i=0
+    local w
+
+    while ((i < n)); do
+        w="${words[i]}"
+        case "$w" in
+        *=*)
+            # looks like VAR=val — only treat as env assignment if the part
+            # before '=' is a valid identifier (no slashes/spaces), else stop.
+            if [[ "$w" =~ ^[A-Za-z_][A-Za-z0-9_]*= ]]; then
+                i=$((i + 1))
+                continue
+            fi
+            break
+            ;;
+        sudo | env | nohup | time | command | exec)
+            i=$((i + 1))
+            continue
+            ;;
+        *)
+            break
+            ;;
+        esac
+    done
+
+    if ((i >= n)); then
+        printf ''
+        return 0
+    fi
+
+    printf '%s' "${words[i]}"
+}
+
+# segment_argv_matches <segment> <argv_regex> — true when the segment's
+# command-word ARGUMENTS (everything after the resolved command word, and
+# after inline interpreter recursion — see below) match extended regex
+# <argv_regex> via grep -E. Used by callers who need to distinguish
+# `rm -rf x` (deny) from `rm --force x` (allow) after the command word `rm`
+# already matched.
+segment_argv_of() {
+    local seg="$1"
+    local -a words=($seg)
+    local -i n=${#words[@]}
+    local -i i=0
+    local w
+
+    while ((i < n)); do
+        w="${words[i]}"
+        case "$w" in
+        *=*)
+            if [[ "$w" =~ ^[A-Za-z_][A-Za-z0-9_]*= ]]; then
+                i=$((i + 1))
+                continue
+            fi
+            break
+            ;;
+        sudo | env | nohup | time | command | exec)
+            i=$((i + 1))
+            continue
+            ;;
+        *)
+            break
+            ;;
+        esac
+    done
+
+    if ((i >= n)); then
+        printf ''
+        return 0
+    fi
+
+    # skip the command word itself; return the remainder verbatim (rejoin by
+    # locating the command word's first occurrence position in the original
+    # string is fragile with quoting, so instead rejoin from the word array —
+    # quoting fidelity is not required here since callers regex-match tokens).
+    local -a rest=("${words[@]:$((i + 1))}")
+    local IFS=' '
+    printf '%s' "${rest[*]:-}"
+}
+
+# command_invokes <command_string> <command_word_ere> [<argv_ere>] [ci] —
+# fail-closed, command-POSITION-aware match: true (rc 0) only when at least
+# one shell-chain segment of <command_string> actually INVOKES a command
+# whose resolved command word matches extended regex <command_word_ere>
+# (grep -E, anchored by the caller e.g. '^(rm)$'), AND — when <argv_ere> is
+# given — that segment's remaining argv also matches <argv_ere>. Pass the
+# literal 4th argument `ci` to match <argv_ere> case-insensitively (grep
+# -qiE) — e.g. matching SQL keywords regardless of case; the command_word
+# match itself is always case-sensitive.
+#
+# This is the fix for the mention-vs-invocation collapse: a forbidden token
+# appearing as a grep PATTERN, an echo STRING, or any other non-command-word
+# position (`grep -c kill foo.sh`, `echo 'git push'`) never matches, because
+# the match is scoped to command_word_of_segment's resolved first token, not
+# the raw line. A real invocation, however deeply wrapped (`sudo env
+# FOO=1 rm -rf /x`) or nested inside an inline interpreter payload
+# (`bash -c 'kill 123'`, recursed one level via <interpreter> -c <payload>),
+# still matches — this is what keeps strip_quoted's false negative
+# (bash -c 'kill 123' silently passing) from reappearing here.
+#
+# Fails CLOSED (returns 0 — treat as an invocation, i.e. the caller should
+# deny) only when split_command_segments itself cannot parse the overall
+# <command_string> (unbalanced quote) — the whole string is then ambiguous
+# and is treated as a match. Per-segment resolution is NOT fail-closed: a
+# segment whose command word cannot be resolved (or that is blank) is simply
+# skipped (`continue`) and evaluation proceeds to the next segment — it is
+# never itself treated as a match. Fail-closed applies to the parse-level
+# failure, not to an individual unresolvable segment.
+command_invokes() {
+    local command_string="$1"
+    local word_ere="$2"
+    local argv_ere="${3:-}"
+    local ci_flag="${4:-}"
+
+    local segments
+    if ! segments=$(split_command_segments "$command_string"); then
+        # unbalanced quote — fail closed: treat as a match so the caller denies.
+        return 0
+    fi
+
+    local seg word argv payload
+    while IFS= read -r seg; do
+        [ -z "${seg// /}" ] && continue
+
+        word=$(command_word_of_segment "$seg")
+        [ -z "$word" ] && continue
+
+        if printf '%s' "$word" | grep -qE "$word_ere"; then
+            if [ -z "$argv_ere" ]; then
+                return 0
+            fi
+            argv=$(segment_argv_of "$seg")
+            if [ "$ci_flag" = "ci" ]; then
+                printf '%s' "$argv" | grep -qiE "$argv_ere" && return 0
+            else
+                printf '%s' "$argv" | grep -qE "$argv_ere" && return 0
+            fi
+        fi
+
+        # Recurse into inline-interpreter payloads: bash -c '<payload>',
+        # sh -c, zsh -c — the payload is itself a command string and may
+        # contain the real invocation one level down (bash -c 'kill 123').
+        case "$word" in
+        bash | sh | zsh)
+            argv=$(segment_argv_of "$seg")
+            if [[ "$argv" =~ ^-c[[:space:]]+(.*)$ ]]; then
+                payload="${BASH_REMATCH[1]}"
+                # strip one layer of surrounding quotes if present
+                payload="${payload#\'}"
+                payload="${payload%\'}"
+                payload="${payload#\"}"
+                payload="${payload%\"}"
+                if command_invokes "$payload" "$word_ere" "$argv_ere" "$ci_flag"; then
+                    return 0
+                fi
+            fi
+            ;;
+        esac
+    done <<<"$segments"
+
+    return 1
+}
+
 # read_gate_verdicts <project_dir> — pretty-print the durable gate-verdict
 # history under <project_dir>/codegen/logging/gate-verdicts.jsonl.
 # Aggregates verdict × count (clear/failed/inconclusive). Newest-first by ts.

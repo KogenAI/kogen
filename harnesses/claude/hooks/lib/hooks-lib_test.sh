@@ -611,6 +611,61 @@ assert_eq "strip_git_global_opts: -C without matching verb still preserves next 
     "git status" \
     "$(strip_git_global_opts "git -C /tmp/x status")"
 
+# ── command_word_of_segment — resolves the real command word ───────────────
+assert_eq "command_word_of_segment: plain command" "rm" \
+    "$(command_word_of_segment "rm -rf /tmp/x")"
+assert_eq "command_word_of_segment: env assignment prefix stripped" "rm" \
+    "$(command_word_of_segment "FOO=1 rm -rf /tmp/x")"
+assert_eq "command_word_of_segment: multiple wrapper prefixes stripped" "rm" \
+    "$(command_word_of_segment "sudo env FOO=1 exec rm -rf /tmp/x")"
+assert_eq "command_word_of_segment: blank segment resolves to empty" "" \
+    "$(command_word_of_segment "   ")"
+
+# ── command_invokes — command-POSITION-aware match (the pitch's core fix) ──
+# Real invocations (want DENY == match, rc 0)
+if command_invokes "kill 123" '^(kill|pkill|killall)$'; then r=0; else r=1; fi
+assert_eq "command_invokes: kill 123 -> real invocation matches" "0" "$r"
+
+if command_invokes "rm -rf /tmp/x" '^rm$' '(^|[[:space:]])-[a-zA-Z]*[rR][a-zA-Z]*([[:space:]]|$)|--recursive\b'; then r=0; else r=1; fi
+assert_eq "command_invokes: rm -rf -> real invocation matches" "0" "$r"
+
+if command_invokes "$(strip_git_global_opts "git push origin main")" '^git$' '^push\b'; then r=0; else r=1; fi
+assert_eq "command_invokes: git push -> real invocation matches" "0" "$r"
+
+if command_invokes "bash -c 'kill 123'" '^(kill|pkill|killall)$'; then r=0; else r=1; fi
+assert_eq "command_invokes: bash -c 'kill 123' -> recurses into payload, matches" "0" "$r"
+
+if command_invokes "sudo env FOO=1 exec rm -rf /tmp/x" '^rm$' '(^|[[:space:]])-[a-zA-Z]*[rR][a-zA-Z]*([[:space:]]|$)'; then r=0; else r=1; fi
+assert_eq "command_invokes: wrapped rm -rf -> still matches after prefix strip" "0" "$r"
+
+if command_invokes "$(strip_git_global_opts "git -C /tmp/x push")" '^git$' '^push\b'; then r=0; else r=1; fi
+assert_eq "command_invokes: git -C <path> push -> normalized, matches" "0" "$r"
+
+# Mentions (want ALLOW == no match, rc 1) — the false-positive class this
+# pitch exists to fix.
+if command_invokes "grep -c kill foo.sh" '^(kill|pkill|killall)$'; then r=0; else r=1; fi
+assert_eq "command_invokes: grep -c kill foo.sh -> mention, no match" "1" "$r"
+
+if command_invokes "echo 'tree-kill teardown'" '^(kill|pkill|killall)$'; then r=0; else r=1; fi
+assert_eq "command_invokes: echo 'tree-kill teardown' -> mention, no match" "1" "$r"
+
+if command_invokes "grep -rn 'rm -rf x' notes.md" '^rm$' '(^|[[:space:]])-[a-zA-Z]*[rR][a-zA-Z]*([[:space:]]|$)'; then r=0; else r=1; fi
+assert_eq "command_invokes: grep -rn 'rm -rf x' notes.md -> mention, no match" "1" "$r"
+
+if command_invokes "grep -n 'git push' docs.md" '^git$' '^push\b'; then r=0; else r=1; fi
+assert_eq "command_invokes: grep -n 'git push' docs.md -> mention, no match" "1" "$r"
+
+if command_invokes "rm --force /tmp/foo" '^rm$' '(^|[[:space:]])-[a-zA-Z]*[rR][a-zA-Z]*([[:space:]]|$)|--recursive\b'; then r=0; else r=1; fi
+assert_eq "command_invokes: rm --force -> no recursive flag, no match" "1" "$r"
+
+# Fail-closed on unbalanced quote
+if command_invokes "echo 'unterminated" '^(kill)$'; then r=0; else r=1; fi
+assert_eq "command_invokes: unbalanced quote -> fail closed (matches)" "0" "$r"
+
+# ci flag — case-insensitive argv match (SQL keyword check)
+if command_invokes "psql \$DATABASE_URL -c 'truncate table users;'" '^psql$' '\b(TRUNCATE|DROP[[:space:]]+TABLE|DELETE[[:space:]]+FROM)\b' ci; then r=0; else r=1; fi
+assert_eq "command_invokes: lowercase truncate matches with ci flag" "0" "$r"
+
 echo ""
 echo "Results: $pass passed, $fail failed"
 

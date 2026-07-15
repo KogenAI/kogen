@@ -310,6 +310,116 @@ export function splitCommandSegments(command: string): string[] | null {
   return segments;
 }
 
+const WRAPPER_PREFIXES = new Set(["sudo", "env", "nohup", "time", "command", "exec"]);
+const ENV_ASSIGNMENT_RE = /^[A-Za-z_][A-Za-z0-9_]*=/;
+
+/**
+ * commandWordOfSegment() — Resolves the real COMMAND WORD of one shell-chain
+ * segment (as produced by splitCommandSegments), after stripping leading
+ * `VAR=val` environment assignments and known wrapper prefixes (sudo, env,
+ * nohup, time, command, exec — each consumed once, repeatedly, so
+ * `sudo env FOO=1 exec rm -rf /x` resolves to `rm`). Returns "" when the
+ * segment has no resolvable command word (blank segment) — callers MUST
+ * treat empty as "could not resolve" and fail CLOSED (deny), never allow.
+ * Mirrors command_word_of_segment in hooks-lib.sh.
+ */
+export function commandWordOfSegment(segment: string): string {
+  const words = segment.split(/\s+/).filter((w) => w.length > 0);
+  let i = 0;
+  const n = words.length;
+  while (i < n) {
+    const w = words[i];
+    if (ENV_ASSIGNMENT_RE.test(w)) {
+      i += 1;
+      continue;
+    }
+    if (WRAPPER_PREFIXES.has(w)) {
+      i += 1;
+      continue;
+    }
+    break;
+  }
+  return i >= n ? "" : words[i];
+}
+
+/**
+ * segmentArgvOf() — Returns the argv (space-joined remainder) of a segment
+ * AFTER its resolved command word (and any env-assignment/wrapper prefixes
+ * consumed to reach it). Mirrors segment_argv_of in hooks-lib.sh.
+ */
+export function segmentArgvOf(segment: string): string {
+  const words = segment.split(/\s+/).filter((w) => w.length > 0);
+  let i = 0;
+  const n = words.length;
+  while (i < n) {
+    const w = words[i];
+    if (ENV_ASSIGNMENT_RE.test(w) || WRAPPER_PREFIXES.has(w)) {
+      i += 1;
+      continue;
+    }
+    break;
+  }
+  if (i >= n) return "";
+  return words.slice(i + 1).join(" ");
+}
+
+/**
+ * commandInvokes() — Fail-closed, command-POSITION-aware match: true only
+ * when at least one shell-chain segment of `command` actually INVOKES a
+ * command whose resolved command word matches `wordRe`, AND — when `argvRe`
+ * is given — that segment's remaining argv also matches `argvRe`.
+ *
+ * This is the fix for the mention-vs-invocation collapse: a forbidden token
+ * appearing as a grep PATTERN, an echo STRING, or any other non-command-word
+ * position (`grep -c kill foo.sh`, `echo 'git push'`) never matches, because
+ * the match is scoped to commandWordOfSegment's resolved first token, not
+ * the raw line. A real invocation, however deeply wrapped (`sudo env
+ * FOO=1 rm -rf /x`) or nested inside an inline interpreter payload
+ * (`bash -c 'kill 123'`, recursed one level via <interpreter> -c <payload>),
+ * still matches.
+ *
+ * Fails CLOSED (returns true — treat as an invocation, i.e. the caller
+ * should deny) when splitCommandSegments cannot parse (unbalanced quote).
+ * A blank segment (nothing to resolve) is skipped, never treated as a match.
+ * Mirrors command_invokes in hooks-lib.sh.
+ */
+export function commandInvokes(command: string, wordRe: RegExp, argvRe?: RegExp): boolean {
+  const segments = splitCommandSegments(command);
+  if (segments === null) {
+    // unbalanced quote — fail closed: treat as a match so the caller denies.
+    return true;
+  }
+
+  for (const seg of segments) {
+    if (seg.trim() === "") continue;
+
+    const word = commandWordOfSegment(seg);
+    if (word === "") continue;
+
+    if (wordRe.test(word)) {
+      if (!argvRe) return true;
+      const argv = segmentArgvOf(seg);
+      if (argvRe.test(argv)) return true;
+    }
+
+    // Recurse into inline-interpreter payloads: bash -c '<payload>', sh -c,
+    // zsh -c — the payload is itself a command string and may contain the
+    // real invocation one level down (bash -c 'kill 123').
+    if (word === "bash" || word === "sh" || word === "zsh") {
+      const argv = segmentArgvOf(seg);
+      const m = /^-c\s+([\s\S]*)$/.exec(argv);
+      if (m) {
+        let payload = m[1];
+        payload = payload.replace(/^'/, "").replace(/'$/, "");
+        payload = payload.replace(/^"/, "").replace(/"$/, "");
+        if (commandInvokes(payload, wordRe, argvRe)) return true;
+      }
+    }
+  }
+
+  return false;
+}
+
 /** Unused ctx parameter helper — avoids lint warnings in hook modules that don't use ctx. */
 export function voidCtx(_ctx: ExtensionContext): void {
   // intentionally unused

@@ -9,7 +9,9 @@
 # signal: AGENT_TYPE
 # role: planner-*
 # harnesses: all
-# GENERATED FROM shared/enforcement/registry.yaml — DO NOT EDIT
+# registration only (hand-authored body) — the registry entry for this hook
+# is `kind: registration`, which emits ONLY the settings.json wiring; the
+# check logic below is NOT generated and is safe to hand-edit.
 #
 # Blocks Stop when:
 #   AGENT_TYPE matches planner-* AND the active step log resolved from the

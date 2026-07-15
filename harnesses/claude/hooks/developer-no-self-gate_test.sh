@@ -158,6 +158,34 @@ out=$(make_input "make ci" "developer-phoenix-backend" "$SID10" | bash "$HOOK" 2
 assert_contains "real make ci at count=3 STILL BLOCKED" '"permissionDecision"' "$out"
 rm -f "/tmp/codegen-self-gate-${SID10}.count"
 
+# ── Test 10b: mention of "mix test" in a grep pattern → ALLOW, no counter bump ──
+SID10B="sid10b-$$-$(date -u +%s)"
+rm -f "/tmp/codegen-self-gate-${SID10B}.count"
+out=$(make_input 'grep -n "mix test" README.md' "developer-phoenix-backend" "$SID10B" | bash "$HOOK" 2>/dev/null || true)
+assert_not_contains "mention of 'mix test' in grep pattern ALLOWED (not counted)" '"permissionDecision"' "$out"
+if [ -f "/tmp/codegen-self-gate-${SID10B}.count" ]; then
+    printf 'FAIL: mention must NOT create/increment counter file\n'
+    fail=$((fail + 1))
+else
+    [ -n "${VERBOSE:-}" ] && printf 'PASS: mention did not touch counter file\n'
+    pass=$((pass + 1))
+fi
+rm -f "/tmp/codegen-self-gate-${SID10B}.count"
+
+# ── Test 10c: mention of "make ci" in an echo string → ALLOW, no counter bump ──
+SID10C="sid10c-$$-$(date -u +%s)"
+rm -f "/tmp/codegen-self-gate-${SID10C}.count"
+out=$(make_input 'echo "run make ci first"' "developer-phoenix-backend" "$SID10C" | bash "$HOOK" 2>/dev/null || true)
+assert_not_contains "mention of 'make ci' in echo string ALLOWED (not counted)" '"permissionDecision"' "$out"
+if [ -f "/tmp/codegen-self-gate-${SID10C}.count" ]; then
+    printf 'FAIL: mention must NOT create/increment counter file\n'
+    fail=$((fail + 1))
+else
+    [ -n "${VERBOSE:-}" ] && printf 'PASS: mention did not touch counter file\n'
+    pass=$((pass + 1))
+fi
+rm -f "/tmp/codegen-self-gate-${SID10C}.count"
+
 # ── Loop-mode tests (CODEGEN_LOOP=1): progress-bounded self-verify ─────────
 # Real tmpdir git fixture so the tree-signature command is exercised for
 # real (not stubbed).

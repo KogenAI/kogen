@@ -8,7 +8,9 @@
 # signal: none
 # role: *
 # harnesses: all
-# GENERATED FROM shared/enforcement/registry.yaml — DO NOT EDIT
+# registration only (hand-authored body) — the registry entry for this hook
+# is `kind: registration`, which emits ONLY the settings.json wiring; the
+# check logic below is NOT generated and is safe to hand-edit.
 #
 # Sweeps stale LLM-pending flag files (older than 120 minutes) from the
 # codegen/llm-pending/ sidecar directory. Old flags are noise — the dev

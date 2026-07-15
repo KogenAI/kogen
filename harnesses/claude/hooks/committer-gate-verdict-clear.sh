@@ -9,7 +9,9 @@
 # role: committer
 # harnesses: all
 # rationale: Denies a git commit from the committer agent unless codegen/gate-pending/gate-result.json exists and its .verdict field is "clear" — enforces the mandatory verdict read (shared/rules/roles/committer.md) rather than leaving it as an unenforced instruction.
-# GENERATED FROM shared/enforcement/registry.yaml — DO NOT EDIT
+# registration only (hand-authored body) — the registry entry for this hook
+# is `kind: registration`, which emits ONLY the settings.json wiring; the
+# check logic below is NOT generated and is safe to hand-edit.
 #
 # The committer's own rule (shared/rules/roles/committer.md) says: read the
 # .verdict field of codegen/gate-pending/gate-result.json; absent or non-clear

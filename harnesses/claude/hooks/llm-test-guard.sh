@@ -8,7 +8,9 @@
 # signal: AGENT_TYPE
 # role: all
 # harnesses: all
-# GENERATED FROM shared/enforcement/registry.yaml — DO NOT EDIT
+# registration only (hand-authored body) — the registry entry for this hook
+# is `kind: registration`, which emits ONLY the settings.json wiring; the
+# check logic below is NOT generated and is safe to hand-edit.
 #
 # Blocks: `mix test --only llm_integration` UNLESS the command ALSO contains
 #         literal `MIX_TEST_PARTITION=1` AND `MIX_TEST_PARTITIONS=1` AND a

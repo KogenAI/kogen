@@ -13,7 +13,9 @@
 # role: *
 # harnesses: all
 # rationale: Denies ANY role's Edit/Write/MultiEdit to an orientation doc (CLAUDE.md, AGENTS.md, PROJECT_CONTEXT.md, codegen/PROJECT_CONTEXT.md, context/*.md) when the PROJECTED post-write content contains a factcheck violation (named-path claim, count-anchor mismatch, or `_`->`*` identifier corruption), so it is fixed in the writer's own turn — where the doc is editable this turn — instead of failing later at a downstream role (committer) that cannot repair it. Mirrors curator-context-size-gate. Supersedes the deleted context-factcheck-curator-stop (dead SubagentStop under the loop) and context-factcheck-guard (commit-time dead-end).
-# GENERATED FROM shared/enforcement/registry.yaml — DO NOT EDIT
+# registration only (hand-authored body) — the registry entry for this hook
+# is `kind: registration`, which emits ONLY the settings.json wiring; the
+# check logic below is NOT generated and is safe to hand-edit.
 #
 # Projection mechanic: materializes the projected post-write body for the
 # target doc, mirrors it into a throwaway git-initialized temp directory at

@@ -190,6 +190,48 @@ describe("developer-no-self-gate", () => {
     }
   });
 
+  it("allows mention of 'mix test' inside a grep pattern (not counted)", async () => {
+    const sid = `sid10b-${Date.now()}`;
+    fs.rmSync(counterPath(sid), { force: true });
+    try {
+      const result = await runHook(
+        'grep -n "mix test" README.md',
+        "developer-phoenix-backend",
+        sid,
+      );
+      assert.ok(
+        result == null || (result as { block?: boolean }).block !== true,
+      );
+      assert.ok(
+        !fs.existsSync(counterPath(sid)),
+        "mention must NOT create/increment counter file",
+      );
+    } finally {
+      fs.rmSync(counterPath(sid), { force: true });
+    }
+  });
+
+  it("allows mention of 'make ci' inside an echo string (not counted)", async () => {
+    const sid = `sid10c-${Date.now()}`;
+    fs.rmSync(counterPath(sid), { force: true });
+    try {
+      const result = await runHook(
+        'echo "run make ci first"',
+        "developer-phoenix-backend",
+        sid,
+      );
+      assert.ok(
+        result == null || (result as { block?: boolean }).block !== true,
+      );
+      assert.ok(
+        !fs.existsSync(counterPath(sid)),
+        "mention must NOT create/increment counter file",
+      );
+    } finally {
+      fs.rmSync(counterPath(sid), { force: true });
+    }
+  });
+
   it("still blocks real standalone make ci at count=3 (unchanged)", async () => {
     const sid = `sid9-${Date.now()}`;
     fs.writeFileSync(counterPath(sid), "2");

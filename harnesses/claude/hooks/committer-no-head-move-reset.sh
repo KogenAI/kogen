@@ -9,7 +9,9 @@
 # role: committer
 # harnesses: all
 # rationale: Denies a HEAD-moving git reset (e.g. git reset HEAD~1, --hard/--soft/--keep/--merge, or a targeted commit-ish) from the committer agent, preventing a prior cycle's already-committed commit from being silently orphaned and folded into a new one.
-# GENERATED FROM shared/enforcement/registry.yaml — DO NOT EDIT
+# registration only (hand-authored body) — the registry entry for this hook
+# is `kind: registration`, which emits ONLY the settings.json wiring; the
+# check logic below is NOT generated and is safe to hand-edit.
 #
 # Denies any `git reset` invocation from the committer agent that would move
 # HEAD to a different commit. A HEAD-moving reset (e.g. `git reset HEAD~1`)

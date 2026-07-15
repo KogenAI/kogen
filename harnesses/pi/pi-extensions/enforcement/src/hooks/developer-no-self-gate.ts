@@ -13,6 +13,7 @@ import {
   parseAgentType,
   debugLog,
   isCodegenLogWrite,
+  commandInvokes,
 } from "../lib/hook-helpers";
 import { execSync } from "node:child_process";
 import * as fs from "node:fs";
@@ -46,11 +47,13 @@ export function register(pi: ExtensionAPI): void {
     // counter increment.
     if (isCodegenLogWrite(command)) return;
 
-    if (
-      !/\bmix\s+(test|credo|format)\b|\bmake\s+(ci|ci-fast|test)\b/.test(
-        command,
-      )
-    ) {
+    // Check if command matches a self-gate pattern — command-word position
+    // only, so `grep -n "mix test" README.md` or `echo "run make ci first"`
+    // never enter the counted path (they mention the phrase, they do not
+    // invoke it).
+    const isMixSelfGate = commandInvokes(command, /^mix$/, /^(test|credo|format)\b/);
+    const isMakeSelfGate = commandInvokes(command, /^make$/, /^(ci|ci-fast|test)\b/);
+    if (!isMixSelfGate && !isMakeSelfGate) {
       return;
     }
 

@@ -10,7 +10,9 @@
 # signal: CLAUDE_ROLE_FAMILY
 # role: *
 # harnesses: all
-# GENERATED FROM shared/enforcement/registry.yaml — DO NOT EDIT
+# registration only (hand-authored body) — the registry entry for this hook
+# is `kind: registration`, which emits ONLY the settings.json wiring; the
+# check logic below is NOT generated and is safe to hand-edit.
 #
 # Decision tree:
 #   1. STOP_HOOK_ACTIVE=true                           -> exit 0 (loop guard)

@@ -9,7 +9,9 @@
 # role: developer-*|reviewer-*|committer|context-curator
 # harnesses: claude_code
 # rationale: Claude Code per-call Read inspector; Pi uses load-gate tool restriction
-# GENERATED FROM shared/enforcement/registry.yaml — DO NOT EDIT
+# registration only (hand-authored body) — the registry entry for this hook
+# is `kind: registration`, which emits ONLY the settings.json wiring; the
+# check logic below is NOT generated and is safe to hand-edit.
 #
 # Rules:
 #   planner-*       → allow all (planner owns context reads AND pitch reads)

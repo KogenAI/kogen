@@ -8,7 +8,9 @@
 # signal: none
 # role: *
 # harnesses: all
-# GENERATED FROM shared/enforcement/registry.yaml — DO NOT EDIT
+# registration only (hand-authored body) — the registry entry for this hook
+# is `kind: registration`, which emits ONLY the settings.json wiring; the
+# check logic below is NOT generated and is safe to hand-edit.
 #
 # Blocks committer spawn when reviewer has run but context-curator has not.
 # Enforces the invariant: reviewer → context-curator → committer.

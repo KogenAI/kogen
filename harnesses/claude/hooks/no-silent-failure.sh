@@ -14,7 +14,9 @@
 # role: *
 # harnesses: all
 # rationale: Denies an Edit/Write/MultiEdit whose new content/new_string contains a high-precision silent-failure swallow token: empty catch {} (TS), bare except: / except Exception: (Python), rescue _ / rescue <var> without reraise in the arm (Elixir), or a catch-all _ -> (nil|:ok|[]|"") sink. Bypassed by a justified `# fail-loud-exempt: <reason>` comment (reason mandatory) or when `reraise` appears anywhere in the new content. Does NOT gate `|| true` or Keyword.get/Map.get/get_env default-value calls — those are reviewer-owned contextual judgment (Rule S), not mechanically precise enough for a keystroke-level deny. Hand-authored (kind: registration) because the compiler's COMMAND/FILE_PATH source templates cannot inspect Edit/Write content.
-# GENERATED FROM shared/enforcement/registry.yaml — DO NOT EDIT
+# registration only (hand-authored body) — the registry entry for this hook
+# is `kind: registration`, which emits ONLY the settings.json wiring; the
+# check logic below is NOT generated and is safe to hand-edit.
 #
 # Hand-authored body (compiler COMMAND/FILE_PATH sources cannot match edit
 # content — see context/enforcement-compiler.md). Registry carries the

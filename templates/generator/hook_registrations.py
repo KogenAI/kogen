@@ -409,7 +409,21 @@ def render_header(entry: dict) -> str:
             for cont in rationale_lines[1:]:
                 lines.append(f"#   {cont}")
 
-    lines.append("# GENERATED FROM shared/enforcement/registry.yaml — DO NOT EDIT")
+    # kind:registration entries (the only ones ever passed to this function —
+    # see inject_headers/verify_headers, which filter to kind=="registration")
+    # get ONLY this header block generated; the check-logic body below it is
+    # hand-authored and safe to edit. A prior "GENERATED FROM ... DO NOT EDIT"
+    # banner here was misleading — it read as if the whole file were
+    # generated, which is untrue for every kind:registration hook.
+    lines.append(
+        "# registration only (hand-authored body) — the registry entry for "
+        "this hook"
+    )
+    lines.append(
+        "# is `kind: registration`, which emits ONLY the settings.json "
+        "wiring; the"
+    )
+    lines.append("# check logic below is NOT generated and is safe to hand-edit.")
     # No trailing "#" — the blank comment terminator line is part of the body
     # and is preserved by inject_header's terminator-detection logic.
     return "\n".join(lines)
