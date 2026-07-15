@@ -327,6 +327,36 @@ assert_file_exists "integrate writes PROJECT_CONTEXT.md" "$PROJECT_CONTEXT_CWD/P
 PC_CONTENT="$(cat "$PROJECT_CONTEXT_CWD/PROJECT_CONTEXT.md")"
 assert_contains "PROJECT_CONTEXT.md has location [app root]" "$PC_CONTENT" "[app root]"
 
+# (u2) Integrate seeds context/core.md + context/development.md for static stack —
+# the PROJECT_CONTEXT index promises both exist ("always present")
+assert_file_exists "static integrate seeds context/core.md" "$PROJECT_CONTEXT_CWD/context/core.md"
+assert_file_exists "static integrate seeds context/development.md" "$PROJECT_CONTEXT_CWD/context/development.md"
+
+# (u3) Integrate seeds context/development.md ONLY for phoenix stack — its index
+# never promises context/core.md (only a context/[domain].md placeholder row)
+PC_PHOENIX_CTX_CWD="$BASE_TMP/project_context_phoenix_ctx_test"
+mkdir -p "$PC_PHOENIX_CTX_CWD"
+"$CODEGEN_SCAFFOLD" integrate --stack=phoenix --cwd="$PC_PHOENIX_CTX_CWD" --slug=test-pc-phoenix-ctx
+assert_file_exists "phoenix integrate seeds context/development.md" "$PC_PHOENIX_CTX_CWD/context/development.md"
+if [[ -f "$PC_PHOENIX_CTX_CWD/context/core.md" ]]; then
+    printf 'FAIL: phoenix integrate must not seed context/core.md (index never promises it)\n'
+    fail=$((fail + 1))
+else
+    [ -n "${VERBOSE:-}" ] && printf 'PASS: phoenix integrate does not seed context/core.md\n'
+    pass=$((pass + 1))
+fi
+
+# (u4) Re-integrate does not clobber existing context/core.md content — agents own it
+printf 'agent-owned content, do not overwrite\n' >"$PROJECT_CONTEXT_CWD/context/core.md"
+"$CODEGEN_SCAFFOLD" integrate --stack=static --cwd="$PROJECT_CONTEXT_CWD" --slug=test-pc
+CORE_AFTER_REINTEGRATE="$(cat "$PROJECT_CONTEXT_CWD/context/core.md")"
+assert_contains "re-integrate preserves existing context/core.md content" "$CORE_AFTER_REINTEGRATE" "agent-owned content, do not overwrite"
+
+# (u5) Seeded stub content is prettier-clean (same gate the app's own `make ci` runs)
+STUB_PRETTIER_EXIT=0
+"$PRETTIER_BIN" --no-config --check "$PROJECT_CONTEXT_CWD/context" >/dev/null 2>&1 || STUB_PRETTIER_EXIT=$?
+assert_exit "seeded context/ stubs are prettier-clean" "0" "$STUB_PRETTIER_EXIT"
+
 # (v) Integrate writes restart_server.sh (no rpc-cmd — local-dev only)
 RESTART_NO_RPC_CWD="$BASE_TMP/restart_no_rpc_test"
 mkdir -p "$RESTART_NO_RPC_CWD"

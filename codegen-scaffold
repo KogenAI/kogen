@@ -358,6 +358,21 @@ run_integrate_stage() {
         printf '%s\n' "$pc_content" >"$target_dir/PROJECT_CONTEXT.md"
     fi
 
+    # ── context/ docs (idempotent: write once) ────────────────────────────────
+    # PROJECT_CONTEXT.md's index PROMISES these exist ("always present"). A dangling
+    # index row is a hard failure at the curator's context-index-parity-scan, AFTER
+    # the developer and reviewer have run. The agents own the content from the first
+    # build onward — these are only the stubs that make the index true on day zero.
+    mkdir -p "$target_dir/context"
+    # Both stacks' indexes promise development.md; only static's promises core.md.
+    # Seed exactly what the stack's own index row names — never more.
+    if [[ ! -f "$target_dir/context/development.md" ]]; then
+        cp "$SCRIPT_DIR/shared/apps/context-development-$STACK.md" "$target_dir/context/development.md"
+    fi
+    if [[ "$STACK" == "static" && ! -f "$target_dir/context/core.md" ]]; then
+        cp "$SCRIPT_DIR/shared/apps/context-core-static.md" "$target_dir/context/core.md"
+    fi
+
     # ── restart_server.sh render (both stacks; only when --restart-rpc-cmd set) ─
     local restart_template="$SCRIPT_DIR/shared/scaffold/restart_server.sh.eex"
     local eex_render="$SCRIPT_DIR/shared/scaffold/phoenix/eex_render.sh"
