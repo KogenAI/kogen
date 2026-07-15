@@ -696,6 +696,7 @@ defmodule CodegenTestHarness.OrchestrationLoop do
   # sequences) → treat as exhausted rather than crash on a nil dev_role.
   defp rework_final_gate(ctx, rest, harness, opts, cycle) do
     gate_fn = Keyword.get(opts, :gate_fn, &LoopGate.run_gate/2)
+    max_cycles = Keyword.get(opts, :max_final_gate_cycles, 1)
 
     case gate_fn.(ctx.cwd, gate_opts(opts)) do
       {:clear, _gate_cmd} ->
@@ -712,13 +713,24 @@ defmodule CodegenTestHarness.OrchestrationLoop do
           reason = gate_failure_reason(ctx.cwd)
           brief = capture_rework_brief(ctx.cwd, opts)
 
+          # Mirrors `do_gate_loop_rework/9`'s give-up-boundary escalation:
+          # this rework is the FINAL one `ensure_gate_graded_this_tree!/5`
+          # will allow when the next cycle (cycle + 1) would already meet or
+          # exceed `max_final_gate_cycles` and be refused.
+          final_attempt? = cycle + 1 >= max_cycles
+
           retry_ctx =
             ctx
             |> put_in([:artifacts, :last_failure_reason], reason)
             |> put_in([:artifacts, :rework_brief], brief)
+            |> maybe_escalate_model(dev_role, harness, opts, final_attempt?)
 
           with {:ok, result} <- invoke_with_retry(dev_role, harness, retry_ctx, opts) do
-            ctx = put_in(retry_ctx, [:artifacts, dev_role], result)
+            ctx =
+              retry_ctx
+              |> put_in([:artifacts, dev_role], result)
+              |> update_in([:artifacts], &Map.delete(&1, :escalated_model))
+
             run_format_step(ctx.cwd, opts)
             ensure_gate_graded_this_tree!(ctx, rest, harness, opts, cycle + 1)
           end
@@ -1478,13 +1490,33 @@ defmodule CodegenTestHarness.OrchestrationLoop do
       reason = gate_failure_reason(ctx.cwd)
       brief = capture_rework_brief(ctx.cwd, opts)
 
+      # This attempt is the FINAL one the bound will allow if the NEXT
+      # attempt (attempt + 1) would already be refused for a reason that
+      # cannot change between now and then (the hard ceiling, or the
+      # count-based bound when no tree signature is available). It is NOT
+      # final merely because the signature-based `progressed?` bound would
+      # refuse it — that depends on whether THIS attempt's own edit changes
+      # the tree, which is unknown yet. Escalating only on the
+      # ceiling/count-bound exhaustion keeps the ~1.8% give-up-boundary
+      # frequency this bet is sized on (see pitch claim ledger #1); treating
+      # every signature-bound refusal as "final" would escalate far more
+      # often, on cycles that are converging normally rather than stuck.
+      final_attempt? =
+        attempt + 1 >= @gate_progress_ceiling or
+          (not signature_available? and attempt + 1 >= max_retries)
+
       retry_ctx =
         ctx
         |> put_in([:artifacts, :last_failure_reason], reason)
         |> put_in([:artifacts, :rework_brief], brief)
+        |> maybe_escalate_model(dev_role, harness, opts, final_attempt?)
 
       with {:ok, result} <- invoke_with_retry(dev_role, harness, retry_ctx, opts) do
-        ctx = put_in(retry_ctx, [:artifacts, dev_role], result)
+        ctx =
+          retry_ctx
+          |> put_in([:artifacts, dev_role], result)
+          |> update_in([:artifacts], &Map.delete(&1, :escalated_model))
+
         run_format_step(ctx.cwd, opts)
 
         do_gate_loop(
@@ -1501,6 +1533,35 @@ defmodule CodegenTestHarness.OrchestrationLoop do
       end
     else
       {:error, "gate verdict=failed after #{attempt + 1} developer attempt(s)"}
+    end
+  end
+
+  # Applies a model/effort escalation override into `ctx.artifacts.escalated_model`
+  # for the NEXT developer invocation, but only when `final_attempt?` is true
+  # (this rework attempt is the last the bound allows before give-up) AND
+  # `config.yaml` actually carries an escalation tier for this role/harness
+  # (`RoleResolver.resolve_escalation/2` — fail-safe `:none` when absent, per
+  # its own contract). Not final, or no escalation configured -> ctx passes
+  # through unchanged, i.e. the role runs at its normal tier exactly as
+  # before this feature existed.
+  @spec maybe_escalate_model(map(), String.t(), harness(), run_opts(), boolean()) :: map()
+  defp maybe_escalate_model(ctx, dev_role, harness, opts, final_attempt?)
+
+  defp maybe_escalate_model(ctx, _dev_role, _harness, _opts, false), do: ctx
+
+  defp maybe_escalate_model(ctx, dev_role, harness, opts, true) do
+    escalate_fn = Keyword.get(opts, :resolve_escalation_fn, &RoleResolver.resolve_escalation/2)
+
+    case escalate_fn.(dev_role, harness) do
+      {model, effort} ->
+        operator_note(
+          "role #{dev_role}: escalating to #{model}/#{effort} on final gate-retry attempt before give-up"
+        )
+
+        put_in(ctx, [:artifacts, :escalated_model], {model, effort})
+
+      :none ->
+        ctx
     end
   end
 
@@ -1977,6 +2038,13 @@ defmodule CodegenTestHarness.OrchestrationLoop do
   instead of the full `build_prompt/2` pitch/plan, and threads
   `--resume=<id>` instead of `--session-id=<id>` to `codegen-call`.
 
+  When `ctx.artifacts.escalated_model` is a `{model, effort}` tuple (set by
+  `do_gate_loop_rework/9` or `rework_final_gate/5` on the FINAL retry a
+  give-up boundary allows), that tuple is used verbatim in place of
+  `resolve_fn.(role, harness)` — the one place a stuck build is worth paying
+  for a stronger tier. Absent (the normal case) → unchanged `resolve_fn`
+  lookup.
+
   `status`:
   - `"success"` → `{:ok, envelope["result"]}`
   - `"failed"` → `{:error, reason}` (reason from `result.reason`, or a
@@ -2027,7 +2095,11 @@ defmodule CodegenTestHarness.OrchestrationLoop do
         )
       end)
 
-    {model, effort} = resolve_fn.(role, harness)
+    {model, effort} =
+      case get_in(ctx, [:artifacts, :escalated_model]) do
+        {escalated_model, escalated_effort} -> {escalated_model, escalated_effort}
+        _ -> resolve_fn.(role, harness)
+      end
 
     prompt =
       if resume_session_id do

@@ -52,14 +52,50 @@ harness:
     claude: { model: opus, effort: high }
     pi: { model: openai-codex/gpt-5.5, effort: high }
   developer-phoenix-backend:
-    claude: { model: sonnet, effort: medium }
-    pi: { model: openai-codex/gpt-5.4, effort: medium }
+    claude:
+      {
+        model: sonnet,
+        effort: medium,
+        escalate_model: opus,
+        escalate_effort: high,
+      }
+    pi:
+      {
+        model: openai-codex/gpt-5.4,
+        effort: medium,
+        escalate_model: openai-codex/gpt-5.5,
+        escalate_effort: high,
+      }
   developer-phoenix-frontend:
-    claude: { model: sonnet, effort: medium }
-    pi: { model: openai-codex/gpt-5.4, effort: medium }
+    claude:
+      {
+        model: sonnet,
+        effort: medium,
+        escalate_model: opus,
+        escalate_effort: high,
+      }
+    pi:
+      {
+        model: openai-codex/gpt-5.4,
+        effort: medium,
+        escalate_model: openai-codex/gpt-5.5,
+        escalate_effort: high,
+      }
   developer-static:
-    claude: { model: sonnet, effort: high }
-    pi: { model: openai-codex/gpt-5.4, effort: medium }
+    claude:
+      {
+        model: sonnet,
+        effort: high,
+        escalate_model: opus,
+        escalate_effort: high,
+      }
+    pi:
+      {
+        model: openai-codex/gpt-5.4,
+        effort: medium,
+        escalate_model: openai-codex/gpt-5.5,
+        escalate_effort: high,
+      }
   reviewer-phoenix:
     claude: { model: sonnet, effort: medium }
     pi: { model: openai-codex/gpt-5.4, effort: medium }

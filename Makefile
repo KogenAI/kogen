@@ -506,6 +506,12 @@ harness-path-check:
 
 # rule-render-freshness: verify committed shared/apps/*.md match a fresh render.
 # Catches the case where a rule file or template was edited without re-running make install.
+# --ignore-path /dev/null on the prettier pass below is required: mktemp's dir has no
+# .gitignore of its own, and prettier's markdown printer silently stops backslash-escaping
+# literal `*`/backtick-fence characters when it cannot resolve one starting from the target
+# path — producing a false STALE verdict against committed content that used the (correct)
+# escaped form. Forcing an empty ignore-path keeps prettier's output identical regardless of
+# where the tmp copy lives.
 .PHONY: rule-render-freshness
 rule-render-freshness:
 	@echo "--- rule-render-freshness: checking committed apps docs match fresh render ---"; \
@@ -517,7 +523,7 @@ rule-render-freshness:
 		CODEGEN_DIR="$$PWD" python3 templates/generator/process_template.py "shared/apps/$$base.md.j2" pi false > "$$tmp/shared/apps/$$base.md"; \
 		CODEGEN_DIR="$$PWD" python3 templates/generator/process_template.py "shared/apps/$$base.md.j2" claude false > "$$tmp/shared/apps/CLAUDE-$$variant.md"; \
 	done; \
-	node node_modules/prettier/bin/prettier.cjs -w --log-level error "$$tmp/shared"; \
+	node node_modules/prettier/bin/prettier.cjs -w --log-level error --ignore-path /dev/null "$$tmp/shared"; \
 	fail=0; \
 	for f in CLAUDE-phoenix CLAUDE-static AGENTS-phoenix AGENTS-static; do \
 		if ! diff -q "$$tmp/shared/apps/$$f.md" "shared/apps/$$f.md" >/dev/null 2>&1; then \

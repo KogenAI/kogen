@@ -49,6 +49,35 @@ defmodule CodegenTestHarness.RoleResolver do
     {model, effort}
   end
 
+  @doc """
+  Resolves the give-up-boundary escalation `{model, effort}` override for
+  `role`/`harness`, reading `.harness.<role>.<config_harness>.escalate_model`
+  / `.escalate_effort` from `config.yaml`.
+
+  Fail-safe, not fail-open: an absent/empty/null escalation key (the common
+  case — only developer roles carry one, and only some of those) returns
+  `:none` rather than raising or falling back to a guessed model. The caller
+  (`OrchestrationLoop.invoke_role/4`) treats `:none` as "run at the role's
+  normal tier" — the exact behavior before escalation existed. A role/harness
+  pair unknown to `config.yaml` entirely (never happens for a real developer
+  role in practice) also resolves to `:none` rather than crashing the loop at
+  its most expensive, least-recoverable moment.
+  """
+  @spec resolve_escalation(role_harness(), role_harness()) ::
+          {String.t(), String.t()} | :none
+  def resolve_escalation(role, harness) do
+    config_harness = normalize_harness(harness)
+
+    with model when is_binary(model) and model != "" <-
+           config_yaml_read_optional(".harness.#{role}.#{config_harness}.escalate_model"),
+         effort when is_binary(effort) and effort != "" <-
+           config_yaml_read_optional(".harness.#{role}.#{config_harness}.escalate_effort") do
+      {model, effort}
+    else
+      _ -> :none
+    end
+  end
+
   # Maps the canonical loop/codegen-call harness name to the short name that
   # config.yaml keys on.
   defp normalize_harness("claude_code"), do: "claude"
@@ -65,5 +94,21 @@ defmodule CodegenTestHarness.RoleResolver do
     end
 
     value
+  end
+
+  # Reads a scalar value from config.yaml, returning "" instead of raising
+  # when the key is missing/empty/null or `yq` itself fails. Used only by
+  # `resolve_escalation/2`, whose whole contract is "absent → :none", never
+  # a crash — unlike `config_yaml_read!/1`, which backs the required
+  # model/effort lookup every role invocation depends on.
+  defp config_yaml_read_optional(key) do
+    case System.cmd("yq", ["-r", key, @config_yaml], stderr_to_stdout: true) do
+      {value, 0} ->
+        value = String.trim(value)
+        if value == "" or value == "null", do: "", else: value
+
+      {_value, _code} ->
+        ""
+    end
   end
 end

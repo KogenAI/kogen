@@ -1659,6 +1659,149 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
     end
   end
 
+  describe "run/1 — gate-retry give-up-boundary model escalation" do
+    # Non-git cwd -> tree_signature/1 unavailable -> falls back to the
+    # legacy count bound (:max_gate_retries, default 1): attempt 0 (the
+    # first rework retry) is the ONLY retry allowed, so it is also the
+    # final one — escalation must fire on it.
+    test "count-bound path: escalates on the one allowed retry when configured", %{
+      calls_agent: calls_agent
+    } do
+      gate_fn = fn _cwd, _opts -> {:failed, "make test"} end
+
+      {:ok, seen_ctx_agent} = Agent.start_link(fn -> [] end)
+      on_exit(fn -> if Process.alive?(seen_ctx_agent), do: Agent.stop(seen_ctx_agent) end)
+
+      invoke_fn = fn role, _harness, ctx, _opts ->
+        Agent.update(calls_agent, fn calls -> calls ++ [role] end)
+
+        if role == "developer-static" do
+          escalated = get_in(ctx, [:artifacts, :escalated_model])
+          Agent.update(seen_ctx_agent, fn seen -> seen ++ [escalated] end)
+        end
+
+        {:ok, %{"status" => "success", "value" => "did #{role}"}}
+      end
+
+      resolve_escalation_fn = fn "developer-static", "claude_code" -> {"opus", "high"} end
+
+      assert {:error, reason} =
+               OrchestrationLoop.run(
+                 harness: "claude_code",
+                 stack: "static",
+                 cwd: "/tmp/irrelevant",
+                 pitch: "do the thing",
+                 invoke_fn: invoke_fn,
+                 gate_fn: gate_fn,
+                 gate_preflight_fn: no_op_gate_preflight_fn(),
+                 preflight_probe_fn: all_present_preflight_probe_fn(),
+                 resolve_escalation_fn: resolve_escalation_fn
+               )
+
+      assert reason =~ "gate verdict=failed"
+
+      # initial call (no escalation, not a rework retry) + one rework retry
+      # (the final allowed attempt -> escalated).
+      assert Agent.get(seen_ctx_agent, & &1) == [nil, {"opus", "high"}]
+    end
+
+    test "count-bound path: no escalation configured -> ctx unchanged, normal tier throughout", %{
+      calls_agent: calls_agent
+    } do
+      gate_fn = fn _cwd, _opts -> {:failed, "make test"} end
+
+      {:ok, seen_ctx_agent} = Agent.start_link(fn -> [] end)
+      on_exit(fn -> if Process.alive?(seen_ctx_agent), do: Agent.stop(seen_ctx_agent) end)
+
+      invoke_fn = fn role, _harness, ctx, _opts ->
+        Agent.update(calls_agent, fn calls -> calls ++ [role] end)
+
+        if role == "developer-static" do
+          escalated = get_in(ctx, [:artifacts, :escalated_model])
+          Agent.update(seen_ctx_agent, fn seen -> seen ++ [escalated] end)
+        end
+
+        {:ok, %{"status" => "success", "value" => "did #{role}"}}
+      end
+
+      resolve_escalation_fn = fn "developer-static", "claude_code" -> :none end
+
+      assert {:error, _reason} =
+               OrchestrationLoop.run(
+                 harness: "claude_code",
+                 stack: "static",
+                 cwd: "/tmp/irrelevant",
+                 pitch: "do the thing",
+                 invoke_fn: invoke_fn,
+                 gate_fn: gate_fn,
+                 gate_preflight_fn: no_op_gate_preflight_fn(),
+                 preflight_probe_fn: all_present_preflight_probe_fn(),
+                 resolve_escalation_fn: resolve_escalation_fn
+               )
+
+      assert Agent.get(seen_ctx_agent, & &1) == [nil, nil]
+    end
+
+    # Signature-based path with continuous progress: escalation must NOT
+    # fire on any attempt before the hard ceiling, even though each attempt
+    # "looks stuck" until the tree actually stops changing — escalating
+    # early would defeat the ~1.8% give-up-boundary frequency the pitch is
+    # sized on. Uses a small ceiling override so the test doesn't need 16
+    # developer invocations to reach the boundary.
+    test "signature-bound path: escalates only at the hard ceiling, not on earlier progress retries",
+         %{calls_agent: calls_agent} do
+      gate_fn = fn _cwd, _opts -> {:failed, "make test"} end
+
+      {:ok, sig_calls_agent} = Agent.start_link(fn -> 0 end)
+      on_exit(fn -> if Process.alive?(sig_calls_agent), do: Agent.stop(sig_calls_agent) end)
+
+      signature_fn = fn _cwd ->
+        n = Agent.get_and_update(sig_calls_agent, fn n -> {n, n + 1} end)
+        "sig-#{n}"
+      end
+
+      {:ok, seen_ctx_agent} = Agent.start_link(fn -> [] end)
+      on_exit(fn -> if Process.alive?(seen_ctx_agent), do: Agent.stop(seen_ctx_agent) end)
+
+      invoke_fn = fn role, _harness, ctx, _opts ->
+        Agent.update(calls_agent, fn calls -> calls ++ [role] end)
+
+        if role == "developer-static" do
+          escalated = get_in(ctx, [:artifacts, :escalated_model])
+          Agent.update(seen_ctx_agent, fn seen -> seen ++ [escalated] end)
+        end
+
+        {:ok, %{"status" => "success", "value" => "did #{role}"}}
+      end
+
+      resolve_escalation_fn = fn "developer-static", "claude_code" -> {"opus", "high"} end
+
+      assert {:error, _reason} =
+               OrchestrationLoop.run(
+                 harness: "claude_code",
+                 stack: "static",
+                 cwd: "/tmp/irrelevant",
+                 pitch: "do the thing",
+                 invoke_fn: invoke_fn,
+                 gate_fn: gate_fn,
+                 gate_preflight_fn: no_op_gate_preflight_fn(),
+                 preflight_probe_fn: all_present_preflight_probe_fn(),
+                 tree_signature_fn: signature_fn,
+                 resolve_escalation_fn: resolve_escalation_fn
+               )
+
+      seen = Agent.get(seen_ctx_agent, & &1)
+      # 1 initial call + 15 rework retries (hard ceiling) = 16 entries.
+      assert length(seen) == 16
+      # every attempt before the last is unescalated (continuous progress
+      # keeps `allow?` true without ever being the "final" one) — only the
+      # 16th (last, ceiling-exhausting) entry is escalated.
+      {before_last, [last]} = Enum.split(seen, 15)
+      assert Enum.all?(before_last, &(&1 == nil))
+      assert last == {"opus", "high"}
+    end
+  end
+
   describe "tree_signature/1" do
     test "non-git cwd returns empty string (unavailable)" do
       assert OrchestrationLoop.tree_signature(
@@ -3099,6 +3242,74 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
       # The developer's rework edits are still on disk, uncommitted — no
       # commit landed, matching the "never a false loop_committed" contract.
       assert status_out != ""
+    end
+
+    test "tree changed since gate, re-gate FAILS with max_final_gate_cycles: 1 → the one pre-commit rework is escalated",
+         %{
+           calls_agent: calls_agent,
+           dir: dir
+         } do
+      File.write!(Path.join(dir, "feature.txt"), "done\n")
+
+      match_calls = :counters.new(1, [])
+      regate_calls = :counters.new(1, [])
+
+      match_fn = fn _cwd ->
+        :counters.add(match_calls, 1, 1)
+        :counters.get(match_calls, 1) > 1
+      end
+
+      gate_fn = fn _cwd, _opts ->
+        :counters.add(regate_calls, 1, 1)
+        n = :counters.get(regate_calls, 1)
+        if n == 2, do: {:failed, "make test"}, else: {:clear, "make test"}
+      end
+
+      {:ok, seen_ctx_agent} = Agent.start_link(fn -> [] end)
+      on_exit(fn -> if Process.alive?(seen_ctx_agent), do: Agent.stop(seen_ctx_agent) end)
+
+      invoke_fn = fn role, _harness, ctx, _opts ->
+        Agent.update(calls_agent, fn calls -> calls ++ [role] end)
+
+        if role == "developer-static" do
+          escalated = get_in(ctx, [:artifacts, :escalated_model])
+          Agent.update(seen_ctx_agent, fn seen -> seen ++ [escalated] end)
+        end
+
+        if role == "committer" do
+          {_o, 0} = System.cmd("git", ["add", "-A"], cd: dir)
+          {_o, 0} = System.cmd("git", ["commit", "-q", "-m", "impl"], cd: dir)
+        end
+
+        value =
+          if role == "reviewer-static", do: "REVIEW_VERDICT: APPROVED", else: "did #{role}"
+
+        {:ok, %{"status" => "success", "value" => value}}
+      end
+
+      resolve_escalation_fn = fn "developer-static", "claude_code" -> {"opus", "high"} end
+
+      assert :ok ==
+               OrchestrationLoop.run(
+                 harness: "claude_code",
+                 stack: "static",
+                 cwd: dir,
+                 pitch: "do the thing",
+                 invoke_fn: invoke_fn,
+                 gate_fn: gate_fn,
+                 gate_tree_match_fn: match_fn,
+                 gate_preflight_fn: no_op_gate_preflight_fn(),
+                 preflight_probe_fn: all_present_preflight_probe_fn(),
+                 advance_cycle_state_fn: no_op_advance_cycle_state_fn(),
+                 max_final_gate_cycles: 1,
+                 clean_tree_preflight_fn: no_op_clean_tree_preflight_fn(),
+                 resolve_escalation_fn: resolve_escalation_fn
+               )
+
+      # first developer-static call: normal sequence, unescalated. Second
+      # (pre-commit rework, the ONLY attempt max_final_gate_cycles: 1
+      # allows -> also the final one) is escalated.
+      assert Agent.get(seen_ctx_agent, & &1) == [nil, {"opus", "high"}]
     end
 
     test "committer commits DIFFERENT content than the last-graded tree → post-commit guard raises",

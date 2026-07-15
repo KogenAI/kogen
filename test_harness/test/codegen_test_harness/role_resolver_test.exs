@@ -38,4 +38,29 @@ defmodule CodegenTestHarness.RoleResolverTest do
       assert effort == "medium"
     end
   end
+
+  describe "resolve_escalation/2" do
+    test "claude: reads escalate_model/escalate_effort from real config.yaml" do
+      assert RoleResolver.resolve_escalation("developer-phoenix-backend", "claude") ==
+               {"opus", "high"}
+    end
+
+    test "pi: reads pi-specific escalation tier" do
+      assert RoleResolver.resolve_escalation("developer-phoenix-backend", "pi") ==
+               {"openai-codex/gpt-5.5", "high"}
+    end
+
+    test "claude_code canonical harness name normalizes to claude" do
+      assert RoleResolver.resolve_escalation("developer-phoenix-backend", "claude_code") ==
+               {"opus", "high"}
+    end
+
+    test "role with no escalation key configured -> :none, never raises" do
+      assert RoleResolver.resolve_escalation("committer", "claude") == :none
+    end
+
+    test "unknown role -> :none, never raises (fail-safe, not fail-open)" do
+      assert RoleResolver.resolve_escalation("no-such-role-xyz", "claude") == :none
+    end
+  end
 end
