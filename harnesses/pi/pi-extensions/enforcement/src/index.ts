@@ -56,7 +56,6 @@ import { register as registerReviewerGuardSessionLogWrite } from "./hooks/review
 import { register as registerRoleRetrospectiveBeforeStop } from "./hooks/role-retrospective-before-stop";
 import { register as registerSessionLogWriterOnly } from "./hooks/session-log-writer-only";
 import { register as registerStaticSiteExGuard } from "./hooks/static-site-ex-guard";
-import { register as registerStepLogSectionBeforeSpawn } from "./hooks/step-log-section-before-spawn";
 import { register as registerStopResume } from "./hooks/stop-resume";
 import { register as registerStopVerifyPlannerGate } from "./hooks/stop-verify-planner-gate";
 import { register as registerTrackSubagentEdits } from "./hooks/track-subagent-edits";
@@ -108,7 +107,6 @@ export default function (pi: ExtensionAPI): void {
   registerRoleRetrospectiveBeforeStop(pi);
   registerSessionLogWriterOnly(pi);
   registerStaticSiteExGuard(pi);
-  registerStepLogSectionBeforeSpawn(pi);
   registerStopResume(pi);
   registerStopVerifyPlannerGate(pi);
   registerTrackSubagentEdits(pi);

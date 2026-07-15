@@ -23,12 +23,10 @@ Example: Create a directory with a `.md` extension in a location where the test 
 **Hooks using this pattern**:
 
 - `curator-before-committer` (enforcement hook) — directory named `*.md` under `codegen/logging/` to simulate present-but-unreadable log file
-- `step-log-section-before-spawn` (enforcement hook) — same technique for `getActiveStepLog()`'s resolved path
 
 **Test files**:
 
 - `curator-before-committer.test` — "blocks committer when log resolves but read throws (present-but-unreadable)" case
-- `step-log-section-before-spawn.test` — "blocks on unreadable but existing log" case
 
 ## `.git/index` Corruption for Repo-Presence-Then-Failure Scenarios
 
