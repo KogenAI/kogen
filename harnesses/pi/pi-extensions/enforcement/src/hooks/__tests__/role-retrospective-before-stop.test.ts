@@ -100,7 +100,7 @@ describe("role-retrospective-before-stop", { concurrency: false }, () => {
     appendRole("planner-phoenix", "Did the planning work.");
     const stderr = await runHook("planner-phoenix");
     assert.ok(stderr.includes("role-retrospective-before-stop"), "expected warning");
-    assert.ok(stderr.includes("codegen-log append planner-phoenix --learned"));
+    assert.ok(stderr.includes("codegen-log append planner-phoenix --no-learning"));
   });
 
   it("warns when no ev:role at all, names codegen-log section", async () => {
@@ -111,25 +111,28 @@ describe("role-retrospective-before-stop", { concurrency: false }, () => {
     );
   });
 
-  it("warns when learning is a placeholder ('nothing notable')", async () => {
+  function appendNoLearning(role: string, text: string): void {
+    fs.appendFileSync(
+      logPath,
+      JSON.stringify({ ev: "no_learning", role, text }) + "\n",
+    );
+  }
+
+  it("does not warn when ev:no_learning is present (legal empty-turn exit)", async () => {
     appendRole("reviewer-phoenix", "Reviewed the code.");
-    appendLearned("reviewer-phoenix", "nothing notable");
+    appendNoLearning(
+      "reviewer-phoenix",
+      "refused: handoff named no files, reviewed zero code",
+    );
     const stderr = await runHook("reviewer-phoenix");
-    assert.ok(stderr.includes("role-retrospective-before-stop"), "expected warning");
+    assert.ok(!stderr.includes("WARNING"), "expected no warning");
   });
 
-  it("warns when learning is a placeholder ('none')", async () => {
-    appendRole("reviewer-static", "Reviewed the code.");
-    appendLearned("reviewer-static", "none");
-    const stderr = await runHook("reviewer-static");
-    assert.ok(stderr.includes("role-retrospective-before-stop"), "expected warning");
-  });
-
-  it("warns when learning is under the 40-char bar", async () => {
+  it("does not warn for developer-static with a learned event present", async () => {
     appendRole("developer-static", "Did dev work.");
-    appendLearned("developer-static", "short but real text");
+    appendLearned("developer-static", VALID_LEARNING);
     const stderr = await runHook("developer-static");
-    assert.ok(stderr.includes("role-retrospective-before-stop"), "expected warning");
+    assert.ok(!stderr.includes("WARNING"), "expected no warning");
   });
 
   it("does not warn for developer-static with real content over the bar", async () => {
@@ -137,6 +140,15 @@ describe("role-retrospective-before-stop", { concurrency: false }, () => {
     appendLearned("developer-static", VALID_LEARNING);
     const stderr = await runHook("developer-static");
     assert.ok(!stderr.includes("WARNING"), "expected no warning");
+  });
+
+  it("warning text never publishes a passing criterion (no char-count wording)", async () => {
+    appendRole("planner-phoenix", "Did the planning work.");
+    const stderr = await runHook("planner-phoenix");
+    assert.ok(stderr.includes("role-retrospective-before-stop"), "expected warning");
+    assert.ok(!stderr.includes("40 char"), "must not publish a char-count bar");
+    assert.ok(!stderr.includes("forty"), "must not publish 'forty'");
+    assert.ok(stderr.includes("no-learning"), "must name the --no-learning escape hatch");
   });
 
   it("skips for context-curator (exempt)", async () => {

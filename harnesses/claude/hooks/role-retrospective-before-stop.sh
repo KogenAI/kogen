@@ -1,8 +1,12 @@
 #!/usr/bin/env bash
 # role-retrospective-before-stop.sh — Stop hook that blocks a planner/developer/
 # reviewer from stopping until this cycle's log carries BOTH its work
-# (an {"ev":"role"} event with a non-empty body) AND its learning (an
-# {"ev":"learned"} event clearing the non-triviality bar).
+# (an {"ev":"role"} event with a non-empty body) AND its learning — either
+# an {"ev":"learned"} event or an {"ev":"no_learning"} event (the legal,
+# countable "this turn produced nothing to learn" exit). Substance (not
+# length) is enforced at the writer — codegen-log refuses a placeholder or
+# compliance-echo text before it ever reaches the log; this hook only checks
+# PRESENCE of one of the two event kinds.
 #
 # HOOK-MANIFEST:
 # event: Stop
@@ -11,7 +15,7 @@
 # signal: AGENT_TYPE
 # role: planner-*|developer-*|reviewer-*
 # harnesses: all
-# rationale: Blocks a planner/developer/reviewer Stop until the cycle log carries both its work (ev:role body) and its learning (ev:learned). Pi twin is observe-only (session_shutdown cannot block).
+# rationale: Blocks a planner/developer/reviewer Stop until the cycle log carries both its work (ev:role body) and either its learning (ev:learned) or an explicit ev:no_learning. Substance (not length) is enforced at the writer — codegen-log refuses placeholder/compliance-echo text. Pi twin is observe-only (session_shutdown cannot block).
 # GENERATED FROM shared/enforcement/registry.yaml — DO NOT EDIT
 #
 # Never fatal: bounded at 3 blocks per session, then removes its counter,
@@ -53,21 +57,15 @@ work_body=$(jq -r --arg r "$AGENT_TYPE" \
     'select(.ev=="role" and .role==$r)|.body' "$log_file" 2>/dev/null |
     grep -v '^[[:space:]]*$' | head -1)
 
-# --- Learning presence: an ev:learned event clearing the triviality bar -----
-learned_text=$(jq -r --arg r "$AGENT_TYPE" \
-    'select(.ev=="learned" and .role==$r)|.text' "$log_file" 2>/dev/null |
-    tr '\n' ' ')
-
+# --- Learning presence: EITHER an ev:learned OR an ev:no_learning event for
+# this role. Substance is enforced at the writer (codegen-log refuses
+# placeholder/compliance-echo text before it lands) — this hook checks
+# presence only, never re-judges content quality.
 retro_ok=0
-if [ -n "$learned_text" ]; then
-    trimmed=$(printf '%s' "$learned_text" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')
-    normalized=$(printf '%s' "$trimmed" | tr '[:upper:]' '[:lower:]' | tr -d '.-')
-    if [ "${#trimmed}" -ge 40 ]; then
-        case "$normalized" in
-        'nothing notable' | 'nothing' | 'none' | 'n/a' | 'no learnings') ;;
-        *) retro_ok=1 ;;
-        esac
-    fi
+if jq -e --arg r "$AGENT_TYPE" \
+    'select((.ev=="learned" or .ev=="no_learning") and .role==$r)' \
+    "$log_file" >/dev/null 2>&1; then
+    retro_ok=1
 fi
 
 missing=""
@@ -100,7 +98,7 @@ printf '%s' "$count" >"$counter_file"
 if [ -z "$work_body" ]; then
     reason="You have not recorded your work this step. Run: printf '%s' \"\$body\" | codegen-log section ${AGENT_TYPE} --learned \"<what you learned>\" --slug <slug> — then stop. (attempt ${count}/3)"
 else
-    reason="You have not recorded what you learned this step. Run: codegen-log append ${AGENT_TYPE} --learned \"<text>\" --slug <slug> — at least 40 characters, no placeholders ('nothing notable', 'none', 'n/a'). Then stop. (attempt ${count}/3)"
+    reason="You have not recorded what you learned this step. Record one specific thing this turn taught you — a fact a future session would look up. If this turn genuinely produced nothing to learn, say so: codegen-log append ${AGENT_TYPE} --no-learning \"<what the turn did instead>\" --slug <slug>. (attempt ${count}/3)"
 fi
 
 block "$reason"

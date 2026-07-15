@@ -82,7 +82,7 @@ This is advice — no mechanical hook enforces it. The gate catches surviving gr
 
 ## Rule O — Record Your Learning (Required, Not Conditional)
 
-Every step you MUST record a `{"ev":"learned",...}` event — `codegen-log section <role> --learned "<text>" --slug <slug>` (one call, alongside your body) is the compliant path. This is UNCONDITIONAL: `role-retrospective-before-stop` blocks your Stop until the event is present and clears the non-triviality bar (>=40 chars, no placeholder text). It fires every step, not just on a near-miss.
+Every step you MUST record a `{"ev":"learned",...}` event — `codegen-log section <role> --learned "<text>" --slug <slug>` (one call, alongside your body) is the compliant path. This is UNCONDITIONAL: `role-retrospective-before-stop` blocks your Stop until the event is present. Substance — not length — is enforced at the writer: `codegen-log` refuses a whole-text placeholder or a compliance-echo phrase before it ever reaches the log (session-log rules § Substance Filter). It fires every step, not just on a near-miss.
 
 When a near-miss actually happened this step, make SURE it lands in the `--learned` text:
 
@@ -96,4 +96,4 @@ Format the entry:
 [local] Caught override-masked branch in <test>: test sets <VAR> but <source fn> branches on absence of <VAR> — default branch never ran
 ```
 
-When no near-miss happened, still write a real, specific learning for the step — never a placeholder. `role-retrospective-before-stop` rejects `nothing notable`/`none`/`n/a`/`no learnings` outright.
+When no near-miss happened, still write a real, specific learning for the step — never a placeholder. If the step genuinely produced nothing to learn, that is a legal, countable exit: `codegen-log append <role> --no-learning "<what the turn did instead>" --slug <slug>` in place of `--learned`.

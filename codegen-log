@@ -7,6 +7,7 @@
 #   codegen-log section [<role>] [--body @-] --learned "<text>" [--slug <slug>]
 #   codegen-log append <role> [--body @-] [--slug <slug>]
 #   codegen-log append <role> --learned "<text>" [--slug <slug>]
+#   codegen-log append <role> --no-learning "<text>" [--slug <slug>]
 #   codegen-log append <role> --died interrupted|aborted [--cause "<text>"] [--slug <slug>]
 #   codegen-log append <role> --verdict clear|failed|inconclusive [--slug <slug>]
 #   codegen-log verdict --gate <cmd> --mode <mode> --result "<text>" [--detail "<text>"] [--slug <slug>]
@@ -35,9 +36,31 @@
 #            role APPENDS a new "role" event; it never overwrites a prior one
 #            (there is no rank/order concept under JSONL).
 #   learned: {"ev":"learned","role":<role>,"text":<t>}
+#   no_learning: {"ev":"no_learning","role":<role>,"text":<t>}
 #   died:    {"ev":"died","role":<role>,"kind":"interrupted"|"aborted","cause":<c-or-empty>}
 #   gate:    {"ev":"gate","role":<role>,"verdict":"clear"|"failed"|"inconclusive",
 #             ...gate metadata for the `verdict` subcommand}
+#
+# Substance filter (--learned / --no-learning / section+append role BODY):
+# codegen-log is the SOLE writer of the cycle log, so it is the one place
+# that can refuse a lie before it becomes permanent (append-only storage —
+# nothing can retract a bad line once written). A --learned text, a
+# --no-learning text, or a section/append role BODY is REFUSED (exit 2,
+# writes nothing) when the ENTIRE trimmed text is a placeholder token
+# ("test body", "placeholder", "dummy", "lorem ipsum", "test learning", ...)
+# OR contains a compliance-echo phrase — text that describes the check
+# rather than the work ("long enough", "at least forty/40 characters",
+# "passes the ... bar", "for testing", "non-triviality bar"). The match is
+# WHOLE-TEXT/substring-of-known-family, never a length floor: a real slug
+# body like "placeholder-project-context-fix" survives because it is not,
+# in its entirety, one of the deny-listed phrases.
+#
+# --no-learning "<text>": the legal, countable way to report a turn that
+# produced no transferable learning. Appends {"ev":"no_learning",...} in
+# place of {"ev":"learned",...}. Subject to the SAME substance filter as
+# --learned (the honest exit is not a cheaper one) — the text must say what
+# the turn did instead (e.g. "refused: handoff named no files, reviewed
+# zero code"), not restate the absence of a learning.
 #
 # init: create a new codegen/logging/<ts>_<slug>_cycle.jsonl containing only
 #       the initial "init" event line. Idempotent: re-running init with a
@@ -119,6 +142,7 @@ BODY_SOURCE=""
 ROLE_OVERRIDE=""
 ROLE_POSITIONAL_SEEN=""
 LEARNED_TEXT=""
+NO_LEARNING_TEXT=""
 DIED_KIND=""
 DIED_CAUSE=""
 VERDICT_KIND=""
@@ -135,6 +159,7 @@ usage() {
     printf '  codegen-log section --body @- --learned "<text>" [--role <role>] [--slug <slug>]\n' >&2
     printf '  codegen-log append --role <role> --body @- [--slug <slug>]\n' >&2
     printf '  codegen-log append --role <role> --learned "<text>" [--slug <slug>]\n' >&2
+    printf '  codegen-log append --role <role> --no-learning "<text>" [--slug <slug>]\n' >&2
     printf '  codegen-log append --role <role> --died interrupted|aborted [--cause "<text>"] [--slug <slug>]\n' >&2
     printf '  codegen-log append --role <role> --verdict clear|failed|inconclusive [--slug <slug>]\n' >&2
     printf '  codegen-log verdict --gate <cmd> --mode <mode> --result "<text>" [--detail "<text>"] [--slug <slug>]\n' >&2
@@ -201,6 +226,14 @@ while [[ $# -gt 0 ]]; do
         ;;
     --learned)
         LEARNED_TEXT="$2"
+        shift 2
+        ;;
+    --no-learning=*)
+        NO_LEARNING_TEXT="${1#--no-learning=}"
+        shift
+        ;;
+    --no-learning)
+        NO_LEARNING_TEXT="$2"
         shift 2
         ;;
     --died=*)
@@ -296,25 +329,28 @@ if [[ -z "$SUBCOMMAND" ]]; then
     usage
 fi
 
-# Marker flags (--learned/--died/--verdict) are mutually exclusive with each
-# other. --died/--verdict are append-only. --learned is ALSO accepted on
-# `section` (as an additive companion to the role body, not a replacement for
-# it) — see the `section)` arm, which emits BOTH an "ev":"role" event and an
-# "ev":"learned" event in one call. --learned is NEVER mutually exclusive
-# with --body on `section` (that is the point: one call, two events); it
-# stays mutually exclusive with --body on `append` (append has no body+marker
-# combined form).
+# Marker flags (--learned/--no-learning/--died/--verdict) are mutually
+# exclusive with each other. --died/--verdict are append-only. --learned is
+# ALSO accepted on `section` (as an additive companion to the role body, not
+# a replacement for it) — see the `section)` arm, which emits BOTH an
+# "ev":"role" event and an "ev":"learned" event in one call. --learned is
+# NEVER mutually exclusive with --body on `section` (that is the point: one
+# call, two events); it stays mutually exclusive with --body on `append`
+# (append has no body+marker combined form). --no-learning is append-only
+# (the "nothing to report" exit has no section-companion form — it always
+# stands alone).
 MARKER_FLAG_COUNT=0
 [[ -n "$LEARNED_TEXT" ]] && MARKER_FLAG_COUNT=$((MARKER_FLAG_COUNT + 1))
+[[ -n "$NO_LEARNING_TEXT" ]] && MARKER_FLAG_COUNT=$((MARKER_FLAG_COUNT + 1))
 [[ -n "$DIED_KIND" ]] && MARKER_FLAG_COUNT=$((MARKER_FLAG_COUNT + 1))
 [[ -n "$VERDICT_KIND" ]] && MARKER_FLAG_COUNT=$((MARKER_FLAG_COUNT + 1))
 if [[ "$MARKER_FLAG_COUNT" -gt 1 ]]; then
-    printf 'codegen-log: --learned, --died, and --verdict are mutually exclusive\n' >&2
+    printf 'codegen-log: --learned, --no-learning, --died, and --verdict are mutually exclusive\n' >&2
     exit 2
 fi
-if [[ -n "$DIED_KIND" || -n "$VERDICT_KIND" ]]; then
+if [[ -n "$DIED_KIND" || -n "$VERDICT_KIND" || -n "$NO_LEARNING_TEXT" ]]; then
     if [[ "$SUBCOMMAND" != "append" ]]; then
-        printf 'codegen-log: --died/--verdict are only valid with the append subcommand\n' >&2
+        printf 'codegen-log: --died/--verdict/--no-learning are only valid with the append subcommand\n' >&2
         exit 2
     fi
 fi
@@ -343,6 +379,58 @@ validate_role() {
         exit 2
         ;;
     esac
+}
+
+# is_placeholder_text — the substance filter. Returns 0 (true) when the
+# ENTIRE trimmed text is a whole-text placeholder token, OR the text
+# contains a compliance-echo phrase (text that describes the retrospective
+# CHECK rather than the work it is supposed to record). Whole-text matching
+# on the placeholder family is deliberate: a real slug/body like
+# "placeholder-project-context-fix" must survive, because it is not, in its
+# entirety, one of the deny-listed phrases — only a compliance-echo
+# substring match (below) can catch text embedded inside a longer body.
+#
+# Empty/whitespace-only text is NOT a placeholder-filter concern here — an
+# empty `section`/`append` body has always been legal (see codegen-log_test.sh
+# case (b)); it is the Stop-hook's job to require a non-empty WORK body, not
+# codegen-log's. --learned/--no-learning callers pass a non-empty string by
+# construction (the CLI arg parser only sets LEARNED_TEXT/NO_LEARNING_TEXT
+# when the flag carries a value).
+is_placeholder_text() {
+    local text="$1"
+    local trimmed normalized
+    trimmed="$(printf '%s' "$text" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')"
+    normalized="$(printf '%s' "$trimmed" | tr '[:upper:]' '[:lower:]')"
+
+    if [[ -z "$trimmed" ]]; then
+        return 1
+    fi
+
+    # Whole-text placeholder tokens (the ENTIRE normalized text, not a
+    # substring) — the class of bare filler a role types to satisfy
+    # "something is present" with zero content.
+    case "$normalized" in
+    'test body' | 'test body line' | 'test section' | 'test learning' | \
+        'placeholder' | 'placeholder text' | 'placeholder body' | \
+        'placeholder-body-will-be-replaced' | 'dummy' | 'lorem ipsum' | \
+        'nothing notable' | 'nothing' | 'none' | 'n/a' | 'no learnings')
+        return 0
+        ;;
+    esac
+
+    # Compliance-echo phrases — substring match is correct HERE (unlike the
+    # whole-text tokens above): this text describes the retrospective CHECK
+    # itself rather than the work done, regardless of what else surrounds
+    # it in the string.
+    case "$normalized" in
+    *'long enough'* | *'forty char'* | *'40 char'* | *'at least forty'* | \
+        *'at least 40'* | *'non-triviality bar'* | *'for testing'* | \
+        *'passes the'*'bar'* | *'minimum bar'* | *'char minimum'*)
+        return 0
+        ;;
+    esac
+
+    return 1
 }
 
 repo_root() {
@@ -545,6 +633,15 @@ section)
     fi
     validate_role "$ROLE_OVERRIDE"
 
+    if is_placeholder_text "$body"; then
+        printf 'codegen-log section: this text describes the check, not the work — record what this turn taught you, or use --no-learning "<what the turn did instead>"\n' >&2
+        exit 2
+    fi
+    if [[ -n "$LEARNED_TEXT" ]] && is_placeholder_text "$LEARNED_TEXT"; then
+        printf 'codegen-log section: this text describes the check, not the work — record what this turn taught you, or use --no-learning "<what the turn did instead>"\n' >&2
+        exit 2
+    fi
+
     log_file="$(resolve_log_file)"
     if [[ -z "$log_file" || ! -f "$log_file" ]]; then
         printf 'codegen-log section: no cycle log found (set CODEGEN_LOG_PATH or create one first)\n' >&2
@@ -575,7 +672,22 @@ append)
     fi
 
     if [[ -n "$LEARNED_TEXT" ]]; then
+        if is_placeholder_text "$LEARNED_TEXT"; then
+            printf 'codegen-log append: this text describes the check, not the work — record what this turn taught you, or use --no-learning "<what the turn did instead>"\n' >&2
+            exit 2
+        fi
         line="$(jq -c -n --arg role "$ROLE_OVERRIDE" --arg text "$LEARNED_TEXT" '{ev: "learned", role: $role, text: $text}')"
+        append_event_line "$log_file" "$line"
+        printf '%s\n' "$log_file"
+        exit 0
+    fi
+
+    if [[ -n "$NO_LEARNING_TEXT" ]]; then
+        if is_placeholder_text "$NO_LEARNING_TEXT"; then
+            printf 'codegen-log append: this text describes the check, not the work — say what this turn did instead (e.g. "refused: handoff named no files")\n' >&2
+            exit 2
+        fi
+        line="$(jq -c -n --arg role "$ROLE_OVERRIDE" --arg text "$NO_LEARNING_TEXT" '{ev: "no_learning", role: $role, text: $text}')"
         append_event_line "$log_file" "$line"
         printf '%s\n' "$log_file"
         exit 0
@@ -625,6 +737,11 @@ append)
         body="$(cat "$body_path")"
     else
         body="$(cat)"
+    fi
+
+    if is_placeholder_text "$body"; then
+        printf 'codegen-log append: this text describes the check, not the work — record what this turn taught you, or use --no-learning "<what the turn did instead>"\n' >&2
+        exit 2
     fi
 
     line="$(jq -c -n --arg role "$ROLE_OVERRIDE" --arg body "$body" '{ev: "role", role: $role, body: $body}')"

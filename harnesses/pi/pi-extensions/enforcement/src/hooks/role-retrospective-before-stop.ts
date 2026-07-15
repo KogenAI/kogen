@@ -1,8 +1,13 @@
 /**
  * role-retrospective-before-stop.ts — Pi enforcement: warn when a
  * planner/developer/reviewer subagent stops without recording BOTH its work
- * (an {"ev":"role"} event with a non-empty body) and its learning (an
- * {"ev":"learned"} event clearing the non-triviality bar).
+ * (an {"ev":"role"} event with a non-empty body) and its learning — either
+ * an {"ev":"learned"} event or an {"ev":"no_learning"} event (the legal,
+ * countable "this turn produced nothing to learn" exit).
+ *
+ * Substance (not length) is enforced at the writer — codegen-log refuses a
+ * placeholder or compliance-echo text before it ever reaches the log; this
+ * hook only checks PRESENCE of one of the two event kinds.
  *
  * Mirrors: harnesses/claude/hooks/role-retrospective-before-stop.sh
  * Event: session_shutdown (Stop equivalent)
@@ -13,18 +18,17 @@
  *
  * Validation:
  *   Disk-scan for active cycle log (.jsonl) → parse JSON lines → find the
- *   LAST {"ev":"role","role":<agentType>} event's `.body` (work) and the
- *   LAST {"ev":"learned","role":<agentType>} event's `.text` (learning).
+ *   LAST {"ev":"role","role":<agentType>} event's `.body` (work) and check
+ *   for the presence of ANY {"ev":"learned"|"no_learning","role":<agentType>}
+ *   event (learning).
  *   Warn if:
  *     - work body is empty/whitespace-only
- *     - learning text is absent, under 40 chars (trimmed), or normalizes to
- *       a placeholder ("nothing notable", "nothing", "none", "n/a",
- *       "no learnings")
+ *     - neither a learned nor a no_learning event exists for this role
  *
  * Skip when:
  *   - AGENT_TYPE does not match planner-, developer-, or reviewer- prefix
  *   - No cycle log found
- *   - Both work and learning are present and non-trivial
+ *   - Both work and learning are present
  */
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
@@ -40,14 +44,6 @@ export const HANDLER_META = {
   event: "session_shutdown",
   matcher: "*",
 } as const;
-
-const PLACEHOLDER_TEXTS = new Set([
-  "nothing notable",
-  "nothing",
-  "none",
-  "n/a",
-  "no learnings",
-]);
 
 interface RoleEvent {
   ev?: string;
@@ -80,22 +76,17 @@ function lastWorkBody(events: RoleEvent[], agentType: string): string {
   return body;
 }
 
-/** Last {"ev":"learned","role":agentType} .text — empty string if none found. */
-function lastLearnedText(events: RoleEvent[], agentType: string): string {
-  let text = "";
-  for (const e of events) {
-    if (e.ev === "learned" && e.role === agentType) {
-      text = e.text ?? "";
-    }
-  }
-  return text;
-}
-
-function isLearningTrivial(text: string): boolean {
-  const trimmed = text.trim();
-  if (trimmed.length < 40) return true;
-  const normalized = trimmed.toLowerCase().replace(/[.-]/g, "");
-  return PLACEHOLDER_TEXTS.has(normalized);
+/**
+ * Presence of EITHER an {"ev":"learned"} or {"ev":"no_learning"} event for
+ * this role. Substance is enforced at the writer (codegen-log refuses
+ * placeholder/compliance-echo text before it lands) — this check is
+ * presence-only, never a re-judgment of content quality.
+ */
+function hasLearningEvent(events: RoleEvent[], agentType: string): boolean {
+  return events.some(
+    (e) =>
+      (e.ev === "learned" || e.ev === "no_learning") && e.role === agentType,
+  );
 }
 
 export function register(pi: ExtensionAPI): void {
@@ -129,12 +120,11 @@ export function register(pi: ExtensionAPI): void {
 
     const events = parseLogLines(logContent);
     const workBody = lastWorkBody(events, agentType).trim();
-    const learnedText = lastLearnedText(events, agentType);
-    const learningTrivial = isLearningTrivial(learnedText);
+    const learningPresent = hasLearningEvent(events, agentType);
 
     const missingParts: string[] = [];
     if (!workBody) missingParts.push("work");
-    if (learningTrivial) missingParts.push("learning");
+    if (!learningPresent) missingParts.push("learning");
 
     if (missingParts.length === 0) {
       debugLog("role-retrospective-before-stop", "allow: work + learning present");
@@ -149,7 +139,7 @@ export function register(pi: ExtensionAPI): void {
       );
     } else {
       process.stderr.write(
-        `[pi-enforcement:role-retrospective-before-stop] WARNING: ${agentType} stopped without recording what it learned this step (missing: ${missing}). Run: codegen-log append ${agentType} --learned "<text>" --slug <slug> — at least 40 characters, no placeholders ('nothing notable', 'none', 'n/a').\n`,
+        `[pi-enforcement:role-retrospective-before-stop] WARNING: ${agentType} stopped without recording what it learned this step (missing: ${missing}). Record one specific thing this turn taught you. If this turn genuinely produced nothing to learn, say so: codegen-log append ${agentType} --no-learning "<what the turn did instead>" --slug <slug>.\n`,
       );
     }
   });

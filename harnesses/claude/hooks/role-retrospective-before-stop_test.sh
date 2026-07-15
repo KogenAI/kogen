@@ -2,13 +2,13 @@
 # role-retrospective-before-stop_test.sh — unit tests for role-retrospective-before-stop.sh
 #
 # Tests:
-#   1: planner-phoenix, ev:role + valid ev:learned → allow
-#   2: planner-phoenix, ev:role present, no ev:learned → block; names codegen-log append --learned
+#   1: planner-phoenix, ev:role + ev:learned present → allow
+#   2: planner-phoenix, ev:role present, no ev:learned/no_learning → block; names codegen-log append --learned
 #   3: developer-phoenix-backend, no ev:role at all → block; names codegen-log section
-#   4: reviewer-phoenix, ev:learned = "nothing notable" → block (placeholder)
-#   5: reviewer-static, ev:learned = "none" → block
-#   6: developer-static, ev:learned 20 chars → block (under 40-char bar)
-#   7: developer-static, ev:learned 41+ chars real content → allow
+#   4: reviewer-phoenix, ev:learned present (any text — substance is a writer-side concern) → allow
+#   5: reviewer-static, ev:no_learning present (no ev:learned) → allow (legal empty-turn exit)
+#   6: developer-static, ev:learned present → allow
+#   7: developer-static, ev:learned present → allow
 #   8: AGENT_TYPE=context-curator → allow (exempt)
 #   9: AGENT_TYPE=committer → allow (exempt)
 #  10: AGENT_TYPE="" → allow (fail-open)
@@ -18,8 +18,12 @@
 #  14: counter increments 0→1 on first block, 1→2 on second
 #  15: ev:role body whitespace-only → block (work missing)
 #  16: ev:learned belongs to a DIFFERENT role → block (selector is role-scoped)
+#  17: block reason never publishes a passing criterion (no "40 char"/"forty" wording)
 
 set -u
+# Unset CODEGEN_LOG_PATH to isolate test fixtures from the active loop log
+unset CODEGEN_LOG_PATH
+
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 HOOK="$SCRIPT_DIR/role-retrospective-before-stop.sh"
@@ -107,7 +111,7 @@ VALID_LEARNING="This is a genuinely useful retrospective sentence describing wha
 SUFFIX="$$"
 cleanup_counters() {
     local i
-    for i in $(seq 1 16); do
+    for i in $(seq 1 17); do
         rm -f "/tmp/claude-retro-sess${i}-${SUFFIX}.count"
     done
     rm -f "/tmp/claude-retro-sess13-exhausted-${SUFFIX}.count" \
@@ -137,7 +141,7 @@ append_role_event "$T2_log" "planner-phoenix" "Did the planning work."
 make_transcript_with_log_write "$T2_transcript" "$T2_log"
 out=$(make_stop_input "$T2_dir" "planner-phoenix" false "$T2_transcript" "sess2-${SUFFIX}" | bash "$HOOK" 2>/dev/null || true)
 assert_contains "planner-phoenix, no learning → block" '"decision"' "$out"
-assert_contains "block reason names codegen-log append --learned" 'codegen-log append planner-phoenix --learned' "$out"
+assert_contains "block reason names codegen-log append --no-learning" 'codegen-log append planner-phoenix --no-learning' "$out"
 rm -rf "$T2_dir"
 
 # ── Test 3: no ev:role at all → block, names codegen-log section ────────────
@@ -152,43 +156,45 @@ assert_contains "developer-phoenix-backend, no ev:role → block" '"decision"' "
 assert_contains "block reason names codegen-log section" 'codegen-log section developer-phoenix-backend' "$out"
 rm -rf "$T3_dir"
 
-# ── Test 4: ev:learned = "nothing notable" → block (placeholder) ────────────
+# ── Test 4: ev:learned present (any text — substance checked at writer) → allow
 T4_dir=$(mktemp -d)
 mkdir -p "$T4_dir/codegen/logging"
 T4_log="$T4_dir/codegen/logging/20260714_test_cycle.jsonl"
 T4_transcript="$T4_dir/transcript.jsonl"
 append_role_event "$T4_log" "reviewer-phoenix" "Reviewed the code."
-append_learned_event "$T4_log" "reviewer-phoenix" "nothing notable"
+append_learned_event "$T4_log" "reviewer-phoenix" "$VALID_LEARNING"
 make_transcript_with_log_write "$T4_transcript" "$T4_log"
 out=$(make_stop_input "$T4_dir" "reviewer-phoenix" false "$T4_transcript" "sess4-${SUFFIX}" | bash "$HOOK" 2>/dev/null || true)
-assert_contains "reviewer-phoenix, learned='nothing notable' → block" '"decision"' "$out"
+assert_not_contains "reviewer-phoenix, ev:learned present → allow" '"decision"' "$out"
 rm -rf "$T4_dir"
 
-# ── Test 5: ev:learned = "none" → block (placeholder) ────────────────────────
+# ── Test 5: ev:no_learning present (no ev:learned) → allow (legal empty-turn
+# exit; codegen-log itself is the substance gate, not this hook) ────────────
 T5_dir=$(mktemp -d)
 mkdir -p "$T5_dir/codegen/logging"
 T5_log="$T5_dir/codegen/logging/20260714_test_cycle.jsonl"
 T5_transcript="$T5_dir/transcript.jsonl"
 append_role_event "$T5_log" "reviewer-static" "Reviewed the code."
-append_learned_event "$T5_log" "reviewer-static" "none"
+jq -c -n --arg role "reviewer-static" --arg text "refused: handoff named no files, reviewed zero code" \
+    '{ev:"no_learning", role:$role, text:$text}' >>"$T5_log"
 make_transcript_with_log_write "$T5_transcript" "$T5_log"
 out=$(make_stop_input "$T5_dir" "reviewer-static" false "$T5_transcript" "sess5-${SUFFIX}" | bash "$HOOK" 2>/dev/null || true)
-assert_contains "reviewer-static, learned='none' → block" '"decision"' "$out"
+assert_not_contains "reviewer-static, ev:no_learning present → allow" '"decision"' "$out"
 rm -rf "$T5_dir"
 
-# ── Test 6: learned 20 chars → block (under 40-char bar) ────────────────────
+# ── Test 6: developer-static, ev:learned present → allow ────────────────────
 T6_dir=$(mktemp -d)
 mkdir -p "$T6_dir/codegen/logging"
 T6_log="$T6_dir/codegen/logging/20260714_test_cycle.jsonl"
 T6_transcript="$T6_dir/transcript.jsonl"
 append_role_event "$T6_log" "developer-static" "Did dev work."
-append_learned_event "$T6_log" "developer-static" "short but real text"
+append_learned_event "$T6_log" "developer-static" "$VALID_LEARNING"
 make_transcript_with_log_write "$T6_transcript" "$T6_log"
 out=$(make_stop_input "$T6_dir" "developer-static" false "$T6_transcript" "sess6-${SUFFIX}" | bash "$HOOK" 2>/dev/null || true)
-assert_contains "developer-static, learned 20 chars → block (under bar)" '"decision"' "$out"
+assert_not_contains "developer-static, ev:learned present → allow" '"decision"' "$out"
 rm -rf "$T6_dir"
 
-# ── Test 7: developer-static, learned 41+ chars real content → allow ────────
+# ── Test 7: developer-static, ev:learned present with real content → allow ──
 T7_dir=$(mktemp -d)
 mkdir -p "$T7_dir/codegen/logging"
 T7_log="$T7_dir/codegen/logging/20260714_test_cycle.jsonl"
@@ -320,6 +326,20 @@ make_transcript_with_log_write "$T16_transcript" "$T16_log"
 out=$(make_stop_input "$T16_dir" "reviewer-phoenix" false "$T16_transcript" "sess16-${SUFFIX}" | bash "$HOOK" 2>/dev/null || true)
 assert_contains "reviewer-phoenix, learned belongs to different role → block" '"decision"' "$out"
 rm -rf "$T16_dir"
+
+# ── Test 17: block reason never publishes a passing criterion ───────────────
+T17_dir=$(mktemp -d)
+mkdir -p "$T17_dir/codegen/logging"
+T17_log="$T17_dir/codegen/logging/20260714_test_cycle.jsonl"
+T17_transcript="$T17_dir/transcript.jsonl"
+append_role_event "$T17_log" "planner-phoenix" "Did the planning work."
+make_transcript_with_log_write "$T17_transcript" "$T17_log"
+out=$(make_stop_input "$T17_dir" "planner-phoenix" false "$T17_transcript" "sess17-${SUFFIX}" | bash "$HOOK" 2>/dev/null || true)
+assert_contains "planner-phoenix, no learning → block" '"decision"' "$out"
+assert_not_contains "block reason never states a char-count criterion" '40 char' "$out"
+assert_not_contains "block reason never states 'forty'" 'forty' "$out"
+assert_contains "block reason names the --no-learning escape hatch" 'no-learning' "$out"
+rm -rf "$T17_dir"
 
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

@@ -31,7 +31,14 @@
 #      the prior one (dev-gate re-runs across retries must all remain visible)
 # (bb) `section <role> --learned "<text>"` emits BOTH a "role" event and a
 #      "learned" event in one call; `section` without --learned emits only
-#      the "role" event and NEVER refuses the write
+#      the "role" event and never refuses the write for OMITTING --learned
+#      (a non-placeholder body still writes with zero learned events)
+# (dd) substance filter: --learned/--no-learning/section+append body text
+#      that is a whole-text placeholder OR contains a compliance-echo
+#      phrase is REFUSED (exit 2, writes nothing); genuine content survives
+# (ee) --no-learning emits a structured no_learning event (the legal,
+#      countable "nothing to learn" exit); mutually exclusive with
+#      --learned/--died/--verdict; append-only
 
 set -euo pipefail
 
@@ -437,6 +444,69 @@ assert_contains "(cc) refusal message names the pinned path" "$ERR_CC" "$LOG_CC"
 FILES_AFTER_CC="$(find "$WS_CC/codegen/logging" -name '*_cycle.jsonl' | sort)"
 check "(cc) refusal created no new *_cycle.jsonl file" "$FILES_BEFORE_CC" "$FILES_AFTER_CC"
 check "(cc) refusal left .active byte-identical" "$ACTIVE_BEFORE_CC" "$(cat "$ACTIVE_CC")"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# (dd) substance filter: whole-text placeholders and compliance-echo phrases
+# are refused (exit 2, writes nothing); genuine content survives.
+WS_DD="$(new_workspace)"
+LOG_DD="$(init_log "$WS_DD" test-substance-filter)"
+
+set +e
+ERR_DD1=$(printf 'test body\n' | env -u AGENT_TYPE -u CLAUDE_ROLE \
+    OCG_CODEGEN_DIR="$CODEGEN_ROOT" CODEGEN_BUILD_CWD="$WS_DD" \
+    "$CODEGEN_LOG" section --role developer-phoenix-backend --body @- 2>&1)
+RC_DD1=$?
+set -e
+check "(dd) placeholder body 'test body' exits 2" "2" "$RC_DD1"
+assert_contains "(dd) placeholder body refusal names the check" "$ERR_DD1" "describes the check"
+check "(dd) placeholder body refusal wrote zero events" "0" "$(jq_count "$LOG_DD" 'select(.ev=="role")' 2>/dev/null || echo 0)"
+
+set +e
+ERR_DD2=$(env -u AGENT_TYPE -u CLAUDE_ROLE \
+    OCG_CODEGEN_DIR="$CODEGEN_ROOT" CODEGEN_BUILD_CWD="$WS_DD" \
+    "$CODEGEN_LOG" append --role developer-phoenix-backend --learned "placeholder learning text that is at least forty characters long for testing" 2>&1)
+RC_DD2=$?
+set -e
+check "(dd) compliance-echo --learned text exits 2" "2" "$RC_DD2"
+assert_contains "(dd) compliance-echo refusal names the check" "$ERR_DD2" "describes the check"
+
+printf 'a real body\n' | env -u AGENT_TYPE -u CLAUDE_ROLE \
+    OCG_CODEGEN_DIR="$CODEGEN_ROOT" CODEGEN_BUILD_CWD="$WS_DD" \
+    "$CODEGEN_LOG" section --role developer-phoenix-backend --body @- \
+    --learned "placeholder-project-context-fix landed cleanly; the slug survives the filter" >/dev/null
+check "(dd) genuine slug-shaped text survives the filter" "1" "$(jq_count "$LOG_DD" 'select(.ev=="learned")')"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# (ee) --no-learning emits a structured no_learning event; mutually exclusive
+# with --learned/--died/--verdict; append-only.
+WS_EE="$(new_workspace)"
+LOG_EE="$(init_log "$WS_EE" test-no-learning)"
+printf 'refused this step\n' | env -u AGENT_TYPE -u CLAUDE_ROLE \
+    OCG_CODEGEN_DIR="$CODEGEN_ROOT" CODEGEN_BUILD_CWD="$WS_EE" \
+    "$CODEGEN_LOG" section --role developer-phoenix-backend --body @- >/dev/null
+env -u AGENT_TYPE -u CLAUDE_ROLE \
+    OCG_CODEGEN_DIR="$CODEGEN_ROOT" CODEGEN_BUILD_CWD="$WS_EE" \
+    "$CODEGEN_LOG" append --role developer-phoenix-backend --no-learning "refused: handoff named no files, reviewed zero code" >/dev/null
+check "(ee) --no-learning emits exactly one no_learning event" "1" "$(jq_count "$LOG_EE" 'select(.ev=="no_learning" and .role=="developer-phoenix-backend")')"
+check "(ee) --no-learning emits the supplied text" "refused: handoff named no files, reviewed zero code" "$(jq -r 'select(.ev=="no_learning")|.text' "$LOG_EE")"
+check "(ee) --no-learning emits zero learned events" "0" "$(jq_count "$LOG_EE" 'select(.ev=="learned")')"
+
+set +e
+ERR_EE1=$(env -u AGENT_TYPE -u CLAUDE_ROLE \
+    OCG_CODEGEN_DIR="$CODEGEN_ROOT" CODEGEN_BUILD_CWD="$WS_EE" \
+    "$CODEGEN_LOG" append --role developer-phoenix-backend --no-learning "x" --learned "y" 2>&1)
+RC_EE1=$?
+set -e
+check "(ee) --no-learning + --learned exits 2" "2" "$RC_EE1"
+assert_contains "(ee) mutual-exclusivity error message" "$ERR_EE1" "mutually exclusive"
+
+set +e
+ERR_EE2=$(printf 'x\n' | env -u AGENT_TYPE -u CLAUDE_ROLE \
+    OCG_CODEGEN_DIR="$CODEGEN_ROOT" CODEGEN_BUILD_CWD="$WS_EE" \
+    "$CODEGEN_LOG" section --role developer-phoenix-backend --body @- --no-learning "z" 2>&1)
+RC_EE2=$?
+set -e
+check "(ee) --no-learning on section exits 2 (append-only)" "2" "$RC_EE2"
 
 # ─────────────────────────────────────────────────────────────────────────────
 echo ""

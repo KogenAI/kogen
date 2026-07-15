@@ -520,7 +520,7 @@
   signal: AGENT_TYPE
   role: "planner-*|developer-*|reviewer-*"
   harnesses: all
-  rationale: Blocks a planner/developer/reviewer Stop until the cycle log carries both its work (ev:role body) and its learning (ev:learned). Pi twin is observe-only (session_shutdown cannot block).
+  rationale: Blocks a planner/developer/reviewer Stop until the cycle log carries both its work (ev:role body) and either its learning (ev:learned) or an explicit ev:no_learning. Substance (not length) is enforced at the writer — codegen-log refuses placeholder/compliance-echo text. Pi twin is observe-only (session_shutdown cannot block).
 
 - kind: registration
   id: session-log-writer-only

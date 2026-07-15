@@ -1,5 +1,12 @@
 #!/bin/bash
 # subagent-read-discipline_test.sh — unit tests for subagent-read-discipline.sh
+#
+# Note: run_test() strips CODEGEN_LOG_PATH from the guard's env — the
+# hook's session_log_from_transcript() binds to that env var first (see
+# session-log.md § Resolution precedence), and a developer session running
+# these tests inherits its own real CODEGEN_LOG_PATH pin, which would
+# otherwise hijack every isolated /var/tmp fixture in this file onto the
+# real repo's live cycle log instead of the fixture under test.
 
 set -euo pipefail
 
@@ -17,9 +24,9 @@ run_test() {
 
     local stdout
     if [ -n "$env_vars" ]; then
-        stdout=$(printf '%s' "$input" | env $env_vars bash "$GUARD" 2>/dev/null || true)
+        stdout=$(printf '%s' "$input" | env -u CODEGEN_LOG_PATH $env_vars bash "$GUARD" 2>/dev/null || true)
     else
-        stdout=$(printf '%s' "$input" | bash "$GUARD" 2>/dev/null || true)
+        stdout=$(printf '%s' "$input" | env -u CODEGEN_LOG_PATH bash "$GUARD" 2>/dev/null || true)
     fi
 
     local outcome
