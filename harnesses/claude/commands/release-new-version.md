@@ -1,6 +1,6 @@
 ---
 description: Release a new version of an Elixir library (CHANGELOG, version bump, tag, hex publish reminder, drop draft)
-argument-hint: [version e.g. 0.2.0]
+argument-hint: [version e.g. 0.2.0] [branch=main] [--no-push]
 ---
 
 Release new version of current Elixir library. Pause for confirmation before irreversible actions.
@@ -23,7 +23,18 @@ If user provided version in argument, use it. Otherwise inspect commits since la
 - Bug fixes and small improvements → bump patch (0.1.x → 0.1.y)
 - Major redesign → bump major
 
-Show: current version, proposed new version, commits that informed decision. Ask to confirm.
+Also parse the argument string for an optional push target and push mode, used in STEP 6.
+These are independent of word order and position in the argument string:
+
+- **Branch**: if the caller supplied a second word that is not `--no-push` (e.g. `develop`), that is
+  the push branch. Otherwise default to `main` — this is the byte-identical default behavior when no
+  branch is given.
+- **`--no-push` flag**: if present anywhere in the argument string, STEP 6 commits and tags locally but
+  does NOT run either push — it prints the exact push commands for the caller to run under its own git
+  discipline instead.
+
+Show: current version, proposed new version, commits that informed decision, and the resolved push
+branch (+ note if `--no-push` was given). Ask to confirm.
 
 ## STEP 3: Generate Changelog Entries
 
@@ -59,13 +70,33 @@ Stop and report if tests fail.
 
 Show exact commands and ask for confirmation before running — these are irreversible.
 
+Commit and tag always run locally:
+
 ```bash
 git add CHANGELOG.md mix.exs
 git commit -m "Release X.X.X"
 git tag vX.X.X
-git push origin main
-git push origin vX.X.X
 ```
+
+Then push, targeting the branch resolved in STEP 2 (default `main` when the caller gave none):
+
+- **Default (no `--no-push`)**: run the pushes.
+
+  ```bash
+  git push origin <branch>
+  git push origin vX.X.X
+  ```
+
+- **`--no-push` given**: do NOT run either push command. Instead print them as a ready-to-copy block
+  and tell the user the release commit + tag are local-only — they own running the push (e.g. through
+  their own ff-only / review-gated git-write flow):
+
+  ```
+  Release committed and tagged locally. Push when ready:
+
+    git push origin <branch>
+    git push origin vX.X.X
+  ```
 
 - Do NOT add `Co-Authored-By` trailer
 - Release commit must only contain `CHANGELOG.md` and version bump
