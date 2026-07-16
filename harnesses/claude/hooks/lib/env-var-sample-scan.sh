@@ -58,14 +58,16 @@ if [ -z "$wt_diff" ]; then
 fi
 
 # Extract ADDED-only lines (exclude removed `^-` lines) that call
-# System.get_env/fetch_env with a SINGLE string-literal arg — i.e. the
-# literal is immediately followed by a closing paren (whitespace-tolerant).
-# This is the REQUIRED-read form (no default) and can crash the app on a
-# missing var. A defaulted 2-arg read (`System.get_env("X", default)`) has
-# a `,` after the literal, not `)`, so it does NOT match — it can never
-# crash, so it is exempt from the sample-consistency requirement. Argless
-# reads like `System.get_env()` also do not match — nothing to look up.
-added_literal_lines=$(printf '%s\n' "$wt_diff" | grep -E '^\+' | grep -E 'System\.(get_env|fetch_env)\(\s*"[^"]+"\s*\)' || true)
+# System.get_env/fetch_env/fetch_env! with a string-literal var name arg —
+# ANY read shape (bare, defaulted 2-arg, `||`-fallback, `case`, `==`, spaced).
+# The axis here is DOCUMENTATION, not crash-ability: a deployer needs to know
+# the var exists regardless of whether the read can crash on absence (in
+# fact zero `fetch_env!` call sites exist repo-wide today, so a crash-axis
+# gate would be a near-inert no-op). The only exemption is the ambient-OS
+# allowlist above — an ownership axis (HOME/PATH/LC_* are never
+# deployer-supplied app config), orthogonal to read shape. Argless reads
+# like `System.get_env()` still do not match — nothing to look up.
+added_literal_lines=$(printf '%s\n' "$wt_diff" | grep -E '^\+' | grep -E 'System\.(get_env|fetch_env!?)\(\s*"[A-Z_][A-Z0-9_]*"\s*[,)]' || true)
 if [ -z "$added_literal_lines" ]; then
     exit 0
 fi
@@ -85,7 +87,7 @@ while IFS= read -r var_name; do
 "
     fi
 done <<VARNAMES
-$(printf '%s\n' "$added_literal_lines" | grep -oE 'System\.(get_env|fetch_env)\(\s*"[^"]+"\s*\)' | grep -oE '"[^"]+"' | tr -d '"' | sort -u)
+$(printf '%s\n' "$added_literal_lines" | grep -oE 'System\.(get_env|fetch_env!?)\(\s*"[A-Z_][A-Z0-9_]*"\s*[,)]' | grep -oE '"[A-Z_][A-Z0-9_]*"' | tr -d '"' | sort -u)
 VARNAMES
 
 if [ -z "$undocumented_vars" ]; then

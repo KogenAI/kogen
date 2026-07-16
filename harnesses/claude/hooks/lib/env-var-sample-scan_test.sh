@@ -111,22 +111,22 @@ out=$(bash "$SCAN" 2>/dev/null)
 rc=$?
 assert_exit "absent repo_root arg → exit 0" "0" "$rc"
 
-# --- Test I: undeclared DEFAULTED read (2-arg get_env) → exit 0, exempt ---
+# --- Test I: undeclared DEFAULTED read (2-arg get_env) → exit 1, no longer exempt ---
 TI=$(new_repo)
 printf 'defmodule Foo do\n  def bar, do: System.get_env("MY_VAR", "fallback")\nend\n' >"$TI/lib/foo.ex"
 out=$(bash "$SCAN" "$TI")
 rc=$?
-assert_exit "undeclared defaulted read → exit 0" "0" "$rc"
-assert_eq "undeclared defaulted read → empty stdout" "" "$out"
+assert_exit "undeclared defaulted read → exit 1" "1" "$rc"
+assert_eq "undeclared defaulted read → prints var" "MY_VAR" "$out"
 rm -rf "$TI"
 
-# --- Test J: undeclared DEFAULTED read, spaced args → exit 0, exempt ---
+# --- Test J: undeclared DEFAULTED read, spaced args → exit 1, no longer exempt ---
 TJ=$(new_repo)
 printf 'defmodule Foo do\n  def bar, do: System.get_env( "SPACED" , "d")\nend\n' >"$TJ/lib/foo.ex"
 out=$(bash "$SCAN" "$TJ")
 rc=$?
-assert_exit "undeclared defaulted spaced read → exit 0" "0" "$rc"
-assert_eq "undeclared defaulted spaced read → empty stdout" "" "$out"
+assert_exit "undeclared defaulted spaced read → exit 1" "1" "$rc"
+assert_eq "undeclared defaulted spaced read → prints var" "SPACED" "$out"
 rm -rf "$TJ"
 
 # --- Test K: undeclared ambient System.get_env("HOME") → exit 0, exempt ---
@@ -173,6 +173,53 @@ rc=$?
 assert_exit "undeclared HOME_GROWN → exit 1" "1" "$rc"
 assert_eq "undeclared HOME_GROWN → prints var" "HOME_GROWN" "$out"
 rm -rf "$TO"
+
+# --- Test P: undeclared `||`-fallback read (get_env + or) → exit 1 ---
+TP=$(new_repo)
+printf 'defmodule Foo do\n  def bar, do: System.get_env("FALLBACK_VAR") || "d"\nend\n' >"$TP/lib/foo.ex"
+out=$(bash "$SCAN" "$TP")
+rc=$?
+assert_exit "undeclared fallback read → exit 1" "1" "$rc"
+assert_eq "undeclared fallback read → prints var" "FALLBACK_VAR" "$out"
+rm -rf "$TP"
+
+# --- Test Q: undeclared System.fetch_env!("BANG_VAR") → exit 1 (the crasher) ---
+TQ=$(new_repo)
+printf 'defmodule Foo do\n  def bar, do: System.fetch_env!("BANG_VAR")\nend\n' >"$TQ/lib/foo.ex"
+out=$(bash "$SCAN" "$TQ")
+rc=$?
+assert_exit "undeclared fetch_env! read → exit 1" "1" "$rc"
+assert_eq "undeclared fetch_env! read → prints var" "BANG_VAR" "$out"
+rm -rf "$TQ"
+
+# --- Test R: concatenated var name (get_env("PREFIX_" <> name)) → exit 0, no literal to check ---
+TR=$(new_repo)
+printf 'defmodule Foo do\n  def bar(name), do: System.get_env("PREFIX_" <> name)\nend\n' >"$TR/lib/foo.ex"
+out=$(bash "$SCAN" "$TR")
+rc=$?
+assert_exit "concatenated var name → exit 0" "0" "$rc"
+assert_eq "concatenated var name → empty stdout" "" "$out"
+rm -rf "$TR"
+
+# --- Test S: interpolated var name (get_env("PREFIX_#{name}")) → exit 0, no literal to check ---
+TS=$(new_repo)
+printf 'defmodule Foo do\n  def bar(name), do: System.get_env("PREFIX_#{name}")\nend\n' >"$TS/lib/foo.ex"
+out=$(bash "$SCAN" "$TS")
+rc=$?
+assert_exit "interpolated var name → exit 0" "0" "$rc"
+assert_eq "interpolated var name → empty stdout" "" "$out"
+rm -rf "$TS"
+
+# --- Test T: DECLARED defaulted read (2-arg get_env, both samples) → exit 0 ---
+TT=$(new_repo)
+printf 'DECLARED_DEFAULT=set-me\n' >>"$TT/.env.sample"
+printf 'DECLARED_DEFAULT=set-me\n' >>"$TT/.env.prod.sample"
+printf 'defmodule Foo do\n  def bar, do: System.get_env("DECLARED_DEFAULT", "d")\nend\n' >"$TT/lib/foo.ex"
+out=$(bash "$SCAN" "$TT")
+rc=$?
+assert_exit "declared defaulted read → exit 0" "0" "$rc"
+assert_eq "declared defaulted read → empty stdout" "" "$out"
+rm -rf "$TT"
 
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]
