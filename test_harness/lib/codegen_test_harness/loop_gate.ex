@@ -252,8 +252,14 @@ defmodule CodegenTestHarness.LoopGate do
     event via `codegen-log verdict`, in addition to the existing
     `gate-result.json` / `gate-verdicts.jsonl` writes. `nil` (no log
     initialized, e.g. most unit tests) → no-op, silently.
-  - `:log_verdict_fn` — test seam: `(cycle_log, gate_command, mode, marker -> :ok)`,
-    defaults to `&default_log_verdict/4`.
+  - `:log_verdict_fn` — test seam: `(cycle_log, gate_command, mode, marker, detail -> :ok)`,
+    defaults to `&default_log_verdict/5`. `detail` is the located witness
+    (`file:line — <verbatim cause>`) on a non-empty witness, else a named
+    sentinel (`"no parseable failure location in <N>-byte gate log"` /
+    `"gate produced no output"`) — see `witness_detail/3`. Threaded onward
+    into `codegen-log verdict --detail` so the durable cycle log carries the
+    same cause the developer's rework prompt already sees, instead of the
+    `""` it silently dropped before.
   - `:evidence_fn` — test seam: `(gate_command, gate_output -> {execution_evidence, expected_segments}
     :: {non_neg_integer(), non_neg_integer()})`, defaults to `&default_evidence/2`.
     Feeds `gate-result.sh`'s no-op-gate detector (`execution_evidence <
@@ -304,7 +310,7 @@ defmodule CodegenTestHarness.LoopGate do
     run_fn = Keyword.get(opts, :run_fn, &default_run_fn/2)
     preflight_fn = Keyword.get(opts, :preflight_fn, &static_render_deps_preflight!/1)
     cycle_log = Keyword.get(opts, :cycle_log)
-    log_verdict_fn = Keyword.get(opts, :log_verdict_fn, &default_log_verdict/4)
+    log_verdict_fn = Keyword.get(opts, :log_verdict_fn, &default_log_verdict/5)
     evidence_fn = Keyword.get(opts, :evidence_fn, &default_evidence/2)
     canary_fn = Keyword.get(opts, :canary_fn, &default_canary/2)
 
@@ -383,7 +389,8 @@ defmodule CodegenTestHarness.LoopGate do
     {_write_out, 0} = System.cmd("bash", ["-c", write_script], stderr_to_stdout: true)
 
     marker = gate_verdict_marker(project_dir)
-    log_verdict_fn.(cycle_log, gate, mode, marker)
+    detail = witness_detail(marker, witness, log_path)
+    log_verdict_fn.(cycle_log, gate, mode, marker, detail)
 
     {read_verdict(project_dir), gate}
   end
@@ -712,11 +719,12 @@ defmodule CodegenTestHarness.LoopGate do
   # not read one) → silent no-op, never an error. A non-zero codegen-log
   # exit is fail-loud-non-blocking: this is an observability write, and
   # must never flip the gate's own verdict.
-  @spec default_log_verdict(String.t() | nil, String.t(), String.t(), String.t()) :: :ok
-  defp default_log_verdict(nil, _gate, _mode, _marker), do: :ok
-  defp default_log_verdict(_cycle_log, _gate, _mode, ""), do: :ok
+  @spec default_log_verdict(String.t() | nil, String.t(), String.t(), String.t(), String.t()) ::
+          :ok
+  defp default_log_verdict(nil, _gate, _mode, _marker, _detail), do: :ok
+  defp default_log_verdict(_cycle_log, _gate, _mode, "", _detail), do: :ok
 
-  defp default_log_verdict(cycle_log, gate, mode, marker) do
+  defp default_log_verdict(cycle_log, gate, mode, marker, detail) do
     unless File.exists?(@codegen_log_bin) do
       IO.puts(
         :stderr,
@@ -725,10 +733,14 @@ defmodule CodegenTestHarness.LoopGate do
 
       :ok
     else
+      argv =
+        ["verdict", "--gate", gate, "--mode", mode, "--result", marker] ++
+          if detail != "", do: ["--detail", detail], else: []
+
       {output, exit_code} =
         System.cmd(
           @codegen_log_bin,
-          ["verdict", "--gate", gate, "--mode", mode, "--result", marker],
+          argv,
           stderr_to_stdout: true,
           env: [{"CODEGEN_DIR", @codegen_dir}, {"CODEGEN_LOG_PATH", cycle_log}]
         )
@@ -738,6 +750,43 @@ defmodule CodegenTestHarness.LoopGate do
       end
 
       :ok
+    end
+  end
+
+  # Derives the durable `--detail` text for the cycle log's `{"ev":"gate"}`
+  # event. A non-empty `witness` (already computed at `run_gate/2`'s call
+  # site via `extract_witness/1`) wins outright — it is the located cause.
+  # On a CLEAR verdict marker, no detail is needed (there is no failure to
+  # explain) — empty string, matching `default_log_verdict/5`'s existing
+  # no-op-on-empty-marker/nil-cycle_log behavior.
+  #
+  # A non-clear marker with an EMPTY witness must never durably record `""`
+  # — that is exactly the blindness this function exists to close (see the
+  # pitch's claim ledger #16: `extract_witness` legitimately returns `""`
+  # on unparseable/coverage-noise output, on a genuinely empty gate log, and
+  # on a missing log file). Each of those is itself a real, distinct
+  # diagnosis, so it is recorded as a named sentinel rather than silently
+  # dropped.
+  @spec witness_detail(String.t(), String.t(), String.t()) :: String.t()
+  defp witness_detail(marker, witness, log_path) do
+    cond do
+      witness != "" ->
+        witness
+
+      marker == "" or marker == "ALL CLEAR ✅" ->
+        ""
+
+      true ->
+        case File.stat(log_path) do
+          {:ok, %File.Stat{size: 0}} ->
+            "gate produced no output"
+
+          {:ok, %File.Stat{size: size}} ->
+            "no parseable failure location in #{size}-byte gate log"
+
+          {:error, _reason} ->
+            "gate produced no output"
+        end
     end
   end
 

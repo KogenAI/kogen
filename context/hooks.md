@@ -230,7 +230,7 @@ Specific arms BEFORE wildcards in shell `case` (first-match wins). `LoopGate.dec
 
 ## Git Status Porcelain Parsing
 
-`awk '{print $2}'` on renamed files (`R  old -> new`) extracts only `$2`, truncating the arrow and target. Use `sed 's/^[^ ]* //'` instead — strips leading status code + one space, preserving full paths including renames and spaces. Used by `clean-tree-before-ship.sh` to enumerate uncommitted files in deny message.
+`awk '{print $2}'` on renamed files (`R  old -> new`) truncates the arrow+target. Use `sed 's/^[^ ]* //'` — strips status code + one space, preserves full paths incl. renames/spaces. Used by `clean-tree-before-ship.sh`.
 
 ## Session-Log Writing (codegen-log Sole-Writer Model)
 
@@ -244,7 +244,7 @@ Specific arms BEFORE wildcards in shell `case` (first-match wins). `LoopGate.dec
 - `append <role> --died interrupted|aborted --slug <slug>` — append `{"ev":"died",...}`.
 - `append <role> --verdict clear|failed|inconclusive --slug <slug>` — append `{"ev":"gate",...}`.
 - `append <role> --plan-gate|--files-to-touch|--files-modified @- --slug <slug>` — typed gate-selection/read-discipline markers (JSON on stdin, shape-validated at write). planner* authors plan_gate+files_to_touch; developer* authors files_modified. `gate-select.sh`/`subagent-read-discipline.sh` read from the AUTHOR's event, never a prose fallback.
-- `verdict --gate <cmd> --mode <mode> --result "<text>" --slug <slug>` — the loop's dev-gate step verdict writer.
+- `verdict --gate <cmd> --mode <mode> --result "<text>" [--detail "<text>"] --slug <slug>` — the loop's dev-gate step verdict writer. `--detail`: located witness on FAILED, else a named sentinel (never `""`); see `witness-discipline.md`.
 - `relocate --new-slug <slug>` — rename + update `.active`.
 - `exit --status <n> [--signal <n>] [--stderr-tail "<text>"]` — append `{"ev":"exit",...}` (no role). Written by `dispatch.sh` after `wait`ing the loop child; no resolvable log → one stderr note, exit 0, nothing written.
 

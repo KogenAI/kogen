@@ -667,7 +667,7 @@ defmodule CodegenTestHarness.LoopGateTest do
 
       calls = :counters.new(1, [])
 
-      log_verdict_fn = fn _cycle_log, _gate, _mode, _marker ->
+      log_verdict_fn = fn _cycle_log, _gate, _mode, _marker, _detail ->
         :counters.add(calls, 1, 1)
         :ok
       end
@@ -741,6 +741,47 @@ defmodule CodegenTestHarness.LoopGateTest do
     # Fail-open proof: a nonexistent/invalid cycle_log makes the real
     # codegen-log binary exit non-zero; run_gate/2 must still return the
     # correct verdict and must not raise.
+    test "failed verdict with a parseable ExUnit failure → detail carries the located witness, not empty",
+         %{dir: dir} do
+      write_gate_config!(dir, "make test")
+
+      exunit_output = """
+      1) test creates a user (MyApp.AccountsTest)
+         test/accounts_test.exs:42
+         Assertion failed
+         stacktrace:
+           test/accounts_test.exs:45: (test)
+
+      1 test, 1 failure
+      """
+
+      run_fn = fn _gate, _project_dir -> {exunit_output, 1} end
+      log_path = fresh_cycle_log!()
+
+      assert {:failed, "make test"} =
+               LoopGate.run_gate(dir, run_fn: run_fn, stack: "phoenix", cycle_log: log_path)
+
+      [event] = read_gate_events(log_path)
+      assert event["verdict"] == "failed"
+      assert event["detail"] != ""
+      assert event["detail"] =~ "test/accounts_test.exs:45"
+    end
+
+    test "failed verdict with unparseable gate output → detail records a named sentinel, never empty",
+         %{dir: dir} do
+      write_gate_config!(dir, "make test")
+      run_fn = fn _gate, _project_dir -> {"some coverage noise, no failure lines", 1} end
+      log_path = fresh_cycle_log!()
+
+      assert {:failed, "make test"} =
+               LoopGate.run_gate(dir, run_fn: run_fn, stack: "phoenix", cycle_log: log_path)
+
+      [event] = read_gate_events(log_path)
+      assert event["verdict"] == "failed"
+      assert event["detail"] != ""
+      assert event["detail"] =~ "no parseable failure location"
+    end
+
     test "codegen-log exit failure (nonexistent cycle_log path) is fail-loud-non-blocking — verdict still correct, no raise",
          %{dir: dir} do
       write_gate_config!(dir, "make test")

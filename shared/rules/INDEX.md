@@ -14,7 +14,7 @@ rules/
     fail-fast-required-values.md  3-part masking-default test, grep tells, judgment question, 3 fix mechanisms
     fail-loud.md              universal fail-loud: never-swallow/silent-default/fail-open/green-on-red + hook fail-open carve-out
     cwd-discipline.md         working-directory discipline: always use absolute paths, never rely on shell cwd
-    witness-discipline.md     witness pattern: ran:/read:/verified: evidence tags for empirical claims
+    witness-discipline.md     FAILED-gate witness: file:line cause, producer/consumer contract, durable-log + operator legs
   shared/                   ← cross-role primitives
     git-readonly.md              read-only git ops, workspace, credentials
     shell-script-discipline.md   shebang, set -euo pipefail, quoting, trap, exit codes, path derivation

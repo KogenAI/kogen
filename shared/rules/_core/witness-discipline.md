@@ -14,7 +14,7 @@ Every FAILED verdict MUST carry a **witness**: `file:line — <verbatim cause>` 
 - **Developer**: on a FAILED gate, read the `Witness:` first — it points at the exact failing location. Fix there before re-running.
 - **Reviewer**: a FAILED handed onward without a witness (when the log was parseable) is a gate defect — flag it.
 - **The loop**: route the witness verbatim to the next role's delegation prompt; never strip it to a bare "gate failed".
+- **The durable log**: `LoopGate.run_gate/2` threads the witness into `codegen-log verdict --detail` — the cycle's `{"ev":"gate"}` event carries it, unlike the dev's rework prompt which the next queue run discards. Empty `extract_witness` → `witness_detail/3` records a named sentinel, never silent `""`.
+- **The operator**: `codegen-log show`'s anomaly line renders the detail — triage without a live re-run.
 
-## Why
-
-Witnesses turn an opaque red gate into an actionable pointer — the located cause travels WITH the verdict, not buried in a log the next agent must re-parse.
+Why: the located cause travels WITH the verdict. A verdict without a durably-recorded reason is a rumour, not a result.

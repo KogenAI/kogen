@@ -71,7 +71,7 @@ Every event object has an `"ev"` discriminator field:
 - `{"ev":"learned","role":<role>,"text":<t>}`
 - `{"ev":"no_learning","role":<role>,"text":<t>}` — the legal, countable "this turn produced nothing to learn" exit; curator-invisible (curator reads `ev:learned` only)
 - `{"ev":"died","role":<role>,"kind":"interrupted"|"aborted","cause":<c-or-empty>}`
-- `{"ev":"gate","role":<role>,"verdict":"clear"|"failed"|"inconclusive", ...gate metadata for the `verdict` subcommand}`
+- `{"ev":"gate","role":<role>,"verdict":"clear"|"failed"|"inconclusive","detail":<witness-or-sentinel-or-empty>, ...gate metadata for the `verdict` subcommand}` — `detail` is non-empty on any non-clear verdict: the located witness, or a named sentinel (`no parseable failure location in <N>-byte gate log` / `gate produced no output`) when none was locatable.
 - `{"ev":"plan_gate","role":<role>,"command":<cmd>,"mode":"short"|"long","timeout":<seconds>}` — planner's typed gate SELECTION (distinct from the `gate` verdict event above); written via `codegen-log append <role> --plan-gate @-`
 - `{"ev":"files_to_touch","role":<role>,"files":[<relpath>,...]}` — planner's typed files-to-touch list; written via `codegen-log append <role> --files-to-touch @-`
 - `{"ev":"files_modified","role":<role>,"files":[<relpath>,...]}` — developer's typed files-modified list; written via `codegen-log append <role> --files-modified @-`
