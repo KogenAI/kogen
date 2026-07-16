@@ -209,7 +209,15 @@ describe("build-agent-app-confinement", { concurrency: 1 }, () => {
   // ── leg B: canonicalize-before-hatch ───────────────────────────────────
   it("leg B: denies write to /tmp-sandboxed escaping symlink", async () => {
     const tmpSandbox = fs.mkdtempSync(path.join(os.tmpdir(), "confb-sandbox-"));
-    const tmpOutside = fs.mkdtempSync(path.join(os.tmpdir(), "confb-outside-"));
+    // Outside fixture MUST NOT resolve under os.tmpdir() (/tmp on Linux) —
+    // the hook grants an unconditional scratch hatch to /tmp/* checked on
+    // the symlink's REAL (canonicalized) path. If the escape target also
+    // resolves under /tmp, is_scratch_real() allows it before the
+    // sandbox-prefix check ever runs, making this "escape" unreachable.
+    // Mirrors the bash twin (build-agent-app-confinement_test.sh Test 16),
+    // which roots its outside fixture under /var/tmp for the same reason.
+    fs.mkdirSync(FIXTURE_ROOT, { recursive: true });
+    const tmpOutside = fs.mkdtempSync(path.join(FIXTURE_ROOT, "confb-outside-"));
     const outsideFile = path.join(tmpOutside, "secret.txt");
     fs.writeFileSync(outsideFile, "");
     const linkPath = path.join(tmpSandbox, "CLAUDE.md");
