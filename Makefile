@@ -19,14 +19,16 @@ PI_EXTENSION_DIR ?= $(SCRIPT_DIR)/harnesses/pi/pi-extensions/enforcement
 
 .PHONY: hook-parity
 hook-parity:
-	@out=$$(cd "$(SCRIPT_DIR)/templates" && python3 generator/hook_registrations.py \
+	@pf=$$(mktemp); \
+	trap 'rm -f "$$pf"' EXIT; \
+	out=$$(cd "$(SCRIPT_DIR)/templates" && python3 generator/hook_registrations.py \
 		--hooks-dir ../harnesses/claude/hooks \
-		--output-settings /tmp/claude-code-settings-parity.json \
+		--output-settings "$$pf" \
 		--existing-settings "$(SCRIPT_DIR)/harnesses/claude/claude-code-settings.json" 2>&1); \
 	rc=$$?; [ -n "$$VERBOSE" ] && printf '%s\n' "$$out"; \
-	[ $$rc -eq 0 ] || { [ -z "$$VERBOSE" ] && printf '%s\n' "$$out"; exit $$rc; }
-	@diff -u "$(SCRIPT_DIR)/harnesses/claude/claude-code-settings.json" /tmp/claude-code-settings-parity.json || exit 1
-	@[ -z "$$VERBOSE" ] || echo "hook-parity: PASS"
+	[ $$rc -eq 0 ] || { [ -z "$$VERBOSE" ] && printf '%s\n' "$$out"; exit $$rc; }; \
+	diff -u "$(SCRIPT_DIR)/harnesses/claude/claude-code-settings.json" "$$pf" || exit 1; \
+	[ -z "$$VERBOSE" ] || echo "hook-parity: PASS"
 
 .PHONY: hook-header-parity
 hook-header-parity:
@@ -79,15 +81,17 @@ install:
 # Exits non-zero if any generated file differs from what is committed.
 .PHONY: enforce-registry-parity
 enforce-registry-parity:
-	@cp "$(SCRIPT_DIR)/harnesses/pi/pi-extensions/enforcement/src/index.ts" /tmp/enforce-parity-index.ts.tmp
-	@python3 "$(SCRIPT_DIR)/templates/generator/enforcement_compiler.py" \
+	@t_idx=$$(mktemp); t_bash=$$(mktemp -d); t_ts=$$(mktemp -d); \
+	trap 'rm -rf "$$t_idx" "$$t_bash" "$$t_ts"' EXIT; \
+	cp "$(SCRIPT_DIR)/harnesses/pi/pi-extensions/enforcement/src/index.ts" "$$t_idx"; \
+	python3 "$(SCRIPT_DIR)/templates/generator/enforcement_compiler.py" \
 		--registry "$(SCRIPT_DIR)/shared/enforcement/registry.yaml" \
-		--bash-out /tmp/enforce-parity-bash \
-		--ts-out /tmp/enforce-parity-ts \
+		--bash-out "$$t_bash" \
+		--ts-out "$$t_ts" \
 		--pi-hooks-dir "$(SCRIPT_DIR)/harnesses/pi/pi-extensions/enforcement/src/hooks" \
-		--index /tmp/enforce-parity-index.ts.tmp > /dev/null 2>&1
-	@fail=0; \
-	for f in /tmp/enforce-parity-bash/*.sh; do \
+		--index "$$t_idx" > /dev/null 2>&1; \
+	fail=0; \
+	for f in "$$t_bash"/*.sh; do \
 		name=$$(basename "$$f"); \
 		committed="$(SCRIPT_DIR)/harnesses/claude/hooks/$$name"; \
 		if [ ! -f "$$committed" ]; then \
@@ -99,7 +103,7 @@ enforce-registry-parity:
 			fail=1; \
 		fi; \
 	done; \
-	for f in /tmp/enforce-parity-ts/*.ts; do \
+	for f in "$$t_ts"/*.ts; do \
 		name=$$(basename "$$f"); \
 		committed="$(SCRIPT_DIR)/harnesses/pi/pi-extensions/enforcement/src/hooks/$$name"; \
 		if [ ! -f "$$committed" ]; then \
@@ -115,9 +119,9 @@ enforce-registry-parity:
 	if [ ! -f "$$committed_index" ]; then \
 		echo "enforce-registry-parity: MISSING committed $$committed_index"; \
 		fail=1; \
-	elif ! diff -q "$$committed_index" /tmp/enforce-parity-index.ts.tmp > /dev/null 2>&1; then \
+	elif ! diff -q "$$committed_index" "$$t_idx" > /dev/null 2>&1; then \
 		echo "enforce-registry-parity: DRIFT in index.ts"; \
-		diff -u "$$committed_index" /tmp/enforce-parity-index.ts.tmp || true; \
+		diff -u "$$committed_index" "$$t_idx" || true; \
 		fail=1; \
 	fi; \
 	bash "$(SCRIPT_DIR)/templates/generator/orphan-hook-check.sh" \
@@ -148,14 +152,22 @@ harness-parity:
 		"$(SCRIPT_DIR)/harnesses/claude/hooks/codegen-call_test.sh" \
 		"$(SCRIPT_DIR)/harnesses/claude/hooks/codegen-propose_test.sh" \
 		"$(SCRIPT_DIR)/shared/scaffold/static/scaffold_test.sh" \
-		"$(SCRIPT_DIR)/harnesses/shared/experiment-prune_test.sh" \
-		"$(SCRIPT_DIR)/harnesses/shared/claude-experiment-settings_test.sh" \
 		"$(SCRIPT_DIR)/codegen-log_test.sh"; do \
 		out=$$(bash "$$t" 2>&1); rc=$$?; \
 		if [ -n "$$VERBOSE" ]; then printf '%s\n' "$$out"; fi; \
 		if [ $$rc -ne 0 ]; then \
 			[ -z "$$VERBOSE" ] && printf '%s\n' "$$out"; \
 			echo "harness-parity: FAIL — $$(basename "$$t")"; \
+			fail=1; \
+		fi; \
+	done; \
+	for st in "$(SCRIPT_DIR)/harnesses/shared/"*_test.sh; do \
+		[ -e "$$st" ] || continue; \
+		out=$$(bash "$$st" 2>&1); rc=$$?; \
+		if [ -n "$$VERBOSE" ]; then printf '%s\n' "$$out"; fi; \
+		if [ $$rc -ne 0 ]; then \
+			[ -z "$$VERBOSE" ] && printf '%s\n' "$$out"; \
+			echo "harness-parity: FAIL — $$(basename "$$st")"; \
 			fail=1; \
 		fi; \
 	done; \
@@ -204,104 +216,7 @@ ci: test
 # concurrently via & + wait to reduce wall time.
 .PHONY: test
 test:
-	@set -e; \
-	export GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=commit.gpgsign GIT_CONFIG_VALUE_0=false; \
-	subagents_ext_dir="$(SCRIPT_DIR)/harnesses/pi/pi-extensions/subagents"; \
-	if [ -f "$$subagents_ext_dir/package.json" ] && grep -q '"build"[[:space:]]*:' "$$subagents_ext_dir/package.json"; then \
-		(cd "$$subagents_ext_dir" && mise exec -- npm run build) || { echo "subagents pre-build failed"; exit 1; }; \
-	fi; \
-	enforcement_ext_dir="$(SCRIPT_DIR)/harnesses/pi/pi-extensions/enforcement"; \
-	if [ -f "$$enforcement_ext_dir/package.json" ] && grep -q '"build"[[:space:]]*:' "$$enforcement_ext_dir/package.json"; then \
-		(cd "$$enforcement_ext_dir" && mise exec -- npm run build) || { echo "enforcement pre-build failed"; exit 1; }; \
-	fi; \
-	tmp_hooks=$$(mktemp); tmp_scaffold=$$(mktemp); tmp_install=$$(mktemp); \
-	tmp_npm=$$(mktemp); tmp_subagents=$$(mktemp); \
-	tmp_hook_parity=$$(mktemp); tmp_hook_header_parity=$$(mktemp); tmp_harness_parity=$$(mktemp); \
-	tmp_test_generator=$$(mktemp); tmp_enforce_registry_parity=$$(mktemp); tmp_enforce_hook_rationale=$$(mktemp); \
-	tmp_test_hermetic=$$(mktemp); tmp_prompt_content_parity=$$(mktemp); tmp_tools_header_no_dup=$$(mktemp); \
-	tmp_rule_render_freshness=$$(mktemp); tmp_usage_rules_index_parity=$$(mktemp); \
-	pids=(); labels=(); tmps=(); \
-	{ ./harnesses/claude/hooks/run-tests.sh; } > "$$tmp_hooks" 2>&1 & pids+=($$!); labels+=(hooks); tmps+=("$$tmp_hooks"); \
-	{ ./shared/scaffold/phoenix/run-tests.sh; } > "$$tmp_scaffold" 2>&1 & pids+=($$!); labels+=(scaffold-phoenix); tmps+=("$$tmp_scaffold"); \
-	{ ./test_harness/install/run-tests.sh; } > "$$tmp_install" 2>&1 & pids+=($$!); labels+=(install); tmps+=("$$tmp_install"); \
-	{ $(MAKE) --no-print-directory hook-parity; } > "$$tmp_hook_parity" 2>&1 & pids+=($$!); labels+=(hook-parity); tmps+=("$$tmp_hook_parity"); \
-	{ $(MAKE) --no-print-directory hook-header-parity; } > "$$tmp_hook_header_parity" 2>&1 & pids+=($$!); labels+=(hook-header-parity); tmps+=("$$tmp_hook_header_parity"); \
-	{ $(MAKE) --no-print-directory harness-parity; } > "$$tmp_harness_parity" 2>&1 & pids+=($$!); labels+=(harness-parity); tmps+=("$$tmp_harness_parity"); \
-	{ $(MAKE) --no-print-directory test-generator; } > "$$tmp_test_generator" 2>&1 & pids+=($$!); labels+=(test-generator); tmps+=("$$tmp_test_generator"); \
-	{ $(MAKE) --no-print-directory enforce-registry-parity; } > "$$tmp_enforce_registry_parity" 2>&1 & pids+=($$!); labels+=(enforce-registry-parity); tmps+=("$$tmp_enforce_registry_parity"); \
-	{ $(MAKE) --no-print-directory enforce-hook-rationale; } > "$$tmp_enforce_hook_rationale" 2>&1 & pids+=($$!); labels+=(enforce-hook-rationale); tmps+=("$$tmp_enforce_hook_rationale"); \
-	{ $(MAKE) --no-print-directory test-hermetic; } > "$$tmp_test_hermetic" 2>&1 & pids+=($$!); labels+=(test-hermetic); tmps+=("$$tmp_test_hermetic"); \
-	{ $(MAKE) --no-print-directory prompt-content-parity; } > "$$tmp_prompt_content_parity" 2>&1 & pids+=($$!); labels+=(prompt-content-parity); tmps+=("$$tmp_prompt_content_parity"); \
-	{ $(MAKE) --no-print-directory tools-header-no-dup; } > "$$tmp_tools_header_no_dup" 2>&1 & pids+=($$!); labels+=(tools-header-no-dup); tmps+=("$$tmp_tools_header_no_dup"); \
-	{ $(MAKE) --no-print-directory rule-render-freshness; } > "$$tmp_rule_render_freshness" 2>&1 & pids+=($$!); labels+=(rule-render-freshness); tmps+=("$$tmp_rule_render_freshness"); \
-	{ $(MAKE) --no-print-directory usage-rules-index-parity; } > "$$tmp_usage_rules_index_parity" 2>&1 & pids+=($$!); labels+=(usage-rules-index-parity); tmps+=("$$tmp_usage_rules_index_parity"); \
-	{ \
-		fail=0; \
-		for ext in enforcement askuserquestion subagents web-utils; do \
-			ext_dir="$(SCRIPT_DIR)/harnesses/pi/pi-extensions/$$ext"; \
-			if [ -f "$$ext_dir/package.json" ] && grep -q '"test"[[:space:]]*:' "$$ext_dir/package.json"; then \
-				if [ "$$ext" != "subagents" ] && [ "$$ext" != "enforcement" ] && grep -q '"build"[[:space:]]*:' "$$ext_dir/package.json"; then \
-					(cd "$$ext_dir" && mise exec -- npm run build) || fail=1; \
-				fi; \
-				if [ -n "$$VERBOSE" ]; then \
-					echo "▶ Test: $$ext"; \
-					(cd "$$ext_dir" && mise exec -- npm test) || fail=1; \
-				else \
-					out=$$(cd "$$ext_dir" && mise exec -- npm test 2>&1); rc=$$?; \
-					if [ $$rc -ne 0 ]; then \
-						echo "▶ Test: $$ext — FAILED"; \
-						printf '%s\n' "$$out"; \
-						fail=1; \
-					fi; \
-				fi; \
-			fi; \
-		done; \
-		exit "$$fail"; \
-	} > "$$tmp_npm" 2>&1 & pids+=($$!); labels+=(npm-ext); tmps+=("$$tmp_npm"); \
-	{ \
-		ext_dir="$(SCRIPT_DIR)/harnesses/pi/pi-extensions/subagents"; \
-		if [ -d "$$ext_dir/test/integration" ] && [ -n "$$(ls "$$ext_dir/test/integration/"*.test.ts 2>/dev/null)" ]; then \
-			if [ -n "$$VERBOSE" ]; then \
-				echo "▶ Test:integration: subagents"; \
-				(cd "$$ext_dir" && mise exec -- npm run test:integration) || exit 1; \
-			else \
-				out=$$(cd "$$ext_dir" && mise exec -- npm run test:integration 2>&1); rc=$$?; \
-				if [ $$rc -ne 0 ]; then \
-					echo "▶ Test:integration: subagents — FAILED"; \
-					printf '%s\n' "$$out"; \
-					exit 1; \
-				fi; \
-			fi; \
-		fi; \
-	} > "$$tmp_subagents" 2>&1 & pids+=($$!); labels+=(subagents-integration); tmps+=("$$tmp_subagents"); \
-	fail=0; failed_labels=(); \
-	for i in "$${!pids[@]}"; do \
-		if ! wait "$${pids[$$i]}"; then \
-			fail=1; \
-			failed_labels+=("$${labels[$$i]}"); \
-		fi; \
-		cat "$${tmps[$$i]}"; \
-	done; \
-	if [ "$$fail" -eq 0 ]; then \
-		echo "ALL CLEAR ✅ make test"; \
-	else \
-		bash_fails=$$(cat "$$tmp_hooks" "$$tmp_scaffold" "$$tmp_install" 2>/dev/null | grep -oE 'FAIL: [^ —]+' | sed 's/FAIL: //' | tr '\n' ',' | sed 's/,$$//' || true); \
-		npm_fails=$$(cat "$$tmp_npm" "$$tmp_subagents" 2>/dev/null | grep -oE '▶ Test: [^ —]+' | sed 's/▶ Test: //' | tr '\n' ',' | sed 's/,$$//' || true); \
-		all_fails="$$bash_fails"; \
-		[ -n "$$npm_fails" ] && [ -n "$$all_fails" ] && all_fails="$$all_fails,$$npm_fails" || all_fails="$$all_fails$$npm_fails"; \
-		joined=$$(printf '%s, ' "$${failed_labels[@]}"); joined=$${joined%, }; \
-		if [ -n "$$all_fails" ]; then \
-			echo "FAILED ❌ make test — $$joined ($$all_fails)"; \
-		else \
-			echo "FAILED ❌ make test — $$joined"; \
-		fi; \
-	fi; \
-	rm -f "$$tmp_hooks" "$$tmp_scaffold" "$$tmp_install" "$$tmp_npm" "$$tmp_subagents" \
-		"$$tmp_hook_parity" "$$tmp_hook_header_parity" "$$tmp_harness_parity" "$$tmp_test_generator" \
-		"$$tmp_enforce_registry_parity" "$$tmp_enforce_hook_rationale" "$$tmp_test_hermetic" \
-		"$$tmp_prompt_content_parity" "$$tmp_tools_header_no_dup" "$$tmp_rule_render_freshness" \
-		"$$tmp_usage_rules_index_parity"; \
-	exit "$$fail"
+	@bash "$(SCRIPT_DIR)/templates/generator/run-all-tests.sh"
 
 # test-hermetic: fast, deterministic ExUnit tests — no LLM, no Playwright, no real server.
 # Runs only tests NOT tagged :slow (excludes LLM-dependent scaffold/gate/seed/iteration tests).
