@@ -109,6 +109,26 @@ defmodule CodegenTestHarness.OrchestrationLoop do
     runs; defaults to `default_preflight_probe/1` (a single sentinel
     `codegen-call --agent <bogus>` call parsing claude's "Available agents:"
     error text — zero model turns)
+  - `:orientation_preflight_fn` — test seam: `(cwd -> {:clean} | {:violations, String.t()})`,
+    defaults to `default_orientation_preflight/1`. Runs at turn 0, right
+    after `preflight_roles!/3` and before any role is invoked or paid for —
+    the repo-wide sibling of `run_curator_doc_check/6`'s per-curator-turn
+    scan. Always shells `context-index-parity-scan.sh <cwd>` (its full-tree
+    pass is repo-wide and delta-independent by design — it exists to catch
+    drift the diff-scoped check would miss). Additionally shells
+    `context-factcheck-scan.sh <cwd>` in its WHOLE-TREE mode (no doc args)
+    when `<cwd>/harnesses/claude/manifest.yaml` exists — i.e. only in the
+    codegen repo itself, never in a scaffolded downstream app, which has no
+    such sentinel and would otherwise newly refuse its build for
+    pre-existing rot in its own orientation docs. `preflight_clean_tree!/1`
+    already ran before this (turn-0 ordering), so any violation surfaced
+    here is proven inherited, not caused by this cycle. `{:violations, v}`
+    raises `CodegenTestHarness.InfraAbort` via `LoopGate.infra_abort!/2`
+    (exit 3 under `mix codegen.loop` — halts a `--queue` drain with the
+    pitch left untouched in `ready/`, never parked as a rework-needed
+    defect) instead of proceeding into a paid cycle that would die later at
+    the curator step for the same reason. See pitch
+    `no-full-cycle-spend-on-inherited-orientation-doc-drift`.
   - `:max_gate_retries` — developer re-runs allowed after a non-clear gate
     before giving up (default 1). This is a FALLBACK bound used only when
     the tree-progress signature is unavailable (non-git `:cwd`, e.g. mocked
@@ -282,6 +302,7 @@ defmodule CodegenTestHarness.OrchestrationLoop do
     gate_command = preflight_gate!(cwd, opts)
     ctx = put_in(ctx, [:artifacts, :gate_command], gate_command)
     preflight_roles!(roles, cwd, opts)
+    preflight_orientation_docs!(cwd, opts)
 
     run_roles(roles, harness, ctx, opts)
   end
@@ -434,6 +455,94 @@ defmodule CodegenTestHarness.OrchestrationLoop do
 
       nil ->
         :error
+    end
+  end
+
+  # Turn-0 repo-wide orientation-doc preflight: the sibling of
+  # run_curator_doc_check/6's per-curator-turn scan, moved earlier so a cycle
+  # refuses INHERITED drift at $0 instead of dying at the curator step after
+  # planner+developer+gate+reviewer+curator have all been paid for. Runs
+  # AFTER preflight_clean_tree!/1 (called earlier in run_body/1), so any
+  # violation surfaced here is proven pre-existing at HEAD, not caused by
+  # this cycle's own edits — attribution is structural, not heuristic. See
+  # pitch `no-full-cycle-spend-on-inherited-orientation-doc-drift`.
+  defp preflight_orientation_docs!(cwd, opts) do
+    preflight_fn = Keyword.get(opts, :orientation_preflight_fn, &default_orientation_preflight/1)
+
+    case preflight_fn.(cwd) do
+      {:clean} ->
+        :ok
+
+      {:violations, violations} ->
+        LoopGate.infra_abort!(
+          "orientation-doc-preflight",
+          "#{violations} — orientation docs were already drifted at HEAD; this build " <>
+            "introduced nothing. Fix the drift on develop, then re-run."
+        )
+    end
+  end
+
+  # Real implementation: index-parity's full-tree pass always runs (cheap —
+  # a single git diff/ls-files call, repo-wide by design). The factcheck
+  # whole-tree pass (no doc args — scans the FULL fixed orientation-doc set,
+  # not diff-scoped) is sentinel-gated to codegen's own layout
+  # (`<cwd>/harnesses/claude/manifest.yaml`), mirroring
+  # context-index-parity-scan.sh's own full-tree gate (`index_path ==
+  # "PROJECT_CONTEXT.md" && harnesses/claude/manifest.yaml present`) — a
+  # scaffolded downstream app has no such sentinel and stays on today's
+  # byte-for-byte behavior (delta + phantom-ref only, both already
+  # effectively no-ops at a clean turn 0). Reuses
+  # combine_curator_doc_results/2, the exact joiner the curator step uses.
+  defp default_orientation_preflight(cwd) do
+    unless File.exists?(@index_parity_scan_lib) do
+      raise "OrchestrationLoop: context-index-parity-scan.sh not found at #{@index_parity_scan_lib}"
+    end
+
+    index_parity_result =
+      case System.cmd("bash", [@index_parity_scan_lib, cwd], stderr_to_stdout: true) do
+        {_out, 0} ->
+          {:clean}
+
+        {out, 1} ->
+          {:violations, String.trim(out)}
+
+        {out, code} ->
+          raise "OrchestrationLoop: context-index-parity-scan.sh exited #{code} (expected 0 or 1): #{out}"
+      end
+
+    factcheck_result =
+      if File.exists?(Path.join(cwd, "harnesses/claude/manifest.yaml")) do
+        unless File.exists?(@factcheck_scan_lib) do
+          raise "OrchestrationLoop: context-factcheck-scan.sh not found at #{@factcheck_scan_lib}"
+        end
+
+        case System.cmd("bash", [@factcheck_scan_lib, cwd], stderr_to_stdout: true) do
+          {_out, 0} ->
+            {:clean}
+
+          {out, 1} ->
+            {:violations, String.trim(out)}
+
+          {out, code} ->
+            raise "OrchestrationLoop: context-factcheck-scan.sh exited #{code} (expected 0 or 1): #{out}"
+        end
+      else
+        {:clean}
+      end
+
+    combine_curator_doc_results(index_parity_result, factcheck_result)
+  end
+
+  # Names which legs the turn-0 preflight actually ran, for interpolation
+  # into the curator-doc exhaustion message (run_curator_doc_check_rework/8).
+  # index-parity always runs; factcheck's whole-tree leg only runs in the
+  # codegen repo itself (sentinel-gated) — the exhaustion message must not
+  # over-claim a leg that never executed downstream.
+  defp preflight_legs(cwd) do
+    if File.exists?(Path.join(cwd, "harnesses/claude/manifest.yaml")) do
+      "index-parity + factcheck"
+    else
+      "index-parity"
     end
   end
 
@@ -1087,14 +1196,16 @@ defmodule CodegenTestHarness.OrchestrationLoop do
          _curator_role,
          _rest,
          _harness,
-         _ctx,
+         ctx,
          _opts,
          cycle,
          _max_cycles,
          violations
        ) do
     {:error,
-     "context-curator doc check unresolved after #{cycle} cycle(s):\n#{violations}\n" <>
+     "Turn-0 preflight verified #{preflight_legs(ctx.cwd)} clean at HEAD #{ctx.base_head}; " <>
+       "the violations below arrived with this cycle's own edits.\n" <>
+       "context-curator doc check unresolved after #{cycle} cycle(s):\n#{violations}\n" <>
        "The committer cannot Read/Edit context/*.md (subagent-read-discipline denies it), " <>
        "so handing this violation onward would be an unfixable dead-end. Fix the orientation " <>
        "docs and re-run the cycle."}

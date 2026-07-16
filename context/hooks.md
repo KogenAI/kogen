@@ -97,7 +97,7 @@ Cross-reference: curator decision tree → `context/rules-roles.md` § Curator W
 
 ## Index-Parity + Factcheck (writer's-turn placement)
 
-`harnesses/claude/hooks/lib/context-index-parity-scan.sh` — working-tree scan (no hook I/O): a `context/*.md` add/delete without matching `PROJECT_CONTEXT.md` § Domain Context Files parity is a violation. Used ONLY by the in-loop `run_curator_doc_check` step — cannot be a per-edit gate (an ADD needs BOTH the file AND its row; whichever write lands first would deadlock a PreToolUse gate).
+`harnesses/claude/hooks/lib/context-index-parity-scan.sh` — working-tree scan (no hook I/O): a `context/*.md` add/delete without matching `PROJECT_CONTEXT.md` § Domain Context Files parity is a violation. Used by the turn-0 `preflight_orientation_docs!/2` preflight (refuses inherited drift at $0, before any role runs) AND the in-loop `run_curator_doc_check` step (catches this cycle's own drift) — cannot be a per-edit gate (an ADD needs BOTH the file AND its row; whichever write lands first would deadlock a PreToolUse gate).
 
 **Satisfy**: Append a row to `PROJECT_CONTEXT.md` § Domain Context Files table with the basename (e.g., `"deployment-topology"` for `context/deployment-topology.md`).
 
@@ -183,7 +183,7 @@ templates/generator/hook_registrations.py  ← generates settings.json entries
 
 **Static sentinel co-location tests**: bash tests asserting a sentinel on one specific line (e.g. same-line `SETTINGS_JSON=.*API_FORCE_IDLE_TIMEOUT`) break under variable-indirection refactors. Fix: assert co-location at the variable level (separate assignment-line + reference-line patterns), not literal same-line blob matching — robust to future indirection, still captures the load-bearing invariant.
 
-**Hermetic CI tests vs hooks**: `context-doc-provenance_test.sh` scans docs/rules for rotting line-citations — not a hook/registry entry, absent from `settings.json`. Auto-discovered via `run-tests.sh` footer (`N passed, N failed`). Full-tree context-index parity (coverage, Trigger-Keywords, keyword-drift, clutter) is NOT a `make test` gate — moved to the in-loop curator scan `context-index-parity-scan.sh` (root layout AND codegen sentinel `harnesses/claude/manifest.yaml`; downstream apps' own root `PROJECT_CONTEXT.md` else false-positives it), shelled by `run_curator_doc_check`, routed to context-curator on violation. Replaces deleted `context-index-coverage_test.sh` — lands on the owning role, not the developer.
+**Hermetic CI tests vs hooks**: `context-doc-provenance_test.sh` scans docs/rules for rotting line-citations — not a hook/registry entry, absent from `settings.json`. Auto-discovered via `run-tests.sh` footer (`N passed, N failed`). Full-tree context-index parity (coverage, Trigger-Keywords, keyword-drift, clutter) is NOT a `make test` gate — moved to a turn-0 preflight (`preflight_orientation_docs!/2`, refuses at $0 for inherited drift) AND the in-loop curator scan `context-index-parity-scan.sh` (root layout AND codegen sentinel `harnesses/claude/manifest.yaml`; downstream apps' own root `PROJECT_CONTEXT.md` else false-positives it), the latter shelled by `run_curator_doc_check`, routed to context-curator on violation. Replaces deleted `context-index-coverage_test.sh` — lands on the owning role, not the developer.
 
 ## See Also
 

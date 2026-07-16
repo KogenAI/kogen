@@ -193,6 +193,130 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
     end
   end
 
+  defp no_op_orientation_preflight_fn do
+    fn _cwd -> {:clean} end
+  end
+
+  describe "run/1 — turn-0 orientation-doc preflight" do
+    test "clean seam result → roles are invoked as normal", %{calls_agent: calls_agent} do
+      assert :ok ==
+               OrchestrationLoop.run(
+                 harness: "claude_code",
+                 stack: "static",
+                 cwd: "/tmp/irrelevant",
+                 pitch: "do the thing",
+                 invoke_fn: always_ok_invoke_fn(calls_agent),
+                 gate_fn: always_clear_gate_fn(),
+                 gate_preflight_fn: no_op_gate_preflight_fn(),
+                 preflight_probe_fn: all_present_preflight_probe_fn(),
+                 advance_cycle_state_fn: no_op_advance_cycle_state_fn(),
+                 orientation_preflight_fn: no_op_orientation_preflight_fn()
+               )
+
+      assert Agent.get(calls_agent, & &1) == @static_sequence
+    end
+
+    test "violations seam result → raises InfraAbort naming the check and remediation, before any role runs",
+         %{calls_agent: calls_agent} do
+      violating_fn = fn _cwd ->
+        {:violations,
+         "context-index-parity-scan: context/new.md added but no index row mentions \"new\""}
+      end
+
+      assert_raise CodegenTestHarness.InfraAbort,
+                   ~r/orientation-doc-preflight/,
+                   fn ->
+                     OrchestrationLoop.run(
+                       harness: "claude_code",
+                       stack: "static",
+                       cwd: "/tmp/irrelevant",
+                       pitch: "do the thing",
+                       invoke_fn: always_ok_invoke_fn(calls_agent),
+                       gate_fn: always_clear_gate_fn(),
+                       gate_preflight_fn: no_op_gate_preflight_fn(),
+                       preflight_probe_fn: all_present_preflight_probe_fn(),
+                       advance_cycle_state_fn: no_op_advance_cycle_state_fn(),
+                       orientation_preflight_fn: violating_fn
+                     )
+                   end
+
+      # no role was ever invoked — the loop refused before spending a cent
+      assert Agent.get(calls_agent, & &1) == []
+    end
+
+    test "violations message names the remediation (drifted-at-HEAD, re-run after fixing)",
+         %{calls_agent: calls_agent} do
+      violating_fn = fn _cwd -> {:violations, "CLAUDE.md:1 bad path"} end
+
+      error =
+        assert_raise CodegenTestHarness.InfraAbort, fn ->
+          OrchestrationLoop.run(
+            harness: "claude_code",
+            stack: "static",
+            cwd: "/tmp/irrelevant",
+            pitch: "do the thing",
+            invoke_fn: always_ok_invoke_fn(calls_agent),
+            gate_fn: always_clear_gate_fn(),
+            gate_preflight_fn: no_op_gate_preflight_fn(),
+            preflight_probe_fn: all_present_preflight_probe_fn(),
+            advance_cycle_state_fn: no_op_advance_cycle_state_fn(),
+            orientation_preflight_fn: violating_fn
+          )
+        end
+
+      assert error.message =~ "already drifted at HEAD"
+      assert error.message =~ "this build introduced nothing"
+      assert error.message =~ "CLAUDE.md:1 bad path"
+    end
+
+    test "preflight runs BEFORE any role — :invoke_fn is never called on a violation",
+         %{calls_agent: calls_agent} do
+      violating_fn = fn _cwd -> {:violations, "drift"} end
+
+      assert_raise CodegenTestHarness.InfraAbort, fn ->
+        OrchestrationLoop.run(
+          harness: "claude_code",
+          stack: "phoenix",
+          cwd: "/tmp/irrelevant",
+          pitch: "do the thing",
+          invoke_fn: always_ok_invoke_fn(calls_agent),
+          gate_fn: always_clear_gate_fn(),
+          gate_preflight_fn: no_op_gate_preflight_fn(),
+          preflight_probe_fn: all_present_preflight_probe_fn(),
+          advance_cycle_state_fn: no_op_advance_cycle_state_fn(),
+          orientation_preflight_fn: violating_fn
+        )
+      end
+
+      assert Agent.get(calls_agent, & &1) == []
+    end
+
+    # Regression guard for the 76+ pre-existing tests that pass a synthetic
+    # cwd ("/tmp/irrelevant") without stubbing :orientation_preflight_fn at
+    # all — the REAL default_orientation_preflight/1 must stay inert there
+    # (both scans fail-open on a non-git cwd; the factcheck leg is also
+    # sentinel-gated off since /tmp/irrelevant has no
+    # harnesses/claude/manifest.yaml). This is what keeps every other test
+    # in this file from needing a new stub.
+    test "real default orientation preflight is a no-op against a synthetic /tmp cwd (mocked-suite regression guard)",
+         %{calls_agent: calls_agent} do
+      assert :ok ==
+               OrchestrationLoop.run(
+                 harness: "claude_code",
+                 stack: "static",
+                 cwd: "/tmp/irrelevant",
+                 pitch: "do the thing",
+                 invoke_fn: always_ok_invoke_fn(calls_agent),
+                 gate_fn: always_clear_gate_fn(),
+                 gate_preflight_fn: no_op_gate_preflight_fn(),
+                 preflight_probe_fn: all_present_preflight_probe_fn(),
+                 advance_cycle_state_fn: no_op_advance_cycle_state_fn()
+               )
+
+      assert Agent.get(calls_agent, & &1) == @static_sequence
+    end
+  end
+
   describe "run/1 — no developer invoked without its plan" do
     test "phoenix cycle threads the planner's real ## Plan body (not the envelope chat message) into the developer prompt",
          %{calls_agent: calls_agent} do
@@ -2496,6 +2620,9 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
         )
 
       assert {:error, reason} = result
+      assert reason =~ "Turn-0 preflight verified"
+      assert reason =~ "clean at HEAD"
+      assert reason =~ "the violations below arrived with this cycle's own edits"
       assert reason =~ "doc check unresolved"
       assert reason =~ "CLAUDE.md:1 bad path"
       assert reason =~ "context-index-parity-scan"
@@ -2884,7 +3011,8 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
           preflight_probe_fn: all_present_preflight_probe_fn(),
           advance_cycle_state_fn: no_op_advance_cycle_state_fn(),
           max_curator_doc_cycles: 0,
-          clean_tree_preflight_fn: no_op_clean_tree_preflight_fn()
+          clean_tree_preflight_fn: no_op_clean_tree_preflight_fn(),
+          orientation_preflight_fn: no_op_orientation_preflight_fn()
         )
 
       assert {:error, reason} = result
@@ -2943,7 +3071,8 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
           preflight_probe_fn: all_present_preflight_probe_fn(),
           advance_cycle_state_fn: no_op_advance_cycle_state_fn(),
           max_curator_doc_cycles: 0,
-          clean_tree_preflight_fn: no_op_clean_tree_preflight_fn()
+          clean_tree_preflight_fn: no_op_clean_tree_preflight_fn(),
+          orientation_preflight_fn: no_op_orientation_preflight_fn()
         )
 
       assert {:error, reason} = result

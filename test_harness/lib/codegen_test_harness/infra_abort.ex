@@ -1,8 +1,9 @@
 defmodule CodegenTestHarness.InfraAbort do
   @moduledoc """
   Raised when a check fails for a reason **no developer edit could fix** —
-  a box-provisioning problem (poisoned DB state, unsatisfiable scan,
-  missing runtime dependency), not a code defect.
+  an environment or repo-state problem (poisoned DB state, unsatisfiable
+  scan, missing runtime dependency, inherited orientation-doc drift), not
+  a code defect.
 
   This is the generalized form of `LoopGate`'s pre-existing
   `static_render_deps_preflight!/1` raise (a missing render-check
@@ -22,7 +23,7 @@ defmodule CodegenTestHarness.InfraAbort do
   def exception(reason) when is_binary(reason) do
     %__MODULE__{
       message:
-        "INFRA ABORT: #{reason} — this is a box-provisioning problem, not something a developer re-run can fix.",
+        "INFRA ABORT: #{reason} — this is an environment or repo-state problem, not something a developer re-run can fix.",
       reason: reason
     }
   end
