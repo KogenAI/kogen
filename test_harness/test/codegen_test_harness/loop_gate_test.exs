@@ -254,11 +254,52 @@ defmodule CodegenTestHarness.LoopGateTest do
       assert {:failed, "make test"} = LoopGate.run_gate(dir, run_fn: run_fn)
     end
 
-    test "static stack with no public/ dir skips render check — stays clear", %{dir: dir} do
+    # Regression for the `1 1` incident: a gate command that exits 0 having
+    # run/printed NOTHING must never be scored ALL CLEAR — it is a no-op
+    # gate, not a passing one.
+    test "exit 0 with a truly empty gate log → failed (no-op gate detector fires)", %{dir: dir} do
+      write_gate_config!(dir, "make test")
+      run_fn = fn _gate, _project_dir -> {"", 0} end
+
+      assert {:failed, "make test"} = LoopGate.run_gate(dir, run_fn: run_fn, stack: "phoenix")
+
+      result =
+        Path.join(dir, "codegen/gate-pending/gate-result.json")
+        |> File.read!()
+        |> Jason.decode!()
+
+      assert result["execution_evidence"] == 0
+      assert result["expected_segments"] == 1
+    end
+
+    # A chained gate (`make ci && make llm`) has TWO segments — evidence
+    # from only one recognized runner footer must still be scored a no-op
+    # (the second segment produced no counted evidence).
+    test "chained gate command with evidence for only one of two segments → failed", %{dir: dir} do
+      write_gate_config!(dir, "make ci && make llm")
+      run_fn = fn _gate, _project_dir -> {"519 tests, 0 failures", 0} end
+
+      assert {:failed, "make ci && make llm"} =
+               LoopGate.run_gate(dir, run_fn: run_fn, stack: "phoenix")
+    end
+
+    test "chained gate command with evidence for both segments → clear", %{dir: dir} do
+      write_gate_config!(dir, "make ci && make llm")
+
+      run_fn = fn _gate, _project_dir ->
+        {"519 tests, 0 failures\n42 tests, 0 failures", 0}
+      end
+
+      assert {:clear, "make ci && make llm"} =
+               LoopGate.run_gate(dir, run_fn: run_fn, stack: "phoenix")
+    end
+
+    test "static stack with no public/ dir → build produced nothing, verdict failed (no silent PASS)",
+         %{dir: dir} do
       write_gate_config!(dir, "make ci")
       run_fn = fn _gate, _project_dir -> {"built ok", 0} end
 
-      assert {:clear, "make ci"} =
+      assert {:failed, "make ci"} =
                LoopGate.run_gate(dir,
                  run_fn: run_fn,
                  stack: "static",
@@ -333,6 +374,78 @@ defmodule CodegenTestHarness.LoopGateTest do
     end
   end
 
+  describe "run_gate/2 — witness on an opaque non-zero exit" do
+    test "a failed gate log carrying a parseable ExUnit failure location gets a non-empty witness",
+         %{dir: dir} do
+      write_gate_config!(dir, "make test")
+
+      run_fn = fn _gate, _project_dir ->
+        {"  1) test foo (MyTest)\n     test/my_test.exs:42: assert 1 == 2", 1}
+      end
+
+      assert {:failed, "make test"} = LoopGate.run_gate(dir, run_fn: run_fn, stack: "phoenix")
+
+      result =
+        Path.join(dir, "codegen/gate-pending/gate-result.json")
+        |> File.read!()
+        |> Jason.decode!()
+
+      assert result["witness"] =~ "test/my_test.exs:42"
+    end
+
+    test "a failed gate log with no parseable location gets an empty witness (fail-open)", %{
+      dir: dir
+    } do
+      write_gate_config!(dir, "make test")
+      run_fn = fn _gate, _project_dir -> {"some opaque failure text", 1} end
+
+      assert {:failed, "make test"} = LoopGate.run_gate(dir, run_fn: run_fn, stack: "phoenix")
+
+      result =
+        Path.join(dir, "codegen/gate-pending/gate-result.json")
+        |> File.read!()
+        |> Jason.decode!()
+
+      assert result["witness"] == ""
+    end
+  end
+
+  describe "run_gate/2 — timeout enforcement" do
+    test "a run_fn that never returns within the planner-declared deadline yields INCONCLUSIVE (timeout)",
+         %{dir: dir} do
+      step_log = Path.join(dir, "20260601_120000_test_cycle.jsonl")
+
+      File.write!(
+        step_log,
+        Jason.encode!(%{
+          "ev" => "plan_gate",
+          "role" => "planner-phoenix",
+          "command" => "make custom-slow-gate",
+          "mode" => "short",
+          # Sub-second timeout — decide_gate/2 truncates to whole seconds via
+          # String.to_integer, so 1 is the smallest usable value here; the
+          # run_fn below blocks far longer than 1s.
+          "timeout" => 1
+        }) <> "\n"
+      )
+
+      run_fn = fn _gate, _project_dir ->
+        Process.sleep(:infinity)
+      end
+
+      assert {:failed, "make custom-slow-gate"} =
+               LoopGate.run_gate(dir, run_fn: run_fn, stack: "phoenix", step_log: step_log)
+
+      result =
+        Path.join(dir, "codegen/gate-pending/gate-result.json")
+        |> File.read!()
+        |> Jason.decode!()
+
+      assert result["verdict"] == "inconclusive"
+      assert result["verdict_marker"] =~ "INCONCLUSIVE"
+    end
+  end
+
   describe "static render-check dependency preflight" do
     test "missing chromium raises naming the dep (via injected preflight_fn)", %{dir: dir} do
       write_gate_config!(dir, "make ci")
@@ -362,9 +475,16 @@ defmodule CodegenTestHarness.LoopGateTest do
 
     test "real static preflight passes on a healthy box (chromium present)", %{dir: dir} do
       write_gate_config!(dir, "make ci")
+      File.mkdir_p!(Path.join(dir, "public"))
       run_fn = fn _gate, _project_dir -> {"ok", 0} end
+      render_check_fn = fn _project_dir -> {"RENDER_VERDICT=PASS", 0} end
 
-      assert {:clear, "make ci"} = LoopGate.run_gate(dir, run_fn: run_fn, stack: "static")
+      assert {:clear, "make ci"} =
+               LoopGate.run_gate(dir,
+                 run_fn: run_fn,
+                 stack: "static",
+                 render_check_fn: render_check_fn
+               )
     end
   end
 

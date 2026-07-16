@@ -87,10 +87,10 @@ test_reverse_parity() {
 
     # Makefile targets matching the naming convention, excluding compile/staleness helpers.
     local makefile_guards
-    makefile_guards=$(grep -oE '^\.PHONY: .+' "$MAKEFILE" | sed 's/^\.PHONY: //' | tr ' ' '\n' \
-        | grep -E 'parity|freshness|rationale|budget' \
-        | grep -vE '\-compile$|staleness' \
-        | sort -u)
+    makefile_guards=$(grep -oE '^\.PHONY: .+' "$MAKEFILE" | sed 's/^\.PHONY: //' | tr ' ' '\n' |
+        grep -E 'parity|freshness|rationale|budget' |
+        grep -vE '\-compile$|staleness' |
+        sort -u)
 
     local unregistered=""
     while IFS= read -r g; do
@@ -104,10 +104,10 @@ test_reverse_parity() {
     # prompt-content-parity wraps prompt-content-parity_test.sh) — the latter
     # is already covered by registered_targets, so cross-check both.
     local hook_test_guards
-    hook_test_guards=$(find "$CODEGEN_DIR/harnesses/claude/hooks" -maxdepth 1 -name '*_test.sh' -type f -print0 \
-        | xargs -0 -n1 basename \
-        | grep -E 'parity|freshness|provenance' \
-        | sort -u || true)
+    hook_test_guards=$(find "$CODEGEN_DIR/harnesses/claude/hooks" -maxdepth 1 -name '*_test.sh' -type f -print0 |
+        xargs -0 -n1 basename |
+        grep -E 'parity|freshness|provenance' |
+        sort -u || true)
 
     while IFS= read -r t; do
         [ -z "$t" ] && continue
@@ -169,8 +169,8 @@ test_gap_honesty() {
     local bad=""
     while IFS=$'\t' read -r id rationale_trimmed; do
         [ -n "$rationale_trimmed" ] || bad="${bad}${bad:+, }$id"
-    done < <(yq -o=json '.seams[] | select(.guard == "GAP")' "$REGISTRY" \
-        | jq -r '[.id, (.gap_rationale // "" | gsub("\\s"; ""))] | @tsv')
+    done < <(yq -o=json '.seams[] | select(.guard == "GAP")' "$REGISTRY" |
+        jq -r '[.id, (.gap_rationale // "" | gsub("\\s"; ""))] | @tsv')
 
     if [ -z "$bad" ]; then
         assert_true "gap honesty: every GAP row has a rationale" 0
@@ -196,8 +196,8 @@ seams:
     gap_rationale: ""
 YAML
     local trimmed
-    trimmed=$(yq -o=json '.seams[] | select(.guard == "GAP")' "$tmp" \
-        | jq -r '.gap_rationale // "" | gsub("\\s"; "")')
+    trimmed=$(yq -o=json '.seams[] | select(.guard == "GAP")' "$tmp" |
+        jq -r '.gap_rationale // "" | gsub("\\s"; "")')
     rm -f "$tmp"
     if [ -z "$trimmed" ]; then
         assert_true "fixture: bare GAP rationale detected as empty" 0

@@ -69,13 +69,19 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
     end
   end
 
-  # Stub invoke_fn: always succeeds, records call order in an Agent.
+  # Stub invoke_fn: always succeeds, records call order in an Agent. Reviewer
+  # roles get a valid `REVIEW_VERDICT: APPROVED` — move 4b's fail-closed
+  # `:unknown` handling means a bare "did #{role}" reviewer output is no
+  # longer silently treated as approved.
   defp always_ok_invoke_fn(calls_agent) do
     fn role, _harness, _ctx, _opts ->
       Agent.update(calls_agent, fn calls -> calls ++ [role] end)
-      {:ok, %{"status" => "success", "value" => "did #{role}"}}
+      value = if reviewer_role?(role), do: "REVIEW_VERDICT: APPROVED", else: "did #{role}"
+      {:ok, %{"status" => "success", "value" => value}}
     end
   end
+
+  defp reviewer_role?(role), do: role == "reviewer-phoenix" or role == "reviewer-static"
 
   defp always_clear_gate_fn do
     fn _cwd, _opts -> {:clear, "make test"} end
@@ -501,6 +507,114 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
       assert Enum.count(calls, &(&1 == "developer-static")) == 1
       assert Enum.count(calls, &(&1 == "reviewer-static")) == 1
     end
+
+    # Regression for bug 4: an :unknown verdict (no parseable REVIEW_VERDICT:
+    # sentinel) must NEVER be folded into the same "proceed" arm as :approved
+    # — that used to silently ship an unreviewed change. One re-invocation
+    # is granted (demanding the sentinel); a second unparseable result
+    # raises loud.
+    test "unparseable review output (no REVIEW_VERDICT: sentinel) is re-invoked once, then fails loud if still unparseable",
+         %{calls_agent: calls_agent} do
+      invoke_fn = fn role, _harness, _ctx, _opts ->
+        Agent.update(calls_agent, fn calls -> calls ++ [role] end)
+
+        value =
+          if role == "reviewer-static" do
+            "I looked at the code and it seems fine, no obvious issues."
+          else
+            "did #{role}"
+          end
+
+        {:ok, %{"status" => "success", "value" => value}}
+      end
+
+      assert {:error, reason} =
+               OrchestrationLoop.run(
+                 harness: "claude_code",
+                 stack: "static",
+                 cwd: "/tmp/irrelevant",
+                 pitch: "do the thing",
+                 invoke_fn: invoke_fn,
+                 gate_fn: always_clear_gate_fn(),
+                 gate_preflight_fn: no_op_gate_preflight_fn(),
+                 preflight_probe_fn: all_present_preflight_probe_fn(),
+                 advance_cycle_state_fn: no_op_advance_cycle_state_fn()
+               )
+
+      assert reason =~ "no parseable REVIEW_VERDICT"
+      assert "committer" not in Agent.get(calls_agent, & &1)
+      # Re-invoked exactly once demanding the sentinel (2 total reviewer calls).
+      assert Enum.count(Agent.get(calls_agent, & &1), &(&1 == "reviewer-static")) == 2
+    end
+
+    test "an unparseable review that recovers on re-invocation (states the sentinel the second time) proceeds normally",
+         %{calls_agent: calls_agent} do
+      invoke_fn = fn role, _harness, _ctx, _opts ->
+        Agent.update(calls_agent, fn calls -> calls ++ [role] end)
+
+        value =
+          if role == "reviewer-static" do
+            seen = Enum.count(Agent.get(calls_agent, & &1), &(&1 == "reviewer-static"))
+            if seen <= 1, do: "looks fine to me", else: "REVIEW_VERDICT: APPROVED"
+          else
+            "did #{role}"
+          end
+
+        {:ok, %{"status" => "success", "value" => value}}
+      end
+
+      assert :ok ==
+               OrchestrationLoop.run(
+                 harness: "claude_code",
+                 stack: "static",
+                 cwd: "/tmp/irrelevant",
+                 pitch: "do the thing",
+                 invoke_fn: invoke_fn,
+                 gate_fn: always_clear_gate_fn(),
+                 gate_preflight_fn: no_op_gate_preflight_fn(),
+                 preflight_probe_fn: all_present_preflight_probe_fn(),
+                 advance_cycle_state_fn: no_op_advance_cycle_state_fn()
+               )
+
+      calls = Agent.get(calls_agent, & &1)
+      assert Enum.count(calls, &(&1 == "reviewer-static")) == 2
+      assert "committer" in calls
+    end
+
+    # Regression: budget-exhausted CHANGES_REQUESTED must be aligned to the
+    # SAME fail-loud posture as :unknown / run_curator_doc_check's own
+    # exhaustion — silently proceeding as if approved used to treat the two
+    # identically.
+    test "budget-exhausted CHANGES_REQUESTED fails loud rather than silently proceeding",
+         %{calls_agent: calls_agent} do
+      invoke_fn = fn role, _harness, _ctx, _opts ->
+        Agent.update(calls_agent, fn calls -> calls ++ [role] end)
+
+        value =
+          if role == "reviewer-static",
+            do: "REVIEW_VERDICT: CHANGES_REQUESTED — still not right",
+            else: "did #{role}"
+
+        {:ok, %{"status" => "success", "value" => value}}
+      end
+
+      assert {:error, reason} =
+               OrchestrationLoop.run(
+                 harness: "claude_code",
+                 stack: "static",
+                 cwd: "/tmp/irrelevant",
+                 pitch: "do the thing",
+                 invoke_fn: invoke_fn,
+                 gate_fn: always_clear_gate_fn(),
+                 gate_preflight_fn: no_op_gate_preflight_fn(),
+                 preflight_probe_fn: all_present_preflight_probe_fn(),
+                 advance_cycle_state_fn: no_op_advance_cycle_state_fn(),
+                 max_review_cycles: 0
+               )
+
+      assert reason =~ "review re-work budget"
+      assert "committer" not in Agent.get(calls_agent, & &1)
+    end
   end
 
   describe "run/1 — role failure handling" do
@@ -519,7 +633,8 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
           Agent.update(fail_once_agent, &MapSet.put(&1, role))
           {:error, "transient blip"}
         else
-          {:ok, %{"status" => "success"}}
+          value = if reviewer_role?(role), do: "REVIEW_VERDICT: APPROVED", else: "did #{role}"
+          {:ok, %{"status" => "success", "value" => value}}
         end
       end
 
@@ -573,7 +688,8 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
           Agent.update(fail_once_agent, &MapSet.put(&1, role))
           {:error, "transient blip"}
         else
-          {:ok, %{"status" => "success"}}
+          value = if reviewer_role?(role), do: "REVIEW_VERDICT: APPROVED", else: "did #{role}"
+          {:ok, %{"status" => "success", "value" => value}}
         end
       end
 
@@ -694,10 +810,11 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
           if n < 2 do
             {:error, "socket hang up"}
           else
-            {:ok, %{"status" => "success"}}
+            {:ok, %{"status" => "success", "value" => "did developer-static"}}
           end
         else
-          {:ok, %{"status" => "success"}}
+          value = if reviewer_role?(role), do: "REVIEW_VERDICT: APPROVED", else: "did #{role}"
+          {:ok, %{"status" => "success", "value" => value}}
         end
       end
 
@@ -743,7 +860,8 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
         if role == "developer-static" and model == "sonnet" do
           {:error, "Claude Fable 5 is currently unavailable"}
         else
-          {:ok, %{"status" => "success"}}
+          value = if reviewer_role?(role), do: "REVIEW_VERDICT: APPROVED", else: "did #{role}"
+          {:ok, %{"status" => "success", "value" => value}}
         end
       end
 
@@ -831,7 +949,8 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
         if role == "developer-static" and model == "sonnet" do
           {:error, "model X is currently unavailable"}
         else
-          {:ok, %{"status" => "success"}}
+          value = if reviewer_role?(role), do: "REVIEW_VERDICT: APPROVED", else: "did #{role}"
+          {:ok, %{"status" => "success", "value" => value}}
         end
       end
 
@@ -864,7 +983,8 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
           Agent.update(fail_once_agent, &MapSet.put(&1, role))
           {:error, "transient blip"}
         else
-          {:ok, %{"status" => "success"}}
+          value = if reviewer_role?(role), do: "REVIEW_VERDICT: APPROVED", else: "did #{role}"
+          {:ok, %{"status" => "success", "value" => value}}
         end
       end
 
@@ -899,7 +1019,8 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
           Agent.update(fail_once_agent, &MapSet.put(&1, role))
           {:error, "transient blip"}
         else
-          {:ok, %{"status" => "success"}}
+          value = if reviewer_role?(role), do: "REVIEW_VERDICT: APPROVED", else: "did #{role}"
+          {:ok, %{"status" => "success", "value" => value}}
         end
       end
 
@@ -1134,7 +1255,8 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
         if role == "developer-static" and length(Agent.get(seen_agent, & &1)) < 2 do
           {:error, "Connection closed mid-response"}
         else
-          {:ok, %{"status" => "success"}}
+          value = if reviewer_role?(role), do: "REVIEW_VERDICT: APPROVED", else: "did #{role}"
+          {:ok, %{"status" => "success", "value" => value}}
         end
       end
 
@@ -1180,7 +1302,8 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
         if role == "developer-static" and length(Agent.get(seen_agent, & &1)) < 2 do
           {:error, "deterministic failure"}
         else
-          {:ok, %{"status" => "success"}}
+          value = if reviewer_role?(role), do: "REVIEW_VERDICT: APPROVED", else: "did #{role}"
+          {:ok, %{"status" => "success", "value" => value}}
         end
       end
 
@@ -1231,7 +1354,8 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
              "No conversation found with session ID: " <> ctx.artifacts.transport_session_id}
 
           _ ->
-            {:ok, %{"status" => "success"}}
+            value = if reviewer_role?(role), do: "REVIEW_VERDICT: APPROVED", else: "did #{role}"
+            {:ok, %{"status" => "success", "value" => value}}
         end
       end
 
@@ -1271,7 +1395,8 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
       invoke_fn = fn role, _harness, ctx, _opts ->
         Agent.update(calls_agent, fn calls -> calls ++ [role] end)
         Agent.update(seen_agent, fn seen -> seen ++ [ctx.artifacts.transport_session_id] end)
-        {:ok, %{"status" => "success"}}
+        value = if reviewer_role?(role), do: "REVIEW_VERDICT: APPROVED", else: "did #{role}"
+        {:ok, %{"status" => "success", "value" => value}}
       end
 
       assert :ok ==
@@ -2122,7 +2247,8 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
           Agent.update(seen_reason_agent, fn _ -> reason end)
         end
 
-        {:ok, %{"status" => "success", "value" => "did #{role}"}}
+        value = if reviewer_role?(role), do: "REVIEW_VERDICT: APPROVED", else: "did #{role}"
+        {:ok, %{"status" => "success", "value" => value}}
       end
 
       assert :ok ==
@@ -2688,6 +2814,60 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
       assert curator_calls == 2
       assert List.last(Agent.get(calls_agent, & &1)) == "committer"
       assert Agent.get(scan_calls_agent, & &1) == 2
+    end
+
+    # Regression for bug 5 (write/read key mismatch): the re-invoked
+    # curator's PROMPT must actually carry the violation text scanned from
+    # the FIRST pass — historically the write landed under
+    # `:curator_doc_violations` while `build_prompt/2` read
+    # `:factcheck_violations`, so the re-invoked curator was handed the raw
+    # pitch with NO violation list at all.
+    test "the re-invoked curator's prompt carries the scanned violation text (write/read key parity)",
+         %{calls_agent: calls_agent} do
+      {:ok, scan_calls_agent} = Agent.start_link(fn -> 0 end)
+      on_exit(fn -> if Process.alive?(scan_calls_agent), do: Agent.stop(scan_calls_agent) end)
+
+      {:ok, prompt_agent} = Agent.start_link(fn -> [] end)
+      on_exit(fn -> if Process.alive?(prompt_agent), do: Agent.stop(prompt_agent) end)
+
+      scan_fn = fn _cwd ->
+        n = Agent.get_and_update(scan_calls_agent, fn c -> {c, c + 1} end)
+        if n == 0, do: {:violations, "CLAUDE.md:1 bad path — the specific violation text"}, else: {:clean}
+      end
+
+      invoke_fn = fn role, _harness, ctx, _opts ->
+        Agent.update(calls_agent, fn calls -> calls ++ [role] end)
+
+        if role == "context-curator" do
+          prompt = OrchestrationLoop.build_prompt(role, ctx)
+          Agent.update(prompt_agent, fn ps -> ps ++ [prompt] end)
+        end
+
+        value = if reviewer_role?(role), do: "REVIEW_VERDICT: APPROVED", else: "did #{role}"
+        {:ok, %{"status" => "success", "value" => value}}
+      end
+
+      assert :ok ==
+               OrchestrationLoop.run(
+                 harness: "claude_code",
+                 stack: "static",
+                 cwd: "/tmp/irrelevant",
+                 pitch: "do the thing",
+                 invoke_fn: invoke_fn,
+                 gate_fn: always_clear_gate_fn(),
+                 gate_preflight_fn: no_op_gate_preflight_fn(),
+                 preflight_probe_fn: all_present_preflight_probe_fn(),
+                 advance_cycle_state_fn: no_op_advance_cycle_state_fn(),
+                 curator_doc_check_fn: scan_fn
+               )
+
+      prompts = Agent.get(prompt_agent, & &1)
+      assert length(prompts) == 2
+      # First pass: no violation yet threaded (nothing scanned before this call).
+      refute Enum.at(prompts, 0) =~ "the specific violation text"
+      # Second pass (rework): the violation text from the FIRST scan must be present.
+      assert Enum.at(prompts, 1) =~ "the specific violation text"
+      assert Enum.at(prompts, 1) =~ "## Factcheck violations to fix"
     end
 
     test "ADD-without-row index-parity violation once then clean re-invokes context-curator exactly once",
@@ -3275,7 +3455,8 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
 
       role, _harness, _ctx, _opts ->
         Agent.update(calls_agent, fn calls -> calls ++ [role] end)
-        {:ok, %{"status" => "success", "value" => "did #{role}"}}
+        value = if reviewer_role?(role), do: "REVIEW_VERDICT: APPROVED", else: "did #{role}"
+        {:ok, %{"status" => "success", "value" => value}}
     end
   end
 
@@ -4530,7 +4711,7 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
 
       invoke_fn = fn role, _harness, _ctx, _opts ->
         Agent.update(calls_agent, fn calls -> calls ++ [role] end)
-        body = "did the thing"
+        body = if reviewer_role?(role), do: "REVIEW_VERDICT: APPROVED", else: "did the thing"
         append_role_body!(log_path, role, body)
         {:ok, %{"status" => "success", "value" => body, "session_id" => "sid-#{role}"}}
       end
@@ -4574,7 +4755,7 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
       end
 
       invoke_fn = fn role, _harness, _ctx, _opts ->
-        body = "did the thing"
+        body = if reviewer_role?(role), do: "REVIEW_VERDICT: APPROVED", else: "did the thing"
         append_role_body!(log_path, role, body)
         {:ok, %{"status" => "success", "value" => body, "session_id" => "sid-#{role}"}}
       end
@@ -4634,8 +4815,12 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
                  invoke_fn: fn role, _harness, _ctx, _opts ->
                    Agent.update(calls_agent, fn calls -> calls ++ [role] end)
 
-                   {:ok,
-                    %{"status" => "success", "value" => "no block here", "session_id" => "sid"}}
+                   value =
+                     if reviewer_role?(role),
+                       do: "REVIEW_VERDICT: APPROVED",
+                       else: "no block here"
+
+                   {:ok, %{"status" => "success", "value" => value, "session_id" => "sid"}}
                  end,
                  gate_fn: always_clear_gate_fn(),
                  gate_preflight_fn: no_op_gate_preflight_fn(),
@@ -4662,6 +4847,8 @@ defmodule CodegenTestHarness.OrchestrationLoopLockTest do
 
   alias CodegenTestHarness.OrchestrationLoop
 
+  defp reviewer_role?(role), do: role == "reviewer-phoenix" or role == "reviewer-static"
+
   setup do
     # Suite-wide bypass (test_helper.exs) must be OFF for these tests — they
     # exercise the lock/orphan-scan mechanism itself.
@@ -4686,7 +4873,10 @@ defmodule CodegenTestHarness.OrchestrationLoopLockTest do
       stack: "phoenix",
       cwd: ctx.dir,
       pitch: "do the thing",
-      invoke_fn: fn _role, _harness, _ctx, _opts -> {:ok, %{"status" => "success"}} end,
+      invoke_fn: fn role, _harness, _ctx, _opts ->
+        value = if reviewer_role?(role), do: "REVIEW_VERDICT: APPROVED", else: "did #{role}"
+        {:ok, %{"status" => "success", "value" => value}}
+      end,
       gate_fn: fn _cwd, _opts -> {:clear, "make test"} end,
       gate_preflight_fn: fn _cwd -> {"make test", "short", 0} end,
       preflight_probe_fn: fn _cwd ->
@@ -4798,6 +4988,8 @@ defmodule CodegenTestHarness.OrchestrationLoopDefaultLogInitTest do
 
   alias CodegenTestHarness.OrchestrationLoop
 
+  defp reviewer_role?(role), do: role == "reviewer-phoenix" or role == "reviewer-static"
+
   setup do
     dir =
       Path.join(
@@ -4857,7 +5049,12 @@ defmodule CodegenTestHarness.OrchestrationLoopDefaultLogInitTest do
                cwd: ctx.dir,
                pitch: "do the thing",
                slug: "default-log-init-under-ambient-pin",
-               invoke_fn: fn _role, _harness, _ctx, _opts -> {:ok, %{"status" => "success"}} end,
+               invoke_fn: fn role, _harness, _ctx, _opts ->
+                 value =
+                   if reviewer_role?(role), do: "REVIEW_VERDICT: APPROVED", else: "did #{role}"
+
+                 {:ok, %{"status" => "success", "value" => value}}
+               end,
                gate_fn: fn _cwd, _opts -> {:clear, "make test"} end,
                gate_preflight_fn: fn _cwd -> {"make test", "short", 0} end,
                preflight_probe_fn: fn _cwd ->

@@ -67,6 +67,18 @@ defmodule CodegenTestHarness.LoopGate do
     raise CodegenTestHarness.InfraAbort, "#{check_name}: #{reason}"
   end
 
+  # Floor applied to a gate's declared timeout when `gate_timeout_for`
+  # returns `0` ("no budget declared" — the truthful fallthrough for
+  # `make test` and any unrecognized command; see `gate-select.sh`'s own
+  # contract comment and its green `gate-select_test.sh:46` pin). `0` is
+  # NEVER enforced literally as a deadline — that would make every build
+  # carrying an unrecognized/undeclared gate command instantly
+  # INCONCLUSIVE, the universal fake-RED twin of the fake-GREEN this module
+  # exists to close. Reuses the existing `make ci` budget (900s) rather than
+  # minting a new constant: generous enough that no honest short gate hits
+  # it, finite enough that a genuine hang still surfaces.
+  @default_short_gate_timeout 900
+
   @gate_select_lib Path.expand(
                      "../../../harnesses/claude/hooks/lib/gate-select.sh",
                      __DIR__
@@ -226,6 +238,19 @@ defmodule CodegenTestHarness.LoopGate do
     initialized, e.g. most unit tests) → no-op, silently.
   - `:log_verdict_fn` — test seam: `(cycle_log, gate_command, mode, marker -> :ok)`,
     defaults to `&default_log_verdict/4`.
+  - `:evidence_fn` — test seam: `(gate_command, gate_output -> {execution_evidence, expected_segments}
+    :: {non_neg_integer(), non_neg_integer()})`, defaults to `&default_evidence/2`.
+    Feeds `gate-result.sh`'s no-op-gate detector (`execution_evidence <
+    expected_segments → failed`) real, counted operands instead of the
+    historical hardcoded `1 1` — a gate command that exits 0 having produced
+    no evidence of running now correctly yields `FAILED ❌`. `expected_segments`
+    is the number of `&&`-chained sub-commands in `gate_command` (a single
+    command → 1); `execution_evidence` is the count of recognized runner
+    summary footers in `gate_output` (ExUnit `N tests, N failures`, the hook
+    runner's `N passed, N failed`), falling back to 1 when the output is
+    non-empty but carries no recognized footer (many gates, e.g. `npm run
+    build`, print no test-count footer at all — only a truly EMPTY gate log
+    must count as zero evidence).
 
   Never raises on a failing gate command or a failing render check — a
   `:failed` verdict is a legitimate return value, not an error. Missing
@@ -254,13 +279,14 @@ defmodule CodegenTestHarness.LoopGate do
     preflight_fn = Keyword.get(opts, :preflight_fn, &static_render_deps_preflight!/1)
     cycle_log = Keyword.get(opts, :cycle_log)
     log_verdict_fn = Keyword.get(opts, :log_verdict_fn, &default_log_verdict/4)
+    evidence_fn = Keyword.get(opts, :evidence_fn, &default_evidence/2)
 
     if stack == "static", do: preflight_fn.(project_dir)
 
-    {gate, mode, _timeout} = decide_gate(project_dir, step_log)
+    {gate, mode, timeout} = decide_gate(project_dir, step_log)
 
     started = now_iso8601()
-    {output, exit_code} = run_fn.(gate, project_dir)
+    {output, exit_code} = run_with_deadline(run_fn, gate, project_dir, timeout)
 
     {render_verdict, output} =
       if stack == "static" and exit_code == 0 do
@@ -294,13 +320,18 @@ defmodule CodegenTestHarness.LoopGate do
     classification =
       if exit_code != 0, do: infra_classification_tag(output), else: ""
 
+    {execution_evidence, expected_segments} = evidence_fn.(gate, output)
+
+    witness =
+      if exit_code != 0 and exit_code != "timeout", do: extract_witness(log_path), else: ""
+
     write_script = """
     source #{shell_quote(@gate_result_lib)} && write_gate_result \
       #{shell_quote(gate)} #{shell_quote(mode)} #{shell_quote(base_sha)} #{diff_files_count} \
-      true #{exit_code} 1 1 #{shell_quote(render_verdict)} #{shell_quote(classification)} \
+      true #{exit_code} #{execution_evidence} #{expected_segments} #{shell_quote(render_verdict)} #{shell_quote(classification)} \
       #{shell_quote(started)} #{shell_quote(ended)} \
       #{shell_quote(session_id)} #{shell_quote(log_path)} #{shell_quote(project_dir)} \
-      "" #{shell_quote(tree_sha)}
+      #{shell_quote(witness)} #{shell_quote(tree_sha)}
     """
 
     {_write_out, 0} = System.cmd("bash", ["-c", write_script], stderr_to_stdout: true)
@@ -313,11 +344,19 @@ defmodule CodegenTestHarness.LoopGate do
 
   # Runs the static-stack render check (headless Chromium via render-check.js)
   # against `<project_dir>/public`. Returns `{render_verdict_line, combined_output}`.
-  # No output dir → skipped (render_verdict stays "", gate-result.sh treats
-  # "" the same as PASS — see _derive_verdict table). Never raises: a
-  # crashed/missing render-check is INCONCLUSIVE, not a hard failure — it
-  # must never silently masquerade as PASS, but it also must not take down
-  # the whole gate on an infra hiccup (chromium missing, etc.).
+  #
+  # A missing output dir is NEVER silently scored as PASS (`""` used to fall
+  # through `_derive_verdict`'s case to `clear`, indistinguishable from "we
+  # checked and it passed") — the static stack's own scaffold always writes
+  # its build output to `public/` (`shared/scaffold/static/scaffold.sh`
+  # `outDir: "public"`), so an absent `public/` after a clear-exit gate
+  # command means the build produced NOTHING, which is a build failure, not
+  # a skip. Emits `FAIL:no-output` so `_derive_verdict`'s `FAIL:*` arm fires.
+  #
+  # Never raises for a PRESENT-but-broken render: a crashed/missing
+  # render-check is INCONCLUSIVE, not a hard failure — it must never
+  # silently masquerade as PASS, but it also must not take down the whole
+  # gate on an infra hiccup (chromium missing, etc.).
   defp run_static_render_check(project_dir, gate_output, opts) do
     render_check_fn = Keyword.get(opts, :render_check_fn, &default_render_check_fn/1)
     out_dir = Path.join(project_dir, "public")
@@ -327,7 +366,7 @@ defmodule CodegenTestHarness.LoopGate do
       verdict = extract_render_verdict(verdict_line)
       {verdict, gate_output <> "\n" <> verdict_line}
     else
-      {"", gate_output}
+      {"FAIL:no-output", gate_output <> "\nRENDER_VERDICT=FAIL:no-output (public/ dir absent)"}
     end
   end
 
@@ -358,6 +397,28 @@ defmodule CodegenTestHarness.LoopGate do
 
           {output, 0}
       end
+    end
+  end
+
+  # Shells `gate-result.sh`'s `extract_witness` against the just-written gate
+  # log — the function has existed, been unit-tested six ways
+  # (`gate-result_test.sh`), and had ZERO production callers until this call
+  # site. Fall-open-empty: any non-zero exit or unparseable log yields ""
+  # (never raises, never blocks the gate) — `write_gate_result`'s witness
+  # slot already tolerates "" (its historical value here, before this call
+  # existed). Only invoked for a genuine opaque non-zero exit (never for
+  # "timeout", which already carries its own known reason).
+  @spec extract_witness(String.t()) :: String.t()
+  defp extract_witness(log_path) do
+    unless File.exists?(@gate_result_lib) do
+      raise "LoopGate: gate-result.sh not found at #{@gate_result_lib}"
+    end
+
+    script = "source #{shell_quote(@gate_result_lib)} && extract_witness #{shell_quote(log_path)}"
+
+    case System.cmd("bash", ["-c", script], stderr_to_stdout: true) do
+      {output, 0} -> output
+      {_output, _code} -> ""
     end
   end
 
@@ -626,18 +687,176 @@ defmodule CodegenTestHarness.LoopGate do
     end
   end
 
+  # Real :run_fn. Spawns the gate command via `Port.open` (rather than the
+  # simpler blocking `System.cmd`) so its OS pid is discoverable via
+  # `Port.info/2` WHILE it is still running — `run_with_deadline/4` needs
+  # this to target-kill the real subprocess on expiry; a blocking
+  # `System.cmd` call exposes no os_pid until it has already returned.
+  #
+  # `Port.open`'s `:env` option only ever ADDS/overrides on top of the OS's
+  # already-inherited environment — passing a REDUCED key list (e.g. via
+  # `Map.drop/2`) does NOT unset the dropped keys in the child (confirmed by
+  # direct probe: the child still saw every ambient `CODEGEN_BUILD_*` var).
+  # The actual unset token, mirrored from `System.cmd`'s own
+  # `validate_env/1` (`{key, nil}` → `{charlist_key, false}`), is what
+  # `Port.open` itself recognizes as "delete this inherited var" — so each
+  # `CODEGEN_BUILD_*` key must be passed explicitly as `{key, false}`, not
+  # simply omitted from the list.
   defp default_run_fn(gate_command, project_dir) do
-    scrub =
+    env =
       System.get_env()
       |> Map.keys()
       |> Enum.filter(&String.starts_with?(&1, "CODEGEN_BUILD_"))
-      |> Enum.map(&{&1, nil})
+      |> Enum.map(&{String.to_charlist(&1), false})
 
-    System.cmd("bash", ["-c", gate_command],
-      cd: project_dir,
-      stderr_to_stdout: true,
-      env: scrub
-    )
+    port =
+      Port.open({:spawn_executable, System.find_executable("bash")}, [
+        :binary,
+        :exit_status,
+        :stderr_to_stdout,
+        {:args, ["-c", gate_command]},
+        {:cd, project_dir},
+        {:env, env}
+      ])
+
+    Process.put(:codegen_gate_port, port)
+    collect_port_output(port, [])
+  end
+
+  defp collect_port_output(port, acc) do
+    receive do
+      {^port, {:data, chunk}} ->
+        collect_port_output(port, [chunk | acc])
+
+      {^port, {:exit_status, code}} ->
+        {IO.iodata_to_binary(Enum.reverse(acc)), code}
+    end
+  end
+
+  # Bounds `run_fn.(gate, project_dir)` with a real deadline instead of the
+  # historical bare, unbounded blocking call. `timeout` <= 0 means "no
+  # budget declared" (`gate_timeout_for`'s truthful fallthrough for
+  # `make test` and any unrecognized command) — NEVER enforced literally;
+  # floored to `@default_short_gate_timeout` here, in the CONSUMER, so
+  # `gate-select.sh`'s own `0` contract and its green test
+  # (`gate-select_test.sh:46`) stay untouched. `run_fn` itself stays 2-arity
+  # — widening it would break the 22 existing 2-arity test seams and the
+  # shape the dependent canary pitch builds against; the deadline wraps the
+  # call instead, bounding injected seams too, for free.
+  #
+  # On expiry: kills the Elixir Task AND, when it was the real
+  # `default_run_fn` running (it records its port in the Task process's own
+  # dictionary via `Process.put/2` before blocking), the spawned OS process
+  # tree via `Port.info/2`'s os_pid — a plain `Task.shutdown` alone would
+  # leave `default_run_fn`'s real subprocess running detached, chewing CPU
+  # while the loop reports INCONCLUSIVE. Test-injected `run_fn` seams (which
+  # never spawn a real OS child) simply have no port to find and are fully
+  # reclaimed by the Task kill alone.
+  #
+  # This deliberately does NOT reuse `LoopQueueDrain.reap_own_descendants/0`
+  # (the solo top-level build path's whole-BEAM descendant reap): that
+  # helper scans and kills EVERY OS descendant of the CURRENT BEAM
+  # (`System.pid()`), which is safe only when the calling BEAM IS the
+  # top-level build process with no unrelated concurrent work. Called from
+  # inside `run_gate/2` — which also runs under a live ExUnit suite with
+  # many concurrent async tests/subprocesses of its own — it kills unrelated
+  # sibling work: confirmed by direct probe (invoking it from a test here
+  # crashed the whole BEAM). Killing only the specific spawned os_pid is
+  # scoped and safe regardless of what else the calling BEAM is doing.
+  #
+  # Returns `{"", "timeout"}`, which feeds `_derive_verdict`'s already-written
+  # `exit_code = "timeout" → inconclusive` arm (previously unreachable).
+  @spec run_with_deadline(
+          (String.t(), String.t() -> {String.t(), integer()}),
+          String.t(),
+          String.t(),
+          non_neg_integer()
+        ) :: {String.t(), integer() | String.t()}
+  defp run_with_deadline(run_fn, gate, project_dir, timeout) do
+    effective_timeout = if timeout > 0, do: timeout, else: @default_short_gate_timeout
+
+    task = Task.async(fn -> run_fn.(gate, project_dir) end)
+
+    case Task.yield(task, effective_timeout * 1_000) do
+      {:ok, result} ->
+        result
+
+      nil ->
+        kill_task_os_child(task.pid)
+        Task.shutdown(task, :brutal_kill)
+        {"", "timeout"}
+    end
+  end
+
+  # Best-effort: if the timed-out Task recorded a `Port` (only `real`
+  # `default_run_fn` does), kill that port's OS process directly — a single
+  # `kill -9` on the exact pid, never a system-wide scan. No-op (silently)
+  # when the Task never ran `default_run_fn`, already exited, or the OS
+  # already reaped the process — this is a best-effort cleanup on the
+  # already-decided timeout path, not a source of new failures.
+  defp kill_task_os_child(task_pid) do
+    case Process.info(task_pid, :dictionary) do
+      {:dictionary, dict} ->
+        case Keyword.get(dict, :codegen_gate_port) do
+          nil ->
+            :ok
+
+          port ->
+            case Port.info(port, :os_pid) do
+              {:os_pid, os_pid} ->
+                System.cmd("kill", ["-9", Integer.to_string(os_pid)], stderr_to_stdout: true)
+                :ok
+
+              nil ->
+                :ok
+            end
+        end
+
+      nil ->
+        :ok
+    end
+  end
+
+  # Default `:evidence_fn` — derives `{execution_evidence, expected_segments}`
+  # from the gate command string and its own output, feeding
+  # `gate-result.sh`'s no-op-gate detector real counted operands in place of
+  # the historical hardcoded `1 1`.
+  #
+  # `expected_segments`: the number of `&&`-chained sub-commands in
+  # `gate_command` — a single command (`"make test"`) is 1 segment; a
+  # chained gate (`"make ci && make llm"`, per `gate-select.sh`'s own
+  # documented gate strings) is N segments, one per `&&`.
+  #
+  # `execution_evidence`: the count of recognized runner-summary footers in
+  # `gate_output` — ExUnit's `N tests, N failures` and the codegen hook
+  # runner's `N passed, N failed` (`run-tests.sh:75`, an existing pattern —
+  # this is a second caller, not a new parser). Falls back to 1 (never 0)
+  # when the output is non-empty but carries no recognized footer — many
+  # gates (`npm run build`, `mix format --check-formatted`) print no
+  # test-count footer at all, and this detector's ONLY job is to catch a
+  # gate that produced a truly EMPTY log while exiting 0 (the historical
+  # `1 1` incident) — not to police every gate's specific output shape.
+  @spec default_evidence(String.t(), String.t()) :: {non_neg_integer(), non_neg_integer()}
+  defp default_evidence(gate_command, gate_output) do
+    expected_segments =
+      gate_command
+      |> String.split(~r/\s*&&\s*/)
+      |> Enum.reject(&(String.trim(&1) == ""))
+      |> length()
+      |> max(1)
+
+    footer_count =
+      Regex.scan(~r/\d+\s+tests?,\s*\d+\s+failures?|\d+\s+passed,\s*\d+\s+failed/, gate_output)
+      |> length()
+
+    execution_evidence =
+      cond do
+        footer_count > 0 -> footer_count
+        String.trim(gate_output) != "" -> 1
+        true -> 0
+      end
+
+    {execution_evidence, expected_segments}
   end
 
   # Maps `classify_failure/1`'s boolean-ish `:code | :infra` result to the

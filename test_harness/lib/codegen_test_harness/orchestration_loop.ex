@@ -1082,10 +1082,25 @@ defmodule CodegenTestHarness.OrchestrationLoop do
 
   # Reviewer→developer fix cycle (structural gap #7). The reviewer ends its output
   # with `REVIEW_VERDICT: APPROVED | CHANGES_REQUESTED` (instructed via build_prompt).
-  # APPROVED / unparseable → advance REVIEWED and continue. CHANGES_REQUESTED (within
+  # APPROVED → advance REVIEWED and continue. CHANGES_REQUESTED (within
   # :max_review_cycles, default 1) → re-invoke the developer with the reviewer's
-  # feedback, re-format, re-gate, re-review, and recurse. Budget-exhausted → proceed
-  # (don't wedge the cycle forever) but the state still records REVIEWED.
+  # feedback, re-format, re-gate, re-review, and recurse.
+  #
+  # `:unknown` (the reviewer's output carried no parseable
+  # `REVIEW_VERDICT:` sentinel — truncated response, crash mid-sentence, or
+  # simply forgot it) is NEVER folded into the same "proceed" arm as
+  # `:approved` — that used to silently ship an unreviewed change (a
+  # reviewer that fails to emit its verdict is not the same thing as a
+  # reviewer that approved). One re-invocation is granted, explicitly
+  # demanding the sentinel; a SECOND unparseable result raises loud rather
+  # than advancing — this is a re-work bounded exactly like
+  # `run_curator_doc_check`'s own budget-exhaustion posture (fail loud, not
+  # proceed), not `:changes_requested`'s.
+  #
+  # Budget-exhausted `:changes_requested` (cycle >= max_cycles) is aligned
+  # to the SAME fail-loud posture — a review that still requested changes
+  # when the retry budget ran out is not the same thing as an approval
+  # either, and silently proceeding used to treat the two identically.
   defp handle_review(reviewer_role, review_result, rest, harness, ctx, opts, cycle) do
     max_cycles = Keyword.get(opts, :max_review_cycles, 1)
 
@@ -1125,10 +1140,45 @@ defmodule CodegenTestHarness.OrchestrationLoop do
           end
         end
 
-      _verdict ->
-        # :approved, :unknown, or CHANGES_REQUESTED with budget exhausted.
+      :changes_requested ->
+        # Budget exhausted — do NOT silently proceed as if approved.
+        {:error,
+         "reviewer requested changes and the review re-work budget (#{max_cycles}) is " <>
+           "exhausted: #{review_result["value"] || "changes requested"}"}
+
+      :approved ->
         advance_cycle_state_step("REVIEWED", ctx, opts)
         run_roles(rest, harness, ctx, opts)
+
+      :unknown when cycle < max_cycles ->
+        handle_unparseable_review(reviewer_role, rest, harness, ctx, opts, cycle)
+
+      :unknown ->
+        {:error,
+         "reviewer output carried no parseable REVIEW_VERDICT: sentinel after " <>
+           "#{cycle + 1} attempt(s) — refusing to silently advance as approved. " <>
+           "Last output: #{inspect(review_result["value"])}"}
+    end
+  end
+
+  # `:unknown` re-work path: re-invoke the SAME reviewer once, explicitly
+  # demanding the missing sentinel — no developer re-work, no gate re-run,
+  # since nothing about the code changed; only the reviewer failed to state
+  # its verdict. A second `:unknown` raises (see `handle_review/7`'s
+  # `:unknown` catch-all) rather than looping indefinitely.
+  defp handle_unparseable_review(reviewer_role, rest, harness, ctx, opts, cycle) do
+    ctx =
+      put_in(
+        ctx,
+        [:artifacts, :review_verdict_missing],
+        "Your previous response did not end with a parseable `REVIEW_VERDICT: APPROVED` or " <>
+          "`REVIEW_VERDICT: CHANGES_REQUESTED` line. Re-state your review, ending with exactly " <>
+          "one of those two lines."
+      )
+
+    with {:ok, review2} <- invoke_with_retry(reviewer_role, harness, ctx, opts) do
+      ctx = put_in(ctx, [:artifacts, reviewer_role], review2)
+      handle_review(reviewer_role, review2, rest, harness, ctx, opts, cycle + 1)
     end
   end
 
@@ -1150,7 +1200,15 @@ defmodule CodegenTestHarness.OrchestrationLoop do
   # `handle_review`'s proceed-on-exhaustion): the committer cannot Read/Edit
   # `context/*.md`, so handing it a known-bad doc is an unfixable dead-end
   # that used to compound into a dirty-tree retry loop.
-  defp run_curator_doc_check(curator_role, rest, harness, ctx, opts, cycle, prev_violations \\ nil) do
+  defp run_curator_doc_check(
+         curator_role,
+         rest,
+         harness,
+         ctx,
+         opts,
+         cycle,
+         prev_violations \\ nil
+       ) do
     max_cycles = Keyword.get(opts, :max_curator_doc_cycles, 1)
 
     case run_curator_doc_scan(ctx.cwd, opts) do
@@ -2631,13 +2689,30 @@ defmodule CodegenTestHarness.OrchestrationLoop do
       end
 
     # On a factcheck re-work pass, thread the violation list to the curator.
-    fv = get_in(ctx, [:artifacts, :factcheck_violations])
+    # Reads the SAME key `run_curator_doc_check_rework/9` writes
+    # (`:curator_doc_violations`) — these were historically two different
+    # keys (write `:curator_doc_violations`, read `:factcheck_violations`),
+    # so the re-invoked curator was handed the raw pitch with NO violation
+    # list at all, asked to fix violations it was never shown.
+    fv = get_in(ctx, [:artifacts, :curator_doc_violations])
 
     base =
       if role == "context-curator" and is_binary(fv) and String.trim(fv) != "" do
         base <>
           "\n\n## Factcheck violations to fix (re-work)\n\n" <>
           fv <> "\n\nFix these in the working tree; do not introduce unrelated changes."
+      else
+        base
+      end
+
+    # On an unparseable-review re-work pass, ask the reviewer to re-state
+    # its verdict with the required sentinel.
+    rvm = get_in(ctx, [:artifacts, :review_verdict_missing])
+
+    base =
+      if (role == "reviewer-phoenix" or role == "reviewer-static") and is_binary(rvm) and
+           String.trim(rvm) != "" do
+        base <> "\n\n## Verdict required (re-work)\n\n" <> rvm
       else
         base
       end

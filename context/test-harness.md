@@ -215,7 +215,7 @@ A test fixture can encode the SAME false premise as the production bug it is mea
 - Non-Phoenix stacks pass no `:stack` opt → directory is created empty (no scaffold pre-run)
 - Both phoenix and non-phoenix variants initialize git (`git init` + initial commit) — fixtures are suitable for driving hooks directly via `System.cmd` that read git state or write the gate-result JSON
 
-**Gate verdict parity**: Both phoenix and static stacks write the ephemeral gate-result JSON into `codegen/gate-pending/` via the `write_gate_result` shell fn (`gate-result.sh`). For non-interactive builds this is called from `LoopGate.run_gate/2`; for the interactive-session fallback the static stack's `static-site-build-check.sh` calls it directly. Test assertions mirroring the gate-result JSON schema are valid across stacks.
+**Gate verdict parity**: Both phoenix and static stacks write the ephemeral gate-result JSON into `codegen/gate-pending/` via the `write_gate_result` shell fn (`gate-result.sh`), called from `LoopGate.run_gate/2` — the sole build engine (no separate interactive-session fallback path or caller exists). Test assertions mirroring the gate-result JSON schema are valid across stacks.
 
 **Build path isolation**: Tests using `mix` with non-default `MIX_BUILD_PATH=_build/pi_test` (pi tests) require recompilation of fixture-modified files under BOTH the default and custom build paths. A stale `_build/pi_test` still serves old BEAM bytecode after fixture changes until that tree is recompiled. Solution: run `mix compile` after fixture code edits without the env var, then again with the env var set.
 

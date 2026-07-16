@@ -120,27 +120,27 @@ test_pi_vars_in_claude() {
 # `harness:` and `session_id:`).
 extract_envelope_keys() {
     local file="$1"
-    awk '/harness: "/{found=1} found' "$file" \
-        | sed -n '/^    .\{0,3\}{$/,/^    }/p' \
-        | grep -oE '^\s+[a-z_]+:' \
-        | sed 's/[: ]//g' \
-        | sort -u
+    awk '/harness: "/{found=1} found' "$file" |
+        sed -n '/^    .\{0,3\}{$/,/^    }/p' |
+        grep -oE '^\s+[a-z_]+:' |
+        sed 's/[: ]//g' |
+        sort -u
 }
 
 extract_result_keys() {
     local file="$1"
-    awk '/result: \{/,/^\s+\},?$/' "$file" \
-        | grep -oE '^\s+[a-z_]+:' \
-        | sed 's/[: ]//g' \
-        | sort -u
+    awk '/result: \{/,/^\s+\},?$/' "$file" |
+        grep -oE '^\s+[a-z_]+:' |
+        sed 's/[: ]//g' |
+        sort -u
 }
 
 extract_usage_keys() {
     local file="$1"
-    awk '/usage: \{/,/^\s+\},?$/' "$file" \
-        | grep -oE '^\s+[a-z_]+:' \
-        | sed 's/[: ]//g' \
-        | sort -u
+    awk '/usage: \{/,/^\s+\},?$/' "$file" |
+        grep -oE '^\s+[a-z_]+:' |
+        sed 's/[: ]//g' |
+        sort -u
 }
 
 test_envelope_top_keys() {
